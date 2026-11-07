@@ -98,6 +98,9 @@ export type ReportCosts = {
   // profit); unlinkedTotal adds up the deductions (isCost).
   unlinked?: Array<{ category: string; label: string; isCost: boolean; amount: number; records: number }> | null
   unlinkedTotal?: number
+  // The service fee and withholding tax invoices whose payout's lines are not read yet: their orders' estimates already
+  // take them off, so they are only told (tahminle karşılandı), never taken off again.
+  coveredByEstimate?: Array<{ category: string; label: string; isCost: boolean; amount: number; records: number }> | null
   // The net VAT of the Trendyol orders (server-side estimate): sales VAT less the VAT in the product cost and in Trendyol's
   // charges; below zero it is carried forward.
   netVat?: { salesVat: number; productCostVat: number; expenseVat: number; net: number } | null

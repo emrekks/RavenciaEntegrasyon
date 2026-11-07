@@ -633,12 +633,14 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
             // 13.19 a package, nothing estimated; the tax by sale, 100 : 50.
             Assert.Equal((26.38m, 26.38m, 0m, 2), (fee.Amount, fee.OrderLinked, fee.Estimated, fee.Records));
             Assert.Equal((1.25m, 1.25m, 0m, 2), (tax.Amount, tax.OrderLinked, tax.Estimated, tax.Records));
-            // Apart: the never-imported order's share (13.19), the unread payout's 39.57 and the 13.19 naming no payout;
-            // the old order's share is in its own period. No withholding tax is left apart.
+            // Apart: the never-imported order's share (13.19) and the 13.19 naming no payout; the old order's share is in
+            // its own period. The unread payout's 39.57 is covered by its orders' estimates (each cost once), not apart.
+            // No withholding tax is left apart.
             var apart = report.Costs.Unlinked!.Single(line => line.Category == MarketplaceFinanceCategories.ServiceFee);
-            Assert.Equal((65.95m, 3), (apart.Amount, apart.Records));
+            Assert.Equal((26.38m, 2), (apart.Amount, apart.Records));
             Assert.DoesNotContain(report.Costs.Unlinked!, line => line.Category == MarketplaceFinanceCategories.Stoppage);
-            Assert.Contains(report.DataNotes, note => note.Contains("39,57 ₺", StringComparison.Ordinal) && note.Contains("ödeme kayıtları okununca", StringComparison.Ordinal));
+            Assert.Equal((39.57m, 1), report.Costs.CoveredByEstimate!.Single(line => line.Category == MarketplaceFinanceCategories.ServiceFee) is var covered ? (covered.Amount, covered.Records) : default);
+            Assert.Contains(report.DataNotes, note => note.Contains("39,57 ₺", StringComparison.Ordinal) && note.Contains("tahminle karşılandı", StringComparison.Ordinal));
             Assert.Contains(report.DataNotes, note => note.StartsWith("13,19 ₺", StringComparison.Ordinal));
 
             await using var db = fixture.CreateContext();

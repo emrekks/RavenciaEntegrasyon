@@ -453,6 +453,18 @@ describe('ReportsPage', () => {
     expect(Math.round((350 - slices + 53.17) * 100) / 100).toBe(-tl(bridge.get('Tahmini Zarar')))
   })
 
+  it('tells a fee invoice of a payout not read yet as covered by the estimate and takes it off nowhere', async () => {
+    // 5 Nov 2026: payout 78619772's 448,01 of withholding tax before its lines were read. Its orders carry the estimate.
+    const costs = withFinance.costs!
+    const page = await open('', { ...withFinance, costs: { ...costs, coveredByEstimate: [{ category: 'STOPPAGE', label: 'Stopaj', isCost: true, amount: 448.01, records: 1 }] } })
+    const tip = [...page.querySelectorAll('.reports-costlines li')].find(line => line.textContent?.startsWith('Stopaj'))?.querySelector('.reports-hover-tip')?.textContent
+    expect(tip).toContain('₺448,01 (1 fatura) ödeme kayıtları henüz okunmayan bir ödemeye ait: tahminle karşılandı')
+    expect([...page.querySelectorAll('.reports-bridge > li')].find(row => row.textContent?.includes('Stopaj'))?.querySelector('.reports-hover-tip')?.textContent).toContain('tahminle karşılandı')
+    // The same figures as without it: the stopaj and the loss do not move.
+    expect(bridgeRows(page)).toContain('− Stopaj − ₺449,01')
+    expect(bridgeRows(page).at(-1)).toBe('Tahmini Zarar − ₺6.639,23')
+  })
+
   it('ends the bridge where its steps end when no product cost is entered, the net VAT taken off', async () => {
     const page = await open('', { ...withFinance, cost: { ...withFinance.cost, costedQuantity: 0, coverage: 0, costTotal: 0 },
       costs: { ...withFinance.costs!, netVat: { salesVat: 60, productCostVat: 0, expenseVat: 50, net: 10 } } })

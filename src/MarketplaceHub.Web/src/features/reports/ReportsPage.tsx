@@ -625,7 +625,7 @@ function costLines(data: ReportSales, money: Money): OverviewCost[] {
   const apartNote = (category: string, linked: number | null) => {
     const line = apart(category)
     if (!line) return ''
-    return ` ${linked ? `${formatTl(linked)} dönemin siparişlerine ait; ` : ''}${formatTl(line.amount)} (${formatCount(line.records)} kayıt) siparişe bağlı değil, işlem tarihine göre bu döneme yazıldı.${category === 'SERVICE_FEE' || category === 'STOPPAGE' ? ' Trendyol ödemenin kayıtlarını verince siparişlerine paylaştırılır.' : ''}`
+    return ` ${linked ? `${formatTl(linked)} dönemin siparişlerine ait; ` : ''}${formatTl(line.amount)} (${formatCount(line.records)} kayıt) siparişe bağlı değil, işlem tarihine göre bu döneme yazıldı.`
   }
   const lines: OverviewCost[] = [
     { key: 'cost', label: 'Ürün Maliyeti', value: money.cost, tone: 'cost', note: explain('cost', money.cost === null ? 'Ürün kartında varyantların maliyeti girildiğinde hesaplanır.' : costCoverageText(money.costCoverage)) },
@@ -642,7 +642,7 @@ function costLines(data: ReportSales, money: Money): OverviewCost[] {
       const extra = apart(fee.category)
       return { key: fee.key, label: fee.category === 'EARLY_PAYMENT' ? 'Erken Ödeme Kesintisi' : fee.category === 'OTHER_DEDUCTION' ? 'Diğer Kesintiler' : fee.label,
         value: costFigure(data, fee.category), tone: fee.key,
-        note: `${explain(fee.key, !finance ? notRead : line && line.amount !== 0 ? feeNote(line) : extra ? 'Dönemin siparişlerinde kaydı yok.' : 'Bu dönemde kaydı yok.')}${apartNote(fee.category, line?.amount || null)}` }
+        note: `${explain(fee.key, !finance ? notRead : line && line.amount !== 0 ? feeNote(line) : extra ? 'Dönemin siparişlerinde kaydı yok.' : 'Bu dönemde kaydı yok.')}${apartNote(fee.category, line?.amount || null)}${coveredNote(data, fee.category)}` }
     }),
     { key: 'vat', label: 'Net KDV', value: finance?.netVat?.net ?? null, tone: 'vat', note: explain('vat', finance?.netVat
       ? `Satışların KDV'si ${formatTl(finance.netVat.salesVat)}; bundan ürün maliyetindeki KDV ${formatTl(finance.netVat.productCostVat)} ve masraflardaki (komisyon, kargo, hizmet bedeli) KDV ${formatTl(finance.netVat.expenseVat)} düşülür. Tahminidir.${finance.netVat.net < 0 ? ' Eksi çıktığı için devreden KDV\'dir ve kârı artırır.' : ''}`
@@ -780,7 +780,7 @@ function ProfitBridge({ data, money, onMore }: { data: ReportSales; money: Money
     { key: 'cargo', label: 'Kargo', value: cargo?.value ?? 0, note: explain('cargo', cargo?.note ?? '') },
     { key: 'marketplace', label: 'Pazaryeri Masrafları', value: (commission?.value ?? 0) + (part('fees')?.value ?? 0) - stoppage,
       note: explain('marketplace', [commission ? `${commission.label} ${formatTl(commission.value)}` : null, ...otherFees.map(fee => `${fee.label} ${formatTl(fee.value)}`)].filter(Boolean).join(', ') + '.') },
-    { key: 'stoppage', label: 'Stopaj', value: stoppage, note: explain('stoppage', `KDV hariç satışın %1'i; Trendyol yurt dışı vitrin satışlarından da keser (Azerbaycan hariç). Hesap kesimi henüz olmayan siparişlerde tahmini.${apartAmount(data, 'STOPPAGE') ? ` ${formatTl(apartAmount(data, 'STOPPAGE'))} siparişe bağlı değil, işlem tarihine göre bu döneme yazıldı.` : ''}`) },
+    { key: 'stoppage', label: 'Stopaj', value: stoppage, note: explain('stoppage', `KDV hariç satışın %1'i; Trendyol yurt dışı vitrin satışlarından da keser (Azerbaycan hariç). Hesap kesimi henüz olmayan siparişlerde tahmini.${apartAmount(data, 'STOPPAGE') ? ` ${formatTl(apartAmount(data, 'STOPPAGE'))} siparişe bağlı değil, işlem tarihine göre bu döneme yazıldı.` : ''}${coveredNote(data, 'STOPPAGE')}`) },
     { key: 'vat', label: 'Net KDV', value: money.tax ?? 0, note: explain('vat', money.tax !== null && money.tax < 0 ? 'Masraflardaki KDV satışların KDV\'sinden fazla; fark devreden KDV\'dir ve kârı artırır.' : 'Satışların KDV\'sinden ürün maliyetindeki ve masraflardaki KDV düşülür. Tahminidir.') },
     { key: 'cost', label: 'Ürün Maliyeti', value: money.cost ?? 0, note: explain('cost', costCoverageText(money.costCoverage)) },
     { key: 'unlinked', label: unlinkedTitle, value: money.unlinked, note: unlinkedNote(data) }
@@ -1374,6 +1374,11 @@ function costFigure(data: ReportSales, category: string): number | null {
   const finance = financeCosts(data)
   if (!finance) return null
   return (finance.lines.find(line => line.category === category)?.amount ?? 0) + apartAmount(data, category)
+}
+// A fee invoice whose payout's records are not read yet: its orders' estimate already takes it off, so it is only told.
+function coveredNote(data: ReportSales, category: string) {
+  const line = trendyolRead(data) ? data.costs?.coveredByEstimate?.find(item => item.category === category && item.amount !== 0) : null
+  return line ? ` ${formatTl(line.amount)} (${formatCount(line.records)} fatura) ödeme kayıtları henüz okunmayan bir ödemeye ait: tahminle karşılandı, ayrıca düşülmedi. Kayıtlar okununca (ödemeden bir gün sonra) siparişlerine paylaştırılır ve tahminin yerini alır.` : ''
 }
 const figureOf = (data: ReportSales, categories: string[]) => categories.reduce((sum, category) => sum + (costFigure(data, category) ?? 0), 0)
 

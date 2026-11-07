@@ -592,6 +592,45 @@ public sealed class TrendyolFinanceTests
         Assert.Equal((13.19m, false, 0.40m, false), (b.Single(cost => cost.Key == "serviceFee").Amount, b.Single(cost => cost.Key == "serviceFee").Estimated, b.Single(cost => cost.Key == "stoppage").Amount, b.Single(cost => cost.Key == "stoppage").Estimated));
     }
 
+    // Live, 5 Nov 2026: payout 78619772's service fee (986.86) and withholding tax (448.01) invoices were read at 04:56,
+    // its settlement lines only on 6 Nov 05:43. For that day the invoices were taken off Net Kâr on top of the estimates
+    // their orders carry. Each cost counts once: the unsplit invoice is covered by the estimate, and once its payout's
+    // lines are read its shares replace the estimate.
+    [Fact]
+    public void A_payout_fee_invoice_whose_lines_are_not_read_yet_is_covered_by_the_estimate_not_charged_twice()
+    {
+        var (input, _, _, store) = ReportFixture();
+        var states = new Dictionary<Guid, MarketplaceFinanceSyncState?>
+        {
+            [store] = new() { TenantId = Guid.NewGuid(), ConnectionId = store, CoveredFrom = input.Period.Start.AddDays(-90), CoveredThrough = input.Period.End.AddDays(1), LastSyncedAt = input.Period.End.AddDays(1) }
+        };
+        var serviceFee = Invoice(store, "SF-5", MarketplaceFinanceCategories.ServiceFee, "Platform Hizmet Bedeli", "78619772", 986.86m);
+        var stoppage = Invoice(store, "ST-5", MarketplaceFinanceCategories.Stoppage, "E-ticaret Stopajı", "78619772", 448.01m);
+        var sale = Row(store, Settlements, "1", "Sale", MarketplaceFinanceCategories.Sale, "A-1", "BAR-1", credit: 100m, commission: 18m);
+        ReportSalesView Build(List<ReportFinanceRow> rows) => ReportBuilder.Build(input with { Finance = new ReportFinance(rows, [], new HashSet<(Guid, string)>(), states, new Dictionary<Guid, ReportCargoSample> { [store] = new(196.68m, 2) }) },
+            Empty(input), new Dictionary<Guid, decimal>());
+
+        // 5 Nov: the lines are not read, so the invoices cannot be split.
+        var before = Build([sale, serviceFee, stoppage]);
+        // The two orders' estimates (2 × 13.19 and 1 % of 150) are what is taken off, once.
+        Assert.Equal((26.38m, 26.38m, 0), Fee(before.Costs, MarketplaceFinanceCategories.ServiceFee));
+        Assert.Equal((1.5m, 1.5m, 0), Fee(before.Costs, MarketplaceFinanceCategories.Stoppage));
+        // Not again as a deduction tied to no order: only listed as covered by the estimate.
+        Assert.DoesNotContain(before.Costs.Unlinked!, line => line.Category is MarketplaceFinanceCategories.ServiceFee or MarketplaceFinanceCategories.Stoppage);
+        Assert.Equal(0m, before.Costs.UnlinkedTotal);
+        Assert.Equal([(MarketplaceFinanceCategories.ServiceFee, 986.86m, 1), (MarketplaceFinanceCategories.Stoppage, 448.01m, 1)],
+            before.Costs.CoveredByEstimate!.Select(line => (line.Category, line.Amount, line.Records)).ToList());
+        Assert.Contains(before.DataNotes, note => note.Contains("1.434,87 ₺", StringComparison.Ordinal) && note.Contains("tahminle karşılandı", StringComparison.Ordinal));
+
+        // 6 Nov: the payout's lines are read; the shares replace the estimates, still once.
+        List<ReportPayoutLine> payout = [new(store, "78619772", "A-1", "P-A", "Sale", "Türkiye", 0m, 100m), new(store, "78619772", "B-1", "P-B", "Sale", "Türkiye", 0m, 50m)];
+        var after = Build([sale, .. ReportFeeAllocation.Split(serviceFee, payout)!, .. ReportFeeAllocation.Split(stoppage, payout)!]);
+        Assert.Equal((986.86m, 0m, 2), Fee(after.Costs, MarketplaceFinanceCategories.ServiceFee));
+        Assert.Equal((448.01m, 0m, 2), Fee(after.Costs, MarketplaceFinanceCategories.Stoppage));
+        Assert.Empty(after.Costs.Unlinked!);
+        Assert.Empty(after.Costs.CoveredByEstimate!);
+    }
+
     private static ReportFinanceRow Invoice(Guid store, string id, string category, string type, string? payout, decimal debt) => new()
     {
         ConnectionId = store,
