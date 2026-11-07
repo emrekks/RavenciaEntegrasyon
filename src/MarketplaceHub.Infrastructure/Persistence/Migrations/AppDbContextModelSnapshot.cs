@@ -23,6 +23,59 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "pg_trgm");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("MarketplaceHub.Domain.AdReportFile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("CampaignCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("CampaignsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ExportedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("ExportedAtFromFileName")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("FileHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("character varying(260)");
+
+                    b.Property<string>("PlatformCode")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UploadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UploadedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ConnectionId", "ExportedAt");
+
+                    b.ToTable("ad_report_files", "catalog");
+                });
+
             modelBuilder.Entity("MarketplaceHub.Domain.AiUsageLog", b =>
                 {
                     b.Property<Guid>("Id")
@@ -7191,6 +7244,22 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("category_mappings", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.AdReportFile", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.PlatformConnection", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ConnectionId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("MarketplaceHub.Domain.AiUsageLog", b =>

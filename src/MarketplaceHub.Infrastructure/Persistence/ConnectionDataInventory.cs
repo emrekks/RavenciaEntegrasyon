@@ -17,7 +17,7 @@ public static class ConnectionDataInventory
         "catalog.marketplace_product_links", "catalog.marketplace_variant_links", "catalog.marketplace_listing_states",
         "catalog.channel_listing_profiles", "catalog.external_identifier_aliases",
         "catalog.category_mappings", "catalog.brand_mappings", "catalog.attribute_mappings", "catalog.attribute_value_mappings",
-        "catalog.commission_tariffs", "catalog.promotion_offer_files",
+        "catalog.commission_tariffs", "catalog.promotion_offer_files", "catalog.ad_report_files",
         "catalog.import_sessions", "catalog.product_import_sessions", "catalog.product_import_staging_records", "catalog.catalog_structure_runs",
         "catalog.product_change_entries",
         "inventory.channel_offers", "inventory.channel_inventory_observations",

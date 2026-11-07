@@ -225,6 +225,20 @@ ORDER_INVOICE_RECONCILIATION (15 min), RETURN_SYNC (10 min, 20–30 min while no
 15-min overlap), RETURN_STATUS_SYNC (open claims only, claimIds batched), PRODUCT_SYNC. The webhook carries order
 packages only, no claim events.
 
+## Advertising (7 Nov 2026)
+- The API has no ad performance endpoint: advertising appears only as statement records ("Reklam Bedeli", category
+  ADVERTISING; the docs list AdSharingExpense / MarketingExpense invoice types). The panel's "Trendyol Reklamı" is that
+  amount by transaction date.
+- ROAS, ad revenue, clicks and impressions come only from the seller's export, uploaded in Raporlar (Maliyet ve Reklam
+  › Reklam Raporu, `POST /connections/{id}/ad-reports`): "Ürün Reklamları Raporum - dd.MM.yyyy-HH.mm.xlsx" from Reklam
+  Yönetimi (the owner's sample of 7 Nov 2026). One sheet, one row per campaign: Reklam Adı | Reklam Statüsü | Başlangıç
+  Tarihi | Bitiş Tarihi | Ürün Adedi | Ürün ContentId Listesi | Toplam Bütçe | Günlük Bütçe | Kalan Bütçe | Harcanan
+  Bütçe | TBM Teklifi | Gerçekleşen TBM | Tıklanma | Görüntülenme | Doğrudan / Dolaylı / Toplam Satış Adedi | Doğrudan
+  / Dolaylı / Toplam Reklam Cirosu | Harcama Getirisi. Every cell is a shared string in Turkish format ("1.508,76",
+  "1.000" = a thousand, "-" = none); TBM Teklifi can be a list ("1,10 - 1,30 - 1,10"). Figures are each campaign's
+  totals since its start as of the export (the time in the file name, Istanbul): no per-day breakdown, so they are never
+  matched to a report period. Harcama Getirisi = Toplam Reklam Cirosu ÷ Harcanan Bütçe (3.834,27 ÷ 1.000 = 3,83).
+
 ## Return cargo (7 Nov 2026, live read-only)
 - Cargo invoice lines typed "İade Kargo Bedeli" name their order (210 lines, 20,396 TL to 7 Nov 2026; "Gönderi Kargo
   Bedeli" 1,798 lines). "Yurtdışı Operasyon Iade Bedeli" (OTHER_FINANCIALS, category OTHER_DEDUCTION, 14 records /

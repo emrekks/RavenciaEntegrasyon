@@ -91,6 +91,8 @@ const withFinance: ReportSales = {
 
 const requests = vi.hoisted(() => [] as string[])
 const fixture = vi.hoisted(() => ({ current: null as ReportSales | null }))
+// Trendyol's ad report: none uploaded unless a test sets one.
+const adReports = vi.hoisted(() => ({ current: { reports: [] as unknown[], stores: [{ connectionId: 'c1', storeName: 'Ravencia Trendyol' }] } }))
 const payouts = {
   today: '2026-11-04', daysBack: 90, expected: 1180, expectedRecords: 3, unknown: 240, unknownRecords: 1, earlyPaymentsTaken: 0, earlyPayments: 0, pendingDelivery: 1450.5, pendingDeliveryOrders: 3,
   next: { key: 'next:2026-11-05', kind: 'PAYOUT_DAY', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: null, day: '2026-11-05', amount: 880, linesAmount: null, records: 2, status: 'EXPECTED' },
@@ -116,6 +118,7 @@ vi.mock('../../shared/api', () => ({
     if (path.startsWith('/reports/stock?')) return inventory
     if (path.startsWith('/reports/payouts/lines?')) return payoutLines
     if (path.startsWith('/reports/payouts?')) return payouts
+    if (path === '/reports/ad-report') return adReports.current
     throw new Error(`Test API fixture does not handle ${path}`)
   })
 }))
@@ -146,7 +149,7 @@ const metricRows = (page: HTMLElement, card: string) => [...page.querySelectorAl
 // The bridge's rows as "name amount", without their explanations.
 const bridgeRows = (page: HTMLElement) => [...page.querySelectorAll('.reports-bridge > li')].map(row => `${row.querySelector('.reports-bridge-label')?.textContent ?? ''} ${row.querySelector('b')?.textContent ?? ''}`)
 
-afterEach(() => { act(() => root?.unmount()); client?.clear(); container?.remove(); requests.length = 0 })
+afterEach(() => { act(() => root?.unmount()); client?.clear(); container?.remove(); requests.length = 0; adReports.current = { reports: [], stores: [{ connectionId: 'c1', storeName: 'Ravencia Trendyol' }] } })
 
 describe('ReportsPage', () => {
   it('asks for the last 30 days and shows the overview: the six figures, the costs, the bridge, the days and the metric cards', async () => {
@@ -222,8 +225,8 @@ describe('ReportsPage', () => {
     expect(metricRows(page, 'product')).toEqual(['Adet Başına Satış₺70,00', 'Adet Başına Kâr₺31,75', 'Satıcı İndirimi₺30,00liste fiyatının %7,9 kadarı', 'Satan Ürün2 varyant', 'KDV Hariç Net Satış₺227,27'])
     expect(page.querySelector('.reports-card-metrics.is-product')?.textContent).toContain('yalnız Trendyol ve Hepsiburada')
     expect(metricRows(page, 'order')).toEqual(['Sipariş Başına Satış₺116,67', 'Sipariş Başına Kâr₺42,33', 'Sipariş Başına Kargo—', 'Sipariş Başına Kesinti₺14,33', 'Sipariş Başına Adet1,25', 'Tekrar Alan Müşteri%50,0'])
-    expect(metricRows(page, 'ads')).toEqual(['Komisyon Oranı%21,5', 'Trendyol Reklamı—', 'Reklam Payı (TACoS)—', 'Sipariş Başına Reklam—', 'Reklam Öncesi Marj—'])
-    expect(page.querySelector('.reports-card-metrics.is-ads')?.textContent).not.toContain('ROAS')
+    expect(metricRows(page, 'ads')).toEqual(['Komisyon Oranı%21,5', 'Trendyol Reklamı—', 'Reklam Payı (TACoS)—', 'Sipariş Başına Reklam—', 'Reklam Öncesi Marj—', 'Reklam RaporuYüklenmediyüklemek için tıklayın'])
+    expect(page.querySelector('.reports-card-metrics.is-ads')?.textContent).not.toContain('Reklam Cirosu ve ROAS')
     // Without Trendyol's statement there is nothing tied to no order to list.
     expect(page.querySelector('.reports-card-unlinked')).toBeNull()
     // Returns and cancellations: six rows, one value each with its counts on a small line under it; the change names
@@ -249,6 +252,30 @@ describe('ReportsPage', () => {
     expect(tabs.some(tab => tab?.includes('Genel Bakış'))).toBe(true)
     expect(tabs.some(tab => tab?.includes('Operasyon') && tab.includes('%'))).toBe(true)
     expect(page.querySelector('.reports-map-panel')).toBeNull()
+  })
+
+  // A made-up report of two campaigns: 3.250,10 spent, 16.000,75 of ad revenue (ROAS 4,92), as of 2 Nov; on 7 Nov it
+  // is a campaign total, never the period's figure, kept apart from the statement's ad charge, and old after 7 days.
+  it('shows the uploaded Trendyol ad report as a campaign total, with its campaigns in a window', async () => {
+    const campaign = (name: string, spent: number, totalRevenue: number) => ({ name, status: 'Yayında', start: '2026-10-20 10:00', end: null, productCount: 3, totalBudget: null, dailyBudget: 500,
+      remainingBudget: null, spent, cpcBid: null, actualCpc: null, clicks: 900, impressions: 50000, directSales: 2, indirectSales: 9, totalSales: 11, directRevenue: null, indirectRevenue: null, totalRevenue, roas: null })
+    adReports.current = { reports: [{ id: 'r1', connectionId: 'c1', storeName: 'Ravencia Trendyol', fileName: 'Ürün Reklamları Raporum - 02.11.2026-09.00.xlsx', exportedAt: new Date(Date.now() - 10.5 * 86_400_000).toISOString(),
+      exportedAtFromFileName: true, uploadedAt: '2026-11-02T07:00:00Z', campaigns: [campaign('Ürün-A', 2000, 6000.75), campaign('Ürün-B', 1250.1, 10000)],
+      totals: { spent: 3250.1, revenue: 16000.75, directRevenue: 3500.5, indirectRevenue: 12500.25, roas: 4.92, clicks: 1800, impressions: 100000, cpc: 1.81, ctr: 0.018, sales: 22, directSales: 7, indirectSales: 15 } }],
+      stores: [{ connectionId: 'c1', storeName: 'Ravencia Trendyol' }] }
+      const page = await open()
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)) })
+      const row = [...page.querySelectorAll('.reports-card-metrics.is-ads li')].find(item => item.textContent?.includes('Reklam Raporu'))!
+      expect(row.querySelector('.reports-metric')?.textContent).toBe(`Reklam RaporuROAS 4,92₺16.000,75 ciro · kampanya toplamı · eski`)
+      expect(row.classList.contains('is-warn')).toBe(true)
+      expect(row.querySelector('.reports-hover-tip')?.textContent).toContain('seçili dönemin rakamı değildir')
+      await act(async () => { row.querySelector<HTMLButtonElement>('.reports-metric')!.click() })
+      const modal = page.querySelector('.reports-ad-modal')!
+      expect(modal.textContent).toContain('Kampanya toplamı')
+      expect(modal.textContent).toContain('10 gün önce alındı')
+      expect([...modal.querySelectorAll('.reports-ad-figures dt')].map(item => item.textContent)).toEqual(['Harcanan', 'Reklam Cirosu', 'ROAS', 'TBM', 'Tıklanma Oranı', 'Reklamla Satılan'])
+      expect([...modal.querySelectorAll('.reports-ad-campaigns tbody tr')].map(item => item.textContent)).toEqual(['Ürün-AYayında₺2.000,00₺6.000,753,00', 'Ürün-BYayında₺1.250,10₺10.000,008,00'])
+      expect(modal.textContent).toContain('toplanmaz')
   })
 
   it('shows the questions\' average answer time, Trendyol and Hepsiburada only', async () => {

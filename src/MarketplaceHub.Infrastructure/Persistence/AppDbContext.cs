@@ -70,6 +70,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<CommissionTariffSelection> CommissionTariffSelections => Set<CommissionTariffSelection>();
     public DbSet<CommissionTariffPick> CommissionTariffPicks => Set<CommissionTariffPick>();
     public DbSet<PromotionOfferFile> PromotionOfferFiles => Set<PromotionOfferFile>();
+    public DbSet<AdReportFile> AdReportFiles => Set<AdReportFile>();
     public DbSet<MarketplaceFinanceTransaction> MarketplaceFinanceTransactions => Set<MarketplaceFinanceTransaction>();
     public DbSet<MarketplacePayoutOrder> MarketplacePayoutOrders => Set<MarketplacePayoutOrder>();
     public DbSet<MarketplaceCargoInvoiceItem> MarketplaceCargoInvoiceItems => Set<MarketplaceCargoInvoiceItem>();
