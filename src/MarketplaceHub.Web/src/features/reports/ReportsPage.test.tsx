@@ -643,9 +643,11 @@ describe('ReportsPage', () => {
   it.each([
     ['products', 'Ürünler', 'En Çok Satan 20 Ürün'], ['brands', 'Ürünler', 'Markalar'], ['returns', 'Operasyon', 'İade Nedenleri'], ['cancellations', 'Operasyon', 'Platformlara Göre İptaller'],
     ['cargo', 'Operasyon', 'Kargo Firmaları'], ['time', 'Müşteriler', 'Gün ve Saate Göre Siparişler'], ['customers', 'Müşteriler', 'Tekrar Gelen Müşteri'],
-    ['stock', 'Operasyon', 'En Çok Satanların Stoğu'], ['cost', 'Kârlılık', 'Maliyeti Olan Ciro'], ['invoices', 'Operasyon', 'Platformlara Göre Fatura Durumu']
+    ['stock', 'Stok', 'En Çok Satanların Stoğu'], ['cost', 'Kârlılık', 'Maliyeti Olan Ciro'], ['invoices', 'Operasyon', 'Platformlara Göre Fatura Durumu']
   ])('opens the %s breakdown on its tab', async (key, tab, heading) => {
     const page = await open(`?detail=${key}`)
+    // The Stok tab asks for its own report first.
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
     expect(selectedTab(page)).toContain(tab)
     expect(body(page)).toContain(heading)
   })
@@ -757,11 +759,25 @@ describe('ReportsPage', () => {
     expect(to).toBe(`${from?.slice(0, 8)}02`)
   })
 
-  it('opens an operation\'s tab', async () => {
+  it('opens the Stok tab from the stock risk row, the best sellers\' stock moved there from Operasyon', async () => {
     const page = await open()
     await act(async () => { [...page.querySelectorAll<HTMLButtonElement>('.reports-hero-card.is-todo .reports-hero-row')].find(button => button.textContent?.includes('Stok riski'))!.click() })
-    expect(selectedTab(page)).toContain('Operasyon')
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
+    expect(selectedTab(page)).toContain('Stok')
+    expect(selectedTab(page)).not.toContain('Operasyon')
     expect(body(page)).toContain('En Çok Satanların Stoğu')
+    expect(body(page)).toContain('Satıp Stoğu Biten Ürünler')
+    expect(body(page)).toContain("Kalan Günü 7'den Az")
+  })
+
+  it('opens an old Operasyon Stok link on the Stok tab, and Operasyon has no Stok sub-tab', async () => {
+    const page = await open('?view=ops&sub=stock')
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
+    expect(selectedTab(page)).toContain('Stok')
+    expect(body(page)).toContain('En Çok Satanların Stoğu')
+    const ops = await open('?view=ops')
+    expect([...ops.querySelectorAll('.reports-subtabs [role="tab"]')].map(tab => tab.textContent)).not.toContain('Stok')
+    expect(ops.querySelector('.reports-subtabs')?.textContent).not.toContain('Stok')
   })
 
   it('keeps the payouts Temizle grey until the card holds a typed or applied filter, and greys it again after a click', async () => {
@@ -885,7 +901,8 @@ describe('ReportsPage', () => {
     expect(figures[1]).toContain('Envanter Satış Değeri₺5.000')
     expect(figures[1]).toContain('panel satış fiyatıyla')
     // The cards keep their label and value only; what the notes said is in the explanations.
-    expect(page.querySelectorAll('.reports-kpis .reports-kpi-note')).toHaveLength(0)
+    expect(page.querySelectorAll('.reports-kpis')[0].querySelectorAll('.reports-kpi-note')).toHaveLength(0)
+    expect(page.querySelectorAll('.reports-kpis')[1].querySelectorAll('.reports-kpi-note')).toHaveLength(0)
     // The capital at the average real profit on cost of the last three whole months (each month answers the same here).
     expect(figures[2]).toMatch(/^Tahmini Kâr₺1\.905₺1\.905Stok, .*Son 3 ay ort\. maliyete göre %158,8\..*\p{Lu}\p{Ll}+ %158,8 · \p{Lu}\p{Ll}+ %158,8 · \p{Lu}\p{Ll}+ %158,8\.$/u)
     expect(requests.filter(path => /^\/reports\/sales\?from=\d{4}-\d{2}-01&to=/.test(path)).length).toBeGreaterThanOrEqual(3)

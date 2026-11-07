@@ -31,12 +31,12 @@ import './reports.css'
 type ViewKey = 'overview' | 'geo' | 'products' | 'stock' | 'profit' | 'payouts' | 'orders' | 'ops' | 'customers'
 const viewKeys: ViewKey[] = ['overview', 'profit', 'payouts', 'orders', 'products', 'stock', 'ops', 'customers', 'geo']
 type ProductSub = 'products' | 'brands'
-type OpsSub = 'returns' | 'cancellations' | 'cargo' | 'invoices' | 'stock'
+type OpsSub = 'returns' | 'cancellations' | 'cargo' | 'invoices'
 type DetailKey = 'platforms' | 'cities' | 'products' | 'brands' | 'returns' | 'cancellations' | 'cargo' | 'time' | 'customers' | 'stock' | 'cost' | 'invoices'
 const detailHome: Record<DetailKey, { view: ViewKey; sub?: string }> = {
   platforms: { view: 'profit' }, cost: { view: 'profit' }, cities: { view: 'geo' },
   products: { view: 'products', sub: 'products' }, brands: { view: 'products', sub: 'brands' },
-  returns: { view: 'ops', sub: 'returns' }, cancellations: { view: 'ops', sub: 'cancellations' }, cargo: { view: 'ops', sub: 'cargo' }, invoices: { view: 'ops', sub: 'invoices' }, stock: { view: 'ops', sub: 'stock' },
+  returns: { view: 'ops', sub: 'returns' }, cancellations: { view: 'ops', sub: 'cancellations' }, cargo: { view: 'ops', sub: 'cargo' }, invoices: { view: 'ops', sub: 'invoices' }, stock: { view: 'stock' },
   time: { view: 'customers' }, customers: { view: 'customers' }
 }
 const isDetailKey = (value: string | null): value is DetailKey => value !== null && value in detailHome
@@ -78,8 +78,10 @@ export function ReportsPage() {
   // The promotion analysis moved to its own page; an old ?view=tariffs link goes there.
   const navigate = useNavigate()
   useEffect(() => { if (viewParam === 'tariffs') void navigate('/promotions', { replace: true }) }, [viewParam, navigate])
-  const view: ViewKey = legacy?.view ?? (isViewKey(viewParam) ? viewParam : 'overview')
-  const sub = legacy?.sub ?? searchParams.get('sub')
+  // Operasyon's Stok sub-tab moved into the Stok tab (owner, 7 Nov 2026): an old ?view=ops&sub=stock link opens it.
+  const opsStock = viewParam === 'ops' && searchParams.get('sub') === 'stock'
+  const view: ViewKey = legacy?.view ?? (opsStock ? 'stock' : isViewKey(viewParam) ? viewParam : 'overview')
+  const sub = legacy ? legacy.sub ?? null : opsStock ? null : searchParams.get('sub')
   const page = useRef<HTMLElement>(null)
   // An explanation opens above its row when the screen has room for it there (under the top bar), else under it, and
   // towards the left when it would run off the right edge.
@@ -158,7 +160,7 @@ export function ReportsPage() {
             : view === 'profit' ? <ProfitView data={data} />
             : view === 'payouts' ? <PayoutsReport platforms={platforms} />
             : view === 'orders' ? <OrderProfitability from={range.from} to={range.to} platforms={platforms} />
-            : view === 'stock' ? <StockReport from={range.from} to={range.to} platforms={platforms} />
+            : view === 'stock' ? <StockReport from={range.from} to={range.to} platforms={platforms} sales={data} />
             : view === 'ops' ? <OperationsView data={data} sub={isOpsSub(sub) ? sub : 'returns'} onSub={next => go('ops', next)} />
             : <CustomersView data={data} />}
         </TabSlidePanel>
@@ -188,8 +190,8 @@ function reportTabs(data: ReportSales): ReportTab[] {
   ]
 }
 
-const opsSubs: OpsSub[] = ['returns', 'cancellations', 'cargo', 'invoices', 'stock']
-const isOpsSub = (value: string | null): value is OpsSub => value === 'returns' || value === 'cancellations' || value === 'cargo' || value === 'invoices' || value === 'stock'
+const opsSubs: OpsSub[] = ['returns', 'cancellations', 'cargo', 'invoices']
+const isOpsSub = (value: string | null): value is OpsSub => value === 'returns' || value === 'cancellations' || value === 'cargo' || value === 'invoices'
 
 // A tab's own sub-tabs, in the panel's tab style.
 function SubTabs<T extends string>({ label, value, items, onChange }: { label: string; value: T; items: Array<{ value: T; label: string; icon: UiIconName; count?: string; warn?: boolean }>; onChange: (value: T) => void }) {
@@ -1348,27 +1350,24 @@ function ProfitView({ data }: { data: ReportSales }) {
   </div>
 }
 
-// Operasyon: returns, cancellations, cargo, invoices and stock as sub-tabs, each opening with its breakdown as bars.
+// Operasyon: returns, cancellations, cargo and invoices as sub-tabs (the stock is the Stok tab's), each opening with its breakdown as bars.
 function OperationsView({ data, sub, onSub }: { data: ReportSales; sub: OpsSub; onSub: (sub: OpsSub) => void }) {
   const now = data.summary
   const packages = data.cargo.reduce((sum, row) => sum + row.packages, 0)
   const invoiced = data.invoices.buckets.reduce((sum, bucket) => sum + bucket.packages, 0)
-  const lowStock = data.stock.bestSellers.filter(row => row.daysLeft !== null && row.daysLeft < 7).length
   const cancelWarn = (now.cancelRate ?? 0) > data.cancellations.warningRate
   return <div className="reports-summary">
     <SubTabs label="Operasyon kırılımı" value={sub} onChange={onSub} items={[
       { value: 'returns', label: 'İadeler', icon: 'returns', count: formatCount(now.returnClaims) },
       { value: 'cancellations', label: 'İptaller', icon: 'close', count: formatCount(now.cancelledOrders), warn: cancelWarn },
       { value: 'cargo', label: 'Kargo', icon: 'truck', count: formatCount(packages) },
-      { value: 'invoices', label: 'Fatura', icon: 'invoice', count: formatCount(invoiced) },
-      { value: 'stock', label: 'Stok', icon: 'stock', count: formatCount(lowStock), warn: lowStock > 0 }
+      { value: 'invoices', label: 'Fatura', icon: 'invoice', count: formatCount(invoiced) }
     ]} />
     <TabSlidePanel active={sub} order={opsSubs} role="tabpanel" className="reports-summary">
       {sub === 'returns' && <Returns data={data} />}
       {sub === 'cancellations' && <Cancellations data={data} />}
       {sub === 'cargo' && <Cargo data={data} />}
       {sub === 'invoices' && <Invoices data={data} />}
-      {sub === 'stock' && <Stock data={data} />}
     </TabSlidePanel>
   </div>
 }
@@ -1923,18 +1922,22 @@ function stockColumns(days: number): Column<ReportStockRow>[] {
   ]
 }
 
-function Stock({ data }: { data: ReportSales }) {
+// The best sellers' stock in the sales period (once Operasyon's Stok sub-tab; owner 7 Nov 2026 moved it to the Stok tab).
+function bestSellerKpis(data: ReportSales): Kpi[] {
   const low = data.stock.bestSellers.filter(row => row.daysLeft !== null && row.daysLeft < 7).length
   const unknownStock = data.stock.bestSellers.filter(row => row.available === null).length
-  return <div className="reports-grid">
-    <div className="is-wide"><KpiStrip label="Stoğun göstergeleri" items={[
+  return [
       { key: 'low', label: "Kalan Günü 7'den Az", value: low, format: formatCount, note: `En çok satan ${formatCount(data.stock.bestSellers.length)} ürün içinde`, tip: 'Stoğu bir haftadan az yetecek çok satan ürünler.\nDönemin günlük satış hızına göre.', tone: low > 0 ? 'warn' : undefined },
       { key: 'out', label: 'Satıp Stoğu Biten', value: data.stock.soldOut.length, format: formatCount, note: 'Mevcut stoğu sıfır', tip: 'Satılıp stoğu biten ürünler.\nAna depoda kullanılabilir stoğu kalmadı.', tone: data.stock.soldOut.length > 0 ? 'warn' : undefined },
       { key: 'unknown', label: 'Stoğu Bilinmeyen', value: unknownStock, format: formatCount, note: 'En çok satanlar içinde', tip: 'Stoğu bilinmeyen çok satan ürünler.\nPanelde stok kaydı yok.' }
-    ]} /></div>
+  ]
+}
+
+function BestSellerTables({ data }: { data: ReportSales }) {
+  return <>
     <div className="is-wide"><DataTable title="En Çok Satanların Stoğu" description="Ana depodaki kullanılabilir stok (şu an) ve dönemin günlük satışına göre kalan gün; 7 günden az olanlar işaretli." csvName="rapor-stok" rows={data.stock.bestSellers} rowKey={row => row.variantId ?? row.sku} initialSort="sold" columns={stockColumns(data.stock.periodDays)} /></div>
     <div className="is-wide"><DataTable title="Satıp Stoğu Biten Ürünler" csvName="rapor-stok-biten" rows={data.stock.soldOut} rowKey={row => row.variantId ?? row.sku} initialSort="sold" columns={stockColumns(data.stock.periodDays)} empty="Dönemde satılıp stoğu sıfır olan ürün yok." /></div>
-  </div>
+  </>
 }
 
 // The profit account line by line beside Trendyol's commission and cargo (the strip above holds the coverage and the
@@ -2117,7 +2120,7 @@ function stockProfitKpi(capital: number, rate: MonthlyProfitRate): Kpi {
 // (as the product editor shows it), broken down by category, colour, size, price band and store; then how long it lasts at the
 // period's pace and the stock that has not sold for deadDays. Stock is a point-in-time value: the period changes only the
 // sales (cover days); the platforms pick the variants on sale there. Money is VAT included, as the panel stores it.
-function StockReport({ from, to, platforms }: { from: string; to: string; platforms: string[] | null }) {
+function StockReport({ from, to, platforms, sales }: { from: string; to: string; platforms: string[] | null; sales: ReportSales }) {
   const query = stockQuery({ from, to, platforms })
   const result = useQuery({ queryKey: ['reports-stock', query], queryFn: () => hubApi<ReportInventory>(`/reports/stock?${query}`), staleTime: 60_000, placeholderData: previous => previous })
   const rate = useMonthlyProfitRate(platforms)
@@ -2160,7 +2163,9 @@ function StockReport({ from, to, platforms }: { from: string; to: string; platfo
   return <div className="reports-summary">
     <KpiStrip label="Stoğun parası" items={money} />
     <KpiStrip label="Stoğun durumu" items={counts} />
+    <KpiStrip label="Çok satanların stoğu" items={bestSellerKpis(sales)} />
     <div className="reports-grid">
+      <BestSellerTables data={sales} />
       <div className="is-wide"><DataTable title="Kategori Bazlı Stok" csvName="rapor-stok-kategori" rows={data.categories} rowKey={row => row.key} unknown={row => !row.known} initialSort="capital"
         description="Stoklu varyantlar kategorisine göre; satış, dönemin net satışıdır." columns={stockGroupColumns('Kategori', true)} /></div>
       <RevealPanel title="Renge Göre Adet" description="Stoklu varyantların renk seçeneğine göre adedi.">{() =>
@@ -2186,7 +2191,7 @@ function StockReport({ from, to, platforms }: { from: string; to: string; platfo
 // The tab's shape while it loads, so nothing moves when the figures come in.
 function StockSkeleton() {
   return <div className="reports-summary reports-stock-skeleton" role="status" aria-label="Stok raporu hazırlanıyor">
-    {[6, 5].map(cells => <div key={cells} className={`reports-kpis is-${cells}`}>{Array.from({ length: cells }, (_, index) => <div key={index}>
+    {[5, 5, 3].map((cells, strip) => <div key={strip} className={`reports-kpis is-${cells}`}>{Array.from({ length: cells }, (_, index) => <div key={index}>
       <span className="reports-skeleton is-label" /><span className="reports-skeleton is-figure" />
     </div>)}</div>)}
     <div className="reports-grid">{[0, 1].map(index => <div key={index} className="reports-panel"><span className="reports-skeleton is-label" /><span className="reports-skeleton is-block" /></div>)}</div>
