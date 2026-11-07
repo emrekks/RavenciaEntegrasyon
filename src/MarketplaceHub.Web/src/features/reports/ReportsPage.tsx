@@ -998,7 +998,7 @@ function returnMetrics(data: ReportSales): Metric[] {
       note: `İade edilen ürün adedi, talep sayısı ve müşterinin ödediği tutar.\nKâr Köprüsü'ndeki İade Edilen Tutar ile aynıdır. Reddedilen ve iptal edilen talepler sayılmaz. Liste fiyatıyla ${formatTl(returnedAtList(now))}.` },
     { key: 'cargo', label: 'İade Kargo Zararı', value: returnCargo === null ? '—' : formatTl(returnCargo), sub: returnCargo === null ? undefined : 'yalnız Trendyol', detail: 'returns',
       note: 'İadelerin faturası gelen kargo maliyeti, yalnız Trendyol.\nDönemin siparişlerinin İade Kargo Bedeli satırları ve dönem tarihli Yurtdışı Operasyon İade Bedeli kayıtları; faturası gelmemiş iade sayılmaz, diğer pazaryerlerininki bilinmiyor.' },
-    { key: 'reason', label: 'En Sık İade Nedeni', value: topReason ? shortText(topReason.reason, 22) : '—', sub: topReason ? `taleplerin ${formatPercent(topReason.count / reasonsTotal)} kadarı` : undefined, detail: 'returns',
+    { key: 'reason', label: 'En Sık İade Nedeni', value: topReason ? shortText(topReason.reason, 18) : '—', sub: topReason ? `taleplerin ${formatPercent(topReason.count / reasonsTotal)} kadarı` : undefined, detail: 'returns',
       note: `İade taleplerinde en sık bildirilen neden ve talepler içindeki payı.${topReason ? `\n${topReason.reason}: ${formatCount(topReason.count)} talep.` : ''}` },
     { key: 'cancel', label: 'İptal Oranı', value: formatPercent(now.cancelRate), tone: (now.cancelRate ?? 0) > warning ? 'warn' : undefined, detail: 'cancellations',
       note: `Sipariş edilen ürünlerin yüzde kaçının iptal edildiği.\nİptal edilen adet ÷ sipariş edilen adet (iptaller dahil). Uyarı rengi: ${formatPercent(warning)} eşiğinin üstünde.` },

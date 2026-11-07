@@ -40,6 +40,12 @@ createServer(async (req, res) => {
     if (path === '/auth/csrf') return json({ token: 'csrf' })
     if (path === '/auth/me') return json(me)
     if (path.startsWith('/reports/sales')) return json(report)
+    // A made-up Trendyol ad report (two campaigns, figures as large as a real store's), uploaded yesterday.
+    if (path === '/reports/ad-report') return json({ stores: [{ connectionId: 'c-ty', storeName: 'Trendyol Mağaza' }], reports: [{ id: 'ad1', connectionId: 'c-ty', storeName: 'Trendyol Mağaza',
+      fileName: 'Ürün Reklamları Raporum - 06.11.2026-09.00.xlsx', exportedAt: new Date(Date.now() - 86_400_000).toISOString(), exportedAtFromFileName: true, uploadedAt: new Date().toISOString(),
+      totals: { spent: 12545.31, revenue: 124357.98, directRevenue: 25178.07, indirectRevenue: 99179.91, roas: 9.91, clicks: 11787, impressions: 470337, cpc: 1.06, ctr: 0.0251, sales: 139, directSales: 29, indirectSales: 110 },
+      campaigns: [{ name: 'Ürün-Kampanya A', status: 'Yayında', start: '2026-10-20 10:00', end: null, productCount: 27, totalBudget: 10000, dailyBudget: null, remainingBudget: 0, spent: 10000, cpcBid: null, actualCpc: 1.02, clicks: 9800, impressions: 400000, directSales: 20, indirectSales: 80, totalSales: 100, directRevenue: 18000, indirectRevenue: 80000, totalRevenue: 98000, roas: 9.8 },
+        { name: 'Ürün-Kampanya B', status: 'Durduruldu', start: '2026-10-31 15:20', end: '2026-11-05 10:00', productCount: 17, totalBudget: null, dailyBudget: 750, remainingBudget: 704.69, spent: 2545.31, cpcBid: '1,10 - 1,30', actualCpc: 1.28, clicks: 1987, impressions: 70337, directSales: 9, indirectSales: 30, totalSales: 39, directRevenue: 7178.07, indirectRevenue: 19179.91, totalRevenue: 26357.98, roas: 10.36 }] }] })
     // The commission tariffs tab: one current period and a few products with their bands, costs and picks.
     if (path.startsWith('/connections/') && path.endsWith('/commission-tariffs')) return json([tariff])
     if (path.startsWith('/connections/') && path.endsWith('/rows')) return json({ items: tariffRows, totalCount: tariffRows.length, page: 0, pageSize: 50 })
