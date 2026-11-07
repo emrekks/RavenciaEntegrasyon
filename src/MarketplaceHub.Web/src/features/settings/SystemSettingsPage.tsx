@@ -6,7 +6,7 @@ import { FieldHelp, LoadingState, Modal, StickyActionBar, TitleHint } from '../.
 import { uiGlyph16, type UiIconName } from '../../shared/components/UiIcon'
 import type { DataResetGroup } from '../../shared/components/DataResetLedger'
 import { NoticeToast, type NoticeToastKind } from '../../shared/components/NoticeToast'
-import { defaultShippingLabelBlockPosition, defaultShippingLabelSettings, labelBlockContentHeight, normalizeShippingLabelSettings, overflowingLabelBlocks, ShippingLabelBlockBody, shippingLabelBlockCatalog, shippingLabelFields, ShippingLabelFit, shippingLabelLayoutIssues, shippingLabelSizeMm, shippingLabelTextSize, shippingLabelTextSizes, stackShippingLabelLayout, useShippingLabelSettings, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings, type ShippingLabelValues } from '../shipping'
+import { cloneShippingLabelLayout, defaultShippingLabelBlockPosition, defaultShippingLabelSettings, draggedShippingLabelPosition, labelBlockContentHeight, resizedShippingLabelPosition, shippingLabelCaptionStyle, shippingLabelDragStarted, shippingLabelFieldsPerRow, type ShippingLabelCaptionStyle, normalizeShippingLabelSettings, overflowingLabelBlocks, ShippingLabelBlockBody, shippingLabelBlockCatalog, shippingLabelFields, ShippingLabelFit, shippingLabelLayoutIssues, shippingLabelSizeMm, shippingLabelTextSize, shippingLabelTextSizes, stackShippingLabelLayout, useShippingLabelSettings, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings, type ShippingLabelValues } from '../shipping'
 import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontFamilyOptions, appearanceFontScale, appearanceFontSizeOptions, defaultAppearanceColorTheme, defaultAppearanceSettings, grafitAppearanceColorTheme, matchingColorThemeId, defaultLightPalette, useAppearanceSettings, type AppearanceColorThemeProfile, type AppearancePalette, type AppearanceSettings } from './appearance-settings'
 import { SettingsNotice, type SettingsNoticeState } from './SettingsNotifications'
 import { readVisualThemePreference, switchVisualThemeSmoothly, visualThemeChangeEvent, type VisualTheme } from './visual-theme'
@@ -729,6 +729,7 @@ function loadShippingLabelTemplates(): ShippingLabelTemplate[] {
 
 const shippingBlockLabels: Record<ShippingLabelBlockKind, string> = { trackingBarcode: 'Takip Barkodu', address: 'Teslimat Adresi', orderInfo: 'Paket / Sipariş Bilgileri', packageBarcode: 'Paket Barkodu', sender: 'Gönderici ve Kargo Bilgileri', custom: 'Özel İçerik Bloğu' }
 const shippingAlignOptions = [['left', 'Sol'], ['center', 'Orta'], ['right', 'Sağ']] as const
+const shippingCaptionStyleOptions: Array<[ShippingLabelCaptionStyle, string]> = [['above', 'Başlık Üstte'], ['beside', 'Başlık Yanında'], ['none', 'Başlıksız']]
 
 function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, loadFailed, loading, format, setFormat, onChange, onSave }: { section: ShippingSection | null; settings: ShippingLabelSettings; saved: ShippingLabelSettings | null; dirty: boolean; saving: boolean; loadFailed: boolean; loading: boolean; format: 'a4' | 'sticker'; setFormat: (format: 'a4' | 'sticker') => void; onChange: (value: ShippingLabelSettings) => void; onSave: () => void }) {
   const [selectedId, setSelectedId] = useState<string | null>(settings.layout[format][0]?.id ?? null)
@@ -742,7 +743,8 @@ function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, l
   const [templateNotice, setTemplateNotice] = useState<SettingsNoticeState | null>(null)
   const [templateDeleteOpen, setTemplateDeleteOpen] = useState(false)
   const [layoutResetOpen, setLayoutResetOpen] = useState(false)
-  const pointerDrag = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null)
+  // A press on a block: it becomes a drag only after the pointer has moved past the threshold, so a click only selects.
+  const pointerDrag = useRef<{ id: string; startClientX: number; startClientY: number; position: ReturnType<typeof positionFor>; dragging: boolean } | null>(null)
   const pointerResize = useRef<{ id: string; direction: ShippingResizeDirection; startClientX: number; startClientY: number; position: ReturnType<typeof positionFor> } | null>(null)
   const pointerRotate = useRef<{ id: string; startAngle: number; startRotation: number } | null>(null)
   const [stickerWidthDraft, setStickerWidthDraft] = useState(() => String(settings.stickerWidthMm))
@@ -801,33 +803,24 @@ function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, l
   }
   const snapStep = 2.5
   function snapPosition(value: number, maximum: number) { return Math.min(maximum, Math.max(0, Math.round(value / snapStep) * snapStep)) }
-  function snapPositionBetween(value: number, minimum: number, maximum: number) { return Math.min(maximum, Math.max(minimum, Math.round(value / snapStep) * snapStep)) }
   function beginPointerDrag(event: ReactPointerEvent<HTMLElement>, block: ShippingLabelBlock) {
     if (event.button !== 0) return
-    const blockRect = event.currentTarget.getBoundingClientRect()
-    pointerDrag.current = { id: block.id, offsetX: event.clientX - blockRect.left, offsetY: event.clientY - blockRect.top }
+    pointerDrag.current = { id: block.id, startClientX: event.clientX, startClientY: event.clientY, position: positionFor(block, layout.indexOf(block)), dragging: false }
     setSelectedId(block.id)
-    event.currentTarget.setPointerCapture(event.pointerId)
+    event.currentTarget.setPointerCapture?.(event.pointerId)
     event.preventDefault()
   }
   function movePointerDrag(event: ReactPointerEvent<HTMLElement>) {
     const drag = pointerDrag.current
     if (!drag) return
-    const paperRect = event.currentTarget.parentElement?.getBoundingClientRect()
+    const delta = { x: event.clientX - drag.startClientX, y: event.clientY - drag.startClientY }
+    if (!drag.dragging && !shippingLabelDragStarted(delta)) return
+    drag.dragging = true
+    // The paper as drawn (its zoom included), the same space as the pointer's movement.
+    const paperRect = event.currentTarget.closest<HTMLElement>('.shipping-designer-paper')?.getBoundingClientRect()
     const block = layout.find(item => item.id === drag.id)
-    if (!paperRect || !block) return
-    const position = positionFor(block, layout.indexOf(block))
-    const x = ((event.clientX - paperRect.left - drag.offsetX) / paperRect.width) * 100
-    const y = ((event.clientY - paperRect.top - drag.offsetY) / paperRect.height) * 100
-    // A rotated block is turned around its centre, so the room it needs on the paper is its turned outline, not its own box.
-    const radians = ((block.rotation ?? 0) * Math.PI) / 180
-    const widthPx = (position.width / 100) * paperRect.width
-    const heightPx = (position.height / 100) * paperRect.height
-    const outlineWidth = (Math.abs(widthPx * Math.cos(radians)) + Math.abs(heightPx * Math.sin(radians))) / paperRect.width * 100
-    const outlineHeight = (Math.abs(widthPx * Math.sin(radians)) + Math.abs(heightPx * Math.cos(radians))) / paperRect.height * 100
-    const minX = (outlineWidth - position.width) / 2
-    const minY = (outlineHeight - position.height) / 2
-    updateBlock(block.id, { position: { ...position, x: snapPositionBetween(x, minX, 100 - position.width - minX), y: snapPositionBetween(y, minY, 100 - position.height - minY) } })
+    if (!paperRect || !paperRect.width || !paperRect.height || !block) return
+    updateBlock(block.id, { position: draggedShippingLabelPosition(drag.position, block.rotation ?? 0, delta, paperRect) })
   }
   function beginPointerResize(event: ReactPointerEvent<HTMLButtonElement>, block: ShippingLabelBlock, direction: ShippingResizeDirection) {
     if (event.button !== 0) return
@@ -871,26 +864,10 @@ function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, l
     const paper = event.currentTarget.closest<HTMLElement>('.shipping-designer-paper')
     if (!paper) return
     const rect = paper.getBoundingClientRect()
-    const deltaX = ((event.clientX - resize.startClientX) / rect.width) * 100
-    const deltaY = ((event.clientY - resize.startClientY) / rect.height) * 100
-    const minimumWidth = 8
-    const minimumHeight = 5
-    const nextPosition = { ...resize.position }
-    if (resize.direction.includes('w')) {
-      const nextX = snapPosition(resize.position.x + deltaX, resize.position.x + resize.position.width - minimumWidth)
-      nextPosition.x = nextX
-      nextPosition.width = resize.position.x + resize.position.width - nextX
-    } else if (resize.direction.includes('e')) {
-      nextPosition.width = Math.max(minimumWidth, snapPosition(resize.position.width + deltaX, 100 - resize.position.x))
-    }
-    if (resize.direction.includes('n')) {
-      const nextY = snapPosition(resize.position.y + deltaY, resize.position.y + resize.position.height - minimumHeight)
-      nextPosition.y = nextY
-      nextPosition.height = resize.position.y + resize.position.height - nextY
-    } else if (resize.direction.includes('s')) {
-      nextPosition.height = Math.max(minimumHeight, snapPosition(resize.position.height + deltaY, 100 - resize.position.y))
-    }
-    updateBlock(resize.id, { position: nextPosition })
+    const block = layout.find(item => item.id === resize.id)
+    if (!rect.width || !rect.height || !block) return
+    // In the block's own, turned axes: the dragged edge follows the pointer and the opposite edge stays put.
+    updateBlock(resize.id, { position: resizedShippingLabelPosition(resize.position, block.rotation ?? 0, resize.direction, { x: event.clientX - resize.startClientX, y: event.clientY - resize.startClientY }, rect) })
   }
   function endPointerInteraction() { pointerDrag.current = null; pointerResize.current = null; pointerRotate.current = null }
   // Keyboard move of the focused block: an arrow key moves it 1% of the paper, with Shift 5%. Like a pointer drag it
@@ -955,8 +932,10 @@ function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, l
     update(key, next)
   }
   function resetLayout() {
-    const next = defaultShippingLabelSettings.layout[format].map(block => ({ ...block, fields: [...block.fields], position: block.position ? { ...block.position } : undefined }))
-    onChange({ ...settings, layout: { ...settings.layout, [format]: next } })
+    const next = cloneShippingLabelLayout(defaultShippingLabelSettings.layout[format])
+    // The sticker default is drawn for Trendyol Express' 100 x 100 mm sticker, so it brings that size with it.
+    const size = format === 'sticker' ? { stickerWidthMm: defaultShippingLabelSettings.stickerWidthMm, stickerHeightMm: defaultShippingLabelSettings.stickerHeightMm } : {}
+    onChange({ ...settings, ...size, layout: { ...settings.layout, [format]: next } })
     setSelectedId(next[0]?.id ?? null)
   }
   function toggleField(block: ShippingLabelBlock, field: ShippingLabelField) {
@@ -1071,7 +1050,7 @@ function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, l
           <main className="ss-dz-stage">
             <div className="ss-dz-sbar"><b>{format === 'a4' ? 'A4 Çalışma Yüzeyi' : 'Sticker Çalışma Yüzeyi'}</b><span>{layout.length} blok yerleşti</span></div>
             {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex -- blocks inside the application area: pointer drags, and on the keyboard Tab focuses (selects) a block and the arrow keys move it (moveBlockByKey); the pointer-only resize/rotate handles stay out of the Tab order */}
-            <div className="ss-dz-canvas"><ShippingLabelFit widthMm={paperSize.width} heightMm={paperSize.height} maxHeight={720}><div ref={paperRef} className={`shipping-designer-paper lbl-sheet is-${format}`} onDragOver={event => event.preventDefault()} onDrop={dropOnCanvas} style={{ width: `${paperSize.width}mm`, height: `${paperSize.height}mm` }} role="application" aria-label={`${format === 'a4' ? 'A4' : 'Sticker'} etiket tasarım alanı`} aria-describedby="shipping-designer-help">{layout.map((block, index) => { const position = positionFor(block, index); return <article key={block.id} className={`shipping-designer-block${activeBlock?.id === block.id ? ' is-selected' : ''}${warnedIds.has(block.id) ? ' is-warning' : ''}`} tabIndex={0} aria-roledescription="etiket bloğu" aria-label={`${blockTitle(block)} · solda %${position.x}, üstte %${position.y}`} onFocus={() => setSelectedId(block.id)} onKeyDown={event => moveBlockByKey(event, block, index)} draggable onDragStart={event => dragStart(event, `block:${block.id}`)} onPointerDown={event => beginPointerDrag(event, block)} onPointerMove={movePointerDrag} onPointerUp={endPointerInteraction} onPointerCancel={endPointerInteraction} onClick={() => setSelectedId(block.id)} style={{ left: `${position.x}%`, top: `${position.y}%`, width: `${position.width}%`, height: `${position.height}%`, transform: block.rotation ? `rotate(${block.rotation}deg)` : undefined, transformOrigin: 'center' }}>{activeBlock?.id === block.id && <>{shippingRotateDirections.map(direction => <button key={direction} type="button" tabIndex={-1} className={`shipping-designer-resize-handle shipping-designer-rotate-handle handle-${direction}`} aria-label={`${shippingRotateDirectionLabels[direction]} tutamacını sağa veya sola sürükleyerek derece derece döndür`} title={`${shippingRotateDirectionLabels[direction]} tutamacını sürükleyerek derece derece döndür`} onPointerDown={event => beginPointerRotate(event, block)} onPointerMove={movePointerRotate} onPointerUp={endPointerInteraction} onPointerCancel={endPointerInteraction} />)}{shippingResizeDirections.map(direction => <button key={direction} type="button" tabIndex={-1} className={`shipping-designer-resize-handle handle-${direction}`} aria-label={`${shippingResizeDirectionLabels[direction]} boyutlandır`} title={`${shippingResizeDirectionLabels[direction]} boyutlandır`} onPointerDown={event => beginPointerResize(event, block, direction)} onPointerMove={movePointerResize} onPointerUp={endPointerInteraction} onPointerCancel={endPointerInteraction} />)}</>}<ShippingLabelBlockBody block={block} values={shippingPreviewValues} showCustomerPhone={settings.showCustomerPhone} /></article> })}{layout.length === 0 && <div className="shipping-designer-drop-empty"><strong>İçerik Bırakın</strong><span>Kütüphaneden bir alanı buraya sürükleyin.</span></div>}</div></ShippingLabelFit></div>
+            <div className="ss-dz-canvas"><ShippingLabelFit widthMm={paperSize.width} heightMm={paperSize.height} maxHeight={720}><div ref={paperRef} className={`shipping-designer-paper lbl-sheet is-${format}`} onDragOver={event => event.preventDefault()} onDrop={dropOnCanvas} style={{ width: `${paperSize.width}mm`, height: `${paperSize.height}mm` }} role="application" aria-label={`${format === 'a4' ? 'A4' : 'Sticker'} etiket tasarım alanı`} aria-describedby="shipping-designer-help">{layout.map((block, index) => { const position = positionFor(block, index); return <article key={block.id} className={`shipping-designer-block${activeBlock?.id === block.id ? ' is-selected' : ''}${warnedIds.has(block.id) ? ' is-warning' : ''}`} tabIndex={0} aria-roledescription="etiket bloğu" aria-label={`${blockTitle(block)} · solda %${position.x}, üstte %${position.y}`} onFocus={() => setSelectedId(block.id)} onKeyDown={event => moveBlockByKey(event, block, index)} onPointerDown={event => beginPointerDrag(event, block)} onPointerMove={movePointerDrag} onPointerUp={endPointerInteraction} onPointerCancel={endPointerInteraction} onClick={() => setSelectedId(block.id)} style={{ left: `${position.x}%`, top: `${position.y}%`, width: `${position.width}%`, height: `${position.height}%`, transform: block.rotation ? `rotate(${block.rotation}deg)` : undefined, transformOrigin: 'center' }}>{activeBlock?.id === block.id && <>{shippingRotateDirections.map(direction => <button key={direction} type="button" tabIndex={-1} className={`shipping-designer-resize-handle shipping-designer-rotate-handle handle-${direction}`} aria-label={`${shippingRotateDirectionLabels[direction]} tutamacını sağa veya sola sürükleyerek derece derece döndür`} title={`${shippingRotateDirectionLabels[direction]} tutamacını sürükleyerek derece derece döndür`} onPointerDown={event => beginPointerRotate(event, block)} onPointerMove={movePointerRotate} onPointerUp={endPointerInteraction} onPointerCancel={endPointerInteraction} />)}{shippingResizeDirections.map(direction => <button key={direction} type="button" tabIndex={-1} className={`shipping-designer-resize-handle handle-${direction}`} aria-label={`${shippingResizeDirectionLabels[direction]} boyutlandır`} title={`${shippingResizeDirectionLabels[direction]} boyutlandır`} onPointerDown={event => beginPointerResize(event, block, direction)} onPointerMove={movePointerResize} onPointerUp={endPointerInteraction} onPointerCancel={endPointerInteraction} />)}</>}<ShippingLabelBlockBody block={block} values={shippingPreviewValues} showCustomerPhone={settings.showCustomerPhone} /></article> })}{layout.length === 0 && <div className="shipping-designer-drop-empty"><strong>İçerik Bırakın</strong><span>Kütüphaneden bir alanı buraya sürükleyin.</span></div>}</div></ShippingLabelFit></div>
             {issueTexts.length > 0 && <div className="ss-callout is-warning ss-dz-issues" role="status"><SettingsIcon name="alert" /><span><b>Baskıda Sorun Çıkabilir</b>{issueTexts.map(text => <small key={text}>{text}</small>)}</span></div>}
             <span className="sr-only" id="shipping-designer-help">Tab ile bloğu seçip ok tuşlarıyla taşıyın (Shift ile 5 kat).</span>
           </main>
@@ -1082,13 +1061,18 @@ function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, l
               {designerTab === 'general' && <>
                 <label className="ss-fld"><small>Blok Türü</small><select className="ss-in" value={activeBlock.kind} onChange={event => { const kind = event.target.value as ShippingLabelBlockKind; const catalog = shippingLabelBlockCatalog.find(item => item.kind === kind); if (catalog) updateBlock(activeBlock.id, { kind, title: kind === 'custom' ? activeBlock.title : catalog.label, fields: [...catalog.fields], text: kind === 'custom' ? activeBlock.text : '' }) }}>{shippingLabelBlockCatalog.map(item => <option key={item.kind} value={item.kind}>{shippingBlockLabels[item.kind]}</option>)}</select></label>
                 <div className="ss-fld"><small>Hizalama</small>{alignSegment(activeBlock)}</div>
-                {activeBlock.fields.length > 0 && activeBlock.kind !== 'trackingBarcode' && activeBlock.kind !== 'packageBarcode' && <div className="ss-fld"><small>Satır Düzeni</small><div className="ss-seg2" role="group" aria-label="Satır düzeni">{([[false, 'Alt Alta'], [true, 'Tek Satır']] as const).map(([inline, label]) => <button type="button" key={label} aria-pressed={Boolean(activeBlock.inline) === inline} className={Boolean(activeBlock.inline) === inline ? 'is-on' : undefined} title={inline ? 'Başlık ve değer aynı satırda: "Paket Numarası: 4293901515"' : 'Başlık üstte, değer altında'} onClick={() => updateBlock(activeBlock.id, { inline })}>{label}</button>)}</div></div>}
+                {activeBlock.fields.length > 0 && activeBlock.kind !== 'trackingBarcode' && activeBlock.kind !== 'packageBarcode' && <>
+                  <label className="ss-fld"><small>Alan Başlığı</small><select className="ss-in" value={shippingLabelCaptionStyle(activeBlock)} onChange={event => { const style = event.target.value as ShippingLabelCaptionStyle; updateBlock(activeBlock.id, { inline: undefined, captionStyle: style === 'above' ? undefined : style }) }}>{shippingCaptionStyleOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+                  <div className="ss-fld"><small>Satırdaki Alan Sayısı</small><div className="ss-seg3" role="group" aria-label="Satırdaki alan sayısı">{([1, 2, 3] as const).map(count => <button type="button" key={count} aria-pressed={shippingLabelFieldsPerRow(activeBlock) === count} className={shippingLabelFieldsPerRow(activeBlock) === count ? 'is-on' : undefined} title={count === 1 ? 'Her alan kendi satırında' : `${count} alan yan yana, aynı satırda`} onClick={() => updateBlock(activeBlock.id, { fieldsPerRow: count === 1 ? undefined : count })}>{count}</button>)}</div></div>
+                </>}
+                <div className="ss-fld"><small>Çerçeve</small><div className="ss-seg3 is-two" role="group" aria-label="Çerçeve">{([[false, 'Yok'], [true, 'Var']] as const).map(([boxed, label]) => <button type="button" key={label} aria-pressed={Boolean(activeBlock.boxed) === boxed} className={Boolean(activeBlock.boxed) === boxed ? 'is-on' : undefined} onClick={() => updateBlock(activeBlock.id, { boxed: boxed || undefined })}>{label}</button>)}</div></div>
                 <label className="ss-fld"><small>Alana Ekle</small><select className="ss-in" value="" onChange={event => { if (event.target.value) toggleField(activeBlock, event.target.value as ShippingLabelField) }}><option value="">Bir Alan Seçin…</option>{shippingLabelFields.filter(item => !activeBlock.fields.includes(item.id)).map(item => <option value={item.id} key={item.id}>{item.label}</option>)}</select></label>
                 <div className="ss-fchips">{activeBlock.fields.length ? activeBlock.fields.map(field => <button type="button" key={field} className="ss-fchip" title="Alanı çıkar" onClick={() => toggleField(activeBlock, field)}>{shippingLabelFields.find(item => item.id === field)?.label}<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8" /></svg></button>) : <span className="ss-faint">Alan eklenmedi</span>}</div>
               </>}
               {designerTab === 'text' && <>
                 <div className="ss-fld"><small>Yazı Hizası</small>{alignSegment(activeBlock)}</div>
                 <div className="ss-fld"><small>Yazı Boyutu</small><div className="ss-seg3" role="group" aria-label="Yazı boyutu">{shippingLabelTextSizes.map(size => <button type="button" key={size.px} aria-pressed={shippingLabelTextSize(activeBlock.fontSize) === size.px} className={shippingLabelTextSize(activeBlock.fontSize) === size.px ? 'is-on' : undefined} onClick={() => updateBlock(activeBlock.id, { fontSize: size.px })}>{size.label}</button>)}</div></div>
+                <div className="ss-fld"><small>Büyük Harf</small><div className="ss-seg3 is-two" role="group" aria-label="Büyük harf">{([[false, 'Kapalı'], [true, 'Açık']] as const).map(([uppercase, label]) => <button type="button" key={label} aria-pressed={Boolean(activeBlock.uppercase) === uppercase} className={Boolean(activeBlock.uppercase) === uppercase ? 'is-on' : undefined} onClick={() => updateBlock(activeBlock.id, { uppercase: uppercase || undefined })}>{label}</button>)}</div></div>
                 {activeBlock.kind === 'custom' && <label className="ss-fld"><small>Metin</small><textarea className="ss-in" value={activeBlock.text} maxLength={500} rows={5} onChange={event => updateBlock(activeBlock.id, { text: event.target.value })} /></label>}
               </>}
               {designerTab === 'barcode' && <>
@@ -1111,7 +1095,7 @@ function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, l
     <Modal open={templateDeleteOpen && Boolean(selectedTemplate)} title="Şablonu Sil" description={selectedTemplate ? `“${selectedTemplate.name}” şablonu bu tarayıcıdan silinecek. Kâğıttaki yerleşim değişmez.` : undefined} className="ss-modal is-sm" onClose={() => setTemplateDeleteOpen(false)} footer={<><button type="button" className="ss-btn" onClick={() => setTemplateDeleteOpen(false)}>Vazgeç</button><button type="button" className="ss-btn is-danger is-solid" onClick={() => { deleteTemplate(); setTemplateDeleteOpen(false) }}>Şablonu Sil</button></>}>
       <div className="ss-callout"><SettingsIcon name="alert" /><span><b>Bu işlem geri alınamaz.</b> Aynı yerleşimi yeniden kullanmak için önce yeni adla kaydedin.</span></div>
     </Modal>
-    <Modal open={layoutResetOpen} title="Varsayılan Yerleşimi Yükle" description="Kâğıttaki blokların yerine varsayılan yerleşim gelir. Kaydedene kadar hesabınızdaki düzen değişmez." className="ss-modal is-sm" onClose={() => setLayoutResetOpen(false)} footer={<><button type="button" className="ss-btn" onClick={() => setLayoutResetOpen(false)}>Vazgeç</button><button type="button" className="ss-btn is-primary" onClick={() => { resetLayout(); setLayoutResetOpen(false) }}>Varsayılanı Yükle</button></>}>
+    <Modal open={layoutResetOpen} title="Varsayılan Yerleşimi Yükle" description={format === 'sticker' ? 'Kâğıttaki blokların yerine Trendyol Express’in 100 × 100 mm sticker’ına benzeyen varsayılan yerleşim gelir; sticker ölçüsü de 100 × 100 mm olur. Kaydedene kadar hesabınızdaki düzen değişmez.' : 'Kâğıttaki blokların yerine varsayılan yerleşim gelir. Kaydedene kadar hesabınızdaki düzen değişmez.'} className="ss-modal is-sm" onClose={() => setLayoutResetOpen(false)} footer={<><button type="button" className="ss-btn" onClick={() => setLayoutResetOpen(false)}>Vazgeç</button><button type="button" className="ss-btn is-primary" onClick={() => { resetLayout(); setLayoutResetOpen(false) }}>Varsayılanı Yükle</button></>}>
       <div className="ss-sum"><div><SettingsGlyph state="none" /><span>Şu Anki Yerleşim<small>{layout.length} blok · {layout.filter(block => block.rotation).length} döndürülmüş</small></span><span /></div><div><SettingsGlyph state="done" /><span>Varsayılan Yerleşim<small>{defaultShippingLabelSettings.layout[format].length} blok · {defaultShippingLabelSettings.layout[format].map(block => shippingBlockLabels[block.kind].toLocaleLowerCase('tr-TR')).join(', ')}</small></span><span /></div></div>
     </Modal>
   </>
