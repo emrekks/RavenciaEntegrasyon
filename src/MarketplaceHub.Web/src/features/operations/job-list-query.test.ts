@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isJobInTimeRange, jobCountsQueryString, jobDetailPollInterval, jobListHeadPollInterval, jobListMaximumAutoPages, jobListPollInterval, jobListQueryString, jobPageQueryString, jobPlatformFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage } from './job-list-query'
+import { isJobInTimeRange, jobCountsQueryString, jobDetailPollInterval, jobListHeadPollInterval, jobListMaximumAutoPages, jobListPollInterval, jobListQueryString, jobPageQueryString, jobPlatformsFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage } from './job-list-query'
 
 describe('jobListQueryString', () => {
   const now = Date.parse('2026-10-14T12:00:00.000Z')
@@ -57,14 +57,15 @@ describe('platform helpers', () => {
     expect(jobCountsQueryString('all', null, now)).toBe('')
   })
 
-  it('reads the URL value as a platform code and ignores anything else', () => {
-    expect(jobPlatformFromSearch('trendyol_efaturam')).toBe('TRENDYOL_EFATURAM')
-    expect(jobPlatformFromSearch(null)).toBeNull()
-    expect(jobPlatformFromSearch('a,b')).toBeNull()
+  it('reads the URL value as a list of platform codes and ignores anything else', () => {
+    expect(jobPlatformsFromSearch('trendyol_efaturam')).toEqual(['TRENDYOL_EFATURAM'])
+    expect(jobPlatformsFromSearch('trendyol, n11,trendyol')).toEqual(['TRENDYOL', 'N11'])
+    expect(jobPlatformsFromSearch(null)).toEqual([])
+    expect(jobPlatformsFromSearch('a,b c,<x>')).toEqual([])
   })
 
-  it('orders the connected platforms and keeps the chosen one', () => {
-    expect(jobPlatformOptions(['TRENDYOL_EFATURAM', 'shopify', 'TRENDYOL', 'TRENDYOL'], 'N11')).toEqual(['TRENDYOL', 'N11', 'SHOPIFY', 'TRENDYOL_EFATURAM'])
+  it('orders the connected platforms and keeps the chosen ones', () => {
+    expect(jobPlatformOptions(['TRENDYOL_EFATURAM', 'shopify', 'TRENDYOL', 'TRENDYOL'], ['N11', 'PAZARAMA'])).toEqual(['TRENDYOL', 'N11', 'PAZARAMA', 'SHOPIFY', 'TRENDYOL_EFATURAM'])
   })
 })
 
