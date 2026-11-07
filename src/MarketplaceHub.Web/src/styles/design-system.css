@@ -572,7 +572,7 @@
   .brand-mapping-selected-local { display: grid; gap: 2px; padding: var(--rv-space-3); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
   .brand-mapping-selected-local small { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
   .brand-mapping-modal > footer { display: flex; justify-content: flex-end; gap: var(--rv-space-2); padding: var(--rv-space-4) var(--rv-space-6); border-top: 1px solid var(--rv-color-border); }
-  .jobs-reference-toolbar, .jobs-reference-filter-panel, .invoice-reference-filter-shell, .invoice-reference-filters { display: flex; flex-wrap: wrap; align-items: end; gap: var(--rv-space-3); padding: var(--rv-space-4); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); }
+  .jobs-reference-toolbar, .invoice-reference-filter-shell, .invoice-reference-filters { display: flex; flex-wrap: wrap; align-items: end; gap: var(--rv-space-3); padding: var(--rv-space-4); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); }
   .jobs-reference-table, .invoice-reference-table { min-width: 980px; }
   .jobs-reference-row, .invoice-reference-row { display: grid; align-items: center; min-height: 64px; border-top: 1px solid var(--rv-color-border); }
   .jobs-reference-row:hover { background: var(--rv-hover, color-mix(in srgb, var(--rv-color-ink) 7%, transparent)); }
@@ -1018,18 +1018,18 @@
   .integration-reference-heading > div:first-child, .jobs-reference-heading > div:first-child, .mapping-reference-heading > div:first-child { min-width: 0; }
   :is(.integration-reference-heading, .jobs-reference-heading, .mapping-reference-heading) h1:not(:last-child) { margin-bottom: var(--rv-space-2); }
   .integration-reference-heading p, .jobs-reference-heading p, .mapping-reference-heading p { max-width: 760px; margin: 0; }
-  .integration-heading-actions, .jobs-reference-heading-actions, .mapping-reference-heading-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--rv-space-2); }
-  .integration-heading-actions > *, .jobs-reference-heading-actions > *, .mapping-reference-heading-actions > * { min-width: 0; }
-  .integration-filter-wrap, .jobs-reference-range-wrap, .jobs-reference-filter-wrap { position: relative; }
-  .integration-filter-button, .integration-add-button, .jobs-reference-range, .jobs-reference-filter-toggle { display: inline-flex; min-height: var(--rv-control-height-md); align-items: center; justify-content: center; gap: var(--rv-space-2); white-space: nowrap; }
-  .integration-filter-button .ui-icon, .integration-add-button .ui-icon, .jobs-reference-range .jobs-reference-icon, .jobs-reference-filter-toggle .jobs-reference-icon { width: 16px; height: 16px; flex: 0 0 16px; }
-  .integration-filter-menu, .jobs-reference-range-menu, .jobs-reference-filter-panel { position: absolute; top: calc(100% + 8px); right: 0; z-index: var(--rv-z-dropdown); display: grid; min-width: 240px; gap: var(--rv-space-1); padding: var(--rv-space-3); color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); box-shadow: var(--rv-shadow-lg); }
-  .integration-filter-menu, .jobs-reference-range-menu, .jobs-reference-filter-panel { width: min(420px, calc(100vw - 32px)); min-width: 0; max-width: calc(100vw - 32px); max-height: min(420px, calc(100dvh - 96px)); overflow: auto; }
+  .integration-heading-actions, .mapping-reference-heading-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--rv-space-2); }
+  .integration-heading-actions > *, .mapping-reference-heading-actions > * { min-width: 0; }
+  .integration-filter-wrap { position: relative; }
+  .integration-filter-button, .integration-add-button { display: inline-flex; min-height: var(--rv-control-height-md); align-items: center; justify-content: center; gap: var(--rv-space-2); white-space: nowrap; }
+  .integration-filter-button .ui-icon, .integration-add-button .ui-icon { width: 16px; height: 16px; flex: 0 0 16px; }
+  .integration-filter-menu { position: absolute; top: calc(100% + 8px); right: 0; z-index: var(--rv-z-dropdown); display: grid; min-width: 240px; gap: var(--rv-space-1); padding: var(--rv-space-3); color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); box-shadow: var(--rv-shadow-lg); }
+  .integration-filter-menu { width: min(420px, calc(100vw - 32px)); min-width: 0; max-width: calc(100vw - 32px); max-height: min(420px, calc(100dvh - 96px)); overflow: auto; }
   .integration-filter-menu strong { margin: var(--rv-space-1) var(--rv-space-2); color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); letter-spacing: .06em; text-transform: uppercase; }
   .integration-filter-menu .integration-filter-menu-group { margin-top: var(--rv-space-3); }
-  .integration-filter-menu button, .jobs-reference-range-menu button { display: flex; width: 100%; min-height: 36px; align-items: center; justify-content: flex-start; gap: var(--rv-space-2); padding: 0 var(--rv-space-2); color: var(--rv-color-muted); background: transparent; border: 0; border-radius: var(--rv-radius-sm); text-align: left; }
-  .integration-filter-menu button:hover, .jobs-reference-range-menu button:hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-soft)); }
-  .integration-filter-menu button.active, .jobs-reference-range-menu button.active { color: #fff; background: var(--rv-color-primary-fill); }
+  .integration-filter-menu button { display: flex; width: 100%; min-height: 36px; align-items: center; justify-content: flex-start; gap: var(--rv-space-2); padding: 0 var(--rv-space-2); color: var(--rv-color-muted); background: transparent; border: 0; border-radius: var(--rv-radius-sm); text-align: left; }
+  .integration-filter-menu button:hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-soft)); }
+  .integration-filter-menu button.active { color: #fff; background: var(--rv-color-primary-fill); }
   .integration-filter-menu button i { width: 7px; height: 7px; flex: 0 0 7px; background: currentColor; border-radius: 50%; }
   .integration-filter-summary { display: flex; align-items: center; justify-content: space-between; gap: var(--rv-space-4); margin-bottom: var(--rv-space-4); padding: var(--rv-space-3) var(--rv-space-4); color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); font-size: var(--rv-font-size-sm); }
   .integration-filter-summary span { color: var(--rv-color-ink); font-weight: 750; white-space: nowrap; }
@@ -1104,10 +1104,6 @@
   .panel-attribute-category-modal-card > footer { display: flex; justify-content: flex-end; gap: var(--rv-space-2); padding: var(--rv-space-4) var(--rv-space-6); border-top: 1px solid var(--rv-color-border); }
 
   .jobs-reference-heading { align-items: center; }
-  .jobs-reference-range, .jobs-reference-filter-toggle { width: auto; }
-  .jobs-reference-range .jobs-reference-icon:last-child { width: 14px; height: 14px; }
-  .jobs-reference-filter-panel { width: min(420px, calc(100vw - 32px)); grid-template-columns: repeat(2, minmax(140px, 1fr)); min-width: 0; max-width: calc(100vw - 32px); align-items: end; }
-  .jobs-reference-filter-panel label { display: grid; gap: var(--rv-space-1); color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 750; }
   .jobs-reference-canvas { display: grid; gap: var(--rv-space-4); }
   .jobs-reference-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--rv-space-4); margin: 0; }
   .jobs-reference-status-summary { display: flex; flex-wrap: wrap; align-items: center; gap: var(--rv-space-3); min-width: 0; }
@@ -1119,11 +1115,6 @@
   .jobs-reference-status-summary .error, .jobs-reference-status-summary .cancelled { margin: 0; padding: 0; color: var(--rv-color-danger); background: transparent; border: 0; border-radius: 0; }
   .jobs-reference-status-summary .cancelled { color: var(--rv-color-muted); }
   .jobs-reference-toolbar-actions { display: flex; flex: 1 1 360px; align-items: center; justify-content: flex-end; gap: var(--rv-space-2); min-width: 0; }
-  .jobs-reference-search { display: flex; flex: 1 1 300px; min-width: 180px; align-items: center; gap: var(--rv-space-2); padding: 0 var(--rv-space-3); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); }
-  .jobs-reference-search:focus-within { border-color: var(--rv-color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 18%, transparent); }
-  .jobs-reference-search .jobs-reference-icon { width: 18px; height: 18px; flex: 0 0 18px; color: var(--rv-color-muted); }
-  .jobs-reference-search input { min-width: 0; min-height: 42px; padding: 0; background: transparent; border: 0; }
-  .jobs-reference-search input:focus { outline: 0; }
   .jobs-reference-table-scroll { overflow-x: auto; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); }
   .jobs-reference-table { display: block; width: 100%; min-width: 980px; margin: 0; border: 0; border-collapse: separate; border-spacing: 0; }
   .jobs-reference-table thead, .jobs-reference-table tbody { display: block; }
@@ -1368,7 +1359,7 @@
   .rv-topbar { left: var(--rv-sidebar-width); }
   .app-shell.stitch-shell.sidebar-collapsed .rv-topbar { left: var(--rv-sidebar-collapsed-width); }
   .integration-reference-heading, .jobs-reference-heading, .mapping-reference-heading { align-items: flex-start; flex-direction: column; gap: var(--rv-space-4); }
-  .integration-heading-actions, .jobs-reference-heading-actions, .mapping-reference-heading-actions { width: 100%; justify-items: stretch; justify-content: flex-start; }
+  .integration-heading-actions, .mapping-reference-heading-actions { width: 100%; justify-items: stretch; justify-content: flex-start; }
   .mapping-transfer-actions > * { flex: 1 1 180px; }
   .mapping-saved-card > header { align-items: flex-start; flex-direction: column; }
   .mapping-advanced-modal, .mapping-values-modal { width: min(100%, calc(100vw - 24px)); }
@@ -1475,7 +1466,6 @@
   .shipping-label-modal-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .shipping-label-modal-actions > span { grid-column: 1 / -1; }
   .shipping-label-batch-preview { grid-template-columns: 1fr; }
-  .jobs-reference-filter-panel { grid-template-columns: 1fr; }
   .rv-modal-body, .rv-drawer-body { padding: var(--rv-space-4); }
   .rv-auth-header { min-height: 70px; padding-top: 16px; }
   .rv-auth-stage { padding-top: 32px; padding-bottom: 24px; }
@@ -1496,7 +1486,7 @@
   .value-mapping-row { grid-template-columns: 1fr; }
   .value-mapping-row > b { transform: rotate(90deg); }
   .invoice-reference-metrics, .invoice-detail-summary { grid-template-columns: 1fr; }
-  .order-column-filter-popover, .order-column-filter-popover.invoice-filter-popover, .jobs-reference-filter-panel { right: auto; left: 0; }
+  .order-column-filter-popover, .order-column-filter-popover.invoice-filter-popover { right: auto; left: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1641,7 +1631,6 @@
   .invoice-reference-filters > label:not(.invoice-reference-search),
   .mapping-reference-local > label,
   .mapping-reference-target > label,
-  .jobs-reference-filter-panel label,
   .product-step-grid label,
   .variant-media-bulk-fields > .variant-media-bulk-field > span:first-child,
   .rv-auth-field label,
@@ -1755,7 +1744,6 @@ button,
 .invoice-reference-search-control > .ui-icon { position: absolute; top: 50%; left: var(--rv-space-3); z-index: 1; width: 18px; height: 18px; color: var(--rv-color-muted); pointer-events: none; transform: translateY(-50%); }
 .app-shell.stitch-shell main .invoice-reference-search-control input { width: 100%; min-width: 0; padding-left: 40px; }
 .jobs-reference-toolbar-actions { flex: 0 1 440px; }
-.jobs-reference-search { flex: 1 1 280px; max-width: 360px; }
 
 .rv-tab-count {
   display: inline-flex;
@@ -1769,7 +1757,6 @@ button,
 @media (max-width: 900px) {
   .jobs-reference-toolbar { flex-wrap: wrap; }
   .jobs-reference-toolbar-actions { flex: 1 1 100%; max-width: none; }
-  .jobs-reference-search { max-width: none; }
 }
 
 /* Order feedback and product previews stay in the same compact visual language
@@ -3141,7 +3128,7 @@ small,
   line-height: 1.5;
 }
 
-.app-shell.stitch-shell main :is(.searchable-select-options > button, .appearance-theme-menu > button, .integration-filter-menu button, .jobs-reference-range-menu button, .reference-menu-popover a, .reference-menu-popover button) {
+.app-shell.stitch-shell main :is(.searchable-select-options > button, .appearance-theme-menu > button, .integration-filter-menu button, .reference-menu-popover a, .reference-menu-popover button) {
   min-height: 44px;
   padding: 10px 12px;
   border-radius: var(--rv-radius-md);
@@ -4116,16 +4103,6 @@ small,
   min-height: var(--rv-control-height-md);
 }
 
-.app-shell.stitch-shell main .jobs-reference-search {
-  height: var(--rv-control-height-md);
-  min-height: var(--rv-control-height-md);
-}
-
-.app-shell.stitch-shell main .jobs-reference-search input {
-  height: calc(var(--rv-control-height-md) - 2px);
-  min-height: calc(var(--rv-control-height-md) - 2px);
-  padding-block: 0;
-}
 
 .app-shell.stitch-shell main .jobs-reference-status-summary > span.error::before {
   display: none;
@@ -6542,7 +6519,7 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 
 /* Light theme interaction language. Hovers are quiet tonal changes, colour is kept for the active state and focus:
    list-like items get a faint ink tint, outlined controls darken their border, cards and rows settle on the raised tone. */
-:root[data-theme="light"] .app-shell.stitch-shell > aside :is(nav, .settings-nav) a:hover:not(.active), :root[data-theme="light"] .app-shell.stitch-shell > aside .logout-link:hover:not(.active), :root[data-theme="light"] .app-shell.stitch-shell main .bulk-action-menu > button:hover:not(:disabled), :root[data-theme="light"] .platform-multi-select-option:hover, :root[data-theme="light"] .row-menu > div button:hover, :root[data-theme="light"] .order-column-filter-popover button:hover, :root[data-theme="light"] .integration-filter-menu button:hover, :root[data-theme="light"] .jobs-reference-range-menu button:hover, :root[data-theme="light"] .reference-menu-popover :is(a, button):hover:not(:disabled), :root[data-theme="light"] .panel-category-picker [role="option"]:hover, :root[data-theme="light"] .appearance-theme-menu > button:hover, :root[data-theme="light"] .date-range-picker-grid > button:hover, :root[data-theme="light"] :is(.rv-tabs, .settings-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) > :is(button, a):not(.active, .is-active, [aria-selected="true"]):hover {
+:root[data-theme="light"] .app-shell.stitch-shell > aside :is(nav, .settings-nav) a:hover:not(.active), :root[data-theme="light"] .app-shell.stitch-shell > aside .logout-link:hover:not(.active), :root[data-theme="light"] .app-shell.stitch-shell main .bulk-action-menu > button:hover:not(:disabled), :root[data-theme="light"] .platform-multi-select-option:hover, :root[data-theme="light"] .row-menu > div button:hover, :root[data-theme="light"] .order-column-filter-popover button:hover, :root[data-theme="light"] .integration-filter-menu button:hover, :root[data-theme="light"] .reference-menu-popover :is(a, button):hover:not(:disabled), :root[data-theme="light"] .panel-category-picker [role="option"]:hover, :root[data-theme="light"] .appearance-theme-menu > button:hover, :root[data-theme="light"] .date-range-picker-grid > button:hover, :root[data-theme="light"] :is(.rv-tabs, .settings-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) > :is(button, a):not(.active, .is-active, [aria-selected="true"]):hover {
   color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-hover-fill)); border-color: transparent; box-shadow: none;
 }
 :root[data-theme="light"] .app-shell.stitch-shell main :where(input, select, textarea):hover:not(:disabled) {
@@ -6557,10 +6534,10 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 }
 
 /* Filter bars: a caption is never smaller or lighter than the value under it (13px caption, 13px value). */
-.app-shell.stitch-shell main :is(.orders-control-bar, .invoice-reference-filters, .return-reference-filters, .rv-questions-filters, .jobs-reference-filter-panel) :is(label, .orders-control-label, .platform-multi-select-label, .date-range-picker-label, .invoice-sort-caption) {
+.app-shell.stitch-shell main :is(.orders-control-bar, .invoice-reference-filters, .return-reference-filters, .rv-questions-filters) :is(label, .orders-control-label, .platform-multi-select-label, .date-range-picker-label, .invoice-sort-caption) {
   color: var(--rv-color-muted); font-size: 13px; font-weight: 600;
 }
-.app-shell.stitch-shell main :is(.orders-control-bar, .invoice-reference-filters, .return-reference-filters, .rv-questions-filters, .jobs-reference-filter-panel) :is(input, select, .platform-multi-select-trigger, .date-range-picker-trigger, .invoice-sort-trigger) {
+.app-shell.stitch-shell main :is(.orders-control-bar, .invoice-reference-filters, .return-reference-filters, .rv-questions-filters) :is(input, select, .platform-multi-select-trigger, .date-range-picker-trigger, .invoice-sort-trigger) {
   font-size: 13px; font-weight: 500;
 }
 .app-shell.stitch-shell main .invoice-reference-filters > label:not(.invoice-reference-search):not(.invoice-reference-sort) { font-size: 13px; }

@@ -17,8 +17,8 @@ const viewOrder = views.map(item => item.value)
 
 // İşlem Takibi › Loglar: Ürün Hareketleri (every stock, price, status and return change of the products; the default)
 // and Pazaryeri Gönderimleri (the price/stock lines sent to the marketplaces), switched by a segment above the view.
-// Each view draws its own range and Filtrele into the page heading.
-export function OperationLogs({ platformOptions, onOpenJob, headingSlot }: { platformOptions: string[]; onOpenJob: (jobId: string) => void; headingSlot?: HTMLElement | null }) {
+// Each view has its own filter card (filter-fields.tsx) above its list.
+export function OperationLogs({ platformOptions, onOpenJob }: { platformOptions: string[]; onOpenJob: (jobId: string) => void }) {
   const [searchParams, setSearchParams] = useSearchParams()
   const view = jobsLogView(searchParams)
   // The filters of each view survive a switch to the other one.
@@ -40,8 +40,8 @@ export function OperationLogs({ platformOptions, onOpenJob, headingSlot }: { pla
       </button>)}
     </div>
     <TabSlidePanel active={view} order={viewOrder} className="rv-tab-slide-grid" role="tabpanel">{view === 'sends'
-      ? <Suspense fallback={<Busy text="Gönderim kayıtları yükleniyor…" />}><PriceStockSendLog key="sends" kept={keptSends} platformOptions={platformOptions} onOpenJob={onOpenJob} headingSlot={headingSlot} /></Suspense>
-      : <ProductActivityLog key="activity" kept={keptActivity} platformOptions={platformOptions} headingSlot={headingSlot} />}</TabSlidePanel>
+      ? <Suspense fallback={<Busy text="Gönderim kayıtları yükleniyor…" />}><PriceStockSendLog key="sends" kept={keptSends} platformOptions={platformOptions} onOpenJob={onOpenJob} /></Suspense>
+      : <ProductActivityLog key="activity" kept={keptActivity} platformOptions={platformOptions} />}</TabSlidePanel>
   </>
 }
 
