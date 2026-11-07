@@ -37,6 +37,20 @@ export type MarketplaceUpdateOutcome = {
   /** The price/stock parts the pick sent; both when missing. */
   priceInventoryParts?: { price: boolean; stock: boolean }
   error?: string
+  /** A model family's product information update (family-update-plan.ts): every colour card on the marketplace gets
+   *  its own job; a card not there is named, never skipped silently. */
+  family?: MarketplaceFamilyUpdate
+}
+
+export type MarketplaceFamilyUpdate = {
+  /** Colour cards of the family. */
+  cards: number
+  queuedCards: number
+  queuedVariants: number
+  /** Colours with no variant on this marketplace: not sent. */
+  absent: readonly string[]
+  /** Refusal message → the colours it stopped. */
+  failures: ReadonlyMap<string, readonly string[]>
 }
 
 export type ProductSaveOutcome = {
@@ -118,13 +132,35 @@ export function marketplacePublishLines(outcome: MarketplacePublishOutcome) {
   return lines
 }
 
-function marketplaceUpdateLine(outcome: MarketplaceUpdateOutcome) {
+// "ürün bilgisi" of a model family names how many colours and variants it went for (owner, 7 Nov 2026: RYP003T said
+// "3 varyant gönderildi" of a 21-variant family with no word on the other 6 colours).
+function productInformationText(family: MarketplaceFamilyUpdate | undefined) {
+  if (!family || family.cards <= 1) return 'ürün bilgisi'
+  const colours = family.queuedCards === family.cards ? `${family.cards} rengin tamamı` : `${family.cards} renkten ${family.queuedCards} renk`
+  return `ürün bilgisi (${colours}, ${family.queuedVariants} varyant)`
+}
+
+function familyUpdateFailed(outcome: MarketplaceUpdateOutcome) {
+  return Boolean(outcome.family && (outcome.family.failures.size > 0 || outcome.family.absent.length > 0))
+}
+
+function marketplaceUpdateLines(outcome: MarketplaceUpdateOutcome) {
+  const name = outcome.platformName
   const parts = outcome.priceInventoryParts
   const priceInventory = !parts || parts.price && parts.stock ? 'fiyat-stok' : parts.price ? 'fiyat' : 'stok'
-  const queued = [outcome.queued.productInformation && 'ürün bilgisi', outcome.queued.priceInventory && priceInventory].filter(Boolean).join(' ve ')
+  const queued = [outcome.queued.productInformation && productInformationText(outcome.family), outcome.queued.priceInventory && priceInventory].filter(Boolean).join(' ve ')
   const queuedText = queued ? `${queued} gönderiliyor` : ''
-  if (!outcome.error) return queuedText ? `${outcome.platformName}: ${queuedText}.` : `${outcome.platformName}: seçilen bilgilerden bu platforma gidecek olan yok; iş açılmadı.`
-  return `${outcome.platformName}: ${queuedText ? `${queuedText}; ardından ` : ''}aktarım başlatılamadı — ${outcome.error}`
+  const lines: string[] = []
+  if (!outcome.error) {
+    if (queuedText) lines.push(`${name}: ${queuedText}.`)
+    else if (!familyUpdateFailed(outcome)) lines.push(`${name}: seçilen bilgilerden bu platforma gidecek olan yok; iş açılmadı.`)
+  } else {
+    lines.push(`${name}: ${queuedText ? `${queuedText}; ardından ` : ''}aktarım başlatılamadı — ${outcome.error}`)
+  }
+  const family = outcome.family
+  if (family?.absent.length) lines.push(`${name}: ${family.absent.length} renk bu mağazada yok (${family.absent.join(', ')}); bu renkler güncellenmedi. Önce Yayınla ile gönderilmeleri gerekir.`)
+  for (const [failure, colours] of family?.failures ?? []) lines.push(`${name}: reddedildi — ${failure.replace(/\s+$/u, '')} (${colours.join(', ')})`)
+  return lines
 }
 
 function saveLine(outcome: ProductSaveOutcome) {
@@ -145,9 +181,9 @@ export function productSaveFeedback(outcome: ProductSaveOutcome): ProductSaveFee
   let title: string
   let refused = outcome.saveWarnings.length > 0
   if (outcome.updates) {
-    const failed = outcome.updates.filter(update => update.error)
+    const failed = outcome.updates.filter(update => update.error || familyUpdateFailed(update))
     const started = outcome.updates.filter(update => update.queued.productInformation || update.queued.priceInventory)
-    lines.push(...outcome.updates.map(marketplaceUpdateLine))
+    lines.push(...outcome.updates.flatMap(marketplaceUpdateLines))
     refused ||= failed.length > 0
     title = !failed.length ? 'Aktarım Başladı' : started.length ? 'Aktarım Kısmen Başladı' : 'Aktarım Başlatılamadı'
   } else if (outcome.publishRequested) {
