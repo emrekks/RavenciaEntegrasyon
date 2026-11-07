@@ -355,6 +355,11 @@ describe('JobsPage platform filter', () => {
     expect(trigger('Platform').textContent).toBe('Tüm Platformlar')
     expect(pageRequests().every(params => params.get('platform') === null)).toBe(true)
 
+    // Every platform starts ticked (the shared PlatformFilter): Tümünü Kaldır clears the ticks inside the menu only.
+    expect(Array.from(pop.querySelectorAll<HTMLInputElement>('.rr-opt input')).every(input => input.checked)).toBe(true)
+    await act(async () => { Array.from(pop.querySelectorAll<HTMLButtonElement>('.rr-ph button')).find(item => item.textContent === 'Tümünü Kaldır')!.click() })
+    await settle()
+    expect(pageRequests().every(params => params.get('platform') === null)).toBe(true)
     await act(async () => { checkboxNamed(pop, 'Trendyol E-Faturam').click() })
     await settle()
     await settle()
@@ -373,9 +378,9 @@ describe('JobsPage platform filter', () => {
     // Several platforms go to the server as one comma list.
     await act(async () => { checkboxNamed(container.querySelector('.rr-pop[aria-label="Platform"]')!, 'N11').click() })
     await settle()
-    expect(currentSearch).toBe('?platform=trendyol_efaturam%2Cn11')
-    expect(pageRequests().at(-1)!.get('platform')).toBe('TRENDYOL_EFATURAM,N11')
-    expect(trigger('Platform').textContent).toBe('2 Platform')
+    expect(currentSearch).toBe('?platform=n11%2Ctrendyol_efaturam')
+    expect(pageRequests().at(-1)!.get('platform')).toBe('N11,TRENDYOL_EFATURAM')
+    expect(trigger('Platform').textContent).toBe('2 Platform Seçili')
   })
 
   it('keeps the platform from the URL on load and through the next page', async () => {
@@ -391,7 +396,7 @@ describe('JobsPage platform filter', () => {
     expect(next.get('platform')).toBe('N11')
 
     const pop = await openField('Platform')
-    await act(async () => { Array.from(pop.querySelectorAll<HTMLButtonElement>('.rr-ph button')).find(item => item.textContent === 'Tümünü Kaldır')!.click() })
+    await act(async () => { Array.from(pop.querySelectorAll<HTMLButtonElement>('.rr-ph button')).find(item => item.textContent === 'Tümünü Seç')!.click() })
     await settle()
     expect(currentSearch).toBe('')
     expect(pageRequests().at(-1)!.get('platform')).toBeNull()

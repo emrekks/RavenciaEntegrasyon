@@ -7,6 +7,7 @@ import { hubApi } from '../../../shared/api'
 import { UiIcon } from '../../../shared/components'
 import { focusOnMount } from '../../../shared/focus'
 import { useDismissable } from '../../../shared/hooks/useDismissable'
+import { useMenuFlip } from '../../../shared/hooks/useMenuFlip'
 
 export type BrandReferenceItem = { externalId: string; name: string; isActive: boolean }
 // One slice of the connection's current brand snapshot: no items for the summary, the matches of a search or lookup.
@@ -116,6 +117,7 @@ export function BrandReferencePicker({ connectionId, snapshot, value, selectedNa
   const [open, setOpen] = useState(false)
   const [text, setText] = useState('')
   const rootRef = useRef<HTMLDivElement>(null)
+  useMenuFlip(open, rootRef, '.panel-category-picker')
   useDismissable(open, [rootRef], () => setOpen(false))
   const search = useBrandReferenceSearch(connectionId, snapshot, text, open)
   const options = brandOptions(search.items, value, selectedName, text)

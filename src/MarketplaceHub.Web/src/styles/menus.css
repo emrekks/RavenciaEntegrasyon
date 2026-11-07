@@ -1,0 +1,141 @@
+/* Design step 2: selectors and menus, one look everywhere.
+   - Every popover / dropdown is the rr-pop shell: radius 12, padding 6, the surface (#17171c), the strong border
+     (#383842) and one shadow (--rv-menu-shadow). Option rows are 34px, 13px/400, padded 6px 10px; action menus 36px,
+     13px/500. Rows reset the global 44px button height.
+   - A single choice shows a radio dot (rr-radio, pm-mark-radio), a multiple choice a checkbox: square 16px, radius 4,
+     filled purple with a white tick when ticked. Switches (role="switch") keep their own look.
+   - Table-head sort buttons are 24px.
+   The menus listed below come from older page stylesheets loaded after this one, hence the !important on the shell. */
+:root { --rv-menu-shadow: 0 18px 50px rgb(0 0 0 / 45%); }
+:root[data-theme="light"] { --rv-menu-shadow: 0 18px 50px rgb(15 23 42 / 18%); }
+
+/* ---------- the shell ---------- */
+html body .app-shell.stitch-shell :is(.reference-menu-popover, .searchable-select-menu, .category-attribute-dropdown-menu, .panel-category-picker, .qi-status-menu, .integration-filter-menu, .order-column-filter-popover, .row-menu > div, .variant-filter-dropdown-menu),
+html body .rv-view-tabs-menu {
+  padding: 6px !important;
+  color: var(--rv-color-ink);
+  background: var(--rv-color-surface) !important;
+  border: 1px solid var(--rv-color-border-strong) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--rv-menu-shadow) !important;
+}
+html body :is(main .rr, .rr-layer) :is(.rr-pop:not(.rr-static), .rr-menu, .rr-tip) { box-shadow: var(--rv-menu-shadow); }
+/* A dropdown without room under its trigger opens above it (shared/hooks/useMenuFlip.ts). */
+html body .app-shell.stitch-shell [data-placement="up"] { top: auto !important; bottom: calc(100% + 6px) !important; }
+
+/* ---------- option rows: 34px, 13px/400 ---------- */
+html body .app-shell.stitch-shell :is(.searchable-select-options > button, .category-attribute-dropdown-options > button, .panel-category-picker [role="option"], .qi-status-menu > button, .integration-filter-menu > button, .order-column-filter-popover button, .variant-filter-dropdown-menu [role="option"]),
+html body .rv-view-tabs-menu > button {
+  box-sizing: border-box;
+  height: auto;
+  min-height: 34px !important;
+  padding: 6px 10px !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  line-height: 1.35;
+  border: 0 !important;
+  border-radius: 7px !important;
+}
+html body .app-shell.stitch-shell :is(.searchable-select-options > button, .panel-category-picker [role="option"]) > small { font-size: 12px; }
+/* The picked row: the soft purple of rr-opt.rr-on, never a solid fill. */
+html body .app-shell.stitch-shell :is(.category-attribute-dropdown-options > button.active, .searchable-select-options > button[aria-selected="true"], .panel-category-picker [role="option"][aria-selected="true"], .qi-status-menu > button.is-on, .integration-filter-menu > button.active),
+html body .rv-view-tabs-menu > button.is-active {
+  color: var(--rv-color-ink) !important;
+  background: var(--rv-color-primary-soft) !important;
+}
+/* ---------- action menus: 36px, 13px/500 ---------- */
+html body .app-shell.stitch-shell :is(.reference-menu-popover > :is(a, button), .row-menu > div button) {
+  box-sizing: border-box;
+  height: auto;
+  min-height: 36px !important;
+  padding: 6px 10px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  border-radius: 7px !important;
+}
+
+/* ---------- selected marks ---------- */
+.pm-mark-radio, .pm-mark-check { position: relative; flex: 0 0 16px; box-sizing: border-box; width: 16px; height: 16px; border: 1.5px solid var(--rv-color-border-strong); }
+.pm-mark-radio { border-radius: 50%; }
+.pm-mark-check { border-width: 1px; border-radius: 4px; background: var(--rv-color-surface); }
+:is(.active, .is-on, [aria-selected="true"], [aria-checked="true"]) > .pm-mark-radio { border-color: var(--rv-color-primary); }
+:is(.active, .is-on, [aria-selected="true"], [aria-checked="true"]) > .pm-mark-radio::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--rv-color-primary); }
+:is(.active, .is-on, [aria-selected="true"], [aria-checked="true"]) > .pm-mark-check { background: var(--rv-color-primary); border-color: var(--rv-color-primary); }
+:is(.active, .is-on, [aria-selected="true"], [aria-checked="true"]) > .pm-mark-check::after { content: ""; position: absolute; left: 4.5px; top: 1.5px; width: 4px; height: 8px; border: solid #fff; border-width: 0 1.8px 1.8px 0; transform: rotate(45deg); }
+
+/* The checkbox: square 16px, radius 4, purple with a white tick (rr-cb, ss-cb and native boxes alike). */
+html body input[type="checkbox"]:not([role="switch"], .cs-switch, .rr-qt-switch, .integration-write-toggle > input, .sync-policy-card-switch > input, .marketplace-pricing-switch > input) {
+  position: relative;
+  box-sizing: border-box;
+  flex: 0 0 16px;
+  width: 16px !important;
+  min-width: 16px !important;
+  max-width: 16px;
+  height: 16px !important;
+  min-height: 16px !important;
+  padding: 0 !important;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--rv-color-surface) !important;
+  border: 1px solid var(--rv-color-border-strong) !important;
+  border-radius: 4px !important;
+  box-shadow: none;
+  cursor: pointer;
+  vertical-align: middle;
+}
+html body input[type="checkbox"]:not([role="switch"], .cs-switch, .rr-qt-switch, .integration-write-toggle > input, .sync-policy-card-switch > input, .marketplace-pricing-switch > input):is(:checked, :indeterminate) {
+  background: var(--rv-color-primary) !important;
+  border-color: var(--rv-color-primary) !important;
+}
+html body input[type="checkbox"]:not([role="switch"], .cs-switch, .rr-qt-switch, .integration-write-toggle > input, .sync-policy-card-switch > input, .marketplace-pricing-switch > input):checked::after {
+  content: "" !important;
+  position: absolute !important;
+  inset: auto !important;
+  left: 4.5px !important;
+  top: 1.5px !important;
+  width: 4px !important;
+  height: 8px !important;
+  background: none !important;
+  border: solid #fff !important;
+  border-width: 0 1.8px 1.8px 0 !important;
+  transform: rotate(45deg) !important;
+}
+html body input[type="checkbox"]:not([role="switch"], .cs-switch, .rr-qt-switch, .integration-write-toggle > input, .sync-policy-card-switch > input, .marketplace-pricing-switch > input):indeterminate:not(:checked)::after {
+  content: "" !important;
+  position: absolute !important;
+  inset: auto !important;
+  left: 3.5px !important;
+  top: 6.2px !important;
+  width: 7px !important;
+  height: 1.8px !important;
+  background: #fff !important;
+  border: 0 !important;
+  transform: none !important;
+}
+html body input[type="checkbox"]:not([role="switch"], .cs-switch, .rr-qt-switch, .integration-write-toggle > input, .sync-policy-card-switch > input, .marketplace-pricing-switch > input):disabled { cursor: not-allowed; opacity: .5; }
+html body input[type="checkbox"]:not([role="switch"], .cs-switch, .rr-qt-switch, .integration-write-toggle > input, .sync-policy-card-switch > input, .marketplace-pricing-switch > input):focus-visible { outline: 2px solid color-mix(in srgb, var(--rv-color-primary) 70%, transparent); outline-offset: 2px; }
+
+/* ---------- table-head sort buttons: 24px ---------- */
+html body :is(main .rr, .rr-layer) :is(.rr-sortbtn, .rr-fbtn) { width: 24px; height: 24px; min-width: 0; min-height: 0; }
+
+/* ---------- shared/PlatformFilter.tsx and shared/PanelSelect.tsx ---------- */
+:is(main .rr, .rr-layer) .pf-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+:is(main .rr, .rr-layer) .pf-pop .pf-empty { margin: 0; padding: 6px 10px; color: var(--rv-color-muted); font-size: 13px; }
+:is(main .rr, .rr-layer) .pf-trigger.pf-active, :is(main .rr, .rr-layer) .pm-trigger.rr-on { border-color: var(--rr-violet-line); }
+html body .rr-layer.rr-layer :is(.pf-trigger, .pm-trigger).rr-trigger { box-sizing: border-box; height: 36px; min-height: 0; padding: 0 10px 0 12px; color: var(--rv-color-ink); font-size: 14px; font-weight: 400 !important; letter-spacing: 0; text-transform: none; }
+.rr-layer:is(.pm-select, .pf-field) { z-index: auto; }
+.pm-select { display: inline-block; min-width: 0; color: inherit; font-size: 14px; line-height: 1.5; vertical-align: middle; }
+.pm-select > .rr-anchor { display: block; }
+html body :is(main .rr, .rr-layer) .pm-pop { max-height: min(360px, calc(100dvh - 32px)); overflow-y: auto; }
+html body .rr-layer.rr-layer :is(.pm-pop, .pf-pop) .rr-opt.rr-opt { min-height: 34px; padding: 6px 10px; font-size: 13px; font-weight: 400 !important; }
+/* The platform logos sit inside the 34px row. */
+html body :is(main .rr, .rr-layer) .pf-pop .rr-opt .rr-logo { width: 20px; height: 20px; flex: 0 0 20px; }
+
+/* ---------- page fittings ---------- */
+/* Ürün Düzenleyici's attribute values: the mark first (a radio for one value, a checkbox for several), then the name. */
+html body .app-shell.stitch-shell .category-attribute-dropdown-options > button { justify-content: flex-start !important; gap: 10px; }
+html body .app-shell.stitch-shell .category-attribute-dropdown-options > button > :is(.pm-mark-radio, .pm-mark-check) { flex: 0 0 16px; min-width: 16px; overflow: visible; }
+/* Entegrasyon settings: the connection switcher is a panel menu in the head (no longer an 18px/600 select). */
+html body .cs-workspace .cs-switcher.pm-select { display: inline-block; min-width: 220px; max-width: 100%; }
+/* Promosyon's Tablo Boyutu and Eşleştirmeler' A–Z: compact menus beside their labels. */
+html body .app-shell.stitch-shell .commission-zoom > .pm-select { width: 96px; }

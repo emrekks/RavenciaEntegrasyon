@@ -21,6 +21,8 @@ import { viewTabLabel } from '../../shared/view-tabs'
 import { formatIstanbul, istanbulDateKey, istanbulDayBoundary, toDateTimeLocal } from '../../shared/format-date'
 import { scopedStorageKey } from '../../shared/storage-scope'
 import { insideSelector, useDismissable } from '../../shared/hooks/useDismissable'
+import { useMenuFlip } from '../../shared/hooks/useMenuFlip'
+import { PanelSelect } from '../../shared/PanelSelect'
 
 type MarketplaceQuestion = {
   id: string; connectionId: string; platformCode: string; storeName: string; externalQuestionId: string; kind: string; status: string
@@ -268,6 +270,7 @@ export function QuestionsPage() {
   // The filter panel holds a date picker whose calendar is portalled: a press there belongs to the filter too.
   useDismissable(filterOpen, [filterRef], () => setFilterOpen(false), { isInside: insideSelector('.date-range-picker-popover') })
   useDismissable(statusOpen, [statusRef], () => setStatusOpen(false))
+  useMenuFlip(statusOpen, statusRef, '.qi-status-menu')
 
   const rows = questions.data?.items ?? []
   const connectionNames = connections.data ?? []
@@ -363,9 +366,9 @@ export function QuestionsPage() {
             <div className="qi-filter" ref={filterRef}>
               <button type="button" className={`qi-filter-btn${filterOpen || activeFilterCount ? ' is-on' : ''}`} aria-expanded={filterOpen} onClick={() => setFilterOpen(value => !value)}><UiIcon name="filter" size={15} />Filtre{activeFilterCount > 0 && <span className="qi-count">{activeFilterCount}</span>}</button>
               {filterOpen && <div className="qi-popover rv-questions-filter-grid" role="dialog" aria-label="Filtreler">
-                <label>Mağaza<select value={connectionId} onChange={event => setConnectionId(event.target.value)}><option value="ALL">Tüm Mağazalar</option>{connectionNames.filter(item => tab !== 'ORDER' || ORDER_QUESTION_PLATFORMS.includes(item.platformCode)).map(item => <option value={item.id} key={item.id}>{storeLabel(item)}</option>)}</select></label>
+                <label htmlFor="questions-store-filter">Mağaza<PanelSelect id="questions-store-filter" ariaLabel="Mağaza" value={connectionId} options={[{ value: 'ALL', label: 'Tüm Mağazalar' }, ...connectionNames.filter(item => tab !== 'ORDER' || ORDER_QUESTION_PLATFORMS.includes(item.platformCode)).map(item => ({ value: item.id, label: storeLabel(item) }))]} onChange={setConnectionId} /></label>
                 <div className="qi-field"><span>Tarih Aralığı</span><div className="qi-range"><div className="qi-seg" role="radiogroup" aria-label="Hazır tarih aralığı">{presets.map(item => { const on = dateFrom === item.range.from && dateTo === item.range.to; return <button type="button" role="radio" aria-checked={on} className={on ? 'is-on' : ''} key={item.key} title={item.title} onClick={() => { setDateFrom(item.range.from); setDateTo(item.range.to) }}>{item.label}</button> })}</div><DateRangePicker className="qi-range-picker" from={dateFrom} to={dateTo} onChange={range => { setDateFrom(range.from); setDateTo(range.to) }} label="Tarih Aralığı" /></div></div>
-                <label>Sıralama<select value={sort} onChange={event => setSort(event.target.value)}><option value="NEWEST">En Yeni</option><option value="OLDEST">En Eski</option><option value="UPDATED">Son Güncellenen</option></select></label>
+                <label htmlFor="questions-sort-filter">Sıralama<PanelSelect id="questions-sort-filter" ariaLabel="Sıralama" value={sort} options={[{ value: 'NEWEST', label: 'En Yeni' }, { value: 'OLDEST', label: 'En Eski' }, { value: 'UPDATED', label: 'Son Güncellenen' }]} onChange={setSort} /></label>
                 <footer><button type="button" className="qi-link" onClick={() => { setConnectionId('ALL'); setDateFrom(''); setDateTo(''); setSort('NEWEST') }}>Temizle</button><Button onClick={() => setFilterOpen(false)}>Uygula</Button></footer>
               </div>}
             </div>

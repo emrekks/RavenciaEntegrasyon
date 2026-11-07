@@ -4,12 +4,13 @@ import { handSetInvoiceStatusNote } from '../invoicing/manual-invoice-status'
 import { marketplaceProductSearchUrl } from '../questions/marketplace-product-link'
 import { Fragment, type ReactNode } from 'react'
 import { knownPlatformName } from '../../shared/platform-names'
+import { PLATFORM_NONE, PlatformFilterPop } from '../../shared/PlatformFilter'
 import { UiIcon } from '../../shared/components'
 import { ValueBadge } from '../../shared/components/ValueBadge'
 import { invoiceStatusDisplayLabel } from '../../shared/status-labels'
 import './orders-responsive.css'
 import './marketplace-polish.css'
-import { RrAnchor, RrIcon, RrLogo, RrRing, type RingTone } from './returns-ui'
+import { RrAnchor, RrIcon, RrRing, type RingTone } from './returns-ui'
 import './orders-sade.css'
 import { type NotificationContext, type NotificationDetail, type NotificationTarget } from '../../shared/notifications'
 import { formatMarketplaceBarcode } from './return-reference-presentation'
@@ -113,17 +114,16 @@ export function platformOptionCount(counts: Record<string, number> | null | unde
   const key = Object.keys(counts).find(item => item.toLocaleUpperCase('en-US') === code.toLocaleUpperCase('en-US'))
   return key === undefined ? 0 : counts[key]
 }
+// The panel's one platform menu (shared/PlatformFilter.tsx) with "no platform" allowed: [] is every platform,
+// [RETURN_NO_PLATFORM] none.
 export function ReturnPlatformPop({ options, selected, onChange, title = 'İade Platformu', counts }: { options: Array<{ value: string; label: string }>; selected: string[]; onChange: (value: string[]) => void; title?: string; counts?: Record<string, number> | null }) {
-  const all = selected.length === 0
-  const checked = (code: string) => all || selected.includes(code)
-  const toggle = (code: string, on: boolean) => { const current = all ? options.map(option => option.value) : selected.filter(value => value !== RETURN_NO_PLATFORM); const next = on ? Array.from(new Set([...current, code])) : current.filter(value => value !== code); onChange(next.length === options.length ? [] : next.length === 0 ? [RETURN_NO_PLATFORM] : next) }
-  return <div className="rr-pop" role="dialog" aria-label={typeof title === 'string' ? title : undefined} style={{ minWidth: 260 }}><div className="rr-ph">{title}<button type="button" className="rr-btn rr-link" onClick={() => onChange(all ? [RETURN_NO_PLATFORM] : [])}>{all ? 'Tümünü Kaldır' : 'Tümünü Seç'}</button></div>{options.map(option => <label key={option.value} className="rr-opt"><input type="checkbox" className="rr-cb" checked={checked(option.value)} onChange={event => toggle(option.value, event.target.checked)} /><RrLogo code={option.value} /><span className="rr-grow">{option.label}</span>{counts !== undefined && <OptionCount value={platformOptionCount(counts, option.value)} />}</label>)}</div>
+  return <PlatformFilterPop options={options} selected={selected} onChange={onChange} title={title} counts={counts} allowNone />
 }
 function OptionCount({ value }: { value: number | undefined }) {
   if (value === undefined) return <small className="rr-opt-count is-loading" aria-hidden="true" />
   return <small className={`rr-opt-count${value === 0 ? ' is-zero' : ''}`}>{value.toLocaleString('tr-TR')}</small>
 }
-export const RETURN_NO_PLATFORM = '__NONE__'
+export const RETURN_NO_PLATFORM = PLATFORM_NONE
 export function ReturnHeadCell({ label, active, extra, pop }: { label: string; active?: boolean; extra?: ReactNode; pop?: (close: () => void) => ReactNode }) {
   return <th className={active ? 'rr-has-filter' : undefined}><span className="rr-hf">{extra}{label}{pop && <RrAnchor trigger={(_open, toggle) => <button type="button" className="rr-fbtn" onClick={toggle} aria-label={`${label} filtresini aç`}><RrIcon name="filter" /></button>}>{pop}</RrAnchor>}</span></th>
 }

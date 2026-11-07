@@ -891,8 +891,11 @@ describe('ReportsPage', () => {
     const page = await open('?view=payouts')
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
     expect(requests).toContain('/reports/payouts?')
-    await act(async () => { page.querySelector<HTMLButtonElement>('.reports-period-platforms .platform-multi-select-trigger')!.click() })
-    const trendyol = [...document.querySelectorAll<HTMLLabelElement>('.platform-multi-select-option')].find(option => option.textContent === 'Trendyol')!
+    await act(async () => { page.querySelector<HTMLButtonElement>('.reports-period-platforms .pf-trigger')!.click() })
+    // Every platform starts ticked: Tümünü Kaldır clears the ticks, then Trendyol alone is picked.
+    const clearAll = [...document.querySelectorAll<HTMLButtonElement>('.pf-pop .rr-ph button')].find(button => button.textContent === 'Tümünü Kaldır')!
+    await act(async () => { clearAll.click() })
+    const trendyol = [...document.querySelectorAll<HTMLLabelElement>('.pf-pop .rr-opt')].find(option => option.textContent?.startsWith('Trendyol'))!
     await act(async () => { trendyol.querySelector('input')!.click() })
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
     expect(requests).toContain('/reports/payouts?platformCodes=TRENDYOL')

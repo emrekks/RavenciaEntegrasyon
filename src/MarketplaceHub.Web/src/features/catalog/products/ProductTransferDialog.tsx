@@ -11,6 +11,7 @@ import { formatMoney } from '../../../shared/format-money'
 import { TitleHint } from '../../../shared/components'
 import { RrIcon, RrModal } from '../../marketplace/returns-ui'
 import './product-transfer.css'
+import { PanelSelect } from '../../../shared/PanelSelect'
 
 export type ProductTransferSummary = { variantCount: number; missingCostCount: number; missingDesiCount: number }
 export type ProductTransferField = 'TITLE' | 'BARCODE' | 'MODEL_CODE' | 'PANEL_PRICES' | 'VAT' | 'COST' | 'DESI' | 'STOCK' | 'PRICES'
@@ -183,13 +184,13 @@ export function ProductTransferDialog({ onClose }: { onClose: () => void }) {
           <div className="pci-step-b">
             <strong>Ürünleri Dışa Aktarın<TitleHint label="Ürünleri Dışa Aktarın">Her varyant bir satırdır: ürün adı, varyant, stok kodu, barkod, model kodu, panel fiyatı, KDV oranı, <b>stok</b>, <b>maliyet</b>, <b>desi</b> ve her mağazanın <b>satış ve liste fiyatı</b>. Boş hücre değişmez; maliyeti, desiyi ya da model kodunu silmek için <b>-</b> yazın.</TitleHint></strong>
             <div className="pci-step-acts">
-              <label className="pci-field"><span>Varyantlar</span>
-                <select className="pci-select" value={filter} onChange={event => setFilter(event.target.value as ProductTransferExportFilter)}>
-                  <option value="all">Tüm Varyantlar{summary.data ? ` (${count(summary.data.variantCount)})` : ''}</option>
-                  <option value="cost">Maliyeti Eksik Olanlar{summary.data ? ` (${count(missingCost)})` : ''}</option>
-                  <option value="desi">Desisi Eksik Olanlar{summary.data ? ` (${count(missingDesi)})` : ''}</option>
-                </select>
-              </label>
+              <div className="pci-field"><span>Varyantlar</span>
+                <PanelSelect className="pci-select" ariaLabel="Varyantlar" width={220} value={filter} onChange={setFilter} options={[
+                  { value: 'all', label: `Tüm Varyantlar${summary.data ? ` (${count(summary.data.variantCount)})` : ''}` },
+                  { value: 'cost', label: `Maliyeti Eksik Olanlar${summary.data ? ` (${count(missingCost)})` : ''}` },
+                  { value: 'desi', label: `Desisi Eksik Olanlar${summary.data ? ` (${count(missingDesi)})` : ''}` }
+                ]} />
+              </div>
               <a className="rr-btn" href={productTransferExportHref(filter)} download><RrIcon name="export" />Excel'e Aktar</a>
             </div>
           </div>

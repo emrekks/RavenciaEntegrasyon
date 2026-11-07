@@ -1,47 +1,21 @@
-import { useId, useRef, useState } from 'react'
-import { UiIcon } from '../../shared/components'
-import { useDismissable } from '../../shared/hooks/useDismissable'
-import './invoice-sort-select.css'
+import { RrAnchor, RrIcon } from '../marketplace/returns-ui'
 
-type SortOption = { value: string; label: string; direction: 'up' | 'down' }
+type SortOption = { value: string; label: string }
 
-// Order dates come first; the arrow shows the direction (down: newest or highest first, up: oldest or lowest first).
+// One list, the direction inside each choice (as Siparişler's "En Yeni / En Eski Siparişler"): no field picked
+// twice and no separate arrow button. The values are the server's sort keys.
 export const invoiceSortOptions: SortOption[] = [
-  { value: 'ORDER_DESC', label: 'Sipariş Tarihi', direction: 'down' },
-  { value: 'ORDER_ASC', label: 'Sipariş Tarihi', direction: 'up' },
-  { value: 'DELIVERY_DESC', label: 'Kargo Tarihi', direction: 'down' },
-  { value: 'DELIVERY_ASC', label: 'Kargo Tarihi', direction: 'up' },
-  { value: 'DUE_ASC', label: 'Fatura Son Tarihi', direction: 'up' },
-  { value: 'AMOUNT_DESC', label: 'Tutar', direction: 'down' },
-  { value: 'AMOUNT_ASC', label: 'Tutar', direction: 'up' }
+  { value: 'ORDER_DESC', label: 'En Yeni Siparişler' },
+  { value: 'ORDER_ASC', label: 'En Eski Siparişler' },
+  { value: 'DELIVERY_DESC', label: 'Son Kargoya Verilenler' },
+  { value: 'DELIVERY_ASC', label: 'İlk Kargoya Verilenler' },
+  { value: 'DUE_ASC', label: 'Fatura Süresi Yaklaşanlar' },
+  { value: 'AMOUNT_DESC', label: 'En Yüksek Tutar' },
+  { value: 'AMOUNT_ASC', label: 'En Düşük Tutar' }
 ]
 
-function DirectionIcon({ direction }: { direction: 'up' | 'down' }) {
-  return <svg className="invoice-sort-arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
-    {direction === 'down' ? <path d="M12 5v14m-6-6 6 6 6-6" /> : <path d="M12 19V5m-6 6 6-6 6 6" />}
-  </svg>
-}
-
+/** The filter card's Sıralama field (inside an "rr" scope): an rr-trigger and a radio list under it. */
 export function InvoiceSortSelect({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  const [open, setOpen] = useState(false)
-  const rootRef = useRef<HTMLDivElement>(null)
-  const listId = useId()
   const current = invoiceSortOptions.find(option => option.value === value) ?? invoiceSortOptions[0]
-  useDismissable(open, [rootRef], () => setOpen(false))
-  return <div className="invoice-reference-sort" ref={rootRef}>
-    <span className="invoice-sort-caption" id={`${listId}-label`}>Sıralama</span>
-    <button type="button" className="invoice-sort-trigger" aria-haspopup="listbox" aria-expanded={open} aria-labelledby={`${listId}-label ${listId}-value`} onClick={() => setOpen(item => !item)}>
-      {/* every label is laid out invisibly so the control is as wide as the longest one */}
-      <span className="invoice-sort-sizer" aria-hidden="true">{invoiceSortOptions.map(option => <span key={option.value}>{option.label}</span>)}</span>
-      <span className="invoice-sort-current" id={`${listId}-value`}>{current.label}</span>
-      <span className="invoice-sort-icons"><DirectionIcon direction={current.direction} /><UiIcon name="chevronDown" size={16} /></span>
-    </button>
-    {open && <ul className="invoice-sort-list" role="listbox" id={listId} aria-labelledby={`${listId}-label`}>
-      {invoiceSortOptions.map(option => <li key={option.value} role="option" aria-selected={option.value === value}>
-        <button type="button" className={option.value === value ? 'is-selected' : undefined} onClick={() => { onChange(option.value); setOpen(false) }}>
-          <span>{option.label}</span><DirectionIcon direction={option.direction} />
-        </button>
-      </li>)}
-    </ul>}
-  </div>
+  return <div className="rr-fld invoice-reference-sort"><small>Sıralama</small><RrAnchor trigger={(open, toggle) => <button type="button" className={`rr-trigger${open ? ' rr-on' : ''}`} aria-haspopup="listbox" aria-expanded={open} aria-label={`Sıralama: ${current.label}`} onClick={toggle}><span>{current.label}</span><RrIcon name="chev" /></button>}>{close => <div className="rr-pop" role="listbox" aria-label="Sıralama" style={{ minWidth: 250 }}>{invoiceSortOptions.map(option => { const on = option.value === current.value; return <button key={option.value} type="button" role="option" aria-selected={on} className={`rr-opt${on ? ' rr-on' : ''}`} onClick={() => { onChange(option.value); close() }}><span className="rr-radio" aria-hidden="true" /><span className="rr-grow">{option.label}</span></button> })}</div>}</RrAnchor></div>
 }

@@ -12,6 +12,7 @@ import { marketplacePlatformLabel } from '../marketplace/marketplace-platform-su
 import { relativeAgeText } from '../marketplace/integrations/integration-helpers'
 import { jobTimeRanges } from './job-list-query'
 import { ChoiceField, FilterMenu, OpsFilterCard, SearchField, type FilterMenuGroup } from './filter-fields'
+import { PlatformFilter } from '../../shared/PlatformFilter'
 import {
   activityActor, activityChange, activityMovements, activityProductLines, activityCountsQueryString, activityFilterCount, activityKindCounts, activityKinds, activityLink,
   activityQueryString, activitySourceText, activityTypeLabel, emptyActivityFilters, toggleActivityKind,
@@ -83,7 +84,7 @@ function ActivityFilterCard({ filters, searchText, onSearch, platformGroups, kin
     <SearchField label="Ürün Ara" ariaLabel="Ürün hareketlerinde ara" placeholder="Barkod, stok kodu, model kodu veya ürün adı" value={searchText} onChange={value => onSearch(value.slice(0, 100))} onEnter={onApply} />
     <ChoiceField name="Zaman Aralığı" value={days ? '' : filters.range} label={days ? 'Seçili Tarihler' : undefined} options={jobTimeRanges.map(([value, label]) => ({ value, label }))} onChange={value => onChange({ range: value as ActivityFilters['range'], from: '', to: '' })} />
     <DateRangePicker className="rr-fld rr-date" label="Hareket Tarihi" placeholder="Başlangıç – Bitiş" from={filters.from} to={filters.to} onChange={range => onChange({ from: range.from, to: range.to })} icon={<RrIcon name="cal" />} chevron={<RrIcon name="chev" />} />
-    <FilterMenu name="Platform" allLabel="Tüm Platformlar" unit="Platform" groups={platformGroups} selected={filters.platforms} onChange={platforms => onChange({ platforms })} emptyText="Bağlı pazaryeri yok." />
+    <PlatformFilter options={platformGroups[0]?.options ?? []} selected={filters.platforms} onChange={platforms => onChange({ platforms })} />
     <FilterMenu name="Tür" allLabel="Tüm Türler" unit="Tür" groups={kindGroups} selected={filters.kinds} onChange={kinds => onChange({ kinds })} />
     <FilterMenu name="Hareket Türü" allLabel="Tüm Hareketler" unit="Hareket Türü" width={300} groups={movementGroups} selected={filters.movements} onChange={movements => onChange({ movements })} extra={{ label: 'İlk Fiyatları Göster', checked: filters.initialPrices, onChange: initialPrices => onChange({ initialPrices }) }} />
   </OpsFilterCard>

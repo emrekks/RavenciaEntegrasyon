@@ -9,6 +9,7 @@ import { CommissionTariffsPanel, commissionTariffPlatforms } from '../marketplac
 import { PromotionOffersPanel, promotionTitles, type PromotionKind } from '../marketplace/integrations/PromotionOffersPanel'
 import { bySalesChannel, platformName } from '../reports/report-format'
 import '../reports/reports.css'
+import { PanelSelect } from '../../shared/PanelSelect'
 
 type Connection = { id: string; platformCode: string; displayName: string; status: string; environment: string }
 
@@ -64,11 +65,9 @@ export function PromotionsPage() {
             <PlatformSquareMark code={code} name={platformName(code)} />{platformName(code)}
           </button>)}
         </div>
-        {sameStores.length > 1 && <label className="reports-field"><span>Mağaza</span>
-          <select value={store.id} onChange={event => go({ store: event.target.value })}>
-            {sameStores.map(item => <option key={item.id} value={item.id}>{item.displayName}</option>)}
-          </select>
-        </label>}
+        {sameStores.length > 1 && <div className="reports-field"><span>Mağaza</span>
+          <PanelSelect ariaLabel="Mağaza" value={store.id} options={sameStores.map(item => ({ value: item.id, label: item.displayName }))} onChange={value => go({ store: value })} />
+        </div>}
       </div>
       <div ref={tabsRef} className="reports-segmented reports-promotion-tabs" role="group" aria-label="Promosyon sayfaları">
         {sections.map(([key, label]) => <button key={key} type="button" aria-pressed={key === section} onClick={() => go({ tab: key })}>{label}</button>)}

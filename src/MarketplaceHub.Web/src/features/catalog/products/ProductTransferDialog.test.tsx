@@ -94,14 +94,13 @@ describe('ProductTransferDialog', () => {
     await renderDialog()
 
     expect(document.body.querySelector('.pci-hint')).toBeNull()
-    expect(document.body.textContent).toContain('Maliyeti Eksik Olanlar (3.666)')
-    expect(document.body.textContent).toContain('Desisi Eksik Olanlar (3.646)')
     expect(exportLink().getAttribute('href')).toBe('/api/v1/products/transfer/export.xlsx')
-    const select = document.body.querySelector<HTMLSelectElement>('.pci-select')!
-    await act(async () => {
-      select.value = 'desi'
-      select.dispatchEvent(new Event('change', { bubbles: true }))
-    })
+    // The choice is the panel menu (shared/PanelSelect): its rows carry the counts.
+    await act(async () => { document.body.querySelector<HTMLButtonElement>('.pci-select .pm-trigger')!.click() })
+    const rows = [...document.body.querySelectorAll<HTMLButtonElement>('.pm-pop [role="option"]')]
+    expect(rows.map(row => row.textContent)).toContain('Maliyeti Eksik Olanlar (3.666)')
+    expect(rows.map(row => row.textContent)).toContain('Desisi Eksik Olanlar (3.646)')
+    await act(async () => { rows.find(row => row.textContent?.startsWith('Desisi'))!.click() })
     expect(exportLink().getAttribute('href')).toBe('/api/v1/products/transfer/export.xlsx?missing=desi')
   })
 

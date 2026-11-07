@@ -3,6 +3,7 @@
 @import './styles/motion.css' layer(base);
 @import './styles/design-system.css';
 @import './styles/notifications.css';
+@import './styles/menus.css';
 
 /*
  * Cascade layers, lowest first (the bundler hoists this order). `pages` and `responsive` are reserved for page and

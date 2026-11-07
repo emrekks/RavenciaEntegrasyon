@@ -10,6 +10,7 @@ import { onCost, profitText, ProfitBadge, type UnitProfitCosts } from './unit-pr
 import { UiIcon } from '../../../shared/components'
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import '../commission-tariffs.css'
+import { PanelSelect } from '../../../shared/PanelSelect'
 // One formatter per format, made once: toLocaleString with options builds a new Intl.NumberFormat on every call, and
 // the tariff table formats thousands of amounts per render.
 const twoDecimals = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -241,15 +242,9 @@ function OfferFilters({ value, rows, columns, onApply }: { value: OfferFilter; r
     <FilterField label="Barkod"><input type="search" value={draft.barcode} onChange={set('barcode')} /></FilterField>
     <FilterField label="Model Kodu"><input type="search" value={draft.model} onChange={set('model')} /></FilterField>
     <FilterRange label="Stok" inputMode="numeric" min={draft.minStock} max={draft.maxStock} onMin={set('minStock')} onMax={set('maxStock')} minLabel="En az stok" maxLabel="En çok stok" />
-    <FilterField label="Kategori"><select value={draft.category} onChange={set('category')} disabled={!categories.length}>
-      <option value="">Tümü</option>{categories.map(item => <option key={item} value={item}>{item}</option>)}
-    </select></FilterField>
-    <FilterField label="Marka"><select value={draft.brand} onChange={set('brand')} disabled={!brands.length}>
-      <option value="">Tümü</option>{brands.map(item => <option key={item} value={item}>{item}</option>)}
-    </select></FilterField>
-    <FilterField label="Kolon Seçimi" className="commission-filter-band"><select value={draft.column} onChange={set('column')}>
-      <option value="">Seçilmedi</option>{columns.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-    </select></FilterField>
+    <FilterField label="Kategori"><PanelSelect ariaLabel="Kategori" value={draft.category} disabled={!categories.length} options={[{ value: '', label: 'Tümü' }, ...categories.map(item => ({ value: item, label: item }))]} onChange={value => set('category')({ target: { value } })} /></FilterField>
+    <FilterField label="Marka"><PanelSelect ariaLabel="Marka" value={draft.brand} disabled={!brands.length} options={[{ value: '', label: 'Tümü' }, ...brands.map(item => ({ value: item, label: item }))]} onChange={value => set('brand')({ target: { value } })} /></FilterField>
+    <FilterField label="Kolon Seçimi" className="commission-filter-band"><PanelSelect ariaLabel="Kolon Seçimi" value={draft.column} options={[{ value: '', label: 'Seçilmedi' }, ...columns.map(([key, label]) => ({ value: key, label }))]} onChange={value => set('column')({ target: { value } })} /></FilterField>
     {draft.column && <div className="commission-filter-profit">
       <FilterRange label="Kâr Tutarı (₺)" inputMode="decimal" min={draft.minProfit} max={draft.maxProfit} onMin={set('minProfit')} onMax={set('maxProfit')} minLabel="En az kâr tutarı (₺)" maxLabel="En çok kâr tutarı (₺)" />
       <FilterRange label="Kâr Oranı (%)" inputMode="decimal" min={draft.minShare} max={draft.maxShare} onMin={set('minShare')} onMax={set('maxShare')} minLabel="En az kâr oranı (%)" maxLabel="En çok kâr oranı (%)" />

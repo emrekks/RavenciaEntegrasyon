@@ -380,7 +380,7 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     expect(apiState.pageRequests.at(-1)).toContain('tab=ALL')
   })
 
-  it('asks for the search once typing pauses, not on every key (W-F10)', async () => {
+  it('asks for the search once on Filtrele, not on every key (W-F10, filter card like Siparişler)', async () => {
     const input = container.querySelector<HTMLInputElement>('input[aria-label="Fatura Ara"]')!
     const before = apiState.pageRequests.length
     for (const value of ['D', 'DS', 'DSM']) {
@@ -389,9 +389,11 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
         input.dispatchEvent(new Event('input', { bubbles: true }))
       })
     }
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 300)) })
     await settle()
     expect(apiState.pageRequests.slice(before).some(path => path.includes('search='))).toBe(false)
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 300)) })
+    const apply = [...container.querySelectorAll<HTMLButtonElement>('.invoice-filter-scope .rr-fbtns button')].find(button => button.textContent === 'Filtrele')!
+    act(() => apply.click())
     await settle()
     const searched = apiState.pageRequests.slice(before).filter(path => path.includes('search='))
     expect(searched).toHaveLength(1)

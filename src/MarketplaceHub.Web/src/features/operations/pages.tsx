@@ -4,7 +4,8 @@ import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClie
 import { Link, useSearchParams } from 'react-router'
 import { hubApi, hubPoll, loadAllPages, type Me } from '../../shared/api'
 import { RrLogo, RrPageSize } from '../marketplace/returns-ui'
-import { ChoiceField, FilterMenu, OpsFilterCard, SearchField, type FilterMenuGroup } from './filter-fields'
+import { ChoiceField, OpsFilterCard, SearchField, type FilterMenuGroup } from './filter-fields'
+import { PlatformFilter } from '../../shared/PlatformFilter'
 import { marketplacePlatformLabel } from '../marketplace/marketplace-platform-support'
 import { Button, Pagination, Tabs, TitleHint, UiIcon, type UiIconName, DialogSurface } from '../../shared/components'
 import { Busy } from '../../shared/components/AsyncState'
@@ -605,7 +606,7 @@ export function JobsPage({ me }: { me: Me }) {
       <OpsFilterCard label="İşlem filtreleri" active={cardFilterCount} clearCount={cardFilterCount + (search.trim() ? 1 : 0)} onClear={clearFilters} onApply={refreshJobs}>
         <SearchField label="İşlem Ara" ariaLabel="Correlation ID ile işlem ara" placeholder="Correlation ID, iş numarası veya hata kodu" value={search} onChange={setSearch} />
         <ChoiceField name="Zaman Aralığı" value={timeRange} options={jobTimeRanges.map(([value, label]) => ({ value, label }))} onChange={value => setTimeRange(value as JobTimeRange)} />
-        <FilterMenu name="Platform" allLabel="Tüm Platformlar" unit="Platform" groups={platformGroups} selected={platforms} onChange={setPlatforms} emptyText="Bağlı pazaryeri yok." />
+        <PlatformFilter options={platformGroups[0]?.options ?? []} selected={platforms} onChange={setPlatforms} />
         <ChoiceField name="Yön" allValue="" value={direction} options={[{ value: '', label: 'Tüm Yönler' }, ...jobDirections.map(item => ({ value: item, label: item }))]} onChange={value => setDirection(value as '' | JobDirection)} />
         <ChoiceField name="Durum" allValue="" value={status} options={statuses} onChange={value => setStatus(value as '' | JobStatus)} />
       </OpsFilterCard>

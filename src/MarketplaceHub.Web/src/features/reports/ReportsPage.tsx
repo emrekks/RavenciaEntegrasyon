@@ -5,7 +5,8 @@ import { hubApi } from '../../shared/api'
 import { Busy, CardBackgroundIcon, ErrorBox, Modal, UiIcon, type CardIconName, type UiIconName } from '../../shared/components'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { formatIstanbul } from '../../shared/format-date'
-import { PlatformMultiSelect } from '../../shared/platform-multi-select'
+import { PlatformFilter } from '../../shared/PlatformFilter'
+import { PanelSelect } from '../../shared/PanelSelect'
 import { ViewTabsWithMore } from '../../shared/view-tabs'
 import { TabSlidePanel } from '../../shared/tab-slide'
 import {
@@ -138,7 +139,7 @@ export function ReportsPage() {
         <div className={`reports-period-custom${activePreset ? '' : ' is-active'}`}><DateRangePicker from={draft?.from ?? range.from} to={draft ? draft.to : range.to} label="Özel Dönem"
           onChange={next => { if (next.from && next.to) { setDraft(null); setRange({ from: next.from, to: next.to }) } else setDraft(next) }} /></div>
         {/* The custom period and the platforms at the row's right end; the charts group by day, week or month on their own. */}
-        <div className="reports-period-platforms"><PlatformMultiSelect label="Platform" options={platformOptions} selectedCodes={platforms} onChange={next => setPlatforms(next.length ? next : null)} /></div>
+        <div className="reports-period-platforms"><PlatformFilter label="Platform" hideLabel options={platformOptions} selected={platforms ?? []} onChange={next => setPlatforms(next.length ? next : null)} /></div>
       </div></div>
       {/* Always in place (the card's top right, level with Dönem), so showing it moves nothing; it fades in while a
           filter change loads. */}
@@ -380,7 +381,7 @@ function PeriodCard({ data }: { data: ReportSales }) {
   // Money in whole liras on the facts, as in the strip; a count as it is.
   const short = money ? formatTlWhole : format
   return <Card title={names.title} className="reports-card-period"
-    actions={<select aria-label="Grafik ölçüsü" value={measure} onChange={event => setMeasure(event.target.value as Measure)}>{(Object.keys(measures) as Measure[]).map(key => <option key={key} value={key}>{measures[key]}</option>)}</select>}>
+    actions={<PanelSelect className="reports-measure-select" ariaLabel="Grafik ölçüsü" value={measure} options={(Object.keys(measures) as Measure[]).map(key => ({ value: key, label: measures[key] }))} onChange={setMeasure} />}>
     {shown => <>
       {noAmount ? <p className="reports-empty">Bu dönemde tutarı olan sipariş yok.</p>
         : <Columns points={points} format={format} axisFormat={money ? formatTlShort : formatNumber} shown={shown} label={`${measures[measure]} dönem içinde`} />}

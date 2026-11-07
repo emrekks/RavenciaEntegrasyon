@@ -253,6 +253,8 @@
 .app-shell.stitch-shell main .reports-page .reports-card h2 { margin: 0; color: var(--rv-color-ink); font-size: 14.5px; font-weight: 600; }
 .app-shell.stitch-shell main .reports-page .reports-card-actions { display: flex; align-items: center; gap: 8px; }
 .app-shell.stitch-shell main .reports-page .reports-card-actions select { height: 32px; min-height: 32px; border-radius: 7px; }
+/* The chart's measure is the panel menu (shared/PanelSelect.tsx), as low as the select it replaced: the card head keeps its height. */
+html body .app-shell.stitch-shell main .reports-page .reports-card-actions .reports-measure-select .pm-trigger { height: 32px; min-width: 132px; font-size: 13px; }
 
 /* Columns: soft grey, the best one in the accent colour, the hovered one half-tinted; a light dashed grid. */
 .app-shell.stitch-shell main .reports-page .reports-columns { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; height: 250px; }
@@ -486,11 +488,10 @@
 .app-shell.stitch-shell main .reports-page .reports-filters > .reports-period-field { grid-column: 1 / -1; }
 /* The period buttons on the left; the custom period and the platforms at the right end of the same row. */
 .app-shell.stitch-shell main .reports-page .reports-period-row > .reports-period-custom { margin-left: auto; }
-.app-shell.stitch-shell main .reports-page .reports-period-platforms .platform-multi-select-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
-.app-shell.stitch-shell main .reports-page .reports-period-platforms :is(.platform-multi-select-field, .platform-multi-select) { gap: 0; }
-.app-shell.stitch-shell main .reports-page .reports-filters .platform-multi-select-field { display: grid; gap: 6px; }
-.app-shell.stitch-shell main .reports-page .reports-filters .platform-multi-select-label { color: var(--rv-color-muted); font-size: 13px; font-weight: 400; line-height: 20px; }
-.app-shell.stitch-shell main .reports-page .reports-filters :is(.platform-multi-select-trigger, .date-range-picker-trigger, select) { box-sizing: border-box; height: 40px; min-height: 40px; }
+/* The platform filter is the panel's one (shared/PlatformFilter.tsx); its label is read only by assistive technology. */
+.app-shell.stitch-shell main .reports-page .reports-period-platforms .pf-field .rr-fld { gap: 0; }
+.app-shell.stitch-shell main .reports-page .reports-period-platforms .pf-trigger { min-width: 180px; }
+html body .app-shell.stitch-shell main .reports-page .reports-filters :is(.pf-trigger, .date-range-picker-trigger, select) { box-sizing: border-box; height: 36px; min-height: 36px; }
 .app-shell.stitch-shell main .reports-page .reports-filters select { min-width: 140px; }
 /* The refresh mark: over the top right of the filters, level with the Dönem label, out of the grid so it moves nothing;
    it fades in and its loader turns while a filter change loads. */
@@ -1104,7 +1105,7 @@ main .rr.rr.reports-payout-filters .rr-trigger:disabled { opacity: .5; cursor: n
   .app-shell.stitch-shell main .reports-page .reports-period-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .app-shell.stitch-shell main .reports-page .reports-period-row > .reports-segmented { grid-column: 1 / -1; min-width: 0; }
   .app-shell.stitch-shell main .reports-page .reports-period-row > .reports-period-custom { margin-left: 0; min-width: 0; }
-  .app-shell.stitch-shell main .reports-page .reports-period-row > :is(.reports-period-custom, .reports-period-platforms) :is(.date-range-picker, .platform-multi-select-field, .platform-multi-select, .date-range-picker-trigger, .platform-multi-select-trigger) { width: 100%; min-width: 0; }
+  .app-shell.stitch-shell main .reports-page .reports-period-row > :is(.reports-period-custom, .reports-period-platforms) :is(.date-range-picker, .pf-field, .date-range-picker-trigger, .pf-trigger) { width: 100%; min-width: 0; }
   .app-shell.stitch-shell main .reports-page .reports-period-row .date-range-picker-trigger { gap: 6px; padding: 0 10px; font-size: 12.5px; }
   .app-shell.stitch-shell main .reports-page .reports-kpis .reports-kpi-note { overflow: hidden; font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
 }

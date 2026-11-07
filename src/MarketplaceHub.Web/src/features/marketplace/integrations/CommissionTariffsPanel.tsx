@@ -12,6 +12,7 @@ import { kurus, onCost, ProfitBadge, unitProfit, type UnitProfitCosts } from './
 import { useDismissable } from '../../../shared/hooks/useDismissable'
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import '../commission-tariffs.css'
+import { PanelSelect } from '../../../shared/PanelSelect'
 // One formatter per format, made once: toLocaleString with options builds a new Intl.NumberFormat on every call, and
 // the tariff table formats thousands of amounts per render.
 const twoDecimals = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -553,15 +554,9 @@ function TariffFilters({ value, facets, onApply }: { value: TariffFilter; facets
     <FilterField label="Barkod"><input type="search" value={draft.barcode} onChange={set('barcode')} /></FilterField>
     <FilterField label="Model Kodu"><input type="search" value={draft.model} onChange={set('model')} /></FilterField>
     <FilterRange label="Stok" inputMode="numeric" min={draft.minStock} max={draft.maxStock} onMin={set('minStock')} onMax={set('maxStock')} minLabel="En az stok" maxLabel="En çok stok" />
-    <FilterField label="Kategori"><select value={draft.category} onChange={set('category')} disabled={!facets?.categories.length}>
-      <option value="">Tümü</option>{facets?.categories.map(item => <option key={item} value={item}>{item}</option>)}
-    </select></FilterField>
-    <FilterField label="Marka"><select value={draft.brand} onChange={set('brand')} disabled={!facets?.brands.length}>
-      <option value="">Tümü</option>{facets?.brands.map(item => <option key={item} value={item}>{item}</option>)}
-    </select></FilterField>
-    <FilterField label="Kolon Seçimi" className="commission-filter-band"><select value={draft.profitTier ?? ''} onChange={set('profitTier')}>
-      <option value="">Seçilmedi</option>{tiers.map(tier => <option key={tier} value={String(tier)}>{tier}. Fiyat Aralığı</option>)}
-    </select></FilterField>
+    <FilterField label="Kategori"><PanelSelect ariaLabel="Kategori" value={draft.category} disabled={!facets?.categories.length} options={[{ value: '', label: 'Tümü' }, ...(facets?.categories ?? []).map(item => ({ value: item, label: item }))]} onChange={value => set('category')({ target: { value } })} /></FilterField>
+    <FilterField label="Marka"><PanelSelect ariaLabel="Marka" value={draft.brand} disabled={!facets?.brands.length} options={[{ value: '', label: 'Tümü' }, ...(facets?.brands ?? []).map(item => ({ value: item, label: item }))]} onChange={value => set('brand')({ target: { value } })} /></FilterField>
+    <FilterField label="Kolon Seçimi" className="commission-filter-band"><PanelSelect ariaLabel="Kolon Seçimi" value={String(draft.profitTier ?? '')} options={[{ value: '', label: 'Seçilmedi' }, ...tiers.map(tier => ({ value: String(tier), label: `${tier}. Fiyat Aralığı` }))]} onChange={value => set('profitTier')({ target: { value } })} /></FilterField>
     {draft.profitTier && <div className="commission-filter-profit">
       <FilterRange label="Kâr Tutarı (₺)" inputMode="decimal" min={draft.minProfit ?? ''} max={draft.maxProfit ?? ''} onMin={set('minProfit')} onMax={set('maxProfit')} minLabel="En az kâr tutarı (₺)" maxLabel="En çok kâr tutarı (₺)" />
       <FilterRange label="Kâr Oranı (%)" inputMode="decimal" min={draft.minShare ?? ''} max={draft.maxShare ?? ''} onMin={set('minShare')} onMax={set('maxShare')} minLabel="En az kâr oranı (%)" maxLabel="En çok kâr oranı (%)" />
@@ -1023,8 +1018,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
     {/* The pick for every product: a band, or the best band by money or by share; with a condition on what it leaves. */}
     <div className="commission-plan-bar">
       <span className="commission-plan-count" role="status">{summary}{savingNote}</span>
-      <label className="commission-zoom"><span>Tablo Boyutu</span><select aria-label="Tablo boyutu" value={tableZoom} onChange={event => { const next = Number(event.target.value); setTableZoom(next); writeTableZoom(next) }}>
-        {tableZoomSteps.map(step => <option key={step} value={step}>%{step}</option>)}</select></label>
+      <div className="commission-zoom"><span>Tablo Boyutu</span><PanelSelect ariaLabel="Tablo boyutu" width={96} value={String(tableZoom)} options={tableZoomSteps.map(step => ({ value: String(step), label: `%${step}` }))} onChange={value => { const next = Number(value); setTableZoom(next); writeTableZoom(next) }} /></div>
       <BulkPicker bulk={bulk} onApply={applyBulk} onClearColumn={clearColumn} onClearAll={clearAll} />
       {downloadButton}
     </div>

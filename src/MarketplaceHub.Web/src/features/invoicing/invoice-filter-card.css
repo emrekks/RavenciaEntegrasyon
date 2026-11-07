@@ -1,0 +1,11 @@
+/* Faturalar's filter card (design step 2): the shared rr- card of Siparişler (returns-sade.css: rr-fcard, rr-filters,
+   rr-in, rr-trigger, rr-pop, the phone sheet), in an "rr" scope inside the page. Only the labels and the head's
+   Sayfa Başına are set here. */
+.app-shell.stitch-shell main .reference-invoices-page .invoice-filter-scope { min-width: 0; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-filter-scope :is(.rr-fld > small, .date-range-picker-label) { color: var(--rv-color-muted); font-size: 13px; font-weight: 500; line-height: 18px; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-filter-scope .rr-fld > small.pf-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-filter-scope .rr-filters > .pf-field { min-width: 0; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-workspace > header > .invoice-page-size { display: inline-flex; flex: 0 0 auto; }
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-workspace > header > .invoice-page-size { display: none; }
+}

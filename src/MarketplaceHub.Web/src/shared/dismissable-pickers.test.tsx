@@ -1,7 +1,8 @@
 import { act } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from '../test/render'
-import { PlatformMultiSelect } from './platform-multi-select'
+import { PlatformFilter } from './PlatformFilter'
+import { PanelSelect } from './PanelSelect'
 import { DateRangePicker } from './DateRangePicker'
 import { ViewTabsWithMore } from './view-tabs'
 import { closeAllDismissables } from './hooks/useDismissable'
@@ -21,9 +22,10 @@ const q = (selector: string) => document.querySelector(selector)
 
 function Page() {
   return <>
-    <PlatformMultiSelect label="Platformlar" options={[{ value: 'TRENDYOL', label: 'Trendyol' }]} selectedCodes={null} onChange={() => undefined} />
+    <PlatformFilter label="Platformlar" options={[{ value: 'TRENDYOL', label: 'Trendyol' }]} selected={[]} onChange={() => undefined} />
+    <PanelSelect ariaLabel="Ölçü" value="a" options={[{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }]} onChange={() => undefined} />
     <DateRangePicker from="" to="" onChange={() => undefined} />
-    <InvoiceSortSelect value="ORDER_DESC" onChange={() => undefined} />
+    <span className="rr"><InvoiceSortSelect value="ORDER_DESC" onChange={() => undefined} /></span>
     <ViewTabsWithMore ariaLabel="Görünüm" items={[{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }, { value: 'c', label: 'C' }]} more={['c']} value="a" onChange={() => undefined} />
     <RrAnchor trigger={(open, toggle) => <button type="button" className="anchor-trigger" aria-expanded={open} onClick={toggle}>Menü</button>}>{close => <div className="rr-menu anchor-menu"><button type="button" onClick={close}>Seç</button></div>}</RrAnchor>
     <div className="stopper" role="presentation" onPointerDown={event => event.stopPropagation()} onMouseDown={event => event.stopPropagation()}>modal backdrop</div>
@@ -31,9 +33,10 @@ function Page() {
 }
 
 const pickers = [
-  { name: 'platform multi-select', trigger: '.platform-multi-select-trigger', panel: '.platform-multi-select-menu' },
+  { name: 'platform filter', trigger: '.pf-trigger', panel: '.pf-pop' },
+  { name: 'panel select', trigger: '.pm-trigger', panel: '.pm-pop' },
   { name: 'date range picker', trigger: '.date-range-picker-trigger', panel: '.date-range-picker-popover' },
-  { name: 'invoice sort', trigger: '.invoice-sort-trigger', panel: '.invoice-sort-list' },
+  { name: 'invoice sort', trigger: '.invoice-reference-sort .rr-trigger', panel: '.invoice-reference-sort .rr-pop' },
   { name: 'view tabs Diğer menu', trigger: '.rv-view-tabs-more', panel: '[role="menu"]' },
   { name: 'row action menu (RrAnchor)', trigger: '.anchor-trigger', panel: '.anchor-menu' },
 ]

@@ -87,10 +87,6 @@ function button(label: string) {
   return found
 }
 
-function select(element: HTMLSelectElement, value: string) {
-  act(() => { element.value = value; element.dispatchEvent(new Event('change', { bubbles: true })) })
-}
-
 function input(element: HTMLInputElement | HTMLTextAreaElement, value: string) {
   act(() => {
     const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), 'value')?.set
@@ -218,10 +214,12 @@ describe('QuestionsPage workspace flows', () => {
     }
 
     act(() => button('Filtre').click())
-    const selects = container.querySelectorAll<HTMLSelectElement>('.rv-questions-filter-grid select')
-    expect(Array.from(selects[0].options).map(option => option.textContent)).toContain('Trendyol Mağazası')
-    expect(Array.from(selects[0].options).map(option => option.textContent)).toContain('Hepsiburada Mağazası')
-    select(selects[0], 'ty-store')
+    // Mağaza is the panel menu (shared/PanelSelect): open it and pick a row.
+    act(() => container.querySelector<HTMLButtonElement>('#questions-store-filter')!.click())
+    const storeRows = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.pm-pop [role="option"]'))
+    expect(storeRows.map(option => option.textContent)).toContain('Trendyol Mağazası')
+    expect(storeRows.map(option => option.textContent)).toContain('Hepsiburada Mağazası')
+    act(() => storeRows.find(option => option.textContent === 'Trendyol Mağazası')!.click())
     act(() => button('Tarih Aralığı Seçin').click())
     const calendarDays = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.date-range-picker-grid button'))
     act(() => calendarDays.find(day => day.getAttribute('aria-label') === '1 Ekim 2026')!.click())
@@ -244,9 +242,11 @@ describe('QuestionsPage workspace flows', () => {
     params = lastQuestionRequest()
     expect(params.get('kind')).toBe('ORDER')
     expect(params.get('platform')).toBeNull()
-    const orderStore = container.querySelectorAll<HTMLSelectElement>('.rv-questions-filter-grid select')[0]
-    expect(Array.from(orderStore.options).map(option => option.textContent)).toContain('Hepsiburada Mağazası')
-    expect(Array.from(orderStore.options).map(option => option.textContent)).not.toContain('Trendyol Mağazası')
+    act(() => container.querySelector<HTMLButtonElement>('#questions-store-filter')!.click())
+    const orderStore = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.pm-pop [role="option"]')).map(option => option.textContent)
+    expect(orderStore).toContain('Hepsiburada Mağazası')
+    expect(orderStore).not.toContain('Trendyol Mağazası')
+    act(() => container.querySelector<HTMLButtonElement>('#questions-store-filter')!.click())
     act(() => button('Uygula').click())
     expect(container.querySelector('[role="dialog"]')).toBeNull()
     await settle()

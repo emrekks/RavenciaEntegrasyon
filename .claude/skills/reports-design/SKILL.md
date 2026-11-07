@@ -21,7 +21,7 @@ asked for, in their words where it matters.
    side by side are the same height ("biri uzun biri kısa olmasın"): grids use `align-items: stretch`, a table wrapped
    for a grid column is itself `display: grid`, an empty panel centres its "Gösterilecek değer yok.".
 5. **Line things up.** Steps or columns that sit side by side share rows (CSS subgrid), so titles, figures and notes
-   line up across them. Filter controls share one label style and one height (40px).
+   line up across them. Filter controls share one label style and one height (36px, the panel's control height since design step 2; the platform filter is shared/PlatformFilter.tsx).
 6. **Details in a window.** Extra detail opens in `Modal`, never by expanding in place: nothing under it may move
    (layout shift 0).
 7. **Figures agree.** Every total on a card is derived from the one before it on the same card (sales − deductions =
