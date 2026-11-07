@@ -150,7 +150,7 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-f.rr-sheet-f > .rr-btn.rr-primary { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
 }
 /* ---------- phones and tablets: each order is a compact card (mobil-tum-sayfalar.html) ----------
-   identity · time strip · buyer and carrier · products · invoice and total · two actions. Tablets lay the cards two
+   identity · time strip · buyer and carrier · products · invoice and total · two actions. Tablets lay the cards one
    to a row (styles/tablet-ops.css). */
 @media (max-width: 1024px) {
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-panel { background: none; border: 0; }
