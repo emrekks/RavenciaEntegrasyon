@@ -7,7 +7,7 @@ import { createPortal } from 'react-dom'
 import { Link, useSearchParams } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, hubPoll, loadAllPages } from '../../../shared/api'
-import { Busy, StickyActionBar, cargoCarrier, cargoCarriers, cargoLabel, cargoMatches, ErrorBox, UiIcon, DialogSurface } from '../../../shared/components'
+import { Busy, StickyActionBar, cargoCarrier, cargoCarriers, cargoFilterOptions, cargoLabel, cargoMatches, ErrorBox, UiIcon, DialogSurface } from '../../../shared/components'
 import { newIdempotencyKey, sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../../shared/idempotency'
 import { safeExternalUrl } from '../../../shared/safe-url'
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
@@ -47,6 +47,7 @@ import { activeDayCard, cancellationStores, dailyCancellationCounts, dayCardClos
 import { isPartlyCancelled, lineCancel, partialQuantityText, remainingText, rowLines } from './order-line-cancel'
 import { Connection, IntegrationFeedback, Order, OrderAddress, OrderLine, Page, ProductTitleLink, ReturnColumnPop, ReturnFactLines, ReturnHeadCell, ReturnInvoiceRing, ReturnPlatformPop, Shipment, displayOrderNumber, orderDisplayShipment, productLineQuantity, returnDateText, returnLineFacts, returnPlatformName } from '../shared'
 import { insideSelector, useDismissable } from '../../../shared/hooks/useDismissable'
+import { personName } from '../../../shared/person-name'
 
 const orderStatusTabOrder = orderStatusTabs.map(([value]) => value)
 const invoiceCreationDisabledHelp = 'Fatura oluşturmak için Entegrasyonlar > bu bağlantı ayarlarından “Fatura oluşturma” seçeneğini açın.'
@@ -279,10 +280,10 @@ async function shopifyInvoicePackageId(orderId: string) {
   return packageId
 }
 function customerDisplayName(item: Order) {
-  if (item.customerName && item.customerName !== '—' && item.customerName.trim() !== '') return item.customerName
+  if (item.customerName && item.customerName !== '—' && item.customerName.trim() !== '') return personName(item.customerName)
   // The server already resolves the name from the customer, invoice and delivery snapshots.
   const shipName = item.shipmentAddress?.fullName
-  return shipName && meaningfulText(shipName) ? shipName.trim() : '—'
+  return shipName && meaningfulText(shipName) ? personName(shipName.trim()) : '—'
 }
 function patchOrderShipment(order: Order, updatedShipment: Shipment): Order {
   const packages = (order.packages?.map(packageItem => packageItem.id === updatedShipment.id ? { ...packageItem, ...updatedShipment } : packageItem) ?? [updatedShipment]).sort((left, right) => new Date(right.statusOccurredAt).getTime() - new Date(left.statusOccurredAt).getTime())
@@ -976,7 +977,7 @@ export function OrdersPage() {
     }
   }
 
-  const cargoOptions = [{ value: 'ALL', label: 'Tüm Kargolar' }, ...cargos.map(value => ({ value, label: cargoLabel(value) }))]
+  const cargoOptions = [{ value: 'ALL', label: 'Tüm Kargolar' }, ...cargoFilterOptions(cargos)]
   const invoiceOptions = [{ value: 'ALL', label: 'Tüm Fatura Durumları' }, ...invoiceStatuses.map(([value, label]) => ({ value, label }))]
   const invoiceTypeOptions = [{ value: 'ALL', label: 'Tüm Türler' }, { value: 'BIREYSEL', label: 'Bireysel' }, { value: 'KURUMSAL', label: 'Kurumsal' }, { value: 'KURUMSAL_VERGI_NO_YOK', label: 'Kurumsal · Vergi No Yok' }]
   const invoiceRegionOptions = [{ value: 'ALL', label: 'Tüm Bölgeler' }, { value: 'TR', label: 'Türkiye' }, { value: 'MICRO_EXPORT', label: 'Mikro İhracat' }]

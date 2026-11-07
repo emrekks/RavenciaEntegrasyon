@@ -1,0 +1,54 @@
+/*
+ * Audit of Siparişler, İadeler and Faturalar (8 Nov 2026), against the unified design standard.
+ * - Row and card İşlemler menus (.rr-menu) were 40px rows at 14px with 8px 12px padding: action rows are 36px, 13px/500,
+ *   padded 6px 10px (styles/menus.css). The row menu of a card never wraps a label ("Başka Kargo Firması İle Gönder").
+ */
+:root:root :is(main .rr.rr-orders, main .rr.rr-returns, .rr-layer.rr-layer) .rr-menu > button {
+  min-height: 36px;
+  padding: 6px 10px;
+  gap: 10px;
+  font-size: 13px;
+}
+:root:root :is(main .rr.rr-orders, main .rr.rr-returns, .rr-layer.rr-layer) .rr-menu > hr { margin: 4px 10px; }
+:root:root :is(main .rr.rr-orders, main .rr.rr-returns) .rr-dropdown > .rr-menu > button { white-space: nowrap; }
+/* The facts strip of a return (Durum, Sebep, Kargo, amounts, dates): the last row's cells share the whole row instead of
+   leaving empty cells beside them (seven facts in five columns left three dead cells). */
+:root:root :is(main .rr.rr-returns, .rr-layer.rr-layer) .rr-facts { display: flex; flex-wrap: wrap; }
+:root:root :is(main .rr.rr-returns, .rr-layer.rr-layer) .rr-facts > div { flex: 1 1 150px; }
+/* The order summary of the return approval window: the return code (a 36-character id) keeps one line; the other facts
+   take the room they need and the last one wraps to its own row instead of the id breaking in the middle. */
+:root:root :is(main .rr.rr-returns, .rr-layer.rr-layer) .rr-osum dl { display: flex; flex-wrap: wrap; }
+:root:root :is(main .rr.rr-returns, .rr-layer.rr-layer) .rr-osum dl > div { flex: 1 1 auto; min-width: 140px; max-width: 100%; }
+/* Faturalar table head: the column funnels sit in the cell's right corner. Their wrapper spans (rr-layer, rr-anchor) were
+   position: relative with no width, so each absolutely placed funnel landed on top of its own label ("Karg▽o"). */
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head :is(.rr-layer, .rr-anchor) { position: static; }
+/* Faturalar row İşlemler menu: rows were 40px at 14px, padding 8px; action rows are 36px, 13px/500, padding 6px. */
+:root:root body .invoice-reference-actions-popover { padding: 6px !important; }
+:root:root body .invoice-reference-actions-popover > button { gap: 10px; min-height: 36px; padding: 6px 10px; font-size: 13px; white-space: nowrap; }
+:root:root body .invoice-reference-actions-popover > .invoice-reference-actions-separator { margin: 4px 10px; }
+/* Order detail sheet on a wide screen: its label column was 120px (the phone width) and wrapped "Faturalanacak Tutar". */
+@media (min-width: 761px) {
+  :root:root :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-scard .rr-kv { grid-template-columns: 200px minmax(0, 1fr); }
+}
+/* Alıcı column: buyer names ("Meryem Betül Türkan") broke into three lines in 81px (Siparişler) and 87px (İadeler).
+   Siparişler: 112px at 1025-1365 (taken from the order and carrier columns, the table still fits 1280px), 140px from 1366
+   (the product column, which is auto, keeps the rest). İadeler: 140px; its table already scrolls sideways below 1500px. */
+@media (min-width: 1025px) and (max-width: 1365px) {
+  :root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-buyer { width: 112px; }
+  :root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-order { width: 250px; }
+  :root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-cargo { width: 133px; }
+}
+@media (min-width: 1366px) {
+  :root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-buyer { width: 140px; }
+}
+@media (min-width: 1025px) {
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-buyer { width: 140px; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) { min-width: 1472px; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl.rr-has-select:has(col.rr-c-buyer) { min-width: 1498px; }
+}
+/* İadeler, tabs with a sort field (Onaylanan): search, platform, date, sort and the two buttons share one row from
+   1100px; they fell to a second row at 1280px. */
+@media (min-width: 1100px) {
+  :root:root:root body main .rr.rr-returns .rr-fcard:not(.rr-fopen) .rr-filters.rr-has-sort { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1.1fr) auto; }
+  :root:root:root body main .rr.rr-returns .rr-fcard:not(.rr-fopen) .rr-filters.rr-has-sort > .rr-fbtns { grid-column: auto; align-self: end; justify-content: flex-end; flex-wrap: nowrap; }
+}
