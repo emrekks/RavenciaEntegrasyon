@@ -46,10 +46,10 @@
   color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border-color: var(--rv-color-border-strong);
 }
 
-/* Category windows: the picks are standard checkboxes (16 px square, radius 4, purple with a white tick). */
+/* Category windows: the picks are standard checkboxes (16 px round, purple with a white tick). */
 :root:root body .app-shell.stitch-shell main .cm-webcolor .web-color-panel-value input { width: 16px; min-width: 16px; height: 16px; }
 :root:root:root body .app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list.panel-attribute-category-list > button > i {
-  box-sizing: border-box; width: 16px; height: 16px; color: #fff; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 4px;
+  box-sizing: border-box; width: 16px; height: 16px; color: #fff; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 50%;
   visibility: visible;
 }
 :root:root:root body .app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list.panel-attribute-category-list > button.active > i {

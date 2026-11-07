@@ -184,6 +184,13 @@ function useScrollAreaPopover(open: boolean, ref: RefObject<HTMLElement | null>,
     // A dropdown anchor (the card İşlemler) opens under its trigger, left edges aligned, at least as wide as the trigger.
     const dropdown = !sheet && host.classList.contains('rr-dropdown')
     if (dropdown) pin({ width: 'max-content', 'min-width': `${anchor.width}px`, 'max-width': `${window.innerWidth - 16}px`, right: 'auto' })
+    // A filter or form field (a full-width .rr-trigger: Stok Durumu, Platform, PanelSelect) opens exactly as wide as its
+    // bar, left edges aligned (owner, 8 Nov 2026); a very narrow bar still gives the list 200 px.
+    const field = !sheet && !dropdown && host.querySelector(':scope > .rr-trigger') !== null
+    if (field) {
+      const fieldWidth = `${Math.min(Math.max(anchor.width, 200), window.innerWidth - 16)}px`
+      pin({ width: fieldWidth, 'min-width': fieldWidth, 'max-width': fieldWidth, right: 'auto' })
+    }
     // Width and height at layout size: the list grows in from .92 as it opens (styles/motion.css).
     const drawn = pop.getBoundingClientRect()
     const box = { top: drawn.top, left: drawn.left, width: pop.offsetWidth, height: pop.offsetHeight, bottom: drawn.top + pop.offsetHeight }
@@ -193,7 +200,7 @@ function useScrollAreaPopover(open: boolean, ref: RefObject<HTMLElement | null>,
       ? (above > 8 ? above : below)
       : (box.bottom > window.innerHeight - 8 && above > 8 ? above : box.top)
     const width = sheet ? anchor.width : box.width
-    const left = Math.max(8, Math.min(sheet || dropdown ? anchor.left : box.left, window.innerWidth - width - 8))
+    const left = Math.max(8, Math.min(sheet || dropdown || field ? anchor.left : box.left, window.innerWidth - width - 8))
     pin({ position: 'fixed', top: `${top}px`, left: `${left}px`, right: 'auto', bottom: 'auto', margin: '0', width: `${width}px`, transform: 'none', 'z-index': '1000' })
     if (typeof pop.showPopover === 'function') {
       pop.setAttribute('popover', 'manual')
