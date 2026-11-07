@@ -23,7 +23,20 @@ export type ShippingLabelBlock = {
   // A black frame around the block, and its text in capitals (Turkish casing), as on Trendyol Express' own sticker.
   boxed?: boolean
   uppercase?: boolean
+  // Yazıyı Kutuya Sığdır: the text grows or shrinks to fill the block. Left out, a framed block fits its text.
+  fitText?: boolean
+  // The number under a barcode's bars. Left out, it shows on an upright barcode and not on one turned a quarter (as on
+  // Trendyol Express' sticker, whose side barcode has no digits).
+  barcodeText?: boolean
   position?: ShippingLabelBlockPosition
+}
+
+export function shippingLabelFitsText(block: Pick<ShippingLabelBlock, 'fitText' | 'boxed'>) {
+  return block.fitText ?? Boolean(block.boxed)
+}
+
+export function shippingLabelShowsBarcodeText(block: Pick<ShippingLabelBlock, 'barcodeText' | 'rotation'>) {
+  return block.barcodeText ?? !(block.rotation === 90 || block.rotation === 270)
 }
 
 export function shippingLabelCaptionStyle(block: Pick<ShippingLabelBlock, 'captionStyle' | 'inline'>): ShippingLabelCaptionStyle {
@@ -132,7 +145,7 @@ const trendyolExpressStickerLayout: ShippingLabelBlock[] = [
   { id: 'trackingBarcode', kind: 'trackingBarcode', title: 'Takip Barkodu', fields: ['trackingNumber'], align: 'center', text: '', fontSize: 14, rotation: 0, position: { x: 3, y: 2, width: 94, height: 17 } },
   { id: 'address', kind: 'address', title: 'Teslimat Adresi', fields: ['address'], align: 'left', text: '', fontSize: 14, rotation: 0, captionStyle: 'none', boxed: true, uppercase: true, position: { x: 3, y: 21, width: 72, height: 38 } },
   { id: 'recipient', kind: 'address', title: 'Alıcı', fields: ['customerName'], align: 'left', text: '', fontSize: 14, rotation: 0, captionStyle: 'none', boxed: true, uppercase: true, position: { x: 3, y: 61, width: 72, height: 9 } },
-  { id: 'orderInfo', kind: 'orderInfo', title: 'Paket / Sipariş Bilgileri', fields: ['orderNumber', 'trackingNumber', 'cargoProvider'], align: 'left', text: '', fontSize: 14, rotation: 0, captionStyle: 'none', uppercase: true, position: { x: 3, y: 73, width: 94, height: 24 } },
+  { id: 'orderInfo', kind: 'orderInfo', title: 'Paket / Sipariş Bilgileri', fields: ['orderNumber', 'trackingNumber', 'cargoProvider'], align: 'left', text: '', fontSize: 14, rotation: 0, captionStyle: 'beside', uppercase: true, position: { x: 3, y: 73, width: 94, height: 24 } },
   // Turned 90 degrees: the block's own width runs down the label (49 mm beside the two frames), its height across (19 mm).
   { id: 'trackingBarcodeSide', kind: 'trackingBarcode', title: 'Takip Barkodu', fields: ['trackingNumber'], align: 'center', text: '', fontSize: 14, rotation: 90, position: { x: 63, y: 36, width: 49, height: 19 } }
 ]
@@ -243,6 +256,8 @@ function safeBlock(raw: unknown, index: number): ShippingLabelBlock | null {
     ...(fieldsPerRow ? { fieldsPerRow } : {}),
     ...(value.boxed === true ? { boxed: true } : {}),
     ...(value.uppercase === true ? { uppercase: true } : {}),
+    ...(typeof value.fitText === 'boolean' ? { fitText: value.fitText } : {}),
+    ...(typeof value.barcodeText === 'boolean' ? { barcodeText: value.barcodeText } : {}),
     position
   }
 }

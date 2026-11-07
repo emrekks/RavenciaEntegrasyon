@@ -49,7 +49,17 @@ describe('shipping label block layout', () => {
     expect(body.querySelector('.lbl-caption')).toBeNull()
     expect(fieldTexts(body)).toEqual([['lbl-value:ÖRNEK ALICI']])
     expect(Array.from(body.querySelectorAll('.lbl-lines > span')).map(line => line.textContent)).toEqual(['ÖRNEK MAH. DENEME SOK. NO:1', 'MERKEZ / İZMİR'])
-    expect(body.className).toBe('lbl-body is-boxed is-upper')
+    // a framed block fits its text to the frame unless told otherwise
+    expect(body.className).toBe('lbl-body is-boxed is-upper is-fit')
+    expect(draw({ ...sender, boxed: true, fitText: false }).className).toBe('lbl-body is-boxed')
+  })
+
+  it('an upright barcode shows its number; one turned a quarter does not, unless asked to', () => {
+    const barcode: ShippingLabelBlock = { id: 'b', kind: 'trackingBarcode', title: 'Takip Barkodu', fields: ['trackingNumber'], align: 'center', text: '' }
+    expect(draw(barcode).querySelector('.lbl-barcode-text')?.textContent).toBe(values.trackingNumber)
+    expect(draw({ ...barcode, rotation: 90 }).querySelector('.lbl-barcode-text')).toBeNull()
+    expect(draw({ ...barcode, rotation: 90, barcodeText: true }).querySelector('.lbl-barcode-text')).not.toBeNull()
+    expect(draw({ ...barcode, barcodeText: false }).querySelector('.lbl-barcode-text')).toBeNull()
   })
 
   it('keeps a title and barcode out of the row grid; three a row groups the fields that follow each other', () => {

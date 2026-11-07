@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { code128Modules, shippingLabelCaptionStyle, shippingLabelFields, shippingLabelFieldsPerRow, shippingLabelTextSize, type ShippingLabelBlock, type ShippingLabelField, type ShippingLabelFormat, type ShippingLabelSettings } from './shipping-label'
+import { code128Modules, shippingLabelCaptionStyle, shippingLabelFields, shippingLabelFieldsPerRow, shippingLabelFitsText, shippingLabelShowsBarcodeText, shippingLabelTextSize, type ShippingLabelBlock, type ShippingLabelField, type ShippingLabelFormat, type ShippingLabelSettings } from './shipping-label'
 import { shippingLabelBlockParts, shippingLabelQuietZoneModules, shippingLabelSizeMm } from './shipping-label-layout'
 import './shipping-label.css'
 
@@ -10,9 +10,12 @@ export type ShippingLabelValues = Record<ShippingLabelField, string>
 export type ShippingLabelBarcodeField = 'trackingNumber' | 'packageNumber'
 
 const fieldLabels = new Map(shippingLabelFields.map(field => [field.id, field.label]))
+// The text sizes a fitted block can take: never below what a thermal printer prints sharply, never a shout.
+export const shippingLabelFitMinimumPx = 10
+export const shippingLabelFitMaximumPx = 24
 const mmToPx = 96 / 25.4
 
-export function ShippingLabelBarcode({ value }: { value: string }) {
+export function ShippingLabelBarcode({ value, showText = true }: { value: string; showText?: boolean }) {
   if (!value) return <div className="lbl-barcode is-empty"><span className="lbl-barcode-missing">Takip Numarası Bekleniyor</span></div>
   // The quiet zone (ten modules of white on each side) is part of the drawing, so no layout can crowd it out.
   const modules = [...Array<boolean>(shippingLabelQuietZoneModules).fill(false), ...code128Modules(value), ...Array<boolean>(shippingLabelQuietZoneModules).fill(false)]
@@ -25,7 +28,7 @@ export function ShippingLabelBarcode({ value }: { value: string }) {
   }
   return <div className="lbl-barcode" aria-label={`Barkod: ${value}`}>
     <svg viewBox={`0 0 ${modules.length} 1`} preserveAspectRatio="none" shapeRendering="crispEdges" aria-hidden="true"><path d={path} /></svg>
-    <span className="lbl-barcode-text">{value}</span>
+    {showText && <span className="lbl-barcode-text">{value}</span>}
   </div>
 }
 
@@ -42,8 +45,31 @@ export function ShippingLabelBlockBody({ block, values, barcodes, showCustomerPh
   const perRow = shippingLabelFieldsPerRow(block)
   // Capitals are made in the text itself, in Turkish casing (i to İ), so no page style can undo them on screen or paper.
   const cased = (text: string) => block.uppercase ? text.toLocaleUpperCase('tr-TR') : text
+  const fits = shippingLabelFitsText(block)
+  const ref = useRef<HTMLDivElement>(null)
+  // Yazıyı Kutuya Sığdır: before paint, the largest text size (in whole pixels) that the block holds without cutting.
+  useLayoutEffect(() => {
+    const body = ref.current
+    if (!fits || !body || !body.clientHeight) return
+    const base = shippingLabelTextSize(block.fontSize)
+    const holds = (size: number) => {
+      body.style.setProperty('--lbl-size', `${size}px`)
+      const last = body.lastElementChild as HTMLElement | null
+      const paddingBottom = parseFloat(getComputedStyle(body).paddingBottom || '0')
+      return !last || (last.offsetTop + last.offsetHeight <= body.clientHeight - paddingBottom + 0.5 && body.scrollWidth <= body.clientWidth + 1)
+    }
+    let low = shippingLabelFitMinimumPx
+    let high = shippingLabelFitMaximumPx
+    if (!holds(low)) { body.style.setProperty('--lbl-size', `${low}px`); return }
+    while (high - low > 0) {
+      const middle = Math.ceil((low + high) / 2)
+      if (holds(middle)) low = middle
+      else high = middle - 1
+    }
+    body.style.setProperty('--lbl-size', `${low || base}px`)
+  })
   const drawn: Array<{ field: boolean; node: ReactNode }> = parts.map((part, index) => {
-    if (part.type === 'barcode') return { field: false, node: <ShippingLabelBarcode key={index} value={barcodes?.[part.field] ?? values[part.field]} /> }
+    if (part.type === 'barcode') return { field: false, node: <ShippingLabelBarcode key={index} value={barcodes?.[part.field] ?? values[part.field]} showText={shippingLabelShowsBarcodeText(block)} /> }
     if (part.type === 'title') return { field: false, node: <span key={index} className="lbl-title">{cased(part.text)}</span> }
     if (part.type === 'text') return { field: false, node: <span key={index} className="lbl-value lbl-text">{cased(part.text)}</span> }
     if (part.type === 'lines') {
@@ -66,8 +92,8 @@ export function ShippingLabelBlockBody({ block, values, barcodes, showCustomerPh
       if (row.length) children.push(<div key={`row-${index}`} className="lbl-row" style={{ '--lbl-cols': perRow } as CSSProperties}>{row}</div>)
     }
   }
-  const className = `lbl-body${captionStyle === 'beside' ? ' is-inline' : ''}${block.boxed ? ' is-boxed' : ''}${block.uppercase ? ' is-upper' : ''}`
-  return <div className={className} data-block-id={block.id} style={{ '--lbl-size': `${shippingLabelTextSize(block.fontSize)}px`, textAlign: block.align } as CSSProperties}>
+  const className = `lbl-body${captionStyle === 'beside' ? ' is-inline' : ''}${block.boxed ? ' is-boxed' : ''}${block.uppercase ? ' is-upper' : ''}${fits ? ' is-fit' : ''}`
+  return <div ref={ref} className={className} data-block-id={block.id} style={{ '--lbl-size': `${shippingLabelTextSize(block.fontSize)}px`, textAlign: block.align } as CSSProperties}>
     {children}
   </div>
 }
