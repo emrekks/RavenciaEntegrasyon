@@ -12,6 +12,8 @@ export type ShippingLabelBlock = {
   text: string
   fontSize?: number
   rotation?: number
+  // Each field on one line ("Paket Numarası: 4293901515") instead of its caption above its value.
+  inline?: boolean
   position?: ShippingLabelBlockPosition
 }
 
@@ -190,7 +192,7 @@ function safeBlock(raw: unknown, index: number): ShippingLabelBlock | null {
   } : fallbackPosition
   position.width = Math.min(position.width, 100 - position.x)
   position.height = Math.min(position.height, 100 - position.y)
-  return { id, kind, title: typeof value.title === 'string' && value.title.trim() ? value.title.trim().slice(0, 120) : catalog.label, fields, align, text: typeof value.text === 'string' ? value.text.slice(0, 500) : '', fontSize: shippingLabelTextSize(boundedNumber(value.fontSize, 14, 8, 72)), rotation: normalizedRotation(value.rotation), position }
+  return { id, kind, title: typeof value.title === 'string' && value.title.trim() ? value.title.trim().slice(0, 120) : catalog.label, fields, align, text: typeof value.text === 'string' ? value.text.slice(0, 500) : '', fontSize: shippingLabelTextSize(boundedNumber(value.fontSize, 14, 8, 72)), rotation: normalizedRotation(value.rotation), ...(value.inline === true ? { inline: true } : {}), position }
 }
 
 function normalizeLayout(value: unknown, fallback: ShippingLabelBlock[]) {

@@ -56,6 +56,8 @@ public static class ShippingLabelSettingsSchema
             block["fields"] = new JsonArray(fields.EnumerateArray().Where(field => field.ValueKind == JsonValueKind.String).Select(field => field.GetString()!).Where(Fields.Contains).Distinct(StringComparer.Ordinal).Select(field => (JsonNode)JsonValue.Create(field)).ToArray());
         if (Number(raw, "fontSize") is { } fontSize) block["fontSize"] = Clamp(fontSize, 8, 72);
         if (Number(raw, "rotation") is { } rotation) block["rotation"] = Clamp(rotation, -360, 360);
+        // Tek Satır: kept only when switched on, as the panel stores it.
+        if (raw.TryGetProperty("inline", out var inline) && inline.ValueKind == JsonValueKind.True) block["inline"] = true;
         if (raw.TryGetProperty("position", out var position) && position.ValueKind == JsonValueKind.Object)
         {
             var box = new JsonObject();
