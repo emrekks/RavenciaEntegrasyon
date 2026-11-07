@@ -40,17 +40,19 @@ export function ShippingLabelBlockBody({ block, values, barcodes, showCustomerPh
   const parts = shippingLabelBlockParts(block, { showCustomerPhone })
   const captionStyle = shippingLabelCaptionStyle(block)
   const perRow = shippingLabelFieldsPerRow(block)
+  // Capitals are made in the text itself, in Turkish casing (i to İ), so no page style can undo them on screen or paper.
+  const cased = (text: string) => block.uppercase ? text.toLocaleUpperCase('tr-TR') : text
   const drawn: Array<{ field: boolean; node: ReactNode }> = parts.map((part, index) => {
     if (part.type === 'barcode') return { field: false, node: <ShippingLabelBarcode key={index} value={barcodes?.[part.field] ?? values[part.field]} /> }
-    if (part.type === 'title') return { field: false, node: <span key={index} className="lbl-title">{part.text}</span> }
-    if (part.type === 'text') return { field: false, node: <span key={index} className="lbl-value lbl-text">{part.text}</span> }
+    if (part.type === 'title') return { field: false, node: <span key={index} className="lbl-title">{cased(part.text)}</span> }
+    if (part.type === 'text') return { field: false, node: <span key={index} className="lbl-value lbl-text">{cased(part.text)}</span> }
     if (part.type === 'lines') {
       const own = lines(values[part.field])
       // The sender address is optional in the settings: left empty, it prints nothing rather than a dash.
       if (!own.length && part.field === 'senderAddress') return { field: true, node: null }
-      return { field: true, node: <span key={index} className="lbl-value lbl-lines">{own.length ? own.map((line, lineIndex) => <span key={lineIndex}>{line}</span>) : '—'}</span> }
+      return { field: true, node: <span key={index} className="lbl-value lbl-lines">{own.length ? own.map((line, lineIndex) => <span key={lineIndex}>{cased(line)}</span>) : '—'}</span> }
     }
-    return { field: true, node: <span key={index} className="lbl-field">{captionStyle !== 'none' && <span className="lbl-caption">{fieldLabels.get(part.field) ?? part.field}</span>}<span className="lbl-value">{values[part.field] || '—'}</span></span> }
+    return { field: true, node: <span key={index} className="lbl-field">{captionStyle !== 'none' && <span className="lbl-caption">{cased(fieldLabels.get(part.field) ?? part.field)}</span>}<span className="lbl-value">{cased(values[part.field] || '—')}</span></span> }
   })
   const children: ReactNode[] = []
   if (perRow === 1) children.push(...drawn.map(item => item.node))
@@ -65,7 +67,7 @@ export function ShippingLabelBlockBody({ block, values, barcodes, showCustomerPh
     }
   }
   const className = `lbl-body${captionStyle === 'beside' ? ' is-inline' : ''}${block.boxed ? ' is-boxed' : ''}${block.uppercase ? ' is-upper' : ''}`
-  return <div className={className} data-block-id={block.id} lang={block.uppercase ? 'tr' : undefined} style={{ '--lbl-size': `${shippingLabelTextSize(block.fontSize)}px`, textAlign: block.align } as CSSProperties}>
+  return <div className={className} data-block-id={block.id} style={{ '--lbl-size': `${shippingLabelTextSize(block.fontSize)}px`, textAlign: block.align } as CSSProperties}>
     {children}
   </div>
 }

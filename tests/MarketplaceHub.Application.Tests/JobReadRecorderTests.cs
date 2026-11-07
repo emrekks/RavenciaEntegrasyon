@@ -48,3 +48,32 @@ public sealed class JobReadRecorderTests
         Assert.Equal("Shopify'dan 1 sipariş okundu; panelde zaten günceldi.", JobReadSentence.Describe("ORDER", "Shopify", new(1, 0, 0, 1, 0, 0)));
     }
 }
+
+public sealed class JobReadRecorderRetryTests
+{
+    [Fact]
+    public void A_retry_that_reads_the_same_records_again_counts_them_once()
+    {
+        var first = new JobReadRecorder();
+        first.Add("ORDER", new("1001", null, "Created", JobReadOutcomes.New));
+        first.Add("ORDER", new("1002", null, "Created", JobReadOutcomes.Unchanged));
+        var (firstCounts, firstKept, firstOmitted) = first.MergeWith(JobReadCounts.Zero, [], 0);
+
+        var retry = new JobReadRecorder();
+        retry.Add("ORDER", new("1001", null, "Created", JobReadOutcomes.Unchanged));
+        retry.Add("ORDER", new("1002", null, "Picking", JobReadOutcomes.Updated));
+        retry.Add("ORDER", new("1003", null, "Created", JobReadOutcomes.New));
+        var (counts, kept, omitted) = retry.MergeWith(firstCounts, firstKept, firstOmitted);
+
+        Assert.Equal(new JobReadCounts(3, 2, 1, 0, 0, 0), counts);
+        Assert.Equal(3, kept.Count);
+        Assert.Equal(0, omitted);
+    }
+
+    [Theory]
+    [InlineData("PRODUCT", "ürün")]
+    [InlineData("FINANCE", "finans hareketi")]
+    [InlineData("INVOICE", "paketin fatura durumu")]
+    [InlineData("OTHER", "kayıt")]
+    public void Every_kind_has_its_noun(string kind, string noun) => Assert.Equal(noun, JobReadSentence.Noun(kind));
+}

@@ -84,10 +84,18 @@ public sealed class HepsiburadaFinanceSyncJobHandler(AppDbContext db, IHepsibura
                 };
                 db.MarketplaceFinanceTransactions.Add(row);
                 inserted++;
+                Apply(row, record, now);
+                request.Reads?.Add("FINANCE", new JobReadRecord(record.Id, row.OrderNumber, record.TransactionType, JobReadOutcomes.New));
+                continue;
             }
-            else if (row.RawJson == record.RawJson) continue;
-            else updated++;
+            if (row.RawJson == record.RawJson)
+            {
+                request.Reads?.Add("FINANCE", new JobReadRecord(record.Id, row.OrderNumber, record.TransactionType, JobReadOutcomes.Unchanged));
+                continue;
+            }
+            updated++;
             Apply(row, record, now);
+            request.Reads?.Add("FINANCE", new JobReadRecord(record.Id, row.OrderNumber, record.TransactionType, JobReadOutcomes.Updated));
         }
         // A record skipped in one window and stored in another (read again complete) is not reported.
         var incomplete = skipped.Where(x => !records.ContainsKey(x.Key)).ToList();

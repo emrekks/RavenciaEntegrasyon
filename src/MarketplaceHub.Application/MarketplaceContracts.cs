@@ -1025,7 +1025,7 @@ public interface IMarketplaceQuestionService
     Task<MarketplaceQuestionView?> GetAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<IReadOnlyList<MarketplaceQuestionView>?> CustomerHistoryAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<QuestionSyncView> SyncAsync(Guid tenantId, string? kind, CancellationToken cancellationToken);
-    Task<QuestionSyncView> SyncConnectionAsync(Guid tenantId, Guid connectionId, string? kind, CancellationToken cancellationToken);
+    Task<QuestionSyncView> SyncConnectionAsync(Guid tenantId, Guid connectionId, string? kind, CancellationToken cancellationToken, JobReadRecorder? reads = null);
     Task<IReadOnlyList<MarketplaceQuestionSyncStateView>> SyncStatesAsync(Guid tenantId, CancellationToken cancellationToken);
     Task<ServiceResult<MarketplaceQuestionView>> AnswerAsync(Guid tenantId, Guid userId, Guid id, long expectedVersion, string answer, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     QuestionReportCapability ReportCapability(string platformCode);

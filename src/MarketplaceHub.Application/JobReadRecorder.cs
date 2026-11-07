@@ -95,19 +95,43 @@ public sealed class JobReadRecorder
         return new(inserted + updated + unchanged + skipped + failed, inserted, updated, unchanged, skipped, failed);
     }
 
-    // This run's records joined to what earlier slices of the same job stored: counts add, the list keeps the problems
-    // first, then new and updated records, and holds at most MaxRecords.
+    // This run's records joined to what earlier runs of the same job stored (the slices of a long read, or a retry after
+    // a failure). While every earlier record is still listed, a record read again counts once (its strongest outcome),
+    // so a retry does not double the counts; past the cap the counts add. The list keeps the problems first, then new
+    // and updated records, and holds at most MaxRecords.
     public (JobReadCounts Counts, IReadOnlyList<JobReadRecord> Kept, int Omitted) MergeWith(JobReadCounts previousCounts, IReadOnlyList<JobReadRecord> previousRecords, int previousOmitted)
     {
-        var counts = previousCounts.Plus(Counts());
-        var all = previousRecords.Concat(Records())
-            .Select((record, index) => (record, index))
+        List<JobReadRecord> all;
+        JobReadCounts counts;
+        if (previousOmitted == 0 && previousRecords.Count == previousCounts.Received)
+        {
+            var byReference = new Dictionary<string, JobReadRecord>(StringComparer.Ordinal);
+            var order = new List<string>();
+            foreach (var record in previousRecords.Concat(Records()))
+            {
+                if (byReference.TryGetValue(record.Reference, out var existing))
+                {
+                    if (JobReadOutcomes.Rank(record.Outcome) > JobReadOutcomes.Rank(existing.Outcome)) byReference[record.Reference] = record;
+                    continue;
+                }
+                byReference[record.Reference] = record;
+                order.Add(record.Reference);
+            }
+            all = order.Select(x => byReference[x]).ToList();
+            counts = CountsOf(all);
+        }
+        else
+        {
+            all = previousRecords.Concat(Records()).ToList();
+            counts = previousCounts.Plus(Counts());
+        }
+        var sorted = all.Select((record, index) => (record, index))
             .OrderByDescending(x => JobReadOutcomes.Rank(x.record.Outcome))
             .ThenBy(x => x.index)
             .Select(x => x.record)
             .ToList();
-        var kept = all.Take(MaxRecords).ToList();
-        return (counts, kept, previousOmitted + all.Count - kept.Count);
+        var kept = sorted.Take(MaxRecords).ToList();
+        return (counts, kept, Math.Max(0, counts.Received - kept.Count));
     }
 
     public static string Serialize(IReadOnlyList<JobReadRecord> list) => JsonSerializer.Serialize(list, Json);
@@ -145,6 +169,9 @@ public static class JobReadSentence
         "ORDER" => "sipariş",
         "RETURN" => "iade talebi",
         "QUESTION" => "müşteri sorusu",
+        "INVOICE" => "paketin fatura durumu",
+        "PRODUCT" => "ürün",
+        "FINANCE" => "finans hareketi",
         _ => "kayıt"
     };
 

@@ -46,9 +46,9 @@
 /* Fields a row: the fields that follow each other share a grid of equal columns. */
 .lbl-sheet.lbl-sheet .lbl-row { display: grid; grid-template-columns: repeat(var(--lbl-cols, 2), minmax(0, 1fr)); gap: 1.2mm 3mm; }
 .lbl-sheet.lbl-sheet .lbl-row > * { min-width: 0; margin: 0; }
-/* Çerçeve and Büyük Harf, as on Trendyol Express' own sticker; the frame sits inside the block, so it never grows it. */
+/* Çerçeve, as on Trendyol Express' own sticker; the frame sits inside the block, so it never grows it. (Büyük Harf is
+   made in the text itself, ShippingLabelBlockBody.) */
 .lbl-sheet.lbl-sheet .lbl-body.is-boxed { border: .4mm solid #000; }
-.lbl-sheet.lbl-sheet .lbl-body.is-upper { text-transform: uppercase; }
 .lbl-sheet.lbl-sheet .lbl-value { display: block; color: #000; font-size: 1em; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; white-space: pre-line; }
 .lbl-sheet.lbl-sheet .lbl-lines { display: flex; flex-direction: column; line-height: 1.3; }
 .lbl-sheet.lbl-sheet .lbl-lines > span { display: block; }

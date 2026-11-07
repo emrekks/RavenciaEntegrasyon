@@ -107,8 +107,8 @@ export function shippingLabelLayoutIssues(layout: ShippingLabelBlock[], size: { 
     if (!field || !block.fields.includes(field) || !block.position) continue
     const value = barcodeValues[field]
     if (!value) continue
-    const quarterTurn = block.rotation === 90 || block.rotation === 270
-    const widthMm = quarterTurn ? block.position.height / 100 * size.height : block.position.width / 100 * size.width
+    // The bars run along the block's own width whatever its turn (a block turned 90° draws them down the label).
+    const widthMm = block.position.width / 100 * size.width
     const moduleMm = barcodeModuleWidthMm(value, widthMm)
     if (moduleMm < shippingLabelMinimumModuleMm) issues.push({ kind: 'narrowBarcode', blockId: block.id, moduleMm })
   }
