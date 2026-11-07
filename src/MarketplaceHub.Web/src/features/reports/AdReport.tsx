@@ -24,12 +24,12 @@ export type AdReports = { reports: AdReport[]; stores: Array<{ connectionId: str
 export const adReportQuery = { queryKey: ['reports', 'ad-report'], queryFn: () => hubApi<AdReports>('/reports/ad-report') }
 
 // A report older than this is said to be old: the totals have moved on since.
-const staleDays = 7
+export const staleDays = 7
 const dayMs = 86_400_000
 
 export const reportAge = (report: AdReport, now = Date.now()) => Math.floor((now - new Date(report.exportedAt).getTime()) / dayMs)
 // ROAS with two decimals, as Trendyol writes Harcama Getirisi (3,83).
-const roasText = (value: number) => value.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+export const roasText = (value: number) => value.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const when = (value: string) => formatIstanbul(value, { dateStyle: 'medium', timeStyle: 'short' })
 
 // The stores' newest reports added up: with one store its own totals; with more, the sums and the rates from them.

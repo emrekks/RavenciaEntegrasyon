@@ -27,7 +27,7 @@ window.__reportsAudit = { done: false, findings: [] };
     const body = doc.querySelector('.reports-body')
     if (!body) { findings.push(`EMPTY ${where}`); frame.remove(); continue }
     if (doc.documentElement.scrollWidth > width + 1) findings.push(`SCROLL ${where}: ${doc.documentElement.scrollWidth}px wide`)
-    for (const grid of body.querySelectorAll('.reports-grid, .reports-lists, .reports-summary, .reports-overview, .reports-overview-row')) {
+    for (const grid of body.querySelectorAll('.reports-grid, .reports-lists, .reports-summary, .reports-overview, .reports-overview-row, .reports-hero-grid')) {
       const items = [...grid.children].filter(item => item.offsetHeight > 0)
       const rows = {}
       for (const item of items) (rows[Math.round(item.getBoundingClientRect().top)] ??= []).push(item)
@@ -47,10 +47,10 @@ window.__reportsAudit = { done: false, findings: [] };
       }
     }
     // A figure must never be cut: a value or its second line wider than its box, or running past its row's right edge.
-    for (const element of body.querySelectorAll('.reports-metric-value, .reports-metric-main, .reports-metric-value strong, .reports-metric-sub, .reports-kpis strong')) {
-      const row = element.closest('.reports-metric, .reports-kpis > div')
+    for (const element of body.querySelectorAll('.reports-metric-value, .reports-metric-main, .reports-metric-value strong, .reports-metric-sub, .reports-kpis strong, .reports-hero > strong, .reports-hero-tile, .reports-hero-tile strong')) {
+      const row = element.closest('.reports-metric, .reports-kpis > div, .reports-hero-tile, .reports-hero-card')
       const clipped = element.scrollWidth > element.clientWidth + 1 || (row && element.getBoundingClientRect().right > row.getBoundingClientRect().right + 1)
-      if (clipped) findings.push(`CLIP ${where} ${row?.querySelector('.reports-metric-name, .reports-kpi-label')?.textContent ?? element.className}: "${element.textContent}"`)
+      if (clipped) findings.push(`CLIP ${where} ${row?.querySelector('.reports-metric-name, .reports-kpi-label, .reports-hero-tile-label, .reports-hero-label')?.textContent ?? element.className}: "${element.textContent}"`)
     }
     frame.remove()
   }
