@@ -180,6 +180,7 @@ public sealed class ApiRouteAuthorizationMatrixTests(ApiPipelineHost fixture) : 
         "GET    /api/v1/jobs/metrics/quota SignedIn",
         "GET    /api/v1/jobs/page SignedIn",
         "GET    /api/v1/mappings/attribute-name-hints SignedIn",
+        "GET    /api/v1/mappings/attribute-value-progress SignedIn",
         "GET    /api/v1/mappings/attribute-values SignedIn",
         "GET    /api/v1/mappings/attribute-values/{localId:guid} SignedIn",
         "PUT    /api/v1/mappings/attribute-values/{localId:guid} Operations",

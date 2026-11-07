@@ -497,6 +497,12 @@
   .workspace-modal.mapping-advanced-modal { height: min(920px, calc(100dvh - 32px)); }
   .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-layout { padding-bottom: 52px; }
 }
+/* Tablets in portrait (761-900 px): the field list sits above the field at its own height (up to 220 px, it scrolls),
+   the field takes the rest. */
+@media (min-width: 761px) and (max-width: 900px) {
+  .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-layout { grid-template-rows: auto minmax(0, 1fr); }
+  .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-nav { max-height: 220px; }
+}
 /* A field chosen while its values are read: the open field stays, dimmed after a short moment, until they arrive. */
 .cm-card .cm-detail.is-pending { cursor: progress; }
 .cm-card .cm-detail.is-pending > * { pointer-events: none; opacity: .55; transition: opacity 120ms ease 120ms; }
