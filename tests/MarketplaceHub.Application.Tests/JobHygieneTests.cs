@@ -179,8 +179,10 @@ public sealed class ProductWriteSupersessionPostgreSqlTests(PostgreSqlTenantIsol
         var closed = await verify.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == blocked.Id);
         Assert.Equal(JobStatus.Cancelled, closed.Status);
         Assert.Equal(ProductWriteSupersession.Code, closed.LastErrorCode);
-        Assert.Contains(later.Id.ToString("D"), closed.LastErrorSummary);
-        Assert.Contains("PRODUCT_CONTENT_GROUP_MISMATCH", closed.LastErrorSummary);
+        // Plain words (owner, 7 Nov 2026): the later update and its time, no job id and no raw code.
+        Assert.DoesNotContain(later.Id.ToString("D"), closed.LastErrorSummary);
+        Assert.DoesNotContain("PRODUCT_CONTENT_GROUP_MISMATCH", closed.LastErrorSummary);
+        Assert.Contains("sonraki güncellemesi", closed.LastErrorSummary);
         // No later success of the other product; an update's success does not close an archive.
         Assert.Equal(JobStatus.Blocked, (await verify.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == otherBlocked.Id)).Status);
         Assert.Equal(JobStatus.Dead, (await verify.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == archiveDead.Id)).Status);
