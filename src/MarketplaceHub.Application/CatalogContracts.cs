@@ -422,6 +422,9 @@ public interface IReferenceDataService
     // The marketplace brands a catalog import met that no panel brand is mapped to on this connection (ImportedBrandRule).
     Task<ServiceResult<IReadOnlyList<UnmappedMarketplaceBrandView>>> UnmappedBrandsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken);
     Task<ServiceResult<IReadOnlyList<CatalogMappingView>>> ListMappingsAsync(Guid tenantId, string mappingType, Guid connectionId, string? scopeExternalId, CancellationToken cancellationToken);
+    // The panel values mapped in each field of one marketplace category, by the field's external id: the category
+    // window's value progress in one read instead of one list per field.
+    Task<ServiceResult<IReadOnlyDictionary<string, IReadOnlyList<Guid>>>> AttributeValueMappingProgressAsync(Guid tenantId, Guid connectionId, string categoryExternalId, CancellationToken cancellationToken);
     Task<ServiceResult<CatalogMappingView?>> GetMappingAsync(Guid tenantId, string mappingType, Guid localId, Guid connectionId, string? scopeExternalId, string? externalId, CancellationToken cancellationToken);
     Task<ServiceResult<CatalogMappingView>> UpsertMappingAsync(Guid tenantId, string mappingType, Guid localId, long? expectedVersion, UpsertCatalogMappingCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<bool>> DeleteMappingAsync(Guid tenantId, string mappingType, Guid localId, Guid connectionId, string? scopeExternalId, string? externalId, long expectedVersion, CancellationToken cancellationToken);

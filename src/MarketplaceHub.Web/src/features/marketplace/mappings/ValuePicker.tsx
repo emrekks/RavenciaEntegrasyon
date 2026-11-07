@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { focusOnMount } from '../../../shared/focus'
 import { matchingKey } from '../../../shared/value-matching'
@@ -34,7 +34,8 @@ export function ValuePicker({ value, options, label, onChange }: { value: string
   const [box, setBox] = useState<{ left: number; top: number; width: number; up: boolean; maxHeight: number } | null>(null)
   const trigger = useRef<HTMLButtonElement>(null)
   const menu = useRef<HTMLDivElement>(null)
-  const selected = value ? options.find(option => option.value === value) : undefined
+  // Looked up only when the value or the list changes (the list can hold 17,254 values, the table hundreds of rows).
+  const selected = useMemo(() => value ? options.find(option => option.value === value) : undefined, [options, value])
   const folded = matchingKey(query)
   const matches = folded ? rankPickerMatches(options, folded) : options
   const shown = matches.slice(0, shownLimit)
