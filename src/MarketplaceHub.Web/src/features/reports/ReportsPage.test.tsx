@@ -147,6 +147,8 @@ const texts = (page: HTMLElement, selector: string) => [...page.querySelectorAll
 // A metric card's rows as "name value", without the explanation shown under the pointer.
 const metricRows = (page: HTMLElement, card: string) => [...page.querySelectorAll(`.reports-card-metrics.is-${card} .reports-metric`)].map(row => row.textContent ?? '')
 // The bridge's rows as "name amount", without their explanations.
+// The Kargo line's explanation in Masraf Kalemleri.
+const cargoTip = (page: HTMLElement) => [...page.querySelectorAll('.reports-costlines li')].find(line => line.textContent?.startsWith('Kargo'))?.querySelector('.reports-hover-tip')?.textContent
 const bridgeRows = (page: HTMLElement) => [...page.querySelectorAll('.reports-bridge > li')].map(row => `${row.querySelector('.reports-bridge-label')?.textContent ?? ''} ${row.querySelector('b')?.textContent ?? ''}`)
 
 afterEach(() => { act(() => root?.unmount()); client?.clear(); container?.remove(); requests.length = 0; adReports.current = { reports: [], stores: [{ connectionId: 'c1', storeName: 'Ravencia Trendyol' }] } })
@@ -291,14 +293,18 @@ describe('ReportsPage', () => {
     // The statement's lines: commission 41,50, cargo 226,68, the service fee and the withholding tax; the categories it
     // has no record of are at zero, the VAT is not worked out.
     const lines = [...page.querySelectorAll('.reports-costlines li')].map(line => [...line.children].slice(1, 3).map(cell => cell.textContent).join(' '))
-    // Advertising, penalties and early payment fees belong to no order: they are not among the period's costs.
-    expect(lines).toEqual(['Kargo ₺226,68', 'İade Edilen Tutar ₺100,00', 'Ürün Maliyeti ₺80,00', 'Komisyon ₺41,50', 'Hizmet Bedeli ₺12,50', 'Stopaj ₺1,00', 'Net KDV —'])
-    expect(page.querySelector('.reports-card-costlines')?.textContent).not.toContain('1.079')
-    expect(page.querySelector('.reports-costlines li:first-child .reports-hover-tip')?.textContent).toContain('Faturası henüz gelmeyen 2 sipariş')
+    // The deductions tied to no order (advertising 5.000, the service fee 1.079,54 and withholding tax 448,01 not shared
+    // over their orders yet) are in their own category's line (owner, 7 Nov 2026: no separate card), so the ring holds
+    // every cost Net Kâr takes off: 350 − 6.989,23 = −6.639,23.
+    expect(lines).toEqual(['Reklam ₺5.000,00', 'Hizmet Bedeli ₺1.092,04', 'Stopaj ₺449,01', 'Kargo ₺226,68', 'İade Edilen Tutar ₺100,00', 'Ürün Maliyeti ₺80,00', 'Komisyon ₺41,50', 'Net KDV —'])
+    expect(page.querySelector('.reports-card-costlines .reports-donut-centre')?.textContent).toContain('₺6.989')
+    const feeTip = [...page.querySelectorAll('.reports-costlines li')].find(line => line.textContent?.startsWith('Hizmet Bedeli'))?.querySelector('.reports-hover-tip')?.textContent
+    expect(feeTip).toContain('₺12,50 dönemin siparişlerine ait; ₺1.079,54 (4 kayıt) siparişe bağlı değil, işlem tarihine göre')
+    expect(cargoTip(page)).toContain('Faturası henüz gelmeyen 2 sipariş')
     // 350 − 100 − 226,68 − 54 (commission and service fee) − 1 − 80 = −111,68, then the 6.527,55 of deductions tied to no
     // order (owner, 5 Nov 2026: every expense is off the net profit): −6.639,23, a loss, in red, on the bridge and the strip.
     expect(bridgeRows(page)).toEqual(['Satış Tutarı ₺350,00', '− İade Edilen Tutar − ₺100,00', '− Kargo − ₺226,68', '− Pazaryeri Masrafları − ₺54,00', '− Stopaj − ₺1,00', '− Ürün Maliyeti − ₺80,00',
-      '− Siparişe Bağlı Olmayan Kesintiler − ₺6.527,55', 'Tahmini Zarar − ₺6.639,23'])
+      '− Reklam ve Diğer Kesintiler − ₺6.527,55', 'Tahmini Zarar − ₺6.639,23'])
     expect(page.querySelector('.reports-bridge > li.is-end.is-negative')).not.toBeNull()
     // Shopify is costed from its own settings (cargo, card fees) on the server, so nothing is left out for it.
     expect(page.querySelector('.reports-bridge > li.is-end .reports-hover-tip')?.textContent).not.toContain('kargo ve hizmet bedeli')
@@ -324,14 +330,9 @@ describe('ReportsPage', () => {
     expect(metricRows(page, 'order')[3]).toBe('Sipariş Başına Kesinti₺18,33')
     // The billed return cargo (20) and the return operation fee (5), Trendyol's only.
     expect(metricRows(page, 'returns')[2]).toBe('İade Kargo Zararı₺25,00yalnız Trendyol')
-    // Siparişe Bağlı Olmayan Kesintiler: each deduction with its records, largest first, and their total; the foreign
-    // sale is no deduction. Its "i" and its total say Net Kâr takes them off.
-    const unlinked = page.querySelector('.reports-card-unlinked')!
-    expect(unlinked.querySelector('h2')?.textContent).toBe('Siparişe Bağlı Olmayan Kesintiler')
-    expect(unlinked.querySelector('.reports-card-title .reports-hover-tip')?.textContent).toContain('Net Kâr\'dan düşülür')
-    expect(unlinked.textContent).not.toContain('Kâra dahil edilmez')
-    expect([...unlinked.querySelectorAll('.reports-unlinked > div')].map(tile => `${tile.querySelector('dt')?.textContent} ${tile.querySelector('dd')?.textContent}`)).toEqual([
-      'Reklam ₺5.000,001 kayıt', 'Hizmet Bedeli ₺1.079,544 kayıt', 'Stopaj ₺448,011 kayıt', 'Toplam ₺6.527,55Net Kâr\'dan düşülür'])
+    // No separate card for them on the overview, and no "siparişe bağlı olmayan" anywhere on it.
+    expect(page.querySelector('.reports-card-unlinked')).toBeNull()
+    expect(page.querySelector('.reports-overview')?.textContent?.toLocaleLowerCase('tr')).not.toContain('siparişe bağlı olmayan')
     expect(metricRows(page, 'order')[2]).toBe('Sipariş Başına Kargo₺75,56')
 
     await act(async () => { page.querySelector<HTMLButtonElement>('[aria-label="Kâr Köprüsü: Tümünü Gör"]')!.click() })
@@ -346,16 +347,17 @@ describe('ReportsPage', () => {
     // Kâr Hesabı: the deductions tied to no order on a line of their own before the result, which agrees with the strip.
     const ledger = [...page.querySelectorAll('.reports-ledger-panel .reports-ledger')][0]
     const rows = [...ledger.querySelectorAll(':scope > div')].map(row => `${row.querySelector('dt button')?.textContent ?? ''} ${row.querySelector('dd')?.textContent ?? ''}`)
-    expect(rows.slice(-2)).toEqual(['Siparişe Bağlı Olmayan Kesintiler − ₺6.527,55', 'Tahmini Zarar − ₺6.639,23'])
+    expect(rows.slice(-2)).toEqual(['Reklam ve Diğer Kesintiler − ₺6.527,55', 'Tahmini Zarar − ₺6.639,23'])
     // The commission's rate and coverage, once in the strip, are under the account's commission row.
     expect(ledger.textContent).toContain('Ortalama komisyon oranı')
     expect(ledger.textContent).toContain('kâr kapsamı')
     expect(body(page)).toContain('Trendyol Cari Hesap Kalemleri')
     expect(body(page)).toContain('Masraf Değil')
     // The deductions tied to no order are shown on Kârlılık too, and the statement puts them in their own column.
+    expect(page.querySelector('.reports-card-unlinked h2')?.textContent).toBe('Reklam ve Diğer Kesintiler')
     expect(page.querySelector('.reports-card-unlinked .reports-unlinked > .is-total')?.textContent).toContain('₺6.527,55')
     const statement = [...page.querySelectorAll('.reports-panel')].find(panel => panel.textContent?.includes('Trendyol Cari Hesap Kalemleri'))!
-    expect([...statement.querySelectorAll('thead th')].map(cell => cell.textContent?.trim())).toEqual(expect.arrayContaining(['Siparişlere Ait', 'Siparişe Bağlı', 'Tahmini', 'Siparişe Bağlı Olmayan']))
+    expect([...statement.querySelectorAll('thead th')].map(cell => cell.textContent?.trim())).toEqual(expect.arrayContaining(['Siparişlere Ait', 'Siparişe Bağlı', 'Tahmini', 'Siparişsiz']))
     const adRow = [...statement.querySelectorAll('tbody tr')].find(row => row.textContent?.startsWith('Reklam'))!
     expect([...adRow.querySelectorAll('td')].map(cell => cell.textContent)).toEqual(['Reklam', '₺0,00', '₺0,00', '₺0,00', '₺5.000,00', '1'])
     const feeRow = [...statement.querySelectorAll('tbody tr')].find(row => row.textContent?.startsWith('Hizmet Bedeli'))!
@@ -369,7 +371,7 @@ describe('ReportsPage', () => {
   it('says which cargo is a return\'s estimate and which could not be estimated', async () => {
     const costs = withFinance.costs!
     const page = await open('', { ...withFinance, costs: { ...costs, cargo: { ...costs.cargo!, unbilledReturns: 1, unestimatedOrders: 1 } } })
-    const tip = page.querySelector('.reports-costlines li:first-child .reports-hover-tip')?.textContent ?? ''
+    const tip = cargoTip(page) ?? ''
     expect(tip).toContain('Faturası henüz gelmeyen 2 sipariş ve 1 iadenin dönüş kargosu, mağazanın kargo tarifesiyle tahmin edildi')
     expect(tip).toContain('1 siparişin kargosu tahmin edilemedi')
   })
@@ -380,7 +382,7 @@ describe('ReportsPage', () => {
       { category: 'OTHER_DEDUCTION', label: 'Diğer kesinti', isCost: true, amount: 4.5, records: 1, orderLinked: 4.5 }] } })
     // It has its own line among the costs, and only when there is one (the other tests list none).
     const lines = [...page.querySelectorAll('.reports-costlines li')].map(line => [...line.children].slice(1, 3).map(cell => cell.textContent).join(' '))
-    expect(lines).toContain('Diğer Kesinti ₺4,50')
+    expect(lines).toContain('Diğer Kesintiler ₺4,50')
     expect(bridgeRows(page).some(row => row.includes('Pazaryeri Masrafları') && row.includes('58,50'))).toBe(true)
   })
 
@@ -398,11 +400,12 @@ describe('ReportsPage', () => {
 
   it('draws the cost ring to the total it writes, the net VAT to pay among its slices', async () => {
     const page = await open('', { ...withFinance, costs: { ...withFinance.costs!, netVat: { salesVat: 60, productCostVat: 10, expenseVat: 30, net: 20 } } })
-    // 226,68 cargo + 100 returns + 80 cost + 41,50 commission + 12,50 fee + 1 withholding + 20 VAT = 481,68.
+    // 226,68 cargo + 100 returns + 80 cost + 41,50 commission + 12,50 fee + 1 withholding + 20 VAT = 481,68, and the
+    // 6.527,55 tied to no order in their lines: 7.009,23, what Net Kâr takes off the 350 of sales.
     const card = page.querySelector('.reports-card-costlines')!
-    expect(card.querySelector('.reports-donut-centre')?.textContent).toContain('₺482')
+    expect(card.querySelector('.reports-donut-centre')?.textContent).toContain('₺7.009')
     const shares = [...card.querySelectorAll('.reports-costlines li em')].map(cell => cell.textContent).filter(Boolean)
-    expect(shares).toContain('%4,2')
+    expect(shares).toContain('%0,3')
     expect(shares.reduce((sum, text) => sum + Number(text!.replace('%', '').replace(',', '.')), 0)).toBeCloseTo(100, 0)
   })
 
@@ -412,7 +415,7 @@ describe('ReportsPage', () => {
     // 350 − 100 − 226,68 − 54 − 1 − 10 = −41,68, less the 6.527,55 tied to no order: −6.569,23.
     const rows = bridgeRows(page)
     expect(rows).toContain('− Net KDV − ₺10,00')
-    expect(rows).toContain('− Siparişe Bağlı Olmayan Kesintiler − ₺6.527,55')
+    expect(rows).toContain('− Reklam ve Diğer Kesintiler − ₺6.527,55')
     expect(rows.at(-1)).toBe('Masraflar Sonrası − ₺6.569,23')
   })
 
@@ -535,7 +538,7 @@ describe('ReportsPage', () => {
     expect(figures[1]).toContain('+%33,3')
     expect(figures[2]).toContain('Net Kâr₺127')
     expect(figures[2]).toContain('−%20,6')
-    expect(figures[2]).toContain('siparişe bağlı olmayan kesintiler')
+    expect(figures[2]).toContain('reklam ve diğer kesintiler')
     expect(figures[3]).toContain('%36,3')
     expect(figures[4]).toContain('%158,8')
     expect(figures[4]).toContain('(₺80,00)')

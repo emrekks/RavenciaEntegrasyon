@@ -21,7 +21,7 @@ import { useScrollLock } from '../../../shared/hooks/useScrollLock'
 import { appendNotification, normalizeNotificationKind, notificationError, notificationLinks, type NotificationContext } from '../../../shared/notifications'
 import { orderLinkOnlyTabs, orderStatusMoreTabs, orderStatusTabs, resolveOrderStatusTab } from '../order-status-tabs'
 import { useTabSlide } from '../../../shared/tab-slide'
-import { loadPrintedShippingLabels, shippingLabelBlockCatalog, shippingLabelPageCss, shippingLabelPages, shippingLabelSizeMm, printedShippingLabelKey, ShippingLabelFit, ShippingLabelSurface, useShippingLabelSettings, type ShippingLabelFormat, type ShippingLabelSettings, type ShippingLabelValues } from '../../shipping'
+import { loadPrintedShippingLabels, shippingLabelAddressLines, shippingLabelBlockCatalog, shippingLabelPageCss, shippingLabelPages, shippingLabelSizeMm, printedShippingLabelKey, ShippingLabelFit, ShippingLabelSurface, useShippingLabelSettings, type ShippingLabelFormat, type ShippingLabelSettings, type ShippingLabelValues } from '../../shipping'
 import { isActiveMarketplaceConnection, isMarketplacePlatformSelected, marketplacePlatformLabel, marketplacePlatformOptions } from '../marketplace-platform-support'
 import { productImageFallbackUrls as createProductImageFallbackUrls } from '../product-image-lookups'
 import { visibleOrderLineVariantOptions } from '../order-line-variant-options'
@@ -378,7 +378,8 @@ function ShippingLabelModal({ item, settings, format, onClose, onPrinted, inline
     packageNumber: packageNumber || '—',
     orderNumber: displayOrderNumber(item.orderNumber),
     customerName: customerDisplayName({ ...item, customerName: personal.customerName, shipmentAddress: personal.shipmentAddress }),
-    address: listAddressText(personal.shipmentAddress, item.platformCode).split(' · ').join('\n'),
+    // One part a line (street, neighbourhood, district / city), as the label prints it.
+    address: shippingLabelAddressLines(personal.shipmentAddress, listAddressText(personal.shipmentAddress, item.platformCode)).join('\n'),
     cargoProvider: cargoLabel(shipment?.cargoProviderName ?? item.cargoProviderName),
     senderName: settings.senderName,
     senderAddress: settings.senderAddress.split(/\r?\n| · /).join('\n'),
