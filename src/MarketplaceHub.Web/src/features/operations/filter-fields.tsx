@@ -70,6 +70,6 @@ export function SearchField({ label, value, onChange, onEnter, placeholder, aria
 export function OpsFilterCard({ active, clearCount, onClear, onApply, wide = false, label, children }: { active: number; clearCount: number; onClear: () => void; onApply: () => void; wide?: boolean; label: string; children: ReactNode }) {
   return <div className="rr ops-filters" role="search" aria-label={label}><RrFilterCard active={active}><div className={`rr-filters ops-filter-grid${wide ? ' is-wide' : ''}`}>
     {children}
-    <div className="rr-fbtns"><button type="button" className="rr-btn ops-clear" onClick={onClear} disabled={clearCount === 0}>Temizle{clearCount > 0 && <span className="rr-count" aria-label={`${clearCount} filtre`}>{clearCount}</span>}</button><button type="button" className="rr-btn rr-primary" onClick={onApply}>Filtrele</button></div>
+    <div className="rr-fbtns"><button type="button" className="rr-btn rr-clear ops-clear" onClick={onClear} disabled={clearCount === 0}>Temizle</button><button type="button" className="rr-btn rr-primary" onClick={onApply}>Filtrele</button></div>
   </div></RrFilterCard></div>
 }
