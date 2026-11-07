@@ -12,8 +12,8 @@
   .pci-step-acts { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
   .pci-step-acts .rr-btn { min-height: 36px; }
   .pci-field { display: inline-flex; align-items: center; gap: 8px; color: var(--rv-color-muted); font-size: 13px; }
-  .pci-select { min-width: 220px; height: 36px; min-height: 0; padding: 0 10px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font: inherit; font-size: 13px; }
-  .pci-select:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 1px; }
+  /* The Varyantlar list (PanelSelect): its trigger draws the one border. */
+  .pci-select { min-width: 220px; font-size: 13px; }
 
   .pci-fields { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 12px 14px; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 12px; }
   .pci-fields legend { float: left; width: 100%; margin: 0 0 2px; padding: 0; color: var(--rv-color-ink); font-size: 13px; font-weight: 600; }

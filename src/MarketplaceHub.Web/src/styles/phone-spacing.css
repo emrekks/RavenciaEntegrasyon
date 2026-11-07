@@ -63,6 +63,8 @@
   :root .app-shell.stitch-shell main .reference-integration-card > :is(header, div, footer) { padding: var(--m-pad) !important; }
   :root .app-shell.stitch-shell main .reference-integration-card > footer { padding-block: 10px !important; }
   :root .app-shell.stitch-shell main :is(.order-pagination, .rr-pager) { padding-inline: var(--m-pad) !important; }
+  /* a pager inside a padded pagination bar keeps no second side padding of its own (Faturalar ran 9px past the edge) */
+  :root .app-shell.stitch-shell main .order-pagination > .rr-pager { max-width: 100%; padding-inline: 0 !important; }
   :root .app-shell.stitch-shell main .qi-foot { padding: 10px var(--m-pad) !important; }
   :root .app-shell.stitch-shell main .ss-card > .ss-stabs { padding: var(--m-pad) var(--m-pad) 0 !important; }
   :root .app-shell.stitch-shell main .ss-card > .ss-pane { padding: 0 var(--m-pad) var(--m-pad) !important; }

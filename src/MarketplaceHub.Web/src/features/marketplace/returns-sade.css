@@ -842,6 +842,8 @@ main .rr, .rr-layer {
 /* wordmarks: the artwork is cropped to its ink inside a box of the equalised size */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-wordmark { position: relative; display: block; overflow: hidden; margin-bottom: 6px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-wordmark > img { position: absolute; display: block; max-width: none; }
+/* The Trendyol wordmark has black letters: on the dark theme they turn white, its orange stays orange. */
+html:not([data-theme="light"]) .rr-wordmark > img[src$="/mark-trendyol.png"] { filter: invert(1) hue-rotate(180deg); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-wordmark-text { display: block; margin-bottom: 6px; font-weight: 600; }
 /* the product title stays a link to the marketplace, drawn as plain text */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pline b a { color: inherit; text-decoration: none; }
@@ -920,6 +922,8 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-fopen .rr-fbtns .rr-btn { height: 36px; justify-content: center; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-fopen .rr-pop { position: static !important; width: 100% !important; min-width: 0 !important; max-width: none !important; margin-top: 6px; box-shadow: none; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-fopen :is(.rr-in, .rr-trigger, .date-range-picker-trigger) { height: 44px; min-height: 44px; font-size: 14px; }
+/* the platform list trigger too: the shared menu style (menus.css) held it at 36 px in the phone filter sheet */
+html body :is(main .rr.rr, .rr-layer.rr-layer) .rr-fopen .rr-trigger.pf-trigger.pf-trigger { height: 44px; min-height: 44px; font-size: 14px; }
 }
 /* ---------- phones and tablets: each return is a compact card (mobil-tum-sayfalar.html) ----------
    identity · status strip · buyer and carrier · products · reason · invoice and total · actions. Tablets lay the cards

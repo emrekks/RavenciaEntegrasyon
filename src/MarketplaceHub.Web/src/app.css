@@ -10,6 +10,7 @@
 @import './styles/design-cleanup.css';
 @import './styles/one-row.css';
 @import './styles/orders-returns-invoices-audit.css';
+@import './styles/audit-products.css';
 
 /*
  * Cascade layers, lowest first (the bundler hoists this order). `pages` and `responsive` are reserved for page and

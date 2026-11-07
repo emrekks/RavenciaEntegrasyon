@@ -203,11 +203,15 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-src-ok { display: inline-grid; place-items: center; flex: none; width: 16px; height: 16px; color: #fff; background: var(--rr-ok); border-radius: 50%; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-src-ok .rr-ico { width: 11px; height: 11px; stroke-width: 3.3; }
 @media (max-width: 760px) {
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-conns.rr-conns { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-conns .rr-src { gap: 7px; padding: 9px 8px; }
+/* one connection per row, so every platform name reads in full */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-conns.rr-conns { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-conns .rr-src { gap: 8px; padding: 9px 10px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-conns .rr-src .rr-logo { width: 22px; height: 22px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-conns .rr-src b { font-size: 12.5px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-conns .rr-src b { font-size: 13px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-conns .rr-src small { display: none; }
+/* Platformdan Ürün Aktarımı: the selection note reads on its own line above the two buttons */
+.rr-layer.rr-layer .rr-modal.rr-pimport-modal > .rr-m-foot > .rr-note { flex: 1 0 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rr-layer.rr-layer .rr-modal.rr-pimport-modal > .rr-m-foot > .rr-btn { flex: 1 1 0; min-width: 0; justify-content: center; }
 }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-sortbtn.rr-on { color: var(--rr-violet); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-bulk-menu > .rr-menu { position: absolute; right: 0; bottom: calc(100% + 6px); top: auto; }
