@@ -385,7 +385,6 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 /* An open group is a table: Varyant (and Stok) and the panel price stay on the left while the marketplaces scroll
    under a two-level header, each marketplace's name over its Liste / Satış, with its "Özel Fiyat" box. */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable-wrap { overflow-x: auto; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-customs { display: none; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; table-layout: fixed; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable.rr-qt-prices { width: max-content; min-width: 100%; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-w-sel { width: 40px; }
@@ -447,11 +446,11 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qfallback .rr-in { color: var(--rr-muted); font-style: italic; }
 @media (max-width: 760px) {
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroups.rr-two { grid-template-columns: minmax(0, 1fr); }
-  /* A phone shows each variant as a card: its name, then each field under a title; the "Özel Fiyat" boxes sit above. */
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-customs { display: grid; gap: 2px; padding: 6px 12px; border-bottom: 1px solid var(--rr-line); background: var(--rr-raised); }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-customs .rr-qt-custom { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; height: 32px; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-customs .rr-qt-custom b { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-customs .rr-qt-custom span { white-space: nowrap; }
+  /* A phone shows each variant as a card: its name, then each field under a title. A marketplace's "Özel Fiyat" switch sits
+     on its own caption line, right-aligned ("Trendyol · Ana Fiyat ...... [switch] Özel Fiyat"). */
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody td[data-l]:has(> .rr-qt-cardswitch) { grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 8px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody td[data-l] > .rr-qt-cardswitch { grid-column: 2; grid-row: 1; justify-self: end; height: 36px; min-height: 36px; gap: 8px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody td[data-l]:has(> .rr-qt-cardswitch) > .rr-qpair { grid-column: 1 / -1; }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable.rr-qt-prices { display: block; width: 100%; min-width: 0; }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable :is(thead, colgroup) { display: none; }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody { display: block; }
