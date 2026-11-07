@@ -18,7 +18,7 @@ const claimStatusNames: Record<string, string> = {
   REJECTED: 'Reddedildi',
   UNRESOLVED: 'İhtilafta',
   INANALYSIS: 'Trendyol incelemesinde',
-  CANCELLED: 'İptal edildi',
+  CANCELLED: 'İptal Edildi',
   WAITINGFRAUDCHECK: 'Trendyol kontrolünde'
 }
 export function claimStatusName(value: string | null | undefined) {

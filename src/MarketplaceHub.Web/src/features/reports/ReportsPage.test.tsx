@@ -238,17 +238,17 @@ describe('ReportsPage', () => {
     expect(hero(page, 'sales')).toBe('5 adet · 2 farklı varyant')
     expect(heroCard(page, 'sales').querySelector('.reports-hero-head .reports-delta')).not.toBeNull()
     expect(heroCard(page, 'sales').querySelector('.reports-hero-top > .reports-hover-tip')?.textContent).toContain('5 satılan adetten 1 iade düşülür, 4 adet kalır')
-    expect(heroTiles(page, 'sales')).toEqual(['Net satılan adet 4', 'Adet başına satış ₺70,00', 'KDV hariç net satış ₺227,27', 'Satıcı indirimi %7,9'])
-    expect(tipOf(page, 'sales', 'Satıcı indirimi')).toContain('yalnız Trendyol ve Hepsiburada')
+    expect(heroTiles(page, 'sales')).toEqual(['Net Satılan Adet 4', 'Adet Başına Satış ₺70,00', 'KDV Hariç Net Satış ₺227,27', 'Satıcı İndirimi %7,9'])
+    expect(tipOf(page, 'sales', 'Satıcı İndirimi')).toContain('yalnız Trendyol ve Hepsiburada')
     expect(hero(page, 'orders')).toBe('₺116,67 · sepet ortalaması')
-    expect(heroTiles(page, 'orders')).toEqual(['Sipariş başına adet 1,25', 'Tekrar gelen müşteri %50,0', 'Sipariş başına kâr ₺42,33'])
+    expect(heroTiles(page, 'orders')).toEqual(['Sipariş Başına Adet 1,25', 'Tekrar Gelen Müşteri %50,0', 'Sipariş Başına Kâr ₺42,33'])
     expect(hero(page, 'profit')).toBe('— · reklam öncesi marj')
-    expect(heroTiles(page, 'profit')).toEqual(['Adet başına kâr ₺31,75', 'Sipariş başına kâr ₺42,33', 'Adet başına maliyet ₺40,00'])
+    expect(heroTiles(page, 'profit')).toEqual(['Adet Başına Kâr ₺31,75', 'Sipariş Başına Kâr ₺42,33', 'Adet Başına Maliyet ₺40,00'])
     expect(hero(page, 'fees')).toBe('₺14,33 · sipariş başına')
     // Without Trendyol's statement the cargo and the return cargo are unknown, never ₺0.
-    expect(heroTiles(page, 'fees')).toEqual(['Komisyon oranı %21,5', 'Sipariş başına kargo —', 'Adet başına kargo —'])
+    expect(heroTiles(page, 'fees')).toEqual(['Komisyon Oranı %21,5', 'Sipariş Başına Kargo —', 'Adet Başına Kargo —'])
     expect(hero(page, 'ads')).toBe('— · reklam harcaması')
-    expect(heroTiles(page, 'ads')).toEqual(['Sipariş başına reklam —', 'Reklam raporu Yüklenmedi'])
+    expect(heroTiles(page, 'ads')).toEqual(['Sipariş Başına Reklam —', 'Reklam Raporu Yüklenmedi'])
     expect(page.querySelector('.reports-hero-card.is-ads')?.textContent).not.toContain('Reklam Cirosu ve ROAS')
     // Without Trendyol's statement there is nothing tied to no order to list.
     expect(page.querySelector('.reports-card-unlinked')).toBeNull()
@@ -257,20 +257,20 @@ describe('ReportsPage', () => {
     expect(heroCard(page, 'cargo').querySelector('.reports-hero-badge.is-warn')?.textContent).toBe('eşik %4')
     expect(page.querySelector('.reports-hero-card.is-cargo .reports-hero-value strong.is-warn')).not.toBeNull()
     expect(page.querySelector('.reports-hero-card.is-cargo .reports-hero-bar.is-warn b')).not.toBeNull()
-    expect(heroTiles(page, 'cargo')).toEqual(['Kargoya verme süresi 24 sa', `Teslim süresi ${formatHours(48)}`, 'Ölçülen paket 1'])
+    expect(heroTiles(page, 'cargo')).toEqual(['Kargoya Verme Süresi 24 sa', `Teslim Süresi ${formatHours(48)}`, 'Ölçülen Paket 1'])
     // The amount returned is what the customers paid, the İade Edilen Tutar of the bridge (₺100), not the list price;
     // the change names the previous rate.
     expect(hero(page, 'returns')).toMatch(/^%20,0 · önceki dönem %/u)
     expect(page.querySelector('.reports-hero-card.is-returns .reports-delta')?.getAttribute('title')).toMatch(/^Önceki dönem /)
-    expect(heroTiles(page, 'returns')).toEqual(['İade edilen adet 1', 'İade talebi 1', 'İade edilen tutar ₺100', 'İade kargo bedeli —', 'Yurt dışı operasyon iade bedeli —', 'Toplam iade maliyeti —', 'En sık neden Beden uymadı (%100,0)'])
+    expect(heroTiles(page, 'returns')).toEqual(['İade Edilen Adet 1', 'İade Talebi 1', 'İade Edilen Tutar ₺100', 'İade Kargo Bedeli —', 'Yurt Dışı Operasyon İade Bedeli —', 'Toplam İade Maliyeti —', 'En Sık Neden Beden uymadı (%100,0)'])
     expect(hero(page, 'cancels')).toBe('%20,0 · 1 sipariş iptal')
     expect(page.querySelector('.reports-hero-card.is-cancels .reports-hero-value strong.is-warn')).not.toBeNull()
-    expect(heroTiles(page, 'cancels')).toEqual(['İptal edilen adet 1', 'İptal edilen tutar ₺120'])
+    expect(heroTiles(page, 'cancels')).toEqual(['İptal Edilen Adet 1', 'İptal Edilen Tutar ₺120'])
     // No known cancel reason: no line for it.
-    expect(heroCard(page, 'cancels').textContent).not.toContain('En sık neden')
+    expect(heroCard(page, 'cancels').textContent).not.toContain('En Sık Neden')
     expect(hero(page, 'todo')).toBe('1 · faturasız paket')
     expect(page.querySelector('.reports-hero-card.is-todo.is-alert')).not.toBeNull()
-    expect(heroTiles(page, 'todo')).toEqual(['Stok riski 0 ürün', 'Soru yanıt süresi —'])
+    expect(heroTiles(page, 'todo')).toEqual(['Stok Riski 0 ürün', 'Soru Yanıt Süresi —'])
     // Every figure explains itself under the pointer.
     expect(page.querySelectorAll('.reports-hero-card .reports-hover-tip')).toHaveLength(9 + 29)
     // The old cards are gone, and no card repeats another.
@@ -293,7 +293,7 @@ describe('ReportsPage', () => {
       stores: [{ connectionId: 'c1', storeName: 'Ravencia Trendyol' }] }
       const page = await open()
       await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)) })
-      expect(heroTiles(page, 'ads')).toEqual(['Sipariş başına reklam —', 'ROAS (kampanya) 4,92', 'Reklam cirosu (kampanya) ₺16.001'])
+      expect(heroTiles(page, 'ads')).toEqual(['Sipariş Başına Reklam —', 'ROAS (kampanya) 4,92', 'Reklam Cirosu (Kampanya) ₺16.001'])
       // Older than 7 days: in the warning colour.
       expect(heroCard(page, 'ads').querySelectorAll('.reports-hero-row strong.is-warn')).toHaveLength(2)
       expect(tipOf(page, 'ads', 'ROAS (kampanya)')).toContain('seçili dönemin rakamı değildir')
@@ -308,9 +308,9 @@ describe('ReportsPage', () => {
 
   it('shows the questions\' average answer time, Trendyol and Hepsiburada only', async () => {
     const page = await open('', { ...report, questionTimes: { answered: 12, waiting: 2, averageHours: 3.5, medianHours: 2, platforms: ['TRENDYOL', 'HEPSIBURADA'] } })
-    expect(heroTiles(page, 'todo')[1]).toBe(`Soru yanıt süresi ${formatHours(3.5)}`)
-    expect(tipOf(page, 'todo', 'Soru yanıt süresi')).toContain('12 yanıtta ölçüldü')
-    expect(tipOf(page, 'todo', 'Soru yanıt süresi')).toContain('N11 ve Pazarama')
+    expect(heroTiles(page, 'todo')[1]).toBe(`Soru Yanıt Süresi ${formatHours(3.5)}`)
+    expect(tipOf(page, 'todo', 'Soru Yanıt Süresi')).toContain('12 yanıtta ölçüldü')
+    expect(tipOf(page, 'todo', 'Soru Yanıt Süresi')).toContain('N11 ve Pazarama')
   })
 
   it('takes commission, cargo and fees from Trendyol\'s statement, real plus estimated, and names what is not read', async () => {
@@ -350,21 +350,21 @@ describe('ReportsPage', () => {
     expect(heroCard(page, 'ads').querySelector('.reports-hero-badge.is-warn')?.textContent).toBe(`payı ${formatPercent(5000 / 250, 2)}`)
     expect(heroCard(page, 'ads').querySelector('.reports-hero-value strong.is-warn')).not.toBeNull()
     // The spend over Trendyol's 3 orders with an amount; the margin before it gives the advertising back to the profit.
-    expect(heroTiles(page, 'ads')[0]).toBe('Sipariş başına reklam ₺1.667')
+    expect(heroTiles(page, 'ads')[0]).toBe('Sipariş Başına Reklam ₺1.667')
     expect(hero(page, 'profit')).toMatch(/^−?%-?[\d.,]+ · reklam öncesi marj$/u)
     // The commission (41,50) and the service fee and withholding tax (1.092,04 + 449,01) over 3 orders, as on the bridge.
     expect(hero(page, 'fees')).toBe('₺527,52 · sipariş başına')
     // The billed return cargo (20) and the return operation fee (5), Trendyol's only, apart and in all on the İade card;
     // Kesintiler no longer repeats them and shows the cargo per kept unit beside the cargo per order.
-    expect(heroTiles(page, 'returns').slice(3, 6)).toEqual(['İade kargo bedeli ₺20,00', 'Yurt dışı operasyon iade bedeli ₺5,00', 'Toplam iade maliyeti ₺25,00'])
-    expect(tipOf(page, 'returns', 'Toplam iade maliyeti')).toContain('yalnız Trendyol')
+    expect(heroTiles(page, 'returns').slice(3, 6)).toEqual(['İade Kargo Bedeli ₺20,00', 'Yurt Dışı Operasyon İade Bedeli ₺5,00', 'Toplam İade Maliyeti ₺25,00'])
+    expect(tipOf(page, 'returns', 'Toplam İade Maliyeti')).toContain('yalnız Trendyol')
     expect(heroTiles(page, 'fees').join(' ')).not.toContain('İade')
-    expect(heroTiles(page, 'fees')[2]).toMatch(/^Adet başına kargo ₺/u)
-    expect(tipOf(page, 'fees', 'Adet başına kargo')).toContain('Adet Başına Kâr ile aynı payda')
+    expect(heroTiles(page, 'fees')[2]).toMatch(/^Adet Başına Kargo ₺/u)
+    expect(tipOf(page, 'fees', 'Adet Başına Kargo')).toContain('Adet Başına Kâr ile aynı payda')
     // No separate card for them on the overview, and no "siparişe bağlı olmayan" anywhere on it.
     expect(page.querySelector('.reports-card-unlinked')).toBeNull()
     expect(page.querySelector('.reports-overview')?.textContent?.toLocaleLowerCase('tr')).not.toContain('siparişe bağlı olmayan')
-    expect(heroTiles(page, 'fees')[1]).toBe('Sipariş başına kargo ₺75,56')
+    expect(heroTiles(page, 'fees')[1]).toBe('Sipariş Başına Kargo ₺75,56')
 
     await act(async () => { page.querySelector<HTMLButtonElement>('[aria-label="Kâr Köprüsü: Tümünü Gör"]')!.click() })
     expect(selectedTab(page)).toContain('Kârlılık')
@@ -528,10 +528,11 @@ describe('ReportsPage', () => {
     await act(async () => { [...map.querySelectorAll<HTMLButtonElement>('.reports-map-tabs button')].find(button => button.textContent === 'Bölgeler')!.click() })
     expect(map.querySelector('.reports-map-list.is-zones li')?.textContent).toContain('Marmara')
     await act(async () => { [...map.querySelectorAll<HTMLButtonElement>('.reports-map-tabs button')].find(button => button.textContent === 'Sıralama')!.click() })
-    const metricSwitch = map.querySelector<HTMLButtonElement>('.reports-map-switch')!
-    expect(metricSwitch.textContent).toContain('Ciro')
-    await act(async () => { metricSwitch.click() })
-    expect(metricSwitch.textContent).toContain('Sipariş')
+    const metricSwitch = [...map.querySelectorAll<HTMLButtonElement>('.reports-map-seg-group [role="group"][aria-label="Ölçü"] button')]
+    expect(metricSwitch.map(button => button.textContent)).toEqual(['Ciro', 'Sipariş', 'Sepet Ort.'])
+    expect(metricSwitch[0].getAttribute('aria-pressed')).toBe('true')
+    await act(async () => { metricSwitch[1].click() })
+    expect(metricSwitch[1].getAttribute('aria-pressed')).toBe('true')
     expect(map.querySelector('.reports-map-strip')?.textContent).toContain('İstanbul')
 
     await act(async () => { [...map.querySelectorAll<HTMLButtonElement>('.reports-map-scope button')].find(button => button.textContent?.includes('Dünya'))!.click() })
@@ -672,7 +673,7 @@ describe('ReportsPage', () => {
     expect(cost.textContent).toContain('Ürün kartında varyantların maliyeti girildiğinde hesaplanır')
     expect(bridgeRows(page).at(-1)).toBe('Masraflar Sonrası ₺207,00')
     expect(bridgeRows(page).some(row => row.includes('Ürün Maliyeti'))).toBe(false)
-    expect(heroTiles(page, 'profit')[0]).toBe('Adet başına kâr —')
+    expect(heroTiles(page, 'profit')[0]).toBe('Adet Başına Kâr —')
     // The profit tab's account says the same instead of a row of zeros.
     await act(async () => { page.querySelector<HTMLButtonElement>('[aria-label="Kâr Köprüsü: Tümünü Gör"]')!.click() })
     expect(body(page)).toContain('Ürün MaliyetiÜrün kartında girilmediKâr hesaplanamadı')
@@ -761,7 +762,7 @@ describe('ReportsPage', () => {
 
   it('opens the Stok tab from the stock risk row, the best sellers\' stock moved there from Operasyon', async () => {
     const page = await open()
-    await act(async () => { [...page.querySelectorAll<HTMLButtonElement>('.reports-hero-card.is-todo .reports-hero-row')].find(button => button.textContent?.includes('Stok riski'))!.click() })
+    await act(async () => { [...page.querySelectorAll<HTMLButtonElement>('.reports-hero-card.is-todo .reports-hero-row')].find(button => button.textContent?.includes('Stok Riski'))!.click() })
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
     expect(selectedTab(page)).toContain('Stok')
     expect(selectedTab(page)).not.toContain('Operasyon')

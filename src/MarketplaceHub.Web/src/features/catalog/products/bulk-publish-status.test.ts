@@ -49,8 +49,8 @@ describe('bulk publish platform status', () => {
     expect(summarizeBulkPublishStatus([product(entry('UNLINKED')), product(entry('UNLINKED'))], trendyol)).toMatchObject({ label: 'Yayında değil', detail: null, tone: 'neutral', allLive: false })
     expect(summarizeBulkPublishStatus([product(entry('LIVE')), product(entry('LIVE'))], trendyol)).toMatchObject({ label: '2/2 Kayıt Yayında', tone: 'success', allLive: true })
     expect(summarizeBulkPublishStatus([product(entry('LIVE'))], trendyol)).toMatchObject({ label: 'Yayında', allLive: true })
-    expect(summarizeBulkPublishStatus([null, product()], trendyol)).toMatchObject({ label: 'Durum bilinmiyor', tone: 'neutral', allLive: false })
-    expect(summarizeBulkPublishStatus([], trendyol)).toMatchObject({ label: 'Durum bilinmiyor', allLive: false })
+    expect(summarizeBulkPublishStatus([null, product()], trendyol)).toMatchObject({ label: 'Durum Bilinmiyor', tone: 'neutral', allLive: false })
+    expect(summarizeBulkPublishStatus([], trendyol)).toMatchObject({ label: 'Durum Bilinmiyor', allLive: false })
   })
 
   it('warns when some records failed there', () => {

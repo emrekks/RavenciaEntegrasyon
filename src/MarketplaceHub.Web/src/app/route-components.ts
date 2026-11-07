@@ -1,9 +1,6 @@
 import { lazyPage } from '../shared/lazy-page'
 
 // Each catalog route loads its own module (product list, product editor, catalog lists, imports) as its own chunk.
-export const AttributesPage = lazyPage(() => import('../features/catalog/lists/CatalogListPages').then(module => ({ default: module.AttributesPage })))
-export const BrandsPage = lazyPage(() => import('../features/catalog/lists/CatalogListPages').then(module => ({ default: module.BrandsPage })))
-export const CategoriesPage = lazyPage(() => import('../features/catalog/lists/CatalogListPages').then(module => ({ default: module.CategoriesPage })))
 export const ImportDetailPage = lazyPage(() => import('../features/catalog/imports/ImportPages').then(module => ({ default: module.ImportDetailPage })))
 export const ImportsPage = lazyPage(() => import('../features/catalog/imports/ImportPages').then(module => ({ default: module.ImportsPage })))
 export const NewProductPage = lazyPage(() => import('../features/catalog/product-editor/ProductEditorPages').then(module => ({ default: module.NewProductPage })))
@@ -18,7 +15,6 @@ export const OrdersPage = lazyPage(() => import('../features/marketplace/orders/
 export const ReturnDetailPage = lazyPage(() => import('../features/marketplace/returns/ReturnPages').then(module => ({ default: module.ReturnDetailPage })))
 export const ReturnsPage = lazyPage(() => import('../features/marketplace/returns/ReturnPages').then(module => ({ default: module.ReturnsPage })))
 export const ShipmentDetailPage = lazyPage(() => import('../features/marketplace/orders/ShipmentPages').then(module => ({ default: module.ShipmentDetailPage })))
-export const ShipmentsPage = lazyPage(() => import('../features/marketplace/orders/ShipmentPages').then(module => ({ default: module.ShipmentsPage })))
 
 export const InvoiceDetailPage = lazyPage(() => import('../features/invoicing').then(module => ({ default: module.InvoiceDetailPage })))
 export const InvoicesPage = lazyPage(() => import('../features/invoicing').then(module => ({ default: module.InvoicesPage })))

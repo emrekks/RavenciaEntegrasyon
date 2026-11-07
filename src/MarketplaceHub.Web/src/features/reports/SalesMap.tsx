@@ -196,9 +196,9 @@ export function SalesMap({ data }: { data: ReportSales }) {
   return <section className="reports-panel reports-map-panel" aria-labelledby="reports-map-title">
     <header className="reports-map-head">
       <h2 id="reports-map-title">Satış Haritası</h2>
-      <div className="reports-map-scope" role="tablist" aria-label="Harita">
+      <div className="reports-segmented reports-map-seg reports-map-scope" role="group" aria-label="Harita">
         {([['turkey', 'Türkiye', 'pin'], ['world', 'Dünya · İhracat', 'globe']] as const).map(([key, text, icon]) =>
-          <button key={key} type="button" role="tab" aria-selected={scope === key} onClick={() => choose(key)}><UiIcon name={icon} size={15} />{text}</button>)}
+          <button key={key} type="button" aria-pressed={scope === key} onClick={() => choose(key)}><UiIcon name={icon} size={15} />{text}</button>)}
       </div>
       <div className="reports-map-switches">
         <MapSwitch label="Ölçü" value={metric} onChange={setMetric} options={metricOptions} />
@@ -265,14 +265,13 @@ export function SalesMap({ data }: { data: ReportSales }) {
 
 type SwitchOption<T extends string> = { key: T; text: string; icon: UiIconName }
 
-// One button in the theme toggle's manner: its icon and the current choice; a click moves to the next one.
+// A labelled segment control: every option is visible, the chosen one is raised.
 function MapSwitch<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: Array<SwitchOption<T>>; onChange: (value: T) => void }) {
-  const index = Math.max(0, options.findIndex(option => option.key === value))
-  const current = options[index], next = options[(index + 1) % options.length]
-  return <button type="button" className="reports-map-switch" onClick={() => onChange(next.key)}
-    aria-label={`${label}: ${current.text}; ${next.text} için tıklayın`} title={`${label}: ${current.text} → ${next.text}`}>
-    <UiIcon name={current.icon} size={16} /><small>{label}</small><span>{current.text}</span>
-  </button>
+  return <div className="reports-map-seg-group"><small>{label}</small>
+    <div className="reports-segmented reports-map-seg" role="group" aria-label={label}>
+      {options.map(option => <button key={option.key} type="button" aria-pressed={option.key === value} onClick={() => onChange(option.key)}><UiIcon name={option.icon} size={14} />{option.text}</button>)}
+    </div>
+  </div>
 }
 
 // The period on the map in four figures: the leading area, the top three's share, how much of the map sold and the
