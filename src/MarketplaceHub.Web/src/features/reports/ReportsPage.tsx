@@ -595,7 +595,7 @@ function OverviewFigures({ data, money }: { data: ReportSales; money: Money | nu
       note: `Ürün maliyeti ${money?.cost ? formatTl(money.cost) : '—'}`,
       tip: `Ürüne harcanan her liranın ne kadar kâr getirdiği.\nTahmini net kâr ÷ ürün maliyeti (Kâr Köprüsü'ndeki Ürün Maliyeti). ${previousText(formatPercent(earlierOnCost))}.`, tone: (onCost ?? 0) < 0 ? 'bad' : undefined },
     { key: 'orders', label: 'Sipariş', value: now.orders, format: formatCount, delta: change(now.orders, then.orders), note: `${formatCount(now.cancelledOrders)} iptal · sepet ${noAmount ? '—' : formatTl(now.averageOrderValue)}`,
-      tip: `Dönemde gelen sipariş sayısı.\nİptal edilen siparişler sayılmaz; yanında dönemde iptal edilen sipariş ve sepet ortalaması (Sipariş Başına Satış). ${previousText(formatCount(then.orders))}.`, split: split(row => row.orders, formatCount) },
+      tip: `Dönemde gelen sipariş sayısı.\nİptal edilen siparişler sayılmaz. ${previousText(formatCount(then.orders))}.`, split: split(row => row.orders, formatCount) },
     // The units sold (cancellations out, returns not taken off), with what the customers kept and sent back under it;
     // the Satış card under the strip leads with the same figure (owner, 7 Nov 2026: the strip as 3 + 3).
     { key: 'sold', label: 'Satılan Adet', value: now.soldQuantity, delta: change(now.soldQuantity, then.soldQuantity),
