@@ -428,7 +428,7 @@ describe('JobsPage API Sağlık tab (price/stock sending health)', () => {
     const cards = Array.from(container.querySelectorAll<HTMLElement>('.api-health .rr-opgrid > .rr-opcard'))
     expect(cards.map(card => card.querySelector('small')!.textContent)).toEqual(['Sorunlu Bağlantı', 'Son 24 Saatte İstek', 'Tamamlanamayan İş', 'Karar Bekleyen İş'])
     expect(cards.map(card => card.querySelector('strong')!.textContent)).toEqual(['1', '5.987', '12', '18'])
-    expect(cards.map(card => card.getAttribute('href'))).toEqual([null, '/jobs', '/jobs?statu=DEAD', '/jobs?statu=MANUAL_REVIEW&aralik=tum'])
+    expect(cards.map(card => card.getAttribute('href'))).toEqual([null, '/jobs', '/jobs?statu=DEAD&aralik=tum', '/jobs?statu=MANUAL_REVIEW&aralik=tum'])
     expect(cards[0].className).toContain('rr-warn')
     expect(cards[1].className).toBe('rr-opcard')
     expect(cards[2].className).toContain('rr-bad')
