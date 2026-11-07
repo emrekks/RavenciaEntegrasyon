@@ -86,8 +86,29 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                 .Select(x => new { x.Key, Available = x.Sum(item => item.Available) })
                 .ToDictionaryAsync(x => x.Key, x => x.Available, cancellationToken);
 
-        var report = ReportBuilder.Build(input, previousInput, stock) with { GeneratedAt = timeProvider.GetUtcNow(), Channels = channels };
+        var report = ReportBuilder.Build(input, previousInput, stock) with
+        {
+            GeneratedAt = timeProvider.GetUtcNow(),
+            Channels = channels,
+            QuestionTimes = await QuestionTimesAsync(tenantId, allowed, current, cancellationToken)
+        };
         return ServiceResult<ReportSalesView>.Ok(await WithProductDetailsAsync(tenantId, report, cancellationToken));
+    }
+
+    // The answer times of the questions asked in the period on Trendyol and Hepsiburada (ReportQuestionTimeView). The
+    // conversations of the stores' questions created from a month before the period are read (the table is small) and
+    // the asking time is taken from the conversation itself.
+    private static readonly string[] AnswerTimedPlatforms = ["TRENDYOL", "HEPSIBURADA"];
+
+    private async Task<ReportQuestionTimeView?> QuestionTimesAsync(Guid tenantId, IReadOnlyDictionary<Guid, ReportChannelView> allowed, ReportPeriod period, CancellationToken cancellationToken)
+    {
+        var stores = allowed.Values.Where(x => AnswerTimedPlatforms.Contains(x.PlatformCode)).Select(x => x.Id).ToArray();
+        if (stores.Length == 0) return null;
+        var since = period.Start.AddDays(-31);
+        var histories = await db.MarketplaceQuestions.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && stores.Contains(x.ConnectionId) && x.HistoryJson != null && (x.CreatedAt == null || x.CreatedAt >= since))
+            .Select(x => x.HistoryJson!).ToListAsync(cancellationToken);
+        return ReportQuestionTimes.Build(histories, period.Start, period.End, allowed.Values.Where(x => stores.Contains(x.Id)).Select(x => x.PlatformCode).Distinct().Order(StringComparer.Ordinal).ToList());
     }
 
     // Sipariş Kârlılık Analizi: the period's orders (test stores out) with each one's profit, worked out from the same input

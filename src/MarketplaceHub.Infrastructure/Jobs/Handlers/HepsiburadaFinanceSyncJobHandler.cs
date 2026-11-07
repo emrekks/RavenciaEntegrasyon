@@ -131,7 +131,10 @@ public sealed class HepsiburadaFinanceSyncJobHandler(AppDbContext db, IHepsibura
         "ShipmentCostSharingExpense" or "ShipmentCostSharingIncome" or "ReturnShipmentCostSharingExpense" or "DropShipmentCostSharingExpense" or "DropShipmentCostSharingIncome" or "CargoCostRefund"
             => MarketplaceFinanceCategories.Cargo,
         "ProcessingFeeExpense" or "ProcessingFeeExpenseRefund" or "DeliveryProcessingFee" or "DeliveryProcessingFeeRefund" or "ReturnDeliveryProcessingFee" => MarketplaceFinanceCategories.ServiceFee,
-        "AdSharingExpense" or "AdSharingExpenseRefund" or "MarketingExpense" or "MarketingExpenseRefund" => MarketplaceFinanceCategories.Advertising,
+        // The documented ad types (hepsiburada-api-son.md:19628-19680). AdBalanceTopUpFromAllowance only moves the payout
+        // into the ad balance (not the spend), so it stays OTHER.
+        "AdSharingExpense" or "AdSharingExpenseRefund" or "MarketingExpense" or "MarketingExpenseRefund" or "SponsorshipFee" or "FacebookAdExpense"
+            or "MarketingSupportParticipation" or "MarketingSupportParticipationRefund" => MarketplaceFinanceCategories.Advertising,
         "Stoppage" => MarketplaceFinanceCategories.Stoppage,
         "CampaignDiscount" or "CampaignDiscountRefund" => MarketplaceFinanceCategories.Discount,
         _ => MarketplaceFinanceCategories.Other

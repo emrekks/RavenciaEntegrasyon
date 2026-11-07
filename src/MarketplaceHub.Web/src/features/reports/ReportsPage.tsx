@@ -998,6 +998,7 @@ function operationMetrics(data: ReportSales): Metric[] {
   const low = data.stock.bestSellers.filter(row => row.daysLeft !== null && row.daysLeft < 7).length
   const packages = data.invoices.buckets.reduce((sum, bucket) => sum + bucket.packages, 0)
   const notInvoiced = data.invoices.buckets.find(bucket => bucket.key === 'NOT_INVOICED')?.packages ?? 0
+  const questions = data.questionTimes ?? null
   return [
     { key: 'ship', label: 'Kargoya Verme Süresi', value: formatHours(ship.hours), detail: 'cargo', note: `Siparişin kargoya verilmesine kadar geçen ortalama süre.\n${ship.measured > 0 ? `${formatCount(ship.measured)} pakette ölçüldü.` : 'Ölçülemedi.'}` },
     { key: 'late', label: 'Geciken Kargo', value: measuredLate > 0 ? `${formatPercent(late / measuredLate)} · ${formatCount(late)} paket` : '—', tone: late > 0 ? 'warn' : undefined, detail: 'cargo',
@@ -1007,7 +1008,12 @@ function operationMetrics(data: ReportSales): Metric[] {
       note: deliver.hours === null ? 'Kargoya verilen paketin müşteriye ulaşmasına kadar geçen ortalama süre.\nBu dönemde teslim anı okunan paket yok.'
         : `Kargoya verilen paketin müşteriye ulaşmasına kadar geçen ortalama süre.\n${formatCount(deliver.measured)} pakette ölçüldü.` },
     { key: 'invoice', label: 'Faturasız Paket', value: formatCount(notInvoiced), tone: notInvoiced > 0 ? 'warn' : undefined, detail: 'invoices', note: `Faturası henüz kesilmemiş paketler.\n${formatCount(packages)} paket içinde.` },
-    { key: 'stock', label: 'Stok Riski', value: `${formatCount(low)} ürün`, tone: low > 0 ? 'warn' : undefined, detail: 'stock', note: 'Stoğu bir haftadan az yetecek çok satan ürünler.\nGünlük satış hızına göre kalan gün 7\'den az.' }
+    { key: 'stock', label: 'Stok Riski', value: `${formatCount(low)} ürün`, tone: low > 0 ? 'warn' : undefined, detail: 'stock', note: 'Stoğu bir haftadan az yetecek çok satan ürünler.\nGünlük satış hızına göre kalan gün 7\'den az.' },
+    // Trendyol and Hepsiburada only: n11's and Pazarama's answer times are not reliable (marketplace-docs).
+    { key: 'questions', label: 'Soru Yanıt Süresi', value: questions?.averageHours == null ? '—' : formatHours(questions.averageHours),
+      note: !questions ? 'Müşteri sorusunun ilk yanıtına kadar geçen ortalama süre.\nYalnız Trendyol ve Hepsiburada ölçülür; bu seçimde ikisi de yok.'
+        : questions.averageHours === null ? `Müşteri sorusunun ilk yanıtına kadar geçen ortalama süre.\nBu dönemde yanıtlanan soru yok${questions.waiting ? `; ${formatCount(questions.waiting)} soru yanıt bekliyor` : ''}.`
+        : `Müşteri sorusunun ilk yanıtına kadar geçen ortalama süre.\n${questions.platforms.map(platformName).join(' ve ')} sorularından ${formatCount(questions.answered)} yanıtta ölçüldü; ortanca ${formatHours(questions.medianHours)}.${questions.waiting ? ` ${formatCount(questions.waiting)} soru yanıt bekliyor.` : ''} n11 ve Pazarama yanıt zamanı güvenilir okunmadığı için sayılmaz.` }
   ]
 }
 

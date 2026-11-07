@@ -90,3 +90,11 @@ PTTAVM_CONNECTION_TEST, _REFERENCE_SYNC, _ORDER_SYNC, _ORDER_RECOVERY_SYNC, _ORD
   The sample sends it null: then the TCKN/VKN decides.
 - E-Arşiv internet sale: purchaseUrl `https://www.pttavm.com`, paymentMeans MEDIATOR; the carrier (needed for the
   e-Arşiv delivery info) is known only once the tracking number comes.
+
+## Report data gaps (7 Nov 2026)
+- Discount: a line carries `IndirimPttavm` ("Pttavm indirim bilgisi") and `IndirimTedarikci` ("Tedarikçi(mağaza)
+  indirim bilgisi") apart (`pttavm-api-son.md:1632-1634`, 1848-1850); the mapper reads only `IndirimToplam`
+  (`PttAvmOrderMapper.cs:71`). Live, the 3 lines of 60 days have both at 0, so the split was never seen on a real
+  discount: not read yet. No list price field, only the amounts with and without VAT.
+- No shipment due date in the order API (the field table near `pttavm-api-son.md:1600-1660` has IslemTarihi only):
+  ShipmentDueAt stays empty (0/2 orders), so the reports cannot measure late shipping on PTT AVM and say so.
