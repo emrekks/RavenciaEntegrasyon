@@ -284,6 +284,30 @@ describe('SystemSettingsPage', () => {
     expect(at().left).toBe(0)
   })
 
+  it('label designer: a click selects a block without moving it; a drag past the threshold moves it with the pointer', async () => {
+    await renderPage('/settings?tab=designer')
+    const paper = container.querySelector<HTMLElement>('.shipping-designer-paper')!
+    // the paper drawn 400 px square: 4 px a percent; the third block (Paket / Sipariş) has room to move right
+    paper.getBoundingClientRect = () => ({ left: 0, top: 0, right: 400, bottom: 400, width: 400, height: 400, x: 0, y: 0, toJSON: () => ({}) })
+    const blocks = () => Array.from(container.querySelectorAll<HTMLElement>('.shipping-designer-block'))
+    const at = () => ({ left: parseFloat(blocks()[2].style.left), top: parseFloat(blocks()[2].style.top) })
+    const pointer = (type: string, x: number, y: number) => act(() => { blocks()[2].dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: x, clientY: y })) })
+    const start = at()
+
+    pointer('pointerdown', 100, 100)
+    pointer('pointermove', 102, 101)
+    pointer('pointerup', 102, 101)
+    act(() => { blocks()[2].click() })
+    expect(blocks()[2].classList.contains('is-selected')).toBe(true)
+    expect(at()).toEqual(start)
+
+    pointer('pointerdown', 100, 100)
+    pointer('pointermove', 140, 120)
+    pointer('pointerup', 140, 120)
+    expect(at().left).toBeCloseTo(start.left + 10)
+    expect(at().top).toBeCloseTo(start.top + 5)
+  })
+
   it('keeps the saved alert app password write-only and sends it only when it is changed', async () => {
     await renderPage('/settings?tab=alerts')
     expect(paneTitle()).toBe('Alarm Bildirimleri')

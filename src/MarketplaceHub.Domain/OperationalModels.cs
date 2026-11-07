@@ -84,6 +84,26 @@ public sealed class JobVariantResult
     public DateTimeOffset RecordedAt { get; set; }
 }
 
+// What a read job pulled, one row per job: the outcome counts of every record it read (they always add up to Received)
+// and up to JobReadRecorder.MaxRecords of the records themselves as JSON (reference, order number, status, outcome,
+// reason; never a customer's name or address). Omitted counts the records beyond that cap.
+public sealed class JobReadSummary
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid JobId { get; set; }
+    public required string Kind { get; set; }
+    public int Received { get; set; }
+    public int Inserted { get; set; }
+    public int Updated { get; set; }
+    public int Unchanged { get; set; }
+    public int Skipped { get; set; }
+    public int Failed { get; set; }
+    public int Omitted { get; set; }
+    public required string RecordsJson { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
 public sealed class InboxMessage
 {
     public Guid Id { get; set; }

@@ -82,4 +82,16 @@ public sealed class HepsiburadaFinanceTests
         Assert.Contains("Offset=200&Limit=100&Status=WillBePaid&DueDateStart=2026-11-01&DueDateEnd=2026-12-01",
             HepsiburadaFinanceRequestContract.Path("m-1", "WillBePaid", true, new DateTimeOffset(2026, 10, 31, 21, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 11, 30, 21, 0, 0, TimeSpan.Zero), 200));
     }
+
+    // Every documented ad type is advertising (hepsiburada-api-son.md:19628-19680); a top-up of the ad balance from the
+    // payout is not a spend and stays OTHER.
+    [Theory]
+    [InlineData("AdSharingExpense", MarketplaceFinanceCategories.Advertising)]
+    [InlineData("MarketingExpenseRefund", MarketplaceFinanceCategories.Advertising)]
+    [InlineData("SponsorshipFee", MarketplaceFinanceCategories.Advertising)]
+    [InlineData("FacebookAdExpense", MarketplaceFinanceCategories.Advertising)]
+    [InlineData("MarketingSupportParticipation", MarketplaceFinanceCategories.Advertising)]
+    [InlineData("MarketingSupportParticipationRefund", MarketplaceFinanceCategories.Advertising)]
+    [InlineData("AdBalanceTopUpFromAllowance", MarketplaceFinanceCategories.Other)]
+    public void Ad_types_are_advertising(string type, string category) => Assert.Equal(category, HepsiburadaFinanceSyncJobHandler.Category(type));
 }

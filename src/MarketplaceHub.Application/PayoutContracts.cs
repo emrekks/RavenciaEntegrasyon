@@ -49,8 +49,17 @@ public sealed record PayoutPlatformView(string PlatformCode, decimal Expected, i
 // next payout). Region NONE: a marketplace that pays without regions. Kind PAYOUT: a payout the marketplace made (Status
 // PAID); Amount is the marketplace's own figure, LinesAmount what the records it paid add up to (null when none was read
 // yet). RegionName: as the marketplace named the payout's region.
+// Estimates: on a Trendyol payout day to come, the deductions Trendyol takes off that payout but bills only the evening
+// before it (cargo, platform service fee, international service fee, withholding tax), estimated from its records as
+// Trendyol's own "Ödeme Özeti" estimates them; Amount is then the records less these, LinesAmount the records alone.
 public sealed record PayoutGroupView(string Key, string Kind, Guid ConnectionId, string PlatformCode, string StoreName, string Region, string? RegionName,
-    DateOnly Day, decimal Amount, decimal? LinesAmount, int Records, string Status);
+    DateOnly Day, decimal Amount, decimal? LinesAmount, int Records, string Status, IReadOnlyList<PayoutEstimateView>? Estimates = null);
+
+// One estimated deduction of a payout day to come. Kind CARGO (shipments), RETURN_CARGO, PLATFORM_FEE,
+// INTERNATIONAL_FEE, STOPPAGE. Count: the packages (or records) it is for; Amount: what it takes off (positive);
+// Rate: the tariff per package (null when the store's cargo tariff is not known: the cargo is then not taken off);
+// Missing: the records left out of it for want of a figure (a sale without its VAT rate read).
+public sealed record PayoutEstimateView(string Kind, int Count, decimal Amount, decimal? Rate, int Missing = 0);
 
 // State READ: the store's records are read (LastSyncedAt: the last finished read); NOT_READ: not yet; NOT_SUPPORTED:
 // the marketplace gives no payout records to read (or they are not read yet in this version).

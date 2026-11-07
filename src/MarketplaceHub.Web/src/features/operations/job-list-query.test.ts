@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isJobInTimeRange, jobCountsQueryString, jobDetailPollInterval, jobListHeadPollInterval, jobListMaximumAutoPages, jobListPollInterval, jobListQueryString, jobPageQueryString, jobPlatformsFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage } from './job-list-query'
+import { isJobIdSearch, isJobInTimeRange, jobLookupQueryString, jobLookupTerm, jobCountsQueryString,jobDetailPollInterval, jobListHeadPollInterval, jobListMaximumAutoPages, jobListPollInterval, jobListQueryString, jobPageQueryString, jobPlatformsFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage } from './job-list-query'
 
 describe('jobListQueryString', () => {
   const now = Date.parse('2026-10-14T12:00:00.000Z')
@@ -100,5 +100,26 @@ describe('a list with older pages loaded', () => {
     expect(shouldLoadTowardsPage(2, 2, true, 1, false)).toBe(false)
     expect(shouldLoadTowardsPage(5, 2, false, 1, false)).toBe(false)
     expect(shouldLoadTowardsPage(500, 2, true, jobListMaximumAutoPages, false)).toBe(false)
+  })
+})
+
+describe('job lookup (search by job id, correlation id or marketplace id)', () => {
+  it('looks up one identifier and nothing shorter or with spaces', () => {
+    expect(jobLookupTerm('  01a1631c-aa8f-79f0-8ff6-9ccd6c21023e ')).toBe('01a1631c-aa8f-79f0-8ff6-9ccd6c21023e')
+    expect(jobLookupTerm('scheduler-2a4d22341c48453db9652055a7f0f7c1')).toBe('scheduler-2a4d22341c48453db9652055a7f0f7c1')
+    expect(jobLookupTerm('10987654321')).toBe('10987654321')
+    expect(jobLookupTerm('abc')).toBeNull()
+    expect(jobLookupTerm('stok güncelleme')).toBeNull()
+    expect(jobLookupTerm('x'.repeat(201))).toBeNull()
+  })
+
+  it('reads no other filter, so the lookup ignores the time range', () => {
+    expect(jobLookupQueryString('corr 1&x')).toBe('?search=corr+1%26x&limit=50')
+  })
+
+  it('knows a whole job id', () => {
+    expect(isJobIdSearch('01A1631C-AA8F-79F0-8FF6-9CCD6C21023E')).toBe(true)
+    expect(isJobIdSearch('01a1631c-aa8f-79f0')).toBe(false)
+    expect(isJobIdSearch('corr-01a1631c-aa8f-79f0-8ff6-9ccd6c21023e')).toBe(false)
   })
 })

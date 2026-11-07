@@ -1,4 +1,4 @@
-import { code128Modules, shippingLabelTextSize, type ShippingLabelBlock, type ShippingLabelBlockPosition, type ShippingLabelField, type ShippingLabelFormat, type ShippingLabelSettings } from './shipping-label'
+import { code128Modules, shippingLabelCaptionStyle, shippingLabelTextSize, type ShippingLabelBlock, type ShippingLabelBlockPosition, type ShippingLabelField, type ShippingLabelFormat, type ShippingLabelSettings } from './shipping-label'
 
 // What one label block shows, in order. The printed label, its preview and the label designer all draw a block from
 // these parts (ShippingLabelSurface): a barcode block draws its barcode then its other fields; the delivery address
@@ -25,13 +25,15 @@ export function shippingLabelBlockParts(block: ShippingLabelBlock, options: { sh
   }
   const fields = block.fields.filter(field => options.showCustomerPhone || field !== 'customerEmail')
   const text: ShippingPreviewPart[] = block.text ? [{ type: 'text', text: block.text }] : []
+  // Başlıksız: neither the block's title nor its fields' captions print.
+  const titled = shippingLabelCaptionStyle(block) !== 'none'
   if (block.kind === 'address') {
     // Name first, then the address, then anything else the block holds.
     const ordered = [...fields.filter(field => field === 'customerName'), ...fields.filter(field => field === 'address'), ...fields.filter(field => field !== 'customerName' && field !== 'address')]
-    return [{ type: 'title', text: addressBlockTitle }, ...ordered.map(fieldPart)]
+    return [...(titled ? [{ type: 'title', text: addressBlockTitle } as const] : []), ...ordered.map(fieldPart)]
   }
   if (block.kind === 'orderInfo' || block.kind === 'sender') return [...text, ...fields.map(fieldPart)]
-  return [{ type: 'title', text: block.title }, ...text, ...fields.map(fieldPart)]
+  return [...(titled ? [{ type: 'title', text: block.title } as const] : []), ...text, ...fields.map(fieldPart)]
 }
 
 // The size of one label on paper. A sticker is the size the settings give; an A4 label shares the printable part of

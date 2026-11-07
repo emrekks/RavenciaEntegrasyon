@@ -34,7 +34,24 @@ const changes: Record<string, JobChange> = {
   INVOICE_CANCELLATION: { label: 'Yapılan Değişiklik', value: 'Fatura iptali', detail: 'İptal isteği E-Faturam’a gönderildi.' },
   INVOICE_RECONCILE: { label: 'Yapılan İşlem', value: 'Fatura durumu', detail: 'Fatura durumu E-Faturam’dan okundu.' },
   INVOICE_DOCUMENT_FETCH: { label: 'Yapılan İşlem', value: 'Fatura belgesi', detail: 'Fatura belgesi E-Faturam’dan okundu.' },
-  INVOICE_DUE_SCAN: { label: 'Tarama Türü', value: 'Fatura vade taraması', detail: 'Panel içi tarama: kesilmesi gereken faturalar panelde kontrol edildi; dış servise istek gönderilmedi.' }
+  INVOICE_DUE_SCAN: { label: 'Tarama Türü', value: 'Fatura vade taraması', detail: 'Panel içi tarama: kesilmesi gereken faturalar panelde kontrol edildi; dış servise istek gönderilmedi.' },
+  RETURN_SYNC: { label: 'Yapılan İşlem', value: 'Yeni iade çekme', detail: 'Pazaryerinden son değişen iade talepleri okundu ve panele işlendi; pazaryerine veri gönderilmedi.' },
+  HEPSIBURADA_RETURN_SYNC: { label: 'Yapılan İşlem', value: 'Yeni iade çekme', detail: 'Hepsiburada’dan son değişen iade talepleri okundu ve panele işlendi; pazaryerine veri gönderilmedi.' },
+  RETURN_STATUS_SYNC: { label: 'Tarama Türü', value: 'Açık iade durum taraması', detail: 'Paneldeki açık iade taleplerinin güncel durumu pazaryerinden okundu.' },
+  RETURN_RECONCILIATION: { label: 'Tarama Türü', value: 'Kapsamlı iade taraması', detail: 'Geçmiş iade pencereleri taranarak paneldeki iade kayıtları pazaryeriyle karşılaştırıldı.' },
+  TRENDYOL_FINANCE_SYNC: { label: 'Yapılan İşlem', value: 'Hakediş ve cari hareket okuma', detail: 'Trendyol’un cari hesap ve hakediş hareketleri okundu; pazaryerine veri gönderilmedi.' },
+  PAZARAMA_FINANCE_SYNC: { label: 'Yapılan İşlem', value: 'Hakediş okuma', detail: 'Pazarama’nın ödeme ve hakediş kayıtları okundu; pazaryerine veri gönderilmedi.' },
+  HEPSIBURADA_FINANCE_SYNC: { label: 'Yapılan İşlem', value: 'Hakediş okuma', detail: 'Hepsiburada’nın muhasebe ve hakediş kayıtları okundu; pazaryerine veri gönderilmedi.' },
+  N11_SETTLEMENT_SYNC: { label: 'Yapılan İşlem', value: 'Hakediş okuma', detail: 'N11’in hakediş kayıtları okundu; pazaryerine veri gönderilmedi.' },
+  LISTING_VERIFY: { label: 'Tarama Türü', value: 'Ürün bağlantı doğrulaması', detail: 'Paneldeki pazaryeri ürün bağlantılarının pazaryerinde hâlâ var olup olmadığı okundu; pazaryerine veri gönderilmedi.' },
+  LISTING_LOOKUP: { label: 'Tarama Türü', value: 'Barkod arama', detail: 'Seçilen barkodlar pazaryerinde tek tek arandı; pazaryerine veri gönderilmedi.' },
+  TRENDYOL_WEBHOOK_INGEST: { label: 'Yapılan İşlem', value: 'Anlık bildirim işleme', detail: 'Pazaryerinin gönderdiği anlık bildirim (webhook) panele işlendi.' },
+  SHOPIFY_WEBHOOK_INGEST: { label: 'Yapılan İşlem', value: 'Anlık bildirim işleme', detail: 'Shopify’ın gönderdiği anlık bildirim (webhook) panele işlendi.' },
+  HEPSIBURADA_WEBHOOK_INGEST: { label: 'Yapılan İşlem', value: 'Anlık bildirim işleme', detail: 'Hepsiburada’nın gönderdiği anlık bildirim (webhook) panele işlendi.' },
+  EXTERNAL_EFFECT_RECONCILE: { label: 'Tarama Türü', value: 'Gönderim sonucu doğrulaması', detail: 'Sonucu kesinleşmemiş bir pazaryeri işleminin uygulanıp uygulanmadığı pazaryerinden okundu.' },
+  RETURN_ACTION: { label: 'Yapılan Değişiklik', value: 'İade kararı', detail: 'İade kararı pazaryerine gönderildi.' },
+  TRENDYOL_COMMON_LABEL: { label: 'Yapılan Değişiklik', value: 'Ortak etiket', detail: 'Ortak kargo etiketi pazaryerinden istendi.' },
+  CONNECTION_FULL_RESET: { label: 'Yapılan İşlem', value: 'Bağlantı verisi sıfırlama', detail: 'Bağlantının panelde tutulan verileri silindi; pazaryerine veri gönderilmedi.' }
 }
 
 const referenceSources: Record<string, string> = {
@@ -68,5 +85,7 @@ export function fallbackJobChange(jobType: string): JobChange {
   if (known) return known
   const reference = referenceSources[type]
   if (reference) return { label: 'Yapılan İşlem', value: reference, detail: 'Kategori, özellik ve eşleştirme referansları salt okunur yenilendi; dış platforma veri gönderilmedi.' }
-  return { label: 'Yapılan İşlem', value: jobPresentation(jobType).action, detail: 'İşlem kaydı sisteme alındı.' }
+  if (/CONNECTION_TEST$/.test(type)) return { label: 'Yapılan İşlem', value: 'Bağlantı testi', detail: 'Mağaza bilgileriyle pazaryerine bir okuma isteği yapılıp bağlantının çalıştığı kontrol edildi.' }
+  // A type without its own text says what it is and that its detail is not kept, instead of an empty phrase.
+  return { label: 'Yapılan İşlem', value: jobPresentation(jobType).action, detail: 'Bu iş türü için ayrıntılı kayıt tutulmuyor; sonucu aşağıdaki sayılarda ve deneme geçmişinde.' }
 }

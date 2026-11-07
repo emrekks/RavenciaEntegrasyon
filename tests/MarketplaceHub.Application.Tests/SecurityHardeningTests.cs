@@ -436,7 +436,7 @@ public sealed class ShippingLabelSettingsSchemaTests
     {
         using var document = JsonDocument.Parse("""
             {"senderName":"Ravencia","stickerWidthMm":9000,"sectionGapMm":-3,"a4LabelsPerPage":3,"defaultFormat":"poster","showA4Button":false,
-             "injected":"<script>","layout":{"a4":[{"kind":"address","fields":["address","address","password"],"align":"middle","inline":true,"position":{"x":500,"y":-1,"width":1,"height":50},"extra":1},"sender",{"kind":"orderInfo","inline":"yes"},7],"other":[]}}
+             "injected":"<script>","layout":{"a4":[{"kind":"address","fields":["address","address","password"],"align":"middle","inline":true,"position":{"x":500,"y":-1,"width":1,"height":50},"extra":1},"sender",{"kind":"orderInfo","inline":"yes","captionStyle":"beside","fieldsPerRow":2,"boxed":true,"uppercase":"yes","position":{"x":-80}},{"kind":"sender","captionStyle":"sideways","fieldsPerRow":7},7],"other":[]}}
             """);
 
         var normalized = ShippingLabelSettingsSchema.Normalize(document.RootElement);
@@ -448,7 +448,15 @@ public sealed class ShippingLabelSettingsSchemaTests
         Assert.Equal("a4", normalized["defaultFormat"]!.GetValue<string>());
         Assert.False(normalized["showA4Button"]!.GetValue<bool>());
         var blocks = normalized["layout"]!["a4"]!.AsArray();
-        Assert.Equal(3, blocks.Count);
+        Assert.Equal(4, blocks.Count);
+        // The layout options: kept when valid and set, dropped otherwise; a turned block's box may start off the paper.
+        Assert.Equal("beside", blocks[2]!["captionStyle"]!.GetValue<string>());
+        Assert.Equal(2, blocks[2]!["fieldsPerRow"]!.GetValue<int>());
+        Assert.True(blocks[2]!["boxed"]!.GetValue<bool>());
+        Assert.Null(blocks[2]!["uppercase"]);
+        Assert.Equal(-50, blocks[2]!["position"]!["x"]!.GetValue<double>());
+        Assert.Null(blocks[3]!["captionStyle"]);
+        Assert.Null(blocks[3]!["fieldsPerRow"]);
         Assert.Equal("left", blocks[0]!["align"]!.GetValue<string>());
         // Tek Satır is kept only as a real true.
         Assert.True(blocks[0]!["inline"]!.GetValue<bool>());

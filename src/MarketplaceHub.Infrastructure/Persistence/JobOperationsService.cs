@@ -78,7 +78,22 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             var wanted = ids.Distinct().Take(JobListQuery.MaximumIds).ToArray();
             query = query.Where(x => wanted.Contains(x.Id));
         }
+        if (!string.IsNullOrWhiteSpace(listQuery.Search)) query = MatchingSearch(query, listQuery.Search);
         return OfPlatforms(query, tenantId, listQuery.Platforms);
+    }
+
+    // The jobs one identifier names, each matched whole: the job id (when the term is a GUID), the correlation id, or a
+    // string value in the payload (externalOrderId, externalPackageId, ...), matched with its quotes so "123" does not
+    // find "51234". No index serves it; the tenant's jobs are scanned once per search, which their size allows.
+    internal static IQueryable<IntegrationJob> MatchingSearch(IQueryable<IntegrationJob> query, string search)
+    {
+        var term = search.Trim();
+        if (term.Length > JobListQuery.MaximumSearchLength) term = term[..JobListQuery.MaximumSearchLength];
+        Guid? id = Guid.TryParse(term, out var parsed) ? parsed : null;
+        var payloadValue = term.Length >= JobListQuery.MinimumPayloadSearchLength && !term.Contains('"') && !term.Contains('\\')
+            ? $"\"{term}\""
+            : null;
+        return query.Where(x => (id != null && x.Id == id) || x.CorrelationId == term || (payloadValue != null && x.PayloadJson.Contains(payloadValue)));
     }
 
     // The jobs a period ("Son 24 saat", "Son 7 gün") shows, the counts and the list alike: created in it, finished in it
@@ -476,7 +491,21 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         var productId = PayloadGuid(job.PayloadJson, "productId");
         if (productId is { } payloadProductId && !await db.Products.AsNoTracking().AnyAsync(x => x.TenantId == job.TenantId && x.Id == payloadProductId, cancellationToken))
             productId = null;
-        return new JobDetailView(summary, attempts, currentOrder, Change(job), relatedOrders, scan, failureReasons, invoice, productId, await VariantResultsAsync(job, cancellationToken), await WriteSummaryAsync(job, productId, cancellationToken));
+        var read = await ReadSummaryAsync(job, summary.Marketplace, cancellationToken);
+        var change = Change(job);
+        // A read that recorded what it pulled says it in one plain sentence instead of the type's generic line.
+        if (read is not null) change = new JobChangeView("Yapılan İşlem", change?.Value ?? JobReadSentence.Noun(read.Kind), read.Sentence);
+        return new JobDetailView(summary, attempts, currentOrder, change, relatedOrders, scan, failureReasons, invoice, productId, await VariantResultsAsync(job, cancellationToken), await WriteSummaryAsync(job, productId, cancellationToken), read);
+    }
+
+    // What a read job pulled, record by record, as it stored it (MarketplaceJobProcessor.ReadRecords); null for a job
+    // that ran before reads recorded it or for a type that does not record.
+    private async Task<JobReadSummaryView?> ReadSummaryAsync(IntegrationJob job, string marketplace, CancellationToken cancellationToken)
+    {
+        var row = await db.JobReadSummaries.AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == job.TenantId && x.JobId == job.Id, cancellationToken);
+        if (row is null) return null;
+        var counts = new JobReadCounts(row.Received, row.Inserted, row.Updated, row.Unchanged, row.Skipped, row.Failed);
+        return new JobReadSummaryView(row.Kind, counts, row.Omitted, JobReadRecorder.Deserialize(row.RecordsJson), JobReadSentence.Describe(row.Kind, marketplace, counts));
     }
 
     // What a product write job sent, from its stored payload: the product's title and model codes from the card, and the

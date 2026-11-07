@@ -131,7 +131,7 @@ public sealed class PostgreSqlConnectionFullResetTests(PostgreSqlTenantIsolation
         "sales.marketplace_finance_transactions", "sales.marketplace_cargo_invoice_items",
         "billing.marketplace_delivery_states", "billing.manual_order_invoice_documents", "billing.manual_order_invoice_delivery_states",
         "catalog.marketplace_product_links", "catalog.marketplace_variant_links", "catalog.marketplace_listing_states", "catalog.external_identifier_aliases",
-        "catalog.category_mappings", "catalog.brand_mappings", "catalog.commission_tariffs", "catalog.promotion_offer_files",
+        "catalog.category_mappings", "catalog.brand_mappings", "catalog.commission_tariffs", "catalog.promotion_offer_files", "catalog.ad_report_files",
         "catalog.import_sessions", "catalog.product_import_sessions", "catalog.product_import_staging_records", "catalog.catalog_structure_runs",
         "inventory.channel_offers", "integration.jobs", "integration.external_effect_records", "integration.reconciliation_runs",
         "integration.sync_cursors", "integration.connection_backoffs", "integration.reference_snapshots", "integration.reference_items",
@@ -257,6 +257,7 @@ public sealed class PostgreSqlConnectionFullResetTests(PostgreSqlTenantIsolation
             db.CommissionTariffs.Add(tariff);
             db.CommissionTariffRows.Add(new CommissionTariffRow { Id = Guid.CreateVersion7(), TenantId = tenantId, TariffId = tariff.Id, Barcode = "B1" });
             db.PromotionOfferFiles.Add(new PromotionOfferFile { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = id, PlatformCode = "TRENDYOL", Kind = PromotionOfferKinds.Advantage, FileName = "avantaj.xlsx", FileHash = $"fr-{id:N}", UploadedAt = fixture.Now, RowCount = 0, RowsJson = "[]" });
+            db.AdReportFiles.Add(new AdReportFile { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = id, PlatformCode = "TRENDYOL", FileName = "reklam.xlsx", FileHash = $"fr-{id:N}", ExportedAt = fixture.Now, UploadedAt = fixture.Now, CampaignCount = 0, CampaignsJson = "[]" });
             var importSession = new ImportSession { Id = Guid.CreateVersion7(), TenantId = tenantId, SourceType = ImportSourceType.Marketplace, ConnectionId = id, CreatedAt = fixture.Now, UpdatedAt = fixture.Now };
             db.ImportSessions.Add(importSession);
             db.ImportStagingRecords.Add(new ImportStagingRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, SessionId = importSession.Id, RowNumber = 1, RawJson = "{}", SafeValuesJson = "{}", ValidationErrorsJson = "[]", RowHash = "hash", ReviewStatus = "NONE" });
@@ -417,6 +418,7 @@ public sealed class PostgreSqlConnectionFullResetTests(PostgreSqlTenantIsolation
             DELETE FROM catalog.commission_tariff_rows WHERE "TenantId"={{tenantId}};
             DELETE FROM catalog.commission_tariffs WHERE "TenantId"={{tenantId}};
             DELETE FROM catalog.promotion_offer_files WHERE "TenantId"={{tenantId}};
+            DELETE FROM catalog.ad_report_files WHERE "TenantId"={{tenantId}};
             DELETE FROM catalog.import_staging_records WHERE "TenantId"={{tenantId}};
             DELETE FROM catalog.import_sessions WHERE "TenantId"={{tenantId}};
             DELETE FROM catalog.product_import_staging_records WHERE "TenantId"={{tenantId}};

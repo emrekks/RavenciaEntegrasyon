@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { code128Modules, shippingLabelFields, shippingLabelTextSize, type ShippingLabelBlock, type ShippingLabelField, type ShippingLabelFormat, type ShippingLabelSettings } from './shipping-label'
+import { code128Modules, shippingLabelCaptionStyle, shippingLabelFields, shippingLabelFieldsPerRow, shippingLabelTextSize, type ShippingLabelBlock, type ShippingLabelField, type ShippingLabelFormat, type ShippingLabelSettings } from './shipping-label'
 import { shippingLabelBlockParts, shippingLabelQuietZoneModules, shippingLabelSizeMm } from './shipping-label-layout'
 import './shipping-label.css'
 
@@ -33,22 +33,40 @@ function lines(value: string) {
   return value.split('\n').map(line => line.trim()).filter(Boolean)
 }
 
-// The inside of one block: its padding, its text size and its parts, laid out in a column.
+// The inside of one block: its padding, its text size and its parts, laid out in a column. Its layout options: a field's
+// caption above its value, beside it ("Kargo Firması: Trendyol Express") or left out; one to three fields a row (the
+// fields that follow each other share a grid, the title and barcode stay full width); a frame; capitals.
 export function ShippingLabelBlockBody({ block, values, barcodes, showCustomerPhone }: { block: ShippingLabelBlock; values: ShippingLabelValues; barcodes?: Partial<Record<ShippingLabelBarcodeField, string>>; showCustomerPhone: boolean }) {
   const parts = shippingLabelBlockParts(block, { showCustomerPhone })
-  return <div className={`lbl-body${block.inline ? ' is-inline' : ''}`} data-block-id={block.id} style={{ '--lbl-size': `${shippingLabelTextSize(block.fontSize)}px`, textAlign: block.align } as CSSProperties}>
-    {parts.map((part, index) => {
-      if (part.type === 'barcode') return <ShippingLabelBarcode key={index} value={barcodes?.[part.field] ?? values[part.field]} />
-      if (part.type === 'title') return <span key={index} className="lbl-title">{part.text}</span>
-      if (part.type === 'text') return <span key={index} className="lbl-value lbl-text">{part.text}</span>
-      if (part.type === 'lines') {
-        const own = lines(values[part.field])
-        // The sender address is optional in the settings: left empty, it prints nothing rather than a dash.
-        if (!own.length && part.field === 'senderAddress') return null
-        return <span key={index} className="lbl-value lbl-lines">{own.length ? own.map((line, lineIndex) => <span key={lineIndex}>{line}</span>) : '—'}</span>
-      }
-      return <span key={index} className="lbl-field"><span className="lbl-caption">{fieldLabels.get(part.field) ?? part.field}</span><span className="lbl-value">{values[part.field] || '—'}</span></span>
-    })}
+  const captionStyle = shippingLabelCaptionStyle(block)
+  const perRow = shippingLabelFieldsPerRow(block)
+  const drawn: Array<{ field: boolean; node: ReactNode }> = parts.map((part, index) => {
+    if (part.type === 'barcode') return { field: false, node: <ShippingLabelBarcode key={index} value={barcodes?.[part.field] ?? values[part.field]} /> }
+    if (part.type === 'title') return { field: false, node: <span key={index} className="lbl-title">{part.text}</span> }
+    if (part.type === 'text') return { field: false, node: <span key={index} className="lbl-value lbl-text">{part.text}</span> }
+    if (part.type === 'lines') {
+      const own = lines(values[part.field])
+      // The sender address is optional in the settings: left empty, it prints nothing rather than a dash.
+      if (!own.length && part.field === 'senderAddress') return { field: true, node: null }
+      return { field: true, node: <span key={index} className="lbl-value lbl-lines">{own.length ? own.map((line, lineIndex) => <span key={lineIndex}>{line}</span>) : '—'}</span> }
+    }
+    return { field: true, node: <span key={index} className="lbl-field">{captionStyle !== 'none' && <span className="lbl-caption">{fieldLabels.get(part.field) ?? part.field}</span>}<span className="lbl-value">{values[part.field] || '—'}</span></span> }
+  })
+  const children: ReactNode[] = []
+  if (perRow === 1) children.push(...drawn.map(item => item.node))
+  else {
+    // Fields that follow each other share one grid of perRow columns.
+    for (let index = 0; index < drawn.length; index++) {
+      if (!drawn[index].field) { children.push(drawn[index].node); continue }
+      const row: ReactNode[] = []
+      while (index < drawn.length && drawn[index].field) { if (drawn[index].node) row.push(drawn[index].node); index++ }
+      index--
+      if (row.length) children.push(<div key={`row-${index}`} className="lbl-row" style={{ '--lbl-cols': perRow } as CSSProperties}>{row}</div>)
+    }
+  }
+  const className = `lbl-body${captionStyle === 'beside' ? ' is-inline' : ''}${block.boxed ? ' is-boxed' : ''}${block.uppercase ? ' is-upper' : ''}`
+  return <div className={className} data-block-id={block.id} lang={block.uppercase ? 'tr' : undefined} style={{ '--lbl-size': `${shippingLabelTextSize(block.fontSize)}px`, textAlign: block.align } as CSSProperties}>
+    {children}
   </div>
 }
 

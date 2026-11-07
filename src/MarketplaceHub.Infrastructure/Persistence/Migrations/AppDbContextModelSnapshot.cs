@@ -23,6 +23,59 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "pg_trgm");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("MarketplaceHub.Domain.AdReportFile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("CampaignCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("CampaignsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ExportedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("ExportedAtFromFileName")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("FileHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("character varying(260)");
+
+                    b.Property<string>("PlatformCode")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UploadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UploadedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ConnectionId", "ExportedAt");
+
+                    b.ToTable("ad_report_files", "catalog");
+                });
+
             modelBuilder.Entity("MarketplaceHub.Domain.AiUsageLog", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3029,6 +3082,61 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     NpgsqlIndexBuilderExtensions.IncludeProperties(b.HasIndex("TenantId", "StartedAt"), new[] { "JobId" });
 
                     b.ToTable("job_attempts", "integration");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.JobReadSummary", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Failed")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Inserted")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<int>("Omitted")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Received")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("RecordsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Skipped")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Unchanged")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Updated")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JobId")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("job_read_summaries", "integration");
                 });
 
             modelBuilder.Entity("MarketplaceHub.Domain.JobVariantResult", b =>
@@ -7193,6 +7301,22 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.ToTable("category_mappings", "catalog");
                 });
 
+            modelBuilder.Entity("MarketplaceHub.Domain.AdReportFile", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.PlatformConnection", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ConnectionId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("MarketplaceHub.Domain.AiUsageLog", b =>
                 {
                     b.HasOne("MarketplaceHub.Domain.Tenant", null)
@@ -7698,6 +7822,21 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                 });
 
             modelBuilder.Entity("MarketplaceHub.Domain.JobAttempt", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.IntegrationJob", null)
+                        .WithMany()
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.JobReadSummary", b =>
                 {
                     b.HasOne("MarketplaceHub.Domain.IntegrationJob", null)
                         .WithMany()

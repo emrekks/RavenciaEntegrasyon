@@ -58,6 +58,29 @@ public sealed class ReportCardFiguresTests
         Assert.Equal(350.4m, Assert.Single(costs.Unlinked!, x => x.Category == MarketplaceFinanceCategories.OtherDeduction).Amount);
     }
 
+    // Answered after 2 h and after 6 h, one waiting, one asked before the period and one whose answer is stamped before
+    // the question: the two measured average 4 h; the bad one and the earlier one are left out.
+    [Fact]
+    public void The_answer_time_runs_from_the_customers_first_message_to_the_stores_first_answer()
+    {
+        static string History(params (string Author, DateTimeOffset At)[] messages) =>
+            System.Text.Json.JsonSerializer.Serialize(messages.Select(x => new { Text = "x", x.Author, CreatedAt = x.At, RejectionReason = (string?)null }));
+        var at = Start.AddHours(1);
+        string[] histories =
+        [
+            History(("Customer", at), ("Merchant", at.AddHours(2)), ("Merchant", at.AddHours(9))),
+            History(("Customer", at), ("Customer", at.AddHours(1)), ("Merchant", at.AddHours(6))),
+            History(("Customer", at.AddHours(3))),
+            History(("Customer", Start.AddDays(-2)), ("Merchant", Start.AddDays(-2).AddHours(1))),
+            History(("Customer", at), ("Merchant", at.AddHours(-1))),
+            "not json"
+        ];
+
+        var times = ReportQuestionTimes.Build(histories, Start, Start.AddDays(1), ["TRENDYOL"]);
+
+        Assert.Equal((2, 1, 4m, 4m), (times.Answered, times.Waiting, times.AverageHours!.Value, times.MedianHours!.Value));
+    }
+
     // Two variants and a line without one sold, a fully cancelled line of a third variant not: three products; the net
     // revenue without VAT takes each line's VAT at its own rate off what was kept (a returned line keeps nothing).
     [Fact]
