@@ -40,7 +40,7 @@ export function cargoFilterOptions(values: readonly string[]): Array<{ value: st
   return values.map(value => {
     const label = cargoLabel(value)
     const raw = value.trim()
-    return { value, label: (labelCounts.get(label) ?? 0) > 1 && raw && raw !== label ? `${label} (${raw})` : label }
+    return { value, label: (labelCounts.get(label) ?? 0) > 1 && raw && raw !== label ? raw : label }
   })
 }
 
