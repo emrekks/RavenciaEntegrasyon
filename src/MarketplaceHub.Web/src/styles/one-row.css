@@ -1,0 +1,31 @@
+/*
+ * Owner, 8 Nov 2026: "kartları ürünlerdeki gibi 6'lı yap" and "tek satır yapabildiğinde tek satır yap".
+ * Summary cards: six in one row above 1280 px like Ürünler (three per row up to 1280, two on a phone).
+ * Filter cards: fields and Temizle/Filtrele share one row whenever the width allows; no empty space above the fields.
+ */
+
+/* Summary cards: Genel Bakış operation cards and Siparişler cards. */
+@media (min-width: 1281px) {
+  :root:root body .app-shell.stitch-shell main .rr.rr-dashboard .rr-opgrid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  :root:root body .app-shell.stitch-shell main .rr.rr-orders .rr-metrics.rr-metrics-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
+
+/* Faturalar: search, platform, date, sort and the two buttons in one row from 1100 px. */
+@media (min-width: 1100px) {
+  :root:root:root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-filter-grid {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1.1fr) auto;
+  }
+  :root:root:root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-filter-grid > .rr-fbtns {
+    grid-column: auto; align-self: end; justify-content: flex-end; flex-wrap: nowrap;
+  }
+}
+
+/* Ürün Soruları: the card takes its content's height (it was stretched by the page grid and the fields sat at its
+   bottom), and from 1100 px the four fields and the buttons share one row. */
+:root:root body .app-shell.stitch-shell main .qi-page .qf-card { align-self: start; height: auto; min-height: 0; align-content: start; }
+@media (min-width: 1100px) {
+  :root:root body .app-shell.stitch-shell main .qi-page .qf-fields {
+    grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr)) auto;
+  }
+  :root:root body .app-shell.stitch-shell main .qi-page .qf-fields > .qf-actions { grid-column: auto; align-self: end; flex-wrap: nowrap; }
+}
