@@ -133,6 +133,41 @@ describe('ProductQuickEditModal variant selection', () => {
 
 // Live MZ028IH (6 Nov 2026): ten colour cards of one variant each. The window reads every card by id, and a card read by
 // id lists the whole family's variants, so each colour showed ten rows of the same variant ("1 varyant varken 10").
+describe('ProductQuickEditModal price mode switches', () => {
+  async function renderPrices(phone: boolean) {
+    const original = window.matchMedia
+    window.matchMedia = ((query: string) => ({ ...original(query), matches: phone && query === '(max-width: 760px)' })) as typeof window.matchMedia
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    root = createRoot(container, { onUncaughtError: error => { errors.push(error) } })
+    await act(async () => {
+      root.render(<QueryClientProvider client={client}><MemoryRouter><ProductQuickEditModal mode="price" products={[product]} connections={[{ id: 'c1', displayName: 'Trendyol', platformCode: 'TRENDYOL' }, { id: 'c2', displayName: 'N11', platformCode: 'N11' }] as never} onChanged={async () => undefined} onClose={() => undefined} /></MemoryRouter></QueryClientProvider>)
+    })
+    window.matchMedia = original
+  }
+
+  it('on a phone puts each marketplace switch on its own caption line, with no separate block above the cards', async () => {
+    await renderPrices(true)
+    expect(document.body.querySelector('.rr-qt-customs')).toBeNull()
+    // Open the colour group so its variant rows are drawn.
+    for (const toggle of Array.from(document.body.querySelectorAll<HTMLButtonElement>('button.rr-vg-t'))) await click(toggle)
+    const row = document.body.querySelector('table.rr-qtable tbody tr')!
+    for (const name of ['Trendyol', 'N11']) {
+      const cell = Array.from(row.querySelectorAll('td[data-l]')).find(item => item.getAttribute('data-l')?.startsWith(`${name} ·`))!
+      const toggle = cell.querySelector(':scope > label.rr-qt-cardswitch')!
+      expect(toggle.querySelector('input[role="switch"]')?.getAttribute('aria-label')).toBe(`${name} özel fiyat`)
+      expect(toggle.textContent).toBe('Özel Fiyat')
+    }
+  })
+
+  it('on desktop keeps the switches in the column titles only', async () => {
+    await renderPrices(false)
+    for (const toggle of Array.from(document.body.querySelectorAll<HTMLButtonElement>('button.rr-vg-t'))) await click(toggle)
+    expect(document.body.querySelector('.rr-qt-cardswitch')).toBeNull()
+    // One title switch per marketplace in each colour group's table (two groups, two marketplaces).
+    expect(document.body.querySelectorAll('th .rr-qt-custom').length).toBe(4)
+  })
+})
+
 describe('ProductQuickEditModal on a family of colour cards', () => {
   const colors = ['Bordo', 'Füme', 'Gri']
   const familyVariants = colors.map((color, index) => ({ ...variant(`v${index}`, color, 'Standart'), productId: `card${index}`, onHand: index + 1 }))

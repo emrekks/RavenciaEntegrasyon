@@ -337,11 +337,11 @@ html body .mfs-sort-sheet [role="listbox"] > button.is-selected { color: var(--r
 @media (max-width: 760px) and (prefers-reduced-motion: no-preference) {
   html body :is(.rv-overlay:not(:has(.rv-mobile-navigation)), .workspace-modal-backdrop, .rr-overlay) { animation: rv-fade-in var(--rv-motion-modal) ease-out; }
   html body :is(.rv-overlay > .rv-modal, .workspace-modal-backdrop > .workspace-modal, .rr-overlay > .rr-modal) { animation: rv-rise var(--rv-motion-sheet) var(--rv-ease-sheet); }
-  html body .rr-anchor > :is(.rr-menu, .rr-pop):not(.rr-static) { animation: rv-rise var(--rv-motion-sheet) var(--rv-ease-sheet); }
+  html body .rr-anchor:not(.rr-dropdown) > :is(.rr-menu, .rr-pop):not(.rr-static) { animation: rv-rise var(--rv-motion-sheet) var(--rv-ease-sheet); }
   html body .rr-fopen .rr-anchor > .rr-pop { animation: rv-fade-in var(--rv-motion-menu) ease-out; }
   html body :is(.rr-anchor-scrim, .rr-fopen > .rr-fscrim) { animation: rv-fade-in var(--rv-motion-modal) ease-out; }
   html body .rr-fopen > .rr-filters { animation: rv-rise var(--rv-motion-sheet) var(--rv-ease-sheet); }
-  html body :is(.rr-overlay > .rr-modal, .rr-anchor > :is(.rr-menu, .rr-pop):not(.rr-static), .rr-fopen > .rr-filters) { will-change: translate; }
+  html body :is(.rr-overlay > .rr-modal, .rr-anchor:not(.rr-dropdown) > :is(.rr-menu, .rr-pop):not(.rr-static), .rr-fopen > .rr-filters) { will-change: translate; }
   html body .rr-layer.rr-closing .rr-overlay > .rr-modal { animation: rv-sink .18s cubic-bezier(.4, 0, 1, 1) forwards; }
 }
 @keyframes rv-sink { to { translate: 0 100%; } }
