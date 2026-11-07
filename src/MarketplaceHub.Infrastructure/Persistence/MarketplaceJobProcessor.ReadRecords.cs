@@ -40,7 +40,9 @@ public sealed partial class MarketplaceJobProcessor
         var after = await OrderStateAsync(tenantId, connectionId, remote.ExternalOrderId, fromDatabase: false, cancellationToken);
         var outcome = !accepted ? JobReadOutcomes.Failed
             : before is null ? (after is null ? JobReadOutcomes.Skipped : JobReadOutcomes.New)
-            : telemetrySkippedCount > skippedBefore && after?.Compare == before.Compare ? JobReadOutcomes.Skipped
+            // An invoice check reads the invoice state, which it compares whatever the order's age: an older order snapshot
+            // that left the invoice as it was is unchanged there, not skipped.
+            : readRecordingKind != "INVOICE" && telemetrySkippedCount > skippedBefore && after?.Compare == before.Compare ? JobReadOutcomes.Skipped
             : after is not null && after.Compare != before.Compare ? JobReadOutcomes.Updated
             : JobReadOutcomes.Unchanged;
         var reason = outcome == JobReadOutcomes.Failed ? RejectedOrderReason : outcome == JobReadOutcomes.Skipped ? StaleReason : null;

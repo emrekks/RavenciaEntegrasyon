@@ -18,7 +18,7 @@ export function apiHealthStats(attention: number | null, recentJobs: number | nu
   return [
     { key: 'attention', icon: 'connect', label: 'Sorunlu Bağlantı', value: attention, tone: attention ? 'warn' : undefined },
     { key: 'recent', icon: 'activity', label: 'Son 24 Saatte İstek', value: recentJobs, to: '/jobs' },
-    { key: 'dead', icon: 'jobs', label: 'Tamamlanamayan İş', value: deadJobs, tone: deadJobs ? 'bad' : undefined, to: '/jobs?statu=DEAD' },
+    { key: 'dead', icon: 'jobs', label: 'Tamamlanamayan İş', value: deadJobs, tone: deadJobs ? 'bad' : undefined, to: '/jobs?statu=DEAD&aralik=tum' },
     { key: 'review', icon: 'clock', label: 'Karar Bekleyen İş', value: manualReviewJobs, tone: manualReviewJobs ? 'warn' : undefined, to: '/jobs?statu=MANUAL_REVIEW&aralik=tum' }
   ]
 }
