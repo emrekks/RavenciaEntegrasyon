@@ -9,9 +9,9 @@ export const commissionHint: HintContent = {
   rows: [
     { store: 'Trendyol', value: '%21,5' },
     { store: 'Hepsiburada', value: '%21,6' },
-    { store: 'n11', value: '%20' },
+    { store: 'N11', value: '%20' },
     { store: 'Pazarama', value: '%19' },
-    { store: 'PTT AVM', value: '%15' },
+    { store: 'PttAVM', value: '%15' },
     { store: 'Shopify', value: '%6,29' }
   ],
   notes: [],
@@ -22,9 +22,9 @@ export const cargoHint: HintContent = {
   rows: [
     { store: 'Trendyol', value: '98,34 ₺' },
     { store: 'Hepsiburada', value: '98,39 ₺' },
-    { store: 'n11', value: '100,50 ₺' },
+    { store: 'N11', value: '100,50 ₺' },
     { store: 'Pazarama', value: '112,33 ₺' },
-    { store: 'PTT AVM', value: '81,25 ₺' },
+    { store: 'PttAVM', value: '81,25 ₺' },
     { store: 'Shopify', value: '120 ₺' }
   ],
   notes: [],
@@ -35,9 +35,9 @@ export const serviceFeeHint: HintContent = {
   rows: [
     { store: 'Trendyol', value: '13,19 ₺' },
     { store: 'Hepsiburada', value: '13,19 ₺' },
-    { store: 'n11', value: '%2' },
+    { store: 'N11', value: '%2' },
     { store: 'Pazarama', value: '8,28 ₺' },
-    { store: 'PTT AVM', value: '%1,5' },
+    { store: 'PttAVM', value: '%1,5' },
     { store: 'Shopify', value: '0 ₺' }
   ],
   notes: [],

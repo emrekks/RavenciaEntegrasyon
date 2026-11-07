@@ -65,8 +65,8 @@ describe('bulk publish platform status', () => {
 
   it('writes platform names the way the brands do', () => {
     expect(bulkPublishPlatformName('PTTAVM')).toBe('PttAVM')
-    expect(bulkPublishPlatformName('N11')).toBe('n11')
-    expect(bulkPublishPlatformName('TRENDYOL_EFATURAM')).toBe('E-Faturam')
+    expect(bulkPublishPlatformName('N11')).toBe('N11')
+    expect(bulkPublishPlatformName('TRENDYOL_EFATURAM')).toBe('Trendyol E-Faturam')
   })
 })
 

@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { platformDisplayNames } from '../../shared/platform-names'
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router'
 import { hubApi, hubPoll, loadAllPages, type Me } from '../../shared/api'
@@ -31,7 +32,7 @@ const OperationLogs = lazy(() => import('./OperationLogs'))
 const ApiHealthView = lazy(() => import('./ApiHealthView').then(module => ({ default: module.ApiHealthView })))
 
 // E-Faturam is the invoicing provider; every other code is a marketplace.
-const jobPlatformLabel = (code: string) => code === 'TRENDYOL_EFATURAM' ? 'E-Faturam' : marketplacePlatformLabel(code)
+const jobPlatformLabel = (code: string) => code === 'TRENDYOL_EFATURAM' ? platformDisplayNames.TRENDYOL_EFATURAM : marketplacePlatformLabel(code)
 import './jobs-responsive.css'
 import './jobs-sade.css'
 import { viewTabLabel } from '../../shared/view-tabs'
@@ -371,7 +372,7 @@ export function JobsPage({ me }: { me: Me }) {
   const client = useQueryClient()
   // Filters and the page live in the address (jobs-url-state.ts): Back, a refresh or a link opens the same view.
   // ?durum=hata opens the list with the error filter on (the overview's İncele link uses it); ?platform=trendyol keeps
-  // the platforms (?platform=trendyol,n11), which the server applies to the list and the counts.
+  // the platforms (?platform=trendyol,N11), which the server applies to the list and the counts.
   const [searchParams, setSearchParams] = useSearchParams()
   const view = readJobsViewState(searchParams)
   const { category, direction, status, search, timeRange, pageSize, page: pageNumber } = view

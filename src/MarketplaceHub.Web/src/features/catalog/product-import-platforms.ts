@@ -16,7 +16,7 @@ export function singleProductLookupLabel(platformCode: string): string {
   if (code === 'HEPSIBURADA') return 'Hepsiburada ürün ID’si'
   if (code === 'N11') return 'N11 model kodu (productMainId)'
   if (code === 'PAZARAMA') return 'Pazarama barkodu'
-  if (code === 'PTTAVM') return 'PTT AVM barkodu'
+  if (code === 'PTTAVM') return 'PttAVM barkodu'
   return 'Trendyol ürün linki veya model kodu'
 }
 
@@ -27,6 +27,6 @@ export function singleProductLookupHint(platformCode: string): string {
   if (code === 'HEPSIBURADA') return 'Hepsiburada ürün sayfasındaki ürün ID’sini girin.'
   if (code === 'N11') return 'N11 ürününün model kodunu (productMainId) girin.'
   if (code === 'PAZARAMA') return 'Pazarama ürününün barkodunu girin.'
-  if (code === 'PTTAVM') return 'PTT AVM ürününün barkodunu girin.'
+  if (code === 'PTTAVM') return 'PttAVM ürününün barkodunu girin.'
   return 'Trendyol ürün sayfasının linkini ya da model kodunu girin.'
 }

@@ -13,7 +13,7 @@ export function invoiceFailureReason(code: string | null) {
     REMOTE_INVOICE_REJECTED: 'Pazaryeri faturayı reddetti.',
     INVOICE_SUBMISSION_OUTCOME_UNKNOWN: 'Sağlayıcıya gönderim sonucu alınamadı. Faturanın kimliği bilinmiyor: E-Faturam portalından kontrol edin; oluşmadıysa yeniden gönderebilirsiniz.',
     EFATURAM_INVOICE_NOT_FOUND_BY_UUID: 'E-Faturam bu faturanın kimliğiyle kayıt bulamadı; fatura kesilmemiş görünüyor. Yeniden göndermeden önce E-Faturam portalından kontrol edin; yeniden gönderim onayınızla yapılır.',
-    PTTAVM_INVOICE_LINK_REPLACE_IN_SELLER_PANEL: 'PTT AVM’de sipariş önceki (iptal edilen) faturayla işaretli; yeni fatura linki API ile gönderilmedi. Linki PTT AVM satıcı panelinde eskisinin yerine yükleyip “Pazaryerinde Gördüm, Tamamla”yı seçin.',
+    PTTAVM_INVOICE_LINK_REPLACE_IN_SELLER_PANEL: 'PttAVM’de sipariş önceki (iptal edilen) faturayla işaretli; yeni fatura linki API ile gönderilmedi. Linki PttAVM satıcı panelinde eskisinin yerine yükleyip “Pazaryerinde Gördüm, Tamamla”yı seçin.',
     EFATURAM_SUBMIT_ANSWER_UNREADABLE: 'E-Faturam fatura isteğini kabul etti ama yanıtı okunamadı; fatura oluşmuş olabilir. Sonuç E-Faturam’dan okunana kadar yeniden gönderilmez.',
     INVOICE_SUBMISSION_CANCELLED: 'Gönderim sırasında bağlantı kesildi. Sonuç E-Faturam’dan faturanın kimliğiyle okunuyor; kimliği olmayan eski bir gönderimse E-Faturam portalından kontrol edin.',
     INVOICE_SUBMISSION_TRANSPORT_UNKNOWN: 'Sağlayıcıdan yanıt alınamadı. Sonuç E-Faturam’dan faturanın kimliğiyle okunuyor; kimliği olmayan eski bir gönderimse E-Faturam portalından kontrol edin.',

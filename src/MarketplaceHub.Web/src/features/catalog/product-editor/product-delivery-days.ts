@@ -1,5 +1,5 @@
 // Teslimat Süresi (Gün) on the product card: the days to hand an order to the carrier, sent as each marketplace's
-// delivery/dispatch time (Trendyol deliveryDuration, n11 preparingDay). Whole days 1-30; a new card starts at 1. The API
+// delivery/dispatch time (Trendyol deliveryDuration, N11 preparingDay). Whole days 1-30; a new card starts at 1. The API
 // checks the same range (ProductDeliveryDays).
 export const defaultProductDeliveryDays = 1
 export const maxProductDeliveryDays = 30

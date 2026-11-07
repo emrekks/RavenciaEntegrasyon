@@ -124,7 +124,7 @@ const MARK_AREA = 1350, MARK_MAX_H = 26, MARK_MAX_W = 104
 
 export function RrWordmark({ code, name }: { code: string | null | undefined; name: string }) {
   const mark = marks[(code ?? '').toUpperCase()]
-  // A platform without a cropped mark (PTT AVM) shows its logo at the marks' height instead of plain text.
+  // A platform without a cropped mark (PttAVM) shows its logo at the marks' height instead of plain text.
   const logo = mark ? null : orderPlatformLogoSource(code)
   if (!mark) return logo ? <span className="rr-wordmark" role="img" aria-label={name} style={{ height: MARK_MAX_H - 4 }}><img src={logo} alt="" style={{ position: 'static', height: '100%', width: 'auto', maxWidth: MARK_MAX_W, objectFit: 'contain' }} /></span> : <span className="rr-wordmark-text">{name}</span>
   const ratio = mark.w / mark.h
@@ -138,7 +138,7 @@ export function RrWordmark({ code, name }: { code: string | null | undefined; na
 }
 
 // Square platform logos (popups, the platform filter).
-// PTT AVM has no return icon of its own: its entry names its square logo, so every marketplace is in the map.
+// PttAVM has no return icon of its own: its entry names its square logo, so every marketplace is in the map.
 const logoSources: Record<string, string> = {
   TRENDYOL: '/platforms/returns/icon-trendyol.png',
   HEPSIBURADA: '/platforms/returns/icon-hepsiburada.png',

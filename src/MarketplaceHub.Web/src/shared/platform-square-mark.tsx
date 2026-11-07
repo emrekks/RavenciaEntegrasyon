@@ -1,7 +1,7 @@
 import { platformLogoClass, platformLogoSource } from './platform-logos'
 
 const platformMarks: Record<string, string> = {
-  N11: 'n11',
+  N11: 'N11',
   PTTAVM: 'PTT',
   PAZARAMA: 'p',
   TRENDYOL: 'ty',

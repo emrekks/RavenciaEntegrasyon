@@ -35,9 +35,9 @@ export type PublishStepsInput = {
   notFound?: boolean
   /** Variants the marketplace no longer knows (not found or refused), 0 when none or not known. */
   missingVariants?: number
-  /** PTT AVM family to send again ("Tekrar Deneyin"). */
+  /** PttAVM family to send again ("Tekrar Deneyin"). */
   retry?: boolean
-  /** PTT AVM has no approval: its wait is our own check. */
+  /** PttAVM has no approval: its wait is our own check. */
   checking?: boolean
   /** The card's last publication job: running, or settled with a failure at one step (the send, the approval check;
    *  null for a status check, whose failure says nothing about the listing). */

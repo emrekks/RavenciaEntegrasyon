@@ -32,7 +32,7 @@ export function selectionsDiffer(selections: ReferencePanelSelections, saved: Re
 // The server's pairs changed under an open value table (Tüm Değerleri Eşle saved some, or another window did): the
 // panel values the user has not touched since the table was filled follow the server, the ones they changed keep their
 // choice. Without this the table kept its first copy, showed the saved values as "Seçin…" and its Kaydet removed them
-// again (2 Nov 2026, n11 Tunik Beden).
+// again (2 Nov 2026, N11 Tunik Beden).
 export function rebaseSelections(selections: ReferencePanelSelections, baseline: ReferencePanelSelections, next: ReferencePanelSelections): ReferencePanelSelections {
   const targetsOf = (grouped: ReferencePanelSelections, localId: string) => Object.keys(grouped).filter(externalId => grouped[externalId].includes(localId))
   const localIds = new Set([selections, baseline, next].flatMap(grouped => Object.values(grouped).flat()))

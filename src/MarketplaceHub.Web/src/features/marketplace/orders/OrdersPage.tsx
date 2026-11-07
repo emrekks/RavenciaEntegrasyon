@@ -157,7 +157,7 @@ function orderNotificationContext(item: Pick<Order, 'orderNumber' | 'platformCod
 }
 function safeJson(value: string) { try { return JSON.parse(value || '{}') as Record<string, unknown> } catch { return {} } }
 function meaningfulText(value: unknown): value is string { return typeof value === 'string' && /[\p{L}\p{N}]/u.test(value) }
-// Some marketplaces (n11) send the street line on its own and the district and
+// Some marketplaces (N11) send the street line on its own and the district and
 // city as separate fields; the label and address views append the missing ones.
 function completeAddressLine(fullAddress: string, data: Record<string, unknown>) { const lowered = fullAddress.toLocaleLowerCase('tr-TR'); const missing = [data.district, data.city].filter(meaningfulText).map(item => item.trim()).filter(item => !lowered.includes(item.toLocaleLowerCase('tr-TR'))); return missing.length ? [fullAddress, missing.join(' / ')].join(' · ') : fullAddress }
 function addressText(value: string, platformCode = 'TRENDYOL') { const source = safeJson(value); return addressDataText([source.shipmentAddress, source.invoiceAddress, source.address].find(item => item && typeof item === 'object') as Record<string, unknown> | undefined ?? source, platformCode) }

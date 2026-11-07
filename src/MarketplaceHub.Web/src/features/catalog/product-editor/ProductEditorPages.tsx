@@ -1,5 +1,6 @@
 // Ürün ekleme ve düzenleme (/products/new, /products/:id).
 import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { platformDisplayNames, knownPlatformName, platformDisplayOrder } from '../../../shared/platform-names'
 import './product-editor-design-system.css'
 import './product-editor-hydration.css'
 import { Link, useLocation, useNavigate, useParams } from 'react-router'
@@ -134,7 +135,7 @@ const productUpdateCapabilities = (platformCode: string) => {
   if (code === 'SHOPIFY') return { writable: true, content: true, categoryAttributes: false, detail: 'Ürün kartı tek istekte güncellenir: ürün adı, açıklama, görseller, renk ve beden, fiyat ve stok birlikte gider.' }
   if (code === 'PAZARAMA') return { writable: true, content: false, categoryAttributes: false, detail: 'KDV oranı, fiyat ve stok güncellenebilir; ürün içeriği yalnız Pazarama panelinden değişir.' }
   if (code === 'N11') return { writable: true, content: true, categoryAttributes: true, detail: 'Açıklama, kategori özellikleri, KDV oranı, teslimat süresi, fiyat ve stok güncellenebilir; ürün adı, görseller ve marka N11 API ile değişmez.' }
-  if (code === 'PTTAVM') return { writable: true, content: true, categoryAttributes: false, detail: 'Seçilen ürün bilgileri tek istekte gider; PTT AVM’deki tüm varyantlar olduğu gibi eklenir. Fiyat ve stok birlikte gider.' }
+  if (code === 'PTTAVM') return { writable: true, content: true, categoryAttributes: false, detail: 'Seçilen ürün bilgileri tek istekte gider; PttAVM’deki tüm varyantlar olduğu gibi eklenir. Fiyat ve stok birlikte gider.' }
   return { writable: false, content: false, categoryAttributes: false, detail: 'Bu platform için ürün güncelleme desteği bulunmuyor.' }
 }
 function VariantHeaderActionMenu({ anchorRef, label, children }: { anchorRef: { current: HTMLDivElement | null }; label: string; children: ReactNode }) {
@@ -309,12 +310,12 @@ const variantBulkEditLabels: Record<VariantBulkEditField, string> = { stock: 'St
 type ProductAttributePayload = ProductAttributeAssignment
 function marketplacePlatformName(platform: VariantPlatformStatus) {
   const code = platform.platformCode.trim().toLocaleUpperCase('tr-TR')
-  return code === 'SHOPIFY' ? 'Shopify' : code === 'HEPSIBURADA' ? 'Hepsiburada' : code === 'TRENDYOL' ? 'Trendyol' : code === 'N11' ? 'N11' : code === 'PAZARAMA' ? 'Pazarama' : code === 'PTTAVM' ? 'PTT AVM' : platform.platform
+  return knownPlatformName(code) ?? platform.platform
 }
-const pricingPlatformOrder = ['TRENDYOL', 'HEPSIBURADA', 'N11', 'PAZARAMA', 'PTTAVM', 'SHOPIFY']
+const pricingPlatformOrder: readonly string[] = platformDisplayOrder
 const pricingPlatformRank = (platformCode: string) => { const index = pricingPlatformOrder.indexOf(platformCode.trim().toUpperCase()); return index < 0 ? pricingPlatformOrder.length : index }
 export function BulkVariantPlatformPricingModal({ row, rows, platforms: unorderedPlatforms, savedDrafts, productName, modelCode, filterGroups, matchesFilterValue, saving, onClose, onSave }: { row: VariantDraft; rows: VariantDraft[]; platforms: VariantPlatformStatus[]; savedDrafts: Record<string, ChannelPricingDraft>; productName: string; modelCode: string; filterGroups: VariantMediaGroup[]; matchesFilterValue: (row: VariantDraft, group: VariantMediaGroup, value: { id: string; value: string }) => boolean; saving: boolean; onClose: () => void; onSave: (drafts: Record<string, ChannelPricingDraft>) => void }) {
-  // The columns follow the marketplaces in the panel's order (Trendyol, Hepsiburada, n11, Pazarama, PTT AVM, Shopify).
+  // The columns follow the marketplaces in the panel's order (Trendyol, Hepsiburada, N11, Pazarama, PttAVM, Shopify).
   const platforms = useMemo(() => [...unorderedPlatforms].sort((left, right) => pricingPlatformRank(left.platformCode) - pricingPlatformRank(right.platformCode)), [unorderedPlatforms])
   const sortedRows = sortVariantsAlphabetically(rows)
   const platformKey = (platform: VariantPlatformStatus) => `${platform.platformCode}:${platform.connectionId ?? platform.platform}`
@@ -764,13 +765,13 @@ function CategoryAttributeMappingPanel({
 }
 // Platform codes are stored upper-case; show the brand names the way they are written.
 function publishPlatformName(code: string) {
-  const names: Record<string, string> = { TRENDYOL: 'Trendyol', HEPSIBURADA: 'Hepsiburada', SHOPIFY: 'Shopify', N11: 'n11', PAZARAMA: 'Pazarama', PTTAVM: 'PttAVM', TRENDYOL_EFATURAM: 'E-Faturam' }
+  const names: Record<string, string> = platformDisplayNames
   const normalized = code.trim().toLocaleUpperCase('tr-TR')
   return names[normalized] ?? code.charAt(0).toLocaleUpperCase('tr-TR') + code.slice(1).toLocaleLowerCase('tr-TR')
 }
 // Opens the issue tooltip upwards when it would be clipped by the bottom of the viewport.
 // A card with no publication record of its own (matched by an import, or never sent) is refreshed by looking the
-// product up on the marketplace: Trendyol and n11 by model code, Pazarama and PTT AVM by barcode, Shopify by barcode or
+// product up on the marketplace: Trendyol and N11 by model code, Pazarama and PttAVM by barcode, Shopify by barcode or
 // stock code. Hepsiburada looks a single product up by its Hepsiburada product id, which the editor does not hold.
 export function cardLookupKey(platformCode: string, keys: { modelCode: string; barcode: string; sku: string }) {
   const code = platformCode.trim().toUpperCase()
@@ -924,7 +925,7 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   const ownLive = isPublicationLive(publication.data?.actualStatus)
   const familyLiveCount = (ownLive ? 1 : 0) + familyStatuses.filter(status => isPublicationLive(status.data?.actualStatus)).length
   const familyTotal = otherFamilyIds.length + 1
-  // On PTT AVM one request carries the whole family: a colour card the family's send carried has no record of its own
+  // On PttAVM one request carries the whole family: a colour card the family's send carried has no record of its own
   // until the status refresh takes it into that send, so it refreshes (not looks up) once a sibling is out there.
   const pttAvmFamilySent = card.mode === 'PUBLISH' && card.connection.platformCode.trim().toUpperCase() === 'PTTAVM'
     && familyStatuses.some(status => Boolean(status.data?.profileId) && Boolean(status.data?.actualStatus) && status.data?.actualStatus !== 'UNKNOWN')
@@ -948,10 +949,10 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   const alreadyPublished = missingCount === 0 && (allLinked || (ownLive && !familyPartial))
   const selectionStatus = noneFound || familyPartial ? null : allLinked ? 'LIVE' : publication.data?.actualStatus
   const partialLabel = someLinked ? `${linkedCount}/${linkedTotal} yayında` : `${familyLiveCount}/${familyTotal} renk yayında`
-  // PTT AVM keeps a product with variants as the whole model family under its model code: every colour card goes in
+  // PttAVM keeps a product with variants as the whole model family under its model code: every colour card goes in
   // one request. The variant count is this card's when the family is this card alone.
   const isPttAvmFamily = card.mode === 'PUBLISH' && card.connection.platformCode.trim().toUpperCase() === 'PTTAVM' && (familyTotal > 1 || linkedTotal > 1)
-  // A PTT AVM family card waiting for an approval that never comes (or stopped) says "Tekrar Deneyin" and stays
+  // A PttAVM family card waiting for an approval that never comes (or stopped) says "Tekrar Deneyin" and stays
   // selectable: Yayınla sends the family again.
   const pttAvmRetry = isPttAvmFamily && Boolean(productId) && isPttAvmFamilyRetryable(card.connection.platformCode, publication.data?.actualStatus, publication.data?.lastJobStatus)
   const publicationCheckPending = Boolean(card.mode === 'PUBLISH' && productId && publication.isPending)
@@ -2141,7 +2142,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   }
   function platformDisplayName(platform: VariantPlatformStatus) {
     const code = platform.platformCode.trim().toLocaleUpperCase('tr-TR')
-    return code === 'SHOPIFY' ? 'Shopify' : code === 'TRENDYOL' ? 'Trendyol' : code === 'HEPSIBURADA' ? 'Hepsiburada' : code === 'N11' ? 'N11' : code === 'PAZARAMA' ? 'Pazarama' : code === 'PTTAVM' ? 'PTT AVM' : platform.platform
+    return knownPlatformName(code) ?? platform.platform
   }
   function openVariantPlatformPricing(row: VariantDraft, platform: VariantPlatformStatus) {
     setVariantPlatformPricing({ rowKey: row.key, platform })
@@ -3126,7 +3127,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               if (!plan.send && plan.reason === 'matched') { outcome.skipped.matched++; continue }
               if (!plan.send) { familyFailures.set(plan.message, [...(familyFailures.get(plan.message) ?? []), familyIndex]); continue }
               const status = await hubApi<PublicationStatus>(`/products/${familyProductId}/publication-status/${connectionId}`).catch(() => null)
-              // A PTT AVM family card shown as "Tekrar Deneyin" goes again; the API closes its waiting approval checks.
+              // A PttAVM family card shown as "Tekrar Deneyin" goes again; the API closes its waiting approval checks.
               const pttAvmFamily = familyIds.length > 1 || cardVariants.length > 1
               if (status && isSkippedByPublish(platformCode, status.actualStatus, status.lastJobStatus, pttAvmFamily, plan.hasMissingVariant || plan.addsToListing)) {
                 if (isPublicationLive(status.actualStatus)) outcome.skipped.live++

@@ -16,8 +16,8 @@ import { titleTr } from '../returns-ui'
 
 type ShipmentDetail = { package: Shipment; allowedActions: string[]; supportedLabelFormats: string[]; isStageConnection: boolean; platformCode: string; documents: Array<{ id: string; documentKind: string; format: string; source: string; documentVersion: number; createdAt: string; expiresAt: string | null }> }
 type RemoteCargoCompany = { shortName: string; name: string }
-// First controlled n11 write: one stock code at a time, then everything that
-// changed. Both go through the regular price-stock job and its n11 task check.
+// First controlled N11 write: one stock code at a time, then everything that
+// changed. Both go through the regular price-stock job and its N11 task check.
 // Every Pazarama package action changes the live store; the dialog says what it will do before it is queued.
 function pazaramaActionWarning(action: string) {
   switch (action) {

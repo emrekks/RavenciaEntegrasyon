@@ -274,14 +274,14 @@ const authPlatforms = [
   { id: 'trendyol', name: 'Trendyol' },
   { id: 'hepsiburada', name: 'Hepsiburada' },
   { id: 'shopify', name: 'Shopify' },
-  { id: 'n11', name: 'n11' },
+  { id: 'n11', name: 'N11' },
 ] as const
 
 const authActivity = [
   { id: 'order', platform: 'Trendyol', message: 'Yeni sipariş alındı', time: 'Az önce', tone: 'trendyol' },
   { id: 'stock', platform: 'Hepsiburada', message: 'Stok senkronize edildi', time: '1 dk', tone: 'hepsiburada' },
   { id: 'product', platform: 'Shopify', message: 'Ürün aktarımı tamamlandı', time: '2 dk', tone: 'shopify' },
-  { id: 'invoice', platform: 'n11', message: 'Fatura durumu güncellendi', time: '3 dk', tone: 'n11' },
+  { id: 'invoice', platform: 'N11', message: 'Fatura durumu güncellendi', time: '3 dk', tone: 'n11' },
   { id: 'shipment', platform: 'Trendyol', message: 'Kargo etiketi oluşturuldu', time: '5 dk', tone: 'trendyol' },
   { id: 'price', platform: 'Hepsiburada', message: 'Fiyat listesi senkronize edildi', time: '8 dk', tone: 'hepsiburada' },
 ] as const

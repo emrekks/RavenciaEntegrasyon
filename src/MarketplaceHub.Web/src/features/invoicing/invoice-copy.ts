@@ -14,7 +14,7 @@ export function invoiceAwaitsProviderAnswer(status: string | null | undefined, e
   return ['FATURA_BELIRSIZ', 'UNKNOWN_RESULT'].includes(status?.trim().toUpperCase() ?? '') && errorCode === providerAnswerAwaitedCode
 }
 
-// n11, Pazarama and PTT AVM cannot report which invoice an order holds (MarketplaceInvoiceReopenPolicy): their
+// N11, Pazarama and PttAVM cannot report which invoice an order holds (MarketplaceInvoiceReopenPolicy): their
 // "Fatura Durumu Güncelle" sets the status by hand, and "Fatura Bekliyor" reopens a package whose invoice was cancelled.
 export const handSetInvoiceStatusPlatforms: ReadonlySet<string> = new Set(['N11', 'PAZARAMA', 'PTTAVM'])
 
@@ -35,8 +35,8 @@ export function invoiceReopenNote(platformCodes: readonly string[]) {
   const platforms = new Set(platformCodes.map(code => code.trim().toUpperCase()).filter(code => handSetInvoiceStatusPlatforms.has(code)))
   if (platforms.size === 0) return null
   const notes: string[] = ['İptal edilen bir faturası olan siparişte “Fatura Bekliyor”, o faturanın linkini geçersiz sayar ve yeni fatura kesmeye izin verir.']
-  if (platforms.has('N11') || platforms.has('PAZARAMA')) notes.push('n11 ve Pazarama’da yeni faturanın linki gönderildiğinde eskisinin yerine geçer.')
-  if (platforms.has('PTTAVM')) notes.push('PTT AVM ikinci fatura linkini kabul edip etmediğini bildirmediği için yeni faturanın linkini PTT AVM satıcı panelinde eskisinin yerine siz yükleyin, sonra “Pazaryerinde Gördüm, Tamamla”yı seçin.')
+  if (platforms.has('N11') || platforms.has('PAZARAMA')) notes.push('N11 ve Pazarama’da yeni faturanın linki gönderildiğinde eskisinin yerine geçer.')
+  if (platforms.has('PTTAVM')) notes.push('PttAVM ikinci fatura linkini kabul edip etmediğini bildirmediği için yeni faturanın linkini PttAVM satıcı panelinde eskisinin yerine siz yükleyin, sonra “Pazaryerinde Gördüm, Tamamla”yı seçin.')
   return notes.join(' ')
 }
 

@@ -27,7 +27,7 @@ type ProductSummary = { totalCount: number; activeCount: number; outOfStockCount
 
 const PERIODS: Array<[Range, string]> = [['today', 'Bugün'], ['yesterday', 'Dün'], ['7', 'Son 7 Gün'], ['30', 'Son 30 Gün'], ['90', 'Son 90 Gün'], ['custom', 'Özel Tarih']]
 const periodLabel = (range: Range) => PERIODS.find(([value]) => value === range)?.[1] ?? ''
-const PLATFORMS: Array<[string, string, string]> = [['TRENDYOL', 'Trendyol', '#f27a1a'], ['HEPSIBURADA', 'Hepsiburada', '#f5b301'], ['SHOPIFY', 'Shopify', '#5e8e3e'], ['N11', 'N11', '#7c5cff'], ['PAZARAMA', 'Pazarama', '#2f9bd8'], ['PTTAVM', 'PTT AVM', '#1f3a8a']]
+const PLATFORMS: Array<[string, string, string]> = [['TRENDYOL', 'Trendyol', '#f27a1a'], ['HEPSIBURADA', 'Hepsiburada', '#f5b301'], ['N11', 'N11', '#7c5cff'], ['PAZARAMA', 'Pazarama', '#2f9bd8'], ['PTTAVM', 'PttAVM', '#1f3a8a'], ['SHOPIFY', 'Shopify', '#5e8e3e']]
 const platformColor = (code: string, index: number) => PLATFORMS.find(([value]) => value === code.toUpperCase())?.[2] ?? ['#9b7aff', '#59d6bd', '#79a4ff', '#f0b15a'][index % 4]
 // Refreshed while the page is on screen only; the polls say they are automatic so they do not keep an idle session alive.
 const refresh = { refetchInterval: 60_000, refetchIntervalInBackground: false, refetchOnWindowFocus: true, staleTime: 30_000 } as const
@@ -317,7 +317,7 @@ export function DashboardPage() {
         {foreign.length > 0 && <span>Diğer para birimleri: {foreign.map(item => <b key={item.currency} className="rr-num">{money(item.amount, item.currency)} ({count(item.orders)} sipariş) </b>)}</span>}
       </p>}
       {!loading && (data?.unreadableLineOrders ?? 0) > 0 && <p className="rr-pf-note" role="status">
-        <span>Tüm mağazalarda <b className="rr-num">{count(data!.unreadableLineOrders!)}</b> siparişte okunamayan ürün satırı var; bu siparişlerin adetleri eksik, PTT AVM&apos;de tutarı da eksik olabilir. Siparişler yeniden okunuyor.</span>
+        <span>Tüm mağazalarda <b className="rr-num">{count(data!.unreadableLineOrders!)}</b> siparişte okunamayan ürün satırı var; bu siparişlerin adetleri eksik, PttAVM&apos;de tutarı da eksik olabilir. Siparişler yeniden okunuyor.</span>
       </p>}
       <div className="rr-pf-body">
         <div className="rr-pf-chart"><b className="rr-pf-label">{chartValues[metric][2]}{channel === 'ALL' ? '' : ` · ${selectedName}`}</b>

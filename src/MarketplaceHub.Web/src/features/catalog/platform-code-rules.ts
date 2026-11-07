@@ -1,17 +1,11 @@
 // The barcode and stock code each marketplace accepts for a variant, as the panel's publication composers
 // enforce them (ProductPublicationComposer and the per-platform composers). A product meant for every connection
 // is checked against all of them while it is edited, so one barcode and one stock code fit everywhere.
+import { platformDisplayNames } from '../../shared/platform-names'
 export type PlatformCodeField = 'barcode' | 'sku'
 export type PlatformCodeIssue = { platformCode: string; field: PlatformCodeField; message: string }
 
-export const platformCodeNames: Record<string, string> = {
-  TRENDYOL: 'Trendyol',
-  HEPSIBURADA: 'Hepsiburada',
-  N11: 'N11',
-  PAZARAMA: 'Pazarama',
-  PTTAVM: 'PTT AVM',
-  SHOPIFY: 'Shopify'
-}
+export const platformCodeNames: Record<string, string> = platformDisplayNames
 
 const simpleBarcodePattern = /^[A-Za-z0-9._-]+$/
 

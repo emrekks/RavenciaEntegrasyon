@@ -50,7 +50,7 @@ type Connection = { id: string; platformCode: string; displayName: string; statu
 type SyncState = { connectionId: string; platformCode: string; storeName: string; historyImported: boolean; historyStartedAt?: string | null; progressStatus: string; importedCount: number; productQuestionCount?: number; orderQuestionCount?: number; lastRunStartedAt?: string | null; lastSuccessAt?: string | null; lastError?: string | null }
 type QuestionListPage = { items: MarketplaceQuestion[]; page: number; limit: number; totalCount: number }
 type QuestionStatus = 'WAITING' | 'ANSWERED' | 'EXPIRED' | 'OTHER' | 'ALL'
-// Hepsiburada has its own order questions; Pazarama marks a question that names an order. Trendyol and n11 only ask about products.
+// Hepsiburada has its own order questions; Pazarama marks a question that names an order. Trendyol and N11 only ask about products.
 const ORDER_QUESTION_PLATFORMS = ['HEPSIBURADA', 'PAZARAMA']
 
 type WorkspaceTab = 'PRODUCT' | 'ORDER' | 'TEMPLATES'

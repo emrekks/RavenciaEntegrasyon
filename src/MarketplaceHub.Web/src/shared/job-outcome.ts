@@ -90,14 +90,14 @@ export function jobOutcomeFeedback(outcomes: readonly JobOutcome[], target: stri
   return { title: `${target} Aktarıldı`, kind: 'success', lines, settled }
 }
 
-/** Every followed marketplace by name ("Trendyol", "Trendyol ve n11", "3 Platforma"). */
+/** Every followed marketplace by name ("Trendyol", "Trendyol ve N11", "3 Platforma"). */
 export function outcomeTarget(jobs: readonly FollowedJob[]) {
   const names = [...new Set(jobs.map(job => job.platformName))]
   if (names.length === 1) return dative(names[0])
   return `${names.length} Platforma`
 }
 
-// "Trendyol’a", "Hepsiburada’ya", "n11’e", "PTT AVM’ye": the suffix by the name's last vowel (a digit by how it is read).
+// "Trendyol’a", "Hepsiburada’ya", "N11’e", "PttAVM’ye": the suffix by the name's last vowel (a digit by how it is read).
 function dative(name: string) {
   const spoken = name.replace(/11$/u, 'onbir').replace(/AVM$/u, 'aveme').replace(/ify$/iu, 'ifay')
   const lastVowel = spoken.toLocaleLowerCase('tr-TR').match(/[aeıioöuü](?=[^aeıioöuü]*$)/u)?.[0]

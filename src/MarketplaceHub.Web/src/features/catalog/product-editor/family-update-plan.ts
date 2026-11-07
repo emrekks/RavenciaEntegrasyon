@@ -8,8 +8,8 @@ import { publishCardVariantLinks } from './publish-card-variants'
 // variants) and nothing said so. It now goes for every card of the family that is on the marketplace, each as its own
 // job; a card with no variant there is not sent and is named by its colour.
 //
-// Shopify and PTT AVM build one marketplace product from the whole family on any card's update (Shopify's productSet,
-// PTT AVM's parent barcode), so there the opened card's update alone carries the family, as before.
+// Shopify and PttAVM build one marketplace product from the whole family on any card's update (Shopify's productSet,
+// PttAVM's parent barcode), so there the opened card's update alone carries the family, as before.
 const familyFromOneCardPlatforms = new Set(['SHOPIFY', 'PTTAVM'])
 
 export function updatesFamilyFromOneCard(platformCode: string | null | undefined) {

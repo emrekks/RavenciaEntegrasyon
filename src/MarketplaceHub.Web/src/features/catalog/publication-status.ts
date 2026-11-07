@@ -59,10 +59,10 @@ const publicationLabels: Record<string, string> = {
   UNARCHIVE_QUEUED: 'Yayına alma kuyruğunda',
   UNARCHIVE_ACCEPTED: 'Trendyol yayına almayı kabul etti',
   BLOCKED: 'İşlem engellendi',
-  // PTT AVM's variant product send is a dry run for now: the request was prepared and checked, not sent.
+  // PttAVM's variant product send is a dry run for now: the request was prepared and checked, not sent.
   DRY_RUN: 'Kuru çalıştırma, gönderilmedi',
-  // PTT AVM already held every variant of the family: nothing was sent, nothing failed.
-  ALREADY_PRESENT: "PTT AVM'de zaten var, gönderilmedi",
+  // PttAVM already held every variant of the family: nothing was sent, nothing failed.
+  ALREADY_PRESENT: "PttAVM'de zaten var, gönderilmedi",
   MANUAL_REVIEW: 'Elle kontrol gerekli'
 }
 
@@ -100,7 +100,7 @@ export function isPublicationSelectionDisabled(
 // The shared submit/check labels name Trendyol; another marketplace's card says its own name.
 const platformNames: Record<string, { name: string; dative: string }> = {
   HEPSIBURADA: { name: 'Hepsiburada', dative: "Hepsiburada'ya" },
-  N11: { name: 'n11', dative: "n11'e" },
+  N11: { name: 'N11', dative: "N11'e" },
   PAZARAMA: { name: 'Pazarama', dative: "Pazarama'ya" },
   PTTAVM: { name: 'PttAVM', dative: "PttAVM'ye" },
   SHOPIFY: { name: 'Shopify', dative: "Shopify'a" }
@@ -111,7 +111,7 @@ function forPlatform(label: string, platformCode?: string | null) {
   return platform ? label.replaceAll("Trendyol'a", platform.dative).replaceAll('Trendyol', platform.name) : label
 }
 
-// PTT AVM has no approval step: a sent product goes live at once, so its wait is our own check of PTT AVM.
+// PttAVM has no approval step: a sent product goes live at once, so its wait is our own check of PttAVM.
 export function isPttAvmChecking(platformCode?: string | null, actualStatus?: string | null) {
   return platformCode?.trim().toUpperCase() === 'PTTAVM' && ['APPROVAL_PENDING', 'APPROVAL_PARTIAL_PENDING'].includes(actualStatus?.trim().toUpperCase() ?? '')
 }
@@ -156,14 +156,14 @@ export function approvalDeadlineExpiredNote(platformCode?: string | null) {
 
 export function publicationStatusNote(statusCode?: string | null, platformCode?: string | null) {
   if (statusCode?.trim().toUpperCase() === approvalDeadlineExpiredCode) return approvalDeadlineExpiredNote(platformCode)
-  // The dry run's job message, and the "already on PTT AVM" status, say what happened; their codes are no rejection.
+  // The dry run's job message, and the "already on PttAVM" status, say what happened; their codes are no rejection.
   if (['PRODUCT_APPROVAL_CONTENT_SPLIT', 'PTTAVM_VARIANT_SEND_DRY_RUN', 'PTTAVM_VARIANTS_ALREADY_PRESENT'].includes(statusCode?.trim().toUpperCase() ?? '')) return null
   return statusCode ? `Red kodu: ${statusCode}` : null
 }
 
-// PTT AVM can accept a model family send and still not add its variants (live 2026-10-28: MZ059YNC opened with no
+// PttAVM can accept a model family send and still not add its variants (live 2026-10-28: MZ059YNC opened with no
 // variants), so the cards wait for an approval that never comes. Such a family card, or one whose send stopped, says
-// "Tekrar Deneyin", stays selectable and Yayınla sends it again: the send reads PTT AVM first, adds only the variants
+// "Tekrar Deneyin", stays selectable and Yayınla sends it again: the send reads PttAVM first, adds only the variants
 // it lacks and sends nothing when it holds them all; the card's waiting approval checks are closed. A card whose job is
 // being worked on right now waits for that job.
 const pttAvmRetryableStatuses = new Set(['APPROVAL_PENDING', 'APPROVAL_PARTIAL_PENDING', 'MANUAL_REVIEW', 'BLOCKED', 'CREATE_REJECTED', 'PARTIAL_FAILURE'])
@@ -176,7 +176,7 @@ export function isPttAvmFamilyRetryable(platformCode?: string | null, actualStat
     && !['LEASED', 'RUNNING'].includes(lastJobStatus?.trim().toUpperCase() ?? '')
 }
 
-// Yayınla leaves a live card, and one still being published, as it is; a PTT AVM family card to try again goes. A
+// Yayınla leaves a live card, and one still being published, as it is; a PttAVM family card to try again goes. A
 // "live" card with a variant the marketplace no longer knows (Bulunamadı, Kısmen yayında) goes again.
 export function isSkippedByPublish(platformCode: string | null | undefined, actualStatus: string | null | undefined, lastJobStatus: string | null | undefined, pttAvmFamily: boolean, hasMissingVariant = false) {
   if (isPublicationLive(actualStatus)) return !hasMissingVariant

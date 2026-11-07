@@ -169,7 +169,7 @@ export function publicationProductChecks(draft: PublicationReadinessDraft, requi
       ? autoWebColorIssues(draft, colorOptionRequirement)
       : !draft.manualWebColorValueId ? ['Manuel Web Color için katalog rengi seçin.'] : webColorRequirement.attribute.values.some(value => value.id === draft.manualWebColorValueId) ? [] : ['Manuel Web Color değeri geçerli değil.']
   // Web Color is a Trendyol field (no other marketplace's API has it): its check is a check of its own that only the
-  // Trendyol cards read, so it never blocks Hepsiburada, n11, Pazarama or PTT AVM.
+  // Trendyol cards read, so it never blocks Hepsiburada, N11, Pazarama or PttAVM.
   const catalogValidationIssues = [...categoryValidationIssues, ...optionValidationIssues]
   const catalogValidationDetail = catalogValidationIssues.length ? catalogValidationIssues.join(' ') : 'Kategori özellikleri ve seçenekler yayınlamaya hazır.'
   const basicProductMissingParts = [
@@ -331,11 +331,11 @@ export async function loadPublicationAttributeIssues(client: QueryClient, connec
   const valueReferencesByAttribute: Record<string, PublicationValueReferenceSet> = Object.fromEntries(valueEntries)
   // Connection defaults (e.g. Menşei = TR) cover required attributes the product leaves empty.
   const attributeDefaults = await cached('attribute-defaults', [], () => hubApi<Array<{ externalAttributeId: string }>>(`/connections/${connectionId}/attribute-defaults`)).catch(() => [])
-  // n11 fills its brand attribute (id 1) from the product brand, so it needs no mapping.
+  // N11 fills its brand attribute (id 1) from the product brand, so it needs no mapping.
   const brandAttributeIds = connection.platformCode.trim().toUpperCase() === 'N11' ? ['1'] : []
   const result = classifyPublicationAttributeIssues({
     defaultedAttributeIds: [...attributeDefaults.map(item => item.externalAttributeId), ...brandAttributeIds],
-    // n11 sends an unmapped value of a free-text field (Boy: Regular) as its own text (N11ProductPublicationComposer).
+    // N11 sends an unmapped value of a free-text field (Boy: Regular) as its own text (N11ProductPublicationComposer).
     sendsUnmappedValuesAsFreeText: connection.platformCode.trim().toUpperCase() === 'N11',
     selectedAttributes,
     remoteAttributes: attributeReferences.items,

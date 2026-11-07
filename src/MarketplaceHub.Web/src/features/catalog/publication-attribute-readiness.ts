@@ -93,7 +93,7 @@ export function classifyPublicationAttributeIssues(input: {
   valueReferencesByAttribute: Record<string, PublicationValueReferenceSet>
   // Marketplace attributes the connection fills with a default when the product has no value.
   defaultedAttributeIds?: readonly string[]
-  // The marketplace sends a value with no mapped marketplace value as its own text where the field takes free text (n11).
+  // The marketplace sends a value with no mapped marketplace value as its own text where the field takes free text (N11).
   sendsUnmappedValuesAsFreeText?: boolean
 }): PublicationAttributeIssues {
   const requiredIssues: PublicationAttributeIssue[] = []

@@ -43,7 +43,7 @@ describe('bulk publish result', () => {
   it('names each refused record once per reason with the stores that refused it', () => {
     const failed = [failure('p1', 'ty', 'KDV yok'), failure('p1', 'n11', 'KDV yok'), failure('p1', 'hb', 'Kategori eşleşmedi'), failure('p2', 'ty', 'KDV yok', 'Bluz p2')]
     expect(bulkPublishFailureDetails(failed, connections, [{ id: 'p1', title: 'Penye Bluz', modelCode: 'MZ036YNC' }])).toEqual([
-      { label: 'Penye Bluz (MZ036YNC)', value: 'Trendyol, n11: KDV yok', tone: 'error' },
+      { label: 'Penye Bluz (MZ036YNC)', value: 'Trendyol, N11: KDV yok', tone: 'error' },
       { label: 'Penye Bluz (MZ036YNC)', value: 'Hepsiburada: Kategori eşleşmedi', tone: 'error' },
       { label: 'Bluz p2', value: 'Trendyol: KDV yok', tone: 'error' }
     ])

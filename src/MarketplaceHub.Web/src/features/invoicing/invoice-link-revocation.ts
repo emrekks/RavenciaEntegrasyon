@@ -3,7 +3,7 @@ import { formatPackageLabel } from '../../shared/package-label'
 
 // A marketplace link a cancelled invoice left on a package (MarketplaceLinkRevocationView). AUTOMATIC: the panel removes
 // it (Trendyol); VERIFY_ONLY: the operator removes it in the seller panel and the panel checks (Hepsiburada); MANUAL: only
-// instructions (n11, Pazarama).
+// instructions (N11, Pazarama).
 export type InvoiceLinkRevocation = {
   deliveryStateId: string
   packageId: string | null

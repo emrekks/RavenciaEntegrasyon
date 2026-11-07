@@ -1,16 +1,11 @@
-export const orderMarketplacePlatformCodes = ['TRENDYOL', 'SHOPIFY', 'HEPSIBURADA', 'N11', 'PAZARAMA', 'PTTAVM'] as const
+import { comparePlatformCodes, platformDisplayNames, platformDisplayOrder } from '../../shared/platform-names'
+
+export const orderMarketplacePlatformCodes = platformDisplayOrder
 
 export type MarketplacePlatformOption = { value: string; label: string }
 export type MarketplacePlatformOptionSource = { platformCode: string; displayName?: string | null; status?: string | null }
 
-const marketplacePlatformLabels: Record<typeof orderMarketplacePlatformCodes[number], string> = {
-  TRENDYOL: 'Trendyol',
-  SHOPIFY: 'Shopify',
-  HEPSIBURADA: 'Hepsiburada',
-  N11: 'N11',
-  PAZARAMA: 'Pazarama',
-  PTTAVM: 'PTT AVM'
-}
+const marketplacePlatformLabels: Record<typeof orderMarketplacePlatformCodes[number], string> = platformDisplayNames
 
 const hepsiburadaReadSyncPolicies = new Set([
   'ORDERS',
@@ -32,14 +27,14 @@ const hepsiburadaReadSyncPolicies = new Set([
   'STOCK_RECONCILE_DAILY'
 ])
 
-// n11 flows join phase by phase.
+// N11 flows join phase by phase.
 const n11ReadSyncPolicies = new Set(['ORDERS', 'ORDER_RECOVERY', 'ORDER_RECONCILE_SHORT', 'ORDER_RECONCILE_MEDIUM', 'ORDER_RECONCILE_DAILY', 'RETURNS', 'QUESTIONS', 'FINANCE', 'REFERENCE_DATA', 'STOCK_RECONCILE_SHORT', 'STOCK_RECONCILE_MEDIUM', 'STOCK_RECONCILE_DAILY', 'PRICE_WRITE', 'STOCK_WRITE', 'SHIPMENT_WRITE', 'RETURN_WRITE', 'LISTING_VERIFY'])
 
 // Pazarama: the order reads (new orders, history, open-order status scan); its write flows join with their phases.
 const pazaramaReadSyncPolicies = new Set(['ORDERS', 'ORDER_RECOVERY', 'ORDER_LIFECYCLE', 'REFERENCE_DATA', 'PRICE_WRITE', 'STOCK_WRITE', 'RETURNS', 'QUESTIONS', 'FINANCE', 'SHIPMENT_WRITE', 'RETURN_WRITE', 'LISTING_VERIFY', 'STOCK_RECONCILE_SHORT', 'STOCK_RECONCILE_MEDIUM', 'STOCK_RECONCILE_DAILY'])
 
-// PTT AVM: the order reads (new orders, history, open-order status scan), the category tree and the returned lines; its write flows join with their phases.
-// MANUAL_WRITE is PTT AVM's own "Manuel Dış Yazmalar" switch (panel-started price-stock and product sends).
+// PttAVM: the order reads (new orders, history, open-order status scan), the category tree and the returned lines; its write flows join with their phases.
+// MANUAL_WRITE is PttAVM's own "Manuel Dış Yazmalar" switch (panel-started price-stock and product sends).
 const pttAvmReadSyncPolicies = new Set(['ORDERS', 'ORDER_RECOVERY', 'ORDER_LIFECYCLE', 'REFERENCE_DATA', 'RETURNS', 'PRICE_WRITE', 'STOCK_WRITE', 'SHIPMENT_WRITE', 'RETURN_WRITE', 'MANUAL_WRITE', 'LISTING_VERIFY', 'STOCK_RECONCILE_SHORT', 'STOCK_RECONCILE_MEDIUM', 'STOCK_RECONCILE_DAILY'])
 
 export function isOrderMarketplacePlatform(platformCode: string) {
@@ -84,7 +79,7 @@ export function marketplacePlatformOptions(...sources: ReadonlyArray<readonly Ma
     }
   }
 
-  return Array.from(options.values()).sort((left, right) => left.label.localeCompare(right.label, 'tr-TR'))
+  return Array.from(options.values()).sort((left, right) => comparePlatformCodes(left.value, right.value) || left.label.localeCompare(right.label, 'tr-TR'))
 }
 
 export function isMarketplacePlatformSelected(selectedCodes: string[] | null, platformCode: string) {

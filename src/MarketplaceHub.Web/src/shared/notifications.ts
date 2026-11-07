@@ -1,5 +1,6 @@
 import { formatDateTime } from './format-date'
 import { scopedStorageKey } from './storage-scope'
+import { platformDisplayNames } from './platform-names'
 
 export type NotificationTarget = { href: string; label: string }
 export type NotificationDetail = { label: string; value: string; tone?: 'success' | 'error' }
@@ -75,14 +76,14 @@ export const notificationSubjectLabels: Record<NotificationSubjectKind, string> 
   product: 'Ürün', order: 'Sipariş', package: 'Paket', invoice: 'Fatura', return: 'İade', connection: 'Bağlantı', job: 'İş', mapping: 'Eşleştirme', question: 'Soru', import: 'İçe Aktarım', account: 'Hesap'
 }
 
-const platformNames: Record<string, string> = { TRENDYOL: 'Trendyol', TRENDYOL_EFATURAM: 'Trendyol E-Faturam', HEPSIBURADA: 'Hepsiburada', N11: 'n11', SHOPIFY: 'Shopify', PAZARAMA: 'Pazarama', PTTAVM: 'PTT AVM' }
+const platformNames: Record<string, string> = platformDisplayNames
 
 export function notificationPlatformName(platformCode: string | null | undefined) {
   const code = platformCode?.trim().toUpperCase() ?? ''
   return code ? platformNames[code] ?? code : null
 }
 
-/** The code of a marketplace named in words ("Pazarama", "PTT AVM"); the panel's own name and unknown words give none. */
+/** The code of a marketplace named in words ("Pazarama", "PttAVM"); the panel's own name and unknown words give none. */
 export function platformCodeFromName(name: string | null | undefined) {
   const normalized = name?.trim().toLocaleLowerCase('tr-TR').replace(/[\s-]+/gu, '') ?? ''
   if (!normalized) return undefined

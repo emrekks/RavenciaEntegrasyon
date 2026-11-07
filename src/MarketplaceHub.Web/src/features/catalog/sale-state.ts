@@ -1,5 +1,5 @@
 // One rule for every marketplace: a listing that is approved and listed may still be closed to sale there (Trendyol
-// onSale=false, Hepsiburada isSalable=false, n11 saleStatus, Pazarama productStatus 10, PTT AVM Aktif=false, Shopify
+// onSale=false, Hepsiburada isSalable=false, N11 saleStatus, Pazarama productStatus 10, PttAVM Aktif=false, Shopify
 // DRAFT/ARCHIVED). The sale state sits beside the publication status ("Yayında") and never replaces it: a closed
 // listing reads "Satışa Kapalı", one the marketplace did not say anything about stays unknown ("Bilinmiyor").
 

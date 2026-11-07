@@ -30,9 +30,9 @@ describe('invoice copy', () => {
   it('says per marketplace what "Fatura Bekliyor" does to an order whose invoice was cancelled', () => {
     expect(invoiceReopenNote(['TRENDYOL', 'SHOPIFY'])).toBeNull()
     expect(invoiceReopenNote(['N11'])).toContain('eskisinin yerine geçer')
-    expect(invoiceReopenNote(['PAZARAMA'])).not.toContain('PTT AVM')
-    expect(invoiceReopenNote(['PTTAVM'])).toContain('PTT AVM satıcı panelinde')
-    expect(invoiceReopenNote(['PTTAVM'])).not.toContain('n11 ve Pazarama')
+    expect(invoiceReopenNote(['PAZARAMA'])).not.toContain('PttAVM')
+    expect(invoiceReopenNote(['PTTAVM'])).toContain('PttAVM satıcı panelinde')
+    expect(invoiceReopenNote(['PTTAVM'])).not.toContain('N11 ve Pazarama')
     expect([...handSetInvoiceStatusPlatforms].sort()).toEqual(['N11', 'PAZARAMA', 'PTTAVM'])
   })
 

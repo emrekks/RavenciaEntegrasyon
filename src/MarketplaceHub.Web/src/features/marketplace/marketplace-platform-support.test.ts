@@ -12,7 +12,7 @@ describe('Hepsiburada marketplace workspace support', () => {
   it('keeps supported platforms available in filters before their data is loaded', () => {
     const options = marketplacePlatformOptions([])
 
-    expect(options.map(option => option.value)).toEqual(['HEPSIBURADA', 'N11', 'PAZARAMA', 'PTTAVM', 'SHOPIFY', 'TRENDYOL'])
+    expect(options.map(option => option.value)).toEqual(['TRENDYOL', 'HEPSIBURADA', 'N11', 'PAZARAMA', 'PTTAVM', 'SHOPIFY'])
     expect(options.find(option => option.value === 'HEPSIBURADA')?.label).toBe('Hepsiburada')
   })
 
@@ -59,7 +59,7 @@ describe('Hepsiburada marketplace workspace support', () => {
     expect(supportsSyncPolicy('PAZARAMA', 'FINANCE')).toBe(true)
   })
 
-  it('shows the MANUAL_WRITE switch for PTT AVM only', () => {
+  it('shows the MANUAL_WRITE switch for PttAVM only', () => {
     expect(supportsSyncPolicy('PTTAVM', 'MANUAL_WRITE')).toBe(true)
     for (const platformCode of ['TRENDYOL', 'SHOPIFY', 'HEPSIBURADA', 'N11', 'PAZARAMA'])
       expect(supportsSyncPolicy(platformCode, 'MANUAL_WRITE')).toBe(false)
