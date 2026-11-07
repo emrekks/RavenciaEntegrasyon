@@ -615,6 +615,8 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         invoice.UpdatedAt = timeProvider.GetUtcNow();
         invoice.Version++;
         await db.SaveChangesAsync(cancellationToken);
+        // Cancelled or refused at the provider: its delivery jobs stopped for review close at once.
+        await InvoiceDeliveryJobHygiene.CloseStoppedJobsAfterCancellationAsync(db, tenantId, invoice.Id, invoice.Status, invoice.UpdatedAt, correlationId, cancellationToken);
         return true;
     }
 
@@ -2215,6 +2217,8 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         await QueuePendingMarketplaceDeliveryRecovery(tenantId, now, cancellationToken);
         await QueueDeliveryRetries(tenantId, now, cancellationToken);
         await CloseDeliveryJobsSettledElsewhere(tenantId, now, cancellationToken);
+        // Catch-up for the cancel paths: stopped delivery jobs of an invoice cancelled for good close here too.
+        await InvoiceDeliveryJobHygiene.CloseStoppedJobsOfCancelledInvoicesAsync(db, tenantId, null, now, "invoice-due-scan", cancellationToken);
         await db.SaveChangesAsync(cancellationToken); return true;
     }
 
@@ -2592,6 +2596,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             invoice.UpdatedAt = timeProvider.GetUtcNow();
             invoice.Version++;
             await db.SaveChangesAsync(cancellationToken);
+            await InvoiceDeliveryJobHygiene.CloseStoppedJobsAfterCancellationAsync(db, tenantId, invoice.Id, invoice.Status, invoice.UpdatedAt, correlationId, cancellationToken);
             return true;
         }
         var result = await provider.CancelAsync(Context(tenantId, connectionId, correlationId, $"cancel:{invoice.Id:N}"), new(invoice.ExternalReference, invoice.EttnUuid, "OPERATOR_CONFIRMED"), cancellationToken);
@@ -2615,6 +2620,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         invoice.UpdatedAt = timeProvider.GetUtcNow();
         invoice.Version++;
         await db.SaveChangesAsync(cancellationToken);
+        await InvoiceDeliveryJobHygiene.CloseStoppedJobsAfterCancellationAsync(db, tenantId, invoice.Id, invoice.Status, invoice.UpdatedAt, correlationId, cancellationToken);
         if (!result.IsSuccess)
         {
             var error = result.Error!;
