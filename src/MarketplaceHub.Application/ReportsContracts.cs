@@ -48,7 +48,15 @@ public sealed record ReportSalesView(
     IReadOnlyList<ReportPlatformHeatmapView>? PlatformHeatmaps = null,
     IReadOnlyList<ReportProductView>? Rising = null,
     IReadOnlyList<ReportProductView>? Falling = null,
-    ReportPreviousAccountView? PreviousAccount = null);
+    ReportPreviousAccountView? PreviousAccount = null,
+    ReportQuestionTimeView? QuestionTimes = null);
+
+// How fast the customers' questions asked in the period were answered, from the stored conversation (HistoryJson): the
+// customer's first message to the store's first answer after it. Only Trendyol and Hepsiburada are measured: their
+// answer time is the marketplace's own (Trendyol answer.creationDate, Hepsiburada conversations[].createdAt); n11 and
+// Pazarama fall back to the asking time when the answer has none, so they are left out (marketplace-docs). Answered:
+// the measured questions; Waiting: those asked in the period with no answer yet.
+public sealed record ReportQuestionTimeView(int Answered, int Waiting, decimal? AverageHours, decimal? MedianHours, IReadOnlyList<string> Platforms);
 
 // The previous period's commission, product cost and Trendyol statement, read the same way as the period's, so the
 // overview can compare its profit, margin and profit over cost with the period before.

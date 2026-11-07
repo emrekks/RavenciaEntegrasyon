@@ -147,3 +147,10 @@ _FINANCE_SYNC (issue code PAZARAMA_FINANCE_SYNC_FAILED).
   674544454 one answered 403 (4.5 KB HTML) to a plain curl on 6 Nov, the same answer as the docs' own sample image
   (`:3893`): a block page, not proof the photo is gone; the panel showed "Görsel yok". Return rows and details now
   carry the catalog photo as `fallbackImageUrl` behind the marketplace's (`MarketplaceSalesService.LineImageUrls`).
+
+## Report data gaps (7 Nov 2026)
+- Discount: a line carries `listPrice`, `salePrice`, `discountAmount` and `discountDescription`
+  (`pazarama-api-son.md:2395-2545`): one discount, without saying who funds it. The mapper takes it as the order's
+  discount (`PazaramaOrderMapper.cs:100`), never as PlatformDiscount. Live: 5 orders in 60 days, every discount 0. Not
+  split until the docs or a real discounted order say who pays it.
+- Due date: the lines' `estimatedShippingDate` (the earliest) fills ShipmentDueAt (5/5 orders in 60 days).
