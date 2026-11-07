@@ -98,7 +98,7 @@ export function Button({ variant = 'primary', size = 'md', loading = false, clas
   return <button {...props} type={type} aria-busy={loading || undefined} className={['rv-button', `rv-button-${variant}`, `rv-button-${size}`, loading ? 'is-loading' : '', className].filter(Boolean).join(' ')} disabled={disabled || loading}>{loading ? <><span className="rv-button-hold">{children}</span><span className="rv-button-busy" aria-hidden="true"><UiIcon name="sync" className="rv-button-loading-icon" /></span><span className="sr-only">İşleniyor…</span></> : children}</button>
 }
 
-function IconButton({ label, size = 'md', variant = 'ghost', type = 'button', children, className, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string; size?: ControlSize; variant?: ButtonVariant }) {
+export function IconButton({ label, size = 'md', variant = 'ghost', type = 'button', children, className, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string; size?: ControlSize; variant?: ButtonVariant }) {
   return <button {...props} type={type} aria-label={label} title={props.title ?? label} className={['rv-icon-button', `rv-icon-button-${size}`, `rv-icon-button-${variant}`, className].filter(Boolean).join(' ')}>{children}</button>
 }
 

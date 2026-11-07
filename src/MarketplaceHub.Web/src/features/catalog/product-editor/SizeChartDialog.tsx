@@ -6,7 +6,7 @@ import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ApiRequestError, hubApi } from '../../../shared/api'
 import { newIdempotencyKey } from '../../../shared/idempotency'
-import { Modal, UiIcon } from '../../../shared/components'
+import { Button, IconButton, Modal, UiIcon } from '../../../shared/components'
 import { addSizeChartColumn, initialSizeChartDraft, maximumSizeChartColumns, newColumnIssue, presetSizeChartColumns, removeSizeChartColumn, setSizeChartCell, sizeChartCellKey, sizeChartColumnLabel, validateSizeChartDraft, type SizeChartDraft, type SizeChartMeasurements } from './size-chart-measurements'
 import './size-chart.css'
 
@@ -92,23 +92,23 @@ export function SizeChartDialog({ productId, sizes, onClose, onUse }: { productI
 
   const columnIssue = draft && columnName.trim() ? newColumnIssue(columnName, draft.columns) : null
   const footer = <>
-    <button type="button" className="secondary" onClick={close}>{running ? 'Vazgeç' : 'Kapat'}</button>
+    <Button variant="secondary" onClick={close}>{running ? 'Vazgeç' : 'Kapat'}</Button>
     {result
-      ? <><button type="button" className="secondary" disabled={running} onClick={() => void generate()}>Yeniden Oluştur</button><button type="button" disabled={running} onClick={() => onUse(result.url)}>Kullan</button></>
-      : <button type="button" disabled={!draft || !aiReady || running} onClick={() => void generate()}>{running ? 'Oluşturuluyor…' : 'Oluştur'}</button>}
+      ? <><Button variant="secondary" disabled={running} onClick={() => void generate()}>Yeniden Oluştur</Button><Button disabled={running} onClick={() => onUse(result.url)}>Kullan</Button></>
+      : <Button disabled={!draft || !aiReady || running} onClick={() => void generate()}>{running ? 'Oluşturuluyor…' : 'Oluştur'}</Button>}
   </>
 
   return <Modal open title="Beden Tablosu Oluştur" className="size-chart-modal" onClose={close} description="Ölçüler cm cinsindendir. Tablo yalnız girdiğiniz sayılarla çizilir; Kullan görseli ürünün son görseli olarak ekler, pazaryerine Kaydet ile gider." footer={footer}>
     {info.isPending ? <p className="size-chart-note" role="status"><UiIcon name="loader" /> Ölçüler yükleniyor…</p>
-      : info.isError ? <p className="size-chart-error" role="alert">{info.error instanceof Error ? info.error.message : 'Beden tablosu bilgisi alınamadı.'}</p>
-      : !draft || !draft.rows.length ? <p className="size-chart-error" role="alert">Bu ürünün Beden değeri yok.</p>
+      : info.isError ? <p className="error size-chart-error" role="alert">{info.error instanceof Error ? info.error.message : 'Beden tablosu bilgisi alınamadı.'}</p>
+      : !draft || !draft.rows.length ? <p className="error size-chart-error" role="alert">Bu ürünün Beden değeri yok.</p>
       : <>
-        {!aiReady && <p className="size-chart-error" role="alert">{info.data?.aiIssue ?? 'Yapay zekâ ayarları hazır değil.'}</p>}
+        {!aiReady && <p className="error size-chart-error" role="alert">{info.data?.aiIssue ?? 'Yapay zekâ ayarları hazır değil.'}</p>}
         <div className="size-chart-table-wrap">
           <table className="size-chart-table">
             <thead><tr><th scope="col">Beden</th>{draft.columns.map((column, columnIndex) => <th scope="col" key={`${column}-${columnIndex}`}>
               <span className="size-chart-column-head"><span title={columnErrors[columnIndex]} className={columnErrors[columnIndex] ? 'is-invalid' : undefined}>{sizeChartColumnLabel(column)}</span>
-                {draft.columns.length > 1 && <button type="button" className="size-chart-icon-button" disabled={running} aria-label={`${column} kolonunu kaldır`} title="Kolonu kaldır" onClick={() => setDraft(removeSizeChartColumn(draft, columnIndex))}><UiIcon name="close" size={14} /></button>}</span>
+                {draft.columns.length > 1 && <IconButton size="sm" className="size-chart-icon-button" disabled={running} label={`${column} kolonunu kaldır`} title="Kolonu kaldır" onClick={() => setDraft(removeSizeChartColumn(draft, columnIndex))}><UiIcon name="close" size={14} /></IconButton>}</span>
             </th>)}</tr></thead>
             <tbody>{draft.rows.map((row, rowIndex) => <tr key={row.size}><th scope="row">{row.size}</th>{draft.columns.map((column, columnIndex) => {
               const message = cellErrors[sizeChartCellKey(rowIndex, columnIndex)]
@@ -117,16 +117,16 @@ export function SizeChartDialog({ productId, sizes, onClose, onUse }: { productI
           </table>
         </div>
         <div className="size-chart-columns">
-          <button type="button" className="secondary size-chart-add" disabled={running || draft.columns.length >= maximumSizeChartColumns} aria-expanded={columnMenuOpen} onClick={() => setColumnMenuOpen(value => !value)}><UiIcon name="plus" size={14} />Kolon Ekle</button>
+          <Button variant="secondary" className="size-chart-add" disabled={running || draft.columns.length >= maximumSizeChartColumns} aria-expanded={columnMenuOpen} onClick={() => setColumnMenuOpen(value => !value)}><UiIcon name="plus" size={14} />Kolon Ekle</Button>
           {columnMenuOpen && <div className="size-chart-column-menu" role="group" aria-label="Kolon ekle">
-            {presetSizeChartColumns.filter(name => !newColumnIssue(name, draft.columns)).map(name => <button type="button" key={name} className="secondary" onClick={() => addColumn(name)}>{name}</button>)}
+            {presetSizeChartColumns.filter(name => !newColumnIssue(name, draft.columns)).map(name => <Button key={name} variant="secondary" onClick={() => addColumn(name)}>{name}</Button>)}
             <input value={columnName} maxLength={24} placeholder="Başka bir ölçü" aria-label="Yeni kolon adı" onChange={event => setColumnName(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); addColumn(columnName) } }} />
-            <button type="button" className="secondary" disabled={!columnName.trim() || Boolean(columnIssue)} onClick={() => addColumn(columnName)}>Ekle</button>
+            <Button variant="secondary" disabled={!columnName.trim() || Boolean(columnIssue)} onClick={() => addColumn(columnName)}>Ekle</Button>
             {columnIssue && <small className="size-chart-cell-error">{columnIssue}</small>}
           </div>}
         </div>
         {running && <p className="size-chart-note" role="status"><UiIcon name="loader" /> Beden tablosu oluşturuluyor… {elapsed} sn. Bu işlem 1-3 dakika sürebilir; pencereyi kapatırsanız görsel eklenmez.</p>}
-        {error && !running && <p className="size-chart-error" role="alert">{error}</p>}
+        {error && !running && <p className="error size-chart-error" role="alert">{error}</p>}
         {result && !running && <figure className="size-chart-preview">
           <img src={result.url} alt="Oluşturulan beden tablosu önizlemesi" />
           {formatCost(result) && <figcaption>{formatCost(result)}</figcaption>}
