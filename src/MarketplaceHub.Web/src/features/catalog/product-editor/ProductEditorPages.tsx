@@ -17,6 +17,7 @@ import { revealFieldError } from './field-error-reveal'
 import { platformLogoClass, platformLogoSource } from '../../../shared/platform-logos'
 import { appendNotification, notificationError, productNotificationSubject } from '../../../shared/notifications'
 import { recordProductUpdateNotices, type ProductUpdateAccepted } from './product-update-notices'
+import { followJobOutcomes, outcomeTarget, type FollowedJob } from '../../../shared/job-outcome'
 import { toggleProductAttributeValue } from '../attribute-selection'
 import { buildVariantAttributeAssignments } from '../variant-attribute-assignments'
 import { filterAttributeOptionValues, optionValueToAdd } from '../attribute-value-search'
@@ -2898,6 +2899,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       const publications: MarketplacePublishOutcome[] = []
       const publicationErrors: Array<{ platformName: string; message: string }> = []
       const updates: MarketplaceUpdateOutcome[] = []
+      // The jobs this press started, followed until they say how they ended (aktarıldı / aktarılamadı, with the reason).
+      const followedJobs: FollowedJob[] = []
       // The steps after the product (media, stock, channel prices, publication) can take a while; the progress toast names them.
       if (!editProductId) showFeedback('Ürün Oluşturuldu', 'Ürün oluşturuldu; görseller, stok ve fiyatlar kaydediliyor…', 'info', { persistent: true, key: productSaveToastKey })
       const initialProductMediaUrls = initialEditMediaUrl.current.split(/\r?\n|[;|]/u).map(url => url.trim()).filter(Boolean)
@@ -3065,10 +3068,12 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
             if (plan.productFields.length) {
               const accepted = await hubApi<ProductUpdateAccepted>(`/products/${product.id}/update-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId, fields: plan.productFields }) })
               recordProductUpdateNotices(accepted, { productId: product.id, productName: form.title, modelCode: form.modelCode, platformCode: connections.data?.items.find(item => item.id === connectionId)?.platformCode, connectionId })
+              if (accepted?.jobId) followedJobs.push({ jobId: accepted.jobId, platformName, what: 'ürün bilgisi' })
               update.queued.productInformation = true
             }
             if (plan.price || plan.stock) {
-              await hubApi<AcceptedJob>(`/products/${product.id}/connections/${connectionId}/price-inventory-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ price: plan.price, stock: plan.stock }) })
+              const priceInventoryJob = await hubApi<AcceptedJob>(`/products/${product.id}/connections/${connectionId}/price-inventory-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ price: plan.price, stock: plan.stock }) })
+              if (priceInventoryJob?.jobId) followedJobs.push({ jobId: priceInventoryJob.jobId, platformName, what: plan.price && plan.stock ? 'fiyat-stok' : plan.price ? 'fiyat' : 'stok' })
               update.queued.priceInventory = true
               update.priceInventoryParts = { price: plan.price, stock: plan.stock }
             }
@@ -3114,8 +3119,9 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               }
               await hubApi(`/products/${familyProductId}/listing-profiles/${connectionId}`, { method: 'PUT', headers: listingProfile == null ? {} : { 'If-Match': `"v${listingProfile.version}"` }, body: JSON.stringify(republishListingProfileBody(listingProfile)) })
               await client.invalidateQueries({ queryKey: ['listing-profile', familyProductId, connectionId] })
-              await hubApi<AcceptedJob>(`/products/${familyProductId}/publication-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId }) })
+              const publicationJob = await hubApi<AcceptedJob>(`/products/${familyProductId}/publication-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId }) })
               await client.invalidateQueries({ queryKey: ['publication-status', familyProductId, connectionId] })
+              if (publicationJob?.jobId) followedJobs.push({ jobId: publicationJob.jobId, platformName, what: familyIds.length > 1 ? `${familyIndex + 1}. renk kartı` : 'ürün' })
               outcome.enqueuedCards++
               outcome.enqueuedVariants += plan.variants
               if (plan.addsToListing) outcome.addedToListingCards = (outcome.addedToListingCards ?? 0) + 1
@@ -3181,7 +3187,20 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       // One line per marketplace; a refused marketplace stays on screen until it is closed, so it is not lost among
       // later toasts.
       if (createOnly) operationToasts.dismiss(productSaveToastKey)
-      else setFeedback({ message, kind: result.kind, persistent: result.persistent, title: result.title, lines: result.lines, durationMs: result.durationMs, key: productSaveToastKey, context: productCreated ? { subject: productNotificationSubject({ id: productCreated.id, name: form.title, modelCode: form.modelCode }) } : undefined })
+      // A "sending" toast with no job to follow (the server named none) does not spin forever.
+      else setFeedback({ message, kind: result.kind, persistent: result.persistent && (result.title !== 'Aktarım Başladı' || followedJobs.length > 0), title: result.title, lines: result.lines, durationMs: result.durationMs, key: productSaveToastKey, context: productCreated ? { subject: productNotificationSubject({ id: productCreated.id, name: form.title, modelCode: form.modelCode }) } : undefined })
+      // "Aktarım Başladı" turns into how the jobs ended; a toast that already names a refusal keeps its place and the
+      // result comes below it. The result also goes to the notification center, so it is not lost if the page is left.
+      if (followedJobs.length && !createOnly) {
+        const resultKey = result.kind === 'error' ? `${productSaveToastKey}-result` : productSaveToastKey
+        const subject = productNotificationSubject({ id: product.id, name: form.title, modelCode: form.modelCode })
+        const operation = platformUpdate ? 'Platformlarda Güncelle' : 'Yayınla'
+        void followJobOutcomes(followedJobs, outcomeTarget(followedJobs), (outcome, interim) => operationToasts.showDetached({
+          title: outcome.title, message: outcome.lines.join(' '), lines: outcome.lines, kind: outcome.kind,
+          persistent: outcome.kind === 'error', durationMs: interim ? 8000 : 6000, key: resultKey,
+          context: { subject, operation, jobId: followedJobs.length === 1 ? followedJobs[0].jobId : undefined }
+        }))
+      }
       // A new product or a copy opens on its own page once created, whichever button saved it: there it saves as an
       // edit and its publication progress shows. A publish opens the publication step; the copy source is dropped.
       if (productCreated && !editProductId) {

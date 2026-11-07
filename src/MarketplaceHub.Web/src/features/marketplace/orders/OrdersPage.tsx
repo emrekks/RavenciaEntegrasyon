@@ -767,7 +767,7 @@ function ShopifyBulkStatusModal({ kind, items, onClose, onFeedback, onUpdated }:
       const prefix = `${succeeded.length}/${items.length} Shopify siparişinin ${noun} “${statusName}” olarak güncellendi.`
       const failureDetails = failed.slice(0, 4).map(result => `${displayOrderNumber(result.item.orderNumber)}: ${result.error}`).join(' · ')
       const remainingFailures = failed.length > 4 ? ` · ${failed.length - 4} ek hata` : ''
-      onFeedback(failed.length ? `${prefix} Başarısız: ${failureDetails}${remainingFailures}` : prefix, failed.length === 0 ? 'success' : succeeded.length ? 'info' : 'error')
+      onFeedback(failed.length ? `${prefix} Başarısız: ${failureDetails}${remainingFailures}` : prefix, failed.length === 0 ? 'success' : 'error')
       onClose()
     }
   })

@@ -421,7 +421,7 @@ export function InvoicesPage() {
       return hubApi<{ jobId: string }>(`/invoices/${item.invoiceId}/delivery-retry-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ confirmed: true }) })
     },
     onSuccess: async (_result, item) => {
-      setMessage(`#${item.orderNumber} nolu siparişin faturası için yeniden deneme sıraya alındı. Yeni fatura kesilmedi.`, 'success', invoiceOrderContext(item, 'Fatura İletimi Yeniden Deneniyor', 'Fatura iletimini yeniden deneme'))
+      setMessage(`#${item.orderNumber} nolu siparişin faturası için yeniden deneme sıraya alındı; sonucu fatura satırında görünür. Yeni fatura kesilmedi.`, 'info', invoiceOrderContext(item, 'Fatura İletimi Yeniden Deneniyor', 'Fatura iletimini yeniden deneme'))
       await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['invoice'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
     },
     onError: (error, item) => setMessage(error instanceof Error ? error.message : 'Yeniden deneme sıraya alınamadı.', 'error', invoiceOrderContext(item, 'Yeniden Deneme Başlatılamadı', 'Fatura iletimini yeniden deneme', error))
@@ -449,7 +449,7 @@ export function InvoicesPage() {
       if (documentId) setQueuedManualDocuments(current => new Set(current).add(documentId))
       setMessage(result.inspectionOnlyPackageCount > 0
         ? `${result.inspectionOnlyPackageCount} paketin önceki iletim sonucu belirsiz; yalnızca pazaryeri durumu okunacak, yeni belge gönderilmeyecek.`
-        : `${result.queuedPackageCount} paket için taze durum kontrolü ve manuel fatura iletimi kuyruğa alındı.`, 'success', invoiceOrderContext(item, 'Manuel Fatura İletimi Başlatıldı', 'Manuel fatura iletimi'))
+        : `${result.queuedPackageCount} paket için taze durum kontrolü ve manuel fatura iletimi kuyruğa alındı; henüz iletilmedi, sonucu fatura satırında görünür.`, 'info', invoiceOrderContext(item, 'Manuel Fatura İletimi Sıraya Alındı', 'Manuel fatura iletimi'))
       await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
     },
     onError: (error, item) => setMessage(error instanceof Error ? error.message : 'Manuel fatura iletimi kuyruğa alınamadı.', 'error', invoiceOrderContext(item, 'Manuel Fatura İletilemedi', 'Manuel fatura iletimi', error))
@@ -469,7 +469,7 @@ export function InvoicesPage() {
       })
     },
     onSuccess: async (_result, item) => {
-      setMessage('Pazaryerindeki sipariş durumu yenileme kuyruğuna alındı.', 'success', invoiceOrderContext(item, 'Sipariş Durumu Yenileniyor', 'Sipariş durumu yenileme'))
+      setMessage('Pazaryerindeki sipariş durumu yenileme kuyruğuna alındı.', 'info', invoiceOrderContext(item, 'Sipariş Durumu Yenileniyor', 'Sipariş durumu yenileme'))
       await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
     },
     onError: (error, item) => setMessage(error instanceof Error ? error.message : 'Sipariş durumu pazaryerinden yenilenemedi.', 'error', invoiceOrderContext(item, 'Sipariş Durumu Yenilenemedi', 'Sipariş durumu yenileme', error))

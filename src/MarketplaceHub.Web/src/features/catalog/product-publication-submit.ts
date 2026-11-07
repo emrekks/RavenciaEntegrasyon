@@ -91,14 +91,14 @@ function enqueuedPhrase(outcome: MarketplacePublishOutcome, platformHoldsFamily:
   // Cards already there sent only what they lacked: said so, so the count is not read as the whole card.
   if (outcome.enqueuedCards > 0 && outcome.addedToListingCards === outcome.enqueuedCards) {
     return outcome.familyCards <= 1
-      ? `eksik ${variants} gönderim kuyruğuna alındı`
-      : `${cardCount(outcome.enqueuedCards)} için eksik ${variants} gönderim kuyruğuna alındı`
+      ? `eksik ${variants} gönderiliyor`
+      : `${cardCount(outcome.enqueuedCards)} için eksik ${variants} gönderiliyor`
   }
-  if (outcome.familyCards <= 1) return `ürün (${variants}) gönderim kuyruğuna alındı`
+  if (outcome.familyCards <= 1) return `ürün (${variants}) gönderiliyor`
   if (platformHoldsFamily && outcome.enqueuedCards === outcome.familyCards) {
-    return `model ailesi (${outcome.enqueuedCards} renk, ${variants}) tek ürün olarak gönderim kuyruğuna alındı`
+    return `model ailesi (${outcome.enqueuedCards} renk, ${variants}) tek ürün olarak gönderiliyor`
   }
-  return `${cardCount(outcome.enqueuedCards)} (${variants}) gönderim kuyruğuna alındı`
+  return `${cardCount(outcome.enqueuedCards)} (${variants}) gönderiliyor`
 }
 
 /** The lines one marketplace contributes: what was queued and skipped, then each refusal with the cards it stopped. */
@@ -122,9 +122,9 @@ function marketplaceUpdateLine(outcome: MarketplaceUpdateOutcome) {
   const parts = outcome.priceInventoryParts
   const priceInventory = !parts || parts.price && parts.stock ? 'fiyat-stok' : parts.price ? 'fiyat' : 'stok'
   const queued = [outcome.queued.productInformation && 'ürün bilgisi', outcome.queued.priceInventory && priceInventory].filter(Boolean).join(' ve ')
-  const queuedText = queued ? `${queued} güncelleme işi kuyruğa alındı` : ''
+  const queuedText = queued ? `${queued} gönderiliyor` : ''
   if (!outcome.error) return queuedText ? `${outcome.platformName}: ${queuedText}.` : `${outcome.platformName}: seçilen bilgilerden bu platforma gidecek olan yok; iş açılmadı.`
-  return `${outcome.platformName}: ${queuedText ? `${queuedText}; ardından ` : ''}güncelleme başlatılamadı — ${outcome.error}`
+  return `${outcome.platformName}: ${queuedText ? `${queuedText}; ardından ` : ''}aktarım başlatılamadı — ${outcome.error}`
 }
 
 function saveLine(outcome: ProductSaveOutcome) {
@@ -149,7 +149,7 @@ export function productSaveFeedback(outcome: ProductSaveOutcome): ProductSaveFee
     const started = outcome.updates.filter(update => update.queued.productInformation || update.queued.priceInventory)
     lines.push(...outcome.updates.map(marketplaceUpdateLine))
     refused ||= failed.length > 0
-    title = !failed.length ? 'Güncelleme Başlatıldı' : started.length ? 'Güncelleme Kısmen Başlatıldı' : 'Güncelleme Başlatılamadı'
+    title = !failed.length ? 'Aktarım Başladı' : started.length ? 'Aktarım Kısmen Başladı' : 'Aktarım Başlatılamadı'
   } else if (outcome.publishRequested) {
     for (const publication of outcome.publications) lines.push(...marketplacePublishLines(publication))
     for (const error of outcome.publicationErrors) lines.push(`${error.platformName}: reddedildi — ${error.message}`)
@@ -163,7 +163,7 @@ export function productSaveFeedback(outcome: ProductSaveOutcome): ProductSaveFee
       title = gapSkipped.length ? 'Yayın Başlatılamadı' : outcome.created ? 'Ürün Oluşturuldu' : 'Ürün Kaydedildi'
     } else {
       // A marketplace left out for a gap keeps the title from saying the whole publication started.
-      title = anyQueued ? (anyRefused || gapSkipped.length ? 'Yayın Kısmen Başlatıldı' : 'Yayın Başlatıldı') : anyRefused ? 'Yayın Başlatılamadı' : outcome.created ? 'Ürün Oluşturuldu' : 'Ürün Kaydedildi'
+      title = anyQueued ? (anyRefused || gapSkipped.length ? 'Yayın Kısmen Başlatıldı' : 'Aktarım Başladı') : anyRefused ? 'Yayın Başlatılamadı' : outcome.created ? 'Ürün Oluşturuldu' : 'Ürün Kaydedildi'
     }
     // Not sent for a gap is not a refusal, but it is not a success either: the toast stays until it is read.
     if (gapSkipped.length && !refused) {
@@ -178,6 +178,12 @@ export function productSaveFeedback(outcome: ProductSaveOutcome): ProductSaveFee
   // A refusal or a stock that was not saved stays on screen until it is closed; a full success closes by itself, a
   // little later when it has several lines to read; "nothing new to send" is information, not an error.
   if (refused) return { title, lines, kind: 'error', persistent: true }
+  // Something went to a marketplace: it is on its way, not done. The toast stays as work in progress until the followed
+  // jobs say how it ended (shared/job-outcome); a success never shows before that (owner, 7 Nov 2026: RYP003T).
+  const sending = outcome.updates
+    ? outcome.updates.some(update => update.queued.productInformation || update.queued.priceInventory)
+    : outcome.publishRequested && outcome.publications.some(publication => publication.enqueuedCards > 0)
+  if (sending) return { title, lines, kind: 'info', persistent: true }
   const nothingSent = outcome.publishRequested && !outcome.updates && outcome.publications.length > 0 && outcome.publications.every(publication => publication.enqueuedCards === 0)
   const durationMs = nothingSent ? 8000 : lines.length > 1 ? 6000 : 3500
   return { title, lines, kind: nothingSent ? 'info' : 'success', persistent: false, durationMs }

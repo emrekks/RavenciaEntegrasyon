@@ -48,7 +48,7 @@ export function ConnectionFullResetPanel({ item, onFeedback, onFinished, onCance
   }, [job, running])
   const start = useMutation({
     mutationFn: () => hubApi<ConnectionFullResetView>(`/connections/${item.id}/full-reset`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ confirmation }) }),
-    onSuccess: result => { client.setQueryData(queryKey, result); setConfirmation(''); onFeedback({ kind: 'success', title: 'Tam Sıfırlama Başladı', message: `${item.displayName} bağlantısının verileri arka planda siliniyor; ilerlemeyi bu pencerede ve İşler ekranında izleyebilirsiniz.` }) },
+    onSuccess: result => { client.setQueryData(queryKey, result); setConfirmation(''); onFeedback({ kind: 'info', title: 'Tam Sıfırlama Başladı', message: `${item.displayName} bağlantısının verileri arka planda siliniyor; ilerlemeyi bu pencerede ve İşler ekranında izleyebilirsiniz.` }) },
     onError: reason => onFeedback(failureNotice(reason, 'Tam sıfırlama başlatılamadı.'))
   })
   const counts = view.data ? new Map(view.data.items.map(entry => [entry.scope, entry.count])) : undefined

@@ -119,7 +119,8 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
     onDone({
       title: interrupted ? 'Toplu Yayın Yarıda Kesildi' : !refused ? 'Toplu Yayın Kuyruğa Alındı' : sent.queued ? 'Toplu Yayın Kısmen Gönderildi' : 'Toplu Yayın Gönderilemedi',
       message: bulkPublishResultMessage(sent, interrupted),
-      kind: interrupted || (refused && !sent.queued) ? 'error' : refused ? 'info' : 'success',
+      // Queued is not done (the cards show each result); a refusal next to queued cards is still a refusal.
+      kind: interrupted || refused ? 'error' : 'info',
       details: refused ? bulkPublishFailureDetails(sent.failed, connections, knownRecords) : undefined
     })
   }

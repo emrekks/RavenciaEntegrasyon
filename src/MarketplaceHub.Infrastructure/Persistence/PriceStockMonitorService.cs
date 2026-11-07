@@ -95,7 +95,7 @@ public sealed class PriceStockMonitorService(AppDbContext db, IConfiguration con
                 issues.Count,
                 linkHealth.Where(x => x.ConnectionId == connection.Id && x.HealthStatus == MarketplaceVariantLinkHealth.NotFound).Sum(x => x.Count),
                 linkHealth.Where(x => x.ConnectionId == connection.Id && x.HealthStatus == MarketplaceVariantLinkHealth.Rejected).Sum(x => x.Count),
-                latest is null ? null : new PriceStockPushFailureView(latest.Id, latest.LastErrorCode, latest.LastErrorSummary, latest.Status.ToString(), latest.CompletedAt),
+                latest is null ? null : new PriceStockPushFailureView(latest.Id, latest.LastErrorCode, JobErrorMessages.Display(latest.LastErrorCode, latest.LastErrorSummary), latest.Status.ToString(), latest.CompletedAt),
                 issues.Take(10).Select(x => new PriceStockOfferIssueView(x.Code, x.Summary, x.LastSeenAt)).ToList(),
                 WebhookPollingPolicy.OrderSource(subscriptions.ContainsKey(connection.Id), healthy),
                 subscriptions.GetValueOrDefault(connection.Id),
