@@ -1,0 +1,5 @@
+/* İşlem Takibi › API Sağlık: Genel Bakış's operation cards and Entegrasyon Durumu panel, then the price and stock
+   panel, one under the other with the dashboard's own section spacing. */
+.api-health, .api-health-rr { display: grid; gap: 20px; min-width: 0; }
+.api-health-rr > * { min-width: 0; }
+@media (max-width: 760px) { .api-health, .api-health-rr { gap: 14px; } }
