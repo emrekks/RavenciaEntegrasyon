@@ -79,6 +79,8 @@ public static class MarketplaceEndpoints
                 : MissingContext(http));
         // G: the automatic price/stock pipeline of every connection, and the kill switch that turns it off everywhere.
         api.MapGet("/price-stock-monitor", async (HttpContext http, IPriceStockMonitorService service) => Tenant(http) is { } tenant ? Results.Ok(await service.MonitorAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http));
+        // API Sağlığı: per connection, the key / schedule lag / error rate / quota / queue age / webhook signals from stored data.
+        api.MapGet("/api-health-signals", async (HttpContext http, IApiHealthSignalsService service) => Tenant(http) is { } tenant ? Results.Ok(await service.SignalsAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http));
         api.MapPost("/price-stock-monitor/emergency-stop", async (HttpContext http, IPriceStockMonitorService service) =>
         {
             if (Tenant(http) is not { } tenant || RequireIdempotency(http) is not null) return MissingContext(http);

@@ -50,6 +50,12 @@ vi.mock('../../shared/api', () => {
       automaticWritesOpen: true, lastSuccessfulPushAt: hoursAgo(1), queuedJobs: 2, waitingForOrderRead: 0, failedPushes7d: 0, manualReviewPushes: 0, invalidOffers: 0,
       notFoundLinks: 0, rejectedLinks: 0, latestFailure: null, invalidOfferSamples: [], orderSource: 'WEBHOOK', lastNotificationAt: hoursAgo(1), orderReadIntervalSeconds: 900
     }] }
+    if (path === '/api-health-signals') return { generatedAt: hoursAgo(0), connections: [{
+      connectionId: 'ty', platformCode: 'TRENDYOL', displayName: 'Ravencia Trendyol',
+      auth: { state: 'valid', lastRejectedAt: null, lastRejectedCode: null, lastOkAt: hoursAgo(1) }, lag: { stream: 'ORDERS', lagSeconds: 2400, expectedSeconds: 120, level: 'fault' },
+      errorRate: { attempts: 100, failed: 4, remoteSide: 3, ourSide: 1, rateLimited: 0, workflowWait: 0 }, rateLimit: { refused24h: 0, waitingJobs: 0, pausedUntil: null, lastRunRefusals: 0 },
+      queue: null, webhook: { used: true, lastReceivedAt: hoursAgo(1), healthy: true, lastOrderReadAt: hoursAgo(1), fallbackReadSeconds: 900 }
+    }] }
     if (path === '/dashboard/integration-matrix') return [{ connectionId: 'ty', platformCode: 'TRENDYOL', displayName: 'Ravencia Trendyol', externalStoreId: '123', status: 'ACTIVE', issue: 'Ürün güncelleme listing state kayıtları eksik.', cells: {
       orders: { state: 'ok', lastSuccessAt: hoursAgo(1), lastProblemAt: null }, products: { state: 'bad', lastSuccessAt: null, lastProblemAt: hoursAgo(2) }
     } }]
@@ -419,6 +425,12 @@ describe('JobsPage API Sağlık tab (price/stock sending health)', () => {
     expect(stop.textContent).toBe('Tüm Otomatik Yazmaları Durdur')
     expect(stop.disabled).toBe(false)
     expect(container.querySelector('.rr-mx-notice')).toBeNull()
+    // Under it, API Sağlığı: one value per cell from stored data.
+    for (let tick = 0; tick < 200 && !container.querySelector('.rr-sigt tbody td[data-l="Geride Kalma"]'); tick++) await settle()
+    const signalRow = container.querySelector('.rr-sigt tbody tr')!
+    expect(Array.from(container.querySelectorAll('.rr-sigt thead th')).map(item => item.textContent)).toEqual(['Pazar Yeri', 'Anahtar / Yetki', 'Geride Kalma', 'Hata Oranı (24 sa)', 'Hız Sınırı (429)', 'Kuyruk Yaşı', 'Webhook'])
+    expect(Array.from(signalRow.querySelectorAll('td[data-l]')).map(item => item.textContent)).toEqual(['Geçerli', 'Sipariş 40 dk geride', '%4', '0', 'Yok', '1 sa önce'])
+    expect(signalRow.querySelectorAll('small').length).toBe(0)
     expect(container.querySelector('.jobs-category-segment, [aria-label="İşlem kategorileri"]')).toBeNull()
     expect(pageRequests().length).toBe(jobReads)
   })

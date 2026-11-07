@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { CardBackgroundIcon, type CardIconName, type CardTone } from '../../shared/components/CardBackgroundIcon'
 import { RrIcon } from '../marketplace/returns-ui'
 import { dashboardBootstrapQuery, IntegrationStatusPanel, knownCount, useIntegrationHealth } from '../dashboard/IntegrationStatusPanel'
+import { ApiHealthSignalsPanel } from './ApiHealthSignalsPanel'
 import { EmergencyStopButton, usePriceStockMonitor } from '../marketplace/integrations/PriceStockMonitorPanel'
 import type { IntegrationFeedback } from '../marketplace/shared'
 import './api-health.css'
@@ -40,6 +41,7 @@ export function ApiHealthView({ onFeedback }: { onFeedback: (feedback: Integrati
         })}
       </div></section>
       <IntegrationStatusPanel integration={integration} extras={monitor.extras} headerAction={<EmergencyStopButton anyOpen={monitor.anyOpen} onFeedback={onFeedback} />} notice={monitor.problemConnections ? `${monitor.problemConnections} bağlantıda sorunlu fiyat/stok gönderimi var; ayrıntı Sorun hücresinin ipucunda.` : null} />
+      <ApiHealthSignalsPanel />
     </div>
   </div>
 }

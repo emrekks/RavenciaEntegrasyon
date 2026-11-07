@@ -83,6 +83,7 @@ public static class DependencyInjection
         services.AddScoped<IProductTransferService, ProductTransferService>();
         services.AddScoped<IInventoryService, InventoryService>();
         services.AddScoped<IPriceStockMonitorService, PriceStockMonitorService>();
+        services.AddScoped<IApiHealthSignalsService, ApiHealthSignalsService>();
         services.AddScoped<IReferenceDataService, ReferenceDataService>();
         services.Configure<TrendyolOptions>(configuration.GetSection(TrendyolOptions.SectionName));
         services.Configure<ShopifyOptions>(configuration.GetSection(ShopifyOptions.SectionName));
