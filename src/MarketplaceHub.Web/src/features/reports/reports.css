@@ -645,19 +645,26 @@
 .app-shell.stitch-shell main .reports-page .reports-period-facts .reports-hover-tip { width: 260px; max-width: none; }
 .app-shell.stitch-shell main .reports-page .reports-period-facts > div:last-child .reports-hover-tip { right: 0; left: auto; }
 
-/* The metric cards: a name and a value per row, the rows sharing the card's height; a row with its own tab is a button. */
+/* The metric cards: a name and a value per row, every row of every card one height (a value with its second line fits
+   it), the rows from the top of the card and the space of a shorter card left at its bottom; a row with its own tab is a
+   button. The name stays on one line with its "?" right after it; the value side takes what the name leaves. */
 .app-shell.stitch-shell main .reports-page .reports-metrics { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
-.app-shell.stitch-shell main .reports-page .reports-metrics li { display: grid; flex: 1 0 auto; border-top: 1px solid var(--rv-color-border); }
+.app-shell.stitch-shell main .reports-page .reports-metrics li { display: grid; flex: none; border-top: 1px solid var(--rv-color-border); }
 .app-shell.stitch-shell main .reports-page .reports-metrics li:first-child { border-top: 0; }
-.app-shell.stitch-shell main .reports-page .reports-metric { display: flex; align-items: center; justify-content: space-between; gap: 14px; width: 100%; min-height: 44px; height: 100%; margin: 0; padding: 8px 0; color: var(--rv-color-ink); font: inherit; text-align: left; text-transform: none; letter-spacing: 0; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
+.app-shell.stitch-shell main .reports-page .reports-metric { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 0; height: 54px; margin: 0; padding: 6px 0; color: var(--rv-color-ink); font: inherit; text-align: left; text-transform: none; letter-spacing: 0; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
 .app-shell.stitch-shell main .reports-page button.reports-metric { margin: 0 -10px; padding: 8px 10px; width: calc(100% + 20px); border-radius: 12px; cursor: pointer; transition: background-color 150ms ease; }
 .app-shell.stitch-shell main .reports-page button.reports-metric:hover { background: var(--rv-color-surface-soft); }
 .app-shell.stitch-shell main .reports-page button.reports-metric.is-static { cursor: default; }
 .app-shell.stitch-shell main .reports-page button.reports-metric.is-static:hover { background: transparent; }
 .app-shell.stitch-shell main .reports-page button.reports-metric:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: -2px; }
-.app-shell.stitch-shell main .reports-page .reports-metric-label { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-size: 13.5px; }
-.app-shell.stitch-shell main .reports-page .reports-metric-value { display: inline-flex; flex: none; align-items: center; gap: 8px; }
-.app-shell.stitch-shell main .reports-page .reports-metric-value strong { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.app-shell.stitch-shell main .reports-page .reports-metric-label { display: inline-flex; flex: 0 1 auto; align-items: center; gap: 0; min-width: 0; font-size: 13px; white-space: nowrap; }
+.app-shell.stitch-shell main .reports-page .reports-metric-name { overflow: hidden; text-overflow: ellipsis; }
+.app-shell.stitch-shell main .reports-page .reports-metric-label .reports-qmark { flex: none; }
+.app-shell.stitch-shell main .reports-page .reports-metric-value { display: flex; flex: 0 1 auto; flex-direction: column; align-items: flex-end; justify-content: center; gap: 2px; min-width: 0; text-align: right; }
+.app-shell.stitch-shell main .reports-page .reports-metric-main { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; }
+.app-shell.stitch-shell main .reports-page .reports-metric-value strong { overflow: hidden; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; text-overflow: ellipsis; }
+.app-shell.stitch-shell main .reports-page .reports-metric-sub .reports-delta { margin-right: 6px; font-size: 11px; }
+.app-shell.stitch-shell main .reports-page .reports-metric-sub { overflow: hidden; max-width: 100%; color: var(--rv-color-subtle); font-size: 11.5px; line-height: 1.3; font-variant-numeric: tabular-nums; white-space: nowrap; text-overflow: ellipsis; }
 .app-shell.stitch-shell main .reports-page .reports-metrics li.is-warn .reports-metric-value strong { color: var(--rv-color-warning); }
 .app-shell.stitch-shell main .reports-page .reports-metrics li.is-bad .reports-metric-value strong { color: var(--rv-color-danger); }
 
@@ -676,11 +683,20 @@
   .app-shell.stitch-shell main .reports-page .reports-kpis.is-5 > :last-child { grid-column: span 2; }
   .app-shell.stitch-shell main .reports-page .reports-overview-row.is-three { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .app-shell.stitch-shell main .reports-page .reports-overview-row.is-three > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+  /* The metric card left alone on its line spans it: its rows go in two columns, so a name and its value stay close. */
+  .app-shell.stitch-shell main .reports-page .reports-overview-row.is-three > .reports-card-metrics:last-child:nth-child(odd) .reports-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 40px; }
+  .app-shell.stitch-shell main .reports-page .reports-overview-row.is-three > .reports-card-metrics:last-child:nth-child(odd) .reports-metrics li:nth-child(2) { border-top: 0; }
   .app-shell.stitch-shell main .reports-page .reports-costlines { grid-template-columns: minmax(0, 1fr); }
   .app-shell.stitch-shell main .reports-page .reports-costlines li:nth-child(2) { border-top: 1px solid var(--rv-color-border); }
 }
 @media (max-width: 1000px) {
+  .app-shell.stitch-shell main .reports-page .reports-overview-row.is-two:not(:has(> .reports-card-metrics)) { grid-template-columns: minmax(0, 1fr); }
+}
+/* İade ve İptal and Operasyon stay side by side down to the phone width. */
+@media (max-width: 760px) {
   .app-shell.stitch-shell main .reports-page .reports-overview-row.is-two { grid-template-columns: minmax(0, 1fr); }
+  .app-shell.stitch-shell main .reports-page .reports-overview-row.is-three > .reports-card-metrics:last-child:nth-child(odd) .reports-metrics { display: flex; }
+  .app-shell.stitch-shell main .reports-page .reports-overview-row.is-three > .reports-card-metrics:last-child:nth-child(odd) .reports-metrics li:nth-child(2) { border-top: 1px solid var(--rv-color-border); }
 }
 @media (max-width: 700px) {
   .app-shell.stitch-shell main .reports-page :is(.reports-overview, .reports-overview-row) { gap: 14px; }
