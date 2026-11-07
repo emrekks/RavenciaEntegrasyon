@@ -11,7 +11,14 @@ public sealed record JobWriteSummaryView(
     string? Mode,
     string? Phase,
     IReadOnlyList<JobWritePartView> Parts,
-    IReadOnlyList<JobWriteRequestView> Requests);
+    IReadOnlyList<JobWriteRequestView> Requests)
+{
+    // Other write jobs (JobSentPayloadReader): a line about what the job sends, why it was sent (a price/stock trigger)
+    // and each item's stored answer.
+    public string? Note { get; init; }
+    public string? Trigger { get; init; }
+    public IReadOnlyList<JobSentItemView>? Items { get; init; }
+}
 
 // Key: CREATE, UNAPPROVED (the whole product, a card not yet approved), CONTENT, VARIANTS or DELIVERY. ClearedFields:
 // the fields an item sent as null. Trendyol deletes such a field on the product, so the drawer lists them ("silinir")
@@ -96,7 +103,7 @@ public static class JobWritePayloadReader
                     var target = property.Value.ValueKind == JsonValueKind.Null ? cleared : fields;
                     if (!target.Contains(property.Name, StringComparer.Ordinal)) target.Add(property.Name);
                 }
-                if ((Text(item, "barcode") ?? Text(item, "merchantSku") ?? Text(item, "stockCode")) is { } barcode && !barcodes.Contains(barcode, StringComparer.OrdinalIgnoreCase))
+                if ((Text(item, "barcode") ?? Text(item, "merchantSku") ?? Text(item, "stockCode") ?? Text(item, "code")) is { } barcode && !barcodes.Contains(barcode, StringComparer.OrdinalIgnoreCase))
                     barcodes.Add(barcode);
                 if (Property(item, "contentId") is { ValueKind: JsonValueKind.Number or JsonValueKind.String }) contents++;
                 if (Property(item, "attributes") is { ValueKind: JsonValueKind.Array } list)
