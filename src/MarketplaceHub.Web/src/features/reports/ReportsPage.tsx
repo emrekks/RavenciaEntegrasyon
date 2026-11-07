@@ -576,8 +576,14 @@ function OverviewFigures({ data, money }: { data: ReportSales; money: Money | nu
       note: previousText(formatPercent(earlier?.margin)), tip: 'Satışın yüzde kaçının kâr olarak kaldığı.\nTahmini net kâr ÷ satış tutarı (iadeler düşülmeden; Net Ciro değil), Kâr Köprüsü\'ndeki paylar gibi.', tone: (money?.margin ?? 0) < 0 ? 'bad' : undefined },
     { key: 'cost', label: 'Maliyete Göre Kâr', value: onCost, format: percent, delta: change(onCost, earlierOnCost, 'rate'),
       note: previousText(formatPercent(earlierOnCost)), tip: 'Ürüne harcanan her liranın ne kadar kâr getirdiği.\nTahmini net kâr ÷ ürün maliyeti.', tone: (onCost ?? 0) < 0 ? 'bad' : undefined },
-    { key: 'orders', label: 'Sipariş', value: now.orders, format: formatCount, delta: change(now.orders, then.orders), note: previousText(formatCount(then.orders)), tip: 'Dönemde gelen sipariş sayısı.\nİptal edilen siparişler sayılmaz.', split: split(row => row.orders, formatCount) }
-    // The units sold lead the Satış card under the strip (overviewCards), not repeated here.
+    { key: 'orders', label: 'Sipariş', value: now.orders, format: formatCount, delta: change(now.orders, then.orders), note: previousText(formatCount(then.orders)), tip: 'Dönemde gelen sipariş sayısı.\nİptal edilen siparişler sayılmaz.', split: split(row => row.orders, formatCount) },
+    // The units sold (cancellations out, returns not taken off), with what the customers kept and sent back under it;
+    // the Satış card under the strip leads with the same figure (owner, 7 Nov 2026: the strip as 3 + 3).
+    { key: 'sold', label: 'Satılan Adet', value: now.soldQuantity, delta: change(now.soldQuantity, then.soldQuantity),
+      note: `Net ${formatNumber(now.keptQuantity)} · ${formatNumber(now.returnedQuantity)} iade`,
+      tip: `${now.soldQuantity > 0 ? 'Dönemde satılan ürün adedi; iptaller hariç, iadeler düşülmeden.' : 'Bu dönemde satış yok.'}
+Net adet müşteride kalandır: ${formatNumber(now.soldQuantity)} satılan adetten ${formatNumber(now.returnedQuantity)} iade düşülür. ${previousText(formatNumber(then.soldQuantity))}.`,
+      split: split(row => row.soldQuantity, formatNumber) }
   ]
   return <KpiStrip label="Dönemin göstergeleri" items={items} />
 }

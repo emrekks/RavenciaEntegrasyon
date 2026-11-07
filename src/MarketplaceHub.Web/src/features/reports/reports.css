@@ -729,6 +729,11 @@
 @media (prefers-reduced-motion: reduce) {
   .app-shell.stitch-shell main .reports-page .reports-hero-bar i { transition: none; }
 }
+/* Genel Bakış's six figures as two rows of three (owner, 7 Nov 2026), three rows of two on a tablet, one under the
+   other on a phone; 20px between them, as between the cards. */
+.app-shell.stitch-shell main .reports-page .reports-overview > .reports-kpis-wrap > .reports-kpis.is-6 { --kpi-columns: 3; gap: 20px; }
+@media (max-width: 1100px) { .app-shell.stitch-shell main .reports-page .reports-overview > .reports-kpis-wrap > .reports-kpis.is-6 { --kpi-columns: 2; } }
+@media (max-width: 760px) { .app-shell.stitch-shell main .reports-page .reports-overview > .reports-kpis-wrap > .reports-kpis.is-6 { --kpi-columns: 1; gap: 20px; } }
 
 /* The metric cards: a name and a value per row, every row of every card one height (a value with its second line fits
    it), the rows from the top of the card and the space of a shorter card left at its bottom; a row with its own tab is a
