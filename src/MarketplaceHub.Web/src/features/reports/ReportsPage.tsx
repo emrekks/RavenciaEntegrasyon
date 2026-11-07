@@ -314,7 +314,7 @@ function Overview({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
       <MetricCard title="Maliyet ve Reklam" icon="target" tone="ads" rows={adMetrics(data, money)} onMore={onMore} />
     </div>
     <div className="reports-overview-row is-two">
-      <MetricCard title="İade ve İptal" icon="returns" tone="returns" rows={returnMetrics(data)} onMore={onMore} hints={false} />
+      <MetricCard title="İade ve İptal" icon="returns" tone="returns" rows={returnMetrics(data)} onMore={onMore} />
       <MetricCard title="Operasyon" icon="truck" tone="ops" rows={operationMetrics(data)} onMore={onMore} />
     </div>
   </div>
@@ -841,10 +841,15 @@ function ProfitLedger({ money, notes = {} }: { money: Money; notes?: Record<stri
   </dl>
 }
 
-type Metric = { key: string; label: string; value: string; note: string; delta?: Change | null; invert?: boolean; previous?: string; tone?: 'warn' | 'bad'; detail?: DetailKey }
+// sub: a second, smaller line under the value (the counts or the share behind it), so a row shows one figure, not a
+// list of them (owner, 7 Nov 2026: "çok sıkışık"). tone: warn only where a threshold is passed, and the explanation
+// names the threshold; bad for a loss.
+type Metric = { key: string; label: string; value: string; sub?: string; note: string; delta?: Change | null; invert?: boolean; previous?: string; tone?: 'warn' | 'bad'; detail?: DetailKey }
 
-// A card of figures as rows: the name, and the value with its change when it has one. A row's explanation shows while
-// the pointer or the focus is on it (not with hints off), and a row that has its own tab opens it.
+// A card of figures as rows of one height: the name on one line with its "?" right after it, and on the right one value
+// (with its change when it has one) and, under it, a small second line when the row has one. A row's explanation shows
+// while the pointer or the focus is on it, and a row that has its own tab opens it. The rows start at the top of the
+// card; a card with fewer rows keeps its space at the bottom.
 function MetricCard({ title, icon, tone, rows, onMore, hints = true }: { title: string; icon: UiIconName; tone: string; rows: Metric[]; onMore: OpenDetail; hints?: boolean }) {
   const tip = useId()
   return <Card title={title} icon={icon} className={`reports-card-metrics is-${tone}`}>
@@ -854,8 +859,12 @@ function MetricCard({ title, icon, tone, rows, onMore, hints = true }: { title: 
       // Only a label with an explanation carries the "?".
       const explained = hints && Boolean(row.note)
       const body = <>
-        <span className="reports-metric-label">{row.label}{explained && <TipMark />}</span>
-        <span className="reports-metric-value">{row.delta !== undefined && <Delta delta={row.delta} invert={row.invert} previous={row.previous} />}<strong>{row.value}</strong></span>
+        <span className="reports-metric-label"><span className="reports-metric-name">{row.label}</span>{explained && <TipMark />}</span>
+        <span className="reports-metric-value">
+          <span className="reports-metric-main"><strong>{row.value}</strong></span>
+          {/* The change against the previous period sits on the small line too, so every value stands alone. */}
+          {(row.sub || row.delta !== undefined) && <small className="reports-metric-sub">{row.delta !== undefined && <Delta delta={row.delta} invert={row.invert} previous={row.previous} />}{row.sub}</small>}
+        </span>
       </>
       return <li key={row.key} className={`reports-tip-host${row.tone ? ` is-${row.tone}` : ''}`}>
         {detail ? <button type="button" className="reports-metric" onClick={() => onMore(detail)} aria-describedby={explained ? id : undefined}>{body}</button>
@@ -878,7 +887,7 @@ function productMetrics(data: ReportSales, money: Money | null): Metric[] {
     { key: 'price', label: 'Adet Başına Satış', value: noAmount || now.soldQuantity === 0 ? '—' : formatTl(now.grossSales / now.soldQuantity), note: `Bir ürünün ortalama satış fiyatı.\nSatış tutarı ÷ satılan adet (${formatNumber(now.soldQuantity)} adet, iadeler düşülmeden).` },
     { key: 'profit', label: 'Adet Başına Kâr', value: profit === null || now.keptQuantity === 0 ? '—' : signedTl(profit / now.keptQuantity), tone: profit !== null && profit < 0 ? 'bad' : undefined,
       note: profit === null ? 'İade sonrası: müşteride kalan her üründen kalan tahmini kâr.\nÜrün maliyeti girilince hesaplanır.' : `İade sonrası: müşteride kalan her üründen kalan tahmini kâr.\nTahmini net kâr ÷ net satılan adet (${formatNumber(now.keptQuantity)} adet; iadeler düşülmüş, Adet Başına Satış'ın paydasından farklı).` },
-    { key: 'discount', label: 'Satıcı İndirimi', value: discountKnown ? `${formatTl(discount ?? 0)} · ${formatPercent((discount ?? 0) / list)}` : '—',
+    { key: 'discount', label: 'Satıcı İndirimi', value: discountKnown ? formatTl(discount ?? 0) : '—', sub: discountKnown ? `liste fiyatının ${formatPercent((discount ?? 0) / list)} kadarı` : undefined,
       note: discountKnown ? `Satıcının liste fiyatından yaptığı indirim ve liste fiyatına oranı.\nListe fiyatı toplamı ${formatTl(list)}, indirim ${formatTl(discount)}; iptaller hariç. Pazaryerinin kendi indirimi sayılmaz (satıcıya ödenir). Liste fiyatı yalnız Trendyol ve Hepsiburada siparişlerinde okunuyor; diğer pazaryerlerinin indirimi bilinmiyor.`
         : 'Satıcının liste fiyatından yaptığı indirim ve liste fiyatına oranı.\nBu dönemde liste fiyatı okunmadı; liste fiyatı yalnız Trendyol ve Hepsiburada siparişlerinde okunuyor.' },
     { key: 'variants', label: 'Satan Ürün', value: now.soldVariants === undefined ? '—' : `${formatCount(now.soldVariants)} varyant`, detail: 'products',
@@ -941,7 +950,7 @@ function adMetrics(data: ReportSales, money: Money | null): Metric[] {
   // The profit with the advertising given back, over the sales: what the sales leave before the advertising.
   const beforeAds = spend !== null && profit !== null && sales > 0 ? (profit + spend) / sales : null
   return [
-    { key: 'commission', label: 'Ortalama Komisyon Oranı', value: formatPercent(data.commission.effectiveRate), note: 'Pazaryerinin satıştan aldığı ortalama pay.\nKomisyon ÷ komisyon oranı bilinen satış.' },
+    { key: 'commission', label: 'Komisyon Oranı', value: formatPercent(data.commission.effectiveRate), note: 'Pazaryerinin satıştan aldığı ortalama pay.\nKomisyon ÷ komisyon oranı bilinen satış, tüm pazaryerleri.' },
     { key: 'spend', label: 'Trendyol Reklamı', value: spend === null ? '—' : formatTl(spend),
       note: spend === null ? 'Dönemde reklama harcanan tutar.\nReklam bedeli yalnız Trendyol cari hesabından okunabiliyor; bu seçimde okunmadı.' : 'Dönemde Trendyol reklamlarına harcanan tutar.\nTrendyol cari hesabındaki reklam bedelleri, işlem tarihine göre; siparişe bağlı değildir, Net Kâr\'dan Siparişe Bağlı Olmayan Kesintiler içinde düşülür. Diğer pazaryerlerinin reklamı okunmuyor; Brandcenter ve influencer kesintileri ayrı okunmuyor.' },
     { key: 'tacos', label: 'Reklam Payı (TACoS)', value: spend !== null && revenue !== null && revenue > 0 ? formatPercent(spend / revenue, 2) : '—',
@@ -972,21 +981,25 @@ function returnMetrics(data: ReportSales): Metric[] {
   const reasonsTotal = data.returnReasons.reduce((sum, reason) => sum + reason.count, 0)
   const topReason = [...data.returnReasons].filter(reason => reason.known && reason.count > 0).sort((a, b) => b.count - a.count)[0]
   return [
-    { key: 'rate', label: 'İade Oranı', value: formatPercent(now.returnRate), delta: change(now.returnRate, before.returnRate, 'rate'), invert: true, previous: formatPercent(before.returnRate), detail: 'returns',
+    { key: 'rate', label: 'İade Oranı', value: formatPercent(now.returnRate), sub: `önceki ${formatPercent(before.returnRate)}`, delta: change(now.returnRate, before.returnRate, 'rate'), invert: true, previous: formatPercent(before.returnRate), detail: 'returns',
       note: `Satılan ürünlerin yüzde kaçının iade edildiği.\nİade edilen adet ÷ sipariş edilen adet (iptaller dahil), Trendyol gibi. Önceki dönem ${formatPercent(before.returnRate)}.` },
     // The amount the customers paid for what they sent back: the İade Edilen Tutar taken off on Kâr Köprüsü.
-    { key: 'returned', label: 'İade Edilen', value: `${formatNumber(now.returnedQuantity)} adet · ${formatCount(now.returnClaims)} talep · ${formatTl(now.returnedAmount)}`, detail: 'returns',
+    { key: 'returned', label: 'İade Edilen', value: `${formatNumber(now.returnedQuantity)} adet`, sub: `${formatCount(now.returnClaims)} talep · ${formatTl(now.returnedAmount)}`, detail: 'returns',
       note: `İade edilen ürün adedi, talep sayısı ve müşterinin ödediği tutar.\nKâr Köprüsü'ndeki İade Edilen Tutar ile aynıdır. Reddedilen ve iptal edilen talepler sayılmaz. Liste fiyatıyla ${formatTl(returnedAtList(now))}.` },
-    { key: 'cargo', label: 'İade Kargo Zararı', value: returnCargo === null ? '—' : `${formatTl(returnCargo)} · Trendyol`, detail: 'returns',
+    { key: 'cargo', label: 'İade Kargo Zararı', value: returnCargo === null ? '—' : formatTl(returnCargo), sub: returnCargo === null ? undefined : 'yalnız Trendyol', detail: 'returns',
       note: 'İadelerin faturası gelen kargo maliyeti, yalnız Trendyol.\nDönemin siparişlerinin İade Kargo Bedeli satırları ve dönem tarihli Yurtdışı Operasyon İade Bedeli kayıtları; faturası gelmemiş iade sayılmaz, diğer pazaryerlerininki bilinmiyor.' },
-    { key: 'reason', label: 'En Sık İade Nedeni', value: topReason ? `${shortText(topReason.reason, 24)} · ${formatPercent(topReason.count / reasonsTotal)}` : '—', detail: 'returns',
-      note: 'İade taleplerinde en sık bildirilen neden ve talepler içindeki payı.' },
+    { key: 'reason', label: 'En Sık İade Nedeni', value: topReason ? shortText(topReason.reason, 22) : '—', sub: topReason ? `taleplerin ${formatPercent(topReason.count / reasonsTotal)} kadarı` : undefined, detail: 'returns',
+      note: `İade taleplerinde en sık bildirilen neden ve talepler içindeki payı.${topReason ? `\n${topReason.reason}: ${formatCount(topReason.count)} talep.` : ''}` },
     { key: 'cancel', label: 'İptal Oranı', value: formatPercent(now.cancelRate), tone: (now.cancelRate ?? 0) > warning ? 'warn' : undefined, detail: 'cancellations',
-      note: `Sipariş edilen ürünlerin yüzde kaçının iptal edildiği.\nİptal edilen adet ÷ sipariş edilen adet (iptaller dahil); uyarı eşiği ${formatPercent(warning)}.` },
-    { key: 'cancelled', label: 'İptal Edilen', value: `${formatCount(now.cancelledOrders)} sipariş · ${formatNumber(data.cancellations.cancelledQuantity)} adet · ${cancelled === undefined ? '—' : formatTl(cancelled)}`, detail: 'cancellations',
+      note: `Sipariş edilen ürünlerin yüzde kaçının iptal edildiği.\nİptal edilen adet ÷ sipariş edilen adet (iptaller dahil). Uyarı rengi: ${formatPercent(warning)} eşiğinin üstünde.` },
+    { key: 'cancelled', label: 'İptal Edilen', value: `${formatCount(now.cancelledOrders)} sipariş`, sub: `${formatNumber(data.cancellations.cancelledQuantity)} adet · ${cancelled === undefined ? '—' : formatTl(cancelled)}`, detail: 'cancellations',
       note: 'İptal edilen sipariş, ürün adedi ve tutarı.\nTutar liste fiyatıyla; satış tutarına girmez.' }
   ]
 }
+
+// The share of late packages above which Geciken Kargo is drawn in the warning colour (Amazon's late shipment rate
+// target is under 4 %; marketplace-docs has no Trendyol figure).
+const lateWarningRate = 0.04
 
 // Operasyon: how fast and how late the packages left, how long they took to arrive, and what waits to be invoiced or
 // restocked; each row opens its tab.
@@ -1001,14 +1014,17 @@ function operationMetrics(data: ReportSales): Metric[] {
   const questions = data.questionTimes ?? null
   return [
     { key: 'ship', label: 'Kargoya Verme Süresi', value: formatHours(ship.hours), detail: 'cargo', note: `Siparişin kargoya verilmesine kadar geçen ortalama süre.\n${ship.measured > 0 ? `${formatCount(ship.measured)} pakette ölçüldü.` : 'Ölçülemedi.'}` },
-    { key: 'late', label: 'Geciken Kargo', value: measuredLate > 0 ? `${formatPercent(late / measuredLate)} · ${formatCount(late)} paket` : '—', tone: late > 0 ? 'warn' : undefined, detail: 'cargo',
-      note: measuredLate > 0 ? `Süresinde kargoya verilmeyen paketlerin oranı.\nGeciken ${formatCount(late)} paket ÷ kargoya verme süresi bilinen ${formatCount(measuredLate)} paket. PTT AVM kargo süresi göndermediği için orada ölçülmez.`
+    { key: 'late', label: 'Geciken Kargo', value: measuredLate > 0 ? formatPercent(late / measuredLate) : '—', sub: measuredLate > 0 ? `${formatCount(late)} paket` : undefined,
+      tone: measuredLate > 0 && late / measuredLate > lateWarningRate ? 'warn' : undefined, detail: 'cargo',
+      note: measuredLate > 0 ? `Süresinde kargoya verilmeyen paketlerin oranı.\nGeciken ${formatCount(late)} paket ÷ kargoya verme süresi bilinen ${formatCount(measuredLate)} paket. PTT AVM kargo süresi göndermediği için orada ölçülmez. Uyarı rengi: ${formatPercent(lateWarningRate)} eşiğinin üstünde.`
         : 'Süresinde kargoya verilmeyen paketlerin oranı.\nBu dönemde kargoya verme süresi bilinen paket yok.' },
     { key: 'deliver', label: 'Teslim Süresi', value: formatHours(deliver.hours), detail: 'cargo',
       note: deliver.hours === null ? 'Kargoya verilen paketin müşteriye ulaşmasına kadar geçen ortalama süre.\nBu dönemde teslim anı okunan paket yok.'
         : `Kargoya verilen paketin müşteriye ulaşmasına kadar geçen ortalama süre.\n${formatCount(deliver.measured)} pakette ölçüldü.` },
-    { key: 'invoice', label: 'Faturasız Paket', value: formatCount(notInvoiced), tone: notInvoiced > 0 ? 'warn' : undefined, detail: 'invoices', note: `Faturası henüz kesilmemiş paketler.\n${formatCount(packages)} paket içinde.` },
-    { key: 'stock', label: 'Stok Riski', value: `${formatCount(low)} ürün`, tone: low > 0 ? 'warn' : undefined, detail: 'stock', note: 'Stoğu bir haftadan az yetecek çok satan ürünler.\nGünlük satış hızına göre kalan gün 7\'den az.' },
+    { key: 'invoice', label: 'Faturasız Paket', value: formatCount(notInvoiced), sub: `${formatCount(packages)} paket içinde`, tone: notInvoiced > 0 ? 'warn' : undefined, detail: 'invoices',
+      note: 'Faturası henüz kesilmemiş paketler.\nFatura yasal zorunluluk olduğu için eşik sıfırdır: faturasız paket varsa uyarı rengiyle yazılır.' },
+    { key: 'stock', label: 'Stok Riski', value: `${formatCount(low)} ürün`, tone: low > 0 ? 'warn' : undefined, detail: 'stock',
+      note: 'Stoğu bir haftadan az yetecek çok satan ürünler.\nGünlük satış hızına göre kalan gün 7\'den az. Uyarı rengi: böyle bir ürün varsa.' },
     // Trendyol and Hepsiburada only: n11's and Pazarama's answer times are not reliable (marketplace-docs).
     { key: 'questions', label: 'Soru Yanıt Süresi', value: questions?.averageHours == null ? '—' : formatHours(questions.averageHours),
       note: !questions ? 'Müşteri sorusunun ilk yanıtına kadar geçen ortalama süre.\nYalnız Trendyol ve Hepsiburada ölçülür; bu seçimde ikisi de yok.'

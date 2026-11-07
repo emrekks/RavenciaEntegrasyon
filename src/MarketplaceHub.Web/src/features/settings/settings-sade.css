@@ -258,6 +258,7 @@
 .ss-page .ss-ibody-title { font-size: 14px; font-weight: 600; }
 .ss-page .ss-empty { padding: 28px 16px; color: var(--rv-color-muted); text-align: center; font-size: 13px; }
 .ss-page .ss-seg3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); height: 36px; overflow: hidden; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; }
+.ss-page .ss-seg3.is-two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .app-shell.stitch-shell main .ss-page .ss-seg3 button { height: 100%; min-height: 0; padding: 0; color: var(--rv-color-muted); background: none; border: 0; border-left: 1px solid var(--rv-color-border); border-radius: 0; box-shadow: none; cursor: pointer; font-size: 13px; font-weight: 400 !important; text-transform: none; }
 .app-shell.stitch-shell main .ss-page .ss-seg3 button:first-child { border-left: 0; }
 .app-shell.stitch-shell main .ss-page .ss-seg3 button:hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-raised)); }
