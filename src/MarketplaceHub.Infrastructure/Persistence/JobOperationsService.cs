@@ -476,7 +476,21 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         var productId = PayloadGuid(job.PayloadJson, "productId");
         if (productId is { } payloadProductId && !await db.Products.AsNoTracking().AnyAsync(x => x.TenantId == job.TenantId && x.Id == payloadProductId, cancellationToken))
             productId = null;
-        return new JobDetailView(summary, attempts, currentOrder, Change(job), relatedOrders, scan, failureReasons, invoice, productId, await VariantResultsAsync(job, cancellationToken), await WriteSummaryAsync(job, productId, cancellationToken));
+        var read = await ReadSummaryAsync(job, summary.Marketplace, cancellationToken);
+        var change = Change(job);
+        // A read that recorded what it pulled says it in one plain sentence instead of the type's generic line.
+        if (read is not null) change = new JobChangeView("Yapılan İşlem", change?.Value ?? JobReadSentence.Noun(read.Kind), read.Sentence);
+        return new JobDetailView(summary, attempts, currentOrder, change, relatedOrders, scan, failureReasons, invoice, productId, await VariantResultsAsync(job, cancellationToken), await WriteSummaryAsync(job, productId, cancellationToken), read);
+    }
+
+    // What a read job pulled, record by record, as it stored it (MarketplaceJobProcessor.ReadRecords); null for a job
+    // that ran before reads recorded it or for a type that does not record.
+    private async Task<JobReadSummaryView?> ReadSummaryAsync(IntegrationJob job, string marketplace, CancellationToken cancellationToken)
+    {
+        var row = await db.JobReadSummaries.AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == job.TenantId && x.JobId == job.Id, cancellationToken);
+        if (row is null) return null;
+        var counts = new JobReadCounts(row.Received, row.Inserted, row.Updated, row.Unchanged, row.Skipped, row.Failed);
+        return new JobReadSummaryView(row.Kind, counts, row.Omitted, JobReadRecorder.Deserialize(row.RecordsJson), JobReadSentence.Describe(row.Kind, marketplace, counts));
     }
 
     // What a product write job sent, from its stored payload: the product's title and model codes from the card, and the

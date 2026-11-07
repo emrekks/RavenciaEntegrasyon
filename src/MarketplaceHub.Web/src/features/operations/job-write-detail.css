@@ -25,3 +25,5 @@ html body .jobs-reference-drawer-body .jobs-write-heading .jobs-reference-relate
   .jobs-reference-drawer-body .jobs-write-facts > div:nth-child(n) { border-top: 1px solid var(--rv-color-border); border-left: 0; }
   .jobs-reference-drawer-body .jobs-write-facts > div:first-child { border-top: 0; }
 }
+/* A read job's counters (Okunan, Yeni, Güncellenen, Değişmeyen, Atlanan, Hatalı): five or six cells that wrap evenly. */
+.jobs-reference-drawer-body .jobs-reference-progress-grid { grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); }
