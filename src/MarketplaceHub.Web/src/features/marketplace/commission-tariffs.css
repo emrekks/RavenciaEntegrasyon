@@ -310,7 +310,7 @@
 .app-shell.stitch-shell main .commission-tariffs .commission-table small.commission-stock-line { font-variant-numeric: tabular-nums; }
 @media (min-width: 761px) {
   .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) { min-width: 0; }
-  .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table):not(.is-week) td { padding-inline: 4px; }
+  .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table):not(.is-week) td { padding: 8px 7px; }
   .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) thead th { white-space: normal; line-height: 1.2; }
   .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) :is(th, td).commission-expand.commission-expand { box-sizing: border-box; width: 34px; min-width: 34px; padding: 0; }
   .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) tbody th { box-sizing: border-box; width: 176px; min-width: 176px; max-width: 176px; padding-inline: 8px; }
@@ -325,7 +325,7 @@
   .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table):not(.is-week) .commission-choice strong { font-size: 13px; }
   .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) .unit-profit-badge { gap: 3px; padding-inline: 6px; font-size: 11.5px; }
   .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) .commission-switch { gap: 6px; font-size: 11.5px; }
-  .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) .commission-own { min-width: 124px; }
+  .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) .commission-own { width: 100px; min-width: 100px; }
 
   /* The filter card: Kolon Seçimi as wide as the fields above it; on four columns Temizle and Filtrele close the second
      row in the fourth column instead of standing on a row of their own. */
