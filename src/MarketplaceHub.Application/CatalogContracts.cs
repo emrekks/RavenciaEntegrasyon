@@ -308,7 +308,9 @@ public interface ICatalogService
     Task<ServiceResult<Guid>> EnqueueProductUpdateAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, IReadOnlyCollection<string>? fields = null);
     // The same update, with the notices the panel records in its notification center (a card value sent where the
     // listing profile read from the marketplace has none: ImportedProfileCardFallbacks).
-    Task<ServiceResult<ProductUpdateQueued>> EnqueueProductUpdateWithNoticesAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, IReadOnlyCollection<string>? fields = null);
+    // sendGroupId: the cards one "Platformlarda Güncelle" sends to the connection together share it; Trendyol sends them in
+    // shared requests (TrendyolUpdateGroups).
+    Task<ServiceResult<ProductUpdateQueued>> EnqueueProductUpdateWithNoticesAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, IReadOnlyCollection<string>? fields = null, Guid? sendGroupId = null);
     Task<ServiceResult<Guid>> EnqueuePazaramaSaleStatusAsync(Guid tenantId, Guid connectionId, IReadOnlyList<string> barcodes, bool close, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> RequestPublicationStatusRefreshAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken);
     Task<ServiceResult<PublicationStatusView>> GetPublicationStatusAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken);

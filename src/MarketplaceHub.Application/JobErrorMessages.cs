@@ -23,6 +23,7 @@ public static class JobErrorMessages
         ["PRODUCT_UPDATE_BATCH_EXPIRED"] = "Pazaryeri güncellemenin sonucunu dört saat içinde bildirmedi; sonuç bilinmiyor. Ürünü pazaryeri panelinde kontrol edin ya da güncellemeyi yeniden başlatın.",
         ["PRODUCT_UPDATE_BATCH_STATUS_UNKNOWN"] = "Pazaryeri güncelleme için panelin tanımadığı bir durum bildirdi; sonuç bilinmiyor. Ürünü pazaryeri panelinde kontrol edin.",
         ["PRODUCT_UPDATE_NEXT_PHASE"] = "Güncellemenin ilk adımı tamamlandı; ikinci adımı hazırlanıyor.",
+        ["PRODUCT_UPDATE_GROUP_PENDING"] = "Aynı gönderimdeki diğer kartlar bekleniyor; kartlar Trendyol'a tek istekte gidecek.",
         ["HEPSIBURADA_DISPATCH_TIME_UNCONFIRMED"] = "Hepsiburada teslimat süresi yüklemesinde hata bildirdi; bazı ürünlerde yeni sürenin geçip geçmediği bilinmiyor. Hepsiburada panelinde kontrol edin.",
 
         // Publication and its result

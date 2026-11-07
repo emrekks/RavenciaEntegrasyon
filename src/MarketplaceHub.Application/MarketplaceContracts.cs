@@ -580,7 +580,19 @@ public static class ProductUpdateFields
 
 // ProductOperationId: the id of the product update request once it was answered (Hepsiburada's ticket-api trackingId),
 // kept while later phases (the dispatch time upload) run, so the approval check reads the product update's result.
-public sealed record ProductUpdateJobPayload(Guid JobId, Guid ProductId, Guid ProfileId, string Phase, string Mode, string PayloadHash, string UnapprovedPayloadJson, string ApprovedContentPayloadJson, string ApprovedVariantPayloadJson, string ApprovedDeliveryPayloadJson, string? ExternalOperationId, DateTimeOffset? SubmittedAt, string? ProductOperationId = null, IReadOnlyList<string>? ContentNotFoundBarcodes = null);
+// The grouped Trendyol send (TrendyolUpdateGroups): SendGroupId names the cards one "Platformlarda Güncelle" sent to
+// one connection together; GroupReadySince is when this card was ready at its current SUBMIT phase; GroupLeaderJobId is
+// the card whose job sent the shared request and polls it (set while the card waits at POLL_*); SharedRequests lists
+// the shared requests the card went in (the job drawer shows them); GroupOutcome is the result the polling card stored
+// for this card (phase GROUP_STOPPED).
+public sealed record ProductUpdateJobPayload(Guid JobId, Guid ProductId, Guid ProfileId, string Phase, string Mode, string PayloadHash, string UnapprovedPayloadJson, string ApprovedContentPayloadJson, string ApprovedVariantPayloadJson, string ApprovedDeliveryPayloadJson, string? ExternalOperationId, DateTimeOffset? SubmittedAt, string? ProductOperationId = null, IReadOnlyList<string>? ContentNotFoundBarcodes = null,
+    Guid? SendGroupId = null, DateTimeOffset? GroupReadySince = null, Guid? GroupLeaderJobId = null, IReadOnlyList<ProductUpdateSharedRequest>? SharedRequests = null, ProductUpdateGroupOutcome? GroupOutcome = null);
+// One request several cards went in: the part (CONTENT, VARIANTS, DELIVERY, UNAPPROVED), the marketplace's batch id,
+// how many cards and items it carried, and the job that sent it.
+public sealed record ProductUpdateSharedRequest(string Part, string ExternalOperationId, int Cards, int Items, Guid LeaderJobId);
+// Kind: BLOCKED, DEAD or MANUAL_REVIEW; ProfileStatus and RejectionCode: what the card's listing profile is set to;
+// Code and Message: the job's result.
+public sealed record ProductUpdateGroupOutcome(string Kind, string ProfileStatus, string? RejectionCode, string Code, string Message, string? RemoteRequestId);
 // Pazarama sale open/close by barcode; it travels in a PRODUCT_ARCHIVE job and is told apart by SaleStatusBarcodes.
 public sealed record PazaramaSaleStatusJobPayload(Guid JobId, IReadOnlyList<string> SaleStatusBarcodes, bool Close, DateTimeOffset StartedAt);
 public sealed record ProductArchiveJobPayload(Guid JobId, Guid ProductId, Guid ProfileId, bool Archived, string Phase, string PayloadHash, string PayloadJson, string? ExternalOperationId, DateTimeOffset StartedAt, DateTimeOffset DeadlineAt);

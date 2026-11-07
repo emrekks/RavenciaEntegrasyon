@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isProductLevelJob, writeAttributeNames, writeFieldLabels, writeModeLabel, writePartCount, writePhaseLabel, writeRequestLabel, type JobWritePart } from './job-write-summary'
+import { isProductLevelJob, writeAttributeNames, writeFieldLabels, writeModeLabel, writePartCount, writePartShared, writePhaseLabel, writeRequestLabel, type JobWritePart } from './job-write-summary'
 
 const part = (overrides: Partial<JobWritePart>): JobWritePart => ({ key: 'CONTENT', itemCount: 1, fields: [], barcodes: [], contentCount: 0, attributes: [], ...overrides })
 
@@ -22,6 +22,12 @@ describe('job write summary', () => {
     expect(writePartCount(part({ itemCount: 0 }))).toBe('Gönderilecek kalem yoktu; istek yapılmadı')
     expect(writePartCount(part({ itemCount: 6, contentCount: 6 }))).toBe('6 içerik kartı')
     expect(writePartCount(part({ key: 'UNAPPROVED', itemCount: 18, barcodes: Array.from({ length: 18 }, (_, i) => `B-${i}`) }))).toBe('18 barkod')
+  })
+
+  it('names a request the card shared with the other cards of its send', () => {
+    expect(writePartShared(part({ itemCount: 1, contentCount: 1, sharedCards: 6, sharedItems: 6 }))).toBe('Aynı gönderimdeki 6 kart tek istekte gitti (toplam 6 kalem); sonuç bir kez okunup her karta ayrı yazılır.')
+    expect(writePartShared(part({ itemCount: 1 }))).toBeNull()
+    expect(writePhaseLabel('GROUP_DONE')).toBe('Ortak istek sonucu işleniyor')
   })
 
   it('labels the mode, the running step and the request ids', () => {

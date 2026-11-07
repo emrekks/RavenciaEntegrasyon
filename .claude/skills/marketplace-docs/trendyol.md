@@ -119,6 +119,13 @@ purpose (`TurkeyTime.cs`).
   request. A product not yet approved still goes whole via `unapproved-bulk-update`. Source: offline
   `trendyol-api-son.md`, `updateContentBulk` / `ContentBulkUpdateRequest` / `ContentUpdateItem` (~line 31769); bug
   6.11.2026, RYP007 images-only job 01a1b1c8-6fe7-78d3-bc90-702736436c38 had sent title, description and 18 attributes.
+- Several cards in one request: the colour cards one "Platformlarda Güncelle" sends to a Trendyol connection share a
+  `SendGroupId`; each step (content, variants, delivery, unapproved) goes once for all ready cards (max 1,000 items)
+  and the one batch id is polled once by the sending card (`TrendyolUpdateGroups`). The content batch result names
+  each line by `requestItem.contentId`, so a refused content stops only its own card; a refused line no card's
+  content names stops every card of the request. Each card's effect record is written before the request, so an
+  unclear answer stops every card of it for review. Source: owner 7.11.2026 (RYP003T, six cards had gone in six
+  content requests); `TrendyolJsonMapper.Batch` (line key: barcode, contentId or stockCode of `requestItem`).
 - A content's attribute list is built for the content, not taken from its first variant (`TrendyolContentGroups
   .ContentAttributes`, owner 6.11.2026): the category's **varianter** attribute (the size, one value per variant
   inside a content) is left out of `content-bulk-update`; every other attribute, the **slicer** (Renk) included, must
