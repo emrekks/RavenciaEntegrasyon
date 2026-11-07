@@ -25,7 +25,7 @@ import type { IntegrationFeedback } from '../marketplace/shared'
 // The logs (Loglar: Ürün Hareketleri and the send log) and the sending health (API Sağlık) load with their own chunks the
 // first time their tab opens.
 const OperationLogs = lazy(() => import('./OperationLogs'))
-const PriceStockMonitorPanel = lazy(() => import('../marketplace/integrations/PriceStockMonitorPanel').then(module => ({ default: module.PriceStockMonitorPanel })))
+const ApiHealthView = lazy(() => import('./ApiHealthView').then(module => ({ default: module.ApiHealthView })))
 
 // E-Faturam is the invoicing provider; every other code is a marketplace.
 const jobPlatformLabel = (code: string) => code === 'TRENDYOL_EFATURAM' ? 'E-Faturam' : marketplacePlatformLabel(code)
@@ -576,7 +576,7 @@ export function JobsPage({ me }: { me: Me }) {
     <div key={mainSlide.key} className={`jobs-reference-canvas${mainSlide.className ? ` ${mainSlide.className}` : ''}`}>
       {!listHidden && <JobCategorySegment value={category} onChange={setCategory} items={jobCategoryTabs.filter(tab => tab.key !== 'SYSTEM').map(tab => ({ value: tab.key, label: tab.label, count: list.isLoading ? undefined : categoryCounts.get(tab.key) ?? 0 }))} />}
       {mainTab === 'logs' ? <Suspense fallback={<Busy text="Loglar yükleniyor…" />}><OperationLogs platformOptions={platformOptions} onOpenJob={setSelectedId} /></Suspense>
-        : mainTab === 'health' ? <Suspense fallback={<Busy text="Gönderim durumu yükleniyor…" />}><PriceStockMonitorPanel onFeedback={showPanelFeedback} /></Suspense> : <>
+        : mainTab === 'health' ? <Suspense fallback={<Busy text="API sağlığı yükleniyor…" />}><ApiHealthView onFeedback={showPanelFeedback} /></Suspense> : <>
       <OpsFilterCard label="İşlem filtreleri" active={cardFilterCount} clearCount={cardFilterCount + (search.trim() ? 1 : 0)} onClear={clearFilters} onApply={refreshJobs}>
         <SearchField label="İşlem Ara" ariaLabel="Correlation ID ile işlem ara" placeholder="Correlation ID, iş numarası veya hata kodu" value={search} onChange={setSearch} />
         <ChoiceField name="Zaman Aralığı" value={timeRange} options={jobTimeRanges.map(([value, label]) => ({ value, label }))} onChange={value => setTimeRange(value as JobTimeRange)} />

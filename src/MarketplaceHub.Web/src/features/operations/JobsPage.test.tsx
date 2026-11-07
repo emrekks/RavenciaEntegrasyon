@@ -47,6 +47,11 @@ vi.mock('../../shared/api', () => {
       automaticWritesOpen: true, lastSuccessfulPushAt: hoursAgo(1), queuedJobs: 2, waitingForOrderRead: 0, failedPushes7d: 0, manualReviewPushes: 0, invalidOffers: 0,
       notFoundLinks: 0, rejectedLinks: 0, latestFailure: null, invalidOfferSamples: [], orderSource: 'WEBHOOK', lastNotificationAt: hoursAgo(1), orderReadIntervalSeconds: 900
     }] }
+    if (path === '/dashboard/integration-matrix') return [{ connectionId: 'ty', platformCode: 'TRENDYOL', displayName: 'Ravencia Trendyol', externalStoreId: '123', status: 'ACTIVE', issue: 'Ürün güncelleme listing state kayıtları eksik.', cells: {
+      orders: { state: 'ok', lastSuccessAt: hoursAgo(1), lastProblemAt: null }, products: { state: 'bad', lastSuccessAt: null, lastProblemAt: hoursAgo(2) }
+    } }]
+    if (path === '/dashboard/bootstrap') return { metrics: { pendingOrders: 0, lateOrders: 0, pendingReturns: 0, recentJobCount: 5987, deadJobCount: 12, manualReviewJobCount: 18 } }
+    if (path === '/connections/ty/instant-notifications') return { state: 'ACTIVE', endpoint: null, registeredAt: null, lastReceivedAt: hoursAgo(1), receivedLast24Hours: 4, message: null }
     if (path === '/price-stock-monitor/emergency-stop') return { connectionsStopped: 1, policiesDisabled: 2, jobsCancelled: 3 }
     if (path === '/jobs/job-1/retry') { await apiState.retryGate; return { job: job('job-1', 'TRENDYOL_ORDER_SYNC', 'PENDING', hoursAgo(1)), attempts: [], order: null, change: null, relatedOrders: [] } }
     if (path === '/jobs/job-1' || path === '/jobs/job-2') { const id = path.slice(6); return { job: job(id, 'TRENDYOL_ORDER_SYNC', 'DEAD', hoursAgo(1)), attempts: [], order: null, change: null, relatedOrders: [] } }
@@ -67,7 +72,7 @@ vi.mock('../../shared/api', () => {
   })
   }
   // Polled reads go through hubPoll; the fixture answers them the same way.
-  return { ...mocked, hubPoll: mocked.hubApi }
+  return { ...mocked, hubPoll: mocked.hubApi, backgroundPollHeaders: {} }
 })
 
 import { formatJobTime, JobsPage } from './pages'
@@ -384,6 +389,26 @@ describe('JobsPage API Sağlık tab (price/stock sending health)', () => {
     expect(container.querySelector('.psm-summary')!.textContent).toContain('Tümü Açık')
     expect(container.querySelector('.jobs-category-segment, [aria-label="İşlem kategorileri"]')).toBeNull()
     expect(pageRequests().length).toBe(jobReads)
+  })
+
+  it('draws the Genel Bakış Entegrasyon Durumu panel and its operation cards for what needs a look', async () => {
+    await renderPage('/jobs?sekme=api-saglik')
+    for (let tick = 0; tick < 200 && !container.querySelector('.rr-mxt tbody tr td[data-l]'); tick++) await settle()
+    await settle()
+
+    const panel = container.querySelector('.api-health .rr.rr-dashboard .rr-panel')!
+    expect(panel.querySelector('h2')!.textContent).toBe('Entegrasyon Durumu')
+    expect(panel.querySelector('.rr-mxt tbody tr')!.className).toBe('rr-attn')
+    expect(panel.querySelector('.rr-mx-foot')!.textContent).toContain('5.987')
+    const cards = Array.from(container.querySelectorAll<HTMLAnchorElement>('.api-health .rr-opgrid > a.rr-opcard'))
+    // Worst first: the store's failure and the jobs that ended are red, the decisions waiting amber.
+    expect(cards.map(card => card.getAttribute('href'))).toEqual(['/jobs?durum=hata&aralik=7g&platform=trendyol', '/jobs?statu=DEAD', '/jobs?statu=MANUAL_REVIEW&aralik=tum'])
+    expect(cards[0].className).toContain('rr-bad')
+    expect(cards[0].textContent).toContain('Ürün güncelleme listing state kayıtları eksik.')
+    expect(cards[1].textContent).toContain('12')
+    expect(cards[2].className).toContain('rr-warn')
+    // The price and stock panel stays under them.
+    expect(container.querySelector('.api-health > .psm-panel')).not.toBeNull()
   })
 })
 
