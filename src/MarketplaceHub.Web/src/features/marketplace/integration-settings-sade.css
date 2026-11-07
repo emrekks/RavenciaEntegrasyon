@@ -58,7 +58,7 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
 .cs-workspace .cs-stats small { color: var(--rv-color-muted); font-size: 12px; }
 .cs-workspace .cs-stats b { font-size: 15px; font-weight: 600; }
 .cs-workspace .cs-stats span { color: var(--rv-color-muted); font-size: 12px; line-height: 1.45; }
-.cs-workspace .cs-card { padding: 18px 20px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.cs-workspace .cs-card { padding: 20px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
 .cs-workspace .cs-label { margin: 0; color: var(--rv-color-muted); font-size: 12px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; }
 .cs-workspace .cs-health-big { display: flex; align-items: baseline; gap: 10px; margin-top: 8px; }
 .cs-workspace .cs-health-big b { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -108,7 +108,7 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
 .cs-workspace .cs-switch:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
 
 /* Reused sections inside the pane: flat cards, quiet headings, no eyebrow labels. */
-.app-shell.stitch-shell main .cs-workspace .cs-pane :is(.panel, .integration-detail-section, .integration-detail-write-panel) { display: grid; gap: 14px; margin: 0; padding: 18px 20px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; box-shadow: none; }
+.app-shell.stitch-shell main .cs-workspace .cs-pane :is(.panel, .integration-detail-section, .integration-detail-write-panel) { display: grid; gap: 14px; margin: 0; padding: 20px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; box-shadow: none; }
 .app-shell.stitch-shell main .cs-workspace .cs-pane .eyebrow { display: none; }
 .app-shell.stitch-shell main .cs-workspace .cs-pane :is(.panel, .integration-detail-write-panel) h2 { margin: 0; font-size: 16px; font-weight: 600; text-transform: none; }
 .app-shell.stitch-shell main .cs-workspace .cs-pane :is(.panel, .integration-detail-write-panel) > p, .app-shell.stitch-shell main .cs-workspace .cs-pane :is(.integration-detail-write-heading, .connection-settings-section) p { color: var(--rv-color-muted); font-size: 13px; line-height: 1.5; }

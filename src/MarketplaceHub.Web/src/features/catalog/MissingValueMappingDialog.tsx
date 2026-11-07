@@ -101,7 +101,7 @@ export function MissingValueMappingDialog({ connectionId, platformName, category
               {chosenName ? <em>{chosenName}</em> : <span className="missing-value-mapping-pending">{platformName} değeri seçilmedi</span>}
             </div>
             {list?.isLoading ? <p className="missing-value-mapping-state">{platformName} değer listesi yükleniyor…</p>
-              : list?.isError ? <p className="missing-value-mapping-state is-error">{platformName} değer listesi henüz alınmamış. Eşleştirme Ayarları’ndan bu özelliğin değerlerini eşitleyin.</p>
+              : list?.isError ? <p className="missing-value-mapping-state is-error">{platformName} değer listesi henüz alınmamış. Eşleştirmeler sayfasından bu özelliğin değerlerini eşitleyin.</p>
                 : <>
                   <input type="search" value={search} placeholder={`${platformName} değerlerinde ara`} aria-label={`${fix.valueLabel} için ${platformName} değeri ara`} onChange={event => setSearches(current => ({ ...current, [key]: event.target.value }))} />
                   <div className="missing-value-mapping-candidates" role="listbox" aria-label={`${fix.valueLabel} için ${platformName} değerleri`}>

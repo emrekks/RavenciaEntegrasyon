@@ -15,7 +15,7 @@ describe('questionDeadline', () => {
   })
 
   it('reports expired and invalid dates without estimating', () => {
-    expect(questionDeadline('2026-10-05T11:00:00Z', now)).toEqual({ text: 'Süre doldu', urgent: true })
+    expect(questionDeadline('2026-10-05T11:00:00Z', now)).toEqual({ text: 'Süre Doldu', urgent: true })
     expect(questionDeadline('not-a-date', now)).toBeNull()
   })
 })

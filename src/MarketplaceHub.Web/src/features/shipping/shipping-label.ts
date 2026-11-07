@@ -65,7 +65,7 @@ export const shippingLabelFields: Array<{ id: ShippingLabelField; label: string 
   { id: 'cargoProvider', label: 'Kargo Firması' },
   { id: 'senderName', label: 'Gönderici Adı' },
   { id: 'senderAddress', label: 'Gönderici Adresi' },
-  { id: 'customerEmail', label: 'Müşteri e-postası' }
+  { id: 'customerEmail', label: 'Müşteri E-postası' }
 ]
 
 // Code 128 patterns expressed as alternating bar/space widths. Keeping this

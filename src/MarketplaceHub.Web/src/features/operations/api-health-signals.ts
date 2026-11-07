@@ -72,7 +72,7 @@ export function errorRateCell(rate: SignalErrorRate): SignalCell {
 export function rateLimitCell(limit: SignalRateLimit, now = Date.now()): SignalCell {
   const paused = limit.pausedUntil && new Date(limit.pausedUntil).getTime() > now
   const detail = `Son 24 saatte ${limit.refused24h} deneme 429 ile bitti (denemenin içinde yeniden denenen 429'lar kaydedilmiyor) · kota bekleyen iş: ${limit.waitingJobs} · son okumalarda bildirilen ret: ${limit.lastRunRefusals}${paused ? ` · kota duraklaması ${formatDateTime(limit.pausedUntil!)} saatine kadar` : ''}.`
-  if (paused) return { text: 'Kota bekliyor', tone: 'warn', title: detail }
+  if (paused) return { text: 'Kota Bekliyor', tone: 'warn', title: detail }
   return { text: limit.refused24h.toLocaleString('tr-TR'), tone: limit.refused24h > 0 || limit.waitingJobs > 0 ? 'warn' : 'ok', title: detail }
 }
 

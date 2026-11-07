@@ -235,7 +235,7 @@
 
 /* ============ Mapping settings page (Sade) ============ */
 .app-shell.stitch-shell main section.mapping-page { --mp-control: 36px; }
-.app-shell.stitch-shell main section.mapping-page > .mapping-reference-card { display: grid; gap: 16px; padding: 20px 24px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; box-shadow: none; }
+.app-shell.stitch-shell main section.mapping-page > .mapping-reference-card { display: grid; gap: 16px; padding: 20px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; box-shadow: none; }
 .app-shell.stitch-shell main section.mapping-page > .mapping-reference-card .mapping-section-heading h2, .app-shell.stitch-shell main section.mapping-page > .mapping-reference-card > h2, .app-shell.stitch-shell main section.mapping-page > .mapping-reference-card > header h2 { display: flex; align-items: center; gap: 10px; margin: 0; color: var(--rv-color-ink); font-size: 16px; font-weight: 600; letter-spacing: 0; text-transform: none; }
 .app-shell.stitch-shell main section.mapping-page > .mapping-reference-card .mapping-section-heading h2 .ui-icon, .app-shell.stitch-shell main section.mapping-page > .mapping-reference-card > h2 .ui-icon, .app-shell.stitch-shell main section.mapping-page > .mapping-reference-card > header h2 .ui-icon { width: 16px; height: 16px; color: var(--rv-color-muted); }
 .app-shell.stitch-shell main section.mapping-page > .mapping-reference-card .mapping-section-heading { margin: 0; padding: 0; border: 0; }

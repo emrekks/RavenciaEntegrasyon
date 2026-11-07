@@ -115,7 +115,7 @@ function jobStatusLabel(status: JobStatus) {
   if (status === 'MANUAL_REVIEW') return 'İnceleme bekliyor'
   if (status === 'SUCCEEDED') return 'Başarılı'
   if (status === 'DEAD') return 'Deneme limiti doldu'
-  return 'İptal edildi'
+  return 'İptal Edildi'
 }
 
 

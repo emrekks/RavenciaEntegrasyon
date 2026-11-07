@@ -181,7 +181,7 @@ function invoiceRingDetail(item: InvoiceWorkspace, kind: InvoiceGlyphKind, faile
   if (kind === 'waiting') return item.invoiceDueAt ? invoiceDueText(item.invoiceDueAt).text : undefined
   if (kind === 'sending') return 'Yanıt bekleniyor'
   if (kind === 'done') return item.invoiceNumber || item.manualInvoiceNumber || 'Pazaryerinde'
-  if (kind === 'cancelled') return item.invoiceStatus === fullyReturnedNoInvoiceStatus ? 'Tüm ürünler iade edildi' : 'İptal edildi'
+  if (kind === 'cancelled') return item.invoiceStatus === fullyReturnedNoInvoiceStatus ? 'Tüm Ürünler İade Edildi' : 'İptal Edildi'
   if (!item.invoiceId && item.invoiceStatus === 'FATURA_BILINMIYOR') return 'Pazaryeri bildirmiyor'
   if (!item.invoiceId && item.invoiceStatus === 'FATURA_DOGRULANAMADI') return 'Panelde yüklediyseniz işaretleyin'
   return undefined

@@ -41,7 +41,7 @@ const singleBucketLabels: Record<BulkPublishStatusBucket, string> = {
   archived: 'Arşivde',
   notPublished: 'Yayında değil',
   other: 'Başka durumda',
-  unknown: 'Durum bilinmiyor'
+  unknown: 'Durum Bilinmiyor'
 }
 const singleBucketTones: Record<BulkPublishStatusBucket, BulkPublishStatusTone> = {
   live: 'success',
@@ -96,7 +96,7 @@ export function summarizeBulkPublishStatus(products: ReadonlyArray<Pick<Product,
   for (const product of products) counts[bulkPublishStatusBucket(product ? productConnectionStatus(product, connection) : null)] += 1
   const total = products.length
   const present = bucketOrder.filter(bucket => counts[bucket] > 0)
-  if (!total) return { total, counts, label: 'Durum bilinmiyor', detail: null, tone: 'neutral', allLive: false }
+  if (!total) return { total, counts, label: 'Durum Bilinmiyor', detail: null, tone: 'neutral', allLive: false }
 
   const format = (value: number) => value.toLocaleString('tr-TR')
   if (present.length === 1) {

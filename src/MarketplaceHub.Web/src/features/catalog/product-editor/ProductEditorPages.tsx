@@ -571,7 +571,7 @@ function CategoryAttributeValueDropdown({
   const selected = values.filter(value => selectedValues.includes(value.id))
   const normalizedSearch = search.trim().toLocaleLowerCase('tr-TR')
   const filteredValues = values.filter(value => !normalizedSearch || value.value.toLocaleLowerCase('tr-TR').includes(normalizedSearch))
-  const summary = selected.length === 0 ? 'Değer seçin' : isSingle ? selected[0].value : selected.length === 1 ? selected[0].value : `${selected[0].value} + ${selected.length - 1} değer`
+  const summary = selected.length === 0 ? 'Değer Seçin' : isSingle ? selected[0].value : selected.length === 1 ? selected[0].value : `${selected[0].value} + ${selected.length - 1} değer`
 
   useDismissable(open, [rootRef], () => setOpen(false))
 
@@ -626,7 +626,7 @@ function VariantFilterDropdown({
   const selected = group.values.filter(value => selectedValueIds.includes(value.id))
   const normalizedSearch = search.trim().toLocaleLowerCase('tr-TR')
   const filteredValues = group.values.filter(value => !normalizedSearch || value.value.toLocaleLowerCase('tr-TR').includes(normalizedSearch))
-  const summary = selected.length === 0 ? 'Değer seçin' : selected.length === 1 ? selected[0].value : `${selected[0].value} + ${selected.length - 1} değer`
+  const summary = selected.length === 0 ? 'Değer Seçin' : selected.length === 1 ? selected[0].value : `${selected[0].value} + ${selected.length - 1} değer`
 
   useDismissable(open, [rootRef], () => setOpen(false))
 
@@ -3487,7 +3487,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     {!publishOnly && <UnsavedChangesGuard when={editorDirty} allowNavigationRef={leavingAfterSave} />}
     {staleProductVersion != null && <div className="product-stale-banner" role="alert"><span><strong>Ürün başka bir işlemle güncellendi</strong> (güncel sürüm v{staleProductVersion}). Kaydedilmemiş değişiklikleriniz korunuyor; kaydederseniz sunucu sürüm çakışmasını bildirir.</span><button type="button" className="secondary" onClick={reloadEditedProduct}>Güncel Ürünü Yükle</button></div>}
     {variantPlatformPricing && selectedVariantPlatformRow && <BulkVariantPlatformPricingModal row={selectedVariantPlatformRow} rows={variantRows} platforms={selectedVariantPlatformRow.platformStatuses?.length ? selectedVariantPlatformRow.platformStatuses : variantPricingPlatforms} savedDrafts={variantChannelPricing} productName={form.title} modelCode={form.modelCode} filterGroups={variantFilterGroups.filter(group => isColorOptionName(group.name) || isSizeOptionName(group.name))} matchesFilterValue={rowMatchesVariantMediaValue} saving={variantPlatformPricingSaving} onClose={() => setVariantPlatformPricing(null)} onSave={drafts => void saveVariantPlatformPricingMatrix(drafts)} />}
-    {!publishOnly && <div className="product-add-wizardbar"><div className="product-add-stepper"><div className="product-add-progress" role="tablist" aria-label={editProductId ? 'Ürün düzenleme adımları' : 'Ürün ekleme adımları'}><button type="button" className={wizardStep === 1 ? 'active' : ''} role="tab" aria-selected={wizardStep === 1} onClick={() => setWizardStep(1)}><span>1</span><strong>Ürün Bilgileri<span className="product-step-label-more"> ve Varyantlar</span></strong></button><i aria-hidden="true" /><button type="button" className={wizardStep === 2 ? 'active' : ''} role="tab" aria-selected={wizardStep === 2} onClick={() => setWizardStep(2)}><span>2</span><strong>Yayınlama</strong></button></div></div></div>}<form id="product-creation-form" className="product-creation-workspace product-add-workspace" data-wizard-step={wizardStep} aria-busy={editorHydrating || undefined} inert={editorHydrating || undefined} onSubmit={submit} onInvalidCapture={handleInvalid} onChange={dismissProductError} noValidate>
+    {!publishOnly && <div className="product-add-wizardbar"><div className="product-add-stepper"><div className="product-add-steptabs rv-tabs rv-view-tabs" role="tablist" aria-label={editProductId ? 'Ürün düzenleme adımları' : 'Ürün ekleme adımları'}><button type="button" className={wizardStep === 1 ? 'is-active' : ''} role="tab" aria-selected={wizardStep === 1} onClick={() => setWizardStep(1)}><span className="rv-tab-label"><span className="rv-step-num">1</span><span>Ürün Bilgileri<span className="product-step-label-more"> ve Varyantlar</span></span></span></button><button type="button" className={wizardStep === 2 ? 'is-active' : ''} role="tab" aria-selected={wizardStep === 2} onClick={() => setWizardStep(2)}><span className="rv-tab-label"><span className="rv-step-num">2</span><span>Yayınlama</span></span></button></div></div></div>}<form id="product-creation-form" className="product-creation-workspace product-add-workspace" data-wizard-step={wizardStep} aria-busy={editorHydrating || undefined} inert={editorHydrating || undefined} onSubmit={submit} onInvalidCapture={handleInvalid} onChange={dismissProductError} noValidate>
     <div className="product-top-layout">
       <section className="panel product-step-card product-basics-card">
         <div className="editor-section-title"><span>1</span><div><h2>Temel Ürün Bilgileri<TitleHint label="Temel Ürün Bilgileri">Ürün kartının temel başlığı ve katalog bilgileri.</TitleHint></h2></div></div>
