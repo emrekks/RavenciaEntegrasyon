@@ -337,6 +337,8 @@
   .app-shell.stitch-shell main input[type="checkbox"], .app-shell.stitch-shell main input[type="radio"] { accent-color: var(--rv-color-primary); }
   .app-shell.stitch-shell main input[type="file"] { height: auto; padding: var(--rv-space-2); }
   .app-shell.stitch-shell main :where(input, select, textarea):hover:not(:disabled) { border-color: var(--rv-color-primary); }
+  :where(.app-shell.stitch-shell main button:not(.modal-close):not(.row-menu-trigger):not(.order-column-filter-trigger):not(.platform-multi-select-trigger.is-compact):not(.product-delete-button):not(.logout-link):not(.sidebar-pin-toggle):not(.rv-button):not(.rv-icon-button), .app-shell.stitch-shell main .button-link) { display: inline-flex; min-height: var(--rv-control-height-md); align-items: center; justify-content: center; gap: var(--rv-space-2); padding: 0 var(--rv-space-4); color: #fff; background: var(--rv-color-primary); border: 1px solid var(--rv-color-primary); border-radius: var(--rv-radius-md); text-decoration: none; font-weight: 600; }
+  :where(.app-shell.stitch-shell main button:not(.modal-close):not(.row-menu-trigger):not(.order-column-filter-trigger):not(.platform-multi-select-trigger.is-compact):not(.product-delete-button):not(.logout-link):not(.sidebar-pin-toggle):not(.rv-button):not(.rv-icon-button):hover:not(:disabled), .app-shell.stitch-shell main .button-link:hover) { color: #fff; background: var(--rv-color-primary-hover); border-color: var(--rv-color-primary-hover); }
   .app-shell.stitch-shell main button.secondary, .app-shell.stitch-shell main .button-link.secondary { color: var(--rv-color-ink); background: var(--rv-color-surface); border-color: var(--rv-color-border-strong); }
   .app-shell.stitch-shell main button.secondary:hover:not(:disabled), .app-shell.stitch-shell main .button-link.secondary:hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-soft)); border-color: var(--rv-color-border-strong); }
   .app-shell.stitch-shell main button:disabled, .app-shell.stitch-shell main .button-link[aria-disabled="true"] { cursor: not-allowed; opacity: .5; }
@@ -406,7 +408,42 @@
   .bulk-action-menu > button small { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 500; }
   .product-platform-filter { position: relative; min-width: 0; }
   .product-platform-filter-menu { position: absolute; top: calc(100% + var(--rv-space-2)); right: 0; z-index: var(--rv-z-dropdown); display: grid; width: min(380px, calc(100vw - 32px)); max-height: min(560px, calc(100dvh - 112px)); gap: var(--rv-space-2); overflow: auto; padding: var(--rv-space-3); color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-lg); }
+  .platform-multi-select-field { display: grid; min-width: 0; gap: var(--rv-space-1); color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 750; }
+  .platform-multi-select { position: relative; min-width: 0; }
+  .platform-multi-select-trigger { display: flex; width: 100%; min-width: 0; min-height: var(--rv-control-height-md); align-items: center; justify-content: space-between; gap: var(--rv-space-2); padding: 0 var(--rv-space-3); color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); text-align: left; font-size: var(--rv-font-size-sm); font-weight: 600; }
+  .platform-multi-select-trigger:hover, .platform-multi-select-trigger.is-open { border-color: var(--rv-color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 12%, transparent); }
+  .platform-multi-select-trigger.has-selection { border-color: color-mix(in srgb, var(--rv-color-primary) 62%, var(--rv-color-border)); }
+  .platform-multi-select-trigger > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .platform-multi-select-trigger > .ui-icon { flex: 0 0 auto; width: 16px; height: 16px; color: var(--rv-color-muted); transition: transform var(--rv-duration-fast) var(--rv-ease-standard); }
+  .platform-multi-select-trigger.is-open > .ui-icon { transform: rotate(180deg); }
+  .platform-multi-select-trigger:disabled { cursor: not-allowed; opacity: .65; }
+  .platform-multi-select-menu { position: absolute; top: calc(100% + var(--rv-space-2)); right: 0; z-index: var(--rv-z-dropdown); display: grid; width: min(300px, calc(100vw - 32px)); max-height: min(360px, calc(100dvh - 112px)); gap: var(--rv-space-1); overflow: auto; padding: var(--rv-space-3); color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-lg); }
+  .platform-multi-select-menu.is-compact { position: fixed; top: 0; right: auto; z-index: calc(var(--rv-z-dropdown) + 20); }
+  .platform-multi-select-menu.is-start { right: auto; left: 0; }
+  .platform-multi-select-menu-header { display: flex; align-items: center; justify-content: space-between; gap: var(--rv-space-2); padding: 0 var(--rv-space-1) var(--rv-space-2); border-bottom: 1px solid var(--rv-color-border); }
+  .platform-multi-select-menu-header strong { font-size: var(--rv-font-size-sm); }
+  .platform-multi-select-menu-header button { padding: 2px 0; color: var(--rv-color-primary); background: transparent; border: 0; font-size: var(--rv-font-size-xs); font-weight: 750; white-space: nowrap; }
+  .platform-multi-select-menu-header button:disabled { cursor: not-allowed; opacity: .5; }
+  .platform-multi-select-option { display: flex; min-width: 0; align-items: center; gap: var(--rv-space-2); padding: var(--rv-space-2); color: var(--rv-color-ink); border-radius: var(--rv-radius-md); font-size: var(--rv-font-size-sm); cursor: pointer; }
+  .platform-multi-select-option:hover { background: var(--rv-hover, var(--rv-color-surface-soft)); }
   /* Round like the order, return and invoice selections: 17px, filled violet with a white tick when chosen. */
+  .platform-multi-select-option input { position: relative; flex: 0 0 17px; width: 17px; min-width: 17px; height: 17px; min-height: 17px; margin: 0; appearance: none; -webkit-appearance: none; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 50%; cursor: pointer; }
+  .platform-multi-select-option input:checked { background: var(--rv-color-primary); border-color: var(--rv-color-primary); }
+  .platform-multi-select-option input:checked::after { content: ""; position: absolute; left: 5.5px; top: 2.5px; width: 3.5px; height: 7.5px; border: solid #fff; border-width: 0 1.8px 1.8px 0; transform: rotate(45deg); }
+  .platform-multi-select-option input:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
+  .platform-multi-select-option span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .platform-multi-select-field.is-compact { display: block; width: auto; gap: 0; }
+  .platform-multi-select-field.is-compact > .platform-multi-select-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
+  .platform-multi-select-field.is-compact .platform-multi-select { width: auto; }
+  .platform-multi-select-field.is-compact .platform-multi-select-trigger { position: relative; display: inline-grid; width: 30px; min-width: 30px; height: 30px; min-height: 30px; flex: 0 0 30px; place-items: center; padding: 0; color: var(--rv-color-muted); border: 0; border-radius: var(--rv-radius-sm); background: transparent; }
+  .platform-multi-select-field.is-compact .platform-multi-select-trigger::before { position: absolute; inset: 4px; z-index: 0; border-radius: var(--rv-radius-sm); background: transparent; content: ''; transition: background var(--rv-duration-fast) var(--rv-ease-standard); }
+  .platform-multi-select-field.is-compact .platform-multi-select-trigger:hover, .platform-multi-select-field.is-compact .platform-multi-select-trigger.is-open { color: var(--rv-color-primary); background: transparent; box-shadow: none; }
+  .platform-multi-select-field.is-compact .platform-multi-select-trigger:hover::before, .platform-multi-select-field.is-compact .platform-multi-select-trigger.is-open::before { background: var(--rv-color-primary-soft); }
+  .platform-multi-select-field.is-compact .platform-multi-select-trigger.has-selection { color: var(--rv-color-primary); background: transparent; }
+  .platform-multi-select-field.is-compact .platform-multi-select-trigger.has-selection::before { background: var(--rv-color-primary-soft); }
+  .platform-multi-select-field.is-compact .platform-multi-select-trigger:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 1px; }
+  .platform-multi-select-field.is-compact .platform-multi-select-trigger > .order-filter-funnel { position: absolute; top: 50%; left: 50%; z-index: 1; width: 14px; height: 14px; flex: 0 0 14px; margin: 0; transform: translate(-50%, -50%); fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
+  .platform-multi-select-selection-count { position: absolute; top: -4px; right: -4px; z-index: 2; display: grid; min-width: 15px; height: 15px; place-items: center; padding: 0 3px; color: white; background: var(--rv-color-primary-fill); border: 1px solid var(--rv-color-surface-raised); border-radius: 999px; font-size: 9px; font-weight: 800; line-height: 1; }
   .invoice-reference-platform-heading { display: flex; width: 100%; min-width: 0; align-items: center; justify-content: space-between; gap: 4px; }
   .invoice-reference-platform-heading > strong { min-width: 0; overflow-wrap: anywhere; line-height: 1.2; }
   .product-variant-value { display: inline-flex; flex: 0 0 auto; min-height: 22px; align-items: center; gap: 5px; padding: 2px 6px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); font-size: var(--rv-font-size-xs); line-height: 1.2; white-space: nowrap; }
@@ -3044,9 +3081,24 @@ small,
   margin: 0;
 }
 
+.app-shell.stitch-shell main :where(button:not(.modal-close):not(.row-menu-trigger):not(.order-column-filter-trigger):not(.platform-multi-select-trigger.is-compact):not(.product-delete-button):not(.logout-link):not(.sidebar-pin-toggle):not(.rv-icon-button)) {
+  min-height: 44px;
+  padding: 10px 16px;
+  border-radius: var(--rv-radius-md);
+  font-size: 14px;
+  line-height: 1.3;
+}
+
 /* Design step 1: above the phone layout every plain button is a 36px control (13px, primary 600 / secondary 500) like
    the rr-btn; phones keep the 44px touch targets. */
 @media (min-width: 769px) {
+  .app-shell.stitch-shell main :where(button:not(.modal-close):not(.row-menu-trigger):not(.order-column-filter-trigger):not(.platform-multi-select-trigger.is-compact):not(.product-delete-button):not(.logout-link):not(.sidebar-pin-toggle):not(.rv-icon-button):not([class*="rv-topbar"])) {
+    min-height: 36px;
+    padding-block: 0;
+    padding-inline: 14px;
+    font-size: 13px;
+    line-height: 1.2;
+  }
 
   .app-shell.stitch-shell main :is(button.secondary, .rv-button-secondary, .rv-button-ghost) {
     padding-inline: 12px;
@@ -6217,6 +6269,7 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
    single-file workflow; each selected order keeps its own document input. */
 .invoice-reference-platform-heading { position: relative; gap: 4px; padding-right: var(--rv-space-2); }
 .invoice-reference-platform-heading > strong { flex: 1 1 auto; }
+.invoice-reference-platform-heading > .platform-multi-select-field.is-compact { flex: 0 0 30px; }
 .invoice-reference-select-all { position: static; display: grid; width: 18px; height: 18px; flex: 0 0 18px; place-items: center; transform: none; }
 .app-shell.stitch-shell main .invoice-reference-select-all input, .app-shell.stitch-shell main .invoice-reference-select { appearance: none; -webkit-appearance: none; box-sizing: border-box; display: grid; width: 16px; height: 16px; min-height: 16px; flex: 0 0 16px; place-items: center; margin: 0; padding: 0; color: #fff; border: 1px solid var(--rv-color-border-strong); border-radius: 4px; background: var(--rv-color-surface-raised); cursor: pointer; }
 .app-shell.stitch-shell main .invoice-reference-select-all input::after, .app-shell.stitch-shell main .invoice-reference-select::after { width: 7px; height: 4px; content: ""; border-bottom: 2px solid currentColor; border-left: 2px solid currentColor; opacity: 0; transform: translateY(-1px) rotate(-45deg); }
@@ -6487,8 +6540,10 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .app-shell.stitch-shell main .invoice-reference-filters { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(150px, 1fr) minmax(0, 1.2fr) max-content auto; gap: 12px; align-items: end; }
 .app-shell.stitch-shell main .invoice-reference-filters > label:not(.invoice-reference-search) { font-weight: 600; font-size: 12px; }
 .app-shell.stitch-shell main .invoice-reference-search > span:first-child,
+.app-shell.stitch-shell main .invoice-reference-filters .platform-multi-select-label,
 .app-shell.stitch-shell main .invoice-reference-filters .date-range-picker-label { color: var(--rv-color-muted); font-size: 12px; font-weight: 600; }
 .app-shell.stitch-shell main .invoice-reference-search input,
+.app-shell.stitch-shell main .invoice-reference-filters .platform-multi-select-trigger,
 .app-shell.stitch-shell main .invoice-reference-filters .date-range-picker-trigger { font-size: 14px; font-weight: 500; }
 @media (max-width: 1024px) { .app-shell.stitch-shell main .invoice-reference-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 700px) { .app-shell.stitch-shell main .invoice-reference-filters { grid-template-columns: minmax(0, 1fr); } }
@@ -6499,7 +6554,7 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 
 /* Light theme interaction language. Hovers are quiet tonal changes, colour is kept for the active state and focus:
    list-like items get a faint ink tint, outlined controls darken their border, cards and rows settle on the raised tone. */
-:root[data-theme="light"] .app-shell.stitch-shell > aside :is(nav, .settings-nav) a:hover:not(.active), :root[data-theme="light"] .app-shell.stitch-shell > aside .logout-link:hover:not(.active), :root[data-theme="light"] .app-shell.stitch-shell main .bulk-action-menu > button:hover:not(:disabled), :root[data-theme="light"] .row-menu > div button:hover, :root[data-theme="light"] .order-column-filter-popover button:hover, :root[data-theme="light"] .integration-filter-menu button:hover, :root[data-theme="light"] .reference-menu-popover :is(a, button):hover:not(:disabled), :root[data-theme="light"] .panel-category-picker [role="option"]:hover, :root[data-theme="light"] .appearance-theme-menu > button:hover, :root[data-theme="light"] .date-range-picker-grid > button:hover, :root[data-theme="light"] :is(.rv-tabs, .settings-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) > :is(button, a):not(.active, .is-active, [aria-selected="true"]):hover {
+:root[data-theme="light"] .app-shell.stitch-shell > aside :is(nav, .settings-nav) a:hover:not(.active), :root[data-theme="light"] .app-shell.stitch-shell > aside .logout-link:hover:not(.active), :root[data-theme="light"] .app-shell.stitch-shell main .bulk-action-menu > button:hover:not(:disabled), :root[data-theme="light"] .platform-multi-select-option:hover, :root[data-theme="light"] .row-menu > div button:hover, :root[data-theme="light"] .order-column-filter-popover button:hover, :root[data-theme="light"] .integration-filter-menu button:hover, :root[data-theme="light"] .reference-menu-popover :is(a, button):hover:not(:disabled), :root[data-theme="light"] .panel-category-picker [role="option"]:hover, :root[data-theme="light"] .appearance-theme-menu > button:hover, :root[data-theme="light"] .date-range-picker-grid > button:hover, :root[data-theme="light"] :is(.rv-tabs, .settings-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) > :is(button, a):not(.active, .is-active, [aria-selected="true"]):hover {
   color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-hover-fill)); border-color: transparent; box-shadow: none;
 }
 :root[data-theme="light"] .app-shell.stitch-shell main :where(input, select, textarea):hover:not(:disabled) {
@@ -6514,6 +6569,12 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 }
 
 /* Filter bars: a caption is never smaller or lighter than the value under it (13px caption, 13px value). */
+.app-shell.stitch-shell main :is(.orders-control-bar, .invoice-reference-filters, .return-reference-filters, .rv-questions-filters) :is(label, .orders-control-label, .platform-multi-select-label, .date-range-picker-label, .invoice-sort-caption) {
+  color: var(--rv-color-muted); font-size: 13px; font-weight: 600;
+}
+.app-shell.stitch-shell main :is(.orders-control-bar, .invoice-reference-filters, .return-reference-filters, .rv-questions-filters) :is(input, select, .platform-multi-select-trigger, .date-range-picker-trigger, .invoice-sort-trigger) {
+  font-size: 13px; font-weight: 500;
+}
 .app-shell.stitch-shell main .invoice-reference-filters > label:not(.invoice-reference-search):not(.invoice-reference-sort) { font-size: 13px; }
 .app-shell.stitch-shell main .invoice-reference-filters > .invoice-reference-search > span:first-child { color: var(--rv-color-muted); font-size: 13px; font-weight: 600; }
 
