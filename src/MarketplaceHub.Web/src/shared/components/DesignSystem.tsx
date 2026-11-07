@@ -3,6 +3,7 @@ import { useRememberedTabCounts } from '../tab-counts'
 import { UiIcon } from './UiIcon'
 import { lockPageScroll } from '../hooks/useScrollLock'
 import { TitleHint } from './TitleHint'
+import { Pager } from './Pager'
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 type ControlSize = 'sm' | 'md' | 'lg'
@@ -117,31 +118,8 @@ type BadgeProps = { tone?: StatusTone; children: ReactNode; className?: string; 
 export function Badge({ tone = 'neutral', children, className, icon, ...props }: BadgeProps) { return <span {...props} className={['rv-badge', `rv-badge-${tone}`, icon ? 'has-icon' : '', className].filter(Boolean).join(' ')}>{icon ?? <i aria-hidden="true" />}{children}</span> }
 export function StatusBadge({ tone, children, className, title, role, 'aria-label': ariaLabel, icon }: BadgeProps) { return <Badge tone={tone} className={className} title={title} role={role} aria-label={ariaLabel} icon={icon}>{children}</Badge> }
 
-export function Pagination({ page, totalPages, hasNext, onPageChange, onPrevious, onNext, disabled = false, className, ariaLabel = 'Sayfalama' }: { page: number; totalPages: number; hasNext?: boolean; onPageChange: (page: number) => void; onPrevious: () => void; onNext: () => void; disabled?: boolean; className?: string; ariaLabel?: string }) {
-  const safeTotalPages = Math.max(1, totalPages)
-  const safePage = Math.min(Math.max(1, page), safeTotalPages)
-  const [draftPage, setDraftPage] = useState(String(safePage))
-  useEffect(() => setDraftPage(String(safePage)), [safePage])
-  const readDraftPage = () => {
-    const parsed = Number.parseInt(draftPage, 10)
-    return Math.min(Math.max(1, Number.isFinite(parsed) ? parsed : safePage), safeTotalPages)
-  }
-  const commitDraftPage = () => {
-    const nextPage = readDraftPage()
-    setDraftPage(String(nextPage))
-    if (nextPage !== safePage) onPageChange(nextPage)
-  }
-  const goPrevious = () => {
-    const draft = readDraftPage()
-    if (draft !== safePage) { commitDraftPage(); return }
-    onPrevious()
-  }
-  const goNext = () => {
-    const draft = readDraftPage()
-    if (draft !== safePage) { commitDraftPage(); return }
-    onNext()
-  }
-  return <nav className={['rv-pagination', className].filter(Boolean).join(' ')} aria-label={ariaLabel}><Button variant="secondary" size="sm" onClick={goPrevious} disabled={disabled || safePage <= 1}>Önceki</Button><label className="rv-pagination-jump"><span>Sayfa</span><input type="number" inputMode="numeric" min={1} max={safeTotalPages} value={draftPage} onChange={event => setDraftPage(event.target.value)} onBlur={commitDraftPage} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); commitDraftPage(); event.currentTarget.blur() } }} aria-label="Sayfa numarası" disabled={disabled} /><span aria-hidden="true"> / {safeTotalPages}</span></label><Button variant="secondary" size="sm" onClick={goNext} disabled={disabled || !(hasNext ?? safePage < safeTotalPages)}>Sonraki</Button></nav>
+export function Pagination({ page, totalPages, hasNext, onPageChange, onPrevious, onNext, disabled = false, className, ariaLabel = 'Sayfalama' }: { page: number; totalPages: number; hasNext?: boolean; onPageChange: (page: number) => void; onPrevious?: () => void; onNext?: () => void; disabled?: boolean; className?: string; ariaLabel?: string }) {
+  return <Pager page={page} totalPages={totalPages} hasNext={hasNext} onPageChange={onPageChange} onPrevious={onPrevious} onNext={onNext} disabled={disabled} className={className} ariaLabel={ariaLabel} />
 }
 
 export function Modal({ open, title, onClose, children, footer, description, className, hint }: DialogSurfaceProps) {
@@ -169,5 +147,4 @@ export function Drawer({ open, title, onClose, children, footer, description, cl
   return shown ? <div className={`rv-overlay rv-drawer-overlay${closing ? ' rv-closing' : ''}`} role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}><aside ref={dialogRef} className={['rv-drawer', className].filter(Boolean).join(' ')} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined} tabIndex={-1}><header><div><h2 id={titleId}>{title}{hint ? <TitleHint label={typeof title === 'string' ? title : 'Pencere'}>{hint}</TitleHint> : null}</h2>{description ? <p id={descriptionId}>{description}</p> : null}</div><IconButton label="Kapat" variant="ghost" onClick={onClose}><UiIcon name="close" /></IconButton></header><div className="rv-drawer-body">{children}</div>{footer ? <footer>{footer}</footer> : null}</aside></div> : null
 }
 
-export function EmptyState({ children }: { children: ReactNode }) { return <div className="rv-empty-state"><span className="rv-empty-state-icon" aria-hidden="true"><UiIcon name="box" /></span><strong>Henüz kayıt yok</strong><p>{children}</p></div> }
 export function LoadingState({ children = 'Yükleniyor…' }: { children?: ReactNode }) { return <div className="rv-loading-state" role="status" aria-live="polite"><strong>{children}</strong><span className="rv-splash-loading-bar" aria-hidden="true"><span className="rv-splash-loading-progress" /></span></div> }

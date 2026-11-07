@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
-import { Busy, ErrorBox, Modal, TitleHint, UiIcon } from '../../shared/components'
+import { Busy, ErrorBox, Modal, Pager, TitleHint, UiIcon } from '../../shared/components'
 import { copyText } from '../../shared/copy-text'
 import { formatIstanbul } from '../../shared/format-date'
 import { thumbnailUrl } from '../../shared/product-thumbnail'
@@ -124,11 +124,7 @@ export function OrderProfitability({ from, to, platforms }: { from: string; to: 
         <td><button type="button" className="secondary reports-order-detail" onClick={() => setOpen(item)}>Detaylar</button></td>
       </tr>)}</tbody>
     </table></div>}
-    {pageCount > 1 && <div className="reports-order-pager">
-      <button type="button" className="secondary" disabled={page === 0} onClick={() => setPage(page - 1)}>Önceki</button>
-      <span>Sayfa {page + 1} / {pageCount}</span>
-      <button type="button" className="secondary" disabled={page + 1 >= pageCount} onClick={() => setPage(page + 1)}>Sonraki</button>
-    </div>}
+    {pageCount > 1 && <div className="reports-order-pager"><Pager page={page + 1} totalPages={pageCount} onPageChange={next => setPage(next - 1)} ariaLabel="Sayfalama" /></div>}
     {open && <OrderProfitModal order={open} onClose={() => setOpen(null)} />}
   </section>
 }

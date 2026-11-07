@@ -2,7 +2,7 @@ import { act } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { byText, cleanup, render, waitFor } from '../../test/render'
+import { cleanup, render, waitFor } from '../../test/render'
 
 const api = vi.hoisted(() => ({ paths: [] as string[] }))
 const shipment = (id: string) => ({ id, orderId: `o-${id}`, orderNumber: `#${id}`, externalPackageId: `PK-${id}`, status: 'SHIPPED', rawStatus: 'Shipped', cargoTrackingNumber: null, cargoProviderName: null, statusOccurredAt: '2026-10-19T06:00:00Z', version: 1, isResend: false })
@@ -31,11 +31,11 @@ describe('shipments list', () => {
     const { host } = render(<QueryClientProvider client={client}><MemoryRouter><ShipmentsPage /></MemoryRouter></QueryClientProvider>)
     await waitFor(() => host.textContent?.includes('#2'))
     expect(api.paths).toEqual(['/shipments?limit=20'])
-    act(() => { byText<HTMLButtonElement>(host, 'button', 'Sonraki').click() })
+    act(() => { host.querySelector<HTMLButtonElement>('button[aria-label="Sonraki"]')!.click() })
     await waitFor(() => host.textContent?.includes('#3'))
     expect(api.paths.at(-1)).toBe('/shipments?limit=20&after=c1')
-    expect(byText<HTMLButtonElement>(host, 'button', 'Sonraki').disabled).toBe(true)
-    act(() => { byText<HTMLButtonElement>(host, 'button', 'Önceki').click() })
+    expect(host.querySelector<HTMLButtonElement>('button[aria-label="Sonraki"]')!.disabled).toBe(true)
+    act(() => { host.querySelector<HTMLButtonElement>('button[aria-label="Önceki"]')!.click() })
     await waitFor(() => host.textContent?.includes('#1'))
     expect(api.paths).toHaveLength(2)
   })
