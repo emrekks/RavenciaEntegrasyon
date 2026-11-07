@@ -39,11 +39,8 @@
   @container (max-width: 940px) {
     .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filters { grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, .75fr) auto; }
     .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filters > * { min-width: 0; }
-    .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filters .invoice-sort-sizer { display: none; }
-    .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filters .invoice-sort-current { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   }
 }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filters :is(.invoice-reference-search > span:first-child, .platform-multi-select-label, .date-range-picker-label, .invoice-sort-caption) { color: var(--rv-color-subtle); font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filter-reset { height: 36px; min-height: 36px; color: var(--rv-color-muted); background: none; border-color: transparent; box-shadow: none; font-size: 13px; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filter-reset:hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-raised)); }
 
@@ -139,10 +136,7 @@ body .invoice-reference-actions-popover > button:disabled { opacity: .5; }
 /* Exact proposal measures: 36px fields with regular weight, tight tab-to-filter spacing, 44px table head,
    13px table text, ink order numbers, small wordmarks and cargo logos. */
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-tabs { margin: 0; }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filters :is(.invoice-reference-search input, .platform-multi-select > button, .date-range-picker-trigger, .invoice-sort-trigger) { height: 36px; min-height: 36px; padding-top: 0; padding-bottom: 0; color: var(--rv-color-ink); font-size: 14px; font-weight: 400 !important; border-radius: 7px; }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filters :is(.platform-multi-select > button, .date-range-picker-trigger, .invoice-sort-trigger) { padding-left: 12px; padding-right: 10px; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filters .invoice-reference-search input { padding-left: 34px; }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filters .invoice-sort-trigger svg { color: var(--rv-color-muted); }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-workspace > header { margin: 0; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head { min-height: 44px; height: 44px; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head > * { padding: 0 10px; font-size: 12px; }
@@ -174,8 +168,6 @@ body .invoice-reference-actions-popover > button:disabled { opacity: .5; }
 .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-shipment, .invoice-reference-status) > * { justify-self: start !important; margin-left: 0 !important; margin-right: 0 !important; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-select-all input { position: relative; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-platform-heading > strong { flex: none; }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-platform-heading .platform-multi-select-field { margin-left: -6px; }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filters :is(.platform-multi-select > button, .date-range-picker-trigger, .invoice-sort-trigger) * { font-weight: 400 !important; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-page-size select { height: 36px; min-height: 36px; padding: 0 30px 0 10px; font-size: 13px; border-radius: 7px; }
 .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-select, .invoice-reference-select-all input) { width: 16px; min-width: 16px; height: 16px; min-height: 16px; appearance: none; -webkit-appearance: none; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 4px; box-shadow: none; cursor: pointer; }
 .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-select, .invoice-reference-select-all input):checked { background: var(--rv-color-primary-soft); border-color: var(--inv-violet-line); }
@@ -305,10 +297,7 @@ body .invoice-reference-actions-popover > button:disabled { opacity: .5; }
 .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-head, .invoice-reference-row) > :not(:last-child) { border-right: 1px solid var(--rv-color-border) !important; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head > * { position: relative; height: 100%; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head > .order-column-filter { padding-right: 36px; padding-left: 36px; }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head .order-column-filter-trigger,
-.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head .platform-multi-select-trigger.is-compact { position: absolute; top: 50%; right: 8px; width: 24px; min-width: 24px; height: 24px; min-height: 24px; margin: 0; padding: 0; transform: translateY(-50%); }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head .platform-multi-select-field.is-compact { position: static; margin: 0; }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head .platform-multi-select-field.is-compact .platform-multi-select { position: static; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head .order-column-filter-trigger { position: absolute; top: 50%; right: 8px; width: 24px; min-width: 24px; height: 24px; min-height: 24px; margin: 0; padding: 0; transform: translateY(-50%); }
 /* The column's platform funnel borrows the returns page's rr-layer (z-index 1000); closed, it must not sit over the
    filter bar's platform menu above it, so it rises only while its own popover is open. */
 .app-shell.stitch-shell main .reference-invoices-page .rr-layer.invoice-platform-pop:not(:has([aria-expanded="true"])) { z-index: auto; }

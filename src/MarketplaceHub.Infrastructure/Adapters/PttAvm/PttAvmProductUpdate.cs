@@ -22,7 +22,7 @@ public sealed partial class PttAvmHttpClient
     public async Task<AdapterResult<RemoteOperationRef>> UpdateUnapprovedAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken)
     {
         var draft = PttAvmProductUpdateRules.Read(publication.UnapprovedPayloadJson, out var invalid);
-        if (draft is null) return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "PTTAVM_PRODUCT_UPDATE_PAYLOAD_INVALID", invalid ?? "PTT AVM ürün güncelleme içeriği geçersiz.", HttpStatusCode.UnprocessableEntity);
+        if (draft is null) return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "PTTAVM_PRODUCT_UPDATE_PAYLOAD_INVALID", invalid ?? "PttAVM ürün güncelleme içeriği geçersiz.", HttpStatusCode.UnprocessableEntity);
         var load = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (load.Account is null) return CredentialFailure<RemoteOperationRef>(load);
         var account = load.Account;
@@ -32,17 +32,17 @@ public sealed partial class PttAvmHttpClient
         // reads as one without variants.
         var variantList = await VariantListAsync(account, refresh: true, cancellationToken);
         if (!variantList.IsSuccess && variantList.Error!.Code == VariantListIncompleteCode)
-            return Failure<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, PttAvmProductPayloadRules.RemoteVariantUnreadableCode, $"PTT AVM'de '{draft.Barcode}' ürününün varyantlarının tamamı okunamadı ({variantList.Error.SafeMessage}); silinecek varyant olup olmadığı bilinmediği için güncelleme gönderilmedi.", HttpStatusCode.Conflict);
+            return Failure<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, PttAvmProductPayloadRules.RemoteVariantUnreadableCode, $"PttAVM'de '{draft.Barcode}' ürününün varyantlarının tamamı okunamadı ({variantList.Error.SafeMessage}); silinecek varyant olup olmadığı bilinmediği için güncelleme gönderilmedi.", HttpStatusCode.Conflict);
         if (!variantList.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(variantList.Error!, variantList.RateLimit);
         var current = await ReadProductPageAsync(account, null, draft.Barcode, cancellationToken);
         if (!current.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(current.Error!, current.RateLimit);
         if ((current.Value!.Issues ?? []).Any(issue => issue.Code == "PTTAVM_VARIANT_LIST_UNAVAILABLE"
                 || issue.Code == "PRODUCT_VARIANT_INVALID" && issue.Identity.StartsWith(draft.Barcode + ":", StringComparison.OrdinalIgnoreCase)))
-            return Failure<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, PttAvmProductPayloadRules.RemoteVariantUnreadableCode, $"PTT AVM'de '{draft.Barcode}' ürününün varyantlarının tamamı okunamadı; silinecek varyant olup olmadığı bilinmediği için güncelleme gönderilmedi.", HttpStatusCode.Conflict);
+            return Failure<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, PttAvmProductPayloadRules.RemoteVariantUnreadableCode, $"PttAVM'de '{draft.Barcode}' ürününün varyantlarının tamamı okunamadı; silinecek varyant olup olmadığı bilinmediği için güncelleme gönderilmedi.", HttpStatusCode.Conflict);
         var listed = current.Value.Items;
         // The upsert opens a new product under a barcode PTT AVM does not hold: an update goes only to a product it lists.
         if (PttAvmProductPayloadRules.FamilyProduct(draft.Barcode, listed) is null)
-            return Failure<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, PttAvmProductUpdateRules.ProductNotFoundCode, $"PTT AVM'de '{draft.Barcode}' barkodlu ürün bulunamadı; güncelleme yeni ürün açacağı için gönderilmedi. Ürünü önce yayınlayın veya eşleştirin.", HttpStatusCode.Conflict);
+            return Failure<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, PttAvmProductUpdateRules.ProductNotFoundCode, $"PttAVM'de '{draft.Barcode}' barkodlu ürün bulunamadı; güncelleme yeni ürün açacağı için gönderilmedi. Ürünü önce yayınlayın veya eşleştirin.", HttpStatusCode.Conflict);
         // A product the panel holds without variants must not be a variant of a model on PTT AVM either.
         if (draft.Variants is null && PttAvmProductPayloadRules.RemoteVariantRisk(draft.Barcode, listed) is { } risk)
             return Failure<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, "PTTAVM_VARIANT_DELETION_RISK", risk, HttpStatusCode.Conflict);
@@ -60,7 +60,7 @@ public sealed partial class PttAvmHttpClient
         logger.LogInformation("PTT AVM product update request. DryRun: {DryRun}, ConnectionId: {ConnectionId}, Barcode: {Barcode}, Fields: {Fields}, RemoteVariants: {RemoteVariants}, CarriedVariants: {CarriedVariants}, Operation: {Operation}, Items: {Items}",
             carry.Variants.Count > 0 && PttAvmProductPayloadRules.VariantSendDryRun, account.Connection.Id, draft.Barcode, string.Join(",", draft.Fields), remote.Count, carry.Variants.Count, ProductUpsert, itemsXml);
         if (carry.Variants.Count > 0 && PttAvmProductPayloadRules.VariantSendDryRun)
-            return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, PttAvmProductPayloadRules.DryRunCode, $"Kuru çalıştırma: {carry.Variants.Count} varyantlı PTT AVM güncellemesi hazırlandı, gönderilmedi.", HttpStatusCode.UnprocessableEntity);
+            return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, PttAvmProductPayloadRules.DryRunCode, $"Kuru çalıştırma: {carry.Variants.Count} varyantlı PttAVM güncellemesi hazırlandı, gönderilmedi.", HttpStatusCode.UnprocessableEntity);
         return await SendUpsertAsync(account, itemsXml, cancellationToken);
     }
 }
@@ -118,7 +118,7 @@ public static class PttAvmProductUpdateRules
             using var document = JsonDocument.Parse(payloadJson);
             if (!document.RootElement.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array || items.GetArrayLength() != 1 || items[0].ValueKind != JsonValueKind.Object)
             {
-                error = "PTT AVM ürün güncellemesi tek ürün taşımalıdır.";
+                error = "PttAVM ürün güncellemesi tek ürün taşımalıdır.";
                 return null;
             }
             var root = items[0];
@@ -140,22 +140,22 @@ public static class PttAvmProductUpdateRules
             {
                 { Barcode.Length: 0 or > PttAvmPriceInventoryRules.MaxBarcodeLength } => "Barkod boş veya çok uzun.",
                 { Fields.Count: 0 } => "Gönderilecek en az bir ürün bilgisi alanı seçilmelidir.",
-                _ when fields.Any(field => !PttAvmProductUpdateFields.Supported.Contains(field)) || fields.Distinct(StringComparer.Ordinal).Count() != fields.Count => "PTT AVM'ye gönderilemeyen bir ürün bilgisi alanı seçilmiş.",
+                _ when fields.Any(field => !PttAvmProductUpdateFields.Supported.Contains(field)) || fields.Distinct(StringComparer.Ordinal).Count() != fields.Count => "PttAVM'ye gönderilemeyen bir ürün bilgisi alanı seçilmiş.",
                 _ when variants is not null && (variants.Count == 0 || variants.Any(x => x.Barcode.Length == 0 || x.Color.Length == 0 || x.Size.Length == 0)) => "Model ailesinin varyantları barkod, renk ve beden taşımalıdır.",
                 _ when Picked(ProductUpdateFields.Title) && draft.Name is not { Length: > 0 and <= PttAvmProductPayloadRules.MaxNameLength } => $"Ürün adı 1-{PttAvmProductPayloadRules.MaxNameLength} karakter olmalıdır.",
                 _ when Picked(ProductUpdateFields.Description) && string.IsNullOrEmpty(draft.LongDescription) => "Ürün açıklaması boş olamaz.",
                 _ when Picked(ProductUpdateFields.Images) && (images is not { Count: > 0 } || images.Count > imageLimit || images.Any(url => !Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)) => $"Görseller 1-{imageLimit} adet (renk başına {PttAvmProductPayloadRules.MaxImagesPerColour}) https adresi olmalıdır.",
-                _ when Picked(ProductUpdateFields.Warranty) && draft.WarrantyDuration is not (>= 0 and <= MaxWarrantyMonths) => $"PTT AVM garanti süresi 0-{MaxWarrantyMonths} ay olmalıdır.",
+                _ when Picked(ProductUpdateFields.Warranty) && draft.WarrantyDuration is not (>= 0 and <= MaxWarrantyMonths) => $"PttAVM garanti süresi 0-{MaxWarrantyMonths} ay olmalıdır.",
                 _ when Picked(ProductUpdateFields.Desi) && draft.Desi is not (> 0 and <= MaxDesi) => "Desi 0'dan büyük ve en fazla 300 olmalıdır.",
                 _ when Picked(ProductUpdateFields.VatRate) && PttAvmPriceInventoryRules.VatRate(draft.VatRate) is null => "KDV oranı 0, 1, 10 veya 20 olmalıdır.",
-                _ when Picked(ProductUpdateFields.Delivery) && draft.EstimatedCourierDelivery is not (>= 0 and <= MaxCourierDeliveryDays) => $"PTT AVM tahmini kargoya teslim süresi 0-{MaxCourierDeliveryDays} gün olmalıdır.",
+                _ when Picked(ProductUpdateFields.Delivery) && draft.EstimatedCourierDelivery is not (>= 0 and <= MaxCourierDeliveryDays) => $"PttAVM tahmini kargoya teslim süresi 0-{MaxCourierDeliveryDays} gün olmalıdır.",
                 _ => null
             };
             return error is null ? draft : null;
         }
         catch (JsonException)
         {
-            error = "PTT AVM ürün güncelleme içeriği okunamadı.";
+            error = "PttAVM ürün güncelleme içeriği okunamadı.";
             return null;
         }
     }

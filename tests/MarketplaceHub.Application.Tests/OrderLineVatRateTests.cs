@@ -127,7 +127,7 @@ public sealed class OrderLineVatRateTests
     [InlineData("HEPSIBURADA", "Hepsiburada")]
     [InlineData("N11", "N11")]
     [InlineData("PAZARAMA", "Pazarama")]
-    [InlineData("PTTAVM", "PTT AVM")]
+    [InlineData("PTTAVM", "PttAVM")]
     [InlineData("SHOPIFY", "Shopify")]
     public void TheRefusalNamesTheMarketplaceThatLeftTheRateOut(string platformCode, string name)
     {

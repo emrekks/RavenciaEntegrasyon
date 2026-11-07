@@ -22,7 +22,7 @@ public static class MarketplaceInvoiceReopenPolicy
     public const string ReopenedCode = "OPERATOR_REOPENED_FOR_NEW_INVOICE";
     public const string PttAvmManualReplacementCode = "PTTAVM_INVOICE_LINK_REPLACE_IN_SELLER_PANEL";
     public const string PttAvmManualReplacementMessage =
-        "PTT AVM'de siparişin satırları önceki (iptal edilen) faturayla işaretli ve PTT AVM ikinci fatura linkini kabul edip etmediğini bildirmiyor; link API ile gönderilmedi. Yeni faturanın linkini PTT AVM satıcı panelinde eskisinin yerine yükleyin, sonra “Pazaryerinde Gördüm, Tamamla” ile kapatın.";
+        "PttAVM'de siparişin satırları önceki (iptal edilen) faturayla işaretli ve PttAVM ikinci fatura linkini kabul edip etmediğini bildirmiyor; link API ile gönderilmedi. Yeni faturanın linkini PttAVM satıcı panelinde eskisinin yerine yükleyin, sonra “Pazaryerinde Gördüm, Tamamla” ile kapatın.";
 
     public static bool AppliesTo(string? platformCode) => platformCode?.Trim().ToUpperInvariant() is "N11" or "PAZARAMA" or "PTTAVM";
 

@@ -26,7 +26,7 @@ public sealed partial class PttAvmHttpClient : IInventoryPricePort
     {
         var items = PttAvmPriceInventoryRules.Items(payloadJson);
         if (items is null)
-            return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "PTTAVM_PRICE_STOCK_PAYLOAD_INVALID", $"PTT AVM fiyat-stok içeriği beklenen yapıda değil (en fazla {PttAvmPriceInventoryRules.MaxItemsPerRequest} ürün, barkod ve geçerli değerler).", HttpStatusCode.UnprocessableEntity);
+            return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "PTTAVM_PRICE_STOCK_PAYLOAD_INVALID", $"PttAVM fiyat-stok içeriği beklenen yapıda değil (en fazla {PttAvmPriceInventoryRules.MaxItemsPerRequest} ürün, barkod ve geçerli değerler).", HttpStatusCode.UnprocessableEntity);
         var load = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (load.Account is null) return CredentialFailure<RemoteOperationRef>(load);
         if (WriteBlocked<RemoteOperationRef>(load.Account, "fiyat-stok") is { } blocked) return blocked;
@@ -47,21 +47,21 @@ public sealed partial class PttAvmHttpClient : IInventoryPricePort
         var message = ContractValue(answer, "Message");
         if (PttAvmProductPayloadRules.IsRepeatRequestRefusal(message))
             return AdapterResult<RemoteOperationRef>.Failure(PttAvmProductPayloadRules.RepeatRequestError((int)HttpStatusCode.TooManyRequests), new RateLimitMetadata(null, null, PttAvmProductPayloadRules.RepeatRequestWait));
-        return AdapterResult<RemoteOperationRef>.Failure(new(AdapterErrorClass.Validation, "PTTAVM_PRICE_STOCK_REJECTED", $"PTT AVM fiyat-stok isteğini kabul etmedi: {message ?? "gerekçe verilmedi"}.", (int)HttpStatusCode.UnprocessableEntity, null, null), rateLimit);
+        return AdapterResult<RemoteOperationRef>.Failure(new(AdapterErrorClass.Validation, "PTTAVM_PRICE_STOCK_REJECTED", $"PttAVM fiyat-stok isteğini kabul etmedi: {message ?? "gerekçe verilmedi"}.", (int)HttpStatusCode.UnprocessableEntity, null, null), rateLimit);
     }
 
     // Serves the price/stock tracking ids ("t:{trackingId}"); product writes open with phase 7.
     public async Task<AdapterResult<RemoteOperationStatus>> GetOperationAsync(AdapterContext context, string externalOperationId, CancellationToken cancellationToken)
     {
         if (!externalOperationId.StartsWith(TrackingOperationPrefix, StringComparison.Ordinal) || externalOperationId.Length <= TrackingOperationPrefix.Length)
-            return Failure<RemoteOperationStatus>(AdapterErrorClass.Validation, "PTTAVM_OPERATION_ID_INVALID", "PTT AVM işlem numarası geçersiz.", HttpStatusCode.UnprocessableEntity);
+            return Failure<RemoteOperationStatus>(AdapterErrorClass.Validation, "PTTAVM_OPERATION_ID_INVALID", "PttAVM işlem numarası geçersiz.", HttpStatusCode.UnprocessableEntity);
         var load = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (load.Account is null) return CredentialFailure<RemoteOperationStatus>(load);
         var result = await SendSoapAsync(load.Account, ProductsTracking, [new("trackingId", externalOperationId[TrackingOperationPrefix.Length..])], cancellationToken);
         if (!result.IsSuccess) return AdapterResult<RemoteOperationStatus>.Failure(result.Error!, result.RateLimit);
         return PttAvmPriceInventoryRules.Tracking(externalOperationId, result.Value!) is { } status
             ? AdapterResult<RemoteOperationStatus>.Success(status, result.RateLimit)
-            : Failure<RemoteOperationStatus>(AdapterErrorClass.ContractViolation, "PTTAVM_TRACKING_CONTRACT_INVALID", $"PTT AVM işlem sonucu beklenen yapıda değil (yanıt öğeleri: {ElementShape(result.Value)}).", HttpStatusCode.BadGateway);
+            : Failure<RemoteOperationStatus>(AdapterErrorClass.ContractViolation, "PTTAVM_TRACKING_CONTRACT_INVALID", $"PttAVM işlem sonucu beklenen yapıda değil (yanıt öğeleri: {ElementShape(result.Value)}).", HttpStatusCode.BadGateway);
     }
 }
 

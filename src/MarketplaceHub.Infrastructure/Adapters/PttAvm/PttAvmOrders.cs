@@ -14,11 +14,11 @@ public sealed partial class PttAvmHttpClient : IOrderPort
     public async Task<AdapterResult<AdapterPageResult<RemoteOrder>>> PollAsync(AdapterContext context, OrderPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken)
     {
         if (window.ModifiedAfter is not { } start || window.ModifiedBefore is not { } end || end <= start)
-            return Failure<AdapterPageResult<RemoteOrder>>(AdapterErrorClass.Validation, "PTTAVM_ORDER_WINDOW_INVALID", "PTT AVM siparişleri başlangıcı ve bitişi belli bir tarih aralığıyla sorgulanabilir.", HttpStatusCode.UnprocessableEntity);
+            return Failure<AdapterPageResult<RemoteOrder>>(AdapterErrorClass.Validation, "PTTAVM_ORDER_WINDOW_INVALID", "PttAVM siparişleri başlangıcı ve bitişi belli bir tarih aralığıyla sorgulanabilir.", HttpStatusCode.UnprocessableEntity);
         var firstDay = start.ToOffset(TurkeyOffset).Date;
         var lastDay = end.ToOffset(TurkeyOffset).Date;
         if (lastDay - firstDay > MaxOrderWindow)
-            return Failure<AdapterPageResult<RemoteOrder>>(AdapterErrorClass.Validation, "PTTAVM_ORDER_WINDOW_INVALID", "PTT AVM siparişleri en fazla 40 günlük bir tarih aralığıyla sorgulanabilir.", HttpStatusCode.UnprocessableEntity);
+            return Failure<AdapterPageResult<RemoteOrder>>(AdapterErrorClass.Validation, "PTTAVM_ORDER_WINDOW_INVALID", "PttAVM siparişleri en fazla 40 günlük bir tarih aralığıyla sorgulanabilir.", HttpStatusCode.UnprocessableEntity);
         var load = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (load.Account is null) return CredentialFailure<AdapterPageResult<RemoteOrder>>(load);
         return await ReadOrdersAsync(load.Account, firstDay, lastDay, cancellationToken);
@@ -33,7 +33,7 @@ public sealed partial class PttAvmHttpClient : IOrderPort
         var orderNumber = externalOrderId.Trim();
         var day = PttAvmOrderMapper.OrderDay(orderNumber) ?? hint?.OrderedAt?.ToOffset(TurkeyOffset).Date;
         if (orderNumber.Length == 0 || day is null)
-            return Failure<RemoteOrder>(AdapterErrorClass.Validation, "PTTAVM_ORDER_NUMBER_INVALID", "PTT AVM sipariş numarasından sipariş günü okunamadı.", HttpStatusCode.UnprocessableEntity);
+            return Failure<RemoteOrder>(AdapterErrorClass.Validation, "PTTAVM_ORDER_NUMBER_INVALID", "PttAVM sipariş numarasından sipariş günü okunamadı.", HttpStatusCode.UnprocessableEntity);
         var load = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (load.Account is null) return CredentialFailure<RemoteOrder>(load);
         // A day either side covers an order placed around midnight.
@@ -44,7 +44,7 @@ public sealed partial class PttAvmHttpClient : IOrderPort
         if (order is null && RefusedOrders.ReadError(page.Value.Issues, orderNumber) is { } refused)
             return AdapterResult<RemoteOrder>.Failure(refused, page.RateLimit);
         return order is null
-            ? Failure<RemoteOrder>(AdapterErrorClass.NotFound, "PTTAVM_ORDER_NOT_FOUND", $"PTT AVM'de {orderNumber} numaralı sipariş {day.Value:dd.MM.yyyy} günü çevresinde bulunamadı.", HttpStatusCode.NotFound)
+            ? Failure<RemoteOrder>(AdapterErrorClass.NotFound, "PTTAVM_ORDER_NOT_FOUND", $"PttAVM'de {orderNumber} numaralı sipariş {day.Value:dd.MM.yyyy} günü çevresinde bulunamadı.", HttpStatusCode.NotFound)
             : AdapterResult<RemoteOrder>.Success(order, page.RateLimit);
     }
 
@@ -54,7 +54,7 @@ public sealed partial class PttAvmHttpClient : IOrderPort
         var result = await SendSoapAsync(account, Orders, OrderWindowParameters(firstDay, lastDay), cancellationToken);
         if (!result.IsSuccess) return AdapterResult<AdapterPageResult<RemoteOrder>>.Failure(result.Error!, result.RateLimit);
         if (!OrderListShape(result.Value!))
-            return Failure<AdapterPageResult<RemoteOrder>>(AdapterErrorClass.ContractViolation, "PTTAVM_ORDER_CONTRACT_INVALID", $"PTT AVM sipariş yanıtı beklenen yapıda değil (yanıt öğeleri: {ElementShape(result.Value)}).", HttpStatusCode.BadGateway);
+            return Failure<AdapterPageResult<RemoteOrder>>(AdapterErrorClass.ContractViolation, "PTTAVM_ORDER_CONTRACT_INVALID", $"PttAVM sipariş yanıtı beklenen yapıda değil (yanıt öğeleri: {ElementShape(result.Value)}).", HttpStatusCode.BadGateway);
         return AdapterResult<AdapterPageResult<RemoteOrder>>.Success(PttAvmOrderMapper.Page(result.Value!), result.RateLimit);
     }
 
@@ -66,25 +66,25 @@ public sealed partial class PttAvmHttpClient : IOrderPort
         IsNil(result) || result.Elements().All(x => x.Name.LocalName == "TedarikciSiparisKontrolV2");
 
     public Task<AdapterResult<PackageActionResult>> ExecutePackageActionAsync(AdapterContext context, PackageActionCommand command, CancellationToken cancellationToken) =>
-        Task.FromResult(NotSupported<PackageActionResult>("PTTAVM_PACKAGE_ACTION_UNSUPPORTED", "PTT AVM siparişlerinde paket işlemleri (işleme alma, kargoya verme) henüz panelden desteklenmiyor; PTT AVM satıcı panelinden yapılır."));
+        Task.FromResult(NotSupported<PackageActionResult>("PTTAVM_PACKAGE_ACTION_UNSUPPORTED", "PttAVM siparişlerinde paket işlemleri (işleme alma, kargoya verme) henüz panelden desteklenmiyor; PttAVM satıcı panelinden yapılır."));
 
     public Task<AdapterResult<IReadOnlyList<RemoteCargoCompany>>> GetChangeableCargoCompaniesAsync(AdapterContext context, string externalPackageId, CancellationToken cancellationToken) =>
-        Task.FromResult(NotSupported<IReadOnlyList<RemoteCargoCompany>>("PTTAVM_CARGO_CHANGE_UNSUPPORTED", "PTT AVM siparişleri PTT Kargo ile gönderilir; kargo firması değiştirilmez."));
+        Task.FromResult(NotSupported<IReadOnlyList<RemoteCargoCompany>>("PTTAVM_CARGO_CHANGE_UNSUPPORTED", "PttAVM siparişleri PTT Kargo ile gönderilir; kargo firması değiştirilmez."));
 
     public Task<AdapterResult<IReadOnlyList<RemotePackageableLine>>> GetPackageableLineItemsAsync(AdapterContext context, string externalLineItemId, CancellationToken cancellationToken) =>
-        Task.FromResult(NotSupported<IReadOnlyList<RemotePackageableLine>>("PTTAVM_PACKAGEABLE_LINES_UNSUPPORTED", "PTT AVM paketlenebilir kalem listesi sağlamıyor."));
+        Task.FromResult(NotSupported<IReadOnlyList<RemotePackageableLine>>("PTTAVM_PACKAGEABLE_LINES_UNSUPPORTED", "PttAVM paketlenebilir kalem listesi sağlamıyor."));
 
     public Task<AdapterResult<CreateOrderPackageResult>> CreateOrderPackageAsync(AdapterContext context, CreateOrderPackageCommand command, CancellationToken cancellationToken) =>
-        Task.FromResult(NotSupported<CreateOrderPackageResult>("PTTAVM_PACKAGE_CREATE_UNSUPPORTED", "PTT AVM siparişten paket oluşturma servisi sağlamıyor."));
+        Task.FromResult(NotSupported<CreateOrderPackageResult>("PTTAVM_PACKAGE_CREATE_UNSUPPORTED", "PttAVM siparişten paket oluşturma servisi sağlamıyor."));
 
     public Task<AdapterResult<bool>> CreateCommonLabelAsync(AdapterContext context, CommonLabelRequest request, CancellationToken cancellationToken) =>
-        Task.FromResult(NotSupported<bool>("PTTAVM_LABEL_UNSUPPORTED", "PTT AVM kargo etiketi henüz panelden alınamıyor; PTT Kargo barkodu ve etiketi sonraki aşamada eklenecek."));
+        Task.FromResult(NotSupported<bool>("PTTAVM_LABEL_UNSUPPORTED", "PttAVM kargo etiketi henüz panelden alınamıyor; PTT Kargo barkodu ve etiketi sonraki aşamada eklenecek."));
 
     public Task<AdapterResult<CommonLabelDocument>> GetCommonLabelAsync(AdapterContext context, string cargoTrackingNumber, CancellationToken cancellationToken, string format = "ZPL") =>
-        Task.FromResult(NotSupported<CommonLabelDocument>("PTTAVM_LABEL_UNSUPPORTED", "PTT AVM kargo etiketi henüz panelden alınamıyor; PTT Kargo barkodu ve etiketi sonraki aşamada eklenecek."));
+        Task.FromResult(NotSupported<CommonLabelDocument>("PTTAVM_LABEL_UNSUPPORTED", "PttAVM kargo etiketi henüz panelden alınamıyor; PTT Kargo barkodu ve etiketi sonraki aşamada eklenecek."));
 
     public Task<AdapterResult<StageTestOrderResult>> CreateStageTestOrderAsync(AdapterContext context, string barcode, CancellationToken cancellationToken) =>
-        Task.FromResult(NotSupported<StageTestOrderResult>("PTTAVM_TEST_ORDER_UNSUPPORTED", "PTT AVM'nin test ortamı olmadığı için test siparişi oluşturulamaz."));
+        Task.FromResult(NotSupported<StageTestOrderResult>("PTTAVM_TEST_ORDER_UNSUPPORTED", "PttAVM'nin test ortamı olmadığı için test siparişi oluşturulamaz."));
 
     private static AdapterResult<T> NotSupported<T>(string code, string message) =>
         Failure<T>(AdapterErrorClass.NotSupported, code, message, HttpStatusCode.NotImplemented);

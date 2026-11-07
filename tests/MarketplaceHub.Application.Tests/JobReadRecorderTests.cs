@@ -44,7 +44,7 @@ public sealed class JobReadRecorderTests
     {
         Assert.Equal("Trendyol'dan 4 iade talebi okundu; hepsi panelde zaten günceldi.", JobReadSentence.Describe("RETURN", "Trendyol", new(4, 0, 0, 4, 0, 0)));
         Assert.Equal("N11'den 3 sipariş okundu: 1 yeni eklendi, 1 güncellendi, 1 işlenemedi.", JobReadSentence.Describe("ORDER", "N11", new(3, 1, 1, 0, 0, 1)));
-        Assert.Equal("PTT AVM'den okunacak sipariş gelmedi; panelde değişiklik yapılmadı.", JobReadSentence.Describe("ORDER", "PTT AVM", JobReadCounts.Zero));
+        Assert.Equal("PttAVM'den okunacak sipariş gelmedi; panelde değişiklik yapılmadı.", JobReadSentence.Describe("ORDER", "PttAVM", JobReadCounts.Zero));
         Assert.Equal("Shopify'dan 1 sipariş okundu; panelde zaten günceldi.", JobReadSentence.Describe("ORDER", "Shopify", new(1, 0, 0, 1, 0, 0)));
     }
 }

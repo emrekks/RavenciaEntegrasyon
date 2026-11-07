@@ -22,21 +22,6 @@
     padding: 0 12px;
     border-radius: 7px;
   }
-  .app-shell.stitch-shell main :is(.order-reference-head, .return-reference-head, .invoice-reference-head) :is(.order-column-filter-trigger, .platform-multi-select-trigger) {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    width: 100%;
-    height: 100%;
-    padding: 0 12px;
-    background: transparent;
-    border: 0;
-    border-radius: 7px;
-  }
-  .app-shell.stitch-shell main :is(.order-reference-head, .return-reference-head, .invoice-reference-head) :is(.platform-multi-select-field, .platform-multi-select) { position: static; }
-  .app-shell.stitch-shell main :is(.order-reference-head, .return-reference-head, .invoice-reference-head) .platform-multi-select-label { display: none; }
 }
 
 /* Filter popovers on phones: cells in the right-hand column (the odd filters, as the platform
@@ -48,7 +33,6 @@
 @media (max-width: 1024px) {
   /* The platform filter funnel was positioned absolutely by the desktop rule; in the grid cell it
      sits at the right edge like the other filters. */
-  .app-shell.stitch-shell main :is(.order-reference-head, .return-reference-head, .invoice-reference-head) .platform-multi-select-trigger > svg { position: static; inset: auto; transform: none; }
   /* Cargo logos keep a 20px height in the cards now that they have no badge. */
   .app-shell.stitch-shell main :is(.order-reference-row, .return-reference-row, .invoice-reference-row) .cargo-provider-icon.cargo-provider-icon { width: auto; max-width: 96px; height: 20px; max-height: none; }
 }

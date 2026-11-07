@@ -38,7 +38,7 @@ internal static class UnreadableOrderLines
         "HEPSIBURADA" => "Hepsiburada",
         "N11" => "N11",
         "PAZARAMA" => "Pazarama",
-        "PTTAVM" => "PTT AVM",
+        "PTTAVM" => "PttAVM",
         "SHOPIFY" => "Shopify",
         _ => "Pazaryeri"
     };

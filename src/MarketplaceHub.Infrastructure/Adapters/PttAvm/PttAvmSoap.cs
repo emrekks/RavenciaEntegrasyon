@@ -85,13 +85,13 @@ public sealed partial class PttAvmHttpClient
         {
             // Never sent: the quota stayed full. This is not an "outcome unknown" write.
             if (!timeout.QuotaAcquired)
-                return AdapterResult<XElement>.Failure(new(AdapterErrorClass.RateLimit, "PTTAVM_LOCAL_QUOTA_WAIT", "PTT AVM istek kotası dolu olduğu için istek gönderilmedi; yeniden denenecek.", 429, TimeSpan.FromSeconds(15), null));
-            return AdapterResult<XElement>.Failure(new(AdapterErrorClass.TransientNetwork, "PTTAVM_TIMEOUT", "PTT AVM isteği zaman aşımına uğradı.", null, TimeSpan.FromSeconds(15), null));
+                return AdapterResult<XElement>.Failure(new(AdapterErrorClass.RateLimit, "PTTAVM_LOCAL_QUOTA_WAIT", "PttAVM istek kotası dolu olduğu için istek gönderilmedi; yeniden denenecek.", 429, TimeSpan.FromSeconds(15), null));
+            return AdapterResult<XElement>.Failure(new(AdapterErrorClass.TransientNetwork, "PTTAVM_TIMEOUT", "PttAVM isteği zaman aşımına uğradı.", null, TimeSpan.FromSeconds(15), null));
         }
         catch (HttpRequestException exception)
         {
             logger.LogWarning(exception, "PTT AVM SOAP isteği başarısız. ConnectionId: {ConnectionId}, Operation: {Operation}", account.Connection.Id, operation);
-            return AdapterResult<XElement>.Failure(new(AdapterErrorClass.TransientNetwork, "PTTAVM_NETWORK_ERROR", "PTT AVM bağlantısı geçici olarak kurulamadı.", null, TimeSpan.FromSeconds(15), null));
+            return AdapterResult<XElement>.Failure(new(AdapterErrorClass.TransientNetwork, "PTTAVM_NETWORK_ERROR", "PttAVM bağlantısı geçici olarak kurulamadı.", null, TimeSpan.FromSeconds(15), null));
         }
     }
 
@@ -100,9 +100,9 @@ public sealed partial class PttAvmHttpClient
         // A page from the security gateway in front of the service never reached it; this comes and goes.
         if (LooksLikeHtml(body))
             return (null, new(AdapterErrorClass.RateLimit, "PTTAVM_GATEWAY_BLOCKED",
-                "PTT AVM'nin güvenlik geçidi isteği engelledi (servis yerine HTML sayfa döndü). Geçici olabilir; 15 dakika sonra yeniden denenir.", (int)status, TimeSpan.FromMinutes(15), null));
+                "PttAVM'nin güvenlik geçidi isteği engelledi (servis yerine HTML sayfa döndü). Geçici olabilir; 15 dakika sonra yeniden denenir.", (int)status, TimeSpan.FromMinutes(15), null));
         if (status == HttpStatusCode.TooManyRequests)
-            return (null, new(AdapterErrorClass.RateLimit, "PTTAVM_RATE_LIMITED", "PTT AVM istek sınırına ulaşıldı; işlem biraz sonra yeniden denenecek.", 429, retryAfter ?? TimeSpan.FromSeconds(60), null));
+            return (null, new(AdapterErrorClass.RateLimit, "PTTAVM_RATE_LIMITED", "PttAVM istek sınırına ulaşıldı; işlem biraz sonra yeniden denenecek.", 429, retryAfter ?? TimeSpan.FromSeconds(60), null));
         XDocument? document = null;
         try { if (!string.IsNullOrWhiteSpace(body)) document = XDocument.Parse(body); }
         catch (XmlException) { }
@@ -112,17 +112,17 @@ public sealed partial class PttAvmHttpClient
         if (status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
             return (null, new(AdapterErrorClass.Authentication, "PTTAVM_CREDENTIALS_REJECTED", PttAvmErrorAdvice.CredentialsRejected, (int)status, null, null));
         if (status == HttpStatusCode.RequestTimeout)
-            return (null, new(AdapterErrorClass.TransientNetwork, "PTTAVM_REMOTE_TIMEOUT", "PTT AVM isteği kendi tarafında zaman aşımına uğrattı; işlem yeniden denenecek.", 408, retryAfter ?? TimeSpan.FromSeconds(15), null));
+            return (null, new(AdapterErrorClass.TransientNetwork, "PTTAVM_REMOTE_TIMEOUT", "PttAVM isteği kendi tarafında zaman aşımına uğrattı; işlem yeniden denenecek.", 408, retryAfter ?? TimeSpan.FromSeconds(15), null));
         if ((int)status >= 500)
-            return (null, new(AdapterErrorClass.Remote5xx, "PTTAVM_REMOTE_ERROR", "PTT AVM servisi geçici olarak hata veriyor; işlem yeniden denenecek.", (int)status, retryAfter ?? TimeSpan.FromSeconds(30), null));
+            return (null, new(AdapterErrorClass.Remote5xx, "PTTAVM_REMOTE_ERROR", "PttAVM servisi geçici olarak hata veriyor; işlem yeniden denenecek.", (int)status, retryAfter ?? TimeSpan.FromSeconds(30), null));
         if ((int)status >= 400)
-            return (null, new(AdapterErrorClass.Validation, "PTTAVM_REQUEST_REJECTED", "PTT AVM isteği reddetti.", (int)status, null, null));
+            return (null, new(AdapterErrorClass.Validation, "PTTAVM_REQUEST_REJECTED", "PttAVM isteği reddetti.", (int)status, null, null));
         if (document is null)
-            return (null, new(AdapterErrorClass.ContractViolation, "PTTAVM_SOAP_INVALID", "PTT AVM geçerli bir SOAP yanıtı vermedi.", (int)status, null, null));
+            return (null, new(AdapterErrorClass.ContractViolation, "PTTAVM_SOAP_INVALID", "PttAVM geçerli bir SOAP yanıtı vermedi.", (int)status, null, null));
         var response = document.Descendants().FirstOrDefault(x => x.Name == XName.Get(operation + "Response", ServiceNamespace));
         var result = response?.Elements().FirstOrDefault(x => x.Name == XName.Get(operation + "Result", ServiceNamespace));
         if (response is null)
-            return (null, new(AdapterErrorClass.ContractViolation, "PTTAVM_SOAP_CONTRACT_INVALID", $"PTT AVM {operation} yanıtı beklenen yapıda değil (yanıt öğeleri: {ElementShape(document.Root)}).", (int)status, null, null));
+            return (null, new(AdapterErrorClass.ContractViolation, "PTTAVM_SOAP_CONTRACT_INVALID", $"PttAVM {operation} yanıtı beklenen yapıda değil (yanıt öğeleri: {ElementShape(document.Root)}).", (int)status, null, null));
         // The result element is optional (minOccurs=0); an absent one reads as nil.
         return (result ?? new XElement(XName.Get(operation + "Result", ServiceNamespace), new XAttribute(XName.Get("nil", InstanceNamespace), "true")), null);
     }
@@ -155,10 +155,10 @@ public sealed partial class PttAvmHttpClient
         // keeps the rejection, since whether it took effect is not known.
         if (operation is not null && IsReadOperation(operation) && IsUnexplainedFault(reason))
             return new(AdapterErrorClass.Remote5xx, "PTTAVM_REMOTE_FAULT",
-                message is null ? "PTT AVM okuma isteğine nedeni belirtilmeyen bir hata döndü; yeniden denenecek." : $"PTT AVM okuma isteğine nedeni belirtilmeyen bir hata döndü ({message}); yeniden denenecek.",
+                message is null ? "PttAVM okuma isteğine nedeni belirtilmeyen bir hata döndü; yeniden denenecek." : $"PttAVM okuma isteğine nedeni belirtilmeyen bir hata döndü ({message}); yeniden denenecek.",
                 status, TimeSpan.FromSeconds(60), null);
         return new(AdapterErrorClass.Validation, "PTTAVM_REQUEST_REJECTED",
-            message is null ? "PTT AVM isteği reddetti (SOAP hatası)." : $"PTT AVM isteği reddetti: {PttAvmErrorAdvice.WithAdvice(message)}", status, null, null);
+            message is null ? "PttAVM isteği reddetti (SOAP hatası)." : $"PttAVM isteği reddetti: {PttAvmErrorAdvice.WithAdvice(message)}", status, null, null);
     }
 
     internal static bool IsSecurityFault(string codes, string? reason) =>

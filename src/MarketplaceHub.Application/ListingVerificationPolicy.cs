@@ -111,8 +111,8 @@ public static class ListingVerificationPolicy
         "HEPSIBURADA" => "Hepsiburada",
         "SHOPIFY" => "Shopify",
         "TRENDYOL" => "Trendyol",
-        "PTTAVM" => "PTT AVM",
-        "N11" => "n11",
+        "PTTAVM" => "PttAVM",
+        "N11" => "N11",
         "PAZARAMA" => "Pazarama",
         _ => platformCode ?? "Pazaryeri"
     };

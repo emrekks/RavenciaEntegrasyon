@@ -71,7 +71,7 @@
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-drawer-header > div { flex: 1; min-width: 0; }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-drawer-header h2 { margin: 0; font-size: 18px; font-weight: 600; text-transform: none; }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-drawer-header p { margin: 4px 0 0; color: var(--rv-color-muted); font-size: 13px; overflow-wrap: anywhere; }
-.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-drawer-close { display: grid; width: 32px; min-width: 32px; height: 32px; min-height: 32px; place-items: center; padding: 0; color: var(--rv-color-muted); background: none; border: 0; border-radius: 7px; box-shadow: none; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-drawer-close { display: grid; flex: 0 0 32px; width: 32px; min-width: 32px; height: 32px; min-height: 32px; place-items: center; padding: 0; color: var(--rv-color-muted); background: none; border: 0; border-radius: 7px; box-shadow: none; }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-drawer-close:hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-soft)); }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-drawer-body { display: grid; align-content: start; gap: 10px; min-height: 0; padding: 14px 20px 18px; overflow-y: auto; }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-section-kicker { display: none; }

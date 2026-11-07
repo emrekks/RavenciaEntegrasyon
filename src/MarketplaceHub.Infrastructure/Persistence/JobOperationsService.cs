@@ -1258,7 +1258,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         if (type is MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync or MarketplaceJobTypes.N11OrderRecoverySync or MarketplaceJobTypes.PazaramaOrderRecoverySync or MarketplaceJobTypes.PttAvmOrderRecoverySync) return new("Tarama türü", "Tam sipariş taraması", "Erişilebilen sipariş pencereleri taranarak eksik yerel kayıtlar tamamlandı.");
         if (type is MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.N11OrderSync or MarketplaceJobTypes.PazaramaOrderSync or MarketplaceJobTypes.PttAvmOrderSync) return new("Yapılan değişiklik", "Sipariş senkronizasyonu", "Sipariş bilgileri pazaryerinden eşitlendi.");
         if (type is MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.HepsiburadaReferenceSync or MarketplaceJobTypes.N11ReferenceSync or MarketplaceJobTypes.PazaramaReferenceSync or MarketplaceJobTypes.PttAvmReferenceSync)
-            return new("Yapılan işlem", type == MarketplaceJobTypes.HepsiburadaReferenceSync ? "Hepsiburada kategori ve eşleştirme verisi" : type == MarketplaceJobTypes.N11ReferenceSync ? "N11 kategori ve eşleştirme verisi" : type == MarketplaceJobTypes.PttAvmReferenceSync ? "PTT AVM kategori verisi" : type == MarketplaceJobTypes.PazaramaReferenceSync ? "Pazarama kategori, özellik ve marka verisi" : "Trendyol kategori ve eşleştirme verisi", "Kategori, özellik ve eşleştirme referansları salt okunur yenilendi; dış platforma veri gönderilmedi.");
+            return new("Yapılan işlem", type == MarketplaceJobTypes.HepsiburadaReferenceSync ? "Hepsiburada kategori ve eşleştirme verisi" : type == MarketplaceJobTypes.N11ReferenceSync ? "N11 kategori ve eşleştirme verisi" : type == MarketplaceJobTypes.PttAvmReferenceSync ? "PttAVM kategori verisi" : type == MarketplaceJobTypes.PazaramaReferenceSync ? "Pazarama kategori, özellik ve marka verisi" : "Trendyol kategori ve eşleştirme verisi", "Kategori, özellik ve eşleştirme referansları salt okunur yenilendi; dış platforma veri gönderilmedi.");
         if (ProductOrInvoiceChange(type) is { } explicitChange) return explicitChange;
 
         try
@@ -1316,7 +1316,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             "SHOPIFY" => "Shopify",
             "N11" => "N11",
             "PAZARAMA" => "Pazarama",
-            "PTTAVM" => "PTT AVM",
+            "PTTAVM" => "PttAVM",
             _ => "Ravencia",
         };
     }

@@ -487,14 +487,14 @@ internal static class ReportCosts
     // What the platforms costed from their tariffs (ReportPlatformCosts) rest on.
     private static string? PlatformNote(ReportCostsView costs, CultureInfo tr) =>
         costs.Cargo is { PlatformOrders: > 0 } cargo
-            ? $"Hepsiburada, n11, Pazarama, PTT AVM ve Shopify'ın {cargo.PlatformOrders.ToString("N0", tr)} siparişinin kargosu ({cargo.PlatformEstimated.ToString("N2", tr)} ₺), hizmet bedelleri ve stopajı pazaryerlerinin 2026 tarifelerinden tahmin edildi: kargo, paketin kargo firması ve ürünlerin desisiyle (desi girilmemiş ürün 1 desi sayılır, barem sınırları uygulanır); tamamen iade edilen siparişte dönüş kargosu da satıcıya yazılır. Shopify'da sipariş başına 120 ₺ kargo ve kartlı ödeme (iyzico %4,29 + 0,25 ₺, Shopify %2) varsayıldı."
+            ? $"Hepsiburada, N11, Pazarama, PttAVM ve Shopify'ın {cargo.PlatformOrders.ToString("N0", tr)} siparişinin kargosu ({cargo.PlatformEstimated.ToString("N2", tr)} ₺), hizmet bedelleri ve stopajı pazaryerlerinin 2026 tarifelerinden tahmin edildi: kargo, paketin kargo firması ve ürünlerin desisiyle (desi girilmemiş ürün 1 desi sayılır, barem sınırları uygulanır); tamamen iade edilen siparişte dönüş kargosu da satıcıya yazılır. Shopify'da sipariş başına 120 ₺ kargo ve kartlı ödeme (iyzico %4,29 + 0,25 ₺, Shopify %2) varsayıldı."
             : null;
 
     // The orders whose commission the marketplace's own record gave (Trendyol's settlement, Hepsiburada's commission
     // records, n11's settlement lines, Pazarama's money movements), beside what the estimate said for them.
     private static string? RealCommissionNote(ReportCostsView costs, CultureInfo tr) =>
         costs.Commission is { RealOrders: > 0 } commission
-            ? $"Gerçek Komisyon: pazaryerinin kendi kaydı olan {commission.RealOrders.ToString("N0", tr)} siparişte (Trendyol hesap kesimi, Hepsiburada muhasebe kayıtları, n11 hakediş kayıtları, Pazarama finans hareketleri) komisyon tahmin yerine gerçek tutarla (iadeler ve düzeltmeler düşülmüş) alındı: {commission.Real.ToString("N2", tr)} ₺, aynı siparişlerin tahmini {commission.EstimatedForSettled.ToString("N2", tr)} ₺. Kaydı olmayan siparişlerin komisyonu Tahmini Komisyon'dur: {commission.EstimatedForUnsettled.ToString("N2", tr)} ₺."
+            ? $"Gerçek Komisyon: pazaryerinin kendi kaydı olan {commission.RealOrders.ToString("N0", tr)} siparişte (Trendyol hesap kesimi, Hepsiburada muhasebe kayıtları, N11 hakediş kayıtları, Pazarama finans hareketleri) komisyon tahmin yerine gerçek tutarla (iadeler ve düzeltmeler düşülmüş) alındı: {commission.Real.ToString("N2", tr)} ₺, aynı siparişlerin tahmini {commission.EstimatedForSettled.ToString("N2", tr)} ₺. Kaydı olmayan siparişlerin komisyonu Tahmini Komisyon'dur: {commission.EstimatedForUnsettled.ToString("N2", tr)} ₺."
             : null;
 
     // Each store's commission rate over the period's lines that carry a commission (none: the store is not here).

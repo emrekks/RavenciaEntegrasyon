@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { DialogSurface, UiIcon } from '../../../shared/components'
+import { PanelSelect } from '../../../shared/PanelSelect'
 
 export type VariantOptionEditField = {
   name: string
@@ -35,10 +36,7 @@ export function VariantOptionEditDialog({ label, fields, sameValueCount, onClose
           {fields.map(field => <div className="variant-option-edit-pair" key={field.name}>
             <label>Seçenek Adı<input value={field.name} readOnly disabled /></label>
             <label>Seçenek Değeri{field.values
-              ? <select value={draft[field.name] ?? ''} onChange={event => setDraft(current => ({ ...current, [field.name]: event.target.value }))}>
-                {!field.values.some(value => value.value === field.value) && <option value={field.value}>{field.value}</option>}
-                {field.values.map(value => <option key={value.id} value={value.value}>{value.value}</option>)}
-              </select>
+              ? <PanelSelect ariaLabel={field.name} value={draft[field.name] ?? ''} onChange={next => setDraft(current => ({ ...current, [field.name]: next }))} options={[...(field.values.some(value => value.value === field.value) ? [] : [{ value: field.value, label: field.value }]), ...field.values.map(value => ({ value: value.value, label: value.value }))]} />
               : <input value={draft[field.name] ?? ''} onChange={event => setDraft(current => ({ ...current, [field.name]: event.target.value }))} />}</label>
           </div>)}
         </div>

@@ -98,7 +98,7 @@ public static class AttentionNoticePolicy
         "HEPSIBURADA" => "Hepsiburada",
         "N11" => "N11",
         "PAZARAMA" => "Pazarama",
-        "PTTAVM" => "PTT AVM",
+        "PTTAVM" => "PttAVM",
         "SHOPIFY" => "Shopify",
         _ => platformCode
     };

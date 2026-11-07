@@ -42,13 +42,13 @@ public sealed partial class PttAvmHttpClient
             rate = result.RateLimit ?? rate;
             if (PttAvmVariantMapper.TotalPages(result.Value!) is { } reported) totalPages = Math.Max(totalPages ?? 0, reported);
             if (totalPages > MaxVariantPages)
-                return VariantListIncomplete($"PTT AVM varyant listesi {totalPages} sayfa; en çok {MaxVariantPages} sayfa okunabiliyor.", rate);
+                return VariantListIncomplete($"PttAVM varyant listesi {totalPages} sayfa; en çok {MaxVariantPages} sayfa okunabiliyor.", rate);
             var added = 0;
             foreach (var (productBarcode, entries) in PttAvmVariantMapper.ProductsWithVariants(result.Value!))
                 if (variants.TryAdd(productBarcode, entries)) added++;
             if (totalPages is { } last ? page >= last : added == 0) { complete = true; break; }
         }
-        if (!complete) return VariantListIncomplete($"PTT AVM varyant listesi {MaxVariantPages} sayfada bitmedi.", rate);
+        if (!complete) return VariantListIncomplete($"PttAVM varyant listesi {MaxVariantPages} sayfada bitmedi.", rate);
         if (VariantLists.Count > 50) VariantLists.Clear();
         VariantLists[account.Connection.Id] = (now, variants);
         // The element names and one variant name (catalog text, e.g. "Lacivert / L") show the live shape of the list.

@@ -74,7 +74,7 @@ public sealed class N11SettlementSyncJobHandler(AppDbContext db, IN11SettlementP
             received += lines.Count + skipped.Count;
             if (day < recent && lines.Count > 0) olderStored++;
             var ids = lines.Select(x => ExternalId(x.OrderItemId, day)).ToList();
-            await FinanceRecordIssues.RecordAsync(db, request.TenantId, request.ConnectionId, "n11", skipped, ids, now, cancellationToken);
+            await FinanceRecordIssues.RecordAsync(db, request.TenantId, request.ConnectionId, "N11", skipped, ids, now, cancellationToken);
             var stored = await db.MarketplaceFinanceTransactions
                 .Where(x => x.TenantId == request.TenantId && x.ConnectionId == request.ConnectionId && x.Source == Source && ids.Contains(x.ExternalId))
                 .ToDictionaryAsync(x => x.ExternalId, StringComparer.Ordinal, cancellationToken);

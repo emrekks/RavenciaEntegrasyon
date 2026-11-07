@@ -30,9 +30,9 @@ public sealed class PublicationStatusRefreshPolicyTests
     [Fact]
     public void AStoreNamedAfterItsMarketplaceIsNamedOnce()
     {
-        var refusal = PublicationStatusRefreshPolicy.Refusal(Connection("PTTAVM", "DRAFT", displayName: "PTT AVM"));
+        var refusal = PublicationStatusRefreshPolicy.Refusal(Connection("PTTAVM", "DRAFT", displayName: "PttAVM"));
 
-        Assert.StartsWith("PTT AVM bağlantısı etkin değil (durum: taslak)", refusal);
+        Assert.StartsWith("PttAVM bağlantısı etkin değil (durum: taslak)", refusal);
     }
 
     [Fact]

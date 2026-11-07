@@ -17,7 +17,7 @@ public static class PublicationStatusRefreshPolicy
         ["SHOPIFY"] = "Shopify",
         ["N11"] = "N11",
         ["PAZARAMA"] = "Pazarama",
-        ["PTTAVM"] = "PTT AVM"
+        ["PTTAVM"] = "PttAVM"
     };
 
     private static readonly IReadOnlyDictionary<string, string> StatusLabels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)

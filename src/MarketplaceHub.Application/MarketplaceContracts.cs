@@ -382,7 +382,7 @@ public enum PttAvmManualWriteDecision
 public static class PttAvmManualWritePolicy
 {
     public const string DisabledCode = "EXTERNAL_WRITE_POLICY_DISABLED";
-    public const string DisabledMessage = "PTT AVM manuel dış yazmaları kapalı; Entegrasyonlar → Pazaryerine Yazma bölümünden açın.";
+    public const string DisabledMessage = "PttAVM manuel dış yazmaları kapalı; Entegrasyonlar → Pazaryerine Yazma bölümünden açın.";
 
     public static bool Applies(string? platformCode) => string.Equals(platformCode?.Trim(), "PTTAVM", StringComparison.OrdinalIgnoreCase);
 

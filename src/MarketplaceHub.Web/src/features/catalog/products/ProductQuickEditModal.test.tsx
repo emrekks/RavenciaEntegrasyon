@@ -199,10 +199,9 @@ describe('ProductQuickEditModal on a family of colour cards', () => {
     await render(cards)
     await pick('Renk', 'Tümü')
     const amount = document.body.querySelector<HTMLInputElement>('input[placeholder="Miktar"]')!
-    const action = Array.from(document.body.querySelectorAll<HTMLSelectElement>('select.rr-in')).find(item => item.querySelector('option[value="ADD"]'))!
+    await click(document.body.querySelector<HTMLButtonElement>('button[aria-label^="Stok İşlemi"]')!)
+    await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('[role="option"]')).find(option => option.textContent === 'Bu Kadar Ekle (+)')!)
     await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(action, 'ADD')
-      action.dispatchEvent(new Event('change', { bubbles: true }))
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(amount, '5')
       amount.dispatchEvent(new Event('input', { bubbles: true }))
     })

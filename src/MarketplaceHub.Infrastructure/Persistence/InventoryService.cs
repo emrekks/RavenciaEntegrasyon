@@ -301,12 +301,12 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
         // Hepsiburada is accepted only for the SIT certification upload of a STAGE connection; any other
         // Hepsiburada connection (PRODUCTION) gets the same refusal as before.
         if (connection is not null && connection.PlatformCode == "HEPSIBURADA" && !HepsiburadaStageCertificationPolicy.IsStageHepsiburada(connection)) connection = null;
-        if (connection is null) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Fiyat-stok gönderimi için aktif Trendyol veya aktif/doğrulanmış N11, Pazarama ya da PTT AVM bağlantısı gerekir.", 422);
+        if (connection is null) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Fiyat-stok gönderimi için aktif Trendyol veya aktif/doğrulanmış N11, Pazarama ya da PttAVM bağlantısı gerekir.", 422);
         if (connection.PlatformCode == "HEPSIBURADA") return await EnqueueHepsiburadaStagePriceInventoryAsync(tenantId, connection, idempotencyKey, correlationId, stockCode, cancellationToken);
         Guid? variantId = null;
         if (!string.IsNullOrWhiteSpace(stockCode))
         {
-            if (connection.PlatformCode is not ("N11" or "PAZARAMA" or "PTTAVM")) return ServiceResult<Guid>.Fail("VALIDATION_FAILED", "Stok koduyla tekil gönderim yalnız N11, Pazarama ve PTT AVM bağlantısında kullanılabilir.", 422);
+            if (connection.PlatformCode is not ("N11" or "PAZARAMA" or "PTTAVM")) return ServiceResult<Guid>.Fail("VALIDATION_FAILED", "Stok koduyla tekil gönderim yalnız N11, Pazarama ve PttAVM bağlantısında kullanılabilir.", 422);
             var code = stockCode.Trim();
             variantId = connection.PlatformCode == "PTTAVM"
                 ? await PttAvmSendVariantAsync(tenantId, connectionId, code, cancellationToken)
@@ -314,7 +314,7 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
                     .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == code)
                     .Select(x => (Guid?)x.VariantId)
                     .SingleOrDefaultAsync(cancellationToken);
-            if (variantId is null && connection.PlatformCode == "PTTAVM") return ServiceResult<Guid>.Fail("PTTAVM_BARCODE_NOT_LINKED", $"'{code}' barkodu panelde bir varyanta bağlı değil. Önce PTT AVM ürün eşleştirmesini çalıştırın.", 422);
+            if (variantId is null && connection.PlatformCode == "PTTAVM") return ServiceResult<Guid>.Fail("PTTAVM_BARCODE_NOT_LINKED", $"'{code}' barkodu panelde bir varyanta bağlı değil. Önce PttAVM ürün eşleştirmesini çalıştırın.", 422);
             if (variantId is null) return ServiceResult<Guid>.Fail(connection.PlatformCode == "PAZARAMA" ? "PAZARAMA_BARCODE_NOT_LINKED" : "N11_STOCK_CODE_NOT_LINKED", connection.PlatformCode == "PAZARAMA" ? $"'{code}' barkodu panelde bir varyanta bağlı değil. Önce Pazarama ürün eşleştirmesini çalıştırın." : $"'{code}' stok kodu panelde bir varyanta bağlı değil. Önce N11 ürün eşleştirmesini çalıştırın.", 404);
             if (connection.PlatformCode is not ("PAZARAMA" or "PTTAVM") && !await db.ConnectionSyncPolicies.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == MarketplaceExternalWritePolicies.Stock && x.Enabled, cancellationToken))
                 return ServiceResult<Guid>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Stok dış yazma akışı kapalı.", 422);

@@ -158,7 +158,7 @@ public static class InvoicingEndpoints
         if (order is null) return Problem(http, new("RESOURCE_NOT_FOUND", "Sipariş bulunamadı.", 404));
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Id == order.ConnectionId, http.RequestAborted);
         if (connection is null || !ManualInvoiceDeliveryPolicy.SupportsManualDocument(connection.PlatformCode))
-            return Problem(http, new("INVOICE_MARKETPLACE_UNSUPPORTED", "Manuel fatura belgesi yalnız Trendyol, Hepsiburada, Shopify, n11, Pazarama veya PTT AVM siparişlerine eklenebilir.", 422));
+            return Problem(http, new("INVOICE_MARKETPLACE_UNSUPPORTED", "Manuel fatura belgesi yalnız Trendyol, Hepsiburada, Shopify, N11, Pazarama veya PttAVM siparişlerine eklenebilir.", 422));
         if (!await db.ShipmentPackages.AsNoTracking().AnyAsync(x => x.TenantId == tenant.TenantId && x.OrderId == orderId && x.Status != ShipmentPackageStatus.Cancelled, http.RequestAborted))
             return Problem(http, new("INVOICE_PACKAGE_REQUIRED", "Siparişte etkin bir paket bulunamadı.", 422));
 
@@ -178,7 +178,7 @@ public static class InvoicingEndpoints
             return Problem(http, new("INVOICE_NUMBER_INVALID", "Mikro ihracat faturası için GİB biçiminde fatura numarası gerekli: 3 harf/rakam ve 13 rakam (örnek: ABC2026000000045).", 422));
         // n11 takes an invoice link only with its 16-character number (3 letters or digits and 13 digits).
         if (connection.PlatformCode == "N11" && !string.IsNullOrWhiteSpace(invoiceNumber) && !InvoiceIssuePolicy.IsGibInvoiceNumber(invoiceNumber))
-            return Problem(http, new("INVOICE_NUMBER_INVALID", "n11 fatura numarasını GİB biçiminde bekler: 3 harf/rakam ve 13 rakam (örnek: ABC2026000000045).", 422));
+            return Problem(http, new("INVOICE_NUMBER_INVALID", "N11 fatura numarasını GİB biçiminde bekler: 3 harf/rakam ve 13 rakam (örnek: ABC2026000000045).", 422));
         // n11, Pazarama and PTT AVM take only links that end in a document extension (pdf, png, jpeg); an uploaded PDF
         // is sent under its .pdf link.
         if (!string.IsNullOrWhiteSpace(externalUrl) && ManualInvoiceDeliveryPolicy.RequiresDocumentExtension(connection.PlatformCode)
@@ -320,7 +320,7 @@ public static class InvoicingEndpoints
         if (document.IssuedAt is null) return Problem(http, new("INVOICE_DATE_REQUIRED", "Platforma iletim için faturanın tarihi gereklidir.", 422));
         var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenant.TenantId && x.Id == document.ConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(http.RequestAborted);
         if (platformCode is "SHOPIFY" or "N11" && string.IsNullOrWhiteSpace(document.InvoiceNumber))
-            return Problem(http, new("INVOICE_NUMBER_REQUIRED", $"{(platformCode == "N11" ? "n11" : "Shopify")} siparişine iletim için fatura numarası gereklidir.", 422));
+            return Problem(http, new("INVOICE_NUMBER_REQUIRED", $"{(platformCode == "N11" ? "N11" : "Shopify")} siparişine iletim için fatura numarası gereklidir.", 422));
         if (packages.Any(package => package.ConnectionId != document.ConnectionId))
             return Problem(http, new("INVOICE_PACKAGE_CONNECTION_MISMATCH", "Sipariş paketleri farklı pazaryeri bağlantılarına bağlı. Belgenin hangi hedeflere gönderileceği güvenle belirlenemedi.", 409));
         var jobs = new List<Guid>();
@@ -567,7 +567,7 @@ public static class InvoicingEndpoints
         if (packagePlatforms.Count != packageIds.Length) return Problem(http, new("RESOURCE_NOT_FOUND", "Seçilen fatura siparişlerinin bir kısmı bulunamadı.", 404));
         // Only where the marketplace cannot tell the panel about an invoice uploaded in its own seller panel: Shopify has
         // no invoice of its own, n11, PTT AVM and Pazarama report only invoices sent through the API.
-        if (packagePlatforms.Any(x => !ManualInvoiceStatusPlatforms.Contains(x.PlatformCode))) return Problem(http, new("MANUAL_INVOICE_STATUS_PLATFORM_UNSUPPORTED", "Elle fatura durumu yalnızca Shopify, n11, PTT AVM ve Pazarama siparişlerinde kullanılabilir; Trendyol ve Hepsiburada faturayı kendileri bildirir. Hiçbir sipariş güncellenmedi.", 422));
+        if (packagePlatforms.Any(x => !ManualInvoiceStatusPlatforms.Contains(x.PlatformCode))) return Problem(http, new("MANUAL_INVOICE_STATUS_PLATFORM_UNSUPPORTED", "Elle fatura durumu yalnızca Shopify, N11, PttAVM ve Pazarama siparişlerinde kullanılabilir; Trendyol ve Hepsiburada faturayı kendileri bildirir. Hiçbir sipariş güncellenmedi.", 422));
         var packages = await db.ShipmentPackages.Where(x => x.TenantId == tenant.TenantId && packageIds.Contains(x.Id)).ToListAsync(http.RequestAborted);
         var now = timeProvider.GetUtcNow();
         foreach (var package in packages)

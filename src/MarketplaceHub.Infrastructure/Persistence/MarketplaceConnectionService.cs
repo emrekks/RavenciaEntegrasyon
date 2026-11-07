@@ -115,7 +115,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         if (platform == "SHOPIFY" && requestedEnvironment != "PRODUCTION") return Invalid<ConnectionView>("environment", "Shopify bağlantısı yalnız Canlı ortamda oluşturulabilir.");
         if (platform == "N11" && requestedEnvironment != "PRODUCTION") return Invalid<ConnectionView>("environment", "N11'in test ortamı yok; bağlantı yalnız Canlı ortamda oluşturulabilir.");
         if (platform == "PAZARAMA" && requestedEnvironment != "PRODUCTION") return Invalid<ConnectionView>("environment", "Pazarama'nın test ortamı yok; bağlantı yalnız Canlı ortamda oluşturulabilir.");
-        if (platform == "PTTAVM" && requestedEnvironment != "PRODUCTION") return Invalid<ConnectionView>("environment", "PTT AVM'nin test ortamı yok; bağlantı yalnız Canlı ortamda oluşturulabilir.");
+        if (platform == "PTTAVM" && requestedEnvironment != "PRODUCTION") return Invalid<ConnectionView>("environment", "PttAVM'nin test ortamı yok; bağlantı yalnız Canlı ortamda oluşturulabilir.");
         var environment = platform is "SHOPIFY" or "N11" or "PAZARAMA" or "PTTAVM" ? "PRODUCTION" : requestedEnvironment;
         var apiVersion = command.ApiVersion.Trim();
         if (platform == "TRENDYOL" && !string.Equals(apiVersion, "V2", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "Trendyol marketplace bağlantısı yalnız Product Integration V2 kullanır.");
@@ -123,7 +123,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         if (platform == "HEPSIBURADA" && !string.Equals(apiVersion, "V1.0", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "Hepsiburada bağlantısı sipariş/listeleme API sürümü V1.0 ile pinlenmelidir.");
         if (platform == "N11" && !string.Equals(apiVersion, "V1", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "N11 bağlantısı REST API sürümü V1 ile pinlenmelidir.");
         if (platform == "PAZARAMA" && !string.Equals(apiVersion, "V1", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "Pazarama bağlantısı API sürümü V1 ile pinlenmelidir.");
-        if (platform == "PTTAVM" && !string.Equals(apiVersion, "V1", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "PTT AVM bağlantısı API sürümü V1 ile pinlenmelidir.");
+        if (platform == "PTTAVM" && !string.Equals(apiVersion, "V1", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "PttAVM bağlantısı API sürümü V1 ile pinlenmelidir.");
         if (platform == "TRENDYOL_EFATURAM" && !string.Equals(apiVersion, "1.0.0", StringComparison.OrdinalIgnoreCase)) return Invalid<ConnectionView>("apiVersion", "E-Faturam bağlantısı doğrulanmış doküman sürümü 1.0.0 ile pinlenmelidir.");
         if (string.IsNullOrWhiteSpace(command.DisplayName) || string.IsNullOrWhiteSpace(command.ExternalStoreId) || platform == "TRENDYOL" && string.IsNullOrWhiteSpace(command.UserAgentIdentity)) return Invalid<ConnectionView>("connection", "Ad ve mağaza kapsamı; Trendyol için ayrıca User-Agent kimliği zorunludur.");
         // Owner decision: a format other than "SatıcıID - FirmaAdı" is only a warning. An identity that cannot be sent
@@ -149,8 +149,8 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         // PTT AVM: the Mağaza ID is the connection's store scope; the API user name and password sign every SOAP call.
         if (platform == "PTTAVM" && PttAvmStoreId(externalStoreId) is null) return Invalid<ConnectionView>("externalStoreId", PttAvmStoreIdMessage);
         if (platform == "PTTAVM") externalStoreId = PttAvmStoreId(externalStoreId);
-        if (platform == "PTTAVM" && string.IsNullOrWhiteSpace(command.PttAvmUsername)) return Invalid<ConnectionView>("pttAvmUsername", "PTT AVM API Kullanıcı Adı zorunludur.");
-        if (platform == "PTTAVM" && string.IsNullOrWhiteSpace(command.PttAvmPassword)) return Invalid<ConnectionView>("pttAvmPassword", "PTT AVM API Şifresi zorunludur.");
+        if (platform == "PTTAVM" && string.IsNullOrWhiteSpace(command.PttAvmUsername)) return Invalid<ConnectionView>("pttAvmUsername", "PttAVM API Kullanıcı Adı zorunludur.");
+        if (platform == "PTTAVM" && string.IsNullOrWhiteSpace(command.PttAvmPassword)) return Invalid<ConnectionView>("pttAvmPassword", "PttAVM API Şifresi zorunludur.");
         var pttAvmUsername = platform == "PTTAVM" ? N11CredentialFormat.Normalize(command.PttAvmUsername) : null;
         var pttAvmPassword = platform == "PTTAVM" ? PttAvmPasswordValue(command.PttAvmPassword) : null;
         if (platform == "PTTAVM" && pttAvmUsername is null) return Invalid<ConnectionView>("pttAvmUsername", PttAvmInvalidCharacters("API Kullanıcı Adı"));
@@ -183,7 +183,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             ApiVersion = connection.ApiVersion,
             Environment = environment,
             StoreScope = connection.ExternalStoreId,
-            EvidenceNote = platform == "SHOPIFY" ? "Shopify canlı bağlantı doğrulaması bekleniyor." : platform == "N11" ? "N11 canlı mağaza doğrulaması bekleniyor." : platform == "PAZARAMA" ? "Pazarama canlı mağaza doğrulaması bekleniyor." : platform == "PTTAVM" ? "PTT AVM canlı mağaza doğrulaması bekleniyor." : "Stage/SIT kanıtı bekleniyor.",
+            EvidenceNote = platform == "SHOPIFY" ? "Shopify canlı bağlantı doğrulaması bekleniyor." : platform == "N11" ? "N11 canlı mağaza doğrulaması bekleniyor." : platform == "PAZARAMA" ? "Pazarama canlı mağaza doğrulaması bekleniyor." : platform == "PTTAVM" ? "PttAVM canlı mağaza doğrulaması bekleniyor." : "Stage/SIT kanıtı bekleniyor.",
             Version = 1
         }));
         if (platform == "SHOPIFY")
@@ -293,7 +293,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         if (connection.PlatformCode == "SHOPIFY" && requestedEnvironment == "STAGE") return Invalid<ConnectionView>("environment", "Shopify bağlantısı yalnız Canlı ortamda çalışır.");
         if (connection.PlatformCode == "N11" && requestedEnvironment == "STAGE") return Invalid<ConnectionView>("environment", "N11 bağlantısı yalnız Canlı ortamda çalışır.");
         if (connection.PlatformCode == "PAZARAMA" && requestedEnvironment == "STAGE") return Invalid<ConnectionView>("environment", "Pazarama bağlantısı yalnız Canlı ortamda çalışır.");
-        if (connection.PlatformCode == "PTTAVM" && requestedEnvironment == "STAGE") return Invalid<ConnectionView>("environment", "PTT AVM bağlantısı yalnız Canlı ortamda çalışır.");
+        if (connection.PlatformCode == "PTTAVM" && requestedEnvironment == "STAGE") return Invalid<ConnectionView>("environment", "PttAVM bağlantısı yalnız Canlı ortamda çalışır.");
         if (connection.PlatformCode is "SHOPIFY" or "N11" or "PAZARAMA" or "PTTAVM") requestedEnvironment = "PRODUCTION";
         if (command.ExternalStoreId is not null && string.IsNullOrWhiteSpace(command.ExternalStoreId)) return Invalid<ConnectionView>("externalStoreId", "Mağaza/firma kapsamı boş olamaz.");
 
@@ -445,7 +445,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         // PTT AVM: the API user name comes as PttAvmUsername (or ApiKey), the API password as PttAvmPassword (or ApiSecret).
         var pttAvmRotatedUsernameInput = command.PttAvmUsername ?? command.ApiKey;
         var pttAvmRotatedPasswordInput = command.PttAvmPassword ?? command.ApiSecret;
-        if (connection.PlatformCode == "PTTAVM" && (string.IsNullOrWhiteSpace(pttAvmRotatedUsernameInput) || string.IsNullOrWhiteSpace(pttAvmRotatedPasswordInput))) return Invalid<ConnectionView>("credential", "PTT AVM API Kullanıcı Adı ve API Şifresi zorunludur.");
+        if (connection.PlatformCode == "PTTAVM" && (string.IsNullOrWhiteSpace(pttAvmRotatedUsernameInput) || string.IsNullOrWhiteSpace(pttAvmRotatedPasswordInput))) return Invalid<ConnectionView>("credential", "PttAVM API Kullanıcı Adı ve API Şifresi zorunludur.");
         var pttAvmRotatedUsername = connection.PlatformCode == "PTTAVM" ? N11CredentialFormat.Normalize(pttAvmRotatedUsernameInput) : null;
         var pttAvmRotatedPassword = connection.PlatformCode == "PTTAVM" ? PttAvmPasswordValue(pttAvmRotatedPasswordInput) : null;
         if (connection.PlatformCode == "PTTAVM" && pttAvmRotatedUsername is null) return Invalid<ConnectionView>("pttAvmUsername", PttAvmInvalidCharacters("API Kullanıcı Adı"));
@@ -1030,7 +1030,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     private static string Mask(string value) => value.Length <= 4 ? "****" : $"****{value[^4..]}";
     private static string N11InvalidCharacters(string field) => $"N11 {field} değerinde geçersiz karakter var. Değeri N11 satıcı panelindeki Hesabım → API Hesapları ekranından yeniden kopyalayın; yalnız harf, rakam ve işaretler kullanılabilir.";
     private static string PazaramaInvalidCharacters(string field) => $"Pazarama {field} değerinde geçersiz karakter var. Değeri Pazarama satıcı panelindeki Hesabım → Entegrasyon Bilgileri ekranından yeniden kopyalayın; yalnız harf, rakam ve işaretler kullanılabilir.";
-    private static string PttAvmInvalidCharacters(string field) => $"PTT AVM {field} değerinde geçersiz karakter var. Değeri PTT AVM satıcı panelindeki Hesap Yönetimi › Entegrasyon Bilgileri ekranından yeniden kopyalayın; yalnız harf, rakam ve işaretler kullanılabilir.";
+    private static string PttAvmInvalidCharacters(string field) => $"PttAVM {field} değerinde geçersiz karakter var. Değeri PttAVM satıcı panelindeki Hesap Yönetimi › Entegrasyon Bilgileri ekranından yeniden kopyalayın; yalnız harf, rakam ve işaretler kullanılabilir.";
     private const string PttAvmStoreIdMessage = Adapters.PttAvm.PttAvmErrorAdvice.StoreIdInvalid;
     private static string? PttAvmStoreId(string? value) => Adapters.PttAvm.PttAvmHttpClient.StoreId(value);
     // The API password is sent as typed (PasswordText): only invisible characters a copy may bring along and the

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 import { TitleHint, UiIcon } from '../../shared/components'
+import { PanelSelect } from '../../shared/PanelSelect'
 import { filterValueCandidates } from '../catalog/value-mapping-suggestions'
 import { productFieldLabel } from './product-field-sources'
 import './attribute-defaults-panel.css'
@@ -112,11 +113,7 @@ export function AttributeDefaultsPanel({ connectionId, categoryScope, platformLa
         <div className="attribute-defaults-form">
           <label>
             <span>Özellik</span>
-            <select value={attributeId} onChange={event => { setAttributeId(event.target.value); setSearch(''); setValueId(''); setCustomValue('') }}>
-              <option value="">Özellik Seçin…</option>
-              {requiredCandidates.length > 0 && <optgroup label="Zorunlu Alanlar">{requiredCandidates.map(item => <option key={item.externalId} value={item.externalId}>{item.name}</option>)}</optgroup>}
-              {otherCandidates.length > 0 && <optgroup label="Diğer Alanlar">{otherCandidates.map(item => <option key={item.externalId} value={item.externalId}>{item.name}</option>)}</optgroup>}
-            </select>
+            <PanelSelect ariaLabel="Özellik" value={attributeId} placeholder="Özellik Seçin…" onChange={next => { setAttributeId(next); setSearch(''); setValueId(''); setCustomValue('') }} options={[{ value: '', label: 'Özellik Seçin…' }, ...requiredCandidates.map(item => ({ value: item.externalId, label: `${item.name} (Zorunlu)`, text: item.name })), ...otherCandidates.map(item => ({ value: item.externalId, label: item.name }))]} />
           </label>
           {selected && freeText && <label>
             <span>Gönderilecek Değer</span>

@@ -46,7 +46,7 @@ public sealed partial class PttAvmHttpClient(
             && (string.Equals(connection.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase) || string.Equals(connection.Status, "VERIFIED", StringComparison.OrdinalIgnoreCase));
         return allowed
             ? null
-            : Failure<T>(AdapterErrorClass.Validation, "PTTAVM_EXTERNAL_WRITES_DISABLED", $"PTT AVM bağlantısında dış yazma kapalı; {what} gönderilmedi.", HttpStatusCode.Forbidden);
+            : Failure<T>(AdapterErrorClass.Validation, "PTTAVM_EXTERNAL_WRITES_DISABLED", $"PttAVM bağlantısında dış yazma kapalı; {what} gönderilmedi.", HttpStatusCode.Forbidden);
     }
 
     internal static bool ConnectionWritesEnabled(string settingsJson)
@@ -76,10 +76,10 @@ public sealed partial class PttAvmHttpClient(
         if (!result.IsSuccess) return AdapterResult<ConnectionIdentity>.Failure(result.Error!, result.RateLimit);
         var supplier = Supplier(result.Value!);
         if (supplier is null)
-            return Failure<ConnectionIdentity>(AdapterErrorClass.ContractViolation, "PTTAVM_CONNECTION_CONTRACT_INVALID", $"PTT AVM tedarikçi bilgisi yanıtı beklenen yapıda değil (yanıt öğeleri: {ElementShape(result.Value)}).", HttpStatusCode.BadGateway);
+            return Failure<ConnectionIdentity>(AdapterErrorClass.ContractViolation, "PTTAVM_CONNECTION_CONTRACT_INVALID", $"PttAVM tedarikçi bilgisi yanıtı beklenen yapıda değil (yanıt öğeleri: {ElementShape(result.Value)}).", HttpStatusCode.BadGateway);
         if (storeId is not null && long.Parse(supplier.Value.Id, CultureInfo.InvariantCulture) != long.Parse(storeId, CultureInfo.InvariantCulture))
             return Failure<ConnectionIdentity>(AdapterErrorClass.Validation, "PTTAVM_STORE_MISMATCH",
-                $"Bu API kullanıcısı başka bir PTT AVM mağazasına ait (Mağaza ID {supplier.Value.Id}); bağlantıda Mağaza ID {storeId} yazılı. Entegrasyon Bilgileri ekranındaki Mağaza ID'yi girin ya da o mağazanın API kullanıcısını kullanın.", HttpStatusCode.Conflict);
+                $"Bu API kullanıcısı başka bir PttAVM mağazasına ait (Mağaza ID {supplier.Value.Id}); bağlantıda Mağaza ID {storeId} yazılı. Entegrasyon Bilgileri ekranındaki Mağaza ID'yi girin ya da o mağazanın API kullanıcısını kullanın.", HttpStatusCode.Conflict);
         return AdapterResult<ConnectionIdentity>.Success(
             new("PTTAVM", connection.Environment, supplier.Value.Id, connection.ApiVersion, supplier.Value.Id),
             result.RateLimit);
@@ -116,7 +116,7 @@ public sealed partial class PttAvmHttpClient(
 
         IReadOnlyList<CapabilityEvidence> evidence =
         [
-            new(MarketplaceCapabilities.ConnectionTest, "SUPPORTED", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, DocumentationHost + "listeleme-entegrasyonu_soap/tedarikci-bilgisi_soap", "soap", null, null, "PTT AVM API kullanıcı adı ve şifresi kabul edildi; Mağaza ID tedarikçi bilgisinden doğrulandı.", null, now),
+            new(MarketplaceCapabilities.ConnectionTest, "SUPPORTED", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, DocumentationHost + "listeleme-entegrasyonu_soap/tedarikci-bilgisi_soap", "soap", null, null, "PttAVM API kullanıcı adı ve şifresi kabul edildi; Mağaza ID tedarikçi bilgisinden doğrulandı.", null, now),
             new(MarketplaceCapabilities.ReferenceRead, categoriesError is null ? "SUPPORTED" : "UNKNOWN", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, DocumentationHost + "katalog-entegrasyonu_soap/ana-kategori-listesi_soap", "soap", null, null,
                 categoriesError is null ? "Ana kategori listesi salt okunur okundu." : $"Ana kategori listesi okunamadı ({categoriesError}); yetenek UNKNOWN bırakıldı.", null, now),
             new(MarketplaceCapabilities.OrderRead, orders.IsSuccess ? "SUPPORTED" : "UNKNOWN", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, DocumentationHost + "siparis-entegrasyonu_soap/siparis-kontrol-v2_soap", "soap", null, null,
@@ -167,7 +167,7 @@ public sealed partial class PttAvmHttpClient(
 
     internal static AdapterResult<T> CredentialFailure<T>(PttAvmCredentialLoad load) => load.LegacyApiKeyPayload
         ? Failure<T>(AdapterErrorClass.Authentication, "PTTAVM_CREDENTIALS_REJECTED", PttAvmErrorAdvice.LegacyCredentials, HttpStatusCode.Unauthorized)
-        : Failure<T>(AdapterErrorClass.Authentication, "PTTAVM_CREDENTIAL_INVALID", "PTT AVM bağlantısı veya şifreli API kullanıcı bilgileri eksik ya da geçersiz.", HttpStatusCode.Unauthorized);
+        : Failure<T>(AdapterErrorClass.Authentication, "PTTAVM_CREDENTIAL_INVALID", "PttAVM bağlantısı veya şifreli API kullanıcı bilgileri eksik ya da geçersiz.", HttpStatusCode.Unauthorized);
 
     private static AdapterResult<T> Failure<T>(AdapterErrorClass @class, string code, string message, HttpStatusCode? status = null) =>
         AdapterResult<T>.Failure(new(@class, code, message, status is null ? null : (int)status, null, null));

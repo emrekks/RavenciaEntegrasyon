@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 import { Modal } from '../../shared/components'
+import { PanelSelect } from '../../shared/PanelSelect'
 import { newIdempotencyKey } from '../../shared/idempotency'
 import { formatIstanbul } from '../../shared/format-date'
 import { formatCount, formatNumber, formatPercent, formatTl } from './report-format'
@@ -123,7 +124,7 @@ export function AdReportModal({ open, onClose, data }: { open: boolean; onClose:
         </tr>))}</tbody>
       </table></div>}
       <div className="reports-ad-upload">
-        {stores.length > 1 && <label>Mağaza<select value={target} onChange={event => setStore(event.target.value)}>{stores.map(item => <option key={item.connectionId} value={item.connectionId}>{item.storeName}</option>)}</select></label>}
+        {stores.length > 1 && <label htmlFor="ad-report-store">Mağaza<PanelSelect id="ad-report-store" ariaLabel="Mağaza" value={target} onChange={setStore} options={stores.map(item => ({ value: item.connectionId, label: item.storeName }))} /></label>}
         <button type="button" className="secondary" disabled={upload.isPending || !target} onClick={() => input.current?.click()}>{upload.isPending ? 'Dosya Okunuyor…' : 'Rapor Yükle'}</button>
         <input ref={input} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onChange={event => { choose(event.target.files?.[0]); event.target.value = '' }} />
         <small>Trendyol satıcı panelinde Reklam Yönetimi'nden indirilen "Ürün Reklamları Raporum" .xlsx dosyası; dosya adındaki saat rapor zamanı sayılır. Her yükleme ayrı saklanır, en yenisi gösterilir.</small>

@@ -33,7 +33,7 @@ public static class PttAvmProductMapper
         var barcode = Value(row, "Barkod");
         if (productId is null || barcode is null)
         {
-            issues.Add(new("PRODUCT_INVALID", productId ?? barcode ?? "unknown", "PTT AVM ürünü içeri alınmadı: ürün kimliği veya barkodu yok."));
+            issues.Add(new("PRODUCT_INVALID", productId ?? barcode ?? "unknown", "PttAVM ürünü içeri alınmadı: ürün kimliği veya barkodu yok."));
             return null;
         }
         var title = Value(row, "UrunAdi") ?? barcode;
@@ -54,7 +54,7 @@ public static class PttAvmProductMapper
             var reads = PttAvmVariantMapper.Read(entry);
             if (reads.Count == 0)
             {
-                issues.Add(new("PRODUCT_VARIANT_INVALID", $"{barcode}:{PttAvmVariantMapper.Shape(entry)}", $"PTT AVM ürünü {barcode} için bir varyantın barkodu veya kimliği okunamadı ({PttAvmVariantMapper.Shape(entry)}); varyant içeri alınmadı."));
+                issues.Add(new("PRODUCT_VARIANT_INVALID", $"{barcode}:{PttAvmVariantMapper.Shape(entry)}", $"PttAVM ürünü {barcode} için bir varyantın barkodu veya kimliği okunamadı ({PttAvmVariantMapper.Shape(entry)}); varyant içeri alınmadı."));
                 continue;
             }
             // The product barcode is the variants' model code. A variant without a barcode is named under its

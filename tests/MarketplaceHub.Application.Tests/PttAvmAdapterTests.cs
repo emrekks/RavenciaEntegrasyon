@@ -94,8 +94,8 @@ public sealed class PttAvmAdapterTests
         Assert.Equal("PTTAVM_CONNECTION_TEST", MarketplaceJobTypes.PttAvmConnectionTest);
         Assert.Contains(MarketplaceJobTypes.PttAvmConnectionTest, MarketplaceJobTypes.ProcessorJobTypes);
         Assert.Equal("developers.pttavm.com", CapabilityEvidencePolicy.OfficialDocumentationHost("PTTAVM"));
-        Assert.Equal("PTT AVM", JobOperationsService.Marketplace("PTTAVM_CONNECTION_TEST"));
-        Assert.Equal("PTT AVM", JobOperationsService.Marketplace("PRICE_INVENTORY_SYNC", "PTTAVM"));
+        Assert.Equal("PttAVM", JobOperationsService.Marketplace("PTTAVM_CONNECTION_TEST"));
+        Assert.Equal("PttAVM", JobOperationsService.Marketplace("PRICE_INVENTORY_SYNC", "PTTAVM"));
         Assert.Contains("ORDERS", ConnectionDataResetPolicy.ScopesFor("PTTAVM"));
         // Invoice creation starts off on a new connection.
         Assert.False(MarketplaceInvoiceCreationPolicy.IsEnabled("PTTAVM", """{"ExternalWritesEnabled":false,"InvoiceCreationEnabled":false}"""));
@@ -1488,7 +1488,7 @@ public sealed class PttAvmAdapterTests
         // No barcode, no size, no stock, a fractional stock and a repeated barcode: none can be carried as it is.
         Assert.Equal([remote[0], remote[1], remote[2], remote[3], remote[5]], merge.Unreadable);
         var message = PttAvmProductPayloadRules.RemoteVariantUnreadableMessage(merge.Unreadable);
-        Assert.StartsWith("PTT AVM'deki bazı varyantların barkodu, renk/beden değeri veya stoğu okunamadı: Lacivert / L, mzdb003siyahs, mzdb003siyahm (Siyah / M)", message);
+        Assert.StartsWith("PttAVM'deki bazı varyantların barkodu, renk/beden değeri veya stoğu okunamadı: Lacivert / L, mzdb003siyahs, mzdb003siyahm (Siyah / M)", message);
         var many = Enumerable.Range(1, 30).Select(index => new PttAvmProductPayloadRules.RemoteVariant($"mzdb003x{index}", null, null, null)).ToList();
         var longMessage = PttAvmProductPayloadRules.RemoteVariantUnreadableMessage(many);
         Assert.Contains("ve 22 varyant daha", longMessage);
@@ -1576,7 +1576,7 @@ public sealed class PttAvmAdapterTests
         var result = await Client(handler, globalWrites: true).CreateVariantProductAsync(Account(status: "ACTIVE", connectionWrites: true), draft, CancellationToken.None);
 
         Assert.Equal(PttAvmProductPayloadRules.VariantsAlreadyPresentCode, result.Error!.Code);
-        Assert.Equal("PTT AVM'de bu modelin bütün varyantları zaten var; gönderim yapılmadı.", result.Error.SafeMessage);
+        Assert.Equal("PttAVM'de bu modelin bütün varyantları zaten var; gönderim yapılmadı.", result.Error.SafeMessage);
         Assert.DoesNotContain(handler.Requests, request => request.Headers["SOAPAction"].Contains(PttAvmHttpClient.ProductUpsert, StringComparison.Ordinal));
     }
 
@@ -2199,7 +2199,7 @@ public sealed class PttAvmAdapterTests
             PlatformCode = "PTTAVM",
             Environment = environment,
             Status = status,
-            DisplayName = "PTT AVM",
+            DisplayName = "PttAVM",
             ExternalStoreId = storeId,
             ApiVersion = "V1",
             SettingsJson = connectionWrites ? """{"ExternalWritesEnabled":true}""" : """{"ExternalWritesEnabled":false}"""

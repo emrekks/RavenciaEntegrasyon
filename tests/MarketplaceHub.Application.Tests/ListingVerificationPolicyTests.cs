@@ -174,7 +174,7 @@ public sealed class ListingVerificationPolicyTests
     public void The_run_summary_names_the_platform_and_the_products()
     {
         Assert.Equal("Trendyol: 3 ürün pazaryerinde bulunamadı.", ListingVerificationPolicy.NotFoundSummary("TRENDYOL", 3, 3));
-        Assert.Equal("n11: 2 ürün (5 varyant) pazaryerinde bulunamadı.", ListingVerificationPolicy.NotFoundSummary("N11", 2, 5));
+        Assert.Equal("N11: 2 ürün (5 varyant) pazaryerinde bulunamadı.", ListingVerificationPolicy.NotFoundSummary("N11", 2, 5));
     }
 
     [Fact]

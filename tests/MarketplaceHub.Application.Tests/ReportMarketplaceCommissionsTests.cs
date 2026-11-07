@@ -123,7 +123,7 @@ public sealed class ReportMarketplaceCommissionsTests
 
     [Theory]
     [InlineData("HEPSIBURADA", "Hepsiburada muhasebe")]
-    [InlineData("N11", "n11 hakediş")]
+    [InlineData("N11", "N11 hakediş")]
     [InlineData("PAZARAMA", "Pazarama finans")]
     public void An_orders_profit_labels_the_real_commission_real_and_the_estimate_estimated(string platform, string source)
     {

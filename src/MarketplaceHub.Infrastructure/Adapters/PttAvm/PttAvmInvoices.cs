@@ -31,8 +31,8 @@ public sealed partial class PttAvmHttpClient : IInvoiceMarketplacePort
             // The documented sample answers Success=false with "işlem gerçekleştirilmiştir": the outcome is read back instead of
             // guessed. A conflict is an uncertain delivery (InvoiceDeliveryFailurePolicy), settled by reading the order's
             // IsInvoice (InvoicingJobProcessor.SettleUncertainDeliveryAsync), not a permanent refusal (report item 11).
-            PttAvmInvoiceMapper.SaveOutcome.Unclear => Failure<InvoiceDeliveryResult>(AdapterErrorClass.BusinessConflict, "PTTAVM_INVOICE_RESULT_UNCLEAR", $"PTT AVM fatura kaydı için çelişkili cevap verdi ({PttAvmInvoiceMapper.Message(saved.Value!)}); sonuç sipariş okunarak doğrulanacak.", HttpStatusCode.BadGateway),
-            _ => Failure<InvoiceDeliveryResult>(AdapterErrorClass.Validation, "PTTAVM_INVOICE_REJECTED", $"PTT AVM faturayı kabul etmedi: {PttAvmInvoiceMapper.Message(saved.Value!) ?? "gerekçe verilmedi"}.", HttpStatusCode.UnprocessableEntity)
+            PttAvmInvoiceMapper.SaveOutcome.Unclear => Failure<InvoiceDeliveryResult>(AdapterErrorClass.BusinessConflict, "PTTAVM_INVOICE_RESULT_UNCLEAR", $"PttAVM fatura kaydı için çelişkili cevap verdi ({PttAvmInvoiceMapper.Message(saved.Value!)}); sonuç sipariş okunarak doğrulanacak.", HttpStatusCode.BadGateway),
+            _ => Failure<InvoiceDeliveryResult>(AdapterErrorClass.Validation, "PTTAVM_INVOICE_REJECTED", $"PttAVM faturayı kabul etmedi: {PttAvmInvoiceMapper.Message(saved.Value!) ?? "gerekçe verilmedi"}.", HttpStatusCode.UnprocessableEntity)
         };
     }
 
@@ -46,7 +46,7 @@ public sealed partial class PttAvmHttpClient : IInvoiceMarketplacePort
         if (!order.IsSuccess) return AdapterResult<InvoiceDeliveryStatus>.Failure(order.Error!, order.RateLimit);
         var invoiced = PttAvmInvoiceMapper.Invoiced(order.Value!);
         return invoiced is null
-            ? Failure<InvoiceDeliveryStatus>(AdapterErrorClass.ContractViolation, "PTTAVM_INVOICE_STATUS_UNCLEAR", "PTT AVM siparişinin satırları fatura durumunu (IsInvoice) taşımıyor.", HttpStatusCode.BadGateway)
+            ? Failure<InvoiceDeliveryStatus>(AdapterErrorClass.ContractViolation, "PTTAVM_INVOICE_STATUS_UNCLEAR", "PttAVM siparişinin satırları fatura durumunu (IsInvoice) taşımıyor.", HttpStatusCode.BadGateway)
             : AdapterResult<InvoiceDeliveryStatus>.Success(new(reference.ExternalReference, invoiced.Value ? "INVOICED" : MarketplaceHub.Domain.MarketplaceInvoiceStatePolicy.Unverified, IsTerminal: true), order.RateLimit);
     }
 }
@@ -75,15 +75,15 @@ public static class PttAvmInvoiceMapper
                         && long.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var id) && id > 0)
                         lineIds.Add(id);
             if (stored is null || orderNumber is null || lineIds.Count == 0)
-                return new(null, stored, orderNumber, lineIds, invoiceNumber, "PTT AVM fatura gönderimi için link, sipariş numarası ve en az bir sipariş satırı (LineItemId) gerekir; sipariş PTT AVM'den yeniden okunmalı.");
+                return new(null, stored, orderNumber, lineIds, invoiceNumber, "PttAVM fatura gönderimi için link, sipariş numarası ve en az bir sipariş satırı (LineItemId) gerekir; sipariş PttAVM'den yeniden okunmalı.");
             var link = InvoiceDocumentLink.PdfAlias(stored);
             if (!Uri.TryCreate(link, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
-                return new(null, stored, orderNumber, lineIds, invoiceNumber, "PTT AVM'ye yalnız https ile başlayan fatura linkleri gönderilir.");
+                return new(null, stored, orderNumber, lineIds, invoiceNumber, "PttAVM'ye yalnız https ile başlayan fatura linkleri gönderilir.");
             return new(link, stored, orderNumber, lineIds.Distinct().ToList(), invoiceNumber, null);
         }
         catch (JsonException)
         {
-            return new(null, null, null, [], null, "PTT AVM fatura gönderim verisi okunamadı.");
+            return new(null, null, null, [], null, "PttAVM fatura gönderim verisi okunamadı.");
         }
     }
 

@@ -25,12 +25,14 @@ const feedback: Array<[string, string]> = []
 const render = (props: { invoiceStatus: string; manualInvoiceStatus?: string | null }) => act(() => root.render(<QueryClientProvider client={new QueryClient({ defaultOptions: { mutations: { retry: false } } })}>
   <ShopifyInvoiceStatusDialog orderNumber="#1001" {...props} resolvePackageId={() => 'shopify-package-1'} onClose={() => {}} onFeedback={(message, kind) => feedback.push([message, kind])} />
 </QueryClientProvider>))
-const select = () => document.querySelector<HTMLSelectElement>('select[aria-label="Yeni fatura durumu"]')!
+const select = () => document.querySelector<HTMLButtonElement>('button[aria-label^="Yeni fatura durumu"]')!
+const selected = () => select().textContent
 const save = () => Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === 'Durumu Kaydet')!
-const choose = (value: string) => act(() => {
-  Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(select(), value)
-  select().dispatchEvent(new Event('change', { bubbles: true }))
-})
+const choose = (value: string) => {
+  act(() => select().click())
+  const label = value === 'UPLOADED' ? 'Faturası Yüklendi' : 'Fatura Bekliyor'
+  act(() => Array.from(document.querySelectorAll<HTMLButtonElement>('[role="option"]')).find(option => option.textContent === label)!.click())
+}
 
 beforeEach(() => {
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -66,7 +68,7 @@ describe('ShopifyInvoiceStatusDialog', () => {
 
   it('opens on the status set by hand and says it was set by hand', () => {
     render({ invoiceStatus: 'FATURA_KONTROLDE', manualInvoiceStatus: 'UPLOADED' })
-    expect(select().value).toBe('UPLOADED')
+    expect(selected()).toBe('Faturası Yüklendi')
     expect(document.body.textContent).toContain('Elle İşaretlendi')
   })
 

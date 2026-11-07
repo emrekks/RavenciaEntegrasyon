@@ -47,12 +47,12 @@ public static class N11ReturnDenyRule
     // null when the denial can be sent, otherwise why not (Turkish, for the screen).
     public static string? Problem(string? denyReasonId, string? note, string? shipmentCompanyId, string? trackingNumber)
     {
-        if (string.IsNullOrWhiteSpace(denyReasonId)) return "n11 ret nedeni seçilmelidir.";
-        if (string.IsNullOrWhiteSpace(note)) return "n11 ret açıklaması yazılmalıdır.";
+        if (string.IsNullOrWhiteSpace(denyReasonId)) return "N11 ret nedeni seçilmelidir.";
+        if (string.IsNullOrWhiteSpace(note)) return "N11 ret açıklaması yazılmalıdır.";
         if (!NeedsReturnShipment(denyReasonId))
             return string.IsNullOrWhiteSpace(shipmentCompanyId) && string.IsNullOrWhiteSpace(trackingNumber)
                 ? null
-                : "\"İade Ürün Mağazaya Ulaşmadı\" nedeniyle geri gönderim bilgisi gönderilmez; n11 alıcının takip numarasını kullanır.";
+                : "\"İade Ürün Mağazaya Ulaşmadı\" nedeniyle geri gönderim bilgisi gönderilmez; N11 alıcının takip numarasını kullanır.";
         if (string.IsNullOrWhiteSpace(shipmentCompanyId)) return "Ürünü alıcıya geri gönderdiğiniz kargo firması seçilmelidir.";
         if (string.IsNullOrWhiteSpace(trackingNumber)) return "Geri gönderimin kargo takip numarası yazılmalıdır.";
         return null;

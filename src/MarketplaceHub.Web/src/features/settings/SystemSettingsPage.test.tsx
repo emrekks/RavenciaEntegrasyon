@@ -239,8 +239,11 @@ describe('SystemSettingsPage', () => {
   it('names the default output field Varsayılan Kargo Çıktısı with plain A4 / Sticker options', async () => {
     await renderPage('/settings?tab=sender')
     const field = Array.from(container.querySelectorAll('.ss-fld')).find(label => label.querySelector('small')?.textContent === 'Varsayılan Kargo Çıktısı')!
-    const options = Array.from(field.querySelectorAll('option')).map(option => [option.value, option.textContent])
-    expect(options).toEqual([['a4', 'A4'], ['sticker', 'Sticker']])
+    const trigger = field.querySelector<HTMLButtonElement>('button.rr-trigger')!
+    expect(trigger.getAttribute('aria-label')).toBe('Varsayılan Kargo Çıktısı: A4')
+    act(() => { trigger.click() })
+    const options = Array.from(document.querySelectorAll('[role="option"]')).map(option => option.textContent)
+    expect(options).toEqual(['A4', 'Sticker'])
   })
 
   it('label designer has no visible help line under the canvas; the paper still describes its keyboard use', async () => {

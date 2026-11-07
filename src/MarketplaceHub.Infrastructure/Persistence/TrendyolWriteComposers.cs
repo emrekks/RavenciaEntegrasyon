@@ -604,7 +604,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         if (variantId is { } onlyVariant)
         {
             productId = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == onlyVariant).Select(x => (Guid?)x.ProductId).SingleOrDefaultAsync(cancellationToken);
-            if (productId is null) return ServiceResult<PriceInventoryDraft>.Fail("LIVE_OFFER_REQUIRED", "PTT AVM fiyat-stok gönderimi için PTT AVM'ye bağlı varyant ve ACTIVE PTT AVM teklifi gerekir.", 422);
+            if (productId is null) return ServiceResult<PriceInventoryDraft>.Fail("LIVE_OFFER_REQUIRED", "PttAVM fiyat-stok gönderimi için PttAVM'ye bağlı varyant ve ACTIVE PttAVM teklifi gerekir.", 422);
         }
         // A product send covers its model's other panel products (one per colour) too: they are one PTT AVM product.
         Guid[]? scope = null;
@@ -626,7 +626,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             .ToListAsync(cancellationToken);
         // A code PTT AVM no longer knows is left out; one twice refused stays out of product and bulk sends.
         if (rows.RemoveAll(row => MarketplaceVariantLinkHealth.SkipsPush(row.Health, variantScoped)) > 0 && rows.Count == 0) return NoChanges([]);
-        if (rows.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("LIVE_OFFER_REQUIRED", "PTT AVM fiyat-stok gönderimi için PTT AVM'ye bağlı varyant ve ACTIVE PTT AVM teklifi gerekir.", 422);
+        if (rows.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("LIVE_OFFER_REQUIRED", "PttAVM fiyat-stok gönderimi için PttAVM'ye bağlı varyant ve ACTIVE PttAVM teklifi gerekir.", 422);
         var missingInventory = rows.Where(row => row.Inventory is null).Select(row => row.Variant.Sku).ToList();
         if (missingInventory.Count == rows.Count) return MissingInventory(missingInventory);
         var productIds = rows.Select(row => row.Variant.ProductId).Distinct().ToArray();
@@ -665,14 +665,14 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                 // PTT AVM refuses a price of 1 or less.
                 if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || salePrice <= 1)
                 {
-                    if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için PTT AVM teklifinde TRY para birimi ve 1'den büyük satış fiyatı gerekir.") is { } refused) return refused;
+                    if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için PttAVM teklifinde TRY para birimi ve 1'den büyük satış fiyatı gerekir.") is { } refused) return refused;
                     productRefused = true;
                     continue;
                 }
                 var code = row.Code.Trim();
                 if (code.Length == 0 || code.Length > PttAvmPriceInventoryRules.MaxBarcodeLength)
                 {
-                    if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için PTT AVM kodu boş veya {PttAvmPriceInventoryRules.MaxBarcodeLength} karakterden uzun.") is { } refused) return refused;
+                    if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için PttAVM kodu boş veya {PttAvmPriceInventoryRules.MaxBarcodeLength} karakterden uzun.") is { } refused) return refused;
                     productRefused = true;
                     continue;
                 }
@@ -719,7 +719,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                     // instead of staying unsent without a word on every dispatch.
                     if (attributes.Count == 0)
                     {
-                        if (Refuse(automatic, invalid, entry.Line.VariantId, Sku(entry.Line), "CHANNEL_OFFER_INVALID", $"'{Sku(entry.Line)}' PTT AVM'de {productCode} ürününün varyantı; PTT AVM varyantı renk ve beden değeriyle tanır, bu varyantta renk veya beden seçeneği yok. Fiyat ve stok gönderilmedi.") is { } refused) return refused;
+                        if (Refuse(automatic, invalid, entry.Line.VariantId, Sku(entry.Line), "CHANNEL_OFFER_INVALID", $"'{Sku(entry.Line)}' PttAVM'de {productCode} ürününün varyantı; PttAVM varyantı renk ve beden değeriyle tanır, bu varyantta renk veya beden seçeneği yok. Fiyat ve stok gönderilmedi.") is { } refused) return refused;
                         continue;
                     }
                     variants.Add(new(attributes, (int)entry.Line.Quantity, entry.Line.SalePrice - basePrice));
@@ -729,8 +729,8 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                 if (variants.Count > PttAvmPriceInventoryRules.MaxVariantsPerProduct || variants.Sum(x => x.Quantity) > PttAvmPriceInventoryRules.MaxQuantity)
                 {
                     var reason = variants.Count > PttAvmPriceInventoryRules.MaxVariantsPerProduct
-                        ? $"PTT AVM bir üründe en fazla {PttAvmPriceInventoryRules.MaxVariantsPerProduct} varyant tutar; {productCode} ürününde {variants.Count} varyant gönderilecekti."
-                        : $"PTT AVM bir ürünün stoğunu varyantlarının toplamı olarak tutar ve en fazla {PttAvmPriceInventoryRules.MaxQuantity} kabul eder; {productCode} ürününün varyant stokları toplamı {variants.Sum(x => x.Quantity)}.";
+                        ? $"PttAVM bir üründe en fazla {PttAvmPriceInventoryRules.MaxVariantsPerProduct} varyant tutar; {productCode} ürününde {variants.Count} varyant gönderilecekti."
+                        : $"PttAVM bir ürünün stoğunu varyantlarının toplamı olarak tutar ve en fazla {PttAvmPriceInventoryRules.MaxQuantity} kabul eder; {productCode} ürününün varyant stokları toplamı {variants.Sum(x => x.Quantity)}.";
                     foreach (var line in lines.Where(line => line.ExternalVariantId == productCode).ToList())
                         if (Refuse(automatic, invalid, line.VariantId, Sku(line), "CHANNEL_OFFER_INVALID", $"'{Sku(line)}': {reason} Fiyat ve stok gönderilmedi.") is { } refused) return refused;
                     lines.RemoveAll(line => line.ExternalVariantId == productCode);

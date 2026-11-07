@@ -827,12 +827,12 @@ internal static class ReportBuilder
         if (orders.Where(x => x.Order.UnreadableLines > 0).GroupBy(x => x.PlatformCode).OrderByDescending(x => x.Count())
                 .Select(x => $"{x.Key} {Count(x.Count())}").ToList() is { Count: > 0 } unreadable)
             notes.Add($"{Count(orders.Count(x => x.Order.UnreadableLines > 0))} siparişte okunamayan ürün satırı var ({string.Join(", ", unreadable)}); "
-                + "bu siparişlerin ürün adetleri ve kârı eksik (kârı hesaplanmaz), tutarı pazaryerinin sipariş toplamından gelir; PTT AVM toplam göndermediği için orada tutar da eksik olabilir. Siparişler yeniden okunuyor.");
+                + "bu siparişlerin ürün adetleri ve kârı eksik (kârı hesaplanmaz), tutarı pazaryerinin sipariş toplamından gelir; PttAVM toplam göndermediği için orada tutar da eksik olabilir. Siparişler yeniden okunuyor.");
         if (summary.OtherCurrencyOrders > 0)
             notes.Add($"{Count(summary.OtherCurrencyOrders)} sipariş TRY dışında bir para biriminde; tutarlara girmez, yalnız adetlerde sayılır.");
         notes.Add(commission.CoveredRevenue <= 0
             ? "Komisyon bilgisi olan satış yok; tahmini komisyon ve hakediş hesaplanamaz."
-            : $"Komisyon, Hepsiburada, n11 ve Pazarama siparişlerinde pazaryerinin finans kaydı varsa oradaki gerçek tutardır (iadeler ve düzeltmeler düşülmüş); diğer siparişlerde siparişte gelen komisyon oranı ya da tutarı üzerinden, iade edilmeyen adetler için tahmin edilir. Hakediş kesinleşmiş değildir. Komisyon bilgisi net cironun {Percent(commission.Coverage)} kadarında var; Shopify komisyon göndermez, Pazarama yalnız finans hareketinde gönderir, n11 oranları tutarsız olabilir.");
+            : $"Komisyon, Hepsiburada, N11 ve Pazarama siparişlerinde pazaryerinin finans kaydı varsa oradaki gerçek tutardır (iadeler ve düzeltmeler düşülmüş); diğer siparişlerde siparişte gelen komisyon oranı ya da tutarı üzerinden, iade edilmeyen adetler için tahmin edilir. Hakediş kesinleşmiş değildir. Komisyon bilgisi net cironun {Percent(commission.Coverage)} kadarında var; Shopify komisyon göndermez, Pazarama yalnız finans hareketinde gönderir, N11 oranları tutarsız olabilir.");
         if (cost.KeptQuantity > 0)
             notes.Add(cost.CostedQuantity <= 0
                 ? "Satılan ürünlerin hiçbirinde maliyet girilmemiş; kâr hesaplanamaz."

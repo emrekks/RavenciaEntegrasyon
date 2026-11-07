@@ -840,7 +840,7 @@ html body .app-shell.stitch-shell main .reports-page .reports-filters :is(.pf-tr
 
 /* Tarifeler: the platforms as tabs above the store's tariffs. */
 .app-shell.stitch-shell main .reports-page .reports-tariffs { display: grid; gap: 20px; min-width: 0; }
-.app-shell.stitch-shell main .reports-page .reports-tariff-platforms button { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 14px 0 8px; font-size: 13px; }
+.app-shell.stitch-shell main .reports-page .reports-tariff-platforms button { display: inline-flex; align-items: center; gap: 8px; height: 32px; min-height: 32px; padding: 0 14px 0 8px; font-size: 13px; }
 .app-shell.stitch-shell main .reports-page .reports-tariff-platforms .platform-square-mark { width: 20px; height: 20px; border-radius: 6px; }
 
 /* Promosyon Kârlılık Analizi: the pages as tabs under the platforms (the weekly tariff, then Trendyol's offers). */

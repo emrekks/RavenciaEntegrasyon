@@ -4,6 +4,7 @@ import { useRef, useState } from 'react'
 import { hubApi } from '../../../shared/api'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { TitleHint } from '../../../shared/components'
+import { PanelSelect } from '../../../shared/PanelSelect'
 import { RrModal } from '../../marketplace/returns-ui'
 import { runInChunks, type ChunkRunResult } from '../bulk-status-run'
 import { DEFAULT_VAT_RATE } from '../product-editor-state'
@@ -39,8 +40,8 @@ export function BulkVatDialog({ productIds, cardCount, onClose, onDone }: { prod
   const busy = progress != null
   return <RrModal crumb="Toplu İşlem" label="Toplu KDV Ata" title={<>Toplu KDV Ata<TitleHint label="Toplu KDV Ata">Yalnızca ürün kartlarının KDV bilgisi değişir. Pazar yerlerindeki mevcut ilanların KDV’si ve fiyatı değişmez; yeni yayınlanan ilanlar bu KDV ile açılır.</TitleHint></>} desc={`${cardCount.toLocaleString('tr-TR')} ürün kartının KDV oranı belirlenecek.`} size="sm" locked={busy} onClose={onClose} foot={<><span className="rr-note" role="status">{progress ? `${progress.done.toLocaleString('tr-TR')} / ${progress.total.toLocaleString('tr-TR')} kayıt gönderildi` : ''}</span><button type="button" className="rr-btn" onClick={onClose} disabled={busy}>Vazgeç</button><button type="button" className="rr-btn rr-primary" onClick={() => void apply()} disabled={busy}>{busy ? 'Uygulanıyor…' : 'Uygula'}</button></>}>
     <div className="rr-dgrid">
-      <label className="rr-fld"><small>KDV Oranı</small><select className="rr-in" aria-label="KDV Oranı" required aria-required="true" aria-invalid={rateError ? true : undefined} value={rate} disabled={busy} onChange={event => { setRate(event.target.value); setRateError('') }}>{rate === '' && <option value="" disabled>Seçin</option>}{bulkVatRateOptions.map(option => <option key={option} value={option}>%{option}</option>)}</select>{rateError && <em className="rr-err" role="alert">{rateError}</em>}</label>
-      <label className="rr-fld"><small>KDV Dahil mi</small><select className="rr-in" aria-label="KDV Dahil mi" value={inclusion} disabled={busy} onChange={event => setInclusion(event.target.value as BulkVatInclusion)}><option value="INCLUDED">Evet</option><option value="EXCLUDED">Hayır</option></select></label>
+      <label className="rr-fld"><small>KDV Oranı</small><PanelSelect ariaLabel="KDV Oranı" value={rate} disabled={busy} placeholder="Seçin" options={bulkVatRateOptions.map(option => ({ value: String(option), label: `%${option}` }))} onChange={next => { setRate(next); setRateError('') }} />{rateError && <em className="rr-err" role="alert">{rateError}</em>}</label>
+      <label className="rr-fld"><small>KDV Dahil mi</small><PanelSelect ariaLabel="KDV Dahil mi" value={inclusion} disabled={busy} options={[{ value: 'INCLUDED', label: 'Evet' }, { value: 'EXCLUDED', label: 'Hayır' }]} onChange={setInclusion} /></label>
     </div>
   </RrModal>
 }

@@ -21,18 +21,18 @@ internal sealed class PttAvmProductUpdateComposer(AppDbContext db, IConfiguratio
         if (product is null) return ServiceResult<ProductUpdateDraft>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);
         var profile = await db.ChannelListingProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
         if (profile is null || !await db.ChannelListingVariants.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ProfileId == profile.Id, cancellationToken))
-            return ServiceResult<ProductUpdateDraft>.Fail("PTTAVM_PUBLICATION_REQUIRED", ImportedListingProfiles.MissingPublicationMessage("PTT AVM"), 409);
+            return ServiceResult<ProductUpdateDraft>.Fail("PTTAVM_PUBLICATION_REQUIRED", ImportedListingProfiles.MissingPublicationMessage("PttAVM"), 409);
 
         var publication = await new PttAvmProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
         if (!publication.Succeeded) return ServiceResult<ProductUpdateDraft>.Fail(publication.Error!.Code, publication.Error.Message, publication.Error.Status, publication.Error.FieldErrors);
         var sent = PttAvmProductPayloadRules.Read(publication.Value!.PayloadJson, out var invalid);
-        if (sent is null) return ServiceResult<ProductUpdateDraft>.Fail("PRODUCT_PAYLOAD_INVALID", invalid ?? "PTT AVM ürün içeriği geçersiz.", 422);
+        if (sent is null) return ServiceResult<ProductUpdateDraft>.Fail("PRODUCT_PAYLOAD_INVALID", invalid ?? "PttAVM ürün içeriği geçersiz.", 422);
 
         var deliveryDays = ProductPublicationComposer.DeliveryDays(profile.DeliveryTimeDays, product.DeliveryDays);
         var built = Build(sent, fields, product.WarrantyMonths, deliveryDays);
         if (built.Error is { } error) return ServiceResult<ProductUpdateDraft>.Fail(error.Code, error.Message, 422);
         var payloadJson = PttAvmProductUpdateRules.Payload(built.Draft!);
-        if (PttAvmProductUpdateRules.Read(payloadJson, out var refused) is null) return ServiceResult<ProductUpdateDraft>.Fail("PRODUCT_UPDATE_PAYLOAD_INVALID", refused ?? "PTT AVM ürün güncelleme içeriği geçersiz.", 422);
+        if (PttAvmProductUpdateRules.Read(payloadJson, out var refused) is null) return ServiceResult<ProductUpdateDraft>.Fail("PRODUCT_UPDATE_PAYLOAD_INVALID", refused ?? "PttAVM ürün güncelleme içeriği geçersiz.", 422);
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payloadJson)));
         return ServiceResult<ProductUpdateDraft>.Ok(new(publication.Value.ProfileId, new ProductUpdatePublication(productId, PttAvmProductUpdateRules.Mode, hash, payloadJson, "", "", ""), publication.Value.Variants));
     }
@@ -49,14 +49,14 @@ internal sealed class PttAvmProductUpdateComposer(AppDbContext db, IConfiguratio
         {
             warranty = warrantyMonths ?? 0;
             if (warranty is < 0 or > PttAvmProductUpdateRules.MaxWarrantyMonths)
-                return (null, new("PTTAVM_WARRANTY_INVALID", $"PTT AVM garanti süresini en çok {PttAvmProductUpdateRules.MaxWarrantyMonths} ay alır; ürünün garanti süresi {warranty} ay."));
+                return (null, new("PTTAVM_WARRANTY_INVALID", $"PttAVM garanti süresini en çok {PttAvmProductUpdateRules.MaxWarrantyMonths} ay alır; ürünün garanti süresi {warranty} ay."));
         }
         int? delivery = null;
         if (Picked(ProductUpdateFields.Delivery))
         {
-            if (deliveryDays is not { } days) return (null, new("DELIVERY_DAYS_REQUIRED", "PTT AVM'ye gönderilecek teslimat süresi girilmemiş; ürün kartında Teslimat Süresi girin."));
+            if (deliveryDays is not { } days) return (null, new("DELIVERY_DAYS_REQUIRED", "PttAVM'ye gönderilecek teslimat süresi girilmemiş; ürün kartında Teslimat Süresi girin."));
             if (days is < 0 or > PttAvmProductUpdateRules.MaxCourierDeliveryDays)
-                return (null, new("PTTAVM_DELIVERY_DAYS_INVALID", $"PTT AVM tahmini kargoya teslim süresini en çok {PttAvmProductUpdateRules.MaxCourierDeliveryDays} gün alır; ürünün teslimat süresi {days} gün."));
+                return (null, new("PTTAVM_DELIVERY_DAYS_INVALID", $"PttAVM tahmini kargoya teslim süresini en çok {PttAvmProductUpdateRules.MaxCourierDeliveryDays} gün alır; ürünün teslimat süresi {days} gün."));
             delivery = days;
         }
         var variants = sent.Variants?.Select(x => new PttAvmProductUpdateRules.PanelVariant(x.Barcode, x.Color, x.Size)).ToList();

@@ -615,23 +615,16 @@ function BulkPicker({ bulk, onApply, onClearColumn, onClearAll }: { bulk: Tariff
     {open && <SheetScrim onClose={() => setOpen(false)} />}
     {open && <div className="commission-bulk-popover" role="dialog" aria-label="Toplu seçim">
       <SheetHead title="Toplu Seçim" />
-      <label><span>Kolon</span>
-        <select value={column} onChange={event => setColumn(event.target.value)}>
-          <option value="">Kolon Seçimi</option>
-          {tiers.map(tier => <option key={tier} value={String(tier)}>{tier}. Fiyat Aralığı</option>)}
-        </select>
+      <label htmlFor="commission-bulk-column"><span>Kolon</span>
+        <PanelSelect id="commission-bulk-column" ariaLabel="Kolon" value={column} onChange={setColumn} options={[{ value: '', label: 'Kolon Seçimi' }, ...tiers.map(tier => ({ value: String(tier), label: `${tier}. Fiyat Aralığı` }))]} />
       </label>
       {column !== '' && <>
       <hr />
-      <label><span>Ölçüt</span>
-        <select value={criterion} onChange={event => setCriterion(event.target.value as 'rate' | 'amount')}>
-          <option value="rate">Kâr / Zarar Oranına Göre (%)</option><option value="amount">Kâr / Zarar Tutarına Göre (₺)</option>
-        </select>
+      <label htmlFor="commission-bulk-criterion"><span>Ölçüt</span>
+        <PanelSelect id="commission-bulk-criterion" ariaLabel="Ölçüt" value={criterion} onChange={setCriterion} width={240} options={[{ value: 'rate', label: 'Kâr / Zarar Oranına Göre (%)' }, { value: 'amount', label: 'Kâr / Zarar Tutarına Göre (₺)' }]} />
       </label>
-      <label><span>Karşılaştırma</span>
-        <select value={above ? 'above' : 'below'} onChange={event => setAbove(event.target.value === 'above')}>
-          <option value="above">Verilenden Büyük Değerler</option><option value="below">Verilenden Küçük Değerler</option>
-        </select>
+      <label htmlFor="commission-bulk-compare"><span>Karşılaştırma</span>
+        <PanelSelect id="commission-bulk-compare" ariaLabel="Karşılaştırma" value={above ? 'above' : 'below'} onChange={next => setAbove(next === 'above')} width={240} options={[{ value: 'above', label: 'Verilenden Büyük Değerler' }, { value: 'below', label: 'Verilenden Küçük Değerler' }]} />
       </label>
       <label><span>Değer</span>
         <input type="text" inputMode="decimal" value={value} onChange={event => setValue(event.target.value)} placeholder={criterion === 'rate' ? 'ör. 30' : 'ör. 100'} />

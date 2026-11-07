@@ -100,7 +100,6 @@
   html body .app-shell.stitch-shell main .invoices-page .invoice-reference-filters > .invoice-reference-search { grid-column: span 2; }
   html body .app-shell.stitch-shell main .invoices-page .invoice-reference-filters > .invoice-reference-date-filter { grid-column: auto; }
   html body .app-shell.stitch-shell main .invoices-page .invoice-reference-filters > .invoice-reference-filter-reset { grid-column: auto; align-self: end; justify-self: start; }
-  html body .app-shell.stitch-shell main .invoices-page .invoice-reference-filters .invoice-sort-trigger { width: 100%; min-width: 0; }
   html body .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-head { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   html body .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-head > * { min-height: 36px; border-radius: 7px; }
 }

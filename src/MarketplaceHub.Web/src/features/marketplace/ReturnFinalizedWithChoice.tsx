@@ -1,3 +1,4 @@
+import { PanelSelect } from '../../shared/PanelSelect'
 import { customerRequestNote, finalizedWithLabels, type FinalizedWith } from './return-finalized-with'
 
 type Props = {
@@ -13,13 +14,9 @@ type Props = {
 export function ReturnFinalizedWithChoice({ value, customerRequest, disabled, subject, onChange }: Props) {
   return <label className="rr-fld rr-finalized">
     <small>Para İadesi / Değişim</small>
-    <select className="rr-in" value={value} disabled={disabled} required aria-invalid={value === '' ? true : undefined}
-      aria-label={subject ? `${subject} için Para İadesi / Değişim` : undefined}
-      onChange={event => onChange(event.target.value as FinalizedWith | '')}>
-      <option value="">Seçin</option>
-      <option value="Refund">{finalizedWithLabels.Refund}</option>
-      <option value="Change">{finalizedWithLabels.Change}</option>
-    </select>
+    <PanelSelect value={value} disabled={disabled} ariaLabel={subject ? `${subject} için Para İadesi / Değişim` : 'Para İadesi / Değişim'}
+      onChange={onChange}
+      options={[{ value: 'Refund', label: finalizedWithLabels.Refund }, { value: 'Change', label: finalizedWithLabels.Change }]} />
     <em>{customerRequestNote(customerRequest)}</em>
   </label>
 }

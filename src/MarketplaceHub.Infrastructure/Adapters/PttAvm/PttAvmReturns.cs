@@ -29,14 +29,14 @@ public sealed partial class PttAvmHttpClient : IReturnPort
         if (!order.IsSuccess) return AdapterResult<RemoteReturnClaim>.Failure(order.Error!, order.RateLimit);
         return ReturnClaim(order.Value!) is { } claim
             ? AdapterResult<RemoteReturnClaim>.Success(claim, order.RateLimit)
-            : Failure<RemoteReturnClaim>(AdapterErrorClass.NotFound, "PTTAVM_RETURN_NOT_FOUND", $"PTT AVM'de {orderNumber} numaralı siparişte iade edilen satır yok.", HttpStatusCode.NotFound);
+            : Failure<RemoteReturnClaim>(AdapterErrorClass.NotFound, "PTTAVM_RETURN_NOT_FOUND", $"PttAVM'de {orderNumber} numaralı siparişte iade edilen satır yok.", HttpStatusCode.NotFound);
     }
 
     public Task<AdapterResult<IReadOnlyList<ReturnIssueReason>>> IssueReasonsAsync(AdapterContext context, CancellationToken cancellationToken) =>
         Task.FromResult(AdapterResult<IReadOnlyList<ReturnIssueReason>>.Success([]));
 
     public Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken) =>
-        Task.FromResult(NotSupported<ReturnActionResult>("PTTAVM_RETURN_ACTION_UNSUPPORTED", "PTT AVM iade kararları PTT AVM satıcı panelinden verilir; panelden PTT AVM'ye iade işlemi gönderilmez."));
+        Task.FromResult(NotSupported<ReturnActionResult>("PTTAVM_RETURN_ACTION_UNSUPPORTED", "PttAVM iade kararları PttAVM satıcı panelinden verilir; panelden PttAVM'ye iade işlemi gönderilmez."));
 
     // The returned lines of an order as one completed return; null when no line is returned.
     internal static RemoteReturnClaim? ReturnClaim(RemoteOrder order)

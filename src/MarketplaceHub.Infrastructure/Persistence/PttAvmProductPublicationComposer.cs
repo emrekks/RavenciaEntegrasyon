@@ -30,7 +30,7 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "PTTAVM", cancellationToken);
         if (connection is null) return NotFound();
         var profile = await db.ChannelListingProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
-        if (profile is null) return Fail("LISTING_PROFILE_REQUIRED", ImportedListingProfiles.MissingPublicationMessage("PTT AVM"));
+        if (profile is null) return Fail("LISTING_PROFILE_REQUIRED", ImportedListingProfiles.MissingPublicationMessage("PttAVM"));
         if (!profile.Enabled) return Fail("LISTING_PROFILE_DISABLED", "Listing profile etkinleştirilmeden yayın işi oluşturulamaz.");
 
         var categoryMapping = product.CategoryId is Guid categoryId
@@ -39,13 +39,13 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
                 .Join(db.ReferenceSnapshots.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "CATEGORIES" && x.IsCurrent), mapping => mapping.SnapshotId, snapshot => snapshot.Id, (mapping, _) => mapping)
                 .SingleOrDefaultAsync(cancellationToken)
             : null;
-        if (categoryMapping is null) return Fail("CATEGORY_MAPPING_REQUIRED", "Yayın öncesi güncel PTT AVM kategori eşlemesi gerekir.", "categoryId");
+        if (categoryMapping is null) return Fail("CATEGORY_MAPPING_REQUIRED", "Yayın öncesi güncel PttAVM kategori eşlemesi gerekir.", "categoryId");
         if (!long.TryParse(categoryMapping.ExternalId, NumberStyles.None, CultureInfo.InvariantCulture, out var remoteCategoryId) || remoteCategoryId <= 0)
-            return Fail("CATEGORY_MAPPING_INVALID", "PTT AVM kategori kimliği sayı olmalıdır.", "categoryId");
+            return Fail("CATEGORY_MAPPING_INVALID", "PttAVM kategori kimliği sayı olmalıdır.", "categoryId");
         if (!string.IsNullOrWhiteSpace(profile.ExternalCategoryId) && profile.ExternalCategoryId != categoryMapping.ExternalId)
-            return Fail("LISTING_MAPPING_CONFLICT", "Listing profile kategorisi güncel doğrulanmış PTT AVM eşlemesiyle çelişiyor.", status: 409);
+            return Fail("LISTING_MAPPING_CONFLICT", "Listing profile kategorisi güncel doğrulanmış PttAVM eşlemesiyle çelişiyor.", status: 409);
         if (!await db.ReferenceItems.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.SnapshotId == categoryMapping.SnapshotId && x.ResourceType == "CATEGORIES" && x.ExternalId == categoryMapping.ExternalId && x.IsActive && x.IsLeaf, cancellationToken))
-            return Fail("CATEGORY_LEAF_REQUIRED", "PTT AVM'de ürün yalnız en alt kategoriye açılabilir; kategori eşlemesini bir alt kategoriye güncelleyin.", "categoryId");
+            return Fail("CATEGORY_LEAF_REQUIRED", "PttAVM'de ürün yalnız en alt kategoriye açılabilir; kategori eşlemesini bir alt kategoriye güncelleyin.", "categoryId");
 
         var allVariants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         var variants = allVariants.Where(x => x.Status != ProductStatus.Archived).ToList();
@@ -73,8 +73,8 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
         var variant = variants[0];
         var barcode = variant.Barcode?.Trim();
         if (string.IsNullOrEmpty(barcode) || barcode.Length > PttAvmPriceInventoryRules.MaxBarcodeLength)
-            return Fail("BARCODE_REQUIRED", $"PTT AVM ürünü barkodla tanır; varyantın barkodu (en fazla {PttAvmPriceInventoryRules.MaxBarcodeLength} karakter) olmalıdır.");
-        if (string.IsNullOrWhiteSpace(variant.Sku)) return Fail("STOCK_CODE_INVALID", "PTT AVM ürün kodu olarak kullanılan SKU boş olamaz.");
+            return Fail("BARCODE_REQUIRED", $"PttAVM ürünü barkodla tanır; varyantın barkodu (en fazla {PttAvmPriceInventoryRules.MaxBarcodeLength} karakter) olmalıdır.");
+        if (string.IsNullOrWhiteSpace(variant.Sku)) return Fail("STOCK_CODE_INVALID", "PttAVM ürün kodu olarak kullanılan SKU boş olamaz.");
         if (await ProductPublicationComposer.ConnectionDuplicateAsync(db, tenantId, connectionId, [variant.Id], [barcode], [barcode], cancellationToken) is { } takenBarcode)
             return Fail("BARCODE_DUPLICATE", ProductPublicationComposer.ConnectionDuplicateMessage(takenBarcode), status: 409);
 
@@ -89,19 +89,19 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
 
         var offer = await db.ChannelOffers.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variant.Id && x.Status == "ACTIVE", cancellationToken);
         var inventory = await db.InventoryItems.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == variant.Id && x.LocationCode == "MAIN", cancellationToken);
-        if (offer is null) return Fail("CHANNEL_OFFER_REQUIRED", "Varyant için etkin PTT AVM fiyat teklifi gerekir.");
+        if (offer is null) return Fail("CHANNEL_OFFER_REQUIRED", "Varyant için etkin PttAVM fiyat teklifi gerekir.");
         if (inventory is null) return Fail("INVENTORY_REQUIRED", "Varyant için MAIN stok kaydı gerekir.");
         var salePrice = PttAvmPriceInventoryRules.Price(PriceInventoryComposer.OutboundSalePrice(offer));
         if (!string.Equals(offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || salePrice <= 1)
             return Fail("CHANNEL_OFFER_INVALID", $"'{variant.Sku}' için TRY para birimi ve 1'den büyük satış fiyatı gerekir.");
         if (PttAvmPriceInventoryRules.VatRate(offer.VatRate) is not { } vatRate)
-            return Fail("VAT_RATE_INVALID", $"'{variant.Sku}' için KDV oranı PTT AVM'de 0, 1, 10 veya 20 olmalıdır.");
-        if (variant.Desi is not > 0) return Fail("DESI_REQUIRED", $"'{variant.Sku}' için PTT AVM'nin istediği desi değeri girilmemiş.");
+            return Fail("VAT_RATE_INVALID", $"'{variant.Sku}' için KDV oranı PttAVM'de 0, 1, 10 veya 20 olmalıdır.");
+        if (variant.Desi is not > 0) return Fail("DESI_REQUIRED", $"'{variant.Sku}' için PttAVM'nin istediği desi değeri girilmemiş.");
 
         var title = (profile.TitleOverride ?? product.Title).Trim();
         var description = (profile.DescriptionOverride ?? product.Description).Trim();
-        if (title.Length is < 1 or > PttAvmProductPayloadRules.MaxNameLength) return Fail("PRODUCT_TITLE_INVALID", $"PTT AVM ürün adı 1-{PttAvmProductPayloadRules.MaxNameLength} karakter olmalıdır; listing profilinde kısa bir başlık girin.", "title");
-        if (description.Length == 0) return Fail("PRODUCT_DESCRIPTION_INVALID", "PTT AVM ürün açıklaması boş olamaz.");
+        if (title.Length is < 1 or > PttAvmProductPayloadRules.MaxNameLength) return Fail("PRODUCT_TITLE_INVALID", $"PttAVM ürün adı 1-{PttAvmProductPayloadRules.MaxNameLength} karakter olmalıdır; listing profilinde kısa bir başlık girin.", "title");
+        if (description.Length == 0) return Fail("PRODUCT_DESCRIPTION_INVALID", "PttAVM ürün açıklaması boş olamaz.");
 
         var media = await (from productMedia in db.ProductMedia.AsNoTracking()
                            join asset in db.FileAssets.AsNoTracking() on productMedia.FileAssetId equals asset.Id
@@ -130,15 +130,15 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
         IReadOnlyList<Product> members, IReadOnlyList<ProductVariant> familyVariants, CancellationToken cancellationToken)
     {
         if (members.FirstOrDefault(member => member.CategoryId != product.CategoryId) is { } otherCategory)
-            return Fail("PTTAVM_FAMILY_CATEGORY_MISMATCH", $"Model ailesinin kartları PTT AVM'de tek ürün olarak gönderilir; '{otherCategory.Title}' kartının kategorisi bu kartınkinden farklı. Ailenin kartlarını aynı kategoriye alın.", "categoryId");
+            return Fail("PTTAVM_FAMILY_CATEGORY_MISMATCH", $"Model ailesinin kartları PttAVM'de tek ürün olarak gönderilir; '{otherCategory.Title}' kartının kategorisi bu kartınkinden farklı. Ailenin kartlarını aynı kategoriye alın.", "categoryId");
         var memberIds = members.Select(x => x.Id).ToArray();
         var lead = members[0];
         var leadProfile = lead.Id == productId ? profile : await db.ChannelListingProfiles.AsNoTracking()
             .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == lead.Id, cancellationToken);
         var title = (leadProfile?.TitleOverride ?? lead.Title).Trim();
         var description = (leadProfile?.DescriptionOverride ?? lead.Description).Trim();
-        if (title.Length is < 1 or > PttAvmProductPayloadRules.MaxNameLength) return Fail("PRODUCT_TITLE_INVALID", $"PTT AVM ürün adı 1-{PttAvmProductPayloadRules.MaxNameLength} karakter olmalıdır; '{lead.Title}' kartının listing profilinde kısa bir başlık girin.", "title");
-        if (description.Length == 0) return Fail("PRODUCT_DESCRIPTION_INVALID", $"PTT AVM ürün açıklaması boş olamaz ('{lead.Title}' kartı).");
+        if (title.Length is < 1 or > PttAvmProductPayloadRules.MaxNameLength) return Fail("PRODUCT_TITLE_INVALID", $"PttAVM ürün adı 1-{PttAvmProductPayloadRules.MaxNameLength} karakter olmalıdır; '{lead.Title}' kartının listing profilinde kısa bir başlık girin.", "title");
+        if (description.Length == 0) return Fail("PRODUCT_DESCRIPTION_INVALID", $"PttAVM ürün açıklaması boş olamaz ('{lead.Title}' kartı).");
 
         var variantIds = familyVariants.Select(x => x.Id).ToArray();
         var offers = await db.ChannelOffers.AsNoTracking()
@@ -184,7 +184,7 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
             .Select(url => url!))).ToList();
         // PTT AVM's images are the product's: up to eight per colour card, one per colour first, then each card's others.
         var imageUrls = PttAvmProductPayloadRules.FamilyImages(imagesByMember, PttAvmProductPayloadRules.ImageLimit(plan.Variants));
-        if (imageUrls.Count == 0) return Fail("PRODUCT_MEDIA_PUBLIC_URL_REQUIRED", "PTT AVM'ye model ailesini göndermek için en az bir herkese açık HTTPS ürün görseli gerekir.");
+        if (imageUrls.Count == 0) return Fail("PRODUCT_MEDIA_PUBLIC_URL_REQUIRED", "PttAVM'ye model ailesini göndermek için en az bir herkese açık HTTPS ürün görseli gerekir.");
 
         var draft = new PttAvmProductPayloadRules.ProductDraft(plan.ParentBarcode, title, description, externalCategoryId, plan.ParentBarcode, plan.Price, plan.VatRate,
             plan.Variants.Sum(x => x.Quantity), plan.Desi, imageUrls, plan.Variants, await BrandNameAsync(tenantId, product.BrandId, cancellationToken));
@@ -209,54 +209,54 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
         static (FamilyPlan?, FamilyError?) Refuse(string code, string message, int status = 422) => (null, new(code, message, status));
         string Name(FamilyVariantRow row) => $"'{row.Sku.Trim()}' ({row.CardTitle})";
         if (rows.Count > PttAvmPriceInventoryRules.MaxVariantsPerProduct)
-            return Refuse("PTTAVM_VARIANT_LIMIT_EXCEEDED", $"PTT AVM bir üründe en fazla {PttAvmPriceInventoryRules.MaxVariantsPerProduct} varyant tutar; model ailesinin kartlarında {rows.Count} etkin varyant var.");
+            return Refuse("PTTAVM_VARIANT_LIMIT_EXCEEDED", $"PttAVM bir üründe en fazla {PttAvmPriceInventoryRules.MaxVariantsPerProduct} varyant tutar; model ailesinin kartlarında {rows.Count} etkin varyant var.");
         if (rows.FirstOrDefault(row => ProductFamilyKeyPolicy.ModelCodeKey(row.ModelCode) is null) is { } uncoded)
-            return Refuse("PTTAVM_MODEL_CODE_REQUIRED", $"PTT AVM varyantlı ürünü model koduyla tanır; {Name(uncoded)} varyantında model kodu yok. Ailenin tüm varyantlarına aynı model kodunu girin.");
+            return Refuse("PTTAVM_MODEL_CODE_REQUIRED", $"PttAVM varyantlı ürünü model koduyla tanır; {Name(uncoded)} varyantında model kodu yok. Ailenin tüm varyantlarına aynı model kodunu girin.");
         var modelCode = rows[0].ModelCode!.Trim();
         if (rows.FirstOrDefault(row => ProductFamilyKeyPolicy.ModelCodeKey(row.ModelCode) != ProductFamilyKeyPolicy.ModelCodeKey(modelCode)) is { } otherModel)
-            return Refuse("PTTAVM_MODEL_CODE_MISMATCH", $"PTT AVM'ye bir ürün tek model koduyla gönderilir; {Name(otherModel)} varyantının model kodu ({otherModel.ModelCode!.Trim()}) '{modelCode}' değil.");
+            return Refuse("PTTAVM_MODEL_CODE_MISMATCH", $"PttAVM'ye bir ürün tek model koduyla gönderilir; {Name(otherModel)} varyantının model kodu ({otherModel.ModelCode!.Trim()}) '{modelCode}' değil.");
         var codes = externalCodes.Select(x => x.Trim()).Where(x => x.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         if (codes.Count > 1 || codes.Count == 1 && !string.Equals(codes[0], modelCode, StringComparison.OrdinalIgnoreCase))
-            return Refuse("PTTAVM_PARENT_BARCODE_MISMATCH", $"PTT AVM bu model ailesini '{string.Join("', '", codes)}' barkoduyla tutuyor, panelin model kodu '{modelCode}'; ürün yanlış barkoda gönderilmesin diye gönderilmedi. Model kodunu PTT AVM'deki ürün barkoduyla aynı yapın.", 409);
+            return Refuse("PTTAVM_PARENT_BARCODE_MISMATCH", $"PttAVM bu model ailesini '{string.Join("', '", codes)}' barkoduyla tutuyor, panelin model kodu '{modelCode}'; ürün yanlış barkoda gönderilmesin diye gönderilmedi. Model kodunu PttAVM'deki ürün barkoduyla aynı yapın.", 409);
         var parent = codes.Count == 1 ? codes[0] : modelCode;
         if (parent.Length > PttAvmPriceInventoryRules.MaxBarcodeLength)
-            return Refuse("BARCODE_REQUIRED", $"PTT AVM ürün barkodu en fazla {PttAvmPriceInventoryRules.MaxBarcodeLength} karakter olabilir; model kodu '{modelCode}' daha uzun.");
+            return Refuse("BARCODE_REQUIRED", $"PttAVM ürün barkodu en fazla {PttAvmPriceInventoryRules.MaxBarcodeLength} karakter olabilir; model kodu '{modelCode}' daha uzun.");
 
         // Every variant must be sendable: one left out would be deleted on PTT AVM.
         foreach (var row in rows)
         {
             var barcode = row.Barcode?.Trim();
             if (string.IsNullOrEmpty(barcode) || barcode.Length > PttAvmPriceInventoryRules.MaxBarcodeLength)
-                return Refuse("BARCODE_REQUIRED", $"PTT AVM varyantı barkodla tanır; {Name(row)} varyantının barkodu yok (en fazla {PttAvmPriceInventoryRules.MaxBarcodeLength} karakter). Varyant gönderilmeden ailenin gönderimi PTT AVM'de onu silerdi.");
+                return Refuse("BARCODE_REQUIRED", $"PttAVM varyantı barkodla tanır; {Name(row)} varyantının barkodu yok (en fazla {PttAvmPriceInventoryRules.MaxBarcodeLength} karakter). Varyant gönderilmeden ailenin gönderimi PttAVM'de onu silerdi.");
             if (string.Equals(barcode, parent, StringComparison.OrdinalIgnoreCase))
-                return Refuse("PTTAVM_VARIANT_BARCODE_IS_PARENT", $"{Name(row)} varyantının barkodu ürün barkoduyla ({parent}) aynı; PTT AVM'de varyant barkodu ürün barkodundan farklı olmalıdır.");
+                return Refuse("PTTAVM_VARIANT_BARCODE_IS_PARENT", $"{Name(row)} varyantının barkodu ürün barkoduyla ({parent}) aynı; PttAVM'de varyant barkodu ürün barkodundan farklı olmalıdır.");
             if (string.IsNullOrWhiteSpace(row.Color) || string.IsNullOrWhiteSpace(row.Size))
-                return Refuse("PTTAVM_VARIANT_OPTIONS_REQUIRED", $"PTT AVM varyantı Renk ve Beden değeriyle tanır; {Name(row)} varyantında {(string.IsNullOrWhiteSpace(row.Color) ? "renk" : "beden")} seçeneği yok.");
+                return Refuse("PTTAVM_VARIANT_OPTIONS_REQUIRED", $"PttAVM varyantı Renk ve Beden değeriyle tanır; {Name(row)} varyantında {(string.IsNullOrWhiteSpace(row.Color) ? "renk" : "beden")} seçeneği yok.");
             if (row.Color.Trim().Length > PttAvmProductPayloadRules.MaxVariantValueLength || row.Size.Trim().Length > PttAvmProductPayloadRules.MaxVariantValueLength)
                 return Refuse("PTTAVM_VARIANT_OPTIONS_INVALID", $"{Name(row)} varyantının renk veya beden değeri {PttAvmProductPayloadRules.MaxVariantValueLength} karakterden uzun.");
             if (row.SalePrice is not { } price)
-                return Refuse("CHANNEL_OFFER_REQUIRED", $"PTT AVM için her varyantta etkin fiyat teklifi gerekir; {Name(row)} için yok. Varyant gönderilmeden ailenin gönderimi PTT AVM'de onu silerdi.");
+                return Refuse("CHANNEL_OFFER_REQUIRED", $"PttAVM için her varyantta etkin fiyat teklifi gerekir; {Name(row)} için yok. Varyant gönderilmeden ailenin gönderimi PttAVM'de onu silerdi.");
             if (!string.Equals(row.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || price <= 1)
                 return Refuse("CHANNEL_OFFER_INVALID", $"{Name(row)} için TRY para birimi ve 1'den büyük satış fiyatı gerekir.");
             if (PttAvmPriceInventoryRules.VatRate(row.VatRate) is null)
-                return Refuse("VAT_RATE_INVALID", $"{Name(row)} için KDV oranı PTT AVM'de 0, 1, 10 veya 20 olmalıdır.");
+                return Refuse("VAT_RATE_INVALID", $"{Name(row)} için KDV oranı PttAVM'de 0, 1, 10 veya 20 olmalıdır.");
             if (!row.HasInventory || row.Quantity is null)
-                return Refuse("INVENTORY_REQUIRED", $"PTT AVM için her varyantta MAIN stok kaydı gerekir; {Name(row)} için yok. Varyant gönderilmeden ailenin gönderimi PTT AVM'de onu silerdi.");
+                return Refuse("INVENTORY_REQUIRED", $"PttAVM için her varyantta MAIN stok kaydı gerekir; {Name(row)} için yok. Varyant gönderilmeden ailenin gönderimi PttAVM'de onu silerdi.");
             if (row.Desi is not > 0)
-                return Refuse("DESI_REQUIRED", $"{Name(row)} için PTT AVM'nin istediği desi değeri girilmemiş.");
+                return Refuse("DESI_REQUIRED", $"{Name(row)} için PttAVM'nin istediği desi değeri girilmemiş.");
         }
         if (rows.GroupBy(row => row.Barcode!.Trim(), StringComparer.OrdinalIgnoreCase).FirstOrDefault(group => group.Count() > 1) is { } sameBarcode)
-            return Refuse("BARCODE_DUPLICATE", $"Model ailesinde '{sameBarcode.Key}' barkodu birden fazla varyantta var; PTT AVM'de her varyantın barkodu ayrı olmalıdır.", 409);
+            return Refuse("BARCODE_DUPLICATE", $"Model ailesinde '{sameBarcode.Key}' barkodu birden fazla varyantta var; PttAVM'de her varyantın barkodu ayrı olmalıdır.", 409);
         if (rows.GroupBy(row => $"{row.Color!.Trim().ToUpperInvariant()}/{row.Size!.Trim().ToUpperInvariant()}", StringComparer.Ordinal).FirstOrDefault(group => group.Count() > 1) is { } sameOptions)
-            return Refuse("PTTAVM_VARIANT_OPTIONS_DUPLICATE", $"{string.Join(" ve ", sameOptions.Select(Name))} aynı renk ve bedeni taşıyor ({sameOptions.First().Color!.Trim()} / {sameOptions.First().Size!.Trim()}); PTT AVM bunları ayrı varyant olarak tutamaz.");
+            return Refuse("PTTAVM_VARIANT_OPTIONS_DUPLICATE", $"{string.Join(" ve ", sameOptions.Select(Name))} aynı renk ve bedeni taşıyor ({sameOptions.First().Color!.Trim()} / {sameOptions.First().Size!.Trim()}); PttAVM bunları ayrı varyant olarak tutamaz.");
         // PTT AVM's variants of a product share its price (the price difference is 0 on every variant it holds).
         if (rows.Select(row => row.SalePrice!.Value).Distinct().Count() > 1)
-            return Refuse("PTTAVM_VARIANT_PRICE_DIFFERS", $"PTT AVM'de bir ürünün varyantları aynı fiyatla satılır; model ailesinde farklı satış fiyatları var ({string.Join(", ", rows.Select(row => row.SalePrice!.Value).Distinct().Order().Select(x => x.ToString("0.00", CultureInfo.InvariantCulture)))} TL). Fiyatları eşitleyin.");
+            return Refuse("PTTAVM_VARIANT_PRICE_DIFFERS", $"PttAVM'de bir ürünün varyantları aynı fiyatla satılır; model ailesinde farklı satış fiyatları var ({string.Join(", ", rows.Select(row => row.SalePrice!.Value).Distinct().Order().Select(x => x.ToString("0.00", CultureInfo.InvariantCulture)))} TL). Fiyatları eşitleyin.");
         if (rows.Select(row => row.VatRate!.Value).Distinct().Count() > 1)
-            return Refuse("PTTAVM_VARIANT_VAT_DIFFERS", "PTT AVM'de bir ürünün tek KDV oranı vardır; model ailesinin varyantlarında farklı KDV oranları var.");
+            return Refuse("PTTAVM_VARIANT_VAT_DIFFERS", "PttAVM'de bir ürünün tek KDV oranı vardır; model ailesinin varyantlarında farklı KDV oranları var.");
         var total = rows.Sum(row => row.Quantity!.Value);
         if (total > PttAvmPriceInventoryRules.MaxQuantity)
-            return Refuse("PTTAVM_STOCK_TOTAL_TOO_HIGH", $"PTT AVM bir ürünün stoğunu en fazla {PttAvmPriceInventoryRules.MaxQuantity} tutar; model ailesinin varyantlarında toplam {total} adet var.");
+            return Refuse("PTTAVM_STOCK_TOTAL_TOO_HIGH", $"PttAVM bir ürünün stoğunu en fazla {PttAvmPriceInventoryRules.MaxQuantity} tutar; model ailesinin varyantlarında toplam {total} adet var.");
 
         var variants = rows.Select(row => new PttAvmProductPayloadRules.VariantDraft(row.Barcode!.Trim(), row.Color!.Trim(), row.Size!.Trim(), row.Quantity!.Value)).ToList();
         return (new FamilyPlan(parent, rows[0].SalePrice!.Value, rows[0].VatRate!.Value, Math.Ceiling(rows.Max(row => row.Desi!.Value)), variants), null);
@@ -270,7 +270,7 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
     private static ServiceResult<ProductPublicationDraft> Draft(Guid profileId, string externalCategoryId, PttAvmProductPayloadRules.ProductDraft draft, IReadOnlyList<PublicationVariantDraft> variants)
     {
         var payloadJson = PttAvmProductPayloadRules.Payload(draft);
-        if (PttAvmProductPayloadRules.Read(payloadJson, out var invalid) is null) return Fail("PRODUCT_PAYLOAD_INVALID", invalid ?? "PTT AVM ürün içeriği geçersiz.");
+        if (PttAvmProductPayloadRules.Read(payloadJson, out var invalid) is null) return Fail("PRODUCT_PAYLOAD_INVALID", invalid ?? "PttAVM ürün içeriği geçersiz.");
         var payloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payloadJson)));
         return ServiceResult<ProductPublicationDraft>.Ok(new(profileId, externalCategoryId, string.Empty, payloadHash, payloadJson, variants));
     }

@@ -596,7 +596,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             {
                 var current = await new PttAvmProductPublicationComposer(db, configuration).BuildAsync(tenantId, payload.ProductId, connectionId, cancellationToken);
                 if (!current.Succeeded || !PttAvmProductPayloadRules.SameVariantBarcodes(payload.PayloadJson, current.Value!.PayloadJson))
-                    return await MarkPublicationResult(tenantId, connectionId, profile, "BLOCKED", "PRODUCT_PUBLICATION_SUPERSEDED", JobExecutionResult.Blocked("PRODUCT_PUBLICATION_SUPERSEDED", "Model ailesinin varyantları bu yayın hazırlandıktan sonra değişti; eski liste PTT AVM'ye gönderilmedi. Kartı yeniden yayınlayın."), cancellationToken, payload.PayloadHash);
+                    return await MarkPublicationResult(tenantId, connectionId, profile, "BLOCKED", "PRODUCT_PUBLICATION_SUPERSEDED", JobExecutionResult.Blocked("PRODUCT_PUBLICATION_SUPERSEDED", "Model ailesinin varyantları bu yayın hazırlandıktan sonra değişti; eski liste PttAVM'ye gönderilmedi. Kartı yeniden yayınlayın."), cancellationToken, payload.PayloadHash);
                 // Every colour card's job carries the whole family: the family goes out once, and a card whose family a
                 // sibling's job already sent follows that send's tracking result instead of sending it again.
                 if (await PttAvmFamilySend.CoveringSendAsync(db, tenantId, connectionId, job.Id, job.CreatedAt, payload.PayloadJson, timeProvider.GetUtcNow(), cancellationToken) is { } familySend)
@@ -608,7 +608,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     profile.Version++;
                     await SetListingStatus(tenantId, connectionId, profile.Id, profile.ActualStatus, null, cancellationToken, payload.PayloadHash);
                     await db.SaveChangesAsync(cancellationToken);
-                    return JobExecutionResult.Retry("PRODUCT_BATCH_PENDING", "Model ailesi PTT AVM'ye tek istekle gönderildi; bu kartın sonucu aynı gönderimden okunuyor.", TimeSpan.FromSeconds(15), familySend.ExternalOperationId);
+                    return JobExecutionResult.Retry("PRODUCT_BATCH_PENDING", "Model ailesi PttAVM'ye tek istekle gönderildi; bu kartın sonucu aynı gönderimden okunuyor.", TimeSpan.FromSeconds(15), familySend.ExternalOperationId);
                 }
             }
             // A Shopify job whose earlier attempt wrote the product and stopped at its Online Store publication only
@@ -679,7 +679,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var waitingMessage = string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
                 ? "Hepsiburada ürün import sonucu bekleniyor."
                 : string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase) ? "Shopify ürün ve Online Store yayın sonucu kaydediliyor."
-                : string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase) ? "N11 ürün açma görevinin sonucu bekleniyor." : string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) ? "Pazarama ürün açma sonucu bekleniyor." : string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase) ? "PTT AVM ürün gönderimi sonucu bekleniyor." : "Trendyol create batch sonucu bekleniyor.";
+                : string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase) ? "N11 ürün açma görevinin sonucu bekleniyor." : string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) ? "Pazarama ürün açma sonucu bekleniyor." : string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase) ? "PttAVM ürün gönderimi sonucu bekleniyor." : "Trendyol create batch sonucu bekleniyor.";
             return JobExecutionResult.Retry("PRODUCT_BATCH_PENDING", waitingMessage, TimeSpan.FromSeconds(15), operation.ExternalOperationId);
         }
 
@@ -709,7 +709,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var runningMessage = string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
                 ? "Hepsiburada ürün import işlemi sürüyor."
                 : string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase) ? "Shopify ürün yayın işlemi sürüyor."
-                : string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase) ? "N11 ürün açma görevi işleniyor." : string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) ? "Pazarama ürün açma işlemi sürüyor." : string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase) ? "PTT AVM ürün gönderimi işleniyor." : "Trendyol create batch işlemi sürüyor.";
+                : string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase) ? "N11 ürün açma görevi işleniyor." : string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) ? "Pazarama ürün açma işlemi sürüyor." : string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase) ? "PttAVM ürün gönderimi işleniyor." : "Trendyol create batch işlemi sürüyor.";
             return JobExecutionResult.Retry("PRODUCT_BATCH_PENDING", runningMessage, TimeSpan.FromSeconds(15), payload.ExternalOperationId);
         }
         if (WholeBatchRejection(platformCode, operationStatus.Status) is { } refusal)
@@ -728,7 +728,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var keyedBySku = isHepsiburada || isShopify || isN11;
         var lines = operationStatus.Lines.Where(x => !string.IsNullOrWhiteSpace(x.ExternalKey)).ToList();
         var remoteKeyLabel = isN11 ? "stok kodu" : isShopify || isHepsiburada ? "merchantSku" : "barkod";
-        var marketplaceName = isShopify ? "Shopify" : isHepsiburada ? "Hepsiburada" : isN11 ? "N11" : string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) ? "Pazarama" : string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase) ? "PTT AVM" : "Trendyol";
+        var marketplaceName = isShopify ? "Shopify" : isHepsiburada ? "Hepsiburada" : isN11 ? "N11" : string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) ? "Pazarama" : string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase) ? "PttAVM" : "Trendyol";
         // No lines at all is a result not written yet: it waits below like any unlisted item, then the approval check
         // settles it (Shopify included, which used to go to review at once).
         if (lines.GroupBy(x => x.ExternalKey, StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", $"Tamamlanan {marketplaceName} sonucu eksik veya yinelenen {remoteKeyLabel} satırları içeriyor.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
@@ -839,7 +839,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return platformCode?.ToUpperInvariant() switch
         {
             "N11" => ("N11_TASK_REJECTED", "N11 ürün açma görevini reddetti; ürün açılmadı. Nedeni N11 satıcı panelindeki görev sonucunda görülebilir."),
-            "PTTAVM" => ("PTTAVM_PRODUCT_REJECTED", "PTT AVM ürün gönderimini iptal etti; ürün açılmadı. Nedeni PTT AVM satıcı panelinde görülebilir."),
+            "PTTAVM" => ("PTTAVM_PRODUCT_REJECTED", "PttAVM ürün gönderimini iptal etti; ürün açılmadı. Nedeni PttAVM satıcı panelinde görülebilir."),
             "PAZARAMA" => ("PAZARAMA_BATCH_REJECTED", "Pazarama ürün açma partisini hata durumuyla bitirdi ve hiçbir ürün için sonuç vermedi; ürün açılmış sayılmadı. Nedeni Pazarama satıcı panelindeki parti sonucunda görülebilir."),
             _ => null
         };
@@ -875,7 +875,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var isPazarama = string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase);
         var isPttAvm = string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase);
         var isShopify = string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase);
-        var marketplaceName = isN11 ? "N11" : isPazarama ? "Pazarama" : isPttAvm ? "PTT AVM" : isShopify ? "Shopify" : "Trendyol";
+        var marketplaceName = isN11 ? "N11" : isPazarama ? "Pazarama" : isPttAvm ? "PttAVM" : isShopify ? "Shopify" : "Trendyol";
         var keyLabel = isN11 || isShopify ? "stok kodu" : "barkod";
         Func<ChannelListingVariant, string?> approvalKey = item => isN11 || isShopify ? item.ExternalSku : item.ExternalBarcode;
 
@@ -1903,8 +1903,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         "HEPSIBURADA" => "Hepsiburada",
         "SHOPIFY" => "Shopify",
         "TRENDYOL" => "Trendyol",
-        "PTTAVM" => "PTT AVM",
-        "N11" => "n11",
+        "PTTAVM" => "PttAVM",
+        "N11" => "N11",
         "PAZARAMA" => "Pazarama",
         _ => platformCode ?? "Pazaryeri"
     };
@@ -3393,7 +3393,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             connection.Version++;
             await db.SaveChangesAsync(cancellationToken);
             throw JobProcessingException.FromAdapter(new AdapterError(AdapterErrorClass.NotSupported, connection.LastErrorCode,
-                $"{(connection.PlatformCode switch { "N11" => "N11", "PAZARAMA" => "Pazarama", "PTTAVM" => "PTT AVM", _ => "Hepsiburada" })} bağlantısı etkinleştirilemez: ürün ve sipariş okuma yeteneklerinin ikisi de doğrulanmalıdır.", null, null, null));
+                $"{(connection.PlatformCode switch { "N11" => "N11", "PAZARAMA" => "Pazarama", "PTTAVM" => "PttAVM", _ => "Hepsiburada" })} bağlantısı etkinleştirilemez: ürün ve sipariş okuma yeteneklerinin ikisi de doğrulanmalıdır.", null, null, null));
         }
         if (connection.PlatformCode == "SHOPIFY" && discovery.Value is not null
             && !new[] { MarketplaceCapabilities.ProductRead, MarketplaceCapabilities.OrderRead }.All(code => discovery.Value.Any(item => item.Code == code && item.SupportLevel == "SUPPORTED")))
@@ -6577,7 +6577,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     var categoryContext = categoryReferences is null
                         ? null
                         : await EnsureCategoryAttributeContext(tenantId, connectionId, categoryReferences, snapshot, categoryItems, importedAttributeLibrary, categoryContexts, correlationId, cancellationToken);
-                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify || isHepsiburada || flatCatalog, preferBarcode: isShopify, matchBySku: isN11, onlyExistingVariants: existingOnly && isShopify, updateExistingProducts: updateExistingProducts, overwriteLocalChanges: ProductImportMergePolicy.OverwriteLocalChanges(updateExistingProducts, singleLookup, existingOnly, isShopify || isHepsiburada || flatCatalog), updatePrices: updatePrices, updateStock: updateStock, isHepsiburada: isHepsiburada, observedPlatformName: isPazarama ? "Pazarama" : isPttAvm ? "PTT AVM" : null, createdAt: CatalogImportOrdering.RemoteCreatedAt(snapshot, catalogOrderStamp) ?? catalogOrderStamp.AddMilliseconds(-catalogOrderPosition++), allowNewProduct: !existingOnly);
+                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify || isHepsiburada || flatCatalog, preferBarcode: isShopify, matchBySku: isN11, onlyExistingVariants: existingOnly && isShopify, updateExistingProducts: updateExistingProducts, overwriteLocalChanges: ProductImportMergePolicy.OverwriteLocalChanges(updateExistingProducts, singleLookup, existingOnly, isShopify || isHepsiburada || flatCatalog), updatePrices: updatePrices, updateStock: updateStock, isHepsiburada: isHepsiburada, observedPlatformName: isPazarama ? "Pazarama" : isPttAvm ? "PttAVM" : null, createdAt: CatalogImportOrdering.RemoteCreatedAt(snapshot, catalogOrderStamp) ?? catalogOrderStamp.AddMilliseconds(-catalogOrderPosition++), allowNewProduct: !existingOnly);
                     existingProductExternalIds?.Add(snapshot.ExternalProductId);
                     if (existingVariantExternalIds is not null)
                         foreach (var variant in snapshot.Variants)
@@ -7770,8 +7770,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (reportUnmatched)
                 await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:ptt:{externalProductId}", "PRODUCT_MAPPING_UNMATCHED",
                     Short(byCode.Count > 1
-                        ? $"PTT AVM ürün kodu {productCode} panelde {byCode.Count} varyantın kodu; hangisi olduğu seçilemedi · {snapshot.Title}."
-                        : $"PTT AVM ürün kodu {productCode} panelde yok: aynı model kodu veya stok kodu bulunamadı · {snapshot.Title}.", 1000), cancellationToken);
+                        ? $"PttAVM ürün kodu {productCode} panelde {byCode.Count} varyantın kodu; hangisi olduğu seçilemedi · {snapshot.Title}."
+                        : $"PttAVM ürün kodu {productCode} panelde yok: aynı model kodu veya stok kodu bulunamadı · {snapshot.Title}.", 1000), cancellationToken);
             return false;
         }
 
@@ -7781,7 +7781,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var productId = modelVariants.OrderBy(variant => variant.Sku, StringComparer.Ordinal).ThenBy(variant => variant.Id).First().ProductId;
         if (!compliant && reportUnmatched)
             await RecordIssue(tenantId, $"pttavm-product-code:{connectionId}:{externalProductId}", "PTTAVM_PRODUCT_CODE_NOT_MODEL",
-                Short($"PTT AVM'de varyantlı ürünün barkodu/satıcı stok kodu {productCode}, panel model kodu {modelVariants[0].ModelCode}. Kurala göre PTT AVM'de model koduna çevirin · {snapshot.Title}.", 1000), cancellationToken);
+                Short($"PttAVM'de varyantlı ürünün barkodu/satıcı stok kodu {productCode}, panel model kodu {modelVariants[0].ModelCode}. Kurala göre PttAVM'de model koduna çevirin · {snapshot.Title}.", 1000), cancellationToken);
 
         var variantIds = modelVariants.Select(variant => variant.Id).ToArray();
         var codes = modelVariants.Select(PttAvmVariantCode).Where(code => code is not null).Select(code => code!).ToArray();
@@ -7802,8 +7802,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 if (reportUnmatched)
                     await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:{variant.Id:N}", "PRODUCT_MAPPING_UNMATCHED",
                         Short(code is null
-                            ? $"PTT AVM varyantı bağlanmadı: panel varyantının stok kodu ve barkodu yok · {snapshot.Title}."
-                            : $"PTT AVM'de bu renk/beden yok: {string.Join(", ", missing)} ({code}); ürün {productCode} · {snapshot.Title}.", 1000), cancellationToken);
+                            ? $"PttAVM varyantı bağlanmadı: panel varyantının stok kodu ve barkodu yok · {snapshot.Title}."
+                            : $"PttAVM'de bu renk/beden yok: {string.Join(", ", missing)} ({code}); ürün {productCode} · {snapshot.Title}.", 1000), cancellationToken);
                 continue;
             }
             var taken = existingVariantLinks.FirstOrDefault(existing => existing.VariantId != variant.Id && string.Equals(existing.ExternalId, code, StringComparison.OrdinalIgnoreCase));
@@ -7811,7 +7811,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             {
                 if (reportUnmatched)
                     await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:{variant.Id:N}", "PRODUCT_MAPPING_UNMATCHED",
-                        Short($"PTT AVM kodu {code} başka bir panel varyantına bağlı; {variant.Sku} bağlanmadı · {snapshot.Title}.", 1000), cancellationToken);
+                        Short($"PttAVM kodu {code} başka bir panel varyantına bağlı; {variant.Sku} bağlanmadı · {snapshot.Title}.", 1000), cancellationToken);
                 continue;
             }
             if (own is null)
@@ -7848,7 +7848,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             {
                 if (reportUnmatched)
                     await RecordIssue(tenantId, $"pttavm-product-link:{connectionId}:{externalProductId}", "PRODUCT_MAPPING_UNMATCHED",
-                        Short($"Panel ürünü başka bir PTT AVM ürününe bağlı; {productCode} varyantları bağlandı, ürün bağı kurulmadı · {snapshot.Title}.", 1000), cancellationToken);
+                        Short($"Panel ürünü başka bir PttAVM ürününe bağlı; {productCode} varyantları bağlandı, ürün bağı kurulmadı · {snapshot.Title}.", 1000), cancellationToken);
                 return true;
             }
             db.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ProductId = productId, ExternalId = externalProductId, ExternalCode = productCode, SyncStatus = "MAPPED", LastImportedAt = now, Version = 1 });
@@ -11167,9 +11167,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     {
         "TRENDYOL" => "Trendyol",
         "HEPSIBURADA" => "Hepsiburada",
-        "N11" => "n11",
+        "N11" => "N11",
         "PAZARAMA" => "Pazarama",
-        "PTTAVM" => "PTT AVM",
+        "PTTAVM" => "PttAVM",
         "SHOPIFY" => "Shopify",
         null or "" => "Pazaryeri",
         _ => platformCode

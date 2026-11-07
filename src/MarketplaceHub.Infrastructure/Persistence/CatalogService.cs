@@ -1908,7 +1908,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         // global and connection write switches are the gate for product create.
         if (connection.PlatformCode == "N11" && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "N11'de ürün açmak için global ve bağlantı dış yazma anahtarları açık olmalıdır.", 422);
         if (connection.PlatformCode == "PAZARAMA" && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Pazarama'da ürün açmak için global ve bağlantı dış yazma anahtarları açık olmalıdır.", 422);
-        if (connection.PlatformCode == "PTTAVM" && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "PTT AVM'ye ürün göndermek için global ve bağlantı dış yazma anahtarları açık olmalıdır.", 422);
+        if (connection.PlatformCode == "PTTAVM" && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "PttAVM'ye ürün göndermek için global ve bağlantı dış yazma anahtarları açık olmalıdır.", 422);
         if (connection.PlatformCode == "PTTAVM" && PttAvmManualWritePolicy.Decide(masterWritesEnabled: true, await db.ConnectionSyncPolicies.AsNoTracking()
                 .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == MarketplaceExternalWritePolicies.Manual)
                 .Select(x => (bool?)x.Enabled)
@@ -2313,7 +2313,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             .Select(x => new { x.Status, x.PayloadJson, x.CreatedAt })
             .ToListAsync(cancellationToken);
         if (jobs.Any(x => x.Status is JobStatus.Pending or JobStatus.Leased or JobStatus.RetryScheduled))
-            return ServiceResult<Guid>.Fail("PUBLICATION_WRITE_IN_PROGRESS", "Model ailesi PTT AVM'ye gönderiliyor. Gönderim tamamlandıktan sonra durumu yenileyin.", 409);
+            return ServiceResult<Guid>.Fail("PUBLICATION_WRITE_IN_PROGRESS", "Model ailesi PttAVM'ye gönderiliyor. Gönderim tamamlandıktan sonra durumu yenileyin.", 409);
         var send = PttAvmFamilySend.Carrying(variants.Select(x => x.Barcode!.Trim()).ToList(), jobs.Select(x => (x.PayloadJson, x.Status == JobStatus.Succeeded, x.CreatedAt)));
         if (send is null) return null;
 

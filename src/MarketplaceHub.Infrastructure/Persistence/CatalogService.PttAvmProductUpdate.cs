@@ -18,9 +18,9 @@ public sealed partial class CatalogService
         if (!picked.Succeeded) return ServiceResult<Guid>.Fail(picked.Error!.Code, picked.Error.Message, picked.Error.Status);
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "PTTAVM", cancellationToken);
-        if (connection is null || !IntegrationRuntimePolicy.IsManualProductWriteReady(connection)) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Güncelleme için ACTIVE veya doğrulanmış PTT AVM bağlantısı gerekir.", 422);
+        if (connection is null || !IntegrationRuntimePolicy.IsManualProductWriteReady(connection)) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Güncelleme için ACTIVE veya doğrulanmış PttAVM bağlantısı gerekir.", 422);
         if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Güncelleme yalnız test ya da canlı mağaza bağlantısında yapılabilir.", 422);
-        if (!WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "PTT AVM'de ürün güncellemek için global ve bağlantı dış yazma anahtarları açık olmalıdır.", 422);
+        if (!WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "PttAVM'de ürün güncellemek için global ve bağlantı dış yazma anahtarları açık olmalıdır.", 422);
         var manualPolicy = await db.ConnectionSyncPolicies.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == MarketplaceExternalWritePolicies.Manual)
             .Select(x => (bool?)x.Enabled)
@@ -41,7 +41,7 @@ public sealed partial class CatalogService
         // job of the card then stops as superseded).
         var listingVariantIds = await db.ChannelListingVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProfileId == profile.Id).Select(x => x.VariantId).ToListAsync(cancellationToken);
         var states = await db.MarketplaceListingStates.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && listingVariantIds.Contains(x.VariantId)).ToListAsync(cancellationToken);
-        if (states.Count != listingVariantIds.Count) return ServiceResult<Guid>.Fail("PRODUCT_UPDATE_STATE_INCOMPLETE", "Kartın PTT AVM yayın kayıtları eksik; önce yayın durumunu yenileyin.", 409);
+        if (states.Count != listingVariantIds.Count) return ServiceResult<Guid>.Fail("PRODUCT_UPDATE_STATE_INCOMPLETE", "Kartın PttAVM yayın kayıtları eksik; önce yayın durumunu yenileyin.", 409);
         foreach (var state in states) { state.DesiredStatus = "LIVE"; state.PayloadHash = draft.Publication.PayloadHash; state.Version++; }
 
         var jobId = Guid.CreateVersion7();

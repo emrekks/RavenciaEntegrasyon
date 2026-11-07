@@ -20,7 +20,7 @@ public sealed partial class PttAvmHttpClient : IReferenceDataPort
         if (type is "CATEGORY_ATTRIBUTES" or "ATTRIBUTE_VALUES")
             return AdapterResult<AdapterPageResult<RemoteReferenceItem>>.Success(new([], null, false, 0));
         if (type != "CATEGORIES")
-            return NotSupported<AdapterPageResult<RemoteReferenceItem>>("PTTAVM_REFERENCE_UNSUPPORTED", $"PTT AVM {resource.ResourceType} referansı sağlamıyor; yalnız kategori ağacı okunur.");
+            return NotSupported<AdapterPageResult<RemoteReferenceItem>>("PTTAVM_REFERENCE_UNSUPPORTED", $"PttAVM {resource.ResourceType} referansı sağlamıyor; yalnız kategori ağacı okunur.");
         var load = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (load.Account is null) return CredentialFailure<AdapterPageResult<RemoteReferenceItem>>(load);
         return await ReadCategoriesAsync(load.Account, cancellationToken);
@@ -31,10 +31,10 @@ public sealed partial class PttAvmHttpClient : IReferenceDataPort
         var result = await SendSoapAsync(account, CategoryTree, [new("parent_id", "0")], cancellationToken);
         if (!result.IsSuccess) return AdapterResult<AdapterPageResult<RemoteReferenceItem>>.Failure(result.Error!, result.RateLimit);
         if (MainCategoryError(result.Value!, "category_tree") is { } error)
-            return Failure<AdapterPageResult<RemoteReferenceItem>>(AdapterErrorClass.ContractViolation, "PTTAVM_REFERENCE_CONTRACT_INVALID", $"PTT AVM kategori ağacı okunamadı ({error}).", HttpStatusCode.BadGateway);
+            return Failure<AdapterPageResult<RemoteReferenceItem>>(AdapterErrorClass.ContractViolation, "PTTAVM_REFERENCE_CONTRACT_INVALID", $"PttAVM kategori ağacı okunamadı ({error}).", HttpStatusCode.BadGateway);
         var items = PttAvmReferenceMapper.Categories(result.Value!);
         if (items.Count == 0)
-            return Failure<AdapterPageResult<RemoteReferenceItem>>(AdapterErrorClass.ContractViolation, "PTTAVM_REFERENCE_CONTRACT_INVALID", "PTT AVM kategori ağacı boş döndü.", HttpStatusCode.BadGateway);
+            return Failure<AdapterPageResult<RemoteReferenceItem>>(AdapterErrorClass.ContractViolation, "PTTAVM_REFERENCE_CONTRACT_INVALID", "PttAVM kategori ağacı boş döndü.", HttpStatusCode.BadGateway);
         return AdapterResult<AdapterPageResult<RemoteReferenceItem>>.Success(new(items, null, false, items.Count), result.RateLimit);
     }
 }

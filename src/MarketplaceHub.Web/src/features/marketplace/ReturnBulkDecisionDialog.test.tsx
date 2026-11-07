@@ -87,23 +87,21 @@ describe('bulk Hepsiburada approval', () => {
     { id: 'h1', connectionId: 'c2', version: 1, orderNumber: '#300', customerName: 'Zeynep', orderedAt: null, packageNumber: null, platformCode: 'HEPSIBURADA', platformName: 'Hepsiburada', reason: null, lines: [line('ol-h1', 'Elbise', 1)], customerRequest: 'CHANGE' },
     { id: 'h2', connectionId: 'c2', version: 1, orderNumber: '#400', customerName: 'Ali', orderedAt: null, packageNumber: null, platformCode: 'HEPSIBURADA', platformName: 'Hepsiburada', reason: null, lines: [line('ol-h2', 'Etek', 1)], customerRequest: null }
   ]
-  const choice = (orderNumber: string) => document.querySelector<HTMLSelectElement>(`select[aria-label="${orderNumber} için Para İadesi / Değişim"]`)!
+  const choice = (orderNumber: string) => document.querySelector<HTMLButtonElement>(`button[aria-label^="${orderNumber} için Para İadesi / Değişim"]`)!
 
   it('preselects what each customer asked for and sends that choice per claim', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const onClose = vi.fn()
     render(<QueryClientProvider client={client}><ReturnBulkDecisionDialog mode="APPROVE" items={hepsiburada} onClose={onClose} onDone={vi.fn()} /></QueryClientProvider>)
-    expect(choice('#300').value).toBe('Change')
+    expect(choice('#300').textContent).toBe('Değişim')
     expect(document.body.textContent).toContain('Müşteri İsteği: Değişim')
-    expect(choice('#400').value).toBe('')
+    expect(choice('#400').textContent).toBe('Seçin')
     expect(document.body.textContent).toContain('Müşteri isteği bilinmiyor')
     const submit = byText<HTMLButtonElement>(document.body, 'button', '2 İadeyi Onayla')
     expect(submit.disabled).toBe(true)
 
-    act(() => {
-      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(choice('#400'), 'Refund')
-      choice('#400').dispatchEvent(new Event('change', { bubbles: true }))
-    })
+    act(() => { choice('#400').click() })
+    act(() => { Array.from(document.querySelectorAll<HTMLButtonElement>('[role="option"]')).find(option => option.textContent === 'Para İadesi')!.click() })
     expect(submit.disabled).toBe(false)
     click(submit)
     await waitFor(() => document.querySelector('.rr-confirm-q'))

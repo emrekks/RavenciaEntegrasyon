@@ -23,7 +23,7 @@ export default defineConfig([
       // components take a `role` prop of their own (e.g. PanelAttributeLibraryBuilder role="OPTION")
       'jsx-a11y/aria-role': ['error', { ignoreNonDOM: true }],
       // checkbox cards wrap the input and put the text in <span><strong>; TokenValueInput is a text control
-      'jsx-a11y/label-has-associated-control': ['error', { assert: 'either', depth: 4, controlComponents: ['TokenValueInput'] }],
+      'jsx-a11y/label-has-associated-control': ['error', { assert: 'either', depth: 4, controlComponents: ['TokenValueInput', 'PanelSelect'] }],
     },
   },
   {

@@ -23,7 +23,7 @@ public static class PttAvmOrderMapper
             var orderNumber = Value(order, "SiparisNo");
             if (orderNumber is null)
             {
-                issues.Add(new("ORDER_PACKAGE_INVALID", "unknown", "PTT AVM siparişi içeri alınmadı: sipariş numarası yok."));
+                issues.Add(new("ORDER_PACKAGE_INVALID", "unknown", "PttAVM siparişi içeri alınmadı: sipariş numarası yok."));
                 continue;
             }
             if (Order(order, orderNumber, issues) is { } mapped) rows.Add(mapped);
@@ -37,7 +37,7 @@ public static class PttAvmOrderMapper
         var ordered = TurkeyTime.Parse(Value(order, "IslemTarihi"));
         if (ordered is null)
         {
-            issues.Add(RefusedOrders.Issue(orderNumber, $"PTT AVM siparişi {orderNumber} içeri alınmadı: işlem tarihi okunamadı; sipariş yeniden okunacak.", orderNumber));
+            issues.Add(RefusedOrders.Issue(orderNumber, $"PttAVM siparişi {orderNumber} içeri alınmadı: işlem tarihi okunamadı; sipariş yeniden okunacak.", orderNumber));
             return null;
         }
         var lines = new List<RemoteOrderLine>();
@@ -65,7 +65,7 @@ public static class PttAvmOrderMapper
             if (lineId is null || quantity is not > 0 || paid is null or < 0)
             {
                 unreadable++;
-                lineIssues.Add(UnreadableOrderLines.Issue("PTT AVM", $"order:{orderNumber}", lineId, "satır kimliği, adet veya tutar okunamadı."));
+                lineIssues.Add(UnreadableOrderLines.Issue("PttAVM", $"order:{orderNumber}", lineId, "satır kimliği, adet veya tutar okunamadı."));
                 continue;
             }
             var lineDiscount = Math.Max(Number(line, "IndirimToplam") ?? 0, 0);
@@ -94,14 +94,14 @@ public static class PttAvmOrderMapper
         }
         if (lines.Count == 0 && unreadable == 0)
         {
-            issues.Add(RefusedOrders.Issue(orderNumber, $"PTT AVM siparişi {orderNumber} içeri alınmadı: kullanılabilir ürün satırı yok; sipariş yeniden okunacak.", orderNumber));
+            issues.Add(RefusedOrders.Issue(orderNumber, $"PttAVM siparişi {orderNumber} içeri alınmadı: kullanılabilir ürün satırı yok; sipariş yeniden okunacak.", orderNumber));
             return null;
         }
         issues.AddRange(lineIssues);
         // PTT AVM sends no order total, only line amounts (pttavm-api-son.md:1597-1632): with a line unread the order's
         // amount is the read lines' sum and may be short. The order shows it (MarketplaceSalesService.AmountMayBeIncomplete).
         if (unreadable > 0)
-            issues.Add(new(UnreadableOrderLines.AmountIssueCode, $"order:{orderNumber}", $"PTT AVM siparişi {orderNumber}: {unreadable} ürün satırı okunamadı ve PTT AVM sipariş toplamı göndermiyor; sipariş tutarı yalnız okunan satırların toplamı, eksik olabilir."));
+            issues.Add(new(UnreadableOrderLines.AmountIssueCode, $"order:{orderNumber}", $"PttAVM siparişi {orderNumber}: {unreadable} ürün satırı okunamadı ve PttAVM sipariş toplamı göndermiyor; sipariş tutarı yalnız okunan satırların toplamı, eksik olabilir."));
 
         if (hasLiveLine) (gross, discount) = (liveGross, liveDiscount);
         discount = Math.Clamp(discount, 0, gross);

@@ -13,7 +13,7 @@ public sealed partial class PttAvmHttpClient : IProductPort
 {
     // An answer that never runs dry still ends: PTT AVM's documented page cap.
     internal const int MaxProductPages = 1000;
-    private const string ProductWritesLater = "PTT AVM ürün güncellemesi tek istekle (Platformlarda Güncelle) yapılır; bu işlem PTT AVM için ayrıca desteklenmiyor.";
+    private const string ProductWritesLater = "PttAVM ürün güncellemesi tek istekle (Platformlarda Güncelle) yapılır; bu işlem PttAVM için ayrıca desteklenmiyor.";
 
     public async Task<AdapterResult<AdapterPageResult<RemoteCatalogProduct>>> ListCatalogAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken)
     {
@@ -38,7 +38,7 @@ public sealed partial class PttAvmHttpClient : IProductPort
         var result = await SendSoapAsync(account, StockList, StockListParameters(account.Connection.ExternalStoreId, pageIndex, barcode), cancellationToken);
         if (!result.IsSuccess) return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Failure(result.Error!, result.RateLimit);
         if (!IsNil(result.Value!) && result.Value!.Elements().Any(x => x.Name.LocalName != "StokKontrolDetay"))
-            return Failure<AdapterPageResult<RemoteCatalogProduct>>(AdapterErrorClass.ContractViolation, "PTTAVM_PRODUCT_CONTRACT_INVALID", $"PTT AVM ürün listesi beklenen yapıda değil (yanıt öğeleri: {ElementShape(result.Value)}).", HttpStatusCode.BadGateway);
+            return Failure<AdapterPageResult<RemoteCatalogProduct>>(AdapterErrorClass.ContractViolation, "PTTAVM_PRODUCT_CONTRACT_INVALID", $"PttAVM ürün listesi beklenen yapıda değil (yanıt öğeleri: {ElementShape(result.Value)}).", HttpStatusCode.BadGateway);
         // The variants of model products come from GetProductsWithVariants: read on the first page of a scan, reused by
         // its later pages. A failure there leaves the products without their variants and is reported, not fatal.
         var variantList = await VariantListAsync(account, refresh: pageIndex == 0 && barcode is null, cancellationToken);
@@ -46,11 +46,11 @@ public sealed partial class PttAvmHttpClient : IProductPort
         var pageFirst = products.FirstOrDefault()?.ProductMainId;
         var issueList = issues.ToList();
         if (!variantList.IsSuccess)
-            issueList.Add(new("PTTAVM_VARIANT_LIST_UNAVAILABLE", pageIndex.ToString(CultureInfo.InvariantCulture), $"PTT AVM varyant listesi okunamadı ({variantList.Error!.Code}); ürünler bu sayfada varyantsız okundu."));
+            issueList.Add(new("PTTAVM_VARIANT_LIST_UNAVAILABLE", pageIndex.ToString(CultureInfo.InvariantCulture), $"PttAVM varyant listesi okunamadı ({variantList.Error!.Code}); ürünler bu sayfada varyantsız okundu."));
         // A later page that starts like page zero means SearchPage was ignored: the scan stops instead of looping.
         if (pageIndex > 0 && pageFirst is not null && string.Equals(pageFirst, firstBarcode, StringComparison.Ordinal))
         {
-            issueList.Add(new("PTTAVM_PRODUCT_PAGE_REPEATED", pageIndex.ToString(CultureInfo.InvariantCulture), "PTT AVM ürün listesi sonraki sayfa yerine ilk sayfayı yeniden döndürdü; tarama bu sayfada durduruldu."));
+            issueList.Add(new("PTTAVM_PRODUCT_PAGE_REPEATED", pageIndex.ToString(CultureInfo.InvariantCulture), "PttAVM ürün listesi sonraki sayfa yerine ilk sayfayı yeniden döndürdü; tarama bu sayfada durduruldu."));
             return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Success(new([], null, false, total, issueList), result.RateLimit);
         }
         var anchor = pageIndex == 0 ? pageFirst : firstBarcode;

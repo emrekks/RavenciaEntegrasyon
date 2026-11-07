@@ -2543,8 +2543,8 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         var wholeClaim = ReturnDecisionScope.IsWholeClaim(platformCode);
         if (action == "REJECT" && isN11 && N11ReturnDenyRule.Problem(command.ReasonCode, command.Explanation, command.ReturnShipment?.ShipmentCompanyId, command.ReturnShipment?.TrackingNumber) is { } denyProblem)
             return Invalid<ReturnDetailView>("returnShipment", denyProblem);
-        if (action == "REJECT" && isN11 && command.EvidenceAssetIds is { Count: > 0 }) return Invalid<ReturnDetailView>("evidenceAssetIds", "n11 reddi kanıt dosyası almaz.");
-        if (command.ReturnShipment is not null && !(action == "REJECT" && isN11)) return Invalid<ReturnDetailView>("returnShipment", "Geri gönderim bilgisi yalnız n11 iadesi reddedilirken gönderilir.");
+        if (action == "REJECT" && isN11 && command.EvidenceAssetIds is { Count: > 0 }) return Invalid<ReturnDetailView>("evidenceAssetIds", "N11 reddi kanıt dosyası almaz.");
+        if (command.ReturnShipment is not null && !(action == "REJECT" && isN11)) return Invalid<ReturnDetailView>("returnShipment", "Geri gönderim bilgisi yalnız N11 iadesi reddedilirken gönderilir.");
         if (preApprovalConfirm && !awaitingPreApproval) return ServiceResult<ReturnDetailView>.Fail("HEPSIBURADA_PREAPPROVAL_ACTION_NOT_ALLOWED", "İnceleme için geri gönderim yalnız Hepsiburada AwaitingPreApproval durumunda kullanılabilir.", 409);
         if (claim.Status != ReturnClaimStatus.ActionRequired && !(awaitingPreApproval && claim.Status == ReturnClaimStatus.Requested)) return ServiceResult<ReturnDetailView>.Fail("RETURN_ACTION_NOT_ALLOWED", "İade aksiyonu yalnız sağlayıcının aksiyon beklediği durumda kullanılabilir.", 409);
 

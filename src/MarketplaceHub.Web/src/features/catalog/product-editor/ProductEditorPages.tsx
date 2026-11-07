@@ -499,7 +499,7 @@ function RichTextEditor({ value, onChange }: { value: string; onChange: (value: 
     </div>
     <div className="rich-text-toolbar" role="toolbar" aria-label="Açıklama biçimlendirme araçları">
       <div className="rich-text-tool-group" role="group" aria-label="Düzenleme"><RichTextTool icon="undo" label="Geri Al" onClick={() => runCommand('undo')} disabled={htmlMode} /><RichTextTool icon="redo" label="Yinele" onClick={() => runCommand('redo')} disabled={htmlMode} /></div>
-      <div className="rich-text-tool-group" role="group" aria-label="Yazı boyutu"><select aria-label="Yazı Boyutu" title="Yazı Boyutu" defaultValue="" disabled={htmlMode} onChange={event => { const map: Record<string, string> = { '12': '2', '15': '3', '19': '5' }; runCommand('fontSize', map[event.target.value] ?? '3'); event.currentTarget.value = '' }}><option value="" disabled>Boyut</option><option value="12">Küçük</option><option value="15">Normal</option><option value="19">Büyük</option></select></div>
+      <div className="rich-text-tool-group" role="group" aria-label="Yazı boyutu"><div role="presentation" onMouseDown={event => event.preventDefault()}><PanelSelect ariaLabel="Yazı Boyutu" value="" placeholder="Boyut" disabled={htmlMode} width={120} options={[{ value: '12', label: 'Küçük' }, { value: '15', label: 'Normal' }, { value: '19', label: 'Büyük' }]} onChange={next => { const map: Record<string, string> = { '12': '2', '15': '3', '19': '5' }; runCommand('fontSize', map[next] ?? '3') }} /></div></div>
       <div className="rich-text-tool-group" role="group" aria-label="Metin biçimi"><RichTextTool icon="bold" label="Kalın" onClick={() => runCommand('bold')} disabled={htmlMode} active={activeCommands.has('bold')} /><RichTextTool icon="italic" label="İtalik" onClick={() => runCommand('italic')} disabled={htmlMode} active={activeCommands.has('italic')} /><RichTextTool icon="underline" label="Altı Çizili" onClick={() => runCommand('underline')} disabled={htmlMode} active={activeCommands.has('underline')} /><RichTextTool icon="textColor" label="Metin Rengi" onClick={() => runCommand('foreColor', '#7652e8')} disabled={htmlMode} /></div>
       <div className="rich-text-tool-group rich-text-alignment-group" role="group" aria-label="Paragraf hizası"><RichTextTool icon="alignLeft" label="Sola Hizala" onClick={() => runCommand('justifyLeft')} disabled={htmlMode} active={activeCommands.has('justifyLeft')} /><RichTextTool icon="alignCenter" label="Ortala" onClick={() => runCommand('justifyCenter')} disabled={htmlMode} active={activeCommands.has('justifyCenter')} /><RichTextTool icon="alignRight" label="Sağa Hizala" onClick={() => runCommand('justifyRight')} disabled={htmlMode} active={activeCommands.has('justifyRight')} /></div>
       <div className="rich-text-tool-group" role="group" aria-label="Liste ve paragraf"><RichTextTool icon="list" label="Madde Listesi" onClick={() => runCommand('insertUnorderedList')} disabled={htmlMode} active={activeCommands.has('insertUnorderedList')} /><RichTextTool icon="paragraph" label="Paragraf" onClick={() => runCommand('formatBlock', 'p')} disabled={htmlMode} /></div>
@@ -729,10 +729,10 @@ function CategoryAttributeMappingPanel({
           <div className={`attribute-builder-web-color-mode${webColorAutoEnabled ? ' is-auto' : ' is-manual'}`}>
             <label className="attribute-builder-web-color-toggle">
               <input type="checkbox" checked={webColorAutoEnabled} onChange={event => onToggleWebColorAuto(event.target.checked)} />
-              <span><strong>Varyant renklerini otomatik aktar<TitleHint label="Varyant renklerini otomatik aktar">{webColorAutoEnabled ? 'Açık · Her varyant kendi rengiyle Trendyol Web Color olarak gider.' : 'Kapalı · Seçilen renk tüm varyantlara Trendyol Web Color olarak gider; diğer pazaryerleri etkilenmez.'}</TitleHint></strong></span>
+              <span><strong>Varyant Renklerini Otomatik Aktar<TitleHint label="Varyant Renklerini Otomatik Aktar">{webColorAutoEnabled ? 'Açık · Her varyant kendi rengiyle Trendyol Web Color olarak gider.' : 'Kapalı · Seçilen renk tüm varyantlara Trendyol Web Color olarak gider; diğer pazaryerleri etkilenmez.'}</TitleHint></strong></span>
             </label>
             {webColorAutoEnabled ? null : (
-              <label className="attribute-builder-web-color-manual">Trendyol Katalog Rengi<select aria-label="Manuel Trendyol katalog rengi" value={manualWebColorValueId} onChange={event => onManualWebColorValueChange(event.target.value)}><option value="">Trendyol Katalog Rengi Seçin</option>{sortOptionValues('Renk', webColorRequirement.attribute.values).map(value => <option key={value.id} value={value.id}>{cleanOptionValue(value.value)}</option>)}</select></label>
+              <label className="attribute-builder-web-color-manual">Trendyol Katalog Rengi<PanelSelect ariaLabel="Manuel Trendyol katalog rengi" value={manualWebColorValueId} placeholder="Trendyol Katalog Rengi Seçin" onChange={onManualWebColorValueChange} options={[{ value: '', label: 'Trendyol Katalog Rengi Seçin' }, ...sortOptionValues('Renk', webColorRequirement.attribute.values).map(value => ({ value: String(value.id), label: cleanOptionValue(value.value) }))]} /></label>
             )}
           </div>
         </article>}
@@ -750,11 +750,7 @@ function CategoryAttributeMappingPanel({
             {item.attribute.values.length ? (
               <CategoryAttributeValueDropdown attributeName={displayName} required={item.isRequired} values={item.attribute.values} selectedValues={selectedValues} onToggleValue={valueId => onToggleValue(item.attributeId, valueId)} />
             ) : item.attribute.dataType === 'BOOLEAN' ? (
-              <select aria-label={`${displayName} değeri`} value={attributeTextValues[item.attributeId] ?? ''} onChange={event => onTextChange(item.attributeId, event.target.value)}>
-                <option value="">Değer Seçin</option>
-                <option value="evet">Evet</option>
-                <option value="hayır">Hayır</option>
-              </select>
+              <PanelSelect ariaLabel={`${displayName} değeri`} value={attributeTextValues[item.attributeId] ?? ''} onChange={next => onTextChange(item.attributeId, next)} options={[{ value: '', label: 'Değer Seçin' }, { value: 'evet', label: 'Evet' }, { value: 'hayır', label: 'Hayır' }]} />
             ) : (
               <input aria-label={`${displayName} değeri`} value={attributeTextValues[item.attributeId] ?? ''} onChange={event => onTextChange(item.attributeId, event.target.value)} type={item.attribute.dataType === 'NUMBER' ? 'number' : 'text'} placeholder={item.allowsCustomValue ? 'Değer girin' : 'Özellik değerini girin'} />
             )}
@@ -3681,7 +3677,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
                   {filteredValues.length === 0 && !optionValueToAdd(item.attribute.name, item.attribute.values, valueQuery) && <p className="attribute-builder-no-values">Eşleşen değer bulunamadı.</p>}
                   </>
                 ) : item.attribute.dataType === 'BOOLEAN' ? (
-                  <label>Değer<select value={attributeTextValues[item.attributeId] ?? ''} onChange={event => setAttributeTextValues(current => ({ ...current, [item.attributeId]: event.target.value }))}><option value="">Seçin</option><option value="evet">Evet</option><option value="hayır">Hayır</option></select></label>
+                  <label>Değer<PanelSelect ariaLabel="Değer" value={attributeTextValues[item.attributeId] ?? ''} onChange={next => setAttributeTextValues(current => ({ ...current, [item.attributeId]: next }))} options={[{ value: '', label: 'Seçin' }, { value: 'evet', label: 'Evet' }, { value: 'hayır', label: 'Hayır' }]} /></label>
                 ) : (
                   <label>Değer<input value={attributeTextValues[item.attributeId] ?? ''} onChange={event => setAttributeTextValues(current => ({ ...current, [item.attributeId]: event.target.value }))} type={item.attribute.dataType === 'NUMBER' ? 'number' : 'text'} placeholder="Değer girin" /></label>
                 )}

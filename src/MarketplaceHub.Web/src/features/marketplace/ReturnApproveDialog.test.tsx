@@ -45,24 +45,25 @@ describe('ReturnApproveDialog', () => {
   const renderHepsiburada = (customerRequest: string | null) => act(() => root.render(<QueryClientProvider client={client}>
     <ReturnApproveDialog open claimId="hb-1" version={1} marketplaceName="Hepsiburada" order={{ ...order, platformCode: 'HEPSIBURADA', platformName: 'Hepsiburada' }} rows={rows} loading={false} error={null} wholeClaim finalizedWithChoice customerRequest={customerRequest} onClose={() => {}} onDone={() => {}} />
   </QueryClientProvider>))
-  const choice = () => document.querySelector<HTMLSelectElement>('.rr-finalized select')!
+  const choice = () => document.querySelector<HTMLButtonElement>('.rr-finalized button.rr-trigger')!
+  const pick = (label: string) => {
+    act(() => { choice().click() })
+    act(() => { Array.from(document.querySelectorAll<HTMLButtonElement>('[role="option"]')).find(option => option.textContent === label)!.click() })
+  }
   const approveButton = () => Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === 'Onayla')!
 
   it('preselects Para İadesi / Değişim from the customer request of a Hepsiburada claim', () => {
     renderHepsiburada('REFUND')
-    expect(choice().value).toBe('Refund')
+    expect(choice().textContent).toBe('Para İadesi')
     expect(document.body.textContent).toContain('Müşteri İsteği: Para İadesi')
     expect(approveButton().disabled).toBe(false)
   })
 
   it('waits for the seller to choose when the claim does not say what the customer asked for', () => {
     renderHepsiburada(null)
-    expect(choice().value).toBe('')
+    expect(choice().textContent).toBe('Seçin')
     expect(approveButton().disabled).toBe(true)
-    act(() => {
-      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(choice(), 'Change')
-      choice().dispatchEvent(new Event('change', { bubbles: true }))
-    })
+    pick('Değişim')
     expect(approveButton().disabled).toBe(false)
   })
 

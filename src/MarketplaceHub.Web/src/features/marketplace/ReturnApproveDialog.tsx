@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
+import { PanelSelect } from '../../shared/PanelSelect'
 import { RrError, RrIcon, RrLoading, RrLogo, RrModal, RrThumb } from './returns-ui'
 import { integrationNotificationTarget, isExternalWriteMessage, type NotificationTarget } from '../../shared/notifications'
 import { allocateStock, stockedUnits, type ApprovedReturn } from './return-stock-allocation'
@@ -193,13 +194,13 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
           </label>
           <div className="rr-apr-side" role="cell">
             {canPickCount
-              ? <select className="rr-in" aria-label={`${first.title} onaylanacak adet`} value={count} disabled={!isSelected} onChange={event => setCounts(current => ({ ...current, [group.key]: Number(event.target.value) }))}>{group.rows.map((_, index) => <option key={index + 1} value={index + 1}>{index + 1} Adet</option>)}</select>
+              ? <PanelSelect ariaLabel={`${first.title} onaylanacak adet`} value={String(count)} disabled={!isSelected} onChange={next => setCounts(current => ({ ...current, [group.key]: Number(next) }))} options={group.rows.map((_, index) => ({ value: String(index + 1), label: `${index + 1} Adet` }))} />
               : <span className="rr-qty-static">{unitCount(picked)} Adet</span>}
             <button type="button" role="switch" aria-checked={stockOn} disabled={!isSelected || !mapped} className={`rr-switch${stockOn ? ' rr-on' : ''}`} onClick={() => toggleStock(group.key)} title={mapped ? undefined : 'Bu ürün yerel stok kaydıyla eşleşmiyor.'}>
               <i aria-hidden="true" />
               <span>Stoğa Ekle</span>
             </button>
-            {stockOn && unitCount(picked) > 1 && <select className="rr-in" aria-label={`${first.title} stoğa eklenecek adet`} value={Math.max(1, Math.min(stockUnits[group.key] ?? unitCount(picked), unitCount(picked)))} onChange={event => setStockUnits(current => ({ ...current, [group.key]: Number(event.target.value) }))}>{Array.from({ length: unitCount(picked) }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1} Adet Stoğa Ekle</option>)}</select>}
+            {stockOn && unitCount(picked) > 1 && <PanelSelect ariaLabel={`${first.title} stoğa eklenecek adet`} value={String(Math.max(1, Math.min(stockUnits[group.key] ?? unitCount(picked), unitCount(picked))))} onChange={next => setStockUnits(current => ({ ...current, [group.key]: Number(next) }))} options={Array.from({ length: unitCount(picked) }, (_, index) => ({ value: String(index + 1), label: `${index + 1} Adet Stoğa Ekle` }))} />}
             {!mapped && <small style={{ color: 'var(--rr-subtle)', fontSize: 12 }}>Yerel stok kaydıyla eşleşmiyor.</small>}
           </div>
         </div>

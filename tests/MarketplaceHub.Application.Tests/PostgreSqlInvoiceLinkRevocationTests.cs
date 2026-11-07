@@ -203,7 +203,7 @@ public sealed class PostgreSqlInvoiceLinkRevocationTests(PostgreSqlTenantIsolati
             var view = Assert.Single((await service.GetAsync(seed.TenantId, seed.InvoiceId, CancellationToken.None)).Value!.LinkRevocations!);
             Assert.Equal(MarketplaceInvoiceLinkRevocationPolicy.Manual, view.Mode);
             Assert.False(view.CanAct);
-            Assert.Contains("n11", view.Instructions, StringComparison.Ordinal);
+            Assert.Contains("N11", view.Instructions, StringComparison.Ordinal);
 
             var result = await service.RevokeMarketplaceLinkAsync(seed.TenantId, seed.InvoiceId, seed.StateId, "key", "revoke-n11", CancellationToken.None);
             Assert.Equal(MarketplaceInvoiceLinkRevocationPolicy.UnsupportedCode, result.Error?.Code);

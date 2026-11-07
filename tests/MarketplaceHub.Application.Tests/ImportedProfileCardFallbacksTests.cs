@@ -34,7 +34,7 @@ public sealed class ImportedProfileCardFallbacksTests
     public void EmptyCardDelivery_StopsTheUpdate_NamingProductMarketplaceAndField()
     {
         Assert.Equal("RYP003T – Trendyol: Teslimat Süresi boş; ürün kartında doldurun.", ImportedProfileCardFallbacks.EmptyCardField("TRENDYOL", "Trendyol", "RYP003T", Imported, null, null, null));
-        Assert.Equal("RYP003T – PTT AVM: Teslimat Süresi boş; ürün kartında doldurun.", ImportedProfileCardFallbacks.EmptyCardField("PTTAVM", "PTT AVM", "RYP003T", Imported, null, 0, [ProductUpdateFields.Delivery]));
+        Assert.Equal("RYP003T – PttAVM: Teslimat Süresi boş; ürün kartında doldurun.", ImportedProfileCardFallbacks.EmptyCardField("PTTAVM", "PttAVM", "RYP003T", Imported, null, 0, [ProductUpdateFields.Delivery]));
         // Not sent, held by the card or the profile, n11 (its own preparing day), or a panel profile: no stop.
         Assert.Null(ImportedProfileCardFallbacks.EmptyCardField("TRENDYOL", "Trendyol", "RYP003T", Imported, null, null, [ProductUpdateFields.Title]));
         Assert.Null(ImportedProfileCardFallbacks.EmptyCardField("TRENDYOL", "Trendyol", "RYP003T", Imported, null, 3, null));

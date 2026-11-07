@@ -191,7 +191,7 @@ public static class JobReadSentence
     public static string From(string marketplace) => marketplace switch
     {
         "N11" => "N11'den",
-        "PTT AVM" => "PTT AVM'den",
+        "PttAVM" => "PttAVM'den",
         "E-Faturam" => "E-Faturam'dan",
         "Ravencia" => "Panelden",
         _ => $"{marketplace}'dan"

@@ -26,7 +26,7 @@ public sealed partial class PttAvmHttpClient : IProductFamilyStatusPort
     public async Task<AdapterResult<RemoteOperationRef>> CreateAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken)
     {
         var draft = PttAvmProductPayloadRules.Read(publication.PayloadJson, out var invalid);
-        if (draft is null) return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "PTTAVM_PRODUCT_PAYLOAD_INVALID", invalid ?? "PTT AVM ürün içeriği geçersiz.", HttpStatusCode.UnprocessableEntity);
+        if (draft is null) return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "PTTAVM_PRODUCT_PAYLOAD_INVALID", invalid ?? "PttAVM ürün içeriği geçersiz.", HttpStatusCode.UnprocessableEntity);
         var load = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (load.Account is null) return CredentialFailure<RemoteOperationRef>(load);
         if (draft.Variants is { Count: > 0 }) return await CreateVariantProductAsync(load.Account, draft, cancellationToken);
@@ -50,13 +50,13 @@ public sealed partial class PttAvmHttpClient : IProductFamilyStatusPort
         var variantList = await VariantListAsync(account, refresh: true, cancellationToken);
         // A list read only in part may leave this model out, and a model left out reads as one without variants.
         if (!variantList.IsSuccess && variantList.Error!.Code == VariantListIncompleteCode)
-            return Failure<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, PttAvmProductPayloadRules.RemoteVariantUnreadableCode, $"PTT AVM'de '{draft.Barcode}' ürününün varyantlarının tamamı okunamadı ({variantList.Error.SafeMessage}); silinecek varyant olup olmadığı bilinmediği için istek gönderilmedi.", HttpStatusCode.Conflict);
+            return Failure<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, PttAvmProductPayloadRules.RemoteVariantUnreadableCode, $"PttAVM'de '{draft.Barcode}' ürününün varyantlarının tamamı okunamadı ({variantList.Error.SafeMessage}); silinecek varyant olup olmadığı bilinmediği için istek gönderilmedi.", HttpStatusCode.Conflict);
         if (!variantList.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(variantList.Error!, variantList.RateLimit);
         var current = await ReadProductPageAsync(account, null, draft.Barcode, cancellationToken);
         if (!current.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(current.Error!, current.RateLimit);
         if ((current.Value!.Issues ?? []).Any(issue => issue.Code == "PTTAVM_VARIANT_LIST_UNAVAILABLE"
                 || issue.Code == "PRODUCT_VARIANT_INVALID" && issue.Identity.StartsWith(draft.Barcode + ":", StringComparison.OrdinalIgnoreCase)))
-            return Failure<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, PttAvmProductPayloadRules.RemoteVariantUnreadableCode, $"PTT AVM'de '{draft.Barcode}' ürününün varyantlarının tamamı okunamadı; silinecek varyant olup olmadığı bilinmediği için istek gönderilmedi.", HttpStatusCode.Conflict);
+            return Failure<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, PttAvmProductPayloadRules.RemoteVariantUnreadableCode, $"PttAVM'de '{draft.Barcode}' ürününün varyantlarının tamamı okunamadı; silinecek varyant olup olmadığı bilinmediği için istek gönderilmedi.", HttpStatusCode.Conflict);
         var remote = PttAvmProductPayloadRules.RemoteVariants(draft.Barcode, current.Value.Items);
         var merge = PttAvmProductPayloadRules.MergeVariants(draft.Variants!, remote);
         if (merge.Unreadable.Count > 0)
@@ -94,7 +94,7 @@ public sealed partial class PttAvmHttpClient : IProductFamilyStatusPort
             // "Aynı isteği ancak 5 dakika sonra tekrardan gönderebilirsiniz": a wait, not a refusal of the product.
             if (PttAvmProductPayloadRules.IsRepeatRequestRefusal(message))
                 return AdapterResult<RemoteOperationRef>.Failure(PttAvmProductPayloadRules.RepeatRequestError((int)HttpStatusCode.TooManyRequests), new RateLimitMetadata(null, null, PttAvmProductPayloadRules.RepeatRequestWait));
-            return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "PTTAVM_PRODUCT_REJECTED", $"PTT AVM ürünü kabul etmedi: {message ?? "gerekçe verilmedi"}.", HttpStatusCode.UnprocessableEntity);
+            return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "PTTAVM_PRODUCT_REJECTED", $"PttAVM ürünü kabul etmedi: {message ?? "gerekçe verilmedi"}.", HttpStatusCode.UnprocessableEntity);
         }
         return AdapterResult<RemoteOperationRef>.Success(new(TrackingOperationPrefix + trackingId, "PRODUCT_UPSERT", timeProvider.GetUtcNow()), result.RateLimit);
     }
@@ -209,7 +209,7 @@ public static class PttAvmProductPayloadRules
     public const int MaxVariantValueLength = 100;
     public const string RemoteVariantUnreadableCode = "PTTAVM_REMOTE_VARIANT_UNREADABLE";
     public const string VariantsAlreadyPresentCode = "PTTAVM_VARIANTS_ALREADY_PRESENT";
-    public const string VariantsAlreadyPresentMessage = "PTT AVM'de bu modelin bütün varyantları zaten var; gönderim yapılmadı.";
+    public const string VariantsAlreadyPresentMessage = "PttAVM'de bu modelin bütün varyantları zaten var; gönderim yapılmadı.";
     public const string DryRunCode = "PTTAVM_VARIANT_SEND_DRY_RUN";
 
     // The one switch of the variant product send: while it is true the merged request is built, checked against
@@ -251,7 +251,7 @@ public static class PttAvmProductPayloadRules
     }
 
     public static AdapterError RepeatRequestError(int? status) => new(AdapterErrorClass.RateLimit, RepeatRequestWaitCode,
-        "PTT AVM aynı isteği beş dakika dolmadan yeniden almıyor; istek işlenmedi ve 6 dakika sonra yeniden denenecek.", status, RepeatRequestWait, null);
+        "PttAVM aynı isteği beş dakika dolmadan yeniden almıyor; istek işlenmedi ve 6 dakika sonra yeniden denenecek.", status, RepeatRequestWait, null);
 
     public static string Payload(ProductDraft draft)
     {
@@ -348,7 +348,7 @@ public static class PttAvmProductPayloadRules
         }
         catch (JsonException)
         {
-            error = "PTT AVM ürün içeriği okunamadı.";
+            error = "PttAVM ürün içeriği okunamadı.";
             return null;
         }
     }
@@ -497,21 +497,21 @@ public static class PttAvmProductPayloadRules
         const int shown = 8;
         var names = variants.Take(shown).Select(x => $"{x.Variant.Barcode}: {x.Reason}");
         var more = variants.Count > shown ? $" ve {variants.Count - shown} varyant daha" : "";
-        return $"PTT AVM'deki bazı varyantlar olduğu gibi taşınamaz; gönderim fiyat farklarını veya pasif durumlarını silebilir: {string.Join("; ", names)}{more}. İstek gönderilmedi.";
+        return $"PttAVM'deki bazı varyantlar olduğu gibi taşınamaz; gönderim fiyat farklarını veya pasif durumlarını silebilir: {string.Join("; ", names)}{more}. İstek gönderilmedi.";
     }
 
     // The merged request against PTT AVM's limits; null when it may go.
     public static (string Code, string Message)? MergeRefusal(IReadOnlyList<VariantDraft> merged)
     {
         if (merged.Count > PttAvmPriceInventoryRules.MaxVariantsPerProduct)
-            return ("PTTAVM_VARIANT_LIMIT_EXCEEDED", $"PTT AVM'deki varyantlarla birlikte {merged.Count} varyant oluyor; PTT AVM bir üründe en fazla {PttAvmPriceInventoryRules.MaxVariantsPerProduct} varyant tutar. İstek gönderilmedi.");
+            return ("PTTAVM_VARIANT_LIMIT_EXCEEDED", $"PttAVM'deki varyantlarla birlikte {merged.Count} varyant oluyor; PttAVM bir üründe en fazla {PttAvmPriceInventoryRules.MaxVariantsPerProduct} varyant tutar. İstek gönderilmedi.");
         // A panel variant with another barcode under a colour and size PTT AVM already holds would make two of one variant.
         var duplicate = merged.GroupBy(x => VariantLabel(x.Color, x.Size), StringComparer.Ordinal).FirstOrDefault(group => group.Count() > 1);
         if (duplicate is not null)
-            return ("PTTAVM_VARIANT_OPTION_CONFLICT", $"PTT AVM'de '{duplicate.First().Color} / {duplicate.First().Size}' varyantı başka bir barkodla var ({string.Join(", ", duplicate.Select(x => x.Barcode))}); aynı renk ve beden iki kez gönderilemez. İstek gönderilmedi.");
+            return ("PTTAVM_VARIANT_OPTION_CONFLICT", $"PttAVM'de '{duplicate.First().Color} / {duplicate.First().Size}' varyantı başka bir barkodla var ({string.Join(", ", duplicate.Select(x => x.Barcode))}); aynı renk ve beden iki kez gönderilemez. İstek gönderilmedi.");
         var total = merged.Sum(x => x.Quantity);
         if (total > PttAvmPriceInventoryRules.MaxQuantity)
-            return ("PTTAVM_STOCK_TOTAL_TOO_HIGH", $"PTT AVM bir ürünün stoğunu en fazla {PttAvmPriceInventoryRules.MaxQuantity} tutar; PTT AVM'deki varyantlarla birlikte toplam {total} adet oluyor. İstek gönderilmedi.");
+            return ("PTTAVM_STOCK_TOTAL_TOO_HIGH", $"PttAVM bir ürünün stoğunu en fazla {PttAvmPriceInventoryRules.MaxQuantity} tutar; PttAVM'deki varyantlarla birlikte toplam {total} adet oluyor. İstek gönderilmedi.");
         return null;
     }
 
@@ -524,11 +524,11 @@ public static class PttAvmProductPayloadRules
             return variant.Barcode is null ? options ?? "adı okunamayan varyant" : options is null ? variant.Barcode : $"{variant.Barcode} ({options})";
         });
         var more = unreadable.Count > shown ? $" ve {unreadable.Count - shown} varyant daha" : "";
-        return $"PTT AVM'deki bazı varyantların barkodu, renk/beden değeri veya stoğu okunamadı: {string.Join(", ", names)}{more}. Bu varyantlar olduğu gibi taşınamadığı ve gönderim onları silebileceği için istek gönderilmedi.";
+        return $"PttAVM'deki bazı varyantların barkodu, renk/beden değeri veya stoğu okunamadı: {string.Join(", ", names)}{more}. Bu varyantlar olduğu gibi taşınamadığı ve gönderim onları silebileceği için istek gönderilmedi.";
     }
 
     public static string DryRunMessage(ProductDraft draft) =>
-        $"Kuru çalıştırma: {draft.Variants?.Count ?? 0} varyantlı PTT AVM isteği hazırlandı, gönderilmedi. İstek çalışan (worker) günlüğünde '{draft.Barcode}' barkoduyla kayıtlı.";
+        $"Kuru çalıştırma: {draft.Variants?.Count ?? 0} varyantlı PttAVM isteği hazırlandı, gönderilmedi. İstek çalışan (worker) günlüğünde '{draft.Barcode}' barkoduyla kayıtlı.";
 
     // Colour and size folded for comparison: case, Turkish letters and the spacing around a dash do not matter.
     internal static string VariantLabel(string color, string size) => $"{Fold(color)}/{Fold(size)}";
@@ -542,7 +542,7 @@ public static class PttAvmProductPayloadRules
         var others = linkedBarcodes.Select(x => x.Trim()).Where(x => !string.Equals(x, barcode, StringComparison.OrdinalIgnoreCase)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         return others.Count == 0
             ? null
-            : $"Bu ürün PTT AVM'de başka barkodlara da bağlı ({string.Join(", ", others.Take(5))}); varyantsız gönderim PTT AVM'deki varyantları silebileceği için gönderilmedi. Varyantlı ürünler PTT AVM satıcı panelinden güncellenmelidir.";
+            : $"Bu ürün PttAVM'de başka barkodlara da bağlı ({string.Join(", ", others.Take(5))}); varyantsız gönderim PttAVM'deki varyantları silebileceği için gönderilmedi. Varyantlı ürünler PttAVM satıcı panelinden güncellenmelidir.";
     }
 
     // PTT AVM's side of the guard: a product listed under this barcode must have no variants of its own (a variant
@@ -553,7 +553,7 @@ public static class PttAvmProductPayloadRules
         {
             var holdsBarcode = product.Variants.Any(x => string.Equals(x.Barcode, barcode, StringComparison.OrdinalIgnoreCase));
             if (holdsBarcode && (product.Variants.Count > 1 || product.Variants[0].Options.Count > 0))
-                return $"'{barcode}' PTT AVM'de varyantlı bir ürüne ait; varyantsız gönderim varyantları sileceği için ürün gönderilmedi. Bu ürünü PTT AVM satıcı panelinden güncelleyin.";
+                return $"'{barcode}' PttAVM'de varyantlı bir ürüne ait; varyantsız gönderim varyantları sileceği için ürün gönderilmedi. Bu ürünü PttAVM satıcı panelinden güncelleyin.";
         }
         return null;
     }

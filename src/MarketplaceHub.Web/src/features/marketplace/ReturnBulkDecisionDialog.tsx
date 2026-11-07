@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
+import { PanelSelect } from '../../shared/PanelSelect'
 import { RrBadge, RrIcon, RrLogo, RrModal, RrThumb } from './returns-ui'
 import { integrationNotificationTarget, isExternalWriteMessage, type NotificationTarget } from '../../shared/notifications'
 import { allocateStock, stockedUnits, totalUnits, type ApprovedReturn } from './return-stock-allocation'
@@ -201,10 +202,8 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
     {!finished && !approving && singlePlatform && <>
       <div className="rr-dgrid">
         <label className="rr-fld"><small>Ret Nedeni</small>
-          <select className="rr-in" value={reasonId} onChange={event => setReasonId(event.target.value)} disabled={running || reasons.isLoading}>
-            <option value="">{reasons.isLoading ? 'Nedenler Yükleniyor…' : 'Ret Nedeni Seçin'}</option>
-            {usableReasons.map(reason => <option key={reason.id} value={reason.id}>{reason.name}</option>)}
-          </select>
+          <PanelSelect value={reasonId} onChange={setReasonId} disabled={running || reasons.isLoading} ariaLabel="Ret Nedeni" placeholder={reasons.isLoading ? 'Nedenler Yükleniyor…' : 'Ret Nedeni Seçin'}
+            options={usableReasons.map(reason => ({ value: reason.id, label: reason.name }))} />
         </label>
         <label className="rr-fld rr-full"><small>Açıklama</small>
           <textarea className="rr-in" value={explanation} maxLength={500} rows={3} disabled={running} onChange={event => setExplanation(event.target.value)} placeholder="Müşteriye iletilecek ret açıklaması" />
@@ -243,7 +242,7 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
               <span className="rr-ptext"><b>{line.title}</b>{facts.map(([label, value]) => <small key={label}>{label}: {value}</small>)}{reason && <small className="rr-preason">İade Sebebi: <b className={reason.sellerFault ? 'rr-fault' : undefined} title={reason.sellerFault ? 'Satıcı kaynaklı iade: iade masrafları satıcıya yansıtılır.' : undefined}>{reason.label}</b></small>}{reason?.note && <small className="rr-preason">{reason.note[0]}: {reason.note[1]}</small>}</span>
               {approving && <div className="rr-stockctl">
                 <button type="button" role="switch" aria-checked={stockOn} disabled={stockLocked || !group || !group.mapped} className={`rr-switch${stockOn ? ' rr-on' : ''}`} onClick={() => group && toggleStock(group.key)} title={loadingDetail ? 'İade ayrıntıları yükleniyor…' : group && !group.mapped ? 'Bu ürün yerel stok kaydıyla eşleşmiyor.' : undefined}><i aria-hidden="true" /><span>Stoğa Ekle</span></button>
-                {stockOn && group && group.units > 1 && <select className="rr-in" aria-label={`${line.title} stoğa eklenecek adet`} disabled={stockLocked} value={unitsFor(group)} onChange={event => setStockUnits(current => ({ ...current, [group.key]: Number(event.target.value) }))}>{Array.from({ length: group.units }, (_, number) => <option key={number + 1} value={number + 1}>{number + 1} Adet Stoğa Ekle</option>)}</select>}
+                {stockOn && group && group.units > 1 && <PanelSelect ariaLabel={`${line.title} stoğa eklenecek adet`} disabled={stockLocked} value={String(unitsFor(group))} onChange={next => setStockUnits(current => ({ ...current, [group.key]: Number(next) }))} options={Array.from({ length: group.units }, (_, number) => ({ value: String(number + 1), label: `${number + 1} Adet Stoğa Ekle` }))} />}
               </div>}
             </div>
           })}

@@ -219,9 +219,11 @@ describe('IntegrationsPage filters (W16)', () => {
     act(() => { container.querySelector<HTMLButtonElement>('.integration-add-button')!.click() })
     for (const name of ['Trendyol', 'Hepsiburada', 'Trendyol E-Faturam']) {
       act(() => { Array.from(container.querySelectorAll<HTMLButtonElement>('.im-platforms button')).find(button => button.textContent === name)!.click() })
-      const environment = container.querySelector<HTMLSelectElement>('select[name="environment"]')!
+      const environment = container.querySelector<HTMLInputElement>('input[name="environment"]')!
       expect(environment.value).toBe('PRODUCTION')
-      expect(environment.options[0].value).toBe('PRODUCTION')
+      act(() => { container.querySelector<HTMLButtonElement>('button[aria-label^="Ortam"]')!.click() })
+      expect(document.querySelector('[role="option"]')!.textContent).toBe('Canlı')
+      act(() => { document.querySelector<HTMLButtonElement>('[role="option"]')!.click() })
     }
   })
 
@@ -236,7 +238,7 @@ describe('IntegrationsPage filters (W16)', () => {
     expect(container.querySelector<HTMLInputElement>('input[name="pttAvmPassword"]')!.type).toBe('password')
     expect(container.querySelector<HTMLInputElement>('input[name="externalStoreId"]')!.inputMode).toBe('numeric')
     expect(container.querySelector('input[name="pttAvmApiKey"]')).toBeNull()
-    expect(container.querySelector('select[name="environment"]')).toBeNull()
+    expect(container.querySelector('input[name="environment"]')).toBeNull()
     // The store id's explanation sits behind the help mark, named by the field.
     const storeHelpId = container.querySelector<HTMLInputElement>('input[name="externalStoreId"]')!.getAttribute('aria-describedby')!
     expect(document.getElementById(storeHelpId)!.textContent).toContain('PttAVM satıcı paneli › Hesap Yönetimi › Entegrasyon Bilgileri')

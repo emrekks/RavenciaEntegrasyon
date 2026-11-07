@@ -27,7 +27,7 @@ public static class PttAvmProductUpdateFields
         var picked = Ordered.Where(code => codes is null || codes.Contains(code)).ToList();
         if (picked.Count == 0)
             return codes is { Count: > 0 } && codes.Any(ProductUpdateFields.Known.Contains)
-                ? ServiceResult<IReadOnlyList<string>>.Fail("PRODUCT_UPDATE_FIELDS_UNSUPPORTED", "Seçilen ürün bilgileri PTT AVM'ye gönderilemiyor (PTT AVM kategori özelliği almıyor).", 422)
+                ? ServiceResult<IReadOnlyList<string>>.Fail("PRODUCT_UPDATE_FIELDS_UNSUPPORTED", "Seçilen ürün bilgileri PttAVM'ye gönderilemiyor (PttAVM kategori özelliği almıyor).", 422)
                 : ServiceResult<IReadOnlyList<string>>.Fail("PRODUCT_UPDATE_FIELDS_REQUIRED", "Gönderilecek en az bir ürün bilgisi alanı seçin.", 422);
         return ServiceResult<IReadOnlyList<string>>.Ok(picked);
     }

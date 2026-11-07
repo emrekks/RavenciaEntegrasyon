@@ -127,7 +127,7 @@ describe('publish gap chips open the category fields window', () => {
     // The field's own row marks the gap; no separate note is drawn above it.
     expect(document.querySelector('.mapping-advanced-modal .cm-product-note:not(.cm-target-missing)')).toBeNull()
     // The gap's field is focused: its panel attribute picker.
-    expect(document.activeElement?.getAttribute('aria-label')).toBe('Kesim Kalıbı için panel özelliği')
+    expect(document.activeElement?.getAttribute('aria-label')).toContain('Kesim Kalıbı için panel özelliği')
     // Red marks for the required gaps, yellow for the optional warnings; a field the product does not need stays plain.
     expect(marked('required')).toEqual(['Kesim Kalıbı', 'Kumaş Tipi'])
     expect(marked('optional')).toEqual(['Boy', 'Kalınlık'])
@@ -165,11 +165,10 @@ describe('publish gap chips open the category fields window', () => {
     await openFromChip('required', 'Kumaş Tipi')
     expect(selectedField()).toBe('Kumaş Tipi')
     // Choosing the panel attribute saves the mapping (the panel's own data) and the badge follows it.
-    const select = document.querySelector<HTMLSelectElement>('.mapping-advanced-modal select[aria-label="Kumaş Tipi için panel özelliği"]')!
-    await act(async () => {
-      select.value = 'kumas'
-      select.dispatchEvent(new Event('change', { bubbles: true }))
-    })
+    const trigger = document.querySelector<HTMLButtonElement>('.mapping-advanced-modal button[aria-label^="Kumaş Tipi için panel özelliği"]')!
+    await act(async () => { trigger.click() })
+    const option = [...document.querySelectorAll<HTMLButtonElement>('[role="option"]')].find(item => item.textContent === 'Kumaş')!
+    await act(async () => { option.click() })
     await waitFor(() => Boolean(chip('required', 'Kumaş Tipi')?.getAttribute('aria-label')?.includes('üründe değer seçilmemiş')))
     expect(fixture.state.puts).toEqual([{ path: '/mappings/attributes/kumas', body: expect.objectContaining({ connectionId: 'hb', scopeExternalId: 'hb-cat', externalId: 'k1', status: 'VERIFIED' }) }])
     expect(chip('required', 'Kumaş Tipi').getAttribute('aria-label')).toContain('Kumaş Tipi için üründe değer seçilmemiş')

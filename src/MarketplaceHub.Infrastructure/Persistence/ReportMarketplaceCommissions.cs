@@ -24,7 +24,7 @@ internal static class ReportMarketplaceCommissions
     public static string SourceLabel(string platformCode) => platformCode switch
     {
         "HEPSIBURADA" => "Hepsiburada muhasebe kayıtlarından (komisyon faturası, iadesi ve düzeltmesi)",
-        "N11" => "n11 hakediş kaydındaki oran ve tahsil edilen tutardan",
+        "N11" => "N11 hakediş kaydındaki oran ve tahsil edilen tutardan",
         "PAZARAMA" => "Pazarama finans hareketlerinden",
         _ => "Pazaryerinin finans kayıtlarından"
     };

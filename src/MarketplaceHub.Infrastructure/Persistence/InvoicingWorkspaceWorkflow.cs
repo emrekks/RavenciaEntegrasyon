@@ -351,7 +351,7 @@ public sealed partial class InvoicingBillingService
         if (existing is null && invoiceType == "EARSIVFATURA")
         {
             if (deliveryBlockedReason is not null)
-                internetSalesInfoBlockedReason = "Taşıyıcı henüz belli değil (PTT AVM'de takip numarası, Shopify'da gönderim gelmeden bulunamaz); internet satış bilgisi gönderimden sonra eklenebilir.";
+                internetSalesInfoBlockedReason = "Taşıyıcı henüz belli değil (PttAVM'de takip numarası, Shopify'da gönderim gelmeden bulunamaz); internet satış bilgisi gönderimden sonra eklenebilir.";
             else if (TrendyolEFaturamCanonicalPayload.InternetSalePayment(marketplace.PlatformCode, order.CustomerSnapshotJson, order.OrderedAt, out _) is null)
                 internetSalesInfoBlockedReason = string.Equals(marketplace.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)
                     ? "Shopify mağaza adresi veya siparişin ödeme yöntemi okunamadı; sipariş yeniden eşitlendikten sonra internet satış bilgisi eklenebilir."

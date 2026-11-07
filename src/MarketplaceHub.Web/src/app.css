@@ -7,6 +7,7 @@
 @import './styles/design-step2.css';
 @import './styles/design-step2-filters.css';
 @import './styles/menus.css';
+@import './styles/design-cleanup.css';
 
 /*
  * Cascade layers, lowest first (the bundler hoists this order). `pages` and `responsive` are reserved for page and

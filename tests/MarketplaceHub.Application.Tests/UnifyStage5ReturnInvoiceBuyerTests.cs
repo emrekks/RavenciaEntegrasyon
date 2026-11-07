@@ -32,7 +32,7 @@ public sealed class UnifyStage5ReturnInvoiceBuyerTests
     [InlineData("DECLINED", ReturnClaimStatus.Rejected)]                    // Shopify
     [InlineData("CLOSED", ReturnClaimStatus.Completed)]                     // Shopify
     [InlineData("CANCELED", ReturnClaimStatus.Cancelled)]                   // Shopify
-    [InlineData("Completed", ReturnClaimStatus.Completed)]                  // PTT AVM
+    [InlineData("Completed", ReturnClaimStatus.Completed)]                  // PttAVM
     [InlineData("SOMETHING_NEW", ReturnClaimStatus.Unknown)]
     [InlineData("", ReturnClaimStatus.Unknown)]
     [InlineData(null, ReturnClaimStatus.Unknown)]
@@ -179,7 +179,7 @@ public sealed class UnifyStage5ReturnInvoiceBuyerTests
     [InlineData("""{"commercial":false}""", """{"companyName":"Firma","taxNumber":"1234567890"}""", false)]      // Trendyol individual
     [InlineData("""{"billingAddress":{"invoiceType":2}}""", "{}", true)]                                           // n11 corporate
     [InlineData("""{"invoiceType":"1","companyName":"X"}""", "{}", false)]                                         // Pazarama individual
-    [InlineData("""{"invoiceType":"Kurumsal"}""", "{}", true)]                                                     // PTT AVM corporate
+    [InlineData("""{"invoiceType":"Kurumsal"}""", "{}", true)]                                                     // PttAVM corporate
     [InlineData("{}", """{"companyName":"Test User","identityNo":"11111111111","taxNumber":""}""", false)]        // Hepsiburada individual
     [InlineData("{}", """{"taxNumber":"1234567890"}""", true)]                                                     // no flag: VKN
     [InlineData("{}", """{"tcIdentityNumber":"12345678901"}""", false)]                                            // no flag: TCKN
