@@ -6,7 +6,7 @@ const fs = (globalThis as unknown as { process: { getBuiltinModule(name: string)
 const testFileUrl = import.meta.url
 const css = fs.readFileSync(new URL('./orders-sade.css', testFileUrl), 'utf8')
 
-// The card rules serve phones and tablets alike (tablets lay the cards two to a row in styles/tablet-ops.css).
+// The card rules serve phones and tablets alike (tablets lay the cards one to a row in styles/tablet-ops.css).
 function cardBlocks() {
   const blocks: string[] = []
   let index = css.indexOf('@media (max-width: 1024px) {')
