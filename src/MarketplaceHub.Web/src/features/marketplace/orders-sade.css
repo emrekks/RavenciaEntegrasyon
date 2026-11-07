@@ -66,7 +66,7 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-two-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-two-cards .rr-kv { grid-template-columns: 110px minmax(0, 1fr); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-rlabel.rr-sticker { width: min(380px, 100%); }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet { display: grid; grid-template-rows: auto 1fr auto; width: min(375px, 100%); height: 640px; overflow: hidden; background: var(--rr-bg); border: 1px solid var(--rr-line-strong); border-radius: 14px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet { display: grid; grid-template-rows: auto 1fr auto; grid-template-columns: minmax(0, 1fr); width: min(375px, 100%); height: 640px; overflow: hidden; background: var(--rr-bg); border: 1px solid var(--rr-line-strong); border-radius: 14px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-h { display: grid; grid-template-columns: 28px 1fr 28px; align-items: center; gap: 8px; height: 52px; padding: 0 12px; text-align: center; background: var(--rr-surface); border-bottom: 1px solid var(--rr-line); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-b { display: grid; align-content: start; gap: 12px; padding: 12px; overflow: auto; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-scard { display: grid; gap: 10px; padding: 12px; background: var(--rr-surface); border: 1px solid var(--rr-line); border-radius: 12px; }
@@ -144,8 +144,9 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell .rr-btn.rr-lbl.rr-printed:hover { opacity: 1; color: var(--rr-muted); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl td.rr-mid > .rr-ring { justify-items: start; }
 @media (max-width: 760px) {
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-f.rr-sheet-f { flex-wrap: nowrap; gap: 6px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-f.rr-sheet-f > .rr-btn { min-width: 0; flex: none; height: 36px; padding-inline: 10px; gap: 6px; font-size: 13px; }
+/* the footer buttons share the row; when they do not fit side by side the purple one takes a row of its own */
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-f.rr-sheet-f { flex-wrap: wrap; gap: 6px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-f.rr-sheet-f > .rr-btn { min-width: 0; flex: 1 1 auto; height: 36px; min-height: 0; padding-inline: 10px; gap: 6px; font-size: 13px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-f.rr-sheet-f > .rr-btn:not(.rr-primary) > .rr-ico:first-child { display: none; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-f.rr-sheet-f > .rr-btn.rr-primary { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
 }
@@ -246,7 +247,7 @@
 }
 /* The order detail sheet's İşlemler opens a menu: drawn as the app's other dropdown triggers (.rr-trigger, framed, with
    its chevron), sized to its word beside the sheet's other buttons. */
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-f.rr-sheet-f > .rr-trigger.rr-sheet-trigger { flex: none; width: auto; box-sizing: border-box; height: 36px; min-height: 0; padding: 0 10px 0 12px; gap: 6px; font-size: 13px; font-weight: 500; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-f.rr-sheet-f > .rr-trigger.rr-sheet-trigger { flex: 1 1 auto; justify-content: space-between; width: auto; box-sizing: border-box; height: 36px; min-height: 0; padding: 0 10px 0 12px; gap: 6px; font-size: 13px; font-weight: 500; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-f.rr-sheet-f > .rr-trigger.rr-sheet-trigger > .rr-ico { display: block; flex: none; transition: transform .15s; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-f.rr-sheet-f > .rr-trigger.rr-sheet-trigger.rr-on > .rr-ico { transform: rotate(180deg); }
 @media (prefers-reduced-motion: reduce) { :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-f.rr-sheet-f > .rr-trigger.rr-sheet-trigger > .rr-ico { transition: none; } }

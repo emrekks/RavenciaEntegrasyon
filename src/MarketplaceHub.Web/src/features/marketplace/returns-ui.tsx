@@ -175,6 +175,16 @@ function useScrollAreaPopover(open: boolean, ref: RefObject<HTMLElement | null>,
     // Already pinned by the stylesheet (the phone bottom sheet): leave it. Every other popover is pinned to the screen
     // and opened in the top layer, so no card, scroll box, sticky header or sidebar can clip or cover it.
     if (!sheet && !area && getComputedStyle(pop).position === 'fixed') return
+    // On phones a menu outside a dropdown anchor is that bottom sheet even inside a table (the Ürünler card İşlemler):
+    // measuring it while it rises in pinned it below the screen. It opens in the top layer so no card can clip it.
+    if (!sheet && !host.classList.contains('rr-dropdown') && !pop.classList.contains('rr-static') && window.matchMedia?.('(max-width: 760px)').matches && getComputedStyle(pop).position === 'fixed') {
+      if (typeof pop.showPopover === 'function') {
+        pop.style.setProperty('margin', '0', 'important')
+        pop.setAttribute('popover', 'manual')
+        pop.showPopover()
+      }
+      return
+    }
     const pin = (styles: Record<string, string>) => Object.entries(styles).forEach(([key, value]) => pop.style.setProperty(key, value, 'important'))
     // In the sheet the popover first leaves the flow (the open list had grown the sheet and lifted the field), then
     // the field is measured where it really sits.
