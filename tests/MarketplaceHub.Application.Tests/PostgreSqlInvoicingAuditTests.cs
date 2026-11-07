@@ -442,6 +442,108 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
         }
     }
 
+    // Live 13 Oct 2026: the recovery queued a delivery job every five minutes (recovery:2:5973044/45/46) next to the one
+    // that had stopped for review, each stopping on the same cause. A job in review holds its package.
+    [PostgreSqlFact]
+    public async Task DueScan_DoesNotQueueARecoveryBesideADeliveryJobStoppedForReview()
+    {
+        var seed = NewSeed("audit-recovery-beside-review");
+        var invoice = NewInvoice(seed, seed.Order.Id, InvoiceStatus.MarketplacePending);
+        var state = NewConfirmedDeliveryState(seed, invoice);
+        state.Status = "UNKNOWN";
+        state.ExternalReference = null;
+        state.CompletedAt = null;
+        state.UpdatedAt = fixture.Now.AddMinutes(-3);
+        var asset = NewFileAsset(seed.Tenant.Id);
+        var document = new InvoiceDocument
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = seed.Tenant.Id,
+            InvoiceId = invoice.Id,
+            DocumentType = "PDF",
+            FileAssetId = asset.Id,
+            Sha256 = asset.Sha256,
+            PermanentUrl = "https://documents.example.test/invoice.pdf",
+            CreatedAt = fixture.Now
+        };
+        var stopped = NewDeliveryJob(seed, $"{InvoicingJobTypes.MarketplaceDelivery}:{invoice.Id}:{seed.Package.Id}:recovery:2:1", $$"""{"invoiceId":"{{invoice.Id}}","packageId":"{{seed.Package.Id}}"}""", JobStatus.ManualReview);
+        await SeedAsync(seed, db => { db.Invoices.Add(invoice); db.MarketplaceDeliveryStates.Add(state); db.FileAssets.Add(asset); db.InvoiceDocuments.Add(document); db.IntegrationJobs.Add(stopped); });
+
+        try
+        {
+            await using (var db = fixture.CreateContext())
+            {
+                var processor = NewProcessor(db, null, new Dictionary<string, string?>
+                {
+                    ["FeatureFlags:ExternalWrites"] = "true",
+                    ["FeatureFlags:InvoiceMarketplaceDeliveryWrites"] = "true"
+                });
+                Assert.True((await processor.ProcessAsync(seed.Tenant.Id, null, InvoicingJobTypes.InvoiceDueScan, "{}", "audit-recovery-beside-review", CancellationToken.None)).Succeeded);
+            }
+
+            await using var verification = fixture.CreateContext();
+            var job = Assert.Single(await verification.IntegrationJobs.Where(job => job.TenantId == seed.Tenant.Id && job.JobType == InvoicingJobTypes.MarketplaceDelivery).ToListAsync());
+            Assert.Equal(stopped.Id, job.Id);
+            Assert.Equal(JobStatus.ManualReview, job.Status);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // Owner decision 7 Nov 2026: a delivery job that still waits is closed when its invoice went to review or was
+    // cancelled, or its delivery was confirmed, instead of waiting until someone looks. A running one is left alone.
+    [PostgreSqlFact]
+    public async Task DueScan_ClosesWaitingDeliveryJobsOfAnInvoiceInReviewCancelledOrConfirmed()
+    {
+        var seed = NewSeed("audit-waiting-closed");
+        var review = NewInvoice(seed, seed.Order.Id, InvoiceStatus.ManualReview);
+        var cancelledOrder = NewOrder(seed.Tenant.Id, seed.Marketplace.Id, "audit-waiting-closed-cancelled");
+        var cancelled = NewInvoice(seed, cancelledOrder.Id, InvoiceStatus.Cancelled);
+        var confirmedOrder = NewOrder(seed.Tenant.Id, seed.Marketplace.Id, "audit-waiting-closed-confirmed");
+        var confirmed = NewInvoice(seed, confirmedOrder.Id, InvoiceStatus.MarketplacePending);
+        var confirmedState = NewConfirmedDeliveryState(seed, confirmed);
+        var openOrder = NewOrder(seed.Tenant.Id, seed.Marketplace.Id, "audit-waiting-closed-open");
+        var open = NewInvoice(seed, openOrder.Id, InvoiceStatus.MarketplacePending);
+        var reviewWaiting = NewDeliveryJob(seed, $"{InvoicingJobTypes.MarketplaceDelivery}:{review.Id}:after-document", $$"""{"invoiceId":"{{review.Id}}"}""", JobStatus.Pending);
+        var reviewRunning = NewDeliveryJob(seed, $"{InvoicingJobTypes.MarketplaceDelivery}:{review.Id}:running", $$"""{"invoiceId":"{{review.Id}}"}""", JobStatus.Leased);
+        var cancelledWaiting = NewDeliveryJob(seed, $"{InvoicingJobTypes.MarketplaceDelivery}:{cancelled.Id}:after-document", $$"""{"invoiceId":"{{cancelled.Id}}"}""", JobStatus.RetryScheduled);
+        var confirmedWaiting = NewDeliveryJob(seed, $"{InvoicingJobTypes.MarketplaceDelivery}:{confirmed.Id}:{seed.Package.Id}:recovery:1:1", $$"""{"invoiceId":"{{confirmed.Id}}","packageId":"{{seed.Package.Id}}"}""", JobStatus.Pending);
+        var openWaiting = NewDeliveryJob(seed, $"{InvoicingJobTypes.MarketplaceDelivery}:{open.Id}:after-document", $$"""{"invoiceId":"{{open.Id}}"}""", JobStatus.Pending);
+        await SeedAsync(seed, db =>
+        {
+            db.Orders.AddRange(cancelledOrder, confirmedOrder, openOrder);
+            db.Invoices.AddRange(review, cancelled, confirmed, open);
+            db.MarketplaceDeliveryStates.Add(confirmedState);
+            db.IntegrationJobs.AddRange(reviewWaiting, reviewRunning, cancelledWaiting, confirmedWaiting, openWaiting);
+        });
+
+        try
+        {
+            await using (var db = fixture.CreateContext())
+                Assert.True((await NewProcessor(db, null).ProcessAsync(seed.Tenant.Id, null, InvoicingJobTypes.InvoiceDueScan, "{}", "audit-waiting-closed", CancellationToken.None)).Succeeded);
+
+            await using var verification = fixture.CreateContext();
+            async Task<IntegrationJob> Read(Guid id) => await verification.IntegrationJobs.AsNoTracking().SingleAsync(job => job.Id == id);
+            var closedReview = await Read(reviewWaiting.Id);
+            Assert.Equal(JobStatus.Cancelled, closedReview.Status);
+            Assert.Equal(InvoiceDeliveryJobHygiene.ManualReviewClosedCode, closedReview.LastErrorCode);
+            Assert.Equal(JobStatus.Leased, (await Read(reviewRunning.Id)).Status);
+            var closedCancelled = await Read(cancelledWaiting.Id);
+            Assert.Equal(JobStatus.Cancelled, closedCancelled.Status);
+            Assert.Equal(InvoiceDeliveryGuardPolicy.CancelledJobCode, closedCancelled.LastErrorCode);
+            var closedConfirmed = await Read(confirmedWaiting.Id);
+            Assert.Equal(JobStatus.Cancelled, closedConfirmed.Status);
+            Assert.Equal(InvoicingJobProcessor.DeliverySettledElsewhereCode, closedConfirmed.LastErrorCode);
+            Assert.Equal(JobStatus.Pending, (await Read(openWaiting.Id)).Status);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
     private IntegrationJob NewDeliveryJob(Seed seed, string key, string payload, JobStatus status) => new()
     {
         Id = Guid.CreateVersion7(),

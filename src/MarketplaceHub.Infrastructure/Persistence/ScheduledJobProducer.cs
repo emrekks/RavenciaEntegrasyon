@@ -38,6 +38,13 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             await PublicationJobSupersession.CloseAsync(db, timeProvider.GetUtcNow(), cancellationToken);
         }
         catch (Exception exception) when (exception is not OperationCanceledException) { }
+        // Old failed product writes (update, publish, archive) that a later write of the same type for the same product on
+        // the same connection has replaced are closed too; price, stock and invoice jobs are never touched.
+        try
+        {
+            await ProductWriteSupersession.CloseAsync(db, timeProvider.GetUtcNow(), cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException) { }
         // Marketplace lists a connection supports but has never read (at startup and hourly; once a day per gap).
         if (includeDefaults)
         {
