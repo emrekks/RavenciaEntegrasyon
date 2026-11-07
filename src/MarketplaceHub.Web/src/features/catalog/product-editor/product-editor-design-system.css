@@ -287,7 +287,7 @@
   .marketplace-code-field { display: grid; min-width: 0; }
   .marketplace-code-field .marketplace-code-input { min-width: 0; }
   .marketplace-code-field .marketplace-code-error { max-width: none; }
-  .marketplace-code-input { box-sizing: border-box; width: 100%; min-width: 180px; height: 36px; padding: 0 10px; color: var(--rv-color-ink); background: var(--rv-color-bg); border: 1px solid var(--rv-color-border); border-radius: 7px; font-size: var(--rv-font-size-sm); transition: border-color 120ms ease; }
+  .marketplace-code-input { box-sizing: border-box; width: 100%; min-width: 180px; height: 36px; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 7px; font-size: var(--rv-font-size-sm); transition: border-color 120ms ease; }
   .marketplace-code-input::placeholder { color: var(--rv-color-subtle); }
   .marketplace-code-input:hover:not(:disabled) { border-color: var(--rv-color-border-strong); }
   .marketplace-code-input:focus-visible { border-color: var(--rv-color-primary); outline: 2px solid color-mix(in srgb, var(--rv-color-primary) 35%, transparent); outline-offset: 1px; }

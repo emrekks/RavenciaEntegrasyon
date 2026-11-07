@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { axisLabel, matrixCellText } from './DashboardPage'
-import { addDays, channelTotals, dayKeys, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, periodFigures, primaryCurrency, revenueReport, type Performance, type PerformanceRow } from './dashboard-performance'
+import { addDays, channelTotals, dayKeys, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, periodFigures, presetLabels, primaryCurrency, revenueReport, type Performance, type PerformanceRow } from './dashboard-performance'
 
 const row = (day: string, connectionId: string, amount: number, extra: Partial<PerformanceRow> = {}): PerformanceRow =>
   ({ day, connectionId, currency: 'TRY', amount, orderCount: 1, productQuantity: 2, packageCount: 1, returnedAmount: 0, returnedOrderCount: 0, ...extra })
@@ -18,8 +18,23 @@ describe('dashboard periods', () => {
     expect(periodDays('today', { from: '', to: '' }, '2026-10-20')).toEqual({ from: '2026-10-20', to: '2026-10-20' })
     expect(periodDays('yesterday', { from: '', to: '' }, '2026-10-20')).toEqual({ from: '2026-10-19', to: '2026-10-19' })
     expect(periodDays('yesterday', { from: '', to: '' }, '2026-03-01')).toEqual({ from: '2026-02-28', to: '2026-02-28' })
-    expect(periodDays('7', { from: '', to: '' }, '2026-10-20')).toEqual({ from: '2026-10-14', to: '2026-10-20' })
     expect(periodDays('30', { from: '', to: '' }, '2026-03-01')).toEqual({ from: '2026-01-31', to: '2026-03-01' })
+  })
+
+  it('reads every other ready period from the shared date presets (weeks start on Monday)', () => {
+    // 2026-10-20 is a Tuesday.
+    expect(periodDays('week', { from: '', to: '' }, '2026-10-20')).toEqual({ from: '2026-10-19', to: '2026-10-20' })
+    expect(periodDays('lastWeek', { from: '', to: '' }, '2026-10-20')).toEqual({ from: '2026-10-12', to: '2026-10-18' })
+    expect(periodDays('month', { from: '', to: '' }, '2026-10-20')).toEqual({ from: '2026-10-01', to: '2026-10-20' })
+    expect(periodDays('lastMonth', { from: '', to: '' }, '2026-03-05')).toEqual({ from: '2026-02-01', to: '2026-02-28' })
+    expect(periodDays('year', { from: '', to: '' }, '2026-10-20')).toEqual({ from: '2026-01-01', to: '2026-10-20' })
+    // Every ready period is a range the server takes (at most 366 days, never in the future).
+    for (const range of Object.keys(presetLabels) as Array<keyof typeof presetLabels>) {
+      const days = periodDays(range, { from: '', to: '' }, '2026-12-31')!
+      expect(dayKeys(days.from, days.to).length).toBeGreaterThan(0)
+      expect(dayKeys(days.from, days.to).length).toBeLessThanOrEqual(366)
+      expect(days.to <= '2026-12-31').toBe(true)
+    }
   })
 
   it('a half-picked custom range asks for nothing, a reversed one is put in order', () => {

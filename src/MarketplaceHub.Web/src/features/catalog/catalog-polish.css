@@ -87,6 +87,6 @@
 
 /* Catalog lists and imports (Kategoriler, Markalar, Özellikler, İçe Aktarımlar): the field captions, 36px fields and
    36px buttons of the other forms (they were 16px ink captions over 43px fields and 44px buttons). */
-.app-shell.stitch-shell main .catalog-list-page :is(.inline-form, .form-grid, form.panel) > label { display: grid; gap: 6px; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
+.app-shell.stitch-shell main .catalog-list-page :is(.inline-form, .form-grid, form.panel) > label { display: grid; gap: 6px; color: var(--rv-color-muted); font-size: 13px; font-weight: 500; }
 .app-shell.stitch-shell main .catalog-list-page :is(.inline-form, .form-grid, form.panel) :is(input:not([type="file"]), select) { box-sizing: border-box; height: 36px; min-height: 36px; padding-top: 0; padding-bottom: 0; color: var(--rv-color-ink); font-size: 14px; }
 .app-shell.stitch-shell main .catalog-list-page :is(.inline-form, .form-grid, form.panel, .page-heading .actions, .actions.spaced) > :is(button, .button-link) { height: 36px; min-height: 36px; padding-block: 0; }

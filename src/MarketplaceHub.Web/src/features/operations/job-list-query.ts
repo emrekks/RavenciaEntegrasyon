@@ -1,20 +1,44 @@
-export type JobListTimeRange = '24h' | '7d' | 'all'
+// 24h and 7d are rolling windows (7d only keeps old links such as the dashboard's "7g" working); the others are the shared
+// date presets (shared/date-range.ts) that end today, so the server's open-ended `since` is exact for them: it starts at
+// the preset's first Istanbul day. Dün, Geçen Hafta and Geçen Ay end in the past and need an upper bound the jobs API
+// does not have, so they are not offered here.
+import { dateRangePresets } from '../../shared/date-range'
+import { istanbulDateKey, istanbulDayBoundary } from '../../shared/format-date'
 
-const rangeMilliseconds: Record<Exclude<JobListTimeRange, 'all'>, number> = {
+export type JobListTimeRange = '24h' | '7d' | 'today' | 'week' | 'month' | '30d' | 'year' | 'all'
+
+const rollingMilliseconds: Partial<Record<JobListTimeRange, number>> = {
   '24h': 24 * 60 * 60 * 1000,
   '7d': 7 * 24 * 60 * 60 * 1000
 }
+const presetLabels: Partial<Record<JobListTimeRange, string>> = { today: 'Bugün', week: 'Bu Hafta', month: 'Bu Ay', '30d': 'Son 30 Gün', year: 'Bu Yıl' }
 
-/** The range menu of İşlem Takibi's heading, shared by the job list and the send log (Loglar). */
-export const jobTimeRanges = [['24h', 'Son 24 Saat'], ['7d', 'Son 7 Gün'], ['all', 'Tüm Zamanlar']] as const satisfies ReadonlyArray<readonly [JobListTimeRange, string]>
+/** The range menu of İşlem Takibi's heading, shared by the job list and the send log (Loglar). Tüm Zamanlar is no range. */
+export const jobTimeRanges = [['24h', 'Son 24 Saat'], ['today', 'Bugün'], ['week', 'Bu Hafta'], ['month', 'Bu Ay'], ['30d', 'Son 30 Gün'], ['year', 'Bu Yıl'], ['all', 'Tüm Zamanlar']] as const satisfies ReadonlyArray<readonly [JobListTimeRange, string]>
+
+/** The menu's choices; a link that opens on Son 7 Gün adds it while it is the chosen one. */
+export function jobTimeRangeOptions(selected: JobListTimeRange | '') {
+  const options: Array<{ value: string; label: string }> = jobTimeRanges.map(([value, label]) => ({ value, label }))
+  return selected === '7d' ? [...options.slice(0, 1), { value: '7d', label: 'Son 7 Gün' }, ...options.slice(1)] : options
+}
 
 export function timeRangeLabel(value: JobListTimeRange) {
-  return jobTimeRanges.find(([range]) => range === value)?.[1] ?? 'Son 24 Saat'
+  return value === '7d' ? 'Son 7 Gün' : jobTimeRanges.find(([range]) => range === value)?.[1] ?? 'Son 24 Saat'
+}
+
+/** The instant a range starts (epoch milliseconds); null for Tüm Zamanlar. */
+export function timeRangeCutoff(range: JobListTimeRange, now = Date.now()): number | null {
+  if (range === 'all') return null
+  const rolling = rollingMilliseconds[range]
+  if (rolling !== undefined) return now - rolling
+  const preset = dateRangePresets(istanbulDateKey(now)).find(item => item.label === presetLabels[range])
+  return preset ? Date.parse(istanbulDayBoundary(preset.range.from)) : now - rollingMilliseconds['24h']!
 }
 
 /** The instant a range starts, as a UTC ISO string; null for Tüm Zamanlar. */
 export function timeRangeStart(range: JobListTimeRange, now = Date.now()) {
-  return range === 'all' ? null : new Date(now - rangeMilliseconds[range]).toISOString()
+  const cutoff = timeRangeCutoff(range, now)
+  return cutoff === null ? null : new Date(cutoff).toISOString()
 }
 
 /** Jobs per server page of the operations list. */
@@ -25,7 +49,8 @@ export const jobPageSize = 200
 export function jobListQueryString(status: string, timeRange: JobListTimeRange, now = Date.now()) {
   const params = new URLSearchParams()
   if (status) params.set('status', status)
-  if (timeRange !== 'all') params.set('since', new Date(now - rangeMilliseconds[timeRange]).toISOString())
+  const since = timeRangeStart(timeRange, now)
+  if (since) params.set('since', since)
   const query = params.toString()
   return query ? `?${query}` : ''
 }
@@ -33,9 +58,9 @@ export function jobListQueryString(status: string, timeRange: JobListTimeRange, 
 // The server's rule for a period (JobOperationsService.InWindow), so the list keeps what the counts count: a job created
 // or finished in the period, or one still open (waiting, running, to be retried) however old it is.
 export function isJobInTimeRange(job: { createdAt: string; completedAt: string | null; status: string }, timeRange: JobListTimeRange, now = Date.now()) {
-  if (timeRange === 'all') return true
+  const cutoff = timeRangeCutoff(timeRange, now)
+  if (cutoff === null) return true
   if (job.status === 'PENDING' || job.status === 'LEASED' || job.status === 'RETRY_SCHEDULED') return true
-  const cutoff = now - rangeMilliseconds[timeRange]
   const created = Date.parse(job.createdAt)
   if (Number.isNaN(created) || created >= cutoff) return true
   const completed = job.completedAt ? Date.parse(job.completedAt) : Number.NaN

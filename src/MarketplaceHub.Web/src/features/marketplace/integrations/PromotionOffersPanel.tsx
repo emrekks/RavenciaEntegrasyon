@@ -5,7 +5,7 @@ import { Busy, ErrorBox, TitleHint, useConfirmDialog } from '../../../shared/com
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { compareOptionValues } from '../../catalog/shared'
 import { formatIstanbul } from '../../../shared/format-date'
-import { amountRange, FilterActions, FilterField, FilterRange, PhoneSearch, phoneQuery, priceRange, ProductImage, rateText, SheetHead, SheetScrim } from './CommissionTariffsPanel'
+import { amountRange, filterEntries, FilterActions, filterHasValue, FilterField, FilterRange, PhoneSearch, phoneQuery, priceRange, ProductImage, rateText, SheetHead, SheetScrim } from './CommissionTariffsPanel'
 import { onCost, profitText, ProfitBadge, type UnitProfitCosts } from './unit-profit'
 import { UiIcon } from '../../../shared/components'
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
@@ -255,7 +255,7 @@ function OfferFilters({ value, rows, columns, onApply }: { value: OfferFilter; r
       <FilterRange label="Kâr Oranı (%)" inputMode="decimal" min={draft.minShare} max={draft.maxShare} onMin={set('minShare')} onMax={set('maxShare')} minLabel="En az kâr oranı (%)" maxLabel="En çok kâr oranı (%)" />
     </div>}
     {rows.length > 0 && !categories.length && !brands.length && <p className="commission-filter-note">Kategori ve marka bu dosyada okunmadı: dosya önceden yüklendi. Aynı dosyayı yeniden yüklediğinizde dolar.</p>}
-    <FilterActions onClear={() => { setDraft(noOfferFilter); onApply(value.search ? { ...noOfferFilter, search: value.search } : noOfferFilter); setOpen(false) }} />
+    <FilterActions canClear={filterHasValue(draft) || filterHasValue(value)} canApply={filterEntries(draft) !== filterEntries(value)} onClear={() => { setDraft(noOfferFilter); onApply(value.search ? { ...noOfferFilter, search: value.search } : noOfferFilter); setOpen(false) }} />
   </form>
   </div>
 }

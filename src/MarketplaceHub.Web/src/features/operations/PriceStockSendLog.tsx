@@ -8,7 +8,7 @@ import { Busy } from '../../shared/components/AsyncState'
 import { formatIstanbul } from '../../shared/format-date'
 import { RrIcon, RrLogo } from '../marketplace/returns-ui'
 import { marketplacePlatformLabel } from '../marketplace/marketplace-platform-support'
-import { jobTimeRanges } from './job-list-query'
+import { jobTimeRangeOptions } from './job-list-query'
 import { JobStateGlyph } from './job-state-glyph'
 import { ChoiceField, FilterMenu, OpsFilterCard, SearchField, type FilterMenuGroup } from './filter-fields'
 import {
@@ -63,7 +63,7 @@ function SendLogFilterCard({ filters, searchText, onSearch, platformGroups, resu
   const resultGroups: FilterMenuGroup[] = sendLogResultGroups.map(group => ({ label: group.label, options: group.values.map(value => ({ value, label: sendLogResultLabel(value), count: resultCounts ? resultCounts.filter(row => row.result === value).reduce((total, row) => total + row.count, 0) : null })) }))
   return <OpsFilterCard wide label="Gönderim kaydı filtreleri" active={sendLogFilterCount({ ...filters, search: '' })} clearCount={clearCount} onClear={onClear} onApply={onApply}>
     <SearchField label="Ürün Ara" ariaLabel="Gönderim kayıtlarında ara" placeholder="Barkod, stok kodu, model kodu veya ürün adı" value={searchText} onChange={value => onSearch(value.slice(0, 100))} onEnter={onApply} />
-    <ChoiceField name="Zaman Aralığı" value={days ? '' : filters.range} label={days ? 'Seçili Tarihler' : undefined} options={jobTimeRanges.map(([value, label]) => ({ value, label }))} onChange={value => onChange({ range: value as SendLogFilters['range'], from: '', to: '' })} />
+    <ChoiceField name="Zaman Aralığı" value={days ? '' : filters.range} label={days ? 'Seçili Tarihler' : undefined} options={jobTimeRangeOptions(filters.range)} onChange={value => onChange({ range: value as SendLogFilters['range'], from: '', to: '' })} />
     <DateRangePicker className="rr-fld rr-date" label="Gönderim Tarihi" placeholder="Başlangıç – Bitiş" from={filters.from} to={filters.to} onChange={range => onChange({ from: range.from, to: range.to })} icon={<RrIcon name="cal" />} chevron={<RrIcon name="chev" />} />
     <FilterMenu name="Platform" allLabel="Tüm Platformlar" unit="Platform" groups={platformGroups} selected={filters.platforms} onChange={platforms => onChange({ platforms })} emptyText="Bağlı pazaryeri yok." />
     <FilterMenu name="Sonuç" allLabel="Tüm Sonuçlar" unit="Sonuç" width={280} groups={resultGroups} selected={filters.results} onChange={results => onChange({ results })} />

@@ -60,7 +60,7 @@
 
 .attribute-defaults-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
 .attribute-defaults-form label { display: grid; gap: 6px; min-width: 0; margin: 0; }
-.attribute-defaults-form label > span { color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
+.attribute-defaults-form label > span { color: var(--rv-color-muted); font-size: 13px; font-weight: 500; }
 .attribute-defaults-form select,
 .attribute-defaults-form input {
   width: 100%;

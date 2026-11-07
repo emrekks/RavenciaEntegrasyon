@@ -62,7 +62,7 @@
 .app-shell.stitch-shell main .qi-page .qi-status-menu > button:hover { background: var(--rv-hover, var(--rv-color-surface-soft)); }
 .app-shell.stitch-shell main .qi-page .qi-status-menu > button.is-on { background: var(--rv-color-primary-soft); }
 .qi-page .qi-popover { right: 0; display: grid; gap: 14px; width: 320px; padding: 16px; }
-.app-shell.stitch-shell main .qi-page .qi-popover label, .qi-page .qi-popover .qi-field { display: grid; gap: 6px; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; text-transform: none; }
+.app-shell.stitch-shell main .qi-page .qi-popover label, .qi-page .qi-popover .qi-field { display: grid; gap: 6px; color: var(--rv-color-muted); font-size: 13px; font-weight: 500; text-transform: none; }
 .app-shell.stitch-shell main .qi-page .qi-popover select { box-sizing: border-box; height: 36px; min-height: 36px; padding: 0 12px; color: var(--rv-color-ink); background-color: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 14px; }
 .qi-page .qi-range { display: grid; grid-template-columns: minmax(0, 1fr) 36px; gap: 6px; }
 .qi-page .qi-seg { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); overflow: hidden; height: 36px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; }
@@ -165,7 +165,7 @@
 .qi-templates-modal .rv-question-templates { display: grid; gap: 16px; margin: 0; }
 .app-shell.stitch-shell main .qi-templates-modal .rv-question-template-editor { display: grid; gap: 12px; margin: 0; padding: 16px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; box-shadow: none; }
 .qi-templates-modal :is(.rv-question-template-editor, .rv-question-template-list) h3 { margin: 0; font-size: 14px; font-weight: 600; }
-.app-shell.stitch-shell main .qi-templates-modal .rv-question-template-editor label { display: grid; gap: 6px; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
+.app-shell.stitch-shell main .qi-templates-modal .rv-question-template-editor label { display: grid; gap: 6px; color: var(--rv-color-muted); font-size: 13px; font-weight: 500; }
 .app-shell.stitch-shell main .qi-templates-modal .rv-question-template-editor :is(input, textarea) { box-sizing: border-box; width: 100%; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font: inherit; font-size: 14px; }
 .app-shell.stitch-shell main .qi-templates-modal .rv-question-template-editor input { height: 36px; min-height: 36px; }
 .app-shell.stitch-shell main .qi-templates-modal .rv-question-template-editor textarea { min-height: 96px; padding: 10px 12px; line-height: 1.5; resize: vertical; }

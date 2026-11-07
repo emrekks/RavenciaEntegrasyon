@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isJobIdSearch, isJobInTimeRange, jobLookupQueryString, jobLookupTerm, jobCountsQueryString,jobDetailPollInterval, jobListHeadPollInterval, jobListMaximumAutoPages, jobListPollInterval, jobListQueryString, jobPageQueryString, jobPlatformsFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage } from './job-list-query'
+import { jobTimeRangeOptions, timeRangeStart, isJobIdSearch, isJobInTimeRange, jobLookupQueryString, jobLookupTerm, jobCountsQueryString,jobDetailPollInterval, jobListHeadPollInterval, jobListMaximumAutoPages, jobListPollInterval, jobListQueryString, jobPageQueryString, jobPlatformsFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage } from './job-list-query'
 
 describe('jobListQueryString', () => {
   const now = Date.parse('2026-10-14T12:00:00.000Z')
@@ -121,5 +121,25 @@ describe('job lookup (search by job id, correlation id or marketplace id)', () =
     expect(isJobIdSearch('01A1631C-AA8F-79F0-8FF6-9CCD6C21023E')).toBe(true)
     expect(isJobIdSearch('01a1631c-aa8f-79f0')).toBe(false)
     expect(isJobIdSearch('corr-01a1631c-aa8f-79f0-8ff6-9ccd6c21023e')).toBe(false)
+  })
+})
+
+describe('shared date presets as job ranges', () => {
+  // Wednesday 2026-10-14 15:00 Istanbul; the server's since is a UTC instant at the preset's first Istanbul day.
+  const now = Date.parse('2026-10-14T12:00:00.000Z')
+  it('starts each preset at its first Istanbul day (weeks on Monday) and Tüm Zamanlar has no start', () => {
+    expect(timeRangeStart('today', now)).toBe('2026-10-13T21:00:00.000Z')
+    expect(timeRangeStart('week', now)).toBe('2026-10-11T21:00:00.000Z')
+    expect(timeRangeStart('month', now)).toBe('2026-09-30T21:00:00.000Z')
+    expect(timeRangeStart('30d', now)).toBe('2026-09-14T21:00:00.000Z')
+    expect(timeRangeStart('year', now)).toBe('2025-12-31T21:00:00.000Z')
+    expect(timeRangeStart('all', now)).toBeNull()
+    expect(jobListQueryString('', 'today', now)).toBe('?since=2026-10-13T21%3A00%3A00.000Z')
+  })
+
+  it('keeps the rolling windows and offers a Son 7 Gün link only while it is chosen', () => {
+    expect(timeRangeStart('24h', now)).toBe('2026-10-13T12:00:00.000Z')
+    expect(jobTimeRangeOptions('24h').map(option => option.value)).toEqual(['24h', 'today', 'week', 'month', '30d', 'year', 'all'])
+    expect(jobTimeRangeOptions('7d').map(option => option.value)).toContain('7d')
   })
 })

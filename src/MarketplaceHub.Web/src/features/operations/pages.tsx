@@ -21,7 +21,7 @@ import type { JobVariantResults } from '../catalog/product-editor/PublicationJob
 import { jobDirections, jobPresentation, jobSubtitle, jobTitle, jobTypeCode, jobTypesForDirection, type JobDirection, type JobTypeIconName } from './job-presentation'
 import { canOfferOneTimeInvoiceDelivery } from './one-time-invoice-delivery-visibility'
 import { oneTimeInvoiceDeliveryIdempotencyKey } from './one-time-invoice-delivery-idempotency'
-import { isJobIdSearch, isJobInTimeRange, jobLookupQueryString, jobLookupTerm, jobTimeRanges, jobCountsQueryString, jobDetailPollInterval, jobListHeadPollInterval, jobListPollInterval, jobListPollMs, jobPageQueryString,jobPlatformsFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage, type JobListTimeRange } from './job-list-query'
+import { isJobIdSearch, isJobInTimeRange, jobLookupQueryString, jobLookupTerm, jobTimeRangeOptions, jobCountsQueryString, jobDetailPollInterval, jobListHeadPollInterval, jobListPollInterval, jobListPollMs, jobPageQueryString,jobPlatformsFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage, type JobListTimeRange } from './job-list-query'
 import { jobCategoryMatcher, jobCategoryTabs, jobTypesForCategoryTab, type JobCategory } from './job-categories'
 import { jobPageSizes, jobsMainTab, readJobsViewState, withJobsMainTab, writeJobsViewState, type JobsMainTab, type JobStatusChip, type JobsViewState } from './jobs-url-state'
 import type { IntegrationFeedback } from '../marketplace/shared'
@@ -604,7 +604,7 @@ export function JobsPage({ me }: { me: Me }) {
         : mainTab === 'health' ? <Suspense fallback={<Busy text="API sağlığı yükleniyor…" />}><ApiHealthView onFeedback={showPanelFeedback} /></Suspense> : <>
       <OpsFilterCard label="İşlem filtreleri" active={cardFilterCount} clearCount={cardFilterCount + (search.trim() ? 1 : 0)} onClear={clearFilters} onApply={refreshJobs}>
         <SearchField label="İşlem Ara" ariaLabel="Correlation ID ile işlem ara" placeholder="Correlation ID, iş numarası veya hata kodu" value={search} onChange={setSearch} />
-        <ChoiceField name="Zaman Aralığı" value={timeRange} options={jobTimeRanges.map(([value, label]) => ({ value, label }))} onChange={value => setTimeRange(value as JobTimeRange)} />
+        <ChoiceField name="Zaman Aralığı" value={timeRange} options={jobTimeRangeOptions(timeRange)} onChange={value => setTimeRange(value as JobTimeRange)} />
         <FilterMenu name="Platform" allLabel="Tüm Platformlar" unit="Platform" groups={platformGroups} selected={platforms} onChange={setPlatforms} emptyText="Bağlı pazaryeri yok." />
         <ChoiceField name="Yön" allValue="" value={direction} options={[{ value: '', label: 'Tüm Yönler' }, ...jobDirections.map(item => ({ value: item, label: item }))]} onChange={value => setDirection(value as '' | JobDirection)} />
         <ChoiceField name="Durum" allValue="" value={status} options={statuses} onChange={value => setStatus(value as '' | JobStatus)} />

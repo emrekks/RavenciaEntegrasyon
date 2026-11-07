@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import './questions-design-system.css'
 import { useRememberedHeight } from '../../shared/remembered-height'
 import { unknownCount, useRememberedTabCounts } from '../../shared/tab-counts'
@@ -20,7 +20,7 @@ import './questions-inbox.css'
 import { viewTabLabel } from '../../shared/view-tabs'
 import { formatIstanbul, istanbulDateKey, istanbulDayBoundary, toDateTimeLocal } from '../../shared/format-date'
 import { scopedStorageKey } from '../../shared/storage-scope'
-import { insideSelector, useDismissable } from '../../shared/hooks/useDismissable'
+import { useDismissable } from '../../shared/hooks/useDismissable'
 
 type MarketplaceQuestion = {
   id: string; connectionId: string; platformCode: string; storeName: string; externalQuestionId: string; kind: string; status: string
@@ -71,8 +71,6 @@ function StateGlyph({ state }: { state: Glyph }) {
   return <svg className="qi-glyph" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeDasharray="2.6 2.2" aria-hidden="true"><circle cx="8" cy="8" r="6.2" /></svg>
 }
 
-function dateKey(date: Date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` }
-function lastDays(days: number) { const end = new Date(); const start = new Date(); start.setDate(start.getDate() - (days - 1)); return { from: dateKey(start), to: dateKey(end) } }
 
 function answerWarning(platformCode: string): { title: string; message: string } | null {
   if (platformCode === 'N11') return { title: 'Cevap Bir Kez Gönderilir', message: 'N11’de bir soruya yalnızca bir kez cevap verilir ve sonradan değiştirilemez.' }
@@ -158,11 +156,10 @@ export function QuestionsPage() {
   const client = useQueryClient()
   const [tab, setTab] = useState<WorkspaceTab>('PRODUCT')
   const [templatesOpen, setTemplatesOpen] = useState(false)
-  const [filterOpen, setFilterOpen] = useState(false)
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [statusOpen, setStatusOpen] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
-  const filterRef = useRef<HTMLDivElement>(null)
   const statusRef = useRef<HTMLDivElement>(null)
   const [status, setStatus] = useState<QuestionStatus>('WAITING')
   const [platform, setPlatform] = useState('ALL')
@@ -174,6 +171,8 @@ export function QuestionsPage() {
   const [search, setSearch] = useState('')
   useEffect(() => { const timer = window.setTimeout(() => setSearch(searchInput), 300); return () => window.clearTimeout(timer) }, [searchInput])
   const [sort, setSort] = useState('NEWEST')
+  // The card's fields are typed first and applied with Filtrele (Enter too); the search alone follows the typing.
+  const [draft, setDraft] = useState<{ connectionId?: string; dateFrom?: string; dateTo?: string; sort?: string }>({})
   const [deletingTemplate, setDeletingTemplate] = useState<Template | null>(null)
   // The page belongs to the filters it was chosen under: other filters read page 1 in the same render, so no request
   // ever carries new filters with an old page.
@@ -265,12 +264,21 @@ export function QuestionsPage() {
     if (questionSyncIsStale(syncStates.data, Date.now())) startSync({ kind: 'ALL' })
   }, [tab, kind, connections.isSuccess, syncStates.isSuccess, syncStates.data, startSync])
 
-  // The filter panel holds a date picker whose calendar is portalled: a press there belongs to the filter too.
-  useDismissable(filterOpen, [filterRef], () => setFilterOpen(false), { isInside: insideSelector('.date-range-picker-popover') })
   useDismissable(statusOpen, [statusRef], () => setStatusOpen(false))
 
   const rows = questions.data?.items ?? []
   const connectionNames = connections.data ?? []
+  const shownConnection = draft.connectionId ?? connectionId
+  const shownFrom = draft.dateFrom ?? dateFrom
+  const shownTo = draft.dateTo ?? dateTo
+  const shownSort = draft.sort ?? sort
+  const canApplyFilters = shownConnection !== connectionId || shownFrom !== dateFrom || shownTo !== dateTo || shownSort !== sort || searchInput !== search
+  const canClearFilters = shownConnection !== 'ALL' || shownFrom !== '' || shownTo !== '' || shownSort !== 'NEWEST' || searchInput !== '' || connectionId !== 'ALL' || dateFrom !== '' || dateTo !== '' || sort !== 'NEWEST' || search !== ''
+  const applyFilters = (event?: FormEvent) => {
+    event?.preventDefault()
+    setConnectionId(shownConnection); setDateFrom(shownFrom); setDateTo(shownTo); setSort(shownSort); setSearch(searchInput); setDraft({}); setFiltersOpen(false)
+  }
+  const clearFilters = () => { setConnectionId('ALL'); setDateFrom(''); setDateTo(''); setSort('NEWEST'); setSearchInput(''); setSearch(''); setDraft({}); setFiltersOpen(false) }
   // The open question stays open while the list refreshes: the first one is taken once, and a question that leaves
   // the current filter or page (answered, moved down by a new one) is read on its own instead of silently giving its
   // place to another question.
@@ -286,8 +294,6 @@ export function QuestionsPage() {
   const currentStatusIndex = statusFilters.indexOf(currentStatus)
   // The count on the status picker shows the last known number while it loads, so the picker does not shift when it arrives.
   const [statusCountItem] = useRememberedTabCounts('Soru durumu', [{ value: currentStatus.value, count: statusCounts[currentStatusIndex]?.isError ? unknownCount : formatCount(statusCounts[currentStatusIndex]?.data) }])
-  const activeFilterCount = (connectionId !== 'ALL' ? 1 : 0) + (dateFrom || dateTo ? 1 : 0) + (sort !== 'NEWEST' ? 1 : 0)
-  const presets = [{ key: 'ALL', label: 'Tümü', title: 'Tüm Tarihler', range: { from: '', to: '' } }, { key: 'TODAY', label: 'Bugün', title: 'Bugün', range: lastDays(1) }, { key: '7', label: '7 Gün', title: 'Son 7 Gün', range: lastDays(7) }, { key: '30', label: '30 Gün', title: 'Son 30 Gün', range: lastDays(30) }]
   const productHrefOf = (row: MarketplaceQuestion) => row.kind === 'PRODUCT' || row.platformCode === 'HEPSIBURADA' ? row.productUrl || marketplaceProductSearchUrl(row.platformCode, row.productBarcode, row.productSku, row.productModelCode, row.productName) : null
   // As an order line shows its product: model code first, then the stock code and barcode.
   const codesOf = (row: MarketplaceQuestion) => [row.productModelCode && `Model Kodu: ${row.productModelCode}`, row.productSku && `Stok Kodu: ${row.productSku}`, row.productBarcode && `Barkod: ${row.productBarcode}`].filter(Boolean).join(' · ') || 'Ürün kodu bilgisi yok'
@@ -354,22 +360,20 @@ export function QuestionsPage() {
       {!syncStates.isLoading && !syncStates.data?.length && <span className="qi-sync-empty">Soru geçmişi bağlantılarınızdan arka planda alınır. İlk senkronizasyon sonrası aktarım durumu burada görünür.</span>}
     </section>
     {notice && <MessageToast message={notice.message} kind={notice.kind} onClose={() => setNotice(null)} />}
+    <form className={`qf-card${filtersOpen ? ' is-open' : ''}`} aria-label="Soru filtreleri" onSubmit={applyFilters}>
+      <button type="button" className="qf-toggle" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(value => !value)}><UiIcon name="filter" size={14} />Filtre</button>
+      <div className="qf-fields">
+        <div className="qf-fld qf-search"><small>Arama</small><label className="rv-search-field"><UiIcon name="search" size={16} /><input type="search" value={searchInput} onChange={event => setSearchInput(event.target.value)} placeholder="Soru, ürün, stok kodu veya sipariş no" aria-label="Metin ara" /></label></div>
+        <label className="qf-fld"><small>Mağaza</small><select value={shownConnection} onChange={event => setDraft(current => ({ ...current, connectionId: event.target.value }))}><option value="ALL">Tüm Mağazalar</option>{connectionNames.filter(item => tab !== 'ORDER' || ORDER_QUESTION_PLATFORMS.includes(item.platformCode)).map(item => <option value={item.id} key={item.id}>{storeLabel(item)}</option>)}</select></label>
+        <div className="qf-fld"><DateRangePicker className="qf-date" from={shownFrom} to={shownTo} onChange={range => setDraft(current => ({ ...current, dateFrom: range.from, dateTo: range.to }))} label="Tarih" placeholder="Başlangıç – Bitiş" /></div>
+        <label className="qf-fld"><small>Sıralama</small><select value={shownSort} onChange={event => setDraft(current => ({ ...current, sort: event.target.value }))}><option value="NEWEST">En Yeni</option><option value="OLDEST">En Eski</option><option value="UPDATED">Son Güncellenen</option></select></label>
+        <div className="qf-actions"><button type="button" className="secondary" disabled={!canClearFilters} onClick={clearFilters}>Temizle</button><button type="submit" className="rv-button-primary" disabled={!canApplyFilters}>Filtrele</button></div>
+      </div>
+    </form>
     <div className={`qi-inbox${detailOpen ? ' is-detail' : ''}`}>
       <div className="qi-left">
-        <Tabs className="rv-questions-tabs qi-tabs rv-view-tabs" ariaLabel="Soru türü" value={tab} onChange={value => { setTab(value as WorkspaceTab); setConnectionId('ALL'); setPlatform('ALL'); setStatus('WAITING'); setSelectedId(null); setDetailOpen(false) }} items={[{ value: 'PRODUCT', label: viewTabLabel('product', 'Ürün Soruları'), count: waitingCounts[0].isError ? unknownCount : formatCount(waitingCounts[0].data) }, { value: 'ORDER', label: viewTabLabel('order', 'Sipariş Soruları'), count: waitingCounts[1].isError ? unknownCount : formatCount(waitingCounts[1].data) }]} />
+        <Tabs className="rv-questions-tabs qi-tabs rv-view-tabs" ariaLabel="Soru türü" value={tab} onChange={value => { setTab(value as WorkspaceTab); setConnectionId('ALL'); setDraft({}); setPlatform('ALL'); setStatus('WAITING'); setSelectedId(null); setDetailOpen(false) }} items={[{ value: 'PRODUCT', label: viewTabLabel('product', 'Ürün Soruları'), count: waitingCounts[0].isError ? unknownCount : formatCount(waitingCounts[0].data) }, { value: 'ORDER', label: viewTabLabel('order', 'Sipariş Soruları'), count: waitingCounts[1].isError ? unknownCount : formatCount(waitingCounts[1].data) }]} />
         <div className="qi-tools" aria-label="Soru filtreleri">
-          <div className="qi-tools-row">
-            <label className="rv-questions-search qi-search"><UiIcon name="search" size={15} /><input value={searchInput} onChange={event => setSearchInput(event.target.value)} placeholder="Soru, ürün, stok kodu veya sipariş no" aria-label="Metin ara" /></label>
-            <div className="qi-filter" ref={filterRef}>
-              <button type="button" className={`qi-filter-btn${filterOpen || activeFilterCount ? ' is-on' : ''}`} aria-expanded={filterOpen} onClick={() => setFilterOpen(value => !value)}><UiIcon name="filter" size={15} />Filtre{activeFilterCount > 0 && <span className="qi-count">{activeFilterCount}</span>}</button>
-              {filterOpen && <div className="qi-popover rv-questions-filter-grid" role="dialog" aria-label="Filtreler">
-                <label>Mağaza<select value={connectionId} onChange={event => setConnectionId(event.target.value)}><option value="ALL">Tüm Mağazalar</option>{connectionNames.filter(item => tab !== 'ORDER' || ORDER_QUESTION_PLATFORMS.includes(item.platformCode)).map(item => <option value={item.id} key={item.id}>{storeLabel(item)}</option>)}</select></label>
-                <div className="qi-field"><span>Tarih Aralığı</span><div className="qi-range"><div className="qi-seg" role="radiogroup" aria-label="Hazır tarih aralığı">{presets.map(item => { const on = dateFrom === item.range.from && dateTo === item.range.to; return <button type="button" role="radio" aria-checked={on} className={on ? 'is-on' : ''} key={item.key} title={item.title} onClick={() => { setDateFrom(item.range.from); setDateTo(item.range.to) }}>{item.label}</button> })}</div><DateRangePicker className="qi-range-picker" from={dateFrom} to={dateTo} onChange={range => { setDateFrom(range.from); setDateTo(range.to) }} label="Tarih Aralığı" /></div></div>
-                <label>Sıralama<select value={sort} onChange={event => setSort(event.target.value)}><option value="NEWEST">En Yeni</option><option value="OLDEST">En Eski</option><option value="UPDATED">Son Güncellenen</option></select></label>
-                <footer><button type="button" className="qi-link" onClick={() => { setConnectionId('ALL'); setDateFrom(''); setDateTo(''); setSort('NEWEST') }}>Temizle</button><Button onClick={() => setFilterOpen(false)}>Uygula</Button></footer>
-              </div>}
-            </div>
-          </div>
           <div className="qi-status" ref={statusRef}>
             <button type="button" className={`qi-status-btn${statusOpen ? ' is-on' : ''}`} aria-haspopup="listbox" aria-expanded={statusOpen} onClick={() => setStatusOpen(value => !value)}><StateGlyph state={currentStatus.glyph} /><b>{currentStatus.label}</b><span className={`qi-count${currentStatus.value === 'WAITING' && statusCounts[currentStatusIndex]?.data ? ' is-warn' : ''}`}>{statusCountItem.count ?? '…'}</span><UiIcon name="chevronDown" size={15} /></button>
             {statusOpen && <div className="qi-status-menu" role="listbox" aria-label="Soru durumu">{statusFilters.map((item, index) => <button type="button" role="option" aria-selected={status === item.value} className={status === item.value ? 'is-on' : ''} key={item.value} onClick={() => { setStatus(item.value); setStatusOpen(false); setSelectedId(null) }}><span><StateGlyph state={item.glyph} />{item.label}</span><span className={`qi-count${item.value === 'WAITING' && statusCounts[index]?.data ? ' is-warn' : ''}`}>{formatCount(statusCounts[index]?.data) ?? (statusCounts[index]?.isError ? unknownCount : '…')}</span></button>)}</div>}
