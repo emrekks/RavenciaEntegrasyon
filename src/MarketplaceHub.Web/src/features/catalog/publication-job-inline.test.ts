@@ -3,19 +3,11 @@ import { statusLabel } from '../../shared/status-labels'
 import { isRefreshJobRunning, publicationJobInline, publicationJobSummary, type PublicationJobSnapshot } from './publication-job-inline'
 
 describe('publication job summary', () => {
-  it('turns the old incomplete-batch text into what happened and what to press', () => {
-    const settled = publicationJobInline(job({ status: 'MANUAL_REVIEW', lastErrorCode: 'PRODUCT_BATCH_CONTRACT_INVALID', lastErrorSummary: 'Batch sonucu gönderilen tüm merchantSku/barkodları içermiyor.' }))
-    expect(settled.state).toBe('settled')
-    if (settled.state !== 'settled') return
-    expect(settled.message).toContain('varyantların gerçek durumu bilinmiyor')
-    expect(settled.message).toContain('Manuel Yeniden Dene')
-    expect(settled.message).not.toContain('merchantSku')
-  })
-
-  it('keeps every other summary as the job wrote it', () => {
-    expect(publicationJobSummary('PRODUCT_BATCH_PARTIAL_FAILURE', ' Reddedilen: MZ-22 (Web Color alanı zorunludur.) ')).toBe('Reddedilen: MZ-22 (Web Color alanı zorunludur.)')
-    expect(publicationJobSummary('PRODUCT_BATCH_CONTRACT_INVALID', 'Batch sonucu bilinmeyen merchantSku/barkod içeriyor.')).toBe('Batch sonucu bilinmeyen merchantSku/barkod içeriyor.')
-    expect(publicationJobSummary(null, '  ')).toBeUndefined()
+  // The server words the error (JobErrorMessages); the card shows it as it comes, trimmed.
+  it('shows the summary the server wrote', () => {
+    expect(publicationJobSummary(' Reddedilen: MZ-22 (Web Color alanı zorunludur.) ')).toBe('Reddedilen: MZ-22 (Web Color alanı zorunludur.)')
+    expect(publicationJobSummary('  ')).toBeUndefined()
+    expect(publicationJobSummary(null)).toBeUndefined()
   })
 })
 

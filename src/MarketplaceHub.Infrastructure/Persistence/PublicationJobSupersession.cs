@@ -42,8 +42,8 @@ public static class PublicationJobSupersession
         catch (JsonException) { return Guid.Empty; }
     }
 
-    internal static string Summary(string? previousCode) =>
-        $"Aynı ürünün bu bağlantıdaki sonraki yayın veya onay işi başarılı oldu; bu eski hata kaydı kapatıldı (önceki hata: {previousCode ?? "—"}).";
+    internal const string Summary =
+        "Aynı ürünün bu mağazadaki sonraki yayını ya da onay kontrolü başarılı oldu; bu eski hata kaydı kapatıldı.";
 
     // Closes the superseded failures; returns how many. Each pass looks at a bounded number of failures.
     internal static async Task<int> CloseAsync(AppDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
@@ -78,7 +78,7 @@ public static class PublicationJobSupersession
                          (x.ConnectionId, x.JobType, x.ProfileId, x.Status, x.CreatedAt),
                          (profile.Key.ConnectionId, latest.JobType, profile.Key.ProfileId, JobStatus.Succeeded, latest.CreatedAt))))
             {
-                var summary = Summary(job.LastErrorCode);
+                var summary = Summary;
                 closed += await db.IntegrationJobs
                     .Where(x => x.Id == job.Id && x.TenantId == job.TenantId && (x.Status == JobStatus.Blocked || x.Status == JobStatus.ManualReview))
                     .ExecuteUpdateAsync(setters => setters

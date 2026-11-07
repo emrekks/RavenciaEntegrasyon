@@ -64,11 +64,12 @@ public sealed class JobHygieneTests
         Assert.Equal(Guid.Empty, ProductWriteSupersession.ProductIdOf("[]"));
 
         var later = Guid.Parse("01a1b290-4e62-794d-8c52-3cf73a002275");
-        var summary = ProductWriteSupersession.Summary(later, DateTimeOffset.Parse("2026-11-06T20:32:44Z"), "PRODUCT_CONTENT_GROUP_MISMATCH");
-        Assert.Contains(later.ToString("D"), summary);
+        var summary = ProductWriteSupersession.Summary(DateTimeOffset.Parse("2026-11-06T20:32:44Z"));
+        // Plain words: neither the later job id nor the earlier raw code (owner, 7 Nov 2026).
+        Assert.DoesNotContain(later.ToString("D"), summary);
         // Istanbul time.
         Assert.Contains("23:32", summary);
-        Assert.Contains("PRODUCT_CONTENT_GROUP_MISMATCH", summary);
+        Assert.DoesNotContain("PRODUCT_CONTENT_GROUP_MISMATCH", summary);
     }
 
     [Fact]

@@ -5,7 +5,8 @@ import type { MarketplaceConnection, Product } from '../shared'
 import { bulkPublishPlatformName } from './bulk-publish-status'
 
 export type BulkPublicationFailure = { productId: string; productTitle: string; connectionId: string; code: string; message: string }
-export type BulkPublicationResult = { queued: number; skipped: number; failed: BulkPublicationFailure[] }
+/** jobs: what was queued (the server names each job), so the result can be followed. */
+export type BulkPublicationResult = { queued: number; skipped: number; failed: BulkPublicationFailure[]; jobs?: Array<{ productId: string; connectionId: string; jobId: string }> }
 
 type FamilyRecord = Pick<Product, 'id' | 'modelCode' | 'variants'>
 
@@ -53,11 +54,11 @@ export function bulkPublishRequestBody(productIds: readonly string[], connection
 }
 
 export function addBulkPublicationResult(total: BulkPublicationResult, part: BulkPublicationResult): BulkPublicationResult {
-  return { queued: total.queued + part.queued, skipped: total.skipped + part.skipped, failed: [...total.failed, ...part.failed] }
+  return { queued: total.queued + part.queued, skipped: total.skipped + part.skipped, failed: [...total.failed, ...part.failed], jobs: [...(total.jobs ?? []), ...(part.jobs ?? [])] }
 }
 
 export function bulkPublishResultMessage(result: BulkPublicationResult, interrupted = false) {
-  const parts = [`${result.queued.toLocaleString('tr-TR')} yayın işi kuyruğa alındı`]
+  const parts = [`${result.queued.toLocaleString('tr-TR')} kayıt için aktarım başladı`]
   if (result.skipped) parts.push(`${result.skipped.toLocaleString('tr-TR')} kayıt zaten yayında veya işlemde`)
   if (result.failed.length) parts.push(`${new Set(result.failed.map(item => item.productId)).size.toLocaleString('tr-TR')} kayıt ${result.failed.length.toLocaleString('tr-TR')} gönderimde reddedildi`)
   return `${parts.join(', ')}.${interrupted ? ' Gönderim yarıda kesildi; kalanlar gönderilmedi.' : ''}`

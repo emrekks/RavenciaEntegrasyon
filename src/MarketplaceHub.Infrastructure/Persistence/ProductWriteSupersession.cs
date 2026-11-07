@@ -49,10 +49,11 @@ public static class ProductWriteSupersession
         catch (JsonException) { return Guid.Empty; }
     }
 
-    public static string Summary(Guid laterJobId, DateTimeOffset laterCreatedAt, string? previousCode)
+    // Plain words only (owner, 7 Nov 2026): no job id, no raw code; the earlier error stays in the job's attempts.
+    public static string Summary(DateTimeOffset laterCreatedAt)
     {
         var local = TimeZoneInfo.ConvertTime(laterCreatedAt, Istanbul);
-        return $"Aynı ürünün bu bağlantıdaki sonraki yazma işi ({laterJobId:D}, {local.ToString("d MMMM yyyy HH:mm", CultureInfo.GetCultureInfo("tr-TR"))}) başarılı oldu; bu eski hata kaydı kapatıldı (önceki hata: {previousCode ?? "—"}).";
+        return $"Aynı ürünün bu mağazadaki sonraki güncellemesi ({local.ToString("d MMMM yyyy HH:mm", CultureInfo.GetCultureInfo("tr-TR"))}) başarılı oldu; bu eski hata kaydı kapatıldı.";
     }
 
     // Closes the superseded failures; returns how many. Each pass looks at a bounded number of failures.
@@ -87,7 +88,7 @@ public static class ProductWriteSupersession
                          (x.ConnectionId, x.JobType, x.ProductId, x.Status, x.CreatedAt),
                          (product.Key.ConnectionId, product.Key.JobType, product.Key.ProductId, JobStatus.Succeeded, latest.CreatedAt))))
             {
-                var summary = Summary(latest.Id, latest.CreatedAt, job.LastErrorCode);
+                var summary = Summary(latest.CreatedAt);
                 closed += await db.IntegrationJobs
                     .Where(x => x.Id == job.Id && x.TenantId == job.TenantId && x.Status == job.Status)
                     .ExecuteUpdateAsync(setters => setters

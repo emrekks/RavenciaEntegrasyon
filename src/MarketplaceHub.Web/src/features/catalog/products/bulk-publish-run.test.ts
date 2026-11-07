@@ -60,7 +60,7 @@ describe('bulk publish result', () => {
   it('sums the slices and says what was queued, skipped and refused', () => {
     const total = addBulkPublicationResult({ queued: 2, skipped: 1, failed: [] }, { queued: 4, skipped: 0, failed: [failure('p1', 'ty', 'x'), failure('p1', 'n11', 'x')] })
     expect(total.queued).toBe(6)
-    expect(bulkPublishResultMessage(total)).toBe('6 yayın işi kuyruğa alındı, 1 kayıt zaten yayında veya işlemde, 1 kayıt 2 gönderimde reddedildi.')
-    expect(bulkPublishResultMessage({ queued: 0, skipped: 0, failed: [] }, true)).toBe('0 yayın işi kuyruğa alındı. Gönderim yarıda kesildi; kalanlar gönderilmedi.')
+    expect(bulkPublishResultMessage(total)).toBe('6 kayıt için aktarım başladı, 1 kayıt zaten yayında veya işlemde, 1 kayıt 2 gönderimde reddedildi.')
+    expect(bulkPublishResultMessage({ queued: 0, skipped: 0, failed: [] }, true)).toBe('0 kayıt için aktarım başladı. Gönderim yarıda kesildi; kalanlar gönderilmedi.')
   })
 })

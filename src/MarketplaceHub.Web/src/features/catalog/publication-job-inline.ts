@@ -28,7 +28,7 @@ export function publicationJobInline(job: PublicationJobSnapshot | null | undefi
   if (status === 'SUCCEEDED') return { state: 'hidden' }
   // An approval check only waiting for the marketplace: the card's status already says "Onay bekliyor".
   if (isApprovalWaitJob(job)) return { state: 'hidden' }
-  const summary = publicationJobSummary(job.lastErrorCode, job.lastErrorSummary)
+  const summary = publicationJobSummary(job.lastErrorSummary)
   if (isSettledPublicationJob(status)) {
     return { state: 'settled', message: summary ? `${statusLabel(status)} · ${summary}` : statusLabel(status), tone: status === 'CANCELLED' ? 'muted' : 'danger' }
   }
@@ -39,16 +39,10 @@ export function publicationJobInline(job: PublicationJobSnapshot | null | undefi
   return { state: 'running', message: `${label}: ${summary || progress || statusLabel(status)}` }
 }
 
-// A create job stopped before 2026-11-03 when Trendyol's batch result did not list every barcode yet (it writes the
-// result while saying COMPLETED); the old internal text said nothing the user could act on. Such a job now waits for the
-// whole result; one already stopped is read again by retrying it (the retry only asks Trendyol, it sends nothing).
-const incompleteBatchSummary = 'Batch sonucu gönderilen tüm merchantSku/barkodları içermiyor.'
-
-export function publicationJobSummary(code: string | null | undefined, summary: string | null | undefined) {
-  const text = summary?.trim()
-  if (code?.trim().toUpperCase() === 'PRODUCT_BATCH_CONTRACT_INVALID' && text === incompleteBatchSummary)
-    return "Trendyol sonucu bazı barkodlar henüz listelenmeden okundu; varyantların gerçek durumu bilinmiyor. İşler sayfasında bu işin Manuel Yeniden Dene düğmesi sonucu Trendyol'dan yeniden sorgular, ürünü yeniden göndermez."
-  return text || undefined
+// The server already words every job error for the owner (JobErrorMessages: code to plain Turkish, old rows included),
+// so the card shows its summary as it comes.
+export function publicationJobSummary(summary: string | null | undefined) {
+  return summary?.trim() || undefined
 }
 
 // The job a card's refresh started (a status check or a product lookup) is running until it ends; a status check that

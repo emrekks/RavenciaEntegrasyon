@@ -110,14 +110,14 @@ internal static class TrendyolContentGroups
     public static ServiceResult<string> Resolve(string contentPayloadJson, IReadOnlyDictionary<string, TrendyolContentObservation> contentByBarcode, TrendyolAttributeRoles? roles = null)
     {
         var items = Items(contentPayloadJson);
-        if (items is null) return ServiceResult<string>.Fail("PRODUCT_UPDATE_PAYLOAD_INVALID", "Ürün içerik güncelleme payload'ı okunamadı.", 422);
+        if (items is null) return ServiceResult<string>.Fail("PRODUCT_UPDATE_PAYLOAD_INVALID", "Ürün bilgisi güncellemesi okunamadı; Trendyol'a gönderilmedi. Ürünü kaydedip güncellemeyi yeniden başlatın.", 422);
         var cardBarcodes = new HashSet<string>(Barcodes(contentPayloadJson), StringComparer.OrdinalIgnoreCase);
         var lookup = new Dictionary<string, TrendyolContentObservation>(contentByBarcode, StringComparer.OrdinalIgnoreCase);
         var groups = new List<(TrendyolContentObservation Content, List<JsonObject> Items)>();
         foreach (var node in items)
         {
             if (node is not JsonObject item || item["barcode"]?.GetValue<string>()?.Trim() is not { Length: > 0 } barcode)
-                return ServiceResult<string>.Fail("PRODUCT_UPDATE_PAYLOAD_INVALID", "Ürün içerik güncellemesinde barkodu olmayan bir varyant var.", 422);
+                return ServiceResult<string>.Fail("PRODUCT_UPDATE_PAYLOAD_INVALID", "Ürün bilgisi güncellemesinde barkodu olmayan bir varyant var; varyantlara barkod girip yeniden deneyin.", 422);
             if (!lookup.TryGetValue(barcode, out var content)) continue;
             var group = groups.FindIndex(entry => entry.Content.ContentId == content.ContentId);
             if (group < 0) groups.Add((content, [item]));
@@ -130,17 +130,17 @@ internal static class TrendyolContentGroups
         foreach (var (content, groupItems) in groups)
         {
             if (!long.TryParse(content.ContentId, NumberStyles.None, CultureInfo.InvariantCulture, out var contentId) || contentId <= 0)
-                return ServiceResult<string>.Fail("REMOTE_CONTENT_ID_INVALID", "Trendyol contentId sayısal değil; otomatik güncelleme güvenli biçimde durduruldu.", 409);
+                return ServiceResult<string>.Fail("REMOTE_CONTENT_ID_INVALID", "Trendyol'un bu ürüne verdiği ürün grubu numarası geçersiz; yanlış ürüne yazmamak için güncelleme durduruldu. Ürünün Trendyol kartında durumu yenileyin.", 409);
             var foreign = content.Barcodes.Where(barcode => !cardBarcodes.Contains(barcode)).Order(StringComparer.Ordinal).ToList();
             if (foreign.Count > 0)
-                return ServiceResult<string>.Fail("PRODUCT_CONTENT_SHARED", $"Trendyol içeriği {content.ContentId} bu üründe olmayan barkodları da taşıyor ({string.Join(", ", foreign.Take(5))}); yanlış ilana yazmamak için içerik güncellemesi gönderilmedi.", 409);
+                return ServiceResult<string>.Fail("PRODUCT_CONTENT_SHARED", $"Trendyol'daki {content.ContentId} numaralı ürün grubu bu üründe olmayan barkodları da taşıyor ({string.Join(", ", foreign.Take(5))}); yanlış ilana yazmamak için içerik güncellemesi gönderilmedi.", 409);
             var first = groupItems[0];
             var differing = groupItems.Skip(1).FirstOrDefault(item => !SameContent(first, item));
             if (differing is not null)
-                return ServiceResult<string>.Fail("PRODUCT_CONTENT_GROUP_MISMATCH", $"Trendyol içeriği {content.ContentId} içindeki '{first["barcode"]}' ve '{differing["barcode"]}' varyantlarının panelde başlığı, açıklaması veya görselleri farklı; yanlış ilana yazmamak için içerik güncellemesi gönderilmedi.", 409);
+                return ServiceResult<string>.Fail("PRODUCT_CONTENT_GROUP_MISMATCH", $"Trendyol'daki {content.ContentId} numaralı ürün grubundaki '{first["barcode"]}' ve '{differing["barcode"]}' varyantlarının panelde başlığı, açıklaması veya görselleri farklı; yanlış ilana yazmamak için güncelleme gönderilmedi. Bu varyantların bilgilerini aynı yapıp yeniden deneyin.", 409);
             var attributes = ContentAttributes(groupItems, roles);
             if (!attributes.Succeeded)
-                return ServiceResult<string>.Fail("PRODUCT_CONTENT_GROUP_MISMATCH", $"Trendyol içeriği {content.ContentId}: {attributes.Error!.Message}; yanlış ilana yazmamak için içerik güncellemesi gönderilmedi.", 409);
+                return ServiceResult<string>.Fail("PRODUCT_CONTENT_GROUP_MISMATCH", $"Trendyol'daki {content.ContentId} numaralı ürün grubu: {attributes.Error!.Message}; yanlış ilana yazmamak için güncelleme gönderilmedi.", 409);
             var resolved = new JsonObject { ["contentId"] = contentId };
             // Only the fields the item carries go (the picked ones; content-bulk-update keeps a field left out).
             foreach (var name in new[] { "title", "description", "images" })

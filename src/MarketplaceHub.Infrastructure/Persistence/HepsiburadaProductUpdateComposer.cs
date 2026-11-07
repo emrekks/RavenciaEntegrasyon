@@ -28,9 +28,9 @@ internal sealed class HepsiburadaProductUpdateComposer(AppDbContext db, IConfigu
             .Where(link => link.TenantId == tenantId && link.ConnectionId == connectionId && variantIds.Contains(link.VariantId))
             .ToDictionaryAsync(link => link.VariantId, link => link.ExternalId, cancellationToken);
         if (draft.Variants.Any(variant => !remoteLinks.TryGetValue(variant.VariantId, out var hbSku) || string.IsNullOrWhiteSpace(hbSku)))
-            return ServiceResult<ProductUpdateDraft>.Fail("HEPSIBURADA_HB_SKU_REQUIRED", "Güncelleme için her varyantın Hepsiburada hbSku bağlantısı katalog okumasıyla doğrulanmalıdır.", 409);
+            return ServiceResult<ProductUpdateDraft>.Fail("HEPSIBURADA_HB_SKU_REQUIRED", "Güncelleme için her varyantın Hepsiburada ürün kodu (HB kodu) bağlantısı doğrulanmış olmalı; önce Hepsiburada ürün eşleştirmesini çalıştırın.", 409);
         if (remoteLinks.Values.Distinct(StringComparer.OrdinalIgnoreCase).Count() != draft.Variants.Count)
-            return ServiceResult<ProductUpdateDraft>.Fail("HEPSIBURADA_HB_SKU_AMBIGUOUS", "Hepsiburada hbSku bağlantıları yineleniyor; güncelleme durduruldu.", 409);
+            return ServiceResult<ProductUpdateDraft>.Fail("HEPSIBURADA_HB_SKU_AMBIGUOUS", "Birden fazla varyant aynı Hepsiburada ürün koduna (HB kodu) bağlı; güncelleme durduruldu. Hepsiburada ürün eşleştirmesini kontrol edin.", 409);
 
         using var source = JsonDocument.Parse(draft.PayloadJson);
         if (source.RootElement.ValueKind != JsonValueKind.Array || source.RootElement.GetArrayLength() != draft.Variants.Count)
@@ -43,13 +43,13 @@ internal sealed class HepsiburadaProductUpdateComposer(AppDbContext db, IConfigu
             var attributes = ReadAttributes(item);
             var merchantSku = attributes.TryGetValue("merchantSku", out var rawSku) && rawSku.ValueKind == JsonValueKind.String ? rawSku.GetString() : null;
             if (string.IsNullOrWhiteSpace(merchantSku) || !sourceBySku.TryAdd(merchantSku, item))
-                return ServiceResult<ProductUpdateDraft>.Fail("PRODUCT_UPDATE_SKU_INVALID", "Hepsiburada ürün güncelleme satırlarında merchantSku eksik veya yineleniyor.", 422);
+                return ServiceResult<ProductUpdateDraft>.Fail("PRODUCT_UPDATE_SKU_INVALID", "Hepsiburada güncellemesinde bazı varyantların stok kodu eksik ya da tekrar ediyor; stok kodlarını düzeltip yeniden deneyin.", 422);
         }
 
         foreach (var variant in draft.Variants)
         {
             if (!sourceBySku.TryGetValue(variant.Sku, out var sourceItem))
-                return ServiceResult<ProductUpdateDraft>.Fail("PRODUCT_UPDATE_SKU_MISMATCH", "Hepsiburada ürün güncelleme merchantSku satırı yerel varyantla eşleşmiyor.", 422);
+                return ServiceResult<ProductUpdateDraft>.Fail("PRODUCT_UPDATE_SKU_MISMATCH", "Hepsiburada güncellemesindeki bir stok kodu paneldeki varyantla eşleşmiyor; stok kodlarını kontrol edip yeniden deneyin.", 422);
             var attributes = ReadAttributes(sourceItem);
             var updateItem = new Dictionary<string, object?>
             {

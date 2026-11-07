@@ -551,7 +551,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             if (connection.Status == "HIDDEN") return ServiceResult<ConnectionView>.Fail("CONNECTION_HIDDEN", "Verileri gizlenmiş bağlantı doğrudan etkinleştirilemez; önce verilerini yeniden gösterin.", 409);
             var connectionTestCode = ActiveIntegrationScope.IsMarketplace(connection.PlatformCode) ? MarketplaceCapabilities.ConnectionTest : InvoicingCapabilities.ConnectionTest;
             var connectionTest = await db.PlatformCapabilities.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.Code == connectionTestCode && x.Environment == connection.Environment && x.StoreScope == connection.ExternalStoreId, cancellationToken);
-            if (connection.LastSuccessAt is null || connectionTest?.SupportLevel != CapabilitySupportLevel.Supported) return ServiceResult<ConnectionView>.Fail("CONNECTION_TEST_REQUIRED", "Bağlantı etkinleştirilmeden önce başarılı Stage/Production testi gerekir.", 422);
+            if (connection.LastSuccessAt is null || connectionTest?.SupportLevel != CapabilitySupportLevel.Supported) return ServiceResult<ConnectionView>.Fail("CONNECTION_TEST_REQUIRED", "Bağlantıyı etkinleştirmeden önce bağlantı testinin başarılı olması gerekir; önce Bağlantıyı Test Et'e basın.", 422);
             if (!ConnectionActivationPolicy.HasTestSinceDisabled(connection.LastSuccessAt, connection.DisabledAt))
                 return ServiceResult<ConnectionView>.Fail("CONNECTION_TEST_REQUIRED", "Devre dışı bırakılan bağlantıyı yeniden etkinleştirmeden önce yeni bir bağlantı testi gerekir.", 422);
             // Re-activation after data was hidden or purged must always rebuild the
@@ -695,7 +695,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
                 _ => null
             };
             if (requiredCapability is not null && !await HasVerifiedWriteEvidenceAsync(connection, cancellationToken, requiredCapability))
-                return ServiceResult<SyncPolicyView>.Fail("EXTERNAL_WRITE_EVIDENCE_REQUIRED", $"{requiredCapability} akışı açılamadı: aynı mağaza, ortam ve API sürümü için resmî kaynakla doğrulanmış yetenek ve Stage/SIT test kanıtı gerekir.", 422);
+                return ServiceResult<SyncPolicyView>.Fail("EXTERNAL_WRITE_EVIDENCE_REQUIRED", "Bu pazaryerine yazma açılamadı: bu mağaza için yazmanın pazaryerinin test ortamında doğrulanmış olması gerekir.", 422);
         }
         var defaults = ScheduledJobProducer.DefaultPolicyValues(configuration, connection.PlatformCode, normalized);
         var policy = await db.ConnectionSyncPolicies.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.ResourceType == normalized, cancellationToken);
@@ -714,7 +714,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
                 return Invalid<SyncPolicyView>("idleIntervalSeconds", $"Seyrek sıklık, akışın sıklığı ({CadenceText(command.IntervalSeconds)}) ile {CadenceText(bounds.MaximumSeconds)} arasında olmalıdır.");
         }
         if (policy is null) { if (expectedVersion is not null) return NotFound<SyncPolicyView>(); policy = new ConnectionSyncPolicy { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = id, ResourceType = normalized, Version = 1 }; db.ConnectionSyncPolicies.Add(policy); }
-        else { if (expectedVersion is null) return ServiceResult<SyncPolicyView>.Fail("PRECONDITION_REQUIRED", "Mevcut sync policy için If-Match gereklidir.", 428); if (policy.Version != expectedVersion) return Precondition<SyncPolicyView>(policy.Version); policy.Version++; }
+        else { if (expectedVersion is null) return ServiceResult<SyncPolicyView>.Fail("PRECONDITION_REQUIRED", "Senkronizasyon ayarının sürümü gönderilmedi; sayfayı yenileyip yeniden deneyin.", 428); if (policy.Version != expectedVersion) return Precondition<SyncPolicyView>(policy.Version); policy.Version++; }
         // Only a save that changes the cadence makes the policy the user's own (the scheduler then never upgrades it
         // to a newer default); a reset puts the default back and lets later defaults reach it again.
         var saved = command.ResetToDefault && defaults is { } reset ? reset : (command.IntervalSeconds, command.OverlapSeconds, command.JitterSeconds);

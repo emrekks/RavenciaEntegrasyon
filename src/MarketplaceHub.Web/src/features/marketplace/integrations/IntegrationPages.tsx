@@ -7,6 +7,7 @@ import { automaticWritesBaselineMessage, cadenceChoices, cadenceNote, cadenceSho
 import { Busy, CardBackgroundIcon, ErrorBox, Tabs, TitleHint, UiIcon, useConfirmDialog, DialogSurface, FieldLabel } from '../../../shared/components'
 import { DataResetLedger } from '../../../shared/components/DataResetLedger'
 import { newIdempotencyKey } from '../../../shared/idempotency'
+import { useJobOutcomeNotice } from '../../../shared/job-outcome-notice'
 import { NoticeToast } from '../../../shared/components/NoticeToast'
 import { statusLabel } from '../../../shared/status-labels'
 import { platformLogoClass, platformLogoSource } from '../../../shared/platform-logos'
@@ -482,10 +483,14 @@ function InstantNotificationsPanel({ connectionId, connectionActive, platformCod
 function PazaramaSaleStatusPanel({ connectionId, writesEnabled, connectionActive }: { connectionId: string; writesEnabled: boolean; connectionActive: boolean }) {
   const [barcodes, setBarcodes] = useState('')
   const [feedback, setFeedback] = useState<IntegrationFeedback | null>(null)
+  const followJobs = useJobOutcomeNotice()
   const codes = barcodes.split(/[\s,;]+/).map(code => code.trim()).filter(Boolean)
   const send = useMutation({
     mutationFn: (close: boolean) => hubApi<{ jobId?: string }>(`/connections/${connectionId}/sale-status-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ barcodes: codes, close }) }),
-    onSuccess: (_, close) => setFeedback({ kind: 'info', message: `${codes.length} barkod için satışa ${close ? 'kapatma' : 'açma'} isteği kuyruğa alındı. Sonucu İşlem Takibi’nde görebilirsiniz.` }),
+    onSuccess: (result, close) => {
+      setFeedback({ kind: 'info', message: `${codes.length} barkod için satışa ${close ? 'kapatma' : 'açma'} aktarımı başladı; sonuç gelince bildirilecek.` })
+      if (result?.jobId) followJobs([{ jobId: result.jobId, platformName: 'Pazarama', what: `satışa ${close ? 'kapatma' : 'açma'}` }], { operation: 'Satışa Aç / Kapat', connectionId, platformCode: 'PAZARAMA' })
+    },
     onError: reason => setFeedback(failureNotice(reason, 'Satışa açma/kapatma başlatılamadı.'))
   })
   const blocked = !writesEnabled || !connectionActive || codes.length === 0 || codes.length > 100 || send.isPending
@@ -509,9 +514,13 @@ function PazaramaSaleStatusPanel({ connectionId, writesEnabled, connectionActive
 }
 function PriceStockSendPanel({ connectionId, writesEnabled, connectionActive, platformName }: { connectionId: string; writesEnabled: boolean; connectionActive: boolean; platformName: string }) {
   const [feedback, setFeedback] = useState<IntegrationFeedback | null>(null)
+  const followJobs = useJobOutcomeNotice()
   const send = useMutation({
     mutationFn: () => hubApi<{ jobId?: string }>(`/connections/${connectionId}/price-inventory-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' }),
-    onSuccess: () => setFeedback({ kind: 'info', message: `Değişen tüm ${platformName} fiyat ve stokları kuyruğa alındı. Sonucu İşlem Takibi’nde görebilirsiniz.` }),
+    onSuccess: result => {
+      setFeedback({ kind: 'info', message: `Değişen tüm ${platformName} fiyat ve stoklarının aktarımı başladı; sonuç gelince bildirilecek.` })
+      if (result?.jobId) followJobs([{ jobId: result.jobId, platformName, what: 'fiyat-stok' }], { operation: 'Fiyat ve Stok Gönder', connectionId })
+    },
     onError: reason => setFeedback(failureNotice(reason, 'Fiyat-stok gönderimi başlatılamadı.'))
   })
   const blocked = !writesEnabled || !connectionActive
@@ -531,9 +540,14 @@ function PriceStockSendPanel({ connectionId, writesEnabled, connectionActive, pl
 function HepsiburadaSitPriceStockPanel({ connectionId, connectionReady }: { connectionId: string; connectionReady: boolean }) {
   const [feedback, setFeedback] = useState<IntegrationFeedback | null>(null)
   const [jobId, setJobId] = useState<string | null>(null)
+  const followJobs = useJobOutcomeNotice()
   const send = useMutation({
     mutationFn: () => hubApi<{ jobId?: string }>(`/connections/${connectionId}/price-inventory-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' }),
-    onSuccess: result => { setJobId(result.jobId ?? null); setFeedback({ kind: 'info', message: 'Stok ve fiyat yüklemesi kuyruğa alındı; henüz tamamlanmadı. Sonucu ve pazaryerinin yükleme numarası İşlem Takibi’nde görünür.' }) },
+    onSuccess: result => {
+      setJobId(result.jobId ?? null)
+      setFeedback({ kind: 'info', message: 'Stok ve fiyat yüklemesinin aktarımı başladı; sonuç gelince bildirilecek. Pazaryerinin yükleme numarası İşlem Takibi’nde görünür.' })
+      if (result.jobId) followJobs([{ jobId: result.jobId, platformName: 'Hepsiburada', what: 'stok ve fiyat yüklemesi' }], { operation: 'Stok ve Fiyat Gönder', connectionId, platformCode: 'HEPSIBURADA' })
+    },
     onError: reason => setFeedback(failureNotice(reason, 'Stok ve fiyat yüklemesi başlatılamadı.'))
   })
   return <section className="panel n11-price-stock-send">

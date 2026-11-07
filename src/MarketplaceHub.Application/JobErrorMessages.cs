@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace MarketplaceHub.Application;
 
 // What the owner reads when a job stops. The code stays as it is (logs, filters, retries); a code whose stored summary
@@ -105,5 +107,19 @@ public static class JobErrorMessages
 
     /// <summary>The sentence a job screen shows for a stored code and summary: the plain one when the code has it.</summary>
     public static string? Display(string? code, string? summary) =>
-        code is not null && Messages.TryGetValue(code.Trim().ToUpperInvariant(), out var message) ? message : summary;
+        code is not null && Messages.TryGetValue(code.Trim().ToUpperInvariant(), out var message) ? message : WithoutIdsAndCodes(summary);
+
+    // Closing notes written before 7 Nov 2026 named the later job's id and the earlier raw code ("… yazma işi
+    // (01a1b37a-…, 7 Kasım 2026 03:48) başarılı oldu; … (önceki hata: PRODUCT_UPDATE_STATE_INCOMPLETE)."). They read
+    // without both; the time stays.
+    private static readonly Regex EarlierCode = new(@"\s*\(önceki hata: [^)]*\)", RegexOptions.CultureInvariant);
+    private static readonly Regex JobIdInParentheses = new(@"\(\s*[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\s*,\s*", RegexOptions.CultureInvariant);
+
+    private static string? WithoutIdsAndCodes(string? summary)
+    {
+        if (summary is null || !summary.Contains("önceki hata:", StringComparison.Ordinal)) return summary;
+        var plain = JobIdInParentheses.Replace(EarlierCode.Replace(summary, string.Empty), "(");
+        return plain.Replace("sonraki yazma işi", "sonraki güncellemesi", StringComparison.Ordinal)
+            .Replace("bu bağlantıdaki", "bu mağazadaki", StringComparison.Ordinal);
+    }
 }
