@@ -62,5 +62,15 @@ internal static class CommissionTariffModelConfiguration
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
         });
+        // Trendyol's product ads report, one snapshot per upload (AdReportService); the newest of a store is read.
+        builder.Entity<AdReportFile>(entity =>
+        {
+            entity.ToTable("ad_report_files", "catalog"); entity.HasKey(x => x.Id);
+            entity.Property(x => x.PlatformCode).HasMaxLength(64); entity.Property(x => x.FileName).HasMaxLength(260); entity.Property(x => x.FileHash).HasMaxLength(64);
+            entity.Property(x => x.CampaignsJson).HasColumnType("jsonb");
+            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExportedAt });
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
+        });
     }
 }

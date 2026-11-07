@@ -198,6 +198,26 @@ purpose (`TurkeyTime.cs`).
   none of the Azerbaijan payouts (`ReportCosts.TrendyolServiceFee`, `TrendyolStoppageBase`).
 - Settlement lines vs the panel: for all 453 October 2026 orders with a settlement, Sale − Discount − Coupon − Return
   equals the report's kept amount, and the commission the report's, to the kuruş.
+- Payout days (Ödeme Özeti, 7 Nov 2026, against live records): Türkiye-Körfez **and Azerbaycan** pay Monday and
+  Thursday; Monday takes the settlements due Monday-Wednesday, Thursday those due Thursday-Sunday (`paymentDate` is
+  "the earliest day it can enter a payout", yet Trendyol pays it on the payout day on or before it), a deduction the
+  first payout on or after its due day. Avrupa (CEE) is paid about monthly. Source: `trendyol-api-son.md:12361`, the
+  payouts of 30 Oct-5 Nov 2026 in `sales.marketplace_payout_orders` and their records (`PayoutBuilder.Expect`).
+- A payout's deductions are billed the evening before it (21:30-21:40 UTC, `paymentDate` = that day) and the
+  withholding tax the payout's morning (~01:40 UTC): cargo ("Kargo Fatura": the shipment and return parcels of the
+  payout's own orders, 98.34 TL a 0-2 desi parcel, 106.76-128.64 TL heavier ones), platform service fee (13.19 TL a
+  package; 10.99 on Azerbaycan; a few packages 5.99), international fee (6 % of the micro-export sales net of
+  discounts), withholding tax (1 % of the domestic sales net of discounts and returns without VAT + 1 % of the Gulf
+  sales; none on Azerbaycan). Trendyol's Ödeme Özeti estimate already takes them off the payouts to come: on 7 Nov 2026
+  Azerbaycan 858.08 and 209.08 rebuilt to the kuruş, Türkiye 17,777.82 within 7.20 (one package's 5.99 fee) and
+  21,862.79 within 8.42 (one 106.76 parcel); 25,737.90 was 293.29 below (cause not visible in the API: a parcel or
+  return Trendyol knew and the records did not yet). Source: live `sales.marketplace_finance_transactions`,
+  `sales.marketplace_cargo_invoice_items`, the owner's Ödeme Özeti of 7 Nov 2026 (`PayoutBuilder.Estimate`).
+- The cargo and platform fee invoices of Avrupa orders (and an Azerbaycan order's cargo) carry `country` "Türkiye" and
+  affiliate TRENDYOLTR; only the cargo invoice's parcels (`cargo-invoice/{serial}/items` → order → settlement country)
+  tell the region. The Türkiye payouts leave them out (open since 29 Oct 2026 past three Türkiye payouts); an
+  Azerbaycan parcel's cargo invoice says in its description that it is netted from the Azerbaycan payout, yet the
+  Türkiye payout's id is stamped on it. Source: live records, 7 Nov 2026.
 - A payout's `paymentOrderId` is sometimes stamped on a record another payout of the same day netted (±196.68 between
   the AZ and TR payouts of 5, 12 and 19 Oct; ±413.91 between 30 Oct and 2 Nov): the payouts of a day add up, one alone
   may not. Its lines are read a day after the payout (`LinesReadAt`); until then the Hakediş shows no records total.
@@ -224,6 +244,20 @@ _WEBHOOK_INGEST, _COMMON_LABEL, _CAPABILITY_PROBE, _STAGE_TEST_ORDER; plus share
 ORDER_INVOICE_RECONCILIATION (15 min), RETURN_SYNC (10 min, 20–30 min while no claim is open; ReturnCadencePolicy;
 15-min overlap), RETURN_STATUS_SYNC (open claims only, claimIds batched), PRODUCT_SYNC. The webhook carries order
 packages only, no claim events.
+
+## Advertising (7 Nov 2026)
+- The API has no ad performance endpoint: advertising appears only as statement records ("Reklam Bedeli", category
+  ADVERTISING; the docs list AdSharingExpense / MarketingExpense invoice types). The panel's "Trendyol Reklamı" is that
+  amount by transaction date.
+- ROAS, ad revenue, clicks and impressions come only from the seller's export, uploaded in Raporlar (Maliyet ve Reklam
+  › Reklam Raporu, `POST /connections/{id}/ad-reports`): "Ürün Reklamları Raporum - dd.MM.yyyy-HH.mm.xlsx" from Reklam
+  Yönetimi (the owner's sample of 7 Nov 2026). One sheet, one row per campaign: Reklam Adı | Reklam Statüsü | Başlangıç
+  Tarihi | Bitiş Tarihi | Ürün Adedi | Ürün ContentId Listesi | Toplam Bütçe | Günlük Bütçe | Kalan Bütçe | Harcanan
+  Bütçe | TBM Teklifi | Gerçekleşen TBM | Tıklanma | Görüntülenme | Doğrudan / Dolaylı / Toplam Satış Adedi | Doğrudan
+  / Dolaylı / Toplam Reklam Cirosu | Harcama Getirisi. Every cell is a shared string in Turkish format ("1.508,76",
+  "1.000" = a thousand, "-" = none); TBM Teklifi can be a list ("1,10 - 1,30 - 1,10"). Figures are each campaign's
+  totals since its start as of the export (the time in the file name, Istanbul): no per-day breakdown, so they are never
+  matched to a report period. Harcama Getirisi = Toplam Reklam Cirosu ÷ Harcanan Bütçe (3.834,27 ÷ 1.000 = 3,83).
 
 ## Return cargo (7 Nov 2026, live read-only)
 - Cargo invoice lines typed "İade Kargo Bedeli" name their order (210 lines, 20,396 TL to 7 Nov 2026; "Gönderi Kargo

@@ -418,6 +418,29 @@
 
 /* A step's breakdown in a window over the page (nothing under the card moves); the window is as wide as its content needs. */
 .app-shell.stitch-shell main .reports-page .rv-modal.reports-journey-modal { width: min(760px, calc(100vw - 32px)); max-height: min(80vh, 720px); }
+/* Trendyol's ad report window: where the figures come from, the totals as tiles, the campaigns, then the upload. */
+.app-shell.stitch-shell main .reports-page .rv-modal.reports-ad-modal { width: min(820px, calc(100vw - 32px)); max-height: min(86vh, 820px); }
+.app-shell.stitch-shell main .reports-page .reports-ad { display: grid; gap: 16px; }
+.app-shell.stitch-shell main .reports-page .reports-ad-source { margin: 0; color: var(--rv-color-subtle); font-size: 13px; }
+.app-shell.stitch-shell main .reports-page .reports-ad-source b { color: var(--rv-color-ink); }
+.app-shell.stitch-shell main .reports-page .reports-ad-source.is-stale { color: var(--rv-color-warning); }
+.app-shell.stitch-shell main .reports-page .reports-ad-figures { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0; }
+.app-shell.stitch-shell main .reports-page .reports-ad-figures > div { display: grid; gap: 4px; padding: 12px 14px; background: var(--rv-color-surface-soft); border-radius: 12px; }
+.app-shell.stitch-shell main .reports-page .reports-ad-figures dt { color: var(--rv-color-subtle); font-size: 12.5px; }
+.app-shell.stitch-shell main .reports-page .reports-ad-figures dd { margin: 0; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.app-shell.stitch-shell main .reports-page .reports-ad-figures small { color: var(--rv-color-subtle); font-size: 11.5px; }
+.app-shell.stitch-shell main .reports-page .reports-ad-upload { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.app-shell.stitch-shell main .reports-page .reports-ad-upload label { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
+.app-shell.stitch-shell main .reports-page .reports-ad-upload select { height: 36px; border-radius: 7px; }
+.app-shell.stitch-shell main .reports-page .reports-ad-upload button { min-height: 0; height: 36px; border-radius: 7px; }
+.app-shell.stitch-shell main .reports-page .reports-ad-upload small { flex: 1 1 260px; color: var(--rv-color-subtle); font-size: 12px; }
+.app-shell.stitch-shell main .reports-page .reports-ad-message { padding: 10px 12px; border-radius: 12px; background: var(--rv-color-surface-soft); font-size: 13px; }
+.app-shell.stitch-shell main .reports-page .reports-ad-message p { margin: 0; }
+.app-shell.stitch-shell main .reports-page .reports-ad-message.is-error { color: var(--rv-color-danger); }
+.app-shell.stitch-shell main .reports-page .reports-ad-message ul { margin: 6px 0 0; padding-left: 18px; }
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .reports-page .reports-ad-figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .app-shell.stitch-shell main .reports-page .reports-journey-modal .reports-journey-pane { padding-top: 0; border-top: 0; }
 .app-shell.stitch-shell main .reports-page .reports-journey-modal .reports-journey-pane h3 { display: none; }
 

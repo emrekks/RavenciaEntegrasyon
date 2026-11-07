@@ -77,6 +77,8 @@ public static class ReportsEndpoints
                 new PayoutLinesQuery(connectionId, payoutId, due, region, q, page ?? 0, string.IsNullOrEmpty(kind) ? null : kind), http.RequestAborted);
             return result.Succeeded ? Results.Ok(result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
         });
+        // Trendyol's product ads report: the newest upload of each store, and the upload.
+        api.MapAdReportEndpoints();
         return endpoints;
     }
 
