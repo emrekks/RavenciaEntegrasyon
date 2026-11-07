@@ -42,3 +42,14 @@
 /* Siparişler: the "Paket | Adet Ürün" line stays on the number's line. */
 :root:root body .app-shell.stitch-shell main .rr.rr-orders .rr-metrics .rr-metric-pk { white-space: nowrap; }
 :root:root body .app-shell.stitch-shell main .rr.rr-orders .rr-metrics .rr-metric-pk .rr-metric-sub { display: inline; white-space: nowrap; }
+
+/* Ürün Soruları: the page grid sizes rows to their content, the list takes the rest (no empty band under the filters). */
+:root:root body .app-shell.stitch-shell main .qi-page { grid-template-rows: auto auto auto minmax(0, 1fr); align-content: start; }
+
+/* Hazır Cevaplar window: wider (it was 720 px and wrapped every saved answer into a thin column), and its buttons stay
+   on one line. */
+@media (min-width: 761px) {
+  :root:root body .rv-modal.qi-templates-modal { width: min(1040px, calc(100vw - 48px)); max-width: min(1040px, calc(100vw - 48px)); }
+}
+:root:root body .rv-modal.qi-templates-modal .rv-question-template-actions { flex-wrap: nowrap; justify-content: flex-end; }
+:root:root body .rv-modal.qi-templates-modal .rv-question-template-actions > button { white-space: nowrap; }
