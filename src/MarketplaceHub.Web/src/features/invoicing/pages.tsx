@@ -279,7 +279,7 @@ function InvoiceReferenceActionsMenu({ item, canCreateInvoice, canSyncOrder, can
   const [open, setOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
-  const [position, setPosition] = useState({ left: 8, top: 8 })
+  const [position, setPosition] = useState({ left: 8, top: 8, minWidth: 0 })
   // Sending an invoice to the marketplace and overriding the fiscal record are for the owner and administrators.
   const canSend = useCanSendInvoices()
   const hasManualDocument = Boolean(item.manualInvoiceDocumentId)
@@ -313,14 +313,15 @@ function InvoiceReferenceActionsMenu({ item, canCreateInvoice, canSyncOrder, can
       // Layout size: the menu grows in from .92 as it opens (styles/motion.css).
       const menu = menuRef.current
       if (!trigger) return
-      const width = menu?.offsetWidth || 220
+      const width = Math.max(menu?.offsetWidth || 220, trigger.width)
       const height = menu?.offsetHeight || 150
       const below = trigger.bottom + 5
       const top = window.innerHeight - below >= height + 8 || trigger.top <= height + 12
         ? below
         : Math.max(8, trigger.top - height - 5)
-      const left = Math.max(8, Math.min(trigger.right - width, window.innerWidth - width - 8))
-      setPosition({ left, top })
+      // Left edges aligned with the trigger, kept inside the screen.
+      const left = Math.max(8, Math.min(trigger.left, window.innerWidth - width - 8))
+      setPosition({ left, top, minWidth: trigger.width })
     }
     const frame = window.requestAnimationFrame(updatePosition)
     window.addEventListener('resize', updatePosition)
@@ -336,7 +337,7 @@ function InvoiceReferenceActionsMenu({ item, canCreateInvoice, canSyncOrder, can
     <button ref={triggerRef} type="button" className="invoice-reference-actions-trigger" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(value => !value)}>
       <span>İşlemler</span><UiIcon name="chevronDown" />
     </button>
-    {open && createPortal(<div ref={menuRef} className="invoice-reference-actions-popover" role="menu" aria-label={`${displayInvoiceOrderNumber(item.orderNumber)} sipariş işlemleri`} style={{ left: position.left, top: position.top }}>
+    {open && createPortal(<div ref={menuRef} className="invoice-reference-actions-popover" role="menu" aria-label={`${displayInvoiceOrderNumber(item.orderNumber)} sipariş işlemleri`} style={{ left: position.left, top: position.top, minWidth: position.minWidth || undefined }}>
       <button type="button" role="menuitem" disabled={!invoiceActionAvailable || canRetryDelivery && !canSend} title={!invoiceActionAvailable ? 'Bu sipariş için fatura oluşturma şu anda uygun değil.' : canRetryDelivery && !canSend ? invoiceSendDeniedReason : undefined} onClick={() => { setOpen(false); if (canRetryDelivery) onRetryDelivery(); else onCreateInvoice() }}><UiIcon name="invoice" size={16} />{invoiceActionLabel}</button>
       {item.platformCode === 'SHOPIFY'
         ? <button type="button" role="menuitem" onClick={() => { setOpen(false); onToggleHidden() }}><UiIcon name={hidden ? 'eye' : 'eyeOff'} size={16} />{hidden ? 'Gizlemeden Çıkar' : 'Siparişi Gizle'}</button>

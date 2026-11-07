@@ -181,6 +181,9 @@ function useScrollAreaPopover(open: boolean, ref: RefObject<HTMLElement | null>,
     if (sheet) pin({ position: 'fixed', 'overflow-y': 'auto', margin: '0', 'box-shadow': '0 16px 40px rgb(0 0 0 / 35%)' })
     const anchor = host.getBoundingClientRect()
     if (sheet) pin({ 'max-height': `${Math.max(160, Math.min(320, anchor.top - 16))}px` })
+    // A dropdown anchor (the card İşlemler) opens under its trigger, left edges aligned, at least as wide as the trigger.
+    const dropdown = !sheet && host.classList.contains('rr-dropdown')
+    if (dropdown) pin({ width: 'max-content', 'min-width': `${anchor.width}px`, 'max-width': `${window.innerWidth - 16}px`, right: 'auto' })
     // Width and height at layout size: the list grows in from .92 as it opens (styles/motion.css).
     const drawn = pop.getBoundingClientRect()
     const box = { top: drawn.top, left: drawn.left, width: pop.offsetWidth, height: pop.offsetHeight, bottom: drawn.top + pop.offsetHeight }
@@ -190,7 +193,7 @@ function useScrollAreaPopover(open: boolean, ref: RefObject<HTMLElement | null>,
       ? (above > 8 ? above : below)
       : (box.bottom > window.innerHeight - 8 && above > 8 ? above : box.top)
     const width = sheet ? anchor.width : box.width
-    const left = Math.max(8, Math.min(sheet ? anchor.left : box.left, window.innerWidth - width - 8))
+    const left = Math.max(8, Math.min(sheet || dropdown ? anchor.left : box.left, window.innerWidth - width - 8))
     pin({ position: 'fixed', top: `${top}px`, left: `${left}px`, right: 'auto', bottom: 'auto', margin: '0', width: `${width}px`, transform: 'none', 'z-index': '1000' })
     if (typeof pop.showPopover === 'function') {
       pop.setAttribute('popover', 'manual')

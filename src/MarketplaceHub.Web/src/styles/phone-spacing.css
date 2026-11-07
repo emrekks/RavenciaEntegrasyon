@@ -27,6 +27,11 @@
 
   /* Metric tiles */
   :root .app-shell.stitch-shell main :is(.rr-metrics > *, .invoice-reference-metrics > article) { padding: 10px var(--m-pad) !important; }
+  /* Every summary card is as tall as the Düşük Stoklu card (90px): label on top, figure under it, the optional note under
+     that, the block centred. Ürünler, Genel Bakış, Siparişler, İadeler and Faturalar share this one rule. */
+  :root .app-shell.stitch-shell main :is(.rr-metrics > *, .invoice-reference-metrics > article, .rr-opgrid > .rr-opcard) { box-sizing: border-box; min-height: 90px !important; align-content: center !important; }
+  :root .app-shell.stitch-shell main .invoice-reference-metrics > article { gap: 0 !important; }
+  :root .app-shell.stitch-shell main .invoice-reference-metrics > article > strong { line-height: 1.2 !important; }
 
   /* Card lists: orders, products, returns, invoices, jobs, categories */
   :root .app-shell.stitch-shell main .rr-tbl tbody > tr { margin-bottom: var(--m-gap) !important; }
@@ -108,7 +113,7 @@
      bar grows by the top inset, bottom sheets and bottom bars keep their content above the home bar, and windows stay
      clear of both (the page is laid out edge to edge, see viewport-fit in index.html). */
   :root .app-shell.stitch-shell .rv-topbar { padding-top: var(--m-safe-top) !important; min-height: calc(62px + var(--m-safe-top)) !important; }
-  :root body .rr-anchor > :is(.rr-menu, .rr-pop):not(.rr-static) { padding-bottom: calc(10px + var(--m-safe-bottom)) !important; }
+  :root body .rr-anchor:not(.rr-dropdown) > :is(.rr-menu, .rr-pop):not(.rr-static) { padding-bottom: calc(10px + var(--m-safe-bottom)) !important; }
   :root body .rr-fopen .rr-fbtns { padding-bottom: calc(12px + var(--m-safe-bottom)) !important; }
   :root body :is(.rr-overlay, .workspace-modal-backdrop:not(.image-lightbox-backdrop), .invoice-detail-backdrop, .panel-attribute-modal, .missing-value-mapping-backdrop, .brand-mapping-modal-backdrop, .integration-modal-backdrop) { padding-top: max(24px, calc(var(--m-safe-top) + 12px)) !important; padding-bottom: max(24px, calc(var(--m-safe-bottom) + 12px)) !important; }
   :root body :is(.integration-settings-modal, .job-detail-drawer, .rv-drawer) { padding-top: var(--m-safe-top) !important; padding-bottom: var(--m-safe-bottom) !important; }
