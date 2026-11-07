@@ -1,0 +1,74 @@
+/* Date range picker (portalled to body, so the page-scoped button rules never reach it): month arrows and Temizle use
+   the secondary look instead of the browser's grey 16 px square buttons. */
+html body .date-range-picker-popover :is(.date-range-picker-calendars > header, .date-range-picker-calendars > footer) > button {
+  display: inline-grid; place-items: center; box-sizing: border-box; min-width: 0; min-height: 0; margin: 0;
+  color: var(--rv-color-ink); background: transparent; border: 1px solid var(--rv-color-border-strong); border-radius: 7px;
+  box-shadow: none; font: inherit; font-size: 12px; font-weight: 500; text-transform: none; cursor: pointer;
+}
+html body .date-range-picker-popover .date-range-picker-calendars > header > button { width: 28px; height: 28px; padding: 0; }
+html body .date-range-picker-popover .date-range-picker-calendars > footer > button { height: 30px; padding: 0 12px; }
+html body .date-range-picker-popover :is(.date-range-picker-calendars > header, .date-range-picker-calendars > footer) > button:hover:not(:disabled) { background: color-mix(in srgb, var(--rv-color-ink) 7%, transparent); }
+html body .date-range-picker-popover :is(.date-range-picker-calendars > header, .date-range-picker-calendars > footer) > button:disabled { opacity: .4; cursor: not-allowed; background: transparent; }
+
+/* Connection window: the flow filter chips are segments (32 px, 12.5 px / 500), they were 22 px pills. */
+@media (min-width: 761px) {
+  html body .app-shell.stitch-shell main .cs-workspace .cs-chip, html body .cs-workspace .cs-chip { height: 32px; min-height: 32px; padding: 0 12px; font-size: 12.5px; font-weight: 500; }
+}
+
+/* Connection window, Mağaza Bilgileri: the lone save button spans the whole row (the row grid has a second, empty column
+   that left it 12 px short of the fields above). */
+html body .cs-workspace .connection-settings-input-row > button:only-child { grid-column: 1 / -1; width: 100%; }
+
+/* Eşleştirmeler, saved mappings: the search field is a flex row (icon + input); the card's generic "label = grid" rule
+   stacked the magnifier above the text. */
+:root:root body .app-shell.stitch-shell main section.mapping-page .mapping-saved-card label.rv-search-field { display: flex; align-items: center; gap: 6px; }
+:root:root body .app-shell.stitch-shell main section.mapping-page .mapping-saved-card label.rv-search-field > input { flex: 1; width: auto; min-width: 0; height: 100% !important; min-height: 0 !important; padding: 0; background: none; border: 0; box-shadow: none; }
+
+/* Eşleştirmeler pager: "Sayfaya Git [page] Git" is one row like every pager (the card's label rule stacked it into a
+   104 px column). */
+:root:root:root body .app-shell.stitch-shell main section.mapping-page .mapping-reference-card label.rr-jump { display: inline-flex; flex-direction: row; align-items: center; gap: 8px; }
+
+/* İşlem Takibi table: the correlation id stays on one line (ellipsis, full id in the tooltip) and its column is wide
+   enough for a whole scheduler id; it wrapped into three lines in a 115 px cell. */
+@media (min-width: 761px) {
+  html body .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table :is(thead tr, tbody .jobs-reference-row, tbody > tr:not(.jobs-reference-row)) { grid-template-columns: minmax(200px, 1.3fr) minmax(130px, .8fr) 72px minmax(210px, 1fr) minmax(300px, 1.5fr); }
+  html body .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table.jobs-reference-table { min-width: 960px; }
+  html body .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table .jobs-reference-correlation.jobs-reference-correlation { display: block; min-width: 0; max-width: 100% !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap; overflow-wrap: normal; }
+}
+
+/* İşlem Takibi › Loglar filters: six fields plus Temizle / Filtrele in one row when the card is wide enough. The shared
+   "date filter" rule (4 columns, :has(> .rr-date)) out-ranked the page grid and pushed the last two fields to a second row. */
+@container fshell (min-width: 1100px) {
+  html body main .rr.rr.ops-filters .rr-fcard .rr-filters.ops-filter-grid.is-wide:has(> .rr-date) { grid-template-columns: minmax(200px, 1.4fr) repeat(5, minmax(130px, 1fr)) auto; }
+  html body main .rr.rr.ops-filters .rr-fcard .rr-filters.ops-filter-grid.is-wide:has(> .rr-date) > .rr-fbtns { align-self: end; }
+}
+
+/* İşlem Takibi › API Sağlık: four summary cards in one row (the shared three-column grid left the fourth alone). */
+@media (min-width: 1100px) {
+  :root:root body main .rr.rr-dashboard.api-health-rr .rr-opgrid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+/* İşlem Takibi row window: 1000 px so the six progress tiles sit in one row and their texts and the "Son kayıt"
+   time stay on one line (the 760 px window dropped the sixth tile to a second row). */
+@media (min-width: 1100px) {
+  html body .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-drawer { width: min(1000px, 100%); }
+  html body .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-drawer-body .jobs-reference-progress-grid,
+  html body .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-progress-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  html body .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-status-hero-time { flex: 0 0 auto; white-space: nowrap; }
+}
+
+/* Connection window, Veri Eşitleme: the status cell gets the room "Otomatik Fiyat/Stok Yazma Kapalı" needs, on one line. */
+@media (min-width: 761px) {
+  html body .cs-workspace .cs-frow { grid-template-columns: minmax(0, 1.1fr) minmax(250px, 1fr) 150px 44px; }
+  html body .cs-workspace .cs-frow .cs-fstate { white-space: nowrap; }
+}
+
+/* Yeni Bağlantı window: 720 px so "Trendyol E-Faturam" stays on one line in its platform button (it wrapped at 640 px). */
+@media (min-width: 761px) {
+  html body .app-shell.stitch-shell main .integrations-reference-page .integration-modal.im-sade { width: min(720px, 100%); }
+  html body .app-shell.stitch-shell main .im-sade .im-platforms > button { white-space: nowrap; }
+}
+
+/* Integrations filter menu: option rows 34 px like every menu, tall enough to show all eleven options without scrolling. */
+html body .app-shell.stitch-shell main .integrations-reference-page .integration-filter-menu { max-height: min(560px, calc(100dvh - 120px)); }
+html body .app-shell.stitch-shell main .integrations-reference-page .integration-filter-menu button { height: 34px; min-height: 34px; }
