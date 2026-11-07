@@ -87,7 +87,7 @@ function SummaryStrip({ rows }: { rows: PriceStockConnectionMonitor[] }) {
     <div className="psm-stat"><span>Bağlantı</span><b>{summary.connections}</b></div>
     <div className="psm-stat"><span>Otomatik Yazma<TitleHint label="Otomatik Yazma">Otomatik fiyat ve stok gönderimi bilinçli bir ayardır; kapalı olması hata değildir. Kapalıyken panelde yapılan değişiklikler pazaryerine kendiliğinden gönderilmez. Durdur düğmesi açık olan tüm otomatik yazmaları tek seferde kapatır.</TitleHint></span><b>{writeText}</b></div>
     <div className={`psm-stat${summary.webhookTrouble ? ' is-warn' : ''}`}><span>Sipariş Kaynağı</span><b>{sourceParts.join(' · ') || '—'}</b>{summary.webhookTrouble ? <small>{summary.webhookTrouble} webhook sorunlu</small> : null}</div>
-    <div className={`psm-stat ${summary.needsAttention ? 'is-warn' : 'is-good'}`}><span>Dikkat Gereken</span><b>{summary.needsAttention ? `${summary.needsAttention} Bağlantı` : 'Yok'}</b></div>
+    <div className={`psm-stat ${summary.needsAttention ? 'is-warn' : 'is-good'}`}><span>Sorunlu Gönderim</span><b>{summary.needsAttention ? `${summary.needsAttention} Bağlantı` : 'Yok'}</b></div>
   </div>
 }
 

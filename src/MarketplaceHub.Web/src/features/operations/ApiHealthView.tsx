@@ -15,7 +15,7 @@ export type ApiHealthStat = { key: string; icon: CardIconName; label: string; va
  */
 export function apiHealthStats(attention: number | null, recentJobs: number | null, deadJobs: number | null, manualReviewJobs: number | null): ApiHealthStat[] {
   return [
-    { key: 'attention', icon: 'connect', label: 'Dikkat Gereken Bağlantı', value: attention, tone: attention ? 'warn' : undefined },
+    { key: 'attention', icon: 'connect', label: 'Sorunlu Bağlantı', value: attention, tone: attention ? 'warn' : undefined },
     { key: 'recent', icon: 'activity', label: 'Son 24 Saatte İstek', value: recentJobs, to: '/jobs' },
     { key: 'dead', icon: 'jobs', label: 'Tamamlanamayan İş', value: deadJobs, tone: deadJobs ? 'bad' : undefined, to: '/jobs?statu=DEAD' },
     { key: 'review', icon: 'clock', label: 'Karar Bekleyen İş', value: manualReviewJobs, tone: manualReviewJobs ? 'warn' : undefined, to: '/jobs?statu=MANUAL_REVIEW&aralik=tum' }
