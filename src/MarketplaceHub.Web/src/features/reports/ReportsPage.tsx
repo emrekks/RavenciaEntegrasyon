@@ -880,9 +880,16 @@ function productMetrics(data: ReportSales, money: Money | null): Metric[] {
       note: profit === null ? 'İade sonrası: müşteride kalan her üründen kalan tahmini kâr.\nÜrün maliyeti girilince hesaplanır.' : `İade sonrası: müşteride kalan her üründen kalan tahmini kâr.\nTahmini net kâr ÷ net satılan adet (${formatNumber(now.keptQuantity)} adet; iadeler düşülmüş, Adet Başına Satış'ın paydasından farklı).` },
     { key: 'discount', label: 'Satıcı İndirimi', value: discountKnown ? `${formatTl(discount ?? 0)} · ${formatPercent((discount ?? 0) / list)}` : '—',
       note: discountKnown ? `Satıcının liste fiyatından yaptığı indirim ve liste fiyatına oranı.\nListe fiyatı toplamı ${formatTl(list)}, indirim ${formatTl(discount)}; iptaller hariç. Pazaryerinin kendi indirimi sayılmaz (satıcıya ödenir). Liste fiyatı yalnız Trendyol ve Hepsiburada siparişlerinde okunuyor; diğer pazaryerlerinin indirimi bilinmiyor.`
-        : 'Satıcının liste fiyatından yaptığı indirim ve liste fiyatına oranı.\nBu dönemde liste fiyatı okunmadı; liste fiyatı yalnız Trendyol ve Hepsiburada siparişlerinde okunuyor.' }
+        : 'Satıcının liste fiyatından yaptığı indirim ve liste fiyatına oranı.\nBu dönemde liste fiyatı okunmadı; liste fiyatı yalnız Trendyol ve Hepsiburada siparişlerinde okunuyor.' },
+    { key: 'variants', label: 'Satan Ürün', value: now.soldVariants === undefined ? '—' : `${formatCount(now.soldVariants)} varyant`, detail: 'products',
+      note: 'Dönemde en az bir adedi satılan farklı ürün (varyant) sayısı.\nİptal edilen satırlar sayılmaz; varyantı eşleşmeyen satır stok koduyla sayılır.' },
+    { key: 'vatFree', label: 'KDV Hariç Net Satış', value: noAmount || now.vatFreeNetRevenue === undefined ? '—' : formatTl(now.vatFreeNetRevenue),
+      note: 'Net Ciro\'nun KDV\'siz hali, muhasebeyle karşılaştırmak için.\nHer satırın elde kalan tutarından kendi KDV oranı düşülür; TL dışındaki siparişler sayılmaz.' }
   ]
 }
+
+// A text cut to a length with an ellipsis, so a long reason does not wrap a card's row.
+const shortText = (text: string, length: number) => text.length > length ? `${text.slice(0, length - 1).trimEnd()}…` : text
 
 // Sipariş ve Müşteri: what an order brought in and left, its cargo and its units, and the customers who came back.
 function orderMetrics(data: ReportSales, money: Money | null): Metric[] {
@@ -957,13 +964,23 @@ function returnMetrics(data: ReportSales): Metric[] {
   const before = data.previousSummary
   const warning = data.cancellations.warningRate
   const cancelled = data.cancellations.cancelledAmount
+  // The billed return cargo of Trendyol, read from its statement only (else unknown): the return lines of the period's
+  // orders and the cross-border return operation fees dated in it. A server that sends neither leaves it unknown.
+  const cargo = trendyolRead(data) ? financeCosts(data)?.cargo ?? null : null
+  const returnCargo = cargo && cargo.returnBilled !== undefined ? cargo.returnBilled + (cargo.returnOperationFees ?? 0) : null
+  // The reason given most, among the known ones, with its share of the claims with a reason.
+  const reasonsTotal = data.returnReasons.reduce((sum, reason) => sum + reason.count, 0)
+  const topReason = [...data.returnReasons].filter(reason => reason.known && reason.count > 0).sort((a, b) => b.count - a.count)[0]
   return [
     { key: 'rate', label: 'İade Oranı', value: formatPercent(now.returnRate), delta: change(now.returnRate, before.returnRate, 'rate'), invert: true, previous: formatPercent(before.returnRate), detail: 'returns',
       note: `Satılan ürünlerin yüzde kaçının iade edildiği.\nİade edilen adet ÷ sipariş edilen adet (iptaller dahil), Trendyol gibi. Önceki dönem ${formatPercent(before.returnRate)}.` },
     // The amount the customers paid for what they sent back: the İade Edilen Tutar taken off on Kâr Köprüsü.
     { key: 'returned', label: 'İade Edilen', value: `${formatNumber(now.returnedQuantity)} adet · ${formatCount(now.returnClaims)} talep · ${formatTl(now.returnedAmount)}`, detail: 'returns',
       note: `İade edilen ürün adedi, talep sayısı ve müşterinin ödediği tutar.\nKâr Köprüsü'ndeki İade Edilen Tutar ile aynıdır. Reddedilen ve iptal edilen talepler sayılmaz. Liste fiyatıyla ${formatTl(returnedAtList(now))}.` },
-    { key: 'cargo', label: 'İade Kargo Zararı', value: '—', note: 'İadelerin kargo maliyeti.\nKârlılık\'taki Kargo kalemine dahildir (Trendyol\'da İade Kargo Bedeli satırı, faturası gelmeyen iadede mağaza tarifesi); ayrı tutar olarak henüz gösterilmiyor.' },
+    { key: 'cargo', label: 'İade Kargo Zararı', value: returnCargo === null ? '—' : `${formatTl(returnCargo)} · Trendyol`, detail: 'returns',
+      note: 'İadelerin faturası gelen kargo maliyeti, yalnız Trendyol.\nDönemin siparişlerinin İade Kargo Bedeli satırları ve dönem tarihli Yurtdışı Operasyon İade Bedeli kayıtları; faturası gelmemiş iade sayılmaz, diğer pazaryerlerininki bilinmiyor.' },
+    { key: 'reason', label: 'En Sık İade Nedeni', value: topReason ? `${shortText(topReason.reason, 24)} · ${formatPercent(topReason.count / reasonsTotal)}` : '—', detail: 'returns',
+      note: 'İade taleplerinde en sık bildirilen neden ve talepler içindeki payı.' },
     { key: 'cancel', label: 'İptal Oranı', value: formatPercent(now.cancelRate), tone: (now.cancelRate ?? 0) > warning ? 'warn' : undefined, detail: 'cancellations',
       note: `Sipariş edilen ürünlerin yüzde kaçının iptal edildiği.\nİptal edilen adet ÷ sipariş edilen adet (iptaller dahil); uyarı eşiği ${formatPercent(warning)}.` },
     { key: 'cancelled', label: 'İptal Edilen', value: `${formatCount(now.cancelledOrders)} sipariş · ${formatNumber(data.cancellations.cancelledQuantity)} adet · ${cancelled === undefined ? '—' : formatTl(cancelled)}`, detail: 'cancellations',

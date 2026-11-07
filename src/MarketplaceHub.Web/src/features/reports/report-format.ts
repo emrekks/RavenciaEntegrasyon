@@ -7,6 +7,8 @@ export type ReportSummary = {
   averageOrderValue: number | null; ordersWithoutCity: number; ordersWithoutAmount: number; otherCurrencyOrders: number
   // The same orders at their list price and the marketplace's discount on them (absent in an older server's answer).
   listAmount?: number; discountAmount?: number
+  // The distinct products (variants) sold and the net revenue of the TRY orders without its VAT (absent in an older answer).
+  soldVariants?: number; vatFreeNetRevenue?: number
 }
 export type ReportGroup = {
   key: string; label: string; known: boolean; isTest: boolean; orders: number; soldQuantity: number; returnedQuantity: number; returnClaims: number
@@ -82,7 +84,10 @@ export type ReportCosts = {
   cargo: { real: number; billedOrders: number; unbilledOrders: number; averagePerOrder: number | null; sampleOrders: number; estimated: number | null; combined: number; platformOrders?: number; platformEstimated?: number; desiSources?: ReportDesiSources | null
     // unbilledReturns: returned orders whose return cargo is estimated; unestimatedOrders: orders whose cargo could not be
     // estimated (store without a tariff), so estimated and combined are short of them.
-    unbilledReturns?: number; unestimatedOrders?: number } | null
+    unbilledReturns?: number; unestimatedOrders?: number
+    // returnBilled: the billed return cargo of returnBilledOrders of the period's orders (part of real); returnOperationFees:
+    // Trendyol's "Yurtdışı Operasyon İade Bedeli" records dated in the period (they name no order).
+    returnBilled?: number; returnBilledOrders?: number; returnOperationFees?: number; returnOperationRecords?: number } | null
   // The costs of the period's orders only: amount = orderLinked (their own records) + estimated (orders without one).
   lines: Array<{ category: string; label: string; isCost: boolean; amount: number; records: number; orderLinked: number; estimated?: number }>
   // The records of the period's dates tied to no order of the period (the previous payment day's service fee and

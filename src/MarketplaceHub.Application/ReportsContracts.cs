@@ -98,7 +98,11 @@ public sealed record ReportSummaryView(
     // The returned units at their list price, before the marketplace's discounts, as Trendyol's sales report shows returns
     // (1-14 Oct 2026: 20 units, 14,435.58 at list price, 13,994.18 paid). ReturnedAmount stays what was paid: it is taken
     // off GrossSales for NetRevenue.
-    decimal ReturnedListAmount = 0m);
+    decimal ReturnedListAmount = 0m,
+    // The distinct products (variants; a line without a variant by its SKU) of which at least one unit was sold.
+    int SoldVariants = 0,
+    // NetRevenue of the TRY orders without its VAT: each line's kept amount less the VAT at the line's own rate.
+    decimal VatFreeNetRevenue = 0m);
 
 // Estimated from the commission the marketplace sent on each order line (Trendyol and n11 rate, Hepsiburada amount,
 // PTT AVM rate), over the kept units. CoveredRevenue: the net revenue of lines that carry one; Coverage: its share of
@@ -298,8 +302,13 @@ public sealed record ReportRealCommissionView(decimal Real, int RealOrders, deci
 // DesiSources: of those orders, how many had their parcel's desi from the marketplace's order (MARKETPLACE), the
 // products' entered desi (MANUAL), the desi measured on billed Trendyol parcels (MEASURED) or a store-wide default
 // (DEFAULT); MeasuredParcels: the billed parcels the measured desi was learned from.
+// ReturnBilled / ReturnBilledOrders: the return cargo ("İade Kargo Bedeli") invoice lines of the period's Trendyol orders
+// and how many orders they cover, part of Real. ReturnOperationFees / ReturnOperationRecords: Trendyol's "Yurtdışı
+// Operasyon İade Bedeli" statement records dated in the period; they name no order, so they are counted by their date
+// among the deductions tied to no order, never by an order's period.
 public sealed record ReportCargoCostView(decimal Real, int BilledOrders, int UnbilledOrders, decimal? AveragePerOrder, int SampleOrders, decimal? Estimated, decimal Combined,
-    int PlatformOrders = 0, decimal PlatformEstimated = 0m, ReportDesiSourcesView? DesiSources = null, int UnbilledReturns = 0, int UnestimatedOrders = 0);
+    int PlatformOrders = 0, decimal PlatformEstimated = 0m, ReportDesiSourcesView? DesiSources = null, int UnbilledReturns = 0, int UnestimatedOrders = 0,
+    decimal ReturnBilled = 0m, int ReturnBilledOrders = 0, decimal ReturnOperationFees = 0m, int ReturnOperationRecords = 0);
 
 public sealed record ReportDesiSourcesView(int Marketplace, int Manual, int Measured, int Default, int MeasuredParcels);
 

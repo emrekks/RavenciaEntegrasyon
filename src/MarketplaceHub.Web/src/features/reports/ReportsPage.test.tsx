@@ -12,7 +12,7 @@ const group = (key: string, label: string, values: Partial<ReportGroup> = {}): R
 const summary = (values: Partial<ReportSummary> = {}): ReportSummary => ({
   orders: 4, cancelledOrders: 1, cancelRate: 0.2, soldQuantity: 5, returnedQuantity: 1, keptQuantity: 4, returnClaims: 1, returnRate: 0.2, ordersWithAmount: 3,
   grossSales: 350, returnedAmount: 100, netRevenue: 250, averageOrderValue: 116.67, ordersWithoutCity: 1, ordersWithoutAmount: 1, otherCurrencyOrders: 0,
-  listAmount: 380, discountAmount: 30, ...values
+  listAmount: 380, discountAmount: 30, soldVariants: 2, vatFreeNetRevenue: 227.27, ...values
 })
 const report: ReportSales = {
   from: '2026-10-01', to: '2026-10-22', previousFrom: '2026-09-09', previousTo: '2026-09-30', granularity: 'day', includesTest: false, generatedAt: '2026-10-22T10:00:00Z',
@@ -70,7 +70,7 @@ const withFinance: ReportSales = {
   costs: {
     source: 'trendyol-finance', lastSyncedAt: '2026-10-22T23:40:00Z', coveredFrom: '2026-07-24T23:39:00Z', coveredThrough: '2026-10-22T23:40:00Z', financeOrders: 3, settledOrders: 1, coverage: 0.3333, realCostTotal: 63.5,
     commission: { real: 20, realOrders: 1, estimatedForSettled: 21.5, estimatedForUnsettled: 21.5, combined: 41.5 },
-    cargo: { real: 30, billedOrders: 1, unbilledOrders: 2, averagePerOrder: 98.34, sampleOrders: 40, estimated: 196.68, combined: 226.68 },
+    cargo: { real: 30, billedOrders: 1, unbilledOrders: 2, averagePerOrder: 98.34, sampleOrders: 40, estimated: 196.68, combined: 226.68, returnBilled: 20, returnBilledOrders: 1, returnOperationFees: 5, returnOperationRecords: 1 },
     lines: [
       { category: 'SALE', label: 'Satış', isCost: false, amount: -100, records: 1, orderLinked: -100 },
       { category: 'COMMISSION', label: 'Komisyon', isCost: true, amount: 20, records: 1, orderLinked: 20 },
@@ -219,7 +219,7 @@ describe('ReportsPage', () => {
     expect(days.querySelector('.reports-period-facts')?.textContent).toContain('1 gün önde0 gün geride; toplam 1 gün')
     // The metric cards: four rows on each of the first three, six on the two under them.
     expect(texts(page, '.reports-card-metrics h2')).toEqual(['Satış ve Ürün', 'Sipariş ve Müşteri', 'Maliyet ve Reklam', 'İade ve İptal', 'Operasyon'])
-    expect(metricRows(page, 'product')).toEqual(['Adet Başına Satış₺70,00', 'Adet Başına Kâr₺31,75', 'Satıcı İndirimi₺30,00 · %7,9'])
+    expect(metricRows(page, 'product')).toEqual(['Adet Başına Satış₺70,00', 'Adet Başına Kâr₺31,75', 'Satıcı İndirimi₺30,00 · %7,9', 'Satan Ürün2 varyant', 'KDV Hariç Net Satış₺227,27'])
     expect(page.querySelector('.reports-card-metrics.is-product')?.textContent).toContain('yalnız Trendyol ve Hepsiburada')
     expect(metricRows(page, 'order')).toEqual(['Sipariş Başına Satış₺116,67', 'Sipariş Başına Kâr₺42,33', 'Sipariş Başına Kargo—', 'Sipariş Başına Kesinti₺14,33', 'Sipariş Başına Adet1,25', 'Tekrar Alan Müşteri%50,0'])
     expect(metricRows(page, 'ads')).toEqual(['Ortalama Komisyon Oranı%21,5', 'Trendyol Reklamı—', 'Reklam Payı (TACoS)—', 'Sipariş Başına Reklam—', 'Reklam Öncesi Marj—'])
@@ -228,11 +228,13 @@ describe('ReportsPage', () => {
     expect(page.querySelector('.reports-card-unlinked')).toBeNull()
     // Returns and cancellations: eight rows, no explanation under the pointer; the change names the previous rate.
     // The amount returned is what the customers paid, the İade Edilen Tutar of the bridge (₺100), not the list price.
-    expect(metricRows(page, 'returns')).toHaveLength(5)
+    expect(metricRows(page, 'returns')).toHaveLength(6)
     expect(metricRows(page, 'returns')[1]).toBe('İade Edilen1 adet · 1 talep · ₺100,00')
-    expect(metricRows(page, 'returns')[2]).toContain('İade Kargo Zararı—')
-    expect(metricRows(page, 'returns')[3]).toContain('İptal Oranı%20,0')
-    expect(metricRows(page, 'returns')[4]).toBe('İptal Edilen1 sipariş · 1 adet · ₺120,00')
+    // Without Trendyol's statement the return cargo is unknown, never ₺0.
+    expect(metricRows(page, 'returns')[2]).toBe('İade Kargo Zararı—')
+    expect(metricRows(page, 'returns')[3]).toBe('En Sık İade NedeniBeden uymadı · %100,0')
+    expect(metricRows(page, 'returns')[4]).toContain('İptal Oranı%20,0')
+    expect(metricRows(page, 'returns')[5]).toBe('İptal Edilen1 sipariş · 1 adet · ₺120,00')
     expect(page.querySelectorAll('.reports-card-metrics.is-returns .reports-hover-tip')).toHaveLength(0)
     expect(page.querySelector('.reports-card-metrics.is-returns .reports-delta')?.getAttribute('title')).toMatch(/^Önceki dönem /)
     expect(page.querySelector('.reports-card-metrics.is-returns li.is-warn')?.textContent).toContain('İptal Oranı')
@@ -283,6 +285,8 @@ describe('ReportsPage', () => {
     expect(metricRows(page, 'ads')[4]).toMatch(/^Reklam Öncesi Marj−?%/u)
     // The commission (41,50) and the service fee and withholding tax (12,50 + 1) over 3 orders, as on the bridge.
     expect(metricRows(page, 'order')[3]).toBe('Sipariş Başına Kesinti₺18,33')
+    // The billed return cargo (20) and the return operation fee (5), Trendyol's only.
+    expect(metricRows(page, 'returns')[2]).toBe('İade Kargo Zararı₺25,00 · Trendyol')
     // Siparişe Bağlı Olmayan Kesintiler: each deduction with its records, largest first, and their total; the foreign
     // sale is no deduction. Its "i" and its total say Net Kâr takes them off.
     const unlinked = page.querySelector('.reports-card-unlinked')!

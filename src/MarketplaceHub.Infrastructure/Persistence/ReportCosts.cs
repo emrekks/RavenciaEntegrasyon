@@ -182,6 +182,9 @@ internal static class ReportCosts
         // profit has it, ReportOrderProfit).
         var billed = new HashSet<Guid>();
         var returnBilled = new HashSet<Guid>();
+        // The return cargo billed for the period's orders, and Trendyol's return operation fees dated in the period.
+        decimal returnCargo = 0m, returnOperationFees = 0m;
+        var returnOperationRecords = 0;
         foreach (var row in finance.Rows)
         {
             // A cargo invoice whose lines were read counts through its lines (below), not as a whole.
@@ -203,6 +206,8 @@ internal static class ReportCosts
             var charged = commission != 0m || category == MarketplaceFinanceCategories.Commission;
             if (orderId is not { } order)
             {
+                // Trendyol's return operation fee of a cross-border order names no order: it is counted by its date.
+                if (IsReturnOperationFee(row)) { returnOperationFees += amount; returnOperationRecords++; }
                 if (category != MarketplaceFinanceCategories.Commission) Unlinked(category).Add(amount);
                 if (charged) Unlinked(MarketplaceFinanceCategories.Commission).Add(commission);
                 continue;
@@ -246,7 +251,7 @@ internal static class ReportCosts
                 Unlinked(MarketplaceFinanceCategories.Cargo).Add(item.Amount);
                 continue;
             }
-            if (item.IsReturn) returnBilled.Add(cargoOrder); else billed.Add(cargoOrder);
+            if (item.IsReturn) { returnBilled.Add(cargoOrder); returnCargo += item.Amount; } else billed.Add(cargoOrder);
             Line(MarketplaceFinanceCategories.Cargo).Add(item.Amount);
             var key = (item.ConnectionId, MarketplaceFinanceCategories.Cargo);
             channelCosts[key] = channelCosts.GetValueOrDefault(key) + item.Amount;
@@ -311,7 +316,8 @@ internal static class ReportCosts
             platformOrders.Count == 0 ? null : new ReportDesiSourcesView(
                 desiSources.GetValueOrDefault(ReportParcelDesi.Marketplace), desiSources.GetValueOrDefault(ReportParcelDesi.Manual),
                 desiSources.GetValueOrDefault(ReportParcelDesi.Measured), desiSources.GetValueOrDefault(ReportParcelDesi.Default), desiInput.Learned.Parcels),
-            unbilledReturns.Count, unestimatedOrders);
+            unbilledReturns.Count, unestimatedOrders,
+            Round(returnCargo), financeOrders.Count(order => returnBilled.Contains(order.Order.Id)), Round(returnOperationFees), returnOperationRecords);
 
         // The service fees and the withholding tax of the period's Trendyol orders. Trendyol bills them on invoices of a
         // payment day tied to no order (those are in Unlinked, by their date), so every order without a record of its own
@@ -508,6 +514,10 @@ internal static class ReportCosts
     // The VAT inside a VAT-inclusive amount at a rate in percent, and a line's kept sale without its VAT.
     internal static decimal Vat(decimal amount, decimal rate) => rate > 0 ? amount * rate / (100m + rate) : 0m;
     internal static decimal VatFree(ReportBuilder.LineFact line) => line.KeptAmount - Vat(line.KeptAmount, line.Row.VatRate);
+
+    // "Yurtdışı Operasyon İade Bedeli": what Trendyol charges for handling a cross-border order's return.
+    internal static bool IsReturnOperationFee(ReportFinanceRow row) =>
+        TrendyolFinanceCategorizer.Fold(row.TransactionType).Contains("operasyon iade", StringComparison.Ordinal);
 
     internal static bool IsInternationalFee(ReportFinanceRow row) =>
         TrendyolFinanceCategorizer.Fold(row.TransactionType).Contains("uluslararasi", StringComparison.Ordinal);
