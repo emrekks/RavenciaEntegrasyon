@@ -1457,7 +1457,7 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
       })
       return
     }
-    setNotice(`${platformLabel} değer eşitlemesi ${job.status.toLocaleLowerCase('tr-TR')} durumunda tamamlandı${job.lastErrorSummary ? `: ${job.lastErrorSummary}` : job.lastErrorCode ? ` (${job.lastErrorCode})` : '.'}`)
+    setNotice(`${platformLabel} değer eşitlemesi tamamlanamadı${job.lastErrorSummary ? `: ${job.lastErrorSummary}` : job.lastErrorCode ? `; nedeni kaydedilmedi (kod: ${job.lastErrorCode}).` : '; nedeni kaydedilmedi.'}`)
   }, [client, connectionId, platformLabel, valueScope, syncJob.data?.job, syncJobId])
   // The job could not be read (gone, refused, network): stop following it, unlock the button and say so.
   const syncJobReadFailed = syncJob.isError

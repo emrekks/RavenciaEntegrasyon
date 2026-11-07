@@ -106,7 +106,7 @@ export function PublicationJobDialog({ jobId, platformCode, platformName, storeN
         {detail.isLoading ? <p className="publication-job-note" role="status">İş ayrıntısı yükleniyor…</p>
           : detail.isError || !job ? <p className="publication-job-note" role="alert">İş ayrıntısı okunamadı.</p>
             : <>
-              {hasError && <div className="publication-job-error" role="alert"><UiIcon name="alert" /><div><strong>{job.lastErrorSummary ?? 'Pazaryeri işi reddetti.'}</strong>{job.lastErrorCode && <small>Kod: {job.lastErrorCode}</small>}</div></div>}
+              {hasError && <div className="publication-job-error" role="alert"><UiIcon name="alert" /><div><strong>{job.lastErrorSummary ?? 'İşlem tamamlanamadı; nedeni kaydedilmedi.'}</strong>{job.lastErrorCode && <small>Kod: {job.lastErrorCode}</small>}</div></div>}
               {detail.data?.change && <p className="publication-job-change"><b>{detail.data.change.label}:</b> {detail.data.change.value}{detail.data.change.detail ? ` — ${detail.data.change.detail}` : ''}</p>}
               <dl className="publication-job-facts">{facts.filter(([, value]) => value).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
               {detail.data?.variantResults && <PublicationJobVariants results={detail.data.variantResults} approvalCheck={job.jobType.trim().toUpperCase().includes('APPROVAL')} />}

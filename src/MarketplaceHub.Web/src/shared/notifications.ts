@@ -140,8 +140,8 @@ const burstWindowMs = 5 * 60_000
 export function normalizeNotificationKind(message: string, kind: AppNotification['kind']): AppNotification['kind'] {
   // A count of none ("3 başarılı, 0 başarısız") reports no failure.
   const normalized = message.toLocaleLowerCase('tr-TR').replace(/(?<![\d.,])0\s+(?:başarısız|hatalı|hata)/gu, '')
-  if (/(hata|başarısız|kaydedilemedi|güncellenemedi|silinemedi|oluşturulamadı|alınamadı|bulunamadı|geçersiz|uygulanamadı|okunamadı|yenilenemedi|eşlenemedi|sorgulanamadı|reddi|reddedildi|yayın uyarısı|eşlemesi (?:yok|gerek)|zorunlu özellik)/u.test(normalized)) return 'error'
-  if (/(kuyruğa\s+alındı|kuyrukta|işleniyor|sonucu\s+(?:henüz\s+)?bekleniyor|incelemesi\s+bekleniyor|onayı\s+bekleniyor|yeniden\s+kuyruğa|waiting(?:fraudcheck|[_\s-]*approval)|pending|processing|salt-okunur)/u.test(normalized)) return 'info'
+  if (/(hata|başarısız|kaydedilemedi|güncellenemedi|silinemedi|oluşturulamadı|alınamadı|bulunamadı|geçersiz|uygulanamadı|okunamadı|yenilenemedi|eşlenemedi|sorgulanamadı|aktarılamadı|gönderilemedi|inceleme bekliyor|reddi|reddedildi|yayın uyarısı|eşlemesi (?:yok|gerek)|zorunlu özellik)/u.test(normalized)) return 'error'
+  if (/(kuyruğa\s+alındı|sıraya\s+alındı|aktarım\s+(?:başladı|sürüyor|sırada)|gönderiliyor|sonucu?\s+henüz\s+bilinmiyor|kuyrukta|işleniyor|sonucu\s+(?:henüz\s+)?bekleniyor|incelemesi\s+bekleniyor|onayı\s+bekleniyor|yeniden\s+kuyruğa|waiting(?:fraudcheck|[_\s-]*approval)|pending|processing|salt-okunur)/u.test(normalized)) return 'info'
   return kind
 }
 

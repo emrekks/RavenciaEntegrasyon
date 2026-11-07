@@ -12,13 +12,16 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // delivery days, origin, warranty or VAT override, and no category or brand id (a marketplace category different from the
 // panel's verified mapping would stop every update as LISTING_MAPPING_CONFLICT). Updates keep sending the card and its
 // verified mappings, as for a profile the panel made. Nothing is assumed about the listing either: profile and listing
-// variants start UNKNOWN (the status check reads the real state), and no marketplace_listing_states row is written, so an
-// imported variant's price and stock keep going by its link (PriceInventoryComposer skips these listings).
+// variants and their marketplace_listing_states start UNKNOWN (the update's approval check or a status refresh reads the
+// real state). PriceInventoryComposer sends only a LIVE state by the listing and leaves these listings out of its
+// "listed" set, so an imported variant's price and stock keep going by its link until a read says LIVE.
 //
 // Only the database is written; nothing is sent to a marketplace. Shopify is left out: its update writes the whole
 // product (productSet), and its products are published from the panel. A profile the panel made is never touched.
 internal static class ImportedListingProfiles
 {
+    public const string UnknownState = "UNKNOWN";
+
     // Said when a card has no profile on the connection. The update never makes one (owner decision 6 Nov 2026): a
     // product sync that reads the products' information makes it for a product already on the marketplace.
     public static string MissingPublicationMessage(string platformName) =>
@@ -83,6 +86,21 @@ internal static class ImportedListingProfiles
                     ActualStatus = "UNKNOWN"
                 });
             }
+        }
+        // Every listing of an imported profile has its listing state: the update and approval jobs require one per listing
+        // (PRODUCT_UPDATE_STATE_INCOMPLETE otherwise; live 7 Nov 2026, RYP003T). It starts UNKNOWN, which the price/stock
+        // composer never reads as live, so the variant's price and stock keep going by its link until a marketplace read
+        // (the update's approval check, a status refresh) records the real state. An existing state is left as it is.
+        // listed holds only imported profiles' listings: the ones read above and the ones added here.
+        var importedVariantIds = listed.Select(x => x.VariantId).Distinct().ToArray();
+        var stated = new HashSet<Guid>();
+        if (importedVariantIds.Length > 0)
+            stated.UnionWith(await db.MarketplaceListingStates.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && importedVariantIds.Contains(x.VariantId)).Select(x => x.VariantId).ToListAsync(cancellationToken));
+        foreach (var variantId in importedVariantIds.Where(id => !stated.Contains(id)))
+        {
+            db.MarketplaceListingStates.Add(new MarketplaceListingState { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variantId, DesiredStatus = "LIVE", ActualStatus = UnknownState, Version = 1 });
+            added++;
         }
         if (created == 0 && added == 0) return 0;
         try
