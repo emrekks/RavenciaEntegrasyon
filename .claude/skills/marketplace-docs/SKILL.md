@@ -43,8 +43,10 @@ Shared across all of them:
   profile is refused with the sync to run. Trendyol, Hepsiburada, n11, Pazarama, PTT AVM; not Shopify.
   Code: `ImportedListingProfiles.cs`, `MarketplaceJobProcessor.CompleteImportedListingProfiles`.
 - The panel card wins: the profile holds no marketplace value (no title, description, delivery days, origin, warranty,
-  VAT override; no category or brand id, which would stop updates as LISTING_MAPPING_CONFLICT). Status UNKNOWN, no
-  `marketplace_listing_states` row; imported price/stock keeps going by the link.
+  VAT override; no category or brand id, which would stop updates as LISTING_MAPPING_CONFLICT). Profile, listing variants and one
+  `marketplace_listing_states` row per listing start UNKNOWN (the update and approval jobs need the state; live 7 Nov
+  2026 PRODUCT_UPDATE_STATE_INCOMPLETE on RYP003T, repaired by migration AddImportedListingStates). UNKNOWN is never
+  read as live: imported price/stock keeps going by the link until a marketplace read records LIVE.
 - Where an update would read the profile first, the card's value goes and the panel's notification center says so
   (`ImportedProfileCardFallbacks`): Teslimat Süresi (Trendyol, Hepsiburada, PTT AVM), Garanti Süresi (Hepsiburada; an
   empty card warranty is the card's 0). A Teslimat Süresi the card lacks too stops the update ("RYP003T – Trendyol:
