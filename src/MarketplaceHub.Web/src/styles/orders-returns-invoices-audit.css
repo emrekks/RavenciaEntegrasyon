@@ -46,6 +46,25 @@
   :root:root main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) { min-width: 1472px; }
   :root:root main .rr.rr-returns .rr-tbl.rr-tbl.rr-has-select:has(col.rr-c-buyer) { min-width: 1498px; }
 }
+/* Siparişler filter row at tablet width (1024px): the 2fr search left the date and sort fields 156px, which cut
+   "Başlangıç – Bitiş" and "En Yeni Siparişler"; the search gives them room. */
+@media (min-width: 900px) and (max-width: 1199px) {
+  :root:root:root body main .rr.rr.rr-orders .rr-fcard:not(.rr-fopen) .rr-filters.rr-has-sort { grid-template-columns: minmax(0, .9fr) minmax(176px, 1fr) minmax(176px, 1fr) auto; }
+}
+/* Faturalar filter card at tablet width (900-1099px): it stacked all eight fields in two columns (400px tall) above
+   the list; the head filters already cover the extra ones, so it keeps the one row of 1100px and up. */
+@media (min-width: 900px) and (max-width: 1099px) {
+  :root:root:root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-filter-grid { grid-template-columns: minmax(120px, 1fr) minmax(156px, .9fr) minmax(190px, 1.1fr) minmax(150px, 1fr) auto; }
+  :root:root:root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-filter-grid > :is(.rr-search, .rr-fbtns) { grid-column: auto; }
+  :root:root:root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-filter-grid > .rr-fbtns { align-self: end; justify-content: flex-end; flex-wrap: nowrap; }
+  :root:root:root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-filter-grid > .rr-sheet-only { display: none; }
+}
+/* İadeler filter row at tablet width (900-1099px): search, platform, date and the two buttons on one row; the buttons
+   dropped to a row of their own at 1024px. */
+@media (min-width: 900px) and (max-width: 1099px) {
+  :root:root:root body main .rr.rr-returns .rr-fcard:not(.rr-fopen) .rr-filters:not(.rr-has-sort) { grid-template-columns: minmax(0, 1fr) minmax(150px, .9fr) minmax(200px, 1fr) auto; }
+  :root:root:root body main .rr.rr-returns .rr-fcard:not(.rr-fopen) .rr-filters:not(.rr-has-sort) > .rr-fbtns { grid-column: auto; align-self: end; justify-content: flex-end; flex-wrap: nowrap; }
+}
 /* İadeler, tabs with a sort field (Onaylanan): search, platform, date, sort and the two buttons share one row from
    1100px; they fell to a second row at 1280px. */
 @media (min-width: 1100px) {
