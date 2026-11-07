@@ -444,3 +444,15 @@
 @media (max-width: 760px) and (prefers-reduced-motion: reduce) {
   .app-shell.stitch-shell main .commission-tariffs :is(.commission-sheet-scrim, .commission-filter-wrap > .commission-filters.is-open, .commission-bulk > .commission-bulk-popover) { animation: none; }
 }
+
+/* Owner, 8 Nov 2026: "iç gapleri düzenle, çok sıkışık". Desktop plan table: band cards 12 px inside with 6 px between
+   their lines, cells 10 px around them, the product cell 12 px between photo and text, and Güncel Fiyat on one line. */
+@media (min-width: 761px) {
+  :root:root body .app-shell.stitch-shell main .commission-table.is-plan tbody td:not(.commission-expand) { padding: 10px 8px; }
+  :root:root body .app-shell.stitch-shell main .commission-table.is-plan tbody th[scope="row"] { padding: 12px 10px; }
+  :root:root body .app-shell.stitch-shell main .commission-table.is-plan .commission-choice { padding: 12px; gap: 6px; }
+  :root:root body .app-shell.stitch-shell main .commission-table.is-plan thead th { padding-inline: 12px; }
+  :root:root body .app-shell.stitch-shell main .commission-table.is-plan thead th.commission-now-col { padding-inline: 8px; }
+  :root:root body .app-shell.stitch-shell main .commission-table.is-plan .commission-now-col .commission-sort { white-space: nowrap; }
+  :root:root body .app-shell.stitch-shell main .commission-table.is-plan .commission-product-cell { gap: 12px; }
+}
