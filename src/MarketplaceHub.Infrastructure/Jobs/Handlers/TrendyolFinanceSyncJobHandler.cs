@@ -313,7 +313,7 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
                          .Where(x => x.TenantId == request.TenantId && x.ConnectionId == request.ConnectionId && chunk.Contains(x.ExternalId))
                          .ToListAsync(cancellationToken))
                 stored[(row.Source, row.ExternalId)] = row;
-        var (added, updated) = TrendyolFinanceSyncPlan.Merge(stored, collected.Values, request.TenantId, request.ConnectionId, now);
+        var (added, updated) = TrendyolFinanceSyncPlan.Merge(stored, collected.Values, request.TenantId, request.ConnectionId, now, request.Reads);
         db.MarketplaceFinanceTransactions.AddRange(added);
         await FinanceRecordIssues.RecordAsync(db, request.TenantId, request.ConnectionId, "Trendyol", read.Skipped, read.Records.Select(x => x.ExternalId), now, cancellationToken);
 
@@ -323,6 +323,9 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
             db.MarketplaceCargoInvoiceItems.RemoveRange(await db.MarketplaceCargoInvoiceItems
                 .Where(x => x.TenantId == request.TenantId && x.ConnectionId == request.ConnectionId && serials.Contains(x.InvoiceSerialNumber))
                 .ToListAsync(cancellationToken));
+            // A cargo invoice's lines are read again whole each time; the job detail names the invoice and its line count.
+            foreach (var (serial, items) in read.CargoItems)
+                request.Reads?.Add("FINANCE", new JobReadRecord(serial, $"{items.Count} kargo kalemi", "Kargo Faturası", JobReadOutcomes.Updated));
             foreach (var (serial, items) in read.CargoItems)
                 db.MarketplaceCargoInvoiceItems.AddRange(items.Select((item, index) => new MarketplaceCargoInvoiceItem
                 {

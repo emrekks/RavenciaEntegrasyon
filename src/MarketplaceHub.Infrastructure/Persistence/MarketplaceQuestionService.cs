@@ -127,7 +127,7 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         return new(added, updated, timeProvider.GetUtcNow(), error);
     }
 
-    public async Task<QuestionSyncView> SyncConnectionAsync(Guid tenantId, Guid connectionId, string? kind, CancellationToken cancellationToken)
+    public async Task<QuestionSyncView> SyncConnectionAsync(Guid tenantId, Guid connectionId, string? kind, CancellationToken cancellationToken, JobReadRecorder? reads = null)
     {
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(row => row.TenantId == tenantId && row.Id == connectionId
             && (row.PlatformCode == "TRENDYOL" || row.PlatformCode == "HEPSIBURADA" || row.PlatformCode == "N11" || row.PlatformCode == "PAZARAMA"), cancellationToken);
@@ -243,6 +243,10 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
                 {
                     var outcome = await UpsertAsync(tenantId, connectionId, remote, now, cancellationToken);
                     if (outcome) added++; else updated++;
+                    // The job detail's "Çekilen Kayıtlar": the question's id, its product code and status, never the customer.
+                    reads?.Add("QUESTION", new JobReadRecord(remote.Id, remote.ProductBarcode ?? remote.ProductModelCode ?? remote.ProductSku, remote.Status,
+                        outcome ? JobReadOutcomes.New : lastQuestionStale ? JobReadOutcomes.Skipped : lastQuestionChanged ? JobReadOutcomes.Updated : JobReadOutcomes.Unchanged,
+                        !outcome && lastQuestionStale ? "Panelde daha yeni bir bilgi vardı; eski kayıt uygulanmadı." : null));
                 }
                 if (countForHistory) state.ImportedCount += response.Value.Items.Count;
                 state.Version++;
@@ -613,8 +617,13 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
                    db.MarketplaceQuestions.Count(question => question.TenantId == tenantId && question.ConnectionId == connection.Id && question.Kind == "PRODUCT"),
                    db.MarketplaceQuestions.Count(question => question.TenantId == tenantId && question.ConnectionId == connection.Id && question.Kind == "ORDER"))).ToListAsync(cancellationToken);
 
+    private bool lastQuestionChanged;
+    private bool lastQuestionStale;
+
     private async Task<bool> UpsertAsync(Guid tenantId, Guid connectionId, RemoteMarketplaceQuestion remote, DateTimeOffset now, CancellationToken cancellationToken)
     {
+        lastQuestionChanged = false;
+        lastQuestionStale = true;
         var row = await db.MarketplaceQuestions.SingleOrDefaultAsync(candidate => candidate.TenantId == tenantId && candidate.ConnectionId == connectionId && candidate.ExternalQuestionId == remote.Id, cancellationToken);
         var isNew = row is null;
         row ??= new MarketplaceQuestion { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ExternalQuestionId = remote.Id, Kind = remote.Kind, QuestionText = remote.Text, QuestionSubject = remote.Subject, Status = remote.Status, CreatedAt = remote.CreatedAt, LastRemoteModifiedAt = remote.LastModifiedAt };
@@ -635,7 +644,9 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
             row.LastSyncedAt = now;
             // The version moves only when the question really changed. Re-reading an unchanged question every
             // few minutes used to move it too, so an answer typed in the meantime was refused as stale.
-            if (isNew || QuestionChanged(row)) row.Version++;
+            lastQuestionChanged = isNew || QuestionChanged(row);
+            lastQuestionStale = false;
+            if (lastQuestionChanged) row.Version++;
         }
         if (isNew) db.MarketplaceQuestions.Add(row);
         return isNew;

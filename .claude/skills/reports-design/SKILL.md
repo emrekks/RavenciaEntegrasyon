@@ -50,8 +50,11 @@ asked for, in their words where it matters.
    query results in `sessionStorage` (`rv-query-snapshot`): after changing the server's answers, open a new tab or
    clear it, or the page shows the old answer.
 4. Audit the layout: run the contents of `audit.js` in the page (javascript tool), then read `window.__reportsAudit`
-   about two minutes later. It loads every tab at 1000, 1280 and 1800px and lists cards of unequal height in a row and
-   gaps other than 20px; an empty list means none.
+   about two minutes later. It loads every tab at 1000, 1280 and 1800px (other widths: set
+   `window.__reportsAuditWidths` first, e.g. `[1000, 1100, 1200, 1280, 1366, 1440, 375]`) and lists cards of unequal
+   height in a row, gaps other than 20px and figures cut off (CLIP: a metric value, its second line or a strip figure
+   wider than its box; 7 Nov 2026 the owner saw "₺19.50…" at ~300px card width); an empty list means none. A value is
+   never cut: the label gives way (ellipsis), the second line wraps.
 5. Look at each changed tab yourself (screenshot at 1320px and phone width, no horizontal scroll). A hidden browser
    pane pauses transitions: wait or take a second screenshot before judging an animation.
 6. Get the `reports-ui-reviewer` agent's read before saying the design is done.

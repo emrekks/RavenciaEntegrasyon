@@ -61,7 +61,7 @@ public sealed class QuestionSyncJobHandlerTests
     private sealed class StubQuestions(QuestionSyncView answer) : IMarketplaceQuestionService
     {
         public (Guid, Guid, string?)? Called { get; private set; }
-        public Task<QuestionSyncView> SyncConnectionAsync(Guid tenantId, Guid connectionId, string? kind, CancellationToken cancellationToken)
+        public Task<QuestionSyncView> SyncConnectionAsync(Guid tenantId, Guid connectionId, string? kind, CancellationToken cancellationToken, JobReadRecorder? reads = null)
         {
             Called = (tenantId, connectionId, kind);
             return Task.FromResult(answer);

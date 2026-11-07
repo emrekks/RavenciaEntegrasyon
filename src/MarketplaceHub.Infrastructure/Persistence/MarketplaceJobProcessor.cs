@@ -109,8 +109,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var telemetryResource = TelemetryResource(jobType, payloadJson);
             var stopwatch = Stopwatch.StartNew();
             ResetTelemetry();
-            readRecordingEnabled = jobId is not null && RecordsReadProgress(jobType);
-            readRecordingKind = ReadRecordKind(jobType);
+            readRecordingKind = ReadRecordKind(jobType) ?? "ORDER";
+            readRecordingEnabled = jobId is not null && ReadRecordKind(jobType) is not null;
             if (telemetryResource is not null) await RecordSyncAttempt(tenantId, connectionId.Value, telemetryResource, cancellationToken);
             try
             {
@@ -118,7 +118,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 // Job types moved to their own handler class run here, inside the lock and telemetry.
                 if (jobHandlers.FirstOrDefault(candidate => candidate.Handles(jobType)) is { } handler)
                 {
-                    var outcome = await handler.HandleAsync(new JobRequest(tenantId, connectionId.Value, jobType, payloadJson, correlationId, jobId), cancellationToken);
+                    var outcome = await handler.HandleAsync(new JobRequest(tenantId, connectionId.Value, jobType, payloadJson, correlationId, jobId, readRecordingEnabled ? readRecorder : null), cancellationToken);
                     telemetryRequestCount += outcome.Telemetry.Requests;
                     telemetryReceivedCount += outcome.Telemetry.Received;
                     telemetryInsertedCount += outcome.Telemetry.Inserted;
@@ -217,6 +217,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 telemetryRetryCount++;
                 if (telemetryResource is not null) await TryRecordFailedSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, exception.GetType().Name, cancellationToken);
                 throw;
+            }
+            finally
+            {
+                // A run that ended in an error, a block or a timeout still shows what it read up to that point.
+                await FlushReadRecordsAsync(tenantId, jobId, CancellationToken.None, final: true);
             }
         }
     }
@@ -2029,7 +2034,16 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var job = await db.IntegrationJobs.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == payload.JobId && x.ConnectionId == connectionId && x.JobType == MarketplaceJobTypes.ProductUpdate, cancellationToken);
         var profile = await db.ChannelListingProfiles.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == payload.ProfileId && x.ProductId == payload.ProductId && x.ConnectionId == connectionId, cancellationToken);
         if (job is null || profile is null) return JobExecutionResult.Blocked("PRODUCT_UPDATE_STATE_MISSING", "Ürün güncelleme işi veya listing profile bulunamadı.");
+        // A card of a grouped Trendyol send may have been moved on by the card that sent or polled the shared request
+        // since this job was leased: the stored payload is the current one.
+        if (payload.SendGroupId is not null && !string.Equals(job.PayloadJson, payloadJson, StringComparison.Ordinal))
+        {
+            try { payload = JsonSerializer.Deserialize<ProductUpdateJobPayload>(job.PayloadJson, JsonOptions) ?? payload; }
+            catch (JsonException) { return JobExecutionResult.Blocked("PRODUCT_UPDATE_PAYLOAD_INVALID", "Ürün güncelleme işi payload sözleşmesini sağlamıyor."); }
+        }
         var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        // Trendyol: the cards one "Platformlarda Güncelle" sent together share their requests (TrendyolUpdateGroups).
+        var groupedTrendyol = payload.SendGroupId is not null && string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase);
         var isHepsiburada = string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase);
         // n11: one product-update task (the content phase) answered per stock code (N11ProductUpdateComposer).
         var isN11 = string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase);
@@ -2042,6 +2056,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase)) return await UpdatePttAvmProduct(tenantId, connectionId, payload, job, profile, listings, states, correlationId, cancellationToken);
 
         var phase = payload.Phase.Trim().ToUpperInvariant();
+        // The card that polled a shared request answered this card: it completes, or stops with the answer it was given.
+        if (phase == TrendyolUpdateGroups.DonePhase) return await CompleteProductUpdate(tenantId, connectionId, payload, profile, listings, states, correlationId, cancellationToken);
+        if (phase == TrendyolUpdateGroups.StoppedPhase)
+            return payload.GroupOutcome is { } groupOutcome
+                ? await MarkPublicationResult(tenantId, connectionId, profile, groupOutcome.ProfileStatus, groupOutcome.RejectionCode, TrendyolUpdateGroups.Result(groupOutcome), cancellationToken)
+                : JobExecutionResult.Blocked("PRODUCT_UPDATE_PHASE_INVALID", "Ürün güncelleme işi bilinmeyen bir fazda.");
         if (phase.StartsWith("SUBMIT_", StringComparison.Ordinal))
         {
             if (!await ExternalWriteMasterAllowedAsync(tenantId, connectionId, cancellationToken)) return await MarkPublicationResult(tenantId, connectionId, profile, "UPDATE_BLOCKED", "EXTERNAL_WRITES_DISABLED", JobExecutionResult.Blocked("EXTERNAL_WRITES_DISABLED", "Dış yazma anahtarı kapalı; pazar yeri isteği gönderilmedi."), cancellationToken);
@@ -2076,6 +2096,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var effectKey = $"{job.EffectIdempotencyKey}:{phase}";
             if (await db.ExternalEffectRecords.AnyAsync(x => x.TenantId == tenantId && x.EffectType == effectType && x.IdempotencyKey == effectKey, cancellationToken))
                 return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Önceki ürün güncelleme çağrısının sonucu kesinleştirilemedi; tekrar gönderim engellendi."), cancellationToken);
+            if (groupedTrendyol && await SubmitTrendyolGroupAsync(tenantId, connectionId, job, payload, profile, phase, correlationId, cancellationToken) is { } grouped) return grouped;
 
             var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = effectType, IdempotencyKey = effectKey, CreatedAt = timeProvider.GetUtcNow() };
             db.ExternalEffectRecords.Add(effect); await db.SaveChangesAsync(cancellationToken);
@@ -2100,7 +2121,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             }
             effect.CompletedAt = timeProvider.GetUtcNow();
             var operation = submit.Value!;
-            var poll = payload with { Phase = phase.Replace("SUBMIT_", "POLL_", StringComparison.Ordinal), ExternalOperationId = operation.ExternalOperationId, SubmittedAt = operation.SubmittedAt };
+            var poll = payload with { Phase = phase.Replace("SUBMIT_", "POLL_", StringComparison.Ordinal), ExternalOperationId = operation.ExternalOperationId, SubmittedAt = operation.SubmittedAt, GroupReadySince = null };
             job.PayloadJson = JsonSerializer.Serialize(poll); job.PayloadHash = Hash(job.PayloadJson);
             profile.ActualStatus = phase.Replace("SUBMIT_", "UPDATE_", StringComparison.Ordinal) + "_SUBMITTED"; profile.Version++;
             await db.SaveChangesAsync(cancellationToken);
@@ -2109,6 +2130,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
         if (!phase.StartsWith("POLL_", StringComparison.Ordinal) || string.IsNullOrWhiteSpace(payload.ExternalOperationId) || payload.SubmittedAt is null)
             return JobExecutionResult.Blocked("PRODUCT_UPDATE_PHASE_INVALID", "Ürün güncelleme işi bilinmeyen bir fazda.");
+        if (groupedTrendyol && payload.GroupLeaderJobId is not null) return await PollTrendyolGroupAsync(tenantId, connectionId, job, payload, profile, listings, states, phase, correlationId, cancellationToken);
         if (timeProvider.GetUtcNow() - payload.SubmittedAt.Value > TimeSpan.FromHours(4))
             return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_UPDATE_BATCH_EXPIRED", JobExecutionResult.ManualReview("PRODUCT_UPDATE_BATCH_EXPIRED", "Ürün güncelleme batch sonucu dört saatlik pencerede alınamadı.", payload.ExternalOperationId), cancellationToken);
 
@@ -2952,7 +2974,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             _ => null
         };
         var productOperationId = phase is "POLL_UNAPPROVED" or "POLL_CONTENT" ? payload.ExternalOperationId : payload.ProductOperationId;
-        return next is null ? null : payload with { Phase = next, ExternalOperationId = null, SubmittedAt = null, ProductOperationId = productOperationId };
+        return next is null ? null : payload with { Phase = next, ExternalOperationId = null, SubmittedAt = null, ProductOperationId = productOperationId, GroupReadySince = null, GroupLeaderJobId = null };
     }
 
 
@@ -5522,7 +5544,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 var package = await db.ShipmentPackages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Id == localId, cancellationToken);
                 if (package is null) continue;
                 TrackReceived();
+                var invoiceBefore = (package.MarketplaceInvoiceStatus, package.MarketplaceInvoiceNumber);
                 await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken, "reconciliation");
+                RecordInvoiceRead(package, invoiceBefore.MarketplaceInvoiceStatus, invoiceBefore.MarketplaceInvoiceNumber);
                 await ResolveIssue(tenantId, $"trendyol-invoice-package-read:{connectionId}:{localId}", cancellationToken);
                 // Saved package by package, so the batch's answer is not held while later batches are read; a
                 // package another writer changed meanwhile is left to the per-order pass, which reads it again.
@@ -6541,11 +6565,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     if (newOnly && productAlreadyLinked && !hasNewVariant)
                     {
                         telemetryImportSkippedCount++;
+                        RecordProductRead(snapshot, JobReadOutcomes.Unchanged, null);
                         continue;
                     }
                     if (existingOnly && !productAlreadyLinked && !matchesExistingIdentity)
                     {
                         telemetryImportSkippedCount++;
+                        RecordProductRead(snapshot, JobReadOutcomes.Skipped, "Panelde eşleşen ürün yok; yalnız mevcut ürünler güncelleniyordu.");
                         continue;
                     }
                     var categoryContext = categoryReferences is null
@@ -6558,6 +6584,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                             existingVariantExternalIds.Add(Short(variant.ExternalVariantId, 256));
                     if (changed) telemetryImportProcessedCount++;
                     else telemetryImportSkippedCount++;
+                    RecordProductRead(snapshot, !changed ? JobReadOutcomes.Unchanged : productAlreadyLinked ? JobReadOutcomes.Updated : JobReadOutcomes.New, null);
                 }
                 // PTT AVM lists colour and size rows, not variants; its mapping writes the variant codes itself.
                 if (!isPttAvm) await RecordVariantLinkCodes(tenantId, connectionId, snapshotGroups, cancellationToken);
@@ -6578,6 +6605,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 importedAttributeLibrary.Clear();
                 telemetryImportFailedCount += snapshotGroups.Count;
                 telemetryFailedCount += snapshotGroups.Count;
+                foreach (var snapshot in snapshotGroups) RecordProductRead(snapshot, JobReadOutcomes.Failed, Short(exception.Message, 300));
                 foreach (var snapshot in snapshotGroups)
                 {
                     try

@@ -79,6 +79,19 @@ describe('read counts', () => {
     expect(keepsReadRecords('RETURN_SYNC')).toBe(true)
     expect(keepsReadRecords('TRENDYOL_ORDER_SYNC')).toBe(true)
     expect(keepsReadRecords('PAZARAMA_ORDER_STATUS_SYNC')).toBe(true)
-    expect(keepsReadRecords('PRODUCT_SYNC')).toBe(false)
+    expect(keepsReadRecords('PRODUCT_SYNC')).toBe(true)
+    expect(keepsReadRecords('N11_SETTLEMENT_SYNC')).toBe(true)
+    expect(keepsReadRecords('MARKETPLACE_QUESTION_SYNC')).toBe(true)
+    expect(keepsReadRecords('PRICE_INVENTORY_SYNC')).toBe(false)
+    expect(keepsReadRecords('STOCK_RECONCILIATION')).toBe(false)
+  })
+})
+
+describe('read status labels', () => {
+  it('names invoice states in Turkish and keeps counts as they came', async () => {
+    const { readStatusLabel } = await import('./job-read-summary')
+    expect(readStatusLabel('Invoiced, NotInvoiced')).toBe('Faturalı, Faturasız')
+    expect(readStatusLabel('3 varyant')).toBe('3 varyant')
+    expect(readStatusLabel(null)).toBe('—')
   })
 })

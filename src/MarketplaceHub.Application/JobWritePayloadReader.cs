@@ -22,8 +22,9 @@ public sealed record JobWriteSummaryView(
 
 // Key: CREATE, UNAPPROVED (the whole product, a card not yet approved), CONTENT, VARIANTS or DELIVERY. ClearedFields:
 // the fields an item sent as null. Trendyol deletes such a field on the product, so the drawer lists them ("silinir")
-// instead of hiding them.
-public sealed record JobWritePartView(string Key, int ItemCount, IReadOnlyList<string> Fields, IReadOnlyList<string> Barcodes, int ContentCount, IReadOnlyList<JobWriteAttributeView> Attributes, IReadOnlyList<string>? ClearedFields = null);
+// instead of hiding them. SharedCards and SharedItems: the part went in one request together with other cards of the same
+// send (a grouped Trendyol update): how many cards and items that request carried in all.
+public sealed record JobWritePartView(string Key, int ItemCount, IReadOnlyList<string> Fields, IReadOnlyList<string> Barcodes, int ContentCount, IReadOnlyList<JobWriteAttributeView> Attributes, IReadOnlyList<string>? ClearedFields = null, int? SharedCards = null, int? SharedItems = null);
 
 // Name: the marketplace's attribute name from the connection's reference data; null when it is not known.
 public sealed record JobWriteAttributeView(string Id, string? Name);
@@ -67,8 +68,10 @@ public static class JobWritePayloadReader
                 var sources = approved
                     ? new[] { ("CONTENT", content), ("VARIANTS", variants), ("DELIVERY", delivery) }
                     : new[] { ("UNAPPROVED", Text(root, "UnapprovedPayloadJson")), ("DELIVERY", delivery) };
+                var shared = SharedRequests(root);
                 foreach (var (key, json) in sources)
-                    if (Part(key, json) is { } part) parts.Add(part);
+                    if (Part(key, json) is { } part)
+                        parts.Add(shared.TryGetValue(key, out var request) ? part with { SharedCards = request.Cards, SharedItems = request.Items } : part);
                 if (Text(root, "ProductOperationId") is { } productRequest) requests.Add(new("PRODUCT", productRequest));
                 if (Text(root, "ExternalOperationId") is { } phaseRequest && requests.All(x => x.Id != phaseRequest))
                     requests.Add(new(phase ?? "PHASE", phaseRequest));
@@ -116,6 +119,19 @@ public static class JobWritePayloadReader
             return new JobWritePartView(key, count, fields, barcodes, contents, attributes.Select(x => new JobWriteAttributeView(x, null)).ToList(), cleared);
         }
         catch (JsonException) { return null; }
+    }
+
+    // The shared requests a grouped Trendyol update went in (ProductUpdateJobPayload.SharedRequests), by part.
+    private static Dictionary<string, (int Cards, int Items)> SharedRequests(JsonElement root)
+    {
+        var shared = new Dictionary<string, (int Cards, int Items)>(StringComparer.OrdinalIgnoreCase);
+        if (Property(root, "SharedRequests") is not { ValueKind: JsonValueKind.Array } list) return shared;
+        foreach (var request in list.EnumerateArray())
+            if (Text(request, "Part") is { } part
+                && Property(request, "Cards") is { ValueKind: JsonValueKind.Number } cards && cards.TryGetInt32(out var cardCount)
+                && Property(request, "Items") is { ValueKind: JsonValueKind.Number } items && items.TryGetInt32(out var itemCount))
+                shared[part] = (cardCount, itemCount);
+        return shared;
     }
 
     private static JsonElement? Items(JsonElement root)
