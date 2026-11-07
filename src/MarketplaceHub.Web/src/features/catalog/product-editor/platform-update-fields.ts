@@ -69,12 +69,12 @@ type PlatformUpdateProfile = { requests: PlatformUpdateRequest[]; note?: string;
 //   the colour/size options, the product type, price and stock of the whole model family in one request.
 // - Pazarama: product/vatRate/bulk takes the VAT rate per barcode; it has no content update API. Price and stock go by
 //   barcode in the price/stock send, which builds them together (each only when it differs from Pazarama's).
-// - n11: one product-update task per stock code that carries only the picked fields (N11ProductUpdateComposer):
-//   description, the category attributes (the whole list, brand and colour/size included, since n11 asks for every
+// - N11: one product-update task per stock code that carries only the picked fields (N11ProductUpdateComposer):
+//   description, the category attributes (the whole list, brand and colour/size included, since N11 asks for every
 //   mandatory one), the VAT rate and the preparing day with the connection's shipment template. Name, images, brand,
-//   category, colour/size, barcode and desi cannot change through the n11 API. The price-stock task takes the list and
+//   category, colour/size, barcode and desi cannot change through the N11 API. The price-stock task takes the list and
 //   sale price and the stock together.
-// - PTT AVM: one UpdateProductsV3 request with the picked fields and every variant PTT AVM holds (PttAvmProductUpdate).
+// - PttAVM: one UpdateProductsV3 request with the picked fields and every variant PttAVM holds (PttAvmProductUpdate).
 // The API keeps the same table (ProductUpdateFields.SupportedBy).
 const profiles: Record<string, PlatformUpdateProfile> = {
   TRENDYOL: {
@@ -127,8 +127,8 @@ const profiles: Record<string, PlatformUpdateProfile> = {
     ],
     note: 'N11 ürün adını, görselleri, markayı, kategoriyi, renk/bedeni, barkodu ve desiyi API ile güncellemez; bunlar N11 satıcı panelinden talep edilir. Kategori özellikleri marka ve renk/beden dahil tüm listeyle gider, N11 bunları değiştirmez. Fiyat ve stok birlikte gider.'
   },
-  // PTT AVM (PttAvmProductUpdate.cs): one UpdateProductsV3 request with only the picked fields (PTT AVM keeps a field left
-  // out), but always every variant PTT AVM holds, or the upsert deletes the missing ones. No category attributes (the API
+  // PttAVM (PttAvmProductUpdate.cs): one UpdateProductsV3 request with only the picked fields (PttAVM keeps a field left
+  // out), but always every variant PttAVM holds, or the upsert deletes the missing ones. No category attributes (the API
   // has none but colour and size). Price and stock go together in UpdateProductsStockPrice, for the whole model family.
   PTTAVM: {
     requests: [
@@ -141,7 +141,7 @@ const profiles: Record<string, PlatformUpdateProfile> = {
       { fields: ['VAT_RATE'], sends: ['KDV Oranı'], extra: ['Varyant Listesi'] },
       { fields: ['PRICE', 'STOCK'], sends: ['Satış Fiyatı', 'Stok'] }
     ],
-    note: 'PTT AVM yalnız seçilen alanları alır; ürün varyantlıysa PTT AVM’deki tüm varyantlar olduğu gibi (barkod, renk, beden, stok) isteğe eklenir, yoksa silinirdi. Kategori özellikleri gönderilmez; fiyat ve stok birlikte gider.'
+    note: 'PttAVM yalnız seçilen alanları alır; ürün varyantlıysa PttAVM’deki tüm varyantlar olduğu gibi (barkod, renk, beden, stok) isteğe eklenir, yoksa silinirdi. Kategori özellikleri gönderilmez; fiyat ve stok birlikte gider.'
   }
 }
 

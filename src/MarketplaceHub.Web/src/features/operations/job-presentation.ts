@@ -1,4 +1,5 @@
 import { knownJobTypes } from './job-categories'
+import { platformDisplayName, platformDisplayNames, platformDisplayOrder } from '../../shared/platform-names'
 // How İşlem Takibi names a job. The title is the platform and the area ("N11 Sipariş İşlemi"); the line under it says
 // which way the data goes and what is done ("Okuma · Yeni Sipariş Çekme"); the tooltip explains it.
 
@@ -101,9 +102,9 @@ export function jobPresentation(jobType: string): JobPresentation {
 // The platform the job talks to, as the server names it; "Ravencia" is the panel's own work.
 const platformFromType = (jobType: string) => {
   const type = jobType.toUpperCase()
-  if (type.includes('EFATURAM') || /^INVOICE_(SUBMIT|RECONCILE|DOCUMENT_FETCH|CANCELLATION)$/.test(type)) return 'E-Faturam'
+  if (type.includes('EFATURAM') || /^INVOICE_(SUBMIT|RECONCILE|DOCUMENT_FETCH|CANCELLATION)$/.test(type)) return platformDisplayNames.TRENDYOL_EFATURAM
   const prefix = type.split('_')[0]
-  return ({ TRENDYOL: 'Trendyol', HEPSIBURADA: 'Hepsiburada', SHOPIFY: 'Shopify', N11: 'N11', PAZARAMA: 'Pazarama', PTTAVM: 'PTT AVM' } as Record<string, string>)[prefix] ?? null
+  return (platformDisplayOrder as readonly string[]).includes(prefix) ? platformDisplayName(prefix) : null
 }
 
 /** "N11 Sipariş İşlemi"; the panel's own jobs carry no platform: "İçe Aktarım İşlemi". */

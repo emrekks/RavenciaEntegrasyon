@@ -19,7 +19,7 @@ type QuickPriceVariant = {
   platformStatuses?: ReadonlyArray<{ connectionId?: string | null; offerId?: string | null; offerVersion?: number | null; listPrice?: number | null; salePrice?: number | null; currency?: string | null; vatRate?: number | null; vatInclusion?: string | null; roundingMode?: string | null; safetyStock?: number | null; offerStatus?: string | null; followsPanelPrice?: boolean | null; platformCode?: string | null }>
 }
 
-// Marketplaces that take a sale price only (Hepsiburada's inventory upload and PTT AVM's price send carry no list
+// Marketplaces that take a sale price only (Hepsiburada's inventory upload and PttAVM's price send carry no list
 // price): their quick edit hides Liste Fiyatı, and the offer's list price is kept equal to its sale price.
 const SALE_PRICE_ONLY_PLATFORMS = new Set(['HEPSIBURADA', 'PTTAVM'])
 export function channelTakesListPrice(platformCode: string | null | undefined) {
@@ -58,7 +58,7 @@ export function quickPriceTarget(variant: QuickPriceVariant, connectionId: strin
 
 // The prices a bulk edit sends for one variant's offer. A value left empty keeps the offer's own; an offer without a
 // sale price (none yet on that channel) takes the list price typed, which every marketplace accepts
-// (listPrice >= salePrice: Trendyol, n11, Pazarama and Shopify take them equal, Hepsiburada and PTT AVM send the sale
+// (listPrice >= salePrice: Trendyol, N11, Pazarama and Shopify take them equal, Hepsiburada and PttAVM send the sale
 // price only). The caller warns about each defaulted variant. A sale price of zero is never sent.
 export type QuickEditOfferPrices =
   | { ok: true; listPrice: number; salePrice: number; saleDefaulted: boolean }
@@ -97,7 +97,7 @@ export function panelPriceIsFallback(variant: VariantOfferPriceSource, product: 
 }
 
 // One price column of the quick edit matrix: the panel price first, then every marketplace connection in the order
-// the panel lists them. A sale-price-only marketplace (Hepsiburada, PTT AVM) has a single Satış field.
+// the panel lists them. A sale-price-only marketplace (Hepsiburada, PttAVM) has a single Satış field.
 export type QuickPriceColumn = { id: string; label: string; platformCode: string | null; takesListPrice: boolean }
 export function quickPriceColumns(connections: ReadonlyArray<{ id: string; displayName?: string | null; platformCode?: string | null }>): QuickPriceColumn[] {
   return [

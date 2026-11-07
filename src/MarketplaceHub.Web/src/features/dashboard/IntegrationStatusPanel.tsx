@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { platformDisplayOrder } from '../../shared/platform-names'
 import { Link } from 'react-router'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { backgroundPollHeaders, hubApi, loadAllPages } from '../../shared/api'
@@ -25,7 +26,7 @@ export type MatrixCell = { state: 'ok' | 'warn' | 'bad' | 'off'; lastSuccessAt: 
 export type MatrixRow = { connectionId: string; platformCode: string; displayName: string; externalStoreId: string; status: string; cells: Record<string, MatrixCell>; issue: string | null }
 
 // Only marketplaces: invoicing providers are connections too, but they carry no orders, stock or prices.
-const MARKETPLACES = ['TRENDYOL', 'HEPSIBURADA', 'SHOPIFY', 'N11', 'PAZARAMA', 'PTTAVM']
+const MARKETPLACES: readonly string[] = platformDisplayOrder
 const DATA_KEYS: Array<[string, string]> = [['orders', 'Sipariş'], ['products', 'Ürün'], ['stock', 'Stok'], ['price', 'Fiyat'], ['returns', 'İade'], ['invoices', 'Fatura']]
 const CELL_STATE = { ok: 'Güncel', warn: 'Gecikiyor', bad: 'Hata var', off: 'Son 7 günde işlem yok' }
 // Refreshed while the page is on screen only; the polls say they are automatic so they do not keep an idle session alive.

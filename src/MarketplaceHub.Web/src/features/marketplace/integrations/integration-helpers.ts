@@ -133,12 +133,12 @@ export function credentialRequestBody(platformCode: string, data: FormData) {
   if (platformCode === 'TRENDYOL_EFATURAM') return { email: data.get('email') || null, password: data.get('password') || null }
   if (platformCode === 'SHOPIFY') return { shopifyAccessToken: data.get('shopifyAccessToken') }
   if (platformCode === 'HEPSIBURADA') return { hepsiburadaIntegratorUsername: data.get('hepsiburadaIntegratorUsername'), hepsiburadaServiceKey: data.get('hepsiburadaServiceKey') }
-  // PTT AVM: the API user name and password of the seller panel’s Entegrasyon Bilgileri screen (the Mağaza ID is the store field).
+  // PttAVM: the API user name and password of the seller panel’s Entegrasyon Bilgileri screen (the Mağaza ID is the store field).
   if (platformCode === 'PTTAVM') return { pttAvmUsername: data.get('apiKey'), pttAvmPassword: data.get('apiSecret') }
   return { apiKey: data.get('apiKey'), apiSecret: data.get('apiSecret') }
 }
 
-/** The environment in Turkish; Shopify, N11, Pazarama and PTT AVM connect only to the live store. */
+/** The environment in Turkish; Shopify, N11, Pazarama and PttAVM connect only to the live store. */
 export function connectionEnvironmentLabel(platformCode: string, environment: string | null | undefined) {
   if (platformCode === 'SHOPIFY' || platformCode === 'N11' || platformCode === 'PAZARAMA' || platformCode === 'PTTAVM') return 'Canlı'
   return environment === 'PRODUCTION' ? 'Canlı' : 'Test Ortamı'
@@ -160,7 +160,7 @@ export type IntegrationStatusFilter = 'ALL' | 'ACTIVE' | 'ATTENTION'
 export type IntegrationPlatformFilter = 'ALL' | 'TRENDYOL' | 'TRENDYOL_EFATURAM' | 'SHOPIFY' | 'HEPSIBURADA' | 'N11' | 'PAZARAMA' | 'PTTAVM'
 export type IntegrationListState = { view: IntegrationView; filter: IntegrationStatusFilter; platform: IntegrationPlatformFilter }
 
-export const integrationPlatformFilters: readonly IntegrationPlatformFilter[] = ['ALL', 'TRENDYOL', 'TRENDYOL_EFATURAM', 'SHOPIFY', 'HEPSIBURADA', 'N11', 'PAZARAMA', 'PTTAVM']
+export const integrationPlatformFilters: readonly IntegrationPlatformFilter[] = ['ALL', 'TRENDYOL', 'HEPSIBURADA', 'N11', 'PAZARAMA', 'PTTAVM', 'SHOPIFY', 'TRENDYOL_EFATURAM']
 const statusSlugs: Record<IntegrationStatusFilter, string> = { ALL: '', ACTIVE: 'aktif', ATTENTION: 'dikkat' }
 
 export function readIntegrationListState(params: URLSearchParams): IntegrationListState {

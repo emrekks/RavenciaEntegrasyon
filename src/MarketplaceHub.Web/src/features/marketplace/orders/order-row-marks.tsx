@@ -65,7 +65,7 @@ function Mark({ tip, kind, children }: { tip: string; kind: string; children: Re
 
 // Product lines the marketplace listed but the panel could not read (every marketplace): the order is kept for
 // shipping without them, no invoice is issued, and the order is read again until the lines come.
-// amountMayBeIncomplete: the marketplace sends no order total (PTT AVM), so the amount is the read lines' sum and may be short.
+// amountMayBeIncomplete: the marketplace sends no order total (PttAVM), so the amount is the read lines' sum and may be short.
 export function unreadableLinesLabel(count: number, amountMayBeIncomplete = false) {
   return `Okunamayan Ürün Satırı (${count}) · Sipariş yeniden okunuyor; satır gelene kadar fatura kesilmez${amountMayBeIncomplete ? ' · Tutar eksik olabilir' : ''}`
 }

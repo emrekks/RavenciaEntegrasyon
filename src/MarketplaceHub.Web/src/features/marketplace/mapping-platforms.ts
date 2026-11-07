@@ -1,10 +1,12 @@
+import { platformDisplayNames } from '../../shared/platform-names'
+
 export const mappingPlatformDefinitions = [
-  { code: 'TRENDYOL', label: 'Trendyol' },
-  { code: 'HEPSIBURADA', label: 'Hepsiburada' },
-  { code: 'N11', label: 'n11' },
-  { code: 'PAZARAMA', label: 'Pazarama' },
-  { code: 'PTTAVM', label: 'PttAVM' },
-  { code: 'SHOPIFY', label: 'Shopify' }
+  { code: 'TRENDYOL', label: platformDisplayNames.TRENDYOL },
+  { code: 'HEPSIBURADA', label: platformDisplayNames.HEPSIBURADA },
+  { code: 'N11', label: platformDisplayNames.N11 },
+  { code: 'PAZARAMA', label: platformDisplayNames.PAZARAMA },
+  { code: 'PTTAVM', label: platformDisplayNames.PTTAVM },
+  { code: 'SHOPIFY', label: platformDisplayNames.SHOPIFY }
 ] as const
 
 export type MappingPlatformCode = typeof mappingPlatformDefinitions[number]['code']

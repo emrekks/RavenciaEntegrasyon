@@ -87,7 +87,7 @@ export function jobCountsQueryString(timeRange: JobListTimeRange, platform: stri
 // Platforms in the selector's order; E-Faturam is the invoicing provider, the rest are marketplaces.
 export const jobPlatformOrder = ['TRENDYOL', 'HEPSIBURADA', 'N11', 'PAZARAMA', 'PTTAVM', 'SHOPIFY', 'TRENDYOL_EFATURAM'] as const
 
-// The URL value (?platform=trendyol or ?platform=trendyol,n11) as connection platform codes; none means every platform.
+// The URL value (?platform=trendyol or ?platform=trendyol,N11) as connection platform codes; none means every platform.
 // The server reads the same comma list (JobEndpoints.Platforms, at most 20 codes).
 export function jobPlatformsFromSearch(value: string | null): string[] {
   const codes = (value ?? '').split(',').map(code => code.trim().toUpperCase()).filter(code => /^[A-Z0-9_]{2,40}$/.test(code))

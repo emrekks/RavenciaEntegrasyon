@@ -3,6 +3,7 @@
 import { handSetInvoiceStatusNote } from '../invoicing/manual-invoice-status'
 import { marketplaceProductSearchUrl } from '../questions/marketplace-product-link'
 import { Fragment, type ReactNode } from 'react'
+import { knownPlatformName } from '../../shared/platform-names'
 import { UiIcon } from '../../shared/components'
 import { ValueBadge } from '../../shared/components/ValueBadge'
 import { invoiceStatusDisplayLabel } from '../../shared/status-labels'
@@ -90,15 +91,7 @@ export function ReturnFactLines({ facts }: { facts: Array<[string, string]> }) {
   return <>{facts.filter(([label]) => label !== 'Renk' && label !== 'Beden').map(([label, value]) => <small key={label}><span>{label}:</span> {value}</small>)}{variant.length > 0 && <small className="rr-pair">{variant.map(([label, value], index) => <Fragment key={label}>{index > 0 && <i className="rr-sep-v" aria-hidden="true" />}<span>{label}:</span>&nbsp;{value}</Fragment>)}</small>}</>
 }
 export function returnPlatformName(platformCode: string | null | undefined) {
-  switch (platformCode?.toUpperCase()) {
-    case 'HEPSIBURADA': return 'Hepsiburada'
-    case 'N11': return 'N11'
-    case 'PAZARAMA': return 'Pazarama'
-    case 'PTTAVM': return 'PTT AVM'
-    case 'SHOPIFY': return 'Shopify'
-    case 'TRENDYOL': return 'Trendyol'
-    default: return 'Pazar yeri'
-  }
+  return knownPlatformName(platformCode) ?? 'Pazar yeri'
 }
 export type ReturnNoticeKind = 'success' | 'error' | 'info'
 export function notificationKindFromMessage(message: string): ReturnNoticeKind {

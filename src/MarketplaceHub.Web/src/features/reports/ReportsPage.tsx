@@ -1062,7 +1062,7 @@ function operationMetrics(data: ReportSales): Metric[] {
     { key: 'ship', label: 'Kargoya Verme Süresi', value: formatHours(ship.hours), detail: 'cargo', note: `Siparişin kargoya verilmesine kadar geçen ortalama süre.\n${ship.measured > 0 ? `${formatCount(ship.measured)} pakette ölçüldü.` : 'Ölçülemedi.'}` },
     { key: 'late', label: 'Geciken Kargo', value: measuredLate > 0 ? formatPercent(late / measuredLate) : '—', sub: measuredLate > 0 ? `${formatCount(late)} paket` : undefined,
       tone: measuredLate > 0 && late / measuredLate > lateWarningRate ? 'warn' : undefined, detail: 'cargo',
-      note: measuredLate > 0 ? `Süresinde kargoya verilmeyen paketlerin oranı.\nGeciken ${formatCount(late)} paket ÷ kargoya verme süresi bilinen ${formatCount(measuredLate)} paket. PTT AVM kargo süresi göndermediği için orada ölçülmez. Uyarı rengi: ${formatPercent(lateWarningRate)} eşiğinin üstünde.`
+      note: measuredLate > 0 ? `Süresinde kargoya verilmeyen paketlerin oranı.\nGeciken ${formatCount(late)} paket ÷ kargoya verme süresi bilinen ${formatCount(measuredLate)} paket. PttAVM kargo süresi göndermediği için orada ölçülmez. Uyarı rengi: ${formatPercent(lateWarningRate)} eşiğinin üstünde.`
         : 'Süresinde kargoya verilmeyen paketlerin oranı.\nBu dönemde kargoya verme süresi bilinen paket yok.' },
     { key: 'deliver', label: 'Teslim Süresi', value: formatHours(deliver.hours), detail: 'cargo',
       note: deliver.hours === null ? 'Kargoya verilen paketin müşteriye ulaşmasına kadar geçen ortalama süre.\nBu dönemde teslim anı okunan paket yok.'
@@ -1071,11 +1071,11 @@ function operationMetrics(data: ReportSales): Metric[] {
       note: 'Faturası henüz kesilmemiş paketler.\nFatura yasal zorunluluk olduğu için eşik sıfırdır: faturasız paket varsa uyarı rengiyle yazılır.' },
     { key: 'stock', label: 'Stok Riski', value: `${formatCount(low)} ürün`, tone: low > 0 ? 'warn' : undefined, detail: 'stock',
       note: 'Stoğu bir haftadan az yetecek çok satan ürünler.\nGünlük satış hızına göre kalan gün 7\'den az. Uyarı rengi: böyle bir ürün varsa.' },
-    // Trendyol and Hepsiburada only: n11's and Pazarama's answer times are not reliable (marketplace-docs).
+    // Trendyol and Hepsiburada only: N11's and Pazarama's answer times are not reliable (marketplace-docs).
     { key: 'questions', label: 'Soru Yanıt Süresi', value: questions?.averageHours == null ? '—' : formatHours(questions.averageHours),
       note: !questions ? 'Müşteri sorusunun ilk yanıtına kadar geçen ortalama süre.\nYalnız Trendyol ve Hepsiburada ölçülür; bu seçimde ikisi de yok.'
         : questions.averageHours === null ? `Müşteri sorusunun ilk yanıtına kadar geçen ortalama süre.\nBu dönemde yanıtlanan soru yok${questions.waiting ? `; ${formatCount(questions.waiting)} soru yanıt bekliyor` : ''}.`
-        : `Müşteri sorusunun ilk yanıtına kadar geçen ortalama süre.\n${questions.platforms.map(platformName).join(' ve ')} sorularından ${formatCount(questions.answered)} yanıtta ölçüldü; ortanca ${formatHours(questions.medianHours)}.${questions.waiting ? ` ${formatCount(questions.waiting)} soru yanıt bekliyor.` : ''} n11 ve Pazarama yanıt zamanı güvenilir okunmadığı için sayılmaz.` }
+        : `Müşteri sorusunun ilk yanıtına kadar geçen ortalama süre.\n${questions.platforms.map(platformName).join(' ve ')} sorularından ${formatCount(questions.answered)} yanıtta ölçüldü; ortanca ${formatHours(questions.medianHours)}.${questions.waiting ? ` ${formatCount(questions.waiting)} soru yanıt bekliyor.` : ''} N11 ve Pazarama yanıt zamanı güvenilir okunmadığı için sayılmaz.` }
   ]
 }
 
@@ -1231,7 +1231,7 @@ function overviewCards(data: ReportSales, money: Money | null, ads: AdReports | 
       note: metric(ops, 'late').note, tone: metric(ops, 'late').tone,
       bar: lateRate === null ? undefined : { value: lateRate, scale: 0.1, threshold: lateWarningRate, tone: over(lateRate, lateWarningRate) ? 'warn' : 'plain' },
       rows: [line(ops, 'ship', 'Kargoya verme süresi'), line(ops, 'deliver', 'Teslim süresi'),
-        { key: 'measured', label: 'Ölçülen paket', value: formatCount(measuredLate), detail: 'cargo', note: 'Kargoya verme süresi ve termini bilinen paketler.\nGeciken Kargo oranının paydası; PTT AVM termin göndermediği için orada ölçülmez.' }] },
+        { key: 'measured', label: 'Ölçülen paket', value: formatCount(measuredLate), detail: 'cargo', note: 'Kargoya verme süresi ve termini bilinen paketler.\nGeciken Kargo oranının paydası; PttAVM termin göndermediği için orada ölçülmez.' }] },
     { key: 'returns', title: 'İade', value: formatPercent(now.returnRate), aside: `önceki dönem ${formatPercent(before.returnRate)}`, note: metric(back, 'rate').note,
       delta: metric(back, 'rate').delta, invert: true, previous: formatPercent(before.returnRate),
       rows: [line(back, 'returned', 'İade edilen adet', formatNumber(now.returnedQuantity)),
@@ -1453,7 +1453,7 @@ function commissionNote(costs: ReportCosts) {
   if (!commission) return ''
   const missing = (commission.missingOrders ?? 0) > 0 ? ` ${formatCount(commission.missingOrders ?? 0)} siparişin komisyonu bilinmiyor (siparişte ve mağazanın bu dönemdeki satışlarında oran yok); komisyon eksik.` : ''
   return (commission.realOrders > 0
-    ? `Gerçek Komisyon: ${formatCount(commission.realOrders)} siparişte pazaryerinin kendi kaydından (Trendyol hesap kesimi; Hepsiburada, n11, Pazarama finans kayıtları), iadeler düşülmüş: ${formatTl(commission.real)}. Tahmini Komisyon: kaydı olmayan siparişlerde siparişteki komisyon oranından, ${formatTl(commission.estimatedForUnsettled)}.`
+    ? `Gerçek Komisyon: ${formatCount(commission.realOrders)} siparişte pazaryerinin kendi kaydından (Trendyol hesap kesimi; Hepsiburada, N11, Pazarama finans kayıtları), iadeler düşülmüş: ${formatTl(commission.real)}. Tahmini Komisyon: kaydı olmayan siparişlerde siparişteki komisyon oranından, ${formatTl(commission.estimatedForUnsettled)}.`
     : 'Pazaryerlerinin komisyon kaydı henüz yok; tümü Tahmini Komisyon, siparişteki komisyon oranından.') + missing
 }
 
@@ -1478,7 +1478,7 @@ function cargoPartial(cargo: NonNullable<ReportCosts['cargo']>) {
 }
 
 // Platforms with orders in the period whose cargo and fees are not counted: Trendyol when its statement was not read
-// (Hepsiburada, n11, Pazarama, PTT AVM and Shopify are costed from their tariffs).
+// (Hepsiburada, N11, Pazarama, PttAVM and Shopify are costed from their tariffs).
 const tariffPlatforms = ['HEPSIBURADA', 'N11', 'PAZARAMA', 'PTTAVM', 'SHOPIFY']
 function unreadFeeCodes(data: ReportSales) {
   return data.platforms.filter(group => group.known && group.orders > 0 && !tariffPlatforms.includes(group.key) && !(group.key === 'TRENDYOL' && trendyolRead(data))).map(group => group.key)

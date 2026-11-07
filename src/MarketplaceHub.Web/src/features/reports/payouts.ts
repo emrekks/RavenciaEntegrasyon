@@ -138,7 +138,7 @@ export function isRolledToPayoutDay(group: Pick<PayoutGroup, 'kind' | 'platformC
 export const payoutRuleText: Record<string, string> = {
   TRENDYOL: 'Trendyol Türkiye-Körfez ve Azerbaycan pazartesi o haftanın pazartesi–çarşamba vadelerini, perşembe perşembe–pazar vadelerini öder (resmi tatil kaydırır); Avrupa vade gününde gösterilir. Ödemeden önceki akşam kesilen kargo, platform hizmet bedeli, uluslararası hizmet bedeli ve stopaj, Trendyol\'un Ödeme Özeti\'nde olduğu gibi tahminen düşülür.',
   HEPSIBURADA: 'Hepsiburada her salı öder: kayıt, vadesinden sonraki ilk salı (vade salıysa o gün) ödenir.',
-  N11: 'n11 havale tarihinde öder.',
+  N11: 'N11 havale tarihinde öder.',
   PAZARAMA: 'Pazarama aktarım tarihinde öder.'
 }
 

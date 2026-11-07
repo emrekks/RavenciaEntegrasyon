@@ -15,7 +15,7 @@ describe('product platform status filters', () => {
   })
 
   it('offers Bulunamadı and Satışa Kapalı on every marketplace', () => {
-    expect(productPlatformFilterGroups.map(group => group.label)).toEqual(['Trendyol', 'Shopify', 'Hepsiburada', 'N11', 'Pazarama', 'PTT AVM'])
+    expect(productPlatformFilterGroups.map(group => group.label)).toEqual(['Trendyol', 'Hepsiburada', 'N11', 'Pazarama', 'PttAVM', 'Shopify'])
     for (const group of productPlatformFilterGroups)
       expect(group.options.slice(-2).map(option => option.label)).toEqual(['Bulunamadı', 'Satışa Kapalı'])
   })

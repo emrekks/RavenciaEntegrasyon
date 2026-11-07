@@ -32,12 +32,15 @@ export function dateRangePresets(today: string): Array<{ label: string; range: D
   const lastSunday = shiftDay(today, -weekday - 1)
   const thisMonthStart = `${year}-${month}-01`
   const lastMonthEnd = shiftDay(thisMonthStart, -1)
+  // The same list, order and rules as the Raporlar presets: weeks start on Monday, "Son 30 Gün" ends today.
   return [
     { label: 'Bugün', range: { from: today, to: today } },
     { label: 'Dün', range: { from: shiftDay(today, -1), to: shiftDay(today, -1) } },
+    { label: 'Bu Hafta', range: { from: shiftDay(today, -weekday), to: today } },
     { label: 'Geçen Hafta', range: { from: shiftDay(lastSunday, -6), to: lastSunday } },
-    { label: 'Geçen Ay', range: { from: `${lastMonthEnd.slice(0, 7)}-01`, to: lastMonthEnd } },
     { label: 'Bu Ay', range: { from: thisMonthStart, to: today } },
-    { label: 'Bu Sene', range: { from: `${year}-01-01`, to: today } },
+    { label: 'Geçen Ay', range: { from: `${lastMonthEnd.slice(0, 7)}-01`, to: lastMonthEnd } },
+    { label: 'Son 30 Gün', range: { from: shiftDay(today, -29), to: today } },
+    { label: 'Bu Yıl', range: { from: `${year}-01-01`, to: today } },
   ]
 }

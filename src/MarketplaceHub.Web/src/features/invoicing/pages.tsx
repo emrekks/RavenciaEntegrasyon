@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { platformDisplayNames } from '../../shared/platform-names'
 import { copyText } from '../../shared/copy-text'
 import { createPortal } from 'react-dom'
 import { Link, useParams, useSearchParams } from 'react-router'
@@ -47,7 +48,7 @@ import { isLinkRevocationStatus, linkRevocationStatusLabel, type InvoiceLinkRevo
 import { useDismissable } from '../../shared/hooks/useDismissable'
 import { unknownCount } from '../../shared/tab-counts'
 // Platforms whose invoice state is kept by hand (the API server's ManualInvoiceStatusPlatforms): Shopify has no invoice
-// of its own; n11, PTT AVM and Pazarama report only invoices sent through their API, not ones uploaded in their panel.
+// of its own; N11, PttAVM and Pazarama report only invoices sent through their API, not ones uploaded in their panel.
 const manualInvoiceStatusPlatforms = new Set(['SHOPIFY', 'N11', 'PTTAVM', 'PAZARAMA'])
 
 type Invoice = { id: string; orderNumber: string; invoiceType: string; status: string; currency: string; payableTotal: number; invoiceNumber: string | null; dueAt: string | null; createdAt: string; version: number }
@@ -830,7 +831,7 @@ export function InvoiceDetailPage() {
       // A send is followed to its result (gönderildi / gönderilemedi with the reason); the page's own status follows too.
       const jobId = (value as { jobId?: string } | null)?.jobId
       const what = variables.action === 'SUBMIT' ? 'fatura kesimi' : variables.action === 'CANCEL' ? 'fatura iptali' : 'fatura iletimi'
-      if (jobId && variables.action !== 'VALIDATE') followJobs([{ jobId, platformName: variables.action === 'SUBMIT' || variables.action === 'CANCEL' ? 'E-Faturam' : 'Pazaryeri', what }], { operation: what, subject: { kind: 'invoice', id: variables.invoice.id, label: variables.invoice.invoiceNumber ?? `#${variables.invoice.orderNumber} faturası` } })
+      if (jobId && variables.action !== 'VALIDATE') followJobs([{ jobId, platformName: variables.action === 'SUBMIT' || variables.action === 'CANCEL' ? platformDisplayNames.TRENDYOL_EFATURAM : 'Pazaryeri', what }], { operation: what, subject: { kind: 'invoice', id: variables.invoice.id, label: variables.invoice.invoiceNumber ?? `#${variables.invoice.orderNumber} faturası` } })
     },
     onError: error => setNotice(error instanceof Error ? error.message : 'İşlem başarısız.', 'error')
   })

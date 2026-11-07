@@ -1,3 +1,4 @@
+import { platformDisplayName, platformDisplayOrder } from '../../shared/platform-names'
 // The sales report's contract (GET /reports/sales, ReportsContracts.cs) and the formatting the page shares.
 export type ReportSummary = {
   orders: number; cancelledOrders: number; cancelRate: number | null; soldQuantity: number; returnedQuantity: number; keptQuantity: number
@@ -110,11 +111,10 @@ export type ReportCosts = {
 
 export const unknownLabel = 'Bilinmiyor'
 
-const platformNames: Record<string, string> = { TRENDYOL: 'Trendyol', HEPSIBURADA: 'Hepsiburada', N11: 'n11', SHOPIFY: 'Shopify', PAZARAMA: 'Pazarama', PTTAVM: 'PTT AVM' }
-export function platformName(code: string) { return platformNames[code.toUpperCase()] ?? code }
+export function platformName(code: string) { return platformDisplayName(code) }
 
 // The channels that sell, in the order the panel lists them; an invoicing connection (Trendyol e-Faturam) is none.
-const salesChannelOrder = ['TRENDYOL', 'HEPSIBURADA', 'N11', 'PTTAVM', 'PAZARAMA', 'SHOPIFY']
+const salesChannelOrder: readonly string[] = platformDisplayOrder
 export const isSalesChannel = (code: string) => salesChannelOrder.includes(code.toUpperCase())
 export const bySalesChannel = (a: string, b: string) => salesChannelOrder.indexOf(a.toUpperCase()) - salesChannelOrder.indexOf(b.toUpperCase())
 

@@ -934,7 +934,7 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
     ...productRemoteItems.map((item): MappingEntry => ({ ...attributeEntry(item), externalId: item.externalId }))
   ]
   function attributeEntry(item: ReferenceItem): MappingEntry {
-      // n11's Marka (attribute 1) is always sent as the product's own brand; a panel attribute mapped to it is not sent.
+      // N11's Marka (attribute 1) is always sent as the product's own brand; a panel attribute mapped to it is not sent.
       if (platformCode === 'N11' && item.externalId === n11BrandAttributeId) return { key: `attribute-${item.externalId}`, name: item.name, required: item.isRequired === true, state: 'done' as FieldState, meta: 'Ürün bilgisi: Marka', remote: item, mapping: null, productBrand: true }
       const current = productMappingByExternal.get(item.externalId) ?? null
       const fieldDefault = !current && offersProductFields(platformCode, item.allowsCustomValue) ? fieldDefaultByExternal.get(item.externalId) : undefined
@@ -1482,7 +1482,7 @@ function WebColorValueMappingEditor({ connectionId, categoryScope, attribute, ex
   if (mappings.isError) return <ErrorBox error={mappings.error} onRetry={() => void mappings.refetch()} />
   return <div className="web-color-value-editor"><div className="value-mapping-heading">{showGroups ? <strong className="cm-webcolor-title">Kayıtlı Eşlemeler</strong> : <label className="cm-webcolor-pick">Web Color Değeri<select aria-label="Web Color değeri" value={selectedRemoteId} onChange={event => setSelectedRemoteId(event.target.value)}><option value="">Web Color Seçin</option>{remoteValues.map(remote => <option key={remote.externalId} value={remote.externalId}>{remote.name}</option>)}</select></label>}<span className="cm-webcolor-actions"><button type="button" className="secondary" disabled={!assignedGroups.length} onClick={() => setShowGroups(value => !value)}>{showGroups ? 'Eşlemeye Dön' : `Kayıtlı Eşlemeleri Gör (${assignedGroups.length})`}</button></span></div>{notice && <MessageToast message={notice} onClose={() => setNotice('')} />}{!showGroups && <><div className="web-color-panel-value-picker"><div className="web-color-panel-value-picker-head"><strong>Karşılık Gelen Panel Renkleri</strong><span>{selectedLocalIds.size} seçildi</span></div><div ref={gridRef} className="web-color-panel-value-grid">{orderedLocalValues.map(localValue => <WebColorValueBox key={localValue.id} localId={localValue.id} value={localValue.value} selected={selectedLocalIds.has(localValue.id)} needed={stillNeeded.has(localValue.id)} disabled={!selectedRemoteId} onToggle={toggleLocalValue} />)}</div></div></>}{showGroups && assignedGroups.length > 0 && <div className="web-color-assignment-groups"><div className="cm-webcolor-groups-head"><span>Web Color</span><span>Panel Renkleri</span></div><div>{assignedGroups.map(group => <p key={group.remote.externalId}><span>{group.remote.name}</span><small>{group.locals.map(value => value.value).join(' · ')}</small></p>)}</div></div>}</div>
 }
-// Shopify maps product types only and PTT AVM has no attribute service: neither has category fields to map.
+// Shopify maps product types only and PttAVM has no attribute service: neither has category fields to map.
 function hasCategoryAttributes(platformCode: string) {
   return platformCode !== 'SHOPIFY' && platformCode !== 'PTTAVM'
 }
@@ -1834,7 +1834,7 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
 // Only Trendyol and Pazarama keep a brand list to map against. The other marketplaces take the brand by name: the
 // panel brand is sent as it is, so card 2 explains that instead of offering a mapping.
 const brandListPlatformCodes: readonly MappingPlatformCode[] = ['TRENDYOL', 'PAZARAMA']
-const brandAutoMatchLocative: Partial<Record<MappingPlatformCode, string>> = { HEPSIBURADA: "Hepsiburada'da", N11: "n11'de", SHOPIFY: "Shopify'da" }
+const brandAutoMatchLocative: Partial<Record<MappingPlatformCode, string>> = { HEPSIBURADA: "Hepsiburada'da", N11: "N11'de", SHOPIFY: "Shopify'da" }
 type BrandMappingSaveInput = { connectionId: string; snapshotId: string; localId: string; externalId: string; version?: number }
 
 export function BrandMappingPage() {

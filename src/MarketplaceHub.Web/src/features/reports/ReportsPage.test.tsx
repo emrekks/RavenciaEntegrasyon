@@ -310,7 +310,7 @@ describe('ReportsPage', () => {
     const page = await open('', { ...report, questionTimes: { answered: 12, waiting: 2, averageHours: 3.5, medianHours: 2, platforms: ['TRENDYOL', 'HEPSIBURADA'] } })
     expect(heroTiles(page, 'todo')[1]).toBe(`Soru yanıt süresi ${formatHours(3.5)}`)
     expect(tipOf(page, 'todo', 'Soru yanıt süresi')).toContain('12 yanıtta ölçüldü')
-    expect(tipOf(page, 'todo', 'Soru yanıt süresi')).toContain('n11 ve Pazarama')
+    expect(tipOf(page, 'todo', 'Soru yanıt süresi')).toContain('N11 ve Pazarama')
   })
 
   it('takes commission, cargo and fees from Trendyol\'s statement, real plus estimated, and names what is not read', async () => {
@@ -851,7 +851,7 @@ describe('ReportsPage', () => {
     await act(async () => { ([...page.querySelectorAll('.reports-payout-list [role="tab"]')].find(tab => tab.textContent?.includes('Geçmiş')) as HTMLElement).click() })
     expect(texts(page, '.reports-payout-day > header')[0]).toContain('29 Eki Per2026Ödendi')
     expect(texts(page, '.reports-payout-row')[0]).toContain('Ödendi')
-    expect(page.querySelector('.reports-payout-coverage')?.textContent).toContain('Henüz okunmayanlar: PTT AVM')
+    expect(page.querySelector('.reports-payout-coverage')?.textContent).toContain('Henüz okunmayanlar: PttAVM')
   })
 
   it('adds the marketplaces\' cards up: each click toggles one, the Pazaryeri filter follows and Temizle clears them', async () => {

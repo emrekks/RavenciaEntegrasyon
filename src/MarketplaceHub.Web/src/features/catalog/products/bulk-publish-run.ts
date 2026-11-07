@@ -15,7 +15,7 @@ function familyKey(record: FamilyRecord | undefined, id: string) {
   return modelCode ? `model:${modelCode.toLocaleUpperCase('tr-TR')}` : `product:${id}`
 }
 
-// The selection in slices of about `size` records. The colour cards of one model family stay in one slice: PTT AVM and
+// The selection in slices of about `size` records. The colour cards of one model family stay in one slice: PttAVM and
 // Shopify send a family as one product, and the server counts a sibling it adds as selected only when it is in the
 // same request (cut between two slices, the second slice read the family's queued cards as already in progress).
 export function bulkPublishChunks(productIds: readonly string[], records: readonly FamilyRecord[], size: number): string[][] {

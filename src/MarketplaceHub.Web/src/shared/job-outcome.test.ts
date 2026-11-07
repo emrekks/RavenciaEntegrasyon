@@ -82,7 +82,7 @@ describe('the result of a followed marketplace job', () => {
     expect(outcomeTarget([trendyol])).toBe('Trendyol’a')
     expect(outcomeTarget([{ ...trendyol, platformName: 'Hepsiburada' }])).toBe('Hepsiburada’ya')
     expect(outcomeTarget([{ ...trendyol, platformName: 'n11' }])).toBe('n11’e')
-    expect(outcomeTarget([{ ...trendyol, platformName: 'PTT AVM' }])).toBe('PTT AVM’ye')
+    expect(outcomeTarget([{ ...trendyol, platformName: 'PttAVM' }])).toBe('PttAVM’ye')
     expect(outcomeTarget([{ ...trendyol, platformName: 'Shopify' }])).toBe('Shopify’a')
     expect(outcomeTarget([trendyol, { ...trendyol, platformName: 'n11' }])).toBe('2 Platforma')
     expect(jobOutcomeFeedback([jobOutcome(trendyol, detail('SUCCEEDED'))], 'Trendyol’a')).toEqual({ title: 'Trendyol’a Aktarıldı', kind: 'success', lines: ['Trendyol: ürün bilgisi aktarıldı.'], settled: true })

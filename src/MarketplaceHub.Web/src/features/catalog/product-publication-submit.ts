@@ -2,7 +2,7 @@ export function productPublicationTargets(isPanelOnlySave: boolean, connectionId
   return isPanelOnlySave ? [] : [...connectionIds]
 }
 
-// Shopify, n11, Pazarama (one groupCode) and PTT AVM (one product under the parent barcode) hold a model family's colour
+// Shopify, N11, Pazarama (one groupCode) and PttAVM (one product under the parent barcode) hold a model family's colour
 // cards in one marketplace product; Trendyol and Hepsiburada list every card as its own product.
 const oneProductPerFamilyPlatforms = new Set(['SHOPIFY', 'N11', 'PAZARAMA', 'PTTAVM'])
 
@@ -241,7 +241,7 @@ export function publicationCancelMessage(platformName: string, jobStatus: string
 }
 
 /** The marketplaces Yayınla names as left out for a required gap: only those the user chose (owner, 6 Nov 2026: a
- *  Trendyol-only publish listed Hepsiburada, n11, Pazarama and PTT AVM as "gönderilmedi"). A card not chosen says nothing. */
+ *  Trendyol-only publish listed Hepsiburada, N11, Pazarama and PttAVM as "gönderilmedi"). A card not chosen says nothing. */
 export function chosenGapSkipped<T extends { id: string }>(connections: readonly T[], chosenIds: readonly string[], gapCards: Readonly<Record<string, number>>, platformName: (connection: T) => string) {
   return connections
     .filter(connection => chosenIds.includes(connection.id) && (gapCards[connection.id] ?? 0) > 0)

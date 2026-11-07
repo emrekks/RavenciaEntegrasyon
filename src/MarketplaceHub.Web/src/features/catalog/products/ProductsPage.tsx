@@ -1,5 +1,6 @@
 // Ürünler (/products).
 import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState, type FormEvent, type InputHTMLAttributes } from 'react'
+import { platformDisplayNames, platformDisplayOrder } from '../../../shared/platform-names'
 import { variantOptionParts } from '../variant-option-label'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -662,9 +663,9 @@ function ProductColorRows({ group, selected, onSelect, selectionMode: _selection
   // connected there, yellow when only some are (or some failed, or some are closed to sale), red when all failed, the
   // marketplace no longer knows any of them (Bulunamadı) or a variant is blacklisted or locked there, orange when it is
   // listed there but archived or closed to sale (Satışa Kapalı), and cycles while it updates. A stock of 0 never closes.
-  const platformMarks = (['TRENDYOL', 'HEPSIBURADA', 'N11', 'PAZARAMA', 'PTTAVM', 'SHOPIFY'] as const).map(code => {
+  const platformMarks = platformDisplayOrder.map(code => {
     const card = platformCards.find(item => item.platformCode === code)
-    const name = code === 'N11' ? 'N11' : code === 'PTTAVM' ? 'PTT AVM' : code.charAt(0) + code.slice(1).toLocaleLowerCase('tr-TR')
+    const name = platformDisplayNames[code]
     const linkedTone = card && card.variantCount > 0 && card.matchedVariantCount < card.variantCount ? 'part' : 'on'
     const state = card ? ({ active: 'on', partial: 'part', linked: linkedTone, processing: 'busy', error: 'err', missing: 'err', inactive: 'none', closed: 'off', blocked: 'err' } as Record<string, string>)[card.state] ?? 'none' : 'none'
     return { code, state, label: card?.label ?? `${name}: Ürün Eşleşmesi Bulunamadı` }

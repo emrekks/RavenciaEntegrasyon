@@ -217,7 +217,7 @@ describe('IntegrationsPage filters (W16)', () => {
   it('opens a new connection on the live environment, listed first, for every platform that has a test one', async () => {
     await renderList('/integrations')
     act(() => { container.querySelector<HTMLButtonElement>('.integration-add-button')!.click() })
-    for (const name of ['Trendyol', 'Hepsiburada', 'E-Faturam']) {
+    for (const name of ['Trendyol', 'Hepsiburada', 'Trendyol E-Faturam']) {
       act(() => { Array.from(container.querySelectorAll<HTMLButtonElement>('.im-platforms button')).find(button => button.textContent === name)!.click() })
       const environment = container.querySelector<HTMLSelectElement>('select[name="environment"]')!
       expect(environment.value).toBe('PRODUCTION')
@@ -225,10 +225,10 @@ describe('IntegrationsPage filters (W16)', () => {
     }
   })
 
-  it('asks a new PTT AVM connection for its store id, API user name and API password on the live store only', async () => {
+  it('asks a new PttAVM connection for its store id, API user name and API password on the live store only', async () => {
     await renderList('/integrations')
     act(() => { container.querySelector<HTMLButtonElement>('.integration-add-button')!.click() })
-    const pttAvm = Array.from(container.querySelectorAll<HTMLButtonElement>('.im-platforms button')).find(button => button.textContent === 'PTT AVM')!
+    const pttAvm = Array.from(container.querySelectorAll<HTMLButtonElement>('.im-platforms button')).find(button => button.textContent === 'PttAVM')!
     act(() => { pttAvm.click() })
 
     expect(pttAvm.getAttribute('aria-checked')).toBe('true')
@@ -239,7 +239,7 @@ describe('IntegrationsPage filters (W16)', () => {
     expect(container.querySelector('select[name="environment"]')).toBeNull()
     // The store id's explanation sits behind the help mark, named by the field.
     const storeHelpId = container.querySelector<HTMLInputElement>('input[name="externalStoreId"]')!.getAttribute('aria-describedby')!
-    expect(document.getElementById(storeHelpId)!.textContent).toContain('PTT AVM satıcı paneli › Hesap Yönetimi › Entegrasyon Bilgileri')
+    expect(document.getElementById(storeHelpId)!.textContent).toContain('PttAVM satıcı paneli › Hesap Yönetimi › Entegrasyon Bilgileri')
 
     act(() => setValue(container.querySelector<HTMLInputElement>('input[name="displayName"]')!, 'PTT AVM Canlı'))
     act(() => setValue(container.querySelector<HTMLInputElement>('input[name="externalStoreId"]')!, '123456'))

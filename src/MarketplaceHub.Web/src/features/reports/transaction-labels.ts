@@ -1,7 +1,7 @@
 // The Turkish names of the marketplaces' accounting record types, for the payout records (PayoutLine.transactionType).
 // Trendyol and Pazarama already send Turkish names ("Satış", "Hakediş Ödemesi Bekliyor"); Hepsiburada sends codes
 // (its muhasebe guide's "Kayıt Tipi Bilgileri" table, read 4 Nov 2026; two of its pairs are swapped in the guide, BNPL
-// processing fee and e-invoice sales, and are named here the right way round); n11's lines carry the day's state, so
+// processing fee and e-invoice sales, and are named here the right way round); N11's lines carry the day's state, so
 // they are named by what they are. A code no entry names is shown as sent and reported once on the console.
 export const hepsiburadaTransactionLabels: Record<string, string> = {
   Payment: 'Satış Ödemesi', DeliveryProcessingFee: 'İşlem Bedeli', DeliveryProcessingFeeRefund: 'İşlem Bedeli İadesi', Return: 'İade',
@@ -37,7 +37,7 @@ const otherTransactionLabels: Record<string, string> = {
   DeductionInvoice: 'Kesinti Faturası', WireTransfer: 'Virman', IncomingTransfer: 'Gelen Havale', PayByLink: 'Linkle Satış', DeliveryFee: 'Teslimat Ücreti'
 }
 
-// n11 sends the day's state on its lines, not a type: a line is the order item's settlement, or its return.
+// N11 sends the day's state on its lines, not a type: a line is the order item's settlement, or its return.
 const categoryLabels: Record<string, string> = { SALE: 'Satış Hakedişi', RETURN: 'İade Hakedişi' }
 
 const reported = new Set<string>()

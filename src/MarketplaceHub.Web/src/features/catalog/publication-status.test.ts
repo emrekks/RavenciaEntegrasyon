@@ -65,20 +65,20 @@ describe('product publication status', () => {
     expect(publicationStatusNote('PRODUCT_CREATE_REJECTED')).toBe('Red kodu: PRODUCT_CREATE_REJECTED')
   })
 
-  it('shows a PTT AVM dry run as prepared and not sent, without a rejection code', () => {
+  it('shows a PttAVM dry run as prepared and not sent, without a rejection code', () => {
     expect(publicationStatusLabel('DRY_RUN', 'BLOCKED')).toBe('Kuru çalıştırma, gönderilmedi')
     expect(publicationStatusTone('DRY_RUN', 'BLOCKED')).toBe('info')
     expect(publicationStatusNote('PTTAVM_VARIANT_SEND_DRY_RUN')).toBeNull()
   })
 
-  it('shows a PTT AVM family it already holds whole as not sent, without a rejection code', () => {
-    expect(publicationStatusLabel('ALREADY_PRESENT', 'SUCCEEDED')).toBe("PTT AVM'de zaten var, gönderilmedi")
+  it('shows a PttAVM family it already holds whole as not sent, without a rejection code', () => {
+    expect(publicationStatusLabel('ALREADY_PRESENT', 'SUCCEEDED')).toBe("PttAVM'de zaten var, gönderilmedi")
     expect(publicationStatusTone('ALREADY_PRESENT', 'SUCCEEDED')).toBe('info')
     expect(publicationStatusNote('PTTAVM_VARIANTS_ALREADY_PRESENT')).toBeNull()
   })
 })
 
-describe('PTT AVM family retry', () => {
+describe('PttAVM family retry', () => {
   it('lets a family card waiting for an approval that may never come, or a stopped one, go again', () => {
     expect(isPttAvmFamilyRetryable('PTTAVM', 'APPROVAL_PENDING', 'RETRY_SCHEDULED')).toBe(true)
     expect(isPttAvmFamilyRetryable('PTTAVM', 'APPROVAL_PARTIAL_PENDING', 'PENDING')).toBe(true)
@@ -97,7 +97,7 @@ describe('PTT AVM family retry', () => {
     expect(isPttAvmFamilyRetryable(null, 'APPROVAL_PENDING', null)).toBe(false)
   })
 
-  it('makes Yayınla send a PTT AVM family card to try again and still skip live or in-flight cards', () => {
+  it('makes Yayınla send a PttAVM family card to try again and still skip live or in-flight cards', () => {
     expect(isSkippedByPublish('PTTAVM', 'APPROVAL_PENDING', 'RETRY_SCHEDULED', true)).toBe(false)
     expect(isSkippedByPublish('PTTAVM', 'MANUAL_REVIEW', 'MANUAL_REVIEW', true)).toBe(false)
     expect(isSkippedByPublish('PTTAVM', 'APPROVAL_PENDING', 'RETRY_SCHEDULED', false)).toBe(true)

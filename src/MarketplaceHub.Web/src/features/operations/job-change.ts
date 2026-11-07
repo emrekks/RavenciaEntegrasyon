@@ -58,7 +58,7 @@ const referenceSources: Record<string, string> = {
   TRENDYOL_REFERENCE_SYNC: 'Trendyol kategori ve eşleştirme verisi',
   HEPSIBURADA_REFERENCE_SYNC: 'Hepsiburada kategori ve eşleştirme verisi',
   N11_REFERENCE_SYNC: 'N11 kategori ve eşleştirme verisi',
-  PTTAVM_REFERENCE_SYNC: 'PTT AVM kategori verisi',
+  PTTAVM_REFERENCE_SYNC: 'PttAVM kategori verisi',
   PAZARAMA_REFERENCE_SYNC: 'Pazarama kategori, özellik ve marka verisi'
 }
 

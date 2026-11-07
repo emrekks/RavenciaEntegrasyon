@@ -1,3 +1,5 @@
+import { platformDisplayNames, platformDisplayOrder } from '../../shared/platform-names'
+
 export type ProductPlatformFilterGroup = {
   label: string
   options: Array<{ value: string; label: string }>
@@ -14,14 +16,7 @@ const platformFilterStates = [
   { state: 'OFF_SALE', label: 'Satışa Kapalı' }
 ]
 
-const platformFilterPlatforms = [
-  { code: 'TRENDYOL', label: 'Trendyol' },
-  { code: 'SHOPIFY', label: 'Shopify' },
-  { code: 'HEPSIBURADA', label: 'Hepsiburada' },
-  { code: 'N11', label: 'N11' },
-  { code: 'PAZARAMA', label: 'Pazarama' },
-  { code: 'PTTAVM', label: 'PTT AVM' }
-]
+const platformFilterPlatforms = platformDisplayOrder.map(code => ({ code, label: platformDisplayNames[code] }))
 
 export const productPlatformFilterGroups: ProductPlatformFilterGroup[] = platformFilterPlatforms.map(platform => ({
   label: platform.label,

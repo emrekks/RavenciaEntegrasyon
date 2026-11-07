@@ -25,7 +25,7 @@ describe('fallbackJobChange (P2/P3)', () => {
   })
 
   it('reads a reference sync by its marketplace', () => {
-    expect(fallbackJobChange('PTTAVM_REFERENCE_SYNC').value).toBe('PTT AVM kategori verisi')
+    expect(fallbackJobChange('PTTAVM_REFERENCE_SYNC').value).toBe('PttAVM kategori verisi')
     expect(fallbackJobChange('TRENDYOL_REFERENCE_SYNC').value).toBe('Trendyol kategori ve eşleştirme verisi')
   })
 })

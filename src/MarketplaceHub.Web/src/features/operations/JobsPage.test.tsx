@@ -350,19 +350,19 @@ describe('JobsPage platform filter', () => {
     await renderPage()
     const pop = await openField('Platform')
 
-    expect(Array.from(pop.querySelectorAll('.rr-opt .rr-grow')).map(option => option.textContent)).toEqual(['Trendyol', 'N11', 'E-Faturam'])
+    expect(Array.from(pop.querySelectorAll('.rr-opt .rr-grow')).map(option => option.textContent)).toEqual(['Trendyol', 'N11', 'Trendyol E-Faturam'])
     expect(pop.querySelectorAll('.rr-opt .rr-logo')).toHaveLength(3)
     expect(trigger('Platform').textContent).toBe('Tüm Platformlar')
     expect(pageRequests().every(params => params.get('platform') === null)).toBe(true)
 
-    await act(async () => { checkboxNamed(pop, 'E-Faturam').click() })
+    await act(async () => { checkboxNamed(pop, 'Trendyol E-Faturam').click() })
     await settle()
     await settle()
 
     expect(currentSearch).toBe('?platform=trendyol_efaturam')
     expect(pageRequests().at(-1)!.get('platform')).toBe('TRENDYOL_EFATURAM')
     expect(countRequests().at(-1)!.get('platform')).toBe('TRENDYOL_EFATURAM')
-    expect(trigger('Platform').textContent).toBe('E-Faturam')
+    expect(trigger('Platform').textContent).toBe('Trendyol E-Faturam')
     // The status row and the tab counts come from the platform's counts.
     const summary = container.querySelector('.jobs-reference-status-summary')!.textContent
     expect(summary).toContain('Hata 4')

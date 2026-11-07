@@ -1,4 +1,5 @@
 import { mappingPlatformDefinitions } from '../../marketplace/mapping-platforms'
+import { platformDisplayNames } from '../../../shared/platform-names'
 import { productPlatformDisplayState } from '../product-platform-status'
 import type { MarketplaceConnection, Product, ProductPlatformStatus } from '../shared'
 
@@ -158,6 +159,6 @@ export function bulkPublishPlatformName(code: string) {
   const normalized = normalizeCode(code)
   const known = mappingPlatformDefinitions.find(item => item.code === normalized)?.label
   if (known) return known
-  if (normalized === 'TRENDYOL_EFATURAM') return 'E-Faturam'
+  if (normalized === 'TRENDYOL_EFATURAM') return platformDisplayNames.TRENDYOL_EFATURAM
   return code.charAt(0).toLocaleUpperCase('tr-TR') + code.slice(1).toLocaleLowerCase('tr-TR')
 }
