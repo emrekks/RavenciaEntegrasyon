@@ -109,6 +109,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var telemetryResource = TelemetryResource(jobType, payloadJson);
             var stopwatch = Stopwatch.StartNew();
             ResetTelemetry();
+            readRecordingEnabled = jobId is not null && RecordsReadProgress(jobType);
+            readRecordingKind = ReadRecordKind(jobType);
             if (telemetryResource is not null) await RecordSyncAttempt(tenantId, connectionId.Value, telemetryResource, cancellationToken);
             try
             {
@@ -197,6 +199,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             catch (JobProcessingException exception) when (exception.Result.Continues)
             {
                 // A finished slice of a long read is progress, not a failure, and not yet a completed run.
+                await FlushReadRecordsAsync(tenantId, jobId, cancellationToken);
                 if (telemetryResource is not null) await RecordSyncSlice(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, cancellationToken);
                 return exception.Result;
             }
@@ -410,6 +413,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
     private void ResetTelemetry()
     {
+        readRecorder.Reset();
         telemetryRequestCount = 0;
         telemetryReceivedCount = 0;
         telemetryChangedCount = 0;
@@ -451,14 +455,29 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             ? "Pazaryerinden yeni kayıt gelmedi"
             : $"{received} kayıt alındı · {inserted} yeni · {updated} güncellendi";
 
+    internal static string ReadRecordLabel(JobReadCounts counts) =>
+        counts.Received == 0
+            ? "Pazaryerinden yeni kayıt gelmedi"
+            : $"{counts.Received} kayıt okundu · {counts.Inserted} yeni · {counts.Updated} güncellendi · {counts.Unchanged} değişmedi" + (counts.Skipped > 0 ? $" · {counts.Skipped} atlandı" : "") + (counts.Failed > 0 ? $" · {counts.Failed} hatalı" : "");
+
     private async Task RecordReadProgressAsync(Guid tenantId, Guid? jobId, string jobType, CancellationToken cancellationToken)
     {
         if (jobId is not { } id || !RecordsReadProgress(jobType)) return;
         var received = telemetryReceivedCount;
-        var inserted = telemetryInsertedCount;
-        var updated = telemetryUpdatedCount;
+        var processed = telemetryInsertedCount + telemetryUpdatedCount;
         var skipped = telemetrySkippedCount;
-        var label = ReadProgressLabel(received, inserted, updated);
+        var failed = (int?)null;
+        var label = ReadProgressLabel(received, telemetryInsertedCount, telemetryUpdatedCount);
+        // What the run recorded record by record wins: each record counts once, so Okunan = Yeni + Güncellenen +
+        // Değişmeyen + Atlanan + Hatalı (an unchanged record counts with the skipped ones instead of vanishing).
+        if (await FlushReadRecordsAsync(tenantId, id, cancellationToken, final: true) is { } counts)
+        {
+            received = counts.Received;
+            processed = counts.Inserted + counts.Updated;
+            skipped = counts.Unchanged + counts.Skipped;
+            failed = counts.Failed;
+            label = ReadRecordLabel(counts);
+        }
         try
         {
             await db.IntegrationJobs
@@ -466,8 +485,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(job => job.ProgressReceived, received)
                     .SetProperty(job => job.ProgressCurrent, received)
-                    .SetProperty(job => job.ProgressProcessed, inserted + updated)
+                    .SetProperty(job => job.ProgressProcessed, processed)
                     .SetProperty(job => job.ProgressSkipped, skipped)
+                    .SetProperty(job => job.ProgressFailed, job => failed ?? job.ProgressFailed)
                     .SetProperty(job => job.ProgressLabel, label), cancellationToken);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -9820,7 +9840,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         };
     }
 
-    private async Task<bool> UpsertOrder(Guid tenantId, Guid connectionId, RemoteOrder remote, CancellationToken cancellationToken, OrderIngestionBatch? batch = null, bool saveChanges = true, bool persistFinancialObservations = false)
+    private async Task<bool> UpsertOrderCore(Guid tenantId, Guid connectionId, RemoteOrder remote, CancellationToken cancellationToken, OrderIngestionBatch? batch, bool saveChanges, bool persistFinancialObservations)
     {
         var platformCode = await db.PlatformConnections.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.Id == connectionId)
@@ -12732,7 +12752,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     internal static string SerializeReturnSyncState(ReturnSyncState state) => JsonSerializer.Serialize(state);
     private static ReturnSyncState InitialReturnWindow(DateTimeOffset now) => new(ReturnSyncStateVersion, 0, 0, false, now.AddMonths(-3), now);
 
-    private async Task UpsertReturn(Guid tenantId, Guid connectionId, RemoteReturnClaim remote, CancellationToken cancellationToken)
+    private async Task UpsertReturnCore(Guid tenantId, Guid connectionId, RemoteReturnClaim remote, CancellationToken cancellationToken)
     {
         var remoteLines = remote.Lines.Count > 0 ? remote.Lines : TrendyolJsonMapper.ReturnLines(remote.RawJson);
         var claimLevelTarget = MarketplaceReturnStatus.Canonicalize(remote.RawStatus, remote.CargoTrackingLink);
@@ -12746,6 +12766,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (!ReturnClaimStoragePolicy.ShouldPersist(target))
         {
             if (!await RemoveCancelledReturnClaim(tenantId, connectionId, remote, cancellationToken)) telemetrySkippedCount++;
+            readReturnSkipReason = "Pazaryerinde kapanmış veya iptal edilmiş talep; panelde tutulmaz.";
             return;
         }
 
@@ -12782,6 +12803,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         {
             await RecordIssue(tenantId, $"return-order:{connectionId}:{remote.ExternalOrderId}", "RETURN_ORDER_NOT_FOUND", "Return claim yerel order ile eşleşmedi; sessiz kayıt oluşturulmadı.", cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
+            readReturnFailReason = "Bağlı sipariş panelde bulunamadı; talep kaydedilmedi.";
             return;
         }
         // A previous scan may have reconstructed the order after recording the

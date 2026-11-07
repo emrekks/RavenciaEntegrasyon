@@ -14,6 +14,8 @@ import { fallbackJobChange, jobRelatedLinks, type JobChange } from './job-change
 import { isProductLevelJob, type JobWriteSummary } from './job-write-summary'
 import { JobWriteDetail } from './JobWriteDetail'
 import { JobSentDetail } from './JobSentDetail'
+import { JobReadRecords } from './JobReadRecords'
+import { jobProgressPercent, keepsReadRecords, readProgressCounts, type JobReadSummary } from './job-read-summary'
 import type { JobVariantResults } from '../catalog/product-editor/PublicationJobVariants'
 import { jobDirections, jobPresentation, jobSubtitle, jobTitle, jobTypeCode, jobTypesForDirection, type JobDirection, type JobTypeIconName } from './job-presentation'
 import { canOfferOneTimeInvoiceDelivery } from './one-time-invoice-delivery-visibility'
@@ -83,7 +85,7 @@ type JobOrderContext = { orderId: string; orderNumber: string; externalOrderId: 
 type JobInvoiceContext = { invoiceId: string; orderNumber: string; status: string; invoiceType: string; currency: string; payableTotal: number; invoiceNumber: string | null; externalPackageId: string | null }
 type JobScan = { mode: string; label: string; detail: string; window: string | null; plannedIntervalSeconds: number | null; plannedIntervalLabel: string | null; previousScheduledAt: string | null; actualIntervalLabel: string | null }
 type JobFailureReason = { key: string; title: string; description: string; technicalDetail: string; affectedRecords: number; sampleProductIds: string[] }
-type JobDetail = { job: JobSummary; attempts: Array<{ attemptNumber: number; startedAt: string; completedAt: string | null; succeeded: boolean; errorCode: string | null; errorSummary: string | null; outcome?: string }>; order: JobOrderContext | null; change: JobChange | null; relatedOrders: JobOrderContext[]; scan: JobScan | null; failureReasons: JobFailureReason[] | null; invoice: JobInvoiceContext | null; productId?: string | null; variantResults?: JobVariantResults | null; write?: JobWriteSummary | null }
+type JobDetail = { job: JobSummary; attempts: Array<{ attemptNumber: number; startedAt: string; completedAt: string | null; succeeded: boolean; errorCode: string | null; errorSummary: string | null; outcome?: string }>; order: JobOrderContext | null; change: JobChange | null; relatedOrders: JobOrderContext[]; scan: JobScan | null; failureReasons: JobFailureReason[] | null; invoice: JobInvoiceContext | null; productId?: string | null; variantResults?: JobVariantResults | null; write?: JobWriteSummary | null; read?: JobReadSummary | null }
 // The job a notice is about: its title ("Pazarama Ürün İşlemi"), number, marketplace and store.
 function jobNotificationContext(job: Pick<JobSummary, 'id' | 'connectionId' | 'jobType' | 'marketplace'>): NotificationContext {
   const title = jobTitle(job.jobType, job.marketplace)
@@ -202,12 +204,6 @@ function isProductSyncJob(job: JobSummary) {
   return /PRODUCT|CATALOG/i.test(job.jobType) && !isProductLevelJob(job.jobType)
 }
 
-function jobProgressPercent(job: JobSummary) {
-  if (job.progressPercent !== null) return Math.max(0, Math.min(100, job.progressPercent))
-  if (job.progressTotal && job.progressTotal > 0) return Math.max(0, Math.min(100, Math.round((job.progressCurrent / job.progressTotal) * 100)))
-  return null
-}
-
 function formatJobCount(value: number) {
   return value.toLocaleString('tr-TR')
 }
@@ -244,11 +240,12 @@ function JobStatusSummary({ job }: { job: JobSummary }) {
   </section>
 }
 
-function JobProgressSummary({ job }: { job: JobSummary }) {
+function JobProgressSummary({ job, read }: { job: JobSummary; read: JobReadSummary | null }) {
   const productSync = isProductSyncJob(job)
-  const received = Math.max(job.progressReceived, job.progressCurrent)
+  const counts = readProgressCounts(job, read)
+  const received = counts.received
   // A read that came back empty writes its label ("Pazaryerinden yeni kayıt gelmedi"), so it shows too.
-  const hasCounters = productSync || received > 0 || job.progressProcessed > 0 || job.progressSkipped > 0 || job.progressFailed > 0 || job.progressTotal !== null || Boolean(job.progressLabel)
+  const hasCounters = productSync || Boolean(read) || received > 0 || job.progressProcessed > 0 || job.progressSkipped > 0 || job.progressFailed > 0 || job.progressTotal !== null || Boolean(job.progressLabel)
   if (!hasCounters) return null
   const percent = jobProgressPercent(job)
   const totalLabel = job.progressTotal === null
@@ -269,9 +266,12 @@ function JobProgressSummary({ job }: { job: JobSummary }) {
     <small className="jobs-reference-progress-total">{totalLabel}</small>
     <div className="jobs-reference-progress-grid">
       <p><small>Okunan / Çekilen</small><strong>{formatJobCount(received)}</strong><span>Pazaryerinden alınan</span></p>
-      <p><small>İşlenen</small><strong>{formatJobCount(job.progressProcessed)}</strong><span>Yerel kaydı güncellenen</span></p>
-      <p><small>Atlanan</small><strong>{formatJobCount(job.progressSkipped)}</strong><span>Değişiklik gerektirmeyen</span></p>
-      <p><small>Hatalı</small><strong>{formatJobCount(job.progressFailed)}</strong><span>İşlenemeyen kayıt</span></p>
+      {counts.inserted === null
+        ? <p><small>İşlenen</small><strong>{formatJobCount(counts.processed)}</strong><span>Yeni eklenen veya güncellenen</span></p>
+        : <><p><small>Yeni</small><strong>{formatJobCount(counts.inserted)}</strong><span>Panele ilk kez eklenen</span></p><p><small>Güncellenen</small><strong>{formatJobCount(counts.updated ?? 0)}</strong><span>Durumu veya paketi değişen</span></p></>}
+      <p><small>Değişmeyen</small><strong>{formatJobCount(counts.unchanged)}</strong><span>Panelde zaten güncel olan</span></p>
+      <p><small>Atlanan</small><strong>{formatJobCount(counts.skipped)}</strong><span>Uygulanmayan kayıt</span></p>
+      <p><small>Hatalı</small><strong>{formatJobCount(counts.failed)}</strong><span>İşlenemeyen kayıt</span></p>
     </div>
   </section>
 }
@@ -329,7 +329,8 @@ function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retrya
         {productDetail ? <JobWriteDetail write={detail.data.write ?? null} variantResults={detail.data.variantResults ?? null} approvalCheck={job.jobType.toUpperCase() === 'PRODUCT_APPROVAL_RECONCILE'} running={!['SUCCEEDED', 'DEAD', 'CANCELLED'].includes(job.status)} links={relatedLinks} note={detail.data.write?.parts.length ? null : change.detail} /> : <section className="jobs-reference-change-summary" aria-labelledby="job-change-title"><div><span className="jobs-reference-section-kicker">İşlem Özeti</span><h3 id="job-change-title">{change.value}</h3></div><div><strong>{change.label}</strong><p>{change.detail ?? 'İşlem ayrıntısı mevcut.'}</p></div>{relatedLinks.length > 0 && <nav className="jobs-reference-related-links" aria-label="İlgili Kayıtlar">{relatedLinks.map(link => <Link key={link.href} to={link.href}>{link.label}</Link>)}</nav>}</section>}
         {!productDetail && detail.data.write && <JobSentDetail write={detail.data.write} />}
         {detail.data.invoice && <section className="jobs-reference-order-context" aria-labelledby="job-invoice-context-title"><div><span className="jobs-reference-section-kicker">Fatura Denemesi</span><h3 id="job-invoice-context-title">Sipariş #{detail.data.invoice.orderNumber}</h3></div><div className="jobs-reference-order-facts"><p><small>Fatura Kaydı</small><strong>{detail.data.invoice.invoiceId}</strong></p><p><small>Fatura Durumu</small><strong>{statusLabel(detail.data.invoice.status)}</strong></p><p><small>Fatura Türü</small><strong>{detail.data.invoice.invoiceType}</strong></p><p><small>Fatura Tutarı</small><strong>{formatMoney(detail.data.invoice.payableTotal, detail.data.invoice.currency)}</strong></p>{detail.data.invoice.invoiceNumber && <p><small>Fatura Numarası</small><strong>{detail.data.invoice.invoiceNumber}</strong></p>}{detail.data.invoice.externalPackageId && <p><small>Paket No</small><strong>{formatPackageLabel(detail.data.invoice.externalPackageId)}</strong></p>}</div></section>}
-        {!productDetail && <JobProgressSummary job={job} />}
+        {!productDetail && <JobProgressSummary job={job} read={detail.data.read ?? null} />}
+        {!productDetail && <JobReadRecords read={detail.data.read ?? null} recordsKept={keepsReadRecords(job.jobType)} />}
         <JobFailureReasons job={job} reasons={detail.data.failureReasons ?? null} />
         {canSendOneTimeInvoice && invoice && <section className="jobs-reference-order-context jobs-reference-one-time-invoice"><div><span className="jobs-reference-section-kicker">Tek Seferlik Dış İşlem</span><h3>Faturayı Hepsiburada’ya İlet<TitleHint label="Faturayı Hepsiburada’ya İlet">Bu işlem yalnız bu faturayı gönderir; fiyat, stok, sipariş veya iade yazma kapılarını açmaz.</TitleHint></h3><p>Sipariş #{invoice.orderNumber} · Fatura {invoice.invoiceNumber} · Paket {formatPackageLabel(invoice.externalPackageId)}</p>{!oneTimeDeliveryOpen ? <button type="button" disabled={oneTimeInvoiceDelivery.isPending} onClick={() => setOneTimeDeliveryOpen(true)}>Tek Seferlik Gönderimi Hazırla</button> : <form onSubmit={event => { event.preventDefault(); if (!oneTimeDeliveryConfirmed) return; oneTimeInvoiceDelivery.mutate({ id: job.id, confirmed: true, orderNumber: invoice.orderNumber }) }}><p>Hepsiburada canlı ortamındaki bu siparişe mevcut faturanın PDF bağlantısı iletilecek. Belirsiz bir yanıt olursa sistem otomatik tekrar göndermeyecek.</p><label className="check"><input type="checkbox" checked={oneTimeDeliveryConfirmed} onChange={event => setOneTimeDeliveryConfirmed(event.target.checked)} /> Yalnızca #{invoice.orderNumber} siparişine bu faturanın iletilmesini onaylıyorum.</label><div className="job-detail-actions"><button type="submit" disabled={oneTimeInvoiceDelivery.isPending || !oneTimeDeliveryConfirmed}>{oneTimeInvoiceDelivery.isPending ? 'Kuyruğa Alınıyor…' : 'Faturayı Bir Kez İlet'}</button><button type="button" className="secondary" disabled={oneTimeInvoiceDelivery.isPending} onClick={() => { setOneTimeDeliveryOpen(false); setOneTimeDeliveryConfirmed(false) }}>Vazgeç</button></div></form>}{oneTimeInvoiceDelivery.isError && <div role="alert" className="error">Tek seferlik fatura işlemi başlatılamadı. Hata ayrıntısı için işlemi yeniden yükleyin.</div>}</div></section>}
         {detail.data.scan && <JobScanSummary scan={detail.data.scan} />}

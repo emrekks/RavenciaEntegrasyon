@@ -25,3 +25,5 @@ html body .jobs-reference-drawer-body .jobs-write-heading .jobs-reference-relate
 @media (max-width: 760px) {
   .jobs-reference-drawer-body .jobs-write-facts { grid-template-columns: minmax(0, 1fr); }
 }
+/* A read job's counters (Okunan, Yeni, Güncellenen, Değişmeyen, Atlanan, Hatalı): five or six cells that wrap evenly. */
+.jobs-reference-drawer-body .jobs-reference-progress-grid { grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); }
