@@ -2318,6 +2318,8 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
   const days = byDay(byDate ? listed.filter(group => !isWaitingPayout(group) && !deducting(group)) : listed)
   const filtered = [applied.state !== 'ALL', Boolean(applied.from || applied.to), Boolean(applied.min || applied.max)].some(Boolean)
   const activeCount = [platforms.length > 0, region !== 'ALL', applied.state !== 'ALL', Boolean(applied.from || applied.to), Boolean(applied.min || applied.max), Boolean(search.trim()), applied.sort !== 'date'].filter(Boolean).length
+  // Temizle is grey while the applied filters and the card's typed edits are all at their defaults.
+  const hasFiltersToClear = platforms.length > 0 || draft.platforms.length > 0 || Boolean(search.trim() || draft.search.trim()) || (Object.keys(emptyPayoutFilters) as Array<keyof typeof emptyPayoutFilters>).some(key => applied[key] !== emptyPayoutFilters[key] || draft[key] !== emptyPayoutFilters[key])
   const read = data?.coverage.filter(store => store.state === 'READ') ?? []
   const platformOptions = ['TRENDYOL', 'HEPSIBURADA', 'N11', 'PAZARAMA'].map(code => ({ value: code, label: platformName(code) }))
   const single = (label: string, value: string, options: Array<{ value: string; label: string }>, pick: (value: string) => void, disabled = false, right = false) =>
@@ -2393,7 +2395,7 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
             <input className="rr-in" inputMode="decimal" aria-label="En az tutar" placeholder="En az" value={draft.min} onChange={event => setDraft({ ...draft, min: event.target.value })} />
             <input className="rr-in" inputMode="decimal" aria-label="En çok tutar" placeholder="En çok" value={draft.max} onChange={event => setDraft({ ...draft, max: event.target.value })} /></span></div>
           {single('Sıralama', draft.sort, [{ value: 'date', label: 'Tarihe Göre' }, { value: 'amount', label: 'Tutara Göre' }], value => setDraft({ ...draft, sort: value as PayoutSort }), false, true)}
-          <div className="rr-fbtns"><button type="button" className="rr-btn" onClick={clear}>Temizle</button><button type="button" className="rr-btn rr-primary" onClick={() => apply(draft)}>Filtrele</button></div>
+          <div className="rr-fbtns"><button type="button" className="rr-btn rr-clear" onClick={clear} disabled={!hasFiltersToClear}>Temizle</button><button type="button" className="rr-btn rr-primary" onClick={() => apply(draft)}>Filtrele</button></div>
         </div></RrFilterCard>
       </div>
       {search.trim() ? <PayoutLinesTable key={`${search}|${platforms.join(',')}`} platforms={platforms.length ? platforms : null} search={search} />

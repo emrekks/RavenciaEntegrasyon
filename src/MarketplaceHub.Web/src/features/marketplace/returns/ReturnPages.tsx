@@ -436,6 +436,8 @@ export function ReturnsPage() {
   // A tab keeps the applied search and dates: text typed without Enter or Filtrele stays unapplied.
   function selectStatus(value: string) { const next = { ...appliedFilters, status: value }; setStatus(value); setAppliedFilters(next); setSearchParams(current => { const params = new URLSearchParams(current); if (value === 'ALL') params.delete('status'); else params.set('status', value); return params }, { replace: true }); setPageNumber(1) }
   function selectInvoiceStatus(value: string) { setInvoiceStatusFilter(value); setPageNumber(1) }
+  // Temizle is grey while every filter, applied or still typed in the card, is at its default (the approved list's sort is not reset by it).
+  const hasFiltersToClear = status !== 'ALL' || Boolean(search.trim() || from || to) || selectedPlatforms.length > 0 || cargoFilter !== 'ALL' || reasonFilter !== 'ALL' || invoiceStatusFilter !== 'ALL' || appliedFilters.status !== 'ALL' || Boolean(appliedFilters.search || appliedFilters.from || appliedFilters.to)
   function clearFilters() { const next: ReturnFilters = { status: 'ALL', search: '', from: '', to: '' }; setStatus(next.status); setSearch(next.search); setFrom(next.from); setTo(next.to); setSelectedPlatforms([]); setCargoFilter('ALL'); setReasonFilter('ALL'); setInvoiceStatusFilter('ALL'); setAppliedFilters(next); setSearchParams(current => { const params = new URLSearchParams(current); params.delete('status'); return params }, { replace: true }); setPageNumber(1) }
   // A tab the summary gives no counter for reads "—", never 0.
   const tabCount = (value: string) => summary.isLoading ? '…' : summary.isError || !summary.data ? '—' : summary.data.tabCounts[value] ?? '—'
@@ -472,7 +474,7 @@ export function ReturnsPage() {
         {sheetField('Fatura Durumu', invoiceStatusFilter, invoicePopOptions, selectInvoiceStatus)}
         {sheetField('İade Sebebi', reasonFilter, reasonPopOptions, setReasonFilter)}
         {sheetField('İade Durumu', status, statusPopOptions, selectStatus)}
-        <div className="rr-fbtns"><button type="button" className="rr-btn" onClick={clearFilters}>Temizle</button><button type="button" className="rr-btn rr-primary" onClick={applyFilters}>Filtrele</button></div>
+        <div className="rr-fbtns"><button type="button" className="rr-btn rr-clear" onClick={clearFilters} disabled={!hasFiltersToClear}>Temizle</button><button type="button" className="rr-btn rr-primary" onClick={applyFilters}>Filtrele</button></div>
       </div></RrFilterCard>
     </div>
     {notice && <NoticeToast key={`${noticeKind}:${notice}`} kind={noticeKind} message={notice} onClose={() => setNoticeState('')} durationMs={noticeSticky ? undefined : noticeKind === 'info' ? 7000 : 5500} />}
