@@ -78,7 +78,22 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             var wanted = ids.Distinct().Take(JobListQuery.MaximumIds).ToArray();
             query = query.Where(x => wanted.Contains(x.Id));
         }
+        if (!string.IsNullOrWhiteSpace(listQuery.Search)) query = MatchingSearch(query, listQuery.Search);
         return OfPlatforms(query, tenantId, listQuery.Platforms);
+    }
+
+    // The jobs one identifier names, each matched whole: the job id (when the term is a GUID), the correlation id, or a
+    // string value in the payload (externalOrderId, externalPackageId, ...), matched with its quotes so "123" does not
+    // find "51234". No index serves it; the tenant's jobs are scanned once per search, which their size allows.
+    internal static IQueryable<IntegrationJob> MatchingSearch(IQueryable<IntegrationJob> query, string search)
+    {
+        var term = search.Trim();
+        if (term.Length > JobListQuery.MaximumSearchLength) term = term[..JobListQuery.MaximumSearchLength];
+        Guid? id = Guid.TryParse(term, out var parsed) ? parsed : null;
+        var payloadValue = term.Length >= JobListQuery.MinimumPayloadSearchLength && !term.Contains('"') && !term.Contains('\\')
+            ? $"\"{term}\""
+            : null;
+        return query.Where(x => (id != null && x.Id == id) || x.CorrelationId == term || (payloadValue != null && x.PayloadJson.Contains(payloadValue)));
     }
 
     // The jobs a period ("Son 24 saat", "Son 7 gün") shows, the counts and the list alike: created in it, finished in it

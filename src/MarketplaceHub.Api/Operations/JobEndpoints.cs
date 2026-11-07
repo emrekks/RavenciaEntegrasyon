@@ -15,12 +15,13 @@ public static class JobEndpoints
                     http.RequestAborted))
                 : Unauthorized(http));
         // Cursor-paged list for the operations page: { items, nextCursor, hasMore }; after continues a previous page.
-        // platform (or platforms, a comma list) keeps the jobs of those connection platforms.
-        api.MapGet("/page", async (HttpContext http, IJobOperationsService service, string? status, DateTimeOffset? since, string? jobTypes, int? limit, string? after, string? platform, string? platforms) =>
+        // platform (or platforms, a comma list) keeps the jobs of those connection platforms; search keeps the jobs one
+        // identifier names (job id, correlation id, marketplace id), so a job is found by its number at any age.
+        api.MapGet("/page", async (HttpContext http, IJobOperationsService service, string? status, DateTimeOffset? since, string? jobTypes, int? limit, string? after, string? platform, string? platforms, string? search) =>
             Tenant(http) is { } tenant
                 ? Result(http, await service.PageAsync(
                     tenant.TenantId,
-                    new JobListQuery(status, since, List(jobTypes), limit, after, Platforms(platform, platforms)),
+                    new JobListQuery(status, since, List(jobTypes), limit, after, Platforms(platform, platforms), Search: search),
                     http.RequestAborted))
                 : Unauthorized(http));
         // The notification center's background notices: reads failing run after run, approvals that ran out of time.

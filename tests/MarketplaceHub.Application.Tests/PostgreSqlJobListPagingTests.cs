@@ -130,6 +130,50 @@ public sealed class PostgreSqlJobListPagingTests(PostgreSqlTenantIsolationFixtur
         }
     }
 
+    [PostgreSqlFact]
+    public async Task JobPage_FindsAJobByItsIdCorrelationIdOrMarketplaceIdAtAnyAge()
+    {
+        var tenant = NewTenant("job-list-search");
+        var otherTenant = NewTenant("job-list-search-other");
+        var baseTime = new DateTimeOffset(DateTimeOffset.UtcNow.UtcTicks / TimeSpan.TicksPerSecond * TimeSpan.TicksPerSecond, TimeSpan.Zero);
+        var old = NewJob(tenant.Id, baseTime.AddDays(-60), JobStatus.Succeeded);
+        var order = NewJob(tenant.Id, baseTime.AddMinutes(-5), JobStatus.Dead);
+        order.PayloadJson = """{"externalOrderId": "10987654321"}""";
+        var noise = NewJob(tenant.Id, baseTime.AddMinutes(-4), JobStatus.Succeeded);
+        noise.PayloadJson = """{"externalOrderId": "109876543210"}""";
+        var foreign = NewJob(otherTenant.Id, baseTime.AddMinutes(-3), JobStatus.Succeeded);
+
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.AddRange(tenant, otherTenant);
+            seed.IntegrationJobs.AddRange(old, order, noise, foreign);
+            await seed.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var service = new JobOperationsService(db, fixture.TimeProvider);
+            async Task<Guid[]> Found(string search, DateTimeOffset? since = null) =>
+                (await ReadAllPagesAsync(service, tenant.Id, new JobListQuery(Since: since, Search: search))).Select(job => job.Id).ToArray();
+
+            Assert.Equal([old.Id], await Found(old.Id.ToString()));
+            Assert.Equal([order.Id], await Found(order.CorrelationId));
+            Assert.Equal([order.Id], await Found("10987654321"));
+            // Another tenant's job is never found by its id, and the other filters still apply.
+            Assert.Empty(await Found(foreign.Id.ToString()));
+            Assert.Empty(await Found(old.Id.ToString(), baseTime.AddDays(-1)));
+        }
+        finally
+        {
+            var tenantIds = new[] { tenant.Id, otherTenant.Id };
+            await using var cleanup = fixture.CreateContext();
+            await cleanup.IntegrationJobs.Where(x => tenantIds.Contains(x.TenantId)).ExecuteDeleteAsync();
+            await cleanup.IntegrationOutboxEvents.Where(x => tenantIds.Contains(x.TenantId)).ExecuteDeleteAsync();
+            await cleanup.Tenants.Where(x => tenantIds.Contains(x.Id)).ExecuteDeleteAsync();
+        }
+    }
+
     private static PlatformConnection NewConnection(Tenant tenant, string platformCode) => new()
     {
         Id = Guid.CreateVersion7(),
