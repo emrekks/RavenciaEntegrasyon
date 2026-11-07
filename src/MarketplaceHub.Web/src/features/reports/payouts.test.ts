@@ -1,5 +1,23 @@
 import { describe, expect, it } from 'vitest'
-import { isRolledToPayoutDay, parseAmount, payoutGap, payoutLinesQuery, rolledPayoutNote, type PayoutGroup } from './payouts'
+import { estimateNote, isRolledToPayoutDay, parseAmount, payoutGap, payoutLinesQuery, rolledPayoutNote, type PayoutGroup } from './payouts'
+
+describe('estimate note', () => {
+  it('explains the deductions taken off a Trendyol payout day to come', () => {
+    // Azerbaycan, Monday 9 Nov 2026: Trendyol's Ödeme Özeti said 858.08.
+    const note = estimateNote({ linesAmount: 1165.85, estimates: [
+      { kind: 'CARGO', count: 2, amount: 196.68, rate: 98.34, missing: 0 },
+      { kind: 'PLATFORM_FEE', count: 2, amount: 21.98, rate: 10.99, missing: 0 },
+      { kind: 'INTERNATIONAL_FEE', count: 2, amount: 89.11, rate: 0.06, missing: 0 }] })
+    expect(note).toContain('Kayıtların toplamı 1.165,85 ₺')
+    expect(note).toContain('tahminen düşüldü (307,77 ₺)')
+    expect(note).toContain('Kargo 2 × 98,34 = 196,68 ₺')
+    expect(note).toContain('desisini')
+  })
+  it('says when the cargo tariff is not known and is silent without estimates', () => {
+    expect(estimateNote({ linesAmount: 100, estimates: [{ kind: 'CARGO', count: 3, amount: 0, rate: null, missing: 0 }] })).toContain('3 paket, tarife bilinmediği için düşülmedi')
+    expect(estimateNote({ linesAmount: null, estimates: null })).toBeNull()
+  })
+})
 
 describe('payout day roll', () => {
   it('notes a Trendyol or Hepsiburada payout day as the next payout day of records already due, nothing else', () => {

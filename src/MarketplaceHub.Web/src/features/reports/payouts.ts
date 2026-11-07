@@ -8,8 +8,12 @@ export type PayoutStatus = 'PAID' | 'EXPECTED' | 'UNKNOWN'
 export type PayoutKind = 'PAYOUT_DAY' | 'DUE_DAY' | 'OVERDUE' | 'UNDATED' | 'PAID_DAY' | 'PAYOUT'
 // The open groups that wait apart, in no payout day's estimate.
 export const isWaitingPayout = (group: Pick<PayoutGroup, 'kind'>) => group.kind === 'OVERDUE' || group.kind === 'UNDATED'
+// estimates: on a Trendyol payout day to come, the deductions Trendyol bills only the evening before it, estimated as its
+// own Ödeme Özeti does; amount is then the records (linesAmount) less them.
+export type PayoutEstimateKind = 'CARGO' | 'RETURN_CARGO' | 'PLATFORM_FEE' | 'INTERNATIONAL_FEE' | 'STOPPAGE'
+export type PayoutEstimate = { kind: PayoutEstimateKind; count: number; amount: number; rate: number | null; missing: number }
 export type PayoutGroup = { key: string; kind: PayoutKind; connectionId: string; platformCode: string; storeName: string; region: PayoutRegion; regionName: string | null
-  day: string; amount: number; linesAmount: number | null; records: number; status: PayoutStatus }
+  day: string; amount: number; linesAmount: number | null; records: number; status: PayoutStatus; estimates?: PayoutEstimate[] | null }
 // pendingDelivery: the orders accepted or shipped but not delivered yet (not in the balance; they join a later payout).
 export type PayoutRegionSummary = { region: PayoutRegion; expected: number; records: number; nextDay: string | null; nextAmount: number | null; unknown: number
   pendingDelivery: number; pendingDeliveryOrders: number }
@@ -132,8 +136,30 @@ export function isRolledToPayoutDay(group: Pick<PayoutGroup, 'kind' | 'platformC
 
 // When each marketplace pays, as read from its paid records (Oct-Nov 2026), for the next payout's explanation.
 export const payoutRuleText: Record<string, string> = {
-  TRENDYOL: 'Trendyol Türkiye-Körfez pazartesi o haftanın pazartesi–çarşamba vadelerini, perşembe perşembe–pazar vadelerini öder (resmi tatil kaydırır); Azerbaycan ve Avrupa vade gününde gösterilir.',
+  TRENDYOL: 'Trendyol Türkiye-Körfez ve Azerbaycan pazartesi o haftanın pazartesi–çarşamba vadelerini, perşembe perşembe–pazar vadelerini öder (resmi tatil kaydırır); Avrupa vade gününde gösterilir. Ödemeden önceki akşam kesilen kargo, platform hizmet bedeli, uluslararası hizmet bedeli ve stopaj, Trendyol\'un Ödeme Özeti\'nde olduğu gibi tahminen düşülür.',
   HEPSIBURADA: 'Hepsiburada her salı öder: kayıt, vadesinden sonraki ilk salı (vade salıysa o gün) ödenir.',
   N11: 'n11 havale tarihinde öder.',
   PAZARAMA: 'Pazarama aktarım tarihinde öder.'
+}
+
+const estimateLabels: Record<PayoutEstimateKind, string> = {
+  CARGO: 'Kargo', RETURN_CARGO: 'İade kargosu', PLATFORM_FEE: 'Platform hizmet bedeli', INTERNATIONAL_FEE: 'Uluslararası hizmet bedeli', STOPPAGE: 'Stopaj'
+}
+const money = (value: number) => value.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+// How a Trendyol payout day's estimate is made: its records less the deductions billed only the evening before the payout.
+// Null when the group has none. Trendyol knows each parcel's desi and fee tier, so its figure can differ by a few lira a
+// package (a heavier parcel costs 106.76-128.64 TL instead of 98.34; a few packages pay a 5.99 TL platform fee).
+export function estimateNote(group: Pick<PayoutGroup, 'estimates' | 'linesAmount'>): string | null {
+  if (!group.estimates?.length || group.linesAmount === null) return null
+  const parts = group.estimates.map(item => {
+    const what = estimateLabels[item.kind] ?? item.kind
+    const perPackage = item.kind === 'CARGO' || item.kind === 'RETURN_CARGO' || item.kind === 'PLATFORM_FEE'
+    if (perPackage && item.rate === null) return `${what}: ${item.count} paket, tarife bilinmediği için düşülmedi`
+    if (perPackage) return `${what} ${item.count} × ${money(item.rate ?? 0)} = ${money(item.amount)} ₺`
+    return `${what} ${money(item.amount)} ₺${item.missing > 0 ? ` (KDV oranı okunmamış ${item.missing} kayıt hariç)` : ''}`
+  })
+  const total = group.estimates.reduce((sum, item) => sum + item.amount, 0)
+  return `Kayıtların toplamı ${money(group.linesAmount)} ₺. Trendyol bu kesintileri ödemeden önceki akşam faturalar, Ödeme Özeti'nde ise şimdiden düşer; burada da tahminen düşüldü (${money(total)} ₺): ${parts.join('; ')}. `
+    + "Trendyol her paketin desisini ve hizmet bedeli kademesini bildiği için tutar paket başına birkaç lira farklı olabilir; iade kargosu kesilmezse ya da Trendyol'a henüz okunmamış bir iade düştüyse fark büyür. Faturalar kesilince tahminin yerini gerçek tutarlar alır."
 }
