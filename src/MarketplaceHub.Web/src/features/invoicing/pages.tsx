@@ -13,7 +13,7 @@ import { handSetInvoiceStatus, handSetInvoiceStatusNote, setManualInvoiceStatus 
 import { ShopifyInvoiceStatusDialog } from './ShopifyInvoiceStatusDialog'
 import { invoiceDueText } from './invoice-due-text'
 import { invoicePreviewNotice } from './invoice-preview-notice'
-import { Busy, CardBackgroundIcon, CargoProviderIcon, CountUp, ErrorBox, InvoiceStatusBadge, Modal, StickyActionBar, TitleHint, UiIcon, DialogSurface } from '../../shared/components'
+import { Busy, CardBackgroundIcon, CargoProviderIcon, CountUp, ErrorBox, EmptyState, InvoiceStatusBadge, Modal, Pager, StickyActionBar, TitleHint, UiIcon, DialogSurface } from '../../shared/components'
 import { fullyReturnedNoInvoiceStatus, invoiceStatusLabel, statusLabel } from '../../shared/status-labels'
 import { appendNotification, notificationError, notificationLinks, notificationPlatformName, type NotificationContext } from '../../shared/notifications'
 import { useJobOutcomeNotice } from '../../shared/job-outcome-notice'
@@ -551,6 +551,7 @@ export function InvoicesPage() {
   const cargoOptions = pageData?.cargoProviders ?? []
   const shipmentStatusOptions = pageData?.shipmentStatuses ?? []
   const invoiceStatusOptions = (pageData?.invoiceStatuses ?? []).map(value => [value, workspaceInvoiceStatusFilterLabel(value)] as const)
+  const clearInvoiceFilters = () => { setSearch(''); setSelectedPlatforms(null); setShipmentStatusFilter('ALL'); setCargoFilter('ALL'); setInvoiceStatusFilter('ALL'); setInvoiceActionFilter('ALL'); setDateFrom(''); setDateTo(''); setColumnFilterOpen(null) }
   const hasInvoiceFilters = Boolean(search.trim() || (selectedPlatforms?.length && selectedPlatforms.length < platformOptions.length) || shipmentStatusFilter !== 'ALL' || cargoFilter !== 'ALL' || invoiceStatusFilter !== 'ALL' || invoiceActionFilter !== 'ALL' || dateFrom || dateTo)
   const totalPages = pageData?.totalPages ?? 1
   const currentPage = pageData?.pageNumber ?? pageNumber
@@ -608,7 +609,7 @@ export function InvoicesPage() {
         <InvoiceSortSelect value={sortOrder} onChange={setSortOrder} />
         <label className="mfs-field mfs-sheet-only"><span>Kargo Firması</span><select aria-label="Kargo firmasına göre filtrele (mobil)" value={cargoFilter} onChange={event => setCargoFilter(event.target.value)}><option value="ALL">Tüm Kargolar</option>{cargoOptions.map(value => <option key={value} value={value}>{value}</option>)}</select></label><label className="mfs-field mfs-sheet-only"><span>Sipariş Durumu</span><select aria-label="Sipariş durumuna göre filtrele (mobil)" value={shipmentStatusFilter} onChange={event => setShipmentStatusFilter(event.target.value)}><option value="ALL">Tüm Sipariş Durumları</option>{shipmentStatusOptions.map(value => <option key={value} value={value}>{titleTr(statusLabel(value))}</option>)}</select></label><label className="mfs-field mfs-sheet-only"><span>Fatura Durumu</span><select aria-label="Fatura durumuna göre filtrele (mobil)" value={invoiceStatusFilter} onChange={event => setInvoiceStatusFilter(event.target.value)}><option value="ALL">Tüm Fatura Durumları</option>{invoiceStatusOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="mfs-field mfs-sheet-only"><span>Oluşturma Durumu</span><select aria-label="Fatura oluşturma durumuna göre filtrele (mobil)" value={invoiceActionFilter} onChange={event => setInvoiceActionFilter(event.target.value as typeof invoiceActionFilter)}><option value="ALL">Tüm İşlem Durumları</option><option value="CREATABLE">Fatura Oluşturulabilir</option><option value="NOT_CREATABLE">Fatura Oluşturulamaz</option></select></label>
         <label className="mfs-field mfs-sheet-only"><span>Sayfa Başına Fatura</span><select aria-label="Sayfa başına fatura (mobil)" value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{[20, 50, 100, 200].map(value => <option key={value} value={value}>{value} Paket</option>)}</select></label>
-        <button type="button" className="secondary invoice-reference-filter-reset" disabled={!hasInvoiceFilters} onClick={() => { setSearch(''); setSelectedPlatforms(null); setShipmentStatusFilter('ALL'); setCargoFilter('ALL'); setInvoiceStatusFilter('ALL'); setInvoiceActionFilter('ALL'); setDateFrom(''); setDateTo(''); setColumnFilterOpen(null) }}>Temizle</button>
+        <button type="button" className="secondary invoice-reference-filter-reset" disabled={!hasInvoiceFilters} onClick={clearInvoiceFilters}>Temizle</button>
       </MobileFilterShell>
     </div>
     <section key={tabSlide.key} className={`invoice-reference-workspace${tabSlide.className ? ` ${tabSlide.className}` : ''}`}>
@@ -625,7 +626,7 @@ export function InvoicesPage() {
           <div className={`order-column-filter${invoiceActionFilter !== 'ALL' ? ' has-filter' : ''}`}><span className="order-column-filter-label">İşlemler</span><button type="button" className="order-column-filter-trigger" aria-label="Fatura oluşturma filtresini aç" aria-expanded={columnFilterOpen === 'action'} aria-controls={columnFilterOpen === 'action' ? 'invoices-action-filter' : undefined} onClick={() => setColumnFilterOpen(current => current === 'action' ? null : 'action')}><svg className="order-filter-funnel" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.2V18l-4 1v-6.8L4 5z" /></svg></button>{columnFilterOpen === 'action' && <div id="invoices-action-filter" className="order-column-filter-popover invoice-filter-popover" role="dialog" aria-label="Fatura oluşturma uygunluğu filtreleri"><ColumnFilterChoices label="Oluşturma Durumu" value={invoiceActionFilter} options={[['ALL', 'Tüm İşlem Durumları'], ['CREATABLE', 'Fatura Oluşturulabilir'], ['NOT_CREATABLE', 'Fatura Oluşturulamaz']]} onChange={value => { setInvoiceActionFilter(value as typeof invoiceActionFilter); setColumnFilterOpen(null) }} />{invoiceActionFilter !== 'ALL' && <button type="button" className="order-column-filter-reset" onClick={() => { setInvoiceActionFilter('ALL'); setColumnFilterOpen(null) }}>Filtreyi Temizle</button>}</div>}</div>
         </div>
         {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-to-interactive-role -- phone tap target that selects the row; its checkbox and buttons are the keyboard controls */}
-        {!pageItems.length && <div className="invoice-reference-state" role="row"><div className="empty"><span className="empty-icon" aria-hidden="true"><UiIcon name="box" /></span><strong>Kayıt yok</strong><p>Seçili fatura sekmesi ve filtrelerle eşleşen paket bulunamadı.</p></div></div>}{pageItems.map(item => { const isPicked = selectedPackages.has(item.packageId); return <article className={`invoice-reference-row ${item.isDueSoon ? 'due-soon' : ''}${isPicked ? ' is-selected' : ''}`} key={item.packageId} role="row" aria-selected={selectionMode ? isPicked : undefined} onClick={event => tapRow(event, item)}>
+        {!pageItems.length && <div className="invoice-reference-state" role="row"><EmptyState title="Kayıt Bulunamadı" onClearFilters={hasInvoiceFilters ? clearInvoiceFilters : undefined}>Seçili fatura sekmesi ve filtrelerle eşleşen paket bulunamadı.</EmptyState></div>}{pageItems.map(item => { const isPicked = selectedPackages.has(item.packageId); return <article className={`invoice-reference-row ${item.isDueSoon ? 'due-soon' : ''}${isPicked ? ' is-selected' : ''}`} key={item.packageId} role="row" aria-selected={selectionMode ? isPicked : undefined} onClick={event => tapRow(event, item)}>
           <div className="invoice-reference-order"><input className="invoice-reference-select" type="checkbox" aria-label={`${item.platformDisplayName} ${displayInvoiceOrderNumber(item.orderNumber)} siparişini seç`} checked={selectedPackages.has(item.packageId)} onChange={() => { togglePackage(item.packageId); if (isPhoneViewport()) setSelectionMode(true) }} /><div className="order-reference-platform"><PlatformMark code={item.platformCode} name={item.platformDisplayName} /></div><div><InvoiceOrderNumber item={item} /><small>{formatIstanbul(item.orderedAt, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}{item.invoiceNumber?.trim() ? ` · ${item.invoiceNumber}` : ''}</small></div></div>
           <div className="invoice-reference-buyer"><strong>{invoiceCustomerDisplayName(item)}</strong><InvoiceProductSummary item={item} /></div>
           <div className="invoice-reference-products"><div className="cargo-provider-display invoice-cargo-provider"><CargoProviderIcon value={item.cargoProviderName ?? 'Kargo bilgisi yok'} fallbackText /></div><small>{item.cargoTrackingNumber ?? 'Takip numarası yok'}</small></div>
@@ -658,7 +659,7 @@ export function InvoicesPage() {
             <div className="invoice-reference-action-footer"><button type="button" className="invoice-reference-details-trigger" onClick={() => setSelectedItem(item)}>Detayları Aç <UiIcon name="externalLink" /></button></div>
           </div>
         </article> })}
-      </div>{pageItems.length > 0 && <nav className="order-pagination" aria-label="Fatura sayfaları"><span>Toplam {(pageData?.totalCount ?? 0).toLocaleString('tr-TR')} adet</span><InvoicePager page={currentPage} totalPages={totalPages} onChange={setPageNumber} /></nav>}</>}
+      </div>{pageItems.length > 0 && <div className="order-pagination"><span>Toplam {(pageData?.totalCount ?? 0).toLocaleString('tr-TR')} adet</span><Pager page={currentPage} totalPages={totalPages} onPageChange={setPageNumber} ariaLabel="Fatura sayfaları" /></div>}</>}
     </section>
       <StickyActionBar open={selectedItems.length > 0} label="Toplu fatura işlemleri" className="invoice-reference-bulk-toolbar"><span>{selectedItems.length} sipariş seçildi</span>{selectedCreatableItems.length > 0 && <button type="button" onClick={() => openInvoicePreview(selectedCreatableItems)}><UiIcon name="download" size={16} />Toplu Fatura Oluştur ({selectedCreatableItems.length})</button>}{selectedShopifyItems.length > 0 && <button type="button" className={selectedCreatableItems.length ? 'secondary' : undefined} onClick={() => { setManualStatusBatch(selectedShopifyItems); setSelectedPackages(current => new Set([...current].filter(id => !selectedShopifyItems.some(item => item.packageId === id)))) }}><UiIcon name="edit" size={16} /> Fatura Durumunu Güncelle ({selectedShopifyItems.length})</button>}<button type="button" className="secondary" onClick={() => visibility.mutate({ packageIds: selectedItems.map(item => item.packageId), hidden: tab !== 'HIDDEN' })} disabled={visibility.isPending}><UiIcon name={tab === 'HIDDEN' ? 'eye' : 'eyeOff'} size={16} />{tab === 'HIDDEN' ? 'Görünür Yap' : 'Siparişleri Gizle'}</button><button type="button" className="secondary" onClick={() => setSelectedPackages(new Set())}>Seçimi Temizle</button></StickyActionBar>
     {selectedItem && <div className="invoice-detail-backdrop" role="presentation" onMouseDown={() => setSelectedItem(null)}><DialogSurface as="section" onClose={() => setSelectedItem(null)} className="workspace-modal invoice-detail-modal" aria-labelledby="invoice-detail-title" onMouseDown={event => event.stopPropagation()}>
@@ -681,30 +682,6 @@ export function InvoicesPage() {
 
 
 // Page numbers around the current page with previous / next arrows, plus a go-to-page field.
-function invoicePagerPages(page: number, totalPages: number): Array<number | null> {
-  if (totalPages <= 7) return Array.from({ length: totalPages }, (_, index) => index + 1)
-  const pages = new Set([1, totalPages, page - 1, page, page + 1].filter(value => value >= 1 && value <= totalPages))
-  const sorted = [...pages].sort((left, right) => left - right)
-  return sorted.flatMap((value, index) => index > 0 && value - sorted[index - 1] > 1 ? [null, value] : [value])
-}
-
-function InvoicePager({ page, totalPages, onChange }: { page: number; totalPages: number; onChange: (page: number) => void }) {
-  const [draft, setDraft] = useState('')
-  const safeTotal = Math.max(1, totalPages)
-  function go(next: number) { onChange(Math.min(safeTotal, Math.max(1, next))) }
-  return <div className="invoice-pager">
-    <div className="invoice-pager-pages">
-      <button type="button" aria-label="Önceki sayfa" disabled={page <= 1} onClick={() => go(page - 1)}><UiIcon name="chevronLeft" /></button>
-      {invoicePagerPages(page, safeTotal).map((value, index) => value === null ? <span key={`gap-${index}`} className="invoice-pager-gap">…</span> : <button type="button" key={value} className={value === page ? 'is-on' : undefined} aria-current={value === page ? 'page' : undefined} onClick={() => go(value)}>{value}</button>)}
-      <button type="button" aria-label="Sonraki sayfa" disabled={page >= safeTotal} onClick={() => go(page + 1)}><UiIcon name="chevronRight" /></button>
-    </div>
-    <form className="invoice-pager-jump" onSubmit={event => { event.preventDefault(); const value = Number(draft); if (Number.isFinite(value) && value >= 1) go(value); setDraft('') }}>
-      <label>Sayfaya Git<input type="number" inputMode="numeric" min={1} max={safeTotal} value={draft} placeholder={`1–${safeTotal}`} aria-label="Sayfa numarası" onChange={event => setDraft(event.target.value)} /></label>
-      <button type="submit" className="secondary">Git</button>
-    </form>
-  </div>
-}
-
 function ColumnFilterChoices({ label, value, options, onChange }: { label: string; value: string; options: ReadonlyArray<readonly [string, string]>; onChange: (value: string) => void }) {
   return <div className="invoice-filter-choices" role="radiogroup" aria-label={label}>
     <span className="invoice-filter-choices-label">{label}</span>

@@ -3,7 +3,7 @@ import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-qu
 import { hubPoll } from '../../shared/api'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
-import { Button, UiIcon } from '../../shared/components'
+import { Button, EmptyState, UiIcon } from '../../shared/components'
 import { Busy } from '../../shared/components/AsyncState'
 import { formatIstanbul } from '../../shared/format-date'
 import { RrIcon, RrLogo } from '../marketplace/returns-ui'
@@ -158,8 +158,8 @@ export function PriceStockSendLog({ platformOptions, onOpenJob, kept }: { platfo
             </tr>
           })}
           {rows.length === 0 && <tr><td className="psl-empty" colSpan={8}>{filtered
-            ? 'Seçili filtrelerle eşleşen gönderim kaydı bulunamadı.'
-            : <><strong>Henüz gönderim kaydı yok.</strong><span>Pazaryerine fiyat veya stok gönderildiğinde her satır burada görünür; panelden yapılan ve otomatik gönderimler burada listelenir. Otomatik yazmanın her bağlantıda açık olup olmadığını API Sağlık gösterir.</span></>}</td></tr>}
+            ? <EmptyState title="Kayıt Bulunamadı">Seçili filtrelerle eşleşen gönderim kaydı bulunamadı.</EmptyState>
+            : <EmptyState title="Henüz Gönderim Yok">Pazaryerine fiyat veya stok gönderildiğinde her satır burada görünür; panelden yapılan ve otomatik gönderimler burada listelenir. Otomatik yazmanın her bağlantıda açık olup olmadığını API Sağlık gösterir.</EmptyState>}</td></tr>}
         </tbody>
       </table></div>
       {rows.length > 0 && <div className="jobs-reference-pagination">

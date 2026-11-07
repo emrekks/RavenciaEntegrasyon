@@ -4,7 +4,7 @@ import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-qu
 import { hubPoll } from '../../shared/api'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
-import { Button, UiIcon } from '../../shared/components'
+import { Button, EmptyState, UiIcon } from '../../shared/components'
 import { Busy } from '../../shared/components/AsyncState'
 import { formatIstanbul } from '../../shared/format-date'
 import { RrIcon, RrLogo } from '../marketplace/returns-ui'
@@ -168,8 +168,8 @@ export function ProductActivityLog({ platformOptions, kept }: { platformOptions:
             </tr>
           })}
           {rows.length === 0 && <tr><td className="psl-empty" colSpan={6}>{filtered
-            ? 'Seçili filtrelerle eşleşen ürün hareketi bulunamadı.'
-            : <><strong>Henüz ürün hareketi yok.</strong><span>Siparişle düşen ya da iadeyle eklenen stok, elle veya toplu yapılan stok ve fiyat değişiklikleri, ürünün satış durumu burada listelenir.</span></>}</td></tr>}
+            ? <EmptyState title="Kayıt Bulunamadı">Seçili filtrelerle eşleşen ürün hareketi bulunamadı.</EmptyState>
+            : <EmptyState title="Henüz Hareket Yok">Siparişle düşen ya da iadeyle eklenen stok, elle veya toplu yapılan stok ve fiyat değişiklikleri, ürünün satış durumu burada listelenir.</EmptyState>}</td></tr>}
         </tbody>
       </table></div>
       {/* Only the way to older rows; no count or note under the list (owner, 5 Nov 2026). */}

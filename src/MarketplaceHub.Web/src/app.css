@@ -3,6 +3,7 @@
 @import './styles/motion.css' layer(base);
 @import './styles/design-system.css';
 @import './styles/notifications.css';
+@import './styles/design-step2.css';
 @import './styles/design-step2-filters.css';
 
 /*

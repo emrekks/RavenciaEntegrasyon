@@ -302,7 +302,7 @@ export function QuestionsPage() {
   const nextWaiting = (id: string) => { const waiting = rows.filter(item => isAnswerable(item.status, item)); const index = waiting.findIndex(item => item.id === id); return waiting[index + 1] ?? waiting.find(item => item.id !== id) }
 
   const detail = (() => {
-    if (!selected) return <div className="qi-empty"><EmptyState>{questions.isLoading ? 'Sorular yükleniyor…' : 'Soldan bir soru seçin.'}</EmptyState></div>
+    if (!selected) return <div className="qi-empty"><EmptyState title="Soru Seçilmedi">{questions.isLoading ? 'Sorular yükleniyor…' : 'Soldan bir soru seçin.'}</EmptyState></div>
     const row = selected
     const state = questionStatus(row.status)
     const waiting = isAnswerable(row.status, row)
@@ -380,7 +380,7 @@ export function QuestionsPage() {
           </div>
         </div>
         <div className="qi-list">
-          {questions.isLoading ? <LoadingState>Sorular yükleniyor…</LoadingState> : questions.isError ? <EmptyState>Sorular alınamadı. Biraz sonra yeniden deneyin.</EmptyState> : rows.length === 0 ? <EmptyState>Bu filtrelerde soru bulunamadı. Geçmiş aktarımı tamamlandıkça erişilebilen sorular listelenir.</EmptyState> : rows.map(row => {
+          {questions.isLoading ? <LoadingState>Sorular yükleniyor…</LoadingState> : questions.isError ? <EmptyState title="Sorular Alınamadı">Biraz sonra yeniden deneyin.</EmptyState> : rows.length === 0 ? <EmptyState title="Henüz Soru Yok">Bu filtrelerde soru bulunamadı. Geçmiş aktarımı tamamlandıkça erişilebilen sorular listelenir.</EmptyState> : rows.map(row => {
             const state = questionStatus(row.status)
             const deadline = isAnswerable(row.status, row) ? questionDeadline(row.expiresAt, now) : null
             return <button type="button" className={`qi-item rv-question-card${selected?.id === row.id ? ' is-on' : ''}`} key={row.id} aria-current={selected?.id === row.id ? 'true' : undefined} onClick={() => openQuestion(row.id)}>

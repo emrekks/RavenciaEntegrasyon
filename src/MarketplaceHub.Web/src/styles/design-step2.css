@@ -1,0 +1,105 @@
+/*
+ * Design unification, step 2: one modal shell, one empty state, one pagination, 32 px close buttons, 28 px compact
+ * copy buttons and one popover border. The modal shell is the "rr-modal" of İadeler (Detaylı Bilgi); every other
+ * window family (workspace-modal, rv-modal, invoice detail, job drawer) is brought to its values here, in one place,
+ * instead of in each feature file. The :root chain lifts the specificity over the older per-page rules.
+ */
+
+/* Backdrop: one colour and blur for every window (the image lightbox keeps its own). */
+:root:root:root :is(.rr-overlay, .rv-overlay:not(.rv-drawer-overlay), .workspace-modal-backdrop:not(.image-lightbox-backdrop), .invoice-detail-backdrop, .integration-modal-backdrop, .integration-settings-modal-backdrop, .brand-mapping-modal-backdrop, .panel-attribute-modal, .missing-value-mapping-backdrop, .jobs-reference-drawer-backdrop) {
+  background: var(--rv-color-backdrop);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+/* Shell: radius 14, strong border. */
+:root:root:root:root :is(.workspace-modal:not(.product-image-modal), .rv-modal, .invoice-detail-modal, .rr-modal) {
+  border: 1px solid var(--rv-color-border-strong);
+  border-radius: 14px;
+}
+
+@media (min-width: 761px) {
+  /* Header: 18px 20px 16px 24px, title 18px/600, optional eyebrow above it. */
+  :root:root:root:root:root :is(.workspace-modal:not(.product-image-modal), .rv-modal) > header {
+    align-items: flex-start; gap: 12px; padding: 18px 20px 16px 24px;
+  }
+  :root:root:root:root:root :is(.workspace-modal:not(.product-image-modal), .rv-modal) > header h2 {
+    margin: 0; font-size: 18px; font-weight: 600; line-height: 1.35; letter-spacing: normal; text-transform: none;
+  }
+  :root:root:root:root:root :is(.workspace-modal:not(.product-image-modal), .rv-modal) > header p:not(.eyebrow) {
+    margin: 2px 0 0; color: var(--rv-color-muted); font-size: 13px;
+  }
+  :root:root:root:root:root :is(.workspace-modal:not(.product-image-modal), .rv-modal) > header :is(.eyebrow, .invoice-detail-header .eyebrow) {
+    margin: 0 0 2px; color: var(--rv-color-subtle); font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none;
+  }
+  :root:root:root:root:root .rr-modal > .rr-m-head .rr-crumb { font-size: 13px; }
+
+  /* Close: 32 x 32, borderless, radius 7. */
+  :root:root:root:root:root :is(.workspace-modal:not(.product-image-modal), .rv-modal, .rr-modal) > header :is(.modal-close:not(.invoice-detail-platform-refresh), .rv-icon-button, .rr-icon-btn),
+  :root:root:root:root:root .invoice-detail-header-actions > .modal-close:not(.invoice-detail-platform-refresh),
+  :root:root:root:root:root .jobs-reference-drawer-header > .jobs-reference-drawer-close {
+    display: inline-grid; width: 32px; min-width: 32px; height: 32px; min-height: 32px; place-items: center; margin-right: 0; padding: 0;
+    color: var(--rv-color-muted); background: none; border: 0; border-radius: 7px; box-shadow: none;
+  }
+  :root:root:root:root:root :is(.workspace-modal:not(.product-image-modal), .rv-modal, .rr-modal) > header :is(.modal-close:not(.invoice-detail-platform-refresh), .rv-icon-button, .rr-icon-btn):hover:not(:disabled),
+  :root:root:root:root:root .invoice-detail-header-actions > .modal-close:not(.invoice-detail-platform-refresh):hover:not(:disabled),
+  :root:root:root:root:root .jobs-reference-drawer-header > .jobs-reference-drawer-close:hover:not(:disabled) {
+    color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-raised));
+  }
+
+  /* Body (rr-modal and rv-modal): 16px 24px. */
+  :root:root:root:root:root .rr-modal:not(.rr-img) > .rr-m-body:not(.rr-flush),
+  :root:root:root:root:root .rv-modal > .rv-modal-body { padding: 16px 24px; }
+
+  /* Footer: 14px 24px 16px with a top border, buttons right-aligned. */
+  :root:root:root:root:root :is(.workspace-modal:not(.product-image-modal), .rv-modal) > footer:not(.shipping-label-modal-actions) {
+    align-items: center; justify-content: flex-end; gap: 8px; padding: 14px 24px 16px; border-top: 1px solid var(--rv-color-border);
+  }
+}
+
+/* Popovers and tooltips share the strong border. */
+:root:root:root:root :is(.publish-issue-tooltip) { border-color: var(--rv-color-border-strong); }
+
+/* Empty state: icon, Title Case title, one muted line, optional "Filtreleri Temizle"; no box. */
+:root:root:root:root .rv-empty-state {
+  display: grid; justify-items: center; align-content: center; gap: 6px; min-height: 0; padding: 40px 24px; text-align: center;
+  color: var(--rv-color-muted); background: none; border: 0; border-radius: 0;
+}
+:root:root:root:root .rv-empty-state .rv-empty-state-icon {
+  display: grid; place-items: center; width: 44px; height: 44px; margin: 0;
+  color: color-mix(in srgb, var(--rv-color-primary) 55%, white); background: var(--rv-color-primary-soft);
+  border: 1px solid color-mix(in srgb, var(--rv-color-primary) 55%, transparent); border-radius: 12px;
+}
+:root[data-theme="light"]:root:root:root .rv-empty-state .rv-empty-state-icon { color: var(--rv-color-primary); }
+:root:root:root:root .rv-empty-state .rv-empty-state-icon .ui-icon { width: 20px; height: 20px; }
+:root:root:root:root .rv-empty-state > b { color: var(--rv-color-ink); font-size: 14px; font-weight: 600; }
+:root:root:root:root .rv-empty-state > .rv-empty-state-lead { display: block; max-width: 56ch; margin: 0; color: var(--rv-color-muted); font-size: 13px; font-weight: 400; line-height: 1.5; }
+:root:root:root:root .rv-empty-state > .rv-empty-state-clear {
+  min-height: 0; height: 36px; margin-top: 4px; padding: 0 12px; color: var(--rv-color-muted); font-size: 13px; font-weight: 500;
+  background: none; border: 0; border-radius: 7px; box-shadow: none;
+}
+:root:root:root:root .rv-empty-state > .rv-empty-state-clear:hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-raised)); }
+:root:root:root:root :is(.psl-empty, .jobs-reference-empty):has(.rv-empty-state) { padding: 0 !important; }
+:root:root:root:root .rv-empty-state:is(.rr-empty-in-card) { padding-block: 24px; }
+
+/* Pagination: the shared Pager is the rr pager without its own row (the page keeps its "Toplam" line around it). */
+:root:root main .rr.rr-pager.rr-pager-bare { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-left: auto; padding: 0; border: 0; background: none; font-size: 13px; }
+:root:root main .rr.rr-pager.rr-pager-bare .rr-pages { margin-left: 0; }
+:root:root main .rr.rr-pager.rr-pager-bare .rr-pages button { display: inline-grid; place-items: center; font-size: 13px; font-weight: 400; }
+:root:root main .rr.rr-pager.rr-pager-bare .rr-pages-gap { display: grid; place-items: center; min-width: 20px; color: var(--rv-color-subtle); }
+:root:root main .rr.rr-pager.rr-pager-bare .rr-jump { padding-left: 12px; border-left: 1px solid var(--rv-color-border); }
+:root:root main .rr.rr-pager.rr-pager-bare .rr-jump .rr-btn { min-height: 0; padding: 0 12px; font-size: 13px; font-weight: 500; }
+@media (max-width: 760px) {
+  :root:root main .rr.rr-pager.rr-pager-bare { margin-left: 0; }
+  :root:root main .rr.rr-pager.rr-pager-bare .rr-jump { padding-left: 0; border-left: 0; }
+}
+:root:root main .reports-order-pager .rr-pager-bare { margin-left: 0; }
+
+/* Compact icon buttons: copy buttons 28 x 28; Eşleştirmeler row icons 32 x 32. */
+:root:root:root:root:root :is(.rr-code-copy, .order-number-copy, .reports-order-copy) { width: 28px; min-width: 28px; height: 28px; min-height: 28px; }
+:root:root:root:root:root .rr-prodcell small .rr-code-copy { margin: -6px 0 -6px 2px; }
+@media (min-width: 761px) {
+  :root:root:root:root:root .mapping-saved-card .mapping-row-actions > .mapping-delete-button,
+  :root:root:root:root:root .brand-mapping-saved-card .mapping-row-actions > .mapping-feature-button { box-sizing: border-box; min-height: 0; height: 32px; }
+  :root:root:root:root:root .mapping-saved-card .mapping-row-actions > .mapping-delete-button { width: 32px; min-width: 32px; }
+}
