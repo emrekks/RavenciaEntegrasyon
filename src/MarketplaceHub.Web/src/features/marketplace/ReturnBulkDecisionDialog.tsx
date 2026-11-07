@@ -159,7 +159,7 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
     const failureText = approving ? ` ${bulkApproveFailureText(results.filter(outcome => !outcome.ok).map(outcome => ({ orderNumber: items.find(item => item.id === outcome.id)?.orderNumber ?? outcome.id, message: outcome.message })))}` : ''
     onDone(failCount === 0
       ? `${okCount} iadenin ${approving ? 'kabul' : 'ret'} kararı pazar yerine iletildi.${stockText}`
-      : `Toplu ${approving ? 'iade kabulünde' : 'iade retinde'} ${okCount}/${results.length} iade ${noun}, ${failCount} iade tamamlanamadı.${stockText}${failureText} Ayrıntılar bildirimde listelendi.`, failCount === 0 && stocked >= (approving ? stockTotal : 0) ? 'success' : failCount === results.length ? 'error' : 'info',
+      : `Toplu ${approving ? 'iade kabulünde' : 'iade retinde'} ${okCount}/${results.length} iade ${noun}, ${failCount} iade tamamlanamadı.${stockText}${failureText} Ayrıntılar bildirimde listelendi.`, failCount === 0 && stocked >= (approving ? stockTotal : 0) ? 'success' : failCount > 0 ? 'error' : 'info',
       [
         ...items.map(item => {
           const result = results.find(entry => entry.id === item.id)

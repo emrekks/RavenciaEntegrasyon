@@ -81,7 +81,7 @@ public static class DashboardIntegrationMatrix
                     var typeState = TypeState(success, problem?.Status, period, now);
                     if (success is { } at && (cellSuccess is null || at > cellSuccess)) cellSuccess = at;
                     if (problem is not null && (cellProblem is null || problem.CreatedAt > cellProblem)) cellProblem = problem.CreatedAt;
-                    if (problem is not null && Failed.Contains(problem.Status)) issue ??= problem.LastErrorSummary;
+                    if (problem is not null && Failed.Contains(problem.Status)) issue ??= JobErrorMessages.Display(problem.LastErrorCode, problem.LastErrorSummary);
                     if (typeState == "bad" && (problem is null || !Failed.Contains(problem.Status))) silent = true;
                     state = Worst(state, typeState);
                 }
@@ -151,7 +151,7 @@ public static class DashboardIntegrationMatrix
     };
 
     internal sealed record SuccessRow(Guid? ConnectionId, string JobType, DateTimeOffset At);
-    internal sealed record ProblemRow(Guid? ConnectionId, string JobType, JobStatus Status, DateTimeOffset CreatedAt, string? LastErrorSummary);
+    internal sealed record ProblemRow(Guid? ConnectionId, string JobType, JobStatus Status, DateTimeOffset CreatedAt, string? LastErrorSummary, string? LastErrorCode = null);
     internal sealed record PolicyRow(Guid ConnectionId, string ResourceType, int IntervalSeconds, bool Enabled, bool IdleBackoffEnabled, int? IdleIntervalSeconds);
 
     // A scheduled read folded into the same read already running (MarketplaceSyncExecutionLock.CoalescedCode) did
@@ -178,6 +178,6 @@ public static class DashboardIntegrationMatrix
                 && (Failed.Contains(x.Status) || Retrying.Contains(x.Status) && (x.LastErrorCode == null || !waitingCodes.Contains(x.LastErrorCode)))
                 && !(x.Status == JobStatus.Blocked && x.LastErrorCode != null && (policyCodes.Contains(x.LastErrorCode) || x.LastErrorCode.EndsWith("_DISABLED"))))
             .GroupBy(x => new { x.ConnectionId, x.JobType })
-            .Select(g => g.OrderByDescending(x => x.CreatedAt).Select(x => new ProblemRow(x.ConnectionId, x.JobType, x.Status, x.CreatedAt, x.LastErrorSummary)).First());
+            .Select(g => g.OrderByDescending(x => x.CreatedAt).Select(x => new ProblemRow(x.ConnectionId, x.JobType, x.Status, x.CreatedAt, x.LastErrorSummary, x.LastErrorCode)).First());
     }
 }

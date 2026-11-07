@@ -62,6 +62,11 @@ export function useOperationFeedbackToasts() {
       recordOperationFeedback(feedback)
       stack.show({ ...operationFeedbackToast(feedback), owner })
     },
+    /** A result that arrives after the screen may be gone (a followed marketplace job): no owner, so it is not taken away. */
+    showDetached: (feedback: OperationFeedback) => {
+      recordOperationFeedback(feedback)
+      stack.show(operationFeedbackToast(feedback))
+    },
     /** Takes away the toast in a key's slot. */
     dismiss: (key: string) => stack.dismissKey(key),
     /** Takes away the error toasts this screen showed (the form was edited after them). */

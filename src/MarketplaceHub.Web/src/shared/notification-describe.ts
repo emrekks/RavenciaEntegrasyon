@@ -124,7 +124,7 @@ export function describeNotification(notification: AppNotification): Notificatio
   const operation = notification.operation ?? operationRules.find(([pattern]) => pattern.test(text))?.[1]
   if (operation) facts.push({ label: 'İşlem', value: operation })
   if (presentation.subject && presentation.items.length <= 1) facts.push({ label: notificationSubjectLabels[presentation.subject.kind], value: presentation.subject.label, href: presentation.subject.href })
-  const queued = /kuyruğa alındı|kuyrukta/u.test(text)
+  const queued = /kuyruğa alındı|sıraya alındı|kuyrukta|aktarım (?:başladı|sürüyor|sırada)|gönderiliyor/u.test(text)
   facts.push({
     label: 'Sonuç',
     value: notification.kind === 'error' ? 'Başarısız · İnceleme gerekiyor' : queued ? 'Kuyruğa alındı · İşlem Takibi’nden izlenebilir' : notification.kind === 'success' ? 'Tamamlandı' : 'Bilgi',

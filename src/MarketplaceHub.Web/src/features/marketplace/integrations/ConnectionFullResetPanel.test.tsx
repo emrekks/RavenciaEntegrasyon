@@ -97,7 +97,7 @@ describe('ConnectionFullResetPanel', () => {
     expect(post.ifMatch).toBe('"v7"')
     expect(container.querySelector('.connection-full-reset-status')!.textContent).toContain('Sıfırlama sürüyor: Sıfırlama sırada bekliyor')
     expect(Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === 'Sıfırlama Sürüyor…')!.disabled).toBe(true)
-    expect(feedback).toHaveBeenCalledWith(expect.objectContaining({ kind: 'success', title: 'Tam Sıfırlama Başladı' }))
+    expect(feedback).toHaveBeenCalledWith(expect.objectContaining({ kind: 'info', title: 'Tam Sıfırlama Başladı' }))
   })
 
   it('names how far a running reset is and why a finished one failed', () => {
