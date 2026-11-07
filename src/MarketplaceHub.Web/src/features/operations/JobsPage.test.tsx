@@ -391,7 +391,7 @@ describe('JobsPage API Sağlık tab (price/stock sending health)', () => {
     expect(pageRequests().length).toBe(jobReads)
   })
 
-  it('draws the Genel Bakış Entegrasyon Durumu panel and its operation cards for what needs a look', async () => {
+  it('draws the Genel Bakış figure cards as the summary and its Entegrasyon Durumu panel', async () => {
     await renderPage('/jobs?sekme=api-saglik')
     for (let tick = 0; tick < 200 && !container.querySelector('.rr-mxt tbody tr td[data-l]'); tick++) await settle()
     await settle()
@@ -400,13 +400,13 @@ describe('JobsPage API Sağlık tab (price/stock sending health)', () => {
     expect(panel.querySelector('h2')!.textContent).toBe('Entegrasyon Durumu')
     expect(panel.querySelector('.rr-mxt tbody tr')!.className).toBe('rr-attn')
     expect(panel.querySelector('.rr-mx-foot')!.textContent).toContain('5.987')
-    const cards = Array.from(container.querySelectorAll<HTMLAnchorElement>('.api-health .rr-opgrid > a.rr-opcard'))
-    // Worst first: the store's failure and the jobs that ended are red, the decisions waiting amber.
-    expect(cards.map(card => card.getAttribute('href'))).toEqual(['/jobs?durum=hata&aralik=7g&platform=trendyol', '/jobs?statu=DEAD', '/jobs?statu=MANUAL_REVIEW&aralik=tum'])
-    expect(cards[0].className).toContain('rr-bad')
-    expect(cards[0].textContent).toContain('Ürün güncelleme listing state kayıtları eksik.')
-    expect(cards[1].textContent).toContain('12')
-    expect(cards[2].className).toContain('rr-warn')
+    const cards = Array.from(container.querySelectorAll<HTMLElement>('.api-health .rr-opgrid > .rr-opcard'))
+    expect(cards.map(card => card.querySelector('small')!.textContent)).toEqual(['Dikkat Gereken Bağlantı', 'Son 24 Saatte İstek', 'Tamamlanamayan İş', 'Karar Bekleyen İş'])
+    expect(cards.map(card => card.querySelector('strong')!.textContent)).toEqual(['1', '5.987', '12', '18'])
+    expect(cards.map(card => card.getAttribute('href'))).toEqual([null, '/jobs', '/jobs?statu=DEAD', '/jobs?statu=MANUAL_REVIEW&aralik=tum'])
+    expect(cards[0].className).toContain('rr-warn')
+    expect(cards[1].className).toBe('rr-opcard')
+    expect(cards[2].className).toContain('rr-bad')
     // The price and stock panel stays under them.
     expect(container.querySelector('.api-health > .psm-panel')).not.toBeNull()
   })

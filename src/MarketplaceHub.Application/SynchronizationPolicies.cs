@@ -476,6 +476,19 @@ public static class ProductImportMergePolicy
     public static bool PreserveLocalChanges(long productVersion, long lastImportedProductVersion, string? dirtyFieldsJson) =>
         PreserveLocalChanges(productVersion, lastImportedProductVersion)
         || !string.IsNullOrWhiteSpace(dirtyFieldsJson) && !string.Equals(dirtyFieldsJson.Trim(), "[]", StringComparison.Ordinal);
+
+    // An import the user ran for products already in the panel with "Mevcut Ürün Bilgilerini Güncelle" on (one product
+    // by its code, or the existing-products update) takes the marketplace content even over panel edits not sent yet: the
+    // owner asked for it (7 Nov 2026, RYP003T: 7 read, 7 skipped). Other imports keep the panel edits.
+    public static bool OverwriteLocalChanges(bool updateExistingProducts, bool singleLookup, bool existingOnly, bool observeOnly) =>
+        updateExistingProducts && (singleLookup || existingOnly) && !observeOnly;
+
+    // A model code typed in lower case finds nothing on Trendyol (live 7 Nov 2026: "Ryp003t" read 0, "RYP003T" read 7).
+    // An empty lookup by a typed code is asked once more in upper case; a link or an upper-case code is not.
+    public static ProductReadFilter? UpperCaseLookupRetry(ProductReadFilter filter) =>
+        filter is { ProductMainId: { } code, ContentId: null, ProductUrl: null } && code != code.ToUpperInvariant()
+            ? filter with { ProductMainId = code.ToUpperInvariant() }
+            : null;
 }
 
 public static class ProductImportScanPolicy

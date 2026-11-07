@@ -103,6 +103,8 @@ purpose (`TurkeyTime.cs`).
 - Invoice: NotInvoiced, Received, Rejected, Invoiced.
 
 ## Quirks
+- `products/approved?productMainId=` is case-sensitive: live 7 Nov 2026 "Ryp003t" read 0 products, "RYP003T" 7. A single
+  import by a typed code that reads nothing asks once more in upper case (`ProductImportMergePolicy.UpperCaseLookupRetry`).
 - One content (`contentId`) per colour: a model (`productMainId`) with several colours is several contents, each with
   its own title, description, images and content attributes (Renk is a slicer); sizes are variants inside a content.
   `content-bulk-update` takes one item per contentId, so a multi-colour panel card is updated content by content: the
