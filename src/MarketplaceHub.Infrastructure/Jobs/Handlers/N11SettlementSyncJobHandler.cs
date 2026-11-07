@@ -98,10 +98,19 @@ public sealed class N11SettlementSyncJobHandler(AppDbContext db, IN11SettlementP
                     };
                     db.MarketplaceFinanceTransactions.Add(row);
                     inserted++;
+                    request.Reads?.Add("FINANCE", new JobReadRecord(id, null, status, JobReadOutcomes.New));
                 }
                 // A row stored before its rate had a field of its own (CommissionRate null) is written again.
-                else if (row.RawJson == line.RawJson && row.TransactionType == Short(status, 200) && row.CommissionRate is not null) continue;
-                else updated++;
+                else if (row.RawJson == line.RawJson && row.TransactionType == Short(status, 200) && row.CommissionRate is not null)
+                {
+                    request.Reads?.Add("FINANCE", new JobReadRecord(id, row.OrderNumber, status, JobReadOutcomes.Unchanged));
+                    continue;
+                }
+                else
+                {
+                    updated++;
+                    request.Reads?.Add("FINANCE", new JobReadRecord(id, row.OrderNumber, status, JobReadOutcomes.Updated));
+                }
                 // What the line pays: n11's settlement amount; the debt is what n11 kept back from the line's payment.
                 row.TransactionType = Short(status, 200);
                 row.Category = line.SettlementAmount < 0 ? MarketplaceFinanceCategories.Return : MarketplaceFinanceCategories.Sale;

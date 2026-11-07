@@ -96,8 +96,14 @@ public sealed class PazaramaFinanceSyncJobHandler(AppDbContext db, IOrderFinance
                     db.MarketplaceFinanceTransactions.Add(row);
                     stored.Add(row);
                     inserted++;
+                    request.Reads?.Add("FINANCE", new JobReadRecord(movement.TransactionCode, order.OrderNumber, movement.Status, JobReadOutcomes.New));
                 }
-                else updated++;
+                else
+                {
+                    updated++;
+                    request.Reads?.Add("FINANCE", new JobReadRecord(movement.TransactionCode, order.OrderNumber, movement.Status,
+                        row.RawJson == JsonSerializer.Serialize(movement) ? JobReadOutcomes.Unchanged : JobReadOutcomes.Updated));
+                }
                 Fill(row, movement, order.OrderNumber, now);
             }
         }

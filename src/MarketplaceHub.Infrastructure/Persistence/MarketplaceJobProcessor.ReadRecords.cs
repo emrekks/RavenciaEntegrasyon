@@ -14,7 +14,17 @@ public sealed partial class MarketplaceJobProcessor
     private bool readRecordingEnabled;
     private string readRecordingKind = "ORDER";
 
-    internal static string ReadRecordKind(string jobType) => jobType is MarketplaceJobTypes.ReturnSync or MarketplaceJobTypes.HepsiburadaReturnSync or MarketplaceJobTypes.ReturnStatusSync or MarketplaceJobTypes.ReturnReconciliation ? "RETURN" : "ORDER";
+    // The reads that keep their records, by the kind of record they pull; null for a job that keeps none.
+    internal static string? ReadRecordKind(string jobType) => jobType switch
+    {
+        MarketplaceJobTypes.ReturnSync or MarketplaceJobTypes.HepsiburadaReturnSync or MarketplaceJobTypes.ReturnStatusSync or MarketplaceJobTypes.ReturnReconciliation => "RETURN",
+        MarketplaceJobTypes.OrderInvoiceReconciliation or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation or MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation => "INVOICE",
+        MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ShopifyProductSync or MarketplaceJobTypes.HepsiburadaProductSync => "PRODUCT",
+        MarketplaceJobTypes.QuestionSync => "QUESTION",
+        MarketplaceJobTypes.TrendyolFinanceSync or MarketplaceJobTypes.PazaramaFinanceSync or MarketplaceJobTypes.N11SettlementSync or MarketplaceJobTypes.HepsiburadaFinanceSync => "FINANCE",
+        MarketplaceJobTypes.OrderReconciliation or MarketplaceJobTypes.ShopifyOrderReconciliation or MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation => "ORDER",
+        _ => RecordsReadProgress(jobType) ? "ORDER" : null
+    };
     private string? readReturnSkipReason;
     private string? readReturnFailReason;
 
@@ -35,7 +45,9 @@ public sealed partial class MarketplaceJobProcessor
             : JobReadOutcomes.Unchanged;
         var reason = outcome == JobReadOutcomes.Failed ? RejectedOrderReason : outcome == JobReadOutcomes.Skipped ? StaleReason : null;
         var state = after ?? before;
-        readRecorder.Add("ORDER", new JobReadRecord(remote.OrderNumber, state?.PackagesText, state?.Status, outcome, reason));
+        // An invoice check names the packages' invoice state; any other read the order's status.
+        var invoiceCheck = readRecordingKind == "INVOICE";
+        readRecorder.Add(invoiceCheck ? "INVOICE" : "ORDER", new JobReadRecord(remote.OrderNumber, state?.PackagesText, invoiceCheck ? state?.InvoiceText : state?.Status, outcome, reason));
         return accepted;
     }
 
@@ -58,7 +70,26 @@ public sealed partial class MarketplaceJobProcessor
         readRecorder.Add("RETURN", new JobReadRecord(remote.ExternalClaimId, orderNumber, (after ?? before)?.Status ?? remote.RawStatus, outcome, reason));
     }
 
-    private sealed record OrderReadState(string Compare, string Status, string? PackagesText);
+    private sealed record OrderReadState(string Compare, string Status, string? PackagesText, string? InvoiceText);
+    // A package the invoice check read on its own (Trendyol): its number, the marketplace invoice number and state.
+    private void RecordInvoiceRead(ShipmentPackage package, MarketplaceInvoiceStatus before, string? numberBefore)
+    {
+        if (!readRecordingEnabled || readRecordingKind != "INVOICE") return;
+        var changed = before != package.MarketplaceInvoiceStatus || !string.Equals(numberBefore, package.MarketplaceInvoiceNumber, StringComparison.Ordinal);
+        readRecorder.Add("INVOICE", new JobReadRecord(package.ExternalPackageId, package.MarketplaceInvoiceNumber, package.MarketplaceInvoiceStatus.ToString(), changed ? JobReadOutcomes.Updated : JobReadOutcomes.Unchanged));
+    }
+
+    // A product the catalog read pulled: its model code (or the marketplace's product id), its first barcode and how many
+    // variants came with it. A failed batch marks each of its products with the error.
+    private void RecordProductRead(RemoteCatalogProduct snapshot, string outcome, string? reason)
+    {
+        if (!readRecordingEnabled || readRecordingKind != "PRODUCT") return;
+        var reference = string.IsNullOrWhiteSpace(snapshot.ProductMainId) ? snapshot.ExternalProductId : snapshot.ProductMainId!;
+        var barcode = snapshot.Variants.Select(x => x.Barcode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+        var secondary = barcode is null ? null : snapshot.Variants.Count > 1 ? $"{barcode} +{snapshot.Variants.Count - 1}" : barcode;
+        readRecorder.Add("PRODUCT", new JobReadRecord(reference, secondary, $"{snapshot.Variants.Count} varyant", outcome, reason));
+    }
+
     private sealed record ReturnReadState(string Status, long Version, DateTimeOffset? LastRemoteModifiedAt, string? OrderNumber);
 
     // The order as the read leaves it: the tracked entities (a batch may not have saved yet), or before the upsert the
@@ -78,18 +109,19 @@ public sealed partial class MarketplaceJobProcessor
             status = stored.DerivedStatus;
         }
         else return null;
-        var packages = new Dictionary<Guid, (string Number, string Key)>();
+        var packages = new Dictionary<Guid, (string Number, string Key, string Invoice)>();
         if (fromDatabase)
             foreach (var row in await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == orderId)
-                         .Select(x => new { x.Id, x.ExternalPackageId, x.Status, x.RawStatus, x.CargoTrackingNumber }).ToListAsync(cancellationToken))
-                packages[row.Id] = (row.ExternalPackageId, $"{row.ExternalPackageId}|{row.Status}|{row.RawStatus}|{row.CargoTrackingNumber}");
+                         .Select(x => new { x.Id, x.ExternalPackageId, x.Status, x.RawStatus, x.CargoTrackingNumber, x.MarketplaceInvoiceStatus, x.MarketplaceInvoiceNumber }).ToListAsync(cancellationToken))
+                packages[row.Id] = (row.ExternalPackageId, $"{row.ExternalPackageId}|{row.Status}|{row.RawStatus}|{row.CargoTrackingNumber}|{row.MarketplaceInvoiceStatus}|{row.MarketplaceInvoiceNumber}", row.MarketplaceInvoiceStatus.ToString());
         foreach (var package in db.ShipmentPackages.Local.Where(x => x.TenantId == tenantId && x.OrderId == orderId))
-            packages[package.Id] = (package.ExternalPackageId, $"{package.ExternalPackageId}|{package.Status}|{package.RawStatus}|{package.CargoTrackingNumber}");
+            packages[package.Id] = (package.ExternalPackageId, $"{package.ExternalPackageId}|{package.Status}|{package.RawStatus}|{package.CargoTrackingNumber}|{package.MarketplaceInvoiceStatus}|{package.MarketplaceInvoiceNumber}", package.MarketplaceInvoiceStatus.ToString());
         // The comparison holds the tracking number; the stored text shows only package numbers, at most three.
         var key = string.Join(";", packages.Values.Select(x => x.Key).Order(StringComparer.Ordinal));
         var numbers = packages.Values.Select(x => x.Number).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
         var text = numbers.Count == 0 ? null : string.Join(", ", numbers.Take(3)) + (numbers.Count > 3 ? $" +{numbers.Count - 3}" : "");
-        return new OrderReadState($"{status}#{key}", status, text);
+        var invoices = packages.Values.Select(x => x.Invoice).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+        return new OrderReadState($"{status}#{key}", status, text, invoices.Count == 0 ? null : string.Join(", ", invoices));
     }
 
     private async Task<ReturnReadState?> ReturnStateAsync(Guid tenantId, Guid connectionId, string externalClaimId, bool fromDatabase, CancellationToken cancellationToken)
@@ -117,21 +149,23 @@ public sealed partial class MarketplaceJobProcessor
         if (jobId is not { } id || !readRecordingEnabled) return null;
         try
         {
-            var row = await db.JobReadSummaries.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobId == id, cancellationToken);
+            var row = await db.JobReadSummaries.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobId == id, cancellationToken);
             // A finished read that pulled nothing still says so ("0 kayıt"), instead of looking like an old job.
             if (readRecorder.IsEmpty && (row is not null || !final)) return row is null ? null : new JobReadCounts(row.Received, row.Inserted, row.Updated, row.Unchanged, row.Skipped, row.Failed);
             var previous = row is null ? JobReadCounts.Zero : new JobReadCounts(row.Received, row.Inserted, row.Updated, row.Unchanged, row.Skipped, row.Failed);
             var (counts, kept, omitted) = readRecorder.MergeWith(previous, row is null ? [] : JobReadRecorder.Deserialize(row.RecordsJson), row?.Omitted ?? 0);
-            if (row is null)
-            {
-                row = new JobReadSummary { Id = Guid.CreateVersion7(), TenantId = tenantId, JobId = id, Kind = readRecorder.Kind ?? readRecordingKind, RecordsJson = "[]" };
-                db.JobReadSummaries.Add(row);
-            }
-            row.Received = counts.Received; row.Inserted = counts.Inserted; row.Updated = counts.Updated; row.Unchanged = counts.Unchanged;
-            row.Skipped = counts.Skipped; row.Failed = counts.Failed; row.Omitted = omitted;
-            row.RecordsJson = JobReadRecorder.Serialize(kept);
-            row.UpdatedAt = timeProvider.GetUtcNow();
-            await db.SaveChangesAsync(cancellationToken);
+            var kind = row?.Kind ?? readRecorder.Kind ?? readRecordingKind;
+            var json = JobReadRecorder.Serialize(kept);
+            var now = timeProvider.GetUtcNow().ToUniversalTime();
+            // Written past the change tracker: after a failed run it may still hold that run's half-applied entities,
+            // which must not be saved along with the summary.
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO integration.job_read_summaries ("Id", "TenantId", "JobId", "Kind", "Received", "Inserted", "Updated", "Unchanged", "Skipped", "Failed", "Omitted", "RecordsJson", "UpdatedAt")
+                VALUES ({Guid.CreateVersion7()}, {tenantId}, {id}, {kind}, {counts.Received}, {counts.Inserted}, {counts.Updated}, {counts.Unchanged}, {counts.Skipped}, {counts.Failed}, {omitted}, {json}, {now})
+                ON CONFLICT ("JobId") DO UPDATE SET "Received" = EXCLUDED."Received", "Inserted" = EXCLUDED."Inserted", "Updated" = EXCLUDED."Updated",
+                    "Unchanged" = EXCLUDED."Unchanged", "Skipped" = EXCLUDED."Skipped", "Failed" = EXCLUDED."Failed", "Omitted" = EXCLUDED."Omitted",
+                    "RecordsJson" = EXCLUDED."RecordsJson", "UpdatedAt" = EXCLUDED."UpdatedAt"
+                """, cancellationToken);
             readRecorder.Reset();
             return counts;
         }

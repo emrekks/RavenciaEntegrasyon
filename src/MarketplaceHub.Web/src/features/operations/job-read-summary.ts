@@ -22,12 +22,23 @@ export const isReadProblem = (record: JobReadRecord) => record.o === 'FAILED' ||
 
 const headings: Record<string, { reference: string; secondary: string }> = {
   ORDER: { reference: 'Sipariş No', secondary: 'Paket No' },
-  RETURN: { reference: 'Talep No', secondary: 'Sipariş No' }
+  RETURN: { reference: 'Talep No', secondary: 'Sipariş No' },
+  INVOICE: { reference: 'Sipariş / Paket No', secondary: 'Paket / Fatura No' },
+  PRODUCT: { reference: 'Model Kodu', secondary: 'Barkod' },
+  QUESTION: { reference: 'Soru No', secondary: 'Ürün Kodu' },
+  FINANCE: { reference: 'Hareket / Fatura No', secondary: 'Sipariş No' }
 }
 export const readHeadings = (kind: string) => headings[kind] ?? { reference: 'Kayıt', secondary: 'İlgili No' }
 
 // A marketplace word ("WaitingInAction", "Picking") or a panel code ("SHIPPED"), in Turkish where known.
-export const readStatusLabel = (status: string | null | undefined) => status ? statusLabel(status) : '—'
+const invoiceStatuses: Record<string, string> = { INVOICED: 'Faturalı', NOTINVOICED: 'Faturasız', UNKNOWN: 'Bilinmiyor' }
+export const readStatusLabel = (status: string | null | undefined) => {
+  if (!status) return '—'
+  const parts = status.split(', ')
+  if (parts.every(part => invoiceStatuses[part.replace(/_/g, '').toUpperCase()])) return parts.map(part => invoiceStatuses[part.replace(/_/g, '').toUpperCase()]).join(', ')
+  // A count ("3 varyant") or a marketplace's own word is shown as it came when it has no Turkish label.
+  return /^[0-9]/.test(status) ? status : statusLabel(status)
+}
 
 export type ProgressCounts = { received: number; inserted: number | null; updated: number | null; processed: number; unchanged: number; skipped: number; failed: number }
 
@@ -54,5 +65,5 @@ export function jobProgressPercent(job: { status: string; progressPercent: numbe
 
 // The reads that keep their records (MarketplaceJobProcessor.RecordsReadProgress): order and return reads of every
 // marketplace. An older job of these types ran before they kept them.
-const recordedReads = /^(TRENDYOL_|SHOPIFY_|HEPSIBURADA_|N11_|PAZARAMA_|PTTAVM_)?(ORDER_SYNC|ORDER_RECOVERY_SYNC|ORDER_STATUS_SYNC)$|^(HEPSIBURADA_)?RETURN_SYNC$|^RETURN_STATUS_SYNC$|^RETURN_RECONCILIATION$/
+const recordedReads = /^(TRENDYOL_|SHOPIFY_|HEPSIBURADA_|N11_|PAZARAMA_|PTTAVM_)?(ORDER_SYNC|ORDER_RECOVERY_SYNC|ORDER_STATUS_SYNC|ORDER_RECONCILIATION|ORDER_INVOICE_RECONCILIATION|PRODUCT_SYNC|FINANCE_SYNC|SETTLEMENT_SYNC)$|^TRENDYOL_ORDER_CARGO_INFO_RECONCILIATION$|^(HEPSIBURADA_)?RETURN_SYNC$|^RETURN_STATUS_SYNC$|^RETURN_RECONCILIATION$|^MARKETPLACE_QUESTION_SYNC$/
 export const keepsReadRecords = (jobType: string) => recordedReads.test(jobType.trim().toUpperCase())

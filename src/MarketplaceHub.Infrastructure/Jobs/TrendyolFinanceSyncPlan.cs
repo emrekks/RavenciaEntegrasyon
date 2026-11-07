@@ -56,7 +56,7 @@ internal static class TrendyolFinanceSyncPlan
     // added. Returns how many were added and how many stored ones changed.
     public static (List<MarketplaceFinanceTransaction> Added, int Updated) Merge(
         IReadOnlyDictionary<(string Source, string ExternalId), MarketplaceFinanceTransaction> stored,
-        IEnumerable<RemoteStatementRecord> incoming, Guid tenantId, Guid connectionId, DateTimeOffset now)
+        IEnumerable<RemoteStatementRecord> incoming, Guid tenantId, Guid connectionId, DateTimeOffset now, JobReadRecorder? reads = null)
     {
         var added = new List<MarketplaceFinanceTransaction>();
         var updated = 0;
@@ -66,7 +66,9 @@ internal static class TrendyolFinanceSyncPlan
             {
                 // A record read again without the service-fee filter keeps the mark it got through it.
                 var subType = record.TransactionSubType ?? (row.RequestedType == record.RequestedType ? row.TransactionSubType : null);
-                if (Apply(row, record with { TransactionSubType = subType }, now)) updated++;
+                var changed = Apply(row, record with { TransactionSubType = subType }, now);
+                if (changed) updated++;
+                reads?.Add("FINANCE", new JobReadRecord(record.ExternalId, record.OrderNumber, record.TransactionType, changed ? JobReadOutcomes.Updated : JobReadOutcomes.Unchanged));
                 continue;
             }
             var created = new MarketplaceFinanceTransaction
@@ -84,6 +86,7 @@ internal static class TrendyolFinanceSyncPlan
             };
             Apply(created, record, now);
             added.Add(created);
+            reads?.Add("FINANCE", new JobReadRecord(record.ExternalId, record.OrderNumber, record.TransactionType, JobReadOutcomes.New));
         }
         return (added, updated);
     }

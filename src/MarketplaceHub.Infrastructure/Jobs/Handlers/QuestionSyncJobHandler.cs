@@ -23,7 +23,7 @@ public sealed class QuestionSyncJobHandler(IMarketplaceQuestionService questions
         {
             return new(Rejected, new());
         }
-        var result = await questions.SyncConnectionAsync(request.TenantId, request.ConnectionId, kind, cancellationToken);
+        var result = await questions.SyncConnectionAsync(request.TenantId, request.ConnectionId, kind, cancellationToken, request.Reads);
         var changed = result.Added + result.Updated;
         if (result.Error is not null)
             return new(Failed(result), new(Requests: 1, Received: changed, Inserted: result.Added, Updated: result.Updated, Failed: 1));

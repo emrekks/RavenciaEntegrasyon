@@ -109,8 +109,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var telemetryResource = TelemetryResource(jobType, payloadJson);
             var stopwatch = Stopwatch.StartNew();
             ResetTelemetry();
-            readRecordingEnabled = jobId is not null && RecordsReadProgress(jobType);
-            readRecordingKind = ReadRecordKind(jobType);
+            readRecordingKind = ReadRecordKind(jobType) ?? "ORDER";
+            readRecordingEnabled = jobId is not null && ReadRecordKind(jobType) is not null;
             if (telemetryResource is not null) await RecordSyncAttempt(tenantId, connectionId.Value, telemetryResource, cancellationToken);
             try
             {
@@ -118,7 +118,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 // Job types moved to their own handler class run here, inside the lock and telemetry.
                 if (jobHandlers.FirstOrDefault(candidate => candidate.Handles(jobType)) is { } handler)
                 {
-                    var outcome = await handler.HandleAsync(new JobRequest(tenantId, connectionId.Value, jobType, payloadJson, correlationId, jobId), cancellationToken);
+                    var outcome = await handler.HandleAsync(new JobRequest(tenantId, connectionId.Value, jobType, payloadJson, correlationId, jobId, readRecordingEnabled ? readRecorder : null), cancellationToken);
                     telemetryRequestCount += outcome.Telemetry.Requests;
                     telemetryReceivedCount += outcome.Telemetry.Received;
                     telemetryInsertedCount += outcome.Telemetry.Inserted;
@@ -217,6 +217,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 telemetryRetryCount++;
                 if (telemetryResource is not null) await TryRecordFailedSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, exception.GetType().Name, cancellationToken);
                 throw;
+            }
+            finally
+            {
+                // A run that ended in an error, a block or a timeout still shows what it read up to that point.
+                await FlushReadRecordsAsync(tenantId, jobId, CancellationToken.None, final: true);
             }
         }
     }
@@ -5522,7 +5527,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 var package = await db.ShipmentPackages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Id == localId, cancellationToken);
                 if (package is null) continue;
                 TrackReceived();
+                var invoiceBefore = (package.MarketplaceInvoiceStatus, package.MarketplaceInvoiceNumber);
                 await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken, "reconciliation");
+                RecordInvoiceRead(package, invoiceBefore.MarketplaceInvoiceStatus, invoiceBefore.MarketplaceInvoiceNumber);
                 await ResolveIssue(tenantId, $"trendyol-invoice-package-read:{connectionId}:{localId}", cancellationToken);
                 // Saved package by package, so the batch's answer is not held while later batches are read; a
                 // package another writer changed meanwhile is left to the per-order pass, which reads it again.
@@ -6541,11 +6548,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     if (newOnly && productAlreadyLinked && !hasNewVariant)
                     {
                         telemetryImportSkippedCount++;
+                        RecordProductRead(snapshot, JobReadOutcomes.Unchanged, null);
                         continue;
                     }
                     if (existingOnly && !productAlreadyLinked && !matchesExistingIdentity)
                     {
                         telemetryImportSkippedCount++;
+                        RecordProductRead(snapshot, JobReadOutcomes.Skipped, "Panelde eşleşen ürün yok; yalnız mevcut ürünler güncelleniyordu.");
                         continue;
                     }
                     var categoryContext = categoryReferences is null
@@ -6558,6 +6567,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                             existingVariantExternalIds.Add(Short(variant.ExternalVariantId, 256));
                     if (changed) telemetryImportProcessedCount++;
                     else telemetryImportSkippedCount++;
+                    RecordProductRead(snapshot, !changed ? JobReadOutcomes.Unchanged : productAlreadyLinked ? JobReadOutcomes.Updated : JobReadOutcomes.New, null);
                 }
                 // PTT AVM lists colour and size rows, not variants; its mapping writes the variant codes itself.
                 if (!isPttAvm) await RecordVariantLinkCodes(tenantId, connectionId, snapshotGroups, cancellationToken);
@@ -6578,6 +6588,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 importedAttributeLibrary.Clear();
                 telemetryImportFailedCount += snapshotGroups.Count;
                 telemetryFailedCount += snapshotGroups.Count;
+                foreach (var snapshot in snapshotGroups) RecordProductRead(snapshot, JobReadOutcomes.Failed, Short(exception.Message, 300));
                 foreach (var snapshot in snapshotGroups)
                 {
                     try
