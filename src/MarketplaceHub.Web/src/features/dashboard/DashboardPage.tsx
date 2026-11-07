@@ -288,7 +288,7 @@ export function DashboardPage() {
       <button type="button" className="rr-btn" onClick={downloadReport} disabled={!reportReady} title={reportReady ? undefined : 'Rapor verisi hazırlanıyor'}><RrIcon name="export" />Raporu İndir</button>
     </div></div>
     {errors.length > 0 && !noticeClosed && <div className="rr-callout rr-warn" role="status"><RrIcon name="alert" /><span><b>Bazı rapor verileri alınamadı.</b> Görünen değerler kısmi olabilir; birkaç dakika içinde tekrar denenir.</span><button type="button" className="rr-icon-btn" onClick={() => setNoticeClosed(true)} aria-label="Uyarıyı kapat"><RrIcon name="close" /></button></div>}
-    <section className="rr-dsect"><header><h2>Operasyon Metrikleri</h2></header><div className="rr-opgrid">{ops.map(([kind, label, value, tone, to, byConnection, detail]) => {
+    <section className="rr-dsect" aria-label="Operasyon Metrikleri"><div className="rr-opgrid">{ops.map(([kind, label, value, tone, to, byConnection, detail]) => {
       const breakdownRows = Array.isArray(byConnection) ? byConnection : breakdown(byConnection)
       const toggleBreakdown = (event: ReactMouseEvent | ReactKeyboardEvent) => { event.preventDefault(); event.stopPropagation(); setBreakdownOpen(open => open === kind ? null : kind) }
       // On touch screens the card's "?" shows which stores the figure comes from, without opening the card's list.
