@@ -27,8 +27,10 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
     // onlyUnsentVariants: Yayınla's send, which leaves out the card's variants already on the marketplace
     // (PublicationUnsentVariants); the update composers build from the whole card. contentSplitAllowed: the Trendyol
     // update, which writes a card Trendyol split into one content per colour content by content (TrendyolContentGroups);
-    // Yayınla still stops on such a card.
-    public async Task<ServiceResult<ProductPublicationDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken, bool onlyUnsentVariants = false, bool contentSplitAllowed = false)
+    // Yayınla still stops on such a card. desiRequired false: the Trendyol update, which needs a desi only when it sends
+    // one (DESI picked, or the whole card of a product Trendyol has not approved yet); a variant without a desi then
+    // gets no dimensionalWeight and the update composer decides (DesiMissingSku).
+    public async Task<ServiceResult<ProductPublicationDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken, bool onlyUnsentVariants = false, bool contentSplitAllowed = false, bool desiRequired = true)
     {
         var product = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
         if (product is null) return NotFound<ProductPublicationDraft>();
@@ -174,7 +176,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
             // D11: Trendyol accepts only the Turkish VAT rates.
             if (!IsTrendyolVatRate(offer.VatRate)) return Fail("VAT_RATE_INVALID", $"'{variant.Sku}' için KDV oranı {offer.VatRate.ToString("0.##", CultureInfo.InvariantCulture)}; Trendyol için 0, 1, 10 veya 20 olmalıdır.");
             // D7 (K20): Trendyol prices the cargo by dimensionalWeight; a guessed 1 desi bills the wrong shipping cost.
-            if (!HasDesi(variant.Desi)) return Fail("DESI_REQUIRED", $"'{variant.Sku}' için Trendyol'un zorunlu desi değeri girilmemiş.");
+            if (desiRequired && !HasDesi(variant.Desi)) return Fail("DESI_REQUIRED", DesiMissingMessage(variant.Sku));
 
             // Explicit variant media replaces the product gallery for that
             // variant. This keeps marketplace colors from receiving every
@@ -323,7 +325,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
                 ["categoryId"] = externalCategoryId,
                 ["quantity"] = TrendyolStockRules.Quantity(publishable),
                 ["stockCode"] = variant.Sku.Trim(),
-                ["dimensionalWeight"] = variant.Desi.GetValueOrDefault(),
+                ["dimensionalWeight"] = HasDesi(variant.Desi) ? variant.Desi!.Value : null,
                 ["origin"] = string.IsNullOrWhiteSpace(profile.Origin) ? null : profile.Origin.Trim().ToUpperInvariant(),
                 ["listPrice"] = PriceInventoryComposer.OutboundListPrice(offer),
                 ["salePrice"] = PriceInventoryComposer.OutboundSalePrice(offer),
@@ -487,6 +489,10 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
     private static string NormalizeLabel(string value) => value.Trim().ToUpperInvariant();
 
     internal static bool HasDesi(decimal? desi) => desi is > 0;
+
+    // The desi lives on the variants (ProductVariant.Desi); the editor's Desi field writes it to every variant of the card.
+    internal static string DesiMissingMessage(string sku) =>
+        $"'{sku.Trim()}' için desi girilmemiş; Trendyol kargo ücretini desiye göre hesapladığı için tahmini bir değer gönderilmez. Ürünü düzenleyip Desi alanına ürünün desisini girin, kaydedin ve tekrar deneyin.";
 
     internal static bool IsTrendyolVatRate(decimal rate) => rate is 0m or 1m or 10m or 20m;
 

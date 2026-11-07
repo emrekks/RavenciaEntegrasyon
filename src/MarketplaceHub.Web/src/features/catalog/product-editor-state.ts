@@ -106,11 +106,20 @@ export function editorVariantCostUpdate(row: { costPrice: number | null; loadedC
   return { costPrice: row.costPrice, loadedCostPrice: row.loadedCostPrice ?? null }
 }
 
-// The desi field of an existing variant's update. The form has one desi for the product: it is sent only when the user
-// changed it from the value the form opened with, together with the variant's stored desi as loaded, so the server
-// refuses a desi changed meanwhile elsewhere (ürün içe aktarma) instead of overwriting it.
+// The desi the form opens with: the first variant's, else the first variant that has one. Null when no variant has a
+// desi: the field opens empty instead of showing a 1 nothing stores (live 7.11.2026: RYP003T showed Desi 1 while its
+// variants had none, and the Trendyol update stopped on the missing desi).
+export function editorOpenedDesi(variants: ReadonlyArray<{ desi?: number | null }>): number | null {
+  const desi = variants[0]?.desi ?? variants.find(variant => variant.desi != null && variant.desi > 0)?.desi
+  return desi != null && desi > 0 ? desi : null
+}
+
+// The desi field of an existing variant's update. The form has one desi for the product: it is sent when the user
+// changed it from the value the form opened with, or to a variant with no desi of its own (the form's desi is the
+// card's), together with the variant's stored desi as loaded, so the server refuses a desi changed meanwhile elsewhere
+// (ürün içe aktarma) instead of overwriting it.
 export function editorVariantDesiUpdate(desi: number, openedDesi: number, loadedDesi: number | null | undefined): { desi?: number; loadedDesi?: number | null } {
-  if (!(desi > 0) || desi === openedDesi) return {}
+  if (!(desi > 0) || (desi === openedDesi && loadedDesi != null)) return {}
   return { desi, loadedDesi: loadedDesi ?? null }
 }
 

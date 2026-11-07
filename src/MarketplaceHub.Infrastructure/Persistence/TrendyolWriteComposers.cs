@@ -57,7 +57,9 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
         if (!sections.Trendyol) return ServiceResult<ProductUpdateDraft>.Fail("PRODUCT_UPDATE_FIELDS_UNSUPPORTED", "Seçilen ürün bilgileri Trendyol'a gönderilemiyor.", 422);
         // A card Trendyol split into one content per colour is updated content by content (the job finds each barcode's
         // content right before the send), so the publication composer's split stop does not hold an update back.
-        var create = await new ProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken, contentSplitAllowed: true);
+        // The desi is checked below, once it is known whether this update sends one (live 7.11.2026: RYP003T, approved,
+        // stopped on a missing desi although the owner had not picked Desi).
+        var create = await new ProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken, contentSplitAllowed: true, desiRequired: false);
         if (!create.Succeeded) return ServiceResult<ProductUpdateDraft>.Fail(create.Error!.Code, create.Error.Message, create.Error.Status, create.Error.FieldErrors);
         var draft = create.Value!;
         var productLink = await db.MarketplaceProductLinks.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == productId, cancellationToken);
@@ -65,9 +67,24 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
         // link only once approved) but no single content is the product's. It is not an unapproved product.
         var variantIds = draft.Variants.Select(variant => variant.VariantId).ToArray();
         var splitContents = productLink is null && await db.MarketplaceVariantLinks.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && variantIds.Contains(x.VariantId), cancellationToken);
+        if (DesiMissingSku(draft, sections, unapproved: productLink is null && !splitContents) is { } missingDesiSku)
+            return ServiceResult<ProductUpdateDraft>.Fail("DESI_REQUIRED", ProductPublicationComposer.DesiMissingMessage(missingDesiSku), 422);
         var publication = Split(productId, productLink?.ExternalId, draft.PayloadJson, sections, splitContents);
         if (!publication.Succeeded) return ServiceResult<ProductUpdateDraft>.Fail(publication.Error!.Code, publication.Error.Message, publication.Error.Status);
         return ServiceResult<ProductUpdateDraft>.Ok(new(draft.ProfileId, publication.Value!, draft.Variants));
+    }
+
+    // The first variant (by stock code) without a desi when this update sends one: the whole card of a product Trendyol
+    // has not approved yet (dimensionalWeight is required there), or Desi picked. Null when no desi is needed or all have one.
+    internal static string? DesiMissingSku(ProductPublicationDraft draft, ProductUpdateSections sections, bool unapproved)
+    {
+        if (!unapproved && !sections.VariantFields.Desi) return null;
+        using var payload = JsonDocument.Parse(draft.PayloadJson);
+        var missing = payload.RootElement.GetProperty("items").EnumerateArray()
+            .Where(item => !item.TryGetProperty("dimensionalWeight", out var desi) || desi.ValueKind != JsonValueKind.Number || desi.GetDecimal() <= 0)
+            .Select(item => Text(item, "barcode"))
+            .ToHashSet(StringComparer.Ordinal);
+        return draft.Variants.Where(variant => missing.Contains(variant.Barcode)).Select(variant => variant.Sku).Order(StringComparer.Ordinal).FirstOrDefault();
     }
 
     // The Trendyol create payload split into the update requests. contentIdText: the product link's id once Trendyol has
