@@ -494,7 +494,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         var read = await ReadSummaryAsync(job, summary.Marketplace, cancellationToken);
         var change = Change(job);
         // A read that recorded what it pulled says it in one plain sentence instead of the type's generic line.
-        if (read is not null) change = new JobChangeView("Yapılan İşlem", change?.Value ?? JobReadSentence.Noun(read.Kind), read.Sentence);
+        if (read is not null) change = new JobChangeView("Yapılan İşlem", change?.Value ?? JobReadSentence.Title(read.Kind), read.Sentence);
         return new JobDetailView(summary, attempts, currentOrder, change, relatedOrders, scan, failureReasons, invoice, productId, await VariantResultsAsync(job, cancellationToken), await WriteSummaryAsync(job, productId, cancellationToken), read);
     }
 

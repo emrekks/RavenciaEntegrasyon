@@ -77,3 +77,13 @@ public sealed class JobReadRecorderRetryTests
     [InlineData("OTHER", "kayıt")]
     public void Every_kind_has_its_noun(string kind, string noun) => Assert.Equal(noun, JobReadSentence.Noun(kind));
 }
+
+public sealed class JobReadTitleTests
+{
+    [Fact]
+    public void A_read_without_its_own_text_gets_a_title_cased_heading()
+    {
+        Assert.Equal("İade Talebi Okuma", JobReadSentence.Title("RETURN"));
+        Assert.Equal("Kayıt Okuma", JobReadSentence.Title("OTHER"));
+    }
+}
