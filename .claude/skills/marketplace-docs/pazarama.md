@@ -149,8 +149,14 @@ _FINANCE_SYNC (issue code PAZARAMA_FINANCE_SYNC_FAILED).
   carry the catalog photo as `fallbackImageUrl` behind the marketplace's (`MarketplaceSalesService.LineImageUrls`).
 
 ## Report data gaps (7 Nov 2026)
-- Discount: a line carries `listPrice`, `salePrice`, `discountAmount` and `discountDescription`
-  (`pazarama-api-son.md:2395-2545`): one discount, without saying who funds it. The mapper takes it as the order's
-  discount (`PazaramaOrderMapper.cs:100`), never as PlatformDiscount. Live: 5 orders in 60 days, every discount 0. Not
-  split until the docs or a real discounted order say who pays it.
+- Discount: a line carries `listPrice`, `salePrice`, `discountAmount` and `discountDescription`; the field table
+  (`pazarama-api-son.md:2348-2353`) documents only ListPrice, SalePrice and TotalPrice, the two discount fields appear
+  only in the JSON samples (`:2403-2404`, `:2534-2543`, empty there). No field says who funds a discount.
+- Live (all 8 stored lines, 7 Nov 2026): `discountAmount` is always 0 and `listPrice` = `salePrice` = `totalPrice`
+  (e.g. 725,00 TL), while `discountDescription` carries the marketplace's own discount as text only: "(Pazarama
+  İndirimi - 21.75 TL)", "(Pazarama İndirimi - 611 TL)", "(Pazarama İndirimi - 798.99 TL)". So the amounts the API
+  sends are before Pazarama's discount (the order amount 725 = totalPrice), the panel's sale amount already includes it,
+  and the funder is named only inside the free text. The mapper takes `discountAmount` as the order's discount
+  (`PazaramaOrderMapper.cs:100`), never as PlatformDiscount; nothing is parsed from the text. Owner asked 7 Nov 2026
+  ("Api yollamıyor mu?"): the API sends the amount only in that text, no structured funder field.
 - Due date: the lines' `estimatedShippingDate` (the earliest) fills ShipmentDueAt (5/5 orders in 60 days).
