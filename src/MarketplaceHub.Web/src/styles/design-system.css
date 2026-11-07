@@ -1475,6 +1475,16 @@
 
 @media print {
   body > * { visibility: hidden; }
+  /* A label prints alone, from the top of the first page. An open window pins the body (overlay-scroll-lock.ts:
+     position: fixed; top: -scroll), and a fixed body prints as one page-sized box: the label window, placed after the
+     page's own content, fell outside it and the sheet came out blank. In print the body flows again, the page's
+     content takes no room, and the window and its overlay sit in the flow, without motion. */
+  html:has(body > .shipping-label-backdrop), html:has(body > .shipping-label-backdrop) body { position: static !important; inset: auto !important; width: auto !important; height: auto !important; overflow: visible !important; margin: 0 !important; padding: 0 !important; background: #fff !important; opacity: 1 !important; filter: none !important; animation: none !important; transition: none !important; }
+  body:has(> .shipping-label-backdrop) > :not(.shipping-label-backdrop) { display: none !important; }
+  .shipping-label-backdrop, .shipping-label-backdrop :is(.rr-overlay, .rr-modal, .rr-m-body, .shipping-label-preview-wrap, .lbl-fit, .lbl-fit-inner) { position: static !important; inset: auto !important; transform: none !important; translate: none !important; scale: none !important; opacity: 1 !important; filter: none !important; backdrop-filter: none !important; animation: none !important; transition: none !important; margin: 0 !important; padding: 0 !important; width: auto !important; max-width: none !important; height: auto !important; max-height: none !important; overflow: visible !important; background: transparent !important; box-shadow: none !important; border: 0 !important; zoom: 1 !important; }
+  .shipping-label-backdrop .rr-overlay, .shipping-label-backdrop .rr-modal, .shipping-label-backdrop .rr-m-body, .shipping-label-backdrop .lbl-fit { display: block !important; }
+  /* only the label prints: the window's title, buttons and on-screen notes take no room on the page */
+  .shipping-label-backdrop :is(.rr-m-head, .rr-m-foot, .rr-screen-only), .shipping-label-modal > :is(header, footer) { display: none !important; }
   .shipping-label-backdrop, .shipping-label-backdrop * { visibility: visible; }
   .shipping-label-backdrop { position: static; display: block; padding: 0; background: transparent; }
   .shipping-label-modal { display: block; width: auto; max-height: none; overflow: visible; border: 0; box-shadow: none; }

@@ -16,6 +16,7 @@
     "test:security": "vitest run src/shared/security/sanitizeHtml.test.ts",
     "lint": "eslint . --max-warnings=0",
     "test:visual": "node tests/visual/run.mjs",
+    "test:label-print": "vite build --logLevel warn && node tests/visual/label-print.mjs",
     "check:cascade": "node tests/visual/cascade-check.mjs"
   },
   "dependencies": {
