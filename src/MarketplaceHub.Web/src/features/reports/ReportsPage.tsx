@@ -420,14 +420,23 @@ function moneyBreakdown(data: ReportSales, flow: ProfitSteps): Money | null {
   if (!flow.steps) return null
   const now = data.summary
   const finance = financeCosts(data)
+  // Each category is counted once, at its one figure (costFigure): the commission, cargo and per-sale fees charged in
+  // the period tied to none of its orders go into their own deduction (Masraf Kalemleri lists them in their own lines,
+  // 7 Nov 2026: the bridge's Stopaj once left out the 448 TL of Masraf Kalemleri's), and the kinds no order carries
+  // (advertising, penalties) into Reklam ve Diğer Kesintiler, with those of the period's orders.
+  const folded = (step: FlowStep) => !finance ? step.value ?? 0
+    : step.key === 'commission' ? (step.value ?? 0) + apartAmount(data, 'COMMISSION')
+      : step.key === 'cargo' ? (step.value ?? 0) + apartAmount(data, 'CARGO')
+        : step.key === 'fees' ? figureOf(data, chargeFeeCategories) : step.value ?? 0
   // Every deduction that is not zero: one below zero (a fee credited back) adds to what is left, as on the bridge.
-  const deductions: MoneyPart[] = flow.steps.filter(step => step.kind === 'minus' && step.value !== null && step.value !== 0)
-    .map(step => ({ key: step.key, label: step.label, value: step.value ?? 0, tone: deductionTones[step.key] ?? 'fees', note: step.note }))
+  const deductions: MoneyPart[] = flow.steps.filter(step => step.kind === 'minus' && step.value !== null)
+    .map(step => ({ key: step.key, label: step.label, value: folded(step), tone: deductionTones[step.key] ?? 'fees', note: step.note }))
+    .filter(part => part.value !== 0)
   const deducted = deductions.reduce((sum, part) => sum + part.value, 0)
   const left = now.grossSales - deducted
   const cost = data.cost.costedQuantity > 0 ? data.cost.costTotal : null
   const tax = finance?.netVat?.net ?? null
-  const unlinked = unlinkedDeductions(trendyolRead(data) ? data.costs : null).total
+  const unlinked = finance ? figureOf(data, orderlessCategories) : unlinkedDeductions(trendyolRead(data) ? data.costs : null).total
   const profit = cost === null ? null : left - (tax ?? 0) - cost - unlinked
   const unread = finance ? unreadFeeCodes(data) : []
   const commissionKnown = flow.steps.some(step => step.key === 'commission' && step.value !== null)
@@ -591,7 +600,7 @@ const costMeaning: Record<string, string> = {
   early: 'Hakedişi erken almak için ödenen kesinti.',
   otherDeduction: 'Trendyol\'un türünü belirtmeden kestiği diğer kesinti faturaları.',
   vat: 'Devlete ödenecek KDV farkı.',
-  fees: 'Pazaryerlerinin hizmet bedeli, stopaj, reklam ve benzeri kesintileri; Shopify\'da ödeme komisyonu.',
+  fees: 'Pazaryerlerinin hizmet bedeli ve stopaj kesintileri; Shopify\'da ödeme komisyonu.',
   marketplace: 'Pazaryerinin komisyonu ve hizmet bedelleri.'
 }
 const explain = (key: string, how: string) => `${costMeaning[key] ?? ''}\n${how}`
@@ -614,10 +623,11 @@ function costLines(data: ReportSales, money: Money): OverviewCost[] {
   }
   const lines: OverviewCost[] = [
     { key: 'cost', label: 'Ürün Maliyeti', value: money.cost, tone: 'cost', note: explain('cost', money.cost === null ? 'Ürün kartında varyantların maliyeti girildiğinde hesaplanır.' : costCoverageText(money.costCoverage)) },
-    { key: 'commission', label: commission?.label ?? 'Komisyon', value: commission || apart('COMMISSION') ? (commission?.value ?? 0) + (apart('COMMISSION')?.amount ?? 0) : null, tone: 'commission',
-      note: `${explain('commission', commission?.note || 'Siparişte komisyon gelmedi.')}${apartNote('COMMISSION', commission?.value ?? null)}` },
-    { key: 'cargo', label: 'Kargo', value: finance ? (cargo?.value ?? 0) + (apart('CARGO')?.amount ?? 0) : null, tone: 'cargo',
-      note: `${explain('cargo', finance ? cargo?.note || 'Bu dönemde kargo yok.' : notRead)}${apartNote('CARGO', cargo?.value ?? null)}` },
+    // The account's commission and cargo already hold what the period charged of them apart (moneyBreakdown).
+    { key: 'commission', label: commission?.label ?? 'Komisyon', value: commission?.value ?? null, tone: 'commission',
+      note: `${explain('commission', commission?.note || 'Siparişte komisyon gelmedi.')}${apartNote('COMMISSION', commission ? commission.value - apartAmount(data, 'COMMISSION') : null)}` },
+    { key: 'cargo', label: 'Kargo', value: finance ? cargo?.value ?? 0 : null, tone: 'cargo',
+      note: `${explain('cargo', finance ? cargo?.note || 'Bu dönemde kargo yok.' : notRead)}${apartNote('CARGO', cargo ? cargo.value - apartAmount(data, 'CARGO') : null)}` },
     { key: 'returned', label: 'İade Edilen Tutar', value: part('returned')?.value ?? 0, tone: 'returned', note: explain('returned', `Bu dönemde ${formatNumber(data.summary.returnedQuantity)} adet ürün iade edildi.`) },
     // The service fee and the withholding tax are on every order. The rest is listed only when the period carries one,
     // on an order or apart ("Diğer Kesintiler" and "Ödeme Komisyonu" also not when nothing is read).
@@ -625,7 +635,7 @@ function costLines(data: ReportSales, money: Money): OverviewCost[] {
       const line = finance?.lines.find(item => item.category === fee.category)
       const extra = apart(fee.category)
       return { key: fee.key, label: fee.category === 'EARLY_PAYMENT' ? 'Erken Ödeme Kesintisi' : fee.category === 'OTHER_DEDUCTION' ? 'Diğer Kesintiler' : fee.label,
-        value: finance ? (line?.amount ?? 0) + (extra?.amount ?? 0) : null, tone: fee.key,
+        value: costFigure(data, fee.category), tone: fee.key,
         note: `${explain(fee.key, !finance ? notRead : line && line.amount !== 0 ? feeNote(line) : extra ? 'Dönemin siparişlerinde kaydı yok.' : 'Bu dönemde kaydı yok.')}${apartNote(fee.category, line?.amount || null)}` }
     }),
     { key: 'vat', label: 'Net KDV', value: finance?.netVat?.net ?? null, tone: 'vat', note: explain('vat', finance?.netVat
@@ -688,13 +698,13 @@ const unlinkedMeaning: Record<string, string> = {
   OTHER_DEDUCTION: 'Trendyol\'un türünü belirtmeden kestiği kesinti faturaları.\nBir siparişe bağlı değildir.'
 }
 const unlinkedLabels: Record<string, string> = { SERVICE_FEE: 'Hizmet Bedeli', STOPPAGE: 'Stopaj', ADVERTISING: 'Reklam', CARGO: 'Kargo', COMMISSION: 'Komisyon', PENALTY: 'Ceza', EARLY_PAYMENT: 'Erken Ödeme Kesintisi', OTHER_DEDUCTION: 'Diğer Kesinti', PAYMENT_FEE: 'Ödeme Komisyonu' }
-const unlinkedTip = 'Bu dönemde kesilen Trendyol kalemleri; hiçbiri bir siparişe bağlı değil, işlem tarihine göre.\nÖr. reklam bütçesi, ceza. Hizmet bedeli ve stopaj ödemenin siparişlerine paylaştırılır; burada yalnız henüz paylaştırılamayanlar kalır. Bir siparişe dağıtılamadıkları için ayrı gösterilir; Net Kâr\'dan düşülür.'
+const unlinkedTip = 'Trendyol\'un bir siparişe bağlamadan kestiği kalemler: reklam bütçesi, ceza, erken ödeme ve türü belirtilmeyen kesinti faturaları, işlem tarihine göre.\nSiparişe bağlanamayan komisyon, kargo, hizmet bedeli ve stopaj kendi kalemlerinde sayılır (Masraf Kalemleri, Kâr Köprüsü). Net Kâr\'dan düşülür.'
 // The unlinked deductions' line in the profit account, under the pointer.
 // The name of that line on Kâr Köprüsü and in Kâr Hesabı (owner, 7 Nov 2026: plain words, no "siparişe bağlı olmayan").
 const unlinkedTitle = 'Reklam ve Diğer Kesintiler'
 const unlinkedNote = (data: ReportSales) => {
-  const { lines } = unlinkedDeductions(trendyolRead(data) ? data.costs : null)
-  return `Trendyol cari hesabında dönemde kesilen kalemler; siparişe bağlı değil, işlem tarihine göre.\n${lines.length ? `${lines.map(line => `${line.label} ${formatTl(line.amount)} (${formatCount(line.records)} kayıt)`).join(', ')}. ` : ''}Masraf Kalemleri'nde her biri kendi kaleminde gösterilir; Net Kâr'dan düşülür.`
+  const { lines } = orderlessLines(data)
+  return `Trendyol'un bir siparişe bağlamadan kestiği kalemler (reklam, ceza, kesinti faturaları), işlem tarihine göre.\n${lines.length ? `${lines.map(line => `${line.label} ${formatTl(line.amount)} (${formatCount(line.records)} kayıt)`).join(', ')}. ` : ''}Masraf Kalemleri'nde her biri kendi kaleminde gösterilir; siparişe bağlanamayan komisyon, kargo, hizmet bedeli ve stopaj kendi kalemlerinde sayılır. Net Kâr'dan düşülür.`
 }
 // Net Kâr: what every figure that says so means.
 const netProfitTip = 'Tüm masraflar ve ürün maliyeti düştükten sonra kalan tahmini kâr.\nSatış − iade − komisyon − kargo − hizmet bedeli ve diğer kesintiler − net KDV − ürün maliyeti − reklam ve diğer kesintiler, Kâr Hesabı\'ndaki gibi.'
@@ -707,12 +717,25 @@ function unlinkedDeductions(costs: ReportCosts | null | undefined) {
   return { lines, total: lines.reduce((sum, line) => sum + line.amount, 0) }
 }
 
-// Siparişe Bağlı Olmayan Kesintiler: each category with its amount and records, then their total, which the profit
-// takes off in a line of its own (moneyBreakdown). Not drawn when the period has none. A board card on Genel Bakış; a panel, like its neighbours, on
-// Kârlılık.
+// Reklam ve Diğer Kesintiler, one line per kind (advertising, penalties, early payment, other deduction invoices): those
+// of the period's orders and those charged in the period apart; their total is the account's (moneyBreakdown).
+function orderlessLines(data: ReportSales) {
+  const finance = financeCosts(data)
+  if (!finance) return unlinkedDeductions(trendyolRead(data) ? data.costs : null)
+  const apart = unlinkedDeductions(trendyolRead(data) ? data.costs : null).lines
+  const lines = orderlessCategories.map(category => {
+    const linked = finance.lines.find(line => line.category === category)
+    const extra = apart.find(line => line.key === category)
+    return { key: category, label: unlinkedLabels[category] ?? category, amount: costFigure(data, category) ?? 0, records: (linked?.records ?? 0) + (extra?.records ?? 0) }
+  }).filter(line => line.amount !== 0).sort((a, b) => b.amount - a.amount)
+  return { lines, total: figureOf(data, orderlessCategories) }
+}
+
+// Reklam ve Diğer Kesintiler: each kind with its amount and records, then their total, which the profit takes off in a
+// line of its own (moneyBreakdown). Not drawn when the period has none. A panel, like its neighbours, on Kârlılık.
 function UnlinkedDeductions({ data, panel = false }: { data: ReportSales; panel?: boolean }) {
   const tip = useId()
-  const { lines, total } = unlinkedDeductions(trendyolRead(data) ? data.costs : null)
+  const { lines, total } = orderlessLines(data)
   if (!lines.length) return null
   const title = unlinkedTitle
   const tiles = <dl className="reports-unlinked">
@@ -738,19 +761,20 @@ function ProfitBridge({ data, money, onMore }: { data: ReportSales; money: Money
   const tip = useId()
   const more = <MoreButton title="Kâr Köprüsü" onClick={() => onMore('cost')} compact />
   if (!money) return <Card title="Kâr Köprüsü" className="reports-card-bridge" actions={more}>{() => <p className="reports-empty">Bu dönemde tutarı olan sipariş yok.</p>}</Card>
-  const finance = financeCosts(data)
   const part = (key: string) => money.deductions.find(item => item.key === key)
-  const fees = finance ? feeLines(finance) : []
-  const stoppage = fees.find(fee => fee.key === 'stoppage')
-  const otherFees = fees.filter(fee => fee.key !== 'stoppage')
+  // Each step is the account's figure (moneyBreakdown, costFigure), the same number Masraf Kalemleri shows: the Stopaj
+  // step is that line's stopaj, and the fees beside the commission are the account's Kesintiler without it.
+  const stoppage = costFigure(data, 'STOPPAGE') ?? 0
+  const otherFees = feeCategories.filter(fee => chargeFeeCategories.includes(fee.category) && fee.category !== 'STOPPAGE')
+    .map(fee => ({ label: fee.label, value: costFigure(data, fee.category) ?? 0 })).filter(fee => fee.value !== 0)
   const commission = part('commission')
   const cargo = part('cargo')
   const taken = [
     { key: 'returned', label: 'İade Edilen Tutar', value: part('returned')?.value ?? 0, note: explain('returned', `Bu dönemde ${formatNumber(data.summary.returnedQuantity)} adet ürün iade edildi.`) },
     { key: 'cargo', label: 'Kargo', value: cargo?.value ?? 0, note: explain('cargo', cargo?.note ?? '') },
-    { key: 'marketplace', label: 'Pazaryeri Masrafları', value: (commission?.value ?? 0) + otherFees.reduce((sum, fee) => sum + fee.value, 0),
+    { key: 'marketplace', label: 'Pazaryeri Masrafları', value: (commission?.value ?? 0) + (part('fees')?.value ?? 0) - stoppage,
       note: explain('marketplace', [commission ? `${commission.label} ${formatTl(commission.value)}` : null, ...otherFees.map(fee => `${fee.label} ${formatTl(fee.value)}`)].filter(Boolean).join(', ') + '.') },
-    { key: 'stoppage', label: 'Stopaj', value: stoppage?.value ?? 0, note: explain('stoppage', 'KDV hariç satışın %1\'i; Trendyol yurt dışı vitrin satışlarından da keser (Azerbaycan hariç). Hesap kesimi henüz olmayan siparişlerde tahmini.') },
+    { key: 'stoppage', label: 'Stopaj', value: stoppage, note: explain('stoppage', `KDV hariç satışın %1'i; Trendyol yurt dışı vitrin satışlarından da keser (Azerbaycan hariç). Hesap kesimi henüz olmayan siparişlerde tahmini.${apartAmount(data, 'STOPPAGE') ? ` ${formatTl(apartAmount(data, 'STOPPAGE'))} siparişe bağlı değil, işlem tarihine göre bu döneme yazıldı.` : ''}`) },
     { key: 'vat', label: 'Net KDV', value: money.tax ?? 0, note: explain('vat', money.tax !== null && money.tax < 0 ? 'Masraflardaki KDV satışların KDV\'sinden fazla; fark devreden KDV\'dir ve kârı artırır.' : 'Satışların KDV\'sinden ürün maliyetindeki ve masraflardaki KDV düşülür. Tahminidir.') },
     { key: 'cost', label: 'Ürün Maliyeti', value: money.cost ?? 0, note: explain('cost', costCoverageText(money.costCoverage)) },
     { key: 'unlinked', label: unlinkedTitle, value: money.unlinked, note: unlinkedNote(data) }
@@ -1326,6 +1350,26 @@ const feeCategories = [
   // A deduction invoice of a kind no rule names: still charged to the seller.
   { category: 'OTHER_DEDUCTION', key: 'otherDeduction', label: 'Diğer Kesinti' }
 ]
+
+// The per-sale fees of the marketplace (Pazaryeri Masrafları beside the commission, and the Stopaj step) and the kinds of
+// deduction no order carries (Reklam ve Diğer Kesintiler).
+const chargeFeeCategories = ['SERVICE_FEE', 'PAYMENT_FEE', 'STOPPAGE']
+const orderlessCategories = ['ADVERTISING', 'PENALTY', 'EARLY_PAYMENT', 'OTHER_DEDUCTION']
+
+// What Trendyol's statement charged in the period of a category tied to none of the period's orders (0 when unread).
+function apartAmount(data: ReportSales, category: string) {
+  return unlinkedDeductions(trendyolRead(data) ? data.costs : null).lines.find(line => line.key === category)?.amount ?? 0
+}
+
+// A fee category's one figure, the same on Masraf Kalemleri, Kâr Köprüsü and in the profit (null when the statement is
+// not read): the period's orders' amount (their records, their shares of the payout invoices, the estimate) plus what
+// the period charged of it tied to none of its orders. Never counted twice: a record is either one of an order or apart.
+function costFigure(data: ReportSales, category: string): number | null {
+  const finance = financeCosts(data)
+  if (!finance) return null
+  return (finance.lines.find(line => line.category === category)?.amount ?? 0) + apartAmount(data, category)
+}
+const figureOf = (data: ReportSales, categories: string[]) => categories.reduce((sum, category) => sum + (costFigure(data, category) ?? 0), 0)
 
 function feeLines(costs: ReportCosts) {
   return feeCategories.flatMap(fee => {

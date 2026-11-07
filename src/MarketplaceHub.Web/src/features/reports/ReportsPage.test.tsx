@@ -318,10 +318,11 @@ describe('ReportsPage', () => {
     const feeTip = [...page.querySelectorAll('.reports-costlines li')].find(line => line.textContent?.startsWith('Hizmet Bedeli'))?.querySelector('.reports-hover-tip')?.textContent
     expect(feeTip).toContain('₺12,50 dönemin siparişlerine ait; ₺1.079,54 (4 kayıt) siparişe bağlı değil, işlem tarihine göre')
     expect(cargoTip(page)).toContain('Faturası henüz gelmeyen 2 sipariş')
-    // 350 − 100 − 226,68 − 54 (commission and service fee) − 1 − 80 = −111,68, then the 6.527,55 of deductions tied to no
-    // order (owner, 5 Nov 2026: every expense is off the net profit): −6.639,23, a loss, in red, on the bridge and the strip.
-    expect(bridgeRows(page)).toEqual(['Satış Tutarı ₺350,00', '− İade Edilen Tutar − ₺100,00', '− Kargo − ₺226,68', '− Pazaryeri Masrafları − ₺54,00', '− Stopaj − ₺1,00', '− Ürün Maliyeti − ₺80,00',
-      '− Reklam ve Diğer Kesintiler − ₺6.527,55', 'Tahmini Zarar − ₺6.639,23'])
+    // The bridge takes the same figures: 350 − 100 − 226,68 − 1.133,54 (commission 41,50 and the service fee 1.092,04) −
+    // 449,01 of withholding tax (the ring's, 7 Nov 2026) − 80 − 5.000 of advertising (owner, 5 Nov 2026: every expense is
+    // off the net profit) = −6.639,23, a loss, in red, on the bridge and the strip.
+    expect(bridgeRows(page)).toEqual(['Satış Tutarı ₺350,00', '− İade Edilen Tutar − ₺100,00', '− Kargo − ₺226,68', '− Pazaryeri Masrafları − ₺1.133,54', '− Stopaj − ₺449,01', '− Ürün Maliyeti − ₺80,00',
+      '− Reklam ve Diğer Kesintiler − ₺5.000,00', 'Tahmini Zarar − ₺6.639,23'])
     expect(page.querySelector('.reports-bridge > li.is-end.is-negative')).not.toBeNull()
     // Shopify is costed from its own settings (cargo, card fees) on the server, so nothing is left out for it.
     expect(page.querySelector('.reports-bridge > li.is-end .reports-hover-tip')?.textContent).not.toContain('kargo ve hizmet bedeli')
@@ -344,8 +345,8 @@ describe('ReportsPage', () => {
     // The spend over Trendyol's 3 orders with an amount; the margin before it gives the advertising back to the profit.
     expect(heroTiles(page, 'ads')[0]).toBe('Sipariş Başına ₺1.667')
     expect(hero(page, 'profit')).toMatch(/^Reklam Öncesi Marj −?%/u)
-    // The commission (41,50) and the service fee and withholding tax (12,50 + 1) over 3 orders, as on the bridge.
-    expect(hero(page, 'fees')).toBe('Sipariş Başına Kesinti ₺18,33')
+    // The commission (41,50) and the service fee and withholding tax (1.092,04 + 449,01) over 3 orders, as on the bridge.
+    expect(hero(page, 'fees')).toBe('Sipariş Başına Kesinti ₺527,52')
     // The billed return cargo (20) and the return operation fee (5), Trendyol's only.
     expect(heroTiles(page, 'fees')[2]).toBe('İade Kargo Zararı ₺25,00')
     expect(tipOf(page, 'fees', 'İade Kargo Zararı')).toContain('yalnız Trendyol')
@@ -366,7 +367,7 @@ describe('ReportsPage', () => {
     // Kâr Hesabı: the deductions tied to no order on a line of their own before the result, which agrees with the strip.
     const ledger = [...page.querySelectorAll('.reports-ledger-panel .reports-ledger')][0]
     const rows = [...ledger.querySelectorAll(':scope > div')].map(row => `${row.querySelector('dt button')?.textContent ?? ''} ${row.querySelector('dd')?.textContent ?? ''}`)
-    expect(rows.slice(-2)).toEqual(['Reklam ve Diğer Kesintiler − ₺6.527,55', 'Tahmini Zarar − ₺6.639,23'])
+    expect(rows.slice(-2)).toEqual(['Reklam ve Diğer Kesintiler − ₺5.000,00', 'Tahmini Zarar − ₺6.639,23'])
     // The commission's rate and coverage, once in the strip, are under the account's commission row.
     expect(ledger.textContent).toContain('Ortalama komisyon oranı')
     expect(ledger.textContent).toContain('kâr kapsamı')
@@ -374,7 +375,7 @@ describe('ReportsPage', () => {
     expect(body(page)).toContain('Masraf Değil')
     // The deductions tied to no order are shown on Kârlılık too, and the statement puts them in their own column.
     expect(page.querySelector('.reports-card-unlinked h2')?.textContent).toBe('Reklam ve Diğer Kesintiler')
-    expect(page.querySelector('.reports-card-unlinked .reports-unlinked > .is-total')?.textContent).toContain('₺6.527,55')
+    expect(page.querySelector('.reports-card-unlinked .reports-unlinked > .is-total')?.textContent).toContain('₺5.000,00')
     const statement = [...page.querySelectorAll('.reports-panel')].find(panel => panel.textContent?.includes('Trendyol Cari Hesap Kalemleri'))!
     expect([...statement.querySelectorAll('thead th')].map(cell => cell.textContent?.trim())).toEqual(expect.arrayContaining(['Siparişlere Ait', 'Siparişe Bağlı', 'Tahmini', 'Siparişsiz']))
     const adRow = [...statement.querySelectorAll('tbody tr')].find(row => row.textContent?.startsWith('Reklam'))!
@@ -402,7 +403,9 @@ describe('ReportsPage', () => {
     // It has its own line among the costs, and only when there is one (the other tests list none).
     const lines = [...page.querySelectorAll('.reports-costlines li')].map(line => [...line.children].slice(1, 3).map(cell => cell.textContent).join(' '))
     expect(lines).toContain('Diğer Kesintiler ₺4,50')
-    expect(bridgeRows(page).some(row => row.includes('Pazaryeri Masrafları') && row.includes('58,50'))).toBe(true)
+    // A kind no order carries: with the advertising on the bridge, not among the marketplace's fees.
+    expect(bridgeRows(page)).toContain('− Pazaryeri Masrafları − ₺1.133,54')
+    expect(bridgeRows(page)).toContain('− Reklam ve Diğer Kesintiler − ₺5.004,50')
   })
 
   it('compares the profit with a previous period worked out alike, its deductions tied to no order taken off too', async () => {
@@ -428,13 +431,31 @@ describe('ReportsPage', () => {
     expect(shares.reduce((sum, text) => sum + Number(text!.replace('%', '').replace(',', '.')), 0)).toBeCloseTo(100, 0)
   })
 
+  it('shows one figure for each cost on Masraf Kalemleri, Kâr Köprüsü and Net Kâr, the stopaj tied to no order included', async () => {
+    // 7 Nov 2026: the ring's Stopaj held the 448,01 charged in the period tied to no order, the bridge's only the orders'
+    // 1, so the same name showed two numbers. A carried-forward VAT is no slice of the ring and is added back.
+    const page = await open('', { ...withFinance, costs: { ...withFinance.costs!, netVat: { salesVat: 22.73, productCostVat: 7.27, expenseVat: 68.63, net: -53.17 } } })
+    const ring = new Map([...page.querySelectorAll('.reports-costlines li')].map(line => [line.querySelector('button')?.textContent ?? '', line.querySelector('b')?.textContent ?? '']))
+    const bridge = new Map([...page.querySelectorAll('.reports-bridge > li')].map(row => [row.querySelector('.reports-bridge-label')?.textContent?.replace(/^[−+] /u, '') ?? '', row.querySelector('b')?.textContent?.replace(/^[−+] /u, '') ?? '']))
+    for (const name of ['Stopaj', 'Kargo', 'İade Edilen Tutar', 'Ürün Maliyeti']) expect(bridge.get(name), name).toBe(ring.get(name))
+    const tl = (text: string | null | undefined) => Number((text ?? '').replace(/[^\d,−-]/gu, '').replace('−', '-').replace(/\./gu, '').replace(',', '.'))
+    // Pazaryeri Masrafları is the ring's commission and service fee; Reklam ve Diğer Kesintiler its advertising.
+    expect(tl(bridge.get('Pazaryeri Masrafları'))).toBeCloseTo(tl(ring.get('Komisyon')) + tl(ring.get('Hizmet Bedeli')), 2)
+    expect(tl(bridge.get('Reklam ve Diğer Kesintiler'))).toBeCloseTo(tl(ring.get('Reklam')), 2)
+    // Satış Tutarı − the ring's lines + the VAT carried forward = the bridge's result, to the kuruş.
+    const slices = [...ring.entries()].filter(([name]) => name !== 'Net KDV').reduce((sum, [, value]) => sum + (value === '—' ? 0 : tl(value)), 0)
+    // (The map drops a row's leading sign; the result is a loss.)
+    expect(bridge.get('Tahmini Zarar')).toBe('₺6.586,06')
+    expect(Math.round((350 - slices + 53.17) * 100) / 100).toBe(-tl(bridge.get('Tahmini Zarar')))
+  })
+
   it('ends the bridge where its steps end when no product cost is entered, the net VAT taken off', async () => {
     const page = await open('', { ...withFinance, cost: { ...withFinance.cost, costedQuantity: 0, coverage: 0, costTotal: 0 },
       costs: { ...withFinance.costs!, netVat: { salesVat: 60, productCostVat: 0, expenseVat: 50, net: 10 } } })
-    // 350 − 100 − 226,68 − 54 − 1 − 10 = −41,68, less the 6.527,55 tied to no order: −6.569,23.
+    // 350 − 100 − 226,68 − 1.133,54 − 449,01 − 10 = −1.569,23, less the 5.000 of advertising: −6.569,23.
     const rows = bridgeRows(page)
     expect(rows).toContain('− Net KDV − ₺10,00')
-    expect(rows).toContain('− Reklam ve Diğer Kesintiler − ₺6.527,55')
+    expect(rows).toContain('− Reklam ve Diğer Kesintiler − ₺5.000,00')
     expect(rows.at(-1)).toBe('Masraflar Sonrası − ₺6.569,23')
   })
 
@@ -442,9 +463,8 @@ describe('ReportsPage', () => {
     const costs = withFinance.costs!
     const page = await open('', { ...withFinance, costs: { ...costs, lines: [...costs.lines,
       { category: 'PENALTY', label: 'Ceza', isCost: true, amount: -20, records: 1, orderLinked: -20 }] } })
-    // The fees net to 12,50 + 1 − 20 = −6,50, added back rather than dropped: 350 − 100 − 41,50 − 226,68 + 6,50 − 80 =
-    // −91,68, then 6.527,55 tied to no order: −6.619,23, on the bridge (Pazaryeri Masrafları 41,50 + 12,50 − 20, then 1
-    // of withholding) and the strip alike.
+    // The penalty credited back nets the advertising and penalties to 5.000 − 20 = 4.980, added back rather than dropped:
+    // 350 − 100 − 226,68 − 1.133,54 − 449,01 − 80 − 4.980 = −6.619,23, on the bridge and the strip alike.
     const rows = bridgeRows(page)
     expect(rows.at(-1)).toBe('Tahmini Zarar − ₺6.619,23')
     expect(page.querySelectorAll('.reports-kpis > div')[1].textContent).toContain('− ₺6.619')
@@ -452,7 +472,7 @@ describe('ReportsPage', () => {
 
   it('takes the net VAT off the profit after the deductions, and adds a carried-forward one back', async () => {
     const page = await open('', { ...withFinance, costs: { ...withFinance.costs!, netVat: { salesVat: 22.73, productCostVat: 7.27, expenseVat: 68.63, net: -53.17 } } })
-    // −111,68 before the VAT; a VAT carried forward of 53,17 brings it to −58,51, the 6.527,55 tied to no order to −6.586,06.
+    // −6.639,23 before the VAT; a VAT carried forward of 53,17 brings it to −6.586,06.
     expect(bridgeRows(page)).toContain('+ Net KDV + ₺53,17')
     expect(bridgeRows(page).at(-1)).toContain('6.586,06')
   })
