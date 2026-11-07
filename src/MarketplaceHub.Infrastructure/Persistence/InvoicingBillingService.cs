@@ -1602,6 +1602,9 @@ public sealed partial class InvoicingBillingService(
     {
         var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken); if (invoice is null) return NotFound<Guid>();
         if (await IsShopifyManualInvoiceAsync(tenantId, invoice, cancellationToken)) return ServiceResult<Guid>.Fail("SHOPIFY_MANUAL_INVOICE_ONLY", "Shopify manuel belge kayıtları pazaryeri fatura aktarımına gönderilemez.", 422);
+        // At most one delivery job of an invoice waits or runs at a time, whatever key asked for it
+        // (InvoiceDeliveryJobHygiene): a second request gets that job and changes nothing.
+        if (await InvoiceDeliveryJobHygiene.OpenJobAsync(db, tenantId, invoice.Id, cancellationToken) is { } openJob) return ServiceResult<Guid>.Ok(openJob);
         var ownStates = ownerRetry && invoice.Status == InvoiceStatus.MarketplacePending
             ? await db.MarketplaceDeliveryStates.AsNoTracking().Where(state => state.TenantId == tenantId && state.InvoiceId == invoice.Id)
                 .Select(state => new { state.Status, state.ConnectionId }).ToListAsync(cancellationToken)

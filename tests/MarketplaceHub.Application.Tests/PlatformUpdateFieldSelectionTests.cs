@@ -342,6 +342,31 @@ public sealed class PlatformUpdateFieldSelectionTests
         Assert.True(hepsiburadaStock.ContainsKey("availableStock"));
     }
 
+    // Live 7.11.2026 (RYP003T): an approved product whose variants have no desi stopped on the missing desi although Desi
+    // was not picked. A desi is needed only when the update sends one: Desi picked, or an unapproved product's whole card.
+    [Fact]
+    public void A_missing_desi_stops_only_an_update_that_sends_the_desi()
+    {
+        const string payload = """
+            {"items":[
+              {"barcode":"B21","stockCode":"RYP003T21","title":"Ad","dimensionalWeight":null,"vatRate":10},
+              {"barcode":"B19","stockCode":"RYP003T19","title":"Ad","dimensionalWeight":null,"vatRate":10}
+            ]}
+            """;
+        var draft = new ProductPublicationDraft(Guid.Empty, "1", "2", "h", payload, [new(Guid.CreateVersion7(), "RYP003T21", "B21"), new(Guid.CreateVersion7(), "RYP003T19", "B19")]);
+
+        Assert.Null(ProductUpdateComposer.DesiMissingSku(draft, ProductUpdateFields.Sections(["TITLE", "IMAGES", "VAT_RATE"]).Value!, unapproved: false));
+        Assert.Equal("RYP003T19", ProductUpdateComposer.DesiMissingSku(draft, ProductUpdateFields.Sections(["DESI"]).Value!, unapproved: false));
+        Assert.Equal("RYP003T19", ProductUpdateComposer.DesiMissingSku(draft, ProductUpdateFields.Sections(["TITLE"]).Value!, unapproved: true));
+        Assert.Null(ProductUpdateComposer.DesiMissingSku(draft with { PayloadJson = CreatePayload, Variants = [new(Guid.CreateVersion7(), "S1", "B1"), new(Guid.CreateVersion7(), "S2", "B2")] }, ProductUpdateSections.All, unapproved: true));
+
+        // A picked VAT rate goes without a dimensionalWeight the card lacks: never as null.
+        var vat = ProductUpdateComposer.Split(Guid.CreateVersion7(), "123", payload, ProductUpdateFields.Sections(["VAT_RATE"]).Value!);
+        Assert.True(vat.Succeeded, vat.Error?.Message);
+        Assert.All(Items(vat.Value!.ApprovedVariantPayloadJson), item => Assert.False(item!.AsObject().ContainsKey("dimensionalWeight")));
+        Assert.Contains("Desi alanına", ProductPublicationComposer.DesiMissingMessage("RYP003T21"), StringComparison.Ordinal);
+    }
+
     private static ProductUpdatePublication Split(string? contentId, ProductUpdateSections sections)
     {
         var result = ProductUpdateComposer.Split(Guid.Parse("0192c0de-0000-7000-8000-000000000001"), contentId, CreatePayload, sections);

@@ -109,7 +109,8 @@ public static class PublicationJobSupersession
         if (effects.Count == 0) return 0;
         var keys = effects.Select(x => x.IdempotencyKey).Distinct(StringComparer.Ordinal).ToArray();
         var superseded = (await db.IntegrationJobs.AsNoTracking()
-                .Where(x => x.JobType == MarketplaceJobTypes.ProductCreate && x.Status == JobStatus.Cancelled && x.LastErrorCode == Code
+                .Where(x => x.JobType == MarketplaceJobTypes.ProductCreate && x.Status == JobStatus.Cancelled
+                    && (x.LastErrorCode == Code || x.LastErrorCode == ProductWriteSupersession.Code)
                     && keys.Contains(x.EffectIdempotencyKey))
                 .Select(x => new { x.TenantId, x.EffectIdempotencyKey })
                 .ToListAsync(cancellationToken))

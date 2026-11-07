@@ -10704,6 +10704,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     private async Task QueueAutomaticInvoiceRedelivery(Invoice invoice, ShipmentPackage package, CancellationToken cancellationToken)
     {
         if (invoiceBilling is null) return;
+        // An invoice in review is the owner's, and a delivery job of this package that waits, runs or stopped for review
+        // already stands for it: no second job next to it under another time bucket (live 13 Oct 2026).
+        if (invoice.Status == InvoiceStatus.ManualReview
+            || await InvoiceDeliveryJobHygiene.AutomaticDeliveryHeldAsync(db, invoice.TenantId, invoice.Id, package.Id, reviewHolds: true, cancellationToken)) return;
         var state = db.ChangeTracker.Entries<MarketplaceDeliveryState>()
             .Where(entry => entry.Entity.TenantId == invoice.TenantId
                 && entry.Entity.InvoiceId == invoice.Id

@@ -37,14 +37,32 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 InvoicingJobTypes.StageCapabilityProbe => await StageCapabilityProbe(tenantId, connectionId!.Value, payloadJson, correlationId, cancellationToken),
                 _ => false
             };
-            return succeeded
+            var result = succeeded
                 ? JobExecutionResult.Success()
                 : JobExecutionResult.Blocked("F4_JOB_REJECTED", "Job payload, capability or invoice state did not permit the operation.");
+            await CloseSettledWaitingDeliveryJobs(tenantId, jobType, payloadJson);
+            return result;
         }
         catch (JobProcessingException exception)
         {
+            await CloseSettledWaitingDeliveryJobs(tenantId, jobType, payloadJson);
             return exception.Result;
         }
+    }
+
+    // After a job of an invoice ran, the invoice's other delivery jobs that still wait are closed at once when the invoice
+    // went to review or was cancelled, or its delivery was confirmed (InvoiceDeliveryJobHygiene). Housekeeping only: it
+    // reads what was saved, writes with guarded updates, and a failure here never changes the job's own result.
+    private async Task CloseSettledWaitingDeliveryJobs(Guid tenantId, string jobType, string payloadJson)
+    {
+        if (jobType is not (InvoicingJobTypes.InvoiceSubmit or InvoicingJobTypes.InvoiceReconcile or InvoicingJobTypes.InvoiceDocumentFetch
+                or InvoicingJobTypes.MarketplaceDelivery or InvoicingJobTypes.InvoiceCancellation)) return;
+        if (DeliveryJobTarget(payloadJson) is not { } target) return;
+        try
+        {
+            await InvoiceDeliveryJobHygiene.CloseWaitingJobsAsync(db, tenantId, target.InvoiceId, timeProvider.GetUtcNow(), CancellationToken.None);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException) { }
     }
 
     internal static string? PazaramaOrderId(string? customerSnapshotJson)
@@ -2212,6 +2230,21 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         const int pageSize = 200;
         const int maximumPages = 10;
         var since = now.AddDays(-30);
+        // Waiting jobs of an invoice that went to review, was cancelled or got its delivery confirmed by any path (a
+        // marketplace read, another job) are closed too; the job run closes them at once, this catches the rest.
+        var waitingInvoiceIds = (await db.IntegrationJobs.AsNoTracking()
+                .Where(job => job.TenantId == tenantId && job.JobType == InvoicingJobTypes.MarketplaceDelivery
+                    && (job.Status == JobStatus.Pending || job.Status == JobStatus.RetryScheduled))
+                .OrderBy(job => job.CreatedAt)
+                .Select(job => job.PayloadJson)
+                .Take(500)
+                .ToListAsync(cancellationToken))
+            .Select(payload => DeliveryJobTarget(payload)?.InvoiceId)
+            .OfType<Guid>()
+            .Distinct()
+            .ToList();
+        foreach (var invoiceId in waitingInvoiceIds)
+            await InvoiceDeliveryJobHygiene.CloseWaitingJobsAsync(db, tenantId, invoiceId, now, cancellationToken);
         (DateTimeOffset CreatedAt, Guid Id)? before = null;
         for (var page = 0; page < maximumPages; page++)
         {
@@ -2256,7 +2289,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
     internal static bool DeliveryJobCoversPackage(string payloadJson, Guid packageId) =>
         DeliveryJobTarget(payloadJson) is not { } target || target.PackageId is null || target.PackageId == packageId;
 
-    private static (Guid InvoiceId, Guid? PackageId)? DeliveryJobTarget(string payloadJson)
+    internal static (Guid InvoiceId, Guid? PackageId)? DeliveryJobTarget(string payloadJson)
     {
         try
         {
@@ -2383,10 +2416,12 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                     true, true, true, await ShopifyWriteScopeVerifiedAsync(tenantId, connection, cancellationToken)) is null)
                 deliverableConnections.Add(connection.Id);
         }
+        // A job stopped for the owner's review holds its package too (InvoiceDeliveryJobHygiene): the recovery does not
+        // add a job every five minutes next to it, each stopping on the same cause (live 13 Oct 2026).
         var activeDeliveryJobs = await db.IntegrationJobs.AsNoTracking()
             .Where(job => job.TenantId == tenantId && job.JobType == InvoicingJobTypes.MarketplaceDelivery
-                && (job.Status == JobStatus.Pending || job.Status == JobStatus.Leased || job.Status == JobStatus.RetryScheduled))
-            .Select(job => new { job.JobDedupKey, job.PayloadJson }).ToListAsync(cancellationToken);
+                && (job.Status == JobStatus.Pending || job.Status == JobStatus.Leased || job.Status == JobStatus.RetryScheduled || job.Status == JobStatus.ManualReview))
+            .Select(job => new { job.JobDedupKey, job.PayloadJson, job.Status }).ToListAsync(cancellationToken);
         var neverQueued = new List<(Guid InvoiceId, Guid ConnectionId)>();
         foreach (var invoice in acceptedNeverDelivered)
         {
@@ -2419,7 +2454,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             // cannot be read is taken as covering the whole invoice.
             var keyPrefix = $"{InvoicingJobTypes.MarketplaceDelivery}:{candidate.Id}:";
             if (activeDeliveryJobs.Any(job => job.JobDedupKey.StartsWith(keyPrefix, StringComparison.Ordinal)
-                && DeliveryJobCoversPackage(job.PayloadJson, candidate.PackageId))) continue;
+                && InvoiceDeliveryJobHygiene.Holds(job.Status, job.PayloadJson, candidate.PackageId, reviewHolds: true))) continue;
 
             var dedup = RecoveryDedupKey(candidate.Id, candidate.PackageId, candidate.StateVersion, bucket);
             if (!queuedRecoveryKeys.Add(dedup)) continue;
@@ -2597,6 +2632,12 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
     {
         var dedup = $"{jobType}:{invoiceId}:{suffix}";
         if (await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.JobType == jobType && x.JobDedupKey == dedup, cancellationToken)) return;
+        // At most one delivery job of an invoice waits, runs or sits in review at a time, whatever key started it: a
+        // later trigger adds none next to it. The owner's own retry (its key carries "delivery-retry:manual:") is not held
+        // by a job in review, only by one that still runs.
+        if (jobType == InvoicingJobTypes.MarketplaceDelivery
+            && await InvoiceDeliveryJobHygiene.AutomaticDeliveryHeldAsync(db, tenantId, invoiceId, null,
+                reviewHolds: !suffix.Contains(":delivery-retry:manual:", StringComparison.Ordinal), cancellationToken)) return;
         var payload = JsonSerializer.Serialize(new { invoiceId });
         // Status check, document and marketplace delivery follow a submission the user waits for, so they run in
         // the user lane, at the pace of that submission: a single click's chain stays ahead of a bulk confirmation,
