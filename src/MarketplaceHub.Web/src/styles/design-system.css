@@ -6911,6 +6911,9 @@ html body .app-shell.stitch-shell main :is(.invoice-reference-filter-reset, .com
 html body .app-shell.stitch-shell main :is(.invoice-reference-filter-reset, .commission-filter-clear):is(.invoice-reference-filter-reset, .commission-filter-clear):hover:not(:disabled) { background: var(--rv-hover, var(--rv-color-surface-raised)); }
 html body .app-shell.stitch-shell main :is(.invoice-reference-filter-reset, .commission-filter-clear):is(.invoice-reference-filter-reset, .commission-filter-clear):disabled { background: var(--rv-color-surface); opacity: .5; cursor: default; }
 
+/* Temizle in the filter cards looks like Faturalar' while there is nothing to clear: framed and faded. */
+html body main .rr .rr-fbtns .rr-btn.rr-clear:disabled { opacity: .5; cursor: default; }
+
 /* Bulk invoice status: its notes share one compact box instead of two full-size callouts. */
 .shopify-invoice-status-form > .invoice-status-notes {
   display: grid;

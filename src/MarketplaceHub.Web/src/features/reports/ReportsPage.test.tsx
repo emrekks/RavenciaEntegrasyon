@@ -3,6 +3,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { type as typeInto } from '../../test/render'
 import { formatHours, formatPercent, type ReportGroup, type ReportInventory, type ReportSales, type ReportSummary } from './report-format'
 
 const group = (key: string, label: string, values: Partial<ReportGroup> = {}): ReportGroup => ({
@@ -743,6 +744,17 @@ describe('ReportsPage', () => {
     await act(async () => { [...page.querySelectorAll<HTMLButtonElement>('.reports-hero-card.is-todo .reports-hero-tile')].find(button => button.textContent?.includes('Stok Riski'))!.click() })
     expect(selectedTab(page)).toContain('Operasyon')
     expect(body(page)).toContain('En Çok Satanların Stoğu')
+  })
+
+  it('keeps the payouts Temizle grey until the card holds a typed or applied filter, and greys it again after a click', async () => {
+    const page = await open('?view=payouts')
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
+    const clear = () => Array.from(page.querySelectorAll<HTMLButtonElement>('.reports-payout-filters .rr-fbtns button')).find(button => button.textContent === 'Temizle')!
+    expect(clear().disabled).toBe(true)
+    await act(async () => { typeInto(page.querySelector<HTMLInputElement>('input[aria-label="Sipariş veya fatura numarasıyla ara"]')!, 'ABC') })
+    expect(clear().disabled).toBe(false)
+    await act(async () => { clear().click() })
+    expect(clear().disabled).toBe(true)
   })
 
   it('opens the payouts tab: estimated figures, the regions, the upcoming and past payments and a payment\'s records', async () => {

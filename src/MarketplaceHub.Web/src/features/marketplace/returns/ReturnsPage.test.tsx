@@ -193,4 +193,14 @@ describe('returns page', () => {
     const listRequest = api.paths.filter(path => path.startsWith('/returns?')).at(-1)!
     expect(new URLSearchParams(listRequest.split('?')[1]).get('search')).toBeNull()
   })
+  it('keeps Temizle grey until a filter or a typed search differs from its default, and greys it again after a click', async () => {
+    const { host } = renderPage()
+    await waitFor(() => host.textContent?.includes('#2'))
+    const clear = () => byText<HTMLButtonElement>(host, '.rr-fbtns button', 'Temizle')
+    expect(clear().disabled).toBe(true)
+    type(host.querySelector<HTMLInputElement>('input[aria-label="İadelerde ara"]')!, 'yarım')
+    await waitFor(() => !clear().disabled)
+    act(() => { clear().click() })
+    await waitFor(() => clear().disabled)
+  })
 })

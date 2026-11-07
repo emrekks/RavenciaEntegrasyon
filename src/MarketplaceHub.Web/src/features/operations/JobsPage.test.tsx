@@ -294,7 +294,7 @@ describe('JobsPage address state (W16)', () => {
     expect(new URLSearchParams(currentSearch).get('adet')).toBe('100')
 
     const clear = container.querySelector<HTMLButtonElement>('.ops-filters .ops-clear')!
-    expect(clear.textContent).toBe('Temizle3')
+    expect(clear.textContent).toBe('Temizle')
     await act(async () => { clear.click() })
     await settle()
     // The card's filters go back to their defaults; the page size is not a filter and stays.
@@ -528,7 +528,7 @@ describe('JobsPage Loglar tab (price/stock send log)', () => {
     expect(trigger('Sonuç').textContent).toBe('3 Sonuç')
     // The phone Filtre button counts the range and the result filter; Temizle counts the same.
     expect(container.querySelector('.ops-filters .rr-fcount')!.textContent).toBe('2')
-    expect(container.querySelector('.ops-filters .ops-clear')!.textContent).toBe('Temizle2')
+    expect(container.querySelector('.ops-filters .ops-clear')!.textContent).toBe('Temizle')
     // Each result shows its count in the menu.
     const results = await openField('Sonuç')
     expect(checkboxNamed(results, 'Reddedildi').closest('label')!.querySelector('.rr-opt-count')!.textContent).toBe('2')
@@ -610,7 +610,7 @@ describe('JobsPage Loglar tab (price/stock send log)', () => {
     expect(trigger('Sonuç').textContent).toBe('2 Sonuç')
     expect(container.textContent).toContain('Seçili filtrelerle eşleşen gönderim kaydı bulunamadı.')
     expect(clearButton().disabled).toBe(false)
-    expect(clearButton().textContent).toBe('Temizle1')
+    expect(clearButton().textContent).toBe('Temizle')
 
     await act(async () => { clearButton().click() })
     await settle()
@@ -709,7 +709,7 @@ describe('JobsPage Loglar › Ürün Hareketleri', () => {
     await act(async () => { checkboxNamed(movements, 'İlk Fiyatları Göster').click() })
     await settle()
     expect(trigger('Hareket Türü').textContent).toBe('Satış')
-    expect(container.querySelector('.ops-filters .ops-clear')!.textContent).toBe('Temizle2')
+    expect(container.querySelector('.ops-filters .ops-clear')!.textContent).toBe('Temizle')
 
     const search = container.querySelector<HTMLInputElement>('input[aria-label="Ürün hareketlerinde ara"]')!
     await act(async () => {
