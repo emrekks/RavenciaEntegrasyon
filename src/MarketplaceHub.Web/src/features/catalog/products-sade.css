@@ -461,6 +461,11 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody td[data-l] { display: grid; grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr); gap: 4px; }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody td[data-l]::before { content: attr(data-l); overflow: hidden; color: var(--rr-subtle); font-size: 12px; text-align: left; white-space: nowrap; text-overflow: ellipsis; }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody td.rr-qt-stock { grid-template-columns: minmax(0, 1fr) 120px; align-items: center; }
+  /* Stock alone (no price fields): one row per variant, the box beside the name, no "Stok" caption. */
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody tr:not(:has(> td[data-l]:not(.rr-qt-stock))) { grid-template-columns: auto minmax(0, 1fr) 104px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody tr:not(:has(> td[data-l]:not(.rr-qt-stock))) > td.rr-qt-stock { display: block; grid-column: auto; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody tr:not(:has(> td[data-l]:not(.rr-qt-stock))) > td.rr-qt-stock::before { content: none; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody tr:not(:has(> td[data-l]:not(.rr-qt-stock))) > td.rr-qt-stock .rr-in { width: 100%; }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qpair { gap: 8px; }
 }
 
