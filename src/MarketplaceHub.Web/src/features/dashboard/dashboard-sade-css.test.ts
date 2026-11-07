@@ -27,8 +27,15 @@ describe('Entegrasyon Durumu table on desktop', () => {
   // under its last row was clicked; it now fits by tighter cells and values that may take a second line.
   it('fits its panel between the card layout and 1280 px', () => {
     const block = mediaBlock('(min-width: 1025px) and (max-width: 1279px)')
-    expect(block).toContain('.rr-mxt td { padding-left: 5px; padding-right: 5px; }')
+    expect(block).toContain('.rr-mxt td { padding-left: 4px; padding-right: 4px; }')
     expect(block).toContain('.rr-mxt .rr-mx { white-space: normal; }')
-    expect(block).toContain('.rr-mxt .rr-mx-nm small { max-width: 130px; }')
+    expect(block).toContain('.rr-mxt .rr-mx-nm small { width: 0; min-width: 100%; max-width: 130px; }')
+  })
+
+  // The tighter padding has the same weight as the table's own 11px 12px, so it must come after it in the file.
+  it('puts the tighter cells after the table rule they override', () => {
+    const base = css.indexOf('.rr-mxt td { padding: 11px 12px;')
+    expect(base).toBeGreaterThan(0)
+    expect(css.indexOf('@media (min-width: 1025px) and (max-width: 1279px) {')).toBeGreaterThan(base)
   })
 })
