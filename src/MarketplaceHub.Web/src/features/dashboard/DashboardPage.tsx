@@ -160,7 +160,7 @@ function KpiCell({ icon: cardIcon, label, hint, tip, value, delta, note, avgLabe
   return <div className={`rr-kc${on ? ' rr-on' : ''}${onPick ? ' rr-pick' : ''}${loading ? ' rr-kc-wait' : ''}`} title={tip} role={onPick ? 'tab' : undefined} aria-selected={onPick ? Boolean(on) : undefined} tabIndex={onPick ? 0 : undefined} onClick={onPick} onKeyDown={event => { if (onPick && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onPick() } }}>
     <CardBackgroundIcon name={cardIcon} />
     <small>{label}{hint && <span className="rr-kc-hint"> · {hint}</span>}</small><strong className="rr-num">{loading ? <span className="rr-kc-skel" role="status" aria-label="Yükleniyor" /> : <>{value}{unit && <span className="rr-op-x">{unit}</span>}</>}</strong>
-    {delta ? <span className={`rr-trend ${delta[1] ? 'rr-up' : 'rr-down'}`}>{delta[1] ? ICONS.up : ICONS.down}<span className="rr-trend-v">{delta[0]}</span><em>önceki döneme göre</em></span>
+    {delta ? <span className={`rr-trend ${delta[1] ? 'rr-up' : 'rr-down'}`} title="Önceki döneme göre">{delta[1] ? ICONS.up : ICONS.down}<span className="rr-trend-v">{delta[0]}</span></span>
       : note !== undefined ? <span className="rr-trend"><em>{note}</em></span> : <span className="rr-trend"><span className="rr-trend-v">—</span><em>önceki dönemde veri yok</em></span>}
     <span className="rr-avg">{avgLabel} <b className="rr-num">{avg}</b></span>
     <div className="rr-krange" role="img" aria-label={`${min} – ${max}`}><span className="rr-kbar"><i style={{ left: `${Math.max(0, Math.min(1, position)) * 100}%` }} /></span><span className="rr-kends"><span className="rr-num">{min}</span><span className="rr-num">{max}</span></span></div>
