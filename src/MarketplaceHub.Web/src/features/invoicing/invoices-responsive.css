@@ -384,3 +384,10 @@
   .app-shell.stitch-shell main .invoices-page .invoice-reference-row { -webkit-user-select: auto; user-select: auto; -webkit-touch-callout: default; }
   .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order > .invoice-reference-select:checked::after { left: 6.5px; top: 3px; width: 4.5px; height: 9px; border-color: #fff; opacity: 1; }
 }
+/* Very narrow phones (320-350 px): a narrower logo and a one-line number keep [dot][logo][number + copy] on one row. */
+@media (max-width: 350px) {
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order { column-gap: 8px; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order .order-platform-logo { min-width: 0 !important; width: auto !important; max-width: 80px !important; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order .order-reference-platform { min-width: 0; width: auto; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order .invoice-order-number { flex-wrap: nowrap; white-space: nowrap; }
+}
