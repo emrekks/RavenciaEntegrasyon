@@ -302,6 +302,21 @@
   .marketplace-codes-status.is-error { color: var(--rv-color-danger); }
 }
 
+/* Phones: Pazaryeri Kodları shows each variant as a block (its name, then one labelled field per platform) instead of
+   a table wider than the screen, and the window opens at the top like the others. */
+@media (max-width: 760px) {
+  html body .workspace-modal-backdrop.marketplace-codes-backdrop { place-items: start center; }
+  .marketplace-codes-modal .marketplace-codes-body { padding-inline: 16px; }
+  .marketplace-codes-modal .marketplace-codes-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .marketplace-codes-modal .marketplace-codes-table :is(tbody, tr, th, td) { display: block; width: 100%; box-sizing: border-box; }
+  .marketplace-codes-modal .marketplace-codes-table tbody tr { display: grid; gap: 8px; padding: 12px; border-bottom: 1px solid var(--rv-color-border); }
+  .marketplace-codes-modal .marketplace-codes-table tbody tr:last-child { border-bottom: 0; }
+  .marketplace-codes-modal .marketplace-codes-table tbody :is(th, td) { padding: 0; border: 0; white-space: normal; overflow-wrap: anywhere; }
+  .marketplace-codes-modal .marketplace-codes-table tbody td::before { content: attr(data-l); display: block; margin-bottom: 4px; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
+  .marketplace-codes-modal .marketplace-codes-table .marketplace-code-input { min-width: 0; width: 100%; }
+  .marketplace-codes-modal .marketplace-codes-table .marketplace-code-error { max-width: none; }
+}
+
 @layer features {
   /* Eşitle / Arttır / Azalt: one compact segmented control above each bulk field (panel and dialog). */
   .variant-bulk-modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; padding: 2px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 7px; }

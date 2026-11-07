@@ -444,6 +444,13 @@
 @media (max-width: 760px) and (prefers-reduced-motion: reduce) {
   .app-shell.stitch-shell main .commission-tariffs :is(.commission-sheet-scrim, .commission-filter-wrap > .commission-filters.is-open, .commission-bulk > .commission-bulk-popover) { animation: none; }
 }
+/* Phones, Promosyon: every offer band is in view, two to a row, instead of a strip that hid bands 3 and 4 off the
+   card's right edge; the Fark card takes a whole row. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .commission-tariffs.promotion-offers .commission-ruler { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; overflow: visible; scroll-snap-type: none; }
+  .app-shell.stitch-shell main .commission-tariffs.promotion-offers .commission-ruler > .commission-choice { width: auto; min-width: 0; }
+  .app-shell.stitch-shell main .commission-tariffs.promotion-offers .commission-ruler > .commission-choice.promotion-gain-card { grid-column: 1 / -1; }
+}
 
 /* Owner, 8 Nov 2026: "iç gapleri düzenle, çok sıkışık". Desktop plan table: band cards 12 px inside with 6 px between
    their lines, cells 10 px around them, the product cell 12 px between photo and text, and Güncel Fiyat on one line. */

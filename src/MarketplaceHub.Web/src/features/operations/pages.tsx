@@ -635,7 +635,7 @@ export function JobsPage({ me }: { me: Me }) {
               <td><span className={`jobs-reference-status ${jobStateTone(job)}`}><JobStateGlyph tone={jobStateTone(job)} />{jobStateLabel(job)}</span></td>
               <td className="jobs-reference-attempt">{jobAttemptsText(job)}</td>
               <td><div className="jobs-reference-time"><strong>{time.time}</strong><small>{time.day} · {job.attemptCount > 0 ? `son deneme ${jobAttemptDuration(job)}` : 'çalışma başlamadı'}</small></div></td>
-              <td><span className="jobs-reference-correlation">{job.correlationId}</span></td>
+              <td><span className="jobs-reference-correlation" title={job.correlationId}>{job.correlationId}</span></td>
             </tr>
           })}
           {filtered.length === 0 && <tr><td className="jobs-reference-empty" colSpan={5}><EmptyState title="Kayıt Bulunamadı">{moreOnServer ? 'Yüklenen kayıtlarda eşleşen işlem yok. Daha eski işlemler için Daha Fazla Yükle’ye basın.' : 'Seçili kategori ve filtrelerle eşleşen kayıt bulunamadı.'}</EmptyState></td></tr>}

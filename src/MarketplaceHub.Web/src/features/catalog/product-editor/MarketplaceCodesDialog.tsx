@@ -169,7 +169,7 @@ export function MarketplaceCodesDialog({ productId, rows, onClose }: { productId
               })}</ul>
               : <div className="marketplace-codes-table-wrap"><table className="marketplace-codes-table">
                 <thead><tr><th scope="col">Varyant</th>{connections.map(connection => <th scope="col" key={connection.connectionId}><CodeHead connection={connection} connections={connections} /></th>)}</tr></thead>
-                <tbody>{rows.map(row => <tr key={row.variantId}><th scope="row">{row.label}</th>{connections.map(connection => <td key={connection.connectionId}>{codeField(row.variantId, connection, fieldLabel(row.label, connection))}</td>)}</tr>)}</tbody>
+                <tbody>{rows.map(row => <tr key={row.variantId}><th scope="row">{row.label}</th>{connections.map(connection => <td key={connection.connectionId} data-l={`${platformNames[connection.platformCode] ?? connection.platformCode} · ${marketplaceCodeColumnLabel(connection, connections)}`}>{codeField(row.variantId, connection, fieldLabel(row.label, connection))}</td>)}</tr>)}</tbody>
               </table></div>}
         {status && <p className={`marketplace-codes-status is-${status.kind}`} role={status.kind === 'error' ? 'alert' : 'status'}>{status.message}</p>}
       </div>
