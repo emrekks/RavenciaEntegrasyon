@@ -3,3 +3,6 @@
 .api-health, .api-health-rr { display: grid; gap: 20px; min-width: 0; }
 .api-health-rr > * { min-width: 0; }
 @media (max-width: 760px) { .api-health, .api-health-rr { gap: 14px; } }
+/* Four summary figures on one line (Genel Bakış's grid holds three), two by two on tablets and phones. */
+main .rr.rr-dashboard.api-health-rr .rr-opgrid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1024px) { main .rr.rr-dashboard.api-health-rr .rr-opgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
