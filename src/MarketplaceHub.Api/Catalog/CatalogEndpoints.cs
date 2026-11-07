@@ -144,7 +144,7 @@ public static class CatalogEndpoints
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
             var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
             // notices: what the panel records in its notification center (a card value sent where the listing profile has none).
-            var queued = await service.EnqueueProductUpdateWithNoticesAsync(tenant.TenantId, id, command.ConnectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted, command.Fields);
+            var queued = await service.EnqueueProductUpdateWithNoticesAsync(tenant.TenantId, id, command.ConnectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted, command.Fields, command.SendGroupId);
             return queued.Succeeded ? Results.Accepted($"/api/v1/jobs/{queued.Value!.JobId:D}", new { jobId = queued.Value.JobId, notices = queued.Value.Notices }) : MarketplaceHub.Api.Security.ApiProblems.Of(null, queued.Error!);
         });
         api.MapPost("/connections/{connectionId:guid}/sale-status-jobs", async (Guid connectionId, PazaramaSaleStatusRequest command, HttpContext http, ICatalogService service) =>
@@ -1046,7 +1046,8 @@ public static class CatalogEndpoints
     private static IResult MissingContext(HttpContext http) => Tenant(http) is null ? Unauthorized(http) : RequireIdempotency(http) ?? Problem(http, new("REQUEST_INVALID", "İstek tamamlanamadı.", 400));
     private static IResult Problem(HttpContext http, ServiceError error) => MarketplaceHub.Api.Security.ApiProblems.Of(http, error);
     // Fields: "Platformlarda Güncelle" picks (ProductUpdateFields codes); omitted on a publication and by older clients.
-    public sealed record PublicationRequest(Guid ConnectionId, IReadOnlyList<string>? Fields = null);
+    // SendGroupId: set by the panel on every card of one family update (TrendyolUpdateGroups).
+    public sealed record PublicationRequest(Guid ConnectionId, IReadOnlyList<string>? Fields = null, Guid? SendGroupId = null);
     public sealed record TakenVariantCodesRequest(IReadOnlyList<string?>? Codes, IReadOnlyList<Guid>? ExcludeVariantIds = null);
     public sealed record PriceInventoryFieldsRequest(bool? Price = null, bool? Stock = null);
     public sealed record PazaramaSaleStatusRequest(IReadOnlyList<string>? Barcodes, bool Close);

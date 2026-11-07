@@ -3,7 +3,8 @@
 // marketplace request ids the job kept.
 export type JobWriteAttribute = { id: string; name: string | null }
 // clearedFields: fields an item sent as null; the marketplace deletes them on the product (Trendyol), so they are shown.
-export type JobWritePart = { key: string; itemCount: number; fields: string[]; barcodes: string[]; contentCount: number; attributes: JobWriteAttribute[]; clearedFields?: string[] | null }
+// sharedCards, sharedItems: the part went in one request with other cards of the same send (a grouped Trendyol update).
+export type JobWritePart = { key: string; itemCount: number; fields: string[]; barcodes: string[]; contentCount: number; attributes: JobWriteAttribute[]; clearedFields?: string[] | null; sharedCards?: number | null; sharedItems?: number | null }
 export type JobWriteRequest = { key: string; id: string }
 // Other write jobs (price/stock, package actions, labels, return decisions, invoices) also carry a note about what the job
 // sends, why it was sent (a price/stock trigger) and each item's stored answer.
@@ -185,6 +186,9 @@ export function writePhaseLabel(phase: string | null) {
   const label = partLabels[part] ?? part
   if (value.startsWith('SUBMIT_')) return `${label} gönderilecek`
   if (value.startsWith('POLL_')) return `${label} sonucu bekleniyor`
+  // A card of a grouped Trendyol send that the card polling the shared request answered.
+  if (value === 'GROUP_DONE') return 'Ortak istek sonucu işleniyor'
+  if (value === 'GROUP_STOPPED') return 'Ortak istek sonucu kaydediliyor'
   return phase
 }
 
@@ -226,4 +230,10 @@ export const isSentProblem = (item: JobSentItem) => ['danger', 'warning'].includ
 export function sentItemSummary(items: readonly JobSentItem[]) {
   const problems = items.filter(isSentProblem).length
   return `${items.length} kayıt${problems > 0 ? ` · ${problems} sorunlu` : ''}`
+}
+
+// "Aynı gönderimdeki 6 kart tek istekte gitti (toplam 18 kalem); …": the part went in one marketplace request with the other cards of the same send.
+export function writePartShared(part: JobWritePart) {
+  if (!part.sharedCards || part.sharedCards < 2) return null
+  return `Aynı gönderimdeki ${part.sharedCards} kart tek istekte gitti${part.sharedItems ? ` (toplam ${part.sharedItems} kalem)` : ''}; sonuç bir kez okunup her karta ayrı yazılır.`
 }
