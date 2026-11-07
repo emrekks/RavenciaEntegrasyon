@@ -126,7 +126,6 @@
 @media (min-width: 761px) and (max-width: 1024px) {
   /* Title and its actions on one row, as on the desktop (the phone column put the title on the right). */
   html body .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-heading { flex-direction: row; align-items: flex-end; }
-  html body .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-heading > .jobs-reference-heading-actions { display: flex; width: auto; flex: none; }
 }
 @media (min-width: 761px) and (max-width: 899px) {
   /* Portrait: the desktop table without its correlation id column (the id is in the job detail too) fits the width. */
