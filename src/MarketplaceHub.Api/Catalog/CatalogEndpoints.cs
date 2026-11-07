@@ -301,6 +301,8 @@ public static class CatalogEndpoints
             Tenant(http) is { } tenant ? Result(await service.AttributeNameHintsAsync(tenant.TenantId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapGet("/mappings/conflicts", async (Guid connectionId, HttpContext http, IReferenceDataService service) =>
             Tenant(http) is { } tenant ? Result(await service.ListMappingConflictsAsync(tenant.TenantId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http));
+        api.MapGet("/mappings/attribute-value-progress", async (Guid connectionId, string? categoryExternalId, HttpContext http, IReferenceDataService service) =>
+            Tenant(http) is { } tenant ? Result(await service.AttributeValueMappingProgressAsync(tenant.TenantId, connectionId, categoryExternalId ?? "", http.RequestAborted), Results.Ok) : Unauthorized(http));
         foreach (var type in new[] { "categories", "brands", "attributes", "attribute-values" })
         {
             var routeType = type;

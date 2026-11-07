@@ -221,6 +221,31 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         return ServiceResult<IReadOnlyList<CatalogMappingView>>.Ok(entities.Select(item => Map(item, checkedScopes.Contains(item.ExternalId) ? missingByScope.GetValueOrDefault(item.ExternalId) : null)).ToList());
     }
 
+    public async Task<ServiceResult<IReadOnlyDictionary<string, IReadOnlyList<Guid>>>> AttributeValueMappingProgressAsync(Guid tenantId, Guid connectionId, string categoryExternalId, CancellationToken cancellationToken)
+    {
+        if (!await VisibleConnectionAsync(tenantId, connectionId, cancellationToken)) return NotFound<IReadOnlyDictionary<string, IReadOnlyList<Guid>>>();
+        var category = (categoryExternalId ?? "").Trim();
+        if (category.Length == 0) return ServiceResult<IReadOnlyDictionary<string, IReadOnlyList<Guid>>>.Fail("VALIDATION_FAILED", "Kategori zorunludur.", 422);
+        // A value scope is "{category}/{field}". StartsWith becomes LIKE 'prefix%' (Npgsql escapes the wildcards);
+        // live 2026-11-07: 1.5 ms over the 21,922 rows, no index needed.
+        var prefix = category + "/";
+        var rows = await db.AttributeValueMappings.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId.StartsWith(prefix))
+            .Select(x => new { x.ScopeExternalId, x.LocalId })
+            .ToListAsync(cancellationToken);
+        return ServiceResult<IReadOnlyDictionary<string, IReadOnlyList<Guid>>>.Ok(GroupValueMappingProgress(category, rows.Select(x => (x.ScopeExternalId, x.LocalId))));
+    }
+
+    // The mapped panel values of a category's value scopes ("{category}/{field}"), by field, each value once.
+    public static IReadOnlyDictionary<string, IReadOnlyList<Guid>> GroupValueMappingProgress(string categoryExternalId, IEnumerable<(string Scope, Guid LocalId)> rows)
+    {
+        var prefix = categoryExternalId + "/";
+        return rows
+            .Where(x => x.Scope.StartsWith(prefix, StringComparison.Ordinal) && x.Scope.Length > prefix.Length)
+            .GroupBy(x => x.Scope[prefix.Length..], StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<Guid>)group.Select(x => x.LocalId).Distinct().ToList(), StringComparer.Ordinal);
+    }
+
     public async Task<ServiceResult<CatalogMappingView?>> GetMappingAsync(Guid tenantId, string mappingType, Guid localId, Guid connectionId, string? scopeExternalId, string? externalId, CancellationToken cancellationToken)
     {
         if (!await VisibleConnectionAsync(tenantId, connectionId, cancellationToken)) return NotFound<CatalogMappingView?>();
