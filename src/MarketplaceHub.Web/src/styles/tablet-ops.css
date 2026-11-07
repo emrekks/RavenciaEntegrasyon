@@ -149,8 +149,8 @@
   html body .app-shell.stitch-shell main .commission-tariffs .commission-filters { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 
-/* Tablets: the summary cards (Ürünler, Genel Bakış, Siparişler, İadeler, Faturalar) share one minimum height, the phone's
-   90px, with the content centred; the phone sheet has the same rule. */
+/* Tablets: the summary cards (Ürünler, Genel Bakış, Siparişler, İadeler, Faturalar) share one minimum height, the tallest
+   natural one (a Siparişler card with its chips, 114px), with the content centred; phones use 90px (phone-spacing.css). */
 @media (min-width: 761px) and (max-width: 1024px) {
-  html body .app-shell.stitch-shell main :is(.rr-metrics > *, .invoice-reference-metrics > article, .rr-opgrid > .rr-opcard) { box-sizing: border-box; min-height: 90px; align-content: center; }
+  html body .app-shell.stitch-shell main :is(.rr-metrics > *, .invoice-reference-metrics > article, .rr-opgrid > .rr-opcard) { box-sizing: border-box; min-height: 114px; align-content: center; }
 }
