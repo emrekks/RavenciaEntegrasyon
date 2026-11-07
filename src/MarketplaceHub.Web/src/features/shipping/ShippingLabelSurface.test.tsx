@@ -2,6 +2,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { defaultShippingLabelSettings, normalizeShippingLabelSettings, type ShippingLabelBlock } from './shipping-label'
+import { shippingLabelLayoutIssues } from './shipping-label-layout'
 import { ShippingLabelBlockBody, ShippingLabelSurface, type ShippingLabelValues } from './ShippingLabelSurface'
 
 // Sample values only: no real order's data.
@@ -42,13 +43,13 @@ describe('shipping label block layout', () => {
     expect(draw({ ...sender, inline: true, captionStyle: 'above' }).classList.contains('is-inline')).toBe(false)
   })
 
-  it('Başlıksız drops the captions and the block title, and a frame and capitals are classes of the body', () => {
+  it('Başlıksız drops the captions and the block title; Büyük Harf writes the text in Turkish capitals; Çerçeve frames it', () => {
     const body = draw({ id: 'address', kind: 'address', title: 'Teslimat Adresi', fields: ['customerName', 'address'], align: 'left', text: '', captionStyle: 'none', boxed: true, uppercase: true })
     expect(body.querySelector('.lbl-title')).toBeNull()
     expect(body.querySelector('.lbl-caption')).toBeNull()
-    expect(fieldTexts(body)).toEqual([['lbl-value:Örnek Alıcı']])
+    expect(fieldTexts(body)).toEqual([['lbl-value:ÖRNEK ALICI']])
+    expect(Array.from(body.querySelectorAll('.lbl-lines > span')).map(line => line.textContent)).toEqual(['ÖRNEK MAH. DENEME SOK. NO:1', 'MERKEZ / İZMİR'])
     expect(body.className).toBe('lbl-body is-boxed is-upper')
-    expect(body.getAttribute('lang')).toBe('tr')
   })
 
   it('keeps a title and barcode out of the row grid; three a row groups the fields that follow each other', () => {
@@ -86,6 +87,8 @@ describe('shipping label settings keep older designs', () => {
     expect(sticker.map(block => block.id)).toEqual(['trackingBarcode', 'address', 'recipient', 'orderInfo', 'trackingBarcodeSide'])
     expect(sticker.find(block => block.id === 'trackingBarcodeSide')).toMatchObject({ kind: 'trackingBarcode', rotation: 90 })
     expect(sticker.filter(block => block.boxed).map(block => block.id)).toEqual(['address', 'recipient'])
+    // Both barcodes are wide enough to scan: the turned one's bars run along its own 49 mm width.
+    expect(shippingLabelLayoutIssues(sticker, { width: 100, height: 100 }, { trackingNumber: values.trackingNumber })).toEqual([])
     // It survives the settings' own normalizing unchanged.
     expect(normalizeShippingLabelSettings(defaultShippingLabelSettings).layout.sticker).toEqual(sticker)
   })
