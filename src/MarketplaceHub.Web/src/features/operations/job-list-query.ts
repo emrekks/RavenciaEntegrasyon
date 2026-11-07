@@ -53,6 +53,29 @@ export function jobPageQueryString(status: string, timeRange: JobListTimeRange, 
   return `?${params.toString()}`
 }
 
+/** At most this many jobs come back for one looked-up identifier (a correlation id can name a batch). */
+export const jobLookupLimit = 50
+
+const jobIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** The search is a whole job id (a GUID), as notification links write it (?ara=<job id>). */
+export function isJobIdSearch(search: string) {
+  return jobIdPattern.test(search.trim())
+}
+
+// The search box filters the loaded pages; a term that can be one identifier (no spaces, 4–200 characters) is also
+// looked up by the server, which finds the job by its id, correlation id or marketplace id however old it is
+// (JobOperationsService.MatchingSearch). Null when the term is not looked up.
+export function jobLookupTerm(search: string): string | null {
+  const term = search.trim()
+  return term.length >= 4 && term.length <= 200 && !/\s/.test(term) ? term : null
+}
+
+// The lookup reads no other filter: the list's own filters still apply to what it brings, except the time range.
+export function jobLookupQueryString(term: string) {
+  return `?${new URLSearchParams({ search: term, limit: String(jobLookupLimit) }).toString()}`
+}
+
 // The tab and status counts: the selected range and platform.
 export function jobCountsQueryString(timeRange: JobListTimeRange, platform: string | null, now = Date.now()) {
   const params = new URLSearchParams(jobListQueryString('', timeRange, now).slice(1))

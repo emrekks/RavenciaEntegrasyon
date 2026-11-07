@@ -18,7 +18,7 @@ import type { JobVariantResults } from '../catalog/product-editor/PublicationJob
 import { jobDirections, jobPresentation, jobSubtitle, jobTitle, jobTypeCode, jobTypesForDirection, type JobDirection, type JobTypeIconName } from './job-presentation'
 import { canOfferOneTimeInvoiceDelivery } from './one-time-invoice-delivery-visibility'
 import { oneTimeInvoiceDeliveryIdempotencyKey } from './one-time-invoice-delivery-idempotency'
-import { isJobInTimeRange, jobTimeRanges, jobCountsQueryString, jobDetailPollInterval, jobListHeadPollInterval, jobListPollInterval, jobListPollMs, jobPageQueryString, jobPlatformsFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage, type JobListTimeRange } from './job-list-query'
+import { isJobIdSearch, isJobInTimeRange, jobLookupQueryString, jobLookupTerm, jobTimeRanges, jobCountsQueryString, jobDetailPollInterval, jobListHeadPollInterval, jobListPollInterval, jobListPollMs, jobPageQueryString,jobPlatformsFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage, type JobListTimeRange } from './job-list-query'
 import { jobCategoryMatcher, jobCategoryTabs, jobTypesForCategoryTab, type JobCategory } from './job-categories'
 import { jobPageSizes, jobsMainTab, readJobsViewState, withJobsMainTab, writeJobsViewState, type JobsMainTab, type JobStatusChip, type JobsViewState } from './jobs-url-state'
 import type { IntegrationFeedback } from '../marketplace/shared'
@@ -495,16 +495,37 @@ export function JobsPage({ me }: { me: Me }) {
     },
     onError: error => setFeedback({ message: error instanceof Error ? error.message : 'Tek seferlik fatura işlemi başlatılamadı.', tone: 'danger' })
   })
+  // A term that can be one identifier is also looked up by the server, so a job is found by its id, correlation id or
+  // marketplace id even when it is older than the loaded pages or the selected range (notification links: ?ara=<job id>).
+  const lookupTerm = listHidden ? null : jobLookupTerm(search)
+  const lookup = useQuery({
+    queryKey: ['jobs', 'lookup', lookupTerm],
+    queryFn: () => hubPoll<JobPage>(`/jobs/page${jobLookupQueryString(lookupTerm ?? '')}`),
+    enabled: Boolean(lookupTerm)
+  })
+  const lookupItems = useMemo(() => lookupTerm ? lookup.data?.items ?? [] : [], [lookupTerm, lookup.data])
+  const lookupIds = useMemo(() => new Set(lookupItems.map(job => job.id)), [lookupItems])
+  // A whole job id opens its detail once the lookup found it (once per term, so closing the drawer keeps it closed).
+  const openedLookup = useRef<string | null>(null)
+  useEffect(() => {
+    if (!lookupTerm || !isJobIdSearch(lookupTerm) || openedLookup.current === lookupTerm) return
+    const job = lookupItems.find(item => item.id.toLowerCase() === lookupTerm.toLowerCase())
+    if (!job) return
+    openedLookup.current = lookupTerm
+    setSelectedId(job.id)
+  }, [lookupTerm, lookupItems])
   const rawJobs = useMemo(() => {
     // A refetch can shift rows between pages while new jobs arrive, so a job is shown once.
     const seen = new Set<string>()
-    return (list.data?.pages ?? []).flatMap(page => page.items).filter(job => !seen.has(job.id) && Boolean(seen.add(job.id)))
-  }, [list.data])
+    const loaded = (list.data?.pages ?? []).flatMap(page => page.items)
+    const jobs = [...loaded, ...lookupItems].filter(job => !seen.has(job.id) && Boolean(seen.add(job.id)))
+    return lookupItems.length ? jobs.sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)) : jobs
+  }, [list.data, lookupItems])
   const rangeFiltered = useMemo(() => {
     if (timeRange === 'all') return rawJobs
     const now = Date.now()
-    return rawJobs.filter(job => isJobInTimeRange(job, timeRange, now))
-  }, [rawJobs, timeRange])
+    return rawJobs.filter(job => lookupIds.has(job.id) || isJobInTimeRange(job, timeRange, now))
+  }, [rawJobs, timeRange, lookupIds])
   const filtered = useMemo(() => {
     const term = search.trim().toLocaleLowerCase('tr-TR')
     const categoryMatcher = jobCategoryMatcher(category)
@@ -513,10 +534,10 @@ export function JobsPage({ me }: { me: Me }) {
       if (!matchCategory) return false
       if (direction && jobPresentation(job.jobType).direction !== direction) return false
       if (statusChips.length && !statusChips.includes(jobStatusChip(job.status))) return false
-      if (!term) return true
-      return [job.id, job.jobType, job.status, job.lastErrorCode, job.lastErrorSummary, job.correlationId].some(value => value?.toLocaleLowerCase('tr-TR').includes(term))
+      if (!term || lookupIds.has(job.id)) return true
+      return [job.id, job.jobType, job.status, job.lastErrorCode, job.lastErrorSummary, job.correlationId, job.externalId].some(value => value?.toLocaleLowerCase('tr-TR').includes(term))
     })
-  }, [rangeFiltered, category, direction, search, statusChips])
+  }, [rangeFiltered, category, direction, search, statusChips, lookupIds])
   // A count toggles its filter; several can be on at once and tapping one again takes it off.
   const statusChipProps = (chip: JobStatusChip) => {
     const on = statusChips.includes(chip)

@@ -208,6 +208,28 @@ public sealed class ReturnsAndJobTrackingFixesTests
     }
 
     [Fact]
+    public void AJobIsFoundByItsIdCorrelationIdOrMarketplaceIdAndOnlyWhole()
+    {
+        var byId = Job(Now.AddDays(-90), Now.AddDays(-90), JobStatus.Succeeded);
+        var byCorrelation = Job(Now, null, JobStatus.Dead);
+        byCorrelation.CorrelationId = "scheduler-2a4d22341c48453db9652055a7f0f7c1";
+        var byOrder = Job(Now, null, JobStatus.Dead);
+        byOrder.PayloadJson = """{"connectionId":"x","externalOrderId":"10987654321"}""";
+        var jobs = new[] { byId, byCorrelation, byOrder }.AsQueryable();
+        Guid[] Found(string term) => JobOperationsService.MatchingSearch(jobs, term).Select(job => job.Id).ToArray();
+
+        Assert.Equal([byId.Id], Found(byId.Id.ToString()));
+        Assert.Equal([byId.Id], Found($"  {byId.Id.ToString().ToUpperInvariant()} "));
+        Assert.Equal([byCorrelation.Id], Found("scheduler-2a4d22341c48453db9652055a7f0f7c1"));
+        Assert.Equal([byOrder.Id], Found("10987654321"));
+        // Part of an id, or a short or quoted term, finds nothing.
+        Assert.Empty(Found("1098765432"));
+        Assert.Empty(Found(byId.Id.ToString()[..8]));
+        Assert.Empty(Found("x"));
+        Assert.Empty(Found("\"10987654321\""));
+    }
+
+    [Fact]
     public void JobSummariesSayWhatEachProductAndInvoiceJobDid()
     {
         foreach (var write in new[] { MarketplaceJobTypes.ProductCreate, MarketplaceJobTypes.ProductUpdate, MarketplaceJobTypes.ProductArchive })

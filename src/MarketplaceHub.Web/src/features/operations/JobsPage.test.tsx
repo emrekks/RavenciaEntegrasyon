@@ -7,6 +7,9 @@ import type { Me } from '../../shared/api'
 
 const apiState = vi.hoisted(() => ({ calls: [] as string[], retryGate: Promise.resolve() as Promise<void>, failNextPage: false, extraCountRows: [] as Array<{ status: string; jobType: string; count: number }>, sendLog: { items: [] as unknown[], nextCursor: null as string | null, hasMore: false }, sendLogCounts: [] as Array<{ result: string; count: number }>, activity: { items: [] as unknown[], nextCursor: null as string | null, hasMore: false }, activityCounts: [] as Array<{ kind: string; count: number }> }))
 
+// A job older than every loaded page and the default range, found only by the server lookup.
+const oldJobId = vi.hoisted(() => '01a1631c-aa8f-79f0-8ff6-9ccd6c21023e')
+
 // The page shows the last 24 hours by default, so the fixture's jobs are dated relative to the run.
 function hoursAgo(hours: number) {
   return new Date(Date.now() - hours * 3_600_000).toISOString()
@@ -55,9 +58,16 @@ vi.mock('../../shared/api', () => {
     if (path === '/price-stock-monitor/emergency-stop') return { connectionsStopped: 1, policiesDisabled: 2, jobsCancelled: 3 }
     if (path === '/jobs/job-1/retry') { await apiState.retryGate; return { job: job('job-1', 'TRENDYOL_ORDER_SYNC', 'PENDING', hoursAgo(1)), attempts: [], order: null, change: null, relatedOrders: [] } }
     if (path === '/jobs/job-1' || path === '/jobs/job-2') { const id = path.slice(6); return { job: job(id, 'TRENDYOL_ORDER_SYNC', 'DEAD', hoursAgo(1)), attempts: [], order: null, change: null, relatedOrders: [] } }
+    if (path === `/jobs/${oldJobId}`) return { job: job(oldJobId, 'TRENDYOL_ORDER_SYNC', 'DEAD', hoursAgo(24 * 60)), attempts: [], order: null, change: null, relatedOrders: [] }
     if (path === '/jobs/job-sent') return { job: job('job-sent', 'PRICE_INVENTORY_SYNC', 'SUCCEEDED', hoursAgo(1)), attempts: [], order: null, change: null, relatedOrders: [] }
     if (path.startsWith('/jobs/page?')) {
       const params = new URLSearchParams(path.slice(path.indexOf('?') + 1))
+      // The server lookup (?search=): a job matched whole by its id or correlation id, at any age.
+      const term = params.get('search')
+      if (term) {
+        const known = [job('job-1', 'TRENDYOL_ORDER_SYNC', 'SUCCEEDED', hoursAgo(1)), job('job-2', 'TRENDYOL_ORDER_SYNC', 'SUCCEEDED', hoursAgo(2)), job(oldJobId, 'TRENDYOL_ORDER_SYNC', 'DEAD', hoursAgo(24 * 60))]
+        return { items: known.filter(item => item.id === term || item.correlationId === term), nextCursor: null, hasMore: false }
+      }
       if (params.get('after') === 'cursor-1') {
         if (apiState.failNextPage) throw new Error('Listenin devamı okunamadı. Listeyi yenileyip tekrar deneyin.')
         return { items: [job('job-3', 'TRENDYOL_ORDER_SYNC', 'DEAD', hoursAgo(3))], nextCursor: null, hasMore: false }
@@ -296,6 +306,21 @@ describe('JobsPage address state (W16)', () => {
     await settle()
     expect(currentSearch).toBe('?ara=corr-job-1')
     expect(rowCount()).toBe(1)
+    expect(pageRequests().some(request => request.get('search') === 'corr-job-1' && !request.has('since'))).toBe(true)
+  })
+
+  it('finds a job by its id however old it is and opens its detail (notification links)', async () => {
+    await renderPage(`/jobs?ara=${oldJobId}`)
+    await settle()
+    expect(rowCount()).toBe(1)
+    expect(apiState.calls).toContain(`/jobs/${oldJobId}`)
+    expect(container.textContent).not.toContain('eşleşen işlem yok')
+  })
+
+  it('finds a job by its correlation id beyond the loaded pages without opening it', async () => {
+    await renderPage(`/jobs?ara=corr-${oldJobId}`)
+    expect(rowCount()).toBe(1)
+    expect(apiState.calls).not.toContain(`/jobs/${oldJobId}`)
   })
 
   it('keeps the loaded rows and says so when the next page fails', async () => {
