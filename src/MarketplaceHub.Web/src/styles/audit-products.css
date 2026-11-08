@@ -49,12 +49,32 @@
   :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) .commission-now-col { width: 136px; min-width: 136px; }
   :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan .commission-now-col .commission-price { white-space: nowrap; }
 }
-@media (min-width: 761px) and (max-width: 1399px) {
+@media (min-width: 1280px) and (max-width: 1399px) {
   /* The row height comes from the band cards, so a narrower product column costs nothing and keeps the table inside
      1280 px (Güncel Fiyat on one line needs 37 px more than before). */
   :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) tbody th { width: 136px; min-width: 136px; max-width: 136px; }
   :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) .commission-now-col { width: 128px; min-width: 128px; }
   :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan .commission-now-col .commission-price { white-space: nowrap; }
+}
+/* 1025-1279 px: the table fits the window without sideways scroll (at 1152 px it needed 1117 px in a 992 px box). The
+   product column, Güncel Fiyat and the band cards are tightened but stay readable; 1025-1139 px tightens once more. */
+@media (min-width: 1025px) and (max-width: 1279px) {
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) tbody th { width: 112px; min-width: 112px; max-width: 112px; padding-inline: 6px; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) .commission-now-col { width: 118px; min-width: 118px; padding-inline: 4px; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan .commission-now-col .commission-price { font-size: 12.5px; white-space: nowrap; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan tbody td:not(.commission-expand):not(.commission-now-col) { padding-inline: 4px; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan .commission-choice { min-width: 0; padding: 12px 10px; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan .commission-choice .unit-profit-badge { gap: 3px; padding-inline: 5px; font-size: 11px; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan .commission-choice .commission-switch { gap: 5px; font-size: 11px; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan .commission-choice strong { font-size: 12.5px; }
+}
+@media (min-width: 1025px) and (max-width: 1139px) {
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) tbody th { width: 100px; min-width: 100px; max-width: 100px; padding-inline: 4px; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) .commission-now-col { width: 112px; min-width: 112px; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan .commission-now-col .commission-price { font-size: 12px; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan tbody td:not(.commission-expand) { padding-inline: 2px; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan .commission-choice { padding: 10px 6px; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan thead th { padding-inline: 4px; }
 }
 @media (min-width: 1700px) {
   :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) tbody th { width: 260px; min-width: 260px; max-width: 260px; }
