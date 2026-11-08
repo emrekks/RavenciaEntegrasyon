@@ -428,7 +428,7 @@ export function ReturnsPage() {
   if (bulkSelectionKey !== selectionKey) { setBulkSelectionKey(selectionKey); setBulkIds([]) }
   const [bulkMode, setBulkMode] = useState<'APPROVE' | 'REJECT' | null>(null)
   // On 1025-1240px screens the buyer column folds into the order cell so the remaining columns keep their room.
-  const noBuyer = useMediaQuery('(min-width: 1025px) and (max-width: 1240px)')
+  const noBuyer = useMediaQuery('(min-width: 1025px) and (max-width: 1380px)')
   // One page of cards: a claim with accepted and waiting lines arrives as two cards, each in its own tab.
   const visibleItems = query.data?.items ?? []
   const totalCount = query.data?.totalCount ?? visibleItems.length
