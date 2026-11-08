@@ -327,3 +327,10 @@
   html body main .rr.rr.rr-orders .rr-fcard:not(.rr-fopen) .rr-filters.rr-has-sort > .rr-fbtns { grid-column: auto; align-self: end; justify-content: flex-end; flex-wrap: nowrap; }
   html body main .rr.rr.rr-orders .rr-fcard:not(.rr-fopen) .rr-filters.rr-has-sort > .rr-fbtns > .rr-btn { min-width: 104px; justify-content: center; }
 }
+
+/* Owner, 8 Nov 2026: the date and sort fields were 330 px wide and pushed Temizle/Filtrele to a second row. From 900 px
+   the search, date, sort and both buttons share one row (date and sort ~190 px at 1024, nothing clipped). */
+@media (min-width: 900px) {
+  :root:root:root:root:root body .app-shell.stitch-shell main .rr.rr-orders .rr-fcard:not(.rr-fopen) .rr-filters.rr-has-sort { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr) auto; }
+  :root:root:root:root:root body .app-shell.stitch-shell main .rr.rr-orders .rr-fcard:not(.rr-fopen) .rr-filters.rr-has-sort > .rr-fbtns { grid-column: auto; align-self: end; flex-wrap: nowrap; }
+}

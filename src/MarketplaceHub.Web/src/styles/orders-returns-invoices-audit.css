@@ -66,6 +66,9 @@
   :root:root main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) col.rr-c-reason { width: 150px; }
   :root:root main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) col.rr-c-act { width: 150px; }
   :root:root main .rr.rr-returns .rr-pline .rr-card-only { display: block; }
+  /* The product name shows in full (it was cut after two lines with an ellipsis); codes keep their hyphen on one line. */
+  :root:root:root main .rr.rr-returns .rr-tbl.rr-tbl .rr-pline > div > b { display: block; overflow: visible; -webkit-line-clamp: unset; text-overflow: clip; }
+  :root:root:root main .rr.rr-returns .rr-tbl.rr-tbl .rr-pline b.rr-num { white-space: nowrap; }
   :root:root main .rr.rr-returns .rr-tbl.rr-tbl .rr-status-inline { justify-self: stretch; }
   :root:root main .rr.rr-returns .rr-tbl.rr-tbl td .rr-card-only .rr-num { white-space: nowrap; }
   :root:root main .rr.rr-returns .rr-tbl.rr-tbl td :is(small, b, span, div, em, a):not(.rr-badge):not(.rr-btn) { white-space: normal; overflow-wrap: break-word; min-width: 0; max-width: 100%; }
@@ -78,6 +81,15 @@
    "Başlangıç – Bitiş" and "En Yeni Siparişler"; the search gives them room. */
 @media (min-width: 900px) and (max-width: 1199px) {
   :root:root:root body main .rr.rr.rr-orders .rr-fcard:not(.rr-fopen) .rr-filters.rr-has-sort { grid-template-columns: minmax(0, .9fr) minmax(176px, 1fr) minmax(176px, 1fr) auto; }
+}
+/* Faturalar list: its minimum width was 1100px, so at 1152px (panel 1034px) the İşlemler column was cut; every column
+   still has the room its values need at 1000px (tracking number 134px, status badges 124px). */
+@media (min-width: 1025px) {
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-table > :is(.invoice-reference-head, .invoice-reference-row).invoice-reference-head,
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row.invoice-reference-row { min-width: 1000px; }
+  /* Kargo gets 16/100 of the row: its 16-digit tracking number was cut with an ellipsis. */
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row.invoice-reference-row,
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head.invoice-reference-head { grid-template-columns: minmax(0, 17fr) minmax(0, 11fr) minmax(0, 16fr) minmax(0, 15fr) minmax(0, 16fr) minmax(0, 10fr) minmax(0, 12fr); }
 }
 /* Faturalar filter card at tablet width (900-1099px): it stacked all eight fields in two columns (400px tall) above
    the list; the head filters already cover the extra ones, so it keeps the one row of 1100px and up. */
