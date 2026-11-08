@@ -50,6 +50,9 @@
   :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan .commission-now-col .commission-price { white-space: nowrap; }
 }
 @media (min-width: 761px) and (max-width: 1399px) {
+  /* The row height comes from the band cards, so a narrower product column costs nothing and keeps the table inside
+     1280 px (Güncel Fiyat on one line needs 37 px more than before). */
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) tbody th { width: 136px; min-width: 136px; max-width: 136px; }
   :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) .commission-now-col { width: 128px; min-width: 128px; }
   :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan .commission-now-col .commission-price { white-space: nowrap; }
 }
