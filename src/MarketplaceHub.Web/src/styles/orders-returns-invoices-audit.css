@@ -26,70 +26,10 @@
 :root:root body .invoice-reference-actions-popover { padding: 6px !important; }
 :root:root body .invoice-reference-actions-popover > button { gap: 10px; min-height: 36px; padding: 6px 10px; font-size: 13px; white-space: nowrap; }
 :root:root body .invoice-reference-actions-popover > .invoice-reference-actions-separator { margin: 4px 10px; }
-/* Order detail sheet on a wide screen: its label column was 120px (the phone width) and wrapped "Faturalanacak Tutar". */
-@media (min-width: 761px) {
-  :root:root :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-scard .rr-kv { grid-template-columns: 200px minmax(0, 1fr); }
-}
-/* Alıcı column: buyer names ("Meryem Betül Türkan") broke into three lines in 81px (Siparişler) and 87px (İadeler).
-   Siparişler: 112px at 1025-1365 (taken from the order and carrier columns, the table still fits 1280px), 140px from 1366
-   (the product column, which is auto, keeps the rest). İadeler: 140px; its table already scrolls sideways below 1500px. */
-@media (min-width: 1025px) and (max-width: 1365px) {
-  :root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-buyer { width: 112px; }
-  :root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-order { width: 250px; }
-  :root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-cargo { width: 133px; }
-}
-@media (min-width: 1366px) {
-  :root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-buyer { width: 140px; }
-}
-/* İadeler list, built like the Siparişler list: every column has the width its values need (tracking number, badge, amount,
-   product block) so nothing is cut or broken mid-word; the table is as wide as those columns add up and stretches
-   over a wider panel; only a panel narrower than that scrolls sideways (the same as Siparişler). */
-@media (min-width: 1025px) {
-  /* The list folds Birim Fiyat into the product block and Durum into the action cell, so it has 6 columns (7 with the buyer). */
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl { width: 100%; min-width: 1000px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl.rr-has-select { min-width: 1026px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) { min-width: 1180px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl.rr-has-select:has(col.rr-c-buyer) { min-width: 1206px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-order { width: 190px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-order { width: 216px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-prod { width: 244px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-cargo { width: 146px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-inv { width: 140px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-reason { width: 140px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-act { width: 140px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-buyer { width: 100px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) col.rr-c-order { width: 200px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl.rr-has-select:has(col.rr-c-buyer) col.rr-c-order { width: 226px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) col.rr-c-prod { width: 280px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) col.rr-c-cargo { width: 150px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) col.rr-c-inv { width: 150px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) col.rr-c-reason { width: 150px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) col.rr-c-act { width: 150px; }
-  :root:root main .rr.rr-returns .rr-pline .rr-card-only { display: block; }
-  /* The product name shows in full (it was cut after two lines with an ellipsis); codes keep their hyphen on one line. */
-  :root:root:root main .rr.rr-returns .rr-tbl.rr-tbl .rr-pline > div > b { display: block; overflow: visible; -webkit-line-clamp: unset; text-overflow: clip; }
-  :root:root:root main .rr.rr-returns .rr-tbl.rr-tbl .rr-pline b.rr-num { white-space: nowrap; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl .rr-status-inline { justify-self: stretch; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl td .rr-card-only .rr-num { white-space: nowrap; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl td :is(small, b, span, div, em, a):not(.rr-badge):not(.rr-btn) { white-space: normal; overflow-wrap: break-word; min-width: 0; max-width: 100%; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl td .rr-num { overflow-wrap: break-word; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl td small.rr-num { overflow-wrap: anywhere; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl td img:not(.rr-thumb > img) { max-width: 100%; height: auto; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl td .rr-badge, :root:root main .rr.rr-returns .rr-tbl.rr-tbl td .rr-badge * { white-space: nowrap; }
-}
 /* Siparişler filter row at tablet width (1024px): the 2fr search left the date and sort fields 156px, which cut
    "Başlangıç – Bitiş" and "En Yeni Siparişler"; the search gives them room. */
 @media (min-width: 900px) and (max-width: 1199px) {
   :root:root:root body main .rr.rr.rr-orders .rr-fcard:not(.rr-fopen) .rr-filters.rr-has-sort { grid-template-columns: minmax(220px, 1.2fr) minmax(170px, 1fr) minmax(170px, 1fr) auto; }
-}
-/* Faturalar list: its minimum width was 1100px, so at 1152px (panel 1034px) the İşlemler column was cut; every column
-   still has the room its values need at 1000px (tracking number 134px, status badges 124px). */
-@media (min-width: 1025px) {
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-table > :is(.invoice-reference-head, .invoice-reference-row).invoice-reference-head,
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row.invoice-reference-row { min-width: 1000px; }
-  /* Kargo gets 16/100 of the row: its 16-digit tracking number was cut with an ellipsis. */
-  .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row.invoice-reference-row,
-  .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head.invoice-reference-head { grid-template-columns: minmax(0, 17fr) minmax(0, 11fr) minmax(0, 16fr) minmax(0, 15fr) minmax(0, 16fr) minmax(0, 10fr) minmax(0, 12fr); }
 }
 /* Faturalar filter card at tablet width (900-1099px): it stacked all eight fields in two columns (400px tall) above
    the list; the head filters already cover the extra ones, so it keeps the one row of 1100px and up. */
@@ -110,48 +50,6 @@
 @media (min-width: 1100px) {
   :root:root:root body main .rr.rr-returns .rr-fcard:not(.rr-fopen) .rr-filters.rr-has-sort { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1.1fr) auto; }
   :root:root:root body main .rr.rr-returns .rr-fcard:not(.rr-fopen) .rr-filters.rr-has-sort > .rr-fbtns { grid-column: auto; align-self: end; justify-content: flex-end; flex-wrap: nowrap; }
-}
-/* Siparişler: the product name shows in full (it was cut after two lines with an ellipsis). */
-@media (min-width: 1025px) {
-  :root:root:root main .rr.rr-orders .rr-tbl.rr-tbl .rr-pline > div > b { display: block; overflow: visible; -webkit-line-clamp: unset; text-overflow: clip; }
-}
-/* Siparişler list from 1025px: Birim Fiyat is folded into the product block (a "Birim Fiyatı:" line), so the columns add up
-   to less than the 907px panel of a 1025px window and nothing scrolls sideways. */
-@media (min-width: 1025px) {
-  :root:root main .rr.rr-orders .rr-pline .rr-card-only { display: block; }
-  :root:root main .rr.rr-orders .rr-tbl.rr-tbl td .rr-card-only .rr-num { white-space: nowrap; }
-  :root:root main .rr.rr-orders .rr-tbl.rr-tbl { width: 100%; min-width: 864px; }
-  :root:root main .rr.rr-orders .rr-tbl.rr-tbl.rr-has-select { min-width: 890px; }
-  :root:root main .rr.rr-orders .rr-tbl.rr-tbl col.rr-c-order { width: 210px; }
-  :root:root main .rr.rr-orders .rr-tbl.rr-tbl.rr-has-select col.rr-c-order { width: 236px; }
-  :root:root main .rr.rr-orders .rr-tbl.rr-tbl col.rr-c-prod { width: 250px; }
-  :root:root main .rr.rr-orders .rr-tbl.rr-tbl col.rr-c-cargo { width: 128px; }
-  :root:root main .rr.rr-orders .rr-tbl.rr-tbl col.rr-c-inv { width: 150px; }
-  :root:root main .rr.rr-orders .rr-tbl.rr-tbl col.rr-c-act { width: 126px; }
-}
-@media (min-width: 1241px) {
-  :root:root main .rr.rr-orders .rr-tbl.rr-tbl { min-width: 1077px; }
-  :root:root main .rr.rr-orders .rr-tbl.rr-tbl.rr-has-select { min-width: 1103px; }
-  :root:root main .rr.rr-orders .rr-tbl.rr-tbl col.rr-c-order { width: 230px; }
-  :root:root main .rr.rr-orders .rr-tbl.rr-tbl.rr-has-select col.rr-c-order { width: 256px; }
-  :root:root main .rr.rr-orders .rr-tbl.rr-tbl col.rr-c-buyer { width: 120px; }
-  :root:root main .rr.rr-orders .rr-tbl.rr-tbl col.rr-c-prod { width: 290px; }
-  :root:root main .rr.rr-orders .rr-tbl.rr-tbl col.rr-c-cargo { width: 144px; }
-  :root:root main .rr.rr-orders .rr-tbl.rr-tbl col.rr-c-inv { width: 165px; }
-  :root:root main .rr.rr-orders .rr-tbl.rr-tbl col.rr-c-act { width: 128px; }
-}
-/* İadeler list in a 1025-1140px window: the panel is 907-1022px, so the columns are a little narrower than from 1141px
-   (the tracking number still fits 132px) and the table fits without scrolling. */
-@media (min-width: 1025px) and (max-width: 1140px) {
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl { min-width: 876px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl.rr-has-select { min-width: 902px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-order { width: 160px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-order { width: 186px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-prod { width: 190px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-cargo { width: 148px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-inv { width: 138px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-reason { width: 117px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-act { width: 123px; }
 }
 /* Product thumbnails fill their frame (no empty band above or below the picture); the quantity badge stays on the corner. */
 :root:root :is(main .rr.rr, .rr-layer.rr-layer) .rr-thumb > img { display: block; width: 100%; height: 100%; max-width: none; object-fit: cover; border-radius: inherit; }
