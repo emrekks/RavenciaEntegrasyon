@@ -1035,7 +1035,7 @@ export function OrdersPage() {
           {!noBuyer && <ReturnHeadCell label="Alıcı" active={filters.kind !== 'ALL'} pop={close => <ReturnColumnPop label="Sipariş Türü" options={kindOptions} value={filterForm.kind} onPick={value => { applyFilterValue('kind', value); close() }} />} />}
           <ReturnHeadCell label="Bilgiler" active={filters.cancelPart !== 'ALL'} pop={close => <ReturnColumnPop label="Ürün İptali" options={cancelPartOptions} value={filterForm.cancelPart} onPick={value => { applyFilterValue('cancelPart', value); close() }} />} />
           <ReturnHeadCell label="Birim Fiyat" />
-          <ReturnHeadCell label="Kargo" active={filters.cargo !== 'ALL'} pop={close => <ReturnColumnPop label="Kargo Firması" options={cargoOptions} counts={facetCounts('cargos')} value={filterForm.cargo} onPick={value => { applyFilterValue('cargo', value); close() }} />} />
+          <ReturnHeadCell label="Kargo" active={filters.cargo !== 'ALL'} pop={close => <ReturnColumnPop label="Kargo Firması" width={280} options={cargoOptions} counts={facetCounts('cargos')} value={filterForm.cargo} onPick={value => { applyFilterValue('cargo', value); close() }} />} />
           <ReturnHeadCell label="Fatura" active={filters.invoice !== 'ALL' || filters.invoiceType !== 'ALL' || filters.invoiceRegion !== 'ALL'} pop={invoicePop} />
           <ReturnHeadCell label="İşlemler" active={filters.label !== 'ALL'} pop={close => <ReturnColumnPop label="Etiket Durumu" options={labelOptions} value={filterForm.label} right onPick={value => { applyFilterValue('label', value); close() }} />} />
         </tr></thead>
