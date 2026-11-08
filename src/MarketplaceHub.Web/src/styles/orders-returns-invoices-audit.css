@@ -41,10 +41,32 @@
 @media (min-width: 1366px) {
   :root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-buyer { width: 140px; }
 }
+/* İadeler list: fits its panel from 1025px up, no sideways scroll. Columns take percentages of the panel, long text
+   (tracking numbers, reasons, product lines) wraps inside its cell, badges and buttons keep their label on one line. */
 @media (min-width: 1025px) {
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-buyer { width: 140px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) { min-width: 1472px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl.rr-has-select:has(col.rr-c-buyer) { min-width: 1498px; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl,
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer),
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl.rr-has-select:has(col.rr-c-buyer) { min-width: 0; width: 100%; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-order { width: 19%; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-order { width: 22%; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-prod { width: 19%; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-price { width: 7%; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-cargo { width: 10%; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-inv { width: 12%; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-reason { width: 9%; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-status { width: 11%; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-act { width: 10%; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) col.rr-c-order { width: 17%; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl.rr-has-select:has(col.rr-c-buyer) col.rr-c-order { width: 20%; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-buyer { width: 8%; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) col.rr-c-prod { width: 17%; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) col.rr-c-inv { width: 11%; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) col.rr-c-reason { width: 8%; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) col.rr-c-cargo { width: 9%; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl td :is(small, b, span, div, em, a):not(.rr-badge):not(.rr-btn) { white-space: normal; overflow-wrap: break-word; min-width: 0; max-width: 100%; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl td .rr-num { overflow-wrap: anywhere; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl td img { max-width: 100%; height: auto; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl td .rr-badge { white-space: nowrap; }
 }
 /* Siparişler filter row at tablet width (1024px): the 2fr search left the date and sort fields 156px, which cut
    "Başlangıç – Bitiş" and "En Yeni Siparişler"; the search gives them room. */
