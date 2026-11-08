@@ -45,24 +45,29 @@
    product block) so nothing is cut or broken mid-word; the table is as wide as those columns add up and stretches
    over a wider panel; only a panel narrower than that scrolls sideways (the same as Siparişler). */
 @media (min-width: 1025px) {
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl { width: 100%; min-width: 1142px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl.rr-has-select { min-width: 1168px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) { min-width: 1219px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl.rr-has-select:has(col.rr-c-buyer) { min-width: 1245px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-order { width: 195px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-order { width: 221px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-buyer { width: 92px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-prod { width: 205px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-price { width: 90px; }
+  /* The list folds Birim Fiyat into the product block and Durum into the action cell, so it has 6 columns (7 with the buyer). */
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl { width: 100%; min-width: 1000px; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl.rr-has-select { min-width: 1026px; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) { min-width: 1180px; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl.rr-has-select:has(col.rr-c-buyer) { min-width: 1206px; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-order { width: 190px; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-order { width: 216px; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-prod { width: 244px; }
   :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-cargo { width: 146px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-inv { width: 138px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-reason { width: 128px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-status { width: 122px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-act { width: 118px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) col.rr-c-order { width: 190px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl.rr-has-select:has(col.rr-c-buyer) col.rr-c-order { width: 216px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) col.rr-c-prod { width: 200px; }
-  :root:root main .rr.rr-returns .rr-tbl.rr-tbl td[data-l="Durum"] *, :root:root main .rr.rr-returns .rr-tbl.rr-tbl td.rr-price-col .rr-num { white-space: nowrap; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-inv { width: 140px; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-reason { width: 140px; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-act { width: 140px; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-buyer { width: 100px; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) col.rr-c-order { width: 200px; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl.rr-has-select:has(col.rr-c-buyer) col.rr-c-order { width: 226px; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) col.rr-c-prod { width: 280px; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) col.rr-c-cargo { width: 150px; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) col.rr-c-inv { width: 150px; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) col.rr-c-reason { width: 150px; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) col.rr-c-act { width: 150px; }
+  :root:root main .rr.rr-returns .rr-pline .rr-card-only { display: block; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl .rr-status-inline { justify-self: stretch; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl td .rr-card-only .rr-num { white-space: nowrap; }
   :root:root main .rr.rr-returns .rr-tbl.rr-tbl td :is(small, b, span, div, em, a):not(.rr-badge):not(.rr-btn) { white-space: normal; overflow-wrap: break-word; min-width: 0; max-width: 100%; }
   :root:root main .rr.rr-returns .rr-tbl.rr-tbl td .rr-num { overflow-wrap: break-word; }
   :root:root main .rr.rr-returns .rr-tbl.rr-tbl td small.rr-num { overflow-wrap: anywhere; }
