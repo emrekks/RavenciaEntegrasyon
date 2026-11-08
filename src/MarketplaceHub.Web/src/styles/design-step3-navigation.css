@@ -43,7 +43,8 @@ html body .app-shell.stitch-shell main .reports-page :is(.reports-badge.is-warn,
 html body .app-shell.stitch-shell main .reports-page .reports-tag { border-width: 1px; }
 html body .app-shell.stitch-shell main .commission-tariffs .unit-profit-badge.unit-profit-badge { box-sizing: border-box; min-height: 22px; padding: 0 8px; border-radius: 7px; font-size: 12px; font-weight: 600; line-height: 1; }
 html body .psm-chip.psm-chip { min-height: 22px; padding: 0 8px; font-size: 12px; font-weight: 600; line-height: 1; }
-html body .app-shell.stitch-shell main .cs-workspace .cs-chip.cs-chip { height: 22px; min-height: 22px; padding: 0 8px; font-size: 12px; font-weight: 600; line-height: 1; }
+/* Veri Eşitleme flow chips filter the list: they are segment-size controls (32 px, 12.5px/500), not 22 px status badges. */
+html body .app-shell.stitch-shell main .cs-workspace .cs-chip.cs-chip { height: 32px; min-height: 32px; padding: 0 12px; border-radius: 7px; font-size: 12.5px; font-weight: 500; line-height: 1; }
 html body .publish-step-badge.publish-step-badge { min-width: 18px; height: 18px; padding: 0 4px; font-size: 11px; font-weight: 600; line-height: 15px; }
 
 /* 7. Card padding: panels 20px (16px on phones). */
