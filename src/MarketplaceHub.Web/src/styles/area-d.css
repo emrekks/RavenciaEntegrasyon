@@ -36,6 +36,7 @@ html body .cs-workspace .connection-settings-input-row > button:only-child { gri
 @container fshell (min-width: 1100px) {
   html body main .rr.rr.ops-filters .rr-fcard .rr-filters.ops-filter-grid.is-wide:has(> .rr-date) { grid-template-columns: minmax(180px, 1.3fr) minmax(120px, 1fr) minmax(170px, 1.25fr) repeat(3, minmax(120px, 1fr)) auto; }
   html body main .rr.rr.ops-filters .rr-fcard .rr-filters.ops-filter-grid.is-wide:has(> .rr-date) > .rr-fbtns { align-self: end; }
+  html body main .rr.rr.ops-filters .rr-fcard .rr-filters.ops-filter-grid.is-wide:has(> .rr-date) > :is(.rr-search, .rr-fbtns) { grid-column: auto; }
 }
 
 /* İşlem Takibi › API Sağlık: four summary cards in one row (the shared three-column grid left the fourth alone). */
