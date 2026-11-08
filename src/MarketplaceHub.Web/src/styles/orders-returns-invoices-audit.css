@@ -111,5 +111,43 @@
   :root:root:root body main .rr.rr-returns .rr-fcard:not(.rr-fopen) .rr-filters.rr-has-sort { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1.1fr) auto; }
   :root:root:root body main .rr.rr-returns .rr-fcard:not(.rr-fopen) .rr-filters.rr-has-sort > .rr-fbtns { grid-column: auto; align-self: end; justify-content: flex-end; flex-wrap: nowrap; }
 }
+/* Siparişler list from 1025px: Birim Fiyat is folded into the product block (a "Birim Fiyatı:" line), so the columns add up
+   to less than the 907px panel of a 1025px window and nothing scrolls sideways. */
+@media (min-width: 1025px) {
+  :root:root main .rr.rr-orders .rr-pline .rr-card-only { display: block; }
+  :root:root main .rr.rr-orders .rr-tbl.rr-tbl td .rr-card-only .rr-num { white-space: nowrap; }
+  :root:root main .rr.rr-orders .rr-tbl.rr-tbl { width: 100%; min-width: 864px; }
+  :root:root main .rr.rr-orders .rr-tbl.rr-tbl.rr-has-select { min-width: 890px; }
+  :root:root main .rr.rr-orders .rr-tbl.rr-tbl col.rr-c-order { width: 210px; }
+  :root:root main .rr.rr-orders .rr-tbl.rr-tbl.rr-has-select col.rr-c-order { width: 236px; }
+  :root:root main .rr.rr-orders .rr-tbl.rr-tbl col.rr-c-prod { width: 250px; }
+  :root:root main .rr.rr-orders .rr-tbl.rr-tbl col.rr-c-cargo { width: 128px; }
+  :root:root main .rr.rr-orders .rr-tbl.rr-tbl col.rr-c-inv { width: 150px; }
+  :root:root main .rr.rr-orders .rr-tbl.rr-tbl col.rr-c-act { width: 126px; }
+}
+@media (min-width: 1241px) {
+  :root:root main .rr.rr-orders .rr-tbl.rr-tbl { min-width: 1077px; }
+  :root:root main .rr.rr-orders .rr-tbl.rr-tbl.rr-has-select { min-width: 1103px; }
+  :root:root main .rr.rr-orders .rr-tbl.rr-tbl col.rr-c-order { width: 230px; }
+  :root:root main .rr.rr-orders .rr-tbl.rr-tbl.rr-has-select col.rr-c-order { width: 256px; }
+  :root:root main .rr.rr-orders .rr-tbl.rr-tbl col.rr-c-buyer { width: 120px; }
+  :root:root main .rr.rr-orders .rr-tbl.rr-tbl col.rr-c-prod { width: 290px; }
+  :root:root main .rr.rr-orders .rr-tbl.rr-tbl col.rr-c-cargo { width: 144px; }
+  :root:root main .rr.rr-orders .rr-tbl.rr-tbl col.rr-c-inv { width: 165px; }
+  :root:root main .rr.rr-orders .rr-tbl.rr-tbl col.rr-c-act { width: 128px; }
+}
+/* İadeler list in a 1025-1140px window: the panel is 907-1022px, so the columns are a little narrower than from 1141px
+   (the tracking number still fits 132px) and the table fits without scrolling. */
+@media (min-width: 1025px) and (max-width: 1140px) {
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl { min-width: 876px; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl.rr-has-select { min-width: 902px; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-order { width: 172px; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-order { width: 198px; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-prod { width: 200px; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-cargo { width: 132px; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-inv { width: 126px; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-reason { width: 120px; }
+  :root:root main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-act { width: 126px; }
+}
 /* Product thumbnails fill their frame (no empty band above or below the picture); the quantity badge stays on the corner. */
 :root:root :is(main .rr.rr, .rr-layer.rr-layer) .rr-thumb > img { display: block; width: 100%; height: 100%; max-width: none; object-fit: cover; border-radius: inherit; }
