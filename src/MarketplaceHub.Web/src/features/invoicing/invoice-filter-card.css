@@ -10,6 +10,10 @@
   .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-workspace > header > .invoice-page-size { display: none; }
 }
 
+/* Summary cards: the four short cards share one row whenever they fit (from 761 px; 167 px each at 820 px). */
+@media (min-width: 761px) {
+  :root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
 /* Row checkbox: in the left gutter the row keeps for it (padding-left 40), level with the head checkbox and centred on
    the row, not stacked above the platform logo. */
 :root:root body .app-shell.stitch-shell main .invoice-reference-row .invoice-reference-order { position: relative; }
