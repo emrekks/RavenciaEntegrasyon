@@ -34,7 +34,7 @@ html body .cs-workspace .connection-settings-input-row > button:only-child { gri
 /* İşlem Takibi › Loglar filters: six fields plus Temizle / Filtrele in one row when the card is wide enough. The shared
    "date filter" rule (4 columns, :has(> .rr-date)) out-ranked the page grid and pushed the last two fields to a second row. */
 @container fshell (min-width: 1100px) {
-  html body main .rr.rr.ops-filters .rr-fcard .rr-filters.ops-filter-grid.is-wide:has(> .rr-date) { grid-template-columns: minmax(200px, 1.3fr) minmax(130px, 1fr) minmax(190px, 1.25fr) repeat(3, minmax(130px, 1fr)) auto; }
+  html body main .rr.rr.ops-filters .rr-fcard .rr-filters.ops-filter-grid.is-wide:has(> .rr-date) { grid-template-columns: minmax(180px, 1.3fr) minmax(120px, 1fr) minmax(170px, 1.25fr) repeat(3, minmax(120px, 1fr)) auto; }
   html body main .rr.rr.ops-filters .rr-fcard .rr-filters.ops-filter-grid.is-wide:has(> .rr-date) > .rr-fbtns { align-self: end; }
 }
 
