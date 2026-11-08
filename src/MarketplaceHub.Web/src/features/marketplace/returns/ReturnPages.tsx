@@ -492,7 +492,7 @@ export function ReturnsPage() {
           {!noBuyer && <ReturnHeadCell label="Alıcı" />}
           <ReturnHeadCell label="Bilgiler" />
           <ReturnHeadCell label="Birim Fiyat" />
-          <ReturnHeadCell label="Kargo" active={cargoFilter !== 'ALL'} pop={close => <ReturnColumnPop label="Kargo Firması" options={cargoPopOptions} counts={optionCounts('cargoCounts')} value={cargoFilter} onPick={value => { setCargoFilter(value); close() }} />} />
+          <ReturnHeadCell label="Kargo" active={cargoFilter !== 'ALL'} pop={close => <ReturnColumnPop label="Kargo Firması" width={280} options={cargoPopOptions} counts={optionCounts('cargoCounts')} value={cargoFilter} onPick={value => { setCargoFilter(value); close() }} />} />
           <ReturnHeadCell label="Fatura" active={invoiceStatusFilter !== 'ALL'} pop={close => <ReturnColumnPop label="Fatura Durumu" options={invoicePopOptions} counts={optionCounts('invoiceStatusCounts')} value={invoiceStatusFilter} onPick={value => { selectInvoiceStatus(value); close() }} />} />
           <ReturnHeadCell label="İade Sebebi" active={reasonFilter !== 'ALL'} pop={close => <ReturnColumnPop label="İade Sebebi" options={reasonPopOptions} counts={optionCounts('reasonCounts')} value={reasonFilter} right onPick={value => { setReasonFilter(value); close() }} />} />
           <ReturnHeadCell label="Durum" active={status !== 'ALL'} pop={close => <ReturnColumnPop label="İade Durumu" options={statusPopOptions} value={status} right onPick={value => { selectStatus(value); close() }} />} />
