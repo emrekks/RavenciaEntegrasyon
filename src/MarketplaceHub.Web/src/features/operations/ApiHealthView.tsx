@@ -40,7 +40,7 @@ export function ApiHealthView({ onFeedback }: { onFeedback: (feedback: Integrati
           return stat.to ? <Link key={stat.key} className={className} to={stat.to}>{body}</Link> : <div key={stat.key} className={className}>{body}</div>
         })}
       </div></section>
-      <IntegrationStatusPanel integration={integration} extras={monitor.extras} headerAction={<EmergencyStopButton anyOpen={monitor.anyOpen} onFeedback={onFeedback} />} notice={monitor.problemConnections ? `${monitor.problemConnections} bağlantıda sorunlu fiyat/stok gönderimi var; ayrıntı Sorun hücresinin ipucunda.` : null} />
+      <IntegrationStatusPanel integration={integration} extras={monitor.extras} headerAction={<EmergencyStopButton anyOpen={monitor.anyOpen} onFeedback={onFeedback} />} notice={monitor.notice} />
       <ApiHealthSignalsPanel />
     </div>
   </div>

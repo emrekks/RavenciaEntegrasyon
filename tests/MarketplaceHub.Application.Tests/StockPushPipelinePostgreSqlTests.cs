@@ -382,6 +382,8 @@ public sealed class StockPushPipelinePostgreSqlTests(PostgreSqlTenantIsolationFi
             Assert.True(row.AutomaticWritesOpen);
             Assert.Equal(1, row.InvalidOffers);
             Assert.Equal(1, row.QueuedJobs);
+            Assert.Equal(0, row.NotFoundLinks);
+            Assert.Empty(row.LostListings);
 
             var stop = await monitor.StopAllAutomaticWritesAsync(tenant.Id, Guid.CreateVersion7(), "emergency-stop", CancellationToken.None);
             Assert.Equal(1, stop.ConnectionsStopped);
@@ -395,6 +397,42 @@ public sealed class StockPushPipelinePostgreSqlTests(PostgreSqlTenantIsolationFi
         var after = Assert.Single((await new PriceStockMonitorService(check, WritesOn(), fixture.TimeProvider).MonitorAsync(tenant.Id, CancellationToken.None)).Connections);
         Assert.False(after.AutomaticWritesOpen);
         Assert.Equal(0, after.QueuedJobs);
+    }
+
+    // Live 9 Nov 2026: Shopify showed "48 kayıp ilan" with no way to tell which. The monitor names the products behind
+    // the broken links, their stock codes in order and when they broke; a healthy link of the same product is not listed.
+    [PostgreSqlFact]
+    public async Task Monitor_NamesTheProductsWhoseListingsTheMarketplaceNoLongerHolds()
+    {
+        var tenant = NewTenant("monitor-lost");
+        var shopify = NewConnection(tenant, "SHOPIFY");
+        var (product, first) = NewVariant(tenant, "LOST-02");
+        var second = NewVariant(tenant, "LOST-01", product.Id).Variant;
+        var healthy = NewVariant(tenant, "LOST-03", product.Id).Variant;
+        var brokenAt = DateTimeOffset.Parse("2026-11-03T00:15:00Z");
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(shopify);
+            seed.Products.Add(product);
+            seed.ProductVariants.AddRange(first, second, healthy);
+            seed.MarketplaceVariantLinks.AddRange(
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = shopify.Id, VariantId = first.Id, ExternalId = "48066229076052", HealthStatus = MarketplaceVariantLinkHealth.NotFound, HealthChangedAt = brokenAt.AddSeconds(5) },
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = shopify.Id, VariantId = second.Id, ExternalId = "48066229108820", HealthStatus = MarketplaceVariantLinkHealth.NotFound, HealthChangedAt = brokenAt },
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = shopify.Id, VariantId = healthy.Id, ExternalId = "48066229141588" });
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var row = Assert.Single((await new PriceStockMonitorService(db, WritesOn(), fixture.TimeProvider).MonitorAsync(tenant.Id, CancellationToken.None)).Connections);
+        Assert.Equal(2, row.NotFoundLinks);
+        var lost = Assert.Single(row.LostListings);
+        Assert.Equal(product.Id, lost.ProductId);
+        Assert.Equal(product.Title, lost.Title);
+        Assert.Equal(MarketplaceVariantLinkHealth.NotFound, lost.HealthStatus);
+        Assert.Equal(2, lost.Variants);
+        Assert.Equal(["LOST-01", "LOST-02"], lost.Skus);
+        Assert.Equal(brokenAt, lost.Since);
     }
 
     private static IntegrationJob DispatchJob(Tenant tenant, PlatformConnection connection, ProductVariant variant, Guid id, DateTimeOffset createdAt) => new()
