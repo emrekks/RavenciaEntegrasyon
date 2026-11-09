@@ -1,4 +1,4 @@
-import { defineConfig, loadEnv } from 'vite'
+import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import type { AtRule, Plugin as PostcssPlugin } from 'postcss'
 
@@ -27,11 +27,38 @@ const hoverOnlyOnPointers: PostcssPlugin = {
   },
 }
 
+// The phone and tablet stylesheets (imported with ?url in main.tsx) are linked from index.html itself at build time, so
+// a phone has them before the first paint instead of after the script ran (a layout shift). Each keeps its media query,
+// so a desktop never applies them; they come after the main CSS, as when main.tsx appended them. The dev server has no
+// bundle: main.tsx appends them there, and skips that when the links are already in the page.
+const screenStylesheets = [
+  { source: 'src/styles/responsive.css', media: '(max-width: 1024px)' },
+  { source: 'src/styles/phone-spacing.css', media: '(max-width: 760px)' },
+  { source: 'src/styles/tablet-ops.css', media: '(min-width: 761px) and (max-width: 1024px)' },
+  { source: 'src/styles/tablet-catalog.css', media: '(min-width: 761px) and (max-width: 1024px)' },
+] as const
+
+const linkScreenStylesheets: Plugin = {
+  name: 'link-screen-stylesheets',
+  transformIndexHtml: {
+    order: 'post',
+    handler(_html, context) {
+      if (!context.bundle) return []
+      const assets = Object.values(context.bundle).filter(item => item.type === 'asset')
+      return screenStylesheets.map(({ source, media }) => {
+        const asset = assets.find(item => item.originalFileNames?.some(name => name.replace(/\\/g, '/').endsWith(source)))
+        if (!asset) throw new Error(`link-screen-stylesheets: ${source} was not emitted`)
+        return { tag: 'link', attrs: { rel: 'stylesheet', href: `/${asset.fileName}`, media, 'data-screen-stylesheet': '' }, injectTo: 'head' as const }
+      })
+    },
+  },
+}
+
 export default defineConfig(({ mode }) => {
   const apiProxy = loadEnv(mode, '.', '').VITE_API_PROXY ?? 'http://localhost:5192'
 
   return {
-    plugins: [react()],
+    plugins: [react(), linkScreenStylesheets],
     css: { postcss: { plugins: [hoverOnlyOnPointers] } },
     build: {
       rollupOptions: {
@@ -42,7 +69,10 @@ export default defineConfig(({ mode }) => {
           manualChunks(id) {
             if (id.includes('/node_modules/react/') || id.includes('/node_modules/react-dom/') || id.includes('/node_modules/react-router/')) return 'vendor-react'
             if (id.includes('/node_modules/@tanstack/react-query/')) return 'vendor-query'
-            if (id.includes('/node_modules/@microsoft/signalr/') || id.includes('/node_modules/dompurify/')) return 'vendor-integration'
+            // SignalR is read after the first render (useOperationsRealtime), DOMPurify only by the product editor's
+            // rich text: each in its own chunk, neither on the first load.
+            if (id.includes('/node_modules/@microsoft/signalr/')) return 'vendor-integration'
+            if (id.includes('/node_modules/dompurify/')) return 'vendor-sanitize'
             return undefined
           },
         },

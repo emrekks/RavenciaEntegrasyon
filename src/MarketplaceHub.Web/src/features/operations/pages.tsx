@@ -22,7 +22,7 @@ import type { JobVariantResults } from '../catalog/product-editor/PublicationJob
 import { jobDirections, jobPresentation, jobSubtitle, jobTitle, jobTypeCode, jobTypesForDirection, type JobDirection, type JobTypeIconName } from './job-presentation'
 import { canOfferOneTimeInvoiceDelivery } from './one-time-invoice-delivery-visibility'
 import { oneTimeInvoiceDeliveryIdempotencyKey } from './one-time-invoice-delivery-idempotency'
-import { isJobIdSearch, isJobInTimeRange, jobLookupQueryString, jobLookupTerm, jobTimeRangeOptions, jobCountsQueryString, jobDetailPollInterval, jobListHeadPollInterval, jobListPollInterval, jobListPollMs, jobPageQueryString,jobPlatformsFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage, type JobListTimeRange } from './job-list-query'
+import { isJobIdSearch, isJobInTimeRange, jobLookupQueryString, jobLookupTerm, jobTimeRangeOptions, jobCountsQueryString, jobDetailPollInterval, jobListHeadPollInterval, jobListPollInterval, jobListPollMs, jobListServerPageSize, jobPageQueryString, jobPlatformsFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage, type JobListTimeRange } from './job-list-query'
 import { jobCategoryMatcher, jobCategoryTabs, jobTypesForCategoryTab, type JobCategory } from './job-categories'
 import { jobPageSizes, jobsMainTab, readJobsViewState, withJobsMainTab, writeJobsViewState, type JobsMainTab, type JobStatusChip, type JobsViewState } from './jobs-url-state'
 import type { IntegrationFeedback } from '../marketplace/shared'
@@ -442,9 +442,11 @@ export function JobsPage({ me }: { me: Me }) {
     const both = byCategory ? byDirection.filter(type => byCategory.includes(type)) : byDirection
     return both.length ? both : ['NO_MATCHING_JOB_TYPE']
   }, [category, direction])
+  // 50 jobs per server page, or one screen page when a bigger one is chosen (job-list-query.ts).
+  const serverPageSize = jobListServerPageSize(pageSize)
   const list = useInfiniteQuery({
-    queryKey: ['jobs', 'page', serverStatus, timeRange, category, direction, platform],
-    queryFn: context => hubPoll<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, after: context.pageParam, platform })}`),
+    queryKey: ['jobs', 'page', serverStatus, timeRange, category, direction, platform, serverPageSize],
+    queryFn: context => hubPoll<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, after: context.pageParam, platform, limit: serverPageSize })}`),
     initialPageParam: null as string | null,
     getNextPageParam: lastPage => lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,
     placeholderData: keepPreviousData,
@@ -455,14 +457,14 @@ export function JobsPage({ me }: { me: Me }) {
   // With older pages loaded the list itself stops polling; its first page is polled on its own and put in front.
   const loadedServerPages = list.data?.pages.length ?? 0
   const listHead = useQuery({
-    queryKey: ['jobs', 'page-head', serverStatus, timeRange, category, direction, platform],
-    queryFn: () => hubPoll<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, platform })}`),
+    queryKey: ['jobs', 'page-head', serverStatus, timeRange, category, direction, platform, serverPageSize],
+    queryFn: () => hubPoll<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, platform, limit: serverPageSize })}`),
     enabled: loadedServerPages > 1 && !listHidden,
     refetchInterval: jobListHeadPollInterval(loadedServerPages)
   })
   useEffect(() => {
-    if (listHead.data) client.setQueryData<InfiniteData<JobPage, string | null>>(['jobs', 'page', serverStatus, timeRange, category, direction, platform], current => withFreshFirstPage(current, listHead.data))
-  }, [listHead.data, client, serverStatus, timeRange, category, direction, platform])
+    if (listHead.data) client.setQueryData<InfiniteData<JobPage, string | null>>(['jobs', 'page', serverStatus, timeRange, category, direction, platform, serverPageSize], current => withFreshFirstPage(current, listHead.data))
+  }, [listHead.data, client, serverStatus, timeRange, category, direction, platform, serverPageSize])
   const detail = useQuery({
     queryKey: ['job', selectedId],
     queryFn: () => hubPoll<JobDetail>(`/jobs/${selectedId}`),

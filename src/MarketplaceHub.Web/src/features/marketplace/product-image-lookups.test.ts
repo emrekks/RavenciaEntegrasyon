@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { productImageFallbackUrls } from './product-image-lookups'
+import { productImageFallbackUrls, productImageThumbnailLookup } from './product-image-lookups'
 
 describe('productImageFallbackUrls', () => {
   it('tries the marketplace barcode before the merchant SKU and keeps the lookup connection scoped', () => {
@@ -30,5 +30,16 @@ describe('productImageFallbackUrls', () => {
     expect(params.get('barcode')).toBeNull()
     expect(params.get('connectionId')).toBe('hb-store')
     expect(params.get('productName')).toBe('Elbise')
+  })
+})
+
+describe('productImageThumbnailLookup', () => {
+  it('asks the lookup for the small copy and leaves other addresses alone', () => {
+    const [url] = productImageFallbackUrls(['MZ 1'], null, 'Elbise')
+    const params = new URL(productImageThumbnailLookup(url), 'https://panel.ravencia.test').searchParams
+    expect(params.get('size')).toBe('thumb')
+    expect(params.get('barcode')).toBe('MZ 1')
+    expect(params.get('productName')).toBe('Elbise')
+    expect(productImageThumbnailLookup('https://cdn.dsmcdn.com/x.jpg')).toBe('https://cdn.dsmcdn.com/x.jpg')
   })
 })

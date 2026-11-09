@@ -13,7 +13,7 @@ import { RrIcon, RrLogo } from '../marketplace/returns-ui'
 import './dashboard-sade.css'
 import { formatIstanbul, istanbulDateKey } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
-import { periodTrend as trend, channelTotals, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, periodFigures, presetLabels, presetOrder, primaryCurrency, revenueReport, type DashboardChannel, type DayPoint, type Performance, type Range } from './dashboard-performance'
+import { periodTrend as trend, channelTotals, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, periodFigures, prefetchInTurn, presetLabels, presetOrder, primaryCurrency, revenueReport, type DashboardChannel, type DayPoint, type Performance, type Range } from './dashboard-performance'
 import { smoothPath } from './smooth-path'
 import { IntegrationStatusPanel, knownCount, useIntegrationHealth, type DashboardMetrics } from './IntegrationStatusPanel'
 
@@ -181,15 +181,19 @@ export function DashboardPage() {
   // Today's cancellations, each counted on the day the marketplace says it happened.
   const cancellations = useQuery({ queryKey: ['dashboard', 'cancellations', today], queryFn: () => hubApi<{ stores: CancellationRow[] }>(`/dashboard/cancellations?day=${today}`, poll), ...refresh })
   const performance = useQuery({ placeholderData: keepPreviousData, queryKey: ['dashboard', 'performance', days?.from, days?.to], queryFn: () => hubApi<Performance>(`/dashboard/performance?from=${days!.from}&to=${days!.to}`, poll), enabled: days !== null, ...refresh })
-  // Once a period has loaded, the other ready-made periods are read in the background, so switching to them is instant.
+  // Once a period has loaded, the other ready-made periods are read in the background, one at a time when the browser
+  // is idle, so switching to them is instant without a burst of parallel reads.
   const queryClient = useQueryClient()
   const performanceReady = performance.isSuccess
   useEffect(() => {
     if (!performanceReady) return
-    for (const other of presetOrder) {
+    let cancelled = false
+    const reads = presetOrder.flatMap(other => {
       const span = periodDays(other, custom, today)
-      if (span) void queryClient.prefetchQuery({ queryKey: ['dashboard', 'performance', span.from, span.to], queryFn: () => hubApi<Performance>(`/dashboard/performance?from=${span.from}&to=${span.to}`, poll), staleTime: 60_000 })
-    }
+      return span ? [() => queryClient.prefetchQuery({ queryKey: ['dashboard', 'performance', span.from, span.to], queryFn: () => hubApi<Performance>(`/dashboard/performance?from=${span.from}&to=${span.to}`, poll), staleTime: 60_000 })] : []
+    })
+    void prefetchInTurn(reads, () => cancelled)
+    return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- once per day, after the first period has loaded
   }, [performanceReady, today])
 

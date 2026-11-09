@@ -118,7 +118,7 @@ public static class MarketplaceEndpoints
                 ? Results.Ok(await service.OrderFacetsAsync(tenant.TenantId, OrderQuery(status, search, platform, platforms, listing, cargo, invoice, invoiceType, invoiceRegion, dateFrom, dateTo, null, labelPrinted, cancelFrom, cancelTo, partialCancel, micro, resentNotShipped), http.RequestAborted))
                 : Unauthorized(http));
         api.MapPost("/orders/shopify-csv-import", ImportShopifyOrdersAsync).DisableAntiforgery();
-        api.MapGet("/orders/product-image", async (HttpContext http, IMarketplaceSalesService service, string? barcode, Guid? connectionId, string? productName) => Tenant(http) is { } tenant ? Result(await service.ProductImageAsync(tenant.TenantId, barcode, http.TraceIdentifier, http.RequestAborted, connectionId, productName), value => Results.Redirect(value)) : Unauthorized(http)).RequireSameOriginFetch();
+        api.MapGet("/orders/product-image", async (HttpContext http, IMarketplaceSalesService service, string? barcode, Guid? connectionId, string? productName, string? size) => Tenant(http) is { } tenant ? Result(await service.ProductImageAsync(tenant.TenantId, barcode, http.TraceIdentifier, http.RequestAborted, connectionId, productName), value => Results.Redirect(size == "thumb" ? ProductImageThumbnailUrl(value) : value)) : Unauthorized(http)).RequireSameOriginFetch();
         api.MapGet("/orders/{id:guid}", async (Guid id, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant ? WithEtag(http, InvoiceLinkVisibility.ForRole(await service.OrderAsync(tenant.TenantId, id, http.RequestAborted), tenant.Role), x => x.Version) : Unauthorized(http));
         api.MapGet("/orders/{id:guid}/finance", async (Guid id, HttpContext http, AppDbContext db, IOrderFinancePort finance, TimeProvider clock) =>
         {
@@ -441,6 +441,16 @@ public static class MarketplaceEndpoints
     private static IResult Created<T>(ServiceResult<T> result, string collection) { if (!result.Succeeded) return MarketplaceHub.Api.Security.ApiProblems.Of(null, MarketplaceErrorStatus.ForPanel(result.Error!)); var id = typeof(T).GetProperty("Id")?.GetValue(result.Value); return Results.Created(id is Guid guid ? $"{collection}/{guid:D}" : collection, result.Value); }
     private static IResult Accepted(ServiceResult<Guid> result) => result.Succeeded ? Results.Accepted($"/api/v1/jobs/{result.Value:D}", new { jobId = result.Value }) : MarketplaceHub.Api.Security.ApiProblems.Of(null, MarketplaceErrorStatus.ForPanel(result.Error!));
     private static IResult Result<T>(ServiceResult<T> result, Func<T, IResult> success) => result.Succeeded ? success(result.Value!) : MarketplaceHub.Api.Security.ApiProblems.Of(null, MarketplaceErrorStatus.ForPanel(result.Error!));
+    // ?size=thumb: a small frame asks Trendyol's CDN for its small copy (/mnresize/256/384/, ~10 KB) instead of the
+    // ~145 KB full photo, the same rule as the panel's thumbnailUrl (shared/product-thumbnail.ts). Other hosts stay as
+    // they are (Hepsiburada's size token has no documented sizes).
+    internal static string ProductImageThumbnailUrl(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || !string.Equals(uri.Host, "cdn.dsmcdn.com", StringComparison.OrdinalIgnoreCase) || uri.AbsolutePath.StartsWith("/mnresize/", StringComparison.Ordinal))
+            return url;
+        var path = System.Text.RegularExpressions.Regex.Replace(uri.AbsolutePath, "/{2,}", "/");
+        return new UriBuilder(uri) { Path = "/mnresize/256/384" + path }.Uri.AbsoluteUri;
+    }
     private static IResult Unauthorized(HttpContext http) => Problem(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
     private static IResult MissingContext(HttpContext http) => Tenant(http) is null ? Unauthorized(http) : RequireIdempotency(http) ?? Problem(http, new("REQUEST_INVALID", "İstek tamamlanamadı.", 400));
     private static IResult Problem(HttpContext http, ServiceError error) => MarketplaceHub.Api.Security.ApiProblems.Of(http, error);
