@@ -789,7 +789,8 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-m-body { padding: 12px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-m-head { padding-left: 16px; padding-right: 12px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-m-foot { padding-left: 16px; padding-right: 12px; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-m-head > div { display: flex; flex-direction: column-reverse; gap: 2px; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-m-head > div { display: flex; flex-direction: column; gap: 2px; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-m-head > div > p { margin: 0; overflow: hidden; color: var(--rr-subtle); font-size: 13px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
 @media (min-width: 1025px) {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl col.rr-c-price,
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-price { width: 8%; }

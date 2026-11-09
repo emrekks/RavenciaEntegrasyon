@@ -109,8 +109,15 @@ export type MarketplaceConnection = { id: string; platformCode: string; displayN
 export type AcceptedJob = { jobId: string }
 export const productPublicationMode = (item: MarketplaceConnection) => productPublicationChannelMode(item.platformCode, item.status, item.externalWritesEnabled)
 export const isProductPublicationConnection = (item: MarketplaceConnection) => productPublicationMode(item) === 'PUBLISH'
-export function ImageLightboxModal({ image, onClose }: { image: { url: string; title: string }; onClose: () => void }) {
-  return <RrImagePreview title={image.title} sources={[image.url]} onClose={onClose} />
+export type LightboxImage = { url: string; title: string; modelCode?: string | null; color?: string | null; size?: string | null }
+// "Model Kodu: RYP004 · Renk: Lacivert · Beden: M"; what the caller does not know is left out, and without a model code nothing shows.
+export function lightboxCodes(image: Pick<LightboxImage, 'modelCode' | 'color' | 'size'>) {
+  const modelCode = image.modelCode?.trim()
+  if (!modelCode || modelCode === '—') return ''
+  return [`Model Kodu: ${modelCode}`, image.color?.trim() ? `Renk: ${image.color.trim()}` : '', image.size?.trim() ? `Beden: ${image.size.trim()}` : ''].filter(Boolean).join(' · ')
+}
+export function ImageLightboxModal({ image, onClose }: { image: LightboxImage; onClose: () => void }) {
+  return <RrImagePreview title={image.title} crumb={lightboxCodes(image) || undefined} sources={[image.url]} onClose={onClose} />
 }
 export type ParsedVariantOption = { name: string; value: string }
 export function normalizeVariantOptionName(name: string) {

@@ -1278,7 +1278,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   // The fields picked in "Platformlarda Güncelle" stay as they were left, for every product (this browser).
   const [platformUpdatePreferences, setPlatformUpdatePreferences] = useState<PlatformUpdatePreferences>(() => readPlatformUpdatePreferences())
   const pendingPlatformUpdate = useRef<ProductUpdateRequest | null>(null)
-  const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null)
+  const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string; modelCode?: string } | null>(null)
   const [variantMediaModal, setVariantMediaModal] = useState<VariantMediaModalState | null>(null)
   const [barcodeSkuMenuOpen, setBarcodeSkuMenuOpen] = useState(false)
   const barcodeSkuActionRef = useRef<HTMLDivElement>(null)
@@ -3603,7 +3603,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
             }
             if (ref.startsWith('file|')) {
               const item = mediaFiles.find(file => file.id === ref.slice(5))
-              return item && <LocalImagePreview key={item.id} mediaIndex={index} file={item.file} alt={`${form.title || 'Ürün'} ${index + 1}`} caption={ownPosition === 0 ? 'Ana görsel' : item.file.name} draggable={!touchPointer && !submitting} mediaCount={mediaStrip.length} onMove={target => reorderMedia(index, target)} moveDisabled={submitting} isDragOver={dragOverMedia === index} {...mediaDrag} onRemove={() => removeUploadedMedia(item.id)} onZoom={url => setLightboxImage({ url, title: form.title || 'Ürün Görseli' })} />
+              return item && <LocalImagePreview key={item.id} mediaIndex={index} file={item.file} alt={`${form.title || 'Ürün'} ${index + 1}`} caption={ownPosition === 0 ? 'Ana görsel' : item.file.name} draggable={!touchPointer && !submitting} mediaCount={mediaStrip.length} onMove={target => reorderMedia(index, target)} moveDisabled={submitting} isDragOver={dragOverMedia === index} {...mediaDrag} onRemove={() => removeUploadedMedia(item.id)} onZoom={url => setLightboxImage({ url, title: form.title || 'Ürün Görseli', modelCode: form.modelCode })} />
             }
             const url = ref.slice(4)
             const ownedUrl = mediaUrls.find(current => mediaImageKey(current) === mediaImageKey(url))
@@ -3623,7 +3623,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
                     : <button type="button" role="menuitem" onClick={event => { event.stopPropagation(); markSizeChart(ownedUrl ?? url) }}>Beden Tablosu Olarak İşaretle</button>}
                 </div>}
               </>}
-              <MediaZoomButton onZoom={() => setLightboxImage({ url, title: isProductMedia ? form.title || 'Ürün Görseli' : `${form.title || 'Ürün'} · Renk Ailesi` })} />
+              <MediaZoomButton onZoom={() => setLightboxImage({ url, title: isProductMedia ? form.title || 'Ürün Görseli' : `${form.title || 'Ürün'} · Renk Ailesi`, modelCode: form.modelCode })} />
               {isProductMedia
                 ? <button type="button" className="image-remove-btn" disabled={deletingProductMedia || submitting} title="Görseli üründen hemen kaldır" aria-label="Görseli üründen hemen kaldır" onClick={event => { event.stopPropagation(); if (ownedUrl) void removeProductMedia(ownedUrl) }}><UiIcon name={deletingProductMedia ? 'loader' : 'close'} /></button>
                 : <button type="button" className="image-remove-btn" disabled={!familyItem || submitting} title="Renk ailesi görselini kaldır; Kaydet’te diğer renk ürünlerinden de kaldırılır" aria-label="Renk ailesi görselini kaldır" onClick={event => { event.stopPropagation(); if (familyItem) removeFamilyMedia(familyItem) }}><UiIcon name="close" /></button>}
