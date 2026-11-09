@@ -1,8 +1,8 @@
 import type { QueryClient } from '@tanstack/react-query'
-import { ApiRequestError, hubApi } from '../../../shared/api'
+import { hubApi } from '../../../shared/api'
 import { cleanOptionValue, isColorOptionName, isVariantOptionName, isWebColorOptionName, normalizeVariantOptionName, variantOptionEntries, type Attribute, type MarketplaceConnection, type Product, type Variant } from '../shared'
 import { classifyPublicationAttributeIssues, type PublicationAttributeIssue, type PublicationAttributeIssues, type PublicationAttributeSelection, type PublicationMappingReference, type PublicationValueReferenceSet } from '../publication-attribute-readiness'
-import { PublicationReadinessSourceError, publicationReadinessFailureDetail, readPublicationReadinessSource } from '../publication-readiness-error'
+import { publicationReadinessFailureDetail, readPublicationReadinessSource } from '../publication-readiness-error'
 import { matchingVariantOptionValues, normalizeVariantOptionValue, parseVariantOptionSignature } from '../variant-option-matching'
 
 // The publish step's readiness check, in one place: the editor's cards run it on the form, the product list's bulk
@@ -288,6 +288,11 @@ export function publicationReadinessSourceKey(connectionId: string, source: stri
   return ['publication-attribute-readiness', 'source', connectionId, source, ...parts] as const
 }
 
+// A batch read of several fields of one marketplace category (attributeIds=a,b,c); `connectionId` is already encoded.
+export function attributeValueBatchPath(path: string, connectionId: string, categoryScope: string, attributeIds: string[], withCategory: boolean) {
+  return `${path}?connectionId=${connectionId}${withCategory ? `&categoryExternalId=${encodeURIComponent(categoryScope)}` : ''}&attributeIds=${attributeIds.map(encodeURIComponent).join(',')}`
+}
+
 // The card's mapping check: category mapping, the marketplace's required attributes and the value mappings of what the
 // product uses. `cardName` names the marketplace in the messages.
 // `categoryName` names the panel category in the "not mapped" gap.
@@ -299,38 +304,34 @@ export async function loadPublicationAttributeIssues(client: QueryClient, connec
     return { requiredIssues: [{ attribute: 'Kategori eşlemesi', detail: `${categoryName ? `${categoryName} kategorisinin` : 'Ürün kategorisinin'} ${cardName} karşılığı seçilmemiş; kategoriyi eşleyin.` }], optionalWarnings: [], categoryMapping: 'missing' }
   }
 
-  const categoryReferences = await readPublicationReadinessSource(`${cardName} kategori listesi`, () => cached('reference-categories', [], () => hubApi<{ snapshotId: string; items: Array<{ externalId: string; name: string; isActive: boolean; isLeaf: boolean }> }>(`/reference-data/categories?connectionId=${connectionId}`)))
-  const mappedCategory = categoryReferences.items.find(item => item.externalId === categoryMapping.externalId && item.isActive && item.isLeaf)
+  // Only the mapped category's row of the list (with the list's snapshot id): the whole tree is 1.3 MB on Trendyol.
+  const categoryScope = categoryMapping.externalId
+  const categoryReferences = await readPublicationReadinessSource(`${cardName} kategori listesi`, () => cached('reference-category', [categoryScope], () => hubApi<{ snapshotId: string; items: Array<{ externalId: string; name: string; isActive: boolean; isLeaf: boolean }> }>(`/reference-data/categories?connectionId=${connectionId}&externalId=${encodeURIComponent(categoryScope)}`)))
+  const mappedCategory = categoryReferences.items.find(item => item.externalId === categoryScope && item.isActive && item.isLeaf)
   if (categoryMapping.snapshotId !== categoryReferences.snapshotId || !mappedCategory) {
     return { requiredIssues: [{ attribute: 'Kategori eşlemesi', detail: `${cardName} kategori eşlemesi güncel değil; kategori eşlemesini yenileyin.` }], optionalWarnings: [], categoryMapping: 'stale' }
   }
-  if (connection.platformCode.trim().toUpperCase() === 'PTTAVM') return { requiredIssues: [], optionalWarnings: [], categoryScope: categoryMapping.externalId }
+  if (connection.platformCode.trim().toUpperCase() === 'PTTAVM') return { requiredIssues: [], optionalWarnings: [], categoryScope }
 
-  const categoryScope = categoryMapping.externalId
-  const [attributeReferences, attributeMappings] = await Promise.all([
+  const [attributeReferences, attributeMappings, attributeDefaults] = await Promise.all([
     readPublicationReadinessSource(`${cardName} kategori özellik listesi`, () => cached('reference-attributes', [categoryScope], () => hubApi<{ snapshotId: string; items: Array<{ externalId: string; name: string; isActive: boolean; isRequired?: boolean | null; allowsCustomValue?: boolean | null }> }>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes?connectionId=${connectionId}`))),
-    readPublicationReadinessSource('Yerel kategori özellik eşlemeleri', () => cached('attribute-mappings', [categoryScope], () => hubApi<PublicationMappingReference[]>(`/mappings/attributes?connectionId=${connectionId}&scopeExternalId=${encodeURIComponent(categoryScope)}`)))
+    readPublicationReadinessSource('Yerel kategori özellik eşlemeleri', () => cached('attribute-mappings', [categoryScope], () => hubApi<PublicationMappingReference[]>(`/mappings/attributes?connectionId=${connectionId}&scopeExternalId=${encodeURIComponent(categoryScope)}`))),
+    // Connection defaults (e.g. Menşei = TR) cover required attributes the product leaves empty.
+    cached('attribute-defaults', [], () => hubApi<Array<{ externalAttributeId: string }>>(`/connections/${connectionId}/attribute-defaults`)).catch(() => [] as Array<{ externalAttributeId: string }>)
   ])
   const selectedIds = new Set(selectedAttributes.map(item => item.attributeId))
   const currentMappings = attributeMappings.filter(mapping => mapping.status === 'VERIFIED' && mapping.snapshotId === attributeReferences.snapshotId)
-  const selectedExternalIds = [...new Set(currentMappings.filter(mapping => selectedIds.has(mapping.localId)).map(mapping => mapping.externalId))]
-  const valueEntries = await Promise.all(selectedExternalIds.map(async externalAttributeId => {
-    const valueScope = `${categoryScope}/${externalAttributeId}`
-    const selectedAttribute = selectedAttributes.find(item => item.attributeId === currentMappings.find(mapping => mapping.externalId === externalAttributeId)?.localId)
-    const attributeLabel = selectedAttribute?.name ?? externalAttributeId
-    const mappings = await readPublicationReadinessSource(`“${attributeLabel}” yerel değer eşlemeleri`, () => cached('attribute-value-mappings', [valueScope], () => hubApi<PublicationMappingReference[]>(`/mappings/attribute-values?connectionId=${connectionId}&scopeExternalId=${encodeURIComponent(valueScope)}`)))
-    let references: { snapshotId: string; items: Array<{ externalId: string; isActive: boolean }> }
-    try {
-      references = await readPublicationReadinessSource(`${cardName} “${attributeLabel}” özellik değer listesi`, () => cached('reference-attribute-values', [valueScope], () => hubApi<{ snapshotId: string; items: Array<{ externalId: string; isActive: boolean }> }>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(externalAttributeId)}/values?connectionId=${connectionId}`)))
-    } catch (reason) {
-      if (!(reason instanceof ApiRequestError && reason.code === 'REFERENCE_SNAPSHOT_UNAVAILABLE') && !(reason instanceof PublicationReadinessSourceError && reason.apiCode === 'REFERENCE_SNAPSHOT_UNAVAILABLE')) throw reason
-      references = { snapshotId: '', items: [] }
-    }
-    return [externalAttributeId, { snapshotId: references.snapshotId, items: references.items, mappings }] as const
+  const selectedExternalIds = [...new Set(currentMappings.filter(mapping => selectedIds.has(mapping.localId)).map(mapping => mapping.externalId))].sort()
+  // Every field's value mappings and value list in one read each (by field id) instead of two reads per field. A field
+  // whose value list was never fetched is missing from the answer and reads as an empty list.
+  const [valueMappingsByField, valueListsByField] = selectedExternalIds.length ? await Promise.all([
+    readPublicationReadinessSource('Yerel özellik değer eşlemeleri', () => cached('attribute-value-mappings', [categoryScope, ...selectedExternalIds], () => hubApi<Record<string, PublicationMappingReference[]>>(attributeValueBatchPath('/mappings/attribute-values/batch', connectionId, categoryScope, selectedExternalIds, true)))),
+    readPublicationReadinessSource(`${cardName} özellik değer listeleri`, () => cached('reference-attribute-values', [categoryScope, ...selectedExternalIds], () => hubApi<Record<string, { snapshotId: string; items: Array<{ externalId: string; isActive: boolean }> }>>(attributeValueBatchPath(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attribute-values`, connectionId, categoryScope, selectedExternalIds, false))))
+  ]) : [{}, {}]
+  const valueReferencesByAttribute: Record<string, PublicationValueReferenceSet> = Object.fromEntries(selectedExternalIds.map(externalAttributeId => {
+    const references = valueListsByField[externalAttributeId] ?? { snapshotId: '', items: [] }
+    return [externalAttributeId, { snapshotId: references.snapshotId, items: references.items, mappings: valueMappingsByField[externalAttributeId] ?? [] }] as const
   }))
-  const valueReferencesByAttribute: Record<string, PublicationValueReferenceSet> = Object.fromEntries(valueEntries)
-  // Connection defaults (e.g. Menşei = TR) cover required attributes the product leaves empty.
-  const attributeDefaults = await cached('attribute-defaults', [], () => hubApi<Array<{ externalAttributeId: string }>>(`/connections/${connectionId}/attribute-defaults`)).catch(() => [])
   // N11 fills its brand attribute (id 1) from the product brand, so it needs no mapping.
   const brandAttributeIds = connection.platformCode.trim().toUpperCase() === 'N11' ? ['1'] : []
   const result = classifyPublicationAttributeIssues({

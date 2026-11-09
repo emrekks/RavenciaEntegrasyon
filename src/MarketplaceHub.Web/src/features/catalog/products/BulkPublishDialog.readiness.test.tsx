@@ -51,8 +51,8 @@ vi.mock('../../../shared/api', async importOriginal => {
     if (path.startsWith('/mappings/categories/') && path.includes('connectionId=hb')) return api.hbMapped ? { externalId: '411', snapshotId: 's1', status: 'VERIFIED', version: 1 } : null
     if (path.startsWith('/mappings/categories/')) return { externalId: '411', snapshotId: 's1', status: 'VERIFIED', version: 1 }
     if (path.startsWith('/reference-data/categories?')) return { snapshotId: 's1', items: [{ externalId: '411', name: 'Elbise', path: 'Giyim > Elbise', isActive: true, isLeaf: true }] }
-    if (api.withWarnings && path.startsWith('/reference-data/categories/411/attributes/20/values')) return { snapshotId: 'v1', items: [{ externalId: '301', isActive: true }] }
-    if (api.withWarnings && path.startsWith('/mappings/attribute-values')) return []
+    if (api.withWarnings && path.startsWith('/reference-data/categories/411/attribute-values?')) return { 20: { snapshotId: 'v1', items: [{ externalId: '301', isActive: true }] } }
+    if (api.withWarnings && path.startsWith('/mappings/attribute-values/batch?')) return { 20: [] }
     if (path.includes('/attributes?')) return path.startsWith('/reference-data')
       ? { snapshotId: 'a1', items: api.withWarnings ? [{ externalId: '20', name: 'Renk Tonu', isActive: true, isRequired: false }] : [] }
       : api.withWarnings ? [{ localId: 'a-renk', externalId: '20', snapshotId: 'a1', status: 'VERIFIED' }] : []

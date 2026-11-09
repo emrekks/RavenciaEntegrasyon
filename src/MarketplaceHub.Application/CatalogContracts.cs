@@ -413,6 +413,16 @@ public interface IReferenceDataService
     Task<ServiceResult<bool>> DeleteAttributeDefaultAsync(Guid tenantId, Guid connectionId, string externalAttributeId, CancellationToken cancellationToken);
     // Fills a mapped marketplace category from the decisions made for the connection's other categories.
     Task<ServiceResult<ReferenceDataView>> ListAsync(Guid tenantId, Guid connectionId, string resourceType, string? parentExternalId, CancellationToken cancellationToken);
+    // One category of the current category list (its snapshot id with that one row, or no row when the list lacks it):
+    // the publish check reads a mapped category's state without the whole tree (1.3 MB on Trendyol).
+    Task<ServiceResult<ReferenceDataView>> FindCategoryAsync(Guid tenantId, Guid connectionId, string externalId, CancellationToken cancellationToken);
+    // The current value lists of several fields of one marketplace category, by field, each as ListAsync gives it for
+    // ATTRIBUTE_VALUES "{category}/{field}". A field whose list was never fetched is left out (the single read answers
+    // it with REFERENCE_SNAPSHOT_UNAVAILABLE).
+    Task<ServiceResult<IReadOnlyDictionary<string, ReferenceDataView>>> ListAttributeValueReferencesAsync(Guid tenantId, Guid connectionId, string categoryExternalId, IReadOnlyCollection<string> attributeExternalIds, CancellationToken cancellationToken);
+    // The value mappings of several fields of one marketplace category ("{category}/{field}" scopes), by field: every
+    // asked field is in the result (an empty list when it holds none), each list as ListMappingsAsync gives it.
+    Task<ServiceResult<IReadOnlyDictionary<string, IReadOnlyList<CatalogMappingView>>>> ListAttributeValueMappingsAsync(Guid tenantId, Guid connectionId, string categoryExternalId, IReadOnlyCollection<string> attributeExternalIds, CancellationToken cancellationToken);
     // The connection's current brand snapshot: its id, age and size, without items.
     Task<ServiceResult<ReferenceSliceView>> BrandSummaryAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken);
     // Brands of the current snapshot whose id is the query or whose name starts with or contains it.

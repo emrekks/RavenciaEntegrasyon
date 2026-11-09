@@ -44,6 +44,11 @@ vi.mock('../../../shared/api', async importOriginal => {
     if (path.startsWith('/mappings/categories?')) return [fixture.categoryMapping]
     if (path.startsWith('/mappings/categories/c1')) return fixture.categoryMapping
     if (path.startsWith('/reference-data/categories?')) return { snapshotId: 's1', resourceType: 'CATEGORIES', fetchedAt: '2026-11-01T10:00:00Z', items: [{ ...fixture.remote('hb-cat', 'Elbise', false), path: 'Giyim > Elbise' }] }
+    if (path.startsWith('/reference-data/categories/hb-cat/attribute-values?')) return path.includes('k4') ? { k4: { snapshotId: 'v1', resourceType: 'ATTRIBUTE_VALUES', fetchedAt: '2026-11-01T10:00:00Z', items: [fixture.remote('x-orta', 'Orta', false), fixture.remote('x-ince', 'İnce', false)] } } : {}
+    if (path.startsWith('/mappings/attribute-values/batch?')) {
+      const ids = new URL(path, 'http://x').searchParams.get('attributeIds')?.split(',') ?? []
+      return Object.fromEntries(ids.map(id => [id, id === 'k4' ? [{ id: 'vm-ince', connectionId: 'hb', snapshotId: 'v1', localId: 'ince', scopeExternalId: 'hb-cat/k4', externalId: 'x-ince', status: 'VERIFIED', verifiedAt: null, version: 1 }] : []]))
+    }
     if (path.startsWith('/reference-data/categories/hb-cat/attributes/k4/values')) return { snapshotId: 'v1', resourceType: 'ATTRIBUTE_VALUES', fetchedAt: '2026-11-01T10:00:00Z', items: [fixture.remote('x-orta', 'Orta', false), fixture.remote('x-ince', 'İnce', false)] }
     if (path.startsWith('/reference-data/categories/hb-cat/attributes?')) {
       state.readinessReads++

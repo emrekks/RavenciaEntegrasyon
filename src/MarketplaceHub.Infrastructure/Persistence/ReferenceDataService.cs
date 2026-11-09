@@ -18,6 +18,75 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         return ServiceResult<ReferenceDataView>.Ok(new(snapshot.Id, snapshot.ResourceType, snapshot.FetchedAt, rows));
     }
 
+    // The batch reads take at most this many fields, each id at most 256 characters (a category has ~60 fields).
+    internal const int MaximumBatchAttributeIds = 200;
+    private const string AttributeValues = "ATTRIBUTE_VALUES";
+
+    public async Task<ServiceResult<ReferenceDataView>> FindCategoryAsync(Guid tenantId, Guid connectionId, string externalId, CancellationToken cancellationToken)
+    {
+        if (!await VisibleConnectionAsync(tenantId, connectionId, cancellationToken)) return NotFound<ReferenceDataView>();
+        var id = (externalId ?? "").Trim();
+        if (id.Length is 0 or > 256) return ServiceResult<ReferenceDataView>.Fail("VALIDATION_FAILED", "Kategori kimliği 1-256 karakter olmalıdır.", 422);
+        var snapshot = await db.ReferenceSnapshots.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "CATEGORIES" && x.ScopeExternalId == "" && x.IsCurrent).OrderByDescending(x => x.FetchedAt).Select(x => new { x.Id, x.ResourceType, x.FetchedAt }).FirstOrDefaultAsync(cancellationToken);
+        if (snapshot is null) return ServiceResult<ReferenceDataView>.Fail("REFERENCE_SNAPSHOT_UNAVAILABLE", "Bu mağazanın kategori ve özellik listesi henüz alınmadı; Seçenek Eşitleme ekranından listeyi yenileyin.", 422);
+        var rows = await db.ReferenceItems.AsNoTracking().Where(x => x.TenantId == tenantId && x.SnapshotId == snapshot.Id && x.ResourceType == "CATEGORIES" && x.ExternalId == id).OrderBy(x => x.SortOrder).ThenBy(x => x.Name).Select(x => new ReferenceItemView(x.ExternalId, x.ParentExternalId, x.Name, x.Path, x.Depth, x.IsLeaf, x.IsActive, x.IsRequired, x.AllowsCustomValue, x.AllowsMultipleValues)).ToListAsync(cancellationToken);
+        return ServiceResult<ReferenceDataView>.Ok(new(snapshot.Id, snapshot.ResourceType, snapshot.FetchedAt, rows));
+    }
+
+    public async Task<ServiceResult<IReadOnlyDictionary<string, ReferenceDataView>>> ListAttributeValueReferencesAsync(Guid tenantId, Guid connectionId, string categoryExternalId, IReadOnlyCollection<string> attributeExternalIds, CancellationToken cancellationToken)
+    {
+        if (!await VisibleConnectionAsync(tenantId, connectionId, cancellationToken)) return NotFound<IReadOnlyDictionary<string, ReferenceDataView>>();
+        var request = BatchScopes(categoryExternalId, attributeExternalIds);
+        if (request.Error is { } error) return new ServiceResult<IReadOnlyDictionary<string, ReferenceDataView>>(null, error);
+        var scopes = request.Scopes.Keys.ToArray();
+        // The newest current snapshot of each scope, as ListAsync picks it.
+        var snapshots = (await db.ReferenceSnapshots.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == AttributeValues && x.IsCurrent && scopes.Contains(x.ScopeExternalId))
+                .Select(x => new { x.Id, x.ScopeExternalId, x.ResourceType, x.FetchedAt })
+                .ToListAsync(cancellationToken))
+            .GroupBy(x => x.ScopeExternalId, StringComparer.Ordinal)
+            .Select(group => group.OrderByDescending(x => x.FetchedAt).First())
+            .ToList();
+        var snapshotIds = snapshots.Select(x => x.Id).ToArray();
+        var rows = snapshotIds.Length == 0 ? [] : await db.ReferenceItems.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && snapshotIds.Contains(x.SnapshotId) && x.ResourceType == AttributeValues && scopes.Contains(x.ParentExternalId!))
+            .OrderBy(x => x.SortOrder).ThenBy(x => x.Name)
+            .Select(x => new { x.SnapshotId, x.ParentExternalId, View = new ReferenceItemView(x.ExternalId, x.ParentExternalId, x.Name, x.Path, x.Depth, x.IsLeaf, x.IsActive, x.IsRequired, x.AllowsCustomValue, x.AllowsMultipleValues) })
+            .ToListAsync(cancellationToken);
+        var result = new Dictionary<string, ReferenceDataView>(StringComparer.Ordinal);
+        foreach (var snapshot in snapshots)
+            result[request.Scopes[snapshot.ScopeExternalId]] = new(snapshot.Id, snapshot.ResourceType, snapshot.FetchedAt, rows.Where(x => x.SnapshotId == snapshot.Id && x.ParentExternalId == snapshot.ScopeExternalId).Select(x => x.View).ToList());
+        return ServiceResult<IReadOnlyDictionary<string, ReferenceDataView>>.Ok(result);
+    }
+
+    public async Task<ServiceResult<IReadOnlyDictionary<string, IReadOnlyList<CatalogMappingView>>>> ListAttributeValueMappingsAsync(Guid tenantId, Guid connectionId, string categoryExternalId, IReadOnlyCollection<string> attributeExternalIds, CancellationToken cancellationToken)
+    {
+        if (!await VisibleConnectionAsync(tenantId, connectionId, cancellationToken)) return NotFound<IReadOnlyDictionary<string, IReadOnlyList<CatalogMappingView>>>();
+        var request = BatchScopes(categoryExternalId, attributeExternalIds);
+        if (request.Error is { } error) return new ServiceResult<IReadOnlyDictionary<string, IReadOnlyList<CatalogMappingView>>>(null, error);
+        var scopes = request.Scopes.Keys.ToArray();
+        var entities = await db.AttributeValueMappings.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && scopes.Contains(x.ScopeExternalId))
+            .OrderBy(x => x.LocalId)
+            .ToListAsync(cancellationToken);
+        var result = request.Scopes.ToDictionary(
+            pair => pair.Value,
+            pair => (IReadOnlyList<CatalogMappingView>)entities.Where(x => x.ScopeExternalId == pair.Key).Select(item => Map(item)).ToList(),
+            StringComparer.Ordinal);
+        return ServiceResult<IReadOnlyDictionary<string, IReadOnlyList<CatalogMappingView>>>.Ok(result);
+    }
+
+    // The "{category}/{field}" value scopes of a batch read, each with the field id it answers under.
+    private static (IReadOnlyDictionary<string, string> Scopes, ServiceError? Error) BatchScopes(string? categoryExternalId, IReadOnlyCollection<string> attributeExternalIds)
+    {
+        var category = (categoryExternalId ?? "").Trim();
+        if (category.Length is 0 or > 256) return (new Dictionary<string, string>(), new("VALIDATION_FAILED", "Kategori kimliği 1-256 karakter olmalıdır.", 422));
+        var ids = attributeExternalIds.Select(x => x.Trim()).Where(x => x.Length > 0).Distinct(StringComparer.Ordinal).ToArray();
+        if (ids.Length > MaximumBatchAttributeIds) return (new Dictionary<string, string>(), new("VALIDATION_FAILED", $"En fazla {MaximumBatchAttributeIds} özellik kimliği sorgulanabilir.", 422));
+        if (ids.Any(x => x.Length > 256)) return (new Dictionary<string, string>(), new("VALIDATION_FAILED", "Özellik kimliği en fazla 256 karakterdir.", 422));
+        return (ids.ToDictionary(id => $"{category}/{id}", id => id, StringComparer.Ordinal), null);
+    }
+
     internal const int DefaultBrandSearchLimit = 50;
     internal const int MaximumBrandSearchLimit = 100;
     internal const int MaximumBrandLookupIds = 500;

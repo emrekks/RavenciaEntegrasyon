@@ -308,7 +308,13 @@ public static class CatalogEndpoints
 
     private static void MapReferenceEndpoints(RouteGroupBuilder api)
     {
-        api.MapGet("/reference-data/categories", (Guid connectionId, HttpContext http, IReferenceDataService service) => Reference(http, service, connectionId, "CATEGORIES", null));
+        // ?externalId= reads one category of the list (with the list's snapshot id) instead of the whole tree.
+        api.MapGet("/reference-data/categories", async (Guid connectionId, string? externalId, HttpContext http, IReferenceDataService service) =>
+            externalId is null ? await Reference(http, service, connectionId, "CATEGORIES", null)
+                : Tenant(http) is { } tenant ? Result(await service.FindCategoryAsync(tenant.TenantId, connectionId, externalId, http.RequestAborted), Results.Ok) : Unauthorized(http));
+        // Several fields' value lists of one category in one read (attributeIds=a,b,c), by field id.
+        api.MapGet("/reference-data/categories/{categoryId}/attribute-values", async (string categoryId, Guid connectionId, string? attributeIds, HttpContext http, IReferenceDataService service) =>
+            Tenant(http) is { } tenant ? Result(await service.ListAttributeValueReferencesAsync(tenant.TenantId, connectionId, categoryId, SplitIds(attributeIds), http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapGet("/reference-data/categories/{externalId}/attributes", (string externalId, Guid connectionId, HttpContext http, IReferenceDataService service) => Reference(http, service, connectionId, "CATEGORY_ATTRIBUTES", externalId));
         api.MapGet("/reference-data/categories/{categoryId}/attributes/{attributeId}/values", (string categoryId, string attributeId, Guid connectionId, HttpContext http, IReferenceDataService service) => Reference(http, service, connectionId, "ATTRIBUTE_VALUES", $"{categoryId}/{attributeId}"));
         api.MapGet("/reference-data/brands", (Guid connectionId, HttpContext http, IReferenceDataService service) => Reference(http, service, connectionId, "BRANDS", null));
@@ -336,6 +342,9 @@ public static class CatalogEndpoints
             Tenant(http) is { } tenant ? Result(await service.ListMappingConflictsAsync(tenant.TenantId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapGet("/mappings/attribute-value-progress", async (Guid connectionId, string? categoryExternalId, HttpContext http, IReferenceDataService service) =>
             Tenant(http) is { } tenant ? Result(await service.AttributeValueMappingProgressAsync(tenant.TenantId, connectionId, categoryExternalId ?? "", http.RequestAborted), Results.Ok) : Unauthorized(http));
+        // Several fields' value mappings of one category in one read (attributeIds=a,b,c), by field id.
+        api.MapGet("/mappings/attribute-values/batch", async (Guid connectionId, string? categoryExternalId, string? attributeIds, HttpContext http, IReferenceDataService service) =>
+            Tenant(http) is { } tenant ? Result(await service.ListAttributeValueMappingsAsync(tenant.TenantId, connectionId, categoryExternalId ?? "", SplitIds(attributeIds), http.RequestAborted), Results.Ok) : Unauthorized(http));
         foreach (var type in new[] { "categories", "brands", "attributes", "attribute-values" })
         {
             var routeType = type;
@@ -352,6 +361,8 @@ public static class CatalogEndpoints
                 Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? Result(await service.DeleteMappingAsync(tenant.TenantId, routeType, localId, connectionId, scopeExternalId, externalId, version, http.RequestAborted), Results.Ok) : failure!) : Unauthorized(http));
         }
     }
+
+    private static string[] SplitIds(string? ids) => (ids ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     private static async Task<IResult> Reference(HttpContext http, IReferenceDataService service, Guid connectionId, string resourceType, string? parent)
     {
