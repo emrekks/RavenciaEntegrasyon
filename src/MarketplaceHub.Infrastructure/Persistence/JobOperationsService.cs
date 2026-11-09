@@ -1025,7 +1025,8 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             if (claimOrderId != Guid.Empty) orderId ??= claimOrderId;
         }
 
-        if (orderId is null && !string.IsNullOrWhiteSpace(externalPackageId))
+        // Trendyol's "0" placeholder names no single package: several awaiting-payment orders hold it.
+        if (orderId is null && !string.IsNullOrWhiteSpace(externalPackageId) && !ShipmentPackageSupersession.IsPlaceholder(externalPackageId))
         {
             var package = await db.ShipmentPackages.AsNoTracking()
                 .Where(x => x.TenantId == job.TenantId && x.ExternalPackageId == externalPackageId)

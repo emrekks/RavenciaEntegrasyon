@@ -1,4 +1,5 @@
 using MarketplaceHub.Application;
+using MarketplaceHub.Domain;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
@@ -16,7 +17,8 @@ internal static class OrderPackageIdentityGuard
             if (string.IsNullOrWhiteSpace(remote.ExternalOrderId)) continue;
             foreach (var package in remote.Packages)
             {
-                if (string.IsNullOrWhiteSpace(package.ExternalPackageId)) continue;
+                // Trendyol's "0" names no package: every order awaiting payment carries it until its real one exists.
+                if (string.IsNullOrWhiteSpace(package.ExternalPackageId) || ShipmentPackageSupersession.IsPlaceholder(package.ExternalPackageId)) continue;
                 if (!owners.TryGetValue(package.ExternalPackageId, out var owner))
                 {
                     owners[package.ExternalPackageId] = remote.ExternalOrderId;

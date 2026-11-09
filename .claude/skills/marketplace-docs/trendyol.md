@@ -161,6 +161,10 @@ purpose (`TurkeyTime.cs`).
   invoice or the link is used elsewhere.
 - Unsupplied or partial cancel changes the package id and cargo barcode; cargo company change max once per package
   per 5 min. A split package replaces its origin (origin kept, excluded from totals).
+- An order awaiting payment (`Awaiting`) carries package id `0` until Trendyol creates the real package, so several
+  orders of one store hold `0` at once: the unique package index skips `0` (`ShipmentPackageSupersession.
+  PlaceholderExternalId`, migration `AllowTrendyolZeroPackagePlaceholders`) and the `0` row is superseded once the
+  order has a real package. Source: live ORDER_PACKAGE_ID_CONFLICT on order 11763229493, 6 Nov 2026.
 - A line without `vatRate` gets the rate of its siblings; no invoice until the rate is known.
 - Every shipment package carries `orderDate` (Turkey wall-clock epoch ms) and `currencyCode`; live never had a 1970
   order. Since 5 Nov 2026 a package without `orderDate` is refused (no `lastModifiedDate`/1970 fallback) and one

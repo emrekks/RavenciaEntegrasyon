@@ -5524,6 +5524,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                                   && order.OrderedAt >= v2Cutoff
                                   && TrendyolInvoiceReconciliationPolicy.SweepStatuses.Contains(package.Status)
                                   && package.MarketplaceInvoiceStatus != MarketplaceInvoiceStatus.Invoiced
+                                  // A "0" placeholder cannot be read by its number and several orders hold it.
+                                  && package.ExternalPackageId != ShipmentPackageSupersession.PlaceholderExternalId
                               select new { package.Id, package.ExternalPackageId, order.OrderedAt, order.StoreFrontCode })
             .ToListAsync(cancellationToken);
         var localIds = packages.ToDictionary(package => package.ExternalPackageId, package => package.Id, StringComparer.Ordinal);
@@ -9777,7 +9779,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
         var remotePackageOwners = mergedRemotes
             .SelectMany(remote => remote.Packages.Select(package => new { package.ExternalPackageId, remote.ExternalOrderId }))
-            .Where(x => !string.IsNullOrWhiteSpace(x.ExternalPackageId))
+            // Trendyol's "0" is every awaiting-payment order's number until its real package exists, owned by no one
+            // order: it is never a conflict, and the order's own "0" row is superseded once the real package arrives.
+            .Where(x => !string.IsNullOrWhiteSpace(x.ExternalPackageId) && !ShipmentPackageSupersession.IsPlaceholder(x.ExternalPackageId))
             .GroupBy(x => x.ExternalPackageId, StringComparer.Ordinal)
             .ToDictionary(x => x.Key, x => x.First().ExternalOrderId, StringComparer.Ordinal);
         var candidatePackageIds = remotePackageOwners.Keys.ToArray();
@@ -9788,6 +9792,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                                                     on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
                                                 where package.TenantId == tenantId
                                                     && package.ConnectionId == connectionId
+                                                    && package.ExternalPackageId != ShipmentPackageSupersession.PlaceholderExternalId
                                                     && candidatePackageIds.Contains(package.ExternalPackageId)
                                                 select new { package.ExternalPackageId, order.ExternalOrderId })
                 .ToListAsync(cancellationToken);

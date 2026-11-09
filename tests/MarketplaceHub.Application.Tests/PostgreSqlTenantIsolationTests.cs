@@ -6348,6 +6348,100 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         }
     }
 
+    // Live 6 Nov: every new awaiting-payment order carries Trendyol's package "0", which an older order already held, so
+    // it was dropped as ORDER_PACKAGE_ID_CONFLICT and the Ödeme Bekleyen tab missed it. It now imports beside the older
+    // "0", and its own "0" is superseded once its real package arrives.
+    [PostgreSqlFact]
+    public async Task TrendyolOrderSync_ImportsAwaitingPaymentOrdersBesideAnotherOrdersZeroPlaceholder()
+    {
+        var tenant = NewTenant("ty-zero-placeholder");
+        var connection = NewQuestionConnection(tenant);
+        var now = fixture.Now;
+        var heldOrderId = Guid.CreateVersion7();
+        var heldOrder = NewInvoiceTestOrder(tenant.Id, connection.Id, heldOrderId, "11763229493", isReturnClaim: false, now);
+        heldOrder.DerivedStatus = "PAYMENT_PENDING";
+        var heldPlaceholder = NewInvoiceTestPackage(tenant.Id, connection.Id, heldOrderId, Guid.CreateVersion7(), "0", now);
+        heldPlaceholder.Status = ShipmentPackageStatus.OnHold;
+        heldPlaceholder.RawStatus = "Awaiting";
+        const string newOrderNumber = "11780000001";
+        const string realPackageNumber = "4234400001";
+        var orderedAt = now.AddMinutes(-5);
+        var line = new RemoteOrderLine("line-1", "SKU-1", null, "Test ürün", 1m, 100m, 10m, "Awaiting");
+        var awaiting = new RemoteOrder(newOrderNumber, newOrderNumber, orderedAt, orderedAt, "TRY", 100m, 0m, 100m, "{}", "{}", "{}",
+            [line],
+            [new RemotePackage("0", null, "Awaiting", orderedAt, null, null, [new RemotePackageAllocation("line-1", 1m, 0m, 0m, 0m, 0m)], GrossAmount: 100m, NetAmount: 100m)],
+            "{}", StoreFrontCode: "TR");
+        var orderPort = new StorefrontRecordingOrderPort { PollItems = [awaiting] };
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Orders.Add(heldOrder);
+            seedDb.ShipmentPackages.Add(heldPlaceholder);
+            seedDb.SyncCursors.Add(new SyncCursor
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenant.Id,
+                ConnectionId = connection.Id,
+                ResourceType = "ORDERS_HOT",
+                LastModifiedWatermark = now.AddMinutes(-10),
+                LastSuccessAt = now.AddMinutes(-10),
+                Version = 1
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            async Task RunAsync()
+            {
+                await using var processorDb = fixture.CreateContext();
+                var processor = new MarketplaceJobProcessor(
+                    processorDb,
+                    null!, null!, null!, null!, orderPort, null!, null!, null!, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderSync, "{}", "trendyol-zero-placeholder", CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+
+            async Task<List<ShipmentPackage>> PackagesOf(string externalOrderId)
+            {
+                await using var verifyDb = fixture.CreateContext();
+                return await (from package in verifyDb.ShipmentPackages.AsNoTracking()
+                              join order in verifyDb.Orders.AsNoTracking() on package.OrderId equals order.Id
+                              where order.TenantId == tenant.Id && order.ExternalOrderId == externalOrderId
+                              select package).ToListAsync();
+            }
+
+            await RunAsync();
+            await using (var verifyDb = fixture.CreateContext())
+            {
+                Assert.False(await verifyDb.OperationalIssues.AnyAsync(issue => issue.TenantId == tenant.Id && issue.Code == "ORDER_PACKAGE_ID_CONFLICT"));
+            }
+            Assert.Equal("0", Assert.Single(await PackagesOf(newOrderNumber)).ExternalPackageId);
+            Assert.Equal(ShipmentPackageStatus.OnHold, Assert.Single(await PackagesOf("11763229493")).Status);
+
+            orderPort.PollItems = [awaiting with
+            {
+                LastModifiedAt = orderedAt.AddMinutes(2),
+                Lines = [line with { RawStatus = "Created" }],
+                Packages = [new RemotePackage(realPackageNumber, null, "Created", orderedAt.AddMinutes(2), null, null, [new RemotePackageAllocation("line-1", 1m, 0m, 0m, 0m, 0m)], GrossAmount: 100m, NetAmount: 100m)]
+            }];
+            await RunAsync();
+
+            var packages = await PackagesOf(newOrderNumber);
+            Assert.Equal(2, packages.Count);
+            Assert.Equal(realPackageNumber, Assert.Single(ShipmentPackageSupersession.Current(packages)).ExternalPackageId);
+            Assert.Equal(ShipmentPackageStatus.Cancelled, packages.Single(package => package.ExternalPackageId == "0").Status);
+            Assert.Equal(ShipmentPackageStatus.OnHold, Assert.Single(await PackagesOf("11763229493")).Status);
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
     [PostgreSqlFact]
     public async Task SyncPolicies_ReportCursorTelemetryAndConnectionScopedBacklog()
     {
@@ -9387,6 +9481,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         public List<string?> PolledStorefronts { get; } = [];
         public List<OrderPollWindow> PolledWindows { get; } = [];
         public Action? OnPoll { get; set; }
+        // The orders the TR stream returns.
+        public IReadOnlyList<RemoteOrder> PollItems { get; set; } = [];
         public List<(IReadOnlyList<string> PackageIds, OrderLookupHint? Hint)> PackageBatches { get; } = [];
         public List<(string OrderId, OrderLookupHint? Hint)> OrderReads { get; } = [];
 
@@ -9399,6 +9495,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         public Task<AdapterResult<RemoteOrder>> GetAsync(AdapterContext context, string externalOrderId, OrderLookupHint? hint, CancellationToken cancellationToken)
         {
             OrderReads.Add((externalOrderId, hint));
+            if (PollItems.FirstOrDefault(order => order.ExternalOrderId == externalOrderId) is { } polled)
+                return Task.FromResult(AdapterResult<RemoteOrder>.Success(polled));
             return Task.FromResult(AdapterResult<RemoteOrder>.Failure(new(AdapterErrorClass.NotFound, "REMOTE_ORDER_NOT_FOUND", "Platform siparişi bulunamadı.", 404, null, null)));
         }
 
@@ -9407,7 +9505,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             PolledStorefronts.Add(window.StoreFrontCode);
             PolledWindows.Add(window);
             OnPoll?.Invoke();
-            return Task.FromResult(AdapterResult<AdapterPageResult<RemoteOrder>>.Success(new([], null, false)));
+            return Task.FromResult(AdapterResult<AdapterPageResult<RemoteOrder>>.Success(new(window.StoreFrontCode == "TR" ? PollItems : [], null, false)));
         }
 
         public Task<AdapterResult<RemoteOrder>> GetAsync(AdapterContext context, string externalOrderId, CancellationToken cancellationToken) =>

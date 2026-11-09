@@ -1,6 +1,7 @@
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping;
 using MarketplaceHub.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
@@ -278,6 +279,32 @@ public sealed class PackageIngestionSafetyTests
         var replay = first with { LastModifiedAt = occurredAt.AddMinutes(1) };
 
         Assert.Empty(OrderPackageIdentityGuard.FindConflicts([first, replay]));
+    }
+
+    [Fact]
+    public void PackageIdentityGuardLetsEveryAwaitingPaymentOrderHoldTrendyolsZeroPlaceholder()
+    {
+        // Live 6 Nov: every new awaiting-payment order carries package "0" and was dropped as a conflict.
+        var occurredAt = DateTimeOffset.Parse("2026-11-06T10:00:00Z");
+        var placeholder = new RemotePackage("0", null, "Awaiting", occurredAt, null, null, []);
+        var first = new RemoteOrder("11763229493", "11763229493", occurredAt, occurredAt, "TRY", 0, 0, 0, "{}", "{}", "{}", [], [placeholder], "{}");
+        var second = first with { ExternalOrderId = "11780000001", OrderNumber = "11780000001" };
+
+        Assert.Empty(OrderPackageIdentityGuard.FindConflicts([first, second]));
+    }
+
+    [Fact]
+    public void ShipmentPackageNumberIsUniquePerStoreExceptTrendyolsZeroPlaceholder()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql("Host=localhost;Database=package-model-only;Username=none;Password=none")
+            .Options;
+        using var db = new AppDbContext(options);
+        var package = db.Model.FindEntityType(typeof(ShipmentPackage))!;
+        var index = Assert.Single(package.GetIndexes(), candidate => candidate.IsUnique
+            && candidate.Properties.Select(property => property.Name).SequenceEqual(new[] { nameof(ShipmentPackage.TenantId), nameof(ShipmentPackage.ConnectionId), nameof(ShipmentPackage.ExternalPackageId) }));
+
+        Assert.Equal("\"ExternalPackageId\" <> '0'", index.GetFilter());
     }
 
     private static ShipmentPackage Package(string externalId, DateTimeOffset occurredAt, string? origin = null) => new()
