@@ -68,3 +68,19 @@
 @media (min-width: 761px) {
   :root:root body .app-shell.stitch-shell > aside { z-index: calc(var(--rv-z-tooltip) + 5); }
 }
+
+/* İptal cards (owner, 9 Nov 2026): "N Kısmi İptal" is the same size, weight and baseline as the cards' "Paket" line,
+   in red that slowly pulses; still when the viewer asks for reduced motion. */
+@keyframes rr-partial-pulse { 0%, 100% { color: var(--rv-color-danger, #e4636f); } 50% { color: color-mix(in srgb, var(--rv-color-danger, #e4636f) 40%, var(--rv-color-muted)); } }
+:root:root:root:root body .app-shell.stitch-shell main .rr.rr-orders .rr-metrics .rr-metric-chip.rr-metric-chip.rr-metric-chip { font-size: 13px; font-weight: 600; color: var(--rv-color-danger, #e4636f); animation: rr-partial-pulse 1.6s ease-in-out infinite; }
+:root:root:root:root body .app-shell.stitch-shell main .rr.rr-orders .rr-metrics .rr-metric-chip.rr-metric-chip.rr-metric-chip b { color: inherit; font-weight: 600; margin-right: 4px; }
+:root:root:root:root body .app-shell.stitch-shell main .rr.rr-orders .rr-metrics .rr-metric-chip.rr-metric-chip.rr-metric-chip .rr-metric-sep { color: var(--rv-color-border-strong); }
+:root:root:root body .app-shell.stitch-shell main .rr.rr-dashboard .rr-opcard .rr-op-x .rr-op-partial { color: var(--rv-color-danger, #e4636f); animation: rr-partial-pulse 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  :root:root:root:root body .app-shell.stitch-shell main .rr.rr-orders .rr-metrics .rr-metric-chip.rr-metric-chip.rr-metric-chip,
+  :root:root:root body .app-shell.stitch-shell main .rr.rr-dashboard .rr-opcard .rr-op-x .rr-op-partial { animation: none; }
+}
+
+/* Siparişler row actions: Etiket and İşlemler centred in their cell (the grid column was narrower than the cell and sat
+   at its left). */
+:root:root:root body .app-shell.stitch-shell main .rr.rr-orders .rr-tbl td .rr-actcell { justify-content: center; justify-items: stretch; margin-inline: auto; }

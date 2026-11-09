@@ -91,3 +91,9 @@
 :root:root:root body .app-shell.stitch-shell main .rr.rr-orders .rr-metrics .rr-metric-chip.rr-metric-chip .rr-metric-sep { margin: 0 6px; color: var(--rr-line-strong); }
 :root:root:root body .app-shell.stitch-shell main .rr.rr-orders .rr-metrics .rr-metric-chip.rr-metric-chip:hover { background: none; text-decoration: underline dotted; text-underline-offset: 3px; }
 :root:root:root body .app-shell.stitch-shell main .rr.rr-orders .rr-metrics .rr-metric-chip.rr-metric-chip.rr-metric-on { background: none; text-decoration: underline; text-decoration-color: var(--rr-primary); text-underline-offset: 3px; }
+
+/* Kısmi İptal reads exactly like the "Paket | Adet Ürün" line of the other cards: muted words, ink numbers, no red and
+   no underline (owner, 9 Nov 2026: the dotted underline looked broken). Pressing it still filters the list. */
+:root:root:root:root body .app-shell.stitch-shell main .rr.rr-orders .rr-metrics .rr-metric-chip.rr-metric-chip { color: var(--rr-muted); text-decoration: none; }
+:root:root:root:root body .app-shell.stitch-shell main .rr.rr-orders .rr-metrics .rr-metric-chip.rr-metric-chip b { color: var(--rr-ink); font-weight: 600; margin-right: 4px; }
+:root:root:root:root body .app-shell.stitch-shell main .rr.rr-orders .rr-metrics .rr-metric-chip.rr-metric-chip:is(:hover, .rr-metric-on) { color: var(--rr-ink); text-decoration: none; background: none; }

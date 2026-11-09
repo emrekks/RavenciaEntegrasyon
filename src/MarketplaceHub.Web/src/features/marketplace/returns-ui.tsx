@@ -346,7 +346,8 @@ export function RrThumb({ src, fallbackSrc, quantity, large, small, onOpen, alt 
 
 // Product photo preview (2:3): the title first, its codes under it; the next source is tried when one fails to load.
 export function RrImagePreview({ title, crumb, sources, onClose }: { title: string; crumb?: string; sources: string[]; onClose: () => void }) {
+  // `crumb` is the codes line ("Model Kodu: … · Renk: …"); it is shown under the title, never above it.
   const [index, setIndex] = useState(0)
   const source = sources[index]
-  return <RrModal crumb={crumb || undefined} title={title} size="img" onClose={onClose}><div className="rr-img-preview">{source ? <img src={source} alt={title} referrerPolicy="no-referrer" onError={() => setIndex(value => value + 1)} /> : <RrIcon name="image" />}</div></RrModal>
+  return <RrModal title={title} desc={crumb || undefined} size="img" onClose={onClose}><div className="rr-img-preview">{source ? <img src={source} alt={title} referrerPolicy="no-referrer" onError={() => setIndex(value => value + 1)} /> : <RrIcon name="image" />}</div></RrModal>
 }
