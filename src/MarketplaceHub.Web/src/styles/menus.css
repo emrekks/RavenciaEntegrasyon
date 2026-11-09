@@ -144,3 +144,8 @@ html body .app-shell.stitch-shell main :is(label, .qf-fld, .commission-field) > 
 html body .app-shell.stitch-shell main .product-add-page.product-add-page label:has(> .pm-select) { color: var(--rv-color-muted); font-size: 13px; font-weight: 500; }
 /* Promosyon's Tablo Boyutu and Eşleştirmeler' A–Z: compact menus beside their labels. */
 html body .app-shell.stitch-shell .commission-zoom > .pm-select { width: 96px; }
+
+/* Round checkbox: the tick and the indeterminate dash sit in the middle of the circle (they were placed for a square). */
+html body input[type="checkbox"]:not([role="switch"], .cs-switch, .rr-qt-switch, .integration-write-toggle > input, .sync-policy-card-switch > input, .marketplace-pricing-switch > input):checked::after { left: 50% !important; top: 46% !important; transform: translate(-50%, -50%) rotate(45deg) !important; }
+html body input[type="checkbox"]:not([role="switch"], .cs-switch, .rr-qt-switch, .integration-write-toggle > input, .sync-policy-card-switch > input, .marketplace-pricing-switch > input):indeterminate:not(:checked)::after { left: 50% !important; top: 50% !important; transform: translate(-50%, -50%) !important; }
+:is(.active, .is-on, [aria-selected="true"], [aria-checked="true"]) > .pm-mark-check::after { left: 50%; top: 46%; transform: translate(-50%, -50%) rotate(45deg); }

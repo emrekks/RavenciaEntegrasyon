@@ -125,3 +125,11 @@
 :root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-prodcell small > b { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-prodcell small > .rr-code-copy { flex: none; margin: -6px 0; }
 :root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl td[data-l="Platform Durumu"] { padding-inline: 14px; }
+
+/* Varyantları Oluştur: the combination line and the "Barkodları Otomatik Oluştur" switch share one line; the switch
+   label is 14 px like the line beside it. */
+:root:root body .app-shell.stitch-shell main .attribute-variant-action > div:has(> .variant-auto-barcode-toggle) { display: flex; flex-wrap: wrap; align-items: center; column-gap: 16px; row-gap: 4px; }
+:root:root body .app-shell.stitch-shell main .attribute-variant-action > div:has(> .variant-auto-barcode-toggle) > strong { flex-basis: 100%; }
+:root:root body .app-shell.stitch-shell main .attribute-variant-action > div > small { width: auto; }
+:root:root body .app-shell.stitch-shell main .attribute-variant-action .variant-auto-barcode-toggle { width: auto; margin: 0; gap: 8px; }
+:root:root body .app-shell.stitch-shell main .attribute-variant-action .variant-auto-barcode-toggle strong { font-size: 14px; font-weight: 500; }
