@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM node:26.12.0-alpine@sha256:6f08a523443ddedf52941874c203475b0ad503e859ad70cb26ab8be9a517dbd5 AS web
+FROM node:26.13.0-alpine@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216 AS web
 WORKDIR /web
 COPY src/MarketplaceHub.Web/package.json src/MarketplaceHub.Web/package-lock.json ./
 RUN npm install --global npm@11.12.1 \
@@ -7,7 +7,7 @@ RUN npm install --global npm@11.12.1 \
 COPY src/MarketplaceHub.Web/ ./
 RUN npm run build
 
-FROM caddy:2.11.7@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e
+FROM caddy:2.11.9@sha256:0c2243efcf437ab7f7a978f1027fcf0d4f9be8a75df27b1b3fbc5dbe0ffa8cf0
 # brotli-libs 1.2.0 in the base image: CVE-2026-111497 (see Dockerfile.production).
 RUN apk upgrade --no-cache brotli-libs
 COPY deploy/caddy/Caddyfile /etc/caddy/Caddyfile
