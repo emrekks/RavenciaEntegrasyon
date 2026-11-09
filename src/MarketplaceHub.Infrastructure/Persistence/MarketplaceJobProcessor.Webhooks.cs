@@ -49,7 +49,8 @@ public sealed partial class MarketplaceJobProcessor
             }
         }
 
-        if (orderNumbers.Count == 0 && packageNumber is not null)
+        // A "0" placeholder names no single order (every awaiting-payment Trendyol order holds it).
+        if (orderNumbers.Count == 0 && packageNumber is not null && !ShipmentPackageSupersession.IsPlaceholder(packageNumber))
             AddOrder(await (from package in db.ShipmentPackages.AsNoTracking()
                             join order in db.Orders.AsNoTracking() on package.OrderId equals order.Id
                             where package.TenantId == tenantId && order.ConnectionId == connectionId && package.ExternalPackageId == packageNumber

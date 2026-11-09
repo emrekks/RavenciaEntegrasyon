@@ -6509,7 +6509,8 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "OrderId");
 
                     b.HasIndex("TenantId", "ConnectionId", "ExternalPackageId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("\"ExternalPackageId\" <> '0'");
 
                     b.HasIndex("TenantId", "Status", "StatusOccurredAt");
 
