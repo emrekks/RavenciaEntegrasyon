@@ -198,6 +198,7 @@ public static class DependencyInjection
         services.AddScoped<IInvoicingJobProcessor, InvoicingJobProcessor>();
         services.AddScoped<IInvoiceInlineRunner, InvoiceInlineRunner>();
         services.AddSingleton<IPrivateFileStorage>(new PrivateFileStorage(filesRoot));
+        services.AddSingleton(provider => new ProductMediaRenditions(filesRoot, provider.GetService<Microsoft.Extensions.Logging.ILogger<ProductMediaRenditions>>()));
         services.Configure<BootstrapOptions>(configuration.GetSection("Bootstrap"));
         services.AddScoped<BootstrapService>();
         services.Configure<LocalDevelopmentSeedOptions>(configuration.GetSection("LocalDevelopmentSeed"));

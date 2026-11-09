@@ -1,6 +1,6 @@
 import { Children, Fragment, isValidElement, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
 import { BrandSymbol } from '../../shared/components/BrandSymbol'
-import { thumbnailSources } from '../../shared/product-thumbnail'
+import { previewSrcSet, thumbnailSources, thumbnailSrcSet, thumbnailUrl } from '../../shared/product-thumbnail'
 import { orderPlatformLogoSource, platformLogoSource } from '../../shared/platform-logos'
 import { createPortal } from 'react-dom'
 import { InvoiceGlyph, type InvoiceGlyphKind } from '../invoicing/invoice-state-glyph'
@@ -333,21 +333,26 @@ export function RrError({ error, onRetry }: { error: unknown; onRetry?: () => vo
 // Every 2:3 product image: a framed button that opens the preview, with the unit count bubble.
 export { thumbnailUrl } from '../../shared/product-thumbnail'
 
-export function RrThumb({ src, fallbackSrc, quantity, large, small, onOpen, alt }: { src: string | null | undefined; fallbackSrc?: string | null; quantity?: number; large?: boolean; small?: boolean; onOpen?: () => void; alt: string }) {
+// `priority`: a frame in the first rows of a list loads at once and first; the others wait until they scroll near.
+// The frames are 40-92 px wide (2:3): the 168 px copy covers them up to 2x density, the 480 px one beyond.
+export function RrThumb({ src, fallbackSrc, quantity, large, small, onOpen, alt, priority }: { src: string | null | undefined; fallbackSrc?: string | null; quantity?: number; large?: boolean; small?: boolean; onOpen?: () => void; alt: string; priority?: boolean }) {
   // Each address that fails moves to the next (thumbnailSources); after the last one the frame says no photo is known.
   const [stage, setStage] = useState(0)
   useEffect(() => setStage(0), [src, fallbackSrc])
   const sources = thumbnailSources(src, fallbackSrc)
   const shown = sources[stage] ?? null
-  const content = <>{shown ? <img key={shown} src={shown} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setStage(value => value + 1)} /> : <span className="rr-thumb-none" title="Görsel yok"><RrIcon name="image" size={16} /></span>}{quantity ? <span className="rr-qb" data-q={Math.min(quantity, 5)} role="img" aria-label={`${quantity} adet`}>{quantity}</span> : null}</>
+  const srcSet = shown && shown.endsWith('?w=168') ? thumbnailSrcSet(shown) : undefined
+  const content = <>{shown ? <img key={shown} src={shown} srcSet={srcSet} sizes={srcSet ? '(max-width: 760px) 92px, 76px' : undefined} width={large ? 72 : 56} height={large ? 108 : 84} alt="" loading={priority ? 'eager' : 'lazy'} fetchPriority={priority ? 'high' : undefined} decoding="async" referrerPolicy="no-referrer" onError={() => setStage(value => value + 1)} /> : <span className="rr-thumb-none" title="Görsel yok"><RrIcon name="image" size={16} /></span>}{quantity ? <span className="rr-qb" data-q={Math.min(quantity, 5)} role="img" aria-label={`${quantity} adet`}>{quantity}</span> : null}</>
   const className = `rr-thumb${large ? ' rr-lg' : ''}${small ? ' rr-sm' : ''}`
   return onOpen ? <button type="button" className={className} onClick={event => { event.preventDefault(); event.stopPropagation(); onOpen() }} aria-label={`${alt} görselini büyüt`}>{content}</button> : <span className={className} role="img" aria-label={alt}>{content}</span>
 }
 
 // Product photo preview (2:3): the title first, its codes under it; the next source is tried when one fails to load.
+// Our own photos open as the 480 px copy, or the original on a high-density screen (previewSrcSet).
 export function RrImagePreview({ title, crumb, sources, onClose }: { title: string; crumb?: string; sources: string[]; onClose: () => void }) {
   // `crumb` is the codes line ("Model Kodu: … · Renk: …"); it is shown under the title, never above it.
   const [index, setIndex] = useState(0)
   const source = sources[index]
-  return <RrModal title={title} desc={crumb || undefined} size="img" onClose={onClose}><div className="rr-img-preview">{source ? <img src={source} alt={title} referrerPolicy="no-referrer" onError={() => setIndex(value => value + 1)} /> : <RrIcon name="image" />}</div></RrModal>
+  const srcSet = source ? previewSrcSet(source) : undefined
+  return <RrModal title={title} desc={crumb || undefined} size="img" onClose={onClose}><div className="rr-img-preview">{source ? <img key={source} src={srcSet ? thumbnailUrl(source, 480) : source} srcSet={srcSet} sizes={srcSet ? '(max-width: 760px) 92vw, 430px' : undefined} alt={title} referrerPolicy="no-referrer" onError={() => setIndex(value => value + 1)} /> : <RrIcon name="image" />}</div></RrModal>
 }

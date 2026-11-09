@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { orderMediaUrlsByVariants } from './publication-readiness'
 import type { Variant } from '../shared'
+import { thumbnailUrl } from '../../../shared/product-thumbnail'
 
 // RYP007 (owner, 6 Nov 2026): "beden tablosu ekledim, eşleştirdim, kaydet dedim, yine kaydı sıralaması". One card with
 // 6 colours × 3 sizes and 3 pictures per colour; a size chart added at the end of the strip, assigned to every variant
@@ -97,6 +98,7 @@ describe('the edit page strip of a card with colour variants', () => {
     })
     await settle()
 
-    expect(tileSources()).toEqual(stripOrder)
+    // The tiles show the small copies of the same photos.
+    expect(tileSources()).toEqual(stripOrder.map(url => thumbnailUrl(url)))
   })
 })

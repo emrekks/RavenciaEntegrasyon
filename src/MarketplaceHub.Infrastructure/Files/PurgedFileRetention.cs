@@ -15,7 +15,7 @@ public static class PurgedFileRetention
     public static readonly TimeSpan Grace = TimeSpan.FromMinutes(15);
     private const int BatchSize = 200;
 
-    public static async Task<int> SweepAsync(AppDbContext db, IPrivateFileStorage storage, DateTimeOffset now, CancellationToken cancellationToken)
+    public static async Task<int> SweepAsync(AppDbContext db, IPrivateFileStorage storage, DateTimeOffset now, CancellationToken cancellationToken, ProductMediaRenditions? renditions = null)
     {
         var cutoff = now - Grace;
         var assets = await db.FileAssets
@@ -28,6 +28,8 @@ public static class PurgedFileRetention
                 try { await storage.DeleteAsync(asset.TenantId, asset.RelativePath, cancellationToken); }
                 // A path outside the tenant's folder is never deleted; the row is closed so it is not retried.
                 catch (UnauthorizedAccessException) { }
+                // A product photo takes its thumbnails with it.
+                if (renditions is not null && asset.Classification == "PRODUCT_MEDIA") renditions.Delete(asset.TenantId, asset.Id);
             }
             asset.Status = DeletedStatus;
         }

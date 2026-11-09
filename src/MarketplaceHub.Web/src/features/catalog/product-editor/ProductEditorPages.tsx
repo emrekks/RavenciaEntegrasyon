@@ -85,6 +85,7 @@ import { AcceptedJob, Brand, Category, ImageLightboxModal, MarketplaceConnection
 import { insideSelector, useDismissable } from '../../../shared/hooks/useDismissable'
 import { useMenuFlip } from '../../../shared/hooks/useMenuFlip'
 import { PanelSelect } from '../../../shared/PanelSelect'
+import { thumbnailSrcSet, thumbnailUrl } from '../../../shared/product-thumbnail'
 
 // The Eşleştirmeler page's "Kategori Alanları ve Değerleri" window, loaded with that page's code when a gap opens it.
 const ProductCategoryFieldsDialog = lazy(() => import('../../marketplace/mappings/MappingPages').then(module => ({ default: module.ProductCategoryFieldsDialog })))
@@ -3620,7 +3621,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
             const isSizeChart = isSizeChartRef(ref, chartKey)
             const menuOpen = sizeChartMenuKey === mediaImageKey(url)
             return <figure key={`family-${mediaImageKey(url)}`} data-media-kind="url" data-media-index={index} data-size-chart={isSizeChart || undefined} className={`image-preview-card media-sortable${isProductMedia ? '' : ' family-media-preview'} ${dragOverMedia === index ? 'is-media-drag-over' : ''}`} draggable={!touchPointer && !submitting && !deletingProductMediaKey && !isSizeChart} {...mediaDrag}>
-              <img src={url} alt={`${form.title || 'Ürün'} ${index + 1}`} className="media-tile-image" draggable={false} />
+              <img src={thumbnailUrl(url)} srcSet={thumbnailSrcSet(url)} sizes="88px" alt={`${form.title || 'Ürün'} ${index + 1}`} className="media-tile-image" draggable={false} />
               {isSizeChart && <span className="size-chart-badge">Beden Tablosu</span>}
               {isProductMedia && editProductId && <>
                 <button type="button" className="size-chart-menu-btn" aria-label="Görsel seçenekleri" title="Görsel seçenekleri" aria-haspopup="menu" aria-expanded={menuOpen} disabled={submitting} onClick={event => { event.stopPropagation(); setSizeChartMenuKey(menuOpen ? null : mediaImageKey(url)) }}><UiIcon name="moreVertical" size={14} /></button>
