@@ -358,12 +358,12 @@ export function ProductQuickEditModal({ products, connections, mode = 'both', on
                   {channelColumns.map(column => column.takesListPrice ? [<th key={`${column.id}-l`} scope="col" className="rr-qt-gs rr-qt-num">Liste</th>, <th key={`${column.id}-s`} scope="col" className="rr-qt-num">Satış</th>] : <th key={column.id} scope="col" className="rr-qt-gs rr-qt-num">Satış</th>)}
                 </tr>}
               </thead>
-              <tbody>{items.map(item => { const parts = variantAxisParts(item.variant.optionSignature); const select = () => { if (!selectedSet.has(item.variant.id)) clearShortcuts(); setSelectionDraft(current => current.includes(item.variant.id) ? current : [...current, item.variant.id]) }; const fail = (message: string) => setNotice(`Başarısız: ${item.variant.sku}: ${message}`); return <tr className={selectedSet.has(item.variant.id) ? 'rr-on' : 'rr-off'} key={item.variant.id}>
+              <tbody>{items.map(item => { const parts = variantAxisParts(item.variant.optionSignature); const fail = (message: string) => setNotice(`Başarısız: ${item.variant.sku}: ${message}`); return <tr className={selectedSet.has(item.variant.id) ? 'rr-on' : 'rr-off'} key={item.variant.id}>
                 <td className="rr-qt-sel rr-qt-stick"><input type="checkbox" className="rr-cb" checked={selectedSet.has(item.variant.id)} onChange={() => toggle(item.variant.id)} aria-label={`${item.variant.optionSignature || item.variant.sku} varyantını seç`} /></td>
                 <th scope="row" className="rr-qt-var rr-qt-stick"><span className="rr-qname"><b>{parts.length ? parts.map(part => part.value).join(' · ') : 'Varyant'}</b><small>{item.variant.sku}</small></span></th>
-                {showStockColumn && <QuickEditStockCell variant={item.variant} onChanged={onChanged} onStockSaved={(variantId, onHand) => stockBaseline.current.set(variantId, onHand)} onError={fail} onSelect={select} />}
+                {showStockColumn && <QuickEditStockCell variant={item.variant} onChanged={onChanged} onStockSaved={(variantId, onHand) => stockBaseline.current.set(variantId, onHand)} onError={fail} />}
                 {showPriceColumns && priceColumns.map(column => column.id === PANEL_PRICE_CHOICE || customChannels[column.id]
-                  ? <QuickEditPriceCell key={column.id} column={column} followers={column.id === PANEL_PRICE_CHOICE ? followerColumns : []} variant={item.variant} product={item.product} connectionCount={connections.length} onChanged={onChanged} onError={fail} onSelect={select} onCustom={phoneWidth && column.id !== PANEL_PRICE_CHOICE ? value => void setCustomChannel(column.id, value) : undefined} />
+                  ? <QuickEditPriceCell key={column.id} column={column} followers={column.id === PANEL_PRICE_CHOICE ? followerColumns : []} variant={item.variant} product={item.product} connectionCount={connections.length} onChanged={onChanged} onError={fail} onCustom={phoneWidth && column.id !== PANEL_PRICE_CHOICE ? value => void setCustomChannel(column.id, value) : undefined} />
                   : <QuickEditFollowCell key={column.id} column={column} variant={item.variant} product={item.product} onCustom={phoneWidth ? value => void setCustomChannel(column.id, value) : undefined} />)}
               </tr> })}</tbody>
             </table>
@@ -382,7 +382,7 @@ export function ProductQuickEditModal({ products, connections, mode = 'both', on
 // One variant's stock in the quick edit matrix. The field shows the loaded stock until the user types; fresh data
 // replaces it only while it is untouched, and a save sends the typed value as an absolute stock against the value
 // shown when editing started (a change made meanwhile is refused, not undone).
-function QuickEditStockCell({ variant, onChanged, onSelect, onStockSaved, onError }: { variant: Variant; onChanged: () => Promise<unknown>; onSelect: () => void; onStockSaved?: (variantId: string, onHand: number) => void; onError: (message: string) => void }) {
+function QuickEditStockCell({ variant, onChanged, onStockSaved, onError }: { variant: Variant; onChanged: () => Promise<unknown>; onStockSaved?: (variantId: string, onHand: number) => void; onError: (message: string) => void }) {
   const [stock, setStock] = useState(String(variant.onHand))
   const [stockDirty, setStockDirty] = useState(false)
   const [stockBase, setStockBase] = useState(variant.onHand)
@@ -418,7 +418,7 @@ function QuickEditStockCell({ variant, onChanged, onSelect, onStockSaved, onErro
       await onChanged().catch(() => undefined)
     }
   }
-  return <td className="rr-qt-stock rr-qt-stick rr-qt-num" data-l="Stok"><input className="rr-in rr-num" aria-label={`${variant.sku} stok`} aria-invalid={stockError ? true : undefined} title={stockError || undefined} value={stock} onFocus={onSelect} onChange={event => { onSelect(); setStockError(''); if (!stockDirty) setStockBase(quickStockCellValue(variant.onHand, savedStock.current).value); setStockDirty(true); setStock(event.target.value) }} onBlur={() => void saveStock()} type="number" min="0" step="1" disabled={savingStock} /></td>
+  return <td className="rr-qt-stock rr-qt-stick rr-qt-num" data-l="Stok"><input className="rr-in rr-num" aria-label={`${variant.sku} stok`} aria-invalid={stockError ? true : undefined} title={stockError || undefined} value={stock} onChange={event => { setStockError(''); if (!stockDirty) setStockBase(quickStockCellValue(variant.onHand, savedStock.current).value); setStockDirty(true); setStock(event.target.value) }} onBlur={() => void saveStock()} type="number" min="0" step="1" disabled={savingStock} /></td>
 }
 // "Özel Fiyat" for one marketplace, a switch: on, its own prices are edited in its cells; unticked, it sells at the panel
 // price. Shown beside the column title on one line, and above the table on a phone, where the table becomes cards.
@@ -459,7 +459,7 @@ function QuickEditFollowCell({ column, variant, product, onCustom }: { column: Q
 // variant has none there). A panel price saved here also goes to the offers of the marketplaces that follow it
 // (`followers`); with none, it sends nothing to a marketplace. Saved when focus leaves the pair, so moving from Liste
 // to Satış does not save half a change. A problem is told in the dialog's notice and on the field (red border, title).
-function QuickEditPriceCell({ column, followers, variant, product, connectionCount, onChanged, onSelect, onError, onCustom }: { column: QuickPriceColumn; followers: ReadonlyArray<QuickPriceColumn>; variant: Variant; product: Product; connectionCount: number; onChanged: () => Promise<unknown>; onSelect: () => void; onError: (message: string) => void; onCustom?: (custom: boolean) => void }) {
+function QuickEditPriceCell({ column, followers, variant, product, connectionCount, onChanged, onError, onCustom }: { column: QuickPriceColumn; followers: ReadonlyArray<QuickPriceColumn>; variant: Variant; product: Product; connectionCount: number; onChanged: () => Promise<unknown>; onError: (message: string) => void; onCustom?: (custom: boolean) => void }) {
   const isPanel = column.id === PANEL_PRICE_CHOICE
   const showListPrice = column.takesListPrice
   const shown = quickInlinePrices(column.id, variant, product)
@@ -503,8 +503,8 @@ function QuickEditPriceCell({ column, followers, variant, product, connectionCou
   // A card without a saved panel price shows its first channel price, as the product editor does; said on hover.
   const fallback = isPanel && panelPriceIsFallback(variant, product)
   const priceTitle = priceError || priceBlocked || (fallback ? 'Kayıtlı panel fiyatı yok; ürün düzenleyicideki gibi ilk aktif kanal fiyatı gösteriliyor. Değiştirirseniz panel fiyatı olarak kaydedilir.' : undefined)
-  const fieldProps = { className: 'rr-in rr-num', 'aria-invalid': priceError ? true : undefined, title: priceTitle, disabled: savingPrice || !!priceBlocked, onFocus: onSelect } as const
-  return <td className={`rr-qt-gs rr-qt-num${isPanel ? ' rr-qt-panel' : ' rr-qt-own'}${fallback ? ' rr-qfallback' : ''}`} colSpan={showListPrice ? 2 : 1} data-l={isPanel ? 'Panel Fiyatı' : `${column.label} · Özel Fiyat`} title={priceTitle} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) void savePrice() }}>{onCustom && !isPanel && <QuickEditCustomToggle column={column} custom onChange={onCustom} compact className="rr-qt-cardswitch" />}<div className={`rr-qpair${showListPrice ? '' : ' rr-qsale'}`} role="group" aria-label={`${variant.sku} ${column.label}`}>{showListPrice && <QuickPriceInput {...fieldProps} placeholder="Liste" aria-label={`${variant.sku} ${column.label} liste fiyatı`} value={listPrice} onValue={value => { onSelect(); setPriceError(''); setListPrice(value) }} />}<QuickPriceInput {...fieldProps} placeholder="Satış" aria-label={`${variant.sku} ${column.label} satış fiyatı`} value={salePrice} onValue={value => { onSelect(); setPriceError(''); setSalePrice(value) }} /></div></td>
+  const fieldProps = { className: 'rr-in rr-num', 'aria-invalid': priceError ? true : undefined, title: priceTitle, disabled: savingPrice || !!priceBlocked } as const
+  return <td className={`rr-qt-gs rr-qt-num${isPanel ? ' rr-qt-panel' : ' rr-qt-own'}${fallback ? ' rr-qfallback' : ''}`} colSpan={showListPrice ? 2 : 1} data-l={isPanel ? 'Panel Fiyatı' : `${column.label} · Özel Fiyat`} title={priceTitle} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) void savePrice() }}>{onCustom && !isPanel && <QuickEditCustomToggle column={column} custom onChange={onCustom} compact className="rr-qt-cardswitch" />}<div className={`rr-qpair${showListPrice ? '' : ' rr-qsale'}`} role="group" aria-label={`${variant.sku} ${column.label}`}>{showListPrice && <QuickPriceInput {...fieldProps} placeholder="Liste" aria-label={`${variant.sku} ${column.label} liste fiyatı`} value={listPrice} onValue={value => { setPriceError(''); setListPrice(value) }} />}<QuickPriceInput {...fieldProps} placeholder="Satış" aria-label={`${variant.sku} ${column.label} satış fiyatı`} value={salePrice} onValue={value => { setPriceError(''); setSalePrice(value) }} /></div></td>
 }
 function lowStockModelCode(group: ProductGroup) {
   return group.products.map(product => product.modelCode).find(value => value?.trim())
