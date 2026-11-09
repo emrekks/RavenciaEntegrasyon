@@ -76,3 +76,7 @@ html body .cs-workspace .connection-settings-input-row > button:only-child { gri
 /* Integrations filter menu: option rows 34 px like every menu, tall enough to show all eleven options without scrolling. */
 html body .app-shell.stitch-shell main .integrations-reference-page .integration-filter-menu { max-height: min(560px, calc(100dvh - 120px)); }
 html body .app-shell.stitch-shell main .integrations-reference-page .integration-filter-menu button { height: 34px; min-height: 34px; }
+/* Eşleştirmeler: the search box's field has no border of its own inside the bordered box (it read as a double frame,
+   owner 9 Nov 2026), on every card of the page. */
+:root:root body .app-shell.stitch-shell main section.mapping-page label.rv-search-field > input,
+:root:root body .app-shell.stitch-shell main section.mapping-page label.rv-search-field > input:is(:hover, :focus, :focus-visible) { flex: 1; width: auto; min-width: 0; height: 100% !important; min-height: 0 !important; padding: 0; background: none !important; border: 0 !important; border-radius: 0; box-shadow: none !important; outline: none; }

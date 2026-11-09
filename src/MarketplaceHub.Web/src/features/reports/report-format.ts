@@ -35,7 +35,7 @@ export type ReportSales = {
   summary: ReportSummary; previousSummary: ReportSummary
   commission: { coveredRevenue: number; coverage: number | null; estimatedCommission: number; estimatedPayout: number; effectiveRate: number | null }
   cost: {
-    keptQuantity: number; costedQuantity: number; coverage: number | null; costTotal: number; costedRevenue: number; grossProfit: number; grossMargin: number | null
+    keptQuantity: number; costedQuantity: number; coverage: number | null; costTotal: number; costedRevenue: number; costedSales?: number; grossProfit: number; grossMargin: number | null
     profitQuantity: number; profitCoverage: number | null; profitRevenue: number; profitCost: number; profitCommission: number; netProfit: number; netMargin: number | null; costedVariants: number
   }
   platforms: ReportGroup[]; cities: ReportGroup[]; timeSeries: ReportTimePoint[]; previousTimeSeries: ReportTimePoint[]

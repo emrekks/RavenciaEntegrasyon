@@ -1185,3 +1185,7 @@ main .rr.rr.reports-payout-filters .rr-trigger:disabled { opacity: .5; cursor: n
   .app-shell.stitch-shell main .reports-page .reports-kpis.is-stack:nth-child(n) > :last-child:nth-child(n):nth-child(n) { grid-column: auto; }
   .app-shell.stitch-shell main .reports-page .reports-kpis.is-long:nth-child(n) > :last-child:nth-child(odd):nth-child(n) { grid-column: auto; }
 }
+/* Ödeme Özeti: every marketplace card is as tall as the tallest one at every width (owner, 9 Nov 2026: a card on the
+   second row was shorter), its content at the top. */
+.app-shell.stitch-shell main .reports-page .reports-payout-regions > ul { grid-auto-rows: 1fr; }
+.app-shell.stitch-shell main .reports-page .reports-payout-regions > ul > li > .reports-payout-region { height: 100%; align-content: start; }

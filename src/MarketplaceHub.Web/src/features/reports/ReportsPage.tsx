@@ -1328,14 +1328,25 @@ function ProfitView({ data }: { data: ReportSales }) {
   const onCost = profit !== null && money?.cost ? profit / money.cost : null
   const earlierOnCost = earlierProfit !== null && earlier?.cost ? earlierProfit / earlier.cost : null
   const noCost = noAmount ? 'Tutar yok' : 'Maliyet girilmemiş'
+  // Maliyeti Olan Ciro counts like Toplam Ciro (returns not taken off); an older API without costedSales falls back to the
+  // kept-units figure.
+  const costedSales = cost.costedSales ?? cost.costedRevenue
+  const earlierCostedSales = earlierCost ? earlierCost.costedSales ?? earlierCost.costedRevenue : null
+  // Brüt Kâr: Net Ciro (sales less returns) less the product cost, before commission, cargo and the other deductions.
+  const gross = money?.cost != null ? now.netRevenue - money.cost : null
+  const earlierGross = earlier?.cost != null ? then.netRevenue - earlier.cost : null
   const tone = (value: number | null) => value === null ? undefined : value < 0 ? 'bad' as const : value > 0 ? 'good' as const : undefined
   const items: Kpi[] = [
     { key: 'revenue', label: 'Toplam Ciro', value: noAmount ? null : now.grossSales, format: formatTl, empty: 'Tutar yok', delta: noAmount ? null : change(now.grossSales, then.grossSales),
       note: previousText(then.ordersWithAmount > 0 ? formatTl(then.grossSales) : null),
       tip: `Dönemin satış tutarı; Kâr Hesabı'ndaki Satış Tutarı.\nListe fiyatından satıcı indirimi düşülmüş, iptaller hariç, iadeler düşülmeden. İadeler düşülünce Net Ciro ${formatTl(now.netRevenue)}.` },
-    { key: 'costed', label: 'Maliyeti Olan Ciro', value: costed ? cost.costedRevenue : null, format: formatTl, empty: noCost,
-      delta: costed && earlierCosted ? change(cost.costedRevenue, earlierCost?.costedRevenue) : null, note: previousText(earlierCosted ? formatTl(earlierCost?.costedRevenue) : null),
-      tip: `Ürün maliyeti girili satışların cirosu.\nMüşteride kalan (iadeler düşülmüş) adetlerin satış tutarı: ${formatNumber(cost.keptQuantity)} adetten ${formatNumber(cost.costedQuantity)} adet, Net Ciro ${formatTl(now.netRevenue)} içinde ${formatPercent(now.netRevenue > 0 ? cost.costedRevenue / now.netRevenue : null)}. Eksik maliyeti ürün kartındaki Maliyet alanına girin.` },
+    { key: 'costed', label: 'Maliyeti Olan Ciro', value: costed ? costedSales : null, format: formatTl, empty: noCost,
+      delta: costed && earlierCosted ? change(costedSales, earlierCostedSales) : null, note: previousText(earlierCosted ? formatTl(earlierCostedSales) : null),
+      tip: `Ürün maliyeti girili satışların cirosu, Toplam Ciro gibi: iptaller hariç, iadeler düşülmeden.\nToplam Ciro ${formatTl(now.grossSales)} içinde ${formatPercent(now.grossSales > 0 ? costedSales / now.grossSales : null)}. Eksik maliyeti ürün kartındaki Maliyet alanına girin.` },
+    { key: 'gross', label: gross !== null && gross < 0 ? 'Brüt Zarar' : 'Brüt Kâr', value: gross, format: formatTl, empty: noCost,
+      delta: change(gross, earlierGross), note: previousText(earlierGross === null ? null : signedTl(earlierGross)), tone: tone(gross),
+      tip: gross === null ? 'Ürün maliyeti girilince hesaplanır.\nÜrün kartında varyantların maliyetini girin.'
+        : `Satıştan iadeler ve ürün maliyeti düşülünce kalan; komisyon, kargo ve diğer kesintiler öncesi.\nNet Ciro ${formatTl(now.netRevenue)} − Ürün Maliyeti ${formatTl(money?.cost ?? 0)}.` },
     { key: 'profit', label: profit !== null && profit < 0 ? 'Tahmini Zarar' : 'Net Kâr', value: profit, format: formatTl, empty: noCost,
       delta: change(profit, earlierProfit), note: previousText(earlierProfit === null ? null : signedTl(earlierProfit)), tone: tone(profit),
       tip: profit === null ? 'Ürün maliyeti girilince hesaplanır.\nÜrün kartında varyantların maliyetini girin.' : netProfitTip },

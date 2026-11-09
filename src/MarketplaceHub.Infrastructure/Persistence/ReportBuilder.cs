@@ -514,10 +514,12 @@ internal static class ReportBuilder
 
     private static ReportCostView CostView(IReadOnlyList<OrderFact> orders)
     {
-        decimal kept = 0m, costed = 0m, costTotal = 0m, costedRevenue = 0m, profitUnits = 0m, profitRevenue = 0m, profitCost = 0m, profitCommission = 0m;
+        decimal kept = 0m, costed = 0m, costTotal = 0m, costedRevenue = 0m, costedSales = 0m, profitUnits = 0m, profitRevenue = 0m, profitCost = 0m, profitCommission = 0m;
         var variants = new HashSet<Guid>();
         foreach (var line in orders.Where(x => x.Currency == Try).SelectMany(x => x.Lines))
         {
+            // Toplam Ciro counts a returned line's sale too: Maliyeti Olan Ciro does the same over the lines with a cost.
+            if (line.Active > 0 && line.Row.CostPrice is > 0) costedSales += line.PaidUnitPrice * line.Active;
             if (line.KeptUnits <= 0) continue;
             kept += line.KeptUnits;
             if (line.Row.CostPrice is not > 0) continue;
@@ -537,7 +539,7 @@ internal static class ReportBuilder
         return new(kept, costed, kept > 0 ? Math.Round(costed / kept, 4) : null, Math.Round(costTotal, 2), Math.Round(costedRevenue, 2), Math.Round(grossProfit, 2),
             costedRevenue > 0 ? Math.Round(grossProfit / costedRevenue, 4) : null,
             profitUnits, kept > 0 ? Math.Round(profitUnits / kept, 4) : null, Math.Round(profitRevenue, 2), Math.Round(profitCost, 2), Math.Round(profitCommission, 2),
-            Math.Round(netProfit, 2), profitRevenue > 0 ? Math.Round(netProfit / profitRevenue, 4) : null, variants.Count);
+            Math.Round(netProfit, 2), profitRevenue > 0 ? Math.Round(netProfit / profitRevenue, 4) : null, variants.Count, Math.Round(costedSales, 2));
     }
 
     // Order-level buckets (platform, store, city, district): every order falls in exactly one, so they add up.

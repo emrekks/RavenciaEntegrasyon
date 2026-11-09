@@ -19,7 +19,7 @@ const report: ReportSales = {
   from: '2026-10-01', to: '2026-10-22', previousFrom: '2026-09-09', previousTo: '2026-09-30', granularity: 'day', includesTest: false, generatedAt: '2026-10-22T10:00:00Z',
   summary: summary(), previousSummary: summary({ orders: 2, netRevenue: 200, cancelRate: 0.1 }),
   commission: { coveredRevenue: 200, coverage: 0.8, estimatedCommission: 43, estimatedPayout: 157, effectiveRate: 0.215 },
-  cost: { keptQuantity: 4, costedQuantity: 2, coverage: 0.5, costTotal: 80, costedRevenue: 200, grossProfit: 120, grossMargin: 0.6, profitQuantity: 2, profitCoverage: 0.5, profitRevenue: 200, profitCost: 80, profitCommission: 43, netProfit: 77, netMargin: 0.385, costedVariants: 1 },
+  cost: { keptQuantity: 4, costedQuantity: 2, coverage: 0.5, costTotal: 80, costedRevenue: 200, costedSales: 240, grossProfit: 120, grossMargin: 0.6, profitQuantity: 2, profitCoverage: 0.5, profitRevenue: 200, profitCost: 80, profitCommission: 43, netProfit: 77, netMargin: 0.385, costedVariants: 1 },
   platforms: [
     group('TRENDYOL', 'TRENDYOL', { orders: 3, soldQuantity: 4, netRevenue: 250, grossSales: 350, ordersWithAmount: 3, estimatedCommission: 43, commissionCoveredRevenue: 200, children: [group('c1', 'Ravencia Trendyol')] }),
     group('SHOPIFY', 'SHOPIFY', { ordersWithAmount: 0, grossSales: 0, netRevenue: 0 })
@@ -371,8 +371,8 @@ describe('ReportsPage', () => {
     // The strip: the revenue, the part with a cost, then the same net profit as the overview's (the
     // unlinked deductions taken off) and its rates; no second "what is left" figure on another basis.
     const strip = texts(page, '.reports-kpis > div')
-    expect(strip).toHaveLength(5)
-    ;['Toplam Ciro₺350', 'Maliyeti Olan Ciro₺200', 'Tahmini Zarar− ₺6.639', 'Net Kâr / Satış Fiyatı Oranı− %1.896,9', 'Net Kâr / Ürün Maliyeti Oranı− %8.299,0']
+    expect(strip).toHaveLength(6)
+    ;['Toplam Ciro₺350', 'Maliyeti Olan Ciro₺240', 'Brüt Kâr₺170', 'Tahmini Zarar− ₺6.639', 'Net Kâr / Satış Fiyatı Oranı− %1.896,9', 'Net Kâr / Ürün Maliyeti Oranı− %8.299,0']
       .forEach((figure, index) => expect(strip[index]).toContain(figure))
     expect(page.querySelector('.reports-kpis')?.textContent).not.toContain('Hakediş')
     // Kâr Hesabı: the deductions tied to no order on a line of their own before the result, which agrees with the strip.
@@ -586,25 +586,30 @@ describe('ReportsPage', () => {
     const page = await open('?view=profit')
     expect(selectedTab(page)).toContain('Kârlılık')
     const strip = page.querySelector('.reports-kpis')!
-    expect(strip.classList.contains('is-5')).toBe(true)
+    expect(strip.classList.contains('is-6')).toBe(true)
     expect(strip.getAttribute('aria-label')).toBe('Kârlılığın göstergeleri')
     expect([...strip.querySelectorAll('.reports-kpi-label')].map(label => label.textContent)).toEqual([
-      'Toplam Ciro', 'Maliyeti Olan Ciro', 'Net Kâr', 'Net Kâr / Satış Fiyatı Oranı', 'Net Kâr / Ürün Maliyeti Oranı'])
+      'Toplam Ciro', 'Maliyeti Olan Ciro', 'Brüt Kâr', 'Net Kâr', 'Net Kâr / Satış Fiyatı Oranı', 'Net Kâr / Ürün Maliyeti Oranı'])
     // 350 of sales; 200 of it (after returns) carries a cost; the same 127 of net profit as the overview and Kâr
     // Hesabı, 36,3 % of the sales and 158,8 % of the cost of 80. Each against the previous period: the same 350, 150
     // costed, 160 net.
     const figures = texts(page, '.reports-kpis > div')
     expect(figures[0]).toContain('Toplam Ciro₺350')
     expect(figures[0]).toContain('%0')
-    expect(figures[1]).toContain('Maliyeti Olan Ciro₺200')
-    expect(figures[1]).toContain('+%33,3')
-    expect(figures[2]).toContain('Net Kâr₺127')
-    expect(figures[2]).toContain('−%20,6')
-    expect(figures[2]).toContain('reklam ve diğer kesintiler')
-    expect(figures[3]).toContain('%36,3')
-    expect(figures[4]).toContain('%158,8')
-    expect(figures[4]).toContain('(₺80,00)')
-    expect(page.querySelectorAll('.reports-kpis > div')[2].classList.contains('is-good')).toBe(true)
+    // Maliyeti Olan Ciro counts like Toplam Ciro, returns not taken off: 240 (the previous period's API sent only the
+    // kept-units 150). Brüt Kâr: Net Ciro 250 − cost 80 = 170, against 200 − 60 = 140 before.
+    expect(figures[1]).toContain('Maliyeti Olan Ciro₺240')
+    expect(figures[1]).toContain('+%60')
+    expect(figures[1]).toContain('iadeler düşülmeden')
+    expect(figures[2]).toContain('Brüt Kâr₺170')
+    expect(figures[2]).toContain('+%21,4')
+    expect(figures[3]).toContain('Net Kâr₺127')
+    expect(figures[3]).toContain('−%20,6')
+    expect(figures[3]).toContain('reklam ve diğer kesintiler')
+    expect(figures[4]).toContain('%36,3')
+    expect(figures[5]).toContain('%158,8')
+    expect(figures[5]).toContain('(₺80,00)')
+    expect(page.querySelectorAll('.reports-kpis > div')[3].classList.contains('is-good')).toBe(true)
     // The figures the strip held before stay on the page: the commission in Kâr Hesabı, its rate and coverage under it.
     const ledger = page.querySelector('.reports-ledger')!
     expect(ledger.textContent).toContain('Tahmini Komisyon− ₺43,00')
@@ -619,8 +624,9 @@ describe('ReportsPage', () => {
     expect(figures[0]).toContain('Toplam Ciro₺350')
     expect(figures[1]).toContain('Maliyet girilmemiş')
     expect(figures[2]).toContain('Maliyet girilmemiş')
-    expect(figures[3]).toContain('—')
+    expect(figures[3]).toContain('Maliyet girilmemiş')
     expect(figures[4]).toContain('—')
+    expect(figures[5]).toContain('—')
   })
 
   it('lists the Genel Bakış Sipariş figure per platform when the card is hovered', async () => {
