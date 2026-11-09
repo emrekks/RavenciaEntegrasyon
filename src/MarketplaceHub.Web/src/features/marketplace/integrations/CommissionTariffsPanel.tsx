@@ -252,19 +252,19 @@ export function mostProfit(choices: CommissionChoice[]) {
 
 // A product's photo; a click opens it full size as the products page does (its preview, Escape or a click outside
 // closes it), without reaching the row. Without a photo, the name's first letter.
-export function ProductImage({ url, title, initial }: { url: string | null | undefined; title: string; initial: string }) {
+export function ProductImage({ url, title, initial, modelCode, color, size }: { url: string | null | undefined; title: string; initial: string; modelCode?: string | null; color?: string | null; size?: string | null }) {
   const [open, setOpen] = useState(false)
   if (!url) return <i className="commission-product-image" aria-hidden="true">{initial}</i>
   return <>
     <button type="button" className="commission-product-zoom" aria-label={`${title} görselini büyüt`} onClick={event => { event.preventDefault(); event.stopPropagation(); setOpen(true) }}>
       <img src={thumbnailUrl(url)} alt="" loading="lazy" className="commission-product-image" />
     </button>
-    {open && <ImageLightboxModal image={{ url, title }} onClose={() => setOpen(false)} />}
+    {open && <ImageLightboxModal image={{ url, title, modelCode, color, size }} onClose={() => setOpen(false)} />}
   </>
 }
 
 const productImage = (row: CommissionTariffRow) =>
-  <ProductImage url={row.imageUrl} title={`${row.productName ?? row.barcode}${row.color ? ` · ${row.color}` : ''}`} initial={(row.productName ?? row.barcode).slice(0, 1)} />
+  <ProductImage url={row.imageUrl} title={row.productName ?? row.barcode} modelCode={row.modelCode} color={row.color} initial={(row.productName ?? row.barcode).slice(0, 1)} />
 
 type UploadResult = { tariffs: CommissionTariff[]; importedRows: number; skippedRows: number; alreadyUploaded: boolean; warnings: string[] }
 
