@@ -1,0 +1,33 @@
+/*
+ * Segment controls: one framed group of two or more options where one is picked. One shared geometry for all of them:
+ * frame 36 px (border box) with a 1 px border, radius 12, 3 px padding and a 2 px gap; options 28 px high with radius
+ * 9 (12 - 3, concentric), 12.5 px / 500. The picked option sits 4 px (3 px padding + 1 px border) inside the frame and
+ * never touches it. Colours and the picked look stay with each control's own rules.
+ * NOT segments (leave them): underline page tabs (.rv-view-tabs, 46 px), .ss-seg (Sistem Ayarları page tabs) and the
+ * Veri Eşitleme filter chips.
+ */
+:root:root:root:root:root body :is(.rr-seg, .reports-segmented, .jobs-category-segment, .ss-seg3, .rich-text-mode-switch, .variant-bulk-modes, .variant-code-menu-tabs) {
+  box-sizing: border-box; height: 36px; min-height: 0; max-height: 36px; gap: 2px; padding: 3px; align-items: stretch; border-width: 1px; border-radius: 12px;
+}
+:root:root:root:root:root body :is(.rr-seg, .reports-segmented, .jobs-category-segment, .ss-seg3, .rich-text-mode-switch, .variant-bulk-modes, .variant-code-menu-tabs) > :is(button, a) {
+  box-sizing: border-box; height: 28px; min-height: 0; max-height: 28px; padding-block: 0; border-radius: 9px; font-size: 12.5px; font-weight: 500; line-height: 1;
+}
+:root:root:root:root:root body :is(.reports-segmented, .jobs-category-segment) { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+:root:root:root:root:root body :is(.reports-segmented, .jobs-category-segment)::-webkit-scrollbar { display: none; }
+/* Sistem Ayarları tab groups built on the shared Tabs component carry long !important chains; the extra class wins. */
+html body .app-shell.stitch-shell main .ss-page .rv-tabs.rv-tabs.rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.ss-seg2.ss-seg2 {
+  box-sizing: border-box !important; height: 36px !important; min-height: 0 !important; max-height: 36px !important; gap: 2px !important; padding: 3px !important;
+  align-items: stretch !important; border-width: 1px !important; border-radius: 12px !important; overflow: hidden !important;
+}
+html body .app-shell.stitch-shell main .ss-page .rv-tabs.rv-tabs.rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.ss-seg2.ss-seg2 > :is(button, a) {
+  box-sizing: border-box !important; height: 28px !important; min-height: 0 !important; max-height: 28px !important; padding-block: 0 !important; border-radius: 9px !important;
+  font-size: 12.5px !important; font-weight: 500 !important; line-height: 1 !important;
+}
+html body .app-shell.stitch-shell main .ss-page .rv-tabs.rv-tabs.rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.ss-itabs.ss-itabs {
+  box-sizing: border-box !important; min-height: 36px !important; height: auto !important; gap: 2px !important; padding: 3px !important; align-items: stretch !important;
+  border-width: 1px !important; border-radius: 12px !important;
+}
+html body .app-shell.stitch-shell main .ss-page .rv-tabs.rv-tabs.rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.ss-itabs.ss-itabs > :is(button, a) {
+  box-sizing: border-box !important; height: 28px !important; min-height: 0 !important; max-height: 28px !important; padding-block: 0 !important; border-radius: 9px !important;
+  font-size: 12.5px !important; font-weight: 500 !important; line-height: 1 !important;
+}
