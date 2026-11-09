@@ -461,3 +461,7 @@ html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer)
   :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard { transition: translate var(--rv-motion-fast) var(--rv-ease-out), background-color var(--rv-motion-fast) var(--rv-ease-standard), border-color var(--rv-motion-fast) var(--rv-ease-standard), box-shadow var(--rv-motion-fast) var(--rv-ease-standard); }
 }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard:is(:hover, :focus-within, .rr-bd-open) { z-index: 3; }
+
+/* İptal card (owner, 9 Nov 2026): no dot before the title; "N Kısmi İptal" sits beside the red number. */
+:root:root body :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard.rr-bad .rr-op-t small::before { display: none; }
+:root:root body :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard .rr-op-x .rr-op-partial { color: var(--rr-bad); font-weight: 600; }

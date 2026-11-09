@@ -81,3 +81,13 @@
   :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-adet { display: none; }
 }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-r.is-empty { grid-template-columns: 1fr; color: var(--rr-muted); }
+
+/* Kısmi İptal (owner, 9 Nov 2026): plain text on the number's line ("1 Paket | 1 Kısmi İptal | 1 Adet Ürün"), like the
+   other cards' "Paket | Adet Ürün" line, not a red pill; it still filters the list when pressed. */
+:root:root:root body .app-shell.stitch-shell main .rr.rr-orders .rr-metrics article.rr-metric-chipped { align-items: end; column-gap: 0; }
+:root:root:root body .app-shell.stitch-shell main .rr.rr-orders .rr-metrics .rr-metric-chip.rr-metric-chip { height: auto; min-height: 0; padding: 0 0 4px 8px; margin: 0; border: 0; border-radius: 0; background: none; box-shadow: none; color: var(--rr-bad); font-size: 13px; font-weight: 500; line-height: 1.3; animation: none; cursor: pointer; white-space: nowrap; }
+:root:root:root body .app-shell.stitch-shell main .rr.rr-orders .rr-metrics .rr-metric-chip.rr-metric-chip::before { content: "|"; margin-right: 8px; color: var(--rr-line-strong); }
+:root:root:root body .app-shell.stitch-shell main .rr.rr-orders .rr-metrics .rr-metric-chip.rr-metric-chip b { color: var(--rr-bad); font-weight: 700; }
+:root:root:root body .app-shell.stitch-shell main .rr.rr-orders .rr-metrics .rr-metric-chip.rr-metric-chip .rr-metric-sep { margin: 0 6px; color: var(--rr-line-strong); }
+:root:root:root body .app-shell.stitch-shell main .rr.rr-orders .rr-metrics .rr-metric-chip.rr-metric-chip:hover { background: none; text-decoration: underline dotted; text-underline-offset: 3px; }
+:root:root:root body .app-shell.stitch-shell main .rr.rr-orders .rr-metrics .rr-metric-chip.rr-metric-chip.rr-metric-on { background: none; text-decoration: underline; text-decoration-color: var(--rr-primary); text-underline-offset: 3px; }
