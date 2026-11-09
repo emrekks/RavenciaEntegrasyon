@@ -673,7 +673,7 @@ function ProductColorRows({ group, priority, selected, onSelect, selectionMode: 
     const card = platformCards.find(item => item.platformCode === code)
     const name = platformDisplayNames[code]
     const linkedTone = card && card.variantCount > 0 && card.matchedVariantCount < card.variantCount ? 'part' : 'on'
-    const state = card ? ({ active: 'on', partial: 'part', linked: linkedTone, processing: 'busy', error: 'err', missing: 'err', inactive: 'none', closed: 'off', blocked: 'err' } as Record<string, string>)[card.state] ?? 'none' : 'none'
+    const state = card ? ({ active: 'on', partial: 'link', linked: linkedTone, processing: 'busy', error: 'err', missing: 'err', inactive: 'none', closed: 'off', blocked: 'err' } as Record<string, string>)[card.state] ?? 'none' : 'none'
     return { code, state, label: card?.label ?? `${name}: Ürün Eşleşmesi Bulunamadı` }
   })
   const [ringTone, ringProgress] = ({ ACTIVE: ['ok', 1], DRAFT: ['prog', 0.3], ARCHIVED: ['off', 0], MIXED: ['bad', 0.66] } as Record<string, [RingTone, number]>)[status] ?? ['off', 0]
