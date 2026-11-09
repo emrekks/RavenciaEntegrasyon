@@ -63,6 +63,15 @@ public sealed class PriceStockMonitorService(AppDbContext db, IConfiguration con
             .GroupBy(x => new { x.ConnectionId, x.HealthStatus })
             .Select(group => new { group.Key.ConnectionId, group.Key.HealthStatus, Count = group.Count() })
             .ToListAsync(cancellationToken);
+        // Which panel products those broken links belong to (read only when there are any).
+        var lostLinks = linkHealth.Count == 0 ? [] : await (
+                from link in db.MarketplaceVariantLinks.AsNoTracking()
+                join variant in db.ProductVariants.AsNoTracking() on link.VariantId equals variant.Id
+                join product in db.Products.AsNoTracking() on variant.ProductId equals product.Id
+                where link.TenantId == tenantId && variant.TenantId == tenantId && product.TenantId == tenantId && ids.Contains(link.ConnectionId)
+                    && (link.HealthStatus == MarketplaceVariantLinkHealth.NotFound || link.HealthStatus == MarketplaceVariantLinkHealth.Rejected)
+                select new LostLink(link.ConnectionId, product.Id, product.Title, link.HealthStatus!, variant.Sku, link.HealthChangedAt))
+            .ToListAsync(cancellationToken);
 
         var rows = connections.Select(connection =>
         {
@@ -99,10 +108,30 @@ public sealed class PriceStockMonitorService(AppDbContext db, IConfiguration con
                 issues.Take(10).Select(x => new PriceStockOfferIssueView(x.Code, x.Summary, x.LastSeenAt)).ToList(),
                 WebhookPollingPolicy.OrderSource(subscriptions.ContainsKey(connection.Id), healthy),
                 subscriptions.GetValueOrDefault(connection.Id),
-                orderReadInterval);
+                orderReadInterval,
+                LostListings(lostLinks.Where(x => x.ConnectionId == connection.Id)));
         }).ToList();
         return new PriceStockMonitorView(now, rows);
     }
+
+    internal const int LostListingProductLimit = 20;
+    private const int LostListingSkuLimit = 50;
+
+    internal sealed record LostLink(Guid ConnectionId, Guid ProductId, string Title, string HealthStatus, string Sku, DateTimeOffset? HealthChangedAt);
+
+    // One entry per product and health, the product with the most broken variants first; its stock codes in order.
+    internal static IReadOnlyList<PriceStockLostListingView> LostListings(IEnumerable<LostLink> links) => links
+        .GroupBy(x => (x.ProductId, x.HealthStatus))
+        .Select(group => new PriceStockLostListingView(
+            group.Key.ProductId,
+            group.First().Title,
+            group.Key.HealthStatus,
+            group.Count(),
+            group.Select(x => x.Sku).Order(StringComparer.Ordinal).Take(LostListingSkuLimit).ToList(),
+            group.Min(x => x.HealthChangedAt)))
+        .OrderByDescending(x => x.Variants).ThenBy(x => x.Title, StringComparer.Ordinal)
+        .Take(LostListingProductLimit)
+        .ToList();
 
     public async Task<PriceStockEmergencyStopView> StopAllAutomaticWritesAsync(Guid tenantId, Guid actorUserId, string correlationId, CancellationToken cancellationToken)
     {

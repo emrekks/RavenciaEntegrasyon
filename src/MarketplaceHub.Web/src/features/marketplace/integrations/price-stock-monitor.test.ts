@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { statusExtras } from './PriceStockMonitorPanel'
+import { lostListingLines, priceStockMonitorNotice, statusExtras } from './PriceStockMonitorPanel'
 import { automaticWritesBaselineMessage, automaticWritesBaselineWarning, orderSourceHint, orderSourceState, priceStockMetricTone, priceStockMonitorSummary, priceStockNeedsAttention, priceStockProblemSignature, priceStockWriteState, relativeAgeText, type PriceStockConnectionMonitor } from './integration-helpers'
 
 function connection(overrides: Partial<PriceStockConnectionMonitor> = {}): PriceStockConnectionMonitor {
@@ -83,9 +83,40 @@ describe('price/stock monitor helpers', () => {
     const lost = statusExtras(connection({ notFoundLinks: 48, failedPushes7d: 1, manualReviewPushes: 2, invalidOffers: 3 }))
     expect(lost.problem).toMatchObject({ text: '54', tone: 'bad' })
     expect(lost.problem!.title).toContain('1 başarısız gönderim · 2 kısmi / inceleme bekliyor · 3 gönderilemeyen teklif')
-    expect(lost.problem!.title).toContain('48 kayıp ilan: 48 ilan pazaryerinde bulunamadı · 0 reddedildi')
+    expect(lost.problem!.title).toContain('Pazaryerinde bulunamayan ilan: 48 varyant bulunamadı.')
     expect(statusExtras(connection({ notFoundLinks: 48 })).problem).toMatchObject({ text: '48', tone: 'warn' })
     expect(statusExtras(connection()).write).toMatchObject({ label: 'Kapalı', tone: 'off' })
+  })
+
+  // Live 9 Nov 2026: Shopify's "48 kayıp ilan" were two products gone from the store, shown as a price/stock send problem
+  // while writes were off. The tooltip names them and says no send is involved.
+  const shopifyLost = connection({
+    connectionId: 'shopify', platformCode: 'SHOPIFY', displayName: 'Shopify', notFoundLinks: 48,
+    lostListings: [
+      { productId: 'p1', title: 'Kışlık Yonca Çiçek Desen', healthStatus: 'NOT_FOUND', variants: 24, skus: Array.from({ length: 24 }, (_, i) => `MZ050YNC-${String(i + 1).padStart(2, '0')}`), since: '2026-11-03T00:14:48Z' },
+      { productId: 'p2', title: 'Kışlık Yonca Yaka Etek', healthStatus: 'NOT_FOUND', variants: 24, skus: ['MZ036YNC-01', 'MZ036YNC-24'], since: '2026-11-03T00:14:48Z' }
+    ]
+  })
+
+  it('names the lost listings by product and stock codes and says no send is involved while writes are off', () => {
+    const lines = lostListingLines(shopifyLost)
+    expect(lines[0]).toBe('Pazaryerinde bulunamayan ilan: 48 varyant bulunamadı (2 ürün).')
+    expect(lines.join('\n')).toContain('Bu bir gönderim hatası değil')
+    expect(lines).toContain('Otomatik fiyat-stok gönderimi kapalı; bu ilanlara bir şey gönderilmiyor.')
+    expect(lines).toContain('• Kışlık Yonca Çiçek Desen · 24 varyant bulunamadı (MZ050YNC-01 … MZ050YNC-24) · 03.11.2026 tarihinden beri')
+    expect(lines).toContain('• Kışlık Yonca Yaka Etek · 24 varyant bulunamadı (MZ036YNC-01, MZ036YNC-24) · 03.11.2026 tarihinden beri')
+    expect(lostListingLines(connection())).toEqual([])
+    expect(lostListingLines({ ...shopifyLost, automaticWritesOpen: true }).join('\n')).not.toContain('bu ilanlara bir şey gönderilmiyor')
+  })
+
+  it('tells lost listings apart from price/stock send problems in the notice above the table', () => {
+    expect(priceStockMonitorNotice(undefined)).toBeNull()
+    expect(priceStockMonitorNotice([connection()])).toBeNull()
+    const lostOnly = priceStockMonitorNotice([shopifyLost, connection()])!
+    expect(lostOnly).not.toContain('fiyat/stok gönderimi')
+    expect(lostOnly).toBe('Shopify: 48 varyantın ilanı pazaryerinde bulunamıyor. Ayrıntı ve ürün listesi Sorun hücresinin ipucunda.')
+    expect(priceStockMonitorNotice([shopifyLost, connection({ connectionId: 'ty', failedPushes7d: 2 })]))
+      .toBe('1 bağlantıda sorunlu fiyat/stok gönderimi var. Shopify: 48 varyantın ilanı pazaryerinde bulunamıyor. Ayrıntı ve ürün listesi Sorun hücresinin ipucunda.')
   })
 
   it('keeps the order-source details in a tooltip sentence', () => {
