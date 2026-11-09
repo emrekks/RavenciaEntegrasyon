@@ -80,16 +80,17 @@ describe('DashboardPage', () => {
     await render()
     expect(Array.from(container.querySelectorAll('.rr-opcard small')).map(label => label.textContent)).toEqual([
       'Bekleyen Siparişler', 'Geciken Siparişler', 'Bekleyen İadeler', 'Faturalar',
-      'İptal · 1 Kısmi İptal', 'Düşük Stok',
+      'İptal', 'Düşük Stok',
     ])
   })
 
-  it("counts today's whole cancellations, shows partial ones beside the label, and lists unknown times apart", async () => {
+  it("counts today's whole cancellations, shows partial ones beside the number, and lists unknown times apart", async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-11-01T09:00:00Z'))
     try { await render() } finally { vi.useRealTimers() }
     const cancel = Array.from(container.querySelectorAll<HTMLAnchorElement>('a.rr-opcard')).find(item => item.querySelector('small')?.textContent?.startsWith('İptal'))!
-    expect(cancel.querySelector('strong')?.textContent).toBe('2')
+    expect(cancel.querySelector('strong')?.firstChild?.textContent).toBe('2')
+    expect(cancel.querySelector('.rr-op-partial')?.textContent).toBe('1 Kısmi İptal')
     expect(cancel.getAttribute('href')).toBe('/orders?status=CANCELLED&cancelFrom=2026-11-01&cancelTo=2026-11-01')
     expect(Array.from(cancel.querySelectorAll('.rr-bd-r')).map(row => row.textContent)).toEqual(['Trendyol2 sipariş · 1 kısmi', 'Hepsiburada · Zamanı Bilinmiyor1 sipariş'])
   })
