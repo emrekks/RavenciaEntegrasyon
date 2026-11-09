@@ -3190,21 +3190,29 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var sourceVersion = await db.PlatformCapabilities.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == MarketplaceCapabilities.ReferenceRead).Select(x => x.SourceVersion).SingleOrDefaultAsync(cancellationToken)
             ?? await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.ApiVersion).SingleAsync(cancellationToken);
         var now = timeProvider.GetUtcNow();
-        var staging = new ReferenceSnapshot
+        // While the read agrees with the current snapshot nothing is written (MarketplaceJobProcessor.BrandReferences).
+        var stored = await LoadStoredBrandListAsync(tenantId, connectionId, cancellationToken);
+        ReferenceSnapshot? staging = null;
+        async Task OpenStagingAsync(int agreeingRows)
         {
-            Id = Guid.CreateVersion7(),
-            TenantId = tenantId,
-            ConnectionId = connectionId,
-            ResourceType = "BRANDS",
-            SourceVersion = sourceVersion,
-            ContentHash = $"PENDING-{Guid.CreateVersion7():N}",
-            FetchedAt = now,
-            IsCurrent = false,
-            ItemCount = 0
-        };
-        db.ReferenceSnapshots.Add(staging);
-        await db.SaveChangesAsync(cancellationToken);
-        db.ChangeTracker.Clear();
+            staging = new ReferenceSnapshot
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenantId,
+                ConnectionId = connectionId,
+                ResourceType = "BRANDS",
+                SourceVersion = sourceVersion,
+                ContentHash = $"PENDING-{Guid.CreateVersion7():N}",
+                FetchedAt = now,
+                IsCurrent = false,
+                ItemCount = 0
+            };
+            db.ReferenceSnapshots.Add(staging);
+            await db.SaveChangesAsync(cancellationToken);
+            db.ChangeTracker.Clear();
+            if (stored is not null) await CopyStoredBrandRowsAsync(tenantId, stored.SnapshotId, staging.Id, agreeingRows, cancellationToken);
+        }
+        if (stored is null) await OpenStagingAsync(0);
 
         var seen = new HashSet<string>(StringComparer.Ordinal);
         string? cursor = null;
@@ -3227,7 +3235,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                         throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_CONTRACT_INVALID", "Marka referans yanıtı zorunlu kimlik, ad veya kapsam sözleşmesini sağlamıyor."));
                     if (seen.Add(item.ExternalId)) uniquePageItems.Add(item);
                 }
-                for (var index = 0; index < uniquePageItems.Count; index++)
+                if (staging is null && stored is not null)
+                    for (var index = 0; index < uniquePageItems.Count; index++)
+                        if (!SameBrandRow(stored, itemCount + index, uniquePageItems[index]))
+                        {
+                            await OpenStagingAsync(itemCount);
+                            break;
+                        }
+                for (var index = 0; staging is not null && index < uniquePageItems.Count; index++)
                 {
                     var item = uniquePageItems[index];
                     db.ReferenceItems.Add(new ReferenceItem
@@ -3253,8 +3268,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     });
                 }
                 itemCount += uniquePageItems.Count;
-                await db.SaveChangesAsync(cancellationToken);
-                db.ChangeTracker.Clear();
+                if (staging is not null)
+                {
+                    await db.SaveChangesAsync(cancellationToken);
+                    db.ChangeTracker.Clear();
+                }
                 cursor = result.Value.NextCursor;
                 if (!result.Value.HasMore) break;
                 if (string.IsNullOrWhiteSpace(cursor)) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_CURSOR_INVALID", "Marka referans sayfalama imleci eksik döndü."));
@@ -3262,22 +3280,26 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
             cancellationToken.ThrowIfCancellationRequested();
             if (itemCount == 0) throw new JobProcessingException(JobExecutionResult.Blocked("REFERENCE_EMPTY_RESPONSE", "Trendyol BRANDS salt-okunur çağrısı boş koleksiyon döndürdü; mevcut snapshot korunuyor."));
-            var contentHash = await HashReferenceItemsAsync(tenantId, staging.Id, cancellationToken);
+            // Fewer items than the current snapshot holds: the list changed after all.
+            if (staging is null && itemCount != stored!.Digests.Length) await OpenStagingAsync(itemCount);
+            // Every item agreed with the current snapshot: its hash is the read's hash.
+            var contentHash = staging is null ? stored!.ContentHash : await HashReferenceItemsAsync(tenantId, staging.Id, cancellationToken);
+            var stagingId = staging?.Id;
             // Reference refresh can be invoked while the caller already owns a transaction.
             // In that case, participate in it instead of trying to begin a nested transaction.
             await using var transaction = db.Database.CurrentTransaction is null
                 ? await db.Database.BeginTransactionAsync(cancellationToken)
                 : null;
             var snapshots = await db.ReferenceSnapshots.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "BRANDS" && x.ScopeExternalId == "").ToListAsync(cancellationToken);
-            var existing = snapshots.SingleOrDefault(x => x.Id != staging.Id && x.ContentHash == contentHash);
-            var current = existing ?? snapshots.Single(x => x.Id == staging.Id);
+            var existing = snapshots.SingleOrDefault(x => x.Id != stagingId && x.ContentHash == contentHash);
+            var current = existing ?? snapshots.Single(x => x.Id == stagingId);
             foreach (var snapshot in snapshots.Where(x => x.IsCurrent && x.Id != current.Id)) snapshot.IsCurrent = false;
             current.ContentHash = contentHash;
             current.SourceVersion = sourceVersion;
             current.FetchedAt = now;
             current.ItemCount = itemCount;
             current.IsCurrent = true;
-            if (existing is not null) db.ReferenceSnapshots.Remove(snapshots.Single(x => x.Id == staging.Id));
+            if (existing is not null && stagingId is not null) db.ReferenceSnapshots.Remove(snapshots.Single(x => x.Id == stagingId));
             await db.SaveChangesAsync(cancellationToken);
             await RevalidateMappingsForCurrentSnapshotAsync(tenantId, connectionId, "BRANDS", "", current, now, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
@@ -3287,9 +3309,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         catch
         {
             db.ChangeTracker.Clear();
+            if (staging is null) throw;
             try
             {
-                var orphan = await db.ReferenceSnapshots.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == staging.Id && !x.IsCurrent, CancellationToken.None);
+                var stagingId = staging.Id;
+                var orphan = await db.ReferenceSnapshots.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == stagingId && !x.IsCurrent, CancellationToken.None);
                 if (orphan is not null)
                 {
                     db.ReferenceSnapshots.Remove(orphan);
@@ -4447,6 +4471,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             ? saved[HepsiburadaLifecycleCursorPrefix.Length..]
             : null;
 
+    // The packages an order status scan follows: neither delivered, cancelled nor returned (the scans below and the
+    // scheduler's check that one is worth queueing, ScheduledJobProducer.OpenPackagesExistAsync).
+    internal static IQueryable<ShipmentPackage> OpenPackages(IQueryable<ShipmentPackage> packages, Guid tenantId, Guid connectionId) =>
+        packages.Where(package => package.TenantId == tenantId && package.ConnectionId == connectionId
+            && package.Status != ShipmentPackageStatus.Delivered && package.Status != ShipmentPackageStatus.Cancelled && package.Status != ShipmentPackageStatus.Returned);
+
     private async Task<bool> SyncOpenOrders(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
     {
         var platformCode = await db.PlatformConnections.AsNoTracking()
@@ -4532,7 +4562,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                                           on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
                                       where package.TenantId == tenantId && package.ConnectionId == connectionId && package.Status != ShipmentPackageStatus.Delivered && package.Status != ShipmentPackageStatus.Cancelled && package.Status != ShipmentPackageStatus.Returned
                                       group package by order.ExternalOrderId into openOrder
-                                      orderby openOrder.Min(x => x.UpdatedAt)
+                                      // Least lately read first: an unchanged read moves only the invoice "last checked" time (SyncNoOpWrites).
+                                      orderby openOrder.Min(x => x.MarketplaceInvoiceObservedAt > x.UpdatedAt ? x.MarketplaceInvoiceObservedAt!.Value : x.UpdatedAt)
                                       select openOrder.Key)
                 .Take(lifecycleBatchSize)
                 .ToListAsync(cancellationToken);
@@ -5152,16 +5183,39 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // documented orderNumber read. The stream is ideal for discovery, but a
         // per-order read is the reliable repair path for already imported orders
         // when a stream cursor or stream request is temporarily unavailable.
-        var externalOrderIds = await db.Orders.AsNoTracking()
+        // The window is walked in order (OrderedAt, Id) from where the last run of the same window stopped, wrapping round.
+        // It used to take the orders with the oldest UpdatedAt, which only rotated because every read rewrote UpdatedAt;
+        // an unchanged order now keeps it (SyncNoOpWrites), so the oldest would have been read again on every run.
+        var cursor = await Cursor(tenantId, connectionId, $"ORDER_RECONCILE_{lookbackDays}D", cancellationToken);
+        var window = db.Orders.AsNoTracking()
             .Where(x => x.TenantId == tenantId
                 && x.ConnectionId == connectionId
                 && x.OrderedAt >= start
-                && x.OrderedAt <= end)
-            .OrderBy(x => x.UpdatedAt)
-            .ThenBy(x => x.OrderedAt)
-            .Select(x => x.ExternalOrderId)
+                && x.OrderedAt <= end);
+        var page = window;
+        if (OrderReconcilePosition(cursor.OpaqueCursor) is { } after)
+            page = page.Where(x => x.OrderedAt > after.OrderedAt || x.OrderedAt == after.OrderedAt && x.Id.CompareTo(after.Id) > 0);
+        var picked = await page.OrderBy(x => x.OrderedAt).ThenBy(x => x.Id)
+            .Select(x => new { x.ExternalOrderId, x.OrderedAt, x.Id })
             .Take(batchSize)
             .ToListAsync(cancellationToken);
+        if (picked.Count < batchSize && page != window)
+        {
+            var pickedIds = picked.Select(x => x.Id).ToHashSet();
+            picked.AddRange((await window.OrderBy(x => x.OrderedAt).ThenBy(x => x.Id)
+                    .Select(x => new { x.ExternalOrderId, x.OrderedAt, x.Id })
+                    .Take(batchSize - picked.Count)
+                    .ToListAsync(cancellationToken))
+                .Where(x => !pickedIds.Contains(x.Id)));
+        }
+        var externalOrderIds = picked.Select(x => x.ExternalOrderId).ToList();
+        var nextPosition = picked.Count == 0 ? null : OrderReconcilePosition(picked[^1].OrderedAt, picked[^1].Id);
+        if (cursor.OpaqueCursor != nextPosition)
+        {
+            cursor.OpaqueCursor = nextPosition;
+            cursor.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+        }
 
         foreach (var externalOrderId in externalOrderIds)
         {
@@ -5182,6 +5236,19 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
 
         return true;
+    }
+
+    // The last order a reconcile run of a window read: "<OrderedAt UTC ticks>|<order id>" (ticks keep PostgreSQL's microseconds).
+    internal static string OrderReconcilePosition(DateTimeOffset orderedAt, Guid id) =>
+        $"{orderedAt.UtcTicks.ToString(CultureInfo.InvariantCulture)}|{id:D}";
+
+    internal static (DateTimeOffset OrderedAt, Guid Id)? OrderReconcilePosition(string? saved)
+    {
+        var parts = saved?.Split('|');
+        return parts is { Length: 2 } && long.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out var ticks)
+            && ticks >= DateTimeOffset.MinValue.UtcTicks && ticks <= DateTimeOffset.MaxValue.UtcTicks && Guid.TryParse(parts[1], out var id)
+            ? (new DateTimeOffset(ticks, TimeSpan.Zero), id)
+            : null;
     }
 
     // Unfinished: a Trendyol run stopped at its slice budget with orders left; it continues shortly.
@@ -5703,6 +5770,20 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         foreach (var entry in packages)
         {
             var package = entry.Entity;
+            // A check that found the invoice as it was stores only its "last checked" time: no new UpdatedAt, no event.
+            var realChanges = SyncNoOpWrites.RealChanges(entry);
+            if (entry.State == EntityState.Unchanged) continue;
+            var checkOnly = realChanges.All(name => SyncNoOpWrites.IsBookkeeping(typeof(ShipmentPackage), name));
+            if (checkOnly)
+            {
+                package.UpdatedAt = entry.Property(x => x.UpdatedAt).OriginalValue;
+                if (!realChanges.Contains(nameof(ShipmentPackage.MarketplaceInvoiceObservedAt)))
+                {
+                    package.Version = entry.Property(x => x.Version).OriginalValue;
+                    entry.State = EntityState.Unchanged;
+                    continue;
+                }
+            }
             var readNumber = entry.Property(x => x.MarketplaceInvoiceNumber).OriginalValue;
             var readUrl = entry.Property(x => x.MarketplaceInvoiceUrl).OriginalValue;
             var readStatus = entry.Property(x => x.MarketplaceInvoiceStatus).OriginalValue;
@@ -5729,11 +5810,19 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             entry.OriginalValues.SetValues(entry.CurrentValues);
             entry.State = EntityState.Unchanged;
             written.Add(entry);
-            AddOrderDataChangeEvent(package.TenantId, "ShipmentPackage", package.Id, package.Version, now);
+            if (!checkOnly) AddOrderDataChangeEvent(package.TenantId, "ShipmentPackage", package.Id, package.Version, now);
         }
         foreach (var entry in orderEntries)
         {
             var order = entry.Entity;
+            // The same snapshots read again (equal JSON, same change time) are not written.
+            if (SyncNoOpWrites.RealChanges(entry).All(name => SyncNoOpWrites.IsBookkeeping(typeof(Order), name)))
+            {
+                order.UpdatedAt = entry.Property(x => x.UpdatedAt).OriginalValue;
+                order.Version = entry.Property(x => x.Version).OriginalValue;
+                entry.State = EntityState.Unchanged;
+                continue;
+            }
             var storeFrontCode = order.StoreFrontCode;
             // Written outside the change tracker, so the buyer kind (OrderBuyerTypes) is set here from the new snapshots.
             order.BuyerType = OrderBuyerTypes.Resolve(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson);
@@ -8004,7 +8093,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     .Where(x => x.TenantId == tenantId && x.ProductId == product.Id
                         && (skuKeys.Contains(x.SkuNormalized)
                             || (x.BarcodeNormalized != null && barcodeKeys.Contains(x.BarcodeNormalized))))
-                    .Take(2)
+                    .OrderBy(x => x.Id).Take(2)
                     .ToListAsync(cancellationToken);
                 if (candidates.Count == 1) variant = candidates[0];
             }
@@ -8095,7 +8184,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                         .Where(x => x.TenantId == tenantId && skuCodes.Contains(x.SkuNormalized))
                         .Select(x => x.ProductId)
                         .Distinct()
-                        .Take(2)
+                        .OrderBy(id => id).Take(2)
                         .ToListAsync(cancellationToken);
                 if (identityProductIds.Count == 0 && identityCodes.Count > 0)
                     identityProductIds = await db.ProductVariants.AsNoTracking()
@@ -8104,7 +8193,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                             && identityCodes.Contains(x.BarcodeNormalized))
                         .Select(x => x.ProductId)
                         .Distinct()
-                        .Take(2)
+                        .OrderBy(id => id).Take(2)
                         .ToListAsync(cancellationToken);
                 if (identityProductIds.Count > 1)
                 {
@@ -8144,7 +8233,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 var stockCodes = CatalogKeyNormalizer.LookupKeys(snapshot.Variants.Select(variant => variant.Sku)).ToHashSet(StringComparer.Ordinal);
                 var modelCodes = snapshot.Variants.Select(variant => variant.ModelCode?.Trim()).Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!).Distinct(StringComparer.Ordinal).ToArray();
                 var matchedProductIds = stockCodes.Count == 0 ? [] : await db.ProductVariants.AsNoTracking()
-                    .Where(x => x.TenantId == tenantId && stockCodes.Contains(x.SkuNormalized)).Select(x => x.ProductId).Distinct().Take(2).ToListAsync(cancellationToken);
+                    .Where(x => x.TenantId == tenantId && stockCodes.Contains(x.SkuNormalized)).Select(x => x.ProductId).Distinct().OrderBy(id => id).Take(2).ToListAsync(cancellationToken);
                 // A model code names every colour and size of the model: the product is the one whose variants carry the
                 // listing's colours and sizes, never the only card that happens to hold the model code (Y5).
                 var modelCodeUndecided = false;
@@ -8457,14 +8546,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                                                                on new { variantLink.TenantId, variantLink.VariantId }
                                                                equals new { variant.TenantId, VariantId = variant.Id }
                                                            where variantLink.TenantId == tenantId && variantLink.ConnectionId == connectionId && externalIds.Contains(variantLink.ExternalId)
-                                                           select variant.ProductId).Distinct().Take(2).ToListAsync(cancellationToken);
+                                                           select variant.ProductId).Distinct().OrderBy(id => id).Take(2).ToListAsync(cancellationToken);
         if (owners.Count > 0) return owners;
         var skuKeys = snapshot.Variants.SelectMany(variant => CatalogLookupKeys(string.IsNullOrWhiteSpace(variant.Sku) ? variant.Barcode ?? variant.ExternalVariantId : variant.Sku)).Where(key => key.Length > 0).Distinct(StringComparer.Ordinal).ToArray();
         if (skuKeys.Length > 0)
-            owners = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && skuKeys.Contains(x.SkuNormalized)).Select(x => x.ProductId).Distinct().Take(2).ToListAsync(cancellationToken);
+            owners = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && skuKeys.Contains(x.SkuNormalized)).Select(x => x.ProductId).Distinct().OrderBy(id => id).Take(2).ToListAsync(cancellationToken);
         if (owners.Count > 0) return owners;
         var barcodeKeys = snapshot.Variants.SelectMany(variant => CatalogLookupKeys(variant.Barcode)).Where(key => key.Length > 0).Distinct(StringComparer.Ordinal).ToArray();
-        return barcodeKeys.Length == 0 ? [] : await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.BarcodeNormalized != null && barcodeKeys.Contains(x.BarcodeNormalized)).Select(x => x.ProductId).Distinct().Take(2).ToListAsync(cancellationToken);
+        return barcodeKeys.Length == 0 ? [] : await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.BarcodeNormalized != null && barcodeKeys.Contains(x.BarcodeNormalized)).Select(x => x.ProductId).Distinct().OrderBy(id => id).Take(2).ToListAsync(cancellationToken);
     }
 
     private async Task RepairHepsiburadaVariantLinks(Guid tenantId, Guid connectionId, Product product, RemoteCatalogProduct snapshot, CancellationToken cancellationToken)
@@ -8679,7 +8768,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                               join brand in db.Brands.AsNoTracking() on new { mapping.TenantId, Id = mapping.LocalId } equals new { brand.TenantId, brand.Id }
                               where mapping.TenantId == tenantId && mapping.ConnectionId == connectionId && mapping.ScopeExternalId == ""
                                   && mapping.ExternalId == externalId && mapping.Status == "VERIFIED" && brand.IsActive
-                              select mapping.LocalId).Distinct().Take(2).ToListAsync(cancellationToken);
+                              select mapping.LocalId).Distinct().OrderBy(id => id).Take(2).ToListAsync(cancellationToken);
         if (localIds.Count == 0)
             await RecordIssue(tenantId, ImportedBrandRule.IssueKey(connectionId, externalId), ImportedBrandRule.IssueCode, Short(ImportedBrandRule.IssueSummary(platformName, externalId, snapshot.BrandName), 1000), cancellationToken);
         return ImportedBrandRule.Resolve(localIds);
@@ -10499,6 +10588,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
         else
             batch.ReservationSources.AddRange(lines.Values.Select(line => (line, remote.LastModifiedAt)));
+        // The same order read again (overlap window, status scan) rewrites nothing and sends no event (SyncNoOpWrites).
+        SyncNoOpWrites.DropUnchangedOrder(db, order, existingLines.Concat(lines.Values), orderPackages);
         if (saveChanges) await db.SaveChangesAsync(cancellationToken);
         return true;
     }

@@ -58,7 +58,7 @@ public sealed partial class MarketplaceJobProcessor
                                on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
                            where package.TenantId == tenantId && package.ConnectionId == connectionId && order.OrderedAt < floor && package.Status != ShipmentPackageStatus.Delivered && package.Status != ShipmentPackageStatus.Cancelled && package.Status != ShipmentPackageStatus.Returned
                            group package by order.ExternalOrderId into openOrder
-                           orderby openOrder.Min(x => x.UpdatedAt)
+                           orderby openOrder.Min(x => x.MarketplaceInvoiceObservedAt > x.UpdatedAt ? x.MarketplaceInvoiceObservedAt!.Value : x.UpdatedAt)
                            select openOrder.Key)
             .Take(batchSize)
             .ToListAsync(cancellationToken);
