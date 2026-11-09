@@ -58,6 +58,31 @@ public sealed class ListingVerificationPostgreSqlTests(PostgreSqlTenantIsolation
         Assert.NotNull(state.LastCompletedAt);
     }
 
+    // Live 9 Nov 2026: SLR007VCD's seven Trendyol-linked colour cards had no listing profile (only products a product sync
+    // read after 6 Nov had one), so "Platformlarda Güncelle" refused them with "yayın kaydı yok". The nightly scan reads
+    // every listing, so a product it matched gets the imported profile a product sync gives: local rows only, UNKNOWN.
+    [PostgreSqlFact]
+    public async Task A_verification_run_gives_the_products_it_saw_their_imported_listing_profile()
+    {
+        var seed = await Seed("TRENDYOL");
+        var port = new ScriptedProductPort { Catalog = [Remote("Ürün", "869100000001")] };
+
+        Assert.True((await Verify(seed, port)).Succeeded);
+
+        await using var db = fixture.CreateContext();
+        var profile = await db.ChannelListingProfiles.AsNoTracking().SingleAsync(x => x.ConnectionId == seed.Connection.Id && x.ProductId == seed.Seen.ProductId);
+        Assert.Equal((ChannelListingProfileSource.MarketplaceImport, "UNKNOWN", true), (profile.Source, profile.ActualStatus, profile.Enabled));
+        Assert.Null(profile.ExternalCategoryId);
+        var listing = await db.ChannelListingVariants.AsNoTracking().SingleAsync(x => x.ProfileId == profile.Id);
+        Assert.Equal((seed.Seen.Id, "869100000001", "UNKNOWN"), (listing.VariantId, listing.ExternalBarcode, listing.ActualStatus));
+        Assert.Equal("UNKNOWN", (await db.MarketplaceListingStates.AsNoTracking().SingleAsync(x => x.ConnectionId == seed.Connection.Id && x.VariantId == seed.Seen.Id)).ActualStatus);
+        // A product the scan did not list gets nothing.
+        Assert.False(await db.ChannelListingProfiles.AnyAsync(x => x.ConnectionId == seed.Connection.Id && x.ProductId == seed.Missed.ProductId));
+        // The run still completes and records its state.
+        var state = ListingVerificationState.Parse(await db.SyncCursors.AsNoTracking().Where(x => x.ConnectionId == seed.Connection.Id && x.ResourceType == ListingVerificationPolicy.StateCursorResource).Select(x => x.OpaqueCursor).SingleAsync());
+        Assert.Equal(1, state.CompletedRuns);
+    }
+
     // T2-D30: the scan records what the marketplace says about the sale of each code it sees, beside the health; an
     // answer that does not say leaves it unknown, and the publication state is never touched.
     [PostgreSqlFact]

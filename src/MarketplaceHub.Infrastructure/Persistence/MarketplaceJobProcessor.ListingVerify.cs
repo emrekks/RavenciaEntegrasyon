@@ -71,6 +71,16 @@ public sealed partial class MarketplaceJobProcessor
             // An observing run records only when a code was seen; it heals nothing.
             await MarkVariantLinksSeen(tenantId, connectionId, page.Items, cancellationToken, heal: !observe);
             if (connection.PlatformCode == "PTTAVM") await MarkPttAvmModelLinksSeen(tenantId, connectionId, page.Items, heal: !observe, cancellationToken);
+            // The scan reads every listing, so the products it matched get their listing profile as a product sync gives
+            // it (ImportedListingProfiles: local rows only, states UNKNOWN). Without this only the products a sync happened
+            // to read since 6 Nov 2026 had one, and the update refused every other linked card (live 9 Nov 2026: 914 of
+            // 936 Trendyol-linked products, SLR007VCD among them).
+            if (ImportedListingProfiles.Supported(connection.PlatformCode))
+            {
+                await CompleteImportedListingProfiles(tenantId, connectionId, page.Items, cancellationToken);
+                // A failed completion clears the change tracker; the run's state row is read again so it is still saved.
+                if (db.Entry(cursor).State == EntityState.Detached) cursor = await Cursor(tenantId, connectionId, ListingVerificationPolicy.StateCursorResource, cancellationToken);
+            }
             state = state with { Next = page.HasMore ? page.NextCursor : null, Pages = state.Pages + 1, Received = state.Received + page.Items.Count };
             await SaveListingVerifyState(cursor, state, cancellationToken);
             slicePages++;
