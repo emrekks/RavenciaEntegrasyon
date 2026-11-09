@@ -29,6 +29,15 @@ export type PayoutLine = { externalId: string; connectionId: string; platformCod
   net: number; status: PayoutStatus; paymentOrderId: string | null; barcode: string | null }
 export type PayoutLines = { items: PayoutLine[]; totalCount: number; page: number; pageSize: number; net: number }
 
+// The next payout the "Sıradaki Ödeme" card shows: the server's own figure, overall or for the picked Trendyol region
+// (PayoutBuilder: the first day to come whose estimate is above zero; a day netting to nothing or less pays nothing).
+export function nextPayout(data: Pick<Payouts, 'next' | 'regions'> | undefined, region: PayoutRegion | 'ALL'): { day: string | null; amount: number | null } {
+  if (!data) return { day: null, amount: null }
+  if (region === 'ALL') return { day: data.next?.day ?? null, amount: data.next?.amount ?? null }
+  const picked = data.regions.find(item => item.region === region)
+  return { day: picked?.nextDay ?? null, amount: picked?.nextDay ? picked.nextAmount : null }
+}
+
 export const regionLabels: Record<PayoutRegion, string> = { TR_GULF: 'Türkiye, Körfez', EUROPE: 'Avrupa', AZ: 'Azerbaycan', UNKNOWN: 'Bilinmeyen Bölge', NONE: '' }
 export const statusLabels: Record<PayoutStatus, string> = { PAID: 'Ödendi', EXPECTED: 'Tahmini', UNKNOWN: 'Vadesi Geçti' }
 

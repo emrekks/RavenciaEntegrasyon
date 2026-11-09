@@ -17,7 +17,7 @@ import { AdReportModal, adReportQuery, adReportRow, combined, reportAge, roasTex
 import { OrderProfitability } from './OrderProfitability'
 import { SalesMap } from './SalesMap'
 import { transactionLabel } from './transaction-labels'
-import { byDay, emptyPayoutFilters, estimateNote, filterGroups, isRolledToPayoutDay, isWaitingPayout, rolledPayoutNote, payoutRuleText, payoutGap, payoutLinesQuery, payoutState, payoutStateLabels, payoutsQuery, regionLabel, regionLabels, shortDay, statusLabels, type PayoutFilters, type PayoutGroup, type PayoutLines, type PayoutRegion, type PayoutSort, type PayoutState, type Payouts } from './payouts'
+import { byDay, emptyPayoutFilters, estimateNote, filterGroups, isRolledToPayoutDay, isWaitingPayout, nextPayout, rolledPayoutNote, payoutRuleText, payoutGap, payoutLinesQuery, payoutState, payoutStateLabels, payoutsQuery, regionLabel, regionLabels, shortDay, statusLabels, type PayoutFilters, type PayoutGroup, type PayoutLines, type PayoutRegion, type PayoutSort, type PayoutState, type Payouts } from './payouts'
 import { readUrlChoice, readUrlList, readUrlText, useListUrlSync } from '../../shared/list-url-state'
 import { RrAnchor, RrFilterCard, RrIcon } from '../marketplace/returns-ui'
 import { RETURN_NO_PLATFORM, ReturnColumnPop, ReturnPlatformPop } from '../marketplace/shared'
@@ -2352,9 +2352,8 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
   const past = none ? [] : (data?.past ?? []).filter(group => region === 'ALL' || group.region === region)
   // The figures for the chosen region come from the server's region totals and groups, so they stay exact.
   const picked = region === 'ALL' ? null : regions.find(item => item.region === region) ?? null
-  const nextGroups = upcoming.filter(group => !isWaitingPayout(group))
-  const nextDay = region === 'ALL' ? data?.next?.day ?? null : nextGroups[0]?.day ?? null
-  const nextAmount = region === 'ALL' ? data?.next?.amount ?? null : nextDay ? nextGroups.filter(group => group.day === nextDay).reduce((sum, group) => sum + group.amount, 0) : null
+  // The server's next payout, overall or the picked region's: a first day that nets to nothing or less is skipped there.
+  const { day: nextDay, amount: nextAmount } = none ? { day: null, amount: null } : nextPayout(data, region)
   const lastPaid = region === 'ALL' ? data?.lastPaid ?? null : past[0] ?? null
   const balance = none ? 0 : picked ? picked.expected : data?.expected ?? 0
   const overdue = none ? 0 : picked ? picked.unknown : data?.unknown ?? 0
