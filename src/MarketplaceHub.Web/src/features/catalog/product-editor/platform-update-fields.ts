@@ -210,7 +210,8 @@ export const priceStockPlatformUpdateFields: PlatformUpdateField[] = ['PRICE', '
 
 export type PlatformUpdatePreferences = { fields: PlatformUpdateField[]; openGroups: PlatformUpdateGroupKey[] }
 const platformUpdateGroupKeys = platformUpdateGroups.map(group => group.key)
-export const defaultPlatformUpdatePreferences: PlatformUpdatePreferences = { fields: defaultPlatformUpdateFields, openGroups: platformUpdateGroupKeys }
+// With nothing saved yet, the window starts at what Hızlı Güncelle sends then: price and stock.
+export const defaultPlatformUpdatePreferences: PlatformUpdatePreferences = { fields: priceStockPlatformUpdateFields, openGroups: platformUpdateGroupKeys }
 
 // Remembered in this browser ("nasıl bırakılırsa öyle kalsın"): the panel has no per-user preference store yet.
 export const platformUpdatePreferencesKey = 'ravencia.platformUpdate.preferences.v1'
@@ -269,6 +270,19 @@ export function writePlatformUpdateStores(selected: string[], storage: Pick<Stor
   } catch {
     // A private window or blocked storage: the pick still holds for this page.
   }
+}
+
+// Owner, 9 Nov 2026: Hızlı Güncelle sends at once, with no window, what the settings window (the button on its right)
+// last saved: those fields to those stores. With no saved fields it sends price and stock; with no saved stores, the
+// stores picked for the product. Only updateable stores go.
+export type QuickPlatformUpdateChoice = { connectionIds: string[]; fields: PlatformUpdateField[] }
+
+export function readQuickPlatformUpdateChoice(updateableIds: string[], fallbackStoreIds: string[], storage: Pick<Storage, 'getItem'> | undefined = safeLocalStorage()): QuickPlatformUpdateChoice {
+  const saved = (key: string) => { try { return Boolean(storage?.getItem(key)) } catch { return false } }
+  const fields = saved(platformUpdatePreferencesKey) ? readPlatformUpdatePreferences(storage).fields : priceStockPlatformUpdateFields
+  const fallback = [...new Set(fallbackStoreIds)].filter(id => updateableIds.includes(id))
+  const connectionIds = saved(platformUpdateStoresKey) ? readPlatformUpdateStores(updateableIds, fallback, storage) : fallback
+  return { connectionIds, fields }
 }
 
 function safeLocalStorage(): Storage | undefined {

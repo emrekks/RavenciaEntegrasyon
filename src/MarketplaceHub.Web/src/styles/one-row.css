@@ -61,3 +61,10 @@
 }
 
 /* Segment controls (3 px inset, 28 px options, 9 px radius): see segments.css. */
+
+/* Sidebar above page content (owner, 9 Nov 2026): while the hover-expanded sidebar closes, the pointer lands on a
+   summary card, whose row lifts itself to z-index 90 for its tooltip, and the closing sidebar slid under it. The sidebar
+   now sits at 95: above page rows, tabs and tooltips (≤ 90), below windows (1000) and toasts. */
+@media (min-width: 761px) {
+  :root:root body .app-shell.stitch-shell > aside { z-index: calc(var(--rv-z-tooltip) + 5); }
+}

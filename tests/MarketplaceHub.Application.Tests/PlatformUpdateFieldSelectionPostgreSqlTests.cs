@@ -102,6 +102,53 @@ public sealed class PlatformUpdateFieldSelectionPostgreSqlTests(PostgreSqlTenant
         Assert.Equal("PRICE_INVENTORY_FIELDS_REQUIRED", (await service.EnqueueProductPriceInventorySyncAsync(tenant.Id, product.Id, connection.Id, $"k-{Guid.NewGuid():N}", "test", CancellationToken.None, price: false, stock: false)).Error?.Code);
     }
 
+    // Owner, 9 Nov 2026: with the automatic price/stock switch off (PRICE_WRITE, STOCK_WRITE false, the live state) a
+    // send started on the product is still queued, as a manual job, while the automatic gate stays closed.
+    [PostgreSqlFact]
+    public async Task ManualProductSend_PassesWithOnlyTheAutomaticSwitchOff_AndTheAutomaticGateStaysClosed()
+    {
+        var (tenant, connection, product, _) = await SeedTrendyolOfferAsync("manual-send");
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.ConnectionSyncPolicies.Add(new ConnectionSyncPolicy { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ResourceType = MarketplaceExternalWritePolicies.Price, IntervalSeconds = 0, Enabled = false, Version = 1 });
+            seed.ConnectionSyncPolicies.Add(new ConnectionSyncPolicy { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ResourceType = MarketplaceExternalWritePolicies.Stock, IntervalSeconds = 0, Enabled = false, Version = 1 });
+            await seed.SaveChangesAsync();
+        }
+        await using var db = fixture.CreateContext();
+        var send = await Service(db, globalWrites: true).EnqueueProductPriceInventorySyncAsync(tenant.Id, product.Id, connection.Id, $"k-{Guid.NewGuid():N}", "test", CancellationToken.None);
+        Assert.True(send.Succeeded, send.Error?.Message);
+        var job = await db.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == send.Value);
+        var payload = JsonSerializer.Deserialize<PriceInventoryJobPayload>(job.PayloadJson)!;
+        Assert.True(payload.Manual);
+        Assert.False(payload.Automatic);
+        Assert.Empty(PriceInventoryOutboxPolicy.RequiredWritePolicies(payload.Manual, connection.PlatformCode));
+        Assert.False(await AutomaticPriceStockWrites.IsOpenAsync(db, tenant.Id, connection.Id, CancellationToken.None));
+    }
+
+    [PostgreSqlFact]
+    public async Task ManualProductSend_IsBlockedByTheGeneralGate_WithTheSwitchNamed()
+    {
+        var (tenant, connection, product, _) = await SeedTrendyolOfferAsync("gate-closed");
+        await using (var db = fixture.CreateContext())
+        {
+            var globalOff = await Service(db, globalWrites: false).EnqueueProductPriceInventorySyncAsync(tenant.Id, product.Id, connection.Id, $"k-{Guid.NewGuid():N}", "test", CancellationToken.None);
+            Assert.Equal("EXTERNAL_WRITES_DISABLED", globalOff.Error?.Code);
+            Assert.Contains("genel dış yazma anahtarı", globalOff.Error!.Message);
+            await db.PlatformConnections.Where(x => x.Id == connection.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.SettingsJson, "{\"ExternalWritesEnabled\":false}"));
+        }
+        await using (var db = fixture.CreateContext())
+        {
+            var connectionOff = await Service(db, globalWrites: true).EnqueueProductPriceInventorySyncAsync(tenant.Id, product.Id, connection.Id, $"k-{Guid.NewGuid():N}", "test", CancellationToken.None);
+            Assert.Equal("EXTERNAL_WRITES_DISABLED", connectionOff.Error?.Code);
+            Assert.Contains("Dış Yazma Ana Anahtarı kapalı", connectionOff.Error!.Message);
+            Assert.False(await db.IntegrationJobs.AnyAsync(x => x.TenantId == tenant.Id));
+        }
+    }
+
+    private InventoryService Service(AppDbContext db, bool globalWrites) =>
+        new(db, new CursorCodec(new EphemeralDataProtectionProvider(), TimeProvider.System), fixture.TimeProvider,
+            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["FeatureFlags:ExternalWrites"] = globalWrites ? "true" : "false" }).Build());
+
     [PostgreSqlFact]
     public async Task WarrantyAlone_SendsNothingToTrendyol_NotTheWholeCard()
     {

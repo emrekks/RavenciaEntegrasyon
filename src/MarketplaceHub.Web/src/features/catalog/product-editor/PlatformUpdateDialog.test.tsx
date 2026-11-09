@@ -24,12 +24,12 @@ const target = (id: string, platformCode: string, writable = true): PlatformUpda
 
 const allGroups: PlatformUpdateGroupKey[] = ['product', 'shipping', 'sales']
 
-function render(selectedIds: string[], fields: PlatformUpdateField[], openGroups: PlatformUpdateGroupKey[] = allGroups, onFieldsChange = vi.fn(), onOpenGroupsChange = vi.fn(), onSelectedIdsChange = vi.fn(), onConfirm = vi.fn()) {
+function render(selectedIds: string[], fields: PlatformUpdateField[], openGroups: PlatformUpdateGroupKey[] = allGroups, onFieldsChange = vi.fn(), onOpenGroupsChange = vi.fn(), onSelectedIdsChange = vi.fn(), onSave = vi.fn()) {
   host = document.createElement('div')
   document.body.append(host)
   root = createRoot(host)
-  act(() => root?.render(<PlatformUpdateDialog targets={[target('ty', 'TRENDYOL'), target('hb', 'HEPSIBURADA'), target('sh', 'SHOPIFY', false), target('pz', 'PAZARAMA')]} selectedIds={selectedIds} onSelectedIdsChange={onSelectedIdsChange} fields={fields} onFieldsChange={onFieldsChange} openGroups={openGroups} onOpenGroupsChange={onOpenGroupsChange} submitting={false} onClose={vi.fn()} onConfirm={onConfirm} />))
-  return { onFieldsChange, onOpenGroupsChange, onSelectedIdsChange, onConfirm }
+  act(() => root?.render(<PlatformUpdateDialog targets={[target('ty', 'TRENDYOL'), target('hb', 'HEPSIBURADA'), target('sh', 'SHOPIFY', false), target('pz', 'PAZARAMA')]} selectedIds={selectedIds} onSelectedIdsChange={onSelectedIdsChange} fields={fields} onFieldsChange={onFieldsChange} openGroups={openGroups} onOpenGroupsChange={onOpenGroupsChange} submitting={false} onClose={vi.fn()} onSave={onSave} />))
+  return { onFieldsChange, onOpenGroupsChange, onSelectedIdsChange, onSave }
 }
 
 const fieldLabels = () => [...document.querySelectorAll('.platform-update-field:not(.is-linked) > span')].map(node => node.textContent)
@@ -71,17 +71,17 @@ describe('PlatformUpdateDialog', () => {
   })
 
   it('counts and sends only the fields shown', () => {
-    const { onConfirm } = render(['ty'], ['TITLE', 'DELIVERY', 'PRICE', 'WARRANTY'])
+    const { onSave } = render(['ty'], ['TITLE', 'DELIVERY', 'PRICE', 'WARRANTY'])
     expect(groupCount(0)).toBe('1/4 seçili')
     act(() => root?.unmount()); root = undefined
-    const hepsiburada = render(['hb'], ['TITLE', 'DELIVERY', 'PRICE'], allGroups, vi.fn(), vi.fn(), vi.fn(), onConfirm)
+    const hepsiburada = render(['hb'], ['TITLE', 'DELIVERY', 'PRICE'], allGroups, vi.fn(), vi.fn(), vi.fn(), onSave)
     expect(groupCount(0)).toBe('1/5 seçili')
-    act(() => [...document.querySelectorAll('button')].find(button => button.textContent === 'Güncelle')!.click())
-    expect(hepsiburada.onConfirm).toHaveBeenLastCalledWith(['TITLE', 'DELIVERY', 'PRICE'])
+    act(() => [...document.querySelectorAll('button')].find(button => button.textContent === 'Kaydet')!.click())
+    expect(hepsiburada.onSave).toHaveBeenLastCalledWith(['TITLE', 'DELIVERY', 'PRICE'])
     act(() => root?.unmount()); root = undefined
     const pazarama = render(['pz'], ['TITLE', 'DELIVERY', 'PRICE', 'VAT_RATE'])
-    act(() => [...document.querySelectorAll('button')].find(button => button.textContent === 'Güncelle')!.click())
-    expect(pazarama.onConfirm).toHaveBeenLastCalledWith(['PRICE', 'VAT_RATE'])
+    act(() => [...document.querySelectorAll('button')].find(button => button.textContent === 'Kaydet')!.click())
+    expect(pazarama.onSave).toHaveBeenLastCalledWith(['PRICE', 'VAT_RATE'])
   })
 
   it('ticks a field a newly selected store adds, and drops one no selected store takes any more', () => {
@@ -115,13 +115,13 @@ describe('PlatformUpdateDialog', () => {
   })
 
   it('sends only the picked desi or VAT rate to Trendyol, with no stock code or origin riding along', () => {
-    const { onConfirm } = render(['ty'], ['VAT_RATE'])
+    const { onSave } = render(['ty'], ['VAT_RATE'])
     expect(chipsOf('TRENDYOL Mağaza')).toEqual(['KDV Oranı'])
     expect(extraChipsOf('TRENDYOL Mağaza')).toEqual([])
     expect(sendsOf('TRENDYOL Mağaza')).not.toContain('Menşei')
     expect(sendsOf('TRENDYOL Mağaza')).not.toContain('Stok Kodu')
-    act(() => [...document.querySelectorAll('button')].find(button => button.textContent === 'Güncelle')!.click())
-    expect(onConfirm).toHaveBeenLastCalledWith(['VAT_RATE'])
+    act(() => [...document.querySelectorAll('button')].find(button => button.textContent === 'Kaydet')!.click())
+    expect(onSave).toHaveBeenLastCalledWith(['VAT_RATE'])
     act(() => root?.unmount()); root = undefined
     render(['ty'], ['DESI'])
     expect(chipsOf('TRENDYOL Mağaza')).toEqual(['Desi'])
@@ -134,9 +134,9 @@ describe('PlatformUpdateDialog', () => {
     expect(document.querySelector('.product-publish-popup-body .publish-selection-footer')).toBeNull()
   })
 
-  it('blocks Güncelle when nothing picked goes to the selected stores', () => {
+  it('blocks Kaydet when nothing picked goes to the selected stores', () => {
     render(['pz'], ['DELIVERY'])
-    const update = [...document.querySelectorAll('button')].find(button => button.textContent === 'Güncelle')!
+    const update = [...document.querySelectorAll('button')].find(button => button.textContent === 'Kaydet')!
     expect(update.disabled).toBe(true)
     expect(document.body.textContent).toContain('En az bir bilgi seçin')
   })
@@ -179,14 +179,14 @@ describe('PlatformUpdateDialog', () => {
     expect(onFieldsChange).toHaveBeenLastCalledWith(['TITLE'])
   })
 
-  it('greys out a bulk field pick that would change nothing, and blocks Güncelle with nothing picked', () => {
+  it('greys out a bulk field pick that would change nothing, and blocks Kaydet with nothing picked', () => {
     render(['pz'], ['PRICE', 'STOCK', 'VAT_RATE'])
     expect(bulk(0, 'Tümünü Seç').disabled).toBe(true)
     expect(bulk(0, 'Temizle').disabled).toBe(false)
     act(() => root?.unmount()); root = undefined
     render(['pz'], [])
     expect(bulk(0, 'Temizle').disabled).toBe(true)
-    expect([...document.querySelectorAll('button')].find(button => button.textContent === 'Güncelle')!.disabled).toBe(true)
+    expect([...document.querySelectorAll('button')].find(button => button.textContent === 'Kaydet')!.disabled).toBe(true)
   })
 
   it('picks every store that can be updated, or none, and ticks the fields they bring', () => {
@@ -210,11 +210,26 @@ describe('PlatformUpdateDialog', () => {
     document.body.append(host)
     root = createRoot(host)
     const familyReach = (connection: { platformCode: string }) => connection.platformCode === 'TRENDYOL' ? '7 rengin tamamı (21 varyant) güncellenir.' : '7 renkten 5 renk (15 varyant) güncellenir; bu mağazada olmayan 2 renk gönderilmez: Bej, Siyah.'
-    act(() => root?.render(<PlatformUpdateDialog targets={[target('ty', 'TRENDYOL'), target('hb', 'HEPSIBURADA')]} selectedIds={['ty', 'hb']} onSelectedIdsChange={vi.fn()} fields={['TITLE']} onFieldsChange={vi.fn()} openGroups={allGroups} onOpenGroupsChange={vi.fn()} submitting={false} familyReach={familyReach} onClose={vi.fn()} onConfirm={vi.fn()} />))
+    act(() => root?.render(<PlatformUpdateDialog targets={[target('ty', 'TRENDYOL'), target('hb', 'HEPSIBURADA')]} selectedIds={['ty', 'hb']} onSelectedIdsChange={vi.fn()} fields={['TITLE']} onFieldsChange={vi.fn()} openGroups={allGroups} onOpenGroupsChange={vi.fn()} submitting={false} familyReach={familyReach} onClose={vi.fn()} onSave={vi.fn()} />))
     expect(card('TRENDYOL')?.querySelector('.platform-update-family-reach')?.textContent).toBe('Model Ailesi7 rengin tamamı (21 varyant) güncellenir.')
     expect(card('HEPSIBURADA')?.querySelector('.platform-update-family-reach')?.textContent).toContain('Bej, Siyah')
     // Price and stock alone are not the family's product information: no line then.
-    act(() => root?.render(<PlatformUpdateDialog targets={[target('ty', 'TRENDYOL')]} selectedIds={['ty']} onSelectedIdsChange={vi.fn()} fields={['PRICE']} onFieldsChange={vi.fn()} openGroups={allGroups} onOpenGroupsChange={vi.fn()} submitting={false} familyReach={familyReach} onClose={vi.fn()} onConfirm={vi.fn()} />))
+    act(() => root?.render(<PlatformUpdateDialog targets={[target('ty', 'TRENDYOL')]} selectedIds={['ty']} onSelectedIdsChange={vi.fn()} fields={['PRICE']} onFieldsChange={vi.fn()} openGroups={allGroups} onOpenGroupsChange={vi.fn()} submitting={false} familyReach={familyReach} onClose={vi.fn()} onSave={vi.fn()} />))
     expect(card('TRENDYOL')?.querySelector('.platform-update-family-reach')).toBeNull()
+  })
+
+  // A store whose general external-write gate is closed cannot be picked, and its card names the switch and where it is.
+  it('names the closed Dış Yazma Ana Anahtarı on a store and keeps it out of the pick', () => {
+    host = document.createElement('div')
+    document.body.append(host)
+    root = createRoot(host)
+    const closed: PlatformUpdateTarget = { connection: { id: 'n11', platformCode: 'N11', displayName: 'N11 Mağaza', externalStoreId: 'n11-store', status: 'ACTIVE', externalWritesEnabled: false }, capabilities: { writable: true, content: true } }
+    const open: PlatformUpdateTarget = { connection: { ...target('ty', 'TRENDYOL').connection, externalWritesEnabled: true }, capabilities: { writable: true, content: true } }
+    act(() => root?.render(<PlatformUpdateDialog targets={[open, closed]} selectedIds={['ty', 'n11']} onSelectedIdsChange={vi.fn()} fields={['PRICE', 'STOCK']} onFieldsChange={vi.fn()} openGroups={allGroups} onOpenGroupsChange={vi.fn()} submitting={false} onClose={vi.fn()} onSave={vi.fn()} />))
+    const n11 = [...document.querySelectorAll('.publish-platform-card')].find(item => item.textContent?.includes('N11 Mağaza'))!
+    expect(n11.textContent).toContain('Dış Yazma Ana Anahtarı kapalı · Entegrasyonlar’dan açılır')
+    expect(n11.querySelector<HTMLButtonElement>('.publish-platform-card-head')!.disabled).toBe(true)
+    expect(document.body.textContent).toContain('1/1 mağaza seçili')
+    expect(document.body.textContent).not.toMatch(/fiyat.{0,20}kapalı/iu)
   })
 })

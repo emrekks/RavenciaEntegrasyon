@@ -8,17 +8,28 @@ import { availablePlatformUpdateFields, platformUpdateFieldLabel, platformUpdate
 
 export type PlatformUpdateTarget = { connection: MarketplaceConnection; capabilities: { writable: boolean; content: boolean } }
 
+// An update from here is a manual write: the general external-write gate (server and the connection's Dış Yazma Ana
+// Anahtarı, externalWritesEnabled) must be open; the automatic price/stock switch ("Otomatik Dış Yazmalar") does not apply.
 export function isPlatformUpdateWritable(target: PlatformUpdateTarget) {
-  return target.capabilities.writable && target.connection.status.trim().toUpperCase() === 'ACTIVE'
+  return target.capabilities.writable && target.connection.status.trim().toUpperCase() === 'ACTIVE' && target.connection.externalWritesEnabled !== false
+}
+
+// Why a store cannot be updated, naming the switch and where it is turned on; '' when it can.
+export function platformUpdateBlockReason(target: PlatformUpdateTarget) {
+  if (!target.capabilities.writable) return 'Salt okunur, güncellenemez'
+  if (target.connection.status.trim().toUpperCase() !== 'ACTIVE') return 'Bağlantı aktif değil'
+  if (target.connection.externalWritesEnabled === false) return 'Dış Yazma Ana Anahtarı kapalı · Entegrasyonlar’dan açılır'
+  return ''
 }
 
 type ShownGroup = Omit<PlatformUpdateGroup, 'fields'> & { fields: { key: PlatformUpdateField; label: string }[] }
 
-// The editor's "Platformlarda Güncelle": the same cards as "Platformlarda Yayınla", with the fields to send in
-// collapsible groups (Ürün Bilgileri, Kargo ve Teslimat, Satış Bilgileri). Only fields a selected store can take are
-// shown; each card lists what really goes there, including what its marketplace takes only together with a picked field.
-// The bar is the window's own footer, so the cards scroll above it instead of under it.
-export function PlatformUpdateDialog({ targets, selectedIds, onSelectedIdsChange, fields, onFieldsChange, openGroups, onOpenGroupsChange, submitting, familyReach, onClose, onConfirm }: {
+// The editor's "Platformlarda Güncelle" settings (the button right of Hızlı Güncelle): the same cards as "Platformlarda
+// Yayınla", with the fields to send in collapsible groups (Ürün Bilgileri, Kargo ve Teslimat, Satış Bilgileri). Only
+// fields a selected store can take are shown; each card lists what really goes there, including what its marketplace
+// takes only together with a picked field. It sends nothing: Kaydet keeps the choice, and Hızlı Güncelle sends it
+// (owner, 9 Nov 2026). The bar is the window's own footer, so the cards scroll above it instead of under it.
+export function PlatformUpdateDialog({ targets, selectedIds, onSelectedIdsChange, fields, onFieldsChange, openGroups, onOpenGroupsChange, submitting, familyReach, onClose, onSave }: {
   targets: PlatformUpdateTarget[]
   selectedIds: string[]
   onSelectedIdsChange: (connectionIds: string[]) => void
@@ -30,8 +41,8 @@ export function PlatformUpdateDialog({ targets, selectedIds, onSelectedIdsChange
   // A model family: which colours (and variants) the product information update reaches on one store.
   familyReach?: (connection: MarketplaceConnection) => string
   onClose: () => void
-  // The picked fields that are shown (a field no selected store takes never goes).
-  onConfirm: (fields: PlatformUpdateField[]) => void
+  // Keeps the choice for Hızlı Güncelle: the picked fields that are shown (a field no selected store takes never goes).
+  onSave: (fields: PlatformUpdateField[]) => void
 }) {
   const writable = targets.filter(isPlatformUpdateWritable)
   const selected = writable.filter(target => selectedIds.includes(target.connection.id))
@@ -67,7 +78,7 @@ export function PlatformUpdateDialog({ targets, selectedIds, onSelectedIdsChange
   return createPortal(
     <div className="workspace-modal-backdrop product-publish-popup-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) close() }}>
       <DialogSurface as="section" onClose={close} className="workspace-modal product-publish-popup-modal platform-update-modal" aria-labelledby="platform-update-title" onMouseDown={event => event.stopPropagation()}>
-        <header><div><p className="eyebrow">Ürün Güncelleme</p><h2 id="platform-update-title">Platformlarda Güncelle</h2></div><button type="button" className="modal-close" onClick={close} disabled={submitting} aria-label="Platform güncelleme penceresini kapat"><UiIcon name="close" /></button></header>
+        <header><div><p className="eyebrow">Hızlı Güncelle Ayarı</p><h2 id="platform-update-title">Platformlarda Güncelle</h2></div><button type="button" className="modal-close" onClick={close} disabled={submitting} aria-label="Platform güncelleme penceresini kapat"><UiIcon name="close" /></button></header>
         <div className="product-publish-popup-body"><div className="product-add-page product-publish-popup"><section className="product-publish-step" aria-label="Ürünü platformlarda güncelle"><div className="product-publish-layout"><div className="product-publish-main">
           {groups.length > 0 && <section className="platform-update-section" aria-labelledby="platform-update-fields-title">
             <PlatformUpdateSectionHead id="platform-update-fields-title" title="Gönderilecek Bilgiler" hint={`${visibleFields.length}/${available.length} bilgi seçili`} help="Seçtiğiniz bilgiler her mağazaya, o mağazanın aldığı kadarıyla gönderilir.">
@@ -91,12 +102,12 @@ export function PlatformUpdateDialog({ targets, selectedIds, onSelectedIdsChange
           </section>
         </div></div></section></div></div>
         <footer className="publish-selection-footer platform-update-footer">
-          <div><strong>{selected.length ? `${selected.length} platform seçildi` : 'Güncellenecek platform seçilmedi'}</strong><small>{!selected.length ? 'Güncellenecek mağazaları kartların üstünden seçin.' : sendsAnything ? 'Her mağazaya kartında yazan bilgiler gönderilecek.' : 'Seçili mağazalara gidecek bir bilgi seçilmedi.'}</small></div>
+          <div><strong>{selected.length ? `${selected.length} platform seçildi` : 'Güncellenecek platform seçilmedi'}</strong><small>{!selected.length ? 'Güncellenecek mağazaları kartların üstünden seçin.' : sendsAnything ? 'Kaydet’ten sonra Hızlı Güncelle her mağazaya kartında yazan bilgileri gönderir.' : 'Seçili mağazalara gidecek bir bilgi seçilmedi.'}</small></div>
           {!selected.length && <span className="publish-selection-warning"><UiIcon name="alert" /> En az bir platform seçin</span>}
           {selected.length > 0 && !sendsAnything && <span className="publish-selection-warning"><UiIcon name="alert" /> En az bir bilgi seçin</span>}
           <div className="platform-update-actions">
             <button type="button" className="secondary" onClick={close} disabled={submitting}>Vazgeç</button>
-            <button type="button" onClick={() => onConfirm(visibleFields)} disabled={submitting || !selected.length || !sendsAnything}>{submitting ? 'Güncelleniyor…' : 'Güncelle'}</button>
+            <button type="button" onClick={() => onSave(visibleFields)} disabled={submitting || !selected.length || !sendsAnything}>Kaydet</button>
           </div>
         </footer>
       </DialogSurface>
@@ -153,13 +164,13 @@ function PlatformUpdateCard({ target, selected, fields, locked, familyReach, onT
   familyReach?: (connection: MarketplaceConnection) => string
   onToggle: () => void
 }) {
-  const { connection, capabilities } = target
+  const { connection } = target
   const writable = isPlatformUpdateWritable(target)
   const logo = platformLogoSource(connection.platformCode)
   const platformName = bulkPublishPlatformName(connection.platformCode)
   const storeName = connection.displayName || connection.externalStoreId || platformName
   const on = selected && writable
-  const subtitle = !capabilities.writable ? 'Salt okunur, güncellenemez' : !writable ? 'Bağlantı aktif değil' : on ? 'Güncelleme için seçildi' : 'Güncelleme için seçilmedi'
+  const subtitle = platformUpdateBlockReason(target) || (on ? 'Güncelleme için seçildi' : 'Güncelleme için seçilmedi')
   const plan = platformUpdatePlan(connection.platformCode, fields)
   const sends = !writable ? '—' : platformUpdateSummary(plan)
   // The product information goes for every colour of the model family on this store (family-update-plan.ts); said
