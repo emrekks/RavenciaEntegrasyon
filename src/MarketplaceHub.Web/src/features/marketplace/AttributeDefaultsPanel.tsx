@@ -92,7 +92,7 @@ export function AttributeDefaultsPanel({ connectionId, categoryScope, platformLa
   const otherCandidates = candidates.filter(item => item.isRequired !== true)
   return <details className="attribute-defaults-panel" open={expanded || undefined}>
     <summary>
-      <span className="panel-summary-title">Platform Varsayılanları<TitleHint label="Platform Varsayılanları">Ürünlerde boş kalan alanlar için {platformLabel}’a gönderilecek sabit değerler. Örneğin Menşei için TR seçerseniz, menşei boş bırakılan ürünlerde TR gönderilir.</TitleHint></span>
+      <span className="panel-summary-title">Platform Varsayılanları<TitleHint label="Platform Varsayılanları">Ürünlerde boş kalan alanlar için {platformLabel}’a gönderilecek sabit değerler. Örn. Menşei için TR seçerseniz, menşei boş ürünlerde TR gider.</TitleHint></span>
       <b className="panel-summary-count" aria-label={`${existing.length} varsayılan`}>{existing.length}</b>
     </summary>
     <div className="attribute-defaults-body">
