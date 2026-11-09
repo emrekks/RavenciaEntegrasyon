@@ -101,7 +101,7 @@ public sealed class SizeChartRulesTests
     [Fact]
     public void Columns_the_chart_cannot_show_are_refused_never_guessed()
     {
-        Assert.Contains("En kolonu", MapError(["Boy"], ("S", [64m])), StringComparison.Ordinal);
+        Assert.Contains("Göğüs kolonu", MapError(["Boy"], ("S", [64m])), StringComparison.Ordinal);
         Assert.Contains("Boy kolonu", MapError(["En"], ("S", [50m])), StringComparison.Ordinal);
         Assert.Contains("tahmin", MapError(["Boy", "En", "Kilo"], ("S", [64m, 50m, 60m])), StringComparison.Ordinal);
         Assert.Contains("'Kol Boyu'", MapError(["Boy", "En", "Kol Boyu"], ("S", [64m, 50m, 20m])), StringComparison.Ordinal);

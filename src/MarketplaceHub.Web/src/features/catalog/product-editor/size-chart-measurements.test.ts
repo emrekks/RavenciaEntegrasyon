@@ -14,12 +14,12 @@ describe('size chart measurements', () => {
     expect(parseSizeChartValue('-3')).toBe('Yalnız sayı girin.')
   })
 
-  it('opens with Boy and En and the sizes in panel order, prefilled from the saved numbers', () => {
+  it('opens with Boy and Göğüs and the sizes in panel order, prefilled from the saved numbers', () => {
     const draft = initialSizeChartDraft(['S', 'M', 'L'], { columns: ['Boy', 'En', 'Göğüs'], rows: [{ size: 'm', values: [66, 53.5, null] }, { size: 'XXL', values: [1, 2, 3] }] })
     expect(draft.columns).toEqual(['Boy', 'En', 'Göğüs'])
     expect(draft.rows.map(row => row.size)).toEqual(['S', 'M', 'L'])
     expect(draft.rows[1].values).toEqual(['66', '53,5', ''])
-    expect(initialSizeChartDraft(['S'], null).columns).toEqual(['Boy', 'En'])
+    expect(initialSizeChartDraft(['S'], null).columns).toEqual(['Boy', 'Göğüs'])
   })
 
   it('reports every empty or wrong cell and sends the exact numbers', () => {
@@ -28,7 +28,7 @@ describe('size chart measurements', () => {
     expect(failed.ok).toBe(false)
     if (!failed.ok) expect(Object.keys(failed.cellErrors)).toEqual(['0:0', '0:1', '1:0', '1:1'])
     draft = setSizeChartCell(setSizeChartCell(setSizeChartCell(setSizeChartCell(draft, 0, 0, '64'), 0, 1, '50,5'), 1, 0, '66'), 1, 1, '53')
-    expect(validateSizeChartDraft(draft)).toEqual({ ok: true, payload: { columns: ['Boy', 'En'], rows: [{ size: 'S', values: [64, 50.5] }, { size: 'M', values: [66, 53] }] } })
+    expect(validateSizeChartDraft(draft)).toEqual({ ok: true, payload: { columns: ['Boy', 'Göğüs'], rows: [{ size: 'S', values: [64, 50.5] }, { size: 'M', values: [66, 53] }] } })
   })
 
   it('checks column names: not empty, unique, short, at most eight', () => {
@@ -45,7 +45,7 @@ describe('size chart measurements', () => {
 
   it('adds and removes columns but keeps at least one', () => {
     const draft = addSizeChartColumn(initialSizeChartDraft(['S'], null), '  Kol   Boyu ')
-    expect(draft.columns).toEqual(['Boy', 'En', 'Kol Boyu'])
+    expect(draft.columns).toEqual(['Boy', 'Göğüs', 'Kol Boyu'])
     expect(draft.rows[0].values).toHaveLength(3)
     const one = removeSizeChartColumn(removeSizeChartColumn(draft, 0), 0)
     expect(one.columns).toEqual(['Kol Boyu'])
