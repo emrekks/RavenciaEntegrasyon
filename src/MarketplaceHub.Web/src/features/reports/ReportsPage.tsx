@@ -581,9 +581,9 @@ function OverviewFigures({ data, money }: { data: ReportSales; money: Money | nu
     .map(row => ({ row, value: pick(row) })).filter((item): item is { row: ReportGroup; value: number } => item.value !== null && item.value !== 0)
     .sort((left, right) => right.value - left.value).map(item => ({ key: item.row.key, label: platformName(item.row.label), value: format(item.value) }))
   const items: Kpi[] = [
-    { key: 'net', label: 'Net Ciro', value: noAmount ? null : now.netRevenue, format: formatTl, empty: 'Tutar yok', delta: noAmount ? null : change(now.netRevenue, then.netRevenue),
-      note: noAmount ? previousText(null) : `Satış ${formatTl(now.grossSales)} · iade ${formatTl(now.returnedAmount)}`,
-      tip: `Satış tutarından iadeler düşülmüş ciro; iptal edilen siparişler sayılmaz.\nKâr Köprüsü'ndeki Satış Tutarı eksi İade Edilen Tutar; Genel Bakış'taki Ciro iadeler dahildir, bu yüzden ondan düşüktür. ${previousText(then.ordersWithAmount > 0 ? formatTl(then.netRevenue) : null)}.`, split: split(row => row.ordersWithAmount > 0 ? row.netRevenue : null, formatTl) },
+    { key: 'net', label: 'Toplam Ciro', value: noAmount ? null : now.grossSales, format: formatTl, empty: 'Tutar yok', delta: noAmount ? null : change(now.grossSales, then.grossSales),
+      note: noAmount ? previousText(null) : `Net ${formatTl(now.netRevenue)} · iade ${formatTl(now.returnedAmount)}`,
+      tip: `Dönemin toplam satış tutarı; iptal edilen siparişler sayılmaz, iadeler düşülmeden.\nKâr Köprüsü'ndeki Satış Tutarı ve Kârlılık'taki Toplam Ciro ile aynıdır. İadeler düşülünce Net Ciro ${formatTl(now.netRevenue)} (iade ${formatTl(now.returnedAmount)}). ${previousText(then.ordersWithAmount > 0 ? formatTl(then.grossSales) : null)}.`, split: split(row => row.ordersWithAmount > 0 ? row.grossSales : null, formatTl) },
     { key: 'profit', label: profit !== null && profit < 0 ? 'Tahmini Zarar' : 'Net Kâr', value: profit, format: formatTl, empty: noAmount ? 'Tutar yok' : 'Maliyet girilmemiş',
       delta: change(profit, earlierProfit),
       note: profit === null || now.ordersWithAmount === 0 ? 'Sipariş başına —' : `Sipariş başına ${signedTl(profit / now.ordersWithAmount)}`,

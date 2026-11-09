@@ -155,7 +155,7 @@ export function DashboardPage() {
   // The store picked in the channel list filters the whole performance card; the metric picks what the chart draws.
   const [channel, setChannel] = useState('ALL')
   const [lowStockOpen, setLowStockOpen] = useState(false)
-  const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null)
+  const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string; modelCode?: string } | null>(null)
   // Touch screens: the operation card whose store breakdown is open from its "?" (a tap on the card itself opens its list).
   const [breakdownOpen, setBreakdownOpen] = useState<string | null>(null)
   useEffect(() => {
@@ -270,7 +270,7 @@ export function DashboardPage() {
     // left out while it is not known, never shown as 0. The card opens the pending list; the due list is a tab there.
     ['invoicePending', 'Faturalar', knownCount(invoiceSummary.isLoading, invoiceSummary.data?.uninvoicedCount), '', dashboardOperationalLinks.pendingInvoices, undefined, <><span className="rr-op-x-word">Bekleyen</span>{dueSoon !== null && <>{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}{count(dueSoon)} Yaklaşan</>}</>],
     // Today's cancellations; the section is about today, so the label does not repeat it.
-    ['packageX', 'İptal', knownCount(cancellations.isLoading, cancelled ? cancelTotal(row => row.cancelledOrders) : undefined), 'bad', dayCancellationsLink(today), cancelRows, partialCancels ? <span className="rr-op-partial">{count(partialCancels)} Kısmi İptal</span> : undefined],
+    ['packageX', 'İptal', knownCount(cancellations.isLoading, cancelled ? cancelTotal(row => row.cancelledOrders) : undefined), 'bad', dayCancellationsLink(today), cancelRows, cancelled ? <>Sipariş{partialCancels ? <>{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}<span className="rr-op-partial">{count(partialCancels)} Kısmi İptal</span></> : null}</> : undefined],
     // The same count as the product list's low-stock filter it opens.
     ['alertTriangle', 'Düşük Stok', knownCount(productSummary.isLoading, products?.lowStockCount), 'warn', dashboardOperationalLinks.lowStock, undefined],
   ]
@@ -341,7 +341,7 @@ export function DashboardPage() {
     <IntegrationStatusPanel integration={integration} />
     {toast && <NoticeToast kind="success" title="Rapor İndirildi" message={toast} onClose={() => setToast(null)} durationMs={6000} />}
     {lowStockOpen && <Suspense fallback={null}><LowStockDetailsModal products={lowStock.data?.items ?? []} loading={lowStock.isLoading} error={lowStock.error}
-      onClose={() => setLowStockOpen(false)} onImageClick={(url, title) => setLightboxImage({ url, title })} /></Suspense>}
+      onClose={() => setLowStockOpen(false)} onImageClick={(url, title, modelCode) => setLightboxImage({ url, title, modelCode })} /></Suspense>}
     {lightboxImage && <Suspense fallback={null}><ImageLightboxModal image={lightboxImage} onClose={() => setLightboxImage(null)} /></Suspense>}
   </section>
 }
