@@ -251,7 +251,7 @@ export function DashboardPage() {
   // A store's row says how many orders were cancelled whole and how many in part, the part that is 0 left out; the
   // cancelled units are not shown (owner, 9 Nov 2026: the orders matter, not their products).
   const partialCancels = cancelTotal(row => row.partialOrders)
-  const cancelLabel = cancelled && partialCancels ? `İptal · ${count(partialCancels)} Kısmi İptal` : 'İptal'
+  // The card title stays "İptal"; the partial cancellations sit beside the number (owner, 9 Nov 2026).
   const cancelRows: BreakdownRow[] = (cancelled ?? []).flatMap(row => {
     const name = store(row.connectionId)?.displayName ?? 'Kaldırılmış mağaza', code = store(row.connectionId)?.platformCode ?? ''
     const known = row.cancelledOrders + row.partialOrders
@@ -270,7 +270,7 @@ export function DashboardPage() {
     // left out while it is not known, never shown as 0. The card opens the pending list; the due list is a tab there.
     ['invoicePending', 'Faturalar', knownCount(invoiceSummary.isLoading, invoiceSummary.data?.uninvoicedCount), '', dashboardOperationalLinks.pendingInvoices, undefined, <><span className="rr-op-x-word">Bekleyen</span>{dueSoon !== null && <>{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}{count(dueSoon)} Yaklaşan</>}</>],
     // Today's cancellations; the section is about today, so the label does not repeat it.
-    ['packageX', cancelLabel, knownCount(cancellations.isLoading, cancelled ? cancelTotal(row => row.cancelledOrders) : undefined), 'bad', dayCancellationsLink(today), cancelRows],
+    ['packageX', 'İptal', knownCount(cancellations.isLoading, cancelled ? cancelTotal(row => row.cancelledOrders) : undefined), 'bad', dayCancellationsLink(today), cancelRows, partialCancels ? <span className="rr-op-partial">{count(partialCancels)} Kısmi İptal</span> : undefined],
     // The same count as the product list's low-stock filter it opens.
     ['alertTriangle', 'Düşük Stok', knownCount(productSummary.isLoading, products?.lowStockCount), 'warn', dashboardOperationalLinks.lowStock, undefined],
   ]
