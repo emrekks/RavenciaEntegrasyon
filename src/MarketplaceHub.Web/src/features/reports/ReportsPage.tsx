@@ -1322,9 +1322,6 @@ function ProfitView({ data }: { data: ReportSales }) {
   // kept-units figure.
   const costedSales = cost.costedSales ?? cost.costedRevenue
   const earlierCostedSales = earlierCost ? earlierCost.costedSales ?? earlierCost.costedRevenue : null
-  // Brüt Kâr: Net Ciro (sales less returns) less the product cost, before commission, cargo and the other deductions.
-  const gross = money?.cost != null ? now.netRevenue - money.cost : null
-  const earlierGross = earlier?.cost != null ? then.netRevenue - earlier.cost : null
   const tone = (value: number | null) => value === null ? undefined : value < 0 ? 'bad' as const : value > 0 ? 'good' as const : undefined
   const items: Kpi[] = [
     { key: 'revenue', label: 'Toplam Ciro', value: noAmount ? null : now.grossSales, format: formatTl, empty: 'Tutar yok', delta: noAmount ? null : change(now.grossSales, then.grossSales),
@@ -1333,9 +1330,6 @@ function ProfitView({ data }: { data: ReportSales }) {
     { key: 'costed', label: 'Maliyeti Olan Ciro', value: costed ? costedSales : null, format: formatTl, empty: noCost,
       delta: costed && earlierCosted ? change(costedSales, earlierCostedSales) : null, note: previousText(earlierCosted ? formatTl(earlierCostedSales) : null),
       tip: `Ürün maliyeti girili satışların tutarı; iadeler düşülmeden. Toplam Ciro'nun ${formatPercent(now.grossSales > 0 ? costedSales / now.grossSales : null)} kadarı.` },
-    { key: 'gross', label: gross !== null && gross < 0 ? 'Brüt Zarar' : 'Brüt Kâr', value: gross, format: formatTl, empty: noCost,
-      delta: change(gross, earlierGross), note: previousText(earlierGross === null ? null : signedTl(earlierGross)), tone: tone(gross),
-      tip: gross === null ? noCostTip : gross < 0 ? 'Ürün maliyeti, iadeler düşülmüş satışı aşıyor; komisyon, kargo ve diğer kesintiler düşülmeden.' : 'Satıştan iadeler ve ürün maliyeti düşülünce kalan; komisyon, kargo ve diğer kesintiler düşülmeden.' },
     { key: 'profit', label: profit !== null && profit < 0 ? 'Tahmini Zarar' : 'Net Kâr', value: profit, format: formatTl, empty: noCost,
       delta: change(profit, earlierProfit), note: previousText(earlierProfit === null ? null : signedTl(earlierProfit)), tone: tone(profit),
       tip: profit === null ? noCostTip : profit < 0 ? netLossTip : netProfitTip },
