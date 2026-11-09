@@ -11,7 +11,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors, IConfiguration configuration, TimeProvider timeProvider, IMemoryCache countCache) : ICatalogService
+public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors, IConfiguration configuration, TimeProvider timeProvider, IMemoryCache countCache, CategoryRequirementsCache? requirementsCache = null) : ICatalogService
 {
     public async Task<PageResult<CategoryView>> ListCategoriesAsync(Guid tenantId, int limit, string? after, CancellationToken cancellationToken)
     {
@@ -342,6 +342,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
 
     public async Task<ServiceResult<IReadOnlyList<CategoryAttributeRequirementView>>> GetRequirementsAsync(Guid tenantId, Guid categoryId, CancellationToken cancellationToken)
     {
+        if (requirementsCache?.TryGet(tenantId, categoryId, out var cached) == true) return ServiceResult<IReadOnlyList<CategoryAttributeRequirementView>>.Ok(cached);
+        var generation = requirementsCache?.CurrentGeneration ?? CancellationToken.None;
         if (!await db.Categories.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == categoryId, cancellationToken)) return NotFound<IReadOnlyList<CategoryAttributeRequirementView>>();
         var requirements = await db.CategoryAttributeRequirements.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.CategoryId == categoryId && (x.IsPanelScoped || x.Role == "OPTION"))
@@ -360,8 +362,10 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var roles = requirements
             .GroupBy(x => x.AttributeId)
             .ToDictionary(group => group.Key, group => (IReadOnlyList<string>)group.Select(x => NormalizeRequirementRole(x.Role)).Distinct(StringComparer.Ordinal).ToList());
-        var attributeLookup = attributes.ToDictionary(x => x.Id, x => MapAttribute(x, values.Where(value => value.AttributeId == x.Id), roles.GetValueOrDefault(x.Id)));
-        var result = requirements.Where(x => attributeLookup.ContainsKey(x.AttributeId)).Select(x => new CategoryAttributeRequirementView(x.AttributeId, x.IsRequired, x.AllowsCustomValue, x.DisplayOrder, attributeLookup[x.AttributeId], NormalizeRequirementRole(x.Role), webColorAttributeIds.Contains(x.AttributeId))).ToList();
+        var valuesByAttribute = values.ToLookup(value => value.AttributeId);
+        var attributeLookup = attributes.ToDictionary(x => x.Id, x => MapAttribute(x, valuesByAttribute[x.Id], roles.GetValueOrDefault(x.Id)));
+        IReadOnlyList<CategoryAttributeRequirementView> result = requirements.Where(x => attributeLookup.ContainsKey(x.AttributeId)).Select(x => new CategoryAttributeRequirementView(x.AttributeId, x.IsRequired, x.AllowsCustomValue, x.DisplayOrder, attributeLookup[x.AttributeId], NormalizeRequirementRole(x.Role), webColorAttributeIds.Contains(x.AttributeId))).ToList();
+        requirementsCache?.Set(tenantId, categoryId, generation, result);
         return ServiceResult<IReadOnlyList<CategoryAttributeRequirementView>>.Ok(result);
     }
 
@@ -500,7 +504,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var fullProducts = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && pageProductIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         var products = pageProductIds.Where(fullProducts.ContainsKey).Select(productId => fullProducts[productId]).ToList();
         var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && pageProductIds.Contains(x.ProductId)).ToListAsync(cancellationToken);
-        var views = await BuildProductViewsAsync(tenantId, products, variants, cancellationToken);
+        var views = await BuildProductViewsAsync(tenantId, products, variants, cancellationToken, listShape: true);
         var lastFamily = pageFamilies.LastOrDefault();
         var hasMore = lastFamily is not null && families.Any(x => x.Primary.CreatedAt < lastFamily.Primary.CreatedAt || x.Primary.CreatedAt == lastFamily.Primary.CreatedAt && x.Primary.Id.CompareTo(lastFamily.Primary.Id) < 0);
         return new(views, hasMore ? cursors.EncodeProduct(lastFamily!.Primary.CreatedAt, lastFamily.Primary.Id) : null, hasMore, totalCount);
@@ -542,7 +546,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var fullProducts = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && pageProductIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         var products = pageProductIds.Where(fullProducts.ContainsKey).Select(productId => fullProducts[productId]).ToList();
         var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && pageProductIds.Contains(x.ProductId)).ToListAsync(cancellationToken);
-        var views = await BuildProductViewsAsync(tenantId, products, variants, cancellationToken);
+        var views = await BuildProductViewsAsync(tenantId, products, variants, cancellationToken, listShape: true);
         var hasMore = pageItems.Count > 0 && catalogSort.Compare(ordered[^1].Key, pageItems[^1].Key) > 0;
         return new(views, hasMore ? cursors.EncodeProductSort(catalogSort.Value, pageItems[^1].Key) : null, hasMore, totalCount);
     }
@@ -2493,7 +2497,12 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             select siblingVariant,
             cancellationToken);
 
-    private async Task<IReadOnlyList<ProductView>> BuildProductViewsAsync(Guid tenantId, IReadOnlyList<Product> products, IReadOnlyList<ProductVariant> variants, CancellationToken cancellationToken, Guid? variantAttributeProductId = null)
+    // listShape: the products list's slim card (GET /products). It carries what the list screens show (the card's platform
+    // marks and sale state, prices, stock, options, the first picture) and leaves out what only the product editor reads
+    // through GET /products/{id}: the description, the card attributes and options, the card's picture strip and size
+    // chart, each variant's per-marketplace offers (platformStatuses) and every variant picture past the first. A
+    // 20-family page was 2.45 MB with them (9 Nov 2026).
+    private async Task<IReadOnlyList<ProductView>> BuildProductViewsAsync(Guid tenantId, IReadOnlyList<Product> products, IReadOnlyList<ProductVariant> variants, CancellationToken cancellationToken, Guid? variantAttributeProductId = null, bool listShape = false)
     {
         if (products.Count == 0) return [];
         var productIds = products.Select(x => x.Id).ToArray();
@@ -2512,7 +2521,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             .Where(x => x.TenantId == tenantId && profileIds.Contains(x.ProfileId) && variantIds.Contains(x.VariantId))
             .Select(x => new { x.ProfileId, x.VariantId, x.ActualStatus })
             .ToListAsync(cancellationToken);
-        var productAttributes = await db.ProductAttributeAssignments.AsNoTracking()
+        var productAttributes = listShape ? [] : await db.ProductAttributeAssignments.AsNoTracking()
             .Where(x => x.TenantId == tenantId && productIds.Contains(x.ProductId) && x.VariantId == null)
             .OrderBy(x => x.SortOrder)
             .ToListAsync(cancellationToken);
@@ -2526,7 +2535,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var variantAttributesByVariant = variantAttributeRows
             .GroupBy(x => x.VariantId)
             .ToDictionary(group => group.Key, group => (IReadOnlyList<ProductAttributeAssignmentView>)group.Select(x => x.Assignment).ToList());
-        var productOptions = await db.ProductOptions.AsNoTracking()
+        var productOptions = listShape ? [] : await db.ProductOptions.AsNoTracking()
             .Where(x => x.TenantId == tenantId && productIds.Contains(x.ProductId))
             .OrderBy(x => x.SortOrder)
             .ToListAsync(cancellationToken);
@@ -2622,7 +2631,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                     .OfType<Guid>()
                     .Where(connectionId => !missingLinks.Contains((variant.Id, connectionId)))
                     .ToHashSet();
-                var variantPlatformStatuses = connections
+                var variantPlatformStatuses = listShape ? null : connections
                     .OrderBy(connection => connection.Value.PlatformCode)
                     .ThenBy(connection => connection.Value.DisplayName)
                     .Select(connection =>
@@ -2657,7 +2666,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                             saleLink?.SaleStateReason);
                     })
                     .ToList();
-                return new ProductVariantView(variant.Id, variant.Sku, variant.Barcode, variant.ModelCode, variant.OptionSignature, variant.Status.ToString().ToUpperInvariant(), variant.Version, variant.Weight, variant.Width, variant.Height, variant.Length, variant.Desi, variant.CostPrice, inventory?.OnHand ?? 0, inventory?.Available ?? 0, inventory?.Version, offer?.Id, offer?.ListPrice, offer?.SalePrice, offer?.Currency, offer?.Status, offer?.PriceVersion, offer?.Version, offer?.VatRate, offer?.VatInclusion, offer?.RoundingMode, offer?.SafetyStock, mediaUrlsByVariant.GetValueOrDefault(variant.Id), variantOptionsByVariant.GetValueOrDefault(variant.Id), variantPlatformStatuses, variant.DefaultListPrice, variant.DefaultSalePrice, variantAttributesByVariant.GetValueOrDefault(variant.Id), variant.ProductId);
+                return new ProductVariantView(variant.Id, variant.Sku, variant.Barcode, variant.ModelCode, variant.OptionSignature, variant.Status.ToString().ToUpperInvariant(), variant.Version, variant.Weight, variant.Width, variant.Height, variant.Length, variant.Desi, variant.CostPrice, inventory?.OnHand ?? 0, inventory?.Available ?? 0, inventory?.Version, offer?.Id, offer?.ListPrice, offer?.SalePrice, offer?.Currency, offer?.Status, offer?.PriceVersion, offer?.Version, offer?.VatRate, offer?.VatInclusion, offer?.RoundingMode, offer?.SafetyStock, VariantMediaUrls(mediaUrlsByVariant.GetValueOrDefault(variant.Id), listShape), variantOptionsByVariant.GetValueOrDefault(variant.Id), variantPlatformStatuses, variant.DefaultListPrice, variant.DefaultSalePrice, variantAttributesByVariant.GetValueOrDefault(variant.Id), variant.ProductId);
             }).ToList();
             var productConnectionIds = connections.Keys.ToList();
             var platformStatuses = productConnectionIds
@@ -2705,10 +2714,14 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 .Select(option => new ProductOptionView(option.Id, option.Label, optionValues.Where(value => value.OptionId == option.Id).Select(value => new ProductOptionValueView(value.Id, value.Label)).ToList()))
                 .ToList();
             var hasCustomMediaOrder = customMediaOrderProductIds.Contains(product.Id);
+            if (listShape)
+                return new ProductView(product.Id, product.Title, string.Empty, product.BrandId, product.CategoryId, product.Status.ToString().ToUpperInvariant(), product.UpdatedAt, product.Version, variantViews, image, variantViews.Sum(x => x.OnHand), CatalogPricePolicy.MinimumPositivePrice(prices), currency, modelCode, activePlatforms, null, null, null, null, platformStatuses, product.CategoryId is Guid listCategoryId ? categoryPathById.GetValueOrDefault(listCategoryId) : null, null, hasCustomMediaOrder, product.DefaultListPrice, product.DefaultSalePrice, product.WarrantyMonths, product.TrendyolWebColorValueId, product.VatRate, product.VatInclusion, product.DeliveryDays);
             return new ProductView(product.Id, product.Title, product.Description, product.BrandId, product.CategoryId, product.Status.ToString().ToUpperInvariant(), product.UpdatedAt, product.Version, variantViews, image, variantViews.Sum(x => x.OnHand), CatalogPricePolicy.MinimumPositivePrice(prices), currency, modelCode, activePlatforms, attributes, options, SizeCharts.SizeChartPlacement.Last(CatalogFamilyMedia.StripUrls(mediaRowsByProduct.GetValueOrDefault(product.Id) ?? [], hasCustomMediaOrder, variantViews.Select(variant => variant.Id).ToList()), sizeChartUrl), null, platformStatuses, product.CategoryId is Guid categoryId ? categoryPathById.GetValueOrDefault(categoryId) : null, null, hasCustomMediaOrder, product.DefaultListPrice, product.DefaultSalePrice, product.WarrantyMonths, product.TrendyolWebColorValueId, product.VatRate, product.VatInclusion, product.DeliveryDays) { SizeChartUrl = sizeChartUrl };
         }).ToList();
     }
 
+    // The list keeps a variant's first picture only (the low-stock window's fallback when the card has none).
+    private static IReadOnlyList<string>? VariantMediaUrls(IReadOnlyList<string>? urls, bool listShape) => listShape && urls is { Count: > 1 } ? [urls[0]] : urls;
     private static decimal? PositiveOrNull(decimal? value) => value is > 0 ? value : null;
     private const string VatRateRequired = "KDV oranı zorunludur.";
     private const string VatInclusionRequired = "KDV dahil bilgisi zorunludur.";

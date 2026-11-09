@@ -72,6 +72,8 @@ public static class DependencyInjection
         services.AddScoped<IPayoutsService, PayoutsService>();
         services.AddScoped<IScheduledJobProducer, ScheduledJobProducer>();
         services.AddSingleton<CursorCodec>();
+        // Serves entries only in a process that runs CategoryRequirementsChangeListener (the API).
+        services.AddSingleton<CategoryRequirementsCache>();
         services.AddScoped<ICatalogService, CatalogService>();
         services.AddScoped<IImportService, ImportService>();
         services.AddScoped<IImportJobProcessor, ImportJobProcessor>();

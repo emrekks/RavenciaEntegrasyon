@@ -10,6 +10,7 @@ import { ApiRequestError, hubApi, hubPoll, loadAllPages } from '../../../shared/
 import { TitleHint, UiIcon, usePromptDialog, type UiIconName, DialogSurface, UnsavedChangesGuard, StickyActionBar } from '../../../shared/components'
 import { failedWithHttpAnswer, newIdempotencyKey, sendWithVersionedIdempotencyKey } from '../../../shared/idempotency'
 import { httpsUrlProblem } from '../../../shared/safe-url'
+import { categoryRequirementsStaleTimeMs } from '../category-requirements-query'
 import { ErrorToast, NoticeToast } from '../../../shared/components/NoticeToast'
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import { sanitizeRichText } from '../../../shared/security/sanitizeHtml'
@@ -1461,7 +1462,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   // are in: the empty defaults and the single-product SKU, barcode and price fields must not show before the variant
   // rows turn them into the varyantlı state.
   const editorHydrating = editorAwaitingSeed({ seeding: Boolean(editProductId || duplicateProductId), productPending: editProductId ? productToEdit.isPending : productToCopy.isPending, listsPending: categories.isPending || brands.isPending })
-  const requirements = useQuery({ queryKey: ['category-requirements', form.categoryId], queryFn: () => hubApi<CategoryRequirement[]>(`/catalog/categories/${form.categoryId}/attribute-requirements`), enabled: !!form.categoryId, retry: false })
+  const requirements = useQuery({ queryKey: ['category-requirements', form.categoryId], queryFn: () => hubApi<CategoryRequirement[]>(`/catalog/categories/${form.categoryId}/attribute-requirements`), enabled: !!form.categoryId, retry: false, staleTime: categoryRequirementsStaleTimeMs })
   const leafCategories = (categories.data?.items ?? []).filter(item => item.isLeaf && item.isActive); const activeBrands = (brands.data?.items ?? []).filter(item => item.isActive)
   const fallbackListPrice = Number(form.listPrice || 0); const fallbackSalePrice = Number(form.salePrice || 0); const fallbackCostPrice = form.costPrice.trim() === '' ? null : Number(form.costPrice); const initialStock = Number(form.initialStock || 0)
   const variantStockTotal = variantRows.reduce((total, row) => total + Number(row.stock || 0), 0)
