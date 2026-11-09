@@ -334,3 +334,8 @@
   :root:root:root:root:root body .app-shell.stitch-shell main .rr.rr-orders .rr-fcard:not(.rr-fopen) .rr-filters.rr-has-sort { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr) auto; }
   :root:root:root:root:root body .app-shell.stitch-shell main .rr.rr-orders .rr-fcard:not(.rr-fopen) .rr-filters.rr-has-sort > .rr-fbtns { grid-column: auto; align-self: end; flex-wrap: nowrap; }
 }
+/* Desktop: the stacked Etiket / İşlemler pair sits in the middle of its column, not on its left (owner, 9 Nov 2026). */
+@media (min-width: 761px) {
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl td:has(> .rr-actcell) { text-align: center; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl td > .rr-actcell { text-align: left; vertical-align: middle; }
+}
