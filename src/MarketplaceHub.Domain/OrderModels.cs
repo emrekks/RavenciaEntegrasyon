@@ -389,6 +389,18 @@ public static class ShopifyShipmentPackageStatusPolicy
     };
 }
 
+// Hepsiburada package statuses. An Unpacked package was broken up ("Paketi bozulan", hepsiburada-api-son.md:8618): its
+// lines went back to the order or were cancelled, and it never ships. It is a superseded split parent as on Trendyol
+// (Cancelled with its Unpacked raw status, so its lines are not cancelled and the order keeps its status), never a
+// hold: live 4780777645 (9 Nov 2026), cancelled by the customer after packing, sat in Askıda with an OnHold package.
+public static class HepsiburadaShipmentPackageStatusPolicy
+{
+    public static ShipmentPackageStatus FromRemote(string? rawStatus) =>
+        ShipmentPackageSupersession.IsSplitParentRawStatus(rawStatus)
+            ? ShipmentPackageStatus.Cancelled
+            : ShipmentPackageStatusPolicy.FromRemote(rawStatus);
+}
+
 public static class TrendyolShipmentPackageStatusPolicy
 {
     public static ShipmentPackageStatus FromRemote(string? rawStatus) => Normalize(rawStatus) switch

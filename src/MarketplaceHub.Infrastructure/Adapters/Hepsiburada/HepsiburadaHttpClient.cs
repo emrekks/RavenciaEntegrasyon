@@ -833,7 +833,7 @@ public sealed partial class HepsiburadaHttpClient(
         !package.IsStatusObservation && string.Equals(package.RawStatus, "Open", StringComparison.OrdinalIgnoreCase);
 
     internal static bool HasTerminalListStatus(RemoteOrderPackage package) =>
-        ShipmentPackageStatusPolicy.FromRemote(package.Package.RawStatus) is ShipmentPackageStatus.Delivered
+        HepsiburadaShipmentPackageStatusPolicy.FromRemote(package.Package.RawStatus) is ShipmentPackageStatus.Delivered
             or ShipmentPackageStatus.Undelivered
             or ShipmentPackageStatus.Cancelled
             or ShipmentPackageStatus.Returned;
@@ -888,7 +888,7 @@ public sealed partial class HepsiburadaHttpClient(
             // The tracking read has no event date. When it moves the package on (an Open package that is now in
             // transit), the listed date belongs to the earlier state, so the change counts as observed now;
             // otherwise a stored status time later than that date would make the newer state look stale.
-            var advanced = ShipmentPackageStatusPolicy.FromRemote(trackingStatus) != ShipmentPackageStatusPolicy.FromRemote(remotePackage.Package.RawStatus);
+            var advanced = HepsiburadaShipmentPackageStatusPolicy.FromRemote(trackingStatus) != HepsiburadaShipmentPackageStatusPolicy.FromRemote(remotePackage.Package.RawStatus);
             var observedAt = timeProvider.GetUtcNow();
             var enrichedPackage = remotePackage.Package with
             {

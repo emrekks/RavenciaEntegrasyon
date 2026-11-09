@@ -4950,7 +4950,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     string.Equals(package.ExternalPackageId, localPackage.ExternalPackageId, StringComparison.Ordinal));
                 var remoteStatus = remotePackage is null
                     ? ShipmentPackageStatus.ManualReview
-                    : ShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus);
+                    : HepsiburadaShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus);
                 string? rawStatus = remotePackage?.RawStatus;
                 string? cargoCompany = remotePackage?.CargoProviderExternalId;
                 string? trackingCode = remotePackage?.CargoTrackingNumber;
@@ -4997,7 +4997,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     occurredAt = now;
                     remoteStatus = string.IsNullOrWhiteSpace(rawStatus)
                         ? ShipmentPackageStatus.ManualReview
-                        : ShipmentPackageStatusPolicy.FromRemote(rawStatus);
+                        : HepsiburadaShipmentPackageStatusPolicy.FromRemote(rawStatus);
                 }
 
                 if (remoteStatus == ShipmentPackageStatus.ManualReview || string.IsNullOrWhiteSpace(rawStatus))
@@ -10102,7 +10102,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var externalLineIdsById = lines.Values.ToDictionary(line => line.Id, line => line.ExternalLineId);
         foreach (var remotePackage in remote.Packages)
         {
-            var target = usesTrendyolPackageStatuses ? TrendyolShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus) : isShopify ? ShopifyShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus) : ShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus); var eventId = PackageIngestionSafety.EventId(remotePackage.ExternalPackageId, remotePackage.OccurredAt); var orderedQuantities = lines.ToDictionary(x => x.Key, x => x.Value.OrderedQuantity, StringComparer.Ordinal);
+            var target = usesTrendyolPackageStatuses ? TrendyolShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus) : isShopify ? ShopifyShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus) : isHepsiburada ? HepsiburadaShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus) : ShipmentPackageStatusPolicy.FromRemote(remotePackage.RawStatus); var eventId = PackageIngestionSafety.EventId(remotePackage.ExternalPackageId, remotePackage.OccurredAt); var orderedQuantities = lines.ToDictionary(x => x.Key, x => x.Value.OrderedQuantity, StringComparer.Ordinal);
             var package = packagesByExternalId.GetValueOrDefault(remotePackage.ExternalPackageId);
             // The time a status is ordered by and stored with. Without a status time from the marketplace (PTT AVM),
             // OccurredAt only names the event; the package keeps the time the status was first seen (audit S4).
@@ -10124,7 +10124,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             // A Trendyol split parent (UnPacked) carries no quantities of its own: its lines live on in the child
             // packages, and its listed lines can exceed what the order still holds. Its lines are not checked or
             // allocated (the line projection skips split parents too), and a refusal it caused before is resolved.
-            var isUnpackedParent = usesTrendyolPackageStatuses && ShipmentPackageSupersession.IsSplitParentRawStatus(remotePackage.RawStatus);
+            var isUnpackedParent = (usesTrendyolPackageStatuses || isHepsiburada) && ShipmentPackageSupersession.IsSplitParentRawStatus(remotePackage.RawStatus);
             var isSplitParent = isUnpackedParent || splitParentIds.Contains(remotePackage.ExternalPackageId);
             if (isSplitParent) await ResolvePackageQuantityIssues(tenantId, connectionId, remotePackage.ExternalPackageId, cancellationToken);
             // A parent known only by its children (O8), not stored: nothing of it is the order's any more; it is not opened.
