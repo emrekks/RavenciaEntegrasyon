@@ -38,11 +38,14 @@ public sealed class CatalogMediaStripOrderPostgreSqlTests(PostgreSqlTenantIsolat
         else Assert.Null(view.FamilyOrderedMediaUrls);
         Assert.Equal(expected[0], view.PrimaryImageUrl);
 
-        // The products list reads the same rule.
+        // The products list shows the same front picture; its slim card carries no picture strip (only the editor reads
+        // it) and each variant only its first picture, the size chart never among them.
         var listed = await service.ListProductsAsync(tenant.Id, 50, null, null, null, null, null, null, CancellationToken.None);
         var card = Assert.Single(listed.Items);
-        Assert.Equal(expected, card.MediaUrls);
+        Assert.Null(card.MediaUrls);
         Assert.Equal(expected[0], card.PrimaryImageUrl);
+        Assert.All(card.Variants, variant => Assert.Single(variant.MediaUrls!));
+        Assert.DoesNotContain(card.Variants, variant => variant.MediaUrls![0].Contains("beden-tablosu", StringComparison.Ordinal));
         await transaction.RollbackAsync();
     }
 
