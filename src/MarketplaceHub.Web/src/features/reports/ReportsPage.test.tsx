@@ -343,6 +343,9 @@ describe('ReportsPage', () => {
     expect(loss.classList.contains('is-bad')).toBe(true)
     expect(loss.textContent).toContain('Tahmini Zarar')
     expect(loss.textContent).toContain('− ₺6.639')
+    // A loss is called a loss in its tip too, not "kalan tahmini kâr".
+    expect(loss.querySelector('.reports-hover-tip')?.textContent ?? loss.textContent).toContain('satışı aşan tahmini zarar')
+    expect(page.querySelector('.reports-bridge > li.is-end .reports-hover-tip')?.textContent).toContain('satışı aşan tahmini zarar')
     // The previous period read no statement, so its profit is not set against this one.
     expect(loss.textContent).toContain('Önceki dönemde veri yok')
     // The advertising spend is told from the deductions tied to no order.

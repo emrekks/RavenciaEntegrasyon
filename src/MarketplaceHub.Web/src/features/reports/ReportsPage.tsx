@@ -580,7 +580,7 @@ function OverviewFigures({ data, money }: { data: ReportSales; money: Money | nu
     { key: 'profit', label: profit !== null && profit < 0 ? 'Tahmini Zarar' : 'Net Kâr', value: profit, format: formatTl, empty: noAmount ? 'Tutar yok' : 'Maliyet girilmemiş',
       delta: change(profit, earlierProfit),
       note: profit === null || now.ordersWithAmount === 0 ? 'Sipariş başına —' : `Sipariş başına ${signedTl(profit / now.ordersWithAmount)}`,
-      tip: `${profit === null ? noCostTip : netProfitTip}\n${previousLine(earlierProfit === null ? null : signedTl(earlierProfit))}`,
+      tip: `${profit === null ? noCostTip : profit < 0 ? netLossTip : netProfitTip}\n${previousLine(earlierProfit === null ? null : signedTl(earlierProfit))}`,
       tone: profit === null ? undefined : profit < 0 ? 'bad' : profit > 0 ? 'good' : undefined },
     { key: 'margin', label: 'Kâr Marjı', value: money?.margin ?? null, format: percent, delta: change(money?.margin ?? null, earlier?.margin ?? null, 'rate'),
       note: `Reklam öncesi ${beforeAds === null ? '—' : formatPercent(beforeAds)}`,
@@ -721,6 +721,10 @@ const unlinkedTitle = 'Reklam ve Diğer Kesintiler'
 const unlinkedNote = 'Trendyol\'un bir siparişe bağlamadan, işlem tarihinde kestiği reklam, ceza ve kesinti faturaları.'
 // Net Kâr: what every figure that says so means (the owner's approved wording, 9 Nov 2026).
 const netProfitTip = 'Tüm kesintiler, ürün maliyeti ve reklam düşüldükten sonra kalan tahmini kâr. Dökümü Kâr Hesabı\'nda.'
+// A loss reads as a loss: the title already says Tahmini Zarar, so the sentence must not call it kâr.
+const lossSentence = 'Tüm kesintiler, ürün maliyeti ve reklam düşülünce satışı aşan tahmini zarar.'
+const netLossTip = `${lossSentence} Dökümü Kâr Hesabı'nda.`
+const resultSentence = (value: number) => value < 0 ? lossSentence : 'Tüm kesintiler, ürün maliyeti ve reklam düşüldükten sonra kalan tahmini kâr.'
 const noCostTip = 'Ürün maliyeti girilince hesaplanır. Maliyeti ürün kartından girin.'
 // Satış Tutarı: the list price less the seller's discount (the marketplace's own discount is the marketplace's to pay).
 const salesTip = 'Satıcı indirimi düşülmüş satış tutarı; iptaller sayılmaz, iadeler henüz düşülmedi.'
@@ -808,7 +812,7 @@ function ProfitBridge({ data, money, onMore }: { data: ReportSales; money: Money
   // What the account could not take off is listed under the bridge (EstimateGaps), so the result's note stays short.
   rows.push({ key: 'result', label: money.profit === null ? 'Masraflar Sonrası' : result < 0 ? 'Tahmini Zarar' : 'Tahmini Net Kâr', from: 0, to: result, kind: 'end',
     note: money.profit === null ? 'Kesintiler düşüldükten sonra kalan tutar. Ürün maliyeti girilmediği için kâr hesaplanamadı.'
-      : `Tüm kesintiler, ürün maliyeti ve reklam düşüldükten sonra kalan tahmini kâr.\nNet marj ${formatPercent(money.margin)}` })
+      : `${resultSentence(result)}\nNet marj ${formatPercent(money.margin)}` })
   const low = Math.min(0, ...rows.flatMap(row => [row.from, row.to]))
   const span = Math.max(1, Math.max(money.total, ...rows.flatMap(row => [row.from, row.to])) - low)
   return <Card title="Kâr Köprüsü" className="reports-card-bridge" actions={more}>
@@ -892,7 +896,7 @@ function ProfitLedger({ data, money, notes = {} }: { data: ReportSales; money: M
     {money.unlinked !== 0 && row('unlinked', money.unlinked < 0 ? undefined : 'is-minus', unlinkedTitle, money.unlinked < 0 ? `+ ${formatTl(-money.unlinked)}` : `− ${formatTl(money.unlinked)}`,
       `${unlinkedNote}\n${share(money.unlinked)}`)}
     {money.profit !== null && row('profit', `is-result is-${money.profit < 0 ? 'bad' : 'good'}`, money.profit < 0 ? 'Tahmini Zarar' : 'Tahmini Net Kâr', amount(money.profit),
-      `Tüm kesintiler, ürün maliyeti ve reklam düşüldükten sonra kalan tahmini kâr.\n${share(money.profit)} Bu oran net marjdır.`, <small>Net marj {formatPercent(money.margin)}</small>)}
+      `${resultSentence(money.profit)}\n${share(money.profit)} Bu oran net marjdır.`, <small>Net marj {formatPercent(money.margin)}</small>)}
   </dl>
 }
 
@@ -1331,10 +1335,10 @@ function ProfitView({ data }: { data: ReportSales }) {
       tip: `Ürün maliyeti girili satışların tutarı; iadeler düşülmeden. Toplam Ciro'nun ${formatPercent(now.grossSales > 0 ? costedSales / now.grossSales : null)} kadarı.` },
     { key: 'gross', label: gross !== null && gross < 0 ? 'Brüt Zarar' : 'Brüt Kâr', value: gross, format: formatTl, empty: noCost,
       delta: change(gross, earlierGross), note: previousText(earlierGross === null ? null : signedTl(earlierGross)), tone: tone(gross),
-      tip: gross === null ? noCostTip : 'Satıştan iadeler ve ürün maliyeti düşülünce kalan; komisyon, kargo ve diğer kesintiler düşülmeden.' },
+      tip: gross === null ? noCostTip : gross < 0 ? 'Ürün maliyeti, iadeler düşülmüş satışı aşıyor; komisyon, kargo ve diğer kesintiler düşülmeden.' : 'Satıştan iadeler ve ürün maliyeti düşülünce kalan; komisyon, kargo ve diğer kesintiler düşülmeden.' },
     { key: 'profit', label: profit !== null && profit < 0 ? 'Tahmini Zarar' : 'Net Kâr', value: profit, format: formatTl, empty: noCost,
       delta: change(profit, earlierProfit), note: previousText(earlierProfit === null ? null : signedTl(earlierProfit)), tone: tone(profit),
-      tip: profit === null ? noCostTip : netProfitTip },
+      tip: profit === null ? noCostTip : profit < 0 ? netLossTip : netProfitTip },
     { key: 'margin', label: 'Net Kâr / Satış Fiyatı Oranı', value: money?.margin ?? null, format: percent, delta: change(money?.margin ?? null, earlier?.margin ?? null, 'rate'),
       note: previousText(formatPercent(earlier?.margin)), tone: (money?.margin ?? 0) < 0 ? 'bad' : undefined,
       tip: 'Net kârın satış tutarına oranı; Genel Bakış\'taki Kâr Marjı ile aynı.' },
