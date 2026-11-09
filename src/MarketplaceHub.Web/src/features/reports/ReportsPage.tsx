@@ -205,7 +205,7 @@ function SubTabs<T extends string>({ label, value, items, onChange }: { label: s
 function Delta({ delta, invert = false, previous }: { delta: Change | null | undefined; invert?: boolean; previous?: string }) {
   if (!delta) return <em className="reports-delta is-flat" title="Önceki dönemde veri yok">—</em>
   const tone = delta.direction === 'flat' ? 'flat' : (delta.direction === 'up') !== invert ? 'good' : 'bad'
-  return <em className={`reports-delta is-${tone}`} title={previous ? `Önceki dönem ${previous}` : 'Önceki döneme göre'}>{delta.direction === 'up' ? '▲' : delta.direction === 'down' ? '▼' : '■'} {delta.text}</em>
+  return <em className={`reports-delta is-${tone}`} title={previous ? `Önceki dönem: ${previous}` : 'Önceki döneme göre değişim'}>{delta.direction === 'up' ? '▲' : delta.direction === 'down' ? '▼' : '■'} {delta.text}</em>
 }
 
 // A panel's explanation shows under its title while the pointer or the focus is on the title, as the overview's rows
@@ -216,7 +216,7 @@ function Panel({ title, description, actions, children, className }: { title: st
     <header>
       {description ? <div className="reports-tip-host reports-panel-title">
         <h2><button type="button" className="reports-tip-trigger" aria-describedby={tip}>{title}<TipMark /></button></h2>
-        <span role="tooltip" id={tip} className="reports-hover-tip"><TipText text={description} /></span>
+        <span role="tooltip" id={tip} className="reports-hover-tip"><TipText title={title} text={description} /></span>
       </div> : <div className="reports-panel-title"><h2>{title}</h2></div>}
       {actions && <div className="reports-panel-actions">{actions}</div>}
     </header>
@@ -283,19 +283,19 @@ function Bars({ items, format, label }: { items: Array<{ key: string; label: str
 
 type OpenDetail = (key: DetailKey) => void
 
-// An explanation shown under the pointer: its first line (before a line break) says what the figure is, in bold, and
-// the lines after it how it is worked out.
-// Each sentence of the working goes on a line of its own.
+// An explanation shown under the pointer, in the owner's style (9 Nov 2026): the figure's name in bold, one short
+// sentence saying what it is (a second only where needed), then, where the figure compares, "Önceki dönem: …" on a
+// line of its own. Each line of the text (split at a line break) is a line of the explanation.
 // The round "?" beside a name: its explanation opens while the pointer is on it (or the name has the keyboard focus).
 // Report figures explain an amount or a count: an "i" mark (a "?" is for settings that need a decision).
 const TipMark = () => <UiIcon name="infoCircle" size={16} className="reports-qmark" />
 
-function TipText({ text }: { text: string }) {
-  const [what, ...how] = text.split('\n')
-  const sentences = (lines: string[]) => lines.flatMap(line => line.split(/(?<=\.)\s+(?=[A-ZÇĞİÖŞÜ0-9₺%])/u)).filter(Boolean)
-  if (!how.length) return <>{sentences([what]).map(line => <span key={line}>{line}</span>)}</>
-  return <><b>{what}</b>{sentences(how).map(line => <span key={line}>{line}</span>)}</>
+function TipText({ title, text }: { title: string; text: string }) {
+  return <><b>{title}</b>{text.split('\n').filter(Boolean).map(line => <span key={line}>{line}</span>)}</>
 }
+
+// The previous period's figure as the explanation's last line.
+const previousLine = (value: string | null) => value === null || value === '—' ? 'Önceki dönemde veri yok' : `Önceki dönem: ${value}`
 
 // Genel Bakış: the period's six figures in one strip, its costs round a donut (the deductions tied to no order of the
 // period apart, under it), the way from the sales to the profit
@@ -331,7 +331,7 @@ function Card({ title, icon, actions, className, tip, children }: { title: strin
     <header>
       <span className={`reports-card-title${tip ? ' reports-tip-host' : ''}`}>{icon && <span className="reports-card-icon" aria-hidden="true"><UiIcon name={icon} size={16} /></span>}
         {tip ? <><h2><button type="button" className="reports-tip-trigger" aria-describedby={tipId}>{title}<TipMark /></button></h2>
-          <span role="tooltip" id={tipId} className="reports-hover-tip"><TipText text={tip} /></span></> : <h2>{title}</h2>}</span>
+          <span role="tooltip" id={tipId} className="reports-hover-tip"><TipText title={title} text={tip} /></span></> : <h2>{title}</h2>}</span>
       {actions && <div className="reports-card-actions">{actions}</div>}
     </header>
     {children(shown)}
@@ -391,15 +391,15 @@ function PeriodCard({ data }: { data: ReportSales }) {
       <dl className="reports-period-facts">
         <div className="reports-tip-host"><dt><button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-best`}>En iyi {unit}</button></dt>
           <dd><strong style={fitChars(hasBest && best ? short(best.value) : '—')}>{hasBest && best ? short(best.value) : '—'}</strong><small>{hasBest && best ? bestWhen(best) : 'Bu dönemde veri yok'}</small></dd>
-          <span role="tooltip" id={`${tip}-best`} className="reports-hover-tip"><TipText text={`Dönemin ${measureOf[measure]} en yüksek ${names.its}${hasBest && best ? `: ${format(best.value)}` : ''}.\nGrafikte mor sütunla gösterilir.`} /></span></div>
+          <span role="tooltip" id={`${tip}-best`} className="reports-hover-tip"><TipText title={`En İyi ${names.unit}`} text={`Dönemin ${measureOf[measure]} en yüksek ${names.its}${hasBest && best ? `: ${format(best.value)}` : ''}; grafikte mor sütunla gösterilir.`} /></span></div>
         <div className="reports-tip-host"><dt><button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-average`}>{names.every} ortalama</button></dt>
           <dd><strong style={fitChars(noAmount || average === null ? '—' : short(average))}>{noAmount || average === null ? '—' : short(average)}</strong>
             <small>{!noAmount && average !== null && <Delta delta={change(average, previousAverage)} />}{previousAverage === null ? 'önceki dönemde veri yok' : `önceki ${short(previousAverage)}`}</small></dd>
-          <span role="tooltip" id={`${tip}-average`} className="reports-hover-tip"><TipText text={`Bir ${names.of} ortalama ${measureOf[measure]}${noAmount || average === null ? '' : `: ${format(average)}`}.\nDönem toplamı ÷ ${unit} sayısı; önceki dönemin ortalamasıyla (${previousAverage === null ? 'veri yok' : format(previousAverage)}) karşılaştırılır.`} /></span></div>
+          <span role="tooltip" id={`${tip}-average`} className="reports-hover-tip"><TipText title={`${names.every} Ortalama`} text={`Bir ${names.of} ortalama ${measureOf[measure]}${noAmount || average === null ? '' : `: ${format(average)}`}.\n${previousLine(previousAverage === null ? null : format(previousAverage))}`} /></span></div>
         <div className="reports-tip-host"><dt><button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-ahead`}>Önceki döneme göre</button></dt>
           <dd><strong className={!noAmount && compared.length > 0 && ahead > compared.length - ahead ? 'is-good' : undefined} style={fitChars(noAmount || !compared.length ? '—' : `${ahead} ${unit} önde`)}>{noAmount || !compared.length ? '—' : `${ahead} ${unit} önde`}</strong>
             {!noAmount && compared.length > 0 ? <Progress value={ahead / compared.length} shown={shown} tone={ahead > compared.length - ahead ? 'good' : undefined} /> : <small>Önceki dönemde veri yok</small>}</dd>
-          <span role="tooltip" id={`${tip}-ahead`} className="reports-hover-tip"><TipText text={`Önceki dönemin aynı sıradaki ${names.from} yüksek geçen ${names.many}${noAmount || !compared.length ? '' : `: ${ahead} ${unit} önde, ${compared.length - ahead} ${unit} geride; toplam ${compared.length} ${unit}`}.\nDönemin ilk ${names.its} önceki dönemin ilk ${names.with}, ikincisi ikincisiyle karşılaştırılır.`} /></span></div>
+          <span role="tooltip" id={`${tip}-ahead`} className="reports-hover-tip"><TipText title="Önceki Döneme Göre" text={`Önceki dönemin aynı sıradaki ${names.from} yüksek geçen ${names.many}${noAmount || !compared.length ? '' : `: ${ahead} ${unit} önde, ${compared.length - ahead} ${unit} geride; toplam ${compared.length} ${unit}`}.`} /></span></div>
       </dl>
     </>}
   </Card>
@@ -417,7 +417,7 @@ type Money = {
   // cost (owner, 5 Nov 2026: "Net Kâr yazan yerde tüm masraflar çıkmış olmalıydı"). 0 when there are none.
   unlinked: number
   total: number; deductions: MoneyPart[]; deducted: number; left: number; cost: number | null; costCoverage: number | null
-  profit: number | null; margin: number | null; leftNote: string; profitNote: string; description: string
+  profit: number | null; margin: number | null; description: string
   // What the account could not take off: the commission when none is known, and the platforms whose cargo and fees are
   // not read (with Trendyol's statement) or, without it, the cost lines read nowhere.
   gaps: { commission: boolean; platforms: string[]; lines: string[] }
@@ -449,24 +449,17 @@ function moneyBreakdown(data: ReportSales, flow: ProfitSteps): Money | null {
   const profit = cost === null ? null : left - (tax ?? 0) - cost - unlinked
   const unread = finance ? unreadFeeCodes(data) : []
   const commissionKnown = flow.steps.some(step => step.key === 'commission' && step.value !== null)
-  const gaps = [
-    commissionKnown ? null : 'komisyon bilinmiyor',
-    finance ? (unread.length ? `${unread.map(platformName).join(', ')} kargo ve hizmet bedeli` : null) : unreadCostLines.join(', ').toLocaleLowerCase('tr-TR')
-  ].filter(Boolean)
   const coverage = data.cost.coverage
   return {
     gaps: { commission: !commissionKnown, platforms: unread, lines: finance ? [] : unreadCostLines },
     total: now.grossSales, deductions, deducted, left, tax, unlinked, cost, costCoverage: cost === null ? null : coverage, profit,
-    margin: profit !== null && now.grossSales > 0 ? profit / now.grossSales : null, description: flow.description,
-    leftNote: `Satıştan iade ve pazaryeri kesintileri düşüldükten sonra kalan; ürün maliyeti hariç, tahminidir.${gaps.length ? ` Düşülmeyenler: ${gaps.join('; ')}.` : ''}`,
-    profitNote: cost === null ? 'Ürün kartında varyant maliyeti girildiğinde kâr burada görünür.'
-      : `Masraflar sonrasından ürün maliyeti${unlinked ? ', reklam ve diğer kesintiler' : ''} düşülerek bulunur; tahminidir.${(coverage ?? 0) < 1 ? ` Satılan adetlerin ${formatPercent(coverage)} kadarının maliyeti girili; kalanının maliyeti düşülmedi.` : ''}`
+    margin: profit !== null && now.grossSales > 0 ? profit / now.grossSales : null, description: flow.description
   }
 }
 
-// How much of the cost is entered, in one sentence.
-const costCoverageText = (coverage: number | null) => (coverage ?? 0) >= 1 ? 'Satılan tüm ürünlerin maliyeti girili.'
-  : `Satılan adetlerin ${formatPercent(coverage)} kadarının maliyeti girili; kalanının maliyeti düşülmedi.`
+// How much of the cost is entered, said only when some of it is missing.
+const costCoverageText = (coverage: number | null) => (coverage ?? 0) >= 1 ? ''
+  : `Satılan adetlerin ${formatPercent(coverage)} kadarının maliyeti girili; kalanınınki düşülmedi.`
 
 const signedTl = (value: number) => value < 0 ? `− ${formatTl(-value)}` : formatTl(value)
 
@@ -538,10 +531,10 @@ export function KpiStrip({ label, items, marks = true, aligned = false, long = f
         {/* The previous period's figure opens under the change chip on a tap, instead of always taking a line. */}
         {compares && <span className="reports-kpi-change">{item.delta !== undefined && (previousNote(item) ? <button type="button" className="reports-kpi-delta-toggle" aria-expanded={peek === item.key} onClick={() => setPeek(peek === item.key ? null : item.key)}><Delta delta={item.delta} invert={item.invert} /></button> : <Delta delta={item.delta} invert={item.invert} />)}</span>}
         {item.note !== undefined && (!previousNote(item) || peek === item.key) && <span className="reports-kpi-note">{wholeLiras(item.note)}</span>}
-        <span id={id} className="reports-sr">{item.tip.replace('\n', ' ')}</span>
+        <span id={id} className="reports-sr">{item.tip.replaceAll('\n', ' ')}</span>
       </div>
     })}</div>
-    {open && current && <div key={current.key} className="reports-hover-tip is-floating" aria-hidden="true" style={{ top: open.top, left: open.left, width: open.width }}><TipText text={current.tip} />{current.split && current.split.length > 0 && <dl className="reports-tip-split">{current.split.map(row => <div key={row.key}><dt>{row.label}</dt><dd>{row.value}</dd></div>)}</dl>}</div>}
+    {open && current && <div key={current.key} className="reports-hover-tip is-floating" aria-hidden="true" style={{ top: open.top, left: open.left, width: open.width }}><TipText title={current.label} text={current.tip} />{current.split && current.split.length > 0 && <dl className="reports-tip-split">{current.split.map(row => <div key={row.key}><dt>{row.label}</dt><dd>{row.value}</dd></div>)}</dl>}</div>}
   </div>
 }
 
@@ -549,7 +542,7 @@ export function KpiStrip({ label, items, marks = true, aligned = false, long = f
 const wholeLiras = (text: string) => text.replace(/₺([\d.]+),(\d{2})/gu, (_, whole: string, kurus: string) => formatTlWhole(Number(whole.replace(/\./gu, '')) + Number(kurus) / 100))
 
 // "Önceki dönem …", or that the previous period has nothing to compare.
-const previousText = (value: string | null) => value === null || value === '—' ? 'Önceki dönemde veri yok' : `Önceki dönem ${value}`
+const previousText = (value: string | null) => previousLine(value)
 const percent = (value: number) => formatPercent(value)
 
 // The previous period's account, worked out as the period's is; null when the server sent none, or when one period
@@ -583,26 +576,25 @@ function OverviewFigures({ data, money }: { data: ReportSales; money: Money | nu
   const items: Kpi[] = [
     { key: 'net', label: 'Net Ciro', value: noAmount ? null : now.netRevenue, format: formatTl, empty: 'Tutar yok', delta: noAmount ? null : change(now.netRevenue, then.netRevenue),
       note: noAmount ? previousText(null) : `Satış ${formatTl(now.grossSales)} · iade ${formatTl(now.returnedAmount)}`,
-      tip: `Satış tutarından iadeler düşülmüş ciro; iptal edilen siparişler sayılmaz.\nKâr Köprüsü'ndeki Satış Tutarı eksi İade Edilen Tutar; Genel Bakış'taki Ciro iadeler dahildir, bu yüzden ondan düşüktür. ${previousText(then.ordersWithAmount > 0 ? formatTl(then.netRevenue) : null)}.`, split: split(row => row.ordersWithAmount > 0 ? row.netRevenue : null, formatTl) },
+      tip: `Satış tutarından iadeler düşüldükten sonra kalan ciro. İptaller sayılmaz.\n${previousLine(then.ordersWithAmount > 0 ? formatTl(then.netRevenue) : null)}`, split: split(row => row.ordersWithAmount > 0 ? row.netRevenue : null, formatTl) },
     { key: 'profit', label: profit !== null && profit < 0 ? 'Tahmini Zarar' : 'Net Kâr', value: profit, format: formatTl, empty: noAmount ? 'Tutar yok' : 'Maliyet girilmemiş',
       delta: change(profit, earlierProfit),
       note: profit === null || now.ordersWithAmount === 0 ? 'Sipariş başına —' : `Sipariş başına ${signedTl(profit / now.ordersWithAmount)}`,
-      tip: `${profit === null ? 'Ürün maliyeti girilince hesaplanır.\nÜrün kartında varyantların maliyetini girin.' : netProfitTip} Sipariş başına: Sipariş Başına Kâr. ${previousText(earlierProfit === null ? null : signedTl(earlierProfit))}.`,
+      tip: `${profit === null ? noCostTip : netProfitTip}\n${previousLine(earlierProfit === null ? null : signedTl(earlierProfit))}`,
       tone: profit === null ? undefined : profit < 0 ? 'bad' : profit > 0 ? 'good' : undefined },
     { key: 'margin', label: 'Kâr Marjı', value: money?.margin ?? null, format: percent, delta: change(money?.margin ?? null, earlier?.margin ?? null, 'rate'),
       note: `Reklam öncesi ${beforeAds === null ? '—' : formatPercent(beforeAds)}`,
-      tip: `Satışın yüzde kaçının kâr olarak kaldığı.\nTahmini net kâr ÷ satış tutarı (iadeler düşülmeden; Net Ciro değil), Kâr Köprüsü'ndeki paylar gibi. Reklam öncesi: Trendyol reklamı düşülmeden kalan kârın satışa oranı, Kârlılık kartındaki gibi. ${previousText(formatPercent(earlier?.margin))}.`, tone: (money?.margin ?? 0) < 0 ? 'bad' : undefined },
+      tip: `Net kârın satış tutarına oranı. Reklam öncesi oranda Trendyol reklamı düşülmez.\n${previousLine(formatPercent(earlier?.margin))}`, tone: (money?.margin ?? 0) < 0 ? 'bad' : undefined },
     { key: 'cost', label: 'Maliyete Göre Kâr', value: onCost, format: percent, delta: change(onCost, earlierOnCost, 'rate'),
       note: `Ürün maliyeti ${money?.cost ? formatTl(money.cost) : '—'}`,
-      tip: `Ürüne harcanan her liranın ne kadar kâr getirdiği.\nTahmini net kâr ÷ ürün maliyeti (Kâr Köprüsü'ndeki Ürün Maliyeti). ${previousText(formatPercent(earlierOnCost))}.`, tone: (onCost ?? 0) < 0 ? 'bad' : undefined },
+      tip: `Net kârın ürün maliyetine oranı: ürüne harcanan her liranın getirdiği kâr.\n${previousLine(formatPercent(earlierOnCost))}`, tone: (onCost ?? 0) < 0 ? 'bad' : undefined },
     { key: 'orders', label: 'Sipariş', value: now.orders, format: formatCount, delta: change(now.orders, then.orders), note: `${formatCount(now.cancelledOrders)} iptal · sepet ${noAmount ? '—' : formatTl(now.averageOrderValue)}`,
-      tip: `${previousText(formatCount(then.orders))}.`, split: split(row => row.orders, formatCount) },
+      tip: `Dönemde gelen sipariş sayısı. İptal edilen siparişler sayılmaz.\n${previousLine(formatCount(then.orders))}`, split: split(row => row.orders, formatCount) },
     // The units sold (cancellations out, returns not taken off), with what the customers kept and sent back under it;
     // the Satış card under the strip leads with the same figure (owner, 7 Nov 2026: the strip as 3 + 3).
     { key: 'sold', label: 'Satılan Adet', value: now.soldQuantity, delta: change(now.soldQuantity, then.soldQuantity),
       note: `Net ${formatNumber(now.keptQuantity)} · ${formatNumber(now.returnedQuantity)} iade`,
-      tip: `${now.soldQuantity > 0 ? 'Dönemde satılan ürün adedi; iptaller hariç, iadeler düşülmeden.' : 'Bu dönemde satış yok.'}
-Net adet müşteride kalandır: ${formatNumber(now.soldQuantity)} satılan adetten ${formatNumber(now.returnedQuantity)} iade düşülür. ${previousText(formatNumber(then.soldQuantity))}.`,
+      tip: `Dönemde satılan ürün adedi; iptaller sayılmaz, iadeler düşülmez. Net adet, iadeler düşülünce müşteride kalandır.\n${previousLine(formatNumber(then.soldQuantity))}`,
       split: split(row => row.soldQuantity, formatNumber) }
   ]
   return <KpiStrip label="Dönemin göstergeleri" items={items} />
@@ -615,26 +607,36 @@ type OverviewCost = { key: string; label: string; value: number | null; tone: st
 // account's deductions plus the product cost; the largest come first.
 const costMeaning: Record<string, string> = {
   cost: 'Satılan ürünlerin alış maliyeti.',
-  commission: 'Pazaryerinin her satıştan aldığı komisyon.',
-  cargo: 'Siparişlerin kargo gönderim ücreti.',
+  commission: 'Pazaryerlerinin satışlardan aldığı komisyon; kaydı olmayan siparişlerde tahmini.',
+  cargo: 'Siparişlerin ve iadelerin kargo ücreti; faturası gelmeyenlerde tahmini.',
   returned: 'Müşterilerin iade ettiği ürünlerin tutarı; satıştan düşülür.',
-  fee: 'Pazaryerlerinin sipariş ya da satış başına aldığı hizmet bedelleri.',
-  payment: 'Shopify\'da kartlı ödemenin iyzico ve Shopify kesintisi.',
-  stoppage: 'Satıştan kesilen %1 e-ticaret stopajı (vergi kesintisi).',
-  ads: 'Trendyol\'daki reklam harcaması.',
+  fee: 'Pazaryerlerinin sipariş ya da satış başına aldığı hizmet bedeli; kesinleşmeyenlerde tahmini.',
+  payment: 'Shopify\'da kartlı ödemelerin iyzico ve Shopify kesintisi.',
+  stoppage: 'Satıştan kesilen %1 e-ticaret stopajı; kesinleşmeyenlerde tahmini.',
+  ads: 'Trendyol\'daki reklam harcaması; bir siparişe bağlı değildir.',
   penalty: 'Trendyol\'un kestiği cezalar (geç kargo, iptal gibi).',
   early: 'Hakedişi erken almak için ödenen kesinti.',
-  otherDeduction: 'Trendyol\'un türünü belirtmeden kestiği diğer kesinti faturaları.',
-  vat: 'Devlete ödenecek KDV farkı.',
+  otherDeduction: 'Trendyol\'un türünü belirtmeden kestiği kesinti faturaları.',
+  vat: 'Satışların KDV\'sinden ürün ve masraf KDV\'si düşülünce kalan, devlete ödenecek tahmini KDV.',
   fees: 'Pazaryerlerinin hizmet bedeli ve stopaj kesintileri; Shopify\'da ödeme komisyonu.',
-  marketplace: 'Pazaryerinin komisyonu ve hizmet bedelleri.'
+  marketplace: 'Pazaryerlerinin komisyonu ve hizmet bedelleri.'
 }
-const explain = (key: string, how: string) => `${costMeaning[key] ?? ''}\n${how}`
+const notRead = 'Bu seçimde hesaplanamadı.'
+// A line's explanation: what it is, then a short sentence more only where one is needed (what is left out of it).
+const explain = (key: string, more = '') => `${costMeaning[key] ?? ''}${more ? ` ${more}` : ''}`
+// What a figure leaves out, in a few words: the commission of sales without a known rate, the cargo that could not be
+// estimated.
+const commissionGap = (data: ReportSales) => (data.commission.coverage ?? 0) < 1 || (financeCosts(data)?.commission?.missingOrders ?? 0) > 0
+  ? 'Oranı bilinmeyen satışlardan komisyon düşülmedi.' : ''
+const cargoGap = (data: ReportSales) => {
+  const cargo = financeCosts(data)?.cargo
+  return cargo && cargoPartial(cargo) ? 'Tahmin edilemeyen kargo düşülmedi.' : ''
+}
+const vatMore = (net: number | null | undefined) => net !== null && net !== undefined && net < 0 ? 'Eksi olduğu için devreden KDV\'dir ve kârı artırır.' : ''
 
 function costLines(data: ReportSales, money: Money): OverviewCost[] {
   const finance = financeCosts(data)
   const part = (key: string) => money.deductions.find(item => item.key === key)
-  const notRead = 'Bu seçimde hesaplanamadı.'
   const commission = part('commission')
   const cargo = part('cargo')
   // The deductions of the period's dates tied to none of its orders (Trendyol's statement: advertising, other deduction
@@ -642,31 +644,19 @@ function costLines(data: ReportSales, money: Money): OverviewCost[] {
   // cost Net Kâr takes off (owner, 7 Nov 2026: one cost card, no separate card for them).
   const unlinked = unlinkedDeductions(trendyolRead(data) ? data.costs : null).lines
   const apart = (category: string) => unlinked.find(line => line.key === category)
-  const apartNote = (category: string, linked: number | null) => {
-    const line = apart(category)
-    if (!line) return ''
-    return ` ${linked ? `${formatTl(linked)} dönemin siparişlerine ait; ` : ''}${formatTl(line.amount)} (${formatCount(line.records)} kayıt) siparişe bağlı değil, işlem tarihine göre bu döneme yazıldı.`
-  }
   const lines: OverviewCost[] = [
-    { key: 'cost', label: 'Ürün Maliyeti', value: money.cost, tone: 'cost', note: explain('cost', money.cost === null ? 'Ürün kartında varyantların maliyeti girildiğinde hesaplanır.' : costCoverageText(money.costCoverage)) },
+    { key: 'cost', label: 'Ürün Maliyeti', value: money.cost, tone: 'cost', note: explain('cost', money.cost === null ? 'Ürün kartında maliyet girilince hesaplanır.' : costCoverageText(money.costCoverage)) },
     // The account's commission and cargo already hold what the period charged of them apart (moneyBreakdown).
     { key: 'commission', label: commission?.label ?? 'Komisyon', value: commission?.value ?? null, tone: 'commission',
-      note: `${explain('commission', commission?.note || 'Siparişte komisyon gelmedi.')}${apartNote('COMMISSION', commission ? commission.value - apartAmount(data, 'COMMISSION') : null)}` },
-    { key: 'cargo', label: 'Kargo', value: finance ? cargo?.value ?? 0 : null, tone: 'cargo',
-      note: `${explain('cargo', finance ? cargo?.note || 'Bu dönemde kargo yok.' : notRead)}${apartNote('CARGO', cargo ? cargo.value - apartAmount(data, 'CARGO') : null)}` },
-    { key: 'returned', label: 'İade Edilen Tutar', value: part('returned')?.value ?? 0, tone: 'returned', note: explain('returned', `Bu dönemde ${formatNumber(data.summary.returnedQuantity)} adet ürün iade edildi.`) },
+      note: commission ? explain('commission', commissionGap(data)) : 'Pazaryerlerinin satışlardan aldığı komisyon. Siparişlerde komisyon bilgisi gelmedi.' },
+    { key: 'cargo', label: 'Kargo', value: finance ? cargo?.value ?? 0 : null, tone: 'cargo', note: explain('cargo', finance ? cargoGap(data) : notRead) },
+    { key: 'returned', label: 'İade Edilen Tutar', value: part('returned')?.value ?? 0, tone: 'returned', note: explain('returned') },
     // The service fee and the withholding tax are on every order. The rest is listed only when the period carries one,
     // on an order or apart ("Diğer Kesintiler" and "Ödeme Komisyonu" also not when nothing is read).
-    ...feeCategories.filter(fee => ['SERVICE_FEE', 'STOPPAGE'].includes(fee.category) || apart(fee.category) || (finance ? finance.lines.some(item => item.category === fee.category && item.amount !== 0) : !['OTHER_DEDUCTION', 'PAYMENT_FEE'].includes(fee.category))).map(fee => {
-      const line = finance?.lines.find(item => item.category === fee.category)
-      const extra = apart(fee.category)
-      return { key: fee.key, label: fee.category === 'EARLY_PAYMENT' ? 'Erken Ödeme Kesintisi' : fee.category === 'OTHER_DEDUCTION' ? 'Diğer Kesintiler' : fee.label,
-        value: costFigure(data, fee.category), tone: fee.key,
-        note: `${explain(fee.key, !finance ? notRead : line && line.amount !== 0 ? feeNote(line) : extra ? 'Dönemin siparişlerinde kaydı yok.' : 'Bu dönemde kaydı yok.')}${apartNote(fee.category, line?.amount || null)}${coveredNote(data, fee.category)}` }
-    }),
-    { key: 'vat', label: 'Net KDV', value: finance?.netVat?.net ?? null, tone: 'vat', note: explain('vat', finance?.netVat
-      ? `Satışların KDV'si ${formatTl(finance.netVat.salesVat)}; bundan ürün maliyetindeki KDV ${formatTl(finance.netVat.productCostVat)} ve masraflardaki (komisyon, kargo, hizmet bedeli) KDV ${formatTl(finance.netVat.expenseVat)} düşülür. Tahminidir.${finance.netVat.net < 0 ? ' Eksi çıktığı için devreden KDV\'dir ve kârı artırır.' : ''}`
-      : notRead) }
+    ...feeCategories.filter(fee => ['SERVICE_FEE', 'STOPPAGE'].includes(fee.category) || apart(fee.category) || (finance ? finance.lines.some(item => item.category === fee.category && item.amount !== 0) : !['OTHER_DEDUCTION', 'PAYMENT_FEE'].includes(fee.category))).map(fee =>
+      ({ key: fee.key, label: fee.category === 'EARLY_PAYMENT' ? 'Erken Ödeme Kesintisi' : fee.category === 'OTHER_DEDUCTION' ? 'Diğer Kesintiler' : fee.label,
+        value: costFigure(data, fee.category), tone: fee.key, note: explain(fee.key, finance ? coveredNote(data, fee.category) : notRead) })),
+    { key: 'vat', label: 'Net KDV', value: finance?.netVat?.net ?? null, tone: 'vat', note: explain('vat', finance?.netVat ? vatMore(finance.netVat.net) : notRead) }
   ]
   const known = lines.filter(line => line.value !== null && line.value > 0).sort((a, b) => (b.value ?? 0) - (a.value ?? 0))
   return [...known, ...lines.filter(line => line.value !== null && line.value <= 0), ...lines.filter(line => line.value === null)]
@@ -706,7 +696,7 @@ function CostLinesCard({ data, money }: { data: ReportSales; money: Money | null
         <button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-${line.key}`} onFocus={() => pick(line.key)} onBlur={() => setActive(null)}>{line.label}<TipMark /></button>
         <b>{line.value === null ? '—' : signedTl(line.value)}</b>
         <em>{line.value !== null && line.value > 0 && total > 0 ? formatPercent(line.value / total) : ''}</em>
-        <span role="tooltip" id={`${tip}-${line.key}`} className="reports-hover-tip"><TipText text={line.note} /></span>
+        <span role="tooltip" id={`${tip}-${line.key}`} className="reports-hover-tip"><TipText title={line.label} text={line.note} /></span>
       </li>)}</ul>
     </div>}
   </Card>
@@ -714,26 +704,28 @@ function CostLinesCard({ data, money }: { data: ReportSales; money: Money | null
 
 // What each deduction tied to no order of the period is, under the pointer.
 const unlinkedMeaning: Record<string, string> = {
-  SERVICE_FEE: 'Siparişlerine henüz paylaştırılamayan hizmet bedeli faturaları.\nTrendyol ödemenin kayıtlarını verince (ödemeden bir gün sonra) siparişlerine paylaştırılır; ödeme bilgisi olmayan fatura burada kalır.',
-  STOPPAGE: 'Siparişlerine henüz paylaştırılamayan e-ticaret stopajı.\nTrendyol ödemenin kayıtlarını verince (ödemeden bir gün sonra) siparişlerine paylaştırılır.',
-  ADVERTISING: 'Reklam bütçesi satın alımları ve reklam bedelleri.\nBir siparişe bağlı değildir.',
-  CARGO: 'Dönemin siparişlerine bağlanamayan kargo faturası satırları.\nPanelde olmayan siparişlerin ya da satırları okunamayan faturaların kargosu.',
-  COMMISSION: 'Dönemin siparişlerine bağlanamayan komisyon kayıtları.\nPanelde olmayan siparişlerin komisyonu ya da düzeltmeler.',
-  PENALTY: 'Trendyol\'un kestiği cezalar (geç kargo, iptal gibi).\nBir siparişe bağlı değildir.',
-  EARLY_PAYMENT: 'Hakedişi erken almak için ödenen kesinti.\nBir siparişe bağlı değildir.',
-  OTHER_DEDUCTION: 'Trendyol\'un türünü belirtmeden kestiği kesinti faturaları.\nBir siparişe bağlı değildir.'
+  SERVICE_FEE: 'Siparişlerine henüz paylaştırılamayan hizmet bedeli faturaları; ödeme kayıtları okununca paylaştırılır.',
+  STOPPAGE: 'Siparişlerine henüz paylaştırılamayan e-ticaret stopajı; ödeme kayıtları okununca paylaştırılır.',
+  ADVERTISING: 'Reklam bütçesi yüklemeleri ve reklam bedelleri; bir siparişe bağlı değildir.',
+  CARGO: 'Dönemin siparişlerine bağlanamayan kargo faturası satırları.',
+  COMMISSION: 'Dönemin siparişlerine bağlanamayan komisyon kayıtları ve düzeltmeler.',
+  PENALTY: 'Trendyol\'un kestiği cezalar (geç kargo, iptal gibi); bir siparişe bağlı değildir.',
+  EARLY_PAYMENT: 'Hakedişi erken almak için ödenen kesinti; bir siparişe bağlı değildir.',
+  OTHER_DEDUCTION: 'Trendyol\'un türünü belirtmeden kestiği kesinti faturaları; bir siparişe bağlı değildir.'
 }
 const unlinkedLabels: Record<string, string> = { SERVICE_FEE: 'Hizmet Bedeli', STOPPAGE: 'Stopaj', ADVERTISING: 'Reklam', CARGO: 'Kargo', COMMISSION: 'Komisyon', PENALTY: 'Ceza', EARLY_PAYMENT: 'Erken Ödeme Kesintisi', OTHER_DEDUCTION: 'Diğer Kesinti', PAYMENT_FEE: 'Ödeme Komisyonu' }
-const unlinkedTip = 'Trendyol\'un bir siparişe bağlamadan kestiği kalemler: reklam bütçesi, ceza, erken ödeme ve türü belirtilmeyen kesinti faturaları, işlem tarihine göre.\nSiparişe bağlanamayan komisyon, kargo, hizmet bedeli ve stopaj kendi kalemlerinde sayılır (Masraf Kalemleri, Kâr Köprüsü). Net Kâr\'dan düşülür.'
+const unlinkedTip = 'Trendyol\'un bir siparişe bağlamadan kestiği reklam, ceza, erken ödeme ve kesinti faturaları. Net Kâr\'dan düşülür.'
 // The unlinked deductions' line in the profit account, under the pointer.
 // The name of that line on Kâr Köprüsü and in Kâr Hesabı (owner, 7 Nov 2026: plain words, no "siparişe bağlı olmayan").
 const unlinkedTitle = 'Reklam ve Diğer Kesintiler'
-const unlinkedNote = (data: ReportSales) => {
-  const { lines } = orderlessLines(data)
-  return `Trendyol'un bir siparişe bağlamadan kestiği kalemler (reklam, ceza, kesinti faturaları), işlem tarihine göre.\n${lines.length ? `${lines.map(line => `${line.label} ${formatTl(line.amount)} (${formatCount(line.records)} kayıt)`).join(', ')}. ` : ''}Masraf Kalemleri'nde her biri kendi kaleminde gösterilir; siparişe bağlanamayan komisyon, kargo, hizmet bedeli ve stopaj kendi kalemlerinde sayılır. Net Kâr'dan düşülür.`
-}
-// Net Kâr: what every figure that says so means.
-const netProfitTip = 'Tüm masraflar ve ürün maliyeti düştükten sonra kalan tahmini kâr.\nSatış − iade − komisyon − kargo − hizmet bedeli ve diğer kesintiler − net KDV − ürün maliyeti − reklam ve diğer kesintiler, Kâr Hesabı\'ndaki gibi.'
+const unlinkedNote = 'Trendyol\'un bir siparişe bağlamadan, işlem tarihinde kestiği reklam, ceza ve kesinti faturaları.'
+// Net Kâr: what every figure that says so means (the owner's approved wording, 9 Nov 2026).
+const netProfitTip = 'Tüm kesintiler, ürün maliyeti ve reklam düşüldükten sonra kalan tahmini kâr. Dökümü Kâr Hesabı\'nda.'
+const noCostTip = 'Ürün maliyeti girilince hesaplanır. Maliyeti ürün kartından girin.'
+// Satış Tutarı: the list price less the seller's discount (the marketplace's own discount is the marketplace's to pay).
+const salesTip = 'Satıcı indirimi düşülmüş satış tutarı; iptaller sayılmaz, iadeler henüz düşülmedi.'
+// İade Oranı: the units returned over every unit ordered, the cancelled ones included (ReportBuilder, as Trendyol has it).
+const returnRateTip = 'Sipariş edilen ürün adedinin (iptaller dahil) yüzde kaçının iade edildiği, Trendyol gibi.'
 
 // The deductions of the period's dates tied to no order of the period (only from Trendyol's statement), largest first.
 function unlinkedDeductions(costs: ReportCosts | null | undefined) {
@@ -768,7 +760,7 @@ function UnlinkedDeductions({ data, panel = false }: { data: ReportSales; panel?
       {lines.map(line => <div key={line.key} className="reports-tip-host">
         <dt><button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-${line.key}`}>{line.label}<TipMark /></button></dt>
         <dd>{signedTl(line.amount)}<small>{formatCount(line.records)} kayıt</small></dd>
-        <span role="tooltip" id={`${tip}-${line.key}`} className="reports-hover-tip"><TipText text={unlinkedMeaning[line.key] ?? 'Dönemin siparişlerine bağlanamayan kesinti.\nBir siparişe bağlı değildir.'} /></span>
+        <span role="tooltip" id={`${tip}-${line.key}`} className="reports-hover-tip"><TipText title={line.label} text={unlinkedMeaning[line.key] ?? 'Dönemin siparişlerine bağlanamayan kesinti.'} /></span>
       </div>)}
       <div className="is-total"><dt>Toplam</dt><dd>{signedTl(total)}<small>Net Kâr'dan düşülür</small></dd></div>
     </dl>
@@ -796,16 +788,16 @@ function ProfitBridge({ data, money, onMore }: { data: ReportSales; money: Money
   const commission = part('commission')
   const cargo = part('cargo')
   const taken = [
-    { key: 'returned', label: 'İade Edilen Tutar', value: part('returned')?.value ?? 0, note: explain('returned', `Bu dönemde ${formatNumber(data.summary.returnedQuantity)} adet ürün iade edildi.`) },
-    { key: 'cargo', label: 'Kargo', value: cargo?.value ?? 0, note: explain('cargo', cargo?.note ?? '') },
+    { key: 'returned', label: 'İade Edilen Tutar', value: part('returned')?.value ?? 0, note: explain('returned') },
+    { key: 'cargo', label: 'Kargo', value: cargo?.value ?? 0, note: explain('cargo', cargoGap(data)) },
     { key: 'marketplace', label: 'Pazaryeri Masrafları', value: (commission?.value ?? 0) + (part('fees')?.value ?? 0) - stoppage,
-      note: explain('marketplace', [commission ? `${commission.label} ${formatTl(commission.value)}` : null, ...otherFees.map(fee => `${fee.label} ${formatTl(fee.value)}`)].filter(Boolean).join(', ') + '.') },
-    { key: 'stoppage', label: 'Stopaj', value: stoppage, note: explain('stoppage', `KDV hariç satışın %1'i; Trendyol yurt dışı vitrin satışlarından da keser (Azerbaycan hariç). Hesap kesimi henüz olmayan siparişlerde tahmini.${apartAmount(data, 'STOPPAGE') ? ` ${formatTl(apartAmount(data, 'STOPPAGE'))} siparişe bağlı değil, işlem tarihine göre bu döneme yazıldı.` : ''}${coveredNote(data, 'STOPPAGE')}`) },
-    { key: 'vat', label: 'Net KDV', value: money.tax ?? 0, note: explain('vat', money.tax !== null && money.tax < 0 ? 'Masraflardaki KDV satışların KDV\'sinden fazla; fark devreden KDV\'dir ve kârı artırır.' : 'Satışların KDV\'sinden ürün maliyetindeki ve masraflardaki KDV düşülür. Tahminidir.') },
+      note: `${explain('marketplace', commissionGap(data))}\n${[commission ? `${commission.label} ${formatTl(commission.value)}` : null, ...otherFees.map(fee => `${fee.label} ${formatTl(fee.value)}`)].filter(Boolean).join(' · ')}` },
+    { key: 'stoppage', label: 'Stopaj', value: stoppage, note: explain('stoppage', coveredNote(data, 'STOPPAGE')) },
+    { key: 'vat', label: 'Net KDV', value: money.tax ?? 0, note: explain('vat', vatMore(money.tax)) },
     { key: 'cost', label: 'Ürün Maliyeti', value: money.cost ?? 0, note: explain('cost', costCoverageText(money.costCoverage)) },
-    { key: 'unlinked', label: unlinkedTitle, value: money.unlinked, note: unlinkedNote(data) }
+    { key: 'unlinked', label: unlinkedTitle, value: money.unlinked, note: `${unlinkedNote} Net Kâr'dan düşülür.` }
   ].filter(item => item.value !== 0)
-  const rows: BridgeRow[] = [{ key: 'sales', label: 'Satış Tutarı', from: 0, to: money.total, kind: 'total', note: 'Liste fiyatından satıcı indirimi düşülmüş satış.\nPazaryerinin kendi indirimi dahildir (pazaryeri satıcıya öder). İptaller hariç, iadeler düşülmeden. Platformlara göre görmek için tıklayın.' }]
+  const rows: BridgeRow[] = [{ key: 'sales', label: 'Satış Tutarı', from: 0, to: money.total, kind: 'total', note: salesTip + ' Platformlara göre görmek için tıklayın.' }]
   let at = money.total
   for (const item of taken) {
     rows.push({ key: item.key, label: item.label, from: at - item.value, to: at, kind: 'minus', note: item.note })
@@ -813,11 +805,10 @@ function ProfitBridge({ data, money, onMore }: { data: ReportSales; money: Money
   }
   // Without a product cost the steps still take the net VAT off, so the result is where they end, not Masraflar Sonrası.
   const result = money.profit ?? money.left - (money.tax ?? 0) - money.unlinked
-  // What the account could not take off is said on the result as well, not only in the deductions' own notes.
-  const leftOut = money.leftNote.split(' Düşülmeyenler: ')[1]
+  // What the account could not take off is listed under the bridge (EstimateGaps), so the result's note stays short.
   rows.push({ key: 'result', label: money.profit === null ? 'Masraflar Sonrası' : result < 0 ? 'Tahmini Zarar' : 'Tahmini Net Kâr', from: 0, to: result, kind: 'end',
-    note: money.profit === null ? `Masraflar düştükten sonra kalan tutar.\nÜrün maliyeti girilmediği için kâr hesaplanamadı.${leftOut ? ` Düşülmeyenler: ${leftOut}` : ''}`
-      : `Tüm masraflar, ürün maliyeti, reklam ve diğer kesintiler düştükten sonra kalan tahmini kâr.\nNet marj ${formatPercent(money.margin)}.${(money.costCoverage ?? 1) < 1 ? ` ${costCoverageText(money.costCoverage)}` : ''}${leftOut ? ` Düşülmeyenler: ${leftOut}` : ''}` })
+    note: money.profit === null ? 'Kesintiler düşüldükten sonra kalan tutar. Ürün maliyeti girilmediği için kâr hesaplanamadı.'
+      : `Tüm kesintiler, ürün maliyeti ve reklam düşüldükten sonra kalan tahmini kâr.\nNet marj ${formatPercent(money.margin)}` })
   const low = Math.min(0, ...rows.flatMap(row => [row.from, row.to]))
   const span = Math.max(1, Math.max(money.total, ...rows.flatMap(row => [row.from, row.to])) - low)
   return <Card title="Kâr Köprüsü" className="reports-card-bridge" actions={more}>
@@ -831,7 +822,7 @@ function ProfitBridge({ data, money, onMore }: { data: ReportSales; money: Money
             : <button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-${row.key}`}>{`${row.kind === 'minus' ? (row.to < row.from ? '+ ' : '− ') : ''}${row.label}`}<TipMark /></button>}</span>
           <span className="reports-bridge-track" aria-hidden="true"><i style={{ left: `${(start - low) / span * 100}%`, width: shown ? `${Math.max(0.5, width)}%` : '0%', transitionDelay: `${index * 80}ms` }} /></span>
           <b>{row.kind === 'minus' ? `${row.to < row.from ? '+' : '−'} ${formatTl(Math.abs(row.to - row.from))}` : signedTl(row.to)}</b>
-          <span role="tooltip" id={`${tip}-${row.key}`} className="reports-hover-tip"><TipText text={row.note} /></span>
+          <span role="tooltip" id={`${tip}-${row.key}`} className="reports-hover-tip"><TipText title={row.label} text={row.note} /></span>
         </li>
       })}</ol>
       <EstimateGaps money={money} shown={shown} />
@@ -887,19 +878,21 @@ function ProfitLedger({ data, money, notes = {} }: { data: ReportSales; money: M
     <div key={key} className={`reports-tip-host${className ? ` ${className}` : ''}`}>
       <dt><button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-${key}`}>{label}<TipMark /></button>{extra}</dt>
       <dd>{value}</dd>
-      <span role="tooltip" id={`${tip}-${key}`} className="reports-hover-tip"><TipText text={note} /></span>
+      <span role="tooltip" id={`${tip}-${key}`} className="reports-hover-tip"><TipText title={label} text={note} /></span>
     </div>
+  // The commission's coverage is in its note (ledgerNotes); the cargo says what could not be estimated.
+  const gap: Record<string, string> = { cargo: cargoGap(data) }
   return <dl className="reports-ledger">
-    {row('sales', undefined, 'Satış Tutarı', formatTl(money.total), 'Liste fiyatından satıcı indirimi düşülmüş satış.\nPazaryerinin kendi indirimi dahildir. İptaller hariç, iadeler düşülmeden.')}
-    {money.deductions.map(part => row(part.key, part.value < 0 ? undefined : 'is-minus', part.label, part.value < 0 ? `+ ${formatTl(-part.value)}` : `− ${formatTl(part.value)}`, `${costMeaning[part.key] ?? part.label}\n${share(part.value)}${notes[part.key] ? ` ${notes[part.key]}` : ''}`))}
-    {row('left', `is-total is-${money.left < 0 ? 'bad' : 'good'}`, 'Masraflar Sonrası', amount(money.left), `Satıştan iade ve pazaryeri masrafları düştükten sonra kalan.\n${share(money.left)}`)}
+    {row('sales', undefined, 'Satış Tutarı', formatTl(money.total), salesTip)}
+    {money.deductions.map(part => row(part.key, part.value < 0 ? undefined : 'is-minus', part.label, part.value < 0 ? `+ ${formatTl(-part.value)}` : `− ${formatTl(part.value)}`, `${explain(part.key, gap[part.key])}\n${share(part.value)}${notes[part.key] ? ` ${notes[part.key]}` : ''}`))}
+    {row('left', `is-total is-${money.left < 0 ? 'bad' : 'good'}`, 'Masraflar Sonrası', amount(money.left), `Satıştan iade ve pazaryeri kesintileri düşüldükten sonra kalan; ürün maliyeti düşülmeden.\n${share(money.left)}`)}
     {money.tax !== null && row('vat', money.tax < 0 ? undefined : 'is-minus', 'Net KDV', money.tax < 0 ? `+ ${formatTl(-money.tax)}` : `− ${formatTl(money.tax)}`,
-      `${costMeaning.vat}\n${share(money.tax)}${money.tax < 0 ? ' Eksi çıktığı için devreden KDV\'dir ve kârı artırır.' : ''}`)}
+      `${explain('vat', vatMore(money.tax))}\n${share(money.tax)}`)}
     {money.cost !== null && row('cost', 'is-minus', 'Ürün Maliyeti', `− ${formatTl(money.cost)}`, `${costMeaning.cost}\n${share(money.cost)}${notes.cost ? ` ${notes.cost}` : ''}`)}
     {money.unlinked !== 0 && row('unlinked', money.unlinked < 0 ? undefined : 'is-minus', unlinkedTitle, money.unlinked < 0 ? `+ ${formatTl(-money.unlinked)}` : `− ${formatTl(money.unlinked)}`,
-      `${unlinkedNote(data)}\n${share(money.unlinked)}`)}
+      `${unlinkedNote}\n${share(money.unlinked)}`)}
     {money.profit !== null && row('profit', `is-result is-${money.profit < 0 ? 'bad' : 'good'}`, money.profit < 0 ? 'Tahmini Zarar' : 'Tahmini Net Kâr', amount(money.profit),
-      `Tüm masraflar, ürün maliyeti, reklam ve diğer kesintiler düştükten sonra kalan tahmini kâr.\n${share(money.profit)} Bu, net marjdır.`, <small>Net marj {formatPercent(money.margin)}</small>)}
+      `Tüm kesintiler, ürün maliyeti ve reklam düşüldükten sonra kalan tahmini kâr.\n${share(money.profit)} Bu oran net marjdır.`, <small>Net marj {formatPercent(money.margin)}</small>)}
   </dl>
 }
 
@@ -919,14 +912,13 @@ function productMetrics(data: ReportSales, money: Money | null): Metric[] {
   const discount = now.discountAmount ?? null
   const discountKnown = !noAmount && discount !== null && list > 0
   return [
-    { key: 'price', label: 'Adet Başına Satış', value: noAmount || now.soldQuantity === 0 ? '—' : formatTl(now.grossSales / now.soldQuantity), note: `Bir ürünün ortalama satış fiyatı.\nSatış tutarı ÷ satılan adet (${formatNumber(now.soldQuantity)} adet, iadeler düşülmeden).` },
+    { key: 'price', label: 'Adet Başına Satış', value: noAmount || now.soldQuantity === 0 ? '—' : formatTl(now.grossSales / now.soldQuantity), note: 'Bir ürünün ortalama satış fiyatı; iadeler düşülmeden.' },
     { key: 'profit', label: 'Adet Başına Kâr', value: profit === null || now.keptQuantity === 0 ? '—' : signedTl(profit / now.keptQuantity), tone: profit !== null && profit < 0 ? 'bad' : undefined,
-      note: profit === null ? 'İade sonrası: müşteride kalan her üründen kalan tahmini kâr.\nÜrün maliyeti girilince hesaplanır.' : `İade sonrası: müşteride kalan her üründen kalan tahmini kâr.\nTahmini net kâr ÷ net satılan adet (${formatNumber(now.keptQuantity)} adet; iadeler düşülmüş, Adet Başına Satış'ın paydasından farklı).` },
+      note: `Müşteride kalan her ürüne düşen ortalama tahmini kâr.${profit === null ? ' Ürün maliyeti girilince hesaplanır.' : ''}` },
     { key: 'discount', label: 'Satıcı İndirimi', value: discountKnown ? formatTl(discount ?? 0) : '—', sub: discountKnown ? `liste fiyatının ${formatPercent((discount ?? 0) / list)} kadarı` : undefined,
-      note: discountKnown ? `Satıcının liste fiyatından yaptığı indirim ve liste fiyatına oranı.\nListe fiyatı toplamı ${formatTl(list)}, indirim ${formatTl(discount)}; iptaller hariç. Pazaryerinin kendi indirimi sayılmaz (satıcıya ödenir). Liste fiyatı yalnız Trendyol ve Hepsiburada siparişlerinde okunuyor; diğer pazaryerlerinin indirimi bilinmiyor.`
-        : 'Satıcının liste fiyatından yaptığı indirim ve liste fiyatına oranı.\nBu dönemde liste fiyatı okunmadı; liste fiyatı yalnız Trendyol ve Hepsiburada siparişlerinde okunuyor.' },
+      note: `Satıcının liste fiyatından yaptığı indirim; pazaryerinin indirimi sayılmaz. ${discountKnown ? 'Liste fiyatı yalnız Trendyol ve Hepsiburada siparişlerinde okunur.' : 'Bu dönemde liste fiyatı okunmadı; yalnız Trendyol ve Hepsiburada siparişlerinde okunur.'}` },
     { key: 'vatFree', label: 'KDV Hariç Net Satış', value: noAmount || now.vatFreeNetRevenue === undefined ? '—' : formatTl(now.vatFreeNetRevenue),
-      note: 'Net Ciro\'nun KDV\'siz hali, muhasebeyle karşılaştırmak için.\nHer satırın elde kalan tutarından kendi KDV oranı düşülür; TL dışındaki siparişler sayılmaz.' }
+      note: 'İadeler düşülmüş satışın KDV hariç tutarı, muhasebeyle karşılaştırmak için. TL dışındaki siparişler sayılmaz.' }
   ]
 }
 
@@ -947,23 +939,22 @@ function orderMetrics(data: ReportSales, money: Money | null): Metric[] {
   return [
     // Its change goes in the explanation: a badge beside it would wrap the name and put the card's rows out of line.
     { key: 'basket', label: 'Sipariş Başına Satış', value: noAmount ? '—' : formatTl(now.averageOrderValue),
-      note: `Bir siparişin ortalama tutarı.\nSatış tutarı ÷ tutarı olan sipariş. Önceki dönem ${formatTl(before.averageOrderValue)}${noAmount ? '' : ` (${change(now.averageOrderValue, before.averageOrderValue)?.text ?? '—'})`}.` },
+      note: `Bir siparişin ortalama satış tutarı.\n${previousLine(before.ordersWithAmount > 0 ? formatTl(before.averageOrderValue) : null)}` },
     { key: 'profit', label: 'Sipariş Başına Kâr', value: profit === null || now.ordersWithAmount === 0 ? '—' : signedTl(profit / now.ordersWithAmount), tone: profit !== null && profit < 0 ? 'bad' : undefined,
-      note: profit === null ? 'Her siparişten kalan tahmini kâr.\nÜrün maliyeti girilince hesaplanır.' : 'Her siparişten kalan tahmini kâr.\nTahmini net kâr ÷ tutarı olan sipariş.' },
+      note: `Bir siparişe düşen ortalama tahmini kâr.${profit === null ? ' Ürün maliyeti girilince hesaplanır.' : ''}` },
     { key: 'cargo', label: 'Sipariş Başına Kargo', value: finance && cargo && cargoOrders > 0 ? formatTl(cargo.combined / cargoOrders) : '—',
-      note: finance && cargo ? `Bir siparişin ortalama kargo ücreti.\nKargo ÷ ${formatCount(cargoOrders)} sipariş. ${cargoNote(cargo)}` : 'Bir siparişin ortalama kargo ücreti.\nBu seçimde hesaplanamadı.' },
+      note: `Bir siparişin ortalama kargo ücreti.${finance && cargo ? '' : ` ${notRead}`}` },
     // The same cargo over the units the customers kept: the denominator of Adet Başına Kâr, so the two compare.
     { key: 'unitCargo', label: 'Adet Başına Kargo', value: finance && cargo && cargoOrders > 0 && now.keptQuantity > 0 ? formatTl(cargo.combined / now.keptQuantity) : '—',
-      note: finance && cargo && cargoOrders > 0 ? `Müşteride kalan bir ürüne düşen ortalama kargo ücreti.\nKargo (${formatTl(cargo.combined)}, Sipariş Başına Kargo'nunkiyle aynı) ÷ net satılan adet (${formatNumber(now.keptQuantity)} adet; iadeler düşülmüş, Adet Başına Kâr ile aynı payda). İade edilen ürünlerin gidiş ve dönüş kargosu da kargoya dahildir.`
-        : 'Müşteride kalan bir ürüne düşen ortalama kargo ücreti.\nBu seçimde hesaplanamadı.' },
+      note: `Müşteride kalan bir ürüne düşen ortalama kargo; iadelerin kargosu da dahildir.${finance && cargo && cargoOrders > 0 ? '' : ` ${notRead}`}` },
     // The marketplaces' share of an order: the commission and the fees (service fee, withholding tax) of the bridge's
     // Pazaryeri Masrafları and Stopaj, from the same account.
     { key: 'fees', label: 'Sipariş Başına Kesinti', value: marketplaceTaken === null || noAmount ? '—' : formatTl(marketplaceTaken / now.ordersWithAmount),
-      note: marketplaceTaken === null ? 'Pazaryerinin bir siparişten aldığı ortalama kesinti.\nBu dönemde komisyon bilinmiyor.'
-        : `Pazaryerinin bir siparişten aldığı ortalama kesinti.\nKomisyon${finance ? ', hizmet bedeli ve stopaj' : ''} (${formatTl(marketplaceTaken)}) ÷ ${formatCount(now.ordersWithAmount)} tutarı olan sipariş; Kâr Köprüsü'ndeki Pazaryeri Masrafları ve Stopaj ile aynı hesap.${finance ? '' : ' Hizmet bedeli ve stopaj bu seçimde düşülmedi.'}` },
-    { key: 'units', label: 'Sipariş Başına Adet', value: now.orders > 0 ? formatNumber(now.soldQuantity / now.orders) : '—', note: `Bir siparişte ortalama kaç ürün olduğu.\n${formatNumber(now.soldQuantity)} adet ÷ ${formatCount(now.orders)} sipariş.` },
+      note: marketplaceTaken === null ? 'Pazaryerinin bir siparişten aldığı ortalama kesinti. Bu dönemde komisyon bilinmiyor.'
+        : finance ? 'Pazaryerinin bir siparişten aldığı ortalama komisyon, hizmet bedeli ve stopaj.' : 'Pazaryerinin bir siparişten aldığı ortalama komisyon; hizmet bedeli ve stopaj bu seçimde okunmadı.' },
+    { key: 'units', label: 'Sipariş Başına Adet', value: now.orders > 0 ? formatNumber(now.soldQuantity / now.orders) : '—', note: 'Bir siparişteki ortalama ürün adedi.' },
     { key: 'repeat', label: 'Tekrar Gelen Müşteri', value: formatPercent(data.customers.repeatRate), detail: 'customers',
-      note: `Dönemde birden fazla sipariş veren müşterilerin oranı.\n${formatCount(data.customers.uniqueCustomers)} tekil müşteriden ${formatCount(data.customers.repeatCustomers)} kişi. Müşteri mağaza bazında tanınır: iki pazaryerinden alan biri iki kişi sayılır.` }
+      note: 'Dönemde birden fazla sipariş veren müşterilerin oranı. Müşteri mağaza bazında tanınır.' }
   ]
 }
 
@@ -987,16 +978,15 @@ function adMetrics(data: ReportSales, money: Money | null): Metric[] {
   // The profit with the advertising given back, over the sales: what the sales leave before the advertising.
   const beforeAds = spend !== null && profit !== null && sales > 0 ? (profit + spend) / sales : null
   return [
-    { key: 'commission', label: 'Komisyon Oranı', value: formatPercent(data.commission.effectiveRate), note: 'Pazaryerinin satıştan aldığı ortalama pay.\nKomisyon ÷ komisyon oranı bilinen satış, tüm pazaryerleri.' },
+    { key: 'commission', label: 'Komisyon Oranı', value: formatPercent(data.commission.effectiveRate), note: 'Pazaryerlerinin satıştan aldığı ortalama komisyon oranı; oranı bilinen satışlar üzerinden.' },
     { key: 'spend', label: 'Trendyol Reklamı', value: spend === null ? '—' : formatTl(spend),
-      note: spend === null ? 'Dönemde reklama harcanan tutar.\nReklam bedeli yalnız Trendyol cari hesabından okunabiliyor; bu seçimde okunmadı.' : 'Dönemde Trendyol reklamlarına harcanan tutar.\nTrendyol cari hesabındaki reklam bedelleri, işlem tarihine göre; siparişe bağlı değildir; Masraf Kalemleri\'nde Reklam kaleminde gösterilir ve Net Kâr\'dan düşülür. Diğer pazaryerlerinin reklamı okunmuyor; Brandcenter ve influencer kesintileri ayrı okunmuyor.' },
+      note: spend === null ? 'Dönemde reklama harcanan tutar. Yalnız Trendyol cari hesabından okunur; bu seçimde okunmadı.' : 'Dönemde Trendyol reklamlarına harcanan tutar; Net Kâr\'dan düşülür. Diğer pazaryerlerinin reklamı okunmuyor.' },
     { key: 'tacos', label: 'Reklam Payı (TACoS)', value: spend !== null && revenue !== null && revenue > 0 ? formatPercent(spend / revenue, 2) : '—',
-      note: `Trendyol cirosunun ne kadarının reklama gittiği.\nTrendyol reklam harcaması ÷ Trendyol net cirosu${revenue !== null ? ` (${formatTl(revenue)})` : ''}; reklam yalnız Trendyol'da okunduğu için payda da Trendyol'un.` },
+      note: 'Trendyol net cirosunun reklama giden payı.' },
     { key: 'perOrder', label: 'Sipariş Başına Reklam', value: spend !== null && trendyolOrders > 0 ? formatTl(spend / trendyolOrders) : '—',
-      note: `Bir Trendyol siparişine düşen reklam harcaması.\nTrendyol reklam harcaması ÷ ${formatCount(trendyolOrders)} tutarı olan Trendyol siparişi; Sipariş Başına Kâr ile karşılaştırılabilir.` },
+      note: 'Bir Trendyol siparişine düşen ortalama reklam harcaması.' },
     { key: 'beforeAds', label: 'Reklam Öncesi Marj', value: beforeAds === null ? '—' : formatPercent(beforeAds), tone: beforeAds !== null && beforeAds < 0 ? 'bad' : undefined,
-      note: beforeAds === null ? 'Reklam düşülmeden kalan kârın satışa oranı (katkı marjı).\nÜrün maliyeti girilince ve Trendyol cari hesabı okununca hesaplanır.'
-        : `Reklam düşülmeden kalan kârın satışa oranı (katkı marjı).\n(Tahmini net kâr + Trendyol reklam harcaması) ÷ satış tutarı, Kâr Köprüsü'nün hesabından. Net marj ile farkı reklamın marjdan yediği paydır.` }
+      note: `Trendyol reklamı düşülmeden kalan kârın satış tutarına oranı.${beforeAds === null ? ' Ürün maliyeti girilince ve Trendyol cari hesabı okununca hesaplanır.' : ''}` }
   ]
 }
 
@@ -1019,28 +1009,25 @@ function returnMetrics(data: ReportSales): Metric[] {
   const topReason = [...data.returnReasons].filter(reason => reason.known && reason.count > 0).sort((a, b) => b.count - a.count)[0]
   return [
     { key: 'rate', label: 'İade Oranı', value: formatPercent(now.returnRate), sub: `önceki ${formatPercent(before.returnRate)}`, delta: change(now.returnRate, before.returnRate, 'rate'), invert: true, previous: formatPercent(before.returnRate), detail: 'returns',
-      note: `Satılan ürünlerin yüzde kaçının iade edildiği.\nİade edilen adet ÷ sipariş edilen adet (iptaller dahil), Trendyol gibi. Önceki dönem ${formatPercent(before.returnRate)}.` },
+      note: `${returnRateTip}\n${previousLine(formatPercent(before.returnRate))}` },
     // The amount the customers paid for what they sent back: the İade Edilen Tutar taken off on Kâr Köprüsü.
     { key: 'returned', label: 'İade Edilen', value: `${formatNumber(now.returnedQuantity)} adet`, sub: `${formatCount(now.returnClaims)} talep · ${formatTl(now.returnedAmount)}`, detail: 'returns',
-      note: `İade edilen ürün adedi, talep sayısı ve müşterinin ödediği tutar.\nKâr Köprüsü'ndeki İade Edilen Tutar ile aynıdır. Reddedilen ve iptal edilen talepler sayılmaz. Liste fiyatıyla ${formatTl(returnedAtList(now))}.` },
+      note: 'Müşterilerin iade ettiği ürün adedi; reddedilen ve iptal edilen talepler sayılmaz.' },
     { key: 'cargo', label: 'İade Kargo Zararı', value: returnCargo === null ? '—' : formatTl(returnCargo), sub: returnCargo === null ? undefined : 'yalnız Trendyol', detail: 'returns',
-      note: 'İadelerin faturası gelen kargo maliyeti, yalnız Trendyol.\nDönemin siparişlerinin İade Kargo Bedeli satırları ve dönem tarihli Yurtdışı Operasyon İade Bedeli kayıtları; faturası gelmemiş iade sayılmaz, diğer pazaryerlerininki bilinmiyor.' },
+      note: 'İadelerin faturası gelen kargo ve operasyon maliyeti, yalnız Trendyol.' },
     // The two parts of İade Kargo Zararı apart (the overview's İade card, owner 7 Nov 2026), the same statement figures.
     { key: 'returnCargo', label: 'İade Kargo Bedeli', value: returnCargo === null ? '—' : formatTl(cargo?.returnBilled ?? 0), detail: 'returns',
-      note: returnCargo === null ? 'İadelerin faturası gelen dönüş kargosu, yalnız Trendyol.\nTrendyol cari hesabı bu seçimde okunmadı; diğer pazaryerlerininki bilinmiyor.'
-        : `İadelerin faturası gelen dönüş kargosu, yalnız Trendyol.\nDönemin siparişlerinin kargo faturalarındaki İade Kargo Bedeli satırları (${formatCount(cargo?.returnBilledOrders ?? 0)} sipariş). Faturası gelmemiş iade sayılmaz; diğer pazaryerlerininki bilinmiyor.` },
+      note: `İadelerin faturası gelen dönüş kargosu, yalnız Trendyol.${returnCargo === null ? ' Trendyol cari hesabı bu seçimde okunmadı.' : ''}` },
     { key: 'operation', label: 'Yurt Dışı Operasyon İade Bedeli', value: returnCargo === null ? '—' : formatTl(cargo?.returnOperationFees ?? 0), detail: 'returns',
-      note: returnCargo === null ? 'Trendyol\'un yurt dışı siparişlerin iadesi için kestiği operasyon bedeli.\nTrendyol cari hesabı bu seçimde okunmadı; diğer pazaryerlerininki bilinmiyor.'
-        : `Trendyol'un yurt dışı siparişlerin iadesi için kestiği operasyon bedeli.\nCari hesaptaki dönem tarihli Yurtdışı Operasyon İade Bedeli kayıtları (${formatCount(cargo?.returnOperationRecords ?? 0)} kayıt); siparişe bağlı değildir, Reklam ve Diğer Kesintiler içinde Net Kâr'dan düşülür.` },
+      note: `Trendyol'un yurt dışı siparişlerin iadesi için kestiği operasyon bedeli.${returnCargo === null ? ' Trendyol cari hesabı bu seçimde okunmadı.' : ''}` },
     { key: 'returnCost', label: 'Toplam İade Maliyeti', value: returnCargo === null ? '—' : formatTl(returnCargo), tone: returnCargo !== null && returnCargo > 0 ? 'bad' : undefined, detail: 'returns',
-      note: returnCargo === null ? 'İadelerin satıcıya kargo ve operasyon maliyeti, yalnız Trendyol.\nTrendyol cari hesabı bu seçimde okunmadı; diğer pazaryerlerininki bilinmiyor.'
-        : `İadelerin satıcıya kargo ve operasyon maliyeti, yalnız Trendyol.\nİade Kargo Bedeli (${formatTl(cargo?.returnBilled ?? 0)}) + Yurt Dışı Operasyon İade Bedeli (${formatTl(cargo?.returnOperationFees ?? 0)}). İade edilen ürünlerin tutarı sayılmaz; faturası gelmemiş iade sayılmaz.` },
+      note: `İadelerin satıcıya kargo ve operasyon maliyeti, yalnız Trendyol; ürün tutarı sayılmaz.${returnCargo === null ? ' Trendyol cari hesabı bu seçimde okunmadı.' : ''}` },
     { key: 'reason', label: 'En Sık İade Nedeni', value: topReason ? shortText(topReason.reason, 18) : '—', sub: topReason ? `taleplerin ${formatPercent(topReason.count / reasonsTotal)} kadarı` : undefined, detail: 'returns',
-      note: `İade taleplerinde en sık bildirilen neden ve talepler içindeki payı.${topReason ? `\n${topReason.reason}: ${formatCount(topReason.count)} talep.` : ''}` },
+      note: `İade taleplerinde en sık bildirilen neden${topReason ? `: ${topReason.reason}` : ''}.` },
     { key: 'cancel', label: 'İptal Oranı', value: formatPercent(now.cancelRate), tone: (now.cancelRate ?? 0) > warning ? 'warn' : undefined, detail: 'cancellations',
-      note: `Sipariş edilen ürünlerin yüzde kaçının iptal edildiği.\nİptal edilen adet ÷ sipariş edilen adet (iptaller dahil). Uyarı rengi: ${formatPercent(warning)} eşiğinin üstünde.` },
+      note: `Sipariş edilen ürün adedinin yüzde kaçının iptal edildiği. ${formatPercent(warning)} eşiğini geçince uyarı rengiyle yazılır.` },
     { key: 'cancelled', label: 'İptal Edilen', value: `${formatCount(now.cancelledOrders)} sipariş`, sub: `${formatNumber(data.cancellations.cancelledQuantity)} adet · ${cancelled === undefined ? '—' : formatTl(cancelled)}`, detail: 'cancellations',
-      note: 'İptal edilen sipariş, ürün adedi ve tutarı.\nTutar liste fiyatıyla; satış tutarına girmez.' }
+      note: 'İptal edilen sipariş, adet ve liste fiyatıyla tutar; satışa girmez.' }
   ]
 }
 
@@ -1060,23 +1047,20 @@ function operationMetrics(data: ReportSales): Metric[] {
   const notInvoiced = data.invoices.buckets.find(bucket => bucket.key === 'NOT_INVOICED')?.packages ?? 0
   const questions = data.questionTimes ?? null
   return [
-    { key: 'ship', label: 'Kargoya Verme Süresi', value: formatHours(ship.hours), detail: 'cargo', note: `Siparişin kargoya verilmesine kadar geçen ortalama süre.\n${ship.measured > 0 ? `${formatCount(ship.measured)} pakette ölçüldü.` : 'Ölçülemedi.'}` },
+    { key: 'ship', label: 'Kargoya Verme Süresi', value: formatHours(ship.hours), detail: 'cargo', note: `Siparişin kargoya verilmesine kadar geçen ortalama süre.${ship.measured > 0 ? ` ${formatCount(ship.measured)} pakette ölçüldü.` : ''}` },
     { key: 'late', label: 'Geciken Kargo', value: measuredLate > 0 ? formatPercent(late / measuredLate) : '—', sub: measuredLate > 0 ? `${formatCount(late)} paket` : undefined,
       tone: measuredLate > 0 && late / measuredLate > lateWarningRate ? 'warn' : undefined, detail: 'cargo',
-      note: measuredLate > 0 ? `Süresinde kargoya verilmeyen paketlerin oranı.\nGeciken ${formatCount(late)} paket ÷ kargoya verme süresi bilinen ${formatCount(measuredLate)} paket. PttAVM kargo süresi göndermediği için orada ölçülmez. Uyarı rengi: ${formatPercent(lateWarningRate)} eşiğinin üstünde.`
-        : 'Süresinde kargoya verilmeyen paketlerin oranı.\nBu dönemde kargoya verme süresi bilinen paket yok.' },
+      note: `Süresinde kargoya verilmeyen paketlerin oranı; PttAVM ölçülmez. ${measuredLate > 0 ? `${formatPercent(lateWarningRate)} eşiğini geçince uyarı rengiyle yazılır.` : 'Bu dönemde süresi bilinen paket yok.'}` },
     { key: 'deliver', label: 'Teslim Süresi', value: formatHours(deliver.hours), detail: 'cargo',
-      note: deliver.hours === null ? 'Kargoya verilen paketin müşteriye ulaşmasına kadar geçen ortalama süre.\nBu dönemde teslim anı okunan paket yok.'
-        : `Kargoya verilen paketin müşteriye ulaşmasına kadar geçen ortalama süre.\n${formatCount(deliver.measured)} pakette ölçüldü.` },
+      note: `Kargoya verilen paketin müşteriye ulaşmasına kadar geçen ortalama süre.${deliver.hours === null ? ' Bu dönemde teslim anı okunan paket yok.' : ` ${formatCount(deliver.measured)} pakette ölçüldü.`}` },
     { key: 'invoice', label: 'Faturasız Paket', value: formatCount(notInvoiced), sub: `${formatCount(packages)} paket içinde`, tone: notInvoiced > 0 ? 'warn' : undefined, detail: 'invoices',
-      note: 'Faturası henüz kesilmemiş paketler.\nFatura yasal zorunluluk olduğu için eşik sıfırdır: faturasız paket varsa uyarı rengiyle yazılır.' },
+      note: 'Faturası henüz kesilmemiş paketler; bir tane bile varsa uyarı rengiyle yazılır.' },
     { key: 'stock', label: 'Stok Riski', value: `${formatCount(low)} ürün`, tone: low > 0 ? 'warn' : undefined, detail: 'stock',
-      note: 'Stoğu bir haftadan az yetecek çok satan ürünler.\nGünlük satış hızına göre kalan gün 7\'den az. Uyarı rengi: böyle bir ürün varsa.' },
+      note: 'Stoğu, dönemin satış hızıyla bir haftadan az yetecek çok satan ürünler.' },
     // Trendyol and Hepsiburada only: N11's and Pazarama's answer times are not reliable (marketplace-docs).
     { key: 'questions', label: 'Soru Yanıt Süresi', value: questions?.averageHours == null ? '—' : formatHours(questions.averageHours),
-      note: !questions ? 'Müşteri sorusunun ilk yanıtına kadar geçen ortalama süre.\nYalnız Trendyol ve Hepsiburada ölçülür; bu seçimde ikisi de yok.'
-        : questions.averageHours === null ? `Müşteri sorusunun ilk yanıtına kadar geçen ortalama süre.\nBu dönemde yanıtlanan soru yok${questions.waiting ? `; ${formatCount(questions.waiting)} soru yanıt bekliyor` : ''}.`
-        : `Müşteri sorusunun ilk yanıtına kadar geçen ortalama süre.\n${questions.platforms.map(platformName).join(' ve ')} sorularından ${formatCount(questions.answered)} yanıtta ölçüldü; ortanca ${formatHours(questions.medianHours)}.${questions.waiting ? ` ${formatCount(questions.waiting)} soru yanıt bekliyor.` : ''} N11 ve Pazarama yanıt zamanı güvenilir okunmadığı için sayılmaz.` }
+      note: `Müşteri sorusunun ilk yanıtına kadar geçen ortalama süre; yalnız Trendyol ve Hepsiburada soruları sayılır.${!questions ? ' Bu seçimde ikisi de yok.'
+        : questions.averageHours === null ? ' Bu dönemde yanıtlanan soru yok.' : ` ${formatCount(questions.answered)} yanıtta ölçüldü.`}${questions?.waiting ? ` ${formatCount(questions.waiting)} soru yanıt bekliyor.` : ''}` }
   ]
 }
 
@@ -1094,6 +1078,8 @@ type HeroRow = { key: string; label: string; value: string; note: string; tone?:
 type HeroBar = { value: number; scale: number; threshold?: number; tone: 'warn' | 'good' | 'plain' }
 type HeroCardDef = {
   key: string; title: string; value: string; aside?: string; note: string; tone?: 'warn' | 'bad' | 'good'
+  // The name of the large figure, on its explanation (the card's title names the area, not the figure).
+  tipTitle: string
   // On the title's line: the change against the previous period, or a threshold or share note.
   delta?: Change | null; invert?: boolean; previous?: string; badge?: string; badgeTone?: 'warn'
   bar?: HeroBar; rows: HeroRow[]; alert?: boolean
@@ -1124,7 +1110,7 @@ function HeroCard({ card, onMore }: { card: HeroCardDef; onMore: OpenDetail }) {
         <i style={{ width: shown ? `${fill * 100}%` : '0%' }} />
         {bar.threshold !== undefined && <b style={{ left: `${Math.min(1, bar.threshold / bar.scale) * 100}%` }} />}
       </span> : <span className="reports-hero-bar is-empty" aria-hidden="true" />}
-      <span role="tooltip" id={`${tip}-hero`} className="reports-hover-tip"><TipText text={card.note} /></span>
+      <span role="tooltip" id={`${tip}-hero`} className="reports-hover-tip"><TipText title={card.tipTitle} text={card.note} /></span>
     </div>
     <ul className="reports-hero-rows">{card.rows.map(row => {
       const open = row.onOpen ?? (row.detail ? () => onMore(row.detail!) : undefined)
@@ -1133,7 +1119,7 @@ function HeroCard({ card, onMore }: { card: HeroCardDef; onMore: OpenDetail }) {
           <span className="reports-hero-row-label">{row.label}</span>
           <strong className={[row.tone ? `is-${row.tone}` : '', row.text ? 'is-text' : ''].filter(Boolean).join(' ') || undefined}>{row.value}</strong>
         </button>
-        <span role="tooltip" id={`${tip}-${row.key}`} className="reports-hover-tip"><TipText text={row.note} /></span>
+        <span role="tooltip" id={`${tip}-${row.key}`} className="reports-hover-tip"><TipText title={row.label} text={row.note} /></span>
       </li>
     })}</ul>
   </section>
@@ -1200,53 +1186,53 @@ function overviewCards(data: ReportSales, money: Money | null, ads: AdReports | 
   // The reason given most as a row: the reason and its share, cut with an ellipsis when long, whole in the explanation.
   const reasonRow = (key: string, reason: ReportReason | undefined, total: number, what: string, detail: DetailKey): HeroRow[] => reason
     ? [{ key, label: 'En Sık Neden', value: `${reason.reason} (${formatPercent(reason.count / total)})`, text: true, detail,
-      note: `${what} en sık verilen neden: ${reason.reason}.\nNedeni bilinen ${formatCount(total)} kaydın ${formatPercent(reason.count / total)} kadarı.` }]
+      note: `${what} en sık verilen neden; nedeni bilinen kayıtların ${formatPercent(reason.count / total)} kadarı.\n${reason.reason}` }]
     : []
 
   return [
     // Satış: the units sold (cancellations out, returns not taken off) with the variants behind them.
-    { key: 'sales', title: 'Satış', value: `${formatNumber(now.soldQuantity)} adet`,
+    { key: 'sales', title: 'Satış', tipTitle: 'Satılan Adet', value: `${formatNumber(now.soldQuantity)} adet`,
       aside: now.soldVariants === undefined ? 'satılan adet' : `${formatCount(now.soldVariants)} farklı varyant`,
       delta: change(now.soldQuantity, before.soldQuantity), previous: formatNumber(before.soldQuantity),
-      note: `${now.soldQuantity > 0 ? 'Dönemde satılan ürün adedi; iptaller sayılmaz, iadeler düşülmeden.' : 'Bu dönemde satış yok.'}\nNet adet müşteride kalandır: ${formatNumber(now.soldQuantity)} satılan adetten ${formatNumber(now.returnedQuantity)} iade düşülür, ${formatNumber(now.keptQuantity)} adet kalır. Farklı varyant: en az bir adedi satılan ürün; varyantı eşleşmeyen satır stok koduyla sayılır. ${previousText(formatNumber(before.soldQuantity))}.`,
+      note: `Dönemde satılan ürün adedi ve satılan farklı varyant sayısı; iptaller sayılmaz, iadeler düşülmez.\n${previousLine(formatNumber(before.soldQuantity))}`,
       rows: [{ key: 'kept', label: 'Net Satılan Adet', value: formatNumber(now.keptQuantity),
-        note: `Müşteride kalan ürün adedi.\nSatılan ${formatNumber(now.soldQuantity)} adetten iade edilen ${formatNumber(now.returnedQuantity)} adet düşülür; Adet Başına Kâr ve Adet Başına Kargo bu adede bölünür.` },
+        note: 'Müşteride kalan ürün adedi: satılan adetten iadeler düşülür.' },
         line(product, 'price', 'Adet Başına Satış'), line(product, 'vatFree', 'KDV Hariç Net Satış'), line(product, 'discount', 'Satıcı İndirimi', discountShare)] },
-    { key: 'orders', title: 'Sipariş ve Müşteri', value: metric(order, 'basket').value, aside: 'sepet ortalaması', note: metric(order, 'basket').note,
+    { key: 'orders', title: 'Sipariş ve Müşteri', tipTitle: 'Sepet Ortalaması', value: metric(order, 'basket').value, aside: 'sepet ortalaması', note: metric(order, 'basket').note,
       rows: [line(order, 'units', 'Sipariş Başına Adet'), line(order, 'repeat', 'Tekrar Gelen Müşteri'), line(order, 'profit', 'Sipariş Başına Kâr')] },
-    { key: 'profit', title: 'Kârlılık', value: metric(cost, 'beforeAds').value, aside: 'reklam öncesi marj', note: metric(cost, 'beforeAds').note,
+    { key: 'profit', title: 'Kârlılık', tipTitle: 'Reklam Öncesi Marj', value: metric(cost, 'beforeAds').value, aside: 'reklam öncesi marj', note: metric(cost, 'beforeAds').note,
       tone: beforeAds === null ? undefined : beforeAds < 0 ? 'bad' : 'good', bar: beforeAds === null ? undefined : { value: Math.max(0, beforeAds), scale: 1, tone: 'good' },
       rows: [line(product, 'profit', 'Adet Başına Kâr'), line(order, 'profit', 'Sipariş Başına Kâr'),
         { key: 'unitCost', label: 'Adet Başına Maliyet', value: unitCost === null ? '—' : formatTl(unitCost),
-          note: `Maliyeti girili ürünlerin adet başına ortalama alış maliyeti.\nÜrün maliyeti ÷ maliyeti girili ${formatNumber(data.cost.costedQuantity)} adet.` }] },
-    { key: 'fees', title: 'Pazaryeri Kesintileri', value: metric(order, 'fees').value, aside: 'sipariş başına', note: metric(order, 'fees').note,
+          note: 'Maliyeti girili ürünlerin adet başına ortalama alış maliyeti.' }] },
+    { key: 'fees', title: 'Pazaryeri Kesintileri', tipTitle: 'Sipariş Başına Kesinti', value: metric(order, 'fees').value, aside: 'sipariş başına', note: metric(order, 'fees').note,
       rows: [line(cost, 'commission', 'Komisyon Oranı'), line(order, 'cargo', 'Sipariş Başına Kargo'), line(order, 'unitCargo', 'Adet Başına Kargo')] },
-    { key: 'ads', title: 'Reklam · Trendyol', value: spend === null ? '—' : formatTlWhole(spend),
+    { key: 'ads', title: 'Reklam · Trendyol', tipTitle: 'Trendyol Reklamı', value: spend === null ? '—' : formatTlWhole(spend),
       aside: tacos === null ? 'reklam harcaması' : `sınır ${limitText(tacosLine)}`,
       badge: tacos === null ? undefined : `payı ${formatPercent(tacos, 2)}`, badgeTone: over(tacos, tacosLine) ? 'warn' : undefined,
-      note: `${metric(cost, 'spend').note}\n${metric(cost, 'tacos').note.split('\n')[1] ?? ''} Uyarı rengi: TACoS ${formatPercent(tacosLine)} sınırının üstünde.`,
+      note: `${metric(cost, 'spend').note}\nPayı, Trendyol net cirosuna oranıdır; ${formatPercent(tacosLine)} sınırını geçince uyarı rengiyle yazılır.`,
       tone: over(tacos, tacosLine) ? 'warn' : undefined, bar: tacos === null ? undefined : { value: tacos, scale: 0.1, threshold: tacosLine, tone: over(tacos, tacosLine) ? 'warn' : 'plain' },
       rows: [line(cost, 'perOrder', 'Sipariş Başına Reklam'), ...adRows] },
-    { key: 'cargo', title: 'Kargo ve Teslimat', value: metric(ops, 'late').value, aside: lateRate === null ? 'ölçülemedi' : `${formatCount(late)} paket gecikti`,
+    { key: 'cargo', title: 'Kargo ve Teslimat', tipTitle: 'Geciken Kargo', value: metric(ops, 'late').value, aside: lateRate === null ? 'ölçülemedi' : `${formatCount(late)} paket gecikti`,
       badge: `eşik ${limitText(lateWarningRate)}`, badgeTone: over(lateRate, lateWarningRate) ? 'warn' : undefined,
       note: metric(ops, 'late').note, tone: metric(ops, 'late').tone,
       bar: lateRate === null ? undefined : { value: lateRate, scale: 0.1, threshold: lateWarningRate, tone: over(lateRate, lateWarningRate) ? 'warn' : 'plain' },
       rows: [line(ops, 'ship', 'Kargoya Verme Süresi'), line(ops, 'deliver', 'Teslim Süresi'),
-        { key: 'measured', label: 'Ölçülen Paket', value: formatCount(measuredLate), detail: 'cargo', note: 'Kargoya verme süresi ve termini bilinen paketler.\nGeciken Kargo oranının paydası; PttAVM termin göndermediği için orada ölçülmez.' }] },
-    { key: 'returns', title: 'İade', value: formatPercent(now.returnRate), aside: `önceki dönem ${formatPercent(before.returnRate)}`, note: metric(back, 'rate').note,
+        { key: 'measured', label: 'Ölçülen Paket', value: formatCount(measuredLate), detail: 'cargo', note: 'Kargoya verme süresi ve son günü bilinen paketler; Geciken Kargo oranı bunlar üzerinden.' }] },
+    { key: 'returns', title: 'İade', tipTitle: 'İade Oranı', value: formatPercent(now.returnRate), aside: `önceki dönem ${formatPercent(before.returnRate)}`, note: metric(back, 'rate').note,
       delta: metric(back, 'rate').delta, invert: true, previous: formatPercent(before.returnRate),
       rows: [line(back, 'returned', 'İade Edilen Adet', formatNumber(now.returnedQuantity)),
-        { key: 'claims', label: 'İade Talebi', value: formatCount(now.returnClaims), detail: 'returns', note: 'Müşterilerin açtığı iade talepleri.\nReddedilen ve iptal edilen talepler sayılmaz.' },
-        { key: 'amount', label: 'İade Edilen Tutar', value: formatTlWhole(now.returnedAmount), detail: 'returns', note: `İade edilen ürünler için müşterinin ödediği tutar.\nKâr Köprüsü'ndeki İade Edilen Tutar ile aynıdır (${formatTl(now.returnedAmount)}). Liste fiyatıyla ${formatTl(returnedAtList(now))}.` },
+        { key: 'claims', label: 'İade Talebi', value: formatCount(now.returnClaims), detail: 'returns', note: 'Müşterilerin açtığı iade talepleri; reddedilen ve iptal edilenler sayılmaz.' },
+        { key: 'amount', label: 'İade Edilen Tutar', value: formatTlWhole(now.returnedAmount), detail: 'returns', note: 'İade edilen ürünler için müşterinin ödediği tutar; Kâr Köprüsü\'nde satıştan düşülür.' },
         line(back, 'returnCargo', 'İade Kargo Bedeli'), line(back, 'operation', 'Yurt Dışı Operasyon İade Bedeli'), line(back, 'returnCost', 'Toplam İade Maliyeti'),
         ...reasonRow('returnReason', topReturn, returnTotal, 'İade taleplerinde', 'returns')] },
-    { key: 'cancels', title: 'İptal', value: metric(back, 'cancel').value, aside: `${formatCount(now.cancelledOrders)} sipariş iptal`, note: metric(back, 'cancel').note, tone: metric(back, 'cancel').tone,
+    { key: 'cancels', title: 'İptal', tipTitle: 'İptal Oranı', value: metric(back, 'cancel').value, aside: `${formatCount(now.cancelledOrders)} sipariş iptal`, note: metric(back, 'cancel').note, tone: metric(back, 'cancel').tone,
       badge: `eşik ${limitText(warning)}`, badgeTone: (now.cancelRate ?? 0) > warning ? 'warn' : undefined,
       bar: { value: now.cancelRate ?? 0, scale: 0.1, threshold: warning, tone: (now.cancelRate ?? 0) > warning ? 'warn' : 'plain' },
       rows: [{ key: 'cancelUnits', label: 'İptal Edilen Adet', value: formatNumber(data.cancellations.cancelledQuantity), detail: 'cancellations', note: 'İptal edilen ürün adedi; kısmi iptaller dahil.' },
-        { key: 'cancelAmount', label: 'İptal Edilen Tutar', value: cancelled === undefined ? '—' : formatTlWhole(cancelled), detail: 'cancellations', note: `İptal edilen ürünlerin tutarı${cancelled === undefined ? '' : ` (${formatTl(cancelled)})`}.\nListe fiyatıyla; satış tutarına girmez.` },
+        { key: 'cancelAmount', label: 'İptal Edilen Tutar', value: cancelled === undefined ? '—' : formatTlWhole(cancelled), detail: 'cancellations', note: 'İptal edilen ürünlerin liste fiyatıyla tutarı; satışa girmez.' },
         ...reasonRow('cancelReason', topCancel, cancelTotal, 'İptallerde', 'cancellations')] },
-    { key: 'todo', title: 'Yapılacaklar', value: metric(ops, 'invoice').value, aside: 'faturasız paket', badge: `${formatCount(packages)} paket içinde`, note: metric(ops, 'invoice').note,
+    { key: 'todo', title: 'Yapılacaklar', tipTitle: 'Faturasız Paket', value: metric(ops, 'invoice').value, aside: 'faturasız paket', badge: `${formatCount(packages)} paket içinde`, note: metric(ops, 'invoice').note,
       tone: metric(ops, 'invoice').tone, alert: notInvoiced > 0,
       rows: [line(ops, 'stock', 'Stok Riski'), line(ops, 'questions', 'Soru Yanıt Süresi')] }
   ]
@@ -1268,13 +1254,13 @@ function ProductsView({ data, sub, onSub }: { data: ReportSales; sub: ProductSub
   const unit = (summary: ReportSales['summary']) => summary.ordersWithAmount > 0 && summary.soldQuantity > 0 ? summary.grossSales / summary.soldQuantity : null
   const selling = (groups: ReportGroup[]) => groups.filter(group => group.known && group.soldQuantity > 0).length
   const items: Kpi[] = [
-    { key: 'sold', label: 'Satılan Adet', value: now.soldQuantity, delta: change(now.soldQuantity, then.soldQuantity), note: previousText(formatNumber(then.soldQuantity)), tip: 'Dönemde satılan ürün adedi.\nİptal edilen adetler sayılmaz; iadeler düşülmeden.' },
+    { key: 'sold', label: 'Satılan Adet', value: now.soldQuantity, delta: change(now.soldQuantity, then.soldQuantity), note: previousText(formatNumber(then.soldQuantity)), tip: 'Dönemde satılan ürün adedi; iptaller sayılmaz, iadeler düşülmez.' },
     { key: 'returned', label: 'İade Edilen Adet', value: now.returnedQuantity, delta: change(now.returnedQuantity, then.returnedQuantity), invert: true,
-      note: previousText(formatNumber(then.returnedQuantity)), tip: 'Müşterilerin geri gönderdiği ürün adedi.\nKabul edilen iadeler sayılır.' },
+      note: previousText(formatNumber(then.returnedQuantity)), tip: 'Müşterilerin geri gönderdiği ürün adedi.' },
     { key: 'rate', label: 'İade Oranı', value: now.returnRate, format: percent, delta: change(now.returnRate, then.returnRate, 'rate'), invert: true,
-      note: previousText(formatPercent(then.returnRate)), tip: 'Satılan ürünlerin yüzde kaçının iade edildiği.\nİade edilen adet ÷ sipariş edilen adet (iptaller dahil), Trendyol gibi.' },
-    { key: 'price', label: 'Adet Başına Satış', value: unit(now), format: formatTl, delta: change(unit(now), unit(then)), note: previousText(formatTl(unit(then))), tip: 'Bir ürünün ortalama satış fiyatı.\nSatış tutarı ÷ satılan adet.' },
-    { key: 'brands', label: 'Satan Marka', value: selling(data.brands), format: formatCount, note: `${formatCount(selling(data.categories))} kategoride`, tip: 'Dönemde satışı olan marka sayısı.\nÜrün kartında markası girili ürünlerden sayılır.' }
+      note: previousText(formatPercent(then.returnRate)), tip: returnRateTip },
+    { key: 'price', label: 'Adet Başına Satış', value: unit(now), format: formatTl, delta: change(unit(now), unit(then)), note: previousText(formatTl(unit(then))), tip: 'Bir ürünün ortalama satış fiyatı; iadeler düşülmeden.' },
+    { key: 'brands', label: 'Satan Marka', value: selling(data.brands), format: formatCount, note: `${formatCount(selling(data.categories))} kategoride`, tip: 'Dönemde satışı olan marka sayısı; markası girili ürünlerden sayılır.' }
   ]
   return <div className="reports-summary">
     <KpiStrip label="Ürünlerin göstergeleri" items={items} />
@@ -1339,23 +1325,22 @@ function ProfitView({ data }: { data: ReportSales }) {
   const items: Kpi[] = [
     { key: 'revenue', label: 'Toplam Ciro', value: noAmount ? null : now.grossSales, format: formatTl, empty: 'Tutar yok', delta: noAmount ? null : change(now.grossSales, then.grossSales),
       note: previousText(then.ordersWithAmount > 0 ? formatTl(then.grossSales) : null),
-      tip: `Dönemin satış tutarı; Kâr Hesabı'ndaki Satış Tutarı.\nListe fiyatından satıcı indirimi düşülmüş, iptaller hariç, iadeler düşülmeden. İadeler düşülünce Net Ciro ${formatTl(now.netRevenue)}.` },
+      tip: salesTip },
     { key: 'costed', label: 'Maliyeti Olan Ciro', value: costed ? costedSales : null, format: formatTl, empty: noCost,
       delta: costed && earlierCosted ? change(costedSales, earlierCostedSales) : null, note: previousText(earlierCosted ? formatTl(earlierCostedSales) : null),
-      tip: `Ürün maliyeti girili satışların cirosu, Toplam Ciro gibi: iptaller hariç, iadeler düşülmeden.\nToplam Ciro ${formatTl(now.grossSales)} içinde ${formatPercent(now.grossSales > 0 ? costedSales / now.grossSales : null)}. Eksik maliyeti ürün kartındaki Maliyet alanına girin.` },
+      tip: `Ürün maliyeti girili satışların tutarı; iadeler düşülmeden. Toplam Ciro'nun ${formatPercent(now.grossSales > 0 ? costedSales / now.grossSales : null)} kadarı.` },
     { key: 'gross', label: gross !== null && gross < 0 ? 'Brüt Zarar' : 'Brüt Kâr', value: gross, format: formatTl, empty: noCost,
       delta: change(gross, earlierGross), note: previousText(earlierGross === null ? null : signedTl(earlierGross)), tone: tone(gross),
-      tip: gross === null ? 'Ürün maliyeti girilince hesaplanır.\nÜrün kartında varyantların maliyetini girin.'
-        : `Satıştan iadeler ve ürün maliyeti düşülünce kalan; komisyon, kargo ve diğer kesintiler öncesi.\nNet Ciro ${formatTl(now.netRevenue)} − Ürün Maliyeti ${formatTl(money?.cost ?? 0)}.` },
+      tip: gross === null ? noCostTip : 'Satıştan iadeler ve ürün maliyeti düşülünce kalan; komisyon, kargo ve diğer kesintiler düşülmeden.' },
     { key: 'profit', label: profit !== null && profit < 0 ? 'Tahmini Zarar' : 'Net Kâr', value: profit, format: formatTl, empty: noCost,
       delta: change(profit, earlierProfit), note: previousText(earlierProfit === null ? null : signedTl(earlierProfit)), tone: tone(profit),
-      tip: profit === null ? 'Ürün maliyeti girilince hesaplanır.\nÜrün kartında varyantların maliyetini girin.' : netProfitTip },
+      tip: profit === null ? noCostTip : netProfitTip },
     { key: 'margin', label: 'Net Kâr / Satış Fiyatı Oranı', value: money?.margin ?? null, format: percent, delta: change(money?.margin ?? null, earlier?.margin ?? null, 'rate'),
       note: previousText(formatPercent(earlier?.margin)), tone: (money?.margin ?? 0) < 0 ? 'bad' : undefined,
-      tip: 'Satışın yüzde kaçının net kâr olarak kaldığı.\nNet Kâr ÷ Toplam Ciro (iadeler düşülmeden); Kâr Hesabı\'ndaki net marj, Genel Bakış\'taki Kâr Marjı.' },
+      tip: 'Net kârın satış tutarına oranı; Genel Bakış\'taki Kâr Marjı ile aynı.' },
     { key: 'onCost', label: 'Net Kâr / Ürün Maliyeti Oranı', value: onCost, format: percent, delta: change(onCost, earlierOnCost, 'rate'),
       note: previousText(formatPercent(earlierOnCost)), tone: (onCost ?? 0) < 0 ? 'bad' : undefined,
-      tip: `Ürüne harcanan her liranın ne kadar net kâr getirdiği.\nNet Kâr ÷ Ürün Maliyeti${money?.cost ? ` (${formatTl(money.cost)})` : ''}; Genel Bakış'taki Maliyete Göre Kâr.` }
+      tip: 'Net kârın ürün maliyetine oranı; Genel Bakış\'taki Maliyete Göre Kâr ile aynı.' }
   ]
   return <div className="reports-summary">
     <KpiStrip label="Kârlılığın göstergeleri" items={items} long />
@@ -1442,7 +1427,7 @@ function costFigure(data: ReportSales, category: string): number | null {
 // A fee invoice whose payout's records are not read yet: its orders' estimate already takes it off, so it is only told.
 function coveredNote(data: ReportSales, category: string) {
   const line = trendyolRead(data) ? data.costs?.coveredByEstimate?.find(item => item.category === category && item.amount !== 0) : null
-  return line ? ` ${formatTl(line.amount)} (${formatCount(line.records)} fatura) ödeme kayıtları henüz okunmayan bir ödemeye ait: tahminle karşılandı, ayrıca düşülmedi. Kayıtlar okununca (ödemeden bir gün sonra) siparişlerine paylaştırılır ve tahminin yerini alır.` : ''
+  return line ? `${formatTl(line.amount)} tutarındaki fatura tahminle karşılandı, ayrıca düşülmedi.` : ''
 }
 const figureOf = (data: ReportSales, categories: string[]) => categories.reduce((sum, category) => sum + (costFigure(data, category) ?? 0), 0)
 
@@ -1451,13 +1436,6 @@ function feeLines(costs: ReportCosts) {
     const line = costs.lines.find(item => item.category === fee.category)
     return line && line.amount !== 0 ? [{ ...fee, value: line.amount }] : []
   })
-}
-
-// A fee line's note: how many records were read and how much was estimated for the orders not settled yet.
-function feeNote(line: ReportCosts['lines'][number]) {
-  const read = line.records > 0 ? `Trendyol cari hesabında dönemin siparişlerine bağlı ${formatCount(line.records)} kayıttan.` : null
-  const estimated = line.estimated ? `${formatTl(line.estimated)} tahmini: Trendyol bu kesintiyi siparişe bağlamadan ödeme günü faturasıyla keser, dönemin her siparişi için tahmin edilir; diğer platformlarda 2026 tarifeleri.` : null
-  return [read, estimated].filter(Boolean).join(' ') || 'Bu dönemde kaydı yok.'
 }
 
 function commissionNote(costs: ReportCosts) {
@@ -1658,7 +1636,7 @@ function Cities({ data }: { data: ReportSales }) {
     </Panel>
     <div className="is-wide">
       <DataTable title="İllere Göre Satış ve İade" empty={term ? 'Aramaya uyan il yok.' : undefined}
-        tools={<label className="reports-search"><UiIcon name="search" size={16} /><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="İl ara" aria-label="İl ara" /></label>} description={`Toplam ${formatNumber(total)} adet; adresinde il okunamayan siparişler "Bilinmiyor" satırında. Satırı açınca ilçeler ve platformlar.`}
+        tools={<label className="reports-search"><UiIcon name="search" size={16} /><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="İl ara" aria-label="İl ara" /></label>} description={`Toplam ${formatNumber(total)} adet; ili okunamayan siparişler Bilinmiyor satırında. Satırı açınca ilçeler ve platformlar görünür.`}
         csvName="rapor-sehirler" rows={rows} rowKey={row => row.key} unknown={row => !row.known} initialSort="sold" columns={groupColumns(labelColumn('İl'))}
         expand={row => <div className="reports-split">
           <DataTable title={`${row.label} İlçeleri`} csvName={`rapor-${row.key.toLowerCase()}-ilceler`} rows={row.children} rowKey={child => child.key} unknown={child => !child.known} initialSort="sold" columns={groupColumns(labelColumn('İlçe'))} />
@@ -1740,7 +1718,7 @@ function Products({ data }: { data: ReportSales }) {
 
 function BrandsAndCategories({ data }: { data: ReportSales }) {
   return <div className="reports-grid">
-    <div className="is-wide"><DataTable title="Markalar" description="Ürün kartındaki markaya göre; panelde eşleşmeyen satırlar Bilinmiyor." csvName="rapor-markalar" rows={data.brands} rowKey={row => row.key} unknown={row => !row.known} initialSort="sold" columns={groupColumns(labelColumn('Marka'), { commission: true })} /></div>
+    <div className="is-wide"><DataTable title="Markalar" description="Ürün kartındaki markaya göre; eşleşmeyen satırlar Bilinmiyor." csvName="rapor-markalar" rows={data.brands} rowKey={row => row.key} unknown={row => !row.known} initialSort="sold" columns={groupColumns(labelColumn('Marka'), { commission: true })} /></div>
     <div className="is-wide"><DataTable title="Kategoriler" csvName="rapor-kategoriler" rows={data.categories} rowKey={row => row.key} unknown={row => !row.known} initialSort="sold" columns={groupColumns(labelColumn('Kategori'), { commission: true })} /></div>
   </div>
 }
@@ -1771,18 +1749,18 @@ function Returns({ data }: { data: ReportSales }) {
   const then = data.previousSummary
   const items: Kpi[] = [
     { key: 'claims', label: 'İade Talebi', value: now.returnClaims, format: formatCount, delta: change(now.returnClaims, then.returnClaims), invert: true,
-      note: previousText(formatCount(then.returnClaims)), tip: 'Müşterilerin açtığı iade talepleri.\nReddedilen ve iptal edilen talepler sayılmaz.' },
+      note: previousText(formatCount(then.returnClaims)), tip: 'Müşterilerin açtığı iade talepleri; reddedilen ve iptal edilenler sayılmaz.' },
     { key: 'units', label: 'İade Adedi', value: now.returnedQuantity, delta: change(now.returnedQuantity, then.returnedQuantity), invert: true,
-      note: previousText(formatNumber(then.returnedQuantity)), tip: 'Müşterilerin geri gönderdiği ürün adedi.\nKabul edilen iadeler sayılır.' },
+      note: previousText(formatNumber(then.returnedQuantity)), tip: 'Müşterilerin geri gönderdiği ürün adedi.' },
     { key: 'rate', label: 'İade Oranı', value: now.returnRate, format: percent, delta: change(now.returnRate, then.returnRate, 'rate'), invert: true,
-      note: previousText(formatPercent(then.returnRate)), tip: 'Satılan ürünlerin yüzde kaçının iade edildiği.\nİade edilen adet ÷ sipariş edilen adet (iptaller dahil), Trendyol gibi.' },
+      note: previousText(formatPercent(then.returnRate)), tip: returnRateTip },
     { key: 'amount', label: 'İade Liste Tutarı', value: now.ordersWithAmount > 0 ? returnedAtList(now) : null, format: formatTl, empty: 'Tutar yok',
       delta: now.ordersWithAmount > 0 ? change(returnedAtList(now), returnedAtList(then)) : null, invert: true,
-      note: previousText(then.ordersWithAmount > 0 ? formatTl(returnedAtList(then)) : null), tip: 'İade edilen ürünlerin liste fiyatı, Trendyol gibi.\nSatış tutarından ödenen tutarı düşülür.' }
+      note: previousText(then.ordersWithAmount > 0 ? formatTl(returnedAtList(then)) : null), tip: 'İade edilen ürünlerin liste fiyatıyla tutarı, Trendyol gibi. Kâr hesabında müşterinin ödediği tutar düşülür.' }
   ]
   return <div className="reports-grid">
     <div className="is-wide"><KpiStrip label="İadelerin göstergeleri" items={items} long /></div>
-    <ReasonsCard title="İade Nedenleri" description="Pazaryerinin bildirdiği nedene göre; neden yoksa Bilinmiyor." reasons={data.returnReasons} csvName="rapor-iade-nedenleri" empty="Bu dönemde iade talebi yok." />
+    <ReasonsCard title="İade Nedenleri" description="Pazaryerinin bildirdiği nedene göre; nedeni gelmeyenler Bilinmiyor." reasons={data.returnReasons} csvName="rapor-iade-nedenleri" empty="Bu dönemde iade talebi yok." />
     <Panel title="İade Gelen İller" description="İade adedine göre; yanında iade oranı." className="reports-list">
       <Bars label="İllere göre iade" format={formatNumber} items={topGroups(data.cities, group => group.returnedQuantity, group => formatPercent(group.returnRate))} />
     </Panel>
@@ -1797,15 +1775,14 @@ function Cancellations({ data }: { data: ReportSales }) {
   return <div className="reports-grid">
     <div className="is-wide"><KpiStrip label="İptallerin göstergeleri" long items={[
       { key: 'orders', label: 'İptal Edilen Sipariş', value: cancellations.cancelledOrders, format: formatCount, delta: change(cancellations.cancelledOrders, then.cancelledOrders), invert: true,
-        note: previousText(formatCount(then.cancelledOrders)), tip: 'İptal edilen sipariş sayısı.\nTamamı iptal edilen siparişler sayılır.' },
+        note: previousText(formatCount(then.cancelledOrders)), tip: 'Tamamı iptal edilen sipariş sayısı.' },
       { key: 'rate', label: 'İptal Oranı', value: cancellations.cancelRate, format: percent, delta: change(cancellations.cancelRate, then.cancelRate, 'rate'), invert: true,
-        note: previousText(formatPercent(then.cancelRate)), tip: `Siparişlerin yüzde kaçının iptal edildiği.
-İptal ÷ (sipariş + iptal). Uyarı eşiği ${formatPercent(cancellations.warningRate)}.`, tone: warn(cancellations.cancelRate) ? 'warn' : undefined },
-      { key: 'units', label: 'İptal Edilen Adet', value: cancellations.cancelledQuantity, note: 'Kısmi iptaller dahil', tip: 'İptal edilen ürün adedi.\nTamamen iptal edilen siparişler ve kısmi iptaller birlikte.' },
-      { key: 'amount', label: 'İptal Edilen Tutar', value: cancellations.cancelledAmount ?? null, format: formatTl, note: 'Satış tutarına girmez', tip: 'İptal edilen ürünlerin tutarı.\nListe fiyatıyla; satış tutarına girmez.' }
+        note: previousText(formatPercent(then.cancelRate)), tip: `Sipariş edilen ürün adedinin yüzde kaçının iptal edildiği. Uyarı eşiği ${formatPercent(cancellations.warningRate)}.`, tone: warn(cancellations.cancelRate) ? 'warn' : undefined },
+      { key: 'units', label: 'İptal Edilen Adet', value: cancellations.cancelledQuantity, note: 'Kısmi iptaller dahil', tip: 'İptal edilen ürün adedi; kısmi iptaller dahil.' },
+      { key: 'amount', label: 'İptal Edilen Tutar', value: cancellations.cancelledAmount ?? null, format: formatTl, note: 'Satış tutarına girmez', tip: 'İptal edilen ürünlerin liste fiyatıyla tutarı; satışa girmez.' }
     ]} /></div>
     {warn(cancellations.cancelRate) && <p className="reports-warning is-wide" role="alert"><UiIcon name="alert" size={16} />İptal oranı {formatPercent(cancellations.warningRate)} eşiğinin üstünde; Trendyol satıcı puanı yönergesi bu oranı izler.</p>}
-    <ReasonsCard title="İptal Nedenleri" description="Siparişte gelen iptal nedenine göre; neden gelmeyenler Bilinmiyor." reasons={cancellations.reasons} csvName="rapor-iptal-nedenleri" empty="Bu dönemde iptal yok." />
+    <ReasonsCard title="İptal Nedenleri" description="Siparişte gelen iptal nedenine göre; nedeni gelmeyenler Bilinmiyor." reasons={cancellations.reasons} csvName="rapor-iptal-nedenleri" empty="Bu dönemde iptal yok." />
     <Panel title="Platformlara Göre İptal Oranı" description={`Uyarı eşiği ${formatPercent(cancellations.warningRate)}.`} className="reports-list">
       <Bars label="Platformlara göre iptal oranı" format={value => formatPercent(value)} items={cancellations.platforms.filter(row => row.cancelRate !== null)
         .map(row => ({ key: row.key, label: platformName(row.label), value: row.cancelRate ?? 0, note: `${formatCount(row.cancelledOrders)} iptal` }))} />
@@ -1829,16 +1806,16 @@ function Cargo({ data }: { data: ReportSales }) {
   const carrier = [...data.cargo].filter(row => row.known).sort((a, b) => b.packages - a.packages)[0]
   return <div className="reports-grid">
     <div className="is-wide"><KpiStrip label="Kargonun göstergeleri" long items={[
-      { key: 'packages', label: 'Paket', value: packages, format: formatCount, note: `${formatCount(data.cargo.filter(row => row.known).length)} kargo firması`, tip: 'Kargoya verilen paket sayısı.\nDönemin siparişlerinin paketleri.' },
-      { key: 'carrier', label: 'Kargo Firması', value: null, text: carrier?.label, note: carrier ? `Paketlerin ${formatPercent(carrier.share)} kadarı` : 'Okunamadı', tip: 'En çok paket taşıyan kargo firması.\nPaket sayısına göre.' },
-      { key: 'ship', label: 'Kargo Teslim Alma', value: ship.hours, format: formatHours, note: measured(ship.measured), tip: 'Siparişin kargo firmasına teslim edilmesine kadar geçen ortalama süre.\nKargo firmasının paketi okuttuğu ana kadar; yaklaşık.' },
-      { key: 'deliver', label: 'Teslimat', value: deliver.hours, format: formatHours, note: measured(deliver.measured), tip: 'Paketin müşteriye ulaşma süresi.\nKargoya verilişten teslime kadar ortalama; yaklaşık.' }
+      { key: 'packages', label: 'Paket', value: packages, format: formatCount, note: `${formatCount(data.cargo.filter(row => row.known).length)} kargo firması`, tip: 'Dönemin siparişlerinden kargoya verilen paket sayısı.' },
+      { key: 'carrier', label: 'Kargo Firması', value: null, text: carrier?.label, note: carrier ? `Paketlerin ${formatPercent(carrier.share)} kadarı` : 'Okunamadı', tip: 'Dönemde en çok paket taşıyan kargo firması.' },
+      { key: 'ship', label: 'Kargo Teslim Alma', value: ship.hours, format: formatHours, note: measured(ship.measured), tip: 'Siparişten kargo firmasının paketi okuttuğu ana kadar geçen ortalama süre; yaklaşık.' },
+      { key: 'deliver', label: 'Teslimat', value: deliver.hours, format: formatHours, note: measured(deliver.measured), tip: 'Kargoya verilişten müşteriye teslime kadar geçen ortalama süre; yaklaşık.' }
     ]} /></div>
     <Panel title="Kargo Firmalarının Payı" description="Paket sayısına göre." className="reports-list is-wide">
       <Bars label="Kargo firmalarının payı" format={value => formatPercent(value)} items={[...data.cargo].sort((a, b) => b.packages - a.packages)
         .map(row => ({ key: row.label, label: row.label, value: row.share ?? null, note: `${formatCount(row.packages)} paket`, muted: !row.known }))} />
     </Panel>
-    <div className="is-wide"><DataTable title="Kargo Firmaları" description="Süreler pazaryerinin bildirdiği durum zamanlarından hesaplanır (yaklaşık); ölçülen paket sayısı yanında. Teslim alma, kargo firmasının paketi okuttuğu andır; satıcının paketi bıraktığı an değildir." csvName="rapor-kargo"
+    <div className="is-wide"><DataTable title="Kargo Firmaları" description="Pazaryerinin bildirdiği durum zamanlarından yaklaşık süreler. Teslim alma, kargo firmasının paketi okuttuğu andır." csvName="rapor-kargo"
       rows={data.cargo} rowKey={row => row.label} unknown={row => !row.known} initialSort="packages" columns={[
         { key: 'label', header: 'Kargo Firması', value: row => row.label },
         { key: 'packages', header: 'Paket', value: row => row.packages, render: row => formatCount(row.packages), numeric: true },
@@ -1908,11 +1885,11 @@ function Customers({ data }: { data: ReportSales }) {
   const customers = data.customers
   return <div className="reports-grid">
     <div className="is-wide"><KpiStrip label="Müşterilerin göstergeleri" stack items={[
-      { key: 'unique', label: 'Müşteri', value: customers.uniqueCustomers, format: formatCount, note: `${formatCount(customers.identifiedOrders)} siparişten`, tip: 'Dönemde sipariş veren farklı müşteri sayısı.\nMüşteri numarası, e-posta ya da telefondan tanınır.' },
-      { key: 'repeat', label: 'Tekrar Gelen Müşteri', value: customers.repeatCustomers, format: formatCount, note: 'birden çok sipariş verdi', tip: 'Dönemde birden fazla sipariş veren müşteri sayısı.\nAynı müşterinin ikinci ve sonraki siparişleri.' },
-      { key: 'rate', label: 'Tekrar Gelme Oranı', value: customers.repeatRate, format: percent, note: 'tekrar gelen ÷ müşteri', tip: 'Müşterilerin yüzde kaçının tekrar aldığı.\nTekrar alan müşteri ÷ tekil müşteri.' },
-      { key: 'orders', label: 'Kişi Başı Sipariş', value: customers.ordersPerCustomer, note: 'ortalama', tip: 'Bir müşterinin ortalama sipariş sayısı.\nKimliği okunan sipariş ÷ tekil müşteri.' },
-      { key: 'unknown', label: 'Tanınmayan Sipariş', value: customers.unidentifiedOrders, format: formatCount, note: 'müşteri sayısına girmez', tip: 'Müşterisi tanınamayan siparişler.\nMüşteri numarası, e-postası ya da telefonu gelmedi; müşteri sayılarına girmez.' }
+      { key: 'unique', label: 'Müşteri', value: customers.uniqueCustomers, format: formatCount, note: `${formatCount(customers.identifiedOrders)} siparişten`, tip: 'Dönemde sipariş veren farklı müşteri sayısı; müşteri numarası, e-posta ya da telefondan tanınır.' },
+      { key: 'repeat', label: 'Tekrar Gelen Müşteri', value: customers.repeatCustomers, format: formatCount, note: 'birden çok sipariş verdi', tip: 'Dönemde birden fazla sipariş veren müşteri sayısı.' },
+      { key: 'rate', label: 'Tekrar Gelme Oranı', value: customers.repeatRate, format: percent, note: 'tekrar gelen ÷ müşteri', tip: 'Müşterilerin yüzde kaçının birden fazla sipariş verdiği.' },
+      { key: 'orders', label: 'Kişi Başı Sipariş', value: customers.ordersPerCustomer, note: 'ortalama', tip: 'Bir müşterinin dönemdeki ortalama sipariş sayısı.' },
+      { key: 'unknown', label: 'Tanınmayan Sipariş', value: customers.unidentifiedOrders, format: formatCount, note: 'müşteri sayısına girmez', tip: 'Müşteri bilgisi gelmeyen siparişler; müşteri sayılarına girmez.' }
     ]} /></div>
     <RevealPanel title="Bir Kez Alan ve Tekrar Alan" className="is-wide" description="Dönemde birden çok sipariş veren müşteriler tekrar alan sayılır.">
       {shown => customers.uniqueCustomers > 0 ? <>
@@ -1942,15 +1919,15 @@ function bestSellerKpis(data: ReportSales): Kpi[] {
   const low = data.stock.bestSellers.filter(row => row.daysLeft !== null && row.daysLeft < 7).length
   const unknownStock = data.stock.bestSellers.filter(row => row.available === null).length
   return [
-      { key: 'low', label: "Kalan Günü 7'den Az", value: low, format: formatCount, note: `En çok satan ${formatCount(data.stock.bestSellers.length)} ürün içinde`, tip: 'Stoğu bir haftadan az yetecek çok satan ürünler.\nDönemin günlük satış hızına göre.', tone: low > 0 ? 'warn' : undefined },
-      { key: 'out', label: 'Satıp Stoğu Biten', value: data.stock.soldOut.length, format: formatCount, note: 'Mevcut stoğu sıfır', tip: 'Satılıp stoğu biten ürünler.\nAna depoda kullanılabilir stoğu kalmadı.', tone: data.stock.soldOut.length > 0 ? 'warn' : undefined },
-      { key: 'unknown', label: 'Stoğu Bilinmeyen', value: unknownStock, format: formatCount, note: 'En çok satanlar içinde', tip: 'Stoğu bilinmeyen çok satan ürünler.\nPanelde stok kaydı yok.' }
+      { key: 'low', label: "Kalan Günü 7'den Az", value: low, format: formatCount, note: `En çok satan ${formatCount(data.stock.bestSellers.length)} ürün içinde`, tip: 'Stoğu, dönemin satış hızıyla bir haftadan az yetecek çok satan ürünler.', tone: low > 0 ? 'warn' : undefined },
+      { key: 'out', label: 'Satıp Stoğu Biten', value: data.stock.soldOut.length, format: formatCount, note: 'Mevcut stoğu sıfır', tip: 'Dönemde satılıp ana depoda kullanılabilir stoğu kalmayan ürünler.', tone: data.stock.soldOut.length > 0 ? 'warn' : undefined },
+      { key: 'unknown', label: 'Stoğu Bilinmeyen', value: unknownStock, format: formatCount, note: 'En çok satanlar içinde', tip: 'Panelde stok kaydı olmayan çok satan ürünler.' }
   ]
 }
 
 function BestSellerTables({ data }: { data: ReportSales }) {
   return <>
-    <div className="is-wide"><DataTable title="En Çok Satanların Stoğu" description="Ana depodaki kullanılabilir stok (şu an) ve dönemin günlük satışına göre kalan gün; 7 günden az olanlar işaretli." csvName="rapor-stok" rows={data.stock.bestSellers} rowKey={row => row.variantId ?? row.sku} initialSort="sold" columns={stockColumns(data.stock.periodDays)} /></div>
+    <div className="is-wide"><DataTable title="En Çok Satanların Stoğu" description="Ana depodaki güncel kullanılabilir stok ve dönemin satış hızıyla kalan gün; 7 günden azı işaretli." csvName="rapor-stok" rows={data.stock.bestSellers} rowKey={row => row.variantId ?? row.sku} initialSort="sold" columns={stockColumns(data.stock.periodDays)} /></div>
     <div className="is-wide"><DataTable title="Satıp Stoğu Biten Ürünler" csvName="rapor-stok-biten" rows={data.stock.soldOut} rowKey={row => row.variantId ?? row.sku} initialSort="sold" columns={stockColumns(data.stock.periodDays)} empty="Dönemde satılıp stoğu sıfır olan ürün yok." /></div>
   </>
 }
@@ -1960,13 +1937,13 @@ function BestSellerTables({ data }: { data: ReportSales }) {
 function CostAndProfit({ data }: { data: ReportSales }) {
   const money = moneyBreakdown(data, profitSteps(data))
   return <div className="reports-grid">
-    <Panel title="Kâr Hesabı" description="Genel Bakış'taki hesabın satır satır hâli: satıştan iade ve pazaryeri kesintileri, sonra ürün maliyeti, reklam ve diğer kesintiler düşülür. Bir satırın üzerine gelince satış tutarına oranı görünür." className="reports-ledger-panel">
+    <Panel title="Kâr Hesabı" description="Satıştan net kâra kadar hesabın satır satır dökümü. Satırın üzerine gelince satış tutarına oranı görünür." className="reports-ledger-panel">
       {money ? <><ProfitLedger data={data} money={money} notes={ledgerNotes(data)} /><EstimateGaps money={money} shown /></> : <p className="reports-empty">Bu dönemde tutarı olan sipariş yok.</p>}
     </Panel>
     <div className="reports-stack">
-      <Ledger title="Komisyon ve Trendyol Kargo" description="Komisyon tüm pazaryerlerinde: pazaryerinin kendi kaydı olan siparişte gerçek, kalanı tahmini. Kargo Trendyol cari hesabından." rows={trendyolLedger(data)}
+      <Ledger title="Komisyon ve Trendyol Kargo" description="Komisyon pazaryeri kaydı olan siparişte gerçek, kalanında tahmini; kargo Trendyol cari hesabından." rows={trendyolLedger(data)}
         empty="Trendyol cari hesabı bu seçimde okunmadı." />
-      <Panel title="Platformlara Göre Net Ciro" description="Her platformun satıştan iadeler düştükten sonra kalan cirosu.">
+      <Panel title="Platformlara Göre Net Ciro" description="Her platformun iadeler düşüldükten sonra kalan cirosu.">
         {/* A platform without amounts is listed in words, not drawn as a ₺0 bar. */}
         <Bars label="Platformlara göre net ciro" format={formatTl} items={data.platforms.filter(group => group.ordersWithAmount > 0).map(group => ({ key: group.key, label: platformName(group.label), value: group.netRevenue }))} />
         <NoAmountNote platforms={data.platforms} />
@@ -1980,8 +1957,8 @@ function CostAndProfit({ data }: { data: ReportSales }) {
 function ledgerNotes(data: ReportSales): Record<string, string> {
   const { commission, cost } = data
   return {
-    commission: `Ortalama komisyon oranı ${formatPercent(commission.effectiveRate)} (komisyon ÷ oranı bilinen satış). Komisyon kapsamı ${formatPercent(commission.coverage)}: Net Ciro ${formatTl(data.summary.netRevenue)} içinde ${formatTl(commission.coveredRevenue)} satışın oranı biliniyor.`,
-    cost: `Maliyeti girili satış ${formatPercent(cost.coverage)}: ${formatNumber(cost.keptQuantity)} adetten ${formatNumber(cost.costedQuantity)} adet (${formatCount(cost.costedVariants)} varyant). Hem maliyeti hem komisyonu bilinen (kâr kapsamı) ${formatPercent(cost.profitCoverage)}, ${formatNumber(cost.profitQuantity)} adet.`
+    commission: `Ortalama komisyon oranı ${formatPercent(commission.effectiveRate)}; satışların ${formatPercent(commission.coverage)} kadarının oranı biliniyor.`,
+    cost: `Net satılan adetlerin ${formatPercent(cost.coverage)} kadarının maliyeti girili.`
   }
 }
 
@@ -1996,7 +1973,7 @@ function Ledger({ title, description, rows, empty }: { title: string; descriptio
     {rows.length === 0 ? <p className="reports-empty">{empty}</p> : <dl className="reports-ledger">{rows.map((row, index) => <div key={row.label} className={['reports-tip-host', row.kind && `is-${row.kind}`, row.tone && `is-${row.tone}`].filter(Boolean).join(' ')}>
       <dt>{row.hint ? <button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-${index}`}>{row.label}<TipMark /></button> : row.label}</dt>
       <dd>{row.kind === 'minus' ? `− ${row.value}` : row.value}</dd>
-      {row.hint && <span role="tooltip" id={`${tip}-${index}`} className="reports-hover-tip"><TipText text={row.hint} /></span>}
+      {row.hint && <span role="tooltip" id={`${tip}-${index}`} className="reports-hover-tip"><TipText title={row.label} text={row.hint} /></span>}
     </div>)}</dl>}
   </Panel>
 }
@@ -2008,13 +1985,13 @@ function trendyolLedger(data: ReportSales): LedgerRow[] {
   const { commission, cargo } = finance
   return [
     // One short line under each; the full account of each is on the overview's rows under the pointer.
-    { label: 'Gerçek Komisyon', value: formatTl(commission.real), hint: commission.realOrders > 0 ? `${formatCount(commission.realOrders)} siparişte pazaryerinin kendi kaydından; aynı siparişlerin tahmini ${formatTl(commission.estimatedForSettled)}` : 'Pazaryeri kaydı olan sipariş yok' },
-    { label: 'Tahmini Komisyon', value: formatTl(commission.estimatedForUnsettled), hint: 'Pazaryeri kaydı olmayan siparişlerde siparişteki komisyon oranından' },
-    { label: 'Hesap Kesimi Olan Sipariş', value: `${formatCount(finance.settledOrders)} / ${formatCount(finance.financeOrders)}`, hint: 'Trendyol siparişlerinden hesap kesimi gelenler' },
-    { label: 'Trendyol Kargo', value: formatTl(cargo.combined - (cargo.platformEstimated ?? 0)), hint: [`${formatCount(cargo.billedOrders)} sipariş faturalı`, cargo.unbilledOrders > 0 ? `${formatCount(cargo.unbilledOrders)} sipariş tahmini` : '',
+    { label: 'Gerçek Komisyon', value: formatTl(commission.real), hint: commission.realOrders > 0 ? `${formatCount(commission.realOrders)} siparişte pazaryerinin kendi kaydından okunan komisyon; aynı siparişlerin tahmini ${formatTl(commission.estimatedForSettled)}.` : 'Pazaryeri kaydı olan sipariş yok.' },
+    { label: 'Tahmini Komisyon', value: formatTl(commission.estimatedForUnsettled), hint: 'Pazaryeri kaydı olmayan siparişlerde, siparişteki komisyon oranından.' },
+    { label: 'Hesap Kesimi Olan Sipariş', value: `${formatCount(finance.settledOrders)} / ${formatCount(finance.financeOrders)}`, hint: 'Trendyol siparişlerinden hesap kesimi gelenler.' },
+    { label: 'Trendyol Kargo', value: formatTl(cargo.combined - (cargo.platformEstimated ?? 0)), hint: `Trendyol siparişlerinin kargosu: ${[`${formatCount(cargo.billedOrders)} sipariş faturalı`, cargo.unbilledOrders > 0 ? `${formatCount(cargo.unbilledOrders)} sipariş tahmini` : '',
       (cargo.unbilledReturns ?? 0) > 0 ? `${formatCount(cargo.unbilledReturns ?? 0)} iade dönüşü tahmini` : '',
-      (cargo.unestimatedOrders ?? 0) > 0 ? `${formatCount(cargo.unestimatedOrders ?? 0)} sipariş tahmin edilemedi` : ''].filter(Boolean).join(', ') },
-    { label: 'Sipariş Başına Kargo', value: cargo.averagePerOrder === null ? '—' : formatTl(cargo.averagePerOrder), hint: 'Son 30 günde en sık kesilen tutar' }
+      (cargo.unestimatedOrders ?? 0) > 0 ? `${formatCount(cargo.unestimatedOrders ?? 0)} sipariş tahmin edilemedi` : ''].filter(Boolean).join(', ')}.` },
+    { label: 'Sipariş Başına Kargo', value: cargo.averagePerOrder === null ? '—' : formatTl(cargo.averagePerOrder), hint: 'Son 30 günde en sık kesilen kargo tutarı.' }
   ]
 }
 
@@ -2033,7 +2010,7 @@ function StatementLines({ data }: { data: ReportSales }) {
   </div>
   return <DataTable<CostLine> key={selected} title={`${platformName(selected)} Cari Hesap Kalemleri`} csvName={`rapor-${selected.toLowerCase()}-cari`} rows={rows} rowKey={row => row.category} toolbar={toolbar}
     empty={`${platformName(selected)} cari hesabı henüz okunmuyor; şimdilik yalnız Trendyol'un hesap ekstresi okunuyor.`}
-    description="Siparişlere Ait: dönemin siparişlerine bağlı kayıtlar ve kaydı olmayan siparişlerin tahmini. Siparişsiz: dönemde kesilen, bir siparişe bağlı değil (reklam, diğer kesintiler), işlem tarihine göre; Net Kâr'dan Reklam ve Diğer Kesintiler satırıyla düşülür. İkisi de kâra dahildir. Eksi tutar satıcıya ödenendir."
+    description="Cari hesap kalemleri: dönemin siparişlerine ait olanlar ve dönemde siparişsiz kesilenler ayrı sütunda; ikisi de kâra dahil. Eksi tutar satıcıya ödenendir."
     columns={[
       { key: 'label', header: 'Kalem', value: row => row.label, render: row => <span className="reports-cell-label">{row.label}{!row.isCost && <em className="reports-tag">Masraf Değil</em>}</span> },
       { key: 'amount', header: 'Siparişlere Ait', value: row => row.amount, render: row => formatTl(row.amount), numeric: true },
@@ -2063,9 +2040,8 @@ function Invoices({ data }: { data: ReportSales }) {
   const parts: Part[] = data.invoices.buckets.map(bucket => ({ key: bucket.key, label: bucket.label, value: bucket.packages, tone: tone(bucket.key) }))
   return <div className="reports-grid">
     <div className="is-wide"><KpiStrip label="Faturanın göstergeleri" items={data.invoices.buckets.map(bucket => ({ key: bucket.key, label: bucket.label, value: bucket.packages, format: formatCount,
-      note: `Paketlerin ${formatPercent(total > 0 ? bucket.packages / total : null)} kadarı`, tip: `Bu fatura durumundaki paketler.
-Toplam tutarları ${formatTl(bucket.amount)}.`, tone: bucket.key === 'NOT_INVOICED' && bucket.packages > 0 ? 'warn' as const : undefined }))} /></div>
-    <RevealPanel title="Fatura Durumu" description="Panelde kesilmiş fatura, elle seçilen durum ya da pazaryerinin bildirdiği duruma göre; hiçbiri yoksa Bilinmiyor. Ayrıntı Faturalar sayfasında.">
+      note: `Paketlerin ${formatPercent(total > 0 ? bucket.packages / total : null)} kadarı`, tip: `Bu fatura durumundaki paketler; toplam tutarları ${formatTl(bucket.amount)}.`, tone: bucket.key === 'NOT_INVOICED' && bucket.packages > 0 ? 'warn' as const : undefined }))} /></div>
+    <RevealPanel title="Fatura Durumu" description="Panelde kesilen fatura, elle seçilen ya da pazaryerinin bildirdiği duruma göre; hiçbiri yoksa Bilinmiyor. Ayrıntı Faturalar sayfasında.">
       {shown => total > 0 ? <>
         <StackedBar parts={parts} total={total} shown={shown} label={`Fatura durumu: ${parts.map(part => `${part.label} ${formatCount(part.value)}`).join(', ')}`} />
         <ul className="reports-legend-row">{parts.map(part => <li key={part.key}><i className={`is-${part.tone}`} aria-hidden="true" />{part.label}<b>{formatPercent(part.value / total)}</b></li>)}</ul>
@@ -2124,10 +2100,9 @@ function stockProfitKpi(capital: number, rate: MonthlyProfitRate): Kpi {
   return {
     key: 'profit', label: value !== null && value < 0 ? 'Tahmini Zarar' : 'Tahmini Kâr', value, format: formatTl, tone: value === null ? undefined : value < 0 ? 'bad' : 'good',
     empty: rate.loading ? 'Hesaplanıyor' : 'Hesaplanamadı',
-    tip: `Stok, son aylardaki gerçek kâr oranıyla satılırsa kalacak tahmini kâr.\n${rate.average === null
-      ? (rate.loading ? 'Aylık kâr oranları alınıyor.' : 'Geçmiş aylarda kâr bilinmiyor.')
-      : `Son ${counted.length} ay ort. maliyete göre ${formatPercent(rate.average)}.`} Stoktaki sermaye × ${span || 'son aylar'} ortalama maliyete göre net kâr oranı (maliyet KDV dahil, girdiğiniz gibi; Kârlılık'taki gibi iade, komisyon, kargo, hizmet bedeli, KDV, reklam ve diğer kesintiler düşülmüş). ${rate.months
-      .map(month => `${month.label} ${month.rate === null ? 'bilinmiyor' : formatPercent(month.rate)}`).join(' · ')}.`
+    tip: `Stok, son ayların maliyete göre net kâr oranıyla satılırsa kalacak tahmini kâr.${rate.average === null
+      ? (rate.loading ? ' Aylık kâr oranları alınıyor.' : ' Geçmiş aylarda kâr bilinmiyor.')
+      : `\n${span}: ortalama ${formatPercent(rate.average)}`}`
   }
 }
 
@@ -2149,28 +2124,24 @@ function StockReport({ from, to, platforms, sales }: { from: string; to: string;
   // The cards show their label and value only; what the notes said is in each card's explanation.
   const money: Kpi[] = [
     { key: 'capital', label: 'Stoktaki Sermaye', value: summary.capital, format: formatTl,
-      tip: `Stoktaki ürünlere bağlı para, maliyetle (KDV dahil, girdiğiniz gibi).\nEldeki adet × varyant maliyeti${summary.capitalExVat === null ? '' : `; KDV hariç ${formatTlWhole(summary.capitalExVat)}`}. ${summary.missingCostVariants > 0
-        ? `Maliyeti girilmemiş ${formatCount(summary.missingCostVariants)} varyantın ${formatNumber(summary.missingCostUnits)} adedi dahil değil.`
-        : 'Stoktaki tüm varyantların maliyeti girili.'}` },
+      tip: `Stoktaki ürünlere bağlı para, girdiğiniz maliyetle (KDV dahil)${summary.capitalExVat === null ? '' : `; KDV hariç ${formatTlWhole(summary.capitalExVat)}`}.${summary.missingCostVariants > 0 ? ` Maliyeti girilmemiş ${formatCount(summary.missingCostVariants)} varyant dahil değil.` : ''}` },
     { key: 'value', label: 'Envanter Satış Değeri', value: summary.value, format: formatTl, empty: 'Fiyat yok',
-      tip: `Stoğun panel satış fiyatıyla tutarı (KDV dahil).\nEldeki adet × ürün kartındaki varyant satış fiyatı. ${summary.missingPriceUnits > 0
-        ? `Panel fiyatı olmayan ${formatNumber(summary.missingPriceUnits)} adet dahil değil.`
-        : 'Stoktaki tüm adetlerin panel fiyatı var.'}` },
+      tip: `Stoğun ürün kartındaki satış fiyatıyla tutarı (KDV dahil).${summary.missingPriceUnits > 0 ? ` Fiyatı olmayan ${formatNumber(summary.missingPriceUnits)} adet dahil değil.` : ''}` },
     stockProfitKpi(summary.capital, rate),
     { key: 'units', label: 'Toplam Stok Adedi', value: summary.units,
-      tip: `Ana depodaki eldeki adet, şu an.\n${formatCount(summary.stockedProducts)} üründe; satılabilir (rezerv düşülmüş) ${formatNumber(summary.availableUnits)} adet.` },
+      tip: `Ana depodaki güncel stok adedi; satılabilir olanı ${formatNumber(summary.availableUnits)} adet.` },
     { key: 'cover', label: 'Stok Gün', value: summary.coverDays, format: value => `${formatNumber(Math.round(value))} gün`,
-      tip: `Stoğun dönemin satış hızıyla kaç gün yeteceği.\nToplam stok ÷ dönemde günlük net satış (satılan − iade). ${summary.dailySales === null ? 'Dönemde satış yok' : `Günde ${formatNumber(summary.dailySales)} adet`}; dönemde ${formatNumber(summary.soldUnits)} adet, ${formatCount(data.periodDays)} gün.` }
+      tip: `Stoğun, dönemin günlük net satışıyla kaç gün yeteceği.${summary.dailySales === null ? ' Dönemde satış yok.' : ''}` }
   ]
   const counts: Kpi[] = [
-    { key: 'stocked', label: 'Stoklu Varyant', value: summary.stockedVariants, tip: `Ana depoda en az bir adedi olan aktif varyantlar.\n${formatCount(summary.variants)} aktif varyanttan.` },
-    { key: 'empty', label: 'Stoksuz Varyant', value: summary.emptyVariants, tip: 'Ana depoda hiç adedi olmayan aktif varyantlar.\nEldeki adet 0.' },
+    { key: 'stocked', label: 'Stoklu Varyant', value: summary.stockedVariants, tip: `Ana depoda en az bir adedi olan aktif varyantlar; toplam ${formatCount(summary.variants)} aktif varyant.` },
+    { key: 'empty', label: 'Stoksuz Varyant', value: summary.emptyVariants, tip: 'Ana depoda hiç adedi kalmayan aktif varyantlar.' },
     { key: 'low', label: 'Beden Kırığı', value: summary.lowStockProducts, tone: summary.lowStockProducts > 0 ? 'warn' : undefined,
-      tip: 'Bir renginin bedenlerinin yarısı veya fazlası tükenmiş stoklu ürünler.\nÜrün listesindeki Düşük Stok ile aynı kural.' },
+      tip: 'Bir renginin bedenlerinin yarısı ya da fazlası tükenmiş stoklu ürünler.' },
     { key: 'cost', label: 'Maliyeti Eksik', value: summary.missingCostVariants, tone: summary.missingCostVariants > 0 ? 'warn' : undefined,
-      tip: `Stoğu olup maliyeti girilmemiş varyantlar.\n${formatNumber(summary.missingCostUnits)} adet; sermaye ve kâr bunlar olmadan hesaplanır, maliyeti ürün kartından girin.` },
+      tip: 'Stoğu olup maliyeti girilmemiş varyantlar; sermaye ve kâr bunlarsız hesaplanır.' },
     { key: 'price', label: 'Fiyatı Eksik', value: summary.missingPriceUnits, tone: summary.missingPriceUnits > 0 ? 'warn' : undefined,
-      tip: 'Ürün kartında satış fiyatı olmayan stok adedi.\nSatış değeri bu adetler olmadan hesaplanır; fiyatı ürün kartından girin.' }
+      tip: 'Ürün kartında satış fiyatı olmayan stok adedi; satış değerine girmez.' }
   ]
   const bars = (groups: ReportStockGroup[], value: (group: ReportStockGroup) => number, limit = 10) =>
     groups.slice(0, limit).map(group => ({ key: group.key, label: group.label, value: value(group), muted: !group.known }))
@@ -2183,21 +2154,21 @@ function StockReport({ from, to, platforms, sales }: { from: string; to: string;
       <BestSellerTables data={sales} />
       <div className="is-wide"><DataTable title="Kategori Bazlı Stok" csvName="rapor-stok-kategori" rows={data.categories} rowKey={row => row.key} unknown={row => !row.known} initialSort="capital"
         description="Stoklu varyantlar kategorisine göre; satış, dönemin net satışıdır." columns={stockGroupColumns('Kategori', true)} /></div>
-      <RevealPanel title="Renge Göre Adet" description="Stoklu varyantların renk seçeneğine göre adedi.">{() =>
+      <RevealPanel title="Renge Göre Adet" description="Stoklu varyantların rengine göre stok adedi.">{() =>
         <Bars label="Renge göre adet" items={bars(data.colors, group => group.units, 12)} format={adet} />}</RevealPanel>
-      <RevealPanel title="Bedene Göre Adet" description="Stoklu varyantların beden seçeneğine göre adedi.">{() =>
+      <RevealPanel title="Bedene Göre Adet" description="Stoklu varyantların bedenine göre stok adedi.">{() =>
         <Bars label="Bedene göre adet" items={bars(data.sizes, group => group.units, 12)} format={adet} />}</RevealPanel>
-      <div className="is-wide"><RevealPanel title="Stok Gün Dağılımı" description={`Stoğun dönemin satış hızıyla kaç gün yeteceğine göre sermayesi; dönemde (${formatCount(data.periodDays)} gün) satmayanlar en sonda.`}>{() =>
+      <div className="is-wide"><RevealPanel title="Stok Gün Dağılımı" description="Sermayenin, stoğun kaç gün yeteceğine göre dağılımı; dönemde satmayanlar en sonda.">{() =>
         <Bars label="Stok gününe göre sermaye" items={bars(data.cover, group => group.capital)} format={formatTlShort} />}</RevealPanel></div>
       <div className="is-wide"><DataTable title="Platformlara Göre Stok" csvName="rapor-stok-platform" rows={data.platforms} rowKey={row => row.connectionId} initialSort="listed"
-        description="Listelenen: mağazada aktif teklifi olan varyantların eldeki adedi. Değer: mağazanın kendi fiyatıyla."
+        description="Mağazada aktif teklifi olan varyantların stoğu; değer mağazanın kendi fiyatıyla."
         empty="Seçilen mağazalarda teklif yok." columns={stockPlatformColumns} /></div>
       <div className="is-wide"><DataTable title="Fiyat Bantları" csvName="rapor-stok-fiyat-bandi" rows={data.priceBands} rowKey={row => row.key} unknown={row => !row.known}
         description="Panel satış fiyatına göre; alt sınır dahil, üst sınır hariç." columns={stockGroupColumns('Fiyat Bandı', false)} /></div>
       <div className="is-wide"><DataTable title="En Çok Sermaye Bağlayan Ürünler" csvName="rapor-stok-sermaye" rows={data.topCapital} rowKey={row => row.key} initialSort="capital"
-        description="Stoklu varyantları toplanmış ilk 20 ürün; stok gün, dönemin satış hızıyla." columns={stockItemColumns(data.deadDays)} /></div>
+        description="Stoğuna en çok para bağlanan 20 ürün; stok gün, dönemin satış hızıyla." columns={stockItemColumns(data.deadDays)} /></div>
       <div className="is-wide"><DataTable title="Ölü Stok" csvName="rapor-stok-olu" rows={data.dead} rowKey={row => row.key} initialSort="capital"
-        description={`Son ${data.deadDays} günde hiç net satışı olmayan, ${data.deadDays} günden eski stoklu varyantlar (sermayeye göre ilk 50).`}
+        description={`Son ${data.deadDays} günde hiç net satışı olmayan stoklu varyantlar; sermayeye göre ilk 50.`}
         empty={`Son ${data.deadDays} günde satmayan stoklu varyant yok.`} columns={stockItemColumns(data.deadDays)} /></div>
     </div>
   </div>
@@ -2360,25 +2331,26 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
   const overdue = none ? 0 : picked ? picked.unknown : data?.unknown ?? 0
   const pendingDelivery = none ? 0 : picked ? picked.pendingDelivery : data?.pendingDelivery ?? 0
   const pendingOrders = none ? 0 : picked ? picked.pendingDeliveryOrders : data?.pendingDeliveryOrders ?? 0
-  // The marketplaces the figures cover (the picked ones, else every one in view) and their payout rules.
+  // The payout day under Sıradaki Ödeme when one marketplace is in view (Trendyol's rule in a few words).
   const covered = platforms.length ? platforms : data?.platforms.map(item => item.platformCode) ?? []
-  const payoutRules = covered.map(code => payoutRuleText[code]).filter(Boolean).join(' ')
+  const payoutDay = covered.length !== 1 ? '' : covered[0] === 'TRENDYOL' ? ' Trendyol, Türkiye-Körfez ve Azerbaycan ödemelerini pazartesi ve perşembe yapar.' : payoutRuleText[covered[0]] ? ` ${payoutRuleText[covered[0]]}` : ''
+
   const items: Kpi[] = [
     { key: 'expected', label: 'Toplam Güncel Bakiye', value: balance, format: formatTl, icon: 'wallet', note: picked ? regionLabels[picked.region] : `${formatCount(data?.expectedRecords ?? 0)} kayıt`,
-      tip: `Teslim edilmiş, henüz ödenmemiş siparişlerin net hakedişi (komisyon düşülmüş), bekleyen kesintiler düşülerek.\n${formatCount(picked?.records ?? data?.expectedRecords ?? 0)} kayıt.${covered.includes('TRENDYOL') ? " Trendyol'unki, Trendyol'un Toplam Güncel Bakiye'siyle aynı hesap (4 Kasım 2026'da kuruşu kuruşuna eşleşti)." : ''} Henüz kesilmemiş kesinti faturaları dahil değildir.` },
+      tip: 'Teslim edilmiş, henüz ödenmemiş siparişlerin komisyon ve bekleyen kesintiler düşülmüş hakedişi. Kesilmemiş kesinti faturaları dahil değil.' },
     { key: 'pending', label: 'Teslim Bekleyen Sipariş', value: pendingDelivery, format: formatTl, icon: 'truck',
       note: pendingOrders > 0 ? `${formatCount(pendingOrders)} sipariş` : 'Yok',
-      tip: `Onaylanmış ya da kargoya verilmiş, henüz müşteriye teslim edilmemiş siparişlerin toplam tutarı (indirimler düşülmüş, müşterinin ödediği).\nBakiyeye henüz dahil değildir; siparişler teslim edildikten sonra gelecek ödemelere yansır, komisyon o zaman düşülür.${covered.includes('TRENDYOL') ? " Trendyol panelindeki Onaylanan/Kargolanan Sipariş Tutarı, Türkiye, Körfez bölgesinin tutarıdır." : ''}` },
+      tip: 'Onaylanmış ya da kargodaki, henüz teslim edilmemiş siparişlerin müşterinin ödediği tutarı. Teslimden sonra bakiyeye girer.' },
     { key: 'next', label: 'Sıradaki Ödeme', value: nextAmount, format: formatTl, empty: 'Yok', icon: 'calendarClock', note: nextDay ? shortDay(nextDay) : 'Bekleyen ödeme yok',
-      tip: `En yakın ödeme gününün tahmini tutarı; vadesi geçip ödeme günü bilinmeyen kayıtlar dahil değildir.\n${payoutRules} Kesinti faturaları kesildikçe tutar düşer.` },
+      tip: `En yakın ödeme gününde gelecek tahmini tutar; kesinti faturaları kesildikçe düşer.${payoutDay}` },
     { key: 'last', label: 'Son Ödeme', value: lastPaid?.amount ?? null, format: formatTl, empty: 'Yok', icon: 'circleCheck', note: lastPaid ? shortDay(lastPaid.day) : 'Okunmuş ödeme yok',
       tip: 'Pazaryerinin yaptığı son ödeme, kendi bildirdiği tutarla.' },
     { key: 'unknown', label: 'Vadesi Geçmiş Bekleyen', value: overdue, format: formatTl, icon: 'alertTriangle', tone: overdue > 0 ? 'warn' : undefined,
       note: overdue < 0 ? 'Bekleyen kesinti' : overdue > 0 ? 'Ödeme bekliyor' : 'Yok',
-      tip: 'Bakiyenin vadesi geçmiş ama henüz bir ödemeye bağlanmamış kısmı; eksi ise sıradaki ödemeden düşülecek kesintilerdir.\nÖdenmeyecek demek değildir: Avrupa ayda bir ödenir, ödeme kaydı ödemeden bir gün sonra okunur.' },
+      tip: 'Vadesi geçmiş ama henüz bir ödemeye bağlanmamış bakiye; eksiyse sonraki ödemeden düşülecek kesintidir. Ödenmeyecek demek değildir.' },
     { key: 'early', label: 'Erken Ödeme', value: none ? 0 : data?.earlyPaymentsTaken ?? 0, format: formatTl, icon: 'banknote',
       note: (data?.earlyPayments ?? 0) > 0 ? `Son ${data?.daysBack ?? 90} gün · ${formatCount(data?.earlyPayments ?? 0)} kayıt` : `Son ${data?.daysBack ?? 90} günde alınmadı`,
-      tip: `Son ${data?.daysBack ?? 90} günde alınan erken ödemelerin toplamı.\nErken alınabilir tutar pazaryeri API'sinde yok; yalnız pazaryeri panelinde görünür.` }
+      tip: `Son ${data?.daysBack ?? 90} günde alınan erken ödemelerin toplamı.` }
   ]
   // A group netting to nothing pays nothing and is left out; one below zero (a marketplace's deductions) is no payout day:
   // the marketplace takes it off a later payout, so it waits apart, as the overdue records do.

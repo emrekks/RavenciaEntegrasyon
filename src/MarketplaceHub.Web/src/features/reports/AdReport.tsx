@@ -56,8 +56,8 @@ export function adReportRow(data: AdReports | undefined, failed: boolean, now = 
   const sub = failed || !data ? undefined : !totals ? 'yüklemek için tıklayın'
     : `${formatTl(totals.revenue)} ciro${stale ? ' · eski' : ''}`
   const note = !totals
-    ? 'Trendyol reklam raporu: kampanyaların harcaması, reklam cirosu ve ROAS.\nTrendyol API\'si reklam performansını vermediği için Reklam Yönetimi\'nden indirilen "Ürün Reklamları Raporum" dosyası yüklenir. Yüklemek için tıklayın.'
-    : `Trendyol reklam raporu, kampanya toplamı; son rapor: ${reports.map(report => when(report.exportedAt)).join(', ')}.\nKampanyaların başlangıcından rapor anına kadarki toplamlar; seçili dönemin rakamı değildir ve Trendyol Reklamı (cari hesaptaki reklam bedeli) ile toplanmaz. Uyarı rengi: rapor ${formatCount(staleDays)} günden eskiyse.${stale ? ` Bu rapor ${formatCount(oldest)} gün önce alındı; yenisini yükleyin.` : ''} Ayrıntı ve kampanyalar için tıklayın.`
+    ? 'Trendyol Reklam Yönetimi\'nden indirilen raporla kampanya harcaması, reklam cirosu ve ROAS. Yüklemek için tıklayın.'
+    : `Kampanyaların başından son rapora (${reports.map(report => when(report.exportedAt)).join(', ')}) kadarki toplam; seçili dönemin rakamı değildir.${stale ? ` Rapor ${formatCount(oldest)} gün önce alındı; yenisini yükleyin.` : ''} Ayrıntı için tıklayın.`
   return { value, sub, note, tone: stale ? 'warn' as const : undefined }
 }
 
