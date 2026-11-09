@@ -172,7 +172,7 @@ describe('order summary cards', () => {
     expect(micro.querySelector('.rr-metric-tip')).toBeNull()
     expect(micro.classList.contains('rr-metric-tipped')).toBe(true)
     // Without countries a native title says what it counts.
-    expect(card(host, 'Mikro İhracat Sipariş').querySelector('.rr-metric-open')!.getAttribute('title')).toBe('Bugün gelen, kargoya verilmemiş mikro ihracat siparişleri')
+    expect(card(host, 'Mikro İhracat Sipariş').querySelector('.rr-metric-open')!.getAttribute('title')).toBe('Kargoya verilmemiş mikro ihracat siparişleri')
   })
 
   it('lists the stores of Geciken, İptal and Yeniden Gönderim on hover while they count any', () => {

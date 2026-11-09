@@ -143,6 +143,8 @@ function dailyStats(values: number[], format: (value: number) => string, average
 
 // The products page's low stock window, loaded only when the card is opened.
 const LowStockDetailsModal = lazy(() => import('../catalog/products/ProductsPage').then(module => ({ default: module.LowStockDetailsModal })))
+// A product picture opens enlarged over the page, as on Ürünler (it opened in a new tab).
+const ImageLightboxModal = lazy(() => import('../catalog/shared').then(module => ({ default: module.ImageLightboxModal })))
 
 export function DashboardPage() {
   // Periods are Istanbul calendar days, whatever the browser's clock says.
@@ -153,6 +155,7 @@ export function DashboardPage() {
   // The store picked in the channel list filters the whole performance card; the metric picks what the chart draws.
   const [channel, setChannel] = useState('ALL')
   const [lowStockOpen, setLowStockOpen] = useState(false)
+  const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null)
   // Touch screens: the operation card whose store breakdown is open from its "?" (a tap on the card itself opens its list).
   const [breakdownOpen, setBreakdownOpen] = useState<string | null>(null)
   useEffect(() => {
@@ -336,6 +339,7 @@ export function DashboardPage() {
     <IntegrationStatusPanel integration={integration} />
     {toast && <NoticeToast kind="success" title="Rapor İndirildi" message={toast} onClose={() => setToast(null)} durationMs={6000} />}
     {lowStockOpen && <Suspense fallback={null}><LowStockDetailsModal products={lowStock.data?.items ?? []} loading={lowStock.isLoading} error={lowStock.error}
-      onClose={() => setLowStockOpen(false)} onImageClick={url => window.open(url, '_blank', 'noopener')} /></Suspense>}
+      onClose={() => setLowStockOpen(false)} onImageClick={(url, title) => setLightboxImage({ url, title })} /></Suspense>}
+    {lightboxImage && <Suspense fallback={null}><ImageLightboxModal image={lightboxImage} onClose={() => setLightboxImage(null)} /></Suspense>}
   </section>
 }

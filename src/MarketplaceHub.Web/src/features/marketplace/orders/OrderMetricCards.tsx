@@ -111,7 +111,7 @@ export function OrderMetricCards({ newOrders, newUnits, newRows, newCargo, proce
     </article>
     <article className={tipped('rr-metric-link rr-metric-tipped', activeCard === 'micro' && 'rr-metric-on')}>
       <CardBackgroundIcon name="globe" />
-      <button type="button" className="rr-metric-open" title={countries.length > 0 ? undefined : 'Bugün gelen, kargoya verilmemiş mikro ihracat siparişleri'} aria-pressed={activeCard === 'micro'} onClick={() => openOnPointer('micro')}><small>Mikro İhracat Sipariş</small><Packages packages={microExport} units={undefined} /></button>
+      <button type="button" className="rr-metric-open" title={countries.length > 0 ? undefined : 'Kargoya verilmemiş mikro ihracat siparişleri'} aria-pressed={activeCard === 'micro'} onClick={() => openOnPointer('micro')}><small>Mikro İhracat Sipariş</small><Packages packages={microExport} units={undefined} /></button>
       {countries.length > 0 && <div className="rr-metric-tip" role="tooltip">{countries.map(([code, value]) => <div className="rr-metric-tip-r" key={code || 'unknown'}>{code ? <Flag code={code} /> : <span className="rr-metric-tip-none" aria-hidden="true" />}<span>{code ? countryName(code) : 'Ülke Bilinmiyor'}</span><b className="rr-num">{count(value)}</b></div>)}</div>}
     </article>
     <article className={tipped(positive(cancelled) && 'rr-bad', 'rr-metric-link', partial > 0 && 'rr-metric-chipped', 'rr-metric-tipped', (activeCard === 'cancelled' || activeCard === 'partial') && 'rr-metric-on')}>

@@ -1,6 +1,5 @@
-// The cancellation and micro-export cards above the order list show today (the Istanbul day), whatever the list's own
-// filters are. Each opens the list on exactly what it counted.
-import { istanbulDayBoundary } from '../../../shared/format-date'
+// The cancellation cards above the order list show today (the Istanbul day) and the micro-export card the pending ones,
+// whatever the list's own filters are. Each opens the list on exactly what it counted.
 
 // GET /dashboard/cancellations: one store's cancellations of the day. The Genel Bakış card reads the same rows, so both
 // count an order cancelled whole, and one cancelled in part, the same way (a cancellation of unknown time is not counted).
@@ -21,22 +20,22 @@ export function dailyCancellationCounts(stores: DailyCancellationRow[] | undefin
   }
 }
 
-// The micro-export card's request: the order summary's PENDING tab alone (not yet handed to the carrier) over the
-// micro-export orders placed on the day (the Istanbul day, the list's Sipariş Tarihi filter), with their countries.
-export function microDayParams(day: string) {
-  return new URLSearchParams({ tabs: 'PENDING', micro: 'true', dateFrom: istanbulDayBoundary(day), dateTo: istanbulDayBoundary(day, true) }).toString()
+// The micro-export card's request: the order summary's PENDING tab alone (not yet handed to the carrier) over every
+// micro-export order, whatever day it was placed, with their countries.
+export function microPendingParams() {
+  return new URLSearchParams({ tabs: 'PENDING', micro: 'true' }).toString()
 }
 
-// The lists the cards open: the micro-export orders placed today, orders cancelled today (whole, or in part), and the resends
+// The lists the cards open: the micro-export orders not yet shipped (any day), orders cancelled today (whole, or in part), and the resends
 // that have not been handed to the carrier (not about today).
 export type DayCard = 'micro' | 'cancelled' | 'partial' | 'resent'
 
-// The list a card opens: the micro-export orders placed that day and not yet shipped (Bekleyen), or İptal / Kısmi İptal on the orders
+// The list a card opens: the micro-export orders not yet shipped (Bekleyen, any day), or İptal / Kısmi İptal on the orders
 // cancelled that day. Only the date filter the tab offers is set (order-date-filters.ts), the other is cleared.
 export function dayCardFilters(card: DayCard, day: string) {
   if (card === 'resent') return { kind: 'RESENT_UNSHIPPED', status: 'RESENT', dateFrom: '', dateTo: '', cancelFrom: '', cancelTo: '' }
   return card === 'micro'
-    ? { kind: 'MICRO', status: 'PENDING', dateFrom: day, dateTo: day, cancelFrom: '', cancelTo: '' }
+    ? { kind: 'MICRO', status: 'PENDING', dateFrom: '', dateTo: '', cancelFrom: '', cancelTo: '' }
     : { kind: 'ALL', status: card === 'cancelled' ? 'CANCELLED' : 'PARTIALLY_CANCELLED', dateFrom: '', dateTo: '', cancelFrom: day, cancelTo: day }
 }
 

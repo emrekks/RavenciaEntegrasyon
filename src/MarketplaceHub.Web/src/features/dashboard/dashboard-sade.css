@@ -40,10 +40,11 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-op-sep { color: var(--rr-line-strong); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard.rr-warn strong { color: var(--rr-warn); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard.rr-bad strong { color: var(--rr-bad); }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-bd { top: calc(100% + 6px); left: 0; width: 240px; gap: 4px; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-bd { top: calc(100% + 6px); left: 0; width: max-content; min-width: 240px; max-width: calc(100vw - 32px); gap: 4px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-bd-r { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; font-size: 13px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-bd-r .rr-logo { width: 22px; height: 22px; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-bd-r b { font-weight: 600; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-bd-r b { font-weight: 600; white-space: nowrap; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-bd-r > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-metrics.rr-perf article { position: relative; overflow: visible; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pcardm { position: relative; display: grid; gap: 2px; padding: 14px 16px; background: var(--rr-surface); border: 1px solid var(--rr-line); border-radius: 12px; outline: none; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pcardm:hover { border-color: var(--rr-line-strong); }

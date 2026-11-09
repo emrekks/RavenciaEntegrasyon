@@ -80,6 +80,19 @@
   :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) tbody th { width: 260px; min-width: 260px; max-width: 260px; }
   :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan .commission-choice > small { white-space: nowrap; }
 }
+/* Band cards fill their cell with the same 8 px on every side (they floated in the middle of a tall row, 4 px at the
+   sides and ~60 px above and below); the switch stays at the card's foot. */
+:root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.is-week) tbody td:not(.commission-expand):not(.commission-now-col) { height: 1px; padding: 8px; vertical-align: top; }
+:root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.is-week) tbody td:not(.commission-expand):not(.commission-now-col) > .commission-choice { box-sizing: border-box; height: 100%; align-content: start; }
+:root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.is-week) .commission-choice > .commission-switch { align-self: end; }
+/* Below 1280 px the product column is 100-112 px: the picture beside the text left ~40 px, so the name, the model code
+   and "3 beden" broke inside words. The picture goes above the text there and words wrap whole. */
+@media (max-width: 1279px) {
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) .commission-product-cell { flex-direction: column; gap: 6px; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) .commission-product-cell > span { min-width: 0; max-width: 100%; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) tbody th small { overflow-wrap: break-word; word-break: normal; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) .commission-model-count { white-space: nowrap; }
+}
 
 /* Category attribute dropdowns open exactly as wide as their bar (they were a fixed 320 px under a 400 px bar). */
 @media (min-width: 761px) {
