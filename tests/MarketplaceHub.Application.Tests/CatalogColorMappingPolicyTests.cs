@@ -21,6 +21,9 @@ public sealed class CatalogColorMappingPolicyTests
     [InlineData("Saks", "MAVI")]
     [InlineData("Kiremit", "TURUNCU")]
     [InlineData("Mürdüm", "MOR")]
+    [InlineData("Fıstık", "YESIL")]
+    [InlineData("Yavruağzı", "PEMBE")]
+    [InlineData("YAVRUAĞZI", "PEMBE")]
     public void FallbackKeys_MapsSimilarWebColorsToPanelColors(string webColor, string expected)
     {
         Assert.Contains(expected, CatalogColorMappingPolicy.FallbackKeys(webColor));

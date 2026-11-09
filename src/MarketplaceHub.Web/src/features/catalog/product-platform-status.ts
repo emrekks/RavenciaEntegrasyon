@@ -17,6 +17,9 @@ const inProgressStatuses = new Set([
   'IMPORT_SUBMITTED',
   'IMPORT_IN_PROGRESS',
   'CREATE_ACCEPTED',
+  // Sent and waiting for the marketplace's word (the create batch had no line for the variant; Shopify's submit).
+  'CREATE_RESULT_UNKNOWN',
+  'SHOPIFY_SUBMITTED',
   'UPDATE_SUBMITTED',
   'UPDATE_IN_PROGRESS',
   'APPROVAL_PENDING',
