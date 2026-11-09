@@ -18,11 +18,11 @@ http://127.0.0.1:8081 {
   # Kept in step with Caddyfile.production: API/SignalR responses are not compressed (BREACH class).
   @compressible not path /api/* /hubs/*
   encode @compressible zstd gzip
-  # Kept in step with Caddyfile.production (the reasoning is there): three catalog reads, the panel's own GETs only.
+  # Kept in step with Caddyfile.production (the reasoning is there): the reviewed large lists, the panel's own GETs only.
   @compressible_catalog {
     method GET
     header Sec-Fetch-Site same-origin
-    path_regexp ^/api/v1/(products(/[0-9a-fA-F-]{36})?|catalog/categories/[0-9a-fA-F-]{36}/attribute-requirements|mappings/attribute-values/batch|reference-data/categories(/[A-Za-z0-9._-]{1,128}/(attribute-values|attributes(/[A-Za-z0-9._-]{1,256}/values)?))?)$
+    path_regexp ^/api/v1/(products(/[0-9a-fA-F-]{36})?|catalog/(attributes|categories/[0-9a-fA-F-]{36}/attribute-requirements)|mappings/attribute-values/batch|reference-data/categories(/[A-Za-z0-9._-]{1,128}/(attribute-values|attributes(/[A-Za-z0-9._-]{1,256}/values)?))?|reports/(sales|order-profitability|stock|payouts(/lines)?|ad-report|price-assumptions)|jobs/(page|counts)|dashboard/performance|connections/[0-9a-fA-F-]{36}/commission-tariffs/[0-9a-fA-F-]{36}/rows)$
   }
   encode @compressible_catalog zstd gzip
   header {
@@ -80,6 +80,10 @@ http://127.0.0.1:8081 {
     @application_shell not path /assets/* /platforms/* /pack/* /fonts/*
     header @application_shell Cache-Control "no-store, no-cache, must-revalidate"
     try_files {path} /index.html
+    # Kept in step with Caddyfile.production: the build's .br/.zst copies of scripts and stylesheets.
+    file_server @static_assets {
+      precompressed br zstd
+    }
     file_server
   }
   # Kept in step with Caddyfile.production: no CSRF token, idempotency keys or query strings in the log.
