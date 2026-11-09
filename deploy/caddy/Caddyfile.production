@@ -1,5 +1,12 @@
 {
 	admin off
+	servers {
+		# No HTTP/3 early data (0-RTT). The remote_ip matcher of @health_private_only is evaluated for every request
+		# and answers a request still inside the TLS handshake with 425 Too Early (live: ~300 a day, all GETs on
+		# resumed h3 connections); the browser then sends it again. Without 0-RTT a resumed connection waits one
+		# round trip instead, and no request can be replayed from early data.
+		0rtt off
+	}
 }
 
 # Container healthcheck only (compose: wget http://127.0.0.1:8081/healthz): loopback inside the
@@ -16,6 +23,23 @@ http://127.0.0.1:8081 {
 	# response is the BREACH class. Static assets and the SPA shell still are.
 	@compressible not path /api/* /hubs/*
 	encode @compressible zstd gzip
+	# Exception (speed plan P4, 9 Nov 2026): three large catalog reads, compressed only for the panel's own fetches.
+	# BREACH needs a secret and attacker-chosen input in the same compressed body, and the attacker must make the
+	# victim's browser send many such requests while watching their sizes. Here:
+	#   - the bodies carry no secret: GET /products, /products/{id} and the category attribute requirements hold
+	#     catalog data only (pictures are session-only /files/ links or marketplace CDN addresses, the paging cursor is
+	#     DataProtection-encrypted, the search term is never echoed); no CSRF token, session value or bearer link;
+	#   - Sec-Fetch-Site same-origin: a request another site starts (link, image, form, top-level navigation, which
+	#     carries the SameSite=Lax cookie) says cross-site or same-site and stays uncompressed, so no attacker can
+	#     drive the requests BREACH needs;
+	#   - GET only, exact paths: /products/summary, /products/{id}/..., every other /api/* route, /hubs/*, /auth/* and
+	#     anything that returns tokens or links (orders and invoices carry bearer invoice links) stay uncompressed.
+	@compressible_catalog {
+		method GET
+		header Sec-Fetch-Site same-origin
+		path_regexp ^/api/v1/(products(/[0-9a-fA-F-]{36})?|catalog/categories/[0-9a-fA-F-]{36}/attribute-requirements)$
+	}
+	encode @compressible_catalog zstd gzip
 	header {
 		# Deletions are deferred, so they also strip what reverse_proxy adds to API responses.
 		-Server

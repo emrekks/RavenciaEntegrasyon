@@ -192,7 +192,14 @@ MaxRetentionSec=30day
   `curl --resolve panel.ravencia.com:443:127.0.0.1 https://panel.ravencia.com/health/ready`.
 - `Clear-Site-Data: "cache"` yalnızca `/api/v1/auth/*` 401 yanıtlarına eklenir.
 - `/api/*` ve `/hubs/*` yanıtları sıkıştırılmaz (BREACH sınıfı); statik dosyalar ve SPA kabuğu
-  zstd/gzip ile sıkıştırılmaya devam eder.
+  zstd/gzip ile sıkıştırılmaya devam eder. Tek istisna (9 Kasım 2026, hız planı P4): `GET /api/v1/products`,
+  `/api/v1/products/{id}` ve `/api/v1/catalog/categories/{id}/attribute-requirements` yalnız panelin kendi
+  isteklerinde (`Sec-Fetch-Site: same-origin`) sıkıştırılır. Bu gövdelerde jeton, oturum değeri ya da taşıyıcı bağlantı
+  yok, arama terimi geri yansıtılmaz (imleç şifreli); başka sitenin başlattığı istek sıkıştırılmadığından saldırgan
+  BREACH'in gerektirdiği istekleri yaptıramaz. Siparişler/faturalar (taşıyıcı fatura bağlantıları), `/auth/*`,
+  `/hubs/*` ve diğer tüm uçlar sıkıştırmasız kalır. Gerekçe Caddyfile.production yorumunda.
+- HTTP/3 0-RTT kapalı (`servers { 0rtt off }`): `remote_ip` eşleyicisi TLS el sıkışması bitmemiş (early data)
+  isteğe `425 Too Early` döndürüyordu (günde ~300, tarayıcı yeniden gönderiyordu).
 - Caddyfile her imaj derlemesinde `caddy adapt` ile doğrulanır (CI `image-edge` işi dahil).
 - **IPv6 ziyaretçiler (G3):** `edge` ağı yalnız IPv4 olduğundan, sunucuya IPv6 ile gelen bağlantıyı
   Docker'ın `docker-proxy` süreci (userland-proxy) karşılar ve Caddy'ye köprü ağ geçidinin özel IPv4

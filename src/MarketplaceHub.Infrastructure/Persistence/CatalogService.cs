@@ -11,7 +11,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors, IConfiguration configuration, TimeProvider timeProvider, IMemoryCache countCache) : ICatalogService
+public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors, IConfiguration configuration, TimeProvider timeProvider, IMemoryCache countCache, CategoryRequirementsCache? requirementsCache = null) : ICatalogService
 {
     public async Task<PageResult<CategoryView>> ListCategoriesAsync(Guid tenantId, int limit, string? after, CancellationToken cancellationToken)
     {
@@ -342,6 +342,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
 
     public async Task<ServiceResult<IReadOnlyList<CategoryAttributeRequirementView>>> GetRequirementsAsync(Guid tenantId, Guid categoryId, CancellationToken cancellationToken)
     {
+        if (requirementsCache?.TryGet(tenantId, categoryId, out var cached) == true) return ServiceResult<IReadOnlyList<CategoryAttributeRequirementView>>.Ok(cached);
+        var generation = requirementsCache?.CurrentGeneration ?? CancellationToken.None;
         if (!await db.Categories.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == categoryId, cancellationToken)) return NotFound<IReadOnlyList<CategoryAttributeRequirementView>>();
         var requirements = await db.CategoryAttributeRequirements.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.CategoryId == categoryId && (x.IsPanelScoped || x.Role == "OPTION"))
@@ -360,8 +362,10 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var roles = requirements
             .GroupBy(x => x.AttributeId)
             .ToDictionary(group => group.Key, group => (IReadOnlyList<string>)group.Select(x => NormalizeRequirementRole(x.Role)).Distinct(StringComparer.Ordinal).ToList());
-        var attributeLookup = attributes.ToDictionary(x => x.Id, x => MapAttribute(x, values.Where(value => value.AttributeId == x.Id), roles.GetValueOrDefault(x.Id)));
-        var result = requirements.Where(x => attributeLookup.ContainsKey(x.AttributeId)).Select(x => new CategoryAttributeRequirementView(x.AttributeId, x.IsRequired, x.AllowsCustomValue, x.DisplayOrder, attributeLookup[x.AttributeId], NormalizeRequirementRole(x.Role), webColorAttributeIds.Contains(x.AttributeId))).ToList();
+        var valuesByAttribute = values.ToLookup(value => value.AttributeId);
+        var attributeLookup = attributes.ToDictionary(x => x.Id, x => MapAttribute(x, valuesByAttribute[x.Id], roles.GetValueOrDefault(x.Id)));
+        IReadOnlyList<CategoryAttributeRequirementView> result = requirements.Where(x => attributeLookup.ContainsKey(x.AttributeId)).Select(x => new CategoryAttributeRequirementView(x.AttributeId, x.IsRequired, x.AllowsCustomValue, x.DisplayOrder, attributeLookup[x.AttributeId], NormalizeRequirementRole(x.Role), webColorAttributeIds.Contains(x.AttributeId))).ToList();
+        requirementsCache?.Set(tenantId, categoryId, generation, result);
         return ServiceResult<IReadOnlyList<CategoryAttributeRequirementView>>.Ok(result);
     }
 
