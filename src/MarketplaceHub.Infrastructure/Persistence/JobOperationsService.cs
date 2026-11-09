@@ -1236,6 +1236,8 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         Math.Max(1, x.MaxAttempts - x.WaitingChecks),
         x.Status is JobStatus.Pending or JobStatus.RetryScheduled && JobWaitingPolicy.IsWaitingCode(x.LastErrorCode));
 
+    internal const string OwnerAcceptedCode = "OWNER_ACCEPTED";
+
     private static JobChangeView? Change(IntegrationJob job)
     {
         var type = job.JobType.ToUpperInvariant();
@@ -1253,6 +1255,9 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             };
             return new("İstek sonucu", "Fatura gönderilmedi", detail);
         }
+        // A job the owner closed by decision (OwnerAcceptsInvoiceLeftovers): its note says what happened, not this job.
+        if (job.LastErrorCode == OwnerAcceptedCode)
+            return new("Sonuç", "Sahip kararıyla kapatıldı", job.LastErrorSummary ?? "Sahip kararıyla kabul sayıldı.");
         if (type is MarketplaceJobTypes.OrderReconciliation or MarketplaceJobTypes.ShopifyOrderReconciliation) return new("Tarama türü", "Kapsamlı sipariş taraması", "Yerel siparişler ile pazaryeri kayıtları karşılaştırıldı; durum ve paket farklılıkları düzeltildi.");
         if (type is MarketplaceJobTypes.OrderInvoiceReconciliation or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation or MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation) return new("Tarama türü", "Paket fatura taraması", "Teslim edilmiş ve açık paketlerin pazaryeri fatura durumu kontrol edildi.");
         if (type is MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync or MarketplaceJobTypes.N11OrderRecoverySync or MarketplaceJobTypes.PazaramaOrderRecoverySync or MarketplaceJobTypes.PttAvmOrderRecoverySync) return new("Tarama türü", "Tam sipariş taraması", "Erişilebilen sipariş pencereleri taranarak eksik yerel kayıtlar tamamlandı.");
