@@ -36,9 +36,9 @@ type PanelMessage = { kind: 'success' | 'error' | 'info'; text: string; warnings
 
 export const promotionTitles: Record<PromotionKind, string> = { PLUS: 'Plus Komisyon Tarifesi', ADVANTAGE: 'Avantajlı Ürün Etiketi', FLASH: 'Flash Ürünler' }
 const promotionHelp: Record<PromotionKind, string> = {
-  PLUS: 'Plus fiyat üst limitinde Trendyol’un önerdiği komisyonla ürünün bıraktığı tutar, bugünkü fiyatın bıraktığıyla karşılaştırılır.',
-  ADVANTAGE: 'Her etiketin üst fiyatı, o fiyatın düştüğü komisyon tarifesi bandıyla hesaplanır; komisyon tarifesi yüklü değilse oran bilinmez.',
-  FLASH: 'Flaş fiyatında komisyon, tarifeye dahil ürünlerde flaşın başladığı haftanın tarifesindeki banttan, dahil olmayanlarda mevcut komisyondan okunur.'
+  PLUS: 'Plus üst fiyat limitinde Trendyol’un önerdiği komisyonla kalan tutar, bugünkü fiyatla kalan tutarla karşılaştırılır.',
+  ADVANTAGE: 'Her etiketin üst fiyatı, düştüğü komisyon tarifesi bandıyla hesaplanır; tarife yüklü değilse oran bilinmez.',
+  FLASH: 'Flaşta komisyon, tarifeye dahil ürünlerde flaşın başladığı haftanın bandından, diğerlerinde mevcut komisyondan alınır.'
 }
 const pageSize = 50
 

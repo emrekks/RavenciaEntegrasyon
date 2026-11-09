@@ -52,7 +52,7 @@ export function ReturnMarketplaceHistory({ returnId, lines, showSettlement = tru
     ['Trendyol Notu', line.marketplaceNote?.trim() || null]
   ].filter((fact): fact is [string, string] => Boolean(fact[1])) }))
   return <article className="rr-mhist">
-    <div className="rr-h3">{showSettlement ? 'Trendyol Kararı ve Durum Geçmişi' : 'Trendyol Durum Geçmişi'}<TitleHint label={showSettlement ? 'Trendyol Kararı ve Durum Geçmişi' : 'Trendyol Durum Geçmişi'}>Ret talebinde gönderilen açıklama ve belgeler Trendyol API’sinde okunamıyor; yalnızca Trendyol satıcı panelinde görünür.</TitleHint></div>
+    <div className="rr-h3">{showSettlement ? 'Trendyol Kararı ve Durum Geçmişi' : 'Trendyol Durum Geçmişi'}<TitleHint label={showSettlement ? 'Trendyol Kararı ve Durum Geçmişi' : 'Trendyol Durum Geçmişi'}>Ret talebindeki açıklama ve belgeler Trendyol’dan okunamaz; yalnız Trendyol satıcı panelinde görünür.</TitleHint></div>
     {!showSettlement ? null : settled.some(entry => entry.facts.length) ? settled.filter(entry => entry.facts.length).map(({ line, facts }) => <div className="rr-mhist-line" key={line.id}>
       {lines.length > 1 && <b>{line.title}</b>}
       <dl className="rr-kv">{facts.map(([label, value]) => <div key={label} style={{ display: 'contents' }}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
