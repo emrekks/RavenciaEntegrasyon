@@ -1247,7 +1247,13 @@ public sealed record PriceStockConnectionMonitorView(
     // the scheduled order read actually runs at (null when the connection's order read is off).
     string OrderSource,
     DateTimeOffset? LastNotificationAt,
-    int? OrderReadIntervalSeconds);
+    int? OrderReadIntervalSeconds,
+    // The panel products behind NotFoundLinks and RejectedLinks, so the seller can see which listings the marketplace
+    // no longer holds (most first, at most PriceStockMonitorService.LostListingProductLimit).
+    IReadOnlyList<PriceStockLostListingView> LostListings);
+// One panel product whose linked variant codes the marketplace no longer holds (NOT_FOUND) or refused (REJECTED):
+// its title, how many of its variants, their stock codes in order and when the first of them broke.
+public sealed record PriceStockLostListingView(Guid ProductId, string Title, string HealthStatus, int Variants, IReadOnlyList<string> Skus, DateTimeOffset? Since);
 public sealed record PriceStockMonitorView(DateTimeOffset GeneratedAt, IReadOnlyList<PriceStockConnectionMonitorView> Connections);
 public sealed record PriceStockEmergencyStopView(int ConnectionsStopped, int PoliciesDisabled, int JobsCancelled);
 
