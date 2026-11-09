@@ -172,7 +172,7 @@ export function ProductTransferDialog({ onClose }: { onClose: () => void }) {
         : <button type="button" className="rr-btn" onClick={onClose}>Vazgeç</button>}
   </>
 
-  return <RrModal crumb="Ürünler" label="Ürünleri İçe / Dışa Aktar" title={<>Ürünleri İçe / Dışa Aktar<TitleHint label="Ürünleri İçe / Dışa Aktar">Ürünlerinizi Excel'e aktarın, düzenleyip geri yükleyin ve hangi alanların panele yazılacağını seçin. Değişiklikler önce önizlenir; siz kaydetmeden hiçbir şey değişmez.</TitleHint></>} size="lg" onClose={onClose} locked={apply.isPending} foot={foot} modalClass="pci-modal">
+  return <RrModal crumb="Ürünler" label="Ürünleri İçe / Dışa Aktar" title={<>Ürünleri İçe / Dışa Aktar<TitleHint label="Ürünleri İçe / Dışa Aktar">Ürünleri Excel’e aktarın, düzenleyip geri yükleyin. Değişiklikler önce önizlenir; siz kaydetmeden hiçbir şey değişmez.</TitleHint></>} size="lg" onClose={onClose} locked={apply.isPending} foot={foot} modalClass="pci-modal">
     {done ? <div className="pci-done" role="status">
       <span className="pci-done-mark"><RrIcon name="check" size={20} /></span>
       <strong>{appliedTotal(done) === 0 ? 'Değerler zaten güncel' : 'Değişiklikler kaydedildi'}</strong>
@@ -182,7 +182,7 @@ export function ProductTransferDialog({ onClose }: { onClose: () => void }) {
         <li className="pci-step">
           <span className="pci-step-n" aria-hidden="true">1</span>
           <div className="pci-step-b">
-            <strong>Ürünleri Dışa Aktarın<TitleHint label="Ürünleri Dışa Aktarın">Her varyant bir satırdır: ürün adı, varyant, stok kodu, barkod, model kodu, panel fiyatı, KDV oranı, <b>stok</b>, <b>maliyet</b>, <b>desi</b> ve her mağazanın <b>satış ve liste fiyatı</b>. Boş hücre değişmez; maliyeti, desiyi ya da model kodunu silmek için <b>-</b> yazın.</TitleHint></strong>
+            <strong>Ürünleri Dışa Aktarın<TitleHint label="Ürünleri Dışa Aktarın">Her varyant bir satırdır; stok, maliyet, desi, fiyat, KDV ve her mağazanın <b>satış ve liste fiyatı</b> da yer alır. Boş hücre değişmez; maliyeti, desiyi ya da model kodunu silmek için <b>-</b> yazın.</TitleHint></strong>
             <div className="pci-step-acts">
               <div className="pci-field"><span>Varyantlar</span>
                 <PanelSelect className="pci-select" ariaLabel="Varyantlar" width={220} value={filter} onChange={setFilter} options={[
@@ -224,7 +224,7 @@ function FieldCheck({ field, label, fields, available, disabled, onToggle }: { f
 
 function FieldPicker({ fields, available, disabled, onToggle, onToggleGroup }: { fields: ProductTransferField[]; available?: ProductTransferField[]; disabled: boolean; onToggle: (field: ProductTransferField) => void; onToggleGroup: (group: readonly ProductTransferField[]) => void }) {
   return <fieldset className="pci-fields">
-    <legend>Panele Aktarılacak Alanlar<TitleHint label="Panele Aktarılacak Alanlar">Satırlar <b>Stok Kodu</b> ile, yoksa <b>Barkod</b> ile eşleştirilir; stok kodu değiştirilemez. Varyant, marka, kategori ve durum sütunları yalnız bilgi içindir. <b>Ürün adı</b> ürüne aittir: bir ürünün tüm satırlarına aynı adı yazın. <b>Barkod</b> aktarılırken satırlar yalnız stok kodu ile eşleştirilir; bir barkod tek bir varyantta olabilir ve silinemez. <b>Panel fiyatı ve KDV oranı</b> yalnız panele kaydedilir; pazaryerine fiyat gönderilmez ve mağaza fiyatları değişmez.</TitleHint></legend>
+    <legend>Panele Aktarılacak Alanlar<TitleHint label="Panele Aktarılacak Alanlar">Satırlar <b>Stok Kodu</b> ile, yoksa <b>Barkod</b> ile eşleştirilir; barkod aktarılırken yalnız stok kodu ile eşleştirilir. Stok kodu değiştirilemez, barkod bir varyanta aittir ve silinemez. Varyant, marka, kategori ve durum sütunları yalnız bilgi içindir; <b>ürün adı</b> ürüne aittir, aynı ürünün tüm satırlarına aynı adı yazın. <b>Panel fiyatı ve KDV</b> yalnız panele kaydedilir; pazaryerine fiyat gönderilmez.</TitleHint></legend>
     <div className="pci-groups">{productTransferFieldGroups.map(group => {
       if (group.fields.length === 1) return <div key={group.label} className="pci-group" role="group" aria-label={group.label}>
         <FieldCheck field={group.fields[0]} label={group.label} fields={fields} available={available} disabled={disabled} onToggle={onToggle} />

@@ -44,7 +44,7 @@ const exact = (value: string | null) => (value ? `${relativeAgeText(value) ?? ''
 export function authCell(auth: SignalAuth, now = Date.now()): SignalCell {
   if (auth.state === 'rejected') {
     const when = relativeAgeText(auth.lastRejectedAt, now)
-    return { text: when ? `${when.replace(' önce', '')} önce reddedildi` : 'Reddedildi', tone: 'bad', title: `Pazaryeri anahtarı reddetti (401/403, kod ${auth.lastRejectedCode ?? 'bilinmiyor'}); ardından başarılı bir istek yok. Son reddedilme: ${exact(auth.lastRejectedAt)}. Son başarılı istek: ${exact(auth.lastOkAt)}.` }
+    return { text: when ? `${when.replace(' önce', '')} önce reddedildi` : 'Reddedildi', tone: 'bad', title: `Pazaryeri anahtarı reddetti (kod ${auth.lastRejectedCode ?? 'bilinmiyor'}); sonrasında başarılı istek yok. Son reddedilme: ${exact(auth.lastRejectedAt)}. Son başarılı istek: ${exact(auth.lastOkAt)}.` }
   }
   if (auth.state === 'valid') return { text: 'Geçerli', tone: 'ok', title: `Son başarılı istek: ${exact(auth.lastOkAt)}.${auth.lastRejectedAt ? ` Son 30 günde son reddedilme: ${exact(auth.lastRejectedAt)} (sonra düzeldi).` : ' Son 30 günde anahtar reddi yok.'} E-Faturam oturumu bu görünümde izlenmiyor.` }
   return { text: 'Bilinmiyor', tone: 'off', title: 'Son 30 günde bu bağlantı için ne başarılı ne reddedilen bir istek kaydı var.' }
@@ -65,13 +65,13 @@ export function failureRate(rate: SignalErrorRate): number | null {
 export function errorRateCell(rate: SignalErrorRate): SignalCell {
   const value = failureRate(rate)
   if (value === null) return { text: '—', tone: 'off', title: 'Son 24 saatte bu bağlantıda biten istek denemesi yok.' }
-  const split = `${rate.attempts.toLocaleString('tr-TR')} deneme: ${rate.remoteSide} pazaryeri tarafı (5xx, zaman aşımı, ağ) · ${rate.ourSide} bizim taraf (4xx reddi) · ${rate.rateLimited} kota (429)${rate.workflowWait ? ` · ${rate.workflowWait} iş akışı beklemesi/diğer (orana katılmaz)` : ''}. HTTP kodu değil, denemenin hata kodu sınıflandırılır.`
+  const split = `${rate.attempts.toLocaleString('tr-TR')} deneme: ${rate.remoteSide} pazaryeri tarafı (sunucu hatası, zaman aşımı, ağ) · ${rate.ourSide} bizim taraf (ret) · ${rate.rateLimited} kota sınırı${rate.workflowWait ? ` · ${rate.workflowWait} iş akışı beklemesi/diğer (orana katılmaz)` : ''}.`
   return { text: `%${(value * 100).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}`, tone: value === 0 ? 'ok' : value >= 0.25 ? 'bad' : 'warn', title: split }
 }
 
 export function rateLimitCell(limit: SignalRateLimit, now = Date.now()): SignalCell {
   const paused = limit.pausedUntil && new Date(limit.pausedUntil).getTime() > now
-  const detail = `Son 24 saatte ${limit.refused24h} deneme 429 ile bitti (denemenin içinde yeniden denenen 429'lar kaydedilmiyor) · kota bekleyen iş: ${limit.waitingJobs} · son okumalarda bildirilen ret: ${limit.lastRunRefusals}${paused ? ` · kota duraklaması ${formatDateTime(limit.pausedUntil!)} saatine kadar` : ''}.`
+  const detail = `Son 24 saatte ${limit.refused24h} deneme kota sınırına takılarak bitti · kota bekleyen iş: ${limit.waitingJobs} · son okumalarda bildirilen ret: ${limit.lastRunRefusals}${paused ? ` · kota duraklaması ${formatDateTime(limit.pausedUntil!)} saatine kadar` : ''}.`
   if (paused) return { text: 'Kota Bekliyor', tone: 'warn', title: detail }
   return { text: limit.refused24h.toLocaleString('tr-TR'), tone: limit.refused24h > 0 || limit.waitingJobs > 0 ? 'warn' : 'ok', title: detail }
 }
@@ -82,7 +82,7 @@ export function queueCell(queue: SignalQueue | null): SignalCell {
 }
 
 export function webhookCell(webhook: SignalWebhook, now = Date.now()): SignalCell {
-  if (!webhook.used) return { text: 'Yok', tone: 'off', title: 'Bu bağlantıda bildirim (webhook) yok; siparişler zamanlanmış okumayla gelir.' }
+  if (!webhook.used) return { text: 'Yok', tone: 'off', title: 'Bu bağlantıda anlık bildirim (webhook) yok; siparişler zamanlanmış okumayla gelir.' }
   const read = `Son sipariş okuması: ${exact(webhook.lastOrderReadAt)}${webhook.fallbackReadSeconds ? ` (yedek okuma ${everyText(webhook.fallbackReadSeconds)})` : ''}.`
   const base = `Bildirim durumu zamanlayıcının kuralıyla ${webhook.healthy ? 'sağlıklı' : 'sağlıksız'}. ${read} Beklenen bildirim sıklığı Ölçülmüyor (pazaryeri sıklık bildirmiyor).`
   const text = relativeAgeText(webhook.lastReceivedAt, now) ?? 'Bildirim yok'

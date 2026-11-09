@@ -255,11 +255,11 @@ export function cadenceNote(cadence: SyncCadence) {
 /** What the idle rule of a flow does, for the editor. */
 export function idleRuleText(kind: SyncCadence['idleKind'], platformCode?: string) {
   if (kind === 'RETURNS') return platformCode === 'HEPSIBURADA'
-    ? 'Bildirimler sağlıklıyken açık iade varsa en çok 30 dakikada, yoksa seyrek sıklıkta okunur; bildirimler aksarsa açık iade yokken bir gün sessizlikten sonra 20 dakikaya, bir hafta sonra 30 dakikaya uzar. Açık iade varken kendi sıklığında okunur.'
-    : 'Açık iade varken kendi sıklığında okunur. Açık iade yokken bir gün yeni iade gelmezse 20 dakikaya, bir hafta gelmezse seyrek sıklığa uzar; yeni iade gelince kendi sıklığına döner.'
+    ? 'Bildirimler sağlıklıyken açık iade varsa en çok 30 dakikada, yoksa seyrek okunur. Bildirimler aksarsa açık iade yokken bir gün sonra 20, bir hafta sonra 30 dakikaya uzar; açık iade varken kendi sıklığında okunur.'
+    : 'Açık iade varken kendi sıklığında okunur. Açık iade yokken bir gün yeni iade gelmezse 20 dakikaya, bir hafta gelmezse seyrek sıklığa uzar; yeni iade gelince eski sıklığa döner.'
   return kind === 'WEBHOOK'
-    ? 'Pazaryeri bildirimleri sağlıklı geldikçe bu okuma yalnız güvenlik ağıdır ve seyrek sıklıkta çalışır; bildirim aksarsa hemen kendi sıklığına döner.'
-    : 'Yeni soru gelmedikçe aralık her yarım saatte ikiye katlanır ve seyrek sıklıkta durur; yeni soru gelince kendi sıklığına döner.'
+    ? 'Bildirimler sağlıklı geldikçe bu okuma yalnız yedektir ve seyrek çalışır; bildirim aksarsa hemen kendi sıklığına döner.'
+    : 'Yeni soru gelmedikçe aralık her yarım saatte ikiye katlanır, seyrek sıklıkta durur; yeni soru gelince kendi sıklığına döner.'
 }
 
 /**

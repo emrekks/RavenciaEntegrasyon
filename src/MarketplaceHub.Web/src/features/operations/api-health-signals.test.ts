@@ -7,7 +7,7 @@ describe('API Sağlığı signal cells', () => {
   it('shows a key refusal in red while no success followed it, otherwise Geçerli', () => {
     const rejected = authCell({ state: 'rejected', lastRejectedAt: '2026-11-07T10:00:00Z', lastRejectedCode: 'N11_CREDENTIALS_REJECTED', lastOkAt: null }, now)
     expect(rejected).toMatchObject({ text: '2 sa önce reddedildi', tone: 'bad' })
-    expect(rejected.title).toContain('401/403')
+    expect(rejected.title).toContain('N11_CREDENTIALS_REJECTED')
     expect(authCell({ state: 'valid', lastRejectedAt: null, lastRejectedCode: null, lastOkAt: '2026-11-07T11:00:00Z' }, now)).toMatchObject({ text: 'Geçerli', tone: 'ok' })
     expect(authCell({ state: 'unknown', lastRejectedAt: null, lastRejectedCode: null, lastOkAt: null }, now).text).toBe('Bilinmiyor')
   })
@@ -23,7 +23,7 @@ describe('API Sağlığı signal cells', () => {
   it('computes the error rate from remote, our and quota failures and splits the tooltip', () => {
     const cell = errorRateCell({ attempts: 200, failed: 12, remoteSide: 3, ourSide: 2, rateLimited: 1, workflowWait: 6 })
     expect(cell).toMatchObject({ text: '%3', tone: 'warn' })
-    expect(cell.title).toContain('3 pazaryeri tarafı (5xx, zaman aşımı, ağ) · 2 bizim taraf (4xx reddi) · 1 kota (429) · 6 iş akışı beklemesi')
+    expect(cell.title).toContain('3 pazaryeri tarafı (sunucu hatası, zaman aşımı, ağ) · 2 bizim taraf (ret) · 1 kota sınırı · 6 iş akışı beklemesi')
     expect(errorRateCell({ attempts: 10, failed: 0, remoteSide: 0, ourSide: 0, rateLimited: 0, workflowWait: 0 })).toMatchObject({ text: '%0', tone: 'ok' })
     expect(errorRateCell({ attempts: 0, failed: 0, remoteSide: 0, ourSide: 0, rateLimited: 0, workflowWait: 0 }).text).toBe('—')
   })
