@@ -166,23 +166,22 @@ describe('ReportsPage', () => {
     // estimated profit (green); its margin over the sales and over the cost; 4 orders against 2, 4 of 5 units kept.
     const figures = texts(page, '.reports-kpis > div')
     expect(figures).toHaveLength(6)
-    expect(figures[0]).toContain('Net Ciro')
+    expect(figures[0]).toContain('Toplam Ciro')
     // Money in a strip is shown in whole liras, the previous period's too.
-    expect(figures[0]).toContain('Net Ciro₺250')
+    expect(figures[0]).toContain('Toplam Ciro₺350')
     // Every figure has a short note of real figures under it (owner, 7 Nov 2026); the previous period's figure is in the
     // explanation, so no change chip opens it.
     expect(page.querySelectorAll('.reports-kpis .reports-kpi-note')).toHaveLength(6)
     expect(page.querySelector('.reports-kpis .reports-kpi-delta-toggle')).toBeNull()
-    expect(figures[0]).toContain('Satış ₺350 · iade ₺100')
-    expect(figures[0]).toContain('Önceki dönem ₺200')
+    expect(figures[0]).toContain('Net ₺250 · iade ₺100')
+    expect(figures[0]).toContain('Önceki dönem ₺350')
     expect(figures[1]).toContain('Sipariş başına ₺42')
     expect(figures[3]).toContain('Ürün maliyeti ₺80')
     expect(figures[4]).toContain('1 iptal · sepet ₺117')
     // O5: the overview's Ciro has the returns in it, Net Ciro not; the margin says which amount it is over.
-    expect(figures[0]).toContain('iadeler düşülmüş ciro')
-    expect(figures[0]).toContain('Genel Bakış\'taki Ciro iadeler dahildir')
+    expect(figures[0]).toContain('iadeler düşülmeden')
     expect(figures[2]).toContain('satış tutarı (iadeler düşülmeden; Net Ciro değil)')
-    expect(figures[0]).toContain('+%25')
+    expect(figures[0]).not.toContain('+%25') // the change is of the total sales (350 against 350), not of the net revenue
     expect(figures[1]).toContain('Net Kâr')
     expect(figures[1]).toContain('Net Kâr₺127')
     expect(page.querySelectorAll('.reports-kpis > div')[1].classList.contains('is-good')).toBe(true)
