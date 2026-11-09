@@ -53,3 +53,14 @@
 }
 :root:root body .rv-modal.qi-templates-modal .rv-question-template-actions { flex-wrap: nowrap; justify-content: flex-end; }
 :root:root body .rv-modal.qi-templates-modal .rv-question-template-actions > button { white-space: nowrap; }
+
+/* Owner, 9 Nov 2026: summary cards are 90 px on every operation page (Genel Bakış, Ürünler, Siparişler, İadeler,
+   Faturalar); the content stays centred. */
+@media (min-width: 761px) {
+  :root:root:root:root body .app-shell.stitch-shell main :is(.rr-opgrid > .rr-opcard, .rr-metrics > article, .rr-metrics > .rr-metric-btn, .reference-invoices-page .invoice-reference-metrics > article) { box-sizing: border-box; height: 90px; min-height: 90px; align-content: center; }
+}
+
+/* Segment control: the picked option sat 1 px inside the frame. 3 px inset all round, 28 px options and a 9 px radius
+   (12 − 3) keep the inner pill concentric with the 36 px frame. */
+:root:root:root body .app-shell.stitch-shell main .rr .rr-seg { box-sizing: border-box; height: 36px; padding: 3px; align-items: stretch; }
+:root:root:root body .app-shell.stitch-shell main .rr .rr-seg > button { height: 28px; min-height: 0; border-radius: 9px; }
