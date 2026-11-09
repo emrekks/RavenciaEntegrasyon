@@ -211,3 +211,40 @@ describe('ProductQuickEditModal on a family of colour cards', () => {
     expect(calls.every(call => call.body.onHand - call.body.expectedOnHand === 5)).toBe(true)
   })
 })
+
+describe('ProductQuickEditModal with the products list copies', () => {
+  // The products list leaves out each variant's channel offers (platformStatuses); the window shows the list copies until
+  // each product is read by id. The "Özel Fiyat" choice must come from the read copies, never from the list's.
+  const listCopy = { ...product, variants: product.variants.map(item => ({ ...item, platformStatuses: undefined })) } as Product
+  const readCopy = (followsPanelPrice: boolean) => ({ ...product, variants: product.variants.map(item => ({ ...item, platformStatuses: [{ platform: 'Trendyol', platformCode: 'TRENDYOL', isLinked: true, connectionId: 'c1', offerId: `o-${item.id}`, offerVersion: 1, listPrice: 500, salePrice: 450, currency: 'TRY', followsPanelPrice }] })) }) as Product
+  const switches = () => Array.from(document.body.querySelectorAll<HTMLInputElement>('input.rr-qt-switch'))
+  async function renderInTurn(...steps: Product[][]) {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const view = (products: Product[]) => <QueryClientProvider client={client}><MemoryRouter><ProductQuickEditModal mode="price" products={products} connections={[{ id: 'c1', displayName: 'Trendyol', platformCode: 'TRENDYOL' }] as never} onChanged={async () => undefined} onClose={() => undefined} /></MemoryRouter></QueryClientProvider>
+    root = createRoot(container, { onUncaughtError: error => { errors.push(error) } })
+    for (const [index, products] of steps.entries()) {
+      await act(async () => { root.render(view(products)) })
+      // Open the colour groups so their tables (and the switches in their column titles) are drawn.
+      if (index === 0) for (const toggle of Array.from(document.body.querySelectorAll<HTMLButtonElement>('button.rr-vg-t'))) await click(toggle)
+    }
+  }
+
+  it('counts every marketplace as ticked while only the list copies are shown', async () => {
+    await renderInTurn([listCopy])
+    expect(switches().length).toBeGreaterThan(0)
+    expect(switches().every(item => item.checked)).toBe(true)
+    expect(errors).toEqual([])
+  })
+
+  it('takes the stored choice of the read copies when the list copies came first', async () => {
+    await renderInTurn([listCopy], [readCopy(true)])
+    // The offers follow the panel price: the switch is off, read from the offers, not fixed by the list copies.
+    expect(switches().length).toBeGreaterThan(0)
+    expect(switches().every(item => !item.checked)).toBe(true)
+  })
+
+  it('keeps a marketplace ticked when its read offers keep their own price', async () => {
+    await renderInTurn([listCopy], [readCopy(false)])
+    expect(switches().every(item => item.checked)).toBe(true)
+  })
+})

@@ -14,6 +14,14 @@ public static class CatalogEndpoints
 {
     private const long MaxUploadBytes = 6 * 1024 * 1024;
 
+    // The products list leaves out its empty (null) fields: a 20-family page carried ~29,500 of them. The list screens
+    // read every optional field with ?? / ?. / != null, so a missing one reads as null there; GET /products/{id} keeps
+    // them (the editor tells null from a value).
+    public static readonly System.Text.Json.JsonSerializerOptions ProductListJson = new(System.Text.Json.JsonSerializerDefaults.Web)
+    {
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+    };
+
     public static IEndpointRouteBuilder MapCatalogEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var api = endpoints.MapGroup("/api/v1").AddEndpointFilter(async (context, next) =>
@@ -67,7 +75,7 @@ public static class CatalogEndpoints
             Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? Result(await service.ReplaceRequirementsAsync(tenant.TenantId, id, version, command, http.RequestAborted), Results.Ok) : failure!) : Unauthorized(http));
 
         api.MapGet("/products", async (HttpContext http, ICatalogService service, int? limit, string? after, string? status, string? search, string? platform, string? stock, string? sort) =>
-            Tenant(http) is { } tenant ? Results.Ok(await service.ListProductsAsync(tenant.TenantId, PageSize(limit), after, status, search, platform, stock, sort, http.RequestAborted)) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Results.Json(await service.ListProductsAsync(tenant.TenantId, PageSize(limit), after, status, search, platform, stock, sort, http.RequestAborted), ProductListJson) : Unauthorized(http));
         api.MapGet("/products/summary", async (HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? Results.Ok(await service.ProductSummaryAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http));
         api.MapPost("/products/bulk-status", async (BulkProductStatusCommand command, HttpContext http, ICatalogService service) =>
