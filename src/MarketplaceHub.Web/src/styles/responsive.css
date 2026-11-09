@@ -487,3 +487,11 @@ html body .app-shell .rv-drawer.rv-mobile-drawer { width: min(264px, 82vw); }
     html body :is(.rv-tabs, .cs-nav, [role="tablist"]) { -webkit-mask-image: linear-gradient(90deg, transparent, #000 var(--rv-fade-l), #000 calc(100% - var(--rv-fade-r)), transparent); mask-image: linear-gradient(90deg, transparent, #000 var(--rv-fade-l), #000 calc(100% - var(--rv-fade-r)), transparent); animation: rv-scroll-fade linear both; animation-timeline: scroll(self inline); }
   }
 }
+
+/* iOS Safari sends no click to a plain element whose handler React attaches at the root, so a tap on a scrim (the dimmed
+   area behind a phone dropdown, menu or filter sheet) did nothing. A pointer cursor makes iOS deliver the click. */
+html body :is(.rr-anchor-scrim, .rr-fscrim, .mfs-scrim, .mfs-sort-backdrop) { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+/* The same for every window backdrop that closes on a press outside the window (they listen for mousedown, which iOS
+   also withholds from plain elements); the window inside keeps its normal cursor. */
+html body :is(.rr-overlay, .workspace-modal-backdrop, .invoice-detail-backdrop, .missing-value-mapping-backdrop, .brand-mapping-modal-backdrop, .integration-modal-backdrop, .integration-settings-modal-backdrop, .job-detail-backdrop, .value-mapping-quick-value-backdrop) { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+html body :is(.rr-overlay, .workspace-modal-backdrop, .invoice-detail-backdrop, .missing-value-mapping-backdrop, .brand-mapping-modal-backdrop, .integration-modal-backdrop, .integration-settings-modal-backdrop, .job-detail-backdrop, .value-mapping-quick-value-backdrop, .mfs-sort-backdrop) > * { cursor: auto; }
