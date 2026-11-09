@@ -288,7 +288,7 @@ type OpenDetail = (key: DetailKey) => void
 // Each sentence of the working goes on a line of its own.
 // The round "?" beside a name: its explanation opens while the pointer is on it (or the name has the keyboard focus).
 // Report figures explain an amount or a count: an "i" mark (a "?" is for settings that need a decision).
-const TipMark = () => <UiIcon name="infoCircle" size={16} className="reports-qmark" />
+const TipMark = () => <UiIcon name="infoCircle" size={14} className="reports-qmark" />
 
 function TipText({ text }: { text: string }) {
   const [what, ...how] = text.split('\n')
