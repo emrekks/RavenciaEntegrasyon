@@ -270,7 +270,7 @@ export function DashboardPage() {
     // left out while it is not known, never shown as 0. The card opens the pending list; the due list is a tab there.
     ['invoicePending', 'Faturalar', knownCount(invoiceSummary.isLoading, invoiceSummary.data?.uninvoicedCount), '', dashboardOperationalLinks.pendingInvoices, undefined, <><span className="rr-op-x-word">Bekleyen</span>{dueSoon !== null && <>{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}{count(dueSoon)} Yaklaşan</>}</>],
     // Today's cancellations; the section is about today, so the label does not repeat it.
-    ['packageX', 'İptal', knownCount(cancellations.isLoading, cancelled ? cancelTotal(row => row.cancelledOrders) : undefined), 'bad', dayCancellationsLink(today), cancelRows, cancelled ? <>Sipariş{partialCancels ? <>{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}<span className="rr-op-partial">{count(partialCancels)} Kısmi İptal</span></> : null}</> : undefined],
+    ['packageX', 'İptal', knownCount(cancellations.isLoading, cancelled ? cancelTotal(row => row.cancelledOrders + row.partialOrders) : undefined), 'bad', dayCancellationsLink(today), cancelRows, cancelled ? <>Sipariş{partialCancels ? <>{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}<span className="rr-op-partial">{count(partialCancels)} Kısmi İptal</span></> : null}</> : undefined],
     // The same count as the product list's low-stock filter it opens.
     ['alertTriangle', 'Düşük Stok', knownCount(productSummary.isLoading, products?.lowStockCount), 'warn', dashboardOperationalLinks.lowStock, undefined],
   ]

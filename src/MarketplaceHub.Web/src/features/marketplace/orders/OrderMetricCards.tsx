@@ -6,7 +6,7 @@
 // "Geciken" turns red and pulses softly while there is any. "Mikro İhracat Sipariş" counts today's micro-export
 // orders not yet handed to the carrier (placed on the Istanbul day, whatever the list's filters are: the orders the row's flag icon marks); hovering
 // lists their countries. "İptal" shows today (the
-// Istanbul day): "N Paket" for the orders cancelled whole as the Genel Bakış card counts them, and while
+// Istanbul day): "N Paket" for every order cancelled today, whole or in part, as the Genel Bakış card counts them, and while
 // orders were cancelled in part a chip "N Kısmi İptal | M Adet" (the units cancelled of them) that pulses like Geciken.
 // "Yeniden Gönderim" counts the resends that have not been handed to the carrier yet.
 // Geciken, İptal and Yeniden Gönderim list their stores on hover while they count any.
