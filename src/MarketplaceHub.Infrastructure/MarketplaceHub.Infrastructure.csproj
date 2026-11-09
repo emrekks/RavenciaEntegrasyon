@@ -11,6 +11,10 @@
     <PackageReference Include="QRCoder" />
     <PackageReference Include="HtmlSanitizer" />
     <PackageReference Include="Anthropic" />
+    <!-- Product photo thumbnails (Files/ProductMediaRenditions.cs). NetVips is MIT and libvips LGPL, loaded as a
+         shared library. The production image is linux-x64; the tests add the win-x64 build for developer machines. -->
+    <PackageReference Include="NetVips" />
+    <PackageReference Include="NetVips.Native.linux-x64" />
   </ItemGroup>
   <!-- Agent Skills the panel uploads to the Claude API (Ayarlar › Yapay Zekâ › Beceriyi Yükle); read by AiSkillCatalog. -->
   <ItemGroup>

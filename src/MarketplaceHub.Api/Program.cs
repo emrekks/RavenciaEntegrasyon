@@ -62,6 +62,7 @@ builder.Services.AddSingleton<OperationsHubConnections>();
 builder.Services.AddHostedService<OperationsHubSessionWatcher>();
 builder.Services.AddHostedService<ApiIdempotencyRetentionService>();
 builder.Services.AddHostedService<PurgedFileRetentionService>();
+builder.Services.AddHostedService<CategoryRequirementsChangeListener>();
 builder.Services.AddSingleton<SignInThrottle>();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {

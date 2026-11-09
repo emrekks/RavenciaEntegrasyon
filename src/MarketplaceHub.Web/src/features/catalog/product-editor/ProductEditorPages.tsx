@@ -10,6 +10,7 @@ import { ApiRequestError, hubApi, hubPoll, loadAllPages } from '../../../shared/
 import { TitleHint, UiIcon, usePromptDialog, type UiIconName, DialogSurface, UnsavedChangesGuard, StickyActionBar } from '../../../shared/components'
 import { failedWithHttpAnswer, newIdempotencyKey, sendWithVersionedIdempotencyKey } from '../../../shared/idempotency'
 import { httpsUrlProblem } from '../../../shared/safe-url'
+import { categoryRequirementsStaleTimeMs } from '../category-requirements-query'
 import { ErrorToast, NoticeToast } from '../../../shared/components/NoticeToast'
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import { sanitizeRichText } from '../../../shared/security/sanitizeHtml'
@@ -85,6 +86,7 @@ import { AcceptedJob, Brand, Category, ImageLightboxModal, MarketplaceConnection
 import { insideSelector, useDismissable } from '../../../shared/hooks/useDismissable'
 import { useMenuFlip } from '../../../shared/hooks/useMenuFlip'
 import { PanelSelect } from '../../../shared/PanelSelect'
+import { thumbnailSrcSet, thumbnailUrl } from '../../../shared/product-thumbnail'
 
 // The Eşleştirmeler page's "Kategori Alanları ve Değerleri" window, loaded with that page's code when a gap opens it.
 const ProductCategoryFieldsDialog = lazy(() => import('../../marketplace/mappings/MappingPages').then(module => ({ default: module.ProductCategoryFieldsDialog })))
@@ -1460,7 +1462,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   // are in: the empty defaults and the single-product SKU, barcode and price fields must not show before the variant
   // rows turn them into the varyantlı state.
   const editorHydrating = editorAwaitingSeed({ seeding: Boolean(editProductId || duplicateProductId), productPending: editProductId ? productToEdit.isPending : productToCopy.isPending, listsPending: categories.isPending || brands.isPending })
-  const requirements = useQuery({ queryKey: ['category-requirements', form.categoryId], queryFn: () => hubApi<CategoryRequirement[]>(`/catalog/categories/${form.categoryId}/attribute-requirements`), enabled: !!form.categoryId, retry: false })
+  const requirements = useQuery({ queryKey: ['category-requirements', form.categoryId], queryFn: () => hubApi<CategoryRequirement[]>(`/catalog/categories/${form.categoryId}/attribute-requirements`), enabled: !!form.categoryId, retry: false, staleTime: categoryRequirementsStaleTimeMs })
   const leafCategories = (categories.data?.items ?? []).filter(item => item.isLeaf && item.isActive); const activeBrands = (brands.data?.items ?? []).filter(item => item.isActive)
   const fallbackListPrice = Number(form.listPrice || 0); const fallbackSalePrice = Number(form.salePrice || 0); const fallbackCostPrice = form.costPrice.trim() === '' ? null : Number(form.costPrice); const initialStock = Number(form.initialStock || 0)
   const variantStockTotal = variantRows.reduce((total, row) => total + Number(row.stock || 0), 0)
@@ -3620,7 +3622,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
             const isSizeChart = isSizeChartRef(ref, chartKey)
             const menuOpen = sizeChartMenuKey === mediaImageKey(url)
             return <figure key={`family-${mediaImageKey(url)}`} data-media-kind="url" data-media-index={index} data-size-chart={isSizeChart || undefined} className={`image-preview-card media-sortable${isProductMedia ? '' : ' family-media-preview'} ${dragOverMedia === index ? 'is-media-drag-over' : ''}`} draggable={!touchPointer && !submitting && !deletingProductMediaKey && !isSizeChart} {...mediaDrag}>
-              <img src={url} alt={`${form.title || 'Ürün'} ${index + 1}`} className="media-tile-image" draggable={false} />
+              <img src={thumbnailUrl(url)} srcSet={thumbnailSrcSet(url)} sizes="88px" alt={`${form.title || 'Ürün'} ${index + 1}`} className="media-tile-image" draggable={false} />
               {isSizeChart && <span className="size-chart-badge">Beden Tablosu</span>}
               {isProductMedia && editProductId && <>
                 <button type="button" className="size-chart-menu-btn" aria-label="Görsel seçenekleri" title="Görsel seçenekleri" aria-haspopup="menu" aria-expanded={menuOpen} disabled={submitting} onClick={event => { event.stopPropagation(); setSizeChartMenuKey(menuOpen ? null : mediaImageKey(url)) }}><UiIcon name="moreVertical" size={14} /></button>

@@ -20,7 +20,7 @@ public sealed class PurgedFileRetentionService(IServiceScopeFactory scopes, Time
                 try
                 {
                     await using var scope = scopes.CreateAsyncScope();
-                    var removed = await PurgedFileRetention.SweepAsync(scope.ServiceProvider.GetRequiredService<AppDbContext>(), scope.ServiceProvider.GetRequiredService<IPrivateFileStorage>(), timeProvider.GetUtcNow(), stoppingToken);
+                    var removed = await PurgedFileRetention.SweepAsync(scope.ServiceProvider.GetRequiredService<AppDbContext>(), scope.ServiceProvider.GetRequiredService<IPrivateFileStorage>(), timeProvider.GetUtcNow(), stoppingToken, scope.ServiceProvider.GetService<MarketplaceHub.Infrastructure.Files.ProductMediaRenditions>());
                     if (removed > 0) logger.LogInformation("Removed {Count} stored files left by data resets.", removed);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { throw; }

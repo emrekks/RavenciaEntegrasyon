@@ -1,6 +1,10 @@
 {
   admin off
   auto_https disable_redirects
+  servers {
+    # Kept in step with Caddyfile.production: no HTTP/3 early data (remote_ip answers it with 425).
+    0rtt off
+  }
 }
 
 # Container healthcheck only (compose: wget http://127.0.0.1:8081/healthz); kept in step with Caddyfile.production.
@@ -14,6 +18,13 @@ http://127.0.0.1:8081 {
   # Kept in step with Caddyfile.production: API/SignalR responses are not compressed (BREACH class).
   @compressible not path /api/* /hubs/*
   encode @compressible zstd gzip
+  # Kept in step with Caddyfile.production (the reasoning is there): three catalog reads, the panel's own GETs only.
+  @compressible_catalog {
+    method GET
+    header Sec-Fetch-Site same-origin
+    path_regexp ^/api/v1/(products(/[0-9a-fA-F-]{36})?|catalog/categories/[0-9a-fA-F-]{36}/attribute-requirements)$
+  }
+  encode @compressible_catalog zstd gzip
   header {
     -Server
     X-Content-Type-Options "nosniff"

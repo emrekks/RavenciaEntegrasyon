@@ -4,6 +4,7 @@ using System.Text;
 using MarketplaceHub.Api.Security;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
+using MarketplaceHub.Infrastructure.Files;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -183,17 +184,20 @@ public static class CatalogEndpoints
                                    // (published or imported) stay readable. A draft never submitted is not served.
                                    && (db.ChannelListingProfiles.Any(profile => profile.TenantId == media.TenantId && profile.ProductId == media.ProductId && profile.DesiredStatus == "LIVE")
                                        || db.MarketplaceProductLinks.Any(link => link.TenantId == media.TenantId && link.ProductId == media.ProductId))
-                               select new { file.TenantId, file.RelativePath, file.MimeType }).FirstOrDefaultAsync(http.RequestAborted);
+                               select new { file.TenantId, file.RelativePath, file.MimeType, file.Sha256 }).FirstOrDefaultAsync(http.RequestAborted);
             if (asset is null || asset.MimeType is not ("image/jpeg" or "image/png")) return Results.NotFound();
+            // Always the original: marketplaces read their listing photos here (no thumbnail width).
+            var entityTag = ProductMediaCaching.EntityTag(asset.Sha256);
+            if (ProductMediaCaching.IsNotModified(http.Request, entityTag)) return ProductMediaCaching.NotModified(http.Response, ProductMediaCaching.PublicImmutable, entityTag);
             try
             {
                 var content = await storage.OpenReadAsync(asset.TenantId, asset.RelativePath, http.RequestAborted);
-                http.Response.Headers.CacheControl = "public, max-age=300";
+                ProductMediaCaching.Apply(http.Response, ProductMediaCaching.PublicImmutable, entityTag);
                 return Results.File(content, asset.MimeType, enableRangeProcessing: false);
             }
             catch (FileNotFoundException) { return Results.NotFound(); }
         });
-        api.MapGet("/files/product-media/{assetId:guid}/content", async (Guid assetId, HttpContext http, AppDbContext db, IPrivateFileStorage storage, IHttpClientFactory clients) =>
+        api.MapGet("/files/product-media/{assetId:guid}/content", async (Guid assetId, HttpContext http, AppDbContext db, IPrivateFileStorage storage, ProductMediaRenditions renditions, IHttpClientFactory clients) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
             var asset = await db.FileAssets.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Id == assetId && (x.Classification == "PRODUCT_MEDIA" || x.Classification == "PRODUCT_MEDIA_URL") && x.Status == "ACTIVE" && x.ArchivedAt == null, http.RequestAborted);
@@ -201,24 +205,45 @@ public static class CatalogEndpoints
             if (asset.Classification == "PRODUCT_MEDIA_URL")
             {
                 if (!Uri.TryCreate(asset.RelativePath, UriKind.Absolute, out var remoteUri) || remoteUri.Scheme != Uri.UriSchemeHttps || remoteUri.IsLoopback || string.Equals(remoteUri.Host, "localhost", StringComparison.OrdinalIgnoreCase)) return Results.NotFound();
+                // The row's hash is the address's: the tag names the URL, not its bytes, so it is kept for a week only.
+                var remoteTag = ProductMediaCaching.EntityTag(asset.Sha256);
+                if (ProductMediaCaching.IsNotModified(http.Request, remoteTag)) return ProductMediaCaching.NotModified(http.Response, ProductMediaCaching.PrivateRemote, remoteTag);
                 try
                 {
                     // The proxy client connects only to public addresses, follows redirects itself and
                     // stops reading past the upload limit.
                     var image = await PublicNetwork.GetImageAsync(clients.CreateClient(PublicNetwork.ClientName), remoteUri, MaxUploadBytes, http.RequestAborted);
                     if (image is not { } found) return Results.NotFound();
-                    http.Response.Headers.CacheControl = "private, max-age=900";
-                    // Opened on its own the answer is an inert image: no script, no plugins, no same-origin rights (A13).
-                    http.Response.Headers.ContentSecurityPolicy = "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox";
+                    ProductMediaCaching.Apply(http.Response, ProductMediaCaching.PrivateRemote, remoteTag);
+                    http.Response.Headers.ContentSecurityPolicy = ProductMediaCaching.InertImagePolicy;
                     return Results.Bytes(found.Bytes, found.ContentType);
                 }
                 catch (HttpRequestException) { return Results.NotFound(); }
                 catch (TaskCanceledException) { return Results.NotFound(); }
             }
+            // ?w=168|480: the small WebP copy (made now when it is still missing); any other width is the original.
+            var width = ProductMediaRenditions.RequestedWidth(http.Request.Query["w"].ToString());
+            var entityTag = ProductMediaCaching.EntityTag(asset.Sha256, width);
+            if (ProductMediaCaching.IsNotModified(http.Request, entityTag)) return ProductMediaCaching.NotModified(http.Response, ProductMediaCaching.PrivateImmutable, entityTag);
+            if (width is int thumbnailWidth && asset.MimeType is "image/jpeg" or "image/png")
+            {
+                var copy = renditions.TryOpen(tenant.TenantId, asset.Id, thumbnailWidth);
+                if (copy is null && await renditions.TryEnsureAsync(tenant.TenantId, asset.Id, token => ReadStoredBytesAsync(storage, tenant.TenantId, asset.RelativePath, token), http.RequestAborted))
+                    copy = renditions.TryOpen(tenant.TenantId, asset.Id, thumbnailWidth);
+                if (copy is not null)
+                {
+                    ProductMediaCaching.Apply(http.Response, ProductMediaCaching.PrivateImmutable, entityTag);
+                    http.Response.Headers.ContentSecurityPolicy = ProductMediaCaching.InertImagePolicy;
+                    return Results.File(copy, "image/webp", enableRangeProcessing: false);
+                }
+            }
             try
             {
                 var content = await storage.OpenReadAsync(tenant.TenantId, asset.RelativePath, http.RequestAborted);
-                http.Response.Headers.CacheControl = "private, max-age=300";
+                if (width is null) ProductMediaCaching.Apply(http.Response, ProductMediaCaching.PrivateImmutable, entityTag);
+                // The original standing in for a thumbnail that could not be made carries no tag and a short life.
+                else http.Response.Headers.CacheControl = ProductMediaCaching.PrivateShort;
+                http.Response.Headers.ContentSecurityPolicy = ProductMediaCaching.InertImagePolicy;
                 return Results.File(content, asset.MimeType, asset.OriginalNameSafe, enableRangeProcessing: false);
             }
             catch (FileNotFoundException) { return Results.NotFound(); }
@@ -343,7 +368,15 @@ public static class CatalogEndpoints
         return WithEtag(http, result, x => x.Version);
     }
 
-    private static async Task<IResult> UploadProductMediaAsync(HttpContext http, AppDbContext db, IPrivateFileStorage storage, TimeProvider timeProvider)
+    private static async Task<byte[]> ReadStoredBytesAsync(IPrivateFileStorage storage, Guid tenantId, string relativePath, CancellationToken cancellationToken)
+    {
+        await using var original = await storage.OpenReadAsync(tenantId, relativePath, cancellationToken);
+        using var buffer = new MemoryStream();
+        await original.CopyToAsync(buffer, cancellationToken);
+        return buffer.ToArray();
+    }
+
+    private static async Task<IResult> UploadProductMediaAsync(HttpContext http, AppDbContext db, IPrivateFileStorage storage, ProductMediaRenditions renditions, TimeProvider timeProvider)
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http); var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
         if (!http.Request.HasFormContentType) return Problem(http, new("VALIDATION_FAILED", "Multipart form-data gereklidir.", 422));
@@ -376,6 +409,9 @@ public static class CatalogEndpoints
                 if (asset is null) throw;
             }
         }
+        // The thumbnails the panel shows (168 and 480 px WebP). A failure is logged and does not refuse the upload:
+        // the first request for a missing copy makes it.
+        await renditions.TryEnsureAsync(tenant.TenantId, asset.Id, _ => Task.FromResult(bytes), http.RequestAborted);
         var isCustomProductGallery = variantId is null && await db.ProductMedia.AnyAsync(x => x.TenantId == tenant.TenantId && x.ProductId == productId && x.VariantId == null && x.Status == "ACTIVE" && x.MediaRole.StartsWith("ORDERED_"), http.RequestAborted);
         // A new picture never takes the place of a live one (another colour's included): it goes after the gallery then.
         var requestedSortOrder = sortOrder;

@@ -150,6 +150,11 @@ Claims: NewRequest, AwaitingAction, InDispute, Accepted, Rejected, Refunded, Can
   HEPSIBURADA_ACCESS_FORBIDDEN (`MarketplaceErrorRules`, report item 16, 5 Nov 2026).
 - Price/stock results list only the refused SKUs, so a SKU left out was applied: the one marketplace where an unnamed
   line counts as applied (the others settle it UNKNOWN, report item 14).
+- Product images: order and package lines give `productImageUrlFormat`
+  (`https://productimages.hepsiburada.net/s/777/{size}/110001289850735.jpg`); we put `500` in `{size}`
+  (`MarketplaceSalesService`). The offline docs show the token only in examples and list no allowed sizes, so the panel
+  does not ask for a smaller one (speed plan P9 skipped, 9 Nov 2026; source: Ravencia-API-Docs/hepsiburada-api-son.md,
+  `productImageUrlFormat`).
 
 ## Exchange claims and the invoice (owner decision, 6 Nov 2026)
 - The claim list carries `finalizedWith` ("Onaylanan talebin onay türü": `Refund` ücret iadesi, `Change` yeni ürün ile

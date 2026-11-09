@@ -72,6 +72,8 @@ public static class DependencyInjection
         services.AddScoped<IPayoutsService, PayoutsService>();
         services.AddScoped<IScheduledJobProducer, ScheduledJobProducer>();
         services.AddSingleton<CursorCodec>();
+        // Serves entries only in a process that runs CategoryRequirementsChangeListener (the API).
+        services.AddSingleton<CategoryRequirementsCache>();
         services.AddScoped<ICatalogService, CatalogService>();
         services.AddScoped<IImportService, ImportService>();
         services.AddScoped<IImportJobProcessor, ImportJobProcessor>();
@@ -198,6 +200,7 @@ public static class DependencyInjection
         services.AddScoped<IInvoicingJobProcessor, InvoicingJobProcessor>();
         services.AddScoped<IInvoiceInlineRunner, InvoiceInlineRunner>();
         services.AddSingleton<IPrivateFileStorage>(new PrivateFileStorage(filesRoot));
+        services.AddSingleton(provider => new ProductMediaRenditions(filesRoot, provider.GetService<Microsoft.Extensions.Logging.ILogger<ProductMediaRenditions>>()));
         services.Configure<BootstrapOptions>(configuration.GetSection("Bootstrap"));
         services.AddScoped<BootstrapService>();
         services.Configure<LocalDevelopmentSeedOptions>(configuration.GetSection("LocalDevelopmentSeed"));

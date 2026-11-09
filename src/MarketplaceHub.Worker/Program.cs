@@ -26,6 +26,8 @@ builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = Tim
 builder.Services.AddHostedService<Worker>();
 // The dashboard snapshot is rebuilt here, debounced per tenant, instead of in the API's realtime dispatcher.
 builder.Services.AddHostedService<DashboardSnapshotRefresher>();
+// One pass a start: the small copies of product photos stored before thumbnails existed (idempotent).
+builder.Services.AddHostedService<MarketplaceHub.Infrastructure.Files.ProductMediaRenditionBackfill>();
 var host = builder.Build();
 
 if (args is ["efaturam-connection-test", var publicIdText]

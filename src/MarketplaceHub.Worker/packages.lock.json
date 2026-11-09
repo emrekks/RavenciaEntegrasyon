@@ -500,6 +500,8 @@
           "MarketplaceHub.Application": "[1.0.0, )",
           "MarketplaceHub.Domain": "[1.0.0, )",
           "Microsoft.AspNetCore.Identity.EntityFrameworkCore": "[10.0.10, )",
+          "NetVips": "[3.2.0, )",
+          "NetVips.Native.linux-x64": "[8.18.7, )",
           "Npgsql.EntityFrameworkCore.PostgreSQL": "[10.0.3, )",
           "QRCoder": "[1.8.1, )"
         }
@@ -544,6 +546,18 @@
           "Microsoft.Extensions.Caching.Memory": "10.0.10",
           "Microsoft.Extensions.Logging": "10.0.10"
         }
+      },
+      "NetVips": {
+        "type": "CentralTransitive",
+        "requested": "[3.2.0, )",
+        "resolved": "3.2.0",
+        "contentHash": "ixVatHjsFBBvtKXYwH8jz8nF6OQIhl2e/P0N8ByGaZrlPu9VvcVQxX9zBQ13L8fUpMzKv1WXUybqW8wXZdFsCg=="
+      },
+      "NetVips.Native.linux-x64": {
+        "type": "CentralTransitive",
+        "requested": "[8.18.7, )",
+        "resolved": "8.18.7",
+        "contentHash": "Ao/eWVNRZRM8/j8Dhp62XARwPzrTGMl4nheNQlQvp8P2Ybpdzj1+SeXRBlUCaH8phlCrEUSabz/5lpmnw3Wmig=="
       },
       "Npgsql": {
         "type": "CentralTransitive",
