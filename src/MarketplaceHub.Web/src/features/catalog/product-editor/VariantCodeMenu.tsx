@@ -85,7 +85,7 @@ export function VariantCodeMenu(props: VariantCodeMenuProps) {
     else fromBarcode?.onApply(scope)
   }
 
-  const scopeRows: Array<{ id: VariantCodeMenuScope; label: string }> = [{ id: 'missing', label: 'Yalnız Boş Olanlar' }, { id: 'all', label: 'Tüm Varyantlar' }]
+  const scopeRows: Array<{ id: VariantCodeMenuScope; label: string }> = [{ id: 'all', label: 'Tüm Varyantlar' }, { id: 'missing', label: 'Yalnız Boş Olanlar' }]
   return <div className="variant-code-menu" data-tab={tab}>
     <div className="variant-code-menu-tabs" role="tablist" aria-label={`${noun} işlemi`}>
       {tabs.map(item => <button key={item.id} type="button" role="tab" onKeyDown={moveTab} ref={element => { tabRefs.current[item.id] = element }} aria-selected={tab === item.id} tabIndex={tab === item.id ? 0 : -1} className={tab === item.id ? 'is-active' : undefined} onClick={() => setTab(item.id)}>{item.label}</button>)}
