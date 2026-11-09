@@ -8,8 +8,8 @@ export type SizeChartValidation =
   | { ok: true; payload: SizeChartPayload }
   | { ok: false; message: string; cellErrors: Record<string, string>; columnErrors: Record<number, string> }
 
-export const defaultSizeChartColumns = ['Boy', 'En']
-export const presetSizeChartColumns = ['Göğüs', 'Bel', 'Kol Boyu']
+export const defaultSizeChartColumns = ['Boy', 'Göğüs']
+export const presetSizeChartColumns = ['Bel', 'Kol Boyu']
 export const maximumSizeChartColumns = 8
 export const maximumSizeChartColumnLength = 24
 export const maximumSizeChartValue = 500

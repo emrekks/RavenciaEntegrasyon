@@ -73,7 +73,7 @@ public static class SizeChartSpec
                     : $"'{name}' kolonu beden tablosu tasarımında yok. Kullanılabilen kolonlar: En (göğüs, tek taraf), Boy, ya da Ön Boy ve Arka Boy.");
             if (!fields.TryAdd(field, index)) return (null, $"'{name}' kolonu başka bir kolonla aynı ölçüyü gösteriyor.");
         }
-        if (!fields.ContainsKey("gogus")) return (null, "Beden tablosu için En kolonu (göğüs, tek taraf) gerekli.");
+        if (!fields.ContainsKey("gogus")) return (null, "Beden tablosu için Göğüs kolonu (tek taraf) gerekli.");
         var dual = fields.ContainsKey("boy_on") || fields.ContainsKey("boy_arka");
         if (dual && !(fields.ContainsKey("boy_on") && fields.ContainsKey("boy_arka"))) return (null, "Ön ve arka boy farklıysa Ön Boy ve Arka Boy kolonlarının ikisi de girilmeli.");
         if (dual && fields.ContainsKey("boy")) return (null, "Boy kolonu Ön Boy ve Arka Boy ile birlikte kullanılamaz; ya Boy ya da Ön Boy ve Arka Boy girin.");
