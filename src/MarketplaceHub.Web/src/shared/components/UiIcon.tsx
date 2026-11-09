@@ -197,10 +197,10 @@ const paths: Record<UiIconName, ReactNode | ((id: string) => ReactNode)> = {
   filter: <path d="M4 6h16M7 12h10m-7 6h4" />,
   grid: <><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><rect x="14" y="14" width="6" height="6" rx="1" /></>,
   // "?" and "i" (owner, 9 Nov 2026, variant 11): a half-transparent ring with a solid glyph, no disc and no mask.
-  help: <><circle cx="12" cy="12" r="9.6" fill="none" stroke="currentColor" strokeOpacity=".5" strokeWidth="1.8" /><path d="M9.2 9.3a2.9 2.9 0 0 1 5.6 1c0 1.9-2.8 2.4-2.8 4.1" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" /><circle cx="12" cy="17.4" r="1.4" fill="currentColor" stroke="none" /></>,
+  help: <><circle cx="12" cy="12" r="9.6" fill="none" stroke="currentColor" strokeOpacity=".55" strokeWidth="2" /><path d="M9.2 9.3a2.9 2.9 0 0 1 5.6 1c0 1.9-2.8 2.4-2.8 4.1" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /><circle cx="12" cy="17.4" r="1.6" fill="currentColor" stroke="none" /></>,
   image: <><rect x="4" y="5" width="16" height="14" rx="2" /><circle cx="9" cy="10" r="1.2" /><path d="m5 17 4.5-4 3 2.5 2.5-2 4 3.5" /></>,
   info: <path d="M12 10.5v5.25M12 7.25h.01" />,
-  infoCircle: <><circle cx="12" cy="12" r="9.6" fill="none" stroke="currentColor" strokeOpacity=".5" strokeWidth="1.8" /><path d="M12 11.2v6.2" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" /><circle cx="12" cy="6.9" r="1.4" fill="currentColor" stroke="none" /></>,
+  infoCircle: <><circle cx="12" cy="12" r="9.6" fill="none" stroke="currentColor" strokeOpacity=".55" strokeWidth="2" /><path d="M12 11.2v6.2" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" /><circle cx="12" cy="6.9" r="1.6" fill="currentColor" stroke="none" /></>,
   italic: <path d="M10 5h8M6 19h8M14 5 10 19" />,
   layout: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M4 10h16M10 10v10" /></>,
   layers: <><path d="m12 4 8 4-8 4-8-4 8-4Z" /><path d="m4 12 8 4 8-4M4 16l8 4 8-4" /></>,
