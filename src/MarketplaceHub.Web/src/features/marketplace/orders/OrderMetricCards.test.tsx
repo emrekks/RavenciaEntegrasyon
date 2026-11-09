@@ -66,7 +66,7 @@ describe('order summary cards', () => {
 
     open(host, 'İptal')
     const chip = host.querySelector<HTMLButtonElement>('.rr-metric-chip')!
-    expect(chip.textContent).toBe('1 Kısmi İptal | 2 Adet')
+    expect(chip.textContent).toBe('1 Kısmi İptal | 2 Adet Ürün')
     chip.click()
     open(host, 'Yeniden Gönderim')
     open(host, 'Mikro İhracat Sipariş')

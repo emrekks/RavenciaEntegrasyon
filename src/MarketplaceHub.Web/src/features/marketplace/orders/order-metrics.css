@@ -16,16 +16,18 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-pk .rr-metric-sub { color: var(--rr-muted); font-size: 13px; font-weight: 500; white-space: nowrap; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-sep { color: var(--rr-line-strong); font-size: inherit; }
 /* The İptal card: the count under the title like the others and, while orders were cancelled in part, a chip beside it
-   that opens them: a light border, 22 px high, as the side menu's counters. */
+   that opens them: 24 px high, centred on the count's line, its numbers bold and its words in the card's "Paket | N Adet
+   Ürün" type (it was 11 px, 22 px high and sat on the line's foot). */
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-metric-chipped { grid-template-columns: auto minmax(0, 1fr); align-items: end; column-gap: 10px; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-chip { display: inline-flex; align-items: center; gap: 0; justify-self: start; min-height: 0; height: 22px; margin: 0 0 6px; padding: 0 8px; color: var(--rr-ink); background: var(--rr-soft); border: 1px solid var(--rr-line); border-radius: 7px; box-shadow: none; font: inherit; font-size: 11px; line-height: 1; white-space: nowrap; text-decoration: none; cursor: pointer; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-chip { display: inline-flex; align-items: center; gap: 0; justify-self: start; min-height: 0; height: 24px; margin: 0 0 4px; padding: 0 10px; color: var(--rr-ink); background: var(--rr-soft); border: 1px solid var(--rr-line); border-radius: 7px; box-shadow: none; font: inherit; font-size: 12px; font-weight: 500; line-height: 1; white-space: nowrap; text-decoration: none; cursor: pointer; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-chip:hover { background: var(--rv-hover, var(--rr-hover)); border-color: var(--rr-line-strong); }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-chip .rr-metric-sep { margin: 0 4px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-chip .rr-metric-sep { margin: 0 7px; }
 /* Something to warn about: Geciken above 0 (rr-alert) and the Kısmi İptal chip. Both turn red and their tint and border
    fade slowly in and out over 2.4 s, one keyframe for both (the text stays still); at 0 the card is as plain as the
    others and the chip is not drawn. Reduced motion keeps the red at rest. */
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics :is(article.rr-alert, .rr-metric-chip.rr-metric-chip-alert) { background-color: color-mix(in srgb, var(--rr-bad) 5%, var(--rr-surface)); border-color: color-mix(in srgb, var(--rr-bad) 38%, var(--rr-surface)); animation: rr-alert-pulse 2.4s ease-in-out infinite; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-chip.rr-metric-chip-alert { color: var(--rr-bad); font-weight: 600; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-chip.rr-metric-chip-alert { color: var(--rr-bad); font-weight: 500; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-chip b { margin-right: 3px; font-weight: 700; font-variant-numeric: tabular-nums; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-chip.rr-metric-chip-alert .rr-metric-sep { color: color-mix(in srgb, var(--rr-bad) 45%, var(--rr-surface)); }
 @keyframes rr-alert-pulse {
   0%, 100% { background-color: color-mix(in srgb, var(--rr-bad) 4%, var(--rr-surface)); border-color: color-mix(in srgb, var(--rr-bad) 28%, var(--rr-surface)); }
