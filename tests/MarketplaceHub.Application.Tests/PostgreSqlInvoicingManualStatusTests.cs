@@ -84,6 +84,55 @@ public sealed class PostgreSqlInvoicingManualStatusTests(PostgreSqlTenantIsolati
         }
     }
 
+    // Speed plan (10 Nov 2026): the Faturalar menu counters are kept while nothing they read changed. A repeated
+    // request gives the same numbers, the due-soon count still follows the clock, and a panel action (a hand-set
+    // status, a hidden package) shows on the next request.
+    [PostgreSqlFact]
+    public async Task WorkspaceSummaryIsKeptUntilItsDataChangesAndFollowsTheClock()
+    {
+        var seed = NewSeed("summary-cache", "PAZARAMA", null);
+        await SeedAsync(seed);
+        try
+        {
+            async Task<(int DueSoon, int Uninvoiced)> SummaryAsync(TimeProvider? clock = null)
+            {
+                await using var db = fixture.CreateContext();
+                var summary = await NewBillingService(db, clock).WorkspaceSummaryAsync(seed.Tenant.Id, CancellationToken.None);
+                return (summary.DueSoonCount, summary.UninvoicedCount);
+            }
+
+            // Delivered a day ago, no invoice: waiting, not yet due soon.
+            Assert.Equal((0, 1), await SummaryAsync());
+            Assert.Equal((0, 1), await SummaryAsync());
+            // InvoiceReminderStartDays after the delivery the same, unchanged data is due soon.
+            Assert.Equal((1, 1), await SummaryAsync(new FixedClock(seed.Package.StatusOccurredAt.AddDays(DashboardMetricPolicy.InvoiceReminderStartDays))));
+            Assert.Equal((0, 1), await SummaryAsync());
+
+            Assert.Equal(0, await SetManualStatusAsync(seed, "UPLOADED"));
+            Assert.Equal((0, 0), await SummaryAsync());
+            Assert.Equal(0, await SetManualStatusAsync(seed, "PENDING"));
+            Assert.Equal((0, 1), await SummaryAsync());
+
+            await using (var db = fixture.CreateContext())
+            {
+                db.TenantSettings.Add(new TenantSetting { TenantId = seed.Tenant.Id, Key = "invoice-workspace-hidden-packages", ValueJson = JsonSerializer.Serialize(new[] { seed.Package.Id }), UpdatedAt = fixture.Now, Version = 1 });
+                await db.SaveChangesAsync();
+            }
+            Assert.Equal((0, 0), await SummaryAsync(new FixedClock(seed.Package.StatusOccurredAt.AddDays(DashboardMetricPolicy.InvoiceReminderStartDays))));
+        }
+        finally
+        {
+            await using (var db = fixture.CreateContext())
+                await db.TenantSettings.Where(row => row.TenantId == seed.Tenant.Id).ExecuteDeleteAsync();
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+    }
+
     // O1 (2 Nov 2026): a cancelled Trendyol order that still reads "not invoiced", and an order whose issued invoice
     // failed to reach the marketplace, are not listed (nor counted) under "Fatura Bekliyor"; a live one still is.
     [PostgreSqlFact]
@@ -491,11 +540,11 @@ public sealed class PostgreSqlInvoicingManualStatusTests(PostgreSqlTenantIsolati
             .ExecuteUpdateAsync(update => update.SetProperty(state => state.Status, "FAILED"));
     }
 
-    private InvoicingBillingService NewBillingService(AppDbContext db)
+    private InvoicingBillingService NewBillingService(AppDbContext db, TimeProvider? clock = null)
     {
         var dataProtection = new EphemeralDataProtectionProvider();
         return new InvoicingBillingService(db, new CursorCodec(dataProtection, fixture.TimeProvider), dataProtection, null!,
-            new ConfigurationBuilder().Build(), fixture.TimeProvider, null!);
+            new ConfigurationBuilder().Build(), clock ?? fixture.TimeProvider, null!);
     }
 
     private MarketplaceSalesService NewSalesService(AppDbContext db) =>

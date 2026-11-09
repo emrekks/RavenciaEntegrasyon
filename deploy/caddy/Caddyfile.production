@@ -23,23 +23,31 @@ http://127.0.0.1:8081 {
 	# response is the BREACH class. Static assets and the SPA shell still are.
 	@compressible not path /api/* /hubs/*
 	encode @compressible zstd gzip
-	# Exception (speed plan P4, 9 Nov 2026): three large catalog reads, compressed only for the panel's own fetches.
-	# BREACH needs a secret and attacker-chosen input in the same compressed body, and the attacker must make the
-	# victim's browser send many such requests while watching their sizes. Here:
-	#   - the bodies carry no secret: GET /products, /products/{id}, the category attribute requirements and the
-	#     marketplace reference lists (categories, attributes, values, value mappings; public marketplace data and the
-	#     tenant's own mappings) hold
-	#     catalog data only (pictures are session-only /files/ links or marketplace CDN addresses, the paging cursor is
-	#     DataProtection-encrypted, the search term is never echoed); no CSRF token, session value or bearer link;
+	# Exception (speed plan P4, 9 Nov 2026; widened 10 Nov 2026): large read-only lists, compressed only for the panel's
+	# own fetches. BREACH needs a secret and attacker-chosen input in the same compressed body, and the attacker must make
+	# the victim's browser send many such requests while watching their sizes. Here:
+	#   - the bodies carry no secret. Reviewed body by body:
+	#     - GET /products, /products/{id}, the category attribute requirements, /catalog/attributes and the marketplace
+	#       reference lists (categories, attributes, values, value mappings): catalog data, public marketplace data and
+	#       the tenant's own mappings;
+	#     - /reports/sales, /order-profitability, /stock, /payouts, /payouts/lines, /ad-report, /price-assumptions:
+	#       figures, order numbers, store names, payout record ids; their pictures are session-only /files/ links or
+	#       marketplace CDN addresses (CatalogMediaDisplay), no invoice or public-document link;
+	#     - /jobs/page and /jobs/counts: job ids, types, states, counts and the panel's own error summaries;
+	#     - /dashboard/performance: figures only;
+	#     - /connections/{id}/commission-tariffs/{id}/rows: products, commission bands and session-only pictures;
+	#     paging cursors are DataProtection-encrypted and search terms are not echoed; no CSRF token, session value or
+	#     bearer link;
 	#   - Sec-Fetch-Site same-origin: a request another site starts (link, image, form, top-level navigation, which
 	#     carries the SameSite=Lax cookie) says cross-site or same-site and stays uncompressed, so no attacker can
 	#     drive the requests BREACH needs;
 	#   - GET only, exact paths: /products/summary, /products/{id}/..., every other /api/* route, /hubs/*, /auth/* and
-	#     anything that returns tokens or links (orders and invoices carry bearer invoice links) stay uncompressed.
+	#     anything that returns tokens or links (orders, invoices and the invoice workspace carry bearer invoice links,
+	#     /public/* carries access tokens) stay uncompressed.
 	@compressible_catalog {
 		method GET
 		header Sec-Fetch-Site same-origin
-		path_regexp ^/api/v1/(products(/[0-9a-fA-F-]{36})?|catalog/categories/[0-9a-fA-F-]{36}/attribute-requirements|mappings/attribute-values/batch|reference-data/categories(/[A-Za-z0-9._-]{1,128}/(attribute-values|attributes(/[A-Za-z0-9._-]{1,256}/values)?))?)$
+		path_regexp ^/api/v1/(products(/[0-9a-fA-F-]{36})?|catalog/(attributes|categories/[0-9a-fA-F-]{36}/attribute-requirements)|mappings/attribute-values/batch|reference-data/categories(/[A-Za-z0-9._-]{1,128}/(attribute-values|attributes(/[A-Za-z0-9._-]{1,256}/values)?))?|reports/(sales|order-profitability|stock|payouts(/lines)?|ad-report|price-assumptions)|jobs/(page|counts)|dashboard/performance|connections/[0-9a-fA-F-]{36}/commission-tariffs/[0-9a-fA-F-]{36}/rows)$
 	}
 	encode @compressible_catalog zstd gzip
 	header {
@@ -152,6 +160,13 @@ http://127.0.0.1:8081 {
 		@application_shell not path /assets/* /platforms/* /pack/* /fonts/*
 		header @application_shell Cache-Control "no-store, no-cache, must-revalidate"
 		try_files {path} /index.html
+		# The build writes a brotli (.br) and a zstd (.zst) copy next to each script and stylesheet
+		# (src/MarketplaceHub.Web/scripts/precompress-assets.mjs); they are sent as they are, at the highest
+		# compression levels, without compressing on every request. A client that takes neither gets the file through
+		# `encode` above.
+		file_server @static_assets {
+			precompressed br zstd
+		}
 		file_server
 	}
 	# The access log keeps no request secrets: the CSRF token and idempotency keys are dropped and query

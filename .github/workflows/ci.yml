@@ -202,14 +202,12 @@ jobs:
         run: dotnet restore MarketplaceHub.sln --locked-mode
 
       - name: Verify .NET format
-        run: dotnet format MarketplaceHub.sln --verify-no-changes --no-restore --verbosity diagnostic
+        run: dotnet format MarketplaceHub.sln --verify-no-changes --no-restore
 
-  # The backend tests run in parallel jobs whose filters together cover every test:
-  # "Category!=PostgreSql" here, and in backend-postgres "Category=PostgreSql" (the trait
-  # [PostgreSqlFact] / [PostgreSqlTheory] always set) split by PostgreSqlLane, which only
-  # those attributes set. The one serial PostgreSQL collection takes ~3 min, half of it the
-  # 100k-row invoice load test, so that test runs in its own lane.
-  backend:
+  # The solution is built once (Release) in backend-build; backend and the two PostgreSQL lanes test that build
+  # (--no-build) instead of each building it again (80-120 s each). The archive holds bin and obj of every backend
+  # project except the Worker's bin, which no test or check reads; obj carries the restore results MSBuild evaluates.
+  backend-build:
     needs: plan
     if: needs.plan.outputs.backend_needed == 'true'
     runs-on: ubuntu-latest
@@ -235,11 +233,67 @@ jobs:
       - name: Restore backend
         run: dotnet restore MarketplaceHub.sln --locked-mode
 
-      - name: Restore .NET tools
-        run: dotnet tool restore
-
       - name: Build backend
         run: dotnet build MarketplaceHub.sln --no-restore --configuration Release
+
+      - name: Pack backend build
+        run: |
+          set -Eeuo pipefail
+          tar --zstd -cf "$RUNNER_TEMP/backend-build.tar.zst" \
+            src/MarketplaceHub.Api/bin src/MarketplaceHub.Application/bin src/MarketplaceHub.Domain/bin src/MarketplaceHub.Infrastructure/bin \
+            src/MarketplaceHub.Api/obj src/MarketplaceHub.Application/obj src/MarketplaceHub.Domain/obj src/MarketplaceHub.Infrastructure/obj \
+            src/MarketplaceHub.Worker/obj tests/*/bin tests/*/obj
+          ls -l "$RUNNER_TEMP/backend-build.tar.zst"
+
+      - name: Upload backend build
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: backend-build
+          path: ${{ runner.temp }}/backend-build.tar.zst
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+
+  # The backend tests run in parallel jobs whose filters together cover every test:
+  # "Category!=PostgreSql" here, and in backend-postgres "Category=PostgreSql" (the trait
+  # [PostgreSqlFact] / [PostgreSqlTheory] always set) split by PostgreSqlLane, which only
+  # those attributes set. The one serial PostgreSQL collection takes ~3 min, half of it the
+  # 100k-row invoice load test, so that test runs in its own lane.
+  backend:
+    needs: [plan, backend-build]
+    if: needs.plan.outputs.backend_needed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.302
+
+      # Read-only on branches: only main writes the NuGet cache (job nuget-cache), and every
+      # branch can read main's caches, so no branch fills the 10 GB quota with its own copy.
+      - name: Restore NuGet cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/packages.lock.json', '.config/dotnet-tools.json') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      # The Release build of backend-build, unpacked over this checkout at the same paths.
+      - name: Download backend build
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: backend-build
+          path: ${{ runner.temp }}/backend-build
+
+      - name: Unpack backend build
+        run: tar --zstd -xf "$RUNNER_TEMP/backend-build/backend-build.tar.zst"
+
+      - name: Restore .NET tools
+        run: dotnet tool restore
 
       - name: Test backend (without PostgreSQL)
         env:
@@ -253,7 +307,7 @@ jobs:
         run: dotnet list MarketplaceHub.sln package --vulnerable --include-transitive
 
   backend-postgres:
-    needs: plan
+    needs: [plan, backend-build]
     if: needs.plan.outputs.backend_needed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -298,11 +352,15 @@ jobs:
           key: nuget-${{ runner.os }}-${{ hashFiles('**/packages.lock.json', '.config/dotnet-tools.json') }}
           restore-keys: nuget-${{ runner.os }}-
 
-      - name: Restore backend
-        run: dotnet restore MarketplaceHub.sln --locked-mode
+      # The Release build of backend-build, unpacked over this checkout at the same paths.
+      - name: Download backend build
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: backend-build
+          path: ${{ runner.temp }}/backend-build
 
-      - name: Build backend
-        run: dotnet build MarketplaceHub.sln --no-restore --configuration Release
+      - name: Unpack backend build
+        run: tar --zstd -xf "$RUNNER_TEMP/backend-build/backend-build.tar.zst"
 
       - name: Test backend (PostgreSQL integration, ${{ matrix.lane }} lane)
         env:
@@ -399,9 +457,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # Runs the frontend typecheck/tests/build/bundle budget and `caddy adapt` on the Caddyfile.
+      # Builds the bundle (with its .br/.zst copies) and runs `caddy adapt` on the Caddyfile. Typecheck, lint, tests
+      # and the bundle budget run once, in the frontend job; gate needs both jobs.
       - name: Build edge image
         run: docker build --file deploy/caddy/Dockerfile.production --tag marketplacehub-edge:ci-build .
+
+      - name: Precompressed assets are in the edge image
+        run: |
+          set -Eeuo pipefail
+          docker run --rm --entrypoint sh marketplacehub-edge:ci-build -c 'ls /srv/assets/index-*.js.br /srv/assets/index-*.js.zst /srv/assets/index-*.css.br /srv/assets/index-*.css.zst' \
+            || { echo "The edge image has no .br/.zst copies of the main bundle (scripts/precompress-assets.mjs)." >&2; exit 1; }
 
       - name: Scan edge image (CRITICAL, fixable)
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
@@ -461,7 +526,7 @@ jobs:
   # Single required result for the Deploy workflow: skipped jobs count as passed,
   # failed or cancelled ones do not. Markers are written only for content that passed.
   gate:
-    needs: [plan, ops, backend-format, backend, backend-postgres, image-app, image-edge, frontend]
+    needs: [plan, ops, backend-format, backend-build, backend, backend-postgres, image-app, image-edge, frontend]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -476,7 +541,7 @@ jobs:
       # codex/** branch cut from main skips the checks its unchanged half already passed.
       - name: Remember passed backend
         if: >-
-          (needs.backend.result == 'success' && needs.backend-postgres.result == 'success' && needs.backend-format.result == 'success' && needs.image-app.result == 'success') ||
+          (needs.backend-build.result == 'success' && needs.backend.result == 'success' && needs.backend-postgres.result == 'success' && needs.backend-format.result == 'success' && needs.image-app.result == 'success') ||
           (needs.plan.outputs.prior_validated == 'true' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled'))
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
