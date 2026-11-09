@@ -8,7 +8,7 @@ import './field-help.css'
 // has keyboard focus, and toggled by a tap (a tap elsewhere or Esc closes it). The text stays in the page (hidden) so
 // the field can name it with aria-describedby={fieldHelpId}.
 export function FieldHelp({ id, label, children }: { id?: string; label: string; children: ReactNode }) {
-  return <HelpMark id={id} idPrefix="field-help" ariaLabel={`${label}: açıklama`} className="field-help" tipClassName="field-help-tip" iconSize={16} tipWidth={280} edge={12} prefer="above">{children}</HelpMark>
+  return <HelpMark id={id} idPrefix="field-help" ariaLabel={`${label}: açıklama`} className="field-help" tipClassName="field-help-tip" iconSize={14} tipWidth={280} edge={12} prefer="above">{children}</HelpMark>
 }
 
 type HelpMarkProps = {
