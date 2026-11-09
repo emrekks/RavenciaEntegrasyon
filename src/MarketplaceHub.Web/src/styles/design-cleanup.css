@@ -34,13 +34,14 @@
 :root:root body .app-shell.stitch-shell main :is(.attribute-builder-web-color-toggle, .variant-auto-barcode-toggle) { font-size: 13px; font-weight: 500; }
 :root:root body .app-shell.stitch-shell main :is(.attribute-builder-web-color-toggle, .variant-auto-barcode-toggle) strong { font-size: 13px; font-weight: 500; }
 
-/* Description editor view switch (Görsel / HTML): the standard 32 px segment, the picked one raised with a border. */
+/* Description editor view switch (Görsel / HTML): colours only, the picked one raised with a border. Its size (36 px
+   frame, 3 px inset, 28 px options, radius 9) comes from segments.css like every other segment. */
 :root:root:root body .app-shell.stitch-shell main .rich-text-editor-pro .rich-text-mode-switch {
-  gap: 2px; padding: 1px; background: var(--rv-color-bg, var(--rv-color-surface)); border: 1px solid var(--rv-color-border-strong); border-radius: 12px;
+  background: var(--rv-color-bg, var(--rv-color-surface)); border: 1px solid var(--rv-color-border-strong);
 }
 :root:root:root body .app-shell.stitch-shell main .rich-text-editor-pro .rich-text-mode-switch > button {
-  display: inline-flex; align-items: center; gap: 6px; height: 32px; min-height: 0; padding: 0 10px; color: var(--rv-color-muted); background: none;
-  border: 1px solid transparent; border-radius: 7px; box-shadow: none; font-size: 12.5px; font-weight: 500;
+  display: inline-flex; align-items: center; gap: 6px; padding-inline: 10px; color: var(--rv-color-muted); background: none;
+  border: 1px solid transparent; box-shadow: none;
 }
 :root:root:root body .app-shell.stitch-shell main .rich-text-editor-pro .rich-text-mode-switch > button.active {
   color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border-color: var(--rv-color-border-strong);
@@ -56,3 +57,10 @@
   background: var(--rv-color-primary); border-color: var(--rv-color-primary);
 }
 :root:root:root body .app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list > button > i .ui-icon { width: 12px; height: 12px; stroke-width: 3; }
+
+/* Barkodları Otomatik Oluştur looks like the Web Color choice: a framed 36 px box with the round checkbox (owner, 10 Nov). */
+:root:root:root body .app-shell.stitch-shell main .variant-auto-barcode-toggle {
+  display: inline-flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 12px; cursor: pointer;
+  background: color-mix(in srgb, var(--rv-color-surface) 78%, transparent); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm);
+}
+:root:root:root body .app-shell.stitch-shell main .variant-auto-barcode-toggle input { margin: 0; }
