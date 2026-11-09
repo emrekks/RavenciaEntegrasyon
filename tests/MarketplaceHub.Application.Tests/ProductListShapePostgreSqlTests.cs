@@ -83,6 +83,9 @@ public sealed class ProductListShapePostgreSqlTests(PostgreSqlTenantIsolationFix
         Assert.Null(card.MediaUrls);
         Assert.Null(card.SizeChartUrl);
         Assert.All(card.Variants, variant => Assert.Null(variant.PlatformStatuses));
+        Assert.All(card.Variants, variant => Assert.True(variant is { OfferId: null, OfferVersion: null, PriceVersion: null, VatRate: null, VatInclusion: null, RoundingMode: null, OfferStatus: null, SafetyStock: null, InventoryVersion: null }));
+        Assert.All(detail.Variants, variant => Assert.Equal((10m, "INCLUDED", "HALF_EVEN", "ACTIVE"), (variant.VatRate, variant.VatInclusion, variant.RoundingMode, variant.OfferStatus)));
+        Assert.All(detail.Variants, variant => Assert.NotNull(variant.OfferId));
         Assert.All(card.Variants, variant => Assert.Equal([Picture(0)], variant.MediaUrls!));
 
         // ... and keeps what the list shows, equal to the detail: the platform marks with their sale state, the price,

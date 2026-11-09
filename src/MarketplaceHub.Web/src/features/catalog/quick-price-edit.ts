@@ -277,8 +277,11 @@ export function quickPriceChoiceHelp(choice: string, channelName?: string | null
 
 // Where a panel price change goes: the variant, at the version the list loaded.
 export type PanelPriceTarget = { kind: 'panel'; variantId: string; version: number } | { kind: 'blocked'; reason: string }
-export function panelPriceTarget(variant: { id: string; version?: number | null }): PanelPriceTarget {
+// A variant whose channel offers were not read (the products list's copy, before the product is read by id) is refused
+// too: the marketplaces that follow the panel price could not be updated with it.
+export function panelPriceTarget(variant: { id: string; version?: number | null; platformStatuses?: ReadonlyArray<unknown> | null }): PanelPriceTarget {
   if (variant.version == null) return { kind: 'blocked', reason: 'Varyant sürümü okunamadı; listeyi yenileyip tekrar deneyin.' }
+  if (!variant.platformStatuses) return { kind: 'blocked', reason: 'Platform fiyatları okunamadı; listeyi yenileyip tekrar deneyin.' }
   return { kind: 'panel', variantId: variant.id, version: variant.version }
 }
 

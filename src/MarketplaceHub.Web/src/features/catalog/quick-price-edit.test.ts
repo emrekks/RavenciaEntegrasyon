@@ -55,6 +55,9 @@ describe('panel price choice', () => {
   it('writes the panel price at the loaded variant version, and refuses without one', () => {
     expect(panelPriceTarget(variant)).toEqual({ kind: 'panel', variantId: 'v-1', version: 7 })
     expect(panelPriceTarget({ id: 'v-2', version: null })).toMatchObject({ kind: 'blocked' })
+    // The products list's copy carries no channel offers: the followers could not take the price, so it waits.
+    expect(panelPriceTarget({ id: 'v-3', version: 4 })).toMatchObject({ kind: 'blocked' })
+    expect(panelPriceTarget({ id: 'v-3', version: 4, platformStatuses: [] })).toEqual({ kind: 'panel', variantId: 'v-3', version: 4 })
   })
 
   it('checks the typed list and sale price as the server does', () => {
