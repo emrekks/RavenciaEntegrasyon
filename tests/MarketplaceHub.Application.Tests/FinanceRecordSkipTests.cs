@@ -95,6 +95,20 @@ public sealed class FinanceRecordSkipTests
         Assert.Equal(("T4", "kayıt T4 (sipariş 5, İade): tarihi yok ya da okunamadı"), (finance.Skipped[2].Key, finance.Skipped[2].Description));
     }
 
+    // A Pazarama finance date with Z or an offset keeps its instant whatever the server's time zone; one without an
+    // offset is Turkey time. Before, a "Z" text became the server's local wall clock first (UTC on live) and was then
+    // read as Turkey time: three hours early.
+    [Theory]
+    [InlineData("2026-04-05T00:00:00", "2026-04-04T21:00:00Z")]
+    [InlineData("2026-09-25T06:23:15.238Z", "2026-09-25T06:23:15.238Z")]
+    [InlineData("2026-02-27T14:53:40.733+03:00", "2026-02-27T11:53:40.733Z")]
+    [InlineData("2026-02-27T14:53:40+05:00", "2026-02-27T09:53:40Z")]
+    public void A_pazarama_finance_date_with_an_offset_keeps_its_instant(string text, string expected)
+    {
+        Assert.Equal(DateTimeOffset.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), PazaramaFinanceMapper.Instant(text));
+        Assert.Equal(TimeSpan.Zero, PazaramaFinanceMapper.Instant(text)!.Value.Offset);
+    }
+
     [Fact]
     public void An_n11_line_without_id_or_settlement_amount_or_with_an_unreadable_one_is_named_and_the_days_other_lines_kept()
     {
