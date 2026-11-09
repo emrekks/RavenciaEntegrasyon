@@ -29,7 +29,7 @@ type ShownGroup = Omit<PlatformUpdateGroup, 'fields'> & { fields: { key: Platfor
 // fields a selected store can take are shown; each card lists what really goes there, including what its marketplace
 // takes only together with a picked field. It sends nothing: Kaydet keeps the choice, and Hızlı Güncelle sends it
 // (owner, 9 Nov 2026). The bar is the window's own footer, so the cards scroll above it instead of under it.
-export function PlatformUpdateDialog({ targets, selectedIds, onSelectedIdsChange, fields, onFieldsChange, openGroups, onOpenGroupsChange, submitting, familyReach, onClose, onSave }: {
+export function PlatformUpdateDialog({ targets, selectedIds, onSelectedIdsChange, fields, onFieldsChange, openGroups, onOpenGroupsChange, submitting, familyReach, onClose, onSave, onSend }: {
   targets: PlatformUpdateTarget[]
   selectedIds: string[]
   onSelectedIdsChange: (connectionIds: string[]) => void
@@ -43,6 +43,8 @@ export function PlatformUpdateDialog({ targets, selectedIds, onSelectedIdsChange
   onClose: () => void
   // Keeps the choice for Hızlı Güncelle: the picked fields that are shown (a field no selected store takes never goes).
   onSave: (fields: PlatformUpdateField[]) => void
+  // Keeps the same choice, then sends it the way Hızlı Güncelle does (the parent closes the window).
+  onSend: (fields: PlatformUpdateField[]) => void
 }) {
   const writable = targets.filter(isPlatformUpdateWritable)
   const selected = writable.filter(target => selectedIds.includes(target.connection.id))
@@ -102,12 +104,13 @@ export function PlatformUpdateDialog({ targets, selectedIds, onSelectedIdsChange
           </section>
         </div></div></section></div></div>
         <footer className="publish-selection-footer platform-update-footer">
-          <div><strong>{selected.length ? `${selected.length} platform seçildi` : 'Güncellenecek platform seçilmedi'}</strong><small>{!selected.length ? 'Güncellenecek mağazaları kartların üstünden seçin.' : sendsAnything ? 'Kaydet’ten sonra Hızlı Güncelle her mağazaya kartında yazan bilgileri gönderir.' : 'Seçili mağazalara gidecek bir bilgi seçilmedi.'}</small></div>
+          <div><strong>{selected.length ? `${selected.length} platform seçildi` : 'Güncellenecek platform seçilmedi'}</strong><small>{!selected.length ? 'Güncellenecek mağazaları kartların üstünden seçin.' : sendsAnything ? 'Kaydet seçimi saklar; Gönder saklayıp hemen gönderir.' : 'Seçili mağazalara gidecek bir bilgi seçilmedi.'}</small></div>
           {!selected.length && <span className="publish-selection-warning"><UiIcon name="alert" /> En az bir platform seçin</span>}
           {selected.length > 0 && !sendsAnything && <span className="publish-selection-warning"><UiIcon name="alert" /> En az bir bilgi seçin</span>}
           <div className="platform-update-actions">
             <button type="button" className="secondary" onClick={close} disabled={submitting}>Vazgeç</button>
-            <button type="button" onClick={() => onSave(visibleFields)} disabled={submitting || !selected.length || !sendsAnything}>Kaydet</button>
+            <button type="button" className="secondary" onClick={() => onSave(visibleFields)} disabled={submitting || !selected.length || !sendsAnything}>Kaydet</button>
+            <button type="button" onClick={() => onSend(visibleFields)} disabled={submitting || !selected.length || !sendsAnything}>Gönder</button>
           </div>
         </footer>
       </DialogSurface>

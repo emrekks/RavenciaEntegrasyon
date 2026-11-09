@@ -2094,6 +2094,13 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     setPlatformUpdateDialogOpen(false)
     showFeedback('Hızlı Güncelle Ayarı Kaydedildi', 'Hızlı Güncelle bundan sonra seçtiğiniz bilgileri seçtiğiniz platformlara pencere açmadan gönderir.', 'success')
   }
+  // Gönder in the settings window: keeps the choice exactly as Kaydet does, then sends it as Hızlı Güncelle does.
+  function sendPlatformUpdateChoice(fields: PlatformUpdateField[]) {
+    if (blockedByVariantCodeRules()) return
+    writePlatformUpdateStores(platformUpdateConnectionIds)
+    writePlatformUpdatePreferences({ ...platformUpdatePreferences, fields })
+    queuePlatformUpdate(platformUpdateConnectionIds, fields)
+  }
   function queuePlatformUpdate(connectionIds: string[], fields: PlatformUpdateField[]) {
     const updateableIds = new Set(updateableProductConnectionIds())
     const safeConnectionIds = [...new Set(connectionIds)].filter(id => updateableIds.has(id))
@@ -3889,7 +3896,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       submitting={submitting}
       familyReach={platformUpdateFamilyReach}
       onClose={() => setPlatformUpdateDialogOpen(false)}
-      onSave={savePlatformUpdateChoice} />}
+      onSave={savePlatformUpdateChoice}
+      onSend={sendPlatformUpdateChoice} />}
     {lightboxImage && <ImageLightboxModal image={lightboxImage} onClose={() => setLightboxImage(null)} />}
     {variantMediaModal && <VariantMediaPickerModal
       mode={variantMediaModal.mode}
