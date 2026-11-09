@@ -424,8 +424,16 @@ public sealed record PriceAssumptionStoreView(Guid ConnectionId, string Platform
     decimal? Cargo, string? CargoSource, decimal ServiceFee, decimal ServiceFeeRate, string ServiceFeeSource, int ServiceFeeOrders,
     decimal? AzerbaijanServiceFee, decimal? InternationalServiceFeeRate, decimal? PaymentFeeRate, decimal? PaymentFeeFixed);
 
+// Stok's Tahmini Kâr: the real profit on cost (profit ÷ product cost, as the Raporlar account works it out) of each of the
+// last Months whole months before the tenant's current one, oldest first; Rate null where it is unknown (no sale with an
+// amount or no cost entered). The page averages the known ones.
+public sealed record ReportProfitRateView(IReadOnlyList<ReportMonthProfitRateView> Months);
+
+public sealed record ReportMonthProfitRateView(DateOnly From, DateOnly To, decimal? Rate);
+
 public interface IReportsService
 {
+    Task<ServiceResult<ReportProfitRateView>> ProfitRateAsync(Guid tenantId, IReadOnlyList<string>? platformCodes, CancellationToken cancellationToken);
     Task<ServiceResult<PriceAssumptionsView>> PriceAssumptionsAsync(Guid tenantId, CancellationToken cancellationToken);
     Task<ServiceResult<ReportSalesView>> SalesAsync(Guid tenantId, ReportSalesQuery query, CancellationToken cancellationToken);
     Task<ServiceResult<ReportOrderProfitPage>> OrderProfitabilityAsync(Guid tenantId, ReportOrderProfitQuery query, CancellationToken cancellationToken);

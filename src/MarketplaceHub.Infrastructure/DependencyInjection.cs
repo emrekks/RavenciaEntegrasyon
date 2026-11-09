@@ -68,6 +68,8 @@ public static class DependencyInjection
         services.AddScoped<IProductActivityService, ProductActivityService>();
         services.AddScoped<IDashboardReadService, DashboardReadService>();
         services.AddScoped<IAttentionNoticeService, AttentionNoticeService>();
+        // The sales reports already worked out, kept in this process's memory (ReportCache).
+        services.AddSingleton<ReportCache>();
         services.AddScoped<IReportsService, ReportsService>();
         services.AddScoped<IPayoutsService, PayoutsService>();
         services.AddScoped<IScheduledJobProducer, ScheduledJobProducer>();

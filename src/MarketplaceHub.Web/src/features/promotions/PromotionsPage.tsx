@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
 import { loadAllPages } from '../../shared/api'
 import { Busy, ErrorBox, Tabs } from '../../shared/components'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { TabSlidePanel } from '../../shared/tab-slide'
-import { CommissionTariffsPanel, commissionTariffPlatforms } from '../marketplace/integrations/CommissionTariffsPanel'
+import { CommissionTariffsPanel, commissionTariffPlatforms, tariffRowsQuery } from '../marketplace/integrations/CommissionTariffsPanel'
+import { prefetchLastTariff } from '../marketplace/integrations/commission-tariff-rows'
 import { PromotionOffersPanel, promotionTitles, type PromotionKind } from '../marketplace/integrations/PromotionOffersPanel'
 import { bySalesChannel, platformName } from '../reports/report-format'
 import '../reports/reports.css'
@@ -33,6 +34,11 @@ export function PromotionsPage() {
   const [params, setParams] = useSearchParams()
   const section = sectionOf(params.get('tab'))
   const connections = useQuery({ queryKey: ['connections', 'promotions'], queryFn: () => loadAllPages<Connection>('/connections') })
+  // The tariff tab's list and first page of rows are asked for beside the stores, not after them (prefetchLastTariff).
+  const client = useQueryClient()
+  const opensOnTariff = section === 'TARIFF'
+  const storeParam = params.get('store')
+  useEffect(() => { if (opensOnTariff) prefetchLastTariff(client, storeParam, tariffRowsQuery) }, [client]) // eslint-disable-line react-hooks/exhaustive-deps -- once, when the page opens
   const tabsRef = useRef<HTMLDivElement>(null)
   // On a phone the tabs slide sideways: the open one is brought into view (sideways only, the page does not move).
   useEffect(() => {

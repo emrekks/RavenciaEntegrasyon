@@ -13,6 +13,7 @@ import { useDismissable } from '../../../shared/hooks/useDismissable'
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import '../commission-tariffs.css'
 import { PanelSelect } from '../../../shared/PanelSelect'
+import { loadRowPage, rememberTariff, tariffsQuery, type RowPage } from './commission-tariff-rows'
 // One formatter per format, made once: toLocaleString with options builds a new Intl.NumberFormat on every call, and
 // the tariff table formats thousands of amounts per render.
 const twoDecimals = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -110,7 +111,11 @@ export type CommissionTariffRow = {
 // A band as a price the seller can pick: its commission and the profit the price leaves after it and its other charges
 // (costs: the product cost, cargo, service fee, withholding tax and net VAT; absent in an older server's answer).
 export type CommissionChoice = { tier: number; price: number; rate: number; commission: number; remaining: number | null; costs?: UnitProfitCosts | null }
-type RowPage = { items: CommissionTariffRow[]; totalCount: number; page: number; pageSize: number }
+// A page of a tariff's rows as the tab shows it: its models in the filter's order, 50 at a time.
+export const tariffRowsQuery = (connectionId: string, tariffId: string, filter: TariffFilter = noFilter, page = 0) => ({
+  queryKey: ['commission-tariff-rows', connectionId, tariffId, filter, page],
+  queryFn: () => loadRowPage(connectionId, tariffId, { page: String(page), limit: '50', ...filterQuery(filter) })
+})
 
 // A row's own pick: a band, a price of the seller's own, or neither (the row left out of the Excel).
 export type TariffPick = { tier: number | null; price: number | null }
@@ -297,7 +302,7 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
   const uploadProblem = validityProblem(uploadDays)
   const [editing, setEditing] = useState<{ groupId: string; days: ValidityDays } | null>(null)
   const [confirm, confirmDialog] = useConfirmDialog()
-  const tariffs = useQuery({ queryKey: ['commission-tariffs', connectionId], queryFn: () => hubApi<CommissionTariff[]>(`/connections/${connectionId}/commission-tariffs`) })
+  const tariffs = useQuery(tariffsQuery(connectionId))
   // The list shows a file once; its periods are the tabs over the table. The open period is the one picked, else the
   // period in force now of the file in force now, else the first file's.
   const groups = useMemo(() => tariffGroups(tariffs.data ?? []), [tariffs.data])
@@ -307,12 +312,10 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
   const [week, setWeek] = useState(false)
   const weekPeriods = week && activeGroup?.periods.length === 2 ? activeGroup.periods : null
   const active = weekPeriods ? weekPeriods[0] : activeGroup?.periods.find(period => period.id === selected) ?? (activeGroup ? defaultPeriod(activeGroup.periods) : null)
-  const rows = useQuery({
-    queryKey: ['commission-tariff-rows', connectionId, active?.id, filter, page],
-    queryFn: () => hubApi<RowPage>(`/connections/${connectionId}/commission-tariffs/${active!.id}/rows?${new URLSearchParams({ page: String(page), limit: '50',
-      ...filterQuery(filter) })}`),
-    enabled: active !== null
-  })
+  const rows = useQuery({ ...tariffRowsQuery(connectionId, active?.id ?? '', filter, page), enabled: active !== null })
+  // The tariff the tab opens on by itself, asked for at once the next time Promosyon opens (prefetchLastTariff).
+  const opensOn = selected === null && !weekPeriods ? active?.id ?? null : null
+  useEffect(() => { if (opensOn) rememberTariff({ connectionId, tariffId: opensOn }) }, [connectionId, opensOn])
   const upload = useMutation({
     mutationFn: ({ file, days }: { file: File; days: ValidityDays }) => {
       const body = new FormData()
@@ -744,7 +747,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
   const pageBarcodes = useMemo(() => [...new Set(rows?.items.map(row => row.barcode) ?? [])].sort(), [rows])
   const partnerRows = useQuery({
     queryKey: ['commission-tariff-rows', connectionId, partner?.id, 'barcodes', pageBarcodes],
-    queryFn: () => hubApi<RowPage>(`/connections/${connectionId}/commission-tariffs/${partner!.id}/rows?${new URLSearchParams({ page: '0', limit: '200', barcodes: pageBarcodes.join(',') })}`),
+    queryFn: () => loadRowPage(connectionId, partner!.id, { page: '0', limit: '200', barcodes: pageBarcodes.join(',') }),
     enabled: partner != null && pageBarcodes.length > 0
   })
   const partnerBy = useMemo(() => new Map((partnerRows.data?.items ?? []).map(row => [row.barcode, row])), [partnerRows.data])

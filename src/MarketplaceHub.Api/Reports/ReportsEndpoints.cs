@@ -52,6 +52,13 @@ public static class ReportsEndpoints
             var result = await service.StockAsync(tenant.TenantId, new ReportStockQuery(start, end, Split(platformCodes), includeTest ?? false), http.RequestAborted);
             return result.Succeeded ? Results.Ok(result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
         });
+        // Stok's Tahmini Kâr: the real profit on cost of each of the last whole months (the platforms as the tab's filter).
+        api.MapGet("/reports/profit-rate", async (HttpContext http, IReportsService service, string? platformCodes) =>
+        {
+            if (Tenant(http) is not { } tenant) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
+            var result = await service.ProfitRateAsync(tenant.TenantId, Split(platformCodes), http.RequestAborted);
+            return result.Succeeded ? Results.Ok(result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
+        });
         // Hakediş: what the marketplaces will pay and have paid, now (no period: due days and payouts of the last days).
         api.MapGet("/reports/payouts", async (HttpContext http, IPayoutsService service, string? platformCodes, string? connectionIds, bool? includeTest) =>
         {

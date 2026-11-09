@@ -138,6 +138,104 @@ public sealed class ReportCostSnapshotPostgreSqlTests(PostgreSqlTenantIsolationF
         }
     }
 
+    // A closed period's report is kept (ReportCache) until a change can move it: an edit to one of its orders, a product
+    // change or a finished finance read drops it; a job's own state, an order of another period and a question asked after
+    // the period do not.
+    [PostgreSqlFact]
+    public async Task A_closed_periods_cached_report_is_dropped_only_by_a_change_that_can_move_it()
+    {
+        var seed = Seed("cs-cache", lineMatched: true, costAtSale: 40m);
+        await RunAsync(seed, async () =>
+        {
+            // The seed's own change events happened before the report.
+            await using (var db = fixture.CreateContext())
+                await db.IntegrationOutboxEvents.Where(row => row.TenantId == seed.Tenant.Id).ExecuteUpdateAsync(setter => setter.SetProperty(row => row.CreatedAt, ReportNow.AddDays(-1)));
+            var cache = new ReportCache();
+            var first = await CachedReportAsync(seed.Tenant.Id, cache);
+            Assert.Equal(200m, first.Summary.GrossSales);
+            // A write without a change event (ExecuteUpdate) is not seen: the report comes from the cache.
+            await using (var db = fixture.CreateContext())
+                await db.Orders.Where(item => item.Id == seed.Order.Id).ExecuteUpdateAsync(setter => setter.SetProperty(item => item.GrossAmount, 300m).SetProperty(item => item.NetAmount, 300m));
+            Assert.Same(first, await CachedReportAsync(seed.Tenant.Id, cache));
+
+            var question = new MarketplaceQuestion { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.Connection.Id, ExternalQuestionId = $"q-{Guid.NewGuid():N}", Kind = "PRODUCT", Status = "WAITING", QuestionText = "?", CreatedAt = ReportNow, LastSyncedAt = ReportNow };
+            await using (var db = fixture.CreateContext())
+            {
+                db.MarketplaceQuestions.Add(question);
+                await db.SaveChangesAsync();
+            }
+            await AddEventAsync(seed.Tenant.Id, "jobs", "IntegrationJob", Guid.CreateVersion7(), """{"jobType":"RETURN_SYNC"}""");
+            await AddEventAsync(seed.Tenant.Id, "orders", "Order", Guid.CreateVersion7());
+            await AddEventAsync(seed.Tenant.Id, "questions", "MarketplaceQuestion", question.Id);
+            Assert.Same(first, await CachedReportAsync(seed.Tenant.Id, cache));
+
+            // An edit to the period's order drops it.
+            await AddEventAsync(seed.Tenant.Id, "orders", "Order", seed.Order.Id);
+            var second = await CachedReportAsync(seed.Tenant.Id, cache);
+            Assert.Equal(300m, second.Summary.GrossSales);
+            Assert.Same(second, await CachedReportAsync(seed.Tenant.Id, cache));
+
+            // A finished Trendyol finance read drops it, and so does a product change.
+            await AddEventAsync(seed.Tenant.Id, "jobs", "IntegrationJob", Guid.CreateVersion7(), """{"jobType":"TRENDYOL_FINANCE_SYNC","status":"SUCCEEDED"}""");
+            var third = await CachedReportAsync(seed.Tenant.Id, cache);
+            Assert.NotSame(second, third);
+            await AddEventAsync(seed.Tenant.Id, "products", "Product", seed.Product.Id);
+            Assert.NotSame(third, await CachedReportAsync(seed.Tenant.Id, cache));
+        });
+    }
+
+    // Stok's Tahmini Kâr: the last three whole months' profit on cost, each as the page's account works it out (sales less
+    // returns and the commission, less the product cost, over the product cost); a month without sales has none.
+    [PostgreSqlFact]
+    public async Task The_profit_rate_is_each_whole_months_profit_over_its_product_cost()
+    {
+        var seed = Seed("cs-rate", lineMatched: true, costAtSale: 40m);
+        await RunAsync(seed, async () =>
+        {
+            var november = new DateTimeOffset(2026, 11, 5, 9, 0, 0, TimeSpan.Zero);
+            await using var db = fixture.CreateContext();
+            var service = new ReportsService(db, new FixedClock(november), new ReportCache());
+            var result = await service.ProfitRateAsync(seed.Tenant.Id, null, CancellationToken.None);
+            Assert.True(result.Succeeded, result.Error?.Message);
+            Assert.Equal([new DateOnly(2026, 8, 1), new DateOnly(2026, 9, 1), new DateOnly(2026, 10, 1)], result.Value!.Months.Select(month => month.From));
+            Assert.Equal(new DateOnly(2026, 10, 31), result.Value.Months[2].To);
+            Assert.Equal([null, null], result.Value.Months.Take(2).Select(month => month.Rate));
+
+            var october = (await service.SalesAsync(seed.Tenant.Id, new ReportSalesQuery(new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 31), null, null, null, false), CancellationToken.None)).Value!;
+            Assert.Null(october.Costs.Commission);
+            var expected = (october.Summary.GrossSales - october.Summary.ReturnedAmount - october.Commission.EstimatedCommission - october.Cost.CostTotal) / october.Cost.CostTotal;
+            Assert.Equal(80m, october.Cost.CostTotal);
+            Assert.True(october.Commission.EstimatedCommission > 0m);
+            Assert.Equal(expected, result.Value.Months[2].Rate);
+        });
+    }
+
+    private async Task AddEventAsync(Guid tenantId, string resource, string aggregate, Guid aggregateId, string payload = "{}")
+    {
+        // The event a minute after the reports so far, and the clock past it for the next ones.
+        await using var db = fixture.CreateContext();
+        var at = cacheClock.Now.AddMinutes(1);
+        cacheClock.Now = at.AddMinutes(1);
+        db.IntegrationOutboxEvents.Add(new IntegrationOutboxEvent { Id = Guid.CreateVersion7(), TenantId = tenantId, ResourceType = resource, OperationType = "updated", AggregateType = aggregate, AggregateId = aggregateId, PayloadJson = payload, CreatedAt = at, NextAttemptAt = at, PublishedAt = at });
+        await db.SaveChangesAsync();
+    }
+
+    private readonly MovingClock cacheClock = new() { Now = ReportNow };
+
+    private sealed class MovingClock : TimeProvider
+    {
+        public DateTimeOffset Now { get; set; }
+        public override DateTimeOffset GetUtcNow() => Now;
+    }
+
+    private async Task<ReportSalesView> CachedReportAsync(Guid tenantId, ReportCache cache)
+    {
+        await using var db = fixture.CreateContext();
+        var result = await new ReportsService(db, cacheClock, cache).SalesAsync(tenantId, new ReportSalesQuery(Day, Day, null, null, null, false), CancellationToken.None);
+        Assert.True(result.Succeeded, result.Error?.Message);
+        return result.Value!;
+    }
+
     private sealed record Seeded(Tenant Tenant, PlatformConnection Connection, Product Product, ProductVariant Variant, Order Order, OrderLine Line);
 
     private static Seeded Seed(string code, bool lineMatched, decimal? costAtSale, decimal? variantCost = 40m, decimal? variantDesi = 2m)
@@ -215,6 +313,7 @@ public sealed class ReportCostSnapshotPostgreSqlTests(PostgreSqlTenantIsolationF
             await db.ProductVariants.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
             await db.Products.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
             await db.IntegrationOutboxEvents.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+            await db.MarketplaceQuestions.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
             await db.PlatformConnections.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
             await db.Tenants.Where(row => row.Id == tenantId).ExecuteDeleteAsync();
         }

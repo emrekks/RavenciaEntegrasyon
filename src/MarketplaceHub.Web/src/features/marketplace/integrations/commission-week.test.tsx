@@ -24,8 +24,9 @@ vi.mock('../../../shared/api', async importOriginal => {
     if (path.endsWith('/commission-tariffs')) return [tariff('t3', '2026-10-29T05:00:00Z', '2026-11-01T05:00:00Z', '3 Gün'), tariff('t4', '2026-11-01T05:00:00Z', '2026-11-05T05:00:00Z', '4 Gün')]
     if (path.includes('/selection')) return method === 'PUT' ? JSON.parse(String(init?.body)) : empty
     if (path.includes('/facets')) return { categories: [], brands: [] }
-    if (path.includes('/t3/rows')) return { items: [row('r3', [21.5, 20.6, 19.6, 17.5], [90, 100, 80, 60])], totalCount: 1, page: 0, pageSize: 50 }
-    if (path.includes('/t4/rows')) return { items: [row('r4', [21.5, 15.8, 14.4, 12], [90, 135, 110, 85])], totalCount: 1, page: 0, pageSize: 200 }
+    const { compactRowPage } = await import('./commission-tariff-rows.test-util')
+    if (path.includes('/t3/rows')) return compactRowPage({ items: [row('r3', [21.5, 20.6, 19.6, 17.5], [90, 100, 80, 60])], totalCount: 1, page: 0, pageSize: 50 })
+    if (path.includes('/t4/rows')) return compactRowPage({ items: [row('r4', [21.5, 15.8, 14.4, 12], [90, 135, 110, 85])], totalCount: 1, page: 0, pageSize: 200 })
     throw new Error(`unexpected ${method} ${path}`)
   }
   return { ...original, hubApi: vi.fn(respond) }

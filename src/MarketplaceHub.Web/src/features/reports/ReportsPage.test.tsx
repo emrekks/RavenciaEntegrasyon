@@ -117,6 +117,8 @@ vi.mock('../../shared/api', () => ({
     requests.push(path)
     if (path.startsWith('/reports/sales?')) return fixture.current
     if (path.startsWith('/reports/stock?')) return inventory
+    // The last three whole months' real profit on cost, worked out on the server (1.5875 is this report's own account).
+    if (path.startsWith('/reports/profit-rate')) return { months: [{ from: '2026-08-01', to: '2026-08-31', rate: 1.5875 }, { from: '2026-09-01', to: '2026-09-30', rate: 1.5875 }, { from: '2026-10-01', to: '2026-10-31', rate: 1.5875 }] }
     if (path.startsWith('/reports/payouts/lines?')) return payoutLines
     if (path.startsWith('/reports/payouts?')) return payouts
     if (path === '/reports/ad-report') return adReports.current
@@ -947,8 +949,10 @@ describe('ReportsPage', () => {
     expect(page.querySelectorAll('.reports-kpis')[0].querySelectorAll('.reports-kpi-note')).toHaveLength(0)
     expect(page.querySelectorAll('.reports-kpis')[1].querySelectorAll('.reports-kpi-note')).toHaveLength(0)
     // The capital at the average real profit on cost of the last three whole months (each month answers the same here).
-    expect(figures[2]).toMatch(/^Tahmini Kâr₺1\.905₺1\.905Stok, .*\p{Lu}\p{Ll}+ – \p{Lu}\p{Ll}+: ortalama %158,8$/u)
-    expect(requests.filter(path => /^\/reports\/sales\?from=\d{4}-\d{2}-01&to=/.test(path)).length).toBeGreaterThanOrEqual(3)
+    expect(figures[2]).toMatch(/^Tahmini Kâr₺1\.905₺1\.905Stok, .*Ağustos – Ekim: ortalama %158,8$/u)
+    // One small request for the rate instead of three whole monthly reports.
+    expect(requests).toContain('/reports/profit-rate')
+    expect(requests.filter(path => /^\/reports\/sales\?from=\d{4}-\d{2}-01&to=\d{4}-\d{2}-\d{2}$/.test(path))).toHaveLength(0)
     expect(figures[4]).toContain('60 gün')
     // Ölü Stok is a table of the tab only, no box of the strip (owner, 7 Nov 2026): five boxes, as the second row.
     expect(page.querySelector('.reports-kpis')?.children).toHaveLength(5)

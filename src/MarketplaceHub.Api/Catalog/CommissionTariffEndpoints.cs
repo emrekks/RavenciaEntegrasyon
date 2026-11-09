@@ -152,7 +152,7 @@ internal static class CommissionTariffEndpoints
     }
 
     private static async Task<IResult> RowsAsync(Guid connectionId, Guid tariffId, string? search, int? page, int? limit, int? tier, string? cost, string? name, string? barcode, string? model,
-        decimal? minStock, decimal? maxStock, string? category, string? brand, string? sort, string? dir, int? profitTier, decimal? minProfit, decimal? maxProfit, decimal? minShare, decimal? maxShare, string? barcodes, HttpContext http, ICommissionTariffService service)
+        decimal? minStock, decimal? maxStock, string? category, string? brand, string? sort, string? dir, int? profitTier, decimal? minProfit, decimal? maxProfit, decimal? minShare, decimal? maxShare, string? barcodes, string? shape, HttpContext http, ICommissionTariffService service)
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
         // A comma-separated list of exact barcodes, at most a page's worth.
@@ -169,7 +169,10 @@ internal static class CommissionTariffEndpoints
             return Problem(http, new("SORT_INVALID", "sort name, price ya da tier1-tier4; dir asc ya da desc olmalıdır.", 400));
         var filter = new CommissionTariffRowFilter(tier, cost switch { "with" => true, "without" => false, _ => null }, name, barcode, model, minStock, maxStock, category, brand,
             string.IsNullOrEmpty(sort) ? null : sort, dir == "desc", profitTier, minProfit, maxProfit, minShare, maxShare, exact);
-        return Result(await service.RowsAsync(tenant.TenantId, connectionId, tariffId, search, page ?? 0, limit ?? 50, filter, http.RequestAborted));
+        if (shape is not (null or "" or "compact")) return Problem(http, new("SHAPE_INVALID", "shape compact olmalıdır.", 400));
+        var rows = await service.RowsAsync(tenant.TenantId, connectionId, tariffId, search, page ?? 0, limit ?? 50, filter, http.RequestAborted);
+        // The panel asks for the short form (CommissionTariffCompactRows); without shape the rows come as they always did.
+        return shape == "compact" && rows.Succeeded ? Results.Ok(CommissionTariffCompactRows.Of(rows.Value!)) : Result(rows);
     }
 
     private static async Task<IResult> DeleteAsync(Guid connectionId, Guid tariffId, HttpContext http, ICommissionTariffService service)

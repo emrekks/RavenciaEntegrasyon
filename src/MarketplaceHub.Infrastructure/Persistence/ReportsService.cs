@@ -2,6 +2,7 @@ using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Npgsql;
 using NpgsqlTypes;
 
@@ -12,21 +13,63 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // order, line and package, so a year of a large store stays a few MB. The amounts follow the overview's revenue
 // (DashboardReadService.PerformanceOrders) so both pages agree. Values inside the stored JSON snapshots (city,
 // district, customer key, commission, cancel reason) are read in the database; personal data never leaves it.
-public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) : IReportsService
+public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider, ReportCache? cache = null) : IReportsService
 {
     private static readonly InvoiceStatus[] IssuedInvoiceStatuses =
         [InvoiceStatus.Submitted, InvoiceStatus.Accepted, InvoiceStatus.MarketplacePending, InvoiceStatus.MarketplaceFailed, InvoiceStatus.Completed];
+
+    // How many of a report's reads run at once, each on a connection of its own (ParallelReads).
+    private const int ReadWidth = 4;
 
     public async Task<ServiceResult<ReportSalesView>> SalesAsync(Guid tenantId, ReportSalesQuery query, CancellationToken cancellationToken)
     {
         var timezoneId = await db.Tenants.AsNoTracking().Where(x => x.Id == tenantId).Select(x => x.Timezone).SingleOrDefaultAsync(cancellationToken);
         var timezone = DashboardReadService.ResolveTimezone(timezoneId);
-        var resolved = DashboardPerformancePeriod.Resolve(query.From, query.To, timeProvider.GetUtcNow(), timezone);
+        var now = timeProvider.GetUtcNow();
+        var resolved = DashboardPerformancePeriod.Resolve(query.From, query.To, now, timezone);
         if (!resolved.Succeeded) return ServiceResult<ReportSalesView>.Fail(resolved.Error!.Code, resolved.Error.Message, resolved.Error.Status);
         var period = resolved.Value!;
         var granularity = ReportBuckets.Resolve(query.Granularity, period.From, period.To);
         if (granularity is null) return ServiceResult<ReportSalesView>.Fail("REPORT_GRANULARITY_INVALID", "Gruplama gün, hafta veya ay olmalıdır.", 400);
 
+        var platformFilter = query.PlatformCodes?.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim().ToUpperInvariant()).ToHashSet(StringComparer.Ordinal);
+        var connectionFilter = query.ConnectionIds?.ToHashSet();
+        var key = ReportCache.Key(tenantId, timezone.Id, period.From, period.To, granularity, query.IncludeTest, platformFilter, connectionFilter);
+        if (cache is not null && await cache.GetAsync(db, tenantId, key, cancellationToken) is { } cached) return ServiceResult<ReportSalesView>.Ok(cached);
+
+        var view = await SalesViewAsync(tenantId, timezone, period, granularity, query.IncludeTest, platformFilter, connectionFilter, cancellationToken);
+        cache?.Set(key, new ReportCache.Entry(view, now, period.PreviousStart.ToUniversalTime(), period.CurrentEnd.ToUniversalTime(), !period.PartialDay));
+        return ServiceResult<ReportSalesView>.Ok(view);
+    }
+
+    // How many whole months Stok's Tahmini Kâr averages.
+    public const int ProfitRateMonths = 3;
+
+    // Stok's Tahmini Kâr: each of the last whole months' sales report (test stores out, the asked platforms), cached as
+    // any report is (ReportCache: a closed month stays until its data changes), reduced to its real profit on cost.
+    public async Task<ServiceResult<ReportProfitRateView>> ProfitRateAsync(Guid tenantId, IReadOnlyList<string>? platformCodes, CancellationToken cancellationToken)
+    {
+        var timezoneId = await db.Tenants.AsNoTracking().Where(x => x.Id == tenantId).Select(x => x.Timezone).SingleOrDefaultAsync(cancellationToken);
+        var timezone = DashboardReadService.ResolveTimezone(timezoneId);
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(timeProvider.GetUtcNow(), timezone).Date);
+        var thisMonth = new DateOnly(today.Year, today.Month, 1);
+        var months = new List<ReportMonthProfitRateView>();
+        for (var index = ProfitRateMonths; index > 0; index--)
+        {
+            var from = thisMonth.AddMonths(-index);
+            var to = from.AddMonths(1).AddDays(-1);
+            var report = await SalesAsync(tenantId, new ReportSalesQuery(from, to, platformCodes, null, null, false), cancellationToken);
+            if (!report.Succeeded) return ServiceResult<ReportProfitRateView>.Fail(report.Error!.Code, report.Error.Message, report.Error.Status);
+            months.Add(new(from, to, ReportProfitRate.Of(report.Value!)));
+        }
+        return ServiceResult<ReportProfitRateView>.Ok(new(months));
+    }
+
+    // The report itself. The period's and the previous period's reads do not wait for one another: they run ReadWidth at a
+    // time, each on a connection of its own (ParallelReads), and each reads what it read when they ran one after another.
+    private async Task<ReportSalesView> SalesViewAsync(Guid tenantId, TimeZoneInfo timezone, DashboardPerformancePeriod period, string granularity, bool includeTest,
+        HashSet<string>? platformFilter, HashSet<Guid>? connectionFilter, CancellationToken cancellationToken)
+    {
         var excluded = DashboardRevenuePolicy.ExcludedConnectionStatuses;
         var channels = (await db.PlatformConnections.AsNoTracking()
                 .Where(x => x.TenantId == tenantId && !excluded.Contains(x.Status))
@@ -35,10 +78,8 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                 .ToListAsync(cancellationToken))
             .Select(x => new ReportChannelView(x.Id, x.PlatformCode.Trim().ToUpperInvariant(), x.DisplayName, ReportBuckets.IsTestEnvironment(x.Environment)))
             .ToList();
-        var platformFilter = query.PlatformCodes?.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim().ToUpperInvariant()).ToHashSet(StringComparer.Ordinal);
-        var connectionFilter = query.ConnectionIds?.ToHashSet();
         var allowed = channels
-            .Where(x => query.IncludeTest || !x.IsTest)
+            .Where(x => includeTest || !x.IsTest)
             .Where(x => platformFilter is not { Count: > 0 } || platformFilter.Contains(x.PlatformCode))
             .Where(x => connectionFilter is not { Count: > 0 } || connectionFilter.Contains(x.Id))
             .ToDictionary(x => x.Id);
@@ -48,35 +89,39 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
         var previous = new ReportPeriod(period.PreviousFrom, period.PreviousTo, period.PreviousStart, period.PreviousEnd);
         var current = new ReportPeriod(period.From, period.To, period.CurrentStart, period.CurrentEnd);
 
-        var orders = await OrderRowsAsync(tenantId, allowedIds, current, cancellationToken);
-        var orderIds = orders.Select(x => x.Id).ToArray();
-        var orderExtras = await OrderExtrasAsync(tenantId, orderIds, cancellationToken);
-        var lines = await LineRowsAsync(tenantId, allowedIds, current, cancellationToken);
-        var lineExtras = await LineExtrasAsync(tenantId, orderIds, cancellationToken);
-        var claims = await ClaimRowsAsync(tenantId, allowedIds, current, cancellationToken);
-        var packages = await PackageRowsAsync(tenantId, allowedIds, current, cancellationToken);
-        var names = await CatalogNamesAsync(tenantId, lines, cancellationToken);
-
-        var previousOrders = await OrderRowsAsync(tenantId, allowedIds, previous, cancellationToken);
-        var previousLines = await LineRowsAsync(tenantId, allowedIds, previous, cancellationToken);
-        var previousClaims = await ClaimRowsAsync(tenantId, allowedIds, previous, cancellationToken);
+        // The slowest reads start first; the others fill in as they finish.
+        using var reads = new ParallelReads(this, cancellationToken);
+        var orders = reads.Run(service => service.OrderRowsAsync(tenantId, allowedIds, current, cancellationToken));
+        var previousOrders = reads.Run(service => service.OrderRowsAsync(tenantId, allowedIds, previous, cancellationToken));
+        var lines = reads.Run(service => service.LineRowsAsync(tenantId, allowedIds, current, cancellationToken));
+        var previousLines = reads.Run(service => service.LineRowsAsync(tenantId, allowedIds, previous, cancellationToken));
+        var orderExtras = reads.Run(service => service.OrderExtrasAsync(tenantId, allowedIds, current, cancellationToken));
+        var lineExtras = reads.Run(service => service.LineExtrasAsync(tenantId, allowedIds, current, cancellationToken));
+        var claims = reads.Run(service => service.ClaimRowsAsync(tenantId, allowedIds, current, cancellationToken));
+        var packages = reads.Run(service => service.PackageRowsAsync(tenantId, allowedIds, current, cancellationToken));
         // The previous period's addresses, commission and statement too, so its provinces, countries and profit are worked
         // out the way the period's are (the map's and the strips' change against the previous period).
-        var previousOrderIds = previousOrders.Select(x => x.Id).ToArray();
-        var previousOrderExtras = await OrderExtrasAsync(tenantId, previousOrderIds, cancellationToken);
-        var previousLineExtras = await LineExtrasAsync(tenantId, previousOrderIds, cancellationToken);
+        var previousOrderExtras = reads.Run(service => service.OrderExtrasAsync(tenantId, allowedIds, previous, cancellationToken));
+        var previousLineExtras = reads.Run(service => service.LineExtrasAsync(tenantId, allowedIds, previous, cancellationToken));
+        var previousClaims = reads.Run(service => service.ClaimRowsAsync(tenantId, allowedIds, previous, cancellationToken));
         // Only the carriers of its packages: its platform cargo is costed at the carrier's tariff, as the period's is.
-        var previousCarriers = await PackageCarriersAsync(tenantId, allowedIds, previous, cancellationToken);
+        var previousCarriers = reads.Run(service => service.PackageCarriersAsync(tenantId, allowedIds, previous, cancellationToken));
+        var learnedDesi = reads.Run(service => service.LearnedDesiAsync(tenantId, cancellationToken));
+        var questionTimes = reads.Run(service => service.QuestionTimesAsync(tenantId, allowed, current, cancellationToken));
+        var names = reads.After(lines, (service, rows) => service.CatalogNamesAsync(tenantId, rows, cancellationToken));
+        var finance = reads.After(orders, (service, rows) => service.FinanceAsync(tenantId, allowed, rows, current, cancellationToken));
+        var commissions = reads.After(orders, lines, (service, rows, lineRows) => service.MarketplaceCommissionsAsync(tenantId, allowed, rows, lineRows, cancellationToken));
+        var declared = reads.After(orders, (service, rows) => service.DeclaredDesiAsync(tenantId, allowed, rows, cancellationToken));
+        var previousFinance = reads.After(previousOrders, (service, rows) => service.FinanceAsync(tenantId, allowed, rows, previous, cancellationToken));
+        var previousCommissions = reads.After(previousOrders, previousLines, (service, rows, lineRows) => service.MarketplaceCommissionsAsync(tenantId, allowed, rows, lineRows, cancellationToken));
+        var previousDeclared = reads.After(previousOrders, (service, rows) => service.DeclaredDesiAsync(tenantId, allowed, rows, cancellationToken));
+        await reads.AllAsync();
 
-        var finance = await FinanceAsync(tenantId, allowed, orders, current, cancellationToken);
-        var learnedDesi = await LearnedDesiAsync(tenantId, cancellationToken);
-        var input = new ReportInput(current, granularity, timezone, allowed, orders, orderExtras, lines, lineExtras, claims, packages, names, query.IncludeTest, finance,
-            await MarketplaceCommissionsAsync(tenantId, allowed, orders, lines, cancellationToken),
-            new ReportDesiInput(learnedDesi, await DeclaredDesiAsync(tenantId, allowed, orders, cancellationToken)));
-        var previousFinance = await FinanceAsync(tenantId, allowed, previousOrders, previous, cancellationToken);
-        var previousInput = new ReportInput(previous, granularity, timezone, allowed, previousOrders, previousOrderExtras, previousLines,
-            previousLineExtras, previousClaims, previousCarriers, names, query.IncludeTest, previousFinance, await MarketplaceCommissionsAsync(tenantId, allowed, previousOrders, previousLines, cancellationToken),
-            new ReportDesiInput(learnedDesi, await DeclaredDesiAsync(tenantId, allowed, previousOrders, cancellationToken)));
+        var input = new ReportInput(current, granularity, timezone, allowed, orders.Result, orderExtras.Result, lines.Result, lineExtras.Result, claims.Result, packages.Result,
+            names.Result, includeTest, finance.Result, commissions.Result, new ReportDesiInput(learnedDesi.Result, declared.Result));
+        var previousInput = new ReportInput(previous, granularity, timezone, allowed, previousOrders.Result, previousOrderExtras.Result, previousLines.Result,
+            previousLineExtras.Result, previousClaims.Result, previousCarriers.Result, names.Result, includeTest, previousFinance.Result, previousCommissions.Result,
+            new ReportDesiInput(learnedDesi.Result, previousDeclared.Result));
         var stockVariants = ReportBuilder.StockCandidates(input);
         var stock = stockVariants.Length == 0
             ? new Dictionary<Guid, decimal>()
@@ -90,9 +135,64 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
         {
             GeneratedAt = timeProvider.GetUtcNow(),
             Channels = channels,
-            QuestionTimes = await QuestionTimesAsync(tenantId, allowed, current, cancellationToken)
+            QuestionTimes = questionTimes.Result
         };
-        return ServiceResult<ReportSalesView>.Ok(await WithProductDetailsAsync(tenantId, report, cancellationToken));
+        return await WithProductDetailsAsync(tenantId, report, cancellationToken);
+    }
+
+    private TimeProvider Clock => timeProvider;
+    private AppDbContext ReadContext() => new((DbContextOptions<AppDbContext>)db.GetService<IDbContextOptions>(), timeProvider);
+
+    // Reads side by side, at most ReadWidth at once, each on a context of its own made with this one's options (a context
+    // runs one query at a time). AllAsync waits for every read, also after one failed, so no context outlives the report.
+    private sealed class ParallelReads(ReportsService owner, CancellationToken cancellationToken) : IDisposable
+    {
+        private readonly SemaphoreSlim gate = new(ReadWidth);
+        private readonly List<Task> started = [];
+
+        public Task<T> Run<T>(Func<ReportsService, Task<T>> read) => Track(RunAsync(read));
+
+        public Task<T> After<TIn, T>(Task<TIn> first, Func<ReportsService, TIn, Task<T>> read) => Track(ThenAsync(first, read));
+
+        public Task<T> After<TIn1, TIn2, T>(Task<TIn1> first, Task<TIn2> second, Func<ReportsService, TIn1, TIn2, Task<T>> read) =>
+            Track(ThenAsync(first, second, read));
+
+        public Task AllAsync() => Task.WhenAll(started);
+
+        public void Dispose() => gate.Dispose();
+
+        private Task<T> Track<T>(Task<T> task)
+        {
+            started.Add(task);
+            return task;
+        }
+
+        private async Task<T> ThenAsync<TIn, T>(Task<TIn> first, Func<ReportsService, TIn, Task<T>> read)
+        {
+            var value = await first;
+            return await RunAsync(service => read(service, value));
+        }
+
+        private async Task<T> ThenAsync<TIn1, TIn2, T>(Task<TIn1> first, Task<TIn2> second, Func<ReportsService, TIn1, TIn2, Task<T>> read)
+        {
+            var one = await first;
+            var two = await second;
+            return await RunAsync(service => read(service, one, two));
+        }
+
+        private async Task<T> RunAsync<T>(Func<ReportsService, Task<T>> read)
+        {
+            await gate.WaitAsync(cancellationToken);
+            try
+            {
+                await using var context = owner.ReadContext();
+                return await read(new ReportsService(context, owner.Clock));
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }
     }
 
     // The answer times of the questions asked in the period on Trendyol and Hepsiburada (ReportQuestionTimeView). The
@@ -187,10 +287,9 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
     {
         var allowedIds = allowed.Keys.ToArray();
         var orders = await OrderRowsAsync(tenantId, allowedIds, current, cancellationToken);
-        var orderIds = orders.Select(x => x.Id).ToArray();
         var lines = await LineRowsAsync(tenantId, allowedIds, current, cancellationToken);
-        return new ReportInput(current, ReportBuckets.Day, timezone, allowed, orders, await OrderExtrasAsync(tenantId, orderIds, cancellationToken), lines,
-            await LineExtrasAsync(tenantId, orderIds, cancellationToken), await ClaimRowsAsync(tenantId, allowedIds, current, cancellationToken),
+        return new ReportInput(current, ReportBuckets.Day, timezone, allowed, orders, await OrderExtrasAsync(tenantId, allowedIds, current, cancellationToken), lines,
+            await LineExtrasAsync(tenantId, allowedIds, current, cancellationToken), await ClaimRowsAsync(tenantId, allowedIds, current, cancellationToken),
             await PackageRowsAsync(tenantId, allowedIds, current, cancellationToken), await CatalogNamesAsync(tenantId, lines, cancellationToken), false,
             await FinanceAsync(tenantId, allowed, orders, current, cancellationToken),
             await MarketplaceCommissionsAsync(tenantId, allowed, orders, lines, cancellationToken),
@@ -479,17 +578,19 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
     // City, district and a one-way customer key from the order's JSON snapshots, read in the database. A snapshot that
     // is not valid JSON reads as empty. The customer key is the store's own customer id, else the e-mail, else the
     // last ten digits of the phone, each as an MD5 digest; the text itself is never returned. ClaimBuilt: the customer
-    // snapshot still carries the return-claim mark (TrendyolJsonMapper.IsReturnClaimReadModelSnapshot).
-    private async Task<Dictionary<Guid, ReportOrderExtra>> OrderExtrasAsync(Guid tenantId, Guid[] orderIds, CancellationToken cancellationToken)
+    // snapshot still carries the return-claim mark (TrendyolJsonMapper.IsReturnClaimReadModelSnapshot). The orders are the
+    // period's (PeriodOrders' conditions), so the read need not wait for OrderRowsAsync. The snapshots are parsed once
+    // (MATERIALIZED): inlined, every a->> and c->> parsed the whole snapshot again (~1 s for a year on live, 0.19 s once).
+    private async Task<Dictionary<Guid, ReportOrderExtra>> OrderExtrasAsync(Guid tenantId, Guid[] allowedIds, ReportPeriod period, CancellationToken cancellationToken)
     {
-        if (orderIds.Length == 0) return [];
+        if (allowedIds.Length == 0) return [];
         const string sql = """
-            WITH src AS (
+            WITH src AS MATERIALIZED (
                 SELECT o."Id", o."ConnectionId",
                        CASE WHEN pg_input_is_valid(o."ShipmentAddressSnapshotJson", 'jsonb') THEN o."ShipmentAddressSnapshotJson"::jsonb END AS a,
                        CASE WHEN pg_input_is_valid(o."CustomerSnapshotJson", 'jsonb') THEN o."CustomerSnapshotJson"::jsonb END AS c
                 FROM sales.orders o
-                WHERE o."TenantId" = @tenant AND o."Id" = ANY(@ids)),
+                WHERE o."TenantId" = @tenant AND o."ConnectionId" = ANY(@connections) AND o."OrderedAt" >= @start AND o."OrderedAt" < @end),
             keys AS (
                 SELECT "Id", a, c,
                        nullif(trim(coalesce(c->>'customerId', c->>'CustomerId', '')), '') AS customer_id,
@@ -511,24 +612,33 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                            AND (c->>'orderOutboundPackageId' IS NOT NULL OR c->>'orderShipmentPackageId' IS NOT NULL)), false) AS "ClaimBuilt"
             FROM keys
             """;
-        var rows = await db.Database.SqlQueryRaw<ReportOrderExtra>(sql,
-                new NpgsqlParameter("tenant", tenantId),
-                new NpgsqlParameter("ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid) { Value = orderIds })
+        var rows = await db.Database.SqlQueryRaw<ReportOrderExtra>(sql, PeriodParameters(tenantId, allowedIds, period))
             .ToListAsync(cancellationToken);
         return rows.ToDictionary(x => x.Id);
     }
 
+    // The tenant, the stores and the period's bounds for the raw reads of the period's orders (OrderExtrasAsync, LineExtrasAsync).
+    private static object[] PeriodParameters(Guid tenantId, Guid[] allowedIds, ReportPeriod period) =>
+    [
+        new NpgsqlParameter("tenant", tenantId),
+        new NpgsqlParameter("connections", NpgsqlDbType.Array | NpgsqlDbType.Uuid) { Value = allowedIds },
+        new NpgsqlParameter("start", NpgsqlDbType.TimestampTz) { Value = period.Start.ToUniversalTime() },
+        new NpgsqlParameter("end", NpgsqlDbType.TimestampTz) { Value = period.End.ToUniversalTime() }
+    ];
+
     // The commission each marketplace sent on the line (Trendyol "commission" rate, Hepsiburada "commission" amount
-    // object, n11 "commissionRate", PTT AVM "Komisyon") and a cancel reason, read in the database.
-    private async Task<Dictionary<Guid, ReportLineExtra>> LineExtrasAsync(Guid tenantId, Guid[] orderIds, CancellationToken cancellationToken)
+    // object, n11 "commissionRate", PTT AVM "Komisyon") and a cancel reason, read in the database, from the lines of the
+    // period's orders; each snapshot parsed once (MATERIALIZED, as OrderExtrasAsync).
+    private async Task<Dictionary<Guid, ReportLineExtra>> LineExtrasAsync(Guid tenantId, Guid[] allowedIds, ReportPeriod period, CancellationToken cancellationToken)
     {
-        if (orderIds.Length == 0) return [];
+        if (allowedIds.Length == 0) return [];
         const string sql = """
-            WITH src AS (
+            WITH src AS MATERIALIZED (
                 SELECT l."Id",
                        CASE WHEN l."SourceSnapshotJson" IS NOT NULL AND pg_input_is_valid(l."SourceSnapshotJson", 'jsonb') THEN l."SourceSnapshotJson"::jsonb END AS j
                 FROM sales.order_lines l
-                WHERE l."TenantId" = @tenant AND l."OrderId" = ANY(@ids))
+                JOIN sales.orders o ON o."TenantId" = l."TenantId" AND o."Id" = l."OrderId"
+                WHERE l."TenantId" = @tenant AND o."ConnectionId" = ANY(@connections) AND o."OrderedAt" >= @start AND o."OrderedAt" < @end)
             SELECT "Id",
                    jsonb_typeof(j->'commission') AS "CommissionType",
                    CASE WHEN jsonb_typeof(j->'commission') = 'object' THEN j->'commission'->>'amount' ELSE j->>'commission' END AS "Commission",
@@ -538,9 +648,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                    coalesce(nullif(j->>'cancelReason', ''), nullif(j->>'cancelReasonCode', ''), nullif(j->>'cancellationReason', ''), nullif(j->>'CancelReason', ''), nullif(j->>'IptalNedeni', '')) AS "CancelReason"
             FROM src
             """;
-        var rows = await db.Database.SqlQueryRaw<ReportLineExtra>(sql,
-                new NpgsqlParameter("tenant", tenantId),
-                new NpgsqlParameter("ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid) { Value = orderIds })
+        var rows = await db.Database.SqlQueryRaw<ReportLineExtra>(sql, PeriodParameters(tenantId, allowedIds, period))
             .ToListAsync(cancellationToken);
         return rows.ToDictionary(x => x.Id);
     }

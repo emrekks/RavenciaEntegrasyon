@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { useQueries, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router'
 import { hubApi } from '../../shared/api'
 import { Busy, CardBackgroundIcon, EmptyState, ErrorBox, Modal, Pager, UiIcon, type CardIconName, type UiIconName } from '../../shared/components'
@@ -11,7 +11,7 @@ import { ViewTabsWithMore } from '../../shared/view-tabs'
 import { TabSlidePanel } from '../../shared/tab-slide'
 import {
   bySalesChannel, change, desiSourcesNote, downloadCsv, isSalesChannel, variantColourAndSize, formatCount, formatDay, formatHours, formatNumber, formatPercent, formatTl, formatTlShort, formatTlWhole, moneyOrMissing, platformColor, platformName, reportQuery, sortRows, toCsv, unknownLabel,
-  stockQuery, type Change, type CsvColumn, type ReportCosts, type ReportGroup, type ReportInventory, type ReportProduct, type ReportReason, type ReportSales, type ReportStockGroup, type ReportStockItem, type ReportStockPlatform, type ReportStockRow
+  profitRateQuery, stockQuery, type Change, type ReportProfitRate, type CsvColumn, type ReportCosts, type ReportGroup, type ReportInventory, type ReportProduct, type ReportReason, type ReportSales, type ReportStockGroup, type ReportStockItem, type ReportStockPlatform, type ReportStockRow
 } from './report-format'
 import { AdReportModal, adReportQuery, adReportRow, combined, reportAge, roasText, staleDays, type AdReports } from './AdReport'
 import { OrderProfitability } from './OrderProfitability'
@@ -2057,37 +2057,24 @@ function Invoices({ data }: { data: ReportSales }) {
   </div>
 }
 
-// The last profitMonths whole months before this one, oldest first, each with its Turkish name.
-const profitMonths = 3
-function lastWholeMonths(count: number, today = new Date()) {
-  const name = new Intl.DateTimeFormat('tr-TR', { month: 'long' })
-  return Array.from({ length: count }, (_, index) => {
-    const first = new Date(today.getFullYear(), today.getMonth() - count + index, 1)
-    const label = name.format(first)
-    return { from: dayKey(first), to: dayKey(new Date(first.getFullYear(), first.getMonth() + 1, 0)), label: label.charAt(0).toLocaleUpperCase('tr-TR') + label.slice(1) }
-  })
+// A month's Turkish name from its first day ("2026-08-01" → "Ağustos").
+const monthName = new Intl.DateTimeFormat('tr-TR', { month: 'long', timeZone: 'UTC' })
+function monthLabel(from: string) {
+  const label = monthName.format(new Date(`${from}T00:00:00Z`))
+  return label.charAt(0).toLocaleUpperCase('tr-TR') + label.slice(1)
 }
 
 // The real profit on cost of each of the last whole months, as Kârlılık works it out (sales less returns, marketplace
-// deductions, VAT and the product cost), and their plain average over the months that have one. Loading until every
-// month is in.
+// deductions, VAT and the product cost; the server's ReportProfitRate, from the same monthly reports), and their plain
+// average over the months that have one. Loading until it is in.
 type MonthlyProfitRate = { loading: boolean; average: number | null; months: Array<{ label: string; rate: number | null }> }
 function useMonthlyProfitRate(platforms: string[] | null): MonthlyProfitRate {
-  const months = lastWholeMonths(profitMonths)
-  const results = useQueries({
-    queries: months.map(month => {
-      const query = reportQuery({ from: month.from, to: month.to, platforms, granularity: '', includeTest: false })
-      return { queryKey: ['reports-sales', query], queryFn: () => hubApi<ReportSales>(`/reports/sales?${query}`), staleTime: 60_000 }
-    })
-  })
-  const rates = months.map((month, index) => {
-    const data = results[index]?.data
-    const money = data ? moneyBreakdown(data, profitSteps(data)) : null
-    return { label: month.label, rate: money?.profit != null && money.cost ? money.profit / money.cost : null }
-  })
+  const query = profitRateQuery(platforms)
+  const result = useQuery({ queryKey: ['reports-profit-rate', query], queryFn: () => hubApi<ReportProfitRate>(`/reports/profit-rate${query ? `?${query}` : ''}`), staleTime: 60_000 })
+  const rates = (result.data?.months ?? []).map(month => ({ label: monthLabel(month.from), rate: month.rate }))
   const known = rates.flatMap(month => month.rate === null ? [] : [month.rate])
   // The average kept to a millionth, so three equal months average to the same rate on screen (no float tail).
-  return { loading: results.some(result => result.isPending), average: known.length ? Math.round(known.reduce((sum, rate) => sum + rate, 0) / known.length * 1e6) / 1e6 : null, months: rates }
+  return { loading: result.isPending, average: known.length ? Math.round(known.reduce((sum, rate) => sum + rate, 0) / known.length * 1e6) / 1e6 : null, months: rates }
 }
 
 // Tahmini Kâr: the capital in stock at the average real profit on cost of the last whole months.

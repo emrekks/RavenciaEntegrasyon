@@ -232,6 +232,13 @@ export type ReportInventory = {
   cover: ReportStockGroup[]; topCapital: ReportStockItem[]; dead: ReportStockItem[]; channels: ReportChannel[]
 }
 
+// Stok's Tahmini Kâr: the real profit on cost of each of the last whole months, oldest first (GET /reports/profit-rate).
+export type ReportProfitRate = { months: Array<{ from: string; to: string; rate: number | null }> }
+
+export function profitRateQuery(platforms: string[] | null) {
+  return platforms?.length ? new URLSearchParams({ platformCodes: platforms.join(',') }).toString() : ''
+}
+
 export function stockQuery(filters: { from: string; to: string; platforms: string[] | null }) {
   const query = new URLSearchParams({ from: filters.from, to: filters.to })
   if (filters.platforms?.length) query.set('platformCodes', filters.platforms.join(','))

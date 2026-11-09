@@ -18,7 +18,7 @@ vi.mock('../../../shared/api', async importOriginal => {
     if (path.endsWith('/period') && method === 'PUT') return tariffs
     if (path.includes('/selection')) return { bulk: null, tier: null, minRate: null, minAmount: null, maxRate: null, maxAmount: null, choices: [] }
     if (path.includes('/facets')) return { categories: [], brands: [] }
-    if (path.includes('/rows')) return { items: [], totalCount: 0, page: 0, pageSize: 50 }
+    if (path.includes('/rows')) return (await import('./commission-tariff-rows.test-util')).compactRowPage({ items: [], totalCount: 0, page: 0, pageSize: 50 })
     throw new Error(`unexpected ${method} ${path}`)
   }
   return { ...original, hubApi: vi.fn(respond) }
