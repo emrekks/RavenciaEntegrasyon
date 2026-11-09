@@ -115,3 +115,13 @@
    button is a normal 36 px primary (it was 58 px). */
 :root:root:root body .variant-code-menu-tabs > button { min-height: 32px; height: 32px; font-size: 12.5px; font-weight: 500; }
 :root:root:root body .variant-code-menu-submit { min-height: 36px; height: 36px; padding: 0 14px; }
+
+/* Ürünler table (owner, 9 Nov 2026): the product pictures are 56 × 84 px (they were 46 × 70); "Model Kodu: X" and its copy
+   button stay on one line, a long code cut with "…" rather than the button wrapping under it; the Platform Durumu marks
+   keep 14 px from the cell's sides. */
+:root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-prodcell .rr-thumb { width: 56px; height: 84px; }
+:root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-prodcell small { display: flex; align-items: center; gap: 4px; min-width: 0; white-space: nowrap; overflow: visible; overflow-wrap: normal; }
+:root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-prodcell small > span { flex: none; }
+:root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-prodcell small > b { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-prodcell small > .rr-code-copy { flex: none; margin: -6px 0; }
+:root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl td[data-l="Platform Durumu"] { padding-inline: 14px; }
