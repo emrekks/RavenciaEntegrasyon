@@ -205,7 +205,7 @@ export function DashboardPage() {
   const lastHour = data && data.partialDay ? istanbulHour(data.currentEnd) : 23
   const series = data ? (hourly ? hourSeries(data.currentHours ?? [], data.from, channel, currency, lastHour) : daySeries(data.current, data.from, data.to, channel, currency)) : []
   const previousSeries = data ? (hourly ? hourSeries(data.previousHours ?? [], data.previousFrom, channel, currency, lastHour) : daySeries(data.previous, data.previousFrom, data.previousTo, channel, currency)) : []
-  // Ciro, Toplam Sipariş and Ortalama Sepet on one basis, returns included (the report's Net Ciro takes them off).
+  // Ciro, Toplam Sipariş and Ortalama Sepet on one basis, returns included (the report's Toplam Ciro is the same figure; its Net Ciro takes returns off).
   const { amount: total, orders, units, basket } = periodFigures(series)
   const { amount: previousTotal, orders: previousOrders, basket: previousBasket } = periodFigures(previousSeries)
   const foreign = data ? otherCurrencies(data.current, channel, currency) : []
@@ -313,7 +313,7 @@ export function DashboardPage() {
       </div></div>
       {days === null && <p className="rr-pf-note" role="status">Raporu görmek için bitiş tarihini de seçin.</p>}
       <div className="rr-kgrid" role="tablist" aria-label="Grafikte gösterilecek metrik">
-        <KpiCell icon="lira" loading={loading} label="Satış" tip={'Dönemde satılan her şey, iadeler dahil; iptaller hariç.\nRaporlardaki Net Ciro iadeler düşülmüş tutardır.'} avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loading ? '—' : money(total, currency)} delta={trend(total, previousTotal)} {...revenueStats} on={metric === 0} onPick={() => setMetric(0)} />
+        <KpiCell icon="lira" loading={loading} label="Satış" tip={'Dönemde satılan her şey, iadeler dahil; iptaller hariç.\nRaporlar’daki Toplam Ciro ile aynı tutardır; Net Ciro iadeleri düşer.'} avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loading ? '—' : money(total, currency)} delta={trend(total, previousTotal)} {...revenueStats} on={metric === 0} onPick={() => setMetric(0)} />
         <KpiCell icon="orders" loading={loading} unit={<>Sipariş{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}{count(units)} Adet Ürün</>} label="Toplam Sipariş" tip={'Tutarı olan siparişler, iade edilenler dahil; iptaller hariç.'} avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loadingValue(loading, orders)} delta={trend(orders, previousOrders)} {...orderStats} on={metric === 1} onPick={() => setMetric(1)} />
         <KpiCell icon="bag" loading={loading} label="Ortalama Sepet" tip={'Ciro ÷ Toplam Sipariş, ikisi de iadeler dahil.'} avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loading ? '—' : money(basket, currency)} delta={trend(basket, previousBasket)} {...basketStats} on={metric === 2} onPick={() => setMetric(2)} />
         <KpiCell icon="products" loading={productSummary.isLoading} label="Aktif Ürün" value={loadingValue(productSummary.isLoading, products?.activeCount)} delta={null} note={channel === 'ALL' ? 'Katalogdaki güncel durum' : 'Tüm platformlar'} avgLabel="Stoksuz ürün" avg={loadingValue(productSummary.isLoading, products?.outOfStockCount)} min={`Düşük stok ${loadingValue(productSummary.isLoading, products?.lowStockCount)}`} max={`Toplam ${loadingValue(productSummary.isLoading, products?.totalCount)}`} position={products?.totalCount ? products.activeCount / products.totalCount : 0} />
