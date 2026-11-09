@@ -19,6 +19,11 @@ describe('product platform list status', () => {
     expect(productPlatformDisplayState(['APPROVAL_PENDING', 'APPROVAL_PARTIAL_PENDING'], false, 3)).toBe('processing')
   })
 
+  it('shows sends still waiting for the marketplace as processing, not inactive', () => {
+    expect(productPlatformDisplayState(['CREATE_RESULT_UNKNOWN'], false, 0)).toBe('processing')
+    expect(productPlatformDisplayState(['SHOPIFY_SUBMITTED'], false, 0)).toBe('processing')
+  })
+
   it('shows partial marketplace matching as linked with its coverage', () => {
     const state = productPlatformDisplayState(['PARTIAL_LINKED'], false, 2)
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { estimateNote, isRolledToPayoutDay, parseAmount, payoutGap, payoutLinesQuery, rolledPayoutNote, type PayoutGroup } from './payouts'
+import { estimateNote, isRolledToPayoutDay, nextPayout, parseAmount, payoutGap, payoutLinesQuery, rolledPayoutNote, type PayoutGroup } from './payouts'
 
 describe('estimate note', () => {
   it('explains the deductions taken off a Trendyol payout day to come', () => {
@@ -62,5 +62,22 @@ describe('payout gap', () => {
     expect(payoutGap(group({ kind: 'PAYOUT', amount: 780, linesAmount: null }))).toBeNull()
     expect(payoutGap(group({ kind: 'PAYOUT', amount: 780, linesAmount: 780 }))).toBeNull()
     expect(payoutGap(group({ kind: 'PAYOUT', amount: 780, linesAmount: 800.5 }))).toBe(-20.5)
+  })
+})
+
+describe('next payout of a picked region', () => {
+  const group = (day: string, kind: PayoutGroup['kind'], amount: number): PayoutGroup => ({ key: `${day}:${kind}`, kind, connectionId: 'c', platformCode: 'TRENDYOL', storeName: 'Trendyol',
+    region: 'TR_GULF', regionName: null, day, amount, linesAmount: null, records: 1, status: 'EXPECTED' })
+  const data = (upcoming: PayoutGroup[]) => ({ next: group('2026-11-09', 'PAYOUT_DAY', 500), regions: [{ region: 'TR_GULF' as const, expected: 0, records: 0,
+    nextDay: '2026-11-16', nextAmount: 900, unknown: 0, pendingDelivery: 0, pendingDeliveryOrders: 0 }], upcoming })
+  it('takes the server region figure, skipping a day that nets to nothing or less, as the region card does', () => {
+    // A deduction-only payout day comes first: the card must not say "Sıradaki −120 ₺ on the 12th".
+    const payouts = data([group('2026-11-12', 'PAYOUT_DAY', -120), group('2026-11-16', 'PAYOUT_DAY', 900)])
+    expect(nextPayout(payouts, 'TR_GULF')).toEqual({ day: '2026-11-16', amount: 900 })
+  })
+  it('takes the overall next payout without a region, and none for a region not in view', () => {
+    expect(nextPayout(data([]), 'ALL')).toEqual({ day: '2026-11-09', amount: 500 })
+    expect(nextPayout(data([]), 'EUROPE')).toEqual({ day: null, amount: null })
+    expect(nextPayout(undefined, 'ALL')).toEqual({ day: null, amount: null })
   })
 })

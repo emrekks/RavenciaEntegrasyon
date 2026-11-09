@@ -165,6 +165,7 @@ export function istanbulHour(instant: string) {
 // The change against the previous period; none (shown as "—") when the previous period had nothing to compare with.
 export function periodTrend(current: number, previous: number): [string, boolean] | null {
   if (previous <= 0) return null
-  const delta = ((current - previous) / previous) * 100
+  // Rounded to the one decimal shown first, so a change that shows as %0 carries no minus and no falling colour.
+  const delta = Math.round(((current - previous) / previous) * 1000) / 10
   return [`${delta < 0 ? '-' : ''}%${Math.abs(delta).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}`, delta >= 0]
 }
