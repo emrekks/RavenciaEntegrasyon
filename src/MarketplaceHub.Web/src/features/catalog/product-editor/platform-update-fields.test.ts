@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { availablePlatformUpdateFields, defaultPlatformUpdateFields, defaultPlatformUpdatePreferences, platformUpdateFieldsForStores, platformUpdateGroups, platformUpdatePlan, platformUpdatePreferencesKey, platformUpdateSummary, priceStockPlatformUpdateFields, readPlatformUpdatePreferences, readPlatformUpdateStores, platformUpdateStoresKey, writePlatformUpdatePreferences, writePlatformUpdateStores } from './platform-update-fields'
+import { availablePlatformUpdateFields, defaultPlatformUpdateFields, defaultPlatformUpdatePreferences, platformUpdateFieldsForStores, platformUpdateGroups, platformUpdatePlan, platformUpdatePreferencesKey, platformUpdateSummary, priceStockPlatformUpdateFields, readPlatformUpdatePreferences, readPlatformUpdateStores, readQuickPlatformUpdateChoice, platformUpdateStoresKey, writePlatformUpdatePreferences, writePlatformUpdateStores } from './platform-update-fields'
 
 function memoryStorage(initial: Record<string, string> = {}) {
   const values = new Map(Object.entries(initial))
@@ -49,8 +49,8 @@ describe('platform update fields', () => {
     expect(platformUpdateFieldsForStores(['TITLE'], both, [])).toEqual([])
   })
 
-  it('keeps the old switch as the default: on was every field, the quick update price and stock', () => {
-    expect(defaultPlatformUpdatePreferences.fields).toEqual(defaultPlatformUpdateFields)
+  it('starts the window at price and stock with nothing saved (what Hızlı Güncelle then sends); every field is still a pick', () => {
+    expect(defaultPlatformUpdatePreferences.fields).toEqual(priceStockPlatformUpdateFields)
     const all = platformUpdatePlan('TRENDYOL', defaultPlatformUpdateFields)
     expect(all.productFields).toEqual(['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES', 'DESI', 'DELIVERY', 'VAT_RATE'])
     expect([all.price, all.stock]).toEqual([true, true])
@@ -235,5 +235,20 @@ describe('platform update fields', () => {
     const throwing = { getItem: () => { throw new Error('blocked') }, setItem: () => { throw new Error('blocked') } }
     expect(readPlatformUpdateStores(['ty'], ['ty'], throwing)).toEqual(['ty'])
     expect(() => writePlatformUpdateStores(['ty'], throwing)).not.toThrow()
+  })
+
+  // Owner, 9 Nov 2026: Hızlı Güncelle sends the saved choice of the settings window at once, with no window.
+  it('gives Hızlı Güncelle the saved fields and stores, else price and stock to the stores picked for the product', () => {
+    const storage = memoryStorage()
+    expect(readQuickPlatformUpdateChoice(['ty', 'hb'], ['hb', 'n11', 'hb'], storage)).toEqual({ connectionIds: ['hb'], fields: ['PRICE', 'STOCK'] })
+    writePlatformUpdatePreferences({ fields: ['TITLE', 'VAT_RATE', 'STOCK'], openGroups: [] }, storage)
+    writePlatformUpdateStores(['ty', 'gone'], storage)
+    expect(readQuickPlatformUpdateChoice(['ty', 'hb'], ['hb'], storage)).toEqual({ connectionIds: ['ty'], fields: ['TITLE', 'STOCK', 'VAT_RATE'] })
+    // Saved fields, no saved stores: the product's stores.
+    const fieldsOnly = memoryStorage()
+    writePlatformUpdatePreferences({ fields: ['PRICE'], openGroups: [] }, fieldsOnly)
+    expect(readQuickPlatformUpdateChoice(['ty', 'hb'], ['hb'], fieldsOnly)).toEqual({ connectionIds: ['hb'], fields: ['PRICE'] })
+    const throwing = { getItem: () => { throw new Error('blocked') } }
+    expect(readQuickPlatformUpdateChoice(['ty'], ['ty'], throwing)).toEqual({ connectionIds: ['ty'], fields: ['PRICE', 'STOCK'] })
   })
 })

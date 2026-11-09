@@ -47,7 +47,7 @@ import { MarketplaceCodesDialog } from './MarketplaceCodesDialog'
 import { PublicationJobDialog } from './PublicationJobDialog'
 import { PlatformUpdateDialog } from './PlatformUpdateDialog'
 import { isProductDeliveryDays, productDeliveryDays } from './product-delivery-days'
-import { platformUpdatePlan, priceStockPlatformUpdateFields, readPlatformUpdatePreferences, readPlatformUpdateStores, writePlatformUpdatePreferences, writePlatformUpdateStores, type PlatformUpdateField, type PlatformUpdatePreferences } from './platform-update-fields'
+import { platformUpdatePlan, readPlatformUpdatePreferences, readPlatformUpdateStores, readQuickPlatformUpdateChoice, writePlatformUpdatePreferences, writePlatformUpdateStores, type PlatformUpdateField, type PlatformUpdatePreferences } from './platform-update-fields'
 import { publishCardPlan, publishCardVariantLinks, publishCardVariantPresence, withLatestVariantLinks } from './publish-card-variants'
 import { offSaleSummary } from '../sale-state'
 import { VariantOptionEditDialog, type VariantOptionEditChange } from './VariantOptionEditDialog'
@@ -2084,13 +2084,15 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     setPlatformUpdatePreferences(readPlatformUpdatePreferences())
     setPlatformUpdateDialogOpen(true)
   }
-  function changePlatformUpdateStores(connectionIds: string[]) {
-    setPlatformUpdateConnectionIds(connectionIds)
-    writePlatformUpdateStores(connectionIds)
-  }
+  // The settings window edits the choice Hızlı Güncelle sends; Kaydet keeps it (this browser), Vazgeç leaves the saved one.
   function changePlatformUpdatePreferences(next: PlatformUpdatePreferences) {
     setPlatformUpdatePreferences(next)
-    writePlatformUpdatePreferences(next)
+  }
+  function savePlatformUpdateChoice(fields: PlatformUpdateField[]) {
+    writePlatformUpdateStores(platformUpdateConnectionIds)
+    writePlatformUpdatePreferences({ ...platformUpdatePreferences, fields })
+    setPlatformUpdateDialogOpen(false)
+    showFeedback('Hızlı Güncelle Ayarı Kaydedildi', 'Hızlı Güncelle bundan sonra seçtiğiniz bilgileri seçtiğiniz platformlara pencere açmadan gönderir.', 'success')
   }
   function queuePlatformUpdate(connectionIds: string[], fields: PlatformUpdateField[]) {
     const updateableIds = new Set(updateableProductConnectionIds())
@@ -2108,17 +2110,23 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     setPlatformUpdateDialogOpen(false)
     formElement.requestSubmit()
   }
-  function confirmPlatformUpdate(fields: PlatformUpdateField[]) {
-    queuePlatformUpdate(platformUpdateConnectionIds, fields)
-  }
+  // Hızlı Güncelle: the saved choice of the settings window, sent at once (a manual write; the automatic price/stock
+  // switch does not apply). A choice that reaches no store or sends nothing opens the window instead.
   function startQuickPlatformUpdate() {
-    const connectionIds = quickPlatformUpdateTargets(selectedChannelIds, updateableProductConnectionIds())
+    const updateableIds = updateableProductConnectionIds()
+    const { connectionIds, fields } = readQuickPlatformUpdateChoice(updateableIds, quickPlatformUpdateTargets(selectedChannelIds, updateableIds))
+    const platformCodes = new Map((connections.data?.items ?? []).map(item => [item.id, item.platformCode]))
     if (!connectionIds.length) {
       openPlatformUpdateDialog()
-      showFeedback('Platform Seçin', 'Hızlı güncelleme için önce güncellenecek platformu seçin.', 'info')
+      showFeedback('Platform Seçin', 'Hızlı Güncelle için güncellenecek platformları seçip Kaydet’e basın.', 'info')
       return
     }
-    queuePlatformUpdate(connectionIds, priceStockPlatformUpdateFields)
+    if (!connectionIds.some(id => platformUpdatePlan(platformCodes.get(id) ?? '', fields).sends.length > 0)) {
+      openPlatformUpdateDialog()
+      showFeedback('Bilgi Seçin', 'Seçili platformlara gidecek bir bilgi seçilmedi; gönderilecek bilgileri seçip Kaydet’e basın.', 'info')
+      return
+    }
+    queuePlatformUpdate(connectionIds, fields)
   }
   function channelPriceDraft(connectionId: string): ChannelPricingDraft {
     return channelPricing[connectionId] ?? { listPrice: form.listPrice, salePrice: form.salePrice }
@@ -3788,7 +3796,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       </div>
     </section>
 
-    <StickyActionBar label="Ürün kaydetme" className="product-submit-sticky"><div><strong>{editingDraftProduct ? 'Taslak ürün · Kaydet ile satışa açılır' : editProductId ? 'Ürün düzenlemeye hazır' : 'Ürün bilgileri hazır'}</strong><p>{variantRows.length || 1} satış satırı · {selectedChannelIds.length} seçili kanal</p>{codeRuleSaveBlock && <button type="button" className="product-submit-code-block" onClick={goToFirstVariantCodeIssue}><UiIcon name="alert" size={14} /><span>{codeRuleSaveBlock}</span></button>}{pendingFamilyMediaRemovals.length > 0 && <p className="product-submit-family-media-note" role="status"><span>{pendingFamilyMediaRemovals.length} renk ailesi görseli Kaydet’te diğer renklerden de kaldırılacak</span><button type="button" className="product-submit-undo-button" onClick={undoPendingFamilyMediaRemovals} disabled={submitting}>Geri Al</button></p>}</div><div className={`product-submit-actions${codeRuleSaveBlock ? ' is-code-blocked' : ''}`}>{draftSaveAvailable && <button type="submit" name="intent" value="draft" className="secondary product-submit-draft" data-submit-intent="draft" formNoValidate form="product-creation-form" disabled={submitting || Boolean(modelCodeCreateBlock)} title={modelCodeCreateBlock || "Zorunlu alanlar eksik olsa da kaydeder; taslak pazaryerlerine gönderilmez ve stok sayımlarına girmez"}><span className="submit-label-long">Taslak Olarak Kaydet</span><span className="submit-label-short">Taslak</span></button>}{editProductId ? <button type="submit" name="intent" value="save" className="secondary" data-submit-intent="save" form="product-creation-form" disabled={submitting} aria-disabled={codeRuleSaveBlock ? true : undefined} title={codeRuleSaveBlock || undefined} onClick={event => { if (codeRuleSaveBlock) { event.preventDefault(); blockedByVariantCodeRules() } }}>{submitting ? 'Kaydediliyor…' : 'Kaydet'}</button> : <button type="submit" name="intent" value="create" className="secondary" data-submit-intent="create" form="product-creation-form" disabled={submitting || Boolean(modelCodeCreateBlock)} aria-disabled={codeRuleSaveBlock ? true : undefined} title={modelCodeCreateBlock || codeRuleSaveBlock || undefined} onClick={event => { if (codeRuleSaveBlock) { event.preventDefault(); blockedByVariantCodeRules() } }}>{submitting ? 'Oluşturuluyor…' : 'Ürünü Oluştur'}</button>}{editProductId && !editingDraftProduct && <div className="platform-update-split" role="group" aria-label="Platform güncelleme"><button type="button" className="platform-update-quick" onClick={() => { if (!blockedByVariantCodeRules()) startQuickPlatformUpdate() }} disabled={submitting || connections.isLoading} aria-disabled={codeRuleSaveBlock ? true : undefined} title={codeRuleSaveBlock || 'Seçili aktif platformlarda yalnız fiyat ve stoku güncelle'}><span>Hızlı Güncelle</span><UiIcon name="refresh" /></button><button type="button" className="platform-update-settings" onClick={() => { if (!blockedByVariantCodeRules()) openPlatformUpdateDialog() }} disabled={submitting || connections.isLoading} aria-disabled={codeRuleSaveBlock ? true : undefined} aria-label="Platform güncelleme ayarları" title={codeRuleSaveBlock || 'Platform güncelleme ayarları'} aria-haspopup="dialog"><UiIcon name="arrowUp" /></button></div>}<button type="button" onClick={() => { if (!blockedByVariantCodeRules()) setWizardStep(2) }} aria-disabled={codeRuleSaveBlock ? true : undefined} className="product-submit-publish" aria-label="Yayınlamaya Devam Et" title={codeRuleSaveBlock || "Yayınlamaya Devam Et"}><span className="submit-label-long">Yayınlamaya Devam Et</span><span className="submit-label-short">Yayınla</span> <UiIcon name="arrowRight" /></button></div></StickyActionBar>
+    <StickyActionBar label="Ürün kaydetme" className="product-submit-sticky"><div><strong>{editingDraftProduct ? 'Taslak ürün · Kaydet ile satışa açılır' : editProductId ? 'Ürün düzenlemeye hazır' : 'Ürün bilgileri hazır'}</strong><p>{variantRows.length || 1} satış satırı · {selectedChannelIds.length} seçili kanal</p>{codeRuleSaveBlock && <button type="button" className="product-submit-code-block" onClick={goToFirstVariantCodeIssue}><UiIcon name="alert" size={14} /><span>{codeRuleSaveBlock}</span></button>}{pendingFamilyMediaRemovals.length > 0 && <p className="product-submit-family-media-note" role="status"><span>{pendingFamilyMediaRemovals.length} renk ailesi görseli Kaydet’te diğer renklerden de kaldırılacak</span><button type="button" className="product-submit-undo-button" onClick={undoPendingFamilyMediaRemovals} disabled={submitting}>Geri Al</button></p>}</div><div className={`product-submit-actions${codeRuleSaveBlock ? ' is-code-blocked' : ''}`}>{draftSaveAvailable && <button type="submit" name="intent" value="draft" className="secondary product-submit-draft" data-submit-intent="draft" formNoValidate form="product-creation-form" disabled={submitting || Boolean(modelCodeCreateBlock)} title={modelCodeCreateBlock || "Zorunlu alanlar eksik olsa da kaydeder; taslak pazaryerlerine gönderilmez ve stok sayımlarına girmez"}><span className="submit-label-long">Taslak Olarak Kaydet</span><span className="submit-label-short">Taslak</span></button>}{editProductId ? <button type="submit" name="intent" value="save" className="secondary" data-submit-intent="save" form="product-creation-form" disabled={submitting} aria-disabled={codeRuleSaveBlock ? true : undefined} title={codeRuleSaveBlock || undefined} onClick={event => { if (codeRuleSaveBlock) { event.preventDefault(); blockedByVariantCodeRules() } }}>{submitting ? 'Kaydediliyor…' : 'Kaydet'}</button> : <button type="submit" name="intent" value="create" className="secondary" data-submit-intent="create" form="product-creation-form" disabled={submitting || Boolean(modelCodeCreateBlock)} aria-disabled={codeRuleSaveBlock ? true : undefined} title={modelCodeCreateBlock || codeRuleSaveBlock || undefined} onClick={event => { if (codeRuleSaveBlock) { event.preventDefault(); blockedByVariantCodeRules() } }}>{submitting ? 'Oluşturuluyor…' : 'Ürünü Oluştur'}</button>}{editProductId && !editingDraftProduct && <div className="platform-update-split" role="group" aria-label="Platform güncelleme"><button type="button" className="platform-update-quick" onClick={() => { if (!blockedByVariantCodeRules()) startQuickPlatformUpdate() }} disabled={submitting || connections.isLoading} aria-disabled={codeRuleSaveBlock ? true : undefined} title={codeRuleSaveBlock || 'Sağdaki ayarda kaydedilen bilgileri seçili platformlara pencere açmadan gönderir (ayar yoksa fiyat ve stok)'}><span>Hızlı Güncelle</span><UiIcon name="refresh" /></button><button type="button" className="platform-update-settings" onClick={() => { if (!blockedByVariantCodeRules()) openPlatformUpdateDialog() }} disabled={submitting || connections.isLoading} aria-disabled={codeRuleSaveBlock ? true : undefined} aria-label="Platform güncelleme ayarları" title={codeRuleSaveBlock || 'Platform güncelleme ayarları'} aria-haspopup="dialog"><UiIcon name="arrowUp" /></button></div>}<button type="button" onClick={() => { if (!blockedByVariantCodeRules()) setWizardStep(2) }} aria-disabled={codeRuleSaveBlock ? true : undefined} className="product-submit-publish" aria-label="Yayınlamaya Devam Et" title={codeRuleSaveBlock || "Yayınlamaya Devam Et"}><span className="submit-label-long">Yayınlamaya Devam Et</span><span className="submit-label-short">Yayınla</span> <UiIcon name="arrowRight" /></button></div></StickyActionBar>
     {/* A save or validation error is already a feedback toast in the column; this one is only for what failed to load. */}
     {!error && <ErrorToast title="Ürün Bilgileri Yüklenemedi" error={categories.error ?? brands.error ?? connections.error} />}
     {barcodePasteMenuOpen && <VariantHeaderActionMenu anchorRef={barcodePasteActionRef} label="Barkod işlemleri">
@@ -3873,7 +3881,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     {platformUpdateDialogOpen && <PlatformUpdateDialog
       targets={productUpdateTargets}
       selectedIds={platformUpdateConnectionIds}
-      onSelectedIdsChange={changePlatformUpdateStores}
+      onSelectedIdsChange={setPlatformUpdateConnectionIds}
       fields={platformUpdatePreferences.fields}
       onFieldsChange={fields => changePlatformUpdatePreferences({ ...platformUpdatePreferences, fields })}
       openGroups={platformUpdatePreferences.openGroups}
@@ -3881,7 +3889,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       submitting={submitting}
       familyReach={platformUpdateFamilyReach}
       onClose={() => setPlatformUpdateDialogOpen(false)}
-      onConfirm={confirmPlatformUpdate} />}
+      onSave={savePlatformUpdateChoice} />}
     {lightboxImage && <ImageLightboxModal image={lightboxImage} onClose={() => setLightboxImage(null)} />}
     {variantMediaModal && <VariantMediaPickerModal
       mode={variantMediaModal.mode}

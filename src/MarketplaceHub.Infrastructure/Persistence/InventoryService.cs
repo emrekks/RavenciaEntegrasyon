@@ -320,7 +320,7 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
                 return ServiceResult<Guid>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Stok dış yazma akışı kapalı.", 422);
         }
         if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Fiyat-stok gönderimi yalnız test ya da canlı mağaza bağlantısında yapılabilir.", 422);
-        if (!WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+        if (PanelWritesBlocked(connection) is { } blocked) return blocked;
         // A PTT AVM send from the panel also needs the connection's "Manuel Dış Yazmalar" switch (MANUAL_WRITE).
         if (PttAvmManualWritePolicy.Applies(connection.PlatformCode))
         {
@@ -401,7 +401,7 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
     }
 
     // price/stock: what "Platformlarda Güncelle" picked; both by default. The part not picked is held (left out of the
-    // request, not recorded as sent). The write policies are checked as before, whatever was picked.
+    // request, not recorded as sent). Manual: only the general external-write gate applies, whatever was picked.
     public async Task<ServiceResult<Guid>> EnqueueProductPriceInventorySyncAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, bool price = true, bool stock = true)
     {
         if (!price && !stock) return ServiceResult<Guid>.Fail("PRICE_INVENTORY_FIELDS_REQUIRED", "Fiyat veya stoktan en az biri seçilmelidir.", 422);
@@ -412,13 +412,10 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && ((x.PlatformCode == "TRENDYOL" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11") && x.Status == "ACTIVE" || x.PlatformCode == "PAZARAMA" && (x.Status == "ACTIVE" || x.Status == "VERIFIED")), cancellationToken);
         if (connection is null) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Ürüne özel fiyat-stok gönderimi için ACTIVE Trendyol, Hepsiburada veya N11 ya da aktif/doğrulanmış Pazarama bağlantısı gerekir.", 422);
         if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Fiyat-stok gönderimi yalnız test ya da canlı mağaza bağlantısında yapılabilir.", 422);
-        if (!WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
-        // A Pazarama send started from the panel is manual, as its single-variant send: the connection switch is the gate,
-        // the automatic price/stock policies are not. Its price and stock are built together (the composer refuses one alone).
-        var manual = connection.PlatformCode == "PAZARAMA";
-        var pricePolicy = await db.ConnectionSyncPolicies.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == MarketplaceExternalWritePolicies.Price, cancellationToken);
-        if (!manual && pricePolicy is not null && !pricePolicy.Enabled) return ServiceResult<Guid>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Fiyat dış yazma akışı kapalı.", 422);
-        if (!manual && !await StockWritePolicyAllowsAsync(tenantId, connectionId, cancellationToken)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Stok dış yazma akışı kapalı.", 422);
+        // A send the owner starts on a product is manual on every marketplace (PanelPriceStockSendPolicy): the general
+        // external-write gate decides, the automatic price/stock policies (PRICE_WRITE, STOCK_WRITE) do not, and the job
+        // carries Manual so the worker asks none of them either. Pazarama builds its price and stock together.
+        if (PanelWritesBlocked(connection) is { } blocked) return blocked;
         var build = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, productId: productId, holdPrice: !price, holdStock: !stock);
         if (!build.Succeeded) return ServiceResult<Guid>.Fail(build.Error!.Code, build.Error.Message, build.Error.Status, build.Error.FieldErrors);
         var draft = build.Value!;
@@ -429,9 +426,8 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
         if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
         var id = Guid.CreateVersion7();
         var now = timeProvider.GetUtcNow();
-        var payload = JsonSerializer.Serialize(new PriceInventoryJobPayload(id, connectionId, "SUBMIT", draft.PayloadHash, draft.PayloadJson, draft.Lines, null, null, null, productId, manual, Trigger: PriceStockSendTriggers.PanelSend, HoldPrice: !price, HoldStock: !stock));
-        var writeDelay = pricePolicy is null || manual ? 0 : Math.Clamp(pricePolicy.IntervalSeconds, 0, 86_400);
-        db.IntegrationJobs.Add(new IntegrationJob { Id = id, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.PriceInventorySync, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{Hash(idempotencyKey.Trim())}", Priority = JobPriorityPolicy.ForUser(MarketplaceJobTypes.PriceInventorySync), TriggerType = "user", Status = JobStatus.Pending, AvailableAt = now.AddSeconds(writeDelay), MaxAttempts = 10, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
+        var payload = JsonSerializer.Serialize(new PriceInventoryJobPayload(id, connectionId, "SUBMIT", draft.PayloadHash, draft.PayloadJson, draft.Lines, null, null, null, productId, Manual: true, Trigger: PriceStockSendTriggers.PanelSend, HoldPrice: !price, HoldStock: !stock));
+        db.IntegrationJobs.Add(new IntegrationJob { Id = id, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.PriceInventorySync, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{Hash(idempotencyKey.Trim())}", Priority = JobPriorityPolicy.ForUser(MarketplaceJobTypes.PriceInventorySync), TriggerType = "user", Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 10, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<Guid>.Ok(id);
     }
@@ -465,11 +461,11 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
         return null;
     }
 
-    private bool WritesEnabled(string settingsJson)
+    // The general external-write gate of a send the owner starts, with a message naming the switch that blocks.
+    private ServiceResult<Guid>? PanelWritesBlocked(PlatformConnection connection)
     {
-        if (!configuration.GetValue<bool>("FeatureFlags:ExternalWrites")) return false;
-        try { using var document = JsonDocument.Parse(settingsJson); return document.RootElement.TryGetProperty("ExternalWritesEnabled", out var enabled) && enabled.ValueKind == JsonValueKind.True; }
-        catch (JsonException) { return false; }
+        var decision = PanelPriceStockSendPolicy.Decide(configuration.GetValue<bool>("FeatureFlags:ExternalWrites"), StockProjectionOutbox.StoredExternalWritesEnabled(connection.SettingsJson));
+        return decision == PanelPriceStockSendDecision.Allowed ? null : ServiceResult<Guid>.Fail(PanelPriceStockSendPolicy.BlockedCode, PanelPriceStockSendPolicy.Message(decision, connection.DisplayName), 422);
     }
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
 

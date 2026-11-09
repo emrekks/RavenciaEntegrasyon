@@ -687,16 +687,16 @@ function IntegrationDetailWorkspace({ id, inline = false, onClose, onSwitch }: {
        ]
      : item.platformCode === 'N11'
      ? [
-         { key: 'automatic-external-writes', label: 'Otomatik Dış Yazmalar', resourceTypes: ['PRICE_WRITE', 'STOCK_WRITE'], description: 'Açıkken paneldeki N11 fiyatı ve stok değişikliklerini N11’e otomatik gönderir. Kapalıyken bu güncellemeler N11’e aktarılmaz.' },
+         { key: 'automatic-external-writes', label: 'Otomatik Dış Yazmalar', resourceTypes: ['PRICE_WRITE', 'STOCK_WRITE'], description: 'Açıkken paneldeki N11 fiyatı ve stok değişikliklerini N11’e otomatik gönderir. Kapalıyken sistem bu güncellemeleri kendiliğinden göndermez; ürün ekranından elle başlattığınız güncelleme (Hızlı Güncelle, Platformlarda Güncelle) bu ayardan bağımsızdır, yalnız dış yazma anahtarı açık olmalıdır.' },
          { key: 'manual-external-writes', label: 'Manuel Dış Yazmalar', resourceTypes: ['SHIPMENT_WRITE', 'RETURN_WRITE'], description: 'Açıkken panelden başlattığınız sipariş işleme alma, paket bölme ve iade onaylarını N11’e gönderir. İade reddi N11 satıcı panelinden yapılır. Kapalıyken bu işlemler N11’e aktarılmaz.' }
        ]
      : item.platformCode === 'HEPSIBURADA'
      ? [
-         { key: 'automatic-external-writes', label: 'Otomatik Dış Yazmalar', resourceTypes: ['PRICE_WRITE', 'STOCK_WRITE'], description: 'Açıkken paneldeki fiyat ve stok değişikliklerini Hepsiburada’ya otomatik gönderir. Kapalıyken bu güncellemeler Hepsiburada’ya aktarılmaz.', capabilityCodes: ['PRICE_WRITE', 'INVENTORY_WRITE'] },
+         { key: 'automatic-external-writes', label: 'Otomatik Dış Yazmalar', resourceTypes: ['PRICE_WRITE', 'STOCK_WRITE'], description: 'Açıkken paneldeki fiyat ve stok değişikliklerini Hepsiburada’ya otomatik gönderir. Kapalıyken sistem bu güncellemeleri kendiliğinden göndermez; ürün ekranından elle başlattığınız güncelleme (Hızlı Güncelle, Platformlarda Güncelle) bu ayardan bağımsızdır, yalnız dış yazma anahtarı açık olmalıdır.', capabilityCodes: ['PRICE_WRITE', 'INVENTORY_WRITE'] },
          { key: 'manual-external-writes', label: 'Manuel Dış Yazmalar', resourceTypes: ['SHIPMENT_WRITE', 'RETURN_WRITE'], description: 'Açıkken panelden başlattığınız kargo, etiket, paket ve iade işlemlerini Hepsiburada’ya gönderir. Kapalıyken bu işlemler dış platforma aktarılmaz.', capabilityCodes: ['SHIPMENT_WRITE', 'RETURN_WRITE'] }
        ]
      : [
-         { key: 'automatic-external-writes', label: 'Otomatik Dış Yazmalar', resourceTypes: ['PRICE_WRITE', 'STOCK_WRITE'], description: `Açıkken paneldeki fiyat ve stok değişikliklerini ${externalWriteTo} otomatik gönderir. Kapalıyken bu güncellemeler ${externalWriteTo} aktarılmaz.` },
+         { key: 'automatic-external-writes', label: 'Otomatik Dış Yazmalar', resourceTypes: ['PRICE_WRITE', 'STOCK_WRITE'], description: `Açıkken paneldeki fiyat ve stok değişikliklerini ${externalWriteTo} otomatik gönderir. Kapalıyken sistem bu güncellemeleri kendiliğinden göndermez; ürün ekranından elle başlattığınız güncelleme (Hızlı Güncelle, Platformlarda Güncelle) bu ayardan bağımsızdır, yalnız dış yazma anahtarı açık olmalıdır.` },
          { key: 'manual-external-writes', label: 'Manuel Dış Yazmalar', resourceTypes: ['SHIPMENT_WRITE', 'RETURN_WRITE'], description: `Açıkken panelden başlattığınız kargo, etiket ve iade kararlarını ${externalWriteTo} gönderir. Kapalıyken bu işlemler dış platforma aktarılmaz.` }
        ]
   const syncPolicyCategories: Array<{ key: string; label: string; resourceTypes: string[]; kind?: 'external-write-parent'; description?: string }> = [

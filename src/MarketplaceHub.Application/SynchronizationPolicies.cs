@@ -617,6 +617,31 @@ public static class AutomaticPriceStockWriteGate
     public const string BaselineWarning = "Kapalıyken yapılan değişiklikler pazaryerine gönderilmedi. Açmadan önce pazaryerlerindeki stok ve fiyatları güncellemenizi öneririz.";
 }
 
+public enum PanelPriceStockSendDecision { Allowed, GlobalWritesOff, ConnectionWritesOff }
+
+// Owner, 9 Nov 2026: a price/stock send the owner starts on a product (Platformlarda Güncelle, Hızlı Güncelle) is a
+// manual write, not an automatic one. It needs only the general external-write gate (the server's switch and the
+// connection's "Dış Yazma Ana Anahtarı"); the automatic price/stock policies (PRICE_WRITE, STOCK_WRITE, "Otomatik Dış
+// Yazmalar") govern only what the system sends on its own and stay closed by the owner's choice. The job carries
+// Manual, so the worker asks no automatic policy either (PriceInventoryOutboxPolicy.RequiredWritePolicies).
+public static class PanelPriceStockSendPolicy
+{
+    public const string BlockedCode = "EXTERNAL_WRITES_DISABLED";
+
+    public static PanelPriceStockSendDecision Decide(bool globalWritesEnabled, bool connectionWritesEnabled) =>
+        !globalWritesEnabled ? PanelPriceStockSendDecision.GlobalWritesOff
+        : !connectionWritesEnabled ? PanelPriceStockSendDecision.ConnectionWritesOff
+        : PanelPriceStockSendDecision.Allowed;
+
+    // Names the switch that blocks and where it is turned on; never the automatic switch, which a manual send ignores.
+    public static string Message(PanelPriceStockSendDecision decision, string? connectionName) => decision switch
+    {
+        PanelPriceStockSendDecision.GlobalWritesOff => "Sunucudaki genel dış yazma anahtarı (FeatureFlags:ExternalWrites) kapalı; elle başlatılan fiyat-stok gönderimi de yapılamaz. Bu anahtar sunucu ayarlarından açılır.",
+        PanelPriceStockSendDecision.ConnectionWritesOff => $"{(string.IsNullOrWhiteSpace(connectionName) ? "Bu" : connectionName.Trim())} bağlantısında Dış Yazma Ana Anahtarı kapalı. Entegrasyonlar sayfasında bağlantının Dış Yazma Akışları bölümünden açılır; otomatik fiyat-stok yazması kapalı kalabilir.",
+        _ => string.Empty
+    };
+}
+
 public enum OrderFreshnessDecision { Send, SendAfterTimeout, Wait }
 
 // Owner decision C: the panel is the absolute stock master and every marketplace takes absolute numbers. A stock change
