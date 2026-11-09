@@ -54,7 +54,11 @@ public sealed class OperationsRealtimeBroadcaster(IServiceScopeFactory scopes, I
                                 eventId = x.Id,
                                 resource = x.ResourceType,
                                 operation = x.OperationType,
+                                aggregateType = x.AggregateType,
                                 aggregateId = x.AggregateId,
+                                // A job's new status lets the panel refresh the job screens at once only for what needs
+                                // the user's eye (failed, manual review...) and throttle the rest.
+                                status = JobEventStatus(x),
                                 version = x.AggregateVersion,
                                 occurredAt = x.CreatedAt
                             }).ToArray();
@@ -119,6 +123,20 @@ public sealed class OperationsRealtimeBroadcaster(IServiceScopeFactory scopes, I
                 logger.LogWarning(exception, "Realtime outbox dispatcher döngüsü başarısız oldu");
             }
         }
+    }
+
+    // The status a job event's payload names (JobLeaseService.NewJobEvent, JobOperationsService); null for other events.
+    internal static string? JobEventStatus(MarketplaceHub.Domain.IntegrationOutboxEvent outboxEvent)
+    {
+        if (outboxEvent.AggregateType != "IntegrationJob" || string.IsNullOrEmpty(outboxEvent.PayloadJson)) return null;
+        try
+        {
+            using var payload = System.Text.Json.JsonDocument.Parse(outboxEvent.PayloadJson);
+            return payload.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object
+                && payload.RootElement.TryGetProperty("status", out var status)
+                && status.ValueKind == System.Text.Json.JsonValueKind.String ? status.GetString() : null;
+        }
+        catch (System.Text.Json.JsonException) { return null; }
     }
 
     private static async Task MarkFailedAsync(AppDbContext db, Guid[] ids, DateTimeOffset now, Exception exception, CancellationToken cancellationToken)

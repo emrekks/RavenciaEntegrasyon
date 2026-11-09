@@ -15,31 +15,26 @@ import { ApiRequestError } from './shared/api'
 import { installSheetSwipeClose } from './shared/sheet-swipe'
 import { persistQuerySnapshot, restoreQuerySnapshot } from './shared/query-snapshot'
 
-// Phone and tablet rules for the main-bundle screens live in their own file, linked for small
-// screens only, so desktop never applies them and the main CSS budget stays as it is.
-const responsiveLink = document.createElement('link')
-responsiveLink.rel = 'stylesheet'
-responsiveLink.href = responsiveStylesheet
-responsiveLink.media = '(max-width: 1024px)'
-document.head.appendChild(responsiveLink)
-// The phone spacing scale (gutter, gaps, block padding) for every page and window, phones only.
-const phoneSpacingLink = document.createElement('link')
-phoneSpacingLink.rel = 'stylesheet'
-phoneSpacingLink.href = phoneSpacingStylesheet
-phoneSpacingLink.media = '(max-width: 760px)'
-document.head.appendChild(phoneSpacingLink)
-// Tablet layout for the shell and the operations pages (761-1024 px only).
-const tabletOpsLink = document.createElement('link')
-tabletOpsLink.rel = 'stylesheet'
-tabletOpsLink.href = tabletOpsStylesheet
-tabletOpsLink.media = '(min-width: 761px) and (max-width: 1024px)'
-document.head.appendChild(tabletOpsLink)
-// Tablet layout of the catalog pages (Ürünler, product editor, Eşleştirmeler, Entegrasyonlar, Ayarlar), tablets only.
-const tabletCatalogLink = document.createElement('link')
-tabletCatalogLink.rel = 'stylesheet'
-tabletCatalogLink.href = tabletCatalogStylesheet
-tabletCatalogLink.media = '(min-width: 761px) and (max-width: 1024px)'
-document.head.appendChild(tabletCatalogLink)
+// Phone and tablet rules for the main-bundle screens live in their own files, linked for small screens only, so desktop
+// never applies them and the main CSS budget stays as it is. The build links them from index.html (vite.config.ts,
+// link-screen-stylesheets) so a phone has them before the first paint; the dev server has no such links and gets them
+// here. Media queries (the same in vite.config.ts): responsive, phones and tablets; the phone spacing scale (gutter,
+// gaps, block padding), phones only; the shell and operations tablet layout and the catalog pages' tablet layout
+// (Ürünler, product editor, Eşleştirmeler, Entegrasyonlar, Ayarlar), 761-1024 px only.
+if (!document.querySelector('link[data-screen-stylesheet]')) {
+  for (const [href, media] of [
+    [responsiveStylesheet, '(max-width: 1024px)'],
+    [phoneSpacingStylesheet, '(max-width: 760px)'],
+    [tabletOpsStylesheet, '(min-width: 761px) and (max-width: 1024px)'],
+    [tabletCatalogStylesheet, '(min-width: 761px) and (max-width: 1024px)'],
+  ]) {
+    const link = document.createElement('link')
+    link.rel = 'stylesheet'
+    link.href = href
+    link.media = media
+    document.head.appendChild(link)
+  }
+}
 
 // A preload of the next screen's code failed (an older build is running after a deploy): load the new build.
 window.addEventListener('vite:preloadError', event => { if (reloadForNewBuild()) event.preventDefault() })

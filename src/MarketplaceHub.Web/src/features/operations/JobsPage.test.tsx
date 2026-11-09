@@ -196,11 +196,11 @@ describe('JobsPage detail actions', () => {
 })
 
 describe('JobsPage cursor paging', () => {
-  it('loads the first server page and the next one on demand', async () => {
+  it('loads a first server page of 50 and the next one on demand', async () => {
     await renderPage()
 
     expect(rowCount()).toBe(2)
-    expect(pageRequests().every(params => params.get('after') === null && params.get('limit') === '200')).toBe(true)
+    expect(pageRequests().every(params => params.get('after') === null && params.get('limit') === '50')).toBe(true)
     expect(container.textContent).toContain('2 kayıt yüklendi, daha eskileri var')
 
     await act(async () => { button('Daha Fazla Yükle')!.click() })
@@ -249,7 +249,7 @@ describe('JobsPage cursor paging', () => {
     await renderPage()
     const listQuery = () => client.getQueryCache().findAll({ queryKey: ['jobs', 'page'] }).at(-1)!
     const interval = () => ((listQuery().options as { refetchInterval: (query: unknown) => unknown }).refetchInterval)(listQuery())
-    expect(interval()).toBe(15_000)
+    expect(interval()).toBe(30_000)
 
     await act(async () => { button('Daha Fazla Yükle')!.click() })
     await settle()

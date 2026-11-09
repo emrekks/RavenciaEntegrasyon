@@ -55,6 +55,29 @@ describe('operations realtime connection', () => {
     release()
   })
 
+  it('loads the SignalR client after rendering and throttles routine job refreshes', async () => {
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    render(view(true, client))
+    await flush()
+    const connection = hub.connections[0] as unknown as { on: ReturnType<typeof vi.fn> }
+    const handler = connection.on.mock.calls.find(([name]) => name === 'operationsChanged')![1] as (message: unknown) => void
+    const jobRefreshes = () => invalidate.mock.calls.filter(([filters]) => (filters?.queryKey as unknown[] | undefined)?.[0] === 'jobs').length
+    let id = 0
+    const routine = () => handler({ resources: ['jobs'], events: [{ eventId: `e${id++}`, resource: 'jobs', aggregateType: 'IntegrationJob', aggregateId: 'j1', status: 'LEASED' }] })
+    routine()
+    await vi.advanceTimersByTimeAsync(300)
+    expect(jobRefreshes()).toBe(1)
+    for (let step = 0; step < 10; step++) { routine(); await vi.advanceTimersByTimeAsync(1000) }
+    expect(jobRefreshes()).toBe(1)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(jobRefreshes()).toBe(2)
+    // A failed job is shown at once.
+    handler({ resources: ['jobs'], events: [{ eventId: 'dead', resource: 'jobs', aggregateType: 'IntegrationJob', aggregateId: 'j2', status: 'DEAD' }] })
+    await vi.advanceTimersByTimeAsync(300)
+    expect(jobRefreshes()).toBe(3)
+  })
+
   it('connects again when it is switched off and on (signing in after the session ended)', async () => {
     const client = new QueryClient()
     const { rerender } = render(view(true, client))
