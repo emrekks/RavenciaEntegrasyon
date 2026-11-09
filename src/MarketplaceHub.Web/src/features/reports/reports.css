@@ -570,8 +570,8 @@ html body .app-shell.stitch-shell main .reports-page .reports-filters :is(.pf-tr
 .app-shell.stitch-shell main .reports-page .reports-hover-tip.reports-hover-tip.reports-hover-tip > b { color: var(--rv-color-ink); font-weight: 600; }
 /* An explanation opens from the round "?" beside its name (or the keyboard focus on the name), not from the whole row. */
 .app-shell.stitch-shell main .reports-page .reports-tip-host:has(.reports-qmark:hover, :focus-visible) > .reports-hover-tip { opacity: 1; visibility: visible; transform: none; }
-.app-shell.stitch-shell main .reports-page .reports-qmark { flex: none; display: inline-block; width: 15px; height: 15px; margin-left: 6px; vertical-align: -3px; color: var(--rv-color-ink); cursor: help; transition: color 140ms ease; }
-.app-shell.stitch-shell main .reports-page .reports-qmark:hover { color: var(--rv-color-primary); }
+.app-shell.stitch-shell main .reports-page .reports-qmark { flex: none; display: inline-block; width: 16px; height: 16px; margin-left: 4px; vertical-align: top; color: var(--rv-color-muted); cursor: default; transition: color 140ms ease; }
+.app-shell.stitch-shell main .reports-page .reports-qmark:hover { color: var(--rv-color-ink); }
 .app-shell.stitch-shell main .reports-page .reports-tip-trigger { display: block; min-width: 0; max-width: 100%; min-height: 0; height: auto; margin: 0; padding: 0; overflow: hidden; color: inherit; font: inherit; text-align: left; text-decoration: none; text-overflow: ellipsis; text-transform: none; letter-spacing: 0; white-space: nowrap; background: transparent; border: 0; border-radius: 4px; box-shadow: none; cursor: default; }
 .app-shell.stitch-shell main .reports-page .reports-tip-trigger:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
 .app-shell.stitch-shell main .reports-page .reports-overview .reports-card-bridge { grid-template-rows: auto 1fr auto; }
@@ -707,7 +707,7 @@ html body .app-shell.stitch-shell main .reports-page .reports-filters :is(.pf-tr
 .app-shell.stitch-shell main .reports-page .reports-hero-badge { flex: none; color: var(--rv-color-muted); font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .app-shell.stitch-shell main .reports-page .reports-hero-badge.is-warn { color: var(--rv-color-warning); }
 .app-shell.stitch-shell main .reports-page .reports-hero { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-width: 0; container-type: inline-size; min-height: 35px; }
-.app-shell.stitch-shell main .reports-page .reports-hero-value { flex: none; min-width: 0; min-height: 0; margin: 0; padding: 0; color: inherit; font: inherit; text-align: left; text-transform: none; letter-spacing: 0; background: none; border: 0; box-shadow: none; cursor: help; }
+.app-shell.stitch-shell main .reports-page .reports-hero-value { flex: none; min-width: 0; min-height: 0; margin: 0; padding: 0; color: inherit; font: inherit; text-align: left; text-transform: none; letter-spacing: 0; background: none; border: 0; box-shadow: none; cursor: default; }
 .app-shell.stitch-shell main .reports-page .reports-hero-value strong { display: block; color: var(--rv-color-ink); font-size: min(30px, 62cqi / (var(--chars, 1) * .6)); font-weight: 600; line-height: 1.15; letter-spacing: -.02em; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .app-shell.stitch-shell main .reports-page .reports-hero-value strong.is-warn, .app-shell.stitch-shell main .reports-page .reports-hero-row strong.is-warn { color: var(--rv-color-warning); }
 .app-shell.stitch-shell main .reports-page .reports-hero-value strong.is-bad, .app-shell.stitch-shell main .reports-page .reports-hero-row strong.is-bad { color: var(--rv-color-danger); }
@@ -1144,7 +1144,7 @@ main .rr.rr.reports-payout-filters .rr-trigger:disabled { opacity: .5; cursor: n
    cards get a little less padding so the day names fit. */
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .reports-page .reports-kpis .reports-kpi-label { position: relative; display: block; width: fit-content; max-width: 100%; padding-right: 20px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .app-shell.stitch-shell main .reports-page .reports-kpis .reports-kpi-label > .reports-qmark { position: absolute; top: 50%; right: 0; margin: 0; translate: 0 -50%; }
+  .app-shell.stitch-shell main .reports-page .reports-kpis .reports-kpi-label > .reports-qmark { position: absolute; top: 0; right: 0; margin: 0; }
   .app-shell.stitch-shell main .reports-page .reports-time-days button { padding: 8px; }
   .app-shell.stitch-shell main .reports-page .reports-time-days span { font-size: 11.5px; }
 }
