@@ -193,7 +193,8 @@ MaxRetentionSec=30day
 - `Clear-Site-Data: "cache"` yalnızca `/api/v1/auth/*` 401 yanıtlarına eklenir.
 - `/api/*` ve `/hubs/*` yanıtları sıkıştırılmaz (BREACH sınıfı); statik dosyalar ve SPA kabuğu
   zstd/gzip ile sıkıştırılmaya devam eder. Tek istisna (9 Kasım 2026, hız planı P4): `GET /api/v1/products`,
-  `/api/v1/products/{id}` ve `/api/v1/catalog/categories/{id}/attribute-requirements` yalnız panelin kendi
+  `/api/v1/products/{id}`, `/api/v1/catalog/categories/{id}/attribute-requirements` ve pazaryeri referans listeleri
+  (`/api/v1/reference-data/categories…`, `…/attribute-values`, `/api/v1/mappings/attribute-values/batch`; 10 Kasım) yalnız panelin kendi
   isteklerinde (`Sec-Fetch-Site: same-origin`) sıkıştırılır. Bu gövdelerde jeton, oturum değeri ya da taşıyıcı bağlantı
   yok, arama terimi geri yansıtılmaz (imleç şifreli); başka sitenin başlattığı istek sıkıştırılmadığından saldırgan
   BREACH'in gerektirdiği istekleri yaptıramaz. Siparişler/faturalar (taşıyıcı fatura bağlantıları), `/auth/*`,

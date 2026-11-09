@@ -22,7 +22,7 @@ http://127.0.0.1:8081 {
   @compressible_catalog {
     method GET
     header Sec-Fetch-Site same-origin
-    path_regexp ^/api/v1/(products(/[0-9a-fA-F-]{36})?|catalog/categories/[0-9a-fA-F-]{36}/attribute-requirements)$
+    path_regexp ^/api/v1/(products(/[0-9a-fA-F-]{36})?|catalog/categories/[0-9a-fA-F-]{36}/attribute-requirements|mappings/attribute-values/batch|reference-data/categories(/[A-Za-z0-9._-]{1,128}/(attribute-values|attributes(/[A-Za-z0-9._-]{1,256}/values)?))?)$
   }
   encode @compressible_catalog zstd gzip
   header {

@@ -26,7 +26,9 @@ http://127.0.0.1:8081 {
 	# Exception (speed plan P4, 9 Nov 2026): three large catalog reads, compressed only for the panel's own fetches.
 	# BREACH needs a secret and attacker-chosen input in the same compressed body, and the attacker must make the
 	# victim's browser send many such requests while watching their sizes. Here:
-	#   - the bodies carry no secret: GET /products, /products/{id} and the category attribute requirements hold
+	#   - the bodies carry no secret: GET /products, /products/{id}, the category attribute requirements and the
+	#     marketplace reference lists (categories, attributes, values, value mappings; public marketplace data and the
+	#     tenant's own mappings) hold
 	#     catalog data only (pictures are session-only /files/ links or marketplace CDN addresses, the paging cursor is
 	#     DataProtection-encrypted, the search term is never echoed); no CSRF token, session value or bearer link;
 	#   - Sec-Fetch-Site same-origin: a request another site starts (link, image, form, top-level navigation, which
@@ -37,7 +39,7 @@ http://127.0.0.1:8081 {
 	@compressible_catalog {
 		method GET
 		header Sec-Fetch-Site same-origin
-		path_regexp ^/api/v1/(products(/[0-9a-fA-F-]{36})?|catalog/categories/[0-9a-fA-F-]{36}/attribute-requirements)$
+		path_regexp ^/api/v1/(products(/[0-9a-fA-F-]{36})?|catalog/categories/[0-9a-fA-F-]{36}/attribute-requirements|mappings/attribute-values/batch|reference-data/categories(/[A-Za-z0-9._-]{1,128}/(attribute-values|attributes(/[A-Za-z0-9._-]{1,256}/values)?))?)$
 	}
 	encode @compressible_catalog zstd gzip
 	header {
