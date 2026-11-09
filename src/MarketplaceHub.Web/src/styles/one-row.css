@@ -64,3 +64,10 @@
    (12 − 3) keep the inner pill concentric with the 36 px frame. */
 :root:root:root body .app-shell.stitch-shell main .rr .rr-seg { box-sizing: border-box; height: 36px; padding: 3px; align-items: stretch; }
 :root:root:root body .app-shell.stitch-shell main .rr .rr-seg > button { height: 28px; min-height: 0; border-radius: 9px; }
+
+/* Sidebar above page content (owner, 9 Nov 2026): while the hover-expanded sidebar closes, the pointer lands on a
+   summary card, whose row lifts itself to z-index 90 for its tooltip, and the closing sidebar slid under it. The sidebar
+   now sits at 95: above page rows, tabs and tooltips (≤ 90), below windows (1000) and toasts. */
+@media (min-width: 761px) {
+  :root:root body .app-shell.stitch-shell > aside { z-index: calc(var(--rv-z-tooltip) + 5); }
+}
