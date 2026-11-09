@@ -1122,7 +1122,7 @@ function ModelOwnPrice({ rows, picks, onPick }: { rows: CommissionTariffRow[]; p
   const tiersHit = [...new Set(banded.map(choice => choice.tier))].sort()
   const lefts = banded.flatMap(choice => choice.remaining === null ? [] : [choice.remaining])
   return <div className={`commission-own${price !== null && shared.every(value => value === price) ? ' is-picked' : ''}`}>
-    <input type="text" inputMode="decimal" placeholder="Tüm bedenlere fiyat" value={text} aria-label={`${rows[0]?.productName ?? 'Model'} için tüm bedenlere kendi fiyatın`}
+    <input type="text" inputMode="decimal" placeholder="Fiyat Gir" value={text} aria-label={`${rows[0]?.productName ?? 'Model'} için tüm bedenlere kendi fiyatın`}
       onChange={event => { setText(event.target.value); onPick(parse(event.target.value)) }} />
     {text.trim() !== '' && (banded.length ? <small>{tiersHit.map(tier => `${tier}.`).join(', ')} fiyat aralığı · {rows.length} beden<b>{lefts.length ? `${amountRange(lefts)} Kâr` : 'Maliyet girilmemiş'}</b>{banded.length < rows.length && <span className="commission-warn">{rows.length - banded.length} beden hiçbir fiyat aralığına düşmüyor</span>}</small> : <small className="commission-warn">Hiçbir fiyat aralığına düşmüyor</small>)}
   </div>

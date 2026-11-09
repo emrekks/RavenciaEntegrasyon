@@ -48,17 +48,17 @@
 :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.is-week) .commission-choice > .commission-switch { align-self: end; }
 /* Promosyon plan table (owner, 9 Nov 2026: "yana kayabilir burası sıkıştığında, barların gaplerini dengele"): it never
    squeezes. Every column keeps a readable width (Ürün 216 px with the picture beside its name, Güncel Fiyat 132 px on one
-   line, a band column 180 px, Kendi Fiyatın 164 px so "Tüm bedenlere fiyat" fits) and a window narrower than the table's
-   1266 px scrolls it sideways inside its frame. The band cards take their content height from the top of the cell with the
+   line, a band column 180 px, Kendi Fiyatın 148 px around a centred 120 px input) and a window narrower than the table's
+   1250 px scrolls it sideways inside its frame. The band cards take their content height from the top of the cell with the
    same 8 px around them, 6 px between their lines and the same gap from card to card. */
 @media (min-width: 761px) {
-  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) { min-width: 1266px; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) { min-width: 1250px; }
   :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) tbody th { box-sizing: border-box; width: 216px; min-width: 216px; max-width: 216px; padding: 12px 10px; }
   :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) .commission-now-col { box-sizing: border-box; width: 132px; min-width: 132px; padding-inline: 8px; }
   :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan .commission-now-col .commission-price { white-space: nowrap; }
   :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.is-week):not(.promotion-table) tbody td:not(.commission-expand):not(.commission-now-col) { box-sizing: border-box; min-width: 180px; height: auto; padding: 8px; vertical-align: top; }
-  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.is-week):not(.promotion-table) tbody td:not(.commission-expand):not(.commission-now-col):has(.commission-own) { min-width: 164px; }
-  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.is-week):not(.promotion-table) .commission-own { width: 100%; min-width: 0; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.is-week):not(.promotion-table) tbody td:not(.commission-expand):not(.commission-now-col):has(.commission-own) { min-width: 148px; vertical-align: middle; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.is-week):not(.promotion-table) .commission-own { justify-items: center; width: 100%; min-width: 0; }
   :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.is-week):not(.promotion-table) .commission-choice { box-sizing: border-box; width: 100%; min-width: 0; height: auto; align-content: start; gap: 6px; padding: 12px 10px; }
   :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.is-week):not(.promotion-table) .commission-choice > :is(strong, span, b, .unit-profit-badge) { margin: 0; }
   :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.is-week):not(.promotion-table) .commission-choice > .commission-switch { align-self: stretch; margin-top: 0; }
@@ -103,3 +103,14 @@
 :root:root body .app-shell.stitch-shell main .attribute-variant-action > div > small { width: auto; }
 :root:root body .app-shell.stitch-shell main .attribute-variant-action .variant-auto-barcode-toggle { width: auto; margin: 0; gap: 8px; }
 :root:root body .app-shell.stitch-shell main .attribute-variant-action .variant-auto-barcode-toggle strong { font-size: 14px; font-weight: 500; }
+
+/* Promosyon plan table (owner, 9 Nov 2026): the Kendi Fiyatın input is 120 px wide and centred in its column, its text
+   centred; every header label starts where its column's content starts (Ürün 10 px like the product cell, Güncel Fiyat
+   8 px, a band header 19 px = cell 8 + card border 1 + card padding 10), the ↕ mark 6 px after the label. */
+@media (min-width: 761px) {
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.is-week):not(.promotion-table) .commission-own input { width: 120px; max-width: 100%; text-align: center; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.is-week):not(.promotion-table) .commission-own small { justify-self: stretch; text-align: center; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.is-week):not(.promotion-table) thead th:nth-child(2) { padding-inline: 10px; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.is-week):not(.promotion-table) thead th:nth-child(n+4):nth-child(-n+7) { padding-inline: 19px 8px; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.is-week):not(.promotion-table) thead th:last-child { padding-inline: 8px; text-align: center; }
+}
