@@ -16,6 +16,17 @@ html body .app-shell.stitch-shell main .product-add-steptabs > button .rv-tab-la
 html body .app-shell.stitch-shell main .product-add-steptabs .rv-step-num { display: inline-grid; box-sizing: border-box; width: 20px; height: 20px; flex: none; place-items: center; color: var(--rv-color-muted); background: var(--rv-color-surface-soft, #22222a); border: 1px solid var(--rv-color-border-strong); border-radius: 50%; font-size: 11.5px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
 html body .app-shell.stitch-shell main .product-add-steptabs > button.is-active .rv-step-num { color: #fff; background: var(--rv-color-primary); border-color: transparent; }
 html body .app-shell.stitch-shell main .product-add-steptabs > button > .rv-tab-label > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* The steps were 13.5 px text on 20 px numbers in a 48 px bar, smaller than the cards under them: 15 px text on 26 px
+   numbers in 56 px tabs (owner, 9 Nov 2026). */
+html body .app-shell.stitch-shell main .rv-tabs.rv-view-tabs.product-add-steptabs { height: auto !important; min-height: 58px !important; max-height: none !important; padding: 0 10px; }
+html body .app-shell.stitch-shell main .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.product-add-steptabs > button { height: 56px !important; min-height: 56px !important; max-height: 56px; padding: 0 18px !important; font-size: 15px; }
+html body .app-shell.stitch-shell main .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.product-add-steptabs > button.is-active { font-weight: 600 !important; }
+html body .app-shell.stitch-shell main .product-add-steptabs.product-add-steptabs .rv-step-num { width: 26px; height: 26px; font-size: 13px; }
+html body .app-shell.stitch-shell main .product-add-steptabs.product-add-steptabs > button .rv-tab-label { gap: 12px; }
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell main .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.product-add-steptabs > button { height: 48px !important; min-height: 48px !important; max-height: 48px; padding: 0 12px !important; font-size: 14px; }
+  html body .app-shell.stitch-shell main .product-add-steptabs.product-add-steptabs .rv-step-num { width: 22px; height: 22px; font-size: 12px; }
+}
 
 /* Promosyon: the four tariff pages as tabs; on a phone the row scrolls sideways (the rv-view-tabs strip rule). */
 html body .app-shell.stitch-shell main .promotion-page-tabs { min-width: 0; }

@@ -78,19 +78,19 @@ describe('order row marks', () => {
   })
 })
 
-// The buyer kind by the invoice's rule, on every marketplace: one tag, its tone, the reason as the tooltip.
+// The buyer kind by the invoice's rule, on every marketplace: one tag and its tone, with no tooltip.
 describe('buyer type tag', () => {
   it.each([
     ['Individual', 'Pazaryeri bireysel olarak işaretledi', 'Bireysel', 'rr-buyer-individual'],
     ['Corporate', 'Vergi numarası var', 'Kurumsal', 'rr-buyer-corporate'],
     ['CorporateTaxIdMissing', 'Şirket adı var, vergi numarası yok — fatura kesilirken sorulacak', 'Kurumsal · Vergi No Yok', 'rr-buyer-missing'],
-  ])('shows %s as its label with the reason', (kind, reason, label, tone) => {
+  ])('shows %s as its label without a tooltip', (kind, reason, label, tone) => {
     const { host } = render(<BuyerTypeTag buyerType={{ kind, reason }} />)
     const tag = host.querySelector('.rr-buyer-tag')
     expect(tag?.textContent).toBe(label)
     expect(tag?.classList.contains(tone)).toBe(true)
-    expect(tag?.getAttribute('title')).toBe(`${label}: ${reason}`)
-    expect(tag?.getAttribute('data-tip')).toBe(`${label}: ${reason}`)
+    expect(tag?.hasAttribute('title')).toBe(false)
+    expect(tag?.hasAttribute('data-tip')).toBe(false)
     expect(buyerTypeLabel(kind)).toBe(label)
   })
 

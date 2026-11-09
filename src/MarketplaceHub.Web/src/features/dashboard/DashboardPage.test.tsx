@@ -91,7 +91,7 @@ describe('DashboardPage', () => {
     const cancel = Array.from(container.querySelectorAll<HTMLAnchorElement>('a.rr-opcard')).find(item => item.querySelector('small')?.textContent?.startsWith('İptal'))!
     expect(cancel.querySelector('strong')?.textContent).toBe('2')
     expect(cancel.getAttribute('href')).toBe('/orders?status=CANCELLED&cancelFrom=2026-11-01&cancelTo=2026-11-01')
-    expect(Array.from(cancel.querySelectorAll('.rr-bd-r')).map(row => row.textContent)).toEqual(['Trendyol2 sipariş · 1 kısmi · 4 adet', 'Hepsiburada · Zamanı Bilinmiyor1 sipariş · 3 adet'])
+    expect(Array.from(cancel.querySelectorAll('.rr-bd-r')).map(row => row.textContent)).toEqual(['Trendyol2 sipariş · 1 kısmi', 'Hepsiburada · Zamanı Bilinmiyor1 sipariş'])
   })
 
   it('shows unread cancellations as unknown, not 0', async () => {

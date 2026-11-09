@@ -248,14 +248,16 @@ export function DashboardPage() {
   const cancelTotal = (pick: (row: CancellationRow) => number) => (cancelled ?? []).reduce((total, row) => total + pick(row), 0)
   // Whole cancellations are the card's number under "İptal"; orders left open with fewer products follow as
   // "N Kısmi İptal" only when there are some. Cancellations whose time the marketplace does not give are listed apart.
+  // A store's row says how many orders were cancelled whole and how many in part, the part that is 0 left out; the
+  // cancelled units are not shown (owner, 9 Nov 2026: the orders matter, not their products).
   const partialCancels = cancelTotal(row => row.partialOrders)
   const cancelLabel = cancelled && partialCancels ? `İptal · ${count(partialCancels)} Kısmi İptal` : 'İptal'
   const cancelRows: BreakdownRow[] = (cancelled ?? []).flatMap(row => {
     const name = store(row.connectionId)?.displayName ?? 'Kaldırılmış mağaza', code = store(row.connectionId)?.platformCode ?? ''
     const known = row.cancelledOrders + row.partialOrders
     return [
-      ...(known ? [{ key: row.connectionId, code, name, value: [`${count(row.cancelledOrders)} sipariş`, ...(row.partialOrders ? [`${count(row.partialOrders)} kısmi`] : []), `${count(row.cancelledUnits)} adet`].join(' · ') }] : []),
-      ...(row.unknownTimeOrders ? [{ key: `${row.connectionId}-unknown`, code, name: `${name} · Zamanı Bilinmiyor`, value: `${count(row.unknownTimeOrders)} sipariş · ${count(row.unknownTimeUnits)} adet` }] : []),
+      ...(known ? [{ key: row.connectionId, code, name, value: [...(row.cancelledOrders ? [`${count(row.cancelledOrders)} sipariş`] : []), ...(row.partialOrders ? [`${count(row.partialOrders)} kısmi`] : [])].join(' · ') }] : []),
+      ...(row.unknownTimeOrders ? [{ key: `${row.connectionId}-unknown`, code, name: `${name} · Zamanı Bilinmiyor`, value: `${count(row.unknownTimeOrders)} sipariş` }] : []),
     ]
   })
   const dueSoon = knownCount(invoiceSummary.isLoading, invoiceSummary.data?.dueSoonCount)

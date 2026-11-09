@@ -44,6 +44,12 @@
    over a 32 px gap the button keeps just left of its toggle; pressing the icon never changes the selection. */
 .publish-platform-card-top { position: relative; }
 .publish-platform-card-head.has-refresh { grid-template-columns: 42px minmax(0, 1fr) 32px auto; }
+/* The card's header kept no room above the logo and the name, and its note took the button's 16 px: 14 px above and
+   below, the name 15 px and the note 12.5 px (owner, 9 Nov 2026: "sıkışma var"). */
+.app-shell.stitch-shell main .publish-platform-card > .publish-platform-card-top > .publish-platform-card-head,
+.app-shell.stitch-shell main .publish-platform-card > .publish-platform-card-head { box-sizing: border-box; height: auto; min-height: 70px; padding: 14px 16px; line-height: 1.3; }
+.app-shell.stitch-shell main .publish-platform-card .publish-platform-card-head strong { font-size: 15px; font-weight: 600; line-height: 1.3; }
+.app-shell.stitch-shell main .publish-platform-card .publish-platform-card-head small { font-size: 12.5px; line-height: 1.35; }
 .publish-platform-head-gap { width: 32px; height: 32px; }
 .app-shell.stitch-shell main .publish-platform-card-refresh, .publish-platform-card-refresh {
   position: absolute; top: 50%; right: calc(var(--rv-space-4, 16px) + 38px + var(--rv-space-3, 12px)); display: grid; box-sizing: border-box;
