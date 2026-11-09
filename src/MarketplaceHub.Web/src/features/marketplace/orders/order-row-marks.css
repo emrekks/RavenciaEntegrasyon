@@ -32,3 +32,6 @@ tbody > tr:first-child .rr-omark[data-tip]:is(:hover, :focus)::after { top: calc
    each other (owner, 9 Nov 2026). */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ordercell .rr-on-no { column-gap: 4px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ordercell .rr-on-no > .rr-icon-btn { margin-inline: -5px; }
+/* "Alıcı: Name [Bireysel]" in the order cell: the tag 6 px from the name and centred on its line (it touched the name and
+   sat on the text's baseline, owner 9 Nov 2026). */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-ordercell small.rr-buyer-inline > .rr-buyer-tag { margin: -2px 0 0 6px; vertical-align: middle; line-height: 1; }
