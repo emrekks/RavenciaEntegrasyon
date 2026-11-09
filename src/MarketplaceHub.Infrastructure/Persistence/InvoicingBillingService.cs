@@ -176,10 +176,75 @@ public sealed partial class InvoicingBillingService(
         }).Where(x => x is not null).Select(x => x!).ToList();
     }
 
+    // The menu counters of Faturalar (every open panel page asks, ~3,150 times a day on live in Nov 2026). The full scan
+    // reads every candidate package with its order, invoice, delivery and return state, so its result is kept per tenant
+    // while nothing it reads changed (WorkspaceSummaryStampAsync), at most WorkspaceSummaryCacheLifetime. What is kept
+    // does not depend on the clock: the uninvoiced count and the delivery times of the packages still waiting for an
+    // invoice, from which the due-soon count is taken at each request, so it moves with time exactly as before.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, WorkspaceSummaryCacheEntry> WorkspaceSummaryCache = new();
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, SemaphoreSlim> WorkspaceSummaryGates = new();
+    internal static readonly TimeSpan WorkspaceSummaryCacheLifetime = TimeSpan.FromMinutes(5);
+
     public async Task<InvoiceWorkspaceSummaryView> WorkspaceSummaryAsync(Guid tenantId, CancellationToken cancellationToken)
     {
+        var stamp = await WorkspaceSummaryStampAsync(tenantId, cancellationToken);
+        if (WorkspaceSummaryCache.TryGetValue(tenantId, out var cached) && cached.IsCurrent(stamp)) return cached.View(timeProvider.GetUtcNow());
+        var gate = WorkspaceSummaryGates.GetOrAdd(tenantId, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            // A request that waited behind an identical one takes its answer.
+            if (WorkspaceSummaryCache.TryGetValue(tenantId, out cached) && cached.IsCurrent(stamp)) return cached.View(timeProvider.GetUtcNow());
+            var (uninvoiced, awaitingDeliveredAt) = await ScanWorkspaceSummaryAsync(tenantId, cancellationToken);
+            var entry = new WorkspaceSummaryCacheEntry(DateTimeOffset.UtcNow, stamp, uninvoiced, awaitingDeliveredAt);
+            if (WorkspaceSummaryCache.Count > 1000) WorkspaceSummaryCache.Clear();
+            WorkspaceSummaryCache[tenantId] = entry;
+            return entry.View(timeProvider.GetUtcNow());
+        }
+        finally { gate.Release(); }
+    }
+
+    // Everything the summary scan reads, in one round trip. The tenant's own rows that carry a change time give the
+    // stamp at once after a panel action (an invoice, a hidden package, a hand-set status, a connection setting); the
+    // server's write counters of every table the scan reads (pg_stat_user_tables, flushed within about a second) also
+    // catch the rows without one (order lines, package allocations, return lines, delivery attempts) and any bulk update.
+    private async Task<string> WorkspaceSummaryStampAsync(Guid tenantId, CancellationToken cancellationToken)
+    {
+        string[] tables =
+        [
+            "sales.orders", "sales.order_lines", "sales.shipment_packages", "sales.package_line_allocations", "sales.return_claims",
+            "sales.return_lines", "billing.invoices", "billing.marketplace_delivery_states", "billing.marketplace_deliveries",
+            "iam.tenant_settings", "integration.platform_connections"
+        ];
+        var stamps = await db.Database.SqlQuery<string>($"""
+            SELECT concat_ws('|',
+                (SELECT count(*) || ':' || coalesce(max("UpdatedAt")::text, '') || ':' || coalesce(sum("Version"), 0) FROM sales.shipment_packages WHERE "TenantId" = {tenantId}),
+                (SELECT count(*) || ':' || coalesce(max("UpdatedAt")::text, '') || ':' || coalesce(sum("Version"), 0) FROM sales.orders WHERE "TenantId" = {tenantId}),
+                (SELECT count(*) || ':' || coalesce(max("UpdatedAt")::text, '') FROM sales.return_claims WHERE "TenantId" = {tenantId}),
+                (SELECT count(*) || ':' || coalesce(max("UpdatedAt")::text, '') || ':' || coalesce(sum("Version"), 0) FROM billing.invoices WHERE "TenantId" = {tenantId}),
+                (SELECT count(*) || ':' || coalesce(max("UpdatedAt")::text, '') || ':' || coalesce(sum("Version"), 0) FROM billing.marketplace_delivery_states WHERE "TenantId" = {tenantId}),
+                (SELECT count(*) || ':' || coalesce(max("UpdatedAt")::text, '') || ':' || coalesce(sum("Version"), 0) FROM iam.tenant_settings WHERE "TenantId" = {tenantId}),
+                (SELECT count(*) || ':' || coalesce(sum("Version"), 0) FROM integration.platform_connections WHERE "TenantId" = {tenantId}),
+                (SELECT coalesce(sum(n_tup_ins + n_tup_upd + n_tup_del), 0)::text FROM pg_stat_user_tables WHERE (schemaname || '.' || relname) = ANY({tables}))) AS "Value"
+            """).ToListAsync(cancellationToken);
+        return stamps.Single();
+    }
+
+    private sealed record WorkspaceSummaryCacheEntry(DateTimeOffset At, string Stamp, int Uninvoiced, DateTimeOffset[] AwaitingDeliveredAt)
+    {
+        public bool IsCurrent(string stamp) => Stamp == stamp && DateTimeOffset.UtcNow - At < WorkspaceSummaryCacheLifetime;
+
+        // Due soon: delivered, still waiting for an invoice, and InvoiceReminderStartDays past its delivery now.
+        public InvoiceWorkspaceSummaryView View(DateTimeOffset now) =>
+            new(AwaitingDeliveredAt.Count(deliveredAt => now >= deliveredAt.AddDays(DashboardMetricPolicy.InvoiceReminderStartDays)), Uninvoiced);
+    }
+
+    // The full count: the uninvoiced packages, and the delivery times of the delivered packages waiting for an invoice
+    // (hidden packages are not pending work on either).
+    private async Task<(int Uninvoiced, DateTimeOffset[] AwaitingDeliveredAt)> ScanWorkspaceSummaryAsync(Guid tenantId, CancellationToken cancellationToken)
+    {
         var workspaceConnections = await ReadWorkspaceConnectionsAsync(tenantId, cancellationToken);
-        if (workspaceConnections.Count == 0) return new(0);
+        if (workspaceConnections.Count == 0) return (0, []);
 
         var hiddenSetting = await db.TenantSettings.AsNoTracking()
             .SingleOrDefaultAsync(setting => setting.TenantId == tenantId && setting.Key == "invoice-workspace-hidden-packages", cancellationToken);
@@ -188,7 +253,7 @@ public sealed partial class InvoicingBillingService(
             : JsonSerializer.Deserialize<HashSet<Guid>>(hiddenSetting.ValueJson) ?? [];
 
         var now = timeProvider.GetUtcNow();
-        var dueSoonCount = 0;
+        var awaitingDeliveredAt = new List<DateTimeOffset>();
         var uninvoicedCount = 0;
         WorkspaceScanCursor? cursor = null;
         while (true)
@@ -202,14 +267,13 @@ public sealed partial class InvoicingBillingService(
                     && IsWorkspaceInvoiceUninvoiced(candidate.InvoiceStatus, candidate.CanCreateInvoice, HasMarketplaceInvoiceObservation(candidate))) uninvoicedCount++;
                 if (!hiddenPackageIds.Contains(candidate.Package.Id)
                     && candidate.Package.Status == ShipmentPackageStatus.Delivered
-                    && now >= candidate.Package.StatusOccurredAt.AddDays(DashboardMetricPolicy.InvoiceReminderStartDays)
-                    && MarketplaceSalesService.IsAwaitingInvoiceLabel(candidate.InvoiceStatus)) dueSoonCount++;
+                    && MarketplaceSalesService.IsAwaitingInvoiceLabel(candidate.InvoiceStatus)) awaitingDeliveredAt.Add(candidate.Package.StatusOccurredAt);
             }
             var last = candidates[^1];
             cursor = new(last.Package.StatusOccurredAt, last.Package.Id);
         }
 
-        return new(dueSoonCount, uninvoicedCount);
+        return (uninvoicedCount, awaitingDeliveredAt.ToArray());
     }
 
     public async Task<ServiceResult<Guid>> EnqueueOrderInvoiceReconciliationAsync(
