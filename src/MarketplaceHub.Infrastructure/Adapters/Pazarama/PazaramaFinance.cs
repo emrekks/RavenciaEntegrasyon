@@ -88,14 +88,10 @@ public static class PazaramaFinanceMapper
         return new(transactions.OrderBy(x => x.TransactionDate).ToList(), invoices, skipped);
     }
 
-    // "2026-04-05T00:00:00": Turkey time without an offset, stored as UTC.
-    public static DateTimeOffset? Instant(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return null;
-        return DateTime.TryParse(value.Trim(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var local)
-            ? new DateTimeOffset(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), TimeSpan.FromHours(3)).ToUniversalTime()
-            : null;
-    }
+    // "2026-04-05T00:00:00": Turkey time without an offset, stored as UTC. A text with Z or an offset (Pazarama writes
+    // both elsewhere: "…Z", "…+03:00") keeps its instant: DateTime.TryParse turned it into the server's local wall
+    // clock first, which on the UTC server put it three hours early.
+    public static DateTimeOffset? Instant(string? value) => TurkeyTime.Parse(value);
 
     private static string? Text(JsonElement element, string property)
     {

@@ -1,6 +1,3 @@
-using System.Globalization;
-using System.Text;
-
 namespace MarketplaceHub.Application;
 
 public static class CatalogColorMappingPolicy
@@ -30,16 +27,6 @@ public static class CatalogColorMappingPolicy
         return Fallbacks.TryGetValue(key, out var values) ? values : [];
     }
 
-    private static string Normalize(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return "";
-        var form = value.Trim().Normalize(NormalizationForm.FormD);
-        var builder = new StringBuilder(form.Length);
-        foreach (var character in form)
-        {
-            if (CharUnicodeInfo.GetUnicodeCategory(character) == UnicodeCategory.NonSpacingMark) continue;
-            if (char.IsLetterOrDigit(character)) builder.Append(char.ToUpperInvariant(character));
-        }
-        return builder.ToString();
-    }
+    // The shared catalog key folds dotless ı to I ("Fıstık" and "Yavruağzı" would otherwise miss the table).
+    private static string Normalize(string? value) => CatalogKeyNormalizer.Key(value).Replace("-", "", StringComparison.Ordinal);
 }
