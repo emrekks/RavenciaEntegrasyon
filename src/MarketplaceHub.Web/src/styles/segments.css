@@ -31,3 +31,10 @@ html body .app-shell.stitch-shell main .ss-page .rv-tabs.rv-tabs.rv-tabs.rv-tabs
   box-sizing: border-box !important; height: 28px !important; min-height: 0 !important; max-height: 28px !important; padding-block: 0 !important; border-radius: 9px !important;
   font-size: 12.5px !important; font-weight: 500 !important; line-height: 1 !important;
 }
+/* Options that hold a label and a count: centre both on the option's own centre line (the old rule baseline-aligned them
+   inside a 30 px line-height, which left them at the top once the option became 28 px). The data-text ::after only
+   reserves the bold width. */
+:root:root:root:root:root body .jobs-category-segment > button { display: inline-flex; align-items: center; justify-content: center; line-height: 1; }
+:root:root:root:root:root body .jobs-category-segment .jobs-category-segment-label { display: inline-grid; align-items: center; line-height: 1; }
+:root:root:root:root:root body .jobs-category-segment .jobs-category-segment-label::after { height: 0; overflow: hidden; visibility: hidden; line-height: 0; }
+:root:root:root:root:root body .jobs-category-segment .jobs-category-segment-count { line-height: 1; }
