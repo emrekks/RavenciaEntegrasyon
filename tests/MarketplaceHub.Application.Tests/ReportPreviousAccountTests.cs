@@ -33,6 +33,8 @@ public sealed class ReportPreviousAccountTests
         Assert.Equal(30m, account.Commission.EstimatedCommission);
         Assert.Equal(80m, account.Cost.CostTotal);
         Assert.Equal(1m, account.Cost.Coverage);
+        // Maliyeti Olan Ciro counts like Toplam Ciro: the two units' sale, 200.
+        Assert.Equal(200m, account.Cost.CostedSales);
         Assert.Equal("estimate", account.Costs.Source);
         // The period's own figures are untouched by the previous period's.
         Assert.Equal(0m, report.Commission.EstimatedCommission);
