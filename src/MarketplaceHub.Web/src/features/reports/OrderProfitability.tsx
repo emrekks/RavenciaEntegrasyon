@@ -40,16 +40,16 @@ function summaryKpis(data: OrderProfitPage): Kpi[] {
     ? [{ key, label, value, format: orders, tone: 'warn', icon: 'alertTriangle', note: 'kârı hesaplanmaz', tip }] : []
   return [
     { key: 'orders', label: 'Sipariş', value: data.totalCount, format: count, icon: 'orders', note: `${count(data.profitOrders)} siparişin kârı bilinir`,
-      tip: 'Seçilen dönemde ve aramada listelenen siparişler.\nKârı bilinen siparişler, ürün maliyeti, komisyonu ve kargosu bilinenlerdir.' },
+      tip: 'Seçili dönemde ve aramada listelenen siparişler. Kârı bilinenler, maliyeti, komisyonu ve kargosu bilinenlerdir.' },
     { key: 'amount', label: 'Sipariş Tutarı', value: data.amount, format: money, icon: 'lira', note: data.totalCount > 0 ? `sipariş başına ${money(data.amount / data.totalCount)}` : undefined,
-      tip: 'Listelenen siparişlerin toplam tutarı.\nSipariş başına: toplam tutar ÷ sipariş sayısı.' },
+      tip: 'Listelenen siparişlerin toplam tutarı.' },
     { key: 'profit', label: 'Siparişlerin Kârı', value: data.profit, format: money, icon: 'wallet', tone: profitTone, note: 'reklam ve cezalar hariç',
-      tip: 'Kârı bilinen siparişlerin toplam kârı.\nSiparişe bağlı olmayan kesintiler (reklam, ceza…) hariç; Kârlılık\'taki Net Kâr bunları da düşer.' },
+      tip: 'Kârı bilinen siparişlerin toplam kârı; siparişe bağlı olmayan reklam ve cezalar düşülmez.' },
     { key: 'margin', label: 'Kâr Marjı', value: data.margin, format: value => percent(value), icon: 'percent', note: `${money(data.profitAmount)} tutar üzerinden`,
-      tip: 'Siparişlerin kârının tutarına oranı.\nSiparişlerin kârı ÷ kârı bilinen siparişlerin tutarı.' },
-    ...missing('cost', 'Maliyeti Eksik', data.missingCost, 'Ürün maliyeti girilmemiş siparişler.\nBu siparişlerin kârı hesaplanmaz; maliyeti ürün kartından girin.'),
-    ...missing('cargo', 'Kargosu Bilinmeyen', data.missingCargo, 'Kargo faturası gelmemiş ve tarifeyle tahmin edilemeyen siparişler.\nBu siparişlerin kârı hesaplanmaz.'),
-    ...missing('commission', 'Komisyonu Eksik', data.missingCommission ?? 0, 'Siparişte ve mağazanın bu dönemdeki satışlarında komisyon oranı yok.\nBu siparişlerin kârı hesaplanmaz.')
+      tip: 'Kârı bilinen siparişlerin kârının, aynı siparişlerin tutarına oranı.' },
+    ...missing('cost', 'Maliyeti Eksik', data.missingCost, 'Ürün maliyeti girilmemiş siparişler; kârları hesaplanmaz.'),
+    ...missing('cargo', 'Kargosu Bilinmeyen', data.missingCargo, 'Kargo faturası gelmeyen ve tarifeyle tahmin edilemeyen siparişler; kârları hesaplanmaz.'),
+    ...missing('commission', 'Komisyonu Eksik', data.missingCommission ?? 0, 'Komisyon oranı bilinmeyen siparişler; kârları hesaplanmaz.')
   ]
 }
 export const stateText: Record<OrderProfit['state'], string | null> = { SOLD: null, PARTLY_RETURNED: 'Kısmi İade', RETURNED: 'İade' }
