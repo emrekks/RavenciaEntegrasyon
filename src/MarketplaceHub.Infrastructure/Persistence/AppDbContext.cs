@@ -225,6 +225,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         // entries first so the enumeration is not invalidated by that append.
         foreach (var entry in ChangeTracker.Entries().Where(x => x.State is EntityState.Added or EntityState.Modified).ToList())
         {
+            // A row whose only change is a "last checked" time is still saved, but the screens have nothing new to show.
+            if (SyncNoOpWrites.IsCheckOnly(entry)) continue;
             var change = OutboxChange(entry.Entity);
             if (change is null || !existing.Add((change.Value.ResourceType, change.Value.AggregateType, change.Value.AggregateId))) continue;
             var now = _timeProvider.GetUtcNow();

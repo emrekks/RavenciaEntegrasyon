@@ -29,7 +29,7 @@ using Xunit.Abstractions;
 namespace MarketplaceHub.Application.Tests;
 
 [Collection("postgres-integration")]
-public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixture fixture, ITestOutputHelper output) : IClassFixture<PostgreSqlTenantIsolationFixture>
+public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixture fixture, ITestOutputHelper output) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
     // Products imported before desi was read are preserved on the next import (updateExistingProducts off); their
     // empty desi is still filled from the marketplace, while a desi entered locally stays.
