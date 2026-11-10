@@ -221,6 +221,18 @@ export function QuestionsPage() {
   const countQuery = (path: string) => ({ queryKey: ['questions', 'count', path], queryFn: () => hubPoll<QuestionListPage>(path).then(result => result.totalCount), refetchInterval: 120_000, staleTime: 10_000 })
   const statusCounts = useQueries({ queries: statusFilters.map(item => ({ ...countQuery(countPath(kind, item.value, true)), enabled: tab !== 'TEMPLATES' })) })
   const waitingCounts = useQueries({ queries: (['PRODUCT', 'ORDER'] as const).map(countKind => countQuery(countPath(countKind, 'WAITING', false))) })
+  // The list and the chosen status's count ask the same question but were polled two minutes apart, so a question that
+  // arrived or was answered in between showed "Cevap Bekleyenler 1" over an empty list. The list's total is the newer
+  // answer: it becomes the count (the picker, its menu and, unfiltered, the tab share that cache entry), and a count
+  // that moves on first makes the list read again.
+  const shownCountPath = countPath(kind, status, true)
+  const shownCountIndex = statusFilters.findIndex(item => item.value === status)
+  const listTotal = questions.isSuccess && !questions.isPlaceholderData ? questions.data.totalCount : undefined
+  const listUpdatedAt = questions.dataUpdatedAt
+  useEffect(() => { if (listTotal !== undefined) client.setQueryData(['questions', 'count', shownCountPath], listTotal) }, [client, shownCountPath, listTotal, listUpdatedAt])
+  const shownCount = shownCountIndex >= 0 ? statusCounts[shownCountIndex]?.data : undefined
+  const refetchList = questions.refetch
+  useEffect(() => { if (shownCount !== undefined && listTotal !== undefined && shownCount !== listTotal) void refetchList() }, [shownCount]) // eslint-disable-line react-hooks/exhaustive-deps -- only a changed count reads the list again
   const formatCount = (value: number | undefined) => value === undefined ? undefined : value.toLocaleString('tr-TR')
   const templates = useQuery({ queryKey: ['question-templates'], queryFn: () => hubApi<Template[]>('/question-templates'), staleTime: 30_000 })
   const syncStates = useQuery({ queryKey: ['questions', 'sync-state'], queryFn: () => hubPoll<SyncState[]>('/questions/sync-state'), refetchInterval: 60_000 })

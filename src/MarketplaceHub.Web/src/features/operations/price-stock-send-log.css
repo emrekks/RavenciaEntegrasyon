@@ -61,6 +61,8 @@
 @media (max-width: 760px) {
   /* The search takes the toolbar's width, Yenile beside it (the job list's toolbar rules stack it under the counts). */
   .app-shell.stitch-shell main .jobs-reference-page .psl-table-scroll { overflow: visible; background: transparent; border: 0; }
+  /* İşi Aç is a 36px control on phones (28px on desktop rows). */
+  .app-shell.stitch-shell main .jobs-reference-page .psl-job-link { height: 36px; }
   .app-shell.stitch-shell main .jobs-reference-page .psl-table,
   .app-shell.stitch-shell main .jobs-reference-page .psl-table > tbody { display: block; width: 100%; min-width: 0; }
   .app-shell.stitch-shell main .jobs-reference-page .psl-table > thead { display: none; }

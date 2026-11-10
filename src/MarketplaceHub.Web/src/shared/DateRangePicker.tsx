@@ -34,13 +34,17 @@ export function DateRangePicker({ from, to, onChange, label = 'Tarih Aralığı'
       const left = phone ? Math.max(12, Math.min(bounds.left, viewportWidth - width - 12)) : Math.max(16, Math.min(bounds.left, viewportWidth - width - 16))
       // A phone stacks the presets over the calendar (about 600px): it takes the room it has and scrolls the rest.
       const desiredHeight = Math.min(viewportWidth <= 760 ? 640 : 330, viewportHeight - 32)
-      const spaceBelow = viewportHeight - bounds.bottom - 16
+      // In a phone filter sheet it stops above the sheet's sticky Temizle / Filtrele bar instead of covering it.
+      const sheetBar = phone ? root.current?.closest('.rr-filters, .mfs')?.querySelector<HTMLElement>(':scope > .rr-fbtns, :scope > .mfs-footer') : null
+      const barTop = sheetBar?.getBoundingClientRect().top
+      const bottomEdge = barTop && barTop > bounds.bottom ? Math.min(viewportHeight - 16, barTop - 8) : viewportHeight - 16
+      const spaceBelow = bottomEdge - bounds.bottom
       const spaceAbove = bounds.top - 16
       const openAbove = spaceBelow < desiredHeight && spaceAbove > spaceBelow
       const top = openAbove
         ? Math.max(16, bounds.top - desiredHeight - 7)
         : bounds.bottom + 7
-      const availableHeight = openAbove ? spaceAbove - 7 : viewportHeight - top - 16
+      const availableHeight = openAbove ? spaceAbove - 7 : bottomEdge - top
       return { left, top, maxHeight: Math.max(220, Math.min(desiredHeight, availableHeight)), ...(phone ? { width } : {}) }
     }
   }

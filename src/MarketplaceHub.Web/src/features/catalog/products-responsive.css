@@ -112,12 +112,12 @@
 }
 
 /* Variant table on phones: each variant is two lines, its full option name on top and the two fields of the chosen
-   group under it (Kodlar, Stok · Fiyat, Maliyet or İşlemler, picked from a segmented control above the table); the
+   group under it (Kodlar, Stok · Maliyet, Fiyat · Liste Fiyatı or İşlemler, in the desktop column order, picked from a segmented control above the table); the
    column heads name those two fields and keep their bulk buttons. The option name used to sit in a 90px box and was cut. */
 .app-shell.stitch-shell main .variant-mobile-groups { display: none; }
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .product-add-page .variant-mobile-groups { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 0 0 10px; padding: 3px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; }
-  .app-shell.stitch-shell main .product-add-page .variant-mobile-groups > button { min-width: 0; height: 30px; min-height: 30px; padding: 0 4px; color: var(--rv-color-muted); background: none; border: 0; border-radius: 7px; box-shadow: none; font-size: 12px; font-weight: 500; white-space: nowrap; }
+  .app-shell.stitch-shell main .product-add-page .variant-mobile-groups > button { min-width: 0; height: 36px; min-height: 36px; padding: 0 4px; color: var(--rv-color-muted); background: none; border: 0; border-radius: 7px; box-shadow: none; font-size: 12px; font-weight: 500; white-space: nowrap; }
   .app-shell.stitch-shell main .product-add-page .variant-mobile-groups > button.is-on { color: var(--rv-color-ink); background: var(--rv-color-surface); box-shadow: inset 0 0 0 1px var(--rv-color-border-strong); }
   .app-shell.stitch-shell main .product-add-page .variant-table-editor { overflow-x: visible; }
   .app-shell.stitch-shell main .product-add-page .variant-table-editor :is(.variant-table-head, .variant-table-row) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); min-width: 0; }
@@ -126,15 +126,15 @@
   .app-shell.stitch-shell main .product-add-page .variant-table-editor .variant-table-head > :nth-child(2) { display: none !important; }
   .app-shell.stitch-shell main .product-add-page .variant-table-editor :is(.variant-table-head, .variant-table-row) > :nth-child(1) { display: none !important; }
   .app-shell.stitch-shell main .product-add-page .variant-table-editor.is-mobile-codes :is(.variant-table-head, .variant-table-row) > :is(:nth-child(5), :nth-child(6), :nth-child(7), :nth-child(8), :nth-child(9)),
-  .app-shell.stitch-shell main .product-add-page .variant-table-editor.is-mobile-stock :is(.variant-table-head, .variant-table-row) > :is(:nth-child(3), :nth-child(4), :nth-child(7), :nth-child(8), :nth-child(9)),
-  .app-shell.stitch-shell main .product-add-page .variant-table-editor.is-mobile-cost :is(.variant-table-head, .variant-table-row) > :is(:nth-child(3), :nth-child(4), :nth-child(5), :nth-child(6), :nth-child(9)),
+  .app-shell.stitch-shell main .product-add-page .variant-table-editor.is-mobile-stock :is(.variant-table-head, .variant-table-row) > :is(:nth-child(3), :nth-child(4), :nth-child(6), :nth-child(8), :nth-child(9)),
+  .app-shell.stitch-shell main .product-add-page .variant-table-editor.is-mobile-price :is(.variant-table-head, .variant-table-row) > :is(:nth-child(3), :nth-child(4), :nth-child(5), :nth-child(7), :nth-child(9)),
   .app-shell.stitch-shell main .product-add-page .variant-table-editor.is-mobile-actions :is(.variant-table-head, .variant-table-row) > :is(:nth-child(3), :nth-child(4), :nth-child(5), :nth-child(6), :nth-child(7), :nth-child(8)) { display: none !important; }
   .app-shell.stitch-shell main .product-add-page .variant-table-editor.is-mobile-codes :is(.variant-table-head, .variant-table-row) > :nth-child(3),
   .app-shell.stitch-shell main .product-add-page .variant-table-editor.is-mobile-stock :is(.variant-table-head, .variant-table-row) > :nth-child(5),
-  .app-shell.stitch-shell main .product-add-page .variant-table-editor.is-mobile-cost :is(.variant-table-head, .variant-table-row) > :nth-child(7) { grid-column: 1; }
+  .app-shell.stitch-shell main .product-add-page .variant-table-editor.is-mobile-price :is(.variant-table-head, .variant-table-row) > :nth-child(6) { grid-column: 1; }
   .app-shell.stitch-shell main .product-add-page .variant-table-editor.is-mobile-codes :is(.variant-table-head, .variant-table-row) > :nth-child(4),
-  .app-shell.stitch-shell main .product-add-page .variant-table-editor.is-mobile-stock :is(.variant-table-head, .variant-table-row) > :nth-child(6),
-  .app-shell.stitch-shell main .product-add-page .variant-table-editor.is-mobile-cost :is(.variant-table-head, .variant-table-row) > :nth-child(8) { grid-column: 2; }
+  .app-shell.stitch-shell main .product-add-page .variant-table-editor.is-mobile-stock :is(.variant-table-head, .variant-table-row) > :nth-child(7),
+  .app-shell.stitch-shell main .product-add-page .variant-table-editor.is-mobile-price :is(.variant-table-head, .variant-table-row) > :nth-child(8) { grid-column: 2; }
   .app-shell.stitch-shell main .product-add-page .variant-table-editor.is-mobile-actions :is(.variant-table-head, .variant-table-row) > :nth-child(9) { grid-column: 1 / -1; justify-content: flex-start; text-align: left; }
   .app-shell.stitch-shell main .product-add-page .variant-table-row { min-height: 0; align-items: center; row-gap: 6px; padding-block: 10px; border-bottom: 1px solid var(--rv-color-border); }
   .app-shell.stitch-shell main .product-add-page .variant-table-head { min-height: 40px; font-size: 12px; text-transform: none; letter-spacing: 0; }
@@ -195,9 +195,10 @@
 .app-shell.stitch-shell main .marketplace-pricing-switch > input:checked::before { background: #fff; transform: translateX(16px); }
 .app-shell.stitch-shell main .marketplace-pricing-switch > input:focus-visible { outline: 2px solid color-mix(in srgb, var(--rv-color-primary) 70%, transparent); outline-offset: 2px; }
 
-/* Phones: product form fields are 43px; the save bar sits in the page again instead of sticking to the bottom. */
+/* Phones: product form fields are 36px like the pickers and the Beden Tablosu button beside them (they were 43px and
+   stood 7px taller than their neighbours in the same row); the save bar sits in the page again instead of sticking. */
 @media (max-width: 760px) {
-  .app-shell.stitch-shell main .product-add-page :is(.product-step-grid, .product-identifiers-grid, #marketplace-pricing-panel) :is(input:not([type="checkbox"]):not([type="radio"]), select) { box-sizing: border-box; height: 43px; min-height: 43px; }
+  .app-shell.stitch-shell main .product-add-page :is(.product-step-grid, .product-identifiers-grid, #marketplace-pricing-panel) :is(input:not([type="checkbox"]):not([type="radio"]), select) { box-sizing: border-box; height: 36px; min-height: 36px; padding-block: 0; }
   .app-shell.stitch-shell main .product-add-page .product-submit-sticky.product-submit-sticky { position: static; }
 }
 

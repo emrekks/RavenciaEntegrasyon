@@ -518,6 +518,14 @@ export const filterHasValue = (filter: object) => Object.entries(filter).some(([
 // a grab handle and their title on top; on wider screens the scrim and the head are not shown.
 export const phoneQuery = '(max-width: 760px)'
 export function SheetScrim({ onClose }: { onClose: () => void }) {
+  // Escape closes the sheet too (a tablet with a keyboard), as it does every other sheet and window.
+  const close = useRef(onClose)
+  useEffect(() => { close.current = onClose })
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') close.current() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
   return <span className="commission-sheet-scrim" aria-hidden="true" onClick={event => { event.stopPropagation(); onClose() }} />
 }
 export function SheetHead({ title }: { title: string }) {

@@ -522,7 +522,7 @@
 
   .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-context { padding: 12px 16px; gap: 10px; }
   .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-context select { height: 44px; min-height: 44px; }
-  .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-actions { display: flex; flex-wrap: nowrap; gap: 8px; margin: 0 -16px; padding: 0 16px 2px; overflow-x: auto; overscroll-behavior-x: contain; scroll-padding-inline: 16px; scrollbar-width: none; }
+  .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-actions { display: flex; flex-wrap: nowrap; gap: 8px; margin: 0 calc(-1 * var(--m-pad, 12px)); padding: 0 var(--m-pad, 12px) 2px; overflow-x: auto; overscroll-behavior-x: contain; scroll-padding-inline: var(--m-pad, 12px); scrollbar-width: none; }
   .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-actions::-webkit-scrollbar { display: none; }
   .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-actions > button { flex: none; width: auto; height: 44px; min-height: 44px; padding: 0 14px; overflow: visible; white-space: nowrap; grid-column: auto; }
 
@@ -549,7 +549,11 @@
   .app-shell.stitch-shell main .mapping-advanced-modal .cm-webcolor .web-color-panel-value input { width: 18px; min-width: 18px; height: 18px; }
   .app-shell.stitch-shell main .mapping-advanced-modal .cm-webcolor :is(.cm-webcolor-pick select, .cm-webcolor-actions button) { height: 44px; min-height: 44px; }
   /* The footer sticks to the bottom of the screen while the sheet scrolls. */
-  .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-detail > .cm-foot { position: sticky; right: auto; bottom: 0; left: auto; z-index: 2; height: auto; margin: 16px -16px 0; padding: 10px 16px calc(10px + var(--m-safe-bottom, 0px)); gap: 8px; }
+  .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-detail > .cm-foot { position: sticky; right: auto; bottom: 0; left: auto; z-index: 2; height: auto; margin: 16px calc(-1 * var(--m-pad, 12px)) 0; padding: 10px var(--m-pad, 12px) calc(10px + var(--m-safe-bottom, 0px)); gap: 8px; flex-wrap: wrap; }
+  /* The note ("6 zorunlu alan bekliyor") takes its own line instead of being cut beside the buttons; the two buttons
+     share the line under it. The bleed matches the 12px phone gutter (it was 16px and ran 4px past the screen). */
+  .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-detail > .cm-foot > span:first-child:not(:empty) { flex: 1 0 100%; white-space: normal; }
+  .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-detail > .cm-foot > button { flex: 1 1 0; }
   .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-detail > .cm-foot > span:first-child { flex: 1 1 auto; min-width: 0; overflow: hidden; font-size: 13px; white-space: nowrap; text-overflow: ellipsis; }
   .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-detail > .cm-foot > .cm-grow { display: none; }
   .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-detail > .cm-foot > button { height: 44px; min-height: 44px; padding: 0 14px; }

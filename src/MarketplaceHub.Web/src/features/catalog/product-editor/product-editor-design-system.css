@@ -901,6 +901,8 @@
   /* Kategori Özellikleri: a value list opens as wide as its bar (at least 200px) on the side that keeps it on screen
      (ProductEditorPages picks the side with that width); a fixed 320px list started 148px off the left edge. */
   :root:root:root body .app-shell.stitch-shell main .category-attribute-dropdown > .category-attribute-dropdown-menu { width: 100%; min-width: 200px; max-width: calc(100vw - 24px); }
+  /* Yayınlama: "Aktif Bağlantı" keeps one line in its narrow fact cell (it was cut by 8px): 6px sides instead of 10/8. */
+  .app-shell.stitch-shell main .publish-platform-facts .publish-platform-status.publish-platform-status { padding-inline: 6px; white-space: nowrap; }
 }
 @media (max-width: 760px) {
   .product-options-card .attribute-builder-list + .attribute-variant-action,
@@ -1230,6 +1232,12 @@ html body .app-shell .variant-bulk-edit-modal .variant-bulk-modes > button { hei
   html body .app-shell.stitch-shell main .product-add-page .variant-option-cell { gap: 6px; }
   html body .app-shell.stitch-shell main .product-add-page .variant-option-cell > .variant-option-edit-button { width: 22px; height: 22px; }
   html body .app-shell.stitch-shell main .product-add-page .variant-option-cell > .variant-option-edit-button svg { width: 13px; height: 13px; }
+  /* They keep their 22px look but take a 36px tap through an invisible band around them; the Görsel/HTML buttons
+     (28px inside their 36px switch) take the switch's full height the same way. */
+  html body .app-shell.stitch-shell main .product-add-page :is(.variant-table-head :is(.variant-bulk-edit-trigger, .variant-header-action), .variant-option-cell > .variant-option-edit-button),
+  :root:root:root body .app-shell.stitch-shell main .rich-text-editor-pro .rich-text-mode-switch > button { position: relative; }
+  html body .app-shell.stitch-shell main .product-add-page :is(.variant-table-head :is(.variant-bulk-edit-trigger, .variant-header-action), .variant-option-cell > .variant-option-edit-button)::after { content: ""; position: absolute; inset: -7px; }
+  :root:root:root body .app-shell.stitch-shell main .rich-text-editor-pro .rich-text-mode-switch > button::after { content: ""; position: absolute; inset: -5px -1px; }
 }
 /* Phones: the stuck variant table head touches the top bar (the bar is 62px high there, while --rv-topbar-height
    still says 70px and left an 8px band). */

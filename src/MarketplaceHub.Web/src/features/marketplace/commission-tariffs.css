@@ -453,6 +453,12 @@
   /* in a half-width card the profit badge and Tüm Varyantlarını Seç wrap inside it instead of running past its edge */
   .app-shell.stitch-shell main .commission-tariffs .commission-ruler .commission-choice :is(.unit-profit-badge, .commission-switch) { box-sizing: border-box; width: 100%; max-width: 100%; height: auto; min-height: 24px; white-space: normal; text-align: left; line-height: 1.3; }
   .app-shell.stitch-shell main .commission-tariffs .commission-ruler .commission-choice .unit-profit-badge { flex-wrap: wrap; padding-block: 3px; }
+  /* Two lines at most at 375px (they were three): the badge flows as text so its "›" follows the figures, and the band
+     card is 5px inside so "Tüm Varyantlarını" fits beside its switch. */
+  .app-shell.stitch-shell main .commission-tariffs .commission-ruler > .commission-choice.commission-choice { padding-inline: 5px; }
+  .app-shell.stitch-shell main .commission-tariffs .commission-ruler .commission-choice .unit-profit-badge.unit-profit-badge { display: block; padding-inline: 6px; }
+  .app-shell.stitch-shell main .commission-tariffs .commission-ruler .commission-choice .unit-profit-badge > span { display: inline; margin-left: 3px; }
+  .app-shell.stitch-shell main .commission-tariffs .commission-ruler .commission-choice .commission-switch.commission-switch { gap: 5px; font-size: 11px; }
 }
 
 /* Owner, 8 Nov 2026: "iç gapleri düzenle, çok sıkışık". Desktop plan table: band cards 12 px inside with 6 px between

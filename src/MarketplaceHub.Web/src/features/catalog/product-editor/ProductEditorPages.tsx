@@ -645,7 +645,10 @@ function VariantFilterDropdown({
       if (!trigger) return
       const rect = trigger.getBoundingClientRect()
       const { placement, maxHeight } = placePublishPopover(trigger, 360)
-      setMenuStyle({ position: 'fixed', left: rect.left, right: 'auto', width: rect.width, ...(placement === 'top' ? { top: 'auto', bottom: window.innerHeight - rect.top + 8 } : { top: rect.bottom + 8, bottom: 'auto' }), ...(maxHeight != null ? { maxHeight } : {}) })
+      // As wide as its bar, never under 200px; a list too wide for the room right of the bar ends at the bar's right edge.
+      const width = Math.max(rect.width, 200)
+      const left = rect.left + width > window.innerWidth - 12 ? Math.max(12, rect.right - width) : rect.left
+      setMenuStyle({ position: 'fixed', left, right: 'auto', width, ...(placement === 'top' ? { top: 'auto', bottom: window.innerHeight - rect.top + 8 } : { top: rect.bottom + 8, bottom: 'auto' }), ...(maxHeight != null ? { maxHeight } : {}) })
     }
     place()
     window.addEventListener('resize', place); window.addEventListener('scroll', place, true)
@@ -1287,7 +1290,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const barcodeSkuActionRef = useRef<HTMLDivElement>(null)
   const [barcodePasteMenuOpen, setBarcodePasteMenuOpen] = useState(false)
   // Phones show the option column beside one group of fields at a time; the other columns stay in the grid, hidden.
-  const [variantMobileGroup, setVariantMobileGroup] = useState<'codes' | 'stock' | 'cost' | 'actions'>('stock')
+  const [variantMobileGroup, setVariantMobileGroup] = useState<'codes' | 'stock' | 'price' | 'actions'>('stock')
   const barcodePasteActionRef = useRef<HTMLDivElement>(null)
   const [pendingVariantCodeGeneration, setPendingVariantCodeGeneration] = useState<PendingVariantCodeChange | null>(null)
   const variantRowsRef = useRef(variantRows)
@@ -3733,7 +3736,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         {variantRows.length > 0 && <>
             <div className="variant-table-toolbar"><div className="variant-table-toolbar-actions"><button type="button" className="secondary is-danger variant-clear-button" onClick={clearVariants}><UiIcon name="trash" /> Oluşan Varyantları Temizle</button>{editProductId && <button type="button" className="secondary variant-marketplace-codes-button" onClick={() => setMarketplaceCodesOpen(true)} title="Hepsiburada ve Shopify varyant kodlarını göster"><UiIcon name="externalLink" /> Pazaryeri Kodları</button>}<button type="button" className="secondary variant-media-bulk-button" onClick={openBulkVariantMediaPicker} title="Seçenek değerine görsel ata"><VariantImageIcon /> Seçeneklere Görsel Ata</button></div></div>
         </>}
-            {variantRows.length > 0 && <div className="variant-mobile-groups" role="tablist" aria-label="Görünen varyant alanları">{([['codes', 'Kodlar'], ['stock', 'Stok / Fiyat'], ['cost', 'Maliyet'], ['actions', 'İşlemler']] as const).map(([group, label]) => <button key={group} type="button" role="tab" aria-selected={variantMobileGroup === group} className={variantMobileGroup === group ? 'is-on' : undefined} onClick={() => setVariantMobileGroup(group)}>{label}</button>)}</div>}
+            {variantRows.length > 0 && <div className="variant-mobile-groups" role="tablist" aria-label="Görünen varyant alanları">{([['codes', 'Kodlar'], ['stock', 'Stok / Maliyet'], ['price', 'Fiyat'], ['actions', 'İşlemler']] as const).map(([group, label]) => <button key={group} type="button" role="tab" aria-selected={variantMobileGroup === group} className={variantMobileGroup === group ? 'is-on' : undefined} onClick={() => setVariantMobileGroup(group)}>{label}</button>)}</div>}
             {variantCodeIssueSummary && <div className="variant-code-rule-notice" role="status">
               <span className="variant-code-rule-notice-icon" aria-hidden="true"><UiIcon name="alert" size={16} /></span>
               <div className="variant-code-rule-notice-text">

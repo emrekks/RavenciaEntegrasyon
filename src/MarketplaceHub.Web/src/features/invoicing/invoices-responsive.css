@@ -391,3 +391,13 @@
   .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order .order-reference-platform { min-width: 0; width: auto; }
   .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order .invoice-order-number { flex-wrap: nowrap; white-space: nowrap; }
 }
+
+/* Phones, invoice detail facts (two per row): a long state ("Pazaryerinde Mevcut, Eşleşmedi") wraps inside its badge
+   instead of ending in "…", and the fiscal number keeps one line (it broke after "…779" by 0.6px). */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-modal .invoice-detail-summary-facts .badge { max-width: 100%; height: auto; min-height: 24px; overflow: visible; text-overflow: clip; white-space: normal; text-align: left; }
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-modal .invoice-detail-summary-facts > div > strong { overflow-wrap: break-word; letter-spacing: -.01em; }
+}
+/* Dark theme: the carrier logos are dark text on a transparent picture; a light plate keeps "trendyol express" readable
+   in the invoice detail. */
+html[data-theme="dark"] .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-modal .invoice-detail-cargo .cargo-provider-icon { box-sizing: content-box; padding: 3px 6px; background: #f4f4f6; border-radius: 7px; }

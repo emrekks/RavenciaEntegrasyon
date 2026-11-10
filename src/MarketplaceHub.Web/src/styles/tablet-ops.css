@@ -120,12 +120,16 @@
   html body .app-shell.stitch-shell main .reports-page .reports-period-row > .reports-segmented { grid-column: 1 / -1; margin-bottom: 6px; }
   html body .app-shell.stitch-shell main .reports-page .reports-filters > .reports-field { min-width: 0; }
   html body .app-shell.stitch-shell main .reports-page .reports-filters > .reports-refreshing { position: absolute; top: 16px; right: 18px; }
+  /* The custom period's dates fit its third of the row whole (they ended "10.11...."), compact as on phones. */
+  html body .app-shell.stitch-shell main .reports-page .reports-period-custom .date-range-picker-trigger { gap: 6px; padding: 0 10px; font-size: 12.5px; }
 }
 
 /* ---------- İşlem Takibi ---------- */
 @media (min-width: 761px) and (max-width: 1024px) {
   /* Title and its actions on one row, as on the desktop (the phone column put the title on the right). */
   html body .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-heading { flex-direction: row; align-items: flex-end; }
+  /* Loglar: the date field in a quarter of the filter row shows "Başlangıç – Bitiş" whole (it ended in "…"). */
+  html body .app-shell.stitch-shell main .jobs-reference-page .ops-filter-grid .date-range-picker-trigger { gap: 6px; padding: 0 8px; font-size: 12.5px; }
 }
 @media (min-width: 761px) and (max-width: 899px) {
   /* Portrait: the desktop table without its correlation id column (the id is in the job detail too) fits the width. */

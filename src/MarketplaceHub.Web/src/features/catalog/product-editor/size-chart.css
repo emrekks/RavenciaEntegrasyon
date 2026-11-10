@@ -47,5 +47,13 @@
 .image-preview-card:hover button.size-chart-menu-btn, .image-preview-card:focus-within button.size-chart-menu-btn, .image-preview-card button.size-chart-menu-btn[aria-expanded='true'] { opacity: 1; }
 @media (hover: none) { .image-preview-card button.size-chart-menu-btn { opacity: 1; } }
 .image-preview-card .size-chart-menu { position: absolute; top: 36px; left: 6px; z-index: 5; display: grid; min-width: 200px; padding: 4px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; box-shadow: 0 8px 24px rgb(0 0 0 / 22%); }
+/* In the editor's picture strip the zoom button owns the top-left corner and the remove button the top-right; the
+   options button sat on the zoom button (owner, 10 Nov 2026: "iç içe geçen iconlar"). It now stands under the remove
+   button as the same dark tile chip, with the same 32px tap band, far enough down that its band never reaches the remove button, and its menu opens under it. */
+.app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card button.size-chart-menu-btn { top: calc(12px + var(--media-tile-button)); right: 5px; left: auto; z-index: 3; width: var(--media-tile-button); height: var(--media-tile-button); color: #fff; background: rgb(9 20 39 / 72%); border: 0; }
+.app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card button.size-chart-menu-btn::after { content: ""; position: absolute; inset: min(-7px, calc((var(--media-tile-button) - 32px) / 2)); }
+.app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card button.size-chart-menu-btn .ui-icon { width: calc(var(--media-tile-button) * .65); height: calc(var(--media-tile-button) * .65); }
+.app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card button.size-chart-menu-btn:hover { background: var(--rv-color-primary); }
+.app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card .size-chart-menu { top: calc(16px + 2 * var(--media-tile-button)); }
 .image-preview-card .size-chart-menu button { min-height: 0; height: 36px; padding: 0 10px; color: var(--rv-color-ink); font-size: 13px; font-weight: 500; text-align: left; text-transform: none; background: transparent; border: 0; border-radius: 7px; box-shadow: none; }
 .image-preview-card .size-chart-menu button:hover, .image-preview-card .size-chart-menu button:focus-visible { background: var(--rv-color-surface-soft); }

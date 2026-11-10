@@ -691,3 +691,21 @@
   .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr > td:nth-child(5) { grid-area: actions !important; justify-self: end; }
   .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr > td:nth-child(5) .mapping-row-actions > button { height: 36px; min-height: 0; }
 }
+
+/* Phones and tablets: a category chip shows its whole name on two lines ("Büyük Beden Bluz", "Tesettür Gömlek" were cut
+   at 98px); a one-line chip keeps its 36px height. */
+@media (max-width: 1024px) {
+  .app-shell.stitch-shell main section.mapping-page.mapping-page :is(.category-library-list, .category-chip-list) > span { align-self: start; height: auto; padding-block: 1px; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page :is(.category-library-list, .category-chip-list) > span > button:first-child { white-space: normal; text-overflow: clip; line-height: 1.25; overflow-wrap: anywhere; }
+}
+/* Phones: 36px tap targets (CLAUDE.md "Controls 36 px"): the platform tabs (six now fit one row with 3px sides), the
+   category search and remove buttons, and a value's edit and delete buttons. The panel category list shrinks to the
+   room the picker has, so it no longer runs past the picker's bottom edge. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main section.mapping-page .rv-tabs.rv-tabs.rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.mapping-platform-tabs > :is(button, a) { height: 36px !important; min-height: 36px !important; max-height: 36px; padding: 0 3px !important; font-size: 11px !important; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .category-library-search-toggle { width: 36px; min-width: 36px; height: 36px; min-height: 36px; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .brand-mapping-saved-card .mapping-icon-button { width: 36px !important; min-width: 36px; height: 36px !important; min-height: 36px !important; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page :is(.category-library-list, .category-chip-list) > span > :is(.category-library-remove, .category-chip-remove) { width: 36px; min-width: 36px; height: 36px; min-height: 36px; margin-block: -2px; }
+  .app-shell.stitch-shell main .panel-attribute-modal-card.panel-attribute-modal-card .panel-attribute-value-editor > div > div > button { height: 36px !important; min-height: 36px !important; }
+  .app-shell.stitch-shell main section.mapping-page .panel-category-picker { grid-template-rows: auto minmax(0, 1fr); }
+}

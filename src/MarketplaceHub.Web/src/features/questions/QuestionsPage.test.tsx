@@ -472,6 +472,17 @@ describe('QuestionsPage workspace flows', () => {
     expect(apiState.calls.some(call => call.path === '/questions/sync')).toBe(false)
   })
 
+  it('shows the list total on the status picker and its menu when a count read earlier disagrees', async () => {
+    apiState.emptyList = true
+    await renderPage()
+    for (let attempt = 0; attempt < 10; attempt++) await settle(20)
+    const picker = container.querySelector('.qi-status-btn')
+    expect(picker?.querySelector('.qi-count')?.textContent).toBe('0')
+    act(() => (picker as HTMLButtonElement).click())
+    const waiting = Array.from(container.querySelectorAll('.qi-status-menu [role="option"]')).find(option => option.textContent?.includes('Cevap Bekleyenler'))
+    expect(waiting?.querySelector('.qi-count')?.textContent).toBe('0')
+  })
+
   it('keeps the open question when it leaves the current list', async () => {
     await renderPage()
     expect(container.querySelector('.qi-detail')?.textContent).toContain('Ürün boyu kaç santimetredir?')

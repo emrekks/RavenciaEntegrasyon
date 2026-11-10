@@ -1148,6 +1148,11 @@ main .rr.rr.reports-payout-filters .rr-trigger:disabled { opacity: .5; cursor: n
   .app-shell.stitch-shell main .reports-page .reports-time-days button { padding: 8px; }
   .app-shell.stitch-shell main .reports-page .reports-time-days span { font-size: 11.5px; }
 }
+/* Narrow phones (375px): 6px gaps and side padding so "Çarşamba", "Perşembe", "Cumartesi" and "Tüm Hafta" fit whole. */
+@media (max-width: 389px) {
+  .app-shell.stitch-shell main .reports-page .reports-time-days { gap: 6px; }
+  .app-shell.stitch-shell main .reports-page .reports-time-days button { padding-inline: 6px; }
+}
 
 /* A figure's explanation can list it per platform under the text (Genel Bakış: Net Ciro, Sipariş, Net Satılan Adet). */
 .app-shell.stitch-shell main .reports-page .reports-hover-tip .reports-tip-split { display: grid; gap: 4px; margin: 8px 0 0; padding-top: 8px; border-top: 1px solid var(--rv-color-border); }
