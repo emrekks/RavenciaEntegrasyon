@@ -24,11 +24,10 @@ describe('dashboard periods', () => {
   it('reads every other ready period from the shared date presets (weeks start on Monday)', () => {
     // 2026-10-20 is a Tuesday.
     expect(periodDays('week', { from: '', to: '' }, '2026-10-20')).toEqual({ from: '2026-10-19', to: '2026-10-20' })
-    expect(periodDays('lastWeek', { from: '', to: '' }, '2026-10-20')).toEqual({ from: '2026-10-12', to: '2026-10-18' })
     expect(periodDays('month', { from: '', to: '' }, '2026-10-20')).toEqual({ from: '2026-10-01', to: '2026-10-20' })
     expect(periodDays('lastMonth', { from: '', to: '' }, '2026-03-05')).toEqual({ from: '2026-02-01', to: '2026-02-28' })
     expect(periodDays('year', { from: '', to: '' }, '2026-10-20')).toEqual({ from: '2026-01-01', to: '2026-10-20' })
-    expect(presetOrder.map(key => presetLabels[key])).toEqual(['Bugün', 'Dün', 'Bu Hafta', 'Geçen Hafta', 'Bu Ay', 'Geçen Ay', 'Son 30 Gün', 'Bu Yıl'])
+    expect(presetOrder.map(key => presetLabels[key])).toEqual(['Bugün', 'Dün', 'Bu Hafta', 'Bu Ay', 'Geçen Ay', 'Son 30 Gün', 'Bu Yıl'])
     // Every ready period is a range the server takes (at most 366 days, never in the future).
     for (const range of Object.keys(presetLabels) as Array<keyof typeof presetLabels>) {
       const days = periodDays(range, { from: '', to: '' }, '2026-12-31')!

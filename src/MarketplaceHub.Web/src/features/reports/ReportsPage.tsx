@@ -60,7 +60,6 @@ function periodPresets() {
     { key: 'today', label: 'Bugün', range: { from: at(y, m, d), to: at(y, m, d) } },
     { key: 'yesterday', label: 'Dün', range: { from: at(y, m, d - 1), to: at(y, m, d - 1) } },
     { key: 'week', label: 'Bu Hafta', range: { from: at(y, m, monday), to: at(y, m, d) } },
-    { key: 'last-week', label: 'Geçen Hafta', range: { from: at(y, m, monday - 7), to: at(y, m, monday - 1) } },
     { key: 'month', label: 'Bu Ay', range: { from: at(y, m, 1), to: at(y, m, d) } },
     { key: 'last-month', label: 'Geçen Ay', range: { from: at(y, m - 1, 1), to: at(y, m, 0) } },
     { key: '30', label: 'Son 30 Gün', range: lastDays(30) },
