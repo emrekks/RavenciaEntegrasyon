@@ -116,7 +116,7 @@
    column heads name those two fields and keep their bulk buttons. The option name used to sit in a 90px box and was cut. */
 .app-shell.stitch-shell main .variant-mobile-groups { display: none; }
 @media (max-width: 760px) {
-  .app-shell.stitch-shell main .product-add-page .variant-mobile-groups { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 0 0 10px; padding: 3px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+  .app-shell.stitch-shell main .product-add-page .variant-mobile-groups { display: grid; grid-template-columns: repeat(4, minmax(max-content, 1fr)); gap: 4px; margin: 0 0 10px; padding: 3px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; }
   .app-shell.stitch-shell main .product-add-page .variant-mobile-groups > button { min-width: 0; height: 36px; min-height: 36px; padding: 0 4px; color: var(--rv-color-muted); background: none; border: 0; border-radius: 7px; box-shadow: none; font-size: 12px; font-weight: 500; white-space: nowrap; }
   .app-shell.stitch-shell main .product-add-page .variant-mobile-groups > button.is-on { color: var(--rv-color-ink); background: var(--rv-color-surface); box-shadow: inset 0 0 0 1px var(--rv-color-border-strong); }
   .app-shell.stitch-shell main .product-add-page .variant-table-editor { overflow-x: visible; }

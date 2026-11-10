@@ -85,6 +85,7 @@ import { OptionValueChips, sortOptionValues } from './OptionValueChips'
 import { AcceptedJob, Brand, Category, ImageLightboxModal, MarketplaceConnection, Page, Product, ProductAttributeAssignment, Variant, VariantPlatformStatus, cleanOptionValue, compareLabelsAlphabetically, compareVariantOptionSignatures, formatCatalogOptionLabel, isColorOptionName, isProductPublicationConnection, isWebColorOptionName, normalizeVariantOptionName, preferredColorOption, productPublicationMode, variantColorKey, variantOptionEntries } from '../shared'
 import { insideSelector, useDismissable } from '../../../shared/hooks/useDismissable'
 import { useMenuFlip } from '../../../shared/hooks/useMenuFlip'
+import { clampIntoViewport } from '../../../shared/viewport-clamp'
 import { PanelSelect } from '../../../shared/PanelSelect'
 import { thumbnailSrcSet, thumbnailUrl } from '../../../shared/product-thumbnail'
 
@@ -3637,7 +3638,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               {isSizeChart && <span className="size-chart-badge">Beden Tablosu</span>}
               {isProductMedia && editProductId && <>
                 <button type="button" className="size-chart-menu-btn" aria-label="Görsel seçenekleri" title="Görsel seçenekleri" aria-haspopup="menu" aria-expanded={menuOpen} disabled={submitting} onClick={event => { event.stopPropagation(); setSizeChartMenuKey(menuOpen ? null : mediaImageKey(url)) }}><UiIcon name="moreVertical" size={14} /></button>
-                {menuOpen && <div className="size-chart-menu" role="menu" tabIndex={-1} onKeyDown={event => { if (event.key === 'Escape') setSizeChartMenuKey(null) }}>
+                {menuOpen && <div ref={clampIntoViewport} className="size-chart-menu" role="menu" tabIndex={-1} onKeyDown={event => { if (event.key === 'Escape') setSizeChartMenuKey(null) }}>
                   {isSizeChart
                     ? <button type="button" role="menuitem" onClick={event => { event.stopPropagation(); markSizeChart(null) }}>Beden Tablosu İşaretini Kaldır</button>
                     : <button type="button" role="menuitem" onClick={event => { event.stopPropagation(); markSizeChart(ownedUrl ?? url) }}>Beden Tablosu Olarak İşaretle</button>}

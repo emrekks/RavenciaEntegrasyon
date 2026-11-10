@@ -364,6 +364,8 @@ html body .app-shell.stitch-shell main .reports-page .reports-card-actions .repo
 .app-shell.stitch-shell main .reports-page .reports-ledger > div { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px dashed var(--rv-color-border); }
 .app-shell.stitch-shell main .reports-page .reports-ledger > div:first-child { padding-top: 0; border-top: 0; }
 .app-shell.stitch-shell main .reports-page .reports-ledger dt { display: grid; gap: 2px; min-width: 0; color: var(--rv-color-ink); font-size: 13.5px; }
+/* A long row name that does not fit beside its figure (a phone) wraps under itself instead of being cut. */
+.app-shell.stitch-shell main .reports-page .reports-ledger dt .reports-tip-trigger { overflow: visible; white-space: normal; }
 .app-shell.stitch-shell main .reports-page .reports-ledger dt small { color: var(--rv-color-subtle); font-size: 11.5px; line-height: 1.4; }
 .app-shell.stitch-shell main .reports-page .reports-ledger dd { margin: 0; color: var(--rv-color-ink); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .app-shell.stitch-shell main .reports-page .reports-ledger > div.is-minus dt { color: var(--rv-color-muted); }
