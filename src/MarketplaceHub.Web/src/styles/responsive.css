@@ -338,6 +338,7 @@ html body .mfs-sort-sheet [role="listbox"] > button.is-selected { color: var(--r
   html body :is(.rv-overlay:not(:has(.rv-mobile-navigation)), .workspace-modal-backdrop, .rr-overlay) { animation: rv-fade-in var(--rv-motion-modal) ease-out; }
   html body :is(.rv-overlay > .rv-modal, .workspace-modal-backdrop > .workspace-modal, .rr-overlay > .rr-modal) { animation: rv-rise var(--rv-motion-sheet) var(--rv-ease-sheet); }
   html body .rr-anchor:not(.rr-dropdown) > :is(.rr-menu, .rr-pop):not(.rr-static) { animation: rv-rise var(--rv-motion-sheet) var(--rv-ease-sheet); }
+  html body .rr-anchor > .rr-bulk-menu > .rr-menu { animation: rv-rise var(--rv-motion-sheet) var(--rv-ease-sheet); }
   html body .rr-fopen .rr-anchor > .rr-pop { animation: rv-fade-in var(--rv-motion-menu) ease-out; }
   html body :is(.rr-anchor-scrim, .rr-fopen > .rr-fscrim) { animation: rv-fade-in var(--rv-motion-modal) ease-out; }
   html body .rr-fopen > .rr-filters { animation: rv-rise var(--rv-motion-sheet) var(--rv-ease-sheet); }
