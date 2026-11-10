@@ -90,9 +90,36 @@ public sealed partial class PttAvmHttpClient
         }
         catch (HttpRequestException exception)
         {
-            logger.LogWarning(exception, "PTT AVM SOAP isteği başarısız. ConnectionId: {ConnectionId}, Operation: {Operation}", account.Connection.Id, operation);
+            // PTT AVM resets the TLS handshake now and then (live: 75 times in 3 days); the request is retried. Such a
+            // transient reset is logged on one line with its cause, any other failure keeps its full stack trace.
+            if (IsTransientConnectionReset(exception))
+                logger.LogWarning("PTT AVM SOAP isteği başarısız (bağlantı karşı taraftan kesildi). ConnectionId: {ConnectionId}, Operation: {Operation}, Error: {Error}", account.Connection.Id, operation, TransientResetSummary(exception));
+            else
+                logger.LogWarning(exception, "PTT AVM SOAP isteği başarısız. ConnectionId: {ConnectionId}, Operation: {Operation}", account.Connection.Id, operation);
             return AdapterResult<XElement>.Failure(new(AdapterErrorClass.TransientNetwork, "PTTAVM_NETWORK_ERROR", "PttAVM bağlantısı geçici olarak kurulamadı.", null, TimeSpan.FromSeconds(15), null));
         }
+    }
+
+    // A connection the peer reset or closed (during the TLS handshake or later): a SocketException ConnectionReset /
+    // ConnectionAborted, or an IOException without one, somewhere under the HttpRequestException.
+    internal static bool IsTransientConnectionReset(HttpRequestException exception)
+    {
+        for (Exception? inner = exception.InnerException; inner is not null; inner = inner.InnerException)
+        {
+            if (inner is System.Net.Sockets.SocketException socket)
+                return socket.SocketErrorCode is System.Net.Sockets.SocketError.ConnectionReset or System.Net.Sockets.SocketError.ConnectionAborted;
+            if (inner is IOException && inner.InnerException is null) return true;
+        }
+        return false;
+    }
+
+    // The messages of the exception chain, without stack traces.
+    internal static string TransientResetSummary(Exception exception)
+    {
+        var parts = new List<string>();
+        for (Exception? current = exception; current is not null && parts.Count < 4; current = current.InnerException)
+            parts.Add($"{current.GetType().Name}: {current.Message}");
+        return string.Join(" -> ", parts);
     }
 
     internal static (XElement? Result, AdapterError? Error) SoapResponse(HttpStatusCode status, string body, string operation, TimeSpan? retryAfter = null)

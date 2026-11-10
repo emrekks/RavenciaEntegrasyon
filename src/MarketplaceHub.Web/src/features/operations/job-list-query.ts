@@ -41,8 +41,18 @@ export function timeRangeStart(range: JobListTimeRange, now = Date.now()) {
   return cutoff === null ? null : new Date(cutoff).toISOString()
 }
 
-/** Jobs per server page of the operations list. */
+/** Jobs per server page of the operations list when nothing else is asked for (the lookup, the counts' callers). */
 export const jobPageSize = 200
+
+// The list reads 50 jobs per server page, or one screen page when a bigger one is chosen (100, 200): 200 rows were
+// ~186 KB and were read again every 15 s while most of them were never looked at. Daha Fazla Yükle, the next-page
+// button and ?sayfa=N links read the next server page as before.
+export const jobListFirstPageSize = 50
+
+/** Jobs per server page of İşlem Takibi's list for the chosen screen page size. */
+export function jobListServerPageSize(screenPageSize: number) {
+  return Math.min(jobPageSize, Math.max(jobListFirstPageSize, screenPageSize))
+}
 
 // The server returns only the newest jobs that match, so the selected time range is sent along
 // instead of downloading the whole job history and filtering it in the browser.
@@ -127,10 +137,13 @@ export function jobPlatformOptions(connectionPlatforms: readonly string[], selec
   return [...codes].sort((left, right) => rank(left) - rank(right) || left.localeCompare(right))
 }
 
-// How often the page polls. The list polls every 15 s while just its first page is loaded; once older pages are read
+// How often the page polls. The list polls every 30 s while just its first page is loaded; once older pages are read
 // only the first page is polled and put in front of them (refetching every loaded page cost one request per page,
-// W22/G24), so a queued job that no realtime event announces still shows up. Yenile and realtime events refresh it all. The counts follow the same 15 s. An open job detail polls until the job finished.
-export const jobListPollMs = 15_000
+// W22/G24), so a queued job that no realtime event announces still shows up. Realtime job events refresh it too (at
+// once for a job that needs attention, else at most once per 15 s, app/realtime-query-keys.ts), and a refresh restarts
+// the poll's clock. Yenile refreshes it all. The counts follow the same 30 s. An open job detail polls until the job
+// finished.
+export const jobListPollMs = 30_000
 const terminalJobStatuses: ReadonlySet<string> = new Set(['SUCCEEDED', 'DEAD', 'CANCELLED'])
 
 export function jobListPollInterval(loadedPages: number): number | false {
@@ -148,8 +161,9 @@ export function withFreshFirstPage<Page, Param>(current: { pages: Page[]; pagePa
 }
 
 // A ?sayfa=N link opens page N: server pages are read until that page has rows or the server has no more, at most
-// this many server pages so a filter that matches nothing cannot read the whole history.
-export const jobListMaximumAutoPages = 25
+// this many server pages so a filter that matches nothing cannot read the whole history (100 pages of 50 reach as far
+// as the 25 pages of 200 did).
+export const jobListMaximumAutoPages = 100
 
 export function shouldLoadTowardsPage(requestedPage: number, totalPages: number, hasNextPage: boolean, loadedPages: number, busy: boolean) {
   return requestedPage > totalPages && hasNextPage && !busy && loadedPages < jobListMaximumAutoPages

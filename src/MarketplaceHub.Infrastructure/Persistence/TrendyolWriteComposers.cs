@@ -218,6 +218,28 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         return null;
     }
 
+    // A send for a product covers its model family: the editor shows the colour cards of one model code (same brand) as
+    // one product and Kaydet writes the prices of every card, so "Platformlarda Güncelle" sends them all. Live 10 Nov
+    // 2026 (RYP003T, 7 colour cards): the send went for the opened card only, 3 of 21 variants. A draft card of the
+    // family is never sent (ProductDraftPolicy); the opened card was checked by the caller. Null: no product scope.
+    internal async Task<Guid[]?> ProductFamilyScopeAsync(Guid tenantId, Guid? productId, CancellationToken cancellationToken)
+    {
+        if (productId is not { } opened) return null;
+        var brandId = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == opened).Select(x => x.BrandId).SingleOrDefaultAsync(cancellationToken);
+        var modelCode = await db.ProductVariants.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ProductId == opened && x.ModelCode != null && x.ModelCode.Trim() != "")
+            .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
+            .Select(x => x.ModelCode)
+            .FirstOrDefaultAsync(cancellationToken);
+        var family = await ProductFamilyScope.ProductIdsAsync(db, tenantId, brandId, modelCode, db.ProductVariants.AsNoTracking(), cancellationToken);
+        var siblings = family.Where(id => id != opened).ToList();
+        List<Guid> drafts = siblings.Count == 0 ? [] : await db.Products.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && siblings.Contains(x.Id) && x.Status == ProductStatus.Draft)
+            .Select(x => x.Id)
+            .ToListAsync(cancellationToken);
+        return [opened, .. siblings.Where(id => !drafts.Contains(id))];
+    }
+
     private async Task<ServiceResult<PriceInventoryDraft>> BuildForPlatformAsync(string platformCode, string externalStoreId, Guid tenantId, Guid connectionId, CancellationToken cancellationToken, Guid? variantId, Guid? productId, bool automatic, List<InvalidPriceInventoryOffer> invalid, bool holdPrice, bool holdStock)
     {
         var connection = new { PlatformCode = platformCode, ExternalStoreId = externalStoreId };
@@ -228,12 +250,14 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         var code = platformCode.ToUpperInvariant();
         if ((holdPrice || holdStock) && code is "N11" or "PAZARAMA" or "PTTAVM" || holdStock && code == "SHOPIFY")
             return ServiceResult<PriceInventoryDraft>.Fail("PRICE_INVENTORY_FIELDS_UNSUPPORTED", "Bu pazaryeri fiyatı ve stoğu ayrı ayrı göndermeyi desteklemiyor.", 422);
-        if (string.Equals(connection.PlatformCode, "N11", StringComparison.OrdinalIgnoreCase))
-            return await BuildN11Async(tenantId, connectionId, cancellationToken, variantId, productId, variantScoped, automatic, invalid);
-        if (string.Equals(connection.PlatformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase))
-            return await BuildPazaramaAsync(tenantId, connectionId, cancellationToken, variantId, productId, variantScoped, automatic, invalid);
+        // PTT AVM widens a product to its model family itself (its request is built per PTT AVM product).
         if (string.Equals(connection.PlatformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase))
             return await BuildPttAvmAsync(tenantId, connectionId, cancellationToken, variantId, productId, variantScoped, automatic, invalid);
+        var productScope = await ProductFamilyScopeAsync(tenantId, productId, cancellationToken);
+        if (string.Equals(connection.PlatformCode, "N11", StringComparison.OrdinalIgnoreCase))
+            return await BuildN11Async(tenantId, connectionId, cancellationToken, variantId, productScope, variantScoped, automatic, invalid);
+        if (string.Equals(connection.PlatformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase))
+            return await BuildPazaramaAsync(tenantId, connectionId, cancellationToken, variantId, productScope, variantScoped, automatic, invalid);
         var isHepsiburada = string.Equals(connection.PlatformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase);
         var isTrendyol = string.Equals(connection.PlatformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase);
         // Shopify addresses a variant by its own id (the link id an import stored); the barcode is only the fallback
@@ -251,7 +275,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                                from inventory in inventories.DefaultIfEmpty()
                                where offer.TenantId == tenantId && offer.ConnectionId == connectionId && offer.Status == "ACTIVE" && listingState.ActualStatus == "LIVE" && listingVariant.ExternalBarcode != null
                                     && (variantId == null || offer.VariantId == variantId)
-                                    && (productId == null || variant.ProductId == productId)
+                                    && (productScope == null || productScope.Contains(variant.ProductId))
                                orderby variant.Id
                                select new { Offer = offer, Variant = variant, Inventory = inventory, ListingBarcode = listingVariant.ExternalBarcode!, ListingSku = listingVariant.ExternalSku, Link = remoteLink }).ToListAsync(cancellationToken);
         // A published variant goes by the codes the marketplace holds when its import read them (the seller may have
@@ -281,7 +305,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                               where offer.TenantId == tenantId && offer.ConnectionId == connectionId && offer.Status == "ACTIVE"
                                    && (isHepsiburada ? link.ExternalSku != null : isShopify || link.ExternalBarcode != null)
                                    && (variantId == null || offer.VariantId == variantId)
-                                   && (productId == null || variant.ProductId == productId)
+                                   && (productScope == null || productScope.Contains(variant.ProductId))
                               orderby variant.Id
                               select new { Offer = offer, Variant = variant, Inventory = inventory, Link = link }).ToListAsync(cancellationToken);
         foreach (var row in imported.Where(row => !publishedVariantIds.Contains(row.Variant.Id) && !listedVariantIds.Contains(row.Variant.Id)))
@@ -493,7 +517,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
     // n11 has no listing profile in the panel: an n11 offer is sent when its
     // variant is linked to an n11 stock code. Prices go with two decimals and
     // listPrice >= salePrice, stock is capped at n11's 999,999.
-    private async Task<ServiceResult<PriceInventoryDraft>> BuildN11Async(Guid tenantId, Guid connectionId, CancellationToken cancellationToken, Guid? variantId, Guid? productId, bool variantScoped, bool automatic, List<InvalidPriceInventoryOffer> invalid)
+    private async Task<ServiceResult<PriceInventoryDraft>> BuildN11Async(Guid tenantId, Guid connectionId, CancellationToken cancellationToken, Guid? variantId, Guid[]? productScope, bool variantScoped, bool automatic, List<InvalidPriceInventoryOffer> invalid)
     {
         var rows = await (from offer in db.ChannelOffers.AsNoTracking()
                           join variant in db.ProductVariants.AsNoTracking() on new { offer.TenantId, offer.VariantId } equals new { variant.TenantId, VariantId = variant.Id }
@@ -502,7 +526,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                           from inventory in inventories.DefaultIfEmpty()
                           where offer.TenantId == tenantId && offer.ConnectionId == connectionId && offer.Status == "ACTIVE"
                                && (variantId == null || offer.VariantId == variantId)
-                               && (productId == null || variant.ProductId == productId)
+                               && (productScope == null || productScope.Contains(variant.ProductId))
                           orderby variant.Id
                           select new { Offer = offer, Variant = variant, Inventory = inventory, StockCode = remoteLink.ExternalId, Health = remoteLink.HealthStatus, Depot = remoteLink.FulfilledByMarketplace })
             .ToListAsync(cancellationToken);
@@ -544,7 +568,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
     // Pazarama has no listing profile in the panel either: an offer is sent when its variant is linked
     // to a Pazarama barcode (the variant link carries it). Price and stock go as two requests built
     // from the same lines; prices keep two decimals with listPrice >= salePrice.
-    private async Task<ServiceResult<PriceInventoryDraft>> BuildPazaramaAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken, Guid? variantId, Guid? productId, bool variantScoped, bool automatic, List<InvalidPriceInventoryOffer> invalid)
+    private async Task<ServiceResult<PriceInventoryDraft>> BuildPazaramaAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken, Guid? variantId, Guid[]? productScope, bool variantScoped, bool automatic, List<InvalidPriceInventoryOffer> invalid)
     {
         var rows = await (from offer in db.ChannelOffers.AsNoTracking()
                           join variant in db.ProductVariants.AsNoTracking() on new { offer.TenantId, offer.VariantId } equals new { variant.TenantId, VariantId = variant.Id }
@@ -553,7 +577,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                           from inventory in inventories.DefaultIfEmpty()
                           where offer.TenantId == tenantId && offer.ConnectionId == connectionId && offer.Status == "ACTIVE"
                                && (variantId == null || offer.VariantId == variantId)
-                               && (productId == null || variant.ProductId == productId)
+                               && (productScope == null || productScope.Contains(variant.ProductId))
                           orderby variant.Id
                           select new { Offer = offer, Variant = variant, Inventory = inventory, Barcode = remoteLink.ExternalId, Health = remoteLink.HealthStatus })
             .ToListAsync(cancellationToken);
