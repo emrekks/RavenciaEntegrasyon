@@ -170,7 +170,9 @@ function useScrollAreaPopover(open: boolean, ref: RefObject<HTMLElement | null>,
     if (!open || !host) return
     const sheet = host.closest('.rr-fopen')
     const area = sheet ?? host.closest('.rr-tblwrap')
-    const pop = host.querySelector<HTMLElement>(':scope > .rr-menu, :scope > .rr-pop')
+    // On phones the Ürünler selection bar's Toplu İşlemler menu (wrapped in .rr-bulk-menu) is a bottom sheet as well.
+    const phone = window.matchMedia?.('(max-width: 760px)').matches ?? false
+    const pop = host.querySelector<HTMLElement>(phone ? ':scope > .rr-menu, :scope > .rr-pop, :scope > .rr-bulk-menu > .rr-menu' : ':scope > .rr-menu, :scope > .rr-pop')
     if (!pop) return
     // On phones a menu outside a dropdown anchor is a bottom sheet (pinned by the stylesheet), on a page, in a table
     // (the Ürünler card İşlemler) or inside a window. Sheet and scrim open in the top layer: a window's translate,
@@ -178,7 +180,7 @@ function useScrollAreaPopover(open: boolean, ref: RefObject<HTMLElement | null>,
     // window instead of sitting at the bottom of the screen at full width (owner, 10 Nov 2026). The top layer is placed
     // against the screen whatever its ancestors do, and above everything; the DOM stays where it is, so focus, Escape
     // and the outside press still treat it as part of its anchor and window.
-    if (!sheet && !host.classList.contains('rr-dropdown') && !pop.classList.contains('rr-static') && window.matchMedia?.('(max-width: 760px)').matches && getComputedStyle(pop).position === 'fixed') {
+    if (!sheet && !host.classList.contains('rr-dropdown') && !pop.classList.contains('rr-static') && phone && getComputedStyle(pop).position === 'fixed') {
       if (typeof pop.showPopover === 'function') {
         const scrim = host.querySelector<HTMLElement>(':scope > .rr-anchor-scrim')
         if (scrim && getComputedStyle(scrim).display !== 'none') {
@@ -246,11 +248,32 @@ function useScrollAreaPopover(open: boolean, ref: RefObject<HTMLElement | null>,
   }, [open, ref])
 }
 
+// An open popover never rides along with the screen: once the page or any box around it scrolls, it closes (owner,
+// 10 Nov 2026: the Ürünler Toplu İşlemler menu stayed glued to the sticky selection bar). Scrolling inside the anchor
+// (the popover's own long list) keeps it open. The phone bottom sheet is modal and stays until it is dismissed.
+function useCloseOnScroll(open: boolean, ref: RefObject<HTMLElement | null>, close: () => void) {
+  const closePopover = useEffectEvent(() => close())
+  useEffect(() => {
+    const host = ref.current
+    if (!open || !host) return
+    // Phones: the sheet is modal; a scroll there (a list, the address bar, a focused search box) must not close it.
+    if (window.matchMedia?.('(max-width: 760px)').matches) return
+    const onScroll = (event: Event) => {
+      if (event.target instanceof Node && host.contains(event.target)) return
+      if (host.querySelector(':scope > .rr-anchor-scrim[popover]')) return
+      closePopover()
+    }
+    window.addEventListener('scroll', onScroll, true)
+    return () => window.removeEventListener('scroll', onScroll, true)
+  }, [open, ref])
+}
+
 export function RrAnchor({ trigger, children, className }: { trigger: (open: boolean, toggle: () => void) => ReactNode; children: (close: () => void) => ReactNode; className?: string }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLSpanElement>(null)
   useOutsideClose(open, ref, () => setOpen(false))
   useScrollAreaPopover(open, ref, () => setOpen(false))
+  useCloseOnScroll(open, ref, () => setOpen(false))
   // On phones the popover is a bottom sheet; the scrim (shown there only) takes the tap that closes it, so the tap
   // never reaches the button underneath (a label print, say). preventDefault: inside a <label> the tap would otherwise be
   // forwarded to the trigger button and reopen the list.

@@ -532,3 +532,8 @@
   .app-shell.stitch-shell main .ss-page .ss-stabs > .rv-tabs.rv-tabs.rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.ss-seg { display: flex !important; gap: 3px !important; padding: 3px !important; }
   .app-shell.stitch-shell main .ss-page .ss-stabs > .rv-tabs.rv-tabs.rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.ss-seg > button { flex: 1 1 auto; padding: 0 8px !important; }
 }
+
+/* A field label with a help mark: the mark sits 5 px after the text, centred on it, and the label keeps the 15 px line of
+   the labels beside it ("Uygulama Şifresi" ran into its mark and stood 3 px above "Gönderen Gmail Adresi"; owner, 10 Nov). */
+.ss-page .ss-fld > small:has(> .field-help) { display: flex; align-items: center; gap: 5px; height: 15px; line-height: 15px; }
+:root .ss-page .ss-fld > small > button.field-help.field-help.field-help.field-help { align-self: center; }
