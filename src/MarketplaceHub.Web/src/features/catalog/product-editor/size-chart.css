@@ -43,11 +43,11 @@
 
 /* The tile marked as the size chart carries a one-line "Beden Tablosu" tag across the bottom of its picture (owner,
    10 Nov 2026: "üzerindeki etiketi düzelt"; it wrapped onto two lines low-left). Phones keep the bottom corners for the
-   move arrows, so there the tag sits just above them. Centred a little above the picture's bottom edge and see-through (owner,
+   move arrows, so there the tag sits just above them. Centred a little above the picture's bottom edge and see-through, a strip from edge to edge of the picture (owner,
    10 Nov: "labeli ortala ve şeffaf yap", "biraz yukarı al"). */
-.app-shell.stitch-shell main .media-preview-strip .image-preview-card .size-chart-badge { position: absolute; right: 6px; bottom: 10px; left: 6px; z-index: 2; box-sizing: border-box; height: 18px; padding: 0; overflow: hidden; color: #fff; font-size: 10px; font-weight: 600; line-height: 18px; letter-spacing: -0.2px; text-align: center; white-space: nowrap; background: color-mix(in srgb, var(--rv-color-primary-fill) 62%, transparent); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); text-shadow: 0 1px 2px rgb(0 0 0 / 35%); border-radius: 7px; pointer-events: none; }
+.app-shell.stitch-shell main .media-preview-strip .image-preview-card .size-chart-badge { position: absolute; right: 4px; bottom: 12px; left: 4px; z-index: 2; box-sizing: border-box; height: 18px; padding: 0; overflow: hidden; color: #fff; font-size: 10px; font-weight: 600; line-height: 18px; letter-spacing: -0.2px; text-align: center; white-space: nowrap; background: color-mix(in srgb, var(--rv-color-primary-fill) 62%, transparent); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); text-shadow: 0 1px 2px rgb(0 0 0 / 35%); border-radius: 0; pointer-events: none; }
 @media (max-width: 760px) {
-  .app-shell.stitch-shell main .media-preview-strip .image-preview-card .size-chart-badge { right: 6px; bottom: 36px; left: 6px; height: 20px; font-size: 11px; line-height: 20px; }
+  .app-shell.stitch-shell main .media-preview-strip .image-preview-card .size-chart-badge { right: 2px; bottom: 36px; left: 2px; height: 20px; font-size: 11px; line-height: 20px; }
 }
 
 /* "Beden Tablosu Seç" beside Tümünü Temizle: a hint row over the strip while picking; the card's own saved pictures
