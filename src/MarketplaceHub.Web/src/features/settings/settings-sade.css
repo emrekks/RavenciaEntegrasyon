@@ -469,9 +469,7 @@
 .app-shell.stitch-shell main .ss-stabs .rv-tabs .rv-tab-text.ss-lbl-short { display: none; }
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .ss-stabs .rv-tabs .rv-tab-text.ss-lbl-long { display: none; }
-  .app-shell.stitch-shell main .ss-stabs .rv-tabs .rv-tab-text.ss-lbl-short { display: inline-grid; }
-  .rv-tabs.rv-tabs.rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.ss-seg { grid-template-columns: none !important; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
-}
+  .app-shell.stitch-shell main .ss-stabs .rv-tabs .rv-tab-text.ss-lbl-short { display: inline-grid; }}
 
 /* Phones: the save bar is the plain end of the section, under a line, with no frame or shadow of its own. */
 @media (max-width: 760px) {
@@ -530,5 +528,5 @@
    an equal third and runs into the frame), with an even 3px inset and 3px between them. */
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .ss-page .ss-stabs > .rv-tabs.rv-tabs.rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.ss-seg { display: flex !important; gap: 3px !important; padding: 3px !important; }
-  .app-shell.stitch-shell main .ss-page .ss-stabs > .rv-tabs.rv-tabs.rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.ss-seg > button { flex: 1 1 auto; padding: 0 8px !important; }
+  .app-shell.stitch-shell main .ss-page .ss-stabs > .rv-tabs.rv-tabs.rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.ss-seg > button { flex: 1 0 auto; padding: 0 12px !important; }
 }
