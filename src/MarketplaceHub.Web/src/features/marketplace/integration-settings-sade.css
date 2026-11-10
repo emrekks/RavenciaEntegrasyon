@@ -324,8 +324,9 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
   .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) > .cs-fstate { grid-area: state; justify-self: start; font-size: 12.5px; }
   .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) > .cs-ftime { grid-area: time; justify-self: start; padding-left: 23px; }
   .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) > .cs-switch-field { grid-area: switch; }
-  .cs-workspace .cs-chips { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); flex-wrap: nowrap; }
-  .app-shell.stitch-shell main .cs-workspace .cs-chip { justify-content: center; min-width: 0; padding: 0 6px; font-size: 12.5px; white-space: nowrap; }
+  .cs-workspace .cs-chips { display: flex; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
+  .cs-workspace .cs-chips::-webkit-scrollbar { display: none; }
+  .app-shell.stitch-shell main .cs-workspace .cs-chip { flex: 1 0 auto; justify-content: center; min-width: 0; padding: 0 12px; font-size: 12.5px; white-space: nowrap; }
 }
 
 /* The write status tag sits to the right of its title, not under the text. */

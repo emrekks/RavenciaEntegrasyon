@@ -296,6 +296,7 @@
    reads on one line (name and record count side by side). */
 .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.qi-tabs > :is(button, a) { flex: 1 1 0; }
 @media (max-width: 760px) {
+  .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.qi-tabs > :is(button, a) { flex: 1 0 auto; }
   .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item b { flex-wrap: nowrap; white-space: nowrap; }
 }
 
