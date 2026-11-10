@@ -472,7 +472,7 @@ function Figure({ value, format, shown }: { value: number; format: (value: numbe
 // previous value under it, and how it is worked out, shown under the pointer.
 export type Kpi = {
   key: string; label: string; value: number | null; format?: (value: number) => string; text?: string; empty?: string
-  delta?: Change | null; invert?: boolean; note?: string; tip: string; tone?: 'good' | 'bad' | 'warn'; icon?: CardIconName
+  delta?: Change | null; invert?: boolean; note?: string; tip?: string; tone?: 'good' | 'bad' | 'warn'; icon?: CardIconName
   // Rows the explanation lists under it (the figure per platform); the card then opens it on hover, not only its label.
   split?: Array<{ key: string; label: string; value: string }>
 }
@@ -521,19 +521,19 @@ export function KpiStrip({ label, items, marks = true, aligned = false, long = f
       return <div key={item.key} className={`${missing && empty !== '—' ? 'is-missing' : ''}${item.text !== undefined ? ' is-text' : ''}${item.tone ? ` is-${item.tone}` : ''}${open?.key === item.key ? ' is-open' : ''}`.trim() || undefined}
         onMouseEnter={marks && !item.split?.length ? undefined : event => show(item.key, event.currentTarget)} onMouseLeave={hide}>
         <CardBackgroundIcon name={kpiIcon(item)} tone={item.tone === 'good' ? 'ok' : item.tone} />
-        <button type="button" className="reports-tip-trigger reports-kpi-label" aria-describedby={id}
-          onMouseEnter={marks ? event => event.currentTarget.parentElement && show(item.key, event.currentTarget.parentElement) : undefined}
+        <button type="button" className="reports-tip-trigger reports-kpi-label" aria-describedby={item.tip ? id : undefined}
+          onMouseEnter={marks && item.tip ? event => event.currentTarget.parentElement && show(item.key, event.currentTarget.parentElement) : undefined}
           // With a "?" mark the tip belongs to the label: it closes as the pointer leaves it, not only the card.
           onMouseLeave={marks && !item.split?.length ? hide : undefined}
-          onFocus={event => event.currentTarget.parentElement && show(item.key, event.currentTarget.parentElement)} onBlur={hide}>{item.label}{marks && <TipMark />}</button>
+          onFocus={item.tip ? event => event.currentTarget.parentElement && show(item.key, event.currentTarget.parentElement) : undefined} onBlur={hide}>{item.label}{marks && item.tip && <TipMark />}</button>
         <strong>{item.text ?? (item.value === null ? empty : <Figure value={item.value} format={format} shown={shown} />)}</strong>
         {/* The previous period's figure opens under the change chip on a tap, instead of always taking a line. */}
         {compares && <span className="reports-kpi-change">{item.delta !== undefined && (previousNote(item) ? <button type="button" className="reports-kpi-delta-toggle" aria-expanded={peek === item.key} onClick={() => setPeek(peek === item.key ? null : item.key)}><Delta delta={item.delta} invert={item.invert} /></button> : <Delta delta={item.delta} invert={item.invert} />)}</span>}
         {item.note !== undefined && (!previousNote(item) || peek === item.key) && <span className="reports-kpi-note">{wholeLiras(item.note)}</span>}
-        <span id={id} className="reports-sr">{item.tip.replaceAll('\n', ' ')}</span>
+        {item.tip && <span id={id} className="reports-sr">{item.tip.replaceAll('\n', ' ')}</span>}
       </div>
     })}</div>
-    {open && current && <div key={current.key} className="reports-hover-tip is-floating" aria-hidden="true" style={{ top: open.top, left: open.left, width: open.width }}><TipText title={current.label} text={current.tip} />{current.split && current.split.length > 0 && <dl className="reports-tip-split">{current.split.map(row => <div key={row.key}><dt>{row.label}</dt><dd>{row.value}</dd></div>)}</dl>}</div>}
+    {open && current && <div key={current.key} className="reports-hover-tip is-floating" aria-hidden="true" style={{ top: open.top, left: open.left, width: open.width }}>{current.tip && <TipText title={current.label} text={current.tip} />}{current.split && current.split.length > 0 && <dl className="reports-tip-split">{current.split.map(row => <div key={row.key}><dt>{row.label}</dt><dd>{row.value}</dd></div>)}</dl>}</div>}
   </div>
 }
 
@@ -1259,7 +1259,7 @@ function ProductsView({ data, sub, onSub }: { data: ReportSales; sub: ProductSub
   const items: Kpi[] = [
     { key: 'sold', label: 'Satılan Adet', value: now.soldQuantity, delta: change(now.soldQuantity, then.soldQuantity), note: previousText(formatNumber(then.soldQuantity)), tip: 'Dönemde satılan ürün adedi; iptaller sayılmaz, iadeler düşülmez.' },
     { key: 'returned', label: 'İade Edilen Adet', value: now.returnedQuantity, delta: change(now.returnedQuantity, then.returnedQuantity), invert: true,
-      note: previousText(formatNumber(then.returnedQuantity)), tip: 'Müşterilerin geri gönderdiği ürün adedi.' },
+      note: previousText(formatNumber(then.returnedQuantity)) },
     { key: 'rate', label: 'İade Oranı', value: now.returnRate, format: percent, delta: change(now.returnRate, then.returnRate, 'rate'), invert: true,
       note: previousText(formatPercent(then.returnRate)), tip: returnRateTip },
     { key: 'price', label: 'Adet Başına Satış', value: unit(now), format: formatTl, delta: change(unit(now), unit(then)), note: previousText(formatTl(unit(then))), tip: 'Bir ürünün ortalama satış fiyatı; iadeler düşülmeden.' },
@@ -1883,7 +1883,7 @@ function Customers({ data }: { data: ReportSales }) {
   return <div className="reports-grid">
     <div className="is-wide"><KpiStrip label="Müşterilerin göstergeleri" stack items={[
       { key: 'unique', label: 'Müşteri', value: customers.uniqueCustomers, format: formatCount, note: `${formatCount(customers.identifiedOrders)} siparişten`, tip: 'Dönemde sipariş veren farklı müşteri sayısı; müşteri numarası, e-posta ya da telefondan tanınır.' },
-      { key: 'repeat', label: 'Tekrar Gelen Müşteri', value: customers.repeatCustomers, format: formatCount, note: 'birden çok sipariş verdi', tip: 'Dönemde birden fazla sipariş veren müşteri sayısı.' },
+      { key: 'repeat', label: 'Tekrar Gelen Müşteri', value: customers.repeatCustomers, format: formatCount, note: 'birden çok sipariş verdi' },
       { key: 'rate', label: 'Tekrar Gelme Oranı', value: customers.repeatRate, format: percent, note: 'tekrar gelen ÷ müşteri', tip: 'Müşterilerin yüzde kaçının birden fazla sipariş verdiği.' },
       { key: 'orders', label: 'Kişi Başı Sipariş', value: customers.ordersPerCustomer, note: 'ortalama', tip: 'Bir müşterinin dönemdeki ortalama sipariş sayısı.' },
       { key: 'unknown', label: 'Tanınmayan Sipariş', value: customers.unidentifiedOrders, format: formatCount, note: 'müşteri sayısına girmez', tip: 'Müşteri bilgisi gelmeyen siparişler; müşteri sayılarına girmez.' }
