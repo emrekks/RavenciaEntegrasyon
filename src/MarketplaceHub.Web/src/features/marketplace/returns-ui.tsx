@@ -206,12 +206,14 @@ function useScrollAreaPopover(open: boolean, ref: RefObject<HTMLElement | null>,
     const dropdown = !sheet && host.classList.contains('rr-dropdown')
     if (dropdown) pin({ width: 'max-content', 'min-width': `${anchor.width}px`, 'max-width': `${window.innerWidth - 16}px`, right: 'auto' })
     // A filter or form field (a full-width .rr-trigger: Stok Durumu, Platform, PanelSelect) opens exactly as wide as its
-    // bar, left edges aligned (owner, 8 Nov 2026); a very narrow bar still gives the list 200 px.
+    // bar, left edges aligned (owner, 8 Nov 2026); a bar narrower than its longest option gives the list that option's
+    // width, no more (owner, 10 Nov: a fixed 200 px made the 96 px Tablo Boyutu list "gereksiz geniş").
     // An action menu (İşlemler, Toplu İşlemler) is not a field: it keeps its own width (min 250), never the 91 px of its button.
     const actionMenu = pop.classList.contains('rr-menu') && !host.closest('.rr-fld')
     const field = !sheet && !dropdown && !actionMenu && host.querySelector(':scope > .rr-trigger') !== null
     if (field) {
-      const fieldWidth = `${Math.min(Math.max(anchor.width, 200), window.innerWidth - 16)}px`
+      pin({ width: 'max-content', 'min-width': '0', 'max-width': 'none' })
+      const fieldWidth = `${Math.min(Math.max(anchor.width, pop.offsetWidth), window.innerWidth - 16)}px`
       pin({ width: fieldWidth, 'min-width': fieldWidth, 'max-width': fieldWidth, right: 'auto' })
     }
     // Width and height at layout size: the list grows in from .92 as it opens (styles/motion.css).

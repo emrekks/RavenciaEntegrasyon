@@ -56,7 +56,8 @@ Reply to the user in Turkish: answers, summaries, closing reports and tool descr
 - Owner's shared rules (8 Nov 2026), on every screen:
   - One line when it fits: filter fields with Temizle/Filtrele, button groups and card sub-lines do not wrap while
     there is room.
-  - A field dropdown opens exactly as wide as its bar, left edges aligned (at least 200 px).
+  - A field dropdown opens exactly as wide as its bar, left edges aligned; wider only when its longest option needs it
+    (no fixed 200 px minimum, 10 Nov).
   - Checkboxes are round (16 px, purple with a white tick); radios are round dots.
   - No dead gaps: cards take their content height; a page grid gives the leftover height to the list.
   - Summary cards go six in a row only where every text fits on one line, else three by two.
