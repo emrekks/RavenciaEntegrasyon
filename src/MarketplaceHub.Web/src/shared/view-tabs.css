@@ -45,6 +45,10 @@
    scrolls sideways (ViewTabsWithMore adds .is-strip and drops the Diğer menu; it also scrolls the selected tab into view). */
 @media (max-width: 760px) {
   main .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs { overflow-x: auto !important; overflow-y: hidden; scroll-padding-inline: 8px; overscroll-behavior-x: contain; }
+  /* 8px sides instead of 12px, so short rows fit whole (Düşük Stok's two tabs were cut by 14px at 375px). The
+     notification and Hakediş tabs also drop their icons there: their names alone fill the row. */
+  html body .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs > :is(button, a) { padding: 0 8px !important; }
+  html body :is(.rv-notification-history .rv-tabs, .rv-tabs.reports-subtabs).rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs .rv-view-tab-icon { display: none; }
 }
 /* a tab label reserves the width of the selected weight (a zero-height copy), so selecting a tab never moves the others */
 .rv-tabs.rv-view-tabs .rv-tab-text, .rv-view-tabs-menu .rv-tab-text { display: inline-grid; }

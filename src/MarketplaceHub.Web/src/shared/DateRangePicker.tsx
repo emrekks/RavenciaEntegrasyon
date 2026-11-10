@@ -16,7 +16,7 @@ function firstShownMonth(value: string, future = false) { const start = monthSta
 export function DateRangePicker({ from, to, onChange, label = 'Tarih Aralığı', className, placeholder, icon, chevron, future = false, disabled = false }: { from: string; to: string; onChange: (range: DateRange) => void; label?: string; className?: string; placeholder?: string; icon?: ReactNode; chevron?: ReactNode; future?: boolean; disabled?: boolean }) {
   const [open, setOpen] = useState(false)
   const [month, setMonth] = useState(() => firstShownMonth(from, future))
-  const [popoverPosition, setPopoverPosition] = useState<{ left: number; top: number; maxHeight: number } | null>(null)
+  const [popoverPosition, setPopoverPosition] = useState<{ left: number; top: number; maxHeight: number; width?: number } | null>(null)
   const root = useRef<HTMLDivElement>(null)
   const popover = useRef<HTMLElement>(null)
   // Today is Istanbul's: the filters read their days as Istanbul days, whatever time zone the device is set to.
@@ -28,8 +28,10 @@ export function DateRangePicker({ from, to, onChange, label = 'Tarih Aralığı'
     {
       const viewportWidth = window.innerWidth || 1024
       const viewportHeight = window.innerHeight || 768
-      const width = Math.min(500, viewportWidth - 32)
-      const left = Math.max(16, Math.min(bounds.left, viewportWidth - width - 16))
+      // A phone opens it exactly as wide as its field, left edges aligned (owner's rule, 8 Nov 2026); never under 280px.
+      const phone = viewportWidth <= 760
+      const width = phone ? Math.min(Math.max(bounds.width, 280), viewportWidth - 24) : Math.min(500, viewportWidth - 32)
+      const left = phone ? Math.max(12, Math.min(bounds.left, viewportWidth - width - 12)) : Math.max(16, Math.min(bounds.left, viewportWidth - width - 16))
       // A phone stacks the presets over the calendar (about 600px): it takes the room it has and scrolls the rest.
       const desiredHeight = Math.min(viewportWidth <= 760 ? 640 : 330, viewportHeight - 32)
       const spaceBelow = viewportHeight - bounds.bottom - 16
@@ -39,7 +41,7 @@ export function DateRangePicker({ from, to, onChange, label = 'Tarih Aralığı'
         ? Math.max(16, bounds.top - desiredHeight - 7)
         : bounds.bottom + 7
       const availableHeight = openAbove ? spaceAbove - 7 : viewportHeight - top - 16
-      return { left, top, maxHeight: Math.max(220, Math.min(desiredHeight, availableHeight)) }
+      return { left, top, maxHeight: Math.max(220, Math.min(desiredHeight, availableHeight)), ...(phone ? { width } : {}) }
     }
   }
   function toggleOpen() {

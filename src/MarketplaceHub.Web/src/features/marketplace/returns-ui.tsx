@@ -243,8 +243,9 @@ export function RrAnchor({ trigger, children, className }: { trigger: (open: boo
   useOutsideClose(open, ref, () => setOpen(false))
   useScrollAreaPopover(open, ref, () => setOpen(false))
   // On phones the popover is a bottom sheet; the scrim (shown there only) takes the tap that closes it, so the tap
-  // never reaches the button underneath (a label print, say).
-  return <span ref={ref} className={['rr-anchor', className].filter(Boolean).join(' ')}>{trigger(open, () => setOpen(value => !value))}{open && <span className="rr-anchor-scrim" aria-hidden="true" onClick={event => { event.stopPropagation(); setOpen(false) }} />}{open && children(() => setOpen(false))}</span>
+  // never reaches the button underneath (a label print, say). preventDefault: inside a <label> the tap would otherwise be
+  // forwarded to the trigger button and reopen the list.
+  return <span ref={ref} className={['rr-anchor', className].filter(Boolean).join(' ')}>{trigger(open, () => setOpen(value => !value))}{open && <span className="rr-anchor-scrim" aria-hidden="true" onClick={event => { event.preventDefault(); event.stopPropagation(); setOpen(false) }} />}{open && children(() => setOpen(false))}</span>
 }
 
 // "Sayfa Başına": a short list that opens right under its box (a native select opens its own list over the box on phones).

@@ -240,6 +240,15 @@
 
 /* The bulk actions menu over the selection bar stays above the dimmed page behind it, so its items can be tapped. */
 .app-shell.stitch-shell main .rr-bulk-menu > .rr-menu { z-index: 951 !important; }
+/* Phones: the bulk menu hangs from the whole selection bar, not from its narrow "Toplu" button, so its right-aligned
+   290px list stays on screen (it started 54px left of the screen at 375px). */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .rr-pbulk .rr-anchor:has(> .rr-bulk-menu) { position: static; }
+  /* Hızlı Fiyat / Stok: the footer note takes its own line (it was squeezed to 82px and three lines beside the
+     buttons), the two buttons share the line under it. */
+  .rr-layer.rr-layer .rr-modal.rr-qe-modal > .rr-m-foot > .rr-note { flex: 1 0 100%; }
+  .rr-layer.rr-layer .rr-modal.rr-qe-modal > .rr-m-foot > .rr-btn { flex: 1 1 0; }
+}
 
 /* Phones: the variant stock popover is one box (the card rules for rows and cells stop at the inner table) and every
    stock figure sits right under its size. */

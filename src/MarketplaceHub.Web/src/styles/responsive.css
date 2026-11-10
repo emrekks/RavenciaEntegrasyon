@@ -495,3 +495,10 @@ html body :is(.rr-anchor-scrim, .rr-fscrim, .mfs-scrim, .mfs-sort-backdrop) { cu
    also withholds from plain elements); the window inside keeps its normal cursor. */
 html body :is(.rr-overlay, .workspace-modal-backdrop, .invoice-detail-backdrop, .missing-value-mapping-backdrop, .brand-mapping-modal-backdrop, .integration-modal-backdrop, .integration-settings-modal-backdrop, .job-detail-backdrop, .value-mapping-quick-value-backdrop) { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 html body :is(.rr-overlay, .workspace-modal-backdrop, .invoice-detail-backdrop, .missing-value-mapping-backdrop, .brand-mapping-modal-backdrop, .integration-modal-backdrop, .integration-settings-modal-backdrop, .job-detail-backdrop, .value-mapping-quick-value-backdrop, .mfs-sort-backdrop) > * { cursor: auto; }
+
+/* Phones: text links set as buttons ("Fatura İşlemleri", "Kargo Takip"…) are 18–20px tall; an invisible 8px band
+   above and below makes them a 34px tap target without moving anything (checked: it covers no other control). */
+@media (max-width: 760px) {
+  html body .rr-btn.rr-link { position: relative; }
+  html body .rr-btn.rr-link::after { content: ""; position: absolute; inset: -8px -4px; }
+}

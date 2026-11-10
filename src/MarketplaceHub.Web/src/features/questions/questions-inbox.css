@@ -323,6 +323,12 @@
   .app-shell.stitch-shell main .qi-page .qi-composer textarea { min-height: 60px; max-height: 180px; field-sizing: content; }
 }
 
+/* Narrow phones (375px): "Hepsiburada 33 kayıt" ran 11px past its half-width box, so the word "kayıt" goes, as on
+   tablets; the count stays. */
+@media (max-width: 389px) {
+  .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .qi-sync-unit { display: none; }
+}
+
 /* The product thumbnail is a button that opens the large picture; the header is kept compact around it. */
 .app-shell.stitch-shell main .qi-page .qi-product > .qi-product-zoom { display: block; width: 40px; height: 56px; padding: 0; overflow: hidden; background: none; border: 0; border-radius: 7px; cursor: zoom-in; }
 .app-shell.stitch-shell main .qi-page .qi-product > .qi-product-zoom > img { box-sizing: border-box; display: block; width: 100%; height: 100%; object-fit: cover; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 7px; }
