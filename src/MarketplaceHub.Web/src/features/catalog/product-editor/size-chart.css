@@ -51,8 +51,8 @@
 
 /* "Beden Tablosu Seç" beside Tümünü Temizle: a hint row over the strip while picking; the card's own saved pictures
    take the tap (a cover button over the whole tile), the others fade and take none, and the tiles' own buttons hide. */
-.app-shell.stitch-shell main .product-media-card .size-chart-pick-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 12px; padding: 6px 6px 6px 12px; color: var(--rv-color-ink); font-size: 13px; font-weight: 500; background: color-mix(in srgb, var(--rv-color-primary) 8%, transparent); border: 1px solid color-mix(in srgb, var(--rv-color-primary) 30%, transparent); border-radius: 12px; }
-.app-shell.stitch-shell main .product-media-card .size-chart-pick-hint > span { flex: 1 1 auto; min-width: 0; }
+.app-shell.stitch-shell main .product-media-card .size-chart-pick-hint { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; padding: 6px 6px 6px 12px; color: var(--rv-color-ink); font-size: 13px; font-weight: 500; background: color-mix(in srgb, var(--rv-color-primary) 8%, transparent); border: 1px solid color-mix(in srgb, var(--rv-color-primary) 30%, transparent); border-radius: 12px; }
+.app-shell.stitch-shell main .product-media-card .size-chart-pick-hint > span { flex: 1 1 auto; min-width: 0; line-height: 18px; }
 .app-shell.stitch-shell main .product-media-card .size-chart-pick-hint > button { flex: none; height: 36px; min-height: 0; padding: 0 12px; font-size: 13px; border-radius: 7px; }
 .app-shell.stitch-shell main .media-preview-strip.is-size-chart-picking > :is(.image-preview-card:not(.is-size-chart-pickable), .media-add-tile) { opacity: .4; pointer-events: none; }
 .app-shell.stitch-shell main .media-preview-strip.is-size-chart-picking .image-preview-card :is(.image-zoom-btn, .image-remove-btn, .media-move-buttons) { visibility: hidden; }
