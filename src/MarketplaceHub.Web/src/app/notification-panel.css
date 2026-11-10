@@ -99,5 +99,7 @@
 /* Phones: the notification panel opens across the whole screen width under the header (owner, 10 Nov: "full genişlik");
    the panel's own script sets left and width inline, so these win with !important. */
 @media (max-width: 760px) {
-  html body #rv-notification-history.rv-notification-history { left: 0 !important; right: 0 !important; width: 100% !important; max-width: none; box-sizing: border-box; border-inline: 0; border-radius: 0 0 14px 14px; }
+  html body #rv-notification-history.rv-notification-history { left: 0 !important; right: 0 !important; width: 100% !important; max-width: none; box-sizing: border-box; border-inline: 0; border-radius: 0; }
+  /* While the panel is open the header above it has square corners too, so the two read as one sheet (owner, 10 Nov). */
+  html body .rv-topbar:has(.rv-topbar-notification-trigger[aria-expanded="true"]) { border-radius: 0 !important; }
 }
