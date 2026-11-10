@@ -61,6 +61,22 @@ describe('product platform list status', () => {
       .toBe('Trendyol: Ürün Yayında (35/35)')
   })
 
+  it('is green only when every variant of the row is live there', () => {
+    // RYP006 on Trendyol, 10 Nov 2026: the card is LIVE but the Mürdüm colour added after the send has no listing and no
+    // link, 18 of 21.
+    const state = productPlatformDisplayState(['LIVE'], false, 18, 21)
+    expect(state).toBe('partial')
+    expect(productPlatformDisplayLabel('Trendyol', ['LIVE'], 18, 21, state)).toBe('Trendyol: Kısmen Yayında (18/21)')
+    // A family of several LIVE colour cards with one colour short.
+    expect(productPlatformDisplayState(['LIVE', 'LIVE', 'LIVE'], false, 30, 36)).toBe('partial')
+    // Every variant there stays green, on every marketplace.
+    expect(productPlatformDisplayState(['LIVE', 'LIVE'], false, 21, 21)).toBe('active')
+    expect(productPlatformDisplayLabel('Shopify', ['LIVE'], 21, 21, 'active')).toBe('Shopify: Ürün Yayında (21/21)')
+    // LIVE beside LINKED with every variant matched stays green (MZ028IH); one short is partly live.
+    expect(productPlatformDisplayState(['LIVE', 'LINKED'], false, 10, 10)).toBe('active')
+    expect(productPlatformDisplayState(['LIVE', 'LINKED'], false, 9, 10)).toBe('partial')
+  })
+
   it('shows partial publication only when the marketplace reports live variants', () => {
     const state = productPlatformDisplayState(['LIVE', 'UNKNOWN'], false)
 
