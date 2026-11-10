@@ -690,6 +690,18 @@
   .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr > td:nth-child(2) .ms-platform { display: inline-flex; align-items: center; gap: 0; font-size: 0; }
   .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr > td:nth-child(5) { grid-area: actions !important; justify-self: end; }
   .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr > td:nth-child(5) .mapping-row-actions > button { height: 36px; min-height: 0; }
+
+  /* Category cards: the platform chip (logo and full name) and the actions (Kategori Özellikleri, ×) share the last line
+     while they fit; when they do not (295 px card, long platform name) the actions drop to their own right-aligned
+     line instead of overlapping the name. */
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-card:not(.brand-mapping-saved-card) .mapping-saved-table tbody > tr { display: flex !important; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-card:not(.brand-mapping-saved-card) .mapping-saved-table tbody > tr > td { flex: 0 0 auto; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-card:not(.brand-mapping-saved-card) .mapping-saved-table tbody > tr > td:nth-child(1) { order: 1; flex: 1 1 0; min-width: 0; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-card:not(.brand-mapping-saved-card) .mapping-saved-table tbody > tr > td:nth-child(4) { order: 2; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-card:not(.brand-mapping-saved-card) .mapping-saved-table tbody > tr > td:nth-child(3) { order: 3; flex: 1 0 100%; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-card:not(.brand-mapping-saved-card) .mapping-saved-table tbody > tr > td:nth-child(2) { order: 4; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-card:not(.brand-mapping-saved-card) .mapping-saved-table tbody > tr > td:nth-child(5) { order: 5; margin-left: auto; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-card:not(.brand-mapping-saved-card) .mapping-saved-table tbody > tr > td:nth-child(2) .ms-platform { white-space: nowrap; }
 }
 
 /* Phones and tablets: a category chip shows its whole name on two lines ("Büyük Beden Bluz", "Tesettür Gömlek" were cut
