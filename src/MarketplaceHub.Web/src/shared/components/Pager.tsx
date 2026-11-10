@@ -26,6 +26,6 @@ export function Pager({ page, totalPages, hasNext, onPageChange, onPrevious, onN
         : <button key={value} type="button" className={value === safePage ? 'rr-on' : undefined} aria-current={value === safePage ? 'page' : undefined} disabled={disabled} onClick={() => go(value)}>{value}</button>)}
       <button type="button" aria-label="Sonraki" disabled={disabled || !(hasNext ?? safePage < safeTotal)} onClick={() => (onNext ? onNext() : go(safePage + 1))}><UiIcon name="chevronRight" size={16} /></button>
     </div>
-    <label className="rr-jump">Sayfaya Git<input className="rr-in" type="number" inputMode="numeric" min={1} max={safeTotal} placeholder={`1–${safeTotal}`} aria-label="Sayfa numarası" value={draft} disabled={disabled} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); jump() } }} /><button type="button" className="rr-btn" disabled={disabled} onClick={jump}>Git</button></label>
+    <label className="rr-jump"><span className="rr-jump-label">Sayfaya Git</span><input className="rr-in" type="number" inputMode="numeric" min={1} max={safeTotal} placeholder={`1–${safeTotal}`} aria-label="Sayfa numarası" value={draft} disabled={disabled} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); jump() } }} /><button type="button" className="rr-btn" disabled={disabled} onClick={jump}>Git</button></label>
   </nav>
 }

@@ -94,6 +94,22 @@
   :root:root main .rr.rr-pager.rr-pager-bare .rr-jump { padding-left: 0; border-left: 0; }
 }
 :root:root main .reports-order-pager .rr-pager-bare { margin-left: 0; }
+/* Phones, every list ("tek satıra indir, heryerde", owner 10 Nov 2026): "Toplam N adet" is the one line above, the
+   pages and the jump control share the line under it (pages left, jump right). The pages show the current one and its
+   neighbours (the jump reaches the rest), the "Sayfaya Git" label hides (the input keeps its aria-label) and the input
+   is 56 px. The bare pager drops the phone gutter its host already has, so it lines up with "Toplam". */
+@media (max-width: 760px) {
+  :root:root:root:root .rr-pager:not(.rr-pager-bare) { flex-wrap: wrap; gap: 8px; }
+  :root:root:root:root .rr-pager:not(.rr-pager-bare) > span:first-child { flex: 1 0 100%; }
+  :root:root:root:root .rr-pager.rr-pager-bare { flex: 1 1 100%; width: 100%; flex-wrap: nowrap; justify-content: space-between; gap: 8px; padding-inline: 0 !important; }
+  :root:root:root:root .rr-pager .rr-pages { margin-left: 0; }
+  :root:root:root:root .rr-pager .rr-pages > button { min-width: 36px; padding-inline: 4px !important; }
+  :root:root:root:root .rr-pager .rr-pages > :not(:first-child, :last-child, .rr-on, .rr-on + button, button:has(+ .rr-on), :first-child + .rr-on + button + button, button:has(+ button + .rr-on + :last-child)) { display: none; }
+  :root:root:root:root .rr-pager .rr-jump { margin-left: auto; padding-left: 0; border-left: 0; }
+  :root:root:root:root .rr-pager .rr-jump .rr-in { width: 56px; }
+  :root:root:root:root .rr-pager .rr-jump .rr-btn { padding-inline: 12px !important; }
+  :root:root:root:root .rr-pager .rr-jump-label { display: none; }
+}
 
 /* Compact icon buttons: copy buttons 28 x 28; Eşleştirmeler row icons 32 x 32. */
 :root:root:root:root:root :is(.rr-code-copy, .order-number-copy, .reports-order-copy) { width: 28px; min-width: 28px; height: 28px; min-height: 28px; }

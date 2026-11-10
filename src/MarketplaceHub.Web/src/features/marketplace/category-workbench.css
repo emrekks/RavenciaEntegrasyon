@@ -569,3 +569,15 @@
   .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-layout.cm-layout:has(.cm-detail > .cm-foot) { padding-bottom: 0; }
   .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-detail:has(> .cm-foot) { padding-bottom: 0 !important; }
 }
+
+/* Phones: a field's row is one line ("tek satır yap", owner 10 Nov): Trendyol Alanı and Panel Özelliği side by side in
+   two equal columns with their labels above, the link mark hidden, Kaldır (or Bağla) a 36 px button at the end in line
+   with the controls. A long marketplace field name wraps inside its box instead of being cut. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-form { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; column-gap: 8px; align-items: start; }
+  .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-form > .cm-link { display: none; }
+  .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-form > :is(.cm-unlink, .cm-webcolor-link) { justify-self: end; height: 36px; min-height: 36px; margin-top: 20px; padding: 0 12px; }
+  .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-form .cm-readonly { height: auto; min-height: 36px; padding-block: 7px; line-height: 1.25; overflow-wrap: anywhere; }
+  .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-form .cm-select-row > .pm-select { flex: 1 1 auto; min-width: 0; }
+  .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-form .cm-select-row .pm-trigger { width: 100%; }
+}
