@@ -64,7 +64,12 @@ export function productPlatformDisplayState(
   if (present.length > 0 && present.every(status => status === 'NOT_FOUND')) return 'missing'
   // A listing archived on the marketplace is there but not sold: never green.
   if (present.length > 0 && present.every(status => status === 'ARCHIVED')) return 'closed'
-  if (normalized.length > 0 && normalized.every(status => status === 'LIVE')) return 'active'
+  // Green only when every variant of the row is there: a LIVE card counts a variant once it is linked or its own
+  // listing is LIVE, so one it never sent (no listing, no link) is known not to be live and the row is partly live
+  // (live 2026-11-10: RYP006 on Trendyol and Shopify, Mürdüm added after the send, 18 of 21). Without counts the
+  // card's own word stands.
+  const everyVariantThere = variantCount <= 0 || matchedVariantCount >= variantCount
+  if (normalized.length > 0 && normalized.every(status => status === 'LIVE')) return everyVariantThere ? 'active' : 'partial'
   // Colour cards published from the panel (LIVE) beside ones imported and matched (LINKED), every variant there: the
   // product is live, not partly (live 2026-11-06: MZ028IH on Trendyol, 1 LIVE + 9 LINKED, 10/10).
   if (variantCount > 0 && matchedVariantCount >= variantCount && normalized.includes('LIVE') && normalized.every(status => status === 'LIVE' || status === 'LINKED')) return 'active'
