@@ -480,3 +480,13 @@ html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer)
 }
 @media (max-width: 420px) { :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc > strong > .rr-op-x { font-size: 11.5px; } }
 @media (max-width: 389px) { :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc > strong > .rr-op-x { font-size: 11px; letter-spacing: -.025em; } }
+
+/* Phones: an operations card's per-platform breakdown opens inside the card, under its figure, instead of floating over
+   the cards below it (owner, 10 Nov: "iç içe girme"); the card grows and its row with it. Each platform is two lines (logo
+   and name, then "16 paket · 24 adet") so it fits the half-width card. */
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard > .rr-tip.rr-bd { position: static; grid-column: 1 / -1; width: auto; min-width: 0; max-width: none; margin-top: 8px; padding: 8px; box-shadow: none; transform: none; translate: none; }
+  html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard > .rr-tip.rr-bd .rr-bd-r { grid-template-columns: auto minmax(0, 1fr); row-gap: 2px; }
+  html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard > .rr-tip.rr-bd .rr-bd-r > b { grid-column: 1 / -1; font-size: 12px; }
+  html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard:not(.rr-bd-open) > .rr-tip.rr-bd { display: none !important; }
+}

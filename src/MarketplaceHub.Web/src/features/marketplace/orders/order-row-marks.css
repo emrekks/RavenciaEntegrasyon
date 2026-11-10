@@ -35,3 +35,11 @@ tbody > tr:first-child .rr-omark[data-tip]:is(:hover, :focus)::after { top: calc
 /* "Alıcı: Name [Bireysel]" in the order cell: the tag 6 px from the name and centred on its line (it touched the name and
    sat on the text's baseline, owner 9 Nov 2026). */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ordercell small.rr-buyer-inline > .rr-buyer-tag { margin: -2px 0 0 6px; vertical-align: middle; line-height: 1; }
+
+/* Phones (order and return cards): the buyer type tag sits beside the buyer's name, 6 px from it and centred on its line,
+   as on desktop (owner, 10 Nov: "ismin yanına taşı"); a long name still wraps and takes the tag along. */
+@media (max-width: 760px) {
+  html body main :is(.rr.rr-orders, .rr.rr-returns) .rr-cust { display: flex; flex-wrap: wrap; align-items: center; column-gap: 6px; row-gap: 4px; }
+  html body main :is(.rr.rr-orders, .rr.rr-returns) .rr-cust > b { display: inline; min-width: 0; }
+  html body main :is(.rr.rr-orders, .rr.rr-returns) .rr-cust > .rr-buyer-tag { margin: 0; }
+}
