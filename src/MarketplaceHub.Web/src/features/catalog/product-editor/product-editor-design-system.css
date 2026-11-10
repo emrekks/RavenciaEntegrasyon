@@ -1259,3 +1259,10 @@ html body .app-shell .variant-bulk-edit-modal .variant-bulk-modes > button { hei
 /* The unlayered touch-size button rule (44px, 10px 16px) would win over the layer above; option chips stay compact. */
 .app-shell.stitch-shell main .attribute-builder-values .option-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 0; height: 36px; padding: 0 12px; }
 .app-shell.stitch-shell main .attribute-builder-values .option-chip-chosen { padding: 0 10px 0 12px; }
+
+/* Kategori Özellikleri on phones (two fields a row): the label takes the free height and the picker sits at the bottom,
+   so two pickers side by side are always on one line, also when one label wraps ("Kemer/Kuşak Durumu"; owner, 10 Nov). */
+@media (max-width: 700px) {
+  html body .category-attribute-mapping-list > .category-attribute-field { grid-template-rows: 1fr auto; align-content: stretch; }
+  html body .category-attribute-mapping-list > .category-attribute-field > .category-attribute-field-head { align-self: start; }
+}
