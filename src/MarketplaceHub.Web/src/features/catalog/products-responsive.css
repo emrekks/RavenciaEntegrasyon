@@ -275,7 +275,10 @@
   .app-shell.stitch-shell main .product-add-page .editor-section-title h2 { grid-column: 2; grid-row: 1; align-self: center; margin: 0; }
   .app-shell.stitch-shell main .product-add-page .editor-section-title p { grid-column: 2 / -1; grid-row: 2; }
   .app-shell.stitch-shell main .product-add-page .editor-section-title > .product-media-header-actions { grid-column: 3; grid-row: 1; align-self: center; flex: none; }
-  .app-shell.stitch-shell main .product-add-page .product-media-clear-all-button { height: 36px; min-height: 36px; padding: 0 12px; font-size: 13px; }
+  /* Görseller with Beden Tablosu Seç beside Tümünü Temizle: the buttons take the row under the title, wrapping when
+     İşareti Kaldır joins them. */
+  .app-shell.stitch-shell main .product-add-page .editor-section-title > .product-media-header-actions:has(> :nth-child(2)) { grid-column: 2 / -1; grid-row: 2; flex-wrap: wrap; justify-content: flex-start; margin-left: 0; }
+  .app-shell.stitch-shell main .product-add-page :is(.product-media-clear-all-button, .product-media-size-chart-button) { height: 36px; min-height: 36px; padding: 0 12px; font-size: 13px; }
   .app-shell.stitch-shell main .product-add-page .product-step-grid > label { display: grid; grid-template-rows: minmax(0, 1fr) auto; align-items: end; }
   .app-shell.stitch-shell main .variant-bulk-edit-filters > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 }

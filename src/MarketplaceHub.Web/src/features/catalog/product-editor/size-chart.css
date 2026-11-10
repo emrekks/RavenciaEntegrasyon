@@ -41,19 +41,22 @@
 .size-chart-modal .size-chart-preview img { width: min(320px, 100%); aspect-ratio: 2 / 3; object-fit: contain; background: #fff; border: 1px solid var(--rv-color-border); border-radius: 12px; }
 .size-chart-modal .size-chart-preview figcaption { color: var(--rv-color-subtle); font-size: 12px; }
 
-/* The tile marked as the size chart: a badge, and a small menu button on every own picture. */
-.image-preview-card .size-chart-badge { position: absolute; left: 6px; bottom: 30px; padding: 2px 6px; color: #fff; font-size: 11px; font-weight: 700; line-height: 16px; background: var(--rv-color-primary-fill); border-radius: 7px; pointer-events: none; }
-.image-preview-card button.size-chart-menu-btn { position: absolute; top: 6px; left: 6px; display: grid; place-items: center; width: 26px; height: 26px; min-height: 0; padding: 0; color: var(--rv-color-ink); background: color-mix(in srgb, var(--rv-color-surface) 88%, transparent); border: 1px solid var(--rv-color-border); border-radius: 7px; box-shadow: none; opacity: 0; cursor: pointer; }
-.image-preview-card:hover button.size-chart-menu-btn, .image-preview-card:focus-within button.size-chart-menu-btn, .image-preview-card button.size-chart-menu-btn[aria-expanded='true'] { opacity: 1; }
-@media (hover: none) { .image-preview-card button.size-chart-menu-btn { opacity: 1; } }
-.image-preview-card .size-chart-menu { position: absolute; top: 36px; left: 6px; z-index: 5; display: grid; min-width: 200px; padding: 4px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; box-shadow: 0 8px 24px rgb(0 0 0 / 22%); }
-/* In the editor's picture strip the zoom button owns the top-left corner and the remove button the top-right; the
-   options button sat on the zoom button (owner, 10 Nov 2026: "iç içe geçen iconlar"). It now stands under the remove
-   button as the same dark tile chip, with the same 32px tap band, far enough down that its band never reaches the remove button, and its menu opens under it. */
-.app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card button.size-chart-menu-btn { top: calc(12px + var(--media-tile-button)); right: 5px; left: auto; z-index: 3; width: var(--media-tile-button); height: var(--media-tile-button); color: #fff; background: rgb(9 20 39 / 72%); border: 0; }
-.app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card button.size-chart-menu-btn::after { content: ""; position: absolute; inset: min(-7px, calc((var(--media-tile-button) - 32px) / 2)); }
-.app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card button.size-chart-menu-btn .ui-icon { width: calc(var(--media-tile-button) * .65); height: calc(var(--media-tile-button) * .65); }
-.app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card button.size-chart-menu-btn:hover { background: var(--rv-color-primary); }
-.app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card .size-chart-menu { top: calc(16px + 2 * var(--media-tile-button)); }
-.image-preview-card .size-chart-menu button { min-height: 0; height: 36px; padding: 0 10px; color: var(--rv-color-ink); font-size: 13px; font-weight: 500; text-align: left; text-transform: none; background: transparent; border: 0; border-radius: 7px; box-shadow: none; }
-.image-preview-card .size-chart-menu button:hover, .image-preview-card .size-chart-menu button:focus-visible { background: var(--rv-color-surface-soft); }
+/* The tile marked as the size chart carries a one-line "Beden Tablosu" tag across the bottom of its picture (owner,
+   10 Nov 2026: "üzerindeki etiketi düzelt"; it wrapped onto two lines low-left). Phones keep the bottom corners for the
+   move arrows, so there the tag sits just above them. */
+.app-shell.stitch-shell main .media-preview-strip .image-preview-card .size-chart-badge { position: absolute; right: 4px; bottom: 4px; left: 4px; z-index: 2; box-sizing: border-box; height: 18px; padding: 0 2px; overflow: hidden; color: #fff; font-size: 10.5px; font-weight: 600; line-height: 18px; letter-spacing: -0.1px; text-align: center; white-space: nowrap; background: var(--rv-color-primary-fill); border-radius: 7px; pointer-events: none; }
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .media-preview-strip .image-preview-card .size-chart-badge { right: 6px; bottom: 36px; left: 6px; height: 20px; font-size: 11px; line-height: 20px; }
+}
+
+/* "Beden Tablosu Seç" beside Tümünü Temizle: a hint row over the strip while picking; the card's own saved pictures
+   take the tap (a cover button over the whole tile), the others fade and take none, and the tiles' own buttons hide. */
+.app-shell.stitch-shell main .product-media-card .size-chart-pick-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 12px; padding: 6px 6px 6px 12px; color: var(--rv-color-ink); font-size: 13px; font-weight: 500; background: color-mix(in srgb, var(--rv-color-primary) 8%, transparent); border: 1px solid color-mix(in srgb, var(--rv-color-primary) 30%, transparent); border-radius: 12px; }
+.app-shell.stitch-shell main .product-media-card .size-chart-pick-hint > span { flex: 1 1 auto; min-width: 0; }
+.app-shell.stitch-shell main .product-media-card .size-chart-pick-hint > button { flex: none; height: 36px; min-height: 0; padding: 0 12px; font-size: 13px; border-radius: 7px; }
+.app-shell.stitch-shell main .media-preview-strip.is-size-chart-picking > :is(.image-preview-card:not(.is-size-chart-pickable), .media-add-tile) { opacity: .4; pointer-events: none; }
+.app-shell.stitch-shell main .media-preview-strip.is-size-chart-picking .image-preview-card :is(.image-zoom-btn, .image-remove-btn, .media-move-buttons) { visibility: hidden; }
+.app-shell.stitch-shell main .media-preview-strip .image-preview-card.is-size-chart-pickable { cursor: pointer; }
+.app-shell.stitch-shell main .media-preview-strip .image-preview-card button.size-chart-pick-target { position: absolute; inset: 0; z-index: 4; width: auto; height: auto; min-width: 0; min-height: 0; margin: 0; padding: 0; background: transparent; border: 0; border-radius: inherit; box-shadow: none; cursor: pointer; }
+.app-shell.stitch-shell main .media-preview-strip .image-preview-card button.size-chart-pick-target:is(:hover, :focus-visible) { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; background: color-mix(in srgb, var(--rv-color-primary) 12%, transparent); }
+.app-shell.stitch-shell main .product-media-header-actions > .product-media-size-chart-button[aria-pressed='true'] { color: var(--rv-color-primary); border-color: var(--rv-color-primary); }

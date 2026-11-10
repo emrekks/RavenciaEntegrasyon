@@ -56,6 +56,7 @@ import { VariantMediaBulkSelect } from './VariantMediaBulkSelect'
 import { PriceSuggestionLink } from './PriceSuggestionDialog'
 import { SizeChartButton } from './SizeChartDialog'
 import { isSizeChartRef, pinSizeChartLast, replaceSizeChart, sizeChartKey } from './size-chart-order'
+import { mediaPickerLabel, mediaPickerRefs } from './media-picker-order'
 import { isSizeOptionLabel } from './size-chart-measurements'
 import { describePlatformCodeIssues, platformCodeIssues, summarizeVariantCodeIssues, variantCodeFieldIssueText } from '../platform-code-rules'
 import { productMediaUrlIssue } from '../product-media-url'
@@ -85,7 +86,6 @@ import { OptionValueChips, sortOptionValues } from './OptionValueChips'
 import { AcceptedJob, Brand, Category, ImageLightboxModal, MarketplaceConnection, Page, Product, ProductAttributeAssignment, Variant, VariantPlatformStatus, cleanOptionValue, compareLabelsAlphabetically, compareVariantOptionSignatures, formatCatalogOptionLabel, isColorOptionName, isProductPublicationConnection, isWebColorOptionName, normalizeVariantOptionName, preferredColorOption, productPublicationMode, variantColorKey, variantOptionEntries } from '../shared'
 import { insideSelector, useDismissable } from '../../../shared/hooks/useDismissable'
 import { useMenuFlip } from '../../../shared/hooks/useMenuFlip'
-import { clampIntoViewport } from '../../../shared/viewport-clamp'
 import { PanelSelect } from '../../../shared/PanelSelect'
 import { thumbnailSrcSet, thumbnailUrl } from '../../../shared/product-thumbnail'
 
@@ -1313,15 +1313,16 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   // variant; written with Kaydet (PUT /products/{id}/size-chart) when it differs from the loaded one.
   const [sizeChartUrl, setSizeChartUrl] = useState<string | null>(null)
   const initialSizeChartUrl = useRef<string | null>(null)
-  const [sizeChartMenuKey, setSizeChartMenuKey] = useState<string | null>(null)
+  // "Beden Tablosu Seç" beside Tümünü Temizle: while on, a tap on one of the card's own saved pictures marks it as the
+  // size chart (the tiles' zoom, remove and move buttons and dragging are off meanwhile); Escape or Vazgeç leaves it.
+  const [sizeChartPicking, setSizeChartPicking] = useState(false)
   const chartKey = sizeChartKey(sizeChartUrl)
-  // A tile's menu closes on a press anywhere outside it.
   useEffect(() => {
-    if (!sizeChartMenuKey) return
-    const close = (event: PointerEvent) => { if (!(event.target instanceof Element) || !event.target.closest('.size-chart-menu, .size-chart-menu-btn')) setSizeChartMenuKey(null) }
-    document.addEventListener('pointerdown', close)
-    return () => document.removeEventListener('pointerdown', close)
-  }, [sizeChartMenuKey])
+    if (!sizeChartPicking) return
+    const leave = (event: KeyboardEvent) => { if (event.key === 'Escape') setSizeChartPicking(false) }
+    document.addEventListener('keydown', leave)
+    return () => document.removeEventListener('keydown', leave)
+  }, [sizeChartPicking])
   const [pointerDraggedVariantKey, setPointerDraggedVariantKey] = useState<string | null>(null)
   // Touch screens have no drag and drop: holding a picture for a moment picks it up, sliding moves it and lifting the
   // finger drops it on the picture underneath. Moving before the hold completes scrolls the page as usual; while a
@@ -1474,6 +1475,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const desi = useMemo(() => { const width = Number(form.width); const length = Number(form.length); const height = Number(form.height); return width > 0 && length > 0 && height > 0 ? width * length * height / 3000 : 0 }, [form.width, form.length, form.height])
   // The size chart stays the card's last picture whatever order the draft holds (size-chart-order.ts).
   const mediaUrls = useMemo(() => pinSizeChartLast(form.mediaUrls.split(/\r?\n|[;|]/).map(item => item.trim()).filter(Boolean), chartKey), [form.mediaUrls, chartKey])
+  // Picking stays on only while the card has a saved picture of its own to mark.
+  const pickingSizeChart = sizeChartPicking && Boolean(editProductId) && mediaUrls.length > 0
 
   const allRequirements = useMemo(() => (requirements.data ?? []).slice().sort((a, b) => a.displayOrder - b.displayOrder), [requirements.data])
   // A category requirement is usable in the product editor when its mapped
@@ -1538,7 +1541,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     const seededSizeChartUrl = editProductId ? product.sizeChartUrl ?? null : null
     initialSizeChartUrl.current = seededSizeChartUrl
     setSizeChartUrl(seededSizeChartUrl)
-    setSizeChartMenuKey(null)
+    setSizeChartPicking(false)
     setFamilyMediaOrder(withoutCopyRemovedMedia(uniqueMediaUrls(product.familyOrderedMediaUrls?.length
       ? product.familyOrderedMediaUrls
       : [...savedMediaUrls, ...savedFamilyMediaUrls]), removedMediaKeys))
@@ -1871,10 +1874,10 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     setSizeChartUrl(url)
     showFeedback('Beden Tablosu Eklendi', 'Beden tablosu son görsel olarak eklendi. Kalıcı olması ve pazaryerlerine gitmesi için kaydedin.', 'info')
   }
-  // "Beden Tablosu Olarak İşaretle" on one of the card's own pictures (an older chart uploaded by hand): it becomes the
+  // "Beden Tablosu Seç" and a tap on one of the card's own pictures (an older chart uploaded by hand): it becomes the
   // last picture everywhere. Marking another one moves the mark; nothing is ever recognised on its own.
   function markSizeChart(url: string | null) {
-    setSizeChartMenuKey(null)
+    setSizeChartPicking(false)
     if (url) setVariantRows(rows => rows.map(row => row.mediaRefs.length === 0 ? row : { ...row, mediaRefs: replaceSizeChart(row.mediaRefs, null, url, true, false) }))
     setSizeChartUrl(url)
     showFeedback(url ? 'Beden Tablosu İşaretlendi' : 'Beden Tablosu İşareti Kaldırıldı', url ? 'Görsel her varyantta son sıraya alındı. Kalıcı olması için kaydedin.' : 'Görsel artık sona sabitlenmiyor. Kalıcı olması için kaydedin.', 'info')
@@ -3401,8 +3404,15 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const hasMediaTiles = mediaUrls.length > 0 || mediaFiles.length > 0 || familyOnlyMediaItems.length > 0
   const mediaUploadHint = "Adet sınırı yok · JPEG, PNG veya WebP · WebP ve 6 MB üstü JPEG'e çevrilir"
   const mediaFileInput = <input ref={mediaFileInputRef} type="file" accept={PRODUCT_IMAGE_ACCEPT} multiple tabIndex={hasMediaTiles ? -1 : undefined} aria-label="Ürün görsellerini dosya olarak seç" onChange={event => { void handleMediaFiles(Array.from(event.target.files ?? [])); event.currentTarget.value = '' }} />
-  // In the strip's order (Görseller), so Görsel 01, 02… are the same pictures in the same places as on the page.
-  const mediaChoices: ProductMediaOption[] = ([...new Set([...visibleMediaUrls, ...mediaUrls, ...familyMediaUrls.filter(url => !pendingRemovalMediaKeys.has(mediaImageKey(url))), ...assignedMediaUrls])].map((url, index) => ({ value: `url|${url}`, label: `Görsel ${String(index + 1).padStart(2, '0')}`, url })) as ProductMediaOption[]).concat(mediaFiles.map(item => ({ value: `file|${item.id}`, label: `Yüklenen Görsel · ${item.file.name}`, file: item.file })))
+  // In the strip's order (Görseller), new uploads where they stand and the size chart last, so Görsel 01, 02… are the
+  // same pictures in the same places as on the page (media-picker-order.ts).
+  const mediaChoices: ProductMediaOption[] = mediaPickerRefs(mediaStrip, [...mediaUrls, ...familyMediaUrls.filter(url => !pendingRemovalMediaKeys.has(mediaImageKey(url))), ...assignedMediaUrls], chartKey)
+    .flatMap((ref): Omit<ProductMediaOption, 'label'>[] => {
+      if (!ref.startsWith('file|')) return [{ value: ref, url: ref.slice(4) }]
+      const item = mediaFiles.find(file => file.id === ref.slice(5))
+      return item ? [{ value: ref, file: item.file }] : []
+    })
+    .map((option, index) => ({ ...option, label: mediaPickerLabel(index, Boolean(option.file)) }))
   const bulkMediaGroups = useMemo<VariantMediaGroup[]>(() => {
     const groups: VariantMediaGroup[] = []
     const groupsByName = new Map<string, VariantMediaGroup>()
@@ -3601,6 +3611,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           <span>4</span>
             <div><h2>Görseller<TitleHint label="Görseller">JPEG veya PNG yükleyin, sürükleyerek sıralayın. Aynı modelin diğer renklerinin görselleri de görünür; sıralama kayıtta renk ürünlerine uygulanır.</TitleHint></h2></div>
             <div className="product-media-header-actions">
+              {editProductId && mediaUrls.length > 0 && <button type="button" className="secondary product-media-size-chart-button" aria-pressed={pickingSizeChart} disabled={submitting} title="Kartın kayıtlı görsellerinden birini beden tablosu olarak işaretleyin; her varyantta son sıraya alınır." onClick={() => setSizeChartPicking(current => !current)}>Beden Tablosu Seç</button>}
+              {editProductId && sizeChartUrl && <button type="button" className="secondary product-media-size-chart-button" disabled={submitting} title="Beden tablosu işaretini kaldırın; görsel kartta kalır." onClick={() => markSizeChart(null)}>İşareti Kaldır</button>}
               {(mediaUrls.length > 0 || mediaFiles.length > 0 || familyOnlyMediaItems.length > 0 || variantRows.some(row => row.mediaRefs.length > 0)) && <button type="button" className="secondary product-media-clear-all-button" onClick={() => clearAllMedia()}>Tümünü Temizle</button>}
             </div>
         </div>
@@ -3612,7 +3624,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           <small>{mediaUploadHint}</small>
         </label>}
         {hasMediaTiles && <span className="product-media-file-slot">{mediaFileInput}</span>}
-        {hasMediaTiles && <div ref={mediaStripRef} className="media-preview-strip" onPointerDown={startMediaTouch} onPointerMove={moveMediaTouch} onPointerUp={endMediaTouch} onPointerCancel={cancelMediaTouch} onContextMenu={event => { if (mediaTouch.current) event.preventDefault() }} onClickCapture={event => { if (suppressMediaClick.current) { event.preventDefault(); event.stopPropagation() } }}>
+        {pickingSizeChart && hasMediaTiles && <div className="size-chart-pick-hint" role="status"><span>Beden tablosu olacak görsele dokunun</span><button type="button" className="secondary" onClick={() => setSizeChartPicking(false)}>Vazgeç</button></div>}
+        {hasMediaTiles && <div ref={mediaStripRef} className={`media-preview-strip${pickingSizeChart ? ' is-size-chart-picking' : ''}`} onPointerDown={pickingSizeChart ? undefined : startMediaTouch} onPointerMove={moveMediaTouch} onPointerUp={endMediaTouch} onPointerCancel={cancelMediaTouch} onContextMenu={event => { if (mediaTouch.current) event.preventDefault() }} onClickCapture={event => { if (suppressMediaClick.current) { event.preventDefault(); event.stopPropagation() } }}>
           {/* One ordered strip: saved pictures, the family's and new files mix; the first own picture is the main one. */}
           {mediaStrip.map((ref, index) => {
             const ownPosition = mediaStripOwnPosition(mediaStrip, index, draftMediaKeys)
@@ -3624,7 +3637,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
             }
             if (ref.startsWith('file|')) {
               const item = mediaFiles.find(file => file.id === ref.slice(5))
-              return item && <LocalImagePreview key={item.id} mediaIndex={index} file={item.file} alt={`${form.title || 'Ürün'} ${index + 1}`} caption={ownPosition === 0 ? 'Ana görsel' : item.file.name} draggable={!touchPointer && !submitting} mediaCount={mediaStrip.length} onMove={target => reorderMedia(index, target)} moveDisabled={submitting} isDragOver={dragOverMedia === index} {...mediaDrag} onRemove={() => removeUploadedMedia(item.id)} onZoom={url => setLightboxImage({ url, title: form.title || 'Ürün Görseli', modelCode: form.modelCode })} />
+              return item && <LocalImagePreview key={item.id} mediaIndex={index} file={item.file} alt={`${form.title || 'Ürün'} ${index + 1}`} caption={ownPosition === 0 ? 'Ana görsel' : item.file.name} draggable={!touchPointer && !submitting && !pickingSizeChart} mediaCount={mediaStrip.length} onMove={target => reorderMedia(index, target)} moveDisabled={submitting} isDragOver={dragOverMedia === index} {...mediaDrag} onRemove={() => removeUploadedMedia(item.id)} onZoom={url => setLightboxImage({ url, title: form.title || 'Ürün Görseli', modelCode: form.modelCode })} />
             }
             const url = ref.slice(4)
             const ownedUrl = mediaUrls.find(current => mediaImageKey(current) === mediaImageKey(url))
@@ -3632,18 +3645,11 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
             const isProductMedia = ownedUrl !== undefined
             const deletingProductMedia = deletingProductMediaKey === mediaImageKey(url)
             const isSizeChart = isSizeChartRef(ref, chartKey)
-            const menuOpen = sizeChartMenuKey === mediaImageKey(url)
-            return <figure key={`family-${mediaImageKey(url)}`} data-media-kind="url" data-media-index={index} data-size-chart={isSizeChart || undefined} className={`image-preview-card media-sortable${isProductMedia ? '' : ' family-media-preview'} ${dragOverMedia === index ? 'is-media-drag-over' : ''}`} draggable={!touchPointer && !submitting && !deletingProductMediaKey && !isSizeChart} {...mediaDrag}>
+            const pickable = pickingSizeChart && isProductMedia && Boolean(editProductId)
+            return <figure key={`family-${mediaImageKey(url)}`} data-media-kind="url" data-media-index={index} data-size-chart={isSizeChart || undefined} className={`image-preview-card media-sortable${isProductMedia ? '' : ' family-media-preview'}${pickable ? ' is-size-chart-pickable' : ''} ${dragOverMedia === index ? 'is-media-drag-over' : ''}`} draggable={!touchPointer && !submitting && !deletingProductMediaKey && !isSizeChart && !pickingSizeChart} {...mediaDrag}>
               <img src={thumbnailUrl(url)} srcSet={thumbnailSrcSet(url)} sizes="88px" alt={`${form.title || 'Ürün'} ${index + 1}`} className="media-tile-image" draggable={false} />
               {isSizeChart && <span className="size-chart-badge">Beden Tablosu</span>}
-              {isProductMedia && editProductId && <>
-                <button type="button" className="size-chart-menu-btn" aria-label="Görsel seçenekleri" title="Görsel seçenekleri" aria-haspopup="menu" aria-expanded={menuOpen} disabled={submitting} onClick={event => { event.stopPropagation(); setSizeChartMenuKey(menuOpen ? null : mediaImageKey(url)) }}><UiIcon name="moreVertical" size={14} /></button>
-                {menuOpen && <div ref={clampIntoViewport} className="size-chart-menu" role="menu" tabIndex={-1} onKeyDown={event => { if (event.key === 'Escape') setSizeChartMenuKey(null) }}>
-                  {isSizeChart
-                    ? <button type="button" role="menuitem" onClick={event => { event.stopPropagation(); markSizeChart(null) }}>Beden Tablosu İşaretini Kaldır</button>
-                    : <button type="button" role="menuitem" onClick={event => { event.stopPropagation(); markSizeChart(ownedUrl ?? url) }}>Beden Tablosu Olarak İşaretle</button>}
-                </div>}
-              </>}
+              {pickable && <button type="button" className="size-chart-pick-target" aria-label={isSizeChart ? 'Bu görsel zaten beden tablosu' : 'Bu görseli beden tablosu olarak işaretle'} onClick={event => { event.stopPropagation(); if (isSizeChart) setSizeChartPicking(false); else markSizeChart(ownedUrl ?? url) }} />}
               <MediaZoomButton onZoom={() => setLightboxImage({ url, title: isProductMedia ? form.title || 'Ürün Görseli' : `${form.title || 'Ürün'} · Renk Ailesi`, modelCode: form.modelCode })} />
               {isProductMedia
                 ? <button type="button" className="image-remove-btn" disabled={deletingProductMedia || submitting} title="Görseli üründen hemen kaldır" aria-label="Görseli üründen hemen kaldır" onClick={event => { event.stopPropagation(); if (ownedUrl) void removeProductMedia(ownedUrl) }}><UiIcon name={deletingProductMedia ? 'loader' : 'close'} /></button>

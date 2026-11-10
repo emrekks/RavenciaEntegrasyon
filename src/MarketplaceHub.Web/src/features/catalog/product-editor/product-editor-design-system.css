@@ -135,7 +135,7 @@
 }
 
 @layer features {
-  .product-media-clear-all-button { white-space: nowrap; }
+  .product-media-clear-all-button, .product-media-size-chart-button { white-space: nowrap; }
 }
 
 @layer features {
