@@ -4474,7 +4474,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // The packages an order status scan follows: neither delivered, cancelled nor returned (the scans below and the
     // scheduler's check that one is worth queueing, ScheduledJobProducer.OpenPackagesExistAsync).
     internal static IQueryable<ShipmentPackage> OpenPackages(IQueryable<ShipmentPackage> packages, Guid tenantId, Guid connectionId) =>
-        packages.Where(package => package.TenantId == tenantId && package.ConnectionId == connectionId
+        OpenPackages(packages, tenantId).Where(package => package.ConnectionId == connectionId);
+
+    internal static IQueryable<ShipmentPackage> OpenPackages(IQueryable<ShipmentPackage> packages, Guid tenantId) =>
+        packages.Where(package => package.TenantId == tenantId
             && package.Status != ShipmentPackageStatus.Delivered && package.Status != ShipmentPackageStatus.Cancelled && package.Status != ShipmentPackageStatus.Returned);
 
     private async Task<bool> SyncOpenOrders(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)

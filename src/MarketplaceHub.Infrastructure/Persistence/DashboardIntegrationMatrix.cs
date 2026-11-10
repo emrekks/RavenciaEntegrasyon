@@ -62,12 +62,20 @@ public static class DashboardIntegrationMatrix
             .Where(x => x.TenantId == tenantId && plainIds.Contains(x.ConnectionId))
             .Select(x => new PolicyRow(x.ConnectionId, x.ResourceType, x.IntervalSeconds, x.Enabled, x.IdleBackoffEnabled, x.IdleIntervalSeconds))
             .ToListAsync(cancellationToken);
+        // Since when each connection has had an open package (its oldest open one): the status scans that follow open
+        // packages only are queued just then (ScheduledJobProducer.LifecycleFollowsOpenPackagesOnly).
+        var openPackagesSince = await MarketplaceJobProcessor.OpenPackages(db.ShipmentPackages.AsNoTracking(), tenantId)
+            .Where(x => plainIds.Contains(x.ConnectionId))
+            .GroupBy(x => x.ConnectionId)
+            .Select(g => new { ConnectionId = g.Key, Since = g.Min(x => x.CreatedAt) })
+            .ToDictionaryAsync(x => x.ConnectionId, x => x.Since, cancellationToken);
         return connections.Select(connection =>
         {
             string? issue = null;
             var silent = false;
             var cells = new Dictionary<string, DashboardIntegrationCellView>();
             var periods = Periods(connection.PlatformCode, policies.Where(x => x.ConnectionId == connection.Id));
+            DateTimeOffset? openSince = openPackagesSince.TryGetValue(connection.Id, out var openAt) ? openAt : null;
             foreach (var (key, types, staleAfter) in Kinds)
             {
                 var state = "off";
@@ -77,8 +85,8 @@ public static class DashboardIntegrationMatrix
                     var success = successes.FirstOrDefault(x => x.ConnectionId == connection.Id && x.JobType == type)?.At;
                     var problem = problems.FirstOrDefault(x => x.ConnectionId == connection.Id && x.JobType == type);
                     if (problem is not null && success is not null && problem.CreatedAt <= success) problem = null;
-                    var period = Period(type, staleAfter, periods);
-                    var typeState = TypeState(success, problem?.Status, period, now);
+                    var (measuredFrom, period) = OpenPackageGate(type, success, Period(type, staleAfter, periods), openSince);
+                    var typeState = TypeState(measuredFrom, problem?.Status, period, now);
                     if (success is { } at && (cellSuccess is null || at > cellSuccess)) cellSuccess = at;
                     if (problem is not null && (cellProblem is null || problem.CreatedAt > cellProblem)) cellProblem = problem.CreatedAt;
                     if (problem is not null && Failed.Contains(problem.Status)) issue ??= JobErrorMessages.Display(problem.LastErrorCode, problem.LastErrorSummary);
@@ -104,6 +112,16 @@ public static class DashboardIntegrationMatrix
             state = Worst(state, age > limit * 2 ? "bad" : age > limit ? "warn" : "ok");
         }
         return state;
+    }
+
+    // A status scan the scheduler queues only while the connection has an open package to follow has no age rule while
+    // none is open (its silence is the schedule, not a stall), and is measured from when a package opened after its last
+    // run, since it is due only from then. Every other flow keeps its period and last success. Failures count either way.
+    internal static (DateTimeOffset? MeasuredFrom, TimeSpan? Period) OpenPackageGate(string jobType, DateTimeOffset? lastSuccess, TimeSpan? period, DateTimeOffset? openPackagesSince)
+    {
+        if (!ScheduledJobProducer.LifecycleFollowsOpenPackagesOnly(jobType)) return (lastSuccess, period);
+        if (openPackagesSince is not { } openedAt) return (lastSuccess, null);
+        return (lastSuccess is { } success && openedAt > success ? openedAt : lastSuccess, period);
     }
 
     private static readonly string[] Severity = ["off", "ok", "warn", "bad"];

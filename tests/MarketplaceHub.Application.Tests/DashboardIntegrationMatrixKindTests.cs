@@ -87,6 +87,56 @@ public class DashboardIntegrationMatrixKindTests
         Assert.Equal(MarketplaceJobTypes.HepsiburadaReturnSync, DashboardIntegrationMatrix.ScheduledJobType("HEPSIBURADA", "RETURNS"));
     }
 
+    // Live 10 Nov 2026: Pazarama's and PTT AVM's open-package status scans are queued only while the connection has an
+    // open package (ScheduledJobProducer.LifecycleFollowsOpenPackagesOnly). With none open they stopped at 11:48 and the
+    // order cell read "Hata Var" four hours later although every order read succeeded.
+    [Theory]
+    [InlineData(MarketplaceJobTypes.PazaramaOrderStatusSync)]
+    [InlineData(MarketplaceJobTypes.PttAvmOrderStatusSync)]
+    [InlineData(MarketplaceJobTypes.ShopifyOrderStatusSync)]
+    public void A_status_scan_with_no_open_package_to_follow_has_no_age_rule(string jobType)
+    {
+        var success = Now.AddHours(-6);
+        var (from, period) = DashboardIntegrationMatrix.OpenPackageGate(jobType, success, TimeSpan.FromHours(2), openPackagesSince: null);
+        Assert.Null(period);
+        Assert.Equal("ok", DashboardIntegrationMatrix.TypeState(from, null, period, Now));
+    }
+
+    [Fact]
+    public void A_status_scan_is_measured_from_when_a_package_opened_after_its_last_run()
+    {
+        var success = Now.AddHours(-6);
+        // A package opened a minute ago: the scan is due on the scheduler's next pass, not six hours late.
+        var (from, period) = DashboardIntegrationMatrix.OpenPackageGate(MarketplaceJobTypes.PazaramaOrderStatusSync, success, TimeSpan.FromHours(2), Now.AddMinutes(-1));
+        Assert.Equal("ok", DashboardIntegrationMatrix.TypeState(from, null, period, Now));
+        // A package open since before the last run while the scan stays silent is a real stall.
+        (from, period) = DashboardIntegrationMatrix.OpenPackageGate(MarketplaceJobTypes.PttAvmOrderStatusSync, success, TimeSpan.FromHours(2), Now.AddDays(-2));
+        Assert.Equal("bad", DashboardIntegrationMatrix.TypeState(from, null, period, Now));
+        // Never run in the window stays unknown.
+        (from, period) = DashboardIntegrationMatrix.OpenPackageGate(MarketplaceJobTypes.PttAvmOrderStatusSync, null, TimeSpan.FromHours(2), Now.AddMinutes(-1));
+        Assert.Equal("off", DashboardIntegrationMatrix.TypeState(from, null, period, Now));
+    }
+
+    [Theory]
+    [InlineData(MarketplaceJobTypes.OrderStatusSync)]
+    [InlineData(MarketplaceJobTypes.HepsiburadaOrderStatusSync)]
+    [InlineData(MarketplaceJobTypes.PazaramaOrderSync)]
+    public void Flows_the_scheduler_always_queues_keep_their_age_rule(string jobType)
+    {
+        var success = Now.AddHours(-6);
+        var (from, period) = DashboardIntegrationMatrix.OpenPackageGate(jobType, success, TimeSpan.FromHours(2), openPackagesSince: null);
+        Assert.Equal(TimeSpan.FromHours(2), period);
+        Assert.Equal("bad", DashboardIntegrationMatrix.TypeState(from, null, period, Now));
+    }
+
+    // A failure of a gated scan still counts.
+    [Fact]
+    public void A_failed_status_scan_is_bad_even_with_no_open_package()
+    {
+        var (from, period) = DashboardIntegrationMatrix.OpenPackageGate(MarketplaceJobTypes.PazaramaOrderStatusSync, Now.AddHours(-6), TimeSpan.FromHours(2), null);
+        Assert.Equal("bad", DashboardIntegrationMatrix.TypeState(from, JobStatus.Dead, period, Now));
+    }
+
     // T2-D6: a scheduled read folded into the run already going did nothing itself and is no success.
     [Fact]
     public void A_coalesced_read_is_not_counted_as_a_success()
