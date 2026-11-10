@@ -447,7 +447,7 @@ export function SystemSettingsPage() {
           <div className="ss-body">{status.isLoading ? <LoadingState>Güvenlik durumu yükleniyor…</LoadingState> : status.isError || !status.data ? <div role="alert" className="ss-callout is-danger"><SettingsIcon name="alert" /><span>Güvenlik durumu alınamadı.</span></div> : <>
             <div className="ss-auth">
               <span className="ss-tile is-lg"><SettingsIcon name="shield" /></span>
-              <h3><span>Authenticator<TitleHint label="Authenticator">Girişte telefonunuzdaki tek kullanımlık kod da istenir; Google Authenticator, Microsoft Authenticator veya uyumlu bir uygulama gerekir.{totpEnabled ? null : <> Kurulum: <b>parola doğrulama</b>, <b>QR kod</b>, <b>kurtarma kodlarını saklama</b>.</>}</TitleHint></span> {totpEnabled ? <span className="ss-tag is-ink"><SettingsGlyph state="done" />Etkin</span> : <span className="ss-tag"><SettingsGlyph state="none" />Kapalı</span>}</h3>
+              <h3><span>Authenticator</span> {totpEnabled ? <span className="ss-tag is-ink"><SettingsGlyph state="done" />Etkin</span> : <span className="ss-tag"><SettingsGlyph state="none" />Kapalı</span>}</h3>
               {totpEnabled && <div className="ss-auth-meta"><span>Kalan kurtarma kodu <b>{status.data.recoveryCodesRemaining}</b></span></div>}
               <div className="ss-auth-side">{totpEnabled ? <span className="ss-tag is-ink is-lg" aria-label="Authenticator etkin"><SettingsGlyph state="done" />Hesabınız Korunuyor</span> : <button type="button" className="ss-btn is-primary" onClick={openMfa}><SettingsIcon name="shield" />Authenticator’ı Etkinleştir</button>}</div>
             </div>
