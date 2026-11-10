@@ -1266,3 +1266,11 @@ html body .app-shell .variant-bulk-edit-modal .variant-bulk-modes > button { hei
   html body .category-attribute-mapping-list > .category-attribute-field { grid-template-rows: 1fr auto; align-content: stretch; }
   html body .category-attribute-mapping-list > .category-attribute-field > .category-attribute-field-head { align-self: start; }
 }
+
+/* Phones: the two move arrows are small 26 px buttons laid over the picture's bottom corners, in the zoom button's dark
+   style, instead of a 28 px row under it (owner, 10 Nov: "küçült, görsel üzerine al"). */
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card > .media-move-buttons.media-move-buttons { position: absolute; right: 6px; bottom: 6px; left: 6px; z-index: 2; display: flex; justify-content: space-between; gap: 0; margin: 0; pointer-events: none; }
+  html body .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card > .media-move-buttons.media-move-buttons > .media-move-btn { width: 26px; height: 26px; color: #fff; background: rgb(9 20 39 / 72%); border: 0; border-radius: 7px; box-shadow: none; pointer-events: auto; }
+  html body .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card > .media-move-buttons.media-move-buttons > .media-move-btn:disabled { opacity: .35; }
+}
