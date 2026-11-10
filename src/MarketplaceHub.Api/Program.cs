@@ -40,7 +40,9 @@ if (args is ["healthcheck"])
 var builder = WebApplication.CreateBuilder(args);
 DependencyInjection.ApplyFileBackedSecrets(builder.Configuration);
 builder.Host.UseSerilog((_, configuration) => configuration
-    .MinimumLevel.Override("Microsoft.AspNetCore.Hosting.Diagnostics", LogEventLevel.Warning)
+    // Every request wrote "Executing endpoint" and "Setting HTTP status code" lines (~240 a minute on live, 10 Nov 2026).
+    // Warning keeps unhandled request failures (ExceptionHandlerMiddleware, Kestrel, SignalR errors) visible.
+    .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
     .MinimumLevel.Override("Microsoft.EntityFrameworkCore.Database.Command", LogEventLevel.Warning)
     // The HttpClient factory logs four Information lines per outbound call; the adapters log their own failures.
     .MinimumLevel.Override("System.Net.Http.HttpClient", LogEventLevel.Warning)

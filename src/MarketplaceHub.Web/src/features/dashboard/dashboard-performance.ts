@@ -169,3 +169,25 @@ export function periodTrend(current: number, previous: number): [string, boolean
   const delta = Math.round(((current - previous) / previous) * 1000) / 10
   return [`${delta < 0 ? '-' : ''}%${Math.abs(delta).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}`, delta >= 0]
 }
+
+// Waits until the browser is idle (or a short while where it cannot say), so a background read never competes with the
+// screen the user is looking at.
+function whenIdle() {
+  return new Promise<void>(resolve => {
+    if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') window.requestIdleCallback(() => resolve(), { timeout: 2000 })
+    else setTimeout(resolve, 50)
+  })
+}
+
+/**
+ * Reads the other ready periods one after another, each when the browser is idle, instead of all at once: seven
+ * parallel /dashboard/performance reads right after the first one held the server and the connection busy (Nov 2026).
+ * Stops when cancelled() says the page left or the day changed; a failed read does not stop the rest.
+ */
+export async function prefetchInTurn(reads: ReadonlyArray<() => Promise<unknown>>, cancelled: () => boolean, idle: () => Promise<void> = whenIdle) {
+  for (const read of reads) {
+    await idle()
+    if (cancelled()) return
+    await read().catch(() => undefined)
+  }
+}

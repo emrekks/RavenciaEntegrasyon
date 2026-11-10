@@ -55,7 +55,8 @@ public sealed partial class MarketplaceJobProcessor
                           join order in db.Orders.AsNoTracking()
                               on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
                           where package.TenantId == tenantId && package.ConnectionId == connectionId && package.Status != ShipmentPackageStatus.Delivered && package.Status != ShipmentPackageStatus.Cancelled && package.Status != ShipmentPackageStatus.Returned
-                          select new { order.ExternalOrderId, order.OrderedAt, package.UpdatedAt })
+                          // Least lately read first: an unchanged read moves only the invoice "last checked" time (SyncNoOpWrites).
+                          select new { order.ExternalOrderId, order.OrderedAt, UpdatedAt = package.MarketplaceInvoiceObservedAt > package.UpdatedAt ? package.MarketplaceInvoiceObservedAt!.Value : package.UpdatedAt })
             .ToListAsync(cancellationToken);
         if (open.Count == 0) return false;
 

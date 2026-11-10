@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { axisLabel, matrixCellText } from './DashboardPage'
-import { addDays, channelTotals, dayKeys, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, periodFigures, presetLabels, presetOrder, primaryCurrency, revenueReport, type Performance, type PerformanceRow } from './dashboard-performance'
+import { addDays, channelTotals, dayKeys, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, periodFigures, prefetchInTurn, presetLabels, presetOrder, primaryCurrency, revenueReport, type Performance, type PerformanceRow } from './dashboard-performance'
 
 const row = (day: string, connectionId: string, amount: number, extra: Partial<PerformanceRow> = {}): PerformanceRow =>
   ({ day, connectionId, currency: 'TRY', amount, orderCount: 1, productQuantity: 2, packageCount: 1, returnedAmount: 0, returnedOrderCount: 0, ...extra })
@@ -133,5 +133,27 @@ describe('revenue chart axis (W-F15)', () => {
     expect(axisLabel(1500)).toBe('₺1,5 B')
     expect(axisLabel(1500, 'USD')).toBe('$1,5 B')
     expect(axisLabel(850, 'EUR')).toBe('€850')
+  })
+})
+
+describe('background period reads', () => {
+  it('reads the other periods one at a time, never two at once, and stops when the page leaves', async () => {
+    let running = 0
+    let peak = 0
+    const done: number[] = []
+    const read = (index: number) => async () => { running++; peak = Math.max(peak, running); await Promise.resolve(); running--; done.push(index) }
+    await prefetchInTurn([0, 1, 2].map(read), () => false, () => Promise.resolve())
+    expect(done).toEqual([0, 1, 2])
+    expect(peak).toBe(1)
+    let left = false
+    const stopped: number[] = []
+    await prefetchInTurn([0, 1, 2].map(index => async () => { stopped.push(index); left = index === 0 }), () => left, () => Promise.resolve())
+    expect(stopped).toEqual([0])
+  })
+
+  it('goes on after a failed read', async () => {
+    const done: number[] = []
+    await prefetchInTurn([async () => { throw new Error('x') }, async () => { done.push(1) }], () => false, () => Promise.resolve())
+    expect(done).toEqual([1])
   })
 })

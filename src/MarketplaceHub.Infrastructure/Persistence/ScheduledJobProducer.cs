@@ -219,6 +219,10 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             // An open-return scan with no open claim to follow has nothing to do and is not queued (a local check).
             if (row.Policy.ResourceType == "RETURN_LIFECYCLE"
                 && !await OpenReturnClaimsExistAsync(db, row.Policy.TenantId, row.Connection.Id, row.Connection.PlatformCode, cancellationToken)) continue;
+            // Likewise an order status scan with no open package to follow (live 10 Nov 2026: Pazarama's ran 27 times an hour
+            // with none open). A new order read opens one again; the scan is queued on the next pass after that.
+            if (LifecycleFollowsOpenPackagesOnly(definition.Value.JobType)
+                && !await OpenPackagesExistAsync(db, row.Policy.TenantId, row.Connection.Id, cancellationToken)) continue;
             // A hot order read of a connection without any order yet runs at once, whatever its interval.
             if (isHotOrder && !IsDue(latest, interval, jitterSeconds, now)
                 && await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id, cancellationToken)) continue;
@@ -393,6 +397,15 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     // Whether the connection has a claim the open-return scan follows (MarketplaceJobProcessor.ReturnLifecycleCandidates).
     internal static Task<bool> OpenReturnClaimsExistAsync(AppDbContext db, Guid tenantId, Guid connectionId, string? platformCode, CancellationToken cancellationToken) =>
         MarketplaceJobProcessor.ReturnLifecycleCandidates(db.ReturnClaims.AsNoTracking(), tenantId, connectionId, platformCode).AnyAsync(cancellationToken);
+
+    // The order status scans that only follow open packages (Pazarama, PTT AVM, Shopify: MarketplaceJobProcessor.SyncOpenOrders
+    // reads nothing else for them). Trendyol's scan also closes "0" placeholders by order number and Hepsiburada's reads
+    // unpackaged orders and its cancellation lists, so those two are always queued.
+    internal static bool LifecycleFollowsOpenPackagesOnly(string jobType) =>
+        jobType is MarketplaceJobTypes.PazaramaOrderStatusSync or MarketplaceJobTypes.PttAvmOrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync;
+
+    internal static Task<bool> OpenPackagesExistAsync(AppDbContext db, Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
+        MarketplaceJobProcessor.OpenPackages(db.ShipmentPackages.AsNoTracking(), tenantId, connectionId).AnyAsync(cancellationToken);
 
     // Missed orders are kept as {"missed":[...]}. The earlier bare list also counted orders the poll merely read
     // before their notification arrived, so it is not trusted and reads as no misses.

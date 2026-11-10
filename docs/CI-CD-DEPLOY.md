@@ -192,13 +192,22 @@ MaxRetentionSec=30day
   `curl --resolve panel.ravencia.com:443:127.0.0.1 https://panel.ravencia.com/health/ready`.
 - `Clear-Site-Data: "cache"` yalnızca `/api/v1/auth/*` 401 yanıtlarına eklenir.
 - `/api/*` ve `/hubs/*` yanıtları sıkıştırılmaz (BREACH sınıfı); statik dosyalar ve SPA kabuğu
-  zstd/gzip ile sıkıştırılmaya devam eder. Tek istisna (9 Kasım 2026, hız planı P4): `GET /api/v1/products`,
-  `/api/v1/products/{id}`, `/api/v1/catalog/categories/{id}/attribute-requirements` ve pazaryeri referans listeleri
-  (`/api/v1/reference-data/categories…`, `…/attribute-values`, `/api/v1/mappings/attribute-values/batch`; 10 Kasım) yalnız panelin kendi
-  isteklerinde (`Sec-Fetch-Site: same-origin`) sıkıştırılır. Bu gövdelerde jeton, oturum değeri ya da taşıyıcı bağlantı
-  yok, arama terimi geri yansıtılmaz (imleç şifreli); başka sitenin başlattığı istek sıkıştırılmadığından saldırgan
-  BREACH'in gerektirdiği istekleri yaptıramaz. Siparişler/faturalar (taşıyıcı fatura bağlantıları), `/auth/*`,
-  `/hubs/*` ve diğer tüm uçlar sıkıştırmasız kalır. Gerekçe Caddyfile.production yorumunda.
+  zstd/gzip ile sıkıştırılmaya devam eder. `/assets/*` altındaki betik ve stil dosyalarının brotli (`.br`) ve
+  zstd (`.zst`) kopyaları derlemede en yüksek seviyede üretilir (`scripts/precompress-assets.mjs`, `npm run build`
+  ve `build:assets` içinde) ve Caddy `file_server { precompressed br zstd }` ile onları olduğu gibi gönderir (ana CSS
+  89 KB zstd yerine ~57 KB brotli); ikisini de kabul etmeyen istemci `encode` ile sıkıştırılır.
+  İstisna (9 Kasım 2026, hız planı P4; 10 Kasım genişletildi): `GET /api/v1/products`,
+  `/api/v1/products/{id}`, `/api/v1/catalog/categories/{id}/attribute-requirements`, `/api/v1/catalog/attributes`,
+  pazaryeri referans listeleri (`/api/v1/reference-data/categories…`, `…/attribute-values`,
+  `/api/v1/mappings/attribute-values/batch`), raporlar (`/api/v1/reports/sales`, `order-profitability`, `stock`,
+  `payouts`, `payouts/lines`, `ad-report`, `price-assumptions`), `/api/v1/jobs/page`, `/api/v1/jobs/counts`,
+  `/api/v1/dashboard/performance` ve komisyon tarifesi satırları (`/api/v1/connections/{id}/commission-tariffs/{id}/rows`)
+  yalnız panelin kendi isteklerinde (`Sec-Fetch-Site: same-origin`) sıkıştırılır. Gövdeler tek tek incelendi: jeton,
+  oturum değeri ya da taşıyıcı bağlantı yok (görseller yalnız oturumla açılan `/files/` bağlantıları ya da pazaryeri
+  CDN adresleri), arama terimi geri yansıtılmaz (imleç şifreli); başka sitenin başlattığı istek sıkıştırılmadığından
+  saldırgan BREACH'in gerektirdiği istekleri yaptıramaz. Siparişler/faturalar ve fatura çalışma alanı (taşıyıcı fatura
+  bağlantıları), `/public/*` (erişim jetonları), `/auth/*`, `/hubs/*` ve diğer tüm uçlar sıkıştırmasız kalır. Gerekçe
+  Caddyfile.production yorumunda.
 - HTTP/3 0-RTT kapalı (`servers { 0rtt off }`): `remote_ip` eşleyicisi TLS el sıkışması bitmemiş (early data)
   isteğe `425 Too Early` döndürüyordu (günde ~300, tarayıcı yeniden gönderiyordu).
 - Caddyfile her imaj derlemesinde `caddy adapt` ile doğrulanır (CI `image-edge` işi dahil).
@@ -532,11 +541,17 @@ ve sunucu yükü düşer, CI'da test edilen imaj birebir üretime gider.
 
 ## Hız
 
-- `Validate` paralel çalışır: `plan`, `ops`, `backend-format`, `backend`, `backend-postgres` (iki şerit),
-  `image-app`, `image-edge`, `frontend`, sonda `gate`. Backend testleri tamamlayıcı filtrelerle bölünür:
+- `Validate` paralel çalışır: `plan`, `ops`, `backend-format`, `backend-build`, `backend`, `backend-postgres`
+  (iki şerit), `image-app`, `image-edge`, `frontend`, sonda `gate`. Çözüm bir kez derlenir (`backend-build`,
+  Release); bin/obj bir `tar.zst` artefaktı olarak (1 gün) `backend` ve iki PostgreSQL şeridine geçer, onlar
+  `--no-build` ile test eder (10 Kasım 2026'ya kadar üç iş ayrı ayrı 80–120 sn derliyordu). Backend testleri
+  tamamlayıcı filtrelerle bölünür:
   `backend` PostgreSQL'siz testleri (`Category!=PostgreSql`), `backend-postgres (main)` diğer PostgreSQL
   testlerini, `backend-postgres (load)` `[PostgreSqlFact(Lane = PostgreSqlLane.Load)]` ile işaretli uzun
   yük testini koşar; filtreler birlikte her testi kapsar. İşlerin süre sınırı 5 ya da 15 dakika (`timeout-minutes`).
+- Ön yüz denetimleri (typecheck, lint, test, build, paket bütçesi) yalnız `frontend` işinde koşar; kenar imajı
+  (`Dockerfile.production`, CI `image-edge` ve sunucu) yalnızca `npm run build:assets` ile paketi üretir
+  (Validate her deploy'u kapıdan geçirdiği için tekrar gerekmez; yaklaşık 100 sn kazanç).
 - Backend ve frontend işleri, **aynı içerik** (git tree hash) daha önce geçtiyse atlanır; geçen içerik
   için Actions cache'ine `validated-backend-*` / `validated-frontend-*` işareti yazılır. Hash'ler
   Dockerfile'ları ve `deploy/caddy`'yi de kapsar; imaj işi de geçmeden işaret yazılmaz.

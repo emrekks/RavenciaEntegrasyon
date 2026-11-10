@@ -1076,6 +1076,7 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
 
     private void LogOrderResponseShape(string json)
     {
+        if (!logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug)) return;
         try
         {
             using var document = JsonDocument.Parse(json);
@@ -1086,7 +1087,8 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
             var packageProperties = first.ValueKind == JsonValueKind.Object ? first.EnumerateObject().Select(x => x.Name).OrderBy(x => x).ToArray() : [];
             var lineCounts = packageProperties.Where(x => first.TryGetProperty(x, out var value) && value.ValueKind == JsonValueKind.Array)
                 .Select(x => new { Name = x, Count = first.GetProperty(x).GetArrayLength() }).ToArray();
-            logger.LogInformation("Trendyol order response schema: RootProperties={RootProperties}; PackageCount={PackageCount}; FirstPackageProperties={FirstPackageProperties}; ArrayFields={ArrayFields}", rootProperties, packages.ValueKind == JsonValueKind.Array ? packages.GetArrayLength() : 0, packageProperties, lineCounts);
+            // Debug: it was 14 lines every ten minutes on live; the outline is only needed when a mapping is investigated.
+            logger.LogDebug("Trendyol order response schema:RootProperties={RootProperties}; PackageCount={PackageCount}; FirstPackageProperties={FirstPackageProperties}; ArrayFields={ArrayFields}", rootProperties, packages.ValueKind == JsonValueKind.Array ? packages.GetArrayLength() : 0, packageProperties, lineCounts);
         }
         catch (JsonException)
         {
