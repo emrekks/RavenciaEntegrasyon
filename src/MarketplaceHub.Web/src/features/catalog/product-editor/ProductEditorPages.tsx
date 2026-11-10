@@ -714,7 +714,7 @@ function CategoryAttributeMappingPanel({
     <div className="editor-section-title">
       <span>3</span>
       <div>
-        <h2>Kategori Özellikleri<TitleHint label="Kategori Özellikleri">Seçili kategoriye bağlanan özellik değerlerini atayın.</TitleHint></h2>
+        <h2>Kategori Özellikleri</h2>
         {categoryLabel ? <p>Seçili kategori: {categoryLabel}</p> : null}
       </div>
     </div>
@@ -3518,7 +3518,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     {!publishOnly && <div className="product-add-wizardbar"><div className="product-add-stepper"><div className="product-add-steptabs rv-tabs rv-view-tabs" role="tablist" aria-label={editProductId ? 'Ürün düzenleme adımları' : 'Ürün ekleme adımları'}><button type="button" className={wizardStep === 1 ? 'is-active' : ''} role="tab" aria-selected={wizardStep === 1} onClick={() => setWizardStep(1)}><span className="rv-tab-label"><span className="rv-step-num">1</span><span>Ürün Bilgileri<span className="product-step-label-more"> ve Varyantlar</span></span></span></button><button type="button" className={wizardStep === 2 ? 'is-active' : ''} role="tab" aria-selected={wizardStep === 2} onClick={() => setWizardStep(2)}><span className="rv-tab-label"><span className="rv-step-num">2</span><span>Yayınlama</span></span></button></div></div></div>}<form id="product-creation-form" className="product-creation-workspace product-add-workspace" data-wizard-step={wizardStep} aria-busy={editorHydrating || undefined} inert={editorHydrating || undefined} onSubmit={submit} onInvalidCapture={handleInvalid} onChange={dismissProductError} noValidate>
     <div className="product-top-layout">
       <section className="panel product-step-card product-basics-card">
-        <div className="editor-section-title"><span>1</span><div><h2>Temel Ürün Bilgileri<TitleHint label="Temel Ürün Bilgileri">Ürünün adı ve katalog bilgileri.</TitleHint></h2></div></div>
+        <div className="editor-section-title"><span>1</span><div><h2>Temel Ürün Bilgileri</h2></div></div>
         <div className="product-step-grid product-basics-grid">
           <label className="product-title-field">Ürün Adı<input value={form.title} aria-invalid={fieldErrors.title ? true : undefined} onChange={event => updateField('title', event.target.value)} required maxLength={320} /><EditorFieldError message={fieldErrors.title} /></label>
           <label htmlFor="product-editor-status">Satış Durumu<PanelSelect id="product-editor-status" ariaLabel="Satış Durumu" value={form.status} onChange={value => updateField('status', value)} options={[{ value: 'ACTIVE', label: 'Satışa Açık' }, { value: 'ARCHIVED', label: 'Satışa Kapalı' }]} /></label>

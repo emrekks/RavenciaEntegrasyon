@@ -101,9 +101,9 @@ function SettingsGlyph({ state }: { state: SettingsGlyphState }) {
   return <svg className="ss-st" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeDasharray="2.6 2.2" aria-hidden="true"><circle cx="8" cy="8" r="6.2" /></svg>
 }
 
-function SettingsPaneHead({ section, description, actions }: { section: SettingsSectionKey; description: ReactNode; actions?: ReactNode }) {
+function SettingsPaneHead({ section, description, actions }: { section: SettingsSectionKey; description?: ReactNode; actions?: ReactNode }) {
   const item = settingsSections.find(entry => entry.key === section) ?? settingsSections[0]
-  return <header className="ss-head"><div><h2>{item.label}<TitleHint label={item.label}>{description}</TitleHint></h2></div>{actions ? <div className="ss-head-actions">{actions}</div> : null}</header>
+  return <header className="ss-head"><div><h2>{item.label}{description ? <TitleHint label={item.label}>{description}</TitleHint> : null}</h2></div>{actions ? <div className="ss-head-actions">{actions}</div> : null}</header>
 }
 
 function SettingsBar({ title, copy, hint, dirty = false, children }: { title: string; copy?: ReactNode; hint?: ReactNode; dirty?: boolean; children: ReactNode }) {
@@ -157,13 +157,13 @@ function NotificationSamples() {
 }
 
 const resetScopeGroups: DataResetGroup[] = [
-  { label: 'Katalog', description: 'Ürün kataloğunda kullanılan temel listeler.', options: [
+  { label: 'Katalog', description: '', options: [
     { scope: 'PRODUCTS', label: 'Ürünler Listesi', description: 'Ürünleri, varyantları ve bu ürünlere bağlı görsel, stok ve kanal kayıtlarını temizler.', unit: 'ürün' },
     { scope: 'CATEGORIES', label: 'Kategori Listesi', description: 'Panel kategori ağacını ve kategori-pazaryeri eşleştirmelerini kaldırır; ürünlerin kategori bağlantısını boşaltır.', unit: 'kategori' },
     { scope: 'CATEGORY_ATTRIBUTES', label: 'Kategori Özellikleri', description: 'Kategori özellik başlıklarını, değerlerini, kategori atamalarını, ürün değerlerini ve pazaryeri özellik eşleştirmelerini kaldırır.', unit: 'özellik' },
     { scope: 'BRANDS', label: 'Marka Listesi', description: 'Marka kayıtlarını ve marka-pazaryeri eşleştirmelerini kaldırır; ürünlerin marka bağlantısını boşaltır.', unit: 'marka' }
   ] },
-  { label: 'Ürün Seçenekleri', description: 'Seçenek grupları ve değerleri.', options: [
+  { label: 'Ürün Seçenekleri', description: '', options: [
     { scope: 'OPTIONS', label: 'Ürün Seçenekleri', description: 'Ürün seçenek gruplarını, seçenek değerlerini ve varyantlarla olan seçenek bağlantılarını temizler.', unit: 'seçenek' }
   ] }
 ]
@@ -194,7 +194,7 @@ function SettingsDataReset({ groups, counts, countsFailed, picked, onToggle, con
         return <section className="ss-dr-group" key={group.label} aria-label={group.label}>
           <header className="ss-dr-gh">
             <span className="ss-tile is-sm ss-dr-ico"><SettingsIcon name={resetGroupIcons[group.label] ?? 'db'} /></span>
-            <div><h3>{group.label}{group.description ? <TitleHint label={group.label}>{group.description}</TitleHint> : null}</h3></div>
+            <div><h3>{group.label}</h3></div>
             <span className={`ss-tag ss-dr-sel${chosen ? ' is-on' : ''}`}>{chosen}/{group.options.length} Seçili</span>
             <button type="button" className="ss-btn is-xs" disabled={busy} onClick={() => onToggle(group.options.map(option => option.scope), !all)}>{all ? 'Seçimi Kaldır' : 'Tümünü Seç'}</button>
           </header>
@@ -454,7 +454,7 @@ export function SystemSettingsPage() {
           </>}</div>
         </>}
         {section === 'sessions' && <>
-          <SettingsPaneHead section="sessions" description="Hesabınıza bağlı cihazları ve son etkinliklerini görüntüleyin." actions={activeOtherSessions.length || closedSessions.length ? <>{activeOtherSessions.length > 0 && <button type="button" className="ss-btn is-danger" onClick={() => setSessionConfirmation({ action: 'revoke-others' })}><span className="ss-lbl-long">Diğer Tüm Oturumları Kapat</span><span className="ss-lbl-short">Diğerlerini Kapat</span> <span className="ss-count">{activeOtherSessions.length}</span></button>}{closedSessions.length > 0 && <button type="button" className="ss-btn" onClick={() => setSessionConfirmation({ action: 'delete-closed' })}><span className="ss-lbl-long">Kapalı Oturumları Sil</span><span className="ss-lbl-short">Kapalıları Sil</span> <span className="ss-count">{closedSessions.length}</span></button>}</> : undefined} />
+          <SettingsPaneHead section="sessions"actions={activeOtherSessions.length || closedSessions.length ? <>{activeOtherSessions.length > 0 && <button type="button" className="ss-btn is-danger" onClick={() => setSessionConfirmation({ action: 'revoke-others' })}><span className="ss-lbl-long">Diğer Tüm Oturumları Kapat</span><span className="ss-lbl-short">Diğerlerini Kapat</span> <span className="ss-count">{activeOtherSessions.length}</span></button>}{closedSessions.length > 0 && <button type="button" className="ss-btn" onClick={() => setSessionConfirmation({ action: 'delete-closed' })}><span className="ss-lbl-long">Kapalı Oturumları Sil</span><span className="ss-lbl-short">Kapalıları Sil</span> <span className="ss-count">{closedSessions.length}</span></button>}</> : undefined} />
           <div className="ss-body is-flush">{sessions.isLoading ? <div className="ss-pad"><LoadingState>Oturumlar yükleniyor…</LoadingState></div> : sessions.isError || !sessions.data ? <div className="ss-pad"><div role="alert" className="ss-callout is-danger"><SettingsIcon name="alert" /><span>Oturumlar alınamadı.</span></div></div> : <div className="ss-sess">
             <div className="ss-sess-sub">Aktif <span className="ss-count">{activeSessions.length}</span></div>
             {activeSessions.map(sessionRow)}
@@ -672,13 +672,13 @@ function AppearanceSettingsForm({ section, onStatus }: { section: AppearanceSect
   const themePalette = (theme: typeof selectableThemes[number]) => theme.mode === 'light' ? appearance.draft.colors.light : theme.id === activeSelectableTheme.id ? appearance.draft.colors.dark : theme.profile?.palette ?? appearance.draft.colors.dark
 
   const preview = <div className="ss-pv" style={previewStyle}><small>Önizleme</small><div className="ss-pv-card"><strong>Ravencia MarketplaceHub</strong><p>Bu ayar sipariş, iade, ürün ve diğer çalışma ekranlarındaki metinleri etkiler.</p><div className="ss-pv-line"><span>#1972215187 · Fehime Mat</span><span>16.10.2026 18:36</span></div><div className="ss-pv-row"><span className="ss-pv-btn">Kaydet</span><span className="ss-pv-btn2">Vazgeç</span><span className="ss-pv-tag is-sel">Seçili</span><span className="ss-pv-tag is-ok">Teslim Edildi</span><span className="ss-pv-tag is-warn">Gecikiyor</span><span className="ss-pv-tag is-bad">Hata</span></div></div></div>
-  const bar = <SettingsBar title="Görünüm Ayarlarını Uygula" dirty={dirty} hint="Değişiklikleri hesabınıza kaydetmeden önce önizleyin." copy={dirty ? 'Önizlemedesiniz · kaydedilmemiş değişiklikler var' : undefined}><button type="button" className="ss-btn" onClick={applyDefaultAppearance} disabled={busy}><SettingsIcon name="reset" /><span className="ss-lbl-long">Varsayılanlara Dön</span><span className="ss-lbl-short">Varsayılan</span></button><button type="button" className="ss-btn is-primary" onClick={() => void save()} disabled={busy || !dirty}><SettingsIcon name="save" />{busy ? 'Kaydediliyor…' : <><span className="ss-lbl-long">Görünüm Ayarlarını Kaydet</span><span className="ss-lbl-short">Kaydet</span></>}</button></SettingsBar>
+  const bar = <SettingsBar title="Görünüm Ayarlarını Uygula" dirty={dirty} copy={dirty ? 'Önizlemedesiniz · kaydedilmemiş değişiklikler var' : undefined}><button type="button" className="ss-btn" onClick={applyDefaultAppearance} disabled={busy}><SettingsIcon name="reset" /><span className="ss-lbl-long">Varsayılanlara Dön</span><span className="ss-lbl-short">Varsayılan</span></button><button type="button" className="ss-btn is-primary" onClick={() => void save()} disabled={busy || !dirty}><SettingsIcon name="save" />{busy ? 'Kaydediliyor…' : <><span className="ss-lbl-long">Görünüm Ayarlarını Kaydet</span><span className="ss-lbl-short">Kaydet</span></>}</button></SettingsBar>
   const loadError = appearance.isError ? <div className="ss-callout is-danger" role="alert"><SettingsIcon name="alert" /><span>Hesap görünüm ayarları alınamadı; varsayılan görünüm gösteriliyor.</span></div> : null
 
   return <>
     {notice && <SettingsNotice {...notice} />}
     {section === 'read' && <>
-      <SettingsPaneHead section="read" description="Tablo ve işlem ekranlarındaki yazıları hesabınız için özelleştirin." />
+      <SettingsPaneHead section="read" />
       <div className="ss-body">
         {loadError}
         <div className="ss-app-grid">
@@ -694,7 +694,7 @@ function AppearanceSettingsForm({ section, onStatus }: { section: AppearanceSect
       {bar}
     </>}
     {section === 'palette' && <>
-      <SettingsPaneHead section="palette" description={visualTheme === 'light' ? 'Açık tema renklerini düzenleyin.' : 'Değişiklikler kaydetmeden önce anlık önizlenir.'} actions={<><span className="ss-tag is-ink">{activeThemeLabel}{dirty ? ' · Düzenlendi' : ''}</span>{visualTheme === 'light' && <button type="button" className="ss-btn" onClick={resetLightPalette}><SettingsIcon name="reset" />Varsayılana Döndür</button>}</>} />
+      <SettingsPaneHead section="palette" description={visualTheme === 'light' ? undefined : 'Değişiklikler kaydetmeden önce anlık önizlenir.'} actions={<><span className="ss-tag is-ink">{activeThemeLabel}{dirty ? ' · Düzenlendi' : ''}</span>{visualTheme === 'light' && <button type="button" className="ss-btn" onClick={resetLightPalette}><SettingsIcon name="reset" />Varsayılana Döndür</button>}</>} />
       <div className="ss-body">
         {loadError}
         <div className="ss-cgrid">{appearanceColorTokenOptions.map(({ key, label, description }) => <div className="ss-cf" key={key}><span><b>{label}</b><small>{description}</small></span><label className="ss-cctl"><input type="color" value={palette[key]} onChange={event => updateColor(key, event.target.value)} aria-label={`${label} rengi`} /><code>{palette[key].toUpperCase()}</code></label></div>)}</div>
@@ -1020,7 +1020,7 @@ function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, l
   return <>
     {templateNotice && <SettingsNotice {...templateNotice} />}
     {section === 'sender' && <>
-      <SettingsPaneHead section="sender" description="Etiketin üzerinde görünen gönderici ve varsayılan çıktı." />
+      <SettingsPaneHead section="sender" />
       <div className="ss-body">
         {loadError}
         <div className="ss-pair"><label className="ss-fld"><small>Gönderici Adı</small><input className="ss-in" value={settings.senderName} maxLength={120} onChange={event => update('senderName', event.target.value)} /></label><label className="ss-fld"><small>Varsayılan Kargo Çıktısı</small><PanelSelect ariaLabel="Varsayılan Kargo Çıktısı" value={settings.defaultFormat} onChange={next => update('defaultFormat', next)} options={[{ value: 'a4', label: 'A4' }, { value: 'sticker', label: 'Sticker' }]} /></label></div>
@@ -1031,7 +1031,7 @@ function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, l
       {bar}
     </>}
     {section === 'dims' && <>
-      <SettingsPaneHead section="dims" description="Sticker boyutu ve alan aralıkları." />
+      <SettingsPaneHead section="dims" />
       <div className="ss-body">
         {loadError}
         <div className="ss-pair"><label className="ss-fld"><small>Sticker Genişliği (mm)</small><input className="ss-in" type="number" min={40} max={300} value={stickerWidthDraft} onChange={event => setStickerWidthDraft(event.target.value)} onBlur={() => commitDimension('stickerWidthMm', stickerWidthDraft, settings.stickerWidthMm)} /></label><label className="ss-fld"><small>Sticker Yüksekliği (mm)</small><input className="ss-in" type="number" min={40} max={300} value={stickerHeightDraft} onChange={event => setStickerHeightDraft(event.target.value)} onBlur={() => commitDimension('stickerHeightMm', stickerHeightDraft, settings.stickerHeightMm)} /></label></div>
@@ -1040,7 +1040,7 @@ function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, l
       {bar}
     </>}
     {section === 'designer' && <>
-      <SettingsPaneHead section="designer" description="Alanları kütüphaneden kâğıda sürükleyin; seçili alanı sağ panelden düzenleyin." />
+      <SettingsPaneHead section="designer" />
       <div className="ss-body is-flush"><div className="ss-dz">
         <div className="ss-dz-bar">
           <span className="ss-seg2 rv-tabs rv-view-tabs" role="tablist" aria-label="Kâğıt biçimi"><button type="button" role="tab" aria-selected={format === 'a4'} className={format === 'a4' ? 'is-on is-active' : undefined} onClick={() => setFormat('a4')}><span className="rv-tab-label"><SettingsIcon name="copy" /><span className="rv-tab-text" data-text="A4">A4</span> <small>{settings.a4LabelsPerPage} Etiket</small></span></button><button type="button" role="tab" aria-selected={format === 'sticker'} className={format === 'sticker' ? 'is-on is-active' : undefined} onClick={() => setFormat('sticker')}><span className="rv-tab-label"><SettingsIcon name="barcode" /><span className="rv-tab-text" data-text="Sticker">Sticker</span> <small>{settings.stickerWidthMm} × {settings.stickerHeightMm} mm</small></span></button></span>
