@@ -67,6 +67,16 @@ describe('RrAnchor bottom sheet on phones', () => {
     expect(q('.sheet')).toBeNull()
   })
 
+  it('the selection bar Toplu İşlemler menu (inside .rr-bulk-menu) opens in the top layer too', () => {
+    render(<div className="rv-action-bar" style={{ transform: 'translateY(0)' }}><RrAnchor trigger={(open, toggle) => <button type="button" className="bulk-trigger" aria-expanded={open} onClick={toggle}>Toplu İşlemler</button>}>
+      {close => <div className="rr-bulk-menu"><div className="rr-menu bulk" role="menu" style={{ position: 'fixed' }}><button type="button" role="menuitem" onClick={close}>Toplu Stok</button></div></div>}
+    </RrAnchor></div>)
+    click(q('.bulk-trigger'))
+    expect(shown).toEqual([q('.rr-anchor-scrim'), q('.bulk')])
+    click(q('.rr-anchor-scrim'))
+    expect(q('.bulk')).toBeNull()
+  })
+
   it('on a desktop the popover stays where the stylesheet puts it', () => {
     vi.mocked(window.matchMedia).mockImplementation(query => ({ matches: false, media: query, onchange: null, addListener: () => undefined, removeListener: () => undefined, addEventListener: () => undefined, removeEventListener: () => undefined, dispatchEvent: () => false }))
     render(<Window onPick={() => undefined} />)

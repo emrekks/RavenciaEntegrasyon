@@ -420,6 +420,9 @@ html body .app-shell.stitch-shell main .reports-page .reports-card-actions .repo
 .app-shell.stitch-shell main .reports-page .reports-segmented button:hover { color: var(--rv-color-ink); }
 .app-shell.stitch-shell main .reports-page .reports-segmented button[aria-pressed='true'] { color: var(--rv-color-ink); font-weight: 500; background: var(--rv-color-surface); box-shadow: 0 1px 2px rgb(0 0 0 / 14%); }
 .app-shell.stitch-shell main .reports-page .reports-segmented button:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 1px; }
+/* A label is centred on its capitals and digits, not on Inter's taller line box, which left the text 1.6 px high in its
+   28 px pill (owner, 10 Nov: "yazıları ortala"). Browsers without text-box keep the old placement. */
+.app-shell.stitch-shell main .reports-page .reports-segmented button > span:only-child { text-box: trim-both cap alphabetic; }
 
 /* A step's breakdown in a window over the page (nothing under the card moves); the window is as wide as its content needs. */
 .app-shell.stitch-shell main .reports-page .rv-modal.reports-journey-modal { width: min(760px, calc(100vw - 32px)); max-height: min(80vh, 720px); }
