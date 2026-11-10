@@ -561,3 +561,11 @@
 @media (max-width: 360px) {
   .app-shell.stitch-shell main .mapping-advanced-modal .cm-webcolor .web-color-panel-value-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Phones: the category window's footer (Sonraki Eksik / Kaydet) ends at the bottom of the window. The desktop rule above
+   that reserves the 52 px footer band (:has, so it outweighed the phone "padding-bottom: 0") and the detail's 12 px
+   bottom padding left a 65 px empty strip under the footer once the list was scrolled to its end (owner, 10 Nov). */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-layout.cm-layout:has(.cm-detail > .cm-foot) { padding-bottom: 0; }
+  .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-detail:has(> .cm-foot) { padding-bottom: 0 !important; }
+}
