@@ -122,7 +122,7 @@ public sealed class DashboardPerformanceTests
 
         var rowsSql = orders.ToQueryString();
         var revenueSql = DashboardReadService.RevenueQuery(orders).ToQueryString();
-        var unitSql = DashboardReadService.UnitQuery(db, orders).ToQueryString();
+        var unitSql = DashboardReadService.UnitQuery(db, Guid.NewGuid(), orders).ToQueryString();
         var packageSql = DashboardReadService.PackageQuery(db, orders).ToQueryString();
 
         Assert.Contains("AT TIME ZONE", rowsSql, StringComparison.Ordinal);
@@ -148,7 +148,7 @@ public sealed class DashboardPerformanceTests
 
         Assert.Contains("StoreFrontCode", rule, StringComparison.Ordinal);
         Assert.Contains("marketplace_finance_transactions", rule, StringComparison.Ordinal);
-        foreach (var sql in new[] { orders.ToQueryString(), DashboardReadService.UnitQuery(db, orders).ToQueryString(), DashboardReadService.PackageQuery(db, orders).ToQueryString() })
+        foreach (var sql in new[] { orders.ToQueryString(), DashboardReadService.UnitQuery(db, tenantId, orders).ToQueryString(), DashboardReadService.PackageQuery(db, orders).ToQueryString() })
             Assert.Contains("marketplace_finance_transactions", sql, StringComparison.Ordinal);
     }
 
