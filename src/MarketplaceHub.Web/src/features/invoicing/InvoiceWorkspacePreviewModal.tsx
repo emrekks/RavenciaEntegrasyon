@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { hubApi } from '../../shared/api'
 import { Busy, CargoProviderIcon, ErrorBox, UiIcon, DialogSurface } from '../../shared/components'
-import { productImageFallbackUrls } from '../marketplace/product-image-lookups'
+import { productImageFallbackUrls, productImageThumbnailLookup } from '../marketplace/product-image-lookups'
 import { formatDate } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
 import { formatPackageLabel } from '../../shared/package-label'
@@ -54,7 +54,8 @@ export function addressLines(json: string) {
   } catch { return [] }
 }
 function PreviewLineImage({ sku, name }: { sku: string | null; name: string }) {
-  const sources = useMemo(() => productImageFallbackUrls([sku], null, name), [sku, name])
+  // The 44x66 frame asks for the CDN's small copy first (~10 KB instead of the ~145 KB full photo), then the original.
+  const sources = useMemo(() => [...new Set(productImageFallbackUrls([sku], null, name).flatMap(url => [productImageThumbnailLookup(url), url]))], [sku, name])
   const [index, setIndex] = useState(0)
   useEffect(() => setIndex(0), [sources])
   const src = sources[index]

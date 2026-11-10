@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { jobTimeRangeOptions, timeRangeStart, isJobIdSearch, isJobInTimeRange, jobLookupQueryString, jobLookupTerm, jobCountsQueryString,jobDetailPollInterval, jobListHeadPollInterval, jobListMaximumAutoPages, jobListPollInterval, jobListQueryString, jobPageQueryString, jobPlatformsFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage } from './job-list-query'
+import { jobTimeRangeOptions, timeRangeStart, isJobIdSearch, isJobInTimeRange, jobLookupQueryString, jobLookupTerm, jobCountsQueryString,jobDetailPollInterval, jobListHeadPollInterval, jobListMaximumAutoPages, jobListPollInterval, jobListQueryString, jobListServerPageSize, jobPageQueryString, jobPlatformsFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage } from './job-list-query'
 
 describe('jobListQueryString', () => {
   const now = Date.parse('2026-10-14T12:00:00.000Z')
@@ -69,10 +69,16 @@ describe('platform helpers', () => {
   })
 })
 
+describe('server page size', () => {
+  it('reads 50 jobs per page, or one screen page when a bigger one is chosen', () => {
+    expect([20, 50, 100, 200, 500].map(jobListServerPageSize)).toEqual([50, 50, 100, 200, 200])
+  })
+})
+
 describe('poll intervals (W22, G24)', () => {
-  it('polls the list every 15 s while only its first page is loaded and stops once older pages are read', () => {
-    expect(jobListPollInterval(0)).toBe(15_000)
-    expect(jobListPollInterval(1)).toBe(15_000)
+  it('polls the list every 30 s while only its first page is loaded and stops once older pages are read', () => {
+    expect(jobListPollInterval(0)).toBe(30_000)
+    expect(jobListPollInterval(1)).toBe(30_000)
     expect(jobListPollInterval(2)).toBe(false)
   })
 
@@ -87,7 +93,7 @@ describe('poll intervals (W22, G24)', () => {
 describe('a list with older pages loaded', () => {
   it('polls only its first page and puts it in front of the older ones', () => {
     expect(jobListHeadPollInterval(1)).toBe(false)
-    expect(jobListHeadPollInterval(2)).toBe(15_000)
+    expect(jobListHeadPollInterval(2)).toBe(30_000)
     const loaded = { pages: ['old-1', 'old-2', 'old-3'], pageParams: [null, 'a', 'b'] }
     expect(withFreshFirstPage(loaded, 'new-1')).toEqual({ pages: ['new-1', 'old-2', 'old-3'], pageParams: [null, 'a', 'b'] })
     expect(withFreshFirstPage({ pages: ['only'], pageParams: [null] }, 'new')).toEqual({ pages: ['only'], pageParams: [null] })
