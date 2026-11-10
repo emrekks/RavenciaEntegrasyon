@@ -91,8 +91,9 @@
    keep 14 px from the cell's sides. */
 :root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-prodcell .rr-thumb { width: 56px; height: 84px; }
 :root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-prodcell small { display: flex; align-items: center; gap: 4px; min-width: 0; white-space: nowrap; overflow: visible; overflow-wrap: normal; }
-:root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-prodcell small > span { flex: none; }
-:root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-prodcell small > b { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-prodcell small > span { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The code itself is never cut (owner, 11 Nov: "sığması lazım"); in a narrow cell the "Model Kodu:" label gives way. */
+:root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-prodcell small > b { display: block; flex: none; white-space: nowrap; }
 :root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-prodcell small > .rr-code-copy { flex: none; margin: -6px 0; }
 :root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl td[data-l="Platform Durumu"] { padding-inline: 14px; }
 
