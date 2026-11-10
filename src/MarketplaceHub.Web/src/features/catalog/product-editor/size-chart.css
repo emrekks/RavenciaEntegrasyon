@@ -43,8 +43,9 @@
 
 /* The tile marked as the size chart carries a one-line "Beden Tablosu" tag across the bottom of its picture (owner,
    10 Nov 2026: "üzerindeki etiketi düzelt"; it wrapped onto two lines low-left). Phones keep the bottom corners for the
-   move arrows, so there the tag sits just above them. */
-.app-shell.stitch-shell main .media-preview-strip .image-preview-card .size-chart-badge { position: absolute; right: 4px; bottom: 4px; left: 4px; z-index: 2; box-sizing: border-box; height: 18px; padding: 0; overflow: hidden; color: #fff; font-size: 10.5px; font-weight: 600; line-height: 18px; letter-spacing: -0.15px; text-align: center; white-space: nowrap; background: var(--rv-color-primary-fill); border-radius: 7px; pointer-events: none; }
+   move arrows, so there the tag sits just above them. Centred a little above the picture's bottom edge and see-through (owner,
+   10 Nov: "labeli ortala ve şeffaf yap", "biraz yukarı al"). */
+.app-shell.stitch-shell main .media-preview-strip .image-preview-card .size-chart-badge { position: absolute; right: 8px; bottom: 10px; left: 8px; z-index: 2; box-sizing: border-box; height: 18px; padding: 0; overflow: hidden; color: #fff; font-size: 10.5px; font-weight: 600; line-height: 18px; letter-spacing: -0.15px; text-align: center; white-space: nowrap; background: color-mix(in srgb, var(--rv-color-primary-fill) 62%, transparent); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); text-shadow: 0 1px 2px rgb(0 0 0 / 35%); border-radius: 7px; pointer-events: none; }
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .media-preview-strip .image-preview-card .size-chart-badge { right: 6px; bottom: 36px; left: 6px; height: 20px; font-size: 11px; line-height: 20px; }
 }
