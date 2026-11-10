@@ -26,8 +26,11 @@ html body .cs-workspace .connection-settings-input-row > button:only-child { gri
 /* İşlem Takibi table: the correlation id stays on one line (ellipsis, full id in the tooltip) and its column is wide
    enough for a whole scheduler id; it wrapped into three lines in a 115 px cell. */
 @media (min-width: 761px) {
-  html body .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table :is(thead tr, tbody .jobs-reference-row, tbody > tr:not(.jobs-reference-row)) { grid-template-columns: minmax(200px, 1.3fr) minmax(130px, .8fr) 72px minmax(210px, 1fr) minmax(300px, 1.5fr); }
-  html body .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table.jobs-reference-table { min-width: 960px; }
+  html body .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table :is(thead tr, tbody .jobs-reference-row, tbody > tr:not(.jobs-reference-row)) { grid-template-columns: minmax(330px, 1.3fr) minmax(130px, .8fr) 72px minmax(210px, 1fr) minmax(300px, 1.5fr); }
+  html body .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table.jobs-reference-table { min-width: 1042px; }
+  /* The job name stays on one line (owner, 10 Nov): its column fits the longest real name ("Trendyol E-Faturam Doğrulama
+     İşlemi", 255 px) and a narrower page scrolls the table sideways instead of wrapping it. */
+  html body .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-type-content strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   html body .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table .jobs-reference-correlation.jobs-reference-correlation { display: block; min-width: 0; max-width: 100% !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap; overflow-wrap: normal; }
 }
 
