@@ -472,7 +472,7 @@ function SingleOrderSyncModal({ activeConnection: activeConnections, onClose, on
   }
 
 
-  return <RrModal crumb="Sipariş Kaynakları" title="Sipariş Senkronizasyonu" hint="İşaretlediğiniz aktif bağlantılardan siparişleri panele alın." size="md" locked={isSubmitting} onClose={onClose} foot={<><span className="rr-note">{selectedConnectionIds.length} bağlantı seçili</span><button type="button" className="rr-btn" onClick={onClose} disabled={isSubmitting}>İptal</button><button type="submit" form="order-sync-form" className="rr-btn rr-primary" disabled={isSubmitting || !selectedConnectionIds.length}><RrIcon name="refresh" />{isSubmitting ? 'Senkronize Ediliyor…' : syncMode === 'single' ? 'Tekil Siparişi Çek' : 'Siparişleri Çek'}</button></>}>
+  return <RrModal crumb="Sipariş Kaynakları" title="Sipariş Senkronizasyonu"size="md" locked={isSubmitting} onClose={onClose} foot={<><span className="rr-note">{selectedConnectionIds.length} bağlantı seçili</span><button type="button" className="rr-btn" onClick={onClose} disabled={isSubmitting}>İptal</button><button type="submit" form="order-sync-form" className="rr-btn rr-primary" disabled={isSubmitting || !selectedConnectionIds.length}><RrIcon name="refresh" />{isSubmitting ? 'Senkronize Ediliyor…' : syncMode === 'single' ? 'Tekil Siparişi Çek' : 'Siparişleri Çek'}</button></>}>
     <form id="order-sync-form" style={{ display: 'contents' }} onSubmit={handleSubmit}>
       {!activeConnections.length && <div className="rr-callout rr-warn" role="alert"><RrIcon name="alert" /><span>Aktif Trendyol, Shopify, Hepsiburada veya N11 bağlantısı bulunamadı. Entegrasyonlar sayfasından bağlantınızı etkinleştirin.</span></div>}
       <div className="rr-h3">Sipariş Kaynakları</div>
