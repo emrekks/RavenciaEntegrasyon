@@ -56,7 +56,7 @@ async function settle(rounds = 10) {
   for (let index = 0; index < rounds; index++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)) })
 }
 
-const button = (label: string) => Array.from(container.querySelectorAll<HTMLButtonElement>('.product-media-header-actions button')).find(item => item.textContent === label)
+const button = (label: string) => Array.from(container.querySelectorAll<HTMLButtonElement>('.product-media-header-actions button')).find(item => item.getAttribute('aria-label') === label)
 const hint = () => container.querySelector('.size-chart-pick-hint')
 const tiles = () => Array.from(container.querySelectorAll<HTMLElement>('.media-preview-strip figure'))
 const tileSource = (tile: HTMLElement) => tile.querySelector('img')?.getAttribute('src')
@@ -77,7 +77,7 @@ describe('Beden Tablosu Seç', () => {
     await renderEditor()
     expect(tiles()).toHaveLength(3)
     expect(container.querySelector('.size-chart-menu-btn, .size-chart-menu')).toBeNull()
-    expect(Array.from(container.querySelectorAll('.product-media-header-actions button')).map(item => item.textContent)).toEqual(['Beden Tablosu Seç', 'Tümünü Temizle'])
+    expect(Array.from(container.querySelectorAll('.product-media-header-actions button')).map(item => item.getAttribute('aria-label'))).toEqual(['Beden Tablosu Seç', 'Tümünü Temizle'])
   })
 
   it('enters pick mode and leaves it with Escape or Vazgeç without marking anything', async () => {

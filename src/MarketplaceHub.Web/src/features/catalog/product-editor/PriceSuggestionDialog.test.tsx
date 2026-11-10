@@ -73,7 +73,7 @@ describe('PriceSuggestionLink', () => {
     expect(button('Maliyete Göre').getAttribute('aria-pressed')).toBe('true')
     act(() => button('Fiyatı Uygula').click())
     expect(document.querySelector('.price-suggestion-modal')).toBeNull()
-    const expected = String(suggestPrice({ cost: 200, targetRate: 50, basis: 'cost', commissionRate: 20, cargo: 0, serviceFee: 13.19, vatRate: 20, vatIncluded: true })!.price)
+    const expected = String(suggestPrice({ cost: 200, targetRate: 65, basis: 'cost', commissionRate: 21.5, cargo: 100, serviceFee: 13.19, vatRate: 20, vatIncluded: true })!.price)
     expect(container.querySelector<HTMLInputElement>('input[aria-label="Satış Fiyatı"]')!.value).toBe(expected)
     expect(container.querySelector<HTMLInputElement>('input[aria-label="Liste Fiyatı"]')!.value).toBe(expected)
   })
@@ -111,5 +111,18 @@ describe('PriceSuggestionLink', () => {
     expect(fee).toContain('Pazarama 8,28 ₺')
     expect(fee).toContain('PttAVM %1,5')
     expect(fee).toContain('Shopify 0 ₺')
+  })
+})
+
+describe('PriceSuggestionDialog defaults', () => {
+  it('opens with 21,5 % commission, 100 TL cargo, 65 % target rate and a decimal comma that can be typed', async () => {
+    await open()
+    const modal = document.querySelector('.price-suggestion-modal')!
+    const value = (label: string) => (document.getElementById([...modal.querySelectorAll('label')].find(item => item.textContent === label)!.htmlFor) as HTMLInputElement).value
+    expect(value('Komisyon Oranı (%)')).toBe('21,5')
+    expect(value('Kargo Ücreti (₺)')).toBe('100')
+    expect(value('Hizmet Bedeli (₺)')).toBe('13,19')
+    expect([...modal.querySelectorAll('input')].every(input => input.type === 'text')).toBe(true)
+    expect([...modal.querySelectorAll('input')].some(input => input.value === '65')).toBe(true)
   })
 })

@@ -1,7 +1,7 @@
 import { useId, useMemo, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Button, Modal, TitleHint } from '../../../shared/components'
-import { DEFAULT_COMMISSION_RATE, DEFAULT_SERVICE_FEE, DEFAULT_VAT_RATE, appliedPrices, suggestPrice, type PriceTargetBasis, type PriceTargetKind } from './price-suggestion'
+import { DEFAULT_CARGO, DEFAULT_COMMISSION_RATE, DEFAULT_SERVICE_FEE, DEFAULT_VAT_RATE, appliedPrices, suggestPrice, type PriceTargetBasis, type PriceTargetKind } from './price-suggestion'
 import { cargoHint, commissionHint, serviceFeeHint, type HintContent } from './price-assumptions'
 import './price-suggestion.css'
 
@@ -11,10 +11,14 @@ const percent = (value: number | null) => value === null ? '—' : `%${value < 0
 const numberOf = (value: string) => { const parsed = Number(value.replace(',', '.')); return value.trim() === '' || !Number.isFinite(parsed) ? null : parsed }
 
 // The commission and cargo a user typed last are kept in this browser (a product not on a store has no tariff yet).
-const storageKey = 'rv.priceSuggestion.assumptions'
+// v2 (10 Nov 2026): the defaults moved to 21,5 % commission and 100 TL cargo; a value kept under the old key was most
+// often the old default, so the new ones start fresh.
+const storageKey = 'rv.priceSuggestion.assumptions.v2'
+// A number as the window shows it: Turkish decimal comma (the fields are text, so "21,5" can be typed).
+const shown = (value: number) => String(value).replace('.', ',')
 type Assumptions = { commissionRate: string; cargo: string; serviceFee: string }
 function readAssumptions(): Assumptions {
-  const fallback = { commissionRate: String(DEFAULT_COMMISSION_RATE), cargo: '0', serviceFee: String(DEFAULT_SERVICE_FEE) }
+  const fallback = { commissionRate: shown(DEFAULT_COMMISSION_RATE), cargo: shown(DEFAULT_CARGO), serviceFee: shown(DEFAULT_SERVICE_FEE) }
   try {
     const saved = JSON.parse(window.localStorage.getItem(storageKey) ?? 'null') as Partial<Assumptions> | null
     return saved ? { ...fallback, ...Object.fromEntries(Object.entries(saved).filter(([, value]) => typeof value === 'string')) } : fallback
@@ -56,9 +60,9 @@ export function PriceSuggestionLink({ fields, onApply }: { fields: PriceSuggesti
 export function PriceSuggestionDialog({ fields, onClose, onApply }: { fields: PriceSuggestionFields; onClose: () => void; onApply: (prices: { salePrice: string; listPrice: string }) => void }) {
   const [basis, setBasis] = useState<PriceTargetBasis>('cost')
   const [cost, setCost] = useState(fields.cost)
-  const [targetRate, setTargetRate] = useState('50')
+  const [targetRate, setTargetRate] = useState('65')
   const [targetKind, setTargetKind] = useState<PriceTargetKind>('rate')
-  const [targetAmount, setTargetAmount] = useState('100')
+  const [targetAmount, setTargetAmount] = useState('200')
   const [assumptions, setAssumptions] = useState(readAssumptions)
   const vatRate = numberOf(fields.vatRate) ?? DEFAULT_VAT_RATE
   const updateAssumption = (name: keyof Assumptions, value: string) => setAssumptions(current => { const next = { ...current, [name]: value }; writeAssumptions(next); return next })
@@ -82,13 +86,13 @@ export function PriceSuggestionDialog({ fields, onClose, onApply }: { fields: Pr
       {([['cost', 'Maliyete Göre'], ['sale', 'Satışa Göre']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={basis === value} onClick={() => setBasis(value)}>{label}</button>)}
     </div>
     <div className="price-suggestion-fields">
-      <label>Maliyet (₺)<input value={cost} onChange={event => setCost(event.target.value)} type="number" min="0" step="0.01" inputMode="decimal" /></label>
+      <label>Maliyet (₺)<input value={cost} onChange={event => setCost(event.target.value)} type="text" inputMode="decimal" /></label>
       {targetKind === 'rate'
-        ? <label>Hedef Kâr Oranı (%)<input value={targetRate} onChange={event => setTargetRate(event.target.value)} type="number" min="0" step="0.1" inputMode="decimal" /></label>
-        : <label>Hedef Kâr Tutarı (₺)<input value={targetAmount} onChange={event => setTargetAmount(event.target.value)} type="number" min="0" step="0.01" inputMode="decimal" /></label>}
-      <Field label="Komisyon Oranı (%)" hint={<AssumptionHint content={commissionHint} />}>{id => <input id={id} value={assumptions.commissionRate} onChange={event => updateAssumption('commissionRate', event.target.value)} type="number" min="0" max="99" step="0.1" inputMode="decimal" />}</Field>
-      <Field label="Kargo Ücreti (₺)" hint={<AssumptionHint content={cargoHint} />}>{id => <input id={id} value={assumptions.cargo} onChange={event => updateAssumption('cargo', event.target.value)} type="number" min="0" step="0.01" inputMode="decimal" />}</Field>
-      <Field label="Hizmet Bedeli (₺)" hint={<AssumptionHint content={serviceFeeHint} />}>{id => <input id={id} value={assumptions.serviceFee} onChange={event => updateAssumption('serviceFee', event.target.value)} type="number" min="0" step="0.01" inputMode="decimal" />}</Field>
+        ? <label>Hedef Kâr Oranı (%)<input value={targetRate} onChange={event => setTargetRate(event.target.value)} type="text" inputMode="decimal" /></label>
+        : <label>Hedef Kâr Tutarı (₺)<input value={targetAmount} onChange={event => setTargetAmount(event.target.value)} type="text" inputMode="decimal" /></label>}
+      <Field label="Komisyon Oranı (%)" hint={<AssumptionHint content={commissionHint} />}>{id => <input id={id} value={assumptions.commissionRate} onChange={event => updateAssumption('commissionRate', event.target.value)} type="text" inputMode="decimal" />}</Field>
+      <Field label="Kargo Ücreti (₺)" hint={<AssumptionHint content={cargoHint} />}>{id => <input id={id} value={assumptions.cargo} onChange={event => updateAssumption('cargo', event.target.value)} type="text" inputMode="decimal" />}</Field>
+      <Field label="Hizmet Bedeli (₺)" hint={<AssumptionHint content={serviceFeeHint} />}>{id => <input id={id} value={assumptions.serviceFee} onChange={event => updateAssumption('serviceFee', event.target.value)} type="text" inputMode="decimal" />}</Field>
     </div>
     {suggestion ? <div className={`price-suggestion-result${suggestion.profit < 0 ? ' is-loss' : ''}`} aria-live="polite">
       <div className="price-suggestion-price"><span>Önerilen Satış Fiyatı{fields.vatIncluded ? '' : ' (KDV Hariç)'}</span><strong data-testid="price-suggestion-price">{money(suggestion.price)}</strong>

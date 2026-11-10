@@ -275,9 +275,13 @@
   .app-shell.stitch-shell main .product-add-page .editor-section-title h2 { grid-column: 2; grid-row: 1; align-self: center; margin: 0; }
   .app-shell.stitch-shell main .product-add-page .editor-section-title p { grid-column: 2 / -1; grid-row: 2; }
   .app-shell.stitch-shell main .product-add-page .editor-section-title > .product-media-header-actions { grid-column: 3; grid-row: 1; align-self: center; flex: none; }
-  /* Görseller with Beden Tablosu Seç beside Tümünü Temizle: the buttons take the full row under the title, wrapping when
-     İşareti Kaldır joins them. */
-  .app-shell.stitch-shell main .product-add-page .editor-section-title > .product-media-header-actions:has(> :nth-child(2)) { grid-column: 1 / -1; grid-row: 3; margin-top: 4px; flex-wrap: wrap; justify-content: flex-start; margin-left: 0; }
+  /* Görseller with Beden Tablosu Seç beside Tümünü Temizle (owner, 10 Nov 2026: "düzgün konumlandır"): the title keeps
+     its line and the buttons share the full row under it equally, on one line; with İşareti Kaldır as a third the
+     two long labels shorten to Beden Tablosu and Temizle (the full names stay in aria-label and title). */
+  .app-shell.stitch-shell main .product-add-page .editor-section-title > .product-media-header-actions:has(> :nth-child(2)) { grid-column: 1 / -1; grid-row: 3; margin-top: 4px; margin-left: 0; flex-wrap: nowrap; gap: 6px; }
+  .app-shell.stitch-shell main .product-add-page .editor-section-title > .product-media-header-actions:has(> :nth-child(2)) > button { flex: 1 1 0; min-width: 0; justify-content: center; padding: 0 4px; font-size: 12.5px; text-align: center; white-space: nowrap; }
+  .app-shell.stitch-shell main .product-add-page .editor-section-title > .product-media-header-actions:has(> :nth-child(3)) .media-action-full { display: none; }
+  .app-shell.stitch-shell main .product-add-page .editor-section-title > .product-media-header-actions:has(> :nth-child(3)) .media-action-short { display: inline; }
   .app-shell.stitch-shell main .product-add-page :is(.product-media-clear-all-button, .product-media-size-chart-button) { height: 36px; min-height: 36px; padding: 0 12px; font-size: 13px; }
   .app-shell.stitch-shell main .product-add-page .product-step-grid > label { display: grid; grid-template-rows: minmax(0, 1fr) auto; align-items: end; }
   .app-shell.stitch-shell main .variant-bulk-edit-filters > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }

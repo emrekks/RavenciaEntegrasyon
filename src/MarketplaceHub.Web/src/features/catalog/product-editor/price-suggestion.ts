@@ -38,7 +38,8 @@ export type PriceSuggestion = {
 // + 20 % VAT).
 export const DEFAULT_SERVICE_FEE = 13.19
 // No tariff is known for a product not on a store yet; a common marketplace commission the user can change.
-export const DEFAULT_COMMISSION_RATE = 20
+export const DEFAULT_COMMISSION_RATE = 21.5
+export const DEFAULT_CARGO = 100
 export const DEFAULT_VAT_RATE = 20
 
 const grossOf = (price: number, input: Pick<PriceSuggestionInput, 'vatIncluded' | 'vatRate'>) =>
