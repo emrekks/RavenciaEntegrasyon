@@ -29,7 +29,6 @@ function shiftDay(day: string, days: number) {
 export function dateRangePresets(today: string): Array<{ label: string; range: DateRange }> {
   const [year, month] = today.split('-')
   const weekday = (new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7
-  const lastSunday = shiftDay(today, -weekday - 1)
   const thisMonthStart = `${year}-${month}-01`
   const lastMonthEnd = shiftDay(thisMonthStart, -1)
   // The same list, order and rules as the Raporlar presets: weeks start on Monday, "Son 30 Gün" ends today.
@@ -37,7 +36,6 @@ export function dateRangePresets(today: string): Array<{ label: string; range: D
     { label: 'Bugün', range: { from: today, to: today } },
     { label: 'Dün', range: { from: shiftDay(today, -1), to: shiftDay(today, -1) } },
     { label: 'Bu Hafta', range: { from: shiftDay(today, -weekday), to: today } },
-    { label: 'Geçen Hafta', range: { from: shiftDay(lastSunday, -6), to: lastSunday } },
     { label: 'Bu Ay', range: { from: thisMonthStart, to: today } },
     { label: 'Geçen Ay', range: { from: `${lastMonthEnd.slice(0, 7)}-01`, to: lastMonthEnd } },
     { label: 'Son 30 Gün', range: { from: shiftDay(today, -29), to: today } },

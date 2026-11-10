@@ -1,6 +1,6 @@
 // 24h and 7d are rolling windows (7d only keeps old links such as the dashboard's "7g" working); the others are the shared
 // date presets (shared/date-range.ts) that end today, so the server's open-ended `since` is exact for them: it starts at
-// the preset's first Istanbul day. Dün, Geçen Hafta and Geçen Ay end in the past and need an upper bound the jobs API
+// the preset's first Istanbul day. Dün and Geçen Ay end in the past and need an upper bound the jobs API
 // does not have, so they are not offered here.
 import { dateRangePresets } from '../../shared/date-range'
 import { istanbulDateKey, istanbulDayBoundary } from '../../shared/format-date'

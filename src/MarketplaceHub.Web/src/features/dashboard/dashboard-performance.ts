@@ -22,10 +22,10 @@ export type HourRow = Omit<PerformanceRow, 'day'> & { hour: string }
 // day is the calendar day, or the hour key ("yyyy-MM-ddTHH:00") of an hourly series; label is the axis text then.
 export type DayPoint = { day: string; label?: string; amount: number; orderCount: number; productQuantity: number; packageCount: number; returnedAmount: number; returnedOrderCount: number }
 // The ready periods are the shared date presets (shared/date-range.ts, the Raporlar list) plus a picked range.
-export type Range = 'today' | 'yesterday' | 'week' | 'lastWeek' | 'month' | 'lastMonth' | '30' | 'year' | 'custom'
-export const presetLabels: Record<Exclude<Range, 'custom'>, string> = { today: 'Bugün', yesterday: 'Dün', week: 'Bu Hafta', lastWeek: 'Geçen Hafta', month: 'Bu Ay', lastMonth: 'Geçen Ay', '30': 'Son 30 Gün', year: 'Bu Yıl' }
+export type Range = 'today' | 'yesterday' | 'week' | 'month' | 'lastMonth' | '30' | 'year' | 'custom'
+export const presetLabels: Record<Exclude<Range, 'custom'>, string> = { today: 'Bugün', yesterday: 'Dün', week: 'Bu Hafta', month: 'Bu Ay', lastMonth: 'Geçen Ay', '30': 'Son 30 Gün', year: 'Bu Yıl' }
 // The buttons' order (an object lists its numeric key first).
-export const presetOrder = ['today', 'yesterday', 'week', 'lastWeek', 'month', 'lastMonth', '30', 'year'] as const satisfies ReadonlyArray<Exclude<Range, 'custom'>>
+export const presetOrder = ['today', 'yesterday', 'week', 'month', 'lastMonth', '30', 'year'] as const satisfies ReadonlyArray<Exclude<Range, 'custom'>>
 
 const dayPattern = /^\d{4}-\d{2}-\d{2}$/
 
