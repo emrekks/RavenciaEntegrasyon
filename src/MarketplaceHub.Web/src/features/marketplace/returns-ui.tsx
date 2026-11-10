@@ -172,19 +172,28 @@ function useScrollAreaPopover(open: boolean, ref: RefObject<HTMLElement | null>,
     const area = sheet ?? host.closest('.rr-tblwrap')
     const pop = host.querySelector<HTMLElement>(':scope > .rr-menu, :scope > .rr-pop')
     if (!pop) return
-    // Already pinned by the stylesheet (the phone bottom sheet): leave it. Every other popover is pinned to the screen
-    // and opened in the top layer, so no card, scroll box, sticky header or sidebar can clip or cover it.
-    if (!sheet && !area && getComputedStyle(pop).position === 'fixed') return
-    // On phones a menu outside a dropdown anchor is that bottom sheet even inside a table (the Ürünler card İşlemler):
-    // measuring it while it rises in pinned it below the screen. It opens in the top layer so no card can clip it.
+    // On phones a menu outside a dropdown anchor is a bottom sheet (pinned by the stylesheet), on a page, in a table
+    // (the Ürünler card İşlemler) or inside a window. Sheet and scrim open in the top layer: a window's translate,
+    // will-change or backdrop blur made the window the box a fixed sheet is placed in, so the sheet floated inset in the
+    // window instead of sitting at the bottom of the screen at full width (owner, 10 Nov 2026). The top layer is placed
+    // against the screen whatever its ancestors do, and above everything; the DOM stays where it is, so focus, Escape
+    // and the outside press still treat it as part of its anchor and window.
     if (!sheet && !host.classList.contains('rr-dropdown') && !pop.classList.contains('rr-static') && window.matchMedia?.('(max-width: 760px)').matches && getComputedStyle(pop).position === 'fixed') {
       if (typeof pop.showPopover === 'function') {
+        const scrim = host.querySelector<HTMLElement>(':scope > .rr-anchor-scrim')
+        if (scrim && getComputedStyle(scrim).display !== 'none') {
+          scrim.setAttribute('popover', 'manual')
+          scrim.showPopover()
+        }
         pop.style.setProperty('margin', '0', 'important')
         pop.setAttribute('popover', 'manual')
         pop.showPopover()
       }
       return
     }
+    // Already pinned by the stylesheet: leave it. Every other popover is pinned to the screen and opened in the top
+    // layer, so no card, scroll box, sticky header or sidebar can clip or cover it.
+    if (!sheet && !area && getComputedStyle(pop).position === 'fixed') return
     const pin = (styles: Record<string, string>) => Object.entries(styles).forEach(([key, value]) => pop.style.setProperty(key, value, 'important'))
     // In the sheet the popover first leaves the flow (the open list had grown the sheet and lifted the field), then
     // the field is measured where it really sits.

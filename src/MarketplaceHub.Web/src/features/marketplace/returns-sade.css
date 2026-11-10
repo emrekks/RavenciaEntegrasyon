@@ -992,6 +992,9 @@ main .rr.rr-returns .rr-tblwrap.rr-tblwrap { overflow: visible; padding-top: 12p
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-fopen .rr-anchor > .rr-pop.rr-pop:not(.rr-static) { position: static !important; width: 100% !important; max-height: none; margin-top: 6px; padding: 6px; box-shadow: none; border-radius: 12px; border-bottom: 1px solid var(--rr-line-strong); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-fopen .rr-anchor > .rr-pop.rr-pop:not(.rr-static)::before { display: none; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-anchor > .rr-anchor-scrim { display: block; position: fixed; inset: 0; z-index: 949; background: rgb(0 0 0 / 55%); }
+/* The sheet's scrim opens in the top layer (returns-ui.tsx): the browser's popover box (fit-content size, border,
+   padding, margin) is undone so it covers the whole screen. */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-anchor > .rr-anchor-scrim[popover] { width: auto; height: auto; max-width: none; max-height: none; margin: 0; padding: 0; overflow: visible; border: 0; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-fopen .rr-anchor > .rr-anchor-scrim { display: none; }
 /* A dropdown anchor (the card İşlemler) opens its menu under the trigger, like Faturalar; its scrim only catches the outside tap. */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-anchor.rr-dropdown > .rr-anchor-scrim { background: transparent; }
