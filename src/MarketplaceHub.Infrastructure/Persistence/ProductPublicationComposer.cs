@@ -13,7 +13,13 @@ using Microsoft.Extensions.Configuration;
 namespace MarketplaceHub.Infrastructure.Persistence;
 
 internal sealed record PublicationVariantDraft(Guid VariantId, string Sku, string Barcode);
-internal sealed record ProductPublicationDraft(Guid ProfileId, string ExternalCategoryId, string ExternalBrandId, string PayloadHash, string PayloadJson, IReadOnlyList<PublicationVariantDraft> Variants);
+internal sealed record ProductPublicationDraft(Guid ProfileId, string ExternalCategoryId, string ExternalBrandId, string PayloadHash, string PayloadJson, IReadOnlyList<PublicationVariantDraft> Variants)
+{
+    // salesDataOptional builds only: the first variant whose price offer or stock row cannot be sent (none, inactive, a zero
+    // price, a VAT rate Trendyol does not take). Its item carries no price, VAT or quantity; the update composer refuses
+    // with this error only when the update sends one of them.
+    public ServiceError? SalesDataIssue { get; init; }
+}
 
 internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration configuration)
 {
@@ -29,8 +35,11 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
     // update, which writes a card Trendyol split into one content per colour content by content (TrendyolContentGroups);
     // Yayınla still stops on such a card. desiRequired false: the Trendyol update, which needs a desi only when it sends
     // one (DESI picked, or the whole card of a product Trendyol has not approved yet); a variant without a desi then
-    // gets no dimensionalWeight and the update composer decides (DesiMissingSku).
-    public async Task<ServiceResult<ProductPublicationDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken, bool onlyUnsentVariants = false, bool contentSplitAllowed = false, bool desiRequired = true)
+    // gets no dimensionalWeight and the update composer decides (DesiMissingSku). salesDataOptional: the Trendyol update,
+    // which sends a price, VAT rate or stock only for the whole card of an unapproved product or a VAT pick; a variant
+    // without a usable offer or stock row then goes without them and the update composer decides (SalesDataIssue). Live
+    // 10.11.2026 (MZ052BOD, 7 colours): an images-only send refused two colours for variants without a price.
+    public async Task<ServiceResult<ProductPublicationDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken, bool onlyUnsentVariants = false, bool contentSplitAllowed = false, bool desiRequired = true, bool salesDataOptional = false)
     {
         var product = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
         if (product is null) return NotFound<ProductPublicationDraft>();
@@ -149,8 +158,10 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
                                 select new { variantOption.VariantId, option.Label, ValueLabel = optionValue.Label }).ToListAsync(cancellationToken);
         var offers = await db.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && variantIds.Contains(x.VariantId) && x.Status == "ACTIVE").ToDictionaryAsync(x => x.VariantId, cancellationToken);
         var inventories = await db.InventoryItems.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId) && x.LocationCode == "MAIN").ToDictionaryAsync(x => x.VariantId, cancellationToken);
-        if (offers.Count != variants.Count) return Fail("CHANNEL_OFFER_REQUIRED", "Her varyant için etkin Trendyol fiyat teklifi gerekir.");
-        if (inventories.Count != variants.Count) return Fail("INVENTORY_REQUIRED", "Her varyant için MAIN stok kaydı gerekir.");
+        ServiceError? salesDataIssue = null;
+        if (offers.Count != variants.Count) salesDataIssue = new("CHANNEL_OFFER_REQUIRED", "Her varyant için etkin Trendyol fiyat teklifi gerekir.", 422);
+        else if (inventories.Count != variants.Count) salesDataIssue = new("INVENTORY_REQUIRED", "Her varyant için MAIN stok kaydı gerekir.", 422);
+        if (salesDataIssue is not null && !salesDataOptional) return Fail(salesDataIssue.Code, salesDataIssue.Message);
 
         var sizeChartAssetId = await SizeCharts.SizeChartPlacement.AssetIdAsync(db, tenantId, productId, cancellationToken);
         var media = await (from productMedia in db.ProductMedia.AsNoTracking()
@@ -171,10 +182,17 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
         var draftVariants = new List<PublicationVariantDraft>(variants.Count);
         foreach (var variant in variants)
         {
-            var offer = offers[variant.Id];
-            if (!string.Equals(offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || offer.SalePrice <= 0 || offer.ListPrice < offer.SalePrice) return Fail("CHANNEL_OFFER_INVALID", $"'{variant.Sku}' için TRY para birimi ve listPrice >= salePrice > 0 kuralı sağlanmalıdır.");
+            var offer = offers.GetValueOrDefault(variant.Id);
+            var inventory = inventories.GetValueOrDefault(variant.Id);
+            ServiceError? offerIssue = null;
+            if (offer is not null && (!string.Equals(offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || offer.SalePrice <= 0 || offer.ListPrice < offer.SalePrice)) offerIssue = new("CHANNEL_OFFER_INVALID", $"'{variant.Sku}' için TRY para birimi ve listPrice >= salePrice > 0 kuralı sağlanmalıdır.", 422);
             // D11: Trendyol accepts only the Turkish VAT rates.
-            if (!IsTrendyolVatRate(offer.VatRate)) return Fail("VAT_RATE_INVALID", $"'{variant.Sku}' için KDV oranı {offer.VatRate.ToString("0.##", CultureInfo.InvariantCulture)}; Trendyol için 0, 1, 10 veya 20 olmalıdır.");
+            else if (offer is not null && !IsTrendyolVatRate(offer.VatRate)) offerIssue = new("VAT_RATE_INVALID", $"'{variant.Sku}' için KDV oranı {offer.VatRate.ToString("0.##", CultureInfo.InvariantCulture)}; Trendyol için 0, 1, 10 veya 20 olmalıdır.", 422);
+            if (offerIssue is not null && !salesDataOptional) return Fail(offerIssue.Code, offerIssue.Message);
+            salesDataIssue ??= offerIssue;
+            // The price and VAT rate go only from a usable offer, the quantity only with its stock row too; without them
+            // (salesDataOptional) the item leaves them out.
+            var salesOffer = offerIssue is null ? offer : null;
             // D7 (K20): Trendyol prices the cargo by dimensionalWeight; a guessed 1 desi bills the wrong shipping cost.
             if (desiRequired && !HasDesi(variant.Desi)) return Fail("DESI_REQUIRED", DesiMissingMessage(variant.Sku));
 
@@ -314,7 +332,6 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
                 return Fail("REQUIRED_ATTRIBUTE_MISSING", $"'{variant.Sku}' için Trendyol'un zorunlu özellikleri eksik: {string.Join(", ", missingRequired)}. Ürünün kategori özelliklerinde bu alanlara değer seçin ve değerlerini eşleyin.");
             }
 
-            var publishable = Math.Max(0, inventories[variant.Id].Available - offer.SafetyStock);
             var item = new Dictionary<string, object?>
             {
                 ["barcode"] = variant.Barcode!.Trim(),
@@ -323,13 +340,13 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
                 ["productMainId"] = modelCodes[0],
                 ["brandId"] = externalBrandId,
                 ["categoryId"] = externalCategoryId,
-                ["quantity"] = TrendyolStockRules.Quantity(publishable),
+                ["quantity"] = salesOffer is not null && inventory is not null ? TrendyolStockRules.Quantity(Math.Max(0, inventory.Available - salesOffer.SafetyStock)) : null,
                 ["stockCode"] = variant.Sku.Trim(),
                 ["dimensionalWeight"] = HasDesi(variant.Desi) ? variant.Desi!.Value : null,
                 ["origin"] = string.IsNullOrWhiteSpace(profile.Origin) ? null : profile.Origin.Trim().ToUpperInvariant(),
-                ["listPrice"] = PriceInventoryComposer.OutboundListPrice(offer),
-                ["salePrice"] = PriceInventoryComposer.OutboundSalePrice(offer),
-                ["vatRate"] = (int)offer.VatRate,
+                ["listPrice"] = salesOffer is null ? null : PriceInventoryComposer.OutboundListPrice(salesOffer),
+                ["salePrice"] = salesOffer is null ? null : PriceInventoryComposer.OutboundSalePrice(salesOffer),
+                ["vatRate"] = salesOffer is null ? null : (int)salesOffer.VatRate,
                 ["deliveryOption"] = deliveryDays is > 0 ? new Dictionary<string, object?> { ["deliveryDuration"] = deliveryDays } : null,
                 ["images"] = imageUrls.Select(url => new Dictionary<string, object?> { ["url"] = url }).ToList(),
                 ["attributes"] = payloadAttributes
@@ -340,7 +357,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
 
         var payloadJson = JsonSerializer.Serialize(new Dictionary<string, object?> { ["items"] = items }, JsonOptions);
         var payloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payloadJson)));
-        return ServiceResult<ProductPublicationDraft>.Ok(new(profile.Id, categoryMapping.ExternalId, brandMapping.ExternalId, payloadHash, payloadJson, draftVariants));
+        return ServiceResult<ProductPublicationDraft>.Ok(new(profile.Id, categoryMapping.ExternalId, brandMapping.ExternalId, payloadHash, payloadJson, draftVariants) { SalesDataIssue = salesDataIssue });
     }
 
     // Connection defaults this category can use, as ready payload entries keyed by attribute id. A

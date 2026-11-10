@@ -199,6 +199,24 @@ export function platformUpdatePlan(platformCode: string, picked: Iterable<Platfo
   }
 }
 
+// Whether the save before this send writes the marketplace's price offers: only when what was picked is held on the
+// offer, the price, the stock (its safety stock) or the VAT rate, or the marketplace takes the whole card (Shopify). A send
+// of pictures alone writes no price (live 10 Nov 2026, MZ052BOD: Görseller alone wrote 4 offers and warned of 5 unpriced
+// variants); Hepsiburada's package carries the offer's VAT rate as it is.
+const offerFieldKeys = new Set<PlatformUpdateField>(['PRICE', 'STOCK', 'VAT_RATE'])
+export function platformUpdateWritesOffers(platformCode: string, picked: Iterable<PlatformUpdateField>) {
+  const selection = new Set(picked)
+  const plan = platformUpdatePlan(platformCode, selection)
+  const wholeCard = Boolean(profileOf(platformCode)?.wholeCard)
+  return plan.price || plan.stock || plan.fields.some(field => offerFieldKeys.has(field) && (wholeCard || selection.has(field)))
+}
+
+// How the toast names the product information that goes: the one picked field by its name ("görseller"), else
+// "ürün bilgisi".
+export function productInformationLabel(productFields: readonly PlatformUpdateField[]) {
+  return productFields.length === 1 ? platformUpdateFieldLabel(productFields[0]).toLocaleLowerCase('tr-TR') : 'ürün bilgisi'
+}
+
 export function platformUpdateSummary(plan: PlatformUpdatePlan) {
   if (!plan.sends.length) return 'Seçili alanlardan hiçbiri bu platforma gönderilmiyor'
   return [...plan.sends, ...plan.extras].join(', ')

@@ -196,6 +196,14 @@ describe('product save feedback', () => {
     ])
     expect(productSaveFeedback(save({ updates: [{ platformName: 'Shopify', queued: { productInformation: false, priceInventory: true } }] })).title).toBe('Aktarım Başladı')
   })
+
+  // Live 10 Nov 2026 (MZ052BOD): Görseller alone read "ürün bilgisi (7 renkten 5 renk, 25 varyant) gönderiliyor".
+  it('names the pictures when only they were picked', () => {
+    const family = { cards: 7, queuedCards: 7, queuedVariants: 35, absent: [], failures: new Map() }
+    const feedback = productSaveFeedback(save({ updates: [{ platformName: 'Trendyol', queued: { productInformation: true, priceInventory: false }, productInformationLabel: 'görseller', family }] }))
+    expect(feedback.title).toBe('Aktarım Başladı')
+    expect(feedback.lines).toContain('Trendyol: görseller (7 rengin tamamı, 35 varyant) gönderiliyor.')
+  })
 })
 
 describe('publication card messages', () => {

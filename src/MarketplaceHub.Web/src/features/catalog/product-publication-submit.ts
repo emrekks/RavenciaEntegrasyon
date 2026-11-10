@@ -34,6 +34,8 @@ export type MarketplacePublishOutcome = {
 export type MarketplaceUpdateOutcome = {
   platformName: string
   queued: { productInformation: boolean; priceInventory: boolean }
+  /** How the product information that went is named ("görseller" when only the pictures were picked); "ürün bilgisi" when missing. */
+  productInformationLabel?: string
   /** The price/stock parts the pick sent; both when missing. */
   priceInventoryParts?: { price: boolean; stock: boolean }
   error?: string
@@ -134,10 +136,10 @@ export function marketplacePublishLines(outcome: MarketplacePublishOutcome) {
 
 // "ürün bilgisi" of a model family names how many colours and variants it went for (owner, 7 Nov 2026: RYP003T said
 // "3 varyant gönderildi" of a 21-variant family with no word on the other 6 colours).
-function productInformationText(family: MarketplaceFamilyUpdate | undefined) {
-  if (!family || family.cards <= 1) return 'ürün bilgisi'
+function productInformationText(family: MarketplaceFamilyUpdate | undefined, label = 'ürün bilgisi') {
+  if (!family || family.cards <= 1) return label
   const colours = family.queuedCards === family.cards ? `${family.cards} rengin tamamı` : `${family.cards} renkten ${family.queuedCards} renk`
-  return `ürün bilgisi (${colours}, ${family.queuedVariants} varyant)`
+  return `${label} (${colours}, ${family.queuedVariants} varyant)`
 }
 
 function familyUpdateFailed(outcome: MarketplaceUpdateOutcome) {
@@ -148,7 +150,7 @@ function marketplaceUpdateLines(outcome: MarketplaceUpdateOutcome) {
   const name = outcome.platformName
   const parts = outcome.priceInventoryParts
   const priceInventory = !parts || parts.price && parts.stock ? 'fiyat-stok' : parts.price ? 'fiyat' : 'stok'
-  const queued = [outcome.queued.productInformation && productInformationText(outcome.family), outcome.queued.priceInventory && priceInventory].filter(Boolean).join(' ve ')
+  const queued = [outcome.queued.productInformation && productInformationText(outcome.family, outcome.productInformationLabel), outcome.queued.priceInventory && priceInventory].filter(Boolean).join(' ve ')
   const queuedText = queued ? `${queued} gönderiliyor` : ''
   const lines: string[] = []
   if (!outcome.error) {

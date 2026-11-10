@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { availablePlatformUpdateFields, defaultPlatformUpdateFields, defaultPlatformUpdatePreferences, platformUpdateFieldsForStores, platformUpdateGroups, platformUpdatePlan, platformUpdatePreferencesKey, platformUpdateSummary, priceStockPlatformUpdateFields, readPlatformUpdatePreferences, readPlatformUpdateStores, readQuickPlatformUpdateChoice, platformUpdateStoresKey, writePlatformUpdatePreferences, writePlatformUpdateStores } from './platform-update-fields'
+import { availablePlatformUpdateFields, platformUpdateWritesOffers, productInformationLabel, defaultPlatformUpdateFields, defaultPlatformUpdatePreferences, platformUpdateFieldsForStores, platformUpdateGroups, platformUpdatePlan, platformUpdatePreferencesKey, platformUpdateSummary, priceStockPlatformUpdateFields, readPlatformUpdatePreferences, readPlatformUpdateStores, readQuickPlatformUpdateChoice, platformUpdateStoresKey, writePlatformUpdatePreferences, writePlatformUpdateStores } from './platform-update-fields'
 
 function memoryStorage(initial: Record<string, string> = {}) {
   const values = new Map(Object.entries(initial))
@@ -250,5 +250,29 @@ describe('platform update fields', () => {
     expect(readQuickPlatformUpdateChoice(['ty', 'hb'], ['hb'], fieldsOnly)).toEqual({ connectionIds: ['hb'], fields: ['PRICE'] })
     const throwing = { getItem: () => { throw new Error('blocked') } }
     expect(readQuickPlatformUpdateChoice(['ty'], ['ty'], throwing)).toEqual({ connectionIds: ['ty'], fields: ['PRICE', 'STOCK'] })
+  })
+
+  // Live 10 Nov 2026 (MZ052BOD): Görseller alone wrote the Trendyol price offers and warned of 5 unpriced variants.
+  it('writes the price offers only when the send carries a price, the stock or the VAT rate', () => {
+    expect(platformUpdateWritesOffers('TRENDYOL', ['IMAGES'])).toBe(false)
+    expect(platformUpdateWritesOffers('TRENDYOL', ['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES', 'DESI', 'DELIVERY'])).toBe(false)
+    // The VAT rate goes from the offer, so a VAT send writes it first.
+    expect(platformUpdateWritesOffers('TRENDYOL', ['VAT_RATE'])).toBe(true)
+    expect(platformUpdateWritesOffers('TRENDYOL', ['IMAGES', 'PRICE'])).toBe(true)
+    expect(platformUpdateWritesOffers('TRENDYOL', ['STOCK'])).toBe(true)
+    expect(platformUpdateWritesOffers('HEPSIBURADA', ['IMAGES'])).toBe(false)
+    expect(platformUpdateWritesOffers('HEPSIBURADA', ['VAT_RATE'])).toBe(true)
+    expect(platformUpdateWritesOffers('PTTAVM', ['IMAGES'])).toBe(false)
+    expect(platformUpdateWritesOffers('N11', ['DESCRIPTION'])).toBe(false)
+    expect(platformUpdateWritesOffers('PAZARAMA', ['PRICE'])).toBe(true)
+    // Shopify takes the whole card, price included, whatever is picked.
+    expect(platformUpdateWritesOffers('SHOPIFY', ['IMAGES'])).toBe(true)
+  })
+
+  it('names one picked product field in the toast, more as ürün bilgisi', () => {
+    expect(productInformationLabel(['IMAGES'])).toBe('görseller')
+    expect(productInformationLabel(['TITLE'])).toBe('ürün adı')
+    expect(productInformationLabel(['TITLE', 'IMAGES'])).toBe('ürün bilgisi')
+    expect(productInformationLabel([])).toBe('ürün bilgisi')
   })
 })

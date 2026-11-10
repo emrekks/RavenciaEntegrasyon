@@ -7961,6 +7961,74 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         await transaction.RollbackAsync();
     }
 
+    // Live 10.11.2026 (MZ052BOD, 7 colours): "Platformlarda Güncelle" with Görseller alone refused two approved colours with
+    // "Her varyant için etkin Trendyol fiyat teklifi gerekir": a variant had no price there, although no price goes. The
+    // pictures now go; a pick that sends a price, VAT rate or stock (the whole card of an unapproved product, VAT Oranı)
+    // still needs every offer.
+    [PostgreSqlFact]
+    public async Task TrendyolImagesOnlyUpdate_DoesNotNeedPriceOffers_ButVatAndUnapprovedCardsStillDo()
+    {
+        var tenant = NewTenant("images-only-update");
+        var connection = NewQuestionConnection(tenant);
+        var categoryId = Guid.CreateVersion7();
+        var brandId = Guid.CreateVersion7();
+        var productId = Guid.CreateVersion7();
+        var priced = Guid.CreateVersion7();
+        var unpriced = Guid.CreateVersion7();
+        var categories = NewReferenceSnapshot(tenant.Id, connection.Id, "CATEGORIES", "", fixture.Now, "categories");
+        var brands = NewReferenceSnapshot(tenant.Id, connection.Id, "BRANDS", "", fixture.Now, "brands");
+        var attributes = NewReferenceSnapshot(tenant.Id, connection.Id, "CATEGORY_ATTRIBUTES", "123", fixture.Now, "attributes");
+
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.PlatformConnections.Add(connection);
+        db.Categories.Add(new Category { Id = categoryId, TenantId = tenant.Id, Name = "Test kategori", NormalizedName = "TEST KATEGORI", Path = "Test kategori", IsLeaf = true, IsActive = true, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 });
+        db.Brands.Add(new Brand { Id = brandId, TenantId = tenant.Id, Name = "Test marka", NormalizedName = "TEST MARKA", IsActive = true, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 });
+        db.Products.Add(new Product { Id = productId, TenantId = tenant.Id, Title = "Test ürün", Description = "Görsel testi", CategoryId = categoryId, BrandId = brandId, Status = ProductStatus.Active, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 });
+        db.ReferenceSnapshots.AddRange(categories, brands, attributes);
+        db.ReferenceItems.AddRange(
+            NewReferenceItem(tenant.Id, connection.Id, categories.Id, "CATEGORIES", "123", "Test kategori", isLeaf: true),
+            NewReferenceItem(tenant.Id, connection.Id, brands.Id, "BRANDS", "456", "Test marka"));
+        db.CategoryMappings.Add(new CategoryMapping { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, SnapshotId = categories.Id, LocalId = categoryId, ExternalId = "123", Status = "VERIFIED", VerifiedAt = fixture.Now, Version = 1 });
+        db.BrandMappings.Add(new BrandMapping { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, SnapshotId = brands.Id, LocalId = brandId, ExternalId = "456", Status = "VERIFIED", VerifiedAt = fixture.Now, Version = 1 });
+        db.ChannelListingProfiles.Add(new ChannelListingProfile { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ProductId = productId, Enabled = true, DesiredStatus = "ACTIVE", ActualStatus = "ACTIVE", Version = 1 });
+        foreach (var (variantId, code) in new[] { (priced, "MZ052BOD-26"), (unpriced, "MZ052BOD-29") })
+        {
+            db.ProductVariants.Add(new ProductVariant { Id = variantId, TenantId = tenant.Id, ProductId = productId, Sku = code, SkuNormalized = code, Barcode = code, BarcodeNormalized = code, ModelCode = "MZ052BOD", OptionSignature = "", CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 });
+            db.InventoryItems.Add(new InventoryItem { Id = Guid.CreateVersion7(), TenantId = tenant.Id, VariantId = variantId, LocationCode = "MAIN", OnHand = 3m, Available = 3m, ProjectionVersion = 1, Version = 1 });
+            var asset = new FileAsset { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Classification = "PRODUCT_MEDIA_URL", RelativePath = $"https://cdn.example.com/{code}.jpg", MimeType = "image/jpeg", Sha256 = Guid.NewGuid().ToString("N"), Status = "ACTIVE", CreatedAt = fixture.Now };
+            db.FileAssets.Add(asset);
+            db.ProductMedia.Add(new ProductMedia { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = productId, VariantId = variantId, FileAssetId = asset.Id, MediaRole = "PRIMARY", SortOrder = 0, Status = "ACTIVE" });
+            // Approved on Trendyol: each variant linked by its barcode.
+            db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, VariantId = variantId, ExternalId = code, ExternalBarcode = code });
+        }
+        db.ChannelOffers.Add(new ChannelOffer { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, VariantId = priced, ListPrice = 599m, SalePrice = 599m, Currency = "TRY", VatRate = 10m, VatInclusion = "INCLUDED", RoundingMode = "HALF_EVEN", Status = "ACTIVE", PriceVersion = 1, Version = 1 });
+        // The unpriced colour's offer is inactive at zero, as on live.
+        db.ChannelOffers.Add(new ChannelOffer { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, VariantId = unpriced, ListPrice = 0m, SalePrice = 0m, Currency = "TRY", VatRate = 10m, VatInclusion = "INCLUDED", RoundingMode = "HALF_EVEN", Status = "INACTIVE", PriceVersion = 1, Version = 1 });
+        await db.SaveChangesAsync();
+
+        var composer = new ProductUpdateComposer(db, new ConfigurationBuilder().Build());
+        var images = await composer.BuildAsync(tenant.Id, productId, connection.Id, CancellationToken.None, ProductUpdateFields.Sections(["IMAGES"]).Value);
+        Assert.True(images.Succeeded, images.Error?.Message);
+        Assert.Equal("APPROVED", images.Value!.Publication.Mode);
+        var content = System.Text.Json.Nodes.JsonNode.Parse(images.Value.Publication.ApprovedContentPayloadJson)!["items"]!.AsArray();
+        Assert.Equal(["MZ052BOD-26", "MZ052BOD-29"], content.Select(item => item!["barcode"]!.GetValue<string>()).Order().ToArray());
+        Assert.All(content, item => Assert.Equal(["barcode", "images"], item!.AsObject().Select(pair => pair.Key).Order().ToArray()));
+        Assert.Equal("{\"items\":[]}", images.Value.Publication.ApprovedVariantPayloadJson);
+
+        // VAT Oranı goes from the offer: still refused without one.
+        Assert.Equal("CHANNEL_OFFER_REQUIRED", (await composer.BuildAsync(tenant.Id, productId, connection.Id, CancellationToken.None, ProductUpdateFields.Sections(["VAT_RATE"]).Value)).Error?.Code);
+        // Yayınla (the publication) still needs every offer.
+        Assert.Equal("CHANNEL_OFFER_REQUIRED", (await new ProductPublicationComposer(db, new ConfigurationBuilder().Build()).BuildAsync(tenant.Id, productId, connection.Id, CancellationToken.None)).Error?.Code);
+
+        // Not approved yet (no link): the whole card goes, price and stock included, so the offer is required again.
+        await db.MarketplaceVariantLinks.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+        Assert.Equal("CHANNEL_OFFER_REQUIRED", (await composer.BuildAsync(tenant.Id, productId, connection.Id, CancellationToken.None, ProductUpdateFields.Sections(["IMAGES"]).Value)).Error?.Code);
+
+        await transaction.RollbackAsync();
+    }
+
     [Fact]
     public void ProductFieldSources_ReadTheVariantsOwnFields()
     {

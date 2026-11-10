@@ -59,7 +59,9 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
         // content right before the send), so the publication composer's split stop does not hold an update back.
         // The desi is checked below, once it is known whether this update sends one (live 7.11.2026: RYP003T, approved,
         // stopped on a missing desi although the owner had not picked Desi).
-        var create = await new ProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken, contentSplitAllowed: true, desiRequired: false);
+        // The price offers and stock rows are checked the same way: only the whole card of an unapproved product and a VAT
+        // pick send them (live 10.11.2026: MZ052BOD, Görseller alone, refused two colours for variants without a price).
+        var create = await new ProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken, contentSplitAllowed: true, desiRequired: false, salesDataOptional: true);
         if (!create.Succeeded) return ServiceResult<ProductUpdateDraft>.Fail(create.Error!.Code, create.Error.Message, create.Error.Status, create.Error.FieldErrors);
         var draft = create.Value!;
         var productLink = await db.MarketplaceProductLinks.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == productId, cancellationToken);
@@ -67,12 +69,20 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
         // link only once approved) but no single content is the product's. It is not an unapproved product.
         var variantIds = draft.Variants.Select(variant => variant.VariantId).ToArray();
         var splitContents = productLink is null && await db.MarketplaceVariantLinks.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && variantIds.Contains(x.VariantId), cancellationToken);
+        if (SalesDataIssue(draft, sections, unapproved: productLink is null && !splitContents) is { } salesDataIssue)
+            return ServiceResult<ProductUpdateDraft>.Fail(salesDataIssue.Code, salesDataIssue.Message, salesDataIssue.Status, salesDataIssue.FieldErrors);
         if (DesiMissingSku(draft, sections, unapproved: productLink is null && !splitContents) is { } missingDesiSku)
             return ServiceResult<ProductUpdateDraft>.Fail("DESI_REQUIRED", ProductPublicationComposer.DesiMissingMessage(missingDesiSku), 422);
         var publication = Split(productId, productLink?.ExternalId, draft.PayloadJson, sections, splitContents);
         if (!publication.Succeeded) return ServiceResult<ProductUpdateDraft>.Fail(publication.Error!.Code, publication.Error.Message, publication.Error.Status);
         return ServiceResult<ProductUpdateDraft>.Ok(new(draft.ProfileId, publication.Value!, draft.Variants));
     }
+
+    // Why the update cannot go when it sends a price, VAT rate or stock: the whole card of a product Trendyol has not
+    // approved yet (price and quantity are required there), or VAT Oranı picked. Null when it sends none of them (the
+    // content fields, desi or delivery alone) or every variant has a usable offer and stock row.
+    internal static ServiceError? SalesDataIssue(ProductPublicationDraft draft, ProductUpdateSections sections, bool unapproved) =>
+        unapproved || sections.VariantFields.VatRate ? draft.SalesDataIssue : null;
 
     // The first variant (by stock code) without a desi when this update sends one: the whole card of a product Trendyol
     // has not approved yet (dimensionalWeight is required there), or Desi picked. Null when no desi is needed or all have one.

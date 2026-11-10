@@ -48,7 +48,7 @@ import { MarketplaceCodesDialog } from './MarketplaceCodesDialog'
 import { PublicationJobDialog } from './PublicationJobDialog'
 import { PlatformUpdateDialog } from './PlatformUpdateDialog'
 import { isProductDeliveryDays, productDeliveryDays } from './product-delivery-days'
-import { platformUpdatePlan, readPlatformUpdatePreferences, readPlatformUpdateStores, readQuickPlatformUpdateChoice, writePlatformUpdatePreferences, writePlatformUpdateStores, type PlatformUpdateField, type PlatformUpdatePreferences } from './platform-update-fields'
+import { platformUpdatePlan, platformUpdateWritesOffers, productInformationLabel, readPlatformUpdatePreferences, readPlatformUpdateStores, readQuickPlatformUpdateChoice, writePlatformUpdatePreferences, writePlatformUpdateStores, type PlatformUpdateField, type PlatformUpdatePreferences } from './platform-update-fields'
 import { publishCardPlan, publishCardVariantLinks, publishCardVariantPresence, withLatestVariantLinks } from './publish-card-variants'
 import { offSaleSummary } from '../sale-state'
 import { VariantOptionEditDialog, type VariantOptionEditChange } from './VariantOptionEditDialog'
@@ -3021,9 +3021,14 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       }
       const connectionPlatformName = (connectionId: string) => publishPlatformName(connections.data?.items.find(item => item.id === connectionId)?.platformCode ?? 'Pazaryeri')
       // Every (variant, store) price is its own row, so they are written a few at a time instead of one by one.
+      // "Platformlarda Güncelle" writes a store's prices only when its send carries a price or the stock: a pick of the
+      // pictures alone writes none (live 10 Nov 2026, MZ052BOD).
+      const offerConnectionIds = platformUpdate
+        ? targetConnectionIds.filter(connectionId => platformUpdateWritesOffers(connections.data?.items.find(item => item.id === connectionId)?.platformCode ?? '', platformUpdate.fields))
+        : targetConnectionIds
       const offerWrites = product.variants.flatMap(variant => {
         const row = rowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))
-        return row ? targetConnectionIds.map(connectionId => ({ variant, row, connectionId })) : []
+        return row ? offerConnectionIds.map(connectionId => ({ variant, row, connectionId })) : []
       })
       let offersWritten = 0
       const unpricedOfferSkus = new Set<string>()
@@ -3088,6 +3093,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               // The editor shows the model family as one product, so the product information goes for every colour
               // card of it that is on this marketplace (family-update-plan.ts); a card not there is named, and one
               // card's refusal does not stop the others.
+              const informationLabel = productInformationLabel(plan.productFields)
+              update.productInformationLabel = informationLabel
               const familyPlan = familyUpdatePlan({ openedProductId: product.id, familyProductIds: productToEdit.data?.familyProductIds, variants: product.variants.map(variant => ({ ...variant, platformStatuses: linkRowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))?.platformStatuses ?? variant.platformStatuses })), connectionId, platformCode: updatePlatformCode })
               const familyFailures = new Map<string, string[]>()
               const family: MarketplaceFamilyUpdate = { cards: familyPlan.familyCards, queuedCards: 0, queuedVariants: 0, absent: familyPlan.absent.map(familyCardName), failures: familyFailures }
@@ -3099,7 +3106,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
                 try {
                   const accepted = await hubApi<ProductUpdateAccepted>(`/products/${card.productId}/update-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId, fields: plan.productFields, sendGroupId }) })
                   recordProductUpdateNotices(accepted, { productId: card.productId, productName: form.title, modelCode: form.modelCode, platformCode: updatePlatformCode, connectionId })
-                  if (accepted?.jobId) followedJobs.push({ jobId: accepted.jobId, platformName, what: familyPlan.send.length > 1 ? `${cardName} ürün bilgisi` : 'ürün bilgisi' })
+                  if (accepted?.jobId) followedJobs.push({ jobId: accepted.jobId, platformName, what: familyPlan.send.length > 1 ? `${cardName} ${informationLabel}` : informationLabel })
                   family.queuedCards++
                   family.queuedVariants += card.variants
                   update.queued.productInformation = true
