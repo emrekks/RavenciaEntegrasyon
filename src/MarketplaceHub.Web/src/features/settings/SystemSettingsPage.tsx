@@ -425,11 +425,20 @@ export function SystemSettingsPage() {
   // The pane stays mounted (the shipping and appearance forms keep their drafts), so the slide plays in place.
   const paneRef = useRef<HTMLDivElement>(null)
   useTabSlideInPlace(paneRef, section, settingsSectionOrder)
+  // Phones: the group tabs scroll sideways; bring the selected one into view (a deep link to Görünüm left it off-screen).
+  const groupTabsRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const row = groupTabsRef.current
+    const tab = row?.querySelector<HTMLElement>('[aria-selected="true"]')
+    if (!row || !tab || row.scrollWidth <= row.clientWidth + 1) return
+    const rowBox = row.getBoundingClientRect(); const tabBox = tab.getBoundingClientRect()
+    row.scrollLeft += tabBox.left - rowBox.left - (rowBox.width - tabBox.width) / 2
+  }, [activeGroup])
 
   return <section className="content ss-page">
     {notice && <SettingsNotice {...notice} />}
     <header className="ss-page-head"><span className="ss-crumb">Ayarlar</span><h1>Sistem Ayarları</h1></header>
-    <div className="ss-gtabs rv-tabs rv-view-tabs" role="tablist" aria-label="Ayar grupları">{settingsSectionGroups.map(group => <button type="button" role="tab" key={group.label} aria-selected={group === activeGroup} className={group === activeGroup ? 'is-on is-active' : undefined} onClick={() => selectSection(group.items[0].key)}><span className="rv-tab-label"><SettingsIcon name={group.icon} /><span className="rv-tab-text" data-text={group.label}>{group.label}</span></span></button>)}</div>
+    <div ref={groupTabsRef} className="ss-gtabs rv-tabs rv-view-tabs" role="tablist" aria-label="Ayar grupları">{settingsSectionGroups.map(group => <button type="button" role="tab" key={group.label} aria-selected={group === activeGroup} className={group === activeGroup ? 'is-on is-active' : undefined} onClick={() => selectSection(group.items[0].key)}><span className="rv-tab-label"><SettingsIcon name={group.icon} /><span className="rv-tab-text" data-text={group.label}>{group.label}</span></span></button>)}</div>
     <div className="ss-card">
       {activeGroup.items.length > 1 && <div className="ss-stabs"><span className="ss-seg rv-tabs rv-view-tabs" role="tablist" aria-label={`${activeGroup.label} bölümleri`}>{activeGroup.items.map(item => <button type="button" role="tab" key={item.key} aria-selected={section === item.key} className={section === item.key ? 'is-on is-active' : undefined} onClick={() => selectSection(item.key)}><span className="rv-tab-label"><SettingsIcon name={item.icon} />{item.short ? <><span className="rv-tab-text ss-lbl-long" data-text={item.label}>{item.label}</span><span className="rv-tab-text ss-lbl-short" data-text={item.short}>{item.short}</span></> : <span className="rv-tab-text" data-text={item.label}>{item.label}</span>}</span>{navMeta(item.key)}</button>)}</span></div>}
       <div ref={paneRef} className="ss-pane">

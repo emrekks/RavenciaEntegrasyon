@@ -33,6 +33,8 @@
   .app-shell.stitch-shell main .jobs-page .jobs-reference-table > tbody > tr > td:nth-child(5) { display: none; }
   .app-shell.stitch-shell main .jobs-page .jobs-reference-table > tbody > tr > td:nth-child(6) { grid-area: action; align-self: start; }
   .app-shell.stitch-shell main .jobs-page .jobs-reference-table > tbody > tr > td[colspan] { grid-column: 1 / -1; }
+  /* A row without a detail button: the type takes the whole first line (it wrapped into 215px beside an empty cell). */
+  .app-shell.stitch-shell main .jobs-page .jobs-reference-table > tbody > tr:not(:has(> td:nth-child(6))) > td:nth-child(1) { grid-column: 1 / -1; }
   .app-shell.stitch-shell main .jobs-page .jobs-reference-time { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
   /* The type tooltip needs hover; touch screens show the card instead. */
   .app-shell.stitch-shell main .jobs-page .jobs-reference-type-tooltip { display: none; }

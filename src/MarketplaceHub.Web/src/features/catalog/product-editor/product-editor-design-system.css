@@ -891,6 +891,17 @@
 .variant-platform-pricing-modal .variant-platform-pricing-matrix-scroll { max-height: min(62vh, 640px); }
 .variant-platform-pricing-modal .variant-platform-pricing-matrix-cell:not(.variant-platform-pricing-matrix-head) { gap: 1px; padding-block: 4px; }
 .variant-platform-pricing-modal .variant-platform-pricing-matrix-cell > input { height: 32px; min-height: 0; padding-block: 0; }
+/* Phones: the Platform Fiyatları header may shrink; the product name and model code wrap under each other instead of
+   widening the header to 512px, which opened the window scrolled 217px sideways. */
+@media (max-width: 760px) {
+  .variant-platform-pricing-modal > header > div { min-width: 0; }
+  .variant-platform-pricing-modal > header > .modal-close { flex: none; }
+  .variant-platform-pricing-modal .variant-platform-pricing-product-context { flex-wrap: wrap; row-gap: 2px; }
+  .variant-platform-pricing-modal .variant-platform-pricing-product-context > strong { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  /* Kategori Özellikleri: a value list opens as wide as its bar (at least 200px) on the side that keeps it on screen
+     (ProductEditorPages picks the side with that width); a fixed 320px list started 148px off the left edge. */
+  :root:root:root body .app-shell.stitch-shell main .category-attribute-dropdown > .category-attribute-dropdown-menu { width: 100%; min-width: 200px; max-width: calc(100vw - 24px); }
+}
 @media (max-width: 760px) {
   .product-options-card .attribute-builder-list + .attribute-variant-action,
   .product-options-card .unknown + .attribute-variant-action { margin-top: var(--rv-space-4); margin-bottom: var(--rv-space-4); }

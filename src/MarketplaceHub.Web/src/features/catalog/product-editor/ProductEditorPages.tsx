@@ -587,7 +587,8 @@ function CategoryAttributeValueDropdown({
   function toggleDropdown() {
     if (!open) {
       const bounds = rootRef.current?.getBoundingClientRect()
-      const menuWidth = Math.min(320, window.innerWidth - 32)
+      // Phones open the list as wide as its bar (at least 200px, styles/responsive.css), so that width decides the side.
+      const menuWidth = window.innerWidth <= 760 && bounds ? Math.max(200, bounds.width) : Math.min(320, window.innerWidth - 32)
       setAlignMenuRight(Boolean(bounds && bounds.left + menuWidth > window.innerWidth - 16))
     }
     setOpen(current => !current)
