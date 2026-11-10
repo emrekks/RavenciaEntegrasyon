@@ -54,6 +54,8 @@ import { offSaleSummary } from '../sale-state'
 import { VariantOptionEditDialog, type VariantOptionEditChange } from './VariantOptionEditDialog'
 import { VariantMediaBulkSelect } from './VariantMediaBulkSelect'
 import { PriceSuggestionLink } from './PriceSuggestionDialog'
+import { cardPrices } from './card-prices'
+import { missingRequiredEditorFields, requiredEditorFieldLabels, requiredFieldMessage, requiredFieldsMessage, type RequiredEditorField } from './required-fields'
 import { SizeChartButton } from './SizeChartDialog'
 import { isSizeChartRef, pinSizeChartLast, replaceSizeChart, sizeChartKey } from './size-chart-order'
 import { mediaPickerLabel, mediaPickerRefs } from './media-picker-order'
@@ -315,6 +317,10 @@ function republishListingProfileBody(saved: SavedListingProfile | null | undefin
 // A message the server attached to one field of a refused save (422 fieldErrors), shown under that field.
 function EditorFieldError({ message }: { message?: string }) {
   return message ? <small className="product-field-error" role="alert">{message}</small> : null
+}
+// A required field's label: its name and the red asterisk KDV Oranı has (required-fields.ts).
+function RequiredLabel({ children }: { children: ReactNode }) {
+  return <span>{children}<b className="required-marker" aria-hidden="true">*</b></span>
 }
 const variantBulkEditLabels: Record<VariantBulkEditField, string> = { stock: 'Stok', salePrice: 'Fiyat', costPrice: 'Maliyet', listPrice: 'Liste Fiyatı' }
 type ProductAttributePayload = ProductAttributeAssignment
@@ -1274,7 +1280,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const [error, setError] = useState<unknown>(); const [, setNotice] = useState(''); const operationToasts = useOperationFeedbackToasts()
   // Every notice of the editor names the product it is about (and the marketplace, when a card adds it).
   const setFeedback = (feedback: OperationFeedback) => operationToasts.show({ ...feedback, context: { subject: productNotificationSubject({ id: editProductId, name: form.title, modelCode: form.modelCode }), ...feedback.context } }); const [submitting, setSubmitting] = useState(false); const [mediaAutoSaveTick, setMediaAutoSaveTick] = useState(0);const [calculateDesi, setCalculateDesi] = useState(false); const [desiCalculatorOpen, setDesiCalculatorOpen] = useState(false)
-  const [form, setForm] = useState({ title: '', description: '', brandId: '', categoryId: '', baseSku: '', barcode: '', modelCode: '', weight: '', width: '', length: '', height: '', desi: '1', warrantyMonths: '0', deliveryDays: '1', listPrice: '0', salePrice: '0', costPrice: '', currency: 'TRY', vatRate: '10', vatIncluded: 'INCLUDED', initialStock: '0', safetyStock: '0', mediaUrls: '', status: 'ACTIVE' })
+  const [form, setForm] = useState({ title: '', description: '', brandId: '', categoryId: '', baseSku: '', barcode: '', modelCode: '', weight: '', width: '', length: '', height: '', desi: '1', warrantyMonths: '0', deliveryDays: '1', listPrice: '', salePrice: '', costPrice: '', currency: 'TRY', vatRate: '10', vatIncluded: 'INCLUDED', initialStock: '0', safetyStock: '0', mediaUrls: '', status: 'ACTIVE' })
   const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({}); const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [variantRows, setVariantRows] = useState<VariantDraft[]>([]); const [draggedVariantKey, setDraggedVariantKey] = useState<string | null>(null); const [dragOverVariantKey, setDragOverVariantKey] = useState<string | null>(null); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]); const [blockedPublishCards, setBlockedPublishCards] = useState<Record<string, number>>({}); const [channelPricing, setChannelPricing] = useState<Record<string, ChannelPricingDraft>>({}); const [variantChannelPricing, setVariantChannelPricing] = useState<Record<string, ChannelPricingDraft>>({})
   const [automaticBarcodeGeneration, setAutomaticBarcodeGeneration] = useState(false)
   const [marketplaceCodesOpen, setMarketplaceCodesOpen] = useState(false)
@@ -1387,6 +1393,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const initialCustomChannelIds = useRef<ReadonlySet<string>>(new Set())
   const channelPricingBase = useRef<Record<string, ChannelPricingDraft>>({})
   const [fieldErrors, setFieldErrors] = useState<EditorFieldErrors>({})
+  const [requiredErrors, setRequiredErrors] = useState<Partial<Record<RequiredEditorField, string>>>({})
   // A save refused with a field message scrolls to that field, frames it red and shakes it.
   const lastFieldReveal = useRef(0)
   useEffect(() => {
@@ -1475,7 +1482,13 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const editorHydrating = editorAwaitingSeed({ seeding: Boolean(editProductId || duplicateProductId), productPending: editProductId ? productToEdit.isPending : productToCopy.isPending, listsPending: categories.isPending || brands.isPending })
   const requirements = useQuery({ queryKey: ['category-requirements', form.categoryId], queryFn: () => hubApi<CategoryRequirement[]>(`/catalog/categories/${form.categoryId}/attribute-requirements`), enabled: !!form.categoryId, retry: false, staleTime: categoryRequirementsStaleTimeMs })
   const leafCategories = (categories.data?.items ?? []).filter(item => item.isLeaf && item.isActive); const activeBrands = (brands.data?.items ?? []).filter(item => item.isActive)
-  const fallbackListPrice = Number(form.listPrice || 0); const fallbackSalePrice = Number(form.salePrice || 0); const fallbackCostPrice = form.costPrice.trim() === '' ? null : Number(form.costPrice); const initialStock = Number(form.initialStock || 0)
+  // The card's Liste/Satış (decimal comma read): a new variant row's first prices (buildVariantGenerationDefaults).
+  const cardPriceDefaults = cardPrices(form.listPrice, form.salePrice); const fallbackListPrice = cardPriceDefaults.listPrice; const fallbackSalePrice = cardPriceDefaults.salePrice; const fallbackCostPrice = form.costPrice.trim() === '' ? null : Number(form.costPrice); const initialStock = Number(form.initialStock || 0)
+  // Required fields left empty (required-fields.ts): a save stops on them; a saved card that opens with one is framed red.
+  const missingRequiredFields = missingRequiredEditorFields(form, { automaticBarcodes: automaticBarcodeGeneration })
+  // A stopped save's message under a required field stays only while the field is still empty.
+  const requiredError = (field: RequiredEditorField) => missingRequiredFields.includes(field) ? requiredErrors[field] : undefined
+  const requiredFieldInvalid = (field: RequiredEditorField) => requiredError(field) || (editProductId && missingRequiredFields.includes(field)) ? true : undefined
   const variantStockTotal = variantRows.reduce((total, row) => total + Number(row.stock || 0), 0)
   const desi = useMemo(() => { const width = Number(form.width); const length = Number(form.length); const height = Number(form.height); return width > 0 && length > 0 && height > 0 ? width * length * height / 3000 : 0 }, [form.width, form.length, form.height])
   // The size chart stays the card's last picture whatever order the draft holds (size-chart-order.ts).
@@ -2151,7 +2164,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     queuePlatformUpdate(connectionIds, fields)
   }
   function channelPriceDraft(connectionId: string): ChannelPricingDraft {
-    return channelPricing[connectionId] ?? { listPrice: form.listPrice, salePrice: form.salePrice }
+    return channelPricing[connectionId] ?? { listPrice: String(fallbackListPrice), salePrice: String(fallbackSalePrice) }
   }
   function toggleCustomChannelPrice(connectionId: string) {
     if (!(connectionId in channelPricing)) channelPricingBase.current = { ...channelPricingBase.current, [connectionId]: emptyChannelPricingDraft }
@@ -2176,8 +2189,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   function openVariantPlatformPricing(row: VariantDraft, platform: VariantPlatformStatus) {
     setVariantPlatformPricing({ rowKey: row.key, platform })
     setVariantPlatformPricingDraft({
-      listPrice: String(platform.listPrice ?? row.listPrice ?? form.listPrice),
-      salePrice: String(platform.salePrice ?? row.salePrice ?? form.salePrice)
+      listPrice: String(platform.listPrice ?? row.listPrice ?? fallbackListPrice),
+      salePrice: String(platform.salePrice ?? row.salePrice ?? fallbackSalePrice)
     })
     requestAnimationFrame(() => {
       document.querySelector(`[data-variant-row-key="${row.key}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' })
@@ -2675,8 +2688,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     // Automatic Web Color reads each row's own Renk, as the publish checks and the server do (publication-readiness).
     if (requireCompleteCatalog && webColorAutoEnabled && webColorRequirement) issues.push(...autoWebColorIssues({ variantRows: rows, variantAttributeIds, attributeSelections }, colorOptionRequirement))
     if (!form.title.trim()) issues.push('Ürün adı zorunludur.')
-    const defaultListPrice = Number(form.listPrice || 0); const defaultSalePrice = Number(form.salePrice || 0)
-    if (!Number.isFinite(defaultListPrice) || !Number.isFinite(defaultSalePrice) || defaultListPrice < 0 || defaultSalePrice < 0 || defaultListPrice < defaultSalePrice) issues.push('Liste fiyatı satış fiyatından küçük olamaz ve fiyatlar negatif olamaz.')
+    if (cardPriceDefaults.issue) issues.push(cardPriceDefaults.issue)
     if (automaticBarcodeGeneration && !form.modelCode.trim()) issues.push('Otomatik barkod oluşturmak için model kodu zorunludur.')
     if (requireCompleteCatalog && !form.description.trim()) issues.push('Açıklama zorunludur.')
     if (requireCompleteCatalog) {
@@ -2703,6 +2715,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       if (conflicts.skus) issues.push('Kaynak ürünün stok kodları zaten kayıtlı. Yeni ürünü oluşturmak için çakışan stok kodlarını değiştirin.')
     }
      if (rows.some(row => row.salePrice < 0 || row.listPrice < row.salePrice)) issues.push('Her varyantta liste fiyatı satış fiyatından küçük olamaz.')
+     // Owner, 10 Nov 2026 ("0 olmayacak onlarda"): a variant's list and sale price are above 0, like the card's.
+     if (rows.some(row => !(row.salePrice > 0) || !(row.listPrice > 0))) issues.push('Her varyantta liste ve satış fiyatı 0\'dan büyük olmalı.')
      // A card none of whose variants has a desi opens with the field empty (no guessed 1) and may be saved so.
      if (!(editProductId && initialEditDesi.current === 0 && !form.desi.trim()) && (!form.desi.trim() || !Number.isFinite(Number(form.desi)) || Number(form.desi) <= 0)) issues.push('Desi sıfırdan büyük olmalıdır.')
      if (form.warrantyMonths.trim() && (!Number.isInteger(Number(form.warrantyMonths)) || Number(form.warrantyMonths) < 0 || Number(form.warrantyMonths) > 240)) issues.push('Garanti süresi 0-240 ay arasında tam sayı olmalıdır.')
@@ -2742,6 +2756,20 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     operationToasts.dismissErrors()
   }
 
+  // Empty required fields stop this action: each is framed red with its message, the first step opens on the first one.
+  function stopOnRequiredFields(missing: readonly RequiredEditorField[], liveCard = false) {
+    const message = `${requiredFieldsMessage(missing)} ${liveCard ? 'Satıştaki ürün taslağa alınmaz; alanları doldurup kaydedin.' : 'Yayınlamak ve pazaryerlerinde güncellemek için önce bu alanları doldurun.'}`
+    setRequiredErrors(Object.fromEntries(missing.map(field => [field, requiredFieldMessage(field, form)])))
+    if (!publishOnly) setWizardStep(1)
+    requestAnimationFrame(() => { lastFieldReveal.current = Date.now(); revealFieldError(document.getElementById('product-creation-form')) })
+    setError(new Error(message)); setNotice(message)
+    showFeedback('Zorunlu Alan Eksik', message, 'error')
+  }
+  function blockedByRequiredFields() {
+    if (!missingRequiredFields.length) return false
+    stopOnRequiredFields(missingRequiredFields)
+    return true
+  }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const platformUpdate = pendingPlatformUpdate.current
@@ -2749,8 +2777,20 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     const submitter = (event.nativeEvent as SubmitEvent).submitter
     const submitData = new FormData(event.currentTarget)
     // Taslak Olarak Kaydet (product-draft.ts): saves the card as it is, on a new card or a draft only, and sends nothing.
-    const saveDraft = !platformUpdate && submitter?.getAttribute('data-submit-intent') === 'draft' && canSaveAsDraft(Boolean(editProductId), productToEdit.data?.status)
+    const explicitDraft = !platformUpdate && submitter?.getAttribute('data-submit-intent') === 'draft' && canSaveAsDraft(Boolean(editProductId), productToEdit.data?.status)
     const editingDraft = Boolean(editProductId) && isDraftStatus(productToEdit.data?.status)
+    // Required fields (required-fields.ts; owner, 10 Nov 2026). With one empty, Kaydet / Ürünü Oluştur on a new card or a
+    // draft keeps the card as a draft (never sent; the toast names what is missing); publishing, Yayınlamaya Devam Et and
+    // a platform update stop with each field framed red. A card on sale or closed is not turned into a draft (the server
+    // moves the whole colour family with a status change): its save stops the same way until the fields are filled.
+    const plainSave = !platformUpdate && !explicitDraft && (submitter?.getAttribute('data-submit-intent') === 'save'
+      || (submitter?.getAttribute('name') === 'intent' && submitter?.getAttribute('value') === 'save')
+      || submitData.get('intent') === 'save'
+      || (!editProductId && (submitter?.getAttribute('data-submit-intent') === 'create' || (submitter?.getAttribute('name') === 'intent' && submitter?.getAttribute('value') === 'create'))))
+    const missingRequired = explicitDraft ? [] : missingRequiredFields
+    const autoDraft = missingRequired.length > 0 && plainSave && canSaveAsDraft(Boolean(editProductId), productToEdit.data?.status)
+    if (missingRequired.length && !autoDraft) { stopOnRequiredFields(missingRequired, Boolean(editProductId) && !editingDraft && plainSave); return }
+    const saveDraft = explicitDraft || autoDraft
     const saveAndStay = saveDraft || submitter?.getAttribute('data-submit-intent') === 'save'
       || (submitter?.getAttribute('name') === 'intent' && submitter?.getAttribute('value') === 'save')
       || submitData.get('intent') === 'save'
@@ -2869,8 +2909,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           description: safeDescription,
           brandId: form.brandId || null,
           categoryId: form.categoryId || null,
-          defaultListPrice: Number(form.listPrice || 0),
-          defaultSalePrice: Number(form.salePrice || 0),
+          defaultListPrice: fallbackListPrice,
+          defaultSalePrice: fallbackSalePrice,
           warrantyMonths: Number(form.warrantyMonths || 0),
           deliveryDays: productDeliveryDays(form.deliveryDays),
           vatRate: savedVatRate,
@@ -2923,7 +2963,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           }
         }
       } else {
-        product = await sendWithVersionedIdempotencyKey(productCreateKey, key => hubApi<Product>('/products', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify({ title: savedTitle, status: savedStatus, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, defaultListPrice: Number(form.listPrice || 0), defaultSalePrice: Number(form.salePrice || 0), warrantyMonths: Number(form.warrantyMonths || 0) || null, deliveryDays: productDeliveryDays(form.deliveryDays), vatRate: savedVatRate, vatInclusion: savedVatInclusion, trendyolWebColorValueId: !webColorAutoEnabled && manualWebColorValueId ? manualWebColorValueId : null, attributes: globalAttributes, variants: rows.map(variantPayload) }) }))
+        product = await sendWithVersionedIdempotencyKey(productCreateKey, key => hubApi<Product>('/products', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify({ title: savedTitle, status: savedStatus, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, defaultListPrice: fallbackListPrice, defaultSalePrice: fallbackSalePrice, warrantyMonths: Number(form.warrantyMonths || 0) || null, deliveryDays: productDeliveryDays(form.deliveryDays), vatRate: savedVatRate, vatInclusion: savedVatInclusion, trendyolWebColorValueId: !webColorAutoEnabled && manualWebColorValueId ? manualWebColorValueId : null, attributes: globalAttributes, variants: rows.map(variantPayload) }) }))
       }
       productCreated = product; const completed: string[] = []; const warnings: string[] = []
       if (placeholderIdsToDelete.some(id => product.variants.some(variant => variant.id === id))) warnings.push(PLACEHOLDER_KEPT_MESSAGE)
@@ -3203,9 +3243,10 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         ? {
             title: 'Taslak Kaydedildi',
             kind: warnings.length ? 'error' : 'success',
-            persistent: draftMissingItems.count > 0 || warnings.length > 0,
+            persistent: autoDraft || draftMissingItems.count > 0 || warnings.length > 0,
             lines: [
               'Ürün taslak olarak kaydedildi; pazaryerlerine gönderilmez ve stok sayımlarına girmez.',
+              ...(autoDraft ? [`Zorunlu alanlar boş olduğu için taslak kaldı: ${missingRequired.map(field => requiredEditorFieldLabels[field]).join(', ')}.`] : []),
               ...warnings,
               ...(draftMissingItems.count ? [`Satışa açmadan önce tamamlanacak ${draftMissingItems.count} eksik: ${draftMissingItems.lines.join(' ')}`] : [])
             ]
@@ -3369,11 +3410,11 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       isLinked: true,
       status: connection.status,
       connectionId: connection.id,
-      listPrice: Number(pricing?.listPrice ?? form.listPrice),
-      salePrice: Number(pricing?.salePrice ?? form.salePrice),
+      listPrice: Number(pricing?.listPrice ?? fallbackListPrice),
+      salePrice: Number(pricing?.salePrice ?? fallbackSalePrice),
       currency: form.currency
     }
-  }), [channelPricing, connections.data?.items, form.currency, form.listPrice, form.salePrice])
+  }), [channelPricing, connections.data?.items, fallbackListPrice, fallbackSalePrice, form.currency])
   const productUpdateTargets = (connections.data?.items ?? []).filter(isProductUpdateConnection).map(connection => ({
     connection,
     capabilities: productUpdateCapabilities(connection.platformCode)
@@ -3515,7 +3556,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       // Saved rows keep their codes, so on a saved product only a missing combination makes "Ürünleri Ekle" do something.
       const automaticDefaultsOutOfDate = automaticBarcodeGeneration && !editProductId && sortVariantsAlphabetically(variantRows).some((row, index) => {
         const expected = buildVariantGenerationDefaults({ modelCode: form.modelCode, sequence: index + 1, automaticBarcodes: true, fallbackSalePrice, fallbackListPrice })
-        return row.sku !== expected.sku || row.barcode !== expected.barcode || row.salePrice !== expected.salePrice || row.listPrice !== expected.listPrice
+        return row.sku !== expected.sku || row.barcode !== expected.barcode
       })
       return missingCombinations || automaticDefaultsOutOfDate
     } catch { return false }
@@ -3535,17 +3576,19 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       <section className="panel product-step-card product-basics-card">
         <div className="editor-section-title"><span>1</span><div><h2>Temel Ürün Bilgileri</h2></div></div>
         <div className="product-step-grid product-basics-grid">
-          <label className="product-title-field">Ürün Adı<input value={form.title} aria-invalid={fieldErrors.title ? true : undefined} onChange={event => updateField('title', event.target.value)} required maxLength={320} /><EditorFieldError message={fieldErrors.title} /></label>
+          <label className="product-title-field"><RequiredLabel>Ürün Adı</RequiredLabel><input value={form.title} aria-invalid={fieldErrors.title || requiredFieldInvalid('title') ? true : undefined} onChange={event => updateField('title', event.target.value)} required maxLength={320} /><EditorFieldError message={requiredError('title') ?? fieldErrors.title} /></label>
           <label htmlFor="product-editor-status">Satış Durumu<PanelSelect id="product-editor-status" ariaLabel="Satış Durumu" value={form.status} onChange={value => updateField('status', value)} options={[{ value: 'ACTIVE', label: 'Satışa Açık' }, { value: 'ARCHIVED', label: 'Satışa Kapalı' }]} /></label>
-          <label className="product-brand-field" htmlFor="product-editor-brand">Marka<PanelSelect id="product-editor-brand" ariaLabel="Marka" value={form.brandId} onChange={value => updateField('brandId', value)} options={[{ value: '', label: 'Marka Seçin' }, ...activeBrands.map(item => ({ value: item.id, label: item.name }))]} /><EditorFieldError message={fieldErrors.brandId} /></label>
-          <label className="product-category-field" htmlFor="product-editor-category">Panel Kategorisi<PanelSelect id="product-editor-category" ariaLabel="Panel kategorisi" value={form.categoryId} onChange={value => { updateField('categoryId', value); setAttributeSelections({}); setAttributeTextValues({}); setVariantAttributeIds([]); setWebColorAutoEnabled(true); setManualWebColorValueId(''); if (!editProductId) setVariantRows([]) }} options={[{ value: '', label: 'Kategori Seçin' }, ...leafCategories.map(item => ({ value: item.id, label: item.path }))]} /><EditorFieldError message={fieldErrors.categoryId} /></label>
-          <label>Model Kodu<input className="technical-field model-code-value" value={form.modelCode} aria-invalid={modelCodeCreateBlock || fieldErrors.modelCode ? true : undefined} onChange={event => { updateField('modelCode', event.target.value); if (fieldErrors.modelCode) setFieldErrors(current => ({ ...current, modelCode: undefined })) }} />{modelCodeCreateBlock ? <ModelCodeHolderNotice holder={modelCodeHolder} /> : <EditorFieldError message={fieldErrors.modelCode} />}</label>
+          <label className="product-brand-field" htmlFor="product-editor-brand"><RequiredLabel>Marka</RequiredLabel><PanelSelect id="product-editor-brand" className={requiredFieldInvalid('brandId') ? 'is-invalid' : undefined} ariaLabel="Marka" value={form.brandId} onChange={value => updateField('brandId', value)} options={[{ value: '', label: 'Marka Seçin' }, ...activeBrands.map(item => ({ value: item.id, label: item.name }))]} /><EditorFieldError message={requiredError('brandId') ?? fieldErrors.brandId} /></label>
+          <label className="product-category-field" htmlFor="product-editor-category"><RequiredLabel>Panel Kategorisi</RequiredLabel><PanelSelect id="product-editor-category" className={requiredFieldInvalid('categoryId') ? 'is-invalid' : undefined} ariaLabel="Panel kategorisi" value={form.categoryId} onChange={value => { updateField('categoryId', value); setAttributeSelections({}); setAttributeTextValues({}); setVariantAttributeIds([]); setWebColorAutoEnabled(true); setManualWebColorValueId(''); if (!editProductId) setVariantRows([]) }} options={[{ value: '', label: 'Kategori Seçin' }, ...leafCategories.map(item => ({ value: item.id, label: item.path }))]} /><EditorFieldError message={requiredError('categoryId') ?? fieldErrors.categoryId} /></label>
+          <label><RequiredLabel>Model Kodu</RequiredLabel><input className="technical-field model-code-value" value={form.modelCode} aria-invalid={modelCodeCreateBlock || fieldErrors.modelCode || requiredFieldInvalid('modelCode') ? true : undefined} onChange={event => { updateField('modelCode', event.target.value); if (fieldErrors.modelCode) setFieldErrors(current => ({ ...current, modelCode: undefined })) }} />{modelCodeCreateBlock ? <ModelCodeHolderNotice holder={modelCodeHolder} /> : <EditorFieldError message={requiredError('modelCode') ?? fieldErrors.modelCode} />}</label>
           <div className="product-identifiers-grid">
-            <label title={variantRows.length > 1 ? 'Varyantlı ürünlerde varyanta yazılır' : undefined}>{automaticBarcodeGeneration ? 'Stok Kodu (varyantlarda manuel)' : 'Stok Kodu'}<input className="technical-field sku-value" value={variantRows.length > 1 ? '' : form.baseSku} onChange={event => updateField('baseSku', event.target.value)} placeholder={variantRows.length > 1 ? '' : automaticBarcodeGeneration ? 'Varyant satırlarından girin' : 'RAV-BLUZ'} disabled={automaticBarcodeGeneration || variantRows.length > 1} title={variantRows.length > 1 ? 'Varyantlı ürünlerde varyanta yazılır' : undefined} /></label>
-            <label title={variantRows.length > 1 ? 'Varyantlı ürünlerde varyanta yazılır' : undefined}>{automaticBarcodeGeneration ? 'Tek Ürün Barkodu (otomatik oluşturuluyor)' : 'Barkod'}<input className="technical-field barcode-value" value={variantRows.length > 1 ? '' : form.barcode} onChange={event => updateField('barcode', event.target.value)} placeholder={variantRows.length > 1 ? '' : automaticBarcodeGeneration ? 'Model kodu ve sıra numarasından oluşturulur' : 'Varyantsız üründe kullanılır'} disabled={automaticBarcodeGeneration || variantRows.length > 1} title={variantRows.length > 1 ? 'Varyantlı ürünlerde varyanta yazılır' : undefined} /></label>
-            <label className="desi-input-field">Desi<span className="desi-inline-control"><input value={form.desi} onChange={event => { setCalculateDesi(false); updateField('desi', event.target.value) }} type="number" min="0.01" step="0.01" placeholder="Girilmemiş" required /><button type="button" className="secondary" onClick={() => setDesiCalculatorOpen(true)}>Hesapla</button></span></label>
-            <label className="warranty-input-field">Garanti Süresi (Ay)<input value={form.warrantyMonths} onChange={event => updateField('warrantyMonths', event.target.value)} type="number" min="0" max="240" step="1" inputMode="numeric" placeholder="Garanti yok" /></label>
-            <label className="delivery-days-input-field" title="Siparişin kargoya teslim süresi; pazaryerlerine teslimat (sevkiyat) süresi olarak gider.">Teslimat Süresi (Gün)<input value={form.deliveryDays} onChange={event => updateField('deliveryDays', event.target.value)} type="number" min="1" max="30" step="1" inputMode="numeric" required /></label>
+            {/* Open on a card with variants too (owner, 10 Nov 2026: "Kilidi kaldır"); each variant keeps its own codes in
+                the table. Only automatic barcodes (made from the model code) keep them closed. */}
+            <label title={variantRows.length > 1 ? 'Ürünün genel stok kodu; her varyantın kendi stok kodu tablodaki satırındadır.' : undefined}>{automaticBarcodeGeneration ? 'Stok Kodu (varyantlarda manuel)' : <RequiredLabel>Stok Kodu</RequiredLabel>}<input className="technical-field sku-value" value={form.baseSku} aria-invalid={requiredFieldInvalid('baseSku')} onChange={event => updateField('baseSku', event.target.value)} placeholder={automaticBarcodeGeneration ? 'Varyant satırlarından girin' : 'RAV-BLUZ'} disabled={automaticBarcodeGeneration} /><EditorFieldError message={requiredError('baseSku')} /></label>
+            <label title={variantRows.length > 1 ? 'Ürünün genel barkodu; her varyantın kendi barkodu tablodaki satırındadır.' : undefined}>{automaticBarcodeGeneration ? 'Tek Ürün Barkodu (otomatik oluşturuluyor)' : <RequiredLabel>Barkod</RequiredLabel>}<input className="technical-field barcode-value" value={form.barcode} aria-invalid={requiredFieldInvalid('barcode')} onChange={event => updateField('barcode', event.target.value)} placeholder={automaticBarcodeGeneration ? 'Model kodu ve sıra numarasından oluşturulur' : 'EAN / barkod'} disabled={automaticBarcodeGeneration} /><EditorFieldError message={requiredError('barcode')} /></label>
+            <label className="desi-input-field"><RequiredLabel>Desi</RequiredLabel><span className="desi-inline-control"><input value={form.desi} aria-invalid={requiredFieldInvalid('desi')} onChange={event => { setCalculateDesi(false); updateField('desi', event.target.value) }} type="number" min="0.01" step="0.01" placeholder="Girilmemiş" required /><button type="button" className="secondary" onClick={() => setDesiCalculatorOpen(true)}>Hesapla</button></span><EditorFieldError message={requiredError('desi')} /></label>
+            <label className="warranty-input-field" title="0: garanti yok"><RequiredLabel>Garanti Süresi (Ay)</RequiredLabel><input value={form.warrantyMonths} aria-invalid={requiredFieldInvalid('warrantyMonths')} onChange={event => updateField('warrantyMonths', event.target.value)} type="number" min="0" max="240" step="1" inputMode="numeric" placeholder="0 = garanti yok" /><EditorFieldError message={requiredError('warrantyMonths')} /></label>
+            <label className="delivery-days-input-field" title="Siparişin kargoya teslim süresi; pazaryerlerine teslimat (sevkiyat) süresi olarak gider."><RequiredLabel>Teslimat Süresi (Gün)</RequiredLabel><input value={form.deliveryDays} aria-invalid={requiredFieldInvalid('deliveryDays')} onChange={event => updateField('deliveryDays', event.target.value)} type="number" min="1" max="30" step="1" inputMode="numeric" required /><EditorFieldError message={requiredError('deliveryDays')} /></label>
           </div>
           <div className="wide product-description-field"><span>Açıklama</span><RichTextEditor value={form.description} onChange={value => updateField('description', value)} /><EditorFieldError message={fieldErrors.description} /></div>
         </div>
@@ -3561,9 +3604,10 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               if (variantRows.length && Number.isFinite(sale)) setVariantRows(rows => rows.map(row => ({ ...row, salePrice: sale, listPrice: row.listPrice >= sale ? row.listPrice : sale })))
             }} /></div></div>
           <div className="product-step-grid">
-            {/* Like Stok Kodu and Barkod: a card with variants prices each variant, so these stay grey and empty. */}
-            <label title={variantRows.length > 1 ? 'Varyantlı üründe fiyat varyant tablosundan girilir.' : undefined}>Liste Fiyatı<input value={variantRows.length > 1 ? '' : form.listPrice} disabled={variantRows.length > 1} title={variantRows.length > 1 ? 'Varyantlı üründe fiyat varyant tablosundan girilir.' : undefined} onChange={event => updateField('listPrice', event.target.value)} type="number" min="0" step="0.01" /></label>
-            <label title={variantRows.length > 1 ? 'Varyantlı üründe fiyat varyant tablosundan girilir.' : undefined}>Satış Fiyatı<input value={variantRows.length > 1 ? '' : form.salePrice} disabled={variantRows.length > 1} title={variantRows.length > 1 ? 'Varyantlı üründe fiyat varyant tablosundan girilir.' : undefined} onChange={event => updateField('salePrice', event.target.value)} type="number" min="0" step="0.01" /><EditorFieldError message={fieldErrors.prices} /></label>
+            {/* Open on a card with variants too (owner, 10 Nov 2026): there they are the card's default price and the first
+                price of every variant row added later; the rows already in the table keep theirs. Decimal comma read. */}
+            <label title={variantRows.length > 1 ? 'Yeni eklenen varyantların ilk liste fiyatı; mevcut varyantların fiyatı değişmez.' : undefined}><RequiredLabel>Liste Fiyatı</RequiredLabel><input value={form.listPrice} aria-invalid={requiredFieldInvalid('listPrice')} onChange={event => updateField('listPrice', event.target.value)} type="text" inputMode="decimal" placeholder="0,00" /><EditorFieldError message={requiredError('listPrice')} /></label>
+            <label title={variantRows.length > 1 ? 'Yeni eklenen varyantların ilk satış fiyatı; mevcut varyantların fiyatı değişmez.' : undefined}><RequiredLabel>Satış Fiyatı</RequiredLabel><input value={form.salePrice} aria-invalid={requiredFieldInvalid('salePrice')} onChange={event => updateField('salePrice', event.target.value)} type="text" inputMode="decimal" placeholder="0,00" /><EditorFieldError message={requiredError('salePrice') ?? fieldErrors.prices} /></label>
             {variantRows.length <= 1 && <label>Maliyet<input value={form.costPrice} onChange={event => { updateField('costPrice', event.target.value); if (variantRows.length === 1) updateVariantRow(variantRows[0].key, 'costPrice', event.target.value) }} type="number" min="0" step="0.01" /></label>}
             <label htmlFor="product-editor-currency">Para Birimi<PanelSelect id="product-editor-currency" ariaLabel="Para Birimi" value={form.currency} onChange={value => updateField('currency', value)} options={[{ value: 'TRY', label: 'TRY' }, { value: 'USD', label: 'USD' }, { value: 'EUR', label: 'EUR' }]} /></label>
             <label htmlFor="product-editor-vat-rate"><span>KDV Oranı<b className="required-marker" aria-hidden="true">*</b></span><PanelSelect id="product-editor-vat-rate" ariaLabel="KDV Oranı" placeholder="Seçin" className={fieldErrors.vatRate ? 'is-invalid' : undefined} value={form.vatRate} onChange={value => { updateField('vatRate', value); if (value) setFieldErrors(current => ({ ...current, vatRate: undefined })) }} options={[...(form.vatRate !== '' && !TURKISH_VAT_RATES.includes(form.vatRate) ? [{ value: form.vatRate, label: `%${form.vatRate}` }] : []), ...TURKISH_VAT_RATES.map(rate => ({ value: rate, label: `%${rate}` }))]} /><EditorFieldError message={fieldErrors.vatRate} /></label>
@@ -3828,7 +3872,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       </div>
     </section>
 
-    <StickyActionBar label="Ürün kaydetme" className="product-submit-sticky"><div><strong>{editingDraftProduct ? 'Taslak ürün · Kaydet ile satışa açılır' : editProductId ? 'Ürün düzenlemeye hazır' : 'Ürün bilgileri hazır'}</strong><p>{variantRows.length || 1} satış satırı · {selectedChannelIds.length} seçili kanal</p>{codeRuleSaveBlock && <button type="button" className="product-submit-code-block" onClick={goToFirstVariantCodeIssue}><UiIcon name="alert" size={14} /><span>{codeRuleSaveBlock}</span></button>}{pendingFamilyMediaRemovals.length > 0 && <p className="product-submit-family-media-note" role="status"><span>{pendingFamilyMediaRemovals.length} renk ailesi görseli Kaydet’te diğer renklerden de kaldırılacak</span><button type="button" className="product-submit-undo-button" onClick={undoPendingFamilyMediaRemovals} disabled={submitting}>Geri Al</button></p>}</div><div className={`product-submit-actions${codeRuleSaveBlock ? ' is-code-blocked' : ''}`}>{draftSaveAvailable && <button type="submit" name="intent" value="draft" className="secondary product-submit-draft" data-submit-intent="draft" formNoValidate form="product-creation-form" disabled={submitting || Boolean(modelCodeCreateBlock)} title={modelCodeCreateBlock || "Zorunlu alanlar eksik olsa da kaydeder; taslak pazaryerlerine gönderilmez ve stok sayımlarına girmez"}><span className="submit-label-long">Taslak Olarak Kaydet</span><span className="submit-label-short">Taslak</span></button>}{editProductId ? <button type="submit" name="intent" value="save" className="secondary" data-submit-intent="save" form="product-creation-form" disabled={submitting} aria-disabled={codeRuleSaveBlock ? true : undefined} title={codeRuleSaveBlock || undefined} onClick={event => { if (codeRuleSaveBlock) { event.preventDefault(); blockedByVariantCodeRules() } }}>{submitting ? 'Kaydediliyor…' : 'Kaydet'}</button> : <button type="submit" name="intent" value="create" className="secondary" data-submit-intent="create" form="product-creation-form" disabled={submitting || Boolean(modelCodeCreateBlock)} aria-disabled={codeRuleSaveBlock ? true : undefined} title={modelCodeCreateBlock || codeRuleSaveBlock || undefined} onClick={event => { if (codeRuleSaveBlock) { event.preventDefault(); blockedByVariantCodeRules() } }}>{submitting ? 'Oluşturuluyor…' : 'Ürünü Oluştur'}</button>}{editProductId && !editingDraftProduct && <div className="platform-update-split" role="group" aria-label="Platform güncelleme"><button type="button" className="platform-update-quick" onClick={() => { if (!blockedByVariantCodeRules()) startQuickPlatformUpdate() }} disabled={submitting || connections.isLoading} aria-disabled={codeRuleSaveBlock ? true : undefined} title={codeRuleSaveBlock || 'Sağdaki ayarda kaydedilen bilgileri seçili platformlara pencere açmadan gönderir (ayar yoksa fiyat ve stok)'}><span>Hızlı Güncelle</span><UiIcon name="refresh" /></button><button type="button" className="platform-update-settings" onClick={() => { if (!blockedByVariantCodeRules()) openPlatformUpdateDialog() }} disabled={submitting || connections.isLoading} aria-disabled={codeRuleSaveBlock ? true : undefined} aria-label="Platform güncelleme ayarları" title={codeRuleSaveBlock || 'Platform güncelleme ayarları'} aria-haspopup="dialog"><UiIcon name="arrowUp" /></button></div>}<button type="button" onClick={() => { if (!blockedByVariantCodeRules()) setWizardStep(2) }} aria-disabled={codeRuleSaveBlock ? true : undefined} className="product-submit-publish" aria-label="Yayınlamaya Devam Et" title={codeRuleSaveBlock || "Yayınlamaya Devam Et"}><span className="submit-label-long">Yayınlamaya Devam Et</span><span className="submit-label-short">Yayınla</span> <UiIcon name="arrowRight" /></button></div></StickyActionBar>
+    <StickyActionBar label="Ürün kaydetme" className="product-submit-sticky"><div><strong>{editingDraftProduct ? 'Taslak ürün · Kaydet ile satışa açılır' : editProductId ? 'Ürün düzenlemeye hazır' : 'Ürün bilgileri hazır'}</strong><p>{variantRows.length || 1} satış satırı · {selectedChannelIds.length} seçili kanal</p>{codeRuleSaveBlock && <button type="button" className="product-submit-code-block" onClick={goToFirstVariantCodeIssue}><UiIcon name="alert" size={14} /><span>{codeRuleSaveBlock}</span></button>}{pendingFamilyMediaRemovals.length > 0 && <p className="product-submit-family-media-note" role="status"><span>{pendingFamilyMediaRemovals.length} renk ailesi görseli Kaydet’te diğer renklerden de kaldırılacak</span><button type="button" className="product-submit-undo-button" onClick={undoPendingFamilyMediaRemovals} disabled={submitting}>Geri Al</button></p>}</div><div className={`product-submit-actions${codeRuleSaveBlock ? ' is-code-blocked' : ''}`}>{draftSaveAvailable && <button type="submit" name="intent" value="draft" className="secondary product-submit-draft" data-submit-intent="draft" formNoValidate form="product-creation-form" disabled={submitting || Boolean(modelCodeCreateBlock)} title={modelCodeCreateBlock || "Zorunlu alanlar eksik olsa da kaydeder; taslak pazaryerlerine gönderilmez ve stok sayımlarına girmez"}><span className="submit-label-long">Taslak Olarak Kaydet</span><span className="submit-label-short">Taslak</span></button>}{editProductId ? <button type="submit" name="intent" value="save" className="secondary" data-submit-intent="save" form="product-creation-form" disabled={submitting} aria-disabled={codeRuleSaveBlock ? true : undefined} title={codeRuleSaveBlock || undefined} onClick={event => { if (codeRuleSaveBlock) { event.preventDefault(); blockedByVariantCodeRules() } }}>{submitting ? 'Kaydediliyor…' : 'Kaydet'}</button> : <button type="submit" name="intent" value="create" className="secondary" data-submit-intent="create" form="product-creation-form" disabled={submitting || Boolean(modelCodeCreateBlock)} aria-disabled={codeRuleSaveBlock ? true : undefined} title={modelCodeCreateBlock || codeRuleSaveBlock || undefined} onClick={event => { if (codeRuleSaveBlock) { event.preventDefault(); blockedByVariantCodeRules() } }}>{submitting ? 'Oluşturuluyor…' : 'Ürünü Oluştur'}</button>}{editProductId && !editingDraftProduct && <div className="platform-update-split" role="group" aria-label="Platform güncelleme"><button type="button" className="platform-update-quick" onClick={() => { if (!blockedByVariantCodeRules() && !blockedByRequiredFields()) startQuickPlatformUpdate() }} disabled={submitting || connections.isLoading} aria-disabled={codeRuleSaveBlock ? true : undefined} title={codeRuleSaveBlock || 'Sağdaki ayarda kaydedilen bilgileri seçili platformlara pencere açmadan gönderir (ayar yoksa fiyat ve stok)'}><span>Hızlı Güncelle</span><UiIcon name="refresh" /></button><button type="button" className="platform-update-settings" onClick={() => { if (!blockedByVariantCodeRules() && !blockedByRequiredFields()) openPlatformUpdateDialog() }} disabled={submitting || connections.isLoading} aria-disabled={codeRuleSaveBlock ? true : undefined} aria-label="Platform güncelleme ayarları" title={codeRuleSaveBlock || 'Platform güncelleme ayarları'} aria-haspopup="dialog"><UiIcon name="arrowUp" /></button></div>}<button type="button" onClick={() => { if (!blockedByVariantCodeRules() && !blockedByRequiredFields()) setWizardStep(2) }} aria-disabled={codeRuleSaveBlock ? true : undefined} className="product-submit-publish" aria-label="Yayınlamaya Devam Et" title={codeRuleSaveBlock || "Yayınlamaya Devam Et"}><span className="submit-label-long">Yayınlamaya Devam Et</span><span className="submit-label-short">Yayınla</span> <UiIcon name="arrowRight" /></button></div></StickyActionBar>
     {/* A save or validation error is already a feedback toast in the column; this one is only for what failed to load. */}
     {!error && <ErrorToast title="Ürün Bilgileri Yüklenemedi" error={categories.error ?? brands.error ?? connections.error} />}
     {barcodePasteMenuOpen && <VariantHeaderActionMenu anchorRef={barcodePasteActionRef} label="Barkod işlemleri">

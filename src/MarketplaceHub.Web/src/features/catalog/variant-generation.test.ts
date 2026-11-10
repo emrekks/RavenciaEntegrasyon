@@ -11,12 +11,12 @@ describe('variant generation defaults', () => {
     expect(buildSequentialVariantCode('Gül Çiçek 01', 3)).toBe('GUL-CICEK-01-03')
   })
 
-  it('uses the model code for sequential automatic barcodes, the same code as the stock code, and leaves prices empty', () => {
+  it('uses the model code for sequential automatic barcodes, the same code as the stock code, and takes the card prices', () => {
     const first = buildVariantGenerationDefaults({ modelCode: 'mz49bc', sequence: 1, automaticBarcodes: true, fallbackSalePrice: 549.9, fallbackListPrice: 699.9 })
     const second = buildVariantGenerationDefaults({ modelCode: 'mz49bc', sequence: 2, automaticBarcodes: true, fallbackSalePrice: 549.9, fallbackListPrice: 699.9 })
 
-    expect(first).toEqual({ sku: 'MZ49BC-01', barcode: 'MZ49BC-01', salePrice: 0, listPrice: 0 })
-    expect(second).toEqual({ sku: 'MZ49BC-02', barcode: 'MZ49BC-02', salePrice: 0, listPrice: 0 })
+    expect(first).toEqual({ sku: 'MZ49BC-01', barcode: 'MZ49BC-01', salePrice: 549.9, listPrice: 699.9 })
+    expect(second).toEqual({ sku: 'MZ49BC-02', barcode: 'MZ49BC-02', salePrice: 549.9, listPrice: 699.9 })
   })
 
   it('keeps the price defaults and empty codes when automatic barcodes are off', () => {

@@ -1,3 +1,4 @@
+import { cardPrices } from './product-editor/card-prices'
 // Taslak Olarak Kaydet: a card kept before it is complete. Only a new card (a copy too) or a card that is still a draft
 // is saved as one: a card on sale or closed may be live on a marketplace, and a draft is left out of every send and
 // stock count. The server keeps the same rule (ProductDraftPolicy).
@@ -31,8 +32,8 @@ export function draftProductTitle(title: string, modelCode: string, now: Date) {
 // up, so a row without it stops the draft with what to do instead of being saved under an invented code or dropped.
 export function draftBlockingIssues(rows: ReadonlyArray<{ sku: string; barcode: string; optionSignature: string; salePrice: number; listPrice: number }>, prices: { listPrice: string; salePrice: string }) {
   const issues: string[] = []
-  const listPrice = Number(prices.listPrice || 0); const salePrice = Number(prices.salePrice || 0)
-  if (!Number.isFinite(listPrice) || !Number.isFinite(salePrice) || listPrice < 0 || salePrice < 0 || listPrice < salePrice) issues.push('Liste fiyatı satış fiyatından küçük olamaz ve fiyatlar negatif olamaz.')
+  const cardPriceIssue = cardPrices(prices.listPrice, prices.salePrice).issue
+  if (cardPriceIssue) issues.push(cardPriceIssue)
   if (rows.some(row => row.salePrice < 0 || row.listPrice < row.salePrice)) issues.push('Her varyantta liste fiyatı satış fiyatından küçük olamaz.')
   const skus = rows.map(row => row.sku.trim().toLocaleUpperCase('tr-TR'))
   const missingSkus = skus.filter(sku => !sku).length

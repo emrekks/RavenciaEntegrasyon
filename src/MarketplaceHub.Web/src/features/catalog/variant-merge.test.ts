@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mergeGeneratedVariantRows } from './variant-generation'
+import { buildVariantGenerationDefaults, mergeGeneratedVariantRows } from './variant-generation'
 import { variantOptionSetKey } from './variant-option-matching'
 
 type Row = { key: string; optionSignature: string; sku: string; barcode: string; salePrice: number; listPrice: number }
@@ -35,6 +35,18 @@ describe('adding variant combinations', () => {
   it('never repeats a combination generated twice', () => {
     const merged = mergeGeneratedVariantRows([], [row('a', 'Renk:Zümrüt'), row('b', 'Renk:ZÜMRÜT')], { key: variantOptionSetKey, sort: byKey, keepExisting: true, automaticBarcodes: false, modelCode: '', fallbackSalePrice: 0, fallbackListPrice: 0 })
     expect(merged.map(item => item.key)).toEqual(['a'])
+  })
+
+  // Owner, 10 Nov 2026: a new variant's first price is the card's Liste/Satış (section 2); rows already there keep theirs.
+  it('gives only the new rows the card prices, with or without automatic barcodes', () => {
+    const cardPrices = buildVariantGenerationDefaults({ modelCode: 'MC', sequence: 1, automaticBarcodes: false, fallbackSalePrice: 549.9, fallbackListPrice: 699.9 })
+    const existing = row('x', 'Renk:Mor', { salePrice: 400, listPrice: 450 })
+    const added = row('y', 'Renk:Bordo', { salePrice: cardPrices.salePrice, listPrice: cardPrices.listPrice })
+    for (const keepExisting of [false, true]) for (const automaticBarcodes of [false, true]) {
+      const merged = mergeGeneratedVariantRows([existing], [row('x2', 'Renk:Mor'), added], { key: variantOptionSetKey, sort: byKey, keepExisting, automaticBarcodes, modelCode: 'MC', fallbackSalePrice: 549.9, fallbackListPrice: 699.9 })
+      expect(merged.find(item => item.optionSignature === 'Renk:Mor')).toMatchObject({ key: 'x', salePrice: 400, listPrice: 450 })
+      expect(merged.find(item => item.optionSignature === 'Renk:Bordo')).toMatchObject({ key: 'y', salePrice: 549.9, listPrice: 699.9 })
+    }
   })
 
   it('numbers every row again on a new product with automatic barcodes', () => {

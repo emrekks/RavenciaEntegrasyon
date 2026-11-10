@@ -112,22 +112,19 @@ export function variantCodeChangeConfirmText({ target, mode, codesByKey }: Varia
   }
 }
 
-// New variant rows start with an empty barcode and stock code unless automatic barcodes are on (then only the barcode
-// is filled): no stock code is made up for them. A code is generated only when the user picks it from a column menu.
+// New variant rows start with an empty barcode and stock code unless automatic barcodes are on (then both take the
+// model-code code): no stock code is made up otherwise. A code is generated only when the user picks it from a column
+// menu. With or without automatic barcodes a new row's first prices are the card's Liste Fiyatı and Satış Fiyatı
+// (section 2; owner, 10 Nov 2026: "yeni varyantlar oluşurken ilk fiyatı 2. numaralıdaki liste ve satıştan alsın"); an
+// empty list price takes the sale price.
 export function buildVariantGenerationDefaults({ modelCode, sequence, automaticBarcodes, fallbackSalePrice, fallbackListPrice }: VariantGenerationDefaultsInput) {
   const safeSequence = Math.max(1, Math.floor(sequence))
-  if (!automaticBarcodes) {
-    return {
-      sku: '',
-      barcode: '',
-      salePrice: fallbackSalePrice,
-      listPrice: fallbackListPrice || fallbackSalePrice,
-    }
-  }
+  const prices = { salePrice: fallbackSalePrice, listPrice: fallbackListPrice || fallbackSalePrice }
+  if (!automaticBarcodes) return { sku: '', barcode: '', ...prices }
 
   // The stock code is the barcode too (owner, 6 Nov 2026: "stokları da üretsin, barkod ile aynı olsun").
   const code = buildSequentialVariantCode(modelCode, safeSequence)
-  return { sku: code, barcode: code, salePrice: 0, listPrice: 0 }
+  return { sku: code, barcode: code, ...prices }
 }
 
 type MergeableVariantRow = { optionSignature: string; sku: string; barcode: string; salePrice: number; listPrice: number }
@@ -178,7 +175,8 @@ export function mergeGeneratedVariantRows<T extends MergeableVariantRow>(current
     } else additions.push(row)
   }
   const rows = sort([...current, ...additions])
+  // Renumbering changes only the codes: a row already in the table keeps the prices it has.
   return automaticBarcodes && !keepExisting
-    ? rows.map((row, index) => ({ ...row, ...buildVariantGenerationDefaults({ modelCode, sequence: index + 1, automaticBarcodes: true, fallbackSalePrice, fallbackListPrice }) }))
+    ? rows.map((row, index) => { const code = buildSequentialVariantCode(modelCode, index + 1); return { ...row, sku: code, barcode: code } })
     : rows
 }

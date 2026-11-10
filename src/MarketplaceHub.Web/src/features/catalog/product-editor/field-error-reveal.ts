@@ -3,7 +3,7 @@
 export function revealFieldError(root: ParentNode | null, target?: Element | null) {
   const field = target ?? root?.querySelector('[aria-invalid="true"], label:has(> .product-field-error) :is(input, select, textarea), .product-field-error')
   if (!(field instanceof HTMLElement)) return
-  field.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  field.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
   if (field.matches('input, select, textarea')) field.focus({ preventScroll: true })
   const shake = () => {
     field.classList.remove('field-error-shake')
