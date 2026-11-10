@@ -541,7 +541,6 @@
    the name sat at the tile's top and the button 4 px under it), then the button, then the card's edge (the body's extra
    24 px bottom padding left an empty band). */
 @media (max-width: 760px) {
-  .ss-page .ss-card .ss-pane > .ss-head { padding-bottom: 12px; }
   .ss-page .ss-card .ss-body:has(> .ss-auth) { padding-bottom: 0; }
   .ss-page .ss-auth.ss-auth { align-items: center; row-gap: 12px; grid-template-rows: none; }
   .ss-page .ss-auth.ss-auth > .ss-tile { grid-row: auto; }
