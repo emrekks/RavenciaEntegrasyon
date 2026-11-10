@@ -43,3 +43,7 @@ tbody > tr:first-child .rr-omark[data-tip]:is(:hover, :focus)::after { top: calc
   html body main :is(.rr.rr-orders, .rr.rr-returns) .rr-cust > b { display: inline; min-width: 0; }
   html body main :is(.rr.rr-orders, .rr.rr-returns) .rr-cust > .rr-buyer-tag { margin: 0; }
 }
+/* Phones: the tag's frame and its word line up with the buyer's name (both were about 1 px low / high). */
+@media (max-width: 760px) {
+  html body main :is(.rr.rr-orders, .rr.rr-returns) .rr-cust > .rr-buyer-tag { position: relative; top: -1px; box-sizing: border-box; padding-top: 2.5px; }
+}

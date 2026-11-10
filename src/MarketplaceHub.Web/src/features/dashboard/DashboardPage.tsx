@@ -267,7 +267,7 @@ export function DashboardPage() {
   const dueSoon = knownCount(invoiceSummary.isLoading, invoiceSummary.data?.dueSoonCount)
   const ops: Array<[CardIconName, string, number | null, 'warn' | 'bad' | '', string, Record<string, number> | BreakdownRow[] | undefined, ReactNode?]> = [
     // "N Paket | M Adet Ürün": the units are left out while they are not known (an older API), never shown as 0.
-    ['orders', 'Bekleyen Siparişler', knownCount(pendingSummary.isPending, pendingSummary.isError ? undefined : pending?.pending), 'warn', dashboardOperationalLinks.pendingOrders, pendingRows, <>Paket{pendingUnitTotal !== undefined && <>{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}{count(pendingUnitTotal)} Adet Ürün</>}</>],
+    ['orders', 'Bekleyen Siparişler', knownCount(pendingSummary.isPending, pendingSummary.isError ? undefined : pending?.pending), 'warn', dashboardOperationalLinks.pendingOrders, pendingRows, <>Paket{pendingUnitTotal !== undefined && <>{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}{count(pendingUnitTotal)} <span className="rr-op-adet">Adet </span>Ürün</>}</>],
     ['clock', 'Geciken Siparişler', knownCount(bootstrap.isLoading, metrics?.lateOrders), 'bad', dashboardOperationalLinks.lateOrders, metrics?.lateByConnection],
     ['returns', 'Bekleyen İadeler', knownCount(bootstrap.isLoading, metrics?.pendingReturns), 'warn', dashboardOperationalLinks.pendingReturns, metrics?.pendingReturnsByConnection],
     // "N Bekleyen | M Yaklaşan": M is the former Yaklaşan Faturalar count (delivered 5+ days ago, still awaiting an invoice),

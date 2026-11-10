@@ -450,9 +450,10 @@ html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer)
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard .rr-op-x .rr-op-x-word { display: none; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard .rr-op-x .rr-op-x-word + .rr-op-sep { margin-left: 0; }
 }
-/* Narrow phones (375px): the note is 11px so "11 Paket | 17 Adet Ürün" fits its half-width card (it was cut by 9px). */
+/* Phones: the note reads "18 Paket | 26 Ürün" at 12px, exactly as on the Siparişler cards (owner, 10 Nov: the two looked
+   different, 11px with "Adet" here); "Adet" gives way there too. */
+@media (max-width: 760px) { :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard .rr-op-x .rr-op-adet { display: none; } }
 @media (max-width: 389px) {
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard .rr-op-x { font-size: 11px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard .rr-op-x .rr-op-sep { margin-inline: 2px; }
 }
 /* Touch: a sideways drag on the revenue chart moves the chosen hour or day; vertical drags still scroll the page. */
