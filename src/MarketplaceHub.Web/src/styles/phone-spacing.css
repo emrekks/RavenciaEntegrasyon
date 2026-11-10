@@ -68,7 +68,7 @@
   :root .app-shell.stitch-shell main .qi-foot { padding: 10px var(--m-pad) !important; }
   :root .app-shell.stitch-shell main .ss-card > .ss-stabs { padding: var(--m-pad) var(--m-pad) 0 !important; }
   :root .app-shell.stitch-shell main .ss-card > .ss-pane { padding: 0 var(--m-pad) var(--m-pad) !important; }
-  :root .app-shell.stitch-shell main .ss-card > .ss-pane > .ss-head { padding: var(--m-pad) 0 10px !important; }
+  :root .app-shell.stitch-shell main .ss-card > .ss-pane > .ss-head { padding: var(--m-pad) 0 12px !important; }
 
   /* Centred windows: 12px from the screen edges, filling the width between */
   :root body :is(.rr-overlay, .workspace-modal-backdrop:not(.image-lightbox-backdrop), .invoice-detail-backdrop, .panel-attribute-modal, .missing-value-mapping-backdrop, .brand-mapping-modal-backdrop, .integration-modal-backdrop),
