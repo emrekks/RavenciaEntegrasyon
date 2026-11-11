@@ -118,12 +118,13 @@ export function editorOpenedDesi(variants: ReadonlyArray<{ desi?: number | null 
   return best ? best[0] : null
 }
 
-// The desi field of an existing variant's update. The form has one desi for the product: it is sent when the user
-// changed it from the value the form opened with, or to a variant with no desi of its own (the form's desi is the
-// card's), together with the variant's stored desi as loaded, so the server refuses a desi changed meanwhile elsewhere
+// The desi field of an existing variant's update. The desi is the model's (owner, 11.11.2026): written only when the
+// owner edited the field (typed or Hesapla), then to every size of every colour whose stored desi differs, a missing
+// one included; untouched, nothing is written and each variant keeps its own (the editor names the colours that
+// differ). The variant's stored desi goes with it as loaded, so the server refuses a desi changed meanwhile elsewhere
 // (ürün içe aktarma) instead of overwriting it.
-export function editorVariantDesiUpdate(desi: number, openedDesi: number, loadedDesi: number | null | undefined): { desi?: number; loadedDesi?: number | null } {
-  if (!(desi > 0) || (desi === openedDesi && loadedDesi != null)) return {}
+export function editorVariantDesiUpdate(desi: number, edited: boolean, loadedDesi: number | null | undefined): { desi?: number; loadedDesi?: number | null } {
+  if (!edited || !(desi > 0) || loadedDesi === desi) return {}
   return { desi, loadedDesi: loadedDesi ?? null }
 }
 
