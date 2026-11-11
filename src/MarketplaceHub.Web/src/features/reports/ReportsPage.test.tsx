@@ -512,6 +512,16 @@ describe('ReportsPage', () => {
     expect(page.querySelector('.reports-bridge-modal')).toBeNull()
   })
 
+  it('writes a carried-forward VAT\'s window total as the bridge writes it, added to the profit', async () => {
+    const page = await open('', { ...withFinance, costs: { ...withFinance.costs!, netVat: { salesVat: 22.73, productCostVat: 7.27, expenseVat: 68.63, net: -53.17 } } })
+    const row = [...page.querySelectorAll('.reports-bridge > li')].find(item => item.textContent?.includes('Net KDV'))!
+    expect(row.querySelector('b')?.textContent).toBe('+ ₺53,17')
+    await act(async () => { row.querySelector<HTMLButtonElement>('.reports-tip-trigger')!.click() })
+    const total = page.querySelector('.reports-bridge-modal li.is-total')!
+    expect(total.textContent).toBe('Toplam · Kâra Eklenir+ ₺53,17')
+    expect([...page.querySelectorAll('.reports-bridge-modal li:not(.is-total) > b')].map(cell => cell.textContent)).toEqual(['₺22,73', '− ₺7,27', '− ₺68,63'])
+  })
+
   it('tells a fee invoice of a payout not read yet as covered by the estimate and takes it off nowhere', async () => {
     // 5 Nov 2026: payout 78619772's 448,01 of withholding tax before its lines were read. Its orders carry the estimate.
     const costs = withFinance.costs!
