@@ -220,8 +220,25 @@ purpose (`TurkeyTime.cs`).
 - Payout days (Ödeme Özeti, 7 Nov 2026, against live records): Türkiye-Körfez **and Azerbaycan** pay Monday and
   Thursday; Monday takes the settlements due Monday-Wednesday, Thursday those due Thursday-Sunday (`paymentDate` is
   "the earliest day it can enter a payout", yet Trendyol pays it on the payout day on or before it), a deduction the
-  first payout on or after its due day. Avrupa (CEE) is paid about monthly. Source: `trendyol-api-son.md:12361`, the
-  payouts of 30 Oct-5 Nov 2026 in `sales.marketplace_payout_orders` and their records (`PayoutBuilder.Expect`).
+  first payout on or after its due day. Source: `trendyol-api-son.md:12361`, the payouts of 30 Oct-5 Nov 2026 in
+  `sales.marketplace_payout_orders` and their records (`PayoutBuilder.Expect`).
+- Trendyol's payout calendar (seller panel, Kasım 2026): "Ödeme Günü" every Monday and Thursday, "Erken Ödeme" every
+  Tuesday and Friday (an early payout the seller requests, not a regular one), nothing on Wednesday, Saturday or
+  Sunday. Ödeme Özeti → Gelecek Ödemeler on 11 Nov 2026 ("Tahmini Hesaplanmıştır"): 12/11 Türkiye-Körfez 25,737.90 +
+  Azerbaycan 209.08; 16/11 21,862.79 + 1,347.01; 19/11 22,025.22 + 0.00; 23/11 25,242.42 + Azerbaycan 0.00 + **Avrupa
+  15,034.33**; 26/11 45,922.71. Source: the owner's Trendyol panel screenshots, 11 Nov 2026.
+- Avrupa (CEE) is paid on the **fourth Monday of the month** (the Monday of the 22nd-28th): live CEE payouts 22 Jun,
+  27 Jul, 24 Aug, 28 Sep, 26 Oct 2026 and 23 Nov in the Ödeme Özeti. Each takes the Avrupa settlements due up to the
+  payout day (26 Oct took those due 29 Sep-26 Oct), the cargo and platform fee invoices of Avrupa parcels billed
+  through the month (with the Türkiye deduction days, 98.34 + 13.19 TL a parcel), and its international fee (6 %) and
+  withholding tax (1 %) of all its sales net of discounts, billed the evening before. Every Türkiye-written deduction
+  the first Türkiye payout after its billing left out (55 of them Aug-Nov 2026: Avrupa parcels' cargo and platform fee
+  invoices with no parcel list, some "Yurtdışı Operasyon Iade Bedeli") was paid by the next Avrupa payout. Source:
+  `sales.marketplace_payout_orders` and their records, 11 Nov 2026 (`PayoutBuilder.EuropePayoutDayOnOrAfter`).
+- "Yurtdışı Operasyon Iade Bedeli" (micro-export return operations) is billed every Tuesday (03:05 Istanbul), with
+  no order or region on it; most weeks the Thursday Türkiye payout takes it, some weeks the Avrupa payout. The
+  11 Nov 2026 Ödeme Özeti left the three billed 10 Nov (192.20, 276.46, 685.78 = 1,154.44) out of its 12/11
+  Türkiye estimate (25,737.90 unchanged since 7 Nov). Source: live records and the owner's screenshots, 11 Nov 2026.
 - A payout's deductions are billed the evening before it (21:30-21:40 UTC, `paymentDate` = that day) and the
   withholding tax the payout's morning (~01:40 UTC): cargo ("Kargo Fatura": the shipment and return parcels of the
   payout's own orders, 98.34 TL a 0-2 desi parcel, 106.76-128.64 TL heavier ones), platform service fee (13.19 TL a

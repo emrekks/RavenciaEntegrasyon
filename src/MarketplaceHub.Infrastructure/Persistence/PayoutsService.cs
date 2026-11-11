@@ -134,9 +134,11 @@ public sealed class PayoutsService(AppDbContext db, TimeProvider timeProvider) :
             .Select(row => (Row: row, Line: PayoutBuilder.Line(row, today)))
             .Where(x => !string.IsNullOrEmpty(search) || !string.IsNullOrEmpty(query.PayoutId)
                 || query.Kind == "PAID_DAY" && x.Line.Status == PayoutBuilder.Paid && x.Line.DueDay == query.Day
-                || query.Kind != "PAID_DAY" && PayoutBuilder.Open(x.Line) && PayoutBuilder.Expect(x.Row, x.Line, today, lastPaid) is var expect && expect.Day == query.Day && (query.Kind is null || expect.Kind == query.Kind))
+                || query.Kind != "PAID_DAY" && PayoutBuilder.Open(x.Line) && PayoutBuilder.Expect(x.Row, x.Line, today, lastPaid) is var expect && expect.Day == query.Day && (query.Kind is null || expect.Kind == query.Kind)
+                    && (query.Region is null || expect.Region == query.Region))
             .Select(x => x.Line)
-            .Where(line => query.Region is null || !string.IsNullOrEmpty(search) || line.Region == query.Region)
+            // A day's open records stand in the region whose payout takes them (Expect above); a paid day's in their own.
+            .Where(line => query.Region is null || !string.IsNullOrEmpty(search) || !string.IsNullOrEmpty(query.PayoutId) || query.Kind != "PAID_DAY" || line.Region == query.Region)
             .ToList();
         var page = Math.Max(0, query.Page);
         return ServiceResult<PayoutLinesPage>.Ok(new(all.Skip(page * LinesPageSize).Take(LinesPageSize).ToList(), all.Count, page, LinesPageSize, all.Sum(x => x.Net)));
@@ -371,18 +373,29 @@ internal static class PayoutBuilder
     // can write one) is unpaid too: it counts in the balance and waits apart, UNDATED.
     public static bool Open(PayoutLineView line) => line.Status is Expected or Unknown;
 
-    // The day an open record is expected to be paid on. Türkiye-Körfez and Azerbaycan, as Trendyol paid them in
-    // October-November 2026 and as its "Ödeme Özeti" of 7 Nov 2026 estimated them (Azerbaycan on Monday 9 and Thursday
-    // 12 Nov, like Türkiye): Monday's payout carries the sales due Monday to Wednesday, Thursday's those due Thursday to
-    // Sunday, and a deduction goes with the first payout on or after its due day. A public holiday moves a payout (29 Oct
-    // 2026 to the 30th), so the day is an estimate. Avrupa's payout days are not known: its records stand on their due day.
-    // A day already past moves to the next one to come. Kind: PAYOUT_DAY (estimated payout day) or DUE_DAY; a record
-    // with no due day is UNDATED (shown on today, never in a payout's estimate).
+    // The day an open record is expected to be paid on, and the region whose payout takes it. Türkiye-Körfez and
+    // Azerbaycan, as Trendyol paid them in October-November 2026 and as its "Ödeme Özeti" of 7 and 11 Nov 2026 estimated
+    // them: Monday's payout carries the sales due Monday to Wednesday, Thursday's those due Thursday to Sunday, and a
+    // deduction goes with the first payout on or after its due day. Trendyol's calendar marks Tuesday and Friday "Erken
+    // Ödeme" (an early payout the seller asks for), never a regular payout day. A public holiday moves a payout (29 Oct
+    // 2026 to the 30th), so the day is an estimate. Avrupa is paid on the fourth Monday of the month (the Monday of the
+    // 22nd-28th: 22 Jun, 27 Jul, 24 Aug, 28 Sep, 26 Oct 2026 and, in the Ödeme Özeti, 23 Nov), everything due up to that
+    // day. A day already past moves to the next one to come. Kind: PAYOUT_DAY (estimated payout day) or DUE_DAY; a
+    // record with no due day is UNDATED (shown on today, never in a payout's estimate).
     // LastPaid: the last payout read with its records, by store and region. A deduction whose payout day that payout has
-    // reached without taking it is not that region's to take (live, 7 Nov 2026: the cargo and platform fee invoices of
-    // Avrupa orders, written "Türkiye", skipped by the Türkiye payouts of 30 Oct, 2 and 5 Nov): it waits apart, OVERDUE.
-    public static (DateOnly Day, string Kind) Expect(PayoutRow row, PayoutLineView line, DateOnly today, IReadOnlyDictionary<(Guid, string), DateOnly>? lastPaid = null)
+    // reached without taking it is not that region's to take. A Türkiye-Körfez one went to Avrupa every time (Aug-Nov
+    // 2026: each of the 55 deductions the first Türkiye payout after their billing left out, the cargo and platform fee
+    // invoices of Avrupa orders written "Türkiye" and the micro-export return fees, was paid by the next Avrupa payout),
+    // so it is expected there when the store is paid in Avrupa; otherwise it waits apart, OVERDUE.
+    public static (DateOnly Day, string Kind, string Region) Expect(PayoutRow row, PayoutLineView line, DateOnly today, IReadOnlyDictionary<(Guid, string), DateOnly>? lastPaid = null)
     {
+        var (day, kind) = ExpectDay(row, line, today, lastPaid, out var region);
+        return (day, kind, region);
+    }
+
+    private static (DateOnly Day, string Kind) ExpectDay(PayoutRow row, PayoutLineView line, DateOnly today, IReadOnlyDictionary<(Guid, string), DateOnly>? lastPaid, out string region)
+    {
+        region = line.Region;
         if (line.DueDay is not { } due) return (today, Undated);
         // A record past its due day with no payout day known (Avrupa is paid about monthly, Pazarama when it says) waits
         // apart, OVERDUE, never in the next payout's estimate.
@@ -393,11 +406,31 @@ internal static class PayoutBuilder
             var tuesday = WeekdayOnOrAfter(due, DayOfWeek.Tuesday);
             return (tuesday < today ? WeekdayOnOrAfter(today, DayOfWeek.Tuesday) : tuesday, "PAYOUT_DAY");
         }
+        if (row.PlatformCode == "TRENDYOL" && line.Region == Europe)
+        {
+            var europe = EuropePayoutDayOnOrAfter(due);
+            return (europe < today ? EuropePayoutDayOnOrAfter(today) : europe, "PAYOUT_DAY");
+        }
         if (row.PlatformCode != "TRENDYOL" || line.Region is not (TrGulf or Azerbaijan)) return due < today ? (today, "OVERDUE") : (due, "DUE_DAY");
         var settlement = row.Source == TrendyolFinanceRequestContract.Settlements;
         var day = settlement ? PayoutDayOnOrBefore(due) : PayoutDayOnOrAfter(due);
-        if (!settlement && lastPaid is not null && lastPaid.TryGetValue((row.ConnectionId, line.Region), out var last) && day <= last) return (today, "OVERDUE");
+        if (!settlement && lastPaid is not null && lastPaid.TryGetValue((row.ConnectionId, line.Region), out var last) && day <= last)
+        {
+            if (line.Region != TrGulf || !lastPaid.ContainsKey((row.ConnectionId, Europe))) return (today, "OVERDUE");
+            region = Europe;
+            var europe = EuropePayoutDayOnOrAfter(due);
+            return (europe < today ? EuropePayoutDayOnOrAfter(today) : europe, "PAYOUT_DAY");
+        }
         return (day < today ? PayoutDayOnOrAfter(today) : day, "PAYOUT_DAY");
+    }
+
+    // Avrupa's payout day: the fourth Monday of the month (its 22nd-28th), the first on or after the day.
+    internal static DateOnly EuropePayoutDayOnOrAfter(DateOnly day)
+    {
+        var monday = WeekdayOnOrAfter(new DateOnly(day.Year, day.Month, 22), DayOfWeek.Monday);
+        if (monday >= day) return monday;
+        var next = new DateOnly(day.Year, day.Month, 1).AddMonths(1);
+        return WeekdayOnOrAfter(new DateOnly(next.Year, next.Month, 22), DayOfWeek.Monday);
     }
 
     private static DateOnly WeekdayOnOrAfter(DateOnly day, DayOfWeek weekday) => day.AddDays(((int)weekday - (int)day.DayOfWeek + 7) % 7);
@@ -435,13 +468,13 @@ internal static class PayoutBuilder
         var overdue = open.Where(x => x.Line.DueDay < today).ToList();
 
         var upcoming = open
-            .GroupBy(x => (x.Row.ConnectionId, x.Expect.Day, x.Line.Region, x.Expect.Kind))
+            .GroupBy(x => (x.Row.ConnectionId, x.Expect.Day, x.Expect.Region, x.Expect.Kind))
             .Select(group =>
             {
                 var records = group.Sum(x => x.Line.Net);
                 // A Trendyol payout day to come also loses the deductions billed the evening before it: estimated as
                 // Trendyol's own Ödeme Özeti does, the group's amount is the records less them.
-                var estimates = forecast is not null && group.Key.Kind == "PAYOUT_DAY" && group.Key.Region is TrGulf or Azerbaijan
+                var estimates = forecast is not null && group.Key.Kind == "PAYOUT_DAY" && group.Key.Region is TrGulf or Azerbaijan or Europe
                     && stores.GetValueOrDefault(group.Key.ConnectionId)?.PlatformCode == "TRENDYOL"
                     ? Estimate(group.Select(x => (x.Row, x.Line)).ToList(), group.Key.Region, forecast) : [];
                 var key = $"due:{group.Key.ConnectionId:N}:{group.Key.Day:yyyy-MM-dd}:{group.Key.Region}:{group.Key.Kind}";
@@ -480,11 +513,11 @@ internal static class PayoutBuilder
         var regions = new[] { TrGulf, Europe, Azerbaijan, UnknownRegion }
             .Select(region =>
             {
-                var due = open.Where(x => x.Line.Region == region).ToList();
+                var due = open.Where(x => x.Expect.Region == region).ToList();
                 var next = upcoming.Where(x => x.Region == region && !Waiting(x.Kind)).GroupBy(x => x.Day).OrderBy(x => x.Key).FirstOrDefault(day => day.Sum(x => x.Amount) > 0);
                 var waiting = pending.Where(x => x.Region == region).ToList();
                 return new PayoutRegionView(region, due.Sum(x => x.Line.Net), due.Count, next?.Key, next?.Sum(x => x.Amount),
-                    overdue.Where(x => x.Line.Region == region).Sum(x => x.Line.Net), waiting.Sum(x => x.Amount), waiting.Count);
+                    overdue.Where(x => x.Expect.Region == region).Sum(x => x.Line.Net), waiting.Sum(x => x.Amount), waiting.Count);
             })
             .Where(x => x.Region != UnknownRegion || x.Records > 0 || x.Unknown != 0 || x.PendingDeliveryOrders > 0)
             .ToList();
@@ -553,6 +586,27 @@ internal static class PayoutBuilder
         var sales = settlements.Where(row => row.Category == MarketplaceFinanceCategories.Sale).GroupBy(Package).Select(group => group.First()).ToList();
         var returns = settlements.Where(row => row.Category == MarketplaceFinanceCategories.Return).GroupBy(Package).Select(group => group.First()).ToList();
         var result = new List<PayoutEstimateView>();
+
+        // Avrupa (live payouts of 28 Sep and 26 Oct 2026): its parcels' cargo and platform fee are billed through the month,
+        // with the Türkiye payouts' deductions, a parcel's both on the same evening; the international fee (6 %) and
+        // withholding tax (1 %) of all its sales the evening before its payout. Its returns cost no return cargo (a
+        // micro-export return is billed as "Yurtdışı Operasyon Iade Bedeli").
+        if (region == Europe)
+        {
+            var unbilled = sales.Count(row => row.OrderNumber is null || !forecast.ShippingBilled.Contains((connection, row.OrderNumber)));
+            decimal? europeTariff = forecast.CargoTariff.TryGetValue(connection, out var europeKnown) ? europeKnown : null;
+            if (unbilled > 0)
+            {
+                result.Add(new("CARGO", unbilled, europeTariff is { } rate ? Math.Round(unbilled * rate, 2) : 0m, europeTariff));
+                result.Add(new("PLATFORM_FEE", unbilled, unbilled * ReportCosts.PlatformServiceFeePerOrder, ReportCosts.PlatformServiceFeePerOrder));
+            }
+            var europeNet = settlements.Sum(row => row.Credit - row.Debt);
+            if (!invoices.Any(International))
+                result.Add(new("INTERNATIONAL_FEE", sales.Count, Math.Max(0m, Math.Round(europeNet * ReportCosts.InternationalServiceFeeRate, 2)), ReportCosts.InternationalServiceFeeRate));
+            if (!invoices.Any(row => row.Category == MarketplaceFinanceCategories.Stoppage) && europeNet > 0)
+                result.Add(new("STOPPAGE", settlements.Count, Math.Round(europeNet * ReportCosts.StoppageRate, 2), ReportCosts.StoppageRate));
+            return result;
+        }
 
         if (!invoices.Any(row => row.Category == MarketplaceFinanceCategories.Cargo))
         {
