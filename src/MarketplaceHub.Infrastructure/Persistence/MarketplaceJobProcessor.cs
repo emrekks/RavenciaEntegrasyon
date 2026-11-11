@@ -3810,6 +3810,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // The Trendyol stream read does this itself once its read completed (it also re-reads the orders it refused).
         if (synced && !orderRereadRan && !cancellationToken.IsCancellationRequested) await RereadOrders(tenantId, connectionId, correlationId, cancellationToken);
         if (synced) await RematchUnmatchedOrderLines(tenantId, connectionId, cancellationToken);
+        if (synced && cursorResourceType == "ORDERS_RECOVERY") await RunResendDiagnosticOnce(tenantId, connectionId, correlationId, cancellationToken);
         return synced;
     }
 

@@ -946,6 +946,16 @@ public interface IOrderPort
     Task<AdapterResult<StageTestOrderResult>> CreateStageTestOrderAsync(AdapterContext context, string barcode, CancellationToken cancellationToken);
 }
 
+// A read-only diagnostic (Trendyol, 11 Nov 2026): the order-number queries of getShipmentPackages and a stream window,
+// answered as their bodies with the buyer's personal fields removed and only the order's own packages kept. Nothing is
+// projected from it; it shows how Trendyol lists a resend ("Yeniden Gönderim") package.
+public sealed record RawOrderRead(string Query, int? HttpStatus, string? ErrorCode, string? Body);
+
+public interface IOrderRawReadPort
+{
+    Task<AdapterResult<IReadOnlyList<RawOrderRead>>> ReadOrderRawAsync(AdapterContext context, string orderNumber, IReadOnlyList<string> packageIds, DateTimeOffset orderedAt, DateTimeOffset streamStart, DateTimeOffset streamEnd, CancellationToken cancellationToken);
+}
+
 public interface IOrderPackageReadPort
 {
     Task<AdapterResult<AdapterPageResult<RemoteOrderPackage>>> PollPackagesAsync(AdapterContext context, PackagePollWindow window, AdapterPageRequest page, CancellationToken cancellationToken);
