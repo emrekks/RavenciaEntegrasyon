@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { displayVariantOptionEntries, displayVariantOptionEntriesFromSignature, formatColorOptionValue, joinVariantOptionLabels, matchingVariantOptionValues, mergeVariantOptionEntries, mergeVariantOptionValues, normalizeVariantOptionValue, parseVariantOptionSignature } from './variant-option-matching'
+import { colourFirstOptions, displayVariantOptionEntries, displayVariantOptionEntriesFromSignature, formatColorOptionValue, joinVariantOptionLabels, matchingVariantOptionValues, mergeVariantOptionEntries, mergeVariantOptionValues, normalizeVariantOptionValue, parseVariantOptionSignature } from './variant-option-matching'
+import { variantOptionParts } from './variant-option-label'
 
 describe('variant option matching', () => {
   it('joins displayed variant option labels with a hyphen separator', () => {
@@ -25,22 +26,22 @@ describe('variant option matching', () => {
       { name: 'Desen', value: 'Çiçekli' },
       { name: 'Menşei', value: 'TR' },
     ])).toEqual([
-      { name: 'Beden', value: 'M' },
       { name: 'Renk', value: 'Siyah' },
+      { name: 'Beden', value: 'M' },
     ])
   })
 
   it('parses middle-dot separated option signatures before hiding non-color and non-size features', () => {
     expect(displayVariantOptionEntries(parseVariantOptionSignature('Beden: M · Renk: Siyah · Astar Durumu: Astarsız'))).toEqual([
-      { name: 'Beden', value: 'M' },
       { name: 'Renk', value: 'Siyah' },
+      { name: 'Beden', value: 'M' },
     ])
   })
 
   it('parses bullet-separated option signatures before hiding category features', () => {
     expect(displayVariantOptionEntriesFromSignature('Beden: M • Renk: Siyah • Astar Durumu: Astarsız • Desen: Çiçekli')).toEqual([
-      { name: 'Beden', value: 'M' },
       { name: 'Renk', value: 'Siyah' },
+      { name: 'Beden', value: 'M' },
     ])
   })
 
@@ -49,8 +50,8 @@ describe('variant option matching', () => {
       'Beden: M • Renk: Lacivert • Astar Durumu: Astarsız',
       { Beden: 'XL', Renk: 'İndigo', 'Astar Durumu': 'Astarsız' }
     )).toEqual([
-      { name: 'Beden', value: 'XL' },
       { name: 'Renk', value: 'İndigo' },
+      { name: 'Beden', value: 'XL' },
     ])
   })
 
@@ -62,8 +63,8 @@ describe('variant option matching', () => {
       { name: 'Size', value: 'XL' },
       { name: 'Beden', value: '2XL' },
     ])).toEqual([
-      { name: 'Beden', value: '2XL' },
       { name: 'Renk', value: 'İndigo' },
+      { name: 'Beden', value: '2XL' },
     ])
   })
 
@@ -130,5 +131,12 @@ describe('variant option matching', () => {
       { id: 'lacivert', value: 'Lacivert' },
       { id: 'siyah', value: 'Siyah' },
     ])
+  })
+
+  // Owner, 11 Nov 2026: a variant reads colour first, then size ("Bordo - 2XL"), whatever order its signature has.
+  it('puts the colour before the size, then the other options in their own order', () => {
+    expect(displayVariantOptionEntriesFromSignature('Beden:2XL_Renk:Bordo')).toEqual([{ name: 'Renk', value: 'Bordo' }, { name: 'Beden', value: '2XL' }])
+    expect(colourFirstOptions([{ name: 'Boy', value: 'Regular' }, { name: 'Beden', value: 'L' }, { name: 'Cinsiyet', value: 'Kadın' }, { name: 'Color', value: 'Red' }])).toEqual([{ name: 'Color', value: 'Red' }, { name: 'Beden', value: 'L' }, { name: 'Boy', value: 'Regular' }, { name: 'Cinsiyet', value: 'Kadın' }])
+    expect(variantOptionParts('Beden:2XL_Renk:Bordo').map(part => part.value)).toEqual(['2XL', 'Bordo'])
   })
 })

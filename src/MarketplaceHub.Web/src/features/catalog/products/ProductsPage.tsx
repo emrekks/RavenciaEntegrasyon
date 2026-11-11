@@ -32,6 +32,7 @@ import { isProductUpdateConnection } from '../platform-update-targets'
 import { fitTip, unfitTip } from '../../../shared/touch-tips'
 import { scheduleDeferredPrefetch } from './deferred-prefetch'
 import { PanelSelect } from '../../../shared/PanelSelect'
+import { colourFirstOptions } from '../variant-option-matching'
 import { ProductQuickEditModal, variantAxisParts, type QuickEditMode } from './ProductQuickEditModal'
 // Loaded with the editor's stylesheet only when a bulk publication opens, like a row's publish popup.
 const BulkPublishDialog = lazy(() => import('./BulkPublishDialog').then(module => ({ default: module.BulkPublishDialog })))
@@ -138,8 +139,8 @@ function productCategoryLabel(product: Product) {
   return product.categoryPath?.trim() || 'Kategori belirtilmemiş'
 }
 function lowStockVariantLabel(variant: Variant) {
-  const options = variantOptionEntries(variant)
-    .sort((left, right) => left.name.localeCompare(right.name, 'tr', { sensitivity: 'base' }) || left.value.localeCompare(right.value, 'tr', { numeric: true, sensitivity: 'base' }))
+  const options = colourFirstOptions(variantOptionEntries(variant)
+    .sort((left, right) => left.name.localeCompare(right.name, 'tr', { sensitivity: 'base' }) || left.value.localeCompare(right.value, 'tr', { numeric: true, sensitivity: 'base' })))
   return options.map(option => `${option.name}: ${option.value}`).join(' · ') || variant.optionSignature || variant.sku
 }
 function lowStockProductImage(product: Product, fallback: Product | null = null) {

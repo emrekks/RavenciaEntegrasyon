@@ -983,7 +983,8 @@ function BridgeDetail({ detail, total }: { detail: BridgeDetailView; total: numb
         <span className="reports-bridge-detail-name">{item.label}{item.note && <small>{item.note}</small>}</span>
         <b>{signedTl(item.value)}</b>
       </li>)}
-        <li className="is-total"><i aria-hidden="true" /><span className="reports-bridge-detail-name">Toplam</span><b>{signedTl(total)}</b></li>
+        {/* Below zero the row adds to the profit (a VAT carried forward): the total is written as the bridge writes it. */}
+        <li className="is-total"><i aria-hidden="true" /><span className="reports-bridge-detail-name">{total < 0 ? 'Toplam · Kâra Eklenir' : 'Toplam'}</span><b>{total < 0 ? `+ ${formatTl(-total)}` : formatTl(total)}</b></li>
       </ul>
     </section>)}
     {detail.facts.length > 0 && <dl>{detail.facts.map(fact => <div key={fact.label}><dt>{fact.label}</dt><dd>{fact.value}</dd></div>)}</dl>}

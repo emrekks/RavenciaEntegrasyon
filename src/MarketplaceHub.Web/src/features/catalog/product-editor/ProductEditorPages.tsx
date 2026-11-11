@@ -30,7 +30,7 @@ import { VariantCodeMenu, type VariantCodeMenuProps } from './VariantCodeMenu'
 import { applyVariantCodesByKey, buildSequentialVariantCodes, generatedRowsReplacePlaceholder, mergeGeneratedVariantRows, planVariantCodes, variantCodeCandidates, buildVariantGenerationDefaults, variantCodeChangeConfirmText, type VariantCodeChange, type VariantCodeTarget } from '../variant-generation'
 import { isVariantDeleteRefusal, restoreRemovedVariantRows, VARIANT_DELETE_REFUSED_HINT, variantRemovalConfirmText, type RemovedVariantRow } from '../variant-row-removal'
 import { filterVariantsByOptions,selectVariantDraftsByKeys, type VariantOptionFilterSelections } from '../variant-filtering'
-import { displayVariantOptionEntriesFromSignature, formatColorOptionValue, joinVariantOptionLabels, matchingVariantOptionValues, mergeVariantOptionValues, normalizeVariantOptionValue, parseVariantOptionSignature, variantOptionSetKey } from '../variant-option-matching'
+import { colourFirstOptions, displayVariantOptionEntriesFromSignature, formatColorOptionValue, joinVariantOptionLabels, matchingVariantOptionValues, mergeVariantOptionValues, normalizeVariantOptionValue, parseVariantOptionSignature, variantOptionSetKey } from '../variant-option-matching'
 import { autoWebColorIssues, connectionCapabilitiesQueryKey, isOptionRequirement, loadConnectionCapabilities, loadPublicationAttributeIssues, shopifyCapabilityIssues, missingPublicationChecks, optionSignatureFromOptions, orderMediaUrlsByVariants, publicationAttributeSelectionsFor, publicationBlockingIssues, publicationProductChecks, publicationReadinessQueryKey, publicationRequirementSets, rowOptionValue, type CategoryRequirement, type PublicationReadinessDraft } from './publication-readiness'
 import { fixableValueMappings, type PublicationAttributeSelection } from '../publication-attribute-readiness'
 import { MissingValueMappingDialog } from '../MissingValueMappingDialog'
@@ -106,7 +106,7 @@ const channelOfferWriteConcurrency = 6
 
 // A variant's options as the panel writes them elsewhere ("Beden: L - Renk: Bej"), not its raw signature ("Beden:L_Renk:Bej").
 function pricingVariantLabel(signature: string | null | undefined) {
-  const entries = parseVariantOptionSignature(signature ?? '')
+  const entries = colourFirstOptions(parseVariantOptionSignature(signature ?? ''))
   return entries.length ? joinVariantOptionLabels(entries.map(entry => `${entry.name}: ${entry.value}`)) : signature ?? ''
 }
 
