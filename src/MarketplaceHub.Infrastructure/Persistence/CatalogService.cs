@@ -1233,9 +1233,83 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             FamilyMediaItems = familyMediaItems,
             FamilyOrderedMediaUrls = familyViews.Any(view => view.HasCustomMediaOrder) ? FamilyStripWithChartsLast(familyOrderedMediaUrls) : null,
             FamilyProductIds = familyViews.Select(view => view.Id).ToList(),
-            FamilyGalleries = CatalogFamilyMedia.Galleries(familyRows, familyCardOrder, familyViews.ToDictionary(view => view.Id, view => view.SizeChartUrl))
+            FamilyGalleries = CatalogFamilyMedia.Galleries(familyRows, familyCardOrder, familyViews.ToDictionary(view => view.Id, view => view.SizeChartUrl)),
+            FamilyFieldDifferences = ProductFamilySharedFields.Differences([.. familyCardOrder.Select(cardId => SharedFieldsOf(familyViews.First(view => view.Id == cardId)))])
         });
     }
+
+    // The model-row fields the owner changed in the editor (command.FamilySharedFields) go to every other colour card of
+    // the model (ProductFamilySharedFields); a card already holding the value is not touched. A field the owner left
+    // alone stays as each card has it. A colour card's name keeps its own colour word; its colour attributes stay its own.
+    private async Task ApplyFamilySharedFieldsAsync(Guid tenantId, Product opened, UpdateProductCommand command, IReadOnlyCollection<Guid> familyProductIds, CancellationToken cancellationToken)
+    {
+        var fields = (command.FamilySharedFields ?? []).Where(ProductFamilySharedFields.IsKnown).ToHashSet(StringComparer.Ordinal);
+        if (fields.Count == 0) return;
+        var siblingIds = familyProductIds.Where(productId => productId != opened.Id).ToArray();
+        if (siblingIds.Length == 0) return;
+        var siblings = await db.Products.Where(x => x.TenantId == tenantId && siblingIds.Contains(x.Id)).ToListAsync(cancellationToken);
+        if (siblings.Count == 0) return;
+        var signatures = await db.ProductVariants.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && (siblingIds.Contains(x.ProductId) || x.ProductId == opened.Id))
+            .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
+            .Select(x => new { x.ProductId, x.OptionSignature }).ToListAsync(cancellationToken);
+        string? ColorOf(Guid productId) => signatures.Where(x => x.ProductId == productId).Select(x => ProductFamilyColorOrder.ColorOf(x.OptionSignature)).FirstOrDefault(color => !string.IsNullOrWhiteSpace(color));
+        var openedColor = ColorOf(opened.Id);
+
+        var sharedAttributes = fields.Contains(ProductFamilySharedFields.Attributes) && command.Attributes is not null;
+        var siblingAssignments = sharedAttributes
+            ? await db.ProductAttributeAssignments.Where(x => x.TenantId == tenantId && siblingIds.Contains(x.ProductId) && x.VariantId == null).ToListAsync(cancellationToken)
+            : [];
+        var attributeIds = sharedAttributes ? command.Attributes!.Select(x => x.AttributeId).Concat(siblingAssignments.Select(x => x.AttributeId)).Distinct().ToArray() : [];
+        var colorAttributeIds = attributeIds.Length == 0
+            ? []
+            : (await db.AttributeDefinitions.AsNoTracking().Where(x => x.TenantId == tenantId && attributeIds.Contains(x.Id)).Select(x => new { x.Id, x.Name }).ToListAsync(cancellationToken))
+                .Where(x => VariantOptionSignature.IsColorName(x.Name) || VariantOptionSignature.IsWebColorName(x.Name)).Select(x => x.Id).ToHashSet();
+        var sharedValues = sharedAttributes ? command.Attributes!.Where(x => !colorAttributeIds.Contains(x.AttributeId)).ToList() : [];
+        static string AttributeKey(Guid attributeId, Guid? valueId, string? text, decimal? number, bool? flag) => $"{attributeId:N}|{valueId:N}|{text?.Trim()}|{number}|{flag}";
+
+        var changedIds = new List<Guid>();
+        foreach (var sibling in siblings)
+        {
+            var changed = false;
+            void Set<T>(string field, T current, T value, Action<T> write)
+            {
+                if (!fields.Contains(field) || EqualityComparer<T>.Default.Equals(current, value)) return;
+                write(value);
+                changed = true;
+            }
+            Set(ProductFamilySharedFields.Title, sibling.Title, ProductFamilySharedFields.TitleFor(command.Title, openedColor, ColorOf(sibling.Id)), value => sibling.Title = value);
+            Set(ProductFamilySharedFields.Description, sibling.Description, opened.Description, value => sibling.Description = value);
+            Set(ProductFamilySharedFields.Brand, sibling.BrandId, opened.BrandId, value => sibling.BrandId = value);
+            Set(ProductFamilySharedFields.Category, sibling.CategoryId, opened.CategoryId, value => sibling.CategoryId = value);
+            Set(ProductFamilySharedFields.Vat, (sibling.VatRate, sibling.VatInclusion), (opened.VatRate, opened.VatInclusion), value => (sibling.VatRate, sibling.VatInclusion) = value);
+            Set(ProductFamilySharedFields.Warranty, sibling.WarrantyMonths, opened.WarrantyMonths, value => sibling.WarrantyMonths = value);
+            Set(ProductFamilySharedFields.DeliveryDays, sibling.DeliveryDays, opened.DeliveryDays, value => sibling.DeliveryDays = value);
+            if (sharedAttributes)
+            {
+                var current = siblingAssignments.Where(x => x.ProductId == sibling.Id && !colorAttributeIds.Contains(x.AttributeId)).ToList();
+                var currentKeys = current.Select(x => AttributeKey(x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue)).Order(StringComparer.Ordinal);
+                var sharedKeys = sharedValues.Select(x => AttributeKey(x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue)).Order(StringComparer.Ordinal);
+                if (!currentKeys.SequenceEqual(sharedKeys, StringComparer.Ordinal))
+                {
+                    db.ProductAttributeAssignments.RemoveRange(current);
+                    db.ProductAttributeAssignments.AddRange(sharedValues.Select(x => Assignment(tenantId, sibling.Id, null, x)));
+                    changed = true;
+                }
+            }
+            if (!changed) continue;
+            sibling.UpdatedAt = opened.UpdatedAt;
+            sibling.Version++;
+            changedIds.Add(sibling.Id);
+        }
+        if (changedIds.Count > 0) await CatalogLocalEdits.MarkLinksDirtyAsync(db, tenantId, changedIds, CatalogLocalEdits.ProductField, cancellationToken);
+    }
+
+    // A colour card's model-row fields with its colour (its variants' Renk), for the model's shared fields.
+    private static ProductFamilySharedFields.CardFields SharedFieldsOf(ProductView view) => new(
+        view.Id,
+        view.Variants.Select(variant => ProductFamilyColorOrder.ColorOf(variant.OptionSignature)).FirstOrDefault(color => !string.IsNullOrWhiteSpace(color)),
+        view.Title, view.Description, view.BrandId, view.CategoryId, view.VatRate, view.VatInclusion, view.WarrantyMonths, view.DeliveryDays);
 
     public async Task<ServiceResult<ProductView>> UpdateProductAsync(Guid tenantId, Guid id, long expectedVersion, UpdateProductCommand command, CancellationToken cancellationToken, Guid? actorUserId = null, string? correlationId = null)
     {
@@ -1635,6 +1709,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             db.ProductAttributeAssignments.RemoveRange(currentAssignments);
             db.ProductAttributeAssignments.AddRange(command.Attributes.Select(x => Assignment(tenantId, id, null, x)));
         }
+        await ApplyFamilySharedFieldsAsync(tenantId, product, command, familyVariantProductIds, cancellationToken);
         await MarkMarketplaceLinksDirtyAsync(tenantId, id, cancellationToken);
         if (familyProductIdsToProtect.Count > 0)
         {

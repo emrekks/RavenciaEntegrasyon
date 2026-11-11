@@ -64,3 +64,6 @@
 
 /* With Maliyet shown the price and stock grid holds nine fields; Maliyet spanning two keeps Güvenlik Stoğu and Beden Tablosu on one row. */
 .app-shell.stitch-shell main .product-pricing-card .product-step-grid > label.product-cost-field { grid-column: span 2; }
+
+/* Model-row fields other colour cards hold differently (family-shared-fields.ts). */
+.app-shell.stitch-shell main .product-basics-card .family-field-note { margin: 0 0 12px; padding: 8px 12px; color: var(--rv-color-ink); font-size: 13px; line-height: 1.45; background: color-mix(in srgb, var(--rv-color-primary) 8%, transparent); border: 1px solid color-mix(in srgb, var(--rv-color-primary) 30%, transparent); border-radius: 12px; }

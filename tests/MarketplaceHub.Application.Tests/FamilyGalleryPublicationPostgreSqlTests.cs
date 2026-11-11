@@ -20,10 +20,10 @@ public sealed class FamilyGalleryPublicationPostgreSqlTests(PostgreSqlTenantIsol
         var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "TRENDYOL", Environment = "PRODUCTION", DisplayName = "Trendyol renk kartları", ExternalStoreId = $"store-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V1", SettingsJson = "{}", Version = 1 };
         var categoryId = Guid.CreateVersion7();
         var brandId = Guid.CreateVersion7();
-        Product Card(string colour) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = $"Triko Bluz {colour}", Description = "Renk kartı testi", CategoryId = categoryId, BrandId = brandId, Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now, Version = 1 };
+        Product Card(string colour) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = $"Kadın {colour} Triko Bluz", Description = $"{colour} eski açıklama", CategoryId = categoryId, BrandId = brandId, VatRate = 10m, VatInclusion = "INCLUDED", Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now, Version = 1 };
         var siyah = Card("Siyah");
         var bordo = Card("Bordo");
-        ProductVariant Variant(Product card, string code) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = card.Id, Sku = code, SkuNormalized = code, Barcode = code, BarcodeNormalized = code, ModelCode = "MZ051BYC", OptionSignature = code, Desi = 1m, Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now, Version = 1 };
+        ProductVariant Variant(Product card, string code) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = card.Id, Sku = code, SkuNormalized = code, Barcode = code, BarcodeNormalized = code, ModelCode = "MZ051BYC", OptionSignature = $"Renk: {card.Title.Split(' ')[1]} | Beden: {code[^2..]}", Desi = 1m, Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now, Version = 1 };
         var siyahL = Variant(siyah, "MZ051BYC-31");
         var siyahXl = Variant(siyah, "MZ051BYC-32");
         var bordoL = Variant(bordo, "MZ051BYC-01");
@@ -74,19 +74,36 @@ public sealed class FamilyGalleryPublicationPostgreSqlTests(PostgreSqlTenantIsol
         await db.SaveChangesAsync();
 
         var composer = new ProductPublicationComposer(db, new ConfigurationBuilder().Build());
-        foreach (var (card, colour, barcodes) in new[] { (siyah, "siyah", new[] { "MZ051BYC-31", "MZ051BYC-32" }), (bordo, "bordo", new[] { "MZ051BYC-01", "MZ051BYC-02" }) })
+        async Task AssertPayloads(Func<string, string> title, Func<string, string> description)
         {
-            var draft = await composer.BuildAsync(tenant.Id, card.Id, connection.Id, CancellationToken.None);
-            Assert.True(draft.Succeeded, draft.Error?.Message);
-            var items = JsonNode.Parse(draft.Value!.PayloadJson)!["items"]!.AsArray();
-            Assert.Equal(barcodes, items.Select(item => item!["barcode"]!.GetValue<string>()).Order(StringComparer.Ordinal));
-            Assert.All(items, item =>
+            foreach (var (card, colour, barcodes) in new[] { (siyah, "Siyah", new[] { "MZ051BYC-31", "MZ051BYC-32" }), (bordo, "Bordo", new[] { "MZ051BYC-01", "MZ051BYC-02" }) })
             {
-                Assert.Equal("MZ051BYC", item!["productMainId"]!.GetValue<string>());
-                Assert.Equal([$"https://cdn.example.com/mz051byc/{colour}-1.jpg", $"https://cdn.example.com/mz051byc/{colour}-2.jpg", $"https://cdn.example.com/mz051byc/{colour}-3.jpg"],
-                    item["images"]!.AsArray().Select(image => image!["url"]!.GetValue<string>()));
-            });
+                var draft = await composer.BuildAsync(tenant.Id, card.Id, connection.Id, CancellationToken.None);
+                Assert.True(draft.Succeeded, draft.Error?.Message);
+                var items = JsonNode.Parse(draft.Value!.PayloadJson)!["items"]!.AsArray();
+                Assert.Equal(barcodes, items.Select(item => item!["barcode"]!.GetValue<string>()).Order(StringComparer.Ordinal));
+                var pictures = colour.ToLowerInvariant();
+                Assert.All(items, item =>
+                {
+                    Assert.Equal("MZ051BYC", item!["productMainId"]!.GetValue<string>());
+                    Assert.Equal(title(colour), item["title"]!.GetValue<string>());
+                    Assert.Equal(description(colour), item["description"]!.GetValue<string>());
+                    Assert.Equal([$"https://cdn.example.com/mz051byc/{pictures}-1.jpg", $"https://cdn.example.com/mz051byc/{pictures}-2.jpg", $"https://cdn.example.com/mz051byc/{pictures}-3.jpg"],
+                        item["images"]!.AsArray().Select(image => image!["url"]!.GetValue<string>()));
+                });
+            }
         }
+
+        // Before: each colour card goes with its own name and description.
+        await AssertPayloads(colour => $"Kadın {colour} Triko Bluz", colour => $"{colour} eski açıklama");
+
+        // The owner edits the model's name and description from the Siyah row (FamilySharedFields): every colour card
+        // takes them, each name with its own colour word; the pictures and the content split per colour stay as they were.
+        var service = new CatalogService(db, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider, new Microsoft.Extensions.Caching.Memory.MemoryCache(new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()));
+        var updated = await service.UpdateProductAsync(tenant.Id, siyah.Id, siyah.Version, new UpdateProductCommand("Kadın Siyah Yumuşak Triko Bluz", "Model açıklaması", brandId, categoryId, FamilySharedFields: [ProductFamilySharedFields.Title, ProductFamilySharedFields.Description]), CancellationToken.None);
+        Assert.True(updated.Succeeded, updated.Error?.Message);
+        Assert.Empty(updated.Value!.FamilyFieldDifferences!);
+        await AssertPayloads(colour => $"Kadın {colour} Yumuşak Triko Bluz", _ => "Model açıklaması");
         await transaction.RollbackAsync();
     }
 }

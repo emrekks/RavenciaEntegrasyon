@@ -65,6 +65,8 @@ export type Product = Versioned & {
   familyProductIds?: string[] | null
   // Every colour card's own pictures (gallery, variant pictures, size chart), oldest card first whichever was opened.
   familyGalleries?: Array<{ productId: string; mediaUrls: string[]; variantMediaUrls: string[]; sizeChartUrl: string | null }> | null
+  // The model-row fields other colour cards hold differently from this one, with their colours.
+  familyFieldDifferences?: Array<{ field: string; colors: string[] }> | null
   categoryPath?: string | null; variants: Variant[]; primaryImageUrl: string | null; totalStock: number; startingPrice: number | null; currency: string; modelCode: string | null; activePlatforms: string[] | null; familyMediaUrls?: string[]
   familyMediaItems?: Array<{ url: string; mediaIds: string[]; sourceProductTitles: string[] }>; familyOrderedMediaUrls?: string[]; hasCustomMediaOrder?: boolean
   platformStatuses?: ProductPlatformStatus[]

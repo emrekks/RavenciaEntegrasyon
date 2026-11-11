@@ -33,6 +33,20 @@ public static class ProductFamilyNewColorCard
         return foldedTitle.Contains(Fold(color), StringComparison.Ordinal) ? title : $"{title} {color}";
     }
 
+    // True when the title holds the colour as a whole word (case, accents and the Turkish dotted/dotless i aside).
+    public static bool HasColorWord(string title, string? color)
+    {
+        var folded = Fold(title);
+        var word = Fold(color?.Trim() ?? "");
+        if (word.Length == 0) return false;
+        for (var index = folded.IndexOf(word, StringComparison.Ordinal); index >= 0; index = folded.IndexOf(word, index + 1, StringComparison.Ordinal))
+        {
+            var end = index + word.Length;
+            if ((index == 0 || !char.IsLetterOrDigit(title[index - 1])) && (end == title.Length || !char.IsLetterOrDigit(title[end]))) return true;
+        }
+        return false;
+    }
+
     // One folded character per character, so an index in the folded text is the same index in the original.
     private static string Fold(string value)
     {

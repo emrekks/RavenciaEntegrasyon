@@ -34,6 +34,8 @@ function family(opened: string) {
     familyOrderedMediaUrls: [...bordo, ...siyah],
     familyMediaItems: [...bordo, ...siyah].map((item, index) => ({ url: item, mediaIds: [`m${index}`], sourceProductTitles: ['Kışlık Triko Bluz'] })),
     familyGalleries: galleries,
+    // Siyah's description differs from the model's (MZ051BYC: two description groups on live).
+    familyFieldDifferences: [{ field: 'description', colors: ['Siyah'] }],
     familyProductIds: [opened, opened === 'siyah' ? 'bordo' : 'siyah'],
     options: [{ id: 'o1', label: 'Renk', values: [{ id: 'r1', label: 'Bordo' }, { id: 'r2', label: 'Siyah' }] }, { id: 'o2', label: 'Beden', values: [{ id: 's1', label: 'L' }, { id: 's2', label: 'XL' }] }],
     attributes: []
@@ -79,7 +81,7 @@ async function settle(rounds = 10) {
 }
 
 // The picture writes Kaydet sends from the given colour row.
-async function saveFrom(opened: string) {
+async function saveFrom(opened: string, newTitle?: string) {
   fixture.opened = opened
   fixture.calls.length = 0
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -89,14 +91,21 @@ async function saveFrom(opened: string) {
     </Routes></main></MemoryRouter></QueryClientProvider>)
   })
   await settle()
+  const note = container.querySelector('.family-field-note')?.textContent ?? ''
+  if (newTitle) {
+    const input = container.querySelector<HTMLInputElement>('.product-title-field input')!
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+    act(() => { setter.call(input, newTitle); input.dispatchEvent(new Event('input', { bubbles: true })) })
+  }
   const captions = Array.from(container.querySelectorAll('.media-preview-strip figcaption')).map(caption => caption.firstChild?.textContent ?? '')
   const save = container.querySelector<HTMLButtonElement>('button[data-submit-intent="save"]')!
   await act(async () => { save.form!.requestSubmit(save) })
   await settle(30)
   const writes = fixture.calls.filter(call => call.path.startsWith('/files/') || call.path.endsWith('/size-chart')).map(call => ({ method: call.method, path: call.path, body: call.body }))
+  const patch = fixture.calls.find(call => call.method === 'PATCH')?.body as { title: string; familySharedFields: string[] } | undefined
   act(() => root.unmount())
   root = createRoot(container)
-  return { writes, captions }
+  return { writes, captions, note, shared: patch?.familySharedFields, title: patch?.title }
 }
 
 describe('Kaydet on a model from any colour row', () => {
@@ -112,5 +121,18 @@ describe('Kaydet on a model from any colour row', () => {
     // The strip is the same and names each picture's colour.
     expect(fromSiyah.captions).toEqual(['Bordo', 'Bordo', 'Siyah', 'Siyah'])
     expect(fromBordo.captions).toEqual(fromSiyah.captions)
+    // Nothing of the model's fields was changed: no colour card gets another's name or description.
+    expect(fromSiyah.shared).toEqual([])
+    expect(fromBordo.shared).toEqual([])
+    expect(fromSiyah.note).toContain('Renklerde farklı: Açıklama (Siyah)')
+    expect(fromBordo.note).toBe(fromSiyah.note)
+  })
+
+  it('names a changed model field the same way from every colour row, for the server to write to every colour', async () => {
+    const fromSiyah = await saveFrom('siyah', 'Kışlık Yumuşak Triko Bluz')
+    const fromBordo = await saveFrom('bordo', 'Kışlık Yumuşak Triko Bluz')
+    expect(fromSiyah.shared).toEqual(['title'])
+    expect(fromBordo.shared).toEqual(['title'])
+    expect(fromBordo.title).toBe(fromSiyah.title)
   })
 })

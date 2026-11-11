@@ -43,6 +43,7 @@ import { attributeMappingPlatform, mappingFocusItems } from '../../marketplace/m
 import { PRODUCT_IMAGE_ACCEPT, toProductImage } from './product-image-file'
 import { LocalImagePreview, MediaAddTile, MediaMoveButtons, MediaZoomButton } from './media-tiles'
 import { mapWithConcurrency, mediaFilesLeftAfterFailedSave, mediaSaveProgressMessage, newColoursWithoutPictures, savedMediaOrder, storedProductMediaUrl, variantMediaReconcilePlan } from './product-media-save'
+import { editedSharedFields, familyDifferenceText, sharedFieldSnapshot } from './family-shared-fields'
 import { familyGalleryPlan, familyPictureOwners, familySizeChartUrl, familyUploadTargets, pictureColourLabel, type ColourRowPictures, type FamilyCardPictures } from './family-gallery-save'
 import { keepPendingCreateMedia, pendingVariantMediaRefs, takePendingCreateMedia, type PendingCreateMedia } from './pending-create-media'
 import { MarketplaceCodesDialog } from './MarketplaceCodesDialog'
@@ -1333,6 +1334,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   // variant; written with Kaydet (PUT /products/{id}/size-chart) when it differs from the loaded one.
   const [sizeChartUrl, setSizeChartUrl] = useState<string | null>(null)
   const initialSizeChartUrl = useRef<string | null>(null)
+  // The model-row fields as the editor loaded them: a save names the ones the owner changed (family-shared-fields.ts).
+  const initialSharedFields = useRef<Record<string, string> | null>(null)
   // "Beden Tablosu Seç" beside Tümünü Temizle: while on, a tap on one of the card's own saved pictures marks it as the
   // size chart (the tiles' zoom, remove and move buttons and dragging are off meanwhile); Escape or Vazgeç leaves it.
   const [sizeChartPicking, setSizeChartPicking] = useState(false)
@@ -1594,6 +1597,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     const selected: Record<string, string[]> = {}; const typed: Record<string, string> = {}
     for (const attribute of product.attributes ?? []) { if (attribute.valueId) selected[attribute.attributeId] = [...(selected[attribute.attributeId] ?? []), attribute.valueId]; else if (attribute.textValue != null) typed[attribute.attributeId] = attribute.textValue; else if (attribute.numberValue != null) typed[attribute.attributeId] = String(attribute.numberValue); else if (attribute.booleanValue != null) typed[attribute.attributeId] = attribute.booleanValue ? 'evet' : 'hayır' }
     setAttributeSelections(selected); setAttributeTextValues(typed); setVariantAttributeIds([])
+    initialSharedFields.current = editProductId ? sharedFieldSnapshot({ title: product.title, description: product.description ?? '', brandId: product.brandId ?? '', categoryId: product.categoryId ?? '', ...editorVat(product, primary), warrantyMonths: String(product.warrantyMonths ?? 0), deliveryDays: String(product.deliveryDays ?? 1), attributeSelections: selected, attributeTextValues: typed }) : null
     setRemovedVariantIds([]); setRemovedVariantRows([]); setReplacedPlaceholderIds([])
     setFieldErrors({})
     setSnapshotRequest(value => value + 1)
@@ -2929,6 +2933,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           vatRate: savedVatRate,
           vatInclusion: savedVatInclusion,
           trendyolWebColorValueId: !webColorAutoEnabled && manualWebColorValueId ? manualWebColorValueId : '00000000-0000-0000-0000-000000000000',
+          // The model-row fields the owner changed go to every colour card of the model (the server keeps each name's colour).
+          familySharedFields: initialSharedFields.current ? editedSharedFields(initialSharedFields.current, sharedFieldSnapshot({ ...form, attributeSelections, attributeTextValues })) : [],
           ...(shouldPersistAttributes ? { attributes: globalAttributes } : {}),
           variantIdsToDelete: removedVariantIds.filter(id => existingVariantIds.has(id) && !rows.some(row => row.key === id)),
           placeholderVariantIdsToDelete: placeholderIdsToDelete,
@@ -3549,7 +3555,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     chart: { url: sizeChartUrl, initialUrl: sizeChartUrl }
   }) : null
   const pictureColourCaption = (ref: string) => pictureOwners ? pictureColourLabel(pictureOwners.get(ref.startsWith('file|') ? ref : mediaImageKey(ref.slice(4))) ?? new Set(), cardColours) : ''
-  const hasMediaTiles =mediaUrls.length > 0 || mediaFiles.length > 0 || familyOnlyMediaItems.length > 0
+  const familyFieldNote = editProductId ? familyDifferenceText(stripProduct?.familyFieldDifferences) : ''
+  const hasMediaTiles = mediaUrls.length > 0 || mediaFiles.length > 0 || familyOnlyMediaItems.length > 0
   const mediaUploadHint = "Adet sınırı yok · JPEG, PNG veya WebP · WebP ve 6 MB üstü JPEG'e çevrilir"
   const mediaFileInput = <input ref={mediaFileInputRef} type="file" accept={PRODUCT_IMAGE_ACCEPT} multiple tabIndex={hasMediaTiles ? -1 : undefined} aria-label="Ürün görsellerini dosya olarak seç" onChange={event => { void handleMediaFiles(Array.from(event.target.files ?? [])); event.currentTarget.value = '' }} />
   // In the strip's order (Görseller), new uploads where they stand and the size chart last, so Görsel 01, 02… are the
@@ -3683,6 +3690,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     <div className="product-top-layout">
       <section className="panel product-step-card product-basics-card">
         <div className="editor-section-title"><span>1</span><div><h2>Temel Ürün Bilgileri</h2></div></div>
+        {familyFieldNote && <p className="family-field-note" role="note">{familyFieldNote}. Değiştirip kaydettiğiniz alanı modelin tüm renkleri alır; dokunmadığınız alan her renkte olduğu gibi kalır.</p>}
         <div className="product-step-grid product-basics-grid">
           <label className="product-title-field"><RequiredLabel>Ürün Adı</RequiredLabel><input value={form.title} aria-invalid={fieldErrors.title || requiredFieldInvalid('title') ? true : undefined} onChange={event => updateField('title', event.target.value)} required maxLength={320} /><EditorFieldError message={requiredError('title') ?? fieldErrors.title} /></label>
           <label htmlFor="product-editor-status">Satış Durumu<PanelSelect id="product-editor-status" ariaLabel="Satış Durumu" value={form.status} onChange={value => updateField('status', value)} options={[{ value: 'ACTIVE', label: 'Satışa Açık' }, { value: 'ARCHIVED', label: 'Satışa Kapalı' }]} /></label>
