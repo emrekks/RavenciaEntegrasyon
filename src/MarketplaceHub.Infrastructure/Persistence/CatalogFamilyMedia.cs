@@ -68,6 +68,16 @@ internal static class CatalogFamilyMedia
         }).ToList();
     }
 
+    // The model's front picture (the products list's model row): the first picture of the family strip the editor opens
+    // with (GetProductAsync: the custom family order when a card of the family has one, else Build's card-by-card list in
+    // the family's card order), never a size chart. Null when the family has no other picture.
+    internal static string? FrontUrl(IReadOnlyList<Row> rows, IReadOnlyList<Guid> cardOrder, bool customOrder, IEnumerable<string?> chartUrls)
+    {
+        var chartKeys = chartUrls.OfType<string>().Where(url => !string.IsNullOrWhiteSpace(url)).Select(CatalogImageIdentity.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var strip = customOrder ? OrderedUrls(rows) : Build(rows, new Dictionary<Guid, string>(), cardOrder).DefaultUrls;
+        return strip.FirstOrDefault(url => !chartKeys.Contains(CatalogImageIdentity.Key(url)));
+    }
+
     // The custom family order: StripUrls over the whole family's rows (a family reorder numbers every row by its rank).
     internal static IReadOnlyList<string> OrderedUrls(IReadOnlyList<Row> rows) => StripUrls(rows, customOrder: true);
 
