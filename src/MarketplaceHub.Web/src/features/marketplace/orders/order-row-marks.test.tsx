@@ -8,13 +8,13 @@ const none: OrderRowMarks = { microExport: false, microExportCountryCode: null, 
 const tips = (host: HTMLElement) => Array.from(host.querySelectorAll('.rr-omark')).map(mark => [mark.getAttribute('data-tip'), mark.getAttribute('aria-label')])
 
 describe('order row marks', () => {
-  it('shows the flag, the delivery point and the fast delivery icons, each with its explanation', () => {
+  it('shows the flag, the fast delivery and (last, the orange one) the delivery point icons, each with its explanation', () => {
     const { host } = render(<OrderRowMarkIcons marks={{ microExport: true, microExportCountryCode: 'RO', deliveryPoint: true, deliveryPointType: null, fastDeliveryType: 'SameDayShipping' }} />)
 
     expect(tips(host)).toEqual([
       ['Mikro İhracat · Romanya', 'Mikro İhracat · Romanya'],
-      ['Teslimat Noktası Siparişi', 'Teslimat Noktası Siparişi'],
       ['Aynı Gün Kargo', 'Aynı Gün Kargo'],
+      ['Teslimat Noktası Siparişi', 'Teslimat Noktası Siparişi'],
     ])
     expect(host.querySelector('.rr-omark-micro .rr-omark-flag')).not.toBeNull()
     expect(host.querySelector('img')).toBeNull()

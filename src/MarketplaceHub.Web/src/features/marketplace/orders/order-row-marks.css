@@ -14,9 +14,9 @@
 /* An order with a product line that could not be read: the danger colour, as no invoice is issued for it. */
 .rr-omark-unreadable { color: var(--rv-color-danger, #d64545); }
 .rr-omark[data-tip]:hover::after,
-.rr-omark[data-tip]:focus::after { content: attr(data-tip); position: absolute; z-index: 70; bottom: calc(100% + 6px); left: 50%; width: max-content; max-width: 240px; padding: 6px 10px; color: var(--rr-ink); background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 7px; box-shadow: var(--rv-shadow-popover, 0 8px 24px rgb(0 0 0 / 18%)); font-size: 12px; font-weight: 500; line-height: 1.4; text-align: left; transform: translateX(-50%); white-space: nowrap; pointer-events: none; }
+.rr-omark[data-tip]:focus-visible::after { content: attr(data-tip); position: absolute; z-index: 70; bottom: calc(100% + 6px); left: 50%; width: max-content; max-width: 240px; padding: 6px 10px; color: var(--rr-ink); background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 7px; box-shadow: var(--rv-shadow-popover, 0 8px 24px rgb(0 0 0 / 18%)); font-size: 12px; font-weight: 500; line-height: 1.4; text-align: left; transform: translateX(-50%); white-space: nowrap; pointer-events: none; }
 /* the first row's tip opens downwards: the table panel clips what rises above its header */
-tbody > tr:first-child .rr-omark[data-tip]:is(:hover, :focus)::after { top: calc(100% + 6px); bottom: auto; }
+tbody > tr:first-child .rr-omark[data-tip]:is(:hover, :focus-visible)::after { top: calc(100% + 6px); bottom: auto; }
 /* a narrow order column moves the marks under the number instead of letting them run into the next column */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ordercell .rr-on-no:has(> .rr-omarks) { flex-wrap: wrap; }
 /* The buyer kind tag (Bireysel / Kurumsal / Kurumsal · Vergi No Yok) beside the buyer's name: a compact 20 px chip;
