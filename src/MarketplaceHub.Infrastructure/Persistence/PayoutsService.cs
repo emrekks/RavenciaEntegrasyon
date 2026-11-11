@@ -338,8 +338,8 @@ internal static class PayoutBuilder
             var text = TrendyolFinanceCategorizer.Fold(row.TransactionType);
             if (text.Contains("odendi", StringComparison.Ordinal) || text.Contains("odeme yapildi", StringComparison.Ordinal) || text.Contains("paid", StringComparison.Ordinal)) return Paid;
             if (text.Contains("bekl", StringComparison.Ordinal) || text.Contains("waiting", StringComparison.Ordinal)) return Expected;
-            // Otherwise its remittance day (havale tarihi, stored as the payment day) tells: past, n11 sent the money.
-            return row.PaymentDate is { } remitted && Day(remitted) < today ? Paid : Expected;
+            // Otherwise its payment day tells: past, n11 sent the money.
+            return DueDay(row) is { } paid && paid < today ? Paid : Expected;
         }
         // Hepsiburada says it: Paid, or WillBePaid (expected until its due day, then overdue).
         if (row.Source == HepsiburadaFinanceSyncJobHandler.Source && string.Equals(row.TransactionSubType, "Paid", StringComparison.OrdinalIgnoreCase)) return Paid;
@@ -348,8 +348,13 @@ internal static class PayoutBuilder
     }
 
     public static PayoutLineView Line(PayoutRow row, DateOnly today) =>
-        new(row.ExternalId, row.ConnectionId, row.PlatformCode, row.TransactionType, row.Category, row.TransactionDate, row.PaymentDate is { } due ? Day(due) : null,
+        new(row.ExternalId, row.ConnectionId, row.PlatformCode, row.TransactionType, row.Category, row.TransactionDate, DueDay(row),
             row.OrderNumber, row.InvoiceNumber, row.Country, row.RegionOverride ?? Region(row.PlatformCode, row.Country, row.Affiliate), row.Credit - row.Debt, Commission(row), Net(row), Status(row, today), row.PaymentOrderId, row.Barcode);
+
+    // The day the money is due. n11's API gives the remittance day (havale tarihi, stored as the payment day); its
+    // seller panel names the next day as the payment day (remittanceDate 2026-11-11, panel "Ödeme Tarihi 12 Kasım").
+    internal static DateOnly? DueDay(PayoutRow row) => row.PaymentDate is not { } due ? null
+        : row.Source == N11SettlementSyncJobHandler.Source ? Day(due).AddDays(1) : Day(due);
 
     // The record's commission in lira. n11 sends a rate, not an amount: its line's commission is worked out from it
     // (N11SettlementSyncJobHandler.Commission; a row stored before 5 Nov 2026 holds the rate in CommissionAmount).

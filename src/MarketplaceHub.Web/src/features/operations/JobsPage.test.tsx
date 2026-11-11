@@ -212,7 +212,7 @@ describe('JobsPage cursor paging', () => {
     expect(container.textContent).toContain('Toplam 3 kayıt')
   })
 
-  it('sends the status chip and the tab job types to the server with every page', async () => {
+  it('sends the status chip to the server, and a new category tab starts with the filters cleared (owner, 11 Nov 2026)', async () => {
     await renderPage()
 
     await act(async () => { container.querySelector<HTMLElement>('.jobs-reference-status-summary .error')!.click() })
@@ -223,11 +223,13 @@ describe('JobsPage cursor paging', () => {
 
     await act(async () => { Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]')).find(tab => tab.textContent?.includes('Sipariş/Kargo'))!.click() })
     await settle()
-    const jobTypes = pageRequests().at(-1)!.get('jobTypes')!.split(',')
+    const tabRequest = pageRequests().at(-1)!
+    const jobTypes = tabRequest.get('jobTypes')!.split(',')
     expect(jobTypes).toContain('TRENDYOL_ORDER_SYNC')
     expect(jobTypes).toContain('SHIPMENT_ACTION')
     expect(jobTypes).not.toContain('PRICE_INVENTORY_SYNC')
-    expect(currentSearch).toBe('?durum=hata&kategori=siparis')
+    expect(tabRequest.get('status')).toBeNull()
+    expect(currentSearch).toBe('?kategori=siparis')
   })
 
   it('keeps the loaded pages when a count refresh brings a new job type (G22)', async () => {
