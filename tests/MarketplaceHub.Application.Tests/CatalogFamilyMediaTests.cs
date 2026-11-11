@@ -174,4 +174,44 @@ public sealed class CatalogFamilyMediaTests
         Assert.Empty(galleries[2].MediaUrls);
         Assert.Empty(galleries[2].VariantMediaUrls);
     }
+
+    // Owner, 12.11.2026 ("51 de 1. görsel yeşil ama kahve duruyor?"): the model's front picture in the products list is
+    // the first picture of the family gallery as the editor shows it, whichever colour card is the newest.
+    [Fact]
+    public void FrontUrl_InACustomFamilyOrder_IsTheGallerysFirstPicture_NotTheNewestCardsOwn()
+    {
+        var kahve = Guid.Parse("00000000-0000-0000-0000-000000000009");
+        // The family reorder numbers every product-level row by its rank: Haki's pictures first, the size chart last.
+        CatalogFamilyMedia.Row[] rows =
+        [
+            new(Guid.NewGuid(), Haki, null, 0, "https://cdn.dsmcdn.com/haki-1.jpg"),
+            new(Guid.NewGuid(), Haki, null, 83, "https://cdn.dsmcdn.com/haki-2.jpg"),
+            new(Guid.NewGuid(), Bordo, null, 166, "https://cdn.dsmcdn.com/bordo-1.jpg"),
+            new(Guid.NewGuid(), kahve, null, 249, "https://cdn.dsmcdn.com/kahve-1.jpg"),
+            new(Guid.NewGuid(), kahve, Guid.NewGuid(), 0, "https://cdn.dsmcdn.com/kahve-1.jpg"),
+            new(Guid.NewGuid(), Haki, null, 1743, "https://cdn.dsmcdn.com/beden-tablosu.jpg"),
+        ];
+        Assert.Equal("https://cdn.dsmcdn.com/haki-1.jpg", CatalogFamilyMedia.FrontUrl(rows, [Bordo, Haki, kahve], customOrder: true, ["https://cdn.dsmcdn.com/beden-tablosu.jpg"]));
+    }
+
+    [Fact]
+    public void FrontUrl_NeverIsTheSizeChart_AndFollowsTheDefaultCardOrderWithoutACustomOrder()
+    {
+        const string chart = "https://cdn.dsmcdn.com/beden-tablosu.jpg";
+        CatalogFamilyMedia.Row[] rows =
+        [
+            // A drag put the chart in front of the strip: it still is not the front picture.
+            new(Guid.NewGuid(), Haki, null, 0, chart),
+            new(Guid.NewGuid(), Haki, null, 1, "https://cdn.dsmcdn.com/haki-1.jpg"),
+            new(Guid.NewGuid(), Bordo, null, 0, "https://cdn.dsmcdn.com/bordo-1.jpg"),
+        ];
+        // Without a custom order the strip goes card by card in the family's card order (oldest first).
+        Assert.Equal("https://cdn.dsmcdn.com/bordo-1.jpg", CatalogFamilyMedia.FrontUrl(rows, [Bordo, Haki], customOrder: false, [chart]));
+        Assert.Equal("https://cdn.dsmcdn.com/haki-1.jpg", CatalogFamilyMedia.FrontUrl(rows, [Haki, Bordo], customOrder: false, [chart]));
+        // A custom order reads the saved numbers alone (rows of one number in card id order), not the card order.
+        Assert.Equal("https://cdn.dsmcdn.com/bordo-1.jpg", CatalogFamilyMedia.FrontUrl(rows, [Haki, Bordo], customOrder: true, [chart]));
+        // A family holding only its size chart has no front picture (the list falls back to a card's own).
+        Assert.Null(CatalogFamilyMedia.FrontUrl([new(Guid.NewGuid(), Haki, null, 0, chart)], [Haki], customOrder: false, [chart]));
+        Assert.Null(CatalogFamilyMedia.FrontUrl([], [Haki], customOrder: false, []));
+    }
 }

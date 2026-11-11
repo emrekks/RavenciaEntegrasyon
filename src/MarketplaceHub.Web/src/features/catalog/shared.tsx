@@ -67,6 +67,9 @@ export type Product = Versioned & {
   familyGalleries?: Array<{ productId: string; mediaUrls: string[]; variantMediaUrls: string[]; sizeChartUrl: string | null }> | null
   // The model-row fields other colour cards hold differently from this one, with their colours.
   familyFieldDifferences?: Array<{ field: string; colors: string[] }> | null
+  // The products list: the model's front picture, the family gallery's first picture as the editor shows it (never the
+  // size chart), the same on every card of the model. A colour card's own front picture stays primaryImageUrl.
+  familyImageUrl?: string | null
   categoryPath?: string | null; variants: Variant[]; primaryImageUrl: string | null; totalStock: number; startingPrice: number | null; currency: string; modelCode: string | null; activePlatforms: string[] | null; familyMediaUrls?: string[]
   familyMediaItems?: Array<{ url: string; mediaIds: string[]; sourceProductTitles: string[] }>; familyOrderedMediaUrls?: string[]; hasCustomMediaOrder?: boolean
   platformStatuses?: ProductPlatformStatus[]

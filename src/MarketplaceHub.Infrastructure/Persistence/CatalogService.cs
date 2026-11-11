@@ -504,7 +504,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var fullProducts = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && pageProductIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         var products = pageProductIds.Where(fullProducts.ContainsKey).Select(productId => fullProducts[productId]).ToList();
         var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && pageProductIds.Contains(x.ProductId)).ToListAsync(cancellationToken);
-        var views = await BuildProductViewsAsync(tenantId, products, variants, cancellationToken, listShape: true);
+        var views = await WithFamilyImagesAsync(tenantId, await BuildProductViewsAsync(tenantId, products, variants, cancellationToken, listShape: true), cancellationToken);
         var lastFamily = pageFamilies.LastOrDefault();
         var hasMore = lastFamily is not null && families.Any(x => x.Primary.CreatedAt < lastFamily.Primary.CreatedAt || x.Primary.CreatedAt == lastFamily.Primary.CreatedAt && x.Primary.Id.CompareTo(lastFamily.Primary.Id) < 0);
         return new(views, hasMore ? cursors.EncodeProduct(lastFamily!.Primary.CreatedAt, lastFamily.Primary.Id) : null, hasMore, totalCount);
@@ -546,7 +546,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var fullProducts = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && pageProductIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         var products = pageProductIds.Where(fullProducts.ContainsKey).Select(productId => fullProducts[productId]).ToList();
         var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && pageProductIds.Contains(x.ProductId)).ToListAsync(cancellationToken);
-        var views = await BuildProductViewsAsync(tenantId, products, variants, cancellationToken, listShape: true);
+        var views = await WithFamilyImagesAsync(tenantId, await BuildProductViewsAsync(tenantId, products, variants, cancellationToken, listShape: true), cancellationToken);
         var hasMore = pageItems.Count > 0 && catalogSort.Compare(ordered[^1].Key, pageItems[^1].Key) > 0;
         return new(views, hasMore ? cursors.EncodeProductSort(catalogSort.Value, pageItems[^1].Key) : null, hasMore, totalCount);
     }

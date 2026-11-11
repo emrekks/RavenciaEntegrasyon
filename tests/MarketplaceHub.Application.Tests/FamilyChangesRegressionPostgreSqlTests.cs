@@ -239,6 +239,47 @@ public sealed class FamilyChangesRegressionPostgreSqlTests(PostgreSqlTenantIsola
         Assert.Equal(Url("siyah-1"), page.Items.Single(item => item.Id == seed.Cards["Siyah"].Id).PrimaryImageUrl);
     }
 
+    // Owner, 12.11.2026 ("51 de 1. görsel yeşil ama kahve duruyor?"): live MZ051BYC's family gallery starts with Haki
+    // (a family reorder put Haki's pictures first) while its newest card, the one the list's model row stands for, is
+    // Kahverengi. The model row's picture is the gallery's first picture as the editor shows it, on every card of the
+    // family; each colour card keeps its own front picture.
+    [PostgreSqlFact]
+    public async Task TheProductList_ModelRowShowsTheFamilyGallerysFirstPicture_NotTheNewestCardsOwn()
+    {
+        var seed = await SeedAsync(live: false, siyahGalleryHoldsBordo: false);
+        await using (var db = fixture.CreateContext())
+        {
+            var familyIds = seed.Cards.Values.Select(card => card.Id).ToArray();
+            var rows = await db.ProductMedia.Where(x => x.TenantId == seed.Tenant.Id && familyIds.Contains(x.ProductId) && x.VariantId == null).ToListAsync();
+            var haki = seed.Cards["Haki"].Id;
+            var cardRank = Colours.Select((colour, index) => (seed.Cards[colour.Colour].Id, index)).ToDictionary(x => x.Id, x => x.index);
+            var rank = 0;
+            foreach (var row in rows.OrderBy(x => x.ProductId == haki ? 0 : 1).ThenBy(x => cardRank[x.ProductId]).ThenBy(x => x.SortOrder))
+                row.SortOrder = rank++ * 83;
+            await db.SaveChangesAsync();
+            var kahve = seed.Cards["Kahverengi"].Id;
+            await db.Products.Where(x => x.Id == kahve).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.CreatedAt, DateTimeOffset.UtcNow.AddHours(1)));
+        }
+        await using var read = fixture.CreateContext();
+        var catalog = Catalog(read);
+        var page = await catalog.ListProductsAsync(seed.Tenant.Id, 100, null, null, null, null, null, null, CancellationToken.None);
+        var family = page.Items.Where(item => seed.Cards.Values.Any(card => card.Id == item.Id)).ToList();
+        Assert.Equal(seed.Cards["Kahverengi"].Id, family[0].Id);
+        Assert.All(family, card => Assert.Equal(Url("haki-1"), card.FamilyImageUrl));
+        foreach (var (colour, key, _, _) in Colours)
+            Assert.Equal(Url($"{key}-1"), family.Single(item => item.Id == seed.Cards[colour].Id).PrimaryImageUrl);
+        // The editor's gallery starts with the same picture, whichever colour row opens it.
+        var editor = await catalog.GetProductAsync(seed.Tenant.Id, seed.Cards["Kahverengi"].Id, CancellationToken.None);
+        Assert.Equal(Url("haki-1"), (editor.Value!.FamilyOrderedMediaUrls ?? editor.Value.FamilyMediaUrls!)[0]);
+        // The single-colour card's model picture is its own first picture.
+        Assert.Equal(Url("ryp-siyah-1"), page.Items.Single(item => item.Id == seed.Single.Id).FamilyImageUrl);
+        // The Düşük Stok window reads the same list: a filtered page still shows the whole family's gallery front.
+        var filtered = await catalog.ListProductsAsync(seed.Tenant.Id, 100, null, null, "Kahverengi", null, null, null, CancellationToken.None);
+        var filteredFamily = filtered.Items.Where(item => seed.Cards.Values.Any(card => card.Id == item.Id)).ToList();
+        Assert.NotEmpty(filteredFamily);
+        Assert.All(filteredFamily, card => Assert.Equal(Url("haki-1"), card.FamilyImageUrl));
+    }
+
     // Live MZ051BYC today (read-only dry run, 12.11.2026): the Siyah card's gallery holds every colour's pictures in
     // front of its own. Hepsiburada, N11 and Pazarama send Siyah's sizes Siyah's pictures; PttAVM's one family product
     // takes each card's pictures through the same rule, so Siyah's pictures go there too.
