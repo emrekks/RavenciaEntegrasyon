@@ -127,7 +127,7 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
     }
 
     // The whole model family as one PTT AVM product. The lead card (the family's first) gives the name and the
-    // description, as for Shopify; every card's first images come first, then the rest, up to eight per colour card.
+    // description, as for Shopify; every colour's first image comes first, then the rest, up to eight per colour.
     private async Task<ServiceResult<ProductPublicationDraft>> BuildFamilyAsync(Guid tenantId, Guid productId, Guid connectionId, Product product, ChannelListingProfile profile, string externalCategoryId,
         IReadOnlyList<Product> members, IReadOnlyList<ProductVariant> familyVariants, CancellationToken cancellationToken)
     {
@@ -176,16 +176,42 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
                            join asset in db.FileAssets.AsNoTracking() on productMedia.FileAssetId equals asset.Id
                            where productMedia.TenantId == tenantId && memberIds.Contains(productMedia.ProductId) && productMedia.Status == "ACTIVE" && asset.TenantId == tenantId && asset.Status == "ACTIVE" && asset.ArchivedAt == null
                            orderby productMedia.SortOrder, productMedia.Id
-                           select new { productMedia.ProductId, asset.Id, asset.Classification, asset.RelativePath }).ToListAsync(cancellationToken);
-        if (media.Where(x => x.Classification == "PRODUCT_MEDIA_URL").Any(x => !ProductPublicationComposer.IsPublicHttpsUrl(x.RelativePath.Trim())))
+                           select new { productMedia.ProductId, productMedia.VariantId, asset.Id, asset.Classification, asset.RelativePath }).ToListAsync(cancellationToken);
+        // Each colour's images are the pictures its variants go with on the variant-level marketplaces
+        // (PublicationVariantMedia, assignment rule): every variant's list in variant order, once each, the size chart
+        // last. A card's gallery holding other colours' pictures (live MZ051BYC Siyah) sends none of them; a card
+        // holding several colours (live MZ050YNC, RYP006) gives each colour its own list.
+        var mediaByMember = media.GroupBy(item => item.ProductId).ToDictionary(group => group.Key, group => group.ToList());
+        var variantsByMember = familyVariants.GroupBy(x => x.ProductId).ToDictionary(group => group.Key, group => group.ToList());
+        var coloursByMember = await PublicationColours.LoadManyAsync(db, tenantId,
+            [.. members.Select(member => (member, (IReadOnlyCollection<ProductVariant>)(variantsByMember.GetValueOrDefault(member.Id) ?? [])))], cancellationToken);
+        var chartByMember = (await db.ProductSizeCharts.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && memberIds.Contains(x.ProductId) && x.FileAssetId != null)
+            .Select(x => new { x.ProductId, AssetId = x.FileAssetId!.Value })
+            .ToListAsync(cancellationToken))
+            .GroupBy(x => x.ProductId).ToDictionary(group => group.Key, group => group.First().AssetId);
+        var colourOf = rows.ToDictionary(row => row.VariantId, row => row.Color!.Trim());
+        var publishedByColour = familyVariants
+            .GroupBy(variant => (variant.ProductId, Colour: colourOf[variant.Id].ToUpperInvariant()))
+            .Select(group => (group.Key.ProductId, Pictures: PublicationVariantMedia.ForCard(mediaByMember.GetValueOrDefault(group.Key.ProductId) ?? [], group.Select(variant => variant.Id),
+                x => x.VariantId, x => x.Id, chartByMember.TryGetValue(group.Key.ProductId, out var chartId) ? chartId : null, coloursByMember[group.Key.ProductId])))
+            .ToList();
+        if (publishedByColour.SelectMany(group => group.Pictures).Where(x => x.Classification == "PRODUCT_MEDIA_URL").Any(x => !ProductPublicationComposer.IsPublicHttpsUrl(x.RelativePath.Trim())))
             return Fail("PRODUCT_MEDIA_PUBLIC_URL_INVALID", "Model ailesinin görsel adresleri geçerli herkese açık HTTPS adresi olmalıdır.");
-        var imagesByMember = members.Select(member => ProductPublicationComposer.SelectPublicationImageUrls(media
-            .Where(item => item.ProductId == member.Id)
-            .Select(item => item.Classification == "PRODUCT_MEDIA_URL" ? item.RelativePath.Trim() : ProductPublicationComposer.BuildPublicProductMediaUrl(configuration["Marketplace:PublicBaseUrl"], item.Id))
-            .Where(url => !string.IsNullOrWhiteSpace(url))
-            .Select(url => url!))).ToList();
-        // PTT AVM's images are the product's: up to eight per colour card, one per colour first, then each card's others.
-        var imageUrls = PttAvmProductPayloadRules.FamilyImages(imagesByMember, PttAvmProductPayloadRules.ImageLimit(plan.Variants));
+        var chartUrls = new List<string>();
+        var imagesByColour = publishedByColour.Select(group =>
+        {
+            var pictureUrls = group.Pictures
+                .Select(item => (item.Id, Url: item.Classification == "PRODUCT_MEDIA_URL" ? item.RelativePath.Trim() : ProductPublicationComposer.BuildPublicProductMediaUrl(configuration["Marketplace:PublicBaseUrl"], item.Id)))
+                .ToList();
+            var chartUrl = PublicationVariantMedia.SizeChartUrl(pictureUrls, chartByMember.TryGetValue(group.ProductId, out var chartId) ? chartId : null);
+            if (!string.IsNullOrWhiteSpace(chartUrl)) chartUrls.Add(chartUrl);
+            return ProductPublicationComposer.SelectPublicationImageUrls(pictureUrls.Select(item => item.Url), chartUrl);
+        }).ToList();
+        // PTT AVM's images are the product's: up to eight per colour, one per colour first, then each colour's others,
+        // the size chart last.
+        var imageUrls = SizeCharts.SizeChartPlacement.TakeKeepingCharts(
+            PttAvmProductPayloadRules.FamilyImages(imagesByColour, PttAvmProductPayloadRules.ImageLimit(plan.Variants)), int.MaxValue, chartUrls);
         if (imageUrls.Count == 0) return Fail("PRODUCT_MEDIA_PUBLIC_URL_REQUIRED", "PttAVM'ye model ailesini göndermek için en az bir herkese açık HTTPS ürün görseli gerekir.");
 
         var draft = new PttAvmProductPayloadRules.ProductDraft(plan.ParentBarcode, title, description, externalCategoryId, plan.ParentBarcode, plan.Price, plan.VatRate,

@@ -100,10 +100,9 @@ public sealed class FamilyChangesRegressionPostgreSqlTests(PostgreSqlTenantIsola
             Assert.Equal(seed.Sizes.Values.SelectMany(sizes => sizes).Select(variant => variant.Barcode!).Order(StringComparer.Ordinal), variants.Select(variant => variant!["barcode"]!.GetValue<string>()).Order(StringComparer.Ordinal));
             var images = ptt["images"]!.AsArray().Select(image => image!.GetValue<string>()).ToList();
             // Each card's first picture first. The Siyah card's gallery still holds Bordo's pictures in front (live, before
-            // its first Kaydet): PttAVM's family images are taken card by card from every row of the card, without the
-            // assignment rule, so Siyah's lead is bordo-1 or siyah-1 (rows of one SortOrder fall in id order); Siyah's own
-            // pictures are in either way.
-            string[] leads = ["bordo-1", "haki-1", "gri-1", "lacivert-1", "kahve-1", "murdum-1"];
+            // its first Kaydet): PttAVM's family images are the pictures each card's variants go with (assignment rule),
+            // so Siyah's lead is siyah-1, as on the variant-level marketplaces.
+            string[] leads = ["bordo-1", "haki-1", "gri-1", "siyah-1", "lacivert-1", "kahve-1", "murdum-1"];
             Assert.All(leads, lead => Assert.Contains(Url(lead), images.Take(Colours.Length)));
             Assert.All(Pictures("siyah", 3), picture => Assert.Contains(Url(picture), images));
             Assert.Equal(images.Count, images.Distinct(StringComparer.OrdinalIgnoreCase).Count());
@@ -229,9 +228,9 @@ public sealed class FamilyChangesRegressionPostgreSqlTests(PostgreSqlTenantIsola
         Assert.Equal(Url("ryp-siyah-1"), page.Items.Single(item => item.Id == seed.Single.Id).PrimaryImageUrl);
     }
 
-    // The live Siyah shape before its first Kaydet (its gallery holds Bordo's pictures first): the payloads already leave
-    // Bordo's pictures out (assignment rule), but the list's front picture still takes the gallery's first one.
-    [PostgreSqlFact(Skip = "Known gap, not fixed here (src is another session's): CatalogService list front picture (CatalogService.cs:2831) takes the card's first gallery picture without the assignment rule, so a Siyah card whose gallery holds Bordo's pictures first shows bordo-1 while every marketplace gets siyah-1. Clears once the editor's Kaydet rewrites that gallery.")]
+    // The live Siyah shape before its first Kaydet (its gallery holds Bordo's pictures first): the payloads leave Bordo's
+    // pictures out (assignment rule), and so does the list's front picture (the first picture the card's variants go with).
+    [PostgreSqlFact]
     public async Task TheProductList_ShowsSiyahsOwnPicture_EvenWhileItsGalleryHoldsAnotherColoursPictures()
     {
         var seed = await SeedAsync(live: false);
@@ -241,9 +240,9 @@ public sealed class FamilyChangesRegressionPostgreSqlTests(PostgreSqlTenantIsola
     }
 
     // Live MZ051BYC today (read-only dry run, 12.11.2026): the Siyah card's gallery holds every colour's pictures in
-    // front of its own. Hepsiburada, N11 and Pazarama already send Siyah's sizes Siyah's pictures; PttAVM's one family
-    // product takes each card's first eight rows without the assignment rule, so it carries no Siyah picture at all.
-    [PostgreSqlFact(Skip = "Known gap, not fixed here (src is another session's): PttAvmProductPublicationComposer.BuildFamilyAsync (PttAvmProductPublicationComposer.cs:171-176, imagesByMember) takes each colour card's first eight media rows, gallery included, without PublicationVariantMedia's assignment rule; a Siyah card whose gallery holds other colours' pictures first sends none of Siyah's.")]
+    // front of its own. Hepsiburada, N11 and Pazarama send Siyah's sizes Siyah's pictures; PttAVM's one family product
+    // takes each card's pictures through the same rule, so Siyah's pictures go there too.
+    [PostgreSqlFact]
     public async Task PttAvmFamilyImages_CarrySiyahsPictures_EvenWhileItsGalleryHoldsEveryColour()
     {
         var seed = await SeedAsync(live: false, siyahGalleryHoldsEveryColour: true);
