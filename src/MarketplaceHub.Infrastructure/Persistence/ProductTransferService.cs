@@ -104,7 +104,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
                 Rounded(row.PanelSalePrice),
                 Rounded(row.PanelListPrice),
                 row.VatRate is decimal vat ? "%" + vat.ToString("0.##", CultureInfo.GetCultureInfo("tr-TR")) : null,
-                stockByVariant.TryGetValue(row.Id, out var onHand) ? onHand : null,
+                stockByVariant.TryGetValue(row.Id, out var onHand) ? WholeStock(onHand) : null,
                 Rounded(row.CostPrice),
                 Rounded(row.Desi)
             };
@@ -542,5 +542,8 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
     private static ServiceResult<ProductTransferApplyResult> Invalid(string code, string message) => ServiceResult<ProductTransferApplyResult>.Fail(code, message, 400);
     private static ServiceResult<ProductTransferApplyResult> Stale(string message) => ServiceResult<ProductTransferApplyResult>.Fail("PRODUCT_TRANSFER_STALE", message, 409);
     private static string? NullIfEmpty(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
+    // Stock is a count: a whole number goes out as an integer cell ("2", not "2,00").
+    private static object WholeStock(decimal onHand) => decimal.Truncate(onHand) == onHand ? (object)decimal.ToInt64(onHand) : onHand;
+
     private static decimal? Rounded(decimal? value) => value is decimal number ? Math.Round(number, 2, MidpointRounding.AwayFromZero) : null;
 }
