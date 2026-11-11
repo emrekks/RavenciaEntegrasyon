@@ -58,6 +58,10 @@ UTC, ISO with Z.
 - Refund from `displayFinancialStatus`: REFUNDED, PARTIALLY_REFUNDED, NOT_REFUNDED.
 
 ## Quirks
+- One product per model family, every colour and size a variant: Yayınla sends the family's `productSet` again and a new
+  colour (RYP006 Mürdüm, 11.11.2026) is added to the existing product as new variants. `productSet` list fields create
+  new entries, update existing ones and delete the ones left out, so the whole variant list always goes. Source:
+  offline `shopify-admin-graphql-referans-son.md` ~48148 (productSet).
 - Since 2026-07 `Order.fulfillments` is a plain list.
 - A line item without `id`, quantity or `originalUnitPriceSet` is counted on its package (unreadable line), never
   stops the page; an order that still cannot be mapped is skipped with an issue and read again by id; a line without

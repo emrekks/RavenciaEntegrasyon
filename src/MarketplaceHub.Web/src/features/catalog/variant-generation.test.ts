@@ -15,8 +15,8 @@ describe('variant generation defaults', () => {
     const first = buildVariantGenerationDefaults({ modelCode: 'mz49bc', sequence: 1, automaticBarcodes: true, fallbackSalePrice: 549.9, fallbackListPrice: 699.9 })
     const second = buildVariantGenerationDefaults({ modelCode: 'mz49bc', sequence: 2, automaticBarcodes: true, fallbackSalePrice: 549.9, fallbackListPrice: 699.9 })
 
-    expect(first).toEqual({ sku: 'MZ49BC-01', barcode: 'MZ49BC-01', salePrice: 549.9, listPrice: 699.9 })
-    expect(second).toEqual({ sku: 'MZ49BC-02', barcode: 'MZ49BC-02', salePrice: 549.9, listPrice: 699.9 })
+    expect(first).toEqual({ sku: 'MZ49BC-01', barcode: 'MZ49BC-01', salePrice: 549.9, listPrice: 699.9, stock: 0 })
+    expect(second).toEqual({ sku: 'MZ49BC-02', barcode: 'MZ49BC-02', salePrice: 549.9, listPrice: 699.9, stock: 0 })
   })
 
   it('keeps the price defaults and empty codes when automatic barcodes are off', () => {
@@ -25,7 +25,16 @@ describe('variant generation defaults', () => {
       barcode: '',
       salePrice: 549.9,
       listPrice: 549.9,
+      stock: 0,
     })
+  })
+
+  // Owner, 11.11.2026: 2XL rows added to the RYP003T family came with stock 3 (the first variant's stock, which the editor
+  // keeps in the card's Stok field); a new row starts with no stock, whatever the card or another row holds.
+  it('starts a new row with no stock, codes or not', () => {
+    for (const automaticBarcodes of [false, true]) {
+      expect(buildVariantGenerationDefaults({ modelCode: 'RYP003T', sequence: 24, automaticBarcodes, fallbackSalePrice: 0, fallbackListPrice: 0 })).toMatchObject({ stock: 0, salePrice: 0, listPrice: 0 })
+    }
   })
 
   it('keeps generated barcodes within the 40-character marketplace limit', () => {

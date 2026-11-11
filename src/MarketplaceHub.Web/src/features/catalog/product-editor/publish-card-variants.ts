@@ -40,44 +40,69 @@ export function publishCardVariantPresence(variantLinks?: { linked: number; tota
   }
 }
 
-type PlanRow = VariantRow & { color?: string | null }
+type PlanRow = VariantRow & { color?: string | null; sku?: string }
+
+/** One group of a card's variants not on the marketplace yet. existing-colour: new sizes of a colour the marketplace
+ * holds (they join that colour's listing); new-colour: a colour it does not hold yet (Trendyol and Hepsiburada open it as
+ * a new colour listing under the model code, a one-product marketplace adds it to the product). */
+export type PublishVariantGroup = { kind: 'existing-colour' | 'new-colour'; colour: string | null; variants: number; skus: string[] }
 
 export type PublishCardPlan =
   | { send: false; reason: 'matched' }
   | { send: false; reason: 'colour-mismatch'; message: string }
-  /** variants: how many the job carries; addsToListing: the card is on the marketplace and only its new variants go. */
-  | { send: true; variants: number; addsToListing: boolean; hasMissingVariant: boolean }
+  /** variants: how many the job carries; addsToListing: the card is on the marketplace and only its new variants go;
+   * liveVariants: those already there (left as they are); groups: the variants that go, by colour. */
+  | { send: true; variants: number; addsToListing: boolean; hasMissingVariant: boolean; liveVariants: number; groups: PublishVariantGroup[] }
+
+/** colourCardsInFamily: the model is split into several panel cards (one per colour), so a new colour belongs on its own
+ * card; familyIsOneProduct: the marketplace holds the whole family as one product with variants (Shopify, n11,
+ * Pazarama, PttAVM), so a new colour is a new variant of it. */
+export type PublishCardPlanOptions = { colourCardsInFamily?: boolean; familyIsOneProduct?: boolean }
 
 const colourKey = (colour: string | null | undefined) => colour?.trim().toLocaleLowerCase('tr-TR') ?? ''
 
-// What Yayınla does with one colour card on one marketplace. A card whose every variant is there is left as it is; a
-// card partly there sends only the variants not there yet (a size added since, or one the marketplace lost), which the
-// server adds to the listing under the card's model code. Live 2026-11-05 (MZ021Y-CD): a card with any matched variant
-// was skipped whole, so 21 new variants never went. A variant of another colour saved into a matched card is not sent
-// with it: it would go out under this card's title and images (on Trendyol as a new colour content).
-export function publishCardPlan(rows: ReadonlyArray<PlanRow>, connectionId: string): PublishCardPlan {
+// What Yayınla does with one colour card on one marketplace (owner, 11.11.2026: "ayrımları yapabilsin"). Every variant
+// is sorted: already there = left as it is; a new size of a colour the marketplace holds = added to that colour's
+// listing; a colour it does not hold yet = opened as a new colour listing under the same model code (Trendyol: its own
+// content, its own pictures with the size chart last and its own colour attribute). A first send goes whole.
+// Live 2026-11-05 (MZ021Y-CD): a card with any matched variant was skipped whole, so 21 new variants never went.
+// Live 2026-11-11 (RYP006): three Mürdüm sizes beside six live colours on one panel card were refused as "another
+// colour"; on one panel card that holds several colours they are a new colour of the model and go.
+// Only a family split into one panel card per colour still refuses a variant of another colour saved into a matched
+// card (MZ021Y-CD, 5.11.2026: Bordo, Haki … sizes in the Mavi card): it belongs on its own colour card, never on this one.
+// A new-colour variant without pictures of its own is not refused here: the server leaves it out with its reason and
+// sends the others (PublicationUnsentVariants.NewColourVariantsWithoutPictures).
+export function publishCardPlan(rows: ReadonlyArray<PlanRow>, connectionId: string, options: PublishCardPlanOptions = {}): PublishCardPlan {
   const links = publishCardVariantLinks(rows, connectionId)
   const unsentCount = links.total - links.linked
   if (links.linked > 0 && unsentCount === 0) return { send: false, reason: 'matched' }
-  if (links.linked === 0) return { send: true, variants: links.total, addsToListing: false, hasMissingVariant: links.missing > 0 }
+  if (links.linked === 0) return { send: true, variants: links.total, addsToListing: false, hasMissingVariant: links.missing > 0, liveVariants: 0, groups: [] }
   const isPresent = (row: PlanRow) => {
     const status = row.platformStatuses?.find(item => item.connectionId === connectionId)
     return Boolean(status?.isMatched && !status.isMissing)
   }
   const cardColours = new Set(rows.filter(isPresent).map(row => colourKey(row.color)).filter(Boolean))
-  const otherColours = [...new Map(rows
-    .filter(row => !isPresent(row) && colourKey(row.color) && !cardColours.has(colourKey(row.color)))
-    .map(row => [colourKey(row.color), row.color!.trim()] as const)).values()]
-  if (cardColours.size > 0 && otherColours.length > 0) {
+  const groups = new Map<string, PublishVariantGroup>()
+  for (const row of rows.filter(row => !isPresent(row))) {
+    const key = colourKey(row.color)
+    const kind = key && cardColours.size > 0 && !cardColours.has(key) ? 'new-colour' : 'existing-colour'
+    const group = groups.get(`${kind}:${key}`) ?? { kind, colour: row.color?.trim() || null, variants: 0, skus: [] }
+    group.variants++
+    if (row.sku?.trim()) group.skus.push(row.sku.trim())
+    groups.set(`${kind}:${key}`, group)
+  }
+  const ordered = [...groups.values()].sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'existing-colour' ? -1 : 1))
+  const newColours = ordered.filter(group => group.kind === 'new-colour')
+  if (newColours.length > 0 && options.colourCardsInFamily && !options.familyIsOneProduct) {
     const cardColour = [...new Set(rows.filter(isPresent).map(row => row.color?.trim()).filter(Boolean))].join(', ')
-    const strays = rows.filter(row => !isPresent(row) && otherColours.some(colour => colourKey(colour) === colourKey(row.color))).length
+    const strays = newColours.reduce((sum, group) => sum + group.variants, 0)
     return {
       send: false,
       reason: 'colour-mismatch',
-      message: `Kart pazaryerinde ${cardColour} rengiyle eşleşmiş; eklenen ${unsentCount} varyanttan ${strays} tanesi başka renkte (${otherColours.join(', ')}). Bu kartla gönderilirlerse bu kartın adı ve görselleriyle açılırlar; kart gönderilmedi. Bu varyantları kendi renk kartlarına ekleyin.`
+      message: `Kart pazaryerinde ${cardColour} rengiyle eşleşmiş; eklenen ${unsentCount} varyanttan ${strays} tanesi başka renkte (${newColours.map(group => group.colour).join(', ')}). Bu kartla gönderilirlerse bu kartın adı ve görselleriyle açılırlar; kart gönderilmedi. Bu varyantları kendi renk kartlarına ekleyin.`
     }
   }
-  return { send: true, variants: unsentCount, addsToListing: true, hasMissingVariant: links.missing > 0 }
+  return { send: true, variants: unsentCount, addsToListing: true, hasMissingVariant: links.missing > 0, liveVariants: links.linked, groups: ordered }
 }
 
 type LinkedRow = { key: string; platformStatuses?: VariantPlatformStatus[] | null }

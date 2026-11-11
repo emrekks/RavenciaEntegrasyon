@@ -237,6 +237,9 @@ public sealed record BulkPublicationCommand(IReadOnlyList<Guid> ProductIds, IRea
 public sealed record BulkPublicationFailure(Guid ProductId, string ProductTitle, Guid ConnectionId, string Code, string Message);
 // Jobs: what was queued, so the panel can follow each job to its result (owner, 7 Nov 2026).
 public sealed record BulkPublicationJob(Guid ProductId, Guid ConnectionId, Guid JobId);
+/// <summary>A variant Yayınla left out of a send that adds to a card already on the marketplace, with its reason.</summary>
+public sealed record PublicationSkippedVariant(string Sku, string Code, string Message);
+public sealed record PublicationEnqueued(Guid JobId, IReadOnlyList<PublicationSkippedVariant> SkippedVariants);
 public sealed record BulkPublicationResult(int Queued, int Skipped, IReadOnlyList<BulkPublicationFailure> Failed, IReadOnlyList<BulkPublicationJob>? Jobs = null);
 public sealed record UpdateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<ProductAttributeCommand>? Attributes = null, IReadOnlyList<CreateVariantCommand>? VariantsToCreate = null, IReadOnlyList<UpdateVariantCommand>? VariantUpdates = null, string? Status = null, decimal? DefaultListPrice = null, decimal? DefaultSalePrice = null, IReadOnlyList<Guid>? VariantIdsToDelete = null, int? WarrantyMonths = null, Guid? TrendyolWebColorValueId = null, decimal? VatRate = null, string? VatInclusion = null, int? DeliveryDays = null, IReadOnlyList<Guid>? PlaceholderVariantIdsToDelete = null);
 // Teslimat Süresi on the product card: whole days, 1-30 (n11 takes at most 30); a new card starts at 1.
@@ -304,6 +307,8 @@ public interface ICatalogService
     Task<ServiceResult<ListingProfileView>> GetListingProfileAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken);
     Task<ServiceResult<ListingProfileView>> UpsertListingProfileAsync(Guid tenantId, Guid productId, Guid connectionId, long? expectedVersion, UpsertListingProfileCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueuePublicationAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
+    // The same send, with the variants it left out (a card already on the marketplace sends the variants that can go).
+    Task<ServiceResult<PublicationEnqueued>> EnqueuePublicationWithSkippedAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<BulkPublicationResult>> EnqueueBulkPublicationAsync(Guid tenantId, Guid userId, BulkPublicationCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueProductUpdateAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, IReadOnlyCollection<string>? fields = null);
     // The same update, with the notices the panel records in its notification center (a card value sent where the
