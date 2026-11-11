@@ -389,7 +389,9 @@ export function JobsPage({ me }: { me: Me }) {
   const listHidden = mainTab !== 'jobs'
   const setMainTab = (next: string) => setSearchParams(current => withJobsMainTab(current, next as JobsMainTab), { replace: true })
   const showPanelFeedback = (next: IntegrationFeedback) => setFeedback({ message: next.message, tone: next.kind === 'error' ? 'danger' : next.kind, context: { ...next.context, title: next.title ?? next.context?.title } })
-  const setCategory = (next: string) => updateView({ category: next as JobCategory })
+  // A category tab starts from a clean list (owner, 11 Nov 2026): the status counts, the card's fields and the platforms
+  // go back to their defaults, and the list to its first page.
+  const setCategory = (next: string) => setSearchParams(current => withPlatforms(writeJobsViewState(current, { category: next as JobCategory, direction: '', status: '', search: '', timeRange: '24h', chips: [], page: 1 }), []), { replace: true })
   const setStatus = (next: '' | JobStatus) => updateView({ status: next })
   const setDirection = (next: '' | JobDirection) => updateView({ direction: next })
   const setSearch = (next: string) => updateView({ search: next })
