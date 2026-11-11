@@ -472,3 +472,19 @@
   :root:root body .app-shell.stitch-shell main .commission-table.is-plan .commission-now-col .commission-sort { white-space: nowrap; }
   :root:root body .app-shell.stitch-shell main .commission-table.is-plan .commission-product-cell { gap: 12px; }
 }
+
+/* Owner, 11 Nov 2026: "hizalama düzelt". An opened model's variant rows start their text where the model's name starts
+   (cell padding + picture + the 12 px gap: 10 + 52 + 12 on the plan table, 10 + 64 + 12 on the promotion tables), a
+   solid tree line runs down the picture's middle with a short arm to each variant's text (the last one ends in an
+   "└"), and the size, code, cost and stock lines sit 3 px apart; the cell stays centred like Güncel Fiyat. */
+@media (min-width: 761px) {
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan { --commission-variant-inset: 86px; --commission-variant-trunk: 42px; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) { --commission-variant-inset: 74px; --commission-variant-trunk: 36px; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan tbody tr.is-variant > th[scope="row"] { position: relative; padding-left: var(--commission-variant-inset); vertical-align: middle; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan tbody tr.is-variant > th[scope="row"]::before { content: ''; position: absolute; top: 0; bottom: 0; left: var(--commission-variant-trunk); width: 0; border: 0; border-left: 1px solid var(--rv-color-border-strong); }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan tbody tr.is-variant:is(:last-child, :has(+ tr:not(.is-variant))) > th[scope="row"]::before { bottom: 50%; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan tbody tr.is-variant > th[scope="row"]::after { content: ''; position: absolute; top: 50%; left: var(--commission-variant-trunk); width: calc(var(--commission-variant-inset) - var(--commission-variant-trunk) - 8px); border-top: 1px solid var(--rv-color-border-strong); }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan tbody tr.is-variant .commission-variant-cell { display: grid; gap: 3px; min-width: 0; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan tbody tr.is-variant .commission-variant-cell > * { margin: 0; line-height: 17px; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan tbody tr.is-variant .commission-variant-cell > .commission-product { line-height: 18px; }
+}

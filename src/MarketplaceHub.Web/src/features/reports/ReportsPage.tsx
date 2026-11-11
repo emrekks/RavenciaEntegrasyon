@@ -779,6 +779,7 @@ type BridgeRow = { key: string; label: string; from: number; to: number; kind: '
 // platforms in a window.
 function ProfitBridge({ data, money, onMore }: { data: ReportSales; money: Money | null; onMore: OpenDetail }) {
   const [open, setOpen] = useState(false)
+  const [detail, setDetail] = useState<string | null>(null)
   const tip = useId()
   const more = <MoreButton title="Kâr Köprüsü" onClick={() => onMore('cost')} compact />
   if (!money) return <Card title="Kâr Köprüsü" className="reports-card-bridge" actions={more}>{() => <p className="reports-empty">Bu dönemde tutarı olan sipariş yok.</p>}</Card>
@@ -814,15 +815,24 @@ function ProfitBridge({ data, money, onMore }: { data: ReportSales; money: Money
       : `${resultSentence(result)}\nNet marj ${formatPercent(money.margin)}` })
   const low = Math.min(0, ...rows.flatMap(row => [row.from, row.to]))
   const span = Math.max(1, Math.max(money.total, ...rows.flatMap(row => [row.from, row.to])) - low)
+  // A deduction's breakdown for its window; the result opens the whole account (Kâr Hesabı's lines).
+  const details = new Map(rows.flatMap(row => {
+    const detail = row.kind === 'minus' ? bridgeDetail(data, row.key, row.to - row.from) : null
+    return detail ? [[row.key, detail] as const] : []
+  }))
+  const picked = rows.find(row => row.key === detail) ?? null
+  const pickedDetail = picked ? details.get(picked.key) ?? null : null
   return <Card title="Kâr Köprüsü" className="reports-card-bridge" actions={more}>
     {shown => <>
       <ol className="reports-bridge">{rows.map((row, index) => {
         const start = Math.min(row.from, row.to)
         const width = Math.abs(row.to - row.from) / span * 100
+        const opens = row.kind === 'end' || details.has(row.key)
         return <li key={row.key} className={`reports-tip-host is-${row.kind}${row.kind === 'end' && row.to < 0 ? ' is-negative' : ''}`}>
           <span className="reports-bridge-label">{row.key === 'sales'
             ? <><button type="button" onClick={() => setOpen(true)} aria-label="Satış tutarı: platformlara göre aç" aria-describedby={`${tip}-${row.key}`}>{row.label}<UiIcon name="chevronRight" size={14} /></button><TipMark /></>
-            : <button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-${row.key}`}>{`${row.kind === 'minus' ? (row.to < row.from ? '+ ' : '− ') : ''}${row.label}`}<TipMark /></button>}</span>
+            : <button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-${row.key}`} aria-haspopup={opens ? 'dialog' : undefined}
+              onClick={opens ? () => setDetail(row.key) : undefined}>{`${row.kind === 'minus' ? (row.to < row.from ? '+ ' : '− ') : ''}${row.label}`}<TipMark /></button>}</span>
           <span className="reports-bridge-track" aria-hidden="true"><i style={{ left: `${(start - low) / span * 100}%`, width: shown ? `${Math.max(0.5, width)}%` : '0%', transitionDelay: `${index * 80}ms` }} /></span>
           <b>{row.kind === 'minus' ? `${row.to < row.from ? '+' : '−'} ${formatTl(Math.abs(row.to - row.from))}` : signedTl(row.to)}</b>
           <span role="tooltip" id={`${tip}-${row.key}`} className="reports-hover-tip"><TipText title={row.label} text={row.note} /></span>
@@ -831,6 +841,12 @@ function ProfitBridge({ data, money, onMore }: { data: ReportSales; money: Money
       <EstimateGaps money={money} shown={shown} />
       {/* The platforms open over the page, so nothing under the card moves. */}
       <Modal open={open} onClose={() => setOpen(false)} className="reports-journey-modal" title="Satış Tutarı"><SalesDetail data={data} /></Modal>
+      {/* A row's breakdown: its short explanation under the title, the lines adding up to its figure. */}
+      <Modal open={picked !== null} onClose={() => setDetail(null)} className="reports-journey-modal reports-bridge-modal" title={picked?.label ?? ''}
+        description={picked ? picked.note.split('\n')[0] : undefined}>
+        {picked?.kind === 'end' ? <ProfitLedger data={data} money={money} />
+          : picked && pickedDetail ? <BridgeDetail detail={pickedDetail} total={picked.to - picked.from} /> : null}
+      </Modal>
     </>}
   </Card>
 }
@@ -853,6 +869,125 @@ function EstimateGaps({ money, shown }: { money: Money; shown: boolean }) {
     {gaps.lines.length > 0 && <div><dt>Düşülmeyen<small>Cari hesap okunmadı</small></dt><dd><span>{gaps.lines.join(', ')}</span></dd></div>}
     {gaps.commission && <div><dt>Komisyon<small>Düşülmedi</small></dt><dd><span>Bilinmiyor</span></dd></div>}
   </dl>
+}
+
+// A Kâr Köprüsü row's window (owner, 11 Nov 2026: "üstüne basınca detayları popupta açılmalıydı"): the row's figure
+// split by kind and, where the report carries it, by platform. Every list adds up to the row's figure to the kuruş: a
+// remainder is listed as Diğer with why, and a platform split that does not add up is left out rather than shown wrong.
+type BridgeItem = { key: string; label: string; value: number; note?: string; platform?: string }
+type BridgeGroup = { title: string; items: BridgeItem[] }
+type BridgeDetailView = { groups: BridgeGroup[]; facts: Array<{ label: string; value: string }> }
+const kurus = (value: number) => Math.round(value * 100) / 100
+const bridgeRemainder = (items: BridgeItem[], total: number) => kurus(total - items.reduce((sum, item) => sum + item.value, 0))
+// The items that are not zero; what they leave of the total (a kuruş or two of rounding) as Diğer, explained.
+function balanced(items: BridgeItem[], total: number, note: string): BridgeItem[] {
+  const shown = items.filter(item => kurus(item.value) !== 0)
+  const rest = bridgeRemainder(shown, total)
+  return rest === 0 ? shown : [...shown, { key: 'other', label: 'Diğer', value: rest, note }]
+}
+const roundingNote = 'Kalemler kuruşa ayrı ayrı yuvarlandığı için kalan yuvarlama farkı.'
+// By platform: only when the platforms' own figures (with the records tied to no order) add up to the total, give or take
+// a few kuruş of rounding; otherwise nothing, never a split that disagrees with the row.
+function byPlatform(values: Map<string, number>, apart: number, total: number): BridgeGroup | null {
+  const items: BridgeItem[] = [...values].filter(([, value]) => kurus(value) !== 0).sort((a, b) => b[1] - a[1])
+    .map(([code, value]) => ({ key: code, label: platformName(code), value, platform: code }))
+  if (apart !== 0) items.push({ key: 'apart', label: 'Siparişe Bağlı Olmayan Kayıtlar', value: apart, note: 'Trendyol cari hesabında dönemin bir siparişine bağlanmayan kayıtlar.' })
+  if (!items.length || Math.abs(bridgeRemainder(items, total)) > 0.05) return null
+  return { title: 'Platformlara Göre', items: balanced(items, total, roundingNote) }
+}
+function channelSum(data: ReportSales, value: (channel: ReportCosts['channels'][number]) => number) {
+  const sums = new Map<string, number>()
+  for (const channel of data.costs?.channels ?? []) sums.set(channel.platformCode, (sums.get(channel.platformCode) ?? 0) + value(channel))
+  return sums
+}
+const channelAmount = (channel: ReportCosts['channels'][number], categories: string[]) => channel.amounts.filter(amount => categories.includes(amount.category)).reduce((sum, amount) => sum + amount.amount, 0)
+
+function bridgeDetail(data: ReportSales, key: string, total: number): BridgeDetailView | null {
+  const finance = financeCosts(data)
+  const apart = (categories: string[]) => categories.reduce((sum, category) => sum + apartAmount(data, category), 0)
+  const kinds = (items: BridgeItem[], note = roundingNote): BridgeGroup => ({ title: 'Kalemlere Göre', items: balanced(items, total, note) })
+  const groups = (...list: Array<BridgeGroup | null>) => list.filter((group): group is BridgeGroup => group !== null && group.items.length > 0)
+  if (key === 'returned') {
+    const values = new Map(data.platforms.filter(group => group.known).map(group => [group.key, group.grossSales - group.netRevenue]))
+    return { groups: groups(byPlatform(values, 0, total)), facts: [{ label: 'İade Edilen Adet', value: formatCount(data.summary.returnedQuantity) }, { label: 'İade Talebi', value: formatCount(data.summary.returnClaims) }] }
+  }
+  if (key === 'marketplace') {
+    const commissionApart = apart(['COMMISSION'])
+    const commission = finance?.commission
+      ? [{ key: 'real', label: 'Gerçek Komisyon', value: finance.commission.real, note: `${formatCount(finance.commission.realOrders)} siparişte pazaryerinin kendi kaydından.` },
+        { key: 'estimated', label: 'Tahmini Komisyon', value: finance.commission.estimatedForUnsettled, note: 'Kaydı olmayan siparişlerde siparişteki komisyon oranından.' },
+        { key: 'commissionApart', label: 'Siparişe Bağlı Olmayan Komisyon', value: commissionApart, note: unlinkedMeaning.COMMISSION }]
+      : [{ key: 'estimated', label: 'Tahmini Komisyon', value: data.commission.estimatedCommission, note: `Siparişteki orandan; satışların ${formatPercent(data.commission.coverage)} kadarının oranı biliniyor.` }]
+    const fees = finance ? [
+      { key: 'fee', label: 'Hizmet Bedeli', value: costFigure(data, 'SERVICE_FEE') ?? 0, note: costMeaning.fee },
+      { key: 'payment', label: 'Ödeme Komisyonu', value: costFigure(data, 'PAYMENT_FEE') ?? 0, note: costMeaning.payment }] : []
+    const platforms = finance
+      ? byPlatform(channelSum(data, channel => channel.realCommission + channel.estimatedCommission + channelAmount(channel, ['SERVICE_FEE', 'PAYMENT_FEE'])), apart(['COMMISSION', 'SERVICE_FEE', 'PAYMENT_FEE']), total)
+      : byPlatform(new Map(data.platforms.filter(group => group.known).map(group => [group.key, group.estimatedCommission])), 0, total)
+    return { groups: groups(kinds([...commission, ...fees]), platforms), facts: [] }
+  }
+  if (key === 'cargo' && finance?.cargo) {
+    const cargo = finance.cargo
+    const returnBilled = cargo.returnBilled ?? 0
+    const platformEstimated = cargo.platformEstimated ?? 0
+    const items = [
+      { key: 'billed', label: 'Faturalı Gönderim Kargosu', value: cargo.real - returnBilled, note: `${formatCount(cargo.billedOrders)} siparişin kargo faturası geldi.` },
+      { key: 'returnBilled', label: 'Faturalı İade Kargosu', value: returnBilled, note: `${formatCount(cargo.returnBilledOrders ?? 0)} iadenin dönüş kargo faturası geldi.` },
+      { key: 'estimated', label: 'Faturası Gelmeyen, Tahmini', value: (cargo.estimated ?? 0) - platformEstimated, note: 'Trendyol\'da faturası henüz gelmeyen gönderim ve iadeler, mağazanın kargo ortalamasıyla.' },
+      { key: 'platform', label: 'Diğer Platformlar, Tarifeden', value: platformEstimated, note: `${formatCount(cargo.platformOrders ?? 0)} sipariş, kargo firması ve desiye göre 2026 tarifelerinden.` },
+      { key: 'cargoApart', label: 'Siparişe Bağlanamayan Kargo', value: apart(['CARGO']), note: unlinkedMeaning.CARGO }
+    ]
+    const platforms = byPlatform(channelSum(data, channel => channel.estimatedCargo + channelAmount(channel, ['CARGO'])), apart(['CARGO']), total)
+    return { groups: groups(kinds(items), platforms), facts: [] }
+  }
+  if (key === 'stoppage' && finance) {
+    const line = finance.lines.find(item => item.category === 'STOPPAGE')
+    const items = [
+      { key: 'linked', label: 'Ödeme Kayıtlarından', value: line?.orderLinked ?? 0, note: 'Siparişlerin ödeme günü faturasından payına düşen stopaj.' },
+      { key: 'estimated', label: 'Tahmini', value: line?.estimated ?? 0, note: 'Faturası henüz paylaştırılmayan siparişlerde satışın %1\'i.' },
+      { key: 'stoppageApart', label: 'Siparişe Bağlı Olmayan', value: apart(['STOPPAGE']), note: unlinkedMeaning.STOPPAGE }
+    ]
+    const covered = coveredNote(data, 'STOPPAGE')
+    return { groups: groups(kinds(items), byPlatform(channelSum(data, channel => channelAmount(channel, ['STOPPAGE'])), apart(['STOPPAGE']), total)), facts: covered ? [{ label: 'Not', value: covered }] : [] }
+  }
+  if (key === 'vat' && finance?.netVat) {
+    const vat = finance.netVat
+    return { groups: groups(kinds([
+      { key: 'sales', label: 'Satışların KDV\'si', value: vat.salesVat, note: 'Yurt içi satışların, iadeler düşülmüş KDV\'si.' },
+      { key: 'cost', label: 'Ürün Maliyetinin KDV\'si', value: -vat.productCostVat, note: 'Maliyeti girili satılan ürünlerin alış KDV\'si; düşülür.' },
+      { key: 'expense', label: 'Masrafların KDV\'si', value: -vat.expenseVat, note: 'Komisyon, kargo, hizmet bedeli ve reklamın KDV\'si; düşülür.' }
+    ])), facts: [] }
+  }
+  if (key === 'cost') {
+    const cost = data.cost
+    return { groups: groups(kinds([{ key: 'costed', label: 'Maliyeti Girili Satışlar', value: cost.costTotal, note: `${formatCount(cost.costedQuantity)} adet, ${formatCount(cost.costedVariants)} varyant.` }])),
+      facts: [
+        { label: 'Maliyeti Girili Adet', value: `${formatCount(cost.costedQuantity)} / ${formatCount(cost.keptQuantity)} (${formatPercent(cost.coverage)})` },
+        { label: 'Maliyeti Girili Satış', value: formatTl(cost.costedSales ?? cost.costedRevenue) },
+        ...((cost.coverage ?? 1) < 1 ? [{ label: 'Düşülmeyen', value: 'Maliyeti girilmeyen ürünlerin maliyeti' }] : [])
+      ] }
+  }
+  if (key === 'unlinked') {
+    const { lines } = orderlessLines(data)
+    return { groups: groups(kinds(lines.map(line => ({ key: line.key, label: line.label, value: line.amount, note: `${unlinkedMeaning[line.key] ?? 'Dönemin siparişlerine bağlanamayan kesinti.'} ${formatCount(line.records)} kayıt.` })))), facts: [] }
+  }
+  return null
+}
+
+function BridgeDetail({ detail, total }: { detail: BridgeDetailView; total: number }) {
+  return <div className="reports-bridge-detail">
+    {detail.groups.map(group => <section key={group.title}>
+      <h3>{group.title}</h3>
+      <ul>{group.items.map(item => <li key={item.key}>
+        {item.platform ? <PlatformSquareMark code={item.platform} name={item.label} /> : <i aria-hidden="true" />}
+        <span className="reports-bridge-detail-name">{item.label}{item.note && <small>{item.note}</small>}</span>
+        <b>{signedTl(item.value)}</b>
+      </li>)}
+        <li className="is-total"><i aria-hidden="true" /><span className="reports-bridge-detail-name">Toplam</span><b>{signedTl(total)}</b></li>
+      </ul>
+    </section>)}
+    {detail.facts.length > 0 && <dl>{detail.facts.map(fact => <div key={fact.label}><dt>{fact.label}</dt><dd>{fact.value}</dd></div>)}</dl>}
+  </div>
 }
 
 // Satış Tutarı's breakdown: each platform's sales with its share, the total under them.

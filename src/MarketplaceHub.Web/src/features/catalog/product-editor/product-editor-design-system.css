@@ -532,7 +532,7 @@
 }
 
 @layer features {
-  .variant-platform-pricing-filter-grid { position: relative; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rv-space-2); }
+  .variant-platform-pricing-filter-grid { position: relative; display: grid; grid-template-columns: repeat(var(--pricing-filter-count, 2), minmax(0, 1fr)); gap: var(--rv-space-2); }
 }
 
 @layer features {

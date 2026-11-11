@@ -76,6 +76,9 @@ public sealed class N11SettlementTests
     [InlineData("ODEME_BEKLENIYOR", "2026-11-01", PayoutBuilder.Expected)]
     [InlineData("TAMAM", "2026-11-01", PayoutBuilder.Paid)]
     [InlineData("TAMAM", "2026-11-06", PayoutBuilder.Expected)]
+    // n11 pays the day after its remittance day (remitted 3 Nov: paid 4 Nov, still expected on 4 Nov).
+    [InlineData("Wait_Remittance", "2026-11-03", PayoutBuilder.Expected)]
+    [InlineData("Wait_Remittance", "2026-11-02", PayoutBuilder.Paid)]
     public void An_n11_line_is_paid_by_its_word_or_its_remittance_day(string status, string remitted, string expected)
     {
         var row = new PayoutRow
@@ -93,6 +96,7 @@ public sealed class N11SettlementTests
             PaymentDate = PayoutBuilder.DayStart(DateOnly.Parse(remitted, System.Globalization.CultureInfo.InvariantCulture))
         };
         Assert.Equal(expected, PayoutBuilder.Status(row, new DateOnly(2026, 11, 4)));
+        Assert.Equal(DateOnly.Parse(remitted, System.Globalization.CultureInfo.InvariantCulture).AddDays(1), PayoutBuilder.DueDay(row));
         Assert.Equal(1000.40m, PayoutBuilder.Net(row));
     }
 }
