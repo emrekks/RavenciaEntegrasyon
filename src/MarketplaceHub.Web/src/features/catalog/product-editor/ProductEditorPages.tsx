@@ -1798,8 +1798,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           return [{ ...next, key: existing.key, ...(automaticBarcodeGeneration && !preserveExistingDetails ? {} : { barcode: existing.barcode || next.barcode, sku: existing.sku || next.sku, salePrice: existing.salePrice, listPrice: existing.listPrice }), stock: existing.stock, loadedStock: existing.loadedStock, loadedVersion: existing.loadedVersion, costPrice: existing.costPrice, loadedCostPrice: existing.loadedCostPrice, mediaRefs: existing.mediaRefs }]
         }
         // A saved product keeps its rows as they are: only the combinations it lacks are added (mergeGeneratedVariantRows).
-        // A size added to a colour starts with that colour's pictures, saved as its own list (family-gallery-save.ts inheritAssignments).
-        return inheritAssignments(current, mergeGeneratedVariantRows(current, generated, { key: variantSignatureKey, sort: sortVariantsAlphabetically, keepExisting: preserveExistingDetails || Boolean(editProductId), automaticBarcodes: automaticBarcodeGeneration, modelCode: form.modelCode, fallbackSalePrice, fallbackListPrice }), rowColour)
+        // A row added now starts with its colour's and its size's common pictures pre-selected, saved as its own list (family-gallery-save.ts inheritAssignments).
+        return inheritAssignments(current, mergeGeneratedVariantRows(current, generated, { key: variantSignatureKey, sort: sortVariantsAlphabetically, keepExisting: preserveExistingDetails || Boolean(editProductId), automaticBarcodes: automaticBarcodeGeneration, modelCode: form.modelCode, fallbackSalePrice, fallbackListPrice }), rowColour, rowSize, mediaStrip)
       })
       const heldKeys = new Set(variantRows.map(row => variantSignatureKey(row.optionSignature)))
       const addedCount = editProductId ? new Set(generated.map(row => variantSignatureKey(row.optionSignature)).filter(key => !heldKeys.has(key))).size : generated.length
@@ -3549,6 +3549,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   // Each tile names the colours its picture is saved to (Kaydet writes it to those colour cards), by the save's own rule.
   const familyGalleries = editProductId ? stripProduct?.familyGalleries ?? null : null
   const variantCardIds = new Map((stripProduct?.variants ?? []).map(variant => [variant.id, variant.productId || stripProduct?.id || '']))
+  const rowSize = (row: VariantDraft) => Object.entries(row.options).find(([name, value]) => isSizeOptionLabel(name) && value.trim())?.[1].trim() ?? ''
   const rowColour = (row: VariantDraft) => Object.entries(row.options).find(([name, value]) => isColorOptionName(name) && value.trim())?.[1].trim() ?? ''
   const rowCardId = (row: VariantDraft) => variantCardIds.get(row.key) ?? `new:${rowColour(row).toLocaleLowerCase('tr-TR')}`
   const cardColours = new Map<string, string>()
