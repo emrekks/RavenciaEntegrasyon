@@ -30,7 +30,7 @@ import { VariantCodeMenu, type VariantCodeMenuProps } from './VariantCodeMenu'
 import { applyVariantCodesByKey, buildSequentialVariantCodes, generatedRowsReplacePlaceholder, mergeGeneratedVariantRows, planVariantCodes, variantCodeCandidates, buildVariantGenerationDefaults, variantCodeChangeConfirmText, type VariantCodeChange, type VariantCodeTarget } from '../variant-generation'
 import { isVariantDeleteRefusal, restoreRemovedVariantRows, VARIANT_DELETE_REFUSED_HINT, variantRemovalConfirmText, type RemovedVariantRow } from '../variant-row-removal'
 import { filterVariantsByOptions,selectVariantDraftsByKeys, type VariantOptionFilterSelections } from '../variant-filtering'
-import { displayVariantOptionEntriesFromSignature, formatColorOptionValue, joinVariantOptionLabels, matchingVariantOptionValues, mergeVariantOptionValues, normalizeVariantOptionValue, parseVariantOptionSignature, variantOptionSetKey } from '../variant-option-matching'
+import { colourFirstOptions, displayVariantOptionEntriesFromSignature, formatColorOptionValue, joinVariantOptionLabels, matchingVariantOptionValues, mergeVariantOptionValues, normalizeVariantOptionValue, parseVariantOptionSignature, variantOptionSetKey } from '../variant-option-matching'
 import { autoWebColorIssues, connectionCapabilitiesQueryKey, isOptionRequirement, loadConnectionCapabilities, loadPublicationAttributeIssues, shopifyCapabilityIssues, missingPublicationChecks, optionSignatureFromOptions, orderMediaUrlsByVariants, publicationAttributeSelectionsFor, publicationBlockingIssues, publicationProductChecks, publicationReadinessQueryKey, publicationRequirementSets, rowOptionValue, type CategoryRequirement, type PublicationReadinessDraft } from './publication-readiness'
 import { fixableValueMappings, type PublicationAttributeSelection } from '../publication-attribute-readiness'
 import { MissingValueMappingDialog } from '../MissingValueMappingDialog'
@@ -60,7 +60,8 @@ import { SizeChartButton } from './SizeChartDialog'
 import { isSizeChartRef, pinSizeChartLast, replaceSizeChart, sizeChartKey } from './size-chart-order'
 import { mediaPickerLabel, mediaPickerRefs } from './media-picker-order'
 import { isSizeOptionLabel } from './size-chart-measurements'
-import { describePlatformCodeIssues, platformCodeIssues, summarizeVariantCodeIssues, variantCodeFieldIssueText } from '../platform-code-rules'
+import { describePlatformCodeIssues, platformCodeIssues, summarizeVariantCodeIssues, variantCodeDuplicates, variantCodeFieldIssueText, variantCodeFieldKey } from '../platform-code-rules'
+import { useTakenVariantCodes } from '../variant-codes-taken'
 import { productMediaUrlIssue } from '../product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from '../product-barcode-paste'
 import { productCopyIdentifierConflicts } from '../product-copy-identifiers'
@@ -77,7 +78,7 @@ import { publicationJobPollInterval } from '../publication-job-poll'
 import { isRefreshJobRunning, publicationJobInline } from '../publication-job-inline'
 import { statusLabel } from '../../../shared/status-labels'
 import { familyCardsInPanelOrder } from '../family-card-order'
-import { chosenGapSkipped, productPublicationTargets, productSaveFeedback, publicationCancelMessage, publicationRefreshMessage, type MarketplaceFamilyUpdate, type MarketplacePublishOutcome, type MarketplaceUpdateOutcome, type ProductSaveFeedback } from '../product-publication-submit'
+import { chosenGapSkipped, holdsFamilyAsOneProduct, productPublicationTargets, productSaveFeedback, publicationCancelMessage, publicationRefreshMessage, type MarketplaceFamilyUpdate, type MarketplacePublishOutcome, type MarketplaceUpdateOutcome, type ProductSaveFeedback, type PublicationAccepted } from '../product-publication-submit'
 import { familyCardName, familyUpdatePlan, familyUpdateReach } from './family-update-plan'
 import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, variantMediaAssignmentKey, variantMediaReconcileRequests, variantOwnerProductId, type VariantMediaAssignmentDrafts } from '../variant-media-assignments'
 import { useOperationFeedbackToasts, type OperationFeedback } from '../operation-feedback-toast'
@@ -92,6 +93,8 @@ import { PanelSelect } from '../../../shared/PanelSelect'
 import { thumbnailSrcSet, thumbnailUrl } from '../../../shared/product-thumbnail'
 
 // The Eşleştirmeler page's "Kategori Alanları ve Değerleri" window, loaded with that page's code when a gap opens it.
+// The products list's Toplu Düzenleme window, opened on the editor's unsaved rows (Toplu Düzenle in the variant toolbar).
+const ProductQuickEditModal = lazy(() => import('../products/ProductQuickEditModal').then(module => ({ default: module.ProductQuickEditModal })))
 const ProductCategoryFieldsDialog = lazy(() => import('../../marketplace/mappings/MappingPages').then(module => ({ default: module.ProductCategoryFieldsDialog })))
 
 // The save's slot in the toast column: "Ürün Kaydediliyor" turns into its result in place instead of stacking.
@@ -103,7 +106,7 @@ const channelOfferWriteConcurrency = 6
 
 // A variant's options as the panel writes them elsewhere ("Beden: L - Renk: Bej"), not its raw signature ("Beden:L_Renk:Bej").
 function pricingVariantLabel(signature: string | null | undefined) {
-  const entries = parseVariantOptionSignature(signature ?? '')
+  const entries = colourFirstOptions(parseVariantOptionSignature(signature ?? ''))
   return entries.length ? joinVariantOptionLabels(entries.map(entry => `${entry.name}: ${entry.value}`)) : signature ?? ''
 }
 
@@ -351,6 +354,14 @@ export function BulkVariantPlatformPricingModal({ row, rows, platforms: unordere
   const resetMatrixDrafts = useEffectEvent(() => { setMatrixDrafts(initialMatrixDrafts()); setDirtyMatrixDraftKeys([]) })
   useEffect(() => resetMatrixDrafts(), [row.key, rows, platformsKey, savedDrafts])
   const matchingRows = filterVariantsByOptions(sortedRows, filterGroups, filterSelections, matchesFilterValue)
+  // Platform and Fiyat Türü narrow the columns shown (none chosen shows them all); Beden / Renk narrow the bulk rows.
+  const priceFields = [{ id: 'listPrice', value: 'Liste Fiyatı' }, { id: 'salePrice', value: 'Satış Fiyatı' }] as const
+  const columnFilterGroups: VariantMediaGroup[] = [{ id: 'platform', name: 'Platform', values: platforms.map(platform => ({ id: platformKey(platform), value: marketplacePlatformName(platform) })) }, { id: 'priceType', name: 'Fiyat Türü', values: priceFields.map(field => ({ ...field })) }]
+  const [columnFilters, setColumnFilters] = useState<Record<string, string[]>>({})
+  const shownPlatforms = columnFilters.platform?.length ? platforms.filter(platform => columnFilters.platform.includes(platformKey(platform))) : platforms
+  const shownFields = columnFilters.priceType?.length ? priceFields.filter(field => columnFilters.priceType.includes(field.id)) : priceFields
+  // A row reads by its values only ("XL - Lacivert"), as in the editor's table; the option names are on hover.
+  const rowLabel = (item: VariantDraft) => { const label = displayVariantOptionSignature(item.optionSignature, item.options); return label && label !== '—' ? label : item.sku }
   const matrixDraft = (item: VariantDraft, platform: VariantPlatformStatus) => matrixDrafts[`${item.key}:${platformKey(platform)}`] ?? { listPrice: '', salePrice: '' }
   const updateMatrixDraft = (item: VariantDraft, platform: VariantPlatformStatus, field: keyof ChannelPricingDraft, value: string) => {
     const draftKey = `${item.key}:${platformKey(platform)}`
@@ -394,19 +405,16 @@ export function BulkVariantPlatformPricingModal({ row, rows, platforms: unordere
         <div className="variant-platform-pricing-body">
           <section className="variant-platform-pricing-matrix" aria-label="Platformlara göre varyant fiyat matrisi">
             <div className="variant-platform-pricing-bulk-heading"><strong>Platform Fiyatlarını Toplu Düzenle</strong><span>{matchingRows.length} / {rows.length} varyant eşleşti · Panel ana fiyatı değişmez</span></div>
-            {filterGroups.length > 0 && <div className="variant-platform-pricing-filter-grid" aria-label="Platform fiyatı renk ve beden filtreleri">{filterGroups.map(group => <VariantFilterDropdown key={group.id} group={group} selectedValueIds={filterSelections[group.id] ?? []} onToggle={valueId => setFilterSelections(current => ({ ...current, [group.id]: (current[group.id] ?? []).includes(valueId) ? current[group.id].filter(id => id !== valueId) : [...(current[group.id] ?? []), valueId] }))} onClear={() => setFilterSelections(current => ({ ...current, [group.id]: [] }))} />)}</div>}
+            <div className="variant-platform-pricing-filter-grid" style={{ '--pricing-filter-count': filterGroups.length + columnFilterGroups.length } as CSSProperties} aria-label="Platform fiyatı filtreleri">{filterGroups.map(group => <VariantFilterDropdown key={group.id} group={group} selectedValueIds={filterSelections[group.id] ?? []} onToggle={valueId => setFilterSelections(current => ({ ...current, [group.id]: (current[group.id] ?? []).includes(valueId) ? current[group.id].filter(id => id !== valueId) : [...(current[group.id] ?? []), valueId] }))} onClear={() => setFilterSelections(current => ({ ...current, [group.id]: [] }))} />)}{columnFilterGroups.map(group => <VariantFilterDropdown key={group.id} group={group} selectedValueIds={columnFilters[group.id] ?? []} onToggle={valueId => setColumnFilters(current => ({ ...current, [group.id]: (current[group.id] ?? []).includes(valueId) ? current[group.id].filter(id => id !== valueId) : [...(current[group.id] ?? []), valueId] }))} onClear={() => setColumnFilters(current => ({ ...current, [group.id]: [] }))} />)}</div>
             <div className="variant-platform-pricing-matrix-scroll">
-              <div className="variant-platform-pricing-matrix-grid" style={{ gridTemplateColumns: `220px repeat(${platforms.length * 2}, 128px)` }}>
+              <div className="variant-platform-pricing-matrix-grid" style={{ gridTemplateColumns: `220px repeat(${shownPlatforms.length * shownFields.length}, 128px)` }}>
                 <div className="variant-platform-pricing-matrix-cell variant-platform-pricing-matrix-corner"><strong>Varyant</strong><small>Model / barkod</small></div>
-                {platforms.flatMap(platform => [renderMatrixHeader(platform, 'Liste Fiyatı'), renderMatrixHeader(platform, 'Satış Fiyatı')])}
+                {shownPlatforms.flatMap(platform => shownFields.map(field => renderMatrixHeader(platform, field.value)))}
                 {sortedRows.flatMap(item => [
-                  <div className="variant-platform-pricing-matrix-cell variant-platform-pricing-matrix-row-label" key={`${item.key}:label`}><strong>{pricingVariantLabel(item.optionSignature) || item.sku}</strong><small>{item.barcode || item.sku}</small></div>,
-                  ...platforms.flatMap(platform => {
+                  <div className="variant-platform-pricing-matrix-cell variant-platform-pricing-matrix-row-label" key={`${item.key}:label`}><strong title={displayVariantOptionSignature(item.optionSignature, item.options, true)}>{rowLabel(item)}</strong><small>{item.barcode || item.sku}</small></div>,
+                  ...shownPlatforms.flatMap(platform => {
                     const draft = matrixDraft(item, platform)
-                    return [
-                      <div className="variant-platform-pricing-matrix-cell" key={`${item.key}:${platformKey(platform)}:list`}><input aria-label={`${pricingVariantLabel(item.optionSignature) || item.sku} ${marketplacePlatformName(platform)} liste fiyatı`} type="number" min="0" step="0.01" value={draft.listPrice} disabled={saving || !platform.connectionId} onChange={event => updateMatrixDraft(item, platform, 'listPrice', event.target.value)} /></div>,
-                      <div className="variant-platform-pricing-matrix-cell" key={`${item.key}:${platformKey(platform)}:sale`}><input aria-label={`${pricingVariantLabel(item.optionSignature) || item.sku} ${marketplacePlatformName(platform)} satış fiyatı`} type="number" min="0" step="0.01" value={draft.salePrice} disabled={saving || !platform.connectionId} onChange={event => updateMatrixDraft(item, platform, 'salePrice', event.target.value)} /></div>
-                    ]
+                    return shownFields.map(field => <div className="variant-platform-pricing-matrix-cell" key={`${item.key}:${platformKey(platform)}:${field.id === 'listPrice' ? 'list' : 'sale'}`}><input aria-label={`${pricingVariantLabel(item.optionSignature) || item.sku} ${marketplacePlatformName(platform)} ${field.value.toLocaleLowerCase('tr-TR')}`} type="number" min="0" step="0.01" value={draft[field.id]} disabled={saving || !platform.connectionId} onChange={event => updateMatrixDraft(item, platform, field.id, event.target.value)} /></div>)
                   })
                 ])}
               </div>
@@ -527,7 +535,7 @@ function RichTextEditor({ value, onChange }: { value: string; onChange: (value: 
 // A column-menu code change waiting for the user's confirmation: model-code codes for every row or only the empty
 // ones, or emptying the column. Nothing is written to the rows before the user confirms, nor saved before Kaydet.
 type PendingVariantCodeChange = VariantCodeChange & { rowCount: number; skipped?: number }
-function buildVariantMatrix(requirements: CategoryRequirement[], variantAttributeIds: string[], selectedValueIds: Record<string, string[]>, fallbackListPrice: number, fallbackSalePrice: number, fallbackCostPrice: number | null, initialStock: number, automaticBarcodes = false, modelCode = '') {
+function buildVariantMatrix(requirements: CategoryRequirement[], variantAttributeIds: string[], selectedValueIds: Record<string, string[]>, fallbackListPrice: number, fallbackSalePrice: number, fallbackCostPrice: number | null, automaticBarcodes = false, modelCode = '') {
   const axes = variantAttributeIds.map(attributeId => {
     const requirement = requirements.find(item => item.attributeId === attributeId)
     const selected = new Set(selectedValueIds[attributeId] ?? [])
@@ -545,8 +553,8 @@ function buildVariantMatrix(requirements: CategoryRequirement[], variantAttribut
     optionSignature: Object.entries(entry.options).map(([name, value]) => `${name}:${cleanOptionValue(value)}`).join('_'),
     options: entry.options,
     attributeValueIds: entry.attributeValueIds,
+    // A generated row starts with no stock (buildVariantGenerationDefaults), never the card's Stok field.
     ...buildVariantGenerationDefaults({ modelCode, sequence: index + 1, automaticBarcodes, fallbackSalePrice, fallbackListPrice }),
-    stock: initialStock,
     costPrice: fallbackCostPrice,
     mediaRefs: []
   }))
@@ -1285,6 +1293,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({}); const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [variantRows, setVariantRows] = useState<VariantDraft[]>([]); const [draggedVariantKey, setDraggedVariantKey] = useState<string | null>(null); const [dragOverVariantKey, setDragOverVariantKey] = useState<string | null>(null); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]); const [blockedPublishCards, setBlockedPublishCards] = useState<Record<string, number>>({}); const [channelPricing, setChannelPricing] = useState<Record<string, ChannelPricingDraft>>({}); const [variantChannelPricing, setVariantChannelPricing] = useState<Record<string, ChannelPricingDraft>>({})
   const [automaticBarcodeGeneration, setAutomaticBarcodeGeneration] = useState(false)
   const [marketplaceCodesOpen, setMarketplaceCodesOpen] = useState(false)
+  const [quickEditOpen, setQuickEditOpen] = useState(false)
   // The variant whose marketplace codes the row's link button opened, or null for the whole table.
   const [marketplaceCodesVariant, setMarketplaceCodesVariant] = useState<string | null>(null)
   const [attributeValueQueries, setAttributeValueQueries] = useState<Record<string, string>>({})
@@ -1761,7 +1770,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         const message = 'Otomatik barkod oluşturmak için önce model kodunu girin.'; setNotice(message); showFeedback('Model Kodu Gerekli', message, 'error')
         return false
       }
-      const generated = buildVariantMatrix(mappedRequirements, attributeIds, attributeSelections, fallbackListPrice, fallbackSalePrice, fallbackCostPrice, initialStock, automaticBarcodeGeneration, form.modelCode)
+      const generated = buildVariantMatrix(mappedRequirements, attributeIds, attributeSelections, fallbackListPrice, fallbackSalePrice, fallbackCostPrice, automaticBarcodeGeneration, form.modelCode)
       if (!generated.length) {
         const message = 'Önce varyant olacak özellikleri ve bu özelliklerin değerlerini seçin.'; setNotice(message); showFeedback('Varyant Özelliği Seçilmedi', message, 'error')
         return false
@@ -2800,7 +2809,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     // A draft's normal Kaydet puts it on sale, so it is checked as a new card is.
     const requireCompleteCatalog = !saveDraft && (!editProductId || !saveAndStay || editingDraft)
     // A draft may keep red codes; every other save waits until they are fixed.
-    if (variantCodeRulesStopSave(saveDraft, codeRuleSaveBlock) && blockedByVariantCodeRules()) return
+    if ((variantCodeRulesStopSave(saveDraft, codeRuleSaveBlock) || draftCodeSaveBlock) && blockedByVariantCodeRules()) return
     // A model code belongs to one product: a new card (a draft too) may not take one the catalog already holds.
     if (!editProductId && modelCodeHolder) {
       setFieldErrors(current => ({ ...current, modelCode: modelCodeHolder.message }))
@@ -3197,10 +3206,14 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               // Every marketplace: a card whose variants are all there is left as it is; a card partly there sends only the
               // variants not there yet (new ones, or ones the marketplace lost), which the server adds to its listing.
               const cardVariants = product.variants.filter(variant => (variant.productId ?? product.id) === familyProductId)
+              // The variants not there yet are sorted by colour: new sizes join their colour's listing, a new colour opens
+              // its own listing (Trendyol, Hepsiburada) or joins the one product (Shopify, n11, Pazarama, PttAVM); on a
+              // family split into colour cards a variant of another colour belongs on its own card.
               const plan = publishCardPlan(cardVariants.map(variant => ({
                 platformStatuses: linkRowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))?.platformStatuses,
-                color: preferredColorOption(variantOptionEntries(variant))?.value
-              })), connectionId)
+                color: preferredColorOption(variantOptionEntries(variant))?.value,
+                sku: variant.sku
+              })), connectionId, { colourCardsInFamily: familyIds.length > 1, familyIsOneProduct: holdsFamilyAsOneProduct(platformCode) })
               if (!plan.send && plan.reason === 'matched') { outcome.skipped.matched++; continue }
               if (!plan.send) { familyFailures.set(plan.message, [...(familyFailures.get(plan.message) ?? []), familyIndex]); continue }
               const status = await hubApi<PublicationStatus>(`/products/${familyProductId}/publication-status/${connectionId}`).catch(() => null)
@@ -3221,12 +3234,18 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               }
               await hubApi(`/products/${familyProductId}/listing-profiles/${connectionId}`, { method: 'PUT', headers: listingProfile == null ? {} : { 'If-Match': `"v${listingProfile.version}"` }, body: JSON.stringify(republishListingProfileBody(listingProfile)) })
               await client.invalidateQueries({ queryKey: ['listing-profile', familyProductId, connectionId] })
-              const publicationJob = await hubApi<AcceptedJob>(`/products/${familyProductId}/publication-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId }) })
+              const publicationJob = await hubApi<PublicationAccepted>(`/products/${familyProductId}/publication-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId }) })
               await client.invalidateQueries({ queryKey: ['publication-status', familyProductId, connectionId] })
               if (publicationJob?.jobId) followedJobs.push({ jobId: publicationJob.jobId, platformName, what: familyIds.length > 1 ? `${familyIndex + 1}. renk kartı` : 'ürün' })
               outcome.enqueuedCards++
               outcome.enqueuedVariants += plan.variants
-              if (plan.addsToListing) outcome.addedToListingCards = (outcome.addedToListingCards ?? 0) + 1
+              if (plan.addsToListing) {
+                outcome.addedToListingCards = (outcome.addedToListingCards ?? 0) + 1
+                outcome.liveVariants = (outcome.liveVariants ?? 0) + plan.liveVariants
+                outcome.groups = [...(outcome.groups ?? []), ...plan.groups]
+              }
+              // The variants the server left out (no price, barcode, pictures of a new colour …), each with its reason.
+              if (publicationJob?.skippedVariants?.length) outcome.skippedVariants = [...(outcome.skippedVariants ?? []), ...publicationJob.skippedVariants]
             } catch (reason) {
               const failure = reason instanceof Error ? reason.message : 'Yayın işi oluşturulamadı.'
               familyFailures.set(failure, [...(familyFailures.get(failure) ?? []), familyIndex])
@@ -3379,8 +3398,17 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   // Every active connection's barcode and stock code rules: a product goes to all of them with one pair of codes.
   const codeRulePlatforms = useMemo(() => [...new Set((connections.data?.items ?? []).filter(connection => connection.status === 'ACTIVE' || connection.status === 'VERIFIED').map(connection => connection.platformCode))], [connections.data])
   const variantCodeIssues = useMemo(() => new Map(variantRows.map(row => [row.key, platformCodeIssues(codeRulePlatforms, row.barcode, row.sku)])), [codeRulePlatforms, variantRows])
+  // Codes two rows of the table share, and codes another product holds, both found as they are typed (owner,
+  // 11.11.2026: "aynı diye kırmızı yanmadı?"); a refused save's own list still names what the server found.
+  const variantCodeDuplicateRows = useMemo(() => variantCodeDuplicates(variantRows.map(row => ({ key: row.key, barcode: row.barcode, sku: row.sku, label: displayVariantOptionSignature(row.optionSignature, row.options) }))), [variantRows])
+  const ownVariantIds = useMemo(() => [...(productToEdit.data?.variants.map(variant => variant.id) ?? []), ...removedVariantIds], [productToEdit.data?.variants, removedVariantIds])
+  const liveTakenCodes = useTakenVariantCodes(variantRows, ownVariantIds)
+  const heldVariantCodes = useMemo(() => ({ ...liveTakenCodes, ...variantCodeConflicts }), [liveTakenCodes, variantCodeConflicts])
   // Rows with a red code field, missing codes and broken platform rules counted apart.
-  const variantCodeIssueSummary = useMemo(() => summarizeVariantCodeIssues(variantRows, variantCodeIssues, (field, code) => Boolean(variantCodeConflicts[variantCodeKey(field, code)])), [variantCodeConflicts, variantCodeIssues, variantRows])
+  const variantCodeIssueSummary = useMemo(() => summarizeVariantCodeIssues(variantRows, variantCodeIssues, (field, code) => Boolean(heldVariantCodes[variantCodeKey(field, code)]), (rowKey, field) => variantCodeDuplicateRows.has(variantCodeFieldKey(rowKey, field))), [heldVariantCodes, variantCodeDuplicateRows, variantCodeIssues, variantRows])
+  // A stock code twice (in the table or on another card) breaks the catalog's unique index: even a draft waits for it.
+  const heldSkuRows = variantRows.filter(row => row.sku.trim() && heldVariantCodes[variantCodeKey('sku', row.sku)]).length
+  const draftCodeSaveBlock = (variantCodeIssueSummary?.duplicateSkuRows ?? 0) > 0 || heldSkuRows > 0
   // Kaydet, Hızlı Güncelle and Yayınlamaya Devam Et wait while a code field is red; they say why and lead to it.
   const codeRuleSaveBlock = variantCodeIssueSummary?.title ?? ''
   // "Yeni Ürün" only: the card that already holds the typed model code stops the create (and a new draft).
@@ -3551,7 +3579,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const canAddVariantCombinations = useMemo(() => {
     if (!variantAttributeIds.length || (automaticBarcodeGeneration && !form.modelCode.trim())) return false
     try {
-      const generated = buildVariantMatrix(mappedRequirements, variantAttributeIds, attributeSelections, fallbackListPrice, fallbackSalePrice, fallbackCostPrice, initialStock, automaticBarcodeGeneration, form.modelCode)
+      const generated = buildVariantMatrix(mappedRequirements, variantAttributeIds, attributeSelections, fallbackListPrice, fallbackSalePrice, fallbackCostPrice, automaticBarcodeGeneration, form.modelCode)
       const existing = new Map(variantRows.map(row => [variantSignatureKey(row.optionSignature), row]))
       const missingCombinations = generated.some(row => !existing.has(variantSignatureKey(row.optionSignature)))
       // Saved rows keep their codes, so on a saved product only a missing combination makes "Ürünleri Ekle" do something.
@@ -3561,7 +3589,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       })
       return missingCombinations || automaticDefaultsOutOfDate
     } catch { return false }
-  }, [attributeSelections, automaticBarcodeGeneration, editProductId, fallbackCostPrice, fallbackListPrice, fallbackSalePrice, form.modelCode, initialStock, mappedRequirements, variantAttributeIds, variantRows])
+  }, [attributeSelections, automaticBarcodeGeneration, editProductId, fallbackCostPrice, fallbackListPrice, fallbackSalePrice, form.modelCode, mappedRequirements, variantAttributeIds, variantRows])
   const selectedVariantPlatformRow = variantPlatformPricing ? variantRows.find(row => row.key === variantPlatformPricing.rowKey) : undefined
   const showVariantStockTotal = Boolean(editProductId || (duplicateProductId && variantRows.length))
 
@@ -3571,6 +3599,12 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   return <EditorShell publishOnly={publishOnly} className={`product-add-page${editProductId ? ' product-edit-page' : ''}${editorHydrating ? ' is-hydrating' : ''}`} title={editProductId ? productToEdit.data?.title || 'Ürün Düzenle' : 'Yeni Ürün Ekle'} eyebrow={editProductId ? 'Ürün Düzenle' : 'Katalog'} meta={editProductId && productToEdit.data?.modelCode ? <p className="product-page-heading-meta">Model Kodu: <b>{productToEdit.data.modelCode}</b></p> : editProductId && productToEdit.isPending ? <p className="product-page-heading-meta" aria-hidden="true">Model Kodu: <b>…</b></p> : undefined}>
     {!publishOnly && <UnsavedChangesGuard when={editorDirty} allowNavigationRef={leavingAfterSave} />}
     {staleProductVersion != null && <div className="product-stale-banner" role="alert"><span><strong>Ürün başka bir işlemle güncellendi</strong> (güncel sürüm v{staleProductVersion}). Kaydedilmemiş değişiklikleriniz korunuyor; kaydederseniz sunucu sürüm çakışmasını bildirir.</span><button type="button" className="secondary" onClick={reloadEditedProduct}>Güncel Ürünü Yükle</button></div>}
+    {quickEditOpen && <Suspense fallback={null}><ProductQuickEditModal mode="both" onClose={() => setQuickEditOpen(false)} draft={{ title: form.title, modelCode: form.modelCode, rows: variantRows, onApply: changes => {
+      // Only the table changes: the rows are saved (and sent on) with the page's Kaydet, as a hand-typed cell would be.
+      const byKey = new Map(changes.map(change => [change.key, change]))
+      setVariantRows(rows => rows.map(row => { const change = byKey.get(row.key); return change ? { ...row, stock: change.stock, listPrice: change.listPrice, salePrice: change.salePrice, costPrice: change.costPrice } : row }))
+      if (changes.length) showFeedback('Toplu Düzenleme Uygulandı', `${changes.length} varyantın değerleri tabloya yazıldı. Kalıcı olması için Kaydet’e basın.`, 'success')
+    } }} /></Suspense>}
     {variantPlatformPricing && selectedVariantPlatformRow && <BulkVariantPlatformPricingModal row={selectedVariantPlatformRow} rows={variantRows} platforms={selectedVariantPlatformRow.platformStatuses?.length ? selectedVariantPlatformRow.platformStatuses : variantPricingPlatforms} savedDrafts={variantChannelPricing} productName={form.title} modelCode={form.modelCode} filterGroups={variantFilterGroups.filter(group => isColorOptionName(group.name) || isSizeOptionName(group.name))} matchesFilterValue={rowMatchesVariantMediaValue} saving={variantPlatformPricingSaving} onClose={() => setVariantPlatformPricing(null)} onSave={drafts => void saveVariantPlatformPricingMatrix(drafts)} />}
     {!publishOnly && <div className="product-add-wizardbar"><div className="product-add-stepper"><div className="product-add-steptabs rv-tabs rv-view-tabs" role="tablist" aria-label={editProductId ? 'Ürün düzenleme adımları' : 'Ürün ekleme adımları'}><button type="button" className={wizardStep === 1 ? 'is-active' : ''} role="tab" aria-selected={wizardStep === 1} onClick={() => setWizardStep(1)}><span className="rv-tab-label"><span className="rv-step-num">1</span><span>Ürün Bilgileri<span className="product-step-label-more"> ve Varyantlar</span></span></span></button><button type="button" className={wizardStep === 2 ? 'is-active' : ''} role="tab" aria-selected={wizardStep === 2} onClick={() => setWizardStep(2)}><span className="rv-tab-label"><span className="rv-step-num">2</span><span>Yayınlama</span></span></button></div></div></div>}<form id="product-creation-form" className="product-creation-workspace product-add-workspace" data-wizard-step={wizardStep} aria-busy={editorHydrating || undefined} inert={editorHydrating || undefined} onSubmit={submit} onInvalidCapture={handleInvalid} onChange={dismissProductError} noValidate>
     <div className="product-top-layout">
@@ -3799,7 +3833,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         <div className="editor-section-title"><span>6</span><div><h2>Ürün Seçenek Grupları<TitleHint label="Ürün Seçenek Grupları">İşaretlediğiniz özellik değerlerinin tüm kombinasyonları varyant satırı olur.</TitleHint></h2></div></div>
         {(fieldErrors.variants || fieldErrors.stock || fieldErrors.attributes) && <div className="product-field-error-list" role="alert">{[fieldErrors.variants, fieldErrors.stock, fieldErrors.attributes].filter(Boolean).map(message => <p key={message}>{message}</p>)}</div>}
         {variantRows.length > 0 && <>
-            <div className="variant-table-toolbar"><div className="variant-table-toolbar-actions"><button type="button" className="secondary is-danger variant-clear-button" onClick={clearVariants}><UiIcon name="trash" /> Oluşan Varyantları Temizle</button>{editProductId && <button type="button" className="secondary variant-marketplace-codes-button" onClick={() => setMarketplaceCodesOpen(true)} title="Hepsiburada ve Shopify varyant kodlarını göster"><UiIcon name="externalLink" /> Pazaryeri Kodları</button>}<button type="button" className="secondary variant-media-bulk-button" onClick={openBulkVariantMediaPicker} title="Seçenek değerine görsel ata"><VariantImageIcon /> Seçeneklere Görsel Ata</button></div></div>
+            <div className="variant-table-toolbar"><div className="variant-table-toolbar-actions"><button type="button" className="secondary is-danger variant-clear-button" onClick={clearVariants}><UiIcon name="trash" /> Oluşan Varyantları Temizle</button>{editProductId && <button type="button" className="secondary variant-marketplace-codes-button" onClick={() => setMarketplaceCodesOpen(true)} title="Hepsiburada ve Shopify varyant kodlarını göster"><UiIcon name="externalLink" /> Pazaryeri Kodları</button>}<button type="button" className="secondary variant-media-bulk-button" onClick={openBulkVariantMediaPicker} title="Seçenek değerine görsel ata"><VariantImageIcon /> Seçeneklere Görsel Ata</button><button type="button" className="secondary variant-quick-edit-button" onClick={() => setQuickEditOpen(true)} disabled={!variantRows.length} title="Stok, maliyet ve fiyatları toplu düzenle; Kaydet’e basılana kadar hiçbir şey kaydedilmez"><UiIcon name="edit" /> Toplu Düzenle</button></div></div>
         </>}
             {variantRows.length > 0 && <div className="variant-mobile-groups" role="tablist" aria-label="Görünen varyant alanları">{([['codes', 'Kodlar'], ['stock', 'Stok / Maliyet'], ['price', 'Fiyat'], ['actions', 'İşlemler']] as const).map(([group, label]) => <button key={group} type="button" role="tab" aria-selected={variantMobileGroup === group} className={variantMobileGroup === group ? 'is-on' : undefined} onClick={() => setVariantMobileGroup(group)}>{label}</button>)}</div>}
             {variantCodeIssueSummary && <div className="variant-code-rule-notice" role="status">
@@ -3824,8 +3858,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
                 const codeIssues = variantCodeIssues.get(row.key) ?? []
                 // An empty needed code says "… eksik"; a filled one names the rules it breaks. Every variant needs its
                 // own stock code, with or without an active marketplace.
-                const barcodeIssueText = variantCodeFieldIssueText(codeIssues, 'barcode', row.barcode, variantCodeConflicts[variantCodeKey('barcode', row.barcode)])
-                const skuIssueText = variantCodeFieldIssueText(codeIssues, 'sku', row.sku, variantCodeConflicts[variantCodeKey('sku', row.sku)])
+                const barcodeIssueText = variantCodeFieldIssueText(codeIssues, 'barcode', row.barcode, heldVariantCodes[variantCodeKey('barcode', row.barcode)], variantCodeDuplicateRows.get(variantCodeFieldKey(row.key, 'barcode')))
+                const skuIssueText = variantCodeFieldIssueText(codeIssues, 'sku', row.sku, heldVariantCodes[variantCodeKey('sku', row.sku)], variantCodeDuplicateRows.get(variantCodeFieldKey(row.key, 'sku')))
                 return <div data-variant-row-key={row.key} className={`variant-table-row ${draggedVariantKey === row.key ? 'is-dragging' : ''} ${dragOverVariantKey === row.key ? 'is-drag-target' : ''}`} key={row.key}>
                   <div className="variant-row-lead" title="Sıralamak için tutup sürükleyin" aria-label={`${row.optionSignature} varyantını sıralamak için sürükleyin`} onPointerDown={event => beginVariantPointerDrag(event, row.key)}><span className="variant-row-number">{index + 1}</span><span className="variant-drag-handle"><VariantDragHandleIcon /></span></div>
                   <div className="variant-option-cell"><span className="variant-option-text" aria-label={`${index + 1}. varyant seçenekleri`} title={displayVariantOptionSignature(row.optionSignature, row.options, true)}>{displayVariantOptionSignature(row.optionSignature, row.options)}</span><button type="button" className="variant-option-edit-button" onClick={() => setOptionEditRowKey(row.key)} aria-label={`${index + 1}. varyantın seçeneklerini düzenle`} title="Seçenekleri düzenle" disabled={!rowOptionEntries(row).length}><UiIcon name="edit" size={14} /></button></div>

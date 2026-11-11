@@ -55,8 +55,11 @@ export function platformCodeIssues(platformCodes: readonly string[], barcode: st
 // A code a refused save named as held by another card says so first: "MZ021Y-CD-01 · 'Kadın … Bluz' ürününde kullanılıyor".
 // One the save gave to several of its own rows (SAME_SAVE_CODE_HOLDER) says "MZ071-M iki varyantta kullanılıyor".
 export const SAME_SAVE_CODE_HOLDER = '\u0000same-save'
-export function variantCodeFieldIssueText(issues: readonly PlatformCodeIssue[], field: PlatformCodeField, value: string, heldBy?: string) {
+// duplicateOf: another row of the table with the same code (variantCodeDuplicates), named by its options:
+// "RYP003T24 barkodu 2XL - Siyah varyantında da kullanılıyor" (owner, 11.11.2026: "aynı diye kırmızı yanmadı?").
+export function variantCodeFieldIssueText(issues: readonly PlatformCodeIssue[], field: PlatformCodeField, value: string, heldBy?: string, duplicateOf?: string) {
   const ruleText = describePlatformCodeIssues(issues, field)
+  if (value.trim() && duplicateOf) return `${value.trim()} ${field === 'barcode' ? 'barkodu' : 'stok kodu'} ${duplicateOf} varyantında da kullanılıyor`
   if (value.trim() && heldBy === SAME_SAVE_CODE_HOLDER) return `${value.trim()} iki varyantta kullanılıyor`
   if (value.trim() && heldBy) return `${value.trim()} · '${heldBy}' ürününde kullanılıyor`
   if (value.trim()) return ruleText
@@ -64,11 +67,50 @@ export function variantCodeFieldIssueText(issues: readonly PlatformCodeIssue[], 
   return ruleText ? 'Barkod eksik' : ''
 }
 
-export type VariantCodeIssueSummary = { missingBarcodes: number; missingSkus: number; ruleRows: number; heldRows: number; rulePlatforms: string[]; title: string }
+// The key the server compares codes by (CatalogKeyNormalizer.Key, behind SkuNormalized and BarcodeNormalized): accents
+// dropped, ı read as I, upper case, every run of other characters one dash, no dash at either end.
+export function variantCodeMatchKey(value: string) {
+  let key = ''
+  for (const ch of value.trim().normalize('NFD')) {
+    if (/\p{Mn}/u.test(ch)) continue
+    if (ch === 'ı') key += 'I'
+    else if (/[\p{L}\p{N}]/u.test(ch)) key += ch.toUpperCase()
+    else if (key && !key.endsWith('-')) key += '-'
+  }
+  return key.replace(/^-+|-+$/g, '')
+}
+
+export function variantCodeFieldKey(rowKey: string, field: PlatformCodeField) {
+  return `${rowKey}:${field}`
+}
+
+// Codes two rows of the table share, barcode with barcode and stock code with stock code (the server refuses both on
+// save; a stock code twice breaks its unique index): row and field → the other row's label. Live 11.11.2026, RYP003T:
+// RYP003T24 typed on "2XL - Mürdüm" while "2XL - Siyah" held it, and neither field turned red.
+export function variantCodeDuplicates(rows: readonly { key: string; barcode: string; sku: string; label: string }[]): Map<string, string> {
+  const result = new Map<string, string>()
+  for (const field of ['barcode', 'sku'] as const) {
+    const byCode = new Map<string, { key: string; label: string }[]>()
+    for (const row of rows) {
+      const code = variantCodeMatchKey(row[field])
+      if (code) byCode.set(code, [...(byCode.get(code) ?? []), { key: row.key, label: row.label }])
+    }
+    for (const holders of byCode.values()) {
+      if (holders.length < 2) continue
+      for (const holder of holders) result.set(variantCodeFieldKey(holder.key, field), holders.filter(other => other.key !== holder.key).map(other => other.label).join(', '))
+    }
+  }
+  return result
+}
+
+export type VariantCodeIssueSummary = { missingBarcodes: number; missingSkus: number; ruleRows: number; heldRows: number; duplicateRows: number; duplicateSkuRows: number; rulePlatforms: string[]; title: string }
 
 // The variant code callout: missing codes, codes another card holds and broken rules counted apart, the platforms
-// named only for the rules. `isHeld` says whether a refused save named a row's code as another card's.
-export function summarizeVariantCodeIssues(rows: readonly { key: string; barcode: string; sku: string }[], issuesByKey: ReadonlyMap<string, readonly PlatformCodeIssue[]>, isHeld: (field: PlatformCodeField, code: string) => boolean = () => false): VariantCodeIssueSummary | null {
+// named only for the rules. `isHeld` says whether a refused save (or the live check) named a row's code as another
+// card's; `isDuplicate` whether another row of the table holds the same code (variantCodeDuplicates).
+export function summarizeVariantCodeIssues(rows: readonly { key: string; barcode: string; sku: string }[], issuesByKey: ReadonlyMap<string, readonly PlatformCodeIssue[]>, isHeld: (field: PlatformCodeField, code: string) => boolean = () => false, isDuplicate: (rowKey: string, field: PlatformCodeField) => boolean = () => false): VariantCodeIssueSummary | null {
+  let duplicateRows = 0
+  let duplicateSkuRows = 0
   let missingBarcodes = 0
   let missingSkus = 0
   let ruleRows = 0
@@ -78,6 +120,9 @@ export function summarizeVariantCodeIssues(rows: readonly { key: string; barcode
     const issues = issuesByKey.get(row.key) ?? []
     const barcodeEmpty = !row.barcode.trim()
     const skuEmpty = !row.sku.trim()
+    const duplicateSku = !skuEmpty && isDuplicate(row.key, 'sku')
+    if (duplicateSku || (!barcodeEmpty && isDuplicate(row.key, 'barcode'))) duplicateRows++
+    if (duplicateSku) duplicateSkuRows++
     if ((!barcodeEmpty && isHeld('barcode', row.barcode)) || (!skuEmpty && isHeld('sku', row.sku))) heldRows++
     if (barcodeEmpty && issues.some(issue => issue.field === 'barcode')) missingBarcodes++
     if (skuEmpty) missingSkus++
@@ -90,10 +135,11 @@ export function summarizeVariantCodeIssues(rows: readonly { key: string; barcode
   const parts = [
     missingBarcodes ? `${missingBarcodes.toLocaleString('tr-TR')} varyantta barkod eksik` : '',
     missingSkus ? `${missingSkus.toLocaleString('tr-TR')} varyantta stok kodu eksik` : '',
+    duplicateRows ? `${duplicateRows.toLocaleString('tr-TR')} varyantta yinelenen barkod/stok kodu` : '',
     heldRows ? `${heldRows.toLocaleString('tr-TR')} varyantın kodu başka üründe kullanılıyor` : '',
     ruleRows ? `${ruleRows.toLocaleString('tr-TR')} varyantın kodu platform kurallarına uymuyor` : '',
   ].filter(Boolean)
-  return parts.length ? { missingBarcodes, missingSkus, ruleRows, heldRows, rulePlatforms: [...platforms], title: parts.join(' · ') } : null
+  return parts.length ? { missingBarcodes, missingSkus, ruleRows, heldRows, duplicateRows, duplicateSkuRows, rulePlatforms: [...platforms], title: parts.join(' · ') } : null
 }
 
 // "Hepsiburada: barkod geçerli 13 haneli EAN-13 olmalı · Trendyol: …" for a field's issues.

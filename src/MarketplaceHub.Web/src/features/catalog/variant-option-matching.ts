@@ -32,6 +32,13 @@ function isSizeOptionName(name: string) {
   return ['BEDEN', 'BEDENLER', 'SIZE', 'SIZES', 'BOYUT', 'BOYUTLAR', 'NUMARA', 'NUMARALAR', 'SHOESIZE', 'AYAKKABINUMARASI'].includes(normalizeOptionName(name))
 }
 
+// A variant's options as they are shown: the colour first, then the size, then the rest in their own order
+// ("Bordo - 2XL"; owner, 11 Nov 2026). Display only: stored signatures and what goes to a marketplace keep their order.
+export function colourFirstOptions<T extends { name: string }>(entries: readonly T[]): T[] {
+  const rank = (name: string) => isRealColorOptionName(name) ? 0 : isSizeOptionName(name) ? 1 : 2
+  return entries.map((entry, index) => ({ entry, index })).sort((left, right) => rank(left.entry.name) - rank(right.entry.name) || left.index - right.index).map(item => item.entry)
+}
+
 export function displayVariantOptionEntries(entries: VariantOptionEntry[]) {
   const size = entries.find(option => normalizeOptionName(option.name) === 'BEDEN' && option.value.trim())
     ?? entries.find(option => isSizeOptionName(option.name) && option.value.trim())
@@ -39,8 +46,8 @@ export function displayVariantOptionEntries(entries: VariantOptionEntry[]) {
     ?? entries.find(option => isRealColorOptionName(option.name) && option.value.trim())
 
   return [
-    ...(size ? [{ name: 'Beden', value: size.value.trim() }] : []),
-    ...(color ? [{ name: 'Renk', value: color.value.trim() }] : [])
+    ...(color ? [{ name: 'Renk', value: color.value.trim() }] : []),
+    ...(size ? [{ name: 'Beden', value: size.value.trim() }] : [])
   ]
 }
 

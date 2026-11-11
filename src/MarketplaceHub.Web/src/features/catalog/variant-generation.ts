@@ -116,10 +116,11 @@ export function variantCodeChangeConfirmText({ target, mode, codesByKey }: Varia
 // model-code code): no stock code is made up otherwise. A code is generated only when the user picks it from a column
 // menu. With or without automatic barcodes a new row's first prices are the card's Liste Fiyatı and Satış Fiyatı
 // (section 2; owner, 10 Nov 2026: "yeni varyantlar oluşurken ilk fiyatı 2. numaralıdaki liste ve satıştan alsın"); an
-// empty list price takes the sale price.
+// empty list price takes the sale price. Its stock starts empty (0): never another row's stock or the card's Stok field
+// (owner, 11.11.2026: 2XL rows added to RYP003T came with the first variant's stock 3, which the editor kept in that field).
 export function buildVariantGenerationDefaults({ modelCode, sequence, automaticBarcodes, fallbackSalePrice, fallbackListPrice }: VariantGenerationDefaultsInput) {
   const safeSequence = Math.max(1, Math.floor(sequence))
-  const prices = { salePrice: fallbackSalePrice, listPrice: fallbackListPrice || fallbackSalePrice }
+  const prices = { salePrice: fallbackSalePrice, listPrice: fallbackListPrice || fallbackSalePrice, stock: 0 }
   if (!automaticBarcodes) return { sku: '', barcode: '', ...prices }
 
   // The stock code is the barcode too (owner, 6 Nov 2026: "stokları da üretsin, barkod ile aynı olsun").

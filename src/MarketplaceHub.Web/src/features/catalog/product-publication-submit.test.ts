@@ -54,6 +54,24 @@ describe('marketplace publish lines', () => {
       .toEqual(['Trendyol: eksik 2 varyant gönderiliyor.'])
   })
 
+  // Owner 11.11.2026 (RYP006): each group says what happens to it, per marketplace.
+  const mürdüm = { kind: 'new-colour' as const, colour: 'Mürdüm', variants: 3, skus: ['RYP006-19', 'RYP006-20', 'RYP006-21'] }
+  it('says a new colour opens as its own card on Trendyol and joins the product on Shopify', () => {
+    expect(marketplacePublishLines(publish({ enqueuedCards: 1, enqueuedVariants: 3, addedToListingCards: 1, liveVariants: 18, groups: [mürdüm] })))
+      .toEqual(['Trendyol: Mürdüm yeni kart olarak açılıyor (3 varyant); 18 varyant zaten yayında.'])
+    expect(marketplacePublishLines(publish({ platformName: 'Shopify', platformCode: 'SHOPIFY', enqueuedCards: 1, enqueuedVariants: 3, addedToListingCards: 1, liveVariants: 18, groups: [mürdüm] })))
+      .toEqual(['Shopify: Mürdüm ürüne yeni renk olarak ekleniyor (3 varyant); 18 varyant zaten yayında.'])
+  })
+
+  it('names new sizes of a live colour, and the variants the server left out with their reasons', () => {
+    const groups = [{ kind: 'existing-colour' as const, colour: 'Haki', variants: 1, skus: ['H-2'] }, mürdüm]
+    const skippedVariants = [{ sku: 'RYP006-21', code: 'CHANNEL_OFFER_REQUIRED', message: 'Etkin Trendyol fiyatı yok.' }]
+    expect(marketplacePublishLines(publish({ enqueuedCards: 1, enqueuedVariants: 4, addedToListingCards: 1, liveVariants: 18, groups, skippedVariants }))).toEqual([
+      'Trendyol: Haki kartına 1 varyant ekleniyor; Mürdüm yeni kart olarak açılıyor (2 varyant); 18 varyant zaten yayında.',
+      'Trendyol: 1 varyant gönderilmedi — RYP006-21: Etkin Trendyol fiyatı yok.'
+    ])
+  })
+
   it('names a single product and its variants', () => {
     expect(marketplacePublishLines(publish({ platformName: 'n11', platformCode: 'N11', enqueuedCards: 1, enqueuedVariants: 3 })))
       .toEqual(['n11: ürün (3 varyant) gönderiliyor.'])
