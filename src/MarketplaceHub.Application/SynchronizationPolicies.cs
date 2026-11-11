@@ -481,7 +481,15 @@ public static class ProductImportMergePolicy
     // by its code, or the existing-products update) takes the marketplace content even over panel edits not sent yet: the
     // owner asked for it (7 Nov 2026, RYP003T: 7 read, 7 skipped). Other imports keep the panel edits.
     public static bool OverwriteLocalChanges(bool updateExistingProducts, bool singleLookup, bool existingOnly, bool observeOnly) =>
-        updateExistingProducts && (singleLookup || existingOnly) && !observeOnly;
+        OverwriteLocalChanges(updateExistingProducts, singleLookup, existingOnly, observeOnly, fullScanRequested: false);
+
+    // The owner's definition (12 Nov 2026): "Mevcut Ürün Bilgilerini Güncelle: Bu mevcut ürünü Trendyol'dan günceller ve
+    // yeni eklenen bedenlerini ekler." A full catalog scan the user started with that option ticked (fullScanRequested:
+    // the job says "full" and names updateExistingProducts true itself) takes the marketplace content the same way, new
+    // sizes included. A run that does not name the option (the incremental scan, an old queued job) keeps the panel edits.
+    // Picture assignments made in the panel are never this option's to replace (MarketplaceJobProcessor media rules).
+    public static bool OverwriteLocalChanges(bool updateExistingProducts, bool singleLookup, bool existingOnly, bool observeOnly, bool fullScanRequested) =>
+        updateExistingProducts && (singleLookup || existingOnly || fullScanRequested) && !observeOnly;
 
     // A model code typed in lower case finds nothing on Trendyol (live 7 Nov 2026: "Ryp003t" read 0, "RYP003T" read 7).
     // An empty lookup by a typed code is asked once more in upper case; a link or an upper-case code is not.

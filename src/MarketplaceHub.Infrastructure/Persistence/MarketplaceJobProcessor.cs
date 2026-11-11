@@ -52,6 +52,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // over the whole import, not each product the pages brought as changed (audit 2026-11-06 O3).
     private bool productImportTelemetry;
     private int telemetryImportReceivedCount;
+    // Sizes (barcodes) Trendyol lists on an owner-edited card that a plain pull kept whole and did not add: the run's
+    // count for the progress line, the last product's for its read record.
+    private int telemetryUnaddedSizeCount;
+    private int productUnaddedSizeCount;
 
     public async Task<JobExecutionResult> ProcessAsync(Guid tenantId, Guid? connectionId, string jobType, string payloadJson, string correlationId, CancellationToken cancellationToken, Guid? jobId = null)
     {
@@ -433,6 +437,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         telemetryImportFailedCount = 0;
         productImportTelemetry = false;
         telemetryImportReceivedCount = 0;
+        telemetryUnaddedSizeCount = 0;
+        productUnaddedSizeCount = 0;
     }
 
     internal readonly record struct CursorCounts(int Received, int Changed, int Skipped, int Failed);
@@ -6272,6 +6278,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // stock updates, so they are always part of their import.
         var includePendingApproval = flatCatalog || !isShopify && !isHepsiburada && ReadBoolean(payloadJson, "includePendingApproval");
         var updateExistingProducts = ReadBooleanOrDefault(payloadJson, "updateExistingProducts", true);
+        // "Mevcut Ürün Bilgilerini Güncelle" ticked by the user: the job names it itself (a job without it keeps the edits).
+        var updateExistingProductsRequested = ReadBoolean(payloadJson, "updateExistingProducts");
         // The single legacy flag still sits in jobs queued before the split: it stands for both halves.
         var legacyUpdatePricesAndStock = ReadBoolean(payloadJson, "updateExistingPricesAndStock");
         var updatePrices = ReadBooleanOrDefault(payloadJson, "updatePrices", legacyUpdatePricesAndStock);
@@ -6672,14 +6680,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     var categoryContext = categoryReferences is null
                         ? null
                         : await EnsureCategoryAttributeContext(tenantId, connectionId, categoryReferences, snapshot, categoryItems, importedAttributeLibrary, categoryContexts, correlationId, cancellationToken);
-                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify || isHepsiburada || flatCatalog, preferBarcode: isShopify, matchBySku: isN11, onlyExistingVariants: existingOnly && isShopify, updateExistingProducts: updateExistingProducts, overwriteLocalChanges: ProductImportMergePolicy.OverwriteLocalChanges(updateExistingProducts, singleLookup, existingOnly, isShopify || isHepsiburada || flatCatalog), updatePrices: updatePrices, updateStock: updateStock, isHepsiburada: isHepsiburada, observedPlatformName: isPazarama ? "Pazarama" : isPttAvm ? "PttAVM" : null, createdAt: CatalogImportOrdering.RemoteCreatedAt(snapshot, catalogOrderStamp) ?? catalogOrderStamp.AddMilliseconds(-catalogOrderPosition++), allowNewProduct: !existingOnly);
+                    productUnaddedSizeCount = 0;
+                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify || isHepsiburada || flatCatalog, preferBarcode: isShopify, matchBySku: isN11, onlyExistingVariants: existingOnly && isShopify, updateExistingProducts: updateExistingProducts, overwriteLocalChanges: ProductImportMergePolicy.OverwriteLocalChanges(updateExistingProducts, singleLookup, existingOnly, isShopify || isHepsiburada || flatCatalog, fullScanRequested: fullScan && updateExistingProductsRequested), updatePrices: updatePrices, updateStock: updateStock, isHepsiburada: isHepsiburada, observedPlatformName: isPazarama ? "Pazarama" : isPttAvm ? "PttAVM" : null, createdAt: CatalogImportOrdering.RemoteCreatedAt(snapshot, catalogOrderStamp) ?? catalogOrderStamp.AddMilliseconds(-catalogOrderPosition++), allowNewProduct: !existingOnly);
                     existingProductExternalIds?.Add(snapshot.ExternalProductId);
                     if (existingVariantExternalIds is not null)
                         foreach (var variant in snapshot.Variants)
                             existingVariantExternalIds.Add(Short(variant.ExternalVariantId, 256));
                     if (changed) telemetryImportProcessedCount++;
                     else telemetryImportSkippedCount++;
-                    RecordProductRead(snapshot, !changed ? JobReadOutcomes.Unchanged : productAlreadyLinked ? JobReadOutcomes.Updated : JobReadOutcomes.New, null);
+                    RecordProductRead(snapshot, !changed ? JobReadOutcomes.Unchanged : productAlreadyLinked ? JobReadOutcomes.Updated : JobReadOutcomes.New, productUnaddedSizeCount > 0 ? UnaddedSizesNote(productUnaddedSizeCount) : null);
                 }
                 // PTT AVM lists colour and size rows, not variants; its mapping writes the variant codes itself.
                 if (!isPttAvm) await RecordVariantLinkCodes(tenantId, connectionId, snapshotGroups, cancellationToken);
@@ -6794,8 +6803,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var totalPart = total is > 0 ? $" / {total:N0}" : "";
         var processedLabel = mappingOnly ? "Eşlenen" : "İşlenen";
         var skippedLabel = mappingOnly ? "Eşleşmeyen" : "Atlanan";
-        return $"{received:N0}{totalPart} · Alınan {received:N0} · {processedLabel} {telemetryImportProcessedCount:N0} · {skippedLabel} {telemetryImportSkippedCount:N0} · Hatalı {telemetryImportFailedCount:N0}";
+        var unaddedPart = telemetryUnaddedSizeCount > 0 ? $" · Eklenmeyen yeni beden {telemetryUnaddedSizeCount:N0}" : "";
+        return $"{received:N0}{totalPart} · Alınan {received:N0} · {processedLabel} {telemetryImportProcessedCount:N0} · {skippedLabel} {telemetryImportSkippedCount:N0} · Hatalı {telemetryImportFailedCount:N0}{unaddedPart}";
     }
+
+    internal static string UnaddedSizesNote(int count) =>
+        $"{count} yeni beden var; eklemek için Ekli Olmayan Ürünler ya da Mevcut Ürün Bilgilerini Güncelle ile çekin.";
 
     private async Task RecordProductImportFailure(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, Exception exception, CancellationToken cancellationToken)
     {
@@ -8465,6 +8478,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     existingVariantExternalIds?.Add(externalVariantId);
                 }
             }
+            // The new sizes a plain pull reported on this card are in the panel now.
+            if (!observeOnly && !isNewProduct && importedVariants.Any(variant => db.Entry(variant).State == EntityState.Added))
+                await ResolveIssue(tenantId, $"product-new-sizes:{connectionId:D}:{Short(externalProductId, 200)}", cancellationToken);
             // Whatever the import options, a product is never opened without a variant of its own: when every variant
             // turned out to be another panel product's, the new product, its link and options are dropped again.
             if (isNewProduct && importedVariants.Count == 0)
@@ -8477,7 +8493,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     await db.SaveChangesAsync(cancellationToken);
                 return false;
             }
-            if (categoryContext is not null && importedVariants.Count > 0)
+            // "Ekli Olmayan Ürünler" brings what the panel lacks and never rewrites a card's own fields: the attributes
+            // common to the new sizes alone are not the card's.
+            if (categoryContext is not null && importedVariants.Count > 0 && !onlyNewVariants)
                 await PromoteCommonImportedAttributes(tenantId, product, importedVariants, categoryContext, cancellationToken);
 
             if (!onlyNewVariants)
@@ -8497,6 +8515,21 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             // media is a separate remote projection, so a manual product edit
             // must not leave an older Shopify gallery in place.
             await SyncCatalogInventoryForPreservedProduct(tenantId, connectionId, product, snapshot, inventoryPolicy, now, cancellationToken, observeOnly, preferBarcode, updatePrices, updateStock, syncMedia: !observeOnly && updateExistingProducts);
+            // A plain pull keeps the card whole, a size Trendyol added since included (the owner's rule, 12 Nov 2026: only
+            // "Ekli Olmayan Ürünler" or "Mevcut Ürün Bilgilerini Güncelle" add it). The owner is told it is there.
+            if (!observeOnly)
+            {
+                var unadded = (await RemoteVariantsMissingFromPanel(tenantId, connectionId, snapshot, cancellationToken)).Count;
+                var issueKey = $"product-new-sizes:{connectionId:D}:{Short(externalProductId, 200)}";
+                if (unadded > 0)
+                {
+                    productUnaddedSizeCount = unadded;
+                    telemetryUnaddedSizeCount += unadded;
+                    await RecordIssue(tenantId, issueKey, "PRODUCT_NEW_SIZES_NOT_IMPORTED", Short($"{product.Title}: Trendyol'da panelde olmayan {UnaddedSizesNote(unadded)}", 1000), cancellationToken);
+                }
+                else
+                    await ResolveIssue(tenantId, issueKey, cancellationToken);
+            }
             if (!observeOnly && updateExistingProducts && snapshot.ImageUrls.Count > 0)
             {
                 var productImageUrls = CatalogImageIdentity.DistinctUrls(snapshot.ImageUrls);
@@ -8637,6 +8670,111 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (imageUrls.Count > 0)
                 await UpsertCatalogMedia(tenantId, product, null, imageUrls, product.Title, cancellationToken);
         }
+    }
+
+    // The listing's variants the panel does not hold at all: no variant link of this connection names them and no panel
+    // variant carries their stock code or barcode (a code known on any card is not a new size).
+    private async Task<List<RemoteCatalogVariant>> RemoteVariantsMissingFromPanel(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CancellationToken cancellationToken)
+    {
+        var externalIds = snapshot.Variants.Select(variant => Short(variant.ExternalVariantId, 256)).Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.Ordinal).ToArray();
+        var linked = externalIds.Length == 0
+            ? []
+            : (await db.MarketplaceVariantLinks.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && externalIds.Contains(x.ExternalId))
+                .Select(x => x.ExternalId)
+                .ToListAsync(cancellationToken)).ToHashSet(StringComparer.Ordinal);
+        var missing = new List<RemoteCatalogVariant>();
+        foreach (var remote in snapshot.Variants)
+        {
+            var externalId = Short(remote.ExternalVariantId, 256);
+            if (string.IsNullOrWhiteSpace(externalId) || linked.Contains(externalId)) continue;
+            var sku = Short(string.IsNullOrWhiteSpace(remote.Sku) ? remote.Barcode ?? remote.ExternalVariantId : remote.Sku, 160);
+            var skuKeys = CatalogLookupKeys(sku);
+            var barcodeKeys = CatalogLookupKeys(remote.Barcode);
+            if (skuKeys.Length == 0) continue;
+            if (db.ProductVariants.Local.Any(x => x.TenantId == tenantId && (CatalogKeyNormalizer.SameKey(x.SkuNormalized, sku) || barcodeKeys.Length > 0 && CatalogKeyNormalizer.SameKey(x.BarcodeNormalized, remote.Barcode)))) continue;
+            if (await db.ProductVariants.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && (skuKeys.Contains(x.SkuNormalized) || x.BarcodeNormalized != null && barcodeKeys.Contains(x.BarcodeNormalized)), cancellationToken)) continue;
+            missing.Add(remote);
+        }
+        return missing;
+    }
+
+    // A size added to an existing card starts with the pictures the editor's add rule gives a new row (family-gallery-save
+    // inheritAssignments): the pictures every existing size of its colour holds as its own list, joined with those every
+    // existing row of its size holds across two other colours at least, in the card gallery's order, once each. Any row of
+    // the colour without a list of its own leaves nothing to share, and nothing written means the card gallery applies.
+    // The rows are the family's (brand + model code) as the database holds them before this run's new sizes.
+    private async Task<List<Guid>> InheritedVariantPictureAssetIds(Guid tenantId, Product product, string optionSignature, CancellationToken cancellationToken)
+    {
+        var (colour, size) = ColourAndSize(optionSignature);
+        if (colour is null && size is null) return [];
+        var modelCode = await db.ProductVariants.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ProductId == product.Id && x.ModelCode != null && x.ModelCode != "")
+            .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
+            .Select(x => x.ModelCode)
+            .FirstOrDefaultAsync(cancellationToken);
+        var familyIds = await ProductFamilyScope.ProductIdsAsync(db, tenantId, product.BrandId, modelCode, db.ProductVariants.AsNoTracking(), cancellationToken);
+        if (!familyIds.Contains(product.Id)) familyIds.Add(product.Id);
+        var rows = await db.ProductVariants.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && familyIds.Contains(x.ProductId))
+            .OrderBy(x => x.ProductId == product.Id ? 0 : 1).ThenBy(x => x.ProductId).ThenBy(x => x.SortOrder).ThenBy(x => x.Id)
+            .Select(x => new { x.Id, x.OptionSignature })
+            .ToListAsync(cancellationToken);
+        if (rows.Count == 0) return [];
+        var rowIds = rows.Select(x => x.Id).ToArray();
+        var media = await (from item in db.ProductMedia.AsNoTracking()
+                           join asset in db.FileAssets.AsNoTracking() on new { item.TenantId, item.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
+                           where item.TenantId == tenantId && item.Status == "ACTIVE"
+                               && (item.VariantId != null && rowIds.Contains(item.VariantId.Value) || item.ProductId == product.Id && item.VariantId == null)
+                           orderby item.SortOrder, item.Id
+                           select new { item.VariantId, item.FileAssetId, asset.Classification, asset.RelativePath }).ToListAsync(cancellationToken);
+        string Key(Guid assetId, string classification, string path) => classification == "PRODUCT_MEDIA_URL" ? CatalogImageIdentity.Key(path) : assetId.ToString("D");
+        var assetByKey = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in media) assetByKey.TryAdd(Key(item.FileAssetId, item.Classification, item.RelativePath), item.FileAssetId);
+        var rank = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in media.Where(x => x.VariantId is null)) rank.TryAdd(Key(item.FileAssetId, item.Classification, item.RelativePath), rank.Count);
+        var listByVariant = media.Where(x => x.VariantId is not null).GroupBy(x => x.VariantId!.Value)
+            .ToDictionary(group => group.Key, group => group.Select(x => Key(x.FileAssetId, x.Classification, x.RelativePath)).Distinct(StringComparer.OrdinalIgnoreCase).ToList());
+        var assignments = rows.Select(row => (Axes: ColourAndSize(row.OptionSignature), Refs: listByVariant.GetValueOrDefault(row.Id) ?? [])).ToList();
+
+        static List<string> Common(IReadOnlyList<List<string>> lists) => lists.Count == 0
+            ? []
+            : [.. lists[0].Where(key => lists.Skip(1).All(other => other.Contains(key, StringComparer.OrdinalIgnoreCase)))];
+        var byColour = colour is null ? [] : Common([.. assignments.Where(row => row.Axes.Colour == colour).Select(row => row.Refs)]);
+        var sizeRows = size is null ? [] : assignments.Where(row => row.Axes.Size == size && row.Axes.Colour != colour).ToList();
+        var bySize = sizeRows.Select(row => row.Axes.Colour).Distinct(StringComparer.Ordinal).Count() >= 2 ? Common([.. sizeRows.Select(row => row.Refs)]) : [];
+        return [.. byColour.Concat(bySize)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select((key, index) => (Key: key, Index: index, Rank: rank.GetValueOrDefault(key, int.MaxValue)))
+            .OrderBy(item => item.Rank).ThenBy(item => item.Index)
+            .Select(item => assetByKey[item.Key])];
+    }
+
+    private static (string? Colour, string? Size) ColourAndSize(string? optionSignature)
+    {
+        string? colour = null, size = null;
+        foreach (var pair in VariantOptionSignature.Parse(optionSignature))
+        {
+            if (colour is null && VariantOptionSignature.IsColorName(pair.Key)) colour = NullIfEmpty(CatalogKeyNormalizer.Key(pair.Value, 120));
+            else if (size is null && VariantOptionSignature.IsSizeName(pair.Key)) size = NullIfEmpty(CatalogKeyNormalizer.Key(pair.Value, 120));
+        }
+        return (colour, size);
+    }
+
+    // A size's own picture list is the owner's once it is not the import's own copy of the card gallery: Trendyol keeps
+    // one picture list per colour content, which the import writes to the colour's first size and to the card gallery
+    // alike, so any other list on a size (assigned in the panel) is never the import's to replace or archive, whatever
+    // the link's edit marks say (they are cleared by a lookup that overwrites the card).
+    private async Task<bool> VariantPicturesAreOwnersAsync(Guid tenantId, Guid productId, Guid variantId, CancellationToken cancellationToken)
+    {
+        var rows = await db.ProductMedia.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ProductId == productId && (x.VariantId == variantId || x.VariantId == null) && x.Status == "ACTIVE")
+            .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
+            .Select(x => new { x.VariantId, x.FileAssetId })
+            .ToListAsync(cancellationToken);
+        var own = rows.Where(x => x.VariantId == variantId).Select(x => x.FileAssetId).ToList();
+        if (own.Count == 0) return false;
+        return !own.SequenceEqual(rows.Where(x => x.VariantId == null).Select(x => x.FileAssetId));
     }
 
     private async Task SyncCatalogInventoryForPreservedProduct(
@@ -8943,6 +9081,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         await UpsertCatalogOfferAndInventory(tenantId, connectionId, variant, remote, inventoryPolicy, now, cancellationToken, updateOffer: isNewVariant || updatePrices, observeOnly: observeOnly, updateStock: isNewVariant || updateStock, forceStockUpdate: !isNewVariant && updateStock);
         if ((!observeOnly || isNewVariant) && remote.ImageUrls is not null)
             await UpsertCatalogMedia(tenantId, product, variant.Id, remote.ImageUrls, $"{product.Title} · {optionSignature}", cancellationToken);
+        // A Trendyol size added to a card the panel already holds, without a list of its own from Trendyol (any size after
+        // its colour's first), starts with the editor's add rule (InheritedVariantPictureAssetIds).
+        if (isNewVariant && !observeOnly && db.Entry(product).State != EntityState.Added && remote.ImageUrls is not { Count: > 0 })
+        {
+            var altText = Short($"{product.Title} · {optionSignature}", 320);
+            foreach (var (assetId, index) in (await InheritedVariantPictureAssetIds(tenantId, product, optionSignature, cancellationToken)).Select((assetId, index) => (assetId, index)))
+                db.ProductMedia.Add(new ProductMedia { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = product.Id, VariantId = variant.Id, FileAssetId = assetId, MediaRole = index == 0 ? "PRIMARY" : "GALLERY", SortOrder = index, AltText = altText, Status = "ACTIVE" });
+        }
         return variant;
     }
 
@@ -9567,6 +9713,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     private async Task UpsertCatalogMedia(Guid tenantId, Product product, Guid? variantId, IReadOnlyList<string> sourceUrls, string altText, CancellationToken cancellationToken)
     {
         if (db.Entry(product).State != EntityState.Added && await MediaIsUserManagedAsync(tenantId, product.Id, variantId, cancellationToken)) return;
+        if (variantId is Guid ownVariantId && db.Entry(product).State != EntityState.Added && await VariantPicturesAreOwnersAsync(tenantId, product.Id, ownVariantId, cancellationToken)) return;
         var urls = CatalogImageIdentity.DistinctUrls(sourceUrls);
         var existing = await db.ProductMedia.Where(x => x.TenantId == tenantId && x.ProductId == product.Id && x.VariantId == variantId).ToListAsync(cancellationToken);
         var existingAssetIds = existing.Select(x => x.FileAssetId).Distinct().ToArray();

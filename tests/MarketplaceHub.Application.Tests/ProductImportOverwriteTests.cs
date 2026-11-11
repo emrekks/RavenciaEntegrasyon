@@ -14,6 +14,15 @@ public sealed class ProductImportOverwriteTests
     public void Overwrites_panel_edits_only_when_the_user_asked_for_existing_products(bool update, bool single, bool existingOnly, bool observeOnly, bool expected) =>
         Assert.Equal(expected, ProductImportMergePolicy.OverwriteLocalChanges(update, single, existingOnly, observeOnly));
 
+    // Owner 12 Nov 2026: "Mevcut Ürün Bilgilerini Güncelle" ticked on a full scan updates the existing products too.
+    [Theory]
+    [InlineData(true, true, false, true)]   // full scan the user started with the option ticked
+    [InlineData(false, true, false, false)] // option off
+    [InlineData(true, false, false, false)] // incremental scan or a job that does not name the option
+    [InlineData(true, true, true, false)]   // read-only observation never writes content
+    public void A_full_scan_with_the_option_ticked_overwrites_panel_edits(bool update, bool fullScanRequested, bool observeOnly, bool expected) =>
+        Assert.Equal(expected, ProductImportMergePolicy.OverwriteLocalChanges(update, singleLookup: false, existingOnly: false, observeOnly, fullScanRequested));
+
     [Fact]
     public void Lower_case_code_is_asked_again_in_upper_case_once()
     {
