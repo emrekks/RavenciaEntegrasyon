@@ -13,14 +13,19 @@ import './size-chart.css'
 export type SizeChartInfo = { sizes: string[]; sizeOptionLabel: string | null; measurements: SizeChartMeasurements | null; sizeChartUrl: string | null; aiReady: boolean; aiIssue: string | null }
 export type SizeChartResult = { url: string; fileAssetId: string; inputTokens: number | null; outputTokens: number | null; costUsd: number | null }
 
-export function SizeChartButton({ productId, sizes, disabledReason, onUse }: { productId: string | null; sizes: string[]; disabledReason: string | null; onUse: (url: string) => void }) {
+export function SizeChartButton({ productId, sizes, disabledReason, onUse, inline = false }: { productId: string | null; sizes: string[]; disabledReason: string | null; onUse: (url: string) => void; inline?: boolean }) {
   const [open, setOpen] = useState(false)
+  const dialog = open && productId && createPortal(<SizeChartDialog productId={productId} sizes={sizes} onClose={() => setOpen(false)} onUse={url => { onUse(url); setOpen(false) }} />, document.body)
+  const button = <button type="button" className="secondary size-chart-button" disabled={Boolean(disabledReason)} title={disabledReason ?? 'Ölçüleri girip Ravencia tasarımında beden tablosu görseli oluşturun.'} aria-describedby={disabledReason ? 'size-chart-disabled-reason' : undefined} onClick={() => setOpen(true)}>Beden Tablosu</button>
+  // Inline: on Güvenlik Stoğu's control row, beside its input (as Desi's Hesapla), with the reason's "?" after it, when
+  // a cell of its own would fall alone onto the next row (owner, 11 Nov 2026: "taşma var").
+  if (inline) return <span className="size-chart-trigger size-chart-inline">{button}{disabledReason && <FieldHelp id="size-chart-disabled-reason" label="Beden Tablosu">{disabledReason}</FieldHelp>}{dialog}</span>
   // A field of the price and stock grid (beside Güvenlik Stoğu): an empty label line keeps the button level with the inputs.
   return <div className="size-chart-trigger">
     {/* Why it is off sits behind a "?" on the label line, so the button stays level with the fields beside it. */}
     <span className="size-chart-trigger-label">{disabledReason ? <FieldHelp id="size-chart-disabled-reason" label="Beden Tablosu">{disabledReason}</FieldHelp> : <span aria-hidden="true">&nbsp;</span>}</span>
-    <button type="button" className="secondary size-chart-button" disabled={Boolean(disabledReason)} title={disabledReason ?? 'Ölçüleri girip Ravencia tasarımında beden tablosu görseli oluşturun.'} aria-describedby={disabledReason ? 'size-chart-disabled-reason' : undefined} onClick={() => setOpen(true)}>Beden Tablosu</button>
-    {open && productId && createPortal(<SizeChartDialog productId={productId} sizes={sizes} onClose={() => setOpen(false)} onUse={url => { onUse(url); setOpen(false) }} />, document.body)}
+    {button}
+    {dialog}
   </div>
 }
 

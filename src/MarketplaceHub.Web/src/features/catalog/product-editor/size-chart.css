@@ -61,3 +61,8 @@
 .app-shell.stitch-shell main .media-preview-strip .image-preview-card button.size-chart-pick-target { position: absolute; inset: 0; z-index: 4; width: auto; height: auto; min-width: 0; min-height: 0; margin: 0; padding: 0; background: transparent; border: 0; border-radius: inherit; box-shadow: none; cursor: pointer; }
 .app-shell.stitch-shell main .media-preview-strip .image-preview-card button.size-chart-pick-target:is(:hover, :focus-visible) { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; background: color-mix(in srgb, var(--rv-color-primary) 12%, transparent); }
 .app-shell.stitch-shell main .product-media-header-actions > .product-media-size-chart-button[aria-pressed='true'] { color: var(--rv-color-primary); border-color: var(--rv-color-primary); }
+
+/* Beside Güvenlik Stoğu's input in one control row: the input takes the room left, the button its text width. */
+.app-shell.stitch-shell main .product-step-grid .size-chart-inline-control { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--rv-space-2); }
+.app-shell.stitch-shell main .product-step-grid .size-chart-trigger.size-chart-inline { display: flex; align-items: center; gap: 6px; }
+.app-shell.stitch-shell main .product-step-grid .size-chart-trigger.size-chart-inline button.size-chart-button { width: auto; }
