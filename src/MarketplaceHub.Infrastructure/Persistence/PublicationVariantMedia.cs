@@ -10,10 +10,10 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // yapıyorum onlar yazsın varyantta görsel olarak"): the editor's two assignment places (Seçeneklere Görsel Ata by colour
 // or size, and each row's picture icon) write a variant's own pictures, and a variant with an assignment goes with
 // exactly that list, in the panel's order, the size chart last; the row icon's count is that list. A variant without
-// an assignment goes with what the other sizes of its colour on the card were assigned (an imported card keeps its
-// pictures on its first size; the editor shows every size of a colour with that list); when none of them has any, with
-// its card's gallery minus the pictures assigned only to other colours of the model (the other colours' pictures copied
-// onto a gallery, live MZ051BYC Siyah, no longer go); failing that, as before. The row icon shows that list too.
+// an assignment goes with its card's gallery minus the pictures assigned only to other colours of the model (an
+// imported card keeps its gallery on its first size, so its other sizes still go with it; the other colours' pictures
+// copied onto a gallery, live MZ051BYC Siyah, no longer go); failing that, as before. The editor shows that list on the
+// row icon too.
 //
 // Pictures go out in the panel's order, the one in front first (owner, 6.11.2026). The panel's order is the card's
 // picture strip: its product-level rows by SortOrder. A variant's own assignment says which pictures it has, not their
@@ -37,11 +37,6 @@ internal static class PublicationVariantMedia
         var seen = new HashSet<Guid>();
         var own = media.Where(item => variantOf(item) == variantId && seen.Add(assetOf(item))).ToList();
         if (own.Count > 0) return InPanelOrder(own, general, assetOf);
-        // An unassigned size takes what its colour's other sizes on the card were assigned (the editor shows each size
-        // of a colour with that list, and a size added later inherits it), so every size of a colour sends one list.
-        var siblingSeen = new HashSet<Guid>();
-        var colourSiblings = media.Where(item => variantOf(item) is Guid other && other != variantId && colours.SameColour(variantId, other) && siblingSeen.Add(assetOf(item))).ToList();
-        if (colourSiblings.Count > 0) return InPanelOrder(colourSiblings, general, assetOf);
         var fromGallery = general.Where(item => !colours.AssignedOnlyToOtherColours(variantId, assetOf(item))).ToList();
         return fromGallery.Count > 0 ? fromGallery : Pictures(media, variantId, variantOf, assetOf);
     }

@@ -94,16 +94,13 @@ public sealed class FamilyGalleryPublicationTests
         new(cardVariants.ToDictionary(item => item.Variant, item => item.Colour.ToLowerInvariant()), [.. modelAssignments.Select(item => (Asset(item.Picture), item.Colour.ToLowerInvariant()))]);
 
     [Fact]
-    public void After_AnAssignedSizeGoesWithExactlyItsList_AnUnassignedOneWithItsColoursAssignment()
+    public void After_AnAssignedSizeGoesWithExactlyItsList_AnUnassignedOneWithTheGallery()
     {
         var (l, xl) = (Guid.NewGuid(), Guid.NewGuid());
         var siyah = Card([.. Siyah, "kombin", "beden-tablosu"], (xl, Siyah));
         var colours = Colours([(l, "Siyah"), (xl, "Siyah")], [.. Siyah.Select(picture => (picture, "Siyah"))]);
-        Assert.Equal([.. Siyah, "beden-tablosu"], Images(siyah, l, "beden-tablosu", colours));
+        Assert.Equal([.. Siyah, "kombin", "beden-tablosu"], Images(siyah, l, "beden-tablosu", colours));
         Assert.Equal([.. Siyah, "beden-tablosu"], Images(siyah, xl, "beden-tablosu", colours));
-        // No size of the colour assigned: the gallery (the unassigned "kombin" included).
-        var none = Card([.. Siyah, "kombin", "beden-tablosu"]);
-        Assert.Equal([.. Siyah, "kombin", "beden-tablosu"], Images(none, l, "beden-tablosu", colours));
     }
 
     // A size assignment adds to that size only: Siyah XL assigned Siyah's pictures and a detail shot goes with all four,
@@ -128,7 +125,7 @@ public sealed class FamilyGalleryPublicationTests
         var siyah = Card([.. Bordo, .. Haki, .. Gri, .. Siyah, .. Lacivert, .. NewUploads], (xl, Siyah));
         (string, string)[] otherCards = [.. Bordo.Select(p => (p, "Bordo")), .. Haki.Select(p => (p, "Haki")), .. Gri.Select(p => (p, "Gri")), .. Lacivert.Select(p => (p, "Lacivert")), .. Siyah.Select(p => (p, "Siyah"))];
         var today = Colours([(l, "Siyah"), (xl, "Siyah")], otherCards);
-        Assert.Equal(Siyah, Images(siyah, l, colours: today));
+        Assert.Equal([.. Siyah, "kahve-1", "kahve-2", "kahve-3", "murdum-1", "murdum-2"], Images(siyah, l, colours: today));
         Assert.Equal(Siyah, Images(siyah, xl, colours: today));
 
         var assigned = Colours([(l, "Siyah"), (xl, "Siyah")], [.. otherCards, .. NewUploads.Take(3).Select(p => (p, "Kahverengi")), .. NewUploads.Skip(3).Select(p => (p, "Mürdüm"))]);
