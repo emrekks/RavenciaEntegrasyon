@@ -61,3 +61,6 @@
 .app-shell.stitch-shell main .media-preview-strip .image-preview-card button.size-chart-pick-target { position: absolute; inset: 0; z-index: 4; width: auto; height: auto; min-width: 0; min-height: 0; margin: 0; padding: 0; background: transparent; border: 0; border-radius: inherit; box-shadow: none; cursor: pointer; }
 .app-shell.stitch-shell main .media-preview-strip .image-preview-card button.size-chart-pick-target:is(:hover, :focus-visible) { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; background: color-mix(in srgb, var(--rv-color-primary) 12%, transparent); }
 .app-shell.stitch-shell main .product-media-header-actions > .product-media-size-chart-button[aria-pressed='true'] { color: var(--rv-color-primary); border-color: var(--rv-color-primary); }
+
+/* With Maliyet shown the price and stock grid holds nine fields; Maliyet spanning two keeps Güvenlik Stoğu and Beden Tablosu on one row. */
+.app-shell.stitch-shell main .product-pricing-card .product-step-grid > label.product-cost-field { grid-column: span 2; }
