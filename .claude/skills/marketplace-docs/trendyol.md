@@ -307,7 +307,9 @@ packages only, no claim events.
   Delivered 11 Nov 11:40Z; resend 4337242198, 2 lines, Trendyol Express 7330038976334420, seller panel → Yeniden
   Gönderimler, "Sipariş Tarihi" 16:56 = 13:56Z) is **not returned by any order read**: v2 `orders?orderNumber=` (with
   and without dates), v1 `orders?orderNumber=`, v2 `shipmentPackageIds=4337242198,4326252839` and the stream window
-  13:50–14:10Z all answered only 4326252839 (`createdBy` "order-creation", `originPackageIds` null). No webhook brought it.
+  13:50–14:10Z all answered only 4326252839 (`createdBy` "order-creation", `originPackageIds` null). No webhook brought it,
+  and getClaims `orderNumber=11805932340` answered no claim (totalElements 0, read again 17:10Z): the missing-item
+  request is not a claim in the API either.
 - The only trace in the API: the original package's `lastModifiedDate` moved to the resend's moment (13:56:41Z) with no
   new `packageHistories` entry and no status change; its lines carry no resend or claim marker
   (`defectiveClaimListingInsight` ""). Delivered packages are touched like this 13–57 times a day for other reasons
@@ -315,4 +317,4 @@ packages only, no claim events.
 - No Trendyol package with `createdBy` other than order-creation/cancel was ever stored (live
   `sales.shipment_packages`, 11 Nov 2026); the panel's Yeniden Gönderim card (`ShipmentPackageClassification.IsResend`)
   cannot count Trendyol resends from the order API. Source: one-time diagnostic read (resolved operational issue
-  TRENDYOL_RESEND_DIAGNOSTIC, `MarketplaceJobProcessor.ResendDiagnostic.cs`), 11 Nov 2026 16:10Z.
+  TRENDYOL_RESEND_DIAGNOSTIC, `MarketplaceJobProcessor.ResendDiagnostic.cs`), 11 Nov 2026 16:10Z and 17:10Z.
