@@ -72,12 +72,18 @@ public sealed class PublicationPictureRegressionTests
         AssertSameAsBefore(card, [sl, sxl, bl, bxl], Colours([(sl, "siyah"), (sxl, "siyah"), (bl, "bordo"), (bxl, "bordo")], [.. Siyah.Select(p => (p, "siyah")), .. Bordo.Select(p => (p, "bordo"))]));
     }
 
+    // Changes on purpose: an unassigned size goes with its colour's assignment, not with a gallery picture its colour's
+    // assigned sizes do not carry, so every size of the colour sends one list (Trendyol: one list per colour content).
+    // The live dry run (11.11.2026, every model) found this shape on RYP003T and MZ051BYC only.
     [Fact]
-    public void AGalleryPictureNobodyAssigned_StillGoesAsBefore()
+    public void AnUnassignedSize_TakesItsColoursAssignment_NotAnExtraGalleryPicture()
     {
         var (l, xl) = (Guid.NewGuid(), Guid.NewGuid());
         var card = Card([.. Siyah, "kombin"], (xl, Siyah));
-        AssertSameAsBefore(card, [l, xl], Colours([(l, "siyah"), (xl, "siyah")], Siyah.Select(p => (p, "siyah"))));
+        var colours = Colours([(l, "siyah"), (xl, "siyah")], Siyah.Select(p => (p, "siyah")));
+        Assert.Equal(Siyah.Concat(["kombin"]).Select(Asset), PublicationVariantMedia.For(card, l, item => item.VariantId, item => item.AssetId).Select(item => item.AssetId));
+        Assert.Equal(Siyah.Select(Asset), PublicationVariantMedia.For(card, l, item => item.VariantId, item => item.AssetId, colours: colours).Select(item => item.AssetId));
+        AssertSameAsBefore(card, [xl], colours);
     }
 
     // The one shape the change is for: an unassigned size of a card whose gallery holds another colour's assigned pictures.
