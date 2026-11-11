@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type InputHTMLAttributes } from 'react'
 import { variantOptionParts } from '../variant-option-label'
+import { colourFirstOptions } from '../variant-option-matching'
 import { hubApi } from '../../../shared/api'
 import { newIdempotencyKey, sendWithVersionedIdempotencyKey } from '../../../shared/idempotency'
 import { TitleHint, UiIcon } from '../../../shared/components'
@@ -24,7 +25,7 @@ function compareVariantItemsAlphabetically(left: { variant: { optionSignature?: 
 // The options that tell one variant from another (colour, size, number). Imported variants carry every product
 // attribute in their signature ("Renk: Yeşil | Beden: XL | Boy: Regular | Cinsiyet: …"); only these name the variant.
 export function variantAxisParts(signature: string | null | undefined) {
-  const parts = variantOptionParts(signature)
+  const parts = colourFirstOptions(variantOptionParts(signature))
   const axes = parts.filter(part => isVariantOptionName(part.name))
   return axes.length ? axes : parts.slice(0, 2)
 }
