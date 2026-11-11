@@ -90,6 +90,9 @@ Turkey time without offset; finance dates sent in Turkey time with milliseconds.
 - Refund codes: 1 WaitingInAction; 2/4/6/8 Accepted; 3/5 Rejected; 7 Cancelled.
 
 ## Quirks
+- One product with variants per `groupCode` ("Ürünün bağlı olduğu diğer ürünler ile ilişkilendirilmesi"): a new size
+  or colour of a card already there goes as new barcodes with the same groupCode and joins the product; the panel
+  treats the family as one product (`holdsFamilyAsOneProduct`). Source: offline `pazarama-api-son.md` ~545.
 - Envelope `{data, success, messageCode, message, userMessage}`; money fields are objects (use `value`); ids are GUIDs.
 - A price or stock equal to the current value is refused — send only changed values.
 - A discount of 70% or more goes to approval. Price/stock results can take up to 4 h; product batch results are

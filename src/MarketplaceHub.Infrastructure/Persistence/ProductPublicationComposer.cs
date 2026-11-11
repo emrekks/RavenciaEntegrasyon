@@ -19,6 +19,10 @@ internal sealed record ProductPublicationDraft(Guid ProfileId, string ExternalCa
     // price, a VAT rate Trendyol does not take). Its item carries no price, VAT or quantity; the update composer refuses
     // with this error only when the update sends one of them.
     public ServiceError? SalesDataIssue { get; init; }
+    // An adding send (onlyUnsentVariants on a card already there): the variants left out, each with its reason.
+    public IReadOnlyList<PublicationSkippedVariant> SkippedVariants { get; init; } = [];
+    // The send adds barcodes to a card already on the marketplace (some of its variants are there).
+    public bool AddsToListing { get; init; }
 }
 
 internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration configuration)
@@ -58,9 +62,6 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
             return await new PazaramaProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken, onlyUnsentVariants);
         if (platformCode == "PTTAVM")
             return await new PttAvmProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
-        if (!contentSplitAllowed && ProductApprovalReconciliationPolicy.RequiresContentSplitReview(profile.LastRejectionCode))
-            return Fail("PRODUCT_APPROVAL_CONTENT_SPLIT", "Trendyol varyantları birden fazla içerik kimliğine ayırdı. Yanlış ilana yazmamak için ürün içeriği güncellemesi durduruldu; varyant durumları ayrı ayrı izlenebilir.", status: 409);
-
         var categoryMapping = product.CategoryId is Guid categoryId
             ? await db.CategoryMappings.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == categoryId && x.Status == "VERIFIED")
                 .Join(db.ReferenceSnapshots.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "CATEGORIES" && x.IsCurrent), mapping => mapping.SnapshotId, snapshot => snapshot.Id, (mapping, _) => mapping).SingleOrDefaultAsync(cancellationToken)
@@ -137,13 +138,43 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
         var modelCodes = cardVariants.Select(x => x.ModelCode?.Trim()).Distinct(StringComparer.Ordinal).ToList();
         if (modelCodes.Count != 1 || string.IsNullOrWhiteSpace(modelCodes[0]) || modelCodes[0]!.Length > 40) return Fail("MODEL_CODE_REQUIRED", "Varyant grubu tek bir ortak ve en fazla 40 karakterlik model kodu kullanmalıdır.");
         var variants = cardVariants;
+        IReadOnlySet<Guid> present = new HashSet<Guid>();
         if (onlyUnsentVariants)
         {
-            var present = await PublicationUnsentVariants.PresentAsync(db, tenantId, connectionId, [.. cardVariants.Select(x => x.Id)], cancellationToken);
+            present = await PublicationUnsentVariants.PresentAsync(db, tenantId, connectionId, [.. cardVariants.Select(x => x.Id)], cancellationToken);
             if (PublicationUnsentVariants.Unsent(cardVariants, x => x.Id, present) is not { } unsent) return Fail("PRODUCT_ALREADY_LIVE", PublicationUnsentVariants.AllPresentMessage("Trendyol"), status: 409);
             variants = [.. unsent];
         }
+        // A card Trendyol holds as several contents (one per colour) stops a send that writes the card's content. Yayınla
+        // on such a card while some of its variants are there only creates the barcodes not there yet: a new size joins
+        // its colour's content, a new colour opens its own content under the model code; no live content is written
+        // (live 11.11.2026, RYP006: three new Mürdüm sizes of a six-colour card).
+        var addsToListing = onlyUnsentVariants && present.Count > 0;
+        if (!contentSplitAllowed && !addsToListing && ProductApprovalReconciliationPolicy.RequiresContentSplitReview(profile.LastRejectionCode))
+            return Fail("PRODUCT_APPROVAL_CONTENT_SPLIT", "Trendyol varyantları birden fazla içerik kimliğine ayırdı. Yanlış ilana yazmamak için ürün içeriği güncellemesi durduruldu; varyant durumları ayrı ayrı izlenebilir.", status: 409);
         if (variants.Count > 1000) return Fail("PRODUCT_BATCH_LIMIT_EXCEEDED", "Tek yayın isteğinde en fazla 1000 varyant gönderilebilir.");
+        // Yayınla adding to a card already there sorts the variants (owner, 11.11.2026: "ayrımları yapabilsin"): one that
+        // cannot go (its barcode, stock code, price, stock, desi, pictures or attributes) is left out with its reason and
+        // the others go; only when none can go does the send stop, with the first reason. A first send stays whole.
+        var skipped = new List<PublicationSkippedVariant>();
+        bool Keep(ProductVariant variant, string? code, string? message)
+        {
+            if (code is null) return true;
+            skipped.Add(new(variant.Sku.Trim(), code, message!));
+            return false;
+        }
+        if (addsToListing)
+        {
+            variants = [.. variants.Where(x => Keep(x, BarcodeOrSkuIssue(x).Code, BarcodeOrSkuIssue(x).Message))];
+            var free = new List<ProductVariant>(variants.Count);
+            foreach (var variant in variants)
+            {
+                var taken = await ConnectionDuplicateAsync(db, tenantId, connectionId, [variant.Id], [variant.Barcode!.Trim()], [], cancellationToken);
+                if (Keep(variant, taken is null ? null : "BARCODE_DUPLICATE", taken is null ? null : ConnectionDuplicateMessage(taken))) free.Add(variant);
+            }
+            variants = free;
+            if (variants.Count == 0) return SkippedAll(skipped);
+        }
         if (variants.Any(x => string.IsNullOrWhiteSpace(x.Barcode) || x.Barcode.Trim().Length > 40 || !IsValidBarcode(x.Barcode.Trim()))) return Fail("BARCODE_INVALID", "Tüm varyantlarda en fazla 40 karakterlik; yalnız Türkçe karakter içermeyen harf, rakam, nokta, tire veya alt çizgiden oluşan barkod bulunmalıdır.");
         if (variants.Select(x => x.Barcode!.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count() != variants.Count) return Fail("BARCODE_DUPLICATE", "Yayınlanan varyant barkodları benzersiz olmalıdır.");
         if (await ConnectionDuplicateAsync(db, tenantId, connectionId, variants.Select(x => x.Id).ToArray(), variants.Select(x => x.Barcode!.Trim()).ToArray(), [], cancellationToken) is { } takenBarcode)
@@ -158,9 +189,16 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
                                 select new { variantOption.VariantId, option.Label, ValueLabel = optionValue.Label }).ToListAsync(cancellationToken);
         var offers = await db.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && variantIds.Contains(x.VariantId) && x.Status == "ACTIVE").ToDictionaryAsync(x => x.VariantId, cancellationToken);
         var inventories = await db.InventoryItems.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId) && x.LocationCode == "MAIN").ToDictionaryAsync(x => x.VariantId, cancellationToken);
+        if (addsToListing && !salesDataOptional)
+        {
+            variants = [.. variants.Where(x => Keep(x,
+                !offers.ContainsKey(x.Id) ? "CHANNEL_OFFER_REQUIRED" : !inventories.ContainsKey(x.Id) ? "INVENTORY_REQUIRED" : null,
+                !offers.ContainsKey(x.Id) ? "Etkin Trendyol fiyatı yok." : "MAIN stok kaydı yok."))];
+            if (variants.Count == 0) return SkippedAll(skipped);
+        }
         ServiceError? salesDataIssue = null;
-        if (offers.Count != variants.Count) salesDataIssue = new("CHANNEL_OFFER_REQUIRED", "Her varyant için etkin Trendyol fiyat teklifi gerekir.", 422);
-        else if (inventories.Count != variants.Count) salesDataIssue = new("INVENTORY_REQUIRED", "Her varyant için MAIN stok kaydı gerekir.", 422);
+        if (variants.Any(x => !offers.ContainsKey(x.Id))) salesDataIssue = new("CHANNEL_OFFER_REQUIRED", "Her varyant için etkin Trendyol fiyat teklifi gerekir.", 422);
+        else if (variants.Any(x => !inventories.ContainsKey(x.Id))) salesDataIssue = new("INVENTORY_REQUIRED", "Her varyant için MAIN stok kaydı gerekir.", 422);
         if (salesDataIssue is not null && !salesDataOptional) return Fail(salesDataIssue.Code, salesDataIssue.Message);
 
         var sizeChartAssetId = await SizeCharts.SizeChartPlacement.AssetIdAsync(db, tenantId, productId, cancellationToken);
@@ -169,6 +207,23 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
                            where productMedia.TenantId == tenantId && productMedia.ProductId == productId && productMedia.Status == "ACTIVE" && asset.TenantId == tenantId && asset.Status == "ACTIVE" && asset.ArchivedAt == null && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
                            orderby productMedia.SortOrder, productMedia.Id
                            select new { productMedia.VariantId, productMedia.SortOrder, asset.Id, asset.Classification, asset.RelativePath }).ToListAsync(cancellationToken);
+        if (addsToListing)
+        {
+            var cardVariantIds = cardVariants.Select(x => x.Id).ToArray();
+            var colourByVariant = (await (from option in db.ProductOptions.AsNoTracking()
+                                          join optionValue in db.ProductOptionValues.AsNoTracking() on new { option.TenantId, OptionId = option.Id } equals new { optionValue.TenantId, OptionId = optionValue.OptionId }
+                                          join variantOption in db.VariantOptionValues.AsNoTracking() on new { optionValue.TenantId, OptionValueId = optionValue.Id } equals new { variantOption.TenantId, OptionValueId = variantOption.OptionValueId }
+                                          where option.TenantId == tenantId && option.ProductId == productId && cardVariantIds.Contains(variantOption.VariantId)
+                                          select new { variantOption.VariantId, option.Label, ValueLabel = optionValue.Label }).ToListAsync(cancellationToken))
+                .Where(x => TrendyolColorValuePolicy.UsesCustomPanelColorValue(x.Label) && !string.IsNullOrWhiteSpace(x.ValueLabel))
+                .GroupBy(x => x.VariantId)
+                .ToDictionary(group => group.Key, group => group.First().ValueLabel);
+            var withoutPictures = PublicationUnsentVariants.NewColourVariantsWithoutPictures(colourByVariant, present, variants.Select(x => x.Id), variantId => media.Any(item => item.VariantId == variantId && item.Id != sizeChartAssetId)).ToHashSet();
+            variants = [.. variants.Where(x => Keep(x,
+                withoutPictures.Contains(x.Id) ? PublicationUnsentVariants.NewColourPicturesRequiredCode : null,
+                withoutPictures.Contains(x.Id) ? PublicationUnsentVariants.NewColourPicturesRequiredMessage(colourByVariant[x.Id]) : null))];
+            if (variants.Count == 0) return SkippedAll(skipped);
+        }
 
         var title = (profile.TitleOverride ?? product.Title).Trim();
         var description = (profile.DescriptionOverride ?? product.Description).Trim();
@@ -181,6 +236,19 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
         var items = new List<Dictionary<string, object?>>(variants.Count);
         var draftVariants = new List<PublicationVariantDraft>(variants.Count);
         foreach (var variant in variants)
+        {
+            if (await AddItemAsync(variant) is not { } itemFailure) continue;
+            if (!addsToListing) return itemFailure;
+            Keep(variant, itemFailure.Error!.Code, itemFailure.Error.Message);
+        }
+        if (items.Count == 0) return SkippedAll(skipped);
+
+        var payloadJson = JsonSerializer.Serialize(new Dictionary<string, object?> { ["items"] = items }, JsonOptions);
+        var payloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payloadJson)));
+        return ServiceResult<ProductPublicationDraft>.Ok(new(profile.Id, categoryMapping.ExternalId, brandMapping.ExternalId, payloadHash, payloadJson, draftVariants) { SalesDataIssue = salesDataIssue, SkippedVariants = skipped, AddsToListing = addsToListing });
+
+        // One variant's item, added to the send; its failure otherwise (nothing added).
+        async Task<ServiceResult<ProductPublicationDraft>?> AddItemAsync(ProductVariant variant)
         {
             var offer = offers.GetValueOrDefault(variant.Id);
             var inventory = inventories.GetValueOrDefault(variant.Id);
@@ -353,12 +421,20 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
             };
             items.Add(item);
             draftVariants.Add(new PublicationVariantDraft(variant.Id, variant.Sku.Trim(), variant.Barcode.Trim()));
+            return null;
         }
-
-        var payloadJson = JsonSerializer.Serialize(new Dictionary<string, object?> { ["items"] = items }, JsonOptions);
-        var payloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payloadJson)));
-        return ServiceResult<ProductPublicationDraft>.Ok(new(profile.Id, categoryMapping.ExternalId, brandMapping.ExternalId, payloadHash, payloadJson, draftVariants) { SalesDataIssue = salesDataIssue });
     }
+
+    private static (string? Code, string? Message) BarcodeOrSkuIssue(ProductVariant variant) =>
+        string.IsNullOrWhiteSpace(variant.Barcode) || variant.Barcode.Trim().Length > 40 || !IsValidBarcode(variant.Barcode.Trim())
+            ? ("BARCODE_INVALID", "Barkod boş ya da geçersiz (en fazla 40 karakter; Türkçe karakter içermeyen harf, rakam, nokta, tire veya alt çizgi).")
+            : string.IsNullOrWhiteSpace(variant.Sku) || variant.Sku.Trim().Length > 100
+                ? ("SKU_INVALID", "Stok kodu boş ya da 100 karakterden uzun.")
+                : (null, null);
+
+    // Every variant of an adding send was left out: the send stops with the first reason, naming how many could not go.
+    private static ServiceResult<ProductPublicationDraft> SkippedAll(IReadOnlyList<PublicationSkippedVariant> skipped) =>
+        Fail(skipped[0].Code, skipped.Count == 1 ? $"{skipped[0].Sku}: {skipped[0].Message}" : $"Gönderilecek {skipped.Count} varyantın hiçbiri gönderilemedi. {skipped[0].Sku}: {skipped[0].Message}");
 
     // Connection defaults this category can use, as ready payload entries keyed by attribute id. A
     // list default counts only while its value is active in the category's current value snapshot;

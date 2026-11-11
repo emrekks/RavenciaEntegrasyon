@@ -106,6 +106,10 @@ A line in `ClaimCreated` must not put the order on hold.
 Claims: NewRequest, AwaitingAction, InDispute, Accepted, Rejected, Refunded, Cancelled, AwaitingPreApproval.
 
 ## Quirks
+- Variants are separate listings grouped by `VaryantGroupID` ("Renk, Beden vb özelliklere göre ayrılan aynı ürünler
+  için bu değerin aynı gönderilmesi gerekmektedir"): a new size or a new colour of a card already there is sent as new
+  SKUs with the same group id and joins the group; each SKU carries its own images. Source: offline
+  `hepsiburada-api-son.md` ~521 and ~532 (VaryantGroupID), ~819.
 - The listing service calls the SKU `hepsiburadaSku`, not `hbSku`; stage uploads map merchantSku to hbSku first.
 - The live-proven invoice PUT body sends a MIME `contentType` and no serialNumber/rowNumber; the schema copy differs
   and was never confirmed.

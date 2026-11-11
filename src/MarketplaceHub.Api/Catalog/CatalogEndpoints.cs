@@ -140,7 +140,9 @@ public static class CatalogEndpoints
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
             var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
-            return Accepted(await service.EnqueuePublicationAsync(tenant.TenantId, id, command.ConnectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted));
+            // skippedVariants: what the send left out of a card already on the marketplace, each with its reason.
+            var queued = await service.EnqueuePublicationWithSkippedAsync(tenant.TenantId, id, command.ConnectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted);
+            return queued.Succeeded ? Results.Accepted($"/api/v1/jobs/{queued.Value!.JobId:D}", new { jobId = queued.Value.JobId, skippedVariants = queued.Value.SkippedVariants }) : MarketplaceHub.Api.Security.ApiProblems.Of(null, queued.Error!);
         });
         api.MapPost("/products/bulk-publication-jobs", async (BulkPublicationCommand command, HttpContext http, ICatalogService service) =>
         {

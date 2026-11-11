@@ -23,12 +23,23 @@ export type MarketplacePublishOutcome = {
   enqueuedVariants: number
   /** Queued cards that were already on the marketplace and sent only their missing variants. */
   addedToListingCards?: number
+  /** Those cards' variants already there (left as they were) and the variants they sent, by colour group. */
+  liveVariants?: number
+  groups?: readonly PublishGroup[]
+  /** Variants the server left out of those sends, each with its reason (the others went). */
+  skippedVariants?: readonly PublicationSkippedVariant[]
   skipped: { live: number; running: number; matched: number }
   /** Where the opened card stands among the family's cards (0 when left out). */
   openedCard?: number
   /** Refusal message → the cards (their places in the family's colour order) it stopped. */
   failures: ReadonlyMap<string, readonly number[]>
 }
+
+/** A colour group of variants Yayınla added to a card already there (publish-card-variants.ts PublishVariantGroup). */
+export type PublishGroup = { kind: 'existing-colour' | 'new-colour'; colour: string | null; variants: number; skus: readonly string[] }
+export type PublicationSkippedVariant = { sku: string; code: string; message: string }
+/** The publication job the API queued, with the variants it left out of a card already on the marketplace. */
+export type PublicationAccepted = { jobId: string; skippedVariants?: PublicationSkippedVariant[] }
 
 // What "Güncelle" queued on one marketplace for a product already there.
 export type MarketplaceUpdateOutcome = {
@@ -102,8 +113,35 @@ function skippedPhrase(outcome: MarketplacePublishOutcome) {
   return parts.length ? `${parts.join(', ')}, atlandı` : ''
 }
 
+// Each group of an adding send says what happens to it (owner, 11.11.2026): new sizes join their colour, a new colour
+// opens its own card (Trendyol, Hepsiburada) or joins the one product (Shopify, n11, Pazarama, PttAVM); the variants
+// already there are counted, and a variant the server left out is not counted as sent.
+function groupsPhrase(outcome: MarketplacePublishOutcome, platformHoldsFamily: boolean) {
+  const left = new Set((outcome.skippedVariants ?? []).map(item => item.sku.trim().toLocaleUpperCase('tr-TR')))
+  const merged = new Map<string, { kind: PublishGroup['kind']; colour: string | null; variants: number }>()
+  for (const group of outcome.groups ?? []) {
+    const key = `${group.kind}:${group.colour?.toLocaleLowerCase('tr-TR') ?? ''}`
+    const sent = group.variants - group.skus.filter(sku => left.has(sku.trim().toLocaleUpperCase('tr-TR'))).length
+    if (sent <= 0) continue
+    const current = merged.get(key) ?? { kind: group.kind, colour: group.colour, variants: 0 }
+    current.variants += sent
+    merged.set(key, current)
+  }
+  const parts = [...merged.values()].map(group => {
+    const count = `${group.variants} varyant`
+    if (group.kind === 'new-colour') return platformHoldsFamily ? `${group.colour} ürüne yeni renk olarak ekleniyor (${count})` : `${group.colour} yeni kart olarak açılıyor (${count})`
+    return group.colour ? `${group.colour} kartına ${count} ekleniyor` : `eksik ${count} gönderiliyor`
+  })
+  if (outcome.liveVariants) parts.push(`${outcome.liveVariants} varyant zaten yayında`)
+  return parts.join('; ')
+}
+
 function enqueuedPhrase(outcome: MarketplacePublishOutcome, platformHoldsFamily: boolean) {
   const variants = `${outcome.enqueuedVariants} varyant`
+  if (outcome.enqueuedCards > 0 && outcome.addedToListingCards === outcome.enqueuedCards && outcome.groups?.length) {
+    const phrase = groupsPhrase(outcome, platformHoldsFamily)
+    if (phrase) return phrase
+  }
   // Cards already there sent only what they lacked: said so, so the count is not read as the whole card.
   if (outcome.enqueuedCards > 0 && outcome.addedToListingCards === outcome.enqueuedCards) {
     return outcome.familyCards <= 1
@@ -126,6 +164,10 @@ export function marketplacePublishLines(outcome: MarketplacePublishOutcome) {
     lines.push(`${name}: ${enqueuedPhrase(outcome, holdsFamilyAsOneProduct(outcome.platformCode))}${skipped ? `; ${skipped}` : ''}.`)
   } else if (skipped) {
     lines.push(`${name}: ${skipped}; yeni gönderim yapılmadı.`)
+  }
+  const skippedVariants = outcome.skippedVariants ?? []
+  if (skippedVariants.length) {
+    lines.push(`${name}: ${skippedVariants.length} varyant gönderilmedi — ${skippedVariants.map(item => `${item.sku}: ${item.message.replace(/\s+$/u, '')}`).join(' ')}`)
   }
   for (const [failure, indexes] of outcome.failures) {
     lines.push(`${name}: reddedildi — ${failure.replace(/\s+$/u, '')}${cardsNote(indexes, outcome.openedCard)}`)
