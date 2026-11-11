@@ -16,7 +16,7 @@ public sealed partial class MarketplaceSalesService
     internal static readonly string[] ReturnTabs = ["ALL", "REQUESTED", "SHIPPING", "ACTION_REQUIRED", "APPROVED", "REJECTED", "REVIEW", "DISPUTED", "SUSPENDED"];
     private static readonly CultureInfo TurkishCulture = CultureInfo.GetCultureInfo("tr-TR");
 
-    private sealed record ReturnClaimRow(Guid Id, ReturnClaimStatus Status, Guid OrderId, Guid ConnectionId, string ExternalClaimId, string? CargoProviderName, string? ReasonCode, string? ReasonText, DateTimeOffset? LastRemoteModifiedAt, string? RejectedPackageState = null, DateTimeOffset? DecidedAt = null);
+    private sealed record ReturnClaimRow(Guid Id, ReturnClaimStatus Status, Guid OrderId, Guid ConnectionId, string ExternalClaimId, string? CargoProviderName, string? ReasonCode, string? ReasonText, DateTimeOffset? LastRemoteModifiedAt, string? RejectedPackageState = null, DateTimeOffset? DecidedAt = null, DateTimeOffset? RequestedAt = null);
 
     // One row of the Returns page. LineIds are the card's order lines (a claim's view lines).
     internal sealed record ReturnCard(Guid ClaimId, int Kind, string Status, string PlatformCode, string PlatformName, string? CargoProviderName, string? ReasonCode, string? ReasonText, IReadOnlyList<Guid> LineIds)
@@ -100,7 +100,7 @@ public sealed partial class MarketplaceSalesService
         // check below repeats them on the loaded rows.
         if (applyRefinements) ApplyReturnRefinements(ref query, tenantId, options);
         var rows = await query.OrderBy(x => x.Id)
-            .Select(x => new ReturnClaimRow(x.Id, x.Status, x.OrderId, x.ConnectionId, x.ExternalClaimId, x.CargoProviderName, x.ReasonCode, x.ReasonText, x.LastRemoteModifiedAt, x.RejectedPackageState, x.DecidedAt))
+            .Select(x => new ReturnClaimRow(x.Id, x.Status, x.OrderId, x.ConnectionId, x.ExternalClaimId, x.CargoProviderName, x.ReasonCode, x.ReasonText, x.LastRemoteModifiedAt, x.RejectedPackageState, x.DecidedAt, x.RequestedAt))
             .ToListAsync(cancellationToken);
         var claims = rows.ToDictionary(x => x.Id);
         if (rows.Count == 0) return new([], claims, null);
@@ -199,17 +199,21 @@ public sealed partial class MarketplaceSalesService
     internal static bool ReturnInvoiceLabelReadsSnapshot(InvoiceStatus? invoiceStatus, MarketplaceInvoiceStatus marketplaceStatus, string? packageRawStatus) =>
         invoiceStatus is null && marketplaceStatus == MarketplaceInvoiceStatus.Unknown && !IsInvoicedRemoteStatus(packageRawStatus);
 
-    private static string NormalizeReturnSort(string? sort) => sort?.Trim().ToUpperInvariant() switch
+    internal static string NormalizeReturnSort(string? sort) => sort?.Trim().ToUpperInvariant() switch
     {
         "APPROVED_DESC" => "APPROVED_DESC",
         "APPROVED_ASC" => "APPROVED_ASC",
         "ORDERED_DESC" => "ORDERED_DESC",
         "ORDERED_ASC" => "ORDERED_ASC",
-        _ => "ID"
+        "REQUESTED_ASC" => "REQUESTED_ASC",
+        "ID" => "ID",
+        // The page's default: the newest return request first (it used to be the claim id, the order in which the
+        // panel first stored the claims, so the dates on the page looked random).
+        _ => "REQUESTED_DESC"
     };
 
-    // Claim order (as the database lists claims), or the approved tab's dates: empty dates last,
-    // then the claim id, then the claim's cards in order.
+    // Claim order (as the database lists claims), or a date (the return request, the order, the approval): empty
+    // dates last in either direction, then the claim id, then the claim's cards in order.
     internal static int CompareReturnCards((DateTimeOffset? Date, Guid ClaimId, int Kind) left, (DateTimeOffset? Date, Guid ClaimId, int Kind) right, string sort)
     {
         if (sort != "ID")
@@ -225,6 +229,9 @@ public sealed partial class MarketplaceSalesService
 
     private async Task<Dictionary<Guid, DateTimeOffset?>> ReturnSortDatesAsync(Guid tenantId, IReadOnlyCollection<ReturnClaimRow> claims, string sort, CancellationToken cancellationToken)
     {
+        // The marketplace's own request date of the claim (ReturnClaim.RequestedAt); a claim it has not dated stays empty.
+        if (sort.StartsWith("REQUESTED", StringComparison.Ordinal))
+            return claims.ToDictionary(x => x.Id, x => x.RequestedAt);
         if (sort.StartsWith("ORDERED", StringComparison.Ordinal))
         {
             var orderIds = claims.Select(x => x.OrderId).Distinct().ToArray();

@@ -182,7 +182,8 @@ public static class PazaramaReturnMapper
             Text(row, "shipmentCompanyName"),
             Text(row, "shipmentCode"),
             null,
-            orderedAt);
+            orderedAt,
+            RequestedAt: requested);
     }
 
     // Refund states (getRefund / updateRefund), named as the shared return status canonicalizer understands them.

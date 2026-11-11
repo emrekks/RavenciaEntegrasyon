@@ -6024,6 +6024,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<DateTimeOffset?>("RequestedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("ResolvedWith")
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");

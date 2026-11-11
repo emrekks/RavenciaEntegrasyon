@@ -1,6 +1,3 @@
-// The approved tab's order; the server sorts (GET /returns?sort=…).
-export type ApprovedReturnSort = 'ORDERED_DESC' | 'ORDERED_ASC' | 'APPROVED_DESC' | 'APPROVED_ASC'
-
 export function shouldShowReturnCountdown(actionRequired: boolean, value: string | null, now = Date.now()): boolean {
   if (!actionRequired || !value) return false
   const dueAt = new Date(value).getTime()

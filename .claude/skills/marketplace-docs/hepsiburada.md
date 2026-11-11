@@ -193,3 +193,4 @@ cursor `PACKAGES`), _ORDER_STATUS_SYNC, _WEBHOOK_INGEST, _RETURN_SYNC, _ORDER_IN
 - Live, 90 days to 7 Nov 2026 (read-only SQL): the OTHER records are only PaymentServiceCostReflection (+Refund),
   StoppageRefund, TotalPayment (the weekly payout total) and one CustomerSatisfaction, Description empty. No ad record,
   so no Hepsiburada ad was bought in that window; the panel's ad figures stay Trendyol's.
+- Returns page sort (11 Nov 2026): `ReturnClaim.RequestedAt` is the claim request date the İadeler page sorts by (default "En Yeni İade Talebi"); a claim without it lists last, never guessed. Hepsiburada: `claimDate` (Istanbul local, `TurkeyDate`); `createdAt` is not taken (`HepsiburadaJsonMapper.ReturnClaim`).

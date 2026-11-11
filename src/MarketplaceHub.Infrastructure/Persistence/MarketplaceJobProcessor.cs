@@ -13001,6 +13001,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var (packageState, decidedAt) = NextReturnOutcomeFacts(claim.RejectedPackageState, claim.DecidedAt, previousClaimStatus, claim.Status, remote.RejectedPackageState, remote.DecidedAt);
             if (!string.Equals(claim.RejectedPackageState, packageState, StringComparison.Ordinal)) { claim.RejectedPackageState = packageState; claimChanged = true; }
             if (claim.DecidedAt != decidedAt) { claim.DecidedAt = decidedAt; claimChanged = true; }
+            // The request date does not change with the claim's state, so any read that brings it fills or corrects it
+            // (also an older snapshot); a read without it leaves the stored date.
+            if (remote.RequestedAt?.ToUniversalTime() is { } requestedAt && claim.RequestedAt != requestedAt) { claim.RequestedAt = requestedAt; claimChanged = true; }
             // What the customer asked for is kept once known; a read that does not say it leaves it as it is.
             if (remote.CustomerRequest is { } customerRequest && !string.Equals(claim.CustomerRequest, customerRequest, StringComparison.Ordinal)) { claim.CustomerRequest = customerRequest; claimChanged = true; }
             if (remote.ResolvedWith is { } resolvedWith && !string.Equals(claim.ResolvedWith, resolvedWith, StringComparison.Ordinal)) { claim.ResolvedWith = resolvedWith; claimChanged = true; }
@@ -13170,6 +13173,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         DecidedAt = status is ReturnClaimStatus.Approved or ReturnClaimStatus.Rejected ? remote.DecidedAt?.ToUniversalTime() : null,
         CustomerRequest = remote.CustomerRequest,
         ResolvedWith = remote.ResolvedWith,
+        RequestedAt = remote.RequestedAt?.ToUniversalTime(),
         CreatedAt = now,
         UpdatedAt = now,
         Version = 1

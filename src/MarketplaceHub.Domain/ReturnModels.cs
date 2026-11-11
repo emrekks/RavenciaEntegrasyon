@@ -310,6 +310,10 @@ public sealed class ReturnClaim
     // How the marketplace closed an approved claim (ReturnCustomerRequestPolicy: REFUND or CHANGE), from Hepsiburada's
     // finalizedWith. Null when the claim does not say (unknown, never guessed).
     public string? ResolvedWith { get; set; }
+    // When the customer asked for the return, as the marketplace dates the claim: Trendyol claimDate, Hepsiburada
+    // claimDate (Istanbul local), n11 requestDate, Pazarama refundDate, Shopify return createdAt. Null when the
+    // marketplace gives none (PTT AVM) or the claim was not read again since the field came; never guessed.
+    public DateTimeOffset? RequestedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public long Version { get; set; } = 1;

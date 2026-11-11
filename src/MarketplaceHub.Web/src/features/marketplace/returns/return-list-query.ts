@@ -45,3 +45,28 @@ export function returnListParams(filters: ReturnFilters, refinements: ReturnRefi
   else if (paging.page > 1) params.set('page', String(paging.page))
   return params
 }
+
+// The list's order (GET /returns?sort=…). The return request date (the marketplace's own date of the claim) is the
+// default on every tab; the approval date only exists on Onaylanan. A claim the marketplace has not dated is listed
+// last in either direction.
+export const RETURN_SORTS = ['REQUESTED_DESC', 'REQUESTED_ASC', 'ORDERED_DESC', 'ORDERED_ASC', 'APPROVED_DESC', 'APPROVED_ASC'] as const
+export type ReturnSort = typeof RETURN_SORTS[number]
+export const DEFAULT_RETURN_SORT: ReturnSort = 'REQUESTED_DESC'
+const returnSortLabels: Record<ReturnSort, string> = {
+  REQUESTED_DESC: 'En Yeni İade Talebi',
+  REQUESTED_ASC: 'En Eski İade Talebi',
+  ORDERED_DESC: 'En Yeni Sipariş',
+  ORDERED_ASC: 'En Eski Sipariş',
+  APPROVED_DESC: 'En Yeni Onay',
+  APPROVED_ASC: 'En Eski Onay'
+}
+const approvalSort = (sort: ReturnSort) => sort === 'APPROVED_DESC' || sort === 'APPROVED_ASC'
+
+export function returnSortOptions(status: string): Array<[ReturnSort, string]> {
+  return RETURN_SORTS.filter(sort => status === 'APPROVED' || !approvalSort(sort)).map(sort => [sort, returnSortLabels[sort]])
+}
+
+// The order a tab is asked for: an approval order chosen on Onaylanan falls back to the default elsewhere.
+export function effectiveReturnSort(status: string, sort: ReturnSort): ReturnSort {
+  return status !== 'APPROVED' && approvalSort(sort) ? DEFAULT_RETURN_SORT : sort
+}

@@ -100,3 +100,4 @@ PTTAVM_CONNECTION_TEST, _REFERENCE_SYNC, _ORDER_SYNC, _ORDER_RECOVERY_SYNC, _ORD
   discount: not read yet. No list price field, only the amounts with and without VAT.
 - No shipment due date in the order API (the field table near `pttavm-api-son.md:1600-1660` has IslemTarihi only):
   ShipmentDueAt stays empty (0/2 orders), so the reports cannot measure late shipping on PTT AVM and say so.
+- Returns page sort (11 Nov 2026): `ReturnClaim.RequestedAt` is the claim request date the İadeler page sorts by (default "En Yeni İade Talebi"); a claim without it lists last, never guessed. PTT AVM has no claim (a return is an order line in iade status), so RequestedAt stays empty and its returns list last.

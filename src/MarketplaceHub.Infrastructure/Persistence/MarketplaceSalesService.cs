@@ -2205,7 +2205,8 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 IsEstimatedReturnDueAt(platformCode, claim),
                 ReturnClaimAmounts(claimLines.Count, lineViews),
                 CustomerRequest: claim.CustomerRequest,
-                OrderReturnStatus: partiallyApprovedOrders.Contains(claim.OrderId) ? ReturnClaimPartialApprovalPolicy.PartiallyApproved : null);
+                OrderReturnStatus: partiallyApprovedOrders.Contains(claim.OrderId) ? ReturnClaimPartialApprovalPolicy.PartiallyApproved : null,
+                RequestedAt: claim.RequestedAt);
         }).ToList();
         return rows;
     }

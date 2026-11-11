@@ -203,4 +203,21 @@ describe('returns page', () => {
     act(() => { clear().click() })
     await waitFor(() => clear().disabled)
   })
+
+  it('sorts every tab by the newest return request unless another order is chosen', async () => {
+    const { host } = renderPage()
+    await waitFor(() => host.textContent?.includes('#2'))
+    const trigger = () => byText<HTMLButtonElement>(host, '.rr-return-sort button.rr-trigger', '')
+    expect(trigger().textContent).toBe('En Yeni İade Talebi')
+    // The default order is the server's own: the address and the request name none.
+    expect(api.paths).toContain('/returns?limit=20')
+
+    act(() => { trigger().click() })
+    const options = Array.from(host.querySelectorAll<HTMLButtonElement>('.rr-return-sort .rr-opt')).map(option => option.textContent)
+    expect(options).toEqual(['En Yeni İade Talebi', 'En Eski İade Talebi', 'En Yeni Sipariş', 'En Eski Sipariş'])
+    act(() => { byText<HTMLButtonElement>(host, '.rr-return-sort .rr-opt', 'En Eski Sipariş').click() })
+    await waitFor(() => api.paths.at(-1) === '/returns?sort=ORDERED_ASC&limit=20')
+    expect(trigger().textContent).toBe('En Eski Sipariş')
+    await waitFor(() => host.ownerDocument.querySelector('[data-testid="address"]')?.textContent?.includes('sort=ORDERED_ASC'))
+  })
 })

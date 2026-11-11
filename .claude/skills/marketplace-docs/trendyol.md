@@ -283,3 +283,4 @@ packages only, no claim events.
   Bedeli" 1,798 lines). "Yurtdışı Operasyon Iade Bedeli" (OTHER_FINANCIALS, category OTHER_DEDUCTION, 14 records /
   5,018 TL in 120 days) names no order, so the reports count it by its transaction date, among the deductions tied to
   no order. The overview's İade Kargo Zararı is both, billed amounts only (an unbilled return is not estimated there).
+- Returns page sort (11 Nov 2026): `ReturnClaim.RequestedAt` is the claim request date the İadeler page sorts by (default "En Yeni İade Talebi"); a claim without it lists last, never guessed. Trendyol: getClaims `claimDate` only (GMT epoch ms; `createdDate`/`requestDate` are not taken). Claims stored before it are dated by the 90-day RETURN_RECONCILE_DAILY re-read; claim-built orders' snapshot claimDate dated 23 older claims in migration AddReturnClaimRequestedAt (`TrendyolJsonMapper.Returns`).

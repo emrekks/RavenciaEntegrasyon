@@ -831,7 +831,7 @@ public sealed record RemoteReturnLineAudit(string? PreviousStatus, string NewSta
 // ActionDueAtEstimated: the marketplace sent no deadline and ActionDueAt follows its usual rule.
 // CustomerRequest: what the customer asked for (ReturnCustomerRequestPolicy: REFUND or CHANGE); only Hepsiburada says it, null = unknown.
 // ResolvedWith: how an approved claim was closed (REFUND or CHANGE, Hepsiburada finalizedWith); null = unknown.
-public sealed record RemoteReturnClaim(string ExternalClaimId, string ExternalOrderId, string RawStatus, string? ReasonCode, string? ReasonText, DateTimeOffset? ActionDueAt, DateTimeOffset? LastModifiedAt, IReadOnlyList<RemoteReturnLine> Lines, string RawJson, string? CargoProviderName = null, string? CargoTrackingNumber = null, string? CargoTrackingLink = null, DateTimeOffset? OrderCreatedAt = null, bool ActionDueAtEstimated = false, string? RejectedPackageState = null, DateTimeOffset? DecidedAt = null, string? CustomerRequest = null, string? ResolvedWith = null);
+public sealed record RemoteReturnClaim(string ExternalClaimId, string ExternalOrderId, string RawStatus, string? ReasonCode, string? ReasonText, DateTimeOffset? ActionDueAt, DateTimeOffset? LastModifiedAt, IReadOnlyList<RemoteReturnLine> Lines, string RawJson, string? CargoProviderName = null, string? CargoTrackingNumber = null, string? CargoTrackingLink = null, DateTimeOffset? OrderCreatedAt = null, bool ActionDueAtEstimated = false, string? RejectedPackageState = null, DateTimeOffset? DecidedAt = null, string? CustomerRequest = null, string? ResolvedWith = null, DateTimeOffset? RequestedAt = null);
 public sealed record ReturnEvidenceFile(string FileName, string MimeType, byte[] Content);
 // ReturnShipment: the seller's shipment of the product back to the buyer that a denial names (n11 ClaimReturnDeny CUSTOM).
 public sealed record ReturnActionCommand(string ExternalClaimId, IReadOnlyList<string> ExternalLineItemIds, string Action, string? ReasonCode, string? Explanation, IReadOnlyList<ReturnEvidenceFile> EvidenceFiles, string? FinalizedWith = null, ReturnShipmentCommand? ReturnShipment = null);
@@ -1598,7 +1598,9 @@ public sealed record ReturnListView(
     // What the customer asked for (REFUND or CHANGE, ReturnCustomerRequestPolicy); null when unknown. Hepsiburada only.
     string? CustomerRequest = null,
     // PARTIALLY_APPROVED when the order's claims together were decided both ways (OrderReturnPartialApprovalPolicy).
-    string? OrderReturnStatus = null);
+    string? OrderReturnStatus = null,
+    // When the customer asked for the return (ReturnClaim.RequestedAt); null while the marketplace has not dated it.
+    DateTimeOffset? RequestedAt = null);
 public sealed record ReturnListQuery(
     string? Status = null,
     string? Customer = null,

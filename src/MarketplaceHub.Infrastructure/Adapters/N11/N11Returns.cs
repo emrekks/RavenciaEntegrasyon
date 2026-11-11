@@ -180,7 +180,8 @@ public static class N11ReturnMapper
                 "APPROVED" => Date(N11HttpClient.Child(element, "approvedDate")),
                 "DENIED" => Date(N11HttpClient.Child(element, "deniedDate")),
                 _ => null
-            });
+            },
+            RequestedAt: requested);
     }
 
     // n11 claim states, named as the shared return status canonicalizer understands them.

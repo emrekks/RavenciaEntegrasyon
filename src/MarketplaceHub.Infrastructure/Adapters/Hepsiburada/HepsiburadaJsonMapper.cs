@@ -938,7 +938,9 @@ internal static class HepsiburadaJsonMapper
             DecidedAt: status.ToUpperInvariant() is "ACCEPTED" or "REJECTED" ? statusDate : null,
             CustomerRequest: ReturnCustomerRequestPolicy.FromHepsiburada(claimType, HasRequestedProduct(item)),
             // How an approved claim was closed (finalizedWith: Refund or Change); null when the claim does not say.
-            ResolvedWith: ReturnCustomerRequestPolicy.ResolvedWithFromHepsiburada(Text(item, "finalizedWith", "FinalizedWith")));
+            ResolvedWith: ReturnCustomerRequestPolicy.ResolvedWithFromHepsiburada(Text(item, "finalizedWith", "FinalizedWith")),
+            // claimDate itself (Istanbul local, read by Date); the createdAt the identity check above also accepts is not it.
+            RequestedAt: Date(item, "claimDate", "ClaimDate"));
     }
 
     // Hepsiburada names the product a customer wants instead (requestedProduct) on an exchange claim; null otherwise.

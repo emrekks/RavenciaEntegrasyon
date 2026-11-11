@@ -1595,7 +1595,7 @@ public sealed partial class ShopifyHttpClient(
         var reasonLine = lineNodes.FirstOrDefault(line => NestedText(line, "returnReasonDefinition", "handle") is not null || TextValue(line, "returnReasonNote") is not null);
         var reasonCode = reasonLine.ValueKind == JsonValueKind.Object ? NestedText(reasonLine, "returnReasonDefinition", "handle") : null;
         var reasonText = reasonLine.ValueKind == JsonValueKind.Object ? TextValue(reasonLine, "returnReasonNote") ?? NestedText(reasonLine, "returnReasonDefinition", "name") : null;
-        return new(ShortId(TextValue(item, "id")), ShortId(TextValue(order, "id")), TextValue(item, "status") ?? "UNKNOWN", reasonCode, reasonText, null, createdAt, lines, item.GetRawText(), OrderCreatedAt: order.GetProperty("createdAt").GetDateTimeOffset());
+        return new(ShortId(TextValue(item, "id")), ShortId(TextValue(order, "id")), TextValue(item, "status") ?? "UNKNOWN", reasonCode, reasonText, null, createdAt, lines, item.GetRawText(), OrderCreatedAt: order.GetProperty("createdAt").GetDateTimeOffset(), RequestedAt: createdAt);
     }
 
     private static string? NestedText(JsonElement element, string objectName, string propertyName) =>

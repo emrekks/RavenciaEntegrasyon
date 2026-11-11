@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { returnListParams, returnSummaryParams } from './return-list-query'
+import { effectiveReturnSort, returnListParams, returnSortOptions, returnSummaryParams } from './return-list-query'
 
 const none = { platforms: [], cargo: 'ALL', reason: 'ALL', invoiceStatus: 'ALL' }
 
@@ -24,5 +24,13 @@ describe('returns list requests', () => {
     expect(returnListParams(filters, none, { sort: 'ORDERED_ASC', limit: 50, after: 'c-2', page: 2 }).toString()).toBe('status=APPROVED&sort=ORDERED_ASC&limit=50&after=c-2')
     expect(returnListParams(filters, none, { sort: null, limit: 20, after: null, page: 4 }).toString()).toBe('status=APPROVED&limit=20&page=4')
     expect(returnListParams(filters, none, { sort: null, limit: 20, after: null, page: 1 }).toString()).toBe('status=APPROVED&limit=20')
+  })
+
+  it('offers the return request and order dates on every tab and the approval date on Onaylanan only', () => {
+    expect(returnSortOptions('ALL').map(option => option[1])).toEqual(['En Yeni İade Talebi', 'En Eski İade Talebi', 'En Yeni Sipariş', 'En Eski Sipariş'])
+    expect(returnSortOptions('APPROVED').map(option => option[0])).toEqual(['REQUESTED_DESC', 'REQUESTED_ASC', 'ORDERED_DESC', 'ORDERED_ASC', 'APPROVED_DESC', 'APPROVED_ASC'])
+    expect(effectiveReturnSort('ACTION_REQUIRED', 'APPROVED_ASC')).toBe('REQUESTED_DESC')
+    expect(effectiveReturnSort('APPROVED', 'APPROVED_ASC')).toBe('APPROVED_ASC')
+    expect(effectiveReturnSort('ALL', 'ORDERED_ASC')).toBe('ORDERED_ASC')
   })
 })
