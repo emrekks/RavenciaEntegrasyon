@@ -96,6 +96,16 @@ describe('ProductQuickEditModal opened from the product editor', () => {
     expect(hubApi).not.toHaveBeenCalled()
   })
 
+  it('applies the values to every row when no variant is ticked', async () => {
+    const onApply = vi.fn()
+    root = createRoot(container)
+    await act(async () => { root.render(<MemoryRouter><ProductQuickEditModal mode="both" onClose={() => undefined} draft={{ title: 'Gömlek', modelCode: 'MZ070', rows, onApply }} /></MemoryRouter>) })
+    expect(document.body.querySelector('.rr-note')?.textContent).toContain('Seçim yok: 3 varyantın tümüne uygulanır')
+    await type(field('Maliyet'), '55')
+    await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).find(item => item.textContent === 'Varyantlara Uygula')!)
+    expect(onApply).toHaveBeenCalledWith(rows.map(item => ({ key: item.key, stock: 3, listPrice: 120, salePrice: 100, costPrice: 55 })))
+  })
+
   it('keeps the window open and applies nothing when a value breaks a rule', async () => {
     const onApply = vi.fn()
     root = createRoot(container)

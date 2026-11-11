@@ -135,6 +135,20 @@ public sealed class PayoutTrendyolEstimateTests
     }
 
     [Fact]
+    public void Avrupa_on_its_monthly_payout_loses_the_unbilled_parcels_cargo_and_fee_and_its_international_fee_and_withholding_tax()
+    {
+        // Live, 11 Nov 2026: a Greek parcel billed already (its cargo invoice stands in Avrupa), a Romanian one not yet.
+        var billed = Line("g1", "P1", "Sale", 1000m, 0m, 785m, new DateOnly(2026, 10, 30), country: "Yunanistan");
+        var open = Line("r1", "P2", "Sale", 500m, 0m, 392.50m, new DateOnly(2026, 11, 10), country: "Romanya");
+        var cargo = Invoice("k1", "Kargo Fatura", MarketplaceFinanceCategories.Cargo, 98.34m, new DateOnly(2026, 11, 1)) with { RegionOverride = PayoutBuilder.Europe };
+        var view = PayoutBuilder.Build([billed, open, cargo], [], Stores, new DateOnly(2026, 11, 11), 90, [], forecast: Forecast(shippingBilled: [(Store, "O-P1")]));
+        var day = Assert.Single(view.Upcoming);
+        Assert.Equal((new DateOnly(2026, 11, 23), PayoutBuilder.Europe), (day.Day, day.Region));
+        Assert.Equal([("CARGO", 98.34m), ("PLATFORM_FEE", 13.19m), ("INTERNATIONAL_FEE", 90m), ("STOPPAGE", 15m)], day.Estimates!.Select(x => (x.Kind, x.Amount)));
+        Assert.Equal(785m + 392.50m - 98.34m - 98.34m - 13.19m - 90m - 15m, day.Amount);
+    }
+
+    [Fact]
     public void A_deduction_a_later_payout_of_its_region_left_out_waits_apart()
     {
         // The cargo invoice of Avrupa parcels written "Türkiye", due Thursday 29 Oct, skipped by the payouts up to 5 Nov.

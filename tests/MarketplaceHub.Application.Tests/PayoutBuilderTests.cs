@@ -93,7 +93,8 @@ public sealed class PayoutBuilderTests
         Assert.Equal("PAYOUT_DAY", view.Next.Kind);
         var europe = Assert.Single(view.Regions, region => region.Region == PayoutBuilder.Europe);
         Assert.Equal(400m, europe.Expected);
-        Assert.Equal(Today.AddDays(8), europe.NextDay);
+        // Avrupa on its monthly payout day, the fourth Monday (23 Nov 2026).
+        Assert.Equal(new DateOnly(2026, 11, 23), europe.NextDay);
         Assert.Equal(PayoutBuilder.Unknown, PayoutBuilder.Status(rows[6], Today));
         Assert.False(PayoutBuilder.Counts(rows[3]));
     }
@@ -179,11 +180,67 @@ public sealed class PayoutBuilderTests
     {
         var day = DateOnly.Parse(due, System.Globalization.CultureInfo.InvariantCulture);
         var row = sale ? Sale("s", 100m, 80m, day) : Deduction("k", "Kargo Faturası", MarketplaceFinanceCategories.Cargo, 20m, day);
-        var (payoutDay, kind) = PayoutBuilder.Expect(row, PayoutBuilder.Line(row, Today), Today);
+        var (payoutDay, kind, region) = PayoutBuilder.Expect(row, PayoutBuilder.Line(row, Today), Today);
         Assert.Equal(DateOnly.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), payoutDay);
-        Assert.Equal("PAYOUT_DAY", kind);
-        // Another region's records stand on their due day; past it, they wait apart (OVERDUE), out of the next payout.
-        Assert.Equal(day < Today ? (Today, "OVERDUE") : (day, "DUE_DAY"), PayoutBuilder.Expect(row with { Country = "Bulgaristan" }, PayoutBuilder.Line(row with { Country = "Bulgaristan" }, Today), Today));
+        Assert.Equal(("PAYOUT_DAY", PayoutBuilder.TrGulf), (kind, region));
+        // Avrupa's records, whatever their due day in early November, wait for its monthly payout on Monday 23 Nov.
+        Assert.Equal((new DateOnly(2026, 11, 23), "PAYOUT_DAY", PayoutBuilder.Europe),
+            PayoutBuilder.Expect(row with { Country = "Bulgaristan" }, PayoutBuilder.Line(row with { Country = "Bulgaristan" }, Today), Today));
+    }
+
+    [Theory]
+    // Trendyol's Avrupa payouts, live: 22 Jun, 27 Jul, 24 Aug, 28 Sep, 26 Oct 2026; its Ödeme Özeti of 11 Nov: 23 Nov.
+    [InlineData("2026-06-01", "2026-06-22")]
+    [InlineData("2026-06-30", "2026-07-27")]
+    [InlineData("2026-07-28", "2026-08-24")]
+    [InlineData("2026-08-26", "2026-09-28")]
+    [InlineData("2026-09-29", "2026-10-26")]
+    // A record due on the payout day goes with it (the 26 Oct payout took the sales due that Monday).
+    [InlineData("2026-10-26", "2026-10-26")]
+    [InlineData("2026-10-27", "2026-11-23")]
+    [InlineData("2026-11-24", "2026-12-28")]
+    public void Avrupa_is_paid_on_the_fourth_monday_of_the_month(string due, string expected) =>
+        Assert.Equal(DateOnly.Parse(expected, System.Globalization.CultureInfo.InvariantCulture),
+            PayoutBuilder.EuropePayoutDayOnOrAfter(DateOnly.Parse(due, System.Globalization.CultureInfo.InvariantCulture)));
+
+    [Fact]
+    public void No_trendyol_record_is_expected_on_a_day_trendyol_does_not_pay()
+    {
+        // Wednesday 11 Nov 2026: Trendyol pays on Mondays and Thursdays (Tuesday and Friday are "Erken Ödeme" only),
+        // Avrupa on the fourth Monday. The Greek sales due that Wednesday (431.07) are not "paid today".
+        var wednesday = new DateOnly(2026, 11, 11);
+        for (var due = wednesday.AddDays(-20); due <= wednesday.AddDays(40); due = due.AddDays(1))
+            foreach (var country in new[] { "Türkiye", "Yunanistan", "Azerbaycan" })
+                foreach (var sale in new[] { true, false })
+                {
+                    var row = sale ? Sale("s", 549.14m, 431.07m, due, country: country, affiliate: country == "Azerbaycan" ? "TRENDYOLAZJV" : "TRENDYOLTR")
+                        : Deduction("k", "Kargo Fatura", MarketplaceFinanceCategories.Cargo, 98.34m, due);
+                    var (day, kind, _) = PayoutBuilder.Expect(row, PayoutBuilder.Line(row, wednesday), wednesday);
+                    Assert.Equal("PAYOUT_DAY", kind);
+                    Assert.True(day >= wednesday && day.DayOfWeek is DayOfWeek.Monday or DayOfWeek.Thursday, $"{country} {due} -> {day}");
+                }
+    }
+
+    [Fact]
+    public void A_deduction_the_turkiye_payout_left_out_goes_with_the_next_avrupa_payout()
+    {
+        // Live, 11 Nov 2026: the platform fee invoices of Avrupa parcels and a micro-export return fee, written "Türkiye",
+        // skipped by the Türkiye payouts of 5 and 9 Nov. Every such deduction of Aug-Nov 2026 was paid by Avrupa.
+        var today = new DateOnly(2026, 11, 11);
+        PayoutRow[] rows =
+        [
+            Deduction("pf", "Platform Hizmet Bedeli", MarketplaceFinanceCategories.ServiceFee, 52.76m, new(2026, 10, 29)),
+            Deduction("yo", "Yurtdışı Operasyon Iade Bedeli", MarketplaceFinanceCategories.OtherDeduction, 192.20m, new(2026, 11, 3)),
+            Sale("gr", 549.14m, 431.07m, today, country: "Yunanistan")
+        ];
+        PayoutOrderRow[] tr = [new(Store, "TR-1", 17777.82m, Due(new DateOnly(2026, 11, 9)), "TR", "Türkiye, Körfez")];
+        PayoutOrderRow[] withEurope = [.. tr, new(Store, "CEE-1", 19620.22m, Due(new DateOnly(2026, 10, 26)), "CEE", "Avrupa")];
+        var view = PayoutBuilder.Build(rows, withEurope, Stores, today, 90, []);
+        var europe = Assert.Single(view.Upcoming);
+        Assert.Equal((new DateOnly(2026, 11, 23), PayoutBuilder.Europe, "PAYOUT_DAY", 431.07m - 52.76m - 192.20m), (europe.Day, europe.Region, europe.Kind, europe.Amount));
+        // A store never paid in Avrupa keeps them apart, OVERDUE.
+        var apart = PayoutBuilder.Build(rows, tr, Stores, today, 90, []);
+        Assert.Equal(-244.96m, Assert.Single(apart.Upcoming, x => x.Kind == "OVERDUE").Amount);
     }
 
     [Theory]
@@ -195,18 +252,18 @@ public sealed class PayoutBuilderTests
         Assert.Equal(expected, PayoutBuilder.PayoutRegion(code, name));
 
     [Fact]
-    public void An_overdue_record_without_a_known_payout_day_stays_in_the_balance_but_out_of_the_next_payout()
+    public void An_avrupa_record_past_its_due_day_waits_for_the_monthly_payout_out_of_the_next_one()
     {
-        // Avrupa, paid about monthly: due last week, no payout yet. Türkiye-Körfez is paid on Thursday 5 Nov.
+        // Avrupa, paid on the fourth Monday: due last week, no payout yet. Türkiye-Körfez is paid on Thursday 5 Nov.
         PayoutRow[] rows = [Sale("eu", 1000m, 800m, Today.AddDays(-7), country: "Bulgaristan"), Sale("tr", 500m, 400m, Today.AddDays(1))];
         var view = PayoutBuilder.Build(rows, [], Stores, Today, 90, []);
         Assert.Equal(1200m, view.Expected);
         Assert.Equal(800m, view.Unknown);
         Assert.Equal((Today.AddDays(1), 400m), (view.Next!.Day, view.Next.Amount));
-        var waiting = Assert.Single(view.Upcoming, group => group.Kind == "OVERDUE");
-        Assert.Equal((PayoutBuilder.Europe, 800m), (waiting.Region, waiting.Amount));
+        var europeDay = Assert.Single(view.Upcoming, group => group.Region == PayoutBuilder.Europe);
+        Assert.Equal((new DateOnly(2026, 11, 23), "PAYOUT_DAY", 800m), (europeDay.Day, europeDay.Kind, europeDay.Amount));
         var europe = Assert.Single(view.Regions, region => region.Region == PayoutBuilder.Europe);
-        Assert.Null(europe.NextDay);
+        Assert.Equal(new DateOnly(2026, 11, 23), europe.NextDay);
         Assert.Equal(800m, europe.Unknown);
     }
 
