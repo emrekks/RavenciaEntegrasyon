@@ -301,3 +301,18 @@ packages only, no claim events.
   5,018 TL in 120 days) names no order, so the reports count it by its transaction date, among the deductions tied to
   no order. The overview's İade Kargo Zararı is both, billed amounts only (an unbilled return is not estimated there).
 - Returns page sort and filter (11 Nov 2026): `ReturnClaim.RequestedAt` is the claim request date the İadeler page sorts by (default "En Yeni İade Talebi") and its "İade Talep Tarihi" range filters by (Istanbul days; an undated claim is left out while a range is set); a claim without it lists last, never guessed. Trendyol: getClaims `claimDate` only (GMT epoch ms; `createdDate`/`requestDate` are not taken). Claims stored before it are dated by RETURN_LIFECYCLE, one claimIds request of 20 undated claims per run (`DateTrendyolReturnRequestsAsync`, cursor RETURN_REQUESTED_AT); claim-built orders' snapshot claimDate dated 23 older claims in migration AddReturnClaimRequestedAt (`TrendyolJsonMapper.Returns`).
+
+## Resend packages ("Yeniden Gönderim", 11 Nov 2026, live read-only)
+- A resend opened after a missing-item request on a delivered order (11805932340: original package 4326252839
+  Delivered 11 Nov 11:40Z; resend 4337242198, 2 lines, Trendyol Express 7330038976334420, seller panel → Yeniden
+  Gönderimler, "Sipariş Tarihi" 16:56 = 13:56Z) is **not returned by any order read**: v2 `orders?orderNumber=` (with
+  and without dates), v1 `orders?orderNumber=`, v2 `shipmentPackageIds=4337242198,4326252839` and the stream window
+  13:50–14:10Z all answered only 4326252839 (`createdBy` "order-creation", `originPackageIds` null). No webhook brought it.
+- The only trace in the API: the original package's `lastModifiedDate` moved to the resend's moment (13:56:41Z) with no
+  new `packageHistories` entry and no status change; its lines carry no resend or claim marker
+  (`defectiveClaimListingInsight` ""). Delivered packages are touched like this 13–57 times a day for other reasons
+  too, so the bump alone does not identify a resend.
+- No Trendyol package with `createdBy` other than order-creation/cancel was ever stored (live
+  `sales.shipment_packages`, 11 Nov 2026); the panel's Yeniden Gönderim card (`ShipmentPackageClassification.IsResend`)
+  cannot count Trendyol resends from the order API. Source: one-time diagnostic read (resolved operational issue
+  TRENDYOL_RESEND_DIAGNOSTIC, `MarketplaceJobProcessor.ResendDiagnostic.cs`), 11 Nov 2026 16:10Z.

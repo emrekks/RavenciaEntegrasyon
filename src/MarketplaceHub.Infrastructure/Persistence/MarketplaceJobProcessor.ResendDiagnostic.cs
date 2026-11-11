@@ -11,7 +11,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // operational issue. No order, package, line, invoice or report row is touched; a cursor keeps it to one run.
 public sealed partial class MarketplaceJobProcessor
 {
-    internal const string ResendDiagnosticCursor = "TRENDYOL_RESEND_DIAGNOSTIC";
+    internal const string ResendDiagnosticCursor = "TRENDYOL_RESEND_DIAGNOSTIC_2";
     internal const string ResendDiagnosticIssueCode = "TRENDYOL_RESEND_DIAGNOSTIC";
     internal const string ResendDiagnosticOrderNumber = "11805932340";
     internal static readonly string[] ResendDiagnosticPackageIds = ["4337242198", "4326252839"];
@@ -43,7 +43,7 @@ public sealed partial class MarketplaceJobProcessor
             await db.SaveChangesAsync(cancellationToken);
             return;
         }
-        var key = $"trendyol-resend-diagnostic:{connectionId}:{ResendDiagnosticOrderNumber}";
+        var key = $"trendyol-resend-diagnostic-2:{connectionId}:{ResendDiagnosticOrderNumber}";
         var summary = JsonSerializer.Serialize(new { orderNumber = ResendDiagnosticOrderNumber, readAt = now, reads = read.Value });
         var issue = await db.OperationalIssues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.DedupeKey == key, cancellationToken);
         if (issue is null)

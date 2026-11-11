@@ -29,6 +29,7 @@ public sealed partial class TrendyolHttpClient : IOrderRawReadPort
             ("v2 orderNumber + dates", $"{TrendyolEndpoints.Orders(sellerId)}?startDate={Ms(start)}&endDate={Ms(end)}&orderNumber={number}&page=0&size=200"),
             ("v2 orderNumber", $"{TrendyolEndpoints.Orders(sellerId)}?orderNumber={number}&page=0&size=200"),
             ("v1 orders orderNumber", $"order/sellers/{Uri.EscapeDataString(sellerId)}/orders?orderNumber={number}&page=0&size=200"),
+            ("claims orderNumber", $"order/sellers/{Uri.EscapeDataString(sellerId)}/claims?orderNumber={number}&page=0&size=50"),
         };
         if (packageIds.Count > 0)
             queries.Add(("v2 shipmentPackageIds + dates", $"{TrendyolEndpoints.Orders(sellerId)}?startDate={Ms(start)}&endDate={Ms(end)}&shipmentPackageIds={Uri.EscapeDataString(string.Join(',', packageIds))}&page=0&size=200"));
