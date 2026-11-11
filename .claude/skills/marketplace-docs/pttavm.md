@@ -60,6 +60,8 @@ Package status: an active line of unknown status makes the package ManualReview 
 least advanced known line decides. Code: `PttAvmOrderMapper.PackageStatus`.
 
 ## Quirks
+- A model with variants is one product under its model code; the family goes whole and the adapter adds only the
+  variants the product lacks (`PttAvmVariants`), so a new colour is a new variant of that product.
 - No return service: returns come from "iade" lines, already completed; return actions are refused. RETURN_SYNC reads
   the last 2 days, the whole 3 months every 6 h (PttAvmReturnReadPolicy). A read answered with an unexplained fault
   ("Bilinmeyen bir hata oluştu") is retried (PTTAVM_REMOTE_FAULT); a write keeps PTTAVM_REQUEST_REJECTED.

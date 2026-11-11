@@ -54,3 +54,19 @@ describe('adding variant combinations', () => {
     expect(merged.map(item => [item.key, item.barcode])).toEqual([['y', 'MC-01'], ['x', 'MC-02']])
   })
 })
+
+// Owner, 11.11.2026 (RYP003T): 2XL rows added to a saved family came with stock 3; a new row starts with no stock and the
+// saved rows keep theirs, with automatic barcodes on or off.
+describe('the stock of an added variant row', () => {
+  type StockRow = Row & { stock: number }
+  const savedRows: StockRow[] = [{ ...row('s1', 'Beden:L_Renk:Haki', { sku: 'RYP003T01', barcode: 'RYP003T01' }), stock: 3 }, { ...row('s2', 'Beden:XL_Renk:Haki', { sku: 'RYP003T02', barcode: 'RYP003T02' }), stock: 5 }]
+  const generatedRows: StockRow[] = ['Beden:L_Renk:Haki', 'Beden:XL_Renk:Haki', 'Beden:2XL_Renk:Haki'].map((signature, index) => ({ ...row(`g${index}`, signature, buildVariantGenerationDefaults({ modelCode: 'RYP003T', sequence: index + 1, automaticBarcodes: false, fallbackSalePrice: 725, fallbackListPrice: 900 })), stock: buildVariantGenerationDefaults({ modelCode: 'RYP003T', sequence: index + 1, automaticBarcodes: false, fallbackSalePrice: 725, fallbackListPrice: 900 }).stock }))
+  it('starts empty, while the saved rows keep theirs', () => {
+    for (const automaticBarcodes of [false, true]) {
+      const merged = mergeGeneratedVariantRows<StockRow>(savedRows, generatedRows, { key: variantOptionSetKey, sort: rows => [...rows].sort((left, right) => left.optionSignature.localeCompare(right.optionSignature, 'tr')), keepExisting: true, automaticBarcodes, modelCode: 'RYP003T', fallbackSalePrice: 725, fallbackListPrice: 900 })
+      const added = merged.find(item => item.optionSignature.includes('2XL'))!
+      expect(added).toMatchObject({ stock: 0, salePrice: 725, listPrice: 900 })
+      expect(merged.filter(item => item.key.startsWith('s')).map(item => item.stock)).toEqual([3, 5])
+    }
+  })
+})

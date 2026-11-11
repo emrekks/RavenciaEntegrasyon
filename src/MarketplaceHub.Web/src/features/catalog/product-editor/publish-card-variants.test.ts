@@ -73,33 +73,33 @@ describe('publish card variant presence', () => {
 describe('publish card plan', () => {
   const matched = (connectionId: string) => status(connectionId, { isLinked: true, isMatched: true })
   const coloured = (color: string, ...platformStatuses: VariantPlatformStatus[]) => ({ color, platformStatuses })
+  const sku = <T extends object>(row: T, code: string) => ({ ...row, sku: code })
 
   it('leaves a card whose every variant is there as it is', () => {
     expect(publishCardPlan([coloured('Mavi', matched('c1')), coloured('Mavi', matched('c1'))], 'c1')).toEqual({ send: false, reason: 'matched' })
   })
 
   it('sends a card none of whose variants is there whole', () => {
-    expect(publishCardPlan([coloured('Mavi', status('c1')), coloured('Mavi')], 'c1')).toEqual({ send: true, variants: 2, addsToListing: false, hasMissingVariant: false })
+    expect(publishCardPlan([coloured('Mavi', status('c1')), coloured('Mavi')], 'c1')).toEqual({ send: true, variants: 2, addsToListing: false, hasMissingVariant: false, liveVariants: 0, groups: [] })
   })
 
-  it('sends only the variants a matched card lacks, on every marketplace', () => {
+  it('adds new sizes of a colour already there to that colour', () => {
     // MZ021Y-CD on Trendyol: three sizes matched, three new sizes of the same colour added since.
     const rows = [
       coloured('Mavi', matched('c1')), coloured('Mavi', matched('c1')), coloured('Mavi', matched('c1')),
-      coloured('Mavi'), coloured('Mavi', status('c1')), coloured('mavi')
+      sku(coloured('Mavi'), 'A-4'), sku(coloured('Mavi', status('c1')), 'A-5'), sku(coloured('mavi'), 'A-6')
     ]
-    expect(publishCardPlan(rows, 'c1')).toEqual({ send: true, variants: 3, addsToListing: true, hasMissingVariant: false })
+    expect(publishCardPlan(rows, 'c1')).toEqual({ send: true, variants: 3, addsToListing: true, hasMissingVariant: false, liveVariants: 3, groups: [{ kind: 'existing-colour', colour: 'Mavi', variants: 3, skus: ['A-4', 'A-5', 'A-6'] }] })
   })
 
   it('counts a variant the marketplace lost among those sent again', () => {
     const rows = [coloured('Mavi', matched('c1')), coloured('Mavi', status('c1', { isMissing: true }))]
-    expect(publishCardPlan(rows, 'c1')).toEqual({ send: true, variants: 1, addsToListing: true, hasMissingVariant: true })
+    expect(publishCardPlan(rows, 'c1')).toMatchObject({ send: true, variants: 1, addsToListing: true, hasMissingVariant: true, liveVariants: 1 })
   })
 
-  it('does not send variants of another colour saved into a matched card', () => {
-    // Live 2026-11-05: Bordo, Haki, Kahverengi … sizes were saved into the Mavi card; sent with it they would open under
-    // the Mavi card's title and images.
-    const plan = publishCardPlan([coloured('Mavi', matched('c1')), coloured('Mavi'), coloured('Bordo'), coloured('Haki'), coloured('Bordo')], 'c1')
+  it('does not send variants of another colour saved into a matched card of a family split into colour cards', () => {
+    // Live 2026-11-05: Bordo, Haki, Kahverengi … sizes were saved into the Mavi card; they belong on their own cards.
+    const plan = publishCardPlan([coloured('Mavi', matched('c1')), coloured('Mavi'), coloured('Bordo'), coloured('Haki'), coloured('Bordo')], 'c1', { colourCardsInFamily: true })
     expect(plan).toEqual({
       send: false,
       reason: 'colour-mismatch',
@@ -107,7 +107,28 @@ describe('publish card plan', () => {
     })
   })
 
+  // Live 11.11.2026 (RYP006): one panel card holds six colours live on Trendyol (each its own content under the model
+  // code) and three new Mürdüm sizes. Yayınla sends only the three, as a new colour; the 18 stay as they are.
+  it('opens a new colour of a multi-colour card as its own group (RYP006)', () => {
+    const live = ['Haki', 'Kahverengi', 'Kiremit', 'Lacivert', 'Siyah', 'Vizon'].flatMap(colour => [1, 2, 3].map(() => coloured(colour, matched('c1'))))
+    const rows = [...live, ...[19, 20, 21].map(n => sku(coloured('Mürdüm', status('c1')), `RYP006-${n}`))]
+    expect(publishCardPlan(rows, 'c1')).toEqual({ send: true, variants: 3, addsToListing: true, hasMissingVariant: false, liveVariants: 18, groups: [{ kind: 'new-colour', colour: 'Mürdüm', variants: 3, skus: ['RYP006-19', 'RYP006-20', 'RYP006-21'] }] })
+  })
+
+  it('sorts a mixed card: new sizes of a live colour, a new colour, and the variants already there', () => {
+    const rows = [coloured('Haki', matched('c1')), coloured('Siyah', matched('c1')), sku(coloured('Mürdüm'), 'M-1'), sku(coloured('Haki'), 'H-2'), sku(coloured('Mürdüm'), 'M-2')]
+    expect(publishCardPlan(rows, 'c1')).toEqual({
+      send: true, variants: 3, addsToListing: true, hasMissingVariant: false, liveVariants: 2,
+      groups: [{ kind: 'existing-colour', colour: 'Haki', variants: 1, skus: ['H-2'] }, { kind: 'new-colour', colour: 'Mürdüm', variants: 2, skus: ['M-1', 'M-2'] }]
+    })
+  })
+
+  // Shopify, n11, Pazarama, PttAVM hold the whole family as one product: a new colour is a new variant of it.
+  it('adds a new colour to a marketplace that holds the family as one product, even on a split family', () => {
+    expect(publishCardPlan([coloured('Haki', matched('c1')), sku(coloured('Mürdüm'), 'M-1')], 'c1', { colourCardsInFamily: true, familyIsOneProduct: true })).toEqual({ send: true, variants: 1, addsToListing: true, hasMissingVariant: false, liveVariants: 1, groups: [{ kind: 'new-colour', colour: 'Mürdüm', variants: 1, skus: ['M-1'] }] })
+  })
+
   it('sends the new variants of a card without a colour option', () => {
-    expect(publishCardPlan([{ platformStatuses: [matched('c1')] }, { platformStatuses: [] }], 'c1')).toEqual({ send: true, variants: 1, addsToListing: true, hasMissingVariant: false })
+    expect(publishCardPlan([{ platformStatuses: [matched('c1')] }, { platformStatuses: [] }], 'c1')).toEqual({ send: true, variants: 1, addsToListing: true, hasMissingVariant: false, liveVariants: 1, groups: [{ kind: 'existing-colour', colour: null, variants: 1, skus: [] }] })
   })
 })

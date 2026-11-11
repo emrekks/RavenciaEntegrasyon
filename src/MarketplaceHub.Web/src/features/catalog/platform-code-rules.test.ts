@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { describePlatformCodeIssues, platformCodeIssues, summarizeVariantCodeIssues, variantCodeFieldIssueText } from './platform-code-rules'
+import { describePlatformCodeIssues, platformCodeIssues, summarizeVariantCodeIssues, variantCodeDuplicates, variantCodeFieldIssueText, variantCodeFieldKey, variantCodeMatchKey } from './platform-code-rules'
 
 describe('variant code callout', () => {
   const platforms = ['TRENDYOL', 'SHOPIFY']
@@ -17,6 +17,8 @@ describe('variant code callout', () => {
       missingSkus: 1,
       ruleRows: 1,
       heldRows: 0,
+      duplicateRows: 0,
+      duplicateSkuRows: 0,
       rulePlatforms: ['Trendyol', 'Shopify'],
       title: '2 varyantta barkod eksik · 1 varyantta stok kodu eksik · 1 varyantın kodu platform kurallarına uymuyor',
     })
@@ -66,5 +68,36 @@ describe('platform code rules', () => {
 
   it('checks nothing for a platform it has no rules for', () => {
     expect(platformCodeIssues(['AMAZON'], '', '')).toEqual([])
+  })
+})
+
+// Owner, 11.11.2026 (RYP003T): "aynı diye kırmızı yanmadı?" — a code two rows share turns both red as it is typed.
+describe('codes two variant rows share', () => {
+  it('reads codes as the server does: case, spaces and accents aside', () => {
+    expect(variantCodeMatchKey(' ryp003t24 ')).toBe('RYP003T24')
+    expect(variantCodeMatchKey('ryp003t 24')).toBe(variantCodeMatchKey('RYP003T-24'))
+    expect(variantCodeMatchKey('Kırmızı-01')).toBe(variantCodeMatchKey('KIRMIZI 01'))
+    expect(variantCodeMatchKey('RYP003T24')).not.toBe(variantCodeMatchKey('RYP003T-24'))
+  })
+
+  it('marks both rows holding the same barcode or the same stock code, each naming the other', () => {
+    const rows = [
+      { key: 'siyah', label: '2XL - Siyah', barcode: 'RYP003T24', sku: 'RYP003T24' },
+      { key: 'murdum', label: '2XL - Mürdüm', barcode: 'ryp003t24 ', sku: 'RYP003T25' },
+      { key: 'haki', label: '2XL - Haki', barcode: 'RYP003T26', sku: ' rYp003T25' },
+      { key: 'empty', label: 'L - Haki', barcode: '', sku: '' },
+      { key: 'empty2', label: 'XL - Haki', barcode: '', sku: '' },
+    ]
+    const duplicates = variantCodeDuplicates(rows)
+    expect(duplicates.get(variantCodeFieldKey('murdum', 'barcode'))).toBe('2XL - Siyah')
+    expect(duplicates.get(variantCodeFieldKey('siyah', 'barcode'))).toBe('2XL - Mürdüm')
+    expect(duplicates.get(variantCodeFieldKey('haki', 'sku'))).toBe('2XL - Mürdüm')
+    expect(duplicates.has(variantCodeFieldKey('siyah', 'sku'))).toBe(false)
+    expect(duplicates.has(variantCodeFieldKey('empty', 'barcode'))).toBe(false)
+    expect(variantCodeFieldIssueText([], 'barcode', 'RYP003T24', undefined, duplicates.get(variantCodeFieldKey('murdum', 'barcode'))))
+      .toBe('RYP003T24 barkodu 2XL - Siyah varyantında da kullanılıyor')
+
+    const summary = summarizeVariantCodeIssues(rows.slice(0, 3), new Map(), () => false, (rowKey, field) => duplicates.has(variantCodeFieldKey(rowKey, field)))
+    expect(summary).toMatchObject({ duplicateRows: 3, duplicateSkuRows: 2, title: '3 varyantta yinelenen barkod/stok kodu' })
   })
 })

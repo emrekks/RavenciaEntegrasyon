@@ -103,6 +103,14 @@ purpose (`TurkeyTime.cs`).
 - Invoice: NotInvoiced, Received, Rejected, Invoiced.
 
 ## Quirks
+- New variants of a model already there (Yayınla, owner 11.11.2026, live RYP006): only the barcodes not there yet go,
+  through the normal create (`products` v2) under the same `productMainId`. A new size of a live colour joins that
+  colour's content; a new colour (Renk is a slicer) opens its own content under the model code with the images and
+  attributes its items carry, so each item goes with its own variant pictures (size chart last) and its own Renk value.
+  A new-colour variant without pictures of its own, or one without a price, stock row, valid barcode/stock code, desi
+  or required attribute, is left out with its reason and the others still go (`PublicationSkippedVariant`); such a send
+  never writes a live content, so a card marked PRODUCT_APPROVAL_CONTENT_SPLIT may add barcodes and keeps the mark.
+  Source: offline `trendyol-api-son.md` ~2081-2100 (slicer opens separate contents, varianter = sizes of one content).
 - `products/approved?productMainId=` is case-sensitive: live 7 Nov 2026 "Ryp003t" read 0 products, "RYP003T" 7. A single
   import by a typed code that reads nothing asks once more in upper case (`ProductImportMergePolicy.UpperCaseLookupRetry`).
 - One content (`contentId`) per colour: a model (`productMainId`) with several colours is several contents, each with

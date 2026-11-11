@@ -10,7 +10,7 @@ vi.mock('../../../shared/api', async importOriginal => {
 })
 
 import { hubApi } from '../../../shared/api'
-import { ProductQuickEditModal } from './ProductsPage'
+import { ProductQuickEditModal } from './ProductQuickEditModal'
 import type { Product, Variant } from '../shared'
 
 function variant(id: string, color: string, size: string): Variant {

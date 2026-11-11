@@ -1869,8 +1869,14 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     // The marketplaces where one product carries a model family's every colour card (one request sends them all).
     private static bool SendsModelFamily(string platformCode) => platformCode is "PTTAVM" or "SHOPIFY";
 
-    public Task<ServiceResult<Guid>> EnqueuePublicationAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken) =>
+    public async Task<ServiceResult<Guid>> EnqueuePublicationAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken) =>
+        JobIdOf(await EnqueuePublicationAsync(tenantId, productId, connectionId, idempotencyKey, correlationId, shopifyUpdateOnly: false, cancellationToken));
+
+    public Task<ServiceResult<PublicationEnqueued>> EnqueuePublicationWithSkippedAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken) =>
         EnqueuePublicationAsync(tenantId, productId, connectionId, idempotencyKey, correlationId, shopifyUpdateOnly: false, cancellationToken);
+
+    private static ServiceResult<Guid> JobIdOf(ServiceResult<PublicationEnqueued> result) =>
+        result.Succeeded ? ServiceResult<Guid>.Ok(result.Value!.JobId) : ServiceResult<Guid>.Fail(result.Error!.Code, result.Error.Message, result.Error.Status, result.Error.FieldErrors);
 
     internal const string ShopifyMatchedOutsidePanelMessage = "Bu renk kartı Shopify'da panelden açılmamış bir ürüne eşleşmiş; eksik varyantlar o ürüne panelden eklenemez (yanına ikinci bir ürün açılırdı), gönderim yapılmadı. Eksik varyantları Shopify yönetim panelinden ürüne ekleyin.";
 
@@ -1890,44 +1896,44 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
 
     // shopifyUpdateOnly: "Platformlarda Güncelle" on Shopify, the same productSet marked so it only writes a product that is
     // already there (ShopifyHttpClient.UpdateOnlyKey).
-    private async Task<ServiceResult<Guid>> EnqueuePublicationAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, bool shopifyUpdateOnly, CancellationToken cancellationToken)
+    private async Task<ServiceResult<PublicationEnqueued>> EnqueuePublicationAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, bool shopifyUpdateOnly, CancellationToken cancellationToken)
     {
-        if (await IsDraftProductAsync(tenantId, productId, cancellationToken)) return DraftSendBlocked<Guid>();
+        if (await IsDraftProductAsync(tenantId, productId, cancellationToken)) return DraftSendBlocked<PublicationEnqueued>();
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
-        if (connection is null || connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA" or "SHOPIFY" or "N11" or "PAZARAMA" or "PTTAVM") || !IntegrationRuntimePolicy.IsManualProductWriteReady(connection)) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Yayın için etkin bir mağaza bağlantısı gerekir; bağlantıyı Entegrasyonlar ekranından etkinleştirin.", 422);
-        if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Yayın yalnız test ya da canlı mağaza bağlantısında yapılabilir.", 422);
-        if (IntegrationRuntimePolicy.IsProduction(connection) && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+        if (connection is null || connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA" or "SHOPIFY" or "N11" or "PAZARAMA" or "PTTAVM") || !IntegrationRuntimePolicy.IsManualProductWriteReady(connection)) return ServiceResult<PublicationEnqueued>.Fail("ACTIVE_CONNECTION_REQUIRED", "Yayın için etkin bir mağaza bağlantısı gerekir; bağlantıyı Entegrasyonlar ekranından etkinleştirin.", 422);
+        if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<PublicationEnqueued>.Fail("ENVIRONMENT_INVALID", "Yayın yalnız test ya da canlı mağaza bağlantısında yapılabilir.", 422);
+        if (IntegrationRuntimePolicy.IsProduction(connection) && !WritesEnabled(connection.SettingsJson)) return ServiceResult<PublicationEnqueued>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
         if (connection.PlatformCode == "SHOPIFY")
         {
-            if (!WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Shopify ürün yayınlamak için global ve bağlantı dış yazma anahtarları açık olmalıdır.", 422);
-            if (!await HasShopifyPublicationEvidenceAsync(connection, cancellationToken)) return ServiceResult<Guid>.Fail("SHOPIFY_PUBLICATION_SCOPES_REQUIRED", "Shopify ürün yayını için PRODUCT_WRITE, INVENTORY_WRITE, PUBLICATION_READ ve PUBLICATION_WRITE izinleri aynı bağlantı/ortamda doğrulanmalıdır.", 422);
+            if (!WritesEnabled(connection.SettingsJson)) return ServiceResult<PublicationEnqueued>.Fail("EXTERNAL_WRITES_DISABLED", "Shopify ürün yayınlamak için global ve bağlantı dış yazma anahtarları açık olmalıdır.", 422);
+            if (!await HasShopifyPublicationEvidenceAsync(connection, cancellationToken)) return ServiceResult<PublicationEnqueued>.Fail("SHOPIFY_PUBLICATION_SCOPES_REQUIRED", "Shopify ürün yayını için PRODUCT_WRITE, INVENTORY_WRITE, PUBLICATION_READ ve PUBLICATION_WRITE izinleri aynı bağlantı/ortamda doğrulanmalıdır.", 422);
         }
         if (connection.PlatformCode == "HEPSIBURADA")
         {
-            if (!string.Equals(configuration["Hepsiburada:AuthenticationMode"], "BASIC", StringComparison.OrdinalIgnoreCase)) return ServiceResult<Guid>.Fail("HEPSIBURADA_AUTHENTICATION_UNVERIFIED", "Hepsiburada giriş bilgileri test hesabında doğrulanana kadar ürün yayını başlatılamaz.", 422);
-            if (!await HasHepsiburadaPublicationEvidenceAsync(connection, cancellationToken)) return ServiceResult<Guid>.Fail("HEPSIBURADA_WRITE_CAPABILITY_EVIDENCE_REQUIRED", "Hepsiburada bağlantısında bu mağaza ve ortam için doğrulanmış fiyat ve stok yazma kanıtı yok; Entegrasyonlar'dan bağlantıyı test edin.", 422);
+            if (!string.Equals(configuration["Hepsiburada:AuthenticationMode"], "BASIC", StringComparison.OrdinalIgnoreCase)) return ServiceResult<PublicationEnqueued>.Fail("HEPSIBURADA_AUTHENTICATION_UNVERIFIED", "Hepsiburada giriş bilgileri test hesabında doğrulanana kadar ürün yayını başlatılamaz.", 422);
+            if (!await HasHepsiburadaPublicationEvidenceAsync(connection, cancellationToken)) return ServiceResult<PublicationEnqueued>.Fail("HEPSIBURADA_WRITE_CAPABILITY_EVIDENCE_REQUIRED", "Hepsiburada bağlantısında bu mağaza ve ortam için doğrulanmış fiyat ve stok yazma kanıtı yok; Entegrasyonlar'dan bağlantıyı test edin.", 422);
         }
         // n11 has no sandbox, so write evidence can only follow a first live write; the
         // global and connection write switches are the gate for product create.
-        if (connection.PlatformCode == "N11" && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "N11'de ürün açmak için global ve bağlantı dış yazma anahtarları açık olmalıdır.", 422);
-        if (connection.PlatformCode == "PAZARAMA" && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Pazarama'da ürün açmak için global ve bağlantı dış yazma anahtarları açık olmalıdır.", 422);
-        if (connection.PlatformCode == "PTTAVM" && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "PttAVM'ye ürün göndermek için global ve bağlantı dış yazma anahtarları açık olmalıdır.", 422);
+        if (connection.PlatformCode == "N11" && !WritesEnabled(connection.SettingsJson)) return ServiceResult<PublicationEnqueued>.Fail("EXTERNAL_WRITES_DISABLED", "N11'de ürün açmak için global ve bağlantı dış yazma anahtarları açık olmalıdır.", 422);
+        if (connection.PlatformCode == "PAZARAMA" && !WritesEnabled(connection.SettingsJson)) return ServiceResult<PublicationEnqueued>.Fail("EXTERNAL_WRITES_DISABLED", "Pazarama'da ürün açmak için global ve bağlantı dış yazma anahtarları açık olmalıdır.", 422);
+        if (connection.PlatformCode == "PTTAVM" && !WritesEnabled(connection.SettingsJson)) return ServiceResult<PublicationEnqueued>.Fail("EXTERNAL_WRITES_DISABLED", "PttAVM'ye ürün göndermek için global ve bağlantı dış yazma anahtarları açık olmalıdır.", 422);
         if (connection.PlatformCode == "PTTAVM" && PttAvmManualWritePolicy.Decide(masterWritesEnabled: true, await db.ConnectionSyncPolicies.AsNoTracking()
                 .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == MarketplaceExternalWritePolicies.Manual)
                 .Select(x => (bool?)x.Enabled)
                 .SingleOrDefaultAsync(cancellationToken)) != PttAvmManualWriteDecision.Allowed)
-            return ServiceResult<Guid>.Fail(PttAvmManualWritePolicy.DisabledCode, PttAvmManualWritePolicy.DisabledMessage, 422);
+            return ServiceResult<PublicationEnqueued>.Fail(PttAvmManualWritePolicy.DisabledCode, PttAvmManualWritePolicy.DisabledMessage, 422);
         // A Shopify product the panel did not open (matched by an import) has another handle: the family's productSet
         // would open a second product beside it instead of adding the missing variants to it.
         if (connection.PlatformCode == "SHOPIFY" && !shopifyUpdateOnly && await ShopifyCardMatchedOutsidePanelAsync(tenantId, productId, connectionId, cancellationToken))
-            return ServiceResult<Guid>.Fail("SHOPIFY_PRODUCT_NOT_PANEL_OWNED", ShopifyMatchedOutsidePanelMessage, 409);
+            return ServiceResult<PublicationEnqueued>.Fail("SHOPIFY_PRODUCT_NOT_PANEL_OWNED", ShopifyMatchedOutsidePanelMessage, 409);
         // Yayınla sends a matched card's variants not on the marketplace yet (PublicationUnsentVariants); n11 keeps its own
         // rule, and PTT AVM and Shopify send the whole family, their adapters adding only what the product lacks.
         var draftResult = connection.PlatformCode == "SHOPIFY"
             ? await new ShopifyProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken)
             : await new ProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken, onlyUnsentVariants: true);
-        if (!draftResult.Succeeded) return ServiceResult<Guid>.Fail(draftResult.Error!.Code, draftResult.Error.Message, draftResult.Error.Status, draftResult.Error.FieldErrors);
+        if (!draftResult.Succeeded) return ServiceResult<PublicationEnqueued>.Fail(draftResult.Error!.Code, draftResult.Error.Message, draftResult.Error.Status, draftResult.Error.FieldErrors);
         var draft = draftResult.Value!;
         if (shopifyUpdateOnly) draft = draft with { PayloadJson = ShopifyHttpClient.MarkUpdateOnly(draft.PayloadJson) };
         var dedup = $"product-create:{connectionId:N}:{productId:N}:{draft.PayloadHash}";
@@ -1941,7 +1947,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         if (existing is not null && await ReuseOrRetirePublicationJobAsync(existing, dedup, reuseSucceeded: !isPttAvm && !await HasMissingVariantAsync(tenantId, productId, connectionId, cancellationToken), cancellationToken))
         {
             await transaction.CommitAsync(cancellationToken);
-            return ServiceResult<Guid>.Ok(existing.Id);
+            return ServiceResult<PublicationEnqueued>.Ok(new(existing.Id, draft.SkippedVariants));
         }
 
         var profile = await db.ChannelListingProfiles.SingleAsync(x => x.TenantId == tenantId && x.Id == draft.ProfileId && x.ConnectionId == connectionId, cancellationToken);
@@ -1950,7 +1956,9 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         profile.ExternalBrandId = draft.ExternalBrandId;
         profile.DesiredStatus = "LIVE";
         profile.ActualStatus = "QUEUED";
-        profile.LastRejectionCode = null;
+        // A send that only adds barcodes to a card Trendyol split into colour contents keeps that mark, so a later update
+        // still writes the card content by content.
+        if (!draft.AddsToListing) profile.LastRejectionCode = null;
         profile.Version++;
 
         foreach (var variant in draft.Variants)
@@ -2007,14 +2015,14 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         {
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
-            return ServiceResult<Guid>.Ok(jobId);
+            return ServiceResult<PublicationEnqueued>.Ok(new(jobId, draft.SkippedVariants));
         }
         catch (DbUpdateException)
         {
             await transaction.RollbackAsync(cancellationToken);
             db.ChangeTracker.Clear();
             var concurrent = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.ProductCreate && x.JobDedupKey == dedup, cancellationToken);
-            if (concurrent is not null) return ServiceResult<Guid>.Ok(concurrent.Id);
+            if (concurrent is not null) return ServiceResult<PublicationEnqueued>.Ok(new(concurrent.Id, draft.SkippedVariants));
             throw;
         }
     }
@@ -2067,7 +2075,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         // not narrow it (price and stock ride along), and the send never creates a product.
         if (await IsDraftProductAsync(tenantId, productId, cancellationToken)) return DraftSendBlocked<Guid>();
         var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
-        if (platformCode == "SHOPIFY") return await EnqueuePublicationAsync(tenantId, productId, connectionId, idempotencyKey, correlationId, shopifyUpdateOnly: true, cancellationToken);
+        if (platformCode == "SHOPIFY") return JobIdOf(await EnqueuePublicationAsync(tenantId, productId, connectionId, idempotencyKey, correlationId, shopifyUpdateOnly: true, cancellationToken));
         if (platformCode == "PTTAVM") return await EnqueuePttAvmProductUpdateAsync(tenantId, productId, connectionId, idempotencyKey, correlationId, fields, cancellationToken);
         var sections = ProductUpdateFields.Sections(fields);
         if (!sections.Succeeded) return ServiceResult<Guid>.Fail(sections.Error!.Code, sections.Error.Message, sections.Error.Status);
