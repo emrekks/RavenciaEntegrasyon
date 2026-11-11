@@ -19,6 +19,7 @@ public static class SimpleXlsxWriter
     private const int MaximumCellText = 32_767;
     private const int HeaderStyle = 1;
     private const int MoneyStyle = 2;
+    private const int WholeNumberStyle = 3;
 
     public static byte[] Write(IReadOnlyList<SimpleXlsxSheet> sheets)
     {
@@ -125,6 +126,10 @@ public static class SimpleXlsxWriter
                 writer.WriteAttributeString("r", ColumnName(column) + rowNumber);
                 switch (value)
                 {
+                    case int or long:
+                        writer.WriteAttributeString("s", (rowIndex == 0 ? HeaderStyle : WholeNumberStyle).ToString(CultureInfo.InvariantCulture));
+                        writer.WriteElementString("v", MainNamespace, Convert.ToString(value, CultureInfo.InvariantCulture));
+                        break;
                     case decimal number:
                         writer.WriteAttributeString("s", (rowIndex == 0 ? HeaderStyle : MoneyStyle).ToString(CultureInfo.InvariantCulture));
                         writer.WriteElementString("v", MainNamespace, number.ToString(CultureInfo.InvariantCulture));
@@ -178,12 +183,13 @@ public static class SimpleXlsxWriter
         writer.WriteAttributeString("count", "1");
         CellFormat(writer, numberFormat: 0, font: 0, inStyleList: false);
         writer.WriteEndElement();
-        // 0: default, 1: bold header, 2: "#,##0.00" (built-in format 4, shown with the reader's own separators).
+        // 0: default, 1: bold header, 2: "#,##0.00" (built-in format 4, shown with the reader's own separators), 3: "#,##0" (built-in format 3, whole numbers such as stock).
         writer.WriteStartElement("cellXfs", MainNamespace);
-        writer.WriteAttributeString("count", "3");
+        writer.WriteAttributeString("count", "4");
         CellFormat(writer, numberFormat: 0, font: 0, inStyleList: true);
         CellFormat(writer, numberFormat: 0, font: 1, inStyleList: true);
         CellFormat(writer, numberFormat: 4, font: 0, inStyleList: true);
+        CellFormat(writer, numberFormat: 3, font: 0, inStyleList: true);
         writer.WriteEndElement();
         writer.WriteEndElement();
     }
