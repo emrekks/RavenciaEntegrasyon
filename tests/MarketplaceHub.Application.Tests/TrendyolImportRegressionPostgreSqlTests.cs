@@ -381,37 +381,126 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         }
     }
 
-    // FINDING: the full and the incremental import ("Tam Katalog", "Yeni ve Değişen") keep an owner-edited card whole
-    // (LOCAL_CHANGES_PENDING) and on that path only match the card's existing variants for stock and prices
-    // (MarketplaceJobProcessor.cs:8499, SyncCatalogInventoryForPreservedProduct): a size Trendyol adds to that colour later
-    // is not opened. A family edit marks every colour card (the model fields, the family gallery), so after one Kaydet no
-    // new Trendyol size of the model reaches the panel through these modes; only "Ekli Olmayan Ürünler" (newOnly) or a
-    // single lookup with "Mevcut Ürün Bilgilerini Güncelle" adds it (the second also takes Trendyol's texts over the
-    // owner's). Its orders then match no panel variant until then.
-    [PostgreSqlFact(Skip = "FINDING: full/incremental Trendyol import does not open a new Trendyol size on an owner-edited colour card (MarketplaceJobProcessor.cs:8499, preserved path matches existing variants only); only newOnly adds it.")]
-    public async Task FullImport_OpensANewTrendyolSize_OnAnOwnerEditedColourCard()
+    // A size Trendyol adds later to an owner-edited colour card, by pull option (owner, 12 Nov 2026):
+    // "Mevcut Ürün Bilgilerini Güncelle: Bu mevcut ürünü Trendyol'dan günceller ve yeni eklenen bedenlerini ekler."
+    // "Ekli Olmayan Ürünler: Bu ürünleri güncellemez, yeni ürünleri yakalar." A plain pull keeps the card whole (stock
+    // and prices only) and says the new size is there. The owner's picture assignments hold in every mode.
+    private static IEnumerable<ContentSpec> SiyahWithXs() => Colours.Select(entry => entry.Colour == "Siyah" ? Spec("Siyah") with { Sizes = [.. Sizes, "XS"] } : Spec(entry.Colour));
+
+    [PostgreSqlFact]
+    public async Task FullImport_WithUpdateExisting_UpdatesAnOwnerEditedCard_AndOpensItsNewTrendyolSize()
     {
         var seed = await SeedAsync();
         await RunAsync(seed, new TrendyolCatalogPort(Read(Colours.Select(entry => Spec(entry.Colour)))), "{\"full\":true}");
         var siyah = await OwnerEditsSiyahAsync(seed);
-        await RunAsync(seed, new TrendyolCatalogPort(Read(Colours.Select(entry => entry.Colour == "Siyah" ? Spec("Siyah") with { Sizes = [.. Sizes, "XS"] } : Spec(entry.Colour)))), "{\"full\":true}");
+        await RunAsync(seed, new TrendyolCatalogPort(Read(SiyahWithXs())), "{\"full\":true,\"updateExistingProducts\":true}");
 
         await using var db = fixture.CreateContext();
         var card = (await CardsAsync(db, seed))[ContentId("Siyah")];
-        Assert.Single(card.Variants, row => row.Barcode == Barcode(ColourIndex("Siyah"), 5));
+        var xs = Assert.Single(card.Variants, row => row.Barcode == Barcode(ColourIndex("Siyah"), 5));
+        Assert.Contains("Renk: Siyah", xs.OptionSignature, StringComparison.Ordinal);
+        Assert.Contains("Beden: XS", xs.OptionSignature, StringComparison.Ordinal);
+        Assert.Equal(StockCode(ColourIndex("Siyah"), 5), xs.Sku);
+        Assert.Single(seed.VariantLinks(db), row => row.VariantId == xs.Id);
+        Assert.Equal(4m, (await db.InventoryItems.AsNoTracking().SingleAsync(row => row.VariantId == xs.Id)).OnHand);
+        // The card takes Trendyol's information over the owner's edit; the owner's pictures stay as they were.
+        Assert.Equal(Title("Siyah"), card.Product.Title);
         Assert.Equal(siyah.Media, await MediaRowsAsync(seed, onlyProductId: siyah.ProductId));
+        Assert.False(await db.OperationalIssues.AnyAsync(row => row.TenantId == seed.TenantId && row.Code == "PRODUCT_NEW_SIZES_NOT_IMPORTED" && row.Status == IssueStatus.Open));
+    }
+
+    [PostgreSqlFact]
+    public async Task NewOnlyImport_OpensTheNewTrendyolSize_WithoutTouchingTheOwnerEditedCard()
+    {
+        var seed = await SeedAsync();
+        await RunAsync(seed, new TrendyolCatalogPort(Read(Colours.Select(entry => Spec(entry.Colour)))), "{\"full\":true}");
+        var siyah = await OwnerEditsSiyahAsync(seed);
+        await RunAsync(seed, new TrendyolCatalogPort(Read(SiyahWithXs())), "{\"newOnly\":true}");
+
+        await using var db = fixture.CreateContext();
+        var card = (await CardsAsync(db, seed))[ContentId("Siyah")];
+        var xs = Assert.Single(card.Variants, row => row.Barcode == Barcode(ColourIndex("Siyah"), 5));
+        Assert.Contains("Renk: Siyah", xs.OptionSignature, StringComparison.Ordinal);
+        Assert.Single(seed.VariantLinks(db), row => row.VariantId == xs.Id);
+        Assert.Equal("Sahibin Siyah Başlığı", card.Product.Title);
+        Assert.Equal(siyah.Media, await MediaRowsAsync(seed, onlyProductId: siyah.ProductId));
+        Assert.Equal(Colours.Length * Sizes.Length + 1, await db.ProductVariants.CountAsync(row => row.TenantId == seed.TenantId));
+    }
+
+    [PostgreSqlFact]
+    public async Task PlainFullImport_KeepsTheOwnerEditedCardWhole_AndReportsTheNewTrendyolSize()
+    {
+        var seed = await SeedAsync();
+        await RunAsync(seed, new TrendyolCatalogPort(Read(Colours.Select(entry => Spec(entry.Colour)))), "{\"full\":true}");
+        var siyah = await OwnerEditsSiyahAsync(seed);
+        var port = new TrendyolCatalogPort(Read(SiyahWithXs()));
+        await RunAsync(seed, port, "{\"full\":true,\"updateExistingProducts\":false}");
+
+        await using (var db = fixture.CreateContext())
+        {
+            var card = (await CardsAsync(db, seed))[ContentId("Siyah")];
+            Assert.DoesNotContain(card.Variants, row => row.Barcode == Barcode(ColourIndex("Siyah"), 5));
+            Assert.Equal("Sahibin Siyah Başlığı", card.Product.Title);
+            var issue = await db.OperationalIssues.AsNoTracking().SingleAsync(row => row.TenantId == seed.TenantId && row.Code == "PRODUCT_NEW_SIZES_NOT_IMPORTED");
+            Assert.Equal(IssueStatus.Open, issue.Status);
+            Assert.Contains("1 yeni beden var; eklemek için Ekli Olmayan Ürünler ya da Mevcut Ürün Bilgilerini Güncelle ile çekin.", issue.Summary, StringComparison.Ordinal);
+        }
+        Assert.Equal(siyah.Media, await MediaRowsAsync(seed, onlyProductId: siyah.ProductId));
+
+        // "Ekli Olmayan Ürünler" then adds it and the notice closes.
+        await RunAsync(seed, port, "{\"newOnly\":true}");
+        await using (var db = fixture.CreateContext())
+        {
+            Assert.Single((await CardsAsync(db, seed))[ContentId("Siyah")].Variants, row => row.Barcode == Barcode(ColourIndex("Siyah"), 5));
+            Assert.Equal(IssueStatus.Resolved, (await db.OperationalIssues.AsNoTracking().SingleAsync(row => row.TenantId == seed.TenantId && row.Code == "PRODUCT_NEW_SIZES_NOT_IMPORTED")).Status);
+        }
+    }
+
+    // The new size starts with the pictures every size of its colour holds as its own list (the editor's add rule), in
+    // the card gallery's order; no other row changes.
+    [PostgreSqlFact]
+    public async Task NewTrendyolSize_StartsWithThePicturesEverySizeOfItsColourHolds()
+    {
+        var seed = await SeedAsync();
+        await RunAsync(seed, new TrendyolCatalogPort(Read(Colours.Select(entry => Spec(entry.Colour)))), "{\"full\":true}");
+        Guid productId;
+        await using (var db = fixture.CreateContext())
+        {
+            var card = (await CardsAsync(db, seed))[ContentId("Siyah")];
+            productId = card.Product.Id;
+            var gallery = await db.ProductMedia.AsNoTracking().Where(row => row.ProductId == productId && row.VariantId == null && row.Status == "ACTIVE").OrderBy(row => row.SortOrder).ToListAsync();
+            // Every size after the first gets pictures 2 and 1 of the gallery (in that order); the first keeps the full list.
+            foreach (var variant in card.Variants.Where(row => row.Barcode != Barcode(ColourIndex("Siyah"), 0)))
+            {
+                db.ProductMedia.Add(new ProductMedia { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, ProductId = productId, VariantId = variant.Id, FileAssetId = gallery[1].FileAssetId, MediaRole = "PRIMARY", SortOrder = 0, Status = "ACTIVE" });
+                db.ProductMedia.Add(new ProductMedia { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, ProductId = productId, VariantId = variant.Id, FileAssetId = gallery[0].FileAssetId, MediaRole = "GALLERY", SortOrder = 1, Status = "ACTIVE" });
+            }
+            await db.SaveChangesAsync();
+            await CatalogLocalEdits.MarkMediaEditedAsync(db, seed.TenantId, [productId], DateTimeOffset.UtcNow, CancellationToken.None);
+            await db.SaveChangesAsync();
+        }
+        var before = await MediaRowsAsync(seed, onlyProductId: productId);
+        await RunAsync(seed, new TrendyolCatalogPort(Read(SiyahWithXs())), "{\"newOnly\":true}");
+
+        Guid xsId;
+        await using (var db = fixture.CreateContext())
+        {
+            var card = (await CardsAsync(db, seed))[ContentId("Siyah")];
+            xsId = card.Variants.Single(row => row.Barcode == Barcode(ColourIndex("Siyah"), 5)).Id;
+            Assert.Equal([Url("siyah-1"), Url("siyah-2")], await MediaUrlsAsync(db, productId, xsId));
+        }
+        var others = (await MediaRowsAsync(seed, onlyProductId: productId)).Split('\n').Where(row => !row.Contains($"|{xsId}|", StringComparison.Ordinal));
+        Assert.Equal(before, string.Join("\n", others));
     }
 
     // The owner assigns pictures to one size only (the editor writes a size's own list with PRIMARY/GALLERY roles and
     // marks the card's links "media"); the card gallery keeps the import's roles. A lookup with "Mevcut Ürün Bilgilerini
     // Güncelle" clears that mark when it finishes, and a later full import that sees any change on Trendyol (stock) must
     // still leave the size's own list alone.
-    // FINDING: it does not. The lookup keeps the list during its own run (the "media" mark is still on the link), then
-    // resets the link (MarketplaceJobProcessor.cs:8516-8518: LastImportedProductVersion = Version, DirtyFieldsJson = null).
-    // The next import that sees a change takes the card as unedited; MediaIsUserManagedAsync (:9555) finds no ORDERED_
-    // row, no uploaded picture and no mark, and UpsertCatalogVariant (:8945) writes Trendyol's list for that size (empty
-    // for every size after a colour's first), so the owner's two rows of size M end ARCHIVED.
-    [PostgreSqlFact(Skip = "FINDING: after a lookup with 'Mevcut Ürün Bilgilerini Güncelle' clears the media mark (MarketplaceJobProcessor.cs:8516-8518), the next changed import archives a size's own picture list when the card gallery has no ORDERED_ row (:9555, :8945).")]
+    // Was a finding (the lookup reset the link's marks and the next changed import archived size M's two rows); the
+    // protection no longer rests on the marks: a size's own list that is not the import's copy of the card gallery is
+    // the owner's (VariantPicturesAreOwnersAsync).
+    [PostgreSqlFact]
     public async Task OwnersSizeOnlyAssignment_SurvivesAnOverwritingLookup_AndALaterImport()
     {
         var seed = await SeedAsync();

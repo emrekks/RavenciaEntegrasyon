@@ -59,6 +59,14 @@ Code: `Adapters/Trendyol/` — `TrendyolHttpClient.cs` (+ `.Webhooks.cs`), `Tren
   before it). Before 6 Nov 2026 it was the job's end (a scan took 11 min on 31 Oct, its own changes were lost) and a
   scoped read (newOnly, existingOnly, mappingOnly, optionsOnly) moved it too, so products it skipped were missed by
   the next incremental read (`ProductImportScanPolicy.CompletedWatermark`; shared by every marketplace).
+- Product pull options (owner, 12 Nov 2026): "Mevcut Ürün Bilgilerini Güncelle" on (single lookup, Mevcut Ürünleri
+  Güncelle, and a full scan whose job names `updateExistingProducts: true`) takes Trendyol's content over panel edits
+  and adds the sizes Trendyol has; "Ekli Olmayan Ürünler" (`newOnly`) adds new products and new sizes of existing
+  cards, never a card's own fields; any other run keeps an owner-edited card whole (stock/price only) and opens a
+  `PRODUCT_NEW_SIZES_NOT_IMPORTED` issue for the sizes it did not add. Trendyol has one picture list per colour
+  content (written to the colour's first size and the card gallery); a size's own list that differs from the gallery
+  is the panel's and no pull replaces it (`ProductImportMergePolicy.OverwriteLocalChanges`,
+  `MarketplaceJobProcessor.VariantPicturesAreOwnersAsync`).
 - Questions: default from now − 7 days; ≤ 14 days per request, page ≤ 50, older ranges silently trimmed.
 
 ## Time
