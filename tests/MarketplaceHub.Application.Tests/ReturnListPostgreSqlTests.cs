@@ -151,6 +151,45 @@ public sealed class ReturnListPostgreSqlTests(PostgreSqlTenantIsolationFixture f
         }
     }
 
+    // Owner, 11 Nov 2026: "İade Talep Tarihi" filters by the claim's own request date in Istanbul days, the default order
+    // is the newest request, and a claim without a request date is left out only while a range is set.
+    [PostgreSqlFact]
+    public async Task The_request_date_filters_the_list_and_the_counts_by_istanbul_days_and_sorts_the_list()
+    {
+        var seed = await SeedAsync();
+        try
+        {
+            await using (var setup = fixture.CreateContext())
+            {
+                // 3 Nov 00:30 Istanbul is still 2 Nov in UTC; 5 Nov 10:00 UTC; the n11 claim has no request date.
+                (await setup.ReturnClaims.SingleAsync(x => x.Id == seed.SplitClaimId)).RequestedAt = new DateTimeOffset(2026, 11, 2, 21, 30, 0, TimeSpan.Zero);
+                (await setup.ReturnClaims.SingleAsync(x => x.Id == seed.TransitClaimId)).RequestedAt = new DateTimeOffset(2026, 11, 5, 10, 0, 0, TimeSpan.Zero);
+                await setup.SaveChangesAsync();
+            }
+            await using var db = fixture.CreateContext();
+            var service = NewService(db);
+            var istanbul = TimeSpan.FromHours(3);
+
+            var nov3 = new ReturnListQuery(DateFrom: new DateTimeOffset(2026, 11, 3, 0, 0, 0, istanbul), DateTo: new DateTimeOffset(2026, 11, 3, 23, 59, 59, 999, istanbul));
+            var day = await service.ReturnsAsync(seed.TenantId, 20, null, nov3, false, CancellationToken.None);
+            Assert.All(day.Items, item => Assert.Equal(seed.SplitClaimId, item.Id));
+            Assert.Equal(2, day.TotalCount);
+            Assert.Equal(2, (await service.ReturnSummaryAsync(seed.TenantId, nov3, CancellationToken.None)).TabCounts["ALL"]);
+
+            var wide = new ReturnListQuery(DateFrom: new DateTimeOffset(2026, 1, 1, 0, 0, 0, istanbul), DateTo: new DateTimeOffset(2026, 12, 31, 23, 59, 59, istanbul));
+            Assert.DoesNotContain(seed.N11ClaimId, (await service.ReturnsAsync(seed.TenantId, 20, null, wide, false, CancellationToken.None)).Items.Select(x => x.Id));
+            Assert.Equal(3, (await service.ReturnSummaryAsync(seed.TenantId, wide, CancellationToken.None)).TabCounts["ALL"]);
+
+            var all = await service.ReturnsAsync(seed.TenantId, 20, null, new ReturnListQuery(), false, CancellationToken.None);
+            Assert.Equal([seed.TransitClaimId, seed.SplitClaimId, seed.SplitClaimId, seed.N11ClaimId], all.Items.Select(x => x.Id));
+            Assert.Equal(new DateTimeOffset(2026, 11, 5, 10, 0, 0, TimeSpan.Zero), all.Items[0].RequestedAt);
+        }
+        finally
+        {
+            await CleanupAsync(seed.TenantId);
+        }
+    }
+
     private static MarketplaceSalesService NewService(AppDbContext db) =>
         new(db, new CursorCodec(new EphemeralDataProtectionProvider(), TimeProvider.System), new ConfigurationBuilder().Build(), null!, null!, null!, null!, TimeProvider.System);
 
