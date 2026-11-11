@@ -28,7 +28,9 @@ public sealed class FamilyGalleryPublicationPostgreSqlTests(PostgreSqlTenantIsol
         var siyahXl = Variant(siyah, "MZ051BYC-32");
         var bordoL = Variant(bordo, "MZ051BYC-01");
         var bordoXl = Variant(bordo, "MZ051BYC-02");
-        ProductVariant[] variants = [siyahL, siyahXl, bordoL, bordoXl];
+        // A Bordo size added after the colour assignment: the editor gave it the colour's pictures as its own (inheritAssignments).
+        var bordo2Xl = Variant(bordo, "MZ051BYC-03");
+        ProductVariant[] variants = [siyahL, siyahXl, bordoL, bordoXl, bordo2Xl];
         ReferenceSnapshot Snapshot(string type, string scope) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ResourceType = type, ScopeExternalId = scope, SourceVersion = type, ContentHash = $"hash-{type}", FetchedAt = now, IsCurrent = true, ItemCount = 1 };
         ReferenceItem Item(Guid snapshotId, string type, string externalId, string name) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, SnapshotId = snapshotId, ResourceType = type, ExternalId = externalId, Name = name, NormalizedName = name.ToUpperInvariant(), Path = name, Depth = 0, IsLeaf = true, IsActive = true, PayloadHash = $"payload-{type}-{externalId}" };
         var categories = Snapshot("CATEGORIES", "");
@@ -49,6 +51,7 @@ public sealed class FamilyGalleryPublicationPostgreSqlTests(PostgreSqlTenantIsol
         Pictures(siyah, siyahXl, "siyah-1", "siyah-2", "siyah-3");
         Pictures(bordo, null, "bordo-1", "bordo-2", "bordo-3");
         Pictures(bordo, bordoXl, "bordo-1", "bordo-2", "bordo-3");
+        Pictures(bordo, bordo2Xl, "bordo-1", "bordo-2", "bordo-3");
 
         await using var db = fixture.CreateContext();
         await using var transaction = await db.Database.BeginTransactionAsync();
@@ -76,7 +79,7 @@ public sealed class FamilyGalleryPublicationPostgreSqlTests(PostgreSqlTenantIsol
         var composer = new ProductPublicationComposer(db, new ConfigurationBuilder().Build());
         async Task AssertPayloads(Func<string, string> title, Func<string, string> description)
         {
-            foreach (var (card, colour, barcodes) in new[] { (siyah, "Siyah", new[] { "MZ051BYC-31", "MZ051BYC-32" }), (bordo, "Bordo", new[] { "MZ051BYC-01", "MZ051BYC-02" }) })
+            foreach (var (card, colour, barcodes) in new[] { (siyah, "Siyah", new[] { "MZ051BYC-31", "MZ051BYC-32" }), (bordo, "Bordo", new[] { "MZ051BYC-01", "MZ051BYC-02", "MZ051BYC-03" }) })
             {
                 var draft = await composer.BuildAsync(tenant.Id, card.Id, connection.Id, CancellationToken.None);
                 Assert.True(draft.Succeeded, draft.Error?.Message);

@@ -109,7 +109,9 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
                            orderby productMedia.SortOrder, productMedia.Id
                            select new { productMedia.VariantId, asset.Id, asset.Classification, asset.RelativePath }).ToListAsync(cancellationToken);
         var sizeChartAssetId = await SizeCharts.SizeChartPlacement.AssetIdAsync(db, tenantId, productId, cancellationToken);
-        var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id, sizeChartAssetId);
+        // Every size of a colour goes with the colour's pictures (PublicationVariantMedia, colour rule).
+        var colours = await PublicationColours.LoadAsync(db, tenantId, product, variants, cancellationToken);
+        var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id, sizeChartAssetId, colours);
         if (relevantMedia.Where(x => x.Classification == "PRODUCT_MEDIA_URL").Any(x => !ProductPublicationComposer.IsPublicHttpsUrl(x.RelativePath.Trim())))
             return Fail("PRODUCT_MEDIA_PUBLIC_URL_INVALID", $"'{variant.Sku}' için görsel adresleri geçerli herkese açık HTTPS adresi olmalıdır.");
         var pictureUrls = relevantMedia

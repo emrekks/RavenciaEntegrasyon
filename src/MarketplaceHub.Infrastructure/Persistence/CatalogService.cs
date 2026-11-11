@@ -1220,6 +1220,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var (familyMediaUrls, familyMediaItems) = CatalogFamilyMedia.Build(familyRows, familyProductTitles, familyCardOrder);
         var familyOrderedMediaUrls = CatalogFamilyMedia.OrderedUrls(familyRows);
         var familyChartUrls = familyViews.Select(view => view.SizeChartUrl).ToList();
+        List<ProductFamilySharedFields.CardFields> familyCardFields = [.. familyCardOrder.Select(cardId => SharedFieldsOf(familyViews.First(view => view.Id == cardId)))];
         // Every card's size chart closes the strip, in the strip's own order: no chart stands among the colours' pictures,
         // and the opened card's is not singled out.
         IReadOnlyList<string> FamilyStripWithChartsLast(IReadOnlyList<string> urls) => SizeCharts.SizeChartPlacement.LastAll(urls, familyChartUrls);
@@ -1234,7 +1235,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             FamilyOrderedMediaUrls = familyViews.Any(view => view.HasCustomMediaOrder) ? FamilyStripWithChartsLast(familyOrderedMediaUrls) : null,
             FamilyProductIds = familyViews.Select(view => view.Id).ToList(),
             FamilyGalleries = CatalogFamilyMedia.Galleries(familyRows, familyCardOrder, familyViews.ToDictionary(view => view.Id, view => view.SizeChartUrl)),
-            FamilyFieldDifferences = ProductFamilySharedFields.Differences([.. familyCardOrder.Select(cardId => SharedFieldsOf(familyViews.First(view => view.Id == cardId)))])
+            FamilyFieldDifferences = ProductFamilySharedFields.Differences(familyCardFields, await ModelCodeBrandCardsAsync(tenantId, modelCode, familyProducts, familyCardFields, cancellationToken))
         });
     }
 
@@ -1246,9 +1247,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var fields = (command.FamilySharedFields ?? []).Where(ProductFamilySharedFields.IsKnown).ToHashSet(StringComparer.Ordinal);
         if (fields.Count == 0) return;
         var siblingIds = familyProductIds.Where(productId => productId != opened.Id).ToArray();
-        if (siblingIds.Length == 0) return;
         var siblings = await db.Products.Where(x => x.TenantId == tenantId && siblingIds.Contains(x.Id)).ToListAsync(cancellationToken);
-        if (siblings.Count == 0) return;
         var signatures = await db.ProductVariants.AsNoTracking()
             .Where(x => x.TenantId == tenantId && (siblingIds.Contains(x.ProductId) || x.ProductId == opened.Id))
             .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
@@ -1302,6 +1301,27 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             sibling.Version++;
             changedIds.Add(sibling.Id);
         }
+        // The brand is the model code's: a card of the same model code under another brand (KENE01) takes it too, and so
+        // joins the model; nothing else of such a card changes.
+        if (fields.Contains(ProductFamilySharedFields.Brand))
+        {
+            var modelCode = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == opened.Id && x.ModelCode != null && x.ModelCode != "").OrderBy(x => x.SortOrder).ThenBy(x => x.Id).Select(x => x.ModelCode).FirstOrDefaultAsync(cancellationToken);
+            if (ProductFamilyKeyPolicy.ModelCodeKey(modelCode) is { } key)
+            {
+                var pattern = modelCode!.Trim();
+                var candidates = await db.ProductVariants.AsNoTracking()
+                    .Where(x => x.TenantId == tenantId && x.ModelCode != null && EF.Functions.ILike(x.ModelCode, pattern) && x.ProductId != opened.Id && !siblingIds.Contains(x.ProductId))
+                    .Select(x => new { x.ProductId, x.ModelCode }).Distinct().ToListAsync(cancellationToken);
+                var otherIds = candidates.Where(x => ProductFamilyKeyPolicy.ModelCodeKey(x.ModelCode) == key).Select(x => x.ProductId).Distinct().ToArray();
+                foreach (var other in otherIds.Length == 0 ? [] : await db.Products.Where(x => x.TenantId == tenantId && otherIds.Contains(x.Id) && x.Status != ProductStatus.Archived && x.BrandId != opened.BrandId).ToListAsync(cancellationToken))
+                {
+                    other.BrandId = opened.BrandId;
+                    other.UpdatedAt = opened.UpdatedAt;
+                    other.Version++;
+                    changedIds.Add(other.Id);
+                }
+            }
+        }
         if (changedIds.Count > 0) await CatalogLocalEdits.MarkLinksDirtyAsync(db, tenantId, changedIds, CatalogLocalEdits.ProductField, cancellationToken);
     }
 
@@ -1309,7 +1329,29 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     private static ProductFamilySharedFields.CardFields SharedFieldsOf(ProductView view) => new(
         view.Id,
         view.Variants.Select(variant => ProductFamilyColorOrder.ColorOf(variant.OptionSignature)).FirstOrDefault(color => !string.IsNullOrWhiteSpace(color)),
-        view.Title, view.Description, view.BrandId, view.CategoryId, view.VatRate, view.VatInclusion, view.WarrantyMonths, view.DeliveryDays);
+        view.Title, view.Description, view.BrandId, view.CategoryId, view.VatRate, view.VatInclusion, view.WarrantyMonths, view.DeliveryDays, [.. view.Variants.Select(variant => variant.Desi)]);
+
+    // The colour cards of the same model code under another brand (KENE01 on live: Lavian and Ravencia), with the model's
+    // own cards, oldest first: the brand is the model's too, so the editor names a card that sits under another brand.
+    // Null when every card of the model code is in the model.
+    private async Task<IReadOnlyList<ProductFamilySharedFields.CardFields>?> ModelCodeBrandCardsAsync(Guid tenantId, string? modelCode, IReadOnlyList<Product> familyProducts, IReadOnlyList<ProductFamilySharedFields.CardFields> familyCards, CancellationToken cancellationToken)
+    {
+        if (ProductFamilyKeyPolicy.ModelCodeKey(modelCode) is not { } key) return null;
+        var familyIds = familyProducts.Select(item => item.Id).ToHashSet();
+        var pattern = modelCode!.Trim();
+        var rows = await (from variant in db.ProductVariants.AsNoTracking()
+                          join item in VisibleProducts(tenantId) on variant.ProductId equals item.Id
+                          where variant.TenantId == tenantId && variant.ModelCode != null && EF.Functions.ILike(variant.ModelCode, pattern) && item.Status != ProductStatus.Archived && !familyIds.Contains(item.Id)
+                          select new { item.Id, item.Title, item.BrandId, item.CreatedAt, variant.ModelCode, variant.OptionSignature, variant.SortOrder })
+                         .ToListAsync(cancellationToken);
+        var others = rows.Where(row => ProductFamilyKeyPolicy.ModelCodeKey(row.ModelCode) == key)
+            .GroupBy(row => row.Id)
+            .Select(group => group.OrderBy(row => row.SortOrder).First())
+            .Select(row => (row.CreatedAt, Card: new ProductFamilySharedFields.CardFields(row.Id, ProductFamilyColorOrder.ColorOf(row.OptionSignature), row.Title, "", row.BrandId, null, null, null, null, null)))
+            .ToList();
+        if (others.Count == 0) return null;
+        return [.. familyProducts.Select(item => (item.CreatedAt, Card: familyCards.First(card => card.ProductId == item.Id))).Concat(others).OrderBy(item => item.CreatedAt).ThenBy(item => item.Card.ProductId).Select(item => item.Card)];
+    }
 
     public async Task<ServiceResult<ProductView>> UpdateProductAsync(Guid tenantId, Guid id, long expectedVersion, UpdateProductCommand command, CancellationToken cancellationToken, Guid? actorUserId = null, string? correlationId = null)
     {

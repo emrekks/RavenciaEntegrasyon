@@ -106,12 +106,16 @@ export function editorVariantCostUpdate(row: { costPrice: number | null; loadedC
   return { costPrice: row.costPrice, loadedCostPrice: row.loadedCostPrice ?? null }
 }
 
-// The desi the form opens with: the first variant's, else the first variant that has one. Null when no variant has a
+// The desi the form opens with. Null when no variant has a
 // desi: the field opens empty instead of showing a 1 nothing stores (live 7.11.2026: RYP003T showed Desi 1 while its
 // variants had none, and the Trendyol update stopped on the missing desi).
+// The desi is the model's (owner, 11.11.2026: "desi marka ortak"): the value most of the model's variants hold (on a tie
+// the smaller), so the field opens the same whichever colour row was opened; the editor names the colours that differ.
 export function editorOpenedDesi(variants: ReadonlyArray<{ desi?: number | null }>): number | null {
-  const desi = variants[0]?.desi ?? variants.find(variant => variant.desi != null && variant.desi > 0)?.desi
-  return desi != null && desi > 0 ? desi : null
+  const counts = new Map<number, number>()
+  for (const variant of variants) if (variant.desi != null && variant.desi > 0) counts.set(variant.desi, (counts.get(variant.desi) ?? 0) + 1)
+  const [best] = [...counts.entries()].sort((left, right) => right[1] - left[1] || left[0] - right[0])
+  return best ? best[0] : null
 }
 
 // The desi field of an existing variant's update. The form has one desi for the product: it is sent when the user

@@ -44,7 +44,7 @@ import { PRODUCT_IMAGE_ACCEPT, toProductImage } from './product-image-file'
 import { LocalImagePreview, MediaAddTile, MediaMoveButtons, MediaZoomButton } from './media-tiles'
 import { mapWithConcurrency, mediaFilesLeftAfterFailedSave, mediaSaveProgressMessage, newColoursWithoutPictures, savedMediaOrder, storedProductMediaUrl, variantMediaReconcilePlan } from './product-media-save'
 import { editedSharedFields, familyDifferenceText, sharedFieldSnapshot } from './family-shared-fields'
-import { familyGalleryPlan, familyPictureOwners, familySizeChartUrl, familyUploadTargets, pictureColourLabel, type ColourRowPictures, type FamilyCardPictures } from './family-gallery-save'
+import { assignedColoursByPicture, assignmentSourceText, coloursWithMixedPictures, inheritAssignments, variantOutgoingRefs, familyGalleryPlan, familyPictureOwners, familySizeChartUrl, familyUploadTargets, pictureColourLabel, type ColourRowPictures, type FamilyCardPictures } from './family-gallery-save'
 import { keepPendingCreateMedia, pendingVariantMediaRefs, takePendingCreateMedia, type PendingCreateMedia } from './pending-create-media'
 import { MarketplaceCodesDialog } from './MarketplaceCodesDialog'
 import { PublicationJobDialog } from './PublicationJobDialog'
@@ -1795,7 +1795,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           return [{ ...next, key: existing.key, ...(automaticBarcodeGeneration && !preserveExistingDetails ? {} : { barcode: existing.barcode || next.barcode, sku: existing.sku || next.sku, salePrice: existing.salePrice, listPrice: existing.listPrice }), stock: existing.stock, loadedStock: existing.loadedStock, loadedVersion: existing.loadedVersion, costPrice: existing.costPrice, loadedCostPrice: existing.loadedCostPrice, mediaRefs: existing.mediaRefs }]
         }
         // A saved product keeps its rows as they are: only the combinations it lacks are added (mergeGeneratedVariantRows).
-        return mergeGeneratedVariantRows(current, generated, { key: variantSignatureKey, sort: sortVariantsAlphabetically, keepExisting: preserveExistingDetails || Boolean(editProductId), automaticBarcodes: automaticBarcodeGeneration, modelCode: form.modelCode, fallbackSalePrice, fallbackListPrice })
+        // A colour or size assignment holds for the rows added now (family-gallery-save.ts inheritAssignments).
+        return inheritAssignments(current, mergeGeneratedVariantRows(current, generated, { key: variantSignatureKey, sort: sortVariantsAlphabetically, keepExisting: preserveExistingDetails || Boolean(editProductId), automaticBarcodes: automaticBarcodeGeneration, modelCode: form.modelCode, fallbackSalePrice, fallbackListPrice }), rowColour, rowSize)
       })
       const heldKeys = new Set(variantRows.map(row => variantSignatureKey(row.optionSignature)))
       const addedCount = editProductId ? new Set(generated.map(row => variantSignatureKey(row.optionSignature)).filter(key => !heldKeys.has(key))).size : generated.length
@@ -3129,6 +3130,9 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       // shows a required gap is never sent either (its toggle goes off with the gap; this holds if one slipped through).
       const gapCards = platformUpdate ? {} : blockedPublishCards
       const targetConnectionIds = createOnly || saveDraft ? [] : platformUpdate?.connectionIds ?? selectedChannelIds.filter(id => !gapCards[id])
+      // Said again by name when the send reaches Trendyol (one picture list per colour content); nothing is changed silently.
+      if (trendyolMixedColours.length && targetConnectionIds.some(id => connections.data?.items.find(connection => connection.id === id)?.platformCode === 'TRENDYOL'))
+        warnings.push(`Trendyol: ${trendyolMixedColours.join(', ')} bedenleri farklı görsellerle atanmış; Trendyol bir rengin bedenlerini tek görsel listesiyle tutar, bu renklerin güncellemesi reddedilebilir.`)
       // Only rows whose stock the user changed are sent, as absolute values against the stock loaded into the form;
       // a stock changed meanwhile (order, return, another tab) is refused for that row instead of being overwritten.
       // A new variant's stock went with the variant itself (its Açılış Stoğu).
@@ -3543,6 +3547,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const familyGalleries = editProductId ? stripProduct?.familyGalleries ?? null : null
   const variantCardIds = new Map((stripProduct?.variants ?? []).map(variant => [variant.id, variant.productId || stripProduct?.id || '']))
   const rowColour = (row: VariantDraft) => Object.entries(row.options).find(([name, value]) => isColorOptionName(name) && value.trim())?.[1].trim() ?? ''
+  const rowSize = (row: VariantDraft) => Object.entries(row.options).find(([name, value]) => isSizeOptionLabel(name) && value.trim())?.[1].trim() ?? ''
   const rowCardId = (row: VariantDraft) => variantCardIds.get(row.key) ?? `new:${rowColour(row).toLocaleLowerCase('tr-TR')}`
   const cardColours = new Map<string, string>()
   for (const row of variantRows) if (rowColour(row) && !cardColours.has(rowCardId(row))) cardColours.set(rowCardId(row), rowColour(row))
@@ -3555,6 +3560,14 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     chart: { url: sizeChartUrl, initialUrl: sizeChartUrl }
   }) : null
   const pictureColourCaption = (ref: string) => pictureOwners ? pictureColourLabel(pictureOwners.get(ref.startsWith('file|') ? ref : mediaImageKey(ref.slice(4))) ?? new Set(), cardColours) : ''
+  // What each variant row goes to the marketplaces with (the server's rule): its icon shows that count.
+  const assignedColours = assignedColoursByPicture(variantRows.map(row => ({ colour: rowColour(row), refs: row.mediaRefs })))
+  const chartRef = sizeChartUrl ? mediaStrip.find(ref => ref.startsWith('url|') && mediaImageKey(ref.slice(4)) === mediaImageKey(sizeChartUrl)) ?? `url|${sizeChartUrl}` : null
+  const outgoingByRow = new Map(variantRows.map(row => [row.key, variantOutgoingRefs({ rowRefs: row.mediaRefs, rowCardId: rowCardId(row), rowColour: rowColour(row), strip: mediaStrip, owners: pictureOwners, assignedColours, chartRef })]))
+  // Trendyol keeps one picture list per colour (one content per colour): the colours whose sizes would go differently.
+  const trendyolMixedColours = (connections.data?.items ?? []).some(connection => connection.platformCode === 'TRENDYOL')
+    ? coloursWithMixedPictures(variantRows.map(row => ({ colour: rowColour(row), refs: outgoingByRow.get(row.key)?.refs ?? [] })))
+    : []
   const familyFieldNote = editProductId ? familyDifferenceText(stripProduct?.familyFieldDifferences) : ''
   const hasMediaTiles = mediaUrls.length > 0 || mediaFiles.length > 0 || familyOnlyMediaItems.length > 0
   const mediaUploadHint = "Adet sınırı yok · JPEG, PNG veya WebP · WebP ve 6 MB üstü JPEG'e çevrilir"
@@ -3915,6 +3928,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         <div className="editor-section-title"><span>6</span><div><h2>Ürün Seçenek Grupları<TitleHint label="Ürün Seçenek Grupları">İşaretlediğiniz özellik değerlerinin tüm kombinasyonları varyant satırı olur.</TitleHint></h2></div></div>
         {(fieldErrors.variants || fieldErrors.stock || fieldErrors.attributes) && <div className="product-field-error-list" role="alert">{[fieldErrors.variants, fieldErrors.stock, fieldErrors.attributes].filter(Boolean).map(message => <p key={message}>{message}</p>)}</div>}
         {variantRows.length > 0 && <>
+            {trendyolMixedColours.length > 0 && <p className="family-field-note trendyol-picture-note" role="note">Trendyol uyarısı: {trendyolMixedColours.join(', ')} bedenleri farklı görsellerle gidiyor. Trendyol'da bir rengin bedenleri tek içerik altında tek görsel listesi taşır; böyle bir rengin güncellemesi reddedilir. Aynı görselleri o rengin tüm bedenlerine atayın.</p>}
             <div className="variant-table-toolbar"><div className="variant-table-toolbar-actions"><button type="button" className="secondary is-danger variant-clear-button" onClick={clearVariants}><UiIcon name="trash" /> Oluşan Varyantları Temizle</button>{editProductId && <button type="button" className="secondary variant-marketplace-codes-button" onClick={() => setMarketplaceCodesOpen(true)} title="Hepsiburada ve Shopify varyant kodlarını göster"><UiIcon name="externalLink" /> Pazaryeri Kodları</button>}<button type="button" className="secondary variant-quick-edit-button" onClick={() => setQuickEditOpen(true)} disabled={!variantRows.length} title="Stok, maliyet ve fiyatları toplu düzenle; Kaydet’e basılana kadar hiçbir şey kaydedilmez"><UiIcon name="edit" /> Toplu Düzenle</button><button type="button" className="secondary variant-media-bulk-button" onClick={openBulkVariantMediaPicker} title="Seçenek değerine görsel ata"><VariantImageIcon /> Seçeneklere Görsel Ata</button></div></div>
         </>}
             {variantRows.length > 0 && <div className="variant-mobile-groups" role="tablist" aria-label="Görünen varyant alanları">{([['codes', 'Kodlar'], ['stock', 'Stok / Maliyet'], ['price', 'Fiyat'], ['actions', 'İşlemler']] as const).map(([group, label]) => <button key={group} type="button" role="tab" aria-selected={variantMobileGroup === group} className={variantMobileGroup === group ? 'is-on' : undefined} onClick={() => setVariantMobileGroup(group)}>{label}</button>)}</div>}
@@ -3954,7 +3968,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
                   <div className="variant-row-actions" aria-label={`${row.optionSignature} varyant işlemleri`}>
                     {rowPlatforms.length ? (() => { const linkedCount = rowPlatforms.filter(item => item.isLinked).length; const isPartial = linkedCount > 0 && linkedCount < rowPlatforms.length; const summaryClass = linkedCount === rowPlatforms.length ? 'is-linked' : isPartial ? 'is-partial' : 'is-unlinked'; return <button type="button" className={`variant-platform-status variant-platform-status-summary variant-row-action ${summaryClass}`} onClick={() => openVariantPlatformPricing(row, rowPlatforms[0])} title={`${rowPlatforms.length} platform fiyatını düzenle`} aria-label={`${row.optionSignature} platform fiyatlarını düzenle`}><UiIcon name="platforms" /></button> })() : <span className="variant-platform-empty">—</span>}
                     {editProductId && <button type="button" className="variant-row-action variant-row-action-codes" onClick={() => setMarketplaceCodesVariant(row.key)} aria-label={`${row.optionSignature} pazaryeri kodlarını göster`} title="Pazaryeri kodları (Shopify, Hepsiburada)"><UiIcon name="link" /></button>}
-                    <button type="button" className={`variant-media-button variant-row-action ${row.mediaRefs.length ? 'has-media' : ''}`} onClick={() => openVariantMediaPicker(row.key)} aria-label={`${row.optionSignature} görsellerini seç`} title="Varyant görsellerini seç"><VariantImageIcon />{row.mediaRefs.length > 0 && <i aria-hidden="true">{row.mediaRefs.length}</i>}</button>
+                    {(() => { const outgoing = outgoingByRow.get(row.key); const count = outgoing?.refs.length ?? 0; const hint = outgoing?.assigned ? `Atanan ${count} görselle gider: ${assignmentSourceText(row, variantRows, rowColour, rowSize) || 'bu varyanta özel'} (beden tablosu sonda)` : count ? `Atama yok: kartın galerisinden ${count} görselle gider (diğer renklere atananlar hariç)` : 'Atama yok, gidecek görsel yok'; return <button type="button" className={`variant-media-button variant-row-action ${outgoing?.assigned ? 'has-media' : ''}`} onClick={() => openVariantMediaPicker(row.key)} aria-label={`${row.optionSignature} görsellerini seç. ${hint}`} title={hint}><VariantImageIcon />{count > 0 && <i aria-hidden="true">{count}</i>}</button> })()}
                     <button type="button" className="variant-row-action variant-row-action-delete" onClick={() => requestVariantRowRemoval(row)} aria-label={`${row.optionSignature} varyantını sil`} title="Varyantı sil"><UiIcon name="trash" /></button>
                   </div>
                 </div>

@@ -21,10 +21,10 @@ public sealed class FamilyGalleryPublicationTests
         [.. gallery.Select(name => new Media(null, Asset(name), Url(name))), .. variants.SelectMany(variant => variant.Pictures.Select(name => new Media(variant.Variant, Asset(name), Url(name))))];
 
     // The images one variant goes to Trendyol with, as the composer selects them.
-    private static string[] Images(List<Media> card, Guid variant, string? chart = null)
+    private static string[] Images(List<Media> card, Guid variant, string? chart = null, PublicationColours? colours = null)
     {
         var chartId = chart is null ? (Guid?)null : Asset(chart);
-        var pictures = PublicationVariantMedia.For(card, variant, item => item.VariantId, item => item.AssetId, chartId).Select(item => (Id: item.AssetId, Url: (string?)item.Url)).ToList();
+        var pictures = PublicationVariantMedia.For(card, variant, item => item.VariantId, item => item.AssetId, chartId, colours).Select(item => (Id: item.AssetId, Url: (string?)item.Url)).ToList();
         return [.. ProductPublicationComposer.SelectPublicationImageUrls(pictures.Select(item => item.Url), PublicationVariantMedia.SizeChartUrl(pictures, chartId)).Select(url => url[(url.LastIndexOf('/') + 1)..^4])];
     }
 
@@ -76,15 +76,71 @@ public sealed class FamilyGalleryPublicationTests
         Assert.All(kahve, size => Assert.Equal(["kahve-1", "kahve-2", "kahve-3", chart], Images(kahverengi, size, chart)));
     }
 
-    // A picture without a colour (shared) that the editor adds to a card's gallery reaches the sizes without pictures of
-    // their own; a size with its own assignment keeps exactly that assignment (plus the chart): the editor writes the
-    // owner's assignment per variant and never widens it.
+    // Before the assignment rule (no model knowledge): a size without its own pictures went with the whole gallery, the
+    // other colours' pictures copied onto it included.
     [Fact]
-    public void ASharedPictureInTheGallery_ReachesOnlyTheSizesWithoutTheirOwnAssignment()
+    public void Before_AnUnassignedSizeWentWithTheWholeGallery()
     {
         var (l, xl) = (Guid.NewGuid(), Guid.NewGuid());
         var siyah = Card([.. Siyah, "kombin"], (xl, Siyah));
         Assert.Equal([.. Siyah, "kombin"], Images(siyah, l));
         Assert.Equal(Siyah, Images(siyah, xl));
+    }
+
+    // The assignment rule (owner, 11.11.2026: "neye atarsa onda duracak"; "burdan atama yapıyorum onlar yazsın varyantta
+    // görsel olarak"): an assigned variant goes with exactly its assigned list (the row icon's count), chart last; one
+    // without an assignment goes with its card's gallery minus the pictures assigned only to other colours.
+    private static PublicationColours Colours(IEnumerable<(Guid Variant, string Colour)> cardVariants, params (string Picture, string Colour)[] modelAssignments) =>
+        new(cardVariants.ToDictionary(item => item.Variant, item => item.Colour.ToLowerInvariant()), [.. modelAssignments.Select(item => (Asset(item.Picture), item.Colour.ToLowerInvariant()))]);
+
+    [Fact]
+    public void After_AnAssignedSizeGoesWithExactlyItsList_AnUnassignedOneWithTheGallery()
+    {
+        var (l, xl) = (Guid.NewGuid(), Guid.NewGuid());
+        var siyah = Card([.. Siyah, "kombin", "beden-tablosu"], (xl, Siyah));
+        var colours = Colours([(l, "Siyah"), (xl, "Siyah")], [.. Siyah.Select(picture => (picture, "Siyah"))]);
+        Assert.Equal([.. Siyah, "kombin", "beden-tablosu"], Images(siyah, l, "beden-tablosu", colours));
+        Assert.Equal([.. Siyah, "beden-tablosu"], Images(siyah, xl, "beden-tablosu", colours));
+    }
+
+    // A size assignment adds to that size only: Siyah XL assigned Siyah's pictures and a detail shot goes with all four,
+    // Siyah L with Siyah's three (this differs inside one Trendyol content; the editor warns before Yayınla).
+    [Fact]
+    public void After_ASizeAssignmentStaysWithThatSize()
+    {
+        var (l, xl) = (Guid.NewGuid(), Guid.NewGuid());
+        var siyah = Card([.. Siyah, "xl-detay"], (l, Siyah), (xl, [.. Siyah, "xl-detay"]));
+        var colours = Colours([(l, "Siyah"), (xl, "Siyah")], [.. Siyah.Select(picture => (picture, "Siyah")), ("xl-detay", "Siyah")]);
+        Assert.Equal(Siyah, Images(siyah, l, colours: colours));
+        Assert.Equal([.. Siyah, "xl-detay"], Images(siyah, xl, colours: colours));
+    }
+
+    // The live Siyah card: the other colours' pictures (assigned on their own cards) no longer go with its unassigned
+    // sizes; XL goes with its own three. The six uploads nobody assigned yet go with the unassigned sizes until the owner
+    // assigns them to Kahverengi and Mürdüm, then every Siyah size goes with Siyah's three.
+    [Fact]
+    public void After_TheLiveSiyahCard_NoLongerSendsOtherColoursPictures()
+    {
+        var (l, xl) = (Guid.NewGuid(), Guid.NewGuid());
+        var siyah = Card([.. Bordo, .. Haki, .. Gri, .. Siyah, .. Lacivert, .. NewUploads], (xl, Siyah));
+        (string, string)[] otherCards = [.. Bordo.Select(p => (p, "Bordo")), .. Haki.Select(p => (p, "Haki")), .. Gri.Select(p => (p, "Gri")), .. Lacivert.Select(p => (p, "Lacivert")), .. Siyah.Select(p => (p, "Siyah"))];
+        var today = Colours([(l, "Siyah"), (xl, "Siyah")], otherCards);
+        Assert.Equal([.. Siyah, "kahve-1", "kahve-2", "kahve-3", "murdum-1", "murdum-2"], Images(siyah, l, colours: today));
+        Assert.Equal(Siyah, Images(siyah, xl, colours: today));
+
+        var assigned = Colours([(l, "Siyah"), (xl, "Siyah")], [.. otherCards, .. NewUploads.Take(3).Select(p => (p, "Kahverengi")), .. NewUploads.Skip(3).Select(p => (p, "Mürdüm"))]);
+        Assert.Equal(Siyah, Images(siyah, l, colours: assigned));
+        Assert.Equal(Siyah, Images(siyah, xl, colours: assigned));
+    }
+
+    // One card holding two colours (RYP006 kind): an unassigned size never takes the other colour's assigned pictures.
+    [Fact]
+    public void After_ACardWithTwoColours_SendsNoSizeTheOtherColoursPictures()
+    {
+        var (siyahL, siyahXl, bordoL, bordoXl) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var card = Card([.. Siyah, .. Bordo, "beden-tablosu"], (siyahXl, Siyah), (bordoL, Bordo));
+        var colours = Colours([(siyahL, "Siyah"), (siyahXl, "Siyah"), (bordoL, "Bordo"), (bordoXl, "Bordo")], [.. Siyah.Select(p => (p, "Siyah")), .. Bordo.Select(p => (p, "Bordo"))]);
+        Assert.All(new[] { siyahL, siyahXl }, size => Assert.Equal([.. Siyah, "beden-tablosu"], Images(card, size, "beden-tablosu", colours)));
+        Assert.All(new[] { bordoL, bordoXl }, size => Assert.Equal([.. Bordo, "beden-tablosu"], Images(card, size, "beden-tablosu", colours)));
     }
 }

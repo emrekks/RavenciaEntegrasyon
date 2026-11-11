@@ -30,7 +30,7 @@ export function editedSharedFields(initial: Record<string, string>, current: Rec
 }
 
 const FIELD_LABELS: Record<string, string> = {
-  title: 'Ürün Adı', description: 'Açıklama', brand: 'Marka', category: 'Kategori', vat: 'KDV', warranty: 'Garanti Süresi', deliveryDays: 'Teslimat Süresi'
+  title: 'Ürün Adı', description: 'Açıklama', brand: 'Marka', category: 'Kategori', vat: 'KDV', warranty: 'Garanti Süresi', deliveryDays: 'Teslimat Süresi', desi: 'Desi'
 }
 
 // "Renklerde farklı: Açıklama (Siyah, Kahverengi) · KDV (Mürdüm)": the model-row fields other colour cards hold

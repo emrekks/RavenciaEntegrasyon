@@ -67,3 +67,6 @@
 
 /* Model-row fields other colour cards hold differently (family-shared-fields.ts). */
 .app-shell.stitch-shell main .product-basics-card .family-field-note { margin: 0 0 12px; padding: 8px 12px; color: var(--rv-color-ink); font-size: 13px; line-height: 1.45; background: color-mix(in srgb, var(--rv-color-primary) 8%, transparent); border: 1px solid color-mix(in srgb, var(--rv-color-primary) 30%, transparent); border-radius: 12px; }
+
+/* Trendyol: one picture list per colour content (family-gallery-save.ts coloursWithMixedPictures). */
+.app-shell.stitch-shell main .trendyol-picture-note { margin: 0 0 12px; padding: 8px 12px; color: var(--rv-color-ink); font-size: 13px; line-height: 1.45; background: color-mix(in srgb, var(--rv-color-warning, #d97706) 10%, transparent); border: 1px solid color-mix(in srgb, var(--rv-color-warning, #d97706) 35%, transparent); border-radius: 12px; }

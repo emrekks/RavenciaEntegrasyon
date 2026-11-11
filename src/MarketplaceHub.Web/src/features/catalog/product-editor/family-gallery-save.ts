@@ -114,6 +114,115 @@ export function familyGalleryPlan(input: {
   return { galleryWrites, chartMarks }
 }
 
+// The pictures a variant row goes to the marketplaces with, the same rule as the server (PublicationVariantMedia): an
+// assigned row (Seçeneklere Görsel Ata or its own picture icon) with exactly its assignment; an unassigned row with its
+// card's gallery after the save minus the pictures assigned only to other colours; in the strip's order, the size chart
+// last. The row icon shows this list's count (owner, 11.11.2026: "onlar yazsın varyantta görsel olarak").
+export function variantOutgoingRefs(input: {
+  rowRefs: readonly string[]
+  rowCardId: string
+  rowColour: string
+  strip: readonly string[]
+  owners: ReadonlyMap<string, ReadonlySet<string>> | null
+  assignedColours: ReadonlyMap<string, ReadonlySet<string>>
+  chartRef: string | null
+}): { refs: string[]; assigned: boolean } {
+  const chartKey = input.chartRef ? refKey(input.chartRef) : null
+  const rank = new Map(input.strip.map((ref, index) => [refKey(ref), index]))
+  const withChartLast = (refs: string[]) => {
+    const others = refs.filter(ref => refKey(ref) !== chartKey)
+    return chartKey && input.chartRef ? [...others, refs.find(ref => refKey(ref) === chartKey) ?? input.chartRef] : others
+  }
+  if (input.rowRefs.length) {
+    const seen = new Set<string>()
+    const own = input.rowRefs.filter(ref => { const key = refKey(ref); if (seen.has(key)) return false; seen.add(key); return true })
+    const ordered = own.map((ref, index) => ({ ref, rank: rank.get(refKey(ref)) ?? Number.MAX_SAFE_INTEGER, index })).sort((left, right) => left.rank - right.rank || left.index - right.index).map(item => item.ref)
+    return { refs: withChartLast(ordered), assigned: true }
+  }
+  const colour = input.rowColour.toLocaleLowerCase('tr-TR')
+  const fromGallery = input.strip.filter(ref => {
+    const key = refKey(ref)
+    if (input.owners && !(input.owners.get(key)?.has(input.rowCardId) ?? false)) return false
+    const assigned = input.assignedColours.get(key)
+    return !assigned?.size || assigned.has(colour)
+  })
+  return { refs: fromGallery.length || chartKey ? withChartLast(fromGallery) : [], assigned: false }
+}
+
+// A colour or size assignment holds for the sizes and colours added later (owner, 11.11.2026: "bordoya atandı, 3 varyant
+// eşlendi, 4. beden eklenirse o da eşlenmiş olsun renkle"; likewise a size). A new row without pictures takes the
+// pictures every assigned row of its colour holds, and those every assigned row of its size holds across two or more
+// colours; it is then saved as the variant's own list like any other. Nothing is matched by name or look.
+type AssignmentRow = { key: string; mediaRefs: string[] }
+const commonRefs = (rows: ReadonlyArray<AssignmentRow>) => {
+  if (!rows.length) return []
+  const others = rows.slice(1).map(row => new Set(row.mediaRefs.map(refKey)))
+  return rows[0].mediaRefs.filter(ref => others.every(keys => keys.has(refKey(ref))))
+}
+const sameText = (left: string, right: string) => left.trim().toLocaleLowerCase('tr-TR') === right.trim().toLocaleLowerCase('tr-TR')
+
+function colourAndSizeRefs<R extends AssignmentRow>(row: R, among: readonly R[], colourOf: (row: R) => string, sizeOf: (row: R) => string) {
+  const assigned = among.filter(other => other.key !== row.key && other.mediaRefs.length > 0)
+  const colour = colourOf(row)
+  const size = sizeOf(row)
+  const byColour = colour ? commonRefs(assigned.filter(other => sameText(colourOf(other), colour))) : []
+  const sizeRows = size ? assigned.filter(other => sameText(sizeOf(other), size)) : []
+  const sizeColours = new Set(sizeRows.map(other => colourOf(other).trim().toLocaleLowerCase('tr-TR')))
+  const bySize = sizeColours.size >= 2 ? commonRefs(sizeRows) : []
+  return { byColour, bySize }
+}
+
+export function inheritAssignments<R extends AssignmentRow>(before: readonly R[], after: readonly R[], colourOf: (row: R) => string, sizeOf: (row: R) => string): R[] {
+  const beforeKeys = new Set(before.map(row => row.key))
+  return after.map(row => {
+    if (beforeKeys.has(row.key) || row.mediaRefs.length) return row
+    const { byColour, bySize } = colourAndSizeRefs(row, before, colourOf, sizeOf)
+    const seen = new Set<string>()
+    const refs = [...byColour, ...bySize].filter(ref => { const key = refKey(ref); if (seen.has(key)) return false; seen.add(key); return true })
+    return refs.length ? { ...row, mediaRefs: refs } : row
+  })
+}
+
+// Where each of a row's pictures comes from, for its icon's tooltip: "Bordo atamasından 3, XL atamasından 1, bu varyanta özel 1".
+export function assignmentSourceText<R extends AssignmentRow>(row: R, rows: readonly R[], colourOf: (row: R) => string, sizeOf: (row: R) => string): string {
+  const { byColour, bySize } = colourAndSizeRefs(row, rows, colourOf, sizeOf)
+  const colourKeys = new Set(byColour.map(refKey))
+  const sizeKeys = new Set(bySize.map(refKey))
+  let fromColour = 0; let fromSize = 0; let own = 0
+  for (const ref of row.mediaRefs) {
+    if (colourKeys.has(refKey(ref))) fromColour++
+    else if (sizeKeys.has(refKey(ref))) fromSize++
+    else own++
+  }
+  return [fromColour ? `${colourOf(row).trim()} atamasından ${fromColour}` : '', fromSize ? `${sizeOf(row).trim()} atamasından ${fromSize}` : '', own ? `bu varyanta özel ${own}` : ''].filter(Boolean).join(', ')
+}
+
+// The colours each picture is assigned to by the rows (lower case), for variantOutgoingRefs.
+export function assignedColoursByPicture(rows: ReadonlyArray<{ colour: string; refs: readonly string[] }>): Map<string, Set<string>> {
+  const result = new Map<string, Set<string>>()
+  for (const row of rows) for (const ref of row.refs) {
+    const key = refKey(ref)
+    const colours = result.get(key) ?? new Set<string>()
+    colours.add(row.colour.toLocaleLowerCase('tr-TR'))
+    result.set(key, colours)
+  }
+  return result
+}
+
+// Trendyol keeps one content (contentId) per colour and one picture list per content: the colours whose sizes would go
+// with different lists (an update of such a content is refused, PRODUCT_CONTENT_GROUP_MISMATCH).
+export function coloursWithMixedPictures(rows: ReadonlyArray<{ colour: string; refs: readonly string[] }>): string[] {
+  const lists = new Map<string, { label: string; lists: Set<string> }>()
+  for (const row of rows) {
+    if (!row.colour.trim()) continue
+    const key = row.colour.trim().toLocaleLowerCase('tr-TR')
+    const entry = lists.get(key) ?? { label: row.colour.trim(), lists: new Set<string>() }
+    entry.lists.add(row.refs.map(refKey).join('\n'))
+    lists.set(key, entry)
+  }
+  return [...lists.values()].filter(entry => entry.lists.size > 1).map(entry => entry.label)
+}
+
 // The editor's size chart: the first colour card's in the family's order that has one, whichever row was opened.
 export function familySizeChartUrl(cards: readonly FamilyCardPictures[] | null | undefined, openedCardChart: string | null): string | null {
   return cards?.find(card => card.sizeChartUrl)?.sizeChartUrl ?? openedCardChart

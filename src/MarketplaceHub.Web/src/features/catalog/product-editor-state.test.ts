@@ -96,6 +96,8 @@ describe('product editor state', () => {
     expect(editorOpenedDesi([])).toBeNull()
     expect(editorOpenedDesi([{ desi: null }, { desi: 3 }])).toBe(3)
     expect(editorOpenedDesi([{ desi: 2 }, { desi: 3 }])).toBe(2)
+    // The value most variants hold, whichever variant comes first (the opened colour's rows came first).
+    expect(editorOpenedDesi([{ desi: 3 }, { desi: 1 }, { desi: 1 }, { desi: null }])).toBe(1)
   })
 
   it('ignores platform prices when deciding whether the form has unsaved edits', () => {

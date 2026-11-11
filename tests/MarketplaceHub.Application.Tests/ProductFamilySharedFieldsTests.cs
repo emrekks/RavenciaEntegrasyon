@@ -40,4 +40,23 @@ public sealed class ProductFamilySharedFieldsTests
         // The same VAT stored with another scale (10.0000 and 10.00) is the same VAT.
         Assert.Empty(ProductFamilySharedFields.Differences([Card("Siyah", "Bluz", vat: 10.0000m), Card("Gri", "Bluz", vat: 10.00m)]));
     }
+
+    // "desi marka ortak" (owner, 11.11.2026): live MZ010D has sizes with desi 1 and sizes without one; KENE01 has its two
+    // colours under two brands. Both show in the note.
+    [Fact]
+    public void Differences_NameTheColoursWhoseDesiOrBrandDiffers()
+    {
+        var siyah = Card("Siyah", "Bluz") with { Desis = [1.00m, 1m] };
+        var gri = Card("Gri", "Bluz") with { Desis = [1m, 1m] };
+        var lacivert = Card("Lacivert", "Bluz") with { Desis = [1m, null] };
+        var desi = Assert.Single(ProductFamilySharedFields.Differences([siyah, gri, lacivert]));
+        Assert.Equal(ProductFamilySharedFields.Desi, desi.Field);
+        Assert.Equal(["Lacivert"], desi.Colors);
+
+        var mavi = Card("Mavi", "Kot Etek") with { BrandId = Guid.NewGuid() };
+        var denim = Card("Denim Rengi", "Kot Etek") with { BrandId = Guid.NewGuid() };
+        var brand = Assert.Single(ProductFamilySharedFields.Differences([denim], [mavi, denim]));
+        Assert.Equal(ProductFamilySharedFields.Brand, brand.Field);
+        Assert.Equal(["Denim Rengi"], brand.Colors);
+    }
 }

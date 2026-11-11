@@ -202,6 +202,8 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
         if (salesDataIssue is not null && !salesDataOptional) return Fail(salesDataIssue.Code, salesDataIssue.Message);
 
         var sizeChartAssetId = await SizeCharts.SizeChartPlacement.AssetIdAsync(db, tenantId, productId, cancellationToken);
+        // Every size of a colour goes with the colour's pictures (PublicationVariantMedia, colour rule).
+        var colours = await PublicationColours.LoadAsync(db, tenantId, product, cardVariants, cancellationToken);
         var media = await (from productMedia in db.ProductMedia.AsNoTracking()
                            join asset in db.FileAssets.AsNoTracking() on productMedia.FileAssetId equals asset.Id
                            where productMedia.TenantId == tenantId && productMedia.ProductId == productId && productMedia.Status == "ACTIVE" && asset.TenantId == tenantId && asset.Status == "ACTIVE" && asset.ArchivedAt == null && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
@@ -218,7 +220,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
                 .Where(x => TrendyolColorValuePolicy.UsesCustomPanelColorValue(x.Label) && !string.IsNullOrWhiteSpace(x.ValueLabel))
                 .GroupBy(x => x.VariantId)
                 .ToDictionary(group => group.Key, group => group.First().ValueLabel);
-            var withoutPictures = PublicationUnsentVariants.NewColourVariantsWithoutPictures(colourByVariant, present, variants.Select(x => x.Id), variantId => media.Any(item => item.VariantId == variantId && item.Id != sizeChartAssetId)).ToHashSet();
+            var withoutPictures = PublicationUnsentVariants.NewColourVariantsWithoutPictures(colourByVariant, present, variants.Select(x => x.Id), variantId => media.Any(item => item.VariantId is Guid owner && colours.SameColour(variantId, owner) && item.Id != sizeChartAssetId)).ToHashSet();
             variants = [.. variants.Where(x => Keep(x,
                 withoutPictures.Contains(x.Id) ? PublicationUnsentVariants.NewColourPicturesRequiredCode : null,
                 withoutPictures.Contains(x.Id) ? PublicationUnsentVariants.NewColourPicturesRequiredMessage(colourByVariant[x.Id]) : null))];
@@ -267,7 +269,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
             // Explicit variant media replaces the product gallery for that
             // variant. This keeps marketplace colors from receiving every
             // product image while preserving the old product-level fallback.
-            var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id, sizeChartAssetId);
+            var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id, sizeChartAssetId, colours);
             var relevantUrls = relevantMedia.Where(x => x.Classification == "PRODUCT_MEDIA_URL").Select(x => x.RelativePath.Trim()).ToList();
             if (relevantUrls.Any(url => !IsPublicHttpsUrl(url))) return Fail("PRODUCT_MEDIA_PUBLIC_URL_INVALID", $"'{variant.Sku}' için kayıtlı tüm PRODUCT_MEDIA_URL değerleri geçerli HTTPS adresi olmalıdır.");
             var pictureUrls = relevantMedia

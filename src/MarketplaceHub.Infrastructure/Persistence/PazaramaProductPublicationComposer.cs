@@ -129,6 +129,8 @@ internal sealed class PazaramaProductPublicationComposer(AppDbContext db, IConfi
         if (inventories.Count != variants.Count) return Fail("INVENTORY_REQUIRED", "Her varyant için MAIN stok kaydı gerekir.");
 
         var sizeChartAssetId = await SizeCharts.SizeChartPlacement.AssetIdAsync(db, tenantId, productId, cancellationToken);
+        // Every size of a colour goes with the colour's pictures (PublicationVariantMedia, colour rule).
+        var colours = await PublicationColours.LoadAsync(db, tenantId, product, cardVariants, cancellationToken);
         var media = await (from productMedia in db.ProductMedia.AsNoTracking()
                            join asset in db.FileAssets.AsNoTracking() on productMedia.FileAssetId equals asset.Id
                            where productMedia.TenantId == tenantId && productMedia.ProductId == productId && productMedia.Status == "ACTIVE" && asset.TenantId == tenantId && asset.Status == "ACTIVE" && asset.ArchivedAt == null
@@ -154,7 +156,7 @@ internal sealed class PazaramaProductPublicationComposer(AppDbContext db, IConfi
             if (variant.Desi is not > 0) return Fail("DESI_REQUIRED", $"'{variant.Sku}' için Pazarama'nın zorunlu desi değeri girilmemiş.");
             var desi = (int)Math.Ceiling(variant.Desi.Value);
 
-            var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id, sizeChartAssetId);
+            var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id, sizeChartAssetId, colours);
             if (relevantMedia.Where(x => x.Classification == "PRODUCT_MEDIA_URL").Any(x => !ProductPublicationComposer.IsPublicHttpsUrl(x.RelativePath.Trim())))
                 return Fail("PRODUCT_MEDIA_PUBLIC_URL_INVALID", $"'{variant.Sku}' için görsel adresleri geçerli herkese açık HTTPS adresi olmalıdır.");
             var pictureUrls = relevantMedia
