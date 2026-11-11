@@ -2718,6 +2718,16 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             : await db.Categories.AsNoTracking()
                 .Where(x => x.TenantId == tenantId && categoryIds.Contains(x.Id))
                 .ToDictionaryAsync(x => x.Id, x => x.Path, cancellationToken);
+        // The card's front picture is the first picture its variants go out with (PublicationVariantMedia, the
+        // assignment rule the marketplace payloads use): a gallery holding other colours' pictures (live MZ051BYC Siyah)
+        // no longer shows them.
+        var mediaByProduct = media.GroupBy(item => item.ProductId).ToDictionary(group => group.Key, group => group.ToList());
+        var activeVariantsByProduct = variants.Where(x => x.Status != ProductStatus.Archived)
+            .GroupBy(x => x.ProductId)
+            .ToDictionary(group => group.Key, group => group.OrderBy(x => x.SortOrder).ThenBy(x => x.CreatedAt).ThenBy(x => x.Id).ToList());
+        var publicationColours = await PublicationColours.LoadManyAsync(db, tenantId,
+            [.. products.Where(product => mediaByProduct.ContainsKey(product.Id) && activeVariantsByProduct.ContainsKey(product.Id))
+                .Select(product => (product, (IReadOnlyCollection<ProductVariant>)activeVariantsByProduct[product.Id]))], cancellationToken);
         var inventoryByVariant = inventories.GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First());
         var offerByVariant = offers.GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First());
         var offerByVariantConnection = offers.ToDictionary(x => (x.VariantId, x.ConnectionId));
@@ -2828,7 +2838,11 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             var activePlatforms = platformStatuses.Select(x => x.Platform).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
             // The card's front picture is never its size chart while it has another picture.
             var chartAssetId = sizeChartAssetByProduct.TryGetValue(product.Id, out var chartAsset) ? chartAsset : (Guid?)null;
-            var image = media.Where(x => x.ProductId == product.Id && x.VariantId == null && x.Id != chartAssetId).Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url)).FirstOrDefault()
+            var published = publicationColours.TryGetValue(product.Id, out var colours)
+                ? PublicationVariantMedia.ForCard(mediaByProduct[product.Id], activeVariantsByProduct[product.Id].Select(variant => variant.Id), x => x.VariantId, x => x.Id, chartAssetId, colours).FirstOrDefault(x => x.Id != chartAssetId)
+                : null;
+            var image = (published is null ? null : CatalogMediaDisplay.Url(published.Id, published.Classification, published.Url))
+                ?? media.Where(x => x.ProductId == product.Id && x.VariantId == null && x.Id != chartAssetId).Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url)).FirstOrDefault()
                 ?? media.Where(x => x.ProductId == product.Id && x.Id != chartAssetId).Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url)).FirstOrDefault()
                 ?? media.Where(x => x.ProductId == product.Id).Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url)).FirstOrDefault();
             var sizeChartUrl = sizeChartUrlByProduct.GetValueOrDefault(product.Id);

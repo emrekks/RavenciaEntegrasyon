@@ -31,6 +31,14 @@ internal static class PublicationVariantMedia
         return sizeChartAssetId is Guid chartId ? SizeCharts.SizeChartPlacement.Last(pictures, media, item => assetOf(item) == chartId) : pictures;
     }
 
+    // The pictures a card goes out with as a whole (PTT AVM's one product per model, the product list's front
+    // picture): each of its variants' pictures (For) in variant order, once each, the size chart last.
+    public static List<T> ForCard<T>(IReadOnlyCollection<T> media, IEnumerable<Guid> variantIds, Func<T, Guid?> variantOf, Func<T, Guid> assetOf, Guid? sizeChartAssetId, PublicationColours colours)
+    {
+        var pictures = variantIds.SelectMany(variantId => For(media, variantId, variantOf, assetOf, sizeChartAssetId, colours)).DistinctBy(assetOf).ToList();
+        return pictures.Count > 0 && sizeChartAssetId is Guid chartId ? SizeCharts.SizeChartPlacement.Last(pictures, media, item => assetOf(item) == chartId) : pictures;
+    }
+
     private static List<T> ColourPictures<T>(IReadOnlyCollection<T> media, Guid variantId, Func<T, Guid?> variantOf, Func<T, Guid> assetOf, PublicationColours colours)
     {
         var general = media.Where(item => variantOf(item) is null).ToList();
@@ -100,5 +108,56 @@ internal sealed class PublicationColours(IReadOnlyDictionary<Guid, string> colou
                           where media.TenantId == tenantId && variant.TenantId == tenantId && media.Status == "ACTIVE" && familyIds.Contains(variant.ProductId)
                           select new { media.FileAssetId, variant.OptionSignature }).ToListAsync(cancellationToken);
         return new(cardVariants.ToDictionary(x => x.Id, x => Key(x.OptionSignature)), [.. rows.Select(row => (row.FileAssetId, Key(row.OptionSignature)))]);
+    }
+
+    // LoadAsync for several cards at once (the product list, a PTT AVM model family): the same families and
+    // assignments, read with two queries instead of two per card. Keyed by the card's id.
+    public static async Task<Dictionary<Guid, PublicationColours>> LoadManyAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<(Product Product, IReadOnlyCollection<ProductVariant> CardVariants)> cards, CancellationToken cancellationToken)
+    {
+        if (cards.Count == 0) return [];
+        var coded = cards.Where(card => card.CardVariants.Any(x => ProductFamilyKeyPolicy.ModelCodeKey(x.ModelCode) is not null)).ToList();
+        // Every coded variant of the cards' brands (ProductFamilyScope's rows), the family key compared in memory.
+        var brandIds = coded.Where(card => card.Product.BrandId is not null).Select(card => card.Product.BrandId!.Value).Distinct().ToArray();
+        var anyWithoutBrand = coded.Any(card => card.Product.BrandId is null);
+        var familyRows = coded.Count == 0 ? [] : await (from variant in db.ProductVariants.AsNoTracking()
+                                                        join product in db.Products.AsNoTracking() on variant.ProductId equals product.Id
+                                                        where variant.TenantId == tenantId && product.TenantId == tenantId && variant.ModelCode != null
+                                                              && ((product.BrandId != null && brandIds.Contains(product.BrandId.Value)) || (anyWithoutBrand && product.BrandId == null))
+                                                        select new { variant.ProductId, variant.ModelCode, product.BrandId }).Distinct().ToListAsync(cancellationToken);
+        var familyByCard = Families(cards, [.. familyRows.Select(row => (row.ProductId, row.BrandId, (string?)row.ModelCode))]);
+        var allIds = familyByCard.Values.SelectMany(ids => ids).Distinct().ToArray();
+        var rows = await (from media in db.ProductMedia.AsNoTracking()
+                          join variant in db.ProductVariants.AsNoTracking() on media.VariantId equals (Guid?)variant.Id
+                          where media.TenantId == tenantId && variant.TenantId == tenantId && media.Status == "ACTIVE" && allIds.Contains(variant.ProductId)
+                          select new { variant.ProductId, media.FileAssetId, variant.OptionSignature }).ToListAsync(cancellationToken);
+        return ForCards(cards, familyByCard, [.. rows.Select(row => (row.ProductId, row.FileAssetId, row.OptionSignature))]);
+    }
+
+    // Each card's model family (ProductFamilyScope's rule over the coded variants' rows): the products whose variants
+    // share its brand and model-code key, the card itself always in.
+    internal static Dictionary<Guid, HashSet<Guid>> Families(IReadOnlyCollection<(Product Product, IReadOnlyCollection<ProductVariant> CardVariants)> cards, IReadOnlyCollection<(Guid ProductId, Guid? BrandId, string? ModelCode)> codedVariants)
+    {
+        var productsByFamily = codedVariants
+            .Where(row => ProductFamilyKeyPolicy.ModelCodeKey(row.ModelCode) is not null)
+            .GroupBy(row => ProductFamilyKeyPolicy.FamilyKey(row.ProductId, row.BrandId, row.ModelCode), StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Select(row => row.ProductId).ToHashSet(), StringComparer.Ordinal);
+        return cards.ToDictionary(card => card.Product.Id, card =>
+        {
+            var modelCode = card.CardVariants.OrderBy(x => x.SortOrder).ThenBy(x => x.Id).Select(x => x.ModelCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+            var key = ProductFamilyKeyPolicy.FamilyKey(card.Product.Id, card.Product.BrandId, modelCode);
+            var ids = productsByFamily.TryGetValue(key, out var members) ? new HashSet<Guid>(members) : [];
+            ids.Add(card.Product.Id);
+            return ids;
+        });
+    }
+
+    // Each card's assignments: its variants' colours and the variant-level pictures (asset, variant's option signature)
+    // of every product of its family.
+    internal static Dictionary<Guid, PublicationColours> ForCards(IReadOnlyCollection<(Product Product, IReadOnlyCollection<ProductVariant> CardVariants)> cards, IReadOnlyDictionary<Guid, HashSet<Guid>> familyByCard, IReadOnlyCollection<(Guid ProductId, Guid AssetId, string? OptionSignature)> variantPictures)
+    {
+        var assignmentsByProduct = variantPictures.GroupBy(row => row.ProductId).ToDictionary(group => group.Key, group => group.Select(row => (row.AssetId, Key(row.OptionSignature))).ToList());
+        return cards.ToDictionary(card => card.Product.Id, card => new PublicationColours(
+            card.CardVariants.ToDictionary(x => x.Id, x => Key(x.OptionSignature)),
+            [.. familyByCard[card.Product.Id].SelectMany(id => assignmentsByProduct.GetValueOrDefault(id) ?? [])]));
     }
 }
