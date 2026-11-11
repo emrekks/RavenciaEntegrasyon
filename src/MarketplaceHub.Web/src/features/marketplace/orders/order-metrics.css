@@ -97,3 +97,20 @@
 :root:root:root:root body .app-shell.stitch-shell main .rr.rr-orders .rr-metrics .rr-metric-chip.rr-metric-chip { color: var(--rr-muted); text-decoration: none; }
 :root:root:root:root body .app-shell.stitch-shell main .rr.rr-orders .rr-metrics .rr-metric-chip.rr-metric-chip b { color: var(--rr-ink); font-weight: 600; margin-right: 4px; }
 :root:root:root:root body .app-shell.stitch-shell main .rr.rr-orders .rr-metrics .rr-metric-chip.rr-metric-chip:is(:hover, .rr-metric-on) { color: var(--rr-ink); text-decoration: none; background: none; }
+
+/* Yeniden Gönderim: the owner's manual reminder. A small gear in the card's top-right corner (above the background
+   illustration, clear of the text) opens a popover under it, right edges aligned; the card whose popover is open
+   stays above its neighbours. */
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder { position: absolute; z-index: 4; top: 8px; right: 8px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder-gear { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; min-height: 0; padding: 0; color: var(--rr-muted); background: transparent; border: 0; border-radius: 7px; box-shadow: none; cursor: pointer; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder-gear:is(:hover, [aria-expanded="true"]) { color: var(--rr-ink); background: var(--rr-soft); }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder-gear:focus-visible { outline: 2px solid var(--rr-primary); outline-offset: 1px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder-pop { position: absolute; z-index: 30; top: calc(100% + 6px); right: 0; display: grid; gap: 8px; width: 232px; max-width: calc(100vw - 32px); padding: 12px; color: var(--rr-ink); background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 12px; box-shadow: var(--rv-shadow-popover, 0 8px 24px rgb(0 0 0 / 18%)); text-align: left; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder-pop label { color: var(--rr-muted); font-size: 12px; font-weight: 600; white-space: nowrap; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder-pop input { width: 100%; height: 36px; min-height: 0; padding: 0 10px; color: var(--rr-ink); background: var(--rr-bg, var(--rr-surface)); border: 1px solid var(--rr-line-strong); border-radius: 7px; font-size: 14px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder-pop input:focus-visible { outline: 2px solid var(--rr-primary); outline-offset: 1px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder-pop .rr-reminder-error { margin: 0; color: var(--rr-bad); font-size: 12px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder-actions { display: flex; justify-content: space-between; gap: 8px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder-actions .rr-btn { min-height: 0; flex: 1 1 0; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics:has(.rr-reminder-pop) { position: relative; z-index: 90; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article:has(.rr-reminder-pop) { z-index: 3; }

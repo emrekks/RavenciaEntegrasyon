@@ -10,6 +10,8 @@ public static class SettingsEndpoints
 {
     private const string ShippingLabelKey = "shipping-label";
     private const string AppearanceKey = "appearance";
+    private const string ResendReminderKey = "orders-resend-reminder";
+    private const int MaximumResendReminder = 100_000;
     private const int MaximumJsonCharacters = 262_144;
     private const int MaximumAppearanceColorThemes = 24;
     private const string DefaultAppearanceColorThemeId = "default-dark";
@@ -86,6 +88,8 @@ public static class SettingsEndpoints
         api.MapPut("/shipping-label", SaveShippingLabelSettingsAsync);
         api.MapGet("/appearance", GetAppearanceSettingsAsync);
         api.MapPut("/appearance", SaveAppearanceSettingsAsync);
+        api.MapGet("/resend-reminder", GetResendReminderAsync);
+        api.MapPut("/resend-reminder", SaveResendReminderAsync);
         return endpoints;
     }
 
@@ -154,6 +158,45 @@ public static class SettingsEndpoints
         if (await SaveAsync(http, db) is { } conflict) return conflict;
         return Versioned(http, setting.Version, new { settings = normalized, version = setting.Version });
     }
+
+    // Siparişler > Yeniden Gönderim: a number the owner types as a reminder (Trendyol never returns resend packages).
+    private static async Task<IResult> GetResendReminderAsync(HttpContext http, AppDbContext db)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        var setting = await db.TenantSettings.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Key == ResendReminderKey, http.RequestAborted);
+        return Versioned(http, setting?.Version ?? 0, new { count = ReadResendReminder(setting?.ValueJson), version = setting?.Version ?? 0 });
+    }
+
+    private static async Task<IResult> SaveResendReminderAsync(JsonElement body, HttpContext http, AppDbContext db, TimeProvider timeProvider)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        if (body.ValueKind != JsonValueKind.Object || !body.TryGetProperty("count", out var countElement) || countElement.ValueKind != JsonValueKind.Number
+            || !countElement.TryGetInt32(out var count) || count < 0 || count > MaximumResendReminder)
+            return Problem(http, new("RESEND_REMINDER_INVALID", $"Yeniden gönderim sayısı 0 ile {MaximumResendReminder} arasında bir tam sayı olmalıdır.", 400));
+
+        var valueJson = JsonSerializer.Serialize(new { count });
+        var setting = await db.TenantSettings.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Key == ResendReminderKey, http.RequestAborted);
+        if (Precondition(http, setting) is { } precondition) return precondition;
+        if (setting is null)
+        {
+            setting = new TenantSetting { TenantId = tenant.TenantId, Key = ResendReminderKey, ValueJson = valueJson, UpdatedAt = timeProvider.GetUtcNow(), Version = 1 };
+            db.TenantSettings.Add(setting);
+        }
+        else
+        {
+            setting.ValueJson = valueJson;
+            setting.UpdatedAt = timeProvider.GetUtcNow();
+            setting.Version++;
+        }
+
+        if (await SaveAsync(http, db) is { } conflict) return conflict;
+        return Versioned(http, setting.Version, new { count, version = setting.Version });
+    }
+
+    private static int ReadResendReminder(string? valueJson) =>
+        ParseObject(valueJson) is { } value && value.TryGetProperty("count", out var element) && element.ValueKind == JsonValueKind.Number && element.TryGetInt32(out var count) && count > 0
+            ? Math.Min(count, MaximumResendReminder)
+            : 0;
 
     private static object NormalizeAppearance(JsonElement? value)
     {

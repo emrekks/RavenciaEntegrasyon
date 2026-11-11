@@ -9,16 +9,20 @@
 // Istanbul day): "N Paket" for every order cancelled today, whole or in part, as the Genel Bakış card counts them, and while
 // orders were cancelled in part a chip "N Kısmi İptal | M Adet" (the units cancelled of them) that pulses like Geciken.
 // "Yeniden Gönderim" counts the resends that have not been handed to the carrier yet.
+// Trendyol never returns resend packages, so "Yeniden Gönderim" is also a manual reminder: a gear in the card's corner
+// opens a small popover where the owner types the number (kept on the server per tenant) and the card adds it to the
+// resends the panel does detect.
 // Geciken, İptal and Yeniden Gönderim list their stores on hover while they count any.
 // The cancellation, micro-export and resend cards open the list on what they counted; the card whose list is open shows
 // as selected and tapping it again closes the list (back to Tümü).
-import type { ReactNode } from 'react'
-import { CardBackgroundIcon, CountUp, type CardIconName, type CardTone } from '../../../shared/components'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { CardBackgroundIcon, CountUp, UiIcon, type CardIconName, type CardTone } from '../../../shared/components'
 import { RrLogo } from '../returns-ui'
 import { countryName, Flag } from './order-row-marks'
 import type { DayCard } from './daily-cards'
 import { orderCountText, type OrderCargoCount } from './order-summary'
 import { cargoLabel } from '../../../shared/components/CargoProviderIcon'
+import { maxResendReminder, parseResendReminder } from './resend-reminder'
 import './order-metrics.css'
 
 // error: the count could not be read; shown as "—", never as 0 or an endless "…".
@@ -70,6 +74,53 @@ function StoreTip({ rows, cargo = [] }: { rows: TipRow[]; cargo?: OrderCargoCoun
     {cargo.map(row => <div className="rr-metric-tip-r rr-metric-tip-cargo" key={`cargo:${row.cargo}`}><span>{row.cargo ? cargoLabel(row.cargo) : "Kargo Belirlenmedi"}</span><b className="rr-num">{count(row.orders)} paket</b></div>)}</div>
 }
 
+// The gear in the Yeniden Gönderim card's corner and the popover under it: the owner's typed reminder count.
+// Esc, a press outside and leaving it with the keyboard close it; Sıfırla saves 0.
+export function ResendReminderEditor({ count: saved, onSave }: { count: number; onSave: (count: number) => Promise<void> }) {
+  const [open, setOpen] = useState(false)
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const root = useRef<HTMLDivElement>(null)
+  const gear = useRef<HTMLButtonElement>(null)
+  const field = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const outside = (event: Event) => { if (!root.current?.contains(event.target as Node)) setOpen(false) }
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { setOpen(false); gear.current?.focus() } }
+    document.addEventListener('pointerdown', outside)
+    document.addEventListener('keydown', escape)
+    return () => { document.removeEventListener('pointerdown', outside); document.removeEventListener('keydown', escape) }
+  }, [open])
+  useEffect(() => { if (open) field.current?.select() }, [open])
+  const toggle = () => {
+    if (open) { setOpen(false); return }
+    setText(String(saved)); setError(''); setOpen(true)
+  }
+  const persist = async (value: number) => {
+    setBusy(true); setError('')
+    try { await onSave(value); setOpen(false); gear.current?.focus() } catch (failure) { setError(failure instanceof Error && failure.message ? failure.message : 'Sayı kaydedilemedi.') } finally { setBusy(false) }
+  }
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    const value = parseResendReminder(text)
+    if (value === undefined) { setError(`0 ile ${count(maxResendReminder)} arasında bir tam sayı girin.`); return }
+    void persist(value)
+  }
+  return <div className="rr-reminder" ref={root} onBlur={event => { if (open && event.relatedTarget && !root.current?.contains(event.relatedTarget as Node)) setOpen(false) }}>
+    <button type="button" ref={gear} className="rr-reminder-gear" aria-label="Yeniden Gönderim Sayısını Düzenle" aria-haspopup="dialog" aria-expanded={open} onClick={event => { event.stopPropagation(); toggle() }}><UiIcon name="settings" size={16} /></button>
+    {open && <form className="rr-reminder-pop" role="dialog" aria-label="Yeniden Gönderim Hatırlatıcısı" onSubmit={submit}>
+      <label htmlFor="rr-reminder-count">Bekleyen Yeniden Gönderim</label>
+      <input id="rr-reminder-count" ref={field} type="text" inputMode="numeric" autoComplete="off" value={text} disabled={busy} aria-invalid={error ? true : undefined} onChange={event => { setText(event.target.value); setError('') }} />
+      {error && <p className="rr-reminder-error" role="alert">{error}</p>}
+      <div className="rr-reminder-actions">
+        <button type="button" className="rr-btn" disabled={busy} onClick={() => { void persist(0) }}>Sıfırla</button>
+        <button type="submit" className="rr-btn rr-primary" disabled={busy}>Kaydet</button>
+      </div>
+    </form>}
+  </div>
+}
+
 const tipped = (...names: Array<string | false | undefined>) => names.filter(Boolean).join(' ') || undefined
 
 // A card that reads "N Paket | M Adet Ürün" and lists the products per store on hover or focus (no panel without them).
@@ -87,7 +138,7 @@ const packageTip = (rows: PackageRow[]) => rows.map(row => ({ ...row, value: `${
 // Touch screens: a tap on a card shows its stores (the shared tap handler opens the breakdown) and never switches the
 // list's tab; a computer opens the card's list as before.
 
-export function OrderMetricCards({ newOrders, newUnits, newRows, newCargo, processing, processingUnits, processingRows, processingCargo, late, lateRows, microExport, microCountries, cancelled, cancelledRows, partiallyCancelled, partialUnits, resent, resentRows, onOpenDay, activeCard }: { newOrders: Metric; newUnits?: number; newRows?: UnitRow[]; newCargo?: OrderCargoCount[] | null; processing: Metric; processingUnits?: number; processingRows?: UnitRow[]; processingCargo?: OrderCargoCount[] | null; late: Metric; lateRows?: PackageRow[]; microExport: Metric; microCountries?: Record<string, number>; cancelled: Metric; cancelledUnits?: number; cancelledRows?: CancelRow[]; partiallyCancelled: Metric; partialUnits?: number; resent: Metric; resentRows?: PackageRow[]; onOpenDay: (card: DayCard) => void; activeCard?: DayCard }) {
+export function OrderMetricCards({ newOrders, newUnits, newRows, newCargo, processing, processingUnits, processingRows, processingCargo, late, lateRows, microExport, microCountries, cancelled, cancelledRows, partiallyCancelled, partialUnits, resent, resentRows, resentReminder = 0, onSaveResentReminder, onOpenDay, activeCard }: { newOrders: Metric; newUnits?: number; newRows?: UnitRow[]; newCargo?: OrderCargoCount[] | null; processing: Metric; processingUnits?: number; processingRows?: UnitRow[]; processingCargo?: OrderCargoCount[] | null; late: Metric; lateRows?: PackageRow[]; microExport: Metric; microCountries?: Record<string, number>; cancelled: Metric; cancelledUnits?: number; cancelledRows?: CancelRow[]; partiallyCancelled: Metric; partialUnits?: number; resent: Metric; resentRows?: PackageRow[]; resentReminder?: number; onSaveResentReminder?: (count: number) => Promise<void>; onOpenDay: (card: DayCard) => void; activeCard?: DayCard }) {
   // The cards no longer switch the list to their orders (owner, 5 Nov 2026): a click shows the stores, as Yeni Sipariş does.
   const openOnPointer = (_card: DayCard) => { void _card; void onOpenDay }
   // The partly cancelled orders are a chip beside the cancelled count only while there are any.
@@ -99,6 +150,8 @@ export function OrderMetricCards({ newOrders, newUnits, newRows, newCargo, proce
   const stores = <T,>(metric: Metric, rows: T[] | undefined, always = false) => (always || positive(metric)) && !metric.loading ? rows ?? [] : []
   const lateStores = stores(late, lateRows)
   const cancelStores = stores(cancelled, cancelledRows, partial > 0)
+  // The reminder the owner typed counts with the resends the panel detects (a real one later still shows up).
+  const resentShown: Metric = known(resent) ? { ...resent, value: (resent.value ?? 0) + resentReminder } : resent
   const resentStores = stores(resent, resentRows)
   return <div className="rr-metrics rr-metrics-6">
     <UnitsCard title="Yeni Sipariş" icon="orders" tone="warn" packages={newOrders} units={newUnits} rows={newRows} cargo={newCargo} />
@@ -122,7 +175,8 @@ export function OrderMetricCards({ newOrders, newUnits, newRows, newCargo, proce
     </article>
     <article className={tipped('rr-metric-link', 'rr-metric-tipped', activeCard === 'resent' && 'rr-metric-on')}>
       <CardBackgroundIcon name="refresh" />
-      <button type="button" className="rr-metric-open" title={resentStores.length > 0 ? undefined : 'Kargoya verilmemiş yeniden gönderimler'} aria-pressed={activeCard === 'resent'} onClick={() => openOnPointer('resent')}><small>Yeniden Gönderim</small><Packages packages={resent} units={undefined} /></button>
+      <button type="button" className="rr-metric-open" title={resentStores.length > 0 ? undefined : 'Elle girilen hatırlatıcı: kargoya verilmemiş yeniden gönderimler (sağ üstteki ayar simgesiyle değiştirilir)'} aria-pressed={activeCard === 'resent'} onClick={() => openOnPointer('resent')}><small>Yeniden Gönderim</small><Packages packages={resentShown} units={undefined} /></button>
+      {onSaveResentReminder && <ResendReminderEditor count={resentReminder} onSave={onSaveResentReminder} />}
       {<StoreTip rows={packageTip(resentStores)} />}
     </article>
   </div>
