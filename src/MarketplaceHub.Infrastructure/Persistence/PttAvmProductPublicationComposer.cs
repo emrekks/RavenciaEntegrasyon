@@ -108,10 +108,13 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
                            where productMedia.TenantId == tenantId && productMedia.ProductId == productId && productMedia.Status == "ACTIVE" && asset.TenantId == tenantId && asset.Status == "ACTIVE" && asset.ArchivedAt == null
                            orderby productMedia.SortOrder, productMedia.Id
                            select new { productMedia.VariantId, asset.Id, asset.Classification, asset.RelativePath }).ToListAsync(cancellationToken);
-        var sizeChartAssetId = await SizeCharts.SizeChartPlacement.AssetIdAsync(db, tenantId, productId, cancellationToken);
+        var sizeChartAssetId = await SizeCharts.SizeChartPlacement.ModelAssetIdAsync(db, tenantId, product, variants, cancellationToken);
+        // The model's size chart for a card whose own rows lack it (another colour card holds it): it goes last all the same.
+        var modelChart = await SizeCharts.SizeChartPlacement.MissingAssetAsync(db, tenantId, sizeChartAssetId, media.Select(x => x.Id), cancellationToken);
+        var chartRow = modelChart is null ? null : new { VariantId = (Guid?)null, modelChart.Id, modelChart.Classification, modelChart.RelativePath };
         // Every size of a colour goes with the colour's pictures (PublicationVariantMedia, colour rule).
         var colours = await PublicationColours.LoadAsync(db, tenantId, product, variants, cancellationToken);
-        var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id, sizeChartAssetId, colours);
+        var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id, sizeChartAssetId, colours, chartRow);
         if (relevantMedia.Where(x => x.Classification == "PRODUCT_MEDIA_URL").Any(x => !ProductPublicationComposer.IsPublicHttpsUrl(x.RelativePath.Trim())))
             return Fail("PRODUCT_MEDIA_PUBLIC_URL_INVALID", $"'{variant.Sku}' için görsel adresleri geçerli herkese açık HTTPS adresi olmalıdır.");
         var pictureUrls = relevantMedia
@@ -190,11 +193,23 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
             .Select(x => new { x.ProductId, AssetId = x.FileAssetId!.Value })
             .ToListAsync(cancellationToken))
             .GroupBy(x => x.ProductId).ToDictionary(group => group.Key, group => group.First().AssetId);
+        // A card without a chart of its own goes with the model's (SizeChartPlacement.ModelAssetIdAsync, live RYP003T).
+        var familyChart = members.All(member => chartByMember.ContainsKey(member.Id)) ? null
+            : await SizeCharts.SizeChartPlacement.FamilyAssetIdAsync(db, tenantId, await ProductFamilyScope.ProductIdsAsync(db, tenantId, product.BrandId,
+                familyVariants.Where(x => x.ProductId == productId).OrderBy(x => x.SortOrder).ThenBy(x => x.Id).Select(x => x.ModelCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)),
+                db.ProductVariants.AsNoTracking(), cancellationToken), cancellationToken);
+        Guid? ChartOf(Guid memberId) => chartByMember.TryGetValue(memberId, out var own) ? own : familyChart;
+        // Each chart's row for a card whose own rows lack it: another card's row of the same picture, else the file itself.
+        var chartRowById = media.Where(item => chartByMember.ContainsValue(item.Id) || item.Id == familyChart).DistinctBy(item => item.Id).ToDictionary(item => item.Id);
+        foreach (var chartId in chartByMember.Values.Append(familyChart ?? Guid.Empty).Where(id => id != Guid.Empty).Distinct().ToList())
+            if (await SizeCharts.SizeChartPlacement.MissingAssetAsync(db, tenantId, chartId, chartRowById.Keys, cancellationToken) is { } chartFile)
+                chartRowById[chartId] = new { ProductId = Guid.Empty, VariantId = (Guid?)null, chartFile.Id, chartFile.Classification, chartFile.RelativePath };
         var colourOf = rows.ToDictionary(row => row.VariantId, row => row.Color!.Trim());
         var publishedByColour = familyVariants
             .GroupBy(variant => (variant.ProductId, Colour: colourOf[variant.Id].ToUpperInvariant()))
             .Select(group => (group.Key.ProductId, Pictures: PublicationVariantMedia.ForCard(mediaByMember.GetValueOrDefault(group.Key.ProductId) ?? [], group.Select(variant => variant.Id),
-                x => x.VariantId, x => x.Id, chartByMember.TryGetValue(group.Key.ProductId, out var chartId) ? chartId : null, coloursByMember[group.Key.ProductId])))
+                x => x.VariantId, x => x.Id, ChartOf(group.Key.ProductId), coloursByMember[group.Key.ProductId],
+                ChartOf(group.Key.ProductId) is Guid chartId && !(mediaByMember.GetValueOrDefault(group.Key.ProductId)?.Any(item => item.Id == chartId) ?? false) ? chartRowById.GetValueOrDefault(chartId) : null)))
             .ToList();
         if (publishedByColour.SelectMany(group => group.Pictures).Where(x => x.Classification == "PRODUCT_MEDIA_URL").Any(x => !ProductPublicationComposer.IsPublicHttpsUrl(x.RelativePath.Trim())))
             return Fail("PRODUCT_MEDIA_PUBLIC_URL_INVALID", "Model ailesinin görsel adresleri geçerli herkese açık HTTPS adresi olmalıdır.");
@@ -204,7 +219,7 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
             var pictureUrls = group.Pictures
                 .Select(item => (item.Id, Url: item.Classification == "PRODUCT_MEDIA_URL" ? item.RelativePath.Trim() : ProductPublicationComposer.BuildPublicProductMediaUrl(configuration["Marketplace:PublicBaseUrl"], item.Id)))
                 .ToList();
-            var chartUrl = PublicationVariantMedia.SizeChartUrl(pictureUrls, chartByMember.TryGetValue(group.ProductId, out var chartId) ? chartId : null);
+            var chartUrl = PublicationVariantMedia.SizeChartUrl(pictureUrls, ChartOf(group.ProductId));
             if (!string.IsNullOrWhiteSpace(chartUrl)) chartUrls.Add(chartUrl);
             return ProductPublicationComposer.SelectPublicationImageUrls(pictureUrls.Select(item => item.Url), chartUrl);
         }).ToList();

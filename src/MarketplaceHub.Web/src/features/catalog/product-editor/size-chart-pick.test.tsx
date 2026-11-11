@@ -115,7 +115,10 @@ describe('Beden Tablosu Seç', () => {
     await click(openPicker)
     const options = Array.from(document.querySelectorAll<HTMLElement>('.variant-media-picker-grid .variant-media-option'))
     expect(options.map(option => option.querySelector('img')?.getAttribute('src'))).toEqual([pictures[1], pictures[2], pictures[0]])
-    expect(options.map(option => option.getAttribute('aria-label'))).toEqual(['Görsel 01', 'Görsel 02', 'Görsel 03'])
+    expect(options.map(option => option.getAttribute('aria-label'))).toEqual(['Görsel 01', 'Görsel 02', 'Görsel 03 · Beden Tablosu: Otomatik eklenir (sonda)'])
+    // The chart is not a choice: ticked and locked, it goes last with every variant by itself.
+    expect(options.at(-1)!.getAttribute('aria-pressed')).toBe('true')
+    expect(options.at(-1)!.getAttribute('aria-disabled')).toBe('true')
     await click(Array.from(document.querySelectorAll('.variant-media-picker-modal footer button')).find(item => item.textContent === 'Vazgeç'))
 
     await click(button('İşareti Kaldır'))

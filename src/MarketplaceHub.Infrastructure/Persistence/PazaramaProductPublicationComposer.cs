@@ -128,7 +128,7 @@ internal sealed class PazaramaProductPublicationComposer(AppDbContext db, IConfi
         if (offers.Count != variants.Count) return Fail("CHANNEL_OFFER_REQUIRED", "Her varyant için etkin Pazarama fiyat teklifi gerekir.");
         if (inventories.Count != variants.Count) return Fail("INVENTORY_REQUIRED", "Her varyant için MAIN stok kaydı gerekir.");
 
-        var sizeChartAssetId = await SizeCharts.SizeChartPlacement.AssetIdAsync(db, tenantId, productId, cancellationToken);
+        var sizeChartAssetId = await SizeCharts.SizeChartPlacement.ModelAssetIdAsync(db, tenantId, product, cardVariants, cancellationToken);
         // Every size of a colour goes with the colour's pictures (PublicationVariantMedia, colour rule).
         var colours = await PublicationColours.LoadAsync(db, tenantId, product, cardVariants, cancellationToken);
         var media = await (from productMedia in db.ProductMedia.AsNoTracking()
@@ -136,6 +136,9 @@ internal sealed class PazaramaProductPublicationComposer(AppDbContext db, IConfi
                            where productMedia.TenantId == tenantId && productMedia.ProductId == productId && productMedia.Status == "ACTIVE" && asset.TenantId == tenantId && asset.Status == "ACTIVE" && asset.ArchivedAt == null
                            orderby productMedia.SortOrder, productMedia.Id
                            select new { productMedia.VariantId, asset.Id, asset.Classification, asset.RelativePath }).ToListAsync(cancellationToken);
+        // The model's size chart for a card whose own rows lack it (another colour card holds it): it goes last all the same.
+        var modelChart = await SizeCharts.SizeChartPlacement.MissingAssetAsync(db, tenantId, sizeChartAssetId, media.Select(x => x.Id), cancellationToken);
+        var chartRow = modelChart is null ? null : new { VariantId = (Guid?)null, modelChart.Id, modelChart.Classification, modelChart.RelativePath };
         var title = (profile.TitleOverride ?? product.Title).Trim();
         var description = (profile.DescriptionOverride ?? product.Description).Trim();
         if (title.Length is < 1 or > MaxNameLength) return Fail("PRODUCT_TITLE_INVALID", $"Pazarama ürün adı 1-{MaxNameLength} karakter olmalıdır; listing profilinde kısa bir başlık girin.", "title");
@@ -156,7 +159,7 @@ internal sealed class PazaramaProductPublicationComposer(AppDbContext db, IConfi
             if (variant.Desi is not > 0) return Fail("DESI_REQUIRED", $"'{variant.Sku}' için Pazarama'nın zorunlu desi değeri girilmemiş.");
             var desi = (int)Math.Ceiling(variant.Desi.Value);
 
-            var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id, sizeChartAssetId, colours);
+            var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id, sizeChartAssetId, colours, chartRow);
             if (relevantMedia.Where(x => x.Classification == "PRODUCT_MEDIA_URL").Any(x => !ProductPublicationComposer.IsPublicHttpsUrl(x.RelativePath.Trim())))
                 return Fail("PRODUCT_MEDIA_PUBLIC_URL_INVALID", $"'{variant.Sku}' için görsel adresleri geçerli herkese açık HTTPS adresi olmalıdır.");
             var pictureUrls = relevantMedia

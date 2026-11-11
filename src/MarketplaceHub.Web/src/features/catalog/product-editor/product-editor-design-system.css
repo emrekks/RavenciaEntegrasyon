@@ -647,6 +647,12 @@
   .variant-media-option > i:empty { display: none; }
 }
 
+/* The model's size chart: ticked and locked, it goes last with every variant by itself. */
+@layer features {
+  .app-shell.stitch-shell main .variant-media-picker-grid > .variant-media-option.is-automatic { cursor: default; }
+  .variant-media-option-note { display: block; min-width: 0; overflow: hidden; color: var(--rv-color-primary); font-size: var(--rv-font-size-xs); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+}
+
 @layer features {
   .variant-media-picker-modal > footer { flex-wrap: wrap; align-items: center; }
 }

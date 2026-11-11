@@ -61,6 +61,7 @@ import { missingRequiredEditorFields, requiredEditorFieldLabels, requiredFieldMe
 import { SizeChartButton } from './SizeChartDialog'
 import { isSizeChartRef, pinSizeChartLast, replaceSizeChart, sizeChartKey } from './size-chart-order'
 import { mediaPickerLabel, mediaPickerRefs } from './media-picker-order'
+import { MediaOptionThumb, toggleVariantMediaRef, variantMediaHint, VariantImageIcon, type ProductMediaOption } from './variant-media-options'
 import { isSizeOptionLabel } from './size-chart-measurements'
 import { describePlatformCodeIssues, platformCodeIssues, summarizeVariantCodeIssues, variantCodeDuplicates, variantCodeFieldIssueText, variantCodeFieldKey } from '../platform-code-rules'
 import { useTakenVariantCodes } from '../variant-codes-taken'
@@ -165,7 +166,6 @@ function VariantHeaderActionMenu({ anchorRef, label, children }: { anchorRef: { 
   }, [anchorRef])
   return createPortal(<div ref={menuRef} className="variant-header-action-menu variant-header-action-menu-portal" role="dialog" aria-label={label} data-variant-header-popover="true" style={position}>{children}</div>, document.body)
 }
-type ProductMediaOption = { value: string; label: string; url?: string; file?: File }
 type ProductFamilyMediaItem = NonNullable<Product['familyMediaItems']>[number]
 type MediaRemovalConfirmation = { kind: 'product'; url: string } | { kind: 'all'; ownCount: number; familyItems: ProductFamilyMediaItem[]; keptCount: number }
 type PendingProductMediaFile = { id: string; file: File }
@@ -187,9 +187,6 @@ function displayVariantOptionSignature(signature: string, savedOptions: Record<s
 }
 // A saved row and a generated combination of the same options are one row (variantOptionSetKey), whatever their spelling.
 const variantSignatureKey = variantOptionSetKey
-function VariantImageIcon() {
-  return <svg className="variant-media-icon" viewBox="0 0 24 24" focusable="false" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9" r="1.5" /><path d="m4 17 5-5 3 3 2-2 6 6" /></svg>
-}
 function VariantDragHandleIcon() {
   return <svg className="variant-drag-icon" viewBox="0 0 16 20" focusable="false" aria-hidden="true"><circle cx="5" cy="4" r="1.4" /><circle cx="11" cy="4" r="1.4" /><circle cx="5" cy="10" r="1.4" /><circle cx="11" cy="10" r="1.4" /><circle cx="5" cy="16" r="1.4" /><circle cx="11" cy="16" r="1.4" /></svg>
 }
@@ -199,25 +196,10 @@ function BarcodeFillIcon() {
 function BarcodePasteIcon() {
   return <BarcodeFillIcon />
 }
-function MediaOptionThumb({ option, selected, onClick }: { option: ProductMediaOption; selected: boolean; onClick: () => void }) {
-  const [src, setSrc] = useState(option.url ?? '')
-  const [failed, setFailed] = useState(false)
-  useEffect(() => {
-    if (!option.file) return
-    const objectUrl = URL.createObjectURL(option.file)
-    setSrc(objectUrl)
-    setFailed(false)
-    return () => URL.revokeObjectURL(objectUrl)
-  }, [option.file])
-  return <button type="button" className={`variant-media-option ${selected ? 'selected' : ''}`} aria-label={`${option.label}${selected ? ' seçimini kaldır' : ''}`} aria-pressed={selected} onClick={onClick}>
-    <span className="variant-media-option-image">{src && !failed ? <img src={src} alt="" onError={() => setFailed(true)} /> : <VariantImageIcon />}</span>
-    <span className="variant-media-option-label" title={option.label}>{option.label}</span>
-    <i aria-hidden="true">{selected ? <UiIcon name="check" /> : null}</i>
-  </button>
-}
 function VariantMediaPickerModal({
   mode,
   options,
+  chartKey,
   selectedRefs,
   groups,
   selectedGroupId,
@@ -233,6 +215,8 @@ function VariantMediaPickerModal({
 }: {
   mode: 'variant' | 'bulk'
   options: ProductMediaOption[]
+  // The model's size chart: its tile is ticked and locked (it goes last with every variant by itself).
+  chartKey: string | null
   selectedRefs: string[]
   groups?: VariantMediaGroup[]
   selectedGroupId?: string
@@ -256,12 +240,8 @@ function VariantMediaPickerModal({
       </header>
       {mode === 'bulk' && groups?.length ? <><div className="variant-media-bulk-fields"><VariantMediaBulkSelect label="Seçenek Grubu" placeholder="Seçenek Grubu Seçin" value={selectedGroupId ?? ''} options={groups.map(group => ({ id: group.id, label: group.name }))} onChange={value => onGroupChange?.(value)} /><VariantMediaBulkSelect label="Seçenek Değeri" placeholder="Değer Seçin" value={selectedValueId ?? ''} options={selectedGroup?.values.map(value => ({ id: value.id, label: value.value, assigned: assignedValueIds?.has(value.id), imageCount: assignedValueIds?.get(value.id) })) ?? []} disabled={!selectedGroup} onChange={value => onValueChange?.(value)} /></div>{selectedValue && <div className={`variant-media-bulk-match-summary ${matchedVariantCount ? '' : 'is-empty'}`} role="status"><strong>{selectedGroup?.name}: {selectedValue.value}</strong><span>{matchedVariantCount ? `${matchedVariantCount} varyant eşleşti` : 'Bu değerle eşleşen varyant bulunamadı'}</span></div>}</> : null}
       <div className="variant-media-picker-grid">
-        {options.length ? options.map(option => <MediaOptionThumb key={option.value} option={option} selected={selectedRefs.includes(option.value)} onClick={() => {
-           const next = selectedRefs.includes(option.value)
-             ? selectedRefs.filter(value => value !== option.value)
-             : [...selectedRefs, option.value]
-           onRefsChange(options.filter(item => next.includes(item.value)).map(item => item.value))
-         }} />) : <div className="empty small"><strong>Seçilebilir görsel yok</strong><p>Önce ürün görsellerine HTTPS linki veya dosya ekleyin.</p></div>}
+        {options.length ? options.map(option => <MediaOptionThumb key={option.value} option={option} selected={selectedRefs.includes(option.value)} automatic={isSizeChartRef(option.value, chartKey)}
+          onClick={() => onRefsChange(toggleVariantMediaRef(options, selectedRefs, option.value, chartKey))} />) : <div className="empty small"><strong>Seçilebilir görsel yok</strong><p>Önce ürün görsellerine HTTPS linki veya dosya ekleyin.</p></div>}
       </div>
       <footer><button type="button" className="secondary" onClick={() => onRefsChange([])}>{mode === 'bulk' ? 'Bu Değerin Görsellerini Kaldır' : 'Görselleri Kaldır'}</button><button type="button" className="secondary" onClick={onClose}>Vazgeç</button><button type="button" onClick={onApply} disabled={!options.length || (mode === 'bulk' && (!selectedGroupId || !selectedValueId || !matchedGroupVariantCount))}>{mode === 'bulk' ? 'Tüm Eşlemeleri Kaydet' : 'Görselleri Kaydet'}</button></footer>
     </DialogSurface>
@@ -3971,7 +3951,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
                   <div className="variant-row-actions" aria-label={`${row.optionSignature} varyant işlemleri`}>
                     {rowPlatforms.length ? (() => { const linkedCount = rowPlatforms.filter(item => item.isLinked).length; const isPartial = linkedCount > 0 && linkedCount < rowPlatforms.length; const summaryClass = linkedCount === rowPlatforms.length ? 'is-linked' : isPartial ? 'is-partial' : 'is-unlinked'; return <button type="button" className={`variant-platform-status variant-platform-status-summary variant-row-action ${summaryClass}`} onClick={() => openVariantPlatformPricing(row, rowPlatforms[0])} title={`${rowPlatforms.length} platform fiyatını düzenle`} aria-label={`${row.optionSignature} platform fiyatlarını düzenle`}><UiIcon name="platforms" /></button> })() : <span className="variant-platform-empty">—</span>}
                     {editProductId && <button type="button" className="variant-row-action variant-row-action-codes" onClick={() => setMarketplaceCodesVariant(row.key)} aria-label={`${row.optionSignature} pazaryeri kodlarını göster`} title="Pazaryeri kodları (Shopify, Hepsiburada)"><UiIcon name="link" /></button>}
-                    {(() => { const outgoing = outgoingByRow.get(row.key); const count = outgoing?.refs.length ?? 0; const hint = outgoing?.assigned ? `Bu varyanta atanan ${count} görselle gider (beden tablosu sonda)` : count ? `Atama yok: kartın galerisinden ${count} görselle gider (diğer renklere atananlar hariç)` : 'Atama yok, gidecek görsel yok'; return <button type="button" className={`variant-media-button variant-row-action ${outgoing?.assigned ? 'has-media' : ''}`} onClick={() => openVariantMediaPicker(row.key)} aria-label={`${row.optionSignature} görsellerini seç. ${hint}`} title={hint}><VariantImageIcon />{count > 0 && <i aria-hidden="true">{count}</i>}</button> })()}
+                    {(() => { const outgoing = outgoingByRow.get(row.key); const { count, hint } = variantMediaHint(outgoing, chartKey); return <button type="button" className={`variant-media-button variant-row-action ${outgoing?.assigned ? 'has-media' : ''}`} onClick={() => openVariantMediaPicker(row.key)} aria-label={`${row.optionSignature} görsellerini seç. ${hint}`} title={hint}><VariantImageIcon />{count > 0 && <i aria-hidden="true">{count}</i>}</button> })()}
                     <button type="button" className="variant-row-action variant-row-action-delete" onClick={() => requestVariantRowRemoval(row)} aria-label={`${row.optionSignature} varyantını sil`} title="Varyantı sil"><UiIcon name="trash" /></button>
                   </div>
                 </div>
@@ -4113,6 +4093,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     {variantMediaModal && <VariantMediaPickerModal
       mode={variantMediaModal.mode}
       options={mediaChoices}
+      chartKey={chartKey}
       selectedRefs={selectedVariantMediaRefs}
       groups={variantMediaModal.mode === 'bulk' ? bulkMediaGroups : undefined}
       selectedGroupId={variantMediaModal.mode === 'bulk' ? variantMediaModal.groupId : undefined}

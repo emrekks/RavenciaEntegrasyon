@@ -113,7 +113,7 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
         if (offers.Count != variants.Count) return Fail("CHANNEL_OFFER_REQUIRED", "Her varyant için etkin Hepsiburada fiyat teklifi gerekir.");
         if (inventories.Count != variants.Count) return Fail("INVENTORY_REQUIRED", "Her varyant için MAIN stok kaydı gerekir.");
 
-        var sizeChartAssetId = await SizeCharts.SizeChartPlacement.AssetIdAsync(db, tenantId, productId, cancellationToken);
+        var sizeChartAssetId = await SizeCharts.SizeChartPlacement.ModelAssetIdAsync(db, tenantId, product, cardVariants, cancellationToken);
         // Every size of a colour goes with the colour's pictures (PublicationVariantMedia, colour rule).
         var colours = await PublicationColours.LoadAsync(db, tenantId, product, cardVariants, cancellationToken);
         var media = await (from productMedia in db.ProductMedia.AsNoTracking()
@@ -121,6 +121,9 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
                            where productMedia.TenantId == tenantId && productMedia.ProductId == productId && productMedia.Status == "ACTIVE" && asset.TenantId == tenantId && asset.Status == "ACTIVE" && asset.ArchivedAt == null && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
                            orderby productMedia.SortOrder, productMedia.Id
                            select new { productMedia.VariantId, productMedia.SortOrder, asset.Id, asset.Classification, asset.RelativePath, asset.MimeType }).ToListAsync(cancellationToken);
+        // The model's size chart for a card whose own rows lack it (another colour card holds it): it goes last all the same.
+        var modelChart = await SizeCharts.SizeChartPlacement.MissingAssetAsync(db, tenantId, sizeChartAssetId, media.Select(x => x.Id), cancellationToken);
+        var chartRow = modelChart is null ? null : new { VariantId = (Guid?)null, SortOrder = int.MaxValue, modelChart.Id, modelChart.Classification, modelChart.RelativePath, modelChart.MimeType };
         var title = TitleWithBrand((profile.TitleOverride ?? product.Title).Trim(), brandName);
         var description = (profile.DescriptionOverride ?? product.Description).Trim();
         if (title.Length is < 1 or > 200) return Fail("PRODUCT_TITLE_INVALID", "Hepsiburada ürün başlığı 1-200 karakter olmalıdır.");
@@ -141,7 +144,7 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
             if (offer.VatRate < 0 || offer.VatRate > 100 || decimal.Truncate(offer.VatRate) != offer.VatRate)
                 return Fail("VAT_RATE_INVALID", $"'{variant.Sku}' için KDV oranı 0-100 arasında tam sayı olmalıdır.");
 
-            var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id, sizeChartAssetId, colours);
+            var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id, sizeChartAssetId, colours, chartRow);
             // Only uploaded files have a verified MIME type; a registered URL is stored as image/remote and
             // Hepsiburada fetches and checks it itself (K4).
             if (relevantMedia.Any(item => item.Classification == "PRODUCT_MEDIA" && !string.Equals(item.MimeType, "image/jpeg", StringComparison.OrdinalIgnoreCase) && !string.Equals(item.MimeType, "image/png", StringComparison.OrdinalIgnoreCase))) return Fail("PRODUCT_MEDIA_MIME_INVALID", $"'{variant.Sku}' ürün görselleri JPEG veya PNG olmalıdır.");

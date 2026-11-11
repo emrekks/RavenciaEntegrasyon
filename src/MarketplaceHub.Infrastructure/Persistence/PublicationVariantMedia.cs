@@ -22,22 +22,27 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // one the strip lacks goes after, in the variant's own order. Callers pass the media ordered by SortOrder.
 internal static class PublicationVariantMedia
 {
-    // sizeChartAssetId: the card's size chart, always the last picture of every variant (added when the variant's own
-    // pictures lack it). colours: the model's assignments (PublicationColours); without it the rule before the
-    // assignment rule.
-    public static List<T> For<T>(IReadOnlyCollection<T> media, Guid variantId, Func<T, Guid?> variantOf, Func<T, Guid> assetOf, Guid? sizeChartAssetId = null, PublicationColours? colours = null)
+    // sizeChartAssetId: the model's size chart (SizeChartPlacement.ModelAssetIdAsync), always the last picture of every
+    // variant (added when the variant's own pictures lack it). colours: the model's assignments (PublicationColours);
+    // without it the rule before the assignment rule. chartRow: the chart's row for a card whose own rows lack it (another
+    // colour card of the model holds it, live RYP003T). It only supplies the chart and never counts as one of the card's
+    // pictures, so the selection is the same with or without it (owner, 12.11.2026: "51bcy beden tablosu seçilmemiş").
+    public static List<T> For<T>(IReadOnlyCollection<T> media, Guid variantId, Func<T, Guid?> variantOf, Func<T, Guid> assetOf, Guid? sizeChartAssetId = null, PublicationColours? colours = null, T? chartRow = default)
     {
         var pictures = colours is null ? Pictures(media, variantId, variantOf, assetOf) : ColourPictures(media, variantId, variantOf, assetOf, colours);
-        return sizeChartAssetId is Guid chartId ? SizeCharts.SizeChartPlacement.Last(pictures, media, item => assetOf(item) == chartId) : pictures;
+        return sizeChartAssetId is Guid chartId ? SizeCharts.SizeChartPlacement.Last(pictures, ChartRows(media, chartRow), item => assetOf(item) == chartId) : pictures;
     }
 
     // The pictures a card goes out with as a whole (PTT AVM's one product per model, the product list's front
     // picture): each of its variants' pictures (For) in variant order, once each, the size chart last.
-    public static List<T> ForCard<T>(IReadOnlyCollection<T> media, IEnumerable<Guid> variantIds, Func<T, Guid?> variantOf, Func<T, Guid> assetOf, Guid? sizeChartAssetId, PublicationColours colours)
+    public static List<T> ForCard<T>(IReadOnlyCollection<T> media, IEnumerable<Guid> variantIds, Func<T, Guid?> variantOf, Func<T, Guid> assetOf, Guid? sizeChartAssetId, PublicationColours colours, T? chartRow = default)
     {
-        var pictures = variantIds.SelectMany(variantId => For(media, variantId, variantOf, assetOf, sizeChartAssetId, colours)).DistinctBy(assetOf).ToList();
-        return pictures.Count > 0 && sizeChartAssetId is Guid chartId ? SizeCharts.SizeChartPlacement.Last(pictures, media, item => assetOf(item) == chartId) : pictures;
+        var pictures = variantIds.SelectMany(variantId => For(media, variantId, variantOf, assetOf, sizeChartAssetId, colours, chartRow)).DistinctBy(assetOf).ToList();
+        return pictures.Count > 0 && sizeChartAssetId is Guid chartId ? SizeCharts.SizeChartPlacement.Last(pictures, ChartRows(media, chartRow), item => assetOf(item) == chartId) : pictures;
     }
+
+    // The card's own rows first (a card holding the chart goes exactly as before), then the model's chart row.
+    private static IEnumerable<T> ChartRows<T>(IReadOnlyCollection<T> media, T? chartRow) => chartRow is null ? media : media.Append(chartRow);
 
     private static List<T> ColourPictures<T>(IReadOnlyCollection<T> media, Guid variantId, Func<T, Guid?> variantOf, Func<T, Guid> assetOf, PublicationColours colours)
     {

@@ -201,7 +201,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
         else if (variants.Any(x => !inventories.ContainsKey(x.Id))) salesDataIssue = new("INVENTORY_REQUIRED", "Her varyant için MAIN stok kaydı gerekir.", 422);
         if (salesDataIssue is not null && !salesDataOptional) return Fail(salesDataIssue.Code, salesDataIssue.Message);
 
-        var sizeChartAssetId = await SizeCharts.SizeChartPlacement.AssetIdAsync(db, tenantId, productId, cancellationToken);
+        var sizeChartAssetId = await SizeCharts.SizeChartPlacement.ModelAssetIdAsync(db, tenantId, product, cardVariants, cancellationToken);
         // Every size of a colour goes with the colour's pictures (PublicationVariantMedia, colour rule).
         var colours = await PublicationColours.LoadAsync(db, tenantId, product, cardVariants, cancellationToken);
         var media = await (from productMedia in db.ProductMedia.AsNoTracking()
@@ -209,6 +209,9 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
                            where productMedia.TenantId == tenantId && productMedia.ProductId == productId && productMedia.Status == "ACTIVE" && asset.TenantId == tenantId && asset.Status == "ACTIVE" && asset.ArchivedAt == null && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
                            orderby productMedia.SortOrder, productMedia.Id
                            select new { productMedia.VariantId, productMedia.SortOrder, asset.Id, asset.Classification, asset.RelativePath }).ToListAsync(cancellationToken);
+        // The model's size chart for a card whose own rows lack it (another colour card holds it): it goes last all the same.
+        var modelChart = await SizeCharts.SizeChartPlacement.MissingAssetAsync(db, tenantId, sizeChartAssetId, media.Select(x => x.Id), cancellationToken);
+        var chartRow = modelChart is null ? null : new { VariantId = (Guid?)null, SortOrder = int.MaxValue, modelChart.Id, modelChart.Classification, modelChart.RelativePath };
         if (addsToListing)
         {
             var cardVariantIds = cardVariants.Select(x => x.Id).ToArray();
@@ -269,7 +272,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
             // Explicit variant media replaces the product gallery for that
             // variant. This keeps marketplace colors from receiving every
             // product image while preserving the old product-level fallback.
-            var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id, sizeChartAssetId, colours);
+            var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id, sizeChartAssetId, colours, chartRow);
             var relevantUrls = relevantMedia.Where(x => x.Classification == "PRODUCT_MEDIA_URL").Select(x => x.RelativePath.Trim()).ToList();
             if (relevantUrls.Any(url => !IsPublicHttpsUrl(url))) return Fail("PRODUCT_MEDIA_PUBLIC_URL_INVALID", $"'{variant.Sku}' için kayıtlı tüm PRODUCT_MEDIA_URL değerleri geçerli HTTPS adresi olmalıdır.");
             var pictureUrls = relevantMedia

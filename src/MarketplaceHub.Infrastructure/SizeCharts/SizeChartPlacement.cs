@@ -1,3 +1,4 @@
+using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -69,6 +70,43 @@ public static class SizeChartPlacement
             .Where(x => x.TenantId == tenantId && x.ProductId == productId && x.FileAssetId != null)
             .Select(x => x.FileAssetId)
             .FirstOrDefaultAsync(cancellationToken);
+
+    // The model's size chart, the one picture that goes last with every variant of every colour card (owner, 12.11.2026,
+    // MZ051BYC: "51bcy beden tablosu seçilmemiş neden?"): the card's own; for a card without one, the chart of its model
+    // family (FamilyAssetIdAsync). The editor shows the same chart for every colour row (familySizeChartUrl).
+    public static async Task<Guid?> ModelAssetIdAsync(AppDbContext db, Guid tenantId, Product product, IReadOnlyCollection<ProductVariant> cardVariants, CancellationToken cancellationToken)
+    {
+        if (await AssetIdAsync(db, tenantId, product.Id, cancellationToken) is Guid own) return own;
+        var modelCode = cardVariants.OrderBy(x => x.SortOrder).ThenBy(x => x.Id).Select(x => x.ModelCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+        var familyIds = await ProductFamilyScope.ProductIdsAsync(db, tenantId, product.BrandId, modelCode, db.ProductVariants.AsNoTracking(), cancellationToken);
+        familyIds.Remove(product.Id);
+        return await FamilyAssetIdAsync(db, tenantId, familyIds, cancellationToken);
+    }
+
+    // A model family's chart: that of its earliest card (CreatedAt, then id) not archived that has one; null when none has.
+    public static async Task<Guid?> FamilyAssetIdAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<Guid> familyIds, CancellationToken cancellationToken)
+    {
+        if (familyIds.Count == 0) return null;
+        return await (from chart in db.ProductSizeCharts.AsNoTracking()
+                      join card in db.Products.AsNoTracking() on chart.ProductId equals card.Id
+                      where chart.TenantId == tenantId && card.TenantId == tenantId && familyIds.Contains(chart.ProductId) && chart.FileAssetId != null && card.Status != ProductStatus.Archived
+                      orderby card.CreatedAt, card.Id
+                      select chart.FileAssetId).FirstOrDefaultAsync(cancellationToken);
+    }
+
+    // The model's chart picture for a card whose own rows (heldAssetIds) lack it, another colour card holding it; null
+    // when the card holds it, there is no chart, or the file is not an active product picture (it then goes nowhere, as a
+    // card's archived picture does). Read only for such a card, so a card holding its chart costs no query.
+    public static async Task<ChartAsset?> MissingAssetAsync(AppDbContext db, Guid tenantId, Guid? chartAssetId, IEnumerable<Guid> heldAssetIds, CancellationToken cancellationToken)
+    {
+        if (chartAssetId is not Guid assetId || heldAssetIds.Contains(assetId)) return null;
+        return await db.FileAssets.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Id == assetId && x.Status == "ACTIVE" && x.ArchivedAt == null && (x.Classification == "PRODUCT_MEDIA_URL" || x.Classification == "PRODUCT_MEDIA"))
+            .Select(x => new ChartAsset(x.Id, x.Classification, x.RelativePath, x.MimeType))
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    public sealed record ChartAsset(Guid Id, string Classification, string RelativePath, string MimeType);
 
     // The size chart assets of several cards (a model family), each card's own.
     public static Task<List<Guid>> AssetIdsAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<Guid> productIds, CancellationToken cancellationToken) =>

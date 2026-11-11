@@ -84,7 +84,7 @@ internal sealed class N11ProductPublicationComposer(AppDbContext db, IConfigurat
         if (offers.Count != variants.Count) return Fail("CHANNEL_OFFER_REQUIRED", "Her varyant için etkin N11 fiyat teklifi gerekir.");
         if (inventories.Count != variants.Count) return Fail("INVENTORY_REQUIRED", "Her varyant için MAIN stok kaydı gerekir.");
 
-        var sizeChartAssetId = await SizeCharts.SizeChartPlacement.AssetIdAsync(db, tenantId, productId, cancellationToken);
+        var sizeChartAssetId = await SizeCharts.SizeChartPlacement.ModelAssetIdAsync(db, tenantId, product, variants, cancellationToken);
         // Every size of a colour goes with the colour's pictures (PublicationVariantMedia, colour rule).
         var colours = await PublicationColours.LoadAsync(db, tenantId, product, variants, cancellationToken);
         var media = await (from productMedia in db.ProductMedia.AsNoTracking()
@@ -92,6 +92,9 @@ internal sealed class N11ProductPublicationComposer(AppDbContext db, IConfigurat
                            where productMedia.TenantId == tenantId && productMedia.ProductId == productId && productMedia.Status == "ACTIVE" && asset.TenantId == tenantId && asset.Status == "ACTIVE" && asset.ArchivedAt == null && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
                            orderby productMedia.SortOrder, productMedia.Id
                            select new { productMedia.VariantId, asset.Id, asset.Classification, asset.RelativePath }).ToListAsync(cancellationToken);
+        // The model's size chart for a card whose own rows lack it (another colour card holds it): it goes last all the same.
+        var modelChart = await SizeCharts.SizeChartPlacement.MissingAssetAsync(db, tenantId, sizeChartAssetId, media.Select(x => x.Id), cancellationToken);
+        var chartRow = modelChart is null ? null : new { VariantId = (Guid?)null, modelChart.Id, modelChart.Classification, modelChart.RelativePath };
         var title = (profile.TitleOverride ?? product.Title).Trim();
         var description = (profile.DescriptionOverride ?? product.Description).Trim();
         if (title.Length is < 15 or > 255) return Fail("PRODUCT_TITLE_INVALID", "N11 ürün başlığı 15-255 karakter olmalıdır.", "title");
@@ -111,7 +114,7 @@ internal sealed class N11ProductPublicationComposer(AppDbContext db, IConfigurat
                 return Fail("VAT_RATE_INVALID", $"'{variant.Sku}' için KDV oranı {offer.VatRate.ToString("0.##", CultureInfo.InvariantCulture)}; N11 yalnız 0, 1, 10 veya 20 kabul eder.");
 
             // Explicit variant media replaces the product gallery for that variant.
-            var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id, sizeChartAssetId, colours);
+            var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id, sizeChartAssetId, colours, chartRow);
             if (relevantMedia.Where(x => x.Classification == "PRODUCT_MEDIA_URL").Any(x => !ProductPublicationComposer.IsPublicHttpsUrl(x.RelativePath.Trim())))
                 return Fail("PRODUCT_MEDIA_PUBLIC_URL_INVALID", $"'{variant.Sku}' için görsel adresleri geçerli herkese açık HTTPS adresi olmalıdır.");
             var pictureUrls = relevantMedia
