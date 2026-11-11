@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { mediaImageKey, mediaStripOwnPosition, mediaStripRefs, reorderItems } from '../product-media-editor'
-import { mapWithConcurrency, mediaSaveProgressMessage, newColoursWithoutPictures, newFileAfterFamilyPicture, savedMediaOrder, storedProductMediaUrl, variantMediaReconcilePlan } from './product-media-save'
+import { mapWithConcurrency, mediaSaveProgressMessage, newColoursWithoutPictures, savedMediaOrder, storedProductMediaUrl, variantMediaReconcilePlan } from './product-media-save'
 import { orderMediaUrlsByVariants } from './publication-readiness'
 import type { Variant } from '../shared'
 
@@ -103,13 +103,11 @@ it('names the step and the count', () => {
 describe('a new file after the other colours\' pictures', () => {
   const own = ['https://cdn.example.com/navy-1.jpg', 'https://cdn.example.com/navy-2.jpg', 'https://cdn.example.com/navy-3.jpg']
   const otherColours = ['red', 'green', 'beige', 'black', 'white', 'grey'].flatMap(colour => [1, 2, 3].map(index => `https://cdn.example.com/${colour}-${index}.jpg`))
-  const ownKeys = new Set(own.map(mediaImageKey))
   const strip = mediaStripRefs([...own, ...otherColours], ['chart'], [])
 
-  it('is the last tile before the save and asks for the family order', () => {
+  it('is the last tile before the save and the family order keeps it last', () => {
     expect(strip[strip.length - 1]).toBe('file|chart')
     expect(strip.indexOf('file|chart')).toBe(own.length + otherColours.length)
-    expect(newFileAfterFamilyPicture(strip, ownKeys)).toBe(true)
     // The family order the save writes keeps it last, after all 21 colour pictures.
     const chartUrl = storedProductMediaUrl('44444444-4444-4444-8444-444444444444')
     const saved = savedMediaOrder(strip, new Map([['chart', chartUrl]]))
@@ -117,12 +115,9 @@ describe('a new file after the other colours\' pictures', () => {
     expect(saved[saved.length - 1]).toBe(chartUrl)
   })
 
-  it('leaves a file among the card\'s own pictures to the card\'s own list', () => {
+  it('keeps a file put among the card\'s own pictures in its place', () => {
     const amongOwn = mediaStripRefs([...own, ...otherColours], ['chart'], [`url|${own[0]}`, 'file|chart', ...[...own.slice(1), ...otherColours].map(url => `url|${url}`)])
     expect(amongOwn[1]).toBe('file|chart')
-    expect(newFileAfterFamilyPicture(amongOwn, ownKeys)).toBe(false)
-    // A card with no other colour never needs it.
-    expect(newFileAfterFamilyPicture(mediaStripRefs(own, ['chart'], []), ownKeys)).toBe(false)
   })
 })
 
@@ -137,11 +132,10 @@ describe('the card\'s own pictures on a page that shows the whole model', () => 
   const variant = (productId: string, mediaUrls: string[]) => ({ id: `${productId}-v`, productId, mediaUrls }) as unknown as Variant
   const variants = [variant('siyah', own), ...others.map((colour, index) => variant(colour, otherPictures.slice(index * 3, index * 3 + 3)))]
 
-  it('takes only the opened card\'s variants, so a new file after the other colours writes the family order', () => {
+  it('takes only the opened card\'s variants, and the family order keeps the new files last', () => {
     const ownUrls = orderMediaUrlsByVariants(variants, own, own[0], false, 'siyah')
     expect(ownUrls).toEqual(own)
     const strip = mediaStripRefs([...ownUrls, ...otherPictures], ['purple', 'brown'], [])
-    expect(newFileAfterFamilyPicture(strip, new Set(ownUrls.map(mediaImageKey)))).toBe(true)
     const purpleUrl = storedProductMediaUrl('55555555-5555-4555-8555-555555555555')
     const brownUrl = storedProductMediaUrl('66666666-6666-4666-8666-666666666666')
     // The family order the save writes keeps the new pictures last, after every colour's pictures.

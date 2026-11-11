@@ -24,7 +24,7 @@ import { toggleProductAttributeValue } from '../attribute-selection'
 import { buildVariantAttributeAssignments } from '../variant-attribute-assignments'
 import { filterAttributeOptionValues, optionValueToAdd } from '../attribute-value-search'
 import { OptionValueAddButton } from './OptionValueAddButton'
-import { isStoredProductMediaUrl, mediaImageKey, mediaRefsEqual, mediaRefsSameSet, mediaStripOwnPosition, mediaStripRefs, mediaUrlsInPreferredOrder, modelCodeForExistingVariant, publicProductMediaUrls, reorderItems, uniqueMediaUrls } from '../product-media-editor'
+import { isStoredProductMediaUrl, mediaImageKey, mediaRefsEqual, mediaStripOwnPosition, mediaStripRefs, mediaUrlsInPreferredOrder, modelCodeForExistingVariant, publicProductMediaUrls, reorderItems, uniqueMediaUrls } from '../product-media-editor'
 import { applyVariantBulkModes, variantBulkEditIssue, variantBulkModeLabels, type VariantBulkEditField, type VariantBulkInputs, type VariantBulkMode } from '../variant-bulk-edit'
 import { VariantCodeMenu, type VariantCodeMenuProps } from './VariantCodeMenu'
 import { applyVariantCodesByKey, buildSequentialVariantCodes, generatedRowsReplacePlaceholder, mergeGeneratedVariantRows, planVariantCodes, variantCodeCandidates, buildVariantGenerationDefaults, variantCodeChangeConfirmText, type VariantCodeChange, type VariantCodeTarget } from '../variant-generation'
@@ -42,7 +42,8 @@ import { attributeIssueTip } from '../publish-issue-chips'
 import { attributeMappingPlatform, mappingFocusItems } from '../../marketplace/mappings/mapping-focus'
 import { PRODUCT_IMAGE_ACCEPT, toProductImage } from './product-image-file'
 import { LocalImagePreview, MediaAddTile, MediaMoveButtons, MediaZoomButton } from './media-tiles'
-import { mapWithConcurrency, mediaFilesLeftAfterFailedSave, mediaSaveProgressMessage, newColoursWithoutPictures, newFileAfterFamilyPicture, savedMediaOrder, storedProductMediaUrl, variantMediaReconcilePlan } from './product-media-save'
+import { mapWithConcurrency, mediaFilesLeftAfterFailedSave, mediaSaveProgressMessage, newColoursWithoutPictures, savedMediaOrder, storedProductMediaUrl, variantMediaReconcilePlan } from './product-media-save'
+import { familyGalleryPlan, familyPictureOwners, familySizeChartUrl, familyUploadTargets, pictureColourLabel, type ColourRowPictures, type FamilyCardPictures } from './family-gallery-save'
 import { keepPendingCreateMedia, pendingVariantMediaRefs, takePendingCreateMedia, type PendingCreateMedia } from './pending-create-media'
 import { MarketplaceCodesDialog } from './MarketplaceCodesDialog'
 import { PublicationJobDialog } from './PublicationJobDialog'
@@ -1568,13 +1569,13 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     if (!editProductId && duplicateProductId) setChannelPricing(copiedChannelPricing(primary?.platformStatuses ?? [], initialListPrice, initialSalePrice))
     initialEditMediaUrl.current = savedMediaUrls.join('\n')
     // A copy starts without a size chart; an edit opens with the one the card has.
-    const seededSizeChartUrl = editProductId ? product.sizeChartUrl ?? null : null
+    const seededSizeChartUrl = editProductId ? familySizeChartUrl(product.familyGalleries, product.sizeChartUrl ?? null) : null
     initialSizeChartUrl.current = seededSizeChartUrl
     setSizeChartUrl(seededSizeChartUrl)
     setSizeChartPicking(false)
     setFamilyMediaOrder(withoutCopyRemovedMedia(uniqueMediaUrls(product.familyOrderedMediaUrls?.length
       ? product.familyOrderedMediaUrls
-      : [...savedMediaUrls, ...savedFamilyMediaUrls]), removedMediaKeys))
+      : [...savedFamilyMediaUrls, ...savedMediaUrls]), removedMediaKeys))
     setFamilyMediaOrderDirty(false)
     setPendingFamilyMediaRemovals([])
     setMediaFiles(mediaFilesKeptOnReseed.current ?? [])
@@ -2986,36 +2987,47 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       const followedJobs: FollowedJob[] = []
       // The steps after the product (media, stock, channel prices, publication) can take a while; the progress toast names them.
       if (!editProductId) showFeedback('Ürün Oluşturuldu', 'Ürün oluşturuldu; görseller, stok ve fiyatlar kaydediliyor…', 'info', { persistent: true, key: productSaveToastKey })
-      const initialProductMediaUrls = initialEditMediaUrl.current.split(/\r?\n|[;|]/u).map(url => url.trim()).filter(Boolean)
-      const productMediaChanged = editProductId
-        ? !mediaRefsEqual(mediaUrls, initialProductMediaUrls) && !(familyMediaOrderDirty && mediaRefsSameSet(mediaUrls, initialProductMediaUrls))
-        : mediaUrls.length > 0
       // O8: from here the card is saved; a picture step that fails says so, the card's data stays saved.
       mediaStep = true
-      if (productMediaChanged) await hubApi('/files/product-media-reconcile', { method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ productId: product.id, variantId: null, items: mediaUrls.map((url, sortOrder) => ({ url, sortOrder })), altText: form.title }) })
+      // The create page makes one card: its pictures go to it. The edit page holds the whole model: every colour card's
+      // pictures are written from the one gallery (family-gallery-save.ts), the same whichever colour row was opened.
+      if (!editProductId && mediaUrls.length > 0) await hubApi('/files/product-media-reconcile', { method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ productId: product.id, variantId: null, items: mediaUrls.map((url, sortOrder) => ({ url, sortOrder })), altText: form.title }) })
+      const rowsBySku = new Map(rows.map(row => [row.sku.trim().toLocaleUpperCase('tr-TR'), row]))
+      const savedProduct = product
+      // Every colour card of the model after the save (a new colour's card included), oldest first.
+      const familyCards: FamilyCardPictures[] = [...(savedProduct.familyGalleries ?? [{ productId: savedProduct.id, mediaUrls: savedProduct.mediaUrls ?? [], variantMediaUrls: [], sizeChartUrl: initialSizeChartUrl.current }])]
+      for (const variant of savedProduct.variants) {
+        const cardId = variant.productId || savedProduct.id
+        if (!familyCards.some(card => card.productId === cardId)) familyCards.push({ productId: cardId, mediaUrls: [], variantMediaUrls: [], sizeChartUrl: null })
+      }
+      const colourRows = (resolve: (ref: string) => string | null): ColourRowPictures[] => savedProduct.variants.flatMap(variant => {
+        const row = rowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))
+        return row ? [{ productId: variant.productId || savedProduct.id, refs: pinSizeChartLast(row.mediaRefs, chartKey).flatMap(ref => resolve(ref) ?? []) }] : []
+      })
       // Uploads and media writes on one product stay one at a time: each raises the product's version, which the
-      // server checks. Each new file is uploaded once, here; the variants below reference its stored copy.
+      // server checks. Each new file is uploaded once, on the first card of its colours; the others reference its copy.
       const progressTitle = editProductId ? pendingTitle : 'Ürün Oluşturuldu'
       const showProgress = (message: string) => showFeedback(progressTitle, message, 'info', { persistent: true, key: productSaveToastKey })
+      const uploadTargets = editProductId ? familyUploadTargets(mediaFiles.map(item => item.id), familyCards, colourRows(ref => ref), savedProduct.id) : new Map<string, string>()
+      const uploadedByCard = new Map<string, string[]>()
       for (const [fileIndex, pendingMedia] of mediaFiles.entries()) {
         showProgress(mediaSaveProgressMessage('upload', fileIndex, mediaFiles.length))
-        const data = new FormData(); data.set('file', pendingMedia.file); data.set('productId', product.id); data.set('mediaRole', mediaUrls.length + fileIndex === 0 ? 'PRIMARY' : 'GALLERY'); data.set('sortOrder', String(mediaUrls.length + fileIndex)); data.set('altText', form.title)
+        const targetId = uploadTargets.get(pendingMedia.id) ?? product.id
+        const sortOrder = editProductId ? (familyCards.find(card => card.productId === targetId)?.mediaUrls.length ?? 0) + (uploadedByCard.get(targetId)?.length ?? 0) : mediaUrls.length + fileIndex
+        const data = new FormData(); data.set('file', pendingMedia.file); data.set('productId', targetId); data.set('mediaRole', sortOrder === 0 ? 'PRIMARY' : 'GALLERY'); data.set('sortOrder', String(Math.min(sortOrder, 999))); data.set('altText', form.title)
         const uploaded = await hubApi<{ fileAssetId?: string }>('/files/product-media', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: data })
-        if (uploaded?.fileAssetId) storedUrlByFileId.set(pendingMedia.id, storedProductMediaUrl(uploaded.fileAssetId))
+        if (uploaded?.fileAssetId) {
+          storedUrlByFileId.set(pendingMedia.id, storedProductMediaUrl(uploaded.fileAssetId))
+          uploadedByCard.set(targetId, [...(uploadedByCard.get(targetId) ?? []), storedProductMediaUrl(uploaded.fileAssetId)])
+        }
         uploadedMediaFileIds.add(pendingMedia.id)
       }
-      // The uploads above go after the saved pictures; a new file the user put before them takes its place now. On the
-      // edit page a moved strip is written by the family reorder below, which takes the new files in their places too.
-      const productMediaOrder = savedMediaOrder([...mediaStrip.filter(ref => ref.startsWith('file|') || draftMediaKeys.has(mediaImageKey(ref.slice(4)))), ...mediaUrls.map(url => `url|${url}`)], storedUrlByFileId)
-      const appendedMediaOrder = savedMediaOrder([...mediaUrls.map(url => `url|${url}`), ...mediaFiles.map(item => `file|${item.id}`)], storedUrlByFileId)
-      // A new file shown after the other colours' pictures (a new upload goes to the end of the strip) keeps that place
-      // only through a family order: the card's own list alone puts it back after the card's own pictures (owner
-      // 7.11.2026, MZ052BOD: a size chart uploaded last came back 4th, after the first colour's 3 pictures).
-      const writeFamilyMediaOrder = Boolean(editProductId) && (familyMediaOrderDirty || (storedUrlByFileId.size > 0 && newFileAfterFamilyPicture(mediaStrip, draftMediaKeys)))
-      if (storedUrlByFileId.size && !writeFamilyMediaOrder && !mediaRefsEqual(productMediaOrder, appendedMediaOrder)) {
-        await hubApi('/files/product-media-reconcile', { method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ productId: product.id, variantId: null, items: productMediaOrder.map((url, sortOrder) => ({ url, sortOrder })), altText: form.title }) })
+      // The create page: the uploads above go after the saved pictures; a new file put before them takes its place now.
+      if (!editProductId && storedUrlByFileId.size) {
+        const productMediaOrder = savedMediaOrder([...mediaStrip.filter(ref => ref.startsWith('file|') || draftMediaKeys.has(mediaImageKey(ref.slice(4)))), ...mediaUrls.map(url => `url|${url}`)], storedUrlByFileId)
+        const appendedMediaOrder = savedMediaOrder([...mediaUrls.map(url => `url|${url}`), ...mediaFiles.map(item => `file|${item.id}`)], storedUrlByFileId)
+        if (!mediaRefsEqual(productMediaOrder, appendedMediaOrder)) await hubApi('/files/product-media-reconcile', { method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ productId: product.id, variantId: null, items: productMediaOrder.map((url, sortOrder) => ({ url, sortOrder })), altText: form.title }) })
       }
-      const rowsBySku = new Map(rows.map(row => [row.sku.trim().toLocaleUpperCase('tr-TR'), row]))
       const pendingFileIds = new Set(mediaFiles.map(item => item.id))
       const variantMediaWrites = product.variants.flatMap(variant => {
         const row = rowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))
@@ -3036,6 +3048,45 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         }
         writtenVariantMediaIds.add(variant.id)
       }
+      // Every colour card's gallery from the one strip: a picture goes to the colours it is assigned to, a new one without
+      // a colour and the size chart to every colour, the rest stay where they are (family-gallery-save.ts).
+      const familyStripUrls = savedMediaOrder(mediaStrip, storedUrlByFileId)
+      let galleryWriteCount = 0
+      let familyChartMarked = false
+      const cardColourLabels: string[] = []
+      if (editProductId) {
+        const heldKeys = new Set(familyCards.flatMap(card => [...card.mediaUrls, ...card.variantMediaUrls]).map(mediaImageKey))
+        const resolveRef = (ref: string) => ref.startsWith('url|') ? ref.slice(4) : ref.startsWith('file|') ? storedUrlByFileId.get(ref.slice(5)) ?? null : null
+        const galleryPlan = familyGalleryPlan({
+          strip: familyStripUrls,
+          cards: familyCards,
+          rows: colourRows(resolveRef),
+          uploaded: uploadedByCard,
+          newUrls: [...storedUrlByFileId.values(), ...familyStripUrls.filter(url => !heldKeys.has(mediaImageKey(url)))],
+          removedKeys: pendingRemovalMediaKeys,
+          chart: { url: sizeChartUrl, initialUrl: initialSizeChartUrl.current }
+        })
+        const colourOfCard = (productId: string) => {
+          const variant = savedProduct.variants.find(item => (item.productId || savedProduct.id) === productId)
+          const row = variant ? rowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR')) : undefined
+          return Object.entries(row?.options ?? {}).find(([name, value]) => isColorOptionName(name) && value.trim())?.[1].trim() ?? 'renk kartı'
+        }
+        // A size chart made with "Kullan" is on no card yet and only the card it was made for may take it first; the other
+        // colours then reference that copy.
+        const galleryWrites = sizeChartUrl && !heldKeys.has(mediaImageKey(sizeChartUrl))
+          ? [...galleryPlan.galleryWrites].sort((left, right) => Number(right.productId === savedProduct.id) - Number(left.productId === savedProduct.id))
+          : galleryPlan.galleryWrites
+        for (const write of galleryWrites) {
+          await hubApi('/files/product-media-reconcile', { method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ productId: write.productId, variantId: null, items: write.urls.map((url, sortOrder) => ({ url, sortOrder })), altText: form.title }) })
+          cardColourLabels.push(`${colourOfCard(write.productId)}${write.added ? ` +${write.added}` : ''}${write.removed ? ` −${write.removed}` : ''}`)
+        }
+        galleryWriteCount = galleryPlan.galleryWrites.length
+        // Which picture is the size chart, once the pictures are written (the chart must be one of each card's own).
+        for (const mark of galleryPlan.chartMarks) {
+          await hubApi(`/products/${mark.productId}/size-chart`, { method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ url: mark.url }) })
+          familyChartMarked = true
+        }
+      }
       let removedFamilyMediaCount = 0
       if (editProductId && pendingFamilyMediaRemovals.length) {
         removedFamilyMediaCount = await removePendingFamilyMedia(pendingFamilyMediaRemovals, mediaIds => hubApi<{ deletedCount: number }>('/files/product-media-items', {
@@ -3045,29 +3096,29 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         }))
         setPendingFamilyMediaRemovals([])
       }
-      if (editProductId && writeFamilyMediaOrder) {
+      // The model's order (the strip) on every card, after a move or any picture written above: each card numbers its own
+      // rows 0, 1… when written, the family order ranks them again.
+      if (editProductId && (familyMediaOrderDirty || galleryWriteCount > 0 || mediaFiles.length > 0) && familyStripUrls.length) {
         const result = await hubApi<{ changedProductCount: number }>('/files/product-media-family-reorder', {
           method: 'PUT',
           headers: { 'Idempotency-Key': newIdempotencyKey() },
-          body: JSON.stringify({ productId: product.id, urlsInOrder: savedMediaOrder(mediaStrip, storedUrlByFileId) })
+          body: JSON.stringify({ productId: familyCards[0]?.productId ?? product.id, urlsInOrder: familyStripUrls })
         })
         familyMediaChanged = result.changedProductCount > 0
         setFamilyMediaOrderDirty(false)
       }
-      // Which picture is the size chart, once the pictures are written (the chart must be one of the card's own).
       if (editProductId && sizeChartUrl !== initialSizeChartUrl.current) {
-        const marked = await hubApi<{ sizeChartUrl: string | null }>(`/products/${product.id}/size-chart`, { method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ url: sizeChartUrl }) })
-        initialSizeChartUrl.current = marked?.sizeChartUrl ?? sizeChartUrl
+        initialSizeChartUrl.current = sizeChartUrl
         completed.push(sizeChartUrl ? 'beden tablosu' : 'beden tablosu işareti kaldırıldı')
-      }
+      } else if (familyChartMarked) completed.push('beden tablosu diğer renklere')
       mediaStep = false
       if (editProductId) {
         const unpicturedColours = newColoursWithoutPictures(rows, new Set((productToEdit.data?.variants ?? []).map(variant => variant.id)), isColorOptionName)
-        if (unpicturedColours.length) warnings.push(`Yeni ${unpicturedColours.length > 1 ? 'renklere' : 'renge'} görsel atanmadı: ${unpicturedColours.join(', ')}. Bu renk kendi kartı olur ve yalnız varyantlarına atanan görselleri taşır; açtığınız karta yüklenen görseller o kartta kalır. Varyant Görselleri'nden atayın, yoksa listede “Görsel yok” görünür ve pazaryerine görselsiz gider.`)
+        if (unpicturedColours.length) warnings.push(`Yeni ${unpicturedColours.length > 1 ? 'renklere' : 'renge'} görsel atanmadı: ${unpicturedColours.join(', ')}. Bu renk yalnız renksiz görselleri (beden tablosu, yeni yüklenen ve atanmamış görseller) alır. Seçeneklere Görsel Ata'dan bu renge görsellerini atayın, yoksa pazaryerine kendi görselleri olmadan gider.`)
       }
-      if (editProductId ? productMediaChanged || mediaFiles.length > 0 : mediaUrls.length || mediaFiles.length) completed.push('görseller')
-      if (removedFamilyMediaCount) completed.push(`diğer renklerden kaldırılan ${removedFamilyMediaCount} görsel`)
-      if (familyMediaChanged) completed.push('diğer renklerin görsel sırası')
+      if (editProductId ? galleryWriteCount > 0 || mediaFiles.length > 0 : mediaUrls.length || mediaFiles.length) completed.push(cardColourLabels.length ? `renk kartlarının görselleri (${cardColourLabels.join(', ')})` : 'görseller')
+      if (removedFamilyMediaCount) completed.push(`modelden kaldırılan ${removedFamilyMediaCount} görsel`)
+      if (familyMediaChanged && !galleryWriteCount) completed.push('modelin görsel sırası')
       // A draft is never sent: no channel price is written for it and nothing is published. A marketplace whose card
       // shows a required gap is never sent either (its toggle goes off with the gap; this holds if one slipped through).
       const gapCards = platformUpdate ? {} : blockedPublishCards
@@ -3476,13 +3527,29 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   // a custom order can show, variant pictures included.
   const defaultFamilyOrder = stripProduct?.familyOrderedMediaUrls?.length
     ? stripProduct.familyOrderedMediaUrls
-    : [...mediaUrls, ...(stripProduct?.familyMediaUrls ?? familyMediaItems.map(item => item.url))]
+    : [...(stripProduct?.familyMediaUrls ?? familyMediaItems.map(item => item.url)), ...mediaUrls]
   // A picture the draft added by link (a size chart put in with "Kullan") shows even before the family lists know it.
   const visibleMediaUrls = pinSizeChartLast(mediaUrlsInPreferredOrder(uniqueMediaUrls([...defaultFamilyOrder, ...mediaUrls]), familyMediaOrder.length ? familyMediaOrder : defaultFamilyOrder)
     .filter(url => !pendingRemovalMediaKeys.has(mediaImageKey(url))), chartKey)
   const mediaStrip = pinSizeChartLast(mediaStripRefs(visibleMediaUrls, mediaFiles.map(item => item.id), mediaStripOrder), chartKey)
   const familyOnlyMediaItems = familyItemsShownInStrip(visibleMediaUrls, familyMediaItems, draftMediaKeys)
-  const hasMediaTiles = mediaUrls.length > 0 || mediaFiles.length > 0 || familyOnlyMediaItems.length > 0
+  // Each tile names the colours its picture is saved to (Kaydet writes it to those colour cards), by the save's own rule.
+  const familyGalleries = editProductId ? stripProduct?.familyGalleries ?? null : null
+  const variantCardIds = new Map((stripProduct?.variants ?? []).map(variant => [variant.id, variant.productId || stripProduct?.id || '']))
+  const rowColour = (row: VariantDraft) => Object.entries(row.options).find(([name, value]) => isColorOptionName(name) && value.trim())?.[1].trim() ?? ''
+  const rowCardId = (row: VariantDraft) => variantCardIds.get(row.key) ?? `new:${rowColour(row).toLocaleLowerCase('tr-TR')}`
+  const cardColours = new Map<string, string>()
+  for (const row of variantRows) if (rowColour(row) && !cardColours.has(rowCardId(row))) cardColours.set(rowCardId(row), rowColour(row))
+  const heldPictureKeys = new Set((familyGalleries ?? []).flatMap(card => [...card.mediaUrls, ...card.variantMediaUrls]).map(mediaImageKey))
+  const pictureOwners = familyGalleries && cardColours.size > 1 ? familyPictureOwners({
+    strip: mediaStrip,
+    cards: [...familyGalleries, ...[...cardColours.keys()].filter(id => id.startsWith('new:')).map(productId => ({ productId, mediaUrls: [], variantMediaUrls: [], sizeChartUrl: null }))],
+    rows: variantRows.map(row => ({ productId: rowCardId(row), refs: row.mediaRefs })),
+    newRefs: mediaStrip.filter(ref => ref.startsWith('file|') || !heldPictureKeys.has(mediaImageKey(ref.slice(4)))),
+    chart: { url: sizeChartUrl, initialUrl: sizeChartUrl }
+  }) : null
+  const pictureColourCaption = (ref: string) => pictureOwners ? pictureColourLabel(pictureOwners.get(ref.startsWith('file|') ? ref : mediaImageKey(ref.slice(4))) ?? new Set(), cardColours) : ''
+  const hasMediaTiles =mediaUrls.length > 0 || mediaFiles.length > 0 || familyOnlyMediaItems.length > 0
   const mediaUploadHint = "Adet sınırı yok · JPEG, PNG veya WebP · WebP ve 6 MB üstü JPEG'e çevrilir"
   const mediaFileInput = <input ref={mediaFileInputRef} type="file" accept={PRODUCT_IMAGE_ACCEPT} multiple tabIndex={hasMediaTiles ? -1 : undefined} aria-label="Ürün görsellerini dosya olarak seç" onChange={event => { void handleMediaFiles(Array.from(event.target.files ?? [])); event.currentTarget.value = '' }} />
   // In the strip's order (Görseller), new uploads where they stand and the size chart last, so Görsel 01, 02… are the
@@ -3708,7 +3775,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       <section className="panel product-step-card product-media-card">
         <div className="editor-section-title">
           <span>4</span>
-            <div><h2>Görseller<TitleHint label="Görseller">JPEG veya PNG yükleyin, sürükleyerek sıralayın. Aynı modelin diğer renklerinin görselleri de görünür; sıralama kayıtta renk ürünlerine uygulanır.</TitleHint></h2></div>
+            <div><h2>Görseller<TitleHint label="Görseller">JPEG veya PNG yükleyin, sürükleyerek sıralayın. Modelin tüm renklerinin görselleri tek galeride görünür. Kaydet her görseli Seçeneklere Görsel Ata ile atandığı rengin kartına yazar; beden tablosu ve atanmamış yeni görseller her renge gider. Kutucuktaki ad görselin gideceği renktir.</TitleHint></h2></div>
             <div className="product-media-header-actions">
               {editProductId && mediaUrls.length > 0 && <button type="button" className="secondary product-media-size-chart-button" aria-pressed={pickingSizeChart} disabled={submitting} title="Kartın kayıtlı görsellerinden birini beden tablosu olarak işaretleyin; her varyantta son sıraya alınır." aria-label="Beden Tablosu Seç" onClick={() => setSizeChartPicking(current => !current)}><span className="media-action-full">Beden Tablosu Seç</span><span className="media-action-short" aria-hidden="true">Beden Tablosu</span></button>}
               {editProductId && sizeChartUrl && <button type="button" className="secondary product-media-size-chart-button" disabled={submitting} title="Beden tablosu işaretini kaldırın; görsel kartta kalır." aria-label="İşareti Kaldır" onClick={() => markSizeChart(null)}>İşareti Kaldır</button>}
@@ -3736,7 +3803,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
             }
             if (ref.startsWith('file|')) {
               const item = mediaFiles.find(file => file.id === ref.slice(5))
-              return item && <LocalImagePreview key={item.id} mediaIndex={index} file={item.file} alt={`${form.title || 'Ürün'} ${index + 1}`} caption={ownPosition === 0 ? 'Ana görsel' : item.file.name} draggable={!touchPointer && !submitting && !pickingSizeChart} mediaCount={mediaStrip.length} onMove={target => reorderMedia(index, target)} moveDisabled={submitting} isDragOver={dragOverMedia === index} {...mediaDrag} onRemove={() => removeUploadedMedia(item.id)} onZoom={url => setLightboxImage({ url, title: form.title || 'Ürün Görseli', modelCode: form.modelCode })} />
+              return item && <LocalImagePreview key={item.id} mediaIndex={index} file={item.file} alt={`${form.title || 'Ürün'} ${index + 1}`} caption={pictureColourCaption(ref) || (ownPosition === 0 ? 'Ana görsel' : item.file.name)} draggable={!touchPointer && !submitting && !pickingSizeChart} mediaCount={mediaStrip.length} onMove={target => reorderMedia(index, target)} moveDisabled={submitting} isDragOver={dragOverMedia === index} {...mediaDrag} onRemove={() => removeUploadedMedia(item.id)} onZoom={url => setLightboxImage({ url, title: form.title || 'Ürün Görseli', modelCode: form.modelCode })} />
             }
             const url = ref.slice(4)
             const ownedUrl = mediaUrls.find(current => mediaImageKey(current) === mediaImageKey(url))
@@ -3751,10 +3818,10 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               {pickable && <button type="button" className="size-chart-pick-target" aria-label={isSizeChart ? 'Bu görsel zaten beden tablosu' : 'Bu görseli beden tablosu olarak işaretle'} onClick={event => { event.stopPropagation(); if (isSizeChart) setSizeChartPicking(false); else markSizeChart(ownedUrl ?? url) }} />}
               <MediaZoomButton onZoom={() => setLightboxImage({ url, title: isProductMedia ? form.title || 'Ürün Görseli' : `${form.title || 'Ürün'} · Renk Ailesi`, modelCode: form.modelCode })} />
               {isProductMedia
-                ? <button type="button" className="image-remove-btn" disabled={deletingProductMedia || submitting} title="Görseli üründen hemen kaldır" aria-label="Görseli üründen hemen kaldır" onClick={event => { event.stopPropagation(); if (ownedUrl) void removeProductMedia(ownedUrl) }}><UiIcon name={deletingProductMedia ? 'loader' : 'close'} /></button>
+                ? <button type="button" className="image-remove-btn" disabled={deletingProductMedia || submitting} title="Görseli modelin tüm renklerinden hemen kaldır" aria-label="Görseli modelin tüm renklerinden hemen kaldır" onClick={event => { event.stopPropagation(); if (ownedUrl) void removeProductMedia(ownedUrl) }}><UiIcon name={deletingProductMedia ? 'loader' : 'close'} /></button>
                 : <button type="button" className="image-remove-btn" disabled={!familyItem || submitting} title="Renk ailesi görselini kaldır; Kaydet’te diğer renk ürünlerinden de kaldırılır" aria-label="Renk ailesi görselini kaldır" onClick={event => { event.stopPropagation(); if (familyItem) removeFamilyMedia(familyItem) }}><UiIcon name="close" /></button>}
               <MediaMoveButtons index={index} count={mediaStrip.length} onMove={target => reorderMedia(index, target)} disabled={submitting || Boolean(deletingProductMediaKey)} />
-              <figcaption>{isProductMedia ? (ownPosition === 0 ? 'Ana görsel' : `${ownPosition + 1}. görsel`) : 'Renk varyantı görseli'}<span className="media-drag-hint"> · sürükle</span></figcaption>
+              <figcaption>{pictureColourCaption(ref) || (isProductMedia ? (ownPosition === 0 ? 'Ana görsel' : `${ownPosition + 1}. görsel`) : 'Renk varyantı görseli')}<span className="media-drag-hint"> · sürükle</span></figcaption>
             </figure>
           })}
           <MediaAddTile hint={mediaUploadHint} disabled={submitting} onOpen={() => mediaFileInputRef.current?.click()} onFiles={handleMediaFiles} />

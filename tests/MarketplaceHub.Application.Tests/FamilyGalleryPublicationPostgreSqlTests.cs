@@ -1,0 +1,91 @@
+using System.Text.Json.Nodes;
+using MarketplaceHub.Domain;
+using MarketplaceHub.Infrastructure.Persistence;
+using Microsoft.Extensions.Configuration;
+using Xunit;
+
+namespace MarketplaceHub.Application.Tests;
+
+// The Trendyol payload of a model's colour cards (MZ051BYC shape, owner 11.11.2026): each colour card is composed alone,
+// every item under the shared model code (productMainId) and with only its own colour's pictures, in the card's order.
+// Pinned on the card shapes the editor writes colour by colour; the composer itself did not change.
+[Collection("postgres-integration")]
+public sealed class FamilyGalleryPublicationPostgreSqlTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
+{
+    [PostgreSqlFact]
+    public async Task TrendyolPayload_OfEachColourCard_CarriesOnlyThatColoursPictures_UnderTheModelCode()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"mz051-{Guid.NewGuid():N}", DisplayName = "mz051", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
+        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "TRENDYOL", Environment = "PRODUCTION", DisplayName = "Trendyol renk kartları", ExternalStoreId = $"store-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V1", SettingsJson = "{}", Version = 1 };
+        var categoryId = Guid.CreateVersion7();
+        var brandId = Guid.CreateVersion7();
+        Product Card(string colour) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = $"Triko Bluz {colour}", Description = "Renk kartı testi", CategoryId = categoryId, BrandId = brandId, Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now, Version = 1 };
+        var siyah = Card("Siyah");
+        var bordo = Card("Bordo");
+        ProductVariant Variant(Product card, string code) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = card.Id, Sku = code, SkuNormalized = code, Barcode = code, BarcodeNormalized = code, ModelCode = "MZ051BYC", OptionSignature = code, Desi = 1m, Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now, Version = 1 };
+        var siyahL = Variant(siyah, "MZ051BYC-31");
+        var siyahXl = Variant(siyah, "MZ051BYC-32");
+        var bordoL = Variant(bordo, "MZ051BYC-01");
+        var bordoXl = Variant(bordo, "MZ051BYC-02");
+        ProductVariant[] variants = [siyahL, siyahXl, bordoL, bordoXl];
+        ReferenceSnapshot Snapshot(string type, string scope) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ResourceType = type, ScopeExternalId = scope, SourceVersion = type, ContentHash = $"hash-{type}", FetchedAt = now, IsCurrent = true, ItemCount = 1 };
+        ReferenceItem Item(Guid snapshotId, string type, string externalId, string name) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, SnapshotId = snapshotId, ResourceType = type, ExternalId = externalId, Name = name, NormalizedName = name.ToUpperInvariant(), Path = name, Depth = 0, IsLeaf = true, IsActive = true, PayloadHash = $"payload-{type}-{externalId}" };
+        var categories = Snapshot("CATEGORIES", "");
+        var brands = Snapshot("BRANDS", "");
+        var assets = new Dictionary<string, FileAsset>();
+        FileAsset Asset(string name)
+        {
+            if (assets.TryGetValue(name, out var existing)) return existing;
+            return assets[name] = new FileAsset { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Classification = "PRODUCT_MEDIA_URL", RelativePath = $"https://cdn.example.com/mz051byc/{name}.jpg", MimeType = "image/jpeg", Sha256 = Guid.NewGuid().ToString("N"), Status = "ACTIVE", CreatedAt = now };
+        }
+        var media = new List<ProductMedia>();
+        void Pictures(Product card, ProductVariant? variant, params string[] names) =>
+            media.AddRange(names.Select((name, index) => new ProductMedia { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = card.Id, VariantId = variant?.Id, FileAssetId = Asset(name).Id, MediaRole = index == 0 ? "ORDERED_PRIMARY" : "ORDERED_GALLERY", SortOrder = index * 50, Status = "ACTIVE" }));
+        // What the editor writes, whichever colour row was opened: each card's gallery holds its own colour's pictures, the
+        // XL size of each its own assignment (an imported card's first size).
+        Pictures(siyah, null, "siyah-1", "siyah-2", "siyah-3");
+        Pictures(siyah, siyahXl, "siyah-1", "siyah-2", "siyah-3");
+        Pictures(bordo, null, "bordo-1", "bordo-2", "bordo-3");
+        Pictures(bordo, bordoXl, "bordo-1", "bordo-2", "bordo-3");
+
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.PlatformConnections.Add(connection);
+        db.Categories.Add(new Category { Id = categoryId, TenantId = tenant.Id, Name = "Bluz", NormalizedName = "BLUZ", Path = "Bluz", IsLeaf = true, IsActive = true, CreatedAt = now, UpdatedAt = now, Version = 1 });
+        db.Brands.Add(new Brand { Id = brandId, TenantId = tenant.Id, Name = "Ravencia", NormalizedName = "RAVENCIA", IsActive = true, CreatedAt = now, UpdatedAt = now, Version = 1 });
+        db.Products.AddRange(siyah, bordo);
+        db.ProductVariants.AddRange(variants);
+        db.ReferenceSnapshots.AddRange(categories, brands);
+        db.ReferenceItems.AddRange(Item(categories.Id, "CATEGORIES", "123", "Bluz"), Item(brands.Id, "BRANDS", "456", "Ravencia"));
+        db.CategoryMappings.Add(new CategoryMapping { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, SnapshotId = categories.Id, LocalId = categoryId, ExternalId = "123", Status = "VERIFIED", VerifiedAt = now, Version = 1 });
+        db.BrandMappings.Add(new BrandMapping { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, SnapshotId = brands.Id, LocalId = brandId, ExternalId = "456", Status = "VERIFIED", VerifiedAt = now, Version = 1 });
+        foreach (var card in new[] { siyah, bordo })
+            db.ChannelListingProfiles.Add(new ChannelListingProfile { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ProductId = card.Id, Enabled = true, DesiredStatus = "ACTIVE", ActualStatus = "DRAFT", Version = 1 });
+        db.FileAssets.AddRange(assets.Values);
+        db.ProductMedia.AddRange(media);
+        foreach (var variant in variants)
+        {
+            db.InventoryItems.Add(new InventoryItem { Id = Guid.CreateVersion7(), TenantId = tenant.Id, VariantId = variant.Id, LocationCode = "MAIN", OnHand = 5m, Available = 5m, ProjectionVersion = 1, Version = 1 });
+            db.ChannelOffers.Add(new ChannelOffer { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, VariantId = variant.Id, ListPrice = 900m, SalePrice = 630m, Currency = "TRY", VatRate = 10m, VatInclusion = "INCLUDED", RoundingMode = "HALF_EVEN", Status = "ACTIVE", PriceVersion = 1, Version = 1 });
+        }
+        await db.SaveChangesAsync();
+
+        var composer = new ProductPublicationComposer(db, new ConfigurationBuilder().Build());
+        foreach (var (card, colour, barcodes) in new[] { (siyah, "siyah", new[] { "MZ051BYC-31", "MZ051BYC-32" }), (bordo, "bordo", new[] { "MZ051BYC-01", "MZ051BYC-02" }) })
+        {
+            var draft = await composer.BuildAsync(tenant.Id, card.Id, connection.Id, CancellationToken.None);
+            Assert.True(draft.Succeeded, draft.Error?.Message);
+            var items = JsonNode.Parse(draft.Value!.PayloadJson)!["items"]!.AsArray();
+            Assert.Equal(barcodes, items.Select(item => item!["barcode"]!.GetValue<string>()).Order(StringComparer.Ordinal));
+            Assert.All(items, item =>
+            {
+                Assert.Equal("MZ051BYC", item!["productMainId"]!.GetValue<string>());
+                Assert.Equal([$"https://cdn.example.com/mz051byc/{colour}-1.jpg", $"https://cdn.example.com/mz051byc/{colour}-2.jpg", $"https://cdn.example.com/mz051byc/{colour}-3.jpg"],
+                    item["images"]!.AsArray().Select(image => image!["url"]!.GetValue<string>()));
+            });
+        }
+        await transaction.RollbackAsync();
+    }
+}

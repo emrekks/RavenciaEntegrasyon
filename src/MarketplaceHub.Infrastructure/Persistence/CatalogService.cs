@@ -1214,23 +1214,26 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                                      select new { MediaId = item.Id, item.ProductId, item.VariantId, item.SortOrder, AssetId = asset.Id, asset.Classification, Url = asset.RelativePath }).ToListAsync(cancellationToken);
         var familyProductTitles = familyProducts.ToDictionary(item => item.Id, item => item.Title);
         var familyRows = familyMediaRows.Select(item => new CatalogFamilyMedia.Row(item.MediaId, item.ProductId, item.VariantId, item.SortOrder, CatalogMediaDisplay.Url(item.AssetId, item.Classification, item.Url))).ToList();
-        var (familyMediaUrls, familyMediaItems) = CatalogFamilyMedia.Build(familyRows, familyProductTitles, familyProducts.Select(item => item.Id).ToList());
+        // The family's cards oldest first, whichever colour row was opened: the strip and each card's pictures read the
+        // same from every row of the model (owner, 11.11.2026).
+        var familyCardOrder = familyProducts.OrderBy(item => item.CreatedAt).ThenBy(item => item.Id).Select(item => item.Id).ToList();
+        var (familyMediaUrls, familyMediaItems) = CatalogFamilyMedia.Build(familyRows, familyProductTitles, familyCardOrder);
         var familyOrderedMediaUrls = CatalogFamilyMedia.OrderedUrls(familyRows);
         var familyChartUrls = familyViews.Select(view => view.SizeChartUrl).ToList();
-        IReadOnlyList<string> FamilyStripWithChartsLast(IReadOnlyList<string> urls, string? ownChartUrl) =>
-            SizeCharts.SizeChartPlacement.Last(SizeCharts.SizeChartPlacement.LastAll(urls, familyChartUrls), ownChartUrl);
+        // Every card's size chart closes the strip, in the strip's own order: no chart stands among the colours' pictures,
+        // and the opened card's is not singled out.
+        IReadOnlyList<string> FamilyStripWithChartsLast(IReadOnlyList<string> urls) => SizeCharts.SizeChartPlacement.LastAll(urls, familyChartUrls);
         return ServiceResult<ProductView>.Ok(primaryView with
         {
             Variants = allVariants,
             TotalStock = allVariants.Sum(x => x.OnHand),
             StartingPrice = CatalogPricePolicy.MinimumPositivePrice(familyViews.SelectMany(view => view.Variants.Select(variant => CatalogPricePolicy.EffectiveSalePrice(variant.SalePrice, variant.DefaultSalePrice, view.DefaultSalePrice)))),
             Options = allOptions,
-            // The size charts close the strip, after the family's other pictures: the opened card's last, any other
-            // colour's before it (each card has its own), so no chart stands among the colours' pictures.
-            FamilyMediaUrls = FamilyStripWithChartsLast(familyMediaUrls, primaryView.SizeChartUrl),
+            FamilyMediaUrls = FamilyStripWithChartsLast(familyMediaUrls),
             FamilyMediaItems = familyMediaItems,
-            FamilyOrderedMediaUrls = familyViews.Any(view => view.HasCustomMediaOrder) ? FamilyStripWithChartsLast(familyOrderedMediaUrls, primaryView.SizeChartUrl) : null,
-            FamilyProductIds = familyViews.Select(view => view.Id).ToList()
+            FamilyOrderedMediaUrls = familyViews.Any(view => view.HasCustomMediaOrder) ? FamilyStripWithChartsLast(familyOrderedMediaUrls) : null,
+            FamilyProductIds = familyViews.Select(view => view.Id).ToList(),
+            FamilyGalleries = CatalogFamilyMedia.Galleries(familyRows, familyCardOrder, familyViews.ToDictionary(view => view.Id, view => view.SizeChartUrl))
         });
     }
 

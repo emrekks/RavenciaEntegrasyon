@@ -24,18 +24,18 @@ public sealed class CatalogFamilyMediaTests
             new(bordoProduct, Bordo, null, 1, "https://cdn.dsmcdn.com/bordo-1.jpg"),
             // The same picture on a bordo variant: one item, both rows.
             new(bordoVariantSame, Bordo, BordoVariant, 2, "https://cdn.dsmcdn.com/bordo-1.jpg?width=800"),
-            // A variant-only picture of a colour that has product-level pictures: not in the default strip, but a custom
-            // family order shows it, so it must be removable too.
+            // A variant-only picture of a colour that has product-level pictures: in the default strip after the colour's
+            // gallery (every picture of the model shows, whichever colour row was opened), and removable.
             new(bordoVariantOnly, Bordo, BordoVariant, 3, "https://cdn.dsmcdn.com/bordo-variant.jpg"),
-            // A colour with only variant pictures: its first one is in the default strip.
+            // A colour with only variant pictures: they are in the default strip.
             new(hakiVariant, Haki, Guid.NewGuid(), 4, "https://cdn.dsmcdn.com/haki-variant.jpg"),
         ], Titles);
 
-        Assert.Equal(["https://cdn.dsmcdn.com/own-1.jpg", "https://cdn.dsmcdn.com/bordo-1.jpg", "https://cdn.dsmcdn.com/haki-variant.jpg"], defaultUrls);
-        Assert.Equal(["https://cdn.dsmcdn.com/own-1.jpg", "https://cdn.dsmcdn.com/bordo-1.jpg", "https://cdn.dsmcdn.com/haki-variant.jpg", "https://cdn.dsmcdn.com/bordo-variant.jpg"], items.Select(item => item.Url));
+        Assert.Equal(["https://cdn.dsmcdn.com/own-1.jpg", "https://cdn.dsmcdn.com/bordo-1.jpg", "https://cdn.dsmcdn.com/bordo-variant.jpg", "https://cdn.dsmcdn.com/haki-variant.jpg"], defaultUrls);
+        Assert.Equal(["https://cdn.dsmcdn.com/own-1.jpg", "https://cdn.dsmcdn.com/bordo-1.jpg", "https://cdn.dsmcdn.com/bordo-variant.jpg", "https://cdn.dsmcdn.com/haki-variant.jpg"], items.Select(item => item.Url));
         Assert.Equal([bordoProduct, bordoVariantSame], items[1].MediaIds);
-        Assert.Equal([bordoVariantOnly], items[3].MediaIds);
-        Assert.Equal(["Bluz Bordo"], items[3].SourceProductTitles);
+        Assert.Equal([bordoVariantOnly], items[2].MediaIds);
+        Assert.Equal(["Bluz Bordo"], items[2].SourceProductTitles);
     }
 
     [Fact]
@@ -147,5 +147,31 @@ public sealed class CatalogFamilyMediaTests
         ], Titles, [Own, Bordo]);
 
         Assert.Equal(["https://cdn.dsmcdn.com/own-1.jpg", "https://cdn.dsmcdn.com/own-2.jpg", "https://cdn.dsmcdn.com/bordo-1.jpg", "https://cdn.dsmcdn.com/bordo-2.jpg"], defaultUrls);
+    }
+
+    // Each colour card's own pictures, in the family's card order whichever card the caller opened: its gallery by
+    // SortOrder, the pictures its variants hold, its size chart. The editor writes every colour from these.
+    [Fact]
+    public void Galleries_GiveEveryCardItsGallery_VariantPictures_AndChart()
+    {
+        var bordoVariant = Guid.NewGuid();
+        var rows = new List<CatalogFamilyMedia.Row>
+        {
+            new(Guid.NewGuid(), Own, null, 5, "https://cdn.dsmcdn.com/own-2.jpg"),
+            new(Guid.NewGuid(), Own, null, 1, "https://cdn.dsmcdn.com/own-1.jpg"),
+            new(Guid.NewGuid(), Bordo, bordoVariant, 0, "https://cdn.dsmcdn.com/bordo-1.jpg"),
+            new(Guid.NewGuid(), Bordo, bordoVariant, 1, "https://cdn.dsmcdn.com/bordo-2.jpg"),
+        };
+        var charts = new Dictionary<Guid, string?> { [Own] = "https://cdn.dsmcdn.com/own-2.jpg", [Bordo] = null };
+
+        var galleries = CatalogFamilyMedia.Galleries(rows, [Bordo, Own, Haki], charts);
+
+        Assert.Equal([Bordo, Own, Haki], galleries.Select(card => card.ProductId));
+        Assert.Empty(galleries[0].MediaUrls);
+        Assert.Equal(["https://cdn.dsmcdn.com/bordo-1.jpg", "https://cdn.dsmcdn.com/bordo-2.jpg"], galleries[0].VariantMediaUrls);
+        Assert.Equal(["https://cdn.dsmcdn.com/own-1.jpg", "https://cdn.dsmcdn.com/own-2.jpg"], galleries[1].MediaUrls);
+        Assert.Equal("https://cdn.dsmcdn.com/own-2.jpg", galleries[1].SizeChartUrl);
+        Assert.Empty(galleries[2].MediaUrls);
+        Assert.Empty(galleries[2].VariantMediaUrls);
     }
 }

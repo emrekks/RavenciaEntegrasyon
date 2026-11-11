@@ -137,9 +137,13 @@ public sealed record ProductView(
     public IReadOnlyList<string>? FamilyOrderedMediaUrls { get; init; }
     // Every product card of the family (same brand and model code: one per colour), the opened one first.
     public IReadOnlyList<Guid>? FamilyProductIds { get; init; }
+    // Every colour card's own pictures (gallery, variant pictures, size chart), oldest card first whichever was opened:
+    // the editor writes each colour's pictures to its own card from these.
+    public IReadOnlyList<ProductFamilyGalleryView>? FamilyGalleries { get; init; }
     // The card's picture marked as its size chart (Beden Tablosu); it is the last of MediaUrls and of every variant's.
     public string? SizeChartUrl { get; init; }
 }
+public sealed record ProductFamilyGalleryView(Guid ProductId, IReadOnlyList<string> MediaUrls, IReadOnlyList<string> VariantMediaUrls, string? SizeChartUrl);
 public sealed record ProductFamilyMediaView(string Url, IReadOnlyList<Guid> MediaIds, IReadOnlyList<string> SourceProductTitles);
 public sealed record ProductSummaryView(
     int TotalCount,

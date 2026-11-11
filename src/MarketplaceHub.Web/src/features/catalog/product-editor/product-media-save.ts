@@ -3,7 +3,7 @@
 // product sent 72 uploads of 18 files). The server already stores one file per content hash, so the saved media
 // are the same either way.
 
-import { mediaImageKey, uniqueMediaUrls } from '../product-media-editor'
+import { uniqueMediaUrls } from '../product-media-editor'
 
 export type ReconcileItem ={ url: string; sortOrder: number }
 export type PendingVariantUpload = { fileId: string; sortOrder: number }
@@ -40,24 +40,10 @@ export function savedMediaOrder(stripRefs: readonly string[], storedUrlByFileId:
   }))
 }
 
-// True when a new file ('file|…') stands after one of the other colours' pictures (a 'url|…' the card does not own):
-// such a place is kept only by a family order, the card's own list puts the file back after the card's own pictures.
-export function newFileAfterFamilyPicture(stripRefs: readonly string[], ownUrlKeys: ReadonlySet<string>): boolean {
-  let familyPictureSeen = false
-  for (const ref of stripRefs) {
-    if (ref.startsWith('file|')) {
-      if (familyPictureSeen) return true
-    } else if (ref.startsWith('url|') && !ownUrlKeys.has(mediaImageKey(ref.slice(4)))) {
-      familyPictureSeen = true
-    }
-  }
-  return false
-}
-
 // The colours this save adds (no saved variant of that colour yet) whose rows got no picture: a new colour becomes its
-// own card, which holds only the pictures assigned to its variants. A picture uploaded on the opened card stays that
-// card's, whatever it shows, so the new card had none and the list said "Görsel yok" (owner, MZ051BYC Kahverengi and
-// Mürdüm, 11.11.2026). Nothing is matched by name or look: the owner assigns the pictures, the save says which lack one.
+// own card, which gets the pictures assigned to its variants and those without a colour (family-gallery-save.ts), so
+// without an assignment it has none of its own (owner, MZ051BYC Kahverengi and Mürdüm, 11.11.2026). Nothing is matched
+// by name or look: the owner assigns the pictures, the save says which colour lacks one.
 export function newColoursWithoutPictures(
   rows: ReadonlyArray<{ key: string; options: Readonly<Record<string, string>>; mediaRefs: readonly string[] }>,
   savedVariantIds: ReadonlySet<string>,

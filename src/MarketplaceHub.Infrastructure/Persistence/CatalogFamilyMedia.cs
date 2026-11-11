@@ -2,8 +2,8 @@ using MarketplaceHub.Application;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-// The edit page's image strip shows the same model's other colours. Its default list is each card's product-level
-// pictures (else the card's first variant picture), card by card, but a custom family order lists every active picture
+// The edit page's image strip shows the same model's other colours. Its default list is each card's pictures (its
+// product-level rows, then those only its variants hold), card by card in the family's order, and a custom family order lists every active picture
 // of the family, variant pictures included. Every picture the strip can show therefore gets an item carrying all of its
 // media rows, so "Tümünü Temizle" and a tile's remove button take the whole picture away in one go instead of one layer
 // per save.
@@ -27,8 +27,11 @@ internal static class CatalogFamilyMedia
             .ThenBy(entry => entry.Index)
             .SelectMany(entry =>
             {
-                var productMedia = entry.Group.Where(row => row.VariantId is null).OrderBy(row => row.SortOrder).ThenBy(row => row.MediaId).ToList();
-                return productMedia.Count > 0 ? productMedia : entry.Group.OrderBy(row => row.SortOrder).ThenBy(row => row.MediaId).Take(1).ToList();
+                // Every picture of the card, its product-level rows first: a picture only its variants hold is in the
+                // strip too, so the strip is the same whichever colour row opened the editor (owner, 11.11.2026).
+                var productMedia = entry.Group.Where(row => row.VariantId is null).OrderBy(row => row.SortOrder).ThenBy(row => row.MediaId);
+                var variantMedia = entry.Group.Where(row => row.VariantId is not null).OrderBy(row => row.SortOrder).ThenBy(row => row.VariantId).ThenBy(row => row.MediaId);
+                return productMedia.Concat(variantMedia).ToList();
             })
             .ToList();
         var defaultUrls = CatalogImageIdentity.DistinctDisplayUrls(defaultRows.Select(row => row.Url));
@@ -48,6 +51,21 @@ internal static class CatalogFamilyMedia
             })
             .ToList();
         return (defaultUrls, items);
+    }
+
+    // Each card's own pictures as saved, in the family's card order: its gallery (product-level rows by SortOrder), the
+    // pictures its variants hold, and its size chart. The editor writes a model's pictures colour by colour from these,
+    // so the result does not depend on which colour row was opened.
+    internal static IReadOnlyList<ProductFamilyGalleryView> Galleries(IReadOnlyList<Row> rows, IReadOnlyList<Guid> productOrder, IReadOnlyDictionary<Guid, string?> sizeChartUrls)
+    {
+        var shown = rows.Where(row => !string.IsNullOrWhiteSpace(row.Url)).ToList();
+        return productOrder.Distinct().Select(productId =>
+        {
+            var own = shown.Where(row => row.ProductId == productId).ToList();
+            var gallery = own.Where(row => row.VariantId is null).OrderBy(row => row.SortOrder).ThenBy(row => row.MediaId).Select(row => row.Url);
+            var variantPictures = own.Where(row => row.VariantId is not null).OrderBy(row => row.SortOrder).ThenBy(row => row.VariantId).ThenBy(row => row.MediaId).Select(row => row.Url);
+            return new ProductFamilyGalleryView(productId, CatalogImageIdentity.DistinctDisplayUrls(gallery), CatalogImageIdentity.DistinctDisplayUrls(variantPictures), sizeChartUrls.GetValueOrDefault(productId));
+        }).ToList();
     }
 
     // The custom family order: StripUrls over the whole family's rows (a family reorder numbers every row by its rank).
