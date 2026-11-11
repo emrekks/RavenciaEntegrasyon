@@ -6,12 +6,14 @@ import { bulkPublishPlatformName } from '../products/bulk-publish-status'
 import type { MarketplaceConnection } from '../shared'
 import { availablePlatformUpdateFields, platformUpdateFieldLabel, platformUpdateFieldsForStores, platformUpdateGroups, platformUpdatePlan, platformUpdateSummary, type PlatformUpdateField, type PlatformUpdateGroup, type PlatformUpdateGroupKey } from './platform-update-fields'
 
-export type PlatformUpdateTarget = { connection: MarketplaceConnection; capabilities: { writable: boolean; content: boolean } }
+// blockReason: why the caller holds the store back (the product list: none of the selected products is on it); detail:
+// a line the card shows under its facts (the product list: how many of the selected products are on it).
+export type PlatformUpdateTarget = { connection: MarketplaceConnection; capabilities: { writable: boolean; content: boolean }; blockReason?: string; detail?: string }
 
 // An update from here is a manual write: the general external-write gate (server and the connection's Dış Yazma Ana
 // Anahtarı, externalWritesEnabled) must be open; the automatic price/stock switch ("Otomatik Dış Yazmalar") does not apply.
 export function isPlatformUpdateWritable(target: PlatformUpdateTarget) {
-  return target.capabilities.writable && target.connection.status.trim().toUpperCase() === 'ACTIVE' && target.connection.externalWritesEnabled !== false
+  return target.capabilities.writable && target.connection.status.trim().toUpperCase() === 'ACTIVE' && target.connection.externalWritesEnabled !== false && !target.blockReason
 }
 
 // Why a store cannot be updated, naming the switch and where it is turned on; '' when it can.
@@ -19,7 +21,7 @@ export function platformUpdateBlockReason(target: PlatformUpdateTarget) {
   if (!target.capabilities.writable) return 'Salt okunur, güncellenemez'
   if (target.connection.status.trim().toUpperCase() !== 'ACTIVE') return 'Bağlantı aktif değil'
   if (target.connection.externalWritesEnabled === false) return 'Dış Yazma Ana Anahtarı kapalı · Entegrasyonlar’dan açılır'
-  return ''
+  return target.blockReason ?? ''
 }
 
 type ShownGroup = Omit<PlatformUpdateGroup, 'fields'> & { fields: { key: PlatformUpdateField; label: string }[] }
@@ -29,7 +31,10 @@ type ShownGroup = Omit<PlatformUpdateGroup, 'fields'> & { fields: { key: Platfor
 // fields a selected store can take are shown; each card lists what really goes there, including what its marketplace
 // takes only together with a picked field. It sends nothing: Kaydet keeps the choice, and Hızlı Güncelle sends it
 // (owner, 9 Nov 2026). The bar is the window's own footer, so the cards scroll above it instead of under it.
-export function PlatformUpdateDialog({ targets, selectedIds, onSelectedIdsChange, fields, onFieldsChange, openGroups, onOpenGroupsChange, submitting, familyReach, onClose, onSave, onSend }: {
+// The product list's "Platformlara Güncelle" opens the same window for several products (BulkPlatformUpdateDialog):
+// with its own eyebrow and intro, the selected products above the fields, no Kaydet, and Gönder held while
+// `sendBlocked` names a reason.
+export function PlatformUpdateDialog({ targets, selectedIds, onSelectedIdsChange, fields, onFieldsChange, openGroups, onOpenGroupsChange, submitting, familyReach, onClose, onSave, onSend, eyebrow = 'Hızlı Güncelle Ayarı', intro, sendBlocked, children }: {
   targets: PlatformUpdateTarget[]
   selectedIds: string[]
   onSelectedIdsChange: (connectionIds: string[]) => void
@@ -42,9 +47,16 @@ export function PlatformUpdateDialog({ targets, selectedIds, onSelectedIdsChange
   familyReach?: (connection: MarketplaceConnection) => string
   onClose: () => void
   // Keeps the choice for Hızlı Güncelle: the picked fields that are shown (a field no selected store takes never goes).
-  onSave: (fields: PlatformUpdateField[]) => void
+  // Without it the window has no Kaydet (the product list sends at once).
+  onSave?: (fields: PlatformUpdateField[]) => void
   // Keeps the same choice, then sends it the way Hızlı Güncelle does (the parent closes the window).
   onSend: (fields: PlatformUpdateField[]) => void
+  eyebrow?: string
+  intro?: ReactNode
+  // Why Gönder waits (the products are still being checked, none of them can go); empty when it can go.
+  sendBlocked?: string
+  // Shown above the fields (the product list: the selected products and their state).
+  children?: ReactNode
 }) {
   const writable = targets.filter(isPlatformUpdateWritable)
   const selected = writable.filter(target => selectedIds.includes(target.connection.id))
@@ -80,8 +92,9 @@ export function PlatformUpdateDialog({ targets, selectedIds, onSelectedIdsChange
   return createPortal(
     <div className="workspace-modal-backdrop product-publish-popup-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) close() }}>
       <DialogSurface as="section" onClose={close} className="workspace-modal product-publish-popup-modal platform-update-modal" aria-labelledby="platform-update-title" onMouseDown={event => event.stopPropagation()}>
-        <header><div><p className="eyebrow">Hızlı Güncelle Ayarı</p><h2 id="platform-update-title">Platformlarda Güncelle</h2></div><button type="button" className="modal-close" onClick={close} disabled={submitting} aria-label="Platform güncelleme penceresini kapat"><UiIcon name="close" /></button></header>
+        <header><div><p className="eyebrow">{eyebrow}</p><h2 id="platform-update-title">Platformlarda Güncelle</h2>{intro && <p>{intro}</p>}</div><button type="button" className="modal-close" onClick={close} disabled={submitting} aria-label="Platform güncelleme penceresini kapat"><UiIcon name="close" /></button></header>
         <div className="product-publish-popup-body"><div className="product-add-page product-publish-popup"><section className="product-publish-step" aria-label="Ürünü platformlarda güncelle"><div className="product-publish-layout"><div className="product-publish-main">
+          {children}
           {groups.length > 0 && <section className="platform-update-section" aria-labelledby="platform-update-fields-title">
             <PlatformUpdateSectionHead id="platform-update-fields-title" title="Gönderilecek Bilgiler" hint={`${visibleFields.length}/${available.length} bilgi seçili`} help="Seçtiğiniz bilgiler her mağazaya, o mağazanın aldığı kadarıyla gönderilir.">
               <button type="button" disabled={submitting || allFieldsPicked} onClick={() => setGroup(available, true)}>Tümünü Seç</button>
@@ -104,13 +117,13 @@ export function PlatformUpdateDialog({ targets, selectedIds, onSelectedIdsChange
           </section>
         </div></div></section></div></div>
         <footer className="publish-selection-footer platform-update-footer">
-          <div><strong>{selected.length ? `${selected.length} platform seçildi` : 'Güncellenecek platform seçilmedi'}</strong><small>{!selected.length ? 'Güncellenecek mağazaları kartların üstünden seçin.' : sendsAnything ? 'Kaydet seçimi saklar; Gönder saklayıp hemen gönderir.' : 'Seçili mağazalara gidecek bir bilgi seçilmedi.'}</small></div>
+          <div><strong>{selected.length ? `${selected.length} platform seçildi` : 'Güncellenecek platform seçilmedi'}</strong><small>{!selected.length ? 'Güncellenecek mağazaları kartların üstünden seçin.' : !sendsAnything ? 'Seçili mağazalara gidecek bir bilgi seçilmedi.' : sendBlocked || (onSave ? 'Kaydet seçimi saklar; Gönder saklayıp hemen gönderir.' : 'Gönder seçili bilgileri seçili mağazalara hemen gönderir.')}</small></div>
           {!selected.length && <span className="publish-selection-warning"><UiIcon name="alert" /> En az bir platform seçin</span>}
           {selected.length > 0 && !sendsAnything && <span className="publish-selection-warning"><UiIcon name="alert" /> En az bir bilgi seçin</span>}
           <div className="platform-update-actions">
             <button type="button" className="secondary" onClick={close} disabled={submitting}>Vazgeç</button>
-            <button type="button" className="secondary" onClick={() => onSave(visibleFields)} disabled={submitting || !selected.length || !sendsAnything}>Kaydet</button>
-            <button type="button" onClick={() => onSend(visibleFields)} disabled={submitting || !selected.length || !sendsAnything}>Gönder</button>
+            {onSave && <button type="button" className="secondary" onClick={() => onSave(visibleFields)} disabled={submitting || !selected.length || !sendsAnything}>Kaydet</button>}
+            <button type="button" onClick={() => onSend(visibleFields)} disabled={submitting || !selected.length || !sendsAnything || Boolean(sendBlocked)}>{submitting ? 'Gönderiliyor…' : 'Gönder'}</button>
           </div>
         </footer>
       </DialogSurface>
@@ -196,6 +209,7 @@ function PlatformUpdateCard({ target, selected, fields, locked, familyReach, onT
         {writable && plan.bundled.length > 0 && <small>Seçilmedi ama aynı istekte birlikte gider: {plan.bundled.map(platformUpdateFieldLabel).join(', ')}.</small>}
       </div>
       {reach && <div className="platform-update-sends platform-update-family-reach"><dt>Model Ailesi</dt><dd>{reach}</dd></div>}
+      {target.detail && <div className="platform-update-sends"><dt>Yayındaki Ürünler</dt><dd>{target.detail}</dd></div>}
     </dl>
   </article>
 }
