@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // Owner, 10-11 Nov 2026: on a card with variants Liste/Satış Fiyatı are open ("Kilidi kaldır") and Stok Kodu/Barkod read-only; the
 // editor's required fields are marked and stop a save of a card on sale, and a new card with one empty is kept as a draft.
 const fixture = vi.hoisted(() => {
-  const state = { calls: [] as Array<{ method: string; path: string; body: unknown }>, brandId: 'b1' as string | null }
+  const state = { calls: [] as Array<{ method: string; path: string; body: unknown }>, brandId: 'b1' as string | null, gate: null as Promise<void> | null }
   const variant = (id: string, sku: string, colour: string) => ({ id, productId: 'p1', version: 1, sku, barcode: `${sku}-B`, modelCode: 'M-1', optionSignature: `Renk: ${colour}`, status: 'ACTIVE', weight: null, width: null, height: null, length: null, desi: 1, costPrice: null, onHand: 0, available: 0, inventoryVersion: 1, offerId: null, listPrice: 100, salePrice: 90, defaultListPrice: 100, defaultSalePrice: 90, currency: 'TRY', offerStatus: null, priceVersion: null, offerVersion: null, vatRate: 20, vatInclusion: 'INCLUDED', roundingMode: null, safetyStock: 0, mediaUrls: [], options: { Renk: colour }, attributes: [] })
   const product = () => ({
     id: 'p1', version: 3, title: 'Ürün', description: 'Açıklama', brandId: state.brandId, categoryId: 'c1', status: 'ACTIVE', updatedAt: '2026-11-10T15:00:00Z',
@@ -24,7 +24,7 @@ vi.mock('../../../shared/api', async importOriginal => {
     fixture.state.calls.push({ method: init?.method ?? 'GET', path, body: init?.body ? JSON.parse(String(init.body)) : null })
     if (path === '/products' && init?.method === 'POST') return { ...fixture.product(), status: 'DRAFT' }
     if (path === '/products/p1' && init?.method === 'PATCH') return fixture.product()
-    if (path === '/products/p1') return fixture.product()
+    if (path === '/products/p1') { if (fixture.state.gate) await fixture.state.gate; return fixture.product() }
     if (path.includes('/capabilities') || path.includes('/attribute-requirements')) return []
     return null
   }
@@ -42,6 +42,7 @@ let root: Root
 beforeEach(() => {
   fixture.state.calls.length = 0
   fixture.state.brandId = 'b1'
+  fixture.state.gate = null
   container = document.createElement('div')
   document.body.append(container)
   root = createRoot(container)
@@ -75,6 +76,22 @@ async function renderAt(path: string) {
 const labelled = (text: string) => Array.from(container.querySelectorAll('label')).find(label => label.textContent?.startsWith(text))!
 const inputOf = (text: string) => labelled(text).querySelector('input')!
 const writes = () => fixture.state.calls.filter(call => call.method !== 'GET')
+
+describe('the editor while the card loads', () => {
+  // Owner, 11 Nov 2026: the required fields flashed red on open, before the card's data was in the form.
+  it('frames no field red before the data arrives, and a really empty one after', async () => {
+    fixture.state.brandId = null
+    let release = () => undefined as void
+    fixture.state.gate = new Promise<void>(resolve => { release = resolve })
+    await renderAt('/products/p1')
+    expect(container.querySelector('input')).not.toBeNull()
+    expect(container.querySelectorAll('[aria-invalid="true"], .is-invalid')).toHaveLength(0)
+    release()
+    await settle()
+    expect(container.querySelector('#product-editor-brand')!.closest('.pm-select')!.classList.contains('is-invalid')).toBe(true)
+    expect(inputOf('Ürün Adı').getAttribute('aria-invalid')).toBeNull()
+  })
+})
 
 describe('a card with variants in the editor', () => {
   it('opens Liste/Satış Fiyatı with the card values, shows the first variant codes read-only and marks the required fields', async () => {

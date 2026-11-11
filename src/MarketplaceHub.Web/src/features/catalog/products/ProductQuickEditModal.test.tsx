@@ -80,7 +80,7 @@ describe('ProductQuickEditModal variant selection', () => {
       await click(groupBox('Bej'))
       expect(groupBox('Bej').checked).toBe(false)
       await click(groupBox('Siyah'))
-      expect(note()).toContain('Varyant seçimi bekleniyor')
+      expect(note()).toContain('Seçim yok: 4 varyantın tümüne uygulanır')
     }
     expect(errors).toEqual([])
   })
@@ -97,7 +97,8 @@ describe('ProductQuickEditModal variant selection', () => {
     await render()
     expect(trigger('Renk').textContent).toBe('Renk: Seçiniz')
     expect(trigger('Beden').textContent).toBe('Beden: Seçiniz')
-    expect(note()).toContain('Varyant seçimi bekleniyor')
+    // Nothing ticked: the action goes to every variant.
+    expect(note()).toContain('Seçim yok: 4 varyantın tümüne uygulanır')
 
     await pick('Renk', 'Bej')
     expect(note()).toContain('2 varyant')
@@ -106,27 +107,29 @@ describe('ProductQuickEditModal variant selection', () => {
     expect(note()).toContain('1 varyant')
     expect(groupBox('Bej').checked).toBe(false)
 
-    await pick('Renk', 'Tümü')
-    expect(trigger('Renk').textContent).toBe('Renk: Tümü')
-    expect(note()).toContain('2 varyant')
+    // No "Tümü" option: an empty Renk narrows nothing, so XL alone ticks XL in every colour.
+    await click(trigger('Renk'))
+    expect(Array.from(document.body.querySelectorAll('.rr-pop label.rr-opt .rr-grow')).map(item => item.textContent)).toEqual(['Bej', 'Siyah'])
+    await click(trigger('Renk'))
+    await pick('Renk', 'Bej')
+    expect(trigger('Renk').textContent).toBe('Renk: Seçiniz')
+    expect(note()).toContain('2 varyant seçildi')
+    expect(groupBox('Bej').checked || groupBox('Siyah').checked).toBe(false)
+
+    // Both empty: nothing ticked, the action goes to all of them.
     await pick('Beden', 'XL')
     expect(trigger('Beden').textContent).toBe('Beden: Seçiniz')
-    expect(note()).toContain('4 varyant')
-    expect(groupBox('Bej').checked && groupBox('Siyah').checked).toBe(true)
-
-    // Unticking Tümü clears the selection.
-    await pick('Renk', 'Tümü')
-    expect(trigger('Renk').textContent).toBe('Renk: Seçiniz')
-    expect(note()).toContain('Varyant seçimi bekleniyor')
+    expect(note()).toContain('Seçim yok: 4 varyantın tümüne uygulanır')
+    expect(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).map(button => button.textContent)).toEqual(['Tümüne Uygula'])
     expect(errors).toEqual([])
   })
 
   it('clears the shortcuts once a checkbox is changed by hand', async () => {
     await render()
-    await pick('Renk', 'Tümü')
+    await pick('Renk', 'Bej')
     await click(groupBox('Siyah'))
     expect(trigger('Renk').textContent).toBe('Renk: Seçiniz')
-    expect(note()).toContain('2 varyant')
+    expect(note()).toContain('4 varyant seçildi')
     expect(groupBox('Bej').checked).toBe(true)
   })
 })
@@ -180,7 +183,6 @@ describe('ProductQuickEditModal on a family of colour cards', () => {
       const group = groupBox(color).closest('.rr-vgroup')!
       expect(group.querySelector('.rr-vg-name small')?.textContent).toBe('1 varyant')
     }
-    await pick('Renk', 'Tümü')
     expect(note()).toContain('3 varyant')
     await click(groupBox('Bordo').closest('.rr-vg-h')!.querySelector<HTMLButtonElement>('button.rr-vg-t')!)
     // A stock window opens the groups of one row together (Bordo and Füme here): each shows its own variant only.
@@ -196,8 +198,8 @@ describe('ProductQuickEditModal on a family of colour cards', () => {
       if (init?.method === 'PUT' && path.startsWith('/inventory/')) calls.push({ path, body: JSON.parse(String(init.body)) })
       return {} as never
     })
+    // Nothing ticked: the stock goes to every variant of the window.
     await render(cards)
-    await pick('Renk', 'Tümü')
     const amount = document.body.querySelector<HTMLInputElement>('input[placeholder="Miktar"]')!
     await click(document.body.querySelector<HTMLButtonElement>('button[aria-label^="Stok İşlemi"]')!)
     await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('[role="option"]')).find(option => option.textContent === 'Bu Kadar Ekle (+)')!)

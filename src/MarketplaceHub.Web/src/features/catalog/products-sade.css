@@ -382,6 +382,9 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-modal.rr-qe-modal { width: min(980px, 100%); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-modal.rr-qe-modal.rr-qe-stock { width: min(820px, 100%); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qe-modal .rr-step { min-width: 0; }
+@media (min-width: 761px) {
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qe-modal .rr-dgrid.rr-qe-row { grid-template-columns: repeat(var(--qe-cols, 2), minmax(0, 1fr)); }
+}
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroups { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-items: start; min-width: 0; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroups.rr-two { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroups .rr-vgroup { min-width: 0; }
