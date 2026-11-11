@@ -29,11 +29,14 @@ describe('variant Barkod / Stok Kodu menu', () => {
     expect(p.onGenerate).toHaveBeenCalledWith('all')
   })
 
-  it('defaults to the empty scope when there are empty rows and fires the same handlers per tab and scope', async () => {
+  // Owner, 11 Nov 2026: "default hep tüm varyantlar seçili olmalı", also when some rows are empty.
+  it('opens on all variants even with empty rows and fires the same handlers per tab and scope', async () => {
     const p = props({ emptyCount: 2, generatePreview: { all: ['A-01', 'A-10'], missing: ['A-03', 'A-07'] } })
     const { host } = render(<VariantCodeMenu {...p} />)
     await flush()
-    expect(radios(host)[1].checked).toBe(true)
+    expect(radios(host)[0].checked).toBe(true)
+    expect(submit(host).textContent).toBe('10 Barkodu Üret')
+    click(radios(host)[1])
     expect(submit(host).textContent).toBe('2 Boş Barkodu Üret')
     click(submit(host))
     expect(p.onGenerate).toHaveBeenLastCalledWith('missing')
@@ -71,10 +74,11 @@ describe('variant Barkod / Stok Kodu menu', () => {
     const p = props({ noun: 'Stok Kodu', emptyCount: 3, fromBarcode: { missingCount: 4, allCount: 9, onApply } })
     const { host } = render(<VariantCodeMenu {...p} />)
     await flush()
-    expect(submit(host).textContent).toBe('3 Boş Stok Kodunu Üret')
+    expect(submit(host).textContent).toBe('10 Stok Kodunu Üret')
     click(tab(host, 'Temizle'))
     expect(host.querySelector('.variant-code-menu-preview')?.textContent).toBe('10 stok kodu boşalır')
     click(tab(host, 'Barkoddan'))
+    click(radios(host)[1])
     expect(submit(host).textContent).toBe('4 Boş Stok Kodunu Doldur')
     click(submit(host))
     expect(onApply).toHaveBeenLastCalledWith('missing')

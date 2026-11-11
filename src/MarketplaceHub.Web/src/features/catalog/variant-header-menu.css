@@ -27,3 +27,9 @@
 @media (prefers-reduced-motion: no-preference) {
   .variant-header-action-menu.variant-header-action-menu-portal { --rv-motion-menu: 160ms; --rv-motion-item-stagger: 20ms; }
 }
+
+/* The menu's portal styles every button as a list row (left text, no fill): the tabs centre their label and the action stays a filled button. */
+.variant-header-action-menu-portal .variant-code-menu .variant-code-menu-tabs > button { justify-content: center; align-items: center; text-align: center; }
+.variant-header-action-menu-portal .variant-code-menu button.variant-code-menu-submit { justify-content: center; align-items: center; width: 100%; min-height: 0; height: 36px; padding: 0 12px; color: #fff; font-weight: 600; text-align: center; background: var(--rv-color-primary); border: 1px solid var(--rv-color-primary); border-radius: 7px; }
+.variant-header-action-menu-portal .variant-code-menu button.variant-code-menu-submit:hover:not(:disabled) { background: color-mix(in srgb, var(--rv-color-primary) 88%, #000); }
+.variant-header-action-menu-portal .variant-code-menu button.variant-code-menu-submit.is-danger { background: var(--rv-color-danger); border-color: var(--rv-color-danger); }
