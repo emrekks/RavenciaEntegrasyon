@@ -149,10 +149,11 @@ export function variantOutgoingRefs(input: {
   return { refs: fromGallery.length || chartKey ? withChartLast(fromGallery) : [], assigned: false }
 }
 
-// A colour or size assignment holds for the sizes and colours added later (owner, 11.11.2026: "bordoya atandı, 3 varyant
-// eşlendi, 4. beden eklenirse o da eşlenmiş olsun renkle"; likewise a size). A new row without pictures takes the
-// pictures every assigned row of its colour holds, and those every assigned row of its size holds across two or more
-// colours; it is then saved as the variant's own list like any other. Nothing is matched by name or look.
+// A size added to a colour the editor already holds starts with that colour's pictures (owner, 11.11.2026: "bordoya
+// atandı, 3 varyant eşlendi, 4. beden eklenirse o da eşlenmiş olsun renkle"): a new row without pictures takes the
+// pictures every assigned row of its colour holds, and is saved as the variant's own list like any other. This happens
+// once, when the row is added; nothing is stored for the colour (the only storage is each variant's own list), and no
+// size passes pictures on. Nothing is matched by name or look.
 type AssignmentRow = { key: string; mediaRefs: string[] }
 const commonRefs = (rows: ReadonlyArray<AssignmentRow>) => {
   if (!rows.length) return []
@@ -161,40 +162,14 @@ const commonRefs = (rows: ReadonlyArray<AssignmentRow>) => {
 }
 const sameText = (left: string, right: string) => left.trim().toLocaleLowerCase('tr-TR') === right.trim().toLocaleLowerCase('tr-TR')
 
-function colourAndSizeRefs<R extends AssignmentRow>(row: R, among: readonly R[], colourOf: (row: R) => string, sizeOf: (row: R) => string) {
-  const assigned = among.filter(other => other.key !== row.key && other.mediaRefs.length > 0)
-  const colour = colourOf(row)
-  const size = sizeOf(row)
-  const byColour = colour ? commonRefs(assigned.filter(other => sameText(colourOf(other), colour))) : []
-  const sizeRows = size ? assigned.filter(other => sameText(sizeOf(other), size)) : []
-  const sizeColours = new Set(sizeRows.map(other => colourOf(other).trim().toLocaleLowerCase('tr-TR')))
-  const bySize = sizeColours.size >= 2 ? commonRefs(sizeRows) : []
-  return { byColour, bySize }
-}
-
-export function inheritAssignments<R extends AssignmentRow>(before: readonly R[], after: readonly R[], colourOf: (row: R) => string, sizeOf: (row: R) => string): R[] {
+export function inheritAssignments<R extends AssignmentRow>(before: readonly R[], after: readonly R[], colourOf: (row: R) => string): R[] {
   const beforeKeys = new Set(before.map(row => row.key))
   return after.map(row => {
     if (beforeKeys.has(row.key) || row.mediaRefs.length) return row
-    const { byColour, bySize } = colourAndSizeRefs(row, before, colourOf, sizeOf)
-    const seen = new Set<string>()
-    const refs = [...byColour, ...bySize].filter(ref => { const key = refKey(ref); if (seen.has(key)) return false; seen.add(key); return true })
+    const colour = colourOf(row)
+    const refs = colour ? commonRefs(before.filter(other => other.mediaRefs.length > 0 && sameText(colourOf(other), colour))) : []
     return refs.length ? { ...row, mediaRefs: refs } : row
   })
-}
-
-// Where each of a row's pictures comes from, for its icon's tooltip: "Bordo atamasından 3, XL atamasından 1, bu varyanta özel 1".
-export function assignmentSourceText<R extends AssignmentRow>(row: R, rows: readonly R[], colourOf: (row: R) => string, sizeOf: (row: R) => string): string {
-  const { byColour, bySize } = colourAndSizeRefs(row, rows, colourOf, sizeOf)
-  const colourKeys = new Set(byColour.map(refKey))
-  const sizeKeys = new Set(bySize.map(refKey))
-  let fromColour = 0; let fromSize = 0; let own = 0
-  for (const ref of row.mediaRefs) {
-    if (colourKeys.has(refKey(ref))) fromColour++
-    else if (sizeKeys.has(refKey(ref))) fromSize++
-    else own++
-  }
-  return [fromColour ? `${colourOf(row).trim()} atamasından ${fromColour}` : '', fromSize ? `${sizeOf(row).trim()} atamasından ${fromSize}` : '', own ? `bu varyanta özel ${own}` : ''].filter(Boolean).join(', ')
 }
 
 // The colours each picture is assigned to by the rows (lower case), for variantOutgoingRefs.

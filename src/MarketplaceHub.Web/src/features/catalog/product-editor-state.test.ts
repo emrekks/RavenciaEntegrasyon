@@ -80,15 +80,18 @@ describe('product editor state', () => {
     expect(JSON.parse(JSON.stringify(editorVariantCostUpdate({ costPrice: 12.5, loadedCostPrice: null })))).toEqual({ costPrice: 12.5, loadedCostPrice: null })
   })
 
-  it('sends the desi only when the user changed it, with each variant\'s stored desi as loaded', () => {
-    expect(editorVariantDesiUpdate(3, 2, 2)).toEqual({ desi: 3, loadedDesi: 2 })
-    expect(editorVariantDesiUpdate(3, 2, undefined)).toEqual({ desi: 3, loadedDesi: null })
-    // Untouched: a desi set per variant (e.g. by the products import) is left as it is.
-    expect(editorVariantDesiUpdate(2, 2, 5)).toEqual({})
-    expect(editorVariantDesiUpdate(0, 2, 2)).toEqual({})
-    // A variant with no desi of its own takes the form's (the card's) desi on save even when the field was not changed.
-    expect(editorVariantDesiUpdate(2, 2, null)).toEqual({ desi: 2, loadedDesi: null })
-    expect(editorVariantDesiUpdate(0, 0, null)).toEqual({})
+  it('sends the model desi only when the owner edited the field, to every variant whose stored desi differs', () => {
+    // The desi is the model's (owner, 11.11.2026): edited, it goes to every size of every colour, with the stored desi as loaded.
+    expect(editorVariantDesiUpdate(3, true, 2)).toEqual({ desi: 3, loadedDesi: 2 })
+    expect(editorVariantDesiUpdate(3, true, undefined)).toEqual({ desi: 3, loadedDesi: null })
+    expect(editorVariantDesiUpdate(3, true, null)).toEqual({ desi: 3, loadedDesi: null })
+    // Typed again with the value the field opened with: the colours that held another desi (or none) take it too.
+    expect(editorVariantDesiUpdate(2, true, 5)).toEqual({ desi: 2, loadedDesi: 5 })
+    expect(editorVariantDesiUpdate(2, true, 2)).toEqual({})
+    // Untouched: nothing is written, a differing or missing desi stays as each variant holds it (the editor names it).
+    expect(editorVariantDesiUpdate(2, false, 5)).toEqual({})
+    expect(editorVariantDesiUpdate(2, false, null)).toEqual({})
+    expect(editorVariantDesiUpdate(0, true, 2)).toEqual({})
   })
 
   it('opens the desi field empty when no variant has a desi, never with a guessed 1', () => {
