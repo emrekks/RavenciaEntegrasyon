@@ -7,7 +7,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { createPortal } from 'react-dom'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, hubPoll, loadAllPages } from '../../../shared/api'
-import { TitleHint, UiIcon, usePromptDialog, type UiIconName, DialogSurface, UnsavedChangesGuard, StickyActionBar } from '../../../shared/components'
+import { FieldLabel, TitleHint, UiIcon, usePromptDialog, type UiIconName, DialogSurface, UnsavedChangesGuard, StickyActionBar } from '../../../shared/components'
 import { failedWithHttpAnswer, newIdempotencyKey, sendWithVersionedIdempotencyKey } from '../../../shared/idempotency'
 import { httpsUrlProblem } from '../../../shared/safe-url'
 import { categoryRequirementsStaleTimeMs } from '../category-requirements-query'
@@ -309,6 +309,13 @@ function republishListingProfileBody(saved: SavedListingProfile | null | undefin
 // A message the server attached to one field of a refused save (422 fieldErrors), shown under that field.
 function EditorFieldError({ message }: { message?: string }) {
   return message ? <small className="product-field-error" role="alert">{message}</small> : null
+}
+// Barkodları Otomatik Oluştur: what the codes are made of (buildSequentialVariantCode), behind the field's "?".
+function automaticCodeHelp(field: 'barcode' | 'stock') {
+  const rule = 'Model kodu büyük harfe çevrilir, Türkçe harfler sadeleşir (Ş→S, Ğ→G, İ→I), boşluklar “-” olur ve yalnız A-Z, 0-9, “.”, “-”, “_” kalır; sonuna “-” ve iki haneli sıra numarası eklenir: MZ070-01, MZ070-02 … Formda ya da katalogda kullanılan bir numara atlanır; kod en fazla 40 karakterdir.'
+  return field === 'barcode'
+    ? <>Otomatik oluşturulur. {rule} Tek ürünün barkodu 01 numarasını alır.</>
+    : <>Otomatik oluşturulur; her varyantın stok kodu kendi barkoduyla aynıdır. {rule} Varyant tablosunda değiştirebilirsiniz.</>
 }
 const variantCodesReadOnlyTitle = 'Varyantlı üründe kodlar varyant tablosunda düzenlenir.'
 // A required field's label: its name and the red asterisk KDV Oranı has (required-fields.ts).
@@ -3621,8 +3628,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
                 <label title={variantCodesReadOnlyTitle}>Barkod<input className="technical-field barcode-value is-read-only" value={form.barcode || variantRows[0]?.barcode || ''} readOnly title={variantCodesReadOnlyTitle} /></label>
               </>
               : <>
-                <label>{automaticBarcodeGeneration ? 'Stok Kodu (varyantlarda manuel)' : <RequiredLabel>Stok Kodu</RequiredLabel>}<input className="technical-field sku-value" value={form.baseSku} aria-invalid={requiredFieldInvalid('baseSku')} onChange={event => updateField('baseSku', event.target.value)} placeholder={automaticBarcodeGeneration ? 'Varyant satırlarından girin' : 'RAV-BLUZ'} disabled={automaticBarcodeGeneration} /><EditorFieldError message={requiredError('baseSku')} /></label>
-                <label>{automaticBarcodeGeneration ? 'Tek Ürün Barkodu (otomatik oluşturuluyor)' : <RequiredLabel>Barkod</RequiredLabel>}<input className="technical-field barcode-value" value={form.barcode} aria-invalid={requiredFieldInvalid('barcode')} onChange={event => updateField('barcode', event.target.value)} placeholder={automaticBarcodeGeneration ? 'Model kodu ve sıra numarasından oluşturulur' : 'EAN / barkod'} disabled={automaticBarcodeGeneration} /><EditorFieldError message={requiredError('barcode')} /></label>
+                <label>{automaticBarcodeGeneration ? <FieldLabel text="Stok Kodu" help={automaticCodeHelp('stock')} /> : <RequiredLabel>Stok Kodu</RequiredLabel>}<input className="technical-field sku-value" value={form.baseSku} aria-invalid={requiredFieldInvalid('baseSku')} onChange={event => updateField('baseSku', event.target.value)} placeholder={automaticBarcodeGeneration ? '' : 'RAV-BLUZ'} disabled={automaticBarcodeGeneration} /><EditorFieldError message={requiredError('baseSku')} /></label>
+                <label>{automaticBarcodeGeneration ? <FieldLabel text="Barkod" help={automaticCodeHelp('barcode')} /> : <RequiredLabel>Barkod</RequiredLabel>}<input className="technical-field barcode-value" value={form.barcode} aria-invalid={requiredFieldInvalid('barcode')} onChange={event => updateField('barcode', event.target.value)} placeholder={automaticBarcodeGeneration ? '' : 'EAN / barkod'} disabled={automaticBarcodeGeneration} /><EditorFieldError message={requiredError('barcode')} /></label>
               </>}
             <label className="desi-input-field"><RequiredLabel>Desi</RequiredLabel><span className="desi-inline-control"><input value={form.desi} aria-invalid={requiredFieldInvalid('desi')} onChange={event => { setCalculateDesi(false); updateField('desi', event.target.value) }} type="number" min="0.01" step="0.01" placeholder="Girilmemiş" required /><button type="button" className="secondary" onClick={() => setDesiCalculatorOpen(true)}>Hesapla</button></span><EditorFieldError message={requiredError('desi')} /></label>
             <label className="warranty-input-field" title="0: garanti yok"><RequiredLabel>Garanti Süresi (Ay)</RequiredLabel><input value={form.warrantyMonths} aria-invalid={requiredFieldInvalid('warrantyMonths')} onChange={event => updateField('warrantyMonths', event.target.value)} type="number" min="0" max="240" step="1" inputMode="numeric" placeholder="0 = garanti yok" /><EditorFieldError message={requiredError('warrantyMonths')} /></label>

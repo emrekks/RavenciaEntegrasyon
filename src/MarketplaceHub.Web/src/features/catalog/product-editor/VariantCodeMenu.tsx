@@ -40,7 +40,8 @@ export function VariantCodeMenu(props: VariantCodeMenuProps) {
   const counts: Record<VariantCodeMenuScope, number> = tab === 'fromBarcode' && fromBarcode
     ? { missing: fromBarcode.missingCount, all: fromBarcode.allCount }
     : { missing: emptyCount, all: rowCount }
-  const defaultScope: VariantCodeMenuScope = counts.missing > 0 ? 'missing' : 'all'
+  // Every opening starts on Tüm Varyantlar (owner, 11 Nov 2026); Yalnız Boş Olanlar is chosen by hand.
+  const defaultScope: VariantCodeMenuScope = counts.all > 0 ? 'all' : 'missing'
   const scope: VariantCodeMenuScope = chosenScope && counts[chosenScope] > 0 ? chosenScope : defaultScope
   const count = tab === 'clear' ? filledCount : counts[scope]
   const hasScope = tab !== 'clear'

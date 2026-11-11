@@ -6,7 +6,7 @@ import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ApiRequestError, hubApi } from '../../../shared/api'
 import { newIdempotencyKey } from '../../../shared/idempotency'
-import { Button, IconButton, Modal, UiIcon } from '../../../shared/components'
+import { Button, FieldHelp, IconButton, Modal, UiIcon } from '../../../shared/components'
 import { addSizeChartColumn, initialSizeChartDraft, maximumSizeChartColumns, newColumnIssue, presetSizeChartColumns, removeSizeChartColumn, setSizeChartCell, sizeChartCellKey, sizeChartColumnLabel, validateSizeChartDraft, type SizeChartDraft, type SizeChartMeasurements } from './size-chart-measurements'
 import './size-chart.css'
 
@@ -17,9 +17,9 @@ export function SizeChartButton({ productId, sizes, disabledReason, onUse }: { p
   const [open, setOpen] = useState(false)
   // A field of the price and stock grid (beside Güvenlik Stoğu): an empty label line keeps the button level with the inputs.
   return <div className="size-chart-trigger">
-    <span className="size-chart-trigger-label" aria-hidden="true">&nbsp;</span>
+    {/* Why it is off sits behind a "?" on the label line, so the button stays level with the fields beside it. */}
+    <span className="size-chart-trigger-label">{disabledReason ? <FieldHelp id="size-chart-disabled-reason" label="Beden Tablosu">{disabledReason}</FieldHelp> : <span aria-hidden="true">&nbsp;</span>}</span>
     <button type="button" className="secondary size-chart-button" disabled={Boolean(disabledReason)} title={disabledReason ?? 'Ölçüleri girip Ravencia tasarımında beden tablosu görseli oluşturun.'} aria-describedby={disabledReason ? 'size-chart-disabled-reason' : undefined} onClick={() => setOpen(true)}>Beden Tablosu</button>
-    {disabledReason && <small id="size-chart-disabled-reason" className="size-chart-disabled-reason">{disabledReason}</small>}
     {open && productId && createPortal(<SizeChartDialog productId={productId} sizes={sizes} onClose={() => setOpen(false)} onUse={url => { onUse(url); setOpen(false) }} />, document.body)}
   </div>
 }
