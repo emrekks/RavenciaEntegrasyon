@@ -64,6 +64,14 @@ describe('the result of a followed marketplace job', () => {
     expect(jobOutcomeFeedback([outcome], 'Trendyol’a')).toMatchObject({ title: 'Kısmen Aktarıldı', kind: 'error' })
   })
 
+  it('counts the variants left out as already live as live, not refused (RYP006: the missing colour sent)', () => {
+    const live = (code: string) => variant(code, 'NOT_SENT', 'Daha önceki bir yayınla zaten yayında; bu gönderime alınmadı.')
+    const outcome = jobOutcome(trendyol, detail('SUCCEEDED', {}, [live('RYP006-01'), live('RYP006-02'), variant('RYP006-19', 'SENT'), variant('RYP006-20', 'SENT')]))
+    expect(outcome).toMatchObject({ state: 'succeeded', line: 'Trendyol: 2 varyant aktarıldı; 2 varyant zaten yayında.' })
+    const mixed = jobOutcome(trendyol, detail('SUCCEEDED', {}, [live('RYP006-01'), variant('RYP006-19', 'SENT'), variant('RYP006-21', 'NOT_SENT', 'Desi eksik.')]))
+    expect(mixed.line).toBe('Trendyol: 1 varyant aktarıldı; 1 varyant zaten yayında, 1 varyant aktarılamadı — RYP006-21: Desi eksik.')
+  })
+
   it('reads a blocked job as not transferred, and a variant without a reason says so', () => {
     expect(jobOutcome(trendyol, detail('BLOCKED', { lastErrorSummary: 'Trendyol ürünü reddetti: kategori kapalı.' })).line).toBe('Trendyol: aktarılamadı — Trendyol ürünü reddetti: kategori kapalı.')
     expect(jobOutcome(trendyol, detail('SUCCEEDED', {}, [variant('A-1', 'REJECTED')])).line).toBe('Trendyol: aktarılamadı — A-1: neden bildirilmedi.')

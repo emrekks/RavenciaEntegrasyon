@@ -76,8 +76,8 @@ export function OrderRowMarkIcons({ marks, unreadableLines = 0, amountMayBeIncom
   return <span className="rr-omarks">
     {unreadableLines > 0 && <Mark kind="unreadable" tip={unreadableLinesLabel(unreadableLines, amountMayBeIncomplete)}><svg className="rr-omark-ico" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 1.8 14.6 13.6H1.4z" /><path d="M8 6.2v3.4M8 11.6v.1" /></svg></Mark>}
     {marks?.microExport && <Mark kind="micro" tip={microExportLabel(marks.microExportCountryCode)}><Flag code={marks.microExportCountryCode ?? ''} /></Mark>}
-    {marks?.deliveryPoint && <Mark kind="point" tip="Teslimat Noktası Siparişi"><svg className="rr-omark-ico" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 14.2s4.6-4.3 4.6-7.8a4.6 4.6 0 0 0-9.2 0c0 3.5 4.6 7.8 4.6 7.8z" /><circle cx="8" cy="6.4" r="1.7" /></svg></Mark>}
     {fastLabel && <Mark kind="fast" tip={fastLabel}><svg className="rr-omark-ico" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M1.8 4h7.7v7H1.8zM9.5 6.5h2.8l2 2.3V11H9.5" /><circle cx="4.5" cy="11.8" r="1.2" /><circle cx="11.8" cy="11.8" r="1.2" /></svg></Mark>}
+    {marks?.deliveryPoint && <Mark kind="point" tip="Teslimat Noktası Siparişi"><svg className="rr-omark-ico" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 14.2s4.6-4.3 4.6-7.8a4.6 4.6 0 0 0-9.2 0c0 3.5 4.6 7.8 4.6 7.8z" /><circle cx="8" cy="6.4" r="1.7" /></svg></Mark>}
   </span>
 }
 

@@ -27,6 +27,11 @@ export type JobOutcome = { state: JobOutcomeState; line: string; /** Why it did 
 const failedVariantStatuses = new Set(['REJECTED', 'NOT_SENT'])
 const sentVariantStatuses = new Set(['SENT', 'APPROVED', 'PENDING'])
 
+// A variant left out because it is already live (JobVariantResultPolicy.AlreadyLiveReason / AlreadyOnMarketplaceReason)
+// was not refused: only its missing siblings were sent (RYP006, 11 Nov 2026: 3 sent, 18 already live).
+const alreadyLiveReasons = ['Daha önceki bir yayınla zaten yayında', 'Pazaryerinde zaten var (eşleşmiş)']
+const isAlreadyLive = (item: { status: string; reason: string | null }) => item.status === 'NOT_SENT' && alreadyLiveReasons.some(reason => item.reason?.trim().startsWith(reason))
+
 function variantName(item: { barcode: string | null; stockCode: string | null }) {
   return item.stockCode?.trim() || item.barcode?.trim() || 'bir varyant'
 }
@@ -48,11 +53,14 @@ export function jobOutcome(followed: FollowedJob, detail: FollowedJobDetail | nu
   const job = detail.job
   const status = job.status.trim().toUpperCase()
   const items = detail.variantResults?.items ?? []
-  const refused = items.filter(item => failedVariantStatuses.has(item.status))
+  const live = items.filter(isAlreadyLive)
+  const refused = items.filter(item => failedVariantStatuses.has(item.status) && !isAlreadyLive(item))
+  const liveNote = live.length ? `; ${live.length} varyant zaten yayında` : ''
   const sent = items.filter(item => sentVariantStatuses.has(item.status))
   if (status === 'SUCCEEDED') {
-    if (refused.length && sent.length) return { state: 'partial', line: `${name}: ${sent.length} varyant aktarıldı, ${refused.length} varyant aktarılamadı — ${variantReasons(refused)}.`, reason: variantReasons(refused) }
+    if (refused.length && sent.length) return { state: 'partial', line: `${name}: ${sent.length} varyant aktarıldı${liveNote}, ${refused.length} varyant aktarılamadı — ${variantReasons(refused)}.`, reason: variantReasons(refused) }
     if (refused.length) return { state: 'failed', line: `${name}: aktarılamadı — ${variantReasons(refused)}.`, reason: variantReasons(refused) }
+    if (live.length && sent.length) return { state: 'succeeded', line: `${name}: ${sent.length} varyant aktarıldı${liveNote}.` }
     return { state: 'succeeded', line: `${name}: ${followed.what} aktarıldı.` }
   }
   const why = refused.length ? variantReasons(refused) : reasonOf(job)
