@@ -1294,6 +1294,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const [automaticBarcodeGeneration, setAutomaticBarcodeGeneration] = useState(false)
   const [marketplaceCodesOpen, setMarketplaceCodesOpen] = useState(false)
   const [quickEditOpen, setQuickEditOpen] = useState(false)
+  // The card whose saved data the form holds (edit page): until it is set, no field is shown as missing.
+  const [seededProductId, setSeededProductId] = useState<string | null>(null)
   // The variant whose marketplace codes the row's link button opened, or null for the whole table.
   const [marketplaceCodesVariant, setMarketplaceCodesVariant] = useState<string | null>(null)
   const [attributeValueQueries, setAttributeValueQueries] = useState<Record<string, string>>({})
@@ -1498,7 +1500,10 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const missingRequiredFields = missingRequiredEditorFields(form, { automaticBarcodes: automaticBarcodeGeneration, hasVariants: variantRows.length > 1 })
   // A stopped save's message under a required field stays only while the field is still empty.
   const requiredError = (field: RequiredEditorField) => missingRequiredFields.includes(field) ? requiredErrors[field] : undefined
-  const requiredFieldInvalid = (field: RequiredEditorField) => requiredError(field) || (editProductId && missingRequiredFields.includes(field)) ? true : undefined
+  // An opened card frames its empty required fields red only once its data is in the form: before that every field is
+  // empty and the whole form flashed red while the product loaded (owner, 11 Nov 2026).
+  const editorSeeded = Boolean(editProductId) && seededProductId === editProductId
+  const requiredFieldInvalid = (field: RequiredEditorField) => requiredError(field) || (editorSeeded && missingRequiredFields.includes(field)) ? true : undefined
   const variantStockTotal = variantRows.reduce((total, row) => total + Number(row.stock || 0), 0)
   const desi = useMemo(() => { const width = Number(form.width); const length = Number(form.length); const height = Number(form.height); return width > 0 && length > 0 && height > 0 ? width * length * height / 3000 : 0 }, [form.width, form.length, form.height])
   // The size chart stays the card's last picture whatever order the draft holds (size-chart-order.ts).
@@ -1542,6 +1547,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     allowReseedUntil.current = 0
     setStaleProductVersion(null)
     initializedEditProductKey.current = productKey
+    if (mode === 'edit') setSeededProductId(product.id)
     const primary = product.variants[0]
     const initialModelCode = primary?.modelCode ?? product.modelCode ?? ''
     const sortedVariants = sortVariantsAlphabetically(product.variants)
@@ -3833,7 +3839,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         <div className="editor-section-title"><span>6</span><div><h2>Ürün Seçenek Grupları<TitleHint label="Ürün Seçenek Grupları">İşaretlediğiniz özellik değerlerinin tüm kombinasyonları varyant satırı olur.</TitleHint></h2></div></div>
         {(fieldErrors.variants || fieldErrors.stock || fieldErrors.attributes) && <div className="product-field-error-list" role="alert">{[fieldErrors.variants, fieldErrors.stock, fieldErrors.attributes].filter(Boolean).map(message => <p key={message}>{message}</p>)}</div>}
         {variantRows.length > 0 && <>
-            <div className="variant-table-toolbar"><div className="variant-table-toolbar-actions"><button type="button" className="secondary is-danger variant-clear-button" onClick={clearVariants}><UiIcon name="trash" /> Oluşan Varyantları Temizle</button>{editProductId && <button type="button" className="secondary variant-marketplace-codes-button" onClick={() => setMarketplaceCodesOpen(true)} title="Hepsiburada ve Shopify varyant kodlarını göster"><UiIcon name="externalLink" /> Pazaryeri Kodları</button>}<button type="button" className="secondary variant-media-bulk-button" onClick={openBulkVariantMediaPicker} title="Seçenek değerine görsel ata"><VariantImageIcon /> Seçeneklere Görsel Ata</button><button type="button" className="secondary variant-quick-edit-button" onClick={() => setQuickEditOpen(true)} disabled={!variantRows.length} title="Stok, maliyet ve fiyatları toplu düzenle; Kaydet’e basılana kadar hiçbir şey kaydedilmez"><UiIcon name="edit" /> Toplu Düzenle</button></div></div>
+            <div className="variant-table-toolbar"><div className="variant-table-toolbar-actions"><button type="button" className="secondary is-danger variant-clear-button" onClick={clearVariants}><UiIcon name="trash" /> Oluşan Varyantları Temizle</button>{editProductId && <button type="button" className="secondary variant-marketplace-codes-button" onClick={() => setMarketplaceCodesOpen(true)} title="Hepsiburada ve Shopify varyant kodlarını göster"><UiIcon name="externalLink" /> Pazaryeri Kodları</button>}<button type="button" className="secondary variant-quick-edit-button" onClick={() => setQuickEditOpen(true)} disabled={!variantRows.length} title="Stok, maliyet ve fiyatları toplu düzenle; Kaydet’e basılana kadar hiçbir şey kaydedilmez"><UiIcon name="edit" /> Toplu Düzenle</button><button type="button" className="secondary variant-media-bulk-button" onClick={openBulkVariantMediaPicker} title="Seçenek değerine görsel ata"><VariantImageIcon /> Seçeneklere Görsel Ata</button></div></div>
         </>}
             {variantRows.length > 0 && <div className="variant-mobile-groups" role="tablist" aria-label="Görünen varyant alanları">{([['codes', 'Kodlar'], ['stock', 'Stok / Maliyet'], ['price', 'Fiyat'], ['actions', 'İşlemler']] as const).map(([group, label]) => <button key={group} type="button" role="tab" aria-selected={variantMobileGroup === group} className={variantMobileGroup === group ? 'is-on' : undefined} onClick={() => setVariantMobileGroup(group)}>{label}</button>)}</div>}
             {variantCodeIssueSummary && <div className="variant-code-rule-notice" role="status">
