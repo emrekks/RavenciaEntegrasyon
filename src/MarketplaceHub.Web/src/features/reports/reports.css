@@ -449,6 +449,29 @@ html body .app-shell.stitch-shell main .reports-page .reports-card-actions .repo
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .reports-page .reports-ad-figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+/* Kâr Köprüsü's row window: its explanation under the title, then the row's lines by kind (and by platform), each with
+   what it is under its name and the amount on the right, the total that is the row's figure under them; 16 px between
+   rows, a dashed rule between them as in Kâr Hesabı. */
+.app-shell.stitch-shell main .reports-page .rv-modal.reports-bridge-modal { width: min(620px, calc(100vw - 32px)); }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail { display: grid; gap: 20px; }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail section { display: grid; gap: 10px; }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail h3 { margin: 0; color: var(--rv-color-muted); font-size: 13px; font-weight: 600; }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail ul { display: grid; margin: 0; padding: 0; list-style: none; }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail li { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px dashed var(--rv-color-border); }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail li:first-child { padding-top: 0; border-top: 0; }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail li > i { width: 8px; height: 8px; justify-self: center; background: color-mix(in srgb, var(--rv-color-ink) 28%, transparent); border-radius: 50%; }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail li > .platform-square-mark { width: 24px; height: 24px; border-radius: 7px; font-size: 8px; }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail li > .reports-bridge-detail-name { display: grid; gap: 2px; min-width: 0; color: var(--rv-color-ink); font-size: 13.5px; font-weight: 500; }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail li > .reports-bridge-detail-name small { color: var(--rv-color-subtle); font-size: 11.5px; font-weight: 400; line-height: 1.4; }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail li > b { color: var(--rv-color-ink); font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail li.is-total { border-top: 1px solid var(--rv-color-border-strong); }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail li.is-total > i { visibility: hidden; }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail li.is-total > .reports-bridge-detail-name { font-weight: 600; }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail dl { display: grid; gap: 8px; margin: 0; padding: 12px 14px; background: var(--rv-color-surface-soft); border-radius: 12px; }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail dl > div { display: flex; justify-content: space-between; gap: 16px; font-size: 12.5px; }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail dt { color: var(--rv-color-subtle); }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail dd { margin: 0; color: var(--rv-color-ink); font-weight: 500; text-align: right; font-variant-numeric: tabular-nums; }
+.app-shell.stitch-shell main .reports-page .reports-bridge .reports-tip-trigger[aria-haspopup='dialog'] { cursor: pointer; }
 .app-shell.stitch-shell main .reports-page .reports-journey-modal .reports-journey-pane { padding-top: 0; border-top: 0; }
 .app-shell.stitch-shell main .reports-page .reports-journey-modal .reports-journey-pane h3 { display: none; }
 

@@ -465,6 +465,53 @@ describe('ReportsPage', () => {
     expect(Math.round((350 - slices + 53.17) * 100) / 100).toBe(-tl(bridge.get('Tahmini Zarar')))
   })
 
+  it('opens each Kâr Köprüsü row in a window whose lines add up to the row\'s figure to the kuruş', async () => {
+    // Owner, 11 Nov 2026: "üstüne basınca detayları popupta açılmalıydı". The platforms' own costs here leave a kuruş of
+    // rounding against Trendyol's statement, shown as Diğer; a split that does not add up is left out.
+    const costs = withFinance.costs!
+    const page = await open('', { ...withFinance, costs: { ...costs, netVat: { salesVat: 60.01, productCostVat: 7.27, expenseVat: 42.73, net: 10 },
+      channels: [{ connectionId: 'c1', platformCode: 'TRENDYOL', displayName: 'Ravencia Trendyol', source: 'trendyol-finance', realCommission: 20, estimatedCommission: 21.49,
+        amounts: [{ category: 'SERVICE_FEE', amount: 12.5 }, { category: 'STOPPAGE', amount: 1 }, { category: 'CARGO', amount: 30 }], estimatedCargo: 99, total: 0 }] } })
+    const tl = (text: string | null | undefined) => { const value = Number((text ?? '').replace(/[^\d,]/gu, '').replace(',', '.')); return (text ?? '').includes('−') ? -value : value }
+    const rows = [...page.querySelectorAll<HTMLLIElement>('.reports-bridge > li.is-minus')]
+    expect(rows.map(row => row.querySelector('.reports-bridge-label')?.textContent)).toEqual(['− İade Edilen Tutar', '− Kargo', '− Pazaryeri Masrafları', '− Stopaj', '− Net KDV', '− Ürün Maliyeti', '− Reklam ve Diğer Kesintiler'])
+    const opened = new Map<string, Element>()
+    for (const row of rows) {
+      const label = row.querySelector('.reports-bridge-label')!.textContent!.replace(/^[−+] /u, '')
+      const figure = Math.abs(tl(row.querySelector('b')?.textContent))
+      await act(async () => { row.querySelector<HTMLButtonElement>('.reports-tip-trigger')!.click() })
+      const modal = page.querySelector('.reports-bridge-modal')!
+      expect(modal.querySelector('h2')?.textContent, label).toBe(label)
+      // The short help is in the window's header.
+      expect(modal.querySelector('header p')?.textContent?.length, label).toBeGreaterThan(10)
+      for (const list of modal.querySelectorAll('.reports-bridge-detail ul')) {
+        const lines = [...list.querySelectorAll('li:not(.is-total) > b')].map(cell => tl(cell.textContent))
+        expect(Math.round(lines.reduce((sum, value) => sum + value, 0) * 100) / 100, label).toBe(figure)
+        expect(tl(list.querySelector('li.is-total > b')?.textContent), label).toBe(figure)
+      }
+      opened.set(label, modal.cloneNode(true) as Element)
+      await act(async () => { modal.querySelector<HTMLButtonElement>('header button[aria-label="Kapat"]')!.click() })
+      expect(page.querySelector('.reports-bridge-modal')).toBeNull()
+    }
+    const lines = (label: string) => [...opened.get(label)!.querySelectorAll('.reports-bridge-detail li')].map(line => `${line.querySelector('.reports-bridge-detail-name')?.firstChild?.textContent} ${line.querySelector('b')?.textContent}`)
+    // Pazaryeri Masrafları: the real and estimated commission and the service fee by kind; by platform Trendyol's own
+    // figures with the service fee charged tied to no order, and the kuruş they leave as Diğer.
+    expect(lines('Pazaryeri Masrafları')).toEqual(['Gerçek Komisyon ₺20,00', 'Tahmini Komisyon ₺21,50', 'Hizmet Bedeli ₺1.092,04', 'Toplam ₺1.133,54',
+      'Trendyol ₺53,99', 'Siparişe Bağlı Olmayan Kayıtlar ₺1.079,54', 'Diğer ₺0,01', 'Toplam ₺1.133,54'])
+    // Kargo by kind only: the platforms' 129 does not make the row's 226,68, so no platform split is shown.
+    expect(lines('Kargo')).toEqual(['Faturalı Gönderim Kargosu ₺10,00', 'Faturalı İade Kargosu ₺20,00', 'Faturası Gelmeyen, Tahmini ₺196,68', 'Toplam ₺226,68'])
+    expect(lines('Stopaj')).toEqual(['Tahmini ₺1,00', 'Siparişe Bağlı Olmayan ₺448,01', 'Toplam ₺449,01', 'Trendyol ₺1,00', 'Siparişe Bağlı Olmayan Kayıtlar ₺448,01', 'Toplam ₺449,01'])
+    // Net KDV: the sales' VAT less the cost's and the charges', the rounding kuruş as Diğer.
+    expect(lines('Net KDV')).toEqual(['Satışların KDV\'si ₺60,01', 'Ürün Maliyetinin KDV\'si − ₺7,27', 'Masrafların KDV\'si − ₺42,73', 'Diğer − ₺0,01', 'Toplam ₺10,00'])
+    expect(lines('Reklam ve Diğer Kesintiler')).toEqual(['Reklam ₺5.000,00', 'Toplam ₺5.000,00'])
+    expect(opened.get('Ürün Maliyeti')!.textContent).toContain('2 / 4 (%50,0)')
+    // The result opens the whole account.
+    await act(async () => { page.querySelector<HTMLButtonElement>('.reports-bridge > li.is-end .reports-tip-trigger')!.click() })
+    expect(page.querySelector('.reports-bridge-modal .reports-ledger')).not.toBeNull()
+    await act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
+    expect(page.querySelector('.reports-bridge-modal')).toBeNull()
+  })
+
   it('tells a fee invoice of a payout not read yet as covered by the estimate and takes it off nowhere', async () => {
     // 5 Nov 2026: payout 78619772's 448,01 of withholding tax before its lines were read. Its orders carry the estimate.
     const costs = withFinance.costs!
