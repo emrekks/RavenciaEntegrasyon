@@ -54,6 +54,28 @@ export function newFileAfterFamilyPicture(stripRefs: readonly string[], ownUrlKe
   return false
 }
 
+// The colours this save adds (no saved variant of that colour yet) whose rows got no picture: a new colour becomes its
+// own card, which holds only the pictures assigned to its variants. A picture uploaded on the opened card stays that
+// card's, whatever it shows, so the new card had none and the list said "Görsel yok" (owner, MZ051BYC Kahverengi and
+// Mürdüm, 11.11.2026). Nothing is matched by name or look: the owner assigns the pictures, the save says which lack one.
+export function newColoursWithoutPictures(
+  rows: ReadonlyArray<{ key: string; options: Readonly<Record<string, string>>; mediaRefs: readonly string[] }>,
+  savedVariantIds: ReadonlySet<string>,
+  isColourOption: (name: string) => boolean
+): string[] {
+  const colours = new Map<string, { label: string; saved: boolean; pictured: boolean }>()
+  for (const row of rows) {
+    const label = Object.entries(row.options).find(([name, value]) => isColourOption(name) && value.trim())?.[1].trim()
+    if (!label) continue
+    const key = label.toLocaleLowerCase('tr-TR')
+    const colour = colours.get(key) ?? { label, saved: false, pictured: false }
+    colour.saved ||= savedVariantIds.has(row.key)
+    colour.pictured ||= row.mediaRefs.length > 0
+    colours.set(key, colour)
+  }
+  return [...colours.values()].filter(colour => !colour.saved && !colour.pictured).map(colour => colour.label)
+}
+
 // Runs the tasks at most `limit` at a time and keeps the results in input order; the first failure is thrown
 // once the tasks already started have settled.
 export async function mapWithConcurrency<T, R>(items: readonly T[], limit: number, run: (item: T, index: number) => Promise<R>): Promise<R[]> {

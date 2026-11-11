@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { mediaImageKey, mediaStripOwnPosition, mediaStripRefs, reorderItems } from '../product-media-editor'
-import { mapWithConcurrency, mediaSaveProgressMessage, newFileAfterFamilyPicture, savedMediaOrder, storedProductMediaUrl, variantMediaReconcilePlan } from './product-media-save'
+import { mapWithConcurrency, mediaSaveProgressMessage, newColoursWithoutPictures, newFileAfterFamilyPicture, savedMediaOrder, storedProductMediaUrl, variantMediaReconcilePlan } from './product-media-save'
+import { orderMediaUrlsByVariants } from './publication-readiness'
+import type { Variant } from '../shared'
 
 describe('one picture strip', () => {
   const front = 'https://cdn.example.com/front.jpg'
@@ -121,5 +123,49 @@ describe('a new file after the other colours\' pictures', () => {
     expect(newFileAfterFamilyPicture(amongOwn, ownKeys)).toBe(false)
     // A card with no other colour never needs it.
     expect(newFileAfterFamilyPicture(mediaStripRefs(own, ['chart'], []), ownKeys)).toBe(false)
+  })
+})
+
+// Owner 11.11.2026, MZ051BYC (Siyah card opened, 4 other colours on their own cards, Beden × Renk): six new pictures
+// added at the end of the strip, after the other colours' pictures, came back right after Siyah's 3 pictures. The edit
+// page gets the whole model's variants, and their pictures read as Siyah's own: the save then saw no file after another
+// colour's picture and wrote no family order, and the next save copied every colour's pictures onto Siyah.
+describe('the card\'s own pictures on a page that shows the whole model', () => {
+  const own = [1, 2, 3].map(index => `https://cdn.example.com/siyah-${index}.jpg`)
+  const others = ['lacivert', 'gri', 'bordo', 'haki']
+  const otherPictures = others.flatMap(colour => [1, 2, 3].map(index => `https://cdn.example.com/${colour}-${index}.jpg`))
+  const variant = (productId: string, mediaUrls: string[]) => ({ id: `${productId}-v`, productId, mediaUrls }) as unknown as Variant
+  const variants = [variant('siyah', own), ...others.map((colour, index) => variant(colour, otherPictures.slice(index * 3, index * 3 + 3)))]
+
+  it('takes only the opened card\'s variants, so a new file after the other colours writes the family order', () => {
+    const ownUrls = orderMediaUrlsByVariants(variants, own, own[0], false, 'siyah')
+    expect(ownUrls).toEqual(own)
+    const strip = mediaStripRefs([...ownUrls, ...otherPictures], ['purple', 'brown'], [])
+    expect(newFileAfterFamilyPicture(strip, new Set(ownUrls.map(mediaImageKey)))).toBe(true)
+    const purpleUrl = storedProductMediaUrl('55555555-5555-4555-8555-555555555555')
+    const brownUrl = storedProductMediaUrl('66666666-6666-4666-8666-666666666666')
+    // The family order the save writes keeps the new pictures last, after every colour's pictures.
+    expect(savedMediaOrder(strip, new Map([['purple', purpleUrl], ['brown', brownUrl]]))).toEqual([...own, ...otherPictures, purpleUrl, brownUrl])
+  })
+
+  it('still takes the card\'s own variant pictures the product list lacks', () => {
+    const extra = 'https://cdn.example.com/siyah-detail.jpg'
+    expect(orderMediaUrlsByVariants([variant('siyah', [...own, extra]), ...variants.slice(1)], own, own[0], false, 'siyah')).toEqual([...own, extra])
+  })
+})
+
+// Owner 11.11.2026, MZ051BYC: Kahverengi and Mürdüm added on the Siyah card became cards of their own with no picture
+// (the brown and purple pictures were uploaded on Siyah and never assigned to those variants): the list said "Görsel yok".
+describe('new colours without a picture', () => {
+  const row = (key: string, colour: string, mediaRefs: string[] = []) => ({ key, options: { Renk: colour, Beden: 'L' }, mediaRefs })
+  const isColour = (name: string) => name === 'Renk'
+
+  it('names a colour the save adds with no picture on any of its rows', () => {
+    const rows = [row('s1', 'Siyah'), row('n1', 'Kahverengi'), row('n2', 'Kahverengi'), row('n3', 'Mürdüm'), row('n4', 'Mor', ['url|https://cdn.example.com/mor.jpg'])]
+    expect(newColoursWithoutPictures(rows, new Set(['s1']), isColour)).toEqual(['Kahverengi', 'Mürdüm'])
+  })
+
+  it('leaves a saved colour alone, new sizes included', () => {
+    expect(newColoursWithoutPictures([row('s1', 'Siyah'), row('n1', 'Siyah')], new Set(['s1']), isColour)).toEqual([])
   })
 })

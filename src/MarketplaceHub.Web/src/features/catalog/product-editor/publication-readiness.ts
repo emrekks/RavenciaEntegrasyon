@@ -54,8 +54,13 @@ export function rowOptionValue(row: Pick<ReadinessRow, 'options' | 'optionSignat
 // by SortOrder, the order the owner arranged and saved, then the pictures only variants hold). Never rebuilt colour by
 // colour from the variants' pictures: a picture every colour shares, such as a size chart uploaded last, then came
 // back after the first colour's pictures (owner, RYP007, 6.11.2026). A variant picture the list lacks goes after it.
-export function orderMediaUrlsByVariants(variants: Variant[], productMediaUrls: string[], primaryImageUrl: string | null, hasCustomMediaOrder = false) {
+// Only the card's own variants count (ownerProductId): the edit page gets the whole model's variants, and the other
+// colours' pictures read as the card's own made the save put a new upload right after the card's own pictures, ahead of
+// the other colours it stood behind, and let the next save copy every colour's pictures onto the card (owner,
+// MZ051BYC, 11.11.2026).
+export function orderMediaUrlsByVariants(variants: Variant[], productMediaUrls: string[], primaryImageUrl: string | null, hasCustomMediaOrder = false, ownerProductId?: string) {
   if (hasCustomMediaOrder) return [...productMediaUrls]
+  if (ownerProductId) variants = variants.filter(variant => !variant.productId || variant.productId === ownerProductId)
   const ordered: string[] = []
   const seen = new Set<string>()
   const add = (url: string | null | undefined) => {
@@ -264,7 +269,7 @@ export function publicationReadinessDraftFromProduct(product: Product, allRequir
     automaticBarcodeGeneration: false,
     variantsWithoutMedia: product.variants.filter(variant => !(variant.mediaUrls ?? []).length).length,
     // The form keeps the URLs as one text and splits it the same way.
-    mediaCount: orderMediaUrlsByVariants(product.variants, product.mediaUrls ?? [], product.primaryImageUrl, product.hasCustomMediaOrder).join('\n').split(/\r?\n|[;|]/).map(item => item.trim()).filter(Boolean).length,
+    mediaCount: orderMediaUrlsByVariants(product.variants, product.mediaUrls ?? [], product.primaryImageUrl, product.hasCustomMediaOrder, product.id).join('\n').split(/\r?\n|[;|]/).map(item => item.trim()).filter(Boolean).length,
     variantAttributeIds,
     variantRows,
     attributeSelections: selected,

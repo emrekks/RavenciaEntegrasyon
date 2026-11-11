@@ -42,7 +42,7 @@ import { attributeIssueTip } from '../publish-issue-chips'
 import { attributeMappingPlatform, mappingFocusItems } from '../../marketplace/mappings/mapping-focus'
 import { PRODUCT_IMAGE_ACCEPT, toProductImage } from './product-image-file'
 import { LocalImagePreview, MediaAddTile, MediaMoveButtons, MediaZoomButton } from './media-tiles'
-import { mapWithConcurrency, mediaFilesLeftAfterFailedSave, mediaSaveProgressMessage, newFileAfterFamilyPicture, savedMediaOrder, storedProductMediaUrl, variantMediaReconcilePlan } from './product-media-save'
+import { mapWithConcurrency, mediaFilesLeftAfterFailedSave, mediaSaveProgressMessage, newColoursWithoutPictures, newFileAfterFamilyPicture, savedMediaOrder, storedProductMediaUrl, variantMediaReconcilePlan } from './product-media-save'
 import { keepPendingCreateMedia, pendingVariantMediaRefs, takePendingCreateMedia, type PendingCreateMedia } from './pending-create-media'
 import { MarketplaceCodesDialog } from './MarketplaceCodesDialog'
 import { PublicationJobDialog } from './PublicationJobDialog'
@@ -1548,7 +1548,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     const initialModelCode = primary?.modelCode ?? product.modelCode ?? ''
     const sortedVariants = sortVariantsAlphabetically(product.variants)
     const removedMediaKeys = mode === 'copy' ? copyRemovedMedia.current : []
-    const savedMediaUrls = withoutCopyRemovedMedia(orderMediaUrlsByVariants(product.variants, product.mediaUrls ?? [], product.primaryImageUrl, product.hasCustomMediaOrder), removedMediaKeys)
+    const savedMediaUrls = withoutCopyRemovedMedia(orderMediaUrlsByVariants(product.variants, product.mediaUrls ?? [], product.primaryImageUrl, product.hasCustomMediaOrder, product.id), removedMediaKeys)
     const savedFamilyMediaUrls = withoutCopyRemovedMedia(product.familyMediaUrls ?? product.familyMediaItems?.map(item => item.url) ?? [], removedMediaKeys)
     const initialListPrice = product.defaultListPrice ?? primary?.listPrice ?? primary?.salePrice ?? 0
     const initialSalePrice = product.defaultSalePrice ?? primary?.salePrice ?? 0
@@ -3061,6 +3061,10 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         completed.push(sizeChartUrl ? 'beden tablosu' : 'beden tablosu işareti kaldırıldı')
       }
       mediaStep = false
+      if (editProductId) {
+        const unpicturedColours = newColoursWithoutPictures(rows, new Set((productToEdit.data?.variants ?? []).map(variant => variant.id)), isColorOptionName)
+        if (unpicturedColours.length) warnings.push(`Yeni ${unpicturedColours.length > 1 ? 'renklere' : 'renge'} görsel atanmadı: ${unpicturedColours.join(', ')}. Bu renk kendi kartı olur ve yalnız varyantlarına atanan görselleri taşır; açtığınız karta yüklenen görseller o kartta kalır. Varyant Görselleri'nden atayın, yoksa listede “Görsel yok” görünür ve pazaryerine görselsiz gider.`)
+      }
       if (editProductId ? productMediaChanged || mediaFiles.length > 0 : mediaUrls.length || mediaFiles.length) completed.push('görseller')
       if (removedFamilyMediaCount) completed.push(`diğer renklerden kaldırılan ${removedFamilyMediaCount} görsel`)
       if (familyMediaChanged) completed.push('diğer renklerin görsel sırası')
