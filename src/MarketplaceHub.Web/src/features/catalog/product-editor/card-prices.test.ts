@@ -43,4 +43,9 @@ describe('required editor fields', () => {
   it('does not ask for Stok Kodu and Barkod while automatic barcodes make them from the model code', () => {
     expect(missingRequiredEditorFields({ ...complete, baseSku: '', barcode: '' }, { automaticBarcodes: true })).toEqual([])
   })
+
+  it('does not ask for the card Stok Kodu and Barkod on a card with variants, but does without them', () => {
+    expect(missingRequiredEditorFields({ ...complete, baseSku: '', barcode: '' }, { automaticBarcodes: false, hasVariants: true })).toEqual([])
+    expect(missingRequiredEditorFields({ ...complete, baseSku: '', barcode: '' }, { automaticBarcodes: false, hasVariants: false })).toEqual(['baseSku', 'barcode'])
+  })
 })

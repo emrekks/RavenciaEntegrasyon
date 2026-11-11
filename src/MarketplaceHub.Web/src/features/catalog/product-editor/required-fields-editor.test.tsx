@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-// Owner, 10 Nov 2026: on a card with variants Liste/Satış Fiyatı, Stok Kodu and Barkod are open ("Kilidi kaldır"); the
+// Owner, 10-11 Nov 2026: on a card with variants Liste/Satış Fiyatı are open ("Kilidi kaldır") and Stok Kodu/Barkod read-only; the
 // editor's required fields are marked and stop a save of a card on sale, and a new card with one empty is kept as a draft.
 const fixture = vi.hoisted(() => {
   const state = { calls: [] as Array<{ method: string; path: string; body: unknown }>, brandId: 'b1' as string | null }
@@ -77,15 +77,20 @@ const inputOf = (text: string) => labelled(text).querySelector('input')!
 const writes = () => fixture.state.calls.filter(call => call.method !== 'GET')
 
 describe('a card with variants in the editor', () => {
-  it('opens Liste Fiyatı, Satış Fiyatı, Stok Kodu and Barkod with the card values and marks the required fields', async () => {
+  it('opens Liste/Satış Fiyatı with the card values, shows the first variant codes read-only and marks the required fields', async () => {
     await renderAt('/products/p1')
-    for (const name of ['Liste Fiyatı', 'Satış Fiyatı', 'Stok Kodu', 'Barkod']) {
+    for (const name of ['Liste Fiyatı', 'Satış Fiyatı']) {
       expect(inputOf(name).disabled).toBe(false)
+      expect(inputOf(name).readOnly).toBe(false)
       expect(labelled(name).querySelector('.required-marker')).not.toBeNull()
     }
     expect(inputOf('Liste Fiyatı').value).toBe('120')
     expect(inputOf('Satış Fiyatı').value).toBe('99.9')
-    expect(inputOf('Stok Kodu').value).toBe('SKU-1')
+    // Owner, 11 Nov 2026 ("Salt okunur kalsın"): on a card with variants the codes are read-only (selectable) and not required.
+    for (const [name, value] of [['Stok Kodu', 'SKU-1'], ['Barkod', 'SKU-1-B']]) {
+      expect(inputOf(name)).toMatchObject({ readOnly: true, disabled: false, value, title: 'Varyantlı üründe kodlar varyant tablosunda düzenlenir.' })
+      expect(labelled(name).querySelector('.required-marker')).toBeNull()
+    }
     for (const name of ['Ürün Adı', 'Marka', 'Panel Kategorisi', 'Model Kodu', 'Desi', 'Garanti Süresi', 'Teslimat Süresi']) expect(labelled(name).querySelector('.required-marker')).not.toBeNull()
 
     // A typed decimal comma is the card's price on Kaydet; no variant row price changes.

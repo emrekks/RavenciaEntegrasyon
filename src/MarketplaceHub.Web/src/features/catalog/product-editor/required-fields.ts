@@ -3,7 +3,7 @@ import { priceInputNumber } from './card-prices'
 // The product editor's required fields (owner, 10 Nov 2026: "bunlar zorunlu alandır, boş olamazlar"). Every save but
 // Taslak Olarak Kaydet stops while one is empty: on a new card, on an edit and before publishing. A card that opens with
 // one empty still opens; the field is framed red until it is filled. Garanti Süresi takes 0 (no warranty); empty is
-// missing. Stok Kodu and Barkod are made from the model code while Barkodları Otomatik Oluştur is on, so they are not
+// missing. Stok Kodu and Barkod are made from the model code while Barkodları Otomatik Oluştur is on, and on a card with variants each row holds its own (the card shows them read-only), so they are not
 // asked for then. Liste Fiyatı and Satış Fiyatı must be above 0.
 export type RequiredEditorField = 'title' | 'brandId' | 'categoryId' | 'modelCode' | 'baseSku' | 'barcode' | 'listPrice' | 'salePrice' | 'warrantyMonths' | 'deliveryDays' | 'desi'
 
@@ -27,14 +27,16 @@ const filled = (value: string) => value.trim() !== ''
 const positivePrice = (value: string) => priceInputNumber(value) > 0
 
 // The required fields that are empty, in the order the page shows them.
-export function missingRequiredEditorFields(form: RequiredFieldsForm, options: { automaticBarcodes: boolean }): RequiredEditorField[] {
+export function missingRequiredEditorFields(form: RequiredFieldsForm, options: { automaticBarcodes: boolean; hasVariants?: boolean }): RequiredEditorField[] {
+  // On a card with variants each row holds its own codes (owner, 11 Nov 2026: the card's fields are read-only there).
+  const codesElsewhere = options.automaticBarcodes || Boolean(options.hasVariants)
   const checks: Array<[RequiredEditorField, boolean]> = [
     ['title', filled(form.title)],
     ['brandId', filled(form.brandId)],
     ['categoryId', filled(form.categoryId)],
     ['modelCode', filled(form.modelCode)],
-    ['baseSku', options.automaticBarcodes || filled(form.baseSku)],
-    ['barcode', options.automaticBarcodes || filled(form.barcode)],
+    ['baseSku', codesElsewhere || filled(form.baseSku)],
+    ['barcode', codesElsewhere || filled(form.barcode)],
     ['desi', filled(form.desi)],
     ['warrantyMonths', filled(form.warrantyMonths)],
     ['deliveryDays', filled(form.deliveryDays)],
