@@ -1,7 +1,7 @@
 /* "Beden Tablosu Oluştur" as a button beside Güvenlik Stoğu, its window (SizeChartDialog.tsx, portalled to the body, so its controls carry
    their own 36 px / 7 px look) and the size chart mark on the image tiles. */
 .size-chart-trigger { display: grid; align-content: start; gap: var(--rv-space-2); min-width: 0; }
-.size-chart-trigger-label { display: flex; align-items: center; justify-content: flex-end; height: 19.5px; overflow: visible; font-size: 13px; font-weight: 700; color: var(--rv-color-ink); }
+.size-chart-trigger-label { display: flex; align-items: center; justify-content: flex-start; height: 19.5px; overflow: visible; font-size: 13px; font-weight: 700; color: var(--rv-color-ink); }
 .app-shell.stitch-shell main .product-step-grid .size-chart-trigger button.size-chart-button { width: 100%; min-height: 0; height: 36px; padding: 0 12px; border-radius: 7px; font-size: 14px; white-space: nowrap; }
 .app-shell.stitch-shell main .product-step-grid .size-chart-trigger button.size-chart-button:disabled { cursor: not-allowed; }
 .size-chart-disabled-reason { color: var(--rv-color-subtle); font-size: 12px; font-weight: 500; }
