@@ -12604,6 +12604,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .SingleOrDefaultAsync(cancellationToken);
         if (string.Equals(platformCode, "HEPSIBURADA", StringComparison.Ordinal))
             return await SyncHepsiburadaOpenReturns(tenantId, connectionId, correlationId, cancellationToken);
+        if (string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase))
+            await DateTrendyolReturnRequestsAsync(tenantId, connectionId, correlationId, cancellationToken);
         var batchSize = configuration.GetValue("MarketplaceSync:ReturnLifecycle:BatchSize", 25);
         var (incompleteCargoBudget, completeCargoBudget) = ReturnLifecycleBatchPolicy.SplitBatch(batchSize);
         var incompleteCargoCursor = await Cursor(tenantId, connectionId, "RETURN_LIFECYCLE_CARGO_MISSING", cancellationToken);
@@ -12673,6 +12675,42 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase))
             await DateTrendyolReturnDecisionsAsync(tenantId, connectionId, correlationId, cancellationToken);
         return true;
+    }
+
+    // Claims stored before ReturnClaim.RequestedAt existed (11 Nov 2026) are dated from Trendyol: one getClaims request by
+    // claimIds per run for the next claims without a request date (cursor RETURN_REQUESTED_AT, by claim id, wrapping),
+    // so a claim Trendyol does not return or does not date never holds the others back. Nothing is asked once every
+    // claim is dated. A refusal stops this step only; the lifecycle read goes on.
+    internal const int ReturnRequestDatesPerRun = ReturnLifecycleBatchPolicy.ClaimIdsPerRequest;
+
+    private async Task DateTrendyolReturnRequestsAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    {
+        if (returns is not IReturnBatchReadPort batchReader) return;
+        var undated = db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.RequestedAt == null);
+        if (!await undated.AnyAsync(cancellationToken)) return;
+        var cursor = await Cursor(tenantId, connectionId, "RETURN_REQUESTED_AT", cancellationToken);
+        var after = Guid.TryParse(cursor.OpaqueCursor, out var cursorId) ? undated.Where(x => x.Id.CompareTo(cursorId) > 0) : undated;
+        var batch = await after.OrderBy(x => x.Id).Select(x => new { x.Id, x.ExternalClaimId }).Take(ReturnRequestDatesPerRun).ToListAsync(cancellationToken);
+        if (batch.Count == 0)
+            batch = await undated.OrderBy(x => x.Id).Select(x => new { x.Id, x.ExternalClaimId }).Take(ReturnRequestDatesPerRun).ToListAsync(cancellationToken);
+        if (batch.Count == 0) return;
+        cursor.OpaqueCursor = batch[^1].Id.ToString("D");
+        cursor.LastAttemptAt = timeProvider.GetUtcNow();
+        cursor.Version++;
+        await db.SaveChangesAsync(cancellationToken);
+        var ids = batch.Select(x => x.ExternalClaimId).Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.Ordinal).ToArray();
+        if (ids.Length == 0) return;
+        TrackRequest();
+        var many = await batchReader.GetManyAsync(Context(tenantId, connectionId, correlationId, $"return-requested-at:{ids[0]}:{ids.Length}"), ids, cancellationToken);
+        if (!many.IsSuccess) { TrackResultFailure(many.Error); return; }
+        foreach (var claim in many.Value!)
+        {
+            TrackReceived();
+            await UpsertReturn(tenantId, connectionId, claim, cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        cursor.LastSuccessAt = timeProvider.GetUtcNow();
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     private async Task<IReadOnlyList<(Guid Id, string ExternalClaimId)>> ReadReturnLifecycleBatchAsync(
