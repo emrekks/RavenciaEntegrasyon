@@ -2302,8 +2302,10 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             query = query.Where(x => db.ReturnLines.Any(returnLine => returnLine.TenantId == x.TenantId && returnLine.ClaimId == x.Id && db.OrderLines.Any(line => line.TenantId == x.TenantId && line.Id == returnLine.OrderLineId && ((line.Barcode != null && line.Barcode.Contains(barcode)) || line.Sku.Contains(barcode)))));
         var reason = options.Reason?.Trim();
         if (!string.IsNullOrWhiteSpace(reason)) query = query.Where(x => x.ReasonCode == reason || (x.ReasonText != null && x.ReasonText.Contains(reason)));
-        if (options.DateFrom?.ToUniversalTime() is { } dateFrom) query = query.Where(x => db.Orders.Any(order => order.TenantId == x.TenantId && order.Id == x.OrderId && order.OrderedAt >= dateFrom));
-        if (options.DateTo?.ToUniversalTime() is { } dateTo) query = query.Where(x => db.Orders.Any(order => order.TenantId == x.TenantId && order.Id == x.OrderId && order.OrderedAt <= dateTo));
+        // "İade Talep Tarihi" (owner, 11 Nov 2026): the marketplace's own request date of the claim (ReturnClaim.RequestedAt), the
+        // page sending Istanbul day bounds; a claim the marketplace has not dated is left out only while a range is set.
+        if (options.DateFrom?.ToUniversalTime() is { } dateFrom) query = query.Where(x => x.RequestedAt != null && x.RequestedAt >= dateFrom);
+        if (options.DateTo?.ToUniversalTime() is { } dateTo) query = query.Where(x => x.RequestedAt != null && x.RequestedAt <= dateTo);
     }
 
     public async Task<ServiceResult<ReturnDetailView>> ReturnAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)

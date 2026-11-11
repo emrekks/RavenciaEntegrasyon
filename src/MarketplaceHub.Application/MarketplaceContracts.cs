@@ -1613,7 +1613,8 @@ public sealed record ReturnListQuery(
     string? Search = null,
     // The Returns page's own filters, applied to the cards the way the page applied them before:
     // platform codes, the trimmed cargo provider name, the reason key (code, else text) and the
-    // invoice label. Sort orders the approved tab (APPROVED_DESC/ASC, ORDERED_DESC/ASC).
+    // invoice label. Sort orders the list: REQUESTED_DESC (default)/ASC, ORDERED_DESC/ASC, APPROVED_DESC/ASC. DateFrom and
+    // DateTo bound the claim's request date (ReturnClaim.RequestedAt); an undated claim is left out while either is set.
     IReadOnlyList<string>? Platforms = null,
     string? Cargo = null,
     string? ReasonKey = null,
