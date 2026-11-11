@@ -76,9 +76,6 @@ public sealed class N11SettlementTests
     [InlineData("ODEME_BEKLENIYOR", "2026-11-01", PayoutBuilder.Expected)]
     [InlineData("TAMAM", "2026-11-01", PayoutBuilder.Paid)]
     [InlineData("TAMAM", "2026-11-06", PayoutBuilder.Expected)]
-    // n11 pays the day after its remittance day (remitted 3 Nov: paid 4 Nov, still expected on 4 Nov).
-    [InlineData("Wait_Remittance", "2026-11-03", PayoutBuilder.Expected)]
-    [InlineData("Wait_Remittance", "2026-11-02", PayoutBuilder.Paid)]
     public void An_n11_line_is_paid_by_its_word_or_its_remittance_day(string status, string remitted, string expected)
     {
         var row = new PayoutRow
@@ -96,7 +93,28 @@ public sealed class N11SettlementTests
             PaymentDate = PayoutBuilder.DayStart(DateOnly.Parse(remitted, System.Globalization.CultureInfo.InvariantCulture))
         };
         Assert.Equal(expected, PayoutBuilder.Status(row, new DateOnly(2026, 11, 4)));
-        Assert.Equal(DateOnly.Parse(remitted, System.Globalization.CultureInfo.InvariantCulture).AddDays(1), PayoutBuilder.DueDay(row));
         Assert.Equal(1000.40m, PayoutBuilder.Net(row));
+    }
+
+    [Theory]
+    // n11 pays on Thursdays: a sent record keeps its transfer day (Friday 30 Oct 2026, after the 29 Oct holiday); a
+    // waiting one is due the Thursday on or after its remittance day (Wednesday 11 Nov 2026: paid Thursday 12 Nov).
+    [InlineData("Success", "2026-10-30", "2026-10-30")]
+    [InlineData("Wait_Remittance", "2026-11-11", "2026-11-12")]
+    [InlineData("Wait_Remittance", "2026-11-12", "2026-11-12")]
+    public void An_n11_record_is_due_on_its_transfer_day_or_the_next_thursday(string status, string remitted, string due)
+    {
+        var row = new PayoutRow
+        {
+            ConnectionId = Guid.CreateVersion7(),
+            PlatformCode = "N11",
+            Source = N11SettlementSyncJobHandler.Source,
+            ExternalId = "1:20261108",
+            TransactionType = status,
+            PaymentDate = PayoutBuilder.DayStart(DateOnly.Parse(remitted, System.Globalization.CultureInfo.InvariantCulture))
+        };
+        Assert.Equal(DateOnly.Parse(due, System.Globalization.CultureInfo.InvariantCulture), PayoutBuilder.DueDay(row));
+        // On the Thursday itself a waiting record is still expected.
+        if (status != "Success") Assert.Equal(PayoutBuilder.Expected, PayoutBuilder.Status(row, new DateOnly(2026, 11, 12)));
     }
 }
