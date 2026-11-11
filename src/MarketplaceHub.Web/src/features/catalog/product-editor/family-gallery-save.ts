@@ -149,25 +149,37 @@ export function variantOutgoingRefs(input: {
   return { refs: fromGallery.length || chartKey ? withChartLast(fromGallery) : [], assigned: false }
 }
 
-// A size added to a colour the editor already holds starts with that colour's pictures (owner, 11.11.2026: "bordoya
-// atandı, 3 varyant eşlendi, 4. beden eklenirse o da eşlenmiş olsun renkle"): a new row without pictures takes the
-// pictures every assigned row of its colour holds, and is saved as the variant's own list like any other. This happens
-// once, when the row is added; nothing is stored for the colour (the only storage is each variant's own list), and no
-// size passes pictures on. Nothing is matched by name or look.
+// A row added later starts with its pictures pre-selected (owner, 12.11.2026: "Renk seçip Bordoya yeni bir beden
+// eklenirse onda da görseller otomatik seçilmiş olarak eklensin … her XL'ye görsel eklediyse ve XL beden eklendiyse o XL
+// görseli yenisinde de seçilmiş olarak eklensin"): the pictures every existing row of its colour holds, joined with
+// those every existing row of its size holds across the other colours (two colours at least: one colour's size holds
+// that colour's pictures), in the gallery's order, once each. A colour or size with no existing row gives nothing. This
+// happens once, when the row is added; the owner can change it on the row's icon and the save writes it as the
+// variant's own list. Nothing is stored for a colour or a size, and nothing is matched by name or look.
 type AssignmentRow = { key: string; mediaRefs: string[] }
 const commonRefs = (rows: ReadonlyArray<AssignmentRow>) => {
   if (!rows.length) return []
   const others = rows.slice(1).map(row => new Set(row.mediaRefs.map(refKey)))
   return rows[0].mediaRefs.filter(ref => others.every(keys => keys.has(refKey(ref))))
 }
-const sameText = (left: string, right: string) => left.trim().toLocaleLowerCase('tr-TR') === right.trim().toLocaleLowerCase('tr-TR')
+const textKey = (value: string) => value.trim().toLocaleLowerCase('tr-TR')
 
-export function inheritAssignments<R extends AssignmentRow>(before: readonly R[], after: readonly R[], colourOf: (row: R) => string): R[] {
+export function inheritAssignments<R extends AssignmentRow>(before: readonly R[], after: readonly R[], colourOf: (row: R) => string, sizeOf: (row: R) => string, strip: readonly string[] = []): R[] {
   const beforeKeys = new Set(before.map(row => row.key))
+  const rank = new Map(strip.map((ref, index) => [refKey(ref), index]))
   return after.map(row => {
     if (beforeKeys.has(row.key) || row.mediaRefs.length) return row
-    const colour = colourOf(row)
-    const refs = colour ? commonRefs(before.filter(other => other.mediaRefs.length > 0 && sameText(colourOf(other), colour))) : []
+    const colour = textKey(colourOf(row))
+    const size = textKey(sizeOf(row))
+    const byColour = colour ? commonRefs(before.filter(other => textKey(colourOf(other)) === colour)) : []
+    const sizeRows = size ? before.filter(other => textKey(sizeOf(other)) === size && textKey(colourOf(other)) !== colour) : []
+    const bySize = new Set(sizeRows.map(other => textKey(colourOf(other)))).size >= 2 ? commonRefs(sizeRows) : []
+    const seen = new Set<string>()
+    const refs = [...byColour, ...bySize]
+      .filter(ref => { const key = refKey(ref); if (seen.has(key)) return false; seen.add(key); return true })
+      .map((ref, index) => ({ ref, index, rank: rank.get(refKey(ref)) ?? Number.MAX_SAFE_INTEGER }))
+      .sort((left, right) => left.rank - right.rank || left.index - right.index)
+      .map(item => item.ref)
     return refs.length ? { ...row, mediaRefs: refs } : row
   })
 }
