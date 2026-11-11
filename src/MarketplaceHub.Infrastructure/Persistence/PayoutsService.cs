@@ -351,10 +351,14 @@ internal static class PayoutBuilder
         new(row.ExternalId, row.ConnectionId, row.PlatformCode, row.TransactionType, row.Category, row.TransactionDate, DueDay(row),
             row.OrderNumber, row.InvoiceNumber, row.Country, row.RegionOverride ?? Region(row.PlatformCode, row.Country, row.Affiliate), row.Credit - row.Debt, Commission(row), Net(row), Status(row, today), row.PaymentOrderId, row.Barcode);
 
-    // The day the money is due. n11's API gives the remittance day (havale tarihi, stored as the payment day); its
-    // seller panel names the next day as the payment day (remittanceDate 2026-11-11, panel "Ödeme Tarihi 12 Kasım").
+    // The day the money is due. n11 pays on Thursdays ("hak ediş tutarları her perşembe günü ödenir"; a holiday moves
+    // it, 30 Oct 2026). A sent record's remittance day (havale tarihi, stored as the payment day) is the transfer day
+    // (15 Oct, 30 Oct, 5 Nov 2026 in n11's Para Transfer Geçmişi); a waiting one's is not: Wait_Remittance with
+    // remittanceDate Wednesday 11 Nov was paid Thursday 12 Nov. A waiting record is due the Thursday on or after it.
     internal static DateOnly? DueDay(PayoutRow row) => row.PaymentDate is not { } due ? null
-        : row.Source == N11SettlementSyncJobHandler.Source ? Day(due).AddDays(1) : Day(due);
+        : row.Source == N11SettlementSyncJobHandler.Source && TrendyolFinanceCategorizer.Fold(row.TransactionType).Contains("wait", StringComparison.Ordinal)
+            ? WeekdayOnOrAfter(Day(due), DayOfWeek.Thursday)
+            : Day(due);
 
     // The record's commission in lira. n11 sends a rate, not an amount: its line's commission is worked out from it
     // (N11SettlementSyncJobHandler.Commission; a row stored before 5 Nov 2026 holds the rate in CommissionAmount).
