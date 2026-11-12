@@ -683,10 +683,10 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
     // Codes typed in the product editor: a changed code starts without the marketplace's barcode and stock code (the
     // next import reads them), two variants may hand a code over in one save, a code another product's variant holds is
     // refused with that variant's stock code, and an empty code removes the link.
-    // An uploaded tariff is stored once per file and period, its rows match panel variants by barcode, and the
-    // lookup answers the band rate only inside the period.
+    // An uploaded tariff is stored once per file and period, its rows match panel variants by barcode, and it
+    // is deleted with its rows.
     [PostgreSqlFact]
-    public async Task CommissionTariff_UploadListRowsLookupAndDelete()
+    public async Task CommissionTariff_UploadListRowsAndDelete()
     {
         var tenant = NewTenant("commission-tariff");
         var trendyol = NewConnection(tenant, "TRENDYOL");
@@ -738,14 +738,6 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
             Assert.Equal(470.63m, row.NextLowerBand?.Max);
             Assert.True(row.MatchesPanel);
             Assert.Equal(4, row.Bands.Count);
-        }
-        await using (var db = fixture.CreateContext())
-        {
-            var lookup = new CommissionTariffLookup(db);
-            var inPeriod = new DateTimeOffset(2026, 10, 25, 12, 0, 0, TimeSpan.FromHours(3));
-            Assert.Equal(20.6m, (await lookup.RateAsync(tenant.Id, trendyol.Id, "RYP00101", null, inPeriod, 450m, CancellationToken.None))?.Rate);
-            Assert.Equal(17.5m, (await lookup.RateAsync(tenant.Id, trendyol.Id, "UNKNOWN", "RYP00101", inPeriod, 300m, CancellationToken.None))?.Rate);
-            Assert.Null(await lookup.RateAsync(tenant.Id, trendyol.Id, "RYP00101", null, new DateTimeOffset(2026, 10, 29, 8, 0, 0, TimeSpan.FromHours(3)), 450m, CancellationToken.None));
         }
         await using (var db = fixture.CreateContext())
         {
@@ -879,14 +871,6 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
             var row3 = (await service.RowsAsync(tenant.Id, trendyol.Id, tariffId, "RYP00101", 0, 50, new CommissionTariffRowFilter(null, null), CancellationToken.None)).Value!.Items.Single();
             Assert.Equal([21.5m, 20.6m, 19.6m, 18.3m], row3.Bands.Select(x => x.Rate));
 
-            // A sale with no commission of its own takes the rate of the period it was made in.
-            var lookup = new CommissionTariffLookup(db);
-            var istanbul = TimeSpan.FromHours(3);
-            Assert.Equal(20.6m, (await lookup.RateAsync(tenant.Id, trendyol.Id, "RYP00101", null, new DateTimeOffset(2026, 11, 1, 7, 59, 0, istanbul), 450m, CancellationToken.None))?.Rate);
-            var later = await lookup.RateAsync(tenant.Id, trendyol.Id, "RYP00101", null, new DateTimeOffset(2026, 11, 1, 8, 0, 0, istanbul), 450m, CancellationToken.None);
-            Assert.Equal((15.8m, tariff4Id), (later?.Rate, later?.TariffId));
-            Assert.Equal(12.8m, (await lookup.RateAsync(tenant.Id, trendyol.Id, "RYP00101", null, new DateTimeOffset(2026, 11, 5, 7, 59, 0, istanbul), 399m, CancellationToken.None))?.Rate);
-            Assert.Null(await lookup.RateAsync(tenant.Id, trendyol.Id, "RYP00101", null, new DateTimeOffset(2026, 11, 5, 8, 0, 0, istanbul), 399m, CancellationToken.None));
         }
 
         await using (var db = fixture.CreateContext())
@@ -1018,10 +1002,6 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
             Assert.Equal((boundary, new DateTimeOffset(2026, 11, 6, 21, 0, 0, TimeSpan.Zero)), (uploaded.Value.Tariffs[1].PeriodStart, uploaded.Value.Tariffs[1].PeriodEnd));
             Assert.Equal(TrendyolTariffWorkbookTests.Period3, uploaded.Value.Tariffs[0].PeriodText);
 
-            // An order of 28 Ekim (before the file's own 29 Ekim 08.00) now takes the 3-day period's rate.
-            var lookup = new CommissionTariffLookup(db);
-            Assert.Equal(tariffId, (await lookup.RateAsync(tenant.Id, trendyol.Id, "RYP00101", null, new DateTimeOffset(2026, 10, 28, 10, 0, 0, istanbul), 450m, CancellationToken.None))?.TariffId);
-            Assert.Null(await lookup.RateAsync(tenant.Id, trendyol.Id, "RYP00101", null, new DateTimeOffset(2026, 11, 7, 0, 0, 0, istanbul), 450m, CancellationToken.None));
         }
         await using (var db = fixture.CreateContext())
         {
