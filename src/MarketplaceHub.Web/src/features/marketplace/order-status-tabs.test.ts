@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { orderLinkOnlyTabs, orderStatusMoreTabs, orderStatusTabs, resolveOrderStatusTab } from './order-status-tabs'
+import { canTakeOrderIntoWork, orderLinkOnlyTabs, orderStatusLabel, orderStatusMoreTabs, orderStatusTabs, resolveOrderStatusTab } from './order-status-tabs'
 
 describe('order status tabs', () => {
   it('keeps the undelivered and manual review tabs and drops the return, payment and unverified ones', () => {
@@ -28,5 +28,19 @@ describe('order status tabs', () => {
     expect(resolveOrderStatusTab('RETURNED')).toBe('ALL')
     expect(resolveOrderStatusTab('<script>')).toBe('ALL')
     expect(resolveOrderStatusTab('  ')).toBe('ALL')
+  })
+
+  it('names a held and a reviewed order the same in the tab and everywhere else on the order', () => {
+    const tabName = (value: string) => orderStatusTabs.find(([tab]) => tab === value)?.[1]
+    expect(orderStatusLabel('ON_HOLD')).toBe('Askıda')
+    expect(tabName('ON_HOLD')).toBe(orderStatusLabel('ON_HOLD'))
+    expect(orderStatusLabel('manual_review')).toBe('İnceleme Gerekli')
+    expect(tabName('MANUAL_REVIEW')).toBe(orderStatusLabel('MANUAL_REVIEW'))
+    expect(orderStatusLabel('SHIPPED')).toBe('Kargoda')
+  })
+
+  it('offers İşleme Al only where the server takes the order into work', () => {
+    for (const platform of ['TRENDYOL', 'N11', 'PAZARAMA', 'HEPSIBURADA', ' n11 ']) expect(canTakeOrderIntoWork(platform)).toBe(true)
+    for (const platform of ['PTTAVM', 'SHOPIFY', '']) expect(canTakeOrderIntoWork(platform)).toBe(false)
   })
 })

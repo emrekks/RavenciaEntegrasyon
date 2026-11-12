@@ -260,8 +260,8 @@ public sealed class MarketplaceSalesStatusTabTests
         Assert.Contains("NOT EXISTS", sql, StringComparison.Ordinal);
     }
 
-    // Item 6: a Hepsiburada undelivered package is listed as on every other marketplace (Teslim Edilemedi and Kargoda),
-    // no longer under Askıda.
+    // Item 6: a Hepsiburada undelivered package is listed as on every other marketplace, no longer under Askıda: under
+    // Teslim Edilemedi only (Kargoda lists shipped packages, so an undelivered one is not in two tabs).
     [Fact]
     public void Hepsiburada_undelivered_package_is_listed_like_every_other_marketplace()
     {
@@ -279,7 +279,7 @@ public sealed class MarketplaceSalesStatusTabTests
         service.ApplyOrderFilters(ref holdQuery, new OrderListQuery(Status: "ON_HOLD"), tenantId);
         service.ApplyOrderFilters(ref undeliveredQuery, new OrderListQuery(Status: "UNDELIVERED"), tenantId);
 
-        Assert.Contains("Undelivered", shippedQuery.ToQueryString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("Undelivered", shippedQuery.ToQueryString(), StringComparison.Ordinal);
         Assert.Contains("Undelivered", undeliveredQuery.ToQueryString(), StringComparison.Ordinal);
         Assert.DoesNotContain("Undelivered", holdQuery.ToQueryString(), StringComparison.Ordinal);
         Assert.Equal(

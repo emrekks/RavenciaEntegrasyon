@@ -6,8 +6,8 @@ public enum InvoiceReturnScope
     // Some of the invoiced goods were returned: the invoice stays and is still delivered; the returned lines need a
     // return document ("İade Belgesi Gerekli").
     Partial,
-    // Every invoiced line was returned in full: the invoice is adjusted as before (AdjustmentRequired, e-Arşiv
-    // cancellation or a return invoice), and its delivery stops.
+    // Every invoiced line was returned in full: the invoice is adjusted as before (AdjustmentRequired, then the e-Arşiv
+    // cancellation after review), and its delivery stops. The panel never issues a return invoice (owner, 6 Nov 2026).
     Full
 }
 

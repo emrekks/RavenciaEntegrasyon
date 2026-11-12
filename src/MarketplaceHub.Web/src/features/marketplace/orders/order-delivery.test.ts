@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Order } from '../shared'
-import { deliveryDueLine, deliveryText, orderRingDetail } from './order-delivery'
+import { deliveryDueLine, deliveryText, dueLineTitle, orderRingDetail } from './order-delivery'
 
 const order = (patch: Partial<Order>): Order => ({ id: 'o1', orderNumber: '1', derivedStatus: 'NEW', platformCode: 'TRENDYOL', isMicroExport: false, shipmentDueAt: null, packages: [], lines: [], ...patch }) as Order
 
@@ -45,5 +45,13 @@ describe('order delivery line', () => {
     const delivery = deliveryText(order({ shipmentDueAt: '2026-11-02T08:00:00Z' }))
     expect(orderRingDetail(delivery)).toEqual({ text: '3 gün gecikti', cls: 'bad' })
     expect(deliveryDueLine(delivery)).not.toBeNull()
+    expect(dueLineTitle(delivery)).toMatch(/^Geciken/u)
+  })
+
+  it('names a red line with time left "Süre Doluyor", never "Geciken"', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-01T09:00:00Z'))
+    expect(dueLineTitle(deliveryText(order({ shipmentDueAt: '2026-11-01T15:00:00Z' })))).toMatch(/^Süre Doluyor/u)
+    expect(dueLineTitle(deliveryText(order({ shipmentDueAt: '2026-11-03T09:00:00Z' })))).toBeUndefined()
   })
 })

@@ -37,7 +37,7 @@ public static class InvoiceIssuePolicy
         "Faturanın türü, güncel e-Fatura mükellef sorgusunun sonucuyla eşleşmiyor (alıcının mükellefiyeti değişmiş olabilir). Fatura gönderilmedi; önizlemeyi yeniden açıp güncel türle onaylayın.");
 
     public static readonly InvoiceIssueRefusal AdjustmentFlowUnavailable = new(AdjustmentFlowUnavailableCode,
-        "İade/düzeltme faturası akışı henüz hazır değil. Orijinal faturaya bağlı yeni mali belge oluşturulmadı; iade faturasını E-Faturam portalında düzenleyin.");
+        "Panel iade ya da düzeltme faturası kesmez (sahip kararı, 6 Kasım 2026); orijinal faturaya bağlı yeni mali belge oluşturulmadı.");
 
     public static readonly InvoiceIssueRefusal ExportFlowRequired = new(ExportFlowRequiredCode,
         "Bu sipariş mikro ihracat siparişi veya TRY dışı para birimiyle geldi. Yurt içi e-Arşiv satış faturası kesilemez; ihracat faturası akışı gerekli.");

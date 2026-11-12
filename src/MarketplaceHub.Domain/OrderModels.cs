@@ -213,7 +213,8 @@ public static class OpenOrderLifecyclePolicy
         DateTimeOffset now,
         bool claimOnlyWithoutPackage = false)
     {
-        // Only an order the seller still has to ship can be late: returned,
+        // The "Süre Doluyor" mark (less than 24 hours to the ship-by time, or past it); not "Geciken", which is only an
+        // order past that time. Only an order the seller still has to ship gets it: returned,
         // in-review, held or shipped orders never show a shipping deadline.
         return IsShipmentDeadlineStatus(derivedStatus)
             && !claimOnlyWithoutPackage
