@@ -12,7 +12,7 @@ namespace MarketplaceHub.Application.Tests;
 // included; its settings, another connection's records and the products the panel created or another connection uses
 // stay (only their link goes); the units its order lines took stay taken under their carry key.
 [Collection("postgres-integration")]
-public sealed class PostgreSqlConnectionFullResetTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
+public sealed partial class PostgreSqlConnectionFullResetTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
     [PostgreSqlFact]
     public async Task FullReset_EmptiesEveryOperationalTableOfTheConnection_AndLeavesSettingsAndTheOtherConnection()

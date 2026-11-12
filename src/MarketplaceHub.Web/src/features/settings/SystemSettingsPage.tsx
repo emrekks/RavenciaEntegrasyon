@@ -18,6 +18,7 @@ import { connectionFullResetSupported, type ConnectionFullResetView } from '../m
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { confirmationMatches } from '../../shared/confirmation'
 import { UiIcon } from '../../shared/components/UiIcon'
+import { PanelFactoryResetSection } from './PanelFactoryResetSection'
 import type { Connection } from '../marketplace/shared'
 import './settings-sade.css'
 import '../../shared/view-tabs.css'
@@ -243,6 +244,7 @@ function SettingsDataReset({ groups, counts, countsFailed, picked, onToggle, mar
         <p className="is-warn"><SettingsIcon name="alert" /><span><b>Geri alınamaz.</b> Yetkili işlemi: bağlı alt kayıtlar güvenli sırayla temizlenir.</span></p>
         <p><SettingsIcon name="info" /><span>Sipariş, iade ve fatura kayıtları her platform için ayrı silinir: <b>Entegrasyonlar</b> sayfasında bağlantının menüsünden <b>Verileri Sıfırla</b>.</span></p>
       </div>
+      <PanelFactoryResetSection />
     </div>
     <StickyActionBar label="Silinecekler" className="ss-bar ss-dr-bar">
       <div className="ss-dr-sum" role="status">

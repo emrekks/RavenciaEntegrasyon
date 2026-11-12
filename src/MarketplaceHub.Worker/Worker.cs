@@ -750,6 +750,10 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             return succeeded ? JobExecutionResult.Success() : JobExecutionResult.Blocked("IMPORT_JOB_REJECTED", "Import operation was rejected by its current state or validation rules.");
         }
 
+        // Paneli Tamamen Sıfırla: the tenant's own job, not tied to a connection.
+        if (job.JobType == PanelJobTypes.FactoryReset)
+            return await services.GetRequiredService<IPanelFactoryResetService>().RunAsync(job.TenantId, job.Id, job.PayloadJson, cancellationToken);
+
         if (MarketplaceJobTypes.IsMarketplaceProcessorJob(job.JobType))
         {
             var processor = services.GetRequiredService<IMarketplaceJobProcessor>();
