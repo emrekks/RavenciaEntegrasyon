@@ -43,13 +43,13 @@
 /* Each card sits on its own layer (it lifts on hover), so a later card paints over an earlier one's panel: the card
    whose panel is open is raised above its neighbours. */
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-metric-tipped:is(:hover, :focus-visible, :has(:focus-visible)) { z-index: 3; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; display: none; box-sizing: border-box; width: max-content; min-width: 240px; max-width: calc(100vw - 24px); padding: 8px 10px; text-align: left; white-space: nowrap; background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 12px; box-shadow: var(--rv-shadow-popover, 0 8px 24px rgb(0 0 0 / 18%)); }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; display: none; gap: 6px; box-sizing: border-box; width: max-content; min-width: 240px; max-width: calc(100vw - 24px); padding: 8px 10px; text-align: left; white-space: nowrap; background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 12px; box-shadow: var(--rv-shadow-popover, 0 8px 24px rgb(0 0 0 / 18%)); }
 /* Only the pointer or a keyboard focus opens a panel: a mouse click leaves focus on the card, and a panel kept open by
    it would stay under the next card the pointer moves onto. */
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tipped:is(:hover, :focus-visible, :has(:focus-visible)) .rr-metric-tip { display: grid; gap: 6px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-r { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: 12px; min-height: 32px; font-size: 13px; color: var(--rr-ink); }
 /* The cargo companies under the stores, in words, after a thin line (owner, 5 Nov 2026). */
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-sep { height: 1px; margin: 6px 0; background: var(--rr-line); }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-sep { height: 1px; margin: 0; background: var(--rr-line); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-r.rr-metric-tip-cargo { grid-template-columns: minmax(0, 1fr) auto; min-height: 24px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-cargo > span { color: var(--rr-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-r b { justify-self: end; font-weight: 600; white-space: nowrap; }
@@ -102,7 +102,7 @@
 /* Yeniden Gönderim: the owner's manual reminder. A small gear in the card's top-right corner (above the background
    illustration, clear of the text) opens a popover under it, right edges aligned; the card whose popover is open
    stays above its neighbours. */
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder { position: absolute; z-index: 4; top: 8px; right: 8px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder { position: absolute; z-index: 4; top: 8px; right: 8px; display: flex; width: 28px; height: 28px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder-gear { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; min-height: 0; padding: 0; color: var(--rr-muted); background: transparent; border: 0; border-radius: 7px; box-shadow: none; cursor: pointer; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder-gear:is(:hover, [aria-expanded="true"]) { color: var(--rr-ink); background: var(--rr-soft); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder-gear:focus-visible { outline: 2px solid var(--rr-primary); outline-offset: 1px; }
