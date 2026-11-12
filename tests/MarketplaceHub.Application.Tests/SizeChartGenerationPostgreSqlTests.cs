@@ -18,7 +18,7 @@ public sealed class SizeChartGenerationPostgreSqlTests(PostgreSqlTenantIsolation
 
     // Claude as the skill would answer. An uploaded skill file (png): the PNG it drew (of the given size) and the
     // spec.json it drew from; the bundled skill: the JPEG and the chart.json echo.
-    private sealed class FakeClaude(SizeChartTable table, Func<CancellationToken, Task>? beforeRun = null, int width = SizeChartService.Width, int height = SizeChartService.Height, bool png = true) : IClaudeClient
+    private sealed class FakeClaude(SizeChartTable table, Func<CancellationToken, Task>? beforeRun = null, int width = SizeChartService.Width, int height = SizeChartService.Height, bool png = true, bool svg = false) : IClaudeClient
     {
         public ClaudeSkillRequest? Request { get; private set; }
         public Task<ClaudeUsage> TestAsync(string apiKey, string model, CancellationToken cancellationToken) => throw new NotSupportedException();
@@ -29,12 +29,13 @@ public sealed class SizeChartGenerationPostgreSqlTests(PostgreSqlTenantIsolation
             Request = request;
             if (beforeRun is not null) await beforeRun(cancellationToken);
             return png
-                ? new("end_turn", "OK", [new("file_img", "beden-tablosu.png"), new("file_spec", "beden-tablosu-spec.json")], new ClaudeUsage(1500, 400, 0, 0), null)
+                ? new("end_turn", "OK", [new("file_img", svg ? "beden-tablosu.svg" : "beden-tablosu.png"), new("file_spec", "beden-tablosu-spec.json")], new ClaudeUsage(1500, 400, 0, 0), null)
                 : new("end_turn", "OK", [new("file_img", "beden-tablosu.jpg"), new("file_spec", "beden-tablosu.json")], new ClaudeUsage(1500, 400, 0, 0), null);
         }
 
         public Task<byte[]> DownloadFileAsync(string apiKey, string fileId, long maxBytes, CancellationToken cancellationToken)
         {
+            if (fileId != "file_spec" && svg) return Task.FromResult(System.Text.Encoding.UTF8.GetBytes($"""<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}"><rect width="{width}" height="{height}" fill="#FBF7EE"/><text x="600" y="300" text-anchor="middle" font-family="Montserrat" font-weight="600" font-size="80">BEDEN TABLOSU</text></svg>"""));
             if (fileId != "file_spec") return Task.FromResult(png ? SizeChartRulesTests.Png(width, height) : SizeChartRulesTests.Jpeg(width, height));
             if (!png)
                 return Task.FromResult(JsonSerializer.SerializeToUtf8Bytes(new { unit = "cm", columns = table.Columns, rows = table.Rows.Select(row => new { size = row.Size, values = row.Values }) }));
@@ -155,9 +156,28 @@ public sealed class SizeChartGenerationPostgreSqlTests(PostgreSqlTenantIsolation
         Assert.Contains("\"product_name\": \"Beden Bluz\"", fake.Request.Prompt, StringComparison.Ordinal);
         Assert.Contains("\"gogus\": 53", fake.Request.Prompt, StringComparison.Ordinal);
         Assert.Contains("\"boy\": 66.5", fake.Request.Prompt, StringComparison.Ordinal);
-        Assert.Contains("--scale 1", fake.Request.Prompt, StringComparison.Ordinal);
-        Assert.Contains("--scale 1", fake.Request.System, StringComparison.Ordinal);
+        Assert.Contains("SVG", fake.Request.Prompt, StringComparison.Ordinal);
+        Assert.Contains("/mnt/user-data/outputs/beden-tablosu.svg", fake.Request.System, StringComparison.Ordinal);
+        Assert.Contains("no browser", fake.Request.System, StringComparison.Ordinal);
         Assert.Contains("1200x1800", fake.Request.System, StringComparison.Ordinal);
+    }
+
+    // 12 Nov 2026: the owner's skill draws an SVG for Chromium, which Claude's container lacks; the panel draws the PNG.
+    [PostgreSqlFact]
+    public async Task The_svg_the_skill_built_is_drawn_to_a_1200x1800_png_and_shown_as_the_newest_chart()
+    {
+        await using var db = fixture.CreateContext();
+        var settings = new AiSettingsService(db, new EphemeralDataProtectionProvider(), TimeProvider.System);
+        var (tenantId, productId) = await SeedAsync(settings);
+        var fake = new FakeClaude(SizeChartRules.Validate(Input()).Table!, svg: true);
+        var storage = new MemoryStorage();
+        var service = new SizeChartService(db, new ClaudeService(settings, fake, db, TimeProvider.System), storage, TimeProvider.System);
+
+        var generated = await service.GenerateAsync(tenantId, Guid.Empty, productId, Input(), CancellationToken.None);
+
+        Assert.Equal($"{generated.FileAssetId:N}.png image/png", Assert.Single(storage.Saved));
+        var view = await service.GetAsync(tenantId, productId, CancellationToken.None);
+        Assert.Equal(generated.Url, view!.LastGeneratedUrl);
     }
 
     [PostgreSqlFact]
