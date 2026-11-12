@@ -28,7 +28,7 @@ public sealed partial class PostgreSqlConnectionFullResetTests
             var aBefore = await TenantCountsAsync(tables, a.Tenant.Id);
             var bBefore = await TenantCountsAsync(tables, b.Tenant.Id);
             // Every group the panel lists has rows to remove.
-            foreach (var group in PanelFactoryResetInventory.Groups)
+            foreach (var group in PanelFactoryResetInventory.Groups.Where(x => x != PanelFactoryResetInventory.LegacyConnections))
                 Assert.True(PanelFactoryResetInventory.Tables.Where(x => x.Group == group && x.Action == PanelResetAction.Delete).Sum(x => aBefore.GetValueOrDefault(x.Name)) > 0, group.Key);
 
             Guid jobId;
@@ -74,7 +74,8 @@ public sealed partial class PostgreSqlConnectionFullResetTests
                 {
                     // The running reset with its attempt, its one audit row and the event that tells the panels.
                     PanelResetAction.Delete => table is "integration.jobs" or "integration.job_attempts" or "ops.audit_logs" or "integration.outbox_events" ? 1 : 0,
-                    _ when table == "iam.tenant_settings" => aBefore[table] - 1,
+                    // The revoked credential and the deleted connection with its sync policy went (Eski Bağlantı Kayıtları).
+                    _ when table is "iam.tenant_settings" or "integration.platform_credentials" or "integration.platform_connections" or "integration.connection_sync_policies" => aBefore[table] - 1,
                     _ => aBefore[table]
                 };
                 Assert.True(expected == aAfter[table], $"{table}: expected {expected}, found {aAfter[table]}");
@@ -92,6 +93,8 @@ public sealed partial class PostgreSqlConnectionFullResetTests
             Assert.Equal(["appearance"], await verification.TenantSettings.Where(x => x.TenantId == a.Tenant.Id).Select(x => x.Key).ToListAsync());
             // The connections stay as they were, with their credentials; their waits went, the other tenant's stayed.
             Assert.Equal(3, await verification.PlatformConnections.CountAsync(x => x.TenantId == a.Tenant.Id && x.Status == "ACTIVE"));
+            Assert.Equal(0, await verification.PlatformConnections.CountAsync(x => x.TenantId == a.Tenant.Id && x.Status == "DELETED"));
+            Assert.Equal(0, await verification.PlatformCredentials.CountAsync(x => x.TenantId == a.Tenant.Id && x.RevokedAt != null));
             Assert.Equal(0, await BackoffsAsync(verification, a.Tenant.Id));
             Assert.Equal(2, await BackoffsAsync(verification, b.Tenant.Id));
         }
@@ -163,6 +166,11 @@ public sealed partial class PostgreSqlConnectionFullResetTests
         db.ProductOptions.Add(new ProductOption { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = productId, Label = "Beden", NormalizedKey = "beden" });
         db.MarketplaceQuestionTemplates.Add(new MarketplaceQuestionTemplate { Id = Guid.CreateVersion7(), TenantId = tenantId, Title = "Kargo", Text = "Siparişiniz yarın kargoda.", CreatedAt = fixture.Now, UpdatedAt = fixture.Now });
         db.ConnectionAttributeDefaults.Add(new ConnectionAttributeDefault { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ExternalAttributeId = "1192", AttributeName = "Menşei", CustomValue = "TR", UpdatedAt = fixture.Now });
+        var deletedConnection = Connection(tenantId, "TRENDYOL", $"pf-deleted-{Guid.NewGuid():N}"[..20]);
+        deletedConnection.Status = "DELETED";
+        db.PlatformConnections.Add(deletedConnection);
+        db.ConnectionSyncPolicies.Add(new ConnectionSyncPolicy { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = deletedConnection.Id, ResourceType = "ORDERS", IntervalSeconds = 180, Enabled = false });
+        db.PlatformCredentials.Add(new PlatformCredential { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, CredentialType = "BASIC", ProtectedPayload = "old", MaskedHint = "***0", CreatedAt = fixture.Now.AddDays(-3), RevokedAt = fixture.Now.AddDays(-1), Version = 1 });
         db.Brands.Add(new Brand { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = "Ravencia", NormalizedName = "ravencia", CreatedAt = fixture.Now, UpdatedAt = fixture.Now });
         db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = "PRODUCT_UPDATED", TargetType = "Product", TargetId = "x", Reason = "test", CorrelationId = "corr", CreatedAt = fixture.Now });
         db.AiUsageLogs.Add(new AiUsageLog { Id = Guid.CreateVersion7(), TenantId = tenantId, Feature = "TEST", Model = "test", Status = "OK", CreatedAt = fixture.Now });

@@ -159,6 +159,7 @@ public sealed class PanelFactoryResetService(AppDbContext db, TimeProvider timeP
                 foreach (var table in plan.Order.Where(x => x.Group == group))
                     removed += await DeleteTableAsync(table, tenantId, jobId, plan.SelfReferencing.Contains(table.Name), cancellationToken);
                 if (group == PanelFactoryResetInventory.Jobs) await CleanUpConnectionsAsync(tenantId, connectionIds, cancellationToken);
+                if (group == PanelFactoryResetInventory.LegacyConnections) removed += await CleanUpLegacyConnectionsAsync(tenantId, cancellationToken);
                 if (group == PanelFactoryResetInventory.Invoices)
                     await db.Database.ExecuteSqlInterpolatedAsync($"""DELETE FROM iam.tenant_settings WHERE "TenantId" = {tenantId} AND "Key" = ANY({PanelFactoryResetInventory.HistorySettingKeys})""", cancellationToken);
             }
@@ -235,6 +236,46 @@ public sealed class PanelFactoryResetService(AppDbContext db, TimeProvider timeP
             UPDATE integration.platform_connections SET "LastErrorCode" = NULL, "LastErrorClass" = NULL, "Version" = "Version" + 1
             WHERE "TenantId" = {tenantId} AND ("LastErrorCode" IS NOT NULL OR "LastErrorClass" IS NOT NULL)
             """, cancellationToken);
+    }
+
+    // The settings tables a connection keeps; a deleted connection's rows in them go with it.
+    private static readonly string[] ConnectionSettingTables =
+    [
+        "integration.platform_credentials", "integration.platform_capabilities", "integration.connection_sync_policies", "integration.webhook_subscriptions",
+        "integration.sync_cursors", "integration.marketplace_question_sync_states", "integration.marketplace_finance_sync_states",
+        "sales.cargo_provider_mappings", "inventory.connection_inventory_policies", "inventory.connection_location_mappings",
+        "catalog.connection_attribute_defaults", "catalog.attribute_mapping_templates", "catalog.attribute_value_mapping_templates", "catalog.mapping_template_dismissals",
+    ];
+
+    // Revoked credentials, and the connections deleted earlier with everything they still keep. A deleted connection whose
+    // records another category still holds (its orders, say, when Siparişler is not chosen) stays until they go.
+    private async Task<long> CleanUpLegacyConnectionsAsync(Guid tenantId, CancellationToken cancellationToken)
+    {
+        var removed = (long)await db.Database.ExecuteSqlInterpolatedAsync($"""DELETE FROM integration.platform_credentials WHERE "TenantId" = {tenantId} AND "RevokedAt" IS NOT NULL""", cancellationToken);
+        var deleted = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Status == "DELETED").Select(x => x.Id).ToListAsync(cancellationToken);
+        if (deleted.Count == 0) return removed;
+        foreach (var table in ConnectionSettingTables)
+        {
+            var sql = $"""DELETE FROM {Quote(table)} WHERE "TenantId" = @tenant AND "ConnectionId" = ANY(@ids)""";
+            removed += await db.Database.ExecuteSqlRawAsync(sql, [new NpgsqlParameter("tenant", tenantId), new NpgsqlParameter("ids", deleted.ToArray())], cancellationToken);
+        }
+        await db.Database.ExecuteSqlInterpolatedAsync($"""DELETE FROM integration.connection_backoffs WHERE "ConnectionId" = ANY({deleted.ToArray()})""", cancellationToken);
+        removed += await db.Database.ExecuteSqlInterpolatedAsync($"""
+            DELETE FROM billing.invoice_policies p WHERE p."TenantId" = {tenantId} AND p."ProviderConnectionId" = ANY({deleted.ToArray()})
+              AND NOT EXISTS (SELECT 1 FROM billing.invoices i WHERE i."TenantId" = p."TenantId" AND i."InvoicePolicyId" = p."Id")
+            """, cancellationToken);
+        foreach (var connectionId in deleted)
+        {
+            try
+            {
+                removed += await db.Database.ExecuteSqlInterpolatedAsync($"""DELETE FROM integration.platform_connections WHERE "TenantId" = {tenantId} AND "Id" = {connectionId} AND "Status" = 'DELETED'""", cancellationToken);
+            }
+            catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.ForeignKeyViolation)
+            {
+                logger.LogInformation("Silinmiş bağlantının kayıtları başka bir veri türünde duruyor; bağlantı satırı kaldı. ConnectionId: {ConnectionId}", connectionId);
+            }
+        }
+        return removed;
     }
 
     // A full reset drops every file of the tenant; a partial one the files the removed rows used that nothing else uses.
@@ -374,7 +415,9 @@ public sealed class PanelFactoryResetService(AppDbContext db, TimeProvider timeP
         // The reference lists are counted by their stored sizes: counting their rows scans millions.
         var counted = PanelFactoryResetInventory.Tables.Where(x => x.Action == PanelResetAction.Delete && x.Name != "integration.reference_items").ToList();
         var parts = counted.Select(x => $"""SELECT '{x.Group!.Key}' AS "Key", count(*) AS "Count" FROM {Quote(x.Name)} WHERE "TenantId" = @tenant""")
-            .Append("""SELECT 'REFERENCES' AS "Key", coalesce(sum("ItemCount"), 0)::bigint AS "Count" FROM integration.reference_snapshots WHERE "TenantId" = @tenant""");
+            .Append("""SELECT 'REFERENCES' AS "Key", coalesce(sum("ItemCount"), 0)::bigint AS "Count" FROM integration.reference_snapshots WHERE "TenantId" = @tenant""")
+            .Append("""SELECT 'LEGACY_CONNECTIONS' AS "Key", count(*) AS "Count" FROM integration.platform_credentials c WHERE c."TenantId" = @tenant AND (c."RevokedAt" IS NOT NULL OR EXISTS (SELECT 1 FROM integration.platform_connections p WHERE p."Id" = c."ConnectionId" AND p."Status" = 'DELETED'))""")
+            .Append("""SELECT 'LEGACY_CONNECTIONS' AS "Key", count(*) AS "Count" FROM integration.platform_connections WHERE "TenantId" = @tenant AND "Status" = 'DELETED'""");
         var sql = $"""SELECT "Key", sum("Count")::bigint AS "Count" FROM ({string.Join(" UNION ALL ", parts)}) x GROUP BY "Key" """;
         var rows = await db.Database.SqlQueryRaw<CountRow>(sql, new NpgsqlParameter("tenant", tenantId)).ToListAsync(cancellationToken);
         var byKey = rows.ToDictionary(x => x.Key, x => x.Count, StringComparer.Ordinal);
