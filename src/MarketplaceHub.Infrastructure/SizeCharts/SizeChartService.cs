@@ -24,7 +24,7 @@ public sealed class SizeChartException(string code, string message, int status) 
 }
 
 // "Beden Tablosu Oluştur": the product's sizes and last measurements, the Claude call that draws the chart with the
-// beden-tablosu skill, and which picture of the card is its size chart. The generated 1200×1800 PNG is stored as an ordinary
+// beden-tablosu skill, and which picture of the card is its size chart. The generated 1200×1800 picture (PNG from an uploaded skill file, JPEG from the bundled copy) is stored as an ordinary
 // product picture file; it joins the card only with the editor's Kaydet (no marketplace send here).
 public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPrivateFileStorage storage, TimeProvider timeProvider)
 {

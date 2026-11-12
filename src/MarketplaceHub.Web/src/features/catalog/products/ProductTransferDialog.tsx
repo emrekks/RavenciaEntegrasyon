@@ -242,7 +242,7 @@ function FieldPicker({ fields, available, disabled, onToggle, onToggleGroup }: {
     })}</div>
     {fields.length === 0 && <p className="pci-error" role="alert">En az bir alan seçin.</p>}
     {fields.includes('STOCK') && <p className="pci-note" role="note"><b>Stok</b>, ürün sayfasındaki stok değişikliği gibi kaydedilir: stok gönderimi açık mağazalara yeni stok gönderilir.</p>}
-    {fields.includes('PRICES') && <p className="pci-note" role="note"><b>Mağaza fiyatları</b> panele kaydedilir; bu işlem kendisi fiyat göndermez, ancak sonraki stok ya da fiyat gönderimi yeni fiyatı mağazaya taşır. Yalnız fiyat kaydı olan mağazalar güncellenir.</p>}
+    {fields.includes('PRICES') && <p className="pci-note" role="note"><b>Mağaza fiyatları</b> panele kaydedilir. Mağazanın otomatik fiyat ve stok gönderimi açıksa değişen fiyat o mağazaya hemen gönderilir; kapalıysa gönderilmez, Hızlı Güncelle ya da Platformlara Güncelle ile elle gönderilir. Yalnız fiyat kaydı olan mağazalar güncellenir.</p>}
   </fieldset>
 }
 

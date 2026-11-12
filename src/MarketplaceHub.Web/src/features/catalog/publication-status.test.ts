@@ -12,6 +12,10 @@ describe('product publication status', () => {
     expect(publicationStatusLabel('APPROVAL_PENDING', null, 'PAZARAMA')).toBe('Onay bekliyor')
     expect(publicationStatusLabel('IMPORT_SUBMITTED')).toBe("Hepsiburada'ya gönderildi")
     expect(isPublicationStatusPending('IMPORT_SUBMITTED')).toBe(true)
+    // Accepted and waiting for the marketplace's approval ("Onay Bekliyor"): Yayınla leaves the card alone.
+    expect(isPublicationStatusPending('CREATE_ACCEPTED')).toBe(true)
+    expect(isPublicationStatusPending('IMPORT_ACCEPTED')).toBe(true)
+    expect(isSkippedByPublish('HEPSIBURADA', 'IMPORT_ACCEPTED', null, false)).toBe(true)
     expect(publicationStatusLabel('UNKNOWN')).toBe('Henüz yayınlanmadı')
   })
 

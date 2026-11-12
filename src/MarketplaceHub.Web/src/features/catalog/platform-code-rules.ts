@@ -142,7 +142,7 @@ export function summarizeVariantCodeIssues(rows: readonly { key: string; barcode
   return parts.length ? { missingBarcodes, missingSkus, ruleRows, heldRows, duplicateRows, duplicateSkuRows, rulePlatforms: [...platforms], title: parts.join(' · ') } : null
 }
 
-// "Hepsiburada: barkod geçerli 13 haneli EAN-13 olmalı · Trendyol: …" for a field's issues.
+// "Hepsiburada: barkod en fazla 40 karakter; yalnız harf, rakam, nokta, tire, alt çizgi · Trendyol: …" for a field's issues.
 export function describePlatformCodeIssues(issues: readonly PlatformCodeIssue[], field: PlatformCodeField) {
   return issues.filter(issue => issue.field === field).map(issue => `${platformCodeNames[issue.platformCode] ?? issue.platformCode}: ${issue.message}`).join(' · ')
 }

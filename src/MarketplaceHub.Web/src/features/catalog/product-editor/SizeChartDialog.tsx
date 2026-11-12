@@ -1,6 +1,8 @@
-// "Beden Tablosu Oluştur" (Fiyat, Stok ve Vergi): the measurements per Beden value, drawn into a 1200×1800 JPEG by the
-// server through Claude (Settings › Yapay Zekâ). "Kullan" only puts the picture into the editor's images as the last
-// one; it reaches the marketplaces with the normal Kaydet / Platformlarda Güncelle. A failed or cancelled run adds nothing.
+// "Beden Tablosu Oluştur" (Fiyat, Stok ve Vergi): the measurements per Beden value, drawn into a 1200×1800 picture by the
+// server through Claude (Settings › Yapay Zekâ): a PNG with an uploaded skill file, a JPEG with the copy bundled with the
+// panel (SizeChartService.UsesSkillFile). "Kullan" only puts the picture into the editor's images as the last one; Kaydet
+// ties it to the card and sends nothing, a marketplace gets it with Hızlı Güncelle, Platformlarda Güncelle or Yayınla.
+// A failed or cancelled run adds nothing.
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -108,7 +110,7 @@ export function SizeChartDialog({ productId, sizes, onClose, onUse }: { productI
       : <Button disabled={!draft || !aiReady || running} onClick={() => void generate()}>{running ? 'Oluşturuluyor…' : 'Oluştur'}</Button>}
   </>
 
-  return <Modal open title="Beden Tablosu Oluştur" className="size-chart-modal" onClose={close} description="Ölçüler cm cinsindendir. Tablo yalnız girdiğiniz sayılarla çizilir; Kullan görseli ürünün son görseli olarak ekler, pazaryerine Kaydet ile gider." footer={footer}>
+  return <Modal open title="Beden Tablosu Oluştur" className="size-chart-modal" onClose={close} description="Ölçüler cm cinsindendir. Tablo yalnız girdiğiniz sayılarla çizilir; Kullan görseli ürünün son görseli olarak ekler ve Kaydet ile ürüne bağlanır; pazaryerine Hızlı Güncelle, Platformlarda Güncelle ya da Yayınla ile gider." footer={footer}>
     {info.isPending ? <p className="size-chart-note" role="status"><UiIcon name="loader" /> Ölçüler yükleniyor…</p>
       : info.isError ? <p className="error size-chart-error" role="alert">{info.error instanceof Error ? info.error.message : 'Beden tablosu bilgisi alınamadı.'}</p>
       : !draft || !draft.rows.length ? <p className="error size-chart-error" role="alert">Bu ürünün Beden değeri yok.</p>

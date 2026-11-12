@@ -10,6 +10,9 @@ const inProgressStatuses = new Set([
   'UPDATE_IN_PROGRESS',
   'IMPORT_SUBMITTED',
   'IMPORT_IN_PROGRESS',
+  // Accepted by the marketplace and waiting for its approval: a send of it is still on its way ("Onay Bekliyor").
+  'CREATE_ACCEPTED',
+  'IMPORT_ACCEPTED',
   'SHOPIFY_SUBMITTED',
   'APPROVAL_PENDING',
   'APPROVAL_PARTIAL_PENDING',

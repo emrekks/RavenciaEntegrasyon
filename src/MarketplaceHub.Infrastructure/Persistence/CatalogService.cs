@@ -2578,8 +2578,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         return ServiceResult<PublicationStatusView>.Ok(new(productId, connectionId, profile?.Id, profile?.DesiredStatus, profile?.ActualStatus, profile?.LastRejectionCode, job?.Id, job is null ? null : JobWire(job.Status), lines));
     }
 
-    private static bool IsPlatformUpdateInProgress(string? status) => status?.Trim().ToUpperInvariant() is
-        "QUEUED" or "UPDATE_QUEUED" or "BATCH_SUBMITTED" or "BATCH_IN_PROGRESS" or "IMPORT_SUBMITTED" or "IMPORT_IN_PROGRESS" or "UPDATE_SUBMITTED" or "UPDATE_IN_PROGRESS" or
+    internal static bool IsPlatformUpdateInProgress(string? status) => status?.Trim().ToUpperInvariant() is
+        "QUEUED" or "UPDATE_QUEUED" or "BATCH_SUBMITTED" or "BATCH_IN_PROGRESS" or "CREATE_ACCEPTED" or "IMPORT_SUBMITTED" or "IMPORT_IN_PROGRESS" or "IMPORT_ACCEPTED" or "UPDATE_SUBMITTED" or "UPDATE_IN_PROGRESS" or
         "APPROVAL_PENDING" or "APPROVAL_PARTIAL_PENDING" or "ARCHIVE_QUEUED" or "ARCHIVE_BATCH_SUBMITTED" or "ARCHIVE_RECONCILING" or
         "UNARCHIVE_QUEUED";
 
