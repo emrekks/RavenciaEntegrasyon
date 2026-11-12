@@ -97,6 +97,8 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
 .cs-workspace .cs-fstate .cm-glyph { width: 15px; height: 15px; color: var(--rv-color-subtle); }
 .cs-workspace .cs-fstate .cm-glyph.is-done { color: var(--rv-color-ink); }
 .cs-workspace .cs-ftime { color: var(--rv-color-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+/* The state and the time share a wrapper for the phone row; elsewhere they stay two cells of the row's grid. */
+.cs-workspace .cs-fmeta { display: contents; }
 .cs-workspace .cs-ftable > .cs-empty { margin: 0; padding: 24px; text-align: center; }
 
 /* Switches */
@@ -140,7 +142,6 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
   .cs-workspace .cs-stats > div { border-left: 0; border-top: 1px solid var(--rv-color-border); }
   .cs-workspace .cs-stats > div:first-child { border-top: 0; }
   .cs-workspace .cs-frow { grid-template-columns: minmax(0, 1fr) 44px; }
-  .cs-workspace .cs-frow > :is(.cs-fstate, .cs-ftime) { grid-column: 1; }
   .cs-workspace .cs-frow.is-head { display: none; }
 }
 
@@ -324,18 +325,23 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
    centred on both lines. A group head stays on one line: name, count, and Tümünü Kapat on the right. The filter
    segment fills its line and scrolls inside itself when it does not fit. */
 @media (max-width: 760px) {
-  .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) { grid-template-columns: minmax(0, max-content) max-content minmax(0, 1fr) auto; grid-template-areas: "name name name switch" "state time . switch"; align-items: center; gap: 4px 0; padding: 10px 14px; }
+  .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name switch" "meta switch"; align-items: center; gap: 4px 12px; padding: 10px 14px; }
   .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) > .cs-fname { grid-area: name; white-space: normal; overflow-wrap: anywhere; }
-  .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) > .cs-fstate { grid-area: state; justify-self: start; min-width: 0; gap: 6px; font-size: 12.5px; }
-  .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) > .cs-ftime { grid-area: time; justify-self: start; padding-left: 0; white-space: nowrap; }
-  .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) > .cs-ftime::before { content: "·"; margin: 0 6px; color: var(--rv-color-subtle); }
-  .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) > .cs-switch-field { grid-area: switch; align-self: center; margin-left: 12px; }
+  .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) > .cs-fmeta { grid-area: meta; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; container-type: inline-size; }
+  .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) .cs-fstate { gap: 6px; font-size: 12.5px; white-space: nowrap; }
+  .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) .cs-ftime { white-space: nowrap; }
+  .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) .cs-ftime::before { content: "·"; margin-right: 6px; color: var(--rv-color-subtle); }
+  .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) > .cs-switch-field { grid-area: switch; align-self: center; }
   .cs-workspace .cs-fgroup { gap: 8px; padding: 0 8px 0 14px; }
   .cs-workspace .cs-fgroup b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cs-workspace .cs-fgroup > .cs-count { flex: none; }
   .app-shell.stitch-shell main .cs-workspace .cs-fgroup > .cs-quiet { flex: none; white-space: nowrap; }
   .cs-workspace .cs-chips { width: 100%; }
   .app-shell.stitch-shell main .cs-workspace .cs-chip { flex: 1 0 auto; }
+}
+/* A 320px phone has no room for both on one line: the time goes under the state, without the separator dot. */
+@container (max-width: 210px) {
+  .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) .cs-ftime::before { display: none; }
 }
 
 /* The write status tag sits to the right of its title, not under the text. */

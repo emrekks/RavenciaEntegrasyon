@@ -158,7 +158,6 @@
   html body .app-shell.stitch-shell main .cs-workspace .cs-stats > div:first-child { border-left: 0; }
   html body .app-shell.stitch-shell main .cs-workspace .cs-frow.cs-frow { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) 150px 92px; grid-template-areas: none; gap: 14px; padding: 6px 16px; }
   html body .app-shell.stitch-shell main .cs-workspace .cs-frow.cs-frow > * { grid-area: auto; grid-column: auto; }
-  html body .app-shell.stitch-shell main .cs-workspace .cs-frow.cs-frow:not(.is-head) > .cs-ftime { padding-left: 0; }
   html body .app-shell.stitch-shell main .cs-workspace .cs-frow.is-head { display: grid; }
 }
 
