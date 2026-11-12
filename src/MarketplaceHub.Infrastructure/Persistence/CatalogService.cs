@@ -3003,7 +3003,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         if (configuredOptionNames.Count > 0)
         {
             var allowed = configuredOptionNames.Select(Normalize).ToHashSet(StringComparer.Ordinal);
-            if (keys.Any(key => !allowed.Contains(key))) return new("OPTION_MAPPING_REQUIRED", "Ürün seçenekleri kategori için Seçenek Eşitleme bölümünde tanımlanan başlıklardan seçilmelidir.", 422, new Dictionary<string, string[]> { ["variants"] = ["Seçenek başlıklarını önce kategori eşlemesinde OPTION olarak işaretleyin."] });
+            if (keys.Any(key => !allowed.Contains(key))) return new("OPTION_MAPPING_REQUIRED", "Ürün seçenekleri Eşleştirmeler › Kategori Eşleme › Ürün Seçenekleri bölümünde tanımlanan başlıklardan seçilmelidir.", 422, new Dictionary<string, string[]> { ["variants"] = ["Seçenek başlıklarını önce kategori eşlemesinde OPTION olarak işaretleyin."] });
         }
         return null;
     }

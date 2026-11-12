@@ -11,7 +11,7 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         if (!await VisibleConnectionAsync(tenantId, connectionId, cancellationToken)) return NotFound<ReferenceDataView>();
         var scope = string.IsNullOrWhiteSpace(parentExternalId) ? "" : parentExternalId.Trim();
         var snapshot = await db.ReferenceSnapshots.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == resourceType && x.ScopeExternalId == scope && x.IsCurrent).OrderByDescending(x => x.FetchedAt).Select(x => new { x.Id, x.ResourceType, x.FetchedAt }).FirstOrDefaultAsync(cancellationToken);
-        if (snapshot is null) return ServiceResult<ReferenceDataView>.Fail("REFERENCE_SNAPSHOT_UNAVAILABLE", "Bu mağazanın kategori ve özellik listesi henüz alınmadı; Seçenek Eşitleme ekranından listeyi yenileyin.", 422);
+        if (snapshot is null) return ServiceResult<ReferenceDataView>.Fail("REFERENCE_SNAPSHOT_UNAVAILABLE", "Bu mağazanın kategori ve özellik listesi henüz alınmadı; Eşleştirmeler › Kategori Eşleme'de Senkronize Et ile listeyi yenileyin.", 422);
         var query = db.ReferenceItems.AsNoTracking().Where(x => x.TenantId == tenantId && x.SnapshotId == snapshot.Id && x.ResourceType == resourceType);
         if (parentExternalId is not null) query = query.Where(x => x.ParentExternalId == parentExternalId);
         var rows = await query.OrderBy(x => x.SortOrder).ThenBy(x => x.Name).Select(x => new ReferenceItemView(x.ExternalId, x.ParentExternalId, x.Name, x.Path, x.Depth, x.IsLeaf, x.IsActive, x.IsRequired, x.AllowsCustomValue, x.AllowsMultipleValues)).ToListAsync(cancellationToken);
@@ -28,7 +28,7 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         var id = (externalId ?? "").Trim();
         if (id.Length is 0 or > 256) return ServiceResult<ReferenceDataView>.Fail("VALIDATION_FAILED", "Kategori kimliği 1-256 karakter olmalıdır.", 422);
         var snapshot = await db.ReferenceSnapshots.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "CATEGORIES" && x.ScopeExternalId == "" && x.IsCurrent).OrderByDescending(x => x.FetchedAt).Select(x => new { x.Id, x.ResourceType, x.FetchedAt }).FirstOrDefaultAsync(cancellationToken);
-        if (snapshot is null) return ServiceResult<ReferenceDataView>.Fail("REFERENCE_SNAPSHOT_UNAVAILABLE", "Bu mağazanın kategori ve özellik listesi henüz alınmadı; Seçenek Eşitleme ekranından listeyi yenileyin.", 422);
+        if (snapshot is null) return ServiceResult<ReferenceDataView>.Fail("REFERENCE_SNAPSHOT_UNAVAILABLE", "Bu mağazanın kategori ve özellik listesi henüz alınmadı; Eşleştirmeler › Kategori Eşleme'de Senkronize Et ile listeyi yenileyin.", 422);
         var rows = await db.ReferenceItems.AsNoTracking().Where(x => x.TenantId == tenantId && x.SnapshotId == snapshot.Id && x.ResourceType == "CATEGORIES" && x.ExternalId == id).OrderBy(x => x.SortOrder).ThenBy(x => x.Name).Select(x => new ReferenceItemView(x.ExternalId, x.ParentExternalId, x.Name, x.Path, x.Depth, x.IsLeaf, x.IsActive, x.IsRequired, x.AllowsCustomValue, x.AllowsMultipleValues)).ToListAsync(cancellationToken);
         return ServiceResult<ReferenceDataView>.Ok(new(snapshot.Id, snapshot.ResourceType, snapshot.FetchedAt, rows));
     }
@@ -239,7 +239,7 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
             .Select(x => new BrandSnapshot(x.Id, x.FetchedAt, x.ItemCount))
             .FirstOrDefaultAsync(cancellationToken);
         return snapshot is null
-            ? ServiceResult<BrandSnapshot>.Fail("REFERENCE_SNAPSHOT_UNAVAILABLE", "Bu mağazanın kategori ve özellik listesi henüz alınmadı; Seçenek Eşitleme ekranından listeyi yenileyin.", 422)
+            ? ServiceResult<BrandSnapshot>.Fail("REFERENCE_SNAPSHOT_UNAVAILABLE", "Bu mağazanın kategori ve özellik listesi henüz alınmadı; Eşleştirmeler › Kategori Eşleme'de Senkronize Et ile listeyi yenileyin.", 422)
             : ServiceResult<BrandSnapshot>.Ok(snapshot);
     }
 
@@ -559,8 +559,10 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
             .Select(x => new { x.LocalId, x.ScopeExternalId, x.ExternalId, x.Version, x.VerifiedAt, Category = x.ScopeExternalId.Split('/')[0], Attribute = MappingTemplateStore.AttributeOfValueScope(x.ScopeExternalId) ?? "" })
             .Where(x => x.Attribute.Length > 0)
             .ToList();
-        var sameCategory = rows.GroupBy(x => (x.ScopeExternalId, x.LocalId)).Where(group => group.Select(x => x.ExternalId).Distinct().Count() > 1).ToList();
-        var crossCategory = rows.GroupBy(x => (x.Attribute, x.LocalId)).Where(group => group.Select(x => x.ExternalId).Distinct().Count() > 1 && group.Select(x => x.Category).Distinct().Count() > 1).ToList();
+        // Hepsiburada's deliberate several values per panel value are not conflicts (MappingConflictRules).
+        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        var sameCategory = rows.GroupBy(x => (x.ScopeExternalId, x.LocalId)).Where(group => MappingConflictRules.IsSameCategoryConflict(platformCode, group.Select(x => x.ExternalId))).ToList();
+        var crossCategory = rows.GroupBy(x => (x.Attribute, x.LocalId)).Where(group => MappingConflictRules.IsCrossCategoryConflict(platformCode, group.Select(x => (x.Category, x.ExternalId)))).ToList();
         if (sameCategory.Count == 0 && crossCategory.Count == 0) return ServiceResult<MappingConflictsView>.Ok(new([], []));
 
         // Names for display: panel values, categories, attributes and values from the current snapshots.

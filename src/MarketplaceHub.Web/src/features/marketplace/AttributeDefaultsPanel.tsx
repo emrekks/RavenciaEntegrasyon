@@ -5,6 +5,7 @@ import { TitleHint, UiIcon } from '../../shared/components'
 import { PanelSelect } from '../../shared/PanelSelect'
 import { filterValueCandidates } from '../catalog/value-mapping-suggestions'
 import { productFieldLabel } from './product-field-sources'
+import { dative } from '../../shared/job-outcome'
 import './attribute-defaults-panel.css'
 
 type RemoteAttribute = { externalId: string; name: string; isActive: boolean; isRequired?: boolean | null; allowsCustomValue?: boolean | null }
@@ -67,7 +68,7 @@ export function AttributeDefaultsPanel({ connectionId, categoryScope, platformLa
       await client.invalidateQueries({ queryKey: defaultsKey })
       await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] })
       await client.invalidateQueries({ queryKey: ['category-mappings', connectionId] })
-      onNotice(`“${selected.name}” için varsayılan kaydedildi. Değeri boş kalan ürünlerde ${platformLabel}’a bu değer gönderilecek.`)
+      onNotice(`“${selected.name}” için varsayılan kaydedildi. Değeri boş kalan ürünlerde ${dative(platformLabel)} bu değer gönderilecek.`)
       reset()
     } catch (reason) {
       onNotice(reason instanceof Error ? reason.message : 'Varsayılan kaydedilemedi.')
@@ -92,7 +93,7 @@ export function AttributeDefaultsPanel({ connectionId, categoryScope, platformLa
   const otherCandidates = candidates.filter(item => item.isRequired !== true)
   return <details className="attribute-defaults-panel" open={expanded || undefined}>
     <summary>
-      <span className="panel-summary-title">Platform Varsayılanları<TitleHint label="Platform Varsayılanları">Ürünlerde boş kalan alanlar için {platformLabel}’a gönderilecek sabit değerler. Örn. Menşei için TR seçerseniz, menşei boş ürünlerde TR gider.</TitleHint></span>
+      <span className="panel-summary-title">Platform Varsayılanları<TitleHint label="Platform Varsayılanları">Ürünlerde boş kalan alanlar için {dative(platformLabel)} gönderilecek sabit değerler. Örn. Menşei için TR seçerseniz, menşei boş ürünlerde TR gider.</TitleHint></span>
       <b className="panel-summary-count" aria-label={`${existing.length} varsayılan`}>{existing.length}</b>
     </summary>
     <div className="attribute-defaults-body">

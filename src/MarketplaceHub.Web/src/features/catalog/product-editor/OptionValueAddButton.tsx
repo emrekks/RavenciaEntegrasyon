@@ -13,7 +13,7 @@ export function OptionValueAddButton({ attributeName, values, query, adding, onA
   const value = optionValueToAdd(attributeName, values, query)
   if (!value) return null
   return <div className="option-value-add">
-    <button type="button" className="secondary option-value-add-button" disabled={adding} onClick={() => onAdd(value)} title={`“${value}” değerini ${attributeName} seçeneklerine ekler ve seçer; pazaryeri değeriyle eşleştirmeyi Seçenek Eşitleme ekranından siz yaparsınız.`}>
+    <button type="button" className="secondary option-value-add-button" disabled={adding} onClick={() => onAdd(value)} title={`“${value}” değerini ${attributeName} seçeneklerine ekler ve seçer; pazaryeri değeriyle eşleştirmeyi Eşleştirmeler › Kategori Eşleme'de kategorinin Kategori Özellikleri penceresinden siz yaparsınız.`}>
       <UiIcon name={adding ? 'loader' : 'plus'} size={16} /> {adding ? 'Ekleniyor…' : `“${value}” Değerini Ekle`}
     </button>
     <small>Yeni değer hiçbir pazaryeri değerine otomatik eşlenmez.</small>
