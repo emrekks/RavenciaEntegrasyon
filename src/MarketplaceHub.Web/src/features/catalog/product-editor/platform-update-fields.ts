@@ -226,81 +226,94 @@ export function platformUpdateSummary(plan: PlatformUpdatePlan) {
 export const defaultPlatformUpdateFields: PlatformUpdateField[] = [...platformUpdateFieldKeys]
 export const priceStockPlatformUpdateFields: PlatformUpdateField[] = ['PRICE', 'STOCK']
 
+// Whether the stores' requests carry the price or the stock: the field picked, or ridden along (Shopify's whole card).
+export function platformUpdateSendsPriceOrStock(platformCode: string, picked: Iterable<PlatformUpdateField>) {
+  const { fields } = platformUpdatePlan(platformCode, picked)
+  return fields.includes('PRICE') || fields.includes('STOCK')
+}
+
+// The marketplaces that take the product in one request whatever is picked (Shopify): the pick does not narrow the send.
+export function platformUpdateSendsWholeCard(platformCode: string) { return Boolean(profileOf(platformCode)?.wholeCard) }
+
 export type PlatformUpdatePreferences = { fields: PlatformUpdateField[]; openGroups: PlatformUpdateGroupKey[] }
 const platformUpdateGroupKeys = platformUpdateGroups.map(group => group.key)
 // With nothing saved yet, the window starts at what Hızlı Güncelle sends then: price and stock.
 export const defaultPlatformUpdatePreferences: PlatformUpdatePreferences = { fields: priceStockPlatformUpdateFields, openGroups: platformUpdateGroupKeys }
 
-// Remembered in this browser ("nasıl bırakılırsa öyle kalsın"): the panel has no per-user preference store yet.
-export const platformUpdatePreferencesKey = 'ravencia.platformUpdate.preferences.v1'
-// What the dialog offered before the stored record named what it knew (the first version): a field or group added
-// since is not in the record, and starts picked (open) instead of reading as switched off. ORIGIN has left the dialog.
+// The choice the window keeps, per tenant on the server (GET/PUT /settings/platform-update): every device and browser
+// sends the same. knownFields/knownGroups: what the window offered when it saved, so a field or group added since starts
+// picked (open) instead of reading as switched off. connectionIds null: no stores saved, the product's stores go.
+export type PlatformUpdateChoiceRecord = { fields: string[]; openGroups: string[]; knownFields?: string[]; knownGroups?: string[]; connectionIds: string[] | null }
+
+// What the dialog offered before the stored record named what it knew (the first version). ORIGIN has left the dialog.
 const firstFieldKeys = ['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES', 'DESI', 'VAT_RATE', 'ORIGIN', 'DELIVERY', 'PRICE', 'STOCK']
 const firstGroupKeys = ['product', 'sales']
 
-export function readPlatformUpdatePreferences(storage: Pick<Storage, 'getItem'> | undefined = safeLocalStorage()): PlatformUpdatePreferences {
-  try {
-    const raw = storage?.getItem(platformUpdatePreferencesKey)
-    if (!raw) return defaultPlatformUpdatePreferences
-    const value = JSON.parse(raw) as Partial<Record<'fields' | 'openGroups' | 'knownFields' | 'knownGroups', unknown>>
-    if (!Array.isArray(value.fields) || !Array.isArray(value.openGroups)) return defaultPlatformUpdatePreferences
-    const known = (list: unknown, first: string[]) => Array.isArray(list) ? list as unknown[] : first
-    const knownFields = known(value.knownFields, firstFieldKeys)
-    const knownGroups = known(value.knownGroups, firstGroupKeys)
-    // Unknown entries (a later version's fields, a retired one) are dropped; a field the record did not know yet starts
-    // picked; the rest keep the dialog's order.
-    const fields = platformUpdateFieldKeys.filter(field => (value.fields as unknown[]).includes(field) || !knownFields.includes(field))
-    const openGroups = platformUpdateGroupKeys.filter(key => (value.openGroups as unknown[]).includes(key) || !knownGroups.includes(key))
-    return { fields, openGroups }
-  } catch {
-    return defaultPlatformUpdatePreferences
-  }
+export function platformUpdatePreferencesFrom(record: Partial<Record<'fields' | 'openGroups' | 'knownFields' | 'knownGroups', unknown>> | null | undefined): PlatformUpdatePreferences {
+  if (!record || !Array.isArray(record.fields) || !Array.isArray(record.openGroups)) return defaultPlatformUpdatePreferences
+  const known = (list: unknown, first: string[]) => Array.isArray(list) ? list as unknown[] : first
+  const knownFields = known(record.knownFields, firstFieldKeys)
+  const knownGroups = known(record.knownGroups, firstGroupKeys)
+  // Unknown entries (a later version's fields, a retired one) are dropped; a field the record did not know yet starts
+  // picked; the rest keep the dialog's order.
+  const fields = platformUpdateFieldKeys.filter(field => (record.fields as unknown[]).includes(field) || !knownFields.includes(field))
+  const openGroups = platformUpdateGroupKeys.filter(key => (record.openGroups as unknown[]).includes(key) || !knownGroups.includes(key))
+  return { fields, openGroups }
 }
 
-export function writePlatformUpdatePreferences(preferences: PlatformUpdatePreferences, storage: Pick<Storage, 'setItem'> | undefined = safeLocalStorage()) {
-  try {
-    storage?.setItem(platformUpdatePreferencesKey, JSON.stringify({ fields: preferences.fields, openGroups: preferences.openGroups, knownFields: platformUpdateFieldKeys, knownGroups: platformUpdateGroupKeys }))
-  } catch {
-    // A private window or blocked storage: the pick still holds for this page.
-  }
+// The stores picked last: a store no longer updateable is dropped, one added since is not picked; with none saved,
+// `first` is used.
+export function platformUpdateStoresFrom(record: Pick<PlatformUpdateChoiceRecord, 'connectionIds'> | null | undefined, updateableIds: string[], first: string[]): string[] {
+  if (!record || !Array.isArray(record.connectionIds)) return first.filter(id => updateableIds.includes(id))
+  const saved = record.connectionIds
+  return updateableIds.filter(id => saved.includes(id))
 }
 
-// The stores picked last, kept the same way: the next open starts with them, not with every store. A store no longer
-// updateable is dropped, and one added since is not picked; with no record yet, `first` is used.
-export const platformUpdateStoresKey = 'ravencia.platformUpdate.stores.v1'
-
-export function readPlatformUpdateStores(updateableIds: string[], first: string[], storage: Pick<Storage, 'getItem'> | undefined = safeLocalStorage()): string[] {
-  const fallback = first.filter(id => updateableIds.includes(id))
-  try {
-    const raw = storage?.getItem(platformUpdateStoresKey)
-    if (!raw) return fallback
-    const value = JSON.parse(raw) as { selected?: unknown }
-    if (!Array.isArray(value.selected)) return fallback
-    return updateableIds.filter(id => (value.selected as unknown[]).includes(id))
-  } catch {
-    return fallback
-  }
-}
-
-export function writePlatformUpdateStores(selected: string[], storage: Pick<Storage, 'setItem'> | undefined = safeLocalStorage()) {
-  try {
-    storage?.setItem(platformUpdateStoresKey, JSON.stringify({ selected }))
-  } catch {
-    // A private window or blocked storage: the pick still holds for this page.
-  }
+export function platformUpdateChoiceRecord(preferences: PlatformUpdatePreferences, connectionIds: string[] | null): PlatformUpdateChoiceRecord {
+  return { fields: [...preferences.fields], openGroups: [...preferences.openGroups], knownFields: [...platformUpdateFieldKeys], knownGroups: [...platformUpdateGroupKeys], connectionIds: connectionIds ? [...new Set(connectionIds)] : null }
 }
 
 // Owner, 9 Nov 2026: Hızlı Güncelle sends at once, with no window, what the settings window (the button on its right)
-// last saved: those fields to those stores. With no saved fields it sends price and stock; with no saved stores, the
+// last saved: those fields to those stores. With no saved choice it sends price and stock; with no saved stores, the
 // stores picked for the product. Only updateable stores go.
 export type QuickPlatformUpdateChoice = { connectionIds: string[]; fields: PlatformUpdateField[] }
 
-export function readQuickPlatformUpdateChoice(updateableIds: string[], fallbackStoreIds: string[], storage: Pick<Storage, 'getItem'> | undefined = safeLocalStorage()): QuickPlatformUpdateChoice {
-  const saved = (key: string) => { try { return Boolean(storage?.getItem(key)) } catch { return false } }
-  const fields = saved(platformUpdatePreferencesKey) ? readPlatformUpdatePreferences(storage).fields : priceStockPlatformUpdateFields
-  const fallback = [...new Set(fallbackStoreIds)].filter(id => updateableIds.includes(id))
-  const connectionIds = saved(platformUpdateStoresKey) ? readPlatformUpdateStores(updateableIds, fallback, storage) : fallback
-  return { connectionIds, fields }
+export function readQuickPlatformUpdateChoice(record: PlatformUpdateChoiceRecord | null | undefined, updateableIds: string[], fallbackStoreIds: string[]): QuickPlatformUpdateChoice {
+  const fields = record ? platformUpdatePreferencesFrom(record).fields : priceStockPlatformUpdateFields
+  return { connectionIds: platformUpdateStoresFrom(record, updateableIds, [...new Set(fallbackStoreIds)]), fields }
+}
+
+// Until 12 Nov 2026 the choice was kept in the browser only, under these keys. A page with the server's record empty
+// moves it there once and then removes it here (usePlatformUpdateChoice); until that succeeds it is still what Hızlı
+// Güncelle sends from this browser.
+export const legacyPlatformUpdatePreferencesKey = 'ravencia.platformUpdate.preferences.v1'
+export const legacyPlatformUpdateStoresKey = 'ravencia.platformUpdate.stores.v1'
+
+export function readLegacyPlatformUpdateChoice(storage: Pick<Storage, 'getItem'> | undefined = safeLocalStorage()): PlatformUpdateChoiceRecord | null {
+  const read = (key: string): unknown => {
+    try {
+      const raw = storage?.getItem(key)
+      return raw ? JSON.parse(raw) as unknown : undefined
+    } catch {
+      return undefined
+    }
+  }
+  const preferences = read(legacyPlatformUpdatePreferencesKey) as Parameters<typeof platformUpdatePreferencesFrom>[0] | undefined
+  const stores = read(legacyPlatformUpdateStoresKey) as { selected?: unknown } | undefined
+  const savedPreferences = Boolean(preferences && Array.isArray(preferences.fields) && Array.isArray(preferences.openGroups))
+  const savedStores = Boolean(stores && Array.isArray(stores.selected))
+  if (!savedPreferences && !savedStores) return null
+  const connectionIds = savedStores ? (stores!.selected as unknown[]).filter((id): id is string => typeof id === 'string') : null
+  return platformUpdateChoiceRecord(savedPreferences ? platformUpdatePreferencesFrom(preferences) : defaultPlatformUpdatePreferences, connectionIds)
+}
+
+export function clearLegacyPlatformUpdateChoice(storage: Pick<Storage, 'removeItem'> | undefined = safeLocalStorage()) {
+  try {
+    storage?.removeItem(legacyPlatformUpdatePreferencesKey)
+    storage?.removeItem(legacyPlatformUpdateStoresKey)
+  } catch {
+    // Blocked storage: nothing to remove.
+  }
 }
 
 function safeLocalStorage(): Storage | undefined {

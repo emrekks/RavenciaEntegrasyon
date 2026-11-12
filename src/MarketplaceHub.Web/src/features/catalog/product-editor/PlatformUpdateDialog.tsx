@@ -4,25 +4,45 @@ import { DialogSurface, TitleHint, UiIcon } from '../../../shared/components'
 import { platformLogoClass, platformLogoSource } from '../../../shared/platform-logos'
 import { bulkPublishPlatformName } from '../products/bulk-publish-status'
 import type { MarketplaceConnection } from '../shared'
-import { availablePlatformUpdateFields, platformUpdateFieldLabel, platformUpdateFieldsForStores, platformUpdateGroups, platformUpdatePlan, platformUpdateSummary, type PlatformUpdateField, type PlatformUpdateGroup, type PlatformUpdateGroupKey } from './platform-update-fields'
+import { availablePlatformUpdateFields, platformUpdateFieldLabel, platformUpdateFieldsForStores, platformUpdateGroups, platformUpdatePlan, platformUpdateSendsPriceOrStock, platformUpdateSendsWholeCard, platformUpdateSummary, type PlatformUpdateField, type PlatformUpdateGroup, type PlatformUpdateGroupKey } from './platform-update-fields'
 
 // blockReason: why the caller holds the store back (the product list: none of the selected products is on it); detail:
-// a line the card shows under its facts (the product list: how many of the selected products are on it).
-export type PlatformUpdateTarget = { connection: MarketplaceConnection; capabilities: { writable: boolean; content: boolean }; blockReason?: string; detail?: string }
+// a line the card shows under its facts (the product list: how many of the selected products are on it);
+// manualWritesEnabled: PttAVM's "Manuel Dış Yazmalar" switch (undefined: not read, or not PttAVM).
+export type PlatformUpdateTarget = { connection: MarketplaceConnection; capabilities: { writable: boolean; content: boolean }; blockReason?: string; detail?: string; manualWritesEnabled?: boolean }
 
-// An update from here is a manual write: the general external-write gate (server and the connection's Dış Yazma Ana
-// Anahtarı, externalWritesEnabled) must be open; the automatic price/stock switch ("Otomatik Dış Yazmalar") does not apply.
+// Where the write switches are turned on: Entegrasyonlar › the store › the "Pazaryerine Yazma" tab.
+const writeSwitchPlace = 'Entegrasyonlar › mağaza › Pazaryerine Yazma’dan açılır'
+
+// A store the window can pick: it can be updated at all. Its write switches may still be closed: then Kaydet keeps it in
+// the choice, and Gönder waits until they are open.
+export function isPlatformUpdateSelectable(target: PlatformUpdateTarget) {
+  return target.capabilities.writable && target.connection.status.trim().toUpperCase() === 'ACTIVE' && !target.blockReason
+}
+
+// An update from here is a manual write: the connection's Dış Yazma Ana Anahtarı (externalWritesEnabled) must be open,
+// and on PttAVM its Manuel Dış Yazmalar too; the automatic price/stock switch ("Otomatik Dış Yazmalar") does not apply.
+// The server's own switch is not shown to the panel; the send names it when it is closed. '' when nothing known is closed.
+export function platformUpdateWriteClosed(target: PlatformUpdateTarget) {
+  if (target.connection.externalWritesEnabled === false) return `Dış Yazma Ana Anahtarı kapalı · ${writeSwitchPlace}`
+  if (target.connection.platformCode.trim().toUpperCase() === 'PTTAVM' && target.manualWritesEnabled === false) return `Manuel Dış Yazmalar kapalı · ${writeSwitchPlace}`
+  return ''
+}
+
 export function isPlatformUpdateWritable(target: PlatformUpdateTarget) {
-  return target.capabilities.writable && target.connection.status.trim().toUpperCase() === 'ACTIVE' && target.connection.externalWritesEnabled !== false && !target.blockReason
+  return isPlatformUpdateSelectable(target) && !platformUpdateWriteClosed(target)
 }
 
 // Why a store cannot be updated, naming the switch and where it is turned on; '' when it can.
 export function platformUpdateBlockReason(target: PlatformUpdateTarget) {
   if (!target.capabilities.writable) return 'Salt okunur, güncellenemez'
   if (target.connection.status.trim().toUpperCase() !== 'ACTIVE') return 'Bağlantı aktif değil'
-  if (target.connection.externalWritesEnabled === false) return 'Dış Yazma Ana Anahtarı kapalı · Entegrasyonlar’dan açılır'
-  return target.blockReason ?? ''
+  return platformUpdateWriteClosed(target) || (target.blockReason ?? '')
 }
+
+// Said where the user starts a send of price or stock by hand (owner, 12 Nov 2026): such a send goes although the
+// automatic price/stock writes are off.
+export const manualPriceStockNote = 'Elle gönderim: Otomatik Dış Yazmalar kapalı olsa da seçili fiyat ve stok pazaryerine gider.'
 
 type ShownGroup = Omit<PlatformUpdateGroup, 'fields'> & { fields: { key: PlatformUpdateField; label: string }[] }
 
@@ -58,28 +78,32 @@ export function PlatformUpdateDialog({ targets, selectedIds, onSelectedIdsChange
   // Shown above the fields (the product list: the selected products and their state).
   children?: ReactNode
 }) {
-  const writable = targets.filter(isPlatformUpdateWritable)
-  const selected = writable.filter(target => selectedIds.includes(target.connection.id))
+  const selectable = targets.filter(isPlatformUpdateSelectable)
+  const selected = selectable.filter(target => selectedIds.includes(target.connection.id))
   // With no store picked yet, the fields of every store that can be updated are shown.
-  const availableFor = (stores: PlatformUpdateTarget[]) => availablePlatformUpdateFields((stores.length ? stores : writable).map(target => target.connection.platformCode))
+  const availableFor = (stores: PlatformUpdateTarget[]) => availablePlatformUpdateFields((stores.length ? stores : selectable).map(target => target.connection.platformCode))
   const available = availableFor(selected)
   const visibleFields = fields.filter(field => available.includes(field))
   const plans = selected.map(target => platformUpdatePlan(target.connection.platformCode, visibleFields))
   const sendsAnything = plans.some(plan => plan.sends.length > 0)
+  // Picked stores whose write switch is closed: Kaydet keeps them, Gönder waits (said before it is pressed, not after).
+  const writeClosed = selected.filter(target => platformUpdateWriteClosed(target))
+  const writeClosedNote = writeClosed.length ? `${writeClosed.map(target => target.connection.displayName || bulkPublishPlatformName(target.connection.platformCode)).join(', ')} için pazaryerine yazma kapalı; Gönder bekler${onSave ? ', Kaydet seçimi saklar' : ''}.` : ''
+  const sendsPriceOrStock = selected.some(target => platformUpdateSendsPriceOrStock(target.connection.platformCode, visibleFields))
   const close = () => { if (!submitting) onClose() }
   const setField = (field: PlatformUpdateField, on: boolean) => onFieldsChange(on ? [...new Set([...fields, field])] : fields.filter(item => item !== field))
   const setGroup = (groupFields: PlatformUpdateField[], on: boolean) => onFieldsChange(on ? [...new Set([...fields, ...groupFields])] : fields.filter(item => !groupFields.includes(item)))
   const toggleOpen = (key: PlatformUpdateGroupKey) => onOpenGroupsChange(openGroups.includes(key) ? openGroups.filter(item => item !== key) : [...openGroups, key])
   // A store in or out changes the fields shown: one no longer shown is dropped, one shown only now comes in ticked.
   const selectStores = (nextIds: string[]) => {
-    const next = platformUpdateFieldsForStores(fields, available, availableFor(writable.filter(target => nextIds.includes(target.connection.id))))
+    const next = platformUpdateFieldsForStores(fields, available, availableFor(selectable.filter(target => nextIds.includes(target.connection.id))))
     if (next.length !== fields.length || next.some(field => !fields.includes(field))) onFieldsChange(next)
     onSelectedIdsChange(nextIds)
   }
   const toggleStore = (connectionId: string) => selectStores(selectedIds.includes(connectionId) ? selectedIds.filter(id => id !== connectionId) : [...selectedIds, connectionId])
   // The bulk picks: a store that cannot be updated is never picked, and a linked field follows the field it rides with.
-  const writableIds = writable.map(target => target.connection.id)
-  const allStoresPicked = writable.length > 0 && selected.length === writable.length
+  const selectableIds = selectable.map(target => target.connection.id)
+  const allStoresPicked = selectable.length > 0 && selected.length === selectable.length
   const allFieldsPicked = available.every(field => fields.includes(field))
   const groups: ShownGroup[] = platformUpdateGroups
     .map(group => ({
@@ -96,18 +120,19 @@ export function PlatformUpdateDialog({ targets, selectedIds, onSelectedIdsChange
         <div className="product-publish-popup-body"><div className="product-add-page product-publish-popup"><section className="product-publish-step" aria-label="Ürünü platformlarda güncelle"><div className="product-publish-layout"><div className="product-publish-main">
           {children}
           {groups.length > 0 && <section className="platform-update-section" aria-labelledby="platform-update-fields-title">
-            <PlatformUpdateSectionHead id="platform-update-fields-title" title="Gönderilecek Bilgiler" hint={`${visibleFields.length}/${available.length} bilgi seçili`} help="Seçtiğiniz bilgiler her mağazaya, o mağazanın aldığı kadarıyla gönderilir.">
+            <PlatformUpdateSectionHead id="platform-update-fields-title" title="Gönderilecek Bilgiler" hint={`${visibleFields.length}/${available.length} bilgi seçili`} help="Seçtiğiniz bilgiler her mağazaya, o mağazanın aldığı kadarıyla gönderilir. Shopify seçime bakmaz: tüm model kartını tek istekte alır.">
               <button type="button" disabled={submitting || allFieldsPicked} onClick={() => setGroup(available, true)}>Tümünü Seç</button>
               <button type="button" disabled={submitting || !visibleFields.length} onClick={() => setGroup(available, false)}>Temizle</button>
             </PlatformUpdateSectionHead>
             <div className="platform-update-field-groups" role="group" aria-label="Gönderilecek bilgiler">
               {groups.map(group => <PlatformUpdateFieldGroup key={group.key} group={group} picked={fields} open={openGroups.includes(group.key)} locked={submitting} onToggleOpen={() => toggleOpen(group.key)} onGroupChange={on => setGroup(group.fields.map(field => field.key), on)} onFieldChange={setField} />)}
             </div>
+            {sendsPriceOrStock && <p className="platform-update-manual-note" role="note"><UiIcon name="info" size={14} /><span>{manualPriceStockNote}</span></p>}
           </section>}
           <section className="platform-update-section" aria-labelledby="platform-update-stores-title">
-            <PlatformUpdateSectionHead id="platform-update-stores-title" title="Platformlar" hint={`${selected.length}/${writable.length} mağaza seçili${writable.length < targets.length ? ` · ${targets.length - writable.length} mağaza güncellenemez` : ''}`}>
-              {writable.length > 0 && <>
-                <button type="button" disabled={submitting || allStoresPicked} onClick={() => selectStores(writableIds)}>Tümünü Seç</button>
+            <PlatformUpdateSectionHead id="platform-update-stores-title" title="Platformlar" hint={`${selected.length}/${selectable.length} mağaza seçili${selectable.length < targets.length ? ` · ${targets.length - selectable.length} mağaza güncellenemez` : ''}`}>
+              {selectable.length > 0 && <>
+                <button type="button" disabled={submitting || allStoresPicked} onClick={() => selectStores(selectableIds)}>Tümünü Seç</button>
                 <button type="button" disabled={submitting || !selected.length} onClick={() => selectStores([])}>Hiçbirini Seçme</button>
               </>}
             </PlatformUpdateSectionHead>
@@ -117,13 +142,14 @@ export function PlatformUpdateDialog({ targets, selectedIds, onSelectedIdsChange
           </section>
         </div></div></section></div></div>
         <footer className="publish-selection-footer platform-update-footer">
-          <div><strong>{selected.length ? `${selected.length} platform seçildi` : 'Güncellenecek platform seçilmedi'}</strong><small>{!selected.length ? 'Güncellenecek mağazaları kartların üstünden seçin.' : !sendsAnything ? 'Seçili mağazalara gidecek bir bilgi seçilmedi.' : sendBlocked || (onSave ? 'Kaydet seçimi saklar; Gönder saklayıp hemen gönderir.' : 'Gönder seçili bilgileri seçili mağazalara hemen gönderir.')}</small></div>
+          <div><strong>{selected.length ? `${selected.length} platform seçildi` : 'Güncellenecek platform seçilmedi'}</strong><small>{!selected.length ? 'Güncellenecek mağazaları kartların üstünden seçin.' : !sendsAnything ? 'Seçili mağazalara gidecek bir bilgi seçilmedi.' : sendBlocked || writeClosedNote || (onSave ? 'Kaydet seçimi saklar; Gönder saklayıp hemen gönderir.' : 'Gönder seçili bilgileri seçili mağazalara hemen gönderir.')}</small></div>
           {!selected.length && <span className="publish-selection-warning"><UiIcon name="alert" /> En az bir platform seçin</span>}
           {selected.length > 0 && !sendsAnything && <span className="publish-selection-warning"><UiIcon name="alert" /> En az bir bilgi seçin</span>}
+          {sendsAnything && writeClosed.length > 0 && <span className="publish-selection-warning"><UiIcon name="alert" /> Yazma Kapalı</span>}
           <div className="platform-update-actions">
             <button type="button" className="secondary" onClick={close} disabled={submitting}>Vazgeç</button>
             {onSave && <button type="button" className="secondary" onClick={() => onSave(visibleFields)} disabled={submitting || !selected.length || !sendsAnything}>Kaydet</button>}
-            <button type="button" onClick={() => onSend(visibleFields)} disabled={submitting || !selected.length || !sendsAnything || Boolean(sendBlocked)}>{submitting ? 'Gönderiliyor…' : 'Gönder'}</button>
+            <button type="button" onClick={() => onSend(visibleFields)} disabled={submitting || !selected.length || !sendsAnything || Boolean(sendBlocked) || writeClosed.length > 0} title={writeClosedNote || undefined}>{submitting ? 'Gönderiliyor…' : 'Gönder'}</button>
           </div>
         </footer>
       </DialogSurface>
@@ -181,7 +207,11 @@ function PlatformUpdateCard({ target, selected, fields, locked, familyReach, onT
   onToggle: () => void
 }) {
   const { connection } = target
-  const writable = isPlatformUpdateWritable(target)
+  // A store whose write switch is closed can still be picked (Kaydet keeps it); its card says which switch and where.
+  const writable = isPlatformUpdateSelectable(target)
+  const closed = writable && Boolean(platformUpdateWriteClosed(target))
+  // Shopify takes the whole model card in one request: the pick does not narrow what goes there (9.3.10).
+  const wholeCard = writable && platformUpdateSendsWholeCard(connection.platformCode)
   const logo = platformLogoSource(connection.platformCode)
   const platformName = bulkPublishPlatformName(connection.platformCode)
   const storeName = connection.displayName || connection.externalStoreId || platformName
@@ -196,7 +226,7 @@ function PlatformUpdateCard({ target, selected, fields, locked, familyReach, onT
   // through) the picked fields this marketplace does not take.
   type Chip = { label: string; kind?: 'extra' | 'skipped' }
   const chips: Chip[] = writable && plan.sends.length ? [...plan.sends.map(label => ({ label })), ...plan.extras.map(label => ({ label, kind: 'extra' as const })), ...plan.skipped.map(field => ({ label: platformUpdateFieldLabel(field), kind: 'skipped' as const }))] : []
-  return <article className={`publish-platform-card${on ? ' selected' : ''}${writable ? '' : ' is-readonly'}`}>
+  return <article className={`publish-platform-card${on ? ' selected' : ''}${writable ? '' : ' is-readonly'}${closed ? ' is-write-closed' : ''}`}>
     <button type="button" className="publish-platform-card-head" onClick={onToggle} aria-pressed={on} disabled={locked || !writable}>
       <span className={`publish-platform-mark ${connection.platformCode.trim().toLocaleLowerCase('tr-TR')}`}>{logo ? <img className={`publish-platform-logo ${platformLogoClass(connection.platformCode)}`} src={logo} alt="" aria-hidden="true" /> : <b aria-hidden="true">{storeName.trim().charAt(0).toLocaleUpperCase('tr-TR') || 'R'}</b>}</span>
       <span><strong>{storeName}</strong><small>{subtitle}</small></span>
@@ -206,7 +236,8 @@ function PlatformUpdateCard({ target, selected, fields, locked, familyReach, onT
       <div><dt>Mağaza</dt><dd title={connection.externalStoreId ? `Mağaza no: ${connection.externalStoreId}` : undefined}>{connection.externalStoreId || '—'}</dd></div>
       <div><dt>Platform</dt><dd>{platformName}</dd></div>
       <div className="platform-update-sends"><dt>Gönderilecek</dt><dd title={sends}>{chips.length ? <ul className="platform-update-chips">{chips.map(chip => <li key={`${chip.kind}-${chip.label}`} className={chip.kind ? `is-${chip.kind}` : undefined} title={chip.kind === 'extra' ? 'Seçim değil, aynı istekte birlikte gider' : undefined}>{chip.kind === 'skipped' ? <s>{chip.label}</s> : chip.label}</li>)}</ul> : writable ? sends : '—'}</dd>
-        {writable && plan.bundled.length > 0 && <small>Seçilmedi ama aynı istekte birlikte gider: {plan.bundled.map(platformUpdateFieldLabel).join(', ')}.</small>}
+        {wholeCard && <small className="platform-update-whole-card">Shopify seçime bakmaz: hangi bilgi seçilirse seçilsin tüm model kartı (fiyat ve stok dahil) tek istekte gider.</small>}
+        {writable && !wholeCard && plan.bundled.length > 0 && <small>Seçilmedi ama aynı istekte birlikte gider: {plan.bundled.map(platformUpdateFieldLabel).join(', ')}.</small>}
       </div>
       {reach && <div className="platform-update-sends platform-update-family-reach"><dt>Model Ailesi</dt><dd>{reach}</dd></div>}
       {target.detail && <div className="platform-update-sends"><dt>Yayındaki Ürünler</dt><dd>{target.detail}</dd></div>}
