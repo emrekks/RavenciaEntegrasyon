@@ -80,6 +80,6 @@ export function PanelSelectList<T extends string>({ title, ariaLabel, options, v
   }
   return <div ref={list} className="rr-pop pm-pop" role="listbox" tabIndex={-1} aria-label={ariaLabel} style={{ minWidth: width }} onKeyDown={move}>
     {title && <div className="rr-ph">{title}</div>}
-    {options.map(option => { const on = option.value === value; return <button key={option.value} type="button" role="option" aria-selected={on} disabled={option.disabled} className={`rr-opt${on ? ' rr-on' : ''}`} onClick={() => onPick(option.value)}><span className="rr-radio" aria-hidden="true" /><span className="rr-grow">{option.label}</span></button> })}
+    {options.map(option => { const on = option.value === value; const head = option.value.startsWith('__group:'); return <button key={option.value} type="button" role="option" aria-selected={on} disabled={option.disabled} className={`rr-opt${on ? ' rr-on' : ''}${head ? ' rr-opt-head' : ''}`} onClick={() => onPick(option.value)}>{!head && <span className="rr-radio" aria-hidden="true" />}<span className="rr-grow">{option.label}</span></button> })}
   </div>
 }

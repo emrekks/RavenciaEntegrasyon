@@ -277,7 +277,9 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ordercell > div > :is(.rr-wordmark, .rr-wordmark-text, .rr-wordmark-row) { margin: 0; align-self: center; }
 /* Each wordmark is lifted by its own --rr-mark-dy (set in RrWordmark) so the body of its lettering, not its box, is
    centred on the order number's line (Trendyol's ".com" and Shopify's bag left the lettering low). */
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ordercell > div > .rr-wordmark { translate: 0 var(--rr-mark-dy, 0px); }
+@media (max-width: 760px) {
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ordercell > div > .rr-wordmark { translate: 0 var(--rr-mark-dy, 0px); }
+}
 /* Phones, order and return cards: a product line's picture is a 2:3 frame 92px wide that starts at the line's top, next
    to the product name (it sat centred lower down and left an empty band above it). */
 @media (max-width: 760px) {
