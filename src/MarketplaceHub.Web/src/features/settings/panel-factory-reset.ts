@@ -9,9 +9,14 @@ export type PanelResetStepState = 'done' | 'running' | 'pending' | 'failed'
 
 export const panelResetConfirmationWord = 'PANELİ SIFIRLA'
 
-// The typed word must match exactly, the Turkish İ included ("PANELI SIFIRLA" and lower case do not open the button).
+// The typed words count in Turkish capitals, with spaces at the ends and doubled ones ignored: "paneli sıfırla" matches,
+// "PANELI SIFIRLA" (dotless I) does not. The server compares the same way.
+export function normalizePanelResetConfirmation(text: string) {
+  return text.trim().replace(/\s+/g, ' ').toLocaleUpperCase('tr-TR')
+}
+
 export function panelResetConfirmed(text: string, word = panelResetConfirmationWord) {
-  return text.trim() === word
+  return normalizePanelResetConfirmation(text) === normalizePanelResetConfirmation(word)
 }
 
 export function panelResetRunning(status: string | undefined | null) {

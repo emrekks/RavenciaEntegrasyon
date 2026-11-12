@@ -244,11 +244,13 @@
 @keyframes ss-fr-spin { to { transform: rotate(360deg); } }
 .ss-page .ss-fr-error { color: var(--rv-color-danger); font-size: 13px; }
 .ss-page .ss-fr-confirm { display: grid; gap: 6px; }
-.ss-page .ss-fr-confirm label { color: var(--rv-color-muted); font-size: 13px; }
+.ss-page .ss-fr-confirm label { display: flex; align-items: center; gap: 6px; color: var(--rv-color-muted); font-size: 13px; }
+.ss-page .ss-fr-confirm label.is-match { color: var(--rv-color-ink); }
+.ss-page .ss-fr-ok { color: var(--rv-color-accent); }
 .ss-page .ss-fr-confirm label b { color: var(--rv-color-ink); font-weight: 600; }
 .ss-page .ss-fr-confirm-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .app-shell.stitch-shell main .ss-page .ss-in.ss-fr-in { width: 240px; }
-.app-shell.stitch-shell main .ss-page .ss-in.ss-fr-in.is-match { border-color: var(--rv-color-danger); }
+.app-shell.stitch-shell main .ss-page .ss-in.ss-fr-in.is-match { border-color: var(--rv-color-accent); }
 .app-shell.stitch-shell main .ss-page .ss-btn.ss-fr-go:disabled { opacity: .5; cursor: not-allowed; }
 @container ss-pane (max-width: 720px) {
   .ss-page .ss-fr-cols, .ss-page .ss-fr-steps { grid-template-columns: minmax(0, 1fr); }

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, hubPoll } from '../../shared/api'
 import { formatIstanbul } from '../../shared/format-date'
-import { panelResetConfirmationWord, panelResetConfirmed, panelResetFailed, panelResetRunning, panelResetStepStates, type PanelFactoryResetView, type PanelResetStepState } from './panel-factory-reset'
+import { normalizePanelResetConfirmation, panelResetConfirmationWord, panelResetConfirmed, panelResetFailed, panelResetRunning, panelResetStepStates, type PanelFactoryResetView, type PanelResetStepState } from './panel-factory-reset'
 
 const resetNumber = (value: number) => value.toLocaleString('tr-TR')
 const queryKey = ['panel-factory-reset']
@@ -12,6 +12,10 @@ function StepGlyph({ state }: { state: PanelResetStepState }) {
   if (state === 'running') return <svg className="ss-st ss-fr-spin" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.2" opacity=".3" /><path d="M8 1.8a6.2 6.2 0 0 1 6.2 6.2" /></svg>
   if (state === 'failed') return <svg className="ss-st is-bad" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.2" /><path d="m5.8 5.8 4.4 4.4M10.2 5.8l-4.4 4.4" /></svg>
   return <svg className="ss-st" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeDasharray="2.6 2.2" aria-hidden="true"><circle cx="8" cy="8" r="6.2" /></svg>
+}
+
+function MatchGlyph() {
+  return <svg className="ss-st ss-fr-ok" viewBox="0 0 16 16" aria-label="Eşleşti" role="img"><circle cx="8" cy="8" r="7" fill="currentColor" /><path d="m5 8.2 2.1 2.1 3.9-4.2" fill="none" stroke="#fff" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" /></svg>
 }
 
 function AlertGlyph() {
@@ -54,7 +58,7 @@ export function PanelFactoryResetSection() {
     setSending(true)
     setError(null)
     try {
-      const next = await hubApi<PanelFactoryResetView>('/settings/factory-reset', { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ confirmation: confirmation.trim() }) })
+      const next = await hubApi<PanelFactoryResetView>('/settings/factory-reset', { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ confirmation: normalizePanelResetConfirmation(confirmation) }) })
       queryClient.setQueryData(queryKey, next)
       setConfirmation('')
     } catch (failure) {
@@ -97,9 +101,9 @@ export function PanelFactoryResetSection() {
       {failed && <p className="ss-fr-error">{job.error ?? 'Sıfırlama tamamlanamadı.'}</p>}
     </div>}
     {!running && <div className="ss-fr-confirm">
-      <label htmlFor="panel-factory-reset-confirm">Onaylamak için <b>{word}</b> yazın</label>
+      <label htmlFor="panel-factory-reset-confirm" className={confirmed ? 'is-match' : undefined}>{confirmed ? <MatchGlyph /> : null}<span>Onaylamak için <b>{word}</b> yazın</span></label>
       <div className="ss-fr-confirm-row">
-        <input id="panel-factory-reset-confirm" className={`ss-in ss-fr-in${confirmed ? ' is-match' : ''}`} value={confirmation} onChange={event => setConfirmation(event.target.value)} disabled={sending || !view.data} autoComplete="off" spellCheck={false} placeholder={word} />
+        <input id="panel-factory-reset-confirm" className={`ss-in ss-fr-in${confirmed ? ' is-match' : ''}`} value={confirmation} onChange={event => setConfirmation(event.target.value)} disabled={sending || !view.data} autoComplete="off" spellCheck={false} />
         <button type="button" className="ss-btn is-danger is-solid ss-fr-go" disabled={!confirmed || sending || !view.data} onClick={() => void start()}>{sending ? 'Başlatılıyor…' : 'Paneli Sıfırla'}</button>
       </div>
       {error && <p className="ss-fr-error" role="alert">{error}</p>}

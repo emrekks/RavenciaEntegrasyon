@@ -24,6 +24,13 @@ public sealed class PanelFactoryResetService(AppDbContext db, TimeProvider timeP
     private static readonly JobStatus[] WaitingJobStatuses = [JobStatus.Pending, JobStatus.RetryScheduled];
     private static readonly JobStatus[] OpenJobStatuses = [JobStatus.Pending, JobStatus.Leased, JobStatus.RetryScheduled];
 
+    private static readonly System.Globalization.CultureInfo Turkish = System.Globalization.CultureInfo.GetCultureInfo("tr-TR");
+
+    // Turkish capitals, spaces at the ends and doubled ones ignored (as the panel compares): "paneli sıfırla" matches,
+    // "PANELI SIFIRLA" (dotless I) does not.
+    internal static string NormalizeConfirmation(string? text) =>
+        string.Join(' ', (text ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).ToUpper(Turkish);
+
     private sealed record Payload(Guid? KeepSessionId, Guid ActorUserId);
 
     public async Task<ServiceResult<PanelFactoryResetView>> GetAsync(Guid tenantId, CancellationToken cancellationToken) =>
@@ -31,7 +38,7 @@ public sealed class PanelFactoryResetService(AppDbContext db, TimeProvider timeP
 
     public async Task<ServiceResult<PanelFactoryResetView>> RequestAsync(Guid tenantId, Guid actorUserId, Guid? currentSessionId, PanelFactoryResetCommand command, string correlationId, CancellationToken cancellationToken)
     {
-        if (!string.Equals(command.Confirmation?.Trim(), ConfirmationWord, StringComparison.Ordinal))
+        if (!string.Equals(NormalizeConfirmation(command.Confirmation), ConfirmationWord, StringComparison.Ordinal))
             return ServiceResult<PanelFactoryResetView>.Fail("VALIDATION_FAILED", $"Onay alanına tam olarak {ConfirmationWord} yazın.", 422, new Dictionary<string, string[]> { ["confirmation"] = [$"Onay alanına tam olarak {ConfirmationWord} yazın."] });
 
         // A second request while one is queued or running answers with that one.

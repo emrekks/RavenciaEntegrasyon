@@ -75,4 +75,14 @@ public sealed class PanelFactoryResetInventoryTests
         Assert.Equal(PanelFactoryResetInventory.Groups.Count + 2, PanelFactoryResetInventory.Steps.Count);
         Assert.Equal("Tamamlandı", PanelFactoryResetInventory.Steps[^1]);
     }
+
+    [Theory]
+    [InlineData("PANELİ SIFIRLA", true)]
+    [InlineData("  paneli   sıfırla ", true)]
+    [InlineData("Paneli Sıfırla", true)]
+    [InlineData("PANELI SIFIRLA", false)]
+    [InlineData("paneli sifirla", false)]
+    [InlineData(null, false)]
+    public void TheConfirmation_IsComparedInTurkishCapitals(string? typed, bool accepted) =>
+        Assert.Equal(accepted, PanelFactoryResetService.NormalizeConfirmation(typed) == PanelFactoryResetService.ConfirmationWord);
 }

@@ -67,11 +67,13 @@ afterEach(() => {
 })
 
 describe('panel factory reset confirmation', () => {
-  it('opens only for the exact word with the Turkish İ', () => {
+  it('compares in Turkish capitals, ignoring case and spaces but not the dot of the İ', () => {
     expect(panelResetConfirmed('PANELİ SIFIRLA')).toBe(true)
-    expect(panelResetConfirmed('  PANELİ SIFIRLA ')).toBe(true)
+    expect(panelResetConfirmed('  PANELİ   SIFIRLA ')).toBe(true)
+    expect(panelResetConfirmed('paneli sıfırla')).toBe(true)
+    expect(panelResetConfirmed('Paneli Sıfırla')).toBe(true)
     expect(panelResetConfirmed('PANELI SIFIRLA')).toBe(false)
-    expect(panelResetConfirmed('paneli sıfırla')).toBe(false)
+    expect(panelResetConfirmed('paneli sifirla')).toBe(false)
     expect(panelResetConfirmed('')).toBe(false)
   })
 
@@ -92,8 +94,12 @@ describe('panel factory reset confirmation', () => {
     expect(goButton()!.disabled).toBe(true)
     type(input, 'PANELI SIFIRLA')
     expect(goButton()!.disabled).toBe(true)
-    type(input, 'PANELİ SIFIRLA')
+    expect(container.querySelector('.ss-fr-ok')).toBeNull()
+    type(input, ' paneli sıfırla')
     expect(goButton()!.disabled).toBe(false)
+    // The expected words stay above the field all along; a match shows the green tick.
+    expect(container.querySelector('label[for="panel-factory-reset-confirm"]')!.textContent).toBe('Onaylamak için PANELİ SIFIRLA yazın')
+    expect(container.querySelector('.ss-fr-ok')).not.toBeNull()
     await act(async () => { goButton()!.click() })
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
     const post = state.calls.find(call => call.method === 'POST')!
