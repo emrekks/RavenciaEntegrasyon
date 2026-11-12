@@ -10,6 +10,7 @@ import { failureNotice } from '../../../shared/notifications'
 import { formatIstanbul } from '../../../shared/format-date'
 import { connectionFullResetItems, connectionFullResetRunning, type ConnectionFullResetJob, type ConnectionFullResetView } from '../connection-data-reset'
 import type { Connection, IntegrationFeedback } from '../shared'
+import '../../../shared/components/data-reset-ledger.css'
 
 const number = (value: number) => value.toLocaleString('tr-TR')
 

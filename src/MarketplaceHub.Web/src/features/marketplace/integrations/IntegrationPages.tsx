@@ -6,7 +6,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, hubPoll, loadAllPages } from '../../../shared/api'
 import { automaticWritesBaselineMessage, cadenceChoices, cadenceNote, cadenceShortText, idleRuleText, type SyncCadence, connectionEnvironmentLabel, connectionTestFeedback, credentialRequestBody, integrationPlatformFilters, invoiceCreationFeedback, priceStockMonitorQueryKey, readIntegrationListState, stageTestOrderAvailable, trendyolUserAgentNotice, writeIntegrationListState, type IntegrationListState } from './integration-helpers'
 import { Busy, CardBackgroundIcon, ErrorBox, Tabs, TitleHint, UiIcon, useConfirmDialog, DialogSurface, FieldLabel } from '../../../shared/components'
-import { DataResetLedger } from '../../../shared/components/DataResetLedger'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { useJobOutcomeNotice } from '../../../shared/job-outcome-notice'
 import { NoticeToast } from '../../../shared/components/NoticeToast'
@@ -22,7 +21,7 @@ import { appendNotification, failureNotice, inferNotificationTarget, notificatio
 import { isOrderMarketplacePlatform, supportsSyncPolicy, supportsSyncPolicyManagement, syncIntervalText, syncPolicyIntervalChoices } from '../marketplace-platform-support'
 import { flowsNeedingAttention, syncPolicyHealthPresentation } from '../sync-policy-health'
 import { SyncPolicyStalledAlert } from '../sync-policy-stalled-alert'
-import { connectionDataResetGroups, connectionDataResetOptions, connectionFullResetSupported, type ConnectionDataResetScope, type ConnectionFullResetJob } from '../connection-data-reset'
+import { connectionFullResetSupported, type ConnectionFullResetJob } from '../connection-data-reset'
 import { ConnectionFullResetPanel, fullResetFinishedFeedback } from './ConnectionFullResetPanel'
 import { shopifyStoreDisplayName } from '../shopify-store-name'
 import { shouldLoadConnectionCapabilities } from '../connection-capability-query'
@@ -96,26 +95,12 @@ function connectionTestHelp(item: Connection) {
 function ReferenceActionDialog({ id, title, description, confirmLabel, confirmDisabled, destructive = false, onClose, onConfirm, children }: { id: string; title: string; description: string; confirmLabel: string; confirmDisabled?: boolean; destructive?: boolean; onClose: () => void; onConfirm: () => void; children?: ReactNode }) {
   return <div className="workspace-modal-backdrop reference-action-backdrop" role="presentation" onMouseDown={onClose}><DialogSurface as="section" onClose={onClose} className="workspace-modal reference-action-modal" role="alertdialog" aria-labelledby={`${id}-title`} onMouseDown={event => event.stopPropagation()}><header><div><p className="eyebrow">Bağlantı İşlemi</p><h2 id={`${id}-title`}>{title}</h2></div><button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header><div className="reference-action-body"><p>{description}</p>{children}</div><footer><button type="button" className="secondary" onClick={onClose}>Vazgeç</button><button type="button" className={destructive ? 'destructive' : undefined} onClick={() => onConfirm()} disabled={confirmDisabled}>{confirmLabel}</button></footer></DialogSurface></div>
 }
-type DataResetCounts = { items: Array<{ scope: string; count: number }>; keptIssuedInvoices: number }
-function ConnectionDataResetDialog({ item, scopes, confirmation, busy, onToggleScopes, onChangeConfirmation, onClose, onConfirm, onFeedback, onFullResetFinished }: { item: Connection; scopes: ConnectionDataResetScope[]; confirmation: string; busy: boolean; onToggleScopes: (scopes: ConnectionDataResetScope[], checked: boolean) => void; onChangeConfirmation: (value: string) => void; onClose: () => void; onConfirm: () => void; onFeedback: (feedback: IntegrationFeedback) => void; onFullResetFinished: (job: ConnectionFullResetJob) => void }) {
-  const groups = connectionDataResetGroups(item.platformCode)
-  // Seçerek Sıfırla picks data types; Tam Sıfırlama removes everything the connection holds (marketplaces only).
-  const fullResetOffered = connectionFullResetSupported(item.platformCode)
-  const [mode, setMode] = useState<'pick' | 'full'>('pick')
-  // What each data type holds now, the same counts the reset reports when it is done.
-  const counts = useQuery({ queryKey: ['data-reset-counts', item.id], queryFn: () => hubApi<DataResetCounts>(`/connections/${item.id}/data-reset`), staleTime: 0 })
-  const byScope = counts.data ? Object.fromEntries(counts.data.items.map(entry => [entry.scope, entry.count])) as Partial<Record<ConnectionDataResetScope, number>> : undefined
-  const kept = counts.data?.keptIssuedInvoices ?? 0
-  return <div className="workspace-modal-backdrop reference-action-backdrop" role="presentation" onMouseDown={() => { if (!busy) onClose() }}>
-    <DialogSurface as="section" onClose={() => { if (!busy) onClose() }} className={`workspace-modal data-reset-dialog${fullResetOffered ? ' has-modes' : ''}`} role="alertdialog" aria-labelledby={`reset-data-${item.id}-title`} onMouseDown={event => event.stopPropagation()}>
-      <header><div className="data-reset-title"><PlatformSquareMark code={item.platformCode} name={item.displayName} /><div><h2 id={`reset-data-${item.id}-title`}>Verileri Sıfırla</h2><p>{item.displayName} · {connectionEnvironmentLabel(item.platformCode, item.environment)}</p></div></div><button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat" disabled={busy}><UiIcon name="close" /></button></header>
-      {fullResetOffered && <Tabs className="rv-view-tabs data-reset-modes" ariaLabel="Sıfırlama türü" value={mode} onChange={next => setMode(next as 'pick' | 'full')} items={[{ value: 'pick', label: 'Seçerek Sıfırla' }, { value: 'full', label: 'Tam Sıfırlama' }]} />}
-      {mode === 'full' && fullResetOffered ? <ConnectionFullResetPanel item={item} onFeedback={onFeedback} onFinished={onFullResetFinished} onCancel={onClose} /> : <DataResetLedger idPrefix={`reset-data-${item.id}`} groups={groups} counts={byScope} countsFailed={counts.isError} picked={scopes} onToggle={onToggleScopes} confirmWord={item.displayName} confirmation={confirmation} onConfirmation={onChangeConfirmation} busy={busy} onConfirm={onConfirm} onCancel={onClose}
-        notes={[
-          { tone: 'warn', text: 'Seçilenler bu panelden kalıcı olarak silinir ve geri alınamaz.' },
-          { tone: 'ok', text: `Pazaryerine hiçbir şey yazılmaz; ${item.displayName} hesabındaki kayıtlar olduğu gibi kalır ve sonraki eşitlemede yeniden alınabilir.` },
-          ...(kept ? [{ tone: 'ok' as const, text: `Kesilmiş ${kept.toLocaleString('tr-TR')} fatura ve bağlı siparişleri mali kayıt olduğu için korunur. Faturalar dahil her şeyi silmek için Tam Sıfırlama’yı kullanın.` }] : [])
-        ]} />}
+// Verileri Sıfırla: the connection's Tam Sıfırlama (every record of it goes, its settings stay).
+function ConnectionDataResetDialog({ item, onClose, onFeedback, onFullResetFinished }: { item: Connection; onClose: () => void; onFeedback: (feedback: IntegrationFeedback) => void; onFullResetFinished: (job: ConnectionFullResetJob) => void }) {
+  return <div className="workspace-modal-backdrop reference-action-backdrop" role="presentation" onMouseDown={onClose}>
+    <DialogSurface as="section" onClose={onClose} className="workspace-modal data-reset-dialog" role="alertdialog" aria-labelledby={`reset-data-${item.id}-title`} onMouseDown={event => event.stopPropagation()}>
+      <header><div className="data-reset-title"><PlatformSquareMark code={item.platformCode} name={item.displayName} /><div><h2 id={`reset-data-${item.id}-title`}>Verileri Sıfırla</h2><p>{item.displayName} · {connectionEnvironmentLabel(item.platformCode, item.environment)}</p></div></div><button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header>
+      <ConnectionFullResetPanel item={item} onFeedback={onFeedback} onFinished={onFullResetFinished} onCancel={onClose} />
     </DialogSurface>
   </div>
 }
@@ -129,8 +114,6 @@ function ReferenceConnectionCard({ item, onSaved, onFeedback: emitFeedback }: { 
   const [disconnectOpen, setDisconnectOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [resetOpen, setResetOpen] = useState(false)
-  const [resetScopes, setResetScopes] = useState<ConnectionDataResetScope[]>([])
-  const [resetConfirmation, setResetConfirmation] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
   // The settings window opens on this card and can switch to any other connection from its title.
   const [settingsConnectionId, setSettingsConnectionId] = useState(item.id)
@@ -159,7 +142,6 @@ function ReferenceConnectionCard({ item, onSaved, onFeedback: emitFeedback }: { 
   // the database cleanup in Ayarlar does.
   const afterDataRemoved = () => { void client.invalidateQueries(); onSaved() }
   const deepDelete = useMutation({ mutationFn: () => hubApi(`/connections/${item.id}/deep-delete`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ confirmation: deleteConfirmation }) }), onSuccess: () => { setDeleteOpen(false); setDeleteConfirmation(''); onFeedback({ kind: 'success', title: 'Bağlantı Silindi', message: 'Bağlantı ve bağlı veriler silindi.' }); afterDataRemoved() }, onError: reason => onFeedback(failureNotice(reason, 'Bağlantı ve bağlı veriler silinemedi.')) })
-  const resetData = useMutation({ mutationFn: () => hubApi<{ keptIssuedInvoices?: number }>(`/connections/${item.id}/data-reset`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ scopes: resetScopes, confirmation: resetConfirmation }) }), onSuccess: result => { const labels = connectionDataResetOptions(item.platformCode).filter(option => resetScopes.includes(option.scope)).map(option => option.label.toLocaleLowerCase('tr-TR')).join(', '); setResetOpen(false); setResetScopes([]); setResetConfirmation(''); onFeedback({ kind: 'success', message: `${item.displayName} bağlantısında seçilen veriler sıfırlandı: ${labels}.${result?.keptIssuedInvoices ? ` Kesilmiş ${result.keptIssuedInvoices.toLocaleString('tr-TR')} fatura ve bağlı oldukları siparişler mali kayıt olduğu için korundu.` : ''} Otomatik eşitleme açıksa kayıtlar yeniden çekilebilir.` }); afterDataRemoved() }, onError: reason => onFeedback(failureNotice(reason, 'Seçilen bağlantı verileri sıfırlanamadı.')) })
   // A Production connection that passed its test after a change of settings is VERIFIED: it reads, but the marketplace
   // takes nothing from it (invoices, stock, prices) until it is activated, so the menu offers that as well.
   const awaitingActivation = item.status === 'VERIFIED' && item.environment !== 'STAGE'
@@ -170,7 +152,8 @@ function ReferenceConnectionCard({ item, onSaved, onFeedback: emitFeedback }: { 
     { key: 'test', label: 'Bağlantıyı Kontrol Et', displayLabel: test.isPending ? 'Kontrol Ediliyor…' : 'Bağlantıyı Kontrol Et', disabled: test.isPending, run: () => { setMenuOpen(false); test.mutate() } },
     { key: 'delete', label: 'Bağlantıyı Sil', disabled: false, run: () => { setMenuOpen(false); setDeleteOpen(true) } },
     ...(supportsInitialDataSync ? [{ key: 'initial-sync', label: 'Verileri Çek', displayLabel: initialDataSync.isPending ? 'Kuyruğa Alınıyor…' : 'Verileri Çek', disabled: !connected || !item.hasCredential || initialDataSync.isPending, run: () => { setMenuOpen(false); initialDataSync.mutate() } }] : []),
-    { key: 'reset', label: 'Verileri Sıfırla', disabled: resetData.isPending, run: () => { setMenuOpen(false); setResetScopes([]); setResetConfirmation(''); setResetOpen(true) } },
+    // An e-invoice connection has no Tam Sıfırlama (its records are its invoices); Bağlantıyı Sil covers it.
+    ...(connectionFullResetSupported(item.platformCode) ? [{ key: 'reset', label: 'Verileri Sıfırla', disabled: false, run: () => { setMenuOpen(false); setResetOpen(true) } }] : []),
   ].sort((left, right) => left.label.localeCompare(right.label, 'tr-TR'))
   function updateMenuPlacement(trigger: HTMLButtonElement) {
     const triggerRect = trigger.getBoundingClientRect()
@@ -226,7 +209,7 @@ function ReferenceConnectionCard({ item, onSaved, onFeedback: emitFeedback }: { 
     <footer className="reference-integration-footer"><span>{shopify ? 'E-Ticaret' : efaturam ? 'E-Fatura' : 'Pazaryeri'}</span><div className="reference-footer-actions">{testSummary && item.hasCredential && <button type="button" className="reference-action reference-action-test" onClick={() => test.mutate()} disabled={test.isPending}>{test.isPending ? 'Test Ediliyor…' : 'Test Et'}</button>}<button type="button" className="reference-action" onClick={() => setSettingsOpen(true)} disabled={disconnect.isPending || activate.isPending || test.isPending}><UiIcon name="settings" /> Yönet</button></div></footer>
     {disconnectOpen && <ReferenceActionDialog id={`disconnect-${item.id}`} title="Bağlantıyı Pasife Al" description="Bağlantı pasife alınacak ve canlı veri akışı duracaktır." confirmLabel={disconnect.isPending ? 'Pasife Alınıyor…' : 'Onayla'} confirmDisabled={disconnect.isPending} onClose={() => setDisconnectOpen(false)} onConfirm={() => disconnect.mutate()} />}
      {deleteOpen && <ReferenceActionDialog id={`delete-${item.id}`} title="Bağlantıyı Sil" description="Bağlantı ve bu mağazaya bağlı sipariş, iade, fatura, ürün ve eşleştirme kayıtları kalıcı olarak silinir." confirmLabel={deepDelete.isPending ? 'Temizleniyor…' : 'Kalıcı Olarak Sil'} confirmDisabled={deleteConfirmation !== item.displayName || deepDelete.isPending} destructive onClose={() => { setDeleteOpen(false); setDeleteConfirmation('') }} onConfirm={() => deepDelete.mutate()}><label className="reference-action-confirmation">Onay için <b>{item.displayName}</b> yazın<input value={deleteConfirmation} onChange={event => setDeleteConfirmation(event.target.value)} /></label></ReferenceActionDialog>}
-    {resetOpen && <ConnectionDataResetDialog item={item} scopes={resetScopes} confirmation={resetConfirmation} busy={resetData.isPending} onToggleScopes={(changed, checked) => setResetScopes(current => checked ? [...new Set([...current, ...changed])] : current.filter(value => !changed.includes(value)))} onChangeConfirmation={setResetConfirmation} onClose={() => { setResetOpen(false); setResetScopes([]); setResetConfirmation('') }} onConfirm={() => resetData.mutate()} onFeedback={onFeedback} onFullResetFinished={job => { onFeedback(fullResetFinishedFeedback(item.displayName, job)); afterDataRemoved() }} />}
+    {resetOpen && <ConnectionDataResetDialog item={item} onClose={() => setResetOpen(false)} onFeedback={onFeedback} onFullResetFinished={job => { onFeedback(fullResetFinishedFeedback(item.displayName, job)); afterDataRemoved() }} />}
     {settingsOpen && <div className="integration-settings-modal-backdrop" role="presentation" onMouseDown={() => setSettingsOpen(false)}><DialogSurface as="section" onClose={() => setSettingsOpen(false)} className="integration-settings-modal" aria-label={`${item.displayName} bağlantı ayarları`} onMouseDown={event => event.stopPropagation()}><IntegrationDetailWorkspace key={settingsConnectionId} id={settingsConnectionId} inline onClose={() => setSettingsOpen(false)} onSwitch={setSettingsConnectionId} /></DialogSurface></div>}
   </article>
 }
