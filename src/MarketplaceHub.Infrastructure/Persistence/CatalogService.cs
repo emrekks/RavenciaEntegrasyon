@@ -615,15 +615,21 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         if (products.Count != ids.Length) return ServiceResult<int>.Fail("BULK_PRODUCT_NOT_FOUND", "Seçilen ürünlerden biri bulunamadı veya bu çalışma alanına ait değil.", 404);
         // A draft goes on sale only from its editor, with every rule met (ProductDraftPolicy): the bulk change leaves it as it is.
         products.RemoveAll(product => ProductDraftPolicy.IsDraft(product.Status));
-        var now = timeProvider.GetUtcNow();
-        // D4 (K8): the bulk change moves the same rows as the editor's status change: the product, its sale
-        // rows and its marketplace links (a local edit). Archive and activate are both status flips only, so an
-        // archived product comes back with its variants and images on activation.
+        var correlation = string.IsNullOrWhiteSpace(correlationId) ? Guid.NewGuid().ToString("N") : correlationId;
+        await ApplyBulkStatusAsync(tenantId, products, status, actorUserId, correlation, timeProvider.GetUtcNow(), cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+        return ServiceResult<int>.Ok(products.Count);
+    }
+
+    // D4 (K8): the bulk change moves the same rows as the editor's status change: the product, its sale rows and its
+    // marketplace links (a local edit). Archive and activate are both status flips only, so an archived product comes
+    // back with its variants and images on activation. Drafts are left out by the caller. Nothing is saved here.
+    private async Task ApplyBulkStatusAsync(Guid tenantId, IReadOnlyList<Product> products, ProductStatus status, Guid? actorUserId, string correlation, DateTimeOffset now, CancellationToken cancellationToken)
+    {
         var changedProductIds = products.Where(product => product.Status != status).Select(product => product.Id).ToArray();
         var variants = changedProductIds.Length == 0
             ? []
             : await db.ProductVariants.Where(x => x.TenantId == tenantId && changedProductIds.Contains(x.ProductId) && x.Status != status).ToListAsync(cancellationToken);
-        var correlation = string.IsNullOrWhiteSpace(correlationId) ? Guid.NewGuid().ToString("N") : correlationId;
         foreach (var product in products)
         {
             if (ProductChangeLog.Status(tenantId, product.Id, null, product.Status, status, ProductChangeSources.BulkEdit, actorUserId, null, correlation, now) is { } change)
@@ -635,8 +641,6 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         }
         foreach (var variant in variants) { variant.Status = status; variant.UpdatedAt = now; variant.Version++; }
         await CatalogLocalEdits.MarkLinksDirtyAsync(db, tenantId, changedProductIds, CatalogLocalEdits.ProductField, cancellationToken);
-        await db.SaveChangesAsync(cancellationToken);
-        return ServiceResult<int>.Ok(products.Count);
     }
 
     // Toplu KDV Ata: sets KDV Oranı and KDV Dahil mi on the selected product cards. Only the cards change: an existing

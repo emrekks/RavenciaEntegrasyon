@@ -83,6 +83,9 @@ public static class CatalogEndpoints
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.BulkSetStatusAsync(tenant.TenantId, command, http.RequestAborted, tenant.UserId, http.TraceIdentifier), Results.Ok) : MissingContext(http));
         api.MapPost("/products/bulk-vat", async (BulkProductVatCommand command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.BulkSetVatAsync(tenant.TenantId, command, http.RequestAborted), Results.Ok) : MissingContext(http));
+        // Toplu Değer Ata: one field on every colour card and variant of the selected models (owner and administrators).
+        api.MapPost("/products/bulk-field", async (BulkProductFieldCommand command, HttpContext http, ICatalogService service) =>
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.BulkSetFieldAsync(tenant.TenantId, command, http.RequestAborted, tenant.UserId, http.TraceIdentifier), Results.Ok) : MissingContext(http));
         api.MapPost("/products/bulk-delete", async (BulkProductDeleteCommand command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.BulkDeleteProductsAsync(tenant.TenantId, command, http.RequestAborted), deleted => Results.Ok(new { deletedCount = deleted.DeletedCount, cancelledJobCount = deleted.CancelledJobCount })) : MissingContext(http));
         // The jobs a delete would cancel, for its confirmation; it changes nothing.

@@ -1,0 +1,14 @@
+/* Toplu Değer Ata (BulkFieldDialog.tsx): the field picker above the value control, the footer's summary on one line of
+   its own above Vazgeç / Uygula. */
+.rr-layer.rr-layer .bf-modal .bf-body { display: grid; gap: 16px; }
+.rr-layer.rr-layer .bf-modal .bf-body .rr-fld > em { line-height: 18px; }
+.rr-layer.rr-layer .bf-modal .bf-body input.rr-in { height: 36px; min-height: 0; }
+.rr-layer.rr-layer .bf-modal .rr-m-foot .bf-summary { flex: 1 0 100%; overflow: hidden; color: var(--rr-ink); font-weight: 500; white-space: nowrap; text-overflow: ellipsis; }
+.rr-layer.rr-layer .bf-modal .rr-m-foot .bf-summary + .rr-btn { margin-left: auto; }
+.rr-layer.rr-layer .bf-modal .bf-desc { display: grid; gap: 10px; }
+.rr-layer.rr-layer .bf-modal .bf-desc textarea.rr-in { min-height: 150px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; line-height: 19px; }
+.rr-layer.rr-layer .bf-modal .bf-preview { display: grid; gap: 6px; max-height: 200px; overflow: auto; padding: 10px 12px; border: 1px solid var(--rr-line); border-radius: 7px; background: var(--rr-raised); }
+.rr-layer.rr-layer .bf-modal .bf-preview > small { color: var(--rr-muted); font-size: 12px; font-weight: 500; }
+.rr-layer.rr-layer .bf-modal .bf-preview-body { color: var(--rr-ink); font-size: 14px; line-height: 21px; overflow-wrap: anywhere; }
+.rr-layer.rr-layer .bf-modal .bf-preview-body :is(p, ul, ol) { margin: 0 0 8px; }
+.rr-layer.rr-layer .bf-modal .bf-preview-body img { max-width: 100%; height: auto; }

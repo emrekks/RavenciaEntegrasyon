@@ -121,6 +121,9 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
                     : OperationalRoles;
             case "shipments":
                 return last == "label-capability-probes" ? ElevatedRoles : OperationalRoles;
+            // Toplu Değer Ata rewrites one field across whole models at once: the owner's and administrators'.
+            case "products" when segments.Length == 4 && last == "bulk-field":
+                return ElevatedRoles;
             case "catalog" or "products" or "variants" or "files" or "imports" or "inventory" or "channel-offers" or "mappings" or "returns":
                 return OperationalRoles;
             default:

@@ -236,6 +236,7 @@ public sealed class ApiRouteAuthorizationMatrixTests(ApiPipelineHost fixture) : 
         "POST   /api/v1/products/{id:guid}/update-jobs Operations",
         "POST   /api/v1/products/{productId:guid}/connections/{connectionId:guid}/price-inventory-sync-jobs Operations",
         "POST   /api/v1/products/bulk-delete Operations",
+        "POST   /api/v1/products/bulk-field Elevated",
         "POST   /api/v1/products/bulk-publication-jobs Operations",
         "POST   /api/v1/products/bulk-status Operations",
         "POST   /api/v1/products/bulk-vat Operations",

@@ -238,6 +238,12 @@ public sealed record ProductDeletePreview(int PendingJobCount);
 // Toplu KDV Ata: the product cards' own VAT only; existing marketplace offers keep theirs.
 public sealed record BulkProductVatCommand(IReadOnlyList<Guid> ProductIds, decimal? VatRate, string? VatInclusion);
 public sealed record BulkProductVatResult(int UpdatedCount, int UnchangedCount);
+// Toplu Değer Ata: one field (BulkProductFields) set to one value on every colour card and variant of the selected
+// models. Only that field is written; nothing is sent to a marketplace.
+public sealed record BulkProductFieldCommand(IReadOnlyList<Guid>? ProductIds, string? Field, string? Value);
+// Model: the model code (or the card's name when it has none) the line is about.
+public sealed record BulkProductFieldFailure(string Model, string Message);
+public sealed record BulkProductFieldResult(int UpdatedCount, int UnchangedCount, int VariantCount, IReadOnlyList<BulkProductFieldFailure> Failures);
 // Variant ekleme append-only'dir: envanter veya dış listeye bağlı mevcut satış satırları sessizce silinmez.
 // Product list "Platformlara Yayınla": every selected card to every selected marketplace. A new offer takes its VAT
 // from the product card (Product.VatRate/VatInclusion), then a sibling offer of the same variant, then the connection's
@@ -307,6 +313,7 @@ public interface ICatalogService
     Task<ServiceResult<ProductDeleteResult>> BulkDeleteProductsAsync(Guid tenantId, BulkProductDeleteCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<ProductDeletePreview>> PreviewProductDeleteAsync(Guid tenantId, BulkProductDeleteCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<BulkProductVatResult>> BulkSetVatAsync(Guid tenantId, BulkProductVatCommand command, CancellationToken cancellationToken);
+    Task<ServiceResult<BulkProductFieldResult>> BulkSetFieldAsync(Guid tenantId, BulkProductFieldCommand command, CancellationToken cancellationToken, Guid? actorUserId = null, string? correlationId = null);
     Task<ServiceResult<ProductView>> CreateProductAsync(Guid tenantId, CreateProductCommand command, CancellationToken cancellationToken, Guid? actorUserId = null, string? correlationId = null);
     Task<ServiceResult<ProductView>> GetProductAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<ServiceResult<ProductMarketplaceCodesView>> GetProductMarketplaceCodesAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
