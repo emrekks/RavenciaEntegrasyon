@@ -95,9 +95,6 @@ public static class ProductRequiredFields
 
     public static ServiceResult<T> Refusal<T>(IReadOnlyList<Gap> gaps) => ServiceResult<T>.Fail(Code, Message(gaps), 422, FieldErrors(gaps));
 
-    // Why a stored card cannot go on sale (Toplu Satışa Aç, Toplu Değer Ata › Satış Durumu).
-    public static string ActivationRefusal(string title, IReadOnlyList<Gap> gaps) => $"{title.Trim()}: zorunlu alanları eksik ({Labels(gaps)}); ürün düzenleme ekranından tamamlanmadan satışa açılamaz.";
-
     // What a file or bulk write may not do to a card that is not a draft: leave a required field empty.
     public static string CannotEmpty(string field) => $"{Label(field)} zorunlu alandır; taslak olmayan üründe silinemez.";
 }

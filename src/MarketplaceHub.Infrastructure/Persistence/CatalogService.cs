@@ -606,47 +606,56 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             stocked.Sum(x => Math.Max(0, stockByProduct.GetValueOrDefault(x.Id))));
     }
 
-    public async Task<ServiceResult<int>> BulkSetStatusAsync(Guid tenantId, BulkProductStatusCommand command, CancellationToken cancellationToken, Guid? actorUserId = null, string? correlationId = null)
+    public async Task<ServiceResult<BulkProductStatusResult>> BulkSetStatusAsync(Guid tenantId, BulkProductStatusCommand command, CancellationToken cancellationToken, Guid? actorUserId = null, string? correlationId = null)
     {
         var ids = command.ProductIds.Distinct().ToArray();
-        if (ids.Length is 0 or > 500) return ServiceResult<int>.Fail("BULK_PRODUCT_LIMIT", "Toplu işlemde 1-500 ürün seçilebilir.", 422);
+        if (ids.Length is 0 or > 500) return ServiceResult<BulkProductStatusResult>.Fail("BULK_PRODUCT_LIMIT", "Toplu işlemde 1-500 ürün seçilebilir.", 422);
         if (!Enum.TryParse<ProductStatus>(command.Status, true, out var status) || status == ProductStatus.Draft)
-            return ServiceResult<int>.Fail("BULK_PRODUCT_STATUS_INVALID", "Toplu işlem yalnız ACTIVE veya ARCHIVED durumuna izin verir.", 422);
+            return ServiceResult<BulkProductStatusResult>.Fail("BULK_PRODUCT_STATUS_INVALID", "Toplu işlem yalnız ACTIVE veya ARCHIVED durumuna izin verir.", 422);
 
         var products = await db.Products.Where(x => x.TenantId == tenantId && ids.Contains(x.Id)).ToListAsync(cancellationToken);
-        if (products.Count != ids.Length) return ServiceResult<int>.Fail("BULK_PRODUCT_NOT_FOUND", "Seçilen ürünlerden biri bulunamadı veya bu çalışma alanına ait değil.", 404);
+        if (products.Count != ids.Length) return ServiceResult<BulkProductStatusResult>.Fail("BULK_PRODUCT_NOT_FOUND", "Seçilen ürünlerden biri bulunamadı veya bu çalışma alanına ait değil.", 404);
         // A draft goes on sale only from its editor, with every rule met (ProductDraftPolicy): the bulk change leaves it as it is.
         products.RemoveAll(product => ProductDraftPolicy.IsDraft(product.Status));
-        // A closed card goes on sale only with every required field (ProductRequiredFields); the run is refused and names
-        // each card that misses one, so nothing is opened half way and the user completes them in the editor.
+        // A closed card goes on sale only with every required field (ProductRequiredFields). Owner, 13 Nov 2026: "Eksik
+        // olanı atlasın, bildirsin": the complete cards are opened, each incomplete one is skipped and returned with what
+        // it misses (the panel notifies it).
+        List<RequiredFieldsSkippedProduct> skipped = [];
         if (status == ProductStatus.Active
             && await IncompleteCardsAsync(tenantId, [.. products.Where(product => product.Status != ProductStatus.Active)], cancellationToken) is { Count: > 0 } incomplete)
         {
-            var lines = incomplete.Take(5).Select(item => ProductRequiredFields.ActivationRefusal(item.Product.Title, item.Gaps)).ToList();
-            if (incomplete.Count > 5) lines.Add($"… ve {incomplete.Count - 5} ürün daha.");
-            return ServiceResult<int>.Fail(ProductRequiredFields.Code, $"{incomplete.Count} ürünün zorunlu alanları eksik; hiçbir ürün satışa açılmadı. {string.Join(" ", lines)}", 422,
-                new Dictionary<string, string[]> { ["productIds"] = [.. incomplete.Select(item => item.Product.Id.ToString("D"))] });
+            skipped = [.. incomplete.Select(SkippedFor)];
+            var skippedIds = incomplete.Select(item => item.Product.Id).ToHashSet();
+            products.RemoveAll(product => skippedIds.Contains(product.Id));
         }
         var correlation = string.IsNullOrWhiteSpace(correlationId) ? Guid.NewGuid().ToString("N") : correlationId;
         await ApplyBulkStatusAsync(tenantId, products, status, actorUserId, correlation, timeProvider.GetUtcNow(), cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
-        return ServiceResult<int>.Ok(products.Count);
+        return ServiceResult<BulkProductStatusResult>.Ok(new(products.Count, skipped));
     }
 
-    // The stored cards that miss a required field (ProductRequiredFields), with what they miss, in the given order.
-    private async Task<List<(Product Product, IReadOnlyList<ProductRequiredFields.Gap> Gaps)>> IncompleteCardsAsync(Guid tenantId, IReadOnlyList<Product> products, CancellationToken cancellationToken)
+    private static RequiredFieldsSkippedProduct SkippedFor(IncompleteCard card) =>
+        new(card.Product.Id, card.Product.Title.Trim(), card.ModelCode, [.. card.Gaps.Select(gap => gap.Label)]);
+
+    private sealed record IncompleteCard(Product Product, IReadOnlyList<ProductRequiredFields.Gap> Gaps, string? ModelCode);
+
+    // The stored cards that miss a required field (ProductRequiredFields), with what they miss and their model code (the
+    // first variant's), in the given order.
+    private async Task<List<IncompleteCard>> IncompleteCardsAsync(Guid tenantId, IReadOnlyList<Product> products, CancellationToken cancellationToken)
     {
         if (products.Count == 0) return [];
         var ids = products.Select(product => product.Id).ToArray();
         var rows = (await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.ProductId))
+                .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
                 .Select(x => new { x.ProductId, Row = new ProductRequiredFields.Row(x.Sku, x.Barcode, x.ModelCode, x.Desi, x.DefaultListPrice, x.DefaultSalePrice) }).ToListAsync(cancellationToken))
             .GroupBy(x => x.ProductId).ToDictionary(group => group.Key, group => group.Select(x => x.Row).ToList());
-        var result = new List<(Product, IReadOnlyList<ProductRequiredFields.Gap>)>();
+        var result = new List<IncompleteCard>();
         foreach (var product in products)
         {
+            var productRows = rows.GetValueOrDefault(product.Id) ?? [];
             var gaps = ProductRequiredFields.Missing(new ProductRequiredFields.Card(product.Title, product.BrandId, product.CategoryId, WarrantyGiven: true, DeliveryDaysGiven: true,
-                product.DefaultListPrice, product.DefaultSalePrice, rows.GetValueOrDefault(product.Id) ?? []));
-            if (gaps.Count > 0) result.Add((product, gaps));
+                product.DefaultListPrice, product.DefaultSalePrice, productRows));
+            if (gaps.Count > 0) result.Add(new(product, gaps, productRows.Select(row => row.ModelCode?.Trim()).FirstOrDefault(code => !string.IsNullOrEmpty(code))));
         }
         return result;
     }
