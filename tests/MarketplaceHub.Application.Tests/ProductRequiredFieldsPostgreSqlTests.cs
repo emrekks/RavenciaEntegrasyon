@@ -108,21 +108,31 @@ public sealed class ProductRequiredFieldsPostgreSqlTests(PostgreSqlTenantIsolati
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
-        // Toplu Satışa Aç: refused as a whole, naming the card and what it misses; nothing is opened.
+        // Toplu Satışa Aç (owner, 13 Nov 2026: "Eksik olanı atlasın, bildirsin"): the complete card is opened, the
+        // incomplete one skipped and returned with its model code and what it misses.
         var opened = await service.BulkSetStatusAsync(seed.Tenant.Id, new BulkProductStatusCommand([complete.Value!.Id, incomplete.Id], "ACTIVE"), CancellationToken.None);
-        Assert.Equal((422, ProductRequiredFields.Code), (opened.Error!.Status, opened.Error.Code));
-        Assert.Contains("Eski Kapalı: zorunlu alanları eksik (Marka, Desi)", opened.Error.Message);
-        Assert.Equal([incomplete.Id.ToString("D")], opened.Error.FieldErrors!["productIds"]);
-        Assert.Equal(ProductStatus.Archived, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == complete.Value.Id)).Status);
+        Assert.True(opened.Succeeded, opened.Error?.Message);
+        Assert.Equal(1, opened.Value!.UpdatedCount);
+        var skipped = Assert.Single(opened.Value.Skipped);
+        Assert.Equal((incomplete.Id, "Eski Kapalı", $"{sku}-XM"), (skipped.ProductId, skipped.Title, skipped.ModelCode));
+        Assert.Equal(["Marka", "Desi"], skipped.MissingFields);
+        db.ChangeTracker.Clear();
+        var opening = await db.Products.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).ToDictionaryAsync(x => x.Id, x => x.Status);
+        Assert.Equal((ProductStatus.Active, ProductStatus.Archived), (opening[complete.Value.Id], opening[incomplete.Id]));
         // Closing never asks for the fields.
-        Assert.True((await service.BulkSetStatusAsync(seed.Tenant.Id, new BulkProductStatusCommand([incomplete.Id], "ARCHIVED"), CancellationToken.None)).Succeeded);
+        var closed = await service.BulkSetStatusAsync(seed.Tenant.Id, new BulkProductStatusCommand([complete.Value.Id, incomplete.Id], "ARCHIVED"), CancellationToken.None);
+        Assert.True(closed.Succeeded);
+        Assert.Empty(closed.Value!.Skipped);
 
-        // Toplu Değer Ata › Satış Durumu: the complete card is opened, the incomplete one named and left.
+        // Toplu Değer Ata › Satış Durumu: the complete card is opened, the incomplete one left and returned in Skipped.
         db.ChangeTracker.Clear();
         var field = await service.BulkSetFieldAsync(seed.Tenant.Id, new BulkProductFieldCommand([complete.Value.Id, incomplete.Id], BulkProductFields.Status, "ACTIVE"), CancellationToken.None);
         Assert.True(field.Succeeded, field.Error?.Message);
         Assert.Equal(1, field.Value!.UpdatedCount);
-        Assert.Contains(field.Value.Failures, failure => failure.Message.Contains("Eski Kapalı: zorunlu alanları eksik (Marka, Desi)", StringComparison.Ordinal));
+        Assert.Empty(field.Value.Failures);
+        var fieldSkipped = Assert.Single(field.Value.Skipped!);
+        Assert.Equal(incomplete.Id, fieldSkipped.ProductId);
+        Assert.Equal(["Marka", "Desi"], fieldSkipped.MissingFields);
         var statuses = await db.Products.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).ToDictionaryAsync(x => x.Id, x => x.Status);
         Assert.Equal((ProductStatus.Active, ProductStatus.Archived), (statuses[complete.Value.Id], statuses[incomplete.Id]));
     }
@@ -174,5 +184,48 @@ public sealed class ProductRequiredFieldsPostgreSqlTests(PostgreSqlTenantIsolati
         await check.SaveChangesAsync();
         var closed = await new ProductTransferService(check, fixture.TimeProvider).PreviewAsync(seed.Tenant.Id, "urunler.csv", new MemoryStream(Encoding.UTF8.GetBytes($"Stok Kodu;Marka\r\n{model}-S;kapalı\r\n")), [ProductTransferFields.Brand], CancellationToken.None);
         Assert.Equal((1, 0), (closed.Value!.Errors, closed.Value.ProductChanges!.Count));
+    }
+
+    // Klasik içe aktarma (owner, 13 Nov 2026): the file's Garanti Süresi (Ay) and Teslimat Süresi (Gün) go to the new card
+    // as the editor stores them; a row without them keeps today's no warranty and the default days.
+    [PostgreSqlFact]
+    public async Task TheClassicImport_WritesTheFilesWarrantyAndDeliveryDays_AndKeepsTheDefaultsWithoutThem()
+    {
+        var seed = await SeedAsync("import-terms");
+        var now = fixture.Now;
+        var code = $"IT{Guid.NewGuid():N}"[..10].ToUpperInvariant();
+        var session = new ImportSession { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, SourceType = ImportSourceType.Csv, Status = ImportSessionStatus.ReadyToApply, CreatedAt = now, UpdatedAt = now };
+        Dictionary<string, string> Row(string suffix, string? warranty, string? days)
+        {
+            var values = new Dictionary<string, string> { ["title"] = $"Bluz {suffix}", ["sku"] = $"{code}-{suffix}", ["barcode"] = $"{code}{suffix}", ["modelCode"] = $"{code}{suffix}M", ["brand"] = "Ravencia", ["category"] = "Bluz", ["desi"] = "1", ["listPrice"] = "120", ["salePrice"] = "100", ["vatRate"] = "10" };
+            if (warranty is not null) values["warrantyMonths"] = warranty;
+            if (days is not null) values["deliveryDays"] = days;
+            return values;
+        }
+        await using (var setup = fixture.CreateContext())
+        {
+            setup.ImportSessions.Add(session);
+            var rowNumber = 1;
+            foreach (var values in new[] { Row("A", "24", "3"), Row("B", null, null), Row("C", "0", "") })
+            {
+                var json = System.Text.Json.JsonSerializer.Serialize(values);
+                var staging = new ImportStagingRecord { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, SessionId = session.Id, RowNumber = ++rowNumber, RawJson = json, SafeValuesJson = json, ValidationErrorsJson = "[]", RowHash = $"hash-{code}-{rowNumber}", ReviewStatus = "PENDING" };
+                var candidate = new ImportMatchCandidate { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, SessionId = session.Id, StagingRecordId = staging.Id, MatchRule = "NEW", Status = "DECIDED", SafeSummary = "{}" };
+                setup.ImportStagingRecords.Add(staging);
+                setup.ImportMatchCandidates.Add(candidate);
+                setup.ImportDecisions.Add(new ImportDecision { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, CandidateId = candidate.Id, Decision = ImportDecisionKind.Create, ActorUserId = Guid.CreateVersion7(), DecidedAt = now });
+            }
+            await setup.SaveChangesAsync();
+        }
+
+        await using (var db = fixture.CreateContext())
+            Assert.True(await new MarketplaceHub.Infrastructure.Imports.ImportJobProcessor(db, null!, fixture.TimeProvider, new ConfigurationBuilder().Build()).ProcessAsync(seed.Tenant.Id, session.Id, "APPLY", CancellationToken.None));
+
+        await using var check = fixture.CreateContext();
+        var cards = await check.Products.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).ToDictionaryAsync(x => x.Title);
+        Assert.Equal(((int?)24, (int?)3, ProductStatus.Active), (cards["Bluz A"].WarrantyMonths, cards["Bluz A"].DeliveryDays, cards["Bluz A"].Status));
+        Assert.Equal(((int?)null, (int?)1, ProductStatus.Active), (cards["Bluz B"].WarrantyMonths, cards["Bluz B"].DeliveryDays, cards["Bluz B"].Status));
+        // 0 is "no warranty" (kept empty, as the editor keeps it); an empty cell is not given.
+        Assert.Equal(((int?)null, (int?)1), (cards["Bluz C"].WarrantyMonths, cards["Bluz C"].DeliveryDays));
     }
 }

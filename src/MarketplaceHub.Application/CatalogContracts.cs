@@ -230,6 +230,11 @@ public sealed record UpdateVariantCommand(Guid Id, string Sku, string? Barcode, 
 public sealed record ProductAttributeCommand(Guid AttributeId, Guid? ValueId, string? TextValue, decimal? NumberValue, bool? BooleanValue, int SortOrder);
 public sealed record CreateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<CreateVariantCommand> Variants, IReadOnlyList<ProductAttributeCommand>? Attributes = null, string? Status = null, decimal? DefaultListPrice = null, decimal? DefaultSalePrice = null, int? WarrantyMonths = null, Guid? TrendyolWebColorValueId = null, decimal? VatRate = null, string? VatInclusion = null, int? DeliveryDays = null);
 public sealed record BulkProductStatusCommand(IReadOnlyList<Guid> ProductIds, string Status);
+// Toplu Satışa Aç (owner, 13 Nov 2026: "Eksik olanı atlasın, bildirsin"): the complete cards go on sale, a closed card
+// missing a required field (ProductRequiredFields) is skipped and named with what it misses.
+public sealed record BulkProductStatusResult(int UpdatedCount, IReadOnlyList<RequiredFieldsSkippedProduct> Skipped);
+// A card a bulk opening left closed: its title, model code (first variant's, if any) and the labels of the fields it misses.
+public sealed record RequiredFieldsSkippedProduct(Guid ProductId, string Title, string? ModelCode, IReadOnlyList<string> MissingFields);
 public sealed record BulkProductDeleteCommand(IReadOnlyList<Guid> ProductIds);
 // A catalog delete: the products removed and the publication or price/stock jobs still waiting for them, cancelled with
 // them (nothing was sent for those yet). PendingJobCount is the same count before the delete, for its confirmation.
@@ -243,7 +248,8 @@ public sealed record BulkProductVatResult(int UpdatedCount, int UnchangedCount);
 public sealed record BulkProductFieldCommand(IReadOnlyList<Guid>? ProductIds, string? Field, string? Value);
 // Model: the model code (or the card's name when it has none) the line is about.
 public sealed record BulkProductFieldFailure(string Model, string Message);
-public sealed record BulkProductFieldResult(int UpdatedCount, int UnchangedCount, int VariantCount, IReadOnlyList<BulkProductFieldFailure> Failures);
+// Skipped: the closed cards Satış Durumu = Satışa Açık left for a missing required field (also named in Failures).
+public sealed record BulkProductFieldResult(int UpdatedCount, int UnchangedCount, int VariantCount, IReadOnlyList<BulkProductFieldFailure> Failures, IReadOnlyList<RequiredFieldsSkippedProduct>? Skipped = null);
 // Variant ekleme append-only'dir: envanter veya dış listeye bağlı mevcut satış satırları sessizce silinmez.
 // Product list "Platformlara Yayınla": every selected card to every selected marketplace. A new offer takes its VAT
 // from the product card (Product.VatRate/VatInclusion), then a sibling offer of the same variant, then the connection's
@@ -308,7 +314,7 @@ public interface ICatalogService
     Task<PageResult<ProductView>> ListProductsAsync(Guid tenantId, int limit, string? after, string? status, string? search, string? platform, string? stock, string? sort, CancellationToken cancellationToken);
     Task<ProductSummaryView> ProductSummaryAsync(Guid tenantId, CancellationToken cancellationToken);
     // actorUserId and correlationId name who made the change in Ürün Hareketleri (product_change_entries).
-    Task<ServiceResult<int>> BulkSetStatusAsync(Guid tenantId, BulkProductStatusCommand command, CancellationToken cancellationToken, Guid? actorUserId = null, string? correlationId = null);
+    Task<ServiceResult<BulkProductStatusResult>> BulkSetStatusAsync(Guid tenantId, BulkProductStatusCommand command, CancellationToken cancellationToken, Guid? actorUserId = null, string? correlationId = null);
     Task<ServiceResult<ProductDeleteResult>> DeleteProductAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken);
     Task<ServiceResult<ProductDeleteResult>> BulkDeleteProductsAsync(Guid tenantId, BulkProductDeleteCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<ProductDeletePreview>> PreviewProductDeleteAsync(Guid tenantId, BulkProductDeleteCommand command, CancellationToken cancellationToken);
