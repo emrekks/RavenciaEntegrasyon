@@ -240,7 +240,8 @@ public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPri
         + "4. Copy the spec.json you rendered from, unchanged, to /mnt/user-data/outputs/beden-tablosu-spec.json.\n"
         + "5. If the icon shows the wrong garment category, change only the icon and render again; never change a measurement or the name.\n"
         + "6. The container has no network: never install packages. If the script fails, reply with 'HATA: ' and its error and stop.\n"
-        + "7. When the SVG (or PNG) and the spec copy are written, reply OK.";
+        + "7. Write both output files from a bash or Python command (python3, cp), never with the file editor tool: only files a command writes reach the panel.\n"
+        + "8. When the SVG (or PNG) and the spec copy are written, reply OK.";
 
     internal static string SpecPrompt(SizeChartSpecRequest spec)
     {
@@ -294,7 +295,7 @@ public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPri
     private static SizeChartException NoImage(ClaudeSkillResult result) =>
         result.Text is { } text && (text.Contains("playwright", StringComparison.OrdinalIgnoreCase) || text.Contains("chromium", StringComparison.OrdinalIgnoreCase))
             ? new("AI_RENDERER_MISSING", $"Beceri dosyasındaki çizici (Playwright/Chromium) Claude'un kod ortamında çalışmadı; görsel eklenmedi. Yanıt: {Short(text)}", 502)
-            : new("AI_NO_IMAGE", $"Claude görsel dosyası üretmedi; görsel eklenmedi.{(string.IsNullOrWhiteSpace(result.Text) ? "" : $" Yanıt: {Short(result.Text)}")}", 502);
+            : new("AI_NO_IMAGE", $"Claude görsel dosyası üretmedi; görsel eklenmedi. Yeniden Oluştur ile tekrar deneyin.{(result.Files.Count == 0 ? "" : $" Gelen dosyalar: {string.Join(", ", result.Files.Select(file => file.FileName))}.")}{(string.IsNullOrWhiteSpace(result.Text) ? "" : $" Yanıt: {Short(result.Text)}")}", 502);
 
     private async Task<byte[]> JpegFromRunAsync(AiCredentials credentials, ClaudeSkillResult result, SizeChartTable table, CancellationToken cancellationToken)
     {

@@ -131,6 +131,12 @@ public sealed class ClaudeClient(IHttpClientFactory httpClients) : IClaudeClient
             if (block.TryPickText(out var textBlock)) text.Add(textBlock.Text);
             else if (block.TryPickBashCodeExecutionToolResult(out var bash) && bash.Content.TryPickBetaBashCodeExecutionResultBlock(out var result))
                 fileIds.AddRange(result.Content.Select(output => output.FileID));
+            // A file written by a Python run comes back on the code-execution result, not on a bash one.
+            else if (block.TryPickCodeExecutionToolResult(out var code))
+            {
+                if (code.Content.TryPickResultBlock(out var codeResult)) fileIds.AddRange(codeResult.Content.Select(output => output.FileID));
+                else if (code.Content.TryPickEncryptedCodeExecutionResultBlock(out var encrypted)) fileIds.AddRange(encrypted.Content.Select(output => output.FileID));
+            }
         }
         // D4: the message is billed already; a failed file lookup after it keeps its usage, so the cost is logged.
         var usage = message.Usage is { } reported ? new ClaudeUsage(reported.InputTokens, reported.OutputTokens, reported.CacheReadInputTokens, reported.CacheCreationInputTokens) : new ClaudeUsage(null, null, null, null);
