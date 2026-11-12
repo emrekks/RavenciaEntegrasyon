@@ -1,8 +1,8 @@
 # Ravencia Marketplace Hub — İşleyiş Kılavuzu
 
 Panelin bugün nasıl çalıştığını anlatan tam başvuru belgesidir: hangi ekran ne gösterir, veri nereden gelir, hangi düğme
-pazaryerine ne gönderir, hangi kural nerede durur. Kaynak: `origin/main` = `43356b44f` (12 Kasım 2026). Canlıda api,
-worker ve caddy aynı sürümü çalıştırıyor (canlı: `manual-43356b44f11c`, 12 Kas 2026 18:55Z).
+pazaryerine ne gönderir, hangi kural nerede durur. Kaynak: `origin/main` = `c3df31578` (12 Kasım 2026). Canlıda api,
+worker ve caddy aynı sürümü çalıştırıyor (canlı: `manual-c3df315781a5`, 12 Kas 2026 19:10Z).
 
 ---
 
@@ -807,8 +807,10 @@ Alan grupları "Zorunlu" / "İsteğe Bağlı"; durum Tamam / Değerleri Eksik / 
 Değerleri Oluştur**, **Listeyi Yenile**, **Diğer Kategorilerde de Kullan**, **Onay Bekleyen Öneriler › Tümünü Onayla**.
 
 **Marka Eşleme**: 1. **Yeni Marka Ekle**; 2. **Yeni Marka Eşleme** (Panel Markası ↔ {Platform} Markası, **Eşleştir**,
-**Senkronize Et**, **Eşleştirmeyi Kaydet**) ve altında **Eşlenmemiş {Platform} Markaları**: ürün aktarımında görülüp
-eşlenmemiş, ürünleri markasız aktarılmış markalar; 3. **Kayıtlı Marka Eşleştirmeleri**. Marka seçici yalnız sunucuda arar
+**Senkronize Et**, **Eşleştirmeyi Kaydet**) ve altında **Eşlenmemiş {Platform} Markaları**: ürün aktarımı markaları
+kendisi eşler; burada yalnız **aktarımın eşleyemediği** markalar listelenir (eşlendiği panel markası kapalı, birden fazla
+panel markasına eşli ya da aynı adlı panel markası başka bir markaya eşli); birini seçip panel markasını belirleyin ve
+kaydedin (3.11); 3. **Kayıtlı Marka Eşleştirmeleri**. Marka seçici yalnız sunucuda arar
 ("Marka adı veya marka no ara..."); **otomatik seçim ve öneri yoktur** (`brand-reference.tsx:1-27`).
 
 **Platform farkları:**
@@ -858,12 +860,12 @@ Aktarımı** (Trendyol'da ürün linki ya da model kodu, HB'de ürün ID, Pazara
 
 | Ekran adı | Dokunduğu | Dokunmadığı |
 |---|---|---|
-| **Tam Katalog Taraması** (varsayılan) | Trendyol'da tüm katalog okunur. Yeni ürünler tam açılır. Mevcut üründe içerik yazılmaz; yalnız boş desi doldurulur, yeni bedenler eklenmez ve "Eklenmeyen yeni beden" diye raporlanır (`MarketplaceJobProcessor.cs:8505,8552,8656-8667`). | mevcut ürünün içeriği, fiyatı, stoğu |
+| **Tam Katalog Taraması** (varsayılan) | Trendyol'da tüm katalog okunur. Yeni ürünler tam açılır. Mevcut üründe içerik yazılmaz; yalnız boş desi doldurulur, yeni bedenler eklenmez ve "Eklenmeyen yeni beden" diye raporlanır (`MarketplaceJobProcessor.cs:8509,8556,8664-8675`). | mevcut ürünün içeriği, fiyatı, stoğu |
 | **Yeni Ürünleri Aktar** | Panelde olmayan ürünleri tümüyle açar (varyant, seçenek, özellik, kategori, marka, görsel, fiyat, stok, bağ). Mevcut ürüne **yalnız yeni bedenleri** ekler. | mevcut ürünün adı, açıklaması, markası, kategorisi, görselleri |
 | **Mevcut Ürünleri Güncelle** | Yalnız panelde eşleşen ürünler; asla yeni ürün açmaz ("Panelde eşleşen ürün yok; yalnız mevcut ürünler güncelleniyordu."). Alt kutulara göre yazar. Yalnız Hepsiburada seçiliyse gizlenir. | kutusu işaretlenmemiş her şey |
 | **Ürün Eşleme** | Yalnız pazaryeri **bağlarını** kurar; her zaman tam okur. N11/Pazarama/PttAVM'de teklifi olmayan varyantlara uzak fiyattan teklif açar. | ürün, marka, kategori, içerik, görsel, fiyat, stok |
 
-**Ürün Eşleme nasıl eşler** (`MarketplaceJobProcessor.cs:7764-7854`): önce barkod, sonra stok kodu, ikisi bulamazsa model
+**Ürün Eşleme nasıl eşler** (`MarketplaceJobProcessor.cs:7765-7855`): önce barkod, sonra stok kodu, ikisi bulamazsa model
 kodu + renk + beden. Tek varyanta inmeyen model kodu asla seçilmez. N11/Pazarama'da çapraz bakılır (uzak stok kodu ↔ panel
 barkodu); Shopify barkod önceliklidir; PttAVM'nin kendi eşleyicisi vardır. Sonuç: Eşlenen · Zaten eşli · Panelde karşılığı
 yok · Çakışma.
@@ -879,7 +881,7 @@ yok · Çakışma.
 | **Onay Bekleyen Ürünleri Dahil Et** | kapalı | Trendyol onay sürecindeki ürünler; N11/Pazarama/PttAVM'de her zaman dahil |
 
 - Yalnız Fiyat ve/veya Stok işaretli, içerik kutusu kapalıysa **yalnız fiyat/stok** yazılır; kategori, özellik, görsel,
-  içerik, desi, marka, bağ yazılmaz (`MarketplaceJobProcessor.cs:9008-9051`).
+  içerik, desi, marka, bağ yazılmaz (`MarketplaceJobProcessor.cs:9016-9059`).
 - Fiyat ve stok gerçekte yalnız **Trendyol ve Shopify** için uygulanır; sunucu HB, N11, Pazarama, PttAVM'de bu seçenekleri
   siler (`MarketplaceSalesService.cs:1537-1539`).
 - Trendyol'da Mevcut Ürünleri Güncelle modunda hiçbir kutu işaretli değilse **Aktarımı Başlat** pasif olur.
@@ -890,19 +892,27 @@ yok · Çakışma.
 **Aktarımda kategori, özellik, seçenek, marka (yalnız Trendyol tam yazar):**
 
 - **Kategori**: önce kullanıcının kategori eşlemesi; yoksa ada/yola göre kök panel kategorisi; yoksa yeni kök yaprak
-  kategori ve doğrulanmış eşleme açılır (`MarketplaceJobProcessor.cs:7134-7177`).
+  kategori ve doğrulanmış eşleme açılır (`MarketplaceJobProcessor.cs:7135-7178`).
 - **Özellik**: aynı adlı etkin panel özelliği kullanılır, yoksa açılır; değerler Trendyol listesinden yazılır. "Web Color"
   değerleri panel değeri olarak eklenmez.
 - **Seçenek**: Renk/Beden panel seçeneği ve değerleri açılır ya da yeniden kullanılır.
-- **Marka — bugünkü kod** (`ImportedBrandRule.cs:5-8,29-38`): aktarım **ada göre panel markası aramaz, marka açmaz, marka
-  eşlemesi yazmaz**. Yalnız bu bağlantıdaki kullanıcı eşlemesini tersten okur; tam olarak bir etkin panel markası çıkarsa
-  onu kullanır. Eşleme yoksa yeni ürün **markasız** gelir, mevcut ürün markasını korur; marka **Eşlenmemiş {Platform}
-  Markaları** listesine düşer (`BRAND_MAPPING_MISSING`). Sonradan eşleme yapılırsa değişmemiş ilanlar da yeniden içe
-  aktarılır.
-  - **Değişiyor:** sahibin 12 Kasım kararıyla ürün aktarımında marka da kategori ve özellik gibi kendiliğinden kurulacak.
-    Bu değişiklik `43356b44f` itibarıyla henüz `main`'de değil; çıkınca bu madde yeniden yazılmalı.
-- Shopify, HB, N11, Pazarama, PttAVM **yalnız gözlem** modundadır: içerik açmaz, marka ve kategoriye dokunmaz, yalnız
-  eşleşen panel ürününe bağlanır (`MarketplaceJobProcessor.cs:6775,8285,8310-8407`).
+- **Marka** (sahip kararı 12 Kas 2026; 28 Ekim'deki "yalnız kullanıcı eşlemesini oku" kuralının yerine; canlı 12 Kas
+  19:10Z, `ac24f253c`): aktarım ilanın markasını **kategori gibi kendisi kurar**, pazaryerine ayrıca soru sormadan, yalnız
+  ilanın taşıdığından (`ImportedBrandRule.cs:5-10`; `MarketplaceJobProcessor.cs:9125-9212`):
+  1. bu bağlantıda ilanın marka numarasına bir eşleme varsa o panel markası (doğrulanmamışsa doğrulanır);
+  2. yoksa **aynı adlı panel markası** alınır ve eşlenir;
+  3. o da yoksa ilanın adıyla **yeni panel markası açılır** ve eşlenir (doğrulanmış, kaynağı "aktarım").
+  - Eşleme yalnız marka numarası taşıyan ilanda yazılır (Trendyol). Hepsiburada, N11, Pazarama, PttAVM ve Shopify ilanları
+    yalnız marka adı taşır (PttAVM hiç taşımaz): aktarımın açtığı üründe marka panelde ada göre bulunur ya da açılır,
+    **eşleme yazılmaz**.
+  - Kapatılmış panel markası yeniden açılmaz; bir pazaryeri markası iki panel markasına eşliyse ya da aynı adlı panel
+    markası başka bir markaya eşliyse ürün markasız kalır ve marka **Eşlenmemiş {Platform} Markaları** listesine düşer
+    ("…aktarımda eşlenemedi: … Eşleştirme Ayarları › Marka Eşleme'de kontrol edin.", `ImportedBrandRule.cs:19-24`).
+  - Mevcut ürün markasını yalnız aktarım ürünü yazıyorsa değiştirir; yerel değişikliği korunan, **Mevcut Ürün
+    Bilgilerini Güncelle** kapalı, yalnız beden ekleyen ya da yalnız gözlem yapan çalıştırma markaya dokunmaz. Yalnız
+    fiyat/stok ve **Ürün Eşleme** markaya hiç dokunmaz.
+- Shopify, HB, N11, Pazarama, PttAVM **yalnız gözlem** modundadır: mevcut ürünün içeriğine, markasına ve kategorisine
+  dokunmaz, yalnız eşleşen panel ürününe bağlanır (`MarketplaceJobProcessor.cs:6776,8284-8289,8314-8411`).
 - İş türleri: `PRODUCT_SYNC`, `SHOPIFY_PRODUCT_SYNC`, `HEPSIBURADA_PRODUCT_SYNC`; her seçili bağlantıya ayrı iş. İlerleme
   kartı **Devam Eden Aktarımlar** (Alınan / İşlenen / Atlanan / Hatalı; **Durdur**). Bir ürün grubu hata verirse
   `PRODUCT_IMPORT_FAILED` yazılır ve devam edilir; hepsi başarısızsa iş incelemeye düşer.
@@ -1313,7 +1323,7 @@ https ise açılır.
   **sonradan da düşülmez**. İptalde önce eksik adet geri alınır, sonra düşülmüş adetler stoğa döner.
 - `STOCK_ORDER_CONSUMPTION_BLOCKED` sorunu satır stoktan tam düşülemediğinde açılır: "Sipariş stoğu kısmen düşürüldü: … N
   adet stoktan düşülemedi. Paneldeki stok sayısını kontrol edin. Rezervasyon tutulmaz; stok sıfırın altına inmedi (bilgi
-  amaçlı)." Kendiliğinden kapanmasının tek yolu eksik adedin iptalle sıfırlanmasıdır (`MarketplaceJobProcessor.cs:11925-11933`).
+  amaçlı)." Kendiliğinden kapanmasının tek yolu eksik adedin iptalle sıfırlanmasıdır (`MarketplaceJobProcessor.cs:12006-12014`).
   (canlı: 371 kayıt, hepsi çözülmüş; son 11 Kas 08:30Z.)
 
 **Hareket türleri**: eldeki stoğu değiştirenler — sipariş, elle düzeltme, pazaryeri stoğu aktarımı, açılış stoğu, iade
@@ -1905,7 +1915,7 @@ alarmları bir Gmail hesabından e-postayla gönderilir.
 
 ### 7.2 Veri › Veritabanı Temizliği
 
-> Bu bölüm 12 Kasım itibarıyla başka bir oturumda genişletiliyor; aşağıdakiler `43356b44f`'deki durumdur.
+> Bu bölüm 12 Kasım itibarıyla başka bir oturumda genişletiliyor; aşağıdakiler `c3df31578`'deki durumdur.
 
 Üç parça var. Kategori silme ve pazaryeri sıfırlaması alt çubuktaki **Verileri sil** onay kelimesiyle çalışır; Paneli Tamamen
 Sıfırla'nın kendi onay kelimesi vardır.
@@ -2261,9 +2271,10 @@ Her grup önem sırasına göredir. "Doğrulanmadı" yazanlar koddan çıkarılm
    (`MarketplaceConnectionService.cs:122` ↔ `:169`).
 9. **Ürün aktarımı N11, Pazarama, PttAVM ve Shopify'da fiilen bir şey yazmaz**: ekran Mevcut Ürünleri Güncelle'yi ve
    fiyat/stok kutularını gösterir, sunucu bu platformları yalnız gözlem modunda çalıştırır ve fiyat/stoğu (Shopify hariç) siler
-   (`MarketplaceSalesService.cs:1537-1539`; `MarketplaceJobProcessor.cs:6775,8285`).
-10. **Klasik içe aktarma (`/imports`) markayı ada göre çözer ve gerekirse açar** (`ImportJobProcessor.cs:231`); "marka ad
-    araması yok" kuralının kapsamında olup olmadığı sahip kararı bekliyor.
+   (`MarketplaceSalesService.cs:1537-1539`; `MarketplaceJobProcessor.cs:6776,8284-8289`).
+10. **Marka bulma iki yolda ayrı kodla yapılıyor**: klasik içe aktarma (`/imports`) dosyadaki marka adını kendi kuralıyla panel
+    markasına çözüp gerekirse açıyor (`ImportJobProcessor.cs:231`); Platformdan Ürün Aktar 12 Kas'tan beri `ImportBrandId` ile
+    aynı işi yapıyor. Sonuçları aynı olmalı; ikisinin aynı adı aynı markaya bağladığı doğrulanmadı.
 11. **11 zorunlu alan yalnız düzenleyicide**: Excel, Toplu Değer Ata ve API marka, kategori, desi, garanti, teslimat ve fiyat > 0
     kuralını zorlamaz (`CatalogService.cs:991-1031`).
 12. **Platform Varsayılanları N11 ve Pazarama'da ayarlanamaz**: düğme yalnız Trendyol ve Hepsiburada'da; sunucu N11 ve Pazarama
@@ -2325,13 +2336,12 @@ Her grup önem sırasına göredir. "Doğrulanmadı" yazanlar koddan çıkarılm
 13. **"Geciken" iki anlamda**: sekme ve kart süresi geçmiş sipariş; satırdaki kırmızı uyarı süresine 24 saatten az kalmış sipariş
     (`DashboardReadService.cs:70-73` ↔ `OrderModels.cs:209-222`).
 14. **Var olmayan ekran adları**: "Seçenek Eşitleme" (`ProductEditorPages.tsx:3895`; `CatalogService.cs:3006`;
-    `ReferenceDataService.cs:31`), "Eşleştirme Ayarları › Marka Eşleme" (`ImportedBrandRule.cs:18`), "Eşleştirmeler sayfası >
+    `ReferenceDataService.cs:31`), "Eşleştirme Ayarları › Marka Eşleme" (`ImportedBrandRule.cs:19-24`), "Eşleştirmeler sayfası >
     Markalar sekmesi" (`PazaramaProductPublicationComposer.cs:60`). Doğrusu **Eşleştirmeler › Kategori Eşleme / Marka Eşleme**.
     İpuçlarında "“Ürünleri ekle”" yazıyor, düğme **Ürünleri Ekle**.
 15. **Pazaryerine Yazma kapalı mesajı** "Dış Yazma Akışları bölümünden açılır" diyor; anahtar "Pazaryerine Yazma" sekmesinde
     (`SynchronizationPolicies.cs:663`).
-16. **Ürün aktarma açıklamaları**: Mevcut Ürün Bilgilerini Güncelle "kategori ve **marka** değiştirilir" diyor (marka yalnız
-    kullanıcı eşlemesi varsa değişir); Tam Katalog Taraması "panel kayıtlarını günceller" diyor (bu modda içerik güncellenmez);
+16. **Ürün aktarma açıklamaları**: Tam Katalog Taraması "panel kayıtlarını günceller" diyor (bu modda içerik güncellenmez);
     Ürün Eşleme'ye arşiv seçeneği sunuluyor (eşleme her zaman tam okur).
 17. **Ürün Hareketleri kaynağı**: Hızlı Güncelle/Platformlarda Güncelle teklif fiyatı "Fiyat Düzenleme" kaynağıyla görünür.
 18. **Masraf Kalemleri halkasında "İade Edilen Tutar" masraf dilimi** olarak çizilir; satıştan düşüştür (`ReportsPage.tsx:652`).
@@ -2396,11 +2406,12 @@ Sahibin verdiği ve sistemin uyduğu kararlar. Bir değişiklik bunlardan birine
    fatura kuralları ve Excel kolon profilleri **hiçbir sıfırlamada silinmez** ve Paneli Tamamen Sıfırla'nın Kalanlar listesinde
    de **anılmaz**. Yalnız silinmiş bir bağlantının ayarları bağlantıyla birlikte kalkar (7.2 d; `PanelFactoryResetInventory.cs`).
 4. **Marka listesi çekimi tam listedir, ad araması yoktur.** Marka listesi Trendyol ve Pazarama'dan bütün olarak indirilir;
-   hiçbir pazaryerinde ada göre marka aranmaz, adla otomatik eşleme yapılmaz; marka eşlemesini kullanıcı yapar (3.10;
-   `brand-reference.tsx:1-27`).
-5. **12 Kasım kararı — ürün aktarımında marka kendiliğinden kurulur** (kategori ve özellik gibi). **Bu değişiklik devam
-   ediyor**: `43356b44f`'de aktarım hâlâ yalnız kullanıcı eşlemesini okuyor ve eşleme yoksa ürünü markasız alıyor
-   (`ImportedBrandRule.cs:5-8`). Değişiklik canlıya çıkınca 3.11 güncellenmeli.
+   hiçbir pazaryerinde ada göre marka aranmaz. Eşleştirmeler › Marka Eşleme'de otomatik seçim ve öneri yoktur; elle eşlemeyi
+   kullanıcı yapar (3.10; `brand-reference.tsx:1-27`). Ürün aktarımı için kural 5 geçerlidir.
+5. **12 Kasım kararı — ürün aktarımında marka, kategori ve özellik gibi kendiliğinden kurulur**: önce bağlantıdaki eşleme,
+   yoksa panelde aynı adlı marka, o da yoksa yeni panel markası; Trendyol'da eşleme de yazılır (3.11; `ImportedBrandRule.cs:5-10`).
+   Değişiklik 12 Kas 19:10Z'de canlıya çıktı (`ac24f253c`); bu konudaki çalışma sürüyor, yeni sürüm çıktıkça 3.11 yeniden
+   kontrol edilmeli.
 6. **Bağlantının Tam Sıfırlaması eşleme şablonlarını ve varsayılan özellik değerlerini (Platform Varsayılanları) de siler**
    (12 Kas 2026; `OperationalDataMaintenanceService.FullReset.cs:166-170`). Penceredeki "korunur" metni bu karara aykırıdır (9.2).
 7. **Yeni promosyon ya da komisyon dosyası eskisini değiştirir.** Plus, Avantajlı Ürün Etiketi ve Flash dosyalarında önceki
