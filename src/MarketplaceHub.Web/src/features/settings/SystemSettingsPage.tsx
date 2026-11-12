@@ -12,13 +12,12 @@ import { SettingsNotice, type SettingsNoticeState } from './SettingsNotification
 import { readVisualThemePreference, switchVisualThemeSmoothly, visualThemeChangeEvent, type VisualTheme } from './visual-theme'
 import { unknownCount, useRememberedTabCounts } from '../../shared/tab-counts'
 import { PanelSelect } from '../../shared/PanelSelect'
-import { dataResetSummary, type DataResetResult } from './data-reset-summary'
 import { marketplaceResetCount, marketplaceResetTotal, progressText, runMarketplaceResets, type BulkResetProgress } from './marketplace-bulk-reset'
 import { connectionFullResetSupported, type ConnectionFullResetView } from '../marketplace/connection-data-reset'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
-import { confirmationMatches } from '../../shared/confirmation'
 import { UiIcon } from '../../shared/components/UiIcon'
 import { PanelFactoryResetSection } from './PanelFactoryResetSection'
+import { panelResetConfirmed, togglePanelResetCategories, type PanelFactoryResetView } from './panel-factory-reset'
 import type { Connection } from '../marketplace/shared'
 import './settings-sade.css'
 import '../../shared/view-tabs.css'
@@ -163,20 +162,16 @@ function NotificationSamples() {
   </>
 }
 
-const resetScopeGroups: DataResetGroup[] = [
-  { label: 'Katalog', description: '', options: [
-    { scope: 'PRODUCTS', label: 'Ürünler Listesi', description: 'Ürünleri, varyantları ve bu ürünlere bağlı görsel, stok ve kanal kayıtlarını temizler.', unit: 'ürün' },
-    { scope: 'CATEGORIES', label: 'Kategori Listesi', description: 'Panel kategori ağacını ve kategori-pazaryeri eşleştirmelerini kaldırır; ürünlerin kategori bağlantısını boşaltır.', unit: 'kategori' },
-    { scope: 'CATEGORY_ATTRIBUTES', label: 'Kategori Özellikleri', description: 'Kategori özellik başlıklarını, değerlerini, kategori atamalarını, ürün değerlerini ve pazaryeri özellik eşleştirmelerini kaldırır.', unit: 'özellik' },
-    { scope: 'BRANDS', label: 'Marka Listesi', description: 'Marka kayıtlarını ve marka-pazaryeri eşleştirmelerini kaldırır; ürünlerin marka bağlantısını boşaltır.', unit: 'marka' }
-  ] },
-  { label: 'Ürün Seçenekleri', description: '', options: [
-    { scope: 'OPTIONS', label: 'Ürün Seçenekleri', description: 'Ürün seçenek gruplarını, seçenek değerlerini ve varyantlarla olan seçenek bağlantılarını temizler.', unit: 'seçenek' }
-  ] }
-]
+// The categories of Ayarlar › Veri come from the server (PanelFactoryResetInventory): together they are Paneli Tamamen
+// Sıfırla, so nothing of the tenant's records is left out of them.
+function resetGroupsOf(view: PanelFactoryResetView | undefined): DataResetGroup[] {
+  if (!view) return []
+  const sections = Array.from(new Set(view.groups.map(group => group.section)))
+  return sections.map(section => ({ label: section, description: '', options: view.groups.filter(group => group.section === section).map(group => ({ scope: group.key, label: group.label, description: group.description, unit: 'kayıt' })) }))
+}
 const resetConfirmWord = 'Verileri sil'
 const resetNumber = (value: number) => value.toLocaleString('tr-TR')
-const resetGroupIcons: Record<string, SettingsIconName> = { Katalog: 'db', 'Ürün Seçenekleri': 'tag' }
+const resetGroupIcons: Record<string, SettingsIconName> = { 'Satış ve Faturalar': 'barcode', Katalog: 'db', 'Pazaryeri Kayıtları': 'save', 'Sistem Kayıtları': 'bell' }
 
 // Database cleanup: each group has one header with its own select-all and a selected/total count; each data type is
 // a whole-row tile (checkbox beside the title, count as a tag); the notes sit in one callout and the sticky bar shows
@@ -190,7 +185,7 @@ function SettingsDataReset({ groups, counts, countsFailed, picked, onToggle, mar
   const known = going.every(option => counts?.[option.scope] !== undefined) && marketplaceTotal !== undefined
   const total = going.reduce((sum, option) => sum + (counts?.[option.scope] ?? 0), 0) + (marketplaceTotal ?? 0)
   const goingCount = going.length + goingMarketplaces.length
-  const confirmed = confirmationMatches(confirmation, resetConfirmWord)
+  const confirmed = panelResetConfirmed(confirmation, resetConfirmWord)
   const countText = (scope: string, unit: string) => {
     const value = counts?.[scope]
     if (value !== undefined) return `${resetNumber(value)} ${unit}`
@@ -319,7 +314,8 @@ export function SystemSettingsPage() {
   const resetViews = useQueries({ queries: (resetConnections.data ?? []).map(item => ({ queryKey: ['connection-full-reset', item.id], queryFn: () => hubPoll<ConnectionFullResetView>(`/connections/${item.id}/full-reset`), enabled: section === 'database', staleTime: 0 })) })
   const resetMarketplaces: ResetMarketplace[] = (resetConnections.data ?? []).map((item, index) => ({ id: item.id, platformCode: item.platformCode, displayName: item.displayName, passive: item.status !== 'ACTIVE' && item.status !== 'VERIFIED', count: marketplaceResetCount(resetViews[index]?.data) }))
   // What each list holds now, the counts the reset reports when it is done.
-  const resetCounts = useQuery({ queryKey: ['data-reset-counts', 'settings'], queryFn: () => hubApi<{ items: Array<{ scope: string; count: number }> }>('/settings/data-reset'), enabled: section === 'database', staleTime: 0 })
+  const resetView = useQuery({ queryKey: ['panel-factory-reset'], queryFn: () => hubPoll<PanelFactoryResetView>('/settings/factory-reset'), enabled: section === 'database', staleTime: 0, retry: false })
+  const resetGroups = resetGroupsOf(resetView.data)
   // Through hubApi: a session that ended shows the sign-in screen instead of an error box.
   const status = useQuery({ queryKey: ['security'], queryFn: () => hubApi<SecurityStatus>('/auth/security-status') })
   const sessions = useQuery({ queryKey: ['sessions'], queryFn: () => hubApi<SecuritySession[]>('/auth/sessions') })
@@ -346,14 +342,15 @@ export function SystemSettingsPage() {
     setSearchParams(next === 'auth' ? {} : { tab: next })
   }
   function toggleResetScopes(scopes: string[], checked: boolean) {
-    setResetScopes(current => checked ? Array.from(new Set([...current, ...scopes])) : current.filter(value => !scopes.includes(value)))
+    // A category brings the ones it requires (orders bring their invoices, products their stock and prices).
+    setResetScopes(current => togglePanelResetCategories(resetView.data?.groups ?? [], current, scopes, checked))
   }
   function toggleMarketplaces(ids: string[], checked: boolean) {
     setMarketplacePicked(current => checked ? Array.from(new Set([...current, ...ids])) : current.filter(value => !ids.includes(value)))
   }
   async function resetOperationalData() {
     // The page's own confirmation word is the gate for the marketplaces and the catalog alike.
-    if ((!resetScopes.length && !marketplacePicked.length) || !confirmationMatches(resetConfirmation, resetConfirmWord)) return
+    if ((!resetScopes.length && !marketplacePicked.length) || !panelResetConfirmed(resetConfirmation, resetConfirmWord)) return
     setResetBusy(true); setNotice(null)
     try {
       // The marketplaces first, one after the other; then the catalog cleanup.
@@ -371,8 +368,10 @@ export function SystemSettingsPage() {
         if (!resetScopes.length) succeed(`${chosen.length} pazaryeri bağlantısı tam sıfırlandı. Otomatik eşitleme açıksa kayıtlar yeniden çekilir.`)
       }
       if (resetScopes.length) {
-        const result = await hubApi<DataResetResult>('/settings/data-reset', { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ scopes: resetScopes, confirmation: resetConfirmation.trim() }) })
-        succeed(dataResetSummary(result, resetScopes))
+        // One job for every chosen category (the same one Paneli Tamamen Sıfırla runs); its steps show below.
+        const next = await hubApi<PanelFactoryResetView>('/settings/factory-reset', { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ categories: resetScopes, confirmation: resetConfirmation.trim() }) })
+        client.setQueryData(['panel-factory-reset'], next)
+        succeed('Seçilen veriler silinmeye başladı; adımlar sayfanın altındaki Sıfırlama İlerlemesi bölümünde.')
       }
       setResetScopes([]); setResetConfirmation('')
       await client.invalidateQueries()
@@ -524,7 +523,7 @@ export function SystemSettingsPage() {
         </>}
         {section === 'alerts' && <AlertEmailSettingsSection />}
         {section === 'ai' && <AiSettingsSection />}
-        {section === 'database' && <SettingsDataReset groups={resetScopeGroups} counts={resetCounts.data ? Object.fromEntries(resetCounts.data.items.map(entry => [entry.scope, entry.count])) : undefined} countsFailed={resetCounts.isError} picked={resetScopes} onToggle={toggleResetScopes} marketplaces={resetMarketplaces} marketplacePicked={marketplacePicked} onToggleMarketplaces={toggleMarketplaces} progress={marketplaceProgress} confirmation={resetConfirmation} onConfirmation={setResetConfirmation} busy={resetBusy} onConfirm={() => void resetOperationalData()} />}
+        {section === 'database' && <SettingsDataReset groups={resetGroups} counts={resetView.data ? Object.fromEntries(resetView.data.groups.map(entry => [entry.key, entry.count])) : undefined} countsFailed={resetView.isError} picked={resetScopes} onToggle={toggleResetScopes} marketplaces={resetMarketplaces} marketplacePicked={marketplacePicked} onToggleMarketplaces={toggleMarketplaces} progress={marketplaceProgress} confirmation={resetConfirmation} onConfirmation={setResetConfirmation} busy={resetBusy} onConfirm={() => void resetOperationalData()} />}
         <ShippingLabelSettingsPanel section={isShipping ? section as ShippingSection : null} settings={labelSettings} saved={savedLabelSettings} dirty={shippingDirty} saving={labelSaving} loadFailed={shippingSettings.isError} loading={shippingSettings.isPending} format={labelFormat} setFormat={setLabelFormat} onChange={shippingSettings.setSettings} onSave={() => void saveLabelSettings()} />
         <AppearanceSettingsSection section={isAppearance ? section as AppearanceSection : null} onStatus={setAppearanceStatus} />
       </div>

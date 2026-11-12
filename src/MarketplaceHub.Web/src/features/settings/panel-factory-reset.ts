@@ -2,9 +2,9 @@
 // and every log); the account, its users, the connections with their credentials and the settings stay. The server runs
 // it as one job (PANEL_FACTORY_RESET) and lists its steps; the panel follows the job step by step.
 
-export type PanelFactoryResetGroup = { key: string; label: string; count: number }
-export type PanelFactoryResetJob = { jobId: string; status: string; step: number; progressLabel: string | null; progressPercent: number | null; error: string | null; createdAt: string; completedAt: string | null }
-export type PanelFactoryResetView = { groups: PanelFactoryResetGroup[]; total: number; steps: string[]; kept: string[]; confirmationWord: string; job: PanelFactoryResetJob | null }
+export type PanelFactoryResetGroup = { key: string; label: string; description: string; section: string; requires: string[]; count: number }
+export type PanelFactoryResetJob = { jobId: string; status: string; full: boolean; categories: string[]; steps: string[]; step: number; progressLabel: string | null; progressPercent: number | null; error: string | null; createdAt: string; completedAt: string | null }
+export type PanelFactoryResetView = { groups: PanelFactoryResetGroup[]; total: number; steps: string[]; kept: string[]; confirmationWord: string; partialConfirmationWord: string; job: PanelFactoryResetJob | null }
 export type PanelResetStepState = 'done' | 'running' | 'pending' | 'failed'
 
 export const panelResetConfirmationWord = 'PANELİ SIFIRLA'
@@ -17,6 +17,24 @@ export function normalizePanelResetConfirmation(text: string) {
 
 export function panelResetConfirmed(text: string, word = panelResetConfirmationWord) {
   return normalizePanelResetConfirmation(text) === normalizePanelResetConfirmation(word)
+}
+
+// A category chosen brings the ones it requires; one taken off takes off those that require it.
+export function togglePanelResetCategories(groups: Pick<PanelFactoryResetGroup, 'key' | 'requires'>[], picked: string[], keys: string[], checked: boolean) {
+  const next = new Set(picked)
+  const queue = [...keys]
+  while (queue.length) {
+    const key = queue.shift()!
+    if (checked) {
+      if (next.has(key) && !keys.includes(key)) continue
+      next.add(key)
+      queue.push(...(groups.find(group => group.key === key)?.requires ?? []).filter(required => !next.has(required)))
+    } else {
+      next.delete(key)
+      queue.push(...groups.filter(group => group.requires.includes(key) && next.has(group.key)).map(group => group.key))
+    }
+  }
+  return groups.map(group => group.key).filter(key => next.has(key))
 }
 
 export function panelResetRunning(status: string | undefined | null) {

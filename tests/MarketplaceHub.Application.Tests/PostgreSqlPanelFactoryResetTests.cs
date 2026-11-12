@@ -23,7 +23,7 @@ public sealed partial class PostgreSqlConnectionFullResetTests
         {
             await SeedAsync(a);
             await SeedAsync(b);
-            foreach (var seed in new[] { a, b }) await SeedPanelExtrasAsync(seed.Tenant.Id);
+            foreach (var seed in new[] { a, b }) await SeedPanelExtrasAsync(seed.Tenant.Id, seed.PanelProduct.Id);
             var tables = await TenantTablesAsync();
             var aBefore = await TenantCountsAsync(tables, a.Tenant.Id);
             var bBefore = await TenantCountsAsync(tables, b.Tenant.Id);
@@ -105,6 +105,50 @@ public sealed partial class PostgreSqlConnectionFullResetTests
         }
     }
 
+    [PostgreSqlFact]
+    public async Task PanelCategoryReset_Products_TakesStockToo_DetachesTheOrderLines_AndKeepsTheOrders()
+    {
+        var a = NewSeed("pc-a");
+        try
+        {
+            await SeedAsync(a);
+            Guid jobId;
+            await using (var db = fixture.CreateContext())
+            {
+                var service = NewPanelService(db);
+                var unknown = await service.RequestAsync(a.Tenant.Id, Guid.CreateVersion7(), null, new PanelFactoryResetCommand("Verileri sil", ["NOPE"]), "corr", CancellationToken.None);
+                Assert.Equal(422, unknown.Error!.Status);
+                var view = await service.RequestAsync(a.Tenant.Id, Guid.CreateVersion7(), null, new PanelFactoryResetCommand(" verileri sil ", ["PRODUCTS"]), "corr", CancellationToken.None);
+                Assert.True(view.Succeeded, view.Error?.Message);
+                Assert.Equal(["STOCK", "PRODUCTS"], view.Value!.Job!.Categories);
+                Assert.False(view.Value.Job.Full);
+                jobId = view.Value.Job.JobId;
+                await db.IntegrationJobs.Where(x => x.Id == jobId).ExecuteUpdateAsync(x => x.SetProperty(j => j.Status, JobStatus.Leased));
+            }
+            var ordersBefore = await CountAsync("sales.orders", a.Tenant.Id);
+            await using (var db = fixture.CreateContext())
+            {
+                var job = await db.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == jobId);
+                var result = await NewPanelService(db).RunAsync(a.Tenant.Id, jobId, job.PayloadJson, CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+            foreach (var table in new[] { "catalog.products", "catalog.product_variants", "catalog.marketplace_product_links", "inventory.inventory_items", "inventory.channel_offers", "inventory.stock_ledger_entries" })
+                Assert.Equal(0, await CountAsync(table, a.Tenant.Id));
+            Assert.Equal(ordersBefore, await CountAsync("sales.orders", a.Tenant.Id));
+            Assert.True(await CountAsync("billing.invoices", a.Tenant.Id) > 0);
+            await using var verification = fixture.CreateContext();
+            Assert.All(await verification.OrderLines.Where(x => x.TenantId == a.Tenant.Id).ToListAsync(), line => Assert.Null(line.VariantId));
+            Assert.Equal("PANEL_DATA_RESET", (await verification.AuditLogs.OrderByDescending(x => x.Id).FirstAsync(x => x.TenantId == a.Tenant.Id)).Action);
+        }
+        finally
+        {
+            await DeletePanelExtrasAsync(a.Tenant.Id);
+            await DeleteTenantAsync(a.Tenant.Id);
+        }
+    }
+
+    private async Task<long> CountAsync(string table, Guid tenantId) => (await TenantCountsAsync([table], tenantId))[table];
+
     private PanelFactoryResetService NewPanelService(AppDbContext db) => new(db, fixture.TimeProvider, new NoDashboard(), NullLogger<PanelFactoryResetService>.Instance);
 
     private static Task<int> BackoffsAsync(AppDbContext db, Guid tenantId) => db.Database.SqlQuery<int>($"""
@@ -112,10 +156,11 @@ public sealed partial class PostgreSqlConnectionFullResetTests
         """).SingleAsync();
 
     // The logs, lists and settings the full-reset seed does not reach.
-    private async Task SeedPanelExtrasAsync(Guid tenantId)
+    private async Task SeedPanelExtrasAsync(Guid tenantId, Guid productId)
     {
         await using var db = fixture.CreateContext();
         db.Categories.Add(new Category { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = "Elbise", NormalizedName = "elbise", Path = "Elbise", CreatedAt = fixture.Now, UpdatedAt = fixture.Now });
+        db.ProductOptions.Add(new ProductOption { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = productId, Label = "Beden", NormalizedKey = "beden" });
         db.Brands.Add(new Brand { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = "Ravencia", NormalizedName = "ravencia", CreatedAt = fixture.Now, UpdatedAt = fixture.Now });
         db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = "PRODUCT_UPDATED", TargetType = "Product", TargetId = "x", Reason = "test", CorrelationId = "corr", CreatedAt = fixture.Now });
         db.AiUsageLogs.Add(new AiUsageLog { Id = Guid.CreateVersion7(), TenantId = tenantId, Feature = "TEST", Model = "test", Status = "OK", CreatedAt = fixture.Now });
