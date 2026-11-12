@@ -163,6 +163,7 @@ public sealed class PanelFactoryResetService(AppDbContext db, TimeProvider timeP
                     removed += await DeleteTableAsync(table, tenantId, jobId, plan.SelfReferencing.Contains(table.Name), cancellationToken);
                 if (group == PanelFactoryResetInventory.Jobs) await CleanUpConnectionsAsync(tenantId, connectionIds, cancellationToken);
                 if (group == PanelFactoryResetInventory.LegacyConnections) removed += await CleanUpLegacyConnectionsAsync(tenantId, cancellationToken);
+                if (group == PanelFactoryResetInventory.Logs) removed += await db.Database.ExecuteSqlRawAsync($"DELETE FROM ops.audit_logs a WHERE {TenantlessAuditFilter}", [new NpgsqlParameter("tenant", tenantId)], cancellationToken);
                 if (group == PanelFactoryResetInventory.Invoices)
                     await db.Database.ExecuteSqlInterpolatedAsync($"""DELETE FROM iam.tenant_settings WHERE "TenantId" = {tenantId} AND "Key" = ANY({PanelFactoryResetInventory.HistorySettingKeys})""", cancellationToken);
             }
@@ -240,6 +241,31 @@ public sealed class PanelFactoryResetService(AppDbContext db, TimeProvider timeP
             WHERE "TenantId" = {tenantId} AND ("LastErrorCode" IS NOT NULL OR "LastErrorClass" IS NOT NULL)
             """, cancellationToken);
     }
+
+    // Sign-in records written before a workspace was known (TenantId empty: failed sign-ins, lockouts). They belong to this
+    // tenant when their user is a member of it and of no other tenant; an unknown account's records (no user) only when this
+    // is the installation's one tenant, so a reset never removes another tenant's security trail.
+    internal const string TenantlessAuditFilter = """
+        a."TenantId" IS NULL AND (
+          a."ActorUserId" IS NOT NULL
+            AND EXISTS (SELECT 1 FROM iam.tenant_memberships m WHERE m."UserId" = a."ActorUserId" AND m."TenantId" = @tenant)
+            AND NOT EXISTS (SELECT 1 FROM iam.tenant_memberships m WHERE m."UserId" = a."ActorUserId" AND m."TenantId" <> @tenant)
+          OR a."ActorUserId" IS NULL AND (SELECT count(*) FROM iam.tenants) = 1)
+        """;
+
+    // What the reset itself leaves (its job and attempt, its one audit row, the events it raised, the empty dashboard
+    // summary rebuilt after it) is not counted as a record still to remove.
+    private static string CountFilter(string table) => table switch
+    {
+        "integration.jobs" => $""" AND "JobType" <> '{PanelJobTypes.FactoryReset}'""",
+        "integration.job_attempts" or "integration.job_read_summaries" or "integration.job_variant_results" =>
+            $""" AND "JobId" NOT IN (SELECT "Id" FROM integration.jobs WHERE "TenantId" = @tenant AND "JobType" = '{PanelJobTypes.FactoryReset}')""",
+        "integration.outbox_events" =>
+            $""" AND NOT ("AggregateType" = 'Tenant' AND "OperationType" = 'reset') AND NOT ("AggregateType" = 'IntegrationJob' AND "AggregateId" IN (SELECT "Id" FROM integration.jobs WHERE "TenantId" = @tenant AND "JobType" = '{PanelJobTypes.FactoryReset}'))""",
+        "ops.audit_logs" => """ AND "Action" NOT IN ('PANEL_FACTORY_RESET', 'PANEL_DATA_RESET')""",
+        "dashboard.snapshot" => " AND false",
+        _ => string.Empty
+    };
 
     // The settings tables a connection keeps; a deleted connection's rows in them go with it.
     private static readonly string[] ConnectionSettingTables =
@@ -417,7 +443,8 @@ public sealed class PanelFactoryResetService(AppDbContext db, TimeProvider timeP
     {
         // The reference lists are counted by their stored sizes: counting their rows scans millions.
         var counted = PanelFactoryResetInventory.Tables.Where(x => x.Action == PanelResetAction.Delete && x.Name != "integration.reference_items").ToList();
-        var parts = counted.Select(x => $"""SELECT '{x.Group!.Key}' AS "Key", count(*) AS "Count" FROM {Quote(x.Name)} WHERE "TenantId" = @tenant""")
+        var parts = counted.Select(x => $"""SELECT '{x.Group!.Key}' AS "Key", count(*) AS "Count" FROM {Quote(x.Name)} WHERE "TenantId" = @tenant{CountFilter(x.Name)}""")
+            .Append($"""SELECT 'LOGS' AS "Key", count(*) AS "Count" FROM ops.audit_logs a WHERE {TenantlessAuditFilter}""")
             .Append("""SELECT 'REFERENCES' AS "Key", coalesce(sum("ItemCount"), 0)::bigint AS "Count" FROM integration.reference_snapshots WHERE "TenantId" = @tenant""")
             .Append("""SELECT 'LEGACY_CONNECTIONS' AS "Key", count(*) AS "Count" FROM integration.platform_credentials c WHERE c."TenantId" = @tenant AND (c."RevokedAt" IS NOT NULL OR EXISTS (SELECT 1 FROM integration.platform_connections p WHERE p."Id" = c."ConnectionId" AND p."Status" = 'DELETED'))""")
             .Append("""SELECT 'LEGACY_CONNECTIONS' AS "Key", count(*) AS "Count" FROM integration.platform_connections WHERE "TenantId" = @tenant AND "Status" = 'DELETED'""");

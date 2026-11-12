@@ -11,7 +11,7 @@ import { ViewTabsWithMore } from '../../shared/view-tabs'
 import { TabSlidePanel } from '../../shared/tab-slide'
 import {
   bySalesChannel, change, desiSourcesNote, downloadCsv, isSalesChannel, variantColourAndSize, formatCount, formatDay, formatHours, formatNumber, formatPercent, formatTl, formatTlShort, formatTlWhole, moneyOrMissing, platformColor, platformName, reportQuery, sortRows, toCsv, unknownLabel,
-  periodPresets, profitRateQuery, stockQuery, type Change, type ReportProfitRate, type CsvColumn, type ReportCosts, type ReportGroup, type ReportInventory, type ReportProduct, type ReportReason, type ReportSales, type ReportStockGroup, type ReportStockItem, type ReportStockPlatform, type ReportStockRow
+  periodPresets, profitCost, profitRateQuery, stockQuery, type Change, type ReportProfitRate, type CsvColumn, type ReportCosts, type ReportGroup, type ReportInventory, type ReportProduct, type ReportReason, type ReportSales, type ReportStockGroup, type ReportStockItem, type ReportStockPlatform, type ReportStockRow
 } from './report-format'
 import { AdReportModal, adReportQuery, adReportRow, combined, reportAge, roasText, staleDays, type AdReports } from './AdReport'
 import { OrderProfitability } from './OrderProfitability'
@@ -399,8 +399,10 @@ type Money = {
   total: number; deductions: MoneyPart[]; deducted: number; left: number; cost: number | null; costCoverage: number | null
   // The units the customers kept whose product cost is not entered. The deductions are taken off every sale, so a profit
   // with part of the cost missing would be too high by that cost: the profit (and every rate from it) is shown only when
-  // this is 0, else "Maliyet Eksik" (9.1.3 of the operating guide; owner rule: a wrong number is worse than none).
-  uncosted: number
+  // at least 95 % of the kept units carry a cost, else "Maliyet Eksik" (profitCost; owner, 13 Nov 2026). Between 95 and
+  // 100 % `cost` holds the known cost plus `estimated`, the missing units' cost priced by their share of the sales, and
+  // every profit figure is marked "Tahmini" with `estimate`, the sentence that says so ('' when nothing is estimated).
+  uncosted: number; estimated: number; estimate: string
   profit: number | null; margin: number | null; description: string
   // What the account could not take off: the commission when none is known, and the platforms whose cargo and fees are
   // not read (with Trendyol's statement) or, without it, the cost lines read nowhere.
@@ -427,32 +429,42 @@ function moneyBreakdown(data: ReportSales, flow: ProfitSteps): Money | null {
     .filter(part => part.value !== 0)
   const deducted = deductions.reduce((sum, part) => sum + part.value, 0)
   const left = now.grossSales - deducted
-  const cost = data.cost.costedQuantity > 0 ? data.cost.costTotal : null
+  const productCost = profitCost(data.cost)
+  const cost = data.cost.costedQuantity > 0 ? productCost.usable ? productCost.total : productCost.known : null
   const tax = finance?.netVat?.net ?? null
   const unlinked = finance ? figureOf(data, orderlessCategories) : unlinkedDeductions(trendyolRead(data) ? data.costs : null).total
-  const uncosted = cost === null ? 0 : Math.max(0, data.cost.keptQuantity - data.cost.costedQuantity)
-  const profit = cost === null || uncosted > 0 ? null : left - (tax ?? 0) - cost - unlinked
+  const uncosted = cost === null ? 0 : productCost.missing
+  const estimated = productCost.usable ? productCost.estimated : 0
+  const profit = cost === null || !productCost.usable ? null : left - (tax ?? 0) - cost - unlinked
+  const estimate = profit !== null && uncosted > 0
+    ? `${formatNumber(uncosted)} adedin maliyeti eksik (${formatPercent(data.cost.keptQuantity > 0 ? uncosted / data.cost.keptQuantity : null)}); kâr, eksik adetlerin maliyeti satış payına göre tahmin edilerek hesaplandı (${formatTl(estimated)}).`
+    : ''
   const unread = finance ? unreadFeeCodes(data) : []
   const commissionKnown = flow.steps.some(step => step.key === 'commission' && step.value !== null)
   const coverage = data.cost.coverage
   return {
     gaps: { commission: !commissionKnown, platforms: unread, lines: finance ? [] : unreadCostLines },
-    total: now.grossSales, deductions, deducted, left, tax, unlinked, cost, costCoverage: cost === null ? null : coverage, uncosted, profit,
+    total: now.grossSales, deductions, deducted, left, tax, unlinked, cost, costCoverage: cost === null ? null : coverage, uncosted, estimated, estimate, profit,
     margin: profit !== null && now.grossSales > 0 ? profit / now.grossSales : null, description: flow.description
   }
 }
 
-// How much of the cost is entered, said only when some of it is missing.
-const costCoverageText = (coverage: number | null) => (coverage ?? 0) >= 1 ? ''
-  : `Satılan adetlerin ${formatPercent(coverage)} kadarının maliyeti girili; Net Kâr, tamamının maliyeti girilince hesaplanır.`
+// How much of the cost is entered, said only when some of it is missing: with the estimate when the profit is shown.
+const costCoverageText = (money: Money) => (money.costCoverage ?? 0) >= 1 ? ''
+  : money.profit !== null ? `Satılan adetlerin ${formatPercent(money.costCoverage)} kadarının maliyeti girili. ${money.estimate}`
+    : `Satılan adetlerin ${formatPercent(money.costCoverage)} kadarının maliyeti girili; Net Kâr, en az %95'inin maliyeti girilince hesaplanır.`
 
-// Why the profit is not shown: no cost entered at all, or some sold units without one (Money.uncosted).
+// Why the profit is not shown: no cost entered at all, or under 95 % of the sold units with one (Money.uncosted).
 const profitEmpty = (money: Money | null, noAmount: boolean) => noAmount ? 'Tutar yok' : (money?.uncosted ?? 0) > 0 ? 'Maliyet Eksik' : 'Maliyet girilmemiş'
 const missingCostTip = (money: Money | null) => (money?.uncosted ?? 0) > 0
-  ? `Satılan ${formatNumber(money?.uncosted ?? 0)} adedin ürün maliyeti girilmemiş. Kesintiler bütün satışlardan düşüldüğü için maliyetin bir kısmıyla hesaplanan kâr olduğundan yüksek çıkardı; tamamı girilince hesaplanır. Maliyeti ürün kartından girin.`
+  ? `Satılan ${formatNumber(money?.uncosted ?? 0)} adedin ürün maliyeti girilmemiş (${formatPercent(money?.costCoverage === null || money?.costCoverage === undefined ? null : 1 - money.costCoverage)}). Kesintiler bütün satışlardan düşüldüğü için eksik maliyetle hesaplanan kâr olduğundan yüksek çıkardı; satılan adetlerin en az %95'inin maliyeti girilince hesaplanır. Maliyeti ürün kartından girin.`
   : noCostTip
 // The sentence the profit's other figures (per order, per unit, the margin before advertising) add while it is unknown.
-const profitLater = (money: Money | null) => (money?.uncosted ?? 0) > 0 ? ' Satılan bütün ürünlerin maliyeti girilince hesaplanır.' : ' Ürün maliyeti girilince hesaplanır.'
+const profitLater = (money: Money | null) => (money?.uncosted ?? 0) > 0 ? ' Satılan adetlerin en az %95\'inin maliyeti girilince hesaplanır.' : ' Ürün maliyeti girilince hesaplanır.'
+// The profit's title: "Tahmini" when part of its cost is estimated (Money.estimate), as a loss always is.
+const profitLabel = (money: Money | null) => (money?.profit ?? 0) < 0 ? 'Tahmini Zarar' : money?.estimate ? 'Tahmini Net Kâr' : 'Net Kâr'
+// The estimate's sentence after a profit figure's tip, on a new line ('' when nothing is estimated).
+const estimateLine = (money: Money | null) => money?.estimate ? `\n${money.estimate}` : ''
 
 const signedTl = (value: number) => value < 0 ? `− ${formatTl(-value)}` : formatTl(value)
 
@@ -570,17 +582,17 @@ function OverviewFigures({ data, money }: { data: ReportSales; money: Money | nu
     { key: 'net', label: 'Toplam Ciro', value: noAmount ? null : now.grossSales, format: formatTl, empty: 'Tutar yok', delta: noAmount ? null : change(now.grossSales, then.grossSales),
       note: noAmount ? previousText(null) : `Net ${formatTl(now.netRevenue)} · iade ${formatTl(now.returnedAmount)}`,
       tip: `Dönemin toplam satış tutarı; iptaller sayılmaz, iadeler düşülmez. Alttaki net, iadeler düşülünce kalandır.\n${previousLine(then.ordersWithAmount > 0 ? formatTl(then.grossSales) : null)}`, split: split(row => row.ordersWithAmount > 0 ? row.grossSales : null, formatTl) },
-    { key: 'profit', label: profit !== null && profit < 0 ? 'Tahmini Zarar' : 'Net Kâr', value: profit, format: formatTl, empty: profitEmpty(money, noAmount),
+    { key: 'profit', label: profitLabel(money), value: profit, format: formatTl, empty: profitEmpty(money, noAmount),
       delta: change(profit, earlierProfit),
       note: profit === null || now.ordersWithAmount === 0 ? 'Sipariş başına —' : `Sipariş başına ${signedTl(profit / now.ordersWithAmount)}`,
-      tip: `${profit === null ? missingCostTip(money) : profit < 0 ? netLossTip : netProfitTip}\n${previousLine(earlierProfit === null ? null : signedTl(earlierProfit))}`,
+      tip: `${profit === null ? missingCostTip(money) : profit < 0 ? netLossTip : netProfitTip}${estimateLine(money)}\n${previousLine(earlierProfit === null ? null : signedTl(earlierProfit))}`,
       tone: profit === null ? undefined : profit < 0 ? 'bad' : profit > 0 ? 'good' : undefined },
     { key: 'margin', label: 'Kâr Marjı', value: money?.margin ?? null, format: percent, delta: change(money?.margin ?? null, earlier?.margin ?? null, 'rate'),
       note: `Reklam öncesi ${beforeAds === null ? '—' : formatPercent(beforeAds)}`,
-      tip: `Net kârın satış tutarına oranı. Reklam öncesi oranda Trendyol reklamı düşülmez.\n${previousLine(formatPercent(earlier?.margin))}`, tone: (money?.margin ?? 0) < 0 ? 'bad' : undefined },
+      tip: `Net kârın satış tutarına oranı. Reklam öncesi oranda Trendyol reklamı düşülmez.${estimateLine(money)}\n${previousLine(formatPercent(earlier?.margin))}`, tone: (money?.margin ?? 0) < 0 ? 'bad' : undefined },
     { key: 'cost', label: 'Maliyete Göre Kâr', value: onCost, format: percent, delta: change(onCost, earlierOnCost, 'rate'),
-      note: `Ürün maliyeti ${money?.cost ? formatTl(money.cost) : '—'}`,
-      tip: `Net kârın ürün maliyetine oranı: ürüne harcanan her liranın getirdiği kâr.\n${previousLine(formatPercent(earlierOnCost))}`, tone: (onCost ?? 0) < 0 ? 'bad' : undefined },
+      note: `Ürün maliyeti ${money?.cost && money.profit !== null ? formatTl(money.cost) : '—'}`,
+      tip: `Net kârın ürün maliyetine oranı: ürüne harcanan her liranın getirdiği kâr.${estimateLine(money)}\n${previousLine(formatPercent(earlierOnCost))}`, tone: (onCost ?? 0) < 0 ? 'bad' : undefined },
     { key: 'orders', label: 'Sipariş', value: now.orders, format: formatCount, delta: change(now.orders, then.orders), note: `${formatCount(now.cancelledOrders)} iptal · sepet ${noAmount ? '—' : formatTl(now.averageOrderValue)}`,
       tip: `Dönemde gelen sipariş sayısı; iptal edilenler sayılmaz, tutarı okunmayan ve TL dışındaki siparişler sayılır. Ana sayfadaki Toplam Sipariş yalnız tutarı olanları sayar; sepet de tutarı olan siparişlere bölünür.\n${previousLine(formatCount(then.orders))}`, split: split(row => row.orders, formatCount) },
     // The units sold (cancellations out, returns not taken off), with what the customers kept and sent back under it;
@@ -638,7 +650,7 @@ function costLines(data: ReportSales, money: Money): OverviewCost[] {
   const unlinked = unlinkedDeductions(trendyolRead(data) ? data.costs : null).lines
   const apart = (category: string) => unlinked.find(line => line.key === category)
   const lines: OverviewCost[] = [
-    { key: 'cost', label: 'Ürün Maliyeti', value: money.cost, tone: 'cost', note: explain('cost', money.cost === null ? 'Ürün kartında maliyet girilince hesaplanır.' : costCoverageText(money.costCoverage)) },
+    { key: 'cost', label: 'Ürün Maliyeti', value: money.cost, tone: 'cost', note: explain('cost', money.cost === null ? 'Ürün kartında maliyet girilince hesaplanır.' : costCoverageText(money)) },
     // The account's commission and cargo already hold what the period charged of them apart (moneyBreakdown).
     { key: 'commission', label: commission?.label ?? 'Komisyon', value: commission?.value ?? null, tone: 'commission',
       note: commission ? explain('commission', commissionGap(data)) : 'Pazaryerlerinin satışlardan aldığı komisyon. Siparişlerde komisyon bilgisi gelmedi.' },
@@ -792,7 +804,7 @@ function ProfitBridge({ data, money, onMore }: { data: ReportSales; money: Money
     { key: 'stoppage', label: 'Stopaj', value: stoppage, note: explain('stoppage', coveredNote(data, 'STOPPAGE')) },
     { key: 'vat', label: 'Net KDV', value: money.tax ?? 0, note: explain('vat', vatMore(money.tax)) },
     // The product cost only with the profit: with part of it missing the bridge ends at what the deductions leave.
-    { key: 'cost', label: 'Ürün Maliyeti', value: money.profit === null ? 0 : money.cost ?? 0, note: explain('cost') },
+    { key: 'cost', label: 'Ürün Maliyeti', value: money.profit === null ? 0 : money.cost ?? 0, note: explain('cost', money.estimate) },
     { key: 'unlinked', label: unlinkedTitle, value: money.unlinked, note: `${unlinkedNote} Net Kâr'dan düşülür.` }
   ].filter(item => item.value !== 0)
   const rows: BridgeRow[] = [{ key: 'sales', label: 'Satış Tutarı', from: 0, to: money.total, kind: 'total', note: salesTip + ' Platformlara göre görmek için tıklayın.' }]
@@ -805,7 +817,7 @@ function ProfitBridge({ data, money, onMore }: { data: ReportSales; money: Money
   const result = money.profit ?? money.left - (money.tax ?? 0) - money.unlinked
   // What the account could not take off is listed under the bridge (EstimateGaps), so the result's note stays short.
   rows.push({ key: 'result', label: money.profit === null ? 'Masraflar Sonrası' : result < 0 ? 'Tahmini Zarar' : 'Tahmini Net Kâr', from: 0, to: result, kind: 'end',
-    note: money.profit === null ? `Kesintiler düşüldükten sonra kalan tutar. ${money.uncosted > 0 ? `Satılan ${formatNumber(money.uncosted)} adedin ürün maliyeti girilmediği için kâr hesaplanamadı.` : 'Ürün maliyeti girilmediği için kâr hesaplanamadı.'}`
+    note: money.profit === null ? `Kesintiler düşüldükten sonra kalan tutar. ${money.uncosted > 0 ? `Satılan ${formatNumber(money.uncosted)} adedin ürün maliyeti girilmediği için kâr hesaplanamadı; satılan adetlerin en az %95'inin maliyeti girilince hesaplanır.` : 'Ürün maliyeti girilmediği için kâr hesaplanamadı.'}`
       : `${resultSentence(result)}\nNet marj ${formatPercent(money.margin)}` })
   const low = Math.min(0, ...rows.flatMap(row => [row.from, row.to]))
   const span = Math.max(1, Math.max(money.total, ...rows.flatMap(row => [row.from, row.to])) - low)
@@ -854,7 +866,7 @@ function EstimateGaps({ money, shown }: { money: Money; shown: boolean }) {
   if (!partly && money.cost !== null && !gaps.platforms.length && !gaps.lines.length && !gaps.commission) return null
   return <dl className="reports-bridge-gaps" aria-label="Tahminin kapsamı">
     {money.cost === null && <div><dt>Ürün Maliyeti<small>Ürün kartında girilmedi</small></dt><dd><span>Kâr hesaplanamadı</span></dd></div>}
-    {partly && <div><dt>Maliyeti Girili<small>{money.uncosted > 0 ? `${formatNumber(money.uncosted)} adet eksik, kâr hesaplanamadı` : 'Satılan adetlerin payı'}</small></dt><dd>
+    {partly && <div><dt>Maliyeti Girili<small>{money.uncosted > 0 ? `${formatNumber(money.uncosted)} adet eksik, ${money.profit === null ? 'kâr hesaplanamadı' : 'maliyeti tahmini'}` : 'Satılan adetlerin payı'}</small></dt><dd>
       <Progress value={money.costCoverage} shown={shown} /><b>{formatPercent(money.costCoverage)}</b>
     </dd></div>}
     {gaps.platforms.length > 0 && <div><dt>Kargo ve Hizmet Bedeli<small>Düşülmedi</small></dt><dd>
@@ -1021,7 +1033,7 @@ function ProfitLedger({ data, money, notes = {} }: { data: ReportSales; money: M
     {row('left', `is-total is-${money.left < 0 ? 'bad' : 'good'}`, 'Masraflar Sonrası', amount(money.left), `Satıştan iade ve pazaryeri kesintileri düşüldükten sonra kalan; ürün maliyeti düşülmeden.\n${share(money.left)}`)}
     {money.tax !== null && row('vat', money.tax < 0 ? undefined : 'is-minus', 'Net KDV', money.tax < 0 ? `+ ${formatTl(-money.tax)}` : `− ${formatTl(money.tax)}`,
       `${explain('vat', vatMore(money.tax))}\n${share(money.tax)}`)}
-    {money.cost !== null && money.profit !== null && row('cost', 'is-minus', 'Ürün Maliyeti', `− ${formatTl(money.cost)}`, `${costMeaning.cost}\n${share(money.cost)}${notes.cost ? ` ${notes.cost}` : ''}`)}
+    {money.cost !== null && money.profit !== null && row('cost', 'is-minus', 'Ürün Maliyeti', `− ${formatTl(money.cost)}`, `${costMeaning.cost}\n${share(money.cost)}${money.estimate ? ` ${money.estimate}` : notes.cost ? ` ${notes.cost}` : ''}`)}
     {money.unlinked !== 0 && row('unlinked', money.unlinked < 0 ? undefined : 'is-minus', unlinkedTitle, money.unlinked < 0 ? `+ ${formatTl(-money.unlinked)}` : `− ${formatTl(money.unlinked)}`,
       `${unlinkedNote}\n${share(money.unlinked)}`)}
     {money.profit !== null && row('profit', `is-result is-${money.profit < 0 ? 'bad' : 'good'}`, money.profit < 0 ? 'Tahmini Zarar' : 'Tahmini Net Kâr', amount(money.profit),
@@ -1047,7 +1059,7 @@ function productMetrics(data: ReportSales, money: Money | null): Metric[] {
   return [
     { key: 'price', label: 'Adet Başına Satış', value: noAmount || now.soldQuantity === 0 ? '—' : formatTl(now.grossSales / now.soldQuantity), note: 'Bir ürünün ortalama satış fiyatı; iadeler düşülmeden.' },
     { key: 'profit', label: 'Adet Başına Kâr', value: profit === null || now.keptQuantity === 0 ? '—' : signedTl(profit / now.keptQuantity), tone: profit !== null && profit < 0 ? 'bad' : undefined,
-      note: `Müşteride kalan her ürüne düşen ortalama tahmini kâr.${profit === null ? profitLater(money) : ''}` },
+      note: `Müşteride kalan her ürüne düşen ortalama tahmini kâr.${profit === null ? profitLater(money) : money?.estimate ? ` ${money.estimate}` : ''}` },
     { key: 'discount', label: 'Satıcı İndirimi', value: discountKnown ? formatTl(discount ?? 0) : '—', sub: discountKnown ? `liste fiyatının ${formatPercent((discount ?? 0) / list)} kadarı` : undefined,
       note: `Satıcının liste fiyatından yaptığı indirim; pazaryerinin indirimi sayılmaz. ${discountKnown ? 'Liste fiyatı yalnız Trendyol ve Hepsiburada siparişlerinde okunur.' : 'Bu dönemde liste fiyatı okunmadı; yalnız Trendyol ve Hepsiburada siparişlerinde okunur.'}` },
     { key: 'vatFree', label: 'KDV Hariç Net Satış', value: noAmount || now.vatFreeNetRevenue === undefined ? '—' : formatTl(now.vatFreeNetRevenue),
@@ -1074,7 +1086,7 @@ function orderMetrics(data: ReportSales, money: Money | null): Metric[] {
     { key: 'basket', label: 'Sipariş Başına Satış', value: noAmount ? '—' : formatTl(now.averageOrderValue),
       note: `Bir siparişin ortalama satış tutarı.\n${previousLine(before.ordersWithAmount > 0 ? formatTl(before.averageOrderValue) : null)}` },
     { key: 'profit', label: 'Sipariş Başına Kâr', value: profit === null || now.ordersWithAmount === 0 ? '—' : signedTl(profit / now.ordersWithAmount), tone: profit !== null && profit < 0 ? 'bad' : undefined,
-      note: `Bir siparişe düşen ortalama tahmini kâr.${profit === null ? profitLater(money) : ''}` },
+      note: `Bir siparişe düşen ortalama tahmini kâr.${profit === null ? profitLater(money) : money?.estimate ? ` ${money.estimate}` : ''}` },
     { key: 'cargo', label: 'Sipariş Başına Kargo', value: finance && cargo && cargoOrders > 0 ? formatTl(cargo.combined / cargoOrders) : '—',
       note: `Bir siparişin ortalama kargo ücreti.${finance && cargo ? '' : ` ${notRead}`}` },
     // The same cargo over the units the customers kept: the denominator of Adet Başına Kâr, so the two compare.
@@ -1459,9 +1471,9 @@ function ProfitView({ data }: { data: ReportSales }) {
     { key: 'costed', label: 'Maliyeti Olan Ciro', value: costed ? costedSales : null, format: formatTl, empty: noCost,
       delta: costed && earlierCosted ? change(costedSales, earlierCostedSales) : null, note: previousText(earlierCosted ? formatTl(earlierCostedSales) : null),
       tip: `Ürün maliyeti girili satışların tutarı; iadeler düşülmeden. Toplam Ciro'nun ${formatPercent(now.grossSales > 0 ? costedSales / now.grossSales : null)} kadarı.` },
-    { key: 'profit', label: profit !== null && profit < 0 ? 'Tahmini Zarar' : 'Net Kâr', value: profit, format: formatTl, empty: profitEmpty(money, noAmount),
+    { key: 'profit', label: profitLabel(money), value: profit, format: formatTl, empty: profitEmpty(money, noAmount),
       delta: change(profit, earlierProfit), note: previousText(earlierProfit === null ? null : signedTl(earlierProfit)), tone: tone(profit),
-      tip: profit === null ? missingCostTip(money) : profit < 0 ? netLossTip : netProfitTip },
+      tip: `${profit === null ? missingCostTip(money) : profit < 0 ? netLossTip : netProfitTip}${estimateLine(money)}` },
     { key: 'margin', label: 'Net Kâr / Satış Fiyatı Oranı', value: money?.margin ?? null, format: percent, delta: change(money?.margin ?? null, earlier?.margin ?? null, 'rate'),
       note: previousText(formatPercent(earlier?.margin)), tone: (money?.margin ?? 0) < 0 ? 'bad' : undefined,
       tip: 'Net kârın satış tutarına oranı; Genel Bakış\'taki Kâr Marjı ile aynı.' },
@@ -2079,7 +2091,7 @@ function ledgerNotes(data: ReportSales): Record<string, string> {
   const { commission, cost } = data
   return {
     commission: `Ortalama komisyon oranı ${formatPercent(commission.effectiveRate)}; satışların ${formatPercent(commission.coverage)} kadarının oranı biliniyor.`,
-    // The cost row is drawn only with the profit, when every unit kept carries a cost (Money.uncosted).
+    // The cost row is drawn only with the profit; with an estimated part its tip says so instead (Money.estimate).
     cost: `Müşteride kalan ${formatNumber(cost.keptQuantity)} adedin hepsinin maliyeti girili.`
   }
 }
@@ -2210,7 +2222,7 @@ function stockProfitKpi(capital: number, rate: MonthlyProfitRate): Kpi {
     key: 'profit', label: value !== null && value < 0 ? 'Tahmini Zarar' : 'Tahmini Kâr', value, format: formatTl, tone: value === null ? undefined : value < 0 ? 'bad' : 'good',
     empty: rate.loading ? 'Hesaplanıyor' : 'Hesaplanamadı',
     tip: `Stok, son ayların maliyete göre net kâr oranıyla satılırsa kalacak tahmini kâr.${rate.average === null
-      ? (rate.loading ? ' Aylık kâr oranları alınıyor.' : ' Geçmiş aylarda kâr bilinmiyor: satışların maliyeti girilmemiş ya da eksik.')
+      ? (rate.loading ? ' Aylık kâr oranları alınıyor.' : ' Geçmiş aylarda kâr bilinmiyor: satılan adetlerin %95\'inden azının maliyeti girili.')
       : `\n${span}: ortalama ${formatPercent(rate.average)}`}`
   }
 }
