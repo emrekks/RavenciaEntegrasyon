@@ -80,11 +80,9 @@ public static class PanelFactoryResetInventory
     // What stays, as the panel lists it.
     public static readonly IReadOnlyList<string> KeptForPanel =
     [
-        "Hesap, kullanıcılar, roller ve açık olan bu oturum",
-        "Entegrasyon bağlantıları ve giriş bilgileri (bağlantı ayarları, eşitleme ve stok kuralları, kargo eşleşmeleri, varsayılan özellik değerleri)",
-        "E-Faturam bağlantısının fatura kuralları (şirket bilgileri E-Faturam hesabınızda durur)",
-        "Sistem ayarları: güvenlik, yapay zekâ anahtarı, uyarı e-postası, kargo etiketi, görünüm",
-        "Depo tanımları, soru cevap şablonları ve Excel içe aktarma kolon profilleri",
+        "Hesap, kullanıcılar ve bu oturum",
+        "Entegrasyon bağlantıları ve giriş bilgileri",
+        "Sistem ayarları ve sizin hazırladığınız şablonlar (soru cevap şablonları, Excel kolon profilleri)",
     ];
 
     private static PanelResetTable D(string name, PanelResetGroup group, string note = "") => new(name, PanelResetAction.Delete, group, note);
