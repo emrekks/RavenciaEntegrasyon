@@ -12,7 +12,8 @@ namespace MarketplaceHub.Application.Tests;
 
 // Pasife Al closes the connection's webhook at the marketplace and activation opens it again; a marketplace that
 // refuses either call never stops the connection's own change, and the hourly upkeep tries again.
-public sealed partial class PostgreSqlTenantIsolationTests
+[Collection("postgres-integration")]
+public sealed class ConnectionWebhookPausePostgreSqlTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
     [PostgreSqlFact]
     public async Task PasifeAl_ClosesTheWebhookAndActivationOpensItAgain()
@@ -148,9 +149,9 @@ public sealed partial class PostgreSqlTenantIsolationTests
 
     private async Task<WebhookPauseContext> SeedWebhookPauseAsync(string code, string platformCode)
     {
-        var tenant = NewTenant(code);
-        var connection = NewQuestionConnection(tenant);
-        connection.PlatformCode = platformCode;
+        var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"{code}-{Guid.NewGuid():N}", DisplayName = code, Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow, Version = 1 };
+        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), DisplayName = "Webhook test mağazası", Environment = "STAGE", ExternalStoreId = "seller-17", Status = "ACTIVE", ApiVersion = "V1", PlatformCode = platformCode };
+
         connection.Version = 1;
         connection.LastSuccessAt = DateTimeOffset.UtcNow.AddMinutes(-5);
         await using (var seedDb = fixture.CreateContext())
@@ -179,14 +180,16 @@ public sealed partial class PostgreSqlTenantIsolationTests
 
     private async Task DeleteWebhookPauseTenantAsync(Guid tenantId)
     {
-        await using (var db = fixture.CreateContext())
-        {
-            await db.IntegrationJobs.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
-            await db.WebhookSubscriptions.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
-            await db.PlatformCapabilities.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
-            await db.ConnectionSyncPolicies.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
-        }
-        await DeleteInvoiceTestTenantAsync(tenantId);
+        await using var db = fixture.CreateContext();
+        await db.IntegrationOutboxEvents.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.IntegrationJobs.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.WebhookSubscriptions.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.PlatformCapabilities.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.ConnectionSyncPolicies.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.OperationalIssues.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.SyncCursors.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.PlatformConnections.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.Tenants.Where(row => row.Id == tenantId).ExecuteDeleteAsync();
     }
 
     private sealed class SwitchableWebhookPort : IWebhookRegistrationPort
