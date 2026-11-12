@@ -13,7 +13,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cursors, IDataProtectionProvider dataProtection, TokenHasher tokenHasher, TimeProvider timeProvider, IConfiguration configuration) : IMarketplaceConnectionService
+public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cursors, IDataProtectionProvider dataProtection, TokenHasher tokenHasher, TimeProvider timeProvider, IConfiguration configuration, IInstantNotificationService? instantNotifications = null) : IMarketplaceConnectionService
 {
     internal const int InitialDataSyncPriority = -1;
     private static readonly string[] TrendyolCapabilityCodes =
@@ -580,7 +580,30 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             await CancelScheduledSyncsAsync(tenantId, id, cancellationToken);
             QueueActivationBootstrap(tenantId, connection);
         }
-        await db.SaveChangesAsync(cancellationToken); return ServiceResult<ConnectionView>.Ok(Map(connection, await HasCredential(tenantId, id, cancellationToken)));
+        await db.SaveChangesAsync(cancellationToken);
+        var webhookNotice = await ConnectionWebhookAsync(connection, active, cancellationToken);
+        return ServiceResult<ConnectionView>.Ok(Map(connection, await HasCredential(tenantId, id, cancellationToken)) with { WebhookNotice = webhookNotice });
+    }
+
+    // Pasife Al closes the connection's webhook at the marketplace and activation opens it again (the activation
+    // bootstrap above reads what came meanwhile). Either way the connection's own change has been saved: a webhook that
+    // could not follow comes back as a note, and the hourly upkeep tries again.
+    private async Task<string?> ConnectionWebhookAsync(PlatformConnection connection, bool active, CancellationToken cancellationToken)
+    {
+        if (instantNotifications is null || connection.PlatformCode is not ("TRENDYOL" or "SHOPIFY" or "HEPSIBURADA")) return null;
+        var correlationId = $"connection-{(active ? "activate" : "deactivate")}:{connection.Id:N}:{connection.Version}";
+        try
+        {
+            return active
+                ? await instantNotifications.ResumeAfterActivationAsync(connection.TenantId, connection.Id, correlationId, cancellationToken)
+                : await instantNotifications.PauseForInactiveConnectionAsync(connection.TenantId, connection.Id, correlationId, cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return active
+                ? "Bağlantı etkinleşti ama webhook yeniden açılamadı; Webhook bölümünden Webhook'u Aç'a basın."
+                : "Bağlantı pasife alındı ama webhook kapatılamadı; Webhook bölümünden Webhook'u Kapat'a basın.";
+        }
     }
 
     public async Task<ServiceResult<IReadOnlyList<CapabilityView>>> CapabilitiesAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)

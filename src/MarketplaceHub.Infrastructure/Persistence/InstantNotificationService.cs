@@ -44,7 +44,12 @@ public sealed class InstantNotificationService(
         if (connection is null) return NotFound();
         if (connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA" or "SHOPIFY")) return ServiceResult<InstantNotificationView>.Ok(new("UNSUPPORTED", null, null, null, 0, "Bu pazaryeri için anlık bildirim henüz panelden açılamıyor."));
         var subscription = await ManagedSubscriptionAsync(tenantId, connectionId, cancellationToken);
-        if (subscription is null) return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, null, "OFF", null, cancellationToken));
+        if (subscription is null)
+        {
+            // A webhook closed when the connection was set Pasif (PauseForInactiveConnectionAsync) opens again with it.
+            var paused = await db.WebhookSubscriptions.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == PausedStatus, cancellationToken);
+            return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, null, "OFF", paused ? PausedMessage(connection) : null, cancellationToken));
+        }
         if (subscription.ExternalSubscriptionId == ManualRegistration)
         {
             // A connection that is not active refuses every delivery (the address answers 404), so the panel says so
@@ -194,6 +199,8 @@ public sealed class InstantNotificationService(
         subscription.Version++;
         await db.SaveChangesAsync(cancellationToken);
         logger.LogInformation("{Platform} order webhook {WebhookId} registered for connection {ConnectionId}", connection.PlatformCode, created.Value, connectionId);
+        // A webhook opened again replaces the one Pasife Al closed.
+        await RetirePausedAsync(tenantId, connectionId, cancellationToken);
         // Registered, but no notification has come yet: the same state the status read gives until the first one.
         return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, subscription, "WAITING", RegisteredMessage(connection.PlatformCode, "WAITING", healthy: true, WebhookPollingPolicy.SafetyNetSeconds / 60), cancellationToken));
     }
@@ -210,16 +217,194 @@ public sealed class InstantNotificationService(
             if (!deleted.IsSuccess)
                 return ServiceResult<InstantNotificationView>.Fail("WEBHOOK_REMOVAL_FAILED", $"{PlatformName(connection.PlatformCode)} bildirim kaydı silinemedi: {deleted.Error!.SafeMessage}", 502);
         }
-        subscription.Status = "DELETED";
+        // Closed by hand while the connection is Pasif (a Pasife Al whose own close failed): it is the webhook the
+        // connection had, so it opens again with the connection, as one Pasife Al closed does.
+        var paused = connection.Status == "DISABLED" && subscription.ExternalSubscriptionId != ManualRegistration && connection.PlatformCode is "TRENDYOL" or "SHOPIFY";
+        await CloseAsync(subscription, paused ? PausedStatus : "DELETED", cancellationToken);
+        await ResolvePendingAsync(tenantId, PausePendingKey(connectionId), cancellationToken);
+        return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, null, "OFF", paused ? PausedMessage(connection) : null, cancellationToken));
+    }
+
+    private async Task CloseAsync(WebhookSubscription subscription, string status, CancellationToken cancellationToken)
+    {
+        subscription.Status = status;
         subscription.Version++;
         await db.SaveChangesAsync(cancellationToken);
         // The refusals were the closed definition's: a webhook opened again (with a corrected secret) starts without them.
-        var rejectedPrefix = MarketplaceWebhookService.RejectedPrefix(connectionId);
+        var rejectedPrefix = MarketplaceWebhookService.RejectedPrefix(subscription.ConnectionId);
         var now = timeProvider.GetUtcNow();
         await db.OperationalIssues
-            .Where(x => x.TenantId == tenantId && x.Status != IssueStatus.Resolved && x.DedupeKey.StartsWith(rejectedPrefix))
+            .Where(x => x.TenantId == subscription.TenantId && x.Status != IssueStatus.Resolved && x.DedupeKey.StartsWith(rejectedPrefix))
             .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Status, IssueStatus.Resolved).SetProperty(x => x.ResolvedAt, now), cancellationToken);
-        return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, null, "OFF", null, cancellationToken));
+    }
+
+    // Pasife Al closes the connection's webhook at the marketplace (Trendyol, Shopify) with the call Webhook'u Kapat
+    // makes, and keeps the closed definition as PAUSED so that activating the connection opens it again. A failure does
+    // not stop the deactivation (the receiver refuses a passive connection's deliveries anyway): the returned note says
+    // so, and the hourly upkeep tries again. Hepsiburada is registered by hand and stays as it is.
+    public async Task<string?> PauseForInactiveConnectionAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    {
+        var connection = await ConnectionAsync(tenantId, connectionId, cancellationToken);
+        if (connection is null) return null;
+        await ResolvePendingAsync(tenantId, ResumePendingKey(connectionId), cancellationToken);
+        var subscription = await ManagedSubscriptionAsync(tenantId, connectionId, cancellationToken, tracked: true);
+        if (subscription is null || connection.PlatformCode is not ("TRENDYOL" or "SHOPIFY" or "HEPSIBURADA"))
+        {
+            await ResolvePendingAsync(tenantId, PausePendingKey(connectionId), cancellationToken);
+            return null;
+        }
+        if (subscription.ExternalSubscriptionId == ManualRegistration) return HepsiburadaPauseNote;
+        var platform = PlatformName(connection.PlatformCode);
+        string? failure;
+        try
+        {
+            var deleted = await registrations.DeleteWebhookAsync(Context(tenantId, connectionId, correlationId, "webhook-pause"), subscription.ExternalSubscriptionId!, cancellationToken);
+            failure = deleted.IsSuccess ? null : deleted.Error!.SafeMessage;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            failure = $"{platform}'a ulaşılamadı";
+        }
+        if (failure is not null)
+        {
+            var note = $"{platform} webhook'u kapatılamadı ({failure.TrimEnd('.')}); bağlantı pasifken gelen bildirimler yine işlenmez. Panel saatte bir yeniden dener; isterseniz Webhook bölümünden Webhook'u Kapat'a basın.";
+            await NotePendingAsync(tenantId, PausePendingKey(connectionId), "WEBHOOK_PAUSE_FAILED", $"{connection.DisplayName}: {note}", cancellationToken);
+            logger.LogWarning("Order webhook of passive connection {ConnectionId} could not be closed at {Platform}", connectionId, connection.PlatformCode);
+            return note;
+        }
+        await CloseAsync(subscription, PausedStatus, cancellationToken);
+        await ResolvePendingAsync(tenantId, PausePendingKey(connectionId), cancellationToken);
+        logger.LogInformation("{Platform} order webhook of connection {ConnectionId} closed while the connection is passive", connection.PlatformCode, connectionId);
+        return null;
+    }
+
+    // Activating a connection opens the webhook Pasife Al closed, with the call Webhook'u Aç makes (a new address and
+    // registration; a Shopify webhook keeps the secret it was signed with). A failure does not stop the activation: the
+    // returned note asks for Webhook'u Aç, and the hourly upkeep tries again.
+    public async Task<string?> ResumeAfterActivationAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    {
+        var connection = await ConnectionAsync(tenantId, connectionId, cancellationToken);
+        if (connection is null || connection.Status is not ("ACTIVE" or "VERIFIED")) return null;
+        await ResolvePendingAsync(tenantId, PausePendingKey(connectionId), cancellationToken);
+        var paused = await db.WebhookSubscriptions.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == PausedStatus)
+            .OrderByDescending(x => x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (paused is null || await ManagedSubscriptionAsync(tenantId, connectionId, cancellationToken) is not null)
+        {
+            await RetirePausedAsync(tenantId, connectionId, cancellationToken);
+            await ResolvePendingAsync(tenantId, ResumePendingKey(connectionId), cancellationToken);
+            return null;
+        }
+        var platform = PlatformName(connection.PlatformCode);
+        string? failure;
+        try
+        {
+            var enabled = await EnableAsync(tenantId, connectionId, correlationId, cancellationToken, PausedClientSecret(paused));
+            failure = enabled.Succeeded ? null : enabled.Error!.Message;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            failure = $"{platform}'a ulaşılamadı";
+        }
+        if (failure is not null)
+        {
+            var note = $"{platform} webhook'u yeniden açılamadı ({failure.TrimEnd('.')}). Webhook bölümünden Webhook'u Aç'a basın; panel saatte bir yeniden dener. Siparişler bu arada düzenli kontrolle gelir.";
+            await NotePendingAsync(tenantId, ResumePendingKey(connectionId), "WEBHOOK_RESUME_FAILED", $"{connection.DisplayName}: {note}", cancellationToken);
+            logger.LogWarning("Order webhook of reactivated connection {ConnectionId} could not be opened again at {Platform}", connectionId, connection.PlatformCode);
+            return note;
+        }
+        await ResolvePendingAsync(tenantId, ResumePendingKey(connectionId), cancellationToken);
+        return null;
+    }
+
+    // The hourly retry of a close (Pasife Al) or an opening (activation) that failed, while the connection is still in
+    // the state that asked for it; a connection that has changed state since closes the record.
+    public async Task<int> RetryConnectionWebhooksAsync(CancellationToken cancellationToken)
+    {
+        var pending = await db.OperationalIssues.AsNoTracking()
+            .Where(x => x.TenantId != null && x.Status != IssueStatus.Resolved && (x.DedupeKey.StartsWith(PausePendingPrefix) || x.DedupeKey.StartsWith(ResumePendingPrefix)))
+            .Select(x => new { TenantId = x.TenantId!.Value, x.DedupeKey })
+            .ToListAsync(cancellationToken);
+        var done = 0;
+        foreach (var item in pending)
+        {
+            var pause = item.DedupeKey.StartsWith(PausePendingPrefix, StringComparison.Ordinal);
+            if (!Guid.TryParseExact(item.DedupeKey[(pause ? PausePendingPrefix : ResumePendingPrefix).Length..], "N", out var connectionId)) continue;
+            try
+            {
+                db.ChangeTracker.Clear();
+                var connection = await ConnectionAsync(item.TenantId, connectionId, cancellationToken);
+                var stillAsked = connection is not null && (pause ? connection.Status == "DISABLED" : connection.Status is "ACTIVE" or "VERIFIED");
+                if (!stillAsked)
+                {
+                    await ResolvePendingAsync(item.TenantId, item.DedupeKey, cancellationToken);
+                    continue;
+                }
+                var correlationId = $"webhook-upkeep:{connectionId:N}";
+                var note = pause
+                    ? await PauseForInactiveConnectionAsync(item.TenantId, connectionId, correlationId, cancellationToken)
+                    : await ResumeAfterActivationAsync(item.TenantId, connectionId, correlationId, cancellationToken);
+                if (note is null) done++;
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                logger.LogWarning(exception, "Webhook retry of connection {ConnectionId} failed", connectionId);
+            }
+        }
+        return done;
+    }
+
+    internal const string PausedStatus = "PAUSED";
+    internal const string PausePendingPrefix = "webhook-pause:";
+    internal const string ResumePendingPrefix = "webhook-resume:";
+    internal static string PausePendingKey(Guid connectionId) => $"{PausePendingPrefix}{connectionId:N}";
+    internal static string ResumePendingKey(Guid connectionId) => $"{ResumePendingPrefix}{connectionId:N}";
+    internal const string HepsiburadaPauseNote = "Hepsiburada webhook'u Hepsiburada'da elle tanımlandığı için kapatılmadı; bağlantı pasifken gelen bildirimler işlenmez, bağlantı aktifleşince yeniden alınır.";
+
+    private static string PausedMessage(PlatformConnection connection)
+    {
+        var platform = PlatformName(connection.PlatformCode);
+        return connection.Status is "ACTIVE" or "VERIFIED"
+            ? $"Bağlantı yeniden aktifleşti ama {platform} webhook'u yeniden açılamadı; Webhook'u Aç'a basın. Panel saatte bir yeniden dener; siparişler bu arada düzenli kontrolle gelir."
+            : $"Bağlantı pasife alınırken {platform} webhook'u kapatıldı; bağlantı yeniden aktifleşince panel webhook'u kendiliğinden açar.";
+    }
+
+    private Task<int> RetirePausedAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
+        db.WebhookSubscriptions.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == PausedStatus)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Status, "DELETED").SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
+
+    // The Shopify app secret a paused webhook was signed with, so the reopened one verifies the same way.
+    private string? PausedClientSecret(WebhookSubscription paused)
+    {
+        if (paused.AuthenticationType != "HMAC_SHA256") return null;
+        try { return JsonSerializer.Deserialize<VerifierPayload>(BoundSecret.UnprotectForConnection(protector, paused.TenantId, paused.ConnectionId, paused.ProtectedVerifierSecret))?.ClientSecret; }
+        catch (Exception exception) when (exception is CryptographicException or JsonException) { return null; }
+    }
+
+    private Task<int> ResolvePendingAsync(Guid tenantId, string key, CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        return db.OperationalIssues.Where(x => x.TenantId == tenantId && x.DedupeKey == key && x.Status != IssueStatus.Resolved)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Status, IssueStatus.Resolved).SetProperty(x => x.ResolvedAt, now), cancellationToken);
+    }
+
+    // One record per connection and direction; it is what the hourly retry works from.
+    private async Task NotePendingAsync(Guid tenantId, string key, string code, string summary, CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        if (summary.Length > 1000) summary = summary[..1000];
+        var touched = await db.OperationalIssues.Where(x => x.TenantId == tenantId && x.DedupeKey == key)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.Status, IssueStatus.Open)
+                .SetProperty(x => x.Summary, summary)
+                .SetProperty(x => x.LastSeenAt, now)
+                .SetProperty(x => x.ResolvedAt, (DateTimeOffset?)null)
+                .SetProperty(x => x.OccurrenceCount, x => x.OccurrenceCount + 1), cancellationToken);
+        if (touched > 0) return;
+        db.OperationalIssues.Add(new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = tenantId, DedupeKey = key, Code = code, Summary = summary, Status = IssueStatus.Open, FirstSeenAt = now, LastSeenAt = now, OccurrenceCount = 1 });
+        try { await db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateException exception) when (exception.InnerException is Npgsql.PostgresException { SqlState: Npgsql.PostgresErrorCodes.UniqueViolation }) { db.ChangeTracker.Clear(); }
     }
 
     public async Task<int> ReactivatePassiveAsync(CancellationToken cancellationToken)

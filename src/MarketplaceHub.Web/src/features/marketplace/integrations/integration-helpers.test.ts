@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { connectionEnvironmentLabel, connectionStatusLabel, connectionTestFeedback, credentialRequestBody, invoiceCreationFeedback, readIntegrationListState, stageTestOrderAvailable, trendyolUserAgentNotice, writeIntegrationListState } from './integration-helpers'
+import { connectionActiveFeedback, connectionEnvironmentLabel, disconnectDialogDescription, connectionStatusLabel, connectionTestFeedback, credentialRequestBody, invoiceCreationFeedback, readIntegrationListState, stageTestOrderAvailable, trendyolUserAgentNotice, writeIntegrationListState } from './integration-helpers'
 
 describe('integration helpers', () => {
   it('builds the credential body of each platform', () => {
@@ -74,5 +74,21 @@ describe('connection status label', () => {
     expect(connectionStatusLabel('draft')).toBe('Test Edilmedi')
     expect(connectionStatusLabel('ACTIVE')).toBeNull()
     expect(connectionStatusLabel(null)).toBeNull()
+  })
+})
+
+describe('Pasife Al and the webhook', () => {
+  it('says the Trendyol and Shopify webhook closes and opens again with the connection', () => {
+    expect(disconnectDialogDescription('TRENDYOL')).toContain('Trendyol’da da kapatılır')
+    expect(disconnectDialogDescription('SHOPIFY')).toContain('kendiliğinden açar')
+    expect(disconnectDialogDescription('HEPSIBURADA')).toContain('kapatılmaz')
+    expect(disconnectDialogDescription('N11')).not.toContain('webhook')
+  })
+
+  it('shows a webhook note with the result, else a plain success', () => {
+    expect(connectionActiveFeedback(false, null)).toEqual({ kind: 'success', title: 'Bağlantı Pasife Alındı', message: 'Bağlantı pasife alındı.' })
+    const warned = connectionActiveFeedback(true, "Trendyol webhook'u yeniden açılamadı. Webhook'u Aç'a basın.")
+    expect(warned.kind).toBe('info')
+    expect(warned.message).toBe("Bağlantı etkinleştirildi. Trendyol webhook'u yeniden açılamadı. Webhook'u Aç'a basın.")
   })
 })

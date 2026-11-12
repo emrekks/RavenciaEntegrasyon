@@ -650,8 +650,11 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
                 try
                 {
                     await using var scope = scopeFactory.CreateAsyncScope();
-                    var reactivated = await scope.ServiceProvider.GetRequiredService<IInstantNotificationService>().ReactivatePassiveAsync(stoppingToken);
+                    var notifications = scope.ServiceProvider.GetRequiredService<IInstantNotificationService>();
+                    var reactivated = await notifications.ReactivatePassiveAsync(stoppingToken);
                     if (reactivated > 0) logger.LogInformation("Reactivated {Count} passive marketplace webhook(s)", reactivated);
+                    var retried = await notifications.RetryConnectionWebhooksAsync(stoppingToken);
+                    if (retried > 0) logger.LogInformation("Closed or reopened {Count} webhook(s) of passive or reactivated connections", retried);
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException)
                 {
