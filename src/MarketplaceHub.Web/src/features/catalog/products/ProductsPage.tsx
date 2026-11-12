@@ -20,6 +20,7 @@ import { productImportChoiceSummary, productImportModeDescription, productImport
 import { productPlatformFilterGroups } from '../product-platform-filter'
 import { QUICK_EDIT_SYNC_KEYS } from '../quick-price-edit'
 import { bulkStatusPlan, bulkStatusResultMessage, runInChunks } from '../bulk-status-run'
+import { requiredFieldsSkipNotice, type RequiredFieldsSkipped } from '../required-fields-skip'
 import { ViewTabsWithMore, viewTabLabel } from '../../../shared/view-tabs'
 import { formatMoney } from '../../../shared/format-money'
 import { readUrlNumber, readUrlText, useChangeEffect, useListUrlSync } from '../../../shared/list-url-state'
@@ -659,10 +660,18 @@ export function ProductsPage() {
     statusRunning.current = true
     setStatusProgress({ done: 0, total: targetIds.length })
     try {
-      const result = await runInChunks(targetIds, 500, productIds => hubApi('/products/bulk-status', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ productIds, status: newStatus }) }), (done, total) => setStatusProgress({ done, total }))
-      const outcome = bulkStatusResultMessage(productStatusLabel(newStatus), result)
-      showProductToast(outcome.title, outcome.message, outcome.kind)
-      const doneIds = new Set(result.doneIds)
+      // A closed card missing a required field is skipped by the server and returned; the run goes on with the rest.
+      const skipped: RequiredFieldsSkipped[] = []
+      const result = await runInChunks(targetIds, 500, async productIds => {
+        const response = await hubApi<{ updatedCount?: number; skipped?: RequiredFieldsSkipped[] } | null>('/products/bulk-status', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ productIds, status: newStatus }) })
+        skipped.push(...(response?.skipped ?? []))
+      }, (done, total) => setStatusProgress({ done, total }))
+      const outcome = bulkStatusResultMessage(productStatusLabel(newStatus), result, skipped.length)
+      const notice = requiredFieldsSkipNotice(skipped)
+      showProductToast(outcome.title, notice ? `${outcome.message} ${notice.message}` : outcome.message, outcome.kind, notice ? { operation: 'Toplu Satışa Aç', details: notice.details, target: notice.target, record: true } : undefined)
+      // A skipped card stays selected, so it can be opened again once it is complete.
+      const skippedIds = new Set(skipped.map(card => card.productId))
+      const doneIds = new Set(result.doneIds.filter(id => !skippedIds.has(id)))
       setSelectedProductIds(current => current.filter(id => !doneIds.has(id)))
       setSelectedProductCache(current => { const next = { ...current }; doneIds.forEach(id => delete next[id]); return next })
       if (doneIds.size) setAllProductsSelected(false)
@@ -806,6 +815,7 @@ export function ProductsPage() {
       {statusRequestGroups.length > 6 && <p className="rr-lead">ve {statusRequestGroups.length - 6} ürün kartı daha</p>}
       {(statusRequest.skippedCount ?? 0) > 0 && <p className="rr-lead">{(statusRequest.skippedCount ?? 0).toLocaleString('tr-TR')} kayıt zaten {statusRequest.status === 'ACTIVE' ? 'satışa açık' : 'satışa kapalı'}; bu kayıtlar gönderilmez.</p>}
       {(statusRequest.draftCount ?? 0) > 0 && <p className="rr-lead">{(statusRequest.draftCount ?? 0).toLocaleString('tr-TR')} taslak kayıt değişmez; taslaklar ürün düzenleme ekranında tamamlanıp Kaydet ile satışa açılır.</p>}
+      {statusRequest.status === 'ACTIVE' && <p className="rr-lead">Zorunlu alanı eksik kartlar atlanır ve bildirimlerde eksik alanlarıyla listelenir; diğerleri satışa açılır.</p>}
       {statusRequest.status === 'ARCHIVED' && <div className="rr-callout rr-warn"><RrIcon name="alert" /><span>Pazar yerlerindeki ilanlar bu işlemle kapanmaz; kapatmak için ürün düzenleme ekranından yayını durdurun.</span></div>}
     </RrModal>}
     {quickEdit && <ProductQuickEditModal products={quickEditProducts} connections={publicationConnections} mode={quickEdit.mode} onChanged={refreshQuickEdit} onResult={showProductToast} onClose={() => setQuickEdit(null)} />}
@@ -829,7 +839,7 @@ export function ProductsPage() {
     {transferOpen && <ProductTransferDialog onClose={() => setTransferOpen(false)} />}
     {publishProductId && <Suspense fallback={null}><ProductPublishPopup productId={publishProductId} onClose={() => { setPublishProductId(null); void client.invalidateQueries({ queryKey: ['products'] }) }} /></Suspense>}
     {/* One product card (a whole model family) opens the very same popup as its row's Platformlarda Yayınla. */}
-    {bulkFieldOpen && selectedProductIds.length > 0 && <Suspense fallback={null}><BulkFieldDialog {...selectionModelGroups(selectedProductIds, selectedProductCache)} cardCount={selectedProductCardCount} onClose={() => setBulkFieldOpen(false)} onDone={async outcome => { showProductToast(outcome.title, outcome.message, outcome.kind, { operation: 'Toplu Değer Ata' }); setBulkFieldOpen(false); await refresh().catch(() => undefined) }} /></Suspense>}
+    {bulkFieldOpen && selectedProductIds.length > 0 && <Suspense fallback={null}><BulkFieldDialog {...selectionModelGroups(selectedProductIds, selectedProductCache)} cardCount={selectedProductCardCount} onClose={() => setBulkFieldOpen(false)} onDone={async outcome => { showProductToast(outcome.title, outcome.message, outcome.kind, outcome.skipped ? { operation: 'Toplu Değer Ata', details: outcome.skipped.details, target: outcome.skipped.target, record: true } : { operation: 'Toplu Değer Ata' }); setBulkFieldOpen(false); await refresh().catch(() => undefined) }} /></Suspense>}
     {bulkPublishOpen && selectedProductCardCount === 1 &&selectedProductIds[0] && <Suspense fallback={null}><ProductPublishPopup productId={selectedProductIds[0]} onClose={() => { setBulkPublishOpen(false); void client.invalidateQueries({ queryKey: ['products'] }) }} /></Suspense>}
     {bulkUpdateOpen && <Suspense fallback={null}><BulkPlatformUpdateDialog productIds={selectedProductIds} cardCount={selectedProductCardCount} connections={connectionsQuery.data?.items ?? []} products={[...Object.values(selectedProductCache), ...products]} onClose={() => setBulkUpdateOpen(false)} onDone={notice => showProductToast(notice.title, notice.message, notice.kind, notice.details ? { operation: 'Toplu Güncelleme', details: notice.details, record: true } : { operation: 'Toplu Güncelleme' }, { lines: notice.lines, persistent: notice.persistent })} /></Suspense>}
     {bulkPublishOpen && selectedProductCardCount !== 1 && <Suspense fallback={null}><BulkPublishDialog productIds={selectedProductIds} cardCount={selectedProductCardCount} connections={publicationConnections} products={[...Object.values(selectedProductCache), ...products]} onClose={() => setBulkPublishOpen(false)} onDone={notice => showProductToast(notice.title, notice.message, notice.kind, notice.details ? { operation: 'Toplu Yayın', details: notice.details, record: true } : { operation: 'Toplu Yayın' }, { lines: notice.lines, persistent: notice.persistent })} /></Suspense>}

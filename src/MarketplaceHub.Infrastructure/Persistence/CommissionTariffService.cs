@@ -691,37 +691,6 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
     private static CommissionBandView Band(CommissionBand band) => new(band.Tier, band.Min, band.Max, band.Rate);
 }
 
-// The commission rate a sale pays by the uploaded tariff in force when it was ordered.
-public sealed class CommissionTariffLookup(AppDbContext db) : ICommissionTariffLookup
-{
-    public async Task<CommissionTariffMatch?> RateAsync(Guid tenantId, Guid connectionId, string? barcode, string? sellerSku, DateTimeOffset at, decimal basisPrice, CancellationToken cancellationToken)
-    {
-        var code = barcode?.Trim();
-        var sku = sellerSku?.Trim();
-        if (string.IsNullOrEmpty(code) && string.IsNullOrEmpty(sku)) return null;
-        // Npgsql writes timestamptz parameters only at offset 0.
-        at = at.ToUniversalTime();
-        // The tariffs in force at `at`, the latest upload first: a re-issued tariff for the same week replaces the earlier one.
-        var tariffs = await db.CommissionTariffs.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.PeriodStart <= at && x.PeriodEnd > at)
-            .OrderByDescending(x => x.UploadedAt)
-            .Select(x => new { x.Id, x.PeriodStart, x.PeriodEnd })
-            .ToListAsync(cancellationToken);
-        foreach (var tariff in tariffs)
-        {
-            CommissionTariffRow? row = null;
-            if (!string.IsNullOrEmpty(code))
-                row = await db.CommissionTariffRows.AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == tenantId && x.TariffId == tariff.Id && x.Barcode == code, cancellationToken);
-            if (row is null && !string.IsNullOrEmpty(sku))
-                row = await db.CommissionTariffRows.AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == tenantId && x.TariffId == tariff.Id && x.SellerSku == sku, cancellationToken);
-            if (row is null) continue;
-            var band = CommissionTariffBands.BandFor(row, basisPrice);
-            return band is null ? null : new CommissionTariffMatch(band.Rate, band.Tier, tariff.Id, tariff.PeriodStart, tariff.PeriodEnd);
-        }
-        return null;
-    }
-}
-
 // A tariff row's bands as prices the seller can pick, each with its commission and what the price leaves after the
 // commission and the product cost, and the band that leaves the most.
 internal static class CommissionTariffChoices

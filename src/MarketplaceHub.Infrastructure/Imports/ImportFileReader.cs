@@ -2,6 +2,7 @@ using System.Globalization;
 using System.IO.Compression;
 using System.Text;
 using System.Xml;
+using MarketplaceHub.Application;
 
 namespace MarketplaceHub.Infrastructure.Imports;
 
@@ -14,7 +15,7 @@ public static class ImportFileReader
     // A CSV number written "1.250" (Turkish Excel's "#.##0") reads as a decimal point elsewhere: price 1,25 TL, stock 1.
     // A lone dot with exactly three digits after it is refused, as in the product file transfer, instead of guessed.
     // An XLSX number cell holds the number itself, so only the CSV text is checked.
-    private static readonly HashSet<string> NumberFields = new(StringComparer.OrdinalIgnoreCase) { "listPrice", "salePrice", "stock", "desi", "vatRate" };
+    private static readonly HashSet<string> NumberFields = new(StringComparer.OrdinalIgnoreCase) { "listPrice", "salePrice", "stock", "desi", "vatRate", "warrantyMonths", "deliveryDays" };
 
     // Excel in Turkish locales saves CSV as Windows-1254 with ';' between fields. The reader accepts UTF-8
     // (with or without BOM) and UTF-16 with a BOM, and falls back to Windows-1254 when the bytes are not valid UTF-8; the
@@ -38,7 +39,7 @@ public static class ImportFileReader
                 if (NumberFields.Contains(target) && ProductTransferFileParser.IsAmbiguousThousands(string.Concat(value.Where(character => !char.IsWhiteSpace(character)))))
                     errors.Add($"{source}: \"{value}\" belirsiz: {ProductTransferFileParser.AmbiguousThousandsAdvice}");
             }
-            ValidateRequired(values, errors); yield return new ParsedImportRow(rowNumber, values, errors);
+            ValidateRequired(values, errors); ValidateCardTerms(values, errors); yield return new ParsedImportRow(rowNumber, values, errors);
         }
     }
 
@@ -58,7 +59,7 @@ public static class ImportFileReader
                 if (cell.IsFormula) { errors.Add($"{headers.ElementAtOrDefault(index) ?? index.ToString(CultureInfo.InvariantCulture)}: formül reddedildi."); continue; }
                 if (index < headers.Count && mappings.TryGetValue(headers[index], out var target)) values[target] = cell.Value.Trim();
             }
-            ValidateRequired(values, errors); yield return new ParsedImportRow(rowNumber, values, errors);
+            ValidateRequired(values, errors); ValidateCardTerms(values, errors); yield return new ParsedImportRow(rowNumber, values, errors);
         }
     }
 
@@ -275,6 +276,30 @@ public static class ImportFileReader
         for (var index = 0; index < width; index++) result.Add(cells.TryGetValue(index, out var cell) ? cell.Value.Trim() : string.Empty);
         return result;
     }
+    // Garanti Süresi (Ay) and Teslimat Süresi (Gün), when the file gives them: whole numbers within the editor's limits
+    // (0-240 months, 0 = no warranty; 1-30 days). An empty cell, or a file without the column, gives none.
+    private static void ValidateCardTerms(IReadOnlyDictionary<string, string> values, ICollection<string> errors)
+    {
+        if (!TryWarrantyMonths(values, out _)) errors.Add($"warrantyMonths: {WarrantyMonthsInvalid}");
+        if (!TryDeliveryDays(values, out _)) errors.Add($"deliveryDays: {ProductDeliveryDays.InvalidMessage}");
+    }
+
+    public const string WarrantyMonthsInvalid = "Garanti süresi 0-240 ay arasında tam sayı olmalıdır.";
+
+    internal static bool TryWarrantyMonths(IReadOnlyDictionary<string, string> values, out int? months) => TryWholeNumber(values, "warrantyMonths", 0, BulkProductFields.MaxWarrantyMonths, out months);
+
+    internal static bool TryDeliveryDays(IReadOnlyDictionary<string, string> values, out int? days) => TryWholeNumber(values, "deliveryDays", ProductDeliveryDays.Min, ProductDeliveryDays.Max, out days);
+
+    // True with null for an empty cell; false for a value that is not a whole number within min..max.
+    private static bool TryWholeNumber(IReadOnlyDictionary<string, string> values, string field, int min, int max, out int? number)
+    {
+        number = null;
+        if (!values.TryGetValue(field, out var text) || string.IsNullOrWhiteSpace(text)) return true;
+        if (ImportJobProcessor.ParseDecimal(text) is not decimal parsed || parsed != decimal.Truncate(parsed) || parsed < min || parsed > max) return false;
+        number = (int)parsed;
+        return true;
+    }
+
     private static void ValidateRequired(IReadOnlyDictionary<string, string> values, ICollection<string> errors) { if (!values.TryGetValue("title", out var title) || string.IsNullOrWhiteSpace(title)) errors.Add("title: zorunlu"); if (!values.TryGetValue("sku", out var sku) || string.IsNullOrWhiteSpace(sku)) errors.Add("sku: zorunlu"); }
 
     // A spreadsheet runs a cell that starts with '=', '@', or '+'/'-' followed by something that is not a

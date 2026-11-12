@@ -18,11 +18,15 @@ export async function runInChunks(ids: readonly string[], chunkSize: number, sen
   return { doneIds, remainingIds: [], error: null }
 }
 
-export function bulkStatusResultMessage(statusLabel: string, result: ChunkRunResult): { title: string; message: string; kind: 'success' | 'error' } {
+// skippedCount: cards of the sent chunks the server left closed for a missing required field (Satışa Aç only); they are
+// counted apart from the updated ones and named by the caller's notification.
+export function bulkStatusResultMessage(statusLabel: string, result: ChunkRunResult, skippedCount = 0): { title: string; message: string; kind: 'success' | 'error' } {
   const reason = result.error instanceof Error ? result.error.message : 'Toplu durum güncelleme başarısız.'
-  if (!result.remainingIds.length) return { title: 'Ürün Durumları Güncellendi', message: `${result.doneIds.length} ürün durumu “${statusLabel}” olarak güncellendi.`, kind: 'success' }
+  const updated = Math.max(0, result.doneIds.length - skippedCount)
+  if (!result.remainingIds.length && !skippedCount) return { title: 'Ürün Durumları Güncellendi', message: `${updated} ürün durumu “${statusLabel}” olarak güncellendi.`, kind: 'success' }
+  if (!result.remainingIds.length) return { title: updated ? 'Ürün Durumları Kısmen Güncellendi' : 'Ürün Durumları Güncellenemedi', message: `${updated} ürün “${statusLabel}” olarak güncellendi.`, kind: 'error' }
   if (!result.doneIds.length) return { title: 'Ürün Durumları Güncellenemedi', message: reason, kind: 'error' }
-  return { title: 'Ürün Durumları Kısmen Güncellendi', message: `${result.doneIds.length} ürün “${statusLabel}” olarak güncellendi; kalan ${result.remainingIds.length} ürün güncellenemedi: ${reason}`, kind: 'error' }
+  return { title: 'Ürün Durumları Kısmen Güncellendi', message: `${updated} ürün “${statusLabel}” olarak güncellendi; kalan ${result.remainingIds.length} ürün güncellenemedi: ${reason}`, kind: 'error' }
 }
 
 // Which selected records a Satışa Aç / Satışa Kapat would change: those already in the target status are left out, so

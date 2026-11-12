@@ -396,8 +396,46 @@ trafiği `forward`'dan geçer, iptables'taki `DOCKER-USER` karşılığı). İzi
 İlk kurulum **simülasyon modunda** başlar (3 Kasım 2026): uyarılar kaydedilir, hiçbir IP banlanmaz ve topluluk
 blok listesi çekilmez (`/etc/crowdsec/config.yaml.local`). fail2ban bu süre boyunca çalışmaya devam eder.
 12 Kasım 2026 itibarıyla canlı hâlâ simülasyonda (`/prod-logs host`: "global simulation: enabled").
-**Banı açmak (sahibin adımı)**: önce yanlış pozitifleri gözden geçirin (`sudo cscli alerts list`; kendi ofis/ev
-IP'niz listede "(simul)ban" ile görünüyorsa önce `ravencia-private` izin listesine ekleyin), sonra tek komut:
+**Panelin kendi istekleri (`deploy/crowdsec/ravencia-panel-whitelist.yaml`)**: sahibinin sabit IP'si yok (ev ve
+mobil hat, dinamik), bu yüzden IP izin listesi kullanılmaz; ayrıştırıcı beyaz listesi
+(`/etc/crowdsec/parsers/s02-enrich/ravencia-panel-whitelist.yaml`) isteği **şekline göre** senaryolardan düşürür.
+12 Kasım 2026 18:20Z simülasyonda sahibin tarayıcısı (TurkNet) `crowdsecurity/http-probing` "(simul)ban" aldı: açık
+bir ürün sayfası silinmiş bir ürünü yoklamaya devam etti (`GET /api/v1/products/{id}` 404) ve resimleri
+(`GET /api/v1/files/product-media/{id}/content` 404); 10 sn sızıntılı kovada 10'dan fazla farklı 404 yolu ban
+demektir. Beyaz liste kapsamı: panel API önekleri altındaki `GET`/`HEAD` okumaları (segmentler yalnız harf, rakam,
+`-`, `_`), `/hubs/operations` (SignalR), `/assets`, `/fonts`, `/platforms`, `/pack` altındaki derlenmiş dosyalar
+(deploy sonrası eski chunk 404'leri), simgeler/manifest/`robots.txt` ve SPA sayfaları. Görünür kalan: `.env`, `.git`,
+`*.php`, `/wp-*`, `/phpmyadmin`, bilinmeyen `/api/*` önekleri, `/api/v1/hooks` ve `/api/v1/public`, segmentinde
+nokta, `%`, tırnak geçen her yol ve API'ye her `POST`/`PUT`/`DELETE` (giriş denemeleri dahil). Caddy erişim logu
+sorgu dizesini `?redacted` yaptığından sorgu ile kural atlatılamaz. Çevrimdışı kontrol:
+`bash tests/ops/test-crowdsec-whitelist.sh` (CI `ops` işi de çalıştırır).
+
+Kurmak/güncellemek (sahibin adımı, simülasyonda da `--enforce`'ta da; deploy bunu yapmaz), sunucuda repo kökünde
+`git pull` sonrası:
+
+```bash
+bash deploy/scripts/install-crowdsec.sh            # simülasyon sürerken (yürürlükteyse aynı komut, işaret korunur)
+# ya da yalnız beyaz listeyi koymak için:
+sudo install -m 0644 deploy/crowdsec/ravencia-panel-whitelist.yaml /etc/crowdsec/parsers/s02-enrich/ravencia-panel-whitelist.yaml
+sudo systemctl reload crowdsec
+```
+
+Doğrulamak:
+
+```bash
+sudo cscli parsers list | grep ravencia/panel-whitelist          # "local" olarak görünür
+# Panel isteği: çıktıda "ravencia/panel-whitelist" satırı ve "whitelisted" beklenir
+sudo cscli explain --type caddy -v --log '{"level":"info","ts":1794506610.3,"logger":"http.log.access.log0","msg":"handled request","request":{"remote_ip":"203.0.113.7","client_ip":"203.0.113.7","proto":"HTTP/2.0","method":"GET","host":"panel.ravencia.com","uri":"/api/v1/products/01a1cb3e-b2c9-7ff0-a46d-064b479b831c","headers":{"User-Agent":["Mozilla/5.0"]}},"status":404}'
+# Tarayıcı isteği: beyaz listeden geçmez, http-probing / http-sensitive-files kovalarına düşer
+sudo cscli explain --type caddy -v --log '{"level":"info","ts":1794506610.3,"logger":"http.log.access.log0","msg":"handled request","request":{"remote_ip":"203.0.113.7","client_ip":"203.0.113.7","proto":"HTTP/2.0","method":"GET","host":"panel.ravencia.com","uri":"/.env","headers":{"User-Agent":["Mozilla/5.0"]}},"status":404}'
+sudo cscli metrics show acquisition whitelists     # Caddy satırında "Lines whitelisted" artar
+sudo cscli alerts list                             # birkaç gün içinde kendi IP'nizle http-* uyarısı kalmamalı
+```
+
+**Banı açmak (sahibin adımı)**: beyaz liste kurulduktan sonra en az 2–3 gün normal kullanımda
+`sudo cscli alerts list` içinde sahibin IP'siyle (TurkNet/mobil) yeni `http-*` uyarısı çıkmadığını görün; çıkarsa
+`sudo cscli alerts inspect <ID> -d` ile tetikleyen yolları bulun ve beyaz listeye **yol kuralı** ekleyin (IP değil).
+Sonra tek komut:
 
 ```bash
 bash deploy/scripts/install-crowdsec.sh --enforce   # simülasyonu kapatır, topluluk blok listesini açar, işaret bırakır
@@ -405,6 +443,11 @@ sudo cscli simulation status                        # "global simulation: disabl
 sudo cscli decisions list                           # bundan sonra banlar nftables'a gider
 sudo systemctl disable --now fail2ban               # CrowdSec banları doğrulandıktan sonra
 ```
+
+Kendinizi yine de banlarsanız (ör. mobil hattan): başka bir bağlantıdan (ya da Hostinger VNC konsolundan)
+`sudo cscli decisions list` ile kararı bulun, `sudo cscli decisions delete --ip <IP>`; yerel senaryo banı 4 saattir.
+Beyaz listeyi kaldırmak: `sudo rm /etc/crowdsec/parsers/s02-enrich/ravencia-panel-whitelist.yaml` ve
+`sudo systemctl reload crowdsec`.
 
 `--enforce` `/etc/crowdsec/ravencia-enforced` işaretini bırakır; betik sonra `--enforce`'suz çalışsa da blok listesi
 ayarını geri almaz. Deploy bu betiği çalıştırmaz. Geri dönmek: `sudo cscli simulation enable --global`,

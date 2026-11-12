@@ -244,6 +244,10 @@ public sealed class ImportJobProcessor(
                             DefaultSalePrice = salePrice,
                             VatRate = fileVatRate,
                             VatInclusion = fileVatRate is null ? null : "INCLUDED",
+                            // Garanti Süresi (Ay) and Teslimat Süresi (Gün) from the file's columns, stored as the editor
+                            // stores them (0 = no warranty); a file or cell without them keeps no warranty and the default days.
+                            WarrantyMonths = ImportFileReader.TryWarrantyMonths(values, out var warrantyMonths) && warrantyMonths is > 0 ? warrantyMonths : null,
+                            DeliveryDays = ImportFileReader.TryDeliveryDays(values, out var deliveryDays) && deliveryDays is int days ? days : ProductDeliveryDays.Default,
                             Status = status,
                             CreatedAt = now,
                             UpdatedAt = now
@@ -429,8 +433,8 @@ public sealed class ImportJobProcessor(
 
     // Whether the product the rows create misses one of the editor's required fields (ProductRequiredFields) and so is
     // created as a draft. Product fields come from its first row (as the product is created from it), the codes, desi and
-    // prices from every row. The file has no warranty or delivery days: the card keeps no warranty (0) and the default
-    // days, both valid values.
+    // prices from every row. Garanti Süresi and Teslimat Süresi are always given: from the file's columns (checked by
+    // ImportFileReader), else no warranty (0) and the default days, both valid values.
     internal static bool CreatesDraft(IReadOnlyList<IReadOnlyDictionary<string, string>> rows, bool brandUsable, Guid? categoryId)
     {
         var (cardList, cardSale) = FilePrices(rows[0]);

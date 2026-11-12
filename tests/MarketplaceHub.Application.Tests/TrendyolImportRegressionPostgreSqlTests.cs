@@ -150,6 +150,28 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         Assert.Equal(before, await StateAsync(seed));
     }
 
+    // Platformdan Ürün Aktar (owner, 13 Nov 2026: "boş olarak normal kaydedilsin"): a listing without a brand and without
+    // desi opens a normal card on sale with those fields empty; the server's required-field rule (editor, API, Excel
+    // saves) neither refuses it nor turns it into a draft.
+    [PostgreSqlFact]
+    public async Task FirstImport_OfAListingMissingRequiredFields_SavesANormalCardWithTheFieldsEmpty()
+    {
+        var seed = await SeedAsync();
+        var page = System.Text.Json.Nodes.JsonNode.Parse(Page([Spec("Bordo")]))!;
+        var content = page["content"]![0]!.AsObject();
+        content.Remove("brand");
+        foreach (var variant in content["variants"]!.AsArray()) variant!.AsObject().Remove("dimensionalWeight");
+        await RunAsync(seed, new TrendyolCatalogPort(TrendyolJsonMapper.CatalogProducts(page.ToJsonString()).Items), "{\"full\":true}");
+
+        await using var db = fixture.CreateContext();
+        var card = Assert.Single(await CardsAsync(db, seed)).Value;
+        Assert.Equal((ProductStatus.Active, (Guid?)null), (card.Product.Status, card.Product.BrandId));
+        Assert.Equal(Sizes.Length, card.Variants.Count);
+        Assert.All(card.Variants, variant => Assert.Equal((ProductStatus.Active, (decimal?)null), (variant.Status, variant.Desi)));
+        Assert.NotEmpty(ProductRequiredFields.Missing(new ProductRequiredFields.Card(card.Product.Title, card.Product.BrandId, card.Product.CategoryId, true, true, card.Product.DefaultListPrice, card.Product.DefaultSalePrice,
+            [.. card.Variants.Select(variant => new ProductRequiredFields.Row(variant.Sku, variant.Barcode, variant.ModelCode, variant.Desi, variant.DefaultListPrice, variant.DefaultSalePrice))])));
+    }
+
     // 2. Re-import of a family the owner edited: matched by the listing link, nothing doubled or moved, and the owner's
     // per-variant pictures and gallery order kept although Trendyol now sends other pictures and another title.
     [PostgreSqlFact]
