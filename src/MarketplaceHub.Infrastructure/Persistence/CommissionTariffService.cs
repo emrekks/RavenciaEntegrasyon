@@ -124,6 +124,18 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
         }
         if (created.Count > 0)
         {
+            // The new file replaces the files before it in the same save, so a failed import keeps them: those whose days
+            // it covers again (the same week re-issued) and those whose days have all passed. A file still in force for
+            // days the new one does not cover (this week's, while next week's is uploaded early) stays until they pass.
+            // Their rows, picks and kept file go with them (the database cascades the delete).
+            var replaced = await ReplacedFilesAsync(tenantId, connectionId, hash, created, now, cancellationToken);
+            if (replaced.Count > 0)
+            {
+                db.CommissionTariffs.RemoveRange(replaced);
+                var names = string.Join(", ", replaced.GroupBy(x => x.FileHash).Select(x => x.First().FileName).Distinct());
+                db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = "COMMISSION_TARIFF_REPLACED", TargetType = "PlatformConnection", TargetId = connectionId.ToString("D"), Reason = Reason($"{safeName} yerine silindi: {names} ({string.Join(", ", replaced.Select(x => x.PeriodText))})"), CorrelationId = correlationId, CreatedAt = now });
+                warnings.Add($"{ReplacedWarning} {names}.");
+            }
             var days = validDays is null ? string.Empty : $" (geçerlilik {CommissionTariffValidity.Text(validDays.From, validDays.To)})";
             db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = "COMMISSION_TARIFF_UPLOADED", TargetType = "PlatformConnection", TargetId = connectionId.ToString("D"), Reason = Reason($"{safeName}: {imported} satır, {string.Join(", ", created.Select(x => x.PeriodText))}{days}"), CorrelationId = correlationId, CreatedAt = now });
             try { await db.SaveChangesAsync(cancellationToken); }
@@ -133,6 +145,7 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
                 db.ChangeTracker.Clear();
                 alreadyUploaded = true;
                 imported = 0;
+                warnings.RemoveAll(x => x.StartsWith(ReplacedWarning, StringComparison.Ordinal));
             }
         }
         else if (backfilled > 0) await db.SaveChangesAsync(cancellationToken);
@@ -184,6 +197,19 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
     }
 
     private static string Reason(string text) => text.Length > 512 ? text[..512] : text;
+
+    private const string ReplacedWarning = "Önceki tarife dosyası ve satırları silindi:";
+
+    // The connection's other files (every period of each) that a new file replaces: one with a period overlapping a new
+    // period, or one whose periods have all ended.
+    private async Task<List<CommissionTariff>> ReplacedFilesAsync(Guid tenantId, Guid connectionId, string hash, IReadOnlyList<CommissionTariff> created, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var others = await db.CommissionTariffs.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.FileHash != hash).ToListAsync(cancellationToken);
+        return others.GroupBy(x => x.FileHash)
+            .Where(file => file.Any(old => created.Any(fresh => old.PeriodStart < fresh.PeriodEnd && old.PeriodEnd > fresh.PeriodStart)) || file.All(old => old.PeriodEnd <= now))
+            .SelectMany(file => file.OrderBy(x => x.PeriodStart))
+            .ToList();
+    }
 
     // A period's length as the file gives it ("3 Günlük Fiyat" in the Excel of the picks), read from the file's own
     // period text: the seller may have changed the days the tariff is valid for. The stored days stand in when the text

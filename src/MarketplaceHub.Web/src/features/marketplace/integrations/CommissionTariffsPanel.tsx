@@ -379,6 +379,7 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
       <ValidityFields days={uploadDays} onChange={setUploadDays} disabled={upload.isPending} />
       <strong>{upload.isPending ? 'Tarife okunuyor…' : 'Tarife dosyasını buraya bırakın'}</strong>
       <span>{platformName} satıcı panelinden indirilen .xlsx dosyası · en fazla 10 MiB</span>
+      <small className="commission-validity-note">Yeni dosya yüklenince önceki dosya ve satırları silinir; yürürlükteki başka haftanın tarifesi bitene kadar kalır.</small>
       <button type="button" className="secondary" disabled={upload.isPending || uploadProblem !== null} onClick={() => input.current?.click()}>Dosya Seç</button>
       {uploadProblem && <small className="commission-validity-hint">{uploadProblem}</small>}
       <input ref={input} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onChange={event => { choose(event.target.files?.[0]); event.target.value = '' }} />
