@@ -20,4 +20,8 @@
   <ItemGroup>
     <EmbeddedResource Include="../../skills/**/*" LogicalName="skills/%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
+  <!-- Montserrat and its fontconfig file for drawing the owner's size chart SVG (SizeCharts/SizeChartRasterizer.cs). -->
+  <ItemGroup>
+    <None Include="SizeCharts/Fonts/*" Link="size-chart-fonts/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

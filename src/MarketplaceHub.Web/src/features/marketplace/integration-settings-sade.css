@@ -33,11 +33,7 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
 .cs-workspace .cs-back { display: inline-flex; align-items: center; gap: 6px; margin-right: 8px; color: var(--rv-color-muted); font-size: 13px; text-decoration: none; }
 
 /* Body: section list + pane */
-.cs-workspace .cs-body { display: grid; grid-template-columns: 220px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); min-height: 0; overflow: hidden; }
-.cs-workspace .cs-nav { display: grid; align-content: start; min-height: 0; padding: 12px 0; overflow-y: auto; border-right: 1px solid var(--rv-color-border); }
-.app-shell.stitch-shell main .cs-workspace .cs-nav > button { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; height: 38px; min-height: 38px; padding: 0 16px 0 18px; color: var(--rv-color-muted); text-align: left; background: none; border: 0; border-left: 2px solid transparent; border-radius: 0; box-shadow: none; font-size: 14px; font-weight: 400 !important; text-transform: none; }
-.app-shell.stitch-shell main .cs-workspace .cs-nav > button:hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-soft)); }
-.app-shell.stitch-shell main .cs-workspace .cs-nav > button.is-on { color: var(--rv-color-ink); background: var(--rv-color-primary-soft); border-left-color: var(--rv-color-primary); }
+.cs-workspace .cs-body { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); min-height: 0; overflow: hidden; }
 .cs-workspace .cs-icon { display: block; width: 16px; height: 16px; }
 .cs-workspace .cs-pane { display: grid; grid-auto-rows: max-content; align-content: start; gap: 16px; min-height: 0; padding: 22px 28px 28px; overflow-y: auto; }
 .cs-workspace .cs-sec-head h3 { margin: 0; font-size: 16px; font-weight: 600; }
@@ -46,10 +42,14 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
 /* Counts and chips */
 .cs-workspace .cs-count { display: inline-grid; min-width: 20px; height: 18px; place-items: center; padding: 0 5px; color: var(--rv-color-ink); background: var(--rv-color-border-strong); border-radius: 7px; font-size: 11px; font-weight: 600; line-height: 1; text-align: center; font-variant-numeric: tabular-nums; }
 .cs-workspace .cs-count.is-warn { color: var(--rv-color-warning); background: color-mix(in srgb, var(--rv-color-warning) 14%, transparent); }
-.cs-workspace .cs-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.app-shell.stitch-shell main .cs-workspace .cs-chip { display: inline-flex; align-items: center; gap: 4px; height: 28px; min-height: 28px; padding: 0 10px; color: var(--rv-color-muted); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 13px; text-transform: none; }
-.app-shell.stitch-shell main .cs-workspace .cs-chip b { font-weight: 600; }
-.app-shell.stitch-shell main .cs-workspace .cs-chip.is-on { color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); }
+/* Flow filter (Tümü / Dikkat / Bekleyen / Kapalı): the project's segment control, as İşlem Takibi's category segment
+   (frame and option geometry come from styles/segments.css); a strip too wide for its line scrolls inside itself. */
+.cs-workspace .cs-chips { display: inline-flex; justify-self: start; width: max-content; max-width: 100%; flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; overscroll-behavior-x: contain; background: var(--rv-color-bg, var(--rv-color-surface)); border: 1px solid var(--rv-color-border-strong); }
+.cs-workspace .cs-chips::-webkit-scrollbar { display: none; }
+.app-shell.stitch-shell main .cs-workspace .cs-chip { display: inline-flex; align-items: center; justify-content: center; flex: none; gap: 6px; width: auto; padding: 0 12px; color: var(--rv-color-muted); background: none; border: 1px solid transparent; box-shadow: none; text-transform: none; white-space: nowrap; }
+.app-shell.stitch-shell main .cs-workspace .cs-chip:hover { color: var(--rv-color-ink); background: none; }
+.app-shell.stitch-shell main .cs-workspace .cs-chip b { color: var(--rv-color-muted); font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.app-shell.stitch-shell main .cs-workspace .cs-chip.is-on { color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border-color: var(--rv-color-border-strong, var(--rv-color-border)); }
 
 /* Overview */
 .cs-workspace .cs-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); overflow: hidden; border: 1px solid var(--rv-color-border); border-radius: 12px; }
@@ -97,6 +97,8 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
 .cs-workspace .cs-fstate .cm-glyph { width: 15px; height: 15px; color: var(--rv-color-subtle); }
 .cs-workspace .cs-fstate .cm-glyph.is-done { color: var(--rv-color-ink); }
 .cs-workspace .cs-ftime { color: var(--rv-color-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+/* The state and the time share a wrapper for the phone row; elsewhere they stay two cells of the row's grid. */
+.cs-workspace .cs-fmeta { display: contents; }
 .cs-workspace .cs-ftable > .cs-empty { margin: 0; padding: 24px; text-align: center; }
 
 /* Switches */
@@ -134,16 +136,12 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
 
 @media (max-width: 860px) {
   .cs-workspace .cs-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-  .cs-workspace .cs-nav { display: flex; padding: 0; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--rv-color-border); }
-  .app-shell.stitch-shell main .cs-workspace .cs-nav > button { width: auto; flex: none; grid-template-columns: 16px auto auto; border-left: 0; border-bottom: 2px solid transparent; }
-  .app-shell.stitch-shell main .cs-workspace .cs-nav > button.is-on { border-bottom-color: var(--rv-color-primary); }
   .cs-workspace .cs-head { flex-wrap: wrap; padding: 14px 16px; }
   .cs-workspace .cs-pane { padding: 16px; }
   .cs-workspace .cs-stats { grid-template-columns: minmax(0, 1fr); }
   .cs-workspace .cs-stats > div { border-left: 0; border-top: 1px solid var(--rv-color-border); }
   .cs-workspace .cs-stats > div:first-child { border-top: 0; }
   .cs-workspace .cs-frow { grid-template-columns: minmax(0, 1fr) 44px; }
-  .cs-workspace .cs-frow > :is(.cs-fstate, .cs-ftime) { grid-column: 1; }
   .cs-workspace .cs-frow.is-head { display: none; }
 }
 
@@ -184,11 +182,22 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
   .app-shell.stitch-shell main .integration-settings-modal-backdrop { padding: 0; }
   .app-shell.stitch-shell main .integration-settings-modal { width: 100%; height: 100%; border: 0; border-radius: 0; }
 }
-/* Phones: the window takes its tab's height (up to the screen) from a fixed top, so a short tab leaves no empty
-   space under it and the tabs never move when another is picked; Veri Eşitleme still scrolls inside. */
+/* Phones: the window is a full-screen sheet (owner, 12 Nov 2026: a window as tall as its tab sat small on the page):
+   the head and the tab strip stay at the top, the section scrolls under them, the page never shows through. */
 @media (max-width: 760px) {
-  .app-shell.stitch-shell main .integration-settings-modal-backdrop.integration-settings-modal-backdrop { align-items: flex-start; }
-  .app-shell.stitch-shell main .integration-settings-modal.integration-settings-modal { height: auto; max-height: 100%; }
+  .app-shell.stitch-shell main .integration-settings-modal-backdrop.integration-settings-modal-backdrop { align-items: stretch; padding: 0; }
+  .app-shell.stitch-shell main .integration-settings-modal.integration-settings-modal { width: 100%; height: 100%; max-height: none; }
+}
+
+/* Section tabs: the project's view tabs (shared Tabs + rv-view-tabs), one row across the top of the window on every
+   width, inset like the pane's content; a row wider than the window scrolls inside itself. */
+.cs-workspace .cs-body > .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.cs-tabs { width: auto !important; margin: 16px 28px 0; overscroll-behavior-x: contain; }
+.cs-workspace .cs-tabs .cs-icon { display: block; width: 16px; height: 16px; flex: none; }
+@media (max-width: 860px) {
+  .cs-workspace .cs-body > .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.cs-tabs { margin: 12px 16px 0; }
+}
+@media (max-width: 760px) {
+  .cs-workspace .cs-body > .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.cs-tabs { margin: var(--m-pad, 12px) var(--m-pad, 12px) 0; }
 }
 
 /* Card titles and table headings read as headings: title case, no capitals, brighter text. */
@@ -274,10 +283,6 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
 .app-shell.stitch-shell main .cs-workspace .cs-pane .integration-detail-write-heading { align-items: center; }
 .app-shell.stitch-shell main .cs-workspace .cs-pane .integration-detail-write-status { align-self: center; height: 22px; min-height: 22px; }
 
-/* Section list starts closer to the head; selected filter chips use the shared soft violet. */
-.cs-workspace .cs-nav { padding-top: 6px; }
-.app-shell.stitch-shell main .cs-workspace .cs-chip.is-on { color: var(--rv-color-ink); background: var(--rv-color-primary-soft); border-color: color-mix(in srgb, var(--rv-color-primary) 55%, transparent); }
-.app-shell.stitch-shell main .cs-workspace .cs-chip.is-on b { color: var(--rv-color-primary-text); }
 
 /* Phones: the head keeps logo, name and close on one line with the status tags under the name; a flow that needs
    attention shows its name on the full width and its actions on the line below, so the name never breaks word by word. */
@@ -315,43 +320,33 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
   .cs-workspace .cs-health-big b { font-size: 20px; }
 }
 
-/* Phones, data sync: a flow row is the name, its state and its last success on three short lines with the switch on the right
-   (a later four-column rule squeezed the name to one letter); the filter chips share one line; the section tabs use the
-   project's tab look: no filled selected tab, a violet underline, short dividers between tabs. */
+/* Phones, data sync: a flow row is its name on the first line and, under it, the state (icon, text) and the last
+   success on one line ("Güncel · 12.11.2026 16:18:19"); the switch with its Açık/Kapalı word sits on the right,
+   centred on both lines. A group head stays on one line: name, count, and Tümünü Kapat on the right. The filter
+   segment fills its line and scrolls inside itself when it does not fit. */
 @media (max-width: 760px) {
-  .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name switch" "state switch" "time switch"; align-items: center; gap: 2px 12px; padding: 10px 14px; }
+  .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name switch" "meta switch"; align-items: center; gap: 4px 12px; padding: 10px 14px; }
   .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) > .cs-fname { grid-area: name; white-space: normal; overflow-wrap: anywhere; }
-  .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) > .cs-fstate { grid-area: state; justify-self: start; font-size: 12.5px; }
-  .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) > .cs-ftime { grid-area: time; justify-self: start; padding-left: 23px; }
-  .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) > .cs-switch-field { grid-area: switch; }
-  .cs-workspace .cs-chips { display: flex; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
-  .cs-workspace .cs-chips::-webkit-scrollbar { display: none; }
-  .app-shell.stitch-shell main .cs-workspace .cs-chip { flex: 1 0 auto; justify-content: center; min-width: 0; padding: 0 12px; font-size: 12.5px; white-space: nowrap; }
+  .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) > .cs-fmeta { grid-area: meta; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; container-type: inline-size; }
+  .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) .cs-fstate { gap: 6px; font-size: 12.5px; white-space: nowrap; }
+  .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) .cs-ftime { white-space: nowrap; }
+  .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) .cs-ftime::before { content: "·"; margin-right: 6px; color: var(--rv-color-subtle); }
+  .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) > .cs-switch-field { grid-area: switch; align-self: center; }
+  .cs-workspace .cs-fgroup { gap: 8px; padding: 0 8px 0 14px; }
+  .cs-workspace .cs-fgroup b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cs-workspace .cs-fgroup > .cs-count { flex: none; }
+  .app-shell.stitch-shell main .cs-workspace .cs-fgroup > .cs-quiet { flex: none; white-space: nowrap; }
+  .cs-workspace .cs-chips { width: 100%; }
+  .app-shell.stitch-shell main .cs-workspace .cs-chip { flex: 1 0 auto; }
+}
+/* A 320px phone has no room for both on one line: the time goes under the state, without the separator dot. */
+@container (max-width: 210px) {
+  .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) .cs-ftime::before { display: none; }
 }
 
 /* The write status tag sits to the right of its title, not under the text. */
 .app-shell.stitch-shell main .cs-workspace .cs-pane .integration-detail-write-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; column-gap: 12px; }
 .app-shell.stitch-shell main .cs-workspace .cs-pane .integration-detail-write-heading > .integration-detail-write-status { align-self: start; justify-self: end; margin: 2px 0 0; }
-
-/* Section tabs whenever they run across the top (up to 860px): the project tab look, with no fill on the selected,
-   hovered, focused or pressed tab. */
-@media (max-width: 860px) {
-  .app-shell.stitch-shell main .cs-workspace .cs-nav { height: 48px; padding: 0 8px; scrollbar-width: none; }
-  .app-shell.stitch-shell main .cs-workspace .cs-nav > button { position: relative; height: 47px; min-height: 47px; padding: 0 12px; color: var(--rv-color-muted); background: none; border: 0; border-radius: 0; }
-  .app-shell.stitch-shell main .cs-workspace .cs-nav > button + button::before { content: ""; position: absolute; top: 50%; left: 0; width: 1px; height: 18px; background: var(--rv-color-border-strong); transform: translateY(-50%); }
-  .app-shell.stitch-shell main .cs-workspace .cs-nav > button:hover { color: var(--rv-color-ink); background: none; }
-  .app-shell.stitch-shell main .cs-workspace .cs-nav > button.is-on { color: var(--rv-color-ink); background: none; font-weight: 500; }
-  .app-shell.stitch-shell main .cs-workspace .cs-nav > button.is-on::after { content: ""; position: absolute; right: 8px; bottom: 0; left: 8px; height: 2px; background: var(--rv-color-primary); border-radius: 2px; }
-  .app-shell.stitch-shell main .cs-workspace .cs-nav > button > span:empty { display: none; }
-  .app-shell.stitch-shell main .cs-workspace .cs-nav > button:is(:hover, :focus, :focus-visible, :active, .is-on) { background: none !important; box-shadow: none; }
-}
-
-/* Section tabs running across the top sit in their own framed strip like the project's tab bars. */
-@media (max-width: 860px) {
-  .app-shell.stitch-shell main .cs-workspace .cs-nav { margin: 12px 16px 0; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; overflow-y: hidden; overscroll-behavior-x: contain; }
-  /* the frame takes 2px of the strip, so the tabs are 46px and nothing is left to scroll up and down */
-  .app-shell.stitch-shell main .cs-workspace .cs-nav > button { height: 46px; min-height: 46px; }
-}
 
 /* Webhook (under Veri Eşitleme): the state and its one action share a strip; once on, the dates and the count sit
    under it as facts; the confirmation window lists the terms. */
