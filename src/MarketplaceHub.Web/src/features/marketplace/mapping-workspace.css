@@ -243,7 +243,7 @@
 .app-shell.stitch-shell main section.mapping-page > .mapping-reference-card label:not(.rv-pagination-jump) { display: grid; gap: 6px; color: var(--rv-color-muted); font-size: 13px; font-weight: 500; text-transform: none; }
 .app-shell.stitch-shell main section.mapping-page > .mapping-reference-card :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not(.rv-pagination-jump > input), select, .panel-category-picker-trigger) { box-sizing: border-box; height: var(--mp-control); min-height: var(--mp-control); padding: 0 12px; color: var(--rv-color-ink); background-color: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 14px; font-weight: 400 !important; }
 .app-shell.stitch-shell main section.mapping-page > .mapping-reference-card :is(input, select, .panel-category-picker-trigger):focus { border-color: var(--rv-color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 18%, transparent); outline: none; }
-.app-shell.stitch-shell main section.mapping-page > .mapping-reference-card button:not(.category-library-remove):not(.category-chip-remove):not(.category-library-search-toggle):not([role="tab"]):not([role="option"]):not(.panel-category-picker-trigger):not(.panel-attribute-record-main):not(:is(.category-library-list, .category-chip-list) button) { height: var(--mp-control); min-height: var(--mp-control); padding: 0 14px; border-radius: 7px; font-size: 13px; font-weight: 600 !important; text-transform: none; }
+.app-shell.stitch-shell main section.mapping-page > .mapping-reference-card button:not(.category-library-remove):not(.category-chip-remove):not(.category-library-search-toggle):not([role="tab"]):not([role="option"]):not(.panel-category-picker-trigger):not(.title-hint):not(.panel-attribute-record-main):not(:is(.category-library-list, .category-chip-list) button) { height: var(--mp-control); min-height: var(--mp-control); padding: 0 14px; border-radius: 7px; font-size: 13px; font-weight: 600 !important; text-transform: none; }
 .app-shell.stitch-shell main section.mapping-page > .mapping-reference-card button:disabled { opacity: .5; }
 
 /* 1. Panel categories: create row, search row, chip grid */
@@ -720,4 +720,21 @@
   .app-shell.stitch-shell main section.mapping-page.mapping-page :is(.category-library-list, .category-chip-list) > span > :is(.category-library-remove, .category-chip-remove) { width: 36px; min-width: 36px; height: 36px; min-height: 36px; margin-block: -2px; }
   .app-shell.stitch-shell main .panel-attribute-modal-card.panel-attribute-modal-card .panel-attribute-value-editor > div > div > button { height: 36px !important; min-height: 36px !important; }
   .app-shell.stitch-shell main section.mapping-page .panel-category-picker { grid-template-rows: auto minmax(0, 1fr); }
+}
+
+/* New category mapping, every width: the target label is one 18px line and the info mark stays inline at 16px
+   (it was a 28x36 button and made the right label 34px tall). */
+html body .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-target { align-content: start; grid-template-rows: 18px 36px; }
+html body .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-target > label { display: flex; align-items: center; height: 18px; margin: 0; line-height: 18px; }
+html body .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-label-line { height: 18px; line-height: 18px; }
+html body .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-label-line .title-hint { display: inline-grid; align-self: center; width: 16px; height: 16px; min-height: 0; padding: 0; margin: 0 0 0 4px; }
+
+/* Desktop and tablet: both labels share one 18px line, both 36px pickers start at the same y, and the link rail is
+   centred on the pickers (label 18px + gap 6px = 24px down). */
+@media (min-width: 761px) {
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid { grid-template-rows: auto; align-items: start; row-gap: 0; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid > :is(.mapping-link-rail, .mapping-reference-target) { grid-area: 1 / auto; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid > .mapping-link-rail { grid-column: 2; align-self: start; justify-self: center; transform: none; height: 36px; margin: 24px 0 0 !important; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-local > label { grid-row: 1; align-self: start; display: grid; grid-template-rows: 18px 36px; gap: 6px; line-height: 18px; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-target { grid-column: 3; }
 }
