@@ -50,6 +50,7 @@ public sealed partial class CatalogService
         var reason = $"Toplu Değer Ata: {BulkProductFields.Label(value.Field)} = {display}";
         int updated = 0, unchanged = 0, variantCount = 0;
         var failures = new List<BulkProductFieldFailure>();
+        var skipped = new List<RequiredFieldsSkippedProduct>();
         foreach (var family in families)
         {
             try
@@ -61,6 +62,7 @@ public sealed partial class CatalogService
                 unchanged += outcome.Unchanged;
                 variantCount += outcome.Variants;
                 if (outcome.Note is { } note) failures.Add(new(family.Model, note));
+                skipped.AddRange(outcome.Skipped);
             }
             catch (DbUpdateConcurrencyException)
             {
@@ -71,12 +73,12 @@ public sealed partial class CatalogService
                 db.ChangeTracker.Clear();
             }
         }
-        return ServiceResult<BulkProductFieldResult>.Ok(new(updated, unchanged, variantCount, failures));
+        return ServiceResult<BulkProductFieldResult>.Ok(new(updated, unchanged, variantCount, failures, skipped));
     }
 
     private sealed record BulkFieldCard(Guid Id, Guid? BrandId, string Title);
     private sealed record BulkFieldFamily(string Model, IReadOnlyList<Guid> ProductIds);
-    private sealed record BulkFieldOutcome(int Updated, int Unchanged, int Variants, string? Note);
+    private sealed record BulkFieldOutcome(int Updated, int Unchanged, int Variants, string? Note, IReadOnlyList<RequiredFieldsSkippedProduct> Skipped);
 
     // The selected cards grouped by model (same brand and model code; any brand for the brand itself), each with every
     // visible colour card of the model. A card without a model code is a model of its own, named by its title.
@@ -136,6 +138,7 @@ public sealed partial class CatalogService
         var changed = new HashSet<Guid>();
         var left = 0;
         string? note = null;
+        IReadOnlyList<RequiredFieldsSkippedProduct> skipped = [];
         void Set<T>(Product product, T current, T next, Action<T> write)
         {
             if (EqualityComparer<T>.Default.Equals(current, next)) return;
@@ -203,12 +206,13 @@ public sealed partial class CatalogService
                     left = products.Count(product => ProductDraftPolicy.IsDraft(product.Status));
                     if (left > 0) note = BulkFieldDraftLeft;
                     var moving = products.Where(product => !ProductDraftPolicy.IsDraft(product.Status) && product.Status != status).ToList();
-                    // A closed card missing a required field is not put on sale (ProductRequiredFields): it is named and left.
+                    // A closed card missing a required field is not put on sale (ProductRequiredFields): it is left and
+                    // returned in Skipped with what it misses, which the panel notifies (owner, 13 Nov 2026).
                     if (status == ProductStatus.Active && await IncompleteCardsAsync(tenantId, moving, cancellationToken) is { Count: > 0 } incomplete)
                     {
                         moving.RemoveAll(product => incomplete.Any(item => item.Product.Id == product.Id));
                         left += incomplete.Count;
-                        note = string.Join(" ", new[] { note }.Concat(incomplete.Select(item => ProductRequiredFields.ActivationRefusal(item.Product.Title, item.Gaps))).OfType<string>());
+                        skipped = [.. incomplete.Select(SkippedFor)];
                     }
                     await ApplyBulkStatusAsync(tenantId, moving, status, actorUserId, correlation, now, cancellationToken);
                     changed.UnionWith(moving.Select(product => product.Id));
@@ -229,6 +233,6 @@ public sealed partial class CatalogService
         }
         if (value.Field is not (BulkProductFields.Status or BulkProductFields.SafetyStock) && changedProducts.Count > 0)
             await CatalogLocalEdits.MarkLinksDirtyAsync(db, tenantId, [.. changedProducts.Select(product => product.Id)], CatalogLocalEdits.ProductField, cancellationToken);
-        return new(changedProducts.Count, products.Count - changedProducts.Count - left, variantCount, note);
+        return new(changedProducts.Count, products.Count - changedProducts.Count - left, variantCount, note, skipped);
     }
 }

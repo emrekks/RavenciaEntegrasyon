@@ -10,6 +10,7 @@ import { ErrorToast } from '../../../shared/components/NoticeToast'
 import { statusLabel } from '../../../shared/status-labels'
 import { Page, Tag, Versioned } from '../shared'
 import { importSessionPollInterval } from './import-status'
+import { importTemplateCsv, importTemplateFields, importTemplateHeaders } from './import-template'
 
 type ImportSession = Versioned & { sourceType: string; status: string; totalRows: number; validRows: number; errorRows: number; reviewRows: number; sourceAssetId: string | null }
 type Candidate = Versioned & { matchRule: string; safeSummary: string; productId: string | null; variantId: string | null }
@@ -105,7 +106,7 @@ export function ImportDetailPage() {
     <ErrorToast title="İçe Aktarım İşlemi Başarısız" error={error} />
     {session.data.status === 'CREATED' && <div className="detail-grid">
       <form className="panel" onSubmit={upload}><h2>1. Dosya</h2><input name="file" type="file" accept=".csv,.xlsx" required /><button disabled={pending.isPending}>Yükle</button></form>
-      <form className="panel" onSubmit={map}><h2>2. Kolon Eşleme</h2><label>Başlıklar<input name="headers" placeholder="Ürün,SKU,Barkod" required /></label><label>Hedefler<input name="fields" placeholder="title,sku,barcode" required /></label><button disabled={pending.isPending}>Kaydet</button></form>
+      <form className="panel" onSubmit={map}><h2>2. Kolon Eşleme</h2><label>Başlıklar<input name="headers" defaultValue={importTemplateHeaders} placeholder="Ürün,SKU,Barkod" required /></label><label>Hedefler<input name="fields" defaultValue={importTemplateFields} placeholder="title,sku,barcode" required /></label><p className="rv-field-hint">Şablonun sütunları hazır eşlenmiştir. Garanti Süresi (Ay): 0-240 (0 = garanti yok), Teslimat Süresi (Gün): 1-30; boş bırakılırsa garanti yok ve 1 gün kalır.</p><div className="actions"><button disabled={pending.isPending}>Kaydet</button><a className="button-link secondary" download="urun-iceri-aktarma-sablonu.csv" href={`data:text/csv;charset=utf-8,${encodeURIComponent(importTemplateCsv())}`}>Şablon İndir</a></div></form>
     </div>}
     <div className="actions spaced">
       {session.data.status === 'CREATED' && session.data.sourceAssetId && <button type="button" disabled={pending.isPending} onClick={() => job('preview')}>Önizleme Oluştur</button>}

@@ -211,4 +211,28 @@ public sealed class ImportFileReaderTests
         Assert.Null(MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.ListingVatRate(Listing(Variant("a", null), Variant("b", 150m))));
         Assert.Null(MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.ListingVatRate(Listing()));
     }
+
+    // Garanti Süresi (Ay) and Teslimat Süresi (Gün) columns (owner, 13 Nov 2026): the editor's limits, 0-240 months and
+    // 1-30 days, whole numbers; an empty cell or a file without the column is no error.
+    [Theory]
+    [InlineData("24", "3", null)]
+    [InlineData("0", "30", null)]
+    [InlineData("", "", null)]
+    [InlineData("241", "3", "warrantyMonths: Garanti süresi 0-240 ay arasında tam sayı olmalıdır.")]
+    [InlineData("-1", "3", "warrantyMonths: Garanti süresi 0-240 ay arasında tam sayı olmalıdır.")]
+    [InlineData("1,5", "3", "warrantyMonths: Garanti süresi 0-240 ay arasında tam sayı olmalıdır.")]
+    [InlineData("12", "0", "deliveryDays: Teslimat süresi 1-30 gün arasında tam sayı olmalıdır.")]
+    [InlineData("12", "31", "deliveryDays: Teslimat süresi 1-30 gün arasında tam sayı olmalıdır.")]
+    [InlineData("12", "iki", "deliveryDays: Teslimat süresi 1-30 gün arasında tam sayı olmalıdır.")]
+    public void WarrantyAndDeliveryColumns_KeepTheEditorsLimits(string warranty, string days, string? error)
+    {
+        var mappings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["Ürün"] = "title", ["SKU"] = "sku", ["Garanti Süresi (Ay)"] = "warrantyMonths", ["Teslimat Süresi (Gün)"] = "deliveryDays" };
+        var row = Assert.Single(ImportFileReader.ReadCsv(new MemoryStream(Encoding.UTF8.GetBytes($"Ürün;SKU;Garanti Süresi (Ay);Teslimat Süresi (Gün)\r\nBluz;B-1;{warranty};{days}\r\n")), mappings));
+        if (error is null) Assert.Empty(row.Errors);
+        else Assert.Equal([error], row.Errors);
+
+        var withoutColumns = Assert.Single(ImportFileReader.ReadCsv(new MemoryStream(Encoding.UTF8.GetBytes("Ürün;SKU\r\nBluz;B-1\r\n")), mappings));
+        Assert.Empty(withoutColumns.Errors);
+        Assert.False(withoutColumns.Values.ContainsKey("warrantyMonths"));
+    }
 }

@@ -1,0 +1,43 @@
+# Installed as /etc/crowdsec/parsers/s02-enrich/ravencia-panel-whitelist.yaml by deploy/scripts/install-crowdsec.sh.
+# Drops the panel's own requests from the HTTP scenarios, by request shape only, never by IP: the owner has no static
+# address. Live 12 Nov 2026 (simulation): the owner's browser got a would-be ban for crowdsecurity/http-probing after
+# 12 distinct 404s in a few seconds - a product page polling a deleted product (GET /api/v1/products/{id}) and its
+# pictures (GET /api/v1/files/product-media/{id}/content). Any session that outlives a deleted record does the same.
+#
+# What stays detectable: every path these rules do not describe - dotfiles (.env, .git), *.php, /wp-*, /phpmyadmin,
+# /cgi-bin, unknown /api/* prefixes, /api/v1/hooks and /api/v1/public, anything with a dot, '%', quote or other
+# punctuation in an API or page segment (traversal, SQLi and XSS payloads need them), and every POST/PUT/DELETE on the
+# API (login attempts included). The Caddy access log replaces every query string with "?redacted" before CrowdSec
+# reads it, so a query can never carry a payload past these rules.
+#
+# The regular expressions are RE2 and also valid POSIX ERE: tests/ops/test-crowdsec-whitelist.sh checks them with
+# grep -E against the panel's paths and a list of scanner paths. Keep each regex inside one 'matches' literal.
+name: ravencia/panel-whitelist
+description: "Ravencia panel: its own API, SPA, asset and icon requests are not scanning"
+filter: "evt.Meta.service == 'http' && evt.Meta.log_type in ['http_access-log', 'http_error-log']"
+whitelist:
+  reason: "ravencia panel request"
+  expression:
+    # API reads under the panel's own resource prefixes (GET/HEAD, any status): a 404 for a record deleted meanwhile,
+    # a 401 when the session expired, the list pages' bursts. Segments are letters, digits, '-' and '_' only.
+    # /api/ without v1 covers an old tab still calling the earlier paths.
+    - >-
+      evt.Meta.http_verb in ['GET', 'HEAD'] &&
+      evt.Meta.http_path matches '^/api/(v1/)?(auth|catalog|catalog-structure-runs|channel-offers|connections|dashboard|files|imports|inventory|invoice-workspace|invoices|jobs|mappings|orders|price-stock-monitor|price-stock-send-log|product-activity|products|question-templates|questions|reference-data|reports|returns|settings|shipments|variants|api-health-signals)(/[A-Za-z0-9_-]{1,128}){0,8}/?(\\?redacted)?$'
+    # SignalR (operations hub): negotiate, WebSocket and long-polling reconnects answer 404 for a connection id the
+    # API forgot after a deploy.
+    - >-
+      evt.Meta.http_verb in ['GET', 'POST'] &&
+      evt.Meta.http_path matches '^/hubs/operations(/negotiate)?(\\?redacted)?$'
+    # Built assets: an open tab asks for the previous release's hashed chunks after a deploy (404).
+    - >-
+      evt.Meta.http_verb in ['GET', 'HEAD'] &&
+      evt.Meta.http_path matches '^/(assets|fonts|platforms|pack)(/[A-Za-z0-9_-]{1,128})*/[A-Za-z0-9_-]{1,128}(\\.[A-Za-z0-9_-]{1,32}){0,3}\\.(js|mjs|css|map|woff2|woff|webp|png|svg|jpg|jpeg|ico|br|zst|txt)(\\?redacted)?$'
+    # Icons, manifest and robots.txt.
+    - >-
+      evt.Meta.http_verb in ['GET', 'HEAD'] &&
+      evt.Meta.http_path matches '^/(favicon\\.ico|favicon-(16|32)\\.png|apple-touch-icon(-precomposed)?\\.png|icon-(192|512|maskable-512)\\.png|site\\.webmanifest|manifest\\.webmanifest|robots\\.txt)(\\?redacted)?$'
+    # SPA pages opened or reloaded directly (Caddy answers them with index.html).
+    - >-
+      evt.Meta.http_verb in ['GET', 'HEAD'] &&
+      evt.Meta.http_path matches '^/((login|dashboard|catalog|imports|integrations|invoices|jobs|mappings|orders|products|promotions|questions|reports|returns|settings|shipments)(/[A-Za-z0-9_-]{1,128}){0,4}/?)?(\\?redacted)?$'

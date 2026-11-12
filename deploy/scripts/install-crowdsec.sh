@@ -9,6 +9,7 @@ set -Eeuo pipefail
 #   - acquisition from journald: sshd and the Caddy JSON access log;
 #   - collections: linux, sshd, caddy, http-cve, base-http-scenarios, whitelists;
 #   - firewall bouncer: nftables, IPv4 + IPv6, input and forward hooks;
+#   - parser whitelist ravencia/panel-whitelist (s02-enrich): the panel's own request shapes, never an IP;
 #   - allowlists github-actions and ravencia-private, refreshed daily by
 #     ravencia-crowdsec-allowlist.timer.
 # Ending the simulation is the owner's manual step (docs/CI-CD-DEPLOY.md, "CrowdSec"), after reviewing the alerts:
@@ -67,6 +68,10 @@ sudo -n install -m 0644 "$config_dir/acquis-ravencia.yaml" /etc/crowdsec/acquis.
 # same journal): sshd would be counted twice. Journald is the only source.
 sudo -n rm -f /etc/crowdsec/acquis.d/setup.sshd.yaml /etc/crowdsec/acquis.d/setup.linux.yaml
 sudo -n install -m 0600 "$config_dir/crowdsec-firewall-bouncer.yaml.local" /etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml.local
+# The panel's own requests (API reads, SignalR, built assets, icons, SPA pages) never feed the HTTP scenarios; by
+# request shape, not by IP. Simulation and --enforce runs alike; the reloads below pick it up.
+sudo -n install -d -m 0755 /etc/crowdsec/parsers/s02-enrich
+sudo -n install -m 0644 "$config_dir/ravencia-panel-whitelist.yaml" /etc/crowdsec/parsers/s02-enrich/ravencia-panel-whitelist.yaml
 
 sudo -n cscli hub update >/dev/null
 sudo -n cscli collections install crowdsecurity/linux crowdsecurity/sshd crowdsecurity/caddy \

@@ -3,6 +3,7 @@
 // only the chosen field is written and nothing goes to a marketplace. The selection goes out in chunks of whole models
 // (at most 500 records each), so one model is never split over two requests.
 import type { ChunkRunResult } from './bulk-status-run'
+import { requiredFieldsSkipNotice, type RequiredFieldsSkipped } from './required-fields-skip'
 import { TURKISH_VAT_RATES } from './product-editor-state'
 import { isProductDeliveryDays, maxProductDeliveryDays } from './product-editor/product-delivery-days'
 import { maxProductDesi } from './product-desi'
@@ -104,7 +105,8 @@ export function bulkFieldSummary(cardCount: number, variantCount: number, field:
 }
 
 export type BulkFieldFailure = { model: string; message: string }
-export type BulkFieldResponse = { updatedCount: number; unchangedCount: number; variantCount: number; failures: BulkFieldFailure[] }
+// skipped: closed cards Satış Durumu = Satışa Açık left for a missing required field (required-fields-skip.ts).
+export type BulkFieldResponse = { updatedCount: number; unchangedCount: number; variantCount: number; failures: BulkFieldFailure[]; skipped?: RequiredFieldsSkipped[] }
 
 // The selected records in chunks of whole models: a model larger than the limit goes alone.
 export function bulkFieldChunks(groups: ReadonlyArray<ReadonlyArray<string>>, size = 500): string[][] {
@@ -133,13 +135,19 @@ export async function runBulkFieldChunks(chunks: ReadonlyArray<ReadonlyArray<str
   return { doneIds, remainingIds: [], error: null }
 }
 
-export function bulkFieldResultMessage(result: ChunkRunResult, counts: BulkFieldResponse, field: BulkFieldKey): { title: string; message: string; kind: 'success' | 'error' } {
+// The skipped cards (Satış Durumu only) are named in the message and carried as the notification's rows and link
+// (required-fields-skip.ts).
+export function bulkFieldResultMessage(result: ChunkRunResult, counts: BulkFieldResponse, field: BulkFieldKey): { title: string; message: string; kind: 'success' | 'error'; skipped?: ReturnType<typeof requiredFieldsSkipNotice> } {
   const label = bulkFieldLabel(field)
   const reason = result.error instanceof Error ? result.error.message : 'Toplu değer ataması başarısız.'
   const done = `${counts.updatedCount.toLocaleString('tr-TR')} ürün kartı güncellendi (${counts.variantCount.toLocaleString('tr-TR')} varyant)${counts.unchangedCount ? `, ${counts.unchangedCount.toLocaleString('tr-TR')} kart zaten bu değerdeydi` : ''}`
   const failed = counts.failures.length ? ` Yazılamayanlar: ${counts.failures.map(failure => `${failure.model}: ${failure.message}`).join(' · ')}` : ''
+  const notice = requiredFieldsSkipNotice(counts.skipped ?? [])
+  const skipped = notice ? ` ${notice.message}` : ''
+  const withSkipped = notice ? { skipped: notice } : {}
   const note = ' Pazar yerlerine bir şey gönderilmedi.'
   if (result.remainingIds.length && !result.doneIds.length) return { title: `${label} Atanamadı`, message: reason, kind: 'error' }
-  if (result.remainingIds.length) return { title: `${label} Kısmen Atandı`, message: `${done}; kalan ${result.remainingIds.length.toLocaleString('tr-TR')} kayıt güncellenemedi: ${reason}.${failed}`, kind: 'error' }
-  return { title: counts.failures.length ? `${label} Kısmen Atandı` : `${label} Atandı`, message: `${done}.${failed}${note}`, kind: counts.failures.length ? 'error' : 'success' }
+  if (result.remainingIds.length) return { title: `${label} Kısmen Atandı`, message: `${done}; kalan ${result.remainingIds.length.toLocaleString('tr-TR')} kayıt güncellenemedi: ${reason}.${failed}${skipped}`, kind: 'error', ...withSkipped }
+  const partial = counts.failures.length > 0 || notice != null
+  return { title: partial ? `${label} Kısmen Atandı` : `${label} Atandı`, message: `${done}.${failed}${skipped}${note}`, kind: partial ? 'error' : 'success', ...withSkipped }
 }

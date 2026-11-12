@@ -25,7 +25,7 @@ const FIELD_HINTS: Partial<Record<BulkFieldKey, string>> = {
   desi: 'Her rengin her bedenine yazılır. Ondalık girilebilir (ör. 0,5).',
   warrantyMonths: '0 = garanti yok.',
   deliveryDays: 'Siparişin kargoya teslim süresi, 1-30 gün.',
-  status: 'Toplu Satışa Aç / Kapat ile aynı: taslak kartlar değişmez.',
+  status: 'Toplu Satışa Aç / Kapat ile aynı: taslak kartlar değişmez; zorunlu alanı eksik kart satışa açılmaz, bildirimlerde listelenir.',
   safetyStock: 'Varyantların pazar yeri kayıtlarına yazılır; kaydı olmayan varyant listelenir.',
   description: 'Ürün düzenleme ekranındaki gibi temizlenmiş HTML olarak kaydedilir.'
 }
@@ -35,7 +35,7 @@ export function BulkFieldDialog({ groups, cardCount, variantCount, onClose, onDo
   cardCount: number
   variantCount: number
   onClose: () => void
-  onDone: (outcome: { title: string; message: string; kind: 'success' | 'error' }, result: ChunkRunResult) => Promise<void> | void
+  onDone: (outcome: ReturnType<typeof bulkFieldResultMessage>, result: ChunkRunResult) => Promise<void> | void
 }) {
   const [field, setField] = useState<BulkFieldKey>('vatRate')
   const [values, setValues] = useState<Record<BulkFieldKey, string>>(bulkFieldInitialValues)
@@ -62,7 +62,8 @@ export function BulkFieldDialog({ groups, cardCount, variantCount, onClose, onDo
     const chunks = bulkFieldChunks(groups)
     const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0)
     setProgress({ done: 0, total })
-    const counts: BulkFieldResponse = { updatedCount: 0, unchangedCount: 0, variantCount: 0, failures: [] }
+    const skipped: NonNullable<BulkFieldResponse['skipped']> = []
+    const counts: BulkFieldResponse = { updatedCount: 0, unchangedCount: 0, variantCount: 0, failures: [], skipped }
     const payloadValue = bulkFieldPayloadValue(field, value)
     try {
       const result = await runBulkFieldChunks(chunks, async productIds => {
@@ -71,6 +72,7 @@ export function BulkFieldDialog({ groups, cardCount, variantCount, onClose, onDo
         counts.unchangedCount += response?.unchangedCount ?? 0
         counts.variantCount += response?.variantCount ?? 0
         counts.failures.push(...(response?.failures ?? []))
+        skipped.push(...(response?.skipped ?? []))
       }, (done, all) => setProgress({ done, total: all }))
       await onDone(bulkFieldResultMessage(result, counts, field), result)
     } finally {
