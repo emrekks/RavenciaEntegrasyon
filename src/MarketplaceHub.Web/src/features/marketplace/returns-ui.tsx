@@ -113,13 +113,15 @@ export function RrBadge({ label, tone, glyph }: { label: string; tone?: 'bad' | 
 
 // Platform wordmarks cropped to their ink and sized by the same visual area, so a wide mark (Pazarama) and a compact
 // one (N11) look equally big. Crop boxes were measured on the 48px artwork in public/platforms/returns.
-const marks: Record<string, { key: string; nw: number; nh: number; x0: number; y0: number; w: number; h: number; weight: number }> = {
-  TRENDYOL: { key: 'trendyol', nw: 152, nh: 48, x0: 2, y0: 0, w: 144, h: 48, weight: 1.25 },
-  HEPSIBURADA: { key: 'hepsiburada', nw: 145, nh: 48, x0: 0, y0: 9, w: 145, h: 26, weight: 1.08 },
-  PAZARAMA: { key: 'pazarama', nw: 208, nh: 48, x0: 0, y0: 0, w: 208, h: 35, weight: 0.95 },
-  N11: { key: 'n11', nw: 94, nh: 48, x0: 1, y0: 1, w: 92, h: 46, weight: 0.92 },
-  SHOPIFY: { key: 'shopify', nw: 157, nh: 48, x0: 0, y0: 0, w: 157, h: 48, weight: 1 },
+const marks: Record<string, { key: string; nw: number; nh: number; x0: number; y0: number; w: number; h: number; weight: number; fy: number }> = {
+  TRENDYOL: { key: 'trendyol', nw: 152, nh: 48, x0: 2, y0: 0, w: 144, h: 48, weight: 1.25, fy: 30.5 },
+  HEPSIBURADA: { key: 'hepsiburada', nw: 145, nh: 48, x0: 0, y0: 9, w: 145, h: 26, weight: 1.08, fy: 22 },
+  PAZARAMA: { key: 'pazarama', nw: 208, nh: 48, x0: 0, y0: 0, w: 208, h: 35, weight: 0.95, fy: 13 },
+  N11: { key: 'n11', nw: 94, nh: 48, x0: 1, y0: 1, w: 92, h: 46, weight: 0.92, fy: 27 },
+  SHOPIFY: { key: 'shopify', nw: 157, nh: 48, x0: 0, y0: 0, w: 157, h: 48, weight: 1, fy: 28 },
 }
+// fy: the artwork row where the lettering's body (x-height band) is centred; an order card lifts the mark by the
+// distance from its box centre so the lettering, not the box, is level with the order number.
 const MARK_AREA = 1350, MARK_MAX_H = 26, MARK_MAX_W = 104
 
 export function RrWordmark({ code, name }: { code: string | null | undefined; name: string }) {
@@ -132,7 +134,8 @@ export function RrWordmark({ code, name }: { code: string | null | undefined; na
   height = Math.min(height, MARK_MAX_H, MARK_MAX_W / ratio)
   const box = { w: Math.round(height * ratio), h: Math.round(height) }
   const scale = Math.min(box.w / mark.w, box.h / mark.h)
-  return <span className="rr-wordmark" role="img" aria-label={name} style={{ width: box.w, height: box.h }}>
+  const dy = Math.round((mark.y0 + mark.h / 2 - mark.fy) * scale * 2) / 2
+  return <span className="rr-wordmark" role="img" aria-label={name} style={{ width: box.w, height: box.h, '--rr-mark-dy': `${dy}px` } as CSSProperties}>
     <img src={`/platforms/returns/mark-${mark.key}.png`} alt="" style={{ width: mark.nw * scale, height: mark.nh * scale, left: -mark.x0 * scale, top: (box.h - mark.h * scale) / 2 - mark.y0 * scale }} />
   </span>
 }
