@@ -12,13 +12,13 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 //     an order's stock shortfall (shown as information: stock did not change),
 //   - return dispositions kept out of stock (Karantina, Hasarlı, Gelmedi; a restocked line is its ledger row),
 //   - marketplace offer prices a user set, and a price read from a marketplace only when it differs from the one before,
-//   - product status and panel price changes (catalog.product_change_entries, from 4 Nov 2026 on).
+//   - product status and panel price changes (catalog.product_change_entries, from 4 Nov 2026 on) and the cards'
+//     information fields (maliyet, desi, ürün adı, barkod, KDV..., the same table, from 12 Nov 2026 on).
 // Each source is read newest first over its own (tenant, time, id) index, at most a page plus one row, and the page is
 // cut from their union, so a page costs a few short index scans whatever the history holds. Read-only.
 public sealed class ProductActivityService(AppDbContext db) : IProductActivityService
 {
     private const string LikeEscape = "\\";
-    internal const int MaximumSearchVariants = 1_000;
     // SqlQueryRaw reads the SQL as a format string when it is given parameters, so a regex quantifier like {8} would
     // be taken for a placeholder (FormatException): the patterns spell their character runs out instead.
     private static string Run(string characterClass, int count) => string.Concat(Enumerable.Repeat(characterClass, count));
@@ -56,7 +56,7 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
             .Select(branch => $"({branch.Select} {branch.From} WHERE {branch.Where} ORDER BY {branch.Time} DESC, {branch.Id} DESC LIMIT @limit)")
             .ToList();
         if (branches.Count == 0) return empty;
-        var sql = $"SELECT * FROM ({string.Join("\nUNION ALL\n", branches)}) activity ORDER BY \"OccurredAt\" DESC, \"Id\" DESC LIMIT @limit";
+        var sql = $"{filter.With}SELECT * FROM ({string.Join("\nUNION ALL\n", branches)}) activity ORDER BY \"OccurredAt\" DESC, \"Id\" DESC LIMIT @limit";
         var rows = await db.Database.SqlQueryRaw<ProductActivityRow>(Escaped(sql), parameters.ToArray()).ToListAsync(cancellationToken);
         var hasMore = rows.Count > limit;
         if (hasMore) rows = rows.Take(limit).ToList();
@@ -102,7 +102,7 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
         var parameters = filter.Parameters(tenantId);
         var branches = Branches(ProductActivityKinds.All, filter, withCursor: false)
             .Select(branch => $"SELECT {branch.KindSql} AS \"Kind\", count(*)::int AS \"Count\" {branch.From} WHERE {branch.Where} GROUP BY 1");
-        var sql = string.Join("\nUNION ALL\n", branches);
+        var sql = filter.With + string.Join("\nUNION ALL\n", branches);
         var counts = await db.Database.SqlQueryRaw<ProductActivityCountRow>(Escaped(sql), parameters.ToArray()).ToListAsync(cancellationToken);
         return ServiceResult<IReadOnlyList<ProductActivityCount>>.Ok(counts
             .GroupBy(x => x.Kind, StringComparer.Ordinal)
@@ -113,10 +113,24 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
 
     private sealed record Branch(string Select, string From, string Where, string Time, string Id, string KindSql);
 
-    // The filters every branch shares: the time bounds, the connections a platform filter names, and the variants and
-    // products a search names.
-    private sealed record Filter(DateTimeOffset? From, DateTimeOffset? To, Guid[]? ConnectionIds, Guid[]? VariantIds, Guid[]? ProductIds)
+    // The filters every branch shares: the time bounds, the connections a platform filter names, and a search's LIKE
+    // pattern. The variants a search names are never read into a list here (a broad search used to be cut at 1 000
+    // variants, silently leaving rows out): the statement finds them itself, once, in the search_variants CTE, and each
+    // branch keeps the rows whose variant (or, for a card-wide change, product) is in it.
+    private sealed record Filter(DateTimeOffset? From, DateTimeOffset? To, Guid[]? ConnectionIds, string? SearchPattern)
     {
+        // Every variant whose stock code, barcode or model code holds the term, and every variant of a card whose title
+        // holds it; materialised once per statement.
+        public string With => SearchPattern is null ? "" : $"""
+            WITH search_variants AS MATERIALIZED (
+                SELECT sv."Id", sv."ProductId" FROM catalog.product_variants sv
+                JOIN catalog.products sp ON sp."TenantId" = sv."TenantId" AND sp."Id" = sv."ProductId"
+                WHERE sv."TenantId" = @tenant
+                    AND (sv."Sku" ILIKE @search ESCAPE '{LikeEscape}' OR sv."Barcode" ILIKE @search ESCAPE '{LikeEscape}'
+                        OR sv."ModelCode" ILIKE @search ESCAPE '{LikeEscape}' OR sp."Title" ILIKE @search ESCAPE '{LikeEscape}'))
+
+            """;
+
         // Set after the lookups: the movement types the list is narrowed to (null: all) and whether first prices show.
         public string[]? Movements { get; init; }
         public bool IncludeInitialPrices { get; init; }
@@ -128,8 +142,7 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
             if (From is { } from) list.Add(new("from_at", NpgsqlDbType.TimestampTz) { Value = from });
             if (To is { } to) list.Add(new("to_at", NpgsqlDbType.TimestampTz) { Value = to });
             if (ConnectionIds is not null) list.Add(new("connections", NpgsqlDbType.Array | NpgsqlDbType.Uuid) { Value = ConnectionIds });
-            if (VariantIds is not null) list.Add(new("variants", NpgsqlDbType.Array | NpgsqlDbType.Uuid) { Value = VariantIds });
-            if (ProductIds is not null) list.Add(new("products", NpgsqlDbType.Array | NpgsqlDbType.Uuid) { Value = ProductIds });
+            if (SearchPattern is not null) list.Add(new("search", NpgsqlDbType.Text) { Value = SearchPattern });
             return list;
         }
     }
@@ -147,12 +160,13 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
                 .ToArrayAsync(cancellationToken);
             if (connectionIds.Length == 0) return null;
         }
-        Guid[]? variantIds = null, productIds = null;
+        string? pattern = null;
         var term = request.Search?.Trim();
         if (!string.IsNullOrEmpty(term))
         {
             if (term.Length > ProductActivityQuery.MaximumSearchLength) term = term[..ProductActivityQuery.MaximumSearchLength];
-            var pattern = $"%{CatalogService.EscapeLike(term)}%";
+            pattern = $"%{CatalogService.EscapeLike(term)}%";
+            // A search that names no variant lists nothing: one row is enough to know, the list itself finds them all.
             var matches = await (from variant in db.ProductVariants.AsNoTracking()
                                  join product in db.Products.AsNoTracking() on new { variant.TenantId, variant.ProductId } equals new { product.TenantId, ProductId = product.Id }
                                  where variant.TenantId == tenantId
@@ -160,14 +174,11 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
                                          || (variant.Barcode != null && EF.Functions.ILike(variant.Barcode, pattern, LikeEscape))
                                          || (variant.ModelCode != null && EF.Functions.ILike(variant.ModelCode, pattern, LikeEscape))
                                          || EF.Functions.ILike(product.Title, pattern, LikeEscape))
-                                 select new { variant.Id, variant.ProductId })
-                .Take(MaximumSearchVariants)
-                .ToListAsync(cancellationToken);
-            if (matches.Count == 0) return null;
-            variantIds = matches.Select(x => x.Id).Distinct().ToArray();
-            productIds = matches.Select(x => x.ProductId).Distinct().ToArray();
+                                 select variant.Id)
+                .AnyAsync(cancellationToken);
+            if (!matches) return null;
         }
-        return new(request.From?.ToUniversalTime(), request.To?.ToUniversalTime(), connectionIds, variantIds, productIds);
+        return new(request.From?.ToUniversalTime(), request.To?.ToUniversalTime(), connectionIds, pattern);
     }
 
     private static IEnumerable<Branch> Branches(IReadOnlyCollection<string> kinds, Filter filter, bool withCursor)
@@ -184,7 +195,7 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
                 $"""
                 SELECT e."Id" AS "Id", e."OccurredAt" AS "OccurredAt", e."MovementType"::text AS "Type", i."VariantId" AS "VariantId", v."ProductId" AS "ProductId",
                     e."QuantityDelta" AS "QuantityDelta", NULL::numeric AS "PreviousSalePrice", NULL::numeric AS "NewSalePrice", NULL::numeric AS "PreviousListPrice", NULL::numeric AS "NewListPrice",
-                    NULL::text AS "Currency", NULL::text AS "PreviousStatus", NULL::text AS "NewStatus", e."SourceType"::text AS "SourceType", e."SourceId"::text AS "Detail",
+                    NULL::text AS "Currency", NULL::text AS "PreviousStatus", NULL::text AS "NewStatus", NULL::text AS "Field", NULL::text AS "PreviousValue", NULL::text AS "NewValue", e."SourceType"::text AS "SourceType", e."SourceId"::text AS "Detail",
                     {connection} AS "ConnectionId", COALESCE(o."Id", c."OrderId") AS "OrderId", d."ClaimId" AS "ReturnId", e."ActorUserId" AS "ActorUserId"
                 """,
                 $"""
@@ -206,7 +217,7 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
                 """
                 SELECT d."Id" AS "Id", d."CreatedAt" AS "OccurredAt", 'RETURN_' || upper(d."Disposition") AS "Type", i."VariantId" AS "VariantId", v."ProductId" AS "ProductId",
                     d."Quantity" AS "QuantityDelta", NULL::numeric AS "PreviousSalePrice", NULL::numeric AS "NewSalePrice", NULL::numeric AS "PreviousListPrice", NULL::numeric AS "NewListPrice",
-                    NULL::text AS "Currency", NULL::text AS "PreviousStatus", NULL::text AS "NewStatus", 'RETURN_DISPOSITION'::text AS "SourceType", d."Reason"::text AS "Detail",
+                    NULL::text AS "Currency", NULL::text AS "PreviousStatus", NULL::text AS "NewStatus", NULL::text AS "Field", NULL::text AS "PreviousValue", NULL::text AS "NewValue", 'RETURN_DISPOSITION'::text AS "SourceType", d."Reason"::text AS "Detail",
                     c."ConnectionId" AS "ConnectionId", c."OrderId" AS "OrderId", d."ClaimId" AS "ReturnId", d."ActorUserId" AS "ActorUserId"
                 """,
                 """
@@ -226,7 +237,7 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
                 """
                 SELECT h."Id" AS "Id", h."EffectiveAt" AS "OccurredAt", 'OFFER_PRICE'::text AS "Type", o."VariantId" AS "VariantId", v."ProductId" AS "ProductId",
                     NULL::numeric AS "QuantityDelta", p."SalePrice" AS "PreviousSalePrice", h."SalePrice" AS "NewSalePrice", p."ListPrice" AS "PreviousListPrice", h."ListPrice" AS "NewListPrice",
-                    h."Currency"::text AS "Currency", NULL::text AS "PreviousStatus", NULL::text AS "NewStatus", h."ActorSource"::text AS "SourceType", h."Reason"::text AS "Detail",
+                    h."Currency"::text AS "Currency", NULL::text AS "PreviousStatus", NULL::text AS "NewStatus", NULL::text AS "Field", NULL::text AS "PreviousValue", NULL::text AS "NewValue", h."ActorSource"::text AS "SourceType", h."Reason"::text AS "Detail",
                     o."ConnectionId" AS "ConnectionId", NULL::uuid AS "OrderId", NULL::uuid AS "ReturnId", NULL::uuid AS "ActorUserId"
                 """,
                 """
@@ -245,19 +256,30 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
         var changeKinds = new List<string>();
         if (kinds.Contains(ProductActivityKinds.Status) && filter.Wants(ProductActivityMovements.Status)) changeKinds.Add(ProductChangeKinds.Status);
         if (kinds.Contains(ProductActivityKinds.Price) && filter.Wants(ProductActivityMovements.PanelPrice)) changeKinds.Add(ProductChangeKinds.DefaultPrice);
-        if (changeKinds.Count > 0)
+        // Ürün Bilgisi: the information fields whose movement the filter names (all of them when it names none).
+        var fields = kinds.Contains(ProductActivityKinds.Info)
+            ? ProductChangeFields.All.Where(field => filter.Wants(ProductChangeFields.Movement(field))).ToList()
+            : [];
+        var changeCondition = (changeKinds.Count > 0, fields.Count > 0) switch
+        {
+            (true, true) => $"""(x."Kind" IN ({Literals(changeKinds)}) OR (x."Kind" = '{ProductChangeKinds.Field}' AND x."Field" IN ({Literals(fields)})))""",
+            (true, false) => $"""x."Kind" IN ({Literals(changeKinds)})""",
+            (false, true) => $"""x."Kind" = '{ProductChangeKinds.Field}' AND x."Field" IN ({Literals(fields)})""",
+            _ => null
+        };
+        if (changeCondition is not null)
         {
             yield return new(
                 """
                 SELECT x."Id" AS "Id", x."OccurredAt" AS "OccurredAt", x."Kind"::text AS "Type", x."VariantId" AS "VariantId", x."ProductId" AS "ProductId",
                     NULL::numeric AS "QuantityDelta", x."PreviousSalePrice" AS "PreviousSalePrice", x."NewSalePrice" AS "NewSalePrice", x."PreviousListPrice" AS "PreviousListPrice", x."NewListPrice" AS "NewListPrice",
-                    NULL::text AS "Currency", x."PreviousStatus"::text AS "PreviousStatus", x."NewStatus"::text AS "NewStatus", x."Source"::text AS "SourceType", x."Note"::text AS "Detail",
+                    NULL::text AS "Currency", x."PreviousStatus"::text AS "PreviousStatus", x."NewStatus"::text AS "NewStatus", x."Field"::text AS "Field", x."PreviousValue"::text AS "PreviousValue", x."NewValue"::text AS "NewValue", x."Source"::text AS "SourceType", x."Note"::text AS "Detail",
                     x."ConnectionId" AS "ConnectionId", NULL::uuid AS "OrderId", NULL::uuid AS "ReturnId", x."ActorUserId" AS "ActorUserId"
                 """,
                 "FROM catalog.product_change_entries x",
-                Where($"""x."TenantId" = @tenant AND x."Kind" IN ({Literals(changeKinds)}){InitialPriceCondition(filter)}""", filter, withCursor, "x.\"OccurredAt\"", "x.\"Id\"", "x.\"ConnectionId\"", "x.\"VariantId\"", "x.\"ProductId\""),
+                Where($"""x."TenantId" = @tenant AND {changeCondition}{InitialPriceCondition(filter)}""", filter, withCursor, "x.\"OccurredAt\"", "x.\"Id\"", "x.\"ConnectionId\"", "x.\"VariantId\"", "x.\"ProductId\""),
                 "x.\"OccurredAt\"", "x.\"Id\"",
-                $"""CASE WHEN x."Kind" = '{ProductChangeKinds.Status}' THEN '{ProductActivityKinds.Status}' ELSE '{ProductActivityKinds.Price}' END""");
+                $"""CASE x."Kind" WHEN '{ProductChangeKinds.Status}' THEN '{ProductActivityKinds.Status}' WHEN '{ProductChangeKinds.Field}' THEN '{ProductActivityKinds.Info}' ELSE '{ProductActivityKinds.Price}' END""");
         }
     }
 
@@ -299,10 +321,10 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
         if (filter.From is not null) where.Append($" AND {time} >= @from_at");
         if (filter.To is not null) where.Append($" AND {time} <= @to_at");
         if (filter.ConnectionIds is not null) where.Append($" AND {connection} = ANY(@connections)");
-        if (filter.VariantIds is not null)
+        if (filter.SearchPattern is not null)
             where.Append(product is null
-                ? $" AND {variant} = ANY(@variants)"
-                : $" AND ({variant} = ANY(@variants) OR ({variant} IS NULL AND {product} = ANY(@products)))");
+                ? $""" AND {variant} IN (SELECT s."Id" FROM search_variants s)"""
+                : $""" AND ({variant} IN (SELECT s."Id" FROM search_variants s) OR ({variant} IS NULL AND {product} IN (SELECT s."ProductId" FROM search_variants s)))""");
         return where.ToString();
     }
 
@@ -315,7 +337,7 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
 
     private static string[]? Codes(IReadOnlyList<string>? values, IReadOnlyList<string>? known)
     {
-        var codes = (values ?? []).Select(code => code.Trim().ToUpperInvariant()).Where(code => code.Length > 0).Distinct(StringComparer.Ordinal).Take(20).ToArray();
+        var codes = (values ?? []).Select(code => code.Trim().ToUpperInvariant()).Where(code => code.Length > 0).Distinct(StringComparer.Ordinal).Take(40).ToArray();
         if (codes.Length == 0) return null;
         return known is null ? codes : codes.Where(code => known.Contains(code, StringComparer.Ordinal)).ToArray();
     }
@@ -383,7 +405,8 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
                 connection is null ? row.ConnectionId : connection.Id, connection?.PlatformCode, connection?.DisplayName,
                 row.OrderId, row.OrderId is { } oid ? orders.GetValueOrDefault(oid) : null,
                 row.ReturnId, row.ReturnId is { } rid ? returns.GetValueOrDefault(rid) : null,
-                actor, actor is { } uid ? users.GetValueOrDefault(uid) : null);
+                actor, actor is { } uid ? users.GetValueOrDefault(uid) : null,
+                row.Field, row.PreviousValue, row.NewValue);
         }).ToList();
     }
 
@@ -393,7 +416,7 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
     private static string Source(ProductActivityRow row) => row.Type switch
     {
         ProductActivityTypes.OfferPrice => ProductActivityPolicy.PriceHistorySource(row.SourceType, row.Detail),
-        ProductActivityTypes.Status or ProductActivityTypes.DefaultPrice => row.SourceType,
+        ProductActivityTypes.Status or ProductActivityTypes.DefaultPrice or ProductActivityTypes.Field => row.SourceType,
         _ when row.SourceType == "RETURN_DISPOSITION" => ProductActivitySources.Return,
         _ => ProductActivityPolicy.LedgerSource(row.Type, row.SourceType, row.Detail)
     };
@@ -403,7 +426,7 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
     private static string? Note(ProductActivityRow row) => row.Type switch
     {
         ProductActivityTypes.ManualAdjustment => row.Detail,
-        ProductActivityTypes.Status or ProductActivityTypes.DefaultPrice => row.Detail,
+        ProductActivityTypes.Status or ProductActivityTypes.DefaultPrice or ProductActivityTypes.Field => row.Detail,
         _ when row.SourceType == "RETURN_DISPOSITION" => row.Detail,
         _ => null
     };
@@ -425,6 +448,9 @@ internal sealed class ProductActivityRow
     public string? Currency { get; set; }
     public string? PreviousStatus { get; set; }
     public string? NewStatus { get; set; }
+    public string? Field { get; set; }
+    public string? PreviousValue { get; set; }
+    public string? NewValue { get; set; }
     public string SourceType { get; set; } = "";
     public string? Detail { get; set; }
     public Guid? ConnectionId { get; set; }

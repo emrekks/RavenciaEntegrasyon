@@ -6,7 +6,7 @@ import { timeRangeStart, type JobListTimeRange } from './job-list-query'
 // own changes and the marketplaces' alike, read from GET /product-activity. These helpers turn a row into the text the
 // list shows and the filters into the request; they read no state of their own.
 
-export type ProductActivityKind = 'STOCK' | 'PRICE' | 'STATUS' | 'RETURN'
+export type ProductActivityKind = 'STOCK' | 'PRICE' | 'STATUS' | 'RETURN' | 'INFO'
 
 export type ProductActivityEntry = {
   id: string
@@ -43,6 +43,10 @@ export type ProductActivityEntry = {
   returnNumber: string | null
   actorUserId: string | null
   actorName: string | null
+  /** An information field'''s change (type FIELD): the field code and its text before → after; null was empty. */
+  field?: string | null
+  previousValue?: string | null
+  newValue?: string | null
 }
 
 export type ProductActivityPage = { items: ProductActivityEntry[]; nextCursor: string | null; hasMore: boolean }
@@ -50,11 +54,12 @@ export type ProductActivityPage = { items: ProductActivityEntry[]; nextCursor: s
 export const activityPageSize = 50
 
 // The summary above the list: one toggle per kind, in the order the owner reads them.
-export const activityKinds: Array<{ key: ProductActivityKind; label: string; icon: 'package' | 'tag' | 'activity' | 'packageReturn' }> = [
+export const activityKinds: Array<{ key: ProductActivityKind; label: string; icon: 'package' | 'tag' | 'activity' | 'packageReturn' | 'packagePen' }> = [
   { key: 'STOCK', label: 'Stok', icon: 'package' },
   { key: 'PRICE', label: 'Fiyat', icon: 'tag' },
   { key: 'STATUS', label: 'Durum', icon: 'activity' },
-  { key: 'RETURN', label: 'İade', icon: 'packageReturn' }
+  { key: 'RETURN', label: 'İade', icon: 'packageReturn' },
+  { key: 'INFO', label: 'Ürün Bilgisi', icon: 'packagePen' }
 ]
 
 export function activityKindLabel(kind: string) {
@@ -79,7 +84,9 @@ const sources: Record<string, string> = {
   FILE_IMPORT: 'Excel',
   MARKETPLACE_IMPORT: 'Pazaryeri İçe Aktarımı',
   PUBLISH: 'Toplu Yayın',
-  CLASSIC_IMPORT: 'İçe Aktarım'
+  CLASSIC_IMPORT: 'İçe Aktarım',
+  QUICK_UPDATE: 'Hızlı Güncelle',
+  PLATFORM_UPDATE: 'Platformlarda Güncelle'
 }
 
 /** Where the change came from, in words; an unknown code is shown as it came. */
@@ -121,6 +128,60 @@ function stockChange(entry: ProductActivityEntry, amount: string): ActivityChang
   return { text: `${signed} · ${from} → ${to}`, tone, delta: signed, from, to, title: `Stok ${from} iken ${to} oldu.` }
 }
 
+/** Ürün Bilgisi: each information field the server keeps (ProductChangeFields), in the panel's words. */
+const fieldLabels: Record<string, string> = {
+  COST: 'Maliyet',
+  DESI: 'Desi',
+  TITLE: 'Ürün Adı',
+  BARCODE: 'Barkod',
+  MODEL_CODE: 'Model Kodu',
+  SKU: 'Stok Kodu',
+  VAT_RATE: 'KDV Oranı',
+  VAT_INCLUSION: 'KDV Dahil',
+  BRAND: 'Marka',
+  CATEGORY: 'Kategori',
+  WARRANTY: 'Garanti Süresi',
+  DELIVERY_DAYS: 'Teslimat Süresi',
+  DESCRIPTION: 'Açıklama'
+}
+
+/** The field's name; an unknown code is shown as it came. */
+export function activityFieldLabel(field: string | null | undefined) {
+  if (!field) return 'Ürün Bilgisi'
+  return fieldLabels[field] ?? field
+}
+
+/** The Hareket Türü entries of Ürün Bilgisi: one per field, KDV Oranı and KDV Dahil together as KDV (server: VAT). */
+export const activityFieldMovements: Array<{ value: string; label: string }> = [
+  { value: 'COST', label: 'Maliyet' },
+  { value: 'DESI', label: 'Desi' },
+  { value: 'TITLE', label: 'Ürün Adı' },
+  { value: 'BARCODE', label: 'Barkod' },
+  { value: 'MODEL_CODE', label: 'Model Kodu' },
+  { value: 'SKU', label: 'Stok Kodu' },
+  { value: 'VAT', label: 'KDV' },
+  { value: 'BRAND', label: 'Marka' },
+  { value: 'CATEGORY', label: 'Kategori' },
+  { value: 'WARRANTY', label: 'Garanti Süresi' },
+  { value: 'DELIVERY_DAYS', label: 'Teslimat Süresi' },
+  { value: 'DESCRIPTION', label: 'Açıklama' }
+]
+
+const fieldValueLength = 40
+
+/** A field value in the chip: "Boş" when empty, a long one cut (the whole change is the chip's title). */
+export function activityFieldValue(value: string | null | undefined) {
+  const text = value?.trim()
+  if (!text) return 'Boş'
+  return text.length <= fieldValueLength ? text : `${text.slice(0, fieldValueLength).trimEnd()}…`
+}
+
+function fieldChange(entry: ProductActivityEntry): ActivityChange {
+  const from = activityFieldValue(entry.previousValue), to = activityFieldValue(entry.newValue)
+  const whole = `${activityFieldLabel(entry.field)}: ${entry.previousValue?.trim() || 'Boş'} → ${entry.newValue?.trim() || 'Boş'}`
+  return { text: `${from} → ${to}`, tone: 'neutral', from, to, title: whole }
+}
+
 /**
  * The change chip, what it was and what it became: "+1 · 4 → 5" (stock), "₺899 → ₺950", "Satışa Açık → Satışa Kapalı".
  * A shortfall or a return kept out of stock changed no stock: it says what happened instead, without numbers. A store
@@ -149,6 +210,8 @@ export function activityChange(entry: ProductActivityEntry): ActivityChange {
       if (sale) return { ...sale, tone, title: list ? `Liste fiyatı: ${list.text}` : undefined }
       return list ? { ...list, text: `Liste: ${list.text}`, label: list.label ?? 'Liste', tone: 'neutral' } : { text: 'Fiyat', tone: 'neutral' }
     }
+    case 'FIELD':
+      return fieldChange(entry)
   }
   if (entry.quantityDelta === null) return { text: '—', tone: 'neutral' }
   return stockChange(entry, amount)
@@ -170,6 +233,7 @@ export function activityTypeLabel(entry: ProductActivityEntry) {
     case 'OFFER_PRICE': return 'Mağaza Fiyatı'
     case 'DEFAULT_PRICE': return 'Panel Fiyatı'
     case 'STATUS': return 'Satış Durumu'
+    case 'FIELD': return activityFieldLabel(entry.field)
     default: return activityKindLabel(entry.kind)
   }
 }
@@ -211,7 +275,8 @@ export const activityMovements: Array<{ value: string; label: string }> = [
   { value: 'RETURN_KEPT_OUT', label: 'İade Stoğa Eklenmedi' },
   { value: 'OFFER_PRICE', label: 'Mağaza Fiyatı' },
   { value: 'PANEL_PRICE', label: 'Panel Fiyatı' },
-  { value: 'STATUS', label: 'Satış Durumu' }
+  { value: 'STATUS', label: 'Satış Durumu' },
+  ...activityFieldMovements
 ]
 
 export type ActivityFilters = {

@@ -55,6 +55,7 @@ public sealed partial class CatalogService
             try
             {
                 var outcome = await ApplyBulkFieldAsync(tenantId, family.ProductIds, value, reason, actorUserId, correlation, cancellationToken);
+                await ProductFieldChangeRecorder.RecordAsync(db, tenantId, ProductChangeSources.BulkEdit, actorUserId, correlation, timeProvider.GetUtcNow(), cancellationToken);
                 await db.SaveChangesAsync(cancellationToken);
                 updated += outcome.Updated;
                 unchanged += outcome.Unchanged;

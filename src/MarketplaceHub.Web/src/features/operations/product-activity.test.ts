@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  activityActor, activityChange, activityCountsQueryString, activityFilterCount, activityKindCounts, activityLink, activityMovements, activityPanelFilterCount, activityProductLines, activityQueryString, activitySourceText,
+  activityActor, activityChange, activityCountsQueryString, activityFieldValue, activityFilterCount, activityKindCounts, activityLink, activityMovements, activitySourceLabel, activityPanelFilterCount, activityProductLines, activityQueryString, activitySourceText,
   activityTypeLabel, activityVariantText, emptyActivityFilters, toggleActivityKind, type ProductActivityEntry
 } from './product-activity'
 
@@ -83,7 +83,7 @@ describe('product activity request', () => {
     expect(activityFilterCount(filters)).toBe(3)
     expect(toggleActivityKind(['PRICE'], 'PRICE')).toEqual([])
     expect(toggleActivityKind([], 'STOCK')).toEqual(['STOCK'])
-    expect(activityKindCounts([{ kind: 'STOCK', count: 2 }, { kind: 'RETURN', count: 1 }, { kind: 'OTHER', count: 9 }])).toEqual({ STOCK: 2, PRICE: 0, STATUS: 0, RETURN: 1 })
+    expect(activityKindCounts([{ kind: 'STOCK', count: 2 }, { kind: 'RETURN', count: 1 }, { kind: 'OTHER', count: 9 }])).toEqual({ STOCK: 2, PRICE: 0, STATUS: 0, RETURN: 1, INFO: 0 })
   })
 
   it('bounds the time by the chosen Istanbul days, else by the range', () => {
@@ -113,14 +113,18 @@ describe('product activity movement and first-price filters', () => {
     expect(activityPanelFilterCount({ ...emptyActivityFilters, initialPrices: true })).toBe(1)
     expect(activityFilterCount({ ...emptyActivityFilters, movements: ['SALE'], initialPrices: true })).toBe(2)
     expect(activityMovements.map(item => item.label)).toEqual([
-      'Satış', 'Sipariş İptali / Değişikliği', 'Stok Yetersiz', 'Stok Düzenleme', 'Açılış Stoğu', 'Pazaryeri Stoğu', 'İade Stoğa Eklendi', 'İade Stoğa Eklenmedi', 'Mağaza Fiyatı', 'Panel Fiyatı', 'Satış Durumu'
+      'Satış', 'Sipariş İptali / Değişikliği', 'Stok Yetersiz', 'Stok Düzenleme', 'Açılış Stoğu', 'Pazaryeri Stoğu', 'İade Stoğa Eklendi', 'İade Stoğa Eklenmedi', 'Mağaza Fiyatı', 'Panel Fiyatı', 'Satış Durumu',
+      'Maliyet', 'Desi', 'Ürün Adı', 'Barkod', 'Model Kodu', 'Stok Kodu', 'KDV', 'Marka', 'Kategori', 'Garanti Süresi', 'Teslimat Süresi', 'Açıklama'
     ])
     const labels = new Set([
       activityTypeLabel(entry({ type: 'ORDER_RECEIVED', quantityDelta: -1 })), activityTypeLabel(entry({ type: 'ORDER_RECEIVED', quantityDelta: 1 })), activityTypeLabel(entry({ type: 'ORDER_STOCK_SHORTFALL' })),
       activityTypeLabel(entry({ type: 'MANUAL_ADJUSTMENT' })), activityTypeLabel(entry({ type: 'IMPORT_OPENING' })), activityTypeLabel(entry({ type: 'MARKETPLACE_STOCK_IMPORT' })),
       activityTypeLabel(entry({ type: 'RETURN_PASS' })), activityTypeLabel(entry({ type: 'RETURN_DAMAGED' })), activityTypeLabel(entry({ type: 'OFFER_PRICE' })), activityTypeLabel(entry({ type: 'DEFAULT_PRICE' })), activityTypeLabel(entry({ type: 'STATUS' }))
     ])
-    expect(activityMovements.every(item => labels.has(item.label))).toBe(true)
+    for (const field of ['COST', 'DESI', 'TITLE', 'BARCODE', 'MODEL_CODE', 'SKU', 'BRAND', 'CATEGORY', 'WARRANTY', 'DELIVERY_DAYS', 'DESCRIPTION']) labels.add(activityTypeLabel(entry({ type: 'FIELD', kind: 'INFO', field })))
+    // KDV is the one movement of two labels, KDV Oranı and KDV Dahil.
+    expect(activityMovements.filter(item => !labels.has(item.label)).map(item => item.value)).toEqual(['VAT'])
+    expect([activityTypeLabel(entry({ type: 'FIELD', field: 'VAT_RATE' })), activityTypeLabel(entry({ type: 'FIELD', field: 'VAT_INCLUSION' }))]).toEqual(['KDV Oranı', 'KDV Dahil'])
   })
 })
 
@@ -138,5 +142,27 @@ describe('activityVariantText', () => {
     expect(activityVariantText('Renk: Siyah | Beden: M')).toBe('Varyant: Siyah / M')
     expect(activityVariantText('Standart')).toBe('Varyant: Standart')
     expect(activityVariantText(null)).toBeNull()
+  })
+})
+
+describe('product information rows', () => {
+  it('shows a field change before → after, an empty side as Boş, a long value cut with the whole change as its title', () => {
+    expect(activityChange(entry({ type: 'FIELD', kind: 'INFO', field: 'COST', previousValue: '100,00 ₺', newValue: '120,50 ₺' })))
+      .toMatchObject({ text: '100,00 ₺ → 120,50 ₺', from: '100,00 ₺', to: '120,50 ₺', tone: 'neutral', title: 'Maliyet: 100,00 ₺ → 120,50 ₺' })
+    expect(activityChange(entry({ type: 'FIELD', kind: 'INFO', field: 'BARCODE', previousValue: null, newValue: '8680000000012' }))).toMatchObject({ from: 'Boş', to: '8680000000012' })
+    const title = 'Kadın Uzun Kollu Pamuklu Basic Bluz Siyah Renk Yeni Sezon'
+    const long = activityChange(entry({ type: 'FIELD', kind: 'INFO', field: 'TITLE', previousValue: 'Bluz', newValue: title }))
+    expect(long.to).toBe(activityFieldValue(title))
+    expect(long.to!.endsWith('…')).toBe(true)
+    expect(long.title).toBe(`Ürün Adı: Bluz → ${title}`)
+    expect(activityTypeLabel(entry({ type: 'FIELD', kind: 'INFO', field: 'MODEL_CODE' }))).toBe('Model Kodu')
+    expect(activityTypeLabel(entry({ type: 'FIELD', kind: 'INFO', field: 'NEW_FIELD' }))).toBe('NEW_FIELD')
+  })
+
+  it('counts the Ürün Bilgisi kind and names the platform update sources', () => {
+    expect(activityKindCounts([{ kind: 'INFO', count: 3 }]).INFO).toBe(3)
+    expect(activitySourceLabel('QUICK_UPDATE')).toBe('Hızlı Güncelle')
+    expect(activitySourceLabel('PLATFORM_UPDATE')).toBe('Platformlarda Güncelle')
+    expect(activitySourceLabel('PRICE_EDIT')).toBe('Fiyat Düzenleme')
   })
 })

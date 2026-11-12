@@ -464,6 +464,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.Property(x => x.PreviousSalePrice).HasPrecision(19, 4); entity.Property(x => x.NewSalePrice).HasPrecision(19, 4);
             entity.Property(x => x.PreviousListPrice).HasPrecision(19, 4); entity.Property(x => x.NewListPrice).HasPrecision(19, 4);
             entity.Property(x => x.Note).HasMaxLength(200); entity.Property(x => x.CorrelationId).HasMaxLength(128);
+            entity.Property(x => x.Field).HasMaxLength(24); entity.Property(x => x.PreviousValue).HasMaxLength(400); entity.Property(x => x.NewValue).HasMaxLength(400);
             // Ürün Hareketleri reads a tenant's rows newest first; a product's purge goes by product. No foreign keys: a
             // history row never blocks deleting what it names.
             entity.HasIndex(x => new { x.TenantId, x.OccurredAt, x.Id }).IsDescending(false, true, true);

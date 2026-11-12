@@ -7,6 +7,63 @@ public static class ProductChangeKinds
 {
     public const string Status = "STATUS";
     public const string DefaultPrice = "DEFAULT_PRICE";
+    // An information field of the card or a variant (ProductChangeFields), old → new as text.
+    public const string Field = "FIELD";
+}
+
+// ProductChangeEntry.Field: the information fields Ürün Hareketleri keeps (card fields on the card, variant fields on
+// the variant). Sale status and panel prices have kinds of their own.
+public static class ProductChangeFields
+{
+    // Variant fields.
+    public const string Cost = "COST";
+    public const string Desi = "DESI";
+    public const string Barcode = "BARCODE";
+    public const string ModelCode = "MODEL_CODE";
+    public const string Sku = "SKU";
+    // Card fields.
+    public const string Title = "TITLE";
+    public const string VatRate = "VAT_RATE";
+    public const string VatInclusion = "VAT_INCLUSION";
+    public const string Brand = "BRAND";
+    public const string Category = "CATEGORY";
+    public const string Warranty = "WARRANTY";
+    public const string DeliveryDays = "DELIVERY_DAYS";
+    public const string Description = "DESCRIPTION";
+
+    public static readonly IReadOnlyList<string> All = [Cost, Desi, Barcode, ModelCode, Sku, Title, VatRate, VatInclusion, Brand, Category, Warranty, DeliveryDays, Description];
+
+    // The "Hareket Türü" code a field is filtered by: KDV Oranı and KDV Dahil mi are one (KDV), every other its own.
+    public static string Movement(string field) => field is VatRate or VatInclusion ? ProductActivityMovements.Vat : field;
+
+    // The text a value is kept as (null = empty). Numbers in Turkish form, as the page shows them.
+    private static readonly System.Globalization.CultureInfo Turkish = System.Globalization.CultureInfo.GetCultureInfo("tr-TR");
+    public const int MaxValueLength = 400;
+    public const int DescriptionExcerptLength = 120;
+
+    public static string? Money(decimal? value) => value is decimal amount ? $"{amount.ToString("#,##0.00", Turkish)} ₺" : null;
+    public static string? Number(decimal? value) => value is decimal number ? number.ToString("#,##0.##", Turkish) : null;
+    public static string? Percent(decimal? value) => value is decimal rate ? $"%{rate.ToString("0.##", Turkish)}" : null;
+    public static string? Inclusion(string? value) => value?.Trim().ToUpperInvariant() switch
+    {
+        "INCLUDED" => "Dahil",
+        "EXCLUDED" => "Hariç",
+        null or "" => null,
+        var other => other
+    };
+    public static string? Months(int? value) => value is int months ? $"{months.ToString(Turkish)} Ay" : null;
+    public static string? Days(int? value) => value is int days ? $"{days.ToString(Turkish)} Gün" : null;
+    public static string? Text(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    // A description is kept as the start of its plain text: the whole HTML would not fit a log row.
+    public static string? DescriptionExcerpt(string? html)
+    {
+        if (string.IsNullOrWhiteSpace(html)) return null;
+        var plain = System.Net.WebUtility.HtmlDecode(System.Text.RegularExpressions.Regex.Replace(html, "<[^>]*>", " "));
+        plain = System.Text.RegularExpressions.Regex.Replace(plain, @"\s+", " ").Trim();
+        if (plain.Length == 0) return null;
+        return plain.Length <= DescriptionExcerptLength ? plain : $"{plain[..DescriptionExcerptLength].TrimEnd()}…";
+    }
 }
 
 // ProductChangeEntry.Source: where a status or panel price change came from.
@@ -54,6 +111,22 @@ public static class ProductChangeLog
         });
     }
 
+    // An information field's change, its values as the page shows them (ProductChangeFields' formats); the same text
+    // before and after writes nothing unless a note says what changed beyond it (a description's hidden part).
+    public static ProductChangeEntry? Field(Guid tenantId, Guid productId, Guid? variantId, string field, string? previous, string? next, string source,
+        Guid? actorUserId, string correlationId, DateTimeOffset now, string? note = null)
+    {
+        previous = Cut(previous, ProductChangeFields.MaxValueLength);
+        next = Cut(next, ProductChangeFields.MaxValueLength);
+        if (string.Equals(previous, next, StringComparison.Ordinal) && note is null) return null;
+        return Entry(tenantId, productId, variantId, ProductChangeKinds.Field, source, actorUserId, null, correlationId, now, note, entry =>
+        {
+            entry.Field = field;
+            entry.PreviousValue = previous;
+            entry.NewValue = next;
+        });
+    }
+
     public static string StatusCode(ProductStatus status) => status switch
     {
         ProductStatus.Active => "ACTIVE",
@@ -91,14 +164,17 @@ public static class ProductChangeLog
 }
 
 // İşlem Takibi › Loglar › Ürün Hareketleri: what changed on a product, from every record that keeps it.
+// (Kinds: stock, price, sale status, returns and the card's information fields.)
 public static class ProductActivityKinds
 {
     public const string Stock = "STOCK";
     public const string Price = "PRICE";
     public const string Status = "STATUS";
     public const string Return = "RETURN";
+    // Ürün Bilgisi: maliyet, desi, ürün adı, barkod, model kodu, KDV... (ProductChangeFields).
+    public const string Info = "INFO";
 
-    public static readonly IReadOnlyList<string> All = [Stock, Price, Status, Return];
+    public static readonly IReadOnlyList<string> All = [Stock, Price, Status, Return, Info];
 }
 
 // Where an activity row came from, as the page names it.
@@ -116,6 +192,10 @@ public static class ProductActivitySources
     public const string Publish = "PUBLISH";
     // The classic import (İçe Aktarım) that created the product with its opening stock.
     public const string ClassicImport = "CLASSIC_IMPORT";
+    // A marketplace offer price written by the product editor's Hızlı Güncelle, or by Gönder in its "Platformlarda
+    // Güncelle" window (rows before 12 Nov 2026 cannot tell the two apart and count as the window's).
+    public const string QuickUpdate = "QUICK_UPDATE";
+    public const string PlatformUpdate = "PLATFORM_UPDATE";
 }
 
 // The row types an activity row can have (ProductActivityView.Type).
@@ -136,6 +216,7 @@ public static class ProductActivityTypes
     public const string OfferPrice = "OFFER_PRICE";
     public const string DefaultPrice = ProductChangeKinds.DefaultPrice;
     public const string Status = ProductChangeKinds.Status;
+    public const string Field = ProductChangeKinds.Field;
 
     public static readonly IReadOnlyList<string> StockLedger = [OrderReceived, ManualAdjustment, MarketplaceStockImport, ImportOpening, OrderStockShortfall];
     public static readonly IReadOnlyList<string> ReturnLedger = [ReturnPass];
@@ -158,8 +239,22 @@ public static class ProductActivityMovements
     public const string OfferPrice = "OFFER_PRICE";
     public const string PanelPrice = "PANEL_PRICE";
     public const string Status = "STATUS";
+    // Ürün Bilgisi: one code per field (ProductChangeFields), KDV Oranı and KDV Dahil mi together as KDV.
+    public const string Cost = ProductChangeFields.Cost;
+    public const string Desi = ProductChangeFields.Desi;
+    public const string Title = ProductChangeFields.Title;
+    public const string Barcode = ProductChangeFields.Barcode;
+    public const string ModelCode = ProductChangeFields.ModelCode;
+    public const string Sku = ProductChangeFields.Sku;
+    public const string Vat = "VAT";
+    public const string Brand = ProductChangeFields.Brand;
+    public const string Category = ProductChangeFields.Category;
+    public const string Warranty = ProductChangeFields.Warranty;
+    public const string DeliveryDays = ProductChangeFields.DeliveryDays;
+    public const string Description = ProductChangeFields.Description;
 
-    public static readonly IReadOnlyList<string> All = [Sale, OrderCancel, Shortfall, ManualStock, OpeningStock, MarketplaceStock, ReturnRestocked, ReturnKeptOut, OfferPrice, PanelPrice, Status];
+    public static readonly IReadOnlyList<string> Fields = [Cost, Desi, Title, Barcode, ModelCode, Sku, Vat, Brand, Category, Warranty, DeliveryDays, Description];
+    public static readonly IReadOnlyList<string> All = [Sale, OrderCancel, Shortfall, ManualStock, OpeningStock, MarketplaceStock, ReturnRestocked, ReturnKeptOut, OfferPrice, PanelPrice, Status, .. Fields];
 }
 
 public static class ProductActivityPolicy
@@ -175,9 +270,15 @@ public static class ProductActivityPolicy
     public const string NewProductPriceReason = "İlk ürün fiyatı";
     public const string PublishPriceReason = "Toplu yayın fiyatı";
     public const string FileImportReason = "Ürün dosyası içe aktarma";
+    // The editor's marketplace offer prices sent by Hızlı Güncelle and by the "Platformlarda Güncelle" window's Gönder
+    // (the web sends these); before 12 Nov 2026 both sent the legacy reason.
+    public const string QuickUpdatePriceReason = "Hızlı Güncelle";
+    public const string PlatformUpdatePriceReason = "Platformlarda Güncelle";
+    public const string LegacyPlatformUpdatePriceReason = "Ürün platform güncellemesi";
 
     public static string KindOfType(string type) => type switch
     {
+        ProductActivityTypes.Field => ProductActivityKinds.Info,
         ProductActivityTypes.ReturnPass or ProductActivityTypes.ReturnQuarantine or ProductActivityTypes.ReturnDamaged or ProductActivityTypes.ReturnNotReceived => ProductActivityKinds.Return,
         ProductActivityTypes.OfferPrice or ProductActivityTypes.DefaultPrice => ProductActivityKinds.Price,
         ProductActivityTypes.Status => ProductActivityKinds.Status,
@@ -206,6 +307,8 @@ public static class ProductActivityPolicy
         return reason?.Trim() switch
         {
             PublishPriceReason => ProductActivitySources.Publish,
+            QuickUpdatePriceReason => ProductActivitySources.QuickUpdate,
+            PlatformUpdatePriceReason or LegacyPlatformUpdatePriceReason => ProductActivitySources.PlatformUpdate,
             _ => ReasonSource(reason) is var source && source == ProductActivitySources.Manual ? ProductActivitySources.PriceEdit : source
         };
     }
@@ -313,7 +416,12 @@ public sealed record ProductActivityView(
     Guid? ReturnId,
     string? ReturnNumber,
     Guid? ActorUserId,
-    string? ActorName);
+    string? ActorName,
+    // An information field's change (Type FIELD): the field (ProductChangeFields) and its text before → after; a null
+    // value was empty.
+    string? Field = null,
+    string? PreviousValue = null,
+    string? NewValue = null);
 
 public sealed record ProductActivityCount(string Kind, int Count);
 
