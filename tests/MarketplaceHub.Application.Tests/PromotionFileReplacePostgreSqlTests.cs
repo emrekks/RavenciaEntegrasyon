@@ -137,6 +137,7 @@ public sealed class PromotionFileReplacePostgreSqlTests(PostgreSqlTenantIsolatio
     {
         await using var db = fixture.CreateContext();
         await db.AuditLogs.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.IntegrationOutboxEvents.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.PromotionOfferFiles.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.CommissionTariffRows.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.CommissionTariffSourceFiles.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
