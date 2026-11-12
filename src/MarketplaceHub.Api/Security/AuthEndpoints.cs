@@ -429,6 +429,22 @@ public static class AuthEndpoints
         return Problem("REAUTHENTICATION_FAILED", "Parola doğrulanamadı.", 401);
     }
 
+    // The re-check other areas ask for before an account change (Ayarlar › Kullanıcılar): the signed-in user's
+    // password, and with an authenticator on, its current code or a recovery code, counted like the steps above.
+    // Null when it passed; otherwise the refusal to return.
+    internal static async Task<IResult?> ReauthenticateAsync(ReauthenticateRequest request, HttpContext context, UserManager<ApplicationUser> users, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time)
+    {
+        var session = RequireSession(context, SessionState.Active); if (session is null) return Forbidden(context);
+        var user = await users.FindByIdAsync(session.UserId.ToString());
+        if (user is null || !await PasswordCheck.VerifyAsync(context, users, user, request.Password)) return await PasswordRecheckFailedAsync(session, user, users, db, context, time);
+        var security = await db.UserSecurities.SingleAsync(x => x.UserId == user.Id, context.RequestAborted);
+        if (security.TotpState == TotpState.Enabled && !await ValidateSecondFactorAsync(request, session.UserId, security, context, db, protection, totp, hasher, time))
+            return await SecondFactorFailedAsync(session, user, users, db, context, time, SecondFactorMethod(request));
+        MfaAttemptPolicy.RegisterSuccess(session);
+        await PasswordCheck.RegisterSuccessAsync(context, users, user);
+        return null;
+    }
+
     private static string SecondFactorMethod(ReauthenticateRequest request) => string.IsNullOrWhiteSpace(request.RecoveryCode) ? "totp" : "recovery-code";
 
     private static async Task<bool> ValidateSecondFactorAsync(ReauthenticateRequest request, Guid userId, UserSecurity security, HttpContext context, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time)
