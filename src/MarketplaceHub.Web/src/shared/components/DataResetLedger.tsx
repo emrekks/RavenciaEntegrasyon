@@ -71,12 +71,14 @@ export function DataResetLedger<S extends string>({ groups, counts, countsFailed
       })}
     </div>
     <aside className="drl-receipt" aria-label="Silinecekler">
+      <div className="drl-receipt-body">
       <h3>Silinecekler</h3>
       <div className="drl-lines" role="status">{going.length
         ? going.map(option => <div key={option.scope}><span>{option.label}</span><span className="num">{counts?.[option.scope] !== undefined ? `${number(counts[option.scope]!)} ${option.unit}` : ''}</span></div>)
         : <p>Soldan silinecek veri türünü seçin.</p>}</div>
       <div className="drl-total"><span>Toplam</span><span className="num">{going.length && known ? `${number(total)} kayıt` : going.length ? '' : '0 kayıt'}</span></div>
       <div className="drl-notes">{notes.map((note, index) => <p key={index} className={note.tone === 'warn' ? 'is-warn' : undefined}><UiIcon name={note.tone === 'warn' ? 'alert' : 'check'} size={15} /><span>{note.text}</span></p>)}</div>
+      </div>
       <div className="drl-confirm">
         <label htmlFor={`${idPrefix}-confirm`}>Onaylamak için <b>{confirmWord}</b> yazın</label>
         <span className={`drl-field${confirmed ? ' is-ok' : ''}`}><input id={`${idPrefix}-confirm`} value={confirmation} onChange={event => onConfirmation(event.target.value)} disabled={busy} autoComplete="off" placeholder={confirmWord} />{confirmed && <UiIcon name="check" size={16} />}</span>

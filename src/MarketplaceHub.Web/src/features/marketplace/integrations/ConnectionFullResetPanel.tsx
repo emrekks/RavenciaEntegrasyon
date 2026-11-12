@@ -59,14 +59,14 @@ export function ConnectionFullResetPanel({ item, onFeedback, onFinished, onCance
   const busy = start.isPending || running
   const status = fullResetStatusText(job)
   const notes: Array<{ warn?: boolean; text: string }> = [
-    { warn: true, text: 'Bu bağlantının bütün verileri bu panelden kalıcı olarak silinir ve geri alınamaz. Eski finans ve kargo kayıtları pazaryerinin izin verdiği süreyle sınırlı olduğu için yeniden alınamayabilir.' },
-    { warn: true, text: 'Kesilmiş faturalar da silinir. Faturalar E-Faturam’da ve GİB’de geçerli kalır; panelden silmek faturayı iptal etmez. Pazaryerine gönderilen fatura bağlantıları artık açılmaz.' },
-    { warn: true, text: 'Siparişler yeniden çekildiğinde panel onları faturasız görür; aynı siparişe ikinci kez fatura kesmeyin.' },
-    { text: `Pazaryerine ve E-Faturam’a hiçbir şey yazılmaz; ${item.displayName} hesabındaki kayıtlar olduğu gibi kalır ve sonraki eşitlemede yeniden alınabilir.` },
-    { text: 'Bağlantı ayarları korunur: kimlik bilgileri, eşitleme, fatura, konum ve stok ayarları, eşleme şablonları, kargo eşleşmeleri ve bildirim aboneliği.' },
+    { warn: true, text: 'Bağlantının bütün verileri kalıcı olarak silinir, geri alınamaz. Eski finans ve kargo kayıtları pazaryerinin izin verdiği süreyle sınırlı olduğundan yeniden alınamayabilir.' },
+    { warn: true, text: 'Kesilmiş faturalar da silinir. Faturalar E-Faturam’da ve GİB’de geçerli kalır; panelden silmek faturayı iptal etmez. Pazaryerine gönderilen fatura bağlantıları açılmaz.' },
+    { warn: true, text: 'Siparişler yeniden çekilince faturasız görünür; aynı siparişe ikinci fatura kesmeyin.' },
+    { text: `Pazaryerine ve E-Faturam’a yazılmaz; ${item.displayName} kayıtları sonraki eşitlemede yeniden alınabilir.` },
+    { text: 'Bağlantı ayarları korunur: kimlik bilgileri, eşitleme, fatura, konum ve stok ayarları, eşleme şablonları, kargo eşleşmeleri, bildirim aboneliği.' },
     ...(kept ? [{ text: `${number(kept)} ürün başka bir bağlantıda kullanıldığı ya da panelde oluşturulduğu için korunur; yalnız bu bağlantıyla bağı silinir.` }] : []),
-    { text: 'Siparişlerin düşürdüğü stok geri eklenmez; aynı siparişler yeniden çekildiğinde stok ikinci kez düşmez.' },
-    { text: 'Sıfırlama arka planda çalışır ve bağlantıda süren eşitlemelerin bitmesini bekler.' }
+    { text: 'Siparişlerin düşürdüğü stok geri eklenmez; yeniden çekilen siparişler stoğu ikinci kez düşürmez.' },
+    { text: 'Sıfırlama arka planda çalışır ve süren eşitlemelerin bitmesini bekler.' }
   ]
   return <div className="drl connection-full-reset">
     <div className="drl-list" role="group" aria-label="Tam sıfırlamada silinecek veriler">
@@ -80,10 +80,12 @@ export function ConnectionFullResetPanel({ item, onFeedback, onFinished, onCance
       </section>
     </div>
     <aside className="drl-receipt" aria-label="Tam sıfırlama özeti">
+      <div className="drl-receipt-body">
       <h3>Tam Sıfırlama</h3>
       {status && <p className={`connection-full-reset-status${running ? ' is-running' : ''}`} role="status">{running && <i className="connection-full-reset-bar" style={{ width: `${job?.progressPercent ?? 0}%` }} />}<span>{status}</span></p>}
       <div className="drl-total"><span>Silinecek</span><span className="num">{total !== undefined ? `${number(total)} kayıt` : ''}</span></div>
       <div className="drl-notes">{notes.map((note, index) => <p key={index} className={note.warn ? 'is-warn' : undefined}><UiIcon name={note.warn ? 'alert' : 'check'} size={15} /><span>{note.text}</span></p>)}</div>
+      </div>
       <div className="drl-confirm">
         <label htmlFor={`full-reset-${item.id}-confirm`}>Onaylamak için <b>{item.displayName}</b> yazın</label>
         <span className={`drl-field${confirmed ? ' is-ok' : ''}`}><input id={`full-reset-${item.id}-confirm`} value={confirmation} onChange={event => setConfirmation(event.target.value)} disabled={busy} autoComplete="off" placeholder={item.displayName} />{confirmed && <UiIcon name="check" size={16} />}</span>
