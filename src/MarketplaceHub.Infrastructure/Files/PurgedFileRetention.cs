@@ -6,7 +6,8 @@ namespace MarketplaceHub.Infrastructure.Files;
 
 // Removes from disk the stored files a data reset or connection deletion left without a row
 // (OperationalDataMaintenanceService marks them PURGE_PENDING). The file_assets row stays as DELETED, a
-// record that the file existed and when it went; remote image links (no file) only change state.
+// record that the file existed and when it went; remote image links (no file) only change state. The files a
+// Paneli Tamamen Sıfırla left (PanelFactoryResetService.FileDropStatus) leave no record: their rows go as well.
 public static class PurgedFileRetention
 {
     public const string DeletedStatus = "DELETED";
@@ -19,7 +20,7 @@ public static class PurgedFileRetention
     {
         var cutoff = now - Grace;
         var assets = await db.FileAssets
-            .Where(x => x.Status == OperationalDataMaintenanceService.PurgePendingStatus && x.ArchivedAt != null && x.ArchivedAt <= cutoff)
+            .Where(x => (x.Status == OperationalDataMaintenanceService.PurgePendingStatus || x.Status == PanelFactoryResetService.FileDropStatus) && x.ArchivedAt != null && x.ArchivedAt <= cutoff)
             .OrderBy(x => x.ArchivedAt).Take(BatchSize).ToListAsync(cancellationToken);
         foreach (var asset in assets)
         {
@@ -31,7 +32,8 @@ public static class PurgedFileRetention
                 // A product photo takes its thumbnails with it.
                 if (renditions is not null && asset.Classification == "PRODUCT_MEDIA") renditions.Delete(asset.TenantId, asset.Id);
             }
-            asset.Status = DeletedStatus;
+            if (asset.Status == PanelFactoryResetService.FileDropStatus) db.FileAssets.Remove(asset);
+            else asset.Status = DeletedStatus;
         }
         await db.SaveChangesAsync(cancellationToken);
         return assets.Count;

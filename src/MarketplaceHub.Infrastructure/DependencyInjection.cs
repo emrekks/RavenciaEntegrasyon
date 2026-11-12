@@ -168,6 +168,7 @@ public static class DependencyInjection
         services.AddScoped<IWebhookVerifier, MarketplaceWebhookVerifier>();
         services.AddScoped<IMarketplaceConnectionService, MarketplaceConnectionService>();
         services.AddScoped<IOperationalDataMaintenanceService, OperationalDataMaintenanceService>();
+        services.AddScoped<IPanelFactoryResetService, PanelFactoryResetService>();
         services.AddScoped<IMarketplaceSalesService, MarketplaceSalesService>();
         services.AddScoped<IMarketplaceQuestionService, MarketplaceQuestionService>();
         services.AddScoped<IMarketplaceWebhookService, MarketplaceWebhookService>();
