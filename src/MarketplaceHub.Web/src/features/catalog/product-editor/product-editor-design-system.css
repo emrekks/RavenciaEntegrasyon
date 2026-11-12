@@ -64,6 +64,17 @@
   .product-identifiers-grid .desi-input-field { min-width: 0; }
 }
 
+/* Desktop: one three-column grid for the whole basics card, so every row shares the same column edges and gaps (name and
+   category end where Barkod / Teslimat Süresi end; Satış Durumu, Model Kodu and Desi start at the same x). */
+@layer features {
+  @media (min-width: 1201px) {
+    .product-basics-card .product-basics-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .product-basics-card .product-basics-grid .product-title-field { grid-column: span 2; }
+    .product-basics-card .product-basics-grid .product-brand-field, .product-basics-card .product-basics-grid .product-category-field { grid-column: span 1; }
+    .product-basics-card .product-basics-grid .product-identifiers-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+}
+
 @layer features {
   .desi-inline-control { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--rv-space-2); }
 }
