@@ -38,7 +38,7 @@ public static class PanelFactoryResetInventory
     public static readonly PanelResetGroup Stock = new(5, "STOCK", "Stok ve Fiyatlar", "Stok kalemleri, stok hareketleri, rezervasyonlar, kanal fiyatları ve fiyat geçmişi.", CatalogSection, "Stok, fiyat ve fiyat geçmişi siliniyor", []);
     public static readonly PanelResetGroup Options = new(6, "OPTIONS", "Ürün Seçenekleri", "Ürün seçenek grupları, seçenek değerleri ve varyantlarla olan seçenek bağlantıları.", CatalogSection, "Ürün seçenekleri siliniyor", []);
     public static readonly PanelResetGroup Products = new(7, "PRODUCTS", "Ürünler", "Ürünler, varyantlar, görseller, pazaryeri bağları ve ürün aktarım kayıtları. Stok ve fiyatları da seçer.", CatalogSection, "Ürünler, varyantlar ve görseller siliniyor", ["STOCK"]);
-    public static readonly PanelResetGroup CategoryAttributes = new(8, "CATEGORY_ATTRIBUTES", "Kategori Özellikleri", "Özellik başlıkları ve değerleri, kategori atamaları, ürünlerin özellik değerleri ve pazaryeri özellik eşleştirmeleri.", CatalogSection, "Kategori özellikleri siliniyor", []);
+    public static readonly PanelResetGroup CategoryAttributes = new(8, "CATEGORY_ATTRIBUTES", "Kategori Özellikleri", "Özellik başlıkları ve değerleri, kategori atamaları, ürünlerin özellik değerleri ve pazaryeri özellik eşleştirmeleri (eşleme şablonları dahil).", CatalogSection, "Kategori özellikleri siliniyor", []);
     public static readonly PanelResetGroup Categories = new(9, "CATEGORIES", "Kategori Listesi", "Kategori ağacı ve pazaryeri kategori eşleştirmeleri; ürünlerin kategori bağı boşalır.", CatalogSection, "Kategori listesi siliniyor", []);
     public static readonly PanelResetGroup Brands = new(10, "BRANDS", "Marka Listesi", "Markalar ve pazaryeri marka eşleştirmeleri; ürünlerin marka bağı boşalır.", CatalogSection, "Marka listesi siliniyor", []);
     public static readonly PanelResetGroup References = new(11, "REFERENCES", "Pazaryeri Referans Listeleri", "Pazaryerlerinden indirilen kategori, özellik ve marka listeleri.", MarketplaceSection, "Pazaryeri referans listeleri siliniyor", []);
@@ -82,7 +82,7 @@ public static class PanelFactoryResetInventory
     [
         "Hesap, kullanıcılar, roller ve açık olan bu oturum",
         "Entegrasyon bağlantıları ve giriş bilgileri (bağlantı ayarları, eşitleme ve stok kuralları, kargo eşleşmeleri, varsayılan özellik değerleri)",
-        "Fatura kuralları ve şirket (fatura kesen) bilgileri",
+        "E-Faturam bağlantısının fatura kuralları (şirket bilgileri E-Faturam hesabınızda durur)",
         "Sistem ayarları: güvenlik, yapay zekâ anahtarı, uyarı e-postası, kargo etiketi, görünüm",
         "Depo tanımları, soru cevap şablonları ve Excel içe aktarma kolon profilleri",
     ];
@@ -99,7 +99,7 @@ public static class PanelFactoryResetInventory
         D("billing.manual_order_invoice_delivery_states", Invoices), D("billing.manual_order_invoice_documents", Invoices),
         D("billing.marketplace_deliveries", Invoices), D("billing.marketplace_delivery_states", Invoices),
         K("billing.invoice_policies", "e-fatura bağlantısının fatura kuralları (bağlantı ayarı)"),
-        K("billing.legal_entity_profiles", "fatura kesen şirketin bilgileri (ayar)"),
+        K("billing.legal_entity_profiles", "e-fatura bağlantısının yer tutucu profili; şirket bilgisi E-Faturam hesabında"),
 
         // sales
         D("sales.order_financial_allocations", Orders), D("sales.order_lines", Orders), D("sales.order_status_history", Orders), D("sales.orders", Orders),
