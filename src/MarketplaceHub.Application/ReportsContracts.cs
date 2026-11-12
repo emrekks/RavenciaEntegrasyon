@@ -138,7 +138,10 @@ public sealed record ReportCostView(
     decimal NetProfit,
     decimal? NetMargin,
     int CostedVariants,
-    decimal CostedSales = 0m);
+    decimal CostedSales = 0m,
+    // The kept units' revenue over every TRY line, with a cost or not (CostedRevenue's basis): the sales share that
+    // prices the cost of the units without one (ReportProfitCost).
+    decimal KeptRevenue = 0m);
 
 // One bucket of a breakdown (platform, store, city, district, brand, category). Known is false for "Bilinmiyor".
 // Children: the next level (a platform's stores, a city's districts); Split: the same bucket by platform.
