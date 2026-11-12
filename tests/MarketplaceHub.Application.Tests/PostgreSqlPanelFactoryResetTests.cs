@@ -88,6 +88,15 @@ public sealed partial class PostgreSqlConnectionFullResetTests
             Assert.Equal(PanelJobTypes.FactoryReset, (await verification.IntegrationJobs.SingleAsync(x => x.TenantId == a.Tenant.Id)).JobType);
             Assert.Equal(100, (await verification.IntegrationJobs.SingleAsync(x => x.Id == jobId)).ProgressPercent);
             Assert.Equal("PANEL_FACTORY_RESET", (await verification.AuditLogs.SingleAsync(x => x.TenantId == a.Tenant.Id)).Action);
+            // The test database holds many tenants: an unknown account's sign-in record is no one tenant's and stays.
+            Assert.True(await verification.AuditLogs.AnyAsync(x => x.TenantId == null && x.CorrelationId == $"pf-anon-{a.Tenant.Id:N}"));
+            // Right after the reset nothing is left to count: its own job, attempt, audit row and events, and the rebuilt
+            // empty dashboard summary are not records to remove.
+            await using (var countDb = fixture.CreateContext())
+            {
+                var after = (await NewPanelService(countDb).GetAsync(a.Tenant.Id, CancellationToken.None)).Value!;
+                Assert.All(after.Groups.Where(x => x.Key != "LOGS"), x => Assert.True(x.Count == 0, $"{x.Key}: {x.Count}"));
+            }
             Assert.All(await verification.FileAssets.Where(x => x.TenantId == a.Tenant.Id).ToListAsync(), x => Assert.Equal(PanelFactoryResetService.FileDropStatus, x.Status));
             Assert.Equal("ACTIVE", (await verification.FileAssets.SingleAsync(x => x.Id == b.ManualPdf.Id)).Status);
             Assert.Equal(["appearance"], await verification.TenantSettings.Where(x => x.TenantId == a.Tenant.Id).Select(x => x.Key).ToListAsync());
@@ -173,6 +182,8 @@ public sealed partial class PostgreSqlConnectionFullResetTests
         db.PlatformCredentials.Add(new PlatformCredential { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, CredentialType = "BASIC", ProtectedPayload = "old", MaskedHint = "***0", CreatedAt = fixture.Now.AddDays(-3), RevokedAt = fixture.Now.AddDays(-1), Version = 1 });
         db.Brands.Add(new Brand { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = "Ravencia", NormalizedName = "ravencia", CreatedAt = fixture.Now, UpdatedAt = fixture.Now });
         db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = "PRODUCT_UPDATED", TargetType = "Product", TargetId = "x", Reason = "test", CorrelationId = "corr", CreatedAt = fixture.Now });
+        // A failed sign-in of an unknown account: no tenant, no user.
+        db.AuditLogs.Add(new AuditLog { TenantId = null, Action = "AUTH_LOGIN_FAILED", TargetType = "User", Reason = "unknown-account; ip=pf-test", CorrelationId = $"pf-anon-{tenantId:N}", CreatedAt = fixture.Now });
         db.AiUsageLogs.Add(new AiUsageLog { Id = Guid.CreateVersion7(), TenantId = tenantId, Feature = "TEST", Model = "test", Status = "OK", CreatedAt = fixture.Now });
         db.ApiIdempotencyRecords.Add(new ApiIdempotencyRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, RouteTemplate = "/api/v1/test", IdempotencyKey = $"pf-{Guid.NewGuid():N}", RequestHash = "hash", State = "COMPLETED", CreatedAt = fixture.Now, ExpiresAt = fixture.Now.AddDays(1) });
         db.IntegrationOutboxEvents.Add(new IntegrationOutboxEvent { Id = Guid.CreateVersion7(), TenantId = tenantId, ResourceType = "orders", OperationType = "update", AggregateType = "Order", AggregateId = Guid.CreateVersion7(), PayloadJson = JsonSerializer.Serialize(new { }), CreatedAt = fixture.Now, NextAttemptAt = fixture.Now });
@@ -193,6 +204,7 @@ public sealed partial class PostgreSqlConnectionFullResetTests
             DELETE FROM sales.marketplace_question_templates WHERE "TenantId"={{tenantId}};
             DELETE FROM catalog.connection_attribute_defaults WHERE "TenantId"={{tenantId}};
             DELETE FROM ops.ai_usage_logs WHERE "TenantId"={{tenantId}};
+            DELETE FROM ops.audit_logs WHERE "TenantId" IS NULL AND "CorrelationId" = {{$"pf-anon-{tenantId:N}"}};
             DELETE FROM ops.api_idempotency_records WHERE "TenantId"={{tenantId}};
             DELETE FROM iam.tenant_settings WHERE "TenantId"={{tenantId}};
             """);

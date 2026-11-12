@@ -45,9 +45,9 @@ public static class PanelFactoryResetInventory
     public static readonly PanelResetGroup Brands = new(12, "BRANDS", "Marka Listesi", "Markalar ve pazaryeri marka eşleştirmeleri; ürünlerin marka bağı boşalır.", CatalogSection, "Marka listesi siliniyor", []);
     public static readonly PanelResetGroup References = new(13, "REFERENCES", "Pazaryeri Referans Listeleri", "Pazaryerlerinden indirilen kategori, özellik ve marka listeleri.", MarketplaceSection, "Pazaryeri referans listeleri siliniyor", []);
     public static readonly PanelResetGroup Promotions = new(14, "PROMOTIONS", "Promosyon, Komisyon ve Reklam Dosyaları", "Yüklenen komisyon tarifeleri, promosyon teklif dosyaları ve reklam raporları.", MarketplaceSection, "Promosyon, komisyon ve reklam dosyaları siliniyor", []);
-    public static readonly PanelResetGroup Jobs = new(15, "JOBS", "İşlem Takibi", "Bütün işler ve denemeleri (çalışan sıfırlama hariç), eşitleme imleçleri, mutabakat ve dış işlem kayıtları; eşitleme baştan başlar.", SystemSection, "İşler ve eşitleme kayıtları siliniyor", []);
-    public static readonly PanelResetGroup Logs = new(16, "LOGS", "Loglar", "İşlem ve denetim logu, API istek kayıtları, yapay zekâ kullanım logu, ürün etkinlik logu, fiyat/stok gönderim logu ve gelen webhook kayıtları.", SystemSection, "Loglar siliniyor", []);
-    public static readonly PanelResetGroup Notifications = new(17, "NOTIFICATIONS", "Bildirimler", "Sorun bildirimleri ve alarmlar, değişiklik olayları, bildirim merkezi ve bu tarayıcıdaki bildirim geçmişi.", SystemSection, "Bildirimler siliniyor", []);
+    public static readonly PanelResetGroup Jobs = new(15, "JOBS", "İşlem Takibi", "Bütün işler ve denemeleri (çalışan sıfırlama hariç), eşitleme imleçleri, mutabakat ve dış işlem kayıtları, iç değişiklik olayları; eşitleme baştan başlar.", SystemSection, "İşler ve eşitleme kayıtları siliniyor", []);
+    public static readonly PanelResetGroup Logs = new(16, "LOGS", "Loglar", "İşlem ve denetim logu (hesaba bağlanamamış giriş denemeleri dahil), API istek kayıtları, yapay zekâ kullanım logu, ürün etkinlik logu, fiyat/stok gönderim logu ve gelen webhook kayıtları.", SystemSection, "Loglar siliniyor", []);
+    public static readonly PanelResetGroup Notifications = new(17, "NOTIFICATIONS", "Bildirimler", "Sorun bildirimleri ve alarmlar, bildirim merkezi ve bu tarayıcıdaki bildirim geçmişi.", SystemSection, "Bildirimler siliniyor", []);
     public static readonly PanelResetGroup Dashboard = new(18, "DASHBOARD", "Raporlar ve Özet Tabloları", "Pano özeti, günlük ciro, düşük stok ve eşitleme durumu tabloları; yeniden hesaplanır.", SystemSection, "Rapor ve özet tabloları siliniyor", []);
 
     public static readonly PanelResetGroup LegacyConnections = new(19, "LEGACY_CONNECTIONS", "Eski Bağlantı Kayıtları ve İptal Edilmiş Anahtarlar", "Silinmiş bağlantıların kalan kayıtları ve yerine yenisi girilmiş eski giriş bilgileri; açık bağlantılar ve geçerli anahtarları kalır.", SystemSection, "Eski bağlantı kayıtları ve iptal edilmiş anahtarlar siliniyor", []);
@@ -153,6 +153,7 @@ public static class PanelFactoryResetInventory
         D("integration.job_read_summaries", Jobs), D("integration.job_variant_results", Jobs),
         D("integration.external_effect_records", Jobs), D("integration.reconciliation_runs", Jobs), D("integration.reconciliation_differences", Jobs),
         D("integration.sync_cursors", Jobs, "eşitleme imleçleri: yeniden çekim baştan başlar"),
+        D("integration.outbox_events", Jobs, "değişiklik olayları (panellere ve önbelleğe giden iç olaylar)"),
         S("integration.connection_backoffs", Jobs, "bağlantıların bekleme süreleri (TenantId yok; bağlantı kimliğiyle)"),
         S("integration.platform_connections", Jobs, "bağlantı kalır; yalnız son hata kodu temizlenir"),
         S("integration.platform_credentials", LegacyConnections, "geçerli giriş bilgileri kalır; iptal edilmişler ve silinmiş bağlantılarınki gider"),
@@ -168,7 +169,7 @@ public static class PanelFactoryResetInventory
         D("integration.inbox_messages", Logs, "gelen webhook kayıtları"),
 
         // notifications
-        D("ops.operational_issues", Notifications, "sorun bildirimleri / alarmlar"), D("integration.outbox_events", Notifications, "değişiklik olayları"),
+        D("ops.operational_issues", Notifications, "sorun bildirimleri / alarmlar"),
         D("ops.panel_notifications", Notifications, "bildirim merkezi (zilde gösterilen bildirimler, 7 gün)"),
 
         // dashboard
