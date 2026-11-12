@@ -267,7 +267,7 @@ describe('SystemSettingsPage', () => {
   it('keeps the confirmation word visible above the field and accepts it in any case', async () => {
     await renderPage('/settings?tab=database')
     await settle()
-    click(Array.from(container.querySelectorAll<HTMLLabelElement>('.ss-dr-opt')).find(item => item.textContent?.includes('Ürünler Listesi'))!.querySelector('input')!)
+    click(Array.from(container.querySelectorAll<HTMLLabelElement>('.ss-dr-opt')).find(item => item.querySelector('b')?.textContent === 'Ürünler')!.querySelector('input')!)
     const ask = container.querySelector('label.ss-dr-ask')!
     expect(ask.textContent).toContain('Onaylamak için Verileri sil yazın')
     expect(ask.querySelector('b')?.textContent).toBe('Verileri sil')
