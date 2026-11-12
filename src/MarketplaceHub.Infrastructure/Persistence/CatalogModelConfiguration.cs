@@ -72,6 +72,9 @@ internal static class CatalogModelConfiguration
             entity.Property(x => x.OptionSignature).HasMaxLength(512); entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(24); entity.Property(x => x.Version).IsConcurrencyToken();
             entity.Property(x => x.Weight).HasPrecision(19, 4); entity.Property(x => x.Width).HasPrecision(19, 4); entity.Property(x => x.Height).HasPrecision(19, 4); entity.Property(x => x.Length).HasPrecision(19, 4); entity.Property(x => x.Desi).HasPrecision(19, 4); entity.Property(x => x.CostPrice).HasPrecision(19, 4); entity.Property(x => x.DefaultListPrice).HasPrecision(19, 4); entity.Property(x => x.DefaultSalePrice).HasPrecision(19, 4);
             entity.HasIndex(x => new { x.TenantId, x.ProductId, x.SortOrder }); entity.HasIndex(x => new { x.TenantId, x.SkuNormalized }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.BarcodeNormalized }).IsUnique();
+            // Import matching, family and listing reads filter variants by model code (equality or IN); without it each read
+            // scanned the table. Built CONCURRENTLY by migration AddProductVariantModelCodeIndex.
+            entity.HasIndex(x => new { x.TenantId, x.ModelCode });
             entity.HasOne<Product>().WithMany().HasForeignKey(x => new { x.TenantId, x.ProductId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
         });
         builder.Entity<ProductAttributeAssignment>(entity =>

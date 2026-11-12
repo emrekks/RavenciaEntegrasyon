@@ -366,5 +366,29 @@ public sealed class MarketplaceSalesStatusTabTests
         Assert.Contains("RawStatus", sql, StringComparison.Ordinal);
         Assert.Contains("LastRemoteModifiedAt", sql, StringComparison.Ordinal);
         Assert.Contains("DerivedStatus", sql, StringComparison.Ordinal);
+        // The tenant's Shopify stores are one uncorrelated list (read once per query), not a store lookup per order
+        // (live 12 Nov 2026: ~4,500 store-table scans per order summary count).
+        Assert.Contains("\"ConnectionId\" IN (", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("p.\"Id\" = o.\"ConnectionId\"", sql, StringComparison.Ordinal);
+    }
+
+    // Every status tab decides "set by hand in the panel" on the order row itself: no second read of the order per row.
+    [Fact]
+    public void Status_tab_reads_the_manual_shopify_status_without_reading_the_order_again()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql("Host=localhost;Port=5432;Database=metadata-only;Username=metadata-only;Password=metadata-only")
+            .Options;
+        using var db = new AppDbContext(options);
+        var service = new MarketplaceSalesService(db, null!, null!, null!, null!, null!, null!, TimeProvider.System);
+        var tenantId = Guid.NewGuid();
+        IQueryable<Order> query = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId);
+
+        service.ApplyOrderFilters(ref query, new OrderListQuery(Status: "UNVERIFIED"), tenantId);
+
+        var sql = query.ToQueryString();
+        Assert.Contains("MANUAL", sql, StringComparison.Ordinal);
+        Assert.Contains("\"ConnectionId\" IN (", sql, StringComparison.Ordinal);
+        Assert.Equal(1, sql.Split("FROM sales.orders", StringSplitOptions.None).Length - 1);
     }
 }
