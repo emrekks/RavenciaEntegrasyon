@@ -71,17 +71,17 @@ export function ConnectionFullResetPanel({ item, onFeedback, onFinished, onCance
   return <div className="drl connection-full-reset">
     <div className="drl-list" role="group" aria-label="Tam sıfırlamada silinecek veriler">
       <section className="drl-group">
-        <header><span><b>Bağlantının Bütün Verileri</b><small>Ayarlar dışında bu bağlantıya ait her kayıt silinir.</small></span></header>
-        {connectionFullResetItems.map(entry => <div key={entry.scope} className="drl-row is-on is-locked">
-          <i aria-hidden="true"><UiIcon name="check" size={13} /></i>
+        <header><span className="drl-gh-text"><b>Bağlantının Bütün Verileri</b><small>Ayarlar dışında bu bağlantıya ait her kayıt silinir.</small></span></header>
+        <div className="drl-rows">{connectionFullResetItems.map(entry => <div key={entry.scope} className="drl-row is-on is-locked">
+          <input type="checkbox" className="drl-cb" checked disabled readOnly aria-label={entry.label} />
           <span className="drl-text"><b>{entry.label}</b><small>{entry.description}</small></span>
-          <span className="drl-count">{counts?.has(entry.scope) ? <><strong className="num">{number(counts.get(entry.scope)!)}</strong>{entry.unit}</> : <span className="drl-count-none">{view.isError ? 'Sayı alınamadı' : 'Sayılıyor…'}</span>}</span>
-        </div>)}
+          <span className="drl-count num">{counts?.has(entry.scope) ? `${number(counts.get(entry.scope)!)} ${entry.unit}` : view.isError ? 'Sayı alınamadı' : 'Sayılıyor…'}</span>
+        </div>)}</div>
       </section>
     </div>
     <aside className="drl-receipt" aria-label="Tam sıfırlama özeti">
       <h3>Tam Sıfırlama</h3>
-      {status && <p className={`connection-full-reset-status${running ? ' is-running' : ''}`} role="status">{status}</p>}
+      {status && <p className={`connection-full-reset-status${running ? ' is-running' : ''}`} role="status">{running && <i className="connection-full-reset-bar" style={{ width: `${job?.progressPercent ?? 0}%` }} />}<span>{status}</span></p>}
       <div className="drl-total"><span>Silinecek</span><span className="num">{total !== undefined ? `${number(total)} kayıt` : ''}</span></div>
       <div className="drl-notes">{notes.map((note, index) => <p key={index} className={note.warn ? 'is-warn' : undefined}><UiIcon name={note.warn ? 'alert' : 'check'} size={15} /><span>{note.text}</span></p>)}</div>
       <div className="drl-confirm">

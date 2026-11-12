@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ApiRequestError, hubApi, settingsIfMatch } from '../../shared/api'
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ApiRequestError, hubApi, hubPoll, loadAllPages, settingsIfMatch } from '../../shared/api'
 import { FieldHelp, LoadingState, Modal, StickyActionBar, TitleHint } from '../../shared/components'
 import { uiGlyph16, type UiIconName } from '../../shared/components/UiIcon'
 import type { DataResetGroup } from '../../shared/components/DataResetLedger'
@@ -13,6 +13,10 @@ import { readVisualThemePreference, switchVisualThemeSmoothly, visualThemeChange
 import { unknownCount, useRememberedTabCounts } from '../../shared/tab-counts'
 import { PanelSelect } from '../../shared/PanelSelect'
 import { dataResetSummary, type DataResetResult } from './data-reset-summary'
+import { marketplaceResetCount, marketplaceResetTotal, progressText, runMarketplaceResets, type BulkResetProgress } from './marketplace-bulk-reset'
+import { connectionFullResetSupported, type ConnectionFullResetView } from '../marketplace/connection-data-reset'
+import { PlatformSquareMark } from '../../shared/platform-square-mark'
+import type { Connection } from '../marketplace/shared'
 import './settings-sade.css'
 import '../../shared/view-tabs.css'
 import { formatIstanbul } from '../../shared/format-date'
@@ -174,11 +178,15 @@ const resetGroupIcons: Record<string, SettingsIconName> = { Katalog: 'db', 'Ür�
 // Database cleanup: each group has one header with its own select-all and a selected/total count; each data type is
 // a whole-row tile (checkbox beside the title, count as a tag); the notes sit in one callout and the sticky bar shows
 // what goes as chips, the total, the typed confirmation and the reset button.
-function SettingsDataReset({ groups, counts, countsFailed, picked, onToggle, confirmation, onConfirmation, busy, onConfirm }: { groups: DataResetGroup[]; counts?: Record<string, number>; countsFailed: boolean; picked: string[]; onToggle: (scopes: string[], checked: boolean) => void; confirmation: string; onConfirmation: (value: string) => void; busy: boolean; onConfirm: () => void }) {
+type ResetMarketplace = { id: string; platformCode: string; displayName: string; count: number | undefined }
+function SettingsDataReset({ groups, counts, countsFailed, picked, onToggle, marketplaces, marketplacePicked, onToggleMarketplaces, progress, confirmation, onConfirmation, busy, onConfirm }: { groups: DataResetGroup[]; counts?: Record<string, number>; countsFailed: boolean; picked: string[]; onToggle: (scopes: string[], checked: boolean) => void; marketplaces: ResetMarketplace[]; marketplacePicked: string[]; onToggleMarketplaces: (ids: string[], checked: boolean) => void; progress: Record<string, BulkResetProgress>; confirmation: string; onConfirmation: (value: string) => void; busy: boolean; onConfirm: () => void }) {
   const options = groups.flatMap(group => group.options)
   const going = options.filter(option => picked.includes(option.scope))
-  const known = going.every(option => counts?.[option.scope] !== undefined)
-  const total = going.reduce((sum, option) => sum + (counts?.[option.scope] ?? 0), 0)
+  const goingMarketplaces = marketplaces.filter(entry => marketplacePicked.includes(entry.id))
+  const marketplaceTotal = marketplaceResetTotal(goingMarketplaces.map(entry => entry.id), Object.fromEntries(marketplaces.map(entry => [entry.id, entry.count])))
+  const known = going.every(option => counts?.[option.scope] !== undefined) && marketplaceTotal !== undefined
+  const total = going.reduce((sum, option) => sum + (counts?.[option.scope] ?? 0), 0) + (marketplaceTotal ?? 0)
+  const goingCount = going.length + goingMarketplaces.length
   const confirmed = confirmation.trim() === resetConfirmWord
   const countText = (scope: string, unit: string) => {
     const value = counts?.[scope]
@@ -209,6 +217,26 @@ function SettingsDataReset({ groups, counts, countsFailed, picked, onToggle, con
           })}</div>
         </section>
       })}
+      {marketplaces.length > 0 && <section className="ss-dr-group" aria-label="Pazaryerleri">
+        <header className="ss-dr-gh">
+          <span className="ss-tile is-sm ss-dr-ico"><SettingsIcon name="truck" /></span>
+          <div><h3>Pazaryerleri</h3><p>Tam Sıfırlama: bağlantının tüm kayıtları silinir, bağlantı ayarları korunur.</p></div>
+          <span className={`ss-tag ss-dr-sel${goingMarketplaces.length ? ' is-on' : ''}`}>{goingMarketplaces.length}/{marketplaces.length} Seçili</span>
+          <button type="button" className="ss-btn is-xs" disabled={busy} onClick={() => onToggleMarketplaces(marketplaces.map(entry => entry.id), goingMarketplaces.length !== marketplaces.length)}>{goingMarketplaces.length === marketplaces.length ? 'Seçimi Kaldır' : 'Tümünü Seç'}</button>
+        </header>
+        <div className="ss-dr-list">{marketplaces.map(entry => {
+          const on = marketplacePicked.includes(entry.id)
+          const state = progress[entry.id]
+          const text = progressText(state)
+          return <label key={entry.id} className={`ss-dr-opt is-mk${on ? ' is-on' : ''}`}>
+            <input type="checkbox" className="ss-cb" checked={on} disabled={busy} onChange={event => onToggleMarketplaces([entry.id], event.target.checked)} />
+            <PlatformSquareMark code={entry.platformCode} name={entry.displayName} />
+            <span className="ss-dr-text"><b>{entry.displayName}</b><small>Sipariş, iade, fatura, ürün bağı, kategori listeleri ve finans kayıtları; ayarlar korunur.</small>
+              {text && <span className={`ss-dr-prog is-${state?.state}`} role="status">{state?.state === 'running' && <i style={{ width: `${state.percent ?? 0}%` }} />}<em>{text}</em></span>}</span>
+            {entry.count !== undefined ? <span className="ss-tag ss-dr-count">{resetNumber(entry.count)} kayıt</span> : <span className="ss-tag ss-dr-count">Sayılıyor…</span>}
+          </label>
+        })}</div>
+      </section>}
       <div className="ss-callout ss-dr-note">
         <p className="is-warn"><SettingsIcon name="alert" /><span><b>Geri alınamaz.</b> Yetkili işlemi: bağlı alt kayıtlar güvenli sırayla temizlenir.</span></p>
         <p><SettingsIcon name="info" /><span>Sipariş, iade ve fatura kayıtları her platform için ayrı silinir: <b>Entegrasyonlar</b> sayfasında bağlantının menüsünden <b>Verileri Sıfırla</b>.</span></p>
@@ -216,12 +244,12 @@ function SettingsDataReset({ groups, counts, countsFailed, picked, onToggle, con
     </div>
     <StickyActionBar label="Silinecekler" className="ss-bar ss-dr-bar">
       <div className="ss-dr-sum" role="status">
-        <div className="ss-dr-sum-head"><strong>Silinecekler</strong><span className="ss-dr-total">Toplam <b>{going.length && !known ? '…' : `${resetNumber(total)} kayıt`}</b></span></div>
-        {going.length > 0 && <div className="ss-dr-chips">{going.map(option => <span key={option.scope} className="ss-dr-chip">{option.label}{counts?.[option.scope] !== undefined ? <b>{resetNumber(counts[option.scope])}</b> : null}</span>)}</div>}
+        <div className="ss-dr-sum-head"><strong>Silinecekler</strong><span className="ss-dr-total">Toplam <b>{goingCount && !known ? '…' : `${resetNumber(total)} kayıt`}</b></span></div>
+        {goingCount > 0 && <div className="ss-dr-chips">{goingMarketplaces.map(entry => <span key={entry.id} className="ss-dr-chip">{entry.displayName} (Tam)<b>{entry.count !== undefined ? resetNumber(entry.count) : '…'}</b></span>)}{going.map(option => <span key={option.scope} className="ss-dr-chip">{option.label}{counts?.[option.scope] !== undefined ? <b>{resetNumber(counts[option.scope])}</b> : null}</span>)}</div>}
       </div>
       <div className="ss-bar-actions">
         <input id="settings-reset-confirm" className={`ss-in ss-dr-in${confirmed ? ' is-match' : ''}`} value={confirmation} onChange={event => onConfirmation(event.target.value)} disabled={busy} autoComplete="off" placeholder={`${resetConfirmWord} yazın`} aria-label={`Onaylamak için ${resetConfirmWord} yazın`} title={`Onaylamak için ${resetConfirmWord} yazın`} />
-        <button type="button" className="ss-btn is-danger ss-dr-go" disabled={!going.length || !confirmed || busy} onClick={onConfirm}><SettingsIcon name="trash" />{busy ? 'Sıfırlanıyor…' : going.length ? `${going.length} Veri Türünü Sıfırla` : 'Seçilen Verileri Sıfırla'}</button>
+        <button type="button" className="ss-btn is-danger ss-dr-go" disabled={!goingCount || !confirmed || busy} onClick={onConfirm}><SettingsIcon name="trash" />{busy ? 'Sıfırlanıyor…' : goingMarketplaces.length ? `${goingCount} Kalemi Sıfırla` : going.length ? `${going.length} Veri Türünü Sıfırla` : 'Seçilen Verileri Sıfırla'}</button>
       </div>
     </StickyActionBar>
   </>
@@ -277,6 +305,14 @@ export function SystemSettingsPage() {
   const [resetScopes, setResetScopes] = useState<string[]>([])
   const [resetConfirmation, setResetConfirmation] = useState('')
   const [resetBusy, setResetBusy] = useState(false)
+  const [marketplacePicked, setMarketplacePicked] = useState<string[]>([])
+  const [marketplaceProgress, setMarketplaceProgress] = useState<Record<string, BulkResetProgress>>({})
+  const resetCancelled = useRef(false)
+  useEffect(() => { resetCancelled.current = false; return () => { resetCancelled.current = true } }, [])
+  // The active marketplace connections, each with what its Tam Sıfırlama would remove (the same view its window shows).
+  const resetConnections = useQuery({ queryKey: ['connections', 'settings-reset'], queryFn: async () => (await loadAllPages<Connection>('/connections')).items.filter(item => (item.status === 'ACTIVE' || item.status === 'VERIFIED') && connectionFullResetSupported(item.platformCode)), enabled: section === 'database', staleTime: 0 })
+  const resetViews = useQueries({ queries: (resetConnections.data ?? []).map(item => ({ queryKey: ['connection-full-reset', item.id], queryFn: () => hubPoll<ConnectionFullResetView>(`/connections/${item.id}/full-reset`), enabled: section === 'database', staleTime: 0 })) })
+  const resetMarketplaces: ResetMarketplace[] = (resetConnections.data ?? []).map((item, index) => ({ id: item.id, platformCode: item.platformCode, displayName: item.displayName, count: marketplaceResetCount(resetViews[index]?.data) }))
   // What each list holds now, the counts the reset reports when it is done.
   const resetCounts = useQuery({ queryKey: ['data-reset-counts', 'settings'], queryFn: () => hubApi<{ items: Array<{ scope: string; count: number }> }>('/settings/data-reset'), enabled: section === 'database', staleTime: 0 })
   // Through hubApi: a session that ended shows the sign-in screen instead of an error box.
@@ -307,12 +343,32 @@ export function SystemSettingsPage() {
   function toggleResetScopes(scopes: string[], checked: boolean) {
     setResetScopes(current => checked ? Array.from(new Set([...current, ...scopes])) : current.filter(value => !scopes.includes(value)))
   }
+  function toggleMarketplaces(ids: string[], checked: boolean) {
+    setMarketplacePicked(current => checked ? Array.from(new Set([...current, ...ids])) : current.filter(value => !ids.includes(value)))
+  }
   async function resetOperationalData() {
-    if (!resetScopes.length || resetConfirmation.trim() !== resetConfirmWord) return
+    // The page's own confirmation word is the gate for the marketplaces and the catalog alike.
+    if ((!resetScopes.length && !marketplacePicked.length) || resetConfirmation.trim() !== resetConfirmWord) return
     setResetBusy(true); setNotice(null)
     try {
-      const result = await hubApi<DataResetResult>('/settings/data-reset', { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ scopes: resetScopes, confirmation: resetConfirmation.trim() }) })
-      succeed(dataResetSummary(result, resetScopes))
+      // The marketplaces first, one after the other; then the catalog cleanup.
+      const chosen = (resetConnections.data ?? []).filter(item => marketplacePicked.includes(item.id))
+      if (chosen.length) {
+        const ok = await runMarketplaceResets(chosen, {
+          request: item => hubApi<ConnectionFullResetView>(`/connections/${item.id}/full-reset`, { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ confirmation: item.displayName }) }),
+          poll: item => hubPoll<ConnectionFullResetView>(`/connections/${item.id}/full-reset`),
+          sleep: ms => new Promise(resolve => window.setTimeout(resolve, ms)),
+          onProgress: (id, state) => setMarketplaceProgress(current => ({ ...current, [id]: state })),
+          isCancelled: () => resetCancelled.current
+        })
+        if (!ok) { if (!resetCancelled.current) fail('Pazaryeri sıfırlaması tamamlanamadı; sonraki işlemler başlatılmadı. Ayrıntı ilgili satırda.'); return }
+        setMarketplacePicked([])
+        if (!resetScopes.length) succeed(`${chosen.length} pazaryeri bağlantısı tam sıfırlandı. Otomatik eşitleme açıksa kayıtlar yeniden çekilir.`)
+      }
+      if (resetScopes.length) {
+        const result = await hubApi<DataResetResult>('/settings/data-reset', { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ scopes: resetScopes, confirmation: resetConfirmation.trim() }) })
+        succeed(dataResetSummary(result, resetScopes))
+      }
       setResetScopes([]); setResetConfirmation('')
       await client.invalidateQueries()
     } catch (reason) { fail(reason instanceof Error ? reason.message : 'Seçili veriler sıfırlanamadı.') } finally { setResetBusy(false) }
@@ -463,7 +519,7 @@ export function SystemSettingsPage() {
         </>}
         {section === 'alerts' && <AlertEmailSettingsSection />}
         {section === 'ai' && <AiSettingsSection />}
-        {section === 'database' && <SettingsDataReset groups={resetScopeGroups} counts={resetCounts.data ? Object.fromEntries(resetCounts.data.items.map(entry => [entry.scope, entry.count])) : undefined} countsFailed={resetCounts.isError} picked={resetScopes} onToggle={toggleResetScopes} confirmation={resetConfirmation} onConfirmation={setResetConfirmation} busy={resetBusy} onConfirm={() => void resetOperationalData()} />}
+        {section === 'database' && <SettingsDataReset groups={resetScopeGroups} counts={resetCounts.data ? Object.fromEntries(resetCounts.data.items.map(entry => [entry.scope, entry.count])) : undefined} countsFailed={resetCounts.isError} picked={resetScopes} onToggle={toggleResetScopes} marketplaces={resetMarketplaces} marketplacePicked={marketplacePicked} onToggleMarketplaces={toggleMarketplaces} progress={marketplaceProgress} confirmation={resetConfirmation} onConfirmation={setResetConfirmation} busy={resetBusy} onConfirm={() => void resetOperationalData()} />}
         <ShippingLabelSettingsPanel section={isShipping ? section as ShippingSection : null} settings={labelSettings} saved={savedLabelSettings} dirty={shippingDirty} saving={labelSaving} loadFailed={shippingSettings.isError} loading={shippingSettings.isPending} format={labelFormat} setFormat={setLabelFormat} onChange={shippingSettings.setSettings} onSave={() => void saveLabelSettings()} />
         <AppearanceSettingsSection section={isAppearance ? section as AppearanceSection : null} onStatus={setAppearanceStatus} />
       </div>

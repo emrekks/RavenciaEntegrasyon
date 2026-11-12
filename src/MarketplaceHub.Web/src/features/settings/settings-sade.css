@@ -546,3 +546,12 @@
   .ss-page .ss-auth.ss-auth > .ss-tile { grid-row: auto; }
   .ss-page .ss-auth.ss-auth > h3 { align-self: center; }
 }
+
+/* Ayarlar › Veri › Pazaryerleri: one row per marketplace connection (logo, name, count) with the progress of its reset. */
+.ss-page .ss-dr-opt.is-mk { grid-template-columns: 16px 32px minmax(0, 1fr) auto; }
+.ss-page .ss-dr-opt.is-mk .platform-square-mark { width: 32px; height: 32px; border-radius: 7px; overflow: hidden; }
+.ss-page .ss-dr-prog { position: relative; display: block; overflow: hidden; margin-top: 4px; padding: 3px 8px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border-radius: 7px; font-size: 12px; font-style: normal; line-height: 1.4; }
+.ss-page .ss-dr-prog > i { position: absolute; inset: 0 auto 0 0; background: color-mix(in srgb, var(--rv-color-primary) 28%, transparent); transition: width .4s ease; }
+.ss-page .ss-dr-prog > em { position: relative; font-style: normal; }
+.ss-page .ss-dr-prog.is-done { color: var(--rv-color-accent); }
+.ss-page .ss-dr-prog.is-failed { color: var(--rv-color-danger); }
