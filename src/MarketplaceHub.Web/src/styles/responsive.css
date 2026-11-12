@@ -485,7 +485,7 @@ html body .app-shell .rv-drawer.rv-mobile-drawer { width: min(264px, 82vw); }
 @keyframes rv-scroll-fade { from { --rv-fade-l: 0px; --rv-fade-r: 28px; } 8% { --rv-fade-l: 28px; } 92% { --rv-fade-r: 28px; } to { --rv-fade-l: 28px; --rv-fade-r: 0px; } }
 @supports (animation-timeline: scroll()) {
   @media (max-width: 1024px) {
-    html body :is(.rv-tabs, .cs-nav, [role="tablist"]) { -webkit-mask-image: linear-gradient(90deg, transparent, #000 var(--rv-fade-l), #000 calc(100% - var(--rv-fade-r)), transparent); mask-image: linear-gradient(90deg, transparent, #000 var(--rv-fade-l), #000 calc(100% - var(--rv-fade-r)), transparent); animation: rv-scroll-fade linear both; animation-timeline: scroll(self inline); }
+    html body :is(.rv-tabs, [role="tablist"]) { -webkit-mask-image: linear-gradient(90deg, transparent, #000 var(--rv-fade-l), #000 calc(100% - var(--rv-fade-r)), transparent); mask-image: linear-gradient(90deg, transparent, #000 var(--rv-fade-l), #000 calc(100% - var(--rv-fade-r)), transparent); animation: rv-scroll-fade linear both; animation-timeline: scroll(self inline); }
   }
 }
 

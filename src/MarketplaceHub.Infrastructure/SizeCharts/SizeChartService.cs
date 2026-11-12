@@ -11,7 +11,9 @@ namespace MarketplaceHub.Infrastructure.SizeCharts;
 
 public sealed record SizeChartMeasurementsView(IReadOnlyList<string> Columns, IReadOnlyList<SizeChartMeasurementRowView> Rows);
 public sealed record SizeChartMeasurementRowView(string Size, IReadOnlyList<decimal?> Values);
-public sealed record SizeChartView(IReadOnlyList<string> Sizes, string? SizeOptionLabel, SizeChartMeasurementsView? Measurements, string? SizeChartUrl, bool AiReady, string? AiIssue);
+// LastGeneratedUrl: the newest image drawn for the card (used or not), so the dialog can tell after a lost answer
+// whether that try drew one.
+public sealed record SizeChartView(IReadOnlyList<string> Sizes, string? SizeOptionLabel, SizeChartMeasurementsView? Measurements, string? SizeChartUrl, bool AiReady, string? AiIssue, string? LastGeneratedUrl = null);
 public sealed record SizeChartGenerated(string Url, Guid FileAssetId, long? InputTokens, long? OutputTokens, decimal? CostUsd);
 
 // A failure the editor shows in the size chart dialog (Turkish), with its HTTP status.
@@ -60,9 +62,10 @@ public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPri
         var measurements = stored is null ? null : new SizeChartMeasurementsView(stored.Columns,
             stored.Rows.Select(row => new SizeChartMeasurementRowView(row.Size, row.Values.Select(value => decimal.TryParse(value, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.GetCultureInfo("tr-TR"), out var number) ? number : (decimal?)null).ToList())).ToList());
         var url = chart?.FileAssetId is Guid assetId ? await UrlAsync(tenantId, assetId, cancellationToken) : null;
+        var lastGenerated = chart?.LastGeneratedAssetId is Guid generatedId ? await UrlAsync(tenantId, generatedId, cancellationToken) : null;
         var credentials = await claude.CredentialsOrNullAsync(tenantId, cancellationToken);
         var issue = credentials is null ? "Claude API anahtarı kayıtlı değil. Ayarlar › Yapay Zekâ bölümünden hesap sahibi ya da yönetici girmeli." : SkillIssue(credentials);
-        return new SizeChartView(sizes, label, measurements, url, issue is null, issue);
+        return new SizeChartView(sizes, label, measurements, url, issue is null, issue, lastGenerated);
     }
 
     internal static string? SkillIssue(AiCredentials credentials) =>
@@ -229,17 +232,20 @@ public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPri
         + "2. spec.json is exactly the given JSON plus the icon object. Copy product_name, sizes, every number and extra_notes character for character. "
         + "Never add kilo, ease, height_assumed, age_offset_kg, kilo_band_width, background or color; never invent, round, convert or reorder a value. "
         + "gogus is already one side: never halve or double it.\n"
-        + "3. Render exactly once per try with the skill's render script, writing /mnt/user-data/outputs/beden-tablosu.png, always with --scale 1: "
-        + "the output must be a 1200x1800 px PNG. Never pass --scale 2 and never produce 2400x3600 or any other size.\n"
+        + "3. This container has no browser: Playwright and Chromium cannot run here; never try or install them. "
+        + "Draw the chart as SVG with the skill's own drawing code: import its render script from Python and write the SVG it builds for spec.json "
+        + "(for example build_svg(spec)) once per try, unchanged, to /mnt/user-data/outputs/beden-tablosu.svg; the panel turns it into the PNG. "
+        + "The SVG is 1200x1800 (scale 1), never 2400x3600 or any other size. Only when the script draws a PNG without a browser, "
+        + "write that 1200x1800 PNG to /mnt/user-data/outputs/beden-tablosu.png instead.\n"
         + "4. Copy the spec.json you rendered from, unchanged, to /mnt/user-data/outputs/beden-tablosu-spec.json.\n"
         + "5. If the icon shows the wrong garment category, change only the icon and render again; never change a measurement or the name.\n"
         + "6. The container has no network: never install packages. If the script fails, reply with 'HATA: ' and its error and stop.\n"
-        + "7. When the PNG and the spec copy are written, reply OK.";
+        + "7. When the SVG (or PNG) and the spec copy are written, reply OK.";
 
     internal static string SpecPrompt(SizeChartSpecRequest spec)
     {
         var json = SizeChartSpec.Json(spec.ProductName, spec.Sizes).ToJsonString(new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping, WriteIndented = true });
-        return "Bu ürün için 1200×1800 PNG beden tablosu görselini oluştur (--scale 1). Ekteki görsel ürünün kendisi.\n\n"
+        return "Bu ürün için 1200×1800 beden tablosu çizimini SVG olarak oluştur (kod ortamında tarayıcı yok; PNG'yi panel çizer). Ekteki görsel ürünün kendisi.\n\n"
             + $"spec.json bu JSON'a yalnız icon eklenerek yazılsın:\n\n{json}";
     }
 
@@ -308,7 +314,8 @@ public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPri
     private async Task<byte[]> PngFromRunAsync(AiCredentials credentials, ClaudeSkillResult result, SizeChartSpecRequest request, CancellationToken cancellationToken)
     {
         CheckStop(result);
-        var image = result.Files.LastOrDefault(file => file.FileName.EndsWith(".png", StringComparison.OrdinalIgnoreCase));
+        // A PNG the skill drew itself wins; otherwise the SVG it built is drawn here (SizeChartRasterizer).
+        var image = ChartFile(result);
         var spec = result.Files.LastOrDefault(file => file.FileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase));
         if (image is null || spec is null) throw NoImage(result);
 
@@ -316,9 +323,17 @@ public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPri
         if (SizeChartSpec.Check(specBytes, request.ProductName, request.Sizes) is { } difference)
             throw new SizeChartException("AI_VALUES_CHANGED", $"Çizilen tablo girilen ölçülerle birebir aynı değil ({difference}); görsel eklenmedi. Yeniden Oluştur ile tekrar deneyin.", 502);
         var bytes = await claude.DownloadFileAsync(credentials, image.FileId, MaxImageBytes, cancellationToken);
+        if (IsSvg(image)) bytes = SizeChartRasterizer.PngFromSvg(bytes);
         CheckImage(bytes);
         return bytes;
     }
+
+    // The chart a skill file's run left: its own PNG when it drew one, else the SVG the panel draws.
+    internal static ClaudeOutputFile? ChartFile(ClaudeSkillResult result) =>
+        result.Files.LastOrDefault(file => file.FileName.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+        ?? result.Files.LastOrDefault(IsSvg);
+
+    private static bool IsSvg(ClaudeOutputFile file) => file.FileName.EndsWith(".svg", StringComparison.OrdinalIgnoreCase);
 
     // The script writes what it drew; it must be exactly what was asked (sizes, columns, values, order).
     internal static bool EchoMatches(byte[] echoJson, SizeChartTable table)

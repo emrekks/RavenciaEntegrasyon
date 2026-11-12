@@ -4,13 +4,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ApiRequestError, hubApi } from '../../../shared/api'
+import { hubApi } from '../../../shared/api'
 import { newIdempotencyKey } from '../../../shared/idempotency'
+import { chartDrawnMeanwhile, isUnknownSizeChartOutcome, sizeChartFailureMessage } from './size-chart-outcome'
 import { Button, FieldHelp, IconButton, Modal, UiIcon } from '../../../shared/components'
 import { addSizeChartColumn, initialSizeChartDraft, maximumSizeChartColumns, newColumnIssue, presetSizeChartColumns, removeSizeChartColumn, setSizeChartCell, sizeChartCellKey, sizeChartColumnLabel, validateSizeChartDraft, type SizeChartDraft, type SizeChartMeasurements } from './size-chart-measurements'
 import './size-chart.css'
 
-export type SizeChartInfo = { sizes: string[]; sizeOptionLabel: string | null; measurements: SizeChartMeasurements | null; sizeChartUrl: string | null; aiReady: boolean; aiIssue: string | null }
+export type SizeChartInfo = { sizes: string[]; sizeOptionLabel: string | null; measurements: SizeChartMeasurements | null; sizeChartUrl: string | null; aiReady: boolean; aiIssue: string | null; lastGeneratedUrl?: string | null }
 export type SizeChartResult = { url: string; fileAssetId: string; inputTokens: number | null; outputTokens: number | null; costUsd: number | null }
 
 export function SizeChartButton({ productId, sizes, disabledReason, onUse }: { productId: string | null; sizes: string[]; disabledReason: string | null; onUse: (url: string) => void }) {
@@ -67,14 +68,23 @@ export function SizeChartDialog({ productId, sizes, onClose, onUse }: { productI
     if (!checked.ok) { setError(checked.message); return }
     const controller = new AbortController()
     abort.current = controller
+    const lastGeneratedBefore = info.data?.lastGeneratedUrl ?? null
     setRunning(true); setElapsed(0); setError(null); setResult(null)
     try {
+      // A fresh key on every press: a lost answer is never sent again under the same key (size-chart-outcome.ts).
       const generated = await hubApi<SizeChartResult>(`/products/${productId}/size-chart/generate`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('size-chart') }, body: JSON.stringify(checked.payload), signal: controller.signal })
       if (controller.signal.aborted) return
       setResult(generated)
     } catch (reason) {
       if (controller.signal.aborted) return
-      setError(reason instanceof ApiRequestError || reason instanceof Error ? reason.message : 'Beden tablosu oluşturulamadı.')
+      if (isUnknownSizeChartOutcome(reason)) {
+        // The answer was lost: the server's newest drawn chart tells whether this try made one.
+        const fresh = await info.refetch().then(read => read.data).catch(() => undefined)
+        if (controller.signal.aborted) return
+        const drawn = chartDrawnMeanwhile(lastGeneratedBefore, fresh?.lastGeneratedUrl)
+        if (drawn) { setResult({ url: drawn, fileAssetId: '', inputTokens: null, outputTokens: null, costUsd: null }); return }
+      }
+      setError(sizeChartFailureMessage(reason))
     } finally {
       if (abort.current === controller) { abort.current = null; setRunning(false) }
     }

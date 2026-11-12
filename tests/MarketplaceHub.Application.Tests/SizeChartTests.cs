@@ -283,6 +283,94 @@ public sealed class SizeChartSpecNameTests
     }
 }
 
+// The owner's skill builds an SVG and photographed it with Chromium, which Claude's container lacks (12 Nov 2026:
+// 502 AI_RENDERER_MISSING on every Oluştur). The container now hands over the SVG and the panel draws the PNG.
+public sealed class SizeChartRasterizerTests
+{
+    private static byte[] Svg(int width, int height, string body) => Encoding.UTF8.GetBytes(
+        $"""<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}"><rect width="{width}" height="{height}" fill="#FBF7EE"/>{body}</svg>""");
+
+    private const string Title = """<text x="600" y="300" text-anchor="middle" font-family="Montserrat" font-weight="600" font-size="80" fill="#111">BEDEN TABLOSU</text>""";
+
+    // The width of the dark text on the line: the skill's Montserrat SemiBold, not whatever font the host has.
+    private static int TitleWidth(byte[] png)
+    {
+        using var image = NetVips.Image.NewFromBuffer(png);
+        using var band = image.ExtractArea(0, 200, 1200, 140).Colourspace(NetVips.Enums.Interpretation.Bw).Cast(NetVips.Enums.BandFormat.Uchar);
+        var pixels = band.WriteToMemory<byte>();
+        int left = int.MaxValue, right = -1;
+        for (var index = 0; index < pixels.Length; index++)
+        {
+            if (pixels[index] >= 100) continue;
+            var x = index % band.Width;
+            left = Math.Min(left, x); right = Math.Max(right, x);
+        }
+        Assert.True(right >= 0, "the title was not drawn: no font reached the SVG loader");
+        return right - left + 1;
+    }
+
+    [Fact]
+    public void An_svg_chart_becomes_a_1200x1800_png_with_its_text_in_montserrat()
+    {
+        Assert.True(File.Exists(SizeChartRasterizer.FontConfigPath), "size-chart-fonts/fonts.conf is not beside the build");
+        Assert.Equal(6, Directory.GetFiles(Path.GetDirectoryName(SizeChartRasterizer.FontConfigPath)!, "montserrat-*.ttf").Length);
+
+        var png = SizeChartRasterizer.PngFromSvg(Svg(1200, 1800, Title));
+
+        SizeChartService.CheckImage(png);
+        Assert.Equal((1200, 1800), SizeChartService.PngSize(png));
+        // Montserrat SemiBold 80 px; another family gets the same Montserrat (only the skill's fonts are configured).
+        Assert.InRange(TitleWidth(png), 685, 715);
+        Assert.Equal(TitleWidth(png), TitleWidth(SizeChartRasterizer.PngFromSvg(Svg(1200, 1800, Title.Replace("Montserrat", "Times New Roman", StringComparison.Ordinal)))));
+    }
+
+    [Fact]
+    public void Turkish_letters_are_drawn_from_the_latin_ext_files()
+    {
+        var png = SizeChartRasterizer.PngFromSvg(Svg(1200, 1800, """<text x="600" y="300" text-anchor="middle" font-family="Montserrat" font-weight="600" font-size="80" fill="#111">ĞÜŞİÖÇ ğüşıöç</text>"""));
+        Assert.True(TitleWidth(png) > 400);
+    }
+
+    [Theory]
+    [InlineData(2400, 3600, "SIZE_CHART_WRONG_SIZE")]
+    [InlineData(1200, 1799, "SIZE_CHART_WRONG_SIZE")]
+    public void Only_a_1200x1800_drawing_is_kept(int width, int height, string code) =>
+        Assert.Equal(code, Assert.Throws<SizeChartException>(() => SizeChartRasterizer.PngFromSvg(Svg(width, height, ""))).Code);
+
+    [Fact]
+    public void Something_that_is_not_an_svg_is_refused_before_libvips_reads_it()
+    {
+        Assert.Equal("AI_IMAGE_INVALID", Assert.Throws<SizeChartException>(() => SizeChartRasterizer.PngFromSvg(ProductMediaRenditionTests.Png(1200, 1800))).Code);
+        Assert.Equal("AI_IMAGE_INVALID", Assert.Throws<SizeChartException>(() => SizeChartRasterizer.PngFromSvg(Encoding.UTF8.GetBytes("<svg broken"))).Code);
+        Assert.Equal("AI_IMAGE_INVALID", Assert.Throws<SizeChartException>(() => SizeChartRasterizer.PngFromSvg([])).Code);
+    }
+
+    [Fact]
+    public void The_skills_own_png_wins_and_its_svg_is_the_fallback()
+    {
+        ClaudeSkillResult Result(params string[] names) => new("end_turn", "OK", names.Select((name, index) => new ClaudeOutputFile($"file_{index}", name)).ToList(), new ClaudeUsage(1, 1, null, null), null);
+
+        Assert.Equal("beden-tablosu.png", SizeChartService.ChartFile(Result("beden-tablosu.svg", "beden-tablosu.png", "beden-tablosu-spec.json"))?.FileName);
+        Assert.Equal("beden-tablosu.svg", SizeChartService.ChartFile(Result("beden-tablosu.svg", "beden-tablosu-spec.json"))?.FileName);
+        Assert.Null(SizeChartService.ChartFile(Result("beden-tablosu-spec.json")));
+    }
+
+    [Fact]
+    public void The_prompt_asks_for_the_svg_and_never_for_a_browser()
+    {
+        Assert.Contains("/mnt/user-data/outputs/beden-tablosu.svg", SizeChartService.SpecSystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("no browser", SizeChartService.SpecSystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("1200x1800", SizeChartService.SpecSystemPrompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_uploaded_svg_still_gets_no_thumbnail_after_a_chart_was_drawn()
+    {
+        _ = SizeChartRasterizer.PngFromSvg(Svg(1200, 1800, ""));
+        Assert.Throws<NetVips.VipsException>(() => MarketplaceHub.Infrastructure.Files.ProductMediaRenditions.Render(Svg(1200, 1800, ""), 168));
+    }
+}
+
 // The size chart is always the last picture: in the strip and variant lists the panel reads, and in what goes out.
 public sealed class SizeChartPlacementTests
 {

@@ -256,6 +256,16 @@ describe('order summary cards', () => {
       expect(popover(host)).toBeNull()
     })
 
+    it('keeps the panel under its gear with a numeric keypad, a Done key and no autofocus on a touch screen', () => {
+      const { host } = render(<OrderMetricCards {...props({ resentReminder: 2, onSaveResentReminder: async () => undefined })} />)
+      click(gear(host))
+      const input = popover(host)!.querySelector('input')!
+      expect(popover(host)!.closest('.rr-reminder')).not.toBeNull()
+      expect(input.getAttribute('inputmode')).toBe('numeric')
+      expect(input.getAttribute('enterkeyhint')).toBe('done')
+      expect(document.activeElement).not.toBe(input)
+    })
+
     it('refuses what is not a whole number and sets it back to 0 with Sıfırla', async () => {
       const onSave = vi.fn().mockResolvedValue(undefined)
       const { host } = render(<OrderMetricCards {...props({ resentReminder: 5, onSaveResentReminder: onSave })} />)
