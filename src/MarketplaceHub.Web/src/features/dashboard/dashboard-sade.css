@@ -486,9 +486,9 @@ html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer)
    12 Nov: "barların üstünde çıkmalı, barı genişletmemeli"); a right-column card opens it towards the left. Each platform is two lines (logo
    and name, then "16 paket · 24 adet") so it fits the half-width card. */
 @media (max-width: 760px) {
-  html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard > .rr-tip.rr-bd { position: absolute; z-index: 60; top: calc(100% + 6px); left: 0; right: auto; width: max-content; min-width: 200px; max-width: calc(100vw - 32px); margin: 0; padding: 8px; transform: none; translate: none; }
+  html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard > .rr-tip.rr-bd { position: absolute; z-index: 60; top: calc(100% + 6px); left: 0; right: auto; width: max-content; min-width: 200px; max-width: calc(100vw - 32px); margin: 0; padding: 10px; gap: 12px; transform: none; translate: none; }
   html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard:nth-child(even) > .rr-tip.rr-bd { left: auto; right: 0; }
-  html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard > .rr-tip.rr-bd .rr-bd-r { grid-template-columns: auto minmax(0, 1fr); row-gap: 2px; }
+  html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard > .rr-tip.rr-bd .rr-bd-r { grid-template-columns: auto minmax(0, 1fr); row-gap: 6px; }
   html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard > .rr-tip.rr-bd .rr-bd-r > b { grid-column: 1 / -1; font-size: 12px; }
   html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard:not(.rr-bd-open) > .rr-tip.rr-bd { display: none !important; }
 }
