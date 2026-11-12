@@ -97,20 +97,33 @@ export function ResendReminderEditor({ count: saved, onSave }: { count: number; 
   useEffect(() => {
     if (open && window.matchMedia('(hover: hover) and (min-width: 761px)').matches) field.current?.select()
   }, [open])
-  // On a phone the panel is a sheet on the bottom edge. --rr-kb lifts it by the height the keyboard takes from the
-  // visual viewport, so it stays above the keyboard; the focused field is scrolled into view inside the sheet.
+  // The panel stays under its gear, inside the card, on every width. --rr-kb is the height the keyboard takes from the
+  // visual viewport: when the panel would end under it (or past the window) it opens above the gear (data-flip), else
+  // the page scrolls it to the middle; sideways it is nudged back inside the window.
   useEffect(() => {
     const viewport = window.visualViewport
     const host = root.current
-    if (!open || !viewport || !host) return
-    const lift = () => {
-      const covered = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
+    if (!open || !host) return
+    const place = () => {
+      const pop = host.querySelector<HTMLElement>('.rr-reminder-pop')
+      if (!pop) return
+      const covered = viewport ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop) : 0
       host.style.setProperty('--rr-kb', `${Math.round(covered)}px`)
+      pop.removeAttribute('data-flip')
+      pop.style.removeProperty('translate')
+      const below = pop.getBoundingClientRect()
+      if (below.bottom > window.innerHeight - covered - 8) {
+        if (host.getBoundingClientRect().top - 6 - below.height >= 8) pop.setAttribute('data-flip', 'up')
+        else pop.scrollIntoView({ block: 'center' })
+      }
+      const box = pop.getBoundingClientRect()
+      const dx = box.left < 8 ? 8 - box.left : box.right > window.innerWidth - 8 ? window.innerWidth - 8 - box.right : 0
+      if (dx) pop.style.setProperty('translate', `${Math.round(dx)}px 0`)
     }
-    lift()
-    viewport.addEventListener('resize', lift)
-    viewport.addEventListener('scroll', lift)
-    return () => { viewport.removeEventListener('resize', lift); viewport.removeEventListener('scroll', lift); host.style.removeProperty('--rr-kb') }
+    place()
+    viewport?.addEventListener('resize', place)
+    viewport?.addEventListener('scroll', place)
+    return () => { viewport?.removeEventListener('resize', place); viewport?.removeEventListener('scroll', place); host.style.removeProperty('--rr-kb') }
   }, [open])
   const toggle = () => {
     if (open) { setOpen(false); return }
