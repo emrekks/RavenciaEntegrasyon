@@ -44,9 +44,20 @@ vi.mock('../../shared/api', async importOriginal => {
     if (path === '/settings/ai/test') return { ok: true, model: 'claude-sonnet-5-5', message: 'Bağlantı çalışıyor.' }
     if (path === '/settings/data-reset' && method === 'GET') return { items: [{ scope: 'PRODUCTS', count: 944 }, { scope: 'CATEGORIES', count: 12 }, { scope: 'CATEGORY_ATTRIBUTES', count: 40 }, { scope: 'BRANDS', count: 3 }, { scope: 'OPTIONS', count: 2 }] }
     if (path === '/settings/data-reset') return { products: 3, orders: 0, returns: 0, invoices: 0, categories: 0, categoryAttributes: 0, brands: 0, options: 0 }
+    if (path === '/connections') return { items: [
+      { id: 'c-ty', platformCode: 'TRENDYOL', displayName: 'Trendyol', status: 'ACTIVE', version: 5 },
+      { id: 'c-n11', platformCode: 'N11', displayName: 'N11', status: 'ACTIVE', version: 2 },
+      { id: 'c-ef', platformCode: 'TRENDYOL_EFATURAM', displayName: 'Trendyol E-Faturam', status: 'ACTIVE', version: 1 },
+      { id: 'c-off', platformCode: 'PAZARAMA', displayName: 'Pazarama', status: 'DISABLED', version: 1 }
+    ], nextCursor: null, hasMore: false }
+    const fullReset = path.match(/^\/connections\/([^/]+)\/full-reset$/)
+    if (fullReset) {
+      const counts = fullReset[1] === 'c-ty' ? [{ scope: 'ORDERS', count: 100 }, { scope: 'PRODUCT_LINKS', count: 50 }, { scope: 'FINANCE', count: 20 }] : [{ scope: 'ORDERS', count: 7 }]
+      return { items: counts, keptProducts: 0, job: method === 'POST' ? { jobId: 'job-' + fullReset[1], status: 'SUCCEEDED', progressLabel: null, progressPercent: 100, createdAt: '2026-11-12T10:00:00Z' } : null }
+    }
     throw new Error(`Test API fixture does not handle ${method} ${path}`)
   }
-  return { ...actual, api: vi.fn(respond), hubApi: vi.fn(respond) }
+  return { ...actual, api: vi.fn(respond), hubApi: vi.fn(respond), hubPoll: vi.fn(respond), loadAllPages: vi.fn(async (path: string) => respond(path)) }
 })
 
 import { SystemSettingsPage } from './SystemSettingsPage'
@@ -199,6 +210,45 @@ describe('SystemSettingsPage', () => {
     await settle()
     const request = apiState.calls.find(call => call.path === '/settings/data-reset' && call.method === 'POST')
     expect(JSON.parse(request?.body ?? '{}')).toEqual({ scopes: ['PRODUCTS'], confirmation: 'Verileri sil' })
+  })
+
+  it('lists the active marketplace connections as a group with counts and totals', async () => {
+    await renderPage('/settings?tab=database')
+    await settle()
+    const group = container.querySelector('section[aria-label="Pazaryerleri"]')!
+    const rows = Array.from(group.querySelectorAll<HTMLLabelElement>('.ss-dr-opt'))
+    // the e-invoice provider is not offered; a passive connection still is
+    expect(rows.map(row => row.querySelector('b')?.textContent)).toEqual(['Trendyol', 'N11', 'Pazarama'])
+    // product links are not added to the count
+    expect(rows[0].textContent).toContain('120 kayıt')
+    expect(group.textContent).toContain('0/3 Seçili')
+    click(group.querySelector<HTMLButtonElement>('header button')!)
+    expect(group.textContent).toContain('3/3 Seçili')
+    expect(container.querySelector('.ss-dr-sum')?.textContent).toContain('Toplam 134 kayıt')
+    click(group.querySelector<HTMLButtonElement>('header button')!)
+    expect(group.textContent).toContain('0/3 Seçili')
+  })
+
+  it('resets the chosen marketplaces one after the other, then the catalog, only after the confirmation text', async () => {
+    await renderPage('/settings?tab=database')
+    await settle()
+    const group = container.querySelector('section[aria-label="Pazaryerleri"]')!
+    click(group.querySelector<HTMLInputElement>('.ss-dr-opt input')!)
+    click(Array.from(container.querySelectorAll<HTMLLabelElement>('.ss-dr-opt')).find(item => item.textContent?.includes('Marka Listesi'))!.querySelector('input')!)
+    const confirm = container.querySelector<HTMLButtonElement>('.ss-dr-go')!
+    expect(confirm.disabled).toBe(true)
+    input(container.querySelector<HTMLInputElement>('#settings-reset-confirm')!, 'Trendyol')
+    expect(confirm.disabled).toBe(true)
+    expect(apiState.calls.some(call => call.method === 'POST')).toBe(false)
+    input(container.querySelector<HTMLInputElement>('#settings-reset-confirm')!, 'Verileri sil')
+    expect(confirm.disabled).toBe(false)
+    click(confirm)
+    await settle()
+    const posts = apiState.calls.filter(call => call.method === 'POST' && (call.path.endsWith('/full-reset') || call.path === '/settings/data-reset'))
+    expect(posts.map(call => call.path)).toEqual(['/connections/c-ty/full-reset', '/settings/data-reset'])
+    expect(posts[0].headers?.['if-match']).toBe('"v5"')
+    expect(JSON.parse(posts[0].body ?? '{}')).toEqual({ confirmation: 'Trendyol' })
+    expect(group.querySelector('.ss-dr-prog')?.textContent).toBe('Tamamlandı')
   })
 
   it('enables saving the label settings once a switch changes', async () => {
