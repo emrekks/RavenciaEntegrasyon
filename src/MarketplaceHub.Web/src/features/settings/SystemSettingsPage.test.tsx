@@ -44,6 +44,7 @@ vi.mock('../../shared/api', async importOriginal => {
     if (path === '/settings/ai/test') return { ok: true, model: 'claude-sonnet-5-5', message: 'Bağlantı çalışıyor.' }
     if (path === '/settings/data-reset' && method === 'GET') return { items: [{ scope: 'PRODUCTS', count: 944 }, { scope: 'CATEGORIES', count: 12 }, { scope: 'CATEGORY_ATTRIBUTES', count: 40 }, { scope: 'BRANDS', count: 3 }, { scope: 'OPTIONS', count: 2 }] }
     if (path === '/settings/data-reset') return { products: 3, orders: 0, returns: 0, invoices: 0, categories: 0, categoryAttributes: 0, brands: 0, options: 0 }
+    if (path === '/settings/factory-reset') return { groups: [{ key: 'ORDERS', label: 'Siparişler', count: 5 }], total: 5, steps: ['Süren işlerin bitmesi bekleniyor', 'Tamamlandı'], kept: ['Hesap'], confirmationWord: 'PANELİ SIFIRLA', job: null }
     if (path === '/connections') return { items: [
       { id: 'c-ty', platformCode: 'TRENDYOL', displayName: 'Trendyol', status: 'ACTIVE', version: 5 },
       { id: 'c-n11', platformCode: 'N11', displayName: 'N11', status: 'ACTIVE', version: 2 },
