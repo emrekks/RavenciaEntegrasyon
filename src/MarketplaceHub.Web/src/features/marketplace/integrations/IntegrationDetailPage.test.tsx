@@ -16,7 +16,6 @@ vi.mock('../../../shared/api', async importOriginal => {
     if (path === '/connections/c1') return connection()
     if (path.endsWith('/sync-policies') || path.endsWith('/capabilities')) return []
     if (path.endsWith('/instant-notifications')) return { supported: false }
-    if (path === '/connections/c1/data-reset') return { items: [{ scope: 'ORDERS', count: 3 }], keptIssuedInvoices: 0 }
     if (path === '/connections/c1/full-reset') return { items: [{ scope: 'ORDERS', count: 3 }], keptProducts: 0, job: null }
     return []
   }
@@ -170,33 +169,30 @@ describe('IntegrationsPage filters (W16)', () => {
     expect(currentSearch).toBe('')
   })
 
-  it('offers Tam Sıfırlama beside the selective reset in Verileri Sıfırla', async () => {
+  it('opens Verileri Sıfırla straight on the Tam Sıfırlama, without tabs or a selective choice', async () => {
     await renderList('/integrations')
     act(() => { container.querySelector<HTMLButtonElement>('.reference-menu-trigger')!.click() })
     const reset = Array.from(container.querySelectorAll<HTMLButtonElement>('.reference-menu-popover button')).find(button => button.textContent === 'Verileri Sıfırla')!
     await act(async () => { reset.click() })
     await settle()
-    const full = Array.from(container.querySelectorAll<HTMLButtonElement>('.data-reset-modes button')).find(button => button.textContent?.includes('Tam Sıfırlama'))!
-    await act(async () => { full.click() })
-    await settle()
+    expect(container.querySelector('.data-reset-modes')).toBeNull()
+    expect(container.querySelector('.drl-list input[type="checkbox"]:not([disabled])')).toBeNull()
     expect(container.querySelector('.connection-full-reset')).not.toBeNull()
     expect(apiState.calls.some(call => call.path === '/connections/c1/full-reset' && call.method === 'GET')).toBe(true)
+    expect(apiState.calls.some(call => call.path === '/connections/c1/data-reset')).toBe(false)
   })
 
-  it('reads every screen again after a selective data reset, not only a few lists', async () => {
+  it('asks for the connection name above the field and starts the reset when it is typed in any case', async () => {
     await renderList('/integrations')
     act(() => { container.querySelector<HTMLButtonElement>('.reference-menu-trigger')!.click() })
     const reset = Array.from(container.querySelectorAll<HTMLButtonElement>('.reference-menu-popover button')).find(button => button.textContent === 'Verileri Sıfırla')!
     await act(async () => { reset.click() })
     await settle()
-    const box = container.querySelector<HTMLInputElement>('.drl-list input[type="checkbox"]')!
-    act(() => { box.click() })
-    act(() => setValue(container.querySelector<HTMLInputElement>('#reset-data-c1-confirm')!, 'Trendyol Test'))
-    const invalidate = vi.spyOn(client, 'invalidateQueries')
-    await act(async () => { container.querySelector<HTMLButtonElement>('.drl-go')!.click() })
-    await settle()
-    expect(apiState.calls.some(call => call.path === '/connections/c1/data-reset' && call.method === 'POST')).toBe(true)
-    expect(invalidate.mock.calls.some(([filters]) => filters === undefined)).toBe(true)
+    expect(container.querySelector('.drl-confirm > label')?.textContent).toBe('Onaylamak için Trendyol Test yazın')
+    const go = container.querySelector<HTMLButtonElement>('.drl-go')!
+    expect(go.disabled).toBe(true)
+    act(() => setValue(container.querySelector<HTMLInputElement>('#full-reset-c1-confirm')!, ' trendyol test '))
+    expect(go.disabled).toBe(false)
   })
 
   it('blocks a new Trendyol connection only for an identity that cannot be sent; another format is a warning', async () => {

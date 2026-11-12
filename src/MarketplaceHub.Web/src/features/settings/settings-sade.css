@@ -598,3 +598,9 @@
 .ss-page .ss-dr-prog > em { position: relative; font-style: normal; }
 .ss-page .ss-dr-prog.is-done { color: var(--rv-color-accent); }
 .ss-page .ss-dr-prog.is-failed { color: var(--rv-color-danger); }
+
+/* The confirmation word stays readable above the field while it is typed (the placeholder disappears then). */
+.ss-page .ss-dr-ask { display: inline-flex; align-items: center; gap: 6px; flex: none; color: var(--rv-color-muted); font-size: 12.5px; white-space: nowrap; }
+.ss-page .ss-dr-ask b { color: var(--rv-color-ink); font-weight: 600; user-select: all; }
+.ss-page .ss-dr-ask .ui-icon { color: var(--rv-color-accent); }
+@media (max-width: 760px) { .ss-page .ss-dr-ask { white-space: normal; } }

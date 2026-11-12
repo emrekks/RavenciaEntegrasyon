@@ -264,6 +264,21 @@ describe('SystemSettingsPage', () => {
     expect(group.querySelector('.ss-dr-prog')?.textContent).toBe('Tamamlandı')
   })
 
+  it('keeps the confirmation word visible above the field and accepts it in any case', async () => {
+    await renderPage('/settings?tab=database')
+    await settle()
+    click(Array.from(container.querySelectorAll<HTMLLabelElement>('.ss-dr-opt')).find(item => item.querySelector('b')?.textContent === 'Ürünler')!.querySelector('input')!)
+    const ask = container.querySelector('label.ss-dr-ask')!
+    expect(ask.textContent).toContain('Onaylamak için Verileri sil yazın')
+    expect(ask.querySelector('b')?.textContent).toBe('Verileri sil')
+    const confirm = container.querySelector<HTMLButtonElement>('.ss-dr-go')!
+    input(container.querySelector<HTMLInputElement>('#settings-reset-confirm')!, ' VERİLERİ SİL ')
+    expect(confirm.disabled).toBe(false)
+    expect(container.querySelector('label.ss-dr-ask')?.textContent).toContain('Onaylamak için Verileri sil yazın')
+    input(container.querySelector<HTMLInputElement>('#settings-reset-confirm')!, 'verileri')
+    expect(confirm.disabled).toBe(true)
+  })
+
   it('enables saving the label settings once a switch changes', async () => {
     await renderPage('/settings?tab=sender')
     const save = button('Ayarları Kaydet')

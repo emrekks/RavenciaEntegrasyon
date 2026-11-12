@@ -4,7 +4,7 @@ import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, hubPoll, loadAllPages, settingsIfMatch } from '../../shared/api'
 import { FieldHelp, LoadingState, Modal, StickyActionBar, TitleHint } from '../../shared/components'
 import { uiGlyph16, type UiIconName } from '../../shared/components/UiIcon'
-import type { DataResetGroup } from '../../shared/components/DataResetLedger'
+import type { DataResetGroup } from './data-reset-groups'
 import { NoticeToast, type NoticeToastKind } from '../../shared/components/NoticeToast'
 import { cloneShippingLabelLayout, defaultShippingLabelBlockPosition, defaultShippingLabelSettings, draggedShippingLabelPosition, labelBlockContentHeight, resizedShippingLabelPosition, shippingLabelCaptionStyle, shippingLabelDragStarted, shippingLabelFieldsPerRow, shippingLabelFitsText, shippingLabelShowsBarcodeText, type ShippingLabelCaptionStyle, normalizeShippingLabelSettings, overflowingLabelBlocks, ShippingLabelBlockBody, shippingLabelBlockCatalog, shippingLabelFields, ShippingLabelFit, shippingLabelLayoutIssues, shippingLabelSizeMm, shippingLabelTextSize, shippingLabelTextSizes, stackShippingLabelLayout, useShippingLabelSettings, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings, type ShippingLabelValues } from '../shipping'
 import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontFamilyOptions, appearanceFontScale, appearanceFontSizeOptions, defaultAppearanceColorTheme, defaultAppearanceSettings, grafitAppearanceColorTheme, matchingColorThemeId, defaultLightPalette, useAppearanceSettings, type AppearanceColorThemeProfile, type AppearancePalette, type AppearanceSettings } from './appearance-settings'
@@ -15,6 +15,7 @@ import { PanelSelect } from '../../shared/PanelSelect'
 import { marketplaceResetCount, marketplaceResetTotal, progressText, runMarketplaceResets, type BulkResetProgress } from './marketplace-bulk-reset'
 import { connectionFullResetSupported, type ConnectionFullResetView } from '../marketplace/connection-data-reset'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
+import { UiIcon } from '../../shared/components/UiIcon'
 import { PanelFactoryResetSection } from './PanelFactoryResetSection'
 import { panelResetConfirmed, togglePanelResetCategories, type PanelFactoryResetView } from './panel-factory-reset'
 import type { Connection } from '../marketplace/shared'
@@ -246,6 +247,7 @@ function SettingsDataReset({ groups, counts, countsFailed, picked, onToggle, mar
         {goingCount > 0 && <div className="ss-dr-chips">{goingMarketplaces.map(entry => <span key={entry.id} className="ss-dr-chip">{entry.displayName} (Tam)<b>{entry.count !== undefined ? resetNumber(entry.count) : '…'}</b></span>)}{going.map(option => <span key={option.scope} className="ss-dr-chip">{option.label}{counts?.[option.scope] !== undefined ? <b>{resetNumber(counts[option.scope])}</b> : null}</span>)}</div>}
       </div>
       <div className="ss-bar-actions">
+        <label className="ss-dr-ask" htmlFor="settings-reset-confirm">Onaylamak için <b>{resetConfirmWord}</b> yazın{confirmed && <UiIcon name="check" size={14} />}</label>
         <input id="settings-reset-confirm" className={`ss-in ss-dr-in${confirmed ? ' is-match' : ''}`} value={confirmation} onChange={event => onConfirmation(event.target.value)} disabled={busy} autoComplete="off" placeholder={`${resetConfirmWord} yazın`} aria-label={`Onaylamak için ${resetConfirmWord} yazın`} title={`Onaylamak için ${resetConfirmWord} yazın`} />
         <button type="button" className="ss-btn is-danger ss-dr-go" disabled={!goingCount || !confirmed || busy} onClick={onConfirm}><SettingsIcon name="trash" />{busy ? 'Sıfırlanıyor…' : goingMarketplaces.length ? `${goingCount} Kalemi Sıfırla` : going.length ? `${going.length} Veri Türünü Sıfırla` : 'Seçilen Verileri Sıfırla'}</button>
       </div>
