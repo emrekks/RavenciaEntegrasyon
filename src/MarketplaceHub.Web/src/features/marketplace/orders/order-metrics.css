@@ -103,6 +103,7 @@
    illustration, clear of the text) opens a popover under it, right edges aligned; the card whose popover is open
    stays above its neighbours. */
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder { position: absolute; z-index: 4; top: 8px; right: 8px; display: flex; width: 28px; height: 28px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article:has(> .rr-reminder) { position: relative; z-index: 1; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder-gear { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; min-height: 0; padding: 0; color: var(--rr-muted); background: transparent; border: 0; border-radius: 7px; box-shadow: none; cursor: pointer; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder-gear:is(:hover, [aria-expanded="true"]) { color: var(--rr-ink); background: var(--rr-soft); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder-gear:focus-visible { outline: 2px solid var(--rr-primary); outline-offset: 1px; }
