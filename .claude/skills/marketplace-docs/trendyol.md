@@ -59,6 +59,12 @@ Code: `Adapters/Trendyol/` — `TrendyolHttpClient.cs` (+ `.Webhooks.cs`), `Tren
   before it). Before 6 Nov 2026 it was the job's end (a scan took 11 min on 31 Oct, its own changes were lost) and a
   scoped read (newOnly, existingOnly, mappingOnly, optionsOnly) moved it too, so products it skipped were missed by
   the next incremental read (`ProductImportScanPolicy.CompletedWatermark`; shared by every marketplace).
+- Product pull speed (live 12 Nov 2026, job 01a1cff0, 1,379 read, 17 min): the import groups staged rows by model and
+  rebuilds the category context per model (its cache is cleared with the change tracker), mapping every value of every
+  required or observed category attribute: ~5 s and ~4,000 queries per model whatever its product count. An attribute's
+  values, value mappings and value snapshot are now read once per attribute (`StoredAttributeValues`). A reference
+  snapshot older than 24 h is re-read from Trendyol on first use (510 ATTRIBUTE_VALUES reads in that run, under the
+  50/10 s cap). A worker restart hands the job back to the queue and it resumes at the next unfinished model.
 - Product pull options (owner, 12 Nov 2026): "Mevcut Ürün Bilgilerini Güncelle" on (single lookup, Mevcut Ürünleri
   Güncelle, and a full scan whose job names `updateExistingProducts: true`) takes Trendyol's content over panel edits
   and adds the sizes Trendyol has; "Ekli Olmayan Ürünler" (`newOnly`) adds new products and new sizes of existing
