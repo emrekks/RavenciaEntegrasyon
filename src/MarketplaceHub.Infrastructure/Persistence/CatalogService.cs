@@ -1,10 +1,12 @@
 using System.Data;
+using System.Data.Common;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.Shopify;
+using MarketplaceHub.Infrastructure.Files;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
@@ -872,6 +874,11 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             job.Version++;
         }
         if (pendingJobs.Count > 0) await db.SaveChangesAsync(cancellationToken);
+        // The pictures and size charts of the deleted cards: handed to the purge sweep once the delete has committed.
+        var fileAssetIds = await db.ProductMedia.AsNoTracking().Where(x => x.TenantId == tenantId && targetIds.Contains(x.ProductId)).Select(x => x.FileAssetId)
+            .Union(db.ProductSizeCharts.AsNoTracking().Where(x => x.TenantId == tenantId && targetIds.Contains(x.ProductId) && x.FileAssetId != null).Select(x => x.FileAssetId!.Value))
+            .Union(db.ProductSizeCharts.AsNoTracking().Where(x => x.TenantId == tenantId && targetIds.Contains(x.ProductId) && x.LastGeneratedAssetId != null).Select(x => x.LastGeneratedAssetId!.Value))
+            .ToListAsync(cancellationToken);
 
         await db.Database.ExecuteSqlInterpolatedAsync($$"""
             CREATE TEMP TABLE IF NOT EXISTS purge_product_ids ("Id" uuid PRIMARY KEY) ON COMMIT DROP;
@@ -970,6 +977,10 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             WHERE x."TenantId"={{tenantId}} AND x."Id"=p."Id";
             """, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        // Outside the serializable delete so the check of other owners cannot fail it; a file a failure here leaves
+        // ACTIVE is found by the hourly orphan sweep (FileAssetReferences.MarkOrphansAsync).
+        try { await FileAssetReferences.MarkForPurgeAsync(db, tenantId, fileAssetIds, timeProvider.GetUtcNow(), cancellationToken); }
+        catch (Exception exception) when (exception is DbException or InvalidOperationException) { }
         return ServiceResult<ProductDeleteResult>.Ok(new(products.Count, pendingJobs.Count));
     }
 

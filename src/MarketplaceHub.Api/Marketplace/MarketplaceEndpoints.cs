@@ -65,7 +65,7 @@ public static class MarketplaceEndpoints
             if (!TryIfMatch(http, out var version, out var failure)) return failure!;
             return Accepted(await service.EnqueueInitialDataSyncAsync(tenant.TenantId, id, http.Request.Headers["Idempotency-Key"].ToString(), version, http.TraceIdentifier, http.RequestAborted));
         });
-        api.MapPost("/connections/{id:guid}/deep-delete", async (Guid id, DeleteConnectionCommand command, HttpContext http, IOperationalDataMaintenanceService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? Result(await service.DeleteConnectionAsync(tenant.TenantId, tenant.UserId, id, version, command, http.TraceIdentifier, http.RequestAborted), Results.Ok) : failure! : MissingContext(http));
+        api.MapPost("/connections/{id:guid}/deep-delete", DeepDeleteConnectionAsync);
         api.MapGet("/connections/{id:guid}/full-reset", async (Guid id, HttpContext http, IOperationalDataMaintenanceService service) => Tenant(http) is { } tenant ? Result(await service.FullResetAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapPost("/connections/{id:guid}/full-reset", async (Guid id, FullResetConnectionCommand command, HttpContext http, IOperationalDataMaintenanceService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? Result(await service.RequestFullResetAsync(tenant.TenantId, tenant.UserId, id, version, command, http.TraceIdentifier, http.RequestAborted), Results.Ok) : failure! : MissingContext(http));
         api.MapGet("/settings/data-reset", async (HttpContext http, IOperationalDataMaintenanceService service) => Tenant(http) is { } tenant ? Result(await service.ResetCountsAsync(tenant.TenantId, null, http.RequestAborted), Results.Ok) : Unauthorized(http));
@@ -296,6 +296,28 @@ public static class MarketplaceEndpoints
         : bytes.Length >= 3 && bytes[..3].SequenceEqual(new byte[] { 0xFF, 0xD8, 0xFF }) ? "image/jpeg"
         : bytes.Length >= 8 && bytes[..8].SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }) ? "image/png"
         : null;
+
+    // The connection's data goes in the delete; its settings, keys and the row itself right after (ConnectionLeftovers),
+    // and the hourly sweep finishes what a failure here leaves.
+    private static async Task<IResult> DeepDeleteConnectionAsync(Guid id, DeleteConnectionCommand command, HttpContext http, IOperationalDataMaintenanceService service, AppDbContext db, TimeProvider timeProvider, ILoggerFactory loggers)
+    {
+        if (Tenant(http) is not { } tenant || RequireIdempotency(http) is not null) return MissingContext(http);
+        if (!TryIfMatch(http, out var version, out var failure)) return failure!;
+        var result = await service.DeleteConnectionAsync(tenant.TenantId, tenant.UserId, id, version, command, http.TraceIdentifier, http.RequestAborted);
+        if (result.Succeeded)
+        {
+            try
+            {
+                db.ChangeTracker.Clear();
+                await ConnectionLeftovers.PurgeAsync(db, tenant.TenantId, id, timeProvider.GetUtcNow(), http.RequestAborted);
+            }
+            catch (Exception exception) when (exception is DbUpdateException or Npgsql.NpgsqlException or InvalidOperationException)
+            {
+                loggers.CreateLogger("MarketplaceHub.Api.ConnectionDelete").LogWarning(exception, "Silinen bağlantının ayarları hemen kaldırılamadı; saatlik temizlik kaldıracak. ConnectionId: {ConnectionId}", id);
+            }
+        }
+        return Result(result, Results.Ok);
+    }
 
     private static async Task<IResult> InstantProcessOrderAsync(Guid id, TenantContext tenant, HttpContext http, AppDbContext db, IMarketplaceSalesService service, IMarketplaceJobProcessor marketplaceProcessor, CancellationToken cancellationToken)
     {
