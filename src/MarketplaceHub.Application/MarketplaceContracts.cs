@@ -1052,7 +1052,7 @@ public interface IWebhookVerifier
 
 // LastErrorCode is the last refused test or sync read (cleared by the next successful test); LastErrorAt is when the
 // last job attempt failed with that code (null when no such attempt is found). DisabledAt is when it was last disabled.
-public sealed record ConnectionView(Guid Id, Guid PublicId, string PlatformCode, string Environment, string DisplayName, string ExternalStoreId, string Status, string ApiVersion, DateTimeOffset? LastTestedAt, DateTimeOffset? LastSuccessAt, string? LastErrorCode, bool HasCredential, bool ExternalWritesEnabled, long Version, bool InvoiceCreationEnabled = true, string? N11ShipmentTemplate = null, int? N11PreparingDay = null, DateTimeOffset? DisabledAt = null, DateTimeOffset? LastErrorAt = null);
+public sealed record ConnectionView(Guid Id, Guid PublicId, string PlatformCode, string Environment, string DisplayName, string ExternalStoreId, string Status, string ApiVersion, DateTimeOffset? LastTestedAt, DateTimeOffset? LastSuccessAt, string? LastErrorCode, bool HasCredential, bool ExternalWritesEnabled, long Version, bool InvoiceCreationEnabled = true, string? N11ShipmentTemplate = null, int? N11PreparingDay = null, DateTimeOffset? DisabledAt = null, DateTimeOffset? LastErrorAt = null, string? WebhookNotice = null);
 public sealed record CapabilityView(string Code, string SupportLevel, string ApiVersion, string Environment, string StoreScope, string? SourceUrl, DateTimeOffset? VerifiedAt, string? ConstraintsJson, string? EvidenceNote, long Version, bool VerifiedForConnection = false);
 public sealed record CreateConnectionCommand(string DisplayName, string Environment, string ExternalStoreId, string ApiVersion, string? UserAgentIdentity, string? PlatformCode = null, string? ShopifyAccessToken = null, string? HepsiburadaServiceKey = null, string? HepsiburadaIntegratorUsername = null, string? N11AppKey = null, string? N11AppSecret = null, string? PazaramaClientId = null, string? PazaramaClientSecret = null, string? PttAvmUsername = null, string? PttAvmPassword = null);
 // N11ShipmentTemplate and N11PreparingDay are the n11 product create settings; null keeps the
@@ -1187,6 +1187,13 @@ public interface IInstantNotificationService
     Task<ServiceResult<InstantNotificationView>> AdoptFromInactiveAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken);
     // Reactivates registered webhooks the marketplace passivated (for example after the server was off).
     Task<int> ReactivatePassiveAsync(CancellationToken cancellationToken);
+    // Pasife Al: closes the connection's webhook at the marketplace (Trendyol, Shopify) and keeps it to open again. Returns
+    // a note for the user when it could not be closed (or is Hepsiburada's, which is registered by hand), else null.
+    Task<string?> PauseForInactiveConnectionAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken);
+    // Activation: opens the webhook Pasife Al closed again. Returns a warning when it could not, else null.
+    Task<string?> ResumeAfterActivationAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken);
+    // The hourly retry of a failed close or opening; returns how many went through.
+    Task<int> RetryConnectionWebhooksAsync(CancellationToken cancellationToken);
 }
 public sealed record CreatedWebhookSubscription(WebhookSubscriptionView Subscription, Guid ConnectionPublicId, string RouteToken);
 public sealed record DeleteConnectionCommand(string Confirmation);

@@ -279,3 +279,25 @@ export function connectionStatusLabel(status: string | null | undefined): string
   const normalized = status?.trim().toUpperCase()
   return normalized === 'DRAFT' ? 'Test Edilmedi' : normalized === 'DISABLED' ? 'Pasif' : null
 }
+
+// Bağlantıyı Pasife Al closes the order webhook at Trendyol and Shopify, and activating the connection opens it again;
+// Hepsiburada's webhook is set up by hand at Hepsiburada and stays as it is.
+export function disconnectDialogDescription(platformCode: string): string {
+  const platform = platformCode.trim().toUpperCase()
+  if (platform === 'TRENDYOL' || platform === 'SHOPIFY') {
+    const name = platform === 'SHOPIFY' ? 'Shopify' : 'Trendyol'
+    return `Bağlantı pasife alınır ve veri akışı durur. Açık webhook ${name}’da da kapatılır; bağlantı yeniden aktifleşince panel webhook’u kendiliğinden açar ve aradaki siparişleri okur.`
+  }
+  if (platform === 'HEPSIBURADA')
+    return 'Bağlantı pasife alınır ve veri akışı durur. Hepsiburada webhook’u elle tanımlandığı için kapatılmaz; gelen bildirimler bağlantı yeniden aktifleşene dek işlenmez.'
+  return 'Bağlantı pasife alınır ve veri akışı durur.'
+}
+
+// The message after Pasife Al or activation: a webhook that could not follow (or Hepsiburada's note) is shown with it.
+export function connectionActiveFeedback(active: boolean, webhookNotice: string | null | undefined) {
+  const title = active ? 'Bağlantı Etkinleştirildi' : 'Bağlantı Pasife Alındı'
+  const message = active ? 'Bağlantı etkinleştirildi.' : 'Bağlantı pasife alındı.'
+  return webhookNotice?.trim()
+    ? { kind: 'info' as const, title, message: `${message} ${webhookNotice.trim()}` }
+    : { kind: 'success' as const, title, message }
+}
