@@ -1,11 +1,11 @@
 /* Phones: one spacing scale for every page and window, so blocks line up and the screen keeps its room.
-     --m-gutter  screen edge to blocks, the top bar and windows   16px
+     --m-gutter  screen edge to blocks, the top bar and windows   12px
      --m-gap     between blocks, and between the cards of a list   10px
      --m-pad     inside a framed block, or each of its sections    12px
    This is the last word on phone spacing: it is linked for phones only (see main.tsx), and every rule starts at :root
    so it outranks the page sheets that load after it. */
 @media (max-width: 760px) {
-  :root { --m-gutter: 16px; --m-gap: 10px; --m-pad: 12px; --m-safe-top: env(safe-area-inset-top, 0px); --m-safe-bottom: env(safe-area-inset-bottom, 0px); }
+  :root { --m-gutter: 12px; --m-gap: 10px; --m-pad: 12px; --m-safe-top: env(safe-area-inset-top, 0px); --m-safe-bottom: env(safe-area-inset-bottom, 0px); }
 
   /* Page frame */
   :root .app-shell.stitch-shell main section.content { padding: 12px var(--m-gutter) calc(16px + var(--m-safe-bottom)) !important; row-gap: var(--m-gap) !important; }
@@ -52,7 +52,9 @@
   /* Framed blocks whose content sits right inside */
   :root .app-shell.stitch-shell main :is(.invoice-reference-filters, .jobs-reference-toolbar, .qi-tools, .mapping-reference-card, .panel:not(.rr-panel):not(.job-detail-drawer):not(.cm-card)) { padding: var(--m-pad) !important; }
   :root .app-shell.stitch-shell main .product-add-page .attribute-variant-action { padding: var(--m-pad) !important; }
-  :root .app-shell.stitch-shell main .product-add-page .product-submit-sticky { padding: 10px var(--m-pad) !important; }
+  /* The product editor's save bar runs edge to edge (it cancels the page gutter); its content keeps the gutter */
+  :root .app-shell.stitch-shell main .product-add-page .product-submit-sticky { padding: 10px var(--m-gutter) !important; }
+  :root .app-shell.stitch-shell > main > .content > form.product-add-workspace > .rv-action-bar.product-submit-sticky { margin-inline: calc(-1 * var(--m-gutter)) !important; border-inline: 0 !important; border-radius: 0 !important; }
   :root .app-shell.stitch-shell main .rv-questions-sync-item { min-width: 0; padding: 10px 8px !important; }
 
   /* Framed blocks made of sections: no padding on the frame, the block padding on every section */
