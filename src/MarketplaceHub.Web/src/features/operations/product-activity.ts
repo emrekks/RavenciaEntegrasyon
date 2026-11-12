@@ -130,7 +130,7 @@ export function activityChange(entry: ProductActivityEntry): ActivityChange {
   const amount = entry.quantityDelta === null ? '' : quantityFormat.format(Math.abs(entry.quantityDelta))
   switch (entry.type) {
     case 'ORDER_STOCK_SHORTFALL':
-      return { text: `${amount} Adet Eksik`, tone: 'info', title: 'Sipariş geldiğinde stok yetmedi; stok değişmedi, eksik adet stok gelince düşülür.' }
+      return { text: `${amount} Adet Eksik`, tone: 'info', title: 'Sipariş geldiğinde stok yetmedi; stok sıfırın altına inmedi. Eksik adet sonradan stoktan düşülmez, yalnız bilgi olarak kalır.' }
     case 'RETURN_QUARANTINE':
       return { text: `${amount} Adet Karantinada`, tone: 'info', title: 'İade ürün stoğa eklenmedi.' }
     case 'RETURN_DAMAGED':

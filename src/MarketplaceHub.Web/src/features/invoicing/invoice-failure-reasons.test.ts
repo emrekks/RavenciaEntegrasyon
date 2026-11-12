@@ -5,7 +5,7 @@ describe('invoice failure reasons', () => {
   it('explains the fiscal gates that stop an invoice before it reaches the provider', () => {
     expect(invoiceFailureReason('EINVOICE_RECIPIENT_REQUIRES_EFATURA')).toContain('e-Fatura mükellefi')
     expect(invoiceFailureReason('INVOICE_EXPORT_FLOW_REQUIRED')).toContain('Mikro ihracat')
-    expect(invoiceFailureReason('INVOICE_ADJUSTMENT_FLOW_UNAVAILABLE')).toContain('İade/düzeltme')
+    expect(invoiceFailureReason('INVOICE_ADJUSTMENT_FLOW_UNAVAILABLE')).toBe('Panel iade ya da düzeltme faturası kesmez.')
     expect(invoiceFailureReason('EFATURAM_RECIPIENT_TAX_ID_INVALID')).toContain('kontrol hanesi')
     expect(invoiceFailureGuidance('EINVOICE_RECIPIENT_REQUIRES_EFATURA')).toContain('manuel fatura')
     expect(invoiceFailureReason('EINVOICE_RECIPIENT_REVIEW_REQUIRED')).toContain('mükellef sorgusu yapılamadı')

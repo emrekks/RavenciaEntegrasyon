@@ -1,6 +1,9 @@
 # İade Faturası (İADE) Araştırması — Trendyol E-Faturam
 
-Tarih: 20 Ekim 2026 · Kapsam: tarama raporu F5 (ikinci yarı) · Durum: **uygulanmadı, sahip kararı ve sağlayıcı teyidi bekliyor**
+Tarih: 20 Ekim 2026 · Kapsam: tarama raporu F5 (ikinci yarı) · Durum: **kapandı — sahip kararı (6 Kasım 2026): panel İADE
+faturası hiç kesmez.** `OriginalInvoiceId` ile gelen istek 422 almaya devam eder; iade/gider pusulası özelliği yapılmayacak.
+Hiç faturası kesilmemiş ve bütün ürünleri iade edilmiş siparişe fatura kesilmez; kısmi iadede fatura yalnız kalan ürünleri
+kapsar. Aşağıdaki araştırma kayıt için duruyor.
 
 Panel bugün `POST /invoices` isteğinde `OriginalInvoiceId` gelirse **422** döner (19–20 Ekim sahip kararı). Bu belge,
 gerçek bir İADE faturası akışının E-Faturam üzerinden kurulup kurulamayacağını araştırır. Sonuç: istek alanlarının adları

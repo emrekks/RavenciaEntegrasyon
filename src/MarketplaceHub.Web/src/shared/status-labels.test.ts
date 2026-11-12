@@ -72,3 +72,16 @@ describe('invoice status labels', () => {
     expect(statusLabel('ÜRÜN_BİLGİLERİ_EKSİK_YENİ')).toBe('Ürün Bilgileri Eksik Yeni')
   })
 })
+
+describe('one name per invoice and return state', () => {
+  it('names a package invoice state as the invoice screens do, wherever statusLabel shows it', () => {
+    for (const code of ['FATURA_ISLENIYOR', 'FATURA_DOGRULANAMADI', 'FATURA_KESILDI', 'FATURA_REDDEDILDI', 'FATURA_IPTAL', 'FATURA_PLATFORMA_AKTARILMADI'])
+      expect(statusLabel(code)).toBe(invoiceStatusLabel(code))
+    expect(statusLabel('FATURA_ISLENIYOR')).toBe('Fatura İletiliyor')
+    expect(statusLabel('FATURA_DOGRULANAMADI')).toBe('Fatura Bekliyor')
+  })
+
+  it('labels a return waiting for the customer to ship it', () => {
+    expect(statusLabel('AWAITING_SHIPMENT')).toBe('Kargo Bekliyor')
+  })
+})

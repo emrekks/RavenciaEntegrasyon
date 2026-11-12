@@ -38,3 +38,11 @@ export function orderRingDetail(delivery: DeliveryInfo): { text: string; cls?: s
 export function deliveryDueLine(delivery: DeliveryInfo) {
   return delivery.kind === 'remaining' || delivery.kind === 'late' || delivery.overdue ? orderRingDetail(delivery) : null
 }
+
+// The red due line names what it warns of. "Geciken" (the tab, the dashboard card) is an order past its ship-by time;
+// a red line with time still left is "Süre Doluyor" (less than 24 hours left), not a late order.
+export function dueLineTitle(delivery: DeliveryInfo) {
+  if (delivery.kind === 'late') return 'Geciken: kargoya verme süresi geçti.'
+  if (delivery.kind === 'remaining' && delivery.overdue) return 'Süre Doluyor: kargoya verme süresine 24 saatten az kaldı.'
+  return undefined
+}

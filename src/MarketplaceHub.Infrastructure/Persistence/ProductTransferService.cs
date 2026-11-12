@@ -310,6 +310,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
         var touchedProducts = new HashSet<Guid>();
         var contentProducts = new HashSet<Guid>();
         var projections = new List<StockProjectionChange>();
+        var stockSetItemIds = new List<Guid>();
         var repricedOffers = new List<ChannelOffer>();
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var reservedByItem = await ReservedAsync(tenantId, items.Select(item => item.Id).ToArray(), cancellationToken);
@@ -388,6 +389,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
                     CorrelationId = correlationId
                 });
                 projections.Add(new StockProjectionChange(item.VariantId, item.ProjectionVersion, $"manual:{sourceEventId}"));
+                stockSetItemIds.Add(item.Id);
                 stocksUpdated++;
                 Written(variant);
             }
@@ -441,6 +443,8 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
             products.Add(id);
         }
         await CatalogLocalEdits.MarkLinksDirtyAsync(db, tenantId, contentProducts, CatalogLocalEdits.ProductField, cancellationToken);
+        // A stock count set from the file is the owner's count, as in InventoryService: it closes the shortfall notices.
+        await StockShortfallNotices.ResolveForInventoryItemsAsync(db, tenantId, stockSetItemIds, now, cancellationToken);
         await StockProjectionOutbox.EnqueueAsync(db, tenantId, projections, now, cancellationToken);
         // E: file prices are sent like panel edits: only the offers whose price changed, to their own connection.
         await StockProjectionOutbox.EnqueuePriceChangesAsync(db, tenantId, repricedOffers, now, cancellationToken);

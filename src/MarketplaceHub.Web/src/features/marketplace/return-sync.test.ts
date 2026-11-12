@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { activeReturnSyncConnections, enqueueReturnSyncs } from './return-sync'
 
 describe('read-only return synchronization', () => {
-  it('includes active Trendyol, Hepsiburada and N11 connections only', () => {
+  it('includes every active connection that reads returns, Shopify too (read since 6 Nov 2026)', () => {
     const connections = [
       { id: 'trendyol', platformCode: 'TRENDYOL', status: 'ACTIVE' },
       { id: 'hepsiburada', platformCode: 'HEPSIBURADA', status: 'VERIFIED' },
@@ -11,7 +11,7 @@ describe('read-only return synchronization', () => {
       { id: 'shopify', platformCode: 'SHOPIFY', status: 'ACTIVE' }
     ]
 
-    expect(activeReturnSyncConnections(connections).map(connection => connection.id)).toEqual(['trendyol', 'hepsiburada', 'n11'])
+    expect(activeReturnSyncConnections(connections).map(connection => connection.id)).toEqual(['trendyol', 'hepsiburada', 'n11', 'shopify'])
   })
 
   it('queues every active connection and reports partial failures', async () => {

@@ -26,3 +26,12 @@ export function bulkApproveFailureText(failures: ReadonlyArray<{ orderNumber: st
   const reason = reasons.size === 1 ? ` Neden: ${[...reasons][0]!.replace(/[.\s]+$/u, '')}.` : ''
   return `Onaylanamayan ${failures.length === 1 ? 'sipariş' : 'siparişler'}: ${orders}.${reason}`
 }
+
+// One bulk decision sends one request per return, one after another, each a write on the marketplace. The selection
+// follows the page size (up to 200); a decision is capped so a single click never sends hundreds of writes.
+export const bulkDecisionLimit = 50
+
+/** Why the bulk decision buttons are off for this many selected returns; null while the count is within the cap. */
+export function bulkDecisionLimitText(selected: number): string | null {
+  return selected > bulkDecisionLimit ? `Toplu kararda en çok ${bulkDecisionLimit} iade seçilebilir; ${selected - bulkDecisionLimit} iadenin seçimini kaldırın.` : null
+}
