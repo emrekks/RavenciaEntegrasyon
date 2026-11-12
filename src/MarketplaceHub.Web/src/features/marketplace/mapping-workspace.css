@@ -722,12 +722,12 @@
   .app-shell.stitch-shell main section.mapping-page .panel-category-picker { grid-template-rows: auto minmax(0, 1fr); }
 }
 
-/* New category mapping, every width: the target label is one 18px line and the info mark stays inline at 16px
+/* Category and brand mapping, every width: the target label is one 18px line and the info mark stays inline at 16px
    (it was a 28x36 button and made the right label 34px tall). */
 html body .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-target { align-content: start; grid-template-rows: 18px 36px; }
 html body .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-target > label { display: flex; align-items: center; height: 18px; margin: 0; line-height: 18px; }
-html body .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-label-line { height: 18px; line-height: 18px; }
-html body .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-label-line .title-hint { display: inline-grid; align-self: center; width: 16px; height: 16px; min-height: 0; padding: 0; margin: 0 0 0 4px; }
+html body .app-shell.stitch-shell main section.mapping-page .mapping-label-line { height: 18px; line-height: 18px; }
+html body .app-shell.stitch-shell main section.mapping-page .mapping-label-line .title-hint { display: inline-grid; align-self: center; width: 16px; height: 16px; min-height: 0; padding: 0; margin: 0 0 0 4px; }
 
 /* Desktop and tablet: both labels share one 18px line, both 36px pickers start at the same y, and the link rail is
    centred on the pickers (label 18px + gap 6px = 24px down). */
