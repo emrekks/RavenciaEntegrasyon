@@ -74,7 +74,10 @@ Bölüm 2'deki dört soru yanıtlanır. Pazaryeri panellerinden stok girişinin 
 2. Kaynak platformda olmayan ürünlerin stoğu panelden elle girilir (Toplu Stok Düzenle).
 3. Çok kanallı tekliflerde güvenlik stoğu ayarlanır.
 
-**Not:** Stoğu karşılanamamış eski sipariş satırları "ayrılmış" stokta bekliyor olabilir. Bu siparişler kargolandıkça ayrılan adet kendiliğinden düşer; kargolanmamış olanlar varsa satılabilir stoğu geçici olarak eksik gösterir. Bölüm 9'daki `ayrilmis_var` sütunu bunu gösterir.
+**Not:** 30 Ekim 2026'dan beri rezervasyon yok (sahip kararı): sipariş okunduğu anda adedini fiziksel stoktan düşer, stok sıfırın
+altına inmez (bağlantı eksi stoğa izin vermiyorsa). Stoğun veremediği adet "eksik adet" olarak yalnız raporlanır, sonradan
+stoktan düşülmez; `STOCK_ORDER_CONSUMPTION_BLOCKED` bildirimi stok elle düzeltilince ya da sipariş iptal edilince kapanır.
+Bölüm 9'daki `ayrilmis_var` sütunu eski kayıtlar için durur; yeni siparişte 0 kalmalıdır.
 
 **Çıkış koşulu:** Bölüm 9'da `stok_farkli` 0'a yakın; yeni `STOCK_ORDER_CONSUMPTION_BLOCKED` oluşmuyor (1–2 gün izleme).
 

@@ -544,7 +544,8 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
     {
         "NEW" => [ShipmentPackageStatus.New],
         "PROCESSING" => [ShipmentPackageStatus.Processing, ShipmentPackageStatus.ReadyToShip],
-        "SHIPPED" => [ShipmentPackageStatus.Shipped, ShipmentPackageStatus.Undelivered],
+        // An undelivered package is listed under Teslim Edilemedi only, not also under Kargoda.
+        "SHIPPED" => [ShipmentPackageStatus.Shipped],
         "DELIVERED" => [ShipmentPackageStatus.Delivered],
         "ON_HOLD" => [ShipmentPackageStatus.OnHold],
         "CANCELLED" => [ShipmentPackageStatus.Cancelled],
