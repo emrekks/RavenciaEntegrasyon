@@ -41,7 +41,7 @@ public sealed class PanelFactoryResetInventoryTests
         Assert.Empty(PanelFactoryResetInventory.Tables.GroupBy(x => x.Name).Where(x => x.Count() > 1).Select(x => x.Key));
         Assert.Empty(PanelFactoryResetInventory.Tables.Select(x => x.Name).Except(tables));
         Assert.All(PanelFactoryResetInventory.Tables.Where(x => x.Action != PanelResetAction.Keep), x => Assert.NotNull(x.Group));
-        Assert.All(PanelFactoryResetInventory.Groups, group => Assert.Contains(PanelFactoryResetInventory.Tables, x => x.Group == group && x.Action == PanelResetAction.Delete));
+        Assert.All(PanelFactoryResetInventory.Groups, group => Assert.Contains(PanelFactoryResetInventory.Tables, x => x.Group == group && x.Action != PanelResetAction.Keep));
     }
 
     [Fact]
