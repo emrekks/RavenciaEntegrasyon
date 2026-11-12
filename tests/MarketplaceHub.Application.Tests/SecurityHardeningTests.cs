@@ -363,6 +363,9 @@ public sealed class IdempotencyKeyTests
     [Theory]
     [InlineData("POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/instant-notifications", true)]
     [InlineData("POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/test-jobs", false)]
+    [InlineData("POST", "/api/v1/settings/users", true)]
+    [InlineData("POST", "/api/v1/settings/users/11111111-1111-1111-1111-111111111111/password-reset", true)]
+    [InlineData("POST", "/api/v1/settings/users/11111111-1111-1111-1111-111111111111/mfa-reset", false)]
     public void SecretAnswersAreNotKeptForReplay(string method, string path, bool secret)
     {
         Assert.Equal(secret, SecretResponseRoutes.Matches(method, path));

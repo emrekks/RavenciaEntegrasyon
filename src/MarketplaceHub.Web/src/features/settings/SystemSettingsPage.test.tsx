@@ -159,7 +159,7 @@ describe('SystemSettingsPage', () => {
     await renderPage()
     expect(paneTitle()).toBe('Authenticator')
     const groups = Array.from(container.querySelectorAll('.ss-gtabs > button')).map(item => item.textContent)
-    expect(groups).toEqual(['Güvenlik ve Oturumlar', 'Veri', 'Yapay Zekâ', 'Kargo Ayarları', 'Görünüm'])
+    expect(groups).toEqual(['Güvenlik ve Oturumlar', 'Kullanıcılar', 'Veri', 'Yapay Zekâ', 'Kargo Ayarları', 'Görünüm'])
     expect(container.querySelector('.ss-gtabs > button.is-on')?.textContent).toBe('Güvenlik ve Oturumlar')
     expect(Array.from(container.querySelectorAll('.ss-seg > button')).map(item => item.textContent)).toEqual(['Authenticator', 'Oturumlar3', 'Alarm BildirimleriAlarmlar'])
     expect(button('Authenticator’ı Etkinleştir')).toBeTruthy()
