@@ -651,6 +651,16 @@ function IntegrationDetailWorkspace({ id, inline = false, onClose, onSwitch }: {
   const [confirm, confirmDialog] = useConfirmDialog()
    const [displayName, setDisplayName] = useState(() => connection.data?.displayName ?? '')
   const [settingsSection, setSettingsSection] = useState('genel')
+  const sectionBody = useRef<HTMLDivElement>(null)
+  // The picked section's tab, cut at the edge of a phone's strip, slides into view (only the strip scrolls).
+  useEffect(() => {
+    const strip = sectionBody.current?.querySelector<HTMLElement>('.cs-tabs')
+    const tab = strip?.querySelector<HTMLElement>('[aria-selected="true"]')
+    if (!strip || !tab || strip.scrollWidth <= strip.clientWidth) return
+    const box = strip.getBoundingClientRect()
+    const rect = tab.getBoundingClientRect()
+    if (rect.left < box.left || rect.right > box.right) strip.scrollLeft += rect.left - box.left - (box.width - rect.width) / 2
+  }, [settingsSection])
   const [flowFilter, setFlowFilter] = useState<'all' | 'issue' | 'wait' | 'off'>('all')
   const savedExternalWrites = connection.data?.externalWritesEnabled
   useLayoutEffect(() => { if (savedExternalWrites !== undefined) setExternalWritesEnabled(savedExternalWrites) }, [savedExternalWrites])
@@ -856,7 +866,7 @@ function IntegrationDetailWorkspace({ id, inline = false, onClose, onSwitch }: {
     <header className="cs-head">{!inline && <Link to="/integrations" className="cs-back"><UiIcon name="arrowLeft" /> Platformlar</Link>}<img className={`cs-logo ${platformLogoClass(item.platformCode)}`} src={platformLogoSource(item.platformCode) ?? '/platforms/trendyol.webp'} alt="" aria-hidden="true" /><div className="cs-head-copy"><div className="cs-title-line">{onSwitch && switchOptions.length > 1
       ? <PanelSelect className="cs-switcher" ariaLabel="Diğer bağlantıya geç" width={240} value={item.id} onChange={onSwitch} options={switchOptions.map(option => ({ value: option.id, label: `${connectionTitle(option.platformCode, option.displayName)}${option.environment === 'STAGE' ? ' · Test' : ''}` }))} />
       : <h2>{connectionTitle(item.platformCode, item.displayName)}</h2>}<span className="cs-tags-row"><span className={`cs-tag${readConnectionReady ? ' is-on' : ''}`}><MappingStateGlyph state={readConnectionReady ? 'done' : 'none'} />{titleTr(statusLabel(item.status))}</span><span className="cs-tag">{stageManual ? 'Manuel Akış' : 'Canlı Akış'}</span></span></div><p>{metaLine}</p></div><span className="cs-grow" />{onClose && <button type="button" className="cs-close" onClick={onClose} aria-label="Bağlantı ayarlarını kapat"><UiIcon name="close" /></button>}</header>
-    <div className="cs-body"><nav className="cs-nav" aria-label="Ayar bölümleri">{settingsSections.map(section => <button type="button" key={section.key} className={section.key === activeSection.key ? 'is-on' : undefined} aria-current={section.key === activeSection.key ? 'true' : undefined} onClick={event => { setSettingsSection(section.key); event.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' }) }}><SettingsIcon name={section.icon} /><span>{section.label}</span>{section.badge ? <span className="cs-count is-warn">{section.badge}</span> : <span />}</button>)}</nav><section className="cs-pane" key={activeSection.key}>{activeSection.node}</section></div>
+    <div className="cs-body" ref={sectionBody}><Tabs className="rv-view-tabs cs-tabs" ariaLabel="Ayar bölümleri" value={activeSection.key} onChange={setSettingsSection} items={settingsSections.map(section => ({ value: section.key, label: <><SettingsIcon name={section.icon} /><span className="rv-tab-text" data-text={section.label}>{section.label}</span>{section.badge ? <span className="rv-tab-count is-warn">{section.badge}</span> : null}</> }))} /><section className="cs-pane" key={activeSection.key}>{activeSection.node}</section></div>
     {syncPolicyOpen && <SyncPolicyEditorModal policy={syncPolicyOpen} platformCode={item.platformCode} label={syncPolicyLabel(syncPolicyOpen.resourceType)} intervals={syncPolicyIntervals} overlaps={syncPolicyOverlaps} healthHelp={syncPolicyHealthHelp(syncPolicyOpen)} purpose={syncPolicyDescription(syncPolicyOpen.resourceType)} externalWriteBlocked={syncPolicyOpen.requiresExternalWrites === true && !item.externalWritesEnabled} saving={saveSyncPolicy.isPending} running={runSyncPolicy.isPending} onClose={() => setSyncPolicyOpen(null)} onSave={values => saveSyncPolicy.mutate({ policy: syncPolicyOpen, ...values, closeModal: true })} onRunNow={() => runSyncPolicy.mutate(syncPolicyOpen)} />}
     <IntegrationFeedbackToast feedback={feedback} connectionId={id} onClose={() => setFeedback(null)} />
     {confirmDialog}

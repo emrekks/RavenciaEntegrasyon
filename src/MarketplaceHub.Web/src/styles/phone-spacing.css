@@ -60,7 +60,8 @@
   :root .app-shell.stitch-shell main section.content.rr-dashboard > .rr-panel > .rr-panel-h { padding: var(--m-pad) !important; }
   :root .app-shell.stitch-shell main .rr-mx-foot { padding: var(--m-pad) !important; }
   :root .app-shell.stitch-shell main .rr-pf-body { gap: var(--m-pad) !important; }
-  :root .app-shell.stitch-shell main .reference-integration-card > :is(header, div, footer) { padding: var(--m-pad) !important; }
+  /* (not the settings window: its backdrop is a div of the card too, and 12px around it showed the page under the sheet) */
+  :root .app-shell.stitch-shell main .reference-integration-card > :is(header, div, footer):where(:not(.integration-settings-modal-backdrop)) { padding: var(--m-pad) !important; }
   :root .app-shell.stitch-shell main .reference-integration-card > footer { padding-block: 10px !important; }
   :root .app-shell.stitch-shell main :is(.order-pagination, .rr-pager) { padding-inline: var(--m-pad) !important; }
   /* a pager inside a padded pagination bar keeps no second side padding of its own (Faturalar ran 9px past the edge) */
@@ -92,7 +93,6 @@
   :root .app-shell.stitch-shell main .jobs-reference-drawer-body { padding: 0 var(--m-pad) var(--m-pad) !important; gap: var(--m-gap) !important; }
   :root .app-shell.stitch-shell main .jobs-reference-drawer-body > section { padding: var(--m-pad) !important; gap: 10px !important; }
   :root .app-shell.stitch-shell main .cs-workspace .cs-head { padding: var(--m-pad) !important; }
-  :root .app-shell.stitch-shell main .cs-workspace .cs-nav { margin: var(--m-pad) var(--m-pad) 0 !important; }
   :root .app-shell.stitch-shell main .cs-workspace .cs-pane { padding: var(--m-pad) !important; gap: var(--m-pad) !important; }
   :root .app-shell.stitch-shell main .panel-attribute-modal-card > header { padding: var(--m-pad) !important; }
   :root .app-shell.stitch-shell main .panel-attribute-modal-card > .panel-attribute-add-value { padding: var(--m-pad) !important; }
