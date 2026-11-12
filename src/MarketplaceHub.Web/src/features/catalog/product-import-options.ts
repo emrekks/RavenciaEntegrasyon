@@ -2,33 +2,83 @@ export type ProductImportMode = 'FULL' | 'NEW_ONLY' | 'EXISTING_ONLY' | 'MAPPING
 export type ProductImportMethod = 'BULK' | 'SINGLE'
 
 export type ProductImportOptionVisibility = {
+  // "Mevcut Ürünleri Güncelle" is offered as a scope only when a selected platform can write something with it.
+  showExistingMode: boolean
+  // "Mevcut Ürün Bilgilerini Güncelle"
   showUpdateExisting: boolean
-  showHepsiburadaReadOnlyNote: boolean
+  // "Fiyatları Güncelle" / "Stokları Güncelle"
+  showPriceStock: boolean
+  // In a mixed selection: which of the selected platforms a choice applies to ("Yalnız Trendyol'da uygulanır.").
+  updateExistingScopeNote: string | null
+  priceStockScopeNote: string | null
+  // What the selected platforms that only observe leave untouched.
+  readOnlyNotes: string[]
   showArchived: boolean
   showPendingApproval: boolean
   showOptionsSection: boolean
 }
 
+const platformNames: Record<string, string> = { TRENDYOL: 'Trendyol', SHOPIFY: 'Shopify', HEPSIBURADA: 'Hepsiburada', N11: 'N11', PAZARAMA: 'Pazarama', PTTAVM: 'PttAVM' }
+const locative: Record<string, string> = { TRENDYOL: "Trendyol'da", SHOPIFY: "Shopify'da" }
+
+// What a product import really writes on a product the panel already holds (MarketplaceJobProcessor.UpsertCatalogProduct):
+// only Trendyol takes the listing's content ("Mevcut Ürün Bilgilerini Güncelle"); Hepsiburada, n11, Pazarama, PTT AVM and
+// Shopify run observe-only and keep the panel's card. Prices and stock are taken on Trendyol and Shopify only; the API
+// drops them for Hepsiburada, n11, Pazarama and PTT AVM (MarketplaceSalesService.EnqueueProductSyncAsync).
+export function productImportWritesContent(platformCode: string): boolean {
+  return platformCode.trim().toUpperCase() === 'TRENDYOL'
+}
+
+export function productImportWritesPriceStock(platformCode: string): boolean {
+  return ['TRENDYOL', 'SHOPIFY'].includes(platformCode.trim().toUpperCase())
+}
+
+function distinctCodes(platformCodes: string[]): string[] {
+  return [...new Set(platformCodes.map(code => code.trim().toUpperCase()).filter(Boolean))]
+}
+
+function scopeNote(codes: string[], honours: (code: string) => boolean): string | null {
+  const honouring = codes.filter(honours)
+  if (!honouring.length || honouring.length === codes.length) return null
+  const names = honouring.map(code => platformNames[code] ?? code)
+  const last = locative[honouring[honouring.length - 1]] ?? names[names.length - 1]
+  return `Yalnız ${[...names.slice(0, -1), last].join(' ve ')} uygulanır.`
+}
+
 export function productImportOptionVisibility(options: {
   method: ProductImportMethod
   mode: ProductImportMode
-  onlyHepsiburada: boolean
-  hasHepsiburada: boolean
+  platformCodes: string[]
   supportsPendingApproval: boolean
 }): ProductImportOptionVisibility {
   const isBulk = options.method === 'BULK'
+  const codes = distinctCodes(options.platformCodes)
+  // Before a connection is chosen nothing is known yet: every choice stays on offer.
+  const anyContent = !codes.length || codes.some(productImportWritesContent)
+  const anyPriceStock = !codes.length || codes.some(productImportWritesPriceStock)
   if (isBulk && options.mode === 'OPTIONS_ONLY') {
     return {
+      showExistingMode: anyPriceStock,
       showUpdateExisting: false,
-      showHepsiburadaReadOnlyNote: false,
+      showPriceStock: false,
+      updateExistingScopeNote: null,
+      priceStockScopeNote: null,
+      readOnlyNotes: [],
       showArchived: false,
       showPendingApproval: false,
       showOptionsSection: false
     }
   }
   // A single product (Tek Ürün Aktarımı) offers the same choices as an update of existing products (owner, 5 Nov 2026).
-  const showUpdateExisting = (isBulk ? options.mode === 'EXISTING_ONLY' : true) && !options.onlyHepsiburada
-  const showHepsiburadaReadOnlyNote = isBulk && options.hasHepsiburada && options.mode !== 'MAPPING_ONLY'
+  const updateScope = isBulk ? options.mode === 'EXISTING_ONLY' : true
+  const showUpdateExisting = updateScope && anyContent
+  const showPriceStock = updateScope && anyPriceStock
+  const readOnlyNotes: string[] = []
+  if (!isBulk || options.mode !== 'MAPPING_ONLY') {
+    const observed = codes.filter(code => !productImportWritesPriceStock(code) || code === 'SHOPIFY' && !updateScope)
+    if (observed.length) readOnlyNotes.push(`${observed.map(code => platformNames[code] ?? code).join(', ')}: panelde var olan ürünün bilgisi, fiyatı ve stoğu yazılmaz; ürün yalnız eşlenir, eksik varyantı ve boş desisi eklenir.`)
+    if (updateScope && codes.includes('SHOPIFY')) readOnlyNotes.push('Shopify: panelde var olan ürünün bilgisi yazılmaz; yalnız fiyat ve stok seçenekleri uygulanır.')
+  }
   // Every mode reads archived listings only when asked, Ürün Eşleme too (owner, 12 Nov 2026: "Arşiv ürünlerini dahil et
   // de olması lazım bunun gelişmiş seçeneklerinde"); the API no longer forces it on for mapping.
   const showArchived = true
@@ -36,15 +86,34 @@ export function productImportOptionVisibility(options: {
   // (MarketplaceSalesService.EnqueueProductSyncAsync drops it for Mevcut Ürünleri Güncelle), so it is offered there only.
   const showPendingApproval = isBulk && options.supportsPendingApproval && options.mode !== 'EXISTING_ONLY'
 
-  const hasVisibleOptions = showUpdateExisting || showHepsiburadaReadOnlyNote || showArchived || showPendingApproval
+  const hasVisibleOptions = showUpdateExisting || showPriceStock || readOnlyNotes.length > 0 || showArchived || showPendingApproval
 
   return {
+    showExistingMode: anyPriceStock,
     showUpdateExisting,
-    showHepsiburadaReadOnlyNote,
+    showPriceStock,
+    updateExistingScopeNote: showUpdateExisting ? scopeNote(codes, productImportWritesContent) : null,
+    priceStockScopeNote: showPriceStock ? scopeNote(codes, productImportWritesPriceStock) : null,
+    readOnlyNotes,
     showArchived,
     showPendingApproval,
     showOptionsSection: hasVisibleOptions
   }
+}
+
+// The line under each bulk scope, saying what the run really does (MarketplaceJobProcessor.UpsertCatalogProduct): a full
+// scan opens the listings the panel lacks and keeps every card it holds (only an empty desi is filled; on Trendyol a size
+// the card lacks is not added but reported as "Eklenmeyen yeni beden"). Hepsiburada never opens a product.
+export function productImportModeDescription(mode: ProductImportMode, platformCodes: string[]): string {
+  const codes = distinctCodes(platformCodes)
+  if (mode === 'FULL') {
+    if (codes.length && codes.every(code => code === 'HEPSIBURADA')) return 'Tüm Hepsiburada ürünlerini okur ve panel ürünleriyle eşler; yeni ürün açmaz, panelde var olan ürün içeriği değişmez.'
+    return `Pazar yerindeki tüm ürünleri okur ve panelde olmayanları ekler. Panelde var olan ürünlerin içeriği, fiyatı ve stoğu değişmez; yalnız boş desisi doldurulur.${!codes.length || codes.includes('TRENDYOL') ? ' Trendyol’da panelde olmayan yeni bedenler eklenmez, iş özetinde bildirilir.' : ''}`
+  }
+  if (mode === 'NEW_ONLY') return 'Panelde henüz bulunmayan ürünleri ve mevcut ürünlerin yeni bedenlerini ekler; mevcut ürünleri güncellemez.'
+  if (mode === 'EXISTING_ONLY') return 'Yalnız panelde kayıtlı ürünleri işler; aşağıda seçtiğiniz bilgiler pazar yerindeki haline göre yenilenir.'
+  if (mode === 'MAPPING_ONLY') return 'Panel ürünlerini pazar yerindeki karşılıklarıyla eşler; içerik, fiyat ve stok değişmez.'
+  return ''
 }
 
 // The three choices of Mevcut Ürünleri Güncelle (and Tek Ürün Aktarımı), owner 12 Nov 2026: "Mevcut Ürün Bilgilerini
@@ -54,6 +123,7 @@ export type ProductImportChoices = { updateExisting: boolean; updatePrices: bool
 // A Trendyol Mevcut Ürünleri Güncelle run with none ticked would change nothing; the start button waits for a choice
 // (the API refuses it too: PRODUCT_SYNC_NOTHING_SELECTED).
 export function productImportNeedsChoice(options: { method: ProductImportMethod; mode: ProductImportMode; hasTrendyol: boolean; showUpdateExisting: boolean } & ProductImportChoices): boolean {
+  // The caller passes only the choices on offer (a hidden box counts as unticked).
   return options.method === 'BULK' && options.mode === 'EXISTING_ONLY' && options.hasTrendyol && options.showUpdateExisting
     && !options.updateExisting && !options.updatePrices && !options.updateStock
 }

@@ -12,6 +12,8 @@ import { ValuePicker, pickerOptions, type PickerOption } from './ValuePicker'
 import { mappedLocalIds, valueListQuery, valueMappingProgressQuery, valueMappingsQuery } from './value-field-queries'
 import { webColorDraftSelections, webColorSelectionsFromDraft, groupSavedSelections, rebaseSelections, runInBatches, selectionsDiffer, valueDraftOperations, type ValueDraft, type ValueDraftOperation } from './value-drafts'
 import { newIdempotencyKey } from '../../../shared/idempotency'
+import { dative } from '../../../shared/job-outcome'
+import { categoryDeactivationBody } from './category-deactivation'
 import { MessageToast } from '../../../shared/components/NoticeToast'
 import { mappingStatusLabel } from '../../../shared/status-labels'
 import { platformLogoClass, platformLogoSource } from '../../../shared/platform-logos'
@@ -56,7 +58,7 @@ function useMappingNotificationConnection(connectionId: string) {
 function MappingDeleteIcon() {
   return <UiIcon name="close" className="mapping-delete-icon" />
 }
-type LocalCategory = { id: string; name: string; path: string; depth: number; isLeaf: boolean; isActive: boolean; version: number }
+type LocalCategory = { id: string; parentId?: string | null; name: string; path: string; depth: number; isLeaf: boolean; isActive: boolean; version: number }
 type LocalBrand = { id: string; name: string; isActive: boolean; version: number }
 type UnmappedMarketplaceBrand = { externalId: string; name: string | null; occurrences: number; lastSeenAt: string }
 type LocalAttribute = { id: string; code: string; name: string; dataType: string; isActive: boolean; version: number; roles?: string[] | null; values: { id: string; value: string; sortOrder: number; isActive: boolean }[] }
@@ -230,7 +232,7 @@ function CategoryMappingWorkspace() {
   }, [references.data, productTypeCategories])
   const externalNoun = productTypeCategories ? 'ürün türü' : 'kategori'
   const externalNounPlural = productTypeCategories ? 'ürün türlerinde' : 'kategorilerinde'
-  const archiveCategory = useMutation({ mutationFn: (category: LocalCategory) => hubApi<LocalCategory>(`/catalog/categories/${category.id}`, { method: 'PATCH', headers: { 'If-Match': `"v${category.version}"` }, body: JSON.stringify({ name: category.name, parentId: null, isActive: false }) }), onSuccess: async (_, category) => { if (localId === category.id) { setLocalId(''); setExternalId('') }; await client.invalidateQueries({ queryKey: ['categories', 'mapping'] }); setNotice(`“${category.name}” panel kategorilerinden kaldırıldı.`) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Kategori kaldırılamadı.') })
+  const archiveCategory = useMutation({ mutationFn: (category: LocalCategory) => hubApi<LocalCategory>(`/catalog/categories/${category.id}`, { method: 'PATCH', headers: { 'If-Match': `"v${category.version}"` }, body: JSON.stringify(categoryDeactivationBody(category)) }), onSuccess: async (_, category) => { if (localId === category.id) { setLocalId(''); setExternalId('') }; await client.invalidateQueries({ queryKey: ['categories', 'mapping'] }); setNotice(`“${category.name}” panel kategorilerinden kaldırıldı.`) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Kategori kaldırılamadı.') })
   // The delete uses the version the server holds now (not the one the list showed), and the lists and the conflict
   // panel are reloaded whatever the outcome.
   const removeMapping = useMutation({ mutationFn: async (item: CatalogMapping) => { const current = await hubApi<CatalogMapping | null>(`/mappings/categories/${item.localId}?connectionId=${encodeURIComponent(connectionId)}`); if (!current || current.externalId !== item.externalId) throw new Error('Bu eşleştirme bu sırada değişti veya kaldırıldı. Liste yenilendi.'); return hubApi<boolean>(`/mappings/categories/${item.localId}?connectionId=${encodeURIComponent(connectionId)}`, { method: 'DELETE', headers: { 'If-Match': `"v${current.version}"` } }) }, onSuccess: (_, item) => { if (localId === item.localId) { setExternalId(''); client.setQueryData(['category-mapping', localId, connectionId], null) }; setNotice('Kategori eşleştirmesi kaldırıldı.') }, onError: reason => setNotice(mappingSaveErrorMessage(reason, 'Eşleştirme kaldırılamadı.')), onSettled: async (_, __, item) => { await Promise.all([client.invalidateQueries({ queryKey: ['category-mappings', connectionId] }), client.invalidateQueries({ queryKey: ['category-mapping', item.localId, connectionId] }), refreshMappingConflicts(client, connectionId)]) } })
@@ -743,7 +745,7 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
   // null until the owner folds or opens a group: İsteğe Bağlı then starts folded, unless the open field or a product gap is in it.
   const [collapsedGroupsChoice, setCollapsedGroups] = useState<string[] | null>(null)
   // Same cache entries as the two panels, so the header buttons can show how many items each holds.
-  const attributeDefaults = useQuery({ queryKey: ['attribute-defaults', connectionId], queryFn: () => hubApi<AttributeDefault[]>(`/connections/${connectionId}/attribute-defaults`), retry: false, enabled: !!connectionId && (platformCode === 'TRENDYOL' || platformCode === 'HEPSIBURADA' || platformCode === 'N11') }).data
+  const attributeDefaults = useQuery({ queryKey: ['attribute-defaults', connectionId], queryFn: () => hubApi<AttributeDefault[]>(`/connections/${connectionId}/attribute-defaults`), retry: false, enabled: !!connectionId && attributeDefaultsPlatforms.has(platformCode) }).data
   const attributeDefaultsCount = attributeDefaults?.length ?? 0
   // Fields filled from the product itself (Kombin ID = Model Kodu), connection wide.
   const fieldDefaultByExternal = new Map((attributeDefaults ?? []).filter(item => item.sourceField).map(item => [item.externalAttributeId, item]))
@@ -1008,7 +1010,7 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
       {!dataLoading && !dataFailed && <div className="cm-actions" role="toolbar" aria-label="Kategori eşleme işlemleri">
       <button type="button" className="secondary" title="Adı aynı, eş anlamlı (ör. Materyal ≈ Kumaş Tipi) ya da diğer pazaryerinde eşlenmiş başlıkları toplu eşler; birden fazla aday varsa atlar." disabled={sync.isPending || bulkBusy !== ''} onClick={() => void matchHeadingsByName()}>{bulkBusy === 'HEADINGS' ? 'Başlıklar Eşleniyor…' : 'Başlıkları Eşle'}</button>
       <button type="button" className="secondary" title="Eşlenmiş tüm başlıklarda adı aynı olan değerleri toplu eşler" disabled={sync.isPending || bulkBusy !== ''} onClick={() => void matchAllValuesByName()}>{bulkBusy === 'VALUES' ? 'Değerler Eşleniyor…' : 'Tüm Değerleri Eşle'}</button>
-      {(platformCode === 'TRENDYOL' || platformCode === 'HEPSIBURADA') && categoryScope && <button type="button" className="secondary" title={`Ürünlerde boş kalan alanlar için ${platformLabel}’a gönderilecek sabit değerler`} onClick={() => setExtraPanel('defaults')}>Platform Varsayılanları <span className="cm-count">{attributeDefaultsCount}</span></button>}
+      {attributeDefaultsPlatforms.has(platformCode) && categoryScope && <button type="button" className="secondary" title={`Ürünlerde boş kalan alanlar için ${dative(platformLabel)} gönderilecek sabit değerler`} onClick={() => setExtraPanel('defaults')}>Platform Varsayılanları <span className="cm-count">{attributeDefaultsCount}</span></button>}
       <button type="button" className={`secondary${mappingConflictCount ? ' cm-has-conflicts' : ''}`} title={`Aynı panel değeri birden fazla ${platformLabel} değerine bağlanmış eşlemeler`} onClick={() => setExtraPanel('conflicts')}>Gözden Geçirilecek <span className="cm-count">{mappingConflictCount}</span></button>
       {platformCode === 'TRENDYOL' && optionCount > 0 && <button type="button" className="secondary" title="Trendyol’daki ürünleri okuyarak seçenekleri günceller; Trendyol’a hiçbir şey göndermez." disabled={productSync.isPending} onClick={() => productSync.mutate()}>{productSync.isPending ? 'Ürünler Eşitleniyor…' : 'Seçenekleri Eşitle'}</button>}
       <button type="button" className="secondary" title={`Bu kategorinin ${platformLabel} alan listesini salt-okunur olarak yeniden okur.`} disabled={sync.isPending} onClick={() => sync.mutate()}><UiIcon name="refresh" />{sync.isPending ? 'Güncelleniyor…' : 'Pazaryerinden Güncelle'}</button>
@@ -1044,8 +1046,8 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
       </div>
       </ValueDraftContext.Provider>
     </>}
-    <Modal open={extraPanel === 'defaults'} title="Platform Varsayılanları" hint={`Ürünlerde boş kalan alanlar için ${platformLabel}’a gönderilecek sabit değerler.`} onClose={() => setExtraPanel('')} className="cm-extra-modal">
-      {categoryScope && references.data && <AttributeDefaultsPanel connectionId={connectionId} categoryScope={categoryScope} platformLabel={platformLabel} remoteAttributes={references.data.items} onNotice={onNotice} expanded />}
+    <Modal open={extraPanel === 'defaults'} title="Platform Varsayılanları" hint={`Ürünlerde boş kalan alanlar için ${dative(platformLabel)} gönderilecek sabit değerler.`} onClose={() => setExtraPanel('')} className="cm-extra-modal">
+      {categoryScope && references.data && <AttributeDefaultsPanel connectionId={connectionId} categoryScope={categoryScope} platformLabel={platformLabel} remoteAttributes={platformCode === 'N11' ? references.data.items.filter(item => item.externalId !== n11BrandAttributeId) : references.data.items} onNotice={onNotice} expanded />}
     </Modal>
     <Modal open={extraPanel === 'conflicts'} title="Gözden Geçirilecek Eşlemeler" hint={`Aynı panel değeri birden fazla ${platformLabel} değerine bağlanmış eşlemeler.`} onClose={() => setExtraPanel('')} className="cm-extra-modal">
       {mappingConflictCount ? <MappingConflictsPanel connectionId={connectionId} platformLabel={platformLabel} onNotice={onNotice} expanded /> : <p className="cm-empty">Gözden geçirilecek eşleme yok.</p>}
@@ -1054,6 +1056,10 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
 }
 type MappingEntry = { key: string; externalId?: string; valueExternalId?: string; name: string; required: boolean; state: FieldState; meta: string; ratio?: number; node?: ReactNode; remote?: ReferenceItem; mapping?: CatalogMapping | null; localAttributes?: LocalAttribute[]; role?: 'ATTRIBUTE' | 'OPTION'; fieldDefault?: AttributeDefault; productBrand?: boolean }
 const n11BrandAttributeId = '1'
+// The publications that send a connection's attribute defaults when a product leaves the field empty (ProductPublicationComposer,
+// HepsiburadaProductPublicationComposer, N11ProductPublicationComposer, PazaramaProductPublicationComposer); n11 never takes
+// its brand from a default, so its Marka field is not offered.
+const attributeDefaultsPlatforms = new Set(['TRENDYOL', 'HEPSIBURADA', 'N11', 'PAZARAMA'])
 function ProductBrandField({ remote, required, platformLabel, footerHint, onNext }: { remote: ReferenceItem; required: boolean; platformLabel: string; footerHint: string; onNext?: () => void }) {
   return <>
     <FieldHeading name={remote.name} required={required} platformLabel={platformLabel} />

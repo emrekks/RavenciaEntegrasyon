@@ -725,7 +725,7 @@ function CategoryAttributeMappingPanel({
     ) : !categoryId ? (
       <div className="unknown"><strong>Önce kategori seçin</strong><p>Kategori seçildiğinde eşlenmiş özellik başlıkları burada görünür.</p></div>
     ) : isError ? (
-      <div className="unknown"><strong>Kategori özellikleri alınamadı</strong><p>Özellik başlıklarını Kategori Eşleştirme ekranında hazırlayın.</p></div>
+      <div className="unknown"><strong>Kategori özellikleri alınamadı</strong><p>Özellik başlıklarını Eşleştirmeler › Kategori Eşleme › Kategori Özellikleri ve Değerleri bölümünde hazırlayın.</p></div>
     ) : attributes.length || webColorRequirement ? (
       <div className="category-attribute-mapping-list">
         {webColorRequirement && <article className="category-attribute-field category-attribute-field-web-color required has-selection">
@@ -767,7 +767,7 @@ function CategoryAttributeMappingPanel({
         })}
       </div>
     ) : (
-      <div className="empty small"><strong>Bu kategori için özellik başlığı yok</strong><p>Kategori Eşleştirme ekranından önce özellik başlıklarını oluşturun.</p></div>
+      <div className="empty small"><strong>Bu kategori için özellik başlığı yok</strong><p>Önce Eşleştirmeler › Kategori Eşleme › Kategori Özellikleri ve Değerleri bölümünden özellik başlıklarını oluşturun.</p></div>
     )}
   </section>
 }
@@ -1698,7 +1698,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       void client.invalidateQueries({ queryKey: ['category-requirements'], refetchType: 'none' })
       setAttributeValueQueries(current => ({ ...current, [requirement.attributeId]: '' }))
       if (created && !(attributeSelections[requirement.attributeId] ?? []).includes(created.id)) toggleAttributeValue(requirement.attributeId, created.id)
-      showFeedback('Değer Eklendi', `“${value}” ${requirement.attribute.name} seçeneklerine eklendi ve seçildi. Pazaryeri eşleştirmesini Seçenek Eşitleme ekranından yapabilirsiniz.`, 'success')
+      showFeedback('Değer Eklendi', `“${value}” ${requirement.attribute.name} seçeneklerine eklendi ve seçildi. Pazaryeri eşleştirmesini Eşleştirmeler › Kategori Eşleme'de kategorinin Kategori Özellikleri penceresinden yapabilirsiniz.`, 'success')
     } catch (reason) {
       showFeedback('Değer Eklenemedi', reason instanceof Error ? reason.message : 'Değer eklenemedi.', 'error')
     } finally {
@@ -2705,9 +2705,9 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   }
 
   function rowsForSubmit(requireCompleteCatalog = true) {
-    if (requireCompleteCatalog && variantAttributeIds.length && !variantRows.length) throw new Error('Varyant özellikleri seçili. Önce “Ürünleri ekle” ile varyantları oluşturun.')
+    if (requireCompleteCatalog && variantAttributeIds.length && !variantRows.length) throw new Error('Varyant özellikleri seçili. Önce “Ürünleri Ekle” ile varyantları oluşturun.')
     if (editProductId && !variantRows.length) {
-      if (removedVariantIds.length) throw new Error('Tüm kayıtlı varyantlar temizlendi. Kaydetmeden önce “Ürünleri ekle” ile yeni varyant satırları oluşturun; ürünün en az bir varyantı kalmalıdır.')
+      if (removedVariantIds.length) throw new Error('Tüm kayıtlı varyantlar temizlendi. Kaydetmeden önce “Ürünleri Ekle” ile yeni varyant satırları oluşturun; ürünün en az bir varyantı kalmalıdır.')
       return []
     }
     if (variantRows.length) return variantRows
@@ -2716,7 +2716,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   }
   function validate(rows: VariantDraft[], requireCompleteCatalog = true, requirePublicationReadiness = true) {
     const issues: string[] = []; const requirementList = mappedRequirements
-    if (requireCompleteCatalog && (variantAttributeIds.length > 2 || variantAttributeIds.some(id => { const requirement = requirementList.find(item => item.attributeId === id); return !requirement || !isOptionRequirement(requirement) }))) issues.push('Varyant için en fazla 2 Seçenek Eşitleme başlığı kullanılabilir.')
+    if (requireCompleteCatalog && (variantAttributeIds.length > 2 || variantAttributeIds.some(id => { const requirement = requirementList.find(item => item.attributeId === id); return !requirement || !isOptionRequirement(requirement) }))) issues.push('Varyant için en fazla 2 seçenek başlığı kullanılabilir.')
     if (requireCompleteCatalog && !webColorAutoEnabled && (!webColorRequirement || !manualWebColorValueId)) issues.push('Manuel Web Color aktarımı için gönderilecek panel renk değerini seçin.')
     if (!webColorAutoEnabled && webColorRequirement && manualWebColorValueId && !webColorRequirement.attribute.values.some(value => value.id === manualWebColorValueId)) issues.push('Manuel Web Color için seçilen değer geçerli değil.')
     // Automatic Web Color reads each row's own Renk, as the publish checks and the server do (publication-readiness).
@@ -3871,7 +3871,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         <div className="editor-section-title product-options-header">
           <span>5</span>
           <div>
-            <h2>Ürün Seçenekleri<TitleHint label="Ürün Seçenekleri">Seçenek grubu ve değerlerini seçin. Kayıtlı Renk ve Beden değerleri otomatik işaretlenir; yeni seçimler “Ürünleri ekle” ile varyant satırı olur.</TitleHint></h2>
+            <h2>Ürün Seçenekleri<TitleHint label="Ürün Seçenekleri">Seçenek grubu ve değerlerini seçin. Kayıtlı Renk ve Beden değerleri otomatik işaretlenir; yeni seçimler “Ürünleri Ekle” ile varyant satırı olur.</TitleHint></h2>
           </div>
         </div>
         {editorHydrating || requirements.isLoading ? (
@@ -3927,7 +3927,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
             })}
             {!visibleOptionRequirements.length && (
               <div className="empty small" style={{ gridColumn: '1 / -1' }}>
-                <p>Bu ürün için kayıtlı seçenek grubu bulunamadı. Seçenek Eşitleme ekranından seçenek grubu oluşturabilirsiniz.</p>
+                <p>Bu ürün için kayıtlı seçenek grubu bulunamadı. Eşleştirmeler › Kategori Eşleme › Ürün Seçenekleri bölümünden seçenek grubu oluşturabilirsiniz.</p>
               </div>
             )}
           </div>
@@ -3990,7 +3990,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
                     <button type="button" className="variant-row-action variant-row-action-delete" onClick={() => requestVariantRowRemoval(row)} aria-label={`${row.optionSignature} varyantını sil`} title="Varyantı sil"><UiIcon name="trash" /></button>
                   </div>
                 </div>
-              }) : <div className="empty small"><strong>Henüz varyant yok</strong><p>Özellik değerlerini seçip “Ürünleri ekle” dediğinizde varyant satırları burada oluşur.</p></div>}
+              }) : <div className="empty small"><strong>Henüz varyant yok</strong><p>Özellik değerlerini seçip “Ürünleri Ekle” dediğinizde varyant satırları burada oluşur.</p></div>}
             </div>
       </div>
       </section>

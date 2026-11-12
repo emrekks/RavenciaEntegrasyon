@@ -17,11 +17,11 @@ public static partial class ImportedBrandRule
     public static string IssueKey(Guid connectionId, string externalBrandId) => IssueKeyPrefix(connectionId) + externalBrandId.Trim();
 
     public static string IssueSummary(string platformName, string externalBrandId, string? brandName) =>
-        $"{platformName} markası panelde eşlenmemiş: «{SummaryBrandName(brandName)}» (marka no {externalBrandId.Trim()}). Bu markanın ürünleri markasız aktarıldı; Eşleştirme Ayarları › Marka Eşleme'de eşleyin.";
+        $"{platformName} markası panelde eşlenmemiş: «{SummaryBrandName(brandName)}» (marka no {externalBrandId.Trim()}). Bu markanın ürünleri markasız aktarıldı; Eşleştirmeler › Marka Eşleme'de eşleyin.";
 
     // Why the import could not map the brand itself; the marketplace brand name stays the first «» for NameFromSummary.
     public static string UnusableSummary(string platformName, string externalBrandId, string? brandName, string reason) =>
-        $"{platformName} markası aktarımda eşlenemedi: «{SummaryBrandName(brandName)}» (marka no {externalBrandId.Trim()}), {reason}. Eşleştirme Ayarları › Marka Eşleme'de kontrol edin.";
+        $"{platformName} markası aktarımda eşlenemedi: «{SummaryBrandName(brandName)}» (marka no {externalBrandId.Trim()}), {reason}. Eşleştirmeler › Marka Eşleme'de kontrol edin.";
 
     // The marketplace brand name the summary carries; null when it carried none.
     public static string? NameFromSummary(string summary)

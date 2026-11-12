@@ -106,7 +106,7 @@ export function outcomeTarget(jobs: readonly FollowedJob[]) {
 }
 
 // "Trendyol’a", "Hepsiburada’ya", "N11’e", "PttAVM’ye": the suffix by the name's last vowel (a digit by how it is read).
-function dative(name: string) {
+export function dative(name: string) {
   const spoken = name.replace(/11$/u, 'onbir').replace(/AVM$/u, 'aveme').replace(/ify$/iu, 'ifay')
   const lastVowel = spoken.toLocaleLowerCase('tr-TR').match(/[aeıioöuü](?=[^aeıioöuü]*$)/u)?.[0]
   if (!lastVowel) return `${name} Platformuna`

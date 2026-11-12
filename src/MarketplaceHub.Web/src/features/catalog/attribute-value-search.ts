@@ -28,7 +28,7 @@ const sizeNames = ['BEDEN', 'BEDENLER', 'SIZE', 'SIZES', 'BOYUT', 'BOYUTLAR', 'N
 // The value a search box offers to add to an option group (Renk, Beden) when no value of the group is the typed one:
 // a colour in Title Case ("zümrüt yeşili" → "Zümrüt Yeşili"), a size in capitals ("xxl" → "XXL"), anything else as typed.
 // Null when the box is empty or the group already holds the value in any spelling. A new value is the panel's own; it is
-// mapped to no marketplace value (the user maps it in Seçenek Eşitleme).
+// mapped to no marketplace value (the user maps it in Eşleştirmeler › Kategori Eşleme, the category's Kategori Özellikleri window).
 export function optionValueToAdd(attributeName: string, values: readonly AttributeOptionValue[], query: string): string | null {
   const typed = query.normalize('NFKC').replace(/^["“”]+|["“”]+$/g, '').trim().replace(/\s+/g, ' ')
   if (!typed || typed.length > 120) return null

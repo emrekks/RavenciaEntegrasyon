@@ -320,18 +320,18 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
             .Select(snapshot => (Guid?)snapshot.Id)
             .FirstOrDefaultAsync(cancellationToken);
         if (snapshotId is null)
-            return ServiceResult<string>.Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", "Bu özellik değeri Hepsiburada'nın güncel değer listesinde eşlenmemiş; Seçenek Eşitleme ekranından eşleyin.", 422);
+            return ServiceResult<string>.Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", "Bu özellik değeri Hepsiburada'nın güncel değer listesinde eşlenmemiş; Eşleştirmeler › Kategori Eşleme'de kategorinin Kategori Özellikleri penceresinden eşleyin.", 422);
         var mappings = await db.AttributeValueMappings.AsNoTracking()
             .Where(mapping => mapping.TenantId == tenantId && mapping.ConnectionId == connectionId && mapping.LocalId == localValueId && mapping.ScopeExternalId == scope && mapping.SnapshotId == snapshotId && mapping.Status == "VERIFIED")
             .ToListAsync(cancellationToken);
         if (mappings.Count == 0)
-            return ServiceResult<string>.Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", "Bu özellik değeri Hepsiburada'nın güncel değer listesinde eşlenmemiş; Seçenek Eşitleme ekranından eşleyin.", 422);
+            return ServiceResult<string>.Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", "Bu özellik değeri Hepsiburada'nın güncel değer listesinde eşlenmemiş; Eşleştirmeler › Kategori Eşleme'de kategorinin Kategori Özellikleri penceresinden eşleyin.", 422);
         var externalIds = mappings.Select(mapping => mapping.ExternalId).ToArray();
         var remoteValues = await db.ReferenceItems.AsNoTracking()
             .Where(item => item.TenantId == tenantId && item.SnapshotId == snapshotId && item.ResourceType == "ATTRIBUTE_VALUES" && item.IsActive && externalIds.Contains(item.ExternalId))
             .ToListAsync(cancellationToken);
         if (remoteValues.Count == 0)
-            return ServiceResult<string>.Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", "Hepsiburada değer eşlemesi güncel değer listesinde bulunamadı; Seçenek Eşitleme ekranından listeyi yenileyip yeniden eşleyin.", 422);
+            return ServiceResult<string>.Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", "Hepsiburada değer eşlemesi güncel değer listesinde bulunamadı; Eşleştirmeler › Kategori Eşleme'de kategorinin Kategori Özellikleri penceresinde Pazaryerinden Güncelle ile listeyi yenileyip yeniden eşleyin.", 422);
         var selectedValueName = SelectOutboundEnumValue(localValue, remoteValues.Select(item => item.Name).ToArray());
         return selectedValueName is null
             ? ServiceResult<string>.Fail("ATTRIBUTE_VALUE_MAPPING_AMBIGUOUS", "Bu panel değeri birden fazla Hepsiburada seçeneğine eşlenmiş. Ürün gönderimi için eşlemeyi tek bir karşılığa indirin.", 422)

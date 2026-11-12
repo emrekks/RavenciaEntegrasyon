@@ -481,8 +481,8 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
         return ChooseUsableExternalValue(mappings.Usable) is { } value
             ? ServiceResult<long>.Ok(value)
             : ServiceResult<long>.Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", mappings.All.Count > 0
-                ? $"'{label}' için Trendyol değer eşlemesi güncel değer listesinde yok veya değer artık etkin değil. Eşleştirme Ayarları'ndan bu panel değerini güncel bir Trendyol değeriyle yeniden eşleyin."
-                : $"'{label}' için doğrulanmış Trendyol değer eşlemesi yok. Eşleştirme Ayarları'ndan bu panel değerini bir Trendyol değeriyle eşleyin.", 422);
+                ? $"'{label}' için Trendyol değer eşlemesi güncel değer listesinde yok veya değer artık etkin değil. Eşleştirmeler › Kategori Eşleme'de kategorinin Kategori Özellikleri penceresinden bu panel değerini güncel bir Trendyol değeriyle yeniden eşleyin."
+                : $"'{label}' için doğrulanmış Trendyol değer eşlemesi yok. Eşleştirmeler › Kategori Eşleme'de kategorinin Kategori Özellikleri penceresinden bu panel değerini bir Trendyol değeriyle eşleyin.", 422);
     }
 
     // Only a mapping in the current value snapshot that points at an active Trendyol value may be sent,
