@@ -40,7 +40,7 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-op-sep { color: var(--rr-line-strong); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard.rr-warn strong { color: var(--rr-warn); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard.rr-bad strong { color: var(--rr-bad); }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-bd { top: calc(100% + 6px); left: 0; width: max-content; min-width: 240px; max-width: calc(100vw - 32px); gap: 4px; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-bd { position: absolute; z-index: 60; margin: 0; padding: 8px; background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 12px; top: calc(100% + 6px); left: 0; width: max-content; min-width: 240px; max-width: calc(100vw - 32px); gap: 4px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-bd-r { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; font-size: 13px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-bd-r .rr-logo { width: 22px; height: 22px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-bd-r b { font-weight: 600; white-space: nowrap; }
@@ -482,11 +482,12 @@ html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer)
 @media (max-width: 420px) { :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc > strong > .rr-op-x { font-size: 11.5px; } }
 @media (max-width: 389px) { :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc > strong > .rr-op-x { font-size: 11px; letter-spacing: -.025em; } }
 
-/* Phones: an operations card's per-platform breakdown opens inside the card, under its figure, instead of floating over
-   the cards below it (owner, 10 Nov: "iç içe girme"); the card grows and its row with it. Each platform is two lines (logo
+/* Phones: an operations card's per-platform breakdown floats over the cards below it without growing the card (owner,
+   12 Nov: "barların üstünde çıkmalı, barı genişletmemeli"); a right-column card opens it towards the left. Each platform is two lines (logo
    and name, then "16 paket · 24 adet") so it fits the half-width card. */
 @media (max-width: 760px) {
-  html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard > .rr-tip.rr-bd { position: static; grid-column: 1 / -1; width: auto; min-width: 0; max-width: none; margin-top: 8px; padding: 8px; box-shadow: none; transform: none; translate: none; }
+  html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard > .rr-tip.rr-bd { position: absolute; z-index: 60; top: calc(100% + 6px); left: 0; right: auto; width: max-content; min-width: 200px; max-width: calc(100vw - 32px); margin: 0; padding: 8px; transform: none; translate: none; }
+  html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard:nth-child(even) > .rr-tip.rr-bd { left: auto; right: 0; }
   html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard > .rr-tip.rr-bd .rr-bd-r { grid-template-columns: auto minmax(0, 1fr); row-gap: 2px; }
   html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard > .rr-tip.rr-bd .rr-bd-r > b { grid-column: 1 / -1; font-size: 12px; }
   html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard:not(.rr-bd-open) > .rr-tip.rr-bd { display: none !important; }

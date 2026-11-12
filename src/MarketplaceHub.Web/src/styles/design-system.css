@@ -6829,7 +6829,7 @@ html body .rr-opt-count:not(.is-loading) { display: inline-flex !important; }
 
 /* Phones: tab strips scroll only sideways; a pixel of extra height never turns into an up-and-down scroll. */
 @media (max-width: 760px) {
-  .app-shell :is(.rv-tabs, [role="tablist"], .cm-nav, .cs-nav) { overflow-y: hidden; }
+  .app-shell :is(.rv-tabs, [role="tablist"], .cm-nav) { overflow-y: hidden; }
 }
 
 /* Date range picker: days after today are greyed out and cannot be picked. */
