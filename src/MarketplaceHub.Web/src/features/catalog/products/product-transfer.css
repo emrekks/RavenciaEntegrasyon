@@ -26,6 +26,7 @@
   .pci-group .pci-field-list .pci-check { min-height: 32px; }
   .pci-group > .pci-group-all { display: flex; min-height: 36px; padding: 0 12px; color: var(--rv-color-ink); font-size: 12.5px; font-weight: 600; letter-spacing: .01em; background: var(--rv-color-surface-soft); }
   .pci-group > .pci-group-all:has(+ .pci-field-list) { border-bottom: 1px solid var(--rv-color-border); }
+  .pci-group > .pci-check { padding: 0 12px; }
   .pci-note b { color: var(--rv-color-ink); font-weight: 600; }
   .pci-text { min-width: 180px; overflow-wrap: anywhere; }
   .pci-check { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; color: var(--rv-color-ink); font-size: 13px; cursor: pointer; }
