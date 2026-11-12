@@ -1088,6 +1088,11 @@ html body .app-shell .publication-job-modal > footer > :is(a, button) { box-sizi
 .app-shell.stitch-shell main .platform-update-chips > li.is-skipped { color: var(--rv-color-subtle, var(--rv-color-muted)); background: transparent; font-weight: 500; }
 .app-shell.stitch-shell main .platform-update-chips > li.is-skipped s { text-decoration-thickness: 1px; }
 .app-shell.stitch-shell main .platform-update-modal .publish-platform-facts > .platform-update-sends small { display: block; margin-top: 4px; color: var(--rv-color-muted); font-size: 12px; line-height: 1.45; }
+/* A price or stock sent by hand goes although the automatic price/stock writes are off: said once under the fields. */
+.app-shell.stitch-shell main .platform-update-manual-note { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--rv-color-muted); font-size: 12px; line-height: 1.45; }
+.app-shell.stitch-shell main .platform-update-manual-note > svg { flex: none; color: var(--rv-color-info, var(--rv-color-muted)); }
+/* A store picked with its write switch closed: Kaydet keeps it, Gönder waits; the card's line says where it is turned on. */
+.app-shell.stitch-shell main .platform-update-modal .publish-platform-card.is-write-closed .publish-platform-card-head small { color: var(--rv-color-warning); }
 .app-shell.stitch-shell main .platform-update-actions { display: flex; gap: 8px; }
 .app-shell.stitch-shell main .platform-update-actions > button { height: 36px; min-height: 0; padding-block: 0; }
 /* The fields that ride with another one: the box follows that field and cannot be changed. */

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { availablePlatformUpdateFields, platformUpdateWritesOffers, productInformationLabel, defaultPlatformUpdateFields, defaultPlatformUpdatePreferences, platformUpdateFieldsForStores, platformUpdateGroups, platformUpdatePlan, platformUpdatePreferencesKey, platformUpdateSummary, priceStockPlatformUpdateFields, readPlatformUpdatePreferences, readPlatformUpdateStores, readQuickPlatformUpdateChoice, platformUpdateStoresKey, writePlatformUpdatePreferences, writePlatformUpdateStores } from './platform-update-fields'
+import { availablePlatformUpdateFields, clearLegacyPlatformUpdateChoice, defaultPlatformUpdateFields, defaultPlatformUpdatePreferences, legacyPlatformUpdatePreferencesKey, legacyPlatformUpdateStoresKey, platformUpdateChoiceRecord, platformUpdateFieldsForStores, platformUpdateGroups, platformUpdatePlan, platformUpdatePreferencesFrom, platformUpdateSendsPriceOrStock, platformUpdateSendsWholeCard, platformUpdateStoresFrom, platformUpdateSummary, platformUpdateWritesOffers, priceStockPlatformUpdateFields, productInformationLabel, readLegacyPlatformUpdateChoice, readQuickPlatformUpdateChoice } from './platform-update-fields'
 
 function memoryStorage(initial: Record<string, string> = {}) {
   const values = new Map(Object.entries(initial))
-  return { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value) }, values }
+  return { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value) }, removeItem: (key: string) => { values.delete(key) }, values }
 }
 
 describe('platform update fields', () => {
@@ -195,61 +195,75 @@ describe('platform update fields', () => {
     expect(availablePlatformUpdateFields(['N11'])).not.toContain('TITLE')
   })
 
-  it('remembers the pick and the open groups as they were left', () => {
-    const storage = memoryStorage()
-    expect(readPlatformUpdatePreferences(storage)).toEqual(defaultPlatformUpdatePreferences)
-    writePlatformUpdatePreferences({ fields: ['STOCK', 'TITLE'], openGroups: ['sales'] }, storage)
-    expect(readPlatformUpdatePreferences(storage)).toEqual({ fields: ['TITLE', 'STOCK'], openGroups: ['sales'] })
-    writePlatformUpdatePreferences({ fields: [], openGroups: [] }, storage)
-    expect(readPlatformUpdatePreferences(storage)).toEqual({ fields: [], openGroups: [] })
+  it('keeps the pick and the open groups as they were left, with what the window knew', () => {
+    expect(platformUpdatePreferencesFrom(null)).toEqual(defaultPlatformUpdatePreferences)
+    const record = platformUpdateChoiceRecord({ fields: ['STOCK', 'TITLE'], openGroups: ['sales'] }, null)
+    expect(record.knownFields).toEqual(platformUpdateGroups.flatMap(group => group.fields.map(field => field.key)))
+    expect(platformUpdatePreferencesFrom(record)).toEqual({ fields: ['TITLE', 'STOCK'], openGroups: ['sales'] })
+    expect(platformUpdatePreferencesFrom(platformUpdateChoiceRecord({ fields: [], openGroups: [] }, []))).toEqual({ fields: [], openGroups: [] })
   })
 
   it('reads a record of the first version: Menşei is dropped, what it lacked starts picked and open, the rest stays as left', () => {
-    const first = memoryStorage({ [platformUpdatePreferencesKey]: '{"fields":["TITLE","ORIGIN","PRICE"],"openGroups":["sales"]}' })
     // Garanti Süresi is new, so it starts picked; Desi, Teslimat Süresi... were known and switched off, so they stay off.
-    expect(readPlatformUpdatePreferences(first)).toEqual({ fields: ['TITLE', 'WARRANTY', 'PRICE'], openGroups: ['shipping', 'sales'] })
-    expect(readPlatformUpdatePreferences(memoryStorage({ [platformUpdatePreferencesKey]: '{"fields":["ORIGIN","DESI"],"openGroups":[]}' })).fields).toEqual(['WARRANTY', 'DESI'])
+    expect(platformUpdatePreferencesFrom({ fields: ['TITLE', 'ORIGIN', 'PRICE'], openGroups: ['sales'] })).toEqual({ fields: ['TITLE', 'WARRANTY', 'PRICE'], openGroups: ['shipping', 'sales'] })
+    expect(platformUpdatePreferencesFrom({ fields: ['ORIGIN', 'DESI'], openGroups: [] }).fields).toEqual(['WARRANTY', 'DESI'])
   })
 
-  it('falls back to the default on unreadable or blocked storage, and drops unknown fields', () => {
-    expect(readPlatformUpdatePreferences(memoryStorage({ [platformUpdatePreferencesKey]: '{bozuk' }))).toEqual(defaultPlatformUpdatePreferences)
-    expect(readPlatformUpdatePreferences(memoryStorage({ [platformUpdatePreferencesKey]: '{"fields":"TITLE"}' }))).toEqual(defaultPlatformUpdatePreferences)
-    expect(readPlatformUpdatePreferences(memoryStorage({ [platformUpdatePreferencesKey]: '{"fields":["PRICE","VIDEO"],"openGroups":["product","other"],"knownFields":["TITLE","DESCRIPTION","IMAGES","ATTRIBUTES","WARRANTY","DESI","DELIVERY","PRICE","STOCK","VAT_RATE","VIDEO"],"knownGroups":["product","shipping","sales","other"]}' }))).toEqual({ fields: ['PRICE'], openGroups: ['product'] })
-    const throwing = { getItem: () => { throw new Error('blocked') }, setItem: () => { throw new Error('blocked') } }
-    expect(readPlatformUpdatePreferences(throwing)).toEqual(defaultPlatformUpdatePreferences)
-    expect(() => writePlatformUpdatePreferences(defaultPlatformUpdatePreferences, throwing)).not.toThrow()
-    expect(readPlatformUpdatePreferences(undefined)).toEqual(defaultPlatformUpdatePreferences)
+  it('falls back to the default on an unreadable record, and drops unknown fields', () => {
+    expect(platformUpdatePreferencesFrom({ fields: 'TITLE' })).toEqual(defaultPlatformUpdatePreferences)
+    expect(platformUpdatePreferencesFrom({ fields: ['PRICE', 'VIDEO'], openGroups: ['product', 'other'], knownFields: ['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES', 'WARRANTY', 'DESI', 'DELIVERY', 'PRICE', 'STOCK', 'VAT_RATE', 'VIDEO'], knownGroups: ['product', 'shipping', 'sales', 'other'] })).toEqual({ fields: ['PRICE'], openGroups: ['product'] })
   })
 
-  it('remembers the stores as they were left, dropping one gone and not picking one added since', () => {
-    const storage = memoryStorage()
-    // No record yet: the stores picked for the product, as far as they can be updated.
-    expect(readPlatformUpdateStores(['ty', 'hb'], ['hb', 'n11'], storage)).toEqual(['hb'])
-    expect(readPlatformUpdateStores(['ty', 'hb'], [], storage)).toEqual([])
-    writePlatformUpdateStores(['hb', 'gone'], storage)
-    expect(readPlatformUpdateStores(['ty', 'hb', 'pz'], ['ty'], storage)).toEqual(['hb'])
+  it('keeps the stores as they were left, dropping one gone and not picking one added since', () => {
+    // No stores saved: the stores picked for the product, as far as they can be updated.
+    expect(platformUpdateStoresFrom(null, ['ty', 'hb'], ['hb', 'n11'])).toEqual(['hb'])
+    expect(platformUpdateStoresFrom({ connectionIds: null }, ['ty', 'hb'], [])).toEqual([])
+    expect(platformUpdateStoresFrom({ connectionIds: ['hb', 'gone'] }, ['ty', 'hb', 'pz'], ['ty'])).toEqual(['hb'])
     // None picked stays none picked.
-    writePlatformUpdateStores([], storage)
-    expect(readPlatformUpdateStores(['ty', 'hb'], ['ty'], storage)).toEqual([])
-    expect(readPlatformUpdateStores(['ty'], ['ty'], memoryStorage({ [platformUpdateStoresKey]: '{bozuk' }))).toEqual(['ty'])
-    const throwing = { getItem: () => { throw new Error('blocked') }, setItem: () => { throw new Error('blocked') } }
-    expect(readPlatformUpdateStores(['ty'], ['ty'], throwing)).toEqual(['ty'])
-    expect(() => writePlatformUpdateStores(['ty'], throwing)).not.toThrow()
+    expect(platformUpdateStoresFrom({ connectionIds: [] }, ['ty', 'hb'], ['ty'])).toEqual([])
   })
 
   // Owner, 9 Nov 2026: Hızlı Güncelle sends the saved choice of the settings window at once, with no window.
   it('gives Hızlı Güncelle the saved fields and stores, else price and stock to the stores picked for the product', () => {
-    const storage = memoryStorage()
-    expect(readQuickPlatformUpdateChoice(['ty', 'hb'], ['hb', 'n11', 'hb'], storage)).toEqual({ connectionIds: ['hb'], fields: ['PRICE', 'STOCK'] })
-    writePlatformUpdatePreferences({ fields: ['TITLE', 'VAT_RATE', 'STOCK'], openGroups: [] }, storage)
-    writePlatformUpdateStores(['ty', 'gone'], storage)
-    expect(readQuickPlatformUpdateChoice(['ty', 'hb'], ['hb'], storage)).toEqual({ connectionIds: ['ty'], fields: ['TITLE', 'STOCK', 'VAT_RATE'] })
+    expect(readQuickPlatformUpdateChoice(null, ['ty', 'hb'], ['hb', 'n11', 'hb'])).toEqual({ connectionIds: ['hb'], fields: ['PRICE', 'STOCK'] })
+    const saved = platformUpdateChoiceRecord({ fields: ['TITLE', 'VAT_RATE', 'STOCK'], openGroups: [] }, ['ty', 'gone'])
+    expect(readQuickPlatformUpdateChoice(saved, ['ty', 'hb'], ['hb'])).toEqual({ connectionIds: ['ty'], fields: ['TITLE', 'STOCK', 'VAT_RATE'] })
     // Saved fields, no saved stores: the product's stores.
-    const fieldsOnly = memoryStorage()
-    writePlatformUpdatePreferences({ fields: ['PRICE'], openGroups: [] }, fieldsOnly)
-    expect(readQuickPlatformUpdateChoice(['ty', 'hb'], ['hb'], fieldsOnly)).toEqual({ connectionIds: ['hb'], fields: ['PRICE'] })
-    const throwing = { getItem: () => { throw new Error('blocked') } }
-    expect(readQuickPlatformUpdateChoice(['ty'], ['ty'], throwing)).toEqual({ connectionIds: ['ty'], fields: ['PRICE', 'STOCK'] })
+    expect(readQuickPlatformUpdateChoice(platformUpdateChoiceRecord({ fields: ['PRICE'], openGroups: [] }, null), ['ty', 'hb'], ['hb'])).toEqual({ connectionIds: ['hb'], fields: ['PRICE'] })
+  })
+
+  // 9.1.16: the choice was kept in the browser until 12 Nov 2026; it is read once to move it to the server.
+  it('reads the choice this browser kept before, in the server record shape', () => {
+    expect(readLegacyPlatformUpdateChoice(memoryStorage())).toBeNull()
+    expect(readLegacyPlatformUpdateChoice(undefined)).toBeNull()
+    expect(readLegacyPlatformUpdateChoice(memoryStorage({ [legacyPlatformUpdatePreferencesKey]: '{bozuk', [legacyPlatformUpdateStoresKey]: '{"selected":"ty"}' }))).toBeNull()
+    const both = readLegacyPlatformUpdateChoice(memoryStorage({
+      [legacyPlatformUpdatePreferencesKey]: '{"fields":["TITLE","ORIGIN","PRICE"],"openGroups":["sales"]}',
+      [legacyPlatformUpdateStoresKey]: '{"selected":["ty",7,"hb"]}'
+    }))
+    expect(both).toEqual(platformUpdateChoiceRecord({ fields: ['TITLE', 'WARRANTY', 'PRICE'], openGroups: ['shipping', 'sales'] }, ['ty', 'hb']))
+    // Stores alone: the fields Hızlı Güncelle sent then, price and stock.
+    const storesOnly = readLegacyPlatformUpdateChoice(memoryStorage({ [legacyPlatformUpdateStoresKey]: '{"selected":[]}' }))
+    expect(storesOnly?.fields).toEqual(['PRICE', 'STOCK'])
+    expect(storesOnly?.connectionIds).toEqual([])
+    expect(readLegacyPlatformUpdateChoice(memoryStorage({ [legacyPlatformUpdatePreferencesKey]: '{"fields":["DESI"],"openGroups":[]}' }))?.connectionIds).toBeNull()
+    const throwing = { getItem: () => { throw new Error('blocked') }, removeItem: () => { throw new Error('blocked') } }
+    expect(readLegacyPlatformUpdateChoice(throwing)).toBeNull()
+    expect(() => clearLegacyPlatformUpdateChoice(throwing)).not.toThrow()
+    const storage = memoryStorage({ [legacyPlatformUpdatePreferencesKey]: '{"fields":[],"openGroups":[]}', [legacyPlatformUpdateStoresKey]: '{"selected":[]}', other: 'x' })
+    clearLegacyPlatformUpdateChoice(storage)
+    expect([...storage.values.keys()]).toEqual(['other'])
+  })
+
+  it('knows when a store gets the price or the stock, picked or riding along', () => {
+    expect(platformUpdateSendsPriceOrStock('TRENDYOL', ['TITLE'])).toBe(false)
+    expect(platformUpdateSendsPriceOrStock('TRENDYOL', ['STOCK'])).toBe(true)
+    // N11 and Pazarama take them together; Shopify takes the whole card whatever is picked.
+    expect(platformUpdateSendsPriceOrStock('N11', ['PRICE'])).toBe(true)
+    expect(platformUpdateSendsPriceOrStock('SHOPIFY', ['TITLE'])).toBe(true)
+    expect(platformUpdateSendsPriceOrStock('PAZARAMA', ['VAT_RATE'])).toBe(false)
+    expect(platformUpdateSendsWholeCard('SHOPIFY')).toBe(true)
+    expect(platformUpdateSendsWholeCard('TRENDYOL')).toBe(false)
   })
 
   // Live 10 Nov 2026 (MZ052BOD): Görseller alone wrote the Trendyol price offers and warned of 5 unpriced variants.

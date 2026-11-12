@@ -126,6 +126,9 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
             // Toplu Değer Ata rewrites one field across whole models at once: the owner's and administrators'.
             case "products" when segments.Length == 4 && last == "bulk-field":
                 return ElevatedRoles;
+            // The Hızlı Güncelle choice (fields and stores) is kept by whoever sends product updates.
+            case "settings" when segments.Length == 4 && last == "platform-update":
+                return OperationalRoles;
             case "catalog" or "products" or "variants" or "files" or "imports" or "inventory" or "channel-offers" or "mappings" or "returns":
                 return OperationalRoles;
             default:

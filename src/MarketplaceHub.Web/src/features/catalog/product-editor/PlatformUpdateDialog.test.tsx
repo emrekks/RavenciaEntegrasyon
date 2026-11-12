@@ -218,19 +218,66 @@ describe('PlatformUpdateDialog', () => {
     expect(card('TRENDYOL')?.querySelector('.platform-update-family-reach')).toBeNull()
   })
 
-  // A store whose general external-write gate is closed cannot be picked, and its card names the switch and where it is.
-  it('names the closed Dış Yazma Ana Anahtarı on a store and keeps it out of the pick', () => {
+  // 9.3.9: a store whose write switch is closed is shown closed before Gönder, naming the switch and where it is turned
+  // on; it can still be picked so Kaydet keeps the choice, and Gönder waits while it is picked.
+  it('names the closed Dış Yazma Ana Anahtarı on a store, keeps Kaydet and holds Gönder while it is picked', () => {
     host = document.createElement('div')
     document.body.append(host)
     root = createRoot(host)
     const closed: PlatformUpdateTarget = { connection: { id: 'n11', platformCode: 'N11', displayName: 'N11 Mağaza', externalStoreId: 'n11-store', status: 'ACTIVE', externalWritesEnabled: false }, capabilities: { writable: true, content: true } }
     const open: PlatformUpdateTarget = { connection: { ...target('ty', 'TRENDYOL').connection, externalWritesEnabled: true }, capabilities: { writable: true, content: true } }
-    act(() => root?.render(<PlatformUpdateDialog targets={[open, closed]} selectedIds={['ty', 'n11']} onSelectedIdsChange={vi.fn()} fields={['PRICE', 'STOCK']} onFieldsChange={vi.fn()} openGroups={allGroups} onOpenGroupsChange={vi.fn()} submitting={false} onClose={vi.fn()} onSave={vi.fn()} onSend={vi.fn()} />))
-    const n11 = [...document.querySelectorAll('.publish-platform-card')].find(item => item.textContent?.includes('N11 Mağaza'))!
-    expect(n11.textContent).toContain('Dış Yazma Ana Anahtarı kapalı · Entegrasyonlar’dan açılır')
-    expect(n11.querySelector<HTMLButtonElement>('.publish-platform-card-head')!.disabled).toBe(true)
-    expect(document.body.textContent).toContain('1/1 mağaza seçili')
-    expect(document.body.textContent).not.toMatch(/fiyat.{0,20}kapalı/iu)
+    const onSave = vi.fn()
+    const draw = (selectedIds: string[]) => act(() => root?.render(<PlatformUpdateDialog targets={[open, closed]} selectedIds={selectedIds} onSelectedIdsChange={vi.fn()} fields={['PRICE', 'STOCK']} onFieldsChange={vi.fn()} openGroups={allGroups} onOpenGroupsChange={vi.fn()} submitting={false} onClose={vi.fn()} onSave={onSave} onSend={vi.fn()} />))
+    draw(['ty', 'n11'])
+    const n11 = card('N11 Mağaza')!
+    expect(n11.textContent).toContain('Dış Yazma Ana Anahtarı kapalı · Entegrasyonlar › mağaza › Pazaryerine Yazma’dan açılır')
+    expect(n11.className).toContain('is-write-closed')
+    expect(n11.querySelector<HTMLButtonElement>('.publish-platform-card-head')!.disabled).toBe(false)
+    expect(document.body.textContent).toContain('2/2 mağaza seçili')
+    expect(document.querySelector('.platform-update-footer small')?.textContent).toBe('N11 Mağaza için pazaryerine yazma kapalı; Gönder bekler, Kaydet seçimi saklar.')
+    expect(button('Gönder').disabled).toBe(true)
+    expect(button('Kaydet').disabled).toBe(false)
+    act(() => button('Kaydet').click())
+    expect(onSave).toHaveBeenCalledWith(['PRICE', 'STOCK'])
+    // Without the closed store, Gönder goes.
+    draw(['ty'])
+    expect(button('Gönder').disabled).toBe(false)
+  })
+
+  it('names PttAVM’s closed Manuel Dış Yazmalar, and leaves an unread switch to the server', () => {
+    host = document.createElement('div')
+    document.body.append(host)
+    root = createRoot(host)
+    const ptt = (manualWritesEnabled?: boolean): PlatformUpdateTarget => ({ connection: { id: 'ptt', platformCode: 'PTTAVM', displayName: 'PttAVM Mağaza', externalStoreId: 'ptt-store', status: 'ACTIVE', externalWritesEnabled: true }, capabilities: { writable: true, content: true }, manualWritesEnabled })
+    const draw = (store: PlatformUpdateTarget) => act(() => root?.render(<PlatformUpdateDialog targets={[store]} selectedIds={['ptt']} onSelectedIdsChange={vi.fn()} fields={['TITLE']} onFieldsChange={vi.fn()} openGroups={allGroups} onOpenGroupsChange={vi.fn()} submitting={false} onClose={vi.fn()} onSave={vi.fn()} onSend={vi.fn()} />))
+    draw(ptt(false))
+    expect(card('PttAVM Mağaza')?.textContent).toContain('Manuel Dış Yazmalar kapalı · Entegrasyonlar › mağaza › Pazaryerine Yazma’dan açılır')
+    expect(button('Gönder').disabled).toBe(true)
+    draw(ptt(undefined))
+    expect(card('PttAVM Mağaza')?.textContent).not.toContain('kapalı')
+    expect(button('Gönder').disabled).toBe(false)
+    draw(ptt(true))
+    expect(button('Gönder').disabled).toBe(false)
+  })
+
+  // Owner, 12 Nov 2026: a price or stock sent by hand goes although the automatic price/stock writes are off.
+  it('says a hand-started price or stock send goes although Otomatik Dış Yazmalar is off, only when one goes', () => {
+    render(['hb'], ['TITLE'])
+    expect(document.querySelector('.platform-update-manual-note')).toBeNull()
+    render(['hb'], ['TITLE', 'STOCK'])
+    expect(document.querySelector('.platform-update-manual-note')?.textContent).toBe('Elle gönderim: Otomatik Dış Yazmalar kapalı olsa da seçili fiyat ve stok pazaryerine gider.')
+  })
+
+  // 9.3.10: Shopify takes the whole model card in one request, so the pick does not narrow what goes there.
+  it('says on the Shopify card that the pick does not narrow its send', () => {
+    host = document.createElement('div')
+    document.body.append(host)
+    root = createRoot(host)
+    act(() => root?.render(<PlatformUpdateDialog targets={[target('sh', 'SHOPIFY'), target('ty', 'TRENDYOL')]} selectedIds={['sh', 'ty']} onSelectedIdsChange={vi.fn()} fields={['TITLE']} onFieldsChange={vi.fn()} openGroups={allGroups} onOpenGroupsChange={vi.fn()} submitting={false} onClose={vi.fn()} onSave={vi.fn()} onSend={vi.fn()} />))
+    expect(card('SHOPIFY')?.querySelector('.platform-update-whole-card')?.textContent).toContain('Shopify seçime bakmaz')
+    expect(card('TRENDYOL')?.querySelector('.platform-update-whole-card')).toBeNull()
+    // Shopify's whole card carries price and stock: the manual send note shows though only Ürün Adı is picked.
+    expect(document.querySelector('.platform-update-manual-note')).not.toBeNull()
   })
 
   const button = (label: string) => [...document.querySelectorAll('button')].filter(item => item.textContent === label).at(-1) as HTMLButtonElement

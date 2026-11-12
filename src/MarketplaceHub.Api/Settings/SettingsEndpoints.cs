@@ -11,6 +11,7 @@ public static class SettingsEndpoints
     private const string ShippingLabelKey = "shipping-label";
     private const string AppearanceKey = "appearance";
     private const string ResendReminderKey = "orders-resend-reminder";
+    private const string PlatformUpdateChoiceKey = "platform-update-choice";
     private const int MaximumResendReminder = 100_000;
     private const int MaximumJsonCharacters = 262_144;
     private const int MaximumAppearanceColorThemes = 24;
@@ -90,7 +91,45 @@ public static class SettingsEndpoints
         api.MapPut("/appearance", SaveAppearanceSettingsAsync);
         api.MapGet("/resend-reminder", GetResendReminderAsync);
         api.MapPut("/resend-reminder", SaveResendReminderAsync);
+        api.MapGet("/platform-update", GetPlatformUpdateChoiceAsync);
+        api.MapPut("/platform-update", SavePlatformUpdateChoiceAsync);
         return endpoints;
+    }
+
+    // Ürün düzenleme › Platformlarda Güncelle: the fields and stores Hızlı Güncelle sends, per tenant (every device sends
+    // the same choice). Read by every signed-in role; written by the roles that send product updates (Operations up).
+    private static async Task<IResult> GetPlatformUpdateChoiceAsync(HttpContext http, AppDbContext db)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        var setting = await db.TenantSettings.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Key == PlatformUpdateChoiceKey, http.RequestAborted);
+        // A stored value that no longer passes the checks reads as none saved, never as a half choice.
+        var settings = ParseObject(setting?.ValueJson) is { } stored && PlatformUpdateChoiceSchema.TryNormalize(stored, out var normalized, out _) ? normalized : null;
+        return Versioned(http, setting?.Version ?? 0, new { settings, version = setting?.Version ?? 0 });
+    }
+
+    private static async Task<IResult> SavePlatformUpdateChoiceAsync(JsonElement settings, HttpContext http, AppDbContext db, TimeProvider timeProvider)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        if (settings.GetRawText().Length > PlatformUpdateChoiceSchema.MaximumJsonCharacters) return Problem(http, new("PLATFORM_UPDATE_CHOICE_TOO_LARGE", "Hızlı Güncelle ayarı çok büyük.", 413));
+        if (!PlatformUpdateChoiceSchema.TryNormalize(settings, out var normalized, out var error)) return Problem(http, new("PLATFORM_UPDATE_CHOICE_INVALID", error, 400));
+
+        var valueJson = normalized.ToJsonString();
+        var setting = await db.TenantSettings.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Key == PlatformUpdateChoiceKey, http.RequestAborted);
+        if (Precondition(http, setting) is { } precondition) return precondition;
+        if (setting is null)
+        {
+            setting = new TenantSetting { TenantId = tenant.TenantId, Key = PlatformUpdateChoiceKey, ValueJson = valueJson, UpdatedAt = timeProvider.GetUtcNow(), Version = 1 };
+            db.TenantSettings.Add(setting);
+        }
+        else
+        {
+            setting.ValueJson = valueJson;
+            setting.UpdatedAt = timeProvider.GetUtcNow();
+            setting.Version++;
+        }
+
+        if (await SaveAsync(http, db) is { } conflict) return conflict;
+        return Versioned(http, setting.Version, new { settings = normalized, version = setting.Version });
     }
 
     private static async Task<IResult> GetShippingLabelSettingsAsync(HttpContext http, AppDbContext db)

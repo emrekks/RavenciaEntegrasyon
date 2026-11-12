@@ -4,8 +4,10 @@ import { hubApi } from '../../../shared/api'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { followJobOutcomes, groupedOutcomeFeedback, outcomeTarget, type FollowedJob } from '../../../shared/job-outcome'
 import type { NotificationDetail } from '../../../shared/notifications'
-import { PlatformUpdateDialog, isPlatformUpdateWritable, type PlatformUpdateTarget } from '../product-editor/PlatformUpdateDialog'
-import { productInformationLabel, readPlatformUpdatePreferences, readPlatformUpdateStores, type PlatformUpdateField, type PlatformUpdatePreferences } from '../product-editor/platform-update-fields'
+import { PlatformUpdateDialog, isPlatformUpdateSelectable, isPlatformUpdateWritable, type PlatformUpdateTarget } from '../product-editor/PlatformUpdateDialog'
+import { platformUpdatePreferencesFrom, platformUpdateStoresFrom, productInformationLabel, type PlatformUpdateField, type PlatformUpdatePreferences } from '../product-editor/platform-update-fields'
+import { usePlatformUpdateChoice } from '../product-editor/use-platform-update-choice'
+import { usePttAvmManualWrites } from '../use-pttavm-manual-writes'
 import { mapWithConcurrency } from '../product-editor/product-media-save'
 import { isProductUpdateConnection, productUpdateCapabilities } from '../platform-update-targets'
 import type { MarketplaceConnection, Product } from '../shared'
@@ -41,7 +43,10 @@ export function BulkPlatformUpdateDialog({ productIds, cardCount, connections, p
 }) {
   const client = useQueryClient()
   const [checked, setChecked] = useState<Map<string, Checked>>(new Map())
-  const [preferences, setPreferences] = useState<PlatformUpdatePreferences>(() => readPlatformUpdatePreferences())
+  // The editor's saved Hızlı Güncelle choice (server, per tenant) is where the window starts; a change here is not saved.
+  const choice = usePlatformUpdateChoice()
+  const [editedPreferences, setEditedPreferences] = useState<PlatformUpdatePreferences | null>(null)
+  const preferences = editedPreferences ?? platformUpdatePreferencesFrom(choice.record)
   const [submitting, setSubmitting] = useState(false)
   const listRecords = useMemo(() => new Map(products.map(product => [product.id, product])), [products])
 
@@ -79,20 +84,25 @@ export function BulkPlatformUpdateDialog({ productIds, cardCount, connections, p
   const checking = records.some(record => !record.read)
 
   const updateConnections = useMemo(() => connections.filter(isProductUpdateConnection), [connections])
+  const manualWrites = usePttAvmManualWrites(updateConnections)
   const targets: PlatformUpdateTarget[] = useMemo(() => updateConnections.map(connection => {
     const count = onMarketplaceCount(records, connection)
     return {
       connection,
       capabilities: productUpdateCapabilities(connection.platformCode),
       blockReason: count ? undefined : 'Seçili ürünlerin hiçbiri bu mağazada yayında değil',
-      detail: count ? `${count.toLocaleString('tr-TR')}/${records.length.toLocaleString('tr-TR')} ürün bu mağazada yayında` : undefined
+      detail: count ? `${count.toLocaleString('tr-TR')}/${records.length.toLocaleString('tr-TR')} ürün bu mağazada yayında` : undefined,
+      manualWritesEnabled: manualWrites.get(connection.id)
     }
-  }), [records, updateConnections])
-  const writableIds = useMemo(() => targets.filter(isPlatformUpdateWritable).map(target => target.connection.id), [targets])
-  // The stores picked last in the update window, as the editor starts it; the first time, every store the products are on.
-  const [connectionIds, setConnectionIds] = useState<string[]>(() => readPlatformUpdateStores(writableIds, writableIds))
+  }), [manualWrites, records, updateConnections])
+  const selectableIds = targets.filter(isPlatformUpdateSelectable).map(target => target.connection.id)
+  const writableIds = targets.filter(isPlatformUpdateWritable).map(target => target.connection.id)
+  // The stores picked last in the update window, as the editor starts it; the first time, every store the products are
+  // on whose writes are open. A store with its write switch closed can be picked, but Gönder waits for it.
+  const [editedConnectionIds, setConnectionIds] = useState<string[] | null>(null)
+  const connectionIds = editedConnectionIds ?? platformUpdateStoresFrom(choice.record, selectableIds, writableIds)
   // A store whose products turn out not to be there (the read came back) leaves the pick.
-  const pickedIds = connectionIds.filter(id => writableIds.includes(id))
+  const pickedIds = connectionIds.filter(id => selectableIds.includes(id))
 
   // Held back: a draft, an empty required field or a product that could not be read.
   const heldBack = records.filter(record => record.failed || record.gaps.length > 0 || record.status.trim().toUpperCase() === 'DRAFT')
@@ -170,9 +180,9 @@ export function BulkPlatformUpdateDialog({ productIds, cardCount, connections, p
     selectedIds={pickedIds}
     onSelectedIdsChange={setConnectionIds}
     fields={preferences.fields}
-    onFieldsChange={fields => setPreferences(current => ({ ...current, fields }))}
+    onFieldsChange={fields => setEditedPreferences({ ...preferences, fields })}
     openGroups={preferences.openGroups}
-    onOpenGroupsChange={openGroups => setPreferences(current => ({ ...current, openGroups }))}
+    onOpenGroupsChange={openGroups => setEditedPreferences({ ...preferences, openGroups })}
     submitting={submitting}
     sendBlocked={sendBlocked}
     onClose={close}
