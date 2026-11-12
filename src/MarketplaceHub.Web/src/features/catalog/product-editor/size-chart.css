@@ -23,11 +23,17 @@
 .size-chart-modal .size-chart-table tbody tr:last-child > * { border-bottom: 0; }
 .size-chart-modal .size-chart-table thead th { color: var(--rv-color-muted); font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; white-space: nowrap; background: var(--rv-color-surface-soft); }
 .size-chart-modal .size-chart-table tbody th { letter-spacing: 0; text-transform: none; font-size: 13px; color: var(--rv-color-ink); font-weight: 700; white-space: nowrap; line-height: 36px; }
+.size-chart-modal .size-chart-table tbody th { background: transparent; }
+.size-chart-modal .size-chart-table thead th { vertical-align: middle; }
+.size-chart-modal .size-chart-table tbody tr:hover > :is(th, td) { background: transparent; }
 .size-chart-modal .size-chart-column-head { display: inline-flex; align-items: center; gap: 4px; }
 .size-chart-modal .size-chart-column-head .is-invalid { color: var(--rv-color-danger); }
 .size-chart-modal button.size-chart-icon-button { width: 24px; min-width: 0; height: 24px; min-height: 0; padding: 0; border-radius: 7px; }
 .size-chart-modal .size-chart-table input, .size-chart-modal .size-chart-column-menu input { box-sizing: border-box; width: 100%; min-width: 64px; height: 36px; min-height: 36px; padding: 0 10px; color: var(--rv-color-ink); font: inherit; font-size: 14px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 7px; }
 .size-chart-modal .size-chart-table input[aria-invalid='true'] { border-color: var(--rv-color-danger); }
+.size-chart-modal .size-chart-table input:hover:not(:disabled, :focus-visible), .size-chart-modal .size-chart-column-menu input:hover:not(:disabled, :focus-visible) { border-color: var(--rv-color-border-strong); }
+.size-chart-modal .size-chart-table input[aria-invalid='true']:hover:not(:disabled) { border-color: var(--rv-color-danger); }
+.size-chart-modal button.size-chart-icon-button:hover:not(:disabled) { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-soft)); }
 .size-chart-modal input:focus-visible { border-color: var(--rv-color-primary); outline: 0; box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 18%, transparent); }
 .size-chart-modal .size-chart-cell-error { display: block; margin-top: 2px; color: var(--rv-color-danger); font-size: 12px; line-height: 16px; white-space: normal; }
 .size-chart-modal .size-chart-columns { display: grid; gap: 8px; justify-items: start; }
