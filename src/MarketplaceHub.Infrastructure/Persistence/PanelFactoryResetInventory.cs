@@ -84,7 +84,7 @@ public static class PanelFactoryResetInventory
     [
         "Hesap, kullanıcılar ve bu oturum",
         "Entegrasyon bağlantıları ve giriş bilgileri",
-        "Sistem ayarları ve Excel kolon profilleri",
+        "Sistem ayarları",
     ];
 
     private static PanelResetTable D(string name, PanelResetGroup group, string note = "") => new(name, PanelResetAction.Delete, group, note);
