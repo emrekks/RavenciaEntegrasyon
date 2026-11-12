@@ -50,8 +50,10 @@ public static class PanelFactoryResetInventory
     public static readonly PanelResetGroup Notifications = new(17, "NOTIFICATIONS", "Bildirimler", "Sorun bildirimleri ve alarmlar, değişiklik olayları ve bu tarayıcıdaki bildirim geçmişi.", SystemSection, "Bildirimler siliniyor", []);
     public static readonly PanelResetGroup Dashboard = new(18, "DASHBOARD", "Raporlar ve Özet Tabloları", "Pano özeti, günlük ciro, düşük stok ve eşitleme durumu tabloları; yeniden hesaplanır.", SystemSection, "Rapor ve özet tabloları siliniyor", []);
 
+    public static readonly PanelResetGroup LegacyConnections = new(19, "LEGACY_CONNECTIONS", "Eski Bağlantı Kayıtları ve İptal Edilmiş Anahtarlar", "Silinmiş bağlantıların kalan kayıtları ve yerine yenisi girilmiş eski giriş bilgileri; açık bağlantılar ve geçerli anahtarları kalır.", SystemSection, "Eski bağlantı kayıtları ve iptal edilmiş anahtarlar siliniyor", []);
+
     public static readonly IReadOnlyList<PanelResetGroup> Groups =
-        [Invoices, Orders, Questions, QuestionTemplates, Finance, Stock, Options, Products, CategoryAttributes, AttributeDefaults, Categories, Brands, References, Promotions, Jobs, Logs, Notifications, Dashboard];
+        [Invoices, Orders, Questions, QuestionTemplates, Finance, Stock, Options, Products, CategoryAttributes, AttributeDefaults, Categories, Brands, References, Promotions, Jobs, Logs, Notifications, Dashboard, LegacyConnections];
 
     public const string WaitStep = "Süren işlerin bitmesi bekleniyor";
     public const string FilesStep = "Kullanılmayan dosyalar temizleniyor";
@@ -153,7 +155,7 @@ public static class PanelFactoryResetInventory
         D("integration.sync_cursors", Jobs, "eşitleme imleçleri: yeniden çekim baştan başlar"),
         S("integration.connection_backoffs", Jobs, "bağlantıların bekleme süreleri (TenantId yok; bağlantı kimliğiyle)"),
         S("integration.platform_connections", Jobs, "bağlantı kalır; yalnız son hata kodu temizlenir"),
-        K("integration.platform_credentials", "bağlantı giriş bilgileri (kalır)"),
+        S("integration.platform_credentials", LegacyConnections, "geçerli giriş bilgileri kalır; iptal edilmişler ve silinmiş bağlantılarınki gider"),
         K("integration.platform_capabilities", "bağlantının yetenek bilgisi (bağlantı ayarı)"),
         K("integration.connection_sync_policies", "bağlantının eşitleme kuralları (bağlantı ayarı)"),
         K("integration.webhook_subscriptions", "bağlantının bildirim kaydı (bağlantı ayarı)"),
