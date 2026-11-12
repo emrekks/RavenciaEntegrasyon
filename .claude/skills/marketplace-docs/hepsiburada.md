@@ -34,7 +34,7 @@ Code: `Adapters/Hepsiburada/` — `HepsiburadaHttpClient.cs`, `HepsiburadaPackag
 - Reads `X-RateLimit-Limit/Remaining/Reset` and `Retry-After`; retry waits Retry-After, else the reset time.
   Request id header `X-Request-Id`. Timeout 30 s.
 - Seller cancellations max 100 per day. Inventory upload: adapter caps 1000 items ("4000 was never confirmed");
-  `MarketplaceJobProcessor.cs` still says 4000.
+  the price-inventory result check in `MarketplaceJobProcessor.cs` uses the same constant (`MaxInventoryUploadItems`).
 
 ## Windows and paging (offset + limit, always both)
 - Paid orders `GET orders/merchantid/{m}`: `begindate`/`enddate` max 24 h (else `HEPSIBURADA_ORDER_WINDOW_TOO_LARGE`),

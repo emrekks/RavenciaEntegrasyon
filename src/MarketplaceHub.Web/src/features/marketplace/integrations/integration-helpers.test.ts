@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { connectionEnvironmentLabel, connectionTestFeedback, credentialRequestBody, invoiceCreationFeedback, readIntegrationListState, stageTestOrderAvailable, trendyolUserAgentNotice, writeIntegrationListState } from './integration-helpers'
+import { connectionEnvironmentLabel, connectionStatusLabel, connectionTestFeedback, credentialRequestBody, invoiceCreationFeedback, readIntegrationListState, stageTestOrderAvailable, trendyolUserAgentNotice, writeIntegrationListState } from './integration-helpers'
 
 describe('integration helpers', () => {
   it('builds the credential body of each platform', () => {
@@ -65,5 +65,14 @@ describe('trendyolUserAgentNotice', () => {
     expect(refused.kind).toBe('error')
     expect(refused.message).toContain('açılamadı')
     expect(refused.message).not.toContain('kapatıldı')
+  })
+})
+
+describe('connection status label', () => {
+  it('names a turned-off connection Pasif and an untested one Test Edilmedi on every screen', () => {
+    expect(connectionStatusLabel('DISABLED')).toBe('Pasif')
+    expect(connectionStatusLabel('draft')).toBe('Test Edilmedi')
+    expect(connectionStatusLabel('ACTIVE')).toBeNull()
+    expect(connectionStatusLabel(null)).toBeNull()
   })
 })

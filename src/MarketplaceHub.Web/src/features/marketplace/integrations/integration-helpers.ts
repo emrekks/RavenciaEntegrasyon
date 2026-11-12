@@ -271,3 +271,11 @@ export function invoiceCreationFeedback(requested: boolean, saved: boolean) {
     return { kind: 'error' as const, message: requested ? 'Fatura oluşturma açılamadı: ayar sunucuda kapalı kaldı. Sayfayı yenileyip tekrar deneyin; sorun sürerse destek ekibine bildirin.' : 'Fatura oluşturma kapatılamadı: ayar sunucuda açık kaldı. Sayfayı yenileyip tekrar deneyin.' }
   return { kind: 'success' as const, message: saved ? 'Bu bağlantı için fatura oluşturma açıldı.' : 'Bu bağlantı için fatura oluşturma kapatıldı; mevcut belgeler ve fatura kayıtları korunuyor.' }
 }
+
+// One name per connection state on every screen (the card and the settings window): a connection turned off is
+// "Pasif", as Bağlantıyı Pasife Al says, and one not tested since it was made or its keys changed (DRAFT) is
+// "Test Edilmedi". Null leaves the other states to the shared status labels.
+export function connectionStatusLabel(status: string | null | undefined): string | null {
+  const normalized = status?.trim().toUpperCase()
+  return normalized === 'DRAFT' ? 'Test Edilmedi' : normalized === 'DISABLED' ? 'Pasif' : null
+}

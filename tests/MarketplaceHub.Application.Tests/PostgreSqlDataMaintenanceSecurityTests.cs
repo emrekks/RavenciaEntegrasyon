@@ -552,6 +552,63 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
         }
     }
 
+    // Bağlantıyı Sil turns the marketplace's order notification off as Webhook'u Kapat does (section 9.1.7); a failure
+    // there leaves the deletion done and says what the seller still has to remove.
+    [PostgreSqlTheory]
+    [InlineData("remote-1", true, null)]
+    [InlineData("remote-1", false, "Trendyol bildirim kaydı silinemedi")]
+    [InlineData("MANUAL", true, "Hepsiburada’dan")]
+    public async Task ConnectionDelete_ClosesTheMarketplaceWebhook(string externalId, bool remoteSucceeds, string? notice)
+    {
+        var seed = NewSeed($"dm-wh{(remoteSucceeds ? "o" : "f")}{externalId[..1].ToLowerInvariant()}");
+        try
+        {
+            await SeedAsync(seed, db => db.WebhookSubscriptions.Add(new WebhookSubscription
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = seed.Tenant.Id,
+                ConnectionId = seed.Marketplace.Id,
+                RouteTokenHash = fixture.TokenHasher.Hash($"route-{Guid.NewGuid():N}"),
+                AuthenticationType = "BASIC_AUTHENTICATION",
+                ProtectedVerifierSecret = "test-secret",
+                ExternalSubscriptionId = externalId,
+                Status = "ACTIVE",
+                Version = 1
+            }));
+            var notifications = new RecordingNotifications(remoteSucceeds);
+
+            await using var db = fixture.CreateContext();
+            var result = await new OperationalDataMaintenanceService(db, fixture.TimeProvider, new NoDashboard(), NullLogger<OperationalDataMaintenanceService>.Instance, notifications)
+                .DeleteConnectionAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new DeleteConnectionCommand(seed.Marketplace.DisplayName), "corr", CancellationToken.None);
+
+            Assert.True(result.Succeeded);
+            Assert.Equal(externalId == "MANUAL" ? 0 : 1, notifications.Disabled);
+            if (notice is null) Assert.Null(result.Value!.WebhookNotice);
+            else Assert.Contains(notice, result.Value!.WebhookNotice);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    private sealed class RecordingNotifications(bool succeeds) : IInstantNotificationService
+    {
+        public int Disabled { get; private set; }
+        public Task<ServiceResult<InstantNotificationView>> DisableAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+        {
+            Disabled++;
+            return Task.FromResult(succeeds
+                ? ServiceResult<InstantNotificationView>.Ok(null!)
+                : ServiceResult<InstantNotificationView>.Fail("WEBHOOK_REMOVAL_FAILED", "Trendyol bildirim kaydı silinemedi: zaman aşımı", 502));
+        }
+        public Task<ServiceResult<InstantNotificationView>> StatusAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<ServiceResult<InstantNotificationView>> EnableAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken, string? clientSecret = null) => throw new NotSupportedException();
+        public Task<ServiceResult<InstantNotificationView>> RestorePreviousAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<ServiceResult<InstantNotificationView>> AdoptFromInactiveAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<int> ReactivatePassiveAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
     private sealed record Seed(Tenant Tenant, PlatformConnection Marketplace, PlatformConnection Provider, Order Order, ShipmentPackage Package, LegalEntityProfile Profile, InvoicePolicy Policy);
 
     private Seed NewSeed(string code)
