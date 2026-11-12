@@ -339,6 +339,12 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
   .cs-workspace .cs-chips { width: 100%; }
   .app-shell.stitch-shell main .cs-workspace .cs-chip { flex: 1 0 auto; }
 }
+/* 320px phones: the longest group head (Referans Veri Akışları 1 · Tümünü Kapat) still fits one line. */
+@media (max-width: 360px) {
+  .cs-workspace .cs-fgroup { gap: 5px; padding: 0 4px 0 12px; }
+  .cs-workspace .cs-fgroup b { font-size: 12.5px; }
+  .app-shell.stitch-shell main .cs-workspace .cs-fgroup > .cs-quiet { padding: 0 6px; font-size: 12px; }
+}
 /* A 320px phone has no room for both on one line: the time goes under the state, without the separator dot. */
 @container (max-width: 210px) {
   .app-shell.stitch-shell main .cs-workspace .cs-frow:not(.is-head) .cs-ftime::before { display: none; }
