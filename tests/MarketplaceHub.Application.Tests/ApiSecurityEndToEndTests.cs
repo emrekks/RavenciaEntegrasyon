@@ -90,9 +90,9 @@ public sealed class ApiSecurityEndToEndTests(ApiEndToEndFixture fixture) : IClas
                 await db.UserSessions.Where(session => session.UserId == userId && session.State == SessionState.Active)
                     .ExecuteUpdateAsync(update => update.SetProperty(session => session.ReauthenticatedAt, (DateTimeOffset?)null));
             }
-            // An empty selection: the endpoint itself refuses it (422) and nothing is deleted.
-            var body = new { scopes = Array.Empty<string>(), confirmation = "" };
-            using (var reset = await client.SendAsync(Keyed(HttpMethod.Post, "/api/v1/settings/data-reset", csrf, Guid.NewGuid().ToString(), body)))
+            // A missing confirmation word: the endpoint itself refuses it (422) and nothing is queued.
+            var body = new { confirmation = "" };
+            using (var reset = await client.SendAsync(Keyed(HttpMethod.Post, "/api/v1/settings/factory-reset", csrf, Guid.NewGuid().ToString(), body)))
                 Assert.Equal(HttpStatusCode.UnprocessableEntity, reset.StatusCode);
             using var removed = await client.SendAsync(ApiTestHost.Json(HttpMethod.Post, "/api/v1/auth/reauthenticate", csrf, new { password = ApiEndToEndFixture.Password }));
             Assert.Equal(HttpStatusCode.NotFound, removed.StatusCode);
