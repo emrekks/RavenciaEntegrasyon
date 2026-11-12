@@ -54,9 +54,9 @@ export function QueueQuotaView() {
 
     <div className="qq-cards" aria-label="Kuyruk özeti">
       <div className="qq-card"><span>Çalışan İş</span><strong>{number(totals?.running)}</strong><small>{totals ? `Slot doluluğu %${usagePercent(totals.running, totals.slots)}` : '—'}</small></div>
-      <div className="qq-card"><span>Slot Bekleyen İş</span><strong>{number(totals?.queued)}</strong><small>Hemen başlayabilecek, sırası gelmemiş işler</small></div>
-      <div className="qq-card"><span>Deneme</span><strong>{number(totals?.attempts)}</strong><small>{windowLabel} içinde başlayan denemeler</small></div>
-      <div className="qq-card"><span>Toplam Slot</span><strong>{number(totals?.slots)}</strong><small>{lanes.data ? `${lanes.data.length} şeritte aynı anda çalışabilecek iş` : '—'}</small></div>
+      <div className="qq-card"><span>Slot Bekleyen İş</span><strong>{number(totals?.queued)}</strong><small>Slot sırası bekliyor</small></div>
+      <div className="qq-card"><span>Deneme</span><strong>{number(totals?.attempts)}</strong><small>{windowLabel}</small></div>
+      <div className="qq-card"><span>Toplam Slot</span><strong>{number(totals?.slots)}</strong><small>{lanes.data ? `${lanes.data.length} şeritte toplam` : '—'}</small></div>
     </div>
 
     <section className="qq-section" aria-labelledby="qq-lanes">
