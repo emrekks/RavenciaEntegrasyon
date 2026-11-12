@@ -92,7 +92,26 @@ export function ResendReminderEditor({ count: saved, onSave }: { count: number; 
     document.addEventListener('keydown', escape)
     return () => { document.removeEventListener('pointerdown', outside); document.removeEventListener('keydown', escape) }
   }, [open])
-  useEffect(() => { if (open) field.current?.select() }, [open])
+  // The field takes focus on open only where there is no on-screen keyboard to cover the panel (a pointer that can hover
+  // and a window wider than a phone); on a phone the owner taps the field himself.
+  useEffect(() => {
+    if (open && window.matchMedia('(hover: hover) and (min-width: 761px)').matches) field.current?.select()
+  }, [open])
+  // On a phone the panel is a sheet on the bottom edge. --rr-kb lifts it by the height the keyboard takes from the
+  // visual viewport, so it stays above the keyboard; the focused field is scrolled into view inside the sheet.
+  useEffect(() => {
+    const viewport = window.visualViewport
+    const host = root.current
+    if (!open || !viewport || !host) return
+    const lift = () => {
+      const covered = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
+      host.style.setProperty('--rr-kb', `${Math.round(covered)}px`)
+    }
+    lift()
+    viewport.addEventListener('resize', lift)
+    viewport.addEventListener('scroll', lift)
+    return () => { viewport.removeEventListener('resize', lift); viewport.removeEventListener('scroll', lift); host.style.removeProperty('--rr-kb') }
+  }, [open])
   const toggle = () => {
     if (open) { setOpen(false); return }
     setText(String(saved)); setError(''); setOpen(true)
@@ -111,7 +130,7 @@ export function ResendReminderEditor({ count: saved, onSave }: { count: number; 
     <button type="button" ref={gear} className="rr-reminder-gear" aria-label="Yeniden Gönderim Sayısını Düzenle" aria-haspopup="dialog" aria-expanded={open} onClick={event => { event.stopPropagation(); toggle() }}><UiIcon name="settings" size={16} /></button>
     {open && <form className="rr-reminder-pop" role="dialog" aria-label="Yeniden Gönderim Hatırlatıcısı" onSubmit={submit}>
       <label htmlFor="rr-reminder-count">Bekleyen Yeniden Gönderim</label>
-      <input id="rr-reminder-count" ref={field} type="text" inputMode="numeric" autoComplete="off" value={text} disabled={busy} aria-invalid={error ? true : undefined} onChange={event => { setText(event.target.value); setError('') }} />
+      <input id="rr-reminder-count" ref={field} type="text" inputMode="numeric" enterKeyHint="done" autoComplete="off" value={text} disabled={busy} onFocus={event => event.currentTarget.scrollIntoView({ block: 'nearest' })} aria-invalid={error ? true : undefined} onChange={event => { setText(event.target.value); setError('') }} />
       {error && <p className="rr-reminder-error" role="alert">{error}</p>}
       <div className="rr-reminder-actions">
         <button type="button" className="rr-btn" disabled={busy} onClick={() => { void persist(0) }}>Sıfırla</button>
