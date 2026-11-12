@@ -5,6 +5,8 @@
 .rr-layer.rr-layer .bf-modal .bf-body input.rr-in { height: 36px; min-height: 0; }
 .rr-layer.rr-layer .bf-modal .rr-m-foot .bf-summary { flex: 1 0 100%; overflow: hidden; color: var(--rr-ink); font-weight: 500; white-space: nowrap; text-overflow: ellipsis; }
 .rr-layer.rr-layer .bf-modal .rr-m-foot .bf-summary + .rr-btn { margin-left: auto; }
+/* A phone has no room for the line: it wraps rather than hiding its end. */
+@media (max-width: 560px) { .rr-layer.rr-layer .bf-modal .rr-m-foot .bf-summary { white-space: normal; } }
 .rr-layer.rr-layer .bf-modal .bf-desc { display: grid; gap: 10px; }
 .rr-layer.rr-layer .bf-modal .bf-desc textarea.rr-in { min-height: 150px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; line-height: 19px; }
 .rr-layer.rr-layer .bf-modal .bf-preview { display: grid; gap: 6px; max-height: 200px; overflow: auto; padding: 10px 12px; border: 1px solid var(--rr-line); border-radius: 7px; background: var(--rr-raised); }
