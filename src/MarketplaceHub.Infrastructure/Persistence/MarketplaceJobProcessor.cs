@@ -2557,8 +2557,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var isHepsiburada = string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase);
         var isPttAvm = string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase);
         var isTrendyol = string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase);
-        // PTT AVM lines are the variants sent: up to 1000 products of up to 100 variants each.
-        var maximumLineCount = isHepsiburada ? 4000 : isPttAvm ? PttAvmPriceInventoryRules.MaxItemsPerRequest * PttAvmPriceInventoryRules.MaxVariantsPerProduct : string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) ? PazaramaPriceInventoryRules.MaxItemsPerRequest : 1000;
+        // Hepsiburada takes the adapter's inventory-upload cap (1000; 4000 was never confirmed). PTT AVM lines are the variants
+        // sent: up to 1000 products of up to 100 variants each.
+        var maximumLineCount = isHepsiburada ? HepsiburadaHttpClient.MaxInventoryUploadItems : isPttAvm ? PttAvmPriceInventoryRules.MaxItemsPerRequest * PttAvmPriceInventoryRules.MaxVariantsPerProduct : string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) ? PazaramaPriceInventoryRules.MaxItemsPerRequest : 1000;
         var duplicateKeys = isHepsiburada
             ? payload.Lines.Select(x => x.MerchantSku).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).Count()
             : payload.Lines.Select(x => x.Barcode).Distinct(StringComparer.OrdinalIgnoreCase).Count();
@@ -11997,12 +11998,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 if (movement.ShortfallDelta > 0)
                     await RecordIssue(
                         tenantId,
-                        $"stock-order-consumption:{line.Id:N}",
-                        "STOCK_ORDER_CONSUMPTION_BLOCKED",
+                        StockShortfallNotices.DedupeKey(line.Id),
+                        StockShortfallNotices.IssueCode,
                         StockShortfallSummary(platformCode ??= await ConnectionPlatformCode(tenantId, connectionId, cancellationToken), await OrderNumberOf(tenantId, line.OrderId, cancellationToken), line.Sku ?? line.Barcode, shortfallAfter),
                         cancellationToken);
-                // The units that could not be taken are no longer ordered (a cancellation), so the notice closes.
-                else if (shortfallAfter <= 0) await ResolveIssue(tenantId, $"stock-order-consumption:{line.Id:N}", cancellationToken);
+                // The units that could not be taken are no longer ordered (a cancellation), so the notice closes; a stock count
+                // set by hand closes it too (StockShortfallNotices).
+                else if (shortfallAfter <= 0) await ResolveIssue(tenantId, StockShortfallNotices.DedupeKey(line.Id), cancellationToken);
             }
 
             if (shipmentDelta > 0)

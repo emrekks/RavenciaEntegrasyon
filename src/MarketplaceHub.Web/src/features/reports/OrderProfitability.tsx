@@ -45,8 +45,8 @@ function summaryKpis(data: OrderProfitPage): Kpi[] {
       tip: 'Listelenen siparişlerin toplam tutarı.' },
     { key: 'profit', label: 'Siparişlerin Kârı', value: data.profit, format: money, icon: 'wallet', tone: profitTone, note: 'reklam ve cezalar hariç',
       tip: 'Kârı bilinen siparişlerin toplam kârı; siparişe bağlı olmayan reklam ve cezalar düşülmez.' },
-    { key: 'margin', label: 'Kâr Marjı', value: data.margin, format: value => percent(value), icon: 'percent', note: `${money(data.profitAmount)} tutar üzerinden`,
-      tip: 'Kârı bilinen siparişlerin kârının, aynı siparişlerin tutarına oranı.' },
+    { key: 'margin', label: 'Sipariş Kâr Marjı', value: data.margin, format: value => percent(value), icon: 'percent', note: `${money(data.profitAmount)} tutar üzerinden`,
+      tip: 'Kârı bilinen siparişlerin kârının, aynı siparişlerin tutarına oranı; reklam ve cezalar düşülmez. Genel Bakış\'taki Kâr Marjı ise Net Kâr\'ın bütün satışlara oranıdır.' },
     ...missing('cost', 'Maliyeti Eksik', data.missingCost, 'Ürün maliyeti girilmemiş siparişler; kârları hesaplanmaz.'),
     ...missing('cargo', 'Kargosu Bilinmeyen', data.missingCargo, 'Kargo faturası gelmeyen ve tarifeyle tahmin edilemeyen siparişler; kârları hesaplanmaz.'),
     ...missing('commission', 'Komisyonu Eksik', data.missingCommission ?? 0, 'Komisyon oranı bilinmeyen siparişler; kârları hesaplanmaz.')

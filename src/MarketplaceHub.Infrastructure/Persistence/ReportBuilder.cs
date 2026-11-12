@@ -838,9 +838,9 @@ internal static class ReportBuilder
         if (cost.KeptQuantity > 0)
             notes.Add(cost.CostedQuantity <= 0
                 ? "Satılan ürünlerin hiçbirinde maliyet girilmemiş; kâr hesaplanamaz."
-                : $"Maliyet yalnız {cost.CostedQuantity.ToString("N0", tr)} / {cost.KeptQuantity.ToString("N0", tr)} adetlik satışta girilmiş ({Percent(cost.Coverage)}); kâr yalnız bu satışlar üzerinden hesaplanır.");
+                : $"Maliyet yalnız {cost.CostedQuantity.ToString("N0", tr)} / {cost.KeptQuantity.ToString("N0", tr)} adetlik satışta girilmiş ({Percent(cost.Coverage)}); kesintiler bütün satışlardan düşüldüğü için Net Kâr, satılan bütün ürünlerin maliyeti girilince hesaplanır.");
         // The cost a line kept at the sale (OrderLineCostSnapshot); a line that kept none follows the variant's cost now.
-        notes.Add("Maliyet, satış anında ürün kartında girili olan maliyettir (o an girili değilse kartın güncel maliyeti); bu kâra kargo ve KDV dahil değildir.");
+        notes.Add("Maliyet, satış anında ürün kartında girili olan maliyettir (o an girili değilse kartın güncel maliyeti) ve KDV dahil kabul edilir; Net KDV içindeki KDV'yi düşer.");
         notes.Add("Kargo süreleri pazaryerinin bildirdiği durum zamanlarından hesaplanır (yaklaşık); zamanı olmayan paketler süre ortalamasına girmez.");
         notes.Add("Müşteri sayısı mağazanın müşteri numarası, e-posta ya da telefondan üretilen tek yönlü bir anahtarla sayılır; aynı kişi iki pazaryerinde iki müşteri sayılabilir.");
         if (cancelled.Count > 0)

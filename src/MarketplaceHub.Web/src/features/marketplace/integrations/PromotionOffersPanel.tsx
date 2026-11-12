@@ -146,7 +146,7 @@ export function PromotionOffersPanel({ connectionId, kind }: { connectionId: str
   }
 
   return <section className="panel commission-tariffs promotion-offers" aria-labelledby={`promotion-${kind}-title`}>
-    <div className="cs-sec-head"><h3 id={`promotion-${kind}-title`}>{promotionTitles[kind]}<TitleHint label={promotionTitles[kind]}>{promotionHelp[kind]} Kargo, hizmet bedeli ve stopaj ürün bazında bilinmediği için düşülmez; pazaryerine hiçbir şey gönderilmez.</TitleHint></h3></div>
+    <div className="cs-sec-head"><h3 id={`promotion-${kind}-title`}>{promotionTitles[kind]}<TitleHint label={promotionTitles[kind]}>{promotionHelp[kind]} Kâr, komisyon, ürün maliyeti (KDV dahil kabul edilir), mağazanın kargo tarifesi, 13,19 TL hizmet bedeli, %1 stopaj ve Net KDV düşülerek hesaplanır; maliyet, KDV oranı ya da kargo tarifesi yoksa bilinmez. Pazaryerine hiçbir şey gönderilmez.</TitleHint></h3></div>
     <div className={`commission-dropzone${dragging ? ' is-dragging' : ''}`} onDragOver={event => { event.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)} onDrop={onDrop}>
       <strong>{upload.isPending ? 'Dosya okunuyor…' : `${promotionTitles[kind]} dosyasını buraya bırakın`}</strong>
       <span>Trendyol satıcı panelinden indirilen .xlsx dosyası · en fazla 10 MiB</span>

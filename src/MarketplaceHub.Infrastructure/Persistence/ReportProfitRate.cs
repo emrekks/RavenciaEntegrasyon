@@ -6,7 +6,8 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // moneyBreakdown over profitSteps): the sales less the deductions (returns, the commission, and with Trendyol's statement
 // its cargo and per-sale fees, each with what the period charged of it tied to none of its orders), the net VAT, the
 // product cost and the deductions no order carries; over the product cost. Null where the page shows no profit: no order
-// with an amount, or no cost entered. Stok's Tahmini Kâr averages it over the last whole months (ReportsService.ProfitRateAsync).
+// with an amount, no cost entered, or a unit kept without a cost (its deductions are taken off with the rest, so the
+// profit would be too high by its missing cost; the page shows "Maliyet Eksik" then). Stok's Tahmini Kâr averages it over the last whole months (ReportsService.ProfitRateAsync).
 internal static class ReportProfitRate
 {
     // The per-sale fees (beside the commission) and the kinds of deduction no order carries, as the page names them.
@@ -41,7 +42,7 @@ internal static class ReportProfitRate
             if (data.Commission.CoveredRevenue > 0m) deducted += data.Commission.EstimatedCommission;
             unlinked = apart.Sum(line => line.Amount);
         }
-        if (data.Cost.CostedQuantity <= 0m || data.Cost.CostTotal == 0m) return null;
+        if (data.Cost.CostedQuantity <= 0m || data.Cost.CostTotal == 0m || data.Cost.CostedQuantity < data.Cost.KeptQuantity) return null;
         var cost = data.Cost.CostTotal;
         var profit = summary.GrossSales - deducted - (tax ?? 0m) - cost - unlinked;
         return profit / cost;

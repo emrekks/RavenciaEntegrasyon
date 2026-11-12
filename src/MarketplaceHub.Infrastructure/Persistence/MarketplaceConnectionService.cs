@@ -166,7 +166,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             Environment = environment,
             DisplayName = command.DisplayName.Trim(),
             ExternalStoreId = externalStoreId!,
-            ApiVersion = platform == "TRENDYOL" ? "V2" : platform == "SHOPIFY" ? "2026-07" : platform == "HEPSIBURADA" ? "V1.0" : platform is "N11" or "PAZARAMA" or "PTTAVM" ? "V1" : "1.0.0",
+            ApiVersion = platform == "TRENDYOL" ? "V2" : platform == "SHOPIFY" ? "2026-10" : platform == "HEPSIBURADA" ? "V1.0" : platform is "N11" or "PAZARAMA" or "PTTAVM" ? "V1" : "1.0.0",
             Status = "DRAFT",
             SettingsJson = platform == "TRENDYOL" ? JsonSerializer.Serialize(new ConnectionSettings(command.UserAgentIdentity!.Trim(), false, true)) : platform == "SHOPIFY" ? JsonSerializer.Serialize(new ShopifyConnectionSettings(false, true)) : platform == "HEPSIBURADA" ? JsonSerializer.Serialize(new HepsiburadaConnectionSettings(false, true)) : platform == "N11" ? JsonSerializer.Serialize(new N11ConnectionSettings(false)) : platform == "PAZARAMA" ? JsonSerializer.Serialize(new PazaramaConnectionSettings(false)) : platform == "PTTAVM" ? JsonSerializer.Serialize(new PttAvmConnectionSettings(false)) : JsonSerializer.Serialize(new TrendyolEFaturamConnectionSettings(false)),
             Version = 1
@@ -554,7 +554,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             var connectionTest = await db.PlatformCapabilities.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.Code == connectionTestCode && x.Environment == connection.Environment && x.StoreScope == connection.ExternalStoreId, cancellationToken);
             if (connection.LastSuccessAt is null || connectionTest?.SupportLevel != CapabilitySupportLevel.Supported) return ServiceResult<ConnectionView>.Fail("CONNECTION_TEST_REQUIRED", "Bağlantıyı etkinleştirmeden önce bağlantı testinin başarılı olması gerekir; önce Bağlantıyı Test Et'e basın.", 422);
             if (!ConnectionActivationPolicy.HasTestSinceDisabled(connection.LastSuccessAt, connection.DisabledAt))
-                return ServiceResult<ConnectionView>.Fail("CONNECTION_TEST_REQUIRED", "Devre dışı bırakılan bağlantıyı yeniden etkinleştirmeden önce yeni bir bağlantı testi gerekir.", 422);
+                return ServiceResult<ConnectionView>.Fail("CONNECTION_TEST_REQUIRED", "Pasife alınan bağlantıyı yeniden etkinleştirmeden önce yeni bir bağlantı testi gerekir.", 422);
             // Re-activation after data was hidden or purged must always rebuild the
             // marketplace snapshot. Checking for remaining rows is not reliable:
             // reference snapshots can survive an operational data reset while the

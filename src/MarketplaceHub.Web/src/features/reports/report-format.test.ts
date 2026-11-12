@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { change, desiSourcesNote, formatPercent, moneyOrMissing, reportQuery, sortRows, toCsv } from './report-format'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { change, periodPresets, desiSourcesNote, formatPercent, moneyOrMissing, reportQuery, sortRows, toCsv } from './report-format'
 
 describe('report formatting', () => {
   it('says where the parcels\' desi came from, leaving out the empty sources', () => {
@@ -45,5 +45,23 @@ describe('report formatting', () => {
     const rows = [{ label: 'Bilinmiyor', value: 99, known: false }, { label: 'Ankara', value: 1, known: true }, { label: 'İzmir', value: 5, known: true }]
     expect(sortRows(rows, row => row.value, 'desc', row => !row.known).map(row => row.label)).toEqual(['İzmir', 'Ankara', 'Bilinmiyor'])
     expect(sortRows(rows, row => row.value, 'asc', row => !row.known).map(row => row.label)).toEqual(['Ankara', 'İzmir', 'Bilinmiyor'])
+  })
+
+  afterEach(() => { vi.useRealTimers() })
+
+  // 9.1.6 of the operating guide: the period buttons followed the browser clock. At 00:30 on 1 November in Istanbul it is
+  // still 31 October in London or New York; every button follows Istanbul's day, as Genel Bakış does.
+  it('works the period buttons out from today in Istanbul, not from the browser clock', () => {
+    // 21:30Z: still 31 October on a UTC clock (the CI runners'), 1 November in Istanbul.
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-10-31T21:30:00Z'))
+    const ranges = Object.fromEntries(periodPresets().map(preset => [preset.key, preset.range]))
+    expect(ranges.today).toEqual({ from: '2026-11-01', to: '2026-11-01' })
+    expect(ranges.yesterday).toEqual({ from: '2026-10-31', to: '2026-10-31' })
+    expect(ranges.month).toEqual({ from: '2026-11-01', to: '2026-11-01' })
+    expect(ranges['last-month']).toEqual({ from: '2026-10-01', to: '2026-10-31' })
+    expect(ranges['30']).toEqual({ from: '2026-10-03', to: '2026-11-01' })
+    expect(ranges.week).toEqual({ from: '2026-10-26', to: '2026-11-01' })
+    expect(periodPresets().map(preset => preset.label)).toEqual(['Bugün', 'Dün', 'Bu Hafta', 'Bu Ay', 'Geçen Ay', 'Son 30 Gün', 'Bu Yıl'])
   })
 })

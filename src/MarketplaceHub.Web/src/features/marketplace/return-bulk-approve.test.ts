@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bulkApproveConfirmText, bulkApproveCounts, bulkApproveFailureText } from './return-bulk-approve'
+import { bulkApproveConfirmText, bulkApproveCounts, bulkApproveFailureText, bulkDecisionLimit, bulkDecisionLimitText } from './return-bulk-approve'
 
 describe('bulk return approval texts', () => {
   it('counts each order once and adds up the product units', () => {
@@ -20,5 +20,13 @@ describe('bulk return approval texts', () => {
     expect(bulkApproveFailureText([{ orderNumber: '#100', message: 'Yazma kapalı.' }])).toBe('Onaylanamayan sipariş: #100. Neden: Yazma kapalı.')
     expect(bulkApproveFailureText([{ orderNumber: '#100', message: 'Sürüm eski' }, { orderNumber: '#200', message: 'Yazma kapalı' }]))
       .toBe('Onaylanamayan siparişler: #100, #200.')
+  })
+})
+
+describe('bulk decision cap', () => {
+  it('allows up to the cap and explains how many to drop above it', () => {
+    expect(bulkDecisionLimitText(bulkDecisionLimit)).toBeNull()
+    expect(bulkDecisionLimitText(1)).toBeNull()
+    expect(bulkDecisionLimitText(bulkDecisionLimit + 3)).toBe(`Toplu kararda en çok ${bulkDecisionLimit} iade seçilebilir; 3 iadenin seçimini kaldırın.`)
   })
 })
