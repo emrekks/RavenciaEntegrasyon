@@ -6,7 +6,7 @@ import { jobCategoryTabs, jobTypesForCategoryTab, knownJobTypes } from './job-ca
 const fs = (globalThis as unknown as { process: { getBuiltinModule(name: string): unknown } }).process.getBuiltinModule('node:fs') as { existsSync(path: URL): boolean; readFileSync(path: URL, encoding: 'utf8'): string }
 const testFileUrl = import.meta.url
 const serverFile = (file: string) => new URL('../../../../MarketplaceHub.Application/' + file, testFileUrl)
-const serverSourceAvailable = fs.existsSync(serverFile('MarketplaceContracts.cs')) && fs.existsSync(serverFile('InvoicingContracts.cs'))
+const serverSourceAvailable = fs.existsSync(serverFile('MarketplaceContracts.cs')) && fs.existsSync(serverFile('InvoicingContracts.cs')) && fs.existsSync(serverFile('PanelFactoryResetContracts.cs'))
 
 function constantsOf(file: string, className: string) {
   const source = fs.readFileSync(serverFile(file), 'utf8')
@@ -17,7 +17,7 @@ function constantsOf(file: string, className: string) {
 
 describe('job category tabs (G22)', () => {
   it.skipIf(!serverSourceAvailable)('know every job type the server defines', () => {
-    const serverTypes = [...constantsOf('MarketplaceContracts.cs', 'MarketplaceJobTypes'), ...constantsOf('InvoicingContracts.cs', 'InvoicingJobTypes')]
+    const serverTypes = [...constantsOf('MarketplaceContracts.cs', 'MarketplaceJobTypes'), ...constantsOf('InvoicingContracts.cs', 'InvoicingJobTypes'), ...constantsOf('PanelFactoryResetContracts.cs', 'PanelJobTypes')]
     expect(serverTypes.length).toBeGreaterThan(50)
     expect(serverTypes.filter(type => !knownJobTypes.includes(type))).toEqual([])
   })
@@ -46,6 +46,7 @@ describe('job category tabs (G22)', () => {
     expect(jobTypesForCategoryTab('INVOICES')).toContain('TRENDYOL_FINANCE_SYNC')
     expect(jobTypesForCategoryTab('INVOICES')).toContain('PAZARAMA_FINANCE_SYNC')
     expect(jobTypesForCategoryTab('SYSTEM')).toContain('EXTERNAL_EFFECT_RECONCILE')
+    expect(jobTypesForCategoryTab('SYSTEM')).toContain('PANEL_FACTORY_RESET')
   })
 
   it('count the invoice checks under Faturalar only', () => {

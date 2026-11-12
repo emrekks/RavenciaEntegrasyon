@@ -61,7 +61,7 @@ describe('irreversible work (no step-up re-authentication)', () => {
       return new Response(JSON.stringify({ done: true }), { status: 200, headers: { 'Content-Type': 'application/json' } })
     })
     vi.stubGlobal('fetch', fetchMock)
-    await expect(hubApi('/settings/data-reset', { method: 'POST', body: '{"scopes":["ORDERS"]}' })).resolves.toEqual({ done: true })
+    await expect(hubApi('/settings/factory-reset', { method: 'POST', body: '{"scopes":["ORDERS"]}' })).resolves.toEqual({ done: true })
     expect(resets).toBe(1)
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/reauthenticate'))).toBe(false)
   })
@@ -73,7 +73,7 @@ describe('irreversible work (no step-up re-authentication)', () => {
       sent++
       return new Response(JSON.stringify({ code: 'FORBIDDEN', title: 'Bu işlem için yetkiniz yok.' }), { status: 403, headers: { 'Content-Type': 'application/json' } })
     }))
-    await expect(hubApi('/settings/data-reset', { method: 'POST', body: '{}' })).rejects.toMatchObject({ status: 403, code: 'FORBIDDEN' })
+    await expect(hubApi('/settings/factory-reset', { method: 'POST', body: '{}' })).rejects.toMatchObject({ status: 403, code: 'FORBIDDEN' })
     expect(sent).toBe(1)
   })
 })

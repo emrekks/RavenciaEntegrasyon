@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest'
+import { syncJitterText } from './integration-helpers'
 import { connectionEnvironmentLabel, connectionTestFeedback, credentialRequestBody, invoiceCreationFeedback, readIntegrationListState, stageTestOrderAvailable, trendyolUserAgentNotice, writeIntegrationListState } from './integration-helpers'
 
 describe('integration helpers', () => {
+  it('names the start offset (jitter) of a flow and stays silent without one', () => {
+    expect(syncJitterText(45)).toBe(' Her çalışma 45 sn kaydırılarak başlar; aynı sıklıktaki akışlar aynı anda başlamaz.')
+    expect(syncJitterText(120)).toContain('2 dk')
+    expect(syncJitterText(0)).toBe('')
+    expect(syncJitterText(null)).toBe('')
+  })
+
   it('builds the credential body of each platform', () => {
     const data = new FormData()
     data.set('apiKey', 'key'); data.set('apiSecret', 'secret'); data.set('email', 'a@b.test'); data.set('password', '')

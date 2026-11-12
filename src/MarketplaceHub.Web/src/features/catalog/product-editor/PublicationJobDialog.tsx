@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { jobStatusLabel } from '../../../shared/job-status-labels'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router'
 import { hubPoll } from '../../../shared/api'
@@ -25,14 +26,11 @@ export type PublicationJobDialogDetail = {
   variantResults?: JobVariantResults | null
 }
 
-const statusLabels: Record<string, string> = {
-  PENDING: 'Sırada', LEASED: 'Çalışıyor', RETRY_SCHEDULED: 'Yeniden Denenecek', BLOCKED: 'Engellendi', MANUAL_REVIEW: 'İnceleme Bekliyor',
-  SUCCEEDED: 'Tamamlandı', DEAD: 'Deneme Limiti Doldu', CANCELLED: 'İptal Edildi'
-}
 const statusTones: Record<string, string> = { SUCCEEDED: 'success', DEAD: 'danger', BLOCKED: 'danger', CANCELLED: 'neutral', MANUAL_REVIEW: 'warning', RETRY_SCHEDULED: 'warning' }
 
+// The same names İşlem Takibi uses (shared/job-status-labels).
 export function publicationJobStatusLabel(status: string) {
-  return statusLabels[status.trim().toUpperCase()] ?? status
+  return jobStatusLabel(status)
 }
 
 // "%40 · 2/5 · Renkler gönderiliyor" or nothing while no progress is known.

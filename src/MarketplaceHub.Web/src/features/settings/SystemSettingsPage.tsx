@@ -17,7 +17,7 @@ import { connectionFullResetSupported, type ConnectionFullResetView } from '../m
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { UiIcon } from '../../shared/components/UiIcon'
 import { PanelFactoryResetSection } from './PanelFactoryResetSection'
-import { panelResetConfirmed, togglePanelResetCategories, type PanelFactoryResetView } from './panel-factory-reset'
+import { dataResetConfirmWord, panelResetConfirmed, togglePanelResetCategories, type PanelFactoryResetView } from './panel-factory-reset'
 import type { Connection } from '../marketplace/shared'
 import './settings-sade.css'
 import '../../shared/view-tabs.css'
@@ -169,7 +169,6 @@ function resetGroupsOf(view: PanelFactoryResetView | undefined): DataResetGroup[
   const sections = Array.from(new Set(view.groups.map(group => group.section)))
   return sections.map(section => ({ label: section, description: '', options: view.groups.filter(group => group.section === section).map(group => ({ scope: group.key, label: group.label, description: group.description, unit: 'kayıt' })) }))
 }
-const resetConfirmWord = 'Verileri sil'
 const resetNumber = (value: number) => value.toLocaleString('tr-TR')
 const resetGroupIcons: Record<string, SettingsIconName> = { 'Satış ve Faturalar': 'barcode', Katalog: 'db', 'Pazaryeri Kayıtları': 'save', 'Sistem Kayıtları': 'bell' }
 
@@ -177,7 +176,7 @@ const resetGroupIcons: Record<string, SettingsIconName> = { 'Satış ve Faturala
 // a whole-row tile (checkbox beside the title, count as a tag); the notes sit in one callout and the sticky bar shows
 // what goes as chips, the total, the typed confirmation and the reset button.
 type ResetMarketplace = { id: string; platformCode: string; displayName: string; passive: boolean; count: number | undefined }
-function SettingsDataReset({ groups, counts, countsFailed, picked, onToggle, marketplaces, marketplacePicked, onToggleMarketplaces, progress, confirmation, onConfirmation, busy, onConfirm }: { groups: DataResetGroup[]; counts?: Record<string, number>; countsFailed: boolean; picked: string[]; onToggle: (scopes: string[], checked: boolean) => void; marketplaces: ResetMarketplace[]; marketplacePicked: string[]; onToggleMarketplaces: (ids: string[], checked: boolean) => void; progress: Record<string, BulkResetProgress>; confirmation: string; onConfirmation: (value: string) => void; busy: boolean; onConfirm: () => void }) {
+function SettingsDataReset({ forbidden, groups, counts, countsFailed, picked, onToggle, marketplaces, marketplacePicked, onToggleMarketplaces, progress, confirmation, onConfirmation, busy, onConfirm }: { forbidden: boolean; groups: DataResetGroup[]; counts?: Record<string, number>; countsFailed: boolean; picked: string[]; onToggle: (scopes: string[], checked: boolean) => void; marketplaces: ResetMarketplace[]; marketplacePicked: string[]; onToggleMarketplaces: (ids: string[], checked: boolean) => void; progress: Record<string, BulkResetProgress>; confirmation: string; onConfirmation: (value: string) => void; busy: boolean; onConfirm: () => void }) {
   const options = groups.flatMap(group => group.options)
   const going = options.filter(option => picked.includes(option.scope))
   const goingMarketplaces = marketplaces.filter(entry => marketplacePicked.includes(entry.id))
@@ -185,12 +184,20 @@ function SettingsDataReset({ groups, counts, countsFailed, picked, onToggle, mar
   const known = going.every(option => counts?.[option.scope] !== undefined) && marketplaceTotal !== undefined
   const total = going.reduce((sum, option) => sum + (counts?.[option.scope] ?? 0), 0) + (marketplaceTotal ?? 0)
   const goingCount = going.length + goingMarketplaces.length
+  // Every data type chosen is Paneli Tamamen Sıfırla: the page says so before the confirmation and asks for its word.
+  const fullReset = options.length > 0 && going.length === options.length
+  const resetConfirmWord = dataResetConfirmWord(options.length, going.length)
   const confirmed = panelResetConfirmed(confirmation, resetConfirmWord)
   const countText = (scope: string, unit: string) => {
     const value = counts?.[scope]
     if (value !== undefined) return `${resetNumber(value)} ${unit}`
     return countsFailed ? 'Sayı alınamadı' : counts ? null : 'Sayılıyor…'
   }
+  // The counts, the marketplaces and the reset are the owner's and administrators' (the server answers others 403).
+  if (forbidden) return <>
+    <SettingsPaneHead section="database" description="Yalnız seçtiğiniz alanlar bu hesabın yerel veritabanından silinir." />
+    <div className="ss-body"><div className="ss-callout" role="alert"><SettingsIcon name="lock" /><span>Veritabanı temizliğini yalnız hesap sahibi ve yöneticiler görür ve yapar.</span></div></div>
+  </>
   return <>
     <SettingsPaneHead section="database" description="Yalnız seçtiğiniz alanlar bu hesabın yerel veritabanından silinir." />
     <div className="ss-body ss-dr" role="group" aria-label="Sıfırlanacak veriler">
@@ -237,7 +244,8 @@ function SettingsDataReset({ groups, counts, countsFailed, picked, onToggle, mar
       </section>}
       <div className="ss-callout ss-dr-note">
         <p className="is-warn"><SettingsIcon name="alert" /><span><b>Geri alınamaz.</b> Yetkili işlemi: bağlı alt kayıtlar güvenli sırayla temizlenir.</span></p>
-        <p><SettingsIcon name="info" /><span>Sipariş, iade ve fatura kayıtları her platform için ayrı silinir: <b>Entegrasyonlar</b> sayfasında bağlantının menüsünden <b>Verileri Sıfırla</b>.</span></p>
+        <p><SettingsIcon name="info" /><span>Yukarıdaki veri türleri bütün pazaryerleri için birlikte silinir. Yalnız bir pazaryerinin kayıtları için <b>Pazaryerleri</b> bölümünü ya da <b>Entegrasyonlar</b> sayfasında bağlantının <b>Verileri Sıfırla</b> menüsünü kullanın.</span></p>
+        {fullReset && <p className="is-warn" role="alert"><SettingsIcon name="alert" /><span><b>Bütün veri türleri seçili: bu, Paneli Tamamen Sıfırla demektir.</b> Bu oturum dışındaki bütün oturumlar kapanır, panelde saklanan bütün dosyalar silinir. Onay için <b>{resetConfirmWord}</b> yazın.</span></p>}
       </div>
       <PanelFactoryResetSection />
     </div>
@@ -309,13 +317,15 @@ export function SystemSettingsPage() {
   const [marketplaceProgress, setMarketplaceProgress] = useState<Record<string, BulkResetProgress>>({})
   const resetCancelled = useRef(false)
   useEffect(() => { resetCancelled.current = false; return () => { resetCancelled.current = true } }, [])
-  // The active marketplace connections, each with what its Tam Sıfırlama would remove (the same view its window shows).
-  const resetConnections = useQuery({ queryKey: ['connections', 'settings-reset'], queryFn: async () => (await loadAllPages<Connection>('/connections')).items.filter(item => item.status !== 'DELETED' && item.status !== 'HIDDEN' && connectionFullResetSupported(item.platformCode)), enabled: section === 'database', staleTime: 0 })
-  const resetViews = useQueries({ queries: (resetConnections.data ?? []).map(item => ({ queryKey: ['connection-full-reset', item.id], queryFn: () => hubPoll<ConnectionFullResetView>(`/connections/${item.id}/full-reset`), enabled: section === 'database', staleTime: 0 })) })
-  const resetMarketplaces: ResetMarketplace[] = (resetConnections.data ?? []).map((item, index) => ({ id: item.id, platformCode: item.platformCode, displayName: item.displayName, passive: item.status !== 'ACTIVE' && item.status !== 'VERIFIED', count: marketplaceResetCount(resetViews[index]?.data) }))
-  // What each list holds now, the counts the reset reports when it is done.
+  // What each list holds now, the counts the reset reports when it is done. Owner and administrators only: for the
+  // other roles the server answers 403 and the page asks nothing else.
   const resetView = useQuery({ queryKey: ['panel-factory-reset'], queryFn: () => hubPoll<PanelFactoryResetView>('/settings/factory-reset'), enabled: section === 'database', staleTime: 0, retry: false })
+  const resetForbidden = resetView.error instanceof ApiRequestError && resetView.error.status === 403
   const resetGroups = resetGroupsOf(resetView.data)
+  // The active marketplace connections, each with what its Tam Sıfırlama would remove (the same view its window shows).
+  const resetConnections = useQuery({ queryKey: ['connections', 'settings-reset'], queryFn: async () => (await loadAllPages<Connection>('/connections')).items.filter(item => item.status !== 'DELETED' && item.status !== 'HIDDEN' && connectionFullResetSupported(item.platformCode)), enabled: section === 'database' && resetView.isSuccess, staleTime: 0 })
+  const resetViews = useQueries({ queries: (resetConnections.data ?? []).map(item => ({ queryKey: ['connection-full-reset', item.id], queryFn: () => hubPoll<ConnectionFullResetView>(`/connections/${item.id}/full-reset`), enabled: section === 'database' && resetView.isSuccess, staleTime: 0 })) })
+  const resetMarketplaces: ResetMarketplace[] = (resetConnections.data ?? []).map((item, index) => ({ id: item.id, platformCode: item.platformCode, displayName: item.displayName, passive: item.status !== 'ACTIVE' && item.status !== 'VERIFIED', count: marketplaceResetCount(resetViews[index]?.data) }))
   // Through hubApi: a session that ended shows the sign-in screen instead of an error box.
   const status = useQuery({ queryKey: ['security'], queryFn: () => hubApi<SecurityStatus>('/auth/security-status') })
   const sessions = useQuery({ queryKey: ['sessions'], queryFn: () => hubApi<SecuritySession[]>('/auth/sessions') })
@@ -350,6 +360,7 @@ export function SystemSettingsPage() {
   }
   async function resetOperationalData() {
     // The page's own confirmation word is the gate for the marketplaces and the catalog alike.
+    const resetConfirmWord = dataResetConfirmWord(resetView.data?.groups.length ?? 0, resetScopes.length)
     if ((!resetScopes.length && !marketplacePicked.length) || !panelResetConfirmed(resetConfirmation, resetConfirmWord)) return
     setResetBusy(true); setNotice(null)
     try {
@@ -523,7 +534,7 @@ export function SystemSettingsPage() {
         </>}
         {section === 'alerts' && <AlertEmailSettingsSection />}
         {section === 'ai' && <AiSettingsSection />}
-        {section === 'database' && <SettingsDataReset groups={resetGroups} counts={resetView.data ? Object.fromEntries(resetView.data.groups.map(entry => [entry.key, entry.count])) : undefined} countsFailed={resetView.isError} picked={resetScopes} onToggle={toggleResetScopes} marketplaces={resetMarketplaces} marketplacePicked={marketplacePicked} onToggleMarketplaces={toggleMarketplaces} progress={marketplaceProgress} confirmation={resetConfirmation} onConfirmation={setResetConfirmation} busy={resetBusy} onConfirm={() => void resetOperationalData()} />}
+        {section === 'database' && <SettingsDataReset forbidden={resetForbidden} groups={resetGroups} counts={resetView.data ? Object.fromEntries(resetView.data.groups.map(entry => [entry.key, entry.count])) : undefined} countsFailed={resetView.isError} picked={resetScopes} onToggle={toggleResetScopes} marketplaces={resetMarketplaces} marketplacePicked={marketplacePicked} onToggleMarketplaces={toggleMarketplaces} progress={marketplaceProgress} confirmation={resetConfirmation} onConfirmation={setResetConfirmation} busy={resetBusy} onConfirm={() => void resetOperationalData()} />}
         <ShippingLabelSettingsPanel section={isShipping ? section as ShippingSection : null} settings={labelSettings} saved={savedLabelSettings} dirty={shippingDirty} saving={labelSaving} loadFailed={shippingSettings.isError} loading={shippingSettings.isPending} format={labelFormat} setFormat={setLabelFormat} onChange={shippingSettings.setSettings} onSave={() => void saveLabelSettings()} />
         <AppearanceSettingsSection section={isAppearance ? section as AppearanceSection : null} onStatus={setAppearanceStatus} />
       </div>

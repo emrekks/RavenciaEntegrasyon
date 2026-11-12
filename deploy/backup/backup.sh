@@ -16,7 +16,7 @@ verify_backup() {
   (cd "$backup_dir" && sha256sum -c SHA256SUMS >/dev/null && pg_restore --list database.dump >/dev/null)
 }
 
-# Retention (a set is ~1.1 GB; sized for the 72 GB root disk):
+# Retention (a set is ~0.3-0.5 GB on 12 Nov 2026; the Hostinger root disk is 193 GB):
 #   - the newest BACKUP_KEEP_RECENT sets (default 5) of the last 72 hours, so the
 #     latest pre-deploy sets stay restorable (every deploy writes one; a busy day
 #     of deploys must not fill the disk);

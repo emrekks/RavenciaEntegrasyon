@@ -142,4 +142,18 @@ public sealed class PanelFactoryResetInventoryTests
     [Fact]
     public void TheCategoryConfirmation_VerileriSil_IsComparedTheSameWay() =>
         Assert.Equal(PanelFactoryResetService.PartialConfirmationWord, PanelFactoryResetService.NormalizeConfirmation(" verileri  sil"));
+
+    // Every category chosen one by one is the full reset (the other sessions end, every stored file goes): it is refused
+    // with the partial word and asks for PANELİ SIFIRLA, before anything is read or queued.
+    [Fact]
+    public async Task EveryCategoryChosen_TakesTheFullResetWord()
+    {
+        using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql("Host=localhost;Database=unused").Options);
+        var service = new PanelFactoryResetService(db, TimeProvider.System, null!, Microsoft.Extensions.Logging.Abstractions.NullLogger<PanelFactoryResetService>.Instance);
+        var every = PanelFactoryResetInventory.Groups.Select(x => x.Key).ToList();
+        var result = await service.RequestAsync(Guid.CreateVersion7(), Guid.CreateVersion7(), null, new PanelFactoryResetCommand("Verileri sil", every), "corr", CancellationToken.None);
+        Assert.False(result.Succeeded);
+        Assert.Equal(422, result.Error!.Status);
+        Assert.Contains(PanelFactoryResetService.ConfirmationWord, result.Error.Message, StringComparison.Ordinal);
+    }
 }

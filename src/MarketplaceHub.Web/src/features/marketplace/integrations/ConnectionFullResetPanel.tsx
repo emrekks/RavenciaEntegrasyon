@@ -50,7 +50,7 @@ export function ConnectionFullResetPanel({ item, onFeedback, onFinished, onCance
   }, [job, running])
   const start = useMutation({
     mutationFn: () => hubApi<ConnectionFullResetView>(`/connections/${item.id}/full-reset`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ confirmation }) }),
-    onSuccess: result => { client.setQueryData(queryKey, result); setConfirmation(''); onFeedback({ kind: 'info', title: 'Tam Sıfırlama Başladı', message: `${item.displayName} bağlantısının verileri arka planda siliniyor; ilerlemeyi bu pencerede ve İşler ekranında izleyebilirsiniz.` }) },
+    onSuccess: result => { client.setQueryData(queryKey, result); setConfirmation(''); onFeedback({ kind: 'info', title: 'Tam Sıfırlama Başladı', message: `${item.displayName} bağlantısının verileri arka planda siliniyor; ilerlemeyi bu pencerede ve İşlem Takibi’nde izleyebilirsiniz.` }) },
     onError: reason => onFeedback(failureNotice(reason, 'Tam sıfırlama başlatılamadı.'))
   })
   const counts = view.data ? new Map(view.data.items.map(entry => [entry.scope, entry.count])) : undefined
@@ -65,7 +65,7 @@ export function ConnectionFullResetPanel({ item, onFeedback, onFinished, onCance
     { warn: true, text: 'Kesilmiş faturalar da silinir. Faturalar E-Faturam’da ve GİB’de geçerli kalır; panelden silmek faturayı iptal etmez. Pazaryerine gönderilen fatura bağlantıları açılmaz.' },
     { warn: true, text: 'Siparişler yeniden çekilince faturasız görünür; aynı siparişe ikinci fatura kesmeyin.' },
     { text: `Pazaryerine ve E-Faturam’a yazılmaz; ${item.displayName} kayıtları sonraki eşitlemede yeniden alınabilir.` },
-    { text: 'Bağlantı ayarları korunur: kimlik bilgileri, eşitleme, fatura, konum ve stok ayarları, eşleme şablonları, kargo eşleşmeleri, bildirim aboneliği.' },
+    { text: 'Bağlantı ayarları korunur: kimlik bilgileri, eşitleme, fatura, konum ve stok ayarları, kargo eşleşmeleri, bildirim aboneliği. Eşleme şablonları ve varsayılan özellik değerleri Eşleştirmelerle birlikte silinir.' },
     ...(kept ? [{ text: `${number(kept)} ürün başka bir bağlantıda kullanıldığı ya da panelde oluşturulduğu için korunur; yalnız bu bağlantıyla bağı silinir.` }] : []),
     { text: 'Siparişlerin düşürdüğü stok geri eklenmez; yeniden çekilen siparişler stoğu ikinci kez düşürmez.' },
     { text: 'Sıfırlama arka planda çalışır ve süren eşitlemelerin bitmesini bekler.' }

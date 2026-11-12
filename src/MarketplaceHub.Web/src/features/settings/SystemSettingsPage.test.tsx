@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const apiState = vi.hoisted(() => ({ calls: [] as Array<{ path: string; method: string; body?: string; headers?: Record<string, string> }>, failShippingSave: null as string | null, alertVersion: 2, aiForbidden: false, aiVersion: 1, uploadedFile: null as string | null }))
+const apiState = vi.hoisted(() => ({ calls: [] as Array<{ path: string; method: string; body?: string; headers?: Record<string, string> }>, failShippingSave: null as string | null, alertVersion: 2, aiForbidden: false, resetForbidden: false, aiVersion: 1, uploadedFile: null as string | null }))
 
 vi.mock('../../shared/api', async importOriginal => {
   const actual = await importOriginal<typeof import('../../shared/api')>()
@@ -42,8 +42,7 @@ vi.mock('../../shared/api', async importOriginal => {
       return { apiKeySaved: true, defaultModel: 'claude-sonnet-5-5', updatedAt: '2026-11-07T19:40:00Z', version: ++apiState.aiVersion, skills: [{ key: 'beden-tablosu', title: 'Beden Tablosu', description: 'x', bundleHash: 'h2', uploaded: { skillId: 'skill_02', version: 'skver_9', uploadedAt: '2026-11-07T19:40:00Z', bundleHash: 'f1', source: 'FILE', fileName: apiState.uploadedFile }, upToDate: true }] }
     }
     if (path === '/settings/ai/test') return { ok: true, model: 'claude-sonnet-5-5', message: 'Bağlantı çalışıyor.' }
-    if (path === '/settings/data-reset' && method === 'GET') return { items: [{ scope: 'PRODUCTS', count: 944 }, { scope: 'CATEGORIES', count: 12 }, { scope: 'CATEGORY_ATTRIBUTES', count: 40 }, { scope: 'BRANDS', count: 3 }, { scope: 'OPTIONS', count: 2 }] }
-    if (path === '/settings/data-reset') return { products: 3, orders: 0, returns: 0, invoices: 0, categories: 0, categoryAttributes: 0, brands: 0, options: 0 }
+    if ((path === '/settings/factory-reset' || /^\/connections\/[^/]+\/full-reset$/.test(path)) && apiState.resetForbidden) throw new actual.ApiRequestError('Bu işlem için yeterli yetkiniz yok.', 403, 'PERMISSION_DENIED')
     if (path === '/settings/factory-reset') return {
       groups: [
         { key: 'INVOICES', label: 'Faturalar ve Belgeleri', description: 'Faturalar.', section: 'Satış ve Faturalar', requires: [], count: 4 },
@@ -112,6 +111,7 @@ describe('SystemSettingsPage', () => {
     apiState.failShippingSave = null
     apiState.alertVersion = 2
     apiState.aiForbidden = false
+    apiState.resetForbidden = false
     apiState.aiVersion = 1
     localStorage.clear()
     container = document.createElement('div')
@@ -277,6 +277,38 @@ describe('SystemSettingsPage', () => {
     expect(container.querySelector('label.ss-dr-ask')?.textContent).toContain('Onaylamak için Verileri sil yazın')
     input(container.querySelector<HTMLInputElement>('#settings-reset-confirm')!, 'verileri')
     expect(confirm.disabled).toBe(true)
+  })
+
+  it('says that every data type chosen is the full reset and asks for its word before it is sent', async () => {
+    await renderPage('/settings?tab=database')
+    await settle()
+    expect(container.querySelector('.ss-dr-note')?.textContent).not.toContain('Paneli Tamamen Sıfırla')
+    for (const group of Array.from(container.querySelectorAll<HTMLElement>('.ss-dr-group')).filter(item => item.getAttribute('aria-label') !== 'Pazaryerleri')) {
+      const all = Array.from(group.querySelectorAll<HTMLButtonElement>('header button')).find(item => item.textContent === 'Tümünü Seç')
+      if (all) click(all)
+    }
+    const warning = container.querySelector('.ss-dr-note [role="alert"]')
+    expect(warning?.textContent).toContain('Paneli Tamamen Sıfırla')
+    expect(warning?.textContent).toContain('oturumlar kapanır')
+    expect(container.querySelector('label.ss-dr-ask b')?.textContent).toBe('PANELİ SIFIRLA')
+    const confirm = container.querySelector<HTMLButtonElement>('.ss-dr-go')!
+    input(container.querySelector<HTMLInputElement>('#settings-reset-confirm')!, 'Verileri sil')
+    expect(confirm.disabled).toBe(true)
+    input(container.querySelector<HTMLInputElement>('#settings-reset-confirm')!, 'PANELİ SIFIRLA')
+    expect(confirm.disabled).toBe(false)
+    click(confirm)
+    await settle()
+    const request = apiState.calls.find(call => call.path === '/settings/factory-reset' && call.method === 'POST')
+    expect(JSON.parse(request?.body ?? '{}').confirmation).toBe('PANELİ SIFIRLA')
+  })
+
+  it('shows the lock callout to roles that may not clean the database and asks nothing about the marketplaces', async () => {
+    apiState.resetForbidden = true
+    await renderPage('/settings?tab=database')
+    await settle()
+    expect(container.querySelector('.ss-callout[role="alert"]')?.textContent).toContain('yalnız hesap sahibi ve yöneticiler')
+    expect(container.querySelector('section[aria-label="Pazaryerleri"]')).toBeNull()
+    expect(apiState.calls.some(call => call.path === '/connections' || call.path.endsWith('/full-reset'))).toBe(false)
   })
 
   it('enables saving the label settings once a switch changes', async () => {

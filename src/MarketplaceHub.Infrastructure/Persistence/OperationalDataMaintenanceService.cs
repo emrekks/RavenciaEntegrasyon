@@ -8,33 +8,10 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed partial class OperationalDataMaintenanceService(AppDbContext db, TimeProvider timeProvider, IDashboardReadService dashboard, ILogger<OperationalDataMaintenanceService> logger) : IOperationalDataMaintenanceService
 {
-    // Orders, returns and invoices are reset per connection only (ResetConnectionDataAsync, Entegrasyonlar › Verileri
-    // Sıfırla); the settings-wide reset covers the catalog lists.
+    // The catalog lists ResetCountsAsync counts for the whole tenant. Ayarlar › Veri resets through PanelFactoryResetService;
+    // the old tenant-wide catalog reset (/settings/data-reset) is gone (12 Nov 2026, the panel no longer called it).
     private static readonly HashSet<string> AllowedScopes = new(StringComparer.Ordinal) { "PRODUCTS", "CATEGORIES", "CATEGORY_ATTRIBUTES", "BRANDS", "OPTIONS" };
     private static readonly HashSet<string> ConnectionDeleteScopes = new(StringComparer.Ordinal) { "PRODUCTS", "ORDERS", "RETURNS", "INVOICES" };
-
-    public async Task<ServiceResult<OperationalDataResetView>> ResetAsync(Guid tenantId, Guid actorUserId, ResetOperationalDataCommand command, string correlationId, CancellationToken cancellationToken)
-    {
-        var scopes = command.Scopes.Select(value => value.Trim().ToUpperInvariant()).Distinct(StringComparer.Ordinal).ToHashSet(StringComparer.Ordinal);
-        if (scopes.Count == 0 || scopes.Any(scope => !AllowedScopes.Contains(scope))) return Invalid("Geçerli en az bir veri alanı seçin.");
-        if (!ConfirmationText.Matches(command.Confirmation, "Verileri sil")) return Invalid("Onay alanına tam olarak Verileri sil yazın.");
-
-        var counts = await CountsAsync(tenantId, null, scopes, cancellationToken);
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        await BeginFilePurgeAsync(cancellationToken);
-        if (scopes.Contains("CATEGORIES")) await DeleteCategoriesAsync(tenantId, cancellationToken);
-        if (scopes.Contains("CATEGORY_ATTRIBUTES")) await DeleteCategoryAttributesAsync(tenantId, cancellationToken);
-        if (scopes.Contains("BRANDS")) await DeleteBrandsAsync(tenantId, cancellationToken);
-        if (scopes.Contains("OPTIONS")) await DeleteOptionsAsync(tenantId, cancellationToken);
-        if (scopes.Contains("PRODUCTS")) await DeleteProductsAsync(tenantId, null, cancellationToken);
-        await ArchivePurgedFilesAsync(tenantId, cancellationToken);
-        db.AuditLogs.Add(Audit(tenantId, actorUserId, "OPERATIONAL_DATA_RESET", "Tenant", tenantId.ToString("D"), string.Join(',', scopes.Order()), correlationId));
-        AnnounceReset(tenantId, "products", "Tenant", tenantId);
-        await db.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        await RefreshDashboardBestEffortAsync(tenantId);
-        return ServiceResult<OperationalDataResetView>.Ok(counts);
-    }
 
     public async Task<ServiceResult<OperationalDataResetView>> DeleteConnectionAsync(Guid tenantId, Guid actorUserId, Guid connectionId, long expectedVersion, DeleteConnectionCommand command, string correlationId, CancellationToken cancellationToken)
     {
@@ -282,35 +259,6 @@ public sealed partial class OperationalDataMaintenanceService(AppDbContext db, T
         DELETE FROM sales.order_financial_allocations a USING purge_orders o WHERE a."TenantId"={{tenantId}} AND a."OrderId"=o."Id";
         DELETE FROM sales.order_lines l USING purge_orders o WHERE l."TenantId"={{tenantId}} AND l."OrderId"=o."Id";
         DELETE FROM sales.orders o USING purge_orders p WHERE o."TenantId"={{tenantId}} AND o."Id"=p."Id";
-        """, cancellationToken);
-
-    private Task DeleteCategoriesAsync(Guid tenantId, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
-        UPDATE catalog.products SET "CategoryId"=NULL WHERE "TenantId"={{tenantId}};
-        DELETE FROM catalog.category_mappings WHERE "TenantId"={{tenantId}};
-        UPDATE catalog.categories SET "ParentId"=NULL WHERE "TenantId"={{tenantId}};
-        DELETE FROM catalog.categories WHERE "TenantId"={{tenantId}};
-        """, cancellationToken);
-
-    private Task DeleteCategoryAttributesAsync(Guid tenantId, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
-        DELETE FROM catalog.channel_listing_attributes WHERE "TenantId"={{tenantId}};
-        DELETE FROM catalog.product_attribute_assignments WHERE "TenantId"={{tenantId}};
-        DELETE FROM catalog.attribute_value_mappings WHERE "TenantId"={{tenantId}};
-        DELETE FROM catalog.attribute_mappings WHERE "TenantId"={{tenantId}};
-        DELETE FROM catalog.category_attribute_requirements WHERE "TenantId"={{tenantId}};
-        DELETE FROM catalog.attribute_values WHERE "TenantId"={{tenantId}};
-        DELETE FROM catalog.attribute_definitions WHERE "TenantId"={{tenantId}};
-        """, cancellationToken);
-
-    private Task DeleteBrandsAsync(Guid tenantId, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
-        UPDATE catalog.products SET "BrandId"=NULL WHERE "TenantId"={{tenantId}};
-        DELETE FROM catalog.brand_mappings WHERE "TenantId"={{tenantId}};
-        DELETE FROM catalog.brands WHERE "TenantId"={{tenantId}};
-        """, cancellationToken);
-
-    private Task DeleteOptionsAsync(Guid tenantId, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
-        DELETE FROM catalog.variant_option_values WHERE "TenantId"={{tenantId}};
-        DELETE FROM catalog.product_option_values WHERE "TenantId"={{tenantId}};
-        DELETE FROM catalog.product_options WHERE "TenantId"={{tenantId}};
         """, cancellationToken);
 
     // ImportedOnly (full reset): of the connection's products only those its own import created go. A product created

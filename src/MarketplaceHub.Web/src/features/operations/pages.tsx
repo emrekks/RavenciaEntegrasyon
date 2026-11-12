@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { jobStatusLabel } from '../../shared/job-status-labels'
 import { platformDisplayNames } from '../../shared/platform-names'
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router'
@@ -95,29 +96,11 @@ function jobNotificationContext(job: Pick<JobSummary, 'id' | 'connectionId' | 'j
 }
 type JobPage = { items: JobSummary[]; nextCursor: string | null; hasMore: boolean }
 
+// The Durum filter and the row badge name a status the same way (shared/job-status-labels).
 const statuses: Array<{ value: '' | JobStatus; label: string }> = [
   { value: '', label: 'Tüm Durumlar' },
-  { value: 'PENDING', label: 'Bekliyor' },
-  { value: 'LEASED', label: 'Çalışıyor' },
-  { value: 'RETRY_SCHEDULED', label: 'Tekrar Denenecek' },
-  { value: 'BLOCKED', label: 'Engellendi' },
-  { value: 'MANUAL_REVIEW', label: 'Manuel İnceleme' },
-  { value: 'SUCCEEDED', label: 'Başarılı' },
-  { value: 'DEAD', label: 'Deneme Limiti Doldu' },
-  { value: 'CANCELLED', label: 'İptal Edildi' }
+  ...(['PENDING', 'LEASED', 'RETRY_SCHEDULED', 'BLOCKED', 'MANUAL_REVIEW', 'SUCCEEDED', 'DEAD', 'CANCELLED'] as const).map(value => ({ value, label: jobStatusLabel(value) }))
 ]
-
-
-function jobStatusLabel(status: JobStatus) {
-  if (status === 'PENDING') return 'Bekliyor'
-  if (status === 'LEASED') return 'Çalışıyor'
-  if (status === 'RETRY_SCHEDULED') return 'Yeniden denenecek'
-  if (status === 'BLOCKED') return 'Engellendi'
-  if (status === 'MANUAL_REVIEW') return 'İnceleme bekliyor'
-  if (status === 'SUCCEEDED') return 'Başarılı'
-  if (status === 'DEAD') return 'Deneme limiti doldu'
-  return 'İptal Edildi'
-}
 
 
 // A job that only waits for the marketplace to finish (a batch task, an approval) reads as waiting, not as a retry.
@@ -346,7 +329,7 @@ function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retrya
   </DialogSurface></div>
 }
 
-// The categories are the second level under İş Takibi: one segmented strip of equal text buttons (the dashboard's period
+// The categories are the second level under İşler: one segmented strip of equal text buttons (the dashboard's period
 // picker), every category in view with a quiet count; on a narrow screen the strip scrolls sideways.
 function JobCategorySegment({ items: givenItems, value, onChange }: { items: Array<{ value: string; label: string; count?: number }>; value: string; onChange: (value: string) => void }) {
   const items = useRememberedTabCounts('İşlem kategorileri', givenItems)
@@ -382,7 +365,7 @@ export function JobsPage({ me }: { me: Me }) {
   // The server's comma list, or null for every platform; it also keys the list and the counts.
   const platform = platforms.length ? platforms.join(',') : null
   const updateView = (patch: Partial<JobsViewState>) => setSearchParams(current => writeJobsViewState(current, patch), { replace: true })
-  // Three main tabs sit above the page body: İş Takibi (the job list with its category tabs), Loglar (the price/stock
+  // Three main tabs sit above the page body: İşler (the job list with its category tabs), Loglar (the price/stock
   // send log) and API Sağlık (the price/stock sending health per connection, with the emergency stop). Going back to İş
   // Takibi reopens the category the address still holds; the job list is not read while another tab is open.
   const mainTab = jobsMainTab(searchParams)
@@ -602,7 +585,7 @@ export function JobsPage({ me }: { me: Me }) {
         <h1>İşlem Takibi</h1>
       </div>
     </div>
-    <Tabs className="rv-view-tabs jobs-reference-main-tabs" ariaLabel="İşlem Takibi görünümü" value={mainTab} onChange={setMainTab} items={[{ value: 'jobs', label: viewTabLabel('processing', 'İş Takibi') }, { value: 'logs', label: viewTabLabel('log', 'Loglar') }, { value: 'health', label: viewTabLabel('connected', 'API Sağlık') }]} />
+    <Tabs className="rv-view-tabs jobs-reference-main-tabs" ariaLabel="İşlem Takibi görünümü" value={mainTab} onChange={setMainTab} items={[{ value: 'jobs', label: viewTabLabel('processing', 'İşler') }, { value: 'logs', label: viewTabLabel('log', 'Loglar') }, { value: 'health', label: viewTabLabel('connected', 'API Sağlık') }]} />
     <div key={mainSlide.key} className={`jobs-reference-canvas${mainSlide.className ? ` ${mainSlide.className}` : ''}`}>
       {!listHidden && <JobCategorySegment value={category} onChange={setCategory} items={jobCategoryTabs.filter(tab => tab.key !== 'SYSTEM').map(tab => ({ value: tab.key, label: tab.label, count: list.isLoading ? undefined : categoryCounts.get(tab.key) ?? 0 }))} />}
       {mainTab === 'logs' ? <Suspense fallback={<Busy text="Loglar yükleniyor…" />}><OperationLogs platformOptions={platformOptions} onOpenJob={setSelectedId} /></Suspense>

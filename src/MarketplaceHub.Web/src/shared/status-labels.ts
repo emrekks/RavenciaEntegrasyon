@@ -17,7 +17,8 @@ const statusLabels: Record<string, string> = {
   CONNECTED: 'Bağlandı',
   CREATED: 'Oluşturuldu',
   CREATE_RESULT_UNKNOWN: 'Sonuç Bekleniyor',
-  DEAD: 'Hata',
+  // A job that used up its attempts; the name İşlem Takibi uses (job-status-labels.ts).
+  DEAD: 'Deneme Limiti Doldu',
   DEGRADED: 'Yavaşlıyor',
   DELAYED: 'Gecikiyor',
   DELIVERED: 'Teslim Edildi',

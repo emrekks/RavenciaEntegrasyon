@@ -1,0 +1,15 @@
+[Unit]
+Description=Copy the newest Ravencia backup set off the host after each scheduled backup
+
+[Timer]
+# 30 minutes after the scheduled backups (08:59 and 20:59 UTC). install-backup-timer.sh installs and enables
+# this timer only once the off-site copy is configured (deploy/secrets/backup_age_recipient.txt and
+# backup_offsite_remote.txt, docs/CI-CD-DEPLOY.md "Sunucu dışı yedek"); until then it is not on the host.
+OnCalendar=*-*-* 09:30:00 UTC
+OnCalendar=*-*-* 21:30:00 UTC
+Persistent=true
+RandomizedDelaySec=10m
+Unit=ravencia-offsite-copy.service
+
+[Install]
+WantedBy=timers.target

@@ -67,6 +67,9 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
             "imports" when last == "errors.csv" => OperationalRoles,
             // Reads answered by a live marketplace call.
             "connections" when last is "n11-shipment-templates" or "instant-notifications" => WorkingRoles,
+            // A connection's Tam Sıfırlama counts and progress are for those who may run it (Ayarlar › Veri lists every
+            // connection with them).
+            "connections" when last == "full-reset" => ElevatedRoles,
             "orders" when last is "finance" or "product-image" => WorkingRoles,
             "shipments" when last == "changeable-cargo-companies" => WorkingRoles,
             "returns" when last is "rejection-reasons" or "audits" or "return-shipment-companies" => WorkingRoles,

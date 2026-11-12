@@ -8,6 +8,8 @@ set -Eeuo pipefail
 #   ravencia-healthwatch.timer    5-minute health watch + API self-heal
 #   ravencia-maintenance.timer    monthly OS/kernel updates, reboot only when required
 #   ravencia-alert@.service       alert sender used by OnFailure= and the watch
+#   ravencia-offsite-copy.timer   age-encrypted off-site copy after each scheduled backup, installed
+#                                 only once deploy/secrets holds its recipient key and remote
 #   ravencia-deploy-guard.service holds a host shutdown while a deploy holds its lock
 #                                 (with the session-.scope.d ordering drop-in)
 # Backup, restore drill, health watch, maintenance and alerts run as root with systemd
@@ -31,6 +33,13 @@ units=(
   ravencia-deploy-guard.service
 )
 timers=(ravencia-backup.timer ravencia-restore-drill.timer ravencia-healthwatch.timer ravencia-maintenance.timer)
+# The off-site copy (deploy/backup/offsite-copy.sh), only once the owner has configured it: the age public key and
+# the rclone destination in deploy/secrets (docs/CI-CD-DEPLOY.md "Sunucu dışı yedek"). Until then its units are not
+# installed and nothing changes on the host.
+if sudo -n test -s "$script_dir/../secrets/backup_age_recipient.txt" && sudo -n test -s "$script_dir/../secrets/backup_offsite_remote.txt"; then
+  units+=(ravencia-offsite-copy.service ravencia-offsite-copy.timer)
+  timers+=(ravencia-offsite-copy.timer)
+fi
 # CrowdSec's allowlist refresh, once install-crowdsec.sh has installed CrowdSec.
 if command -v cscli >/dev/null 2>&1; then
   units+=(ravencia-crowdsec-allowlist.service ravencia-crowdsec-allowlist.timer)

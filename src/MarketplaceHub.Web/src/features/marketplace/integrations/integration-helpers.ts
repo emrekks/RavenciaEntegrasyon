@@ -239,6 +239,15 @@ export function cadenceShortText(seconds: number) {
   return `${seconds} sn`
 }
 
+/**
+ * The flow's fixed start offset (jitter): the scheduler queues it this much after its interval is up, so flows that
+ * share an interval do not all start at once. Shown read-only; saving sends the stored value back unchanged.
+ * " Her çalışma 45 sn kaydırılarak başlar." or "" when the flow has none.
+ */
+export function syncJitterText(seconds: number | null | undefined) {
+  return seconds && seconds > 0 ? ` Her çalışma ${cadenceShortText(seconds)} kaydırılarak başlar; aynı sıklıktaki akışlar aynı anda başlamaz.` : ''
+}
+
 /** The choices of a cadence select within the flow's bounds; the current value stays listed even when outside them. */
 export function cadenceChoices(intervals: Array<[number, string]>, minimum: number, maximum: number, current: number) {
   const choices = intervals.filter(([seconds]) => seconds >= minimum && seconds <= maximum)

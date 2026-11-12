@@ -15,33 +15,6 @@ namespace MarketplaceHub.Application.Tests;
 [Collection("postgres-integration")]
 public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
-    [PostgreSqlFact]
-    public async Task SettingsReset_LeavesOrdersReturnsAndInvoicesToTheConnectionReset()
-    {
-        var seed = NewSeed("dm-iss");
-        try
-        {
-            await SeedAsync(seed, db => db.Invoices.Add(NewInvoice(seed, InvoiceStatus.Completed, issued: true)));
-
-            await using var db = fixture.CreateContext();
-            // 26 Oct 2026: orders, returns and invoices are reset per platform (Entegrasyonlar › Verileri Sıfırla) only.
-            foreach (var scope in new[] { "ORDERS", "RETURNS", "INVOICES" })
-            {
-                var result = await NewService(db)
-                    .ResetAsync(seed.Tenant.Id, Guid.CreateVersion7(), new ResetOperationalDataCommand([scope], "Verileri sil"), "corr", CancellationToken.None);
-                Assert.False(result.Succeeded);
-                Assert.Equal(422, result.Error!.Status);
-            }
-            await using var verification = fixture.CreateContext();
-            Assert.Equal(1, await verification.Orders.CountAsync(x => x.TenantId == seed.Tenant.Id));
-            Assert.Equal(1, await verification.Invoices.CountAsync(x => x.TenantId == seed.Tenant.Id));
-        }
-        finally
-        {
-            await DeleteTenantAsync(seed.Tenant.Id);
-        }
-    }
-
     // A connection's order reset goes ahead around its issued invoices (26 Oct 2026: 10 issued Hepsiburada invoices
     // refused the whole reset): the issued invoice and its order stay, another order and its draft invoice go.
     [PostgreSqlFact]
