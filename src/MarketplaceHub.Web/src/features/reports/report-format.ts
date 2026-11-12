@@ -10,6 +10,27 @@ export function periodPresets(today = istanbulDateKey()) {
   return dateRangePresets(today).map(preset => ({ key: presetKeys[preset.label] ?? preset.label, label: preset.label, range: preset.range }))
 }
 
+// The product cost the profit takes off, as the server's ReportProfitCost (ReportProfitRate.cs) works it out (owner,
+// 13 Nov 2026). The deductions come off every sale, so the cost must cover every kept unit too: the profit is worked out
+// only when at least 95 % of the kept units carry a cost (usable; else "Maliyet Eksik"). Between 95 and 100 % the units
+// without a cost are priced by their share of the sales: the known cost's ratio to its units' revenue times the revenue
+// of the units without one; without that revenue (an older report) the average cost per unit stands in. A profit with an
+// estimated part is marked "Tahmini".
+export const minimumCostCoverage = 0.95
+export type ProfitCost = { usable: boolean; known: number; estimated: number; missing: number; total: number }
+export function profitCost(cost: ReportSales['cost']): ProfitCost {
+  const missing = Math.max(0, cost.keptQuantity - cost.costedQuantity)
+  const usable = cost.costedQuantity > 0 && cost.costTotal !== 0 && cost.costedQuantity >= cost.keptQuantity * minimumCostCoverage
+  const known = cost.costTotal
+  if (!usable || missing === 0) return { usable, known, estimated: 0, missing, total: known }
+  const keptRevenue = cost.keptRevenue ?? 0
+  const raw = cost.costedRevenue > 0 && keptRevenue >= cost.costedRevenue
+    ? known * (keptRevenue - cost.costedRevenue) / cost.costedRevenue
+    : known * missing / cost.costedQuantity
+  const estimated = Math.round(raw * 100) / 100
+  return { usable, known, estimated, missing, total: known + estimated }
+}
+
 // The sales report's contract (GET /reports/sales, ReportsContracts.cs) and the formatting the page shares.
 export type ReportSummary = {
   orders: number; cancelledOrders: number; cancelRate: number | null; soldQuantity: number; returnedQuantity: number; keptQuantity: number
@@ -46,7 +67,7 @@ export type ReportSales = {
   summary: ReportSummary; previousSummary: ReportSummary
   commission: { coveredRevenue: number; coverage: number | null; estimatedCommission: number; estimatedPayout: number; effectiveRate: number | null }
   cost: {
-    keptQuantity: number; costedQuantity: number; coverage: number | null; costTotal: number; costedRevenue: number; costedSales?: number; grossProfit: number; grossMargin: number | null
+    keptQuantity: number; costedQuantity: number; coverage: number | null; costTotal: number; costedRevenue: number; costedSales?: number; keptRevenue?: number; grossProfit: number; grossMargin: number | null
     profitQuantity: number; profitCoverage: number | null; profitRevenue: number; profitCost: number; profitCommission: number; netProfit: number; netMargin: number | null; costedVariants: number
   }
   platforms: ReportGroup[]; cities: ReportGroup[]; timeSeries: ReportTimePoint[]; previousTimeSeries: ReportTimePoint[]

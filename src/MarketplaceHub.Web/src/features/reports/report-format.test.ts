@@ -1,7 +1,24 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { change, periodPresets, desiSourcesNote, formatPercent, moneyOrMissing, reportQuery, sortRows, toCsv } from './report-format'
+import { change, periodPresets, desiSourcesNote, formatPercent, moneyOrMissing, profitCost, reportQuery, sortRows, toCsv, type ReportSales } from './report-format'
 
 describe('report formatting', () => {
+  // The same rule as the server's ReportProfitCost (owner, 13 Nov 2026): a profit from 95 % of the kept units with a cost,
+  // the rest priced by their share of the sales.
+  const cost = (costed: number, extra: Partial<ReportSales['cost']> = {}): ReportSales['cost'] => ({
+    keptQuantity: 1000, costedQuantity: costed, coverage: costed / 1000, costTotal: costed * 40, costedRevenue: costed * 100, keptRevenue: 100_000,
+    grossProfit: 0, grossMargin: null, profitQuantity: 0, profitCoverage: null, profitRevenue: 0, profitCost: 0, profitCommission: 0, netProfit: 0, netMargin: null, costedVariants: 1, ...extra
+  })
+  it('works the profit out from 95 % of the kept units with a cost, the missing cost by its sales share', () => {
+    expect(profitCost(cost(949)).usable).toBe(false)
+    expect(profitCost(cost(950))).toEqual({ usable: true, known: 38_000, estimated: 2_000, missing: 50, total: 40_000 })
+    expect(profitCost(cost(1000))).toEqual({ usable: true, known: 40_000, estimated: 0, missing: 0, total: 40_000 })
+    // The 50 units without a cost sold for 1,000 only: 40 % of it, not 50 × 40.
+    expect(profitCost(cost(950, { keptRevenue: 96_000 })).estimated).toBe(400)
+    // An older report without the kept revenue: the average cost per unit.
+    expect(profitCost(cost(950, { keptRevenue: undefined })).estimated).toBe(2_000)
+    expect(profitCost(cost(0)).usable).toBe(false)
+  })
+
   it('says where the parcels\' desi came from, leaving out the empty sources', () => {
     expect(desiSourcesNote({ marketplace: 5, manual: 0, measured: 30, default: 2, measuredParcels: 1320 }))
       .toBe(' Desi: 5 siparişte pazaryerinin siparişte bildirdiği, 30 siparişte Trendyol kargo faturalarından ölçülen (1.320 koli), 2 siparişte mağaza ortalaması.')
