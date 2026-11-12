@@ -1654,38 +1654,14 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
-                    b.Property<int>("ActiveConnections")
-                        .HasColumnType("integer");
-
                     b.Property<int>("DeadJobCount")
                         .HasColumnType("integer");
-
-                    b.Property<int>("DueSoonInvoices")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTimeOffset?>("LastVerifiedSynchronizationAt")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("LateOrders")
                         .HasColumnType("integer");
 
-                    b.Property<int>("LowStockProducts")
-                        .HasColumnType("integer");
-
                     b.Property<int>("ManualReviewJobCount")
                         .HasColumnType("integer");
-
-                    b.Property<int>("MonthOrders")
-                        .HasColumnType("integer");
-
-                    b.Property<decimal>("MonthProductQuantity")
-                        .HasColumnType("numeric");
-
-                    b.Property<DateTimeOffset?>("OldestQueuedJobAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTimeOffset?>("OldestStockObservationAt")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("PendingByPlatformJson")
                         .IsRequired()
@@ -1701,20 +1677,6 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
                         .HasDefaultValue(0);
-
-                    b.Property<int>("RecentRateLimitJobCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0);
-
-                    b.Property<int>("TodayOrders")
-                        .HasColumnType("integer");
-
-                    b.Property<decimal>("TodayProductQuantity")
-                        .HasColumnType("numeric");
-
-                    b.Property<int>("UninvoicedInvoices")
-                        .HasColumnType("integer");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");

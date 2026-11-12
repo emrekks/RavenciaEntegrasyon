@@ -368,13 +368,13 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
   const askDelete = async (group: TariffGroup) => {
     const periods = group.periods.map(period => period.periodText).join(' ve ')
     const many = group.periods.length > 1
-    if (!(await confirm({ title: 'Tarife Silinsin mi?', message: `${periods} ${many ? 'dönemlerine' : 'dönemine'} ait tarife, ${group.periods[0].rowCount.toLocaleString('tr-TR')} ürün satırı ve kaydedilen seçimler silinecek. ${many ? 'Bu dönemlerin' : 'Bu dönemin'} satışlarında komisyon bu tarifeden okunamaz.`, confirmLabel: 'Tarifeyi Sil', destructive: true }))) return
+    if (!(await confirm({ title: 'Tarife Silinsin mi?', message: `${periods} ${many ? 'dönemlerine' : 'dönemine'} ait tarife, ${group.periods[0].rowCount.toLocaleString('tr-TR')} ürün satırı ve kaydedilen seçimler silinecek. ${many ? 'Bu dönemlerin' : 'Bu dönemin'} bant ve kâr hesabı, Avantajlı Ürün Etiketi ve Flash Ürünler'de de bu tarifeden yapılamaz.`, confirmLabel: 'Tarifeyi Sil', destructive: true }))) return
     remove.mutate(group.periods[0])
   }
   const pageCount = rows.data ? Math.max(1, Math.ceil(rows.data.totalCount / rows.data.pageSize)) : 1
 
   return <section className="panel commission-tariffs" aria-labelledby="commission-tariffs-title">
-    <div className="cs-sec-head"><h3 id="commission-tariffs-title">Komisyon Tarifeleri<TitleHint label="Komisyon Tarifeleri">{platformName}’un komisyon tarifesi dosyasını geçerli günleriyle yükleyin. Komisyonu finanstan gelmeyen siparişlerin komisyonu tarifedeki banda göre tahmin edilir; fiyatınızın bandını ve alt banda inmek için gereken fiyatı görürsünüz. Pazaryerine hiçbir şey gönderilmez.</TitleHint></h3></div>
+    <div className="cs-sec-head"><h3 id="commission-tariffs-title">Komisyon Tarifeleri<TitleHint label="Komisyon Tarifeleri">{platformName}’un komisyon tarifesi dosyasını geçerli günleriyle yükleyin. Her ürünün fiyatının düştüğü bandı, bantların komisyonunu ve kalan kârı, alt banda inmek için gereken fiyatı görürsünüz; Avantajlı Ürün Etiketi ve Flash Ürünler de bu bantları kullanır. Raporlardaki komisyon tarifeden değil, sipariş ve finans kayıtlarından gelir. Pazaryerine hiçbir şey gönderilmez.</TitleHint></h3></div>
     <div className={`commission-dropzone${dragging ? ' is-dragging' : ''}`} onDragOver={event => { event.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)} onDrop={onDrop}>
       <ValidityFields days={uploadDays} onChange={setUploadDays} disabled={upload.isPending} />
       <strong>{upload.isPending ? 'Tarife okunuyor…' : 'Tarife dosyasını buraya bırakın'}</strong>

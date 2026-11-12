@@ -516,7 +516,6 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.ToTable("snapshot", "dashboard"); entity.HasKey(x => x.TenantId);
             entity.Property(x => x.PendingByPlatformJson).HasColumnType("jsonb");
             entity.Property(x => x.RecentJobCount).HasDefaultValue(0);
-            entity.Property(x => x.RecentRateLimitJobCount).HasDefaultValue(0);
             entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         });

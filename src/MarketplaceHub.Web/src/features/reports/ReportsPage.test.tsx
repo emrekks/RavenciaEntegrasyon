@@ -19,7 +19,7 @@ const report: ReportSales = {
   from: '2026-10-01', to: '2026-10-22', previousFrom: '2026-09-09', previousTo: '2026-09-30', granularity: 'day', includesTest: false, generatedAt: '2026-10-22T10:00:00Z',
   summary: summary(), previousSummary: summary({ orders: 2, netRevenue: 200, cancelRate: 0.1 }),
   commission: { coveredRevenue: 200, coverage: 0.8, estimatedCommission: 43, estimatedPayout: 157, effectiveRate: 0.215 },
-  cost: { keptQuantity: 4, costedQuantity: 2, coverage: 0.5, costTotal: 80, costedRevenue: 200, costedSales: 240, grossProfit: 120, grossMargin: 0.6, profitQuantity: 2, profitCoverage: 0.5, profitRevenue: 200, profitCost: 80, profitCommission: 43, netProfit: 77, netMargin: 0.385, costedVariants: 1 },
+  cost: { keptQuantity: 4, costedQuantity: 4, coverage: 1, costTotal: 80, costedRevenue: 200, costedSales: 240, grossProfit: 120, grossMargin: 0.6, profitQuantity: 2, profitCoverage: 0.5, profitRevenue: 200, profitCost: 80, profitCommission: 43, netProfit: 77, netMargin: 0.385, costedVariants: 1 },
   platforms: [
     group('TRENDYOL', 'TRENDYOL', { orders: 3, soldQuantity: 4, netRevenue: 250, grossSales: 350, ordersWithAmount: 3, estimatedCommission: 43, commissionCoveredRevenue: 200, children: [group('c1', 'Ravencia Trendyol')] }),
     group('SHOPIFY', 'SHOPIFY', { ordersWithAmount: 0, grossSales: 0, netRevenue: 0 })
@@ -57,7 +57,7 @@ const report: ReportSales = {
   // The previous period: 350 of sales, 100 back, 30 of commission and 60 of cost leave 160 of profit.
   previousAccount: {
     commission: { coveredRevenue: 150, coverage: 0.75, estimatedCommission: 30, estimatedPayout: 120, effectiveRate: 0.2 },
-    cost: { keptQuantity: 4, costedQuantity: 2, coverage: 0.5, costTotal: 60, costedRevenue: 150, grossProfit: 90, grossMargin: 0.6, profitQuantity: 2, profitCoverage: 0.5, profitRevenue: 150, profitCost: 60, profitCommission: 30, netProfit: 60, netMargin: 0.4, costedVariants: 1 },
+    cost: { keptQuantity: 4, costedQuantity: 4, coverage: 1, costTotal: 60, costedRevenue: 150, grossProfit: 90, grossMargin: 0.6, profitQuantity: 2, profitCoverage: 0.5, profitRevenue: 150, profitCost: 60, profitCommission: 30, netProfit: 60, netMargin: 0.4, costedVariants: 1 },
     costs: { source: 'estimate', lastSyncedAt: null, coveredFrom: null, coveredThrough: null, financeOrders: 2, settledOrders: 0, coverage: null, realCostTotal: null, commission: null, cargo: null, lines: [], channels: [], products: [] }
   }
 }
@@ -205,18 +205,18 @@ describe('ReportsPage', () => {
     expect(figures[2]).toContain('Önceki dönem: %45,7')
     expect(page.querySelectorAll('.reports-kpis > div > .reports-kpi-change')).toHaveLength(6)
     expect(page.querySelector('.reports-kpis')?.textContent).not.toContain('puan')
-    // Masraf Kalemleri: the account's deductions and the product cost, largest first, 223 in all (63,7 % of the sales);
-    // what is not read without Trendyol's statement is "—", never ₺0.
+    // Masraf Kalemleri: the account's costs (not the returns, which are taken off the sales) and the product cost, largest
+    // first, 123 in all (35,1 % of the sales); what is not read without Trendyol's statement is "—", never ₺0.
     const card = page.querySelector('.reports-card-costlines')!
-    expect(card.querySelector('.reports-donut-centre')?.textContent).toContain('₺223')
-    expect(card.querySelector('.reports-donut-centre')?.textContent).toContain('%63,7')
+    expect(card.querySelector('.reports-donut-centre')?.textContent).toContain('₺123')
+    expect(card.querySelector('.reports-donut-centre')?.textContent).toContain('%35,1')
     const lines = [...card.querySelectorAll('.reports-costlines li')].map(line => [...line.children].slice(1, 4).map(cell => cell.textContent).join(' ').trim())
-    expect(lines.slice(0, 3)).toEqual(['İade Edilen Tutar ₺100,00 %44,8', 'Ürün Maliyeti ₺80,00 %35,9', 'Tahmini Komisyon ₺43,00 %19,3'])
-    expect(lines.slice(3)).toEqual(['Kargo —', 'Hizmet Bedeli —', 'Stopaj —', 'Reklam —', 'Ceza —', 'Erken Ödeme Kesintisi —', 'Net KDV —'])
+    expect(lines.slice(0, 2)).toEqual(['Ürün Maliyeti ₺80,00 %65,0', 'Tahmini Komisyon ₺43,00 %35,0'])
+    expect(lines.slice(2)).toEqual(['Kargo —', 'Hizmet Bedeli —', 'Stopaj —', 'Reklam —', 'Ceza —', 'Erken Ödeme Kesintisi —', 'Net KDV —'])
     expect(card.textContent).not.toContain('₺0,00')
     // A cost picked beside the ring (by the pointer or the keyboard) is shown in its middle and thickens on the ring.
     await act(async () => { card.querySelector<HTMLButtonElement>('.reports-costlines li:first-child button')!.focus() })
-    expect(card.querySelector('.reports-donut-centre')?.textContent).toBe('İade Edilen Tutar₺100masrafların %44,8 kadarı')
+    expect(card.querySelector('.reports-donut-centre')?.textContent).toBe('Ürün Maliyeti₺80masrafların %65,0 kadarı')
     expect(card.querySelector('.reports-donut.has-active .reports-donut-part.is-active')).not.toBeNull()
     await act(async () => { card.querySelector<HTMLButtonElement>('.reports-costlines li:first-child button')!.blur() })
     expect(card.querySelector('.reports-donut-centre')?.textContent).toContain('Toplam Masraf')
@@ -246,7 +246,7 @@ describe('ReportsPage', () => {
     expect(hero(page, 'orders')).toBe('₺116,67 · sepet ortalaması')
     expect(heroTiles(page, 'orders')).toEqual(['Sipariş Başına Adet 1,25', 'Tekrar Gelen Müşteri %50,0', 'Sipariş Başına Kâr ₺42,33'])
     expect(hero(page, 'profit')).toBe('— · reklam öncesi marj')
-    expect(heroTiles(page, 'profit')).toEqual(['Adet Başına Kâr ₺31,75', 'Sipariş Başına Kâr ₺42,33', 'Adet Başına Maliyet ₺40,00'])
+    expect(heroTiles(page, 'profit')).toEqual(['Adet Başına Kâr ₺31,75', 'Sipariş Başına Kâr ₺42,33', 'Adet Başına Maliyet ₺20,00'])
     expect(hero(page, 'fees')).toBe('₺14,33 · sipariş başına')
     // Without Trendyol's statement the cargo and the return cargo are unknown, never ₺0.
     expect(heroTiles(page, 'fees')).toEqual(['Komisyon Oranı %21,5', 'Sipariş Başına Kargo —', 'Adet Başına Kargo —'])
@@ -323,9 +323,9 @@ describe('ReportsPage', () => {
     const lines = [...page.querySelectorAll('.reports-costlines li')].map(line => [...line.children].slice(1, 3).map(cell => cell.textContent).join(' '))
     // The deductions tied to no order (advertising 5.000, the service fee 1.079,54 and withholding tax 448,01 not shared
     // over their orders yet) are in their own category's line (owner, 7 Nov 2026: no separate card), so the ring holds
-    // every cost Net Kâr takes off: 350 − 6.989,23 = −6.639,23.
-    expect(lines).toEqual(['Reklam ₺5.000,00', 'Hizmet Bedeli ₺1.092,04', 'Stopaj ₺449,01', 'Kargo ₺226,68', 'İade Edilen Tutar ₺100,00', 'Ürün Maliyeti ₺80,00', 'Komisyon ₺41,50', 'Net KDV —'])
-    expect(page.querySelector('.reports-card-costlines .reports-donut-centre')?.textContent).toContain('₺6.989')
+    // every cost Net Kâr takes off; the returns are taken off the sales apart: 350 − 100 − 6.889,23 = −6.639,23.
+    expect(lines).toEqual(['Reklam ₺5.000,00', 'Hizmet Bedeli ₺1.092,04', 'Stopaj ₺449,01', 'Kargo ₺226,68', 'Ürün Maliyeti ₺80,00', 'Komisyon ₺41,50', 'Net KDV —'])
+    expect(page.querySelector('.reports-card-costlines .reports-donut-centre')?.textContent).toContain('₺6.889')
     const feeTip = [...page.querySelectorAll('.reports-costlines li')].find(line => line.textContent?.startsWith('Hizmet Bedeli'))?.querySelector('.reports-hover-tip')?.textContent
     expect(feeTip).toBe('Hizmet BedeliPazaryerlerinin sipariş ya da satış başına aldığı hizmet bedeli; kesinleşmeyenlerde tahmini.')
     expect(cargoTip(page)).toContain('faturası gelmeyenlerde tahmini')
@@ -337,10 +337,8 @@ describe('ReportsPage', () => {
     expect(page.querySelector('.reports-bridge > li.is-end.is-negative')).not.toBeNull()
     // Shopify is costed from its own settings (cargo, card fees) on the server, so nothing is left out for it.
     expect(page.querySelector('.reports-bridge > li.is-end .reports-hover-tip')?.textContent).not.toContain('kargo ve hizmet bedeli')
-    // What the estimate leaves out is written under the bridge as well, for a phone that has no pointer: the cost
-    // entered for half the units.
-    const gaps = texts(page, '.reports-card-bridge .reports-bridge-gaps > div')
-    expect(gaps).toEqual(['Maliyeti GiriliSatılan adetlerin payı%50,0'])
+    // Every unit carries a cost and every platform's costs are read, so nothing is listed under the bridge.
+    expect(texts(page, '.reports-card-bridge .reports-bridge-gaps > div')).toEqual([])
     const loss = page.querySelectorAll('.reports-kpis > div')[1]
     expect(loss.classList.contains('is-bad')).toBe(true)
     expect(loss.textContent).toContain('Tahmini Zarar')
@@ -441,7 +439,7 @@ describe('ReportsPage', () => {
     // 226,68 cargo + 100 returns + 80 cost + 41,50 commission + 12,50 fee + 1 withholding + 20 VAT = 481,68, and the
     // 6.527,55 tied to no order in their lines: 7.009,23, what Net Kâr takes off the 350 of sales.
     const card = page.querySelector('.reports-card-costlines')!
-    expect(card.querySelector('.reports-donut-centre')?.textContent).toContain('₺7.009')
+    expect(card.querySelector('.reports-donut-centre')?.textContent).toContain('₺6.909')
     const shares = [...card.querySelectorAll('.reports-costlines li em')].map(cell => cell.textContent).filter(Boolean)
     expect(shares).toContain('%0,3')
     expect(shares.reduce((sum, text) => sum + Number(text!.replace('%', '').replace(',', '.')), 0)).toBeCloseTo(100, 0)
@@ -453,16 +451,18 @@ describe('ReportsPage', () => {
     const page = await open('', { ...withFinance, costs: { ...withFinance.costs!, netVat: { salesVat: 22.73, productCostVat: 7.27, expenseVat: 68.63, net: -53.17 } } })
     const ring = new Map([...page.querySelectorAll('.reports-costlines li')].map(line => [line.querySelector('button')?.textContent ?? '', line.querySelector('b')?.textContent ?? '']))
     const bridge = new Map([...page.querySelectorAll('.reports-bridge > li')].map(row => [row.querySelector('.reports-bridge-label')?.textContent?.replace(/^[−+] /u, '') ?? '', row.querySelector('b')?.textContent?.replace(/^[−+] /u, '') ?? '']))
-    for (const name of ['Stopaj', 'Kargo', 'İade Edilen Tutar', 'Ürün Maliyeti']) expect(bridge.get(name), name).toBe(ring.get(name))
+    for (const name of ['Stopaj', 'Kargo', 'Ürün Maliyeti']) expect(bridge.get(name), name).toBe(ring.get(name))
+    // The returns are taken off the sales on the bridge, not drawn as a cost on the ring.
+    expect(ring.get('İade Edilen Tutar')).toBeUndefined()
     const tl = (text: string | null | undefined) => Number((text ?? '').replace(/[^\d,−-]/gu, '').replace('−', '-').replace(/\./gu, '').replace(',', '.'))
     // Pazaryeri Masrafları is the ring's commission and service fee; Reklam ve Diğer Kesintiler its advertising.
     expect(tl(bridge.get('Pazaryeri Masrafları'))).toBeCloseTo(tl(ring.get('Komisyon')) + tl(ring.get('Hizmet Bedeli')), 2)
     expect(tl(bridge.get('Reklam ve Diğer Kesintiler'))).toBeCloseTo(tl(ring.get('Reklam')), 2)
-    // Satış Tutarı − the ring's lines + the VAT carried forward = the bridge's result, to the kuruş.
+    // Satış Tutarı − the returns (100) − the ring's lines + the VAT carried forward = the bridge's result, to the kuruş.
     const slices = [...ring.entries()].filter(([name]) => name !== 'Net KDV').reduce((sum, [, value]) => sum + (value === '—' ? 0 : tl(value)), 0)
     // (The map drops a row's leading sign; the result is a loss.)
     expect(bridge.get('Tahmini Zarar')).toBe('₺6.586,06')
-    expect(Math.round((350 - slices + 53.17) * 100) / 100).toBe(-tl(bridge.get('Tahmini Zarar')))
+    expect(Math.round((350 - 100 - slices + 53.17) * 100) / 100).toBe(-tl(bridge.get('Tahmini Zarar')))
   })
 
   it('opens each Kâr Köprüsü row in a window whose lines add up to the row\'s figure to the kuruş', async () => {
@@ -504,7 +504,7 @@ describe('ReportsPage', () => {
     // Net KDV: the sales' VAT less the cost's and the charges', the rounding kuruş as Diğer.
     expect(lines('Net KDV')).toEqual(['Satışların KDV\'si ₺60,01', 'Ürün Maliyetinin KDV\'si − ₺7,27', 'Masrafların KDV\'si − ₺42,73', 'Diğer − ₺0,01', 'Toplam ₺10,00'])
     expect(lines('Reklam ve Diğer Kesintiler')).toEqual(['Reklam ₺5.000,00', 'Toplam ₺5.000,00'])
-    expect(opened.get('Ürün Maliyeti')!.textContent).toContain('2 / 4 (%50,0)')
+    expect(opened.get('Ürün Maliyeti')!.textContent).toContain('4 / 4 (%100,0)')
     // The result opens the whole account.
     await act(async () => { page.querySelector<HTMLButtonElement>('.reports-bridge > li.is-end .reports-tip-trigger')!.click() })
     expect(page.querySelector('.reports-bridge-modal .reports-ledger')).not.toBeNull()
@@ -676,7 +676,29 @@ describe('ReportsPage', () => {
     expect(ledger.textContent).toContain('Tahmini Komisyon− ₺43,00')
     expect(ledger.textContent).toContain('Ortalama komisyon oranı %21,5')
     expect(ledger.textContent).toContain('satışların %80,0 kadarının oranı biliniyor')
-    expect(ledger.textContent).toContain('adetlerin %50,0 kadarının maliyeti girili')
+    expect(ledger.textContent).toContain('4 adedin hepsinin maliyeti girili')
+  })
+
+  // 9.1.3 of the operating guide: the deductions are taken off every sale, the cost only off the units that carry one, so
+  // with half the cost missing the profit came out too high by that half. It is not shown then; the bridge ends at what
+  // the deductions leave and says how many units lack a cost.
+  it('shows no profit while a sold unit has no cost, and says how many lack one', async () => {
+    const partial = { ...withFinance, cost: { ...withFinance.cost, costedQuantity: 2, coverage: 0.5 } }
+    const page = await open('', partial)
+    const profit = page.querySelectorAll('.reports-kpis > div')[1]
+    expect(profit.textContent).toContain('Maliyet Eksik')
+    expect(profit.textContent).not.toContain('₺6.639')
+    expect(profit.textContent).toContain('Satılan 2 adedin ürün maliyeti girilmemiş')
+    // The margin and the profit on cost come from the profit, so they are not shown either.
+    expect(page.querySelectorAll('.reports-kpis > div')[2].textContent).toContain('—')
+    expect(page.querySelectorAll('.reports-kpis > div')[3].textContent).toContain('—')
+    const rows = texts(page, '.reports-bridge > li')
+    expect(rows.some(row => row.startsWith('− Ürün Maliyeti'))).toBe(false)
+    expect(rows.at(-1)).toMatch(/^Masraflar Sonrası/u)
+    expect(texts(page, '.reports-card-bridge .reports-bridge-gaps > div')).toEqual(['Maliyeti Girili2 adet eksik, kâr hesaplanamadı%50,0'])
+    // The cost entered is still listed among the costs, with how much of it is entered.
+    const cost = [...page.querySelectorAll('.reports-costlines li')].find(line => line.textContent?.startsWith('Ürün Maliyeti'))
+    expect(cost?.querySelector('.reports-hover-tip')?.textContent).toContain('Net Kâr, tamamının maliyeti girilince hesaplanır')
   })
 
   it('says the cost is not entered on Kârlılık\'s cost figures when no cost is known', async () => {

@@ -1,4 +1,15 @@
+import { dateRangePresets } from '../../shared/date-range'
+import { istanbulDateKey } from '../../shared/format-date'
 import { platformDisplayName, platformDisplayOrder } from '../../shared/platform-names'
+
+// The periods one click away above the reports: the panel's shared ranges (dateRangePresets; weeks start on Monday) for
+// today's Istanbul calendar day, the account's time zone, as on Genel Bakış, so a computer set to another time zone does
+// not move "Bugün" or "Bu Ay" to its own calendar. Any other period is picked in the date picker beside them ("Özel").
+const presetKeys: Record<string, string> = { 'Bugün': 'today', 'Dün': 'yesterday', 'Bu Hafta': 'week', 'Bu Ay': 'month', 'Geçen Ay': 'last-month', 'Son 30 Gün': '30', 'Bu Yıl': 'year' }
+export function periodPresets(today = istanbulDateKey()) {
+  return dateRangePresets(today).map(preset => ({ key: presetKeys[preset.label] ?? preset.label, label: preset.label, range: preset.range }))
+}
+
 // The sales report's contract (GET /reports/sales, ReportsContracts.cs) and the formatting the page shares.
 export type ReportSummary = {
   orders: number; cancelledOrders: number; cancelRate: number | null; soldQuantity: number; returnedQuantity: number; keptQuantity: number
