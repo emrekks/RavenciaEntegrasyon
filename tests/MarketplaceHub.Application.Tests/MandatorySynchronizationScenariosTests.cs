@@ -290,7 +290,30 @@ public sealed class MandatorySynchronizationScenariosTests
     {
         Assert.True(ProductImportScanPolicy.RequiresFullCatalogForMapping(true, true, false));
         Assert.True(ProductImportScanPolicy.RequiresFullCatalogForMapping(true, false, true));
-        Assert.False(ProductImportScanPolicy.RequiresFullCatalogForMapping(true, false, false));
+        // Without the archive choice the mapping still reads the whole catalog (its active products).
+        Assert.True(ProductImportScanPolicy.RequiresFullCatalogForMapping(true, false, false));
+    }
+
+    [Fact]
+    public void ProductImportScanPolicy_RefusesAnEmptyTrendyolExistingUpdate_AndPicksTheFocusedPriceStockPath()
+    {
+        // "Mevcut Ürünleri Güncelle" with nothing ticked is refused on Trendyol only.
+        Assert.True(ProductImportScanPolicy.ExistingUpdateSelectsNothing("TRENDYOL", true, false, false, false));
+        Assert.False(ProductImportScanPolicy.ExistingUpdateSelectsNothing("TRENDYOL", true, false, false, true));
+        Assert.False(ProductImportScanPolicy.ExistingUpdateSelectsNothing("TRENDYOL", true, true, false, false));
+        Assert.False(ProductImportScanPolicy.ExistingUpdateSelectsNothing("TRENDYOL", false, false, false, false));
+        Assert.False(ProductImportScanPolicy.ExistingUpdateSelectsNothing("SHOPIFY", true, false, false, false));
+
+        // Prices and/or stock without "Mevcut Ürün Bilgilerini Güncelle" take the focused path; the content choice, any
+        // other mode or another marketplace keeps the path it had.
+        Assert.True(ProductImportScanPolicy.FocusedPriceStock("TRENDYOL", true, false, false, false, false, false, true, false));
+        Assert.True(ProductImportScanPolicy.FocusedPriceStock("TRENDYOL", true, false, false, false, false, false, false, true));
+        Assert.True(ProductImportScanPolicy.FocusedPriceStock("TRENDYOL", false, true, false, false, false, false, true, true));
+        Assert.False(ProductImportScanPolicy.FocusedPriceStock("TRENDYOL", true, false, false, false, false, true, true, true));
+        Assert.False(ProductImportScanPolicy.FocusedPriceStock("TRENDYOL", true, false, false, false, false, false, false, false));
+        Assert.False(ProductImportScanPolicy.FocusedPriceStock("TRENDYOL", false, false, false, false, false, false, true, true));
+        Assert.False(ProductImportScanPolicy.FocusedPriceStock("TRENDYOL", false, false, true, false, false, false, true, true));
+        Assert.False(ProductImportScanPolicy.FocusedPriceStock("SHOPIFY", true, false, false, false, false, false, true, true));
         Assert.False(ProductImportScanPolicy.RequiresFullCatalogForMapping(false, true, true));
     }
 

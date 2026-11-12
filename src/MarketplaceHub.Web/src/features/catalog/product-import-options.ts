@@ -29,8 +29,12 @@ export function productImportOptionVisibility(options: {
   // A single product (Tek Ürün Aktarımı) offers the same choices as an update of existing products (owner, 5 Nov 2026).
   const showUpdateExisting = (isBulk ? options.mode === 'EXISTING_ONLY' : true) && !options.onlyHepsiburada
   const showHepsiburadaReadOnlyNote = isBulk && options.hasHepsiburada && options.mode !== 'MAPPING_ONLY'
-  const showArchived = isBulk ? options.mode !== 'MAPPING_ONLY' : true
-  const showPendingApproval = isBulk && options.supportsPendingApproval
+  // Every mode reads archived listings only when asked, Ürün Eşleme too (owner, 12 Nov 2026: "Arşiv ürünlerini dahil et
+  // de olması lazım bunun gelişmiş seçeneklerinde"); the API no longer forces it on for mapping.
+  const showArchived = true
+  // The API reads listings awaiting approval only in Tam Katalog Taraması, Yeni Ürünleri Aktar and Ürün Eşleme
+  // (MarketplaceSalesService.EnqueueProductSyncAsync drops it for Mevcut Ürünleri Güncelle), so it is offered there only.
+  const showPendingApproval = isBulk && options.supportsPendingApproval && options.mode !== 'EXISTING_ONLY'
 
   const hasVisibleOptions = showUpdateExisting || showHepsiburadaReadOnlyNote || showArchived || showPendingApproval
 
@@ -41,6 +45,30 @@ export function productImportOptionVisibility(options: {
     showPendingApproval,
     showOptionsSection: hasVisibleOptions
   }
+}
+
+// The three choices of Mevcut Ürünleri Güncelle (and Tek Ürün Aktarımı), owner 12 Nov 2026: "Mevcut Ürün Bilgilerini
+// Güncelle" takes every attribute and the model's new variants; without it, only the ticked prices and/or stock change.
+export type ProductImportChoices = { updateExisting: boolean; updatePrices: boolean; updateStock: boolean }
+
+// A Trendyol Mevcut Ürünleri Güncelle run with none ticked would change nothing; the start button waits for a choice
+// (the API refuses it too: PRODUCT_SYNC_NOTHING_SELECTED).
+export function productImportNeedsChoice(options: { method: ProductImportMethod; mode: ProductImportMode; hasTrendyol: boolean; showUpdateExisting: boolean } & ProductImportChoices): boolean {
+  return options.method === 'BULK' && options.mode === 'EXISTING_ONLY' && options.hasTrendyol && options.showUpdateExisting
+    && !options.updateExisting && !options.updatePrices && !options.updateStock
+}
+
+// The one line beside the start button that says what the run will change.
+export function productImportChoiceSummary(method: ProductImportMethod, choices: ProductImportChoices): string {
+  const { updateExisting, updatePrices, updateStock } = choices
+  if (updateExisting) {
+    const tail = updatePrices && updateStock ? ', fiyat ve stok' : updatePrices ? ' ve fiyat' : updateStock ? ' ve stok' : ''
+    return `Tüm ürün bilgileri, yeni varyantlar${tail} güncellenecek${!updatePrices && !updateStock ? '; fiyat ve stok korunacak' : ''}`
+  }
+  if (updatePrices && updateStock) return 'Fiyat ve stok güncellenecek'
+  if (updatePrices) return 'Sadece fiyat güncellenecek'
+  if (updateStock) return 'Sadece stok güncellenecek'
+  return method === 'SINGLE' ? 'Ürün panelde yoksa eklenir; panelde varsa değişmez' : 'En az bir seçenek işaretleyin'
 }
 
 // Prices and stock are two separate choices; each one only decides whether the marketplace value overwrites

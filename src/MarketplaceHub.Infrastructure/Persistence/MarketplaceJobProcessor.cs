@@ -56,6 +56,24 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // count for the progress line, the last product's for its read record.
     private int telemetryUnaddedSizeCount;
     private int productUnaddedSizeCount;
+    // The result line of a product pull, by mode (owner, 12 Nov 2026): what the focused price/stock path changed, what
+    // "Yeni Ürünleri Aktar" added, what "Ürün Eşleme" linked. Counted over this run of the job.
+    private ImportSummaryMode importSummaryMode;
+    private readonly HashSet<Guid> priceChangedVariantIds = [];
+    private readonly HashSet<Guid> stockChangedVariantIds = [];
+    private int telemetryUnchangedVariantCount;
+    private int telemetryNewProductCount;
+    private int telemetryNewSizeCount;
+    private int telemetryAlreadyInPanelCount;
+    private int productImportedNewVariantCount;
+    private int telemetryMappedCount;
+    private int telemetryAlreadyMappedCount;
+    private int telemetryNoCounterpartCount;
+    private int telemetryMappingConflictCount;
+
+    private enum ImportSummaryMode { Standard, FocusedPriceStock, NewOnly, Mapping }
+
+    private enum FocusedPriceStockOutcome { NotInPanel, Conflict, Unchanged, Changed }
 
     public async Task<JobExecutionResult> ProcessAsync(Guid tenantId, Guid? connectionId, string jobType, string payloadJson, string correlationId, CancellationToken cancellationToken, Guid? jobId = null)
     {
@@ -439,6 +457,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         telemetryImportReceivedCount = 0;
         telemetryUnaddedSizeCount = 0;
         productUnaddedSizeCount = 0;
+        importSummaryMode = ImportSummaryMode.Standard;
+        priceChangedVariantIds.Clear();
+        stockChangedVariantIds.Clear();
+        telemetryUnchangedVariantCount = 0;
+        telemetryNewProductCount = 0;
+        telemetryNewSizeCount = 0;
+        telemetryAlreadyInPanelCount = 0;
+        productImportedNewVariantCount = 0;
+        telemetryMappedCount = 0;
+        telemetryAlreadyMappedCount = 0;
+        telemetryNoCounterpartCount = 0;
+        telemetryMappingConflictCount = 0;
     }
 
     internal readonly record struct CursorCounts(int Received, int Changed, int Skipped, int Failed);
@@ -1917,15 +1947,19 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
     // Every link the import read keeps the marketplace's own barcode and stock code, whichever code paired it with
     // the panel variant: price, stock and order reads address the marketplace by them, not by the panel's codes.
-    private async Task RecordVariantLinkCodes(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteCatalogProduct> snapshots, CancellationToken cancellationToken)
+    // onlyAdded: only the links this batch made (a new-only or focused price/stock run leaves the panel's links as they were).
+    private async Task RecordVariantLinkCodes(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteCatalogProduct> snapshots, CancellationToken cancellationToken, bool onlyAdded = false)
     {
         var remotes = new Dictionary<string, RemoteCatalogVariant>(StringComparer.Ordinal);
         foreach (var remote in snapshots.SelectMany(snapshot => snapshot.Variants))
             if (Short(remote.ExternalVariantId, 256) is { Length: > 0 } externalId) remotes.TryAdd(externalId, remote);
         if (remotes.Count == 0) return;
         var externalIds = remotes.Keys.ToArray();
-        var links = await db.MarketplaceVariantLinks.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && externalIds.Contains(x.ExternalId)).ToListAsync(cancellationToken);
-        links.AddRange(db.MarketplaceVariantLinks.Local.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && remotes.ContainsKey(x.ExternalId) && !links.Contains(x)));
+        var links = onlyAdded
+            ? []
+            : await db.MarketplaceVariantLinks.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && externalIds.Contains(x.ExternalId)).ToListAsync(cancellationToken);
+        links.AddRange(db.MarketplaceVariantLinks.Local.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && remotes.ContainsKey(x.ExternalId) && !links.Contains(x)
+            && (!onlyAdded || db.Entry(x).State == EntityState.Added)));
         var handedBack = new HashSet<Guid>();
         foreach (var link in links)
         {
@@ -6320,7 +6354,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // A run that reads the products' information (full scan, the incremental scan, "Mevcut ürünleri güncelle", a single
         // lookup) completes the listing profiles of the products it matched; new-only, mapping-only and options-only runs
         // do not (owner decision 6 Nov 2026).
-        var completesListingProfiles = !newOnly && !mappingOnly && !optionsOnly && ImportedListingProfiles.Supported(connection.PlatformCode);
+        // Prices and/or stock alone, without "Mevcut Ürün Bilgilerini Güncelle" (ProductImportScanPolicy.FocusedPriceStock).
+        var focusedPriceStock = ProductImportScanPolicy.FocusedPriceStock(connection.PlatformCode, existingOnly, singleLookup, newOnly, mappingOnly, optionsOnly, updateExistingProducts, updatePrices, updateStock);
+        if (focusedPriceStock)
+            contentLabel = updatePrices && updateStock ? " · Yalnız fiyat ve stok güncellenecek" : updatePrices ? " · Yalnız fiyat güncellenecek" : " · Yalnız stok güncellenecek";
+        importSummaryMode = focusedPriceStock ? ImportSummaryMode.FocusedPriceStock
+            : mappingOnly && !isPttAvm ? ImportSummaryMode.Mapping
+            : newOnly && !isShopify && !isHepsiburada && !flatCatalog ? ImportSummaryMode.NewOnly
+            : ImportSummaryMode.Standard;
+        var completesListingProfiles = !newOnly && !mappingOnly && !optionsOnly && !focusedPriceStock && ImportedListingProfiles.Supported(connection.PlatformCode);
         var importJobId = jobId ?? Guid.CreateVersion7();
         var importSession = await db.ProductImportSessions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobId == importJobId, cancellationToken);
         var now = timeProvider.GetUtcNow();
@@ -6577,21 +6619,31 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 totalProducts is { } completeTotal && completeTotal > 0 ? 99 : null,
                 ProductImportProgressLabel(totalProducts, receivedProducts, mappingOnly),
                 cancellationToken);
-        categoryReferences = isShopify || optionsOnly ? null : await EnsureReferenceSnapshot(tenantId, connectionId, "CATEGORIES", null, correlationId, cancellationToken);
-        categoryItems = categoryReferences is null
-            ? []
-            : await db.ReferenceItems.AsNoTracking().Where(x => x.TenantId == tenantId && x.SnapshotId == categoryReferences.Id && x.ResourceType == "CATEGORIES" && x.IsActive).ToListAsync(cancellationToken);
-        if (categoryReferences is not null)
+        // Mapping never reads category references (it only links), and options-only and Shopify runs never did. A new-only
+        // run and the focused price/stock path read them on the first product that needs a category context (a product or
+        // size the panel lacks), so a run that finds everything in the panel reads no Trendyol reference at all.
+        var categoryReferencesWanted = !isShopify && !optionsOnly && !mappingOnly;
+        var categoryReferencesLoaded = false;
+        async Task LoadCategoryReferencesAsync()
         {
-            importedAttributeLibrary = (await db.AttributeDefinitions
-                    .Where(x => x.TenantId == tenantId && x.IsActive)
-                    .OrderBy(x => x.CreatedAt)
-                    .ThenBy(x => x.Id)
-                    .ToListAsync(cancellationToken))
-                .Where(x => !string.IsNullOrWhiteSpace(NormalizeCatalogKey(x.Name, 160)))
-                .GroupBy(x => NormalizeCatalogKey(x.Name, 160), StringComparer.Ordinal)
-                .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+            categoryReferencesLoaded = true;
+            categoryReferences = await EnsureReferenceSnapshot(tenantId, connectionId, "CATEGORIES", null, correlationId, cancellationToken);
+            categoryItems = categoryReferences is null
+                ? []
+                : await db.ReferenceItems.AsNoTracking().Where(x => x.TenantId == tenantId && x.SnapshotId == categoryReferences.Id && x.ResourceType == "CATEGORIES" && x.IsActive).ToListAsync(cancellationToken);
+            if (categoryReferences is not null)
+            {
+                importedAttributeLibrary = (await db.AttributeDefinitions
+                        .Where(x => x.TenantId == tenantId && x.IsActive)
+                        .OrderBy(x => x.CreatedAt)
+                        .ThenBy(x => x.Id)
+                        .ToListAsync(cancellationToken))
+                    .Where(x => !string.IsNullOrWhiteSpace(NormalizeCatalogKey(x.Name, 160)))
+                    .GroupBy(x => NormalizeCatalogKey(x.Name, 160), StringComparer.Ordinal)
+                    .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+            }
         }
+        if (categoryReferencesWanted && !newOnly && !focusedPriceStock) await LoadCategoryReferencesAsync();
 
         if (jobId is { } orderingJob)
             await UpdateProductSyncProgressAsync(tenantId, orderingJob, receivedProducts, totalProducts, null, ProductImportProgressLabel(totalProducts, receivedProducts, mappingOnly), cancellationToken);
@@ -6677,21 +6729,68 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                         RecordProductRead(snapshot, JobReadOutcomes.Skipped, "Panelde eşleşen ürün yok; yalnız mevcut ürünler güncelleniyordu.");
                         continue;
                     }
+                    if (focusedPriceStock)
+                    {
+                        productUnaddedSizeCount = 0;
+                        var focused = await ApplyFocusedPriceStock(tenantId, connectionId, snapshot, inventoryPolicy, updatePrices, updateStock, cancellationToken);
+                        // A single lookup of a product the panel does not hold yet still adds it below, as it always did.
+                        if (focused != FocusedPriceStockOutcome.NotInPanel || !singleLookup)
+                        {
+                            if (focused == FocusedPriceStockOutcome.Changed) telemetryImportProcessedCount++;
+                            else telemetryImportSkippedCount++;
+                            RecordProductRead(snapshot,
+                                focused switch { FocusedPriceStockOutcome.Changed => JobReadOutcomes.Updated, FocusedPriceStockOutcome.Unchanged => JobReadOutcomes.Unchanged, _ => JobReadOutcomes.Skipped },
+                                focused switch
+                                {
+                                    FocusedPriceStockOutcome.NotInPanel => "Panelde eşleşen ürün yok; yalnız fiyat/stok güncelleniyordu, ürün eklenmedi.",
+                                    FocusedPriceStockOutcome.Conflict => "Varyantları panelde birden fazla ürüne ait; fiyat/stok yazılmadı.",
+                                    _ => productUnaddedSizeCount > 0 ? UnaddedSizesNote(productUnaddedSizeCount) : null
+                                });
+                            continue;
+                        }
+                    }
+                    // "Yeni Ürünleri Aktar" adds only what the panel lacks (owner, 12 Nov 2026): a listing whose every variant
+                    // the panel already holds (by link, stock code or barcode) is left alone before any category context is
+                    // built; one with new sizes adds those sizes alone, every variant the panel holds untouched.
+                    HashSet<string>? newOnlyAddIds = null;
+                    if (importSummaryMode == ImportSummaryMode.NewOnly && existingVariantExternalIds is not null)
+                    {
+                        var unlinked = snapshot.Variants.Where(variant => !existingVariantExternalIds.Contains(Short(variant.ExternalVariantId, 256))).ToList();
+                        var missing = unlinked.Count == 0 ? [] : await RemoteVariantsMissingFromPanel(tenantId, connectionId, snapshot with { Variants = unlinked }, cancellationToken);
+                        if (missing.Count == 0)
+                        {
+                            telemetryImportSkippedCount++;
+                            telemetryAlreadyInPanelCount++;
+                            RecordProductRead(snapshot, JobReadOutcomes.Unchanged, "Panelde zaten var.");
+                            continue;
+                        }
+                        newOnlyAddIds = missing.Select(variant => Short(variant.ExternalVariantId, 256)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    }
+                    if (categoryReferencesWanted && !categoryReferencesLoaded) await LoadCategoryReferencesAsync();
                     var categoryContext = categoryReferences is null
                         ? null
                         : await EnsureCategoryAttributeContext(tenantId, connectionId, categoryReferences, snapshot, categoryItems, importedAttributeLibrary, categoryContexts, correlationId, cancellationToken);
                     productUnaddedSizeCount = 0;
-                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify || isHepsiburada || flatCatalog, preferBarcode: isShopify, matchBySku: isN11, onlyExistingVariants: existingOnly && isShopify, updateExistingProducts: updateExistingProducts, overwriteLocalChanges: ProductImportMergePolicy.OverwriteLocalChanges(updateExistingProducts, singleLookup, existingOnly, isShopify || isHepsiburada || flatCatalog, fullScanRequested: fullScan && updateExistingProductsRequested), updatePrices: updatePrices, updateStock: updateStock, isHepsiburada: isHepsiburada, observedPlatformName: isPazarama ? "Pazarama" : isPttAvm ? "PttAVM" : null, createdAt: CatalogImportOrdering.RemoteCreatedAt(snapshot, catalogOrderStamp) ?? catalogOrderStamp.AddMilliseconds(-catalogOrderPosition++), allowNewProduct: !existingOnly);
+                    productImportedNewVariantCount = 0;
+                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify || isHepsiburada || flatCatalog, preferBarcode: isShopify, matchBySku: isN11, onlyExistingVariants: existingOnly && isShopify, updateExistingProducts: updateExistingProducts, overwriteLocalChanges: ProductImportMergePolicy.OverwriteLocalChanges(updateExistingProducts, singleLookup, existingOnly, isShopify || isHepsiburada || flatCatalog, fullScanRequested: fullScan && updateExistingProductsRequested), updatePrices: updatePrices, updateStock: updateStock, isHepsiburada: isHepsiburada, observedPlatformName: isPazarama ? "Pazarama" : isPttAvm ? "PttAVM" : null, createdAt: CatalogImportOrdering.RemoteCreatedAt(snapshot, catalogOrderStamp) ?? catalogOrderStamp.AddMilliseconds(-catalogOrderPosition++), allowNewProduct: !existingOnly, onlyAddExternalVariantIds: newOnlyAddIds);
                     existingProductExternalIds?.Add(snapshot.ExternalProductId);
                     if (existingVariantExternalIds is not null)
                         foreach (var variant in snapshot.Variants)
                             existingVariantExternalIds.Add(Short(variant.ExternalVariantId, 256));
                     if (changed) telemetryImportProcessedCount++;
                     else telemetryImportSkippedCount++;
+                    if (importSummaryMode == ImportSummaryMode.NewOnly)
+                    {
+                        if (changed && !productAlreadyLinked) telemetryNewProductCount++;
+                        else if (changed) telemetryNewSizeCount += productImportedNewVariantCount;
+                        else telemetryAlreadyInPanelCount++;
+                    }
                     RecordProductRead(snapshot, !changed ? JobReadOutcomes.Unchanged : productAlreadyLinked ? JobReadOutcomes.Updated : JobReadOutcomes.New, productUnaddedSizeCount > 0 ? UnaddedSizesNote(productUnaddedSizeCount) : null);
                 }
-                // PTT AVM lists colour and size rows, not variants; its mapping writes the variant codes itself.
-                if (!isPttAvm) await RecordVariantLinkCodes(tenantId, connectionId, snapshotGroups, cancellationToken);
+                // PTT AVM lists colour and size rows, not variants; its mapping writes the variant codes itself. A new-only or
+                // focused price/stock run records the codes of the links it made alone: the links the panel had stay as
+                // they were.
+                if (!isPttAvm) await RecordVariantLinkCodes(tenantId, connectionId, snapshotGroups, cancellationToken, onlyAdded: importSummaryMode is ImportSummaryMode.NewOnly or ImportSummaryMode.FocusedPriceStock);
                 await db.SaveChangesAsync(cancellationToken);
                 if (completesListingProfiles) await CompleteImportedListingProfiles(tenantId, connectionId, snapshotGroups, cancellationToken);
                 await db.ProductImportStagingRecords
@@ -6801,6 +6900,17 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     private string ProductImportProgressLabel(int? total, int received, bool mappingOnly)
     {
         var totalPart = total is > 0 ? $" / {total:N0}" : "";
+        var failedPart = $" · Hatalı {telemetryImportFailedCount:N0}";
+        switch (importSummaryMode)
+        {
+            case ImportSummaryMode.FocusedPriceStock:
+                return $"{received:N0}{totalPart} · Alınan {received:N0} · Fiyatı değişen {priceChangedVariantIds.Count:N0} varyant · Stoğu değişen {stockChangedVariantIds.Count:N0} varyant · Değişmeyen {telemetryUnchangedVariantCount:N0} · Yeni beden {telemetryUnaddedSizeCount:N0}{failedPart}";
+            case ImportSummaryMode.NewOnly:
+                return $"{received:N0}{totalPart} · Alınan {received:N0} · Yeni ürün {telemetryNewProductCount:N0} · Yeni beden {telemetryNewSizeCount:N0} · Zaten panelde {telemetryAlreadyInPanelCount:N0}{failedPart}";
+            case ImportSummaryMode.Mapping:
+                // "Eşlenen" also tells the panel's job card to name its counters for mapping.
+                return $"{received:N0}{totalPart} · Alınan {received:N0} · Eşlenen {telemetryMappedCount:N0} · Zaten eşli {telemetryAlreadyMappedCount:N0} · Panelde karşılığı yok {telemetryNoCounterpartCount:N0} · Çakışma {telemetryMappingConflictCount:N0}{failedPart}";
+        }
         var processedLabel = mappingOnly ? "Eşlenen" : "İşlenen";
         var skippedLabel = mappingOnly ? "Eşleşmeyen" : "Atlanan";
         var unaddedPart = telemetryUnaddedSizeCount > 0 ? $" · Eklenmeyen yeni beden {telemetryUnaddedSizeCount:N0}" : "";
@@ -6808,7 +6918,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     }
 
     internal static string UnaddedSizesNote(int count) =>
-        $"{count} yeni beden var; eklemek için Ekli Olmayan Ürünler ya da Mevcut Ürün Bilgilerini Güncelle ile çekin.";
+        $"{count} yeni beden var; eklemek için Yeni Ürünleri Aktar ya da Mevcut Ürün Bilgilerini Güncelle ile çekin.";
 
     private async Task RecordProductImportFailure(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, Exception exception, CancellationToken cancellationToken)
     {
@@ -7660,6 +7770,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .Where(variant => !string.IsNullOrWhiteSpace(variant.ExternalVariantId))
             .ToList();
         if (remoteVariants.Count == 0) return false;
+        // The run's result line counts variants: Eşlenen (a link made now), Zaten eşli, Panelde karşılığı yok, Çakışma.
+        bool NoCounterpart() { telemetryNoCounterpartCount += remoteVariants.Count; return false; }
+        bool Conflict() { telemetryMappingConflictCount += remoteVariants.Count; return false; }
 
         var now = timeProvider.GetUtcNow();
         var link = await db.MarketplaceProductLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalProductId, cancellationToken);
@@ -7670,7 +7783,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var barcodes = CatalogKeyNormalizer.LookupKeys(remoteVariants.Select(variant => variant.Barcode));
         var skus = CatalogKeyNormalizer.LookupKeys(remoteVariants.Select(variant => variant.Sku));
         var rawSkus = remoteVariants.Select(variant => variant.Sku?.Trim()).Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        if (modelCodes.Length == 0 && barcodes.Length == 0 && skus.Length == 0) return false;
+        if (modelCodes.Length == 0 && barcodes.Length == 0 && skus.Length == 0) return NoCounterpart();
 
         // A Shopify product can contain several colour variants while the
         // panel stores each colour as its own Product. Load every candidate
@@ -7691,7 +7804,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 foreach (var remote in remoteVariants)
                     await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:{Short(remote.ExternalVariantId, 256)}", "PRODUCT_MAPPING_UNMATCHED",
                         Short($"Pazar yeri varyantı eşleşmedi: stok kodu {remote.Sku}, barkod {remote.Barcode ?? "yok"}, model kodu {remote.ModelCode ?? "yok"} · {snapshot.Title}. Panelde aynı stok kodu, barkod veya model kodu yok.", 1000), cancellationToken);
-            return false;
+            return NoCounterpart();
         }
 
         var localVariantIds = localVariants.Select(variant => variant.Id).ToArray();
@@ -7756,7 +7869,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             {
                 await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:{externalProductId}", "PRODUCT_MAPPING_UNMATCHED",
                     Short($"Pazar yeri ürününün varyantları panelde {resolvedProductIds.Count} ayrı ürüne (renk kartlarına) düştü; ürün bağlantısı seçilmedi, eşleşmeyi kontrol edin · {snapshot.Title}.", 1000), cancellationToken);
-                if (!crossMatchCodes) return false;
+                if (!crossMatchCodes) return Conflict();
                 linkProduct = false;
             }
             else if (resolvedProductIds.Count == 1)
@@ -7764,13 +7877,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 productId = resolvedProductIds[0];
                 if (await db.MarketplaceProductLinks.AsNoTracking().AnyAsync(existing => existing.TenantId == tenantId && existing.ConnectionId == connectionId && existing.ProductId == productId.Value && existing.ExternalId != externalProductId, cancellationToken))
                 {
-                    if (!crossMatchCodes) return false;
+                    if (!crossMatchCodes) return Conflict();
                     linkProduct = false;
                 }
             }
             else linkProduct = false;
         }
-        if (productId is { } chosenProductId && !await db.Products.AsNoTracking().AnyAsync(product => product.TenantId == tenantId && product.Id == chosenProductId, cancellationToken)) return false;
+        if (productId is { } chosenProductId && !await db.Products.AsNoTracking().AnyAsync(product => product.TenantId == tenantId && product.Id == chosenProductId, cancellationToken)) return NoCounterpart();
 
         foreach (var item in resolved)
         {
@@ -7780,6 +7893,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var candidate = item.Candidate;
             if (candidate is null || claimedVariantIds.Contains(candidate.Id))
             {
+                if (candidate is not null || matches.Count > 1 || item.ModelCodeUndecided) telemetryMappingConflictCount++;
+                else telemetryNoCounterpartCount++;
                 if (reportUnmatched || item.ModelCodeUndecided)
                     await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:{externalVariantId}", "PRODUCT_MAPPING_UNMATCHED",
                         Short($"Pazar yeri varyantı eşleşmedi: stok kodu {remote.Sku}, barkod {remote.Barcode ?? "yok"}, model kodu {remote.ModelCode ?? "yok"}, {string.Join(", ", remote.Options.Where(option => IsRealColorOptionKey(option.Key) || IsSizeOptionKey(option.Key)).Select(option => $"{option.Key}: {option.Value}"))} · {snapshot.Title}. {(candidate is not null ? "Aday panel varyantı başka bir pazar yeri varyantına bağlı." : matches.Count > 1 ? $"{matches.Count} panel varyantı aday çıktı." : item.ModelCodeUndecided ? $"Model kodu {item.ModelCandidateCount} panel varyantında var ama hiçbirinin rengi ve bedeni bu varyantınki değil." : "Panelde aynı stok kodu, barkod veya model kodu yok.")}", 1000),
@@ -7790,8 +7905,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var externalLink = existingVariantLinks.FirstOrDefault(existing => string.Equals(existing.ExternalId, externalVariantId, StringComparison.OrdinalIgnoreCase));
             if (externalLink is not null)
             {
-                if (externalLink.VariantId == candidate.Id) { matchedVariantCount++; if (seedOffers) await SeedChannelOfferAsync(tenantId, connectionId, candidate.Id, remote, inventoryPolicy, now, cancellationToken, seedSource); }
-                else if (reportUnmatched)
+                if (externalLink.VariantId == candidate.Id) { matchedVariantCount++; telemetryAlreadyMappedCount++; if (seedOffers) await SeedChannelOfferAsync(tenantId, connectionId, candidate.Id, remote, inventoryPolicy, now, cancellationToken, seedSource); }
+                else telemetryMappingConflictCount++;
+                if (externalLink.VariantId != candidate.Id && reportUnmatched)
                     await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:{externalVariantId}", "PRODUCT_MAPPING_UNMATCHED",
                         Short($"Pazar yeri varyantı {remote.Sku} daha önce başka bir panel varyantına bağlanmış; şimdiki eşleşme {candidate.Sku}. Bağlantı değiştirilmedi · {snapshot.Title}.", 1000), cancellationToken);
                 claimedVariantIds.Add(externalLink.VariantId);
@@ -7800,6 +7916,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var localLink = existingVariantLinks.FirstOrDefault(existing => existing.VariantId == candidate.Id);
             if (localLink is not null)
             {
+                telemetryMappingConflictCount++;
                 if (reportUnmatched)
                     await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:{externalVariantId}", "PRODUCT_MAPPING_UNMATCHED",
                         Short($"Pazar yeri varyantı eşleşmedi: stok kodu {remote.Sku}, panel varyantı {candidate.Sku} zaten {localLink.ExternalId} stok koduna bağlı · {snapshot.Title}.", 1000), cancellationToken);
@@ -7810,6 +7927,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             existingVariantLinks.Add(new MarketplaceVariantLink { TenantId = tenantId, ConnectionId = connectionId, VariantId = candidate.Id, ExternalId = externalVariantId, Version = 1 });
             claimedVariantIds.Add(candidate.Id);
             matchedVariantCount++;
+            telemetryMappedCount++;
             telemetryInsertedCount++;
             if (seedOffers) await SeedChannelOfferAsync(tenantId, connectionId, candidate.Id, remote, inventoryPolicy, now, cancellationToken, seedSource);
         }
@@ -7832,12 +7950,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             db.MarketplaceProductLinks.Add(link);
             telemetryInsertedCount++;
         }
-        else
-        {
-            link.LastImportedAt = now;
-            link.SyncStatus = "MAPPED";
-            link.Version++;
-        }
+        // A product link that already exists stays as it is (owner, 12 Nov 2026: mapping only links): until then it was
+        // re-marked MAPPED, which wiped its sync state (SYNCED, LOCAL_CHANGES_PENDING) and its import time.
 
         return true;
     }
@@ -8160,10 +8274,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return true;
     }
 
-    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken, bool saveChanges = true, bool onlyNewVariants = false, bool observeOnly = false, bool preferBarcode = false, bool onlyExistingVariants = false, bool updateExistingProducts = true, bool overwriteLocalChanges = false, bool updatePrices = false, bool updateStock = false, bool isHepsiburada = false, bool matchBySku = false, string? observedPlatformName = null, DateTimeOffset? createdAt = null, bool allowNewProduct = true)
+    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken, bool saveChanges = true, bool onlyNewVariants = false, bool observeOnly = false, bool preferBarcode = false, bool onlyExistingVariants = false, bool updateExistingProducts = true, bool overwriteLocalChanges = false, bool updatePrices = false, bool updateStock = false, bool isHepsiburada = false, bool matchBySku = false, string? observedPlatformName = null, DateTimeOffset? createdAt = null, bool allowNewProduct = true, IReadOnlySet<string>? onlyAddExternalVariantIds = null)
     {
         var now = timeProvider.GetUtcNow();
         var externalProductId = Short(snapshot.ExternalProductId, 256);
+        // New sizes added to a card the panel already links ("Yeni Ürünleri Aktar"): nothing of the card changes.
+        var addOnly = onlyNewVariants && !observeOnly;
         // The panel brand the user's own mapping names for the listing's brand (report item 19); the import never looks
         // a panel brand up by name, opens one or writes a mapping. A brand nobody mapped is listed for the user.
         var mappedBrandId = observeOnly ? null : await MappedImportBrandId(tenantId, connectionId, snapshot, observedPlatformName ?? "Trendyol", cancellationToken);
@@ -8385,7 +8501,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
         // Runs before the unchanged-payload and preserved-product paths, so a product imported before desi was read
         // (or edited locally since) still gets the marketplace desi on its empty variants.
-        if (!isNewProduct)
+        // Adding new sizes only ("Yeni Ürünleri Aktar") leaves the panel's variants as they are, an empty desi too.
+        if (!isNewProduct && !addOnly)
             await FillMissingImportedDesi(tenantId, connectionId, snapshot, now, cancellationToken);
 
         // A catalog scan can revisit hundreds of products whose last imported
@@ -8455,7 +8572,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // K13: a mapped panel category the user switched off or split into sub-categories cannot take
         // products, the same rule UpsertCatalogCategory applies; the product stays without a category and
         // the mapping is reported once per category.
-        var category = observeOnly ? null : categoryContext?.LocalCategory ?? await UpsertCatalogCategory(tenantId, snapshot.CategoryName, cancellationToken);
+        var category = observeOnly || addOnly ? null : categoryContext?.LocalCategory ?? await UpsertCatalogCategory(tenantId, snapshot.CategoryName, cancellationToken);
         if (category is { } mappedCategory && categoryContext is not null && (!mappedCategory.IsActive || !mappedCategory.IsLeaf))
         {
             await RecordIssue(tenantId, $"category-mapping-unusable:{connectionId:D}:{mappedCategory.Id:D}", "CATEGORY_MAPPING_UNUSABLE", $"Pazaryeri kategorisinin eşlendiği \"{Short(mappedCategory.Name, 120)}\" kategorisi {(mappedCategory.IsActive ? "alt kategorilere bölünmüş" : "kapalı")}; ürünler kategorisiz aktarıldı. Eşleştirmeyi etkin bir yaprak kategoriye çevirin.", cancellationToken);
@@ -8484,6 +8601,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             {
                 var externalVariantId = Short(remote.ExternalVariantId, 256);
                 if (onlyNewVariants && existingVariantExternalIds!.Contains(externalVariantId))
+                    continue;
+                // A variant the panel holds under another code (stock code or barcode, no link yet) is not new: it is
+                // neither linked nor rewritten here ("Ürün Eşleme" links it).
+                if (addOnly && onlyAddExternalVariantIds is not null && !onlyAddExternalVariantIds.Contains(externalVariantId))
                     continue;
                 var importedVariant = await UpsertCatalogVariant(tenantId, connectionId, product, remote, sortOrder, categoryContext, inventoryPolicy, now, cancellationToken, observeOnly, preferBarcode, onlyExistingVariants, updatePrices, updateStock);
                 if (importedVariant is not null)
@@ -8550,6 +8671,16 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 var productImageUrls = CatalogImageIdentity.DistinctUrls(snapshot.ImageUrls);
                 await UpsertCatalogMedia(tenantId, product, null, productImageUrls, product.Title, cancellationToken);
             }
+        }
+        // Adding new sizes to a card the panel holds leaves its link as it was: the card's content was not taken, so the
+        // payload hash, the import marks and the local-change flags must not say it was (a later pull would otherwise
+        // skip the content as already applied).
+        if (addOnly)
+        {
+            productImportedNewVariantCount = importedNewVariantCount;
+            if (saveChanges)
+                await db.SaveChangesAsync(cancellationToken);
+            return importedNewVariantCount > 0;
         }
         link ??= await db.MarketplaceProductLinks.SingleAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalProductId, cancellationToken);
         link.LastImportedPayloadHash = remoteHash;
@@ -8792,7 +8923,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return !own.SequenceEqual(rows.Where(x => x.VariantId == null).Select(x => x.FileAssetId));
     }
 
-    private async Task SyncCatalogInventoryForPreservedProduct(
+    // Returns the panel variants it matched (by link, then stock code, then barcode inside the card).
+    private async Task<List<Guid>> SyncCatalogInventoryForPreservedProduct(
         Guid tenantId,
         Guid connectionId,
         Product product,
@@ -8805,10 +8937,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         bool updatePrices = false, bool updateStock = false,
         bool syncMedia = false)
     {
+        var matched = new List<Guid>();
         var variants = await db.ProductVariants
             .Where(x => x.TenantId == tenantId && x.ProductId == product.Id)
             .ToListAsync(cancellationToken);
-        if (variants.Count == 0) return;
+        if (variants.Count == 0) return matched;
 
         var externalIds = snapshot.Variants
             .Select(x => Short(x.ExternalVariantId, 256))
@@ -8845,10 +8978,63 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             }
             if (variant is null) continue;
 
+            matched.Add(variant.Id);
             await UpsertCatalogOfferAndInventory(tenantId, connectionId, variant, remote, inventoryPolicy, now, cancellationToken, updateOffer: updatePrices, observeOnly: observeOnly, updateStock: updateStock, forceStockUpdate: updateStock);
             if (syncMedia && remote.ImageUrls is not null)
                 await UpsertCatalogMedia(tenantId, product, variant.Id, remote.ImageUrls, $"{product.Title} · {OptionSignature(remote.Options)}", cancellationToken);
         }
+        return matched;
+    }
+
+    // The focused price/stock path (ProductImportScanPolicy.FocusedPriceStock): the listing finds its panel card the way
+    // UpsertCatalogProduct finds it (the product link, else the card owning its variants by link, stock code, barcode;
+    // a link to a card without variants gives way to that owner too), and every variant its panel variant the way the
+    // preserved-card path does (SyncCatalogInventoryForPreservedProduct: link, stock code, barcode). Only the ticked
+    // prices (sale and list, with their price history) and stock (through the ledger) are written, by the same
+    // UpsertCatalogOfferAndInventory; the listing's sale state was recorded when its page was read (MarkVariantLinksSeen).
+    // No category context, attribute, reference, picture, content, desi, brand, category, link or local-change mark
+    // changes. A size the panel lacks is not added: it is reported (PRODUCT_NEW_SIZES_NOT_IMPORTED), as a plain pull does.
+    private async Task<FocusedPriceStockOutcome> ApplyFocusedPriceStock(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, ConnectionInventoryPolicy? inventoryPolicy, bool updatePrices, bool updateStock, CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        var externalProductId = Short(snapshot.ExternalProductId, 256);
+        var productId = await db.MarketplaceProductLinks.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalProductId)
+            .Select(x => (Guid?)x.ProductId)
+            .SingleOrDefaultAsync(cancellationToken);
+        var product = productId is { } linkedId
+            ? await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == linkedId, cancellationToken)
+            : null;
+        if (product is null || !await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && x.ProductId == product.Id, cancellationToken))
+        {
+            var owners = await CatalogProductsOwningVariants(tenantId, connectionId, snapshot, cancellationToken);
+            if (owners.Count > 1)
+            {
+                await RecordIssue(tenantId, $"product-sync-variant-owner-conflict:{connectionId}:{Short(externalProductId, 200)}", "PRODUCT_VARIANT_CONFLICT", Short($"Pazar yeri ürününün varyantları panelde birden fazla ürüne ait; yeni ürün açılmadı, mevcut kayıtlar korundu · {snapshot.Title}", 1000), cancellationToken);
+                return FocusedPriceStockOutcome.Conflict;
+            }
+            product = owners.Count == 1 ? await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == owners[0], cancellationToken) : null;
+        }
+        if (product is null) return FocusedPriceStockOutcome.NotInPanel;
+
+        var pricesBefore = priceChangedVariantIds.Count;
+        var stockBefore = stockChangedVariantIds.Count;
+        var matched = await SyncCatalogInventoryForPreservedProduct(tenantId, connectionId, product, snapshot, inventoryPolicy, now, cancellationToken, updatePrices: updatePrices, updateStock: updateStock);
+        telemetryUnchangedVariantCount += matched.Distinct().Count(id => !priceChangedVariantIds.Contains(id) && !stockChangedVariantIds.Contains(id));
+
+        var unadded = (await RemoteVariantsMissingFromPanel(tenantId, connectionId, snapshot, cancellationToken)).Count;
+        var issueKey = $"product-new-sizes:{connectionId:D}:{Short(externalProductId, 200)}";
+        if (unadded > 0)
+        {
+            productUnaddedSizeCount = unadded;
+            telemetryUnaddedSizeCount += unadded;
+            await RecordIssue(tenantId, issueKey, "PRODUCT_NEW_SIZES_NOT_IMPORTED", Short($"{product.Title}: Trendyol'da panelde olmayan {UnaddedSizesNote(unadded)}", 1000), cancellationToken);
+        }
+        else
+            await ResolveIssue(tenantId, issueKey, cancellationToken);
+        return priceChangedVariantIds.Count > pricesBefore || stockChangedVariantIds.Count > stockBefore
+            ? FocusedPriceStockOutcome.Changed
+            : FocusedPriceStockOutcome.Unchanged;
     }
 
     private async Task NormalizeLegacyWebColorOptions(Guid tenantId, Guid productId, CancellationToken cancellationToken)
@@ -9184,6 +9370,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 // came from. It is not an on-hand movement for MarketplaceStockImportPolicy (it is the remote number).
                 if (opening.OnHand != 0)
                 {
+                    stockChangedVariantIds.Add(variant.Id);
                     var openingEventId = $"catalog-opening:{connectionId:N}:{opening.Id:N}";
                     db.StockLedgerEntries.Add(new StockLedgerEntry
                     {
@@ -9212,6 +9399,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 var observationChanged = inventory.ObservedRemoteQuantity != observedRemoteQuantity;
                 if (projectionChanged)
                 {
+                    stockChangedVariantIds.Add(variant.Id);
                     // K-2: the change goes through the stock ledger and reaches every connection selling the variant,
                     // like any other stock movement.
                     var readAt = MarketplaceStockReadAt(now);
@@ -9277,6 +9465,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             // The price came from the marketplace, so it counts as already sent there.
             offer.LastPriceHash = PriceInventoryComposer.StandardPriceHash(offer);
             db.ChannelOffers.Add(offer);
+            priceChangedVariantIds.Add(variant.Id);
             db.ChannelPriceHistory.Add(new ChannelPriceHistory
             {
                 Id = Guid.CreateVersion7(),
@@ -9308,6 +9497,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         offer.Version++;
         if (priceChanged)
         {
+            priceChangedVariantIds.Add(variant.Id);
             offer.PriceVersion++;
             // The new price is the one the marketplace already holds; without this marker the next
             // price-and-stock send would push it back as a local change.

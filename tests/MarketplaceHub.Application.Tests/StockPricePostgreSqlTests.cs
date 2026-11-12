@@ -1435,7 +1435,7 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         var record = typeof(MarketplaceJobProcessor).GetMethod("RecordVariantLinkCodes", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
         var remote = new RemoteCatalogVariant("888001", " TY-STOK ", "TY-BARKOD", null, new Dictionary<string, string>(), false, 100m, 120m, 20m, 2m, "TRY", "{}");
         var snapshots = new List<RemoteCatalogProduct> { new("p-1", null, "Ürün", "", null, null, null, null, [], [remote], "{}") };
-        await (Task)record.Invoke(processor, [tenant.Id, trendyol.Id, snapshots, CancellationToken.None])!;
+        await (Task)record.Invoke(processor, [tenant.Id, trendyol.Id, snapshots, CancellationToken.None, false])!;
         await db.SaveChangesAsync();
 
         var link = await db.MarketplaceVariantLinks.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ConnectionId == trendyol.Id);
@@ -1470,7 +1470,7 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         var remote = new RemoteCatalogVariant("MODEL-1/7101", "MODEL-1-S", null, "MODEL-1", new Dictionary<string, string> { ["Varyant"] = "S" }, false, 100m, null, 20m, 1m, "TRY", "{}");
         var snapshots = new List<RemoteCatalogProduct> { new("900001", "MODEL-1", "Etek", "", null, null, null, null, [], [remote], "{}") };
 
-        await (Task)record.Invoke(processor, [tenant.Id, pttAvm.Id, snapshots, CancellationToken.None])!;
+        await (Task)record.Invoke(processor, [tenant.Id, pttAvm.Id, snapshots, CancellationToken.None, false])!;
 
         Assert.Equal("M1-S", link.ExternalId);
         Assert.Null(link.ExternalSku);

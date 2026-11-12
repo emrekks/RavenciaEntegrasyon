@@ -41,7 +41,7 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
     private static string VariantId(int colour, int size) => (900_000 + colour * 100 + size).ToString(System.Globalization.CultureInfo.InvariantCulture);
     private static string Title(string colour) => $"Kadın {colour} Triko Bluz";
 
-    private sealed record ContentSpec(string Colour, string[] Sizes, string? Title = null, string[]? Pictures = null, int Stock = 4, string? Description = null, string? StockCodePrefix = null);
+    private sealed record ContentSpec(string Colour, string[] Sizes, string? Title = null, string[]? Pictures = null, int Stock = 4, string? Description = null, string? StockCodePrefix = null, decimal SalePrice = 630m, decimal ListPrice = 900m, string[]? ArchivedSizes = null);
 
     private static ContentSpec Spec(string colour) => new(colour, Sizes);
 
@@ -77,13 +77,13 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
                     barcode = Barcode(colourIndex, sizeIndex),
                     stockCode = spec.StockCodePrefix is null ? StockCode(colourIndex, sizeIndex) : $"{spec.StockCodePrefix}-{colourIndex * 10 + sizeIndex:00}",
                     attributes = new[] { new { attributeName = "Beden", attributeValue = size } },
-                    salePrice = 630m,
-                    listPrice = 900m,
+                    salePrice = spec.SalePrice,
+                    listPrice = spec.ListPrice,
                     quantity = spec.Stock,
                     vatRate = 10,
                     dimensionalWeight = desi,
                     onSale = true,
-                    archived = false
+                    archived = spec.ArchivedSizes?.Contains(size) == true
                 };
             }).ToList()
         };
@@ -443,7 +443,7 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
             Assert.Equal("Sahibin Siyah Başlığı", card.Product.Title);
             var issue = await db.OperationalIssues.AsNoTracking().SingleAsync(row => row.TenantId == seed.TenantId && row.Code == "PRODUCT_NEW_SIZES_NOT_IMPORTED");
             Assert.Equal(IssueStatus.Open, issue.Status);
-            Assert.Contains("1 yeni beden var; eklemek için Ekli Olmayan Ürünler ya da Mevcut Ürün Bilgilerini Güncelle ile çekin.", issue.Summary, StringComparison.Ordinal);
+            Assert.Contains("1 yeni beden var; eklemek için Yeni Ürünleri Aktar ya da Mevcut Ürün Bilgilerini Güncelle ile çekin.", issue.Summary, StringComparison.Ordinal);
         }
         Assert.Equal(siyah.Media, await MediaRowsAsync(seed, onlyProductId: siyah.ProductId));
 
@@ -558,6 +558,261 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         }
     }
 
+    // --- Pull options by mode (owner, 12 Nov 2026) ---
+    // "Mevcut Ürün Bilgilerini Güncelle" off, prices and/or stock ticked: only those are written ("fiyatsa sadece fiyat,
+    // stoksa stok, ikisi ise ikisi"). "Ürün Eşleme" only links. "Yeni Ürünleri Aktar" only adds what the panel lacks.
+
+    private static IEnumerable<ContentSpec> Repriced(int stock, decimal sale, decimal list) =>
+        Colours.Select(entry => Spec(entry.Colour) with { Stock = stock, SalePrice = sale, ListPrice = list });
+
+    private const string FocusedBoth = "{\"existingOnly\":true,\"updateExistingProducts\":false,\"updatePrices\":true,\"updateStock\":true}";
+    private const string FocusedPrices = "{\"existingOnly\":true,\"updateExistingProducts\":false,\"updatePrices\":true,\"updateStock\":false}";
+    private const string FocusedStock = "{\"existingOnly\":true,\"updateExistingProducts\":false,\"updatePrices\":false,\"updateStock\":true}";
+
+    // The same Trendyol answer through the full path and the focused path writes the same prices, stock, stock moves and
+    // price history, an owner-edited card and a card found by its stock code (variant links lost) included.
+    [PostgreSqlFact]
+    public async Task FocusedPriceStock_WritesExactlyWhatTheFullPathWrites()
+    {
+        var full = await SeedAsync();
+        var focused = await SeedAsync();
+        foreach (var seed in new[] { full, focused })
+        {
+            await RunAsync(seed, new TrendyolCatalogPort(Read(Colours.Select(entry => Spec(entry.Colour)))), "{\"full\":true}");
+            await OwnerEditsSiyahAsync(seed);
+            await using var db = fixture.CreateContext();
+            // Bordo's variant links are gone (MZ052BOD-16 → MZ051BYC-16 on live): its variants are found by stock code.
+            var bordo = (await CardsAsync(db, seed))[ContentId("Bordo")].Variants.Select(row => row.Id).ToList();
+            await db.MarketplaceVariantLinks.Where(row => row.TenantId == seed.TenantId && bordo.Contains(row.VariantId)).ExecuteDeleteAsync();
+        }
+        Assert.Equal(await PriceStockAsync(full), await PriceStockAsync(focused));
+
+        var changed = Repriced(9, 555m, 820m).ToList();
+        await RunAsync(full, new TrendyolCatalogPort(Read(changed)), "{\"existingOnly\":true,\"updateExistingProducts\":true,\"updatePrices\":true,\"updateStock\":true}");
+        await AgeReferenceSnapshotsAsync(focused);
+        var references = new RefusingReferencePort();
+        await RunAsync(focused, new TrendyolCatalogPort(Read(changed)), FocusedBoth, references);
+
+        var written = await PriceStockAsync(focused);
+        Assert.Equal(await PriceStockAsync(full), written);
+        Assert.Equal(0, references.Calls);
+        // Every variant took the new prices and stock (through the ledger, MARKETPLACE_STOCK_IMPORT).
+        Assert.Equal(Colours.Length * Sizes.Length, written.Split('\n').Count(line => line.StartsWith("offer ", StringComparison.Ordinal) && line.Contains(" 820 555 ", StringComparison.Ordinal)));
+        Assert.Equal(Colours.Length * Sizes.Length, written.Split('\n').Count(line => line.StartsWith("stock ", StringComparison.Ordinal) && line.Contains(" 9 0 9 9 ", StringComparison.Ordinal) && line.Contains(MarketplaceStockImportPolicy.MovementType + ":5:", StringComparison.Ordinal)));
+    }
+
+    // Prices alone leave stock and everything else; stock alone leaves prices and everything else. Neither reads a
+    // Trendyol reference, builds a category context, or touches content, attributes, pictures, links or local-change marks.
+    [PostgreSqlFact]
+    public async Task FocusedPriceOnly_AndStockOnly_WriteOnlyTheirOwnField()
+    {
+        var seed = await SeedAsync();
+        await RunAsync(seed, new TrendyolCatalogPort(Read(Colours.Select(entry => Spec(entry.Colour)))), "{\"full\":true}");
+        await OwnerEditsSiyahAsync(seed);
+        await AgeReferenceSnapshotsAsync(seed);
+        var before = await RowsAsync(seed);
+        var linksBefore = await VariantLinkRowsAsync(seed);
+        var references = new RefusingReferencePort();
+
+        // Prices only: Trendyol also sends other stock, another title and other pictures; none of it is taken.
+        var changed = Colours.Select(entry => Spec(entry.Colour) with { Stock = 9, SalePrice = 555m, ListPrice = 820m, Title = "Trendyol Yeni Başlık", Pictures = [.. ContentPictures(entry.Key, entry.Pictures).Reverse()] }).ToList();
+        var prices = await RunAsync(seed, new TrendyolCatalogPort(Read(changed)), FocusedPrices, references);
+        var afterPrices = await RowsAsync(seed);
+        AssertTablesEqual(before, afterPrices, nameof(ChannelOffer), nameof(ChannelPriceHistory));
+        Assert.Equal(linksBefore, await VariantLinkRowsAsync(seed));
+        Assert.All(afterPrices[nameof(ChannelOffer)].Values, json => Assert.Contains("\"SalePrice\":555", json, StringComparison.Ordinal));
+        Assert.Equal(before[nameof(ChannelPriceHistory)].Count + Colours.Length * Sizes.Length, afterPrices[nameof(ChannelPriceHistory)].Count);
+        Assert.Equal(0, prices.AttributeReads);
+
+        // Stock only: the prices Trendyol now sends differ again and stay as they were.
+        var restocked = changed.Select(spec => spec with { Stock = 2, SalePrice = 444m }).ToList();
+        var stock = await RunAsync(seed, new TrendyolCatalogPort(Read(restocked)), FocusedStock, references);
+        var afterStock = await RowsAsync(seed);
+        AssertTablesEqual(afterPrices, afterStock, nameof(InventoryItem), nameof(StockLedgerEntry));
+        Assert.Equal(linksBefore, await VariantLinkRowsAsync(seed));
+        Assert.All(afterStock[nameof(InventoryItem)].Values, json => Assert.Contains("\"OnHand\":2", json, StringComparison.Ordinal));
+        Assert.Equal(afterPrices[nameof(StockLedgerEntry)].Count + Colours.Length * Sizes.Length, afterStock[nameof(StockLedgerEntry)].Count);
+        Assert.Equal(0, stock.AttributeReads);
+        Assert.Equal(0, references.Calls);
+
+        // The owner's card keeps its marks; Trendyol's title reached no card.
+        await using var db = fixture.CreateContext();
+        Assert.All(await db.Products.AsNoTracking().Where(row => row.TenantId == seed.TenantId).ToListAsync(), row => Assert.NotEqual("Trendyol Yeni Başlık", row.Title));
+    }
+
+    // A size Trendyol lists that the panel lacks is reported, never added, by the focused path; the full path adds it.
+    [PostgreSqlFact]
+    public async Task FocusedPriceStock_ReportsANewSize_WithoutAddingIt()
+    {
+        var seed = await SeedAsync();
+        await RunAsync(seed, new TrendyolCatalogPort(Read(Colours.Select(entry => Spec(entry.Colour)))), "{\"full\":true}");
+        await RunAsync(seed, new TrendyolCatalogPort(Read(SiyahWithXs())), FocusedStock);
+
+        await using (var db = fixture.CreateContext())
+        {
+            Assert.Equal(Colours.Length * Sizes.Length, await db.ProductVariants.CountAsync(row => row.TenantId == seed.TenantId));
+            var issue = await db.OperationalIssues.AsNoTracking().SingleAsync(row => row.TenantId == seed.TenantId && row.Code == "PRODUCT_NEW_SIZES_NOT_IMPORTED");
+            Assert.Equal(IssueStatus.Open, issue.Status);
+            Assert.Contains("1 yeni beden var", issue.Summary, StringComparison.Ordinal);
+        }
+
+        await RunAsync(seed, new TrendyolCatalogPort(Read(SiyahWithXs())), "{\"existingOnly\":true,\"updateExistingProducts\":true,\"updatePrices\":false,\"updateStock\":true}");
+        await using (var db = fixture.CreateContext())
+        {
+            Assert.Single((await CardsAsync(db, seed))[ContentId("Siyah")].Variants, row => row.Barcode == Barcode(ColourIndex("Siyah"), 5));
+            Assert.Equal(IssueStatus.Resolved, (await db.OperationalIssues.AsNoTracking().SingleAsync(row => row.TenantId == seed.TenantId && row.Code == "PRODUCT_NEW_SIZES_NOT_IMPORTED")).Status);
+        }
+    }
+
+    // Query budget: a focused pull of 7 cards × 5 sizes stays within ~9 commands per variant (12 Nov 2026: 327), a third
+    // below the full path even here, where the category has no attribute values (live: ~4,000 queries per model), and reads
+    // no attribute or reference table.
+    [PostgreSqlFact]
+    public async Task FocusedPriceStock_StaysWithinItsQueryBudget()
+    {
+        var seed = await SeedAsync();
+        await RunAsync(seed, new TrendyolCatalogPort(Read(Colours.Select(entry => Spec(entry.Colour)))), "{\"full\":true}");
+        var fullRun = await RunAsync(seed, new TrendyolCatalogPort(Read(Repriced(6, 600m, 880m))), "{\"existingOnly\":true,\"updateExistingProducts\":true,\"updatePrices\":true,\"updateStock\":true}");
+        var focusedRun = await RunAsync(seed, new TrendyolCatalogPort(Read(Repriced(7, 610m, 890m))), FocusedBoth);
+
+        Assert.Equal(0, focusedRun.AttributeReads);
+        Assert.True(focusedRun.Commands <= 30 + Colours.Length * Sizes.Length * 9, $"focused run sent {focusedRun.Commands} commands, full {fullRun.Commands}");
+        Assert.True(focusedRun.Commands * 3 < fullRun.Commands * 2, $"focused {focusedRun.Commands} commands, full {fullRun.Commands}");
+        Assert.True(focusedRun.Elapsed < TimeSpan.FromSeconds(30), $"focused run took {focusedRun.Elapsed}");
+    }
+
+    // "Ürün Eşleme" makes the variant links and nothing else: content, prices, stock, pictures, attributes, mappings and
+    // the product links' marks stay byte for byte; no Trendyol reference is read.
+    [PostgreSqlFact]
+    public async Task MappingOnly_ChangesNothingButTheVariantLinks()
+    {
+        var seed = await SeedAsync();
+        var port = new TrendyolCatalogPort(Read(Colours.Select(entry => Spec(entry.Colour))));
+        await RunAsync(seed, port, "{\"full\":true}");
+        await OwnerEditsSiyahAsync(seed);
+        string linksBefore;
+        await using (var db = fixture.CreateContext())
+        {
+            linksBefore = string.Join("\n", await db.MarketplaceVariantLinks.AsNoTracking().Where(row => row.TenantId == seed.TenantId).OrderBy(row => row.ExternalId).Select(row => row.ExternalId + ">" + row.VariantId).ToListAsync());
+            await db.MarketplaceVariantLinks.Where(row => row.TenantId == seed.TenantId).ExecuteDeleteAsync();
+        }
+        await AgeReferenceSnapshotsAsync(seed);
+        var before = await RowsAsync(seed);
+        var references = new RefusingReferencePort();
+        // Trendyol's answer differs in stock, price and title: a mapping takes none of it.
+        var run = await RunAsync(seed, new TrendyolCatalogPort(Read(Colours.Select(entry => Spec(entry.Colour) with { Stock = 8, SalePrice = 500m, Title = "Başka Başlık" }))), "{\"mappingOnly\":true,\"includeArchived\":true}", references);
+
+        AssertTablesEqual(before, await RowsAsync(seed));
+        Assert.Equal(0, references.Calls);
+        Assert.Equal(0, run.AttributeReads);
+        await using (var db = fixture.CreateContext())
+            Assert.Equal(linksBefore, string.Join("\n", await db.MarketplaceVariantLinks.AsNoTracking().Where(row => row.TenantId == seed.TenantId).OrderBy(row => row.ExternalId).Select(row => row.ExternalId + ">" + row.VariantId).ToListAsync()));
+    }
+
+    // The archive choice decides whether archived Trendyol variants are matched too; the mapping reads the whole catalog
+    // either way (archived panel variants are candidates like any other).
+    [PostgreSqlFact]
+    public async Task MappingOnly_MatchesArchivedTrendyolVariants_OnlyWhenTheArchiveChoiceIsOn()
+    {
+        var seed = await SeedAsync();
+        await RunAsync(seed, new TrendyolCatalogPort(Read(Colours.Select(entry => Spec(entry.Colour)))), "{\"full\":true}");
+        await using (var db = fixture.CreateContext())
+            await db.MarketplaceVariantLinks.Where(row => row.TenantId == seed.TenantId).ExecuteDeleteAsync();
+        var archivedBordoS = new TrendyolCatalogPort(Read(Colours.Select(entry => entry.Colour == "Bordo" ? Spec("Bordo") with { ArchivedSizes = ["S"] } : Spec(entry.Colour))));
+
+        await RunAsync(seed, archivedBordoS, "{\"mappingOnly\":true,\"includeArchived\":false}");
+        await using (var db = fixture.CreateContext())
+        {
+            Assert.Equal(Colours.Length * Sizes.Length - 1, await db.MarketplaceVariantLinks.CountAsync(row => row.TenantId == seed.TenantId));
+            Assert.False(await db.MarketplaceVariantLinks.AnyAsync(row => row.TenantId == seed.TenantId && row.ExternalId == VariantId(ColourIndex("Bordo"), 0)));
+        }
+
+        await RunAsync(seed, archivedBordoS, "{\"mappingOnly\":true,\"includeArchived\":true}");
+        await using (var db = fixture.CreateContext())
+            Assert.Equal(Colours.Length * Sizes.Length, await db.MarketplaceVariantLinks.CountAsync(row => row.TenantId == seed.TenantId));
+    }
+
+    // "Yeni Ürünleri Aktar" adds the new colour card and the new size and nothing else: every row that existed stays
+    // byte for byte (an unlinked panel variant found by its stock code is not linked, an empty desi stays empty).
+    [PostgreSqlFact]
+    public async Task NewOnly_AddsOnlyWhatThePanelLacks_AndLeavesEveryExistingRowAsItWas()
+    {
+        var seed = await SeedAsync();
+        await RunAsync(seed, new TrendyolCatalogPort(Read(Colours.Where(entry => entry.Colour != "Mürdüm").Select(entry => Spec(entry.Colour)))), "{\"full\":true}");
+        await OwnerEditsSiyahAsync(seed);
+        Guid bordoM;
+        await using (var db = fixture.CreateContext())
+        {
+            var bordo = (await CardsAsync(db, seed))[ContentId("Bordo")].Variants;
+            bordoM = bordo.Single(row => row.Barcode == Barcode(ColourIndex("Bordo"), 1)).Id;
+            await db.MarketplaceVariantLinks.Where(row => row.TenantId == seed.TenantId && row.VariantId == bordoM).ExecuteDeleteAsync();
+            await db.ProductVariants.Where(row => row.Id == bordoM).ExecuteUpdateAsync(setters => setters.SetProperty(row => row.Desi, (decimal?)null));
+        }
+        var before = await RowsAsync(seed);
+        var later = Colours.Select(entry => entry.Colour == "Siyah" ? Spec("Siyah") with { Sizes = [.. Sizes, "XS"], Stock = 9, SalePrice = 500m } : Spec(entry.Colour) with { Stock = 9, SalePrice = 500m, Title = "Başka Başlık" });
+        await RunAsync(seed, new TrendyolCatalogPort(Read(later)), "{\"newOnly\":true}");
+
+        var after = await RowsAsync(seed);
+        // Opening the new colour card builds its category context, which re-verifies the category mapping it uses
+        // (VerifiedAt, Version): the one existing row the addition itself needs to touch.
+        AssertExistingRowsUnchanged(before, after, nameof(CategoryMapping));
+        await using (var db = fixture.CreateContext())
+            Assert.Equal(before[nameof(CategoryMapping)].Count, await db.CategoryMappings.CountAsync(row => row.TenantId == seed.TenantId));
+        await using (var db = fixture.CreateContext())
+        {
+            var cards = await CardsAsync(db, seed);
+            Assert.Equal(Sizes.Length, cards[ContentId("Mürdüm")].Variants.Count);
+            Assert.Single(cards[ContentId("Siyah")].Variants, row => row.Barcode == Barcode(ColourIndex("Siyah"), 5));
+            Assert.Equal(Colours.Length * Sizes.Length + 1, await db.ProductVariants.CountAsync(row => row.TenantId == seed.TenantId));
+            Assert.False(await db.MarketplaceVariantLinks.AnyAsync(row => row.TenantId == seed.TenantId && row.VariantId == bordoM));
+        }
+    }
+
+    // A new-only pull that finds everything in the panel builds no category context and reads no Trendyol reference.
+    [PostgreSqlFact]
+    public async Task NewOnly_WithEverythingInThePanel_ReadsNoReferenceAndBuildsNoContext()
+    {
+        var seed = await SeedAsync();
+        var port = new TrendyolCatalogPort(Read(Colours.Select(entry => Spec(entry.Colour))));
+        await RunAsync(seed, port, "{\"full\":true}");
+        await AgeReferenceSnapshotsAsync(seed);
+        var before = await RowsAsync(seed);
+        var references = new RefusingReferencePort();
+        var run = await RunAsync(seed, port, "{\"newOnly\":true}", references);
+
+        AssertTablesEqual(before, await RowsAsync(seed));
+        Assert.Equal(0, references.Calls);
+        Assert.Equal(0, run.AttributeReads);
+        Assert.True(run.Commands <= 80, $"new-only run with nothing new sent {run.Commands} commands");
+    }
+
+    // A product new-only adds is the one the full path opens: same card, variants, pictures, prices and stock.
+    [PostgreSqlFact]
+    public async Task NewOnly_OpensANewProduct_TheWayTheFullPathDoes()
+    {
+        var full = await SeedAsync();
+        var newOnly = await SeedAsync();
+        var catalog = new TrendyolCatalogPort(Read(Colours.Select(entry => Spec(entry.Colour))));
+        await RunAsync(full, catalog, "{\"full\":true}");
+        await RunAsync(newOnly, new TrendyolCatalogPort(Read(Colours.Where(entry => entry.Colour != "Mürdüm").Select(entry => Spec(entry.Colour)))), "{\"full\":true}");
+        await RunAsync(newOnly, catalog, "{\"newOnly\":true}");
+
+        async Task<string> MurdumAsync(Seed seed)
+        {
+            await using var db = fixture.CreateContext();
+            var card = (await CardsAsync(db, seed))[ContentId("Mürdüm")];
+            var lines = new List<string> { $"{card.Product.Title}|{card.Product.Description}|{card.Product.VatRate}|{card.Product.BrandId == seed.BrandId}|{card.Product.CategoryId == seed.CategoryId}", string.Join(",", await MediaUrlsAsync(db, card.Product.Id, null)) };
+            foreach (var variant in card.Variants.OrderBy(row => row.Barcode))
+                lines.Add($"{variant.Barcode}|{variant.Sku}|{variant.ModelCode}|{variant.OptionSignature}|{variant.Desi}|{string.Join(",", await MediaUrlsAsync(db, card.Product.Id, variant.Id))}");
+            var ids = card.Variants.Select(row => row.Id).ToList();
+            lines.AddRange(await db.ChannelOffers.AsNoTracking().Where(row => ids.Contains(row.VariantId)).OrderBy(row => row.ListPrice).ThenBy(row => row.SalePrice).Select(row => $"{row.ListPrice}/{row.SalePrice}/{row.Status}").ToListAsync());
+            lines.AddRange(await db.InventoryItems.AsNoTracking().Where(row => ids.Contains(row.VariantId)).OrderBy(row => row.OnHand).Select(row => $"{row.OnHand}/{row.Available}").ToListAsync());
+            lines.Add((await db.ProductAttributeAssignments.CountAsync(row => row.TenantId == seed.TenantId && row.ProductId == card.Product.Id)).ToString(System.Globalization.CultureInfo.InvariantCulture));
+            return string.Join("\n", lines);
+        }
+        Assert.Equal(await MurdumAsync(full), await MurdumAsync(newOnly));
+    }
+
     // --- helpers ---
 
     private sealed record Seed(Guid TenantId, Guid ConnectionId, Guid BrandId, Guid CategoryId)
@@ -596,16 +851,158 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         return new(tenant.Id, connection.Id, brandId, categoryId);
     }
 
-    private async Task RunAsync(Seed seed, TrendyolCatalogPort port, string payload)
+    private async Task<RunStats> RunAsync(Seed seed, TrendyolCatalogPort port, string payload, IReferenceDataPort? references = null)
     {
-        await using var db = fixture.CreateContext();
-        var processor = new MarketplaceJobProcessor(db, null!, null!, port, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+        var counter = new QueryCounter();
+        await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")!).AddInterceptors(counter).Options, fixture.TimeProvider);
+        var processor = new MarketplaceJobProcessor(db, null!, references ?? new RefusingReferencePort(), port, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         var result = await processor.ProcessAsync(seed.TenantId, seed.ConnectionId, MarketplaceJobTypes.ProductSync, payload, $"trendyol-import-regression-{Guid.NewGuid():N}", CancellationToken.None);
+        clock.Stop();
+        var stats = new RunStats(counter.Commands, counter.AttributeReads, clock.Elapsed);
         Assert.True(result.Succeeded, result.ErrorSummary);
         Assert.Equal(0, port.WriteAttempts);
         Assert.False(await db.OperationalIssues.AnyAsync(row => row.TenantId == seed.TenantId && row.Status == IssueStatus.Open
             && (row.Code == "PRODUCT_IMPORT_FAILED" || row.Code == "PRODUCT_VARIANT_CONFLICT" || row.Code == "PRODUCT_VARIANT_LINK_CONFLICT" || row.Code == "PRODUCT_LINK_CONFLICT" || row.Code == "PRODUCT_BARCODE_CONFLICT")),
             string.Join(" | ", await db.OperationalIssues.AsNoTracking().Where(row => row.TenantId == seed.TenantId).Select(row => row.Code + ": " + row.Summary).ToListAsync()));
+        return stats;
+    }
+
+    private sealed record RunStats(int Commands, int AttributeReads, TimeSpan Elapsed);
+
+    // Every command a run sends, and those that read the category-context tables (attributes, their values and mappings,
+    // reference snapshots and items): a run that builds no category context reads none of them.
+    private sealed class QueryCounter : Microsoft.EntityFrameworkCore.Diagnostics.DbCommandInterceptor
+    {
+        public int Commands { get; private set; }
+        public int AttributeReads { get; private set; }
+
+        private void Count(System.Data.Common.DbCommand command)
+        {
+            Commands++;
+            var text = command.CommandText;
+            if (text.Contains("catalog.attribute_", StringComparison.Ordinal) || text.Contains("reference_items", StringComparison.Ordinal) || text.Contains("reference_snapshots", StringComparison.Ordinal))
+                AttributeReads++;
+        }
+
+        public override Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<System.Data.Common.DbDataReader> ReaderExecuting(System.Data.Common.DbCommand command, Microsoft.EntityFrameworkCore.Diagnostics.CommandEventData eventData, Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<System.Data.Common.DbDataReader> result)
+        {
+            Count(command);
+            return result;
+        }
+
+        public override ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<System.Data.Common.DbDataReader>> ReaderExecutingAsync(System.Data.Common.DbCommand command, Microsoft.EntityFrameworkCore.Diagnostics.CommandEventData eventData, Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<System.Data.Common.DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            Count(command);
+            return ValueTask.FromResult(result);
+        }
+
+        public override ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int>> NonQueryExecutingAsync(System.Data.Common.DbCommand command, Microsoft.EntityFrameworkCore.Diagnostics.CommandEventData eventData, Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            Count(command);
+            return ValueTask.FromResult(result);
+        }
+    }
+
+    // A reference read from Trendyol (a stale snapshot refreshed) counts here and fails, so a test sees it.
+    private sealed class RefusingReferencePort : IReferenceDataPort
+    {
+        public int Calls { get; private set; }
+
+        public Task<AdapterResult<AdapterPageResult<RemoteReferenceItem>>> ReadAsync(AdapterContext context, ReferenceResource resource, AdapterPageRequest page, CancellationToken cancellationToken)
+        {
+            Calls++;
+            throw new InvalidOperationException($"No Trendyol reference read was expected ({resource}).");
+        }
+    }
+
+    // The reference snapshots go stale (older than a day): a run that needs one would read it from Trendyol.
+    private async Task AgeReferenceSnapshotsAsync(Seed seed)
+    {
+        await using var db = fixture.CreateContext();
+        await db.ReferenceSnapshots.Where(row => row.TenantId == seed.TenantId).ExecuteUpdateAsync(setters => setters.SetProperty(row => row.FetchedAt, DateTimeOffset.UtcNow.AddDays(-30)));
+    }
+
+    // Every row of the tables a product pull can write, each as its JSON, by table and id. The variant links are left out
+    // here (a page read records when it saw them and their sale state); VariantLinkRowsAsync compares their pairing.
+    private async Task<Dictionary<string, Dictionary<Guid, string>>> RowsAsync(Seed seed)
+    {
+        await using var db = fixture.CreateContext();
+        var tenant = seed.TenantId;
+        var tables = new Dictionary<string, Dictionary<Guid, string>>(StringComparer.Ordinal);
+        async Task Add<T>(IQueryable<T> rows, Func<T, Guid> id) where T : class =>
+            tables[typeof(T).Name] = (await rows.AsNoTracking().ToListAsync()).ToDictionary(id, row => JsonSerializer.Serialize(row));
+        await Add(db.Products.Where(row => row.TenantId == tenant), row => row.Id);
+        await Add(db.ProductVariants.Where(row => row.TenantId == tenant), row => row.Id);
+        await Add(db.ProductMedia.Where(row => row.TenantId == tenant), row => row.Id);
+        await Add(db.FileAssets.Where(row => row.TenantId == tenant), row => row.Id);
+        await Add(db.ProductAttributeAssignments.Where(row => row.TenantId == tenant), row => row.Id);
+        await Add(db.ProductOptions.Where(row => row.TenantId == tenant), row => row.Id);
+        await Add(db.ProductOptionValues.Where(row => row.TenantId == tenant), row => row.Id);
+        await Add(db.VariantOptionValues.Where(row => row.TenantId == tenant), row => row.Id);
+        await Add(db.AttributeDefinitions.Where(row => row.TenantId == tenant), row => row.Id);
+        await Add(db.AttributeValues.Where(row => row.TenantId == tenant), row => row.Id);
+        await Add(db.AttributeMappings.Where(row => row.TenantId == tenant), row => row.Id);
+        await Add(db.AttributeValueMappings.Where(row => row.TenantId == tenant), row => row.Id);
+        await Add(db.CategoryMappings.Where(row => row.TenantId == tenant), row => row.Id);
+        await Add(db.BrandMappings.Where(row => row.TenantId == tenant), row => row.Id);
+        await Add(db.Categories.Where(row => row.TenantId == tenant), row => row.Id);
+        await Add(db.Brands.Where(row => row.TenantId == tenant), row => row.Id);
+        await Add(db.ReferenceSnapshots.Where(row => row.TenantId == tenant), row => row.Id);
+        await Add(db.ReferenceItems.Where(row => row.TenantId == tenant), row => row.Id);
+        await Add(db.ChannelOffers.Where(row => row.TenantId == tenant), row => row.Id);
+        await Add(db.ChannelPriceHistory.Where(row => row.TenantId == tenant), row => row.Id);
+        await Add(db.InventoryItems.Where(row => row.TenantId == tenant), row => row.Id);
+        await Add(db.StockLedgerEntries.Where(row => row.TenantId == tenant), row => row.Id);
+        await Add(db.MarketplaceProductLinks.Where(row => row.TenantId == tenant), row => row.Id);
+        await Add(db.Set<ChannelListingProfile>().Where(row => row.TenantId == tenant), row => row.Id);
+        return tables;
+    }
+
+    private static void AssertTablesEqual(Dictionary<string, Dictionary<Guid, string>> before, Dictionary<string, Dictionary<Guid, string>> after, params string[] except)
+    {
+        foreach (var (table, rows) in before.Where(entry => !except.Contains(entry.Key)))
+        {
+            Assert.True(rows.Count == after[table].Count, $"{table}: {rows.Count} rows before, {after[table].Count} after");
+            foreach (var (id, json) in rows)
+                Assert.True(after[table].TryGetValue(id, out var now) && now == json, $"{table} {id} changed:\n{json}\n{now}");
+        }
+    }
+
+    // The rows that existed before are byte for byte the same; rows may only have been added.
+    private static void AssertExistingRowsUnchanged(Dictionary<string, Dictionary<Guid, string>> before, Dictionary<string, Dictionary<Guid, string>> after, params string[] except)
+    {
+        foreach (var (table, rows) in before.Where(entry => !except.Contains(entry.Key)))
+            foreach (var (id, json) in rows)
+                Assert.True(after[table].TryGetValue(id, out var now) && now == json, $"{table} {id} changed:\n{json}\n{now}");
+    }
+
+    private async Task<string> VariantLinkRowsAsync(Seed seed)
+    {
+        await using var db = fixture.CreateContext();
+        var rows = await db.MarketplaceVariantLinks.AsNoTracking().Where(row => row.TenantId == seed.TenantId).OrderBy(row => row.ExternalId)
+            .Select(row => row.Id + "|" + row.ExternalId + ">" + row.VariantId + "|" + row.ExternalBarcode + "|" + row.ExternalSku + "|" + row.Version).ToListAsync();
+        return string.Join("\n", rows);
+    }
+
+    // Prices, stock, stock moves and price history by barcode, as one text two tenants can be compared by.
+    private async Task<string> PriceStockAsync(Seed seed)
+    {
+        await using var db = fixture.CreateContext();
+        var variants = await db.ProductVariants.AsNoTracking().Where(row => row.TenantId == seed.TenantId).ToDictionaryAsync(row => row.Id, row => row.Barcode);
+        var offers = await db.ChannelOffers.AsNoTracking().Where(row => row.TenantId == seed.TenantId).ToListAsync();
+        var inventory = await db.InventoryItems.AsNoTracking().Where(row => row.TenantId == seed.TenantId).ToListAsync();
+        var ledger = await db.StockLedgerEntries.AsNoTracking().Where(row => row.TenantId == seed.TenantId).ToListAsync();
+        var history = await db.ChannelPriceHistory.AsNoTracking().Where(row => row.TenantId == seed.TenantId).ToListAsync();
+        var lines = new List<string>();
+        static string N(decimal? value) => value?.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture) ?? "-";
+        foreach (var offer in offers.OrderBy(row => variants[row.VariantId]))
+            lines.Add($"offer {variants[offer.VariantId]} {N(offer.ListPrice)} {N(offer.SalePrice)} {offer.Currency} {N(offer.VatRate)} {offer.Status} v{offer.PriceVersion} {offer.LastPriceHash}"
+                + " | " + string.Join(", ", history.Where(row => row.OfferId == offer.Id).OrderBy(row => row.PriceVersion).Select(row => $"{row.PriceVersion}:{N(row.ListPrice)}/{N(row.SalePrice)}/{row.Reason}")));
+        foreach (var item in inventory.OrderBy(row => variants[row.VariantId]))
+            lines.Add($"stock {variants[item.VariantId]} {N(item.OnHand)} {N(item.Reserved)} {N(item.Available)} {N(item.ObservedRemoteQuantity)} p{item.ProjectionVersion}"
+                + " | " + string.Join(", ", ledger.Where(row => row.InventoryItemId == item.Id).OrderBy(row => row.RecordedAt).ThenBy(row => row.QuantityDelta).Select(row => $"{row.MovementType}:{N(row.QuantityDelta)}:{row.SourceType}")));
+        return string.Join("\n", lines);
     }
 
     // Cards by their Trendyol content id.

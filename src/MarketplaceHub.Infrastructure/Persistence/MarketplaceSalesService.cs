@@ -1517,11 +1517,9 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             full = false;
             newOnly = false;
             existingOnly = false;
-            // Mapping is a repair pass over the whole existing remote catalog.
-            // Do not let a presentation-only archive toggle leave old records
-            // out of the matching scope.
-            includeArchived = true;
-            includeDrafts = true;
+            // Mapping reads the whole remote catalog (ProductImportScanPolicy.RequiresFullCatalogForMapping); whether its
+            // archived (and Shopify draft) products are matched too is the owner's "Arşiv Ürünlerini Dahil Et" choice
+            // (12 Nov 2026; until then it was forced on here).
             updateExistingProducts = false;
             updatePrices = false;
             updateStock = false;
@@ -1531,6 +1529,10 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         var priceStockAllowed = (full || existingOnly || !string.IsNullOrWhiteSpace(productLookup)) && !newOnly && !mappingOnly && !optionsOnly && !string.Equals(platform, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase) && !string.Equals(platform, "N11", StringComparison.OrdinalIgnoreCase) && !string.Equals(platform, "PAZARAMA", StringComparison.OrdinalIgnoreCase) && !string.Equals(platform, "PTTAVM", StringComparison.OrdinalIgnoreCase);
         updatePrices = updatePrices && priceStockAllowed;
         updateStock = updateStock && priceStockAllowed;
+        // "Mevcut Ürünleri Güncelle" on Trendyol with none of its three choices ticked would read the whole catalog to
+        // change nothing (owner, 12 Nov 2026): the panel asks for one, and so does the API.
+        if (ProductImportScanPolicy.ExistingUpdateSelectsNothing(platform, existingOnly && !optionsOnly && string.IsNullOrWhiteSpace(productLookup), updateExistingProducts, updatePrices, updateStock))
+            return ServiceResult<Guid>.Fail("PRODUCT_SYNC_NOTHING_SELECTED", "En az bir seçenek işaretleyin: Mevcut Ürün Bilgilerini Güncelle, Fiyatları Güncelle veya Stokları Güncelle.", 400);
         var type = MarketplaceJobTypes.ForPlatform(platform, MarketplaceJobTypes.ProductSync);
         return await EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.ProductRead, type, JsonSerializer.Serialize(new { connectionId, full, newOnly, existingOnly, mappingOnly, optionsOnly, includeArchived, includeDrafts, includePendingApproval, updateExistingProducts, updatePrices, updateStock, productLookup }), correlationId, cancellationToken);
     }

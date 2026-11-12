@@ -501,11 +501,26 @@ public static class ProductImportMergePolicy
 
 public static class ProductImportScanPolicy
 {
-    // An inactive-product mapping is a backfill. It must not inherit the
-    // incremental cursor because older archived/draft products may never
-    // appear in a modified-since page again.
+    // Mapping is a repair pass over the whole remote catalog: it never inherits the incremental cursor, with or without
+    // the archived (and draft) products, since a product unchanged since the last read never appears in a
+    // modified-since page again. Until 12 Nov 2026 the API forced the archive choice on for mapping, which made every
+    // mapping full; the choice is the owner's now ("Arşiv Ürünlerini Dahil Et" shows in Ürün Eşleme too).
     public static bool RequiresFullCatalogForMapping(bool mappingOnly, bool includeArchived, bool includeDrafts) =>
-        mappingOnly && (includeArchived || includeDrafts);
+        mappingOnly;
+
+    // A Trendyol "Mevcut Ürünleri Güncelle" run with none of its choices ticked: refused (owner, 12 Nov 2026).
+    public static bool ExistingUpdateSelectsNothing(string? platformCode, bool existingUpdate, bool updateExistingProducts, bool updatePrices, bool updateStock) =>
+        existingUpdate && string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase)
+            && !updateExistingProducts && !updatePrices && !updateStock;
+
+    // "Mevcut Ürünleri Güncelle" (or a single lookup) with "Mevcut Ürün Bilgilerini Güncelle" off and prices and/or stock
+    // ticked writes only those (owner, 12 Nov 2026: "fiyatsa sadece fiyat, stoksa stok, ikisi ise ikisi"): the focused
+    // path matches every Trendyol variant to the panel the way the full path does and touches nothing else, so it builds
+    // no category context and reads no Trendyol reference. Trendyol only; the other modes are unchanged.
+    public static bool FocusedPriceStock(string? platformCode, bool existingOnly, bool singleLookup, bool newOnly, bool mappingOnly, bool optionsOnly, bool updateExistingProducts, bool updatePrices, bool updateStock) =>
+        string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase)
+            && (existingOnly || singleLookup) && !newOnly && !mappingOnly && !optionsOnly
+            && !updateExistingProducts && (updatePrices || updateStock);
 
     // The PRODUCTS watermark a finished catalog read leaves behind, which the next incremental read starts from (less
     // two minutes). It is the moment the scan began, less a minute: a product changed while its page was already behind

@@ -73,6 +73,29 @@ Code: `Adapters/Trendyol/` — `TrendyolHttpClient.cs` (+ `.Webhooks.cs`), `Tren
   content (written to the colour's first size and the card gallery); a size's own list that differs from the gallery
   is the panel's and no pull replaces it (`ProductImportMergePolicy.OverwriteLocalChanges`,
   `MarketplaceJobProcessor.VariantPicturesAreOwnersAsync`).
+- Pull modes and what each writes (owner, 12 Nov 2026; `ProductImportScanPolicy`, tests in
+  `TrendyolImportRegressionPostgreSqlTests`):
+  - Mevcut Ürünleri Güncelle (`existingOnly`) / Tek Ürün with "Mevcut Ürün Bilgilerini Güncelle" on: the full path above;
+    prices/stock only if ticked.
+  - Same, the content box off and prices and/or stock ticked: the focused path (`FocusedPriceStock`,
+    `MarketplaceJobProcessor.ApplyFocusedPriceStock`). Card by product link, else the card owning the variants (link,
+    stock code, barcode); variant by link, stock code, barcode inside the card; writes only sale+list price (price
+    history `TRENDYOL_CATALOG_IMPORT`) and/or stock (ledger `MARKETPLACE_STOCK_IMPORT`) through the same
+    `UpsertCatalogOfferAndInventory`. No category context, no reference read, no content/attribute/picture/desi/link/mark
+    change. Sale state (on sale / archived / blacklisted / locked) is recorded at page read for every mode
+    (`MarkVariantLinksSeen`). Sizes the panel lacks are reported (`PRODUCT_NEW_SIZES_NOT_IMPORTED`), never added; a
+    single lookup of a product the panel lacks still adds it. Result line: "Fiyatı değişen X varyant · Stoğu değişen Y
+    varyant · Değişmeyen Z · Yeni beden N". Nothing ticked: the panel disables the start, the API answers 400
+    `PRODUCT_SYNC_NOTHING_SELECTED` (Trendyol only).
+  - Yeni Ürünleri Aktar (`newOnly`): a listing whose every variant the panel holds (link, stock code or barcode) is
+    skipped before any category context; a card the panel links gets only its missing sizes (no link made for a variant
+    the panel holds under another code, no desi fill, no category, the card's product link untouched); category
+    references are read on the first product that needs them. "Yeni ürün X · Yeni beden Y · Zaten panelde Z".
+  - Ürün Eşleme (`mappingOnly`): links only (variant links, a missing product link); an existing product link keeps its
+    state (it was re-marked MAPPED before 12 Nov 2026). Match: link holds, then barcode, stock code, model code + colour/
+    size; archived panel variants are candidates. Always a whole-catalog read; archived Trendyol listings only with
+    "Arşiv Ürünlerini Dahil Et" (the API forced it on before 12 Nov 2026). No reference read. "Eşlenen X · Zaten eşli Y
+    · Panelde karşılığı yok Z · Çakışma W".
 - Questions: default from now − 7 days; ≤ 14 days per request, page ≤ 50, older ranges silently trimmed.
 
 ## Time

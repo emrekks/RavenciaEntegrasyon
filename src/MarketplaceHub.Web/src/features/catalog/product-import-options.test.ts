@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { productImportOptionVisibility, productImportOverwriteConfirmation, productImportPriceStockLabel } from './product-import-options'
+import { productImportChoiceSummary, productImportNeedsChoice, productImportOptionVisibility, productImportOverwriteConfirmation, productImportPriceStockLabel } from './product-import-options'
 
 describe('product import price and stock choices', () => {
   it('labels prices and stock separately', () => {
@@ -17,8 +17,34 @@ describe('product import price and stock choices', () => {
   })
 })
 
+describe('Mevcut Ürünleri Güncelle choices (owner, 12 Nov 2026)', () => {
+  const none = { updateExisting: false, updatePrices: false, updateStock: false }
+
+  it('waits for a choice on a Trendyol existing-products run, nowhere else', () => {
+    const base = { method: 'BULK' as const, mode: 'EXISTING_ONLY' as const, hasTrendyol: true, showUpdateExisting: true }
+    expect(productImportNeedsChoice({ ...base, ...none })).toBe(true)
+    expect(productImportNeedsChoice({ ...base, ...none, updateStock: true })).toBe(false)
+    expect(productImportNeedsChoice({ ...base, ...none, updatePrices: true })).toBe(false)
+    expect(productImportNeedsChoice({ ...base, ...none, updateExisting: true })).toBe(false)
+    expect(productImportNeedsChoice({ ...base, ...none, hasTrendyol: false })).toBe(false)
+    expect(productImportNeedsChoice({ ...base, ...none, mode: 'NEW_ONLY' })).toBe(false)
+    expect(productImportNeedsChoice({ ...base, ...none, method: 'SINGLE' })).toBe(false)
+  })
+
+  it('says in one line what the run will change', () => {
+    expect(productImportChoiceSummary('BULK', none)).toBe('En az bir seçenek işaretleyin')
+    expect(productImportChoiceSummary('BULK', { ...none, updateStock: true })).toBe('Sadece stok güncellenecek')
+    expect(productImportChoiceSummary('BULK', { ...none, updatePrices: true })).toBe('Sadece fiyat güncellenecek')
+    expect(productImportChoiceSummary('BULK', { ...none, updatePrices: true, updateStock: true })).toBe('Fiyat ve stok güncellenecek')
+    expect(productImportChoiceSummary('BULK', { ...none, updateExisting: true })).toBe('Tüm ürün bilgileri, yeni varyantlar güncellenecek; fiyat ve stok korunacak')
+    expect(productImportChoiceSummary('BULK', { updateExisting: true, updatePrices: true, updateStock: true })).toBe('Tüm ürün bilgileri, yeni varyantlar, fiyat ve stok güncellenecek')
+    expect(productImportChoiceSummary('BULK', { updateExisting: true, updatePrices: false, updateStock: true })).toBe('Tüm ürün bilgileri, yeni varyantlar ve stok güncellenecek')
+    expect(productImportChoiceSummary('SINGLE', none)).toBe('Ürün panelde yoksa eklenir; panelde varsa değişmez')
+  })
+})
+
 describe('product import options', () => {
-  it('hides an empty options section for Hepsiburada mapping-only runs', () => {
+  it('offers the archive choice in Ürün Eşleme too, Hepsiburada alone included (owner, 12 Nov 2026)', () => {
     expect(productImportOptionVisibility({
       method: 'BULK',
       mode: 'MAPPING_ONLY',
@@ -28,26 +54,21 @@ describe('product import options', () => {
     })).toEqual({
       showUpdateExisting: false,
       showHepsiburadaReadOnlyNote: false,
-      showArchived: false,
+      showArchived: true,
       showPendingApproval: false,
-      showOptionsSection: false
+      showOptionsSection: true
     })
+    expect(productImportOptionVisibility({ method: 'BULK', mode: 'MAPPING_ONLY', onlyHepsiburada: false, hasHepsiburada: false, supportsPendingApproval: true }))
+      .toEqual({ showUpdateExisting: false, showHepsiburadaReadOnlyNote: false, showArchived: true, showPendingApproval: true, showOptionsSection: true })
   })
 
-  it('hides the options heading when mapping has no selected connection or platform-specific options', () => {
-    expect(productImportOptionVisibility({
-      method: 'BULK',
-      mode: 'MAPPING_ONLY',
-      onlyHepsiburada: false,
-      hasHepsiburada: false,
-      supportsPendingApproval: false
-    })).toMatchObject({
-      showUpdateExisting: false,
-      showHepsiburadaReadOnlyNote: false,
-      showArchived: false,
-      showPendingApproval: false,
-      showOptionsSection: false
-    })
+  it('shows per mode the choices the API reads (Trendyol bulk)', () => {
+    const visible = (mode: 'FULL' | 'NEW_ONLY' | 'EXISTING_ONLY' | 'MAPPING_ONLY') => productImportOptionVisibility({ method: 'BULK', mode, onlyHepsiburada: false, hasHepsiburada: false, supportsPendingApproval: true })
+    expect(visible('FULL')).toMatchObject({ showUpdateExisting: false, showArchived: true, showPendingApproval: true })
+    expect(visible('NEW_ONLY')).toMatchObject({ showUpdateExisting: false, showArchived: true, showPendingApproval: true })
+    // The API drops listings awaiting approval from Mevcut Ürünleri Güncelle, so the choice is not offered there.
+    expect(visible('EXISTING_ONLY')).toMatchObject({ showUpdateExisting: true, showArchived: true, showPendingApproval: false })
+    expect(visible('MAPPING_ONLY')).toMatchObject({ showUpdateExisting: false, showArchived: true, showPendingApproval: true })
   })
 
   it('keeps Hepsiburada read-only guidance and archive selection in the shared options layout', () => {
