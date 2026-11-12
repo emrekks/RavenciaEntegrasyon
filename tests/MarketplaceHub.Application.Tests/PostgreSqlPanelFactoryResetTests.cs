@@ -23,7 +23,7 @@ public sealed partial class PostgreSqlConnectionFullResetTests
         {
             await SeedAsync(a);
             await SeedAsync(b);
-            foreach (var seed in new[] { a, b }) await SeedPanelExtrasAsync(seed.Tenant.Id);
+            foreach (var seed in new[] { a, b }) await SeedPanelExtrasAsync(seed.Tenant.Id, seed.PanelProduct.Id);
             var tables = await TenantTablesAsync();
             var aBefore = await TenantCountsAsync(tables, a.Tenant.Id);
             var bBefore = await TenantCountsAsync(tables, b.Tenant.Id);
@@ -156,10 +156,11 @@ public sealed partial class PostgreSqlConnectionFullResetTests
         """).SingleAsync();
 
     // The logs, lists and settings the full-reset seed does not reach.
-    private async Task SeedPanelExtrasAsync(Guid tenantId)
+    private async Task SeedPanelExtrasAsync(Guid tenantId, Guid productId)
     {
         await using var db = fixture.CreateContext();
         db.Categories.Add(new Category { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = "Elbise", NormalizedName = "elbise", Path = "Elbise", CreatedAt = fixture.Now, UpdatedAt = fixture.Now });
+        db.ProductOptions.Add(new ProductOption { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = productId, Label = "Beden", NormalizedKey = "beden" });
         db.Brands.Add(new Brand { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = "Ravencia", NormalizedName = "ravencia", CreatedAt = fixture.Now, UpdatedAt = fixture.Now });
         db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = "PRODUCT_UPDATED", TargetType = "Product", TargetId = "x", Reason = "test", CorrelationId = "corr", CreatedAt = fixture.Now });
         db.AiUsageLogs.Add(new AiUsageLog { Id = Guid.CreateVersion7(), TenantId = tenantId, Feature = "TEST", Model = "test", Status = "OK", CreatedAt = fixture.Now });
