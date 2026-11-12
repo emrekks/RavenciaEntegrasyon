@@ -9125,7 +9125,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // The panel brand a product import gives the listing's brand (owner decision 12 Nov 2026), the way EnsureMappedCategory
     // settles its category, from what the listing carries alone (no marketplace call):
     //   1. the brand mapping on this connection for the listing's brand id (re-verified when it was not VERIFIED);
-    //   2. else the panel brand with the same catalog key (CatalogKeyNormalizer, as categories), mapped now;
+    //   2. else the panel brand the name names (PanelBrandByName, the rule the file imports share too), mapped now;
     //   3. else a new panel brand under the listing's name, mapped now (VERIFIED, Source IMPORT).
     // A mapping is written only where the marketplace has a brand list and the listing carries the brand's id
     // (byExternalId: Trendyol brand.id). Hepsiburada, n11, Pazarama, PTT AVM and Shopify listings carry a brand name only
@@ -9173,23 +9173,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
         if (!create) return null;
 
-        var key = NormalizeCatalogKey(brandName, 160);
-        if (key.Length == 0) return null;
-        var keys = CatalogLookupKeys(brandName, 160);
-        var brand = db.Brands.Local.Where(x => x.TenantId == tenantId && CatalogKeyNormalizer.SameKey(x.NormalizedName, key, 160)).OrderByDescending(x => x.IsActive).FirstOrDefault()
-            ?? await db.Brands.Where(x => x.TenantId == tenantId && keys.Contains(x.NormalizedName))
-                .OrderByDescending(x => x.IsActive).ThenBy(x => x.NormalizedName == key ? 0 : 1).ThenBy(x => x.Id)
-                .FirstOrDefaultAsync(cancellationToken);
-        if (brand is { IsActive: false })
+        // By name: the rule every import shares (PanelBrandByName).
+        var byName = await new PanelBrandByName(db, tenantId).FindOrCreateAsync(brandName, now, cancellationToken);
+        if (byName.SwitchedOff is { } switchedOff)
         {
-            await Unusable($"aynı adlı panel markası «{Short(brand.Name, 120)}» kapalı");
+            await Unusable($"aynı adlı panel markası «{Short(switchedOff.Name, 120)}» kapalı");
             return null;
         }
-        if (brand is null)
-        {
-            brand = new Brand { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = brandName, NormalizedName = key, IsActive = true, CreatedAt = now, UpdatedAt = now, Version = 1 };
-            db.Brands.Add(brand);
-        }
+        if (byName.Brand is not { } brand) return null;
         if (externalId is null) return brand.Id;
 
         // A panel brand maps to one marketplace brand per connection (unique index): one already mapped to another id

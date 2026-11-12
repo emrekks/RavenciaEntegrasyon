@@ -617,10 +617,38 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         if (products.Count != ids.Length) return ServiceResult<int>.Fail("BULK_PRODUCT_NOT_FOUND", "Seçilen ürünlerden biri bulunamadı veya bu çalışma alanına ait değil.", 404);
         // A draft goes on sale only from its editor, with every rule met (ProductDraftPolicy): the bulk change leaves it as it is.
         products.RemoveAll(product => ProductDraftPolicy.IsDraft(product.Status));
+        // A closed card goes on sale only with every required field (ProductRequiredFields); the run is refused and names
+        // each card that misses one, so nothing is opened half way and the user completes them in the editor.
+        if (status == ProductStatus.Active
+            && await IncompleteCardsAsync(tenantId, [.. products.Where(product => product.Status != ProductStatus.Active)], cancellationToken) is { Count: > 0 } incomplete)
+        {
+            var lines = incomplete.Take(5).Select(item => ProductRequiredFields.ActivationRefusal(item.Product.Title, item.Gaps)).ToList();
+            if (incomplete.Count > 5) lines.Add($"… ve {incomplete.Count - 5} ürün daha.");
+            return ServiceResult<int>.Fail(ProductRequiredFields.Code, $"{incomplete.Count} ürünün zorunlu alanları eksik; hiçbir ürün satışa açılmadı. {string.Join(" ", lines)}", 422,
+                new Dictionary<string, string[]> { ["productIds"] = [.. incomplete.Select(item => item.Product.Id.ToString("D"))] });
+        }
         var correlation = string.IsNullOrWhiteSpace(correlationId) ? Guid.NewGuid().ToString("N") : correlationId;
         await ApplyBulkStatusAsync(tenantId, products, status, actorUserId, correlation, timeProvider.GetUtcNow(), cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<int>.Ok(products.Count);
+    }
+
+    // The stored cards that miss a required field (ProductRequiredFields), with what they miss, in the given order.
+    private async Task<List<(Product Product, IReadOnlyList<ProductRequiredFields.Gap> Gaps)>> IncompleteCardsAsync(Guid tenantId, IReadOnlyList<Product> products, CancellationToken cancellationToken)
+    {
+        if (products.Count == 0) return [];
+        var ids = products.Select(product => product.Id).ToArray();
+        var rows = (await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.ProductId))
+                .Select(x => new { x.ProductId, Row = new ProductRequiredFields.Row(x.Sku, x.Barcode, x.ModelCode, x.Desi, x.DefaultListPrice, x.DefaultSalePrice) }).ToListAsync(cancellationToken))
+            .GroupBy(x => x.ProductId).ToDictionary(group => group.Key, group => group.Select(x => x.Row).ToList());
+        var result = new List<(Product, IReadOnlyList<ProductRequiredFields.Gap>)>();
+        foreach (var product in products)
+        {
+            var gaps = ProductRequiredFields.Missing(new ProductRequiredFields.Card(product.Title, product.BrandId, product.CategoryId, WarrantyGiven: true, DeliveryDaysGiven: true,
+                product.DefaultListPrice, product.DefaultSalePrice, rows.GetValueOrDefault(product.Id) ?? []));
+            if (gaps.Count > 0) result.Add((product, gaps));
+        }
+        return result;
     }
 
     // D4 (K8): the bulk change moves the same rows as the editor's status change: the product, its sale rows and its
@@ -1005,6 +1033,13 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         if (command.Variants.Count == 0) return Invalid<ProductView>("variants", "Ürün en az bir satış varyantı ister.");
         if (command.Variants.Count > 1000) return Invalid<ProductView>("variants", "Tek ürün kaydında en fazla 1000 varyant oluşturulabilir.");
         if (command.Variants.Any(variant => !OpeningStockValid(variant.OnHand))) return Invalid<ProductView>("stock", OpeningStockInvalid);
+        if (command.Variants.Any(variant => variant.Desi is > ProductDesi.Maximum)) return Invalid<ProductView>(ProductRequiredFields.Desi, ProductDesi.TooLargeMessage);
+        // A card created on sale or closed carries every required field (ProductRequiredFields); an incomplete one is kept
+        // only as a draft (Taslak Olarak Kaydet, or the editor's Ürünü Oluştur turning it into one).
+        if (command.Status is "ACTIVE" or "ARCHIVED"
+            && ProductRequiredFields.Missing(new ProductRequiredFields.Card(command.Title, command.BrandId, command.CategoryId, command.WarrantyMonths is not null, command.DeliveryDays is not null,
+                command.DefaultListPrice, command.DefaultSalePrice, [.. command.Variants.Select(variant => new ProductRequiredFields.Row(variant.Sku, variant.Barcode, variant.ModelCode, variant.Desi, variant.DefaultListPrice, variant.DefaultSalePrice))])) is { Count: > 0 } createGaps)
+            return ProductRequiredFields.Refusal<ProductView>(createGaps);
 
         var globalAssignments = command.Attributes ?? [];
         var globalAttributeValidation = await ValidateAttributeValuesAsync(tenantId, globalAssignments, cancellationToken);
@@ -1399,6 +1434,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         if (variantUpdates.Any(variant => variant.CostPrice is < 0) || variantsToCreate.Any(variant => variant.CostPrice is < 0)) return Invalid<ProductView>("variants", "Maliyet negatif olamaz.");
         if (variantsToCreate.Any(variant => !OpeningStockValid(variant.OnHand))) return Invalid<ProductView>("stock", OpeningStockInvalid);
         if (variantUpdates.Any(variant => variant.Desi is <= 0)) return Invalid<ProductView>("variants", "Desi sıfırdan büyük olmalıdır.");
+        if (variantUpdates.Any(variant => variant.Desi is > ProductDesi.Maximum) || variantsToCreate.Any(variant => variant.Desi is > ProductDesi.Maximum)) return Invalid<ProductView>(ProductRequiredFields.Desi, ProductDesi.TooLargeMessage);
         if (variantUpdates.Any(variant => variant.DefaultListPrice is < 0 || variant.DefaultSalePrice is < 0) || variantsToCreate.Any(variant => variant.DefaultListPrice is < 0 || variant.DefaultSalePrice is < 0)) return Invalid<ProductView>("variants", "Varyant fiyatı negatif olamaz.");
         if (variantsToCreate.Any(variant => variant.DefaultListPrice is decimal variantList && variant.DefaultSalePrice is decimal variantSale && variantList < variantSale)) return Invalid<ProductView>("variantsToCreate", "Varyant liste fiyatı satış fiyatından küçük olamaz.");
         // Status updates apply to every existing sale row as well. Load the rows
@@ -1425,6 +1461,28 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         }
         if (placeholderIdsToDelete.Count > 0)
             variantIdsToDelete.AddRange(await RemovablePlaceholderVariantIdsAsync(tenantId, existingVariants, placeholderIdsToDelete, variantIdsToDelete, variantsToCreate.Count, variantUpdates.Select(update => update.Id).ToHashSet(), cancellationToken));
+        // A card that stays (or goes) on sale or closed keeps every required field (ProductRequiredFields): a save that
+        // would leave one empty is refused, never turned into a draft. Checked on the rows the save sends (the editor sends
+        // every row of the model), else on the card's stored rows. A left-out price, desi or delivery days keeps the stored
+        // one; a left-out warranty keeps the card's, which reads 0 and empty alike, so it counts as given.
+        var savedStatus = command.Status is null ? product.Status : command.Status == "ACTIVE" ? ProductStatus.Active : command.Status == "ARCHIVED" ? ProductStatus.Archived : ProductStatus.Draft;
+        if (!ProductDraftPolicy.IsDraft(savedStatus))
+        {
+            var cardListPrice = command.DefaultListPrice ?? product.DefaultListPrice;
+            var cardSalePrice = command.DefaultSalePrice ?? product.DefaultSalePrice;
+            List<ProductRequiredFields.Row> requiredRows = [
+                .. variantUpdates.Select(update =>
+                {
+                    var stored = existingVariants.FirstOrDefault(variant => variant.Id == update.Id);
+                    return new ProductRequiredFields.Row(update.Sku, update.Barcode, update.ModelCode, update.Desi ?? stored?.Desi, update.DefaultListPrice ?? stored?.DefaultListPrice, update.DefaultSalePrice ?? stored?.DefaultSalePrice);
+                }),
+                .. variantsToCreate.Select(variant => new ProductRequiredFields.Row(variant.Sku, variant.Barcode, variant.ModelCode, variant.Desi, variant.DefaultListPrice, variant.DefaultSalePrice))];
+            if (requiredRows.Count == 0)
+                requiredRows = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == id && !variantIdsToDelete.Contains(x.Id))
+                    .Select(x => new ProductRequiredFields.Row(x.Sku, x.Barcode, x.ModelCode, x.Desi, x.DefaultListPrice, x.DefaultSalePrice)).ToListAsync(cancellationToken);
+            var updateGaps = ProductRequiredFields.Missing(new ProductRequiredFields.Card(command.Title, command.BrandId, command.CategoryId, WarrantyGiven: true, DeliveryDaysGiven: true, cardListPrice, cardSalePrice, requiredRows));
+            if (updateGaps.Count > 0) return ProductRequiredFields.Refusal<ProductView>(updateGaps);
+        }
         // O7/D6: the family as this save leaves it (kept rows with their updated codes, then the new rows) may not hold
         // one stock code or barcode twice; the unique index would refuse it as a 500 after half the checks. A deleted
         // variant's code may go to another row (D6). Nothing is saved; the editor marks every row holding the code.

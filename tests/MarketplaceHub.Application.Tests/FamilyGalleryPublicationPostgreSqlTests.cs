@@ -20,7 +20,7 @@ public sealed class FamilyGalleryPublicationPostgreSqlTests(PostgreSqlTenantIsol
         var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "TRENDYOL", Environment = "PRODUCTION", DisplayName = "Trendyol renk kartları", ExternalStoreId = $"store-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V1", SettingsJson = "{}", Version = 1 };
         var categoryId = Guid.CreateVersion7();
         var brandId = Guid.CreateVersion7();
-        Product Card(string colour) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = $"Kadın {colour} Triko Bluz", Description = $"{colour} eski açıklama", CategoryId = categoryId, BrandId = brandId, VatRate = 10m, VatInclusion = "INCLUDED", Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now, Version = 1 };
+        Product Card(string colour) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = $"Kadın {colour} Triko Bluz", Description = $"{colour} eski açıklama", CategoryId = categoryId, BrandId = brandId, VatRate = 10m, VatInclusion = "INCLUDED", DefaultListPrice = 900m, DefaultSalePrice = 630m, Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now, Version = 1 };
         var siyah = Card("Siyah");
         var bordo = Card("Bordo");
         ProductVariant Variant(Product card, string code) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = card.Id, Sku = code, SkuNormalized = code, Barcode = code, BarcodeNormalized = code, ModelCode = "MZ051BYC", OptionSignature = $"Renk: {card.Title.Split(' ')[1]} | Beden: {code[^2..]}", Desi = 1m, Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now, Version = 1 };

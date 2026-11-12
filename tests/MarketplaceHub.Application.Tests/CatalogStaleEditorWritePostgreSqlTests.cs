@@ -88,7 +88,8 @@ public sealed class CatalogStaleEditorWritePostgreSqlTests(PostgreSqlTenantIsola
         var mavi = await service.CreateProductAsync(tenant.Id, new CreateProductCommand("Bluz Mavi", "Açıklama", null, null, [new CreateVariantCommand($"{modelCode}-M-L", $"{modelCode}M1", modelCode, Options("Mavi", "L"), DefaultListPrice: 100m, DefaultSalePrice: 100m)], VatRate: 10m, VatInclusion: "INCLUDED"), CancellationToken.None);
         Assert.True(mavi.Succeeded, mavi.Error?.Message);
         var now = DateTimeOffset.UtcNow;
-        var bordoProduct = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "Bluz Bordo", Description = "Açıklama", Status = ProductStatus.Active, VatRate = 10m, VatInclusion = "INCLUDED", CreatedAt = now, UpdatedAt = now };
+        // A draft like the Mavi card (created without a status): the saves below check the row versions, not the required fields.
+        var bordoProduct = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "Bluz Bordo", Description = "Açıklama", Status = ProductStatus.Draft, VatRate = 10m, VatInclusion = "INCLUDED", CreatedAt = now, UpdatedAt = now };
         db.Products.Add(bordoProduct);
         db.ProductVariants.Add(new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = bordoProduct.Id, Sku = $"{modelCode}-B-L", SkuNormalized = $"{modelCode}-B-L", Barcode = $"{modelCode}B1", BarcodeNormalized = $"{modelCode}B1", ModelCode = modelCode, OptionSignature = "Renk: Bordo | Beden: L", DefaultListPrice = 100m, DefaultSalePrice = 100m, Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now });
         await db.SaveChangesAsync();

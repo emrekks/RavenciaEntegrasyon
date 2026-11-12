@@ -53,6 +53,12 @@ export function requiredFieldMessage(field: RequiredEditorField, form: RequiredF
   return `${label} zorunludur.`
 }
 
+// Garanti Süresi as a save sends it: 0 is "no warranty", an empty field is null, so the server can tell a card created
+// without one (refused unless it is a draft) from one created with no warranty.
+export function editorWarrantyMonths(value: string): number | null {
+  return value.trim() === '' ? null : Number(value)
+}
+
 export function requiredFieldsMessage(missing: readonly RequiredEditorField[]) {
   return `Zorunlu alanları doldurun: ${missing.map(field => requiredEditorFieldLabels[field]).join(', ')}.`
 }

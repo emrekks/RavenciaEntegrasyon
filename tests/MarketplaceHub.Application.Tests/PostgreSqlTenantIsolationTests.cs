@@ -693,6 +693,8 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             Id = Guid.CreateVersion7(),
             TenantId = tenant.Id,
             Title = $"Price defaults {Guid.NewGuid():N}",
+            // A draft: the saves below send only what the test is about; a card on sale needs every required field.
+            Status = ProductStatus.Draft,
             VatRate = 10m,
             VatInclusion = "INCLUDED",
             Description = "Persistence round-trip test",
@@ -818,6 +820,8 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             Id = Guid.CreateVersion7(),
             TenantId = tenant.Id,
             Title = $"Stale cost {Guid.NewGuid():N}",
+            // A draft: the saves below send only what the test is about; a card on sale needs every required field.
+            Status = ProductStatus.Draft,
             VatRate = 10m,
             VatInclusion = "INCLUDED",
             Description = "Stale cost test",
@@ -933,7 +937,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
     public async Task UpdateProductAsync_RefusesOneCodeOnTwoRowsOfTheSave_AndLetsADeletedVariantsCodeMove()
     {
         var tenant = NewTenant("variant-code-save");
-        var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = $"Code save {Guid.NewGuid():N}", VatRate = 10m, VatInclusion = "INCLUDED", Description = "Code save test", DefaultListPrice = 0m, DefaultSalePrice = 0m, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
+        var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = $"Code save {Guid.NewGuid():N}", Status = ProductStatus.Draft, VatRate = 10m, VatInclusion = "INCLUDED", Description = "Code save test", DefaultListPrice = 0m, DefaultSalePrice = 0m, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
         var suffix = Guid.NewGuid().ToString("N")[..10].ToUpperInvariant();
         ProductVariant NewVariant(int order)
         {
@@ -989,6 +993,8 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             Id = Guid.CreateVersion7(),
             TenantId = tenant.Id,
             Title = $"Variant delete {Guid.NewGuid():N}",
+            // A draft: the saves below send only what the test is about; a card on sale needs every required field.
+            Status = ProductStatus.Draft,
             VatRate = 10m,
             VatInclusion = "INCLUDED",
             Description = "Variant delete test",
@@ -1306,6 +1312,8 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             Id = Guid.CreateVersion7(),
             TenantId = tenant.Id,
             Title = $"Blocked job delete {Guid.NewGuid():N}",
+            // A draft: the saves below send only what the test is about; a card on sale needs every required field.
+            Status = ProductStatus.Draft,
             VatRate = 10m,
             VatInclusion = "INCLUDED",
             Description = "Blocked job delete test",
@@ -1415,6 +1423,9 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
                 ProductId = owner.Id,
                 Sku = code,
                 SkuNormalized = code,
+                Barcode = code,
+                BarcodeNormalized = code,
+                Desi = 1m,
                 ModelCode = modelCode,
                 OptionSignature = $"Renk: {color}",
                 Status = status,
@@ -1436,12 +1447,17 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         await using var db = fixture.CreateContext();
         await using var transaction = await db.Database.BeginTransactionAsync();
         db.Tenants.Add(tenant);
+        // The family goes on sale below, so it carries the required brand and category (ProductRequiredFields).
+        var brand = new Brand { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Name = "Ravencia", NormalizedName = "RAVENCIA", CreatedAt = fixture.Now, UpdatedAt = fixture.Now };
+        var category = new Category { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Name = "Bluz", NormalizedName = "BLUZ", Path = "Bluz", CreatedAt = fixture.Now, UpdatedAt = fixture.Now };
+        db.Brands.Add(brand);
+        db.Categories.Add(category);
         db.Products.AddRange(primary, archivedSibling, draftSibling, pricedSibling);
         db.ProductVariants.AddRange(primaryVariant, archivedVariant, draftVariant, pricedVariant);
         await db.SaveChangesAsync();
         var service = new CatalogService(db, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider, new MemoryCache(new MemoryCacheOptions()));
         UpdateVariantCommand Row(ProductVariant variant, int order, decimal salePrice = 100m) =>
-            new(variant.Id, variant.Sku, null, modelCode, order, new Dictionary<string, string> { ["Renk"] = variant.OptionSignature["Renk: ".Length..] }, DefaultListPrice: 100m, DefaultSalePrice: salePrice);
+            new(variant.Id, variant.Sku, variant.Barcode, modelCode, order, new Dictionary<string, string> { ["Renk"] = variant.OptionSignature["Renk: ".Length..] }, DefaultListPrice: 100m, DefaultSalePrice: salePrice);
 
         // The editor always sends the family's status and every family row; only the green row changes.
         var saved = await service.UpdateProductAsync(
@@ -1467,7 +1483,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             tenant.Id,
             primary.Id,
             products[primary.Id].Version,
-            new UpdateProductCommand(primary.Title, primary.Description, null, null, Status: "ACTIVE", VariantUpdates: [Row(primaryVariant, 0), Row(archivedVariant, 0), Row(draftVariant, 0), Row(pricedVariant, 0, salePrice: 90m)]),
+            new UpdateProductCommand(primary.Title, primary.Description, brand.Id, category.Id, Status: "ACTIVE", VariantUpdates: [Row(primaryVariant, 0), Row(archivedVariant, 0), Row(draftVariant, 0), Row(pricedVariant, 0, salePrice: 90m)]),
             CancellationToken.None);
         Assert.True(activated.Succeeded, activated.Error?.Message);
         db.ChangeTracker.Clear();

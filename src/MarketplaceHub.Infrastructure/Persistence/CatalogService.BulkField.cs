@@ -202,6 +202,13 @@ public sealed partial class CatalogService
                     left = products.Count(product => ProductDraftPolicy.IsDraft(product.Status));
                     if (left > 0) note = BulkFieldDraftLeft;
                     var moving = products.Where(product => !ProductDraftPolicy.IsDraft(product.Status) && product.Status != status).ToList();
+                    // A closed card missing a required field is not put on sale (ProductRequiredFields): it is named and left.
+                    if (status == ProductStatus.Active && await IncompleteCardsAsync(tenantId, moving, cancellationToken) is { Count: > 0 } incomplete)
+                    {
+                        moving.RemoveAll(product => incomplete.Any(item => item.Product.Id == product.Id));
+                        left += incomplete.Count;
+                        note = string.Join(" ", new[] { note }.Concat(incomplete.Select(item => ProductRequiredFields.ActivationRefusal(item.Product.Title, item.Gaps))).OfType<string>());
+                    }
                     await ApplyBulkStatusAsync(tenantId, moving, status, actorUserId, correlation, now, cancellationToken);
                     changed.UnionWith(moving.Select(product => product.Id));
                     break;

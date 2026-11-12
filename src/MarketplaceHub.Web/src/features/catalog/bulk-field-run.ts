@@ -5,6 +5,7 @@
 import type { ChunkRunResult } from './bulk-status-run'
 import { TURKISH_VAT_RATES } from './product-editor-state'
 import { isProductDeliveryDays, maxProductDeliveryDays } from './product-editor/product-delivery-days'
+import { maxProductDesi } from './product-desi'
 import { sanitizeRichText } from '../../shared/security/sanitizeHtml'
 
 export type BulkFieldKey = 'vatRate' | 'vatInclusion' | 'desi' | 'warrantyMonths' | 'deliveryDays' | 'status' | 'brandId' | 'categoryId' | 'safetyStock' | 'description'
@@ -33,7 +34,7 @@ export const bulkFieldInitialValues: Record<BulkFieldKey, string> = {
 }
 
 export const bulkMaxWarrantyMonths = 240
-export const bulkMaxDesi = 9999
+export const bulkMaxDesi = maxProductDesi
 export const bulkMaxSafetyStock = 100_000
 export const bulkMaxDescriptionLength = 60_000
 
@@ -52,7 +53,7 @@ export function bulkFieldIssue(field: BulkFieldKey, value: string): string | nul
     case 'categoryId': return text ? null : 'Kategori seçin.'
     case 'desi': {
       const desi = decimalNumber(text)
-      return desi != null && desi > 0 && desi <= bulkMaxDesi && Math.round(desi * 100) === desi * 100 ? null : 'Desi sıfırdan büyük olmalıdır (en çok iki ondalık, ör. 0,5).'
+      return desi != null && desi > 0 && desi <= bulkMaxDesi && Math.round(desi * 100) === desi * 100 ? null : 'Desi sıfırdan büyük ve en fazla 9.999 olmalıdır (en çok iki ondalık, ör. 0,5).'
     }
     case 'warrantyMonths': {
       const months = wholeNumber(text)

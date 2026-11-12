@@ -10,9 +10,11 @@ namespace MarketplaceHub.Application;
 // variant the row names by its stock code.
 //
 // Writable fields:
-//  - Ürün Bilgileri: product title (Product.Title, the same on every row of a product), barcode (unique in the tenant,
-//    cannot be removed) and model code ("-" removes it). Written to the panel only; the product's marketplace links are
-//    marked as carrying local changes, as an editor save does, and nothing is sent.
+//  - Ürün Bilgileri: product title (Product.Title, the same on every row of a product), brand (the model's: the same on
+//    every row of the model, found or opened by name with PanelBrandByName as the imports do, and written to every colour
+//    card of the model like Toplu Değer Ata; it cannot be removed), barcode (unique in the tenant, cannot be removed) and
+//    model code ("-" removes it). Written to the panel only; the product's marketplace links are marked as carrying
+//    local changes, as an editor save does, and nothing is sent.
 //  - Fiyat ve Vergi: the panel price ("Panel Satış Fiyatı" / "Panel Liste Fiyatı": the variant default prices the quick
 //    edit's "Panel Ana Fiyatı" writes; offers that follow the panel price are not changed) and the product card's VAT
 //    rate (Product.VatRate, the same on every row of a product). Neither starts a price send.
@@ -21,8 +23,11 @@ namespace MarketplaceHub.Application;
 //  - Maliyet: ProductVariant.CostPrice.
 //  - Mağaza Fiyatları: each store's offer sale and list price, queued like a panel price edit (sent only where the
 //    connection's price writes are on).
-// The variant, brand, category and status columns are for reading only: they are names, not values a row can set
-// without a lookup, and a status change starts or stops sales.
+// The variant, category and status columns are for reading only: a category is a managed tree, not a name a row may
+// open, and a status change starts or stops sales.
+//
+// A card that is not a draft keeps the editor's required fields (ProductRequiredFields): a row that would remove its
+// desi or model code is refused.
 //
 // Cell semantics, unchanged for the original fields: an empty cell changes nothing; "-" or "sil" removes a removable
 // value (cost, desi, model code); a value that cannot be removed (stock, prices, VAT, title, barcode) refuses "-".
@@ -32,6 +37,7 @@ public sealed record ProductTransferSummaryView(int VariantCount, int MissingCos
 public static class ProductTransferFields
 {
     public const string Title = "TITLE";
+    public const string Brand = "BRAND";
     public const string Barcode = "BARCODE";
     public const string ModelCode = "MODEL_CODE";
     public const string PanelPrices = "PANEL_PRICES";
@@ -40,7 +46,7 @@ public static class ProductTransferFields
     public const string Desi = "DESI";
     public const string Stock = "STOCK";
     public const string Prices = "PRICES";
-    public static readonly IReadOnlyList<string> All = [Title, Barcode, ModelCode, PanelPrices, Vat, Cost, Desi, Stock, Prices];
+    public static readonly IReadOnlyList<string> All = [Title, Brand, Barcode, ModelCode, PanelPrices, Vat, Cost, Desi, Stock, Prices];
 }
 
 // What an upload does to one field of a variant: SET writes the new value, CLEAR removes the stored one.
@@ -93,7 +99,10 @@ public sealed record ProductTransferRowView(
     string? PanelPriceChange = null,
     decimal? OldVatRate = null,
     decimal? NewVatRate = null,
-    string? VatChange = null);
+    string? VatChange = null,
+    string? OldBrand = null,
+    string? NewBrand = null,
+    string? BrandChange = null);
 
 // A stock change against the on-hand stock the preview read.
 public sealed record ProductTransferStockChange(decimal ExpectedOnHand, decimal OnHand);
@@ -125,8 +134,9 @@ public sealed record ProductTransferChange(
     public bool WritesVariant() => SetCost || SetDesi || Barcode is not null || SetModelCode || PanelPrice is not null;
 }
 
-// A product-level change (title, VAT rate) against the product version the preview read. Null leaves a field alone.
-public sealed record ProductTransferProductChange(Guid ProductId, long Version, string? Title, decimal? VatRate);
+// A product-level change (title, VAT rate, brand name) against the product version the preview read. Null leaves a
+// field alone.
+public sealed record ProductTransferProductChange(Guid ProductId, long Version, string? Title, decimal? VatRate, string? Brand = null);
 
 public sealed record ProductTransferImportPreview(
     string FileName,
@@ -155,7 +165,8 @@ public sealed record ProductTransferImportPreview(
     int ModelCodeUpdates = 0,
     int ModelCodeClears = 0,
     int PanelPriceUpdates = 0,
-    int VatUpdates = 0);
+    int VatUpdates = 0,
+    int BrandUpdates = 0);
 
 public sealed record ApplyProductTransferCommand(IReadOnlyList<ProductTransferChange>? Changes, IReadOnlyList<ProductTransferProductChange>? ProductChanges = null);
 
@@ -173,7 +184,9 @@ public sealed record ProductTransferApplyResult(
     int ModelCodesUpdated = 0,
     int ModelCodesCleared = 0,
     int PanelPricesUpdated = 0,
-    int VatUpdated = 0);
+    int VatUpdated = 0,
+    int BrandsUpdated = 0,
+    int BrandsCreated = 0);
 
 // Which variants an export lists: every one, or only those still missing a cost or a desi.
 public enum ProductTransferExportFilter { All, MissingCost, MissingDesi }

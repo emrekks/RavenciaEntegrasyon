@@ -1,6 +1,7 @@
 // Ürün içe / dışa aktarma: the products export download and the upload that is previewed before anything is saved.
 // The seller picks which exported columns an upload writes, in groups (product information, price and VAT, stock and
-// logistics, cost, store prices); a change of the pick previews the same file again. Rows are matched by stock code
+// logistics, cost, store prices); a change of the pick previews the same file again. A brand is the model's: it is
+// found or opened by name like the other imports do and goes to every colour card of the model. Rows are matched by stock code
 // (then barcode); the stock code itself is never written. Stock is saved like the product editor saves it, so it
 // reaches the stores with stock sends on; every other field is a panel write that sends nothing by itself.
 import { useRef, useState, type DragEvent, type ReactNode } from 'react'
@@ -14,7 +15,7 @@ import './product-transfer.css'
 import { PanelSelect } from '../../../shared/PanelSelect'
 
 export type ProductTransferSummary = { variantCount: number; missingCostCount: number; missingDesiCount: number }
-export type ProductTransferField = 'TITLE' | 'BARCODE' | 'MODEL_CODE' | 'PANEL_PRICES' | 'VAT' | 'COST' | 'DESI' | 'STOCK' | 'PRICES'
+export type ProductTransferField = 'TITLE' | 'BRAND' | 'BARCODE' | 'MODEL_CODE' | 'PANEL_PRICES' | 'VAT' | 'COST' | 'DESI' | 'STOCK' | 'PRICES'
 export type ProductTransferOutcome = 'UPDATE' | 'UNCHANGED' | 'SKIPPED' | 'UNMATCHED' | 'AMBIGUOUS' | 'ERROR'
 export type ProductTransferFieldChange = 'SET' | 'CLEAR' | null
 export type ProductTransferPrice = { connectionId: string; storeName: string; oldSalePrice: number; newSalePrice: number; oldListPrice: number; newListPrice: number }
@@ -30,6 +31,7 @@ export type ProductTransferRow = {
   oldModelCode?: string | null; newModelCode?: string | null; modelCodeChange?: ProductTransferFieldChange
   oldPanelSalePrice?: number | null; newPanelSalePrice?: number | null; oldPanelListPrice?: number | null; newPanelListPrice?: number | null; panelPriceChange?: ProductTransferFieldChange
   oldVatRate?: number | null; newVatRate?: number | null; vatChange?: ProductTransferFieldChange
+  oldBrand?: string | null; newBrand?: string | null; brandChange?: ProductTransferFieldChange
 }
 export type ProductTransferChange = {
   variantId: string; version: number; setCost: boolean; cost: number | null; setDesi: boolean; desi: number | null
@@ -38,33 +40,33 @@ export type ProductTransferChange = {
   barcode?: string | null; setModelCode?: boolean; modelCode?: string | null
   panelPrice?: { salePrice: number; listPrice: number } | null
 }
-export type ProductTransferProductChange = { productId: string; version: number; title: string | null; vatRate: number | null }
+export type ProductTransferProductChange = { productId: string; version: number; title: string | null; vatRate: number | null; brand?: string | null }
 export type ProductTransferPreview = {
   fileName: string; availableFields: ProductTransferField[]; fields: ProductTransferField[]; stores: Array<{ connectionId: string; name: string }>
   totalRows: number; updates: number; costUpdates: number; costClears: number; desiUpdates: number; desiClears: number; stockUpdates: number; priceUpdates: number
   unchanged: number; skipped: number; unmatched: number; ambiguous: number; errors: number
   rows: ProductTransferRow[]; rowsTruncated: boolean; changes: ProductTransferChange[]
   productChanges?: ProductTransferProductChange[] | null
-  titleUpdates?: number; barcodeUpdates?: number; modelCodeUpdates?: number; modelCodeClears?: number; panelPriceUpdates?: number; vatUpdates?: number
+  titleUpdates?: number; barcodeUpdates?: number; modelCodeUpdates?: number; modelCodeClears?: number; panelPriceUpdates?: number; vatUpdates?: number; brandUpdates?: number
 }
 export type ProductTransferApplyResult = {
   variants: number; costsUpdated: number; costsCleared: number; desiUpdated: number; desiCleared: number; stocksUpdated: number; pricesUpdated: number; products: number
-  titlesUpdated?: number; barcodesUpdated?: number; modelCodesUpdated?: number; modelCodesCleared?: number; panelPricesUpdated?: number; vatUpdated?: number
+  titlesUpdated?: number; barcodesUpdated?: number; modelCodesUpdated?: number; modelCodesCleared?: number; panelPricesUpdated?: number; vatUpdated?: number; brandsUpdated?: number; brandsCreated?: number
 }
 export type ProductTransferExportFilter = 'all' | 'cost' | 'desi'
 
 export const productTransferSummaryKey = ['products', 'transfer-summary'] as const
 // The exported columns an upload can write, grouped as the seller thinks of them. A group of one field is that field.
 export const productTransferFieldGroups: ReadonlyArray<{ label: string; fields: ProductTransferField[] }> = [
-  { label: 'Ürün Bilgileri', fields: ['TITLE', 'BARCODE', 'MODEL_CODE'] },
+  { label: 'Ürün Bilgileri', fields: ['TITLE', 'BRAND', 'BARCODE', 'MODEL_CODE'] },
   { label: 'Fiyat ve Vergi', fields: ['PANEL_PRICES', 'VAT'] },
   { label: 'Stok ve Lojistik', fields: ['STOCK', 'DESI'] },
   { label: 'Maliyet', fields: ['COST'] },
   { label: 'Mağaza Fiyatları', fields: ['PRICES'] }
 ]
 // The order the server lists the fields in (ProductTransferFields.All); a pick is sent in it.
-const allFields: ProductTransferField[] = ['TITLE', 'BARCODE', 'MODEL_CODE', 'PANEL_PRICES', 'VAT', 'COST', 'DESI', 'STOCK', 'PRICES']
-const fieldLabels: Record<ProductTransferField, string> = { TITLE: 'Ürün Adı', BARCODE: 'Barkod', MODEL_CODE: 'Model Kodu', PANEL_PRICES: 'Panel Fiyatı', VAT: 'KDV Oranı', COST: 'Maliyet', DESI: 'Desi', STOCK: 'Stok', PRICES: 'Mağaza Fiyatları' }
+const allFields: ProductTransferField[] = ['TITLE', 'BRAND', 'BARCODE', 'MODEL_CODE', 'PANEL_PRICES', 'VAT', 'COST', 'DESI', 'STOCK', 'PRICES']
+const fieldLabels: Record<ProductTransferField, string> = { TITLE: 'Ürün Adı', BRAND: 'Marka', BARCODE: 'Barkod', MODEL_CODE: 'Model Kodu', PANEL_PRICES: 'Panel Fiyatı', VAT: 'KDV Oranı', COST: 'Maliyet', DESI: 'Desi', STOCK: 'Stok', PRICES: 'Mağaza Fiyatları' }
 const defaultFields: ProductTransferField[] = ['COST', 'DESI']
 
 export function productTransferExportHref(filter: ProductTransferExportFilter) {
@@ -224,7 +226,7 @@ function FieldCheck({ field, label, fields, available, disabled, onToggle }: { f
 
 function FieldPicker({ fields, available, disabled, onToggle, onToggleGroup }: { fields: ProductTransferField[]; available?: ProductTransferField[]; disabled: boolean; onToggle: (field: ProductTransferField) => void; onToggleGroup: (group: readonly ProductTransferField[]) => void }) {
   return <fieldset className="pci-fields">
-    <legend>Panele Aktarılacak Alanlar<TitleHint label="Panele Aktarılacak Alanlar">Satırlar <b>Stok Kodu</b> ile, yoksa <b>Barkod</b> ile eşleştirilir; barkod aktarılırken yalnız stok kodu ile eşleştirilir. Stok kodu değiştirilemez, barkod bir varyanta aittir ve silinemez. Varyant, marka, kategori ve durum sütunları yalnız bilgi içindir; <b>ürün adı</b> ürüne aittir, aynı ürünün tüm satırlarına aynı adı yazın. <b>Panel fiyatı ve KDV</b> yalnız panele kaydedilir; pazaryerine fiyat gönderilmez.</TitleHint></legend>
+    <legend>Panele Aktarılacak Alanlar<TitleHint label="Panele Aktarılacak Alanlar">Satırlar <b>Stok Kodu</b> ile, yoksa <b>Barkod</b> ile eşleştirilir; barkod aktarılırken yalnız stok kodu ile eşleştirilir. Stok kodu değiştirilemez, barkod bir varyanta aittir ve silinemez. Varyant, kategori ve durum sütunları yalnız bilgi içindir; <b>ürün adı</b> ürüne aittir, aynı ürünün tüm satırlarına aynı adı yazın. <b>Marka</b> modele aittir: modelin tüm renklerine yazılır; panelde aynı adlı marka yoksa açılır, kapatılmış marka yeniden açılmaz. Satışa açık ya da kapalı üründe desi ve model kodu silinemez. <b>Panel fiyatı ve KDV</b> yalnız panele kaydedilir; pazaryerine fiyat gönderilmez.</TitleHint></legend>
     <div className="pci-groups">{productTransferFieldGroups.map(group => {
       if (group.fields.length === 1) return <div key={group.label} className="pci-group" role="group" aria-label={group.label}>
         <FieldCheck field={group.fields[0]} label={group.label} fields={fields} available={available} disabled={disabled} onToggle={onToggle} />
@@ -245,12 +247,13 @@ function FieldPicker({ fields, available, disabled, onToggle, onToggleGroup }: {
 }
 
 function appliedTotal(done: ProductTransferApplyResult) {
-  return done.variants + (done.titlesUpdated ?? 0) + (done.vatUpdated ?? 0)
+  return done.variants + (done.titlesUpdated ?? 0) + (done.vatUpdated ?? 0) + (done.brandsUpdated ?? 0)
 }
 
 function appliedText(done: ProductTransferApplyResult) {
   const parts = [
     done.titlesUpdated ? `${count(done.titlesUpdated)} ürün adı güncellendi` : '',
+    done.brandsUpdated ? `${count(done.brandsUpdated)} ürün kartının markası güncellendi${done.brandsCreated ? ` (${count(done.brandsCreated)} yeni marka açıldı)` : ''}` : '',
     done.barcodesUpdated ? `${count(done.barcodesUpdated)} barkod güncellendi` : '',
     done.modelCodesUpdated ? `${count(done.modelCodesUpdated)} model kodu güncellendi` : '',
     done.modelCodesCleared ? `${count(done.modelCodesCleared)} model kodu silindi` : '',
@@ -297,6 +300,7 @@ function PreviewView({ preview, picker, problemCount, pending, error }: { previe
   const stats: Array<[string, number, string]> = [
     ['Güncellenecek Varyant', preview.updates, 'ok'],
     ...stat('TITLE', 'Ürün Adı Değişen', preview.titleUpdates ?? 0),
+    ...stat('BRAND', 'Marka Değişen', preview.brandUpdates ?? 0),
     ...stat('BARCODE', 'Barkod Değişen', preview.barcodeUpdates ?? 0),
     ...stat('MODEL_CODE', 'Model Kodu Değişen', modelCodeChanges),
     ...stat('PANEL_PRICES', 'Panel Fiyatı Değişen', preview.panelPriceUpdates ?? 0),
@@ -327,6 +331,7 @@ function PreviewView({ preview, picker, problemCount, pending, error }: { previe
       <thead><tr>
         <th scope="col">Satır</th><th scope="col">Ürün</th>
         {picked.has('TITLE') && <th scope="col">Ürün Adı</th>}
+        {picked.has('BRAND') && <th scope="col">Marka</th>}
         {picked.has('BARCODE') && <th scope="col">Barkod</th>}
         {picked.has('MODEL_CODE') && <th scope="col">Model Kodu</th>}
         {picked.has('PANEL_PRICES') && <th scope="col">Panel Fiyatı</th>}
@@ -344,6 +349,7 @@ function PreviewView({ preview, picker, problemCount, pending, error }: { previe
           <td className="pci-num">{row.rowNumber}</td>
           <td><span className="pci-title">{row.productTitle ?? row.sku ?? row.barcode ?? '—'}</span><small>{[row.variantLabel, row.sku, row.barcode].filter(Boolean).join(' · ') || '—'}</small></td>
           {picked.has('TITLE') && <td className="pci-text">{matched ? <FieldCell change={row.titleChange} oldValue={row.productTitle} newValue={row.newTitle} format={formatText} /> : formatText(row.newTitle ?? null)}</td>}
+          {picked.has('BRAND') && <td className="pci-text">{matched ? <FieldCell change={row.brandChange} oldValue={row.oldBrand} newValue={row.newBrand} format={formatText} /> : formatText(row.newBrand ?? null)}</td>}
           {picked.has('BARCODE') && <td className="pci-money">{matched ? <FieldCell change={row.barcodeChange} oldValue={row.oldBarcode} newValue={row.newBarcode} format={formatText} /> : formatText(row.newBarcode ?? null)}</td>}
           {picked.has('MODEL_CODE') && <td className="pci-money">{matched ? <FieldCell change={row.modelCodeChange} oldValue={row.oldModelCode} newValue={row.newModelCode} format={formatText} /> : formatText(row.newModelCode ?? null)}</td>}
           {picked.has('PANEL_PRICES') && <td className="pci-prices">{matched ? <PanelPriceCell row={row} /> : formatMoney(row.newPanelSalePrice ?? null)}</td>}

@@ -103,7 +103,7 @@ public sealed class ProductTransferImportTests
     [Theory]
     [InlineData("2,5", "2.5")]
     [InlineData("1", "1")]
-    [InlineData("10000", "10000")]
+    [InlineData("9999", "9999")]
     public void ADesiIsReadLikeACost(string text, string expected) =>
         Assert.Equal(decimal.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), ProductTransferFileParser.ParseDesi(text, fromCsv: true).Amount);
 
@@ -176,7 +176,7 @@ public sealed class ProductTransferImportTests
         var c = Candidate("DUP 1", null, cost: 5m, desi: null);
         var d = Candidate("dup_1", null, cost: 6m, desi: null);
         var e = Candidate("E-1", "8690005", cost: 7m, desi: 1m);
-        var f = Candidate("F-1", "8690006", cost: 8m, desi: 3m);
+        var f = Candidate("F-1", "8690006", cost: 8m, desi: 3m) with { ProductDraft = true }; // only a draft may lose its desi
         var g = Candidate("G-1", null, cost: 9.9999m, desi: 1.5m);
         var h = Candidate("H-1", null, cost: 1m, desi: 1m);
         var rows = new[]
@@ -425,7 +425,7 @@ public sealed class ProductTransferImportTests
     public void AModelCodeIsSetOrRemoved_AndAPanelPriceKeepsItsListPriceAboveTheSalePrice()
     {
         var a = Candidate("A-1", null, null, null) with { ModelCode = "M-1", PanelSalePrice = 100m, PanelListPrice = 120m };
-        var b = Candidate("B-1", null, null, null) with { ModelCode = "M-1", PanelSalePrice = 100m, PanelListPrice = 120m };
+        var b = Candidate("B-1", null, null, null) with { ModelCode = "M-1", PanelSalePrice = 100m, PanelListPrice = 120m, ProductDraft = true }; // only a draft may lose its model code
         var c = Candidate("C-1", null, null, null);
         var d = Candidate("D-1", null, null, null) with { PanelSalePrice = 100m, PanelListPrice = 120m };
         var e = Candidate("E-1", null, null, null) with { PanelSalePrice = 100m, PanelListPrice = 120m };
@@ -593,7 +593,8 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
     {
         var now = DateTimeOffset.UtcNow;
         var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"transfer-info-{Guid.NewGuid():N}", DisplayName = "transfer", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
-        var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "Eski Ad", Description = "", Status = ProductStatus.Active, VatRate = 10m, VatInclusion = "INCLUDED", CreatedAt = now, UpdatedAt = now };
+        // A draft: the file removes its model code, which a card on sale or closed keeps (ProductRequiredFields).
+        var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "Eski Ad", Description = "", Status = ProductStatus.Draft, VatRate = 10m, VatInclusion = "INCLUDED", CreatedAt = now, UpdatedAt = now };
         var first = Variant(tenant, product, "INFO-1", "8690000300001", cost: null, desi: null, now);
         first.ModelCode = "MOD-1";
         first.DefaultSalePrice = 100m;

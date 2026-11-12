@@ -57,7 +57,8 @@ import { VariantOptionEditDialog, type VariantOptionEditChange } from './Variant
 import { VariantMediaBulkSelect } from './VariantMediaBulkSelect'
 import { PriceSuggestionLink } from './PriceSuggestionDialog'
 import { cardPrices } from './card-prices'
-import { missingRequiredEditorFields, requiredEditorFieldLabels, requiredFieldMessage, requiredFieldsMessage, type RequiredEditorField } from './required-fields'
+import { editorWarrantyMonths, missingRequiredEditorFields, requiredEditorFieldLabels, requiredFieldMessage, requiredFieldsMessage, type RequiredEditorField } from './required-fields'
+import { maxProductDesi, productDesiTooLarge, productDesiTooLargeMessage } from '../product-desi'
 import { SizeChartButton } from './SizeChartDialog'
 import { isSizeChartRef, pinSizeChartLast, replaceSizeChart, sizeChartKey } from './size-chart-order'
 import { mediaPickerLabel, mediaPickerRefs } from './media-picker-order'
@@ -2720,6 +2721,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
      if (rows.some(row => !(row.salePrice > 0) || !(row.listPrice > 0))) issues.push('Her varyantta liste ve satış fiyatı 0\'dan büyük olmalı.')
      // A card none of whose variants has a desi opens with the field empty (no guessed 1) and may be saved so.
      if (!(editProductId && initialEditDesi.current === 0 && !form.desi.trim()) && (!form.desi.trim() || !Number.isFinite(Number(form.desi)) || Number(form.desi) <= 0)) issues.push('Desi sıfırdan büyük olmalıdır.')
+     if (productDesiTooLarge(form.desi)) issues.push(productDesiTooLargeMessage)
      if (form.warrantyMonths.trim() && (!Number.isInteger(Number(form.warrantyMonths)) || Number(form.warrantyMonths) < 0 || Number(form.warrantyMonths) > 240)) issues.push('Garanti süresi 0-240 ay arasında tam sayı olmalıdır.')
      if (!isProductDeliveryDays(form.deliveryDays)) issues.push('Teslimat süresi 1-30 gün arasında tam sayı olmalıdır.')
      if (requireCompleteCatalog && requirePublicationReadiness && selectedChannelIds.length) {
@@ -2966,7 +2968,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           }
         }
       } else {
-        product = await sendWithVersionedIdempotencyKey(productCreateKey, key => hubApi<Product>('/products', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify({ title: savedTitle, status: savedStatus, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, defaultListPrice: fallbackListPrice, defaultSalePrice: fallbackSalePrice, warrantyMonths: Number(form.warrantyMonths || 0) || null, deliveryDays: productDeliveryDays(form.deliveryDays), vatRate: savedVatRate, vatInclusion: savedVatInclusion, trendyolWebColorValueId: !webColorAutoEnabled && manualWebColorValueId ? manualWebColorValueId : null, attributes: globalAttributes, variants: rows.map(variantPayload) }) }))
+        product = await sendWithVersionedIdempotencyKey(productCreateKey, key => hubApi<Product>('/products', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify({ title: savedTitle, status: savedStatus, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, defaultListPrice: fallbackListPrice, defaultSalePrice: fallbackSalePrice, warrantyMonths: editorWarrantyMonths(form.warrantyMonths), deliveryDays: productDeliveryDays(form.deliveryDays), vatRate: savedVatRate, vatInclusion: savedVatInclusion, trendyolWebColorValueId: !webColorAutoEnabled && manualWebColorValueId ? manualWebColorValueId : null, attributes: globalAttributes, variants: rows.map(variantPayload) }) }))
       }
       productCreated = product; const completed: string[] = []; const warnings: string[] = []
       if (placeholderIdsToDelete.some(id => product.variants.some(variant => variant.id === id))) warnings.push(PLACEHOLDER_KEPT_MESSAGE)
@@ -3706,7 +3708,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
                 <label>{automaticBarcodeGeneration ? <FieldLabel text="Stok Kodu" help={automaticCodeHelp('stock')} /> : <RequiredLabel>Stok Kodu</RequiredLabel>}<input className="technical-field sku-value" value={form.baseSku} aria-invalid={requiredFieldInvalid('baseSku')} onChange={event => updateField('baseSku', event.target.value)} placeholder={automaticBarcodeGeneration ? '' : 'RAV-BLUZ'} disabled={automaticBarcodeGeneration} /><EditorFieldError message={requiredError('baseSku')} /></label>
                 <label>{automaticBarcodeGeneration ? <FieldLabel text="Barkod" help={automaticCodeHelp('barcode')} /> : <RequiredLabel>Barkod</RequiredLabel>}<input className="technical-field barcode-value" value={form.barcode} aria-invalid={requiredFieldInvalid('barcode')} onChange={event => updateField('barcode', event.target.value)} placeholder={automaticBarcodeGeneration ? '' : 'EAN / barkod'} disabled={automaticBarcodeGeneration} /><EditorFieldError message={requiredError('barcode')} /></label>
               </>}
-            <label className="desi-input-field"><RequiredLabel>Desi</RequiredLabel><span className="desi-inline-control"><input value={form.desi} aria-invalid={requiredFieldInvalid('desi')} onChange={event => { desiEdited.current = true; setCalculateDesi(false); updateField('desi', event.target.value) }} type="number" min="0.01" step="0.01" placeholder="Girilmemiş" required /><button type="button" className="secondary" onClick={() => setDesiCalculatorOpen(true)}>Hesapla</button></span><EditorFieldError message={requiredError('desi')} /></label>
+            <label className="desi-input-field"><RequiredLabel>Desi</RequiredLabel><span className="desi-inline-control"><input value={form.desi} aria-invalid={requiredFieldInvalid('desi')} onChange={event => { desiEdited.current = true; setCalculateDesi(false); updateField('desi', event.target.value) }} type="number" min="0.01" max={maxProductDesi} step="0.01" placeholder="Girilmemiş" required /><button type="button" className="secondary" onClick={() => setDesiCalculatorOpen(true)}>Hesapla</button></span><EditorFieldError message={requiredError('desi')} /></label>
             <label className="warranty-input-field" title="0: garanti yok"><RequiredLabel>Garanti Süresi (Ay)</RequiredLabel><input value={form.warrantyMonths} aria-invalid={requiredFieldInvalid('warrantyMonths')} onChange={event => updateField('warrantyMonths', event.target.value)} type="number" min="0" max="240" step="1" inputMode="numeric" placeholder="0 = garanti yok" /><EditorFieldError message={requiredError('warrantyMonths')} /></label>
             <label className="delivery-days-input-field" title="Siparişin kargoya teslim süresi; pazaryerlerine teslimat (sevkiyat) süresi olarak gider."><RequiredLabel>Teslimat Süresi (Gün)</RequiredLabel><input value={form.deliveryDays} aria-invalid={requiredFieldInvalid('deliveryDays')} onChange={event => updateField('deliveryDays', event.target.value)} type="number" min="1" max="30" step="1" inputMode="numeric" required /><EditorFieldError message={requiredError('deliveryDays')} /></label>
           </div>

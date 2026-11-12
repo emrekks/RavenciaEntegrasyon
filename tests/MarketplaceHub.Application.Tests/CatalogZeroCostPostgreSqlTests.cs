@@ -76,7 +76,8 @@ public sealed class CatalogZeroCostPostgreSqlTests(PostgreSqlTenantIsolationFixt
     {
         var now = fixture.Now;
         var tenant = existingTenant ?? new Tenant { Id = Guid.CreateVersion7(), Code = $"{code}-{Guid.NewGuid():N}", DisplayName = code, Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
-        var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = $"Ürün {code} {Guid.NewGuid():N}", Description = "Açıklama", VatRate = 10m, VatInclusion = "INCLUDED", Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now, Version = 1 };
+        // A draft: the saves below carry only the cost, and a card on sale or closed would need every required field.
+        var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = $"Ürün {code} {Guid.NewGuid():N}", Description = "Açıklama", VatRate = 10m, VatInclusion = "INCLUDED", Status = ProductStatus.Draft, CreatedAt = now, UpdatedAt = now, Version = 1 };
         var sku = $"{code}-{Guid.NewGuid():N}"[..24].ToUpperInvariant();
         var variant = new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = product.Id, Sku = sku, SkuNormalized = sku, OptionSignature = "Beden: 0", CostPrice = cost, CreatedAt = now, UpdatedAt = now, Version = 1 };
         if (existingTenant is null) db.Tenants.Add(tenant);

@@ -413,7 +413,7 @@ public sealed class FamilyChangesRegressionPostgreSqlTests(PostgreSqlTenantIsola
         var cards = new Dictionary<string, Product>();
         var sizesByColour = new Dictionary<string, List<ProductVariant>>();
         var number = 0;
-        Product NewCard(string title, DateTimeOffset createdAt) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = title, Description = "Yumuşak dokulu triko bluz.", CategoryId = categoryId, BrandId = brandId, VatRate = 10m, VatInclusion = "INCLUDED", WarrantyMonths = 0, DeliveryDays = 2, Status = ProductStatus.Active, CreatedAt = createdAt, UpdatedAt = createdAt, Version = 1 };
+        Product NewCard(string title, DateTimeOffset createdAt) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = title, Description = "Yumuşak dokulu triko bluz.", CategoryId = categoryId, BrandId = brandId, VatRate = 10m, VatInclusion = "INCLUDED", WarrantyMonths = 0, DeliveryDays = 2, DefaultListPrice = 600m, DefaultSalePrice = 600m, Status = ProductStatus.Active, CreatedAt = createdAt, UpdatedAt = createdAt, Version = 1 };
         ProductVariant NewVariant(Product card, string sku, string modelCode, string colour, string size, decimal desi, int sortOrder) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = card.Id, Sku = sku, SkuNormalized = sku, Barcode = sku, BarcodeNormalized = sku, ModelCode = modelCode, OptionSignature = $"Renk: {colour} | Beden: {size}", Desi = desi, SortOrder = sortOrder, Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now, Version = 1 };
 
         void Sellable(Product card, ProductVariant variant)

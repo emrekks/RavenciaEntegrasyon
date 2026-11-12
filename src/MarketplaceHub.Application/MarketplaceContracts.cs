@@ -638,10 +638,10 @@ public sealed record RemoteCatalogVariant(
     string? SaleStateReason = null);
 
 // A desi read from a marketplace or an import file counts only when it is a real measurement: Trendyol
-// answers 0 for a product whose desi was never entered.
+// answers 0 for a product whose desi was never entered. Above the panel limit (ProductDesi) it is not one either.
 public static class ImportedDesi
 {
-    public const decimal Maximum = 10000m;
+    public const decimal Maximum = ProductDesi.Maximum;
 
     public static decimal? From(decimal? value) => value is > 0 and <= Maximum ? decimal.Round(value.Value, 2, MidpointRounding.AwayFromZero) : null;
 

@@ -2235,9 +2235,14 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
     public async Task Draft_IsSavedIncompleteNeverSentAndCompletedOnlyFromItsEditor()
     {
         var tenant = NewTenant("product-draft");
+        var now = DateTimeOffset.UtcNow;
+        var brand = new Brand { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Name = "Ravencia", NormalizedName = "RAVENCIA", CreatedAt = now, UpdatedAt = now };
+        var category = new Category { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Name = "Bluz", NormalizedName = "BLUZ", Path = "Bluz", CreatedAt = now, UpdatedAt = now };
         await using (var seed = fixture.CreateContext())
         {
             seed.Tenants.Add(tenant);
+            seed.Brands.Add(brand);
+            seed.Categories.Add(category);
             await seed.SaveChangesAsync();
         }
         await using var db = fixture.CreateContext();
@@ -2268,8 +2273,17 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         db.ChangeTracker.Clear();
         var withoutVat = await service.UpdateProductAsync(tenant.Id, draft.Value.Id, kept.Value.Version, new UpdateProductCommand("Taslak Bluz", "", null, null, Status: "ACTIVE"), CancellationToken.None);
         Assert.Equal((422, "KDV oranı zorunludur."), (withoutVat.Error!.Status, withoutVat.Error.FieldErrors!["vatRate"][0]));
+        // KDV given, the editor's required fields still missing: refused with each field named, the card stays a draft.
         db.ChangeTracker.Clear();
-        var completed = await service.UpdateProductAsync(tenant.Id, draft.Value.Id, kept.Value.Version, new UpdateProductCommand("Taslak Bluz", "Açıklama", null, null, Status: "ACTIVE", VatRate: 10m, VatInclusion: "INCLUDED"), CancellationToken.None);
+        var incomplete = await service.UpdateProductAsync(tenant.Id, draft.Value.Id, kept.Value.Version, new UpdateProductCommand("Taslak Bluz", "Açıklama", null, null, Status: "ACTIVE", VatRate: 10m, VatInclusion: "INCLUDED"), CancellationToken.None);
+        Assert.Equal((422, ProductRequiredFields.Code), (incomplete.Error!.Status, incomplete.Error.Code));
+        Assert.Equal("Zorunlu alanları doldurun: Marka, Panel Kategorisi, Model Kodu, Barkod, Desi, Liste Fiyatı, Satış Fiyatı.", incomplete.Error.Message);
+        Assert.Equal("Marka zorunludur.", incomplete.Error.FieldErrors!["brandId"][0]);
+        Assert.Equal(ProductStatus.Draft, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == draft.Value.Id)).Status);
+        db.ChangeTracker.Clear();
+        var draftVariant = await db.ProductVariants.AsNoTracking().SingleAsync(x => x.ProductId == draft.Value.Id);
+        var completed = await service.UpdateProductAsync(tenant.Id, draft.Value.Id, kept.Value.Version, new UpdateProductCommand("Taslak Bluz", "Açıklama", brand.Id, category.Id, Status: "ACTIVE", VatRate: 10m, VatInclusion: "INCLUDED",
+            DefaultListPrice: 120m, DefaultSalePrice: 100m, VariantUpdates: [new UpdateVariantCommand(draftVariant.Id, sku, $"{sku}B", "DRF-MODEL", Desi: 1m)]), CancellationToken.None);
         Assert.True(completed.Succeeded, completed.Error?.Message);
         Assert.Equal("ACTIVE", completed.Value!.Status);
         Assert.All(await db.ProductVariants.AsNoTracking().Where(x => x.ProductId == draft.Value.Id).ToListAsync(), variant => Assert.Equal(ProductStatus.Active, variant.Status));

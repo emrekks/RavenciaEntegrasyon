@@ -23,7 +23,7 @@ public static class BulkProductFields
     // The rates the editor offers (TURKISH_VAT_RATES).
     public static readonly IReadOnlyList<decimal> VatRates = [0m, 1m, 10m, 20m];
     public const int MaxWarrantyMonths = 240;
-    public const decimal MaxDesi = 9999m;
+    public const decimal MaxDesi = ProductDesi.Maximum;
     public const int MaxSafetyStock = 100_000;
     public const int MaxDescriptionLength = 60_000;
 
@@ -83,7 +83,7 @@ public static class BulkProductFields
             case Desi:
                 return TryNumber(text, out var desi) && desi > 0 && desi <= MaxDesi && decimal.Round(desi, 2) == desi
                     ? ParseResult.Ok(new(name, Number: desi))
-                    : ParseResult.Fail("value", "Desi sıfırdan büyük olmalıdır (en çok iki ondalık, ör. 0,5).");
+                    : ParseResult.Fail("value", $"Desi sıfırdan büyük ve en fazla {ProductDesi.MaximumText} olmalıdır (en çok iki ondalık, ör. 0,5).");
             case WarrantyMonths:
                 return TryInteger(text, out var months) && months is >= 0 and <= MaxWarrantyMonths
                     ? ParseResult.Ok(new(name, Integer: months))

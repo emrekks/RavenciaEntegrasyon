@@ -97,14 +97,15 @@ public sealed class ImportJobProcessor(
                 var matches = await MatchAsync(tenantId, session.ConnectionId, stagingRows.Select(row => row.Staging).ToList(), cancellationToken);
                 // A category or brand the apply step cannot use is shown on the row before the decision.
                 var previewCategories = await LeafCategoriesAsync(tenantId, stagingRows.Select(row => Value(row.Values, "category")), cancellationToken);
-                var previewBrands = await BrandsAsync(tenantId, stagingRows.Select(row => Value(row.Values, "brand")), cancellationToken);
+                var previewBrands = new PanelBrandByName(db, tenantId);
+                await previewBrands.PreloadAsync(stagingRows.Select(row => Value(row.Values, "brand")), cancellationToken);
                 foreach (var (staging, values) in stagingRows)
                 {
                     var match = matches[staging.Id];
                     var warnings = new List<string>();
                     if (Value(values, "category") is { } categoryName && previewCategories.Resolve(categoryName, out var categoryWarning) is null && categoryWarning is not null) warnings.Add(categoryWarning);
-                    if (Value(values, "brand") is { } brandName && Normalize(brandName) is { } brandKey && previewBrands.TryGetValue(brandKey, out var previewBrand) && !previewBrand.IsActive)
-                        warnings.Add($"\"{brandName}\" markası kapalı; ürün markasız oluşturulur.");
+                    if (Value(values, "brand") is { } brandName && (await previewBrands.FindAsync(brandName, cancellationToken)).SwitchedOff is not null)
+                        warnings.Add($"\"{brandName}\" markası kapalı; ürün markasız ve taslak olarak oluşturulur.");
                     db.ImportMatchCandidates.Add(new ImportMatchCandidate
                     {
                         Id = Guid.CreateVersion7(),
@@ -167,8 +168,18 @@ public sealed class ImportJobProcessor(
             // stored key form), brands and leaf categories named by the file, and the connection.
             var existingSkuKeys = await ExistingKeysAsync(tenantId, createRows.Select(row => Value(valuesByStaging[row.staging.Id], "sku")), barcode: false, cancellationToken);
             var existingBarcodeKeys = await ExistingKeysAsync(tenantId, createRows.Select(row => Value(valuesByStaging[row.staging.Id], "barcode")), barcode: true, cancellationToken);
-            var brands = await BrandsAsync(tenantId, createRows.Select(row => Value(valuesByStaging[row.staging.Id], "brand")), cancellationToken);
+            var brands = new PanelBrandByName(db, tenantId);
+            await brands.PreloadAsync(createRows.Select(row => Value(valuesByStaging[row.staging.Id], "brand")), cancellationToken);
             var categories = await LeafCategoriesAsync(tenantId, createRows.Select(row => Value(valuesByStaging[row.staging.Id], "category")), cancellationToken);
+            // A new product missing one of the editor's required fields is created as a draft (owner rule; ProductRequiredFields):
+            // kept in the panel, never sent, completed in the editor. The product is judged on every row the file gives it.
+            var draftGroups = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var group in createRows.GroupBy(row => GroupKey(valuesByStaging[row.staging.Id], row.staging.RowHash), StringComparer.Ordinal))
+            {
+                var groupRows = group.Select(row => valuesByStaging[row.staging.Id]).ToList();
+                var brandUsable = Value(groupRows[0], "brand") is { } groupBrand && PanelBrandByName.Key(groupBrand).Length > 0 && (await brands.FindAsync(groupBrand, cancellationToken)).SwitchedOff is null;
+                if (CreatesDraft(groupRows, brandUsable, categories.Resolve(Value(groupRows[0], "category")))) draftGroups.Add(group.Key);
+            }
             var connection = session.ConnectionId is Guid connectionId
                 ? await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken)
                 : null;
@@ -213,10 +224,9 @@ public sealed class ImportJobProcessor(
                     appliedSkus.Add(skuNormalized); if (barcodeNormalized is not null) appliedBarcodes.Add(barcodeNormalized);
 
                     var now = timeProvider.GetUtcNow();
-                    var listPrice = ParsePrice(Value(values, "listPrice"));
-                    var salePrice = ParsePrice(Value(values, "salePrice"));
-                    if (listPrice is decimal list && salePrice is decimal sale && list < sale) listPrice = sale;
-                    var groupKey = Normalize(Value(values, "variantGroupKey")) ?? row.staging.RowHash;
+                    var (listPrice, salePrice) = FilePrices(values);
+                    var groupKey = GroupKey(values, row.staging.RowHash);
+                    var status = draftGroups.Contains(groupKey) ? ProductStatus.Draft : ProductStatus.Active;
                     // The card's VAT is the file's own KDV column (the rate the offer below is priced with); a file
                     // without one leaves the card's VAT unknown, never the connection default or a guess.
                     var fileVatRate = FileVatRate(values);
@@ -228,12 +238,13 @@ public sealed class ImportJobProcessor(
                             TenantId = tenantId,
                             Title = Value(values, "title")!,
                             Description = Value(values, "description") ?? string.Empty,
-                            BrandId = Value(values, "brand") is { } brandName ? BrandFor(tenantId, brands, brandName, now)?.Id : null,
+                            BrandId = Value(values, "brand") is { } brandName ? (await brands.FindOrCreateAsync(brandName, now, cancellationToken)).Id : null,
                             CategoryId = categories.Resolve(Value(values, "category")),
                             DefaultListPrice = listPrice,
                             DefaultSalePrice = salePrice,
                             VatRate = fileVatRate,
                             VatInclusion = fileVatRate is null ? null : "INCLUDED",
+                            Status = status,
                             CreatedAt = now,
                             UpdatedAt = now
                         };
@@ -266,6 +277,7 @@ public sealed class ImportJobProcessor(
                         OptionSignature = VariantOptionSignature.Build(options, empty: "-"),
                         DefaultListPrice = listPrice,
                         DefaultSalePrice = salePrice,
+                        Status = status,
                         CreatedAt = now,
                         UpdatedAt = now
                     };
@@ -415,24 +427,30 @@ public sealed class ImportJobProcessor(
     private async Task<HashSet<string>> ExistingKeysAsync(Guid tenantId, IEnumerable<string?> values, bool barcode, CancellationToken cancellationToken) =>
         (await VariantsByKeyAsync(tenantId, values, barcode, cancellationToken)).Keys.ToHashSet(StringComparer.Ordinal);
 
-    private async Task<Dictionary<string, Brand>> BrandsAsync(Guid tenantId, IEnumerable<string?> names, CancellationToken cancellationToken)
+    // Whether the product the rows create misses one of the editor's required fields (ProductRequiredFields) and so is
+    // created as a draft. Product fields come from its first row (as the product is created from it), the codes, desi and
+    // prices from every row. The file has no warranty or delivery days: the card keeps no warranty (0) and the default
+    // days, both valid values.
+    internal static bool CreatesDraft(IReadOnlyList<IReadOnlyDictionary<string, string>> rows, bool brandUsable, Guid? categoryId)
     {
-        var keys = CatalogKeyNormalizer.LookupKeys(names);
-        var brands = keys.Length == 0 ? [] : await db.Brands.AsNoTracking().Where(x => x.TenantId == tenantId && keys.Contains(x.NormalizedName)).ToListAsync(cancellationToken);
-        return brands.OrderByDescending(x => x.IsActive).GroupBy(x => CatalogKeyNormalizer.Key(x.NormalizedName)).ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+        var (cardList, cardSale) = FilePrices(rows[0]);
+        var card = new ProductRequiredFields.Card(Value(rows[0], "title"), brandUsable ? Guid.AllBitsSet : null, categoryId, WarrantyGiven: true, DeliveryDaysGiven: true, cardList, cardSale,
+            [.. rows.Select(values => (Values: values, Prices: FilePrices(values)))
+                .Select(item => new ProductRequiredFields.Row(Value(item.Values, "sku"), Value(item.Values, "barcode"), Value(item.Values, "modelCode"),
+                    ImportedDesi.From(ParseDecimal(Value(item.Values, "desi"))), item.Prices.List, item.Prices.Sale))]);
+        return ProductRequiredFields.Missing(card).Count > 0;
     }
 
-    // A brand named by the file is reused when it exists and created otherwise. Like the marketplace
-    // import, a brand the user switched off is not revived: the product stays without a brand.
-    private Brand? BrandFor(Guid tenantId, Dictionary<string, Brand> brands, string name, DateTimeOffset now)
+    // The rows of one product: the file's variant group key, else the row on its own.
+    private static string GroupKey(IReadOnlyDictionary<string, string> values, string rowHash) => Normalize(Value(values, "variantGroupKey")) ?? rowHash;
+
+    // The row's list and sale price; a list price below the sale price is raised to it.
+    private static (decimal? List, decimal? Sale) FilePrices(IReadOnlyDictionary<string, string> values)
     {
-        var key = Normalize(name);
-        if (key is null) return null;
-        if (brands.TryGetValue(key, out var brand)) return brand.IsActive ? brand : null;
-        brand = new Brand { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = name.Trim()[..Math.Min(name.Trim().Length, 160)], NormalizedName = key, IsActive = true, CreatedAt = now, UpdatedAt = now, Version = 1 };
-        db.Brands.Add(brand);
-        brands[key] = brand;
-        return brand;
+        var listPrice = ParsePrice(Value(values, "listPrice"));
+        var salePrice = ParsePrice(Value(values, "salePrice"));
+        if (listPrice is decimal list && salePrice is decimal sale && list < sale) listPrice = sale;
+        return (listPrice, salePrice);
     }
 
     // Categories are a managed tree, so the file may only name an existing active leaf. Categories made
