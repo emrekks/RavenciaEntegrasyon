@@ -43,16 +43,17 @@
 /* Each card sits on its own layer (it lifts on hover), so a later card paints over an earlier one's panel: the card
    whose panel is open is raised above its neighbours. */
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-metric-tipped:is(:hover, :focus-visible, :has(:focus-visible)) { z-index: 3; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; display: none; min-width: 220px; padding: 8px 10px; background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 12px; box-shadow: var(--rv-shadow-popover, 0 8px 24px rgb(0 0 0 / 18%)); }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; display: none; box-sizing: border-box; width: max-content; min-width: 240px; max-width: calc(100vw - 24px); padding: 8px 10px; text-align: left; white-space: nowrap; background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 12px; box-shadow: var(--rv-shadow-popover, 0 8px 24px rgb(0 0 0 / 18%)); }
 /* Only the pointer or a keyboard focus opens a panel: a mouse click leaves focus on the card, and a panel kept open by
    it would stay under the next card the pointer moves onto. */
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tipped:is(:hover, :focus-visible, :has(:focus-visible)) .rr-metric-tip { display: grid; gap: 2px; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-r { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 28px; font-size: 13px; color: var(--rr-ink); }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-r { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: 12px; min-height: 28px; font-size: 13px; color: var(--rr-ink); }
 /* The cargo companies under the stores, in words, after a thin line (owner, 5 Nov 2026). */
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-sep { height: 1px; margin: 4px 0; background: var(--rr-line); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-r.rr-metric-tip-cargo { grid-template-columns: minmax(0, 1fr) auto; min-height: 24px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-cargo > span { color: var(--rr-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-r b { font-weight: 600; white-space: nowrap; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-r b { justify-self: end; font-weight: 600; white-space: nowrap; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-r > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-none { width: 16px; height: 11px; border: 1px dashed var(--rr-line-strong); border-radius: 0; }
 @media (max-width: 760px) {
   :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-open strong { font-size: 20px; }
@@ -112,5 +113,14 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder-pop .rr-reminder-error { margin: 0; color: var(--rr-bad); font-size: 12px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder-actions { display: flex; justify-content: space-between; gap: 8px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder-actions .rr-btn { min-height: 0; flex: 1 1 0; }
+/* Phones: the panel is a sheet on the bottom edge, lifted by --rr-kb (the keyboard's height, set from visualViewport in
+   ResendReminderEditor) so it stays above the keyboard. The card's hover lift (a translate) would turn it into the
+   containing block of a fixed box, so it is off while the panel is open. */
+@media (max-width: 760px) {
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article:has(.rr-reminder-pop) { translate: none; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder { position: static; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder-gear { position: absolute; top: 8px; right: 8px; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder-pop { position: fixed; z-index: 120; top: auto; right: 12px; bottom: calc(var(--rr-kb, 0px) + 12px); left: 12px; width: auto; max-width: none; padding: 16px; box-shadow: 0 -8px 32px rgb(0 0 0 / 28%); }
+}
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics:has(.rr-reminder-pop) { position: relative; z-index: 90; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article:has(.rr-reminder-pop) { z-index: 3; }
