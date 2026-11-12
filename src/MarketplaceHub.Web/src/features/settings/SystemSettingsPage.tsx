@@ -24,6 +24,8 @@ import '../../shared/view-tabs.css'
 import { formatIstanbul } from '../../shared/format-date'
 import { useDismissable } from '../../shared/hooks/useDismissable'
 import { useTabSlideInPlace } from '../../shared/tab-slide'
+import { copyText } from '../../shared/copy-text'
+import { assignableRoles, availableUserActions, isEmailAddress, reauthBody, userLockReason, userRoleHints, userRoleLabel, userRoleLabels, type ManagedUser, type ManagedUserList, type UserAction, type UserRole } from './user-management'
 
 type SecurityStatus = { totpState: string; recoveryCodesRemaining: number }
 type SecuritySession = { id: string; state: string; current: boolean; issuedAt: string; lastSeenAt: string; expiresAt: string }
@@ -32,7 +34,7 @@ type SessionConfirmation = { action: 'revoke' | 'revoke-others' | 'delete' | 'de
 
 // System settings as a section list (docs/tasarim-onerileri/sistem-ayarlari.html, option 2): the four former tabs are
 // split into ten small sections; the list on the left shows each section's state, the pane on the right shows one.
-type SettingsSectionKey = 'auth' | 'sessions' | 'alerts' | 'ai' | 'database' | 'sender' | 'dims' | 'designer' | 'read' | 'palette' | 'themes' | 'notify'
+type SettingsSectionKey = 'auth' | 'sessions' | 'users' | 'alerts' | 'ai' | 'database' | 'sender' | 'dims' | 'designer' | 'read' | 'palette' | 'themes' | 'notify'
 type ShippingSection = 'sender' | 'dims' | 'designer'
 type AppearanceSection = 'read' | 'palette' | 'themes' | 'notify'
 type SettingsIconName = 'shield' | 'truck' | 'device' | 'phone' | 'db' | 'user' | 'ruler' | 'layout' | 'type' | 'palette' | 'save' | 'bell' | 'lock' | 'info' | 'alert' | 'logout' | 'trash' | 'reset' | 'plus' | 'barcode' | 'sparkle' | 'copy' | 'back' | 'chev' | 'tag'
@@ -40,6 +42,7 @@ type SettingsGlyphState = 'done' | 'pending' | 'none' | 'bad'
 
 const settingsSectionGroups: Array<{ label: string; icon: SettingsIconName; items: Array<{ key: SettingsSectionKey; label: string; short?: string; icon: SettingsIconName }> }> = [
   { label: 'Güvenlik ve Oturumlar', icon: 'shield', items: [{ key: 'auth', label: 'Authenticator', icon: 'shield' }, { key: 'sessions', label: 'Oturumlar', icon: 'device' }, { key: 'alerts', label: 'Alarm Bildirimleri', short: 'Alarmlar', icon: 'bell' }] },
+  { label: 'Kullanıcılar', icon: 'user', items: [{ key: 'users', label: 'Kullanıcılar', icon: 'user' }] },
   { label: 'Veri', icon: 'db', items: [{ key: 'database', label: 'Veritabanı Temizliği', icon: 'db' }] },
   { label: 'Yapay Zekâ', icon: 'sparkle', items: [{ key: 'ai', label: 'Yapay Zekâ', icon: 'sparkle' }] },
   { label: 'Kargo Ayarları', icon: 'truck', items: [{ key: 'sender', label: 'Gönderici ve Yazdırma', short: 'Gönderici', icon: 'user' }, { key: 'dims', label: 'Etiket Ölçüleri', short: 'Ölçüler', icon: 'ruler' }, { key: 'designer', label: 'Etiket Tasarımı', short: 'Tasarım', icon: 'layout' }] },
@@ -532,6 +535,7 @@ export function SystemSettingsPage() {
             {closedSessions.length ? <><div className="ss-sess-sub">Kapalı <span className="ss-count">{closedSessions.length}</span></div>{closedSessions.map(sessionRow)}</> : null}
           </div>}</div>
         </>}
+        {section === 'users' && <UserManagementSection mfa={totpEnabled} />}
         {section === 'alerts' && <AlertEmailSettingsSection />}
         {section === 'ai' && <AiSettingsSection />}
         {section === 'database' && <SettingsDataReset forbidden={resetForbidden} groups={resetGroups} counts={resetView.data ? Object.fromEntries(resetView.data.groups.map(entry => [entry.key, entry.count])) : undefined} countsFailed={resetView.isError} picked={resetScopes} onToggle={toggleResetScopes} marketplaces={resetMarketplaces} marketplacePicked={marketplacePicked} onToggleMarketplaces={toggleMarketplaces} progress={marketplaceProgress} confirmation={resetConfirmation} onConfirmation={setResetConfirmation} busy={resetBusy} onConfirm={() => void resetOperationalData()} />}
@@ -1272,6 +1276,171 @@ function AlertEmailSettingsSection() {
       </>}
     </div>
     {saved && !forbidden ? bar : null}
+  </>
+}
+
+type UserDialog = { kind: 'add' } | { kind: 'manage'; userId: string }
+type OneTimePassword = { title: string; email: string | null; password: string }
+
+const userActionCopy: Record<UserAction, { label: string; hint: string; icon: SettingsIconName; confirm: string; danger?: boolean; warning?: string }> = {
+  role: { label: 'Rol Değiştir', hint: 'Bu çalışma alanındaki yetkisini değiştirir.', icon: 'user', confirm: 'Rolü Kaydet' },
+  'password-reset': { label: 'Şifre Sıfırla', hint: 'Tek kullanımlık yeni parola üretir; ilk girişte değiştirilir.', icon: 'lock', confirm: 'Şifreyi Sıfırla', danger: true, warning: 'Mevcut parolası geçersiz olur ve bütün oturumları kapanır. Yeni parola yalnız bir kez gösterilir.' },
+  'mfa-reset': { label: 'İki Adımlı Doğrulamayı Sıfırla', hint: 'Authenticator ve kurtarma kodlarını kaldırır.', icon: 'shield', confirm: 'Doğrulamayı Sıfırla', danger: true, warning: 'Authenticator ve kurtarma kodları silinir, bütün oturumları kapanır. Kullanıcı girişten sonra yeniden kurabilir.' },
+  sessions: { label: 'Oturumları Kapat', hint: 'Bu çalışma alanındaki açık oturumlarını sonlandırır.', icon: 'logout', confirm: 'Oturumları Kapat', danger: true, warning: 'Kullanıcının açık oturumları kapanır; yeniden giriş yapması gerekir.' },
+  disable: { label: 'Pasife Al', hint: 'Bu çalışma alanına girişini durdurur.', icon: 'logout', confirm: 'Pasife Al', danger: true, warning: 'Kullanıcı bu çalışma alanına giremez ve açık oturumları kapanır. Kayıtları silinmez; dilediğiniz an etkinleştirebilirsiniz.' },
+  enable: { label: 'Etkinleştir', hint: 'Bu çalışma alanına yeniden girebilir.', icon: 'reset', confirm: 'Etkinleştir' }
+}
+
+function userStatusTag(user: ManagedUser) {
+  if (!user.active) return <span className="ss-tag"><SettingsGlyph state="none" />Pasif</span>
+  if (user.lockedOut) return <span className="ss-tag"><SettingsGlyph state="bad" />Kilitli</span>
+  if (user.passwordChangePending) return <span className="ss-tag" title="İlk girişte parolasını değiştirecek"><SettingsGlyph state="pending" />Parola Bekliyor</span>
+  return <span className="ss-tag is-ink"><SettingsGlyph state="done" />Etkin</span>
+}
+
+// The caller's password, and with an authenticator on, its code: every change on this page asks for them again.
+function ReauthFields({ password, onPassword, factor, onFactor, mfa }: { password: string; onPassword: (value: string) => void; factor: string; onFactor: (value: string) => void; mfa: boolean }) {
+  return <div className={mfa ? 'ss-pair' : 'ss-stack'}>
+    <label className="ss-fld"><small>Parolanız</small><input className="ss-in" type="password" autoComplete="current-password" required value={password} onChange={event => onPassword(event.target.value)} placeholder="••••••••" /></label>
+    {mfa && <label className="ss-fld"><small>Doğrulama Kodu<FieldHelp label="Doğrulama Kodu">Authenticator uygulamanızdaki 6 haneli kod; telefonunuz yanınızda değilse bir kurtarma kodu.</FieldHelp></small><input className="ss-in" inputMode="text" autoComplete="one-time-code" required value={factor} maxLength={20} onChange={event => onFactor(event.target.value)} placeholder="123456" /></label>}
+  </div>
+}
+
+// Ayarlar › Kullanıcılar: owners and administrators list, add and change the workspace's users (user-management.ts).
+function UserManagementSection({ mfa }: { mfa: boolean }) {
+  const client = useQueryClient()
+  const query = useQuery({ queryKey: ['managed-users'], queryFn: () => hubApi<ManagedUserList>('/settings/users'), retry: false })
+  const forbidden = query.error instanceof ApiRequestError && query.error.status === 403
+  const [dialog, setDialog] = useState<UserDialog | null>(null)
+  const [step, setStep] = useState<UserAction | null>(null)
+  const [password, setPassword] = useState('')
+  const [factor, setFactor] = useState('')
+  const [role, setRole] = useState<UserRole>('OPERATIONS')
+  const [email, setEmail] = useState('')
+  const [displayName, setDisplayName] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [oneTime, setOneTime] = useState<OneTimePassword | null>(null)
+  const [notice, setNotice] = useState<SettingsNoticeState | null>(null)
+  const list = query.data
+  const actorRole = list?.currentRole ?? ''
+  const roles = assignableRoles(actorRole)
+  const managed = dialog?.kind === 'manage' ? list?.items.find(user => user.id === dialog.userId) ?? null : null
+
+  function open(next: UserDialog) {
+    setDialog(next); setStep(null); setPassword(''); setFactor(''); setError('')
+    if (next.kind === 'add') { setEmail(''); setDisplayName(''); setRole('OPERATIONS') }
+  }
+  function close() { if (!busy) { setDialog(null); setStep(null); setPassword(''); setFactor(''); setError('') } }
+  function chooseStep(action: UserAction | null) {
+    setStep(action); setPassword(''); setFactor(''); setError('')
+    if (action === 'role' && managed) setRole(managed.role)
+  }
+
+  async function submitAdd(event: FormEvent) {
+    event.preventDefault()
+    if (!isEmailAddress(email)) { setError('Geçerli bir e-posta adresi girin.'); return }
+    setBusy(true); setError('')
+    try {
+      const result = await hubApi<{ userId: string; existingAccount: boolean; temporaryPassword: string | null }>('/settings/users', { method: 'POST', body: JSON.stringify({ email: email.trim(), displayName: displayName.trim(), role, ...reauthBody(password, factor) }) })
+      await client.invalidateQueries({ queryKey: ['managed-users'] })
+      setDialog(null)
+      if (result.temporaryPassword) setOneTime({ title: 'Kullanıcı Eklendi', email: email.trim(), password: result.temporaryPassword })
+      else setNotice({ kind: 'success', message: `${email.trim()} hesabı bu çalışma alanına ${userRoleLabel(role)} olarak eklendi; mevcut parolasıyla girer.` })
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Kullanıcı eklenemedi.')
+    } finally { setBusy(false) }
+  }
+
+  async function submitAction(event: FormEvent) {
+    event.preventDefault()
+    if (!managed || !step) return
+    setBusy(true); setError('')
+    const reauth = reauthBody(password, factor)
+    const base = `/settings/users/${managed.id}`
+    try {
+      if (step === 'role') await hubApi(`${base}/role`, { method: 'PUT', body: JSON.stringify({ role, ...reauth }) })
+      else if (step === 'disable' || step === 'enable') await hubApi(`${base}/status`, { method: 'PUT', body: JSON.stringify({ active: step === 'enable', ...reauth }) })
+      else if (step === 'mfa-reset') await hubApi(`${base}/mfa-reset`, { method: 'POST', body: JSON.stringify(reauth) })
+      else if (step === 'sessions') await hubApi(`${base}/sessions/revoke`, { method: 'POST', body: JSON.stringify(reauth) })
+      else {
+        const result = await hubApi<{ temporaryPassword: string }>(`${base}/password-reset`, { method: 'POST', body: JSON.stringify(reauth) })
+        setOneTime({ title: 'Şifre Sıfırlandı', email: managed.email, password: result.temporaryPassword })
+      }
+      await client.invalidateQueries({ queryKey: ['managed-users'] })
+      const done: Record<UserAction, string> = { role: `${managed.displayName} artık ${userRoleLabel(role)}.`, 'password-reset': '', 'mfa-reset': `${managed.displayName} için iki adımlı doğrulama sıfırlandı.`, sessions: `${managed.displayName} için açık oturumlar kapatıldı.`, disable: `${managed.displayName} pasife alındı.`, enable: `${managed.displayName} etkinleştirildi.` }
+      if (done[step]) setNotice({ kind: 'success', message: done[step] })
+      setDialog(null); setStep(null); setPassword(''); setFactor('')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'İşlem tamamlanamadı.')
+    } finally { setBusy(false) }
+  }
+
+  async function copyOneTime() {
+    if (!oneTime) return
+    setNotice(await copyText(oneTime.password) ? { kind: 'success', message: 'Tek kullanımlık parola panoya kopyalandı.' } : { kind: 'error', message: 'Parola kopyalanamadı; elle not alın.' })
+  }
+
+  const actionCopy = step ? userActionCopy[step] : null
+  const lockReason = managed ? userLockReason(managed, actorRole) : null
+  const actions = managed ? availableUserActions(managed, actorRole) : []
+  const activeCount = list?.items.filter(user => user.active).length ?? 0
+
+  return <>
+    {notice && <SettingsNotice {...notice} />}
+    <SettingsPaneHead section="users" description="Bu çalışma alanının kullanıcıları. Yalnız hesap sahibi ve yöneticiler görür; her değişiklik parolanızla onaylanır ve kayda geçer." actions={list && !forbidden ? <button type="button" className="ss-btn is-primary" onClick={() => open({ kind: 'add' })}><SettingsIcon name="plus" />Kullanıcı Ekle</button> : undefined} />
+    {query.isPending ? <div className="ss-body"><LoadingState>Kullanıcılar yükleniyor…</LoadingState></div>
+      : forbidden ? <div className="ss-body"><div className="ss-callout" role="alert"><SettingsIcon name="lock" /><span>Kullanıcıları yalnız hesap sahibi ve yöneticiler görür ve yönetir.</span></div></div>
+        : query.isError || !list ? <div className="ss-body"><div className="ss-callout is-danger" role="alert"><SettingsIcon name="alert" /><span>Kullanıcılar alınamadı.</span></div></div>
+          : <div className="ss-body is-flush"><div className="ss-sess-sub">Etkin <span className="ss-count">{activeCount}</span>{list.items.length > activeCount ? <> · Pasif <span className="ss-count">{list.items.length - activeCount}</span></> : null}</div>
+            <table className="ss-users">
+              <thead><tr><th scope="col">Ad Soyad ve E-posta</th><th scope="col">Rol</th><th scope="col">2FA</th><th scope="col">Son Giriş</th><th scope="col">Durum</th><th scope="col" aria-label="İşlemler" /></tr></thead>
+              <tbody>{list.items.map(user => <tr key={user.id} className={user.active ? undefined : 'is-off'}>
+                <td className="ss-users-name"><span><b title={user.displayName}>{user.displayName}</b>{user.self && <span className="ss-tag is-ink">Siz</span>}</span><small title={user.email ?? undefined}>{user.email ?? '—'}</small></td>
+                <td data-label="Rol">{userRoleLabel(user.role)}</td>
+                <td data-label="2FA"><span className={`ss-tag${user.mfaEnabled ? ' is-ink' : ''}`}><SettingsGlyph state={user.mfaEnabled ? 'done' : 'none'} />{user.mfaEnabled ? 'Açık' : 'Kapalı'}</span></td>
+                <td data-label="Son Giriş" className="is-num">{user.lastLoginAt ? formatSettingsDate(user.lastLoginAt) : 'Hiç Girmedi'}</td>
+                <td data-label="Durum">{userStatusTag(user)}</td>
+                <td className="ss-users-act"><button type="button" className="ss-btn is-xs" onClick={() => open({ kind: 'manage', userId: user.id })} aria-label={`${user.displayName} kullanıcısını yönet`}>Yönet</button></td>
+              </tr>)}</tbody>
+            </table>
+          </div>}
+
+    <Modal open={dialog?.kind === 'add'} title="Kullanıcı Ekle" hint="Panel e-posta daveti göndermez: yeni hesaba tek kullanımlık bir parola üretilir, yalnız size bir kez gösterilir. Kullanıcı ilk girişte kendi parolasını belirler." className="ss-modal is-md" onClose={close} footer={<><button type="button" className="ss-btn" disabled={busy} onClick={close}>Vazgeç</button><button type="submit" form="ss-user-add" className="ss-btn is-primary" disabled={busy}><SettingsIcon name="plus" />{busy ? 'Ekleniyor…' : 'Kullanıcı Ekle'}</button></>}>
+      <form id="ss-user-add" className="ss-stack" onSubmit={event => void submitAdd(event)}>
+        <div className="ss-pair">
+          <label className="ss-fld"><small>Ad Soyad</small><input className="ss-in" required maxLength={160} autoComplete="off" value={displayName} onChange={event => setDisplayName(event.target.value)} data-autofocus /></label>
+          <label className="ss-fld"><small>E-posta</small><input className="ss-in" type="email" inputMode="email" required maxLength={256} autoComplete="off" spellCheck={false} value={email} onChange={event => setEmail(event.target.value)} placeholder="ad@ravencia.com" /></label>
+        </div>
+        <div className="ss-fld"><small>Rol</small><PanelSelect ariaLabel="Rol" value={role} onChange={setRole} options={roles.map(value => ({ value, label: userRoleLabels[value] }))} /><span className="ss-help">{userRoleHints[role]}</span></div>
+        <ReauthFields password={password} onPassword={setPassword} factor={factor} onFactor={setFactor} mfa={mfa} />
+        {error && <span className="ss-ferr" role="alert"><SettingsGlyph state="bad" />{error}</span>}
+      </form>
+    </Modal>
+
+    <Modal open={dialog?.kind === 'manage' && !!managed} title={managed ? managed.displayName : 'Kullanıcı'} description={managed ? `${managed.email ?? ''} · ${userRoleLabel(managed.role)}` : undefined} className="ss-modal is-md" onClose={close}
+      footer={step ? <><button type="button" className="ss-btn" disabled={busy} onClick={() => chooseStep(null)}><SettingsIcon name="back" />Geri</button><button type="submit" form="ss-user-action" className={`ss-btn${actionCopy?.danger ? ' is-danger is-solid' : ' is-primary'}`} disabled={busy || (step === 'role' && role === managed?.role)}>{busy ? 'İşlem Yapılıyor…' : actionCopy?.confirm}</button></> : <button type="button" className="ss-btn" onClick={close}>Kapat</button>}>
+      {managed && !step && <>
+        <div className="ss-sum">
+          <div><SettingsGlyph state={managed.mfaEnabled ? 'done' : 'none'} /><span>İki Adımlı Doğrulama</span><span className="ss-sum-r">{managed.mfaEnabled ? 'Açık' : 'Kapalı'}</span></div>
+          <div><SettingsGlyph state={managed.openSessions ? 'done' : 'none'} /><span>Açık Oturum</span><span className="ss-sum-r">{managed.openSessions}</span></div>
+          <div><SettingsGlyph state={managed.lastLoginAt ? 'done' : 'none'} /><span>Son Giriş</span><span className="ss-sum-r">{managed.lastLoginAt ? formatSettingsDate(managed.lastLoginAt) : 'Hiç Girmedi'}</span></div>
+        </div>
+        {lockReason ? <div className="ss-callout" role="note"><SettingsIcon name="lock" /><span>{lockReason}</span></div>
+          : <div className="ss-users-actions" role="group" aria-label="Kullanıcı işlemleri">{actions.map(action => <button type="button" key={action} className={`ss-users-action${userActionCopy[action].danger ? ' is-danger' : ''}`} onClick={() => chooseStep(action)}><span className="ss-tile is-sm"><SettingsIcon name={userActionCopy[action].icon} /></span><span><b>{userActionCopy[action].label}</b><small>{userActionCopy[action].hint}</small></span><SettingsIcon name="chev" /></button>)}</div>}
+      </>}
+      {managed && step && actionCopy && <form id="ss-user-action" className="ss-stack" onSubmit={event => void submitAction(event)}>
+        <h3 className="ss-users-step">{actionCopy.label}</h3>
+        {step === 'role' && <div className="ss-fld"><small>Yeni Rol</small><PanelSelect ariaLabel="Yeni Rol" value={role} onChange={setRole} options={roles.map(value => ({ value, label: userRoleLabels[value] }))} /><span className="ss-help">{userRoleHints[role]}</span></div>}
+        {actionCopy.warning && <div className="ss-callout is-warn"><SettingsIcon name="alert" /><span>{actionCopy.warning}</span></div>}
+        <ReauthFields password={password} onPassword={setPassword} factor={factor} onFactor={setFactor} mfa={mfa} />
+        {error && <span className="ss-ferr" role="alert"><SettingsGlyph state="bad" />{error}</span>}
+      </form>}
+    </Modal>
+
+    <Modal open={!!oneTime} title={oneTime?.title ?? ''} description={oneTime?.email ?? undefined} className="ss-modal is-sm" onClose={() => setOneTime(null)} footer={<><button type="button" className="ss-btn is-quiet" onClick={() => void copyOneTime()}><SettingsIcon name="copy" />Kopyala</button><span className="ss-modal-note" /><button type="button" className="ss-btn is-primary" onClick={() => setOneTime(null)}>Parolayı Not Aldım</button></>}>
+      {oneTime && <><div className="ss-codes ss-users-otp"><code>{oneTime.password}</code></div><div className="ss-callout is-warn"><SettingsIcon name="alert" /><span><b>Bu parola yalnız şimdi gösterilir.</b> Kullanıcıya güvenli bir yoldan iletin; ilk girişte kendi parolasını belirlemesi istenir.</span></div></>}
+    </Modal>
   </>
 }
 

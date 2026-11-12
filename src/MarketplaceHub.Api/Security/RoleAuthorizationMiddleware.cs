@@ -79,6 +79,8 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
             "settings" when last == "factory-reset" => ElevatedRoles,
             // Ayarlar › Yapay Zekâ (the Claude key's state, skills, usage and cost) is the owner's and administrators'.
             "settings" when segments.Length > 3 && segments[3].Equals("ai", StringComparison.OrdinalIgnoreCase) => ElevatedRoles,
+            // Ayarlar › Kullanıcılar (who has an account, their roles and second factors) is the owner's and administrators'.
+            "settings" when segments.Length > 3 && segments[3].Equals("users", StringComparison.OrdinalIgnoreCase) => ElevatedRoles,
             _ => null
         };
     }

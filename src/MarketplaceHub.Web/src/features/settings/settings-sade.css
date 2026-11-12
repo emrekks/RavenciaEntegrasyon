@@ -604,3 +604,40 @@
 .ss-page .ss-dr-ask b { color: var(--rv-color-ink); font-weight: 600; user-select: all; }
 .ss-page .ss-dr-ask .ui-icon { color: var(--rv-color-accent); }
 @media (max-width: 760px) { .ss-page .ss-dr-ask { white-space: normal; } }
+
+/* Ayarlar › Kullanıcılar: one row per user; on phones each row is a small card (the column name before its value). */
+.ss-page .ss-users { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ss-page .ss-users th, .ss-page .ss-users td { height: 52px; padding: 8px 12px; text-align: left; vertical-align: middle; border-bottom: 1px solid var(--rv-color-border); white-space: nowrap; }
+.ss-page .ss-users th:first-child, .ss-page .ss-users td:first-child { padding-left: 20px; }
+.ss-page .ss-users th:last-child, .ss-page .ss-users td:last-child { padding-right: 20px; text-align: right; }
+.ss-page .ss-users thead th { height: 36px; color: var(--rv-color-muted); font-size: 12px; font-weight: 600; background: var(--rv-color-surface-soft); }
+.ss-page .ss-users tbody tr:last-child td { border-bottom: 0; }
+.ss-page .ss-users tr.is-off td:not(.ss-users-act) { color: var(--rv-color-muted); }
+.ss-page .ss-users .is-num { font-variant-numeric: tabular-nums; }
+.ss-page .ss-users-name > span { display: flex; align-items: center; gap: 8px; }
+.ss-page .ss-users-name b { min-width: 0; max-width: 320px; overflow: hidden; font-weight: 600; text-overflow: ellipsis; }
+.ss-page .ss-users-name small { display: block; max-width: 360px; margin-top: 2px; overflow: hidden; color: var(--rv-color-muted); font-size: 12px; text-overflow: ellipsis; }
+.ss-page .ss-users-actions { display: grid; overflow: hidden; border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.app-shell.stitch-shell main .ss-page .ss-users-action { display: grid; grid-template-columns: 28px minmax(0, 1fr) 16px; align-items: center; gap: 12px; min-height: 0; width: 100%; padding: 10px 14px; color: var(--rv-color-ink); text-align: left; background: var(--rv-color-surface); border: 0; border-top: 1px solid var(--rv-color-border); border-radius: 0; cursor: pointer; font: inherit; }
+.app-shell.stitch-shell main .ss-page .ss-users-action:first-child { border-top: 0; }
+.app-shell.stitch-shell main .ss-page .ss-users-action:hover { background: var(--rv-color-surface-raised); }
+.ss-page .ss-users-action b { display: block; font-size: 14px; font-weight: 600; }
+.ss-page .ss-users-action small { display: block; color: var(--rv-color-muted); font-size: 12px; }
+.ss-page .ss-users-action > .ss-icon { color: var(--rv-color-subtle); transform: rotate(-90deg); }
+.ss-page .ss-users-action.is-danger .ss-tile { color: var(--rv-color-danger); }
+.ss-page .ss-users-step { font-size: 15px; font-weight: 600; }
+.ss-page .ss-users-otp { grid-template-columns: minmax(0, 1fr); }
+.ss-page .ss-users-otp code { font-size: 16px; user-select: all; }
+/* Below 1100px the six columns no longer fit beside the menu: each user becomes a small card. */
+@media (max-width: 1100px) {
+  .ss-page .ss-users thead { display: none; }
+  .ss-page .ss-users, .ss-page .ss-users tbody { display: block; min-width: 0; }
+  .ss-page .ss-users tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; padding: 12px 16px; border-bottom: 1px solid var(--rv-color-border); }
+  .ss-page .ss-users tbody tr:last-child { border-bottom: 0; }
+  .ss-page .ss-users td, .ss-page .ss-users td:first-child, .ss-page .ss-users td:last-child { display: flex; align-items: center; gap: 8px; height: auto; min-width: 0; padding: 0; border: 0; text-align: left; white-space: normal; }
+  .ss-page .ss-users td[data-label]::before { content: attr(data-label); flex: none; width: 76px; color: var(--rv-color-subtle); font-size: 12px; font-weight: 500; }
+  .ss-page .ss-users td.ss-users-name { display: block; grid-column: 1; }
+  .ss-page .ss-users td.ss-users-act { grid-column: 2; grid-row: 1; align-self: start; justify-content: flex-end; }
+  .ss-page .ss-users-name b, .ss-page .ss-users-name small { max-width: none; white-space: normal; overflow-wrap: anywhere; }
+  .ss-page .ss-users td:not(.ss-users-name, .ss-users-act) { grid-column: 1 / -1; }
+}

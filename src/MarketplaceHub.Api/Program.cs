@@ -156,6 +156,7 @@ app.MapInvoicingEndpoints();
 app.MapSettingsEndpoints();
 app.MapAlertEmailEndpoints();
 app.MapAiEndpoints();
+app.MapUserManagementEndpoints();
 app.MapHub<OperationsHub>("/hubs/operations");
 app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
