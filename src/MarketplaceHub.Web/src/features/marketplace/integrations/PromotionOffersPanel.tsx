@@ -149,7 +149,8 @@ export function PromotionOffersPanel({ connectionId, kind }: { connectionId: str
     <div className="cs-sec-head"><h3 id={`promotion-${kind}-title`}>{promotionTitles[kind]}<TitleHint label={promotionTitles[kind]}>{promotionHelp[kind]} Kargo, hizmet bedeli ve stopaj ürün bazında bilinmediği için düşülmez; pazaryerine hiçbir şey gönderilmez.</TitleHint></h3></div>
     <div className={`commission-dropzone${dragging ? ' is-dragging' : ''}`} onDragOver={event => { event.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)} onDrop={onDrop}>
       <strong>{upload.isPending ? 'Dosya okunuyor…' : `${promotionTitles[kind]} dosyasını buraya bırakın`}</strong>
-      <span>Trendyol satıcı panelinden indirilen .xlsx dosyası · en fazla 10 MiB · yeni dosya öncekinin yerine geçer</span>
+      <span>Trendyol satıcı panelinden indirilen .xlsx dosyası · en fazla 10 MiB</span>
+      <small className="commission-validity-note">Yeni dosya yüklenince önceki dosya ve satırları silinir.</small>
       <button type="button" className="secondary" disabled={upload.isPending} onClick={() => input.current?.click()}>Dosya Seç</button>
       <input ref={input} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onChange={event => { choose(event.target.files?.[0]); event.target.value = '' }} />
     </div>
