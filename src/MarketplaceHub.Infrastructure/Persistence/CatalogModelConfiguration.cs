@@ -162,6 +162,7 @@ internal static class CatalogModelConfiguration
         });
         builder.Entity<CatalogMapping>().UseTpcMappingStrategy();
         ConfigureMapping<CategoryMapping>(builder, "category_mappings"); ConfigureMapping<BrandMapping>(builder, "brand_mappings");
+        builder.Entity<BrandMapping>().Property(x => x.Source).HasMaxLength(16).HasDefaultValue(MappingSources.Manual);
         ConfigureAttributeMapping(builder); ConfigureAttributeValueMapping(builder);
         builder.Entity<MarketplaceProductLink>(entity =>
         {

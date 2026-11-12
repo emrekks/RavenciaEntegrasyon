@@ -228,13 +228,20 @@ purpose (`TurkeyTime.cs`).
   `Tarife Seçimi` ("3 Günlük Fiyat", "4 Günlük Fiyat", "7 Günlük Fiyat", "Trendyol Satış Fiyatı"): one price per row,
   so a product priced alike in both periods is "7 Günlük Fiyat" (`TrendyolTariffWorkbook`). A file uploaded before
   31 Oct 2026 03:02 kept only its first period and not the file itself; uploading the same file again adds the second.
-- Catalog import and brands (owner decision 28 Oct 2026; report item 19, 5 Nov 2026): a listing carries `brandId` and
-  `brand`; the import never looks a panel brand up by name, never opens one and never writes a brand mapping. The
-  product takes the panel brand whose VERIFIED mapping on the connection points at that `brandId` (exactly one active
-  brand); otherwise a new product has no brand, an existing one keeps its own, and the brand is listed as unmapped
-  (BRAND_MAPPING_MISSING issue, `GET /reference-data/brands/unmapped`, Marka Eşleme card 2). The import no longer
-  syncs the brand list itself. It does not change the panel product's or variant's status either; the listing's sale
-  state stays on its link (`SaleState`) and offer. Source: `MarketplaceJobProcessor.MappedImportBrandId`.
+- Catalog import and brands (owner decision 12 Nov 2026, replacing the 28 Oct rule): a listing carries `brand.id` and
+  `brand.name` (`TrendyolJsonMapper.ProductSnapshot`), and the import maps it like the category: the brand mapping on
+  the connection for that id (re-verified if it was not VERIFIED); else the panel brand with the same catalog key
+  (`CatalogKeyNormalizer`), mapped now; else a new panel brand under the listing's name, mapped now (VERIFIED,
+  `brand_mappings.Source = IMPORT`, SnapshotId = the current BRANDS snapshot, or empty when none was read). No
+  marketplace call is made for it (no per-brand lookup; the list is synced from the mapping page only). Left for the
+  user (BRAND_MAPPING_MISSING issue, `GET /reference-data/brands/unmapped`, Marka Eşleme card 2): a mapping whose panel
+  brand is switched off, a brand id mapped to two panel brands, a same-named panel brand that is switched off (product
+  without brand) or already mapped to another id on the connection (product takes it, no mapping written). Applied in
+  full scans and "Yeni Ürünleri Aktar" for products they write; a run that only adds sizes to a linked card reads an
+  existing mapping and writes nothing; the focused price/stock path and Ürün Eşleme never touch brands. An existing
+  product the run preserves (local edits, Mevcut Ürün Bilgilerini Güncelle off) keeps its brand. It does not change the
+  panel product's or variant's status either; the listing's sale state stays on its link (`SaleState`) and offer.
+  Source: `MarketplaceJobProcessor.ImportBrandId`, `ImportedBrandRule`.
 - Product and reference pages: no `content` is empty only while the page counts nothing; a page that counts elements
   (totalElements > 0) without the list, or a `content` that is not a list, is a contract error (before 6 Nov 2026 it
   ended the catalog scan). Finance pages the same (`TrendyolJsonMapper.Content`, `TrendyolFinanceMapper.Page`).

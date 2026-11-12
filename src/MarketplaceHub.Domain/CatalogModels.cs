@@ -263,7 +263,12 @@ public abstract class CatalogMapping
 }
 
 public sealed class CategoryMapping : CatalogMapping;
-public sealed class BrandMapping : CatalogMapping;
+public sealed class BrandMapping : CatalogMapping
+{
+    // MANUAL: saved by a user (mapping page or brand backup); IMPORT: written by a product import that met the brand
+    // (owner decision 12 Nov 2026, MarketplaceJobProcessor.ImportBrandId).
+    public string Source { get; set; } = MappingSources.Manual;
+}
 public sealed class AttributeMapping : CatalogMapping
 {
     // MANUAL: saved by a user (or by the import); TEMPLATE: filled from the connection-wide template.
@@ -279,6 +284,7 @@ public static class MappingSources
 {
     public const string Manual = "MANUAL";
     public const string Template = "TEMPLATE";
+    public const string Import = "IMPORT";
 }
 
 // Connection-wide decision behind the category-scoped attribute mappings: marketplace attribute

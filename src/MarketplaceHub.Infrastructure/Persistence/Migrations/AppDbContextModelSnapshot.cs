@@ -7291,6 +7291,13 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                 {
                     b.HasBaseType("MarketplaceHub.Domain.CatalogMapping");
 
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("MANUAL");
+
                     b.HasIndex("TenantId", "ConnectionId", "LocalId", "ScopeExternalId")
                         .IsUnique();
 

@@ -6607,8 +6607,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 ProductImportProgressLabel(totalProducts, receivedProducts, mappingOnly),
                 cancellationToken);
 
-        // The import reads the brand from the user's own brand mappings only (ImportedBrandRule): it needs no brand
-        // list of its own and maps nothing, so the brand list is synced from the mapping page alone. The calls below
+        // The import maps the listing's brand from what the listing carries (ImportBrandId, ImportedBrandRule): it needs
+        // no brand list of its own and calls no marketplace for it, so the brand list is synced from the mapping page
+        // alone. The calls below
         // intentionally happen after remote product paging so a cold reference cache cannot hide product-read progress.
         if (jobId is { } categoryReferenceJob)
             await UpdateProductSyncProgressAsync(
@@ -6772,7 +6773,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                         : await EnsureCategoryAttributeContext(tenantId, connectionId, categoryReferences, snapshot, categoryItems, importedAttributeLibrary, categoryContexts, correlationId, cancellationToken);
                     productUnaddedSizeCount = 0;
                     productImportedNewVariantCount = 0;
-                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify || isHepsiburada || flatCatalog, preferBarcode: isShopify, matchBySku: isN11, onlyExistingVariants: existingOnly && isShopify, updateExistingProducts: updateExistingProducts, overwriteLocalChanges: ProductImportMergePolicy.OverwriteLocalChanges(updateExistingProducts, singleLookup, existingOnly, isShopify || isHepsiburada || flatCatalog, fullScanRequested: fullScan && updateExistingProductsRequested), updatePrices: updatePrices, updateStock: updateStock, isHepsiburada: isHepsiburada, observedPlatformName: isPazarama ? "Pazarama" : isPttAvm ? "PttAVM" : null, createdAt: CatalogImportOrdering.RemoteCreatedAt(snapshot, catalogOrderStamp) ?? catalogOrderStamp.AddMilliseconds(-catalogOrderPosition++), allowNewProduct: !existingOnly, onlyAddExternalVariantIds: newOnlyAddIds);
+                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify || isHepsiburada || flatCatalog, preferBarcode: isShopify, matchBySku: isN11, onlyExistingVariants: existingOnly && isShopify, updateExistingProducts: updateExistingProducts, overwriteLocalChanges: ProductImportMergePolicy.OverwriteLocalChanges(updateExistingProducts, singleLookup, existingOnly, isShopify || isHepsiburada || flatCatalog, fullScanRequested: fullScan && updateExistingProductsRequested), updatePrices: updatePrices, updateStock: updateStock, isHepsiburada: isHepsiburada, observedPlatformName: isPazarama ? "Pazarama" : isPttAvm ? "PttAVM" : null, createdAt: CatalogImportOrdering.RemoteCreatedAt(snapshot, catalogOrderStamp) ?? catalogOrderStamp.AddMilliseconds(-catalogOrderPosition++), allowNewProduct: !existingOnly, onlyAddExternalVariantIds: newOnlyAddIds, brandMappedByExternalId: ConnectionReferencePlan.SupportsBrands(connection.PlatformCode));
                     existingProductExternalIds?.Add(snapshot.ExternalProductId);
                     if (existingVariantExternalIds is not null)
                         foreach (var variant in snapshot.Variants)
@@ -8274,15 +8275,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return true;
     }
 
-    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken, bool saveChanges = true, bool onlyNewVariants = false, bool observeOnly = false, bool preferBarcode = false, bool onlyExistingVariants = false, bool updateExistingProducts = true, bool overwriteLocalChanges = false, bool updatePrices = false, bool updateStock = false, bool isHepsiburada = false, bool matchBySku = false, string? observedPlatformName = null, DateTimeOffset? createdAt = null, bool allowNewProduct = true, IReadOnlySet<string>? onlyAddExternalVariantIds = null)
+    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken, bool saveChanges = true, bool onlyNewVariants = false, bool observeOnly = false, bool preferBarcode = false, bool onlyExistingVariants = false, bool updateExistingProducts = true, bool overwriteLocalChanges = false, bool updatePrices = false, bool updateStock = false, bool isHepsiburada = false, bool matchBySku = false, string? observedPlatformName = null, DateTimeOffset? createdAt = null, bool allowNewProduct = true, IReadOnlySet<string>? onlyAddExternalVariantIds = null, bool brandMappedByExternalId = false)
     {
         var now = timeProvider.GetUtcNow();
         var externalProductId = Short(snapshot.ExternalProductId, 256);
         // New sizes added to a card the panel already links ("Yeni Ürünleri Aktar"): nothing of the card changes.
         var addOnly = onlyNewVariants && !observeOnly;
-        // The panel brand the user's own mapping names for the listing's brand (report item 19); the import never looks
-        // a panel brand up by name, opens one or writes a mapping. A brand nobody mapped is listed for the user.
-        var mappedBrandId = observeOnly ? null : await MappedImportBrandId(tenantId, connectionId, snapshot, observedPlatformName ?? "Trendyol", cancellationToken);
+        // The listing's brand is mapped like its category (owner decision 12 Nov 2026, ImportBrandId): the mapping on
+        // this connection, else the panel brand of the same name (mapped now), else a new panel brand (mapped now).
+        // An observe-only read (Hepsiburada, Shopify, n11, Pazarama, PTT AVM) only gives a brand to a product it opens,
+        // so its brand is settled where the product is written; a run that adds sizes to a linked card only reads it.
+        var brandPlatformName = observedPlatformName ?? (isHepsiburada ? "Hepsiburada" : matchBySku ? "N11" : observeOnly ? "Shopify" : "Trendyol");
+        var mappedBrandId = observeOnly ? null : await ImportBrandId(tenantId, connectionId, snapshot, brandPlatformName, brandMappedByExternalId, create: !addOnly, cancellationToken);
         // Keep the import contract version in the hash. This invalidates older
         // snapshots after changing option-role or brand-mapping interpretation,
         // so catalog records receive the corrected local relationships on the
@@ -8580,6 +8584,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
         if (!preserveLocal && !onlyNewVariants)
         {
+            // An observe-only read writes only a product it opens (an existing one is preserved above), so its brand
+            // is mapped here, for that product alone.
+            if (observeOnly && isNewProduct)
+                mappedBrandId = await ImportBrandId(tenantId, connectionId, snapshot, brandPlatformName, brandMappedByExternalId, create: true, cancellationToken);
             product.BrandId = ImportedBrandRule.NextProductBrand(isNewProduct, product.BrandId, mappedBrandId);
             product.CategoryId = category?.Id;
         }
@@ -9114,20 +9122,93 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return actualUrls.SequenceEqual(expectedUrls, StringComparer.OrdinalIgnoreCase);
     }
 
-    // The panel brand the user mapped to the listing's marketplace brand on this connection, read in reverse; exactly
-    // one active panel brand or none. A listing brand nobody mapped is recorded once per brand for the mapping page.
-    private async Task<Guid?> MappedImportBrandId(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, string platformName, CancellationToken cancellationToken)
+    // The panel brand a product import gives the listing's brand (owner decision 12 Nov 2026), the way EnsureMappedCategory
+    // settles its category, from what the listing carries alone (no marketplace call):
+    //   1. the brand mapping on this connection for the listing's brand id (re-verified when it was not VERIFIED);
+    //   2. else the panel brand with the same catalog key (CatalogKeyNormalizer, as categories), mapped now;
+    //   3. else a new panel brand under the listing's name, mapped now (VERIFIED, Source IMPORT).
+    // A mapping is written only where the marketplace has a brand list and the listing carries the brand's id
+    // (byExternalId: Trendyol brand.id). Hepsiburada, n11, Pazarama, PTT AVM and Shopify listings carry a brand name only
+    // (or a vendor with no list behind it), so for them the brand is matched by name in the panel and no mapping is made.
+    // A panel brand the user switched off is not revived; two panel brands mapped to one marketplace brand are the user's
+    // to settle; both leave the product without a brand and list the brand on the mapping page (BRAND_MAPPING_MISSING).
+    // With create false (sizes added to a linked card) only an existing mapping is read and nothing is written.
+    private async Task<Guid?> ImportBrandId(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, string platformName, bool byExternalId, bool create, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(snapshot.BrandExternalId)) return null;
-        var externalId = Short(snapshot.BrandExternalId.Trim(), 256);
-        var localIds = await (from mapping in db.BrandMappings.AsNoTracking()
-                              join brand in db.Brands.AsNoTracking() on new { mapping.TenantId, Id = mapping.LocalId } equals new { brand.TenantId, brand.Id }
-                              where mapping.TenantId == tenantId && mapping.ConnectionId == connectionId && mapping.ScopeExternalId == ""
-                                  && mapping.ExternalId == externalId && mapping.Status == "VERIFIED" && brand.IsActive
-                              select mapping.LocalId).Distinct().OrderBy(id => id).Take(2).ToListAsync(cancellationToken);
-        if (localIds.Count == 0)
-            await RecordIssue(tenantId, ImportedBrandRule.IssueKey(connectionId, externalId), ImportedBrandRule.IssueCode, Short(ImportedBrandRule.IssueSummary(platformName, externalId, snapshot.BrandName), 1000), cancellationToken);
-        return ImportedBrandRule.Resolve(localIds);
+        var externalId = byExternalId && !string.IsNullOrWhiteSpace(snapshot.BrandExternalId) ? Short(snapshot.BrandExternalId, 256) : null;
+        var brandName = Short(snapshot.BrandName, 160);
+        var now = timeProvider.GetUtcNow();
+        Task Unusable(string reason) => externalId is null
+            ? Task.CompletedTask
+            : RecordIssue(tenantId, ImportedBrandRule.IssueKey(connectionId, externalId), ImportedBrandRule.IssueCode, Short(ImportedBrandRule.UnusableSummary(platformName, externalId, snapshot.BrandName, reason), 1000), cancellationToken);
+
+        if (externalId is not null)
+        {
+            var mappings = db.BrandMappings.Local
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == "" && x.ExternalId == externalId && db.Entry(x).State == EntityState.Added)
+                .ToList();
+            mappings.AddRange(await db.BrandMappings
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == "" && x.ExternalId == externalId)
+                .ToListAsync(cancellationToken));
+            if (mappings.Count > 0)
+            {
+                var localIds = mappings.Select(x => x.LocalId).Distinct().ToArray();
+                var activeIds = db.Brands.Local.Where(x => x.TenantId == tenantId && localIds.Contains(x.Id) && x.IsActive).Select(x => x.Id)
+                    .Concat(await db.Brands.AsNoTracking().Where(x => x.TenantId == tenantId && localIds.Contains(x.Id) && x.IsActive).Select(x => x.Id).ToListAsync(cancellationToken))
+                    .Distinct().ToArray();
+                if (ImportedBrandRule.Resolve(activeIds) is { } mappedId && localIds.Length == 1)
+                {
+                    if (create)
+                        foreach (var stale in mappings.Where(x => x.Status != "VERIFIED"))
+                        {
+                            stale.Status = "VERIFIED";
+                            stale.VerifiedAt = now;
+                            stale.Version++;
+                        }
+                    return mappedId;
+                }
+                if (create) await Unusable(localIds.Length > 1 ? "birden fazla panel markasına eşli" : "eşlendiği panel markası kapalı");
+                return null;
+            }
+        }
+        if (!create) return null;
+
+        var key = NormalizeCatalogKey(brandName, 160);
+        if (key.Length == 0) return null;
+        var keys = CatalogLookupKeys(brandName, 160);
+        var brand = db.Brands.Local.Where(x => x.TenantId == tenantId && CatalogKeyNormalizer.SameKey(x.NormalizedName, key, 160)).OrderByDescending(x => x.IsActive).FirstOrDefault()
+            ?? await db.Brands.Where(x => x.TenantId == tenantId && keys.Contains(x.NormalizedName))
+                .OrderByDescending(x => x.IsActive).ThenBy(x => x.NormalizedName == key ? 0 : 1).ThenBy(x => x.Id)
+                .FirstOrDefaultAsync(cancellationToken);
+        if (brand is { IsActive: false })
+        {
+            await Unusable($"aynı adlı panel markası «{Short(brand.Name, 120)}» kapalı");
+            return null;
+        }
+        if (brand is null)
+        {
+            brand = new Brand { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = brandName, NormalizedName = key, IsActive = true, CreatedAt = now, UpdatedAt = now, Version = 1 };
+            db.Brands.Add(brand);
+        }
+        if (externalId is null) return brand.Id;
+
+        // A panel brand maps to one marketplace brand per connection (unique index): one already mapped to another id
+        // keeps its mapping; the product still takes it by name and the brand is listed for the user to check.
+        var brandId = brand.Id;
+        var alreadyMapped = db.BrandMappings.Local.Any(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == "" && x.LocalId == brandId && db.Entry(x).State != EntityState.Deleted)
+            || await db.BrandMappings.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == "" && x.LocalId == brandId, cancellationToken);
+        if (alreadyMapped)
+        {
+            await Unusable($"aynı adlı panel markası «{Short(brand.Name, 120)}» bu bağlantıda başka bir markaya eşli; ürünler bu panel markasıyla aktarıldı, eşleme yazılmadı");
+            return brandId;
+        }
+        var brandSnapshotId = await db.ReferenceSnapshots.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "BRANDS" && x.ScopeExternalId == "" && x.IsCurrent)
+            .Select(x => (Guid?)x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+        db.BrandMappings.Add(new BrandMapping { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, SnapshotId = brandSnapshotId ?? Guid.Empty, LocalId = brandId, ScopeExternalId = "", ExternalId = externalId, Status = "VERIFIED", VerifiedAt = now, Source = MappingSources.Import, Version = 1 });
+        await ResolveIssue(tenantId, ImportedBrandRule.IssueKey(connectionId, externalId), cancellationToken);
+        return brandId;
     }
 
     private async Task<Category?> UpsertCatalogCategory(Guid tenantId, string? name, CancellationToken cancellationToken)

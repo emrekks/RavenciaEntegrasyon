@@ -369,6 +369,7 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         mapping.SnapshotId = command.SnapshotId; mapping.ExternalId = externalId; mapping.Status = command.Status.Trim(); mapping.VerifiedAt = timeProvider.GetUtcNow();
         // A mapping a user saves is theirs, even if it was filled from the template before; it also
         // becomes the connection-wide template for the other categories.
+        if (mapping is BrandMapping brandMapping) brandMapping.Source = MappingSources.Manual;
         if (mapping is AttributeValueMapping valueMapping)
         {
             valueMapping.Source = MappingSources.Manual;

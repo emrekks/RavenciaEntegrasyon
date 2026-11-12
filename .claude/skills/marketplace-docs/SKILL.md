@@ -64,6 +64,12 @@ Shared across all of them:
     vatRate, deliveryTypes; no days, origin or warranty.
   - PTT AVM `get-by-barcodes` (`pttavm-api-son.md` 455-512): yeniKategoriId, KDVOran, Desi, GarantiSuresi,
     KargoProfilId, TahminiKargoSuresi; no brand or origin.
+- Brand on product import (owner decision 12 Nov 2026; `MarketplaceJobProcessor.ImportBrandId`): mapped like the
+  category from what the listing carries, no marketplace call. Trendyol carries `brand.id` + name: existing mapping,
+  else same-named panel brand + new mapping, else new panel brand + mapping (VERIFIED, Source IMPORT). The others carry
+  no usable id (Hepsiburada brand name only; n11 attribute 1 "Marka" name; Pazarama `brandName`, no id; Shopify
+  `vendor`, no brand list; PTT AVM no brand), so a product the import opens takes the same-named panel brand, or a new
+  one, and no mapping is written (a mapping needs the marketplace's brand id). Details in trendyol.md.
 
 ## Official docs, offline (search these first)
 
