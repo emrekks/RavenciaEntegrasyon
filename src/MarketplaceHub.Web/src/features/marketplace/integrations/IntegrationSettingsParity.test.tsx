@@ -66,11 +66,11 @@ async function renderFor(platformCode: string) {
 }
 
 function navLabels() {
-  return Array.from(container.querySelectorAll<HTMLButtonElement>('.cs-nav > button')).map(button => button.textContent ?? '')
+  return Array.from(container.querySelectorAll<HTMLButtonElement>('.cs-tabs [role="tab"]')).map(button => button.textContent ?? '')
 }
 
 function openSection(label: string) {
-  const tab = Array.from(container.querySelectorAll<HTMLButtonElement>('.cs-nav > button')).find(button => button.textContent?.includes(label))!
+  const tab = Array.from(container.querySelectorAll<HTMLButtonElement>('.cs-tabs [role="tab"]')).find(button => button.textContent?.includes(label))!
   act(() => { tab.click() })
 }
 
