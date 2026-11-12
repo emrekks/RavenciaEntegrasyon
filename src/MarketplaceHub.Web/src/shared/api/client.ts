@@ -132,15 +132,20 @@ export function automaticReadInit(init?: RequestInit): RequestInit | undefined {
 // A new version replaces the API in a few seconds; a request that lands in that gap gets 502/503/504 from the proxy (or
 // no answer at all) and was never handled. A write carrying an Idempotency-Key is safe to send again, so it is, after
 // 2, 4 and 6 seconds; the server answers a repeat of a request it did handle with the first result.
+// A 5xx the API wrote itself (application/problem+json, e.g. 502 "Claude görsel dosyası üretmedi") was handled: the
+// server holds its key as an unknown outcome and a repeat only gets IDEMPOTENCY_RESULT_UNKNOWN, so it is returned as is.
 const restartRetryDelaysMs = [2000, 4000, 6000]
 const restartStatuses = new Set([502, 503, 504])
+export function isProxyRestartResponse(response: Response) {
+  return restartStatuses.has(response.status) && !(response.headers.get('Content-Type') ?? '').toLowerCase().startsWith('application/problem+json')
+}
 async function fetchThroughRestart(url: string, init?: RequestInit): Promise<Response> {
   const repeatable = new Headers(init?.headers).has('Idempotency-Key')
   for (let attempt = 0; ; attempt++) {
     const last = !repeatable || attempt >= restartRetryDelaysMs.length
     try {
       const response = await fetchWithCsrf(url, init)
-      if (last || !restartStatuses.has(response.status)) return response
+      if (last || !isProxyRestartResponse(response)) return response
     } catch (error) {
       if (last || !(error instanceof TypeError)) throw error
     }

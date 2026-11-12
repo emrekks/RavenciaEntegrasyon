@@ -173,6 +173,22 @@ describe('a request that lands while a new version starts', () => {
     vi.useRealTimers()
   })
 
+  it('does not send a write again when the API itself answered 502 with a problem (the key is held as unknown)', async () => {
+    vi.useFakeTimers()
+    let calls = 0
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/v1/auth/csrf') return jsonResponse(200, { token: 'gw' })
+      calls += 1
+      return new Response(JSON.stringify({ code: 'AI_RENDERER_MISSING', title: 'Claude görsel dosyası üretmedi; görsel eklenmedi.' }), { status: 502, headers: { 'Content-Type': 'application/problem+json; charset=utf-8' } })
+    }))
+    const result = hubApi('/products/p1/size-chart/generate', { method: 'POST', headers: { 'Idempotency-Key': 'k1' }, body: '{}' })
+    const settled = expect(result).rejects.toMatchObject({ status: 502, code: 'AI_RENDERER_MISSING', message: 'Claude görsel dosyası üretmedi; görsel eklenmedi.' })
+    await vi.advanceTimersByTimeAsync(12000)
+    await settled
+    expect(calls).toBe(1)
+    vi.useRealTimers()
+  })
+
   it('does not send a write without an Idempotency-Key again', async () => {
     let calls = 0
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
