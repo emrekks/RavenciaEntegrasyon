@@ -8698,7 +8698,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && externalIds.Contains(x.ExternalId))
                 .Select(x => x.ExternalId)
                 .ToListAsync(cancellationToken)).ToHashSet(StringComparer.Ordinal);
-        var missing = new List<RemoteCatalogVariant>();
+        var candidates = new List<(RemoteCatalogVariant Remote, string Sku, string[] SkuKeys, string[] BarcodeKeys)>();
         foreach (var remote in snapshot.Variants)
         {
             var externalId = Short(remote.ExternalVariantId, 256);
@@ -8708,10 +8708,23 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var barcodeKeys = CatalogLookupKeys(remote.Barcode);
             if (skuKeys.Length == 0) continue;
             if (db.ProductVariants.Local.Any(x => x.TenantId == tenantId && (CatalogKeyNormalizer.SameKey(x.SkuNormalized, sku) || barcodeKeys.Length > 0 && CatalogKeyNormalizer.SameKey(x.BarcodeNormalized, remote.Barcode)))) continue;
-            if (await db.ProductVariants.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && (skuKeys.Contains(x.SkuNormalized) || x.BarcodeNormalized != null && barcodeKeys.Contains(x.BarcodeNormalized)), cancellationToken)) continue;
-            missing.Add(remote);
+            candidates.Add((remote, sku, skuKeys, barcodeKeys));
         }
-        return missing;
+        if (candidates.Count == 0) return [];
+        // The stored keys of every candidate read in one query, not one query per variant: a variant is known when a panel
+        // variant's stock code is one of its stock-code keys or that variant's barcode one of its barcode keys, as before.
+        var allSkuKeys = candidates.SelectMany(x => x.SkuKeys).Distinct(StringComparer.Ordinal).ToArray();
+        var allBarcodeKeys = candidates.SelectMany(x => x.BarcodeKeys).Distinct(StringComparer.Ordinal).ToArray();
+        var known = await db.ProductVariants.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && (allSkuKeys.Contains(x.SkuNormalized) || x.BarcodeNormalized != null && allBarcodeKeys.Contains(x.BarcodeNormalized)))
+            .Select(x => new { x.SkuNormalized, x.BarcodeNormalized })
+            .ToListAsync(cancellationToken);
+        var knownSkus = known.Select(x => x.SkuNormalized).ToHashSet(StringComparer.Ordinal);
+        var knownBarcodes = known.Where(x => x.BarcodeNormalized != null).Select(x => x.BarcodeNormalized!).ToHashSet(StringComparer.Ordinal);
+        return candidates
+            .Where(x => !x.SkuKeys.Any(knownSkus.Contains) && !x.BarcodeKeys.Any(knownBarcodes.Contains))
+            .Select(x => x.Remote)
+            .ToList();
     }
 
     // A size added to an existing card starts with the pictures the editor's add rule gives a new row (family-gallery-save

@@ -5629,6 +5629,8 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "BarcodeNormalized")
                         .IsUnique();
 
+                    b.HasIndex("TenantId", "ModelCode");
+
                     b.HasIndex("TenantId", "SkuNormalized")
                         .IsUnique();
 

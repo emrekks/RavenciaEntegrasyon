@@ -40,4 +40,17 @@ public sealed class JobIndexModelTests
         Assert.True(index.GetIncludeProperties() is [nameof(JobAttempt.JobId)]);
         Assert.DoesNotContain(entity!.GetIndexes(), candidate => candidate.GetDatabaseName() == "IX_job_attempts_TenantId");
     }
+
+    // Migration AddProductVariantModelCodeIndex creates this one by hand (CONCURRENTLY) under the same name and shape.
+    [Fact]
+    public void Variant_model_code_index_matches_its_concurrent_migration()
+    {
+        using var db = MetadataContext();
+        var entity = db.GetService<IDesignTimeModel>().Model.FindEntityType(typeof(ProductVariant));
+        Assert.NotNull(entity);
+
+        var index = Assert.Single(entity!.GetIndexes(), candidate => candidate.GetDatabaseName() == "IX_product_variants_TenantId_ModelCode");
+        Assert.Equal([nameof(ProductVariant.TenantId), nameof(ProductVariant.ModelCode)], index.Properties.Select(property => property.Name));
+        Assert.False(index.IsUnique);
+    }
 }

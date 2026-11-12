@@ -471,9 +471,8 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 };
             // A Shopify order with a current panel status (O13) is in the tabs of that status only,
             // never in the tabs of its packages: its badge shows the panel status.
-            var manualOrders = CurrentManualShopifyOrderStatuses(tenantId);
             var manualStatuses = ManualShopifyStatusesForOrderTab(status);
-            query = query.Where(WithManualShopifyStatus(order => manualOrders.Any(manual => manual.Id == order.Id), order => manualStatuses.Contains(order.DerivedStatus), marketplaceRule));
+            query = query.Where(WithManualShopifyStatus(HasCurrentManualShopifyStatus(tenantId), order => manualStatuses.Contains(order.DerivedStatus), marketplaceRule));
         }
 
         var search = options.Search?.Trim();
@@ -829,15 +828,24 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         return view;
     }
 
-    internal IQueryable<Order> CurrentManualShopifyOrderStatuses(Guid tenantId) => db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId
-        && db.PlatformConnections.Any(connection => connection.TenantId == order.TenantId
-            && connection.Id == order.ConnectionId
-            && connection.PlatformCode == "SHOPIFY")
-        && db.OrderStatusHistory.Any(history => history.TenantId == order.TenantId
-            && history.OrderId == order.Id
-            && history.RawStatus.StartsWith("MANUAL_SHOPIFY_STATUS:")
-            && history.CanonicalStatus == order.DerivedStatus
-            && history.OccurredAt >= order.LastRemoteModifiedAt));
+    internal IQueryable<Order> CurrentManualShopifyOrderStatuses(Guid tenantId) => db.Orders.AsNoTracking().Where(HasCurrentManualShopifyStatus(tenantId));
+
+    // A Shopify order of the tenant whose current status was set in the panel (O13). The tenant's Shopify stores are one
+    // uncorrelated list, which PostgreSQL reads once per query (a hashed subplan); the store lookup per order it replaced
+    // ran once for every order of every tab (live 12 Nov 2026: ~4,500 store-table scans per order summary count).
+    private Expression<Func<Order, bool>> HasCurrentManualShopifyStatus(Guid tenantId)
+    {
+        var shopifyConnectionIds = db.PlatformConnections.AsNoTracking()
+            .Where(connection => connection.TenantId == tenantId && connection.PlatformCode == "SHOPIFY")
+            .Select(connection => connection.Id);
+        return order => order.TenantId == tenantId
+            && shopifyConnectionIds.Contains(order.ConnectionId)
+            && db.OrderStatusHistory.Any(history => history.TenantId == order.TenantId
+                && history.OrderId == order.Id
+                && history.RawStatus.StartsWith("MANUAL_SHOPIFY_STATUS:")
+                && history.CanonicalStatus == order.DerivedStatus
+                && history.OccurredAt >= order.LastRemoteModifiedAt);
+    }
 
     // "Unpackaged" means no live package: a package the panel unpacked (UNPACKED_BY_PANEL, history
     // only) or a cancelled one leaves the order unpackaged again, so it is back in Yeni (O14).

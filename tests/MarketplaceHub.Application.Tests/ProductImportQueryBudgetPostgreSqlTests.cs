@@ -61,7 +61,32 @@ public sealed class ProductImportQueryBudgetPostgreSqlTests(PostgreSqlTenantIsol
     private static string ValueId(int index) => $"{MaterialExternalId}-{index}";
     private static string ValueName(int index) => $"Malzeme{index:000}";
 
-    private static string Page() => JsonSerializer.Serialize(new
+    // Speed (12 Nov 2026, live: catalog.product_variants read ~660 times a minute during a pull): a plain pull of a kept
+    // card checked every listed size the panel lacks with a query of its own. The sizes are now checked in one query per
+    // card, however many there are, and the notice counts the same new sizes as before.
+    [PostgreSqlFact]
+    public async Task PlainPull_ChecksTheNewSizesOfAKeptCardInOneQuery_AndCountsThemAsBefore()
+    {
+        var seed = await SeedAsync();
+        string[] newSizes = ["XS", "L", "XL", "XXL", "3XL", "4XL", "5XL", "6XL", "34", "36", "38", "40"];
+        await RunAsync(seed, new CatalogPort(TrendyolJsonMapper.CatalogProducts(Page()).Items), "{\"full\":true,\"updateExistingProducts\":true}", new VariantKeyLookupCounter());
+
+        var counter = new VariantKeyLookupCounter();
+        await RunAsync(seed, new CatalogPort(TrendyolJsonMapper.CatalogProducts(Page(["S", "M", .. newSizes])).Items), "{\"full\":true,\"updateExistingProducts\":false}", counter);
+
+        // One lookup of the panel's stock codes and barcodes per kept card, not one per new size (36 before).
+        Assert.True(counter.Reads <= Models.Length, $"the new-size check read product variants by key {counter.Reads} times");
+        await using var db = fixture.CreateContext();
+        var issues = await db.OperationalIssues.AsNoTracking().Where(row => row.TenantId == seed.TenantId && row.Code == "PRODUCT_NEW_SIZES_NOT_IMPORTED").ToListAsync();
+        Assert.Equal(Models.Length, issues.Count);
+        Assert.All(issues, issue => Assert.Contains($"{newSizes.Length} yeni beden var;", issue.Summary, StringComparison.Ordinal));
+        // The plain pull kept the cards whole.
+        Assert.Equal(Models.Length * 2, await db.ProductVariants.CountAsync(row => row.TenantId == seed.TenantId));
+    }
+
+    private static string Page() => Page(["S", "M"]);
+
+    private static string Page(IReadOnlyList<string> sizes) => JsonSerializer.Serialize(new
     {
         content = Models.Select((model, modelIndex) => new
         {
@@ -73,9 +98,9 @@ public sealed class ProductImportQueryBudgetPostgreSqlTests(PostgreSqlTenantIsol
             category = new { id = long.Parse(CategoryExternalId, System.Globalization.CultureInfo.InvariantCulture), name = "Bluz" },
             images = Array.Empty<object>(),
             attributes = new[] { new { attributeName = "Materyal", attributeValue = ValueName(modelIndex + 2) } },
-            variants = new[] { "S", "M" }.Select((size, sizeIndex) => new
+            variants = sizes.Select((size, sizeIndex) => new
             {
-                variantId = 7_200_000L + modelIndex * 10 + sizeIndex,
+                variantId = 7_200_000L + modelIndex * 100 + sizeIndex,
                 barcode = $"869710{modelIndex:00}{sizeIndex:00}",
                 stockCode = $"{model}-{size}",
                 attributes = new[] { new { attributeName = "Beden", attributeValue = size } },
@@ -133,25 +158,49 @@ public sealed class ProductImportQueryBudgetPostgreSqlTests(PostgreSqlTenantIsol
     private static async Task<int> RunAsync(Seed seed, CatalogPort port)
     {
         var counter = new ValueReadCounter();
-        var connectionString = Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")!;
-        await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connectionString).AddInterceptors(counter).Options, TimeProvider.System);
-        var processor = new MarketplaceJobProcessor(db, null!, null!, port, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), TimeProvider.System);
-        var result = await processor.ProcessAsync(seed.TenantId, seed.ConnectionId, MarketplaceJobTypes.ProductSync, "{\"full\":true,\"updateExistingProducts\":true}", $"query-budget-{Guid.NewGuid():N}", CancellationToken.None);
-        Assert.True(result.Succeeded, result.ErrorSummary);
+        await RunAsync(seed, port, "{\"full\":true,\"updateExistingProducts\":true}", counter);
         return counter.Reads;
     }
 
-    private sealed class ValueReadCounter : DbCommandInterceptor
+    private static async Task RunAsync(Seed seed, CatalogPort port, string payloadJson, ReadCounter counter)
+    {
+        var connectionString = Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")!;
+        await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connectionString).AddInterceptors(counter).Options, TimeProvider.System);
+        var processor = new MarketplaceJobProcessor(db, null!, null!, port, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), TimeProvider.System);
+        var result = await processor.ProcessAsync(seed.TenantId, seed.ConnectionId, MarketplaceJobTypes.ProductSync, payloadJson, $"query-budget-{Guid.NewGuid():N}", CancellationToken.None);
+        Assert.True(result.Succeeded, result.ErrorSummary);
+    }
+
+    private sealed class ValueReadCounter : ReadCounter
+    {
+        protected override bool Counts(string text) =>
+            text.Contains("catalog.attribute_values ", StringComparison.Ordinal)
+            || text.Contains("catalog.attribute_value_mappings ", StringComparison.Ordinal)
+            || text.Contains("\"ResourceType\" = 'ATTRIBUTE_VALUES'", StringComparison.Ordinal);
+    }
+
+    // The new-size check's read: panel variants by stock-code keys or barcode keys, nothing else.
+    private sealed class VariantKeyLookupCounter : ReadCounter
+    {
+        protected override bool Counts(string text) =>
+            text.Contains("FROM catalog.product_variants", StringComparison.Ordinal)
+            && text.Contains("\"SkuNormalized\" = ANY", StringComparison.Ordinal)
+            && text.Contains("\"BarcodeNormalized\" = ANY", StringComparison.Ordinal)
+            && !text.Contains("\"ModelCode\"", StringComparison.Ordinal)
+            && !text.Contains("JOIN", StringComparison.Ordinal);
+    }
+
+    private abstract class ReadCounter : DbCommandInterceptor
     {
         public int Reads { get; private set; }
+
+        protected abstract bool Counts(string text);
 
         private void Count(DbCommand command)
         {
             var text = command.CommandText;
             if (!text.TrimStart().StartsWith("SELECT", StringComparison.OrdinalIgnoreCase)) return;
-            if (text.Contains("catalog.attribute_values ", StringComparison.Ordinal)
-                || text.Contains("catalog.attribute_value_mappings ", StringComparison.Ordinal)
-                || text.Contains("\"ResourceType\" = 'ATTRIBUTE_VALUES'", StringComparison.Ordinal))
+            if (Counts(text))
                 Reads++;
         }
 
