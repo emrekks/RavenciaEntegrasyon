@@ -192,7 +192,7 @@ public sealed class TrendyolWriteContractTests
     [Fact]
     public void OnlyDocumentedStorefrontsAndUndocumentedOnesWithOrdersAreRead()
     {
-        Assert.Equal(["TR", "AE", "SA", "GR", "DE", "BG", "KW", "SK", "RO", "CZ"], TrendyolReadStorefronts.For([]));
+        Assert.Equal(["TR", "AE", "SA", "GR", "DE", "BG", "KW", "AZ", "SK", "RO", "CZ"], TrendyolReadStorefronts.For([]));
         Assert.Equal(["TR", "AE", "SA", "GR", "DE", "BG", "KW", "AZ", "SK", "RO", "CZ"], TrendyolReadStorefronts.For(["az", null, "TR"]));
         Assert.Contains("QA", TrendyolReadStorefronts.For(["QA"]));
         Assert.DoesNotContain("XX", TrendyolReadStorefronts.For(["XX"]));

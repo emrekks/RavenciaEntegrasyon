@@ -20,7 +20,7 @@ const referenceSync = job('Katalog', 'product', READ, 'Kategori ve Özellik List
 const orderSync = job('Sipariş', 'order', READ, 'Yeni Sipariş Çekme', 'Son okumadan bu yana oluşan ve değişen siparişler platformdan alınarak panele işlenir.')
 const orderRecovery = job('Sipariş', 'order', READ, 'Sipariş Geçmişi Taraması', 'Geçmiş dönemlerin siparişleri yeniden okunur; kaçırılmış veya eksik kalmış kayıtlar tamamlanır.')
 const orderStatus = job('Sipariş', 'order', READ, 'Açık Sipariş Durumu Kontrolü', 'Henüz teslim edilmemiş siparişlerin güncel paket ve kargo durumu platformdan okunarak panelde güncellenir.')
-const orderReconciliation = job('Sipariş', 'order', READ, 'Sipariş Mutabakatı', 'Paneldeki siparişler platform kayıtlarıyla karşılaştırılır; durum ve paket farkları giderilir.')
+const orderReconciliation = job('Sipariş', 'order', READ, 'Sipariş Uzlaştırması', 'Paneldeki siparişler platform kayıtlarıyla karşılaştırılır; durum ve paket farkları giderilir.')
 const packageInvoice = job('Fatura', 'invoice', READ, 'Paket Fatura Durumu Kontrolü', 'Paketlerin platformdaki fatura bilgisi okunarak panele işlenir. Yeni fatura oluşturulmaz.')
 const webhook = job('Sipariş', 'order', NOTICE, 'Anlık Bildirim İşleme', 'Platformun gönderdiği anlık sipariş bildirimi doğrulanır ve ilgili sipariş panelde güncellenir.')
 const productSync = job('Ürün', 'product', READ, 'Ürün Çekme', 'Platformdaki ürünler ve varyantları okunarak panel kataloğuyla eşleştirilir.')
@@ -53,10 +53,10 @@ const catalogue: Record<string, JobPresentation> = {
   LISTING_LOOKUP: job('Ürün', 'product', READ, 'Varyant Pazaryerinde Aranıyor', 'Görülmeyen ya da stok gönderiminde tanınmayan varyantlar barkodla aranır; pazaryeri yok derse Bulunamadı olarak işaretlenir.'),
   PRICE_INVENTORY_SYNC: job('Fiyat ve Stok', 'price', SEND, 'Fiyat ve Stok Gönderme', 'Güncel fiyat ve stok bilgileri platforma iletilir. Dış yazma kapalıysa gönderim yapılmaz.'),
   STOCK_PROJECTION_DISPATCH: job('Fiyat ve Stok', 'price', PANEL, 'Stok Gönderim Hazırlığı', 'Stok değişiklikleri gönderilmek üzere sıraya alınır. Bu adım platforma veri göndermez; gönderimi ayrı bir Fiyat ve Stok Gönderme işi yapar.'),
-  STOCK_RECONCILIATION: job('Fiyat ve Stok', 'price', PANEL, 'Stok Mutabakatı', 'Paneldeki stok, platforma en son gönderilen değerlerle karşılaştırılır; fark varsa yeni gönderim hazırlanır.'),
+  STOCK_RECONCILIATION: job('Fiyat ve Stok', 'price', PANEL, 'Stok Uzlaştırması', 'Paneldeki stok, platforma en son gönderilen değerlerle karşılaştırılır; fark varsa yeni gönderim hazırlanır.'),
   RETURN_SYNC: returnSync, HEPSIBURADA_RETURN_SYNC: returnSync,
   RETURN_STATUS_SYNC: job('İade', 'return', READ, 'Açık İade Durumu Kontrolü', 'Sonuçlanmamış iade taleplerinin güncel durumu platformdan okunarak panelde güncellenir.'),
-  RETURN_RECONCILIATION: job('İade', 'return', READ, 'İade Mutabakatı', 'Paneldeki iadeler platform kayıtlarıyla karşılaştırılır; eksik veya farklı kayıtlar düzeltilir.'),
+  RETURN_RECONCILIATION: job('İade', 'return', READ, 'İade Uzlaştırması', 'Paneldeki iadeler platform kayıtlarıyla karşılaştırılır; eksik veya farklı kayıtlar düzeltilir.'),
   RETURN_ACTION: job('İade', 'return', SEND, 'İade Kararı Gönderme', 'İade talebi için verilen onay veya ret kararı platforma iletilir.'),
   EXTERNAL_EFFECT_RECONCILE: job('Doğrulama', 'connection', READ, 'Gönderim Sonucu Doğrulama', 'Sonucu belli olmayan bir gönderimin platformda uygulanıp uygulanmadığı kontrol edilir; uygulanmadıysa yeniden gönderilir.'),
   MARKETPLACE_QUESTION_SYNC: job('Soru', 'connection', READ, 'Müşteri Sorularını Çekme', 'Ürün ve sipariş soruları platformdan okunarak panele alınır. Platforma cevap gönderilmez.'),

@@ -239,15 +239,6 @@ export function cadenceShortText(seconds: number) {
   return `${seconds} sn`
 }
 
-/**
- * The flow's fixed start offset (jitter): the scheduler queues it this much after its interval is up, so flows that
- * share an interval do not all start at once. Shown read-only; saving sends the stored value back unchanged.
- * " Her çalışma 45 sn kaydırılarak başlar." or "" when the flow has none.
- */
-export function syncJitterText(seconds: number | null | undefined) {
-  return seconds && seconds > 0 ? ` Her çalışma ${cadenceShortText(seconds)} kaydırılarak başlar; aynı sıklıktaki akışlar aynı anda başlamaz.` : ''
-}
-
 /** The choices of a cadence select within the flow's bounds; the current value stays listed even when outside them. */
 export function cadenceChoices(intervals: Array<[number, string]>, minimum: number, maximum: number, current: number) {
   const choices = intervals.filter(([seconds]) => seconds >= minimum && seconds <= maximum)
@@ -279,4 +270,12 @@ export function invoiceCreationFeedback(requested: boolean, saved: boolean) {
   if (requested !== saved)
     return { kind: 'error' as const, message: requested ? 'Fatura oluşturma açılamadı: ayar sunucuda kapalı kaldı. Sayfayı yenileyip tekrar deneyin; sorun sürerse destek ekibine bildirin.' : 'Fatura oluşturma kapatılamadı: ayar sunucuda açık kaldı. Sayfayı yenileyip tekrar deneyin.' }
   return { kind: 'success' as const, message: saved ? 'Bu bağlantı için fatura oluşturma açıldı.' : 'Bu bağlantı için fatura oluşturma kapatıldı; mevcut belgeler ve fatura kayıtları korunuyor.' }
+}
+
+// One name per connection state on every screen (the card and the settings window): a connection turned off is
+// "Pasif", as Bağlantıyı Pasife Al says, and one not tested since it was made or its keys changed (DRAFT) is
+// "Test Edilmedi". Null leaves the other states to the shared status labels.
+export function connectionStatusLabel(status: string | null | undefined): string | null {
+  const normalized = status?.trim().toUpperCase()
+  return normalized === 'DRAFT' ? 'Test Edilmedi' : normalized === 'DISABLED' ? 'Pasif' : null
 }

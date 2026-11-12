@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class OperationalDataMaintenanceService(AppDbContext db, TimeProvider timeProvider, IDashboardReadService dashboard, ILogger<OperationalDataMaintenanceService> logger) : IOperationalDataMaintenanceService
+public sealed partial class OperationalDataMaintenanceService(AppDbContext db, TimeProvider timeProvider, IDashboardReadService dashboard, ILogger<OperationalDataMaintenanceService> logger, IInstantNotificationService? instantNotifications = null) : IOperationalDataMaintenanceService
 {
     // The catalog lists ResetCountsAsync counts for the whole tenant. Ayarlar › Veri resets through PanelFactoryResetService;
     // the old tenant-wide catalog reset (/settings/data-reset) is gone (12 Nov 2026, the panel no longer called it).
@@ -25,6 +25,9 @@ public sealed partial class OperationalDataMaintenanceService(AppDbContext db, T
         // deleted: a live marketplace's orders invoiced through a STAGE provider are tests, a STAGE marketplace's orders
         // invoiced through the live provider are not.
         if (await IssuedInvoicesAsync(tenantId, connectionId, cancellationToken, fiscalOnly: true) is > 0 and var issued) return IssuedInvoicesKept(issued);
+        // The order notification registered at the marketplace goes first, as Webhook'u Kapat does: once the
+        // connection's keys are gone nothing could remove it any more.
+        var webhookNotice = await CloseMarketplaceWebhookAsync(connection, correlationId, cancellationToken);
         var scopes = new HashSet<string>(ConnectionDeleteScopes, StringComparer.Ordinal);
         var counts = await CountsAsync(tenantId, connectionId, scopes, cancellationToken);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
@@ -43,7 +46,35 @@ public sealed partial class OperationalDataMaintenanceService(AppDbContext db, T
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         await RefreshDashboardBestEffortAsync(tenantId);
-        return ServiceResult<OperationalDataResetView>.Ok(counts with { ConnectionDeleted = true });
+        return ServiceResult<OperationalDataResetView>.Ok(counts with { ConnectionDeleted = true, WebhookNotice = webhookNotice });
+    }
+
+    // Removes the connection's active order notification at the marketplace (Trendyol, Shopify) through the same call as
+    // Webhook'u Kapat. A failure does not stop the deletion: the panel refuses that address's deliveries anyway, and the
+    // returned notice tells the seller to remove it at the marketplace. Hepsiburada registers by hand, so only the seller
+    // can have it removed there.
+    private async Task<string?> CloseMarketplaceWebhookAsync(PlatformConnection connection, string correlationId, CancellationToken cancellationToken)
+    {
+        var externalId = await db.WebhookSubscriptions.AsNoTracking()
+            .Where(x => x.TenantId == connection.TenantId && x.ConnectionId == connection.Id && x.Status == "ACTIVE" && x.ExternalSubscriptionId != null)
+            .Select(x => x.ExternalSubscriptionId).FirstOrDefaultAsync(cancellationToken);
+        if (externalId is null) return null;
+        var platform = connection.PlatformCode switch { "SHOPIFY" => "Shopify", "HEPSIBURADA" => "Hepsiburada", _ => "Trendyol" };
+        if (externalId == InstantNotificationService.ManualRegistration)
+            return "Hepsiburada’ya bildirdiğiniz webhook adresi panelden kaldırılamaz; Hepsiburada’dan bu adresin silinmesini isteyin.";
+        if (instantNotifications is null) return $"{platform} webhook kaydı panelden kapatılamadı; {platform} tarafından silin.";
+        try
+        {
+            var closed = await instantNotifications.DisableAsync(connection.TenantId, connection.Id, correlationId, cancellationToken);
+            if (closed.Succeeded) return null;
+            logger.LogWarning("Order webhook of deleted connection {ConnectionId} could not be removed at {Platform}: {Code}", connection.Id, connection.PlatformCode, closed.Error?.Code);
+            return $"{closed.Error?.Message} Bağlantı silindi; webhook kaydını {platform} tarafında silin.";
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(exception, "Order webhook of deleted connection {ConnectionId} could not be removed at {Platform}", connection.Id, connection.PlatformCode);
+            return $"{platform} webhook kaydı kapatılamadı; {platform} satıcı panelinden silin.";
+        }
     }
 
     public async Task<ServiceResult<OperationalDataResetView>> ResetConnectionDataAsync(Guid tenantId, Guid actorUserId, Guid connectionId, long expectedVersion, ResetOperationalDataCommand command, string correlationId, CancellationToken cancellationToken)

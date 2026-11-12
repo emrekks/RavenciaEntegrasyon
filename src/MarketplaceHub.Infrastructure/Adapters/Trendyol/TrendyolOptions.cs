@@ -80,8 +80,8 @@ internal static class TrendyolReadStorefronts
     // under separate storefront headers. Reads are intentionally broader than
     // writes; the latter remain guarded by IntegrationRuntimePolicy.
     // Every storefront code ever read (candidates). C28: only Trendyol's documented storefronts
-    // (TrendyolStorefrontPolicy.Listed) are read by default; an undocumented one (QA, OM, BH, AZ) is read only
-    // while the connection has stored orders from it (AZ has live orders), see For/ForConnectionAsync.
+    // (TrendyolStorefrontPolicy.Listed, AZ included) are read by default; another one (QA, OM, BH) is read only
+    // while the connection has stored orders from it, see For/ForConnectionAsync.
     public static readonly string[] Codes = ["TR", "AE", "SA", "GR", "DE", "BG", "QA", "KW", "OM", "BH", "AZ", "SK", "RO", "CZ"];
 
     public static IReadOnlyList<string> For(IEnumerable<string?> storedStoreFrontCodes)

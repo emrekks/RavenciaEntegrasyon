@@ -36,12 +36,12 @@ export function connectionProblem(code: string | null | undefined): ConnectionPr
 }
 
 const presentations: Record<ConnectionProblem, { title: string; action: string; tone: 'danger' | 'warning' }> = {
-  credentials: { title: 'Kimlik bilgileri reddedildi', action: 'Bilgileri kontrol edip kaydedin, ardından Test Et’e basın. Test başarılı olana kadar bu bağlantının okumaları bekler.', tone: 'danger' },
-  access: { title: 'Pazaryeri erişim izni vermiyor', action: 'Kimlik bilgileri kabul edildi ama bu hesabın gerekli izni yok. İzin açıldıktan sonra Test Et’e basın.', tone: 'danger' },
+  credentials: { title: 'Kimlik bilgileri reddedildi', action: 'Bilgileri kontrol edip kaydedin, ardından Bağlantıyı Test Et’e basın. Test başarılı olana kadar bu bağlantının okumaları bekler.', tone: 'danger' },
+  access: { title: 'Pazaryeri erişim izni vermiyor', action: 'Kimlik bilgileri kabul edildi ama bu hesabın gerekli izni yok. İzin açıldıktan sonra Bağlantıyı Test Et’e basın.', tone: 'danger' },
   gateway: { title: 'Pazaryeri istekleri geçici olarak engelliyor', action: 'Kimlik bilgileri geçerli. Okumalar kendiliğinden yeniden denenir; sürerse pazaryeri desteğine başvurun.', tone: 'warning' },
-  capability: { title: 'Ürün ve sipariş okuması doğrulanamadı', action: 'Kimlik bilgileri kabul edildi ama son test ürün ve sipariş okumalarının ikisini birden doğrulayamadı. Test Et’e basın; sürerse pazaryerinde API yetkilerini kontrol edin.', tone: 'danger' },
-  transient: { title: 'Pazaryeri son testte yanıt vermedi', action: 'Son test zaman aşımı, istek sınırı ya da pazaryeri kesintisi yüzünden tamamlanamadı. Biraz sonra Test Et’e basın.', tone: 'warning' },
-  other: { title: 'Son bağlantı testi hatayla bitti', action: 'Test Et’e basarak yeniden deneyin; sürerse ayrıntı için Yönet’e bakın.', tone: 'warning' }
+  capability: { title: 'Ürün ve sipariş okuması doğrulanamadı', action: 'Kimlik bilgileri kabul edildi ama son test ürün ve sipariş okumalarının ikisini birden doğrulayamadı. Bağlantıyı Test Et’e basın; sürerse pazaryerinde API yetkilerini kontrol edin.', tone: 'danger' },
+  transient: { title: 'Pazaryeri son testte yanıt vermedi', action: 'Son test zaman aşımı, istek sınırı ya da pazaryeri kesintisi yüzünden tamamlanamadı. Biraz sonra Bağlantıyı Test Et’e basın.', tone: 'warning' },
+  other: { title: 'Son bağlantı testi hatayla bitti', action: 'Bağlantıyı Test Et’e basarak yeniden deneyin; sürerse ayrıntı için Yönet’e bakın.', tone: 'warning' }
 }
 
 /** The card's flow warning: enabled flows late past their window after a success, or partly failing. */
@@ -58,7 +58,7 @@ export function reactivationNeedsTest(item: AuthAlertConnection) {
 export function activationErrorMessage(reason: unknown) {
   // The API answers CONNECTION_TEST_REQUIRED (ApiRequestError.code) when the last successful test is older than the disable.
   if (typeof reason === 'object' && reason !== null && (reason as { code?: unknown }).code === 'CONNECTION_TEST_REQUIRED')
-    return 'Bağlantıyı yeniden açmak için önce yeni bir bağlantı testi gerekir. Test Et’e basın; test başarılı olunca bağlantıyı tekrar etkinleştirin.'
+    return 'Bağlantıyı yeniden açmak için önce yeni bir bağlantı testi gerekir. Bağlantıyı Test Et’e basın; test başarılı olunca bağlantıyı tekrar etkinleştirin.'
   return reason instanceof Error ? reason.message : 'Bağlantı etkinleştirilemedi.'
 }
 
@@ -73,7 +73,7 @@ export function connectionAuthSummary(item: AuthAlertConnection, flows?: Connect
     ? { title: 'Akışlar dikkat istiyor', action: `${flows.count} akış beklenen sürede güncellenmedi ya da kısmen hata veriyor. Ayrıntı için Yönet → Akış Sağlığı’na bakın.`, tone: 'warning' as const, meta: null }
     : null
   const seenAt = item.lastErrorAt ?? item.lastTestedAt
-  if (!problem) return { title: 'Yeniden açmak için yeni test gerekli', action: 'Bağlantı devre dışı bırakıldıktan sonra test edilmedi. Test Et’e basın; test başarılı olunca bağlantıyı etkinleştirebilirsiniz.', tone: 'info' as const, meta: null }
+  if (!problem) return { title: 'Yeniden açmak için yeni test gerekli', action: 'Bağlantı pasife alındıktan sonra test edilmedi. Bağlantıyı Test Et’e basın; test başarılı olunca bağlantıyı etkinleştirebilirsiniz.', tone: 'info' as const, meta: null }
   const presentation = presentations[problem]
   return { title: presentation.title, action: presentation.action, tone: presentation.tone, meta: `${seenAt ? `Son görülme: ${formatDateTime(seenAt)}` : 'Zamanı bilinmiyor'} · Kod: ${item.lastErrorCode}` }
 }
@@ -112,9 +112,9 @@ export function ConnectionAuthAlert({ item, detail, onTest, testing = false, com
   const needsTest = reactivationNeedsTest(item)
   if (!problem && !needsTest) return null
   const seenAt = item.lastErrorAt ?? item.lastTestedAt
-  const testButton = onTest && <button type="button" className="secondary connection-auth-alert-test" onClick={onTest} disabled={testing}>{testing ? 'Test Ediliyor…' : 'Test Et'}</button>
+  const testButton = onTest && <button type="button" className="secondary connection-auth-alert-test" onClick={onTest} disabled={testing}>{testing ? 'Test Ediliyor…' : 'Bağlantıyı Test Et'}</button>
   if (!problem) return <div className={`connection-auth-alert is-info${compact ? ' is-compact' : ''}`} role="status">
-    <div><strong>Yeniden açmak için yeni test gerekli</strong><p>Bağlantı devre dışı bırakıldıktan sonra test edilmedi. Test Et’e basın; test başarılı olunca bağlantıyı etkinleştirebilirsiniz.</p></div>
+    <div><strong>Yeniden açmak için yeni test gerekli</strong><p>Bağlantı pasife alındıktan sonra test edilmedi. Bağlantıyı Test Et’e basın; test başarılı olunca bağlantıyı etkinleştirebilirsiniz.</p></div>
     {testButton}
   </div>
   const presentation = presentations[problem]
@@ -126,7 +126,7 @@ export function ConnectionAuthAlert({ item, detail, onTest, testing = false, com
       <p>{presentation.action}</p>
       {!compact && hint && <p className="connection-auth-alert-hint">{hint}</p>}
       <small>{seenAt ? `Son görülme: ${formatDateTime(seenAt)}` : 'Zamanı bilinmiyor'} · Kod: {item.lastErrorCode}</small>
-      {needsTest && <small>Devre dışı bağlantıyı yeniden açmak için de yeni bir başarılı test gerekir.</small>}
+      {needsTest && <small>Pasif bağlantıyı yeniden açmak için de yeni bir başarılı test gerekir.</small>}
     </div>
     {testButton}
   </div>
