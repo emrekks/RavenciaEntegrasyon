@@ -23,7 +23,7 @@ public sealed partial class PostgreSqlConnectionFullResetTests
         {
             await SeedAsync(a);
             await SeedAsync(b);
-            foreach (var seed in new[] { a, b }) await SeedPanelExtrasAsync(seed.Tenant.Id, seed.PanelProduct.Id);
+            foreach (var seed in new[] { a, b }) await SeedPanelExtrasAsync(seed.Tenant.Id, seed.PanelProduct.Id, seed.Reset.Id);
             var tables = await TenantTablesAsync();
             var aBefore = await TenantCountsAsync(tables, a.Tenant.Id);
             var bBefore = await TenantCountsAsync(tables, b.Tenant.Id);
@@ -156,11 +156,13 @@ public sealed partial class PostgreSqlConnectionFullResetTests
         """).SingleAsync();
 
     // The logs, lists and settings the full-reset seed does not reach.
-    private async Task SeedPanelExtrasAsync(Guid tenantId, Guid productId)
+    private async Task SeedPanelExtrasAsync(Guid tenantId, Guid productId, Guid connectionId)
     {
         await using var db = fixture.CreateContext();
         db.Categories.Add(new Category { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = "Elbise", NormalizedName = "elbise", Path = "Elbise", CreatedAt = fixture.Now, UpdatedAt = fixture.Now });
         db.ProductOptions.Add(new ProductOption { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = productId, Label = "Beden", NormalizedKey = "beden" });
+        db.MarketplaceQuestionTemplates.Add(new MarketplaceQuestionTemplate { Id = Guid.CreateVersion7(), TenantId = tenantId, Title = "Kargo", Text = "Siparişiniz yarın kargoda.", CreatedAt = fixture.Now, UpdatedAt = fixture.Now });
+        db.ConnectionAttributeDefaults.Add(new ConnectionAttributeDefault { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ExternalAttributeId = "1192", AttributeName = "Menşei", CustomValue = "TR", UpdatedAt = fixture.Now });
         db.Brands.Add(new Brand { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = "Ravencia", NormalizedName = "ravencia", CreatedAt = fixture.Now, UpdatedAt = fixture.Now });
         db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = "PRODUCT_UPDATED", TargetType = "Product", TargetId = "x", Reason = "test", CorrelationId = "corr", CreatedAt = fixture.Now });
         db.AiUsageLogs.Add(new AiUsageLog { Id = Guid.CreateVersion7(), TenantId = tenantId, Feature = "TEST", Model = "test", Status = "OK", CreatedAt = fixture.Now });
@@ -180,6 +182,8 @@ public sealed partial class PostgreSqlConnectionFullResetTests
             DELETE FROM dashboard.revenue_daily WHERE "TenantId"={{tenantId}};
             DELETE FROM catalog.categories WHERE "TenantId"={{tenantId}};
             DELETE FROM catalog.brands WHERE "TenantId"={{tenantId}};
+            DELETE FROM sales.marketplace_question_templates WHERE "TenantId"={{tenantId}};
+            DELETE FROM catalog.connection_attribute_defaults WHERE "TenantId"={{tenantId}};
             DELETE FROM ops.ai_usage_logs WHERE "TenantId"={{tenantId}};
             DELETE FROM ops.api_idempotency_records WHERE "TenantId"={{tenantId}};
             DELETE FROM iam.tenant_settings WHERE "TenantId"={{tenantId}};

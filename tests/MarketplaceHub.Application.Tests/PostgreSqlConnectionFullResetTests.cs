@@ -26,7 +26,7 @@ public sealed partial class PostgreSqlConnectionFullResetTests(PostgreSqlTenantI
             var keptBefore = await CountsAsync(ConnectionDataInventory.Kept, seed.Reset.Id);
             // Every operational table the scenario reaches has a row to remove.
             foreach (var table in SeededTables) Assert.True(removedBefore[table] > 0, table);
-            Assert.All(new[] { "integration.platform_credentials", "integration.connection_sync_policies", "integration.webhook_subscriptions", "sales.cargo_provider_mappings", "catalog.attribute_mapping_templates" }, table => Assert.True(keptBefore[table] > 0, table));
+            Assert.All(new[] { "integration.platform_credentials", "integration.connection_sync_policies", "integration.webhook_subscriptions", "sales.cargo_provider_mappings" }, table => Assert.True(keptBefore[table] > 0, table));
 
             await using (var db = fixture.CreateContext())
             {
@@ -136,6 +136,7 @@ public sealed partial class PostgreSqlConnectionFullResetTests(PostgreSqlTenantI
         "inventory.channel_offers", "integration.jobs", "integration.external_effect_records", "integration.reconciliation_runs",
         "integration.sync_cursors", "integration.connection_backoffs", "integration.reference_snapshots", "integration.reference_items",
         "integration.marketplace_question_sync_states", "integration.marketplace_finance_sync_states",
+        "catalog.attribute_mapping_templates",
     ];
 
     private async Task<Dictionary<string, long>> CountsAsync(IEnumerable<string> tables, Guid connectionId)
@@ -279,7 +280,9 @@ public sealed partial class PostgreSqlConnectionFullResetTests(PostgreSqlTenantI
         db.ConnectionSyncPolicies.Add(new ConnectionSyncPolicy { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = seed.Reset.Id, ResourceType = "ORDERS", IntervalSeconds = 180, Enabled = true });
         db.WebhookSubscriptions.Add(new WebhookSubscription { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = seed.Reset.Id, RouteTokenHash = $"fr-route-{Guid.NewGuid():N}", AuthenticationType = "API_KEY", ProtectedVerifierSecret = "secret", Status = "ACTIVE" });
         db.CargoProviderMappings.Add(new CargoProviderMapping { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = seed.Reset.Id, ExternalProviderId = "YKMP", ExternalProviderName = "Yurtiçi", LocalProviderCode = "YURTICI", Status = "ACTIVE" });
-        db.AttributeMappingTemplates.Add(new AttributeMappingTemplate { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = seed.Reset.Id, ExternalAttributeId = "47", LocalAttributeId = Guid.CreateVersion7(), UpdatedAt = fixture.Now });
+        // The mapping templates go with the reset store; the other store's stay.
+        foreach (var id in new[] { seed.Reset.Id, seed.Other.Id })
+            db.AttributeMappingTemplates.Add(new AttributeMappingTemplate { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = id, ExternalAttributeId = "47", LocalAttributeId = Guid.CreateVersion7(), UpdatedAt = fixture.Now });
         await db.SaveChangesAsync();
 
         foreach (var id in new[] { seed.Reset.Id, seed.Other.Id })

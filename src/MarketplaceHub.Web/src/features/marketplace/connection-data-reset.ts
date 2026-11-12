@@ -14,7 +14,7 @@ export const connectionFullResetItems: ConnectionFullResetItem[] = [
   { scope: 'PRODUCT_LINKS', label: 'Ürün Bağları', description: 'Bu bağlantıyla ürün, varyant ve ilan bağları; kanal fiyatları ve fiyat geçmişi.', unit: 'ürün' },
   { scope: 'FINANCE', label: 'Finans Kayıtları', description: 'Cari hesap hareketleri ve kargo faturası kalemleri.', unit: 'kayıt' },
   { scope: 'REFERENCES', label: 'Kategori ve Marka Listeleri', description: 'İndirilen kategori, özellik, değer ve marka listeleri.', unit: 'kayıt' },
-  { scope: 'MAPPINGS', label: 'Eşleştirmeler', description: 'Kategori, marka, özellik ve değer eşleştirmeleri. Eşleme şablonları korunur.', unit: 'eşleştirme' },
+  { scope: 'MAPPINGS', label: 'Eşleştirmeler', description: 'Kategori, marka, özellik ve değer eşleştirmeleri; eşleme şablonları ve varsayılan özellik değerleri dahil.', unit: 'eşleştirme' },
   { scope: 'COMMISSION_TARIFFS', label: 'Komisyon Tarifeleri', description: 'Yüklenen tarife dosyaları ve satırları.', unit: 'dosya' },
   { scope: 'PROMOTION_OFFERS', label: 'Promosyon Teklifleri', description: 'Promosyonlar sayfasına yüklenen dosyalar.', unit: 'dosya' },
   { scope: 'JOBS', label: 'İş Takibi Kayıtları', description: 'Bu bağlantının İş Takibi’ndeki iş geçmişi, içe aktarma oturumları ve okuma konumları silinir; bekleyen işler iptal edilir, çalışan iş kalır.', unit: 'iş' }

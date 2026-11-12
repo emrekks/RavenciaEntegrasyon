@@ -17,6 +17,7 @@ public static class ConnectionDataInventory
         "catalog.marketplace_product_links", "catalog.marketplace_variant_links", "catalog.marketplace_listing_states",
         "catalog.channel_listing_profiles", "catalog.external_identifier_aliases",
         "catalog.category_mappings", "catalog.brand_mappings", "catalog.attribute_mappings", "catalog.attribute_value_mappings",
+        "catalog.attribute_mapping_templates", "catalog.attribute_value_mapping_templates", "catalog.mapping_template_dismissals", "catalog.connection_attribute_defaults",
         "catalog.commission_tariffs", "catalog.promotion_offer_files", "catalog.ad_report_files",
         "catalog.import_sessions", "catalog.product_import_sessions", "catalog.product_import_staging_records", "catalog.catalog_structure_runs",
         "catalog.product_change_entries",
@@ -32,7 +33,6 @@ public static class ConnectionDataInventory
         "integration.platform_credentials", "integration.platform_capabilities", "integration.connection_sync_policies",
         "integration.webhook_subscriptions", "billing.invoice_policies",
         "inventory.connection_location_mappings", "inventory.connection_inventory_policies",
-        "catalog.attribute_mapping_templates", "catalog.attribute_value_mapping_templates", "catalog.mapping_template_dismissals",
-        "catalog.connection_attribute_defaults", "sales.cargo_provider_mappings",
+        "sales.cargo_provider_mappings",
     ];
 }

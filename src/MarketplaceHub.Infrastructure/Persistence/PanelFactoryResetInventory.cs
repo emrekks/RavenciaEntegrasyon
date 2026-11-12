@@ -34,22 +34,24 @@ public static class PanelFactoryResetInventory
     public static readonly PanelResetGroup Invoices = new(1, "INVOICES", "Faturalar ve Belgeleri", "Faturalar, fatura PDF'leri, pazaryerine gönderimleri ve elle yüklenen fatura belgeleri.", SalesSection, "Faturalar ve belgeleri siliniyor", []);
     public static readonly PanelResetGroup Orders = new(2, "ORDERS", "Siparişler, Paketler ve İadeler", "Siparişler, kargo paketleri ve etiketleri, iadeler ve iade kararları. Faturaları da seçer.", SalesSection, "Siparişler, paketler ve iadeler siliniyor", ["INVOICES"]);
     public static readonly PanelResetGroup Questions = new(3, "QUESTIONS", "Müşteri Soruları", "Pazaryerlerinden gelen müşteri soruları ve cevapları.", SalesSection, "Müşteri soruları siliniyor", []);
-    public static readonly PanelResetGroup Finance = new(4, "FINANCE", "Finans, Hakediş ve Kargo Faturaları", "Pazaryeri finans hareketleri, hakediş siparişleri ve kargo faturası kalemleri.", SalesSection, "Finans, hakediş ve kargo faturası kayıtları siliniyor", []);
-    public static readonly PanelResetGroup Stock = new(5, "STOCK", "Stok ve Fiyatlar", "Stok kalemleri, stok hareketleri, rezervasyonlar, kanal fiyatları ve fiyat geçmişi.", CatalogSection, "Stok, fiyat ve fiyat geçmişi siliniyor", []);
-    public static readonly PanelResetGroup Options = new(6, "OPTIONS", "Ürün Seçenekleri", "Ürün seçenek grupları, seçenek değerleri ve varyantlarla olan seçenek bağlantıları.", CatalogSection, "Ürün seçenekleri siliniyor", []);
-    public static readonly PanelResetGroup Products = new(7, "PRODUCTS", "Ürünler", "Ürünler, varyantlar, görseller, pazaryeri bağları ve ürün aktarım kayıtları. Stok ve fiyatları da seçer.", CatalogSection, "Ürünler, varyantlar ve görseller siliniyor", ["STOCK"]);
-    public static readonly PanelResetGroup CategoryAttributes = new(8, "CATEGORY_ATTRIBUTES", "Kategori Özellikleri", "Özellik başlıkları ve değerleri, kategori atamaları, ürünlerin özellik değerleri ve pazaryeri özellik eşleştirmeleri (eşleme şablonları dahil).", CatalogSection, "Kategori özellikleri siliniyor", []);
-    public static readonly PanelResetGroup Categories = new(9, "CATEGORIES", "Kategori Listesi", "Kategori ağacı ve pazaryeri kategori eşleştirmeleri; ürünlerin kategori bağı boşalır.", CatalogSection, "Kategori listesi siliniyor", []);
-    public static readonly PanelResetGroup Brands = new(10, "BRANDS", "Marka Listesi", "Markalar ve pazaryeri marka eşleştirmeleri; ürünlerin marka bağı boşalır.", CatalogSection, "Marka listesi siliniyor", []);
-    public static readonly PanelResetGroup References = new(11, "REFERENCES", "Pazaryeri Referans Listeleri", "Pazaryerlerinden indirilen kategori, özellik ve marka listeleri.", MarketplaceSection, "Pazaryeri referans listeleri siliniyor", []);
-    public static readonly PanelResetGroup Promotions = new(12, "PROMOTIONS", "Promosyon, Komisyon ve Reklam Dosyaları", "Yüklenen komisyon tarifeleri, promosyon teklif dosyaları ve reklam raporları.", MarketplaceSection, "Promosyon, komisyon ve reklam dosyaları siliniyor", []);
-    public static readonly PanelResetGroup Jobs = new(13, "JOBS", "İş Takibi", "Bütün işler ve denemeleri (çalışan sıfırlama hariç), eşitleme imleçleri, mutabakat ve dış işlem kayıtları; eşitleme baştan başlar.", SystemSection, "İşler ve eşitleme kayıtları siliniyor", []);
-    public static readonly PanelResetGroup Logs = new(14, "LOGS", "Loglar", "İşlem ve denetim logu, API istek kayıtları, yapay zekâ kullanım logu, ürün etkinlik logu, fiyat/stok gönderim logu ve gelen webhook kayıtları.", SystemSection, "Loglar siliniyor", []);
-    public static readonly PanelResetGroup Notifications = new(15, "NOTIFICATIONS", "Bildirimler", "Sorun bildirimleri ve alarmlar, değişiklik olayları ve bu tarayıcıdaki bildirim geçmişi.", SystemSection, "Bildirimler siliniyor", []);
-    public static readonly PanelResetGroup Dashboard = new(16, "DASHBOARD", "Raporlar ve Özet Tabloları", "Pano özeti, günlük ciro, düşük stok ve eşitleme durumu tabloları; yeniden hesaplanır.", SystemSection, "Rapor ve özet tabloları siliniyor", []);
+    public static readonly PanelResetGroup QuestionTemplates = new(4, "QUESTION_TEMPLATES", "Soru Cevap Şablonları", "Sorulara cevap yazarken kullanılan hazır cevap şablonları.", SalesSection, "Soru cevap şablonları siliniyor", []);
+    public static readonly PanelResetGroup Finance = new(5, "FINANCE", "Finans, Hakediş ve Kargo Faturaları", "Pazaryeri finans hareketleri, hakediş siparişleri ve kargo faturası kalemleri.", SalesSection, "Finans, hakediş ve kargo faturası kayıtları siliniyor", []);
+    public static readonly PanelResetGroup Stock = new(6, "STOCK", "Stok ve Fiyatlar", "Stok kalemleri, stok hareketleri, rezervasyonlar, kanal fiyatları ve fiyat geçmişi.", CatalogSection, "Stok, fiyat ve fiyat geçmişi siliniyor", []);
+    public static readonly PanelResetGroup Options = new(7, "OPTIONS", "Ürün Seçenekleri", "Ürün seçenek grupları, seçenek değerleri ve varyantlarla olan seçenek bağlantıları.", CatalogSection, "Ürün seçenekleri siliniyor", []);
+    public static readonly PanelResetGroup Products = new(8, "PRODUCTS", "Ürünler", "Ürünler, varyantlar, görseller, pazaryeri bağları ve ürün aktarım kayıtları. Stok ve fiyatları da seçer.", CatalogSection, "Ürünler, varyantlar ve görseller siliniyor", ["STOCK"]);
+    public static readonly PanelResetGroup CategoryAttributes = new(9, "CATEGORY_ATTRIBUTES", "Kategori Özellikleri", "Özellik başlıkları ve değerleri, kategori atamaları, ürünlerin özellik değerleri ve pazaryeri özellik eşleştirmeleri (eşleme şablonları dahil).", CatalogSection, "Kategori özellikleri siliniyor", []);
+    public static readonly PanelResetGroup AttributeDefaults = new(10, "ATTRIBUTE_DEFAULTS", "Varsayılan Özellik Değerleri", "Bağlantıların, ürünün değeri olmadığında pazaryerine gönderdiği sabit özellik değerleri (ör. Menşei).", CatalogSection, "Varsayılan özellik değerleri siliniyor", []);
+    public static readonly PanelResetGroup Categories = new(11, "CATEGORIES", "Kategori Listesi", "Kategori ağacı ve pazaryeri kategori eşleştirmeleri; ürünlerin kategori bağı boşalır.", CatalogSection, "Kategori listesi siliniyor", []);
+    public static readonly PanelResetGroup Brands = new(12, "BRANDS", "Marka Listesi", "Markalar ve pazaryeri marka eşleştirmeleri; ürünlerin marka bağı boşalır.", CatalogSection, "Marka listesi siliniyor", []);
+    public static readonly PanelResetGroup References = new(13, "REFERENCES", "Pazaryeri Referans Listeleri", "Pazaryerlerinden indirilen kategori, özellik ve marka listeleri.", MarketplaceSection, "Pazaryeri referans listeleri siliniyor", []);
+    public static readonly PanelResetGroup Promotions = new(14, "PROMOTIONS", "Promosyon, Komisyon ve Reklam Dosyaları", "Yüklenen komisyon tarifeleri, promosyon teklif dosyaları ve reklam raporları.", MarketplaceSection, "Promosyon, komisyon ve reklam dosyaları siliniyor", []);
+    public static readonly PanelResetGroup Jobs = new(15, "JOBS", "İş Takibi", "Bütün işler ve denemeleri (çalışan sıfırlama hariç), eşitleme imleçleri, mutabakat ve dış işlem kayıtları; eşitleme baştan başlar.", SystemSection, "İşler ve eşitleme kayıtları siliniyor", []);
+    public static readonly PanelResetGroup Logs = new(16, "LOGS", "Loglar", "İşlem ve denetim logu, API istek kayıtları, yapay zekâ kullanım logu, ürün etkinlik logu, fiyat/stok gönderim logu ve gelen webhook kayıtları.", SystemSection, "Loglar siliniyor", []);
+    public static readonly PanelResetGroup Notifications = new(17, "NOTIFICATIONS", "Bildirimler", "Sorun bildirimleri ve alarmlar, değişiklik olayları ve bu tarayıcıdaki bildirim geçmişi.", SystemSection, "Bildirimler siliniyor", []);
+    public static readonly PanelResetGroup Dashboard = new(18, "DASHBOARD", "Raporlar ve Özet Tabloları", "Pano özeti, günlük ciro, düşük stok ve eşitleme durumu tabloları; yeniden hesaplanır.", SystemSection, "Rapor ve özet tabloları siliniyor", []);
 
     public static readonly IReadOnlyList<PanelResetGroup> Groups =
-        [Invoices, Orders, Questions, Finance, Stock, Options, Products, CategoryAttributes, Categories, Brands, References, Promotions, Jobs, Logs, Notifications, Dashboard];
+        [Invoices, Orders, Questions, QuestionTemplates, Finance, Stock, Options, Products, CategoryAttributes, AttributeDefaults, Categories, Brands, References, Promotions, Jobs, Logs, Notifications, Dashboard];
 
     public const string WaitStep = "Süren işlerin bitmesi bekleniyor";
     public const string FilesStep = "Kullanılmayan dosyalar temizleniyor";
@@ -80,11 +82,9 @@ public static class PanelFactoryResetInventory
     // What stays, as the panel lists it.
     public static readonly IReadOnlyList<string> KeptForPanel =
     [
-        "Hesap, kullanıcılar, roller ve açık olan bu oturum",
-        "Entegrasyon bağlantıları ve giriş bilgileri (bağlantı ayarları, eşitleme ve stok kuralları, kargo eşleşmeleri, varsayılan özellik değerleri)",
-        "E-Faturam bağlantısının fatura kuralları (şirket bilgileri E-Faturam hesabınızda durur)",
-        "Sistem ayarları: güvenlik, yapay zekâ anahtarı, uyarı e-postası, kargo etiketi, görünüm",
-        "Depo tanımları, soru cevap şablonları ve Excel içe aktarma kolon profilleri",
+        "Hesap, kullanıcılar ve bu oturum",
+        "Entegrasyon bağlantıları ve giriş bilgileri",
+        "Sistem ayarları",
     ];
 
     private static PanelResetTable D(string name, PanelResetGroup group, string note = "") => new(name, PanelResetAction.Delete, group, note);
@@ -110,7 +110,7 @@ public static class PanelFactoryResetInventory
         D("sales.marketplace_cargo_invoice_items", Finance), D("sales.marketplace_finance_transactions", Finance), D("sales.marketplace_payout_orders", Finance),
         D("integration.marketplace_finance_sync_states", Finance),
         K("sales.cargo_provider_mappings", "bağlantının kargo firması eşleşmeleri (bağlantı ayarı)"),
-        K("sales.marketplace_question_templates", "kullanıcının yazdığı soru cevap şablonları (ayar)"),
+        D("sales.marketplace_question_templates", QuestionTemplates),
 
         // inventory
         D("inventory.channel_inventory_observations", Stock), D("inventory.channel_offers", Stock), D("inventory.channel_price_history", Stock),
@@ -129,7 +129,7 @@ public static class PanelFactoryResetInventory
         D("catalog.import_sessions", Products), D("catalog.import_staging_records", Products), D("catalog.import_match_candidates", Products),
         D("catalog.import_decisions", Products), D("catalog.field_provenance", Products),
         D("catalog.product_import_sessions", Products), D("catalog.product_import_staging_records", Products), D("catalog.catalog_structure_runs", Products),
-        K("catalog.connection_attribute_defaults", "bağlantının varsayılan özellik değerleri (bağlantı ayarı)"),
+        D("catalog.connection_attribute_defaults", AttributeDefaults),
         K("catalog.import_column_profiles", "Excel içe aktarma kolon profilleri (ayar)"),
         K("catalog.import_column_mappings", "Excel içe aktarma kolon profilleri (ayar)"),
 

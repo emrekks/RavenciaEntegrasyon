@@ -163,6 +163,11 @@ public sealed partial class OperationalDataMaintenanceService
             DELETE FROM catalog.brand_mappings WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
             DELETE FROM catalog.attribute_value_mappings WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
             DELETE FROM catalog.attribute_mappings WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
+            -- The mapping templates and attribute defaults are the connection's own (12 Nov 2026 owner decision: they go too).
+            DELETE FROM catalog.attribute_value_mapping_templates WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
+            DELETE FROM catalog.attribute_mapping_templates WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
+            DELETE FROM catalog.mapping_template_dismissals WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
+            DELETE FROM catalog.connection_attribute_defaults WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
             DELETE FROM catalog.commission_tariff_rows r USING catalog.commission_tariffs t WHERE r."TenantId"={{tenantId}} AND r."TariffId"=t."Id" AND t."TenantId"={{tenantId}} AND t."ConnectionId"={{connectionId}};
             DELETE FROM catalog.commission_tariffs WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
             DELETE FROM catalog.promotion_offer_files WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
@@ -236,7 +241,11 @@ public sealed partial class OperationalDataMaintenanceService
         var mappings = await db.CategoryMappings.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken)
             + await db.BrandMappings.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken)
             + await db.AttributeMappings.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken)
-            + await db.AttributeValueMappings.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
+            + await db.AttributeValueMappings.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken)
+            + await db.AttributeMappingTemplates.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken)
+            + await db.AttributeValueMappingTemplates.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken)
+            + await db.MappingTemplateDismissals.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken)
+            + await db.ConnectionAttributeDefaults.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
         var commissionTariffs = await db.CommissionTariffs.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
         // The uploaded files of the store: promotion offers and Trendyol ad reports.
         var promotionOffers = await db.PromotionOfferFiles.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken)
