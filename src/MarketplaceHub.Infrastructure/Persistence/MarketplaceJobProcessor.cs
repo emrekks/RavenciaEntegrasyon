@@ -7196,12 +7196,23 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (IsWebColorOptionKey(remoteAttribute.Name))
             return new LocalCategoryAttribute(attribute, remoteAttribute, values, role);
 
+        if (values.Count == 0) return new LocalCategoryAttribute(attribute, remoteAttribute, values, role);
+        // The attribute's stored values, its value scope's current snapshot and the scope's stored value mappings are read
+        // once for the whole value list (a Trendyol attribute can list hundreds of values and the import rebuilds every
+        // category context per model, live 12 Nov 2026: ~4,000 queries per model). Each value below picks from them what
+        // its own queries used to return (StoredAttributeValues); nothing in this loop saves, so the rows stay as read.
+        var valueScope = $"{remoteCategory.ExternalId}/{remoteAttribute.ExternalId}";
+        var storedValues = await StoredAttributeValues.ReadAsync(db, tenantId, attribute.Id, values.SelectMany(remoteValue => CatalogLookupKeys(remoteValue.Name, 320)), cancellationToken);
+        var valueSnapshot = await db.ReferenceSnapshots.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "ATTRIBUTE_VALUES" && x.ScopeExternalId == valueScope && x.IsCurrent).OrderByDescending(x => x.FetchedAt).FirstOrDefaultAsync(cancellationToken);
+        var storedMappings = valueSnapshot is null
+            ? null
+            : await StoredAttributeValueMappings.ReadAsync(db, tenantId, connectionId, valueScope, cancellationToken);
         foreach (var remoteValue in values)
         {
             var normalizedValue = NormalizeCatalogKey(remoteValue.Name, 320);
             var valueKeys = CatalogLookupKeys(remoteValue.Name, 320);
             var value = db.AttributeValues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.AttributeId == attribute.Id && CatalogKeyNormalizer.SameKey(x.NormalizedValue, normalizedValue, 320))
-                ?? await db.AttributeValues.Where(x => x.TenantId == tenantId && x.AttributeId == attribute.Id && valueKeys.Contains(x.NormalizedValue)).OrderBy(x => x.NormalizedValue == normalizedValue ? 0 : 1).ThenBy(x => x.Id).FirstOrDefaultAsync(cancellationToken);
+                ?? storedValues.Track(storedValues.First(valueKeys, normalizedValue));
             if (value is null)
             {
                 value = new AttributeValue { Id = Guid.CreateVersion7(), TenantId = tenantId, AttributeId = attribute.Id, Value = Short(remoteValue.Name, 320), NormalizedValue = normalizedValue, SortOrder = remoteValue.SortOrder ?? 0, IsActive = true, Version = 1 };
@@ -7214,13 +7225,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 value.IsActive = true;
                 value.Version++;
             }
-            var valueScope = $"{remoteCategory.ExternalId}/{remoteAttribute.ExternalId}";
-            var valueSnapshot = await db.ReferenceSnapshots.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "ATTRIBUTE_VALUES" && x.ScopeExternalId == valueScope && x.IsCurrent).OrderByDescending(x => x.FetchedAt).FirstOrDefaultAsync(cancellationToken);
-            if (valueSnapshot is null) continue;
+            if (valueSnapshot is null || storedMappings is null) continue;
             var valueMapping = db.AttributeValueMappings.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == value.Id && x.ScopeExternalId == valueScope && x.ExternalId == remoteValue.ExternalId)
-                ?? await db.AttributeValueMappings.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == value.Id && x.ScopeExternalId == valueScope && x.ExternalId == remoteValue.ExternalId, cancellationToken);
+                ?? storedMappings.Track(storedMappings.Exact(value.Id, remoteValue.ExternalId));
             valueMapping ??= db.AttributeValueMappings.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == valueScope && x.ExternalId == remoteValue.ExternalId)
-                ?? await db.AttributeValueMappings.OrderBy(x => x.LocalId).FirstOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == valueScope && x.ExternalId == remoteValue.ExternalId, cancellationToken);
+                ?? storedMappings.Track(storedMappings.FirstByLocalId(remoteValue.ExternalId));
             if (valueMapping is null)
                 db.AttributeValueMappings.Add(new AttributeValueMapping { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, SnapshotId = valueSnapshot.Id, LocalId = value.Id, ScopeExternalId = valueScope, ExternalId = remoteValue.ExternalId, Status = "VERIFIED", VerifiedAt = timeProvider.GetUtcNow(), Version = 1 });
             else
@@ -7274,6 +7283,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .ToDictionary(x => x.Key, x => x.First(), StringComparer.Ordinal);
 
         categoryContext.ExactWebColorInitializedAttributeIds.Add(localAttribute.Id);
+        // The scope's stored mappings, read once for every value below (nothing here saves, so they stay as read).
+        var storedMappedValueIds = (await db.AttributeValueMappings.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == valueScope)
+                .Select(x => x.LocalId)
+                .ToListAsync(cancellationToken))
+            .ToHashSet();
         foreach (var localValue in localValues.Where(x => categoryContext.ExactWebColorValueIds.Add(x.Id)))
         {
             if (!remoteByValue.TryGetValue(localValue.NormalizedValue, out var remoteValue)) continue;
@@ -7282,7 +7297,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             // default and is intentionally never overwritten by a sync. A value
             // may have several mappings in a scope, so this is an existence check.
             if (db.AttributeValueMappings.Local.Any(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localValue.Id && x.ScopeExternalId == valueScope)
-                || await db.AttributeValueMappings.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localValue.Id && x.ScopeExternalId == valueScope, cancellationToken)) continue;
+                || storedMappedValueIds.Contains(localValue.Id)) continue;
 
             db.AttributeValueMappings.Add(new AttributeValueMapping
             {
