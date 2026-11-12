@@ -44,7 +44,17 @@ vi.mock('../../shared/api', async importOriginal => {
     if (path === '/settings/ai/test') return { ok: true, model: 'claude-sonnet-5-5', message: 'Bağlantı çalışıyor.' }
     if (path === '/settings/data-reset' && method === 'GET') return { items: [{ scope: 'PRODUCTS', count: 944 }, { scope: 'CATEGORIES', count: 12 }, { scope: 'CATEGORY_ATTRIBUTES', count: 40 }, { scope: 'BRANDS', count: 3 }, { scope: 'OPTIONS', count: 2 }] }
     if (path === '/settings/data-reset') return { products: 3, orders: 0, returns: 0, invoices: 0, categories: 0, categoryAttributes: 0, brands: 0, options: 0 }
-    if (path === '/settings/factory-reset') return { groups: [{ key: 'ORDERS', label: 'Siparişler', count: 5 }], total: 5, steps: ['Süren işlerin bitmesi bekleniyor', 'Tamamlandı'], kept: ['Hesap'], confirmationWord: 'PANELİ SIFIRLA', job: null }
+    if (path === '/settings/factory-reset') return {
+      groups: [
+        { key: 'INVOICES', label: 'Faturalar ve Belgeleri', description: 'Faturalar.', section: 'Satış ve Faturalar', requires: [], count: 4 },
+        { key: 'ORDERS', label: 'Siparişler, Paketler ve İadeler', description: 'Siparişler.', section: 'Satış ve Faturalar', requires: ['INVOICES'], count: 6 },
+        { key: 'STOCK', label: 'Stok ve Fiyatlar', description: 'Stok.', section: 'Katalog', requires: [], count: 10 },
+        { key: 'PRODUCTS', label: 'Ürünler', description: 'Ürünler.', section: 'Katalog', requires: ['STOCK'], count: 944 },
+        { key: 'BRANDS', label: 'Marka Listesi', description: 'Markalar.', section: 'Katalog', requires: [], count: 3 }
+      ],
+      total: 967, steps: ['Süren işlerin bitmesi bekleniyor', 'Tamamlandı'], kept: ['Hesap'], confirmationWord: 'PANELİ SIFIRLA', partialConfirmationWord: 'Verileri sil',
+      job: method === 'POST' ? { jobId: 'pj', status: 'PENDING', full: false, categories: JSON.parse(body ?? '{}').categories ?? [], steps: ['Süren işlerin bitmesi bekleniyor', 'Tamamlandı'], step: 0, progressLabel: null, progressPercent: 0, error: null, createdAt: '2026-11-12T10:00:00Z', completedAt: null } : null
+    }
     if (path === '/connections') return { items: [
       { id: 'c-ty', platformCode: 'TRENDYOL', displayName: 'Trendyol', status: 'ACTIVE', version: 5 },
       { id: 'c-n11', platformCode: 'N11', displayName: 'N11', status: 'ACTIVE', version: 2 },
@@ -197,20 +207,22 @@ describe('SystemSettingsPage', () => {
   it('deletes the chosen lists only after the confirmation text is typed', async () => {
     await renderPage('/settings?tab=database')
     await settle()
-    const products = Array.from(container.querySelectorAll<HTMLLabelElement>('.ss-dr-opt')).find(item => item.textContent?.includes('Ürünler Listesi'))!
+    const products = Array.from(container.querySelectorAll<HTMLLabelElement>('.ss-dr-opt')).find(item => item.querySelector('b')?.textContent === 'Ürünler')!
     expect(products.textContent).toContain('944')
     click(products.querySelector('input')!)
+    // Products bring their stock and prices.
     const summary = container.querySelector('.ss-dr-sum')?.textContent
-    expect(summary).toContain('Toplam 944 kayıt')
-    expect(summary).toContain('Ürünler Listesi944')
+    expect(summary).toContain('Toplam 954 kayıt')
+    expect(summary).toContain('Ürünler944')
+    expect(summary).toContain('Stok ve Fiyatlar10')
     const confirm = container.querySelector<HTMLButtonElement>('.ss-dr-go')!
     expect(confirm.disabled).toBe(true)
     input(container.querySelector<HTMLInputElement>('#settings-reset-confirm')!, 'Verileri sil')
     expect(confirm.disabled).toBe(false)
     click(confirm)
     await settle()
-    const request = apiState.calls.find(call => call.path === '/settings/data-reset' && call.method === 'POST')
-    expect(JSON.parse(request?.body ?? '{}')).toEqual({ scopes: ['PRODUCTS'], confirmation: 'Verileri sil' })
+    const request = apiState.calls.find(call => call.path === '/settings/factory-reset' && call.method === 'POST')
+    expect(JSON.parse(request?.body ?? '{}')).toEqual({ categories: ['STOCK', 'PRODUCTS'], confirmation: 'Verileri sil' })
   })
 
   it('lists the active marketplace connections as a group with counts and totals', async () => {
@@ -245,8 +257,8 @@ describe('SystemSettingsPage', () => {
     expect(confirm.disabled).toBe(false)
     click(confirm)
     await settle()
-    const posts = apiState.calls.filter(call => call.method === 'POST' && (call.path.endsWith('/full-reset') || call.path === '/settings/data-reset'))
-    expect(posts.map(call => call.path)).toEqual(['/connections/c-ty/full-reset', '/settings/data-reset'])
+    const posts = apiState.calls.filter(call => call.method === 'POST' && (call.path.endsWith('/full-reset') || call.path === '/settings/factory-reset'))
+    expect(posts.map(call => call.path)).toEqual(['/connections/c-ty/full-reset', '/settings/factory-reset'])
     expect(posts[0].headers?.['if-match']).toBe('"v5"')
     expect(JSON.parse(posts[0].body ?? '{}')).toEqual({ confirmation: 'Trendyol' })
     expect(group.querySelector('.ss-dr-prog')?.textContent).toBe('Tamamlandı')

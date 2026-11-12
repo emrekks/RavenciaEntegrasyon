@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, hubPoll } from '../../shared/api'
 import { formatIstanbul } from '../../shared/format-date'
+import { clearNotificationHistory } from '../../shared/notifications'
 import { normalizePanelResetConfirmation, panelResetConfirmationWord, panelResetConfirmed, panelResetFailed, panelResetRunning, panelResetStepStates, type PanelFactoryResetView, type PanelResetStepState } from './panel-factory-reset'
 
 const resetNumber = (value: number) => value.toLocaleString('tr-TR')
@@ -47,6 +48,8 @@ export function PanelFactoryResetSection() {
     if (running) { wasRunning.current = true; return }
     if (wasRunning.current && job) {
       wasRunning.current = false
+      // The notification history lives in this browser: the Bildirimler category takes it too.
+      if (job.status === 'SUCCEEDED' && job.categories.includes('NOTIFICATIONS')) clearNotificationHistory()
       void queryClient.invalidateQueries({ predicate: query => query.queryKey[0] !== queryKey[0] })
     }
   }, [running, job, queryClient])
@@ -68,7 +71,7 @@ export function PanelFactoryResetSection() {
     }
   }
 
-  const steps = view.data?.steps ?? []
+  const steps = job?.steps ?? view.data?.steps ?? []
   const states = panelResetStepStates(steps, job)
   const failed = panelResetFailed(job?.status)
   const showProgress = job !== null && (running || failed || job.status === 'SUCCEEDED')
@@ -96,7 +99,7 @@ export function PanelFactoryResetSection() {
     </div>
     {showProgress && job && <div className="ss-fr-progress" role="status" aria-live="polite">
       <div className="ss-fr-bar" aria-hidden="true"><i style={{ width: `${percent}%` }} /></div>
-      <div className="ss-fr-progress-head"><strong>İlerleme</strong><span>%{percent}{job.status === 'SUCCEEDED' && job.completedAt ? ` · ${formatIstanbul(job.completedAt, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}</span></div>
+      <div className="ss-fr-progress-head"><strong>{job.full ? 'Tam Sıfırlama İlerlemesi' : 'Sıfırlama İlerlemesi'}</strong><span>%{percent}{job.status === 'SUCCEEDED' && job.completedAt ? ` · ${formatIstanbul(job.completedAt, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}</span></div>
       <ol className="ss-fr-steps">{steps.map((step, index) => <li key={step} className={`is-${states[index]}`}><StepGlyph state={states[index]} /><span>{step}</span></li>)}</ol>
       {failed && <p className="ss-fr-error">{job.error ?? 'Sıfırlama tamamlanamadı.'}</p>}
     </div>}
