@@ -47,7 +47,7 @@ public static class PanelFactoryResetInventory
     public static readonly PanelResetGroup Promotions = new(14, "PROMOTIONS", "Promosyon, Komisyon ve Reklam Dosyaları", "Yüklenen komisyon tarifeleri, promosyon teklif dosyaları ve reklam raporları.", MarketplaceSection, "Promosyon, komisyon ve reklam dosyaları siliniyor", []);
     public static readonly PanelResetGroup Jobs = new(15, "JOBS", "İşlem Takibi", "Bütün işler ve denemeleri (çalışan sıfırlama hariç), eşitleme imleçleri, mutabakat ve dış işlem kayıtları, iç değişiklik olayları; eşitleme baştan başlar.", SystemSection, "İşler ve eşitleme kayıtları siliniyor", []);
     public static readonly PanelResetGroup Logs = new(16, "LOGS", "Loglar", "İşlem ve denetim logu (hesaba bağlanamamış giriş denemeleri dahil), API istek kayıtları, yapay zekâ kullanım logu, ürün etkinlik logu, fiyat/stok gönderim logu ve gelen webhook kayıtları.", SystemSection, "Loglar siliniyor", []);
-    public static readonly PanelResetGroup Notifications = new(17, "NOTIFICATIONS", "Bildirimler", "Sorun bildirimleri ve alarmlar ile bu tarayıcıdaki bildirim geçmişi.", SystemSection, "Bildirimler siliniyor", []);
+    public static readonly PanelResetGroup Notifications = new(17, "NOTIFICATIONS", "Bildirimler", "Sorun bildirimleri ve alarmlar, bildirim merkezi ve bu tarayıcıdaki bildirim geçmişi.", SystemSection, "Bildirimler siliniyor", []);
     public static readonly PanelResetGroup Dashboard = new(18, "DASHBOARD", "Raporlar ve Özet Tabloları", "Pano özeti, günlük ciro, düşük stok ve eşitleme durumu tabloları; yeniden hesaplanır.", SystemSection, "Rapor ve özet tabloları siliniyor", []);
 
     public static readonly PanelResetGroup LegacyConnections = new(19, "LEGACY_CONNECTIONS", "Eski Bağlantı Kayıtları ve İptal Edilmiş Anahtarlar", "Silinmiş bağlantıların kalan kayıtları ve yerine yenisi girilmiş eski giriş bilgileri; açık bağlantılar ve geçerli anahtarları kalır.", SystemSection, "Eski bağlantı kayıtları ve iptal edilmiş anahtarlar siliniyor", []);
@@ -170,6 +170,7 @@ public static class PanelFactoryResetInventory
 
         // notifications
         D("ops.operational_issues", Notifications, "sorun bildirimleri / alarmlar"),
+        D("ops.panel_notifications", Notifications, "bildirim merkezi (zilde gösterilen bildirimler, 7 gün)"),
 
         // dashboard
         D("dashboard.snapshot", Dashboard), D("dashboard.revenue_daily", Dashboard), D("dashboard.low_stock", Dashboard), D("dashboard.sync_status", Dashboard),

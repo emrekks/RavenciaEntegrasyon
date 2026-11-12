@@ -16,6 +16,7 @@ import { useMediaQuery } from '../shared/hooks/useMediaQuery'
 import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontScale, useAppearanceSettings } from '../features/settings/appearance-settings'
 import { readNotificationHistory, registerNotificationConnectionResolver, subscribeNotificationHistory, syncAttentionNotices, type AppNotification, type AttentionNotice } from '../shared/notifications'
 import { connectionIdentityFromCache } from '../shared/notification-connections'
+import { startNotificationCenterSink } from '../shared/notification-center'
 import { orderNavigationCount, pendingOrdersQuery } from '../shared/order-navigation-count'
 import { clearPersonalStorage, setStorageScope } from '../shared/storage-scope'
 import { clearQuerySnapshot, confirmQuerySnapshotScope, forgetPreviousSession } from '../shared/query-snapshot'
@@ -49,6 +50,9 @@ function Shell({ me }: { me: Me }) {
     registerNotificationConnectionResolver(connectionId => connectionIdentityFromCache(queryClient, connectionId))
     return () => registerNotificationConnectionResolver(null)
   }, [queryClient])
+  // Every notification the bell shows is kept a week in the notification center (İşlem Takibi › Bildirimler); a
+  // read-only role only reads, so its bell stays in this browser.
+  useEffect(() => me.role?.toUpperCase() === 'READONLY' ? undefined : startNotificationCenterSink(), [me.tenantId, me.id, me.role])
   const [topbarHidden, setTopbarHidden] = useState(false)
   useEffect(() => {
     let last = window.scrollY

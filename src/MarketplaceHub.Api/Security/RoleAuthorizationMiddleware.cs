@@ -111,6 +111,10 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
             // label was printed is open to every role that works with orders (accounting prints labels too).
             case "orders":
                 return last == "label-printed" ? WorkingRoles : OperationalRoles;
+            // The notification center keeps each person's own notifications and marks them read or dismissed: every role
+            // that works in the panel (READONLY only reads, so its bell stays in its browser).
+            case "notifications":
+                return WorkingRoles;
             case "questions" or "question-templates":
                 return OperationalRoles;
             case "connections":

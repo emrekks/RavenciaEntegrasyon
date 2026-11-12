@@ -213,6 +213,24 @@ export function registerNotificationConnectionResolver(resolver: ((connectionId:
   connectionResolver = resolver
 }
 
+// The notification center (shared/notification-center.ts) keeps a server copy of every notification the bell shows for a
+// week (İşlem Takibi › Bildirimler). The bell tells it what it saved, read and removed; removing from the bell only
+// dismisses it there. The shell registers the sink once; without one (tests, signed out) the bell works alone.
+export type NotificationSink = {
+  saved: (notification: AppNotification, options?: { shared?: boolean }) => void
+  read: (ids: string[]) => void
+  dismissed: (ids: string[]) => void
+}
+let notificationSink: NotificationSink | null = null
+export function registerNotificationSink(sink: NotificationSink | null) {
+  notificationSink = sink
+  return () => { if (notificationSink === sink) notificationSink = null }
+}
+function sinkCall(call: (sink: NotificationSink) => void) {
+  // The center is a copy: a failure there never breaks the bell or the operation that raised the notification.
+  try { if (notificationSink) call(notificationSink) } catch { /* the bell keeps working on its own */ }
+}
+
 /** The code and message of a failed request, for a notification's Kod row. */
 export function notificationError(reason: unknown, fallback: string): { message: string; code?: string } {
   if (!(reason instanceof Error)) return { message: fallback }
@@ -408,26 +426,34 @@ export function appendNotification(input: string | NotificationInput, kind: AppN
     : [notification, ...history]
   writeHistory(next.slice(0, historyLimit))
   window.dispatchEvent(new CustomEvent(notificationChangeEvent))
-  return latestSame >= 0 ? next[0] : notification
+  const saved = latestSame >= 0 ? next[0] : notification
+  sinkCall(sink => sink.saved(saved))
+  return saved
 }
 
-export function markNotificationRead(notificationId: string) {
+/** Marks one bell entry read; local: the center already marked it (only this browser's bell follows). */
+export function markNotificationRead(notificationId: string, options?: { local?: boolean }) {
   const history = readNotificationHistory()
   const next = history.map(notification => notification.id === notificationId ? { ...notification, read: true } : notification)
   if (next.every((notification, index) => notification.read === history[index]?.read)) return
   if (!writeHistory(next)) return
   window.dispatchEvent(new CustomEvent(notificationChangeEvent))
+  if (!options?.local) sinkCall(sink => sink.read([notificationId]))
 }
 
-export function markAllNotificationsRead() {
+export function markAllNotificationsRead(options?: { local?: boolean }) {
   const history = readNotificationHistory()
   if (!history.some(notification => !notification.read)) return
   const next = history.map(notification => notification.read ? notification : { ...notification, read: true })
   if (!writeHistory(next)) return
   window.dispatchEvent(new CustomEvent(notificationChangeEvent))
+  if (!options?.local) sinkCall(sink => sink.read(history.filter(notification => !notification.read).map(notification => notification.id)))
 }
 
+/** Empties the bell. The notification center keeps every entry (dismissed from the bell) until its week is over. */
 export function clearNotificationHistory() {
+  const cleared = readNotificationHistory().map(notification => notification.id)
+  if (cleared.length > 0) sinkCall(sink => sink.dismissed(cleared))
   try {
     localStorage.removeItem(scopedStorageKey(notificationStorageKey))
   } catch {
@@ -502,7 +528,8 @@ function attentionNotification(notice: AttentionNotice, previous?: AppNotificati
     ? items.length === 1 && items[0].href ? { href: items[0].href, label: 'Ürüne Git' } : { href: notificationLinks.job('PRODUCT_APPROVAL_DEADLINE_EXPIRED'), label: 'İşlem Takibine Git' }
     : { href: notificationLinks.connection(notice.connectionId), label: 'Entegrasyona Git' }
   return {
-    id: previous?.id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    // One id per notice and revision: every browser of the tenant names it alike, so the center keeps it once.
+    id: previous?.id ?? `attention:${notice.key}:${notice.revision}`.slice(0, 120),
     message: notice.message,
     kind: 'error',
     createdAt: previous?.createdAt ?? new Date().toISOString(),
@@ -538,17 +565,21 @@ export function syncAttentionNotices(notices: AttentionNotice[]) {
   let next = history.filter(notification => !notification.groupKey?.startsWith(attentionPrefix) || listed.has(notification.groupKey.slice(attentionPrefix.length)))
   let changed = next.length !== history.length
   const nextSeen: Record<string, string> = {}
+  const raised: AppNotification[] = []
   for (const notice of notices) {
     nextSeen[notice.key] = notice.revision
     const groupKey = `${attentionPrefix}${notice.key}`
     const index = next.findIndex(notification => notification.groupKey === groupKey)
     if (seen[notice.key] !== notice.revision) {
       // A new notice, or a new revision of one (a new failure streak, another expired card): raised again, unread.
-      next = [attentionNotification(notice), ...next.filter((_, position) => position !== index)]
+      const notification = attentionNotification(notice)
+      raised.push(notification)
+      next = [notification, ...next.filter((_, position) => position !== index)]
       changed = true
     } else if (index >= 0) {
       const updated = attentionNotification(notice, next[index])
       if (attentionSignature(updated) !== attentionSignature(next[index])) {
+        raised.push(updated)
         next = next.map((notification, position) => position === index ? updated : notification)
         changed = true
       }
@@ -559,5 +590,7 @@ export function syncAttentionNotices(notices: AttentionNotice[]) {
   if (!changed) return false
   if (!writeHistory(next.slice(0, historyLimit))) return false
   window.dispatchEvent(new CustomEvent(notificationChangeEvent))
+  // A notice for the whole tenant: the center keeps one shared row per notice and revision.
+  for (const notification of raised) sinkCall(sink => sink.saved(notification, { shared: true }))
   return true
 }

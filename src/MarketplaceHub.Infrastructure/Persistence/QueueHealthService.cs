@@ -50,7 +50,7 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
             var code = LaneCode(definition.Name);
             var attempt = attempts.FirstOrDefault(row => row.Lane == definition.Name);
             var depth = queue.Where(row => WorkerLanes.LaneFor(row.JobType, row.Priority, hotPriorityCeiling) == definition.Name).ToArray();
-            return new LaneMetricView(code, attempt?.Attempts ?? 0, Round(attempt?.AverageWaitSeconds), Round(attempt?.P95WaitSeconds), depth.Where(row => !row.Running).Sum(row => row.Count), depth.Where(row => row.Running).Sum(row => row.Count));
+            return new LaneMetricView(code, attempt?.Attempts ?? 0, Round(attempt?.AverageWaitSeconds), Round(attempt?.P95WaitSeconds), depth.Where(row => !row.Running).Sum(row => row.Count), depth.Where(row => row.Running).Sum(row => row.Count), LaneSlots(definition));
         }).ToList();
     }
 
@@ -163,6 +163,9 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
         }
         return result;
     }
+
+    // The same setting and bounds the worker starts its loops with (Worker.LaneSlots).
+    private int LaneSlots(WorkerLane lane) => Math.Clamp(configuration?.GetValue($"Worker:LaneSlots:{lane.Name}", lane.DefaultSlots) ?? lane.DefaultSlots, 1, 8);
 
     private static double? Round(double? value) => value is { } number ? Math.Round(number, 1) : null;
     private sealed record LaneAttemptRow(string Lane, int Attempts, double? AverageWaitSeconds, double? P95WaitSeconds);

@@ -245,7 +245,8 @@ public sealed record JobTypeMetricView(
 public sealed record JobCountView(string Status, string JobType, int Count);
 
 // Lane is USER (actions a user started), INITIAL (first imports), HOT (new data) or BACKGROUND.
-public sealed record LaneMetricView(string Lane, int Attempts, double? AverageWaitSeconds, double? P95WaitSeconds, int Queued, int Running);
+// Slots: how many jobs the lane runs at once (the worker's Worker:LaneSlots:<lane>, else the lane's default).
+public sealed record LaneMetricView(string Lane, int Attempts, double? AverageWaitSeconds, double? P95WaitSeconds, int Queued, int Running, int Slots = 0);
 // Lane is FOREGROUND (new-order reads, user actions) or BACKGROUND (every other order read).
 public sealed record QuotaUsageView(string PlatformCode, string StoreName, string Lane, int LimitPerMinute, int LastHourRequests, int PeakMinuteRequests, double AveragePerMinute);
 

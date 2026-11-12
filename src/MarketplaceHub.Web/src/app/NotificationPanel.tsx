@@ -6,6 +6,7 @@ import { ViewTabIcon, type ViewTabIconName } from '../shared/view-tabs'
 import { clearNotificationHistory, markAllNotificationsRead, markNotificationRead, notificationSubjectLabels, type AppNotification } from '../shared/notifications'
 import { platformLogoClass, platformLogoSource } from '../shared/platform-logos'
 import { formatDateTime, formatIstanbul } from '../shared/format-date'
+import { notificationCenterHref } from '../shared/notification-center'
 
 type Filter = 'ALL' | 'UNREAD' | 'ERROR'
 
@@ -111,5 +112,7 @@ export function NotificationPanel({ notifications, onNavigate, onCleared }: Pane
           <div className="rv-notification-day-body">{items.map(notification => <NotificationItem key={notification.id} notification={notification} expanded={expandedId === notification.id} onToggle={() => setExpandedId(current => current === notification.id ? null : notification.id)} onOpen={open(notification)} />)}</div>
         </section>)}
       </div>}
+    {/* The notification center keeps every notification for a week, also the ones cleared here. */}
+    <div className="rv-notification-center-link"><button type="button" className="rv-notification-go" onClick={() => onNavigate(notificationCenterHref)}><span>Tüm Bildirimler (Son 7 Gün)</span><UiIcon name="arrowRight" size={14} /></button></div>
   </>
 }

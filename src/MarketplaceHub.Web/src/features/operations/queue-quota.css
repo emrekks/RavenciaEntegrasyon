@@ -1,0 +1,61 @@
+/* İşlem Takibi › Kuyruk ve Kota (QueueQuotaView.tsx). */
+.qq { display: grid; gap: 12px; min-width: 0; }
+.qq-window { display: flex; align-items: flex-end; gap: 16px; min-width: 0; }
+.qq-window .rr-fld { width: 200px; flex: none; }
+.qq-note, .qq-sub { margin: 0; color: var(--rv-color-muted); font-size: 12.5px; line-height: 1.4; }
+.qq-toolbar .jobs-reference-refresh.is-busy svg { animation: qq-spin 1s linear infinite; }
+@keyframes qq-spin { to { transform: rotate(360deg); } }
+
+.qq-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.qq-card { display: grid; gap: 4px; padding: 14px 16px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; min-width: 0; }
+.qq-card span { color: var(--rv-color-muted); font-size: 12.5px; font-weight: 500; white-space: nowrap; }
+.qq-card strong { color: var(--rv-color-ink); font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.qq-card small { overflow: hidden; color: var(--rv-color-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+
+.qq-section { display: grid; align-content: start; gap: 10px; padding: 14px 16px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; min-width: 0; }
+.qq-section h2 { margin: 0; color: var(--rv-color-ink); font-size: 14.5px; font-weight: 600; }
+.qq-section .qq-sub { margin-top: -6px; }
+.qq-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 12px; align-items: start; }
+.qq-empty, .qq-error { margin: 0; padding: 12px 0; color: var(--rv-color-muted); font-size: 13px; }
+.qq-error { color: var(--rv-color-danger); }
+
+.qq-table-scroll { overflow-x: auto; margin: 0 -16px; padding: 0 16px; }
+.qq-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.qq-table th { padding: 8px 10px; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; text-align: left; white-space: nowrap; border-bottom: 1px solid var(--rv-color-border); }
+.qq-table td { padding: 9px 10px; color: var(--rv-color-ink); vertical-align: middle; border-bottom: 1px solid var(--rv-color-border); }
+.qq-table tr:last-child td { border-bottom: 0; }
+.qq-table td strong { display: block; font-weight: 600; white-space: nowrap; }
+.qq-table td small { display: block; color: var(--rv-color-muted); font-size: 11.5px; }
+.qq-table .is-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.qq-table td.is-error { color: var(--rv-color-danger); font-weight: 600; }
+.qq-usage { display: flex; align-items: center; gap: 10px; min-width: 150px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.qq-usage > span:last-child { color: var(--rv-color-ink); font-size: 12.5px; }
+
+.qq-bar { position: relative; display: block; flex: 1; min-width: 80px; height: 8px; overflow: hidden; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 7px; }
+.qq-bar i { position: absolute; inset: 0 auto 0 0; background: var(--rv-color-accent); border-radius: 7px; }
+.qq-bar.is-busy i { background: var(--rv-color-warning); }
+.qq-bar.is-full i { background: var(--rv-color-danger); }
+
+.qq-states { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
+.qq-states li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 7px; font-size: 13px; }
+.qq-states li span { overflow: hidden; color: var(--rv-color-muted); text-overflow: ellipsis; white-space: nowrap; }
+.qq-states li strong { color: var(--rv-color-ink); font-variant-numeric: tabular-nums; }
+.qq-states li:is(.is-dead, .is-blocked) strong { color: var(--rv-color-danger); }
+
+.qq-quota { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.qq-quota li { display: grid; gap: 6px; padding: 10px 12px; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 7px; }
+.qq-quota-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.qq-quota-head strong { overflow: hidden; color: var(--rv-color-ink); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.qq-quota li small { color: var(--rv-color-muted); font-size: 12px; }
+.qq-tag { margin-left: auto; padding: 1px 8px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 7px; font-size: 11.5px; white-space: nowrap; }
+
+@media (max-width: 1100px) {
+  .qq-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .qq-split { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 720px) {
+  .qq-window { flex-direction: column; align-items: stretch; gap: 6px; }
+  .qq-window .rr-fld { width: 100%; }
+  .qq-card strong { font-size: 19px; }
+  .qq-states { grid-template-columns: minmax(0, 1fr); }
+}

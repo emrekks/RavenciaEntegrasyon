@@ -91,6 +91,8 @@
 .rv-notification-history-item:not(.is-expanded) .rv-notification-detail { display: none; }
 
 .rv-notification-history-empty { margin: 0; padding: 44px 16px; color: var(--rv-color-muted); font-size: 13.5px; text-align: center; }
+/* The way to the notification center (İşlem Takibi › Bildirimler) under the list. */
+.rv-notification-center-link { display: flex; justify-content: center; padding: 8px 12px 10px; border-top: 1px solid var(--rv-color-border); }
 .rv-notification-history button:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
 
 /* Count boxes match the view tab counts exactly. */

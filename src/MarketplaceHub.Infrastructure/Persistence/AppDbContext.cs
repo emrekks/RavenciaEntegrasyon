@@ -35,6 +35,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<ProductChangeEntry> ProductChangeEntries => Set<ProductChangeEntry>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<OperationalIssue> OperationalIssues => Set<OperationalIssue>();
+    public DbSet<PanelNotification> PanelNotifications => Set<PanelNotification>();
     public DbSet<FeatureFlag> FeatureFlags => Set<FeatureFlag>();
     public DbSet<FileAsset> FileAssets => Set<FileAsset>();
     public DbSet<ApiIdempotencyRecord> ApiIdempotencyRecords => Set<ApiIdempotencyRecord>();
@@ -478,6 +479,19 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         {
             entity.ToTable("audit_logs", "ops"); entity.HasKey(x => x.Id); entity.Property(x => x.Id).UseIdentityAlwaysColumn();
             entity.Property(x => x.Action).HasMaxLength(96); entity.Property(x => x.Reason).HasMaxLength(512);
+        });
+        builder.Entity<PanelNotification>(entity =>
+        {
+            entity.ToTable("panel_notifications", "ops"); entity.HasKey(x => x.Id);
+            entity.Property(x => x.ClientKey).HasMaxLength(120); entity.Property(x => x.Severity).HasMaxLength(16); entity.Property(x => x.Category).HasMaxLength(24);
+            entity.Property(x => x.Title).HasMaxLength(200); entity.Property(x => x.Message).HasMaxLength(2000); entity.Property(x => x.Href).HasMaxLength(500);
+            entity.Property(x => x.ActionLabel).HasMaxLength(80); entity.Property(x => x.PlatformCode).HasMaxLength(32); entity.Property(x => x.StoreName).HasMaxLength(160);
+            // The bell's id of the notification: a repeat send updates the same row. The center reads a tenant's rows
+            // newest first; the retention removes rows by age.
+            entity.HasIndex(x => new { x.TenantId, x.ClientKey }).IsUnique();
+            entity.HasIndex(x => new { x.TenantId, x.CreatedAt, x.Id }).IsDescending(false, true, true);
+            entity.HasIndex(x => x.CreatedAt);
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<OperationalIssue>(entity =>
         {
