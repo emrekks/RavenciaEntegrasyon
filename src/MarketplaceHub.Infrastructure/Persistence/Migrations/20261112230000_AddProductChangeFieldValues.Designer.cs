@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261112200444_AddProductChangeFieldValues")]
+    [Migration("20261112230000_AddProductChangeFieldValues")]
     partial class AddProductChangeFieldValues
     {
         /// <inheritdoc />

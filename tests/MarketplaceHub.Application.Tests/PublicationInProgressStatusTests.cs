@@ -1,3 +1,4 @@
+using Xunit;
 using MarketplaceHub.Infrastructure.Persistence;
 
 namespace MarketplaceHub.Application.Tests;
