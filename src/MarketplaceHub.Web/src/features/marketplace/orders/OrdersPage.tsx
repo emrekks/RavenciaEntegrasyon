@@ -4,7 +4,7 @@ import { copyText } from '../../../shared/copy-text'
 import { observeUnitPriceAlignment } from '../unit-price-alignment'
 import { Fragment, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { Link, useSearchParams } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, hubPoll, loadAllPages } from '../../../shared/api'
 import { Busy, StickyActionBar, cargoCarrier, cargoCarriers, cargoFilterOptions, cargoLabel, cargoMatches, ErrorBox, UiIcon, DialogSurface } from '../../../shared/components'
@@ -20,7 +20,7 @@ import { DateRangePicker } from '../../../shared/DateRangePicker'
 import { RrAnchor, RrBadge, RrError, RrFilterCard, RrIcon, RrImagePreview, RrLoading, RrLogo, RrModal, RrPageSize, RrRing, RrThumb, RrWordmark, titleTr, type RingTone } from '../returns-ui'
 import { useScrollLock } from '../../../shared/hooks/useScrollLock'
 import { appendNotification, normalizeNotificationKind, notificationError, notificationLinks, type NotificationContext } from '../../../shared/notifications'
-import { orderLinkOnlyTabs, orderStatusMoreTabs, orderStatusTabs, resolveOrderStatusTab } from '../order-status-tabs'
+import { canTakeOrderIntoWork, orderLinkOnlyTabs, orderStatusLabel, orderStatusMoreTabs, orderStatusTabs, resolveOrderStatusTab } from '../order-status-tabs'
 import { useTabSlide } from '../../../shared/tab-slide'
 import { loadPrintedShippingLabels, shippingLabelAddressLines, shippingLabelBlockCatalog, shippingLabelPageCss, shippingLabelPages, shippingLabelSizeMm, printedShippingLabelKey, ShippingLabelFit, ShippingLabelSurface, useShippingLabelSettings, type ShippingLabelFormat, type ShippingLabelSettings, type ShippingLabelValues } from '../../shipping'
 import { isActiveMarketplaceConnection, isMarketplacePlatformSelected, marketplacePlatformLabel, marketplacePlatformOptions } from '../marketplace-platform-support'
@@ -37,7 +37,7 @@ import { labelPersonalData, loadOrderLabelDetails, type OrderLabelDetail } from 
 import { OrderMetricCards } from './OrderMetricCards'
 import { useResendReminder } from './resend-reminder'
 import { orderDetailQueryKey } from './order-query-keys'
-import { deliveryDueLine, deliveryText, orderRingDetail } from './order-delivery'
+import { deliveryDueLine, deliveryText, dueLineTitle, orderRingDetail } from './order-delivery'
 import { orderCountText, orderTabCount, summaryMetric, type OrderFacets, type OrderSummary } from './order-summary'
 import { orderExportNotice, ordersToExport, readAllOrderPages } from './order-export'
 import { recordShippingLabelsPrinted } from './label-printed'
@@ -501,6 +501,8 @@ function OrderReferenceRow({ item, selected, onSelect, selectionMode, onMenuChan
   const normalizedOrderStatus = item.derivedStatus.toUpperCase()
   const isShopifyOrder = item.platformCode === 'SHOPIFY'
   const isHepsiburadaOrder = item.platformCode === 'HEPSIBURADA'
+  const canTakeIntoWork = canTakeOrderIntoWork(item.platformCode)
+  const navigate = useNavigate()
   const isHepsiburadaUnverifiedWithoutPackage = item.derivedStatus === 'UNVERIFIED' && item.platformCode.trim().toUpperCase() === 'HEPSIBURADA' && (item.packages?.length ?? 0) === 0
   const hepsiburadaPackageHistoryExpired = isHepsiburadaUnverifiedWithoutPackage && Date.parse(item.orderedAt) < hepsiburadaPackageStatusHistoryCutoff().getTime()
   const isCancelledOrder = normalizedOrderStatus === 'CANCELLED'
@@ -541,7 +543,7 @@ function OrderReferenceRow({ item, selected, onSelect, selectionMode, onMenuChan
   const closeDetailThen = (run: () => void) => () => { setDetailOpen(false); setDetailActionsOpen(false); run() }
   const detailPrimaryAction = isCancelledOrder ? null : isCargoTrackingStage ? (shipment?.cargoTrackingNumber ? <Link className="rr-btn rr-primary" to={`/shipments/${shipment.id}`}>Kargo Takip</Link> : null) : isCargoLabelStage && shipment ? <>{enabledLabelFormats.map(format => <button type="button" key={format} className="rr-btn rr-primary" disabled={labelBlockedByInvoice} onClick={closeDetailThen(() => onPrintLabel(format))}><RrIcon name="print" />{format === 'a4' ? 'A4' : 'Sticker'} Etiketi Yazdır</button>)}</> : null
   const detailActions: Array<{ key: string; label: string; disabled?: boolean; run: () => void }> = isCancelledOrder ? [] : [
-    ...(isShopifyOrder ? [{ key: 'status', label: 'Sipariş Durumunu Değiştir', run: onOrderStatusChange }] : normalizedOrderStatus === 'NEW' ? [{ key: 'process', label: processing ? 'İşleniyor…' : 'İşleme Al', disabled: processing, run: isHepsiburadaOrder ? onCreatePackage : onProcessOrder }] : []),
+    ...(isShopifyOrder ? [{ key: 'status', label: 'Sipariş Durumunu Değiştir', run: onOrderStatusChange }] : normalizedOrderStatus === 'NEW' && canTakeIntoWork ? [{ key: 'process', label: processing ? 'İşleniyor…' : 'İşleme Al', disabled: processing, run: isHepsiburadaOrder ? onCreatePackage : onProcessOrder }] : []),
     ...(isHepsiburadaOrder && !['SHIPPED', 'UNDELIVERED', 'DELIVERED', 'RETURNED'].includes(normalizedOrderStatus) ? [{ key: 'package', label: 'Paket Oluştur', run: onCreatePackage }] : []),
     ...(canChangeCargo ? [{ key: 'courier', label: 'Başka Kargo Firması İle Gönder', run: onCourierChange }] : []),
     ...(invoiceNeedsAction ? [{ key: 'invoice-create', label: 'Fatura Oluştur', disabled: !invoiceCreationEnabled, run: onInvoiceCreate }] : []),
@@ -569,11 +571,12 @@ function OrderReferenceRow({ item, selected, onSelect, selectionMode, onMenuChan
   const invoiceDocumentHref = item.invoiceId ? `/api/v1/invoices/${item.invoiceId}/documents/latest/content` : item.invoiceDocumentUrl
   const invoiceItems: Array<[ 'doc' | 'info' | 'edit' | 'upload' | 'open' | 'close', string, () => void, string?, boolean?, string?] | 'hr'> = invoiceNeedsAction
     ? [['doc', 'Fatura Oluştur', onInvoiceCreate, '', !invoiceCreationEnabled, invoiceCreationTooltip], ['info', 'Fatura Bilgileri', onInvoiceDetails], ...(isShopifyOrder ? [['edit', 'Fatura Durumunu Değiştir', () => setInvoiceStatusModalOpen(true), '', !invoiceCreationEnabled && !item.invoiceId, invoiceCreationTooltip] as ['edit', string, () => void, string, boolean, string]] : []), ['upload', 'Fatura Yükle', onInvoiceUpload, '', !invoiceCreationEnabled && !item.invoiceId, invoiceCreationTooltip]]
-    : [...(invoiceDocumentHref ? [['open', 'Faturayı Gör', () => window.open(invoiceDocumentHref, '_blank', 'noopener')] as ['open', string, () => void]] : []), ['info', 'Fatura Bilgileri', onInvoiceDetails], ...(isShopifyOrder ? [['edit', 'Fatura Durumunu Değiştir', () => setInvoiceStatusModalOpen(true), '', !invoiceCreationEnabled && !item.invoiceId, invoiceCreationTooltip] as ['edit', string, () => void, string, boolean, string]] : []), 'hr', ['close', 'Fatura İptal Et', () => undefined, 'rr-danger', true, 'Fatura iptali şimdilik pazar yerinin panelinden yapılır.']]
+    : [...(invoiceDocumentHref ? [['open', 'Faturayı Gör', () => window.open(invoiceDocumentHref, '_blank', 'noopener')] as ['open', string, () => void]] : []), ['info', 'Fatura Bilgileri', onInvoiceDetails], ...(isShopifyOrder ? [['edit', 'Fatura Durumunu Değiştir', () => setInvoiceStatusModalOpen(true), '', !invoiceCreationEnabled && !item.invoiceId, invoiceCreationTooltip] as ['edit', string, () => void, string, boolean, string]] : []), 'hr', ['close', 'Fatura İptal Et', () => navigate(`/invoices/${item.invoiceId}`), 'rr-danger', !item.invoiceId, 'Bu fatura panelde kesilmedi; e-Arşiv iptali yalnız panelde kesilen faturada, Faturalar sayfasındaki fatura detayından istenir.']]
   const actionItems: Array<['edit' | 'play' | 'box' | 'truck' | 'print' | 'ban', string, () => void, string?, boolean?, string?] | 'hr'> = [
     ...(isShopifyOrder ? [['edit', 'Sipariş Durumunu Değiştir', onOrderStatusChange] as ['edit', string, () => void]] : []),
-    // Shopify has no picking step; on Hepsiburada an order is taken into work by creating its package.
-    ...(isShopifyOrder ? [] : [normalizedOrderStatus === 'NEW' ? ['play', processing ? 'İşleniyor…' : 'İşleme Al', isHepsiburadaOrder ? onCreatePackage : onProcessOrder, '', processing] as ['play', string, () => void, string, boolean] : ['play', normalizedOrderStatus === 'DELIVERED' ? 'Teslim Edildi' : 'İşleme Al', () => undefined, '', true, 'Sipariş zaten işleme alınmış.'] as ['play', string, () => void, string, boolean, string]]),
+    // Shopify has no picking step and PttAVM refuses it (canTakeOrderIntoWork); on Hepsiburada an order is taken into
+    // work by creating its package.
+    ...(!canTakeIntoWork ? [] : [normalizedOrderStatus === 'NEW' ? ['play', processing ? 'İşleniyor…' : 'İşleme Al', isHepsiburadaOrder ? onCreatePackage : onProcessOrder, '', processing] as ['play', string, () => void, string, boolean] : ['play', normalizedOrderStatus === 'DELIVERED' ? 'Teslim Edildi' : 'İşleme Al', () => undefined, '', true, 'Sipariş zaten işleme alınmış.'] as ['play', string, () => void, string, boolean, string]]),
     ...(isHepsiburadaOrder && !['SHIPPED', 'UNDELIVERED', 'DELIVERED', 'RETURNED'].includes(normalizedOrderStatus) ? [['box', 'Paket Oluştur', onCreatePackage] as ['box', string, () => void]] : []),
     ...(canChangeCargo ? [['truck', 'Başka Kargo Firması İle Gönder', onCourierChange] as ['truck', string, () => void]] : []),
     ...(canPrintLabels ? ['hr' as const, ...enabledLabelFormats.map(format => ['print', `${format === 'a4' ? 'A4' : 'Sticker'} Etiketi Yazdır`, () => onPrintLabel(format), '', labelBlockedByInvoice, 'Mikro ihracat faturası kesilmeden kargo etiketi yazdırılamaz.'] as ['print', string, () => void, string, boolean, string])] : []),
@@ -597,7 +600,7 @@ function OrderReferenceRow({ item, selected, onSelect, selectionMode, onMenuChan
   </DialogSurface></div>, document.body) : null
   const rowClasses = [selected ? 'rr-sel' : '', delivery.overdue ? 'rr-due' : '', isCancelledOrder ? 'is-cancelled' : ''].filter(Boolean).join(' ')
   return <><tr ref={rowRef} className={rowClasses || undefined}>
-    <td className="rr-wide"><div className={`rr-ordercell${isCancelledOrder ? ' is-cancelled' : ''}`}>{isCancelledOrder ? <span style={{ width: 16, flex: 'none' }} title="İptal siparişler toplu seçilemez" /> : <input type="checkbox" className="rr-cb" checked={selected} onChange={event => onSelect(event.target.checked)} aria-label={`Sipariş ${item.orderNumber} seç`} />}<div>{tabBadge ? <span className="rr-wordmark-row"><RrWordmark code={item.platformCode} name={item.platformDisplayName || returnPlatformName(item.platformCode)} />{tabBadge}</span> : <RrWordmark code={item.platformCode} name={item.platformDisplayName || returnPlatformName(item.platformCode)} />}<span className={`rr-on-no${delivery.overdue ? ' rr-crit' : ''}`}>{isCancelledOrder ? <s className="rr-on-cut" aria-label={`${displayOrderNumber(item.orderNumber)} (iptal)`}>{displayOrderNumber(item.orderNumber)}</s> : displayOrderNumber(item.orderNumber)}<button type="button" className="rr-icon-btn" title={copied ? 'Kopyalandı' : 'Kopyala'} aria-label={copied ? `Sipariş numarası ${item.orderNumber} kopyalandı` : `Sipariş numarası ${item.orderNumber} kopyala`} style={{ width: 28, height: 28 }} onClick={() => void copyOrderNumber()}><RrIcon name={copied ? 'check' : 'copy'} size={14} /></button><OrderRowMarkIcons marks={item.marks} unreadableLines={item.unreadableLineCount} amountMayBeIncomplete={item.amountMayBeIncomplete} /></span>{noBuyer && <small className="rr-buyer-inline"><b>Alıcı:</b> {customerDisplayName(item)} <BuyerTypeTag buyerType={item.buyerType} /></small>}<small className="rr-num"><b>Sipariş Tarihi:</b> {returnDateText(item.orderedAt)}</small><small className="rr-num"><b>Paket No:</b> {packageNoText}</small><small className="rr-num"><b>Teslimat No:</b> {shipment?.cargoTrackingNumber ?? (isHepsiburadaUnverifiedWithoutPackage ? 'Gönderi bilgisi doğrulanmadı' : isHepsiburadaOrder ? shipment ? 'Kargoya verildiğinde gelir' : 'Paket oluşturulunca gelir' : 'Bekleniyor')}</small>{dueLine && <small className={`rr-due${delivery.overdue ? ' is-late' : ''}`}><b>Kargo Süresi:</b> {dueLine.text}</small>}{hepsiburadaPackageHistoryExpired && <small className="rr-note-line">Hepsiburada kargo durum listeleri son bir ayı kapsıyor; daha eski paket kaydı API’den doğrulanamıyor.</small>}{cancelledPart && <small className="rr-order-part"><Link to={`/orders?${new URLSearchParams({ search: item.orderNumber })}`} onClick={event => { if (window.matchMedia('(max-width: 760px)').matches) { event.preventDefault(); setDetailOpen(true) } }}>{remainingText(item)}</Link></small>}</div></div></td>
+    <td className="rr-wide"><div className={`rr-ordercell${isCancelledOrder ? ' is-cancelled' : ''}`}>{isCancelledOrder ? <span style={{ width: 16, flex: 'none' }} title="İptal siparişler toplu seçilemez" /> : <input type="checkbox" className="rr-cb" checked={selected} onChange={event => onSelect(event.target.checked)} aria-label={`Sipariş ${item.orderNumber} seç`} />}<div>{tabBadge ? <span className="rr-wordmark-row"><RrWordmark code={item.platformCode} name={item.platformDisplayName || returnPlatformName(item.platformCode)} />{tabBadge}</span> : <RrWordmark code={item.platformCode} name={item.platformDisplayName || returnPlatformName(item.platformCode)} />}<span className={`rr-on-no${delivery.overdue ? ' rr-crit' : ''}`}>{isCancelledOrder ? <s className="rr-on-cut" aria-label={`${displayOrderNumber(item.orderNumber)} (iptal)`}>{displayOrderNumber(item.orderNumber)}</s> : displayOrderNumber(item.orderNumber)}<button type="button" className="rr-icon-btn" title={copied ? 'Kopyalandı' : 'Kopyala'} aria-label={copied ? `Sipariş numarası ${item.orderNumber} kopyalandı` : `Sipariş numarası ${item.orderNumber} kopyala`} style={{ width: 28, height: 28 }} onClick={() => void copyOrderNumber()}><RrIcon name={copied ? 'check' : 'copy'} size={14} /></button><OrderRowMarkIcons marks={item.marks} unreadableLines={item.unreadableLineCount} amountMayBeIncomplete={item.amountMayBeIncomplete} /></span>{noBuyer && <small className="rr-buyer-inline"><b>Alıcı:</b> {customerDisplayName(item)} <BuyerTypeTag buyerType={item.buyerType} /></small>}<small className="rr-num"><b>Sipariş Tarihi:</b> {returnDateText(item.orderedAt)}</small><small className="rr-num"><b>Paket No:</b> {packageNoText}</small><small className="rr-num"><b>Teslimat No:</b> {shipment?.cargoTrackingNumber ?? (isHepsiburadaUnverifiedWithoutPackage ? 'Gönderi bilgisi doğrulanmadı' : isHepsiburadaOrder ? shipment ? 'Kargoya verildiğinde gelir' : 'Paket oluşturulunca gelir' : 'Bekleniyor')}</small>{dueLine && <small className={`rr-due${delivery.overdue ? ' is-late' : ''}`} title={dueLineTitle(delivery)}><b>Kargo Süresi:</b> {dueLine.text}</small>}{hepsiburadaPackageHistoryExpired && <small className="rr-note-line">Hepsiburada kargo durum listeleri son bir ayı kapsıyor; daha eski paket kaydı API’den doğrulanamıyor.</small>}{cancelledPart && <small className="rr-order-part"><Link to={`/orders?${new URLSearchParams({ search: item.orderNumber })}`} onClick={event => { if (window.matchMedia('(max-width: 760px)').matches) { event.preventDefault(); setDetailOpen(true) } }}>{remainingText(item)}</Link></small>}</div></div></td>
     {!noBuyer && <td className="rr-mid" data-l="Alıcı"><div className="rr-cust"><b>{customerDisplayName(item)}</b><BuyerTypeTag buyerType={item.buyerType} /></div></td>}
     <td className="rr-wide" data-l="Bilgiler"><div className="rr-plines">{lines.length ? lines.map(line => { const cancel = lineCancel(line); const off = cancel.whole || cancelledPart; return <div className={`rr-pline${off ? ' rr-pline-off' : ''}`} key={line.id}><RrThumb src={lineImage(line)} fallbackSrc={thumbFallback(line)} quantity={cancelledPart ? cancel.cancelled : cancel.whole ? cancel.ordered : cancel.active} alt={line.title} onOpen={() => openPreview(line)} /><div><b title={line.title}><ProductTitleLink platformCode={item.platformCode} line={line} /></b>{off && <span className="sr-only">İptal edildi</span>}<small className="rr-card-only"><span>Birim Fiyatı:</span> <b className="rr-num">{off && line.unitPrice <= 0 ? '—' : money(line.unitPrice)}</b></small>{facts(line).map(([label, value]) => <small key={label} title={`${label}: ${value}`}><span>{label}:</span> <b className="rr-num">{value}</b></small>)}</div></div> }) : <div className="rr-pline"><RrThumb src={item.primaryImageUrl} alt="Ürün" /><div><b>Ürün bilgisi eşitleme bekliyor</b></div></div>}</div></td>
     <td className="rr-mid rr-price-col" data-l="Birim Fiyat"><div className="rr-prices">{lines.length ? lines.map(line => { const cancel = lineCancel(line); const off = cancel.whole || cancelledPart; const quantity = cancelledPart ? cancel.cancelled : cancel.whole ? cancel.ordered : cancel.active; return <div className={`rr-pr${off ? ' rr-pr-off' : ''}`} key={line.id}><b className="rr-num">{off && line.unitPrice <= 0 ? '—' : money(line.unitPrice)}</b>{cancel.partial && !cancelledPart ? <small>{partialQuantityText(line)}</small> : off ? <small>{quantity} adet iptal</small> : quantity > 1 && <small>{quantity} adet</small>}</div> }) : <div className="rr-pr"><b className="rr-num">{money(item.netAmount)}</b></div>}</div></td>
@@ -713,7 +716,7 @@ function ShopifyOrderStatusModal({ item, onClose, onFeedback }: { item: Order; o
   const update = useMutation({
     mutationFn: () => hubApi(`/orders/${item.id}/shopify-status`, { method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ status }) }),
     onSuccess: async () => {
-      const message = `Shopify sipariş durumu “${statusLabel(status)}” olarak güncellendi.`
+      const message = `Shopify sipariş durumu “${orderStatusLabel(status)}” olarak güncellendi.`
       onFeedback(message, 'success')
       await client.invalidateQueries({ queryKey: ['orders'] })
       onClose()
@@ -721,7 +724,7 @@ function ShopifyOrderStatusModal({ item, onClose, onFeedback }: { item: Order; o
     onError: reason => onFeedback(reason instanceof Error ? reason.message : 'Shopify sipariş durumu güncellenemedi.', 'error')
   })
   return <RrModal crumb="Shopify" title="Sipariş Durumunu Değiştir" desc={`${displayOrderNumber(item.orderNumber)} · ${customerDisplayName(item)}`} hint="Durum yalnız panelde güncellenir; Shopify’daki durum değişmez. Shopify’dan sonradan gelen durum seçiminizin yerine geçer." size="sm" locked={update.isPending} onClose={onClose} foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={onClose} disabled={update.isPending}>Vazgeç</button><button type="button" className="rr-btn rr-primary" onClick={() => update.mutate()} disabled={update.isPending}>{update.isPending ? 'Kaydediliyor…' : 'Durumu Kaydet'}</button></>}>
-    <label className="rr-fld" htmlFor="shopify-order-status"><small>Yeni Sipariş Durumu</small><PanelSelect id="shopify-order-status" ariaLabel="Yeni sipariş durumu" value={status} onChange={setStatus} options={shopifyOrderStatuses.map(value => ({ value, label: titleTr(statusLabel(value)) }))} /></label>
+    <label className="rr-fld" htmlFor="shopify-order-status"><small>Yeni Sipariş Durumu</small><PanelSelect id="shopify-order-status" ariaLabel="Yeni sipariş durumu" value={status} onChange={setStatus} options={shopifyOrderStatuses.map(value => ({ value, label: titleTr(orderStatusLabel(value)) }))} /></label>
   </RrModal>
 }
 function ShopifyBulkStatusModal({ kind, items, onClose, onFeedback, onUpdated }: { kind: 'order' | 'invoice'; items: Order[]; onClose: () => void; onFeedback: IntegrationFeedbackHandler; onUpdated: (orderIds: string[]) => void }) {
@@ -766,7 +769,7 @@ function ShopifyBulkStatusModal({ kind, items, onClose, onFeedback, onUpdated }:
       onUpdated(succeeded.map(result => result.item.id))
       const statusName = isInvoice
         ? status === 'UPLOADED' ? 'Faturası yüklendi' : 'Fatura bekliyor'
-        : statusLabel(status)
+        : orderStatusLabel(status)
       const noun = isInvoice ? 'fatura durumu' : 'sipariş durumu'
       const prefix = `${succeeded.length}/${items.length} Shopify siparişinin ${noun} “${statusName}” olarak güncellendi.`
       const failureDetails = failed.slice(0, 4).map(result => `${displayOrderNumber(result.item.orderNumber)}: ${result.error}`).join(' · ')
@@ -891,7 +894,7 @@ export function OrdersPage() {
         item.platformDisplayName || item.platformCode,
         item.customerName,
         formatDateTime(item.orderedAt),
-        titleTr(statusLabel(item.derivedStatus)),
+        titleTr(orderStatusLabel(item.derivedStatus)),
         item.invoiceStatus ? titleTr(statusLabel(item.invoiceStatus)) : '',
         cargoLabel(orderDisplayShipment(item)?.cargoProviderName ?? item.cargoProviderName),
         (item.lines ?? []).filter(line => productLineQuantity(line) > 0).map(line => `${line.title} x${productLineQuantity(line)}`).join(' | '),
@@ -1061,10 +1064,10 @@ function orderRingState(status: string): [RingTone, number, string] {
     case 'UNDELIVERED': return ['bad', 0.7, 'Teslim Edilemedi']
     case 'RETURN_IN_TRANSIT': return ['move', 0.5, 'İade Taşımada']
     case 'RETURNED': return ['off', 1, 'İade Edildi']
-    case 'PAYMENT_PENDING': return ['wait', 0.1, 'Ödeme Bekleniyor']
-    case 'ON_HOLD': return ['off', 0, 'Askıda']
-    case 'UNVERIFIED': return ['off', 0, 'Doğrulanmadı']
-    default: return ['off', 0, titleTr(statusLabel(status))]
+    case 'PAYMENT_PENDING': return ['wait', 0.1, orderStatusLabel(status)]
+    case 'ON_HOLD': return ['off', 0, orderStatusLabel(status)]
+    case 'UNVERIFIED': return ['off', 0, orderStatusLabel(status)]
+    default: return ['off', 0, titleTr(orderStatusLabel(status))]
   }
 }
 // A checkbox with its explanation. On phones the explanation stays folded behind an info button and opens on a tap.

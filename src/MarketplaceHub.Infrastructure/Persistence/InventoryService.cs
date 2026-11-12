@@ -71,6 +71,7 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
             ActorUserId = userId,
             CorrelationId = correlationId
         });
+        await StockShortfallNotices.ResolveForInventoryItemsAsync(db, tenantId, [item.Id], now, cancellationToken);
         // The new stock goes to every connection selling the variant, committed with the adjustment.
         await StockProjectionOutbox.EnqueueAsync(db, tenantId, [new StockProjectionChange(item.VariantId, item.ProjectionVersion, $"manual:{command.SourceEventId.Trim()}")], now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
@@ -138,6 +139,7 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
             ActorUserId = userId,
             CorrelationId = correlationId
         });
+        await StockShortfallNotices.ResolveForInventoryItemsAsync(db, tenantId, [item.Id], now, cancellationToken);
         await StockProjectionOutbox.EnqueueAsync(db, tenantId, [new StockProjectionChange(item.VariantId, item.ProjectionVersion, $"manual:{command.SourceEventId.Trim()}")], now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);

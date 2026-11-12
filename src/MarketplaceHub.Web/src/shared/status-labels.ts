@@ -25,17 +25,6 @@ const statusLabels: Record<string, string> = {
   DISABLED: 'Devre Dışı',
   DRAFT: 'Taslak',
   FAILED: 'Hata',
-  FATURA_BEKLIYOR: 'Fatura Bekliyor',
-  FATURA_ISLENIYOR: 'Fatura Kontrol Ediliyor',
-  FATURA_KESILDI: 'Fatura Kesildi',
-  FATURA_YUKLENDI: 'Faturası Yüklendi',
-  FATURA_KONTROLDE: 'Faturası Mevcut',
-  FATURA_IPTAL: 'Fatura İptal Edildi',
-  FATURA_REDDEDILDI: 'Fatura Reddedildi',
-  FATURA_BELIRSIZ: 'Fatura Sonucu Belirsiz',
-  FATURA_DOGRULANAMADI: 'Pazaryerinden Doğrulanamıyor',
-  FATURA_INCELENECEK: 'İncelenecek',
-  FATURA_INCELEME_GEREKLI: 'İnceleme Gerekli',
   ADJUSTMENT_REQUIRED: 'Düzeltme Gerekli',
   REVOCATION_REQUIRED: 'Pazaryerinden Kaldırılmalı',
   HEALTHY: 'Sağlıklı',
@@ -95,14 +84,14 @@ const statusLabels: Record<string, string> = {
   VALIDATION_FAILED: 'Doğrulama Başarısız',
   MARKETPLACE_PENDING: 'Pazaryerine Aktarılıyor',
   MARKETPLACE_FAILED: 'Pazaryeri Aktarımı Başarısız',
-  FATURA_PLATFORMA_AKTARILMADI: 'Fatura Oluşturuldu, Platforma Aktarılmadı',
-  FATURA_PLATFORMA_BEKLIYOR: 'Platforma Gönderilmeyi Bekliyor',
   UNAPPROVED: 'Onaylanmadı',
   UNDELIVERED: 'Teslim Edilemedi',
   UNVERIFIED: 'Durumu Doğrulanmadı',
   UNKNOWN: 'Bilinmiyor',
   UNKNOWN_RESULT: 'Bilinmeyen Sonuç',
   VERIFIED: 'Doğrulandı',
+  // A return the customer has not sent yet: AWAITING_SHIPMENT is the panel's own return status (ReturnClaimStatus).
+  AWAITING_SHIPMENT: 'Kargo Bekliyor',
   WAITING_FOR_SHIPMENT: 'Kargo Bekliyor',
   WAITINGINACTION: 'Pazaryerinde Karar Bekliyor',
   LABEL_READ: 'Etiketi Oku',
@@ -182,6 +171,9 @@ const compactStatusLabels: Record<string, string> = Object.fromEntries(Object.en
 export function statusLabel(value: string | null | undefined) {
   if (!value?.trim()) return '—'
   const normalized = normalizedStatus(value)
+  // A package's invoice state (FATURA_*) reads as the invoice screens name it: one name per state ("Fatura İletiliyor",
+  // not also "Fatura Kontrol Ediliyor"; "Fatura Bekliyor", not also "Pazaryerinden Doğrulanamıyor").
+  if (normalized.startsWith('FATURA_') || normalized === fullyReturnedNoInvoiceStatus) return invoiceStatusLabel(normalized)
   return statusLabels[normalized] ?? compactStatusLabels[normalized] ?? readableFallback(value)
 }
 

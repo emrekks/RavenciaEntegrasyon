@@ -38,7 +38,7 @@ export function invoiceFailureReason(code: string | null) {
     EINVOICE_TAXPAYER_CONFLICT: 'Pazaryeri alıcıyı e-Fatura mükellefi bildirdi, mükellef sorgusu bulamadı; fatura kesilmedi.',
     EINVOICE_TAXPAYER_STATUS_CHANGED: 'Alıcının e-Fatura mükellefiyeti fatura hazırlandıktan sonra değişti; fatura gönderilmedi.',
     INVOICE_EXPORT_FLOW_REQUIRED: 'Mikro ihracat veya TRY dışı sipariş; yurt içi e-Arşiv kesilemez.',
-    INVOICE_ADJUSTMENT_FLOW_UNAVAILABLE: 'İade/düzeltme faturası akışı henüz hazır değil.',
+    INVOICE_ADJUSTMENT_FLOW_UNAVAILABLE: 'Panel iade ya da düzeltme faturası kesmez.',
     ORDER_LINE_VAT_RATE_UNKNOWN: 'KDV Oranı Bilinmiyor: pazaryeri bir ürün satırının KDV oranını bildirmedi ve ürün kartında da KDV oranı yok; fatura kesilmedi.',
     ORDER_LINE_UNREADABLE: 'Okunamayan Ürün Satırı: siparişin bir paketinde en az bir ürün satırı okunamadı; satırları eksik siparişe fatura kesilmedi.',
     INVOICE_PRE_ISSUE_ORDER_CHANGED: 'Fatura kesilmeden önceki son kontrolde sipariş onaydan sonra değişmiş bulundu; fatura kesilmedi ve yeniden onayınızı bekliyor.',
