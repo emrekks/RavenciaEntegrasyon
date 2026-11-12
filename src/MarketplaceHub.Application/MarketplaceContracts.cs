@@ -1205,7 +1205,10 @@ public sealed record OperationalDataResetView(
     // again) and the orders and returns they belong to, and says how many it kept.
     int KeptIssuedInvoices = 0,
     int CommissionTariffs = 0,
-    int PromotionOffers = 0);
+    int PromotionOffers = 0,
+    // Bağlantıyı Sil: set when the order notification registered at the marketplace could not be removed from here
+    // (a failed call, or Hepsiburada's hand registration), saying what the seller still has to do there.
+    string? WebhookNotice = null);
 
 // What a reset would remove, scope by scope, shown before it runs; KeptIssuedInvoices is what an order, return or
 // invoice reset of the connection keeps.

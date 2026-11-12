@@ -50,4 +50,12 @@ public sealed class PanelPriceStockSendPolicyTests
             Assert.DoesNotContain("Stok dış yazma akışı", message);
         }
     }
+
+    [Fact]
+    public void ConnectionSwitchMessage_NamesTheTabTheSwitchIsOn()
+    {
+        var message = PanelPriceStockSendPolicy.Message(PanelPriceStockSendDecision.ConnectionWritesOff, "N11");
+        Assert.Contains("Pazaryerine Yazma sekmesinden", message);
+        Assert.DoesNotContain("Dış Yazma Akışları", message);
+    }
 }

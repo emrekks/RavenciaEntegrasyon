@@ -660,7 +660,7 @@ public static class PanelPriceStockSendPolicy
     public static string Message(PanelPriceStockSendDecision decision, string? connectionName) => decision switch
     {
         PanelPriceStockSendDecision.GlobalWritesOff => "Sunucudaki genel dış yazma anahtarı (FeatureFlags:ExternalWrites) kapalı; elle başlatılan fiyat-stok gönderimi de yapılamaz. Bu anahtar sunucu ayarlarından açılır.",
-        PanelPriceStockSendDecision.ConnectionWritesOff => $"{(string.IsNullOrWhiteSpace(connectionName) ? "Bu" : connectionName.Trim())} bağlantısında Dış Yazma Ana Anahtarı kapalı. Entegrasyonlar sayfasında bağlantının Dış Yazma Akışları bölümünden açılır; otomatik fiyat-stok yazması kapalı kalabilir.",
+        PanelPriceStockSendDecision.ConnectionWritesOff => $"{(string.IsNullOrWhiteSpace(connectionName) ? "Bu" : connectionName.Trim())} bağlantısında Dış Yazma Ana Anahtarı kapalı. Entegrasyonlar sayfasında bağlantının Yönet penceresindeki Pazaryerine Yazma sekmesinden açılır; otomatik fiyat-stok yazması kapalı kalabilir.",
         _ => string.Empty
     };
 }
@@ -798,8 +798,10 @@ public static class TrendyolStorefrontPolicy
 {
     public const string CursorResource = "TRENDYOL_STOREFRONTS";
     public const string Home = "TR";
-    // Storefronts in Trendyol's published list; the others were read so far but are not listed.
-    public static readonly string[] Listed = ["TR", "DE", "SA", "AE", "GR", "SK", "RO", "CZ", "BG", "KW"];
+    // Storefronts in Trendyol's published list, plus AZ: Trendyol lists it among the micro-export country codes (offline
+    // docs, "Mikro ihracat siparişleri için ülke kodu bilgileri") and the owner counts it as a cross-border storefront
+    // (SA, AZ, BG, RO, GR, AE), so it is probed like the others. QA, OM and BH are read only once they have orders.
+    public static readonly string[] Listed = ["TR", "DE", "SA", "AE", "GR", "SK", "RO", "CZ", "BG", "KW", "AZ"];
     public static readonly TimeSpan ActiveFor = TimeSpan.FromDays(90);
     public static readonly TimeSpan ListedProbeInterval = TimeSpan.FromHours(6);
     public static readonly TimeSpan UnlistedProbeInterval = TimeSpan.FromHours(24);
@@ -1516,7 +1518,7 @@ public static class SyncCadencePolicy
             (_, "ORDER_RECONCILE_SHORT" or "RETURN_RECONCILE_SHORT" or "STOCK_RECONCILE_SHORT") => new(900, 21_600, "Kısa uzlaştırma son günü baştan okur."),
             (_, "ORDER_RECONCILE_MEDIUM" or "RETURN_RECONCILE_MEDIUM" or "STOCK_RECONCILE_MEDIUM") => new(3600, 86_400, "Orta uzlaştırma son günleri baştan okur."),
             (_, "ORDER_RECONCILE_DAILY" or "RETURN_RECONCILE_DAILY" or "STOCK_RECONCILE_DAILY") => new(21_600, 259_200, "Günlük uzlaştırma geniş bir pencereyi baştan okur."),
-            (_, "REFERENCE_DATA") => new(21_600, 259_200, "Kategori ağacı ve marka listesi büyüktür; günde bir okuma yeterlidir."),
+            (_, "REFERENCE_DATA") => new(21_600, 259_200, "Kategori ağacı ve marka listesi büyüktür; varsayılan günde bir okumadır, 6 saat ile 3 gün arasında seçilebilir."),
             (_, "FINANCE") => new(3600, 259_200, "Cari hesap hareketleri gün içinde birkaç kez değişir."),
             _ => new(60, 259_200, "Uygulama sınırı.")
         };

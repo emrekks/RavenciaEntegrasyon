@@ -39,7 +39,7 @@ describe('reactivationNeedsTest', () => {
   })
 
   it('turns the API refusal into plain advice', () => {
-    expect(activationErrorMessage(Object.assign(new Error('Devre dışı bırakılan bağlantıyı yeniden etkinleştirmeden önce yeni bir bağlantı testi gerekir.'), { code: 'CONNECTION_TEST_REQUIRED', status: 422 }))).toContain('Test Et’e basın')
+    expect(activationErrorMessage(Object.assign(new Error('Devre dışı bırakılan bağlantıyı yeniden etkinleştirmeden önce yeni bir bağlantı testi gerekir.'), { code: 'CONNECTION_TEST_REQUIRED', status: 422 }))).toContain('Bağlantıyı Test Et’e basın')
     expect(activationErrorMessage(new Error('Başka bir hata.'))).toBe('Başka bir hata.')
     expect(activationErrorMessage('x')).toBe('Bağlantı etkinleştirilemedi.')
   })
@@ -67,7 +67,7 @@ describe('ConnectionAuthAlert', () => {
 
     const alert = container.querySelector('[role="alert"]')!
     expect(alert.textContent).toContain('Kimlik bilgileri reddedildi')
-    expect(alert.textContent).toContain('Test Et’e basın')
+    expect(alert.textContent).toContain('Bağlantıyı Test Et’e basın')
     expect(alert.textContent).toContain('Pazarama Client Id ve Client Secret çiftini kabul etmedi.')
     expect(alert.textContent).toContain('Son görülme: 20.10.2026')
     expect(alert.textContent).toContain('PAZARAMA_CREDENTIALS_REJECTED')
@@ -110,7 +110,7 @@ describe('ConnectionAuthAlert', () => {
     act(() => root.render(<ConnectionAuthAlert item={{ ...base, status: 'DISABLED', disabledAt: '2026-10-19T09:00:00Z' }} onTest={() => undefined} />))
     const note = container.querySelector('[role="status"]')!
     expect(note.textContent).toContain('Yeniden açmak için yeni test gerekli')
-    expect(note.querySelector('button')!.textContent).toBe('Test Et')
+    expect(note.querySelector('button')!.textContent).toBe('Bağlantıyı Test Et')
   })
 
   it('renders nothing for a healthy connection', () => {
