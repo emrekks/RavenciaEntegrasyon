@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { UiIcon } from './UiIcon'
+import { confirmationMatches } from '../confirmation'
 import './data-reset-ledger.css'
 
 export type DataResetOption<S extends string = string> = {
@@ -42,7 +43,7 @@ export function DataResetLedger<S extends string>({ groups, counts, countsFailed
   const goingScopes = new Set(going.map(option => option.scope))
   const known = going.every(option => counts?.[option.scope] !== undefined)
   const total = going.reduce((sum, option) => sum + (counts?.[option.scope] ?? 0), 0)
-  const confirmed = confirmation.trim() === confirmWord
+  const confirmed = confirmationMatches(confirmation, confirmWord)
   const countText = (option: DataResetOption<S>) => {
     const value = counts?.[option.scope]
     if (value !== undefined) return `${number(value)} ${option.unit}`

@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, hubPoll } from '../../../shared/api'
 import { UiIcon } from '../../../shared/components'
 import { newIdempotencyKey } from '../../../shared/idempotency'
+import { confirmationMatches } from '../../../shared/confirmation'
 import { failureNotice } from '../../../shared/notifications'
 import { formatIstanbul } from '../../../shared/format-date'
 import { connectionFullResetItems, connectionFullResetRunning, type ConnectionFullResetJob, type ConnectionFullResetView } from '../connection-data-reset'
@@ -55,7 +56,7 @@ export function ConnectionFullResetPanel({ item, onFeedback, onFinished, onCance
   // Product links name products that are already counted (removed) or kept; they are not added to the total.
   const total = counts ? connectionFullResetItems.filter(entry => entry.scope !== 'PRODUCT_LINKS').reduce((sum, entry) => sum + (counts.get(entry.scope) ?? 0), 0) : undefined
   const kept = view.data?.keptProducts ?? 0
-  const confirmed = confirmation.trim() === item.displayName
+  const confirmed = confirmationMatches(confirmation, item.displayName)
   const busy = start.isPending || running
   const status = fullResetStatusText(job)
   const notes: Array<{ warn?: boolean; text: string }> = [

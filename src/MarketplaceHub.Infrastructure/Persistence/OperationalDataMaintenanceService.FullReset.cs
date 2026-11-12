@@ -38,7 +38,7 @@ public sealed partial class OperationalDataMaintenanceService
         if (connection.Version != expectedVersion) return ServiceResult<ConnectionFullResetView>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{connection.Version}.", 412);
         if (!SupportsFullReset(connection.PlatformCode))
             return ServiceResult<ConnectionFullResetView>.Fail("FULL_RESET_UNSUPPORTED", "Tam sıfırlama yalnız pazaryeri bağlantılarında kullanılabilir.", 422);
-        if (!string.Equals(command.Confirmation?.Trim(), connection.DisplayName, StringComparison.Ordinal))
+        if (!ConfirmationText.Matches(command.Confirmation, connection.DisplayName))
             return ServiceResult<ConnectionFullResetView>.Fail("VALIDATION_FAILED", $"Onay alanına bağlantı adını tam olarak yazın: {connection.DisplayName}", 422, new Dictionary<string, string[]> { ["confirmation"] = [$"Onay alanına bağlantı adını tam olarak yazın: {connection.DisplayName}"] });
 
         // A second request while one is queued or running answers with that one.

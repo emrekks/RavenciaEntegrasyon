@@ -16,6 +16,8 @@ import { dataResetSummary, type DataResetResult } from './data-reset-summary'
 import { marketplaceResetCount, marketplaceResetTotal, progressText, runMarketplaceResets, type BulkResetProgress } from './marketplace-bulk-reset'
 import { connectionFullResetSupported, type ConnectionFullResetView } from '../marketplace/connection-data-reset'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
+import { confirmationMatches } from '../../shared/confirmation'
+import { UiIcon } from '../../shared/components/UiIcon'
 import type { Connection } from '../marketplace/shared'
 import './settings-sade.css'
 import '../../shared/view-tabs.css'
@@ -187,7 +189,7 @@ function SettingsDataReset({ groups, counts, countsFailed, picked, onToggle, mar
   const known = going.every(option => counts?.[option.scope] !== undefined) && marketplaceTotal !== undefined
   const total = going.reduce((sum, option) => sum + (counts?.[option.scope] ?? 0), 0) + (marketplaceTotal ?? 0)
   const goingCount = going.length + goingMarketplaces.length
-  const confirmed = confirmation.trim() === resetConfirmWord
+  const confirmed = confirmationMatches(confirmation, resetConfirmWord)
   const countText = (scope: string, unit: string) => {
     const value = counts?.[scope]
     if (value !== undefined) return `${resetNumber(value)} ${unit}`
@@ -248,6 +250,7 @@ function SettingsDataReset({ groups, counts, countsFailed, picked, onToggle, mar
         {goingCount > 0 && <div className="ss-dr-chips">{goingMarketplaces.map(entry => <span key={entry.id} className="ss-dr-chip">{entry.displayName} (Tam)<b>{entry.count !== undefined ? resetNumber(entry.count) : '…'}</b></span>)}{going.map(option => <span key={option.scope} className="ss-dr-chip">{option.label}{counts?.[option.scope] !== undefined ? <b>{resetNumber(counts[option.scope])}</b> : null}</span>)}</div>}
       </div>
       <div className="ss-bar-actions">
+        <label className="ss-dr-ask" htmlFor="settings-reset-confirm">Onaylamak için <b>{resetConfirmWord}</b> yazın{confirmed && <UiIcon name="check" size={14} />}</label>
         <input id="settings-reset-confirm" className={`ss-in ss-dr-in${confirmed ? ' is-match' : ''}`} value={confirmation} onChange={event => onConfirmation(event.target.value)} disabled={busy} autoComplete="off" placeholder={`${resetConfirmWord} yazın`} aria-label={`Onaylamak için ${resetConfirmWord} yazın`} title={`Onaylamak için ${resetConfirmWord} yazın`} />
         <button type="button" className="ss-btn is-danger ss-dr-go" disabled={!goingCount || !confirmed || busy} onClick={onConfirm}><SettingsIcon name="trash" />{busy ? 'Sıfırlanıyor…' : goingMarketplaces.length ? `${goingCount} Kalemi Sıfırla` : going.length ? `${going.length} Veri Türünü Sıfırla` : 'Seçilen Verileri Sıfırla'}</button>
       </div>
@@ -348,7 +351,7 @@ export function SystemSettingsPage() {
   }
   async function resetOperationalData() {
     // The page's own confirmation word is the gate for the marketplaces and the catalog alike.
-    if ((!resetScopes.length && !marketplacePicked.length) || resetConfirmation.trim() !== resetConfirmWord) return
+    if ((!resetScopes.length && !marketplacePicked.length) || !confirmationMatches(resetConfirmation, resetConfirmWord)) return
     setResetBusy(true); setNotice(null)
     try {
       // The marketplaces first, one after the other; then the catalog cleanup.

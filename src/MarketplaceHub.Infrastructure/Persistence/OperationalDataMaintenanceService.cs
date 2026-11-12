@@ -17,7 +17,7 @@ public sealed partial class OperationalDataMaintenanceService(AppDbContext db, T
     {
         var scopes = command.Scopes.Select(value => value.Trim().ToUpperInvariant()).Distinct(StringComparer.Ordinal).ToHashSet(StringComparer.Ordinal);
         if (scopes.Count == 0 || scopes.Any(scope => !AllowedScopes.Contains(scope))) return Invalid("Geçerli en az bir veri alanı seçin.");
-        if (command.Confirmation?.Trim() is not ("Verileri sil" or "VERİLERİ SİL")) return Invalid("Onay alanına tam olarak Verileri sil yazın.");
+        if (!ConfirmationText.Matches(command.Confirmation, "Verileri sil")) return Invalid("Onay alanına tam olarak Verileri sil yazın.");
 
         var counts = await CountsAsync(tenantId, null, scopes, cancellationToken);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
@@ -78,7 +78,7 @@ public sealed partial class OperationalDataMaintenanceService(AppDbContext db, T
         var scopes = command.Scopes.Select(value => value.Trim().ToUpperInvariant()).Distinct(StringComparer.Ordinal).ToHashSet(StringComparer.Ordinal);
         var supportedScopes = ConnectionDataResetPolicy.ScopesFor(connection.PlatformCode);
         if (scopes.Count == 0 || scopes.Any(scope => !supportedScopes.Contains(scope))) return Invalid("Bu bağlantı için geçerli en az bir veri alanı seçin.");
-        if (!string.Equals(command.Confirmation?.Trim(), connection.DisplayName, StringComparison.Ordinal)) return Invalid($"Onay alanına bağlantı adını tam olarak yazın: {connection.DisplayName}");
+        if (!ConfirmationText.Matches(command.Confirmation, connection.DisplayName)) return Invalid($"Onay alanına bağlantı adını tam olarak yazın: {connection.DisplayName}");
 
         // Issued invoices are fiscal records and the proof that their orders were invoiced: a reset keeps them, with the
         // orders and returns they belong to, and removes everything else (it used to refuse the whole reset).
