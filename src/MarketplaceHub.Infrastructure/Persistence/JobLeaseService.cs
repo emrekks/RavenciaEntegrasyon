@@ -71,6 +71,14 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
                       WHERE backoff."ConnectionId" = candidate."ConnectionId"
                         AND backoff."LockGroup" = coalesce(candidate."LockGroup", candidate_group.lock_group)
                         AND backoff."Until" > {now})
+                  -- Paneli Tamamen Sıfırla runs alone: from its request to its end nothing else of the tenant starts,
+                  -- the scheduler's reads included (they would bring back the orders being deleted).
+                  AND NOT EXISTS (
+                      SELECT 1 FROM integration.jobs panel_reset
+                      WHERE panel_reset."TenantId" = candidate."TenantId"
+                        AND panel_reset."JobType" = {PanelJobTypes.FactoryReset}
+                        AND panel_reset."Status" IN ('PENDING', 'LEASED', 'RETRY_SCHEDULED')
+                        AND panel_reset."Id" <> candidate."Id")
                 ORDER BY candidate."Priority" ASC, candidate."AvailableAt" ASC, candidate."CreatedAt" ASC
                 LIMIT {CandidateLimit}) tenant_pick)
             SELECT job.* FROM integration.jobs job

@@ -219,6 +219,49 @@
   .app-shell.stitch-shell main .ss-page .ss-in.ss-dr-in { width: 100%; min-width: 0; }
 }
 
+/* Paneli Tamamen Sıfırla: the danger zone at the bottom of the Veri card. */
+.ss-page .ss-fr { margin-top: 4px; padding: 14px 16px 16px; border: 1px solid color-mix(in srgb, var(--rv-color-danger) 40%, var(--rv-color-border-strong)); border-radius: 12px; background: color-mix(in srgb, var(--rv-color-danger) 3%, var(--rv-color-surface)); }
+.ss-page .ss-fr-ico { color: var(--rv-color-danger); background: color-mix(in srgb, var(--rv-color-danger) 10%, var(--rv-color-surface)); border-color: color-mix(in srgb, var(--rv-color-danger) 35%, var(--rv-color-border-strong)); }
+.ss-page .ss-fr-total { box-sizing: border-box; height: 28px; color: var(--rv-color-ink); font-variant-numeric: tabular-nums; }
+.ss-page .ss-fr-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ss-page .ss-fr-col { display: grid; align-content: start; gap: 6px; padding: 10px 14px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; }
+.ss-page .ss-fr-col h4 { font-size: 13px; font-weight: 600; }
+.ss-page .ss-fr-col ul { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.ss-page .ss-fr-col li { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; color: var(--rv-color-ink); font-size: 13px; line-height: 1.45; }
+.ss-page .ss-fr-col li b { flex: none; color: var(--rv-color-muted); font-weight: 500; font-variant-numeric: tabular-nums; }
+.ss-page .ss-fr-col.is-kept li { justify-content: flex-start; color: var(--rv-color-muted); }
+.ss-page .ss-fr-col.is-kept li::before { content: ""; flex: none; width: 6px; height: 6px; margin-top: 6px; border-radius: 99px; background: var(--rv-color-accent, var(--rv-color-primary)); align-self: flex-start; }
+.ss-page .ss-fr-note p > .ss-icon { color: var(--rv-color-warning); }
+.ss-page .ss-fr-progress { display: grid; gap: 8px; padding: 10px 14px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; }
+.ss-page .ss-fr-bar { height: 6px; overflow: hidden; background: var(--rv-color-surface-raised); border-radius: 99px; }
+.ss-page .ss-fr-bar i { display: block; height: 100%; background: var(--rv-color-danger); border-radius: 99px; transition: width .3s; }
+.ss-page .ss-fr-progress-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 13px; }
+.ss-page .ss-fr-progress-head span { color: var(--rv-color-muted); font-variant-numeric: tabular-nums; }
+.ss-page .ss-fr-steps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 16px; margin: 0; padding: 0; list-style: none; }
+.ss-page .ss-fr-steps li { display: flex; align-items: center; gap: 8px; color: var(--rv-color-muted); font-size: 13px; line-height: 1.4; }
+.ss-page .ss-fr-steps li.is-done, .ss-page .ss-fr-steps li.is-running { color: var(--rv-color-ink); }
+.ss-page .ss-fr-steps li.is-running { font-weight: 600; }
+.ss-page .ss-fr-steps li.is-running .ss-st { color: var(--rv-color-danger); }
+.ss-page .ss-fr-spin { animation: ss-fr-spin 1s linear infinite; }
+@keyframes ss-fr-spin { to { transform: rotate(360deg); } }
+.ss-page .ss-fr-error { color: var(--rv-color-danger); font-size: 13px; }
+.ss-page .ss-fr-confirm { display: grid; gap: 6px; }
+.ss-page .ss-fr-confirm label { color: var(--rv-color-muted); font-size: 13px; }
+.ss-page .ss-fr-confirm label b { color: var(--rv-color-ink); font-weight: 600; }
+.ss-page .ss-fr-confirm-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.app-shell.stitch-shell main .ss-page .ss-in.ss-fr-in { width: 240px; }
+.app-shell.stitch-shell main .ss-page .ss-in.ss-fr-in.is-match { border-color: var(--rv-color-danger); }
+.app-shell.stitch-shell main .ss-page .ss-btn.ss-fr-go:disabled { opacity: .5; cursor: not-allowed; }
+@container ss-pane (max-width: 720px) {
+  .ss-page .ss-fr-cols, .ss-page .ss-fr-steps { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  .ss-page .ss-fr { padding: 12px; }
+  .ss-page .ss-fr-cols, .ss-page .ss-fr-steps { grid-template-columns: minmax(0, 1fr); }
+  .ss-page .ss-fr-confirm-row > * { flex: 1 1 100%; }
+  .app-shell.stitch-shell main .ss-page .ss-in.ss-fr-in { width: 100%; min-width: 0; }
+}
+
 /* Label designer */
 .ss-page .ss-dz { display: grid; }
 .ss-page .ss-dz-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--rv-color-border); }

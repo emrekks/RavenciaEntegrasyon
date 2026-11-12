@@ -28,7 +28,7 @@ public sealed partial class PostgreSqlConnectionFullResetTests
             var aBefore = await TenantCountsAsync(tables, a.Tenant.Id);
             var bBefore = await TenantCountsAsync(tables, b.Tenant.Id);
             // Every group the panel lists has rows to remove.
-            foreach (var group in PanelFactoryResetInventory.Groups.Where(x => x != PanelFactoryResetInventory.Caches))
+            foreach (var group in PanelFactoryResetInventory.Groups)
                 Assert.True(PanelFactoryResetInventory.Tables.Where(x => x.Group == group && x.Action == PanelResetAction.Delete).Sum(x => aBefore.GetValueOrDefault(x.Name)) > 0, group.Key);
 
             Guid jobId;
@@ -51,7 +51,13 @@ public sealed partial class PostgreSqlConnectionFullResetTests
                 Assert.Equal(JobStatus.Cancelled, (await db.IntegrationJobs.SingleAsync(x => x.Id == a.OtherJob.Id)).Status);
                 Assert.Equal(JobStatus.Pending, (await db.IntegrationJobs.SingleAsync(x => x.Id == b.OtherJob.Id)).Status);
                 Assert.Null((await db.IntegrationJobs.SingleAsync(x => x.Id == jobId)).ConnectionId);
-                await db.IntegrationJobs.Where(x => x.Id == jobId).ExecuteUpdateAsync(x => x.SetProperty(j => j.Status, JobStatus.Leased));
+                // Nothing else of the tenant starts while the reset waits or runs, the scheduler's reads included.
+                var scheduled = Job(a.Tenant.Id, a.Other.Id, MarketplaceJobTypes.OrderSync, JobStatus.Pending);
+                db.IntegrationJobs.Add(scheduled);
+                await db.SaveChangesAsync();
+                var leases = new JobLeaseService(db, fixture.TokenHasher, fixture.TimeProvider);
+                Assert.Null(await leases.TryLeaseAsync(TimeSpan.FromMinutes(5), null, null, CancellationToken.None, onlyJobId: scheduled.Id));
+                Assert.NotNull(await leases.TryLeaseAsync(TimeSpan.FromMinutes(5), null, null, CancellationToken.None, onlyJobId: jobId));
             }
             await using (var db = fixture.CreateContext())
             {
@@ -66,14 +72,16 @@ public sealed partial class PostgreSqlConnectionFullResetTests
                 var entry = PanelFactoryResetInventory.Find(table)!;
                 long expected = entry.Action switch
                 {
-                    // The running reset, its one audit row and the event that tells the panels.
-                    PanelResetAction.Delete => table is "integration.jobs" or "ops.audit_logs" or "integration.outbox_events" ? 1 : 0,
+                    // The running reset with its attempt, its one audit row and the event that tells the panels.
+                    PanelResetAction.Delete => table is "integration.jobs" or "integration.job_attempts" or "ops.audit_logs" or "integration.outbox_events" ? 1 : 0,
                     _ when table == "iam.tenant_settings" => aBefore[table] - 1,
                     _ => aBefore[table]
                 };
                 Assert.True(expected == aAfter[table], $"{table}: expected {expected}, found {aAfter[table]}");
             }
             Assert.Equal(bBefore, await TenantCountsAsync(tables, b.Tenant.Id));
+            // Every dashboard table of the tenant is empty (the old revenue days used to outlive the connection resets).
+            Assert.All(tables.Where(x => x.StartsWith("dashboard.", StringComparison.Ordinal)), table => Assert.Equal(0, aAfter[table]));
 
             await using var verification = fixture.CreateContext();
             Assert.Equal(PanelJobTypes.FactoryReset, (await verification.IntegrationJobs.SingleAsync(x => x.TenantId == a.Tenant.Id)).JobType);
@@ -113,6 +121,7 @@ public sealed partial class PostgreSqlConnectionFullResetTests
         db.AiUsageLogs.Add(new AiUsageLog { Id = Guid.CreateVersion7(), TenantId = tenantId, Feature = "TEST", Model = "test", Status = "OK", CreatedAt = fixture.Now });
         db.ApiIdempotencyRecords.Add(new ApiIdempotencyRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, RouteTemplate = "/api/v1/test", IdempotencyKey = $"pf-{Guid.NewGuid():N}", RequestHash = "hash", State = "COMPLETED", CreatedAt = fixture.Now, ExpiresAt = fixture.Now.AddDays(1) });
         db.IntegrationOutboxEvents.Add(new IntegrationOutboxEvent { Id = Guid.CreateVersion7(), TenantId = tenantId, ResourceType = "orders", OperationType = "update", AggregateType = "Order", AggregateId = Guid.CreateVersion7(), PayloadJson = JsonSerializer.Serialize(new { }), CreatedAt = fixture.Now, NextAttemptAt = fixture.Now });
+        db.Set<DashboardRevenueDaily>().Add(new DashboardRevenueDaily { TenantId = tenantId, Day = new DateTime(2024, 3, 1, 0, 0, 0, DateTimeKind.Utc), PlatformName = "Trendyol", Currency = "TRY", Amount = 120m, OrderCount = 1, UpdatedAt = fixture.Now });
         db.TenantSettings.AddRange(
             new TenantSetting { TenantId = tenantId, Key = "appearance", ValueJson = "{}", UpdatedAt = fixture.Now, Version = 1 },
             new TenantSetting { TenantId = tenantId, Key = "invoice-workspace-hidden-packages", ValueJson = "[]", UpdatedAt = fixture.Now, Version = 1 });
@@ -123,6 +132,7 @@ public sealed partial class PostgreSqlConnectionFullResetTests
     {
         await using var db = fixture.CreateContext();
         await db.Database.ExecuteSqlInterpolatedAsync($$"""
+            DELETE FROM dashboard.revenue_daily WHERE "TenantId"={{tenantId}};
             DELETE FROM catalog.categories WHERE "TenantId"={{tenantId}};
             DELETE FROM catalog.brands WHERE "TenantId"={{tenantId}};
             DELETE FROM ops.ai_usage_logs WHERE "TenantId"={{tenantId}};
