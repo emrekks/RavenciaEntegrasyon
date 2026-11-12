@@ -217,16 +217,16 @@ describe('SystemSettingsPage', () => {
     await settle()
     const group = container.querySelector('section[aria-label="Pazaryerleri"]')!
     const rows = Array.from(group.querySelectorAll<HTMLLabelElement>('.ss-dr-opt'))
-    // the e-invoice provider and the passive connection are not offered
-    expect(rows.map(row => row.querySelector('b')?.textContent)).toEqual(['Trendyol', 'N11'])
+    // the e-invoice provider is not offered; a passive connection still is
+    expect(rows.map(row => row.querySelector('b')?.textContent)).toEqual(['Trendyol', 'N11', 'Pazarama'])
     // product links are not added to the count
     expect(rows[0].textContent).toContain('120 kayıt')
-    expect(group.textContent).toContain('0/2 Seçili')
+    expect(group.textContent).toContain('0/3 Seçili')
     click(group.querySelector<HTMLButtonElement>('header button')!)
-    expect(group.textContent).toContain('2/2 Seçili')
-    expect(container.querySelector('.ss-dr-sum')?.textContent).toContain('Toplam 127 kayıt')
+    expect(group.textContent).toContain('3/3 Seçili')
+    expect(container.querySelector('.ss-dr-sum')?.textContent).toContain('Toplam 134 kayıt')
     click(group.querySelector<HTMLButtonElement>('header button')!)
-    expect(group.textContent).toContain('0/2 Seçili')
+    expect(group.textContent).toContain('0/3 Seçili')
   })
 
   it('resets the chosen marketplaces one after the other, then the catalog, only after the confirmation text', async () => {

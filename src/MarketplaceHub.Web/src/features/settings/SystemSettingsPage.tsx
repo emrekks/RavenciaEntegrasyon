@@ -178,7 +178,7 @@ const resetGroupIcons: Record<string, SettingsIconName> = { Katalog: 'db', 'Ür�
 // Database cleanup: each group has one header with its own select-all and a selected/total count; each data type is
 // a whole-row tile (checkbox beside the title, count as a tag); the notes sit in one callout and the sticky bar shows
 // what goes as chips, the total, the typed confirmation and the reset button.
-type ResetMarketplace = { id: string; platformCode: string; displayName: string; count: number | undefined }
+type ResetMarketplace = { id: string; platformCode: string; displayName: string; passive: boolean; count: number | undefined }
 function SettingsDataReset({ groups, counts, countsFailed, picked, onToggle, marketplaces, marketplacePicked, onToggleMarketplaces, progress, confirmation, onConfirmation, busy, onConfirm }: { groups: DataResetGroup[]; counts?: Record<string, number>; countsFailed: boolean; picked: string[]; onToggle: (scopes: string[], checked: boolean) => void; marketplaces: ResetMarketplace[]; marketplacePicked: string[]; onToggleMarketplaces: (ids: string[], checked: boolean) => void; progress: Record<string, BulkResetProgress>; confirmation: string; onConfirmation: (value: string) => void; busy: boolean; onConfirm: () => void }) {
   const options = groups.flatMap(group => group.options)
   const going = options.filter(option => picked.includes(option.scope))
@@ -231,7 +231,7 @@ function SettingsDataReset({ groups, counts, countsFailed, picked, onToggle, mar
           return <label key={entry.id} className={`ss-dr-opt is-mk${on ? ' is-on' : ''}`}>
             <input type="checkbox" className="ss-cb" checked={on} disabled={busy} onChange={event => onToggleMarketplaces([entry.id], event.target.checked)} />
             <PlatformSquareMark code={entry.platformCode} name={entry.displayName} />
-            <span className="ss-dr-text"><b>{entry.displayName}</b><small>Sipariş, iade, fatura, ürün bağı, kategori listeleri ve finans kayıtları; ayarlar korunur.</small>
+            <span className="ss-dr-text"><b>{entry.displayName}</b><small>Sipariş, iade, fatura, ürün bağı, kategori listeleri ve finans kayıtları; ayarlar korunur.{entry.passive ? ' Bağlantı pasif.' : ''}</small>
               {text && <span className={`ss-dr-prog is-${state?.state}`} role="status">{state?.state === 'running' && <i style={{ width: `${state.percent ?? 0}%` }} />}<em>{text}</em></span>}</span>
             {entry.count !== undefined ? <span className="ss-tag ss-dr-count">{resetNumber(entry.count)} kayıt</span> : <span className="ss-tag ss-dr-count">Sayılıyor…</span>}
           </label>
@@ -310,9 +310,9 @@ export function SystemSettingsPage() {
   const resetCancelled = useRef(false)
   useEffect(() => { resetCancelled.current = false; return () => { resetCancelled.current = true } }, [])
   // The active marketplace connections, each with what its Tam Sıfırlama would remove (the same view its window shows).
-  const resetConnections = useQuery({ queryKey: ['connections', 'settings-reset'], queryFn: async () => (await loadAllPages<Connection>('/connections')).items.filter(item => (item.status === 'ACTIVE' || item.status === 'VERIFIED') && connectionFullResetSupported(item.platformCode)), enabled: section === 'database', staleTime: 0 })
+  const resetConnections = useQuery({ queryKey: ['connections', 'settings-reset'], queryFn: async () => (await loadAllPages<Connection>('/connections')).items.filter(item => item.status !== 'DELETED' && item.status !== 'HIDDEN' && connectionFullResetSupported(item.platformCode)), enabled: section === 'database', staleTime: 0 })
   const resetViews = useQueries({ queries: (resetConnections.data ?? []).map(item => ({ queryKey: ['connection-full-reset', item.id], queryFn: () => hubPoll<ConnectionFullResetView>(`/connections/${item.id}/full-reset`), enabled: section === 'database', staleTime: 0 })) })
-  const resetMarketplaces: ResetMarketplace[] = (resetConnections.data ?? []).map((item, index) => ({ id: item.id, platformCode: item.platformCode, displayName: item.displayName, count: marketplaceResetCount(resetViews[index]?.data) }))
+  const resetMarketplaces: ResetMarketplace[] = (resetConnections.data ?? []).map((item, index) => ({ id: item.id, platformCode: item.platformCode, displayName: item.displayName, passive: item.status !== 'ACTIVE' && item.status !== 'VERIFIED', count: marketplaceResetCount(resetViews[index]?.data) }))
   // What each list holds now, the counts the reset reports when it is done.
   const resetCounts = useQuery({ queryKey: ['data-reset-counts', 'settings'], queryFn: () => hubApi<{ items: Array<{ scope: string; count: number }> }>('/settings/data-reset'), enabled: section === 'database', staleTime: 0 })
   // Through hubApi: a session that ended shows the sign-in screen instead of an error box.
