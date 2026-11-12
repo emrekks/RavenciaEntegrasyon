@@ -1,0 +1,33 @@
+[Unit]
+Description=Copy the newest verified Ravencia backup set off the host, age-encrypted (deploy/backup/offsite-copy.sh)
+Requires=docker.service
+After=docker.service network-online.target ravencia-backup.service
+Wants=network-online.target
+OnFailure=ravencia-alert@%n.service
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/usr/local/lib/ravencia
+ExecStart=/usr/bin/bash /usr/local/lib/ravencia/deploy/backup/offsite-copy.sh
+TimeoutStartSec=2h
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+# Root reads the backup volume and deploy/secrets (a symlink into the repository). The home directories stay
+# writable here: rclone writes a refreshed Drive token back into deploy/secrets/rclone.conf.
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+PrivateTmp=yes

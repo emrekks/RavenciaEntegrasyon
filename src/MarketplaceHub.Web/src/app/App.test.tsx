@@ -168,17 +168,31 @@ describe('irreversible work needs no re-authentication', () => {
     await waitFor(() => shell(host))
     let resets = 0
     server.hub = url => {
-      if (url !== '/api/v1/settings/data-reset') return { status: 200, body: { metrics: {}, items: [], totalCount: 0, dueSoonCount: 0 } }
+      if (url !== '/api/v1/settings/factory-reset') return { status: 200, body: { metrics: {}, items: [], totalCount: 0, dueSoonCount: 0 } }
       resets++
       return { status: 200, body: { products: 0 } }
     }
     const { hubApi } = await import('../shared/api')
     let result: unknown
-    await act(async () => { result = await hubApi('/settings/data-reset', { method: 'POST', body: '{}' }) })
+    await act(async () => { result = await hubApi('/settings/factory-reset', { method: 'POST', body: '{}' }) })
     expect(result).toEqual({ products: 0 })
     expect(resets).toBe(1)
     expect(document.querySelector('input[type="password"]')).toBeNull()
     expect(server.calls.some(call => call.url === '/api/v1/auth/reauthenticate')).toBe(false)
+  })
+})
+
+describe('Hızlı Arama', () => {
+  it('lists every page of the menu', async () => {
+    server.me = [{ status: 200, body: active }]
+    const { host } = mount()
+    await waitFor(() => shell(host))
+    const menu = Array.from(host.querySelectorAll('nav[aria-label="Ana menü"] a')).map(link => link.getAttribute('href'))
+    act(() => { host.querySelector<HTMLButtonElement>('button[aria-label="Hızlı aramayı aç"]')!.click() })
+    await waitFor(() => document.querySelector('.rv-command-item'))
+    const found = Array.from(document.querySelectorAll('.rv-command-item')).map(link => link.getAttribute('href'))
+    expect(menu.length).toBeGreaterThan(8)
+    expect(found).toEqual(expect.arrayContaining([...menu, '/settings']))
   })
 })
 

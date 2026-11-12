@@ -11,7 +11,11 @@ set -Eeuo pipefail
 #   - firewall bouncer: nftables, IPv4 + IPv6, input and forward hooks;
 #   - allowlists github-actions and ravencia-private, refreshed daily by
 #     ravencia-crowdsec-allowlist.timer.
-# Ending the simulation is a manual step (docs/CI-CD-DEPLOY.md, "CrowdSec").
+# Ending the simulation is the owner's manual step (docs/CI-CD-DEPLOY.md, "CrowdSec"), after reviewing the alerts:
+#   bash deploy/scripts/install-crowdsec.sh --enforce
+# turns global simulation off (bans reach nftables) and lets CrowdSec pull the community blocklist (the repository's
+# config.yaml.local, which keeps it off, is no longer installed). A marker file keeps a later run without --enforce
+# from putting the blocklist setting back; nothing in the deploy runs this script.
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 config_dir="$script_dir/../crowdsec"
@@ -19,6 +23,13 @@ unit_dir="$script_dir/../systemd"
 keyring=/etc/apt/keyrings/crowdsec.gpg
 suite="${RAVENCIA_CROWDSEC_SUITE:-noble}"
 first_install=false
+enforce=false
+case "${1:-}" in
+  --enforce) enforce=true ;;
+  '') ;;
+  *) echo "usage: install-crowdsec.sh [--enforce]" >&2; exit 2 ;;
+esac
+enforced_marker=/etc/crowdsec/ravencia-enforced
 
 if [[ ! -s "$keyring" ]]; then
   key_tmp="$(mktemp)"
@@ -38,7 +49,12 @@ sudo -n apt-get -o DPkg::Lock::Timeout=600 update -q
 # The package starts the engine at once, so the simulation switch and the blocklist setting
 # are in place before it: nothing can be enforced between installation and configuration.
 sudo -n install -d -m 0755 /etc/crowdsec
-sudo -n install -m 0644 "$config_dir/config.yaml.local" /etc/crowdsec/config.yaml.local
+if [[ "$enforce" == true ]] || sudo -n test -e "$enforced_marker"; then
+  # Enforcing: the package defaults pull the community blocklist and the subscribed blocklists.
+  sudo -n rm -f /etc/crowdsec/config.yaml.local
+else
+  sudo -n install -m 0644 "$config_dir/config.yaml.local" /etc/crowdsec/config.yaml.local
+fi
 if [[ "$first_install" == true ]] && ! sudo -n test -e /etc/crowdsec/simulation.yaml; then
   printf 'simulation: true\nexclusions: []\n' | sudo -n tee /etc/crowdsec/simulation.yaml >/dev/null
 fi
@@ -66,9 +82,14 @@ if ! sudo -n cscli bouncers list -o json | jq -e 'length > 0' >/dev/null; then
   unset bouncer_key
   echo "Firewall bouncer registered."
 fi
-if [[ "$first_install" == true ]]; then
+if [[ "$first_install" == true && "$enforce" != true ]]; then
   sudo -n cscli simulation enable --global
   echo "First installation: global simulation mode enabled (nothing is banned)."
+fi
+if [[ "$enforce" == true ]]; then
+  sudo -n cscli simulation disable --global
+  sudo -n touch "$enforced_marker"
+  echo "Simulation ended: CrowdSec decisions are enforced by the nftables bouncer and the community blocklist is pulled."
 fi
 
 # The units run the root-owned copy in /usr/local/lib/ravencia that install-backup-timer.sh keeps current.

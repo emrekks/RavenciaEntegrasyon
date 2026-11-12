@@ -73,6 +73,7 @@ const catalogue: Record<string, JobPresentation> = {
   INVOICE_DUE_SCAN: job('Fatura', 'invoice', PANEL, 'Fatura Süresi Taraması', 'Fatura kesme süresi yaklaşan veya dolan paketler belirlenir ve uyarı listesi güncellenir.'),
   IMPORT_PREVIEW: job('İçe Aktarım', 'product', PANEL, 'Dosya Önizleme', 'Yüklenen dosya okunur ve doğrulanır; panele kayıt yazılmaz.'),
   IMPORT_APPLY: job('İçe Aktarım', 'product', PANEL, 'Dosyayı Uygulama', 'Onaylanan dosyadaki kayıtlar panele işlenir.'),
+  PANEL_FACTORY_RESET: job('Sistem', 'generic', PANEL, 'Panel Verisi Sıfırlama', 'Ayarlar › Veri’de seçilen veri türleri panelden silinir; bütün türler seçildiyse panel tamamen sıfırlanır ve bu oturum dışındaki oturumlar kapanır. Pazaryerine ve E-Faturam’a hiçbir şey gönderilmez.'),
   CONNECTION_FULL_RESET: job('Bağlantı', 'connection', PANEL, 'Tam Sıfırlama', 'Bağlantının sipariş, iade, fatura, ürün bağı, finans ve liste kayıtları panelden silinir; bağlantı ayarları korunur. Pazaryerine ve E-Faturam’a hiçbir şey gönderilmez.')
 }
 

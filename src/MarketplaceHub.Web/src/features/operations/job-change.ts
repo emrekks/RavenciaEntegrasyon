@@ -51,7 +51,8 @@ const changes: Record<string, JobChange> = {
   EXTERNAL_EFFECT_RECONCILE: { label: 'Tarama Türü', value: 'Gönderim sonucu doğrulaması', detail: 'Sonucu kesinleşmemiş bir pazaryeri işleminin uygulanıp uygulanmadığı pazaryerinden okundu.' },
   RETURN_ACTION: { label: 'Yapılan Değişiklik', value: 'İade kararı', detail: 'İade kararı pazaryerine gönderildi.' },
   TRENDYOL_COMMON_LABEL: { label: 'Yapılan Değişiklik', value: 'Ortak etiket', detail: 'Ortak kargo etiketi pazaryerinden istendi.' },
-  CONNECTION_FULL_RESET: { label: 'Yapılan İşlem', value: 'Bağlantı verisi sıfırlama', detail: 'Bağlantının panelde tutulan verileri silindi; pazaryerine veri gönderilmedi.' }
+  CONNECTION_FULL_RESET: { label: 'Yapılan İşlem', value: 'Bağlantı verisi sıfırlama', detail: 'Bağlantının panelde tutulan verileri silindi; pazaryerine veri gönderilmedi.' },
+  PANEL_FACTORY_RESET: { label: 'Yapılan İşlem', value: 'Panel verisi sıfırlama', detail: 'Ayarlar › Veri’de seçilen veri türleri panelden silindi; pazaryerine ve E-Faturam’a veri gönderilmedi.' }
 }
 
 const referenceSources: Record<string, string> = {

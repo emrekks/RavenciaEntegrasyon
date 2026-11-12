@@ -282,7 +282,7 @@ describe('JobsPage address state (W16)', () => {
     expect(container.querySelector('.rr-pop[aria-label="Yön"]')).toBeNull()
 
     const state = await openField('Durum')
-    await act(async () => { optionNamed(state, 'Manuel İnceleme').click() })
+    await act(async () => { optionNamed(state, 'İnceleme Bekliyor').click() })
     await settle()
     expect(pageRequests().at(-1)!.get('status')).toBe('MANUAL_REVIEW')
 
@@ -541,10 +541,10 @@ describe('JobsPage Loglar tab (price/stock send log)', () => {
     expect(checkboxNamed(results, 'Reddedildi').closest('label')!.querySelector('.rr-opt-count')!.textContent).toBe('2')
   })
 
-  it('is a main tab beside İş Takibi, above the category tabs, and İş Takibi brings the category back', async () => {
+  it('is a main tab beside İşler, above the category tabs, and İşler brings the category back', async () => {
     await renderPage('/jobs?kategori=siparis')
     const main = container.querySelector('[role="tablist"][aria-label="İşlem Takibi görünümü"]')!
-    expect(Array.from(main.querySelectorAll('[role="tab"]')).map(tab => tab.textContent)).toEqual(['İş Takibi', 'Loglar', 'API Sağlık'])
+    expect(Array.from(main.querySelectorAll('[role="tab"]')).map(tab => tab.textContent)).toEqual(['İşler', 'Loglar', 'API Sağlık'])
     const categories = container.querySelector('[role="tablist"][aria-label="İşlem kategorileri"]')!
     expect(categories.textContent).not.toContain('Loglar')
     // The second level is a segment with every category in it: no Diğer menu, no icons.
@@ -557,7 +557,7 @@ describe('JobsPage Loglar tab (price/stock send log)', () => {
     await activityViewLoaded()
     expect(container.querySelector('[aria-label="İşlem kategorileri"]')).toBeNull()
 
-    await act(async () => { Array.from(container.querySelectorAll<HTMLButtonElement>('[aria-label="İşlem Takibi görünümü"] [role="tab"]')).find(tab => tab.textContent === 'İş Takibi')!.click() })
+    await act(async () => { Array.from(container.querySelectorAll<HTMLButtonElement>('[aria-label="İşlem Takibi görünümü"] [role="tab"]')).find(tab => tab.textContent === 'İşler')!.click() })
     await settle()
     expect(currentSearch).toBe('?kategori=siparis')
     expect(container.querySelector('[aria-label="İşlem kategorileri"] [aria-selected="true"]')!.textContent).toContain('Sipariş')

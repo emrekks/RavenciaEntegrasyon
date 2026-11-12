@@ -29,9 +29,10 @@ const baseView: PanelFactoryResetView = {
   groups: [{ key: 'ORDERS', label: 'Siparişler, Paketler ve İadeler', description: 'x', section: 'Satış ve Faturalar', requires: ['INVOICES'], count: 1200 }, { key: 'LOGS', label: 'Loglar', description: 'y', section: 'Sistem Kayıtları', requires: [], count: 34000 }],
   total: 35200,
   steps: ['Süren işlerin bitmesi bekleniyor', 'Faturalar ve belgeleri siliniyor', 'Siparişler, paketler, iadeler ve sorular siliniyor', 'Tamamlandı'],
-  kept: ['Hesap, kullanıcılar, roller ve açık olan bu oturum', 'Entegrasyon bağlantıları ve giriş bilgileri'],
+  // The server's list (PanelFactoryResetInventory.KeptForPanel).
+  kept: ['Hesap, kullanıcılar ve bu oturum', 'Entegrasyon bağlantıları ve giriş bilgileri', 'Sistem ayarları'],
   confirmationWord: 'PANELİ SIFIRLA',
-  partialConfirmationWord: 'Verileri sil',
+  partialConfirmationWord: 'VERİLERİ SİL',
   job: null
 }
 

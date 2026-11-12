@@ -1,5 +1,5 @@
 // The tabs of İşlem Takibi and the job types each one asks the server for. The types come from this fixed catalogue
-// (the server's MarketplaceJobTypes, InvoicingJobTypes and the import jobs; job-categories.test.ts checks it against
+// (the server's MarketplaceJobTypes, InvoicingJobTypes, PanelJobTypes and the import jobs; job-categories.test.ts checks it against
 // the server source), not from the live counts: a count refresh that brings a new type no longer changes the list
 // query and sends the list back to its first page (G22).
 
@@ -24,7 +24,9 @@ export const knownJobTypes: readonly string[] = [
   'EFATURAM_CONNECTION_TEST', 'INVOICE_SUBMIT', 'INVOICE_RECONCILE', 'INVOICE_DOCUMENT_FETCH', 'INVOICE_MARKETPLACE_DELIVERY',
   'MANUAL_ORDER_INVOICE_DELIVERY', 'INVOICE_CANCELLATION', 'INVOICE_DUE_SCAN', 'EFATURAM_STAGE_CAPABILITY_PROBE',
   // ImportService
-  'IMPORT_PREVIEW', 'IMPORT_APPLY'
+  'IMPORT_PREVIEW', 'IMPORT_APPLY',
+  // PanelJobTypes (Ayarlar › Veri)
+  'PANEL_FACTORY_RESET'
 ]
 
 // Every known type sits in at least one tab besides Tüm İşlemler (job-categories.test.ts). Invoice work, the order invoice

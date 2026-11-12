@@ -58,8 +58,11 @@ public sealed class PanelFactoryResetService(AppDbContext db, TimeProvider timeP
         var chosen = partial ? PanelFactoryResetInventory.Close(command.Categories!) : PanelFactoryResetInventory.Groups;
         if (chosen is null) return Invalid("categories", "Geçerli veri türleri seçin.");
         var typed = NormalizeConfirmation(command.Confirmation);
-        if (!(typed == ConfirmationWord || partial && typed == PartialConfirmationWord))
-            return Invalid("confirmation", partial ? "Onay alanına tam olarak Verileri sil yazın." : $"Onay alanına tam olarak {ConfirmationWord} yazın.");
+        // Every category chosen one by one is Paneli Tamamen Sıfırla (the other sessions end, every stored file goes), so
+        // it takes the full reset's word, not the partial one.
+        var full = chosen.Count == PanelFactoryResetInventory.Groups.Count;
+        if (!(typed == ConfirmationWord || !full && typed == PartialConfirmationWord))
+            return Invalid("confirmation", full ? $"Bütün veri türleri seçili: bu Paneli Tamamen Sıfırla demektir. Onay alanına tam olarak {ConfirmationWord} yazın." : "Onay alanına tam olarak Verileri sil yazın.");
 
         // A second request while one is queued or running answers with that one.
         if (!await db.IntegrationJobs.AnyAsync(x => x.TenantId == tenantId && x.JobType == PanelJobTypes.FactoryReset && OpenJobStatuses.Contains(x.Status), cancellationToken))

@@ -17,7 +17,7 @@ export const connectionFullResetItems: ConnectionFullResetItem[] = [
   { scope: 'MAPPINGS', label: 'Eşleştirmeler', description: 'Kategori, marka, özellik ve değer eşleştirmeleri; eşleme şablonları ve varsayılan özellik değerleri dahil.', unit: 'eşleştirme' },
   { scope: 'COMMISSION_TARIFFS', label: 'Komisyon Tarifeleri', description: 'Yüklenen tarife dosyaları ve satırları.', unit: 'dosya' },
   { scope: 'PROMOTION_OFFERS', label: 'Promosyon Teklifleri', description: 'Promosyonlar sayfasına yüklenen dosyalar.', unit: 'dosya' },
-  { scope: 'JOBS', label: 'İş Takibi Kayıtları', description: 'Bu bağlantının İş Takibi’ndeki iş geçmişi, içe aktarma oturumları ve okuma konumları silinir; bekleyen işler iptal edilir, çalışan iş kalır.', unit: 'iş' }
+  { scope: 'JOBS', label: 'İşlem Takibi Kayıtları', description: 'Bu bağlantının İşlem Takibi’ndeki iş geçmişi, içe aktarma oturumları ve okuma konumları silinir; bekleyen işler iptal edilir, çalışan iş kalır.', unit: 'iş' }
 ]
 
 // An e-invoice connection's records are its invoices, which the selective reset and the delete cover.

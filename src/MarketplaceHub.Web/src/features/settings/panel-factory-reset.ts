@@ -15,6 +15,14 @@ export function normalizePanelResetConfirmation(text: string) {
   return text.trim().replace(/\s+/g, ' ').toLocaleUpperCase('tr-TR')
 }
 
+export const dataResetPartialConfirmationWord = 'Verileri sil'
+
+// Ayarlar › Veri's confirmation word: "Verileri sil" for some data types, PANELİ SIFIRLA once every one is chosen (that
+// is the full reset, which ends the other sessions; the server refuses the partial word for it).
+export function dataResetConfirmWord(typeCount: number, pickedCount: number) {
+  return typeCount > 0 && pickedCount >= typeCount ? panelResetConfirmationWord : dataResetPartialConfirmationWord
+}
+
 export function panelResetConfirmed(text: string, word = panelResetConfirmationWord) {
   return normalizePanelResetConfirmation(text) === normalizePanelResetConfirmation(word)
 }

@@ -203,14 +203,19 @@ function Shell({ me }: { me: Me }) {
     { label: 'Ana Menü', items: [item('/dashboard', 'dashboard', 'Genel Bakış', true), item('/products', 'products', 'Ürünler'), item('/orders', 'orders', 'Siparişler', false, orderNavigationCount(orderSummary.data), true, 'bekleyen sipariş'), item('/returns', 'returns', 'İadeler', false, navigationCounts?.pendingReturns, true, 'bekleyen iade'), item('/invoices', 'invoice', 'Faturalar', false, invoiceWorkspaceSummary.data?.dueSoonCount, true, 'faturanın süresi yaklaşıyor', true), item('/questions', 'questions', 'Ürün Soruları', false, questionWaitingSummary.data?.totalCount, true, 'bekleyen soru'), item('/reports', 'chart', 'Raporlar'), item('/promotions', 'promotion', 'Promosyon'), item('/integrations', 'connect', 'Entegrasyonlar'), item('/mappings/categories', 'layers', 'Eşleştirmeler'), item('/jobs', 'jobs', 'İşlem Takibi')] },
   ]
   const navigation = <>{navigationGroups.map(group => <div className="nav-group" key={group.label}>{group.items}</div>)}</>
+  // Hızlı Arama lists every page of the menu, in the menu's order.
   const quickSearchItems: Array<{ to: string; label: string; description: string; icon: UiIconName }> = [
     { to: '/dashboard', label: 'Genel Bakış', description: 'Operasyon merkezini aç', icon: 'dashboard' },
     { to: '/products', label: 'Ürünler', description: 'Kataloğu ve stokları yönet', icon: 'products' },
     { to: '/orders', label: 'Siparişler', description: 'Sipariş akışını incele', icon: 'orders' },
+    { to: '/returns', label: 'İadeler', description: 'İade taleplerini incele ve karar ver', icon: 'returns' },
+    { to: '/invoices', label: 'Faturalar', description: 'Fatura kesimi, iletimi ve süreleri', icon: 'invoice' },
+    { to: '/questions', label: 'Ürün Soruları', description: 'Müşteri sorularını yanıtla', icon: 'questions' },
     { to: '/reports', label: 'Raporlar', description: 'Satış, iade, kargo ve kâr raporları', icon: 'chart' },
     { to: '/promotions', label: 'Promosyon', description: 'Komisyon tarifesi, Plus, Avantajlı Ürün ve Flash kârlılığı', icon: 'promotion' },
     { to: '/integrations', label: 'Entegrasyonlar', description: 'Platform bağlantılarını yönet', icon: 'connect' },
     { to: '/mappings/categories', label: 'Eşleştirmeler', description: 'Kategori ve özellik eşlemeleri', icon: 'layers' },
+    { to: '/jobs', label: 'İşlem Takibi', description: 'Arka plan işleri, loglar ve API sağlığı', icon: 'jobs' },
     { to: '/settings', label: 'Sistem Ayarları', description: 'Güvenlik ve görünüm ayarları', icon: 'settings' },
   ]
   return <div className={`app-shell stitch-shell ${menuCollapsed ? 'sidebar-collapsed' : ''} ${sidebarHovering ? 'sidebar-hover-expanded' : ''} ${sidebarPinned ? 'sidebar-pinned' : ''}`}>

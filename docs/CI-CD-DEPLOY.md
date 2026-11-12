@@ -338,31 +338,15 @@ cd <set> && sha256sum -c SHA256SUMS
 Sonra RUNBOOK-GERI-ALMA.md bölüm 3. `deploy/secrets/` emaneti (Y4) aynı anahtarla şifrelenir:
 RUNBOOK-GERI-ALMA.md bölüm 5.
 
-**5) Zamanlayıcı (sonra eklenecek, `deploy/systemd` sahibi kurar).** Gece yedeğinden sonra:
-
-```ini
-# deploy/systemd/ravencia-offsite-copy.service
-[Unit]
-Description=Ravencia off-site encrypted backup copy
-After=docker.service ravencia-backup.service
-OnFailure=ravencia-alert@%n.service
-[Service]
-Type=oneshot
-WorkingDirectory=/home/ubuntu/RavenciaEntegrasyon
-ExecStart=/usr/bin/bash deploy/backup/offsite-copy.sh
-TimeoutStartSec=2h
-# deploy/systemd/ravencia-offsite-copy.timer
-[Timer]
-OnCalendar=*-*-* 09:30:00 UTC
-OnCalendar=*-*-* 21:30:00 UTC
-Persistent=true
-RandomizedDelaySec=10m
-[Install]
-WantedBy=timers.target
-```
-
-Birim root olarak çalışır (Docker volume yolunu ve `deploy/secrets`'ı okur). Yapılandırılmamışsa her
-çalışmada yalnız "not configured" satırı yazar; alarm üretmez.
+**5) Zamanlayıcı (repoda hazır, yapılandırılınca kendiliğinden kurulur).** Birimler
+`deploy/systemd/ravencia-offsite-copy.service` ve `.timer` (09:30 ve 21:30 UTC, gece/öğle yedeğinden yarım saat sonra,
+`Persistent=true`, 10 dk rastgele gecikme). `install-backup-timer.sh` (her deploy'da) bu ikisini **yalnız**
+`deploy/secrets/backup_age_recipient.txt` ve `deploy/secrets/backup_offsite_remote.txt` doluysa kurar ve
+etkinleştirir; o zamana kadar sunucuda hiçbir şey değişmez. Sahip 1–3. adımları bitirip bir deploy (ya da
+`bash deploy/scripts/install-backup-timer.sh`) çalıştırınca zamanlayıcı devreye girer; kontrol:
+`systemctl list-timers 'ravencia-offsite-*'`. Birim root olarak `/usr/local/lib/ravencia` kopyasını çalıştırır;
+`ProtectHome` kapalıdır, çünkü rclone yenilenen Drive jetonunu `deploy/secrets/rclone.conf`'a geri yazar.
+Başarısız kopya `ravencia-alert@` alarmı üretir; yapılandırma eksikse yalnız "not configured" satırı yazılır.
 
 ## İşletim: zamanlayıcılar, alarm, izleme
 
@@ -411,23 +395,27 @@ trafiği `forward`'dan geçer, iptables'taki `DOCKER-USER` karşılığı). İzi
 
 İlk kurulum **simülasyon modunda** başlar (3 Kasım 2026): uyarılar kaydedilir, hiçbir IP banlanmaz ve topluluk
 blok listesi çekilmez (`/etc/crowdsec/config.yaml.local`). fail2ban bu süre boyunca çalışmaya devam eder.
-**7 gün sonra banı açmak** (yanlış pozitifler `sudo cscli alerts list` ile gözden geçirildikten sonra):
+12 Kasım 2026 itibarıyla canlı hâlâ simülasyonda (`/prod-logs host`: "global simulation: enabled").
+**Banı açmak (sahibin adımı)**: önce yanlış pozitifleri gözden geçirin (`sudo cscli alerts list`; kendi ofis/ev
+IP'niz listede "(simul)ban" ile görünüyorsa önce `ravencia-private` izin listesine ekleyin), sonra tek komut:
 
 ```bash
-sudo cscli simulation disable --global
-# topluluk blok listesi: deploy/crowdsec/config.yaml.local'da pull değerlerini true yapıp yeniden kurun
-# (ya da /etc/crowdsec/config.yaml.local'ı silin)
-sudo systemctl reload crowdsec
-sudo cscli decisions list            # bundan sonra banlar nftables'a gider
-sudo systemctl disable --now fail2ban   # CrowdSec banları doğrulandıktan sonra
+bash deploy/scripts/install-crowdsec.sh --enforce   # simülasyonu kapatır, topluluk blok listesini açar, işaret bırakır
+sudo cscli simulation status                        # "global simulation: disabled" beklenir
+sudo cscli decisions list                           # bundan sonra banlar nftables'a gider
+sudo systemctl disable --now fail2ban               # CrowdSec banları doğrulandıktan sonra
 ```
+
+`--enforce` `/etc/crowdsec/ravencia-enforced` işaretini bırakır; betik sonra `--enforce`'suz çalışsa da blok listesi
+ayarını geri almaz. Deploy bu betiği çalıştırmaz. Geri dönmek: `sudo cscli simulation enable --global`,
+`sudo rm /etc/crowdsec/ravencia-enforced` ve betiği `--enforce`'suz yeniden çalıştırın.
 
 Yanlış ban: `sudo cscli decisions delete --ip <IP>` (gerekirse VNC konsolundan).
 
 **Yedek saklama** (`deploy/backup/backup.sh`): son 72 saatin en yeni **5** seti + son **7 günün** her yarım
 gününün en yeni seti + daha eski 4 haftanın her birinin ve 6 ayın her birinin en yeni seti; en yeni set her
-koşulda kalır (`BACKUP_KEEP_RECENT`, `BACKUP_KEEP_DAILY`, `BACKUP_KEEP_WEEKLY`, `BACKUP_KEEP_MONTHLY`). Bir set ≈1,1 GB; olağan durumda
-~12–14 set ≈ 15 GB (72 GB kök diskte).
+koşulda kalır (`BACKUP_KEEP_RECENT`, `BACKUP_KEEP_DAILY`, `BACKUP_KEEP_WEEKLY`, `BACKUP_KEEP_MONTHLY`). Bir set ≈0,3–0,5 GB
+(12 Kasım 2026); olağan durumda ~25 set ≈ 10 GB (Hostinger, 193 GB kök disk).
 
 **Disk koruması**: yeni set yazılmadan önce, en yeni setin boyutu kadar ekleme sonrası disk doluluğu
 hesaplanır. %85'i (`BACKUP_DISK_LIMIT_PERCENT`) geçecekse önce **en eski haftalık setler** silinir
