@@ -32,6 +32,8 @@ import type { IntegrationFeedback } from '../marketplace/shared'
 // first time their tab opens.
 const OperationLogs = lazy(() => import('./OperationLogs'))
 const ApiHealthView = lazy(() => import('./ApiHealthView').then(module => ({ default: module.ApiHealthView })))
+const QueueQuotaView = lazy(() => import('./QueueQuotaView'))
+const NotificationCenter = lazy(() => import('./NotificationCenter'))
 
 // E-Faturam is the invoicing provider; every other code is a marketplace.
 const jobPlatformLabel = (code: string) => code === 'TRENDYOL_EFATURAM' ? platformDisplayNames.TRENDYOL_EFATURAM : marketplacePlatformLabel(code)
@@ -48,7 +50,7 @@ import { isWaitingJob, jobAttemptOutcome, jobAttemptResultLabel, jobAttemptsText
 import { JobStateGlyph } from './job-state-glyph'
 import { useTabSlide } from '../../shared/tab-slide'
 
-const jobsMainTabOrder = ['jobs', 'logs', 'health']
+const jobsMainTabOrder = ['jobs', 'logs', 'health', 'queue', 'notifications']
 type JobStatus = 'PENDING' | 'LEASED' | 'RETRY_SCHEDULED' | 'BLOCKED' | 'MANUAL_REVIEW' | 'SUCCEEDED' | 'DEAD' | 'CANCELLED'
 type JobSummary = {
   id: string
@@ -585,11 +587,13 @@ export function JobsPage({ me }: { me: Me }) {
         <h1>İşlem Takibi</h1>
       </div>
     </div>
-    <Tabs className="rv-view-tabs jobs-reference-main-tabs" ariaLabel="İşlem Takibi görünümü" value={mainTab} onChange={setMainTab} items={[{ value: 'jobs', label: viewTabLabel('processing', 'İşler') }, { value: 'logs', label: viewTabLabel('log', 'Loglar') }, { value: 'health', label: viewTabLabel('connected', 'API Sağlık') }]} />
+    <Tabs className="rv-view-tabs jobs-reference-main-tabs" ariaLabel="İşlem Takibi görünümü" value={mainTab} onChange={setMainTab} items={[{ value: 'jobs', label: viewTabLabel('processing', 'İşler') }, { value: 'logs', label: viewTabLabel('log', 'Loglar') }, { value: 'health', label: viewTabLabel('connected', 'API Sağlık') }, { value: 'queue', label: viewTabLabel('waiting', 'Kuyruk ve Kota') }, { value: 'notifications', label: viewTabLabel('unread', 'Bildirimler') }]} />
     <div key={mainSlide.key} className={`jobs-reference-canvas${mainSlide.className ? ` ${mainSlide.className}` : ''}`}>
       {!listHidden && <JobCategorySegment value={category} onChange={setCategory} items={jobCategoryTabs.filter(tab => tab.key !== 'SYSTEM').map(tab => ({ value: tab.key, label: tab.label, count: list.isLoading ? undefined : categoryCounts.get(tab.key) ?? 0 }))} />}
       {mainTab === 'logs' ? <Suspense fallback={<Busy text="Loglar yükleniyor…" />}><OperationLogs platformOptions={platformOptions} onOpenJob={setSelectedId} /></Suspense>
-        : mainTab === 'health' ? <Suspense fallback={<Busy text="API sağlığı yükleniyor…" />}><ApiHealthView onFeedback={showPanelFeedback} /></Suspense> : <>
+        : mainTab === 'health' ? <Suspense fallback={<Busy text="API sağlığı yükleniyor…" />}><ApiHealthView onFeedback={showPanelFeedback} /></Suspense>
+        : mainTab === 'queue' ? <Suspense fallback={<Busy text="Kuyruk ölçümleri yükleniyor…" />}><QueueQuotaView /></Suspense>
+        : mainTab === 'notifications' ? <Suspense fallback={<Busy text="Bildirimler yükleniyor…" />}><NotificationCenter /></Suspense> : <>
       <OpsFilterCard label="İşlem filtreleri" active={cardFilterCount} clearCount={cardFilterCount + (search.trim() ? 1 : 0)} onClear={clearFilters} onApply={refreshJobs}>
         <SearchField label="İşlem Ara" ariaLabel="Correlation ID ile işlem ara" placeholder="Correlation ID, iş numarası veya hata kodu" value={search} onChange={setSearch} />
         <ChoiceField name="Zaman Aralığı" value={timeRange} options={jobTimeRangeOptions(timeRange)} onChange={value => setTimeRange(value as JobTimeRange)} />

@@ -220,6 +220,28 @@ public sealed class JobRetentionService(AppDbContext db, TimeProvider timeProvid
         return deleted;
     }
 
+    // The notification center keeps a notification for a week after it was raised (PanelNotificationPolicy.Retention),
+    // dismissed from the bell or not; then it is removed for good.
+    public async Task<int> PurgePanelNotificationsAsync(TimeSpan retention, int maximumBatches, CancellationToken cancellationToken)
+    {
+        var cutoff = timeProvider.GetUtcNow().ToUniversalTime() - retention;
+        var deleted = 0;
+        for (var batch = 0; batch < maximumBatches; batch++)
+        {
+            var count = await db.Database.ExecuteSqlInterpolatedAsync($"""
+                WITH doomed AS (
+                    SELECT notification."Id" FROM ops.panel_notifications notification
+                    WHERE notification."CreatedAt" < {cutoff}
+                    ORDER BY notification."CreatedAt"
+                    LIMIT {BatchSize})
+                DELETE FROM ops.panel_notifications notification USING doomed WHERE notification."Id" = doomed."Id"
+                """, cancellationToken);
+            deleted += count;
+            if (count < BatchSize) break;
+        }
+        return deleted;
+    }
+
     // A settled marketplace-action record (applied or closed unresolved) is history once its retention passed.
     // Open records are never removed: they still block a second send of the same action.
     public async Task<int> PurgeCompletedEffectRecordsAsync(TimeSpan retention, int maximumBatches, CancellationToken cancellationToken)

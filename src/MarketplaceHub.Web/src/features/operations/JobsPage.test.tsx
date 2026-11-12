@@ -544,7 +544,7 @@ describe('JobsPage Loglar tab (price/stock send log)', () => {
   it('is a main tab beside İşler, above the category tabs, and İşler brings the category back', async () => {
     await renderPage('/jobs?kategori=siparis')
     const main = container.querySelector('[role="tablist"][aria-label="İşlem Takibi görünümü"]')!
-    expect(Array.from(main.querySelectorAll('[role="tab"]')).map(tab => tab.textContent)).toEqual(['İşler', 'Loglar', 'API Sağlık'])
+    expect(Array.from(main.querySelectorAll('[role="tab"]')).map(tab => tab.textContent)).toEqual(['İşler', 'Loglar', 'API Sağlık', 'Kuyruk ve Kota', 'Bildirimler'])
     const categories = container.querySelector('[role="tablist"][aria-label="İşlem kategorileri"]')!
     expect(categories.textContent).not.toContain('Loglar')
     // The second level is a segment with every category in it: no Diğer menu, no icons.

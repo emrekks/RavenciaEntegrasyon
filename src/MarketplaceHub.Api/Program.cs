@@ -149,6 +149,7 @@ app.MapDashboardEndpoints();
 app.MapReportsEndpoints();
 app.MapJobEndpoints();
 app.MapPriceStockSendLogEndpoints();
+app.MapNotificationEndpoints();
 app.MapProductActivityEndpoints();
 app.MapMarketplaceEndpoints();
 app.MapQuestionEndpoints();

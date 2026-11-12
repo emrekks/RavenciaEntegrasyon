@@ -79,14 +79,15 @@ export function writeJobsViewState(current: URLSearchParams, patch: Partial<Jobs
 const logsTabParam = 'sekme'
 const logsTabSlug = 'loglar'
 
-// The three main tabs of İşlem Takibi: the job list (no ?sekme), Loglar (?sekme=loglar) and API Sağlık
-// (?sekme=api-saglik, the price/stock sending health per connection). An unknown value opens the job list.
-export type JobsMainTab = 'jobs' | 'logs' | 'health'
-const mainTabSlugs: Record<Exclude<JobsMainTab, 'jobs'>, string> = { logs: logsTabSlug, health: 'api-saglik' }
+// The main tabs of İşlem Takibi: the job list (no ?sekme), Loglar (?sekme=loglar), API Sağlık
+// (?sekme=api-saglik, the price/stock sending health per connection), Kuyruk ve Kota (?sekme=kuyruk-kota) and Bildirimler
+// (?sekme=bildirimler, the notification center). An unknown value opens the job list.
+export type JobsMainTab = 'jobs' | 'logs' | 'health' | 'queue' | 'notifications'
+const mainTabSlugs: Record<Exclude<JobsMainTab, 'jobs'>, string> = { logs: logsTabSlug, health: 'api-saglik', queue: 'kuyruk-kota', notifications: 'bildirimler' }
 
 export function jobsMainTab(params: URLSearchParams): JobsMainTab {
   const slug = params.get(logsTabParam)
-  return slug === mainTabSlugs.logs ? 'logs' : slug === mainTabSlugs.health ? 'health' : 'jobs'
+  return (Object.keys(mainTabSlugs) as Array<keyof typeof mainTabSlugs>).find(tab => mainTabSlugs[tab] === slug) ?? 'jobs'
 }
 
 export function withJobsMainTab(current: URLSearchParams, tab: JobsMainTab): URLSearchParams {
