@@ -371,7 +371,8 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
             Assert.Contains((seed.Tenant.Id, label.RelativePath), storage.Deleted);
             Assert.DoesNotContain((seed.Tenant.Id, kept.RelativePath), storage.Deleted);
             await using var after = fixture.CreateContext();
-            Assert.Equal(PurgedFileRetention.DeletedStatus, (await after.FileAssets.SingleAsync(x => x.Id == label.Id)).Status);
+            // The row goes with the file (owner, 12 Nov 2026): nothing points at it any more.
+            Assert.False(await after.FileAssets.AnyAsync(x => x.Id == label.Id));
         }
         finally
         {

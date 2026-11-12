@@ -457,7 +457,8 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
                 return Invalid<ConnectionView>("credential", "E-Faturam hesabı için e-posta ve parola zorunludur.");
             efaturamCredential = new(command.Email.Trim(), command.Password);
         }
-        var now = timeProvider.GetUtcNow(); var current = await db.PlatformCredentials.Where(x => x.TenantId == tenantId && x.ConnectionId == id && x.RevokedAt == null).ToListAsync(cancellationToken); foreach (var item in current) { item.RevokedAt = now; item.Version++; }
+        // The replaced key is deleted with the save that stores the new one: nothing reads an old key (owner, 12 Nov 2026).
+        var now = timeProvider.GetUtcNow(); db.PlatformCredentials.RemoveRange(await db.PlatformCredentials.Where(x => x.TenantId == tenantId && x.ConnectionId == id).ToListAsync(cancellationToken));
         var payload = connection.PlatformCode switch
         {
             "TRENDYOL" => JsonSerializer.Serialize(new CredentialPayload(command.ApiKey!, command.ApiSecret!)),
