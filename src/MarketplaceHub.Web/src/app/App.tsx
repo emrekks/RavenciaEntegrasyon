@@ -27,6 +27,7 @@ import { PanelSelect } from '../shared/PanelSelect'
 import { closeTouchTip, installTouchTips } from '../shared/touch-tips'
 import { installOverlayScrollLock } from '../shared/overlay-scroll-lock'
 import { ToastStackProvider } from '../shared/components/ToastStack'
+import type { DashboardMetrics } from '../features/dashboard/IntegrationStatusPanel'
 
 // Loaded ahead (when the page is idle, or when the pointer reaches the bell) so the first open does not wait for it.
 // Once loaded it is rendered directly: through React.lazy even a loaded panel suspends on its first render,
@@ -532,10 +533,8 @@ function MfaChallenge() {
     </form>
   </AuthPageFrame>
 }
-type DashboardMetrics = { pendingOrders: number; newAndProcessingOrders?: number; lateOrders: number; todayOrders: number; todayProductQuantity: number; monthOrders: number; monthProductQuantity: number; pendingReturns: number; dueSoonInvoices: number; uninvoicedInvoices: number; lowStockProducts: number; activeConnections: number; pendingByPlatform: Record<string, number>; lateByPlatform?: Record<string, number>; pendingReturnsByPlatform?: Record<string, number>; oldestQueuedJobAt?: string | null; lastVerifiedSynchronizationAt?: string | null; deadJobCount?: number; manualReviewJobCount?: number; recentJobCount?: number; recentRateLimitJobCount?: number; oldestStockObservationAt?: string | null }
-type DashboardLowStock = { id: string; title: string; totalStock: number; primaryImageUrl: string | null }
-type DashboardSyncStatus = { resourceType: string; label: string; kind: string; status: string; lastAttemptAt: string | null; lastSuccessAt: string | null; lastErrorCode: string | null }
-type DashboardBootstrap = { metrics: DashboardMetrics; lowStock: DashboardLowStock[]; sync: DashboardSyncStatus[]; platforms: { name: string; status: string }[]; generatedAt: string; version: number }
+// The side menu reads only the bootstrap's metrics (the overview's own type; the server sends no other figure).
+type DashboardBootstrap = { metrics: DashboardMetrics }
 
 // The session is neither active nor waiting for a sign-in step: the way out is a fresh sign-in.
 function LockedSession() {

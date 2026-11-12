@@ -58,23 +58,11 @@ public sealed class DashboardSnapshot
     public Guid TenantId { get; set; }
     public int PendingOrders { get; set; }
     public int LateOrders { get; set; }
-    public int TodayOrders { get; set; }
-    public decimal TodayProductQuantity { get; set; }
-    public int MonthOrders { get; set; }
-    public decimal MonthProductQuantity { get; set; }
     public int PendingReturns { get; set; }
-    public int DueSoonInvoices { get; set; }
-    public int UninvoicedInvoices { get; set; }
-    public int LowStockProducts { get; set; }
-    public int ActiveConnections { get; set; }
     public string PendingByPlatformJson { get; set; } = "{}";
-    public DateTimeOffset? OldestQueuedJobAt { get; set; }
-    public DateTimeOffset? LastVerifiedSynchronizationAt { get; set; }
     public int DeadJobCount { get; set; }
     public int ManualReviewJobCount { get; set; }
     public int RecentJobCount { get; set; }
-    public int RecentRateLimitJobCount { get; set; }
-    public DateTimeOffset? OldestStockObservationAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public long Version { get; set; } = 1;
 }
