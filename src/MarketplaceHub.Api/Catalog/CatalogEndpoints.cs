@@ -82,7 +82,7 @@ public static class CatalogEndpoints
         api.MapPost("/products/bulk-status", async (BulkProductStatusCommand command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.BulkSetStatusAsync(tenant.TenantId, command, http.RequestAborted, tenant.UserId, http.TraceIdentifier), Results.Ok) : MissingContext(http));
         api.MapPost("/products/bulk-vat", async (BulkProductVatCommand command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.BulkSetVatAsync(tenant.TenantId, command, http.RequestAborted), Results.Ok) : MissingContext(http));
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.BulkSetVatAsync(tenant.TenantId, command, http.RequestAborted, tenant.UserId, http.TraceIdentifier), Results.Ok) : MissingContext(http));
         // Toplu Değer Ata: one field on every colour card and variant of the selected models (owner and administrators).
         api.MapPost("/products/bulk-field", async (BulkProductFieldCommand command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.BulkSetFieldAsync(tenant.TenantId, command, http.RequestAborted, tenant.UserId, http.TraceIdentifier), Results.Ok) : MissingContext(http));

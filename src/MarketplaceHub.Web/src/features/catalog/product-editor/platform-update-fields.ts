@@ -319,3 +319,11 @@ export function clearLegacyPlatformUpdateChoice(storage: Pick<Storage, 'removeIt
 function safeLocalStorage(): Storage | undefined {
   try { return typeof window === 'undefined' ? undefined : window.localStorage } catch { return undefined }
 }
+
+// The reason a store price written by the editor carries (channel price history): Ürün Hareketleri names its source
+// from it (server ProductActivityPolicy), Hızlı Güncelle and the window's Gönder apart, a publish's first price as the
+// editor's.
+export function editorOfferPriceReason(update: { quick?: boolean } | null) {
+  if (!update) return 'İlk ürün fiyatı'
+  return update.quick ? 'Hızlı Güncelle' : 'Platformlarda Güncelle'
+}

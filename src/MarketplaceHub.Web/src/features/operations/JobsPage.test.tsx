@@ -689,7 +689,7 @@ describe('JobsPage Loglar › Ürün Hareketleri', () => {
     expect(rows[3].textContent).toContain('Panel')
     expect(rows[3].querySelector<HTMLAnchorElement>('.pal-product-link')!.getAttribute('href')).toBe('/products/p-1')
     const summary = container.querySelector('[aria-label="Ürün hareketi özeti"]')!
-    expect(Array.from(summary.querySelectorAll('[role="button"]')).map(chip => chip.textContent)).toEqual(['Stok 5', 'Fiyat 2', 'Durum 0', 'İade 1'])
+    expect(Array.from(summary.querySelectorAll('[role="button"]')).map(chip => chip.textContent)).toEqual(['Stok 5', 'Fiyat 2', 'Durum 0', 'İade 1', 'Ürün Bilgisi 0'])
   })
 
   it('filters by a kind from the summary and reads the counts without it', async () => {

@@ -5197,6 +5197,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
 
+                    b.Property<string>("Field")
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
                     b.Property<string>("Kind")
                         .IsRequired()
                         .HasMaxLength(24)
@@ -5213,6 +5217,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<string>("NewStatus")
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
+
+                    b.Property<string>("NewValue")
+                        .HasMaxLength(400)
+                        .HasColumnType("character varying(400)");
 
                     b.Property<string>("Note")
                         .HasMaxLength(200)
@@ -5232,6 +5240,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<string>("PreviousStatus")
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
+
+                    b.Property<string>("PreviousValue")
+                        .HasMaxLength(400)
+                        .HasColumnType("character varying(400)");
 
                     b.Property<Guid>("ProductId")
                         .HasColumnType("uuid");

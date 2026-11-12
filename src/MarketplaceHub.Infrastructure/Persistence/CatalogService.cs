@@ -676,7 +676,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     // Toplu KDV Ata: sets KDV Oranı and KDV Dahil mi on the selected product cards. Only the cards change: an existing
     // marketplace offer keeps its own VAT (changing it would send prices), and the card's VAT is read only when a new
     // offer is created, so no marketplace link is marked dirty. A card that already has this VAT is left untouched.
-    public async Task<ServiceResult<BulkProductVatResult>> BulkSetVatAsync(Guid tenantId, BulkProductVatCommand command, CancellationToken cancellationToken)
+    public async Task<ServiceResult<BulkProductVatResult>> BulkSetVatAsync(Guid tenantId, BulkProductVatCommand command, CancellationToken cancellationToken, Guid? actorUserId = null, string? correlationId = null)
     {
         var ids = (command.ProductIds ?? []).Distinct().ToArray();
         if (ids.Length is 0 or > 500) return ServiceResult<BulkProductVatResult>.Fail("BULK_PRODUCT_LIMIT", "Toplu işlemde 1-500 ürün seçilebilir.", 422);
@@ -698,7 +698,11 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             product.Version++;
             updated++;
         }
-        if (updated > 0) await db.SaveChangesAsync(cancellationToken);
+        if (updated > 0)
+        {
+            await ProductFieldChangeRecorder.RecordAsync(db, tenantId, ProductChangeSources.BulkEdit, actorUserId, string.IsNullOrWhiteSpace(correlationId) ? Guid.NewGuid().ToString("N") : correlationId, now, cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+        }
         return ServiceResult<BulkProductVatResult>.Ok(new(updated, products.Count - updated));
     }
 
@@ -1842,6 +1846,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             }
             await CatalogLocalEdits.MarkLinksDirtyAsync(db, tenantId, familyProductIdsToProtect, CatalogLocalEdits.ProductField, cancellationToken);
         }
+        // Ürün Hareketleri: the information fields this save changed on the card, its model family and their variants.
+        await ProductFieldChangeRecorder.RecordAsync(db, tenantId, ProductChangeSources.Editor, actorUserId, correlation, changedAt, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         if (variantPurgeTransaction is not null) await variantPurgeTransaction.CommitAsync(cancellationToken);
         return await GetProductAsync(tenantId, id, cancellationToken);

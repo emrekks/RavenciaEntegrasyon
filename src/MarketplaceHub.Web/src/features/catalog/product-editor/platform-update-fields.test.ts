@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { availablePlatformUpdateFields, clearLegacyPlatformUpdateChoice, defaultPlatformUpdateFields, defaultPlatformUpdatePreferences, legacyPlatformUpdatePreferencesKey, legacyPlatformUpdateStoresKey, platformUpdateChoiceRecord, platformUpdateFieldsForStores, platformUpdateGroups, platformUpdatePlan, platformUpdatePreferencesFrom, platformUpdateSendsPriceOrStock, platformUpdateSendsWholeCard, platformUpdateStoresFrom, platformUpdateSummary, platformUpdateWritesOffers, priceStockPlatformUpdateFields, productInformationLabel, readLegacyPlatformUpdateChoice, readQuickPlatformUpdateChoice } from './platform-update-fields'
+import { availablePlatformUpdateFields, clearLegacyPlatformUpdateChoice, editorOfferPriceReason, defaultPlatformUpdateFields, defaultPlatformUpdatePreferences, legacyPlatformUpdatePreferencesKey, legacyPlatformUpdateStoresKey, platformUpdateChoiceRecord, platformUpdateFieldsForStores, platformUpdateGroups, platformUpdatePlan, platformUpdatePreferencesFrom, platformUpdateSendsPriceOrStock, platformUpdateSendsWholeCard, platformUpdateStoresFrom, platformUpdateSummary, platformUpdateWritesOffers, priceStockPlatformUpdateFields, productInformationLabel, readLegacyPlatformUpdateChoice, readQuickPlatformUpdateChoice } from './platform-update-fields'
 
 function memoryStorage(initial: Record<string, string> = {}) {
   const values = new Map(Object.entries(initial))
@@ -288,5 +288,14 @@ describe('platform update fields', () => {
     expect(productInformationLabel(['TITLE'])).toBe('ürün adı')
     expect(productInformationLabel(['TITLE', 'IMAGES'])).toBe('ürün bilgisi')
     expect(productInformationLabel([])).toBe('ürün bilgisi')
+  })
+})
+
+describe('editor offer price reason', () => {
+  it('names Hızlı Güncelle, the Platformlarda Güncelle window and a first price apart', () => {
+    expect(editorOfferPriceReason({ quick: true })).toBe('Hızlı Güncelle')
+    expect(editorOfferPriceReason({ quick: false })).toBe('Platformlarda Güncelle')
+    expect(editorOfferPriceReason({})).toBe('Platformlarda Güncelle')
+    expect(editorOfferPriceReason(null)).toBe('İlk ürün fiyatı')
   })
 })

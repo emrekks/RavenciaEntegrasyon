@@ -519,6 +519,8 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
             CorrelationId = correlationId,
             CreatedAt = now
         });
+        // Ürün Hareketleri: maliyet, desi, barkod, model kodu, ürün adı and KDV as the file changed them.
+        await ProductFieldChangeRecorder.RecordAsync(db, tenantId, ProductChangeSources.FileImport, userId, correlationId, now, cancellationToken);
         try
         {
             await db.SaveChangesAsync(cancellationToken);

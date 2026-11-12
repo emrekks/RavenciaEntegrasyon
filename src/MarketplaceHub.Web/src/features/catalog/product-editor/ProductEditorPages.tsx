@@ -50,7 +50,7 @@ import { MarketplaceCodesDialog } from './MarketplaceCodesDialog'
 import { PublicationJobDialog } from './PublicationJobDialog'
 import { PlatformUpdateDialog, manualPriceStockNote, platformUpdateWriteClosed } from './PlatformUpdateDialog'
 import { isProductDeliveryDays, productDeliveryDays } from './product-delivery-days'
-import { defaultPlatformUpdatePreferences, platformUpdateChoiceRecord, platformUpdatePlan, platformUpdatePreferencesFrom, platformUpdateStoresFrom, platformUpdateWritesOffers, productInformationLabel, readQuickPlatformUpdateChoice, type PlatformUpdateField, type PlatformUpdatePreferences } from './platform-update-fields'
+import { defaultPlatformUpdatePreferences, editorOfferPriceReason, platformUpdateChoiceRecord, platformUpdatePlan, platformUpdatePreferencesFrom, platformUpdateStoresFrom, platformUpdateWritesOffers, productInformationLabel, readQuickPlatformUpdateChoice, type PlatformUpdateField, type PlatformUpdatePreferences } from './platform-update-fields'
 import { usePlatformUpdateChoice } from './use-platform-update-choice'
 import { usePttAvmManualWrites } from '../use-pttavm-manual-writes'
 import { publishCardPlan, publishCardVariantLinks, publishCardVariantPresence, withLatestVariantLinks } from './publish-card-variants'
@@ -139,7 +139,8 @@ function sortVariantsAlphabetically<T extends { optionSignature?: string | null;
       || compareLabelsAlphabetically(left.sku, right.sku)
   })
 }
-type ProductUpdateRequest = { connectionIds: string[]; fields: PlatformUpdateField[] }
+// quick: sent by Hızlı Güncelle (else by the settings window's Gönder); the store prices name it as their reason.
+type ProductUpdateRequest = { connectionIds: string[]; fields: PlatformUpdateField[]; quick?: boolean }
 type PublicationStatus = { productId: string; connectionId: string; profileId: string | null; desiredStatus: string | null; actualStatus: string | null; lastRejectionCode: string | null; lastJobId: string | null; lastJobStatus: string | null; lines: Array<{ variantId: string; sku: string; barcode: string | null; desiredStatus: string; actualStatus: string; rejectionCode: string | null }> }
 type PublicationJobDetail = { job: { id: string; jobType?: string; status: string; progressCurrent: number; progressTotal: number | null; progressPercent: number | null; progressLabel: string | null; lastErrorCode: string | null; lastErrorSummary: string | null } }
 const isProductPublicationChannel = (item: MarketplaceConnection) => productPublicationMode(item) !== null
@@ -2149,7 +2150,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     void storePlatformUpdateChoice(fields)
     queuePlatformUpdate(platformUpdateConnectionIds, fields)
   }
-  function queuePlatformUpdate(connectionIds: string[], fields: PlatformUpdateField[]) {
+  function queuePlatformUpdate(connectionIds: string[], fields: PlatformUpdateField[], quick = false) {
     const updateableIds = new Set(updateableProductConnectionIds())
     const safeConnectionIds = [...new Set(connectionIds)].filter(id => updateableIds.has(id))
     if (!safeConnectionIds.length) {
@@ -2161,7 +2162,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       showFeedback('Güncelleme Başlatılamadı', 'Ürün formu bulunamadı; güncelleme başlatılamadı.', 'error')
       return
     }
-    pendingPlatformUpdate.current = { connectionIds: safeConnectionIds, fields }
+    pendingPlatformUpdate.current = { connectionIds: safeConnectionIds, fields, quick }
     setPlatformUpdateDialogOpen(false)
     formElement.requestSubmit()
   }
@@ -2194,7 +2195,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       showFeedback('Bilgi Seçin', 'Seçili platformlara gidecek bir bilgi seçilmedi; gönderilecek bilgileri seçip Kaydet’e basın.', 'info')
       return
     }
-    queuePlatformUpdate(connectionIds, fields)
+    queuePlatformUpdate(connectionIds, fields, true)
   }
   function channelPriceDraft(connectionId: string): ChannelPricingDraft {
     return channelPricing[connectionId] ?? { listPrice: String(fallbackListPrice), salePrice: String(fallbackSalePrice) }
@@ -3197,7 +3198,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         // no price to write: the server refuses a sale price of zero, and one such row used to stop the whole save
         // after the card was written (owner 7.11.2026, MZ052BOD: "Satış fiyatı sıfırdan büyük olmalıdır").
         if (!offerHasSalePrice(offerPrices)) { unpricedOfferSkus.add(row.sku); return }
-        const offerCommand = { connectionId, variantId: variant.id, listPrice: offerPrices.listPrice, salePrice: offerPrices.salePrice, followsPanelPrice: offerPrices.followsPanelPrice, currency: platform?.currency ?? form.currency ?? 'TRY', vatRate: Number(form.vatRate || platform?.vatRate || 0), vatInclusion: form.vatIncluded || platform?.vatInclusion || 'INCLUDED', roundingMode: platform?.roundingMode ?? 'HALF_EVEN', safetyStock: Number(form.safetyStock || platform?.safetyStock || 0), status: 'ACTIVE', reason: platformUpdate ? 'Ürün platform güncellemesi' : 'İlk ürün fiyatı' }
+        const offerCommand = { connectionId, variantId: variant.id, listPrice: offerPrices.listPrice, salePrice: offerPrices.salePrice, followsPanelPrice: offerPrices.followsPanelPrice, currency: platform?.currency ?? form.currency ?? 'TRY', vatRate: Number(form.vatRate || platform?.vatRate || 0), vatInclusion: form.vatIncluded || platform?.vatInclusion || 'INCLUDED', roundingMode: platform?.roundingMode ?? 'HALF_EVEN', safetyStock: Number(form.safetyStock || platform?.safetyStock || 0), status: 'ACTIVE', reason: editorOfferPriceReason(platformUpdate) }
         // An offer the variant already has is written at the version this form loaded (PATCH + If-Match), so a price
         // changed meanwhile elsewhere is refused instead of overwritten; one the write would leave as it is is skipped.
         // POST only creates: the server refuses it over an offer this form did not know of.

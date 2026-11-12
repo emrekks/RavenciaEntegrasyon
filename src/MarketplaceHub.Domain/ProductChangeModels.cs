@@ -1,7 +1,7 @@
 namespace MarketplaceHub.Domain;
 
 // One change of a product card that no other table keeps: its sale status (Satışa Açık / Kapalı / Taslak) or the
-// panel's own price of a card or variant. Written in the same save as the change it describes, append-only, shown in
+// panel's own price of a card or variant, or an information field of it (FIELD). Written in the same save as the change it describes, append-only, shown in
 // İşlem Takibi › Loglar › Ürün Hareketleri. Stock moves stay in the stock ledger and marketplace offer prices in the
 // channel price history; this table never repeats them. Rows exist only from 4 Nov 2026 on: nothing was backfilled.
 public sealed class ProductChangeEntry
@@ -12,8 +12,14 @@ public sealed class ProductChangeEntry
     public Guid ProductId { get; set; }
     // The variant the change is for; null for a change of the whole card.
     public Guid? VariantId { get; set; }
-    // ProductChangeKinds: STATUS or DEFAULT_PRICE.
+    // ProductChangeKinds: STATUS, DEFAULT_PRICE or FIELD.
     public required string Kind { get; set; }
+    // FIELD: which information field changed (ProductChangeFields: maliyet, desi, ürün adı, barkod, KDV...) and its value
+    // before and after as the page shows it (a brand's name, a category's path, "%20"); a null value was empty. FIELD
+    // rows exist only from 12 Nov 2026 on.
+    public string? Field { get; set; }
+    public string? PreviousValue { get; set; }
+    public string? NewValue { get; set; }
     // STATUS: the ProductStatus names before and after (ACTIVE, ARCHIVED, DRAFT); null before means none known.
     public string? PreviousStatus { get; set; }
     public string? NewStatus { get; set; }

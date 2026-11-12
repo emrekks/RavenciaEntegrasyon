@@ -32,6 +32,11 @@ public sealed class ProductActivityPolicyTests
     [InlineData("USER:0fcd3304-4bd4-4cfb-bbed-a2c197b9d5b1", "İlk ürün fiyatı", ProductActivitySources.Editor)]
     [InlineData("USER:0fcd3304-4bd4-4cfb-bbed-a2c197b9d5b1", "Ürün dosyası içe aktarma", ProductActivitySources.FileImport)]
     [InlineData("USER:0fcd3304-4bd4-4cfb-bbed-a2c197b9d5b1", "Hızlı düzenleme", ProductActivitySources.PriceEdit)]
+    // The editor's Hızlı Güncelle and the "Platformlarda Güncelle" window are no "Fiyat Düzenleme"; the reason both sent
+    // before 12 Nov 2026 counts as the window's.
+    [InlineData("USER:0fcd3304-4bd4-4cfb-bbed-a2c197b9d5b1", "Hızlı Güncelle", ProductActivitySources.QuickUpdate)]
+    [InlineData("USER:0fcd3304-4bd4-4cfb-bbed-a2c197b9d5b1", "Platformlarda Güncelle", ProductActivitySources.PlatformUpdate)]
+    [InlineData("USER:0fcd3304-4bd4-4cfb-bbed-a2c197b9d5b1", "Ürün platform güncellemesi", ProductActivitySources.PlatformUpdate)]
     public void A_price_history_row_names_its_source(string actorSource, string reason, string expected) =>
         Assert.Equal(expected, ProductActivityPolicy.PriceHistorySource(actorSource, reason));
 
@@ -51,6 +56,7 @@ public sealed class ProductActivityPolicyTests
     [InlineData("OFFER_PRICE", ProductActivityKinds.Price)]
     [InlineData("DEFAULT_PRICE", ProductActivityKinds.Price)]
     [InlineData("STATUS", ProductActivityKinds.Status)]
+    [InlineData("FIELD", ProductActivityKinds.Info)]
     [InlineData("ORDER_RECEIVED", ProductActivityKinds.Stock)]
     [InlineData("ORDER_STOCK_SHORTFALL", ProductActivityKinds.Stock)]
     [InlineData("IMPORT_OPENING", ProductActivityKinds.Stock)]
@@ -105,5 +111,49 @@ public sealed class ProductActivityPolicyTests
         // Stock set before the ledger kept every change: the before would be below zero, so only the after is known.
         Assert.Equal(((decimal?)null, 2m), ProductActivityPolicy.StockBalance(2m, 6m));
         Assert.DoesNotContain(ProductActivityTypes.OrderStockShortfall, ProductActivityTypes.OnHandLedger);
+    }
+
+    [Fact]
+    public void An_information_field_change_records_old_and_new_text_and_the_same_text_records_nothing()
+    {
+        var tenant = Guid.CreateVersion7();
+        var product = Guid.CreateVersion7();
+        var variant = Guid.CreateVersion7();
+        var user = Guid.CreateVersion7();
+
+        var entry = ProductChangeLog.Field(tenant, product, variant, ProductChangeFields.Cost, "100,00 ₺", "120,50 ₺", ProductChangeSources.FileImport, user, "corr", Now);
+
+        Assert.NotNull(entry);
+        Assert.Equal((ProductChangeKinds.Field, ProductChangeFields.Cost, "100,00 ₺", "120,50 ₺", ProductChangeSources.FileImport, (Guid?)user, (Guid?)variant),
+            (entry.Kind, entry.Field, entry.PreviousValue, entry.NewValue, entry.Source, entry.ActorUserId, entry.VariantId));
+        Assert.Null(ProductChangeLog.Field(tenant, product, null, ProductChangeFields.Title, "Bluz", "Bluz", ProductChangeSources.Editor, user, "corr", Now));
+        // Set for the first time, or cleared: a change with an empty side.
+        Assert.Null(ProductChangeLog.Field(tenant, product, null, ProductChangeFields.Warranty, null, "24 Ay", ProductChangeSources.Editor, user, "corr", Now)!.PreviousValue);
+        Assert.Null(ProductChangeLog.Field(tenant, product, variant, ProductChangeFields.ModelCode, "MZ01", null, ProductChangeSources.FileImport, user, "corr", Now)!.NewValue);
+        // A long value is cut to its column.
+        Assert.Equal(ProductChangeFields.MaxValueLength, ProductChangeLog.Field(tenant, product, null, ProductChangeFields.Title, "a", new string('b', 500), ProductChangeSources.Editor, user, "corr", Now)!.NewValue!.Length);
+        Assert.Equal(ProductActivityKinds.Info, ProductActivityPolicy.KindOfType(entry.Kind));
+    }
+
+    [Fact]
+    public void Field_values_read_as_the_page_shows_them()
+    {
+        Assert.Equal("1.250,50 ₺", ProductChangeFields.Money(1250.5m));
+        Assert.Equal("0,5", ProductChangeFields.Number(0.50m));
+        Assert.Equal("%20", ProductChangeFields.Percent(20.00m));
+        Assert.Equal("Dahil", ProductChangeFields.Inclusion(" included "));
+        Assert.Equal("Hariç", ProductChangeFields.Inclusion("EXCLUDED"));
+        Assert.Equal("24 Ay", ProductChangeFields.Months(24));
+        Assert.Equal("3 Gün", ProductChangeFields.Days(3));
+        Assert.Null(ProductChangeFields.Money(null));
+        Assert.Null(ProductChangeFields.Text("  "));
+        Assert.Equal("Kalın pamuk & keten", ProductChangeFields.DescriptionExcerpt("<p>Kalın <b>pamuk</b> &amp; keten</p>"));
+        var excerpt = ProductChangeFields.DescriptionExcerpt($"<p>{new string('x', 300)}</p>")!;
+        Assert.Equal(ProductChangeFields.DescriptionExcerptLength + 1, excerpt.Length);
+        Assert.EndsWith("…", excerpt);
+        // KDV Oranı and KDV Dahil mi are one movement (KDV); every other field is its own.
+        Assert.Equal(ProductActivityMovements.Vat, ProductChangeFields.Movement(ProductChangeFields.VatInclusion));
+        Assert.Equal(ProductActivityMovements.Cost, ProductChangeFields.Movement(ProductChangeFields.Cost));
+        Assert.All(ProductChangeFields.All, field => Assert.Contains(ProductChangeFields.Movement(field), ProductActivityMovements.All));
     }
 }
