@@ -45,26 +45,28 @@ export function DataResetLedger<S extends string>({ groups, counts, countsFailed
   const confirmed = confirmation.trim() === confirmWord
   const countText = (option: DataResetOption<S>) => {
     const value = counts?.[option.scope]
-    if (value !== undefined) return <><strong className="num">{number(value)}</strong>{option.unit}</>
-    return <span className="drl-count-none">{countsFailed ? 'Sayı alınamadı' : counts ? '' : 'Sayılıyor…'}</span>
+    if (value !== undefined) return `${number(value)} ${option.unit}`
+    return countsFailed ? 'Sayı alınamadı' : counts ? '' : 'Sayılıyor…'
   }
   return <div className="drl">
     <div className="drl-list" role="group" aria-label="Sıfırlanacak veriler">
       {groups.map(group => {
         const all = group.options.every(option => goingScopes.has(option.scope))
-        return <section className="drl-group" key={group.label}>
-          <header><span><b>{group.label}</b><small>{group.description}</small></span>
+        const chosen = group.options.filter(option => goingScopes.has(option.scope)).length
+        return <section className="drl-group" key={group.label} aria-label={group.label}>
+          <header><span className="drl-gh-text"><b>{group.label}</b>{group.description && <small>{group.description}</small>}</span>
+            <span className={`drl-sel${chosen ? ' is-on' : ''}`}>{chosen}/{group.options.length} Seçili</span>
             <button type="button" className="drl-all" disabled={busy} onClick={() => onToggle(group.options.map(option => option.scope), !all)}>{all ? 'Seçimi Kaldır' : 'Tümünü Seç'}</button></header>
-          {group.options.map(option => {
+          <div className="drl-rows">{group.options.map(option => {
             const by = picked.includes(option.scope) ? undefined : impliedBy(option.scope)
             const on = goingScopes.has(option.scope)
+            const count = countText(option)
             return <label key={option.scope} className={`drl-row${on ? ' is-on' : ''}${by ? ' is-locked' : ''}`}>
-              <input type="checkbox" checked={on} disabled={busy || Boolean(by)} onChange={event => onToggle([option.scope], event.target.checked)} />
-              <i aria-hidden="true">{on && <UiIcon name="check" size={13} />}</i>
+              <input type="checkbox" className="drl-cb" checked={on} disabled={busy || Boolean(by)} onChange={event => onToggle([option.scope], event.target.checked)} />
               <span className="drl-text"><b>{option.label}</b><small>{by && <em>{by.label} ile birlikte silinir. </em>}{option.description}</small></span>
-              <span className="drl-count">{countText(option)}</span>
+              {count ? <span className="drl-count num">{count}</span> : null}
             </label>
-          })}
+          })}</div>
         </section>
       })}
     </div>
