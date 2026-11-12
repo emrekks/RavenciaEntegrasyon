@@ -75,6 +75,12 @@ function Shell({ me }: { me: Me }) {
   // brings the tab back from its cache (iPhone browsers kept a stale lock until a reload), a lock style that no overlay
   // holds any more is cleared.
   useEffect(() => { releaseOrphanedScrollLock() }, [location.pathname, location.search])
+  // A new page always opens at its top (owner, 12 Nov); filters and tabs on the same page keep the scroll position.
+  useEffect(() => {
+    if (navigator.userAgent.includes('jsdom')) return
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+    mainRef.current?.scrollTo?.({ top: 0, left: 0, behavior: 'instant' })
+  }, [location.pathname])
   useEffect(() => {
     const onReturn = () => { if (document.visibilityState === 'visible') releaseOrphanedScrollLock() }
     document.addEventListener('visibilitychange', onReturn)

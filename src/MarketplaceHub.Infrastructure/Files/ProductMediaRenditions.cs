@@ -76,6 +76,9 @@ public sealed class ProductMediaRenditions
     public static byte[] Render(byte[] source, int width)
     {
         _ = Configured.Value;
+        // Only photos: the size chart opens libvips' SVG loader for its own drawing, never for an uploaded file.
+        var loader = Image.FindLoadBuffer(source);
+        if (loader is null || loader.Contains("Svg", StringComparison.OrdinalIgnoreCase)) throw new VipsException($"Product media rendition refuses this source ({loader ?? "unknown"}).");
         using var image = Image.ThumbnailBuffer(source, width, height: width * 3 / 2, size: Enums.Size.Down, failOn: Enums.FailOn.Error);
         return image.WebpsaveBuffer(q: 80, effort: 4, keep: Enums.ForeignKeep.None);
     }

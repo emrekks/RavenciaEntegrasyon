@@ -153,15 +153,11 @@
    scrolling (icons off, Araçlar was cut off), the three overview facts stand side by side, and each data flow is one
    row under the desktop column heads (Akış, Durum, Son Başarılı) instead of four stacked lines. */
 @media (min-width: 761px) and (max-width: 860px) {
-  html body .app-shell.stitch-shell main .cs-workspace .cs-nav { overflow-x: hidden; }
-  html body .app-shell.stitch-shell main .cs-workspace .cs-nav > button { display: inline-flex; flex: 1 1 auto; justify-content: center; min-width: 0; padding: 0 8px; white-space: nowrap; }
-  html body .app-shell.stitch-shell main .cs-workspace .cs-nav > button > :is(svg, .ui-icon) { display: none; }
   html body .app-shell.stitch-shell main .cs-workspace .cs-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   html body .app-shell.stitch-shell main .cs-workspace .cs-stats > div { border-top: 0; border-left: 1px solid var(--rv-color-border); }
   html body .app-shell.stitch-shell main .cs-workspace .cs-stats > div:first-child { border-left: 0; }
   html body .app-shell.stitch-shell main .cs-workspace .cs-frow.cs-frow { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) 150px 92px; grid-template-areas: none; gap: 14px; padding: 6px 16px; }
   html body .app-shell.stitch-shell main .cs-workspace .cs-frow.cs-frow > * { grid-area: auto; grid-column: auto; }
-  html body .app-shell.stitch-shell main .cs-workspace .cs-frow.cs-frow:not(.is-head) > .cs-ftime { padding-left: 0; }
   html body .app-shell.stitch-shell main .cs-workspace .cs-frow.is-head { display: grid; }
 }
 
