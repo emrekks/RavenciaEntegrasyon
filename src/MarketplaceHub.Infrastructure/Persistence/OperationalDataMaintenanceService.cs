@@ -10,6 +10,7 @@ public sealed partial class OperationalDataMaintenanceService(AppDbContext db, T
 {
     // Orders, returns and invoices are reset per connection only (ResetConnectionDataAsync, Entegrasyonlar › Verileri
     // Sıfırla); the settings-wide reset covers the catalog lists.
+    private static readonly JobStatus[] FinishedJobStatuses = [JobStatus.Succeeded, JobStatus.Cancelled, JobStatus.Dead, JobStatus.ManualReview, JobStatus.Blocked];
     private static readonly HashSet<string> AllowedScopes = new(StringComparer.Ordinal) { "PRODUCTS", "CATEGORIES", "CATEGORY_ATTRIBUTES", "BRANDS", "OPTIONS" };
     private static readonly HashSet<string> ConnectionDeleteScopes = new(StringComparer.Ordinal) { "PRODUCTS", "ORDERS", "RETURNS", "INVOICES" };
 
@@ -106,6 +107,7 @@ public sealed partial class OperationalDataMaintenanceService(AppDbContext db, T
         if (scopes.Contains("BRANDS")) await DeleteConnectionBrandDataAsync(tenantId, connectionId, cancellationToken);
         if (scopes.Contains("COMMISSION_TARIFFS")) await DeleteCommissionTariffsAsync(tenantId, connectionId, cancellationToken);
         if (scopes.Contains("PROMOTION_OFFERS")) await DeletePromotionOffersAsync(tenantId, connectionId, cancellationToken);
+        if (scopes.Contains("JOBS")) await DeleteFinishedConnectionJobsAsync(tenantId, connectionId, cancellationToken);
         if (scopes.Contains("PRODUCTS"))
         {
             await DeleteProductsAsync(tenantId, connectionId, cancellationToken);
@@ -139,7 +141,9 @@ public sealed partial class OperationalDataMaintenanceService(AppDbContext db, T
         var categoryAttributes = scopes.Contains("CATEGORY_ATTRIBUTES") || connectionId is not null && scopes.Contains("CATEGORIES") ? connectionId is null ? await db.AttributeDefinitions.CountAsync(x => x.TenantId == tenantId, cancellationToken) : await CurrentListSizeAsync(tenantId, connectionId.Value, ["CATEGORY_ATTRIBUTES", "ATTRIBUTE_VALUES"], cancellationToken) : 0;
         var commissionTariffs = connectionId is not null && scopes.Contains("COMMISSION_TARIFFS") ? await db.CommissionTariffs.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken) : 0;
         var promotionOffers = connectionId is not null && scopes.Contains("PROMOTION_OFFERS") ? await db.PromotionOfferFiles.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken) : 0;
-        return new(products, orders, returns, invoices, categories, brands, options, categoryAttributes, CommissionTariffs: commissionTariffs, PromotionOffers: promotionOffers);
+        // Only this connection's finished jobs: running and queued ones, other connections' and tenant-wide ones are not counted.
+        var jobs = connectionId is not null && scopes.Contains("JOBS") ? await db.IntegrationJobs.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && FinishedJobStatuses.Contains(x.Status) && x.JobType != MarketplaceJobTypes.ConnectionFullReset, cancellationToken) : 0;
+        return new(products, orders, returns, invoices, categories, brands, options, categoryAttributes, CommissionTariffs: commissionTariffs, PromotionOffers: promotionOffers, Jobs: jobs);
     }
 
     // The counts the reset screens show before anything runs: the same counts a reset reports when it is done.
@@ -165,6 +169,7 @@ public sealed partial class OperationalDataMaintenanceService(AppDbContext db, T
             ["OPTIONS"] = counts.Options,
             ["COMMISSION_TARIFFS"] = counts.CommissionTariffs,
             ["PROMOTION_OFFERS"] = counts.PromotionOffers,
+            ["JOBS"] = counts.Jobs,
         };
         var kept = connectionId is not null && (scopes.Contains("ORDERS") || scopes.Contains("RETURNS") || scopes.Contains("INVOICES")) ? await IssuedInvoicesAsync(tenantId, connectionId, cancellationToken) : 0;
         return ServiceResult<DataResetCountsView>.Ok(new(scopes.Order(StringComparer.Ordinal).Select(scope => new DataResetCountView(scope, byScope[scope])).ToList(), kept));
@@ -173,6 +178,13 @@ public sealed partial class OperationalDataMaintenanceService(AppDbContext db, T
     private Task DeleteCommissionTariffsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
         DELETE FROM catalog.commission_tariff_rows r USING catalog.commission_tariffs t WHERE r."TenantId"={{tenantId}} AND r."TariffId"=t."Id" AND t."TenantId"={{tenantId}} AND t."ConnectionId"={{connectionId}};
         DELETE FROM catalog.commission_tariffs WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
+        """, cancellationToken);
+
+    // The finished entries of this connection's İş Takibi, with their attempts. A running (LEASED) job, a waiting one,
+    // a full reset's own job and every job of another connection or of no connection stay.
+    private Task DeleteFinishedConnectionJobsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
+        DELETE FROM integration.job_attempts a USING integration.jobs j WHERE a."TenantId"={{tenantId}} AND a."JobId"=j."Id" AND j."TenantId"={{tenantId}} AND j."ConnectionId"={{connectionId}} AND j."Status" IN ('SUCCEEDED', 'CANCELLED', 'DEAD', 'MANUAL_REVIEW', 'BLOCKED') AND j."JobType"<>{{MarketplaceJobTypes.ConnectionFullReset}};
+        DELETE FROM integration.jobs j WHERE j."TenantId"={{tenantId}} AND j."ConnectionId"={{connectionId}} AND j."Status" IN ('SUCCEEDED', 'CANCELLED', 'DEAD', 'MANUAL_REVIEW', 'BLOCKED') AND j."JobType"<>{{MarketplaceJobTypes.ConnectionFullReset}};
         """, cancellationToken);
 
     private Task DeletePromotionOffersAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""

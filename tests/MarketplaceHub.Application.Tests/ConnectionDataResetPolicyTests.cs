@@ -9,7 +9,7 @@ public sealed class ConnectionDataResetPolicyTests
     public void TrendyolSupportsOrderAndReferenceDataReset()
     {
         Assert.Equal(
-            new[] { "ORDERS", "RETURNS", "INVOICES", "PRODUCTS", "CATEGORIES", "CATEGORY_ATTRIBUTES", "BRANDS", "COMMISSION_TARIFFS", "PROMOTION_OFFERS" }.Order(StringComparer.Ordinal),
+            new[] { "ORDERS", "RETURNS", "INVOICES", "PRODUCTS", "CATEGORIES", "CATEGORY_ATTRIBUTES", "BRANDS", "COMMISSION_TARIFFS", "PROMOTION_OFFERS", "JOBS" }.Order(StringComparer.Ordinal),
             ConnectionDataResetPolicy.ScopesFor("TRENDYOL").Order(StringComparer.Ordinal));
     }
 

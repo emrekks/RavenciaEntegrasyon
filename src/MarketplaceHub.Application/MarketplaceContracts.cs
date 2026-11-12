@@ -1205,7 +1205,8 @@ public sealed record OperationalDataResetView(
     // again) and the orders and returns they belong to, and says how many it kept.
     int KeptIssuedInvoices = 0,
     int CommissionTariffs = 0,
-    int PromotionOffers = 0);
+    int PromotionOffers = 0,
+    int Jobs = 0);
 
 // What a reset would remove, scope by scope, shown before it runs; KeptIssuedInvoices is what an order, return or
 // invoice reset of the connection keeps.

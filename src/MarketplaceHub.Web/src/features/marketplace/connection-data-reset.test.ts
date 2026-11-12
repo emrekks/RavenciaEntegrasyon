@@ -24,13 +24,13 @@ describe('connection full reset', () => {
 describe('connection data reset options', () => {
   it('offers marketplace data only for the selected connection type', () => {
     expect(connectionDataResetOptions('TRENDYOL').map(option => option.scope)).toEqual([
-      'ORDERS', 'RETURNS', 'INVOICES', 'PRODUCTS', 'CATEGORIES', 'CATEGORY_ATTRIBUTES', 'BRANDS', 'COMMISSION_TARIFFS', 'PROMOTION_OFFERS'
+      'ORDERS', 'RETURNS', 'INVOICES', 'PRODUCTS', 'CATEGORIES', 'CATEGORY_ATTRIBUTES', 'BRANDS', 'COMMISSION_TARIFFS', 'PROMOTION_OFFERS', 'JOBS'
     ])
     expect(connectionDataResetOptions('HEPSIBURADA').map(option => option.scope)).toEqual([
-      'ORDERS', 'RETURNS', 'INVOICES', 'PRODUCTS', 'CATEGORIES', 'CATEGORY_ATTRIBUTES'
+      'ORDERS', 'RETURNS', 'INVOICES', 'PRODUCTS', 'CATEGORIES', 'CATEGORY_ATTRIBUTES', 'JOBS'
     ])
     expect(connectionDataResetOptions('SHOPIFY').map(option => option.scope)).toEqual([
-      'ORDERS', 'RETURNS', 'INVOICES', 'PRODUCTS'
+      'ORDERS', 'RETURNS', 'INVOICES', 'PRODUCTS', 'JOBS'
     ])
   })
 
@@ -44,7 +44,8 @@ describe('connection data reset options', () => {
       scopes: group.options.map(option => option.scope)
     }))).toEqual([
       { label: 'Sipariş ve Finans', scopes: ['ORDERS', 'RETURNS', 'INVOICES'] },
-      { label: 'Ürün Kataloğu', scopes: ['PRODUCTS', 'CATEGORIES', 'CATEGORY_ATTRIBUTES'] }
+      { label: 'Ürün Kataloğu', scopes: ['PRODUCTS', 'CATEGORIES', 'CATEGORY_ATTRIBUTES'] },
+      { label: 'İş Takibi', scopes: ['JOBS'] }
     ])
   })
 })

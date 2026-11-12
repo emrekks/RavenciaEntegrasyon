@@ -4,9 +4,10 @@ public static class ConnectionDataResetPolicy
 {
     private static readonly IReadOnlySet<string> Marketplace = new HashSet<string>(StringComparer.Ordinal)
     {
-        "ORDERS", "RETURNS", "INVOICES", "PRODUCTS", "CATEGORIES", "CATEGORY_ATTRIBUTES", "BRANDS"
+        "ORDERS", "RETURNS", "INVOICES", "PRODUCTS", "CATEGORIES", "CATEGORY_ATTRIBUTES", "BRANDS", "JOBS"
     };
 
+    // JOBS: the finished entries of the connection's İş Takibi (running and queued jobs stay).
     // Trendyol also has the files uploaded on the Promotions page (CommissionTariffPlatforms).
     private static readonly IReadOnlySet<string> Trendyol = new HashSet<string>(Marketplace, StringComparer.Ordinal)
     {
@@ -15,12 +16,12 @@ public static class ConnectionDataResetPolicy
 
     private static readonly IReadOnlySet<string> Hepsiburada = new HashSet<string>(StringComparer.Ordinal)
     {
-        "ORDERS", "RETURNS", "INVOICES", "PRODUCTS", "CATEGORIES", "CATEGORY_ATTRIBUTES"
+        "ORDERS", "RETURNS", "INVOICES", "PRODUCTS", "CATEGORIES", "CATEGORY_ATTRIBUTES", "JOBS"
     };
 
     private static readonly IReadOnlySet<string> Shopify = new HashSet<string>(StringComparer.Ordinal)
     {
-        "ORDERS", "RETURNS", "INVOICES", "PRODUCTS"
+        "ORDERS", "RETURNS", "INVOICES", "PRODUCTS", "JOBS"
     };
 
     private static readonly IReadOnlySet<string> EInvoice = new HashSet<string>(StringComparer.Ordinal)

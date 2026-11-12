@@ -1,6 +1,6 @@
 import type { DataResetGroup, DataResetOption } from '../../shared/components/DataResetLedger'
 
-export type ConnectionDataResetScope = 'ORDERS' | 'RETURNS' | 'INVOICES' | 'PRODUCTS' | 'CATEGORIES' | 'CATEGORY_ATTRIBUTES' | 'BRANDS' | 'COMMISSION_TARIFFS' | 'PROMOTION_OFFERS'
+export type ConnectionDataResetScope = 'ORDERS' | 'RETURNS' | 'INVOICES' | 'PRODUCTS' | 'CATEGORIES' | 'CATEGORY_ATTRIBUTES' | 'BRANDS' | 'COMMISSION_TARIFFS' | 'PROMOTION_OFFERS' | 'JOBS'
 
 export type ConnectionDataResetOption = DataResetOption<ConnectionDataResetScope>
 export type ConnectionDataResetGroup = DataResetGroup<ConnectionDataResetScope>
@@ -75,6 +75,14 @@ const pricingOptions: ConnectionDataResetOption[] = [
   }
 ]
 
+// The entries of the connection's İşlem Takibi › İş Takibi: only the finished ones of this connection go.
+const jobsOption: ConnectionDataResetOption = {
+  scope: 'JOBS',
+  label: 'İş Takibi Kayıtları',
+  description: 'Yalnız bu bağlantının bitmiş işleri silinir; çalışan ve sıradaki işler kalır.',
+  unit: 'iş'
+}
+
 export function connectionDataResetGroups(platformCode: string): ConnectionDataResetGroup[] {
   const normalizedPlatformCode = platformCode.trim().toUpperCase()
   if (normalizedPlatformCode === 'TRENDYOL_EFATURAM') return [{
@@ -100,6 +108,11 @@ export function connectionDataResetGroups(platformCode: string): ConnectionDataR
     label: 'Fiyat ve Promosyon',
     description: 'Promosyonlar sayfasına yüklenen dosyalar.',
     options: [...pricingOptions]
+  })
+  groups.push({
+    label: 'İş Takibi',
+    description: 'İşlem Takibi › İş Takibi’nde görünen iş geçmişi.',
+    options: [jobsOption]
   })
   return groups
 }
@@ -127,7 +140,7 @@ export const connectionFullResetItems: ConnectionFullResetItem[] = [
   { scope: 'MAPPINGS', label: 'Eşleştirmeler', description: 'Kategori, marka, özellik ve değer eşleştirmeleri. Eşleme şablonları korunur.', unit: 'eşleştirme' },
   { scope: 'COMMISSION_TARIFFS', label: 'Komisyon Tarifeleri', description: 'Yüklenen tarife dosyaları ve satırları.', unit: 'dosya' },
   { scope: 'PROMOTION_OFFERS', label: 'Promosyon Teklifleri', description: 'Promosyonlar sayfasına yüklenen dosyalar.', unit: 'dosya' },
-  { scope: 'JOBS', label: 'İşler', description: 'Bekleyen işler iptal edilir; iş geçmişi, içe aktarma oturumları ve okuma konumları silinir.', unit: 'iş' }
+  { scope: 'JOBS', label: 'İş Takibi', description: 'Bekleyen işler iptal edilir; iş geçmişi, içe aktarma oturumları ve okuma konumları silinir.', unit: 'iş' }
 ]
 
 // An e-invoice connection's records are its invoices, which the selective reset and the delete cover.

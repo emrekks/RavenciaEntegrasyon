@@ -124,6 +124,54 @@ public sealed class PostgreSqlConnectionFullResetTests(PostgreSqlTenantIsolation
         }
     }
 
+    // The selective reset's "İş Takibi Kayıtları": only this connection's finished jobs go (with their attempts); its running
+    // and queued jobs, its full reset job, the other connection's jobs and a job of no connection stay.
+    [PostgreSqlFact]
+    public async Task SelectiveReset_Jobs_RemovesOnlyTheFinishedJobsOfThisConnection()
+    {
+        var seed = NewSeed("fr-jobs");
+        try
+        {
+            var finished = new[] { JobStatus.Succeeded, JobStatus.Cancelled, JobStatus.Dead, JobStatus.ManualReview, JobStatus.Blocked }.Select(status => Job(seed, seed.Reset, MarketplaceJobTypes.OrderSync, status)).ToList();
+            var running = Job(seed, seed.Reset, MarketplaceJobTypes.OrderSync, JobStatus.Leased);
+            var queued = Job(seed, seed.Reset, MarketplaceJobTypes.OrderSync, JobStatus.Pending);
+            var retry = Job(seed, seed.Reset, MarketplaceJobTypes.OrderSync, JobStatus.RetryScheduled);
+            var ownReset = Job(seed, seed.Reset, MarketplaceJobTypes.ConnectionFullReset, JobStatus.Succeeded);
+            var otherFinished = Job(seed, seed.Other, MarketplaceJobTypes.OrderSync, JobStatus.Succeeded);
+            var noConnection = Job(seed, seed.Reset, MarketplaceJobTypes.OrderSync, JobStatus.Succeeded);
+            noConnection.ConnectionId = null;
+            await using (var seedDb = fixture.CreateContext())
+            {
+                seedDb.Tenants.Add(seed.Tenant);
+                seedDb.PlatformConnections.AddRange(seed.Reset, seed.Other);
+                seedDb.IntegrationJobs.AddRange(finished);
+                seedDb.IntegrationJobs.AddRange(running, queued, retry, ownReset, otherFinished, noConnection);
+                await seedDb.SaveChangesAsync();
+            }
+
+            await using (var db = fixture.CreateContext())
+            {
+                var counts = await NewService(db).ResetCountsAsync(seed.Tenant.Id, seed.Reset.Id, CancellationToken.None);
+                Assert.True(counts.Succeeded, counts.Error?.Message);
+                Assert.Equal(5, counts.Value!.Items.Single(x => x.Scope == "JOBS").Count);
+            }
+            await using (var db = fixture.CreateContext())
+            {
+                var result = await NewService(db).ResetConnectionDataAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Reset.Id, seed.Reset.Version, new ResetOperationalDataCommand(["JOBS"], seed.Reset.DisplayName), "corr", CancellationToken.None);
+                Assert.True(result.Succeeded, result.Error?.Message);
+                Assert.Equal(5, result.Value!.Jobs);
+            }
+
+            await using var verification = fixture.CreateContext();
+            var left = await verification.IntegrationJobs.Where(x => x.TenantId == seed.Tenant.Id).Select(x => x.Id).ToListAsync();
+            Assert.Equal(new[] { running.Id, queued.Id, retry.Id, ownReset.Id, otherFinished.Id, noConnection.Id }.Order(), left.Order());
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
     // The tables the scenario puts a row of the reset store into (the others are checked for 0 rows all the same).
     private static readonly string[] SeededTables =
     [
