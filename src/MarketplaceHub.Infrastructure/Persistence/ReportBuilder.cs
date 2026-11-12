@@ -514,7 +514,7 @@ internal static class ReportBuilder
 
     private static ReportCostView CostView(IReadOnlyList<OrderFact> orders)
     {
-        decimal kept = 0m, costed = 0m, costTotal = 0m, costedRevenue = 0m, costedSales = 0m, profitUnits = 0m, profitRevenue = 0m, profitCost = 0m, profitCommission = 0m;
+        decimal kept = 0m, keptRevenue = 0m, costed = 0m, costTotal = 0m, costedRevenue = 0m, costedSales = 0m, profitUnits = 0m, profitRevenue = 0m, profitCost = 0m, profitCommission = 0m;
         var variants = new HashSet<Guid>();
         foreach (var line in orders.Where(x => x.Currency == Try).SelectMany(x => x.Lines))
         {
@@ -522,6 +522,7 @@ internal static class ReportBuilder
             if (line.Active > 0 && line.Row.CostPrice is > 0) costedSales += line.PaidUnitPrice * line.Active;
             if (line.KeptUnits <= 0) continue;
             kept += line.KeptUnits;
+            keptRevenue += line.KeptAmount;
             if (line.Row.CostPrice is not > 0) continue;
             var lineCost = line.Row.CostPrice.Value * line.KeptUnits;
             costed += line.KeptUnits;
@@ -539,7 +540,7 @@ internal static class ReportBuilder
         return new(kept, costed, kept > 0 ? Math.Round(costed / kept, 4) : null, Math.Round(costTotal, 2), Math.Round(costedRevenue, 2), Math.Round(grossProfit, 2),
             costedRevenue > 0 ? Math.Round(grossProfit / costedRevenue, 4) : null,
             profitUnits, kept > 0 ? Math.Round(profitUnits / kept, 4) : null, Math.Round(profitRevenue, 2), Math.Round(profitCost, 2), Math.Round(profitCommission, 2),
-            Math.Round(netProfit, 2), profitRevenue > 0 ? Math.Round(netProfit / profitRevenue, 4) : null, variants.Count, Math.Round(costedSales, 2));
+            Math.Round(netProfit, 2), profitRevenue > 0 ? Math.Round(netProfit / profitRevenue, 4) : null, variants.Count, Math.Round(costedSales, 2), Math.Round(keptRevenue, 2));
     }
 
     // Order-level buckets (platform, store, city, district): every order falls in exactly one, so they add up.
@@ -838,7 +839,10 @@ internal static class ReportBuilder
         if (cost.KeptQuantity > 0)
             notes.Add(cost.CostedQuantity <= 0
                 ? "Satılan ürünlerin hiçbirinde maliyet girilmemiş; kâr hesaplanamaz."
-                : $"Maliyet yalnız {cost.CostedQuantity.ToString("N0", tr)} / {cost.KeptQuantity.ToString("N0", tr)} adetlik satışta girilmiş ({Percent(cost.Coverage)}); kesintiler bütün satışlardan düşüldüğü için Net Kâr, satılan bütün ürünlerin maliyeti girilince hesaplanır.");
+                : cost.CostedQuantity >= cost.KeptQuantity ? $"Müşteride kalan {cost.KeptQuantity.ToString("N0", tr)} adedin hepsinin maliyeti girili."
+                : ReportProfitCost.Of(cost).Usable
+                    ? $"Maliyet {cost.CostedQuantity.ToString("N0", tr)} / {cost.KeptQuantity.ToString("N0", tr)} adetlik satışta girilmiş ({Percent(cost.Coverage)}); Net Kâr tahminidir: eksik adetlerin maliyeti, maliyeti girili satışların maliyet / satış oranıyla satış paylarına göre tahmin edilir."
+                    : $"Maliyet yalnız {cost.CostedQuantity.ToString("N0", tr)} / {cost.KeptQuantity.ToString("N0", tr)} adetlik satışta girilmiş ({Percent(cost.Coverage)}); kesintiler bütün satışlardan düşüldüğü için Net Kâr, müşteride kalan adetlerin en az %95'inin maliyeti girilince hesaplanır.");
         // The cost a line kept at the sale (OrderLineCostSnapshot); a line that kept none follows the variant's cost now.
         notes.Add("Maliyet, satış anında ürün kartında girili olan maliyettir (o an girili değilse kartın güncel maliyeti) ve KDV dahil kabul edilir; Net KDV içindeki KDV'yi düşer.");
         notes.Add("Kargo süreleri pazaryerinin bildirdiği durum zamanlarından hesaplanır (yaklaşık); zamanı olmayan paketler süre ortalamasına girmez.");

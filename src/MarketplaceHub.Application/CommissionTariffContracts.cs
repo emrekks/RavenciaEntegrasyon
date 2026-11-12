@@ -113,8 +113,6 @@ public sealed record CommissionTariffValidDays(DateOnly From, DateOnly To);
 // this period moves, and it may not overlap the file's other periods.
 public sealed record CommissionTariffPeriodRequest(DateOnly? ValidFrom, DateOnly? ValidTo, bool WholeFile = false);
 
-// The rate a sale pays by the tariff in force at `At`, from the band its commission-basis price falls in.
-public sealed record CommissionTariffMatch(decimal Rate, int Tier, Guid TariffId, DateTimeOffset PeriodStart, DateTimeOffset PeriodEnd);
 
 public interface ICommissionTariffService
 {
@@ -135,9 +133,3 @@ public interface ICommissionTariffService
     Task<ServiceResult<CommissionTariffSelectionView>> SaveSelectionAsync(Guid tenantId, Guid? userId, Guid connectionId, Guid tariffId, CommissionTariffExportRequest request, CancellationToken cancellationToken);
 }
 
-public interface ICommissionTariffLookup
-{
-    // The barcode is matched first, the seller SKU when no row has the barcode. Null when no uploaded tariff covers
-    // `at` for the product or its price falls in no band: the commission is then unknown, not estimated.
-    Task<CommissionTariffMatch?> RateAsync(Guid tenantId, Guid connectionId, string? barcode, string? sellerSku, DateTimeOffset at, decimal basisPrice, CancellationToken cancellationToken);
-}

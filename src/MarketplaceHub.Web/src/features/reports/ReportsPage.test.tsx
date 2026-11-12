@@ -680,25 +680,50 @@ describe('ReportsPage', () => {
   })
 
   // 9.1.3 of the operating guide: the deductions are taken off every sale, the cost only off the units that carry one, so
-  // with half the cost missing the profit came out too high by that half. It is not shown then; the bridge ends at what
-  // the deductions leave and says how many units lack a cost.
-  it('shows no profit while a sold unit has no cost, and says how many lack one', async () => {
-    const partial = { ...withFinance, cost: { ...withFinance.cost, costedQuantity: 2, coverage: 0.5 } }
+  // with part of the cost missing the profit came out too high by that part. Under 95 % of the kept units with a cost
+  // (owner, 13 Nov 2026) it is not shown; the bridge ends at what the deductions leave and says how many units lack a cost.
+  // From 95 % on the profit is shown, the cost of the units without one estimated by their share of the sales: 19 of 20
+  // units carry 80 of cost over 200 of revenue (40 %), the one without a cost sold for 10, so 4 more; Tahmini Net Kâr
+  // 127 − 4 = 123, said under the pointer.
+  it('estimates the missing cost by its sales share at 95 % and marks the profit Tahmini', async () => {
+    const page = await open('', { ...report, cost: { ...report.cost, keptQuantity: 20, costedQuantity: 19, coverage: 0.95, keptRevenue: 210 } })
+    const figures = page.querySelectorAll('.reports-kpis > div')
+    expect(figures[1].querySelector('.reports-kpi-label')?.textContent).toBe('Tahmini Net Kâr')
+    expect(figures[1].textContent).toContain('₺123')
+    const sentence = '1 adedin maliyeti eksik (%5,0); kâr, eksik adetlerin maliyeti satış payına göre tahmin edilerek hesaplandı (₺4,00).'
+    expect(figures[1].textContent).toContain(sentence)
+    expect(figures[2].textContent).toContain(sentence)
+    expect(figures[3].textContent).toContain('Ürün maliyeti ₺84')
+    expect(bridgeRows(page).slice(-2)).toEqual(['− Ürün Maliyeti − ₺84,00', 'Tahmini Net Kâr ₺123,00'])
+    expect(texts(page, '.reports-card-bridge .reports-bridge-gaps > div')).toContain('Maliyeti Girili1 adet eksik, maliyeti tahmini%95,0')
+  })
+
+  it('shows the profit without an estimate when every kept unit has a cost (100 %)', async () => {
+    const page = await open('', { ...report, cost: { ...report.cost, keptRevenue: 200 } })
+    const figures = page.querySelectorAll('.reports-kpis > div')
+    expect(figures[1].querySelector('.reports-kpi-label')?.textContent).toBe('Net Kâr')
+    expect(figures[1].textContent).toContain('₺127')
+    expect(figures[1].textContent).not.toContain('tahmin edilerek')
+  })
+
+  it('shows no profit while under 95 % of the kept units have a cost (94,9 %), and says how many lack one', async () => {
+    const partial = { ...withFinance, cost: { ...withFinance.cost, keptQuantity: 1000, costedQuantity: 949, coverage: 0.949, keptRevenue: 210 } }
     const page = await open('', partial)
     const profit = page.querySelectorAll('.reports-kpis > div')[1]
     expect(profit.textContent).toContain('Maliyet Eksik')
     expect(profit.textContent).not.toContain('₺6.639')
-    expect(profit.textContent).toContain('Satılan 2 adedin ürün maliyeti girilmemiş')
+    expect(profit.textContent).toContain('Satılan 51 adedin ürün maliyeti girilmemiş (%5,1)')
+    expect(profit.textContent).toContain('en az %95\'inin maliyeti girilince hesaplanır')
     // The margin and the profit on cost come from the profit, so they are not shown either.
     expect(page.querySelectorAll('.reports-kpis > div')[2].textContent).toContain('—')
     expect(page.querySelectorAll('.reports-kpis > div')[3].textContent).toContain('—')
     const rows = texts(page, '.reports-bridge > li')
     expect(rows.some(row => row.startsWith('− Ürün Maliyeti'))).toBe(false)
     expect(rows.at(-1)).toMatch(/^Masraflar Sonrası/u)
-    expect(texts(page, '.reports-card-bridge .reports-bridge-gaps > div')).toEqual(['Maliyeti Girili2 adet eksik, kâr hesaplanamadı%50,0'])
+    expect(texts(page, '.reports-card-bridge .reports-bridge-gaps > div')).toEqual(['Maliyeti Girili51 adet eksik, kâr hesaplanamadı%94,9'])
     // The cost entered is still listed among the costs, with how much of it is entered.
     const cost = [...page.querySelectorAll('.reports-costlines li')].find(line => line.textContent?.startsWith('Ürün Maliyeti'))
-    expect(cost?.querySelector('.reports-hover-tip')?.textContent).toContain('Net Kâr, tamamının maliyeti girilince hesaplanır')
+    expect(cost?.querySelector('.reports-hover-tip')?.textContent).toContain('Net Kâr, en az %95\'inin maliyeti girilince hesaplanır')
   })
 
   it('says the cost is not entered on Kârlılık\'s cost figures when no cost is known', async () => {
