@@ -656,6 +656,39 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
         Assert.Equal(("PRODUCT_TRANSFER_BARCODE_TAKEN", 409), (refused.Error?.Code, refused.Error?.Status));
     }
 
+    // Scan C-9 (13 Nov 2026): a file changing a variant's model code to the code another product holds would merge the
+    // two products into one family (Shopify and PTT AVM send a family as one product): the upload is refused.
+    [PostgreSqlFact]
+    public async Task AModelCodeAnotherProductHolds_IsRefused()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"transfer-model-{Guid.NewGuid():N}", DisplayName = "transfer", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
+        var shirt = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "Gömlek", Description = "", Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now };
+        var trousers = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "Pantolon", Description = "", Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now };
+        var shirtVariant = Variant(tenant, shirt, "GML-1", "8690000500001", cost: null, desi: null, now);
+        shirtVariant.ModelCode = "GML-MODEL";
+        var trousersVariant = Variant(tenant, trousers, "PNT-1", "8690000500002", cost: null, desi: null, now);
+        trousersVariant.ModelCode = "PNT-MODEL";
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.Products.AddRange(shirt, trousers);
+            seed.ProductVariants.AddRange(shirtVariant, trousersVariant);
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var service = new ProductTransferService(db, fixture.TimeProvider);
+        var refused = await service.ApplyAsync(tenant.Id, Guid.CreateVersion7(), new ApplyProductTransferCommand([new ProductTransferChange(trousersVariant.Id, trousersVariant.Version, false, null, false, null, SetModelCode: true, ModelCode: "gml model")]), "transfer-model", CancellationToken.None);
+        Assert.Equal(("PRODUCT_TRANSFER_MODEL_CODE_TAKEN", 409), (refused.Error?.Code, refused.Error?.Status));
+        Assert.Contains("Gömlek", refused.Error!.Message);
+
+        // A code no other product holds is written.
+        db.ChangeTracker.Clear();
+        var renamed = await service.ApplyAsync(tenant.Id, Guid.CreateVersion7(), new ApplyProductTransferCommand([new ProductTransferChange(trousersVariant.Id, trousersVariant.Version, false, null, false, null, SetModelCode: true, ModelCode: "PNT-YENI")]), "transfer-model-2", CancellationToken.None);
+        Assert.True(renamed.Succeeded, renamed.Error?.Message);
+    }
+
     private static ProductVariant Variant(Tenant tenant, Product product, string sku, string barcode, decimal? cost, decimal? desi, DateTimeOffset now) => new()
     {
         Id = Guid.CreateVersion7(),

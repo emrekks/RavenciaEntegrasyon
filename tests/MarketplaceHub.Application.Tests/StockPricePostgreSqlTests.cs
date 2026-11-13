@@ -2068,6 +2068,21 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         var familySave = await service.UpdateProductAsync(tenant.Id, created.Value!.Id, created.Value.Version, new UpdateProductCommand("Kadın Bluz Siyah", "Açıklama", null, null, VariantsToCreate: [new CreateVariantCommand($"{modelCode}-03", null, modelCode)], VatRate: 10m, VatInclusion: "INCLUDED"), CancellationToken.None);
         Assert.True(familySave.Succeeded, familySave.Error?.Message);
         Assert.Equal(3, await db.ProductVariants.CountAsync(x => x.TenantId == tenant.Id && x.ModelCode == modelCode));
+
+        // Scan C-9: another product's editor changing its model code to this one would merge the two products (Shopify
+        // and PTT AVM send a family as one product): refused. A new code no product holds is saved.
+        db.ChangeTracker.Clear();
+        var trousers = await service.CreateProductAsync(tenant.Id, new CreateProductCommand("Erkek Pantolon", "Açıklama", null, null, [new CreateVariantCommand($"PN{suffix}-01", null, $"PN{suffix}")], VatRate: 10m, VatInclusion: "INCLUDED"), CancellationToken.None);
+        Assert.True(trousers.Succeeded, trousers.Error?.Message);
+        var trousersVariant = await db.ProductVariants.AsNoTracking().SingleAsync(x => x.ProductId == trousers.Value!.Id);
+        db.ChangeTracker.Clear();
+        var merged = await service.UpdateProductAsync(tenant.Id, trousers.Value!.Id, trousers.Value.Version, new UpdateProductCommand("Erkek Pantolon", "Açıklama", null, null,
+            VariantUpdates: [new UpdateVariantCommand(trousersVariant.Id, trousersVariant.Sku, null, modelCode.ToLowerInvariant())], VatRate: 10m, VatInclusion: "INCLUDED"), CancellationToken.None);
+        Assert.Equal((409, ModelCodeUniquenessPolicy.ChangeConflictCode), (merged.Error!.Status, merged.Error.Code));
+        db.ChangeTracker.Clear();
+        var renamed = await service.UpdateProductAsync(tenant.Id, trousers.Value.Id, trousers.Value.Version, new UpdateProductCommand("Erkek Pantolon", "Açıklama", null, null,
+            VariantUpdates: [new UpdateVariantCommand(trousersVariant.Id, trousersVariant.Sku, null, $"PN{suffix}-YENI")], VatRate: 10m, VatInclusion: "INCLUDED"), CancellationToken.None);
+        Assert.True(renamed.Succeeded, renamed.Error?.Message);
     }
 
     // Live 2026-11-01 (MZ021Y-CD): Varyantları Oluştur on the Mavi card saved the new rows of every colour on the Mavi

@@ -340,6 +340,14 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
                 return ServiceResult<ProductTransferApplyResult>.Fail("PRODUCT_TRANSFER_BARCODE_TAKEN", $"Yazılmak istenen bir barkod başka bir varyantta ({taken.Sku}) kayıtlı; dosyayı düzeltip yeniden yükleyin.", 409);
         }
 
+        // C-9: a model code the file changes to one another product holds (a product this upload does not change) would
+        // join that product's family; the upload is refused before anything is written.
+        var modelCodeChanges = changes.Where(change => change.SetModelCode).ToList();
+        var changedModelCodes = ModelCodeUniquenessPolicy.ChangedCodes(modelCodeChanges.Select(change => (byId[change.VariantId].ModelCode, change.ModelCode)));
+        if (changedModelCodes.Count > 0
+            && await ModelCodeOwnership.FindOtherAsync(db, tenantId, changedModelCodes, changes.Select(change => byId[change.VariantId].ProductId).Distinct().ToArray(), cancellationToken) is { } modelCodeHolder)
+            return ServiceResult<ProductTransferApplyResult>.Fail("PRODUCT_TRANSFER_MODEL_CODE_TAKEN", $"Dosyadaki yeni bir model kodu '{modelCodeHolder.Title}' ürününde kullanılıyor; yazılırsa iki ürün tek ürünün renkleri gibi birleşir. Dosyayı düzeltip yeniden yükleyin.", 409);
+
         var now = timeProvider.GetUtcNow();
         var applyId = Guid.CreateVersion7();
         int costsUpdated = 0, costsCleared = 0, desiUpdated = 0, desiCleared = 0, stocksUpdated = 0, pricesUpdated = 0;
