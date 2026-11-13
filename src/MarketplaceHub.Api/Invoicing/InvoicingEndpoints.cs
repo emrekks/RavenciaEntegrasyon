@@ -81,7 +81,19 @@ public static class InvoicingEndpoints
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
             if (RequireIdempotency(http) is { } missingKey) return missingKey;
-            var result = await service.ConfirmNoRemoteInvoiceAsync(tenant.TenantId, orderId, http.TraceIdentifier, http.RequestAborted);
+            // The body is optional: {"searchedByOrderNumber": true} states the portal was searched by the order number (D-2).
+            var searchedByOrderNumber = false;
+            if (http.Request.ContentLength is > 0)
+            {
+                try
+                {
+                    using var body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body, cancellationToken: http.RequestAborted);
+                    searchedByOrderNumber = body.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object
+                        && body.RootElement.TryGetProperty("searchedByOrderNumber", out var flag) && flag.ValueKind == System.Text.Json.JsonValueKind.True;
+                }
+                catch (System.Text.Json.JsonException) { return Results.BadRequest(); }
+            }
+            var result = await service.ConfirmNoRemoteInvoiceAsync(tenant.TenantId, orderId, http.TraceIdentifier, http.RequestAborted, searchedByOrderNumber);
             return result.Succeeded ? Results.Ok(new { confirmed = true }) : Problem(http, result.Error!);
         });
         api.MapPost("/invoice-workspace/orders/{orderId:guid}/confirm-marketplace-delivered", async (Guid orderId, HttpContext http, IInvoicingBillingService service) =>

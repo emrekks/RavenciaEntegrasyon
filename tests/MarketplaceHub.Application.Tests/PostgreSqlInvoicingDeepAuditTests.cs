@@ -549,6 +549,19 @@ public sealed class PostgreSqlInvoicingDeepAuditTests(PostgreSqlTenantIsolationF
             var stored = await verification.Invoices.SingleAsync(item => item.Id == seed.Invoice.Id);
             Assert.Equal(InvoiceStatus.UnknownResult, stored.Status);
             Assert.Equal(InvoiceProviderIdentityPolicy.UuidNotHonouredCode, stored.LastErrorCode);
+
+            // The resend opens only on the statement that the portal was searched by the order number.
+            await AgeInvoiceAsync(seed);
+            await using (var refusal = fixture.CreateContext())
+            {
+                var withoutSearch = await NewBillingService(refusal, OpenWrites).ConfirmNoRemoteInvoiceAsync(seed.Tenant.Id, seed.Order.Id, "d2-confirm", CancellationToken.None);
+                Assert.Equal((InvoiceProviderIdentityPolicy.OrderNumberSearchRequiredCode, 409), (withoutSearch.Error?.Code, withoutSearch.Error?.Status));
+            }
+            await using (var confirm = fixture.CreateContext())
+            {
+                var searched = await NewBillingService(confirm, OpenWrites).ConfirmNoRemoteInvoiceAsync(seed.Tenant.Id, seed.Order.Id, "d2-confirm-2", CancellationToken.None, searchedByOrderNumber: true);
+                Assert.True(searched.Succeeded, searched.Error?.Message);
+            }
         }
         finally
         {
