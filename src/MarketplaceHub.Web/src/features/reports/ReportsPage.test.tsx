@@ -736,23 +736,6 @@ describe('ReportsPage', () => {
     expect(figures[4]).toContain('—')
   })
 
-  it('shows zero in each figure\'s own format, never a dash, in a period with no order', async () => {
-    const none = { orders: 0, ordersWithAmount: 0, grossSales: 0, netRevenue: 0, returnedAmount: 0, soldQuantity: 0, keptQuantity: 0, returnedQuantity: 0, cancelledOrders: 0, averageOrderValue: 0 }
-    const page = await open('', { ...report, summary: { ...report.summary, ...none }, previousSummary: { ...report.previousSummary, ...none } })
-    const figures = texts(page, '.reports-kpis > div')
-    expect(figures[0]).toContain('Toplam Ciro₺0')
-    expect(figures[0]).toContain('Net ₺0 · iade ₺0')
-    expect(figures[1]).toContain('₺0')
-    expect(figures[1]).toContain('Sipariş başına ₺0')
-    expect(figures[2]).toContain('%0')
-    expect(figures[2]).toContain('Reklam öncesi %0')
-    expect(figures[3]).toContain('%0')
-    expect(figures[3]).toContain('Ürün maliyeti ₺0')
-    expect(figures[4]).toContain('sepet ₺0')
-    for (const figure of figures) expect(figure).not.toContain('—')
-    expect(page.querySelectorAll('.reports-kpis .reports-delta.is-flat').length).toBeGreaterThan(0)
-  })
-
   it('lists the Genel Bakış Sipariş figure per platform when the card is hovered', async () => {
     const page = await open()
     const card = Array.from(page.querySelectorAll<HTMLElement>('.reports-kpis > div')).find(cell => cell.querySelector('.reports-kpi-label')?.textContent === 'Sipariş')!

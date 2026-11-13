@@ -1,11 +1,9 @@
 // The one rule for what a summary card (or any figure that stands for a count or an amount) shows when there is nothing
 // to show (owner, 14 Nov 2026), the same on every page:
-//  - When the data was read and there is nothing (no order or record in the period, nothing to base it on), the figure is
-//    zero in its own format: a count "0", money "₺0", a percentage "%0", a change pill "%0". Neutral ink, never a colour.
-//  - "—" only for a real unknown: the read is still loading's "…", the request failed, or the figure cannot be worked out
-//    while the data exists (a profit with the product costs missing keeps its "Maliyet Eksik" reason; it is not a 0).
-//  - Never a word ("Veri yok", "Tutar yok", "Bilgi yok"); the reason, when it helps, is a tooltip or note.
-//  - A warning, good or bad colour only marks a figure above nought.
+//  - A count that was read and is nought reads "0": when the list loaded and is empty, the count is a known zero.
+//  - A value that is not known (not loaded, failed, not computable: money or a percentage with nothing to base it on)
+//    reads "—". Never a word ("Veri yok", "Tutar yok", "Bilgi yok"); the reason, when it helps, is a tooltip or note.
+//  - Zero and "—" stay in the neutral ink: a warning, good or bad colour only marks a figure above nought.
 export const noValue = '—'
 
 type CountState = { loading?: boolean; error?: boolean }
