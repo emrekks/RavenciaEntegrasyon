@@ -279,7 +279,7 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
             .SingleAsync(cancellationToken);
         var defaults = await db.ConnectionAttributeDefaults.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId)
-            .Select(x => new { x.ExternalAttributeId, x.ExternalValueId, x.CustomValue })
+            .Select(x => new { x.ExternalAttributeId, x.ExternalValueId, x.CustomValue, x.SourceField })
             .ToListAsync(cancellationToken);
         var valueScopes = attributeSnapshots.SelectMany(snapshot => defaults.Where(x => !string.IsNullOrWhiteSpace(x.ExternalValueId))
             .Select(x => $"{snapshot.ScopeExternalId}/{x.ExternalAttributeId}")).Distinct().ToArray();
@@ -295,7 +295,9 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         bool DefaultUsable(Guid snapshotId, string category, string attributeId) => defaults.Any(item => item.ExternalAttributeId == attributeId
             && (!string.IsNullOrWhiteSpace(item.ExternalValueId)
                 ? offeredValues.Contains(($"{category}/{attributeId}", item.ExternalValueId))
-                : platformCode != "PAZARAMA" && !string.IsNullOrWhiteSpace(item.CustomValue) && freeText.Contains((snapshotId, attributeId))));
+                // Free text, or a product field (ProductFieldSources: the model code, ...) sent as free text.
+                : platformCode != "PAZARAMA" && (!string.IsNullOrWhiteSpace(item.CustomValue) || item.SourceField is { } source && ProductFieldSources.All.Contains(source))
+                    && freeText.Contains((snapshotId, attributeId))));
         var verifiedMappings = mappedAttributes.Select(item => new RequiredAttributeMappingReference(item.SnapshotId, item.ExternalId))
             .Concat(attributeSnapshots.SelectMany(snapshot => defaults.Select(x => x.ExternalAttributeId).Distinct()
                 .Where(attributeId => DefaultUsable(snapshot.Id, snapshot.ScopeExternalId, attributeId))
