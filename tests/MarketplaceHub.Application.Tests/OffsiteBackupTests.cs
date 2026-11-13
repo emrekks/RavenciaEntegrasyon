@@ -7,6 +7,7 @@ using System.Text.Json;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Alerts;
 using MarketplaceHub.Infrastructure.Backups;
+using MarketplaceHub.Infrastructure.Identity;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
@@ -443,6 +444,61 @@ public sealed class OffsiteBackupPostgreSqlTests(PostgreSqlTenantIsolationFixtur
         Assert.Contains("yeniden çalışıyor", sender.Messages[1], StringComparison.Ordinal);
         Assert.DoesNotContain(await new AttentionNoticeService(db, clock).ListAsync(tenantId, CancellationToken.None), notice => notice.Code == AttentionNoticePolicy.OffsiteBackupFailingCode);
         Assert.True(await db.PanelNotifications.AnyAsync(x => x.TenantId == tenantId && x.UserId == null && x.ClientKey.StartsWith("offsite-backup:recovered:")));
+    }
+
+    // A backup set holds every tenant's data: only the tenant the server was bootstrapped with decides where it goes. Another
+    // tenant's saved and connected settings are never used, and without the bootstrap marker nothing is sent.
+    [PostgreSqlFact]
+    public async Task Copier_SendsOnlyWithTheBootstrapTenantsSettings_NeverAnotherTenants_AndNothingWithoutTheMarker()
+    {
+        await using var db = fixture.CreateContext();
+        // The marker row is one per database: changed only inside this transaction, rolled back at the end.
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        await db.BootstrapStates.Where(x => x.Key == OffsiteBackupSettingsService.HostBootstrapKey).ExecuteDeleteAsync();
+        // The other tenant is the older one and the only one with settings: the earlier rule made it the destination.
+        var other = await NewTenantAsync(db);
+        var host = await NewTenantAsync(db);
+        var owner = Guid.CreateVersion7();
+        var clock = new OffsiteClock(new DateTimeOffset(2026, 11, 13, 9, 30, 0, TimeSpan.Zero));
+        var google = new FakeGoogleDrive();
+        var service = new OffsiteBackupSettingsService(db, protection, google, clock);
+        await service.SaveAsync(other, owner, "t", new(true, OffsiteBackupRulesTests.Recipient, "NAME", "Ravencia Yedek", 14, 12, ClientId, ClientSecret), null, CancellationToken.None);
+        await ConnectAsync(service, other, owner);
+
+        using var root = new TempBackupRoot();
+        root.WriteSet("20261113T085900Z");
+        var copier = new OffsiteBackupCopier(service, google, new MarkingEncryptor(), new BackupSetDirectory(root.Path), new PanelNotificationService(db, clock),
+            new AlertEmailSettingsService(db, protection, clock), new RecordingAlertSender(), clock, NullLogger<OffsiteBackupCopier>.Instance);
+
+        // No marker: no host, nothing sent.
+        Assert.Null(await service.HostTenantAsync(CancellationToken.None));
+        Assert.Equal(OffsiteBackupRunResult.NotConfigured, await copier.RunIfDueAsync(CancellationToken.None));
+
+        // The bootstrap tenant has no settings: still nothing sent, and the other tenant cannot ask for a run.
+        // The marker names a real owner account (foreign key).
+        var email = $"offsite-owner-{owner:N}@example.invalid";
+        db.Users.Add(new ApplicationUser { Id = owner, UserName = email, NormalizedUserName = email.ToUpperInvariant(), Email = email, NormalizedEmail = email.ToUpperInvariant(), DisplayName = "Offsite owner", SecurityStamp = Guid.NewGuid().ToString("N"), ForcePasswordChange = false, CreatedAt = clock.Now, UpdatedAt = clock.Now });
+        db.BootstrapStates.Add(new BootstrapState { Key = OffsiteBackupSettingsService.HostBootstrapKey, CompletedAt = clock.Now, TenantId = host, OwnerUserId = owner, ConfigurationFingerprint = "test" });
+        await db.SaveChangesAsync();
+        Assert.Equal(host, await service.HostTenantAsync(CancellationToken.None));
+        Assert.Equal(OffsiteBackupRunResult.NotConfigured, await copier.RunIfDueAsync(CancellationToken.None));
+        Assert.Equal("OFFSITE_BACKUP_NOT_HOST", (await service.RequestRunAsync(other, owner, "t", CancellationToken.None))?.Code);
+        Assert.Empty(google.Uploaded);
+
+        // A disabled bootstrap tenant is no host either.
+        await db.Tenants.Where(x => x.Id == host).ExecuteUpdateAsync(set => set.SetProperty(x => x.Status, RecordStatus.Disabled));
+        Assert.Null(await service.HostTenantAsync(CancellationToken.None));
+
+        // The bootstrap tenant's own settings: its copy goes.
+        await db.Tenants.Where(x => x.Id == host).ExecuteUpdateAsync(set => set.SetProperty(x => x.Status, RecordStatus.Active));
+        await service.SaveAsync(host, owner, "t", new(true, OffsiteBackupRulesTests.Recipient, "NAME", "Ravencia Yedek", 14, 12, ClientId, ClientSecret), null, CancellationToken.None);
+        await ConnectAsync(service, host, owner);
+        Assert.Equal(OffsiteBackupRunResult.Uploaded, await copier.RunIfDueAsync(CancellationToken.None));
+        Assert.Single(google.Uploaded);
+        Assert.Null((await service.GetAsync(other, CancellationToken.None)).LastSet);
+        Assert.Equal("20261113T085900Z", (await service.GetAsync(host, CancellationToken.None)).LastSet);
+
+        await transaction.RollbackAsync();
     }
 
     private async Task ConnectAsync(OffsiteBackupSettingsService service, Guid tenantId, Guid owner)

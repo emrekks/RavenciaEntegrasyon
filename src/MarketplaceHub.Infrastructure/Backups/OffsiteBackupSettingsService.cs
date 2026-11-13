@@ -130,13 +130,18 @@ public sealed class OffsiteBackupSettingsService(AppDbContext db, IDataProtectio
     public static State? ReadState(TenantSetting? row) => Read<State>(row);
     public static Settings? ReadSettings(TenantSetting? row) => Read<Settings>(row);
 
-    // The tenant whose settings the server's copy uses: the oldest active one that saved them.
+    // The server was bootstrapped with this tenant (iam.bootstrap_state, BootstrapService).
+    public const string HostBootstrapKey = "initial-owner";
+
+    // The tenant whose settings the server's copy uses: the one the server was bootstrapped with, while it is active.
+    // A backup set is the whole database, every tenant's data, so the destination is never picked among tenants that
+    // saved settings (before 13 Nov 2026: the oldest that saved them, which a second tenant could become); without the
+    // bootstrap marker, or with its tenant inactive, nothing is sent.
     public async Task<Guid?> HostTenantAsync(CancellationToken cancellationToken) =>
-        await (from setting in db.TenantSettings.AsNoTracking()
-               join tenant in db.Tenants.AsNoTracking() on setting.TenantId equals tenant.Id
-               where setting.Key == SettingKey && tenant.Status == RecordStatus.Active
-               orderby tenant.CreatedAt, tenant.Id
-               select (Guid?)setting.TenantId).FirstOrDefaultAsync(cancellationToken);
+        await (from marker in db.BootstrapStates.AsNoTracking()
+               join tenant in db.Tenants.AsNoTracking() on marker.TenantId equals tenant.Id
+               where marker.Key == HostBootstrapKey && tenant.Status == RecordStatus.Active
+               select (Guid?)marker.TenantId).SingleOrDefaultAsync(cancellationToken);
 
     public async Task<(Settings? Settings, State State)> LoadAsync(Guid tenantId, CancellationToken cancellationToken)
     {
