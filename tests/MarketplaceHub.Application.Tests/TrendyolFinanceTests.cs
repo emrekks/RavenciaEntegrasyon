@@ -124,7 +124,9 @@ public sealed class TrendyolFinanceTests
         var other = costs.Unlinked!.Single(line => line.Category == MarketplaceFinanceCategories.Other);
         Assert.False(other.IsCost);
         Assert.Equal(4m, other.Amount);
-        Assert.Equal(9.99m + 390m, costs.UnlinkedTotal);
+        // The service fee invoice naming no payout is covered by the orders' estimates below, not taken off again.
+        Assert.Equal(390m, costs.UnlinkedTotal);
+        Assert.Equal((9.99m, 1), costs.CoveredByEstimate!.Single(line => line.Category == MarketplaceFinanceCategories.ServiceFee) is var covered ? (covered.Amount, covered.Records) : default);
         // The orders' own costs: each adds the estimated platform fee and 1 % withholding tax on its sale.
         Assert.Equal(2 * 13.19m + 1.5m, costs.RealCostTotal);
         Assert.DoesNotContain(costs.Lines, line => line.Category is MarketplaceFinanceCategories.OtherDeduction or MarketplaceFinanceCategories.Other);
@@ -336,7 +338,7 @@ public sealed class TrendyolFinanceTests
                 // Order A was settled: its sale line carries the real commission (estimate 21.5% of 100 = 21.50).
                 Row(store, Settlements, "1", "Sale", MarketplaceFinanceCategories.Sale, "A-1", "BAR-1", credit: 100m, commission: 18m),
                 Row(store, Settlements, "2", "Discount", MarketplaceFinanceCategories.Discount, "A-1", "BAR-1", debt: 5m, commission: 1m),
-                // A service fee and withholding tax tied to no order, counted by date.
+                // A service fee and withholding tax invoice naming neither an order nor a payout.
                 Row(store, Others, "3", TrendyolFinanceCategorizer.DeductionInvoices, MarketplaceFinanceCategories.ServiceFee, null, null, debt: 9.99m),
                 Row(store, Others, "4", "Stoppage", MarketplaceFinanceCategories.Stoppage, null, null, debt: 1m),
                 // A cargo invoice whose lines were read counts through its lines; one without lines counts whole.
@@ -368,7 +370,7 @@ public sealed class TrendyolFinanceTests
         // Only the cargo lines of the period's orders; the invoice read as a whole belongs to no order.
         Amount(costs, MarketplaceFinanceCategories.Cargo, 44.24m);
         // Trendyol ties no service fee or withholding tax to an order: both orders, settled or not, are estimated; the
-        // dated invoices stay apart and are never added on top.
+        // invoices that cannot be split are covered by those estimates and never added on top.
         Amount(costs, MarketplaceFinanceCategories.ServiceFee, 2 * 13.19m);
         Amount(costs, MarketplaceFinanceCategories.Stoppage, 1.5m);
         Amount(costs, MarketplaceFinanceCategories.Sale, -100m);
@@ -380,17 +382,19 @@ public sealed class TrendyolFinanceTests
         Assert.Equal(44.24m, cargo.OrderLinked);
         Assert.Equal(2, cargo.Records);
 
-        // The records tied to no order of the period, apart: the whole cargo invoice, the service fee, the withholding
-        // tax (deductions, in the total) and the unclassified record (not a deduction).
+        // The records tied to no order of the period, apart: the whole cargo invoice (a deduction, in the total) and the
+        // unclassified record (not a deduction). The service fee and withholding tax invoices are covered by the orders'
+        // estimates (each cost once).
         Assert.Equal(
             [
                 (MarketplaceFinanceCategories.Cargo, true, 40m, 1),
-                (MarketplaceFinanceCategories.ServiceFee, true, 9.99m, 1),
-                (MarketplaceFinanceCategories.Stoppage, true, 1m, 1),
                 (MarketplaceFinanceCategories.Other, false, -3m, 1)
             ],
             costs.Unlinked!.Select(line => (line.Category, line.IsCost, line.Amount, line.Records)).ToList());
-        Assert.Equal(40m + 9.99m + 1m, costs.UnlinkedTotal);
+        Assert.Equal(40m, costs.UnlinkedTotal);
+        Assert.Equal(
+            [(MarketplaceFinanceCategories.ServiceFee, 9.99m, 1), (MarketplaceFinanceCategories.Stoppage, 1m, 1)],
+            costs.CoveredByEstimate!.Select(line => (line.Category, line.Amount, line.Records)).ToList());
 
         // Order A's shipment was billed; order B's not yet: it is estimated at the store's recent cargo per order.
         var cargoCost = Assert.IsType<ReportCargoCostView>(costs.Cargo);
@@ -484,18 +488,21 @@ public sealed class TrendyolFinanceTests
         // VAT inside 21.50 + 10.75 commission (A's real 18 + B's estimate), 34.24 + 98.34 cargo and 2 × 13.19 fee.
         Assert.Equal(Math.Round((18m + 10.75m + 34.24m + 98.34m + 26.38m) * 20m / 120m, 2, MidpointRounding.AwayFromZero), both.Costs.NetVat!.ExpenseVat);
 
-        // Apart: every deduction tied to no order, with its total; the foreign sale is listed but is no deduction.
+        // Apart: every deduction tied to no order, with its total; the foreign sale is listed but is no deduction. The
+        // service fee and withholding tax invoices, which name no payout to split them by, are covered by the orders'
+        // estimates above and taken off nowhere (each cost once).
         Assert.Equal(
             [
                 (MarketplaceFinanceCategories.Sale, false, -80m, 1),
                 (MarketplaceFinanceCategories.Commission, true, 12m, 1),
                 (MarketplaceFinanceCategories.Cargo, true, 98.34m, 1),
-                (MarketplaceFinanceCategories.ServiceFee, true, 1_079.54m, 1),
-                (MarketplaceFinanceCategories.Stoppage, true, 448.01m, 1),
                 (MarketplaceFinanceCategories.Advertising, true, 5_000m, 1)
             ],
             both.Costs.Unlinked!.Select(line => (line.Category, line.IsCost, line.Amount, line.Records)).ToList());
-        Assert.Equal(12m + 98.34m + 1_079.54m + 448.01m + 5_000m, both.Costs.UnlinkedTotal);
+        Assert.Equal(12m + 98.34m + 5_000m, both.Costs.UnlinkedTotal);
+        Assert.Equal(
+            [(MarketplaceFinanceCategories.ServiceFee, 1_079.54m, 1), (MarketplaceFinanceCategories.Stoppage, 448.01m, 1)],
+            both.Costs.CoveredByEstimate!.Select(line => (line.Category, line.Amount, line.Records)).ToList());
         Assert.Empty(alone.Costs.Unlinked!);
         Assert.Equal(0m, alone.Costs.UnlinkedTotal);
     }

@@ -244,4 +244,43 @@ public sealed class ReportOrderProfitTests
         var none = ReportOrderProfit.Totals([noCost, noCargo]);
         Assert.Equal((null, 0m, 0, null), (none.Profit, none.ProfitAmount, none.ProfitOrders, none.Margin));
     }
+
+    private static ReportFinance Read(Guid store, params ReportFinanceRow[] rows) => new(rows, [], new HashSet<(Guid, string)>(),
+        new Dictionary<Guid, MarketplaceFinanceSyncState?> { [store] = new() { ConnectionId = store, CoveredThrough = new DateTimeOffset(2026, 10, 26, 0, 0, 0, TimeSpan.Zero) } },
+        new Dictionary<Guid, ReportCargoSample> { [store] = new(98.34m, 1) });
+
+    // A service fee or withholding tax invoice naming neither an order nor a payout can never be split over its orders,
+    // so they keep their estimate: taking the invoice off Net Kâr as well charged the same fee twice (A-14).
+    [Fact]
+    public void A_fee_invoice_naming_no_payout_is_covered_by_the_estimates_and_not_taken_off_again()
+    {
+        var (store, order, line) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        ReportFinanceRow Invoice(string id, string category, string? payout, decimal debt) => new()
+        {
+            ConnectionId = store,
+            Source = TrendyolFinanceRequestContract.OtherFinancials,
+            ExternalId = id,
+            RequestedType = TrendyolFinanceCategorizer.DeductionInvoices,
+            TransactionType = "Platform Hizmet Bedeli",
+            Category = category,
+            TransactionDate = new DateTimeOffset(2026, 10, 25, 9, 0, 0, TimeSpan.Zero),
+            PaymentOrderId = payout,
+            Debt = debt
+        };
+        var input = Input(store, order, line, 160m, Read(store,
+            Invoice("SF-N", MarketplaceFinanceCategories.ServiceFee, null, 900m),
+            Invoice("ST-N", MarketplaceFinanceCategories.Stoppage, "", 4.24m)));
+
+        var costs = ReportCosts.Build(input, ReportBuilder.Facts(input).Orders);
+
+        // The order still carries its estimates, once.
+        Assert.Equal((13.19m, 13.19m), costs.Lines.Single(cost => cost.Category == MarketplaceFinanceCategories.ServiceFee) is var fee ? (fee.Amount, fee.Estimated) : default);
+        Assert.Equal((4.24m, 4.24m), costs.Lines.Single(cost => cost.Category == MarketplaceFinanceCategories.Stoppage) is var tax ? (tax.Amount, tax.Estimated) : default);
+        // The invoices are taken off nowhere, only listed as covered.
+        Assert.Empty(costs.Unlinked!);
+        Assert.Equal(0m, costs.UnlinkedTotal);
+        Assert.Equal((900m, 1), costs.CoveredByEstimate!.Single(cost => cost.Category == MarketplaceFinanceCategories.ServiceFee) is var covered ? (covered.Amount, covered.Records) : default);
+        Assert.Equal((4.24m, 1), costs.CoveredByEstimate!.Single(cost => cost.Category == MarketplaceFinanceCategories.Stoppage) is var coveredTax ? (coveredTax.Amount, coveredTax.Records) : default);
+        Assert.Contains(ReportCosts.Notes(costs, input), note => note.StartsWith("904,24 ₺", StringComparison.Ordinal) && note.Contains("tahminle karşılandı", StringComparison.Ordinal));
+    }
 }

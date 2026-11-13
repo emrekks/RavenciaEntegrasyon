@@ -153,8 +153,7 @@ internal static class ReportCosts
         var lines = new Dictionary<string, LineTotal>(StringComparer.Ordinal);
         LineTotal Line(string category) => lines.TryGetValue(category, out var total) ? total : lines[category] = new();
         // The records of the period's dates tied to no order of the period (advertising, a penalty, a record of an order
-        // never imported, a service fee or withholding tax invoice whose payout's orders are not read yet or that names
-        // no payout): kept apart from the period's orders' costs (5 Nov 2026 they turned the day's +4,922 TL order profit
+        // never imported): kept apart from the period's orders' costs (5 Nov 2026 they turned the day's +4,922 TL order profit
         // into a 633 TL loss); the panel takes their total off the net profit in a line of its own after the product cost
         // (owner, 5 Nov 2026: every expense is off Net Kâr), and never off a single order's profit. The service fee and withholding tax invoices of a read payout are split over its orders
         // (ReportFeeAllocation) and count with those orders, in their period.
@@ -164,7 +163,8 @@ internal static class ReportCosts
         // paying): it is not split, and every order it pays carries that fee's estimate in its own period until its share
         // replaces it. Taking the invoice off as well charged the fee twice for that day (5 Nov 2026: 448.01 TL of
         // withholding tax and 986.86 TL of service fee on top of their orders' estimates); every cost counts once, so it
-        // is listed as covered by the estimate and taken off nowhere.
+        // is listed as covered by the estimate and taken off nowhere. So is one that names no payout at all: it can never
+        // be split, so the orders it billed keep their estimate for good, and taking it off too charged them twice.
         var covered = new Dictionary<string, LineTotal>(StringComparer.Ordinal);
         var realCommission = new Dictionary<Guid, decimal>();
         var settled = new HashSet<Guid>();
@@ -214,7 +214,7 @@ internal static class ReportCosts
             {
                 // Trendyol's return operation fee of a cross-border order names no order: it is counted by its date.
                 if (IsReturnOperationFee(row)) { returnOperationFees += amount; returnOperationRecords++; }
-                if (ReportFeeAllocation.IsPerSaleInvoice(row))
+                if (ReportFeeAllocation.IsFeeInvoice(row))
                 {
                     (covered.TryGetValue(category, out var line) ? line : covered[category] = new()).Add(amount);
                     continue;
@@ -442,14 +442,13 @@ internal static class ReportCosts
         if (PlatformNote(costs, tr) is { } platforms) yield return platforms;
         yield return $"Gerçek masraflar Trendyol cari hesap ekstresinden okunur{(costs.LastSyncedAt is { } synced ? $" (son okuma {Time(synced)})" : " (okuma sürüyor)")}: siparişe bağlı kalemler siparişin dönemine yazılır. Trendyol hizmet bedelini ve stopajı ödeme günü faturasıyla keser; bu faturalar ödemenin siparişlerine paylaştırılır (hizmet bedeli paket başına, uluslararası hizmet bedeli yurt dışı satışa, stopaj satışa göre) ve o siparişlerle kâra girer. Faturası henüz gelmeyen siparişlerin hizmet bedeli ve stopajı tahmin edilir. Dönemin siparişlerine bağlı olmayan kesintiler (reklam, ceza) işlem tarihine göre sayılır ve Net Kâr'dan kendi satırında düşülür{(costs.UnlinkedTotal != 0m ? $" ({Money(costs.UnlinkedTotal)})" : "")}.";
         // The per-sale fee invoices left with no order: their payout's orders are not read yet, or they name no payout.
-        var unsplit = input.Finance!.Rows.Where(row => row.Source == TrendyolFinanceRequestContract.OtherFinancials && row.OrderNumber is null
-            && row.Category is MarketplaceFinanceCategories.ServiceFee or MarketplaceFinanceCategories.Stoppage).ToList();
+        var unsplit = input.Finance!.Rows.Where(ReportFeeAllocation.IsFeeInvoice).ToList();
         var awaiting = unsplit.Where(ReportFeeAllocation.IsPerSaleInvoice).Sum(row => TrendyolFinanceCategorizer.NetCost(row.Debt, row.Credit));
         var unreferenced = unsplit.Where(row => string.IsNullOrEmpty(row.PaymentOrderId)).Sum(row => TrendyolFinanceCategorizer.NetCost(row.Debt, row.Credit));
         if (awaiting != 0m)
             yield return $"{Money(awaiting)} hizmet bedeli ve stopaj faturası, Trendyol'un ödeme kayıtlarını henüz vermediği ödemelere ait: tahminle karşılandı. O ödemenin siparişlerinden bu kesintiler tahminle düşüldüğü için fatura ayrıca düşülmez (her masraf bir kez); ödeme kayıtları okununca (ödemeden bir gün sonra) siparişlerine paylaştırılır ve tahminin yerini alır.";
         if (unreferenced != 0m)
-            yield return $"{Money(unreferenced)} hizmet bedeli ve stopaj faturasında Trendyol ne sipariş ne ödeme bilgisi veriyor; hangi siparişe ait olduğu bilinmediği için siparişe bağlı olmayan kesintilerde kalır.";
+            yield return $"{Money(unreferenced)} hizmet bedeli ve stopaj faturasında Trendyol ne sipariş ne ödeme bilgisi veriyor: tahminle karşılandı. Faturanın siparişleri bilinmediği için bu kesintiler o siparişlerden tahminle düşülür; fatura ayrıca düşülmez (her masraf bir kez).";
         if (costs.Coverage is { } coverage)
             yield return $"Trendyol siparişlerinin {costs.SettledOrders.ToString("N0", tr)} / {costs.FinanceOrders.ToString("N0", tr)} kadarında (%{coverage * 100:N1}) hesap kesimi var; Trendyol kaydı teslimattan sonra yazar, kalan siparişlerin komisyonu tahminidir.";
         if (RealCommissionNote(costs, tr) is { } real) yield return real;

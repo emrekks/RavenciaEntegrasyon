@@ -275,8 +275,9 @@ public sealed record ReportCostsView(
     ReportNetVatView? NetVat = null,
     IReadOnlyList<ReportUnlinkedCostView>? Unlinked = null,
     decimal UnlinkedTotal = 0m,
-    // The service fee and withholding tax invoices dated in the period whose payout's lines are not read yet: their
-    // orders carry the estimate of that fee, so they are taken off nowhere (each cost once), only listed by category.
+    // The service fee and withholding tax invoices dated in the period whose payout's lines are not read yet or that name
+    // no payout: their orders carry the estimate of that fee, so they are taken off nowhere (each cost once), only listed
+    // by category.
     IReadOnlyList<ReportUnlinkedCostView>? CoveredByEstimate = null);
 
 // The records of the period's dates tied to no order of the period, by category (see ReportCostsView). IsCost: a
