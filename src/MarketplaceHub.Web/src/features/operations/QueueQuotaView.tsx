@@ -44,7 +44,7 @@ export function QueueQuotaView() {
 
   return <div className="qq">
     <div className="jobs-reference-toolbar qq-toolbar">
-      <div className="qq-window">
+      <div className="rr qq-window">
         <ChoiceField name="Ölçüm Aralığı" value={hours} options={queueWindowOptions} onChange={value => setHours(value as QueueWindow)} width={200} />
         <p className="qq-note">Çalışan ve bekleyen işler şu anı, deneme ve bekleme süreleri seçili aralığı gösterir.</p>
       </div>
@@ -63,14 +63,14 @@ export function QueueQuotaView() {
     <section className="qq-section" aria-labelledby="qq-lanes">
       <h2 id="qq-lanes">Şeritler ve Slot Kullanımı</h2>
       {lanes.isLoading ? <Busy text="Şeritler yükleniyor…" /> : lanes.isError && !lanes.data ? <p role="alert" className="qq-error">Şerit ölçümleri alınamadı.</p> : <div className="qq-table-scroll"><table className="qq-table">
-        <thead><tr><th>Şerit</th><th>Slot Kullanımı</th><th className="is-num">Bekleyen</th><th className="is-num">Deneme</th><th className="is-num">Ort. Bekleme</th><th className="is-num">En Uzun %5 Bekleme</th></tr></thead>
+        <thead><tr><th className="qq-first">Şerit</th><th className="qq-usage-th">Slot Kullanımı</th><th className="is-num">Bekleyen</th><th className="is-num">Deneme</th><th className="is-num">Ort. Bekleme</th><th className="is-num">En Uzun %5 Bekleme</th></tr></thead>
         <tbody>{(lanes.data ?? []).map(lane => <tr key={lane.lane}>
-          <td><strong>{laneLabel(lane.lane)}</strong><small>{laneHint(lane.lane)}</small></td>
-          <td className="qq-usage"><UsageBar used={lane.running} limit={lane.slots} label={`${laneLabel(lane.lane)}: ${lane.running} / ${lane.slots} slot`} /><span>{lane.running} / {lane.slots}</span></td>
+          <td className="qq-first"><strong>{laneLabel(lane.lane)}</strong><small>{laneHint(lane.lane)}</small></td>
+          <td className="qq-usage-cell" data-label="Slot Kullanımı"><span className="qq-usage"><UsageBar used={lane.running} limit={lane.slots} label={`${laneLabel(lane.lane)}: ${lane.running} / ${lane.slots} slot`} /><span>{lane.running} / {lane.slots}</span></span></td>
           <td className="is-num" data-label="Bekleyen">{lane.queued.toLocaleString('tr-TR')}</td>
           <td className="is-num" data-label="Deneme">{lane.attempts.toLocaleString('tr-TR')}</td>
           <td className="is-num" data-label="Ort. Bekleme">{formatSeconds(lane.averageWaitSeconds)}</td>
-          <td className="is-num" data-label="En Uzun %5">{formatSeconds(lane.p95WaitSeconds)}</td>
+          <td className="is-num" data-label="En Uzun %5 Bekleme">{formatSeconds(lane.p95WaitSeconds)}</td>
         </tr>)}</tbody>
       </table></div>}
     </section>
@@ -99,9 +99,9 @@ export function QueueQuotaView() {
     <section className="qq-section" aria-labelledby="qq-types">
       <h2 id="qq-types">İş Türüne Göre Kuyruk</h2>
       {metrics.isLoading ? <Busy text="İş türleri yükleniyor…" /> : metrics.isError && !metrics.data ? <p role="alert" className="qq-error">İş türü ölçümleri alınamadı.</p> : types.length === 0 ? <p className="qq-empty">Bu aralıkta çalışan ya da bekleyen iş yok.</p> : <div className="qq-table-scroll"><table className="qq-table">
-        <thead><tr><th>İş Türü</th><th className="is-num">Bekleyen</th><th className="is-num">Çalışan</th><th className="is-num">Deneme</th><th className="is-num">Hata</th><th className="is-num">Ort. Bekleme</th><th className="is-num">Ort. Süre</th></tr></thead>
+        <thead><tr><th className="qq-first">İş Türü</th><th className="is-num">Bekleyen</th><th className="is-num">Çalışan</th><th className="is-num">Deneme</th><th className="is-num">Hata</th><th className="is-num">Ort. Bekleme</th><th className="is-num">Ort. Süre</th></tr></thead>
         <tbody>{types.map(row => <tr key={row.jobType}>
-          <td><strong>{jobTitle(row.jobType)}</strong><small>{row.jobType}</small></td>
+          <td className="qq-first"><strong>{jobTitle(row.jobType)}</strong><small>{row.jobType}</small></td>
           <td className="is-num" data-label="Bekleyen">{row.queued.toLocaleString('tr-TR')}</td>
           <td className="is-num" data-label="Çalışan">{row.running.toLocaleString('tr-TR')}</td>
           <td className="is-num" data-label="Deneme">{row.attempts.toLocaleString('tr-TR')}</td>

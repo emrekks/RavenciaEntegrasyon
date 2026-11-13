@@ -160,12 +160,12 @@ function reportTabs(data: ReportSales): ReportTab[] {
   const margin = moneyBreakdown(data, profitSteps(data))?.margin ?? null
   return [
     { value: 'overview', label: 'Genel Bakış', icon: 'dashboard' },
-    { value: 'profit', label: 'Kârlılık', icon: 'trend', count: formatPercent(margin), warn: margin !== null && margin < 0 },
+    { value: 'profit', label: 'Kârlılık', icon: 'trend', count: margin === null ? '%0' : formatPercent(margin), warn: margin !== null && margin < 0 },
     { value: 'payouts', label: 'Hakediş', icon: 'wallet' },
     { value: 'orders', label: 'Sipariş Kârlılığı', icon: 'orders' },
     { value: 'products', label: 'Ürünler', icon: 'products' },
     { value: 'stock', label: 'Stok', icon: 'stock' },
-    { value: 'ops', label: 'Operasyon', icon: 'truck', count: `İptal ${formatPercent(now.cancelRate)}`, warn: (now.cancelRate ?? 0) > data.cancellations.warningRate },
+    { value: 'ops', label: 'Operasyon', icon: 'truck', count: `İptal ${now.cancelRate === null || now.cancelRate === undefined ? '%0' : formatPercent(now.cancelRate)}`, warn: (now.cancelRate ?? 0) > data.cancellations.warningRate },
     { value: 'customers', label: 'Müşteriler', icon: 'users' },
     { value: 'geo', label: 'Coğrafya', icon: 'globe' }
   ]
@@ -183,7 +183,8 @@ function SubTabs<T extends string>({ label, value, items, onChange }: { label: s
 // A change is good or bad by its direction; for returns and cancellations, up is bad.
 // previous: the previous period's value, shown under the pointer instead of the generic "Önceki döneme göre".
 function Delta({ delta, invert = false, previous }: { delta: Change | null | undefined; invert?: boolean; previous?: string }) {
-  if (!delta) return <em className="reports-delta is-flat" title="Önceki dönem: —">—</em>
+  // A change pill with nothing to compare reads a flat "%0" (a tab badge or pill is a counter, not a card value).
+  if (!delta) return <em className="reports-delta is-flat" title="Önceki dönem: —">■ %0</em>
   const tone = delta.direction === 'flat' ? 'flat' : (delta.direction === 'up') !== invert ? 'good' : 'bad'
   return <em className={`reports-delta is-${tone}`} title={previous ? `Önceki dönem: ${previous}` : 'Önceki döneme göre değişim'}>{delta.direction === 'up' ? '▲' : delta.direction === 'down' ? '▼' : '■'} {delta.text}</em>
 }
@@ -275,11 +276,10 @@ function TipText({ title, text }: { title: string; text: string }) {
 }
 
 // The previous period's figure as the explanation's last line.
-// A count or amount with nothing in it reads "—" (shared rule, shared/metric-value.ts).
-const dash = (value: number | null | undefined, format: (value: number) => string) => typeof value === 'number' && value > 0 ? format(value) : noValue
 // A previous figure of nothing ("0", "₺0,00", "%0,0") is no data either.
 const isNothing = (value: string) => /^(₺|%)?0([,.]0+)?$/u.test(value.trim())
-const previousLine = (value: string | null) => value === null || value === '—' || isNothing(value) ? 'Önceki dönem: —' : `Önceki dönem: ${value}`
+// zero: the figure's own zero ("₺0", "%0"); a sub-line with no data reads zero, only a card's main value is a dash.
+const previousLine = (value: string | null, zero = '0') => value === null || value === '—' || isNothing(value) ? `Önceki dönem: ${zero}` : `Önceki dönem: ${value}`
 
 // Genel Bakış: the period's six figures in one strip, its costs round a donut (the deductions tied to no order of the
 // period apart, under it), the way from the sales to the profit
@@ -550,7 +550,7 @@ export function KpiStrip({ label, items, marks = true, aligned = false, long = f
 const wholeLiras = (text: string) => text.replace(/₺([\d.]+),(\d{2})/gu, (_, whole: string, kurus: string) => formatTlWhole(Number(whole.replace(/\./gu, '')) + Number(kurus) / 100))
 
 // "Önceki dönem …", or that the previous period has nothing to compare.
-const previousText = (value: string | null) => previousLine(value)
+const previousText = (value: string | null, zero?: string) => previousLine(value, zero)
 const percent = (value: number) => formatPercent(value)
 
 // The previous period's account, worked out as the period's is; null when the server sent none, or when one period
@@ -583,25 +583,25 @@ function OverviewFigures({ data, money }: { data: ReportSales; money: Money | nu
     .sort((left, right) => right.value - left.value).map(item => ({ key: item.row.key, label: platformName(item.row.label), value: format(item.value) }))
   const items: Kpi[] = [
     { key: 'net', label: 'Toplam Ciro', value: noAmount ? null : now.grossSales, format: formatTl, delta: noAmount ? null : change(now.grossSales, then.grossSales),
-      note: noAmount ? previousText(null) : `Net ${dash(now.netRevenue, formatTl)} · iade ${dash(now.returnedAmount, formatTl)}`,
-      tip: `Dönemin toplam satış tutarı; iptaller sayılmaz, iadeler düşülmez. Alttaki net, iadeler düşülünce kalandır.\n${previousLine(then.ordersWithAmount > 0 ? formatTl(then.grossSales) : null)}`, split: split(row => row.ordersWithAmount > 0 ? row.grossSales : null, formatTl) },
+      note: noAmount ? previousText(null, '₺0') : `Net ${formatTl(now.netRevenue)} · iade ${formatTl(now.returnedAmount)}`,
+      tip: `Dönemin toplam satış tutarı; iptaller sayılmaz, iadeler düşülmez. Alttaki net, iadeler düşülünce kalandır.\n${previousLine(then.ordersWithAmount > 0 ? formatTl(then.grossSales) : null, '₺0')}`, split: split(row => row.ordersWithAmount > 0 ? row.grossSales : null, formatTl) },
     { key: 'profit', label: profitLabel(money), value: profit, format: formatTl,
       delta: change(profit, earlierProfit),
-      note: profit === null ? profitReason(money, noAmount) ?? 'Sipariş başına —' : now.ordersWithAmount === 0 ? 'Sipariş başına —' : `Sipariş başına ${signedTl(profit / now.ordersWithAmount)}`,
-      tip: `${profit === null ? missingCostTip(money) : profit < 0 ? netLossTip : netProfitTip}${estimateLine(money)}\n${previousLine(earlierProfit === null ? null : signedTl(earlierProfit))}`,
+      note: profit === null ? profitReason(money, noAmount) ?? 'Sipariş başına ₺0' : now.ordersWithAmount === 0 ? 'Sipariş başına ₺0' : `Sipariş başına ${signedTl(profit / now.ordersWithAmount)}`,
+      tip: `${profit === null ? missingCostTip(money) : profit < 0 ? netLossTip : netProfitTip}${estimateLine(money)}\n${previousLine(earlierProfit === null ? null : signedTl(earlierProfit), '₺0')}`,
       tone: profit === null ? undefined : profit < 0 ? 'bad' : profit > 0 ? 'good' : undefined },
     { key: 'margin', label: 'Kâr Marjı', value: money?.margin ?? null, format: percent, delta: change(money?.margin ?? null, earlier?.margin ?? null, 'rate'),
-      note: `Reklam öncesi ${beforeAds === null ? '—' : formatPercent(beforeAds)}`,
-      tip: `Net kârın satış tutarına oranı. Reklam öncesi oranda Trendyol reklamı düşülmez.${estimateLine(money)}\n${previousLine(formatPercent(earlier?.margin))}`, tone: (money?.margin ?? 0) < 0 ? 'bad' : undefined },
+      note: `Reklam öncesi ${beforeAds === null ? '%0' : formatPercent(beforeAds)}`,
+      tip: `Net kârın satış tutarına oranı. Reklam öncesi oranda Trendyol reklamı düşülmez.${estimateLine(money)}\n${previousLine(formatPercent(earlier?.margin), '%0')}`, tone: (money?.margin ?? 0) < 0 ? 'bad' : undefined },
     { key: 'cost', label: 'Maliyete Göre Kâr', value: onCost, format: percent, delta: change(onCost, earlierOnCost, 'rate'),
-      note: `Ürün maliyeti ${money?.cost && money.profit !== null ? formatTl(money.cost) : '—'}`,
-      tip: `Net kârın ürün maliyetine oranı: ürüne harcanan her liranın getirdiği kâr.${estimateLine(money)}\n${previousLine(formatPercent(earlierOnCost))}`, tone: (onCost ?? 0) < 0 ? 'bad' : undefined },
-    { key: 'orders', label: 'Sipariş', value: now.orders > 0 ? now.orders : null, format: formatCount, delta: change(now.orders, then.orders), note: `${dash(now.cancelledOrders, formatCount)} iptal · sepet ${noAmount ? '—' : formatTl(now.averageOrderValue)}`,
+      note: `Ürün maliyeti ${money?.cost && money.profit !== null ? formatTl(money.cost) : '₺0'}`,
+      tip: `Net kârın ürün maliyetine oranı: ürüne harcanan her liranın getirdiği kâr.${estimateLine(money)}\n${previousLine(formatPercent(earlierOnCost), '%0')}`, tone: (onCost ?? 0) < 0 ? 'bad' : undefined },
+    { key: 'orders', label: 'Sipariş', value: now.orders > 0 ? now.orders : null, format: formatCount, delta: change(now.orders, then.orders), note: `${formatCount(now.cancelledOrders)} iptal · sepet ${noAmount ? '₺0' : formatTl(now.averageOrderValue)}`,
       tip: `Dönemde gelen sipariş sayısı; iptal edilenler sayılmaz, tutarı okunmayan ve TL dışındaki siparişler sayılır. Ana sayfadaki Toplam Sipariş yalnız tutarı olanları sayar; sepet de tutarı olan siparişlere bölünür.\n${previousLine(formatCount(then.orders))}`, split: split(row => row.orders, formatCount) },
     // The units sold (cancellations out, returns not taken off), with what the customers kept and sent back under it;
     // the Satış card under the strip leads with the same figure (owner, 7 Nov 2026: the strip as 3 + 3).
     { key: 'sold', label: 'Satılan Adet', value: now.soldQuantity > 0 ? now.soldQuantity : null, delta: change(now.soldQuantity, then.soldQuantity),
-      note: `Net ${dash(now.keptQuantity, formatNumber)} · ${dash(now.returnedQuantity, formatNumber)} iade`,
+      note: `Net ${formatNumber(now.keptQuantity)} · ${formatNumber(now.returnedQuantity)} iade`,
       tip: `Dönemde satılan ürün adedi; iptaller sayılmaz, iadeler düşülmez. Net adet, iadeler düşülünce müşteride kalandır.\n${previousLine(formatNumber(then.soldQuantity))}`,
       split: split(row => row.soldQuantity, formatNumber) }
   ]
@@ -1087,7 +1087,7 @@ function orderMetrics(data: ReportSales, money: Money | null): Metric[] {
   return [
     // Its change goes in the explanation: a badge beside it would wrap the name and put the card's rows out of line.
     { key: 'basket', label: 'Sipariş Başına Satış', value: noAmount ? '—' : formatTl(now.averageOrderValue),
-      note: `Bir siparişin ortalama satış tutarı.\n${previousLine(before.ordersWithAmount > 0 ? formatTl(before.averageOrderValue) : null)}` },
+      note: `Bir siparişin ortalama satış tutarı.\n${previousLine(before.ordersWithAmount > 0 ? formatTl(before.averageOrderValue) : null, '₺0')}` },
     { key: 'profit', label: 'Sipariş Başına Kâr', value: profit === null || now.ordersWithAmount === 0 ? '—' : signedTl(profit / now.ordersWithAmount), tone: profit !== null && profit < 0 ? 'bad' : undefined,
       note: `Bir siparişe düşen ortalama tahmini kâr.${profit === null ? profitLater(money) : money?.estimate ? ` ${money.estimate}` : ''}` },
     { key: 'cargo', label: 'Sipariş Başına Kargo', value: finance && cargo && cargoOrders > 0 ? formatTl(cargo.combined / cargoOrders) : '—',
@@ -1157,9 +1157,9 @@ function returnMetrics(data: ReportSales): Metric[] {
   const topReason = [...data.returnReasons].filter(reason => reason.known && reason.count > 0).sort((a, b) => b.count - a.count)[0]
   return [
     { key: 'rate', label: 'İade Oranı', value: formatPercent(now.returnRate), sub: `önceki ${formatPercent(before.returnRate)}`, delta: change(now.returnRate, before.returnRate, 'rate'), invert: true, previous: formatPercent(before.returnRate), detail: 'returns',
-      note: `${returnRateTip}\n${previousLine(formatPercent(before.returnRate))}` },
+      note: `${returnRateTip}\n${previousLine(formatPercent(before.returnRate), '%0')}` },
     // The amount the customers paid for what they sent back: the İade Edilen Tutar taken off on Kâr Köprüsü.
-    { key: 'returned', label: 'İade Edilen', value: now.returnedQuantity > 0 ? `${formatNumber(now.returnedQuantity)} adet` : noValue, sub: `${dash(now.returnClaims, formatCount)} talep · ${dash(now.returnedAmount, formatTl)}`, detail: 'returns',
+    { key: 'returned', label: 'İade Edilen', value: now.returnedQuantity > 0 ? `${formatNumber(now.returnedQuantity)} adet` : noValue, sub: `${formatCount(now.returnClaims)} talep · ${formatTl(now.returnedAmount)}`, detail: 'returns',
       note: 'Müşterilerin iade ettiği ürün adedi; reddedilen ve iptal edilen talepler sayılmaz.' },
     { key: 'cargo', label: 'İade Kargo Zararı', value: returnCargo === null ? '—' : formatTl(returnCargo), sub: returnCargo === null ? undefined : 'yalnız Trendyol', detail: 'returns',
       note: 'İadelerin faturası gelen kargo ve operasyon maliyeti, yalnız Trendyol.' },
@@ -1174,7 +1174,7 @@ function returnMetrics(data: ReportSales): Metric[] {
       note: `İade taleplerinde en sık bildirilen neden${topReason ? `: ${topReason.reason}` : ''}.` },
     { key: 'cancel', label: 'İptal Oranı', value: formatPercent(now.cancelRate), tone: (now.cancelRate ?? 0) > warning ? 'warn' : undefined, detail: 'cancellations',
       note: `Sipariş edilen ürün adedinin yüzde kaçının iptal edildiği. ${formatPercent(warning)} eşiğini geçince uyarı rengiyle yazılır.` },
-    { key: 'cancelled', label: 'İptal Edilen', value: now.cancelledOrders > 0 ? `${formatCount(now.cancelledOrders)} sipariş` : noValue, sub: `${dash(data.cancellations.cancelledQuantity, formatNumber)} adet · ${dash(cancelled, formatTl)}`, detail: 'cancellations',
+    { key: 'cancelled', label: 'İptal Edilen', value: now.cancelledOrders > 0 ? `${formatCount(now.cancelledOrders)} sipariş` : noValue, sub: `${formatNumber(data.cancellations.cancelledQuantity)} adet · ${formatTl(cancelled ?? 0)}`, detail: 'cancellations',
       note: 'İptal edilen sipariş, adet ve liste fiyatıyla tutar; satışa girmez.' }
   ]
 }
@@ -1406,8 +1406,8 @@ function ProductsView({ data, sub, onSub }: { data: ReportSales; sub: ProductSub
     { key: 'returned', label: 'İade Edilen Adet', value: now.returnedQuantity, delta: change(now.returnedQuantity, then.returnedQuantity), invert: true,
       note: previousText(formatNumber(then.returnedQuantity)) },
     { key: 'rate', label: 'İade Oranı', value: now.returnRate, format: percent, delta: change(now.returnRate, then.returnRate, 'rate'), invert: true,
-      note: previousText(formatPercent(then.returnRate)), tip: returnRateTip },
-    { key: 'price', label: 'Adet Başına Satış', value: unit(now), format: formatTl, delta: change(unit(now), unit(then)), note: previousText(formatTl(unit(then))), tip: 'Bir ürünün ortalama satış fiyatı; iadeler düşülmeden.' },
+      note: previousText(formatPercent(then.returnRate), '%0'), tip: returnRateTip },
+    { key: 'price', label: 'Adet Başına Satış', value: unit(now), format: formatTl, delta: change(unit(now), unit(then)), note: previousText(formatTl(unit(then)), '₺0'), tip: 'Bir ürünün ortalama satış fiyatı; iadeler düşülmeden.' },
     { key: 'brands', label: 'Satan Marka', value: selling(data.brands), format: formatCount, note: `${formatCount(selling(data.categories))} kategoride`, tip: 'Dönemde satışı olan marka sayısı; markası girili ürünlerden sayılır.' }
   ]
   return <div className="reports-summary">
@@ -1469,19 +1469,19 @@ function ProfitView({ data }: { data: ReportSales }) {
   const tone = (value: number | null) => value === null ? undefined : value < 0 ? 'bad' as const : value > 0 ? 'good' as const : undefined
   const items: Kpi[] = [
     { key: 'revenue', label: 'Toplam Ciro', value: noAmount ? null : now.grossSales, format: formatTl, delta: noAmount ? null : change(now.grossSales, then.grossSales),
-      note: previousText(then.ordersWithAmount > 0 ? formatTl(then.grossSales) : null),
+      note: previousText(then.ordersWithAmount > 0 ? formatTl(then.grossSales) : null, '₺0'),
       tip: salesTip },
     { key: 'costed', label: 'Maliyeti Olan Ciro', value: costed ? costedSales : null, format: formatTl,
-      delta: costed && earlierCosted ? change(costedSales, earlierCostedSales) : null, note: !costed && noCost ? noCost : previousText(earlierCosted ? formatTl(earlierCostedSales) : null),
+      delta: costed && earlierCosted ? change(costedSales, earlierCostedSales) : null, note: !costed && noCost ? noCost : previousText(earlierCosted ? formatTl(earlierCostedSales) : null, '₺0'),
       tip: `Ürün maliyeti girili satışların tutarı; iadeler düşülmeden. Toplam Ciro'nun ${formatPercent(now.grossSales > 0 ? costedSales / now.grossSales : null)} kadarı.` },
     { key: 'profit', label: profitLabel(money), value: profit, format: formatTl,
-      delta: change(profit, earlierProfit), note: profit === null && profitReason(money, noAmount) ? profitReason(money, noAmount)! : previousText(earlierProfit === null ? null : signedTl(earlierProfit)), tone: tone(profit),
+      delta: change(profit, earlierProfit), note: profit === null && profitReason(money, noAmount) ? profitReason(money, noAmount)! : previousText(earlierProfit === null ? null : signedTl(earlierProfit), '₺0'), tone: tone(profit),
       tip: `${profit === null ? missingCostTip(money) : profit < 0 ? netLossTip : netProfitTip}${estimateLine(money)}` },
     { key: 'margin', label: 'Net Kâr / Satış Fiyatı Oranı', value: money?.margin ?? null, format: percent, delta: change(money?.margin ?? null, earlier?.margin ?? null, 'rate'),
-      note: previousText(formatPercent(earlier?.margin)), tone: (money?.margin ?? 0) < 0 ? 'bad' : undefined,
+      note: previousText(formatPercent(earlier?.margin), '%0'), tone: (money?.margin ?? 0) < 0 ? 'bad' : undefined,
       tip: 'Net kârın satış tutarına oranı; Genel Bakış\'taki Kâr Marjı ile aynı.' },
     { key: 'onCost', label: 'Net Kâr / Ürün Maliyeti Oranı', value: onCost, format: percent, delta: change(onCost, earlierOnCost, 'rate'),
-      note: previousText(formatPercent(earlierOnCost)), tone: (onCost ?? 0) < 0 ? 'bad' : undefined,
+      note: previousText(formatPercent(earlierOnCost), '%0'), tone: (onCost ?? 0) < 0 ? 'bad' : undefined,
       tip: 'Net kârın ürün maliyetine oranı; Genel Bakış\'taki Maliyete Göre Kâr ile aynı.' }
   ]
   return <div className="reports-summary">
@@ -1889,10 +1889,10 @@ function Returns({ data }: { data: ReportSales }) {
     { key: 'units', label: 'İade Adedi', value: now.returnedQuantity, delta: change(now.returnedQuantity, then.returnedQuantity), invert: true,
       note: previousText(formatNumber(then.returnedQuantity)), tip: 'Müşterilerin geri gönderdiği ürün adedi.' },
     { key: 'rate', label: 'İade Oranı', value: now.returnRate, format: percent, delta: change(now.returnRate, then.returnRate, 'rate'), invert: true,
-      note: previousText(formatPercent(then.returnRate)), tip: returnRateTip },
+      note: previousText(formatPercent(then.returnRate), '%0'), tip: returnRateTip },
     { key: 'amount', label: 'İade Liste Tutarı', value: now.ordersWithAmount > 0 ? returnedAtList(now) : null, format: formatTl,
       delta: now.ordersWithAmount > 0 ? change(returnedAtList(now), returnedAtList(then)) : null, invert: true,
-      note: previousText(then.ordersWithAmount > 0 ? formatTl(returnedAtList(then)) : null), tip: 'İade edilen ürünlerin liste fiyatıyla tutarı, Trendyol gibi. Kâr hesabında müşterinin ödediği tutar düşülür.' }
+      note: previousText(then.ordersWithAmount > 0 ? formatTl(returnedAtList(then)) : null, '₺0'), tip: 'İade edilen ürünlerin liste fiyatıyla tutarı, Trendyol gibi. Kâr hesabında müşterinin ödediği tutar düşülür.' }
   ]
   return <div className="reports-grid">
     <div className="is-wide"><KpiStrip label="İadelerin göstergeleri" items={items} long /></div>
@@ -1913,7 +1913,7 @@ function Cancellations({ data }: { data: ReportSales }) {
       { key: 'orders', label: 'İptal Edilen Sipariş', value: cancellations.cancelledOrders, format: formatCount, delta: change(cancellations.cancelledOrders, then.cancelledOrders), invert: true,
         note: previousText(formatCount(then.cancelledOrders)), tip: 'Tamamı iptal edilen sipariş sayısı.' },
       { key: 'rate', label: 'İptal Oranı', value: cancellations.cancelRate, format: percent, delta: change(cancellations.cancelRate, then.cancelRate, 'rate'), invert: true,
-        note: previousText(formatPercent(then.cancelRate)), tip: `Sipariş edilen ürün adedinin yüzde kaçının iptal edildiği. Uyarı eşiği ${formatPercent(cancellations.warningRate)}.`, tone: warn(cancellations.cancelRate) ? 'warn' : undefined },
+        note: previousText(formatPercent(then.cancelRate), '%0'), tip: `Sipariş edilen ürün adedinin yüzde kaçının iptal edildiği. Uyarı eşiği ${formatPercent(cancellations.warningRate)}.`, tone: warn(cancellations.cancelRate) ? 'warn' : undefined },
       { key: 'units', label: 'İptal Edilen Adet', value: cancellations.cancelledQuantity, note: 'Kısmi iptaller dahil', tip: 'İptal edilen ürün adedi; kısmi iptaller dahil.' },
       { key: 'amount', label: 'İptal Edilen Tutar', value: cancellations.cancelledAmount ?? null, format: formatTl, note: 'Satış tutarına girmez', tip: 'İptal edilen ürünlerin liste fiyatıyla tutarı; satışa girmez.' }
     ]} /></div>

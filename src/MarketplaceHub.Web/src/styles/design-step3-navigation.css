@@ -28,8 +28,8 @@ html body .app-shell.stitch-shell main .product-add-steptabs.product-add-steptab
   html body .app-shell.stitch-shell main .product-add-steptabs.product-add-steptabs .rv-step-num { width: 22px; height: 22px; font-size: 12px; }
 }
 
-/* Promosyon: the four tariff pages as tabs; on a phone the row scrolls sideways (the rv-view-tabs strip rule). */
-html body .app-shell.stitch-shell main .promotion-page-tabs { min-width: 0; }
+/* Promosyon: the platforms as the page tabs; on a phone the row scrolls sideways (the rv-view-tabs strip rule). */
+html body .app-shell.stitch-shell main .promotion-platform-tabs { min-width: 0; }
 
 /* 4. Segments inside a panel (filter-like choices): Etiket Tasarımı A4 / Sticker and its field groups are 32px segments. */
 html body .app-shell.stitch-shell main .ss-page .rv-tabs.rv-tabs.rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.ss-seg2 { display: inline-flex !important; width: auto !important; height: auto !important; min-height: 0 !important; max-height: none !important; gap: 2px !important; padding: 3px !important; overflow: visible; background: var(--rv-color-surface-soft) !important; border: 1px solid var(--rv-color-border) !important; border-radius: 12px !important; box-shadow: none !important; }
