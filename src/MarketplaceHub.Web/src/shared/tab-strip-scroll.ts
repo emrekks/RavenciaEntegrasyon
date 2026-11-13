@@ -46,7 +46,7 @@ export function useTabStripScroll(ref: RefObject<HTMLElement | null>, activeValu
   useEffect(() => {
     const strip = ref.current
     if (!strip) return
-    revealActiveTab(strip, true)
+    revealActiveTab(strip, false)
     updateStripFade(strip)
   }, [ref, activeValue])
   useEffect(() => {
