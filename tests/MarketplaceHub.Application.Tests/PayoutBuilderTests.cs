@@ -87,9 +87,9 @@ public sealed class PayoutBuilderTests
         Assert.Equal(5, view.ExpectedRecords);
         Assert.Equal(240m, view.Unknown);
         // Türkiye-Körfez on the estimated payout day: Thursday 5 Nov takes the sales due Thursday to Sunday, the deduction
-        // due that day and what waits since Monday.
+        // due that day; the sale past its due day counts in Vadesi Geçmiş Bekleyen alone (owner, 13 Nov 2026).
         Assert.Equal(Today.AddDays(1), view.Next!.Day);
-        Assert.Equal(800m - 200m - 20m + 240m, view.Next.Amount);
+        Assert.Equal(800m - 200m - 20m, view.Next.Amount);
         Assert.Equal("PAYOUT_DAY", view.Next.Kind);
         var europe = Assert.Single(view.Regions, region => region.Region == PayoutBuilder.Europe);
         Assert.Equal(400m, europe.Expected);
@@ -263,7 +263,8 @@ public sealed class PayoutBuilderTests
         var europeDay = Assert.Single(view.Upcoming, group => group.Region == PayoutBuilder.Europe);
         Assert.Equal((new DateOnly(2026, 11, 23), "PAYOUT_DAY", 800m), (europeDay.Day, europeDay.Kind, europeDay.Amount));
         var europe = Assert.Single(view.Regions, region => region.Region == PayoutBuilder.Europe);
-        Assert.Equal(new DateOnly(2026, 11, 23), europe.NextDay);
+        // Past its due day it counts in Vadesi Geçmiş Bekleyen alone: no next Avrupa payout from it (owner, 13 Nov 2026).
+        Assert.Null(europe.NextDay);
         Assert.Equal(800m, europe.Unknown);
     }
 
@@ -425,7 +426,8 @@ public sealed class PayoutBuilderTests
         var view = PayoutBuilder.Build(rows, payouts, Stores, Today, 90, []);
         Assert.Equal((240m - 20m, 2), (view.Expected, view.ExpectedRecords));
         Assert.Equal((1200m, 2), (view.PaidUnread, view.PaidUnreadRecords));
-        Assert.Equal(220m, view.Next!.Amount);
+        // The deduction due 1 Nov is past its due day: Vadesi Geçmiş Bekleyen, not Sıradaki Ödeme.
+        Assert.Equal((240m, -20m), (view.Next!.Amount, view.Unknown));
 
         // Once the payout is read, its records carry its id; nothing is held apart any more.
         var read = PayoutBuilder.Build(rows, [payouts[0], payouts[1] with { LinesRead = true }], Stores, Today, 90, []);

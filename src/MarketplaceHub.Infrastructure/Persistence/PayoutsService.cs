@@ -477,7 +477,7 @@ internal static class PayoutBuilder
         var open = lines.Where(x => Open(x.Line) && !AwaitsRead(x.Row, x.Line, unread)).Select(x => (x.Row, x.Line, Expect: Expect(x.Row, x.Line, today, lastPaid))).ToList();
         var overdue = open.Where(x => x.Line.DueDay < today).ToList();
 
-        var upcoming = open
+        List<PayoutGroupView> Days(IEnumerable<(PayoutRow Row, PayoutLineView Line, (DateOnly Day, string Kind, string Region) Expect)> records) => records
             .GroupBy(x => (x.Row.ConnectionId, x.Expect.Day, x.Expect.Region, x.Expect.Kind))
             .Select(group =>
             {
@@ -495,8 +495,12 @@ internal static class PayoutBuilder
                     { Estimates = estimates };
             })
             .OrderBy(x => x.Day).ThenBy(x => x.PlatformCode).ThenBy(x => x.Region).ToList();
+        var upcoming = Days(open);
+        // The next payout, overall and per region and marketplace, counts only the records not past their due day (owner,
+        // 13 Nov 2026, the guide's rule): one past it counts in Vadesi Geçmiş Bekleyen alone, never in Sıradaki Ödeme too.
+        var coming = Days(open.Where(x => !(x.Line.DueDay < today)));
         // What each day to come pays once the days before it that netted to nothing or less are taken off (Carry).
-        var carried = Carry(upcoming);
+        var carried = Carry(coming);
         decimal Payable(PayoutGroupView group) => carried.TryGetValue(group.Key, out var carry) ? carry.Payable : 0m;
         IGrouping<DateOnly, PayoutGroupView>? FirstPaying(IEnumerable<PayoutGroupView> groups) =>
             groups.Where(x => !Waiting(x.Kind)).GroupBy(x => x.Day).OrderBy(x => x.Key).FirstOrDefault(day => day.Sum(Payable) > 0);
@@ -529,7 +533,7 @@ internal static class PayoutBuilder
             .Select(region =>
             {
                 var due = open.Where(x => x.Expect.Region == region).ToList();
-                var next = FirstPaying(upcoming.Where(x => x.Region == region));
+                var next = FirstPaying(coming.Where(x => x.Region == region));
                 var waiting = pending.Where(x => x.Region == region).ToList();
                 return new PayoutRegionView(region, due.Sum(x => x.Line.Net), due.Count, next?.Key, next?.Sum(Payable),
                     overdue.Where(x => x.Expect.Region == region).Sum(x => x.Line.Net), waiting.Sum(x => x.Amount), waiting.Count);
@@ -542,7 +546,7 @@ internal static class PayoutBuilder
             .Select(code =>
             {
                 var due = open.Where(x => x.Row.PlatformCode == code).ToList();
-                var next = FirstPaying(upcoming.Where(x => x.PlatformCode == code));
+                var next = FirstPaying(coming.Where(x => x.PlatformCode == code));
                 var waiting = pending.Where(x => x.Platform == code).ToList();
                 return new PayoutPlatformView(code, due.Sum(x => x.Line.Net), due.Count, next?.Key, next?.Sum(Payable),
                     overdue.Where(x => x.Row.PlatformCode == code).Sum(x => x.Line.Net), waiting.Sum(x => x.Amount), waiting.Count);
@@ -554,9 +558,9 @@ internal static class PayoutBuilder
         // The next payout: the first day to come that pays anything once each store's earlier days that netted to
         // nothing or less are taken off it (the marketplace takes them off that store's next payout in the region:
         // Carry), the waiting overdue records left out. Carried: what those earlier days took off.
-        var nextDay = FirstPaying(upcoming)?.Key;
+        var nextDay = FirstPaying(coming)?.Key;
         var next = nextDay is { } first
-            ? upcoming.Where(x => x.Day == first && !Waiting(x.Kind)).GroupBy(x => 1).Select(group => group.First() with
+            ? coming.Where(x => x.Day == first && !Waiting(x.Kind)).GroupBy(x => 1).Select(group => group.First() with
             {
                 Key = $"next:{first:yyyy-MM-dd}",
                 Amount = Math.Round(group.Sum(Payable), 2),
