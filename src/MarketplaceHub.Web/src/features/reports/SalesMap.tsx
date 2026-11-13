@@ -51,7 +51,7 @@ function sum(items: Amounts[]): Amounts {
     { orders: 0, ordersWithAmount: 0, netRevenue: 0, grossSales: 0 })
 }
 
-const formatMetric = (value: number | null, metric: Metric) => value === null ? 'Tutar yok' : metric === 'orders' ? formatCount(value) : lira.format(value)
+const formatMetric = (value: number | null, metric: Metric) => value === null ? '—' : metric === 'orders' ? formatCount(value) : lira.format(value)
 
 // The change against the same area in the previous period; "Yeni" when it sold nothing then.
 function change(now: number | null, before: number | null) {
