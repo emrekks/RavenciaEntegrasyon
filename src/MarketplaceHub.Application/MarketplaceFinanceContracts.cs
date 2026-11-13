@@ -59,7 +59,9 @@ public interface ITrendyolFinancePort
 
 // n11's settlement days (GetSettlementList) and a day's order item lines (GetSettlementDetail), as sent. Days are
 // Turkey's calendar days. Status: n11's own word for the day (its values are not documented), also on each day's lines.
-public sealed record RemoteSettlementDay(DateOnly? SettlementDate, DateOnly? RemittanceDate, string? Status, decimal PaymentAmount, decimal DeductionAmount, decimal SettlementAmount);
+// A day total n11 sends but that cannot be read is null (unknown), never a made-up amount. The sync plans by
+// SettlementDate and Status alone, so one unreadable total must not stop the day list.
+public sealed record RemoteSettlementDay(DateOnly? SettlementDate, DateOnly? RemittanceDate, string? Status, decimal? PaymentAmount, decimal? DeductionAmount, decimal? SettlementAmount);
 
 public sealed record RemoteSettlementDayPage(IReadOnlyList<RemoteSettlementDay> Items, int Page, int PageCount);
 

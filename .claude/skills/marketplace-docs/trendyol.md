@@ -227,8 +227,10 @@ purpose (`TurkeyTime.cs`).
 - Webhook passive/active services: PUT `webhook/sellers/{id}/webhooks/{webhookId}/deactivate` and `.../activate`, both
   answer 200 OK (offline docs `trendyol-api-son.md` 174-175 list, ~6430-6470 "Webhook Aktife/Pasife Alma"). Owner,
   13 Nov 2026: Pasife Al sets the connection's webhook passive with deactivate (same id and address, row PAUSED);
-  activation calls activate and opens the same row again. A webhook Trendyol no longer has (404) or that does not
-  activate is removed (404 skipped) and a new one is made. Webhook'u Kapat and Bağlantıyı Sil delete a passive one too
+  activation calls activate and opens the same row again. A webhook Trendyol no longer has (404) or that is refused (4xx)
+  on activate is removed (404 skipped) and a new one is made; a quota, network or 5xx failure keeps it PAUSED and the
+  hourly upkeep activates the same one again. A replaced passive webhook is deleted at Trendyol before its row closes
+  (one that cannot be deleted stays PAUSED with a pending record, retried hourly). Webhook'u Kapat and Bağlantıyı Sil delete a passive one too
   (`InstantNotificationService.PauseForInactiveConnectionAsync`, `ActivatePausedTrendyolAsync`, `DisableAsync`).
 - Product update polling: every 2 min for 10 min, then 5, 15, 30 min; stops after 4 h.
 - Commission tariff workbook ("KomisyonTarifeleriÜrünleri", seller panel → Ürün Komisyon Tarifeleri; no API): one

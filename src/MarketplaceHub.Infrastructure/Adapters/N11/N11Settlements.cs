@@ -51,7 +51,7 @@ public static class N11SettlementMapper
         var items = response.Descendants().Where(x => x.Name.LocalName == "settlementList")
             .Select(element => new RemoteSettlementDay(
                 Day(N11HttpClient.Child(element, "settlementDate")), Day(N11HttpClient.Child(element, "remittanceDate")), N11HttpClient.Child(element, "status"),
-                Number(element, "paymentAmount"), Number(element, "deductionAmount"), Number(element, "settlementAmount")))
+                DayTotal(element, "paymentAmount"), DayTotal(element, "deductionAmount"), DayTotal(element, "settlementAmount")))
             .ToList();
         return new(items, page, PageCount(response.Descendants().FirstOrDefault(x => x.Name.LocalName == "settlementListData")));
     }
@@ -118,6 +118,14 @@ public static class N11SettlementMapper
         var text = N11HttpClient.Child(element, name);
         if (string.IsNullOrWhiteSpace(text)) return 0m;
         return RemoteJson.ParseDecimal(text) ?? throw new JsonException($"N11 settlement field {name} is not a number.");
+    }
+
+    // A day total: 0 when n11 leaves it out, null when it is there but cannot be read. Unlike Number it never throws:
+    // the day list only plans which days to read, and one unreadable total blocked the whole settlement sync.
+    internal static decimal? DayTotal(XElement element, string name)
+    {
+        var text = N11HttpClient.Child(element, name);
+        return string.IsNullOrWhiteSpace(text) ? 0m : RemoteJson.ParseDecimal(text);
     }
 
     // A calendar day as n11 writes it (dd/MM/yyyy, or yyyy-MM-dd); null when there is none or it cannot be read.

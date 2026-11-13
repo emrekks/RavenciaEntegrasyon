@@ -171,6 +171,20 @@ public sealed class AdapterRemoteValueTests
         Assert.Throws<JsonException>(() => N11SettlementMapper.Number(line, "adFee"));
     }
 
+    // An unreadable n11 day total is unknown (null) and the day list is still read: the sync plans by date and status.
+    [Fact]
+    public void AnUnreadableN11DayTotalDoesNotStopTheDayList()
+    {
+        var response = XElement.Parse("<r><settlementList><settlementDate>05/11/2026</settlementDate><status>ODENDI</status><paymentAmount>1234,50</paymentAmount><settlementAmount>10.5</settlementAmount></settlementList></r>");
+
+        var day = Assert.Single(N11SettlementMapper.Days(response, 0).Items);
+
+        Assert.Equal(new DateOnly(2026, 11, 5), day.SettlementDate);
+        Assert.Null(day.PaymentAmount);
+        Assert.Equal(0m, day.DeductionAmount);
+        Assert.Equal(10.5m, day.SettlementAmount);
+    }
+
     // D18: a SOAP fault inside HTTP 500 is read before the status decides.
     [Fact]
     public void AnN11FaultInsideHttp500IsClassifiedByTheFault()

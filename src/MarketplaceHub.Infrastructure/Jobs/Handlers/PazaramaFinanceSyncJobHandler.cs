@@ -42,7 +42,7 @@ public sealed class PazaramaFinanceSyncJobHandler(AppDbContext db, IOrderFinance
             .ToListAsync(cancellationToken);
         var refreshed = stored.GroupBy(x => x.OrderNumber!, StringComparer.Ordinal)
             .ToDictionary(x => x.Key, x => x.Min(row => row.UpdatedAt), StringComparer.Ordinal);
-        var due = Due(orders.Select(x => (x.OrderNumber, x.OrderedAt)), refreshed, Setting("OrdersPerRun", 100, 1, 500));
+        var due = Due(orders.Select(x => (x.OrderNumber, x.OrderedAt)), refreshed, Setting("OrdersPerRun", 100, 1, 500), Rotation(now));
 
         var context = new AdapterContext(request.TenantId, request.ConnectionId, request.CorrelationId, $"pazarama-finance:{request.ConnectionId:N}", now.AddMinutes(10), Operation: IntegrationOperation.Automatic);
         int requests = 0, received = 0, inserted = 0, updated = 0;
@@ -124,11 +124,29 @@ public sealed class PazaramaFinanceSyncJobHandler(AppDbContext db, IOrderFinance
     // Orders without a stored movement first, the newest of them first; then the read ones, the one refreshed longest
     // ago first. Before 6 Nov 2026 the read ones went newest first, so past OrdersPerRun orders in the lookback the
     // older ones were never read again (late refunds, the payout day `transferredDate`).
-    internal static List<(string OrderNumber, DateTimeOffset OrderedAt)> Due(IEnumerable<(string OrderNumber, DateTimeOffset OrderedAt)> orders, IReadOnlyDictionary<string, DateTimeOffset> refreshed, int perRun) =>
-        orders.OrderBy(x => refreshed.ContainsKey(x.OrderNumber))
-            .ThenBy(x => refreshed.TryGetValue(x.OrderNumber, out var at) ? at : DateTimeOffset.MinValue)
-            .ThenByDescending(x => x.OrderedAt)
-            .Take(perRun).ToList();
+    // An order Pazarama answers with no movement yet (not delivered, no payment agreement) stays unread, so unread orders
+    // alone could fill every run: past OrdersPerRun of them the stored ones were never refreshed and the unread ones past
+    // the newest were never reached. When both kinds are waiting, unread orders take at most half the run, and when
+    // there are more of them than that, the run reads the next block of them (rotation counts the runs), so every unread
+    // order is asked again within a few runs.
+    internal static List<(string OrderNumber, DateTimeOffset OrderedAt)> Due(IEnumerable<(string OrderNumber, DateTimeOffset OrderedAt)> orders, IReadOnlyDictionary<string, DateTimeOffset> refreshed, int perRun, long rotation = 0)
+    {
+        var list = orders.ToList();
+        var unread = list.Where(x => !refreshed.ContainsKey(x.OrderNumber)).OrderByDescending(x => x.OrderedAt).ThenBy(x => x.OrderNumber, StringComparer.Ordinal).ToList();
+        var read = list.Where(x => refreshed.ContainsKey(x.OrderNumber)).OrderBy(x => refreshed[x.OrderNumber]).ThenByDescending(x => x.OrderedAt).ToList();
+        var unreadBudget = Math.Min(unread.Count, read.Count == 0 ? perRun : Math.Max(Math.Max(1, perRun / 2), perRun - read.Count));
+        var due = new List<(string OrderNumber, DateTimeOffset OrderedAt)>(perRun);
+        if (unreadBudget > 0)
+        {
+            var start = unread.Count <= unreadBudget ? 0 : (int)(Math.Abs(rotation) % unread.Count * unreadBudget % unread.Count);
+            for (var index = 0; index < unreadBudget; index++) due.Add(unread[(start + index) % unread.Count]);
+        }
+        due.AddRange(read.Take(perRun - due.Count));
+        return due;
+    }
+
+    // Which block of the unread orders a run reads: the six-hour runs since the epoch.
+    internal static long Rotation(DateTimeOffset now) => now.ToUnixTimeSeconds() / 21_600;
 
     // A refusal of one order (not found, refused, an answer that cannot be read) does not stop the others; a quota,
     // network, server or credential failure does, as the next order would meet it too.
