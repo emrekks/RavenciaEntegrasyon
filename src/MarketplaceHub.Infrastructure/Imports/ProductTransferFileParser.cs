@@ -242,14 +242,23 @@ public static partial class ProductTransferFileParser
         return value.Kind == ProductTransferValueKind.Clear ? ProductTransferValue.Invalid("Panel fiyatı silinemez; hücreyi boş bırakırsanız fiyat değişmez.") : value;
     }
 
-    // The product card's VAT rate, as the export writes it ("%10") or a plain number: 0 to 100; it cannot be removed.
+    // The product card's VAT rate, as the export writes it ("%10") or a plain number; it cannot be removed. Scan C-10
+    // (13 Nov 2026): a cell Excel formats as a percentage holds the fraction (%10 is stored 0.1), which was taken as a
+    // rate of 0.1 %: a value between 0 and 1 without a % sign is read as that fraction of 100. The result must be one of
+    // the rates the panel takes (BulkProductFields.VatRates: 0, 1, 10, 20).
     public static ProductTransferValue ParseVat(string text, bool fromCsv)
     {
         var trimmed = text.Trim();
+        var percentSign = trimmed.StartsWith('%') || trimmed.EndsWith('%');
         var number = trimmed.StartsWith('%') ? trimmed[1..] : trimmed.EndsWith('%') ? trimmed[..^1] : trimmed;
         if (trimmed.Length > 0 && number.Trim().Length == 0) return ProductTransferValue.Invalid("KDV oranı için bir sayı yazın.");
         var value = ParseNumber(number, fromCsv, "KDV oranı", 100m, "100", zeroAllowed: true);
-        return value.Kind == ProductTransferValueKind.Clear ? ProductTransferValue.Invalid("KDV oranı silinemez; hücreyi boş bırakırsanız değişmez.") : value;
+        if (value.Kind == ProductTransferValueKind.Clear) return ProductTransferValue.Invalid("KDV oranı silinemez; hücreyi boş bırakırsanız değişmez.");
+        if (value.Kind != ProductTransferValueKind.Set || value.Amount is not decimal amount) return value;
+        var rate = !percentSign && amount > 0m && amount < 1m ? decimal.Round(amount * 100m, 4, MidpointRounding.ToEven) : amount;
+        return BulkProductFields.VatRates.Contains(rate)
+            ? ProductTransferValue.Set(rate)
+            : ProductTransferValue.Invalid($"KDV oranı 0, 1, 10 veya 20 olmalıdır; dosyada {trimmed} yazıyor.");
     }
 
     // The product title: text up to 320 characters; it cannot be removed.
