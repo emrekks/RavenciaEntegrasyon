@@ -26,6 +26,18 @@ public static class ProductApprovalReconciliationPolicy
         !createConfirmed
         && ShouldResetMissingPublication(expectedVariantCount, statuses);
 
+    // Shopify answers a SKU through its search (`sku:` query), whose index lags behind a product just created: a fresh
+    // product reads "not found" for a while. Scan C-15 (13 Nov 2026): that answer reset the card at the first check
+    // (queued with no delay) and dropped its links, so the next send opened a second product. Shopify's first check now
+    // waits a few minutes, and "not found" resets a card only once the search has had its grace and no SKU of the card
+    // was confirmed created (the same protection Trendyol has).
+    public static readonly TimeSpan ShopifyFirstCheckDelay = TimeSpan.FromMinutes(3);
+    public static readonly TimeSpan ShopifySearchGrace = TimeSpan.FromMinutes(15);
+
+    public static bool ShouldResetMissingShopifyPublication(int expectedVariantCount, IReadOnlyCollection<RemotePublicationStatus> statuses, bool createConfirmed, DateTimeOffset checkStartedAt, DateTimeOffset now) =>
+        now - checkStartedAt >= ShopifySearchGrace
+        && ShouldResetMissingPublication(expectedVariantCount, statuses, createConfirmed);
+
     public static bool HasSplitApprovedContents(IEnumerable<RemotePublicationStatus> statuses) => statuses
         .Where(status => string.Equals(status.Status?.Trim(), "APPROVED", StringComparison.OrdinalIgnoreCase))
         .Select(status => status.ExternalProductId?.Trim())
