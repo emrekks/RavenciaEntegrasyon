@@ -743,7 +743,10 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
         }
 
         await using (var db = fixture.CreateContext())
+        {
             Assert.Equal(panelOnly.Id, (await ModelCodeOwnership.FindUnlinkedHolderAsync(db, tenant.Id, connection.Id, "ortak model", imported.Id, CancellationToken.None))?.ProductId);
+            Assert.Null(await ModelCodeOwnership.FindUnlinkedHolderAsync(db, tenant.Id, connection.Id, "BAŞKA-MODEL", imported.Id, CancellationToken.None));
+        }
 
         // Once the panel card is linked on the connection it is the same marketplace model: no conflict.
         await using (var link = fixture.CreateContext())
