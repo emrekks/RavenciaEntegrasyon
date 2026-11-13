@@ -2835,48 +2835,56 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         // put the line's units somewhere one after the other, each reading what the other already did (YENİ-04).
         // Read committed, so the read after the lock sees the other's committed rows; a serializable snapshot taken
         // before the wait would not.
-        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
-        try
+        // The inventory item carries a version: a sale or another stock change on the same item between the read and the
+        // save is a concurrency conflict. The whole attempt (lock, reads, the delta on the fresh on-hand) runs again, a few
+        // times, and a conflict that keeps coming back is a 409 STOCK_CHANGED instead of a server error (scan 13 Nov 2026).
+        var outcome = await SerializableWriteRetry.RunAsync<ServiceResult<ReturnDetailView>?>(db, async token =>
         {
-            await ReturnPendingStock.LockLinesAsync(db, tenantId, [command.ReturnLineId], cancellationToken);
-            var existing = await db.ReturnStockDispositions.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.IdempotencyKey == idempotencyKey, cancellationToken);
-            if (existing)
+            await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, token);
+            try
             {
-                await transaction.CommitAsync(cancellationToken);
-                return await ReturnAsync(tenantId, claimId, cancellationToken);
-            }
+                await ReturnPendingStock.LockLinesAsync(db, tenantId, [command.ReturnLineId], token);
+                var existing = await db.ReturnStockDispositions.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.IdempotencyKey == idempotencyKey, token);
+                if (existing)
+                {
+                    await transaction.CommitAsync(token);
+                    return null;
+                }
 
-            var claim = await db.ReturnClaims.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == claimId, cancellationToken);
-            if (claim is null) return NotFound<ReturnDetailView>();
-            var line = await db.ReturnLines.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ClaimId == claimId && x.Id == command.ReturnLineId, cancellationToken);
-            if (line is null) return NotFound<ReturnDetailView>();
-            // Decided per line: a line approved on its own takes stock while the claim's other lines still wait.
-            if (!ReturnDecisionLinePolicy.StockDispositionAllowed(claim.Status, line.RawStatus)) return ServiceResult<ReturnDetailView>.Fail("RETURN_DISPOSITION_NOT_ALLOWED", "Stok kararı yalnız onaylanan iade ürünlerine uygulanabilir.", 409);
-            var already = await ReturnPendingStock.DisposedQuantityAsync(db, tenantId, line.Id, cancellationToken);
-            if (already + command.Quantity > line.Quantity) return ServiceResult<ReturnDetailView>.Fail("RETURN_QUANTITY_EXCEEDED", "Disposition toplamı iade satırı miktarını aşamaz.", 409);
-            var variantId = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == line.OrderLineId).Select(x => x.VariantId).SingleAsync(cancellationToken);
-            if (variantId is null) return ServiceResult<ReturnDetailView>.Fail("INVENTORY_MAPPING_REQUIRED", "İade satırı yerel varyantla eşleşmiyor.", 422);
-            var item = await db.InventoryItems.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == variantId && x.LocationCode == "MAIN", cancellationToken);
-            if (item is null) return ServiceResult<ReturnDetailView>.Fail("INVENTORY_MAPPING_REQUIRED", "MAIN inventory item bulunamadı.", 422);
-            var now = timeProvider.GetUtcNow();
-            db.ReturnStockDispositions.Add(new ReturnStockDisposition { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claimId, ReturnLineId = line.Id, InventoryItemId = item.Id, Disposition = disposition, Quantity = command.Quantity, IdempotencyKey = idempotencyKey, Reason = command.Reason.Trim(), ActorUserId = userId, CreatedAt = now });
-            if (disposition == ReturnStockDispositionKind.Pass)
-            {
-                item.OnHand += command.Quantity; item.Available = Math.Max(0, item.OnHand - item.Reserved); item.ProjectionVersion++; item.Version++;
-                db.StockLedgerEntries.Add(new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id, MovementType = "RETURN_PASS", QuantityDelta = command.Quantity, SourceType = "RETURN_CLAIM", SourceId = claim.ExternalClaimId, SourceEventId = idempotencyKey, IdempotencyKey = idempotencyKey, OccurredAt = now, RecordedAt = now, ActorUserId = userId, CorrelationId = correlationId });
-                await StockProjectionOutbox.EnqueueAsync(db, tenantId, [new StockProjectionChange(item.VariantId, item.ProjectionVersion, idempotencyKey)], now, cancellationToken);
+                var claim = await db.ReturnClaims.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == claimId, token);
+                if (claim is null) return NotFound<ReturnDetailView>();
+                var line = await db.ReturnLines.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ClaimId == claimId && x.Id == command.ReturnLineId, token);
+                if (line is null) return NotFound<ReturnDetailView>();
+                // Decided per line: a line approved on its own takes stock while the claim's other lines still wait.
+                if (!ReturnDecisionLinePolicy.StockDispositionAllowed(claim.Status, line.RawStatus)) return ServiceResult<ReturnDetailView>.Fail("RETURN_DISPOSITION_NOT_ALLOWED", "Stok kararı yalnız onaylanan iade ürünlerine uygulanabilir.", 409);
+                var already = await ReturnPendingStock.DisposedQuantityAsync(db, tenantId, line.Id, token);
+                if (already + command.Quantity > line.Quantity) return ServiceResult<ReturnDetailView>.Fail("RETURN_QUANTITY_EXCEEDED", "Disposition toplamı iade satırı miktarını aşamaz.", 409);
+                var variantId = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == line.OrderLineId).Select(x => x.VariantId).SingleAsync(token);
+                if (variantId is null) return ServiceResult<ReturnDetailView>.Fail("INVENTORY_MAPPING_REQUIRED", "İade satırı yerel varyantla eşleşmiyor.", 422);
+                var item = await db.InventoryItems.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == variantId && x.LocationCode == "MAIN", token);
+                if (item is null) return ServiceResult<ReturnDetailView>.Fail("INVENTORY_MAPPING_REQUIRED", "MAIN inventory item bulunamadı.", 422);
+                var now = timeProvider.GetUtcNow();
+                db.ReturnStockDispositions.Add(new ReturnStockDisposition { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claimId, ReturnLineId = line.Id, InventoryItemId = item.Id, Disposition = disposition, Quantity = command.Quantity, IdempotencyKey = idempotencyKey, Reason = command.Reason.Trim(), ActorUserId = userId, CreatedAt = now });
+                if (disposition == ReturnStockDispositionKind.Pass)
+                {
+                    item.OnHand += command.Quantity; item.Available = Math.Max(0, item.OnHand - item.Reserved); item.ProjectionVersion++; item.Version++;
+                    db.StockLedgerEntries.Add(new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id, MovementType = "RETURN_PASS", QuantityDelta = command.Quantity, SourceType = "RETURN_CLAIM", SourceId = claim.ExternalClaimId, SourceEventId = idempotencyKey, IdempotencyKey = idempotencyKey, OccurredAt = now, RecordedAt = now, ActorUserId = userId, CorrelationId = correlationId });
+                    await StockProjectionOutbox.EnqueueAsync(db, tenantId, [new StockProjectionChange(item.VariantId, item.ProjectionVersion, idempotencyKey)], now, token);
+                }
+                db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = "RETURN_STOCK_DISPOSITION", TargetType = "ReturnClaim", TargetId = claimId.ToString("D"), Reason = command.Reason.Trim(), CorrelationId = correlationId, CreatedAt = now });
+                await db.SaveChangesAsync(token);
+                await transaction.CommitAsync(token);
             }
-            db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = "RETURN_STOCK_DISPOSITION", TargetType = "ReturnClaim", TargetId = claimId.ToString("D"), Reason = command.Reason.Trim(), CorrelationId = correlationId, CreatedAt = now });
-            await db.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
-        }
-        catch (DbUpdateException)
-        {
-            await transaction.RollbackAsync(CancellationToken.None);
-            if (await db.ReturnStockDispositions.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.IdempotencyKey == idempotencyKey, cancellationToken)) return await ReturnAsync(tenantId, claimId, cancellationToken);
-            throw;
-        }
-        return await ReturnAsync(tenantId, claimId, cancellationToken);
+            catch (DbUpdateException exception) when (!SerializableWriteRetry.IsRetryable(exception))
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+                // A replay that committed meanwhile (the same key) is the same disposition.
+                if (await db.ReturnStockDispositions.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.IdempotencyKey == idempotencyKey, token)) return null;
+                throw;
+            }
+            return null;
+        }, () => ServiceResult<ReturnDetailView>.Fail("STOCK_CHANGED", "Stok aynı anda başka bir işlemle (ör. yeni sipariş) değiştiği için kaydedilemedi. Sayfayı yenileyip tekrar deneyin.", 409), cancellationToken);
+        return outcome ?? await ReturnAsync(tenantId, claimId, cancellationToken);
     }
 
     private static readonly IReadOnlyList<string> ShipmentActions = ["PICKING", "INVOICED", "TRACKING_NUMBER", "CANCEL_ITEMS", "SPLIT", "MULTI_SPLIT", "CHANGE_CARGO_PROVIDER", "ALTERNATIVE_DELIVERY", "MANUAL_DELIVER", "MANUAL_RETURN"];

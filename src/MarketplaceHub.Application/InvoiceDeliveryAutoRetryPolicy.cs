@@ -135,6 +135,18 @@ public static class InvoiceDeliveryAutoRetryPolicy
 
     public static bool InWindow(DateTimeOffset issuedAt, DateTimeOffset now) => issuedAt >= now - Window;
 
+    // The five-minute delivery recovery (a delivery left UNKNOWN, REVOKED, CONFIRMATION_RETRYABLE or RETRYABLE_FAILURE) is an
+    // automatic attempt like the others (scan 13 Nov 2026): it runs on the same backoff (15 min, 1 h, 6 h, 24 h), at most
+    // MaxAttempts times and only inside the window. After that the invoice waits for the owner's review and only the owner's
+    // "Tekrar Gönder" sends it again (InvoiceMarketplaceRetryPolicy.AutomaticRecoveryExhausted), on every marketplace.
+    public enum AutomaticRecovery { Now, Wait, Exhausted }
+
+    public static AutomaticRecovery RecoveryDue(int attempts, DateTimeOffset? nextAt, DateTimeOffset issuedAt, DateTimeOffset now)
+    {
+        if (attempts >= MaxAttempts || !InWindow(issuedAt, now)) return AutomaticRecovery.Exhausted;
+        return nextAt is { } next && next > now ? AutomaticRecovery.Wait : AutomaticRecovery.Now;
+    }
+
     // SCHEDULED while automatic attempts remain inside the window, IN_PROGRESS while a fetch or delivery job of the
     // invoice runs, EXHAUSTED once the attempts are used up or the window has passed, MANUAL_ONLY when only the owner
     // may send it again (automaticNeed None).

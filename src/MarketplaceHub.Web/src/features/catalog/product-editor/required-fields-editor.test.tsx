@@ -142,16 +142,13 @@ describe('a card with variants in the editor', () => {
 })
 
 describe('a new card with required fields empty', () => {
-  it('names what is missing, keeps Ürünü Oluştur off and saves a draft by Taslak, never sent', async () => {
+  it('is created as a draft by Ürünü Oluştur and never sent', async () => {
     await renderAt('/products/new')
     setValue(container.querySelector<HTMLInputElement>('.product-title-field input')!, 'Yeni Ürün')
     setValue(inputOf('Stok Kodu'), 'NEW-1')
     const create = container.querySelector<HTMLButtonElement>('button[data-submit-intent="create"]')!
-    expect(create.disabled).toBe(true)
-    expect(container.querySelector('.product-submit-sticky strong')!.textContent).toMatch(/zorunlu alan eksik/)
-    const draft = container.querySelector<HTMLButtonElement>('button[data-submit-intent="draft"]')!
-    expect(draft.disabled).toBe(false)
-    await act(async () => { draft.form!.requestSubmit(draft) })
+    expect(container.querySelector('.product-submit-sticky strong')!.textContent).toMatch(/zorunlu alan eksik · Taslak olarak kaydedilir/)
+    await act(async () => { create.form!.requestSubmit(create) })
     await settle(20)
     const post = writes().find(call => call.method === 'POST' && call.path === '/products')!
     expect((post.body as { status: string }).status).toBe('DRAFT')

@@ -6,6 +6,10 @@ public static class InvoiceMarketplaceRetryPolicy
 {
     public const string RepeatedRemoteFailure = "HEPSIBURADA_INVOICE_DELIVERY_REPEATED_500";
 
+    // The automatic delivery recovery used up its attempts or its window (InvoiceDeliveryAutoRetryPolicy.RecoveryDue): the
+    // invoice waits in review and only the owner's "Tekrar Gönder" sends the link again.
+    public const string AutomaticRecoveryExhausted = "INVOICE_DELIVERY_RECOVERY_EXHAUSTED";
+
     // An earlier delivery of the invoice to the package is on record under another identity (another invoice number or
     // package): the delivery stopped and the invoice waits in review until the owner sends it again ("Tekrar Dene").
     public const string DeliveryIdentityChanged = "DELIVERY_RETRY_PAYLOAD_CHANGED";
@@ -15,7 +19,7 @@ public static class InvoiceMarketplaceRetryPolicy
     public static bool IsDeliveryReview(InvoiceStatus status, string? errorCode) =>
         status == InvoiceStatus.ManualReview
         && errorCode is RepeatedRemoteFailure or InvoiceDeliveryEnvironmentPolicy.MismatchErrorCode or DeliveryIdentityChanged
-            or HepsiburadaInvoiceInfoPolicy.LineInvoiceInfoMissingCode;
+            or HepsiburadaInvoiceInfoPolicy.LineInvoiceInfoMissingCode or AutomaticRecoveryExhausted;
 
     public static bool CanRetryDelivery(InvoiceStatus status, string? errorCode) =>
         status is InvoiceStatus.Accepted or InvoiceStatus.MarketplaceFailed || IsDeliveryReview(status, errorCode);
