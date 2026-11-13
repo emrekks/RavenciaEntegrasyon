@@ -55,6 +55,25 @@ public sealed class JobHygieneTests
     }
 
     [Fact]
+    public void ALaterUpdateClosesAnEarlierOneOnlyWhenItSentEveryPartTheEarlierOneDid()
+    {
+        // Scan C-7: refused pictures are not closed by a later update that sent only the description.
+        static string Update(string content, string variants = """{"items":[]}""") =>
+            System.Text.Json.JsonSerializer.Serialize(new { ProductId = Guid.Empty, UnapprovedPayloadJson = "{}", ApprovedContentPayloadJson = content, ApprovedVariantPayloadJson = variants, ApprovedDeliveryPayloadJson = """{"items":[]}""" });
+        var pictures = Update("""{"items":[{"contentId":1,"images":[{"url":"https://img/1.jpg"}]}]}""");
+        var description = Update("""{"items":[{"contentId":1,"description":"Yeni"}]}""");
+        var both = Update("""{"items":[{"contentId":1,"description":"Yeni","images":[{"url":"https://img/2.jpg"}]}]}""");
+        var desi = Update("""{"items":[]}""", """{"items":[{"barcode":"B1","dimensionalWeight":2}]}""");
+
+        Assert.False(ProductWriteSupersession.CoversSentParts(MarketplaceJobTypes.ProductUpdate, pictures, description));
+        Assert.True(ProductWriteSupersession.CoversSentParts(MarketplaceJobTypes.ProductUpdate, pictures, both));
+        Assert.True(ProductWriteSupersession.CoversSentParts(MarketplaceJobTypes.ProductUpdate, description, both));
+        Assert.False(ProductWriteSupersession.CoversSentParts(MarketplaceJobTypes.ProductUpdate, desi, both));
+        // A publish or an archive sends the whole card: not compared.
+        Assert.True(ProductWriteSupersession.CoversSentParts(MarketplaceJobTypes.ProductCreate, pictures, description));
+    }
+
+    [Fact]
     public void TheProductComesFromThePayloadAndTheSummaryNamesTheLaterJob()
     {
         var product = Guid.Parse("01a18ddd-78fb-780d-8a48-251fac20ed83");
