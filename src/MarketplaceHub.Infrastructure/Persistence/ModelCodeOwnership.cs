@@ -22,20 +22,37 @@ public static class ModelCodeOwnership
     {
         var keys = ModelCodeUniquenessPolicy.Keys([modelCode]);
         if (keys.Count == 0) return null;
-        var rows = await (
+        // An import calls this for every code it changes: the database first narrows to the codes holding the key's
+        // letters and digits in order (separators and case aside), the key decides in memory, and only the few cards
+        // found are checked for links on the connection.
+        // A letter outside ASCII (ı, İ, ş...) matches any one character: the database's case folding may not pair it
+        // with the key's spelling.
+        var pattern = "%" + string.Join("%", modelCode.Where(char.IsLetterOrDigit).Select(ch => char.IsAscii(ch) ? ch.ToString() : "_")) + "%";
+        var rows = (await (
                 from variant in db.ProductVariants.AsNoTracking()
                 join product in db.Products.AsNoTracking() on variant.ProductId equals product.Id
                 where variant.TenantId == tenantId && product.TenantId == tenantId && variant.ModelCode != null && variant.ModelCode != ""
-                    && variant.ProductId != ownProductId
-                    && !db.MarketplaceProductLinks.Any(link => link.TenantId == tenantId && link.ConnectionId == connectionId && link.ProductId == variant.ProductId)
-                    && !db.MarketplaceVariantLinks.Any(link => link.TenantId == tenantId && link.ConnectionId == connectionId
-                        && db.ProductVariants.Any(sibling => sibling.TenantId == tenantId && sibling.Id == link.VariantId && sibling.ProductId == variant.ProductId))
+                    && variant.ProductId != ownProductId && EF.Functions.ILike(variant.ModelCode, pattern)
                 select new { variant.ProductId, product.Title, variant.ModelCode, product.CreatedAt })
             .Distinct()
-            .ToListAsync(cancellationToken);
-        return ModelCodeUniquenessPolicy.FirstHolder(keys, rows
+            .ToListAsync(cancellationToken))
+            .Where(row => ProductFamilyKeyPolicy.ModelCodeKey(row.ModelCode) is { } key && keys.Contains(key, StringComparer.Ordinal))
+            .ToList();
+        if (rows.Count == 0) return null;
+        var holderIds = rows.Select(row => row.ProductId).Distinct().ToArray();
+        var linked = (await db.MarketplaceProductLinks.AsNoTracking()
+                .Where(link => link.TenantId == tenantId && link.ConnectionId == connectionId && holderIds.Contains(link.ProductId))
+                .Select(link => link.ProductId)
+                .ToListAsync(cancellationToken))
+            .Concat(await (from link in db.MarketplaceVariantLinks.AsNoTracking()
+                           join variant in db.ProductVariants.AsNoTracking() on link.VariantId equals variant.Id
+                           where link.TenantId == tenantId && link.ConnectionId == connectionId && variant.TenantId == tenantId && holderIds.Contains(variant.ProductId)
+                           select variant.ProductId).ToListAsync(cancellationToken))
+            .ToHashSet();
+        return rows.Where(row => !linked.Contains(row.ProductId))
             .OrderBy(row => row.CreatedAt).ThenBy(row => row.ProductId)
-            .Select(row => new ModelCodeUniquenessPolicy.Holder(row.ProductId, row.Title, row.ModelCode!)));
+            .Select(row => new ModelCodeUniquenessPolicy.Holder(row.ProductId, row.Title, row.ModelCode!))
+            .FirstOrDefault();
     }
 
     public static async Task<ModelCodeUniquenessPolicy.Holder?> FindOtherAsync(AppDbContext db, Guid tenantId, IEnumerable<string?> modelCodes, IReadOnlyCollection<Guid> ownProductIds, CancellationToken cancellationToken)
