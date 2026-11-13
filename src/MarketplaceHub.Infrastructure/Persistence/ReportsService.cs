@@ -108,7 +108,8 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider, R
         var previousCarriers = reads.Run(service => service.PackageCarriersAsync(tenantId, allowedIds, previous, cancellationToken));
         var learnedDesi = reads.Run(service => service.LearnedDesiAsync(tenantId, cancellationToken));
         var questionTimes = reads.Run(service => service.QuestionTimesAsync(tenantId, allowed, current, cancellationToken));
-        var names = reads.After(lines, (service, rows) => service.CatalogNamesAsync(tenantId, rows, cancellationToken));
+        // Both periods' brand and category names: a product sold only in the previous period (Düşenler) is named too.
+        var names = reads.After(lines, previousLines, (service, rows, previousRows) => service.CatalogNamesAsync(tenantId, [.. rows, .. previousRows], cancellationToken));
         var finance = reads.After(orders, (service, rows) => service.FinanceAsync(tenantId, allowed, rows, current, cancellationToken));
         var commissions = reads.After(orders, lines, (service, rows, lineRows) => service.MarketplaceCommissionsAsync(tenantId, allowed, rows, lineRows, cancellationToken));
         var declared = reads.After(orders, (service, rows) => service.DeclaredDesiAsync(tenantId, allowed, rows, cancellationToken));

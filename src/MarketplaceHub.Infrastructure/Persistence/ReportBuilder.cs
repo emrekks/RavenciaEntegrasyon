@@ -516,7 +516,9 @@ internal static class ReportBuilder
     {
         decimal kept = 0m, keptRevenue = 0m, costed = 0m, costTotal = 0m, costedRevenue = 0m, costedSales = 0m, profitUnits = 0m, profitRevenue = 0m, profitCost = 0m, profitCommission = 0m;
         var variants = new HashSet<Guid>();
-        foreach (var line in orders.Where(x => x.Currency == Try).SelectMany(x => x.Lines))
+        // Only orders with an amount: an order read without one adds nothing to the revenue (Toplam Ciro, ReportCosts and
+        // ReportOrderProfit leave it out too), so its units and cost would take its cost off a sale the account never counted.
+        foreach (var line in orders.Where(x => x.Currency == Try && x.Amount > 0).SelectMany(x => x.Lines))
         {
             // Toplam Ciro counts a returned line's sale too: Maliyeti Olan Ciro does the same over the lines with a cost.
             if (line.Active > 0 && line.Row.CostPrice is > 0) costedSales += line.PaidUnitPrice * line.Active;

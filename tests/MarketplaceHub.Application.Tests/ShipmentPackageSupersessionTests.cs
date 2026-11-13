@@ -105,6 +105,18 @@ public sealed class ShipmentPackageSupersessionTests
         Assert.Equal(0, normalized.DeliveredQuantity);
     }
 
+    // A Pazarama order with one item undelivered (14) and another returned (8/10) is an undelivered package; its returned
+    // item was delivered first, so the event passes the check instead of being refused whole.
+    [Fact]
+    public void Undelivered_package_with_a_returned_line_counts_that_line_delivered()
+    {
+        Assert.True(PackageIngestionSafety.TryNormalizeAll(new Dictionary<string, decimal>(StringComparer.Ordinal) { ["a"] = 1m, ["b"] = 1m },
+            [new RemotePackageAllocation("a", 1, 0, 1, 0, 0), new RemotePackageAllocation("b", 1, 0, 1, 1, 1)], ShipmentPackageStatus.Undelivered, out var normalized));
+
+        Assert.Equal((1m, 0m, 0m), (normalized["a"].ShippedQuantity, normalized["a"].DeliveredQuantity, normalized["a"].ReturnedQuantity));
+        Assert.Equal((1m, 1m, 1m), (normalized["b"].ShippedQuantity, normalized["b"].DeliveredQuantity, normalized["b"].ReturnedQuantity));
+    }
+
     [Fact]
     public void Order_totals_sum_every_stored_sibling_package_not_only_the_page()
     {

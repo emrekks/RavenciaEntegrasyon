@@ -433,4 +433,30 @@ public sealed class PayoutBuilderTests
         var read = PayoutBuilder.Build(rows, [payouts[0], payouts[1] with { LinesRead = true }], Stores, Today, 90, []);
         Assert.Equal((0m, 0), (read.PaidUnread, read.PaidUnreadRecords));
     }
+
+    // A Pazarama return with no transfer day stands on today as UNDATED; the day's lines query reads it, so the group the
+    // summary shows opens with its record instead of empty.
+    [Fact]
+    public void An_undated_records_group_opens_with_its_record()
+    {
+        var undated = new PayoutRow
+        {
+            ConnectionId = Store,
+            PlatformCode = "PAZARAMA",
+            Source = PazaramaFinanceSyncJobHandler.Source,
+            ExternalId = "p3",
+            RequestedType = PazaramaFinanceSyncJobHandler.RequestedType,
+            TransactionType = "İade",
+            Category = MarketplaceFinanceCategories.Return,
+            Debt = 1137.10m,
+            PaymentDate = null
+        };
+        var paid = Sale("s1", 100m, 80m, Today.AddDays(-7), payout: "P-1");
+
+        var read = PayoutBuilder.OpenOnADay(new[] { undated, paid }.AsQueryable()).ToList();
+        var line = PayoutBuilder.Line(Assert.Single(read), Today);
+
+        Assert.True(PayoutBuilder.Open(line));
+        Assert.Equal((Today, PayoutBuilder.Undated), (PayoutBuilder.Expect(undated, line, Today).Day, PayoutBuilder.Expect(undated, line, Today).Kind));
+    }
 }
