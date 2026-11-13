@@ -20,9 +20,12 @@ Code: `Adapters/Trendyol/` — `TrendyolHttpClient.cs` (+ `.Webhooks.cs`), `Tren
   Code learns the tier (`TrendyolOrderTier`): floor 30, steps up after 20 quota waits in 10 min, a 429 steps back and
   holds a day. 40% of the order quota is reserved for foreground work.
 - Stream: at least 5 s between pages of one query (docs); code waits 1 s between new queries.
-- Group limits since 14 Sep 2026 (not modelled in code; the 50/10 s cap is tighter): Product Read 1000-2000/min,
-  Product Write 200-600/min, Inventory & Price Write 350-2000/min, per-barcode price 30/min, claim approve/reject
-  5/min, finance 100/min, brand/category lists 50/min.
+- Group limits since 14 Sep 2026: Product Read 1000-2000/min, Product Write 200-600/min, Inventory & Price Write
+  350-2000/min, per-barcode price 30/min, claim approve/reject 5/min, finance 100/min, brand/category lists 50/min.
+  Code models claim approve/reject (5/min per seller, every non-GET under `claims/`) and finance (`finance/che`,
+  100/min per seller) as their own quotas (`TrendyolResilienceHandler.GroupQuotaFor`, 13 Nov 2026); the others are
+  covered by the tighter 50/10 s cap. Claim approve/reject also has its own circuit (`order:claim-actions`): before
+  13 Nov 2026 it shared the claim read circuit, so a 429 on the 6th approval in a minute stopped claim reads too.
 - Price and inventory: an identical request is refused for 15 min (`TRENDYOL_REPEAT_REQUEST_WAIT`); stock max 20,000
   per barcode; max 1000 items per request.
 - 429 handling: circuit opens for `Retry-After` (clamped 5-300 s, default 30 s; circuit cap 15 min); 5 failures

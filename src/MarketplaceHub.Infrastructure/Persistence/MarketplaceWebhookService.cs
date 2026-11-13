@@ -28,7 +28,12 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
         var (connection, subscription) = (match.Connection, match.Subscription);
         var verified = await verifier.VerifyAsync(rawBody, headers, connection.Id, subscription.Id, cancellationToken);
         // A stale Shopify delivery is answered 200 and dropped: a refusal would only make Shopify retry the same old delivery.
-        if (!verified.IsSuccess && verified.Error!.Code == MarketplaceHub.Infrastructure.Adapters.Shopify.ShopifyWebhookVerifier.StaleCode) return ServiceResult<bool>.Ok(false);
+        // A stale product delete (one held back during a deploy) still starts the link check at once: its body is not
+        // read, the check finds the deleted codes itself, so the card does not show them as live until the nightly scan.
+        if (!verified.IsSuccess && verified.Error!.Code == MarketplaceHub.Infrastructure.Adapters.Shopify.ShopifyWebhookVerifier.StaleCode)
+            return connection.PlatformCode == "SHOPIFY" && StaleStartsListingVerify(headers, connection.ExternalStoreId, subscription.AuthenticationType == "ROUTE_TOKEN")
+                ? await QueueListingVerifyAsync(connection, subscription.Id, correlationId, cancellationToken)
+                : ServiceResult<bool>.Ok(false);
         if (!verified.IsSuccess)
         {
             await NoteRejectedAsync(connection, verified.Error!.Code, verified.Error.SafeMessage, cancellationToken);
@@ -237,6 +242,17 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
         }
         if (string.IsNullOrWhiteSpace(shopDomain)) return required ? "mağaza adı yok" : null;
         return string.Equals(Shop(shopDomain), Shop(connectionShop), StringComparison.Ordinal) ? null : SafeTopic(shopDomain);
+    }
+
+    // A stale Shopify delivery (it passed the signature check) that still starts the link check: a product delete of
+    // this store. The topic is the one the panel subscribes to for products; an order topic waits for the order check.
+    internal static bool StaleStartsListingVerify(IReadOnlyDictionary<string, string> headers, string connectionShop, bool routeOnly)
+    {
+        string? Header(string name) => headers.FirstOrDefault(x => string.Equals(x.Key, name, StringComparison.OrdinalIgnoreCase)).Value;
+        var topic = Header("X-Shopify-Topic");
+        return !string.IsNullOrWhiteSpace(topic)
+            && MarketplaceHub.Infrastructure.Adapters.Shopify.ShopifyWebhookVerifier.ResourceType(topic) == MarketplaceHub.Infrastructure.Adapters.Shopify.ShopifyWebhookVerifier.ProductDeleteResourceType
+            && ForeignShop(Header("X-Shopify-Shop-Domain"), connectionShop, routeOnly) is null;
     }
 
     // A header value shown in the panel: trimmed, at most 100 characters.

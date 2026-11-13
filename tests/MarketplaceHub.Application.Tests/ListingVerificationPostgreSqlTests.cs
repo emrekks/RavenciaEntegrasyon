@@ -558,6 +558,83 @@ public sealed class ListingVerificationPostgreSqlTests(PostgreSqlTenantIsolation
         Assert.True(await after.IntegrationJobs.AnyAsync(x => x.TenantId == seed.Tenant.Id && x.JobType == MarketplaceJobTypes.ProductApprovalReconcile));
     }
 
+    // Pazarama accepted a 6-size create without ids; 1 size opened, 5 never did and all 6 were shown as awaiting approval.
+    // An answer without ids now leaves every size unknown; the approval check keeps a size it does not find unknown (not
+    // "Onay Bekliyor") and sends it to review once it has not been found for 24 hours.
+    [PostgreSqlFact]
+    public async Task A_Pazarama_create_without_ids_stays_unknown_and_a_size_never_found_goes_to_review_after_a_day()
+    {
+        var seed = await Seed("PAZARAMA");
+        var productId = seed.Seen.ProductId;
+        var profileId = Guid.CreateVersion7();
+        var jobId = Guid.CreateVersion7();
+        await using (var setup = fixture.CreateContext())
+        {
+            await setup.ProductVariants.Where(x => x.Id == seed.Missed.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ProductId, productId));
+            setup.ChannelListingProfiles.Add(new ChannelListingProfile { Id = profileId, TenantId = seed.Tenant.Id, ConnectionId = seed.Connection.Id, ProductId = productId, Enabled = true, DesiredStatus = "LIVE", ActualStatus = "BATCH_SUBMITTED" });
+            foreach (var variant in new[] { seed.Seen, seed.Missed })
+            {
+                setup.ChannelListingVariants.Add(new ChannelListingVariant { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ProfileId = profileId, VariantId = variant.Id, ExternalSku = variant.Barcode, ExternalBarcode = variant.Barcode, DesiredStatus = "LIVE", ActualStatus = "BATCH_SUBMITTED" });
+                setup.MarketplaceListingStates.Add(new MarketplaceListingState { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.Connection.Id, VariantId = variant.Id, DesiredStatus = "LIVE", ActualStatus = "BATCH_SUBMITTED", PayloadHash = "create-hash" });
+            }
+            await setup.SaveChangesAsync();
+        }
+        var operationId = PazaramaOperationId.Unconfirmed(["869100000001", "869100000002"]);
+        var createPayload = JsonSerializer.Serialize(new ProductPublicationJobPayload(jobId, productId, profileId, "POLL", "create-hash", "{\"products\":[]}", operationId, DateTimeOffset.UtcNow.AddSeconds(-5)));
+        await using (var setup = fixture.CreateContext())
+        {
+            setup.IntegrationJobs.Add(new IntegrationJob { Id = jobId, TenantId = seed.Tenant.Id, ConnectionId = seed.Connection.Id, JobType = MarketplaceJobTypes.ProductCreate, PayloadJson = createPayload, PayloadVersion = 1, PayloadHash = "h", JobDedupKey = $"product-create:{seed.Connection.Id:N}:{productId:N}:u", EffectIdempotencyKey = $"pc:{jobId:N}", Status = JobStatus.Leased, AvailableAt = DateTimeOffset.UtcNow, CorrelationId = "pc", CreatedAt = DateTimeOffset.UtcNow, Version = 1 });
+            await setup.SaveChangesAsync();
+        }
+        var port = new ScriptedProductPort
+        {
+            Operation = new RemoteOperationStatus(operationId, "COMPLETED", [], UnlistedLinesUnconfirmed: true),
+            Publication = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["869100000001"] = "PENDING_APPROVAL", ["869100000002"] = "NOT_FOUND" }
+        };
+
+        await using (var db = fixture.CreateContext())
+        {
+            var created = await Processor(db, port).ProcessAsync(seed.Tenant.Id, seed.Connection.Id, MarketplaceJobTypes.ProductCreate, createPayload, "pc", CancellationToken.None, jobId);
+            Assert.Equal(JobCompletionKind.Succeeded, created.Kind);
+            Assert.Equal(ProductBatchResultPolicy.IncompleteResultCode, created.ErrorCode);
+        }
+        Guid approvalJobId;
+        await using (var check = fixture.CreateContext())
+        {
+            var listings = await check.ChannelListingVariants.AsNoTracking().Where(x => x.ProfileId == profileId).ToListAsync();
+            Assert.All(listings, listing => Assert.Equal(ProductBatchResultPolicy.ResultUnknownStatus, listing.ActualStatus));
+            approvalJobId = (await check.IntegrationJobs.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.JobType == MarketplaceJobTypes.ProductApprovalReconcile)).Id;
+        }
+
+        string ApprovalPayload(TimeSpan checkAge) => JsonSerializer.Serialize(new ProductApprovalReconciliationJobPayload(approvalJobId, productId, profileId, "create-hash", DateTimeOffset.UtcNow - checkAge, DateTimeOffset.UtcNow.AddDays(6), operationId));
+        await using (var db = fixture.CreateContext())
+        {
+            var early = await Processor(db, port).ProcessAsync(seed.Tenant.Id, seed.Connection.Id, MarketplaceJobTypes.ProductApprovalReconcile, ApprovalPayload(TimeSpan.FromHours(2)), "pa", CancellationToken.None, approvalJobId);
+            Assert.Equal(JobCompletionKind.Retry, early.Kind);
+            Assert.Equal("PRODUCT_APPROVAL_PENDING", early.ErrorCode);
+        }
+        await using (var check = fixture.CreateContext())
+        {
+            var listings = await check.ChannelListingVariants.AsNoTracking().Where(x => x.ProfileId == profileId).ToDictionaryAsync(x => x.VariantId);
+            Assert.Equal("APPROVAL_PENDING", listings[seed.Seen.Id].ActualStatus);
+            Assert.Equal(ProductBatchResultPolicy.ResultUnknownStatus, listings[seed.Missed.Id].ActualStatus);
+            Assert.Equal("APPROVAL_PENDING", (await check.ChannelListingProfiles.AsNoTracking().SingleAsync(x => x.Id == profileId)).ActualStatus);
+        }
+
+        await using (var db = fixture.CreateContext())
+        {
+            var late = await Processor(db, port).ProcessAsync(seed.Tenant.Id, seed.Connection.Id, MarketplaceJobTypes.ProductApprovalReconcile, ApprovalPayload(TimeSpan.FromHours(25)), "pa", CancellationToken.None, approvalJobId);
+            Assert.Equal(JobCompletionKind.ManualReview, late.Kind);
+            Assert.Equal(ProductApprovalReconciliationPolicy.UnconfirmedNotFoundCode, late.ErrorCode);
+        }
+        await using var after = fixture.CreateContext();
+        var settled = await after.ChannelListingVariants.AsNoTracking().Where(x => x.ProfileId == profileId).ToDictionaryAsync(x => x.VariantId);
+        Assert.Equal("APPROVAL_PENDING", settled[seed.Seen.Id].ActualStatus);
+        Assert.Equal("MANUAL_REVIEW", settled[seed.Missed.Id].ActualStatus);
+        Assert.Equal(ProductApprovalReconciliationPolicy.UnconfirmedNotFoundCode, settled[seed.Missed.Id].RejectionCode);
+        Assert.Equal("MANUAL_REVIEW", (await after.ChannelListingProfiles.AsNoTracking().SingleAsync(x => x.Id == profileId)).ActualStatus);
+    }
+
     private sealed record Seeded(Tenant Tenant, PlatformConnection Connection, ProductVariant Seen, ProductVariant Missed);
 
     // A connection with two linked variants of two products: one the catalog lists (…001), one it does not (…002).
@@ -663,6 +740,8 @@ public sealed class ListingVerificationPostgreSqlTests(PostgreSqlTenantIsolation
         public IReadOnlyList<RemoteCatalogProduct> LookupAnswer { get; init; } = [];
         public AdapterError? LookupError { get; init; }
         public RemoteOperationStatus? Operation { get; init; }
+        // The approval check's answer per barcode (GetPublicationStatusAsync).
+        public IReadOnlyDictionary<string, string> Publication { get; init; } = new Dictionary<string, string>();
         public List<ProductReadFilter> LookupFilters { get; } = [];
 
         public Task<AdapterResult<AdapterPageResult<RemoteCatalogProduct>>> ListCatalogAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken)
@@ -684,7 +763,10 @@ public sealed class ListingVerificationPostgreSqlTests(PostgreSqlTenantIsolation
         public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedContentAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedVariantsAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedDeliveryAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<AdapterResult<RemotePublicationStatus>> GetPublicationStatusAsync(AdapterContext context, string barcode, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<RemotePublicationStatus>> GetPublicationStatusAsync(AdapterContext context, string barcode, CancellationToken cancellationToken) =>
+            Publication.TryGetValue(barcode, out var status)
+                ? Task.FromResult(AdapterResult<RemotePublicationStatus>.Success(new RemotePublicationStatus(barcode, status, null, null, null, "{}")))
+                : throw new NotSupportedException();
         public Task<AdapterResult<RemoteOperationRef>> ArchiveAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 }

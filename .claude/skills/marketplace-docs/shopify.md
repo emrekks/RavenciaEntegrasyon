@@ -70,7 +70,11 @@ UTC, ISO with Z.
 - A return is approved or declined as a whole (`shopify-rehberler-son.md:18614`): the panel locks the line choice
   (`ReturnDecisionScope`, as Hepsiburada). A claim left at PARTIAL_LINE_DECISION_PENDING by the older line choice
   follows Shopify's status on the next read (5 Nov 2026).
-- Webhooks: stale `X-Shopify-Triggered-At` deliveries are dropped; 8 consecutive failures delete the subscription.
+- Webhooks: stale `X-Shopify-Triggered-At` deliveries (over 5 min either way) are answered 200 and dropped; 8
+  consecutive failures delete the subscription. Since 13 Nov 2026 a stale `products/delete` of this store still queues
+  the link check (LISTING_VERIFY, one per connection per 10 min) at once, so a product deleted during a deploy is not
+  shown live until the nightly scan (`MarketplaceWebhookService.StaleStartsListingVerify`). Stale order topics need
+  nothing: the scheduled order check reads them.
 - Invoice data lives in order metafields `ravencia.invoice_number` and `ravencia.invoice_pdf_url`.
 - No label API.
 - Line VAT: `LineItem.taxLines { rate }` is a list; each `rate` is a fraction (0.2 = 20%). The panel sums the rates

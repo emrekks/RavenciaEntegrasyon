@@ -30,6 +30,32 @@ public sealed class PazaramaOperationIdTests
         Assert.DoesNotContain('|', operationId);
     }
 
+    // An accepted create without a batch id names no barcode: none is taken as created, the approval check reads each.
+    [Fact]
+    public async Task ACreateAcceptedWithoutIdsLeavesEveryBarcodeUnknown()
+    {
+        var operationId = PazaramaOperationId.Unconfirmed(["B1", "B2", "B3"]);
+
+        var status = await Client().GetOperationAsync(Context(), operationId, CancellationToken.None);
+
+        Assert.True(status.IsSuccess, status.Error?.Code);
+        Assert.Equal("COMPLETED", status.Value!.Status);
+        Assert.Empty(status.Value.Lines);
+        Assert.True(status.Value.UnlistedLinesUnconfirmed);
+        Assert.True(PazaramaOperationId.TryUnconfirmed(operationId, out var codes));
+        Assert.Equal(["B1", "B2", "B3"], codes);
+        Assert.StartsWith("u:", operationId, StringComparison.Ordinal);
+        Assert.DoesNotContain('|', operationId);
+    }
+
+    [Fact]
+    public async Task AGarbledUnconfirmedIdIsRefused()
+    {
+        var status = await Client().GetOperationAsync(Context(), "u:%%%", CancellationToken.None);
+
+        Assert.Equal("PAZARAMA_OPERATION_ID_INVALID", status.Error!.Code);
+    }
+
     [Fact]
     public void ABatchIdCarriesItsBarcodes()
     {
