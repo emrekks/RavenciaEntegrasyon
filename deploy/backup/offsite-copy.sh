@@ -4,6 +4,8 @@
 #
 #   sudo bash deploy/backup/offsite-copy.sh
 #
+# Secondary path since 13 Nov 2026: the panel (Sistem Ayarları › Google Drive Yedeği, the worker's OffsiteBackupCopier) is
+# the primary off-site copy and needs no host files; this script only runs where the files below were kept.
 # Configuration, all under deploy/secrets/ (docs/CI-CD-DEPLOY.md "Sunucu dışı yedek"):
 #   backup_age_recipient.txt   the owner's age public key(s), one "age1..." per line (age -R format)
 #   backup_offsite_remote.txt  rclone destination "<remote>:<folder>", e.g. "gdrive:ravencia-yedek"

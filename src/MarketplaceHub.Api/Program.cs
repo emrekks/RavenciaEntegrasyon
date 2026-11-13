@@ -156,6 +156,7 @@ app.MapQuestionEndpoints();
 app.MapInvoicingEndpoints();
 app.MapSettingsEndpoints();
 app.MapAlertEmailEndpoints();
+app.MapOffsiteBackupEndpoints();
 app.MapAiEndpoints();
 app.MapUserManagementEndpoints();
 app.MapHub<OperationsHub>("/hubs/operations");

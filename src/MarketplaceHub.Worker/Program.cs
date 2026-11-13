@@ -28,6 +28,14 @@ builder.Services.AddHostedService<Worker>();
 builder.Services.AddHostedService<DashboardSnapshotRefresher>();
 // One pass a start: the small copies of product photos stored before thumbnails existed (idempotent).
 builder.Services.AddHostedService<MarketplaceHub.Infrastructure.Files.ProductMediaRenditionBackfill>();
+// Sistem Ayarları › Google Drive Yedeği: the age-encrypted copy of the newest verified backup set to the owner's Drive
+// (the backup volume is mounted read-only at OffsiteBackup:BackupRoot), and its alert e-mails.
+builder.Services.AddScoped<MarketplaceHub.Infrastructure.Alerts.AlertEmailSettingsService>();
+builder.Services.AddSingleton<MarketplaceHub.Infrastructure.Alerts.IAlertEmailSender, MarketplaceHub.Infrastructure.Alerts.GmailSmtpAlertSender>();
+builder.Services.AddSingleton<MarketplaceHub.Infrastructure.Backups.IBackupEncryptor>(_ => new MarketplaceHub.Infrastructure.Backups.AgeCommandEncryptor());
+builder.Services.AddSingleton<MarketplaceHub.Infrastructure.Backups.IBackupSetSource>(_ => new MarketplaceHub.Infrastructure.Backups.BackupSetDirectory(builder.Configuration["OffsiteBackup:BackupRoot"] ?? "/var/lib/marketplacehub/backups"));
+builder.Services.AddScoped<MarketplaceHub.Infrastructure.Backups.OffsiteBackupCopier>();
+builder.Services.AddHostedService<MarketplaceHub.Infrastructure.Backups.OffsiteBackupWorkerService>();
 var host = builder.Build();
 
 if (args is ["efaturam-connection-test", var publicIdText]

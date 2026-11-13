@@ -69,6 +69,12 @@ public static class DependencyInjection
         services.AddScoped<IDashboardReadService, DashboardReadService>();
         services.AddScoped<IAttentionNoticeService, AttentionNoticeService>();
         services.AddScoped<IPanelNotificationService, PanelNotificationService>();
+        // Sistem Ayarları › Google Drive Yedeği: the owner's OAuth client and Drive authorization (API), the copy (worker).
+        // Google's resumable upload answers 308 without a Location, so redirects are never followed.
+        services.AddHttpClient(Backups.GoogleDriveApi.HttpClientName, client => client.Timeout = TimeSpan.FromMinutes(5))
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
+        services.AddSingleton<Backups.IGoogleDriveApi, Backups.GoogleDriveApi>();
+        services.AddScoped<Backups.OffsiteBackupSettingsService>();
         // The sales reports already worked out, kept in this process's memory (ReportCache).
         services.AddSingleton<ReportCache>();
         services.AddScoped<IReportsService, ReportsService>();

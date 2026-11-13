@@ -75,6 +75,8 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
             "returns" when last is "rejection-reasons" or "audits" or "return-shipment-companies" => WorkingRoles,
             // Who gets the operator alerts, and from which account, is for the owner and administrators.
             "settings" when last == "alert-email" => ElevatedRoles,
+            // Sistem Ayarları › Google Drive Yedeği (the OAuth client, the Drive account, the copy status) is the owner's and administrators'.
+            "settings" when segments.Length > 3 && segments[3].Equals("offsite-backup", StringComparison.OrdinalIgnoreCase) => ElevatedRoles,
             // Paneli Tamamen Sıfırla's counts and progress are the owner's and administrators', like the reset itself.
             "settings" when last == "factory-reset" => ElevatedRoles,
             // Ayarlar › Yapay Zekâ (the Claude key's state, skills, usage and cost) is the owner's and administrators'.

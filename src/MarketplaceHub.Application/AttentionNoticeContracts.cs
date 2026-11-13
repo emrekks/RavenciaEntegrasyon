@@ -33,6 +33,16 @@ public static class AttentionNoticePolicy
     public const string SyncCursorFailingCode = "SYNC_CURSOR_FAILING";
     public const string ApprovalDeadlineExpiredCode = "PRODUCT_APPROVAL_DEADLINE_EXPIRED";
 
+    // Sistem Ayarları › Google Drive Yedeği: the off-site copy has stopped (an invalid Google authorization, or failed runs
+    // that already sent the owner an alert e-mail). One notice per failure streak; it goes once a copy succeeds again.
+    public const string OffsiteBackupFailingCode = "OFFSITE_BACKUP_FAILING";
+    public const string OffsiteBackupKey = "offsite-backup";
+    public const string OffsiteBackupTitle = "Google Drive Yedeği Gönderilemiyor";
+    public const string OffsiteBackupHref = "/settings?tab=offsite";
+    public static string OffsiteBackupRevision(DateTimeOffset failingSince) => failingSince.ToUniversalTime().ToString("yyyyMMddHHmmss", System.Globalization.CultureInfo.InvariantCulture);
+    // The bell's id for the notice (shared/notifications.ts attentionNotification): the center keeps one row for both.
+    public static string OffsiteBackupClientKey(DateTimeOffset failingSince) => $"attention:{OffsiteBackupKey}:{OffsiteBackupRevision(failingSince)}";
+
     // Three failed runs in a row make a read worth a notice: one or two are usually a passing marketplace hiccup.
     public const int ConsecutiveFailureThreshold = 3;
 

@@ -641,3 +641,24 @@
   .ss-page .ss-users-name b, .ss-page .ss-users-name small { max-width: none; white-space: normal; overflow-wrap: anywhere; }
   .ss-page .ss-users td:not(.ss-users-name, .ss-users-act) { grid-column: 1 / -1; }
 }
+
+/* Google Drive Yedeği (OffsiteBackupSection): the state line, four facts in a row (two on a phone), the folder choice next
+   to its field, and the OAuth / restore blocks as quiet cards. */
+.ss-page .ss-ob-status { display: grid; gap: 12px; padding: 14px 16px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; }
+.ss-page .ss-ob-state { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; font-size: 14px; }
+.ss-page .ss-ob-account { min-width: 0; color: var(--rv-color-muted); font-size: 13px; overflow-wrap: anywhere; }
+.ss-page .ss-ob-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0; }
+.ss-page .ss-ob-facts > div { display: grid; gap: 2px; min-width: 0; }
+.ss-page .ss-ob-facts dt { color: var(--rv-color-subtle); font-size: 12px; font-weight: 500; }
+.ss-page .ss-ob-facts dd { margin: 0; color: var(--rv-color-ink); font-size: 13px; overflow-wrap: anywhere; }
+.ss-page .ss-ob-result { display: inline-flex; align-items: center; gap: 6px; }
+.ss-page .ss-ob-folder { display: grid; grid-template-columns: minmax(240px, 300px) minmax(0, 1fr); gap: 8px; align-items: center; }
+.ss-page .ss-ob-oauth { display: grid; gap: 12px; padding: 14px 16px; border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.ss-page .ss-ob-oauth > h3 { margin: 0; color: var(--rv-color-ink); font-size: 14px; font-weight: 600; }
+.ss-page .ss-ob-steps { display: grid; gap: 4px; margin: 0; padding-left: 20px; color: var(--rv-color-muted); font-size: 13px; line-height: 1.5; }
+.ss-page .ss-ob-check { display: flex; align-items: flex-start; gap: 8px; color: var(--rv-color-ink); font-size: 13px; line-height: 1.45; cursor: pointer; }
+.ss-page .ss-ob-check > input { flex: none; margin-top: 1px; }
+@media (max-width: 720px) {
+  .ss-page .ss-ob-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ss-page .ss-ob-folder { grid-template-columns: 1fr; }
+}

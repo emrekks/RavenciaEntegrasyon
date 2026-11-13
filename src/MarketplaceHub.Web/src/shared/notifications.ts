@@ -512,6 +512,8 @@ function writeAttentionSeen(seen: Record<string, string>) {
 
 function attentionNotification(notice: AttentionNotice, previous?: AppNotification): AppNotification {
   const expired = notice.code === 'PRODUCT_APPROVAL_DEADLINE_EXPIRED'
+  // The Google Drive backup copy has stopped (Sistem Ayarları › Google Drive Yedeği): not a connection's notice.
+  const backup = notice.code === 'OFFSITE_BACKUP_FAILING'
   const details: NotificationDetail[] = [
     { label: expired ? 'Süresi Dolan Kontrol' : 'Art Arda Hata', value: String(notice.failureCount), tone: 'error' },
     ...(notice.lastAttemptAt ? [{ label: 'Son Deneme', value: formatDateTime(notice.lastAttemptAt) }] : []),
@@ -526,7 +528,7 @@ function attentionNotification(notice: AttentionNotice, previous?: AppNotificati
   }))
   const target = expired
     ? items.length === 1 && items[0].href ? { href: items[0].href, label: 'Ürüne Git' } : { href: notificationLinks.job('PRODUCT_APPROVAL_DEADLINE_EXPIRED'), label: 'İşlem Takibine Git' }
-    : { href: notificationLinks.connection(notice.connectionId), label: 'Entegrasyona Git' }
+    : backup ? { href: '/settings?tab=offsite', label: 'Ayarlara Git' } : { href: notificationLinks.connection(notice.connectionId), label: 'Entegrasyona Git' }
   return {
     // One id per notice and revision: every browser of the tenant names it alike, so the center keeps it once.
     id: previous?.id ?? `attention:${notice.key}:${notice.revision}`.slice(0, 120),
@@ -538,10 +540,10 @@ function attentionNotification(notice: AttentionNotice, previous?: AppNotificati
     actionLabel: target.label,
     details,
     title: notice.title.slice(0, 80),
-    operation: expired ? 'Ürün onay kontrolü' : 'Senkronizasyon',
-    platformCode: notice.platformCode.toUpperCase(),
-    connectionId: notice.connectionId,
-    storeName: notice.storeName,
+    operation: expired ? 'Ürün onay kontrolü' : backup ? 'Google Drive Yedeği' : 'Senkronizasyon',
+    platformCode: backup ? undefined : notice.platformCode.toUpperCase(),
+    connectionId: backup ? undefined : notice.connectionId,
+    storeName: backup ? undefined : notice.storeName,
     subject: items.length === 1 ? items[0] : undefined,
     code: notice.code,
     groupKey: `${attentionPrefix}${notice.key}`,

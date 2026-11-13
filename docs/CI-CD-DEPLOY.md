@@ -285,68 +285,68 @@ Açmak (yalnız sahip TOTP'yi kurduktan sonra):
 
 ## Sunucu dışı yedek (Y3, Y4)
 
-`deploy/backup/offsite-copy.sh` en yeni doğrulanmış yedek setini (`SHA256SUMS` tutan) sahibin **age açık
-anahtarıyla** şifreleyip rclone ile `<uzak>:<klasör>/<set>.tar.age` olarak yükler. Akış diskten geçmez
-(tar → age → `rclone rcat`). Sunucu şifreleyebilir ama çözemez: özel anahtar sahipte, sunucu dışında kalır.
-Aynı set ikinci kez yüklenmez; betik uzaktaki hiçbir şeyi silmez. Yapılandırılmadıkça
-`Off-site backup copy is not configured` yazıp 0 ile çıkar.
+**Panelden yönetilir (13 Kasım 2026'dan beri):** Sistem Ayarları › Veri › **Google Drive Yedeği** (yalnız sahip ve
+yönetici). Sunucuda kabuk adımı, `deploy/secrets` dosyası ya da ek program gerekmez. Worker en yeni **doğrulanmış**
+yedek setini (`SHA256SUMS` tutan, sağlama toplamları tutan) sahibin **age açık anahtarıyla** şifreleyip sahibin
+Google Drive'ına `<set>.tar.age` olarak yükler. Sunucu şifreleyebilir ama çözemez: özel anahtar sunucuda hiç yoktur.
 
-**1) age anahtar çifti (sahip, kendi bilgisayarında):**
+Nasıl çalışır:
+
+- **Zaman:** her gün 09:30 ve 21:30 UTC (12:30 / 00:30 TR), 08:59 / 20:59 yedeğinden yarım saat sonra; panelde
+  "Şimdi Gönder" bir dakika içinde başlatır. Aynı set ikinci kez yüklenmez. Kaçan bir zaman worker açılınca yapılır.
+- **Akış:** `OffsiteBackupCopier` (worker) seti yedek biriminden salt okunur okur (`backup_staging` →
+  `/var/lib/marketplacehub/backups:ro`), dosyaları açıp sağlama toplamlarını doğrular, aynı açık dosyalardan tar →
+  `age` (uygulama imajındaki dağıtım paketi, BSD-3) → Drive API'nin sürdürülebilir (resumable) yüklemesiyle akıtır;
+  diske düz ya da şifreli kopya yazılmaz. Doğrulanmamış set asla yüklenmez.
+- **Okuma izni:** `backup.sh` her yeni seti uygulamanın grubuna verir (`BACKUP_READER_GID=1654`, yedek konteyneri
+  `group_add: 1654`; birim kökü ve set 0750, dosyalar 0640). 13 Kasım'dan önceki setler root'a aittir; worker onları
+  okuyamaz ve atlar, ilk deploy'un yeni seti okunur.
+- **Google bağlantısı:** sahibin kendi Google Cloud OAuth istemcisi (Web uygulaması), kapsamlar `openid email
+  https://www.googleapis.com/auth/drive.file`. "Google ile Bağlan": yetki kodu + PKCE (S256) + tek kullanımlık,
+  10 dakikalık, kullanıcıya bağlı state; `access_type=offline`, `prompt=consent`. Google kişiyi panel sayfası
+  `https://panel.ravencia.com/settings/google-drive-callback`'e döndürür; sayfa kodu oturum ve CSRF ile
+  `POST /api/v1/settings/offsite-backup/google/complete`'e iletir (API'de kimliksiz geri dönüş ucu yoktur).
+- **Sırlar nerede:** `iam.tenant_settings` "offsite-backup" (age açık anahtarı, klasör, saklama, istemci kimliği, şifreli
+  istemci gizli anahtarı) ve "offsite-backup-state" (şifreli refresh token, son gönderimler). Şifreleme uygulamanın Data
+  Protection anahtarlarıyla (`dp_keys`), kiracıya bağlı (`BoundSecret`); API yanıtında gizli anahtar ve token hiç yoktur.
+  "Bağlantıyı Kes" token'ı Google'da iptal eder ve siler. Paneli sıfırlama bu ayarları tutar (Sistem ayarları).
+- **Klasör:** varsayılan "Uygulama Klasörü" (`Ravencia Yedek`): uygulama Drive kökünde klasörü bulur ya da oluşturur ve
+  ID'sini saklar. "Klasör ID'si" yalnız uygulamanın oluşturduğu bir klasörde çalışır: `drive.file` başka uygulamanın ya
+  da elle açılan klasörü göremez.
+- **Saklama:** son N gün (varsayılan 14) her kopya + son M ayın (varsayılan 12) her birinin ilk kopyası + her zaman en
+  yeni kopya; yalnız uygulamanın yüklediği `YYYYMMDDTHHMMSSZ.tar.age` dosyaları kalıcı silinir (çöp kutusuna değil;
+  Drive kotası şişmesin), başka dosyaya dokunulmaz. Silme yalnız o çalışmanın kopyası Drive'a çıktıktan sonra yapılır.
+- **Hata:** geçici hatada (ağ, Drive 5xx, kota) artan bekleme ile tekrar (15 dk, 30 dk, 1 sa, 2 sa, sonra 4 sa; sıradaki
+  zaman hiç atlanmaz). Google yetkisi geçersizse (`invalid_grant`, iptal, süre dolması, istemci silinmesi) gönderim
+  durur, panel "Yeniden Bağlanın" der, bildirim merkezine arka plan uyarısı düşer ve sahibe **tek** alarm e-postası
+  gider (Alarm Bildirimleri hesabıyla); 3 art arda başarısız denemede de tek e-posta. İlk başarılı gönderimde
+  "düzeldi" bildirimi ve e-postası gelir.
+- **OAuth izin ekranı "Üretimde" olmalı:** "Testing" durumundaki External uygulamada Google refresh token'ı 7 günde
+  düşürür; kapsamlar hassas olmadığından yayınlamak Google doğrulaması istemez.
+
+**Sahibin bir kerelik adımları:** Google Cloud Console'da proje → Google Drive API'yi etkinleştir → OAuth izin ekranı
+(External; kapsamlar openid, email, `…/auth/drive.file`; kendini test kullanıcısı ekle; "Uygulamayı Yayınla") →
+Kimlik Bilgileri › OAuth istemci kimliği (Web uygulaması), yönlendirme URI'si yukarıdaki adres → panelde istemci kimliği
+ve gizli anahtarı kaydet → "Şifreleme Anahtarı Oluştur" (anahtar çifti tarayıcıda üretilir, özel anahtar yalnız
+`ravencia-yedek-anahtari.txt` olarak iner; parola yöneticisi + çevrimdışı kopya) ya da var olan `age1…` açık anahtarını
+yapıştır → Otomatik Gönderim açık, Kaydet (parola) → "Google ile Bağlan" → "Bağlantıyı Test Et" → "Şimdi Gönder".
+
+**Geri açma (ek program gerekmez):** Drive'dan `<set>.tar.age` indir → panelde "Yedeği Aç": kopya ve anahtar dosyası
+seçilir, tarayıcı çözüp `<set>.tar` olarak kaydeder (sunucuya bir şey gitmez). Komut satırıyla da olur:
 
 ```bash
-# Windows: winget install FiloSottile.age   macOS: brew install age   Linux: apt install age
-age-keygen -o ravencia-yedek-anahtari.txt
-# Çıktıdaki "Public key: age1..." satırı açık anahtardır. ravencia-yedek-anahtari.txt ÖZEL anahtardır:
-# parola yöneticisine ve ayrıca çevrimdışı bir yere (USB / kâğıt) koyun; sunucuya, repoya, sohbete koymayın.
-```
-
-**2) Sunucuya yalnız açık anahtar:**
-
-```bash
-sudo apt-get install -y age rclone
-echo 'age1...' | sudo tee deploy/secrets/backup_age_recipient.txt >/dev/null
-sudo chmod 0600 deploy/secrets/backup_age_recipient.txt
-```
-
-**3) Google Drive yetkisi (sahip yapar).** Sunucuda tarayıcı yok; yetki sahibin bilgisayarında alınır:
-
-```bash
-# Sahibin bilgisayarında (rclone kurulu): Drive hesabıyla giriş, kapsam "drive.file"
-# (rclone yalnız kendi oluşturduğu dosyaları görür, Drive'ın geri kalanına erişemez).
-rclone authorize "drive" --drive-scope drive.file
-# Çıkan JSON token'ı kopyalayın. Sunucuda:
-sudo rclone config --config deploy/secrets/rclone.conf
-#   n (new remote) → name: gdrive → storage: drive → client_id/secret boş → scope: drive.file
-#   → root_folder_id boş → service account boş → advanced: n → auto config: n → token'ı yapıştırın
-sudo chmod 0600 deploy/secrets/rclone.conf
-echo 'gdrive:ravencia-yedek' | sudo tee deploy/secrets/backup_offsite_remote.txt >/dev/null
-sudo bash deploy/backup/offsite-copy.sh    # ilk kopya; "written to gdrive:ravencia-yedek/..." beklenir
-```
-
-`drive.file` kapsamı silmeye de izin verir (yalnız rclone'un yüklediklerini); betik silmez. Saklama:
-Drive'da klasörü sahip elle ya da Google Drive kuralıyla temizler (öneri: son 14 günlük + her ayın ilk
-seti). Silinemez hedef gerekirse ileride Backblaze B2 Object Lock.
-
-**4) Geri açma (sahibin bilgisayarında):**
-
-```bash
-rclone copy gdrive:ravencia-yedek/<set>.tar.age .
 age -d -i ravencia-yedek-anahtari.txt <set>.tar.age | tar -x     # <set>/database.dump, private-volumes.tar.gz
-cd <set> && sha256sum -c SHA256SUMS
+cd <set> && sha256sum -c SHA256SUMS                              # yollar /backup/<set>/… ise: yolları dosya adına indirin
 ```
 
-Sonra RUNBOOK-GERI-ALMA.md bölüm 3. `deploy/secrets/` emaneti (Y4) aynı anahtarla şifrelenir:
-RUNBOOK-GERI-ALMA.md bölüm 5.
+Sonra RUNBOOK-GERI-ALMA.md bölüm 3. `deploy/secrets/` emaneti (Y4) aynı anahtarla şifrelenir: RUNBOOK-GERI-ALMA.md bölüm 5.
 
-**5) Zamanlayıcı (repoda hazır, yapılandırılınca kendiliğinden kurulur).** Birimler
-`deploy/systemd/ravencia-offsite-copy.service` ve `.timer` (09:30 ve 21:30 UTC, gece/öğle yedeğinden yarım saat sonra,
-`Persistent=true`, 10 dk rastgele gecikme). `install-backup-timer.sh` (her deploy'da) bu ikisini **yalnız**
-`deploy/secrets/backup_age_recipient.txt` ve `deploy/secrets/backup_offsite_remote.txt` doluysa kurar ve
-etkinleştirir; o zamana kadar sunucuda hiçbir şey değişmez. Sahip 1–3. adımları bitirip bir deploy (ya da
-`bash deploy/scripts/install-backup-timer.sh`) çalıştırınca zamanlayıcı devreye girer; kontrol:
-`systemctl list-timers 'ravencia-offsite-*'`. Birim root olarak `/usr/local/lib/ravencia` kopyasını çalıştırır;
-`ProtectHome` kapalıdır, çünkü rclone yenilenen Drive jetonunu `deploy/secrets/rclone.conf`'a geri yazar.
-Başarısız kopya `ravencia-alert@` alarmı üretir; yapılandırma eksikse yalnız "not configured" satırı yazılır.
+**Eski sunucu yolu (yedek, ikincil):** `deploy/backup/offsite-copy.sh` ve `ravencia-offsite-copy.timer` (09:30 / 21:30
+UTC) hâlâ çalışır, ama yalnız `deploy/secrets/backup_age_recipient.txt` ve `backup_offsite_remote.txt` (ve `rclone.conf`)
+varsa kurulur; yoksa hiçbir şey yapmaz. **Öncelik panelde:** ikisi aynı klasöre yazarsa aynı adlı kopya ikinci kez
+yüklenmez; sunucu betiği hiç silmez (saklamayı panel yapar). Panel çalıştıktan sonra bu üç dosyanın silinmesi önerilir
+(o zaman zamanlayıcı bir sonraki deploy'da kurulmaz). Sınır: `drive.file` token'ı uygulamanın yüklediği kopyaları
+silebilir; sunucuyu ele geçiren bu kopyaları da silebilir. Silinemez hedef gerekirse ileride Backblaze B2 Object Lock.
 
 ## İşletim: zamanlayıcılar, alarm, izleme
 

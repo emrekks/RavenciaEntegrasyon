@@ -19,7 +19,7 @@ public sealed class AttentionNoticeService(AppDbContext db, TimeProvider timePro
             .Where(x => x.TenantId == tenantId && (x.Status == "ACTIVE" || x.Status == "VERIFIED"))
             .Select(x => new { x.Id, x.PlatformCode, x.DisplayName })
             .ToListAsync(cancellationToken);
-        if (connections.Count == 0) return [];
+        if (connections.Count == 0) return await WithOffsiteBackupAsync(tenantId, [], cancellationToken);
         var byId = connections.ToDictionary(x => x.Id);
         var connectionIds = connections.Select(x => x.Id).ToArray();
         var notices = new List<AttentionNoticeView>();
@@ -116,8 +116,41 @@ public sealed class AttentionNoticeService(AppDbContext db, TimeProvider timePro
                     items));
             }
         }
+        return await WithOffsiteBackupAsync(tenantId, notices, cancellationToken);
+    }
+
+    // The Google Drive copy has stopped: an invalid Google authorization, or failed runs that already alerted the owner.
+    private async Task<IReadOnlyList<AttentionNoticeView>> WithOffsiteBackupAsync(Guid tenantId, List<AttentionNoticeView> notices, CancellationToken cancellationToken)
+    {
+        var rows = await db.TenantSettings.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && (x.Key == Backups.OffsiteBackupSettingsService.SettingKey || x.Key == Backups.OffsiteBackupSettingsService.StateKey))
+            .ToListAsync(cancellationToken);
+        var settings = Backups.OffsiteBackupSettingsService.ReadSettings(rows.FirstOrDefault(x => x.Key == Backups.OffsiteBackupSettingsService.SettingKey));
+        var state = Backups.OffsiteBackupSettingsService.ReadState(rows.FirstOrDefault(x => x.Key == Backups.OffsiteBackupSettingsService.StateKey));
+        if (settings?.Enabled != true || state is null || state.ConnectionId is null) return notices;
+        var since = state.AuthInvalidAt ?? (state.AlertSentAt is not null ? state.FailingSince : null);
+        if (since is not { } failingSince) return notices;
+        var message = state.AuthInvalidAt is not null
+            ? $"Google Drive yedeği durdu: {state.AuthError ?? "Google yetkisi geçersiz."} Sistem Ayarları › Google Drive Yedeği'nden Google ile yeniden bağlanın."
+            : $"Google Drive yedeği {state.ConsecutiveFailures} denemedir gönderilemiyor: {state.LastError}";
+        notices.Insert(0, new AttentionNoticeView(
+            AttentionNoticePolicy.OffsiteBackupKey,
+            AttentionNoticePolicy.OffsiteBackupRevision(failingSince),
+            AttentionNoticePolicy.OffsiteBackupFailingCode,
+            AttentionNoticePolicy.OffsiteBackupTitle,
+            message,
+            Guid.Empty,
+            string.Empty,
+            "Google Drive Yedeği",
+            "OFFSITE_BACKUP",
+            Math.Max(state.ConsecutiveFailures, 1),
+            state.LastAttemptAt,
+            state.LastSuccessAt,
+            state.AuthError ?? state.LastError,
+            []));
         return notices;
     }
+
 
     internal static string FailingRevision(DateTimeOffset? lastSuccessAt) =>
         lastSuccessAt is { } success ? success.UtcTicks.ToString(CultureInfo.InvariantCulture) : "never";

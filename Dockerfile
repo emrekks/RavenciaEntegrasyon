@@ -30,7 +30,13 @@ ENTRYPOINT ["dotnet", "test", "MarketplaceHub.sln", "--no-restore", "--configura
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.13@sha256:d5633778c754e89a386882eddf8dbee6942447a8a4b8267c19cf1e1158d0b0ac
 WORKDIR /app
-RUN mkdir -p /var/lib/marketplacehub/files /var/lib/marketplacehub/dp-keys \
+# age (BSD-3-Clause, the distribution's signed package): the worker encrypts the off-site backup copy to the owner's
+# age public key with it (Sistem Ayarları › Google Drive Yedeği, AgeCommandEncryptor).
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends age \
+ && rm -rf /var/lib/apt/lists/* \
+ && age --version
+RUN mkdir -p /var/lib/marketplacehub/files /var/lib/marketplacehub/dp-keys /var/lib/marketplacehub/backups \
  && chown -R ${APP_UID}:${APP_UID} /var/lib/marketplacehub
 COPY --from=build --chown=${APP_UID}:${APP_UID} /out/api ./api
 COPY --from=build --chown=${APP_UID}:${APP_UID} /out/worker ./worker

@@ -166,6 +166,21 @@ guard_disk_space() {
   fi
 }
 
+# The worker's off-site copy (Sistem Ayarları › Google Drive Yedeği) reads the set as the app's group
+# (BACKUP_READER_GID, uid/gid 1654 in the app image) through a read-only mount: the volume root and the new set
+# become that group's, read-only for it. The worker already holds the database credentials and the private volumes,
+# so this exposes nothing new to it. A failure here never fails the backup; that set is only not copied off-site.
+share_with_reader() {
+  reader_gid="${BACKUP_READER_GID:-}"
+  test -n "$reader_gid" || return 0
+  case "$reader_gid" in *[!0-9]*) echo "BACKUP_READER_GID must be numeric; set not shared."; return 0 ;; esac
+  if chgrp "$reader_gid" "$backup_root" "$1" "$1"/* && chmod 0750 "$backup_root" "$1" && chmod 0640 "$1"/*; then
+    echo "Backup set $1 readable by group $reader_gid (off-site copy)."
+  else
+    echo "Could not hand backup set $1 to group $reader_gid; the off-site copy will skip it."
+  fi
+}
+
 if test "${BACKUP_FUNCTIONS_ONLY:-false}" = "true"; then
   # Only reached when sourced by the tests; "return" ends the sourcing.
   return 0
@@ -208,5 +223,6 @@ tar -C /source -czf "$target/private-volumes.tar.gz" files dp-keys
 sha256sum "$target/database.dump" "$target/private-volumes.tar.gz" > "$target/SHA256SUMS"
 printf '{"createdAt":"%s","postgresMajor":18,"filesIncluded":true,"dataProtectionKeysIncluded":true}\n' "$stamp" > "$target/manifest.json"
 verify_backup "$target"
+share_with_reader "$target"
 prune_expired_backups
 echo "Backup set created at $target; verified successfully."

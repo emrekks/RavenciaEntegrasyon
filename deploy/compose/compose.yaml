@@ -126,6 +126,12 @@ services:
   worker:
     <<: *app
     command: ["worker/MarketplaceHub.Worker.dll"]
+    # Sistem Ayarları › Google Drive Yedeği: the worker reads the verified backup sets (read-only) to send their
+    # age-encrypted copy to the owner's Drive (OffsiteBackupCopier). backup.sh gives new sets to the app's group (1654).
+    volumes:
+      - app_files:/var/lib/marketplacehub/files
+      - dp_keys:/var/lib/marketplacehub/dp-keys
+      - backup_staging:/var/lib/marketplacehub/backups:ro
     # Give the worker time to hand running jobs back to the queue before SIGKILL.
     stop_grace_period: 45s
     networks: [backend, egress]
@@ -214,12 +220,16 @@ services:
       PGDATABASE: marketplacehub
       PGUSER: marketplacehub
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      # New sets are handed to the app's group (APP_UID 1654) so the worker can read them for the off-site copy.
+      BACKUP_READER_GID: "1654"
     secrets: [postgres_password]
     # Hardening (U3): runs as root (it writes the root-owned staging volume) and may only read past file modes,
     # which the API's private files and Data Protection keys (uid 1654) need.
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
     cap_add: [DAC_READ_SEARCH]
+    # Membership of the app's group lets root hand the new set to it (chgrp) without CAP_CHOWN.
+    group_add: ["1654"]
     pids_limit: 128
     volumes:
       - backup_staging:/backup

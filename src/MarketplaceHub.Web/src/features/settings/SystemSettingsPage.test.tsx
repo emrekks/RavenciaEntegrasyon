@@ -6,6 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const apiState = vi.hoisted(() => ({ calls: [] as Array<{ path: string; method: string; body?: string; headers?: Record<string, string> }>, failShippingSave: null as string | null, alertVersion: 2, aiForbidden: false, resetForbidden: false, aiVersion: 1, uploadedFile: null as string | null }))
 
+const offsiteView = vi.hoisted(() => ({
+  enabled: true, ageRecipient: 'age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p', folderMode: 'NAME', folderValue: 'Ravencia Yedek', keepDays: 14, keepMonths: 12,
+  clientId: '123456789-abcdefghijklmnop.apps.googleusercontent.com', clientSecretSaved: true, redirectUri: 'https://panel.example.invalid/settings/google-drive-callback',
+  scopes: 'openid email https://www.googleapis.com/auth/drive.file', connected: true, account: 'owner@gmail.com', connectedAt: '2026-11-13T09:00:00Z', authorizationInvalid: false,
+  authorizationError: null, folderId: 'folder-1234567890', lastAttemptAt: '2026-11-13T09:30:00Z', lastSuccessAt: '2026-11-13T09:31:00Z', lastSet: '20261113T085901Z', lastSize: 157286400,
+  lastError: null, lastErrorAt: null, consecutiveFailures: 0, requestedAt: null, runningSince: null, nextRunAt: '2026-11-13T21:30:00Z', remoteCopies: 3, updatedAt: '2026-11-13T08:00:00Z', version: 4
+}))
+
 vi.mock('../../shared/api', async importOriginal => {
   const actual = await importOriginal<typeof import('../../shared/api')>()
   const respond = async (requestedPath: string, init?: RequestInit) => {
@@ -26,6 +34,12 @@ vi.mock('../../shared/api', async importOriginal => {
     if (path === '/mfa/confirm') return { recoveryCodes: ['ABCD-EFGH-JKMN', 'PQRS-TVWX-YZ01'] }
     if (path === '/settings/shipping-label') return { settings: method === 'PUT' ? JSON.parse(body ?? 'null') : null, version: method === 'PUT' ? 4 : 3 }
     if (path === '/settings/appearance') return { settings: null, version: 0 }
+    if (path === '/settings/offsite-backup' && method === 'PUT') {
+      const sent = JSON.parse(body ?? '{}') as Record<string, unknown>
+      return { ...offsiteView, ...sent, clientSecret: undefined, password: undefined, version: offsiteView.version + 1 }
+    }
+    if (path === '/settings/offsite-backup') return offsiteView
+    if (path === '/settings/offsite-backup/run') return { requested: true }
     if (path === '/settings/alert-email' && method === 'PUT') {
       const saved = JSON.parse(body ?? '{}') as { senderAddress: string; recipients: string[] }
       return { senderAddress: saved.senderAddress, recipients: saved.recipients, appPasswordSaved: true, updatedAt: '2026-11-03T20:00:00Z', version: ++apiState.alertVersion }
@@ -450,6 +464,42 @@ describe('SystemSettingsPage', () => {
     const change = apiState.calls.find(call => call.path === '/settings/alert-email' && call.method === 'PUT')!
     expect(JSON.parse(change.body!).appPassword).toBe('abcd efgh ijkl mnop')
     expect(container.querySelector('input[type="password"]')).toBeNull()
+  })
+
+  it('shows the Google Drive backup state, keeps the client secret write-only and saves only after the password', async () => {
+    await renderPage('/settings?tab=offsite')
+    expect(paneTitle()).toContain('Google Drive Yedeği')
+    expect(container.textContent).toContain('Çalışıyor')
+    expect(container.textContent).toContain('owner@gmail.com')
+    expect(container.textContent).toContain('20261113T085901Z · 150 MB')
+    expect(container.querySelector('input[aria-label="İstemci Gizli Anahtarı"]')).toBeNull()
+    expect(container.querySelector<HTMLInputElement>('input[aria-label="Yönlendirme Adresi"]')?.value).toBe('https://panel.example.invalid/settings/google-drive-callback')
+
+    // A private key pasted by mistake is refused before anything is sent.
+    input(container.querySelector<HTMLInputElement>('input[aria-label="age Açık Anahtarı"]')!, 'AGE-SECRET-KEY-1QQQ')
+    expect(container.textContent).toContain('age ÖZEL anahtarı')
+    expect(button('Ayarları Kaydet').disabled).toBe(true)
+
+    input(container.querySelector<HTMLInputElement>('input[aria-label="age Açık Anahtarı"]')!, offsiteView.ageRecipient)
+    const days = Array.from(container.querySelectorAll<HTMLInputElement>('input[type="number"]'))[0]
+    input(days, '21')
+    click(button('Ayarları Kaydet'))
+    expect(apiState.calls.some(call => call.path === '/settings/offsite-backup' && call.method === 'PUT')).toBe(false)
+    input(document.querySelector<HTMLInputElement>('#ss-offsite-confirm input[type="password"]')!, 'my-password')
+    act(() => { document.querySelector<HTMLFormElement>('#ss-offsite-confirm')!.requestSubmit() })
+    await settle()
+    const save = apiState.calls.find(call => call.path === '/settings/offsite-backup' && call.method === 'PUT')!
+    const sent = JSON.parse(save.body!)
+    expect(sent).toMatchObject({ enabled: true, keepDays: 21, keepMonths: 12, folderMode: 'NAME', folderValue: 'Ravencia Yedek', clientSecret: null, password: 'my-password' })
+    expect(save.headers?.['if-match']).toBe('"v4"')
+  })
+
+  it('asks the worker for a copy now', async () => {
+    await renderPage('/settings?tab=offsite')
+    click(button('Şimdi Gönder'))
+    await settle()
+    expect(apiState.calls.some(call => call.path === '/settings/offsite-backup/run' && call.method === 'POST')).toBe(true)
+    expect(container.textContent).toContain('Gönderim sıraya alındı')
   })
 
   it('sends the alert test e-mail and shows where it went', async () => {
