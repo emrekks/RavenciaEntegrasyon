@@ -347,7 +347,7 @@ describe('ReportsPage', () => {
     expect(loss.querySelector('.reports-hover-tip')?.textContent ?? loss.textContent).toContain('satışı aşan tahmini zarar')
     expect(page.querySelector('.reports-bridge > li.is-end .reports-hover-tip')?.textContent).toContain('satışı aşan tahmini zarar')
     // The previous period read no statement, so its profit is not set against this one.
-    expect(loss.textContent).toContain('Önceki dönem: —')
+    expect(loss.textContent).toContain('Önceki dönem: ₺0')
     // The advertising spend is told from the deductions tied to no order.
     expect(hero(page, 'ads')).toBe('₺5.000 · sınır %5')
     // TACoS: the spend over Trendyol's net revenue (₺250), not every platform's.
@@ -736,14 +736,19 @@ describe('ReportsPage', () => {
     expect(figures[4]).toContain('—')
   })
 
-  it('shows a dash in every figure and sub-line of a period with no order, never a zero', async () => {
+  it('shows a dash only as the main value of a card in a period with no order; sub-lines, change pills and tab badges read zero', async () => {
     const none = { orders: 0, ordersWithAmount: 0, grossSales: 0, netRevenue: 0, returnedAmount: 0, soldQuantity: 0, keptQuantity: 0, returnedQuantity: 0, cancelledOrders: 0, averageOrderValue: 0 }
     const page = await open('', { ...report, summary: { ...report.summary, ...none }, previousSummary: { ...report.previousSummary, ...none } })
     const figures = texts(page, '.reports-kpis > div')
-    expect(figures[0]).toContain('Toplam Ciro——')
-    expect(figures[4]).toContain('— iptal · sepet —')
-    expect(figures[5]).toContain('Net — · — iade')
-    for (const figure of figures) expect(figure).not.toMatch(/₺0|%0|(^|[^\d,.])0([^\d,.]|$)/u)
+    expect(figures[0]).toContain('Toplam Ciro—')
+    expect(figures[1]).toContain('Sipariş başına ₺0')
+    expect(figures[2]).toContain('Reklam öncesi %0')
+    expect(figures[3]).toContain('Ürün maliyeti ₺0')
+    expect(figures[4]).toContain('0 iptal · sepet ₺0')
+    expect(figures[5]).toContain('Net 0 · 0 iade')
+    for (const strong of page.querySelectorAll('.reports-kpis > div > strong')) expect(strong.textContent).toBe('—')
+    expect(page.querySelector('.reports-kpis .reports-delta.is-flat')?.textContent).toBe('■ %0')
+    for (const badge of page.querySelectorAll('.rv-tab-count')) expect(badge.textContent).not.toBe('—')
   })
 
   it('lists the Genel Bakış Sipariş figure per platform when the card is hovered', async () => {

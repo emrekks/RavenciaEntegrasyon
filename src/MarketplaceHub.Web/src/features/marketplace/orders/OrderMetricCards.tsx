@@ -37,8 +37,8 @@ type TipRow = Store & { value: ReactNode }
 function metricText({ value, loading, error }: Metric) {
   return cardCountText(value, { loading, error: Boolean(error) })
 }
-// A count with something in it: not loading, not failed, not nought (those read "…" or "—" with no "Paket" after them).
-const known = (metric: Metric) => !metric.loading && !metric.error && (metric.value ?? 0) > 0
+// A count that is known: neither loading, nor failed, nor missing (those read "…" or "—" with no "Paket" after them). A known zero reads "—" big and keeps its small "Paket | 0 Adet Ürün" line.
+const known = (metric: Metric) => !metric.loading && !metric.error && metric.value !== undefined
 
 const count = (value: number) => value.toLocaleString('tr-TR')
 
