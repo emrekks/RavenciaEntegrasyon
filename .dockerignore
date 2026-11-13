@@ -34,3 +34,14 @@ output
 **/__pycache__
 **/*.pyc
 .pytest_cache
+
+# Working files that never belong in an image: agent tooling, local notes and design drafts, the web's browser tests
+# (the API image publishes only /out/api and /out/worker; the Caddy image only the web's dist).
+.claude
+.local-docs
+.superdesign
+.playwright-mcp
+CLAUDE.md
+src/MarketplaceHub.Web/tests
+**/coverage
+**/*.map

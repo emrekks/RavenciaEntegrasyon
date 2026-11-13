@@ -53,3 +53,24 @@ IS-TAKIBI-RAPORU-*.md
 # Browser automation snapshots (Playwright MCP) and TypeScript incremental build info
 .playwright-mcp/
 *.tsbuildinfo
+
+# Local working documents (reports, handoff notes, scans, plans, design drafts) stay out of git: .local-docs/ in the
+# main checkout holds them (see "Repository hygiene" in CLAUDE.md).
+.local-docs/
+.superdesign/
+docs/*-RAPORU-*
+docs/DEVIR-PROMPT-*
+docs/TARAMA-*
+docs/tasarim-onerileri/
+/*.pdf
+/*.html
+
+# Test and coverage output, editor and merge leftovers
+**/coverage/
+*.lcov
+*.trx
+*.bak
+*.orig
+*.tmp
+*.rej
+.claude/scratch*

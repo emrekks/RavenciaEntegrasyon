@@ -435,6 +435,13 @@ jobs:
       - name: Build application runtime image
         run: docker build --tag marketplacehub-app:ci-runtime .
 
+      # Only the published API and worker reach the runtime image: no tests, docs, agent notes or source. (The .pdb
+      # symbols stay on purpose: they put file and line numbers into the logged stack traces.)
+      - name: Runtime image carries no tests, docs or source
+        run: |
+          set -Eeuo pipefail
+          docker run --rm --entrypoint sh marketplacehub-app:ci-runtime -c 'ls -A /app; for p in tests docs src .claude .local-docs CLAUDE.md MarketplaceHub.sln; do if [ -e "/app/$p" ]; then echo "/app/$p reached the runtime image." >&2; exit 1; fi; done; if find /app -name "*.Tests.dll" -o -name "*.md" | grep -q .; then find /app -name "*.Tests.dll" -o -name "*.md" >&2; exit 1; fi'
+
       # Security plan U4: a CRITICAL vulnerability with a released fix (base image or NuGet package) stops
       # Validate; bump the digest or package. Unfixed ones cannot be acted on and are left to the weekly scan.
       - name: Scan application image (CRITICAL, fixable)
@@ -467,6 +474,12 @@ jobs:
           set -Eeuo pipefail
           docker run --rm --entrypoint sh marketplacehub-edge:ci-build -c 'ls /srv/assets/index-*.js.br /srv/assets/index-*.js.zst /srv/assets/index-*.css.br /srv/assets/index-*.css.zst' \
             || { echo "The edge image has no .br/.zst copies of the main bundle (scripts/precompress-assets.mjs)." >&2; exit 1; }
+
+      # The edge serves the built bundle only: no source maps, browser tests or source files.
+      - name: Edge image serves no source maps or tests
+        run: |
+          set -Eeuo pipefail
+          docker run --rm --entrypoint sh marketplacehub-edge:ci-build -c 'ls -A /srv; if find /srv -name "*.map" -o -name "*.ts" -o -name "*.tsx" -o -name "*.mjs" -o -name "*.md" | grep -q .; then find /srv -name "*.map" -o -name "*.ts" -o -name "*.tsx" -o -name "*.mjs" -o -name "*.md" >&2; exit 1; fi'
 
       - name: Scan edge image (CRITICAL, fixable)
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
