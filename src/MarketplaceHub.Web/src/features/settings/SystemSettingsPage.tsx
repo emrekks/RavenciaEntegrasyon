@@ -1243,14 +1243,6 @@ function OffsiteBackupSection({ mfa }: { mfa: boolean }) {
   const [openRows, setOpenRows] = useState<string[]>([])
   const toggleRow = (id: string) => setOpenRows(rows => rows.includes(id) ? rows.filter(row => row !== id) : [...rows, id])
   const [pasteKey, setPasteKey] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!menuOpen) return
-    const close = (event: MouseEvent) => { if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false) }
-    document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
-  }, [menuOpen])
   // The form starts from the saved settings, and again after a save (a new version).
   if (saved && loadedVersion !== saved.version) {
     setLoadedVersion(saved.version)
@@ -1427,17 +1419,11 @@ function OffsiteBackupSection({ mfa }: { mfa: boolean }) {
             {factsList}
             {saved.lastError && saved.consecutiveFailures > 0 && <div className="ss-callout is-danger"><SettingsIcon name="alert" /><span><b>Son hata{saved.lastErrorAt ? ` (${formatSettingsDate(saved.lastErrorAt)})` : ''}:</b> {saved.lastError}{saved.consecutiveFailures > 1 ? ` · ${saved.consecutiveFailures} deneme` : ''}</span></div>}
             <div className="ss-alert-row">
-              {saved.authorizationInvalid && <button type="button" className="ss-btn is-primary" disabled={busy !== null || dirty} onClick={() => openConfirm('connect')}><SettingsIcon name="reset" />Google ile Yeniden Bağlan</button>}
               <button type="button" className={`ss-btn${saved.authorizationInvalid ? '' : ' is-primary'}`} disabled={busy !== null || dirty || !ready || !saved.enabled} title={!saved.enabled ? 'Önce otomatik gönderimi açıp kaydedin.' : undefined} onClick={() => void sendNow()}><SettingsIcon name="cloud" />{busy === 'run' ? 'İsteniyor…' : 'Şimdi Gönder'}</button>
               <button type="button" className="ss-btn" disabled={busy !== null} onClick={() => void testConnection()}><SettingsIcon name="info" />{busy === 'test' ? 'Deneniyor…' : 'Bağlantıyı Test Et'}</button>
               <button type="button" className="ss-btn" onClick={() => setRestoreOpen(true)}><SettingsIcon name="lock" />Yedeği Aç</button>
-              <div className="ss-ob-menu" ref={menuRef}>
-                <button type="button" className="ss-btn" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen(open => !open)}>⋯ Diğer</button>
-                {menuOpen && <div className="ss-ob-menu-list" role="menu">
-                  {!saved.authorizationInvalid && <button type="button" role="menuitem" disabled={busy !== null || dirty} onClick={() => { setMenuOpen(false); openConfirm('connect') }}><SettingsIcon name="reset" />Yeniden Bağlan</button>}
-                  <button type="button" role="menuitem" className="is-danger" disabled={busy !== null} onClick={() => { setMenuOpen(false); openConfirm('disconnect') }}><SettingsIcon name="logout" />Bağlantıyı Kes</button>
-                </div>}
-              </div>
+              <button type="button" className={`ss-btn${saved.authorizationInvalid ? ' is-primary' : ''}`} disabled={busy !== null || dirty} onClick={() => openConfirm('connect')}><SettingsIcon name="reset" />{saved.authorizationInvalid ? 'Google ile Yeniden Bağlan' : 'Yeniden Bağlan'}</button>
+              <button type="button" className="ss-btn is-danger" disabled={busy !== null} onClick={() => openConfirm('disconnect')}><SettingsIcon name="logout" />Bağlantıyı Kes</button>
             </div>
             {actionResult ? <span role="status" className="ss-help ss-ob-result"><SettingsGlyph state={actionResult.kind} />{actionResult.message}</span>
               : dirty ? <span className="ss-help">Göndermek için önce değişiklikleri kaydedin.</span> : null}
