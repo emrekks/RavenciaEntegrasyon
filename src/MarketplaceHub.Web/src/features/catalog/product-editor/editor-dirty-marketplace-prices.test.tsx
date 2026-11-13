@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // A store-specific price changed in "Pazaryerlerine Özel Fiyat" is an unsaved change of the editor.
 const fixture = vi.hoisted(() => {
   const variant = { id: 'v1', version: 1, sku: 'RYP006-S', barcode: 'RYP0060001', modelCode: 'RYP006', optionSignature: '-', status: 'ACTIVE', weight: null, width: null, height: null, length: null, desi: 1, costPrice: null, onHand: 3, available: 3, inventoryVersion: 1, offerId: null, listPrice: 100, salePrice: 90, currency: 'TRY', offerStatus: null, priceVersion: null, offerVersion: null, vatRate: 20, vatInclusion: 'INCLUDED', roundingMode: null, safetyStock: 0, mediaUrls: [], options: {}, attributes: [] }
-  const state = { version: 1 }
+  const state = { version: 1, holdWrites: false }
   const product = () => ({ id: 'p1', version: state.version, title: 'Yonca Desen Elbise', description: 'x', brandId: 'b1', categoryId: 'c1', status: 'ACTIVE', updatedAt: '2026-11-01T10:00:00Z', variants: [variant], primaryImageUrl: null, totalStock: 3, startingPrice: 90, currency: 'TRY', modelCode: 'RYP006', activePlatforms: [], mediaUrls: [], attributes: [], familyProductIds: ['p1'] })
   const connection = { id: 'ty', platformCode: 'TRENDYOL', displayName: 'Trendyol Mağaza', externalStoreId: '930112', status: 'ACTIVE', externalWritesEnabled: true }
   return { product, connection, state }
@@ -15,7 +15,9 @@ const fixture = vi.hoisted(() => {
 
 vi.mock('../../../shared/api', async importOriginal => {
   const original = await importOriginal<typeof import('../../../shared/api')>()
-  const respond = async (path: string) => {
+  const respond = async (path: string, init?: RequestInit) => {
+    // A save that has not answered yet.
+    if (fixture.state.holdWrites && init?.method && init.method !== 'GET') return new Promise(() => undefined)
     if (path === '/products/p1') return fixture.product()
     if (path.startsWith('/catalog/categories/c1/attribute-requirements')) return []
     if (path.startsWith('/products/p1/publication-status/')) return { actualStatus: 'UNKNOWN', lastJobStatus: null, profileId: null }
@@ -44,6 +46,7 @@ let client: QueryClient
 
 beforeEach(() => {
   fixture.state.version = 1
+  fixture.state.holdWrites = false
   container = document.createElement('div')
   document.body.append(container)
   root = createRoot(container)
@@ -107,6 +110,19 @@ describe('editor dirty state with marketplace prices', () => {
     await bumpVersion()
     expect(container.querySelector('.product-stale-banner')).not.toBeNull()
     expect(container.querySelector<HTMLInputElement>('.product-title-field input')!.value).toBe('Yeni Ad')
+  })
+
+  it('locks the form while a save is pending, so nothing typed meanwhile is lost to the refill after the save', async () => {
+    await openEditor()
+    const form = container.querySelector<HTMLFormElement>('#product-creation-form')!
+    expect(form.hasAttribute('inert')).toBe(false)
+    setValue(container.querySelector<HTMLInputElement>('.product-title-field input')!, 'Yeni Ad')
+    fixture.state.holdWrites = true
+    const save = container.querySelector<HTMLButtonElement>('button[data-submit-intent="save"]')!
+    await act(async () => { form.requestSubmit(save) })
+    await settle(3)
+    expect(form.hasAttribute('inert')).toBe(true)
+    expect(form.getAttribute('aria-busy')).toBe('true')
   })
 
   it('a store-specific price change alone warns on unload and survives a newer version', async () => {

@@ -77,10 +77,15 @@ html body .app-shell.stitch-shell main .qi-page .qf-toggle { display: none; }
   html body main .rr.rr .rr-fcard:not(.rr-fopen) .rr-filters.rr-has-sort:has(> .rr-date) > .rr-fbtns { grid-column: 1 / -1; justify-content: flex-end; }
   html body main .rr.rr.rr-orders .rr-fcard:not(.rr-fopen) .rr-filters.rr-has-sort:has(> .rr-date) { grid-template-columns: minmax(0, 1.4fr) minmax(250px, 1fr) minmax(210px, .8fr); }
 }
-@media (min-width: 1025px) and (max-width: 1179px) {
-  html body main .rr.rr .rr-fcard:not(.rr-fopen) .rr-filters:not(.rr-has-sort):has(> .rr-date) { grid-template-columns: minmax(0, 1.3fr) minmax(190px, .9fr) minmax(250px, 1fr); }
-  html body main .rr.rr .rr-fcard:not(.rr-fopen) .rr-filters:not(.rr-has-sort):has(> .rr-date) > .rr-fbtns { grid-column: 1 / -1; justify-content: flex-end; }
-  html body main .rr.rr.rr-orders .rr-fcard:not(.rr-fopen) .rr-filters.rr-has-sort:has(> .rr-date) > .rr-fbtns { grid-column: 1 / -1; justify-content: flex-end; flex-wrap: nowrap; }
+/* The buttons drop to their own row only when the card itself is too narrow for search (180 px), date (190), sort (250),
+   Temizle / Filtrele (155) and the gaps; a viewport limit (1025-1179 px) dropped them even when a folded sidebar left
+   the card room for one row. */
+@media (min-width: 1025px) {
+  @container fshell (max-width: 819px) {
+    html body main .rr.rr .rr-fcard:not(.rr-fopen) .rr-filters:not(.rr-has-sort):has(> .rr-date) { grid-template-columns: minmax(0, 1.3fr) minmax(190px, .9fr) minmax(250px, 1fr); }
+    html body main .rr.rr .rr-fcard:not(.rr-fopen) .rr-filters:not(.rr-has-sort):has(> .rr-date) > .rr-fbtns { grid-column: 1 / -1; justify-content: flex-end; }
+    html body main .rr.rr.rr-orders .rr-fcard:not(.rr-fopen) .rr-filters.rr-has-sort:has(> .rr-date) > .rr-fbtns { grid-column: 1 / -1; justify-content: flex-end; flex-wrap: nowrap; }
+  }
 }
 /* Genel Bakış > Performans: the shared period list is longer than the old one, so on a phone the segment scrolls sideways. */
 @media (max-width: 760px) {

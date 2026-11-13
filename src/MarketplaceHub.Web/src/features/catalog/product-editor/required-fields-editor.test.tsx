@@ -75,7 +75,8 @@ async function renderAt(path: string) {
 
 const labelled = (text: string) => Array.from(container.querySelectorAll('label')).find(label => label.textContent?.startsWith(text))!
 const inputOf = (text: string) => labelled(text).querySelector('input')!
-const writes = () => fixture.state.calls.filter(call => call.method !== 'GET')
+// The taken-codes check is a POST that only reads; it fires 400 ms after the table settles, which a slow run reaches.
+const writes = () => fixture.state.calls.filter(call => call.method !== 'GET' && call.path !== '/catalog/variant-codes/taken')
 
 describe('the editor while the card loads', () => {
   // Owner, 11 Nov 2026: the required fields flashed red on open, before the card's data was in the form.

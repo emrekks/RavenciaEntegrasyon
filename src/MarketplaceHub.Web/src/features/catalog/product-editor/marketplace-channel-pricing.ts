@@ -45,3 +45,22 @@ export function channelOfferPostKey(store: Map<string, { key: string; body: stri
   store.set(slot, { key, body })
   return key
 }
+
+const samePrice = (left: string, right: string) => left.trim() === right.trim() || (left.trim() !== '' && right.trim() !== '' && Number(left) === Number(right))
+
+// The price table's drafts after its rows were read again (each saved offer is written into the rows at once): a
+// typed cell whose stored price now equals what was typed was saved and starts clean; every other typed cell keeps
+// its draft, so one failed price among many does not wipe the prices typed for the rest.
+export function refreshedMatrixDrafts(current: Record<string, ChannelPricingDraft>, fresh: Record<string, ChannelPricingDraft>, dirtyKeys: readonly string[]): { drafts: Record<string, ChannelPricingDraft>; dirtyKeys: string[] } {
+  const drafts = { ...fresh }
+  const stillDirty: string[] = []
+  for (const key of dirtyKeys) {
+    const typed = current[key]
+    const stored = fresh[key]
+    if (!typed || !stored) continue
+    if (samePrice(typed.listPrice, stored.listPrice) && samePrice(typed.salePrice, stored.salePrice)) continue
+    drafts[key] = typed
+    stillDirty.push(key)
+  }
+  return { drafts, dirtyKeys: stillDirty }
+}

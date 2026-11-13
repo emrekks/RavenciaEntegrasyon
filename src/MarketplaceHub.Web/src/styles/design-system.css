@@ -4102,7 +4102,8 @@ small,
    multi-line height. */
 .app-shell.stitch-shell main :where(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]), select) {
   min-height: var(--rv-control-height-md);
-  padding-block: 10px;
+  /* 36 px in all: one 1.5 line plus the 1 px borders; 10 px made a 14 px field 43 px high (21 + 20 + 2). */
+  padding-block: max(0px, calc((var(--rv-control-height-md) - 1.5em - 2px) / 2));
 }
 
 .app-shell.stitch-shell main textarea {
