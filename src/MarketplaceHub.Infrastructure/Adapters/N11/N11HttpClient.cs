@@ -177,7 +177,7 @@ public sealed partial class N11HttpClient(
             var rate = retryAfter is null ? null : new RateLimitMetadata(null, null, retryAfter);
             if (!response.IsSuccessStatusCode)
             {
-                var error = Error(response.StatusCode, body, retryAfter);
+                var error = LocalCircuitResponse.Refusal(response, "N11", "N11") ?? Error(response.StatusCode, body, retryAfter);
                 logger.LogWarning("N11 API isteği reddedildi. ConnectionId: {ConnectionId}, Path: {Path}, Status: {Status}, Code: {Code}", context.Connection.Id, request.RequestUri!.AbsolutePath, (int)response.StatusCode, error.Code);
                 return AdapterResult<JsonDocument>.Failure(error, rate);
             }

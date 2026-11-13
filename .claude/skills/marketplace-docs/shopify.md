@@ -75,6 +75,10 @@ UTC, ISO with Z.
   the link check (LISTING_VERIFY, one per connection per 10 min) at once, so a product deleted during a deploy is not
   shown live until the nightly scan (`MarketplaceWebhookService.StaleStartsListingVerify`). Stale order topics need
   nothing: the scheduled order check reads them.
+- Webhook opening makes one subscription per topic. A topic whose `webhookSubscriptionCreate` times out or answers a
+  server fault is looked up in `webhookSubscriptions` (topic + uri) and kept when Shopify made it; otherwise the topics
+  made so far are removed (`ShopifyHttpClient.CreateWebhookAsync`, 13 Nov 2026). The panel settles an address left
+  unclear against the list: every topic there is adopted, an incomplete set is removed.
 - Invoice data lives in order metafields `ravencia.invoice_number` and `ravencia.invoice_pdf_url`.
 - No label API.
 - Line VAT: `LineItem.taxLines { rate }` is a list; each `rate` is a fraction (0.2 = 20%). The panel sums the rates

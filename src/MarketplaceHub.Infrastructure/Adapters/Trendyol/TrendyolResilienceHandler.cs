@@ -463,16 +463,12 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
     }
 
     // A circuit opened by Trendyol's own 429 answers 429 as well, so the job keeps its attempt and the
-    // connection backs off (as the shared circuit breaker does); any other open circuit answers 503.
+    // connection backs off (as the shared circuit breaker does); any other open circuit answers a 503 marked as local
+    // (LocalCircuitResponse), which the adapter answers as TRENDYOL_LOCAL_CIRCUIT_OPEN, never as a server fault.
     private static HttpResponseMessage CircuitOpenResponse(TimeSpan? retryAfter, bool openedForQuota)
     {
-        var response = new HttpResponseMessage(openedForQuota ? HttpStatusCode.TooManyRequests : HttpStatusCode.ServiceUnavailable)
-        {
-            Content = new StringContent("{\"code\":\"LOCAL_CIRCUIT_OPEN\"}")
-        };
         var delay = retryAfter is { } configuredDelay && configuredDelay > TimeSpan.Zero ? configuredDelay : TimeSpan.FromSeconds(1);
-        response.Headers.RetryAfter = new RetryConditionHeaderValue(delay);
-        return response;
+        return LocalCircuitResponse.Create(openedForQuota ? HttpStatusCode.TooManyRequests : HttpStatusCode.ServiceUnavailable, delay);
     }
 }
 

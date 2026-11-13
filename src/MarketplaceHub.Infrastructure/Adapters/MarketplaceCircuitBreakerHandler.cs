@@ -232,13 +232,7 @@ internal sealed class MarketplaceCircuit
         lock (sync) probeActive = false;
     }
 
-    private static HttpResponseMessage OpenResponse(bool quota, TimeSpan retryAfter)
-    {
-        var response = new HttpResponseMessage(quota ? HttpStatusCode.TooManyRequests : HttpStatusCode.ServiceUnavailable)
-        {
-            Content = new StringContent("{\"code\":\"LOCAL_CIRCUIT_OPEN\"}")
-        };
-        response.Headers.RetryAfter = new RetryConditionHeaderValue(retryAfter < TimeSpan.FromSeconds(1) ? TimeSpan.FromSeconds(1) : retryAfter);
-        return response;
-    }
+    // The fault circuit's 503 is marked as local (LocalCircuitResponse), so no adapter takes it for a server fault.
+    private static HttpResponseMessage OpenResponse(bool quota, TimeSpan retryAfter) =>
+        LocalCircuitResponse.Create(quota ? HttpStatusCode.TooManyRequests : HttpStatusCode.ServiceUnavailable, retryAfter);
 }

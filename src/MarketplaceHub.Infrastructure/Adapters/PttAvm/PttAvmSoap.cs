@@ -69,6 +69,8 @@ public sealed partial class PttAvmHttpClient
         {
             using var response = await clients.CreateBoundedClient(ClientName).SendAsync(request, timeout.Token);
             var body = await response.Content.ReadAsStringAsync(timeout.Token);
+            if (LocalCircuitResponse.Refusal(response, "PTTAVM", "PttAVM") is { } localCircuit)
+                return AdapterResult<XElement>.Failure(localCircuit, new RateLimitMetadata(null, null, localCircuit.RetryAfter));
             var retryAfter = response.Headers.RetryAfter?.Delta
                 ?? (response.Headers.RetryAfter?.Date is { } retryDate ? retryDate - timeProvider.GetUtcNow() : null);
             var parsed = SoapResponse(response.StatusCode, body, operation, retryAfter);

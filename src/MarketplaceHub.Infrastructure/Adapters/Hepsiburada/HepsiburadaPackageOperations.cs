@@ -329,9 +329,10 @@ public sealed partial class HepsiburadaHttpClient
             if (!response.IsSuccessStatusCode)
             {
                 var retryAfter = response.Headers.RetryAfter?.Delta ?? (response.Headers.RetryAfter?.Date is { } retryDate ? retryDate - timeProvider.GetUtcNow() : null);
-                var error = response.StatusCode == HttpStatusCode.BadRequest
+                var error = LocalCircuitResponse.Refusal(response, "HEPSIBURADA", "Hepsiburada")
+                    ?? (response.StatusCode == HttpStatusCode.BadRequest
                     ? LabelRejected(await ReadBoundedTextAsync(response.Content, 16 * 1024, timeout.Token), requestId)
-                    : Error(response.StatusCode, retryAfter ?? rate?.RetryAfter, requestId);
+                    : Error(response.StatusCode, retryAfter ?? rate?.RetryAfter, requestId));
                 return AdapterResult<byte[]>.Failure(error, rate);
             }
             if (response.Content.Headers.ContentLength is > 5 * 1024 * 1024)

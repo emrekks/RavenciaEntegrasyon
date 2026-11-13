@@ -2188,6 +2188,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 var error = submit.Error!;
                 if (IsAmbiguous(error)) return await MarkUpdateResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Ürün güncelleme çağrısının uygulanıp uygulanmadığı kesinleştirilemedi.", error.RemoteRequestId), cancellationToken);
                 db.ExternalEffectRecords.Remove(effect); await db.SaveChangesAsync(cancellationToken);
+                // Never sent (the panel's own circuit is open): the card keeps its state and the job runs again later.
+                if (LocalCircuitOpen.IsCode(error.Code)) return JobExecutionResult.FromAdapterError(error);
                 return await MarkUpdateResult(tenantId, connectionId, profile, "UPDATE_BLOCKED", error.Code, JobExecutionResult.FromAdapterError(error), cancellationToken);
             }
             effect.CompletedAt = timeProvider.GetUtcNow();
@@ -2405,6 +2407,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 TrackResultFailure(submit.Error);
                 if (IsAmbiguous(submit.Error!)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Arşiv çağrısının uzak tarafta uygulanıp uygulanmadığı kesinleştirilemedi.", submit.Error!.RemoteRequestId), cancellationToken);
                 db.ExternalEffectRecords.Remove(effect); await db.SaveChangesAsync(cancellationToken);
+                if (LocalCircuitOpen.IsCode(submit.Error!.Code)) return JobExecutionResult.FromAdapterError(submit.Error);
                 return await MarkPublicationResult(tenantId, connectionId, profile, "ARCHIVE_BLOCKED", submit.Error!.Code, JobExecutionResult.FromAdapterError(submit.Error), cancellationToken);
             }
             effect.CompletedAt = timeProvider.GetUtcNow(); var op = submit.Value!;
@@ -2853,6 +2856,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             {
                 TrackResultFailure(create.Error);
                 if (IsAmbiguous(create.Error!)) { attempt.Status = "MANUAL_REVIEW"; attempt.ErrorCode = "EXTERNAL_EFFECT_AMBIGUOUS"; attempt.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Ortak etiket oluşturma çağrısının sonucu kesinleştirilemedi.", create.Error!.RemoteRequestId); }
+                // Never sent (the panel's own circuit is open): the attempt stays open and the job runs again later.
+                if (LocalCircuitOpen.IsCode(create.Error!.Code)) { db.ExternalEffectRecords.Remove(effect); attempt.ErrorCode = create.Error.Code; await db.SaveChangesAsync(cancellationToken); return JobExecutionResult.FromAdapterError(create.Error); }
                 db.ExternalEffectRecords.Remove(effect); attempt.Status = "FAILED"; attempt.ErrorCode = create.Error!.Code; attempt.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return JobExecutionResult.FromAdapterError(create.Error);
             }
             effect.CompletedAt = timeProvider.GetUtcNow(); attempt.Status = "POLLING";
@@ -13925,6 +13930,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var error = result.Error!; decision.ErrorCode = error.Code; decision.ExternalOperationId ??= error.RemoteRequestId;
         TrackResultFailure(error);
         if (IsAmbiguous(error)) { decision.Status = "MANUAL_REVIEW"; decision.CompletedAt = now; await db.SaveChangesAsync(cancellationToken); throw new JobProcessingException(JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "İade aksiyonunun uzak tarafta uygulanıp uygulanmadığı kesinleştirilemedi.", error.RemoteRequestId)); }
+        // Never sent (the panel's own circuit is open): the decision stays waiting and the job sends it again later.
+        if (LocalCircuitOpen.IsCode(error.Code)) { db.ExternalEffectRecords.Remove(effect); await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(error); }
         db.ExternalEffectRecords.Remove(effect); decision.Status = "FAILED"; decision.CompletedAt = now; await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(error);
     }
 

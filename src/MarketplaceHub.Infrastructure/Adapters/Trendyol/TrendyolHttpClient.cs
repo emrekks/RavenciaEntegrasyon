@@ -1223,6 +1223,9 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
             using var response = await clients.CreateClient("Trendyol").SendAsync(request, HttpCompletionOption.ResponseHeadersRead, linked.Token); var retryAfter = RetryAfterDelay(response.Headers.RetryAfter, timeProvider.GetUtcNow()); var rate = new RateLimitMetadata(null, response.Headers.RetryAfter?.Date, retryAfter); var remoteRequestId = response.Headers.TryGetValues("x-request-id", out var values) ? values.FirstOrDefault() : null;
             if (!response.IsSuccessStatusCode)
             {
+                // The panel's own open circuit refused it: never sent, so never an outcome-unknown write.
+                if (LocalCircuitResponse.Refusal(response, "TRENDYOL", "Trendyol") is { } localCircuit)
+                    return AdapterResult<string>.Failure(localCircuit, rate);
                 var body = await response.Content.ReadBoundedStringAsync(linked.Token);
                 if (TrendyolErrorMapper.RepeatRequest(response.StatusCode, body, remoteRequestId) is { } repeat)
                     return AdapterResult<string>.Failure(repeat, rate with { RetryAfter = TrendyolStockRules.RepeatRequestWait });
