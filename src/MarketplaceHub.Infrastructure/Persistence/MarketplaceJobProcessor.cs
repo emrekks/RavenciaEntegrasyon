@@ -10408,22 +10408,32 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             entry.State = EntityState.Detached;
     }
 
-    private static RemoteOrder MergeHepsiburadaOrderLines(IEnumerable<RemoteOrder> candidates)
+    // Scan C-13 (13 Nov 2026): a line the page carries more than once took the alphabetically last status ("Shipped"
+    // over "Delivered") and its order's discount was added once per copy. Each line now comes from the most recently
+    // modified copy, and a copy whose lines a newer copy already carried adds no discount of its own.
+    internal static RemoteOrder MergeHepsiburadaOrderLines(IEnumerable<RemoteOrder> candidates)
     {
-        var matches = candidates.ToArray();
-        var latest = matches.OrderByDescending(remote => remote.LastModifiedAt).First();
+        var matches = candidates.OrderByDescending(remote => remote.LastModifiedAt).ToArray();
+        var latest = matches[0];
         var lines = matches
             .SelectMany(remote => remote.Lines)
             .GroupBy(line => line.ExternalLineId, StringComparer.Ordinal)
-            .Select(group => group.OrderByDescending(line => line.RawStatus, StringComparer.Ordinal).First())
+            .Select(group => group.First())
             .ToArray();
+        var seenLines = new HashSet<string>(StringComparer.Ordinal);
+        var discountSources = new List<RemoteOrder>();
+        foreach (var match in matches)
+        {
+            var newLines = match.Lines.Count(line => seenLines.Add(line.ExternalLineId));
+            if (newLines > 0 || match.Lines.Count == 0) discountSources.Add(match);
+        }
         var packages = matches
             .SelectMany(remote => remote.Packages)
             .GroupBy(package => package.ExternalPackageId, StringComparer.Ordinal)
             .Select(group => group.OrderByDescending(package => package.OccurredAt).First())
             .ToArray();
         var gross = lines.Sum(line => line.UnitPrice * line.Quantity);
-        var discount = Math.Min(gross, matches.Sum(remote => remote.DiscountAmount));
+        var discount = Math.Min(gross, discountSources.Sum(remote => remote.DiscountAmount));
         return latest with
         {
             LastModifiedAt = matches.Max(remote => remote.LastModifiedAt),
