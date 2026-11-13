@@ -8940,6 +8940,59 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         Version = 1
     };
 
+    // Scan, 13 Nov 2026: a manual attribute mapping lists the attribute in every panel category mapped to the marketplace
+    // category (it went to one picked at random); an option group goes in only where all have room, checked first; and a
+    // refused mapping keeps the user's earlier removal of the template's mapping.
+    [PostgreSqlFact]
+    public async Task AManualAttributeMapping_ReachesEveryMappedCategory_AndARefusalKeepsTheRemoval()
+    {
+        var tenant = NewTenant("mapping-manual-all");
+        var connection = NewQuestionConnection(tenant);
+        AttributeDefinition Attribute(string name) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Code = $"{name}-{Guid.NewGuid():N}", Name = name, DataType = AttributeDataType.Text, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
+        Category PanelCategory(string name) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Name = name, NormalizedName = name.ToUpperInvariant(), Path = name, CreatedAt = fixture.Now, UpdatedAt = fixture.Now };
+        var pattern = Attribute("Desen");
+        var colour = Attribute("Renk");
+        var size = Attribute("Beden");
+        var blouse = PanelCategory("Bluz");
+        var shirt = PanelCategory("Gomlek");
+        var categories = NewReferenceSnapshot(tenant.Id, connection.Id, "CATEGORIES", "", fixture.Now, "manual-all-categories");
+        var attributes = NewReferenceSnapshot(tenant.Id, connection.Id, "CATEGORY_ATTRIBUTES", "300", fixture.Now, "manual-all-attributes");
+
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.PlatformConnections.Add(connection);
+        db.AttributeDefinitions.AddRange(pattern, colour, size);
+        db.Categories.AddRange(blouse, shirt);
+        db.ReferenceSnapshots.AddRange(categories, attributes);
+        db.ReferenceItems.AddRange(
+            NewReferenceItem(tenant.Id, connection.Id, categories.Id, "CATEGORIES", "300", "Gömlek", isLeaf: true),
+            NewReferenceItem(tenant.Id, connection.Id, attributes.Id, "CATEGORY_ATTRIBUTES", "33", "Desen"));
+        foreach (var category in new[] { blouse, shirt })
+            db.CategoryMappings.Add(new CategoryMapping { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, SnapshotId = categories.Id, LocalId = category.Id, ExternalId = "300", Status = "VERIFIED", VerifiedAt = fixture.Now, Version = 1 });
+        // Gömlek holds its two option groups already.
+        foreach (var option in new[] { colour, size })
+            db.CategoryAttributeRequirements.Add(new CategoryAttributeRequirement { Id = Guid.CreateVersion7(), TenantId = tenant.Id, CategoryId = shirt.Id, AttributeId = option.Id, IsPanelScoped = true, Role = "OPTION" });
+        db.MappingTemplateDismissals.Add(new MappingTemplateDismissal { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, Kind = MappingTemplateFiller.AttributeKind, ScopeExternalId = "300", LocalId = pattern.Id, CreatedAt = fixture.Now });
+        await db.SaveChangesAsync();
+        var service = new ReferenceDataService(db, fixture.TimeProvider);
+
+        var refused = await service.UpsertMappingAsync(tenant.Id, "attributes", pattern.Id, null, new UpsertCatalogMappingCommand(connection.Id, attributes.Id, "33", "VERIFIED", Role: "OPTION"), CancellationToken.None);
+        Assert.Equal("OPTION_LIMIT_EXCEEDED", refused.Error?.Code);
+        db.ChangeTracker.Clear();
+        Assert.True(await db.MappingTemplateDismissals.AnyAsync(x => x.TenantId == tenant.Id && x.LocalId == pattern.Id));
+        Assert.False(await db.CategoryAttributeRequirements.AnyAsync(x => x.TenantId == tenant.Id && x.AttributeId == pattern.Id));
+
+        var saved = await service.UpsertMappingAsync(tenant.Id, "attributes", pattern.Id, null, new UpsertCatalogMappingCommand(connection.Id, attributes.Id, "33", "VERIFIED"), CancellationToken.None);
+        Assert.True(saved.Succeeded, saved.Error?.Message);
+        db.ChangeTracker.Clear();
+        var listed = await db.CategoryAttributeRequirements.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.AttributeId == pattern.Id).Select(x => x.CategoryId).ToListAsync();
+        Assert.Equal(new[] { blouse.Id, shirt.Id }.Order(), listed.Order());
+        Assert.False(await db.MappingTemplateDismissals.AnyAsync(x => x.TenantId == tenant.Id && x.LocalId == pattern.Id));
+
+        await transaction.RollbackAsync();
+    }
+
     private static ReferenceSnapshot NewReferenceSnapshot(Guid tenantId, Guid connectionId, string resourceType, string scopeExternalId, DateTimeOffset fetchedAt, string sourceVersion, bool isCurrent = true) => new()
     {
         Id = Guid.CreateVersion7(),

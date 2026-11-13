@@ -282,9 +282,31 @@ public static class ImportFileReader
     {
         if (!TryWarrantyMonths(values, out _)) errors.Add($"warrantyMonths: {WarrantyMonthsInvalid}");
         if (!TryDeliveryDays(values, out _)) errors.Add($"deliveryDays: {ProductDeliveryDays.InvalidMessage}");
+        // Stok: a whole number of units, 0 included, as the editor and the products Excel take it (a fraction or a minus
+        // became 2.5 units or a silent 0). Desi: above 0 and at most 9,999 (one above it, or 0, left the card without a
+        // desi and quietly made it a draft). Scan, 13 Nov 2026.
+        // A "1.250" is refused as ambiguous already (one error per cell).
+        if (!Ambiguous(values, "stock") && !TryWholeNumber(values, "stock", 0, MaximumStock, out _)) errors.Add($"stock: {StockInvalid}");
+        if (!Ambiguous(values, "desi") && !TryDesi(values, out _)) errors.Add($"desi: {DesiInvalid}");
     }
 
+    private static bool Ambiguous(IReadOnlyDictionary<string, string> values, string field) =>
+        values.TryGetValue(field, out var text) && ProductTransferFileParser.IsAmbiguousThousands(string.Concat(text.Where(character => !char.IsWhiteSpace(character))));
+
     public const string WarrantyMonthsInvalid = "Garanti süresi 0-240 ay arasında tam sayı olmalıdır.";
+    public const int MaximumStock = 1_000_000_000;
+    public const string StockInvalid = "Stok 0 ile 1.000.000.000 arasında tam sayı olmalıdır.";
+    public static readonly string DesiInvalid = $"Desi sıfırdan büyük ve en fazla {ProductDesi.MaximumText} olmalıdır.";
+
+    // True with null for an empty cell; false for a desi that is not a number above 0 and at most ProductDesi.Maximum.
+    internal static bool TryDesi(IReadOnlyDictionary<string, string> values, out decimal? desi)
+    {
+        desi = null;
+        if (!values.TryGetValue("desi", out var text) || string.IsNullOrWhiteSpace(text)) return true;
+        if (ImportJobProcessor.ParseDecimal(text) is not decimal parsed || parsed <= 0m || parsed > ProductDesi.Maximum) return false;
+        desi = parsed;
+        return true;
+    }
 
     internal static bool TryWarrantyMonths(IReadOnlyDictionary<string, string> values, out int? months) => TryWholeNumber(values, "warrantyMonths", 0, BulkProductFields.MaxWarrantyMonths, out months);
 

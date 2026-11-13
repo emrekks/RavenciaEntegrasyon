@@ -157,8 +157,9 @@ public sealed class PayoutTrendyolEstimateTests
         var view = PayoutBuilder.Build([skipped, Line("t1", "P1", "Sale", 1100m, 0m, 863.50m, Monday9)], payouts, Stores, Today, 90, []);
         Assert.Equal(863.50m, view.Next!.Amount);
         Assert.Equal(-393.36m, Assert.Single(view.Upcoming, x => x.Kind == "OVERDUE").Amount);
-        // Without a payout read since, the deduction goes with the next payout.
-        Assert.Equal(863.50m - 393.36m, PayoutBuilder.Build([skipped, Line("t1", "P1", "Sale", 1100m, 0m, 863.50m, Monday9)], [], Stores, Today, 90, []).Next!.Amount);
+        // Without a payout read since, the deduction is still past its due day: it counts in Vadesi Geçmiş Bekleyen alone,
+        // never in Sıradaki Ödeme too (owner, 13 Nov 2026).
+        Assert.Equal(863.50m, PayoutBuilder.Build([skipped, Line("t1", "P1", "Sale", 1100m, 0m, 863.50m, Monday9)], [], Stores, Today, 90, []).Next!.Amount);
         // A cargo invoice whose parcels are Avrupa orders stands in Avrupa.
         Assert.Equal(PayoutBuilder.Europe, PayoutBuilder.Line(skipped with { RegionOverride = PayoutBuilder.Europe }, Today).Region);
     }

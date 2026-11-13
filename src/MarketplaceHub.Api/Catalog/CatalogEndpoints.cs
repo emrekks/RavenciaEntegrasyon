@@ -932,9 +932,32 @@ public static class CatalogEndpoints
             .Where(x => x.TenantId == tenant.TenantId && x.ProductId == productId && x.VariantId == null && x.Status == "ACTIVE")
             .ToListAsync(http.RequestAborted);
         foreach (var item in media) item.Status = "ARCHIVED";
+        await ClearLeftSizeChartsAsync(db, tenant.TenantId, media, timeProvider.GetUtcNow(), http.RequestAborted);
         if (media.Count > 0) await CatalogLocalEdits.MarkMediaEditedAsync(db, tenant.TenantId, [productId], timeProvider.GetUtcNow(), http.RequestAborted);
         await db.SaveChangesAsync(http.RequestAborted);
         return Results.NoContent();
+    }
+
+    // D5 on the bulk paths (scan, 13 Nov 2026): a card's size chart whose picture the card no longer shows on any active
+    // row once these rows are archived is no longer its chart; left set, it went to every variant as the last picture and
+    // kept the file from the purge. Nothing is saved here.
+    private static async Task ClearLeftSizeChartsAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<ProductMedia> archived, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        if (archived.Count == 0) return;
+        var productIds = archived.Select(item => item.ProductId).Distinct().ToArray();
+        var assetIds = archived.Select(item => item.FileAssetId).Distinct().ToArray();
+        var archivedIds = archived.Select(item => item.Id).ToArray();
+        var charts = await db.ProductSizeCharts
+            .Where(chart => chart.TenantId == tenantId && productIds.Contains(chart.ProductId) && chart.FileAssetId != null && assetIds.Contains(chart.FileAssetId.Value))
+            .ToListAsync(cancellationToken);
+        foreach (var chart in charts)
+        {
+            var stillShown = await db.ProductMedia.AnyAsync(item => item.TenantId == tenantId && item.ProductId == chart.ProductId && item.FileAssetId == chart.FileAssetId
+                && item.Status == "ACTIVE" && !archivedIds.Contains(item.Id), cancellationToken);
+            if (stillShown) continue;
+            chart.FileAssetId = null;
+            chart.UpdatedAt = now;
+        }
     }
 
     private static async Task<IResult> DeleteProductMediaItemsAsync([FromBody] DeleteProductMediaItemsCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
@@ -955,6 +978,7 @@ public static class CatalogEndpoints
         if (products.Count != productIds.Length) return Problem(http, new("PRODUCT_MEDIA_NOT_FOUND", "Görselin kaynak ürünü bulunamadı.", 404));
 
         foreach (var item in media) item.Status = "ARCHIVED";
+        await ClearLeftSizeChartsAsync(db, tenant.TenantId, media, timeProvider.GetUtcNow(), http.RequestAborted);
         await CatalogLocalEdits.MarkMediaEditedAsync(db, tenant.TenantId, products, timeProvider.GetUtcNow(), http.RequestAborted);
         await db.SaveChangesAsync(http.RequestAborted);
         return Results.Ok(new { deletedCount = media.Count });

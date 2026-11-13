@@ -100,11 +100,13 @@ public sealed class ImportFileReaderTests
     {
         var rows = Read(Encoding.UTF8.GetBytes("Ürün;SKU;Stok;Açıklama\nA;A-1;-5;-\nB;B-1;=1+1;x\nC;C-1;+90 532 000 00 00;@SUM(A1)\nD;D-1;-cmd|calc;y\n"));
 
-        Assert.Empty(rows[0].Errors);
+        // Kept as written, not taken for a formula; a minus stock is refused as a stock (scan, 13 Nov 2026).
+        Assert.Equal([$"stock: {ImportFileReader.StockInvalid}"], rows[0].Errors);
         Assert.Equal("-5", rows[0].Values["stock"]);
         Assert.Equal("-", rows[0].Values["description"]);
         Assert.Single(rows[1].Errors);
-        Assert.Single(rows[2].Errors);
+        // The description formula, and a phone number is no stock.
+        Assert.Equal(2, rows[2].Errors.Count);
         Assert.Single(rows[3].Errors);
     }
 
@@ -234,5 +236,25 @@ public sealed class ImportFileReaderTests
         var withoutColumns = Assert.Single(ImportFileReader.ReadCsv(new MemoryStream(Encoding.UTF8.GetBytes("Ürün;SKU\r\nBluz;B-1\r\n")), mappings));
         Assert.Empty(withoutColumns.Errors);
         Assert.False(withoutColumns.Values.ContainsKey("warrantyMonths"));
+    }
+
+    // Stok is a whole number of units, 0 included; Desi above 0 and at most 9,999 (scan, 13 Nov 2026: a fraction or a
+    // minus stock was taken as 2.5 units or a silent 0, a desi above the limit quietly made the card a draft).
+    [Theory]
+    [InlineData("0", "1", null)]
+    [InlineData("12", "9999", null)]
+    [InlineData("", "", null)]
+    [InlineData("2,5", "2", "stock")]
+    [InlineData("-3", "2", "stock")]
+    [InlineData("1000000001", "2", "stock")]
+    [InlineData("3", "0", "desi")]
+    [InlineData("3", "10000", "desi")]
+    [InlineData("3", "iki", "desi")]
+    public void StockAndDesiColumns_KeepTheEditorsLimits(string stock, string desi, string? field)
+    {
+        var mappings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["Ürün"] = "title", ["SKU"] = "sku", ["Stok"] = "stock", ["Desi"] = "desi" };
+        var row = Assert.Single(ImportFileReader.ReadCsv(new MemoryStream(Encoding.UTF8.GetBytes($"Ürün;SKU;Stok;Desi\r\nBluz;B-1;{stock};{desi}\r\n")), mappings));
+        if (field is null) Assert.Empty(row.Errors);
+        else Assert.Equal([field == "stock" ? $"stock: {ImportFileReader.StockInvalid}" : $"desi: {ImportFileReader.DesiInvalid}"], row.Errors);
     }
 }

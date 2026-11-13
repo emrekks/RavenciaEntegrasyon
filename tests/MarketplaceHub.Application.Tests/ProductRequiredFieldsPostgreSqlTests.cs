@@ -137,6 +137,30 @@ public sealed class ProductRequiredFieldsPostgreSqlTests(PostgreSqlTenantIsolati
         Assert.Equal((ProductStatus.Active, ProductStatus.Archived), (statuses[complete.Value.Id], statuses[incomplete.Id]));
     }
 
+    // Scan, 13 Nov 2026: a closed card without its KDV or its Teslimat Süresi is not opened by a bulk change either (the
+    // editor refuses both).
+    [PostgreSqlFact]
+    public async Task ABulkOpening_LeavesACardWithoutItsVatOrDeliveryDays()
+    {
+        var seed = await SeedAsync("required-bulk-vat");
+        var sku = $"RV-{Guid.NewGuid():N}"[..14].ToUpperInvariant();
+        var now = fixture.Now;
+        await using var db = fixture.CreateContext();
+        var service = Catalog(db);
+        var card = new Product { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, Title = "KDV'siz", Description = "", BrandId = seed.Brand.Id, CategoryId = seed.Category.Id, DefaultListPrice = 10m, DefaultSalePrice = 10m, DeliveryDays = null, Status = ProductStatus.Archived, CreatedAt = now, UpdatedAt = now };
+        db.Products.Add(card);
+        db.ProductVariants.Add(new ProductVariant { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ProductId = card.Id, Sku = sku, SkuNormalized = sku, Barcode = $"{sku}B", BarcodeNormalized = $"{sku}B", ModelCode = $"{sku}-M", Desi = 1m, OptionSignature = "", Status = ProductStatus.Archived, CreatedAt = now, UpdatedAt = now });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var opened = await service.BulkSetStatusAsync(seed.Tenant.Id, new BulkProductStatusCommand([card.Id], "ACTIVE"), CancellationToken.None);
+        Assert.True(opened.Succeeded, opened.Error?.Message);
+        Assert.Equal(0, opened.Value!.UpdatedCount);
+        Assert.Equal(["Teslimat Süresi", "KDV Oranı"], Assert.Single(opened.Value.Skipped).MissingFields);
+        db.ChangeTracker.Clear();
+        Assert.Equal(ProductStatus.Archived, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == card.Id)).Status);
+    }
+
     [PostgreSqlFact]
     public async Task TheExcelBrand_GoesToEveryColourCardOfTheModel_ByName_AndMarksTheirLinks()
     {

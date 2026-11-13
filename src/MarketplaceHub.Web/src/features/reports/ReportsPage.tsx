@@ -2454,20 +2454,26 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
   // The payout day under Sıradaki Ödeme when one marketplace is in view (Trendyol's rule in a few words).
   const covered = platforms.length ? platforms : data?.platforms.map(item => item.platformCode) ?? []
   const payoutDay = covered.length !== 1 ? '' : covered[0] === 'TRENDYOL' ? ' Trendyol, Türkiye-Körfez ve Azerbaycan ödemelerini pazartesi ve perşembe, Avrupa ödemelerini ayın 4. pazartesi günü yapar.' : payoutRuleText[covered[0]] ? ` ${payoutRuleText[covered[0]]}` : ''
+  // Trendyol records a payout paid but not read yet (read a day after the payout): out of the balance, said in its tip.
+  const paidUnread = none || picked ? 0 : data?.paidUnreadRecords ?? 0
+  const paidUnreadText = paidUnread > 0 ? `\nSon Trendyol ödemesinin ${formatCount(paidUnread)} kaydı (${formatTl(data?.paidUnread ?? 0)}) ödendi; kayıtları ödemeden bir gün sonra okunur, bu yüzden bakiyeye sayılmadı.` : ''
+  // What earlier days that netted to nothing or less take off the next payout (the overall figure only).
+  const carried = region === 'ALL' && !none ? data?.next?.carried ?? null : null
+  const carriedText = carried ? `\nÖnceki ödeme gününden devreden kesinti (${formatTl(-carried)}) bu ödemeden düşüldü.` : ''
 
   const items: Kpi[] = [
     { key: 'expected', label: 'Toplam Güncel Bakiye', value: balance, format: formatTl, icon: 'wallet', note: picked ? regionLabels[picked.region] : `${formatCount(data?.expectedRecords ?? 0)} kayıt`,
-      tip: 'Teslim edilmiş, henüz ödenmemiş siparişlerin komisyon ve bekleyen kesintiler düşülmüş hakedişi. Kesilmemiş kesinti faturaları dahil değil.' },
+      tip: `Teslim edilmiş, henüz ödenmemiş siparişlerin komisyon ve bekleyen kesintiler düşülmüş hakedişi. Kesilmemiş kesinti faturaları dahil değil.${paidUnreadText}` },
     { key: 'pending', label: 'Teslim Bekleyen Sipariş', value: pendingDelivery, format: formatTl, icon: 'truck',
       note: pendingOrders > 0 ? `${formatCount(pendingOrders)} sipariş` : 'Yok',
       tip: 'Onaylanmış ya da kargodaki, henüz teslim edilmemiş siparişlerin müşterinin ödediği tutarı. Teslimden sonra bakiyeye girer.' },
     { key: 'next', label: 'Sıradaki Ödeme', value: nextAmount, format: formatTl, empty: 'Yok', icon: 'calendarClock', note: nextDay ? shortDay(nextDay) : 'Bekleyen ödeme yok',
-      tip: `En yakın ödeme gününde gelecek tahmini tutar; kesinti faturaları kesildikçe düşer.${payoutDay}` },
+      tip: `En yakın ödeme gününde gelecek tahmini tutar; kesinti faturaları kesildikçe düşer. Eksi kapanan ödeme günü ödeme yapmaz, eksisi mağazanın sonraki ödemesinden düşülür. Vadesi geçmiş kayıtlar burada sayılmaz, Vadesi Geçmiş Bekleyen'de gösterilir.${payoutDay}${carriedText}` },
     { key: 'last', label: 'Son Ödeme', value: lastPaid?.amount ?? null, format: formatTl, empty: 'Yok', icon: 'circleCheck', note: lastPaid ? shortDay(lastPaid.day) : 'Okunmuş ödeme yok',
       tip: 'Pazaryerinin yaptığı son ödeme, kendi bildirdiği tutarla.' },
     { key: 'unknown', label: 'Vadesi Geçmiş Bekleyen', value: overdue, format: formatTl, icon: 'alertTriangle', tone: overdue > 0 ? 'warn' : undefined,
       note: overdue < 0 ? 'Bekleyen kesinti' : overdue > 0 ? 'Ödeme bekliyor' : 'Yok',
-      tip: 'Vadesi geçmiş ama henüz bir ödemeye bağlanmamış bakiye; eksiyse sonraki ödemeden düşülecek kesintidir. Ödenmeyecek demek değildir.' },
+      tip: `Vadesi geçmiş ama henüz bir ödemeye bağlanmamış bakiye; eksiyse sonraki ödemeden düşülecek kesintidir. Ödenmeyecek demek değildir. Sıradaki Ödeme'ye eklenmez.` },
     { key: 'early', label: 'Erken Ödeme', value: none ? 0 : data?.earlyPaymentsTaken ?? 0, format: formatTl, icon: 'banknote',
       note: (data?.earlyPayments ?? 0) > 0 ? `Son ${data?.daysBack ?? 90} gün · ${formatCount(data?.earlyPayments ?? 0)} kayıt` : `Son ${data?.daysBack ?? 90} günde alınmadı`,
       tip: `Son ${data?.daysBack ?? 90} günde alınan erken ödemelerin toplamı.` }

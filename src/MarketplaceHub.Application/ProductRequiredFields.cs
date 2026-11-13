@@ -21,13 +21,16 @@ public static class ProductRequiredFields
     public const string DeliveryDays = "deliveryDays";
     public const string ListPrice = "listPrice";
     public const string SalePrice = "salePrice";
+    // Not one of the eleven editor fields: the editor checks KDV on its own (VatRateRequired). A file import and the bulk
+    // opening, which have no such check, hold it here so no card goes on sale without its VAT (scan, 13 Nov 2026).
+    public const string Vat = "vatRate";
 
     // In the order the editor shows them.
     private static readonly (string Field, string Label)[] Fields =
     [
         (Title, "Ürün Adı"), (Brand, "Marka"), (Category, "Panel Kategorisi"), (ModelCode, "Model Kodu"), (Sku, "Stok Kodu"),
         (Barcode, "Barkod"), (Desi, "Desi"), (Warranty, "Garanti Süresi"), (DeliveryDays, "Teslimat Süresi"),
-        (ListPrice, "Liste Fiyatı"), (SalePrice, "Satış Fiyatı")
+        (ListPrice, "Liste Fiyatı"), (SalePrice, "Satış Fiyatı"), (Vat, "KDV Oranı")
     ];
 
     public static string Label(string field) => Fields.First(item => item.Field == field).Label;
@@ -35,7 +38,7 @@ public static class ProductRequiredFields
     // One variant row as the card would hold it after the save. Prices are the row's own; null falls back to the card's.
     public sealed record Row(string? Sku, string? Barcode, string? ModelCode, decimal? Desi, decimal? ListPrice, decimal? SalePrice);
 
-    public sealed record Card(string? Title, Guid? BrandId, Guid? CategoryId, bool WarrantyGiven, bool DeliveryDaysGiven, decimal? ListPrice, decimal? SalePrice, IReadOnlyList<Row> Rows);
+    public sealed record Card(string? Title, Guid? BrandId, Guid? CategoryId, bool WarrantyGiven, bool DeliveryDaysGiven, decimal? ListPrice, decimal? SalePrice, IReadOnlyList<Row> Rows, bool VatGiven = true);
 
     // A required field the card misses; NotPositive: a price that is there but not above 0.
     public sealed record Gap(string Field, bool NotPositive = false)
@@ -71,6 +74,7 @@ public static class ProductRequiredFields
         }
         if (!card.WarrantyGiven) Add(Warranty);
         if (!card.DeliveryDaysGiven) Add(DeliveryDays);
+        if (!card.VatGiven) Add(Vat);
         if (card.Rows.Count == 0)
         {
             Price(ListPrice, card.ListPrice);

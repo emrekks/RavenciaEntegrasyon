@@ -79,7 +79,8 @@ public sealed class ProductRequiredFieldsTests
             ["modelCode"] = "MOD-1",
             ["desi"] = desi ?? "",
             ["listPrice"] = "120",
-            ["salePrice"] = "100"
+            ["salePrice"] = "100",
+            ["vatRate"] = "10"
         };
         IReadOnlyList<IReadOnlyDictionary<string, string>> complete = [Row("A-1"), Row("A-2")];
         Assert.False(ImportJobProcessor.CreatesDraft(complete, brandUsable: true, Guid.CreateVersion7()));
@@ -88,6 +89,9 @@ public sealed class ProductRequiredFieldsTests
         Assert.True(ImportJobProcessor.CreatesDraft(complete, brandUsable: true, null));
         Assert.True(ImportJobProcessor.CreatesDraft([Row("A-1"), Row("A-2", desi: "")], brandUsable: true, Guid.CreateVersion7()));
         Assert.True(ImportJobProcessor.CreatesDraft([new Dictionary<string, string>(Row("A-1")) { ["salePrice"] = "0" }], brandUsable: true, Guid.CreateVersion7()));
+        // A model whose rows name no KDV is a draft; one row naming it is enough (the card takes it from that row).
+        Assert.True(ImportJobProcessor.CreatesDraft([new Dictionary<string, string>(Row("A-1")) { ["vatRate"] = "" }, new Dictionary<string, string>(Row("A-2")) { ["vatRate"] = "" }], brandUsable: true, Guid.CreateVersion7()));
+        Assert.False(ImportJobProcessor.CreatesDraft([new Dictionary<string, string>(Row("A-1")) { ["vatRate"] = "" }, Row("A-2")], brandUsable: true, Guid.CreateVersion7()));
     }
 
     [Fact]

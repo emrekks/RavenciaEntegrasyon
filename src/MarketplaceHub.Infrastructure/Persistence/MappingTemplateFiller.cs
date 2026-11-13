@@ -250,6 +250,13 @@ internal static class MappingTemplateFiller
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Kind == kind && x.ScopeExternalId == scope && x.LocalId == localId)
             .ExecuteDeleteAsync(cancellationToken);
 
+    // The same as part of the caller's save, so it goes with that save or not at all (a manual mapping refused after its
+    // checks keeps the user's earlier removal; scan, 13 Nov 2026). Nothing is saved here.
+    public static async Task RemoveDismissalAsync(AppDbContext db, Guid tenantId, Guid connectionId, string kind, string scope, Guid localId, CancellationToken cancellationToken) =>
+        db.MappingTemplateDismissals.RemoveRange(await db.MappingTemplateDismissals
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Kind == kind && x.ScopeExternalId == scope && x.LocalId == localId)
+            .ToListAsync(cancellationToken));
+
     private static async Task<Guid?> CurrentSnapshotAsync(AppDbContext db, Guid tenantId, Guid connectionId, string resourceType, string scope, CancellationToken cancellationToken) =>
         db.ReferenceSnapshots.Local
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == resourceType && x.ScopeExternalId == scope && x.IsCurrent)
@@ -271,10 +278,12 @@ internal static class MappingTemplateFiller
         .ToHashSet();
 
     // The panel category must list the attribute (the same record a manual attribute mapping
-    // creates). An option group is only filled while the category has room for it.
+    // creates). An option group is only filled while every category has room for it: all of them are checked before any
+    // is written, so a refusal leaves none behind (scan, 13 Nov 2026: the first category kept a group the mapping never got).
     private static async Task<bool> EnsureRequirementsAsync(AppDbContext db, Guid tenantId, IReadOnlyList<Guid> panelCategoryIds, AttributeMappingTemplate template, ReferenceItem remote, CancellationToken cancellationToken)
     {
-        foreach (var categoryId in panelCategoryIds)
+        var missing = new List<Guid>();
+        foreach (var categoryId in panelCategoryIds.Distinct())
         {
             var requirement = db.CategoryAttributeRequirements.Local.FirstOrDefault(x => x.TenantId == tenantId && x.CategoryId == categoryId && x.AttributeId == template.LocalAttributeId)
                 ?? await db.CategoryAttributeRequirements.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.CategoryId == categoryId && x.AttributeId == template.LocalAttributeId, cancellationToken);
@@ -285,6 +294,10 @@ internal static class MappingTemplateFiller
                     + db.CategoryAttributeRequirements.Local.Count(x => x.TenantId == tenantId && x.CategoryId == categoryId && x.Role == "OPTION" && db.Entry(x).State == EntityState.Added);
                 if (optionGroups >= MaximumOptionGroups) return false;
             }
+            missing.Add(categoryId);
+        }
+        foreach (var categoryId in missing)
+        {
             db.CategoryAttributeRequirements.Add(new CategoryAttributeRequirement
             {
                 Id = Guid.CreateVersion7(),

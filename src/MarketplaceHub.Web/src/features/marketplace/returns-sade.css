@@ -1169,22 +1169,22 @@ main .rr.rr .rr-tbl.rr-tbl td.rr-empty-row.rr-empty-row { padding: 0; }
    line, while the buyer, the product text and the return reason take two lines at most (full text in the title) so their
    columns can be narrow. The product picture is the 56 x 84 of the Ürünler table. Narrower screens still scroll sideways. */
 @media (min-width: 1025px) {
-main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-order { width: 244px; }
-main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-buyer { width: 88px; }
-main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-prod { width: 188px; }
-main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-price { width: 76px; }
-main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-cargo { width: 124px; }
-main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-inv { width: 112px; }
-main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-reason { width: 100px; }
-main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-status { width: 110px; }
-main .rr.rr-returns .rr-tbl.rr-tbl col.rr-c-act { width: 104px; }
-main .rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-order { width: 270px; }
-main .rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-prod { width: 162px; }
-main .rr.rr-returns .rr-tbl.rr-tbl { min-width: 1058px; }
-main .rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) { min-width: 1146px; }
-main .rr.rr-returns .rr-tbl.rr-tbl.rr-has-select { min-width: 1058px; }
-main .rr.rr-returns .rr-tbl.rr-tbl.rr-has-select:has(col.rr-c-buyer) { min-width: 1146px; }
-main .rr.rr-returns .rr-tbl.rr-tbl .rr-pline { grid-template-columns: 56px minmax(0, 1fr); gap: 8px; }
-main .rr.rr-returns .rr-tbl.rr-tbl .rr-thumb { width: 56px; height: 84px; }
-main .rr.rr-returns .rr-tbl.rr-tbl :is(td[data-l="Alıcı"] .rr-cust b, .rr-pline > div > b:first-child, .rr-reasoncell > b) { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere !important; }
+main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-order { width: 244px; }
+main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-buyer { width: 88px; }
+main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-prod { width: 188px; }
+main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-price { width: 76px; }
+main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-cargo { width: 124px; }
+main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-inv { width: 112px; }
+main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-reason { width: 100px; }
+main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-status { width: 110px; }
+main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-act { width: 104px; }
+main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-order { width: 270px; }
+main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-prod { width: 162px; }
+main .rr.rr.rr-returns .rr-tbl.rr-tbl { min-width: 1058px; }
+main .rr.rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) { min-width: 1146px; }
+main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select { min-width: 1058px; }
+main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select:has(col.rr-c-buyer) { min-width: 1146px; }
+main .rr.rr.rr-returns .rr-tbl.rr-tbl .rr-pline { grid-template-columns: 56px minmax(0, 1fr); gap: 8px; }
+main .rr.rr.rr-returns .rr-tbl.rr-tbl .rr-thumb { width: 56px; height: 84px; }
+main .rr.rr.rr-returns .rr-tbl.rr-tbl :is(td[data-l="Alıcı"] .rr-cust b, .rr-pline > div > b:first-child, .rr-reasoncell > b) { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere !important; }
 }
