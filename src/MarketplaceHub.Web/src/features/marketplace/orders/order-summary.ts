@@ -22,7 +22,8 @@ export function orderTabCount(tab: string, summary: OrderSummary | undefined): n
 export function orderCountText(value: number | undefined, state: { loading: boolean; error: boolean }) {
   if (state.error) return '—'
   if (state.loading) return '…'
-  return value === undefined ? '—' : value.toLocaleString('tr-TR')
+  // A summary that was read and leaves a counter out counts nothing there: "0" (shared rule, shared/metric-value.ts).
+  return (value ?? 0).toLocaleString('tr-TR')
 }
 
 // A summary card's state from its query: an error wins over anything shown before (with keepPreviousData that would be

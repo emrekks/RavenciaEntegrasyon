@@ -183,7 +183,7 @@ function SubTabs<T extends string>({ label, value, items, onChange }: { label: s
 // A change is good or bad by its direction; for returns and cancellations, up is bad.
 // previous: the previous period's value, shown under the pointer instead of the generic "Önceki döneme göre".
 function Delta({ delta, invert = false, previous }: { delta: Change | null | undefined; invert?: boolean; previous?: string }) {
-  if (!delta) return <em className="reports-delta is-flat" title="Önceki dönemde veri yok">—</em>
+  if (!delta) return <em className="reports-delta is-flat" title="Önceki dönem: —">—</em>
   const tone = delta.direction === 'flat' ? 'flat' : (delta.direction === 'up') !== invert ? 'good' : 'bad'
   return <em className={`reports-delta is-${tone}`} title={previous ? `Önceki dönem: ${previous}` : 'Önceki döneme göre değişim'}>{delta.direction === 'up' ? '▲' : delta.direction === 'down' ? '▼' : '■'} {delta.text}</em>
 }
@@ -275,7 +275,7 @@ function TipText({ title, text }: { title: string; text: string }) {
 }
 
 // The previous period's figure as the explanation's last line.
-const previousLine = (value: string | null) => value === null || value === '—' ? 'Önceki dönemde veri yok' : `Önceki dönem: ${value}`
+const previousLine = (value: string | null) => value === null || value === '—' ? 'Önceki dönem: —' : `Önceki dönem: ${value}`
 
 // Genel Bakış: the period's six figures in one strip, its costs round a donut (the deductions tied to no order of the
 // period apart, under it), the way from the sales to the profit
@@ -370,15 +370,15 @@ function PeriodCard({ data }: { data: ReportSales }) {
           previous period, drawn as a share of it. Money in whole liras here, to the kuruş in the explanation. */}
       <dl className="reports-period-facts">
         <div className="reports-tip-host"><dt><button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-best`}>En iyi {unit}</button></dt>
-          <dd><strong style={fitChars(hasBest && best ? short(best.value) : '—')}>{hasBest && best ? short(best.value) : '—'}</strong><small>{hasBest && best ? bestWhen(best) : 'Bu dönemde veri yok'}</small></dd>
+          <dd><strong style={fitChars(hasBest && best ? short(best.value) : '—')}>{hasBest && best ? short(best.value) : '—'}</strong><small>{hasBest && best ? bestWhen(best) : noValue}</small></dd>
           <span role="tooltip" id={`${tip}-best`} className="reports-hover-tip"><TipText title={`En İyi ${names.unit}`} text={`Dönemin ${measureOf[measure]} en yüksek ${names.its}${hasBest && best ? `: ${format(best.value)}` : ''}; grafikte mor sütunla gösterilir.`} /></span></div>
         <div className="reports-tip-host"><dt><button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-average`}>{names.every} ortalama</button></dt>
           <dd><strong style={fitChars(noAmount || average === null ? '—' : short(average))}>{noAmount || average === null ? '—' : short(average)}</strong>
-            <small>{!noAmount && average !== null && <Delta delta={change(average, previousAverage)} />}{previousAverage === null ? 'önceki dönemde veri yok' : `önceki ${short(previousAverage)}`}</small></dd>
+            <small>{!noAmount && average !== null && <Delta delta={change(average, previousAverage)} />}{previousAverage === null ? 'önceki dönem: —' : `önceki ${short(previousAverage)}`}</small></dd>
           <span role="tooltip" id={`${tip}-average`} className="reports-hover-tip"><TipText title={`${names.every} Ortalama`} text={`Bir ${names.of} ortalama ${measureOf[measure]}${noAmount || average === null ? '' : `: ${format(average)}`}.\n${previousLine(previousAverage === null ? null : format(previousAverage))}`} /></span></div>
         <div className="reports-tip-host"><dt><button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-ahead`}>Önceki döneme göre</button></dt>
           <dd><strong className={!noAmount && compared.length > 0 && ahead > compared.length - ahead ? 'is-good' : undefined} style={fitChars(noAmount || !compared.length ? '—' : `${ahead} ${unit} önde`)}>{noAmount || !compared.length ? '—' : `${ahead} ${unit} önde`}</strong>
-            {!noAmount && compared.length > 0 ? <Progress value={ahead / compared.length} shown={shown} tone={ahead > compared.length - ahead ? 'good' : undefined} /> : <small>Önceki dönemde veri yok</small>}</dd>
+            {!noAmount && compared.length > 0 ? <Progress value={ahead / compared.length} shown={shown} tone={ahead > compared.length - ahead ? 'good' : undefined} /> : <small>Önceki dönem: —</small>}</dd>
           <span role="tooltip" id={`${tip}-ahead`} className="reports-hover-tip"><TipText title="Önceki Döneme Göre" text={`Önceki dönemin aynı sıradaki ${names.from} yüksek geçen ${names.many}${noAmount || !compared.length ? '' : `: ${ahead} ${unit} önde, ${compared.length - ahead} ${unit} geride; toplam ${compared.length} ${unit}`}.`} /></span></div>
       </dl>
     </>}
@@ -1692,7 +1692,7 @@ function topReasons(reasons: ReportReason[], limit = 6): BarItem[] {
 function NoAmountNote({ platforms }: { platforms: ReportGroup[] }) {
   const noAmount = platforms.filter(group => group.ordersWithAmount === 0)
   if (!noAmount.length) return null
-  return <p className="reports-note">{noAmount.map(group => `${platformName(group.label)}: tutar yok · ${formatNumber(group.soldQuantity)} adet, ${formatCount(group.orders)} sipariş`).join(' — ')}</p>
+  return <p className="reports-note">{noAmount.map(group => `${platformName(group.label)}: tutar — · ${formatNumber(group.soldQuantity)} adet, ${formatCount(group.orders)} sipariş`).join(' — ')}</p>
 }
 
 function commissionCoverage(group: { netRevenue: number; commissionCoveredRevenue: number }) { return group.netRevenue > 0 ? Math.min(1, group.commissionCoveredRevenue / group.netRevenue) : null }

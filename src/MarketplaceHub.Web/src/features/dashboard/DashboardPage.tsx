@@ -128,7 +128,7 @@ function KpiCell({ icon: cardIcon, label, hint, tip, value, delta, note, avgLabe
     <CardBackgroundIcon name={cardIcon} />
     <small>{label}{hint && <span className="rr-kc-hint"> · {hint}</span>}</small><strong className="rr-num">{loading ? <span className="rr-kc-skel" role="status" aria-label="Yükleniyor" /> : <>{value}{unit && <span className="rr-op-x">{unit}</span>}</>}</strong>
     {delta ? <span className={`rr-trend ${delta[1] ? 'rr-up' : 'rr-down'}`} title="Önceki döneme göre">{delta[1] ? ICONS.up : ICONS.down}<span className="rr-trend-v">{delta[0]}</span></span>
-      : note !== undefined ? <span className="rr-trend"><em>{note}</em></span> : <span className="rr-trend"><span className="rr-trend-v">—</span><em>önceki dönemde veri yok</em></span>}
+      : note !== undefined ? <span className="rr-trend"><em>{note}</em></span> : <span className="rr-trend"><span className="rr-trend-v">—</span><em>önceki dönem</em></span>}
     <span className="rr-avg">{avgLabel} <b className="rr-num">{avg}</b></span>
     <div className="rr-krange" role="img" aria-label={`${min} – ${max}`}><span className="rr-kbar"><i style={{ left: `${Math.max(0, Math.min(1, position)) * 100}%` }} /></span><span className="rr-kends"><span className="rr-num">{min}</span><span className="rr-num">{max}</span></span></div>
   </div>
@@ -273,7 +273,7 @@ export function DashboardPage() {
     // "N Bekleyen | M Yaklaşan": M is the former Yaklaşan Faturalar count (delivered 4+ days ago, still awaiting an invoice;
     // DashboardMetricPolicy.InvoiceReminderStartDays),
     // left out while it is not known, never shown as 0. The card opens the pending list; the due list is a tab there.
-    ['invoicePending', 'Faturalar', knownCount(invoiceSummary.isLoading, invoiceSummary.data?.uninvoicedCount), '', dashboardOperationalLinks.pendingInvoices, undefined, <><span className="rr-op-x-word">Bekleyen</span>{dueSoon !== null && <>{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}{count(dueSoon)} Yaklaşan</>}</>],
+    ['invoicePending', 'Faturalar', knownCount(invoiceSummary.isLoading, invoiceSummary.data?.uninvoicedCount), '', dashboardOperationalLinks.pendingInvoices, undefined, <><span className="rr-op-x-part"><span className="rr-op-x-word">Bekleyen</span>{dueSoon !== null && <>{' '}<span className="rr-op-sep" aria-hidden="true">|</span></>}</span>{dueSoon !== null && <>{' '}<span className="rr-op-x-part">{count(dueSoon)} Yaklaşan</span></>}</>],
     // Today's cancellations; the section is about today, so the label does not repeat it.
     ['packageX', 'İptal', knownCount(cancellations.isLoading, cancelled ? cancelTotal(row => row.cancelledOrders + row.partialOrders) : undefined), 'bad', dayCancellationsLink(today), cancelRows, cancelled ? <>Sipariş{partialCancels ? <>{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}<span className="rr-op-partial">{count(partialCancels)} Kısmi İptal</span></> : null}</> : undefined],
     // The same count as the product list's low-stock filter it opens.

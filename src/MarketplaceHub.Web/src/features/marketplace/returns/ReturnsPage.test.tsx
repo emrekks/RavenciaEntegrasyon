@@ -77,16 +77,34 @@ describe('returns page', () => {
     expect(host.textContent).not.toContain('Faturalanacak Tutar')
   })
 
-  it('shows a dash, never 0, for a tab the summary gives no counter for', async () => {
+  it('shows 0 for a tab the summary gives no counter for', async () => {
     const saved = summary.tabCounts
     const { ACTION_REQUIRED: _omitted, ...rest } = saved
     ;(summary as { tabCounts: Record<string, number> }).tabCounts = rest
     try {
       const { host } = renderPage()
       await waitFor(() => host.querySelector('.rr-metrics')?.textContent?.includes('Red3'))
-      expect(host.querySelectorAll<HTMLElement>('.rr-metrics article')[0].querySelector('strong')!.textContent).toBe('—')
+      expect(host.querySelectorAll<HTMLElement>('.rr-metrics article')[0].querySelector('strong')!.textContent).toBe('0')
     } finally {
       summary.tabCounts = saved
+    }
+  })
+
+  it('reads an empty read summary as 0 on every card, all in the neutral ink', async () => {
+    const saved = { tabCounts: summary.tabCounts, metrics: summary.metrics }
+    const empty = summary as unknown as { tabCounts: Record<string, number>; metrics: unknown }
+    empty.tabCounts = {}
+    empty.metrics = null
+    try {
+      const { host } = renderPage()
+      await waitFor(() => host.querySelector('.rr-metrics')?.textContent?.includes('Aksiyon Bekleyen'))
+      await waitFor(() => host.querySelector('.rr-metrics strong')?.textContent === '0')
+      const cards = [...host.querySelectorAll<HTMLElement>('.rr-metrics article')]
+      expect(cards.map(card => card.querySelector('strong')!.textContent)).toEqual(['0', '0', '0', '0'])
+      expect(host.querySelector('.rr-metrics .rr-warn, .rr-metrics .rr-metric-ok, .rr-metrics .rr-metric-bad, .rr-metrics .rr-metric-alarm')).toBeNull()
+    } finally {
+      empty.tabCounts = saved.tabCounts
+      empty.metrics = saved.metrics
     }
   })
 
