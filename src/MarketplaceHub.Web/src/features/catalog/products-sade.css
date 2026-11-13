@@ -508,6 +508,14 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 .app-shell.stitch-shell main .rr.rr-products .rr-metrics.rr-metrics-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 .app-shell.stitch-shell main .rr.rr-products .rr-metrics.rr-metrics-6 > * { min-width: 0; align-content: start; grid-column: auto; }
 @media (max-width: 1280px) { .app-shell.stitch-shell main .rr.rr-products .rr-metrics.rr-metrics-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+/* Above 1280 px the cards' own row decides, as on Siparişler (one-row.css): six in a row only when each card gets
+   180 px, room for an 8-digit Stok Adeti; a pinned sidebar left them ~157 px at 1281 px. 6 × 180 + 5 × 12 = 1140. */
+:root:root body .app-shell.stitch-shell main section.rr.rr-products { container: rr-productcards / inline-size; }
+@media (min-width: 1281px) {
+  @container rr-productcards (max-width: 1139.98px) {
+    .app-shell.stitch-shell main .rr.rr-products .rr-metrics.rr-metrics-6.rr-metrics-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+}
 @media (max-width: 760px) { .app-shell.stitch-shell main .rr.rr-products .rr-metrics.rr-metrics-6 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
 /* Phones: the page-size picker is as wide as "100" needs. */
