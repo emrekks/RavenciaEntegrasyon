@@ -42,6 +42,18 @@ public sealed class OwnerRulesNov5Tests
         Assert.Equal(0m, InvoiceReturnAdjustmentPolicy.RemovedUnits(0, 3, 0, 3));
     }
 
+    // Scan D-2: a provider reference other than the UUID sent is a mismatch; the same UUID in another case, or no
+    // reference at all, is not.
+    [Fact]
+    public void AProviderReferenceOtherThanTheSentUuidIsAMismatch()
+    {
+        var sent = InvoiceProviderIdentityPolicy.UuidFor(LineA).ToString("D");
+        Assert.True(InvoiceProviderIdentityPolicy.Matches(sent, sent.ToUpperInvariant()));
+        Assert.True(InvoiceProviderIdentityPolicy.Matches(sent, null));
+        Assert.False(InvoiceProviderIdentityPolicy.Matches(sent, Guid.NewGuid().ToString("D")));
+        Assert.False(InvoiceProviderIdentityPolicy.Matches(sent, "GIB2026000000001"));
+    }
+
     // Rule 2 (T2-D27): A approved, B rejected ends "Kısmen Onaylandı", never Rejected.
     [Fact]
     public void AClaimDecidedBothWaysIsApprovedInPart()

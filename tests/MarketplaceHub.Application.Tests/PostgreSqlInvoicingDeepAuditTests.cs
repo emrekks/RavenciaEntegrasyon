@@ -523,6 +523,39 @@ public sealed class PostgreSqlInvoicingDeepAuditTests(PostgreSqlTenantIsolationF
         }
     }
 
+    // Scan D-2 (13 Nov 2026): on a provider connection that was seen to keep its own reference instead of our UUID,
+    // "not found by UUID" is no sign the invoice was not issued: it stays uncertain under a code that says so.
+    [PostgreSqlFact]
+    public async Task Uuid_NotFoundOnAConnectionThatKeepsItsOwnReference_IsNotReadAsNotIssued()
+    {
+        var seed = NewSeed("uuid-not-honoured", InvoiceStatus.UnknownResult);
+        seed.Invoice.ExternalReference = null;
+        seed.Invoice.InvoiceNumber = null;
+        seed.Invoice.LastErrorCode = "INVOICE_SUBMISSION_TRANSPORT_UNKNOWN";
+        var uuid = InvoiceProviderIdentityPolicy.UuidFor(seed.Invoice.Id).ToString("D");
+        await SeedAsync(seed, db =>
+        {
+            db.InvoiceSubmissionAttempts.Add(new InvoiceSubmissionAttempt { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, InvoiceId = seed.Invoice.Id, AttemptNumber = 1, RequestHash = "uuid-hash", Outcome = "UNKNOWN", ErrorCode = "INVOICE_SUBMISSION_TRANSPORT_UNKNOWN", ExternalReference = uuid, StartedAt = fixture.Now.AddMinutes(-10), CompletedAt = fixture.Now.AddMinutes(-10) });
+            db.OperationalIssues.Add(new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, DedupeKey = InvoiceProviderIdentityPolicy.UuidMismatchIssueKey(seed.Provider.Id), Code = InvoiceProviderIdentityPolicy.UuidMismatchIssueCode, Summary = "uyuşmazlık", Status = IssueStatus.Open, FirstSeenAt = fixture.Now, LastSeenAt = fixture.Now, OccurrenceCount = 1 });
+        });
+        try
+        {
+            var provider = new UuidReadingProvider { Found = false };
+            await using (var db = fixture.CreateContext())
+                await NewProcessor(db, null, OpenWrites, provider).ProcessAsync(seed.Tenant.Id, seed.Provider.Id, InvoicingJobTypes.InvoiceReconcile, InvoicePayload(seed), "uuid-not-honoured", CancellationToken.None);
+
+            Assert.Equal(0, provider.SubmitCalls);
+            await using var verification = fixture.CreateContext();
+            var stored = await verification.Invoices.SingleAsync(item => item.Id == seed.Invoice.Id);
+            Assert.Equal(InvoiceStatus.UnknownResult, stored.Status);
+            Assert.Equal(InvoiceProviderIdentityPolicy.UuidNotHonouredCode, stored.LastErrorCode);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
     // O8 (2 Nov 2026): after a refused cancellation, a second request the provider answers "pending" gets its own
     // reconcile; the first request's reconcile no longer blocks it.
     [PostgreSqlFact]
