@@ -102,6 +102,54 @@ public sealed class PostgreSqlWebhookInboxConcurrencyTests(PostgreSqlTenantIsola
         }
     }
 
+    // A Shopify delivery older than five minutes is answered 200 and dropped; a stale product delete (held back during a
+    // deploy) still queues the connection's link check at once, so the deleted product does not show as live until night.
+    [PostgreSqlFact]
+    public async Task AStaleShopifyProductDeleteStillQueuesTheLinkCheckAndAStaleOrderDoesNot()
+    {
+        var (tenant, connection, subscription) = await SeedAsync("webhook-stale", "SHOPIFY", "my-shop");
+        try
+        {
+            var staleOrder = await ReceiveStaleAsync(connection.PublicId, "orders/updated");
+            Assert.True(staleOrder.Succeeded);
+            Assert.False(staleOrder.Value);
+            await using (var db = fixture.CreateContext())
+                Assert.Equal(0, await db.IntegrationJobs.CountAsync(row => row.TenantId == tenant.Id));
+
+            var staleDelete = await ReceiveStaleAsync(connection.PublicId, "products/delete");
+            var repeated = await ReceiveStaleAsync(connection.PublicId, "products/delete");
+
+            Assert.True(staleDelete.Succeeded);
+            Assert.True(staleDelete.Value);
+            Assert.True(repeated.Succeeded);
+            await using var verification = fixture.CreateContext();
+            var job = await verification.IntegrationJobs.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id);
+            Assert.Equal(MarketplaceJobTypes.ListingVerify, job.JobType);
+            Assert.Equal(connection.Id, job.ConnectionId);
+            Assert.Equal("webhook", job.TriggerType);
+            Assert.Equal(0, await verification.InboxMessages.CountAsync(row => row.TenantId == tenant.Id));
+        }
+        finally
+        {
+            await CleanupAsync(tenant.Id, connection.Id, subscription.Id);
+        }
+    }
+
+    private async Task<ServiceResult<bool>> ReceiveStaleAsync(Guid connectionPublicId, string topic)
+    {
+        await using var db = fixture.CreateContext();
+        var service = new MarketplaceWebhookService(db, fixture.TokenHasher, new StaleVerifier(), fixture.TimeProvider);
+        var headers = new Dictionary<string, string> { ["X-Shopify-Topic"] = topic, ["X-Shopify-Shop-Domain"] = "my-shop.myshopify.com" };
+        return await service.ReceiveAsync(connectionPublicId, RouteToken, Encoding.UTF8.GetBytes("""{"id":1}"""), headers, $"stale-{Guid.NewGuid():N}", CancellationToken.None);
+    }
+
+    private sealed class StaleVerifier : IWebhookVerifier
+    {
+        public ValueTask<AdapterResult<VerifiedWebhookEnvelope>> VerifyAsync(ReadOnlyMemory<byte> rawBody, IReadOnlyDictionary<string, string> headers,
+            Guid connectionId, Guid subscriptionId, CancellationToken cancellationToken) =>
+            ValueTask.FromResult(AdapterResult<VerifiedWebhookEnvelope>.Failure(new(AdapterErrorClass.Validation, MarketplaceHub.Infrastructure.Adapters.Shopify.ShopifyWebhookVerifier.StaleCode, "stale", 200, null, null)));
+    }
+
     private async Task<ServiceResult<bool>> ReceiveAsync(Guid connectionPublicId, string messageId, ConcurrentQueue<string> errors)
     {
         using var loggerFactory = LoggerFactory.Create(builder => builder.AddProvider(new ErrorCollector(errors)).SetMinimumLevel(LogLevel.Warning));
@@ -112,7 +160,7 @@ public sealed class PostgreSqlWebhookInboxConcurrencyTests(PostgreSqlTenantIsola
         return await service.ReceiveAsync(connectionPublicId, RouteToken, Encoding.UTF8.GetBytes(RawJson), new Dictionary<string, string>(), $"race-{Guid.NewGuid():N}", CancellationToken.None);
     }
 
-    private async Task<(Tenant Tenant, PlatformConnection Connection, WebhookSubscription Subscription)> SeedAsync(string code)
+    private async Task<(Tenant Tenant, PlatformConnection Connection, WebhookSubscription Subscription)> SeedAsync(string code, string platformCode = "TRENDYOL", string? externalStoreId = null)
     {
         var now = DateTimeOffset.UtcNow;
         var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"{code}-{Guid.NewGuid():N}", DisplayName = code, Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
@@ -121,10 +169,10 @@ public sealed class PostgreSqlWebhookInboxConcurrencyTests(PostgreSqlTenantIsola
             Id = Guid.CreateVersion7(),
             TenantId = tenant.Id,
             PublicId = Guid.CreateVersion7(),
-            PlatformCode = "TRENDYOL",
+            PlatformCode = platformCode,
             Environment = "STAGE",
             DisplayName = "Trendyol webhook race test",
-            ExternalStoreId = $"seller-{Guid.NewGuid():N}",
+            ExternalStoreId = externalStoreId ?? $"seller-{Guid.NewGuid():N}",
             Status = "ACTIVE",
             ApiVersion = "V1",
             Version = 1
