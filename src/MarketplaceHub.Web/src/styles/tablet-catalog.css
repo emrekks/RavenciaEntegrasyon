@@ -156,7 +156,9 @@
   html body .app-shell.stitch-shell main .cs-workspace .cs-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   html body .app-shell.stitch-shell main .cs-workspace .cs-stats > div { border-top: 0; border-left: 1px solid var(--rv-color-border); }
   html body .app-shell.stitch-shell main .cs-workspace .cs-stats > div:first-child { border-left: 0; }
-  html body .app-shell.stitch-shell main .cs-workspace .cs-frow.cs-frow { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) 150px 92px; grid-template-areas: none; gap: 14px; padding: 6px 16px; }
+  /* The status cell keeps the 250 px its one-line text needs ("Otomatik Fiyat/Stok Yazma Kapalı", area-d.css); at
+     ~800 px a 1fr share of the row let it run into Son Başarılı. The flow name gives way (ellipsis). */
+  html body .app-shell.stitch-shell main .cs-workspace .cs-frow.cs-frow { grid-template-columns: minmax(0, 1.1fr) minmax(250px, 1fr) 150px 92px; grid-template-areas: none; gap: 14px; padding: 6px 16px; }
   html body .app-shell.stitch-shell main .cs-workspace .cs-frow.cs-frow > * { grid-area: auto; grid-column: auto; }
   html body .app-shell.stitch-shell main .cs-workspace .cs-frow.is-head { display: grid; }
 }
