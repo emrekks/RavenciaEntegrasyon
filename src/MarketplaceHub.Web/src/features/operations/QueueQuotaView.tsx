@@ -44,7 +44,7 @@ export function QueueQuotaView() {
 
   return <div className="qq">
     <div className="jobs-reference-toolbar qq-toolbar">
-      <div className="qq-window">
+      <div className="rr qq-window">
         <ChoiceField name="Ölçüm Aralığı" value={hours} options={queueWindowOptions} onChange={value => setHours(value as QueueWindow)} width={200} />
         <p className="qq-note">Çalışan ve bekleyen işler şu anı, deneme ve bekleme süreleri seçili aralığı gösterir.</p>
       </div>

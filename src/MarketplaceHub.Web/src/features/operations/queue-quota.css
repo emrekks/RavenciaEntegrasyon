@@ -1,7 +1,11 @@
 /* İşlem Takibi › Kuyruk ve Kota (QueueQuotaView.tsx). */
 .qq { display: grid; gap: 12px; min-width: 0; }
-.qq-window { display: flex; align-items: flex-end; gap: 16px; min-width: 0; }
-.qq-window .rr-fld { width: 200px; flex: none; }
+.qq-window { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.qq-window { align-items: center; flex: 1; }
+.app-shell.stitch-shell main .qq .qq-window .rr-fld { display: flex; flex: none; align-items: center; gap: 8px; width: auto; }
+.app-shell.stitch-shell main .qq .qq-window .rr-fld small { white-space: nowrap; }
+.app-shell.stitch-shell main .qq .qq-window .rr-fld .rr-trigger { width: 200px; min-height: 0; height: 36px; }
+.qq-window .qq-note { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .qq-note, .qq-sub { margin: 0; color: var(--rv-color-muted); font-size: 12.5px; line-height: 1.4; }
 .qq-toolbar .jobs-reference-refresh.is-busy svg { animation: qq-spin 1s linear infinite; }
 @keyframes qq-spin { to { transform: rotate(360deg); } }
@@ -62,7 +66,9 @@
   .app-shell.stitch-shell main .qq .qq-table tbody td[data-label]::before { content: attr(data-label); display: block; color: var(--rv-color-muted); font-size: 11px; font-weight: 500; }
   .app-shell.stitch-shell main .qq .qq-table tbody tr:hover td { background: none; }
   .qq-window { flex-direction: column; align-items: stretch; gap: 6px; }
-  .qq-window .rr-fld { width: 100%; }
+  .app-shell.stitch-shell main .qq .qq-window .rr-fld { width: 100%; }
+  .app-shell.stitch-shell main .qq .qq-window .rr-fld .rr-trigger { flex: 1; width: auto; }
+  .qq-window .qq-note { white-space: normal; }
   .qq-card strong { font-size: 19px; }
   .qq-states { grid-template-columns: minmax(0, 1fr); }
 }
