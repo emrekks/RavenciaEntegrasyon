@@ -362,6 +362,15 @@ export function RrModal({ crumb, title, desc, hint, size, flush, head, foot, onC
 export function RrLoading({ text = 'Veriler yükleniyor…' }: { text?: string }) {
   return <div className="rr-state rr-loading" role="status" aria-live="polite"><span className="rr-mark"><BrandSymbol style={{ width: 30, height: 30, objectFit: 'contain' }} /></span><strong>{text}</strong><p>Bu birkaç saniye sürebilir.</p><span className="rr-bar"><i /></span></div>
 }
+// The empty state of a list table: "<Noun> Bulunamadı" + Temizle only while a filter or search is active; with none
+// active it is the plain "Henüz <Noun> Yok" with a hint how records come in, and no Temizle (nothing to clear).
+export function RrEmptyList({ noun, hasActiveFilters, onClear, filteredHint, emptyHint }: { noun: string; hasActiveFilters: boolean; onClear?: () => void; filteredHint?: string; emptyHint: string }) {
+  return <div className="rr-empty"><span className="rr-ei"><RrIcon name="box" /></span>
+    <b>{hasActiveFilters ? `${noun} Bulunamadı` : `Henüz ${noun} Yok`}</b>
+    <span className="rr-lead">{hasActiveFilters ? filteredHint ?? 'Filtrelerle eşleşen kayıt yok.' : emptyHint}</span>
+    {hasActiveFilters && onClear ? <button type="button" className="rr-btn rr-quiet" style={{ marginTop: 4 }} onClick={onClear}>Temizle</button> : null}
+  </div>
+}
 export function RrError({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
   const retry = useAutoRetry(error, onRetry)
   const message = error instanceof Error && error.message ? errorText(error) : 'Sunucuya ulaşılamadı. İnternet bağlantınızı kontrol edin.'
