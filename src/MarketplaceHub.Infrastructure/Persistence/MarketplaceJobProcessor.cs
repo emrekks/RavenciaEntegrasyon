@@ -841,7 +841,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         profile.Version++;
         // Shopify has no approval step, but a SKU its answer left out is read by the same check (by SKU).
         if (isShopify ? unknown > 0 : succeeded + unknown > 0)
-            await EnsureApprovalReconciliationJob(tenantId, connectionId, payload.ProductId, profile.Id, payload.PayloadHash, correlationId, cancellationToken, payload.ExternalOperationId);
+            await EnsureApprovalReconciliationJob(tenantId, connectionId, payload.ProductId, profile.Id, payload.PayloadHash, correlationId, cancellationToken, payload.ExternalOperationId,
+                isShopify ? ProductApprovalReconciliationPolicy.ShopifyFirstCheckDelay : null);
         string? ListingReason(ChannelListingVariant listing)
         {
             var key = keyedBySku ? listing.ExternalSku! : listing.ExternalBarcode!;
@@ -1468,7 +1469,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             remote.Add(result.Value!);
         }
 
-        if (candidates.Count == listings.Count && ProductApprovalReconciliationPolicy.ShouldResetMissingPublication(listings.Count, remote))
+        if (candidates.Count == listings.Count
+            && ProductApprovalReconciliationPolicy.ShouldResetMissingShopifyPublication(listings.Count, remote, await CreateConfirmedAsync(tenantId, connectionId, payload, cancellationToken), payload.StartedAt, timeProvider.GetUtcNow()))
             return await ResetMissingPublication(tenantId, connectionId, profile, listings, states, payload.PayloadHash, payload.JobId, cancellationToken);
         // A draft product or a SKU Shopify does not show yet waits like a pending approval elsewhere (until the
         // deadline); an archived product or a status the adapter does not know goes to review.
@@ -1609,7 +1611,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return JobExecutionResult.Success();
     }
 
-    private async Task EnsureApprovalReconciliationJob(Guid tenantId, Guid connectionId, Guid productId, Guid profileId, string payloadHash, string correlationId, CancellationToken cancellationToken, string? externalOperationId = null)
+    private async Task EnsureApprovalReconciliationJob(Guid tenantId, Guid connectionId, Guid productId, Guid profileId, string payloadHash, string correlationId, CancellationToken cancellationToken, string? externalOperationId = null, TimeSpan? firstCheckDelay = null)
     {
         var dedup = $"product-approval:{connectionId:N}:{profileId:N}:{payloadHash}";
         if (await db.IntegrationJobs.AnyAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.ProductApprovalReconcile && x.JobDedupKey == dedup, cancellationToken)) return;
@@ -1629,7 +1631,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             EffectIdempotencyKey = dedup,
             Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ProductApprovalReconcile, userInitiated: true),
             Status = JobStatus.Pending,
-            AvailableAt = now,
+            AvailableAt = now + (firstCheckDelay ?? TimeSpan.Zero),
             MaxAttempts = ProductApprovalReconcileMaxAttempts,
             CorrelationId = correlationId,
             CreatedAt = now,
