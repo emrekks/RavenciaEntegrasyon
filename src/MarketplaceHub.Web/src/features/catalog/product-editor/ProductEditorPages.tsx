@@ -1335,6 +1335,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   // variant; written with Kaydet (PUT /products/{id}/size-chart) when it differs from the loaded one.
   const [sizeChartUrl, setSizeChartUrl] = useState<string | null>(null)
   const initialSizeChartUrl = useRef<string | null>(null)
+  // The chart a pending family picture removal cleared, restored by its Geri Al.
+  const sizeChartBeforeFamilyRemoval = useRef<string | null>(null)
   // The model-row fields as the editor loaded them: a save names the ones the owner changed (family-shared-fields.ts).
   const initialSharedFields = useRef<Record<string, string> | null>(null)
   // "Beden Tablosu Seç" beside Tümünü Temizle: while on, a tap on one of the card's own saved pictures marks it as the
@@ -1586,6 +1588,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       : [...savedFamilyMediaUrls, ...savedMediaUrls]), removedMediaKeys))
     setFamilyMediaOrderDirty(false)
     setPendingFamilyMediaRemovals([])
+    sizeChartBeforeFamilyRemoval.current = null
     setMediaFiles(mediaFilesKeptOnReseed.current ?? [])
     mediaFilesKeptOnReseed.current = null
     const leftByCreate = editProductId ? takePendingCreateMedia<PendingProductMediaFile>(product.id) : undefined
@@ -2104,11 +2107,21 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     // No question each time: the image leaves the strip now and is removed from its colour cards on Kaydet; the
     // action bar counts what waits and takes it back with Geri Al.
     setPendingFamilyMediaRemovals(current => withPendingFamilyMediaRemovals(current, [item]))
+    // The size chart leaves with its picture (scan, 13 Nov 2026: a removed family chart stayed marked and went to every
+    // variant); Geri Al marks it again.
+    if (sizeChartUrl && mediaImageKey(item.url) === mediaImageKey(sizeChartUrl)) {
+      sizeChartBeforeFamilyRemoval.current = sizeChartUrl
+      setSizeChartUrl(null)
+    }
     showFeedback('Aile Görseli Kaldırıldı', `Görsel şeritten kaldırıldı; Kaydet’e bastığınızda ${item.sourceProductTitles.length ? item.sourceProductTitles.join(', ') : 'diğer renk ürünleri'} kayıtlarından da kaldırılır. Vazgeçmek için alttaki Geri Al’ı kullanın.`, 'info')
   }
   function undoPendingFamilyMediaRemovals() {
     const count = pendingFamilyMediaRemovals.length
     setPendingFamilyMediaRemovals([])
+    if (sizeChartBeforeFamilyRemoval.current) {
+      setSizeChartUrl(sizeChartBeforeFamilyRemoval.current)
+      sizeChartBeforeFamilyRemoval.current = null
+    }
     if (count) showFeedback('Aile Görselleri Geri Alındı', `${count} renk ailesi görseli şeride geri getirildi.`, 'info')
   }
   function confirmMediaRemoval() {
@@ -3133,6 +3146,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           body: JSON.stringify({ mediaIds })
         }))
         setPendingFamilyMediaRemovals([])
+        sizeChartBeforeFamilyRemoval.current = null
       }
       // The model's order (the strip) on every card, after a move or any picture written above: each card numbers its own
       // rows 0, 1… when written, the family order ranks them again.

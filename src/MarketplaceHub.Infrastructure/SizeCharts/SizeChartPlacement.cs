@@ -64,10 +64,19 @@ public static class SizeChartPlacement
         !string.IsNullOrWhiteSpace(chartUrl) && urls.Count > 0
         && string.Equals(CatalogImageIdentity.Key(urls[^1]), CatalogImageIdentity.Key(chartUrl), StringComparison.OrdinalIgnoreCase);
 
+    // The cards' chart rows whose picture the card still shows: an active picture row of the card holds it, or it is the
+    // image generated for the card last (not in the strip until Kaydet). A chart whose picture left the card (removed
+    // before the D5 rule reached every delete path) is no chart: it would go to every variant as the last picture.
+    private static IQueryable<ProductSizeChart> Shown(AppDbContext db, Guid tenantId) =>
+        db.ProductSizeCharts.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.FileAssetId != null
+                && (x.LastGeneratedAssetId == x.FileAssetId
+                    || db.ProductMedia.Any(media => media.TenantId == tenantId && media.ProductId == x.ProductId && media.FileAssetId == x.FileAssetId && media.Status == "ACTIVE")));
+
     // The asset of the card's size chart, null when it has none.
     public static Task<Guid?> AssetIdAsync(AppDbContext db, Guid tenantId, Guid productId, CancellationToken cancellationToken) =>
-        db.ProductSizeCharts.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.ProductId == productId && x.FileAssetId != null)
+        Shown(db, tenantId)
+            .Where(x => x.ProductId == productId)
             .Select(x => x.FileAssetId)
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -87,9 +96,9 @@ public static class SizeChartPlacement
     public static async Task<Guid?> FamilyAssetIdAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<Guid> familyIds, CancellationToken cancellationToken)
     {
         if (familyIds.Count == 0) return null;
-        return await (from chart in db.ProductSizeCharts.AsNoTracking()
+        return await (from chart in Shown(db, tenantId)
                       join card in db.Products.AsNoTracking() on chart.ProductId equals card.Id
-                      where chart.TenantId == tenantId && card.TenantId == tenantId && familyIds.Contains(chart.ProductId) && chart.FileAssetId != null && card.Status != ProductStatus.Archived
+                      where card.TenantId == tenantId && familyIds.Contains(chart.ProductId) && card.Status != ProductStatus.Archived
                       orderby card.CreatedAt, card.Id
                       select chart.FileAssetId).FirstOrDefaultAsync(cancellationToken);
     }
@@ -110,8 +119,8 @@ public static class SizeChartPlacement
 
     // The size chart assets of several cards (a model family), each card's own.
     public static Task<List<Guid>> AssetIdsAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<Guid> productIds, CancellationToken cancellationToken) =>
-        db.ProductSizeCharts.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && productIds.Contains(x.ProductId) && x.FileAssetId != null)
+        Shown(db, tenantId)
+            .Where(x => productIds.Contains(x.ProductId))
             .Select(x => x.FileAssetId!.Value)
             .ToListAsync(cancellationToken);
 }

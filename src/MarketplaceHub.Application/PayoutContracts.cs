@@ -32,7 +32,11 @@ public sealed record PayoutView(
     IReadOnlyList<PayoutGroupView> Past,
     IReadOnlyList<PayoutCoverageView> Coverage,
     decimal PendingDelivery = 0,
-    int PendingDeliveryOrders = 0);
+    int PendingDeliveryOrders = 0,
+    // Trendyol sales and returns a payout already paid whose records are not read yet (a payout is read a day after it is
+    // made): out of Expected and the days to come, counted here so the page can say so.
+    decimal PaidUnread = 0,
+    int PaidUnreadRecords = 0);
 
 // Region: TR_GULF (Türkiye and the Gulf storefronts), EUROPE, AZ, UNKNOWN (a country no rule names).
 public sealed record PayoutRegionView(string Region, decimal Expected, int Records, DateOnly? NextDay, decimal? NextAmount, decimal Unknown,
@@ -52,8 +56,10 @@ public sealed record PayoutPlatformView(string PlatformCode, decimal Expected, i
 // Estimates: on a Trendyol payout day to come, the deductions Trendyol takes off that payout but bills only the evening
 // before it (cargo, platform service fee, international service fee, withholding tax), estimated from its records as
 // Trendyol's own "Ödeme Özeti" estimates them; Amount is then the records less these, LinesAmount the records alone.
+// Carried (PayoutView.Next only): what the store's earlier days to come that netted to nothing or less take off this
+// payout (negative; null when none); Amount already holds it.
 public sealed record PayoutGroupView(string Key, string Kind, Guid ConnectionId, string PlatformCode, string StoreName, string Region, string? RegionName,
-    DateOnly Day, decimal Amount, decimal? LinesAmount, int Records, string Status, IReadOnlyList<PayoutEstimateView>? Estimates = null);
+    DateOnly Day, decimal Amount, decimal? LinesAmount, int Records, string Status, IReadOnlyList<PayoutEstimateView>? Estimates = null, decimal? Carried = null);
 
 // One estimated deduction of a payout day to come. Kind CARGO (shipments), RETURN_CARGO, PLATFORM_FEE,
 // INTERNATIONAL_FEE, STOPPAGE. Count: the packages (or records) it is for; Amount: what it takes off (positive);

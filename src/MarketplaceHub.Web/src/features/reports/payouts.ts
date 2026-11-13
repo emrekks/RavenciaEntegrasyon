@@ -13,7 +13,9 @@ export const isWaitingPayout = (group: Pick<PayoutGroup, 'kind'>) => group.kind 
 export type PayoutEstimateKind = 'CARGO' | 'RETURN_CARGO' | 'PLATFORM_FEE' | 'INTERNATIONAL_FEE' | 'STOPPAGE'
 export type PayoutEstimate = { kind: PayoutEstimateKind; count: number; amount: number; rate: number | null; missing: number }
 export type PayoutGroup = { key: string; kind: PayoutKind; connectionId: string; platformCode: string; storeName: string; region: PayoutRegion; regionName: string | null
-  day: string; amount: number; linesAmount: number | null; records: number; status: PayoutStatus; estimates?: PayoutEstimate[] | null }
+  day: string; amount: number; linesAmount: number | null; records: number; status: PayoutStatus; estimates?: PayoutEstimate[] | null
+  // The next payout only: what the store's earlier days that netted to nothing or less take off it (negative; amount holds it).
+  carried?: number | null }
 // pendingDelivery: the orders accepted or shipped but not delivered yet (not in the balance; they join a later payout).
 export type PayoutRegionSummary = { region: PayoutRegion; expected: number; records: number; nextDay: string | null; nextAmount: number | null; unknown: number
   pendingDelivery: number; pendingDeliveryOrders: number }
@@ -23,7 +25,9 @@ export type PayoutPlatformSummary = { platformCode: string; expected: number; re
 export type PayoutCoverage = { connectionId: string; platformCode: string; storeName: string; state: 'READ' | 'NOT_READ' | 'NOT_SUPPORTED'; lastSyncedAt: string | null }
 export type Payouts = { today: string; daysBack: number; expected: number; expectedRecords: number; next: PayoutGroup | null; lastPaid: PayoutGroup | null
   unknown: number; unknownRecords: number; earlyPaymentsTaken: number; earlyPayments: number; regions: PayoutRegionSummary[]; platforms: PayoutPlatformSummary[]
-  upcoming: PayoutGroup[]; past: PayoutGroup[]; coverage: PayoutCoverage[]; pendingDelivery: number; pendingDeliveryOrders: number }
+  upcoming: PayoutGroup[]; past: PayoutGroup[]; coverage: PayoutCoverage[]; pendingDelivery: number; pendingDeliveryOrders: number
+  // Trendyol sales and returns a payout paid whose records are not read yet: out of expected (absent in an older answer).
+  paidUnread?: number; paidUnreadRecords?: number }
 export type PayoutLine = { externalId: string; connectionId: string; platformCode: string; transactionType: string | null; category: string; transactionDate: string
   dueDay: string | null; orderNumber: string | null; invoiceNumber: string | null; country: string | null; region: PayoutRegion; gross: number; commission: number | null
   net: number; status: PayoutStatus; paymentOrderId: string | null; barcode: string | null }

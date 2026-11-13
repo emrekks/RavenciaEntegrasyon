@@ -187,6 +187,13 @@ public sealed class FamilyGalleryPublicationPostgreSqlTests(PostgreSqlTenantIsol
                 [$"https://cdn.example.com/mz051byc/{colour}-1.jpg", $"https://cdn.example.com/mz051byc/{colour}-2.jpg", $"https://cdn.example.com/mz051byc/{colour}-3.jpg", "https://cdn.example.com/mz051byc/beden-tablosu.jpg"],
                 item!["images"]!.AsArray().Select(image => image!["url"]!.GetValue<string>())));
         }
+
+        // Scan, 13 Nov 2026: a chart whose picture left the card (no active row holds it) is no chart: it no longer goes
+        // to every colour as the last picture.
+        var chartId = Asset("beden-tablosu").Id;
+        foreach (var row in media.Where(x => x.FileAssetId == chartId)) row.Status = "ARCHIVED";
+        await db.SaveChangesAsync();
+        Assert.Null(await Infrastructure.SizeCharts.SizeChartPlacement.ModelAssetIdAsync(db, tenant.Id, siyah, [siyahL, siyahXl], CancellationToken.None));
         await transaction.RollbackAsync();
     }
 }

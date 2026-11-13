@@ -262,26 +262,46 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         var attributeSnapshotIds = attributeSnapshots.Select(x => x.Id).ToArray();
         var requiredAttributes = await db.ReferenceItems.AsNoTracking()
             .Where(x => x.TenantId == tenantId && attributeSnapshotIds.Contains(x.SnapshotId) && x.ResourceType == "CATEGORY_ATTRIBUTES" && x.IsActive && x.IsRequired == true)
-            .Select(x => new { x.SnapshotId, x.ExternalId })
+            .Select(x => new { x.SnapshotId, x.ExternalId, x.AllowsCustomValue })
             .ToListAsync(cancellationToken);
         var mappedAttributes = await db.AttributeMappings.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "VERIFIED" && categoryExternalIds.Contains(x.ScopeExternalId))
             .Select(x => new { x.ScopeExternalId, x.SnapshotId, x.ExternalId })
             .ToListAsync(cancellationToken);
         var requirements = requiredAttributes.Select(item => new RequiredAttributeMappingReference(item.SnapshotId, item.ExternalId)).ToArray();
-        // A required attribute with a connection default (e.g. Menşei = TR) is covered without a mapping.
-        var defaultedAttributeIds = await db.ConnectionAttributeDefaults.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId)
-            .Select(x => x.ExternalAttributeId)
-            .ToListAsync(cancellationToken);
-        // n11's Marka is always sent from the product brand (N11ProductPublicationComposer), so it needs no mapping either.
+        // A required attribute with a connection default (e.g. Menşei = TR) is covered without a mapping, by the rule the
+        // senders apply (ResolveAttributeDefaultsAsync in every publication composer): a list default only while its value is
+        // active in the category's current value list, a free-text one only where the attribute takes free text (never on
+        // Pazarama). Scan, 13 Nov 2026: every default counted, so the list said "0 eksik" and the send failed.
         var platformCode = await db.PlatformConnections.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.Id == connectionId)
             .Select(x => x.PlatformCode)
             .SingleAsync(cancellationToken);
-        if (platformCode == "N11") defaultedAttributeIds.Add(N11ProductPublicationComposer.BrandAttributeId);
+        var defaults = await db.ConnectionAttributeDefaults.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId)
+            .Select(x => new { x.ExternalAttributeId, x.ExternalValueId, x.CustomValue })
+            .ToListAsync(cancellationToken);
+        var valueScopes = attributeSnapshots.SelectMany(snapshot => defaults.Where(x => !string.IsNullOrWhiteSpace(x.ExternalValueId))
+            .Select(x => $"{snapshot.ScopeExternalId}/{x.ExternalAttributeId}")).Distinct().ToArray();
+        var defaultValueIds = defaults.Select(x => x.ExternalValueId).OfType<string>().Distinct().ToArray();
+        var offeredValues = valueScopes.Length == 0 ? [] : (await (from snapshot in db.ReferenceSnapshots.AsNoTracking()
+                                                                   join item in db.ReferenceItems.AsNoTracking() on snapshot.Id equals item.SnapshotId
+                                                                   where snapshot.TenantId == tenantId && snapshot.ConnectionId == connectionId && snapshot.ResourceType == "ATTRIBUTE_VALUES"
+                                                                       && snapshot.IsCurrent && valueScopes.Contains(snapshot.ScopeExternalId)
+                                                                       && item.TenantId == tenantId && item.ResourceType == "ATTRIBUTE_VALUES" && item.IsActive && defaultValueIds.Contains(item.ExternalId)
+                                                                   select new { snapshot.ScopeExternalId, item.ExternalId }).ToListAsync(cancellationToken))
+            .Select(x => (x.ScopeExternalId, x.ExternalId)).ToHashSet();
+        var freeText = requiredAttributes.Where(x => x.AllowsCustomValue == true).Select(x => (x.SnapshotId, x.ExternalId)).ToHashSet();
+        bool DefaultUsable(Guid snapshotId, string category, string attributeId) => defaults.Any(item => item.ExternalAttributeId == attributeId
+            && (!string.IsNullOrWhiteSpace(item.ExternalValueId)
+                ? offeredValues.Contains(($"{category}/{attributeId}", item.ExternalValueId))
+                : platformCode != "PAZARAMA" && !string.IsNullOrWhiteSpace(item.CustomValue) && freeText.Contains((snapshotId, attributeId))));
         var verifiedMappings = mappedAttributes.Select(item => new RequiredAttributeMappingReference(item.SnapshotId, item.ExternalId))
-            .Concat(attributeSnapshots.SelectMany(snapshot => defaultedAttributeIds.Select(attributeId => new RequiredAttributeMappingReference(snapshot.Id, attributeId))))
+            .Concat(attributeSnapshots.SelectMany(snapshot => defaults.Select(x => x.ExternalAttributeId).Distinct()
+                .Where(attributeId => DefaultUsable(snapshot.Id, snapshot.ScopeExternalId, attributeId))
+                .Select(attributeId => new RequiredAttributeMappingReference(snapshot.Id, attributeId))))
+            // n11's Marka is always sent from the product brand (N11ProductPublicationComposer), so it needs no mapping either.
+            .Concat(platformCode == "N11" ? attributeSnapshots.Select(snapshot => new RequiredAttributeMappingReference(snapshot.Id, N11ProductPublicationComposer.BrandAttributeId)) : [])
             .ToArray();
         var missingByScope = attributeSnapshots.ToDictionary(
             snapshot => snapshot.ScopeExternalId,
@@ -378,34 +398,45 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
                 await MappingTemplateStore.RecordValueAsync(db, tenantId, command.ConnectionId, scope, localId, externalId, mapping.VerifiedAt.Value, cancellationToken);
                 await MappingTemplateFiller.FillValueInOtherCategoriesAsync(db, tenantId, command.ConnectionId, scope, localId, externalId, mapping.VerifiedAt.Value, cancellationToken);
             }
-            await MappingTemplateFiller.ClearDismissalAsync(db, tenantId, command.ConnectionId, MappingTemplateFiller.ValueKind, scope, localId, cancellationToken);
+            await MappingTemplateFiller.RemoveDismissalAsync(db, tenantId, command.ConnectionId, MappingTemplateFiller.ValueKind, scope, localId, cancellationToken);
         }
         if (mappingType == "attributes")
         {
             var role = NormalizeRequirementRole(command.Role);
             if (role is not ("ATTRIBUTE" or "OPTION")) return ServiceResult<CatalogMappingView>.Fail("MAPPING_ROLE_INVALID", "Özellik eşleme rolü ATTRIBUTE veya OPTION olmalıdır.", 422);
+
+            // Every panel category mapped to this marketplace category lists the attribute, as the template filler does
+            // (MappingTemplateFiller.FillAttributesAsync); an option group goes in only when every one of them has room
+            // for it, checked before anything is written (scan, 13 Nov 2026: one category picked at random got it).
+            var categoryIds = await db.CategoryMappings.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == command.ConnectionId && x.ExternalId == scope && x.Status == "VERIFIED")
+                .Select(x => x.LocalId).Distinct().OrderBy(x => x)
+                .ToListAsync(cancellationToken);
+            var requirements = await db.CategoryAttributeRequirements
+                .Where(x => x.TenantId == tenantId && categoryIds.Contains(x.CategoryId) && x.AttributeId == localId)
+                .ToDictionaryAsync(x => x.CategoryId, cancellationToken);
+            if (role == "OPTION")
+            {
+                foreach (var categoryId in categoryIds.Where(id => requirements.GetValueOrDefault(id)?.Role != "OPTION"))
+                {
+                    var optionCount = await db.CategoryAttributeRequirements.CountAsync(x => x.TenantId == tenantId && x.CategoryId == categoryId && x.Role == "OPTION" && x.AttributeId != localId, cancellationToken);
+                    if (optionCount >= 2) return ServiceResult<CatalogMappingView>.Fail("OPTION_LIMIT_EXCEEDED", "Bir kategoride en fazla 2 seçenek grubu tanımlanabilir.", 422);
+                }
+            }
+
+            // Only now, every check passed: the template and the user's earlier removal go with this save (scan: a refused
+            // mapping had already deleted the removal, so the next sync brought the removed mapping back).
             if (mapping is AttributeMapping attributeMapping)
             {
                 attributeMapping.Source = MappingSources.Manual;
                 if (command.UpdateTemplate)
                     await MappingTemplateStore.RecordAttributeAsync(db, tenantId, command.ConnectionId, externalId, localId, role, mapping.VerifiedAt.Value, cancellationToken);
-                await MappingTemplateFiller.ClearDismissalAsync(db, tenantId, command.ConnectionId, MappingTemplateFiller.AttributeKind, scope, localId, cancellationToken);
+                await MappingTemplateFiller.RemoveDismissalAsync(db, tenantId, command.ConnectionId, MappingTemplateFiller.AttributeKind, scope, localId, cancellationToken);
             }
 
-            var mappedCategoryId = await db.CategoryMappings.AsNoTracking()
-                .Where(x => x.TenantId == tenantId && x.ConnectionId == command.ConnectionId && x.ExternalId == scope && x.Status == "VERIFIED")
-                .Select(x => (Guid?)x.LocalId)
-                .FirstOrDefaultAsync(cancellationToken);
-            if (mappedCategoryId is Guid categoryId)
+            foreach (var categoryId in categoryIds)
             {
-                var requirement = await db.CategoryAttributeRequirements
-                    .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.CategoryId == categoryId && x.AttributeId == localId, cancellationToken);
-                if (role == "OPTION" && requirement?.Role != "OPTION")
-                {
-                    var optionCount = await db.CategoryAttributeRequirements.CountAsync(x => x.TenantId == tenantId && x.CategoryId == categoryId && x.Role == "OPTION" && x.AttributeId != localId, cancellationToken);
-                    if (optionCount >= 2) return ServiceResult<CatalogMappingView>.Fail("OPTION_LIMIT_EXCEEDED", "Bir kategoride en fazla 2 seçenek grubu tanımlanabilir.", 422);
-                }
-
+                var requirement = requirements.GetValueOrDefault(categoryId);
                 if (requirement is null)
                 {
                     db.CategoryAttributeRequirements.Add(new CategoryAttributeRequirement

@@ -653,8 +653,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         foreach (var product in products)
         {
             var productRows = rows.GetValueOrDefault(product.Id) ?? [];
-            var gaps = ProductRequiredFields.Missing(new ProductRequiredFields.Card(product.Title, product.BrandId, product.CategoryId, WarrantyGiven: true, DeliveryDaysGiven: true,
-                product.DefaultListPrice, product.DefaultSalePrice, productRows));
+            var gaps = ProductRequiredFields.Missing(new ProductRequiredFields.Card(product.Title, product.BrandId, product.CategoryId, WarrantyGiven: true, DeliveryDaysGiven: product.DeliveryDays is not null,
+                product.DefaultListPrice, product.DefaultSalePrice, productRows, VatGiven: product.VatRate is not null && !string.IsNullOrWhiteSpace(product.VatInclusion)));
             if (gaps.Count > 0) result.Add(new(product, gaps, productRows.Select(row => row.ModelCode?.Trim()).FirstOrDefault(code => !string.IsNullOrEmpty(code))));
         }
         return result;
@@ -1512,7 +1512,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             if (requiredRows.Count == 0)
                 requiredRows = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == id && !variantIdsToDelete.Contains(x.Id))
                     .Select(x => new ProductRequiredFields.Row(x.Sku, x.Barcode, x.ModelCode, x.Desi, x.DefaultListPrice, x.DefaultSalePrice)).ToListAsync(cancellationToken);
-            var updateGaps = ProductRequiredFields.Missing(new ProductRequiredFields.Card(command.Title, command.BrandId, command.CategoryId, WarrantyGiven: true, DeliveryDaysGiven: true, cardListPrice, cardSalePrice, requiredRows));
+            var updateGaps = ProductRequiredFields.Missing(new ProductRequiredFields.Card(command.Title, command.BrandId, command.CategoryId, WarrantyGiven: true, DeliveryDaysGiven: (command.DeliveryDays ?? product.DeliveryDays) is not null, cardListPrice, cardSalePrice, requiredRows));
             if (updateGaps.Count > 0) return ProductRequiredFields.Refusal<ProductView>(updateGaps);
         }
         // O7/D6: the family as this save leaves it (kept rows with their updated codes, then the new rows) may not hold

@@ -367,4 +367,68 @@ public sealed class PayoutBuilderTests
         Assert.Equal(80m, Assert.Single(view.Regions, x => x.Region == PayoutBuilder.Azerbaijan).PendingDelivery);
         Assert.Equal([(1730.5m, 4), (300m, 1)], view.Platforms.Select(x => (x.PendingDelivery, x.PendingDeliveryOrders)));
     }
+
+    [Fact]
+    public void A_day_netting_below_zero_is_carried_into_the_store_next_payout_and_never_into_another_marketplace()
+    {
+        // Wednesday 4 Nov. Monday 9 Nov holds a deduction alone (-500), Thursday 12 Nov a sale (+2,000): Trendyol takes the
+        // Monday's 500 off the Thursday payout.
+        PayoutRow[] rows =
+        [
+            Deduction("k1", "Kargo Faturası", MarketplaceFinanceCategories.Cargo, 500m, new(2026, 11, 9)),
+            Sale("s1", 2500m, 2000m, new(2026, 11, 12))
+        ];
+        var view = PayoutBuilder.Build(rows, [], Stores, Today, 90, []);
+        Assert.Equal((new DateOnly(2026, 11, 12), 1500m, -500m), (view.Next!.Day, view.Next.Amount, view.Next.Carried));
+        var region = Assert.Single(view.Regions, x => x.Region == PayoutBuilder.TrGulf);
+        Assert.Equal((new DateOnly(2026, 11, 12), 1500m), (region.NextDay, region.NextAmount));
+        Assert.Equal((new DateOnly(2026, 11, 12), 1500m), (view.Platforms[0].NextDay, view.Platforms[0].NextAmount));
+        // The list keeps each day's own amount.
+        Assert.Equal([-500m, 2000m], view.Upcoming.Select(x => x.Amount));
+
+        // A Pazarama store paying 600 on the Monday is not taken down by Trendyol's -500 the same day.
+        var pazarama = Guid.CreateVersion7();
+        var stores = new Dictionary<Guid, PayoutStore>(Stores) { [pazarama] = new(pazarama, "PAZARAMA", "Ravencia PZ", false) };
+        PayoutRow agreement = new()
+        {
+            ConnectionId = pazarama,
+            PlatformCode = "PAZARAMA",
+            Source = PazaramaFinanceSyncJobHandler.Source,
+            ExternalId = "p1",
+            RequestedType = "x",
+            TransactionType = "Satış",
+            Category = MarketplaceFinanceCategories.Sale,
+            TransactionDate = Due(Today),
+            Credit = 600m,
+            SellerRevenue = 600m,
+            PaymentDate = Due(new DateOnly(2026, 11, 9))
+        };
+        var both = PayoutBuilder.Build([.. rows, agreement], [], stores, Today, 90, []);
+        Assert.Equal((new DateOnly(2026, 11, 9), 600m), (both.Next!.Day, both.Next.Amount));
+        Assert.Null(both.Next.Carried);
+    }
+
+    [Fact]
+    public void Sales_a_payout_paid_before_its_records_are_read_leave_the_balance_and_the_days_to_come()
+    {
+        // Wednesday 4 Nov: Monday 2 Nov's Türkiye payout is made but its records are read a day later, so they carry no
+        // payout id yet. The sales due 2-4 Nov (its payout day, Monday 2 Nov) are paid; Thursday 5 Nov's is not; a
+        // deduction stays open (a payout does not always take one).
+        PayoutRow[] rows =
+        [
+            Sale("s1", 1000m, 800m, new(2026, 11, 2)),
+            Sale("s2", 500m, 400m, new(2026, 11, 4)),
+            Sale("s3", 300m, 240m, new(2026, 11, 5)),
+            Deduction("k1", "Kargo Faturası", MarketplaceFinanceCategories.Cargo, 20m, new(2026, 11, 1))
+        ];
+        PayoutOrderRow[] payouts = [new(Store, "PO-8", 1200m, Due(new DateOnly(2026, 10, 29)), "TR", "Türkiye"), new(Store, "PO-9", 1180m, Due(new DateOnly(2026, 11, 2)), "TR", "Türkiye", LinesRead: false)];
+        var view = PayoutBuilder.Build(rows, payouts, Stores, Today, 90, []);
+        Assert.Equal((240m - 20m, 2), (view.Expected, view.ExpectedRecords));
+        Assert.Equal((1200m, 2), (view.PaidUnread, view.PaidUnreadRecords));
+        Assert.Equal(220m, view.Next!.Amount);
+
+        // Once the payout is read, its records carry its id; nothing is held apart any more.
+        var read = PayoutBuilder.Build(rows, [payouts[0], payouts[1] with { LinesRead = true }], Stores, Today, 90, []);
+        Assert.Equal((0m, 0), (read.PaidUnread, read.PaidUnreadRecords));
+    }
 }

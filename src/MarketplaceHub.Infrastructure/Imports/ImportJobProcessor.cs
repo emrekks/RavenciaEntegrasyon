@@ -434,14 +434,16 @@ public sealed class ImportJobProcessor(
     // Whether the product the rows create misses one of the editor's required fields (ProductRequiredFields) and so is
     // created as a draft. Product fields come from its first row (as the product is created from it), the codes, desi and
     // prices from every row. Garanti Süresi and Teslimat Süresi are always given: from the file's columns (checked by
-    // ImportFileReader), else no warranty (0) and the default days, both valid values.
+    // ImportFileReader), else no warranty (0) and the default days, both valid values. The KDV is required too: a model
+    // whose rows name no KDV goes in as a draft, never on sale without its VAT (scan, 13 Nov 2026).
     internal static bool CreatesDraft(IReadOnlyList<IReadOnlyDictionary<string, string>> rows, bool brandUsable, Guid? categoryId)
     {
         var (cardList, cardSale) = FilePrices(rows[0]);
         var card = new ProductRequiredFields.Card(Value(rows[0], "title"), brandUsable ? Guid.AllBitsSet : null, categoryId, WarrantyGiven: true, DeliveryDaysGiven: true, cardList, cardSale,
             [.. rows.Select(values => (Values: values, Prices: FilePrices(values)))
                 .Select(item => new ProductRequiredFields.Row(Value(item.Values, "sku"), Value(item.Values, "barcode"), Value(item.Values, "modelCode"),
-                    ImportedDesi.From(ParseDecimal(Value(item.Values, "desi"))), item.Prices.List, item.Prices.Sale))]);
+                    ImportedDesi.From(ParseDecimal(Value(item.Values, "desi"))), item.Prices.List, item.Prices.Sale))],
+            VatGiven: rows.Any(values => FileVatRate(values) is not null));
         return ProductRequiredFields.Missing(card).Count > 0;
     }
 
