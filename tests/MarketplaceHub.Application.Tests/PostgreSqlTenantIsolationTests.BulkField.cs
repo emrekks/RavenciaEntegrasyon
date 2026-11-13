@@ -47,7 +47,7 @@ public sealed partial class PostgreSqlTenantIsolationTests
                 var sku = $"{modelCode}-{colour}-{size}-{Guid.NewGuid():N}";
                 var variant = new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = card.Id, SortOrder = index, Sku = sku, SkuNormalized = sku.ToUpperInvariant(), ModelCode = modelCode, OptionSignature = $"Renk={colour}|Beden={size}", Desi = 1m, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
                 variants.Add(variant);
-                offers.Add(new ChannelOffer { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, VariantId = variant.Id, ListPrice = 120m, SalePrice = 100m, Currency = "TRY", VatRate = 20m, VatInclusion = "EXCLUDED", RoundingMode = "HALF_EVEN", SafetyStock = 0, Status = "ACTIVE", PriceVersion = 1, Version = 1 });
+                offers.Add(new ChannelOffer { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, VariantId = variant.Id, ListPrice = 120m, SalePrice = 100m, Currency = "TRY", VatRate = 20m, VatInclusion = "EXCLUDED", RoundingMode = "HALF_EVEN", SafetyStock = 0, Status = "ACTIVE", PriceVersion = 1, LastStockProjectionVersion = 7, Version = 1 });
             }
         }
         Sizes(black, "BLZ01", "Siyah");
@@ -134,6 +134,12 @@ public sealed partial class PostgreSqlTenantIsolationTests
         // The offers keep their price and VAT; nothing is queued for a marketplace.
         Assert.All(await db.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToListAsync(), offer => { Assert.Equal(1, offer.PriceVersion); Assert.Equal(20m, offer.VatRate); });
         Assert.False(await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id));
+        // A-3: the new safety stock is a stock change: its stock mark is cleared so the next send carries it; an offer
+        // the bulk edit did not change keeps its mark.
+        var marked = await db.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToListAsync();
+        Assert.All(marked.Where(offer => offer.SafetyStock == 3), offer => Assert.Null(offer.LastStockProjectionVersion));
+        Assert.All(marked.Where(offer => offer.SafetyStock == 0), offer => Assert.Equal(7, offer.LastStockProjectionVersion));
+        Assert.Contains(marked, offer => offer.SafetyStock == 0);
         await Set(BulkProductFields.Status, "ARCHIVED");
         Assert.Equal(ProductStatus.Archived, (await BulkFieldStateAsync(db, red.Id)).Status);
         Assert.All(await db.ProductVariants.AsNoTracking().Where(x => x.ProductId == red.Id).ToListAsync(), variant => Assert.Equal(ProductStatus.Archived, variant.Status));
