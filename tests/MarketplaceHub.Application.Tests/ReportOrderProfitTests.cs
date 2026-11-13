@@ -8,11 +8,11 @@ namespace MarketplaceHub.Application.Tests;
 // Sipariş Kârlılık Analizi: an order's profit item by item, as Melontik's analysis of the same order shows it.
 public sealed class ReportOrderProfitTests
 {
-    private static ReportInput Input(Guid store, Guid order, Guid line, decimal? cost, ReportFinance? finance, string storeFront = "TR", int unreadableLines = 0) =>
+    private static ReportInput Input(Guid store, Guid order, Guid line, decimal? cost, ReportFinance? finance, string storeFront = "TR", int unreadableLines = 0, decimal amount = 465.92m) =>
         new(new ReportPeriod(new DateOnly(2026, 10, 25), new DateOnly(2026, 10, 25), new DateTimeOffset(2026, 10, 24, 21, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 10, 25, 21, 0, 0, TimeSpan.Zero)),
             ReportBuckets.Day, TimeZoneInfo.FindSystemTimeZoneById("Europe/Istanbul"),
             new Dictionary<Guid, ReportChannelView> { [store] = new(store, "TRENDYOL", "Trendyol", false) },
-            [new() { Id = order, ConnectionId = store, OrderNumber = "11750129638", DerivedStatus = "DELIVERED", Amount = 465.92m, ListAmount = 470.63m, LineValue = 465.92m,
+            [new() { Id = order, ConnectionId = store, OrderNumber = "11750129638", DerivedStatus = "DELIVERED", Amount = amount, ListAmount = 470.63m, LineValue = 465.92m,
                 RealAt = new DateTimeOffset(2026, 10, 25, 17, 46, 0, TimeSpan.Zero), OrderedAt = new DateTimeOffset(2026, 10, 25, 20, 46, 0, TimeSpan.Zero), StoreFrontCode = storeFront, UnreadableLines = unreadableLines }],
             new Dictionary<Guid, ReportOrderExtra>(),
             [new() { Id = line, OrderId = order, Title = "Anne Penye Bluz", Sku = "RYP00101", Barcode = "RYP00101", UnitPrice = 465.92m, OrderedQuantity = 1m, VatRate = 10m, CostPrice = cost }],
@@ -243,5 +243,63 @@ public sealed class ReportOrderProfitTests
 
         var none = ReportOrderProfit.Totals([noCost, noCargo]);
         Assert.Equal((null, 0m, 0, null), (none.Profit, none.ProfitAmount, none.ProfitOrders, none.Margin));
+    }
+
+    private static ReportFinance Read(Guid store, params ReportFinanceRow[] rows) => new(rows, [], new HashSet<(Guid, string)>(),
+        new Dictionary<Guid, MarketplaceFinanceSyncState?> { [store] = new() { ConnectionId = store, CoveredThrough = new DateTimeOffset(2026, 10, 26, 0, 0, 0, TimeSpan.Zero) } },
+        new Dictionary<Guid, ReportCargoSample> { [store] = new(98.34m, 1) });
+
+    // A service fee or withholding tax invoice naming neither an order nor a payout can never be split over its orders,
+    // so they keep their estimate: taking the invoice off Net Kâr as well charged the same fee twice (A-14).
+    [Fact]
+    public void A_fee_invoice_naming_no_payout_is_covered_by_the_estimates_and_not_taken_off_again()
+    {
+        var (store, order, line) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        ReportFinanceRow Invoice(string id, string category, string? payout, decimal debt) => new()
+        {
+            ConnectionId = store,
+            Source = TrendyolFinanceRequestContract.OtherFinancials,
+            ExternalId = id,
+            RequestedType = TrendyolFinanceCategorizer.DeductionInvoices,
+            TransactionType = "Platform Hizmet Bedeli",
+            Category = category,
+            TransactionDate = new DateTimeOffset(2026, 10, 25, 9, 0, 0, TimeSpan.Zero),
+            PaymentOrderId = payout,
+            Debt = debt
+        };
+        var input = Input(store, order, line, 160m, Read(store,
+            Invoice("SF-N", MarketplaceFinanceCategories.ServiceFee, null, 900m),
+            Invoice("ST-N", MarketplaceFinanceCategories.Stoppage, "", 4.24m)));
+
+        var costs = ReportCosts.Build(input, ReportBuilder.Facts(input).Orders);
+
+        // The order still carries its estimates, once.
+        Assert.Equal((13.19m, 13.19m), costs.Lines.Single(cost => cost.Category == MarketplaceFinanceCategories.ServiceFee) is var fee ? (fee.Amount, fee.Estimated) : default);
+        Assert.Equal((4.24m, 4.24m), costs.Lines.Single(cost => cost.Category == MarketplaceFinanceCategories.Stoppage) is var tax ? (tax.Amount, tax.Estimated) : default);
+        // The invoices are taken off nowhere, only listed as covered.
+        Assert.Empty(costs.Unlinked!);
+        Assert.Equal(0m, costs.UnlinkedTotal);
+        Assert.Equal((900m, 1), costs.CoveredByEstimate!.Single(cost => cost.Category == MarketplaceFinanceCategories.ServiceFee) is var covered ? (covered.Amount, covered.Records) : default);
+        Assert.Equal((4.24m, 1), costs.CoveredByEstimate!.Single(cost => cost.Category == MarketplaceFinanceCategories.Stoppage) is var coveredTax ? (coveredTax.Amount, coveredTax.Records) : default);
+        Assert.Contains(ReportCosts.Notes(costs, input), note => note.StartsWith("904,24 ₺", StringComparison.Ordinal) && note.Contains("tahminle karşılandı", StringComparison.Ordinal));
+    }
+
+    // A Trendyol order whose price has not come yet (no amount, nothing back) is not costed, as on the other platforms:
+    // its service fee, withholding tax and cargo would weigh on no sale (E-5).
+    [Fact]
+    public void A_trendyol_order_without_an_amount_is_not_costed()
+    {
+        var (store, order, line) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var input = Input(store, order, line, 160m, Read(store), amount: 0m);
+
+        var costs = ReportCosts.Build(input, ReportBuilder.Facts(input).Orders);
+
+        Assert.Equal(0, costs.FinanceOrders);
+        Assert.DoesNotContain(costs.Lines, cost => cost.Category is MarketplaceFinanceCategories.ServiceFee or MarketplaceFinanceCategories.Stoppage);
+        Assert.Equal((0, 0m), (costs.Cargo!.UnbilledOrders, costs.Cargo.Combined));
+
+        var priced = Input(store, order, line, 160m, Read(store));
+        var pricedCosts = ReportCosts.Build(priced, ReportBuilder.Facts(priced).Orders);
+        Assert.Equal((1, 1, 98.34m), (pricedCosts.FinanceOrders, pricedCosts.Cargo!.UnbilledOrders, pricedCosts.Cargo.Combined));
     }
 }

@@ -21,9 +21,12 @@ internal sealed record ReportPayoutLine(Guid ConnectionId, string PaymentOrderId
 // or that names no payout, is not split: it stays a record of no order.
 internal static class ReportFeeAllocation
 {
-    public static bool IsPerSaleInvoice(ReportFinanceRow row) =>
-        row.Source == TrendyolFinanceRequestContract.OtherFinancials && row.OrderNumber is null && !string.IsNullOrEmpty(row.PaymentOrderId)
+    // A service fee or withholding tax invoice that names no order, with or without a payout.
+    public static bool IsFeeInvoice(ReportFinanceRow row) =>
+        row.Source == TrendyolFinanceRequestContract.OtherFinancials && row.OrderNumber is null
         && row.Category is MarketplaceFinanceCategories.ServiceFee or MarketplaceFinanceCategories.Stoppage;
+
+    public static bool IsPerSaleInvoice(ReportFinanceRow row) => IsFeeInvoice(row) && !string.IsNullOrEmpty(row.PaymentOrderId);
 
     // The invoice's shares, one per order of its payout (OrderNumber set, the amounts of each share adding up to the
     // invoice's to the kuruş), or null when its payout has no line to split by.
