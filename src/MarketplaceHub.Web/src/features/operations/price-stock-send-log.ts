@@ -1,7 +1,6 @@
-import { formatDateRange } from '../../shared/date-range'
 import { istanbulDayBoundary } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
-import { timeRangeLabel, timeRangeStart, type JobListTimeRange } from './job-list-query'
+import { timeRangeStart, type JobListTimeRange } from './job-list-query'
 
 // The price/stock send log (İşlem Takibi › Loglar): one row per line of a price/stock request sent to a marketplace,
 // read from GET /price-stock-send-log. These helpers turn a row into the text the table shows and the filters into
@@ -165,11 +164,6 @@ export function sendLogFilterCount(filters: SendLogFilters) {
 
 export function hasSendLogFilters(filters: SendLogFilters) {
   return sendLogFilterCount(filters) > 0
-}
-
-/** The range button's text: the chosen days when there are any, else the range. */
-export function sendLogRangeLabel(filters: SendLogFilters) {
-  return hasDays(filters) ? formatDateRange({ from: filters.from, to: filters.to }) : timeRangeLabel(filters.range)
 }
 
 // The summary above the log: the result groups of the Sonuç menu, each a toggle of its whole group, drawn with the job

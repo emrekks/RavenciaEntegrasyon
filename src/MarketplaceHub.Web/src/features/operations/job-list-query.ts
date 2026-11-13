@@ -22,10 +22,6 @@ export function jobTimeRangeOptions(selected: JobListTimeRange | '') {
   return selected === '7d' ? [...options.slice(0, 1), { value: '7d', label: 'Son 7 Gün' }, ...options.slice(1)] : options
 }
 
-export function timeRangeLabel(value: JobListTimeRange) {
-  return value === '7d' ? 'Son 7 Gün' : jobTimeRanges.find(([range]) => range === value)?.[1] ?? 'Son 24 Saat'
-}
-
 /** The instant a range starts (epoch milliseconds); null for Tüm Zamanlar. */
 export function timeRangeCutoff(range: JobListTimeRange, now = Date.now()): number | null {
   if (range === 'all') return null

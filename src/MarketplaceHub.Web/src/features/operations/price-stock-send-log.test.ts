@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   emptySendLogFilters, hasSendLogFilters, istanbulDayToIso, listPriceChanged, priceChange, quantityChange, sendLogCountsQueryString, sendLogFilterCount,
-  sendLogPanelFilterCount, sendLogQueryString, sendLogRangeLabel, sendLogResultGroups, sendLogResultLabel, sendLogResultTone, sendLogResultTooltip,
+  sendLogPanelFilterCount, sendLogQueryString, sendLogResultGroups, sendLogResultLabel, sendLogResultTone, sendLogResultTooltip,
   sendLogSummary, sendLogSummaryCounts, sendLogSummaryOn, sendLogTriggerGroups, sendLogTriggerLabel, toggleSendLogSummary
 } from './price-stock-send-log'
 
@@ -101,12 +101,10 @@ describe('price/stock send log request', () => {
     // A range other than Tüm Zamanlar narrows the list; chosen days replace it and count once.
     expect(sendLogFilterCount(lastDay)).toBe(1)
     expect(sendLogPanelFilterCount(lastDay)).toBe(0)
-    expect(sendLogRangeLabel(lastDay)).toBe('Son 24 Saat')
     const days = { ...lastDay, from: '2026-11-01', to: '2026-11-02' }
     expect(Object.fromEntries(new URLSearchParams(sendLogQueryString(days, null, 50, false, now).slice(1)))).toEqual({ limit: '50', from: '2026-10-31T21:00:00.000Z', to: '2026-11-02T20:59:59.999Z' })
     expect(sendLogFilterCount(days)).toBe(1)
     expect(sendLogPanelFilterCount(days)).toBe(1)
-    expect(sendLogRangeLabel(days)).toBe('01.11.2026 – 02.11.2026')
   })
 
   it('asks for the summary counts without the result filter', () => {

@@ -62,7 +62,7 @@ export function resentPendingParams() {
 
 // GET /dashboard/bootstrap, the part the page reads: the late count and the stores' names (the Yeni Sipariş hover).
 export type DashboardBootstrap = {
-  metrics: { lateOrders: number; uninvoicedInvoices: number }
+  metrics: { lateOrders: number }
   channels?: Array<{ connectionId: string; platformCode: string; displayName: string }>
 }
 

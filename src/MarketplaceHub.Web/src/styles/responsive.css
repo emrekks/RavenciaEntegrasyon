@@ -12,8 +12,6 @@
 /* Pagination: the record count and the page controls wrap instead of overflowing. */
 @media (max-width: 760px) {
   .app-shell.stitch-shell main :has(> .rv-pagination) { flex-wrap: wrap; align-items: stretch; row-gap: 8px; }
-  /* width rather than flex-basis: some wrappers stack in a column, where a 100% basis is a height */
-  .app-shell.stitch-shell main .rv-pagination { flex: none; width: 100%; max-width: 100%; justify-content: space-between; min-width: 0; margin-inline: 0; }
 }
 
 /* Popups on phones are bottom sheets: full width, rising from the bottom edge with rounded top
@@ -53,10 +51,6 @@
    a stretched select and a lone word spread across the row. */
 @media (max-width: 760px) {
   .app-shell.stitch-shell main :has(> .invoice-reference-page-size) { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
-  .app-shell.stitch-shell main .invoice-reference-page-size { flex: 0 0 auto; justify-content: flex-end; gap: 6px; width: auto; font-size: 0; }
-  .app-shell.stitch-shell main .invoice-reference-page-size > select { width: auto; min-width: 72px; min-height: 36px; font-size: 14px; }
-  .app-shell.stitch-shell main .invoice-reference-page-size > span { display: none; }
-  .app-shell.stitch-shell main .invoice-reference-page-size::after { content: "/ sayfa"; color: var(--rv-color-muted); font-size: 13px; }
 }
 /* Revenue chart on phones: the whole drawing fits the card width (no sideways scroll, so the page
    never drifts right). Axis labels get a larger drawing-unit size and every other date is hidden
@@ -119,24 +113,9 @@
   html body .app-shell.stitch-shell main .mfs :is(.orders-filter-reset, .invoice-reference-filter-reset, .return-filter-actions) { display: none !important; }
 }
 
-/* Column filters (carrier, invoice, reason, status…) live inside the phone filter sheet, so their
-   table-header chips are hidden on phones; the sheet-only fields exist for desktop-free use (hidden on wider
-   screens by design-system.css). */
-@media (max-width: 760px) {
-  html body .app-shell.stitch-shell main .mfs.is-open > .mfs-sheet-only { display: grid; }
-  html body .app-shell.stitch-shell main .mfs .mfs-field { display: grid; gap: 6px; color: var(--rv-color-muted); font-size: 13px; font-weight: 600; }
-  html body .app-shell.stitch-shell main .mfs .mfs-field > select { width: 100%; min-height: 44px; font-size: 14px; font-weight: 500; }
-}
-
 /* Invoices: the column filter chips in the table header move into the phone filter sheet too. */
 @media (max-width: 760px) {
   html body .app-shell.stitch-shell main .invoice-reference-head :is(.order-column-filter, .platform-multi-select-field) { display: none !important; }
-}
-
-/* Questions: the search caption is plain text in its label, so it is collapsed (not hidden) while the sheet is closed. */
-@media (max-width: 760px) {
-  html body .app-shell.stitch-shell main .mfs:not(.is-open) > .rv-questions-search { font-size: 0; }
-  html body .app-shell.stitch-shell main .mfs:not(.is-open) > .rv-questions-search > input { font-size: 14px; }
 }
 
 /* Notification history on phones: the title keeps its own line space and the two actions sit on the right without crowding it. */

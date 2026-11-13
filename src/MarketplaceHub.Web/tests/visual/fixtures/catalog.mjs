@@ -7,7 +7,7 @@
 
 const img = {
   symbol: '/pack/brand/ravencia-symbol-256.webp',
-  wordmark: '/pack/brand/ravencia-wordmark.webp',
+  wordmark: '/pack/brand/ravencia-wordmark-light.webp',
   trendyol: '/platforms/trendyol.webp',
   hepsiburada: '/platforms/hepsiburada.webp',
   n11: '/platforms/n11.webp',

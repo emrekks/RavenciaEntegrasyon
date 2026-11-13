@@ -1,5 +1,5 @@
 import { formatMoney } from '../../shared/format-money'
-import { istanbulDayToIso, sendLogRangeLabel } from './price-stock-send-log'
+import { istanbulDayToIso } from './price-stock-send-log'
 import { timeRangeStart, type JobListTimeRange } from './job-list-query'
 
 // İşlem Takibi › Loglar › Ürün Hareketleri: what changed on a product (stock, price, sale status, returns), the panel's
@@ -305,10 +305,6 @@ export function activityPanelFilterCount(filters: ActivityFilters) {
 /** How many filters narrow the list: the search, the panel's filters, and a range other than Tüm Zamanlar. */
 export function activityFilterCount(filters: ActivityFilters) {
   return activityPanelFilterCount(filters) + (filters.search.trim() ? 1 : 0) + (!hasDays(filters) && filters.range !== 'all' ? 1 : 0)
-}
-
-export function activityRangeLabel(filters: ActivityFilters) {
-  return sendLogRangeLabel({ ...filters, results: [], triggers: [] })
 }
 
 /** Turns a kind on or off in the kind filter. */

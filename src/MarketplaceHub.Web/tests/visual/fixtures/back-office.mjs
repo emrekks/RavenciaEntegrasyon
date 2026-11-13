@@ -4,7 +4,7 @@
 // Product images are same-origin files only; cargo names avoid carriers whose icon lives on an external CDN.
 
 const productImage = '/pack/brand/ravencia-symbol-256.webp'
-const productImageSmall = '/pack/brand/ravencia-symbol-128.webp'
+const productImageSmall = '/pack/brand/ravencia-symbol-light-128.webp'
 
 // ── Faturalar ────────────────────────────────────────────────────────────────────────────────────────────────────────
 

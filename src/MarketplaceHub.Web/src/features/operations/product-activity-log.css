@@ -47,7 +47,6 @@
 .app-shell.stitch-shell main .jobs-reference-page .pal-source small { overflow: hidden; color: var(--rv-color-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell.stitch-shell main .jobs-reference-page .pal-actor { max-width: 160px; overflow: hidden; color: var(--rv-color-muted); text-overflow: ellipsis; white-space: nowrap; }
 .app-shell.stitch-shell main .jobs-reference-page .pal-muted { color: var(--rv-color-subtle); }
-.app-shell.stitch-shell main .jobs-reference-page .pal-history-note { margin: 0; color: var(--rv-color-muted); font-size: 12px; line-height: 1.5; }
 
 /* Phones: each change is a card — product on top, change and source, then time and user, then the platform. */
 @media (max-width: 760px) {

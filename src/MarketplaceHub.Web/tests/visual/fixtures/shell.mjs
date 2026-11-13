@@ -24,7 +24,7 @@ export const dashboardBootstrap = {
   metrics: {
     pendingOrders: orderSummary.new + orderSummary.processing, newAndProcessingOrders: orderSummary.new + orderSummary.processing,
     lateOrders: 1, todayOrders: 18, todayProductQuantity: 26, monthOrders: 412, monthProductQuantity: 588,
-    pendingReturns: 3, dueSoonInvoices: 2, uninvoicedInvoices: 5, lowStockProducts: 42, activeConnections: 5,
+    pendingReturns: 3, dueSoonInvoices: 2, lowStockProducts: 42, activeConnections: 5,
     pendingByPlatform: { TRENDYOL: 2, HEPSIBURADA: 1, SHOPIFY: 1 },
     lateByPlatform: { TRENDYOL: 1 },
     pendingReturnsByPlatform: { TRENDYOL: 2, HEPSIBURADA: 1 },

@@ -45,7 +45,6 @@ export type OffsiteBackupDraft = {
   clientSecret: string
 }
 
-export const offsiteBackupCallbackPath = '/settings/google-drive-callback'
 export const offsiteBackupDefaultFolder = 'Ravencia Yedek'
 const agePattern = /^age1[02-9ac-hj-np-z]{58}$/u
 const clientIdPattern = /^[0-9]{6,30}-[a-z0-9]{10,64}\.apps\.googleusercontent\.com$/u

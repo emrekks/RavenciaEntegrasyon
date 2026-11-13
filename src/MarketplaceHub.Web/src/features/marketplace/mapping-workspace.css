@@ -364,9 +364,6 @@
 .app-shell.stitch-shell main section.mapping-page .mapping-saved-table td.mapping-empty-table-cell { padding: 0; }
 .app-shell.stitch-shell main section.mapping-page .mapping-saved-table .mapping-table-empty { min-height: 120px; margin: 0; color: var(--rv-color-muted); background: none; border: 0; border-radius: 0; font-size: 13px; }
 .app-shell.stitch-shell main section.mapping-page .mapping-saved-card > footer { padding-top: 0; border-top: 0; }
-.app-shell.stitch-shell main section.mapping-page .rv-pagination-jump { gap: 6px; font-size: 13px; font-weight: 500; }
-.app-shell.stitch-shell main section.mapping-page .rv-pagination-jump > input { width: 42px; height: 36px; min-height: 36px; padding: 0 6px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-weight: 500; }
-.app-shell.stitch-shell main section.mapping-page .rv-pagination button { height: 36px !important; min-height: 36px !important; }
 .app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-list-loading { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 16px; }
 .app-shell.stitch-shell main .panel-attribute-modal-card .panel-attribute-category-skeleton { display: block; height: 40px; margin: 0; background: linear-gradient(var(--rv-color-surface-soft), var(--rv-color-surface-soft)) 10px 50% / 55% 10px no-repeat; border-bottom: 1px solid var(--rv-color-border); border-radius: 0; animation: none; }
 .app-shell.stitch-shell main .cm-webcolor .value-mapping-heading { display: grid; grid-template-columns: minmax(0, 1fr) 36px minmax(0, 1fr); column-gap: 12px; align-items: end; }

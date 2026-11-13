@@ -61,7 +61,6 @@
 .ss-page .ss-tile.is-lg { width: 40px; height: 40px; }
 .ss-page .ss-tile.is-sm { width: 28px; height: 28px; }
 .ss-page .ss-grow { flex: 1; }
-.ss-page .ss-lead { color: var(--rv-color-muted); font-size: 13px; }
 .ss-page .ss-help { margin: 0; color: var(--rv-color-subtle); font-size: 12px; line-height: 1.45; }
 .ss-page .ss-faint { color: var(--rv-color-subtle); font-size: 12px; }
 .ss-page .ss-stack { display: grid; gap: 16px; align-content: start; }

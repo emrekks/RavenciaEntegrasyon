@@ -61,6 +61,8 @@ export default defineConfig(({ mode }) => {
     plugins: [react(), linkScreenStylesheets],
     css: { postcss: { plugins: [hoverOnlyOnPointers] } },
     build: {
+      // No source maps in the shipped bundle (Vite's default, kept explicit): the live server serves only the built code.
+      sourcemap: false,
       rollupOptions: {
         output: {
           // Keep the application entry focused on the shell while allowing

@@ -54,7 +54,6 @@ export const shippingLabelTextSizes = [
   { px: 17, label: 'Büyük' }
 ] as const
 export { shippingLabelTextSize }
-export const shippingLabelCaptionPx = 10
 export const shippingLabelBlockPaddingMm = 1.5
 
 // Thermal printers print 8 dots a millimetre; a bar narrower than two dots blurs and scanners miss it.

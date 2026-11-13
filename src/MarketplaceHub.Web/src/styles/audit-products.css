@@ -17,7 +17,6 @@
 /* Variant table header menus (Panodan Barkod, Barkoddan Doldur): the shared rr-pop shell (padding 6, strong border,
    the menu shadow) and 36 px action rows at weight 500 (they were 8 px, a faint border and 30 px / 600 rows). */
 :root:root:root body .variant-header-action-menu.variant-header-action-menu-portal { padding: 6px; border-color: var(--rv-color-border-strong); box-shadow: var(--rv-menu-shadow); }
-:root:root:root body .variant-header-action-menu.variant-header-action-menu-portal .variant-header-action-menu-group > button { min-height: 36px; font-weight: 500; }
 
 /* Toplu değişiklik window: its Eşitle / Arttır / Azalt segments are 32 px at 12.5px/500 like every other segment. */
 :root:root:root body .variant-bulk-modes > button { height: 32px; min-height: 0; font-size: 12.5px; font-weight: 500; }

@@ -1,7 +1,7 @@
 // Promosyon Kârlılık Analizi (/promotions): one Trendyol store (c-ty) with a weekly commission tariff and a Plus file.
 // The capture clock stands at 2026-10-20 09:30 (+03:00).
 
-const productImage = '/pack/brand/ravencia-symbol-128.webp'
+const productImage = '/pack/brand/ravencia-symbol-light-128.webp'
 const costs = (cost, price) => ({ productCost: cost, cargo: 42.5, serviceFee: 10.19, withholding: Math.round(price * 0.01 * 100) / 100, netVat: 18.4 })
 const choice = (tier, price, rate, cost) => {
   const commission = Math.round(price * rate) / 100
