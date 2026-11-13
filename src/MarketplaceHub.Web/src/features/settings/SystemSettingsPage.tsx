@@ -25,7 +25,7 @@ import { formatIstanbul } from '../../shared/format-date'
 import { useDismissable } from '../../shared/hooks/useDismissable'
 import { useTabSlideInPlace } from '../../shared/tab-slide'
 import { copyText } from '../../shared/copy-text'
-import { formatBackupSize, googleCloudSteps, offsiteBackupDefaultFolder, offsiteBackupDirty, offsiteBackupDraft, offsiteBackupDraftError, offsiteBackupSaveBody, offsiteBackupState, offsiteCopyPending, offsiteSetupDone, shortAgeKey, type OffsiteBackupDraft, type OffsiteBackupView } from './offsite-backup'
+import { formatBackupSize, googleCloudSteps, offsiteBackupDefaultFolder, offsiteBackupDirty, offsiteBackupDraft, offsiteBackupDraftError, offsiteBackupSaveBody, offsiteBackupState, offsiteCopyPending, offsiteSetupDone, offsiteSetupPlan, shortAgeKey, firstRunStartedAt, markFirstRun, clearFirstRun, type OffsiteBackupDraft, type OffsiteBackupView } from './offsite-backup'
 import { backupKeyFileName, decryptBackup, decryptedFileName, downloadText, generateBackupKeyPair, identityFromKeyFile, saveStream, type BackupKeyPair } from './offsite-backup-crypto'
 import { assignableRoles, availableUserActions, isEmailAddress, reauthBody, userLockReason, userRoleHints, userRoleLabel, userRoleLabels, type ManagedUser, type ManagedUserList, type UserAction, type UserRole } from './user-management'
 
@@ -1201,9 +1201,10 @@ const shippingPreviewValues: ShippingLabelValues = { trackingNumber: '7330003656
 // client connects it ("Google ile Bağlan"); the client secret and the Google token are write-only (never shown again).
 // Saving, connecting and disconnecting take the password again (and the authenticator code when it is on). The key pair is
 // made in the browser and a copy is opened in the browser (offsite-backup-crypto.ts): no extra program is needed.
-type OffsiteConfirm = 'save' | 'connect' | 'disconnect'
+type OffsiteConfirm = 'save' | 'connect' | 'disconnect' | 'setup'
 const offsiteConfirmCopy: Record<OffsiteConfirm, { title: string; hint: string; action: string; busy: string; danger?: boolean }> = {
   save: { title: 'Yedek Ayarlarını Kaydet', hint: 'Yedeğin nereye ve hangi anahtarla gönderildiği değişir; parolanızla onaylayın.', action: 'Kaydet', busy: 'Kaydediliyor…' },
+  setup: { title: 'Google Drive’a Bağlan', hint: 'Parolanızı onaylayın: ayarlar kaydedilir ve Google’ın izin sayfası açılır. Parola yalnız bir kez sorulur.', action: 'Kaydet ve Google’a Git', busy: 'Hazırlanıyor…' },
   connect: { title: 'Google ile Bağlan', hint: 'Parolanızı onaylayınca Google’ın izin sayfası açılır; yedeğin gideceği Google hesabıyla giriş yapıp izin verin.', action: 'Google’a Git', busy: 'Hazırlanıyor…' },
   disconnect: { title: 'Bağlantıyı Kes', hint: 'Google yetkisi Google’da iptal edilir ve panelden silinir; yedek, yeniden bağlanana kadar gönderilmez. Drive’daki kopyalar silinmez.', action: 'Bağlantıyı Kes', busy: 'Kesiliyor…', danger: true }
 }
@@ -1236,6 +1237,8 @@ function OffsiteBackupSection({ mfa }: { mfa: boolean }) {
   const [keyError, setKeyError] = useState('')
   const [keyDownloaded, setKeyDownloaded] = useState(false)
   const [keyStored, setKeyStored] = useState(false)
+  const [setupKey, setSetupKey] = useState<BackupKeyPair | null>(null)
+  const [setupError, setSetupError] = useState('')
   const [restoreOpen, setRestoreOpen] = useState(false)
   const [openRows, setOpenRows] = useState<string[]>([])
   const toggleRow = (id: string) => setOpenRows(rows => rows.includes(id) ? rows.filter(row => row !== id) : [...rows, id])
@@ -1264,6 +1267,22 @@ function OffsiteBackupSection({ mfa }: { mfa: boolean }) {
   function openConfirm(kind: OffsiteConfirm) {
     setPassword(''); setFactor(''); setConfirmError(''); setActionResult(null); setConfirm(kind)
   }
+  // The one button: key (made here, file downloaded) -> one password -> save with the defaults -> Google's consent page.
+  async function startSetup() {
+    if (!saved || !draft) return
+    const plan = offsiteSetupPlan(saved, draft, saved.clientSecretSaved && !changingSecret)
+    setSetupError('')
+    if (plan.error) { setSetupError(plan.error); return }
+    if (plan.needsKey) {
+      try {
+        const pair = await generateBackupKeyPair()
+        downloadText(pair.file, backupKeyFileName)
+        setSetupKey(pair)
+      } catch { setSetupError('Bu tarayıcı anahtar üretemedi; güncel bir Chrome, Edge, Firefox ya da Safari deneyin.'); return }
+    } else setSetupKey(null)
+    setKeyStored(false)
+    openConfirm('setup')
+  }
   async function submitConfirm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!confirm || !saved || !draft) return
@@ -1274,6 +1293,17 @@ function OffsiteBackupSection({ mfa }: { mfa: boolean }) {
         const next = await hubApi<OffsiteBackupView>('/settings/offsite-backup', { method: 'PUT', headers: settingsIfMatch(saved.version), body: JSON.stringify({ ...offsiteBackupSaveBody(draft, changingSecret), ...reauth }) })
         client.setQueryData(['offsite-backup'], next)
         setNotice({ kind: 'success', message: next.connected ? 'Google Drive yedeği ayarları kaydedildi.' : 'Ayarlar kaydedildi. Şimdi “Google ile Bağlan” ile Drive hesabınızı bağlayın.' })
+      } else if (confirm === 'setup') {
+        if (setupKey && !keyStored) return
+        const plan = offsiteSetupPlan(saved, draft, saved.clientSecretSaved && !changingSecret)
+        if (plan.needsSave) {
+          const next = await hubApi<OffsiteBackupView>('/settings/offsite-backup', { method: 'PUT', headers: settingsIfMatch(saved.version), body: JSON.stringify({ ...offsiteBackupSaveBody({ ...draft, enabled: true, ageRecipient: setupKey?.recipient ?? draft.ageRecipient }, changingSecret), ...reauth }) })
+          client.setQueryData(['offsite-backup'], next)
+        }
+        const { url } = await hubApi<{ url: string }>('/settings/offsite-backup/google/authorize', { method: 'POST', body: JSON.stringify(reauth) })
+        markFirstRun()
+        window.location.assign(url)
+        return
       } else if (confirm === 'connect') {
         const { url } = await hubApi<{ url: string }>('/settings/offsite-backup/google/authorize', { method: 'POST', body: JSON.stringify(reauth) })
         window.location.assign(url)
@@ -1323,6 +1353,14 @@ function OffsiteBackupSection({ mfa }: { mfa: boolean }) {
   }
 
   const setupDone = !!saved && offsiteSetupDone(saved)
+  // After the one-button setup: the first copy was asked for on return; say so when it has reached Drive.
+  const firstSuccessAt = saved?.lastSuccessAt ?? null
+  useEffect(() => {
+    const started = firstRunStartedAt()
+    if (started === null || !firstSuccessAt || Date.parse(firstSuccessAt) < started - 5_000) return
+    clearFirstRun()
+    setNotice({ kind: 'success', message: 'İlk yedek Drive’a gönderildi.' })
+  }, [firstSuccessAt])
   const clientDone = !!saved && !!saved.clientId && saved.clientSecretSaved
   const keyDone = !!saved && !!saved.ageRecipient
   const factsList = saved && <dl className="ss-ob-facts">
@@ -1371,11 +1409,7 @@ function OffsiteBackupSection({ mfa }: { mfa: boolean }) {
     <div className="ss-ob-row-line"><b>{label}</b><span aria-hidden="true">·</span><span className="ss-ob-row-value">{value}</span><button type="button" className="ss-btn is-xs" aria-label={`${label} ${openRows.includes(id) ? 'Gizle' : 'Değiştir'}`} aria-expanded={openRows.includes(id)} onClick={() => toggleRow(id)}>{openRows.includes(id) ? 'Gizle' : 'Değiştir'}</button></div>
     {openRows.includes(id) && <div className="ss-ob-row-body">{body}</div>}
   </div>
-  const wizardStep = (id: 'client' | 'key', number: number, title: string, done: boolean, body: ReactNode) => <section className={`ss-ob-step${done ? ' is-done' : ''}`} aria-label={title}>
-    <div className="ss-ob-step-head"><span className="ss-tile is-sm">{done ? <SettingsGlyph state="done" /> : number}</span><h3>{title}</h3>{done && <button type="button" className="ss-btn is-xs" aria-expanded={openRows.includes(id)} onClick={() => toggleRow(id)}>{openRows.includes(id) ? 'Gizle' : 'Değiştir'}</button>}</div>
-    {(!done || openRows.includes(id)) && <div className="ss-ob-step-body">{body}</div>}
-  </section>
-  const ready = !!saved && saved.connected && !saved.authorizationInvalid && !!saved.ageRecipient
+ const ready = !!saved && saved.connected && !saved.authorizationInvalid && !!saved.ageRecipient
   const bar = <SettingsBar title="Google Drive Yedeği" dirty={dirty} copy={dirty ? 'Kaydedilmemiş değişiklikler var' : saved?.updatedAt ? `Son kayıt ${formatSettingsDate(saved.updatedAt)}` : 'Henüz kaydedilmedi'}>
     <button type="button" className="ss-btn is-primary" disabled={!dirty || !!draftError || busy !== null} title={draftError ?? undefined} onClick={() => openConfirm('save')}><SettingsIcon name="save" />Ayarları Kaydet</button>
   </SettingsBar>
@@ -1417,19 +1451,22 @@ function OffsiteBackupSection({ mfa }: { mfa: boolean }) {
           </section>
         </> : <>
           <div className="ss-ob-wizard">
-            {wizardStep('client', 1, 'Google İstemcisi', clientDone, clientFields)}
-            {wizardStep('key', 2, 'Şifreleme Anahtarı', keyDone, keyFields)}
-            <section className={`ss-ob-step${saved.connected ? ' is-done' : ''}`} aria-label="Google ile Bağlan">
-              <div className="ss-ob-step-head"><span className="ss-tile is-sm">{saved.connected ? <SettingsGlyph state="done" /> : 3}</span><h3>Google ile Bağlan</h3></div>
-              {!saved.connected && <div className="ss-ob-step-body">
-                <div className="ss-alert-row"><button type="button" className={`ss-btn${clientDone && keyDone ? ' is-primary' : ''}`} disabled={busy !== null || dirty || !clientDone || !keyDone} onClick={() => openConfirm('connect')}><SettingsIcon name="cloud" />Google ile Bağlan</button></div>
-                <span className="ss-help">{dirty ? 'Önce alttaki Ayarları Kaydet’e basın.' : !clientDone || !keyDone ? 'Önce 1. ve 2. adımı tamamlayıp kaydedin.' : 'Parolanızı onaylayınca Google’ın izin sayfası açılır; yedeğin gideceği Google hesabıyla izin verin.'}</span>
-              </div>}
+            <section className="ss-ob-step" aria-label="Google Drive’a Bağlan">
+              <div className="ss-ob-step-head"><span className="ss-tile is-sm"><SettingsIcon name="cloud" /></span><h3>Google Drive’a Bağlan</h3></div>
+              <div className="ss-ob-step-body">
+                {clientDone ? summaryRow('client', 'Google İstemcisi', <span className="ss-tag is-ink"><SettingsGlyph state="done" />Kayıtlı</span>, clientFields) : clientFields}
+                <div className="ss-alert-row"><button type="button" className="ss-btn is-primary" disabled={busy !== null} onClick={() => void startSetup()}><SettingsIcon name="cloud" />Google Drive’a Bağlan</button></div>
+                <span className="ss-help">{keyDone || draft.ageRecipient.trim() ? 'Parolanızı onaylayınca ayarlar kaydedilir ve Google’ın izin sayfası açılır.' : 'Şifreleme anahtarı bu tarayıcıda üretilir ve özel anahtar dosyası inerken parolanız bir kez sorulur; ardından Google izin sayfası açılır.'}</span>
+                {setupError && <span className="ss-ferr" role="alert"><SettingsGlyph state="bad" />{setupError}</span>}
+              </div>
             </section>
             {draftError && dirty && <span className="ss-ferr" role="alert"><SettingsGlyph state="bad" />{draftError}</span>}
             <details className="ss-ob-adv"><summary>Gelişmiş Ayarlar</summary>
               <div className="ss-ob-adv-body">
-                <SettingsSwitch label="Otomatik Gönderim" checked={draft.enabled} onChange={enabled => update({ enabled })} />
+                <div className="ss-fld"><small>Kendi Açık Anahtarınız (İsteğe Bağlı)</small>
+                  <input className="ss-in" autoComplete="off" spellCheck={false} aria-label="age Açık Anahtarı" value={draft.ageRecipient} maxLength={80} placeholder="age1…" onChange={event => update({ ageRecipient: event.target.value })} />
+                  <span className="ss-help">Boş bırakırsanız anahtar çifti sizin için üretilir. Elinizde bir age açık anahtarı varsa buraya yapıştırın.</span>
+                </div>
                 {folderFields}
               </div>
             </details>
@@ -1438,9 +1475,14 @@ function OffsiteBackupSection({ mfa }: { mfa: boolean }) {
         </>}
       </>}
     </div>
-    {saved && !forbidden && dirty ? bar : null}
-    <Modal open={confirm !== null} title={copy?.title ?? ''} hint={copy?.hint} className="ss-modal is-sm" onClose={() => { if (busy === null) setConfirm(null) }} footer={<><button type="button" className="ss-btn" disabled={busy !== null} onClick={() => setConfirm(null)}>Vazgeç</button><button type="submit" form="ss-offsite-confirm" className={`ss-btn ${copy?.danger ? 'is-danger is-solid' : 'is-primary'}`} disabled={busy !== null || !password}>{busy === confirm ? copy?.busy : copy?.action}</button></>}>
+    {saved && !forbidden && dirty && setupDone ? bar : null}
+    <Modal open={confirm !== null} title={copy?.title ?? ''} hint={copy?.hint} className="ss-modal is-sm" onClose={() => { if (busy === null) { setConfirm(null); setSetupKey(null) } }} footer={<><button type="button" className="ss-btn" disabled={busy !== null} onClick={() => { setConfirm(null); setSetupKey(null) }}>Vazgeç</button><button type="submit" form="ss-offsite-confirm" className={`ss-btn ${copy?.danger ? 'is-danger is-solid' : 'is-primary'}`} disabled={busy !== null || !password || (confirm === 'setup' && !!setupKey && !keyStored)}>{busy === confirm ? copy?.busy : copy?.action}</button></>}>
       <form id="ss-offsite-confirm" className="ss-stack" onSubmit={submitConfirm}>
+        {confirm === 'setup' && setupKey && <>
+          <div className="ss-callout is-warn" role="alert"><SettingsIcon name="alert" /><span><b>Özel anahtar dosyası indirildi ({backupKeyFileName}).</b> Güvenli bir yerde saklayın; kaybolursa Drive’daki yedekler açılamaz, panel ve sunucu bir kopyasını tutmaz.</span></div>
+          <div className="ss-alert-row"><button type="button" className="ss-btn" onClick={() => downloadText(setupKey.file, backupKeyFileName)}><SettingsIcon name="save" />Dosyayı Yeniden İndir</button></div>
+          <label className="ss-ob-check"><input type="checkbox" checked={keyStored} onChange={event => setKeyStored(event.target.checked)} /><span>Dosyayı indirdim ve sakladım.</span></label>
+        </>}
         <ReauthFields password={password} onPassword={setPassword} factor={factor} onFactor={setFactor} mfa={mfa} />
         {confirmError && <span className="ss-ferr" role="alert"><SettingsGlyph state="bad" />{confirmError}</span>}
       </form>

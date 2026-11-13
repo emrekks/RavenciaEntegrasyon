@@ -40,6 +40,7 @@ vi.mock('../../shared/api', async importOriginal => {
     }
     if (path === '/settings/offsite-backup') return offsiteView
     if (path === '/settings/offsite-backup/run') return { requested: true }
+    if (path === '/settings/offsite-backup/google/authorize') return { url: 'https://accounts.example.invalid/consent' }
     if (path === '/settings/alert-email' && method === 'PUT') {
       const saved = JSON.parse(body ?? '{}') as { senderAddress: string; recipients: string[] }
       return { senderAddress: saved.senderAddress, recipients: saved.recipients, appPasswordSaved: true, updatedAt: '2026-11-03T20:00:00Z', version: ++apiState.alertVersion }
@@ -84,6 +85,13 @@ vi.mock('../../shared/api', async importOriginal => {
   return { ...actual, api: vi.fn(respond), hubApi: vi.fn(respond), hubPoll: vi.fn(respond), loadAllPages: vi.fn(async (path: string) => respond(path)) }
 })
 
+vi.mock('./offsite-backup-crypto', async importOriginal => ({
+  ...(await importOriginal<typeof import('./offsite-backup-crypto')>()),
+  generateBackupKeyPair: vi.fn(async () => ({ identity: 'AGE-SECRET-KEY-TEST', recipient: 'age1newkeyfortestsnewkeyfortestsnewkeyfortestsnewkeyfortestsnewkeyabc', file: 'private-key-file' })),
+  downloadText: vi.fn()
+}))
+
+import { generateBackupKeyPair } from './offsite-backup-crypto'
 import { SystemSettingsPage } from './SystemSettingsPage'
 
 let container: HTMLDivElement
@@ -503,16 +511,65 @@ describe('SystemSettingsPage', () => {
     expect(save.headers?.['if-match']).toBe('"v4"')
   })
 
-  it('shows the three-step setup while the client, the key or the connection is missing, and keeps the full block for an invalid grant', async () => {
+  it('shows the one-button setup while the client, the key or the connection is missing', async () => {
     const saved = { ...offsiteView }
     Object.assign(offsiteView, { connected: false, ageRecipient: null as string | null, clientId: null as string | null, clientSecretSaved: false })
     try {
       await renderPage('/settings?tab=offsite')
       expect(container.querySelector('.ss-ob-wizard')).not.toBeNull()
-      expect(container.querySelectorAll('.ss-ob-step').length).toBe(3)
       expect(container.querySelector('.ss-ob-rows')).toBeNull()
+      // No client yet: the short client fields come first, "Nasıl Alınır?" stays closed.
       expect(container.querySelector('details.ss-ob-how')?.hasAttribute('open')).toBe(false)
-      expect(button('Google ile Bağlan').disabled).toBe(true)
+      expect(container.querySelector('input[aria-label="İstemci Gizli Anahtarı"]')).not.toBeNull()
+      click(button('Google Drive’a Bağlan'))
+      await settle()
+      expect(container.textContent).toContain('Önce Google OAuth istemci kimliğini')
+      expect(document.querySelector('#ss-offsite-confirm')).toBeNull()
+    } finally { Object.assign(offsiteView, saved) }
+  })
+
+  it('makes the key, downloads it, asks for the stored-file tick and the password once, saves with the defaults, then goes to Google', async () => {
+    const saved = { ...offsiteView }
+    Object.assign(offsiteView, { connected: false, ageRecipient: null as string | null, enabled: false })
+    vi.mocked(generateBackupKeyPair).mockClear()
+    try {
+      await renderPage('/settings?tab=offsite')
+      expect(container.querySelector('input[aria-label="İstemci Gizli Anahtarı"]')).toBeNull()
+      click(button('Google Drive’a Bağlan'))
+      await settle()
+      expect(generateBackupKeyPair).toHaveBeenCalledTimes(1)
+      const form = document.querySelector<HTMLFormElement>('#ss-offsite-confirm')!
+      input(form.querySelector<HTMLInputElement>('input[type="password"]')!, 'my-password')
+      // No way on without the tick.
+      expect(button('Kaydet ve Google’a Git').disabled).toBe(true)
+      expect(apiState.calls.some(call => call.method === 'PUT' && call.path === '/settings/offsite-backup')).toBe(false)
+      click(form.querySelector<HTMLInputElement>('input[type="checkbox"]')!)
+      expect(button('Kaydet ve Google’a Git').disabled).toBe(false)
+      act(() => { form.requestSubmit() })
+      await settle()
+      const sequence = apiState.calls.filter(call => call.path === '/settings/offsite-backup' && call.method === 'PUT' || call.path === '/settings/offsite-backup/google/authorize')
+      expect(sequence.map(call => call.path)).toEqual(['/settings/offsite-backup', '/settings/offsite-backup/google/authorize'])
+      expect(JSON.parse(sequence[0].body!)).toMatchObject({ enabled: true, folderMode: 'NAME', folderValue: 'Ravencia Yedek', keepDays: 14, keepMonths: 12, password: 'my-password' })
+      expect(JSON.parse(sequence[0].body!).ageRecipient).toMatch(/^age1newkey/u)
+      expect(JSON.parse(sequence[1].body!).password).toBe('my-password')
+    } finally { Object.assign(offsiteView, saved) }
+  })
+
+  it('skips the key step when a key is already saved', async () => {
+    const saved = { ...offsiteView }
+    Object.assign(offsiteView, { connected: false })
+    vi.mocked(generateBackupKeyPair).mockClear()
+    try {
+      await renderPage('/settings?tab=offsite')
+      click(button('Google Drive’a Bağlan'))
+      await settle()
+      expect(generateBackupKeyPair).not.toHaveBeenCalled()
+      const form = document.querySelector<HTMLFormElement>('#ss-offsite-confirm')!
+      expect(form.querySelector('input[type="checkbox"]')).toBeNull()
+      input(form.querySelector<HTMLInputElement>('input[type="password"]')!, 'my-password')
+      act(() => { form.requestSubmit() })
+      await settle()
+      expect(apiState.calls.some(call => call.path === '/settings/offsite-backup/google/authorize')).toBe(true)
     } finally { Object.assign(offsiteView, saved) }
   })
 

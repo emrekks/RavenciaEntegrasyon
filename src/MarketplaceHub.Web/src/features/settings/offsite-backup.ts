@@ -136,6 +136,16 @@ export function offsiteCopyPending(view: OffsiteBackupView | undefined, askedAt:
   return askedAt !== null && Date.now() - askedAt < 180_000 && (!Number.isFinite(attempted) || attempted < askedAt - 5_000)
 }
 
+/** The one-button setup: what it still has to do, or why it cannot start. A key already on the form (saved or pasted) skips the key step. */
+export function offsiteSetupPlan(view: OffsiteBackupView, draft: OffsiteBackupDraft, secretSaved: boolean): { error: string | null; needsKey: boolean; needsSave: boolean } {
+  const key = draft.ageRecipient.trim()
+  if (!draft.clientId.trim()) return { error: 'Önce Google OAuth istemci kimliğini ve gizli anahtarını girin.', needsKey: false, needsSave: false }
+  const error = offsiteBackupDraftError({ ...draft, enabled: false }, secretSaved)
+  if (error) return { error, needsKey: false, needsSave: false }
+  const needsKey = !key
+  return { error: null, needsKey, needsSave: needsKey || !view.enabled || offsiteBackupDirty(view, draft) }
+}
+
 export function formatBackupSize(bytes: number | null | undefined) {
   if (bytes == null || !Number.isFinite(bytes) || bytes <= 0) return '—'
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
@@ -161,3 +171,11 @@ export const googleCloudSteps: string[] = [
   'Yetkili yönlendirme URI’leri alanına aşağıdaki Yönlendirme Adresi’ni olduğu gibi ekleyin.',
   'Oluşan İstemci Kimliği ve İstemci Gizli Anahtarı’nı buraya girip kaydedin, sonra “Google ile Bağlan”a basın.'
 ]
+
+// The one-button setup leaves for Google and comes back on another page: this flag (browser session only) carries "the first
+// copy was asked for" across, with the time it was set so an older copy never counts as the first.
+const firstRunKey = 'offsite-first-run'
+export function markFirstRun() { try { sessionStorage.setItem(firstRunKey, String(Date.now())) } catch { /* private window */ } }
+export function clearFirstRun() { try { sessionStorage.removeItem(firstRunKey) } catch { /* private window */ } }
+export function firstRunPending(): boolean { try { return sessionStorage.getItem(firstRunKey) !== null } catch { return false } }
+export function firstRunStartedAt(): number | null { try { const value = sessionStorage.getItem(firstRunKey); return value ? Number(value) : null } catch { return null } }
