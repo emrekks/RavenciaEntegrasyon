@@ -18,7 +18,8 @@
 .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs > :is(button, a) .rv-tab-label > svg { display: block; width: 16px; height: 16px; flex: none; color: var(--rv-color-subtle); }
 .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs > :is(button, a).is-active .rv-tab-label > svg { color: var(--rv-color-primary-text); }
 .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs .rv-view-tab-logo { display: block; width: 18px; height: 18px; flex: none; object-fit: contain; border-radius: 4px; }
-.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs > :is(button, a).is-unavailable { opacity: .55; }
+.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs > :is(button, a).is-unavailable { opacity: .55; color: var(--rv-color-subtle) !important; cursor: not-allowed; }
+.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs > :is(button, a).is-unavailable:hover { background: none; }
 .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs .rv-tab-label small { color: var(--rv-color-subtle); font-size: 12px; font-weight: 400; }
 .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs .rv-tab-count.is-warn { color: var(--rv-color-warning) !important; }
 /* "Diğer" menu of ViewTabsWithMore */
