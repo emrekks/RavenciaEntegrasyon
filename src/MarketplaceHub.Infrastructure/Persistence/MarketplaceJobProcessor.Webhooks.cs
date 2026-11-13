@@ -39,8 +39,9 @@ public sealed partial class MarketplaceJobProcessor
         {
             var unpackedAt = HepsiburadaUnpackedAt(root) ?? timeProvider.GetUtcNow();
             var packages = await (from package in db.ShipmentPackages.AsNoTracking()
-                                  join order in db.Orders.AsNoTracking() on package.OrderId equals order.Id
-                                  where package.TenantId == tenantId && order.ConnectionId == connectionId && package.ExternalPackageId == packageNumber
+                                  join order in db.Orders.AsNoTracking() on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
+                                  where package.TenantId == tenantId && package.ConnectionId == connectionId && package.ExternalPackageId == packageNumber
+                                      && package.ExternalPackageId != ShipmentPackageSupersession.PlaceholderExternalId
                                   select new { package.Id, order.ExternalOrderId }).ToListAsync(cancellationToken);
             foreach (var package in packages)
             {
@@ -52,13 +53,14 @@ public sealed partial class MarketplaceJobProcessor
         // A "0" placeholder names no single order (every awaiting-payment Trendyol order holds it).
         if (orderNumbers.Count == 0 && packageNumber is not null && !ShipmentPackageSupersession.IsPlaceholder(packageNumber))
             AddOrder(await (from package in db.ShipmentPackages.AsNoTracking()
-                            join order in db.Orders.AsNoTracking() on package.OrderId equals order.Id
-                            where package.TenantId == tenantId && order.ConnectionId == connectionId && package.ExternalPackageId == packageNumber
+                            join order in db.Orders.AsNoTracking() on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
+                            where package.TenantId == tenantId && package.ConnectionId == connectionId && package.ExternalPackageId == packageNumber
+                                && package.ExternalPackageId != ShipmentPackageSupersession.PlaceholderExternalId
                             select order.ExternalOrderId).FirstOrDefaultAsync(cancellationToken));
         if (orderNumbers.Count == 0 && lineItemId is not null)
             AddOrder(await (from line in db.OrderLines.AsNoTracking()
-                            join order in db.Orders.AsNoTracking() on line.OrderId equals order.Id
-                            where order.TenantId == tenantId && order.ConnectionId == connectionId && line.ExternalLineId == lineItemId
+                            join order in db.Orders.AsNoTracking() on new { line.TenantId, line.OrderId } equals new { order.TenantId, OrderId = order.Id }
+                            where line.TenantId == tenantId && order.ConnectionId == connectionId && line.ExternalLineId == lineItemId
                             select order.ExternalOrderId).FirstOrDefaultAsync(cancellationToken));
         if (orderNumbers.Count == 0 && packageNumber is not null && !unpack)
         {

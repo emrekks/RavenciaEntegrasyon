@@ -6644,6 +6644,8 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "OccurredAt", "Id")
                         .IsDescending(false, true, true);
 
+                    b.HasIndex("TenantId", "SourceType", "SourceId");
+
                     b.HasIndex("TenantId", "InventoryItemId", "OccurredAt", "Id");
 
                     b.ToTable("stock_ledger_entries", "inventory");
