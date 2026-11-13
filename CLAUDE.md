@@ -38,6 +38,21 @@ Reply to the user in Turkish: answers, summaries, closing reports and tool descr
 - A fix is not fixed until it is checked on live. Numbers shown to the user (reports, costs) are compared with
   read-only SQL first; a wrong number on screen is worse than a missing one.
 
+## Repository hygiene
+- The owner wants git and the server clean like a shipped SaaS product. Git holds code, migrations, tests (Validate
+  runs them before every deploy), deploy files and the lasting docs only: `docs/ISLEYIS-KILAVUZU.md`,
+  `docs/CI-CD-DEPLOY.md`, `docs/RUNBOOK-*.md`, and the sources code cites (`docs/KARGO-TARIFELERI-2026.md` with
+  `docs/kargo-tarifeleri/`, `docs/*-ENTEGRASYON-PLANI.md`, `docs/PAZARYERI-VERI-CEKIMI-PLANI.md`,
+  `docs/EFATURA-MUKELLEF-SORGUSU.md`).
+- Never commit reports, handoff notes, scans, audits, one-task plans, HTML proposal or check pages, screenshots, logs or
+  test output: write them to the scratchpad, or to `.local-docs/` in the main checkout (gitignored) when they must
+  outlast the session.
+- Images carry only the published API/worker (`/app`) and the web's `dist` (`/srv`): no tests, docs, `.claude/`, source
+  or source maps. `.dockerignore` and Validate's image checks enforce it; a new top-level folder goes into
+  `.dockerignore` unless the build needs it.
+- The server checkout is meant to be sparse: deploy needs the root build files, `deploy/`, `skills/`, `src/` and the
+  test project's `.csproj` + `packages.lock.json` only.
+
 ## Domain notes
 - Marketplace API facts (limits, date windows, page sizes, time zones, endpoints, statuses, quirks) are in
   `/marketplace-docs`, one file per marketplace. Read it before searching the web or changing an adapter, a sync
