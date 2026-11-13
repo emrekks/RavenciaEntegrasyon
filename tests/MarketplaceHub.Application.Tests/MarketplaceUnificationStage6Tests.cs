@@ -184,6 +184,22 @@ public sealed class MarketplaceUnificationStage6Tests
         Assert.Equal(foreign, MarketplaceWebhookService.ForeignShop(header, "my-shop", required));
 
     [Theory]
+    [InlineData("products/delete", "my-shop.myshopify.com", false, true)]
+    [InlineData("PRODUCTS/DELETE", null, false, true)]
+    [InlineData("products/delete", null, true, false)]
+    [InlineData("products/delete", "other.myshopify.com", false, false)]
+    [InlineData("orders/updated", "my-shop.myshopify.com", false, false)]
+    [InlineData("customers/create", "my-shop.myshopify.com", false, false)]
+    [InlineData(null, "my-shop.myshopify.com", false, false)]
+    public void AStaleShopifyProductDeleteOfThisShopStillStartsTheLinkCheck(string? topic, string? shopDomain, bool routeOnly, bool starts)
+    {
+        var headers = new Dictionary<string, string>();
+        if (topic is not null) headers["X-Shopify-Topic"] = topic;
+        if (shopDomain is not null) headers["X-Shopify-Shop-Domain"] = shopDomain;
+        Assert.Equal(starts, MarketplaceWebhookService.StaleStartsListingVerify(headers, "my-shop", routeOnly));
+    }
+
+    [Theory]
     [InlineData("orders/updated", "ORDERS")]
     [InlineData("refunds/create", "REFUNDS")]
     [InlineData("products/delete", ShopifyWebhookVerifier.ProductDeleteResourceType)]
