@@ -5,12 +5,16 @@ using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvider, IConfiguration configuration) : IScheduledJobProducer
+public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvider, IConfiguration configuration, ILogger<ScheduledJobProducer>? logger = null) : IScheduledJobProducer
 {
+    private readonly ILogger log = logger ?? NullLogger<ScheduledJobProducer>.Instance;
+
     internal const int InvoiceDueScanIntervalSeconds = 1800;
 
     // One due scan per tenant per half-hour bucket (the dedup key of INVOICE_DUE_SCAN).
@@ -30,21 +34,21 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         {
             await ScheduledReadSupersession.CloseAsync(db, timeProvider.GetUtcNow(), cancellationToken);
         }
-        catch (Exception exception) when (exception is not OperationCanceledException) { }
+        catch (Exception exception) when (exception is not OperationCanceledException) { LogMaintenanceFailure(exception); }
         // Old publish and approval failures of a product that a later publish or approval on the same connection has
         // replaced leave the job queue and the review counts (also the ones from before this pass existed).
         try
         {
             await PublicationJobSupersession.CloseAsync(db, timeProvider.GetUtcNow(), cancellationToken);
         }
-        catch (Exception exception) when (exception is not OperationCanceledException) { }
+        catch (Exception exception) when (exception is not OperationCanceledException) { LogMaintenanceFailure(exception); }
         // Old failed product writes (update, publish, archive) that a later write of the same type for the same product on
         // the same connection has replaced are closed too; price, stock and invoice jobs are never touched.
         try
         {
             await ProductWriteSupersession.CloseAsync(db, timeProvider.GetUtcNow(), cancellationToken);
         }
-        catch (Exception exception) when (exception is not OperationCanceledException) { }
+        catch (Exception exception) when (exception is not OperationCanceledException) { LogMaintenanceFailure(exception); }
         // Marketplace lists a connection supports but has never read (at startup and hourly; once a day per gap).
         if (includeDefaults)
         {
@@ -56,14 +60,14 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             {
                 await ShopifyListingLinkBackfill.EnsureAsync(db, timeProvider, cancellationToken);
             }
-            catch (Exception exception) when (exception is not OperationCanceledException) { }
+            catch (Exception exception) when (exception is not OperationCanceledException) { LogMaintenanceFailure(exception); }
             db.ChangeTracker.Clear();
             // Orders saved before their buyer kind was kept get it, by the invoice's rule (the "Fatura Türü" filter).
             try
             {
                 await OrderBuyerTypes.BackfillAsync(db, cancellationToken);
             }
-            catch (Exception exception) when (exception is not OperationCanceledException) { }
+            catch (Exception exception) when (exception is not OperationCanceledException) { LogMaintenanceFailure(exception); }
             db.ChangeTracker.Clear();
         }
     }
@@ -277,17 +281,9 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         }
 
         if (added == 0) return 0;
-        try
-        {
-            await db.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateException exception) when (IsExpectedDedupRace(exception))
-        {
-            // Another worker won the unique dedup race. Clear the pending rows; the next scheduler pass
-            // observes the committed state.
-            db.ChangeTracker.Clear();
-            return 0;
-        }
+        // Another worker may win the unique dedup race for one of the rows: only that row is left out (scan 13 Nov 2026;
+        // the whole pass used to be thrown away and every other due job waited for the next pass).
+        added = await SaveQueuedJobsAsync(cancellationToken);
         // When each policy last queued its job is written on its own, without the policy's version check: a
         // user saving a policy meanwhile no longer throws the whole pass away, and the save does not conflict
         // with this write either.
@@ -600,17 +596,8 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             added++;
         }
         if (added == 0) return 0;
-        try
-        {
-            await db.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateException exception) when (IsExpectedDedupRace(exception))
-        {
-            // Another worker queued the same retest in the same second; the next pass sees it.
-            db.ChangeTracker.Clear();
-            return 0;
-        }
-        return added;
+        // Another worker may queue the same retest in the same second: only that row is left out.
+        return await SaveQueuedJobsAsync(cancellationToken);
     }
 
     // The first refused attempt of the connection with its current error code since its last passing test (a month at most).
@@ -1025,6 +1012,42 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         }
         catch (JsonException) { return settingsJson; }
     }
+
+    // Saves the jobs this pass added. When another worker committed one of the same dedup keys first, the jobs are saved
+    // one by one and only the rows that lost the race are dropped. Returns how many were saved.
+    private async Task<int> SaveQueuedJobsAsync(CancellationToken cancellationToken)
+    {
+        var queued = db.ChangeTracker.Entries<IntegrationJob>().Where(entry => entry.State == EntityState.Added).Select(entry => entry.Entity).ToList();
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            return queued.Count;
+        }
+        catch (DbUpdateException exception) when (IsExpectedDedupRace(exception))
+        {
+            db.ChangeTracker.Clear();
+        }
+        var saved = 0;
+        foreach (var job in queued)
+        {
+            db.IntegrationJobs.Add(job);
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                saved++;
+            }
+            catch (DbUpdateException exception) when (IsExpectedDedupRace(exception))
+            {
+                // This one was queued by another worker; the next pass observes it.
+            }
+            db.ChangeTracker.Clear();
+        }
+        return saved;
+    }
+
+    // A housekeeping step of the policy pass failed: the pass goes on, but the failure is written down instead of vanishing.
+    private void LogMaintenanceFailure(Exception exception) =>
+        log.LogWarning(exception, "A scheduler maintenance step failed; the policy pass goes on and tries it again next time");
 
     private static bool IsExpectedDedupRace(DbUpdateException exception)
     {

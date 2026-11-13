@@ -409,6 +409,10 @@ public static class OrderInventoryStockPolicy
     // OnHand. Their ORDER_LINE ledger rows and reservations are re-keyed from the deleted line's id to this key,
     // and the line the next sync imports under the same marketplace ids takes them over, so it does not take the
     // same units from stock a second time. OperationalDataMaintenanceService builds the same key in SQL.
+    // Open question (scan 13 Nov 2026, not verified): Hepsiburada can rewrite a line's id between reads. A line that comes
+    // back after a reset under another id would not find its carried rows and would take its units again. If that is ever
+    // seen on live (an ORDER_LINE ledger row keyed "order-line-reset:" that stays unclaimed next to a new line of the same
+    // order), carry by order and SKU for Hepsiburada as well; a test reproducing it should come first.
     public const string ResetCarryPrefix = "order-line-reset:";
 
     public static string ResetCarryKey(Guid connectionId, string externalOrderId, string externalLineId) =>

@@ -492,6 +492,95 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
         }
     }
 
+    // Scan 13 Nov 2026: on Trendyol and Shopify an open delivery (UNKNOWN, RETRYABLE_FAILURE ...) was queued again every
+    // five minutes with no end. The recovery now counts as an automatic attempt: it waits for its backoff, and once the
+    // attempts are used up the invoice goes to review and no job is queued.
+    [PostgreSqlFact]
+    public async Task DueScan_RecoveryOfAnOpenDeliveryBacksOffAndGoesToReviewWhenItsAttemptsAreUsedUp()
+    {
+        var seed = NewSeed("audit-recovery-capped");
+        var invoice = NewInvoice(seed, seed.Order.Id, InvoiceStatus.MarketplacePending);
+        var state = NewConfirmedDeliveryState(seed, invoice);
+        state.Status = "UNKNOWN";
+        state.ExternalReference = null;
+        state.CompletedAt = null;
+        state.UpdatedAt = fixture.Now.AddMinutes(-3);
+        var asset = NewFileAsset(seed.Tenant.Id);
+        var document = new InvoiceDocument
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = seed.Tenant.Id,
+            InvoiceId = invoice.Id,
+            DocumentType = "PDF",
+            FileAssetId = asset.Id,
+            Sha256 = asset.Sha256,
+            PermanentUrl = "https://documents.example.test/invoice.pdf",
+            CreatedAt = fixture.Now
+        };
+        await SeedAsync(seed, db => { db.Invoices.Add(invoice); db.MarketplaceDeliveryStates.Add(state); db.FileAssets.Add(asset); db.InvoiceDocuments.Add(document); });
+
+        async Task ScanAsync(string correlationId)
+        {
+            await using var db = fixture.CreateContext();
+            var processor = NewProcessor(db, null, new Dictionary<string, string?>
+            {
+                ["FeatureFlags:ExternalWrites"] = "true",
+                ["FeatureFlags:InvoiceMarketplaceDeliveryWrites"] = "true"
+            });
+            Assert.True((await processor.ProcessAsync(seed.Tenant.Id, null, InvoicingJobTypes.InvoiceDueScan, "{}", correlationId, CancellationToken.None)).Succeeded);
+        }
+
+        async Task CancelDeliveryJobsAsync()
+        {
+            await using var db = fixture.CreateContext();
+            foreach (var job in await db.IntegrationJobs.Where(job => job.TenantId == seed.Tenant.Id && job.JobType == InvoicingJobTypes.MarketplaceDelivery).ToListAsync())
+                job.Status = JobStatus.Cancelled;
+            await db.SaveChangesAsync();
+        }
+
+        try
+        {
+            // The first recovery is queued and counted.
+            await ScanAsync("audit-recovery-capped-1");
+            await using (var verification = fixture.CreateContext())
+            {
+                Assert.Single(await verification.IntegrationJobs.Where(job => job.TenantId == seed.Tenant.Id && job.JobType == InvoicingJobTypes.MarketplaceDelivery).ToListAsync());
+                var counted = await verification.Invoices.SingleAsync(item => item.Id == invoice.Id);
+                Assert.Equal(1, counted.DeliveryRetryAttempts);
+                // The next one waits for the first backoff (15 minutes) from the scan's own clock.
+                Assert.True(counted.DeliveryRetryNextAt > fixture.Now + InvoiceDeliveryAutoRetryPolicy.DelayAfter(1)!.Value - TimeSpan.FromMinutes(1));
+            }
+
+            // Before its backoff ends no second recovery is queued.
+            await CancelDeliveryJobsAsync();
+            await ScanAsync("audit-recovery-capped-2");
+            await using (var verification = fixture.CreateContext())
+                Assert.Equal(0, await verification.IntegrationJobs.CountAsync(job => job.TenantId == seed.Tenant.Id && job.JobType == InvoicingJobTypes.MarketplaceDelivery && job.Status != JobStatus.Cancelled));
+
+            // Attempts used up: the invoice goes to review, where only the owner's "Tekrar Gönder" sends it.
+            await using (var db = fixture.CreateContext())
+            {
+                var stored = await db.Invoices.SingleAsync(item => item.Id == invoice.Id);
+                stored.DeliveryRetryAttempts = InvoiceDeliveryAutoRetryPolicy.MaxAttempts;
+                stored.DeliveryRetryNextAt = null;
+                await db.SaveChangesAsync();
+            }
+            await ScanAsync("audit-recovery-capped-3");
+            await using (var verification = fixture.CreateContext())
+            {
+                Assert.Equal(0, await verification.IntegrationJobs.CountAsync(job => job.TenantId == seed.Tenant.Id && job.JobType == InvoicingJobTypes.MarketplaceDelivery && job.Status != JobStatus.Cancelled));
+                var reviewed = await verification.Invoices.SingleAsync(item => item.Id == invoice.Id);
+                Assert.Equal(InvoiceStatus.ManualReview, reviewed.Status);
+                Assert.Equal(InvoiceMarketplaceRetryPolicy.AutomaticRecoveryExhausted, reviewed.LastErrorCode);
+                Assert.True(InvoiceMarketplaceRetryPolicy.CanRetryDelivery(reviewed.Status, reviewed.LastErrorCode));
+            }
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
     // Owner decision 7 Nov 2026: a delivery job that still waits is closed when its invoice went to review or was
     // cancelled, or its delivery was confirmed, instead of waiting until someone looks. A running one is left alone.
     [PostgreSqlFact]
