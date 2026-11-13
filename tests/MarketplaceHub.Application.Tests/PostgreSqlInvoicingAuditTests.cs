@@ -547,7 +547,8 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
                 Assert.Single(await verification.IntegrationJobs.Where(job => job.TenantId == seed.Tenant.Id && job.JobType == InvoicingJobTypes.MarketplaceDelivery).ToListAsync());
                 var counted = await verification.Invoices.SingleAsync(item => item.Id == invoice.Id);
                 Assert.Equal(1, counted.DeliveryRetryAttempts);
-                Assert.Equal(fixture.Now + InvoiceDeliveryAutoRetryPolicy.DelayAfter(1)!.Value, counted.DeliveryRetryNextAt);
+                // The next one waits for the first backoff (15 minutes) from the scan's own clock.
+                Assert.True(counted.DeliveryRetryNextAt > fixture.Now + InvoiceDeliveryAutoRetryPolicy.DelayAfter(1)!.Value - TimeSpan.FromMinutes(1));
             }
 
             // Before its backoff ends no second recovery is queued.
