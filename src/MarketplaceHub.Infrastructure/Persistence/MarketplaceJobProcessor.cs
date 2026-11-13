@@ -1082,7 +1082,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var localStatus = remote.Status switch
             {
                 "APPROVED" => "LIVE",
-                "PENDING_APPROVAL" or "NOT_FOUND" => "APPROVAL_PENDING",
+                "PENDING_APPROVAL" => "APPROVAL_PENDING",
+                // A barcode whose create was never confirmed stays unknown while not found, and goes to review after 24 h.
+                "NOT_FOUND" => ProductApprovalReconciliationPolicy.NotFoundStatus(listing.ActualStatus, payload.StartedAt, timeProvider.GetUtcNow()),
                 "REJECTED" => "REJECTED",
                 "ARCHIVED" => "ARCHIVED",
                 "LOCKED" => "LOCKED",
@@ -1095,6 +1097,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 "ARCHIVED" => "REMOTE_PRODUCT_ARCHIVED",
                 "LOCKED" => "REMOTE_PRODUCT_LOCKED",
                 "BLACKLISTED" => "REMOTE_PRODUCT_BLACKLISTED",
+                "MANUAL_REVIEW" when remote.Status == "NOT_FOUND" => ProductApprovalReconciliationPolicy.UnconfirmedNotFoundCode,
                 "MANUAL_REVIEW" => "PRODUCT_APPROVAL_STATUS_UNKNOWN",
                 _ => null
             };
@@ -1116,7 +1119,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     live++;
                     break;
                 case "REJECTED": rejected++; firstCode ??= code; break;
-                case "APPROVAL_PENDING": pending++; break;
+                case "APPROVAL_PENDING" or ProductBatchResultPolicy.ResultUnknownStatus: pending++; break;
                 default: exceptional++; firstCode ??= code; break;
             }
         }

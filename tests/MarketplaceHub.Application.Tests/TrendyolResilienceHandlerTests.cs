@@ -260,6 +260,97 @@ public sealed class TrendyolResilienceHandlerTests
     }
 
     [Fact]
+    public void ClaimApproveAndReject_HaveTheirOwnCircuitAndFiveAMinuteQuota()
+    {
+        var options = new TrendyolOptions();
+        using var read = new HttpRequestMessage(HttpMethod.Get, "https://unit.test/integration/order/sellers/seller-1/claims?claimItemStatus=Created");
+        using var audit = new HttpRequestMessage(HttpMethod.Get, "https://unit.test/integration/order/sellers/seller-1/claims/items/line-1/audit");
+        using var approve = new HttpRequestMessage(HttpMethod.Put, "https://unit.test/integration/order/sellers/seller-1/claims/claim-1/items/approve");
+        using var reject = new HttpRequestMessage(HttpMethod.Post, "https://unit.test/integration/order/sellers/seller-1/claims/claim-1/issue?claimIssueReasonId=1");
+        using var finance = new HttpRequestMessage(HttpMethod.Get, "https://unit.test/integration/finance/che/sellers/seller-1/settlements?page=0");
+
+        Assert.EndsWith(":order:claims", TrendyolResilienceHandler.CircuitKeyFor(read));
+        Assert.Equal(TrendyolResilienceHandler.CircuitKeyFor(read), TrendyolResilienceHandler.CircuitKeyFor(audit));
+        Assert.EndsWith(":order:claim-actions", TrendyolResilienceHandler.CircuitKeyFor(approve));
+        Assert.Equal(TrendyolResilienceHandler.CircuitKeyFor(approve), TrendyolResilienceHandler.CircuitKeyFor(reject));
+        Assert.Null(TrendyolResilienceHandler.GroupQuotaFor(read, options));
+        Assert.Null(TrendyolResilienceHandler.GroupQuotaFor(audit, options));
+        Assert.Equal(new TrendyolResilienceHandler.GroupQuota("claim-actions:unit.test:seller-1", 5, TimeSpan.FromMinutes(1)), TrendyolResilienceHandler.GroupQuotaFor(approve, options));
+        Assert.Equal(TrendyolResilienceHandler.GroupQuotaFor(approve, options), TrendyolResilienceHandler.GroupQuotaFor(reject, options));
+        Assert.Equal(new TrendyolResilienceHandler.GroupQuota("finance:unit.test:seller-1", 100, TimeSpan.FromMinutes(1)), TrendyolResilienceHandler.GroupQuotaFor(finance, options));
+    }
+
+    [Fact]
+    public async Task ClaimApproval429_DoesNotStopClaimReads()
+    {
+        var options = Options.Create(new TrendyolOptions { MaxConcurrency = 1, RequestsPerInterval = 100, RequestInterval = TimeSpan.FromMilliseconds(1), CircuitFailureThreshold = 5 });
+        using var downstream = new ApprovalThrottledHandler();
+        using var resilience = new TrendyolResilienceHandler(options, TimeProvider.System, new TrendyolResilienceState(options)) { InnerHandler = downstream };
+        using var client = new HttpClient(resilience);
+
+        using var approve = await client.PutAsync("https://unit.test/integration/order/sellers/seller-1/claims/claim-6/items/approve", new StringContent("{}"));
+        using var approveAgain = await client.PutAsync("https://unit.test/integration/order/sellers/seller-1/claims/claim-7/items/approve", new StringContent("{}"));
+        using var read = await client.GetAsync("https://unit.test/integration/order/sellers/seller-1/claims?claimItemStatus=Created");
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, approve.StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, approveAgain.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, read.StatusCode);
+        // The second approval was refused locally by the open approval circuit; the read went out.
+        Assert.Equal(2, downstream.RequestCount);
+    }
+
+    [Fact]
+    public async Task ClaimApprovals_WaitForTheirQuotaInsteadOfBeingSentOverIt()
+    {
+        var options = Options.Create(new TrendyolOptions { MaxConcurrency = 1, RequestsPerInterval = 100, RequestInterval = TimeSpan.FromMilliseconds(1), ClaimActionRequestsPerInterval = 2, GroupRequestInterval = TimeSpan.FromMilliseconds(200) });
+        using var downstream = new SequenceHandler(HttpStatusCode.OK);
+        using var resilience = new TrendyolResilienceHandler(options, TimeProvider.System, new TrendyolResilienceState(options)) { InnerHandler = downstream };
+        using var client = new HttpClient(resilience);
+
+        var started = DateTimeOffset.UtcNow;
+        for (var i = 0; i < 2; i++)
+            using (await client.PutAsync($"https://unit.test/integration/order/sellers/seller-1/claims/claim-{i}/items/approve", new StringContent("{}"))) { }
+        using (await client.GetAsync("https://unit.test/integration/order/sellers/seller-1/claims")) { }
+        Assert.True(DateTimeOffset.UtcNow - started < TimeSpan.FromMilliseconds(150));
+        using var third = await client.PutAsync("https://unit.test/integration/order/sellers/seller-1/claims/claim-3/items/approve", new StringContent("{}"));
+
+        Assert.Equal(HttpStatusCode.OK, third.StatusCode);
+        Assert.True(DateTimeOffset.UtcNow - started >= TimeSpan.FromMilliseconds(180));
+        Assert.Equal(4, downstream.RequestCount);
+    }
+
+    [Fact]
+    public async Task SharedLimiter_CountsTheClaimActionQuotaAcrossProcesses()
+    {
+        var options = Options.Create(new TrendyolOptions { MaxConcurrency = 1 });
+        var shared = new RecordingSharedLimiter();
+        using var downstream = new SequenceHandler(HttpStatusCode.OK);
+        using var resilience = new TrendyolResilienceHandler(options, TimeProvider.System, new TrendyolResilienceState(options), shared) { InnerHandler = downstream };
+        using var client = new HttpClient(resilience);
+
+        using var response = await client.PutAsync("https://unit.test/integration/order/sellers/seller-1/claims/claim-1/items/approve", new StringContent("{}"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(["trendyol:global:unit.test:anonymous:order:claim-actions", "trendyol:claim-actions:unit.test:seller-1"], shared.Keys);
+    }
+
+    private sealed class ApprovalThrottledHandler : HttpMessageHandler
+    {
+        private int requestCount;
+
+        public int RequestCount => requestCount;
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref requestCount);
+            if (request.Method == HttpMethod.Get) return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
+            var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+            response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromSeconds(60));
+            return Task.FromResult(response);
+        }
+    }
+
+    [Fact]
     public async Task IdleRateAndCircuitState_IsBounded_WhenManySellerKeysWereSeen()
     {
         var options = Options.Create(new TrendyolOptions
