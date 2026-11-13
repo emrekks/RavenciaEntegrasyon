@@ -10576,12 +10576,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (saveChanges) await db.SaveChangesAsync(cancellationToken);
             return false;
         }
+        // The packages this read moves out of ManualReview by their raw status now known: their lines take the read's
+        // quantities below (ApplyReadLineQuantities), or a package that turned Returned kept its lines as sold.
+        var repairedFromReview = new HashSet<Guid>();
         if (order is not null)
         {
             var repairCandidates = batch is not null
                 ? (batch.PackagesByOrder.GetValueOrDefault(order.Id)?.Values.Where(x => x.Status == ShipmentPackageStatus.ManualReview).ToList() ?? [])
                 : await db.ShipmentPackages.Where(x => x.TenantId == tenantId && x.OrderId == order.Id && x.Status == ShipmentPackageStatus.ManualReview).ToListAsync(cancellationToken);
-            foreach (var candidate in repairCandidates) { var canonical = usesTrendyolPackageStatuses ? TrendyolShipmentPackageStatusPolicy.FromRemote(candidate.RawStatus) : ShipmentPackageStatusPolicy.FromRemote(candidate.RawStatus); if (canonical != ShipmentPackageStatus.ManualReview) { candidate.Status = canonical; candidate.UpdatedAt = now; candidate.Version++; } }
+            foreach (var candidate in repairCandidates) { var canonical = usesTrendyolPackageStatuses ? TrendyolShipmentPackageStatusPolicy.FromRemote(candidate.RawStatus) : ShipmentPackageStatusPolicy.FromRemote(candidate.RawStatus); if (canonical != ShipmentPackageStatus.ManualReview) { candidate.Status = canonical; candidate.UpdatedAt = now; candidate.Version++; repairedFromReview.Add(candidate.Id); } }
         }
         // Do not short-circuit empty-line replays: the same remote package can need a safe local canonical projection repair after a previously unknown raw status becomes recognized.
         var orderIsFresh = order is null
@@ -10821,7 +10824,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 // the history ending at 11). A line cancelled or returned while the package keeps its status (another line
                 // still waits or stays delivered) then arrives under the event already recorded. Its lines' quantities
                 // follow the read, or the cancelled line kept its stock and the returned one read as kept.
-                if (package is not null && !statusChanged && (remotePackage.StatusTimeUnknown || platformCode == "PAZARAMA") && !remotePackage.IsStatusObservation
+                if (package is not null && !statusChanged && (remotePackage.StatusTimeUnknown || platformCode == "PAZARAMA" || repairedFromReview.Contains(package.Id)) && !remotePackage.IsStatusObservation
                     && package.Status == target && string.Equals(package.RawStatus, remotePackage.RawStatus, StringComparison.Ordinal))
                     ApplyReadLineQuantities(tenantId, package, remotePackage, packageObservation.Allocations, safeAllocations, lines, allocationsByKey, eventId);
                 if (package is not null && (statusChanged || packageMetadataChanged))
