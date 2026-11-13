@@ -2,17 +2,17 @@
    comes from the shared rr- card of returns-sade.css; this file only lays the fields out. */
 
 /* One row when the card is wide enough: the search, the four (is-wide: five) fields, Temizle and Filtrele. */
-main .rr.rr.ops-filters .rr-filters.ops-filter-grid { grid-template-columns: minmax(200px, 1.4fr) repeat(4, minmax(130px, 1fr)) auto; }
-main .rr.rr.ops-filters .rr-filters.ops-filter-grid.is-wide { grid-template-columns: minmax(200px, 1.4fr) repeat(5, minmax(130px, 1fr)) auto; }
+main .rr.rr.ops-filters .rr-filters.ops-filter-grid { grid-template-columns: minmax(200px, 1.2fr) repeat(4, minmax(172px, 1fr)) auto; }
+main .rr.rr.ops-filters .rr-filters.ops-filter-grid.is-wide { grid-template-columns: minmax(200px, 1.2fr) repeat(5, minmax(172px, 1fr)) auto; }
 main .rr.rr.ops-filters .rr-filters.ops-filter-grid > :is(.rr-search, .rr-fbtns) { grid-column: auto; }
 main .rr.rr.ops-filters .rr-filters.ops-filter-grid > .rr-fbtns { align-self: end; justify-content: flex-end; }
 /* Narrower cards: four columns, the search across two and the buttons under the last column. */
-@container fshell (max-width: 1060px) {
+@container fshell (max-width: 1180px) {
   main .rr.rr.ops-filters .rr-filters.ops-filter-grid:not(.is-wide) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   main .rr.rr.ops-filters .rr-filters.ops-filter-grid:not(.is-wide) > .rr-search { grid-column: span 2; }
   main .rr.rr.ops-filters .rr-filters.ops-filter-grid:not(.is-wide) > .rr-fbtns { grid-column: -2 / -1; }
 }
-@container fshell (max-width: 1240px) {
+@container fshell (max-width: 1340px) {
   main .rr.rr.ops-filters .rr-filters.ops-filter-grid.is-wide { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   main .rr.rr.ops-filters .rr-filters.ops-filter-grid.is-wide > .rr-search { grid-column: span 2; }
   main .rr.rr.ops-filters .rr-filters.ops-filter-grid.is-wide > .rr-fbtns { grid-column: -2 / -1; }

@@ -145,7 +145,7 @@
 .app-shell.stitch-shell main .reports-page .reports-map-labels text.is-dim { opacity: .3; }
 /* The breakdown tabs beside the map. */
 .app-shell.stitch-shell main .reports-page .reports-map-tabs { display: flex; flex: none; border-bottom: 1px solid var(--rv-color-border); }
-.app-shell.stitch-shell main .reports-page .reports-map-tabs button { flex: 1 1 0; height: 42px; padding: 0 8px; font-size: 12.5px; }
+.app-shell.stitch-shell main .reports-page .reports-map-tabs button { flex: 1 1 0; height: 36px; padding: 0 8px; font-size: 12.5px; }
 .app-shell.stitch-shell main .reports-page .reports-map-tabpanel { display: flex; flex: 1; flex-direction: column; min-height: 0; }
 .app-shell.stitch-shell main .reports-page .reports-map-list.is-zones button { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'name value' 'bar meta'; }
 .app-shell.stitch-shell main .reports-page .reports-map-list.is-zones button.is-empty { color: var(--rv-color-subtle); }
@@ -1239,3 +1239,9 @@ main .rr.rr.reports-payout-filters .rr-trigger:disabled { opacity: .5; cursor: n
    second row was shorter), its content at the top. */
 .app-shell.stitch-shell main .reports-page .reports-payout-regions > ul { grid-auto-rows: 1fr; }
 .app-shell.stitch-shell main .reports-page .reports-payout-regions > ul > li > .reports-payout-region { height: 100%; align-content: start; }
+
+/* Small touch targets: the delta toggle and the label tips are 18-20px tall to read; their clickable area is at least 32px
+   without moving anything (an invisible ring around the toggle, vertical padding cancelled by margin on the tips). */
+.app-shell.stitch-shell main .reports-page .reports-kpi-delta-toggle { position: relative; }
+.app-shell.stitch-shell main .reports-page .reports-kpi-delta-toggle::after { content: ""; position: absolute; inset: -7px -4px; }
+.app-shell.stitch-shell main .reports-page .reports-tip-trigger { padding-block: 7px; margin-block: -7px; }
