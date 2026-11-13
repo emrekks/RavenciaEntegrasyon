@@ -637,7 +637,7 @@ describe('ReportsPage', () => {
     const panel = page.querySelector<HTMLElement>('.reports-body')!
     expect(panel.textContent).toContain('Platform Özeti')
     const shopify = Array.from(panel.querySelectorAll('.reports-table tbody tr')).find(row => row.textContent?.includes('Shopify'))!
-    expect(shopify.textContent).toContain('Tutar yok')
+    expect(shopify.textContent).toContain('—')
     expect(shopify.textContent).not.toContain('₺0,00')
     expect(Array.from(panel.querySelectorAll('button')).some(button => button.textContent?.includes('CSV'))).toBe(true)
     // The platforms add up into a Toplam row under the table.

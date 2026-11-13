@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 // A formatted figure ("984", "₺400.479,78", "%38,7") split around its number, read the Turkish way (dot thousands,
-// comma decimals). Null for text that is not one figure ("—", "Tutar yok", "…").
+// comma decimals). Null for text that is not one figure ("—", "…").
 export function parseFigure(text: string): { prefix: string; value: number; decimals: number; suffix: string } | null {
   const match = /^(\D*?)(\d{1,3}(?:\.\d{3})*|\d+)(?:,(\d+))?(\D*)$/.exec(text)
   if (!match) return null

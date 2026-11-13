@@ -480,7 +480,7 @@ html body .app-shell.stitch-shell main .reports-page .reports-card-actions .repo
 .app-shell.stitch-shell main .reports-page .reports-filters { align-items: flex-end; gap: 14px 18px; padding: 16px 18px; border-radius: 12px; }
 .app-shell.stitch-shell main .reports-page .reports-period-field { flex: 1 1 520px; }
 .app-shell.stitch-shell main .reports-page .reports-period-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.app-shell.stitch-shell main .reports-page .reports-period-row .reports-segmented button { height: 32px; }
+.app-shell.stitch-shell main .reports-page .reports-period-row .reports-segmented button { height: 28px; }
 .app-shell.stitch-shell main .reports-page .reports-period-custom .date-range-picker-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 .app-shell.stitch-shell main .reports-page .reports-period-custom .date-range-picker-trigger { height: 40px; min-height: 40px; border-radius: 7px; }
 .app-shell.stitch-shell main .reports-page .reports-period-custom.is-active .date-range-picker-trigger { border-color: var(--rv-color-primary); box-shadow: 0 0 0 1px var(--rv-color-primary); }
@@ -516,14 +516,20 @@ html body .app-shell.stitch-shell main .reports-page .reports-card-actions .repo
 .app-shell.stitch-shell main .reports-page .reports-filters { display: grid; grid-template-columns: repeat(3, max-content) minmax(0, 1fr); align-items: end; gap: 16px 24px; }
 .app-shell.stitch-shell main .reports-page .reports-filters > .reports-period-field { grid-column: 1 / -1; }
 /* The period buttons on the left; the custom period and the platforms at the right end of the same row. */
-.app-shell.stitch-shell main .reports-page .reports-period-row > .reports-period-custom { margin-left: auto; }
+.app-shell.stitch-shell main .reports-page .reports-period-row > .reports-period-custom { margin-left: 0; }
 /* The platform filter is the panel's one (shared/PlatformFilter.tsx); its label is read only by assistive technology. */
 .app-shell.stitch-shell main .reports-page .reports-period-platforms .pf-field .rr-fld { gap: 0; }
 .app-shell.stitch-shell main .reports-page .reports-period-platforms .pf-trigger { min-width: 180px; }
 /* Wrapped under the presets (a narrow window), the platform filter goes to the right end under the date, not alone at the left. */
 .app-shell.stitch-shell main .reports-page .reports-filters { container-type: inline-size; }
-@container (max-width: 1060px) {
-  .app-shell.stitch-shell main .reports-page .reports-period-row > .reports-period-platforms { margin-left: auto; }
+/* One tight line when it fits (owner, 13 Nov 2026): the "Dönem" label inline, then the presets, the custom range and the
+   platforms side by side with the row's own gap and no dead space between them; on a narrower card the label goes above
+   and the groups wrap (the phone rules below stack them). */
+.app-shell.stitch-shell main .reports-page .reports-period-field { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.app-shell.stitch-shell main .reports-page .reports-period-field > span { flex: none; }
+.app-shell.stitch-shell main .reports-page .reports-period-field > .reports-period-row { flex: 1 1 auto; gap: 8px 10px; min-width: 0; }
+@container (max-width: 700px) {
+  .app-shell.stitch-shell main .reports-page .reports-period-field > span { flex: 1 1 100%; }
 }
 html body .app-shell.stitch-shell main .reports-page .reports-filters :is(.pf-trigger, .date-range-picker-trigger, select) { box-sizing: border-box; height: 36px; min-height: 36px; }
 .app-shell.stitch-shell main .reports-page .reports-filters select { min-width: 140px; }
@@ -581,7 +587,6 @@ html body .app-shell.stitch-shell main .reports-page .reports-filters :is(.pf-tr
 .app-shell.stitch-shell main .reports-page .reports-kpis .is-good strong { color: var(--rv-color-accent); }
 .app-shell.stitch-shell main .reports-page .reports-kpis .is-warn strong { color: var(--rv-color-warning); }
 .app-shell.stitch-shell main .reports-page .reports-kpis .is-text strong { white-space: normal; overflow-wrap: anywhere; }
-.app-shell.stitch-shell main .reports-page .reports-kpis .is-missing strong { color: var(--rv-color-warning); font-size: 16px; font-weight: 600; }
 
 /* A row's explanation: a small card over the row while the pointer or the focus is on it; nothing moves. */
 .app-shell.stitch-shell main .reports-page .reports-tip-host { position: relative; }
