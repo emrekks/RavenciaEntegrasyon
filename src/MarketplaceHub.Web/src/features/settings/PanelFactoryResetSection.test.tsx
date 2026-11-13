@@ -98,6 +98,7 @@ describe('panel factory reset confirmation', () => {
     expect(container.textContent).toContain('Paneli Tamamen Sıfırla')
     expect(container.textContent).toContain('35.200 Kayıt')
     expect(container.textContent).toContain('Entegrasyon bağlantıları ve giriş bilgileri')
+    expect(container.querySelectorAll('.ss-fr-list li')).toHaveLength(2)
     expect(container.textContent).toContain('hiç veri gelmesin istiyorsanız önce bağlantıları kapatın')
     const input = container.querySelector<HTMLInputElement>('#panel-factory-reset-confirm')!
     expect(goButton()!.disabled).toBe(true)
@@ -123,6 +124,21 @@ describe('panel factory reset confirmation', () => {
     const steps = Array.from(container.querySelectorAll('.ss-fr-steps li')).map(item => item.className)
     expect(steps).toEqual(['is-done', 'is-done', 'is-running', 'is-pending'])
     expect(container.textContent).toContain('%20')
+  })
+
+  it('lists only the categories with records and tucks the empty ones behind a toggle', async () => {
+    state.view = { ...baseView, groups: [...baseView.groups, { key: 'STOCK', label: 'Stok', description: 'z', section: 'x', requires: [], count: 0 }] }
+    await render()
+    expect(Array.from(container.querySelectorAll('.ss-fr-list li')).map(item => item.textContent)).toEqual(['Siparişler, Paketler ve İadeler1.200', 'Loglar34.000'])
+    const more = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === 'Boş Olanlar (1)')!
+    await act(async () => { more.click() })
+    expect(container.querySelector('.ss-fr-list.is-empty')!.textContent).toBe('Stok0')
+  })
+
+  it('says nothing is left to delete when every count is zero', async () => {
+    state.view = { ...baseView, total: 0, groups: baseView.groups.map(group => ({ ...group, count: 0 })) }
+    await render()
+    expect(container.textContent).toContain('Silinecek kayıt yok')
   })
 
   it('stays hidden from a role that may not reset', async () => {
