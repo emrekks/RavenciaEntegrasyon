@@ -40,6 +40,11 @@ internal static class MappingTemplateFiller
         return result;
     }
 
+    // Templates grouped by what they decide (a marketplace attribute, a panel value): the most recently updated first,
+    // then by id, so the same templates give the same mapping on every run.
+    internal static IEnumerable<T> OrderTemplates<T>(IEnumerable<T> templates, Func<T, string> key, Func<T, DateTimeOffset> updatedAt, Func<T, Guid> id) =>
+        templates.OrderBy(key, StringComparer.Ordinal).ThenByDescending(updatedAt).ThenByDescending(id);
+
     public static async Task<int> FillAttributesAsync(AppDbContext db, Guid tenantId, Guid connectionId, string externalCategoryId, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var panelCategoryIds = await db.CategoryMappings.AsNoTracking()
@@ -71,7 +76,10 @@ internal static class MappingTemplateFiller
         var dismissed = await DismissedAsync(db, tenantId, connectionId, AttributeKind, [externalCategoryId], cancellationToken);
 
         var filled = 0;
-        foreach (var template in templates.OrderBy(x => x.ExternalAttributeId, StringComparer.Ordinal))
+        // Scan C-11 (13 Nov 2026): several templates may name one marketplace attribute; the first one applied wins (the
+        // ones after it find the attribute mapped). The order used to be the database's, so a new category took one panel
+        // attribute one day and another the next. Now the most recently updated template wins, by id on a tie.
+        foreach (var template in OrderTemplates(templates, x => x.ExternalAttributeId, x => x.UpdatedAt, x => x.Id))
         {
             if (!activeLocalAttributes.Contains(template.LocalAttributeId)) continue;
             // The category already maps this marketplace attribute (from this or another panel
@@ -139,7 +147,8 @@ internal static class MappingTemplateFiller
         var dismissed = await DismissedAsync(db, tenantId, connectionId, ValueKind, [valueScope], cancellationToken);
 
         var filled = 0;
-        foreach (var template in templates)
+        // As for the attributes (C-11): the most recently updated template of a panel value wins.
+        foreach (var template in OrderTemplates(templates, x => x.LocalValueId.ToString("N"), x => x.UpdatedAt, x => x.Id))
         {
             // The template value must exist in this category's list: Trendyol keeps value ids
             // stable, but not every category offers every value.
