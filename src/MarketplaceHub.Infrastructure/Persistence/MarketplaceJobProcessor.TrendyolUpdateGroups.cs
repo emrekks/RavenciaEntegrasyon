@@ -94,7 +94,7 @@ public sealed partial class MarketplaceJobProcessor
             {
                 // Every card of the request keeps its effect record: its own run stops it for review, none is sent again.
                 await WakeJobsAsync(others.Select(card => card.Job.Id).ToList(), cancellationToken);
-                return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", $"{selected.Count} kartın ortak ürün güncelleme çağrısının uygulanıp uygulanmadığı kesinleştirilemedi.", error.RemoteRequestId), cancellationToken);
+                return await MarkUpdateResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", $"{selected.Count} kartın ortak ürün güncelleme çağrısının uygulanıp uygulanmadığı kesinleştirilemedi.", error.RemoteRequestId), cancellationToken);
             }
             db.ExternalEffectRecords.RemoveRange(effects);
             await db.SaveChangesAsync(cancellationToken);
@@ -102,7 +102,7 @@ public sealed partial class MarketplaceJobProcessor
             // A refusal is every card's; a passing error (quota, a busy service) leaves the others ready for the next send.
             if (failure.Kind != JobCompletionKind.Retry)
                 await StopGroupCardsAsync(tenantId, others, TrendyolUpdateGroups.Outcome(failure, "UPDATE_BLOCKED", error.Code), cancellationToken);
-            return await MarkPublicationResult(tenantId, connectionId, profile, "UPDATE_BLOCKED", error.Code, failure, cancellationToken);
+            return await MarkUpdateResult(tenantId, connectionId, profile, "UPDATE_BLOCKED", error.Code, failure, cancellationToken);
         }
 
         var operation = submit.Value!;
@@ -158,7 +158,7 @@ public sealed partial class MarketplaceJobProcessor
         async Task<JobExecutionResult> StopAll(string profileStatus, string? rejectionCode, JobExecutionResult result)
         {
             await StopGroupCardsAsync(tenantId, others, TrendyolUpdateGroups.Outcome(result, profileStatus, rejectionCode), cancellationToken);
-            return await MarkPublicationResult(tenantId, connectionId, profile, profileStatus, rejectionCode, result, cancellationToken);
+            return await MarkUpdateResult(tenantId, connectionId, profile, profileStatus, rejectionCode, result, cancellationToken);
         }
 
         if (timeProvider.GetUtcNow() - payload.SubmittedAt!.Value > TimeSpan.FromHours(4))
@@ -212,7 +212,7 @@ public sealed partial class MarketplaceJobProcessor
                     if (string.IsNullOrWhiteSpace(listing.ExternalBarcode) || !lines.TryGetValue(listing.ExternalBarcode, out var line) || line.Succeeded) continue;
                     var code = SafeCode(line.ErrorCode) ?? "PRODUCT_UPDATE_REJECTED";
                     listing.ActualStatus = "UPDATE_REJECTED"; listing.RejectionCode = code;
-                    if (cardStates.TryGetValue(listing.VariantId, out var state)) { state.ActualStatus = "UPDATE_REJECTED"; state.LastRejectionCode = code; state.Version++; }
+                    if (cardStates.TryGetValue(listing.VariantId, out var state)) { state.ActualStatus = ListingSaleStatePolicy.AfterUpdate(state.ActualStatus, "UPDATE_REJECTED"); state.LastRejectionCode = code; state.Version++; }
                 }
             }
         }
@@ -234,7 +234,7 @@ public sealed partial class MarketplaceJobProcessor
         await WakeJobsAsync(others.Select(card => card.Job.Id).ToList(), cancellationToken);
 
         if (outcomes[0] is { } own)
-            return await MarkPublicationResult(tenantId, connectionId, profile, own.ProfileStatus, own.RejectionCode, TrendyolUpdateGroups.Result(own), cancellationToken);
+            return await MarkUpdateResult(tenantId, connectionId, profile, own.ProfileStatus, own.RejectionCode, TrendyolUpdateGroups.Result(own), cancellationToken);
         var advanced = AdvanceUpdate(payload, phase);
         if (advanced is null) return await CompleteProductUpdate(tenantId, connectionId, payload, profile, listings, states, correlationId, cancellationToken);
         SetUpdatePayload(job, advanced);
