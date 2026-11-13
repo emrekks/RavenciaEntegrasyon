@@ -67,3 +67,9 @@
   .rv-tabs.rv-tabs.rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs:is(.ss-seg, .ss-seg2, .ss-itabs, .mapping-platform-tabs) > :is(button, a) :is(.rv-tab-label > svg, .rv-view-tab-icon, .rv-view-tab-logo) { display: none; }
   .rv-tabs.rv-tabs.rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs:is(.ss-seg, .ss-seg2, .ss-itabs, .mapping-platform-tabs) > :is(button, a) .rv-tab-count { min-width: 18px; height: 18px; padding: 1px 5px 0; font-size: 11px; }
 }
+
+/* Edge fade: a tab strip with tabs waiting off-screen (tab-strip-scroll.ts sets data-more-start / data-more-end only
+   while it overflows) fades its edge on that side, so a partly hidden row reads as scrollable. Desktop rows that fit never get it. */
+.rv-tabs.rv-view-tabs[data-more-end] { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+.rv-tabs.rv-view-tabs[data-more-start] { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); }
+.rv-tabs.rv-view-tabs[data-more-start][data-more-end] { -webkit-mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent); }
