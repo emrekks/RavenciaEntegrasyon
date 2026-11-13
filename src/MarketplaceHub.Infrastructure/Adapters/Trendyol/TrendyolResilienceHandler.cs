@@ -202,12 +202,15 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
         if (RateBucketFor(request) is { } sellerBucket)
             lock (state.SyncRoot) learnedTotal = state.OrderTierFor(sellerBucket).Limit(options.OrderRequestsPerInterval);
         var orderQuota = OrderQuotaFor(request, options, TrendyolQuotaLane.IsBackground, learnedTotal);
+        var groupQuota = GroupQuotaFor(request, options);
         var quotaWaitStarted = timeProvider.GetTimestamp();
         if (sharedLimiter is not null)
         {
             try
             {
                 await SharedRateLimits.WaitAsync(sharedLimiter, $"trendyol:{globalBucket}", SharedRateLimits.ForWindow(options.RequestsPerInterval, options.RequestInterval), timeProvider, cancellationToken);
+                if (groupQuota is { } group)
+                    await SharedRateLimits.WaitAsync(sharedLimiter, $"trendyol:{group.Bucket}", SharedRateLimits.ForWindow(group.Limit, group.Interval), timeProvider, cancellationToken);
                 if (orderQuota is { } quota)
                 {
                     quotaWaitStarted = timeProvider.GetTimestamp();
@@ -224,6 +227,8 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
             }
         }
         await WaitForRateWindowAsync(globalBucket, options.RequestsPerInterval, options.RequestInterval, cancellationToken);
+        if (groupQuota is { } localGroup)
+            await WaitForRateWindowAsync(localGroup.Bucket, localGroup.Limit, localGroup.Interval, cancellationToken);
         if (orderQuota is { } localQuota)
         {
             quotaWaitStarted = timeProvider.GetTimestamp();
@@ -277,6 +282,38 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
         var total = Math.Max(2, learnedTotal ?? options.OrderRequestsPerInterval);
         var foreground = Math.Clamp((int)Math.Round(total * Math.Clamp(options.OrderForegroundShare, 0.1, 0.9)), 1, total - 1);
         return (foreground, total - foreground);
+    }
+
+    internal sealed record GroupQuota(string Bucket, int Limit, TimeSpan Interval);
+
+    // Trendyol's per-seller group limits that are tighter than the general window: claim approve/reject
+    // (5 a minute) and finance (100 a minute). Order reads have their own learned quota (OrderQuotaFor).
+    internal static GroupQuota? GroupQuotaFor(HttpRequestMessage request, TrendyolOptions options)
+    {
+        if (request.RequestUri is not { } uri || SellerIdOf(uri.AbsolutePath) is not { } sellerId) return null;
+        var interval = options.GroupRequestInterval <= TimeSpan.Zero ? TimeSpan.FromMinutes(1) : options.GroupRequestInterval;
+        if (IsClaimAction(request)) return new($"claim-actions:{uri.Host}:{sellerId}", Math.Max(1, options.ClaimActionRequestsPerInterval), interval);
+        if (uri.AbsolutePath.Contains("/finance/che/sellers/", StringComparison.OrdinalIgnoreCase))
+            return new($"finance:{uri.Host}:{sellerId}", Math.Max(1, options.FinanceRequestsPerInterval), interval);
+        return null;
+    }
+
+    // A claim approve (PUT claims/{id}/items/approve) or reject (POST claims/{id}/issue): every write under a
+    // claim. Reads (the claim list, a claim item's audit) are GETs and stay in the claim read family.
+    internal static bool IsClaimAction(HttpRequestMessage request) =>
+        request.Method != HttpMethod.Get
+        && request.RequestUri?.AbsolutePath.Contains("/claims/", StringComparison.OrdinalIgnoreCase) == true;
+
+    private static string? SellerIdOf(string path)
+    {
+        const string marker = "/sellers/";
+        var sellerStart = path.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (sellerStart < 0) return null;
+        sellerStart += marker.Length;
+        var sellerEnd = path.IndexOf('/', sellerStart);
+        if (sellerEnd < 0) sellerEnd = path.Length;
+        var sellerId = path[sellerStart..sellerEnd];
+        return string.IsNullOrWhiteSpace(sellerId) ? null : sellerId;
     }
 
     internal static bool IsOrderStream(HttpRequestMessage request) =>
@@ -399,11 +436,14 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
         return string.IsNullOrWhiteSpace(identity) ? $"{uri.Host}:global" : $"{uri.Host}:client:{identity}";
     }
 
-    // "order-reads" for the shared order quota; otherwise the service before /sellers/ and the resource
-    // after the seller id, e.g. "inventory:products", "order:claims", "integration:seller-invoice-links".
+    // "order-reads" for the shared order quota; "order:claim-actions" for claim approve/reject, whose 5 a minute
+    // quota must not open the claim read circuit (new returns would stop reaching the panel); otherwise the
+    // service before /sellers/ and the resource after the seller id, e.g. "inventory:products", "order:claims",
+    // "integration:seller-invoice-links".
     private static string CircuitFamily(HttpRequestMessage request, string path, int markerStart, int sellerEnd)
     {
         if (RateBucketFor(request) is not null) return "order-reads";
+        if (IsClaimAction(request)) return "order:claim-actions";
         var before = path[..markerStart].TrimEnd('/');
         var service = before[(before.LastIndexOf('/') + 1)..];
         var resource = path[sellerEnd..].Split('/', StringSplitOptions.RemoveEmptyEntries)

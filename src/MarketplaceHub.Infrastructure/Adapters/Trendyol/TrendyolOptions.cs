@@ -27,6 +27,11 @@ public sealed class TrendyolOptions
     // Share of the order quota kept for new-order reads and user actions; background reads
     // (reconciliation, recovery, status and invoice scans) share the rest.
     public double OrderForegroundShare { get; init; } = 0.4;
+    // Trendyol's group limits (14 Sep 2026) that are tighter than the 50 per 10 s window: claim approve/reject
+    // 5 a minute and finance 100 a minute, each per seller.
+    public int ClaimActionRequestsPerInterval { get; init; } = 5;
+    public int FinanceRequestsPerInterval { get; init; } = 100;
+    public TimeSpan GroupRequestInterval { get; init; } = TimeSpan.FromMinutes(1);
     public int CircuitFailureThreshold { get; init; } = 5;
     public TimeSpan CircuitBreakDuration { get; init; } = TimeSpan.FromSeconds(30);
 }
