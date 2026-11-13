@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, hubPoll } from '../../shared/api'
 import { formatIstanbul } from '../../shared/format-date'
 import { clearNotificationHistory } from '../../shared/notifications'
+import { ReauthInputs, reauthBody, reauthReady, useSecondFactorEnabled } from '../../shared/reauth'
 import { normalizePanelResetConfirmation, panelResetConfirmationWord, panelResetConfirmed, panelResetFailed, panelResetRunning, panelResetStepStates, type PanelFactoryResetView, type PanelResetStepState } from './panel-factory-reset'
 
 const resetNumber = (value: number) => value.toLocaleString('tr-TR')
@@ -35,12 +36,17 @@ export function PanelFactoryResetSection() {
     refetchInterval: query => panelResetRunning(query.state.data?.job?.status) ? 2000 : false
   })
   const [confirmation, setConfirmation] = useState('')
+  // The reset takes the password again (and the authenticator code when it is on).
+  const mfa = useSecondFactorEnabled()
+  const [password, setPassword] = useState('')
+  const [factor, setFactor] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const job = view.data?.job ?? null
   const running = panelResetRunning(job?.status)
   const word = view.data?.confirmationWord ?? panelResetConfirmationWord
   const confirmed = panelResetConfirmed(confirmation, word)
+  const ready = confirmed && reauthReady(password, factor, mfa)
 
   // Once the job ends, every screen reads again: nothing of what they cached is left.
   const wasRunning = useRef(false)
@@ -57,13 +63,13 @@ export function PanelFactoryResetSection() {
   if (view.error instanceof ApiRequestError && view.error.status === 403) return null
 
   const start = async () => {
-    if (!confirmed || sending || running) return
+    if (!ready || sending || running) return
     setSending(true)
     setError(null)
     try {
-      const next = await hubApi<PanelFactoryResetView>('/settings/factory-reset', { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ confirmation: normalizePanelResetConfirmation(confirmation) }) })
+      const next = await hubApi<PanelFactoryResetView>('/settings/factory-reset', { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ confirmation: normalizePanelResetConfirmation(confirmation), ...reauthBody(password, factor) }) })
       queryClient.setQueryData(queryKey, next)
-      setConfirmation('')
+      setConfirmation(''); setPassword(''); setFactor('')
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'Sıfırlama başlatılamadı.')
     } finally {
@@ -104,10 +110,11 @@ export function PanelFactoryResetSection() {
       {failed && <p className="ss-fr-error">{job.error ?? 'Sıfırlama tamamlanamadı.'}</p>}
     </div>}
     {!running && <div className="ss-fr-confirm">
-      <label htmlFor="panel-factory-reset-confirm" className={confirmed ? 'is-match' : undefined}>{confirmed ? <MatchGlyph /> : null}<span>Onaylamak için <b>{word}</b> yazın</span></label>
+      <label htmlFor="panel-factory-reset-confirm" className={confirmed ? 'is-match' : undefined}>{confirmed ? <MatchGlyph /> : null}<span>Onaylamak için <b>{word}</b> yazın ve parolanızı{mfa ? ' ile doğrulama kodunuzu' : ''} girin</span></label>
       <div className="ss-fr-confirm-row">
         <input id="panel-factory-reset-confirm" className={`ss-in ss-fr-in${confirmed ? ' is-match' : ''}`} value={confirmation} onChange={event => setConfirmation(event.target.value)} disabled={sending || !view.data} autoComplete="off" spellCheck={false} />
-        <button type="button" className="ss-btn is-danger is-solid ss-fr-go" disabled={!confirmed || sending || !view.data} onClick={() => void start()}>{sending ? 'Başlatılıyor…' : 'Paneli Sıfırla'}</button>
+        <ReauthInputs bare idPrefix="panel-factory-reset" password={password} onPassword={setPassword} factor={factor} onFactor={setFactor} mfa={mfa} disabled={sending || !view.data} inputClassName="ss-in ss-fr-in ss-fr-auth" />
+        <button type="button" className="ss-btn is-danger is-solid ss-fr-go" disabled={!ready || sending || !view.data} onClick={() => void start()}>{sending ? 'Başlatılıyor…' : 'Paneli Sıfırla'}</button>
       </div>
       {error && <p className="ss-fr-error" role="alert">{error}</p>}
     </div>}

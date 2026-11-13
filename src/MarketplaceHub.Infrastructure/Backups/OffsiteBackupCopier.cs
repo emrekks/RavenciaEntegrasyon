@@ -70,13 +70,29 @@ public sealed class OffsiteBackupCopier(
                 foreach (var note in notes) logger.LogWarning("Off-site backup skipped a newer set: {Note}", note);
                 var objectName = OffsiteBackupRules.ObjectName(set.Name);
                 var result = OffsiteBackupRunResult.AlreadyPresent;
-                var size = remote.Where(item => item.Name == objectName && item.Size > 0).Select(item => item.Size).FirstOrDefault();
-                if (size == 0)
+                // A copy of this set counts as present only when it is the one this app sent last, byte count and MD5
+                // alike (age encryption differs on every run, so only the recorded copy can be checked).
+                var (_, state) = await settingsService.LoadAsync(tenantId, timeout.Token);
+                var present = PresentCopy(remote, objectName, state);
+                long size;
+                string? md5;
+                if (present is not null)
                 {
+                    (size, md5) = (present.Size, present.Md5);
+                }
+                else
+                {
+                    var stale = remote.Where(item => item.Name == objectName).ToList();
                     var uploaded = await google.UploadAsync(accessToken, folderId, objectName,
                         (output, token) => encryptor.EncryptAsync(context.AgeRecipient, (plain, inner) => set.WriteTarAsync(plain, inner), output, token), timeout.Token);
                     if (uploaded.Size <= 0) throw new GoogleDriveException("DRIVE_UPLOAD_EMPTY", "Drive'a yüklenen kopya boş görünüyor.");
-                    size = uploaded.Size;
+                    (size, md5) = (uploaded.Size, uploaded.Md5);
+                    // A same-named copy that could not be checked (a broken or older upload) goes once the new one is there.
+                    foreach (var item in stale.Where(item => item.Id != uploaded.Id))
+                    {
+                        await google.DeleteAsync(accessToken, item.Id, timeout.Token);
+                        remote.Remove(item);
+                    }
                     remote.Add(uploaded);
                     result = OffsiteBackupRunResult.Uploaded;
                     logger.LogInformation("Off-site backup {Set} uploaded to Google Drive ({Bytes} bytes, age-encrypted, from {PlainBytes} plain bytes)", set.Name, size, set.PlainBytes);
@@ -96,7 +112,7 @@ public sealed class OffsiteBackupCopier(
                 if (deleted > 0) logger.LogInformation("Off-site backup retention removed {Count} old copies from Google Drive", deleted);
 
                 var copies = remote.Count(item => OffsiteBackupRules.TryParseObjectName(item.Name, out _, out _));
-                await SucceededAsync(context, set.Name, size, copies);
+                await SucceededAsync(context, set.Name, size, md5, copies);
                 return result;
             }
         }
@@ -130,9 +146,23 @@ public sealed class OffsiteBackupCopier(
             await FailedAsync(context, message, alertNow: false);
             return OffsiteBackupRunResult.Failed;
         }
+        catch (Exception exception)
+        {
+            // Anything unforeseen still ends the run as a failure the panel shows and the alert counts; RunningSince is
+            // never left behind.
+            logger.LogError(exception, "Off-site backup copy failed unexpectedly");
+            await FailedAsync(context, $"Gönderim beklenmeyen bir hatayla durdu ({exception.GetType().Name}).", alertNow: false);
+            return OffsiteBackupRunResult.Failed;
+        }
     }
 
-    private async Task SucceededAsync(OffsiteBackupRunContext context, string setName, long size, int copies)
+    // The same-named Drive copy that is the one recorded as sent last (name, set, size and MD5 agree), or null.
+    internal static DriveObject? PresentCopy(IEnumerable<DriveObject> remote, string objectName, OffsiteBackupSettingsService.State state) =>
+        state.LastMd5 is not { Length: > 0 } md5 || state.LastSet is null || OffsiteBackupRules.ObjectName(state.LastSet) != objectName
+            ? null
+            : remote.FirstOrDefault(item => item.Name == objectName && item.Size > 0 && item.Size == state.LastSize && string.Equals(item.Md5, md5, StringComparison.OrdinalIgnoreCase));
+
+    private async Task SucceededAsync(OffsiteBackupRunContext context, string setName, long size, string? md5, int copies)
     {
         var now = timeProvider.GetUtcNow();
         DateTimeOffset? alertSent = null;
@@ -142,6 +172,7 @@ public sealed class OffsiteBackupCopier(
             state.LastSuccessAt = now;
             state.LastSet = setName;
             state.LastSize = size;
+            state.LastMd5 = md5;
             state.LastError = null;
             state.LastErrorAt = null;
             state.ConsecutiveFailures = 0;
@@ -232,7 +263,8 @@ public sealed class OffsiteBackupWorkerService(IServiceScopeFactory scopeFactory
         {
             try { await TickAsync(stoppingToken); }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return; }
-            catch (Exception exception) when (exception is DbUpdateException or NpgsqlException or InvalidOperationException or TimeoutException)
+            // Whatever else goes wrong is logged and tried again: this loop never stops the worker host.
+            catch (Exception exception)
             {
                 logger.LogWarning(exception, "Off-site backup check failed; it is tried again in a minute");
             }

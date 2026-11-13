@@ -1905,7 +1905,8 @@ sürdükçe saatte bir, düzelince bir "Recovered".
 |---|---|
 | Zamanlanmış yedek | Günde iki kez **11:59 ve 23:59 İstanbul**; kaçarsa açılışta telafi (`deploy/systemd/ravencia-backup.timer`) |
 | Deploy yedeği | Her deploy'da taze, doğrulanmış set |
-| İçerik | Veritabanı dökümü, yüklenen dosyalar + şifreleme anahtarları, SHA256SUMS, manifest; yazıldıktan sonra doğrulanır |
+| İçerik | Veritabanı dökümü, yüklenen dosyalar + şifreleme anahtarları, SHA256SUMS (manifest de içinde, 13 Kas'tan beri), manifest; yazıldıktan sonra doğrulanır, doğrulama geçince sete `.verified` işareti yazılır |
+| Google Drive yedeği (panel) | Worker yalnız `.verified` işaretli en yeni seti age açık anahtarıyla şifreleyip yükler; Drive'ın bildirdiği boyut ve MD5 gönderilen şifreli akışla tutmazsa kopya silinir ve gönderim başarısız sayılır. Aynı adlı kopya ancak son gönderimin kaydıyla (set, boyut, MD5) eşleşirse "zaten var" sayılır (`OffsiteBackupCopier.cs`, 13 Kas). İşaretten önce yazılmış setler gönderilmez; ilk işaretli set sonraki zamanlanmış yedekle (11:59/23:59 İstanbul) ya da deploy yedeğiyle oluşur |
 | Saklama | En yeni set her zaman; son 72 saatin en yeni 5 seti; 7 gün boyunca her yarım günün en yenisi; 4 hafta haftalık; 6 ay aylık (`deploy/backup/backup.sh:19-124`) |
 | Disk koruması | Yeni set diski %85'i geçirecekse önce en eski haftalıklar silinir; %95 üstünde yedek reddedilir |
 | Geri yükleme tatbikatı | Ayın ilk pazarı 22:00 İstanbul: en yeni seti yalıtılmış geçici konteynerlerde açar; canlıya dokunmaz |
@@ -1937,7 +1938,12 @@ Beyaz liste **12 Kas 23:54Z'de simülasyon modunda kuruldu** (sahibin bildirimi)
 sürede `cscli alerts list`'te sahibin IP'siyle yeni `http-*` uyarısı çıkmamalı, çıkarsa yol kuralı eklenir, IP değil. Enforce
 yine **sahibin adımıdır**: `bash deploy/scripts/install-crowdsec.sh --enforce` simülasyonu kapatır, topluluk blok listesini açar
 ve bir işaret dosyası bırakır; deploy bu betiği çalıştırmaz, geri dönüş yolu belgededir (`docs/CI-CD-DEPLOY.md` "CrowdSec").
-(canlı, 13 Kas: `global simulation: enabled`; 159.146.51.200 için 12 Kas 18:20Z'den kalma (simul)ban kararı durur.)
+(canlı, 13 Kas: `global simulation: enabled`; 159.146.51.200 için 12 Kas 18:20Z'den kalma (simul)ban kararı durur; 12 Kas
+23:54Z'den sonra yeni `http-*` uyarısı yok.) **13 Kas güvenlik taraması:** beyaz liste artık yalnız tarayıcı benzeri istemciye
+uygulanır; User-Agent'ı boş olan ya da bilinen tarayıcı/kütüphane (sqlmap, nikto, nmap, masscan, zgrab, nuclei, python-requests,
+curl, Go istemcisi…) olan istek, yolu ne olursa olsun senaryolara düşer. Depoda; sunucuya **sahip kurar**: deploy'dan sonra
+sunucuda depo kökünden `bash deploy/scripts/install-crowdsec.sh` (bayraksız; simülasyon açık kalır, yalnız beyaz liste yenilenir ve
+CrowdSec yeniden yüklenir), ardından `sudo cscli parsers inspect ravencia/panel-whitelist` ile durumun "enabled" olduğu görülür.
 
 ### 6.9 Dosyalar ve saatlik kalıntı temizliği
 
@@ -2204,7 +2210,8 @@ ve pasif bağlantıların ayarlarına dokunulmaz.
 | Etiket ve gönderi belgeleri, içe aktarma hata dosyası | Sahip, Yönetici, İşletme | `:66-67` |
 | Pazaryerini canlı sorgulayan okumalar | Salt Okunur hariç hepsi | `:68-72` |
 | Alarm Bildirimleri, Yapay Zekâ, Kullanıcılar, Paneli Tamamen Sıfırla (okuma dahil) | Sahip, Yönetici | `:74-83` |
-| Bildirim merkezi (okuma, okundu, zilden kaldırma) | Çalışan roller yazar; Salt Okunur okur | `:116` |
+| Bildirim merkezi (okuma, okundu, zilden kaldırma) | Çalışan roller yazar; Salt Okunur okur. Tarayıcı yalnız kendi kişisel bildirimini yazar; herkese görünen (paylaşılan) ve `attention:` dikkat bildirimlerini yalnız sunucu yazar (`/jobs/attention` okunurken); bağlantı yalnız `/` ile başlayan panel içi yol olabilir (güvenlik taraması, 13 Kas) | `:116`; `NotificationEndpoints.cs` |
+| Google Drive Yedeği: hedefi değiştiren her şey (kaydetme, Google ile Bağlan, Bağlantıyı Kes) | Yalnız Sahip; okuma, Bağlantıyı Test Et ve Şimdi Gönder Sahip ve Yönetici. age anahtarı ya da Google hesabı değişince Sahip'e Alarm Bildirimleri e-postası ve paylaşılan bildirim gider (13 Kas) | `OffsiteBackupChangeAlert.cs` |
 | Sipariş işleri (işleme alma, paket vb.) | Sahip, Yönetici, İşletme | `:107-108` |
 | "Etiket yazdırıldı" kaydı | Sahip, Yönetici, İşletme, Muhasebe | `:107-108` |
 | Ürün, katalog, stok, eşleştirme, iade ve soru işleri | Sahip, Yönetici, İşletme | `:109-110,129-130` |
@@ -2213,7 +2220,8 @@ ve pasif bağlantıların ayarlarına dokunulmaz.
 | Fatura kesme, iptal, pazaryerine iletme, link kaldırma | Sahip, Yönetici (sahip kararı, 6 Kas) | `:92-99` |
 | Fatura önizlemesini onaylama, elle yüklenen faturanın linkini gönderme | Sahip, Yönetici | `:103-104` |
 | Diğer fatura işleri | Sahip, Yönetici, Muhasebe | `:90-104` |
-| Bağlantı oluşturma, kimlik değiştirme, test siparişi, veri sıfırlama ve Tam Sıfırlama, webhook kaydı, dış yazma anahtarları | Sahip, Yönetici | `:111-123` |
+| Bağlantı oluşturma, kimlik değiştirme, test siparişi, veri sıfırlama ve Tam Sıfırlama, webhook kaydı, dış yazma anahtarları | Sahip, Yönetici. Tam Sıfırlama, Bağlantıyı Sil ve Paneli Tamamen Sıfırla / Veritabanı Temizliği ayrıca **parolayı (doğrulama açıksa kodu da) yeniden ister**; bir doğrulama aynı oturumun 5 dakika içindeki sıfırlamalarını kapsar (Ayarlar › Veri birden çok pazaryerini sırayla sıfırlar) (13 Kas; `AuthEndpoints.ReauthenticateForResetAsync`) | `:111-123` |
+| E-Faturam test ortamı yetki kontrolü (`stage-capability-probe-jobs`) | Sahip, Yönetici (13 Kas) | `:103` |
 | Diğer bağlantı değişiklikleri | İşletme de | `:111-123` |
 | Eşlenmeyen her yazma (ayarlar ve İşlem Takibi'nde yeniden dene/iptal dahil) | Sahip, Yönetici | `:131-132` |
 

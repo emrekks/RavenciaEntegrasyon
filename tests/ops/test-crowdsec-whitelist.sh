@@ -9,9 +9,34 @@ repository_root="$(cd -- "$tests_dir/../.." && pwd -P)"
 source "$tests_dir/assert.sh"
 whitelist="$repository_root/deploy/crowdsec/ravencia-panel-whitelist.yaml"
 
-# Each "matches '<regex>'" literal, with the expr string escape "\\" turned back into "\".
-mapfile -t regexes < <(grep -oE "matches '[^']+'" "$whitelist" | sed -E "s/^matches '//; s/'\$//; s/\\\\\\\\/\\\\/g")
+# Each "http_path matches '<regex>'" literal, with the expr string escape "\\" turned back into "\".
+mapfile -t regexes < <(grep -oE "http_path matches '[^']+'" "$whitelist" | sed -E "s/^http_path matches '//; s/'\$//; s/\\\\\\\\/\\\\/g")
 assert_eq 5 "${#regexes[@]}" "five path rules"
+
+# The filter's User-Agent rule: a request without one, or from a scanner or a bare HTTP library, is never whitelisted.
+agent_rule="$(grep -oE "http_user_agent matches '[^']+'" "$whitelist" | sed -E "s/^http_user_agent matches '//; s/'\$//; s/^\(\?i\)//")"
+assert_contains "$(grep -E '^filter:' "$whitelist")" "!(evt.Parsed.http_user_agent in ['', '-'])" "an empty User-Agent is never whitelisted"
+assert_contains "$(grep -E '^filter:' "$whitelist")" "!(evt.Parsed.http_user_agent matches '(?i)" "the scanner rule is a case-insensitive exclusion in the filter"
+scanner_agents=(
+  "sqlmap/1.8.2#stable (https://sqlmap.org)" "Mozilla/5.00 (Nikto/2.5.0) (Evasions:None) (Test:000003)"
+  "Mozilla/5.0 (compatible; Nmap Scripting Engine; https://nmap.org/book/nse.html)" "masscan/1.3 (https://github.com/robertdavidgraham/masscan)"
+  "Mozilla/5.0 zgrab/0.x" "python-requests/2.32.3" "Python-urllib/3.12" "Go-http-client/1.1" "curl/8.5.0" "Wget/1.21.4"
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36 nuclei"
+  "Fuzz Faster U Fool v2.1.0 ffuf" "WPScan v3.8.25 (https://wpscan.com/wordpress-security-scanner)" "libwww-perl/6.72"
+)
+for agent in "${scanner_agents[@]}"; do
+  if printf '%s\n' "$agent" | grep -qiE -- "$agent_rule"; then pass "scanner agent stays visible: ${agent:0:40}"; else fail "scanner agent not excluded: $agent"; fi
+done
+browser_agents=(
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1"
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0"
+  "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0"
+)
+for agent in "${browser_agents[@]}"; do
+  if printf '%s\n' "$agent" | grep -qiE -- "$agent_rule"; then fail "browser agent excluded: $agent"; else pass "browser agent may be whitelisted: ${agent:0:40}"; fi
+done
 for rule in "${regexes[@]}"; do
   status=0
   printf '' | grep -E -- "$rule" >/dev/null 2>&1 || status=$?

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiRequestError } from './api'
-import { centerInput, centerNotificationCard, centerQueryString, emptyCenterFilters, notificationCategory, notificationCenterHref, startNotificationCenterSink } from './notification-center'
+import { centerInput, centerNotificationCard, centerQueryString, emptyCenterFilters, internalNotificationHref, notificationCategory, notificationCenterHref, startNotificationCenterSink } from './notification-center'
 import { appendNotification, clearNotificationHistory, markAllNotificationsRead, markNotificationRead, readNotificationHistory, syncAttentionNotices, type AttentionNotice } from './notifications'
 import { jobsMainTab } from '../features/operations/jobs-url-state'
 
@@ -54,12 +54,12 @@ describe('the notification center sink', () => {
     expect(readNotificationHistory()[0].read).toBe(true)
   })
 
-  it('keeps a background notice once for the whole tenant, under one key per revision', async () => {
+  it('leaves background notices to the server: the bell shows them, the browser never writes an attention key', async () => {
     stop = startNotificationCenterSink(send)
     syncAttentionNotices([failing])
     await vi.advanceTimersByTimeAsync(1000)
-    const item = sent[0].body.items?.[0]
-    expect(item).toMatchObject({ clientKey: 'attention:cursor:c1:RETURNS:100', category: 'ATTENTION', severity: 'ERROR', shared: true })
+    expect(readNotificationHistory()[0].id).toBe('attention:cursor:c1:RETURNS:100')
+    expect(sent.flatMap(request => request.body.items ?? []).filter(item => String(item.clientKey).startsWith('attention:'))).toEqual([])
   })
 
   it('moves the bell history once per person and browser', async () => {
@@ -118,5 +118,14 @@ describe('notification center helpers', () => {
 
   it('leads the bell to İşlem Takibi › Bildirimler', () => {
     expect(jobsMainTab(new URLSearchParams(notificationCenterHref.split('?')[1]))).toBe('notifications')
+  })
+})
+
+describe('internalNotificationHref', () => {
+  it('follows only a path inside the panel', () => {
+    expect(internalNotificationHref('/orders/o1')).toBe('/orders/o1')
+    expect(internalNotificationHref('/settings?tab=offsite')).toBe('/settings?tab=offsite')
+    for (const href of ['https://evil.example/x', '//evil.example', '/\\evil.example', 'javascript:alert(1)', 'orders/1', '/a\nb', '', null, undefined])
+      expect(internalNotificationHref(href)).toBeNull()
   })
 })

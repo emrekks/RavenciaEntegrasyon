@@ -10,7 +10,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Api.Settings;
 
-// Sistem Ayarları › Google Drive Yedeği (owner and administrator only, reads included; RoleAuthorizationMiddleware):
+// Sistem Ayarları › Google Drive Yedeği (RoleAuthorizationMiddleware: reads, test and run for the owner and administrators;
+// every change of where the copy goes, for the owner alone; a changed age key or Google account alerts the owner):
 //   GET  /api/v1/settings/offsite-backup                    settings and copy status; never the client secret or a token
 //   PUT  /api/v1/settings/offsite-backup                    save (If-Match + password, and the authenticator code when on)
 //   POST /api/v1/settings/offsite-backup/google/authorize   "Google ile Bağlan" (password): Google's consent address
@@ -49,17 +50,19 @@ public static class OffsiteBackupEndpoints
     }
 
     private static async Task<IResult> SaveAsync(SaveRequest request, HttpContext http, OffsiteBackupSettingsService service, IConfiguration configuration,
-        UserManager<ApplicationUser> users, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time)
+        UserManager<ApplicationUser> users, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time, OffsiteBackupChangeAlert alert)
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
         if (IfMatchVersion(http, out var expected) is { } invalidEtag) return invalidEtag;
-        if (expected is null && (await service.GetAsync(tenant.TenantId, http.RequestAborted)).Version > 0) return SettingsEndpoints.PreconditionRequired(http);
+        var before = await service.GetAsync(tenant.TenantId, http.RequestAborted);
+        if (expected is null && before.Version > 0) return SettingsEndpoints.PreconditionRequired(http);
         if (await Reauth(request.Password, request.Code, request.RecoveryCode, http, users, db, protection, totp, hasher, time) is { } refusal) return refusal;
         try
         {
             var result = await service.SaveAsync(tenant.TenantId, tenant.UserId, http.TraceIdentifier,
                 new OffsiteBackupSaveInput(request.Enabled, request.AgeRecipient, request.FolderMode, request.FolderValue, request.KeepDays, request.KeepMonths, request.ClientId, request.ClientSecret),
                 expected, http.RequestAborted);
+            if (result.View is { } saved && OffsiteBackupChangeAlert.Describe(before, saved, Actor(http)) is { } change) await alert.SendAsync(tenant.TenantId, change, CancellationToken.None);
             return result.View is { } view ? Versioned(http, view, configuration) : Problem(http, result.Error!);
         }
         catch (DbUpdateException exception) when (exception is DbUpdateConcurrencyException || SettingsEndpoints.IsUniqueViolation(exception))
@@ -77,12 +80,17 @@ public static class OffsiteBackupEndpoints
         return error is not null ? Problem(http, error) : Results.Ok(new { url });
     }
 
-    private static async Task<IResult> CompleteAsync(CompleteRequest request, HttpContext http, OffsiteBackupSettingsService service, IConfiguration configuration)
+    private static async Task<IResult> CompleteAsync(CompleteRequest request, HttpContext http, OffsiteBackupSettingsService service, IConfiguration configuration, OffsiteBackupChangeAlert alert)
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        var before = await service.GetAsync(tenant.TenantId, http.RequestAborted);
         var result = await service.CompleteAuthorizationAsync(tenant.TenantId, tenant.UserId, request.Code, request.State, request.Error, http.TraceIdentifier, http.RequestAborted);
+        if (result.View is { } connected && OffsiteBackupChangeAlert.Describe(before, connected, Actor(http)) is { } change) await alert.SendAsync(tenant.TenantId, change, CancellationToken.None);
         return result.View is { } view ? Versioned(http, view, configuration) : Problem(http, result.Error!);
     }
+
+    // Who made the change, for the owner's alert: the signed-in account's name (its e-mail).
+    private static string Actor(HttpContext http) => http.User.Identity?.Name is { Length: > 0 } name ? name : "bilinmeyen kullanıcı";
 
     private static async Task<IResult> DisconnectAsync(UserManagementEndpoints.ReauthRequest request, HttpContext http, OffsiteBackupSettingsService service, IConfiguration configuration,
         UserManager<ApplicationUser> users, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time)

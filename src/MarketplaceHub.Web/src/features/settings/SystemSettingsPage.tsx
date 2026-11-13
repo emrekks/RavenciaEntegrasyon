@@ -27,6 +27,7 @@ import { useTabSlideInPlace } from '../../shared/tab-slide'
 import { copyText } from '../../shared/copy-text'
 import { formatBackupSize, googleCloudSteps, offsiteBackupDefaultFolder, offsiteBackupDirty, offsiteBackupDraft, offsiteBackupDraftError, offsiteBackupSaveBody, offsiteBackupState, offsiteCopyPending, offsiteSetupDone, offsiteSetupPlan, shortAgeKey, firstRunStartedAt, markFirstRun, clearFirstRun, type OffsiteBackupDraft, type OffsiteBackupView } from './offsite-backup'
 import { backupKeyFileName, decryptBackup, decryptedFileName, downloadText, generateBackupKeyPair, identityFromKeyFile, saveStream, type BackupKeyPair } from './offsite-backup-crypto'
+import { ReauthInputs, reauthReady } from '../../shared/reauth'
 import { assignableRoles, availableUserActions, isEmailAddress, reauthBody, userLockReason, userRoleHints, userRoleLabel, userRoleLabels, type ManagedUser, type ManagedUserList, type UserAction, type UserRole } from './user-management'
 
 type SecurityStatus = { totpState: string; recoveryCodesRemaining: number }
@@ -182,7 +183,7 @@ const resetGroupIcons: Record<string, SettingsIconName> = { 'Satış ve Faturala
 // a whole-row tile (checkbox beside the title, count as a tag); the notes sit in one callout and the sticky bar shows
 // what goes as chips, the total, the typed confirmation and the reset button.
 type ResetMarketplace = { id: string; platformCode: string; displayName: string; passive: boolean; count: number | undefined }
-function SettingsDataReset({ forbidden, groups, counts, countsFailed, picked, onToggle, marketplaces, marketplacePicked, onToggleMarketplaces, progress, confirmation, onConfirmation, busy, onConfirm }: { forbidden: boolean; groups: DataResetGroup[]; counts?: Record<string, number>; countsFailed: boolean; picked: string[]; onToggle: (scopes: string[], checked: boolean) => void; marketplaces: ResetMarketplace[]; marketplacePicked: string[]; onToggleMarketplaces: (ids: string[], checked: boolean) => void; progress: Record<string, BulkResetProgress>; confirmation: string; onConfirmation: (value: string) => void; busy: boolean; onConfirm: () => void }) {
+function SettingsDataReset({ forbidden, groups, counts, countsFailed, picked, onToggle, marketplaces, marketplacePicked, onToggleMarketplaces, progress, confirmation, onConfirmation, password, onPassword, factor, onFactor, mfa, busy, onConfirm }: { forbidden: boolean; groups: DataResetGroup[]; counts?: Record<string, number>; countsFailed: boolean; picked: string[]; onToggle: (scopes: string[], checked: boolean) => void; marketplaces: ResetMarketplace[]; marketplacePicked: string[]; onToggleMarketplaces: (ids: string[], checked: boolean) => void; progress: Record<string, BulkResetProgress>; confirmation: string; onConfirmation: (value: string) => void; password: string; onPassword: (value: string) => void; factor: string; onFactor: (value: string) => void; mfa: boolean; busy: boolean; onConfirm: () => void }) {
   const options = groups.flatMap(group => group.options)
   const going = options.filter(option => picked.includes(option.scope))
   const goingMarketplaces = marketplaces.filter(entry => marketplacePicked.includes(entry.id))
@@ -194,6 +195,7 @@ function SettingsDataReset({ forbidden, groups, counts, countsFailed, picked, on
   const fullReset = options.length > 0 && going.length === options.length
   const resetConfirmWord = dataResetConfirmWord(options.length, going.length)
   const confirmed = panelResetConfirmed(confirmation, resetConfirmWord)
+  const authenticated = reauthReady(password, factor, mfa)
   const countText = (scope: string, unit: string) => {
     const value = counts?.[scope]
     if (value !== undefined) return `${resetNumber(value)} ${unit}`
@@ -263,7 +265,8 @@ function SettingsDataReset({ forbidden, groups, counts, countsFailed, picked, on
       <div className="ss-bar-actions">
         <label className="ss-dr-ask" htmlFor="settings-reset-confirm">Onaylamak için <b>{resetConfirmWord}</b> yazın{confirmed && <UiIcon name="check" size={14} />}</label>
         <input id="settings-reset-confirm" className={`ss-in ss-dr-in${confirmed ? ' is-match' : ''}`} value={confirmation} onChange={event => onConfirmation(event.target.value)} disabled={busy} autoComplete="off" placeholder={`${resetConfirmWord} yazın`} aria-label={`Onaylamak için ${resetConfirmWord} yazın`} title={`Onaylamak için ${resetConfirmWord} yazın`} />
-        <button type="button" className="ss-btn is-danger ss-dr-go" disabled={!goingCount || !confirmed || busy} onClick={onConfirm}><SettingsIcon name="trash" />{busy ? 'Sıfırlanıyor…' : goingMarketplaces.length ? `${goingCount} Kalemi Sıfırla` : going.length ? `${going.length} Veri Türünü Sıfırla` : 'Seçilen Verileri Sıfırla'}</button>
+        <ReauthInputs bare idPrefix="settings-reset" password={password} onPassword={onPassword} factor={factor} onFactor={onFactor} mfa={mfa} disabled={busy} inputClassName="ss-in ss-dr-in ss-dr-auth" />
+        <button type="button" className="ss-btn is-danger ss-dr-go" disabled={!goingCount || !confirmed || !authenticated || busy} onClick={onConfirm}><SettingsIcon name="trash" />{busy ? 'Sıfırlanıyor…' : goingMarketplaces.length ? `${goingCount} Kalemi Sıfırla` : going.length ? `${going.length} Veri Türünü Sıfırla` : 'Seçilen Verileri Sıfırla'}</button>
       </div>
     </StickyActionBar>
   </>
@@ -318,6 +321,9 @@ export function SystemSettingsPage() {
   const [appearanceStatus, setAppearanceStatus] = useState({ dirty: false, themeCount: 0 })
   const [resetScopes, setResetScopes] = useState<string[]>([])
   const [resetConfirmation, setResetConfirmation] = useState('')
+  // Resets take the password again (and the authenticator code when it is on); one check covers the run's resets.
+  const [resetPassword, setResetPassword] = useState('')
+  const [resetFactor, setResetFactor] = useState('')
   const [resetBusy, setResetBusy] = useState(false)
   const [marketplacePicked, setMarketplacePicked] = useState<string[]>([])
   const [marketplaceProgress, setMarketplaceProgress] = useState<Record<string, BulkResetProgress>>({})
@@ -374,7 +380,7 @@ export function SystemSettingsPage() {
       const chosen = (resetConnections.data ?? []).filter(item => marketplacePicked.includes(item.id))
       if (chosen.length) {
         const ok = await runMarketplaceResets(chosen, {
-          request: item => hubApi<ConnectionFullResetView>(`/connections/${item.id}/full-reset`, { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ confirmation: item.displayName }) }),
+          request: item => hubApi<ConnectionFullResetView>(`/connections/${item.id}/full-reset`, { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ confirmation: item.displayName, ...reauthBody(resetPassword, resetFactor) }) }),
           poll: item => hubPoll<ConnectionFullResetView>(`/connections/${item.id}/full-reset`),
           sleep: ms => new Promise(resolve => window.setTimeout(resolve, ms)),
           onProgress: (id, state) => setMarketplaceProgress(current => ({ ...current, [id]: state })),
@@ -386,11 +392,11 @@ export function SystemSettingsPage() {
       }
       if (resetScopes.length) {
         // One job for every chosen category (the same one Paneli Tamamen Sıfırla runs); its steps show below.
-        const next = await hubApi<PanelFactoryResetView>('/settings/factory-reset', { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ categories: resetScopes, confirmation: resetConfirmation.trim() }) })
+        const next = await hubApi<PanelFactoryResetView>('/settings/factory-reset', { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ categories: resetScopes, confirmation: resetConfirmation.trim(), ...reauthBody(resetPassword, resetFactor) }) })
         client.setQueryData(['panel-factory-reset'], next)
         succeed('Seçilen veriler silinmeye başladı; adımlar sayfanın altındaki Sıfırlama İlerlemesi bölümünde.')
       }
-      setResetScopes([]); setResetConfirmation('')
+      setResetScopes([]); setResetConfirmation(''); setResetPassword(''); setResetFactor('')
       await client.invalidateQueries()
     } catch (reason) { fail(reason instanceof Error ? reason.message : 'Seçili veriler sıfırlanamadı.') } finally { setResetBusy(false) }
   }
@@ -542,7 +548,7 @@ export function SystemSettingsPage() {
         {section === 'alerts' && <AlertEmailSettingsSection />}
         {section === 'offsite' && <OffsiteBackupSection mfa={totpEnabled} />}
         {section === 'ai' && <AiSettingsSection />}
-        {section === 'database' && <SettingsDataReset forbidden={resetForbidden} groups={resetGroups} counts={resetView.data ? Object.fromEntries(resetView.data.groups.map(entry => [entry.key, entry.count])) : undefined} countsFailed={resetView.isError} picked={resetScopes} onToggle={toggleResetScopes} marketplaces={resetMarketplaces} marketplacePicked={marketplacePicked} onToggleMarketplaces={toggleMarketplaces} progress={marketplaceProgress} confirmation={resetConfirmation} onConfirmation={setResetConfirmation} busy={resetBusy} onConfirm={() => void resetOperationalData()} />}
+        {section === 'database' && <SettingsDataReset forbidden={resetForbidden} groups={resetGroups} counts={resetView.data ? Object.fromEntries(resetView.data.groups.map(entry => [entry.key, entry.count])) : undefined} countsFailed={resetView.isError} picked={resetScopes} onToggle={toggleResetScopes} marketplaces={resetMarketplaces} marketplacePicked={marketplacePicked} onToggleMarketplaces={toggleMarketplaces} progress={marketplaceProgress} confirmation={resetConfirmation} onConfirmation={setResetConfirmation} password={resetPassword} onPassword={setResetPassword} factor={resetFactor} onFactor={setResetFactor} mfa={totpEnabled} busy={resetBusy} onConfirm={() => void resetOperationalData()} />}
         <ShippingLabelSettingsPanel section={isShipping ? section as ShippingSection : null} settings={labelSettings} saved={savedLabelSettings} dirty={shippingDirty} saving={labelSaving} loadFailed={shippingSettings.isError} loading={shippingSettings.isPending} format={labelFormat} setFormat={setLabelFormat} onChange={shippingSettings.setSettings} onSave={() => void saveLabelSettings()} />
         <AppearanceSettingsSection section={isAppearance ? section as AppearanceSection : null} onStatus={setAppearanceStatus} />
       </div>

@@ -106,6 +106,8 @@ public sealed class OffsiteBackupSettingsService(AppDbContext db, IDataProtectio
         [JsonPropertyName("lastSuccessAt")] public DateTimeOffset? LastSuccessAt { get; set; }
         [JsonPropertyName("lastSet")] public string? LastSet { get; set; }
         [JsonPropertyName("lastSize")] public long? LastSize { get; set; }
+        // The Drive MD5 of the last copy sent (its encrypted bytes): a copy of the same name counts as present only with it.
+        [JsonPropertyName("lastMd5")] public string? LastMd5 { get; set; }
         [JsonPropertyName("lastError")] public string? LastError { get; set; }
         [JsonPropertyName("lastErrorAt")] public DateTimeOffset? LastErrorAt { get; set; }
         [JsonPropertyName("consecutiveFailures")] public int ConsecutiveFailures { get; set; }

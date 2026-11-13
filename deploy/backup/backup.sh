@@ -166,6 +166,12 @@ guard_disk_space() {
   fi
 }
 
+# The marker the off-site copy looks for (BackupSetDirectory.VerifiedMarker): written only after verify_backup passed,
+# with the set's own check-sum line in it.
+mark_verified() {
+  sha256sum "$1/SHA256SUMS" > "$1/.verified"
+}
+
 # The worker's off-site copy (Sistem Ayarları › Google Drive Yedeği) reads the set as the app's group
 # (BACKUP_READER_GID, uid/gid 1654 in the app image) through a read-only mount: the volume root and the new set
 # become that group's, read-only for it. The worker already holds the database credentials and the private volumes,
@@ -174,7 +180,8 @@ share_with_reader() {
   reader_gid="${BACKUP_READER_GID:-}"
   test -n "$reader_gid" || return 0
   case "$reader_gid" in *[!0-9]*) echo "BACKUP_READER_GID must be numeric; set not shared."; return 0 ;; esac
-  if chgrp "$reader_gid" "$backup_root" "$1" "$1"/* && chmod 0750 "$backup_root" "$1" && chmod 0640 "$1"/*; then
+  # "$1"/* leaves the dot-named marker out; it is named on its own.
+  if chgrp "$reader_gid" "$backup_root" "$1" "$1"/* "$1/.verified" && chmod 0750 "$backup_root" "$1" && chmod 0640 "$1"/* "$1/.verified"; then
     echo "Backup set $1 readable by group $reader_gid (off-site copy)."
   else
     echo "Could not hand backup set $1 to group $reader_gid; the off-site copy will skip it."
@@ -220,9 +227,12 @@ while ! mkdir "$target" 2>/dev/null; do
 done
 pg_dump --format=custom --file="$target/database.dump"
 tar -C /source -czf "$target/private-volumes.tar.gz" files dp-keys
-sha256sum "$target/database.dump" "$target/private-volumes.tar.gz" > "$target/SHA256SUMS"
 printf '{"createdAt":"%s","postgresMajor":18,"filesIncluded":true,"dataProtectionKeysIncluded":true}\n' "$stamp" > "$target/manifest.json"
+# The manifest is covered by the checksums too, so nothing in the set travels unchecked.
+sha256sum "$target/database.dump" "$target/private-volumes.tar.gz" "$target/manifest.json" > "$target/SHA256SUMS"
 verify_backup "$target"
+# Only a set whose own check passed carries the marker; the off-site copy (BackupSetDirectory) sends no other set.
+mark_verified "$target"
 share_with_reader "$target"
 prune_expired_backups
 echo "Backup set created at $target; verified successfully."

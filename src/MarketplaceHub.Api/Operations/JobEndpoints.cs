@@ -25,10 +25,22 @@ public static class JobEndpoints
                     http.RequestAborted))
                 : Unauthorized(http));
         // The notification center's background notices: reads failing run after run, approvals that ran out of time.
-        api.MapGet("/attention", async (HttpContext http, IAttentionNoticeService service) =>
-            Tenant(http) is { } tenant
-                ? Results.Ok(await service.ListAsync(tenant.TenantId, http.RequestAborted))
-                : Unauthorized(http));
+        // Each listed notice is also kept in the notification center for the whole tenant (the server records them; a
+        // browser may not), once per notice and revision.
+        api.MapGet("/attention", async (HttpContext http, IAttentionNoticeService service, IPanelNotificationService notifications, ILoggerFactory loggers) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            var notices = await service.ListAsync(tenant.TenantId, http.RequestAborted);
+            if (notices.Count > 0)
+            {
+                try { await notifications.SaveAsync(tenant.TenantId, tenant.UserId, [.. notices.Select(AttentionNoticePolicy.CenterInput)], http.RequestAborted); }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    loggers.CreateLogger("MarketplaceHub.Api.AttentionNotices").LogWarning(exception, "Attention notices could not be recorded in the notification center");
+                }
+            }
+            return Results.Ok(notices);
+        });
         api.MapGet("/counts", async (HttpContext http, IJobOperationsService service, DateTimeOffset? since, string? platform, string? platforms) =>
             Tenant(http) is { } tenant
                 ? Results.Ok(await service.CountAsync(tenant.TenantId, since, Platforms(platform, platforms), http.RequestAborted))

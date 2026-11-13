@@ -98,4 +98,17 @@ assert_eq "$(date -u -d '2026-10-21 11:00:00 UTC' +%s)" "$(epoch_of 20261021T110
 assert_eq "" "$(epoch_of 2026102XT110000Z)" "rejects a name with other characters"
 assert_eq "" "$(epoch_of latest)" "rejects a name of another shape"
 
+# --- the off-site copy's marker -------------------------------------------
+marked="$work/20261021T120000Z"
+mkdir -p -- "$marked"
+printf 'dump' > "$marked/database.dump"; printf 'files' > "$marked/private-volumes.tar.gz"; printf '{}' > "$marked/manifest.json"
+(cd "$marked" && sha256sum database.dump private-volumes.tar.gz manifest.json > SHA256SUMS)
+(
+  # shellcheck source=deploy/backup/backup.sh
+  source "$repository_root/deploy/backup/backup.sh"
+  mark_verified "$marked"
+)
+assert_eq "$(sha256sum "$marked/SHA256SUMS" | cut -d' ' -f1)" "$(cut -d' ' -f1 "$marked/.verified")" "the marker holds the checksum of the set's SHA256SUMS"
+assert_contains "$(cat "$marked/SHA256SUMS")" "manifest.json" "the manifest is covered by the checksums"
+
 finish "backup retention"

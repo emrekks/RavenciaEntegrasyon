@@ -93,13 +93,15 @@ public sealed class OffsiteBackupRulesTests
         root.WriteSet("20261112T085900Z");
         root.WriteSet("20261113T085900Z");
         root.WriteSet("20261113T205900Z", corrupt: true);
+        root.WriteSet("20261113T235900Z", verified: false); // checksums match, but backup.sh's own check did not pass
         Directory.CreateDirectory(Path.Combine(root.Path, "20261114T085900Z")); // being written: no SHA256SUMS yet
         var (set, notes) = await new BackupSetDirectory(root.Path).OpenNewestVerifiedAsync(CancellationToken.None);
         Assert.NotNull(set);
         await using (set)
         {
             Assert.Equal("20261113T085900Z", set.Name);
-            Assert.Equal(2, notes.Count);
+            Assert.Equal(3, notes.Count);
+            Assert.Contains(notes, note => note.StartsWith("20261113T235900Z", StringComparison.Ordinal) && note.Contains(BackupSetDirectory.VerifiedMarker, StringComparison.Ordinal));
             Assert.Contains(notes, note => note.StartsWith("20261113T205900Z", StringComparison.Ordinal) && note.Contains("sağlama", StringComparison.Ordinal));
             using var tar = new MemoryStream();
             await set.WriteTarAsync(tar, CancellationToken.None);
@@ -129,7 +131,31 @@ public sealed class OffsiteBackupRulesTests
                 : [$"bytes 0-{size - 1}/*", $"bytes */{size}"];
             Assert.Equal(expected, handler.Ranges);
             Assert.All(handler.Authorizations, value => Assert.Equal("Bearer access", value));
+            Assert.Equal(Convert.ToHexStringLower(MD5.HashData(payload)), file.Md5);
         }
+    }
+
+    [Fact]
+    public void PresentCopy_OnlyTheCopyRecordedAsSentLast_SameSizeAndMd5_CountsAsPresent()
+    {
+        const string name = "20261113T085900Z.tar.age";
+        var state = new OffsiteBackupSettingsService.State { LastSet = "20261113T085900Z", LastSize = 10, LastMd5 = "abc" };
+        Assert.Equal("ok", OffsiteBackupCopier.PresentCopy([new("bad", name, 10, "zzz"), new("ok", name, 10, "ABC")], name, state)?.Id);
+        Assert.Null(OffsiteBackupCopier.PresentCopy([new("short", name, 9, "abc")], name, state));
+        Assert.Null(OffsiteBackupCopier.PresentCopy([new("other", name, 10, "abc")], "20261113T205900Z.tar.age", state));
+        // A state written before the MD5 was kept: the copy is sent again rather than trusted.
+        Assert.Null(OffsiteBackupCopier.PresentCopy([new("old", name, 10, "abc")], name, new OffsiteBackupSettingsService.State { LastSet = "20261113T085900Z", LastSize = 10 }));
+    }
+
+    [Fact]
+    public async Task ResumableUpload_ACopyWhoseMd5DiffersFromTheSentStreamIsDeletedAndFails()
+    {
+        var handler = new RecordingDriveHandler { Corrupt = true };
+        var api = new GoogleDriveApi(new SingleClientFactory(new HttpClient(handler)));
+        var payload = RandomNumberGenerator.GetBytes(1024);
+        var failure = await Assert.ThrowsAsync<GoogleDriveException>(() => api.UploadAsync("access", "folder-1", "20261113T085900Z.tar.age", (stream, token) => stream.WriteAsync(payload, token).AsTask(), CancellationToken.None));
+        Assert.Equal("DRIVE_UPLOAD_CHECKSUM_MISMATCH", failure.Code);
+        Assert.Equal(["file-1"], handler.DeletedIds);
     }
 
     [Fact]
@@ -152,6 +178,9 @@ public sealed class OffsiteBackupRulesTests
         public MemoryStream Received { get; } = new();
         public List<string> Ranges { get; } = [];
         public List<string> Authorizations { get; } = [];
+        public List<string> DeletedIds { get; } = [];
+        // Drive reports an MD5 of other bytes than were sent.
+        public bool Corrupt { get; init; }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -162,6 +191,11 @@ public sealed class OffsiteBackupRulesTests
                 start.Headers.Location = new Uri("https://upload.example.invalid/session/1");
                 return start;
             }
+            if (request.Method == HttpMethod.Delete)
+            {
+                DeletedIds.Add(request.RequestUri!.Segments[^1]);
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
             var range = request.Content!.Headers.GetValues("Content-Range").Single();
             Ranges.Add(range);
             await request.Content.CopyToAsync(Received, cancellationToken);
@@ -171,7 +205,8 @@ public sealed class OffsiteBackupRulesTests
                 partial.Headers.TryAddWithoutValidation("Range", $"bytes=0-{Received.Length - 1}");
                 return partial;
             }
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { id = "file-1", name = "20261113T085900Z.tar.age", size = Received.Length.ToString(System.Globalization.CultureInfo.InvariantCulture) }) };
+            var stored = Corrupt ? [.. Received.ToArray(), (byte)1] : Received.ToArray();
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { id = "file-1", name = "20261113T085900Z.tar.age", size = Received.Length.ToString(System.Globalization.CultureInfo.InvariantCulture), md5Checksum = Convert.ToHexStringLower(MD5.HashData(stored)) }) };
         }
     }
 }
@@ -183,7 +218,7 @@ internal sealed class TempBackupRoot : IDisposable
 
     public TempBackupRoot() => Directory.CreateDirectory(Path);
 
-    public void WriteSet(string name, bool corrupt = false)
+    public void WriteSet(string name, bool corrupt = false, bool verified = true)
     {
         var directory = System.IO.Path.Combine(Path, name);
         Directory.CreateDirectory(directory);
@@ -191,7 +226,9 @@ internal sealed class TempBackupRoot : IDisposable
         File.WriteAllText(System.IO.Path.Combine(directory, "private-volumes.tar.gz"), $"files {name}");
         File.WriteAllText(System.IO.Path.Combine(directory, "manifest.json"), $"{{\"createdAt\":\"{name}\"}}");
         string Sum(string file) => Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(System.IO.Path.Combine(directory, file))));
-        File.WriteAllText(System.IO.Path.Combine(directory, "SHA256SUMS"), $"{Sum("database.dump")}  /backup/{name}/database.dump\n{Sum("private-volumes.tar.gz")}  /backup/{name}/private-volumes.tar.gz\n");
+        File.WriteAllText(System.IO.Path.Combine(directory, "SHA256SUMS"), $"{Sum("database.dump")}  /backup/{name}/database.dump\n{Sum("private-volumes.tar.gz")}  /backup/{name}/private-volumes.tar.gz\n{Sum("manifest.json")}  /backup/{name}/manifest.json\n");
+        // backup.sh writes the marker only after its own check passed.
+        if (verified) File.WriteAllText(System.IO.Path.Combine(directory, BackupSetDirectory.VerifiedMarker), Sum("SHA256SUMS"));
         if (corrupt) File.AppendAllText(System.IO.Path.Combine(directory, "database.dump"), "changed");
     }
 
@@ -217,6 +254,7 @@ internal sealed class FakeGoogleDrive : IGoogleDriveApi
     public Dictionary<string, byte[]> Uploaded { get; } = new(StringComparer.Ordinal);
     public string? Folder { get; set; }
     public bool AuthorizationInvalid { get; set; }
+    private int uploads;
 
     public Task<GoogleTokenGrant> ExchangeCodeAsync(GoogleOAuthClient client, string code, string codeVerifier, string redirectUri, CancellationToken cancellationToken)
     {
@@ -237,7 +275,7 @@ internal sealed class FakeGoogleDrive : IGoogleDriveApi
     {
         using var buffer = new MemoryStream();
         await writeContent(buffer, cancellationToken);
-        var file = new DriveObject("id-" + name, name, buffer.Length);
+        var file = new DriveObject("id-" + name + "-" + (++uploads), name, buffer.Length, Convert.ToHexStringLower(MD5.HashData(buffer.ToArray())));
         Files[name] = file;
         Uploaded[name] = buffer.ToArray();
         return file;
@@ -365,6 +403,8 @@ public sealed class OffsiteBackupPostgreSqlTests(PostgreSqlTenantIsolationFixtur
         google.Files["20261001T085900Z.tar.age"] = new("old-1", "20261001T085900Z.tar.age", 10);
         google.Files["20261002T085900Z.tar.age"] = new("old-2", "20261002T085900Z.tar.age", 10);
         google.Files["notes.txt"] = new("note", "notes.txt", 10);
+        // A same-named copy nobody recorded (a broken earlier upload): not trusted, sent again, then removed.
+        google.Files["20261113T085900Z.tar.age"] = new("broken", "20261113T085900Z.tar.age", 5, "deadbeef");
         var encryptor = new MarkingEncryptor();
         var sender = new RecordingAlertSender();
         var copier = new OffsiteBackupCopier(service, google, encryptor, new BackupSetDirectory(root.Path), new PanelNotificationService(db, clock), alerts, sender, clock, NullLogger<OffsiteBackupCopier>.Instance);
@@ -372,7 +412,7 @@ public sealed class OffsiteBackupPostgreSqlTests(PostgreSqlTenantIsolationFixtur
         Assert.Equal(OffsiteBackupRunResult.Uploaded, await copier.RunAsync(await ContextAsync(service, tenantId), CancellationToken.None));
         Assert.Equal([OffsiteBackupRulesTests.Recipient], encryptor.Recipients);
         Assert.StartsWith("age-encryption.org/v1", Encoding.ASCII.GetString(google.Uploaded["20261113T085900Z.tar.age"]), StringComparison.Ordinal);
-        Assert.Equal(["old-2"], google.Deleted);
+        Assert.Equal(["broken", "old-2"], google.Deleted);
         Assert.True(google.Files.ContainsKey("notes.txt"));
         var view = await service.GetAsync(tenantId, CancellationToken.None);
         Assert.Equal(("20261113T085900Z", 2, 0), (view.LastSet, view.RemoteCopies, view.ConsecutiveFailures));
@@ -438,12 +478,15 @@ public sealed class OffsiteBackupPostgreSqlTests(PostgreSqlTenantIsolationFixtur
 public sealed class OffsiteBackupEndToEndTests(ApiEndToEndFixture fixture) : IClassFixture<ApiEndToEndFixture>
 {
     [PostgreSqlFact]
-    public async Task Settings_AreForOwnersAndAdministrators_TakeThePassword_AndNeverReturnTheSecret()
+    public async Task Settings_AreReadByOwnersAndAdministrators_ChangedByTheOwnerAlone_TakeThePassword_AndNeverReturnTheSecret()
     {
-        var (admin, csrf, adminSignIn) = await fixture.SignInAsync(MembershipRole.Administrator);
+        var (admin, csrf, adminSignIn) = await fixture.SignInAsync(MembershipRole.Owner);
+        var (administrator, administratorCsrf, administratorSignIn) = await fixture.SignInAsync(MembershipRole.Administrator);
         var (operations, _, operationsSignIn) = await fixture.SignInAsync(MembershipRole.Operations);
         using (admin)
         using (adminSignIn)
+        using (administrator)
+        using (administratorSignIn)
         using (operations)
         using (operationsSignIn)
         {
@@ -451,6 +494,14 @@ public sealed class OffsiteBackupEndToEndTests(ApiEndToEndFixture fixture) : ICl
             Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
 
             var body = new { enabled = false, ageRecipient = OffsiteBackupRulesTests.Recipient, folderMode = "NAME", folderValue = "", keepDays = 14, keepMonths = 12, clientId = "123456789-abcdefghijklmnop.apps.googleusercontent.com", clientSecret = "GOCSPX-e2e-secret-000001" };
+            // An administrator reads the copy's state but cannot change where it goes, even with the right password.
+            using (var adminRead = await administrator.GetAsync("/api/v1/settings/offsite-backup"))
+                Assert.Equal(HttpStatusCode.OK, adminRead.StatusCode);
+            using (var adminSave = await administrator.SendAsync(ApiTestHost.Json(HttpMethod.Put, "/api/v1/settings/offsite-backup", administratorCsrf, new { body.enabled, body.ageRecipient, body.folderMode, body.folderValue, body.keepDays, body.keepMonths, body.clientId, body.clientSecret, password = ApiEndToEndFixture.Password })))
+                Assert.Equal(HttpStatusCode.Forbidden, adminSave.StatusCode);
+            using (var adminConnect = await administrator.SendAsync(ApiTestHost.Json(HttpMethod.Post, "/api/v1/settings/offsite-backup/google/authorize", administratorCsrf, new { password = ApiEndToEndFixture.Password })))
+                Assert.Equal(HttpStatusCode.Forbidden, adminConnect.StatusCode);
+
             using var withoutPassword = await admin.SendAsync(ApiTestHost.Json(HttpMethod.Put, "/api/v1/settings/offsite-backup", csrf, body));
             Assert.False(withoutPassword.IsSuccessStatusCode);
 
@@ -477,6 +528,8 @@ public sealed class OffsiteBackupEndToEndTests(ApiEndToEndFixture fixture) : ICl
             await using var scope = fixture.Host!.Services.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             Assert.DoesNotContain(await db.TenantSettings.AsNoTracking().Where(x => x.TenantId == fixture.TenantId).Select(x => x.ValueJson).ToListAsync(), json => json.Contains("GOCSPX-e2e-secret-000001", StringComparison.Ordinal));
+            // The new age key reached the owner as a shared notice.
+            Assert.True(await db.PanelNotifications.AnyAsync(x => x.TenantId == fixture.TenantId && x.UserId == null && x.ClientKey.StartsWith("offsite-backup:destination:") && x.Message.Contains("age açık anahtarı")));
         }
     }
 }

@@ -74,26 +74,37 @@ public sealed class ApiSecurityEndToEndTests(ApiEndToEndFixture fixture) : IClas
     }
 
     [PostgreSqlFact]
-    public async Task DataReset_NeedsNoReauthentication_ASignedInAdministratorReachesTheEndpoint()
+    public async Task Resets_TakeThePasswordAgain_OnePassedCheckCoversTheSessionsNextResetsForAFewMinutes()
     {
         var (client, csrf, signIn) = await fixture.SignInAsync(MembershipRole.Administrator);
         using (client)
         using (signIn)
         {
             Assert.Equal(HttpStatusCode.OK, signIn.StatusCode);
-            // The step-up re-authentication is gone (21 Oct 2026): a session whose last password entry is long past
-            // (the old column emptied) is enough. The re-authentication endpoint no longer exists.
-            await using (var scope = fixture.Host!.Services.CreateAsyncScope())
+            var connection = Guid.NewGuid();
+            // No password: refused before anything is counted or queued, on every reset that empties data.
+            using (var reset = await client.SendAsync(Keyed(HttpMethod.Post, "/api/v1/settings/factory-reset", csrf, Guid.NewGuid().ToString(), new { confirmation = "PANELİ SIFIRLA" })))
             {
-                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-                var userId = await db.Users.Where(user => user.Email == fixture.Email(MembershipRole.Administrator)).Select(user => user.Id).SingleAsync();
-                await db.UserSessions.Where(session => session.UserId == userId && session.State == SessionState.Active)
-                    .ExecuteUpdateAsync(update => update.SetProperty(session => session.ReauthenticatedAt, (DateTimeOffset?)null));
+                Assert.Equal(HttpStatusCode.BadRequest, reset.StatusCode);
+                Assert.Equal("REAUTHENTICATION_REQUIRED", (await ApiTestHost.ProblemAsync(reset)).GetProperty("code").GetString());
             }
-            // A missing confirmation word: the endpoint itself refuses it (422) and nothing is queued.
-            var body = new { confirmation = "" };
-            using (var reset = await client.SendAsync(Keyed(HttpMethod.Post, "/api/v1/settings/factory-reset", csrf, Guid.NewGuid().ToString(), body)))
+            foreach (var path in new[] { $"/api/v1/connections/{connection}/full-reset", $"/api/v1/connections/{connection}/deep-delete" })
+            {
+                var request = Keyed(HttpMethod.Post, path, csrf, Guid.NewGuid().ToString(), new { confirmation = "x" });
+                request.Headers.TryAddWithoutValidation("If-Match", "\"v1\"");
+                using var refused = await client.SendAsync(request);
+                Assert.Equal("REAUTHENTICATION_REQUIRED", (await ApiTestHost.ProblemAsync(refused)).GetProperty("code").GetString());
+            }
+            // A wrong password is refused.
+            using (var wrong = await client.SendAsync(Keyed(HttpMethod.Post, "/api/v1/settings/factory-reset", csrf, Guid.NewGuid().ToString(), new { confirmation = "", password = "Wrong-Password#2026" })))
+                Assert.Equal(HttpStatusCode.Unauthorized, wrong.StatusCode);
+            // The right password passes the check; the missing confirmation word is then the endpoint's own refusal (422)
+            // and nothing is queued.
+            using (var reset = await client.SendAsync(Keyed(HttpMethod.Post, "/api/v1/settings/factory-reset", csrf, Guid.NewGuid().ToString(), new { confirmation = "", password = ApiEndToEndFixture.Password })))
                 Assert.Equal(HttpStatusCode.UnprocessableEntity, reset.StatusCode);
+            // Within the next minutes the same session's resets (Ayarlar › Veri runs several in a row) need no password.
+            using (var again = await client.SendAsync(Keyed(HttpMethod.Post, "/api/v1/settings/factory-reset", csrf, Guid.NewGuid().ToString(), new { confirmation = "" })))
+                Assert.Equal(HttpStatusCode.UnprocessableEntity, again.StatusCode);
             using var removed = await client.SendAsync(ApiTestHost.Json(HttpMethod.Post, "/api/v1/auth/reauthenticate", csrf, new { password = ApiEndToEndFixture.Password }));
             Assert.Equal(HttpStatusCode.NotFound, removed.StatusCode);
         }
