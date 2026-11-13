@@ -90,7 +90,7 @@ import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, var
 import { useOperationFeedbackToasts, type OperationFeedback } from '../operation-feedback-toast'
 import { ModelCodeHolderNotice, useModelCodeHolder } from '../model-code-holder'
 import { focusOnMount } from '../../../shared/focus'
-import { channelOfferPostKey, channelPricingInputs, copiedChannelPricing, emptyChannelPricingDraft, rowsWithSavedOffer, type ChannelPricingDraft, type SavedChannelOffer } from './marketplace-channel-pricing'
+import { channelOfferPostKey, channelPricingInputs, copiedChannelPricing, emptyChannelPricingDraft, refreshedMatrixDrafts, rowsWithSavedOffer, type ChannelPricingDraft, type SavedChannelOffer } from './marketplace-channel-pricing'
 import { OptionValueChips, sortOptionValues } from './OptionValueChips'
 import { AcceptedJob, Brand, Category, ImageLightboxModal, MarketplaceConnection, Page, Product, ProductAttributeAssignment, Variant, VariantPlatformStatus, cleanOptionValue, compareLabelsAlphabetically, compareVariantOptionSignatures, formatCatalogOptionLabel, isColorOptionName, isProductPublicationConnection, isWebColorOptionName, normalizeVariantOptionName, preferredColorOption, productPublicationMode, variantColorKey, variantOptionEntries } from '../shared'
 import { insideSelector, useDismissable } from '../../../shared/hooks/useDismissable'
@@ -333,7 +333,18 @@ export function BulkVariantPlatformPricingModal({ row, rows, platforms: unordere
   const [dirtyMatrixDraftKeys, setDirtyMatrixDraftKeys] = useState<string[]>([])
   const [matrixBulkEdit, setMatrixBulkEdit] = useState<{ platform: VariantPlatformStatus; field: keyof ChannelPricingDraft; label: string; value: string; error: string } | null>(null)
   const [filterSelections, setFilterSelections] = useState<VariantOptionFilterSelections>({})
-  const resetMatrixDrafts = useEffectEvent(() => { setMatrixDrafts(initialMatrixDrafts()); setDirtyMatrixDraftKeys([]) })
+  // Another variant's window starts afresh. New rows for the same window (an offer was just saved) clear only the
+  // cells whose stored price now matches what was typed: one failed price among many keeps the other typed prices.
+  const matrixRowKey = useRef(row.key)
+  const resetMatrixDrafts = useEffectEvent(() => {
+    if (matrixRowKey.current !== row.key) {
+      matrixRowKey.current = row.key
+      setMatrixDrafts(initialMatrixDrafts()); setDirtyMatrixDraftKeys([])
+      return
+    }
+    const next = refreshedMatrixDrafts(matrixDrafts, initialMatrixDrafts(), dirtyMatrixDraftKeys)
+    setMatrixDrafts(next.drafts); setDirtyMatrixDraftKeys(next.dirtyKeys)
+  })
   useEffect(() => resetMatrixDrafts(), [row.key, rows, platformsKey, savedDrafts])
   const matchingRows = filterVariantsByOptions(sortedRows, filterGroups, filterSelections, matchesFilterValue)
   // Platform and Fiyat Türü narrow the columns shown (none chosen shows them all); Beden / Renk narrow the bulk rows.
@@ -3717,7 +3728,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       if (changes.length) showFeedback('Toplu Düzenleme Uygulandı', `${changes.length} varyantın değerleri tabloya yazıldı. Kalıcı olması için Kaydet’e basın.`, 'success')
     } }} /></Suspense>}
     {variantPlatformPricing && selectedVariantPlatformRow && <BulkVariantPlatformPricingModal row={selectedVariantPlatformRow} rows={variantRows} platforms={selectedVariantPlatformRow.platformStatuses?.length ? selectedVariantPlatformRow.platformStatuses : variantPricingPlatforms} savedDrafts={variantChannelPricing} productName={form.title} modelCode={form.modelCode} filterGroups={variantFilterGroups.filter(group => isColorOptionName(group.name) || isSizeOptionName(group.name))} matchesFilterValue={rowMatchesVariantMediaValue} saving={variantPlatformPricingSaving} onClose={() => setVariantPlatformPricing(null)} onSave={drafts => void saveVariantPlatformPricingMatrix(drafts)} />}
-    {!publishOnly && <div className="product-add-wizardbar"><div className="product-add-stepper"><div className="product-add-steptabs rv-tabs rv-view-tabs" role="tablist" aria-label={editProductId ? 'Ürün düzenleme adımları' : 'Ürün ekleme adımları'}><button type="button" className={wizardStep === 1 ? 'is-active' : ''} role="tab" aria-selected={wizardStep === 1} onClick={() => setWizardStep(1)}><span className="rv-tab-label"><span className="rv-step-num">1</span><span>Ürün Bilgileri<span className="product-step-label-more"> ve Varyantlar</span></span></span></button><button type="button" className={wizardStep === 2 ? 'is-active' : ''} role="tab" aria-selected={wizardStep === 2} onClick={() => setWizardStep(2)}><span className="rv-tab-label"><span className="rv-step-num">2</span><span>Yayınlama</span></span></button></div></div></div>}<form id="product-creation-form" className="product-creation-workspace product-add-workspace" data-wizard-step={wizardStep} aria-busy={editorHydrating || undefined} inert={editorHydrating || undefined} onSubmit={submit} onInvalidCapture={handleInvalid} onChange={dismissProductError} noValidate>
+    {!publishOnly && <div className="product-add-wizardbar"><div className="product-add-stepper"><div className="product-add-steptabs rv-tabs rv-view-tabs" role="tablist" aria-label={editProductId ? 'Ürün düzenleme adımları' : 'Ürün ekleme adımları'}><button type="button" className={wizardStep === 1 ? 'is-active' : ''} role="tab" aria-selected={wizardStep === 1} onClick={() => setWizardStep(1)}><span className="rv-tab-label"><span className="rv-step-num">1</span><span>Ürün Bilgileri<span className="product-step-label-more"> ve Varyantlar</span></span></span></button><button type="button" className={wizardStep === 2 ? 'is-active' : ''} role="tab" aria-selected={wizardStep === 2} onClick={() => setWizardStep(2)}><span className="rv-tab-label"><span className="rv-step-num">2</span><span>Yayınlama</span></span></button></div></div></div>}<form id="product-creation-form" className="product-creation-workspace product-add-workspace" data-wizard-step={wizardStep} aria-busy={editorHydrating || submitting || undefined} inert={editorHydrating || submitting || undefined} onSubmit={submit} onInvalidCapture={handleInvalid} onChange={dismissProductError} noValidate>
     <div className="product-top-layout">
       <section className="panel product-step-card product-basics-card">
         <div className="editor-section-title"><span>1</span><div><h2>Temel Ürün Bilgileri</h2></div></div>
