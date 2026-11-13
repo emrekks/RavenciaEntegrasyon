@@ -1,10 +1,10 @@
-// The one rule for what a summary card (and its sub-lines) shows when there is no data for a value (owner, 14 Nov 2026),
-// the same on every page:
-//  - No data for a value - no records in the period or list, nothing to base it on, not loaded, failed - reads "—" in the
-//    neutral ink, for money, a percentage and a count alike (never "0", "₺0", "%0", and never a word: "Veri yok",
-//    "Tutar yok", "Bilgi yok"). A change pill with nothing to compare reads "—" too.
+// The one rule for empty values on every page (owner, 14 Nov 2026):
+//  - The big number of a summary card with no data - no records in the period or list, nothing to base it on, not loaded,
+//    failed - reads "—" in the neutral ink, for money, a percentage and a count alike (never a word: "Veri yok", "Tutar yok").
+//  - Everything around it reads zero in its own format when empty: sub-lines and notes ("Sipariş başına ₺0", "Reklam öncesi %0",
+//    "Net 0 · 0 iade", "Paket | 0 Adet Ürün", "— Bekleyen | 0 Yaklaşan"), change pills ("%0"), tab, chip, badge and sidebar
+//    counters ("0", "₺0", "%0"). A reason note ("Maliyet Eksik") stays as it is.
 //  - A real non-zero value reads as it is; a warning, good or bad colour only marks such a value.
-//  - The small counters on tabs, chips and the sidebar are not cards: they stay numbers, "0" included.
 export const noValue = '—'
 
 type CountState = { loading?: boolean; error?: boolean }
