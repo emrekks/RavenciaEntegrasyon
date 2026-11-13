@@ -9,9 +9,9 @@ Dal: `claude/inspiring-noether-cbwvkm`. Bu dal **canlıya ship edilmedi** (bkz. 
 |---|---|
 | 1. Drive yedek kurulumu | **Yapılmadı.** Sunucuda yazma gerektiriyor; CLAUDE.md sunucuyu salt okunur tutuyor ve iş ekipte sürüyor. B-3 (yedek bütünlüğü) kod tarafında düzeltildi. |
 | 2. A-1, A-2, A-3 stok gönderimi | Düzeltildi, testli. |
-| 3. F-11, D-1, D-2 fatura | Düzeltildi, testli. D-2'de sert kilit yok (gerekçe aşağıda). |
+| 3. F-11, D-1, D-2 fatura | Düzeltildi, testli. D-2'ye yeniden gönderim kilidi eklendi. |
 | 4. C-9, C-15, C-10 ürün verisi | Düzeltildi, testli. |
-| 5. Kalanlar (raporlar, senkron, web, CSS) | B-4 dışında hepsi düzeltildi. B-4 yalnız değerlendirildi. |
+| 5. Kalanlar (raporlar, senkron, web, CSS) | B-4 dışında hepsi düzeltildi. B-4 sahibin kararıyla yapılmadı. |
 | Ek: KDV %8 | Sahibin isteğiyle panele eklendi (13 Kasım). |
 
 ## Bulgu bulgu
@@ -40,15 +40,18 @@ Dal: `claude/inspiring-noether-cbwvkm`. Bu dal **canlıya ship edilmedi** (bkz. 
   - Aday sorgusu artık satır iade/iptal adetlerini, iade edilmiş paketi ve RETURNED durumunu da görüyor.
   - Kapsam, faturalanmamış akıştaki `InvoiceSaleReturns.ReturnedUnitsAsync` ile hesaplanıyor; faturadan sonra iptal edilen adetler de ekleniyor.
   - Kısmi iptal ya da iade "İade Belgesi Gerekli" notunu açıyor (iptal adedi yazılı). Tamamı gittiyse fatura `AdjustmentRequired` oluyor.
-- **D-2 — E-Faturam kendi numarasını verirse ikinci fatura riski** (`e72ed67bc`)
+- **D-2 — E-Faturam kendi numarasını verirse ikinci fatura riski** (`e72ed67bc`, kilit `691c4c23c`)
   - Dönen referans gönderilen UUID'den farklıysa sağlayıcı bağlantısında kalıcı bir uyarı açılıyor: `INVOICE_PROVIDER_UUID_MISMATCH`.
   - Böyle bir bağlantıda UUID ile "bulunamadı" artık "kesilmemiş görünüyor" diye okunmuyor. Fatura `EFATURAM_UUID_NOT_HONOURED` koduyla belirsiz kalıyor; metin, yeniden göndermeden önce portalda sipariş numarasıyla aranmasını istiyor.
-  - **Sert kilit konmadı:** kodda ve belgelenmiş API'de sipariş numarasıyla arama yok; kilit siparişi kalıcı faturasız bırakırdı. Yeniden gönderim eskisi gibi operatör onayıyla yapılıyor.
+  - **Yeniden gönderim kilidi:** belgelenmiş API'de sipariş numarasıyla arama yok, bu yüzden arama operatöre bırakıldı.
+    - Böyle bir bağlantıda "Sağlayıcıda Fatura Yok, Yeniden Gönder" onayı, "portalda sipariş numarasıyla aradım, fatura yok" beyanı olmadan reddediliyor (409 `INVOICE_ORDER_NUMBER_SEARCH_REQUIRED`).
+    - Panelin onay penceresi bu aramayı ayrı bir onay kutusuyla soruyor; denetim kaydı hangi onayın verildiğini yazıyor.
 
 ### Ürün verisi ve senkron
-- **C-9 — Model kodu değişince iki ürün birleşebiliyordu** (`80a8a102e`)
+- **C-9 — Model kodu değişince iki ürün birleşebiliyordu** (`80a8a102e`, içe aktarma `4222e9f1f`)
   - Editör kaydında ve Excel yüklemesinde kod gerçekten değişip başka bir ürünün koduna denk geliyorsa reddediliyor.
-  - Aile kaydının kendi koduyla satır eklemesi etkilenmiyor. Pazaryeri içe aktarması da bilinçli olarak dışarıda; orada kod pazaryerinin kendi verisi.
+  - Pazaryeri içe aktarması bir varyantın kodunu, o bağlantıda hiç bağlantısı olmayan bir panel kartının koduna çevirmek isterse panel kendi kodunu koruyor ve bir uyarı kaydediyor.
+  - Aile kaydının kendi koduyla satır eklemesi ve aynı pazaryeri modelinin (bu bağlantıya bağlı) renk kartları etkilenmiyor.
 - **C-10 — Excel'de "%10" KDV 0,1 okunuyordu** (`917493d61`)
   - 0 ile 1 arasındaki % işaretsiz değer yüzde olarak okunuyor (0,1 → 10).
   - Yalnız panelin kabul ettiği oranlar yazılıyor; diğerleri satır hatası.
@@ -63,11 +66,11 @@ Dal: `claude/inspiring-noether-cbwvkm`. Bu dal **canlıya ship edilmedi** (bkz. 
   - Kimliksiz yanıtta bedenler "sonuç bilinmiyor" kalıyor.
   - Onay kontrolünde 24 saat bulunamayan beden `PRODUCT_CREATE_NOT_FOUND` ile incelemeye düşüyor.
   - Ek düzeltme: bu beden kartın bekleyen diğer bedenlerinin kontrolünü artık durdurmuyor.
-  - **Not:** 24 saat kuralı sonucu bilinmeyen her bedene uygulanıyor, yalnız Pazarama'ya değil.
+  - 24 saat kuralı sonucu bilinmeyen her bedene uygulanıyor; sahibin kararıyla bu haliyle kaldı.
 - **C-7 — Başarısız görsel güncellemesi sessizce kapanıyordu** (`02aff9102`): sonraki güncelleme eski hatayı ancak eskisinin gönderdiği her bölümü ve alanı gönderdiyse kapatıyor.
 - **C-11 — Hangi eşleme şablonunun uygulanacağı rastgeleydi** (`5f3d50ea6`)
   - Özellik ve değer şablonlarında en son güncellenen uygulanıyor; eşitlikte kimlik belirliyor.
-  - "Özellik başına tek şablon" (benzersiz index + veri temizliği) yapılmadı.
+  - "Özellik başına tek şablon" sahibin kararıyla yapılmadı.
 - **C-13 — Hepsiburada'da tekrar eden satırın durumu alfabetik seçiliyordu** (`49944353f`)
   - Satır en yeni kopyadan alınıyor.
   - Tekrar kopya ikinci kez indirim eklemiyor. Paketlerin indirimleri eskisi gibi toplanıyor.
@@ -76,10 +79,10 @@ Dal: `claude/inspiring-noether-cbwvkm`. Bu dal **canlıya ship edilmedi** (bkz. 
 - **B-3 — Uzak yedek kopyası bozuk kalabilirdi** (`8069bfe7e`)
   - Yükleme önce geçici ada gidiyor, SHA-256 doğrulanıyor, sonra son ada taşınıyor ve `.verified` kaydı yazılıyor.
   - Canlıda bir kez olacak: kaydı olmayan en yeni kopya ilk çalıştırmada yeniden yüklenecek.
-- **B-4 — Yönetici hesapları için iki adımlı doğrulama zorunlu değil:** kod değişmedi.
+- **B-4 — Yönetici hesapları için iki adımlı doğrulama zorunlu değil:** kod değişmedi (sahibin kararı, 13 Kasım: konu kapatıldı).
   - Production varsayılanına dokunulmadı; Sahip hesabında TOTP yok ve açılırsa kilitlenir.
   - Okumaları engellemek bugün güvenli değil: web panelinde `MFA_ENROLLMENT_REQUIRED` için bir işleyici yok, bütün sayfalar 403'le bozulur.
-  - Öneri, ayrı bir iş olarak: middleware'de GET'leri de engelle (`/auth` ve `/hooks` muaf) ve web'e Ayarlar > Güvenlik'e yönlendiren bir interceptor ekle.
+  - Bir gün açılırsa yapılacak iş: middleware'de GET'leri de engelle (`/auth` ve `/hooks` muaf) ve web'e Ayarlar > Güvenlik'e yönlendiren bir interceptor ekle.
 
 ### Web paneli ve görünüm
 - **F-9 — Kayıt sırasında yazılanlar kayboluyordu** (`d8df770c6`): kayıt sürerken form kilitli (`inert`); fiyat tablosu yalnız kaydedilen hücreleri temizliyor.
@@ -101,21 +104,23 @@ Son birleşik dal üzerinde (13 Kasım, yerel PostgreSQL 16 + `uuidv7`/`uuid_ext
 | Kontrol | Sonuç |
 |---|---|
 | `dotnet build MarketplaceHub.sln` | Başarılı, 0 uyarı |
-| `dotnet test tests/MarketplaceHub.Application.Tests` (tam paket, PostgreSQL dahil) | **6.404 / 6.404 geçti** |
+| `dotnet test tests/MarketplaceHub.Application.Tests` (tam paket, PostgreSQL dahil) | `62da4238d`'de **6.404 / 6.404**; son haliyle (`f2001bb04`) **6.403 / 6.405** (açıklama aşağıda) |
 | `dotnet format --verify-no-changes` (değişen dosyalar) | Temiz |
 | `npm run typecheck` / `npm run lint` | Temiz |
 | `npx vitest run` (invoicing, catalog, shared, operations, reports) | 217 dosya, 1.394 test geçti |
 | `npm run build` / `npm run check:bundle` | Başarılı; ana JS 124,9 / 450 KiB, ana CSS 537 / 672 KiB |
 
 Her düzeltmenin testi, düzeltme olmadan düştüğü ve düzeltmeyle geçtiği doğrulanarak yazıldı (A-1/A-2 testleri eski kodda 4/5 düştü).
+Son tam koşuda düşen iki test `PostgreSqlDashboardEquivalenceTests` (iki uzun dönem) ve ikisi de zaman aşımıyla düştü:
+- Tek başına koşulduklarında geçiyorlar.
+- Tam koşudan sonra aynı veritabanında, bu oturumun hiçbir değişikliğini içermeyen `main` `6321b83` de aynı testten düşüyor.
+- Yani sebep, tam koşunun biriktirdiği veri ve makine yükü; kod değil.
+- C-9 içe aktarma kontrolünün ilk hali bu testi gerçekten yavaşlatıyordu; `f2001bb04` sorguyu daralttı.
+
 Ortam notu: API uçtan uca testleri, bu konteynerin `SSL_CERT_FILE` / `PIP_CONFIG_FILE` değişkenlerini gizli dosya sanıyor; testler bu değişkenler kaldırılarak koşuldu (koddan bağımsız).
 
 ## Yapılmayanlar ve sıradaki adımlar
 - **Canlıya ship:** yapılmadı. `ship.sh` Actions durumunu `gh run` ile, canlı imajları SSH anahtarıyla okuyor; bu bulut oturumunda ikisi de yok. Ship ve canlı doğrulama, betiğin çalıştığı bir ortamdan yapılmalı.
 - **Canlı veritabanı boş:** 12 Kasım'da fabrika ayarlarına dönüldü. Düzeltmelerin canlı etkisi, bağlantılar açılınca rapordaki salt okunur SQL'lerle ölçülmeli.
 - **Drive yedeği (adım 1):** ekipte. `systemctl list-timers 'ravencia-offsite-*'` ve Drive'daki ilk `.tar.age` ile doğrulanmalı.
-- **Açık kararlar:**
-  - B-4'ün iki parçalı uygulanması.
-  - C-11 için özellik başına tek şablon.
-  - C-6'daki 24 saat kuralının yalnız Pazarama'ya daraltılması.
-  - Toplu güvenlik stoğunun mutabakat turunu beklemeden elle gönderilmesi gerekip gerekmediği.
+- **Kapatılan kararlar (sahip, 13 Kasım):** B-4, C-11'de tek şablon ve C-6'nın Pazarama'ya daraltılması yapılmayacak; toplu güvenlik stoğu periyodik uzlaştırmayla gidiyor ve bu haliyle doğru.
