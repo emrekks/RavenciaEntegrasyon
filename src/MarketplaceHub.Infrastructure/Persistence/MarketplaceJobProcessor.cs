@@ -8666,7 +8666,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             // turned out to be another panel product's, the new product, its link and options are dropped again.
             if (isNewProduct && importedVariants.Count == 0)
             {
-                DropNewCatalogProduct(product);
+                DropNewCatalogProduct(db, product);
                 telemetryInsertedCount = Math.Max(0, telemetryInsertedCount - 2);
                 telemetrySkippedCount++;
                 await RecordIssue(tenantId, $"product-sync-no-variant:{connectionId}:{Short(externalProductId, 200)}", "PRODUCT_VARIANT_CONFLICT", Short($"Pazar yeri ürünü panelde açılmadı: varyantlarının hiçbiri eklenemedi (stok kodları başka panel ürünlerinde) · {snapshot.Title}", 1000), cancellationToken);
@@ -8753,15 +8753,27 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     }
 
     // Takes back a product this import added and has not saved yet, with every row added for it (its link, options,
-    // media). Shared rows the import may have added beside it (a brand, a category) stay.
-    private void DropNewCatalogProduct(Product product)
+    // media). Shared rows the import may have added beside it (a category, a brand another row uses) stay; a brand added
+    // for this product alone (an observe-only read opens a brand only for a product it opens) goes with it.
+    internal static void DropNewCatalogProduct(AppDbContext db, Product product)
     {
+        var brandId = product.BrandId;
         foreach (var entry in db.ChangeTracker.Entries().Where(entry => entry.State == EntityState.Added).ToList())
         {
             if (ReferenceEquals(entry.Entity, product)
                 || entry.Metadata.FindProperty("ProductId") is { } productIdProperty && entry.Property(productIdProperty.Name).CurrentValue is Guid owner && owner == product.Id)
                 entry.State = EntityState.Detached;
         }
+        if (brandId is not { } id) return;
+        var brand = db.ChangeTracker.Entries<Brand>().FirstOrDefault(entry => entry.State == EntityState.Added && entry.Entity.Id == id);
+        if (brand is null) return;
+        var usedElsewhere = db.ChangeTracker.Entries().Any(entry => entry.State != EntityState.Detached && !ReferenceEquals(entry.Entity, brand.Entity)
+            && entry.Metadata.FindProperty("BrandId") is { } brandProperty && entry.Property(brandProperty.Name).CurrentValue is Guid used && used == id);
+        if (usedElsewhere) return;
+        // The mapping the import wrote for the brand it opened goes with it.
+        foreach (var mapping in db.ChangeTracker.Entries<BrandMapping>().Where(entry => entry.State == EntityState.Added && entry.Entity.LocalId == id).ToList())
+            mapping.State = EntityState.Detached;
+        brand.State = EntityState.Detached;
     }
 
     // The panel products a listing's variants already belong to: by this connection's variant link, then the stock
@@ -10804,6 +10816,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                         UpsertLineAllocation(tenantId, package.Id, line.Id, eventId, safe.ActiveAllocatedQuantity, safe.CancelledQuantity, safe.ShippedQuantity, safe.DeliveredQuantity, safe.ReturnedQuantity, allocationsByKey);
                     }
                 }
+                // PTT AVM sends no status time, so its package event is named by the package status alone: a line cancelled
+                // or returned while the package keeps its status (another line still waits to ship) arrives under the
+                // event already recorded. Its lines' quantities follow the read, or the cancelled line kept its stock.
+                if (package is not null && !statusChanged && remotePackage.StatusTimeUnknown && !remotePackage.IsStatusObservation
+                    && package.Status == target && string.Equals(package.RawStatus, remotePackage.RawStatus, StringComparison.Ordinal))
+                    foreach (var remoteAllocation in packageObservation.Allocations)
+                        if (lines.TryGetValue(remoteAllocation.ExternalLineId, out var line) && safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe))
+                            UpsertLineAllocation(tenantId, package.Id, line.Id, eventId, safe.ActiveAllocatedQuantity, safe.CancelledQuantity, safe.ShippedQuantity, safe.DeliveredQuantity, safe.ReturnedQuantity, allocationsByKey);
                 if (package is not null && (statusChanged || packageMetadataChanged))
                 {
                     package.OriginExternalPackageId = string.IsNullOrWhiteSpace(remotePackage.OriginExternalPackageId) ? package.OriginExternalPackageId : remotePackage.OriginExternalPackageId;

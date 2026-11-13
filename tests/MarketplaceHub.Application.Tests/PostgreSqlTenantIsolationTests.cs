@@ -3317,6 +3317,70 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         }
     }
 
+    // A PTT AVM order of two lines: one is cancelled while the other still waits, so the package stays Created and its
+    // event (named by the status alone) is the one already recorded. The cancelled line's quantity still follows the read.
+    [PostgreSqlFact]
+    public async Task OrderSync_WithoutAStatusTimeProjectsALineCancelledUnderTheSamePackageStatus()
+    {
+        var tenant = NewTenant("status-time-unknown-line-cancel");
+        var connection = NewQuestionConnection(tenant);
+        var orderedAt = DateTimeOffset.FromUnixTimeSeconds(fixture.Now.AddDays(-3).ToUnixTimeSeconds());
+        var seenAt = fixture.Now.AddDays(-1);
+        var createdEventAt = orderedAt.AddSeconds(2);
+        const string externalOrderId = "11697864103";
+        const string packageNumber = "order:PTT-TWO-LINES-1";
+        var (orderId, packageId, keptLineId, cancelledLineId) = (Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7());
+        var eventId = PackageIngestionSafety.EventId(packageNumber, createdEventAt);
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, externalOrderId, isReturnClaim: false, seenAt);
+            order.OrderedAt = orderedAt;
+            order.LastRemoteModifiedAt = createdEventAt;
+            seedDb.Orders.Add(order);
+            foreach (var (lineId, external) in new[] { (keptLineId, "line-1"), (cancelledLineId, "line-2") })
+            {
+                seedDb.OrderLines.Add(new OrderLine { Id = lineId, TenantId = tenant.Id, OrderId = orderId, ExternalLineId = external, Sku = $"SKU-{external}", TitleSnapshot = "Test ürün", OrderedQuantity = 1m, UnitPrice = 50m, VatRate = 10m, RawStatus = "Created", Version = 1 });
+                seedDb.PackageLineAllocations.Add(new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PackageId = packageId, OrderLineId = lineId, AllocatedQuantity = 1m, SourceEventId = eventId });
+            }
+            seedDb.ShipmentPackages.Add(new ShipmentPackage { Id = packageId, TenantId = tenant.Id, ConnectionId = connection.Id, OrderId = orderId, ExternalPackageId = packageNumber, GrossAmount = 100m, NetAmount = 100m, Status = ShipmentPackageStatus.New, RawStatus = "Created", StatusOccurredAt = seenAt, CreatedAt = seenAt, UpdatedAt = seenAt, Version = 1 });
+            seedDb.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = orderId, PackageId = packageId, CanonicalStatus = "NEW", RawStatus = "Created", SourceEventId = eventId, OccurredAt = seenAt, RecordedAt = seenAt });
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            var remotePackage = new RemotePackage(packageNumber, null, "Created", createdEventAt, null, null,
+                [new RemotePackageAllocation("line-1", 1m, 0m, 0m, 0m, 0m), new RemotePackageAllocation("line-2", 0m, 1m, 0m, 0m, 0m)],
+                GrossAmount: 50m, NetAmount: 50m, StatusTimeUnknown: true);
+            var remoteOrder = new RemoteOrder(externalOrderId, externalOrderId, orderedAt, createdEventAt, "TRY", 50m, 0m, 50m, "{}", "{}", "{}",
+                [new RemoteOrderLine("line-1", "SKU-line-1", null, "Test ürün", 1m, 50m, 10m, "Created"),
+                 new RemoteOrderLine("line-2", "SKU-line-2", null, "Test ürün", 1m, 50m, 10m, "Cancelled", CancelledQuantity: 1m)],
+                [remotePackage], "{}");
+            await using (var processorDb = fixture.CreateContext())
+            {
+                var processor = new MarketplaceJobProcessor(
+                    processorDb,
+                    null!, null!, null!, null!, new ReadOnlyOrderTestPort(remotePackage, externalOrderId: externalOrderId, directOrderResult: remoteOrder), null!, null!, null!, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderSync,
+                    $$"""{"externalOrderId":"{{externalOrderId}}","full":false,"packageNumber":"{{packageNumber}}"}""", "status-time-unknown-line-cancel", CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+
+            await using var check = fixture.CreateContext();
+            Assert.Equal(1m, (await check.OrderLines.AsNoTracking().SingleAsync(x => x.Id == cancelledLineId)).CancelledQuantity);
+            Assert.Equal(0m, (await check.OrderLines.AsNoTracking().SingleAsync(x => x.Id == keptLineId)).CancelledQuantity);
+            Assert.Equal(ShipmentPackageStatus.New, (await check.ShipmentPackages.AsNoTracking().SingleAsync(x => x.Id == packageId)).Status);
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
     // Audit 29 Oct S-1 data fix: closed PTT AVM orders are not read again, so the migration projects the lines the
     // reads since 24 October left at 0 from the allocations already stored. Other marketplaces are left alone.
     [PostgreSqlFact]

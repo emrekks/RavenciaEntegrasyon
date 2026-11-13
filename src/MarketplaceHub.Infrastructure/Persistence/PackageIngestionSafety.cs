@@ -264,9 +264,12 @@ public static class PackageIngestionSafety
         var shipped = packageStatus is ShipmentPackageStatus.Shipped or ShipmentPackageStatus.Delivered or ShipmentPackageStatus.Undelivered or ShipmentPackageStatus.ReturnInTransit or ShipmentPackageStatus.Returned
             ? active
             : remote.ShippedQuantity;
+        // An undelivered parcel delivered nothing, except a line the read says came back: it was delivered first. A Pazarama
+        // order with one item undelivered (14) and another returned (8/10) reads as an undelivered package (the least
+        // advanced item); its returned item kept at 0 delivered broke the check below and the whole event was refused.
         var delivered = packageStatus is ShipmentPackageStatus.Delivered or ShipmentPackageStatus.ReturnInTransit or ShipmentPackageStatus.Returned
             ? active
-            : packageStatus == ShipmentPackageStatus.Undelivered ? 0 : remote.DeliveredQuantity;
+            : packageStatus == ShipmentPackageStatus.Undelivered ? Math.Min(active, Math.Max(0, remote.ReturnedQuantity)) : remote.DeliveredQuantity;
         var returned = packageStatus == ShipmentPackageStatus.Returned ? active : remote.ReturnedQuantity;
 
         normalized = new(active, cancelled, shipped, delivered, returned);
