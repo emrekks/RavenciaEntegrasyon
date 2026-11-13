@@ -682,4 +682,7 @@
 @media (max-width: 720px) {
   .ss-page .ss-ob-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ss-page .ss-ob-folder { grid-template-columns: 1fr; }
+  .ss-page .ss-ob-row-line { flex-wrap: wrap; }
+  .ss-page .ss-ob-row-line > span[aria-hidden] { display: none; }
+  .ss-page .ss-ob-row-value { order: 3; flex: 1 0 100%; white-space: normal; overflow-wrap: anywhere; }
 }
