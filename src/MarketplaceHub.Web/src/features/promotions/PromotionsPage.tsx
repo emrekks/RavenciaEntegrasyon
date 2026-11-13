@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
 import { loadAllPages } from '../../shared/api'
 import { Busy, ErrorBox, Tabs } from '../../shared/components'
-import { PlatformSquareMark } from '../../shared/platform-square-mark'
+import { platformLogoSource } from '../../shared/platform-logos'
 import { TabSlidePanel } from '../../shared/tab-slide'
 import { CommissionTariffsPanel, commissionTariffPlatforms, tariffRowsQuery } from '../marketplace/integrations/CommissionTariffsPanel'
 import { prefetchLastTariff } from '../marketplace/integrations/commission-tariff-rows'
@@ -39,10 +39,10 @@ export function PromotionsPage() {
   const opensOnTariff = section === 'TARIFF'
   const storeParam = params.get('store')
   useEffect(() => { if (opensOnTariff) prefetchLastTariff(client, storeParam, tariffRowsQuery) }, [client]) // eslint-disable-line react-hooks/exhaustive-deps -- once, when the page opens
-  const tabsRef = useRef<HTMLDivElement>(null)
-  // On a phone the tabs slide sideways: the open one is brought into view (sideways only, the page does not move).
+  const sectionsRef = useRef<HTMLDivElement>(null)
+  // On a phone the page pills slide sideways: the open one is brought into view (sideways only, the page does not move).
   useEffect(() => {
-    const row = tabsRef.current?.querySelector<HTMLElement>('.rv-tabs') ?? null
+    const row = sectionsRef.current
     const on = row?.querySelector<HTMLElement>('[aria-selected="true"]')
     if (!row || !on || row.scrollWidth <= row.clientWidth) return
     row.scrollTo({ left: row.scrollLeft + on.getBoundingClientRect().left - row.getBoundingClientRect().left - (row.clientWidth - on.offsetWidth) / 2, behavior: 'auto' })
@@ -65,18 +65,23 @@ export function PromotionsPage() {
     {connections.isError && <ErrorBox error={connections.error} onRetry={() => void connections.refetch()} />}
     {connections.data && !store && <p className="reports-empty">Promosyon dosyası yüklenebilecek bir mağaza yok; şimdilik Trendyol dosyaları okunuyor.</p>}
     {store && <div className="reports-tariffs">
+      <div className="promotion-platform-tabs">
+        <Tabs className="rv-view-tabs" ariaLabel="Pazaryeri" value={store.platformCode} onChange={code => go({ store: stores.find(item => item.platformCode === code)?.id })}
+          items={platforms.map(code => ({ value: code, label: <>{platformLogoSource(code) && <img className="rv-view-tab-logo" src={platformLogoSource(code)!} alt="" aria-hidden="true" />}{platformName(code)}</> }))} />
+      </div>
       <div className="promotions-bar">
-        <div className="reports-segmented reports-tariff-platforms" role="group" aria-label="Pazaryeri">
-          {platforms.map(code => <button key={code} type="button" aria-pressed={code === store.platformCode} onClick={() => go({ store: stores.find(item => item.platformCode === code)?.id })}>
-            <PlatformSquareMark code={code} name={platformName(code)} />{platformName(code)}
-          </button>)}
+        <div ref={sectionsRef} className="reports-segmented promotion-sections" role="tablist" aria-label="Promosyon sayfaları">
+          {sections.map(([key, label], index) => <button key={key} type="button" role="tab" tabIndex={key === section ? 0 : -1} aria-selected={key === section} onClick={() => go({ tab: key })} onKeyDown={event => {
+            const next = event.key === 'Home' ? 0 : event.key === 'End' ? sections.length - 1 : event.key === 'ArrowRight' ? (index + 1) % sections.length : event.key === 'ArrowLeft' ? (index - 1 + sections.length) % sections.length : -1
+            if (next < 0) return
+            event.preventDefault()
+            go({ tab: sections[next][0] })
+            event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus()
+          }}>{label}</button>)}
         </div>
         {sameStores.length > 1 && <div className="reports-field"><span>Mağaza</span>
           <PanelSelect ariaLabel="Mağaza" value={store.id} options={sameStores.map(item => ({ value: item.id, label: item.displayName }))} onChange={value => go({ store: value })} />
         </div>}
-      </div>
-      <div ref={tabsRef} className="promotion-page-tabs">
-        <Tabs className="rv-view-tabs" ariaLabel="Promosyon sayfaları" value={section} onChange={next => go({ tab: next as Section })} items={sections.map(([key, label]) => ({ value: key, label }))} />
       </div>
       {/* A page slides in from its side and starts the page from its top (shared/tab-slide.tsx). */}
       <TabSlidePanel active={section} order={sectionOrder} className="rv-tab-slide-grid">{section === 'TARIFF' ? <CommissionTariffsPanel key={store.id} connectionId={store.id} platformName={platformName(store.platformCode)} />
