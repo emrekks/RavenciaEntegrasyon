@@ -1196,7 +1196,7 @@ public interface IInstantNotificationService
     Task<int> RetryConnectionWebhooksAsync(CancellationToken cancellationToken);
 }
 public sealed record CreatedWebhookSubscription(WebhookSubscriptionView Subscription, Guid ConnectionPublicId, string RouteToken);
-public sealed record DeleteConnectionCommand(string Confirmation);
+public sealed record DeleteConnectionCommand(string Confirmation, string? Password = null, string? Code = null, string? RecoveryCode = null);
 public sealed record ResetOperationalDataCommand(IReadOnlyList<string> Scopes, string Confirmation);
 public sealed record OperationalDataResetView(
     int Products,
@@ -1225,7 +1225,7 @@ public sealed record DataResetCountsView(IReadOnlyList<DataResetCountView> Items
 // A connection's full reset: what it removes (issued invoices included), the linked products it keeps (used by another
 // connection or created on the panel; only their link to this connection goes) and the reset job when one is queued or
 // running.
-public sealed record FullResetConnectionCommand(string? Confirmation);
+public sealed record FullResetConnectionCommand(string? Confirmation, string? Password = null, string? Code = null, string? RecoveryCode = null);
 public sealed record ConnectionFullResetJobView(Guid JobId, string Status, string? ProgressLabel, int? ProgressPercent, DateTimeOffset CreatedAt);
 public sealed record ConnectionFullResetView(IReadOnlyList<DataResetCountView> Items, int KeptProducts, ConnectionFullResetJobView? Job);
 

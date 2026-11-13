@@ -8,6 +8,7 @@ import { newIdempotencyKey } from '../../../shared/idempotency'
 import { confirmationMatches } from '../../../shared/confirmation'
 import { failureNotice } from '../../../shared/notifications'
 import { formatIstanbul } from '../../../shared/format-date'
+import { ReauthInputs, reauthBody, reauthReady, useSecondFactorEnabled } from '../../../shared/reauth'
 import { connectionFullResetItems, connectionFullResetRunning, type ConnectionFullResetJob, type ConnectionFullResetView } from '../connection-data-reset'
 import type { Connection, IntegrationFeedback } from '../shared'
 import '../../../shared/components/data-reset-ledger.css'
@@ -36,6 +37,10 @@ export function fullResetFinishedFeedback(displayName: string, job: Pick<Connect
 export function ConnectionFullResetPanel({ item, onFeedback, onFinished, onCancel }: { item: Connection; onFeedback: (feedback: IntegrationFeedback) => void; onFinished: (job: ConnectionFullResetJob) => void; onCancel: () => void }) {
   const client = useQueryClient()
   const [confirmation, setConfirmation] = useState('')
+  // The reset takes the password again (and the authenticator code when it is on).
+  const mfa = useSecondFactorEnabled()
+  const [password, setPassword] = useState('')
+  const [factor, setFactor] = useState('')
   const queryKey = connectionFullResetQueryKey(item.id)
   const view = useQuery({ queryKey, queryFn: () => hubPoll<ConnectionFullResetView>(`/connections/${item.id}/full-reset`), staleTime: 0, refetchInterval: query => connectionFullResetRunning(query.state.data?.job?.status) ? 3000 : false })
   const job = view.data?.job ?? null
@@ -49,15 +54,16 @@ export function ConnectionFullResetPanel({ item, onFeedback, onFinished, onCance
     else if (watched.current === job.jobId) { watched.current = null; finished(job) }
   }, [job, running])
   const start = useMutation({
-    mutationFn: () => hubApi<ConnectionFullResetView>(`/connections/${item.id}/full-reset`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ confirmation }) }),
-    onSuccess: result => { client.setQueryData(queryKey, result); setConfirmation(''); onFeedback({ kind: 'info', title: 'Tam Sıfırlama Başladı', message: `${item.displayName} bağlantısının verileri arka planda siliniyor; ilerlemeyi bu pencerede ve İşlem Takibi’nde izleyebilirsiniz.` }) },
+    mutationFn: () => hubApi<ConnectionFullResetView>(`/connections/${item.id}/full-reset`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ confirmation, ...reauthBody(password, factor) }) }),
+    onSuccess: result => { client.setQueryData(queryKey, result); setConfirmation(''); setPassword(''); setFactor(''); onFeedback({ kind: 'info', title: 'Tam Sıfırlama Başladı', message: `${item.displayName} bağlantısının verileri arka planda siliniyor; ilerlemeyi bu pencerede ve İşlem Takibi’nde izleyebilirsiniz.` }) },
     onError: reason => onFeedback(failureNotice(reason, 'Tam sıfırlama başlatılamadı.'))
   })
   const counts = view.data ? new Map(view.data.items.map(entry => [entry.scope, entry.count])) : undefined
   // Product links name products that are already counted (removed) or kept; they are not added to the total.
   const total = counts ? connectionFullResetItems.filter(entry => entry.scope !== 'PRODUCT_LINKS').reduce((sum, entry) => sum + (counts.get(entry.scope) ?? 0), 0) : undefined
   const kept = view.data?.keptProducts ?? 0
-  const confirmed = confirmationMatches(confirmation, item.displayName)
+  const confirmed = confirmationMatches(confirmation, item.displayName) && reauthReady(password, factor, mfa)
+  const wordMatches = confirmationMatches(confirmation, item.displayName)
   const busy = start.isPending || running
   const status = fullResetStatusText(job)
   const notes: Array<{ warn?: boolean; text: string }> = [
@@ -90,7 +96,8 @@ export function ConnectionFullResetPanel({ item, onFeedback, onFinished, onCance
       </div>
       <div className="drl-confirm">
         <label htmlFor={`full-reset-${item.id}-confirm`}>Onaylamak için <b>{item.displayName}</b> yazın</label>
-        <span className={`drl-field${confirmed ? ' is-ok' : ''}`}><input id={`full-reset-${item.id}-confirm`} value={confirmation} onChange={event => setConfirmation(event.target.value)} disabled={busy} autoComplete="off" placeholder={item.displayName} />{confirmed && <UiIcon name="check" size={16} />}</span>
+        <span className={`drl-field${wordMatches ? ' is-ok' : ''}`}><input id={`full-reset-${item.id}-confirm`} value={confirmation} onChange={event => setConfirmation(event.target.value)} disabled={busy} autoComplete="off" placeholder={item.displayName} />{wordMatches && <UiIcon name="check" size={16} />}</span>
+        <ReauthInputs idPrefix={`full-reset-${item.id}`} password={password} onPassword={setPassword} factor={factor} onFactor={setFactor} mfa={mfa} disabled={busy} fieldClassName="drl-auth" inputClassName="drl-auth-in" />
         <button type="button" className="destructive drl-go" onClick={() => start.mutate()} disabled={!confirmed || busy || !view.data}>{start.isPending ? 'Başlatılıyor…' : running ? 'Sıfırlama Sürüyor…' : 'Tam Sıfırla'}</button>
         <button type="button" className="secondary drl-cancel" onClick={onCancel} disabled={start.isPending}>{running ? 'Kapat' : 'Vazgeç'}</button>
       </div>

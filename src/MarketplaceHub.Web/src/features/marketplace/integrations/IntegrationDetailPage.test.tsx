@@ -192,6 +192,9 @@ describe('IntegrationsPage filters (W16)', () => {
     const go = container.querySelector<HTMLButtonElement>('.drl-go')!
     expect(go.disabled).toBe(true)
     act(() => setValue(container.querySelector<HTMLInputElement>('#full-reset-c1-confirm')!, ' trendyol test '))
+    // The name alone is not enough: the password is asked again.
+    expect(go.disabled).toBe(true)
+    act(() => setValue(container.querySelector<HTMLInputElement>('#full-reset-c1-password')!, 'Owner-Password#1'))
     expect(go.disabled).toBe(false)
   })
 

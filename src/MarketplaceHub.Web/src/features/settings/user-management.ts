@@ -68,11 +68,7 @@ export function availableUserActions(user: ManagedUser, actorRole: string): User
 }
 
 // The re-check every change carries: the password, and with an authenticator on, a 6-digit code or a recovery code.
-export function reauthBody(password: string, secondFactor: string) {
-  const factor = secondFactor.trim()
-  if (!factor) return { password }
-  return /^\d{6}$/.test(factor.replace(/\s/g, '')) ? { password, code: factor.replace(/\s/g, '') } : { password, recoveryCode: factor }
-}
+export { reauthBody } from '../../shared/reauth'
 
 export function isEmailAddress(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())

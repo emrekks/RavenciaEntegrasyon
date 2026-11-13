@@ -217,7 +217,7 @@ export function registerNotificationConnectionResolver(resolver: ((connectionId:
 // week (İşlem Takibi › Bildirimler). The bell tells it what it saved, read and removed; removing from the bell only
 // dismisses it there. The shell registers the sink once; without one (tests, signed out) the bell works alone.
 export type NotificationSink = {
-  saved: (notification: AppNotification, options?: { shared?: boolean }) => void
+  saved: (notification: AppNotification) => void
   read: (ids: string[]) => void
   dismissed: (ids: string[]) => void
 }
@@ -567,7 +567,6 @@ export function syncAttentionNotices(notices: AttentionNotice[]) {
   let next = history.filter(notification => !notification.groupKey?.startsWith(attentionPrefix) || listed.has(notification.groupKey.slice(attentionPrefix.length)))
   let changed = next.length !== history.length
   const nextSeen: Record<string, string> = {}
-  const raised: AppNotification[] = []
   for (const notice of notices) {
     nextSeen[notice.key] = notice.revision
     const groupKey = `${attentionPrefix}${notice.key}`
@@ -575,13 +574,11 @@ export function syncAttentionNotices(notices: AttentionNotice[]) {
     if (seen[notice.key] !== notice.revision) {
       // A new notice, or a new revision of one (a new failure streak, another expired card): raised again, unread.
       const notification = attentionNotification(notice)
-      raised.push(notification)
       next = [notification, ...next.filter((_, position) => position !== index)]
       changed = true
     } else if (index >= 0) {
       const updated = attentionNotification(notice, next[index])
       if (attentionSignature(updated) !== attentionSignature(next[index])) {
-        raised.push(updated)
         next = next.map((notification, position) => position === index ? updated : notification)
         changed = true
       }
@@ -592,7 +589,7 @@ export function syncAttentionNotices(notices: AttentionNotice[]) {
   if (!changed) return false
   if (!writeHistory(next.slice(0, historyLimit))) return false
   window.dispatchEvent(new CustomEvent(notificationChangeEvent))
-  // A notice for the whole tenant: the center keeps one shared row per notice and revision.
-  for (const notification of raised) sinkCall(sink => sink.saved(notification, { shared: true }))
+  // A notice for the whole tenant: the server records it in the center (one shared row per notice and revision, GET
+  // /jobs/attention); a browser may not write attention keys.
   return true
 }

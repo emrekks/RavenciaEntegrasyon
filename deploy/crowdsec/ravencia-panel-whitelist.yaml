@@ -10,11 +10,16 @@
 # API (login attempts included). The Caddy access log replaces every query string with "?redacted" before CrowdSec
 # reads it, so a query can never carry a payload past these rules.
 #
+# The rules apply only to a browser-like client: a request with no User-Agent, or one from a known scanner or a bare
+# HTTP library (sqlmap, nikto, nmap, masscan, zgrab, nuclei, python-requests, curl, Go's client...), is never dropped,
+# whatever its path, so a tool cannot hide its probing behind the panel's own request shapes (audit 13 Nov 2026).
+#
 # The regular expressions are RE2 and also valid POSIX ERE: tests/ops/test-crowdsec-whitelist.sh checks them with
-# grep -E against the panel's paths and a list of scanner paths. Keep each regex inside one 'matches' literal.
+# grep -E against the panel's paths and a list of scanner paths (the User-Agent one with grep -iE, its "(?i)" taken
+# off). Keep each regex inside one 'matches' literal.
 name: ravencia/panel-whitelist
 description: "Ravencia panel: its own API, SPA, asset and icon requests are not scanning"
-filter: "evt.Meta.service == 'http' && evt.Meta.log_type in ['http_access-log', 'http_error-log']"
+filter: "evt.Meta.service == 'http' && evt.Meta.log_type in ['http_access-log', 'http_error-log'] && !(evt.Parsed.http_user_agent in ['', '-']) && !(evt.Parsed.http_user_agent matches '(?i)(sqlmap|nikto|nmap|masscan|zgrab|zmap|nuclei|httpx|wpscan|whatweb|dirbuster|gobuster|feroxbuster|ffuf|wfuzz|acunetix|nessus|openvas|netsparker|burp|hydra|jaeles|censys|python-requests|python-urllib|aiohttp|httpie|go-http-client|libwww-perl|lwp-|curl/|wget/|java/|okhttp|scrapy)')"
 whitelist:
   reason: "ravencia panel request"
   expression:

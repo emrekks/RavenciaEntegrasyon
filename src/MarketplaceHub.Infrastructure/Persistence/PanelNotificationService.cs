@@ -39,7 +39,7 @@ public sealed class PanelNotificationService(AppDbContext db, TimeProvider timeP
                 INSERT INTO ops.panel_notifications AS existing ("Id", "TenantId", "UserId", "ClientKey", "Severity", "Category", "Title", "Message",
                     "Href", "ActionLabel", "PlatformCode", "StoreName", "Count", "Payload", "CreatedAt", "UpdatedAt", "ReadAt", "DismissedAt")
                 VALUES ({Guid.CreateVersion7()}, {tenantId}, {owner}, {key}, {severity}, {category}, {title}, {message},
-                    {Clip(item.Href, 500)}, {Clip(item.ActionLabel, 80)}, {Clip(item.PlatformCode?.ToUpperInvariant(), 32)}, {Clip(item.StoreName, 160)}, {count}, {payload},
+                    {PanelNotificationPolicy.InternalHref(item.Href)}, {Clip(item.ActionLabel, 80)}, {Clip(item.PlatformCode?.ToUpperInvariant(), 32)}, {Clip(item.StoreName, 160)}, {count}, {payload},
                     {createdAt}, {now}, {readAt}, NULL)
                 ON CONFLICT ("TenantId", "ClientKey") DO UPDATE SET
                     "Severity" = EXCLUDED."Severity", "Category" = EXCLUDED."Category", "Title" = EXCLUDED."Title", "Message" = EXCLUDED."Message",

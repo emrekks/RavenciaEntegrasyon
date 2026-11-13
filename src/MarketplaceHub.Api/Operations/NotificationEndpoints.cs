@@ -24,10 +24,13 @@ public static class NotificationEndpoints
         api.MapPost("", async (HttpContext http, IPanelNotificationService service, SaveRequest request) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
-            var items = (request.Items ?? []).Select(item => new PanelNotificationInput(item.ClientKey ?? string.Empty, item.Severity, item.Category, item.Title, item.Message ?? string.Empty,
+            // A browser writes only its user's own notifications: whether a notice is the whole tenant's is the server's
+            // call, and the background notices (attention:…) are recorded by the server alone (JobEndpoints /attention).
+            var items = (request.Items ?? []).Where(item => !PanelNotificationPolicy.IsServerKey(item.ClientKey))
+                .Select(item => new PanelNotificationInput(item.ClientKey ?? string.Empty, item.Severity, item.Category, item.Title, item.Message ?? string.Empty,
                 item.Href, item.ActionLabel, item.PlatformCode, item.StoreName, item.Count,
                 item.Payload is { ValueKind: JsonValueKind.Object or JsonValueKind.Array } payload ? payload.GetRawText() : null,
-                item.CreatedAt, item.Shared, item.Read)).ToList();
+                item.CreatedAt, Shared: false, item.Read)).ToList();
             var result = await service.SaveAsync(tenant.TenantId, tenant.UserId, items, http.RequestAborted);
             return result.Succeeded ? Results.Ok(new { saved = result.Value }) : Problem(http, result.Error!);
         });
@@ -42,6 +45,7 @@ public static class NotificationEndpoints
 
     public sealed record SaveItem(string? ClientKey, string? Severity, string? Category, string? Title, string? Message, string? Href, string? ActionLabel,
         string? PlatformCode, string? StoreName, int? Count, JsonElement? Payload, DateTimeOffset? CreatedAt, bool Shared, bool Read);
+    // Shared is still read from older browsers and ignored.
 
     private static string[]? List(string? value) => value?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;

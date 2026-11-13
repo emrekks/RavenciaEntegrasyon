@@ -38,6 +38,9 @@ html body .drl .drl-row.is-locked > input.drl-cb:disabled { opacity: .45; }
 .drl-field { position: relative; display: block; }
 .drl-field input { box-sizing: border-box; width: 100%; height: 36px; min-height: 36px; padding: 0 34px 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 14px; }
 .drl-field.is-ok input { border-color: var(--rv-color-accent); }
+/* The password (and authenticator code) a reset asks for again, under the confirmation word. */
+.drl-confirm > label.drl-auth { display: grid; gap: 6px; font-weight: 600; }
+.drl-auth-in { box-sizing: border-box; width: 100%; height: 36px; min-height: 36px; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 14px; font-weight: 400; }
 .drl-field > .ui-icon { position: absolute; top: 50%; right: 10px; color: var(--rv-color-accent); transform: translateY(-50%); }
 .drl .drl-confirm > button { width: 100%; min-height: 0; height: 36px; padding: 0 14px; font-size: 13px; font-weight: 600; text-transform: none; border-radius: 7px; cursor: pointer; }
 .drl .drl-confirm > button.drl-go { color: #fff; background: var(--rv-color-danger); border: 1px solid var(--rv-color-danger); }

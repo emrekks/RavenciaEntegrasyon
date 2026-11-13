@@ -85,6 +85,8 @@ builder.Services.AddHttpClient(PublicNetwork.ClientName, client =>
 // Sign-in, the steps after it, a per-network ceiling and the webhook limits (see RateLimitPolicies).
 builder.Services.AddRateLimiter(options => RateLimitPolicies.Configure(options, builder.Configuration));
 builder.Services.AddScoped<MarketplaceHub.Infrastructure.Alerts.AlertEmailSettingsService>();
+// Sistem Ayarları › Google Drive Yedeği: tells the owner when the copy's age key or Google account changes.
+builder.Services.AddScoped<MarketplaceHub.Infrastructure.Backups.OffsiteBackupChangeAlert>();
 // Ayarlar › Yapay Zekâ and its consumers (the size chart). The SDK applies its own per-call timeouts.
 builder.Services.AddHttpClient(MarketplaceHub.Infrastructure.Ai.ClaudeClient.HttpClientName, client => client.Timeout = Timeout.InfiniteTimeSpan);
 builder.Services.AddSingleton<MarketplaceHub.Infrastructure.Ai.IClaudeClient, MarketplaceHub.Infrastructure.Ai.ClaudeClient>();

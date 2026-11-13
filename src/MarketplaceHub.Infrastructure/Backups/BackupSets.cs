@@ -50,6 +50,8 @@ public interface IBackupSetSource
 public sealed class BackupSetDirectory(string root) : IBackupSetSource
 {
     private static readonly string[] RequiredFiles = ["manifest.json", "database.dump", "private-volumes.tar.gz"];
+    // Written by backup.sh after verify_backup passed (deploy/backup/backup.sh).
+    public const string VerifiedMarker = ".verified";
 
     public string Root { get; } = root;
 
@@ -83,12 +85,15 @@ public sealed class BackupSetDirectory(string root) : IBackupSetSource
         Dictionary<string, string> sums;
         try
         {
+            // backup.sh writes the marker only after its own check passed (checksums and pg_restore --list): a set still
+            // being written, or one that failed that check, is never sent.
+            if (!File.Exists(Path.Combine(directory, VerifiedMarker))) return (null, $"{VerifiedMarker} işareti yok (set yazılıyor ya da backup.sh doğrulaması geçmedi).");
             if (!File.Exists(sumsPath)) return (null, "SHA256SUMS yok (set yazılıyor ya da eksik).");
             sums = ParseSums(await File.ReadAllLinesAsync(sumsPath, cancellationToken));
         }
         catch (UnauthorizedAccessException) { return (null, "okuma izni yok (bu set uygulamanın okuyabileceği izinlerle yazılmamış)."); }
         catch (IOException exception) { return (null, $"okunamadı ({exception.Message})."); }
-        if (!RequiredFiles.Skip(1).All(sums.ContainsKey)) return (null, "SHA256SUMS dökümü ve dosya arşivini kapsamıyor.");
+        if (!RequiredFiles.All(sums.ContainsKey)) return (null, "SHA256SUMS manifest'i, dökümü ve dosya arşivini kapsamıyor.");
 
         var opened = new List<(string, FileStream)>();
         try

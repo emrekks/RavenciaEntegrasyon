@@ -11,7 +11,7 @@ public static class PanelJobTypes
 
 // Categories null or empty: every category (Paneli Tamamen Sıfırla, confirmed with PANELİ SIFIRLA); otherwise the chosen
 // ones with what they require (confirmed with Verileri sil, or PANELİ SIFIRLA).
-public sealed record PanelFactoryResetCommand(string? Confirmation, IReadOnlyList<string>? Categories = null);
+public sealed record PanelFactoryResetCommand(string? Confirmation, IReadOnlyList<string>? Categories = null, string? Password = null, string? Code = null, string? RecoveryCode = null);
 
 // One category: what goes, where the page lists it, and how many records of it the tenant has now.
 public sealed record PanelFactoryResetGroupView(string Key, string Label, string Description, string Section, IReadOnlyList<string> Requires, long Count);
