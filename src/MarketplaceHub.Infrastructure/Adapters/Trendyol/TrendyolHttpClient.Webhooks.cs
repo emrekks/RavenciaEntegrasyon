@@ -78,4 +78,16 @@ public sealed partial class TrendyolHttpClient : IWebhookRegistrationPort
             ? AdapterResult<bool>.Success(true, response.RateLimit)
             : AdapterResult<bool>.Failure(response.Error!, response.RateLimit);
     }
+
+    // Webhook Pasife Alma: PUT webhook/sellers/{sellerId}/webhooks/{id}/deactivate, answered 200 (offline docs
+    // trendyol-api-son.md "Webhook Aktife/Pasife Alma"). The webhook keeps its id and address; activate opens it again.
+    public async Task<AdapterResult<bool>> DeactivateWebhookAsync(AdapterContext context, string externalId, CancellationToken cancellationToken)
+    {
+        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
+        if (authorized is null) return AdapterResult<bool>.Failure(TrendyolErrorMapper.Configuration());
+        var response = await SendAsync(authorized, HttpMethod.Put, TrendyolEndpoints.Webhook(authorized.Connection.ExternalStoreId, externalId) + "/deactivate", null, cancellationToken);
+        return response.IsSuccess
+            ? AdapterResult<bool>.Success(true, response.RateLimit)
+            : AdapterResult<bool>.Failure(response.Error!, response.RateLimit);
+    }
 }

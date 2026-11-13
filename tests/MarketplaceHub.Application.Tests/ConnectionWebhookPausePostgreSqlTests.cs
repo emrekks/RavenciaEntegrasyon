@@ -30,8 +30,12 @@ public sealed class ConnectionWebhookPausePostgreSqlTests(PostgreSqlTenantIsolat
                 Assert.Null(deactivated.Error);
                 Assert.Equal("DISABLED", deactivated.Value!.Status);
                 Assert.Null(deactivated.Value.WebhookNotice);
-                Assert.Equal(["remote-webhook-1"], context.Port.Deleted);
-                Assert.Equal(InstantNotificationService.PausedStatus, (await db.WebhookSubscriptions.SingleAsync(x => x.TenantId == context.TenantId)).Status);
+                // Trendyol: set passive with its deactivate service, never removed; the row keeps its id and address.
+                Assert.Equal(["remote-webhook-1"], context.Port.Deactivated);
+                Assert.Empty(context.Port.Deleted);
+                var paused = await db.WebhookSubscriptions.SingleAsync(x => x.TenantId == context.TenantId);
+                Assert.Equal(InstantNotificationService.PausedStatus, paused.Status);
+                Assert.Equal("remote-webhook-1", paused.ExternalSubscriptionId);
                 var view = await context.Notifications(db).StatusAsync(context.TenantId, context.ConnectionId, "status", CancellationToken.None);
                 Assert.Equal("OFF", view.Value!.State);
                 Assert.Contains("kendiliğinden açar", view.Value.Message);
@@ -44,9 +48,11 @@ public sealed class ConnectionWebhookPausePostgreSqlTests(PostgreSqlTenantIsolat
                 Assert.Null(activated.Error);
                 Assert.Equal("ACTIVE", activated.Value!.Status);
                 Assert.Null(activated.Value.WebhookNotice);
-                Assert.Equal(2, context.Port.Created);
+                // The same Trendyol webhook is activated again: no new registration, the same row and address.
+                Assert.Equal(1, context.Port.Created);
+                Assert.Equal(["remote-webhook-1"], context.Port.Activated);
                 var subscriptions = await db.WebhookSubscriptions.AsNoTracking().Where(x => x.TenantId == context.TenantId).ToListAsync();
-                Assert.Single(subscriptions, x => x.Status == "ACTIVE");
+                Assert.Equal("remote-webhook-1", Assert.Single(subscriptions, x => x.Status == "ACTIVE").ExternalSubscriptionId);
                 Assert.DoesNotContain(subscriptions, x => x.Status == InstantNotificationService.PausedStatus);
                 // The activation's catch-up read (the bootstrap with the full order recovery) is queued as before.
                 Assert.True(await db.IntegrationJobs.AnyAsync(x => x.TenantId == context.TenantId && x.JobDedupKey.StartsWith(MarketplaceJobTypes.ActivationBootstrapPrefix)));
@@ -145,6 +151,109 @@ public sealed class ConnectionWebhookPausePostgreSqlTests(PostgreSqlTenantIsolat
         }
     }
 
+    // A Trendyol webhook that does not activate again is replaced: one Trendyol no longer has (404) is not removed, one
+    // that refuses otherwise is removed first so no passive copy stays registered.
+    [PostgreSqlTheory]
+    [InlineData(AdapterErrorClass.NotFound, false)]
+    [InlineData(AdapterErrorClass.Remote5xx, true)]
+    public async Task Activation_RemakesTheTrendyolWebhookWhenItDoesNotActivate(AdapterErrorClass refusal, bool removesTheOldOne)
+    {
+        var context = await SeedWebhookPauseAsync("webhook-activate-fallback", "TRENDYOL");
+        try
+        {
+            await using (var db = fixture.CreateContext())
+                Assert.Null((await context.Notifications(db).EnableAsync(context.TenantId, context.ConnectionId, "enable", CancellationToken.None)).Error);
+            await using (var db = fixture.CreateContext())
+                Assert.Null((await context.Connections(db).SetActiveAsync(context.TenantId, context.ConnectionId, await VersionAsync(db, context), false, CancellationToken.None)).Value!.WebhookNotice);
+
+            context.Port.FailActivate = refusal;
+            await using (var db = fixture.CreateContext())
+            {
+                await PassConnectionTestAsync(db, context);
+                var activated = await context.Connections(db).SetActiveAsync(context.TenantId, context.ConnectionId, await VersionAsync(db, context), true, CancellationToken.None);
+                Assert.Null(activated.Value!.WebhookNotice);
+                Assert.Equal(2, context.Port.Created);
+                Assert.Equal(removesTheOldOne ? new[] { "remote-webhook-1" } : Array.Empty<string>(), context.Port.Deleted);
+                var subscriptions = await db.WebhookSubscriptions.AsNoTracking().Where(x => x.TenantId == context.TenantId).ToListAsync();
+                Assert.Equal("remote-webhook-2", Assert.Single(subscriptions, x => x.Status == "ACTIVE").ExternalSubscriptionId);
+                Assert.DoesNotContain(subscriptions, x => x.Status == InstantNotificationService.PausedStatus);
+            }
+        }
+        finally
+        {
+            await DeleteWebhookPauseTenantAsync(context.TenantId);
+        }
+    }
+
+    // Webhook'u Kapat (also what Bağlantıyı Sil runs) on a connection whose Trendyol webhook Pasife Al set passive removes
+    // it at Trendyol, and it no longer opens with the connection.
+    [PostgreSqlFact]
+    public async Task ClosingAPassiveConnectionsTrendyolWebhook_RemovesItAtTrendyol()
+    {
+        var context = await SeedWebhookPauseAsync("webhook-passive-close", "TRENDYOL");
+        try
+        {
+            await using (var db = fixture.CreateContext())
+                Assert.Null((await context.Notifications(db).EnableAsync(context.TenantId, context.ConnectionId, "enable", CancellationToken.None)).Error);
+            await using (var db = fixture.CreateContext())
+                await context.Connections(db).SetActiveAsync(context.TenantId, context.ConnectionId, await VersionAsync(db, context), false, CancellationToken.None);
+
+            await using (var db = fixture.CreateContext())
+            {
+                Assert.Null((await context.Notifications(db).DisableAsync(context.TenantId, context.ConnectionId, "close", CancellationToken.None)).Error);
+                Assert.Equal(["remote-webhook-1"], context.Port.Deleted);
+                Assert.Equal("DELETED", (await db.WebhookSubscriptions.AsNoTracking().SingleAsync(x => x.TenantId == context.TenantId)).Status);
+            }
+        }
+        finally
+        {
+            await DeleteWebhookPauseTenantAsync(context.TenantId);
+        }
+    }
+
+    // Shopify removes a subscription after eight failed deliveries in a row. A registration the panel keeps as open but
+    // Shopify no longer lists is opened anew, on activation and in the hourly upkeep, signed with the secret it had.
+    [PostgreSqlFact]
+    public async Task AShopifyRegistrationShopifyRemoved_IsOpenedAgainOnActivationAndHourly()
+    {
+        var context = await SeedWebhookPauseAsync("webhook-shopify-removed", "SHOPIFY");
+        try
+        {
+            await using (var db = fixture.CreateContext())
+                Assert.Null((await context.Notifications(db).EnableAsync(context.TenantId, context.ConnectionId, "enable", CancellationToken.None, "shpss_removed_secret")).Error);
+
+            // Hourly upkeep: Shopify lists none of them any more.
+            context.Port.ShopifyRemovedAll = true;
+            await using (var db = fixture.CreateContext())
+            {
+                Assert.Equal(1, await context.Notifications(db).ReactivatePassiveAsync(CancellationToken.None));
+                var subscriptions = await db.WebhookSubscriptions.AsNoTracking().Where(x => x.TenantId == context.TenantId).ToListAsync();
+                var reopened = Assert.Single(subscriptions, x => x.Status == "ACTIVE");
+                Assert.Equal("remote-webhook-2", reopened.ExternalSubscriptionId);
+                Assert.Equal("HMAC_SHA256", reopened.AuthenticationType);
+                Assert.Single(subscriptions, x => x.Status == "DELETED");
+            }
+
+            // Activation of a connection whose registration stayed open (its close failed while Pasif): checked too.
+            context.Port.FailDelete = true;
+            await using (var db = fixture.CreateContext())
+                await context.Connections(db).SetActiveAsync(context.TenantId, context.ConnectionId, await VersionAsync(db, context), false, CancellationToken.None);
+            context.Port.FailDelete = false;
+            await using (var db = fixture.CreateContext())
+            {
+                await PassConnectionTestAsync(db, context);
+                var activated = await context.Connections(db).SetActiveAsync(context.TenantId, context.ConnectionId, await VersionAsync(db, context), true, CancellationToken.None);
+                Assert.Null(activated.Value!.WebhookNotice);
+                Assert.Equal(3, context.Port.Created);
+                Assert.Equal("remote-webhook-3", (await db.WebhookSubscriptions.AsNoTracking().SingleAsync(x => x.TenantId == context.TenantId && x.Status == "ACTIVE")).ExternalSubscriptionId);
+            }
+        }
+        finally
+        {
+            await DeleteWebhookPauseTenantAsync(context.TenantId);
+        }
+    }
+
     private sealed record WebhookPauseContext(Guid TenantId, Guid ConnectionId, SwitchableWebhookPort Port, Func<AppDbContext, InstantNotificationService> Notifications, Func<AppDbContext, MarketplaceConnectionService> Connections);
 
     private async Task<WebhookPauseContext> SeedWebhookPauseAsync(string code, string platformCode)
@@ -217,10 +326,35 @@ public sealed class ConnectionWebhookPausePostgreSqlTests(PostgreSqlTenantIsolat
             return Task.FromResult(AdapterResult<bool>.Success(true));
         }
 
-        public Task<AdapterResult<string?>> RestoreMissingWebhooksAsync(AdapterContext context, string externalId, CancellationToken cancellationToken) =>
-            Task.FromResult(AdapterResult<string?>.Success(null));
+        // Shopify's answer when it lists none of the subscriptions any more (eight failed deliveries remove one).
+        public bool ShopifyRemovedAll { get; set; }
+        public List<string> Restored { get; } = [];
 
-        public Task<AdapterResult<bool>> ActivateWebhookAsync(AdapterContext context, string externalId, CancellationToken cancellationToken) =>
-            Task.FromResult(AdapterResult<bool>.Success(true));
+        public Task<AdapterResult<string?>> RestoreMissingWebhooksAsync(AdapterContext context, string externalId, CancellationToken cancellationToken)
+        {
+            Restored.Add(externalId);
+            return Task.FromResult(ShopifyRemovedAll
+                ? AdapterResult<string?>.Failure(new(AdapterErrorClass.NotFound, MarketplaceHub.Infrastructure.Adapters.Shopify.ShopifyHttpClient.WebhooksRemovedCode, "Shopify panelin bütün bildirim aboneliklerini kaldırmış.", 404, null, null))
+                : AdapterResult<string?>.Success(null));
+        }
+
+        public List<string> Activated { get; } = [];
+        public List<string> Deactivated { get; } = [];
+        // The class of the activation's refusal (null: activated).
+        public AdapterErrorClass? FailActivate { get; set; }
+
+        public Task<AdapterResult<bool>> ActivateWebhookAsync(AdapterContext context, string externalId, CancellationToken cancellationToken)
+        {
+            if (FailActivate is { } errorClass) return Task.FromResult(AdapterResult<bool>.Failure(new(errorClass, "TEST_ACTIVATE_REFUSED", "Etkinleştirilemedi.", errorClass == AdapterErrorClass.NotFound ? 404 : 500, null, null)));
+            Activated.Add(externalId);
+            return Task.FromResult(AdapterResult<bool>.Success(true));
+        }
+
+        public Task<AdapterResult<bool>> DeactivateWebhookAsync(AdapterContext context, string externalId, CancellationToken cancellationToken)
+        {
+            if (FailDelete) return Task.FromResult(AdapterResult<bool>.Failure(Refused));
+            Deactivated.Add(externalId);
+            return Task.FromResult(AdapterResult<bool>.Success(true));
+        }
     }
 }

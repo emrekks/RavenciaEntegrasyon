@@ -1138,6 +1138,10 @@ public interface IWebhookRegistrationPort
     Task<AdapterResult<string>> CreateWebhookAsync(AdapterContext context, string url, string username, string password, CancellationToken cancellationToken);
     Task<AdapterResult<bool>> DeleteWebhookAsync(AdapterContext context, string externalId, CancellationToken cancellationToken);
     Task<AdapterResult<bool>> ActivateWebhookAsync(AdapterContext context, string externalId, CancellationToken cancellationToken);
+    // Sets a webhook passive at the marketplace, keeping its id and address (Trendyol's deactivate service). A marketplace
+    // without a passive state answers NotSupported; the caller then removes the registration instead.
+    Task<AdapterResult<bool>> DeactivateWebhookAsync(AdapterContext context, string externalId, CancellationToken cancellationToken) =>
+        Task.FromResult(AdapterResult<bool>.Failure(new(AdapterErrorClass.NotSupported, "WEBHOOK_DEACTIVATE_UNSUPPORTED", "Bu pazaryerinde webhook pasife alınamaz.", null, null, null)));
 
     // Recreates the parts of a registration the marketplace removed (Shopify drops a subscription
     // after repeated failed deliveries). Returns the new external id, or null when nothing changed.

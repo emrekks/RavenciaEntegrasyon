@@ -79,7 +79,7 @@ describe('connection status label', () => {
 
 describe('Pasife Al and the webhook', () => {
   it('says the Trendyol and Shopify webhook closes and opens again with the connection', () => {
-    expect(disconnectDialogDescription('TRENDYOL')).toContain('Trendyol’da da kapatılır')
+    expect(disconnectDialogDescription('TRENDYOL')).toContain('Trendyol’da da pasife alınır')
     expect(disconnectDialogDescription('SHOPIFY')).toContain('kendiliğinden açar')
     expect(disconnectDialogDescription('HEPSIBURADA')).toContain('kapatılmaz')
     expect(disconnectDialogDescription('N11')).not.toContain('webhook')

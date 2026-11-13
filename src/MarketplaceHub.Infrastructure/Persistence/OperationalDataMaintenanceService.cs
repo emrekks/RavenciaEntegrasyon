@@ -56,7 +56,8 @@ public sealed partial class OperationalDataMaintenanceService(AppDbContext db, T
     private async Task<string?> CloseMarketplaceWebhookAsync(PlatformConnection connection, string correlationId, CancellationToken cancellationToken)
     {
         var externalId = await db.WebhookSubscriptions.AsNoTracking()
-            .Where(x => x.TenantId == connection.TenantId && x.ConnectionId == connection.Id && x.Status == "ACTIVE" && x.ExternalSubscriptionId != null)
+            .Where(x => x.TenantId == connection.TenantId && x.ConnectionId == connection.Id && (x.Status == "ACTIVE" || x.Status == InstantNotificationService.PausedStatus) && x.ExternalSubscriptionId != null)
+            .OrderBy(x => x.Status == "ACTIVE" ? 0 : 1)
             .Select(x => x.ExternalSubscriptionId).FirstOrDefaultAsync(cancellationToken);
         if (externalId is null) return null;
         var platform = connection.PlatformCode switch { "SHOPIFY" => "Shopify", "HEPSIBURADA" => "Hepsiburada", _ => "Trendyol" };

@@ -79,6 +79,11 @@ UTC, ISO with Z.
   server fault is looked up in `webhookSubscriptions` (topic + uri) and kept when Shopify made it; otherwise the topics
   made so far are removed (`ShopifyHttpClient.CreateWebhookAsync`, 13 Nov 2026). The panel settles an address left
   unclear against the list: every topic there is adopted, an incomplete set is removed.
+- No passive state for webhook subscriptions: Pasife Al removes them and activation makes them again (with the secret
+  they were signed with). Because 8 failed deliveries in a row remove a subscription, activation and the hourly upkeep
+  check the panel's open registration against `webhookSubscriptions`: missing topics are made again, and when none is
+  listed (`SHOPIFY_WEBHOOKS_REMOVED`) the row is closed and the registration opened anew, so the panel never shows as
+  open one Shopify removed (`InstantNotificationService.EnsureShopifyRegisteredAsync`, 13 Nov 2026).
 - Invoice data lives in order metafields `ravencia.invoice_number` and `ravencia.invoice_pdf_url`.
 - No label API.
 - Line VAT: `LineItem.taxLines { rate }` is a list; each `rate` is a fraction (0.2 = 20%). The panel sums the rates

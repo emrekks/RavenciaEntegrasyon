@@ -15,6 +15,8 @@ public sealed partial class ShopifyHttpClient : IWebhookRegistrationPort
     internal const string ProductDeleteTopic = "PRODUCTS_DELETE";
     internal static readonly string[] WebhookTopics = ["ORDERS_CREATE", "ORDERS_UPDATED", "ORDERS_CANCELLED", "ORDERS_FULFILLED", "ORDERS_PARTIALLY_FULFILLED", "REFUNDS_CREATE", ProductDeleteTopic];
     internal const char WebhookIdSeparator = ',';
+    // Shopify lists none of the panel's subscriptions any more (it removes one after eight failed deliveries in a row).
+    internal const string WebhooksRemovedCode = "SHOPIFY_WEBHOOKS_REMOVED";
     private const string WebhookGidPrefix = "gid://shopify/WebhookSubscription/";
 
     // Ids are kept as their number so six fit the panel column; Shopify is given the full gid.
@@ -129,7 +131,7 @@ public sealed partial class ShopifyHttpClient : IWebhookRegistrationPort
         if (!listed.IsSuccess) return AdapterResult<string?>.Failure(listed.Error!, listed.RateLimit);
         var plan = PlanWebhookRestore(externalId, listed.Value!);
         if (plan.Url is null)
-            return Fail<string?>(AdapterErrorClass.NotFound, "SHOPIFY_WEBHOOKS_REMOVED", "Shopify panelin bütün bildirim aboneliklerini kaldırmış; bildirimleri kapatıp yeniden açın.", HttpStatusCode.NotFound);
+            return Fail<string?>(AdapterErrorClass.NotFound, WebhooksRemovedCode, "Shopify panelin bütün bildirim aboneliklerini kaldırmış; bildirimleri kapatıp yeniden açın.", HttpStatusCode.NotFound);
         if (!plan.Changed) return AdapterResult<string?>.Success(null);
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
         if (shop is null) return CredentialFailure(Fail<string?>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized));

@@ -280,14 +280,15 @@ export function connectionStatusLabel(status: string | null | undefined): string
   return normalized === 'DRAFT' ? 'Test Edilmedi' : normalized === 'DISABLED' ? 'Pasif' : null
 }
 
-// Bağlantıyı Pasife Al closes the order webhook at Trendyol and Shopify, and activating the connection opens it again;
-// Hepsiburada's webhook is set up by hand at Hepsiburada and stays as it is.
+// Bağlantıyı Pasife Al sets the order webhook passive at Trendyol (the same registration opens again on activation) and
+// removes Shopify's subscriptions (Shopify has no passive state; activation makes them again); Hepsiburada's webhook is
+// set up by hand at Hepsiburada and stays as it is.
 export function disconnectDialogDescription(platformCode: string): string {
   const platform = platformCode.trim().toUpperCase()
-  if (platform === 'TRENDYOL' || platform === 'SHOPIFY') {
-    const name = platform === 'SHOPIFY' ? 'Shopify' : 'Trendyol'
-    return `Bağlantı pasife alınır ve veri akışı durur. Açık webhook ${name}’da da kapatılır; bağlantı yeniden aktifleşince panel webhook’u kendiliğinden açar ve aradaki siparişleri okur.`
-  }
+  if (platform === 'TRENDYOL')
+    return 'Bağlantı pasife alınır ve veri akışı durur. Açık webhook Trendyol’da da pasife alınır; bağlantı yeniden aktifleşince panel aynı webhook’u kendiliğinden açar ve aradaki siparişleri okur.'
+  if (platform === 'SHOPIFY')
+    return 'Bağlantı pasife alınır ve veri akışı durur. Shopify’da pasif durum olmadığı için açık webhook abonelikleri silinir; bağlantı yeniden aktifleşince panel webhook’u kendiliğinden açar ve aradaki siparişleri okur.'
   if (platform === 'HEPSIBURADA')
     return 'Bağlantı pasife alınır ve veri akışı durur. Hepsiburada webhook’u elle tanımlandığı için kapatılmaz; gelen bildirimler bağlantı yeniden aktifleşene dek işlenmez.'
   return 'Bağlantı pasife alınır ve veri akışı durur.'
