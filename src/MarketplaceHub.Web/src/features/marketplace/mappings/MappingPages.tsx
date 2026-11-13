@@ -18,6 +18,7 @@ import { categoryDeactivationBody } from './category-deactivation'
 import { MessageToast } from '../../../shared/components/NoticeToast'
 import { mappingStatusLabel } from '../../../shared/status-labels'
 import { platformLogoClass, platformLogoSource } from '../../../shared/platform-logos'
+import { MappingPlatformTab } from './MappingPlatformTab'
 import { MobileActionMenu } from '../../../shared/MobileActionMenu'
 import { PanelValueMultiSelect } from '../PanelValueMultiSelect'
 import { useScrollLock } from '../../../shared/hooks/useScrollLock'
@@ -210,8 +211,6 @@ function CategoryMappingWorkspace() {
   useDismissable(panelPickerOpen, [pickerPart('.mapping-category-builder .mapping-reference-local .panel-category-picker-trigger'), pickerPart('.mapping-category-builder .mapping-reference-local > .panel-category-picker')], () => setPanelPickerOpen(false))
   useDismissable(externalPickerOpen, [pickerPart('.mapping-category-builder .mapping-reference-target .panel-category-picker-trigger'), pickerPart('.mapping-category-builder .mapping-reference-target .panel-category-picker')], () => setExternalPickerOpen(false))
   const activeMappingConnections = connections.data?.items.filter(item => mappingPlatformDefinitions.some(platform => platform.code === item.platformCode.toUpperCase()) && ['ACTIVE', 'VERIFIED'].includes(item.status.toUpperCase())) ?? []
-  // Platforms without an active connection are hidden from the tabs; until any connection is known every tab stays.
-  const shownMappingPlatforms = mappingPlatformDefinitions.filter(platform => !activeMappingConnections.length || activeMappingConnections.some(item => item.platformCode.toUpperCase() === platform.code))
   const selectedPlatform = mappingPlatformDefinitions.find(platform => platform.code === selectedPlatformCode) ?? mappingPlatformDefinitions[0]
   const selectedPlatformConnections = activeMappingConnectionsForPlatform(activeMappingConnections, selectedPlatform.code)
   const firstSelectedConnectionId = selectedPlatformConnections[0]?.id ?? ''
@@ -389,10 +388,7 @@ function CategoryMappingWorkspace() {
   const mappingPlatformTabs = (
     <>
       <div className="mapping-category-platform-tabs mapping-platform-tabs rv-tabs rv-view-tabs" role="tablist" aria-label="Kategori eşleştirme pazaryeri">
-        {shownMappingPlatforms.map(platform => {
-          const available = activeMappingConnections.some(item => item.platformCode.toUpperCase() === platform.code)
-          return <button type="button" role="tab" aria-selected={selectedPlatformCode === platform.code} className={`${selectedPlatformCode === platform.code ? 'active is-active' : ''}${available ? '' : ' is-unavailable'}`} title={available ? `${platform.label} kategorilerini göster` : `${platform.label} için aktif bağlantı yok`} onClick={() => selectMappingPlatform(platform.code)}><span className="rv-tab-label">{platformLogoSource(platform.code) && <img className="rv-view-tab-logo" src={platformLogoSource(platform.code)!} alt="" aria-hidden="true" />}{platform.label}</span></button>
-        })}
+        {mappingPlatformDefinitions.map(platform => <MappingPlatformTab key={platform.code} code={platform.code} label={platform.label} available={activeMappingConnections.some(item => item.platformCode.toUpperCase() === platform.code)} selected={selectedPlatformCode === platform.code} activeTitle={`${platform.label} kategorilerini göster`} onSelect={() => selectMappingPlatform(platform.code)} />)}
       </div>
       {!connectionId && !connections.isLoading && !selectedPlatformConnections.length && (autoSelectedConnectionPlatform.current || !activeMappingConnections.length) ? <div className="unknown mapping-connection-empty" role="status"><strong>{selectedPlatform.label} bağlantısı gerekli</strong><p>Kategori referanslarını alıp eşleme yapabilmek için önce aktif bir {selectedPlatform.label} bağlantısı kurun.</p><Link className="button-link" to="/integrations">Entegrasyonlara Git</Link></div> : <div className="mapping-reference-refresh-row">{selectedPlatformConnections.length > 1 && <label className="mapping-reference-connection-select" htmlFor="mapping-store-connection">Bağlantı<PanelSelect id="mapping-store-connection" ariaLabel="Mağaza bağlantısı" value={connectionId} onChange={selectMappingConnection} options={selectedPlatformConnections.map(item => ({ value: item.id, label: `${item.displayName} · ${item.environment === 'PRODUCTION' ? 'Canlı' : 'Stage'} · ${item.externalStoreId}` }))} /></label>}</div>}
     </>
@@ -409,10 +405,7 @@ function CategoryMappingWorkspace() {
         <h2><UiIcon name="equal" />5. Kayıtlı Kategori Eşleştirmeleri</h2>
         <div className="mapping-saved-header-tools">
           <div className="mapping-saved-tabs mapping-platform-tabs rv-tabs rv-view-tabs" role="tablist" aria-label="Kayıtlı eşleştirme platformları">
-            {shownMappingPlatforms.filter(platform => hasCategoryAttributes(platform.code)).map(platform => {
-              const available = activeMappingConnections.some(item => item.platformCode.toUpperCase() === platform.code)
-              return <button type="button" role="tab" aria-selected={selectedPlatformCode === platform.code} className={`${selectedPlatformCode === platform.code ? 'active is-active' : ''}${available ? '' : ' is-unavailable'}`} title={available ? `${platform.label} eşleştirmelerini göster` : `${platform.label} için aktif bağlantı yok`} onClick={() => { setSelectedPlatformCode(platform.code); setSavedPage(1); setLocalId(''); setExternalId(''); setExternalSearch(''); setNotice('') }}><span className="rv-tab-label">{platformLogoSource(platform.code) && <img className="rv-view-tab-logo" src={platformLogoSource(platform.code)!} alt="" aria-hidden="true" />}{platform.label}</span></button>
-            })}
+            {mappingPlatformDefinitions.filter(platform => hasCategoryAttributes(platform.code)).map(platform => <MappingPlatformTab key={platform.code} code={platform.code} label={platform.label} available={activeMappingConnections.some(item => item.platformCode.toUpperCase() === platform.code)} selected={selectedPlatformCode === platform.code} activeTitle={`${platform.label} eşleştirmelerini göster`} onSelect={() => { setSelectedPlatformCode(platform.code); setSavedPage(1); setLocalId(''); setExternalId(''); setExternalSearch(''); setNotice('') }} />)}
           </div>
           <label className="rv-search-field mapping-saved-search"><UiIcon name="search" size={16} /><input type="search" aria-label="Kayıtlı eşleştirmelerde ara" value={savedSearch} onChange={event => { setSavedSearch(event.target.value); setSavedPage(1) }} placeholder="Eşleştirme ara..." /></label>
           <button type="button" className="mapping-icon-button mapping-sort-button" aria-label={savedSort === 'NAME_ASC' ? 'Kayıtlı eşleştirmeleri Z-A sırala' : 'Kayıtlı eşleştirmeleri A-Z sırala'} title={savedSort === 'NAME_ASC' ? 'Z-A sırala' : 'A-Z sırala'} onClick={() => { setSavedSort(current => current === 'NAME_ASC' ? 'NAME_DESC' : 'NAME_ASC'); setSavedPage(1) }}>{savedSort === 'NAME_ASC' ? 'A–Z' : 'Z–A'}</button>
@@ -1860,10 +1853,10 @@ export function BrandMappingPage() {
   const [editingExternalId, setEditingExternalId] = useState('')
   const connections = useQuery({ queryKey: ['connections', 'brand-mapping'], queryFn: () => loadAllPages<Connection>('/connections') })
   // Brand lists exist on Trendyol and Pazarama; the other marketplaces take the brand by its name.
-  const brandTabPlatforms = mappingPlatformDefinitions.filter(platform => connections.data?.items.some(item => item.platformCode === platform.code && (item.status === 'ACTIVE' || item.status === 'VERIFIED')))
+  const brandPlatformActive = (code: MappingPlatformCode) => connections.data?.items.some(item => item.platformCode === code && (item.status === 'ACTIVE' || item.status === 'VERIFIED')) ?? false
   const brandMappingSupported = brandListPlatformCodes.includes(brandPlatformCode)
-  const savedTabPlatforms = brandTabPlatforms.filter(platform => brandListPlatformCodes.includes(platform.code))
-  const savedBrandPlatformCode = savedTabPlatforms.some(platform => platform.code === savedBrandPlatformChoice) ? savedBrandPlatformChoice : savedTabPlatforms[0]?.code ?? savedBrandPlatformChoice
+  const savedTabPlatforms = mappingPlatformDefinitions.filter(platform => brandListPlatformCodes.includes(platform.code))
+  const savedBrandPlatformCode = savedTabPlatforms.some(platform => platform.code === savedBrandPlatformChoice && brandPlatformActive(platform.code)) ? savedBrandPlatformChoice : savedTabPlatforms.find(platform => brandPlatformActive(platform.code))?.code ?? savedBrandPlatformChoice
   const savedBrandPlatformLabel = mappingPlatformLabel(savedBrandPlatformCode)
   const brandPlatformLabel = mappingPlatformLabel(brandPlatformCode)
   const platformConnections = useMemo(() => connections.data?.items.filter(item => item.platformCode === brandPlatformCode && (item.status === 'ACTIVE' || item.status === 'VERIFIED')) ?? [], [connections.data, brandPlatformCode])
@@ -1877,8 +1870,10 @@ export function BrandMappingPage() {
     const timeout = window.setTimeout(() => setNotice(''), kind === 'info' ? 7000 : 5500)
     return () => window.clearTimeout(timeout)
   }, [notice, mappingConnection])
-  const brandPlatformTabs = <div className="mapping-saved-tabs mapping-platform-tabs rv-tabs rv-view-tabs" role="tablist" aria-label="Marka eşleştirme platformları"> {brandTabPlatforms.map(platform => <button type="button" role="tab" key={platform.code} aria-selected={brandPlatformCode === platform.code} className={brandPlatformCode === platform.code ? 'active is-active' : ''} onClick={() => chooseBrandPlatform(platform.code)}><span className="rv-tab-label">{platformLogoSource(platform.code) && <img className="rv-view-tab-logo" src={platformLogoSource(platform.code)!} alt="" aria-hidden="true" />}{platform.label}</span></button>)} </div>
-  const savedBrandPlatformTabs = <div className="mapping-saved-tabs mapping-platform-tabs rv-tabs rv-view-tabs" role="tablist" aria-label="Kayıtlı marka eşleştirme platformları"> {savedTabPlatforms.map(platform => <button type="button" role="tab" key={platform.code} aria-selected={savedBrandPlatformCode === platform.code} className={savedBrandPlatformCode === platform.code ? 'active is-active' : ''} onClick={() => chooseBrandPlatform(platform.code)}><span className="rv-tab-label">{platformLogoSource(platform.code) && <img className="rv-view-tab-logo" src={platformLogoSource(platform.code)!} alt="" aria-hidden="true" />}{platform.label}</span></button>)} </div>
+  const brandPlatformTabs = <div className="mapping-saved-tabs mapping-platform-tabs rv-tabs rv-view-tabs" role="tablist" aria-label="Marka eşleştirme platformları">{mappingPlatformDefinitions.map(platform => <MappingPlatformTab key={platform.code} code={platform.code} label={platform.label} available={brandPlatformActive(platform.code)} selected={brandPlatformCode === platform.code} activeTitle={`${platform.label} markalarını göster`} onSelect={() => chooseBrandPlatform(platform.code)} />)}</div>
+
+  const savedBrandPlatformTabs = <div className="mapping-saved-tabs mapping-platform-tabs rv-tabs rv-view-tabs" role="tablist" aria-label="Kayıtlı marka eşleştirme platformları">{savedTabPlatforms.map(platform => <MappingPlatformTab key={platform.code} code={platform.code} label={platform.label} available={brandPlatformActive(platform.code)} selected={savedBrandPlatformCode === platform.code} activeTitle={`${platform.label} markalarını göster`} onSelect={() => chooseBrandPlatform(platform.code)} />)}</div>
+
   function chooseBrandPlatform(code: MappingPlatformCode) {
     setBrandPlatformCode(code); setConnectionChoice(''); setLocalId(''); setExternalId(''); setNotice('')
     if (brandListPlatformCodes.includes(code)) { setSavedBrandPlatformChoice(code); setEditingBrandMappingId('') }
