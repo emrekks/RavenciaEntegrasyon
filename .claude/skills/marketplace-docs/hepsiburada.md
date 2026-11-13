@@ -194,3 +194,11 @@ cursor `PACKAGES`), _ORDER_STATUS_SYNC, _WEBHOOK_INGEST, _RETURN_SYNC, _ORDER_IN
   StoppageRefund, TotalPayment (the weekly payout total) and one CustomerSatisfaction, Description empty. No ad record,
   so no Hepsiburada ad was bought in that window; the panel's ad figures stay Trendyol's.
 - Returns page sort (11 Nov 2026): `ReturnClaim.RequestedAt` is the claim request date the İadeler page sorts by (default "En Yeni İade Talebi"); a claim without it lists last, never guessed. Hepsiburada: `claimDate` (Istanbul local, `TurkeyDate`); `createdAt` is not taken (`HepsiburadaJsonMapper.ReturnClaim`).
+
+## Long reads and late claims (13 Nov 2026)
+- A full or first package read (one month, day by day) ends each finished day with a Continue and resumes a saved
+  month younger than a day; the order part of that full job is not read again while its package month is unfinished
+  (`ReadHepsiburadaPackageSyncState`, `HepsiburadaOrdersDoneForPackageBaseline`).
+- A claim whose order is older than the 30-day history (or of unknown date) is taken when the panel holds the order;
+  otherwise it is named in `HEPSIBURADA_RETURN_ORDER_OUTSIDE_HISTORY`, never dropped silently
+  (`HepsiburadaReturnHistoryPolicy.ImportsClaim`).

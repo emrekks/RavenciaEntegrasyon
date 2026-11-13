@@ -361,7 +361,7 @@ public sealed partial class MarketplaceJobProcessor
                     decision = decision with { PanelName = SeparateCategoryName(roots, leaf, platformLabel, remoteCategory) };
                     if (known.Count > 0) onDifference(DescribeDifference(known, remoteAttributeKeys, remoteNamesByKey));
                 }
-                category = NewStructureCategory(tenantId, decision.PanelName, pathKey, now);
+                category = await NewStructureCategoryAsync(tenantId, decision.PanelName, pathKey, remoteCategory.ExternalId, now, cancellationToken);
             }
         }
 
@@ -372,7 +372,7 @@ public sealed partial class MarketplaceJobProcessor
         {
             var separateName = SeparateCategoryName(roots, leaf, platformLabel, remoteCategory);
             decision = new(CategoryReuseDecision.CreateSeparate, null, separateName, "Bu bağlantıda aynı panel kategorisine başka bir pazar yeri kategorisi zaten eşli; ayrı kategori açılacak.");
-            category = NewStructureCategory(tenantId, separateName, pathKey, now);
+            category = await NewStructureCategoryAsync(tenantId, separateName, pathKey, remoteCategory.ExternalId, now, cancellationToken);
         }
         if (category is null) return (null, decision, false);
 
@@ -395,12 +395,28 @@ public sealed partial class MarketplaceJobProcessor
             .ToList();
     }
 
-    private Category NewStructureCategory(Guid tenantId, string name, string pathKey, DateTimeOffset now)
+    // A new root category takes the marketplace path as its key when that key is free. Root names are unique (NULLS NOT
+    // DISTINCT, 13 Nov 2026): a switched-off root of the same path, or the path's own category already mapped to another
+    // remote category (a separate one), would collide, so such a category takes its own name's key, then the remote id
+    // with it.
+    private async Task<Category> NewStructureCategoryAsync(Guid tenantId, string name, string pathKey, string externalId, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var category = new Category { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = Short(name, 160), NormalizedName = pathKey, Path = Short(name, 160), Depth = 0, IsLeaf = true, IsActive = true, CreatedAt = now, UpdatedAt = now, Version = 1 };
+        var candidates = StructureCategoryKeys(name, pathKey, externalId);
+        var taken = (await db.Categories.AsNoTracking().Where(x => x.TenantId == tenantId && x.ParentId == null && candidates.Contains(x.NormalizedName)).Select(x => x.NormalizedName).ToListAsync(cancellationToken))
+            .Concat(db.Categories.Local.Where(x => x.TenantId == tenantId && x.ParentId == null).Select(x => x.NormalizedName))
+            .ToHashSet(StringComparer.Ordinal);
+        var key = FreeStructureCategoryKey(candidates, taken, name);
+        var category = new Category { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = Short(name, 160), NormalizedName = key, Path = Short(name, 160), Depth = 0, IsLeaf = true, IsActive = true, CreatedAt = now, UpdatedAt = now, Version = 1 };
         db.Categories.Add(category);
         return category;
     }
+
+    internal static string[] StructureCategoryKeys(string name, string pathKey, string externalId) =>
+        new[] { pathKey, NormalizeCatalogKey(name, 160), NormalizeCatalogKey($"{externalId} {name}", 160) }
+            .Where(key => !string.IsNullOrWhiteSpace(key)).Distinct(StringComparer.Ordinal).ToArray();
+
+    internal static string FreeStructureCategoryKey(IReadOnlyList<string> candidates, IReadOnlySet<string> taken, string name) =>
+        candidates.FirstOrDefault(key => !taken.Contains(key)) ?? NormalizeCatalogKey($"{Guid.CreateVersion7():N} {name}", 160);
 
     // "Bluz (Hepsiburada)"; when that name is taken, add the parent category, then the id.
     private static string SeparateCategoryName(IReadOnlyList<Category> roots, string leaf, string platformLabel, ReferenceItem remoteCategory)

@@ -30,7 +30,10 @@ internal static class CatalogModelConfiguration
         {
             entity.ToTable("categories", "catalog"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id });
             entity.Property(x => x.Name).HasMaxLength(160); entity.Property(x => x.NormalizedName).HasMaxLength(160); entity.Property(x => x.Path).HasMaxLength(1024);
-            entity.Property(x => x.Version).IsConcurrencyToken(); entity.HasIndex(x => new { x.TenantId, x.ParentId, x.NormalizedName }).IsUnique();
+            entity.Property(x => x.Version).IsConcurrencyToken();
+            // NULLS NOT DISTINCT: two root categories (ParentId null) of one name are a duplicate too; PostgreSQL treats NULLs
+            // as distinct by default, so the plain unique index let a root category be opened twice.
+            entity.HasIndex(x => new { x.TenantId, x.ParentId, x.NormalizedName }).IsUnique().AreNullsDistinct(false);
             entity.HasOne<Category>().WithMany().HasForeignKey(x => new { x.TenantId, x.ParentId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         });

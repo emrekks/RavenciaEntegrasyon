@@ -312,6 +312,38 @@ public sealed class ConnectionWebhookPausePostgreSqlTests(PostgreSqlTenantIsolat
         }
     }
 
+    // Webhook'u Kapat on a Pasif Shopify connection retires the definition Pasife Al kept: activation opens nothing.
+    [PostgreSqlFact]
+    public async Task ClosingAPassiveConnectionsShopifyWebhook_DoesNotOpenItAgainOnActivation()
+    {
+        var context = await SeedWebhookPauseAsync("webhook-shopify-passive-close", "SHOPIFY");
+        try
+        {
+            await using (var db = fixture.CreateContext())
+                Assert.Null((await context.Notifications(db).EnableAsync(context.TenantId, context.ConnectionId, "enable", CancellationToken.None, "shpss_close_secret")).Error);
+            await using (var db = fixture.CreateContext())
+                await context.Connections(db).SetActiveAsync(context.TenantId, context.ConnectionId, await VersionAsync(db, context), false, CancellationToken.None);
+
+            await using (var db = fixture.CreateContext())
+            {
+                Assert.Null((await context.Notifications(db).DisableAsync(context.TenantId, context.ConnectionId, "close", CancellationToken.None)).Error);
+                Assert.Equal("DELETED", (await db.WebhookSubscriptions.AsNoTracking().SingleAsync(x => x.TenantId == context.TenantId)).Status);
+            }
+            await using (var db = fixture.CreateContext())
+            {
+                await PassConnectionTestAsync(db, context);
+                var activated = await context.Connections(db).SetActiveAsync(context.TenantId, context.ConnectionId, await VersionAsync(db, context), true, CancellationToken.None);
+                Assert.Null(activated.Value!.WebhookNotice);
+                Assert.Equal(1, context.Port.Created);
+                Assert.DoesNotContain(await db.WebhookSubscriptions.AsNoTracking().Where(x => x.TenantId == context.TenantId).ToListAsync(), x => x.Status == "ACTIVE");
+            }
+        }
+        finally
+        {
+            await DeleteWebhookPauseTenantAsync(context.TenantId);
+        }
+    }
+
     // Webhook'u Kapat (also what Bağlantıyı Sil runs) on a connection whose Trendyol webhook Pasife Al set passive removes
     // it at Trendyol, and it no longer opens with the connection.
     [PostgreSqlFact]

@@ -3723,16 +3723,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .SingleOrDefaultAsync(cancellationToken) ?? 600;
         var overlap = TimeSpan.FromSeconds(Math.Clamp(overlapSeconds, 0, 86_399));
         var forceBaseline = full || cursor.LastSuccessAt is null || cursor.ConsecutiveFailureCount > 0 || !string.IsNullOrWhiteSpace(cursor.LastError);
-        HepsiburadaPackageSyncState? state = null;
-        if (!full && cursor.ConsecutiveFailureCount == 0 && string.IsNullOrWhiteSpace(cursor.LastError) && !string.IsNullOrWhiteSpace(cursor.OpaqueCursor))
-        {
-            try
-            {
-                var saved = JsonSerializer.Deserialize<HepsiburadaPackageSyncState>(cursor.OpaqueCursor);
-                if (saved is { Version: HepsiburadaPackageSyncStateVersion, WindowIndex: >= 0, Offset: >= 0 }) state = saved;
-            }
-            catch (JsonException) { }
-        }
+        // A full (or first) read resumes the month-long read it left unfinished less than a day ago (a slice ended, a
+        // timeout), as the order read does, instead of starting the month again on every try.
+        var state = ReadHepsiburadaPackageSyncState(cursor.OpaqueCursor, now, forceBaseline);
         if (state is null)
         {
             var anchor = now;
@@ -3863,13 +3856,61 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             cursor.Version++;
             await db.SaveChangesAsync(cancellationToken);
             // Persist every offset/window so an interrupted full scan resumes
-            // without repeating the completed pages.
+            // without repeating the completed pages. Each finished day of a month-long read releases the lane and the
+            // job's timeout, as the order read does.
+            if (state.Offset == 0 && state.WindowIndex > 0 && state.AnchorEnd.AddDays(-state.WindowIndex) > state.StartAt
+                && state.AnchorEnd - state.StartAt > TimeSpan.FromDays(2))
+                throw new JobProcessingException(JobExecutionResult.Continue("Hepsiburada paket okumasının sonraki günü birkaç saniye içinde okunacak."));
         }
     }
 
-    private const string HepsiburadaPackageSyncStateVersion = "hepsiburada-packages-v2";
+    // The saved package read state: always on an ordinary read; on a full or first read only an unfinished month-long
+    // read started less than a day ago (one older is read again from the start).
+    internal static HepsiburadaPackageSyncState? ReadHepsiburadaPackageSyncState(string? opaqueCursor, DateTimeOffset now, bool forceBaseline)
+    {
+        if (string.IsNullOrWhiteSpace(opaqueCursor)) return null;
+        try
+        {
+            var saved = JsonSerializer.Deserialize<HepsiburadaPackageSyncState>(opaqueCursor);
+            if (saved is not { Version: HepsiburadaPackageSyncStateVersion, WindowIndex: >= 0, Offset: >= 0 }) return null;
+            if (!forceBaseline) return saved;
+            return HepsiburadaPackageBaseline(saved, now) ? saved : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    internal static bool HepsiburadaPackageBaseline(HepsiburadaPackageSyncState saved, DateTimeOffset now) =>
+        saved.StartAt <= OpenOrderLifecyclePolicy.HepsiburadaPackageStatusHistoryCutoff(saved.AnchorEnd) && now - saved.AnchorEnd < TimeSpan.FromDays(1);
+
+    // A full order read (Verileri Çek, activation) whose orders finished and whose package month is unfinished: the
+    // package state was started after the order read last completed.
+    private async Task<bool> HepsiburadaPackageBaselinePendingAsync(Guid tenantId, Guid connectionId, string payloadJson, string cursorResourceType, CancellationToken cancellationToken)
+    {
+        if (cursorResourceType is not ("ORDERS_HOT" or "ORDERS_RECOVERY")) return false;
+        try
+        {
+            using var payload = JsonDocument.Parse(payloadJson);
+            if (!payload.RootElement.TryGetProperty("full", out var full) || full.ValueKind != JsonValueKind.True) return false;
+            if (payload.RootElement.TryGetProperty("externalOrderId", out var single) && single.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(single.GetString())) return false;
+        }
+        catch (JsonException) { return false; }
+        var cursors = await db.SyncCursors.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && (x.ResourceType == "PACKAGES" || x.ResourceType == cursorResourceType))
+            .Select(x => new { x.ResourceType, x.OpaqueCursor, x.LastSuccessAt })
+            .ToListAsync(cancellationToken);
+        var orders = cursors.FirstOrDefault(x => x.ResourceType == cursorResourceType);
+        var packages = cursors.FirstOrDefault(x => x.ResourceType == "PACKAGES");
+        return HepsiburadaOrdersDoneForPackageBaseline(orders?.OpaqueCursor, orders?.LastSuccessAt, packages?.OpaqueCursor, timeProvider.GetUtcNow());
+    }
+
+    internal static bool HepsiburadaOrdersDoneForPackageBaseline(string? ordersOpaqueCursor, DateTimeOffset? ordersLastSuccessAt, string? packagesOpaqueCursor, DateTimeOffset now) =>
+        string.IsNullOrWhiteSpace(ordersOpaqueCursor) && ordersLastSuccessAt is { } ordersDone
+        && ReadHepsiburadaPackageSyncState(packagesOpaqueCursor, now, forceBaseline: true) is { } packages
+        && (packages.WindowIndex > 0 || packages.Offset > 0) && packages.AnchorEnd >= ordersDone;
+
+    internal const string HepsiburadaPackageSyncStateVersion = "hepsiburada-packages-v2";
     // LastPageKey: the package numbers of the page before, to tell a list that ignores the offset.
-    private sealed record HepsiburadaPackageSyncState(string Version, DateTimeOffset AnchorEnd, DateTimeOffset StartAt, int WindowIndex, int Offset, string? LastPageKey = null);
+    internal sealed record HepsiburadaPackageSyncState(string Version, DateTimeOffset AnchorEnd, DateTimeOffset StartAt, int WindowIndex, int Offset, string? LastPageKey = null);
 
     internal static string? HepsiburadaPackagePageKey(IReadOnlyList<RemoteOrderPackage> items) =>
         items.Count == 0 ? null : string.Join(',', items.Select(item => item.Package.ExternalPackageId).Order(StringComparer.Ordinal));
@@ -3910,7 +3951,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             return await SyncPttAvmOrders(tenantId, connectionId, payloadJson, correlationId, cursorResourceType, allowBaseline, cancellationToken);
         if (platform == "HEPSIBURADA")
         {
-            var ordersSynced = await SyncHepsiburadaOrders(tenantId, connectionId, payloadJson, correlationId, cursorResourceType, allowBaseline, cancellationToken);
+            // A full read whose order part finished and whose month of packages is still being read (a slice ended, a
+            // timeout) goes on with the packages: the order baseline is not read again for every package day.
+            var ordersSynced = await HepsiburadaPackageBaselinePendingAsync(tenantId, connectionId, payloadJson, cursorResourceType, cancellationToken)
+                || await SyncHepsiburadaOrders(tenantId, connectionId, payloadJson, correlationId, cursorResourceType, allowBaseline, cancellationToken);
             if (!ordersSynced || cursorResourceType is not ("ORDERS_HOT" or "ORDERS_RECOVERY")) return ordersSynced;
             try
             {
@@ -4515,8 +4559,17 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         foreach (var (windowStart, windowEnd) in PazaramaOrderHistoryPolicy.Windows(startDay, now))
         {
             string? page = null;
+            string? previousPageKey = null;
+            var pagesRead = 0;
             do
             {
+                if (++pagesRead > PazaramaOrderPageCap)
+                {
+                    // A list that never ends (a page number it ignores) is not read for ever: the window is closed and named.
+                    await RecordIssue(tenantId, $"pazarama-order-page-cap:{connectionId}:{windowStart:yyyyMMdd}", "PAZARAMA_ORDER_PAGE_CAP",
+                        $"Pazarama sipariş listesi {windowStart:dd.MM.yyyy} başlangıçlı pencerede {PazaramaOrderPageCap} sayfayı aştı; okuma bu pencerede durduruldu.", cancellationToken);
+                    break;
+                }
                 TrackRequest();
                 var result = await orders.PollAsync(
                     Context(tenantId, connectionId, correlationId, $"pazarama-order-sync:{windowStart:yyyyMMdd}:{page ?? "1"}"),
@@ -4529,6 +4582,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     await RecordIssue(tenantId, $"pazarama-order-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);
                 NoteRefusedOrders(result.Value.Issues);
                 await UpsertOrders(tenantId, connectionId, result.Value.Items, cancellationToken);
+                var pageKey = PazaramaOrderPageKey(result.Value.Items);
+                if (PazaramaOrderPageRepeated(previousPageKey, pageKey))
+                {
+                    // The same orders again on the next page: the list ignored the page number. The window is closed.
+                    await RecordIssue(tenantId, $"pazarama-order-page-repeat:{connectionId}", "PAZARAMA_ORDER_PAGE_REPEATED",
+                        "Pazarama sipariş listesi sonraki sayfada aynı siparişleri döndürdü (sayfa numarası yok sayıldı); bu pencerede okuma durduruldu.", cancellationToken);
+                    break;
+                }
+                previousPageKey = pageKey;
                 page = result.Value.HasMore ? result.Value.NextCursor : null;
             } while (page is not null && !cancellationToken.IsCancellationRequested);
         }
@@ -8613,7 +8675,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // K13: a mapped panel category the user switched off or split into sub-categories cannot take
         // products, the same rule UpsertCatalogCategory applies; the product stays without a category and
         // the mapping is reported once per category.
-        var category = observeOnly || addOnly ? null : categoryContext?.LocalCategory ?? await UpsertCatalogCategory(tenantId, snapshot.CategoryName, cancellationToken);
+        // An observe-only read (Pazarama, PttAVM, N11, Hepsiburada) gives a product it opens the panel category its
+        // marketplace category is mapped to (the import made that mapping), as it gives it the brand; an existing
+        // product's category is never touched (preserved above).
+        var category = ObservedProductCategory(observeOnly, addOnly, isNewProduct, categoryContext?.LocalCategory)
+            ?? (observeOnly || addOnly ? null : categoryContext?.LocalCategory ?? await UpsertCatalogCategory(tenantId, snapshot.CategoryName, cancellationToken));
         if (category is { } mappedCategory && categoryContext is not null && (!mappedCategory.IsActive || !mappedCategory.IsLeaf))
         {
             await RecordIssue(tenantId, $"category-mapping-unusable:{connectionId:D}:{mappedCategory.Id:D}", "CATEGORY_MAPPING_UNUSABLE", $"Pazaryeri kategorisinin eşlendiği \"{Short(mappedCategory.Name, 120)}\" kategorisi {(mappedCategory.IsActive ? "alt kategorilere bölünmüş" : "kapalı")}; ürünler kategorisiz aktarıldı. Eşleştirmeyi etkin bir yaprak kategoriye çevirin.", cancellationToken);
@@ -8755,6 +8821,21 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // Takes back a product this import added and has not saved yet, with every row added for it (its link, options,
     // media). Shared rows the import may have added beside it (a category, a brand another row uses) stay; a brand added
     // for this product alone (an observe-only read opens a brand only for a product it opens) goes with it.
+    // Pazarama order pages: at most this many in one window (100 orders a page; a 28-day window of 50,000 orders), and a
+    // page that repeats the one before ends the window; either is named in an issue instead of looping until the lease.
+    internal const int PazaramaOrderPageCap = 500;
+
+    internal static string? PazaramaOrderPageKey(IReadOnlyList<RemoteOrder> items) =>
+        items.Count == 0 ? null : string.Join(',', items.Select(item => item.ExternalOrderId).Order(StringComparer.Ordinal));
+
+    internal static bool PazaramaOrderPageRepeated(string? previousPageKey, string? pageKey) =>
+        pageKey is not null && string.Equals(previousPageKey, pageKey, StringComparison.Ordinal);
+
+    // The mapped panel category an observe-only read gives a product it opens; null otherwise (an existing product, a
+    // plain or add-only read, which choose their category themselves, or no mapped category).
+    internal static Category? ObservedProductCategory(bool observeOnly, bool addOnly, bool isNewProduct, Category? mapped) =>
+        observeOnly && !addOnly && isNewProduct ? mapped : null;
+
     internal static void DropNewCatalogProduct(AppDbContext db, Product product)
     {
         var brandId = product.BrandId;
@@ -13069,20 +13150,28 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             {
                 TrackReceived();
                 var orderCreatedAt = claim.OrderCreatedAt;
-                if (orderCreatedAt is null)
+                var orderStored = false;
+                if (orderCreatedAt is null || !HepsiburadaReturnHistoryPolicy.IsOrderWithinReturnHistory(orderCreatedAt, state.AnchorEnd))
                 {
-                    orderCreatedAt = await db.Orders.AsNoTracking()
+                    var storedOrderAt = await db.Orders.AsNoTracking()
                         .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId
                             && (x.ExternalOrderId == claim.ExternalOrderId || x.OrderNumber == claim.ExternalOrderId))
                         .Select(x => (DateTimeOffset?)x.OrderedAt)
-                        .SingleOrDefaultAsync(cancellationToken);
+                        .FirstOrDefaultAsync(cancellationToken);
+                    orderStored = storedOrderAt is not null;
+                    orderCreatedAt ??= storedOrderAt;
                 }
-                if (!HepsiburadaReturnHistoryPolicy.IsOrderWithinReturnHistory(orderCreatedAt, state.AnchorEnd))
+                if (!HepsiburadaReturnHistoryPolicy.ImportsClaim(orderCreatedAt, state.AnchorEnd, orderStored))
                 {
+                    // An order older than the history the panel reads (or of unknown date) that the panel does not hold:
+                    // the claim is named, never dropped silently, so a late return is seen.
                     TrackSkipped();
+                    await RecordIssue(tenantId, $"hepsiburada-return-outside-history:{connectionId}:{Short(claim.ExternalClaimId, 120)}", "HEPSIBURADA_RETURN_ORDER_OUTSIDE_HISTORY",
+                        Short($"Hepsiburada iade talebi {claim.ExternalClaimId} ({claim.ExternalOrderId} numaralı sipariş) panele alınmadı: sipariş panelde yok ve tarihi {(orderCreatedAt is null ? "bilinmiyor" : "son 30 günün dışında")}. Talebi Hepsiburada satıcı panelinden kontrol edin.", 1000)!, cancellationToken);
                     continue;
                 }
                 await ResolveIssue(tenantId, $"hepsiburada-return:{connectionId}:{status}:{claim.ExternalClaimId}", cancellationToken);
+                if (orderStored) await ResolveIssue(tenantId, $"hepsiburada-return-outside-history:{connectionId}:{Short(claim.ExternalClaimId, 120)}", cancellationToken);
                 await UpsertReturn(tenantId, connectionId, claim, cancellationToken);
             }
 

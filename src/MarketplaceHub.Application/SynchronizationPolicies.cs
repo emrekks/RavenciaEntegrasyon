@@ -182,6 +182,11 @@ public static class HepsiburadaReturnHistoryPolicy
     public static bool IsOrderWithinReturnHistory(DateTimeOffset? orderCreatedAt, DateTimeOffset anchor) =>
         orderCreatedAt is { } orderedAt && orderedAt >= InitialStatusChangeStart(anchor) && orderedAt <= anchor;
 
+    // A claim is taken when its order is within the history, or whatever its age when the panel holds the order (a late
+    // return of an order read earlier). The others are named in an issue by the caller, never dropped silently.
+    public static bool ImportsClaim(DateTimeOffset? orderCreatedAt, DateTimeOffset anchor, bool orderStored) =>
+        orderStored || IsOrderWithinReturnHistory(orderCreatedAt, anchor);
+
     // Hepsiburada's status-change filter misses claims in a pass of minutes (23 Oct 2026: claim 318311246, opened on
     // 19 Oct and waiting for an answer, was never listed by an incremental pass while full passes find claims), so an
     // incremental pass looks back at least two days; a claim listed again is only updated.

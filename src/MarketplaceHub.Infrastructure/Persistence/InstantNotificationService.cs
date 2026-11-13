@@ -255,6 +255,13 @@ public sealed class InstantNotificationService(
                 await CloseAsync(passive, "DELETED", cancellationToken);
                 await RetirePausedAsync(tenantId, connectionId, correlationId, cancellationToken);
             }
+            // A Shopify webhook Pasife Al closed has no subscription left at Shopify: Webhook'u Kapat retires its kept
+            // definition, so it no longer opens again with the connection.
+            if (connection.PlatformCode == "SHOPIFY")
+            {
+                await RetirePausedAsync(tenantId, connectionId, correlationId, cancellationToken);
+                await ResolvePendingAsync(tenantId, ResumePendingKey(connectionId), cancellationToken);
+            }
             return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, null, "OFF", null, cancellationToken));
         }
         if (subscription.ExternalSubscriptionId is { } externalId && externalId != ManualRegistration)
