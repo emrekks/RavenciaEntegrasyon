@@ -16,7 +16,10 @@ Ravencia Marketplace Hub deposunda (`emrekks/RavenciaEntegrasyon`) 13 Kasım 202
   - Ürün bilgisi pazaryerine "Ürün Bilgisi Güncelle" ile gider.
   - Stok ve fiyat periyodik stok uzlaştırmasıyla (`ReconcileStock`) gider.
   - Toplu güvenlik stoğu (A-3) bu yüzden yalnız gönderim işaretini temizliyor; iş kuyruklamıyor.
-- Kod `main`'de: `7ec16b5a0`. Validate, `codex/tarama-duzeltmeleri` dalında yeşil geçti ([run 5046](https://github.com/emrekks/RavenciaEntegrasyon/actions/runs/43444775005)). `main`'e push'lanan commit aynı.
+- Kod `main`'de: `7ec16b5a0`.
+  - Validate `codex/tarama-duzeltmeleri` dalında ([run 5046](https://github.com/emrekks/RavenciaEntegrasyon/actions/runs/43444775005)) ve `main`'de ([run 5047](https://github.com/emrekks/RavenciaEntegrasyon/actions/runs/43446301094)) yeşil.
+  - Deploy [1981](https://github.com/emrekks/RavenciaEntegrasyon/actions/runs/43446412261) 13 Kasım 14:51 UTC'de başarıyla bitti.
+  - Canlı imajların bu sha'yı çalıştırdığı henüz doğrulanmadı.
 - Önceki oturumun kendi dalı `claude/inspiring-noether-cbwvkm`. Dosya ağacı aynı; commit mesajlarında atıf satırları var. `main`'e giden kopyada bu satırlar temizlendi, o yüzden sha'lar farklı.
 
 ## İlk yapacakların
