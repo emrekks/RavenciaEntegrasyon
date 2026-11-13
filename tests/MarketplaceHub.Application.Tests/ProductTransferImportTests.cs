@@ -656,6 +656,33 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
         Assert.Equal(("PRODUCT_TRANSFER_BARCODE_TAKEN", 409), (refused.Error?.Code, refused.Error?.Status));
     }
 
+    // Scan C-10 (13 Nov 2026): an Excel cell formatted as a percentage holds the fraction (%10 is 0.1); it is read as
+    // 10, and only a rate the panel takes (0, 1, 10, 20) is written.
+    [Theory]
+    [InlineData("%10", false, 10)]
+    [InlineData("10", false, 10)]
+    [InlineData("0.1", false, 10)]
+    [InlineData("0.2", false, 20)]
+    [InlineData("0.01", false, 1)]
+    [InlineData("0", false, 0)]
+    [InlineData("1", false, 1)]
+    [InlineData("0,1", true, 10)]
+    public void AVatRate_IsReadAsThePercentageExcelShows(string cell, bool fromCsv, int expected)
+    {
+        var value = ProductTransferFileParser.ParseVat(cell, fromCsv);
+        Assert.Equal((ProductTransferValueKind.Set, (decimal?)expected), (value.Kind, value.Amount));
+    }
+
+    [Theory]
+    [InlineData("0.5")]
+    [InlineData("%0,1")]
+    [InlineData("8")]
+    [InlineData("18")]
+    public void AVatRateThePanelDoesNotTake_IsAnError(string cell)
+    {
+        Assert.Equal(ProductTransferValueKind.Invalid, ProductTransferFileParser.ParseVat(cell, fromCsv: true).Kind);
+    }
+
     // Scan C-9 (13 Nov 2026): a file changing a variant's model code to the code another product holds would merge the
     // two products into one family (Shopify and PTT AVM send a family as one product): the upload is refused.
     [PostgreSqlFact]
