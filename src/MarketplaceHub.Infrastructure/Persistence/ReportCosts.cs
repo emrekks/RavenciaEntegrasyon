@@ -128,7 +128,9 @@ internal static class ReportCosts
     public static ReportCostsView Build(ReportInput input, IReadOnlyList<ReportBuilder.OrderFact> orders)
     {
         var finance = input.Finance;
-        var financeOrders = orders.Where(order => IsFinanceStore(input, order.Order.ConnectionId) && order.Currency == "TRY").ToList();
+        // An order without an amount or a return (its price has not come yet) is not costed, as on the other platforms
+        // (below) and in the order profit (ReportOrderProfit): its fees and cargo would weigh on no sale.
+        var financeOrders = orders.Where(order => IsFinanceStore(input, order.Order.ConnectionId) && order.Currency == "TRY" && (order.Amount > 0 || order.Back > 0)).ToList();
         var states = finance?.States ?? new Dictionary<Guid, MarketplaceFinanceSyncState?>();
         var lastSynced = states.Count == 0 || states.Values.Any(state => state?.LastSyncedAt is null) ? null : states.Values.Min(state => state!.LastSyncedAt);
         var coveredFrom = states.Count == 0 || states.Values.Any(state => state?.CoveredFrom is null) ? null : states.Values.Max(state => state!.CoveredFrom);
