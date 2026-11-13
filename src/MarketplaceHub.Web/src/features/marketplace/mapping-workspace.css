@@ -243,7 +243,7 @@
 .app-shell.stitch-shell main section.mapping-page > .mapping-reference-card label:not(.rv-pagination-jump) { display: grid; gap: 6px; color: var(--rv-color-muted); font-size: 13px; font-weight: 500; text-transform: none; }
 .app-shell.stitch-shell main section.mapping-page > .mapping-reference-card :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not(.rv-pagination-jump > input), select, .panel-category-picker-trigger) { box-sizing: border-box; height: var(--mp-control); min-height: var(--mp-control); padding: 0 12px; color: var(--rv-color-ink); background-color: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 14px; font-weight: 400 !important; }
 .app-shell.stitch-shell main section.mapping-page > .mapping-reference-card :is(input, select, .panel-category-picker-trigger):focus { border-color: var(--rv-color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 18%, transparent); outline: none; }
-.app-shell.stitch-shell main section.mapping-page > .mapping-reference-card button:not(.category-library-remove):not(.category-chip-remove):not(.category-library-search-toggle):not([role="tab"]):not([role="option"]):not(.panel-category-picker-trigger):not(.title-hint):not(.panel-attribute-record-main):not(:is(.category-library-list, .category-chip-list) button) { height: var(--mp-control); min-height: var(--mp-control); padding: 0 14px; border-radius: 7px; font-size: 13px; font-weight: 600 !important; text-transform: none; }
+.app-shell.stitch-shell main section.mapping-page > .mapping-reference-card button:not(.library-collapse-toggle):not(.category-library-remove):not(.category-chip-remove):not(.category-library-search-toggle):not([role="tab"]):not([role="option"]):not(.panel-category-picker-trigger):not(.title-hint):not(.panel-attribute-record-main):not(:is(.category-library-list, .category-chip-list) button) { height: var(--mp-control); min-height: var(--mp-control); padding: 0 14px; border-radius: 7px; font-size: 13px; font-weight: 600 !important; text-transform: none; }
 .app-shell.stitch-shell main section.mapping-page > .mapping-reference-card button:disabled { opacity: .5; }
 
 /* 1. Panel categories: create row, search row, chip grid */
@@ -734,4 +734,20 @@ html body .app-shell.stitch-shell main section.mapping-page .mapping-label-line 
   html body .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid > .mapping-link-rail { grid-column: 2; align-self: start; justify-self: center; transform: none; height: 36px; margin: 24px 0 0 !important; }
   html body .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-local > label { grid-row: 1; align-self: start; display: grid; grid-template-rows: 18px 36px; gap: 6px; line-height: 18px; }
   html body .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-target { grid-column: 3; }
+}
+
+/* Kategori Listesi folds to one 36 px row; the search tools and the list open downward beneath it. */
+.app-shell.stitch-shell main section.mapping-page .library-collapse { display: grid; min-width: 0; }
+.app-shell.stitch-shell main section.mapping-page .library-collapse > button.library-collapse-toggle { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; height: var(--mp-control, 36px); min-height: 0; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 600; text-align: left; text-transform: none; cursor: pointer; }
+.app-shell.stitch-shell main section.mapping-page .library-collapse > button.library-collapse-toggle:hover { background: var(--rv-hover, var(--rv-color-surface-soft)); }
+.app-shell.stitch-shell main section.mapping-page .library-collapse > button.library-collapse-toggle > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell main section.mapping-page .library-collapse > button.library-collapse-toggle .ui-icon { flex: none; color: var(--rv-color-muted); transition: transform 0.2s ease; }
+.app-shell.stitch-shell main section.mapping-page .library-collapse.is-open > button.library-collapse-toggle .ui-icon { transform: rotate(180deg); }
+.app-shell.stitch-shell main section.mapping-page .library-collapse > .library-collapse-region { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.22s ease; }
+.app-shell.stitch-shell main section.mapping-page .library-collapse.is-open > .library-collapse-region { grid-template-rows: 1fr; }
+.app-shell.stitch-shell main section.mapping-page .library-collapse-inner { display: grid; gap: 12px; min-height: 0; min-width: 0; padding-top: 0; overflow: hidden; visibility: hidden; transition: padding-top 0.22s ease, visibility 0s linear 0.22s; }
+.app-shell.stitch-shell main section.mapping-page .library-collapse.is-open .library-collapse-inner { padding-top: 12px; overflow: visible; visibility: visible; transition: padding-top 0.22s ease, overflow 0s linear 0.22s, visibility 0s; }
+.app-shell.stitch-shell main section.mapping-page .category-library-empty { margin: 0; padding: 0 2px; color: var(--rv-color-muted); font-size: 13px; }
+@media (prefers-reduced-motion: reduce) {
+  .app-shell.stitch-shell main section.mapping-page .library-collapse * { transition: none !important; }
 }

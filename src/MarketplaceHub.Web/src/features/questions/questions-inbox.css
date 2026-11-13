@@ -341,3 +341,8 @@
   .app-shell.stitch-shell main .qi-templates-modal .rv-question-template-card > div:last-child { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .app-shell.stitch-shell main .qi-templates-modal .rv-question-template-card > div:last-child > .rv-button { width: 100%; min-width: 0; justify-content: center; }
 }
+
+/* Nothing to list yet: the note is one full-width line of text and the card takes its height (owner, 13 Nov 2026; on a
+   phone the two-column rule above squeezed it into half the card). */
+.app-shell.stitch-shell main .qi-page .qi-sync.qi-sync:has(> .qi-sync-empty) { display: block !important; grid-template-columns: none !important; min-height: 0; height: auto; }
+.qi-page .qi-sync > .qi-sync-empty { display: block; padding: 12px 16px; line-height: 1.45; text-wrap: pretty; }

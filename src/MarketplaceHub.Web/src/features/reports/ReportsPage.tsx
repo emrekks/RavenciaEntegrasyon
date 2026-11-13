@@ -10,7 +10,7 @@ import { PanelSelect } from '../../shared/PanelSelect'
 import { ViewTabsWithMore } from '../../shared/view-tabs'
 import { TabSlidePanel } from '../../shared/tab-slide'
 import {
-  bySalesChannel, change, desiSourcesNote, downloadCsv, isSalesChannel, variantColourAndSize, formatCount, formatDay, formatHours, formatNumber, formatPercent, formatTl, formatTlShort, formatTlWhole, moneyOrMissing, platformColor, platformName, reportQuery, sortRows, toCsv, unknownLabel,
+  bySalesChannel, change, noValue, desiSourcesNote, downloadCsv, isSalesChannel, variantColourAndSize, formatCount, formatDay, formatHours, formatNumber, formatPercent, formatTl, formatTlShort, formatTlWhole, moneyOrMissing, platformColor, platformName, reportQuery, sortRows, toCsv, unknownLabel,
   periodPresets, profitCost, profitRateQuery, stockQuery, type Change, type ReportProfitRate, type CsvColumn, type ReportCosts, type ReportGroup, type ReportInventory, type ReportProduct, type ReportReason, type ReportSales, type ReportStockGroup, type ReportStockItem, type ReportStockPlatform, type ReportStockRow
 } from './report-format'
 import { AdReportModal, adReportQuery, adReportRow, combined, reportAge, roasText, staleDays, type AdReports } from './AdReport'
@@ -50,7 +50,7 @@ const lastThirtyDays = () => periodPresets().find(preset => preset.key === '30')
 
 // Raporlar: sales, returns, cancellations, cargo, customers, stock and profit for a chosen period and platforms, each
 // compared with the previous period of the same length. Every number comes from the server's report; a value the data
-// cannot support is shown as "—" or "Tutar yok" with the reason in the data notes, never as a guess.
+// cannot support is shown as "—" with the reason in the data notes, never as a guess.
 export function ReportsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const detailParam = searchParams.get('detail')
@@ -455,7 +455,8 @@ const costCoverageText = (money: Money) => (money.costCoverage ?? 0) >= 1 ? ''
     : `Satılan adetlerin ${formatPercent(money.costCoverage)} kadarının maliyeti girili; Net Kâr, en az %95'inin maliyeti girilince hesaplanır.`
 
 // Why the profit is not shown: no cost entered at all, or under 95 % of the sold units with one (Money.uncosted).
-const profitEmpty = (money: Money | null, noAmount: boolean) => noAmount ? 'Tutar yok' : (money?.uncosted ?? 0) > 0 ? 'Maliyet Eksik' : 'Maliyet girilmemiş'
+// An unknown profit is always "—" (noValue); the reason is the card's sub-line (null when the period has no amount at all).
+const profitReason = (money: Money | null, noAmount: boolean) => noAmount ? null : (money?.uncosted ?? 0) > 0 ? 'Maliyet Eksik' : 'Maliyet girilmemiş'
 const missingCostTip = (money: Money | null) => (money?.uncosted ?? 0) > 0
   ? `Satılan ${formatNumber(money?.uncosted ?? 0)} adedin ürün maliyeti girilmemiş (${formatPercent(money?.costCoverage === null || money?.costCoverage === undefined ? null : 1 - money.costCoverage)}). Kesintiler bütün satışlardan düşüldüğü için eksik maliyetle hesaplanan kâr olduğundan yüksek çıkardı; satılan adetlerin en az %95'inin maliyeti girilince hesaplanır. Maliyeti ürün kartından girin.`
   : noCostTip
@@ -477,7 +478,7 @@ function Figure({ value, format, shown }: { value: number; format: (value: numbe
 // A figure of a strip: its value (or a word, as a province's name), its change against the previous period with the
 // previous value under it, and how it is worked out, shown under the pointer.
 export type Kpi = {
-  key: string; label: string; value: number | null; format?: (value: number) => string; text?: string; empty?: string
+  key: string; label: string; value: number | null; format?: (value: number) => string; text?: string
   delta?: Change | null; invert?: boolean; note?: string; tip?: string; tone?: 'good' | 'bad' | 'warn'; icon?: CardIconName
   // Rows the explanation lists under it (the figure per platform); the card then opens it on hover, not only its label.
   split?: Array<{ key: string; label: string; value: string }>
@@ -520,11 +521,9 @@ export function KpiStrip({ label, items, marks = true, aligned = false, long = f
   return <div className="reports-kpis-wrap">
     <div ref={ref} className={`reports-kpis is-${items.length}${aligned ? ' is-aligned' : ''}${long ? ' is-long' : ''}${stack ? ' is-stack' : ''}`} role="group" aria-label={label}>{items.map(item => {
       const id = `${tip}-${item.key}`
-      const empty = item.empty ?? '—'
-      const missing = item.value === null && item.text === undefined
       // Whole counts stay whole while they count up; money shows whole liras (the kuruş rounded) in a strip.
       const format = item.format === formatTl ? formatTlWhole : item.format ?? (Number.isInteger(item.value) ? (value: number) => formatNumber(Math.round(value)) : formatNumber)
-      return <div key={item.key} className={`${missing && empty !== '—' ? 'is-missing' : ''}${item.text !== undefined ? ' is-text' : ''}${item.tone ? ` is-${item.tone}` : ''}${open?.key === item.key ? ' is-open' : ''}`.trim() || undefined}
+      return <div key={item.key} className={`${item.text !== undefined ? 'is-text' : ''}${item.tone ? ` is-${item.tone}` : ''}${open?.key === item.key ? ' is-open' : ''}`.trim() || undefined}
         onMouseEnter={marks && !item.split?.length ? undefined : event => show(item.key, event.currentTarget)} onMouseLeave={hide}>
         <CardBackgroundIcon name={kpiIcon(item)} tone={item.tone === 'good' ? 'ok' : item.tone} />
         <button type="button" className="reports-tip-trigger reports-kpi-label" aria-describedby={item.tip ? id : undefined}
@@ -532,7 +531,7 @@ export function KpiStrip({ label, items, marks = true, aligned = false, long = f
           // With a "?" mark the tip belongs to the label: it closes as the pointer leaves it, not only the card.
           onMouseLeave={marks && !item.split?.length ? hide : undefined}
           onFocus={item.tip ? event => event.currentTarget.parentElement && show(item.key, event.currentTarget.parentElement) : undefined} onBlur={hide}>{item.label}{marks && item.tip && <TipMark />}</button>
-        <strong>{item.text ?? (item.value === null ? empty : <Figure value={item.value} format={format} shown={shown} />)}</strong>
+        <strong>{item.text ?? (item.value === null ? noValue : <Figure value={item.value} format={format} shown={shown} />)}</strong>
         {/* The previous period's figure opens under the change chip on a tap, instead of always taking a line. */}
         {compares && <span className="reports-kpi-change">{item.delta !== undefined && (previousNote(item) ? <button type="button" className="reports-kpi-delta-toggle" aria-expanded={peek === item.key} onClick={() => setPeek(peek === item.key ? null : item.key)}><Delta delta={item.delta} invert={item.invert} /></button> : <Delta delta={item.delta} invert={item.invert} />)}</span>}
         {item.note !== undefined && (!previousNote(item) || peek === item.key) && <span className="reports-kpi-note">{wholeLiras(item.note)}</span>}
@@ -579,12 +578,12 @@ function OverviewFigures({ data, money }: { data: ReportSales; money: Money | nu
     .map(row => ({ row, value: pick(row) })).filter((item): item is { row: ReportGroup; value: number } => item.value !== null && item.value !== 0)
     .sort((left, right) => right.value - left.value).map(item => ({ key: item.row.key, label: platformName(item.row.label), value: format(item.value) }))
   const items: Kpi[] = [
-    { key: 'net', label: 'Toplam Ciro', value: noAmount ? null : now.grossSales, format: formatTl, empty: 'Tutar yok', delta: noAmount ? null : change(now.grossSales, then.grossSales),
+    { key: 'net', label: 'Toplam Ciro', value: noAmount ? null : now.grossSales, format: formatTl, delta: noAmount ? null : change(now.grossSales, then.grossSales),
       note: noAmount ? previousText(null) : `Net ${formatTl(now.netRevenue)} · iade ${formatTl(now.returnedAmount)}`,
       tip: `Dönemin toplam satış tutarı; iptaller sayılmaz, iadeler düşülmez. Alttaki net, iadeler düşülünce kalandır.\n${previousLine(then.ordersWithAmount > 0 ? formatTl(then.grossSales) : null)}`, split: split(row => row.ordersWithAmount > 0 ? row.grossSales : null, formatTl) },
-    { key: 'profit', label: profitLabel(money), value: profit, format: formatTl, empty: profitEmpty(money, noAmount),
+    { key: 'profit', label: profitLabel(money), value: profit, format: formatTl,
       delta: change(profit, earlierProfit),
-      note: profit === null || now.ordersWithAmount === 0 ? 'Sipariş başına —' : `Sipariş başına ${signedTl(profit / now.ordersWithAmount)}`,
+      note: profit === null ? profitReason(money, noAmount) ?? 'Sipariş başına —' : now.ordersWithAmount === 0 ? 'Sipariş başına —' : `Sipariş başına ${signedTl(profit / now.ordersWithAmount)}`,
       tip: `${profit === null ? missingCostTip(money) : profit < 0 ? netLossTip : netProfitTip}${estimateLine(money)}\n${previousLine(earlierProfit === null ? null : signedTl(earlierProfit))}`,
       tone: profit === null ? undefined : profit < 0 ? 'bad' : profit > 0 ? 'good' : undefined },
     { key: 'margin', label: 'Kâr Marjı', value: money?.margin ?? null, format: percent, delta: change(money?.margin ?? null, earlier?.margin ?? null, 'rate'),
@@ -1458,21 +1457,21 @@ function ProfitView({ data }: { data: ReportSales }) {
   const earlierProfit = earlier?.profit ?? null
   const onCost = profit !== null && money?.cost ? profit / money.cost : null
   const earlierOnCost = earlierProfit !== null && earlier?.cost ? earlierProfit / earlier.cost : null
-  const noCost = noAmount ? 'Tutar yok' : 'Maliyet girilmemiş'
+  const noCost = noAmount ? null : 'Maliyet girilmemiş'
   // Maliyeti Olan Ciro counts like Toplam Ciro (returns not taken off); an older API without costedSales falls back to the
   // kept-units figure.
   const costedSales = cost.costedSales ?? cost.costedRevenue
   const earlierCostedSales = earlierCost ? earlierCost.costedSales ?? earlierCost.costedRevenue : null
   const tone = (value: number | null) => value === null ? undefined : value < 0 ? 'bad' as const : value > 0 ? 'good' as const : undefined
   const items: Kpi[] = [
-    { key: 'revenue', label: 'Toplam Ciro', value: noAmount ? null : now.grossSales, format: formatTl, empty: 'Tutar yok', delta: noAmount ? null : change(now.grossSales, then.grossSales),
+    { key: 'revenue', label: 'Toplam Ciro', value: noAmount ? null : now.grossSales, format: formatTl, delta: noAmount ? null : change(now.grossSales, then.grossSales),
       note: previousText(then.ordersWithAmount > 0 ? formatTl(then.grossSales) : null),
       tip: salesTip },
-    { key: 'costed', label: 'Maliyeti Olan Ciro', value: costed ? costedSales : null, format: formatTl, empty: noCost,
-      delta: costed && earlierCosted ? change(costedSales, earlierCostedSales) : null, note: previousText(earlierCosted ? formatTl(earlierCostedSales) : null),
+    { key: 'costed', label: 'Maliyeti Olan Ciro', value: costed ? costedSales : null, format: formatTl,
+      delta: costed && earlierCosted ? change(costedSales, earlierCostedSales) : null, note: !costed && noCost ? noCost : previousText(earlierCosted ? formatTl(earlierCostedSales) : null),
       tip: `Ürün maliyeti girili satışların tutarı; iadeler düşülmeden. Toplam Ciro'nun ${formatPercent(now.grossSales > 0 ? costedSales / now.grossSales : null)} kadarı.` },
-    { key: 'profit', label: profitLabel(money), value: profit, format: formatTl, empty: profitEmpty(money, noAmount),
-      delta: change(profit, earlierProfit), note: previousText(earlierProfit === null ? null : signedTl(earlierProfit)), tone: tone(profit),
+    { key: 'profit', label: profitLabel(money), value: profit, format: formatTl,
+      delta: change(profit, earlierProfit), note: profit === null && profitReason(money, noAmount) ? profitReason(money, noAmount)! : previousText(earlierProfit === null ? null : signedTl(earlierProfit)), tone: tone(profit),
       tip: `${profit === null ? missingCostTip(money) : profit < 0 ? netLossTip : netProfitTip}${estimateLine(money)}` },
     { key: 'margin', label: 'Net Kâr / Satış Fiyatı Oranı', value: money?.margin ?? null, format: percent, delta: change(money?.margin ?? null, earlier?.margin ?? null, 'rate'),
       note: previousText(formatPercent(earlier?.margin)), tone: (money?.margin ?? 0) < 0 ? 'bad' : undefined,
@@ -1887,7 +1886,7 @@ function Returns({ data }: { data: ReportSales }) {
       note: previousText(formatNumber(then.returnedQuantity)), tip: 'Müşterilerin geri gönderdiği ürün adedi.' },
     { key: 'rate', label: 'İade Oranı', value: now.returnRate, format: percent, delta: change(now.returnRate, then.returnRate, 'rate'), invert: true,
       note: previousText(formatPercent(then.returnRate)), tip: returnRateTip },
-    { key: 'amount', label: 'İade Liste Tutarı', value: now.ordersWithAmount > 0 ? returnedAtList(now) : null, format: formatTl, empty: 'Tutar yok',
+    { key: 'amount', label: 'İade Liste Tutarı', value: now.ordersWithAmount > 0 ? returnedAtList(now) : null, format: formatTl,
       delta: now.ordersWithAmount > 0 ? change(returnedAtList(now), returnedAtList(then)) : null, invert: true,
       note: previousText(then.ordersWithAmount > 0 ? formatTl(returnedAtList(then)) : null), tip: 'İade edilen ürünlerin liste fiyatıyla tutarı, Trendyol gibi. Kâr hesabında müşterinin ödediği tutar düşülür.' }
   ]
@@ -2220,7 +2219,7 @@ function stockProfitKpi(capital: number, rate: MonthlyProfitRate): Kpi {
   const value = rate.average === null || capital <= 0 ? null : capital * rate.average
   return {
     key: 'profit', label: value !== null && value < 0 ? 'Tahmini Zarar' : 'Tahmini Kâr', value, format: formatTl, tone: value === null ? undefined : value < 0 ? 'bad' : 'good',
-    empty: rate.loading ? 'Hesaplanıyor' : 'Hesaplanamadı',
+    note: value === null ? (rate.loading ? 'Hesaplanıyor' : 'Hesaplanamadı') : undefined,
     tip: `Stok, son ayların maliyete göre net kâr oranıyla satılırsa kalacak tahmini kâr.${rate.average === null
       ? (rate.loading ? ' Aylık kâr oranları alınıyor.' : ' Geçmiş aylarda kâr bilinmiyor: satılan adetlerin %95\'inden azının maliyeti girili.')
       : `\n${span}: ortalama ${formatPercent(rate.average)}`}`
@@ -2246,7 +2245,7 @@ function StockReport({ from, to, platforms, sales }: { from: string; to: string;
   const money: Kpi[] = [
     { key: 'capital', label: 'Stoktaki Sermaye', value: summary.capital, format: formatTl,
       tip: `Stoktaki ürünlere bağlı para, girdiğiniz maliyetle (KDV dahil)${summary.capitalExVat === null ? '' : `; KDV hariç ${formatTlWhole(summary.capitalExVat)}`}.${summary.missingCostVariants > 0 ? ` Maliyeti girilmemiş ${formatCount(summary.missingCostVariants)} varyant dahil değil.` : ''}` },
-    { key: 'value', label: 'Envanter Satış Değeri', value: summary.value, format: formatTl, empty: 'Fiyat yok',
+    { key: 'value', label: 'Envanter Satış Değeri', value: summary.value, format: formatTl,
       tip: `Stoğun ürün kartındaki satış fiyatıyla tutarı (KDV dahil).${summary.missingPriceUnits > 0 ? ` Fiyatı olmayan ${formatNumber(summary.missingPriceUnits)} adet dahil değil.` : ''}` },
     stockProfitKpi(summary.capital, rate),
     { key: 'units', label: 'Toplam Stok Adedi', value: summary.units,
@@ -2467,9 +2466,9 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
     { key: 'pending', label: 'Teslim Bekleyen Sipariş', value: pendingDelivery, format: formatTl, icon: 'truck',
       note: pendingOrders > 0 ? `${formatCount(pendingOrders)} sipariş` : 'Yok',
       tip: 'Onaylanmış ya da kargodaki, henüz teslim edilmemiş siparişlerin müşterinin ödediği tutarı. Teslimden sonra bakiyeye girer.' },
-    { key: 'next', label: 'Sıradaki Ödeme', value: nextAmount, format: formatTl, empty: 'Yok', icon: 'calendarClock', note: nextDay ? shortDay(nextDay) : 'Bekleyen ödeme yok',
+    { key: 'next', label: 'Sıradaki Ödeme', value: nextAmount, format: formatTl, icon: 'calendarClock', note: nextDay ? shortDay(nextDay) : 'Bekleyen ödeme yok',
       tip: `En yakın ödeme gününde gelecek tahmini tutar; kesinti faturaları kesildikçe düşer. Eksi kapanan ödeme günü ödeme yapmaz, eksisi mağazanın sonraki ödemesinden düşülür. Vadesi geçmiş kayıtlar burada sayılmaz, Vadesi Geçmiş Bekleyen'de gösterilir.${payoutDay}${carriedText}` },
-    { key: 'last', label: 'Son Ödeme', value: lastPaid?.amount ?? null, format: formatTl, empty: 'Yok', icon: 'circleCheck', note: lastPaid ? shortDay(lastPaid.day) : 'Okunmuş ödeme yok',
+    { key: 'last', label: 'Son Ödeme', value: lastPaid?.amount ?? null, format: formatTl, icon: 'circleCheck', note: lastPaid ? shortDay(lastPaid.day) : 'Okunmuş ödeme yok',
       tip: 'Pazaryerinin yaptığı son ödeme, kendi bildirdiği tutarla.' },
     { key: 'unknown', label: 'Vadesi Geçmiş Bekleyen', value: overdue, format: formatTl, icon: 'alertTriangle', tone: overdue > 0 ? 'warn' : undefined,
       note: overdue < 0 ? 'Bekleyen kesinti' : overdue > 0 ? 'Ödeme bekliyor' : 'Yok',

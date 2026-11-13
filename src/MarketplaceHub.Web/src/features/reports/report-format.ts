@@ -183,7 +183,11 @@ export function formatHours(hours: number | null | undefined) {
 export function formatDay(value: string) { const [year, month, day] = value.split('-'); return `${day}.${month}.${year}` }
 
 // A money value that only means something when the bucket had orders with an amount (Shopify sends none).
-export function moneyOrMissing(value: number, ordersWithAmount: number) { return ordersWithAmount > 0 ? formatTl(value) : 'Tutar yok' }
+// The one rule for a figure that is not known (no amount, no cost, no price, no comparison): "—" in the normal ink, never a
+// word and never a colour; the reason, when it helps, is the card's sub-line or its explanation. A count that is really zero
+// stays "0" (owner, 13 Nov 2026).
+export const noValue = '—'
+export function moneyOrMissing(value: number, ordersWithAmount: number) { return ordersWithAmount > 0 ? formatTl(value) : noValue }
 
 // The change against the previous period. A rate is compared by its difference (13,7 % to 11,8 % is −%1,9); a count
 // or amount as a percentage, and not at all when the previous period had nothing (no "+∞%").
@@ -195,7 +199,8 @@ export function change(current: number | null | undefined, previous: number | nu
     if (Math.abs(points) < 0.05) return { text: '%0,0', direction: 'flat' }
     return { text: `${points > 0 ? '+' : '−'}%${Math.abs(points).toLocaleString('tr-TR', { maximumFractionDigits: 1, minimumFractionDigits: 1 })}`, direction: points > 0 ? 'up' : 'down' }
   }
-  if (previous === 0) return current === 0 ? { text: '%0', direction: 'flat' } : null
+  // Nothing in the previous period is nothing to compare with (no "+∞%", no "■ %0" for zero against zero).
+  if (previous === 0) return null
   const percent = (current - previous) / Math.abs(previous) * 100
   if (Math.abs(percent) < 0.05) return { text: '%0', direction: 'flat' }
   return { text: `${percent > 0 ? '+' : '−'}%${Math.abs(percent).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}`, direction: percent > 0 ? 'up' : 'down' }
