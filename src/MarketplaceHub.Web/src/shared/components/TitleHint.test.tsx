@@ -21,8 +21,8 @@ describe('TitleHint', () => {
     expect(tip.hidden).toBe(true)
   })
 
-  it('draws an "i" in a circle instead of the question mark when asked for the info icon', () => {
-    const { host } = render(<span>Hepsiburada Kategorisi<TitleHint label="Hepsiburada Kategorisi" icon="info">4.785 yaprak kategori</TitleHint></span>)
+  it('always draws an "i" in a circle, never a question mark', () => {
+    const { host } = render(<span>Hepsiburada Kategorisi<TitleHint label="Hepsiburada Kategorisi">4.785 yaprak kategori</TitleHint></span>)
     expect(host.querySelector('button.title-hint .ui-icon-infoCircle')).not.toBeNull()
     expect(host.querySelector('button.title-hint .ui-icon-help')).toBeNull()
   })
