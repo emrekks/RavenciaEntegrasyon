@@ -56,11 +56,11 @@ export function cancelRowText(row: Omit<CancelRow, keyof Store>) {
 
 // "N Paket | M Adet Ürün": the package count big, the rest smaller on the same line. The units are left out while they
 // are not known (an older API), never shown as 0.
-function Packages({ packages, units }: { packages: Metric; units: number | undefined }) {
+function Packages({ packages, units, reminder }: { packages: Metric; units: number | undefined; reminder?: number }) {
   return <strong className="rr-metric-pk" title={packages.error ? 'Sayı okunamadı; sayfayı yenileyip tekrar deneyin.' : undefined}>
     <CountUp value={metricText(packages)} />
     {known(packages) && ' '}
-    {known(packages) && <span className="rr-metric-sub">Paket{units !== undefined && <>{' '}<span className="rr-metric-sep" aria-hidden="true">|</span>{' '}{count(units)} <span className="rr-metric-adet">Adet </span>Ürün</>}</span>}
+    {known(packages) && <span className="rr-metric-sub">Paket{units !== undefined && <>{' '}<span className="rr-metric-sep" aria-hidden="true">|</span>{' '}{count(units)} <span className="rr-metric-adet">Adet </span>Ürün</>}{reminder !== undefined && reminder > 0 && <span className="rr-metric-note">{' '}<span className="rr-metric-sep" aria-hidden="true">|</span>{' '}Hatırlatıcı: {count(reminder)}</span>}</span>}
   </strong>
 }
 
@@ -207,7 +207,7 @@ export function OrderMetricCards({ newOrders, newUnits, newRows, newCargo, proce
     </article>
     <article className={tipped('rr-metric-link', 'rr-metric-tipped', activeCard === 'resent' && 'rr-metric-on')}>
       <CardBackgroundIcon name="refresh" />
-      <button type="button" className="rr-metric-open" title={resentStores.length > 0 ? undefined : 'Elle girilen hatırlatıcı: kargoya verilmemiş yeniden gönderimler (sağ üstteki ayar simgesiyle değiştirilir)'} aria-pressed={activeCard === 'resent'} onClick={() => openOnPointer('resent')}><small>Yeniden Gönderim</small><Packages packages={resentShown} units={undefined} /></button>
+      <button type="button" className="rr-metric-open" title={resentStores.length > 0 ? undefined : 'Elle girilen hatırlatıcı: kargoya verilmemiş yeniden gönderimler (sağ üstteki ayar simgesiyle değiştirilir)'} aria-pressed={activeCard === 'resent'} onClick={() => openOnPointer('resent')}><small>Yeniden Gönderim</small><Packages packages={resentShown} units={undefined} reminder={resentReminder} /></button>
       {onSaveResentReminder && <ResendReminderEditor count={resentReminder} onSave={onSaveResentReminder} />}
       {<StoreTip rows={packageTip(resentStores)} />}
     </article>
