@@ -62,3 +62,14 @@ export function panelResetStepStates(steps: string[], job: PanelFactoryResetJob 
   const failed = panelResetFailed(job.status)
   return steps.map((_, index) => index < current ? 'done' : index === current ? (failed ? 'failed' : 'running') : 'pending')
 }
+
+// The server names each step in the present progressive ("Loglar siliniyor"). That reads right while the step runs or
+// waits; once it is done the list must say so in the past tense, and a failed step says what did not happen.
+const stepEndings: Array<[string, string, string]> = [['siliniyor', 'silindi', 'silinemedi'], ['temizleniyor', 'temizlendi', 'temizlenemedi']]
+
+export function panelResetStepLabel(step: string, state: PanelResetStepState) {
+  if (state === 'running' || state === 'pending') return step
+  if (step === 'Süren işlerin bitmesi bekleniyor') return state === 'done' ? 'Süren işler bitti' : 'Süren işlerin bitmesi beklenirken durdu'
+  for (const [present, done, failed] of stepEndings) if (step.endsWith(present)) return step.slice(0, -present.length) + (state === 'done' ? done : failed)
+  return step
+}
