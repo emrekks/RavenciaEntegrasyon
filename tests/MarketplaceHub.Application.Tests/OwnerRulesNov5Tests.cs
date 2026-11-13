@@ -27,6 +27,33 @@ public sealed class OwnerRulesNov5Tests
         Assert.Equal(InvoiceReturnScope.None, InvoiceReturnAdjustmentPolicy.Classify(invoiced, new Dictionary<Guid, decimal> { [Guid.NewGuid()] = 5 }));
     }
 
+    // Scan D-1 (13 Nov 2026): units cancelled after issuing count with the returned ones, never past the invoice.
+    [Fact]
+    public void AnInvoiceLineLosesItsUnitsCancelledAfterIssuingAndItsReturnedOnes()
+    {
+        // 3 invoiced, 1 cancelled since: 1 unit off the invoice.
+        Assert.Equal(1m, InvoiceReturnAdjustmentPolicy.RemovedUnits(3, 3, 1, 0));
+        Assert.Equal(1m, InvoiceReturnAdjustmentPolicy.CancelledAfterIssue(3, 3, 1));
+        // Invoiced after the cancellation (2 of 3): nothing cancelled after issuing.
+        Assert.Equal(0m, InvoiceReturnAdjustmentPolicy.RemovedUnits(2, 3, 1, 0));
+        // 1 cancelled and 1 of the kept 2 returned: 2 off; never more than the invoice holds.
+        Assert.Equal(2m, InvoiceReturnAdjustmentPolicy.RemovedUnits(3, 3, 1, 1));
+        Assert.Equal(3m, InvoiceReturnAdjustmentPolicy.RemovedUnits(3, 3, 3, 3));
+        Assert.Equal(0m, InvoiceReturnAdjustmentPolicy.RemovedUnits(0, 3, 0, 3));
+    }
+
+    // Scan D-2: a provider reference other than the UUID sent is a mismatch; the same UUID in another case, or no
+    // reference at all, is not.
+    [Fact]
+    public void AProviderReferenceOtherThanTheSentUuidIsAMismatch()
+    {
+        var sent = InvoiceProviderIdentityPolicy.UuidFor(LineA).ToString("D");
+        Assert.True(InvoiceProviderIdentityPolicy.Matches(sent, sent.ToUpperInvariant()));
+        Assert.True(InvoiceProviderIdentityPolicy.Matches(sent, null));
+        Assert.False(InvoiceProviderIdentityPolicy.Matches(sent, Guid.NewGuid().ToString("D")));
+        Assert.False(InvoiceProviderIdentityPolicy.Matches(sent, "GIB2026000000001"));
+    }
+
     // Rule 2 (T2-D27): A approved, B rejected ends "Kısmen Onaylandı", never Rejected.
     [Fact]
     public void AClaimDecidedBothWaysIsApprovedInPart()

@@ -52,4 +52,33 @@ public static class InvoiceProviderIdentityPolicy
         Guid.TryParse(attemptReference, out var uuid) ? uuid.ToString("D") : null;
 
     public static bool NotFoundIsSettled(DateTimeOffset attemptStartedAt, DateTimeOffset now) => now - attemptStartedAt >= NotFoundSettleDelay;
+
+    // Scan D-2 (13 Nov 2026): the provider answered a submission with a reference other than the UUID the panel sent, so
+    // it does not keep our UUID on that connection. A later "not found by UUID" there proves nothing: the invoice may
+    // exist under the provider's own reference. The connection gets a lasting warning (UuidMismatchIssueCode) and such a
+    // not-found is recorded as UuidNotHonouredCode, which asks for a portal search by order number before any resend.
+    public const string UuidMismatchIssueCode = "INVOICE_PROVIDER_UUID_MISMATCH";
+    public const string UuidNotHonouredCode = "EFATURAM_UUID_NOT_HONOURED";
+
+    public static string UuidMismatchIssueKey(Guid providerConnectionId) => $"invoice-provider-uuid-mismatch:{providerConnectionId:N}";
+
+    // Whether the reference the provider answered is the UUID that was sent. No reference at all is no mismatch.
+    public static bool Matches(string sentUuid, string? answeredReference)
+    {
+        if (string.IsNullOrWhiteSpace(answeredReference)) return true;
+        return Guid.TryParse(sentUuid, out var sent) && Guid.TryParse(answeredReference, out var answered)
+            ? sent == answered
+            : string.Equals(sentUuid.Trim(), answeredReference.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    // Scan D-2: on such a connection the "no invoice at the provider" confirmation opens a resend only when the operator
+    // states they searched the provider portal by the order number (the documented API has no such search).
+    public const string OrderNumberSearchRequiredCode = "INVOICE_ORDER_NUMBER_SEARCH_REQUIRED";
+
+    public static string OrderNumberSearchRequiredMessage(string orderNumber) =>
+        $"E-Faturam bu bağlantıda faturaları kendi kimliğiyle kaydediyor; panel faturanın kesilmediğini bilemez. E-Faturam portalında {orderNumber} sipariş numarasıyla arayın ve fatura yoksa bunu onaylayarak yeniden gönderimi açın.";
+
+    public static string UuidMismatchSummary(string? invoiceNumber, string sentUuid, string answeredReference) =>
+        $"E-Faturam {invoiceNumber ?? "bir"} faturasını panelin gönderdiği kimlikle ({sentUuid}) değil kendi kimliğiyle ({answeredReference}) kaydetti. "
+        + "Bu bağlantıda yanıtı kaybolan bir faturanın kimlikle bulunamaması kesilmediğini göstermez: yeniden göndermeden önce E-Faturam portalında sipariş numarasıyla arayın.";
 }

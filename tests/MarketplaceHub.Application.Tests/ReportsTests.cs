@@ -550,8 +550,8 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
 
     // Trendyol's service fee and withholding tax invoices name only their payout: they are split over the orders that
     // payout paid and count with those orders (owner, 5 Nov 2026), whatever day they were billed on. A share of an order
-    // of another period stays out of this one, a share of an order never imported and an invoice whose payout lines are
-    // not read yet or that names no payout stay apart, unlinked.
+    // of another period stays out of this one, a share of an order never imported stays apart, unlinked, and an invoice
+    // whose payout lines are not read yet or that names no payout is covered by its orders' estimates (each cost once).
     [PostgreSqlFact]
     public async Task Per_sale_fee_invoices_are_split_over_the_orders_of_their_payout()
     {
@@ -633,15 +633,15 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
             // 13.19 a package, nothing estimated; the tax by sale, 100 : 50.
             Assert.Equal((26.38m, 26.38m, 0m, 2), (fee.Amount, fee.OrderLinked, fee.Estimated, fee.Records));
             Assert.Equal((1.25m, 1.25m, 0m, 2), (tax.Amount, tax.OrderLinked, tax.Estimated, tax.Records));
-            // Apart: the never-imported order's share (13.19) and the 13.19 naming no payout; the old order's share is in
-            // its own period. The unread payout's 39.57 is covered by its orders' estimates (each cost once), not apart.
-            // No withholding tax is left apart.
+            // Apart: the never-imported order's share (13.19); the old order's share is in its own period. The unread
+            // payout's 39.57 and the 13.19 naming no payout are covered by their orders' estimates (each cost once), not
+            // apart. No withholding tax is left apart.
             var apart = report.Costs.Unlinked!.Single(line => line.Category == MarketplaceFinanceCategories.ServiceFee);
-            Assert.Equal((26.38m, 2), (apart.Amount, apart.Records));
+            Assert.Equal((13.19m, 1), (apart.Amount, apart.Records));
             Assert.DoesNotContain(report.Costs.Unlinked!, line => line.Category == MarketplaceFinanceCategories.Stoppage);
-            Assert.Equal((39.57m, 1), report.Costs.CoveredByEstimate!.Single(line => line.Category == MarketplaceFinanceCategories.ServiceFee) is var covered ? (covered.Amount, covered.Records) : default);
+            Assert.Equal((52.76m, 2), report.Costs.CoveredByEstimate!.Single(line => line.Category == MarketplaceFinanceCategories.ServiceFee) is var covered ? (covered.Amount, covered.Records) : default);
             Assert.Contains(report.DataNotes, note => note.Contains("39,57 ₺", StringComparison.Ordinal) && note.Contains("tahminle karşılandı", StringComparison.Ordinal));
-            Assert.Contains(report.DataNotes, note => note.StartsWith("13,19 ₺", StringComparison.Ordinal));
+            Assert.Contains(report.DataNotes, note => note.StartsWith("13,19 ₺", StringComparison.Ordinal) && note.Contains("tahminle karşılandı", StringComparison.Ordinal));
 
             await using var db = fixture.CreateContext();
             var page = await new ReportsService(db, new FixedClock(Now)).OrderProfitabilityAsync(tenant.Id,

@@ -190,7 +190,14 @@ public sealed class GoogleDriveApi(IHttpClientFactory httpClientFactory) : IGoog
                 var file = await response.Content.ReadFromJsonAsync<FileResource>(linked.Token)
                     ?? throw new GoogleDriveException("DRIVE_UPLOAD_NO_FILE", "Drive yüklenen dosyayı bildirmedi.");
                 await producer;
-                return new DriveObject(file.Id ?? string.Empty, file.Name ?? name, ParseSize(file.Size));
+                var stored = new DriveObject(file.Id ?? string.Empty, file.Name ?? name, ParseSize(file.Size));
+                // Drive must hold exactly what was sent; anything else is removed and the copy fails (retried later).
+                if (stored.Size != offset)
+                {
+                    if (stored.Id.Length > 0) { try { await DeleteAsync(accessToken, stored.Id, CancellationToken.None); } catch (GoogleDriveException) { } }
+                    throw new GoogleDriveException("DRIVE_UPLOAD_SIZE_MISMATCH", $"Drive'daki kopya {stored.Size} bayt, gönderilen {offset} bayt; kopya silindi ve yeniden denenecek.");
+                }
+                return stored;
             }
         }
         catch

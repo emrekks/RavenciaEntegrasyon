@@ -15,8 +15,8 @@ public sealed class ShopifyWebhookVerifier(AppDbContext db, IDataProtectionProvi
 {
     // A delivery whose X-Shopify-Triggered-At is further than this from now is acknowledged and dropped (G4).
     internal static readonly TimeSpan FreshnessWindow = TimeSpan.FromMinutes(5);
-    // MarketplaceWebhookService answers this code with 200 and enqueues nothing: Shopify does not retry it, and the
-    // order still arrives through the scheduled order check.
+    // MarketplaceWebhookService answers this code with 200 and enqueues no ingest: Shopify does not retry it, and the
+    // order still arrives through the scheduled order check. A stale product delete still starts the link check.
     internal const string StaleCode = "SHOPIFY_WEBHOOK_STALE";
     // The topics the panel subscribes to (ShopifyHttpClient.WebhookTopics). The header is not signed, so any other
     // value counts as one topic and cannot be varied to slip a replayed body past the deduplication.

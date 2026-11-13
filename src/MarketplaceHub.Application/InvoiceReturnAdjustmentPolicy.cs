@@ -32,4 +32,22 @@ public static class InvoiceReturnAdjustmentPolicy
             ? InvoiceReturnScope.Full
             : InvoiceReturnScope.Partial;
     }
+
+    /// <summary>
+    /// The units of an invoice line the order no longer sells: those cancelled after issuing (the invoice holds more than
+    /// the order keeps, ordered less cancelled) and those returned (InvoiceSaleReturns.ReturnedUnitsAsync, counted on
+    /// what the order keeps), never more than the invoice holds. Scan D-1 (13 Nov 2026): a line cancelled in part after
+    /// issuing, or a return the marketplace recorded without an approved claim, left the invoice unflagged.
+    /// </summary>
+    public static decimal RemovedUnits(decimal invoicedQuantity, decimal orderedQuantity, decimal cancelledQuantity, decimal returnedQuantity)
+    {
+        if (invoicedQuantity <= 0) return 0;
+        var kept = Math.Max(0, orderedQuantity - Math.Max(0, cancelledQuantity));
+        var cancelledAfterIssue = Math.Max(0, invoicedQuantity - kept);
+        return Math.Min(invoicedQuantity, cancelledAfterIssue + Math.Max(0, returnedQuantity));
+    }
+
+    /// <summary>The cancelled-after-issue part of RemovedUnits.</summary>
+    public static decimal CancelledAfterIssue(decimal invoicedQuantity, decimal orderedQuantity, decimal cancelledQuantity) =>
+        invoicedQuantity <= 0 ? 0 : Math.Min(invoicedQuantity, Math.Max(0, invoicedQuantity - Math.Max(0, orderedQuantity - Math.Max(0, cancelledQuantity))));
 }

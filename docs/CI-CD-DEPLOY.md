@@ -342,9 +342,12 @@ cd <set> && sha256sum -c SHA256SUMS                              # yollar /backu
 Sonra RUNBOOK-GERI-ALMA.md bölüm 3. `deploy/secrets/` emaneti (Y4) aynı anahtarla şifrelenir: RUNBOOK-GERI-ALMA.md bölüm 5.
 
 **Eski sunucu yolu (yedek, ikincil):** `deploy/backup/offsite-copy.sh` ve `ravencia-offsite-copy.timer` (09:30 / 21:30
-UTC) hâlâ çalışır, ama yalnız `deploy/secrets/backup_age_recipient.txt` ve `backup_offsite_remote.txt` (ve `rclone.conf`)
-varsa kurulur; yoksa hiçbir şey yapmaz. **Öncelik panelde:** ikisi aynı klasöre yazarsa aynı adlı kopya ikinci kez
-yüklenmez; sunucu betiği hiç silmez (saklamayı panel yapar). Panel çalıştıktan sonra bu üç dosyanın silinmesi önerilir
+UTC) hâlâ çalışır (geçici nesneye yükler, uzaktan geri okunan SHA-256 tutarsa son adına taşır ve `<set>.tar.age.verified`
+kaydı yazar), ama yalnız `deploy/secrets/backup_age_recipient.txt` ve `backup_offsite_remote.txt` (ve `rclone.conf`)
+varsa kurulur; yoksa hiçbir şey yapmaz (13 Kasım 2026: canlıda kurulu değil). **Öncelik panelde:** ikisini birlikte
+kullanmayın; panel klasörde aynı adlı kopya varsa yeniden yüklemez, sunucu betiği ise yalnız kendi `.verified` kaydı
+olan kopyayı sayar ve panelin kopyasını yeniden
+yükler. Sunucu betiği kendi geçici nesnesi dışında silmez (saklamayı panel yapar). Panel çalıştıktan sonra bu dosyalar silinmeli
 (o zaman zamanlayıcı bir sonraki deploy'da kurulmaz). Sınır: `drive.file` token'ı uygulamanın yüklediği kopyaları
 silebilir; sunucuyu ele geçiren bu kopyaları da silebilir. Silinemez hedef gerekirse ileride Backblaze B2 Object Lock.
 

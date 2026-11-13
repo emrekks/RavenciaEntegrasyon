@@ -1017,6 +1017,25 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             USING purge_product_ids p
             WHERE x."TenantId"={{tenantId}} AND x."Id"=p."Id";
             """, cancellationToken);
+        // The deletes above raise no change events of their own (AppDbContext announces only added and changed rows), so
+        // each deleted product is announced here, in the same transaction: the report cache (ReportCache) drops the
+        // reports its order lines' costs and names were read into, and the open panels refresh.
+        var deletedAt = timeProvider.GetUtcNow();
+        foreach (var product in products)
+            db.IntegrationOutboxEvents.Add(new IntegrationOutboxEvent
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenantId,
+                ResourceType = "products",
+                OperationType = "deleted",
+                AggregateType = "Product",
+                AggregateId = product.Id,
+                AggregateVersion = product.Version,
+                PayloadJson = JsonSerializer.Serialize(new { aggregateType = "Product", aggregateId = product.Id, version = product.Version }),
+                CreatedAt = deletedAt,
+                NextAttemptAt = deletedAt
+            });
+        await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         // Outside the serializable delete so the check of other owners cannot fail it; a file a failure here leaves
         // ACTIVE is found by the hourly orphan sweep (FileAssetReferences.MarkOrphansAsync).
@@ -1555,6 +1574,13 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             var proposedBarcodeValues = existingVariants.Where(variant => !variantIdsToDelete.Contains(variant.Id)).Select(variant => updatesById.TryGetValue(variant.Id, out var update) ? update.Barcode : variant.Barcode).OfType<string>().Where(value => !string.IsNullOrWhiteSpace(value)).ToArray();
             var updateClashes = await VariantCodeAvailability.FindAsync(db, db.ProductVariants.Where(x => x.TenantId == tenantId && !familyVariantProductIds.Contains(x.ProductId)), proposedSkuValues, proposedBarcodeValues, cancellationToken);
             if (updateClashes.Count > 0) return CodeConflict<ProductView>("VARIANT_CODE_CONFLICT_REVIEW_REQUIRED", "Stok kodu veya barkod başka bir üründe kullanılıyor", updateClashes);
+            // C-9: a row whose model code changes to one another product (outside this family save) holds is refused.
+            var changedModelCodes = ModelCodeUniquenessPolicy.ChangedCodes(variantUpdates.Select(update => (existingVariants.Single(x => x.Id == update.Id).ModelCode, update.ModelCode)));
+            if (changedModelCodes.Count > 0 && await ModelCodeOwnership.FindOtherAsync(db, tenantId, changedModelCodes, familyVariantProductIds, cancellationToken) is { } changedHolder)
+            {
+                var changeMessage = ModelCodeUniquenessPolicy.ChangeMessage(changedHolder.Title);
+                return ServiceResult<ProductView>.Fail(ModelCodeUniquenessPolicy.ChangeConflictCode, changeMessage, 409, new Dictionary<string, string[]> { [ModelCodeUniquenessPolicy.Field] = [changeMessage] });
+            }
             var updatedAt = timeProvider.GetUtcNow();
             // O15: the editor sends every row of the model-code family on each save. Only a row whose
             // data really changes gets a new version, and only such a row makes its product a local edit.

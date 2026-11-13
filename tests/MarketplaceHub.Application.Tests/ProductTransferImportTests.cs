@@ -656,6 +656,108 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
         Assert.Equal(("PRODUCT_TRANSFER_BARCODE_TAKEN", 409), (refused.Error?.Code, refused.Error?.Status));
     }
 
+    // Scan C-10 (13 Nov 2026): an Excel cell formatted as a percentage holds the fraction (%10 is 0.1); it is read as
+    // 10, and only a rate the panel takes (0, 1, 10, 20) is written.
+    [Theory]
+    [InlineData("%10", false, 10)]
+    [InlineData("10", false, 10)]
+    [InlineData("0.1", false, 10)]
+    [InlineData("0.2", false, 20)]
+    [InlineData("0.01", false, 1)]
+    [InlineData("0", false, 0)]
+    [InlineData("1", false, 1)]
+    [InlineData("0,1", true, 10)]
+    [InlineData("%8", false, 8)]
+    [InlineData("0.08", false, 8)]
+    public void AVatRate_IsReadAsThePercentageExcelShows(string cell, bool fromCsv, int expected)
+    {
+        var value = ProductTransferFileParser.ParseVat(cell, fromCsv);
+        Assert.Equal((ProductTransferValueKind.Set, (decimal?)expected), (value.Kind, value.Amount));
+    }
+
+    [Theory]
+    [InlineData("0.5")]
+    [InlineData("%0,1")]
+    [InlineData("18")]
+    [InlineData("5")]
+    public void AVatRateThePanelDoesNotTake_IsAnError(string cell)
+    {
+        Assert.Equal(ProductTransferValueKind.Invalid, ProductTransferFileParser.ParseVat(cell, fromCsv: true).Kind);
+    }
+
+    // Scan C-9 (13 Nov 2026): a file changing a variant's model code to the code another product holds would merge the
+    // two products into one family (Shopify and PTT AVM send a family as one product): the upload is refused.
+    [PostgreSqlFact]
+    public async Task AModelCodeAnotherProductHolds_IsRefused()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"transfer-model-{Guid.NewGuid():N}", DisplayName = "transfer", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
+        var shirt = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "Gömlek", Description = "", Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now };
+        var trousers = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "Pantolon", Description = "", Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now };
+        var shirtVariant = Variant(tenant, shirt, "GML-1", "8690000500001", cost: null, desi: null, now);
+        shirtVariant.ModelCode = "GML-MODEL";
+        var trousersVariant = Variant(tenant, trousers, "PNT-1", "8690000500002", cost: null, desi: null, now);
+        trousersVariant.ModelCode = "PNT-MODEL";
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.Products.AddRange(shirt, trousers);
+            seed.ProductVariants.AddRange(shirtVariant, trousersVariant);
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var service = new ProductTransferService(db, fixture.TimeProvider);
+        var refused = await service.ApplyAsync(tenant.Id, Guid.CreateVersion7(), new ApplyProductTransferCommand([new ProductTransferChange(trousersVariant.Id, trousersVariant.Version, false, null, false, null, SetModelCode: true, ModelCode: "gml model")]), "transfer-model", CancellationToken.None);
+        Assert.Equal(("PRODUCT_TRANSFER_MODEL_CODE_TAKEN", 409), (refused.Error?.Code, refused.Error?.Status));
+        Assert.Contains("Gömlek", refused.Error!.Message);
+
+        // A code no other product holds is written.
+        db.ChangeTracker.Clear();
+        var renamed = await service.ApplyAsync(tenant.Id, Guid.CreateVersion7(), new ApplyProductTransferCommand([new ProductTransferChange(trousersVariant.Id, trousersVariant.Version, false, null, false, null, SetModelCode: true, ModelCode: "PNT-YENI")]), "transfer-model-2", CancellationToken.None);
+        Assert.True(renamed.Succeeded, renamed.Error?.Message);
+    }
+
+    // Scan C-9, imports: a marketplace import may not move a variant's model code onto a card the marketplace does not
+    // know (no link on the connection); a card linked on the connection is the same marketplace model's family.
+    [PostgreSqlFact]
+    public async Task AnImportedModelCode_IsHeldOnlyByCardsTheConnectionDoesNotKnow()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"import-model-{Guid.NewGuid():N}", DisplayName = "import", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
+        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "TRENDYOL", Environment = "PRODUCTION", DisplayName = "Trendyol", ExternalStoreId = $"store-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V2", SettingsJson = "{}", Version = 1 };
+        var imported = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "İçe aktarılan", Description = "", Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now };
+        var panelOnly = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "Panel Gömleği", Description = "", Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now };
+        var importedVariant = Variant(tenant, imported, "IMP-1", "8690000600001", cost: null, desi: null, now);
+        importedVariant.ModelCode = "ESKI-MODEL";
+        var panelVariant = Variant(tenant, panelOnly, "PNL-1", "8690000600002", cost: null, desi: null, now);
+        panelVariant.ModelCode = "ORTAK-MODEL";
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(connection);
+            seed.Products.AddRange(imported, panelOnly);
+            seed.ProductVariants.AddRange(importedVariant, panelVariant);
+            seed.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ProductId = imported.Id, ExternalId = $"content-{Guid.NewGuid():N}", SyncStatus = "SYNCED", Version = 1 });
+            await seed.SaveChangesAsync();
+        }
+
+        await using (var db = fixture.CreateContext())
+        {
+            Assert.Equal(panelOnly.Id, (await ModelCodeOwnership.FindUnlinkedHolderAsync(db, tenant.Id, connection.Id, "ortak model", imported.Id, CancellationToken.None))?.ProductId);
+            Assert.Null(await ModelCodeOwnership.FindUnlinkedHolderAsync(db, tenant.Id, connection.Id, "BAŞKA-MODEL", imported.Id, CancellationToken.None));
+        }
+
+        // Once the panel card is linked on the connection it is the same marketplace model: no conflict.
+        await using (var link = fixture.CreateContext())
+        {
+            link.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ProductId = panelOnly.Id, ExternalId = $"content-{Guid.NewGuid():N}", SyncStatus = "SYNCED", Version = 1 });
+            await link.SaveChangesAsync();
+        }
+        await using (var db = fixture.CreateContext())
+            Assert.Null(await ModelCodeOwnership.FindUnlinkedHolderAsync(db, tenant.Id, connection.Id, "ORTAK-MODEL", imported.Id, CancellationToken.None));
+    }
+
     private static ProductVariant Variant(Tenant tenant, Product product, string sku, string barcode, decimal? cost, decimal? desi, DateTimeOffset now) => new()
     {
         Id = Guid.CreateVersion7(),

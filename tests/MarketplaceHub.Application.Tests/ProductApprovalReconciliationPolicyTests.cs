@@ -38,6 +38,24 @@ public sealed class ProductApprovalReconciliationPolicyTests
         Assert.True(ProductApprovalReconciliationPolicy.ShouldResetMissingPublication(2, allMissing, createConfirmed: false));
     }
 
+    // Scan C-15: Shopify's search lags behind a product just created; "not found" resets a Shopify card only after the
+    // search's grace and only when no SKU of it was confirmed created.
+    [Fact]
+    public void AShopifyCardIsResetOnlyAfterTheSearchGraceAndWhenNothingWasConfirmedCreated()
+    {
+        var allMissing = new[]
+        {
+            new RemotePublicationStatus("SKU-1", "NOT_FOUND", null, null, null, "{}"),
+            new RemotePublicationStatus("SKU-2", "NOT_FOUND", null, null, null, "{}")
+        };
+        var started = new DateTimeOffset(2026, 11, 13, 10, 0, 0, TimeSpan.Zero);
+
+        Assert.False(ProductApprovalReconciliationPolicy.ShouldResetMissingShopifyPublication(2, allMissing, createConfirmed: false, started, started.AddMinutes(5)));
+        Assert.True(ProductApprovalReconciliationPolicy.ShouldResetMissingShopifyPublication(2, allMissing, createConfirmed: false, started, started.AddMinutes(15)));
+        Assert.False(ProductApprovalReconciliationPolicy.ShouldResetMissingShopifyPublication(2, allMissing, createConfirmed: true, started, started.AddHours(5)));
+        Assert.True(ProductApprovalReconciliationPolicy.ShopifyFirstCheckDelay > TimeSpan.Zero);
+    }
+
     [Fact]
     public void TrendyolsDuplicateBarcodeRefusalSaysTheProductIsThere()
     {
@@ -114,5 +132,18 @@ public sealed class ProductApprovalReconciliationPolicyTests
         Assert.False(ProductApprovalReconciliationPolicy.IsSettledLive("CREATE_ACCEPTED", hasProductLink: true, hasVariantLink: true));
         Assert.False(ProductApprovalReconciliationPolicy.IsSettledLive("LIVE", hasProductLink: false, hasVariantLink: true));
         Assert.False(ProductApprovalReconciliationPolicy.IsSettledLive("LIVE", hasProductLink: true, hasVariantLink: false));
+    }
+
+    [Theory]
+    [InlineData("CREATE_ACCEPTED", 30, "APPROVAL_PENDING")]
+    [InlineData("APPROVAL_PENDING", 30, "APPROVAL_PENDING")]
+    [InlineData(ProductBatchResultPolicy.ResultUnknownStatus, 0, ProductBatchResultPolicy.ResultUnknownStatus)]
+    [InlineData(ProductBatchResultPolicy.ResultUnknownStatus, 23, ProductBatchResultPolicy.ResultUnknownStatus)]
+    [InlineData(ProductBatchResultPolicy.ResultUnknownStatus, 24, "MANUAL_REVIEW")]
+    public void ANotFoundBarcodeWhoseCreateWasNeverConfirmedStaysUnknownThenGoesToReview(string listingStatus, int hoursSinceCheckBegan, string expected)
+    {
+        var started = new DateTimeOffset(2026, 11, 13, 9, 0, 0, TimeSpan.Zero);
+
+        Assert.Equal(expected, ProductApprovalReconciliationPolicy.NotFoundStatus(listingStatus, started, started.AddHours(hoursSinceCheckBegan)));
     }
 }

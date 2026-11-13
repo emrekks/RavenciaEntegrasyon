@@ -32,6 +32,7 @@ internal static class InvoiceAdjustmentTracking
     /// </summary>
     public static async Task<int> FlagAdjustmentsAsync(AppDbContext db, Guid tenantId, DateTimeOffset now, CancellationToken cancellationToken)
     {
+        var returnedStatuses = DashboardRevenuePolicy.ReturnedStatuses;
         var candidates = await (from invoice in db.Invoices
                                 join order in db.Orders on new { invoice.TenantId, Id = invoice.OrderId } equals new { order.TenantId, order.Id }
                                 where invoice.TenantId == tenantId
@@ -42,7 +43,14 @@ internal static class InvoiceAdjustmentTracking
                                         || invoice.Status == InvoiceStatus.MarketplaceFailed || invoice.Status == InvoiceStatus.Completed
                                         || invoice.Status == InvoiceStatus.ManualReview)
                                     && (order.DerivedStatus == "CANCELLED" || order.DerivedStatus == "CANCELED"
-                                        || db.ReturnClaims.Any(claim => claim.TenantId == tenantId && claim.OrderId == order.Id && claim.Status != ReturnClaimStatus.Cancelled))
+                                        || returnedStatuses.Contains(order.DerivedStatus)
+                                        || db.ReturnClaims.Any(claim => claim.TenantId == tenantId && claim.OrderId == order.Id && claim.Status != ReturnClaimStatus.Cancelled)
+                                        // D-1: a line cancelled in part or returned on the marketplace (no claim needed), or a
+                                        // package that came back, also changes what the invoice should hold.
+                                        || db.OrderLines.Any(line => line.TenantId == tenantId && line.OrderId == order.Id && (line.CancelledQuantity > 0 || line.ReturnedQuantity > 0))
+                                        || db.ShipmentPackages.Any(package => package.TenantId == tenantId && package.OrderId == order.Id && package.Status == ShipmentPackageStatus.Returned)
+                                        || db.PackageLineAllocations.Any(allocation => allocation.TenantId == tenantId && allocation.ReturnedQuantity > 0
+                                            && db.OrderLines.Any(line => line.TenantId == tenantId && line.Id == allocation.OrderLineId && line.OrderId == order.Id)))
                                 select new { Invoice = invoice, order.Id, order.OrderNumber, order.DerivedStatus })
             .ToListAsync(cancellationToken);
         var flagged = 0;
@@ -52,8 +60,9 @@ internal static class InvoiceAdjustmentTracking
             var cancelled = candidate.DerivedStatus is "CANCELLED" or "CANCELED";
             var scope = InvoiceReturnScope.None;
             IReadOnlyList<string> returnedTitles = [];
+            decimal cancelledUnits = 0;
             if (!cancelled)
-                (scope, returnedTitles) = await ReturnScopeAsync(db, tenantId, invoice.Id, candidate.Id, cancellationToken);
+                (scope, returnedTitles, cancelledUnits) = await ReturnScopeAsync(db, tenantId, invoice.Id, candidate.Id, cancellationToken);
             if (cancelled || scope == InvoiceReturnScope.Full)
             {
                 if (InvoiceStateMachine.CanTransition(invoice.Status, InvoiceStatus.AdjustmentRequired) && invoice.Status != InvoiceStatus.AdjustmentRequired)
@@ -62,7 +71,7 @@ internal static class InvoiceAdjustmentTracking
                     invoice.LastErrorCode = AdjustmentRequiredCode;
                     invoice.UpdatedAt = now;
                     invoice.Version++;
-                    var reason = cancelled ? "iptal edildi" : "tüm ürünlerinin iadesi kabul edildi";
+                    var reason = cancelled ? "iptal edildi" : cancelledUnits > 0 ? "tüm ürünleri iptal ya da iade edildi" : "tüm ürünlerinin iadesi kabul edildi";
                     await UpsertIssueAsync(db, tenantId, AdjustmentIssueKey(invoice.Id), AdjustmentRequiredCode,
                         $"{candidate.OrderNumber} siparişi fatura kesildikten sonra {reason}. {invoice.InvoiceNumber ?? "Kesilen"} faturası için e-Arşiv iptali veya iade faturası gerekli.", now, cancellationToken);
                     await ResolveIssueAsync(db, tenantId, ReturnDocumentIssueKey(invoice.Id), now, cancellationToken);
@@ -74,7 +83,8 @@ internal static class InvoiceAdjustmentTracking
                 if (cancelled) continue;
             }
             if (scope == InvoiceReturnScope.None) continue;
-            var summary = $"{candidate.OrderNumber} siparişinde fatura kesildikten sonra {returnedTitles.Count} ürünün iadesi kabul edildi"
+            var what = cancelledUnits > 0 ? $"{returnedTitles.Count} ürün iptal ya da iade edildi ({cancelledUnits.ToString("0.##", System.Globalization.CultureInfo.GetCultureInfo("tr-TR"))} adet iptal)" : $"{returnedTitles.Count} ürünün iadesi kabul edildi";
+            var summary = $"{candidate.OrderNumber} siparişinde fatura kesildikten sonra {what}"
                 + (returnedTitles.Count > 0 ? $" ({string.Join(", ", returnedTitles.Take(5))}{(returnedTitles.Count > 5 ? ", …" : string.Empty)})" : string.Empty)
                 + $". {invoice.InvoiceNumber ?? "Kesilen"} faturası iptal edilmedi ve pazaryerine iletilmeye devam ediyor; iade edilen ürünler için iade belgesi (gider pusulası veya iade faturası) gerekli.";
             if (await UpsertIssueIfChangedAsync(db, tenantId, ReturnDocumentIssueKey(invoice.Id), InvoiceReturnAdjustmentPolicy.ReturnDocumentRequiredCode, summary, now, cancellationToken))
@@ -83,13 +93,13 @@ internal static class InvoiceAdjustmentTracking
         return flagged;
     }
 
-    // How much of the invoice the order's approved returns cover, and the returned products' names. A return line counts
-    // once it is approved on its own or its claim is (ReturnDecisionLinePolicy.StockDispositionAllowed): a rejected,
-    // cancelled or still waiting line does not.
-    private static async Task<(InvoiceReturnScope Scope, IReadOnlyList<string> Titles)> ReturnScopeAsync(AppDbContext db, Guid tenantId, Guid invoiceId, Guid orderId, CancellationToken cancellationToken)
+    // How much of the invoice the order no longer sells, the affected products' names and the units cancelled after
+    // issuing. Returned units are read as for an invoice not issued yet (InvoiceSaleReturns.ReturnedUnitsAsync: the
+    // order and package lines' returned quantities, a returned package or order, and approved claims; an open claim does
+    // not count), and a line the marketplace cancelled in part after issuing counts its cancelled units (scan D-1).
+    private static async Task<(InvoiceReturnScope Scope, IReadOnlyList<string> Titles, decimal CancelledUnits)> ReturnScopeAsync(AppDbContext db, Guid tenantId, Guid invoiceId, Guid orderId, CancellationToken cancellationToken)
     {
-        var returned = await InvoiceSaleReturns.ApprovedClaimQuantitiesAsync(db, tenantId, [orderId], cancellationToken);
-        if (returned.Count == 0) return (InvoiceReturnScope.None, []);
+        var returned = await InvoiceSaleReturns.ReturnedUnitsAsync(db, tenantId, orderId, cancellationToken);
         var invoiceLines = await db.InvoiceLines.AsNoTracking()
             .Where(line => line.TenantId == tenantId && line.InvoiceId == invoiceId)
             .Select(line => new { line.OrderLineId, line.Quantity, line.DescriptionSnapshot })
@@ -97,10 +107,26 @@ internal static class InvoiceAdjustmentTracking
         var invoiced = invoiceLines.Where(line => line.OrderLineId != null)
             .GroupBy(line => line.OrderLineId!.Value)
             .ToDictionary(group => group.Key, group => group.Sum(line => line.Quantity));
-        var scope = InvoiceReturnAdjustmentPolicy.Classify(invoiced, returned, invoiceLines.Any(line => line.OrderLineId == null));
-        var titles = invoiceLines.Where(line => line.OrderLineId is { } id && returned.GetValueOrDefault(id) > 0)
+        if (invoiced.Count == 0) return (InvoiceReturnScope.None, [], 0);
+        var lineIds = invoiced.Keys.ToArray();
+        var orderLines = await db.OrderLines.AsNoTracking()
+            .Where(line => line.TenantId == tenantId && line.OrderId == orderId && lineIds.Contains(line.Id))
+            .Select(line => new { line.Id, line.OrderedQuantity, line.CancelledQuantity })
+            .ToDictionaryAsync(line => line.Id, cancellationToken);
+        var removed = new Dictionary<Guid, decimal>();
+        decimal cancelledUnits = 0;
+        foreach (var (lineId, quantity) in invoiced)
+        {
+            if (!orderLines.TryGetValue(lineId, out var orderLine)) continue;
+            cancelledUnits += InvoiceReturnAdjustmentPolicy.CancelledAfterIssue(quantity, orderLine.OrderedQuantity, orderLine.CancelledQuantity);
+            var units = InvoiceReturnAdjustmentPolicy.RemovedUnits(quantity, orderLine.OrderedQuantity, orderLine.CancelledQuantity, returned.GetValueOrDefault(lineId));
+            if (units > 0) removed[lineId] = units;
+        }
+        if (removed.Count == 0) return (InvoiceReturnScope.None, [], 0);
+        var scope = InvoiceReturnAdjustmentPolicy.Classify(invoiced, removed, invoiceLines.Any(line => line.OrderLineId == null));
+        var titles = invoiceLines.Where(line => line.OrderLineId is { } id && removed.ContainsKey(id))
             .Select(line => line.DescriptionSnapshot).Distinct(StringComparer.Ordinal).ToList();
-        return (scope, titles);
+        return (scope, titles, cancelledUnits);
     }
 
     // The note is written once and again only when it says something new (a scan every half hour would otherwise

@@ -151,6 +151,63 @@ public sealed class OwnerRulesNov6SaleReturnPostgreSqlTests(PostgreSqlTenantIsol
         }
     }
 
+    // Scan D-1 (13 Nov 2026): an issued invoice whose order lost units another way than an approved claim (a line the
+    // marketplace cancelled in part after issuing, or returned units the marketplace recorded on the line) gets the
+    // same follow-up: a note for part of it, AdjustmentRequired when nothing of it is left.
+    [PostgreSqlFact]
+    public async Task AnIssuedInvoiceIsFlaggedWhenItsLineIsCancelledInPartOrReturnedWithoutAClaim()
+    {
+        var seed = NewSeed("d1-partial-cancel", gross: 300m, discount: 0m);
+        var line = NewLine(seed, "Kısmen iptal edilen ürün", 3m, 100m);
+        await SeedAsync(seed, db => db.OrderLines.Add(line));
+
+        try
+        {
+            Guid invoiceId;
+            await using (var db = fixture.CreateContext())
+            {
+                var draft = await NewBillingService(db).CreateDraftAsync(seed.Tenant.Id,
+                    new CreateInvoiceCommand(seed.Order.Id, seed.Package.Id, seed.Provider.Id, null, true), "d1-partial-cancel", CancellationToken.None);
+                Assert.True(draft.Succeeded, draft.Error?.Message);
+                invoiceId = draft.Value!.Id;
+            }
+            await using (var db = fixture.CreateContext())
+                await db.Invoices.Where(invoice => invoice.Id == invoiceId).ExecuteUpdateAsync(setter => setter
+                    .SetProperty(invoice => invoice.Status, InvoiceStatus.Accepted)
+                    .SetProperty(invoice => invoice.ExternalReference, "remote-d1")
+                    .SetProperty(invoice => invoice.InvoiceNumber, "GIB2026000000101"));
+            await using (var db = fixture.CreateContext())
+                Assert.Equal(0, await InvoiceAdjustmentTracking.FlagAdjustmentsAsync(db, seed.Tenant.Id, fixture.Now, CancellationToken.None));
+
+            // One of the three units is cancelled after issuing: a note, the invoice keeps its status.
+            await using (var db = fixture.CreateContext())
+                await db.OrderLines.Where(item => item.Id == line.Id).ExecuteUpdateAsync(setter => setter.SetProperty(item => item.CancelledQuantity, 1m));
+            await using (var db = fixture.CreateContext())
+            {
+                Assert.Equal(1, await InvoiceAdjustmentTracking.FlagAdjustmentsAsync(db, seed.Tenant.Id, fixture.Now, CancellationToken.None));
+                await db.SaveChangesAsync();
+                var note = await db.OperationalIssues.AsNoTracking().SingleAsync(issue => issue.TenantId == seed.Tenant.Id);
+                Assert.Equal(InvoiceReturnAdjustmentPolicy.ReturnDocumentRequiredCode, note.Code);
+                Assert.Contains("1 adet iptal", note.Summary);
+                Assert.Equal(InvoiceStatus.Accepted, (await db.Invoices.AsNoTracking().SingleAsync(invoice => invoice.Id == invoiceId)).Status);
+            }
+
+            // The two kept units come back on the marketplace (no claim): nothing of the invoice is left.
+            await using (var db = fixture.CreateContext())
+                await db.OrderLines.Where(item => item.Id == line.Id).ExecuteUpdateAsync(setter => setter.SetProperty(item => item.ShippedQuantity, 2m).SetProperty(item => item.DeliveredQuantity, 2m).SetProperty(item => item.ReturnedQuantity, 2m));
+            await using (var db = fixture.CreateContext())
+            {
+                Assert.Equal(1, await InvoiceAdjustmentTracking.FlagAdjustmentsAsync(db, seed.Tenant.Id, fixture.Now, CancellationToken.None));
+                await db.SaveChangesAsync();
+                Assert.Equal(InvoiceStatus.AdjustmentRequired, (await db.Invoices.AsNoTracking().SingleAsync(invoice => invoice.Id == invoiceId)).Status);
+            }
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
     // Owner, 6 Nov 2026: an exchange the customer asked for but Hepsiburada closed with a refund (raw status Refunded)
     // is a return: the refunded unit leaves the sale invoice. Decided by how the claim closed, not by the request.
     [PostgreSqlFact]

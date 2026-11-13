@@ -26,6 +26,18 @@ public static class ProductApprovalReconciliationPolicy
         !createConfirmed
         && ShouldResetMissingPublication(expectedVariantCount, statuses);
 
+    // Shopify answers a SKU through its search (`sku:` query), whose index lags behind a product just created: a fresh
+    // product reads "not found" for a while. Scan C-15 (13 Nov 2026): that answer reset the card at the first check
+    // (queued with no delay) and dropped its links, so the next send opened a second product. Shopify's first check now
+    // waits a few minutes, and "not found" resets a card only once the search has had its grace and no SKU of the card
+    // was confirmed created (the same protection Trendyol has).
+    public static readonly TimeSpan ShopifyFirstCheckDelay = TimeSpan.FromMinutes(3);
+    public static readonly TimeSpan ShopifySearchGrace = TimeSpan.FromMinutes(15);
+
+    public static bool ShouldResetMissingShopifyPublication(int expectedVariantCount, IReadOnlyCollection<RemotePublicationStatus> statuses, bool createConfirmed, DateTimeOffset checkStartedAt, DateTimeOffset now) =>
+        now - checkStartedAt >= ShopifySearchGrace
+        && ShouldResetMissingPublication(expectedVariantCount, statuses, createConfirmed);
+
     public static bool HasSplitApprovedContents(IEnumerable<RemotePublicationStatus> statuses) => statuses
         .Where(status => string.Equals(status.Status?.Trim(), "APPROVED", StringComparison.OrdinalIgnoreCase))
         .Select(status => status.ExternalProductId?.Trim())
@@ -67,6 +79,29 @@ public static class ProductApprovalReconciliationPolicy
         var estimate = (Math.Max(0, linkedVariants) + 99) / 100 + (Math.Max(0, unsettledListings) + 99) / 100 + 3;
         return estimate < waitingBarcodes ? waitingBarcodes : 0;
     }
+
+    // A barcode whose create result was unknown (the result named no line for it, or Pazarama accepted the create without
+    // ids) and that the marketplace's lists still do not show after this long goes to review: it may never have gone in
+    // (live: 6 sizes sent, 1 opened, the other 5 waited as "Onay Bekliyor" for the whole 7-day check).
+    public const string UnconfirmedNotFoundCode = "PRODUCT_CREATE_NOT_FOUND";
+    public static readonly TimeSpan UnconfirmedNotFoundLimit = TimeSpan.FromHours(24);
+
+    // The local status of a barcode the marketplace answers NOT_FOUND for. One whose create was confirmed waits for
+    // approval as before (n11, Pazarama and PTT AVM list a just-sent product late). One whose create result is unknown
+    // stays unknown (never taken as awaiting approval) until UnconfirmedNotFoundLimit after the check began, then goes
+    // to review.
+    // A barcode an earlier check already sent to review for this reason stays there while it is still not found (it does
+    // not fall back to "awaiting approval" on the next check of its siblings).
+    public static string NotFoundStatus(string? listingStatus, DateTimeOffset checkStartedAt, DateTimeOffset now, string? rejectionCode = null) =>
+        string.Equals(listingStatus, "MANUAL_REVIEW", StringComparison.Ordinal) && string.Equals(rejectionCode, UnconfirmedNotFoundCode, StringComparison.Ordinal) ? "MANUAL_REVIEW"
+        : !string.Equals(listingStatus, ProductBatchResultPolicy.ResultUnknownStatus, StringComparison.Ordinal) ? "APPROVAL_PENDING"
+        : now - checkStartedAt >= UnconfirmedNotFoundLimit ? "MANUAL_REVIEW"
+        : ProductBatchResultPolicy.ResultUnknownStatus;
+
+    // A check whose only exceptional sizes are ones never found after UnconfirmedNotFoundLimit keeps checking the card's
+    // other waiting sizes instead of ending: one missing size does not stop its siblings' approval (13 Nov 2026).
+    public static bool KeepsCheckingSiblings(int exceptional, int unconfirmedNotFound, int pending) =>
+        exceptional > 0 && exceptional == unconfirmedNotFound && pending > 0;
 
     // A variant this reconciliation already found approved (listed LIVE, with its product and variant links) is not
     // read again on later checks: only the barcodes still waiting are asked about.

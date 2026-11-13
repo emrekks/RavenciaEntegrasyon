@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useRememberedTabCounts } from './tab-counts'
+import { useTabStripScroll } from './tab-strip-scroll'
 import { useDismissable } from './hooks/useDismissable'
 import { createPortal } from 'react-dom'
 import { uiGlyph16, type UiIconName } from './components/UiIcon'
@@ -110,7 +111,7 @@ export function ViewTabsWithMore({ items: givenItems, more, value, onChange, ari
     return () => { observer.disconnect(); window.removeEventListener('resize', refit) }
   }, [])
   const selectedExtra = extra.find(item => item.value === value)
-  useEffect(() => { if (phone) row.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'center' }) }, [phone, value])
+  useTabStripScroll(row, value)
   useEffect(() => {
     if (!open) return
     const place = () => { const rect = trigger.current?.getBoundingClientRect(); if (rect) setPosition({ top: rect.bottom + 6, right: Math.max(12, window.innerWidth - rect.right) }) }

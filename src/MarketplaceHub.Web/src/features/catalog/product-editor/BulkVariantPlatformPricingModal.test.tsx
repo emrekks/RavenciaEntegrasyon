@@ -65,6 +65,26 @@ describe('BulkVariantPlatformPricingModal', () => {
     expect(onSave).toHaveBeenCalledWith({ 'v1:TRENDYOL:ty': { listPrice: '100', salePrice: '85' } })
   })
 
+  it('clears only the saved cell when the rows come back after one price of many was written', () => {
+    const onSave = vi.fn()
+    const twoPlatforms = platforms()
+    const draw = (currentRows: Props['rows']) => act(() => {
+      root.render(<BulkVariantPlatformPricingModal row={currentRows[0]} rows={currentRows} platforms={twoPlatforms} savedDrafts={savedDrafts} productName="Elbise" modelCode="RYP" filterGroups={[]} matchesFilterValue={() => true} saving={false} onClose={vi.fn()} onSave={onSave} />)
+    })
+    const withStatuses = (shopifySale: number) => [{ ...row, platformStatuses: [{ ...twoPlatforms[0], salePrice: shopifySale }, { ...twoPlatforms[1] }] }] as Props['rows']
+    draw(withStatuses(90))
+    const trendyol = () => document.querySelector<HTMLInputElement>('input[aria-label="Renk: Kırmızı Trendyol satış fiyatı"]')!
+    const shopify = () => document.querySelector<HTMLInputElement>('input[aria-label="Renk: Kırmızı Shopify satış fiyatı"]')!
+    type(shopify(), '80')
+    type(trendyol(), '85')
+    // Shopify's offer was written (its row now holds 80); Trendyol's failed and its row still holds 90.
+    draw(withStatuses(80))
+    expect(shopify().value).toBe('80')
+    expect(trendyol().value).toBe('85')
+    act(() => saveButton().click())
+    expect(onSave).toHaveBeenCalledWith({ 'v1:TRENDYOL:ty': { listPrice: '100', salePrice: '85' } })
+  })
+
   it('shows the marketplaces in the panel order', () => {
     render()
     const heads = [...document.querySelectorAll('.variant-platform-pricing-matrix-head strong')].map(item => item.textContent)

@@ -93,7 +93,7 @@ public sealed partial class MarketplaceJobProcessor
             if (code is not null) rejected++;
             listing.ActualStatus = code is null ? PttAvmProductUpdateRules.CompletedListingStatus(listing.ActualStatus) : "UPDATE_REJECTED";
             listing.RejectionCode = code;
-            if (states.TryGetValue(listing.VariantId, out var state)) { state.ActualStatus = listing.ActualStatus; state.LastRejectionCode = code; state.Version++; }
+            if (states.TryGetValue(listing.VariantId, out var state)) { state.ActualStatus = ListingSaleStatePolicy.AfterUpdate(state.ActualStatus, listing.ActualStatus); state.LastRejectionCode = code; state.Version++; }
         }
         profile.ActualStatus = rejected == 0 ? PttAvmProductUpdateRules.CompletedProfileStatus(listings.Select(x => x.ActualStatus).ToList()) : rejected == listings.Count ? "UPDATE_REJECTED" : "UPDATE_PARTIAL_FAILURE";
         profile.LastRejectionCode = listings.Select(x => x.RejectionCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));

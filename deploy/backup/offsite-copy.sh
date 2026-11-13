@@ -15,8 +15,13 @@
 # rclone binary, a failed upload or an empty uploaded object is an error (exit 1).
 #
 # Each set is uploaded once, as <folder>/<set>.tar.age (tar of the set directory, encrypted), streamed straight
-# from the backup volume to the remote without a plaintext or ciphertext copy on disk. The script never deletes
-# anything on the remote; retention there is the owner's rule. This does NOT protect the copies from a stolen
+# from the backup volume to the remote without a plaintext or ciphertext copy on disk. The stream goes to a
+# temporary object (<set>.tar.age.partial-<pid>) whose SHA-256, read back from the remote, must match the stream's
+# before it is renamed to its final name; then <set>.tar.age.verified records its hash and size. A set counts as
+# copied only when that record exists and the object still has the recorded size: a tar, age or upload that died
+# mid-way (a truncated object) is never kept under the final name, and an older copy without a record is uploaded
+# again over it. The script deletes nothing on the remote but its own temporary object; retention there is the
+# owner's rule. This does NOT protect the copies from a stolen
 # server: rclone.conf holds a Drive token whose drive.file scope can delete or overwrite every file this app
 # uploaded, so whoever controls the server can erase the off-site copies too. Only a destination the server
 # cannot delete from (e.g. Backblaze B2 with Object Lock, or a separately owned copy) closes that gap.
@@ -92,19 +97,60 @@ done < <(find "$backup_root" -mindepth 1 -maxdepth 1 -type d -regextype posix-ex
 
 object="$newest.tar.age"
 target="$remote_name:${folder:+$folder/}$object"
-# A folder that does not exist yet lists as an error: then nothing has been copied there.
-existing="$(rclone lsf --files-only "$remote_name:$folder" 2>/dev/null)" || existing=""
-if grep -qxF "$object" <<<"$existing"; then
-  echo "Off-site copy of $newest already exists at $target; nothing to do."
-  exit 0
+record="$target.verified"
+# Copied already: the record of a verified upload exists and the object still has the size it recorded. A folder
+# that does not exist yet lists as an error: then nothing has been copied there.
+recorded="$(rclone cat "$record" 2>/dev/null)" || recorded=""
+if [[ "$recorded" =~ ^sha256=([0-9a-f]{64})\ size=([0-9]+)$ ]]; then
+  recorded_size="${BASH_REMATCH[2]}"
+  size="$(rclone lsf --files-only --format s "$target" 2>/dev/null)" || size=""
+  size="${size%%$'\n'*}"
+  if [[ "$size" == "$recorded_size" ]] && (( size > 0 )); then
+    echo "Off-site copy of $newest already exists at $target (verified, $size bytes); nothing to do."
+    exit 0
+  fi
+  echo "Off-site copy $target does not match its record ($size bytes, recorded $recorded_size); uploading it again." >&2
 fi
 
-echo "Encrypting and uploading backup set $newest to $target."
-tar -C "$backup_root" -cf - "$newest" | age --encrypt --recipients-file "$recipient_file" | rclone rcat "$target"
+work_dir="$(mktemp -d)"
+partial="$target.partial-$$"
+cleanup() {
+  # Our own temporary object only: an interrupted upload never leaves anything under the final name.
+  if [[ -n "${partial:-}" ]]; then rclone deletefile "$partial" >/dev/null 2>&1 || true; fi
+  rm -rf -- "$work_dir"
+}
+trap cleanup EXIT
+
+echo "Encrypting and uploading backup set $newest to $partial."
+# pipefail: a tar or age that dies mid-way fails the pipeline even though rclone rcat stored what it was given.
+tar -C "$backup_root" -cf - "$newest" \
+  | age --encrypt --recipients-file "$recipient_file" \
+  | tee >(sha256sum >"$work_dir/stream.sha256") \
+  | rclone rcat "$partial"
+wait "$!" 2>/dev/null || true
+expected="$(cut -d' ' -f1 "$work_dir/stream.sha256" 2>/dev/null)" || expected=""
+[[ "$expected" =~ ^[0-9a-f]{64}$ ]] || { echo "Could not hash the encrypted stream of $newest." >&2; exit 1; }
+
+size="$(rclone lsf --files-only --format s "$partial" 2>/dev/null)" || size=""
+size="${size%%$'\n'*}"
+if [[ ! "$size" =~ ^[0-9]+$ ]] || (( size == 0 )); then
+  echo "Uploaded object $partial is missing or empty." >&2
+  exit 1
+fi
+# Read back what the remote holds, whatever hashes the backend itself keeps.
+actual="$(rclone cat "$partial" | sha256sum | cut -d' ' -f1)"
+if [[ "$actual" != "$expected" ]]; then
+  echo "Uploaded object $partial does not match the encrypted stream (sha256 $actual, expected $expected)." >&2
+  exit 1
+fi
+
+rclone moveto "$partial" "$target"
+partial=""
 size="$(rclone lsf --files-only --format s "$target" 2>/dev/null)" || size=""
 size="${size%%$'\n'*}"
 if [[ ! "$size" =~ ^[0-9]+$ ]] || (( size == 0 )); then
-  echo "Uploaded object $target is missing or empty." >&2
+  echo "Renamed object $target is missing or empty." >&2
   exit 1
 fi
-echo "Off-site copy of $newest written to $target ($size bytes, age-encrypted)."
+printf 'sha256=%s size=%s\n' "$expected" "$size" | rclone rcat "$record"
+echo "Off-site copy of $newest written to $target ($size bytes, age-encrypted, sha256 $expected verified)."
