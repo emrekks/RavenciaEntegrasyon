@@ -19,6 +19,22 @@ public sealed class InvoiceDeliveryAutoRetryPolicyTests
             Enumerable.Range(1, 5).Select(attempt => InvoiceDeliveryAutoRetryPolicy.DelayAfter(attempt)?.TotalMinutes));
     }
 
+    // Scan 13 Nov 2026: the delivery recovery is an automatic attempt on every marketplace: it waits for its backoff, stops
+    // after MaxAttempts and outside the 14-day window; the invoice then waits for the owner's review.
+    [Fact]
+    public void TheDeliveryRecoveryWaitsForItsBackoffAndStopsAfterItsAttemptsOrWindow()
+    {
+        var issued = Now.AddDays(-1);
+        Assert.Equal(InvoiceDeliveryAutoRetryPolicy.AutomaticRecovery.Now, InvoiceDeliveryAutoRetryPolicy.RecoveryDue(0, null, issued, Now));
+        Assert.Equal(InvoiceDeliveryAutoRetryPolicy.AutomaticRecovery.Wait, InvoiceDeliveryAutoRetryPolicy.RecoveryDue(1, Now.AddMinutes(10), issued, Now));
+        Assert.Equal(InvoiceDeliveryAutoRetryPolicy.AutomaticRecovery.Now, InvoiceDeliveryAutoRetryPolicy.RecoveryDue(1, Now, issued, Now));
+        Assert.Equal(InvoiceDeliveryAutoRetryPolicy.AutomaticRecovery.Exhausted, InvoiceDeliveryAutoRetryPolicy.RecoveryDue(InvoiceDeliveryAutoRetryPolicy.MaxAttempts, null, issued, Now));
+        Assert.Equal(InvoiceDeliveryAutoRetryPolicy.AutomaticRecovery.Exhausted, InvoiceDeliveryAutoRetryPolicy.RecoveryDue(0, null, Now.AddDays(-15), Now));
+        // The review it goes to is one the owner's "Tekrar Gönder" sends again.
+        Assert.True(InvoiceMarketplaceRetryPolicy.IsDeliveryReview(InvoiceStatus.ManualReview, InvoiceMarketplaceRetryPolicy.AutomaticRecoveryExhausted));
+        Assert.True(InvoiceMarketplaceRetryPolicy.CanRetryDelivery(InvoiceStatus.ManualReview, InvoiceMarketplaceRetryPolicy.AutomaticRecoveryExhausted));
+    }
+
     // T2-Y4/T2-O5: an issued invoice whose delivery started but sent nothing (MarketplacePending without any delivery
     // state) is retried once its delivery job ended; while the job runs it is that job's.
     [Fact]

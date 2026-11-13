@@ -297,6 +297,37 @@ public sealed class ReturnFreshnessAndConcurrencyPostgreSqlTests(PostgreSqlTenan
         finally { await CleanupAsync(seed.TenantId); }
     }
 
+    // Scan 13 Nov 2026: a sale changing the same stock item between the "Stoğa Ekle" read and its save used to answer 500.
+    // The disposition now runs again on the fresh on-hand and is saved once; a conflict that keeps coming back is 409.
+    [PostgreSqlFact]
+    public async Task APassDispositionWhoseStockItemChangedMeanwhile_IsRunAgainAndSavedOnce()
+    {
+        var seed = await SeedAsync("dpcc", ReturnClaimStatus.Approved, "Accepted", DateTimeOffset.UtcNow.AddHours(-1), lineQuantity: 1m, lineRawStatus: "Accepted");
+        try
+        {
+            var collided = 0;
+            var interceptor = new SavingInterceptor(async context =>
+            {
+                if (!context.ChangeTracker.Entries<ReturnStockDisposition>().Any(e => e.State == EntityState.Added) || Interlocked.Increment(ref collided) > 1) return;
+                // Plays the worker: another connection changes the stock row and commits before this save.
+                await using var other = fixture.CreateContext();
+                await other.InventoryItems.Where(x => x.Id == seed.InventoryItemId).ExecuteUpdateAsync(x => x.SetProperty(i => i.Version, i => i.Version + 1));
+            });
+            await using (var db = NewContext(interceptor))
+            {
+                var result = await SalesService(db, new RecordingReturnPort("DPCC", ["CI-1"])).ApplyDispositionAsync(seed.TenantId, Guid.NewGuid(), seed.ClaimId,
+                    new(seed.LineId, "PASS", 1m, "Sağlam"), "dpcc:pass", "dpcc", CancellationToken.None);
+                Assert.True(result.Succeeded, result.Error?.Code);
+            }
+            Assert.True(collided >= 2);
+            await using var verify = fixture.CreateContext();
+            Assert.Equal(ReturnStockDispositionKind.Pass, Assert.Single(await verify.ReturnStockDispositions.AsNoTracking().Where(x => x.ReturnLineId == seed.LineId).ToListAsync()).Disposition);
+            Assert.Equal(1m, (await verify.InventoryItems.AsNoTracking().SingleAsync(x => x.Id == seed.InventoryItemId)).OnHand);
+            Assert.Single(await verify.StockLedgerEntries.AsNoTracking().Where(x => x.InventoryItemId == seed.InventoryItemId && x.MovementType == "RETURN_PASS").ToListAsync());
+        }
+        finally { await CleanupAsync(seed.TenantId); }
+    }
+
     private static RemoteReturnClaim AcceptedRead(string claimId, ReturnSeed seed) =>
         new(claimId, seed.ExternalOrderId, "Accepted", null, null, null, DateTimeOffset.UtcNow, [new RemoteReturnLine("CI-1", "OL-1", 1m, RawStatus: "Accepted")], "{}");
 

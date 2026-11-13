@@ -2399,6 +2399,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                                     StateUpdatedAt = state.UpdatedAt,
                                     connection.PlatformCode,
                                     invoice.DeliveryRetryAttempts,
+                                    invoice.DeliveryRetryNextAt,
                                     IssuedAt = invoice.IssuedAt ?? invoice.CreatedAt
                                 }).ToListAsync(cancellationToken);
         // An uncertain delivery on n11, Pazarama or PTT AVM is queued only when its resend is due (report item 11), so the
@@ -2407,6 +2408,20 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             || !InvoiceDeliveryAutoRetryPolicy.RetriesUncertainDelivery(candidate.PlatformCode)
             || candidate.StateErrorCode == InvoiceDeliveryAutoRetryPolicy.OwnerRetryCode
             || InvoiceDeliveryAutoRetryPolicy.UncertainResendDue(candidate.DeliveryRetryAttempts, candidate.StateUpdatedAt, candidate.IssuedAt, now) == InvoiceDeliveryAutoRetryPolicy.UncertainResend.Now).ToList();
+        // Every other recovery is an automatic attempt, on every marketplace (scan 13 Nov 2026): Trendyol and Shopify used
+        // to be queued every five minutes for as long as the delivery stayed open. Each waits for its backoff, and once the
+        // attempts or the 14-day window are used up the invoice goes to review, where only the owner's "Tekrar Gönder"
+        // sends it. The uncertain resend above keeps its own count in the delivery job.
+        var exhaustedRecoveries = new HashSet<Guid>();
+        candidates = candidates.Where(candidate =>
+        {
+            if (UncertainResendRecovery(candidate.StateStatus, candidate.PlatformCode)) return true;
+            var due = InvoiceDeliveryAutoRetryPolicy.RecoveryDue(candidate.DeliveryRetryAttempts, candidate.DeliveryRetryNextAt, candidate.IssuedAt, now);
+            if (due == InvoiceDeliveryAutoRetryPolicy.AutomaticRecovery.Exhausted) exhaustedRecoveries.Add(candidate.Id);
+            return due == InvoiceDeliveryAutoRetryPolicy.AutomaticRecovery.Now;
+        }).ToList();
+        // One exhausted package holds the whole invoice: it goes to review below.
+        candidates = candidates.Where(candidate => !exhaustedRecoveries.Contains(candidate.Id)).ToList();
 
         var bucket = now.ToUnixTimeSeconds() / 300;
         // Sale invoices are order level (PackageId null): their targets are the order's non-cancelled packages,
@@ -2479,10 +2494,26 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             await EnqueueAutomaticJob(tenantId, undelivered.ConnectionId, undelivered.InvoiceId, InvoicingJobTypes.MarketplaceDelivery, $"never-queued:{bucket}", "scheduler-delivery-recovery", cancellationToken);
         }
 
+        // An exhausted recovery goes to review once no delivery job of the invoice runs or waits (its last attempt may
+        // still settle it).
+        foreach (var invoiceId in exhaustedRecoveries)
+        {
+            var keyPrefix = $"{InvoicingJobTypes.MarketplaceDelivery}:{invoiceId}:";
+            if (activeDeliveryJobs.Any(job => job.JobDedupKey.StartsWith(keyPrefix, StringComparison.Ordinal))) continue;
+            var exhausted = await db.Invoices.SingleOrDefaultAsync(invoice => invoice.TenantId == tenantId && invoice.Id == invoiceId, cancellationToken);
+            if (exhausted is null || exhausted.Status is not (InvoiceStatus.MarketplacePending or InvoiceStatus.MarketplaceFailed)) continue;
+            exhausted.Status = InvoiceStatus.ManualReview;
+            exhausted.LastErrorCode = InvoiceMarketplaceRetryPolicy.AutomaticRecoveryExhausted;
+            exhausted.DeliveryRetryNextAt = null;
+            exhausted.UpdatedAt = now;
+            exhausted.Version++;
+        }
+
         var recoveryKeys = candidates.Select(candidate => RecoveryDedupKey(candidate.Id, candidate.PackageId, candidate.StateVersion, bucket)).ToArray();
         var queuedRecoveryKeys = recoveryKeys.Length == 0 ? [] : (await db.IntegrationJobs.AsNoTracking()
             .Where(job => job.TenantId == tenantId && job.JobType == InvoicingJobTypes.MarketplaceDelivery && recoveryKeys.Contains(job.JobDedupKey))
             .Select(job => job.JobDedupKey).ToListAsync(cancellationToken)).ToHashSet(StringComparer.Ordinal);
+        var countedRecoveries = new HashSet<Guid>();
         foreach (var candidate in candidates)
         {
             var payload = JsonSerializer.Serialize(new { invoiceId = candidate.Id, packageId = candidate.PackageId });
@@ -2514,8 +2545,16 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 CorrelationId = $"invoice-delivery-recovery:{candidate.Id:N}:{candidate.PackageId:N}",
                 Version = 1
             });
+            // One automatic attempt per invoice and pass; the uncertain resend counts its own in the delivery job.
+            if (!UncertainResendRecovery(candidate.StateStatus, candidate.PlatformCode) && countedRecoveries.Add(candidate.Id)
+                && await db.Invoices.SingleOrDefaultAsync(invoice => invoice.TenantId == tenantId && invoice.Id == candidate.Id, cancellationToken) is { } counted)
+                InvoiceDeliveryRetryReader.RecordAutomaticAttempt(counted, now);
         }
     }
+
+    // An uncertain delivery on n11, Pazarama or PTT AVM: its resend schedule (UncertainResendDue) and count are its own.
+    private static bool UncertainResendRecovery(string stateStatus, string platformCode) =>
+        stateStatus == "UNKNOWN" && InvoiceDeliveryAutoRetryPolicy.RetriesUncertainDelivery(platformCode);
 
     // Issued sale invoices whose document was never stored, or whose delivery job ended without delivering it, are
     // tried again with backoff (InvoiceDeliveryAutoRetryPolicy): a fetch of the stored invoice's document, then its

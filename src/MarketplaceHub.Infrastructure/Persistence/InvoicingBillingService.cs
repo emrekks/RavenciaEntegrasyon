@@ -1731,6 +1731,12 @@ public sealed partial class InvoicingBillingService(
         if (ownerRetry)
             foreach (var state in deliveryStates.Where(state => state.Status == "FAILED"))
                 InvoiceAdjustmentTracking.AppendDeliveryHistory(db, state, "RETRYABLE_FAILURE", state.ExternalReference, InvoiceDeliveryAutoRetryPolicy.OwnerRetryCode, timeProvider.GetUtcNow());
+        // The owner sends again a delivery whose automatic recovery ran out: its automatic count starts again.
+        if (invoice.LastErrorCode == InvoiceMarketplaceRetryPolicy.AutomaticRecoveryExhausted)
+        {
+            InvoiceDeliveryRetryReader.RecordManualAttempt(invoice, timeProvider.GetUtcNow());
+            invoice.LastErrorCode = null;
+        }
         invoice.Status = InvoiceStatus.MarketplacePending; invoice.UpdatedAt = timeProvider.GetUtcNow(); invoice.Version++;
         // The reason the automatic delivery was skipped no longer holds once the user sends it.
         if (InvoiceMarketplaceAutoDeliveryPolicy.IsSkipCode(invoice.LastErrorCode)) invoice.LastErrorCode = null;
