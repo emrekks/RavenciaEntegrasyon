@@ -10897,6 +10897,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                         UpsertLineAllocation(tenantId, package.Id, line.Id, eventId, safe.ActiveAllocatedQuantity, safe.CancelledQuantity, safe.ShippedQuantity, safe.DeliveredQuantity, safe.ReturnedQuantity, allocationsByKey);
                     }
                 }
+                // PTT AVM sends no status time, so its package event is named by the package status alone: a line cancelled
+                // or returned while the package keeps its status (another line still waits to ship) arrives under the
+                // event already recorded. Its lines' quantities follow the read, or the cancelled line kept its stock.
+                if (package is not null && !statusChanged && remotePackage.StatusTimeUnknown && !remotePackage.IsStatusObservation
+                    && package.Status == target && string.Equals(package.RawStatus, remotePackage.RawStatus, StringComparison.Ordinal))
+                    foreach (var remoteAllocation in packageObservation.Allocations)
+                        if (lines.TryGetValue(remoteAllocation.ExternalLineId, out var line) && safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe))
+                            UpsertLineAllocation(tenantId, package.Id, line.Id, eventId, safe.ActiveAllocatedQuantity, safe.CancelledQuantity, safe.ShippedQuantity, safe.DeliveredQuantity, safe.ReturnedQuantity, allocationsByKey);
                 if (package is not null && (statusChanged || packageMetadataChanged))
                 {
                     package.OriginExternalPackageId = string.IsNullOrWhiteSpace(remotePackage.OriginExternalPackageId) ? package.OriginExternalPackageId : remotePackage.OriginExternalPackageId;

@@ -125,7 +125,7 @@ public sealed class PayoutsService(AppDbContext db, TimeProvider timeProvider) :
         else if (!string.IsNullOrEmpty(query.PayoutId))
             rows = rows.Where(x => x.PaymentOrderId == query.PayoutId);
         // The open records expected on the day (PayoutBuilder.Expect decides the day, so it is applied after reading).
-        else if (query.Day is not null) rows = rows.Where(x => x.PaymentOrderId == null && x.PaymentDate != null);
+        else if (query.Day is not null) rows = PayoutBuilder.OpenOnADay(rows);
         else return ServiceResult<PayoutLinesPage>.Fail("PAYOUT_LINES_QUERY_INVALID", "Bir ödeme, bir gün ya da arama gerekir.", 400);
         var read = await WithCargoRegionsAsync(tenantId, await rows.OrderBy(x => x.TransactionDate).ToListAsync(cancellationToken), cancellationToken);
         var payoutOrders = await db.MarketplacePayoutOrders.AsNoTracking()
@@ -378,6 +378,10 @@ internal static class PayoutBuilder
     // record past its due day may simply wait for the next payout). One with no due day read (Pazarama and Hepsiburada
     // can write one) is unpaid too: it counts in the balance and waits apart, UNDATED.
     public static bool Open(PayoutLineView line) => line.Status is Expected or Unknown;
+
+    // The records a day's open group can hold, before Expect places them: every record no payout carries. One with no
+    // due day stands on today, UNDATED, so it is read too, or its UNDATED group opens empty.
+    internal static IQueryable<PayoutRow> OpenOnADay(IQueryable<PayoutRow> rows) => rows.Where(x => x.PaymentOrderId == null);
 
     // The day an open record is expected to be paid on, and the region whose payout takes it. Türkiye-Körfez and
     // Azerbaycan, as Trendyol paid them in October-November 2026 and as its "Ödeme Özeti" of 7 and 11 Nov 2026 estimated

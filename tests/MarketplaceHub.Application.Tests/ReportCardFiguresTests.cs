@@ -106,4 +106,28 @@ public sealed class ReportCardFiguresTests
         // 240 at 20 % and 110 at 10 % kept: 200 + 100; the returned line keeps nothing.
         Assert.Equal(300m, summary.VatFreeNetRevenue);
     }
+
+    // An order read without an amount adds nothing to Toplam Ciro, so its units and cost stay out of the product cost:
+    // otherwise its 2 × 300 would come off a profit whose sale was never counted.
+    [Fact]
+    public void An_order_without_an_amount_adds_no_product_cost()
+    {
+        var store = Guid.NewGuid();
+        var (priced, unpriced) = (Guid.NewGuid(), Guid.NewGuid());
+        var at = Start.AddHours(12);
+        var input = Input(new Dictionary<Guid, ReportChannelView> { [store] = new(store, "SHOPIFY", "Shop", false) },
+            [
+                new() { Id = priced, ConnectionId = store, OrderNumber = "S-1", DerivedStatus = "DELIVERED", Amount = 500m, LineValue = 500m, RealAt = at, OrderedAt = at, StoreFrontCode = "TR" },
+                new() { Id = unpriced, ConnectionId = store, OrderNumber = "S-2", DerivedStatus = "DELIVERED", Amount = 0m, LineValue = 0m, RealAt = at, OrderedAt = at, StoreFrontCode = "TR" }
+            ],
+            [
+                new() { Id = Guid.NewGuid(), OrderId = priced, Title = "A", Sku = "A", UnitPrice = 500m, OrderedQuantity = 1m, VatRate = 10m, CostPrice = 200m },
+                new() { Id = Guid.NewGuid(), OrderId = unpriced, Title = "B", Sku = "B", UnitPrice = 0m, OrderedQuantity = 2m, VatRate = 10m, CostPrice = 300m }
+            ],
+            null);
+
+        var cost = ReportBuilder.Build(input, Previous(input), new Dictionary<Guid, decimal>()).Cost;
+
+        Assert.Equal((1m, 1m, 200m, 500m), (cost.KeptQuantity, cost.CostedQuantity, cost.CostTotal, cost.CostedRevenue));
+    }
 }
