@@ -1,20 +1,28 @@
-/* One hover/focus look for every info "i" / "?" mark (Raporlar .reports-qmark, TitleHint, FieldHelp): a small round
-   highlight (22 px: the 14 px mark plus a 4 px ring) behind the mark only. It is a box-shadow, so nothing moves; the
-   label text and the trigger button get no box or outline of their own.
+/* One hover/focus look for every info "i" / "?" mark (Raporlar .reports-qmark, TitleHint, FieldHelp): the inside of the
+   mark's own circle fills with a soft tint, its ring goes full strength and the glyph takes the ink colour. Nothing
+   outside the 14 px icon changes (no box, no ring, no size or layout change), and hovering the label text or the card
+   does nothing: only the mark itself (for TitleHint / FieldHelp the button is the mark).
    The build moves every selector that holds :hover into a (hover: hover) media rule, so :hover selectors are written
    apart from :focus-visible / .is-open ones (those must stay active on touch and keyboard). */
-html:root:root:root:root:root:root :is(.reports-qmark, button.title-hint, button.field-help) { border-radius: 999px; transition: color 140ms ease, box-shadow 140ms ease; }
+html:root:root:root:root:root:root :is(.reports-qmark, button.title-hint, button.field-help) { transition: color 140ms ease; }
+html:root:root:root:root:root:root :is(.reports-qmark, button.title-hint, button.field-help) > circle:first-child,
+html:root:root:root:root:root:root :is(button.title-hint, button.field-help) svg > circle:first-child { transition: fill 140ms ease, stroke-opacity 140ms ease; }
 html:root:root:root:root:root:root .reports-qmark:hover,
 html:root:root:root:root:root:root button.title-hint:hover,
-html:root:root:root:root:root:root button.field-help:hover,
-html:root:root:root:root:root:root button:hover > .reports-qmark { color: var(--rv-color-ink); box-shadow: 0 0 0 4px color-mix(in srgb, var(--rv-color-ink) 14%, transparent); }
+html:root:root:root:root:root:root button.field-help:hover { color: var(--rv-color-ink); }
+html:root:root:root:root:root:root .reports-qmark:hover > circle:first-child,
+html:root:root:root:root:root:root button.title-hint:hover svg > circle:first-child,
+html:root:root:root:root:root:root button.field-help:hover svg > circle:first-child { fill: color-mix(in srgb, var(--rv-color-ink) 16%, transparent); stroke-opacity: 1; }
 html:root:root:root:root:root:root button:focus-visible > .reports-qmark,
 html:root:root:root:root:root:root button.title-hint:focus-visible,
 html:root:root:root:root:root:root button.field-help:focus-visible,
 html:root:root:root:root:root:root button.title-hint.is-open,
-html:root:root:root:root:root:root button.field-help.is-open { color: var(--rv-color-ink); box-shadow: 0 0 0 4px color-mix(in srgb, var(--rv-color-ink) 14%, transparent); }
-/* The label button around a mark shows the ring on the mark, so its own focus rectangle goes. */
+html:root:root:root:root:root:root button.field-help.is-open { color: var(--rv-color-ink); }
+html:root:root:root:root:root:root button:focus-visible > .reports-qmark > circle:first-child,
+html:root:root:root:root:root:root button.title-hint:focus-visible svg > circle:first-child,
+html:root:root:root:root:root:root button.field-help:focus-visible svg > circle:first-child,
+html:root:root:root:root:root:root button.title-hint.is-open svg > circle:first-child,
+html:root:root:root:root:root:root button.field-help.is-open svg > circle:first-child { fill: color-mix(in srgb, var(--rv-color-ink) 16%, transparent); stroke-opacity: 1; }
+/* The mark shows focus by its fill, so the label button's own focus rectangle goes. */
 html:root:root:root:root:root:root button.reports-tip-trigger:has(> .reports-qmark):focus-visible,
 html:root:root:root:root:root:root button:is(.title-hint, .field-help):focus-visible { outline: 0; }
-/* A trigger that clips its text (ellipsis) must not clip the 4 px ring around a mark at its edge. */
-html:root:root:root:root:root:root button.reports-tip-trigger:has(> .reports-qmark) { overflow: clip; overflow-clip-margin: 4px; }
