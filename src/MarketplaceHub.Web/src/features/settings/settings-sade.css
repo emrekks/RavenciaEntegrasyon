@@ -694,4 +694,4 @@
 .ss-page .ss-ai-skill { min-width: 0; }
 .ss-page .ss-ai-skill-copy { grid-template-columns: minmax(0, 1fr); overflow-wrap: anywhere; }
 .ss-page .ss-ai-skill-result { min-width: 0; }
-.ss-page .ss-ai-skill-result .ss-tag { height: auto; min-height: 22px; padding-block: 3px; white-space: normal; overflow-wrap: anywhere; text-align: left; }
+.ss-page .ss-ai-skill .ss-tag {  max-width: 100%; height: auto; min-height: 22px; padding-block: 3px; white-space: normal; overflow-wrap: anywhere; text-align: left; }
