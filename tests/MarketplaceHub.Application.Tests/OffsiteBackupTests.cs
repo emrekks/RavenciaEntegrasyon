@@ -7,6 +7,7 @@ using System.Text.Json;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Alerts;
 using MarketplaceHub.Infrastructure.Backups;
+using MarketplaceHub.Infrastructure.Identity;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
@@ -474,6 +475,9 @@ public sealed class OffsiteBackupPostgreSqlTests(PostgreSqlTenantIsolationFixtur
         Assert.Equal(OffsiteBackupRunResult.NotConfigured, await copier.RunIfDueAsync(CancellationToken.None));
 
         // The bootstrap tenant has no settings: still nothing sent, and the other tenant cannot ask for a run.
+        // The marker names a real owner account (foreign key).
+        var email = $"offsite-owner-{owner:N}@example.invalid";
+        db.Users.Add(new ApplicationUser { Id = owner, UserName = email, NormalizedUserName = email.ToUpperInvariant(), Email = email, NormalizedEmail = email.ToUpperInvariant(), DisplayName = "Offsite owner", SecurityStamp = Guid.NewGuid().ToString("N"), ForcePasswordChange = false, CreatedAt = clock.Now, UpdatedAt = clock.Now });
         db.BootstrapStates.Add(new BootstrapState { Key = OffsiteBackupSettingsService.HostBootstrapKey, CompletedAt = clock.Now, TenantId = host, OwnerUserId = owner, ConfigurationFingerprint = "test" });
         await db.SaveChangesAsync();
         Assert.Equal(host, await service.HostTenantAsync(CancellationToken.None));
