@@ -21,9 +21,10 @@ whitelist:
     # API reads under the panel's own resource prefixes (GET/HEAD, any status): a 404 for a record deleted meanwhile,
     # a 401 when the session expired, the list pages' bursts. Segments are letters, digits, '-' and '_' only.
     # /api/ without v1 covers an old tab still calling the earlier paths.
+    # RE2 (Go) rejects nested counted repeats whose product passes 1000, so a segment is at most 120 here (120 x 8).
     - >-
       evt.Meta.http_verb in ['GET', 'HEAD'] &&
-      evt.Meta.http_path matches '^/api/(v1/)?(auth|catalog|catalog-structure-runs|channel-offers|connections|dashboard|files|imports|inventory|invoice-workspace|invoices|jobs|mappings|orders|price-stock-monitor|price-stock-send-log|product-activity|products|question-templates|questions|reference-data|reports|returns|settings|shipments|variants|api-health-signals)(/[A-Za-z0-9_-]{1,128}){0,8}/?(\\?redacted)?$'
+      evt.Meta.http_path matches '^/api/(v1/)?(auth|catalog|catalog-structure-runs|channel-offers|connections|dashboard|files|imports|inventory|invoice-workspace|invoices|jobs|mappings|orders|price-stock-monitor|price-stock-send-log|product-activity|products|question-templates|questions|reference-data|reports|returns|settings|shipments|variants|api-health-signals)(/[A-Za-z0-9_-]{1,120}){0,8}/?(\\?redacted)?$'
     # SignalR (operations hub): negotiate, WebSocket and long-polling reconnects answer 404 for a connection id the
     # API forgot after a deploy.
     - >-
