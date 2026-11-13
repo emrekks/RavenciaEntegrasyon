@@ -1,0 +1,15 @@
+/* One hover/focus look for every info "i" / "?" mark (Raporlar .reports-qmark, TitleHint, FieldHelp): a small round
+   highlight (22 px: the 14 px mark plus a 4 px ring) behind the mark only. It is a box-shadow, so nothing moves; the
+   label text and the trigger button get no box or outline of their own. */
+html:root:root:root:root:root:root :is(.reports-qmark, button.title-hint, button.field-help) { border-radius: 999px; transition: color 140ms ease, box-shadow 140ms ease; }
+html:root:root:root:root:root:root :is(.reports-qmark:hover, button.title-hint:hover, button.title-hint.is-open, button.field-help:hover, button.field-help.is-open),
+html:root:root:root:root:root:root button:is(:hover, :focus-visible) > .reports-qmark,
+html:root:root:root:root:root:root button:focus-visible:is(.title-hint, .field-help) {
+  color: var(--rv-color-ink);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--rv-color-ink) 14%, transparent);
+}
+/* The label button around a mark shows the ring on the mark, so its own focus rectangle goes. */
+html:root:root:root:root:root:root button.reports-tip-trigger:has(> .reports-qmark):focus-visible,
+html:root:root:root:root:root:root button:is(.title-hint, .field-help):focus-visible { outline: 0; }
+/* A trigger that clips its text (ellipsis) must not clip the 4 px ring around a mark at its edge. */
+html:root:root:root:root:root:root button.reports-tip-trigger:has(> .reports-qmark) { overflow: clip; overflow-clip-margin: 4px; }

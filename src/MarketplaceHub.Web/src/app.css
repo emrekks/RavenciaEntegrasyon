@@ -13,6 +13,7 @@
 @import './styles/audit-products.css';
 @import './styles/area-d.css';
 @import './styles/segments.css';
+@import './styles/info-hover.css';
 
 /*
  * Cascade layers, lowest first (the bundler hoists this order). `pages` and `responsive` are reserved for page and
