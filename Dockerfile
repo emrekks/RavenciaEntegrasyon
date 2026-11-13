@@ -46,7 +46,9 @@ COPY --from=build --chown=${APP_UID}:${APP_UID} /out/api/appsettings*.json ./
 USER ${APP_UID}
 # Debugger and profiler attach stay disabled; the diagnostics IPC socket stays on so
 # `dotnet-counters`/`dotnet-trace` can read the MarketplaceHub meters (docs/CI-CD-DEPLOY.md).
-ENV ASPNETCORE_URLS=http://+:8080 DOTNET_EnableDiagnostics_Debugger=0 DOTNET_EnableDiagnostics_Profiler=0
+# The port is the base image's own ASPNETCORE_HTTP_PORTS: ASPNETCORE_URLS next to it made every API start log an
+# "Overriding HTTP_PORTS" warning (46 on live in a day, 13 Nov 2026). Same binding: every address, port 8080.
+ENV ASPNETCORE_HTTP_PORTS=8080 DOTNET_EnableDiagnostics_Debugger=0 DOTNET_EnableDiagnostics_Profiler=0
 EXPOSE 8080
 ENTRYPOINT ["dotnet"]
 CMD ["api/MarketplaceHub.Api.dll"]
