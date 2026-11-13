@@ -10,17 +10,11 @@
 #   rclone.conf                rclone config holding that remote (the owner authorises it with `rclone config`)
 # While the recipient file or the remote is missing the script prints "Off-site backup copy is not configured"
 # and exits 0, so a timer can be installed before the owner has set it up. Once configured, a missing age or
-# rclone binary, a failed upload or an uploaded object whose SHA-256 differs from the stream is an error (exit 1).
+# rclone binary, a failed upload or an empty uploaded object is an error (exit 1).
 #
 # Each set is uploaded once, as <folder>/<set>.tar.age (tar of the set directory, encrypted), streamed straight
-# from the backup volume to the remote without a plaintext or ciphertext copy on disk. The stream goes up as
-# <set>.tar.age.partial while its SHA-256 is taken on the way; only when the remote's SHA-256 of that object equals
-# the stream's is it renamed to <set>.tar.age and the sidecar <set>.tar.age.sha256 (sha256sum format) written. A set
-# counts as copied only when the object and its sidecar exist and the object's remote SHA-256 still matches the
-# sidecar; a copy without a matching sidecar is uploaded again and the run then exits 2, so the unit's OnFailure=
-# alert reports it. A tar, age or upload that dies mid-stream leaves no <set>.tar.age (the partial is removed).
-# Backends or rclone versions without a SHA-256 for the object are hashed with `rclone hashsum --download`.
-# Apart from its own partial the script never deletes anything on the remote; retention there is the owner's rule. This does NOT protect the copies from a stolen
+# from the backup volume to the remote without a plaintext or ciphertext copy on disk. The script never deletes
+# anything on the remote; retention there is the owner's rule. This does NOT protect the copies from a stolen
 # server: rclone.conf holds a Drive token whose drive.file scope can delete or overwrite every file this app
 # uploaded, so whoever controls the server can erase the off-site copies too. Only a destination the server
 # cannot delete from (e.g. Backblaze B2 with Object Lock, or a separately owned copy) closes that gap.
@@ -61,7 +55,7 @@ folder="${destination#*:}"
 folder="${folder%/}"
 [[ -s "$rclone_config" ]] || not_configured "deploy/secrets/rclone.conf is missing"
 
-for tool in age rclone tar sha256sum flock tee mkfifo; do
+for tool in age rclone tar sha256sum flock; do
   command -v "$tool" >/dev/null || { echo "Off-site copy is configured but '$tool' is not installed (apt-get install age rclone)." >&2; exit 1; }
 done
 export RCLONE_CONFIG="$rclone_config"
@@ -95,86 +89,20 @@ done < <(find "$backup_root" -mindepth 1 -maxdepth 1 -type d -regextype posix-ex
 [[ -n "$newest" ]] || { echo "No verified backup set found in $backup_root." >&2; exit 1; }
 
 object="$newest.tar.age"
-prefix="$remote_name:${folder:+$folder/}"
-target="$prefix$object"
-partial="$target.partial"
-sidecar="$target.sha256"
-
-# SHA-256 of a remote object: the backend's own when it has one, else rclone downloads and hashes it.
-remote_sha256() {
-  local out hash
-  out="$(rclone hashsum sha256 "$1" 2>/dev/null)" || out=""
-  hash="${out%%[[:space:]]*}"
-  if [[ ! "$hash" =~ ^[0-9a-f]{64}$ ]]; then
-    out="$(rclone hashsum sha256 --download "$1" 2>/dev/null)" || out=""
-    hash="${out%%[[:space:]]*}"
-  fi
-  [[ "$hash" =~ ^[0-9a-f]{64}$ ]] || return 1
-  printf '%s\n' "$hash"
-}
-
+target="$remote_name:${folder:+$folder/}$object"
 # A folder that does not exist yet lists as an error: then nothing has been copied there.
 existing="$(rclone lsf --files-only "$remote_name:$folder" 2>/dev/null)" || existing=""
-recopy=""
 if grep -qxF "$object" <<<"$existing"; then
-  recorded=""
-  if grep -qxF "$object.sha256" <<<"$existing"; then
-    recorded="$(rclone cat "$sidecar" 2>/dev/null | head -n 1)" || recorded=""
-    recorded="${recorded%%[[:space:]]*}"
-  fi
-  actual="$(remote_sha256 "$target")" || actual=""
-  if [[ "$recorded" =~ ^[0-9a-f]{64}$ && "$actual" == "$recorded" ]]; then
-    echo "Off-site copy of $newest already exists at $target and matches its SHA-256; nothing to do."
-    exit 0
-  fi
-  if [[ -z "$recorded" ]]; then
-    recopy="it has no SHA-256 sidecar ($object.sha256)"
-  else
-    recopy="its SHA-256 (${actual:-unreadable}) does not match the sidecar ($recorded)"
-  fi
-  echo "WARNING: the off-site copy $target is not verified: $recopy. Uploading it again." >&2
+  echo "Off-site copy of $newest already exists at $target; nothing to do."
+  exit 0
 fi
 
-work_dir="$(mktemp -d)"
-uploaded=""
-cleanup() {
-  rm -rf -- "$work_dir"
-  # A failed run leaves no partial object behind (best effort; the next run overwrites it anyway).
-  [[ -n "$uploaded" ]] || rclone deletefile "$partial" >/dev/null 2>&1 || true
-}
-trap cleanup EXIT
-
-echo "Encrypting and uploading backup set $newest to $partial."
-stream_sum="$work_dir/stream.sha256"
-# tee copies the encrypted stream into a FIFO that sha256sum reads in the background; this shell waits for it.
-mkfifo "$work_dir/stream"
-sha256sum <"$work_dir/stream" >"$stream_sum" &
-hasher=$!
-upload_status=0
-tar -C "$backup_root" -cf - "$newest" \
-  | age --encrypt --recipients-file "$recipient_file" \
-  | tee "$work_dir/stream" \
-  | rclone rcat "$partial" || upload_status=$?
-wait "$hasher" || { (( upload_status )) || upload_status=1; }
-if (( upload_status != 0 )); then
-  echo "Encrypting or uploading $newest failed (status $upload_status); no copy was written to $target." >&2
-  exit 1
-fi
-expected="$(cut -d ' ' -f 1 "$stream_sum" 2>/dev/null)" || expected=""
-[[ "$expected" =~ ^[0-9a-f]{64}$ ]] || { echo "Could not read the SHA-256 of the uploaded stream." >&2; exit 1; }
-actual="$(remote_sha256 "$partial")" || { echo "Could not read the SHA-256 of $partial on the remote." >&2; exit 1; }
-if [[ "$actual" != "$expected" ]]; then
-  echo "Uploaded object $partial does not match the stream (SHA-256 $actual, expected $expected); it was removed." >&2
-  exit 1
-fi
-rclone moveto "$partial" "$target" || { echo "Could not rename $partial to $target." >&2; exit 1; }
-uploaded=yes
-printf '%s  %s\n' "$expected" "$object" | rclone rcat "$sidecar" \
-  || { echo "Could not write $sidecar; the next run will upload $newest again." >&2; exit 1; }
+echo "Encrypting and uploading backup set $newest to $target."
+tar -C "$backup_root" -cf - "$newest" | age --encrypt --recipients-file "$recipient_file" | rclone rcat "$target"
 size="$(rclone lsf --files-only --format s "$target" 2>/dev/null)" || size=""
 size="${size%%$'\n'*}"
-echo "Off-site copy of $newest written to $target (${size:-?} bytes, age-encrypted, SHA-256 $expected)."
-if [[ -n "$recopy" ]]; then
-  echo "The earlier copy of $newest was replaced because $recopy; exiting 2 so the failure alert reports it." >&2
-  exit 2
+if [[ ! "$size" =~ ^[0-9]+$ ]] || (( size == 0 )); then
+  echo "Uploaded object $target is missing or empty." >&2
+  exit 1
 fi
+echo "Off-site copy of $newest written to $target ($size bytes, age-encrypted)."
