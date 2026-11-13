@@ -71,6 +71,13 @@ public static class InvoiceProviderIdentityPolicy
             : string.Equals(sentUuid.Trim(), answeredReference.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
+    // Scan D-2: on such a connection the "no invoice at the provider" confirmation opens a resend only when the operator
+    // states they searched the provider portal by the order number (the documented API has no such search).
+    public const string OrderNumberSearchRequiredCode = "INVOICE_ORDER_NUMBER_SEARCH_REQUIRED";
+
+    public static string OrderNumberSearchRequiredMessage(string orderNumber) =>
+        $"E-Faturam bu bağlantıda faturaları kendi kimliğiyle kaydediyor; panel faturanın kesilmediğini bilemez. E-Faturam portalında {orderNumber} sipariş numarasıyla arayın ve fatura yoksa bunu onaylayarak yeniden gönderimi açın.";
+
     public static string UuidMismatchSummary(string? invoiceNumber, string sentUuid, string answeredReference) =>
         $"E-Faturam {invoiceNumber ?? "bir"} faturasını panelin gönderdiği kimlikle ({sentUuid}) değil kendi kimliğiyle ({answeredReference}) kaydetti. "
         + "Bu bağlantıda yanıtı kaybolan bir faturanın kimlikle bulunamaması kesilmediğini göstermez: yeniden göndermeden önce E-Faturam portalında sipariş numarasıyla arayın.";

@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { needsOrderNumberSearch } from './invoice-order-number-search'
 import { platformDisplayNames } from '../../shared/platform-names'
 import { copyText } from '../../shared/copy-text'
 import { createPortal } from 'react-dom'
@@ -403,7 +404,9 @@ export function InvoicesPage() {
     onError: (error, item) => setMessage(error instanceof Error ? error.message : 'Eski fatura kapatılamadı.', 'error', invoiceOrderContext(item, 'Eski Fatura Kapatılamadı', 'İptal edilen faturayı değiştirme', error))
   })
   const noRemoteInvoice = useMutation({
-    mutationFn: async (item: InvoiceWorkspace) => hubApi<{ confirmed: boolean }>(`/invoice-workspace/orders/${item.orderId}/confirm-no-remote-invoice`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() } }),
+    // D-2: where E-Faturam keeps its own reference, the confirmation also states the portal was searched by the order
+    // number (the dialog asks for it); the server refuses the resend without that statement.
+    mutationFn: async (item: InvoiceWorkspace) => hubApi<{ confirmed: boolean }>(`/invoice-workspace/orders/${item.orderId}/confirm-no-remote-invoice`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ searchedByOrderNumber: needsOrderNumberSearch(item) }) }),
     onSuccess: async (_result, item) => {
       setMessage(`#${item.orderNumber} nolu siparişin faturası için yeniden gönderim açıldı. Faturayı tekrar oluşturabilirsiniz.`, 'success', invoiceOrderContext(item, 'Fatura Yeniden Gönderime Açıldı', 'Fatura yeniden gönderimi'))
       await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] })])
@@ -698,6 +701,8 @@ const manualConfirmationCopy: Record<ManualConfirmationKind, { title: string; co
 // The manual invoice confirmations, formerly browser dialogs: the order, the invoice and what the choice does.
 function InvoiceManualConfirmationModal({ kind, item, onCancel, onConfirm }: { kind: ManualConfirmationKind; item: InvoiceWorkspace; onCancel: () => void; onConfirm: () => void }) {
   const copy = manualConfirmationCopy[kind]
+  const searchRequired = kind === 'noRemote' && needsOrderNumberSearch(item)
+  const [searched, setSearched] = useState(false)
   const orderNumber = displayInvoiceOrderNumber(item.orderNumber)
   const description = kind === 'reviewDelivered'
     ? `${orderNumber} siparişinde pazaryerinde görünen fatura ${item.invoiceNumber ?? 'bu fatura'} mı? Pazaryeri satıcı panelinde kontrol ettiyseniz iletildi sayın.`
@@ -707,10 +712,13 @@ function InvoiceManualConfirmationModal({ kind, item, onCancel, onConfirm }: { k
       ? `${orderNumber} için ${item.invoiceNumber ?? 'mevcut'} numaralı faturayı E-Faturam portalında iptal ettiniz mi?`
       : kind === 'retryDelivery'
         ? `${orderNumber} siparişinin ${item.invoiceNumber ?? 'kesilmiş'} numaralı faturası pazaryerine şimdi yeniden iletilsin mi?`
-        : `${orderNumber} için E-Faturam portalında fatura olmadığını doğruladınız mı?`
-  return <Modal open title={copy.title} description={description} className="invoice-confirm-modal" onClose={onCancel} footer={<><button type="button" className="secondary" onClick={onCancel}>Vazgeç</button><button type="button" className={copy.tone === 'danger' ? 'destructive' : 'primary'} onClick={onConfirm}>{copy.confirm}</button></>}>
+        : searchRequired
+          ? `E-Faturam bu bağlantıda faturaları kendi kimliğiyle kaydediyor; panel faturanın kesilmediğini bilemez. E-Faturam portalında ${orderNumber} sipariş numarasıyla arayıp fatura olmadığını gördünüz mü?`
+          : `${orderNumber} için E-Faturam portalında fatura olmadığını doğruladınız mı?`
+  return <Modal open title={copy.title} description={description} className="invoice-confirm-modal" onClose={onCancel} footer={<><button type="button" className="secondary" onClick={onCancel}>Vazgeç</button><button type="button" className={copy.tone === 'danger' ? 'destructive' : 'primary'} disabled={searchRequired && !searched} onClick={onConfirm}>{copy.confirm}</button></>}>
     <div className="invoice-confirm-order"><PlatformMark code={item.platformCode} name={item.platformDisplayName} /><span><strong>{orderNumber}</strong><small>{invoiceCustomerDisplayName(item)}{item.invoiceNumber ? ` · ${item.invoiceNumber}` : ''}</small></span><InvoiceStatusBadge icon={<InvoiceGlyph kind={invoiceGlyphKind(item.invoiceStatus)} />} status={item.invoiceStatus} /></div>
     <p className={`invoice-confirm-note is-${copy.tone}`}><UiIcon name="alert" />{copy.note}</p>
+    {searchRequired && <label className="check"><input type="checkbox" checked={searched} onChange={event => setSearched(event.target.checked)} /> E-Faturam portalında {orderNumber} sipariş numarasıyla aradım, fatura yok.</label>}
   </Modal>
 }
 

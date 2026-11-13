@@ -285,7 +285,7 @@ public sealed class InvoicingDeepAuditTests
         public Task<InvoiceWorkspaceSummaryView> WorkspaceSummaryAsync(Guid tenantId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ServiceResult<bool>> ConfirmMarketplaceDeliveredAsync(Guid tenantId, Guid orderId, string correlationId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ServiceResult<bool>> ReplaceCancelledInvoiceAsync(Guid tenantId, Guid orderId, string correlationId, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<ServiceResult<bool>> ConfirmNoRemoteInvoiceAsync(Guid tenantId, Guid orderId, string correlationId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<ServiceResult<bool>> ConfirmNoRemoteInvoiceAsync(Guid tenantId, Guid orderId, string correlationId, CancellationToken cancellationToken, bool searchedByOrderNumber = false) => throw new NotSupportedException();
         public Task<ServiceResult<Guid>> EnqueueOrderInvoiceReconciliationAsync(Guid tenantId, Guid orderId, string idempotencyKey, string correlationId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ServiceResult<IReadOnlyList<InvoiceWorkspacePreviewItem>>> PreviewWorkspaceInvoicesAsync(Guid tenantId, InvoiceWorkspacePreviewRequest request, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ServiceResult<InvoiceDetailView>> CreateDraftAsync(Guid tenantId, CreateInvoiceCommand command, string idempotencyKey, CancellationToken cancellationToken) => throw new NotSupportedException();

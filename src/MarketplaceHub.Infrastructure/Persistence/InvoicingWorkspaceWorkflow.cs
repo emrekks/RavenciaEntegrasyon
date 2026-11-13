@@ -714,7 +714,7 @@ public sealed partial class InvoicingBillingService
     }
 
     // The operator checked the provider portal and saw no invoice for a submission whose result was lost; only then may it be sent again.
-    public async Task<ServiceResult<bool>> ConfirmNoRemoteInvoiceAsync(Guid tenantId, Guid orderId, string correlationId, CancellationToken cancellationToken)
+    public async Task<ServiceResult<bool>> ConfirmNoRemoteInvoiceAsync(Guid tenantId, Guid orderId, string correlationId, CancellationToken cancellationToken, bool searchedByOrderNumber = false)
     {
         var invoice = await db.Invoices.Where(item => item.TenantId == tenantId && item.OrderId == orderId && item.SequencePurpose == "SALE")
             .OrderByDescending(item => item.CreatedAt).FirstOrDefaultAsync(cancellationToken);
@@ -729,6 +729,15 @@ public sealed partial class InvoicingBillingService
         // E-Faturam took the request (2xx) and only its answer was lost: the invoice may exist, so its result is awaited.
         if (invoice.LastErrorCode == InvoiceSubmissionOutcomePolicy.UnreadableAnswerCode || attempts.Any(item => item.ErrorCode == InvoiceSubmissionOutcomePolicy.UnreadableAnswerCode))
             return ServiceResult<bool>.Fail("INVOICE_PROVIDER_ANSWER_AWAITED", "E-Faturam bu fatura isteğini kabul etti ancak yanıtı okunamadı; fatura oluşmuş olabilir. Sonuç E-Faturam'dan okunana kadar yeniden gönderim açılamaz.", 409);
+        // D-2: where the provider keeps its own reference, a lost answer cannot be read back by our UUID; the resend opens
+        // only on the operator's statement that the portal shows no invoice for the order number.
+        if (!searchedByOrderNumber
+            && (invoice.LastErrorCode == InvoiceProviderIdentityPolicy.UuidNotHonouredCode
+                || await db.OperationalIssues.AsNoTracking().AnyAsync(issue => issue.TenantId == tenantId && issue.DedupeKey == InvoiceProviderIdentityPolicy.UuidMismatchIssueKey(invoice.ProviderConnectionId), cancellationToken)))
+        {
+            var orderNumber = await db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId && order.Id == orderId).Select(order => order.OrderNumber).SingleOrDefaultAsync(cancellationToken) ?? "bu";
+            return ServiceResult<bool>.Fail(InvoiceProviderIdentityPolicy.OrderNumberSearchRequiredCode, InvoiceProviderIdentityPolicy.OrderNumberSearchRequiredMessage(orderNumber), 409);
+        }
         var now = timeProvider.GetUtcNow();
         var needle = invoice.Id.ToString();
         var activeJob = await db.IntegrationJobs.AsNoTracking().AnyAsync(job => job.TenantId == tenantId && job.PayloadJson.Contains(needle)
@@ -745,7 +754,7 @@ public sealed partial class InvoicingBillingService
         invoice.LastErrorCode = OperatorConfirmedNoRemoteInvoiceCode;
         invoice.UpdatedAt = now;
         invoice.Version++;
-        db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = "EFATURAM_NO_REMOTE_INVOICE_CONFIRMED", TargetType = "Invoice", TargetId = invoice.Id.ToString("D"), Reason = "operator-checked-provider-portal", CorrelationId = correlationId, CreatedAt = now });
+        db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = "EFATURAM_NO_REMOTE_INVOICE_CONFIRMED", TargetType = "Invoice", TargetId = invoice.Id.ToString("D"), Reason = searchedByOrderNumber ? "operator-searched-provider-portal-by-order-number" : "operator-checked-provider-portal", CorrelationId = correlationId, CreatedAt = now });
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<bool>.Ok(true);
     }
