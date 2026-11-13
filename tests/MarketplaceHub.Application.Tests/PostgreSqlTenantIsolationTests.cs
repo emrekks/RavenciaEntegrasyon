@@ -1197,12 +1197,19 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         });
         db.StockReservations.Add(new StockReservation { Id = Guid.CreateVersion7(), TenantId = tenant.Id, InventoryItemId = item.Id, SourceType = "ORDER_LINE", SourceId = Guid.NewGuid().ToString("D"), Quantity = 1 });
         await db.SaveChangesAsync();
+        // A closed report worked out after the seed and before the delete.
+        var reported = new ReportCache.Entry(null!, DateTimeOffset.UtcNow, fixture.Now.AddDays(-30), fixture.Now.AddDays(-1), true);
+        Assert.False(await ReportCache.ChangedSinceAsync(db, tenant.Id, reported, CancellationToken.None));
 
         var service = new CatalogService(db, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider, new MemoryCache(new MemoryCacheOptions()));
         var deleted = await service.DeleteProductAsync(tenant.Id, product.Id, product.Version, CancellationToken.None);
 
         Assert.True(deleted.Succeeded, deleted.Error?.Message);
         db.ChangeTracker.Clear();
+        // The SQL delete raises no change event of its own: the delete announces the product, and the report is dropped.
+        Assert.True(await db.IntegrationOutboxEvents.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.AggregateType == "Product"
+            && x.AggregateId == product.Id && x.OperationType == "deleted"));
+        Assert.True(await ReportCache.ChangedSinceAsync(db, tenant.Id, reported, CancellationToken.None));
         Assert.False(await db.Products.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.Id == product.Id));
         Assert.False(await db.InventoryItems.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.Id == item.Id));
         Assert.False(await db.StockLedgerEntries.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.InventoryItemId == item.Id));

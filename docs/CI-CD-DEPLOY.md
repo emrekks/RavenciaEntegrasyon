@@ -288,7 +288,11 @@ Açmak (yalnız sahip TOTP'yi kurduktan sonra):
 `deploy/backup/offsite-copy.sh` en yeni doğrulanmış yedek setini (`SHA256SUMS` tutan) sahibin **age açık
 anahtarıyla** şifreleyip rclone ile `<uzak>:<klasör>/<set>.tar.age` olarak yükler. Akış diskten geçmez
 (tar → age → `rclone rcat`). Sunucu şifreleyebilir ama çözemez: özel anahtar sahipte, sunucu dışında kalır.
-Aynı set ikinci kez yüklenmez; betik uzaktaki hiçbir şeyi silmez. Yapılandırılmadıkça
+Akış önce geçici bir nesneye (`<set>.tar.age.partial-<pid>`) yüklenir; uzaktan geri okunan SHA-256 akışınkiyle
+eşleşirse son adına taşınır ve `<set>.tar.age.verified` (hash ve boyut) yazılır. Yarıda kalan bir tar/age/yükleme
+son adda kesik bir dosya bırakmaz. Aynı set ikinci kez yüklenmez: kayıt var ve nesne kayıttaki boyuttaysa atlanır,
+kaydı olmayan ya da boyutu tutmayan eski kopya yeniden yüklenir. Betik uzakta kendi geçici nesnesi dışında hiçbir şeyi
+silmez. Yapılandırılmadıkça
 `Off-site backup copy is not configured` yazıp 0 ile çıkar.
 
 **1) age anahtar çifti (sahip, kendi bilgisayarında):**

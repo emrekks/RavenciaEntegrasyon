@@ -1017,6 +1017,25 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             USING purge_product_ids p
             WHERE x."TenantId"={{tenantId}} AND x."Id"=p."Id";
             """, cancellationToken);
+        // The deletes above raise no change events of their own (AppDbContext announces only added and changed rows), so
+        // each deleted product is announced here, in the same transaction: the report cache (ReportCache) drops the
+        // reports its order lines' costs and names were read into, and the open panels refresh.
+        var deletedAt = timeProvider.GetUtcNow();
+        foreach (var product in products)
+            db.IntegrationOutboxEvents.Add(new IntegrationOutboxEvent
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenantId,
+                ResourceType = "products",
+                OperationType = "deleted",
+                AggregateType = "Product",
+                AggregateId = product.Id,
+                AggregateVersion = product.Version,
+                PayloadJson = JsonSerializer.Serialize(new { aggregateType = "Product", aggregateId = product.Id, version = product.Version }),
+                CreatedAt = deletedAt,
+                NextAttemptAt = deletedAt
+            });
+        await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         // Outside the serializable delete so the check of other owners cannot fail it; a file a failure here leaves
         // ACTIVE is found by the hourly orphan sweep (FileAssetReferences.MarkOrphansAsync).
