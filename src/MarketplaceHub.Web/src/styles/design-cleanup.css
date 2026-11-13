@@ -64,3 +64,11 @@
   background: color-mix(in srgb, var(--rv-color-surface) 78%, transparent); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm);
 }
 :root:root:root body .app-shell.stitch-shell main .variant-auto-barcode-toggle input { margin: 0; }
+
+/* One table head: a step darker than the card or body it sits on (--rv-color-table-head), body rows on the lighter card. */
+:root:root:root body .app-shell.stitch-shell main :is(
+  :is(.rr-tbl, .rr-ltbl, .rr-vtab, .rr-qtable, .jobs-reference-table, .jobs-reference-attempts-section table, .psl-table, .qq-table, .mapping-saved-table table, .commission-table, .reports-table, .reports-payout-lines-wrap table, .ss-users, .ss-ai-usage, .pci-tbl, .marketplace-codes-table, .size-chart-table) thead th,
+  .order-reference-head, .return-reference-head, .invoice-reference-head, .variant-table-head, .cm-vrow.is-head, .cs-frow.is-head
+) {
+  background-color: var(--rv-color-table-head);
+}
