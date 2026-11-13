@@ -2261,13 +2261,6 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         }
     }
 
-    // fields: the product information "Platformlarda Güncelle" picked (ProductUpdateFields); null sends all of it.
-    public async Task<ServiceResult<Guid>> EnqueueProductUpdateAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, IReadOnlyCollection<string>? fields = null)
-    {
-        var queued = await EnqueueProductUpdateWithNoticesAsync(tenantId, productId, connectionId, idempotencyKey, correlationId, cancellationToken, fields);
-        return queued.Succeeded ? ServiceResult<Guid>.Ok(queued.Value!.JobId) : ServiceResult<Guid>.Fail(queued.Error!.Code, queued.Error.Message, queued.Error.Status, queued.Error.FieldErrors);
-    }
-
     // A product matched to a marketplace listing gets its listing profile only from a product sync that reads the
     // products' information (ImportedListingProfiles); the update never makes one (owner decision 6 Nov 2026), and a card
     // without one is refused with what to run (ImportedListingProfiles.MissingPublicationMessage). On such a profile the

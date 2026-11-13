@@ -111,22 +111,6 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         return await QuestionProductImages.FillAsync(db, tenantId, history, cancellationToken);
     }
 
-    public async Task<QuestionSyncView> SyncAsync(Guid tenantId, string? kind, CancellationToken cancellationToken)
-    {
-        var connections = await db.PlatformConnections.AsNoTracking().Where(connection => connection.TenantId == tenantId
-            && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")
-            && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "HEPSIBURADA" || connection.PlatformCode == "N11" || connection.PlatformCode == "PAZARAMA"))
-            .Select(connection => connection.Id).ToListAsync(cancellationToken);
-        var added = 0; var updated = 0; string? error = null;
-        foreach (var id in connections)
-        {
-            var result = await SyncConnectionAsync(tenantId, id, kind, cancellationToken);
-            added += result.Added; updated += result.Updated;
-            if (result.Error is not null) error = result.Error;
-        }
-        return new(added, updated, timeProvider.GetUtcNow(), error);
-    }
-
     public async Task<QuestionSyncView> SyncConnectionAsync(Guid tenantId, Guid connectionId, string? kind, CancellationToken cancellationToken, JobReadRecorder? reads = null)
     {
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(row => row.TenantId == tenantId && row.Id == connectionId

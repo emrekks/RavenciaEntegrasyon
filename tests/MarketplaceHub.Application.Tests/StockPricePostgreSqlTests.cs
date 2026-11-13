@@ -2259,7 +2259,7 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.Equal("DRAFT", kept.Value!.Status);
 
         Assert.Equal(ProductDraftPolicy.SendBlockedCode, (await service.EnqueuePublicationAsync(tenant.Id, draft.Value.Id, Guid.NewGuid(), "draft-publish", "draft", CancellationToken.None)).Error!.Code);
-        Assert.Equal(ProductDraftPolicy.SendBlockedCode, (await service.EnqueueProductUpdateAsync(tenant.Id, draft.Value.Id, Guid.NewGuid(), "draft-update", "draft", CancellationToken.None)).Error!.Code);
+        Assert.Equal(ProductDraftPolicy.SendBlockedCode, (await service.EnqueueProductUpdateWithNoticesAsync(tenant.Id, draft.Value.Id, Guid.NewGuid(), "draft-update", "draft", CancellationToken.None)).Error!.Code);
         db.ChangeTracker.Clear();
         Assert.True((await service.BulkSetStatusAsync(tenant.Id, new BulkProductStatusCommand([draft.Value.Id], "ACTIVE"), CancellationToken.None)).Succeeded);
         Assert.Equal(ProductStatus.Draft, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == draft.Value.Id)).Status);

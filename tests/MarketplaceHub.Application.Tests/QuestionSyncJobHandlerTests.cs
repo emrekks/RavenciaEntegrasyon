@@ -68,7 +68,6 @@ public sealed class QuestionSyncJobHandlerTests
         }
         public Task<MarketplaceQuestionListPage> ListAsync(Guid tenantId, QuestionListQuery query, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<MarketplaceQuestionView?> GetAsync(Guid tenantId, Guid id, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<QuestionSyncView> SyncAsync(Guid tenantId, string? kind, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<MarketplaceQuestionSyncStateView>> SyncStatesAsync(Guid tenantId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<MarketplaceQuestionView>?> CustomerHistoryAsync(Guid tenantId, Guid id, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ServiceResult<MarketplaceQuestionView>> AnswerAsync(Guid tenantId, Guid userId, Guid id, long expectedVersion, string answer, string idempotencyKey, string correlationId, CancellationToken cancellationToken) => throw new NotSupportedException();

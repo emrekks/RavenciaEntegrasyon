@@ -1034,7 +1034,6 @@ public interface IMarketplaceQuestionService
     Task<MarketplaceQuestionListPage> ListAsync(Guid tenantId, QuestionListQuery query, CancellationToken cancellationToken);
     Task<MarketplaceQuestionView?> GetAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<IReadOnlyList<MarketplaceQuestionView>?> CustomerHistoryAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
-    Task<QuestionSyncView> SyncAsync(Guid tenantId, string? kind, CancellationToken cancellationToken);
     Task<QuestionSyncView> SyncConnectionAsync(Guid tenantId, Guid connectionId, string? kind, CancellationToken cancellationToken, JobReadRecorder? reads = null);
     Task<IReadOnlyList<MarketplaceQuestionSyncStateView>> SyncStatesAsync(Guid tenantId, CancellationToken cancellationToken);
     Task<ServiceResult<MarketplaceQuestionView>> AnswerAsync(Guid tenantId, Guid userId, Guid id, long expectedVersion, string answer, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
@@ -1201,7 +1200,6 @@ public interface IInstantNotificationService
 }
 public sealed record CreatedWebhookSubscription(WebhookSubscriptionView Subscription, Guid ConnectionPublicId, string RouteToken);
 public sealed record DeleteConnectionCommand(string Confirmation, string? Password = null, string? Code = null, string? RecoveryCode = null);
-public sealed record ResetOperationalDataCommand(IReadOnlyList<string> Scopes, string Confirmation);
 public sealed record OperationalDataResetView(
     int Products,
     int Orders,
@@ -1221,10 +1219,8 @@ public sealed record OperationalDataResetView(
     // (a failed call, or Hepsiburada's hand registration), saying what the seller still has to do there.
     string? WebhookNotice = null);
 
-// What a reset would remove, scope by scope, shown before it runs; KeptIssuedInvoices is what an order, return or
-// invoice reset of the connection keeps.
+// What a reset would remove, scope by scope, shown before it runs.
 public sealed record DataResetCountView(string Scope, int Count);
-public sealed record DataResetCountsView(IReadOnlyList<DataResetCountView> Items, int KeptIssuedInvoices);
 
 // A connection's full reset: what it removes (issued invoices included), the linked products it keeps (used by another
 // connection or created on the panel; only their link to this connection goes) and the reset job when one is queued or
@@ -1239,9 +1235,7 @@ public interface IOperationalDataMaintenanceService
     Task<ServiceResult<ConnectionFullResetView>> RequestFullResetAsync(Guid tenantId, Guid actorUserId, Guid connectionId, long expectedVersion, FullResetConnectionCommand command, string correlationId, CancellationToken cancellationToken);
     // The reset job's work (ConnectionFullResetJobHandler); jobId is the running job, which stays.
     Task<JobOutcome> RunFullResetAsync(Guid tenantId, Guid connectionId, Guid? jobId, CancellationToken cancellationToken);
-    Task<ServiceResult<DataResetCountsView>> ResetCountsAsync(Guid tenantId, Guid? connectionId, CancellationToken cancellationToken);
     Task<ServiceResult<OperationalDataResetView>> DeleteConnectionAsync(Guid tenantId, Guid actorUserId, Guid connectionId, long expectedVersion, DeleteConnectionCommand command, string correlationId, CancellationToken cancellationToken);
-    Task<ServiceResult<OperationalDataResetView>> ResetConnectionDataAsync(Guid tenantId, Guid actorUserId, Guid connectionId, long expectedVersion, ResetOperationalDataCommand command, string correlationId, CancellationToken cancellationToken);
 }
 
 // G: the automatic price/stock pipeline of each marketplace connection, as the monitor panel shows it.
@@ -1298,7 +1292,6 @@ public interface IMarketplaceConnectionService
     // store: that is a new connection (CONNECTION_SCOPE_IMMUTABLE).
     Task<ServiceResult<ConnectionView>> UpdateAsync(Guid tenantId, Guid id, long expectedVersion, UpdateConnectionCommand command, CancellationToken cancellationToken, bool elevated = true);
     Task<ServiceResult<ConnectionView>> RotateCredentialAsync(Guid tenantId, Guid id, long expectedVersion, CredentialCommand command, CancellationToken cancellationToken);
-    Task<ServiceResult<Guid>> EnqueueTestAsync(Guid tenantId, Guid id, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueInitialDataSyncAsync(Guid tenantId, Guid id, string idempotencyKey, long expectedVersion, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<ConnectionView>> SetActiveAsync(Guid tenantId, Guid id, long expectedVersion, bool active, CancellationToken cancellationToken);
     Task<ServiceResult<IReadOnlyList<CapabilityView>>> CapabilitiesAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);

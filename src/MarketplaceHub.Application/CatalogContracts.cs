@@ -332,7 +332,6 @@ public interface ICatalogService
     // The same send, with the variants it left out (a card already on the marketplace sends the variants that can go).
     Task<ServiceResult<PublicationEnqueued>> EnqueuePublicationWithSkippedAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<BulkPublicationResult>> EnqueueBulkPublicationAsync(Guid tenantId, Guid userId, BulkPublicationCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
-    Task<ServiceResult<Guid>> EnqueueProductUpdateAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, IReadOnlyCollection<string>? fields = null);
     // The same update, with the notices the panel records in its notification center (a card value sent where the
     // listing profile read from the marketplace has none: ImportedProfileCardFallbacks).
     // sendGroupId: the cards one "Platformlarda Güncelle" sends to the connection together share it; Trendyol sends them in

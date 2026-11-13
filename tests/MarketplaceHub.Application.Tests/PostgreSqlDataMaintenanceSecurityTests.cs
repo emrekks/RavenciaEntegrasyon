@@ -10,98 +10,11 @@ using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
 
-// Data resets keep issued invoices (A4), hand the files of removed rows to the purge sweep (A12), and the
+// Connection deletes keep issued invoices (A4), resets hand the files of removed rows to the purge sweep (A12), and the
 // webhook gate needs the route token before a body is read (A8).
 [Collection("postgres-integration")]
 public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
-    // A connection's order reset goes ahead around its issued invoices (26 Oct 2026: 10 issued Hepsiburada invoices
-    // refused the whole reset): the issued invoice and its order stay, another order and its draft invoice go.
-    [PostgreSqlFact]
-    public async Task ConnectionReset_KeepsIssuedInvoicesWithTheirOrdersAndRemovesTheRest()
-    {
-        var seed = NewSeed("dm-keep");
-        var other = new Order
-        {
-            Id = Guid.CreateVersion7(),
-            TenantId = seed.Tenant.Id,
-            ConnectionId = seed.Marketplace.Id,
-            ExternalOrderId = "dm-keep-other",
-            OrderNumber = "dm-keep-other",
-            Currency = "TRY",
-            GrossAmount = 50m,
-            NetAmount = 50m,
-            OrderedAt = fixture.Now.AddDays(-2),
-            LastRemoteModifiedAt = fixture.Now.AddDays(-2),
-            CustomerSnapshotJson = "{}",
-            ShipmentAddressSnapshotJson = "{}",
-            InvoiceAddressSnapshotJson = "{}",
-            DerivedStatus = "DELIVERED",
-            CreatedAt = fixture.Now,
-            UpdatedAt = fixture.Now,
-            Version = 1
-        };
-        var issued = NewInvoice(seed, InvoiceStatus.Completed, issued: true);
-        var draft = NewInvoice(seed, InvoiceStatus.Draft, issued: false);
-        draft.OrderId = other.Id;
-        try
-        {
-            await SeedAsync(seed, db => { db.Orders.Add(other); db.Invoices.AddRange(issued, draft); });
-
-            await using var db = fixture.CreateContext();
-            var result = await NewService(db)
-                .ResetConnectionDataAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new ResetOperationalDataCommand(["ORDERS", "RETURNS", "INVOICES"], seed.Marketplace.DisplayName), "corr", CancellationToken.None);
-
-            Assert.True(result.Succeeded, result.Error?.Message);
-            Assert.Equal(1, result.Value!.KeptIssuedInvoices);
-            await using var verification = fixture.CreateContext();
-            Assert.Equal([seed.Order.Id], await verification.Orders.Where(x => x.TenantId == seed.Tenant.Id).Select(x => x.Id).ToListAsync());
-            Assert.Equal([issued.Id], await verification.Invoices.Where(x => x.TenantId == seed.Tenant.Id).Select(x => x.Id).ToListAsync());
-        }
-        finally
-        {
-            await DeleteTenantAsync(seed.Tenant.Id);
-        }
-    }
-
-    // 26 Oct 2026: the Promotions page's files are reset per connection; the counts shown before the reset are the
-    // ones it removes, and the issued invoice an order reset would keep is counted too.
-    [PostgreSqlFact]
-    public async Task ConnectionReset_CountsAndRemovesThePromotionFiles()
-    {
-        var seed = NewSeed("dm-promo");
-        var tariff = new CommissionTariff { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.Marketplace.Id, PlatformCode = "TRENDYOL", PeriodStart = fixture.Now, PeriodEnd = fixture.Now.AddDays(7), PeriodText = "1-7", FileName = "tarife.xlsx", FileHash = "h1", UploadedAt = fixture.Now, RowCount = 1 };
-        var row = new CommissionTariffRow { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, TariffId = tariff.Id, Barcode = "B1" };
-        var offer = new PromotionOfferFile { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.Marketplace.Id, PlatformCode = "TRENDYOL", Kind = PromotionOfferKinds.Advantage, FileName = "avantaj.xlsx", FileHash = "h2", UploadedAt = fixture.Now, RowCount = 0, RowsJson = "[]" };
-        try
-        {
-            await SeedAsync(seed, db => { db.CommissionTariffs.Add(tariff); db.CommissionTariffRows.Add(row); db.PromotionOfferFiles.Add(offer); db.Invoices.Add(NewInvoice(seed, InvoiceStatus.Completed, issued: true)); });
-
-            await using var db = fixture.CreateContext();
-            var service = NewService(db);
-            var counts = await service.ResetCountsAsync(seed.Tenant.Id, seed.Marketplace.Id, CancellationToken.None);
-            Assert.True(counts.Succeeded, counts.Error?.Message);
-            Assert.Equal(1, counts.Value!.Items.Single(x => x.Scope == "COMMISSION_TARIFFS").Count);
-            Assert.Equal(1, counts.Value.Items.Single(x => x.Scope == "PROMOTION_OFFERS").Count);
-            Assert.Equal(1, counts.Value.Items.Single(x => x.Scope == "ORDERS").Count);
-            Assert.Equal(1, counts.Value.KeptIssuedInvoices);
-
-            var result = await service.ResetConnectionDataAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new ResetOperationalDataCommand(["COMMISSION_TARIFFS", "PROMOTION_OFFERS"], seed.Marketplace.DisplayName), "corr", CancellationToken.None);
-
-            Assert.True(result.Succeeded, result.Error?.Message);
-            Assert.Equal((1, 1), (result.Value!.CommissionTariffs, result.Value.PromotionOffers));
-            await using var verification = fixture.CreateContext();
-            Assert.False(await verification.CommissionTariffs.AnyAsync(x => x.TenantId == seed.Tenant.Id));
-            Assert.False(await verification.CommissionTariffRows.AnyAsync(x => x.TenantId == seed.Tenant.Id));
-            Assert.False(await verification.PromotionOfferFiles.AnyAsync(x => x.TenantId == seed.Tenant.Id));
-            Assert.Equal(1, await verification.Orders.CountAsync(x => x.TenantId == seed.Tenant.Id));
-        }
-        finally
-        {
-            await DeleteTenantAsync(seed.Tenant.Id);
-        }
-    }
-
     // A live e-invoice provider with an issued invoice is kept; a STAGE one's invoices are tests and go with it.
     [PostgreSqlFact]
     public Task ProviderDelete_KeepsALiveProvidersIssuedInvoices() => ProviderDeleteAsync("PRODUCTION", deleted: false);
@@ -157,10 +70,10 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
     // P-6 (29 Oct 2026): the dashboard rebuild after the commit hit the worker's write of the same snapshot row and the
     // finished reset answered 500. The rebuild is retried once, then left to the worker the reset's outbox event wakes.
     [PostgreSqlFact]
-    public Task ConnectionReset_SucceedsWhenTheDashboardRebuildConflictsOnce() => ConnectionResetWithFailingDashboardAsync(failures: 1);
+    public Task FullReset_SucceedsWhenTheDashboardRebuildConflictsOnce() => ConnectionResetWithFailingDashboardAsync(failures: 1);
 
     [PostgreSqlFact]
-    public Task ConnectionReset_SucceedsWhenTheDashboardRebuildKeepsFailing() => ConnectionResetWithFailingDashboardAsync(failures: int.MaxValue);
+    public Task FullReset_SucceedsWhenTheDashboardRebuildKeepsFailing() => ConnectionResetWithFailingDashboardAsync(failures: int.MaxValue);
 
     private async Task ConnectionResetWithFailingDashboardAsync(int failures)
     {
@@ -172,9 +85,9 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
             var dashboard = new FailingDashboard(failures);
             await using var db = fixture.CreateContext();
             var result = await NewService(db, dashboard)
-                .ResetConnectionDataAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new ResetOperationalDataCommand(["ORDERS"], seed.Marketplace.DisplayName), "corr", CancellationToken.None);
+                .RunFullResetAsync(seed.Tenant.Id, seed.Marketplace.Id, null, CancellationToken.None);
 
-            Assert.True(result.Succeeded, result.Error?.Message);
+            Assert.True(result.Result.Succeeded, result.Result.ErrorSummary);
             Assert.Equal(2, dashboard.Calls);
             await using var verification = fixture.CreateContext();
             Assert.False(await verification.Orders.AnyAsync(x => x.TenantId == seed.Tenant.Id));
@@ -189,7 +102,7 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
     // An order with an uploaded invoice document, its delivery to the marketplace and the invoice references the
     // marketplace reported: their restricting keys failed the whole reset with a 500 (P-6 reading, 29 Oct 2026).
     [PostgreSqlFact]
-    public async Task OrderReset_RemovesTheUploadedInvoiceDocumentsAndInvoiceReferencesOfTheOrder()
+    public async Task FullReset_RemovesTheUploadedInvoiceDocumentsAndInvoiceReferencesOfTheOrder()
     {
         var seed = NewSeed("dm-manual");
         var pdf = NewFileAsset(seed.Tenant.Id, $"{seed.Tenant.Id:N}/manual.pdf");
@@ -206,9 +119,9 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
 
             await using var db = fixture.CreateContext();
             var result = await NewService(db)
-                .ResetConnectionDataAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new ResetOperationalDataCommand(["ORDERS"], seed.Marketplace.DisplayName), "corr", CancellationToken.None);
+                .RunFullResetAsync(seed.Tenant.Id, seed.Marketplace.Id, null, CancellationToken.None);
 
-            Assert.True(result.Succeeded, result.Error?.Message);
+            Assert.True(result.Result.Succeeded, result.Result.ErrorSummary);
             await using var verification = fixture.CreateContext();
             Assert.False(await verification.Orders.AnyAsync(x => x.TenantId == seed.Tenant.Id));
             Assert.False(await verification.ManualOrderInvoiceDocuments.AnyAsync(x => x.TenantId == seed.Tenant.Id));
@@ -257,60 +170,8 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
         }
     }
 
-    // With orders and returns chosen together only the order cursor went, so the removed returns never came back.
     [PostgreSqlFact]
-    public async Task OrderAndReturnReset_ReadsBothListsAgain_AndKeepsTheOtherCursors()
-    {
-        var seed = NewSeed("dm-cursor");
-        SyncCursor Cursor(string resource) => new() { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.Marketplace.Id, ResourceType = resource, OpaqueCursor = "page-9", LastSuccessAt = fixture.Now, Version = 1 };
-        try
-        {
-            await SeedAsync(seed, db => db.SyncCursors.AddRange(Cursor("ORDERS"), Cursor("PACKAGES"), Cursor("RETURNS"), Cursor(ReturnRereadPolicy.WideCursorResource), Cursor("PRODUCTS"), Cursor("QUESTIONS")));
-
-            await using var db = fixture.CreateContext();
-            var result = await NewService(db)
-                .ResetConnectionDataAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new ResetOperationalDataCommand(["ORDERS", "RETURNS"], seed.Marketplace.DisplayName), "corr", CancellationToken.None);
-
-            Assert.True(result.Succeeded, result.Error?.Message);
-            await using var verification = fixture.CreateContext();
-            var left = await verification.SyncCursors.Where(x => x.TenantId == seed.Tenant.Id).Select(x => x.ResourceType).OrderBy(x => x).ToListAsync();
-            Assert.Equal(["PRODUCTS", "QUESTIONS"], left);
-        }
-        finally
-        {
-            await using var cleanup = fixture.CreateContext();
-            await cleanup.SyncCursors.Where(row => row.TenantId == seed.Tenant.Id).ExecuteDeleteAsync();
-            await DeleteTenantAsync(seed.Tenant.Id);
-        }
-    }
-
-    [PostgreSqlFact]
-    public async Task ReturnReset_ReadsTheReturnsAgain_AndKeepsTheOrderCursor()
-    {
-        var seed = NewSeed("dm-retcur");
-        SyncCursor Cursor(string resource) => new() { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.Marketplace.Id, ResourceType = resource, OpaqueCursor = "page-9", Version = 1 };
-        try
-        {
-            await SeedAsync(seed, db => db.SyncCursors.AddRange(Cursor("ORDERS"), Cursor("RETURNS"), Cursor(ReturnRereadPolicy.WideCursorResource)));
-
-            await using var db = fixture.CreateContext();
-            var result = await NewService(db)
-                .ResetConnectionDataAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new ResetOperationalDataCommand(["RETURNS"], seed.Marketplace.DisplayName), "corr", CancellationToken.None);
-
-            Assert.True(result.Succeeded, result.Error?.Message);
-            await using var verification = fixture.CreateContext();
-            Assert.Equal(["ORDERS"], await verification.SyncCursors.Where(x => x.TenantId == seed.Tenant.Id).Select(x => x.ResourceType).ToListAsync());
-        }
-        finally
-        {
-            await using var cleanup = fixture.CreateContext();
-            await cleanup.SyncCursors.Where(row => row.TenantId == seed.Tenant.Id).ExecuteDeleteAsync();
-            await DeleteTenantAsync(seed.Tenant.Id);
-        }
-    }
-
-    [PostgreSqlFact]
-    public async Task OrderReset_MarksTheFilesOfRemovedRowsForPurge_AndTheSweepDeletesThem()
+    public async Task FullReset_MarksTheFilesOfRemovedRowsForPurge_AndTheSweepDeletesThem()
     {
         var seed = NewSeed("dm-file");
         var label = NewFileAsset(seed.Tenant.Id, $"{seed.Tenant.Id:N}/label.pdf");
@@ -327,8 +188,8 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
             await using (var db = fixture.CreateContext())
             {
                 var result = await NewService(db)
-                    .ResetConnectionDataAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new ResetOperationalDataCommand(["ORDERS"], seed.Marketplace.DisplayName), "corr", CancellationToken.None);
-                Assert.True(result.Succeeded, result.Error?.Message);
+                    .RunFullResetAsync(seed.Tenant.Id, seed.Marketplace.Id, null, CancellationToken.None);
+                Assert.True(result.Result.Succeeded, result.Result.ErrorSummary);
             }
 
             await using (var verification = fixture.CreateContext())
@@ -353,11 +214,11 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
         }
     }
 
-    // P-2 (29 Oct 2026): an order reset without the products used to leave the stock of the removed lines behind, and
+    // P-2 (29 Oct 2026, first seen on the order reset since removed; the full reset deletes orders the same way): a reset used to leave the stock of the removed lines behind, and
     // the next sync imported the same open order under new line ids and took its units from stock a second time.
     // The re-imported lines now take over the removed lines' stock movements and reservation.
     [PostgreSqlFact]
-    public async Task OrderReset_ThenResync_DoesNotTakeAnOpenOrdersStockTwice()
+    public async Task FullReset_ThenResync_DoesNotTakeAnOpenOrdersStockTwice()
     {
         var seed = NewSeed("dm-stock");
         var product = new Product { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, Title = "Stok ürünü", Description = "Sıfırlama testi", Status = ProductStatus.Active, CreatedAt = fixture.Now, UpdatedAt = fixture.Now };
@@ -392,10 +253,9 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
 
             await using (var db = fixture.CreateContext())
             {
-                var connectionVersion = await db.PlatformConnections.AsNoTracking().Where(x => x.Id == seed.Marketplace.Id).Select(x => x.Version).SingleAsync();
                 var result = await NewService(db)
-                    .ResetConnectionDataAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, connectionVersion, new ResetOperationalDataCommand(["ORDERS"], seed.Marketplace.DisplayName), "corr", CancellationToken.None);
-                Assert.True(result.Succeeded, result.Error?.Message);
+                    .RunFullResetAsync(seed.Tenant.Id, seed.Marketplace.Id, null, CancellationToken.None);
+                Assert.True(result.Result.Succeeded, result.Result.ErrorSummary);
             }
             await using (var verification = fixture.CreateContext())
             {

@@ -492,16 +492,6 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         await db.SaveChangesAsync(cancellationToken); return ServiceResult<ConnectionView>.Ok(Map(connection, true));
     }
 
-    public async Task<ServiceResult<Guid>> EnqueueTestAsync(Guid tenantId, Guid id, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
-    {
-        var connection = await Find(tenantId, id, cancellationToken); if (connection is null) return NotFound<Guid>(); if (!ActiveIntegrationScope.Contains(connection.PlatformCode)) return Deferred<Guid>(); if (!await HasCredential(tenantId, id, cancellationToken)) return ServiceResult<Guid>.Fail("CREDENTIAL_REQUIRED", "Bağlantı testi için şifreli credential gerekir.", 422);
-        var jobType = ActiveIntegrationScope.IsMarketplace(connection.PlatformCode)
-            ? MarketplaceJobTypes.ForPlatform(connection.PlatformCode, MarketplaceJobTypes.ConnectionTest)
-            : InvoicingJobTypes.ConnectionTest;
-        var dedup = $"connection-test:{connection.Id}:{idempotencyKey}"; var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == jobType && x.JobDedupKey == dedup, cancellationToken); if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
-        var payload = JsonSerializer.Serialize(new { connectionId = id }); var job = NewJob(tenantId, id, jobType, dedup, payload, correlationId); db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(job.Id);
-    }
-
     public async Task<ServiceResult<Guid>> EnqueueInitialDataSyncAsync(Guid tenantId, Guid id, string idempotencyKey, long expectedVersion, string correlationId, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id
