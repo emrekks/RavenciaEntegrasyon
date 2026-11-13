@@ -471,7 +471,7 @@ describe('SystemSettingsPage', () => {
     expect(paneTitle()).toContain('Google Drive Yedeği')
     expect(container.textContent).toContain('Çalışıyor')
     expect(container.textContent).toContain('owner@gmail.com')
-    expect(container.textContent).toContain('20261113T085901Z · 150 MB')
+    expect(container.textContent).toContain('150 MB · 20261113T085901Z')
     // Set up and connected: the compact view with one summary line per part; "Değiştir" opens a part in place.
     expect(container.querySelector('.ss-ob-wizard')).toBeNull()
     expect(container.querySelector('input[aria-label="age Açık Anahtarı"]')).toBeNull()

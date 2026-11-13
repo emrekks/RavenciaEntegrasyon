@@ -1327,7 +1327,7 @@ function OffsiteBackupSection({ mfa }: { mfa: boolean }) {
   const keyDone = !!saved && !!saved.ageRecipient
   const factsList = saved && <dl className="ss-ob-facts">
     <div><dt>Son Gönderim</dt><dd>{saved.lastSuccessAt ? formatSettingsDate(saved.lastSuccessAt) : '—'}</dd></div>
-    <div><dt>Set ve Boyut</dt><dd>{saved.lastSet ? `${saved.lastSet} · ${formatBackupSize(saved.lastSize)}` : '—'}</dd></div>
+    <div><dt>Set ve Boyut</dt><dd title={saved.lastSet ?? undefined}>{saved.lastSet ? formatBackupSize(saved.lastSize) : '—'}{saved.lastSet && <span className="ss-ob-set"> · {saved.lastSet}</span>}</dd></div>
     <div><dt>Sonraki Gönderim</dt><dd>{saved.runningSince ? 'Şimdi gönderiliyor' : saved.nextRunAt ? formatSettingsDate(saved.nextRunAt) : '—'}</dd></div>
     <div><dt>Drive’daki Kopya</dt><dd>{saved.remoteCopies ?? '—'}</dd></div>
   </dl>
@@ -1345,13 +1345,15 @@ function OffsiteBackupSection({ mfa }: { mfa: boolean }) {
     </div>
   </>
   const keyFields = saved && draft && <div className="ss-fld">
-    <div className="ss-alert-row"><button type="button" className={`ss-btn${keyDone ? '' : ' is-primary'}`} onClick={() => void openKeyMaker()}><SettingsIcon name="lock" />Şifreleme Anahtarı Oluştur</button>{!pasteKey && !draft.ageRecipient && <button type="button" className="ss-link" onClick={() => setPasteKey(true)}>Elimde Anahtar Var</button>}</div>
-    {(pasteKey || !!draft.ageRecipient) && <input className="ss-in" autoComplete="off" spellCheck={false} aria-label="age Açık Anahtarı" value={draft.ageRecipient} maxLength={80} placeholder="age1…" onChange={event => update({ ageRecipient: event.target.value })} />}
-    <span className="ss-help">Anahtar çifti bu tarayıcıda üretilir: açık anahtar buraya yazılır, özel anahtar yalnız size dosya olarak iner. Özel anahtar kaybolursa yedekler açılamaz.</span>
-    {saved.ageRecipient && draft.ageRecipient.trim() !== saved.ageRecipient && <span className="ss-help">Anahtar değişirse bundan sonraki kopyalar yeni anahtarla açılır; eski kopyalar için eski anahtar dosyanızı saklayın.</span>}
+    <div className="ss-ob-inline">
+      {(pasteKey || !!draft.ageRecipient) && <input className="ss-in" autoComplete="off" spellCheck={false} aria-label="age Açık Anahtarı" value={draft.ageRecipient} maxLength={80} placeholder="age1…" onChange={event => update({ ageRecipient: event.target.value })} />}
+      <button type="button" className={`ss-btn${!keyDone && clientDone ? ' is-primary' : ''}`} onClick={() => void openKeyMaker()}><SettingsIcon name="lock" />Şifreleme Anahtarı Oluştur</button>
+      {!pasteKey && !draft.ageRecipient && <button type="button" className="ss-link" onClick={() => setPasteKey(true)}>Elimde Anahtar Var</button>}
+    </div>
+    <span className="ss-help">{saved.ageRecipient && draft.ageRecipient.trim() !== saved.ageRecipient ? 'Anahtar değişirse yeni kopyalar yeni anahtarla açılır; eski anahtar dosyanızı saklayın.' : 'Özel anahtar yalnız size dosya olarak iner; kaybolursa yedekler açılamaz.'}</span>
   </div>
   const folderFields = saved && draft && <>
-    <div className="ss-fld"><small>Drive Klasörü</small>
+    <div className="ss-fld"><small>Drive Klasörü<FieldHelp label="Drive Klasörü">{draft.folderMode === 'NAME' ? 'Uygulama Drive’ınızın ana dizininde bu adla kendi klasörünü oluşturur ve kimliğini saklar.' : 'Yalnız uygulamanın daha önce oluşturduğu bir klasörün ID’si çalışır: Drive izni (drive.file) başka bir uygulamanın ya da elle oluşturulan klasörü göremez.'}{saved.folderId ? ` Kullanılan klasör ID’si: ${saved.folderId}` : ''}</FieldHelp></small>
       <div className="ss-ob-folder">
         <div className="ss-seg3 is-two" role="group" aria-label="Klasör Seçimi">
           <button type="button" aria-pressed={draft.folderMode === 'NAME'} className={draft.folderMode === 'NAME' ? 'is-on' : undefined} onClick={() => update({ folderMode: 'NAME', folderValue: saved.folderMode === 'NAME' ? saved.folderValue : offsiteBackupDefaultFolder })}>Uygulama Klasörü</button>
@@ -1359,7 +1361,6 @@ function OffsiteBackupSection({ mfa }: { mfa: boolean }) {
         </div>
         <input className="ss-in" autoComplete="off" spellCheck={false} aria-label={draft.folderMode === 'NAME' ? 'Klasör Adı' : 'Klasör ID’si'} value={draft.folderValue} maxLength={draft.folderMode === 'NAME' ? 80 : 200} placeholder={draft.folderMode === 'NAME' ? offsiteBackupDefaultFolder : '1AbC…'} onChange={event => update({ folderValue: event.target.value })} />
       </div>
-      <span className="ss-help">{draft.folderMode === 'NAME' ? 'Uygulama Drive’ınızın ana dizininde bu adla kendi klasörünü oluşturur ve kimliğini saklar.' : 'Yalnız uygulamanın daha önce oluşturduğu bir klasörün ID’si çalışır: Drive izni (drive.file) başka bir uygulamanın ya da elle oluşturulan klasörü göremez.'}{saved.folderId ? ` Kullanılan klasör ID’si: ${saved.folderId}` : ''}</span>
     </div>
     <div className="ss-pair">
       <label className="ss-fld"><small>Günlük Saklama (Gün)<FieldHelp label="Günlük Saklama">Bu kadar günün bütün kopyaları Drive’da kalır; daha eskileri silinir (her ayın ilk kopyası hariç).</FieldHelp></small><input className="ss-in" type="number" inputMode="numeric" min={3} max={365} value={draft.keepDays} onChange={event => update({ keepDays: event.target.value })} /></label>
@@ -1371,7 +1372,7 @@ function OffsiteBackupSection({ mfa }: { mfa: boolean }) {
     {openRows.includes(id) && <div className="ss-ob-row-body">{body}</div>}
   </div>
   const wizardStep = (id: 'client' | 'key', number: number, title: string, done: boolean, body: ReactNode) => <section className={`ss-ob-step${done ? ' is-done' : ''}`} aria-label={title}>
-    <div className="ss-ob-step-head"><span className="ss-ob-step-no">{done ? <SettingsGlyph state="done" /> : number}</span><h3>{title}</h3>{done && <button type="button" className="ss-btn is-xs" aria-expanded={openRows.includes(id)} onClick={() => toggleRow(id)}>{openRows.includes(id) ? 'Gizle' : 'Değiştir'}</button>}</div>
+    <div className="ss-ob-step-head"><span className="ss-tile is-sm">{done ? <SettingsGlyph state="done" /> : number}</span><h3>{title}</h3>{done && <button type="button" className="ss-btn is-xs" aria-expanded={openRows.includes(id)} onClick={() => toggleRow(id)}>{openRows.includes(id) ? 'Gizle' : 'Değiştir'}</button>}</div>
     {(!done || openRows.includes(id)) && <div className="ss-ob-step-body">{body}</div>}
   </section>
   const ready = !!saved && saved.connected && !saved.authorizationInvalid && !!saved.ageRecipient
@@ -1387,7 +1388,7 @@ function OffsiteBackupSection({ mfa }: { mfa: boolean }) {
       {query.isPending ? <LoadingState>Yedek ayarları yükleniyor…</LoadingState> : forbidden ? <div className="ss-callout" role="alert"><SettingsIcon name="lock" /><span>Google Drive yedeğini yalnız hesap sahibi ve yöneticiler görür ve değiştirir.</span></div> : query.isError || !saved || !draft || !state ? <div className="ss-callout is-danger" role="alert"><SettingsIcon name="alert" /><span>Yedek ayarları alınamadı.</span></div> : <>
         {setupDone ? <>
           <section className="ss-ob-status" aria-label="Yedek Durumu">
-            <div className="ss-ob-state"><SettingsGlyph state={state.tone} /><b>{state.label}</b><span className="ss-ob-account">{saved.account ?? 'Google hesabı'}{saved.connectedAt ? ` · bağlandı ${formatSettingsDate(saved.connectedAt)}` : ''}</span></div>
+            <div className="ss-ob-state"><span className="ss-tile"><SettingsIcon name="cloud" /></span><span className={`ss-tag is-lg${state.tone === 'done' ? ' is-ink' : ''}`}><SettingsGlyph state={state.tone} />{state.label}</span><span className="ss-ob-account">{saved.account ?? 'Google hesabı'}{saved.connectedAt ? ` · bağlandı ${formatSettingsDate(saved.connectedAt)}` : ''}</span></div>
             {saved.authorizationInvalid && <div className="ss-callout is-danger" role="alert"><SettingsIcon name="alert" /><span><b>Google yetkisi geçersiz; yedek gönderilmiyor.</b> {saved.authorizationError ?? ''} “Google ile Yeniden Bağlan”a basın.</span></div>}
             {factsList}
             {saved.lastError && saved.consecutiveFailures > 0 && <div className="ss-callout is-danger"><SettingsIcon name="alert" /><span><b>Son hata{saved.lastErrorAt ? ` (${formatSettingsDate(saved.lastErrorAt)})` : ''}:</b> {saved.lastError}{saved.consecutiveFailures > 1 ? ` · ${saved.consecutiveFailures} deneme` : ''}</span></div>}
@@ -1409,8 +1410,8 @@ function OffsiteBackupSection({ mfa }: { mfa: boolean }) {
           </section>
           <section className="ss-ob-rows" aria-label="Yedek Ayarları">
             <SettingsSwitch label="Otomatik Gönderim" checked={draft.enabled} onChange={enabled => update({ enabled })} />
-            {summaryRow('key', 'Şifreleme Anahtarı', <><SettingsGlyph state="done" />Kayıtlı · <code>{shortAgeKey(saved.ageRecipient)}</code></>, keyFields)}
-            {summaryRow('client', 'Google İstemcisi', <><SettingsGlyph state="done" />Kayıtlı</>, clientFields)}
+            {summaryRow('key', 'Şifreleme Anahtarı', <><span className="ss-tag is-ink"><SettingsGlyph state="done" />Kayıtlı</span><code>{shortAgeKey(saved.ageRecipient)}</code></>, keyFields)}
+            {summaryRow('client', 'Google İstemcisi', <span className="ss-tag is-ink"><SettingsGlyph state="done" />Kayıtlı</span>, clientFields)}
             {summaryRow('folder', 'Klasör ve Saklama', `${draft.folderMode === 'NAME' ? (draft.folderValue.trim() || offsiteBackupDefaultFolder) : 'Klasör ID’si'} · ${draft.keepDays} gün / ${draft.keepMonths} ay`, folderFields)}
             {draftError && dirty && <span className="ss-ferr" role="alert"><SettingsGlyph state="bad" />{draftError}</span>}
           </section>
@@ -1419,9 +1420,9 @@ function OffsiteBackupSection({ mfa }: { mfa: boolean }) {
             {wizardStep('client', 1, 'Google İstemcisi', clientDone, clientFields)}
             {wizardStep('key', 2, 'Şifreleme Anahtarı', keyDone, keyFields)}
             <section className={`ss-ob-step${saved.connected ? ' is-done' : ''}`} aria-label="Google ile Bağlan">
-              <div className="ss-ob-step-head"><span className="ss-ob-step-no">{saved.connected ? <SettingsGlyph state="done" /> : 3}</span><h3>Google ile Bağlan</h3></div>
+              <div className="ss-ob-step-head"><span className="ss-tile is-sm">{saved.connected ? <SettingsGlyph state="done" /> : 3}</span><h3>Google ile Bağlan</h3></div>
               {!saved.connected && <div className="ss-ob-step-body">
-                <div className="ss-alert-row"><button type="button" className="ss-btn is-primary" disabled={busy !== null || dirty || !clientDone || !keyDone} onClick={() => openConfirm('connect')}><SettingsIcon name="cloud" />Google ile Bağlan</button></div>
+                <div className="ss-alert-row"><button type="button" className={`ss-btn${clientDone && keyDone ? ' is-primary' : ''}`} disabled={busy !== null || dirty || !clientDone || !keyDone} onClick={() => openConfirm('connect')}><SettingsIcon name="cloud" />Google ile Bağlan</button></div>
                 <span className="ss-help">{dirty ? 'Önce alttaki Ayarları Kaydet’e basın.' : !clientDone || !keyDone ? 'Önce 1. ve 2. adımı tamamlayıp kaydedin.' : 'Parolanızı onaylayınca Google’ın izin sayfası açılır; yedeğin gideceği Google hesabıyla izin verin.'}</span>
               </div>}
             </section>
