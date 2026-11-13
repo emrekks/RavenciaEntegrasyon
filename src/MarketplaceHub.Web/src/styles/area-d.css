@@ -34,10 +34,10 @@ html body .cs-workspace .connection-settings-input-row > button:only-child { gri
   html body .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table .jobs-reference-correlation.jobs-reference-correlation { display: block; min-width: 0; max-width: 100% !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap; overflow-wrap: normal; }
 }
 
-/* İşlem Takibi › Loglar filters: six fields plus Temizle / Filtrele in one row when the card is wide enough. The shared
+/* İşlem Takibi › Loglar filters: six fields plus Temizle / Filtrele in one row only when every field keeps its text (172px, the date 190px); a narrower card wraps to two rows. The shared
    "date filter" rule (4 columns, :has(> .rr-date)) out-ranked the page grid and pushed the last two fields to a second row. */
-@container fshell (min-width: 1100px) {
-  html body main .rr.rr.ops-filters .rr-fcard .rr-filters.ops-filter-grid.is-wide:has(> .rr-date) { grid-template-columns: minmax(180px, 1.3fr) minmax(120px, 1fr) minmax(170px, 1.25fr) repeat(3, minmax(120px, 1fr)) auto; }
+@container fshell (min-width: 1300px) {
+  html body main .rr.rr.ops-filters .rr-fcard .rr-filters.ops-filter-grid.is-wide:has(> .rr-date) { grid-template-columns: minmax(180px, 1.2fr) minmax(172px, 1fr) minmax(190px, 1.1fr) repeat(3, minmax(172px, 1fr)) auto; }
   html body main .rr.rr.ops-filters .rr-fcard .rr-filters.ops-filter-grid.is-wide:has(> .rr-date) > .rr-fbtns { align-self: end; }
   html body main .rr.rr.ops-filters .rr-fcard .rr-filters.ops-filter-grid.is-wide:has(> .rr-date) > :is(.rr-search, .rr-fbtns) { grid-column: auto; }
 }
