@@ -92,7 +92,9 @@ public sealed class PanelNotificationService(AppDbContext db, TimeProvider timeP
     {
         var counts = await Visible(tenantId, userId)
             .GroupBy(_ => 1)
-            .Select(group => new { Total = group.Count(), Unread = group.Count(x => x.ReadAt == null), Errors = group.Count(x => x.Severity == PanelNotificationSeverities.Error) })
+            .Select(group => new { group.Key, Total = group.Count(), Unread = group.Count(x => x.ReadAt == null), Errors = group.Count(x => x.Severity == PanelNotificationSeverities.Error) })
+            // One group at most; the order only keeps EF's FirstWithoutOrderBy warning out of the API log (live, 13 Nov 2026).
+            .OrderBy(group => group.Key)
             .FirstOrDefaultAsync(cancellationToken);
         return counts is null ? new(0, 0, 0) : new(counts.Total, counts.Unread, counts.Errors);
     }
