@@ -46,7 +46,7 @@ export function QueueQuotaView() {
     <div className="jobs-reference-toolbar qq-toolbar">
       <div className="rr qq-window">
         <ChoiceField name="Ölçüm Aralığı" value={hours} options={queueWindowOptions} onChange={value => setHours(value as QueueWindow)} width={200} />
-        <span className="qq-info" tabIndex={0} role="img" aria-label="Ölçüm aralığı açıklaması" data-tip="Çalışan ve bekleyen işler şu anı, deneme ve bekleme süreleri seçili aralığı gösterir."><UiIcon name="info" size={16} /></span>
+        <button type="button" className="qq-info" aria-label="Ölçüm aralığı açıklaması" data-tip="Çalışan ve bekleyen işler şu anı, deneme ve bekleme süreleri seçili aralığı gösterir."><UiIcon name="info" size={16} /></button>
       </div>
       <div className="jobs-reference-toolbar-actions">
         <button type="button" className={`jobs-reference-refresh${fetching ? ' is-busy' : ''}`} title="Yenile" aria-label="Kuyruk ve kota ölçümlerini yenile" onClick={refresh}><UiIcon name="refresh" size={16} /></button>
