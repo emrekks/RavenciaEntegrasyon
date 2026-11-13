@@ -138,7 +138,7 @@ export function PlatformUpdateDialog({ targets, selectedIds, onSelectedIdsChange
             </PlatformUpdateSectionHead>
             {targets.length
               ? <div className="publish-platform-grid" role="group" aria-label="Güncellenecek platformlar">{targets.map(target => <PlatformUpdateCard key={target.connection.id} target={target} selected={selectedIds.includes(target.connection.id)} fields={visibleFields} locked={submitting} familyReach={familyReach} onToggle={() => toggleStore(target.connection.id)} />)}</div>
-              : <div className="publish-connections-empty"><strong>Güncellenebilir Bağlantı Yok</strong><p>Ürün güncellemek için Platformlar sayfasından yazma yetkisi olan aktif bir bağlantı ekleyin.</p></div>}
+              : <div className="publish-connections-empty"><strong>Güncellenebilir Bağlantı Yok</strong><p>Ürün güncellemek için Entegrasyonlar sayfasından yazma yetkisi olan aktif bir bağlantı ekleyin.</p></div>}
           </section>
         </div></div></section></div></div>
         <footer className="publish-selection-footer platform-update-footer">
