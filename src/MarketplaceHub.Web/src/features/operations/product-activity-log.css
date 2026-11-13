@@ -109,7 +109,7 @@
   :root:root:root:root:root body .jobs-category-segment.pal-view-segment > button { min-width: 0; gap: 0; padding: 0 6px; font-size: 12px; }
   :root:root:root:root:root body .pal-view-segment .jobs-category-segment-label { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   :root:root:root:root:root body .pal-view-segment .jobs-category-segment-label::after { display: none; }
-  .app-shell.stitch-shell main .jobs-reference-page .rv-tabs.rv-tabs.jobs-reference-main-tabs > :is(button, a) { flex: 1 1 auto; gap: 6px; padding: 0 6px !important; }
+  .app-shell.stitch-shell main .jobs-reference-page .rv-tabs.rv-tabs.jobs-reference-main-tabs > :is(button, a) { flex: 1 0 auto; gap: 6px; padding: 0 6px !important; }
   .app-shell.stitch-shell main .jobs-reference-page .rv-tabs.rv-tabs.jobs-reference-main-tabs > :is(button, a) .rv-tab-label { gap: 5px; }
 }
 @media (max-width: 350px) {
