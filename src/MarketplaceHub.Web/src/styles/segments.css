@@ -38,3 +38,24 @@ html body .app-shell.stitch-shell main .ss-page .rv-tabs.rv-tabs.rv-tabs.rv-tabs
 :root:root:root:root:root body .jobs-category-segment .jobs-category-segment-label { display: inline-grid; align-items: center; line-height: 1; }
 :root:root:root:root:root body .jobs-category-segment .jobs-category-segment-label::after { height: 0; overflow: hidden; visibility: hidden; line-height: 0; }
 :root:root:root:root:root body .jobs-category-segment .jobs-category-segment-count { line-height: 1; }
+
+/* Segments that scroll sideways on a phone (the period rows of Genel Bakış and Raporlar) fade
+   the edge that still has options behind it, as the page tab strips do (view-tabs.css). Scroll-driven, so it needs no
+   script: a strip that does not overflow has no scroll timeline and keeps both fades at 0. */
+@property --seg-fade-start { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --seg-fade-end { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@keyframes seg-edge-fade {
+  0% { --seg-fade-start: 0px; --seg-fade-end: 28px; }
+  4% { --seg-fade-start: 28px; --seg-fade-end: 28px; }
+  96% { --seg-fade-start: 28px; --seg-fade-end: 28px; }
+  100% { --seg-fade-start: 28px; --seg-fade-end: 0px; }
+}
+@media (max-width: 760px) {
+  @supports (animation-timeline: scroll(x self)) {
+    :root:root:root:root:root body :is(.rr-seg, .reports-segmented) {
+      animation: seg-edge-fade linear both; animation-timeline: scroll(x self);
+      -webkit-mask-image: linear-gradient(to right, transparent, #000 var(--seg-fade-start), #000 calc(100% - var(--seg-fade-end)), transparent);
+      mask-image: linear-gradient(to right, transparent, #000 var(--seg-fade-start), #000 calc(100% - var(--seg-fade-end)), transparent);
+    }
+  }
+}

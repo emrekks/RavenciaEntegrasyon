@@ -63,6 +63,11 @@ export function rememberTariff(last: LastTariff) {
   try { localStorage.setItem(lastTariffKey, JSON.stringify(last)) } catch { /* storage off: nothing is prefetched next time */ }
 }
 
+// A remembered tariff the server no longer has (deleted, store reset) is dropped, so the next visit opens on the list's own first tariff.
+export function forgetTariff() {
+  try { localStorage.removeItem(lastTariffKey) } catch { /* storage off */ }
+}
+
 function lastTariff(): LastTariff | null {
   try {
     const value = JSON.parse(localStorage.getItem(lastTariffKey) ?? 'null') as Partial<LastTariff> | null
@@ -79,5 +84,6 @@ export function prefetchLastTariff(client: QueryClient, store: string | null, ro
   const last = lastTariff()
   if (!last || (store && store !== last.connectionId)) return
   void client.prefetchQuery(tariffsQuery(last.connectionId))
-  void client.prefetchQuery(rowsQuery(last.connectionId, last.tariffId))
+  const rows = rowsQuery(last.connectionId, last.tariffId)
+  void client.prefetchQuery({ ...rows, retry: false, queryFn: () => rows.queryFn().catch(error => { forgetTariff(); throw error }) })
 }

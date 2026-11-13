@@ -13,7 +13,7 @@ import { useDismissable } from '../../../shared/hooks/useDismissable'
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import '../commission-tariffs.css'
 import { PanelSelect } from '../../../shared/PanelSelect'
-import { loadRowPage, rememberTariff, tariffsQuery, type RowPage } from './commission-tariff-rows'
+import { forgetTariff, loadRowPage, rememberTariff, tariffsQuery, type RowPage } from './commission-tariff-rows'
 // One formatter per format, made once: toLocaleString with options builds a new Intl.NumberFormat on every call, and
 // the tariff table formats thousands of amounts per render.
 const twoDecimals = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -312,10 +312,12 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
   const [week, setWeek] = useState(false)
   const weekPeriods = week && activeGroup?.periods.length === 2 ? activeGroup.periods : null
   const active = weekPeriods ? weekPeriods[0] : activeGroup?.periods.find(period => period.id === selected) ?? (activeGroup ? defaultPeriod(activeGroup.periods) : null)
-  const rows = useQuery({ ...tariffRowsQuery(connectionId, active?.id ?? '', filter, page), enabled: active !== null })
+  const rows = useQuery({ ...tariffRowsQuery(connectionId, active?.id ?? '', filter, page), enabled: active !== null, retry: false })
   // The tariff the tab opens on by itself, asked for at once the next time Promosyon opens (prefetchLastTariff).
   const opensOn = selected === null && !weekPeriods ? active?.id ?? null : null
   useEffect(() => { if (opensOn) rememberTariff({ connectionId, tariffId: opensOn }) }, [connectionId, opensOn])
+  // The tariff the tab opened on by itself has no rows to read any more: forget it instead of asking for it again.
+  useEffect(() => { if (opensOn && rows.isError) forgetTariff() }, [opensOn, rows.isError])
   const upload = useMutation({
     mutationFn: ({ file, days }: { file: File; days: ValidityDays }) => {
       const body = new FormData()
