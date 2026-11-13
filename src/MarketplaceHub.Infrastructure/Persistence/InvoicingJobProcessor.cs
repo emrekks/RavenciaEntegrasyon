@@ -333,7 +333,9 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 ApplySubmissionSuccess(invoice, result.Value, started);
                 // From here on the provider holds the invoice: nothing may be cancelled before its reference is saved.
                 await EnqueueAutomaticJob(tenantId, connectionId, invoice.Id, InvoicingJobTypes.InvoiceReconcile, "after-submit", correlationId, CancellationToken.None);
-                if (!await SaveSubmissionSuccess(tenantId, connectionId, invoice, result.Value, started, correlationId))
+                var saved = await SaveSubmissionSuccess(tenantId, connectionId, invoice, result.Value, started, correlationId);
+                await RecordUuidMismatchAsync(tenantId, connectionId, invoice.InvoiceNumber, providerUuid, result.Value.ExternalReference);
+                if (!saved)
                     throw new JobProcessingException(JobExecutionResult.ManualReview("INVOICE_SUBMISSION_STATE_CHANGED", "Sağlayıcı faturayı oluşturdu ancak fatura kaydı bu sırada başka bir işlemle değişti. Sağlayıcı referansı gönderim denemesinde saklandı; fatura incelenmeli.", result.Value.RemoteRequestId));
                 return true;
             }
@@ -349,6 +351,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                     // which settles the result (accepted, refused or still pending) without sending anything again.
                     if (result.Value is { } partial && !string.IsNullOrWhiteSpace(partial.ExternalReference))
                     {
+                        await RecordUuidMismatchAsync(tenantId, connectionId, partial.InvoiceNumber, providerUuid, partial.ExternalReference, saveNow: false);
                         attempt.ExternalReference = partial.ExternalReference;
                         invoice.ExternalReference = partial.ExternalReference;
                         invoice.EttnUuid ??= partial.EttnUuid;
@@ -474,9 +477,14 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             if (!InvoiceProviderIdentityPolicy.NotFoundIsSettled(attempt.StartedAt, now))
                 throw new JobProcessingException(JobExecutionResult.Retry(InvoiceProviderIdentityPolicy.NotFoundAtProviderCode,
                     "E-Faturam faturayı henüz göstermiyor; birkaç dakika sonra yeniden okunacak.", InvoiceProviderIdentityPolicy.NotFoundSettleDelay));
-            if (invoice.LastErrorCode != InvoiceProviderIdentityPolicy.NotFoundAtProviderCode)
+            // On a connection where the provider was seen to keep its own reference instead of our UUID, "not found by
+            // UUID" does not mean "not issued" (scan D-2): the invoice is left uncertain under a code that says so.
+            var notFoundCode = await db.OperationalIssues.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.DedupeKey == InvoiceProviderIdentityPolicy.UuidMismatchIssueKey(connectionId), cancellationToken)
+                ? InvoiceProviderIdentityPolicy.UuidNotHonouredCode
+                : InvoiceProviderIdentityPolicy.NotFoundAtProviderCode;
+            if (invoice.LastErrorCode != notFoundCode)
             {
-                invoice.LastErrorCode = InvoiceProviderIdentityPolicy.NotFoundAtProviderCode;
+                invoice.LastErrorCode = notFoundCode;
                 invoice.UpdatedAt = now;
                 invoice.Version++;
                 await db.SaveChangesAsync(cancellationToken);
@@ -490,6 +498,32 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         invoice.Version++;
         await db.SaveChangesAsync(cancellationToken);
         return await Reconcile(tenantId, connectionId, payloadJson, correlationId, cancellationToken);
+    }
+
+    // A provider reference other than the UUID sent: a lasting warning on the provider connection (scan D-2). After a
+    // saved success it is saved on its own, so a failure here never stands in the way of the submission's record; on
+    // the uncertain path (saveNow false) it goes with that path's own save.
+    private async Task RecordUuidMismatchAsync(Guid tenantId, Guid connectionId, string? invoiceNumber, string sentUuid, string? answeredReference, bool saveNow = true)
+    {
+        if (InvoiceProviderIdentityPolicy.Matches(sentUuid, answeredReference)) return;
+        try
+        {
+            var key = InvoiceProviderIdentityPolicy.UuidMismatchIssueKey(connectionId);
+            var now = timeProvider.GetUtcNow();
+            var summary = InvoiceProviderIdentityPolicy.UuidMismatchSummary(invoiceNumber, sentUuid, answeredReference!);
+            var issue = await db.OperationalIssues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.DedupeKey == key, CancellationToken.None);
+            if (issue is null)
+                db.OperationalIssues.Add(new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = tenantId, DedupeKey = key, Code = InvoiceProviderIdentityPolicy.UuidMismatchIssueCode, Summary = summary, Status = IssueStatus.Open, FirstSeenAt = now, LastSeenAt = now, OccurrenceCount = 1 });
+            else
+            {
+                issue.Summary = summary; issue.Status = IssueStatus.Open; issue.LastSeenAt = now; issue.OccurrenceCount++;
+            }
+            if (saveNow) await db.SaveChangesAsync(CancellationToken.None);
+        }
+        catch (Exception exception) when (exception is System.Data.Common.DbException or DbUpdateException or InvalidOperationException)
+        {
+            // The submission is recorded already; the warning is raised again by the next mismatching answer.
+        }
     }
 
     private void MarkSubmissionUnknown(Invoice invoice, InvoiceSubmissionAttempt attempt, string errorCode)
