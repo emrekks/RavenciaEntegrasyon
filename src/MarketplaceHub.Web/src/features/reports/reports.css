@@ -969,6 +969,18 @@ main .rr.rr.reports-payout-filters .rr-trigger:disabled { opacity: .5; cursor: n
   main .rr.rr.reports-payout-filters .rr-filters.reports-payout-filterbar { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   main .rr.rr.reports-payout-filters .rr-filters.reports-payout-filterbar .rr-fbtns { grid-column: -2 / -1; justify-content: flex-end; align-self: end; }
 }
+/* Desktop: the shared date-filter grid (design-step2-filters.css, :has(> .rr-date)) out-ranked the two rules above and
+   spread the eight fields over uneven rows. These win over it: one row when the card holds all eight (1360 px), else
+   four even columns with the buttons under the last one. */
+@media (min-width: 1025px) {
+  @container fshell (min-width: 1360px) {
+    html body main .rr.rr.reports-payout-filters .rr-fcard:not(.rr-fopen) .rr-filters.reports-payout-filterbar { grid-template-columns: minmax(200px, 1.4fr) repeat(3, minmax(130px, 1fr)) minmax(200px, 1.2fr) minmax(190px, 1.1fr) minmax(140px, .9fr) auto; }
+  }
+  @container fshell (max-width: 1359.98px) {
+    html body main .rr.rr.reports-payout-filters .rr-fcard:not(.rr-fopen) .rr-filters.reports-payout-filterbar { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    html body main .rr.rr.reports-payout-filters .rr-fcard:not(.rr-fopen) .rr-filters.reports-payout-filterbar > .rr-fbtns { grid-column: -2 / -1; justify-content: flex-end; align-self: end; }
+  }
+}
 
 .app-shell.stitch-shell main .reports-page .reports-payout-regions { display: flex; gap: 12px; align-items: center; margin: 0 0 18px; }
 .app-shell.stitch-shell main .reports-page .reports-payout-regions > ul { display: grid; flex: 1; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; min-width: 0; margin: 0; padding: 0; list-style: none; }
