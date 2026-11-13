@@ -1,26 +1,22 @@
-// The one rule for what a summary card (or any figure that stands for a count or an amount) shows when there is nothing
-// to show (owner, 14 Nov 2026), the same on every page:
-//  - A count that was read and is nought reads "0": when the list loaded and is empty, the count is a known zero.
-//  - A value that is not known (not loaded, failed, not computable: money or a percentage with nothing to base it on)
-//    reads "—". Never a word ("Veri yok", "Tutar yok", "Bilgi yok"); the reason, when it helps, is a tooltip or note.
-//  - Zero and "—" stay in the neutral ink: a warning, good or bad colour only marks a figure above nought.
+// The one rule for what a summary card (and its sub-lines) shows when there is no data for a value (owner, 14 Nov 2026),
+// the same on every page:
+//  - No data for a value - no records in the period or list, nothing to base it on, not loaded, failed - reads "—" in the
+//    neutral ink, for money, a percentage and a count alike (never "0", "₺0", "%0", and never a word: "Veri yok",
+//    "Tutar yok", "Bilgi yok"). A change pill with nothing to compare reads "—" too.
+//  - A real non-zero value reads as it is; a warning, good or bad colour only marks such a value.
+//  - The small counters on tabs, chips and the sidebar are not cards: they stay numbers, "0" included.
 export const noValue = '—'
 
 type CountState = { loading?: boolean; error?: boolean }
 
-/** A count: "…" while it is on its way, "—" when it could not be read, else the number ("0" included). */
-export function countText(value: number | null | undefined, state: CountState = {}): string {
+/** A card's count: "…" while it is on its way, "—" when it failed or there is nothing to count, else the number. */
+export function cardCountText(value: number | null | undefined, state: CountState = {}): string {
   if (state.error) return noValue
   if (state.loading) return '…'
-  return typeof value === 'number' && Number.isFinite(value) ? value.toLocaleString('tr-TR') : noValue
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value.toLocaleString('tr-TR') : noValue
 }
 
-/** A count of a list that has been read: a count the answer leaves out is a known zero, not an unknown. */
-export function readCountText(value: number | null | undefined, state: CountState = {}): string {
-  return countText(state.error || state.loading ? value : value ?? 0, state)
-}
-
-/** True when a figure deserves its semantic colour: a known number above nought. */
+/** True when a figure deserves its semantic colour: a number above nought. */
 export const isAboveZero = (value: number | null | undefined) => typeof value === 'number' && value > 0
 
 /** The tone a card may use for its figure: the tone itself above nought, else nothing (neutral ink). */

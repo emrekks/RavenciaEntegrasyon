@@ -40,7 +40,7 @@ import { ProductQuickEditModal, variantAxisParts, type QuickEditMode } from './P
 const BulkPublishDialog = lazy(() => import('./BulkPublishDialog').then(module => ({ default: module.BulkPublishDialog })))
 const BulkPlatformUpdateDialog = lazy(() => import('./BulkPlatformUpdateDialog').then(module => ({ default: module.BulkPlatformUpdateDialog })))
 const BulkFieldDialog = lazy(() => import('./BulkFieldDialog').then(module => ({ default: module.BulkFieldDialog })))
-import { readCountText, toneAbove } from '../../../shared/metric-value'
+import { cardCountText, toneAbove } from '../../../shared/metric-value'
 import { AcceptedJob, ImageLightboxModal, LightboxImage, MarketplaceConnection, Product, Variant, compareOptionValues, formatCatalogOptionLabel, isColorOptionName, isProductPublicationConnection, isVariantOptionName, optionValueSortRank, preferredColorOption, variantOptionEntries } from '../shared'
 
 type ProductListFilters = { search: string; status: string; platform: string; stock: string; sort: string }
@@ -763,7 +763,7 @@ export function ProductsPage() {
     setCatalogSort(current => nextProductCatalogSort(current, field))
   }
 
-  const metric = (value: number | undefined, query: { isLoading: boolean; isError: boolean } = summaryQuery) => readCountText(value, { loading: query.isLoading, error: query.isError })
+  const metric = (value: number | undefined, query: { isLoading: boolean; isError: boolean } = summaryQuery) => cardCountText(value, { loading: query.isLoading, error: query.isError })
   const outOfStock = summaryQuery.data?.outOfStockCount ?? 0
   const lowStock = summaryQuery.data?.lowStockCount ?? 0
   const statusTabs: Array<[string, string, 'all' | 'done' | 'invoice' | 'paused']> = [['', 'Tüm Ürünler', 'all'], ['ACTIVE', 'Satışa Açık', 'done'], ['DRAFT', 'Taslak', 'invoice'], ['ARCHIVED', 'Satışa Kapalı', 'paused']]

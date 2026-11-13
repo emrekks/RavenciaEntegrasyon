@@ -736,6 +736,16 @@ describe('ReportsPage', () => {
     expect(figures[4]).toContain('—')
   })
 
+  it('shows a dash in every figure and sub-line of a period with no order, never a zero', async () => {
+    const none = { orders: 0, ordersWithAmount: 0, grossSales: 0, netRevenue: 0, returnedAmount: 0, soldQuantity: 0, keptQuantity: 0, returnedQuantity: 0, cancelledOrders: 0, averageOrderValue: 0 }
+    const page = await open('', { ...report, summary: { ...report.summary, ...none }, previousSummary: { ...report.previousSummary, ...none } })
+    const figures = texts(page, '.reports-kpis > div')
+    expect(figures[0]).toContain('Toplam Ciro——')
+    expect(figures[4]).toContain('— iptal · sepet —')
+    expect(figures[5]).toContain('Net — · — iade')
+    for (const figure of figures) expect(figure).not.toMatch(/₺0|%0|(^|[^\d,.])0([^\d,.]|$)/u)
+  })
+
   it('lists the Genel Bakış Sipariş figure per platform when the card is hovered', async () => {
     const page = await open()
     const card = Array.from(page.querySelectorAll<HTMLElement>('.reports-kpis > div')).find(cell => cell.querySelector('.reports-kpi-label')?.textContent === 'Sipariş')!

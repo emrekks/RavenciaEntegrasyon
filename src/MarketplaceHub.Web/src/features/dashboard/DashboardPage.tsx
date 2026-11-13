@@ -227,13 +227,15 @@ export function DashboardPage() {
     [point => point.orderCount ? point.amount / point.orderCount : 0, value => axisLabel(value, currency), hourly ? 'Saatlik Ortalama Sepet' : 'Günlük Ortalama Sepet'],
   ]
   const errors = [bootstrap.error, pendingSummary.error, invoiceSummary.error, cancellations.error, productSummary.error, performance.error, integration.matrix.error].filter(Boolean)
-  const loadingValue = (busy: boolean, value: number | undefined) => { const known = knownCount(busy, value); return known === null ? '—' : count(known) }
+  const loadingValue = (busy: boolean, value: number | undefined) => { const known = knownCount(busy, value); return known === null || known === 0 ? '—' : count(known) }
   // The bar places the latest finished day (or hour) between the weakest and strongest ones. The day still running
   // is left out: just after midnight it is near zero, which pinned the low end to 0 and the dot to the left.
   const finished = data?.partialDay && series.length > 1 ? series.slice(0, -1) : series
-  const revenueStats = dailyStats(finished.map(point => point.amount), value => money(value, currency), total / dayCount)
-  const orderStats = dailyStats(finished.map(point => point.orderCount), count, orders / dayCount)
-  const basketStats = dailyStats(finished.filter(point => point.orderCount > 0).map(point => point.amount / point.orderCount), value => money(value, currency), basket)
+  // A figure with nothing behind it (no sale in the period) shows dashes in its average and range too (shared rule, shared/metric-value.ts).
+  const noneIf = <T extends { avg: string; min: string; max: string }>(nothing: boolean, stats: T): T => nothing ? { ...stats, avg: '—', min: '—', max: '—' } : stats
+  const revenueStats0 = dailyStats(finished.map(point => point.amount), value => money(value, currency), total / dayCount)
+  const orderStats0 = dailyStats(finished.map(point => point.orderCount), count, orders / dayCount)
+  const basketStats0 = dailyStats(finished.filter(point => point.orderCount > 0).map(point => point.amount / point.orderCount), value => money(value, currency), basket)
   const products = productSummary.data
   // The products of the pending orders (ordered less cancelled), from the same orders the Bekleyen Siparişler card counts.
   const pending = pendingSummary.data
@@ -267,13 +269,13 @@ export function DashboardPage() {
   const dueSoon = knownCount(invoiceSummary.isLoading, invoiceSummary.data?.dueSoonCount)
   const ops: Array<[CardIconName, string, number | null, 'warn' | 'bad' | '', string, Record<string, number> | BreakdownRow[] | undefined, ReactNode?]> = [
     // "N Paket | M Adet Ürün": the units are left out while they are not known (an older API), never shown as 0.
-    ['orders', 'Bekleyen Siparişler', knownCount(pendingSummary.isPending, pendingSummary.isError ? undefined : pending?.pending), 'warn', dashboardOperationalLinks.pendingOrders, pendingRows, <>Paket{pendingUnitTotal !== undefined && <>{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}{count(pendingUnitTotal)} <span className="rr-op-adet">Adet </span>Ürün</>}</>],
+    ['orders', 'Bekleyen Siparişler', knownCount(pendingSummary.isPending, pendingSummary.isError ? undefined : pending?.pending), 'warn', dashboardOperationalLinks.pendingOrders, pendingRows, <>Paket{pendingUnitTotal !== undefined && <>{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}{pendingUnitTotal ? count(pendingUnitTotal) : '—'} <span className="rr-op-adet">Adet </span>Ürün</>}</>],
     ['clock', 'Geciken Siparişler', knownCount(bootstrap.isLoading, metrics?.lateOrders), 'bad', dashboardOperationalLinks.lateOrders, metrics?.lateByConnection],
     ['returns', 'Bekleyen İadeler', knownCount(bootstrap.isLoading, metrics?.pendingReturns), 'warn', dashboardOperationalLinks.pendingReturns, metrics?.pendingReturnsByConnection],
     // "N Bekleyen | M Yaklaşan": M is the former Yaklaşan Faturalar count (delivered 4+ days ago, still awaiting an invoice;
     // DashboardMetricPolicy.InvoiceReminderStartDays),
     // left out while it is not known, never shown as 0. The card opens the pending list; the due list is a tab there.
-    ['invoicePending', 'Faturalar', knownCount(invoiceSummary.isLoading, invoiceSummary.data?.uninvoicedCount), '', dashboardOperationalLinks.pendingInvoices, undefined, <><span className="rr-op-x-part"><span className="rr-op-x-word">Bekleyen</span>{dueSoon !== null && <>{' '}<span className="rr-op-sep" aria-hidden="true">|</span></>}</span>{dueSoon !== null && <>{' '}<span className="rr-op-x-part">{count(dueSoon)} Yaklaşan</span></>}</>],
+    ['invoicePending', 'Faturalar', knownCount(invoiceSummary.isLoading, invoiceSummary.data?.uninvoicedCount), '', dashboardOperationalLinks.pendingInvoices, undefined, <><span className="rr-op-x-part"><span className="rr-op-x-word">Bekleyen</span>{dueSoon !== null && <>{' '}<span className="rr-op-sep" aria-hidden="true">|</span></>}</span>{dueSoon !== null && <>{' '}<span className="rr-op-x-part">{dueSoon ? count(dueSoon) : '—'} Yaklaşan</span></>}</>],
     // Today's cancellations; the section is about today, so the label does not repeat it.
     ['packageX', 'İptal', knownCount(cancellations.isLoading, cancelled ? cancelTotal(row => row.cancelledOrders + row.partialOrders) : undefined), 'bad', dayCancellationsLink(today), cancelRows, cancelled ? <>Sipariş{partialCancels ? <>{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}<span className="rr-op-partial">{count(partialCancels)} Kısmi İptal</span></> : null}</> : undefined],
     // The same count as the product list's low-stock filter it opens.
@@ -303,7 +305,7 @@ export function DashboardPage() {
       const toggleBreakdown = (event: ReactMouseEvent | ReactKeyboardEvent) => { event.preventDefault(); event.stopPropagation(); setBreakdownOpen(open => open === kind ? null : kind) }
       // On touch screens the card's "?" shows which stores the figure comes from, without opening the card's list.
       const mark = breakdownRows.length ? <span className="rr-op-q" role="button" tabIndex={0} aria-label={`${label}: mağazalara göre`} aria-expanded={breakdownOpen === kind} onClick={toggleBreakdown} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') toggleBreakdown(event) }}><UiIcon name="alert" size={14} /></span> : null
-      const body = <><CardBackgroundIcon name={kind} tone={tone && value ? tone : undefined} /><span className="rr-op-t"><small>{label}{mark}</small><strong className="rr-num">{value == null ? '—' : count(value)}{value != null && detail && <span className="rr-op-x">{detail}</span>}</strong></span><RrIcon name="arrowR" /><Breakdown rows={breakdownRows} /></>
+      const body = <><CardBackgroundIcon name={kind} tone={tone && value ? tone : undefined} /><span className="rr-op-t"><small>{label}{mark}</small><strong className="rr-num">{value ? count(value) : '—'}{value != null && detail && <span className="rr-op-x">{detail}</span>}</strong></span><RrIcon name="arrowR" /><Breakdown rows={breakdownRows} /></>
       // The İptal card is red when it counts any, but its pulsing dot only marks orders cancelled in part.
       const className = `rr-opcard${tone && value ? ` rr-${tone}` : ''}${kind === 'packageX' && !partialCancels ? ' rr-nodot' : ''}${breakdownOpen === kind ? ' rr-bd-open' : ''}`
       // Low stock opens its window here instead of taking the user to the products page.
@@ -318,9 +320,9 @@ export function DashboardPage() {
       </div></div>
       {days === null && <p className="rr-pf-note" role="status">Raporu görmek için bitiş tarihini de seçin.</p>}
       <div className="rr-kgrid" role="tablist" aria-label="Grafikte gösterilecek metrik">
-        <KpiCell icon="lira" loading={loading} label="Satış" tip={'Dönemde satılan her şey, iadeler dahil; iptaller hariç.\nRaporlar’daki Toplam Ciro ile aynı kuralla hesaplanır; mağaza seçiliyken, Raporlar’da platform süzgeci varken ya da TL dışında satış olduğunda iki tutar farklıdır. Net Ciro iadeleri düşer.'} avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loading ? '—' : money(total, currency)} delta={trend(total, previousTotal)} {...revenueStats} on={metric === 0} onPick={() => setMetric(0)} />
-        <KpiCell icon="orders" loading={loading} unit={<>Sipariş{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}{count(units)} Adet Ürün</>} label="Toplam Sipariş" tip={'Tutarı olan siparişler, iade edilenler dahil; iptaller hariç.\nRaporlar’daki Sipariş tutarı okunmayan ve TL dışındaki siparişleri de sayar.'} avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loadingValue(loading, orders)} delta={trend(orders, previousOrders)} {...orderStats} on={metric === 1} onPick={() => setMetric(1)} />
-        <KpiCell icon="bag" loading={loading} label="Ortalama Sepet" tip={'Ciro ÷ Toplam Sipariş, ikisi de iadeler dahil.'} avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loading ? '—' : money(basket, currency)} delta={trend(basket, previousBasket)} {...basketStats} on={metric === 2} onPick={() => setMetric(2)} />
+        <KpiCell icon="lira" loading={loading} label="Satış" tip={'Dönemde satılan her şey, iadeler dahil; iptaller hariç.\nRaporlar’daki Toplam Ciro ile aynı kuralla hesaplanır; mağaza seçiliyken, Raporlar’da platform süzgeci varken ya da TL dışında satış olduğunda iki tutar farklıdır. Net Ciro iadeleri düşer.'} avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loading || !total ? '—' : money(total, currency)} delta={trend(total, previousTotal)} {...noneIf(!total, revenueStats0)} on={metric === 0} onPick={() => setMetric(0)} />
+        <KpiCell icon="orders" loading={loading} unit={<>Sipariş{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}{units ? count(units) : '—'} Adet Ürün</>} label="Toplam Sipariş" tip={'Tutarı olan siparişler, iade edilenler dahil; iptaller hariç.\nRaporlar’daki Sipariş tutarı okunmayan ve TL dışındaki siparişleri de sayar.'} avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loadingValue(loading, orders)} delta={trend(orders, previousOrders)} {...noneIf(!orders, orderStats0)} on={metric === 1} onPick={() => setMetric(1)} />
+        <KpiCell icon="bag" loading={loading} label="Ortalama Sepet" tip={'Ciro ÷ Toplam Sipariş, ikisi de iadeler dahil.'} avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loading || !basket ? '—' : money(basket, currency)} delta={trend(basket, previousBasket)} {...noneIf(!basket, basketStats0)} on={metric === 2} onPick={() => setMetric(2)} />
         <KpiCell icon="products" loading={productSummary.isLoading} label="Aktif Ürün" value={loadingValue(productSummary.isLoading, products?.activeCount)} delta={null} note={channel === 'ALL' ? 'Katalogdaki güncel durum' : 'Tüm platformlar'} avgLabel="Stoksuz ürün" avg={loadingValue(productSummary.isLoading, products?.outOfStockCount)} min={`Düşük stok ${loadingValue(productSummary.isLoading, products?.lowStockCount)}`} max={`Toplam ${loadingValue(productSummary.isLoading, products?.totalCount)}`} position={products?.totalCount ? products.activeCount / products.totalCount : 0} />
       </div>
       {!loading && foreign.length > 0 && <p className="rr-pf-note">

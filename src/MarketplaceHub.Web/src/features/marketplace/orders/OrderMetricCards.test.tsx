@@ -45,11 +45,11 @@ describe('order summary cards', () => {
     expect(card(host, 'Kargolanacak Ürün Adedi')).toBeUndefined()
   })
 
-  it('waits for the summary, shows a count a read summary leaves out as 0 and never shows unknown units as 0', () => {
+  it('waits for the summary, shows a missing or empty count as a dash and never shows unknown units as 0', () => {
     const { host } = render(<OrderMetricCards {...props({ newOrders: metric(undefined, true), newUnits: undefined, newRows: undefined, processing: metric(undefined, true), late: metric(undefined), microExport: metric(undefined, true), microCountries: undefined, cancelled: metric(undefined, true), cancelledUnits: undefined, partiallyCancelled: metric(undefined, true), resent: metric(undefined, true) })} />)
 
     const values = Array.from(host.querySelectorAll('article strong')).map(value => value.textContent)
-    expect(values).toEqual(['…', '…', '0 Paket', '…', '…', '…'])
+    expect(values).toEqual(['…', '…', '—', '…', '…', '…'])
     // While the data loads, the chip is not drawn and no hover panel opens (an empty card has none).
     expect(host.querySelector('.rr-metric-chip')).toBeNull()
     expect(host.querySelectorAll('.rr-metric-tip-r:not(.is-empty)')).toHaveLength(0)

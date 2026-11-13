@@ -1,3 +1,4 @@
+import { cardCountText } from '../../shared/metric-value'
 import { Link } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { CardBackgroundIcon, type CardIconName, type CardTone } from '../../shared/components/CardBackgroundIcon'
@@ -35,7 +36,7 @@ export function ApiHealthView({ onFeedback }: { onFeedback: (feedback: Integrati
     <div className="rr rr-dashboard api-health-rr">
       <section className="rr-dsect" aria-label="API sağlık özeti"><div className="rr-opgrid">
         {stats.map(stat => {
-          const body = <><CardBackgroundIcon name={stat.icon} tone={stat.tone} /><span className="rr-op-t"><small>{stat.label}</small><strong className="rr-num">{stat.value == null ? '—' : stat.value.toLocaleString('tr-TR')}</strong></span>{stat.to ? <RrIcon name="arrowR" /> : null}</>
+          const body = <><CardBackgroundIcon name={stat.icon} tone={stat.tone} /><span className="rr-op-t"><small>{stat.label}</small><strong className="rr-num">{cardCountText(stat.value)}</strong></span>{stat.to ? <RrIcon name="arrowR" /> : null}</>
           const className = `rr-opcard${stat.tone ? ` rr-${stat.tone}` : ''}`
           return stat.to ? <Link key={stat.key} className={className} to={stat.to}>{body}</Link> : <div key={stat.key} className={className}>{body}</div>
         })}

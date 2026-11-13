@@ -20,10 +20,10 @@ import { CardBackgroundIcon, CountUp, UiIcon, type CardIconName, type CardTone }
 import { RrLogo } from '../returns-ui'
 import { countryName, Flag } from './order-row-marks'
 import type { DayCard } from './daily-cards'
-import { orderCountText, type OrderCargoCount } from './order-summary'
+import { type OrderCargoCount } from './order-summary'
 import { cargoLabel } from '../../../shared/components/CargoProviderIcon'
 import { maxResendReminder, parseResendReminder } from './resend-reminder'
-import { toneAbove } from '../../../shared/metric-value'
+import { cardCountText, toneAbove } from '../../../shared/metric-value'
 import './order-metrics.css'
 
 // error: the count could not be read; shown as "—", never as 0 or an endless "…".
@@ -35,10 +35,10 @@ type CancelRow = Store & { packages: number; units?: number; partial: number; pa
 type TipRow = Store & { value: ReactNode }
 
 function metricText({ value, loading, error }: Metric) {
-  return orderCountText(value, { loading, error: Boolean(error) })
+  return cardCountText(value, { loading, error: Boolean(error) })
 }
-// A count that is known: neither loading, nor failed, nor missing (those read "…" or "—" with no "Paket" after them).
-const known = (metric: Metric) => !metric.loading && !metric.error
+// A count with something in it: not loading, not failed, not nought (those read "…" or "—" with no "Paket" after them).
+const known = (metric: Metric) => !metric.loading && !metric.error && (metric.value ?? 0) > 0
 
 const count = (value: number) => value.toLocaleString('tr-TR')
 
@@ -186,7 +186,7 @@ export function OrderMetricCards({ newOrders, newUnits, newRows, newCargo, proce
   const lateStores = stores(late, lateRows)
   const cancelStores = stores(cancelled, cancelledRows, partial > 0)
   // The reminder the owner typed counts with the resends the panel detects (a real one later still shows up).
-  const resentShown: Metric = known(resent) ? { ...resent, value: (resent.value ?? 0) + resentReminder } : resent
+  const resentShown: Metric = !resent.loading && !resent.error ? { ...resent, value: (resent.value ?? 0) + resentReminder } : resent
   const resentStores = stores(resent, resentRows)
   return <div className="rr-metrics rr-metrics-6">
     <UnitsCard title="Yeni Sipariş" icon="orders" tone="warn" packages={newOrders} units={newUnits} rows={newRows} cargo={newCargo} />

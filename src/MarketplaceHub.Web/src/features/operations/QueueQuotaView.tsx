@@ -1,3 +1,4 @@
+import { cardCountText } from '../../shared/metric-value'
 import { useMemo, useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { hubPoll } from '../../shared/api'
@@ -39,7 +40,7 @@ export function QueueQuotaView() {
   const types = metrics.data ? activeJobTypes(metrics.data) : []
   const states = counts.data ? countsByStatus(counts.data) : []
   const windowLabel = queueWindowOptions.find(option => option.value === hours)?.label ?? ''
-  const number = (value: number | undefined) => value === undefined ? '—' : value.toLocaleString('tr-TR')
+  const number = (value: number | undefined) => cardCountText(value)
 
   return <div className="qq">
     <div className="jobs-reference-toolbar qq-toolbar">

@@ -275,7 +275,11 @@ function TipText({ title, text }: { title: string; text: string }) {
 }
 
 // The previous period's figure as the explanation's last line.
-const previousLine = (value: string | null) => value === null || value === '—' ? 'Önceki dönem: —' : `Önceki dönem: ${value}`
+// A count or amount with nothing in it reads "—" (shared rule, shared/metric-value.ts).
+const dash = (value: number | null | undefined, format: (value: number) => string) => typeof value === 'number' && value > 0 ? format(value) : noValue
+// A previous figure of nothing ("0", "₺0,00", "%0,0") is no data either.
+const isNothing = (value: string) => /^(₺|%)?0([,.]0+)?$/u.test(value.trim())
+const previousLine = (value: string | null) => value === null || value === '—' || isNothing(value) ? 'Önceki dönem: —' : `Önceki dönem: ${value}`
 
 // Genel Bakış: the period's six figures in one strip, its costs round a donut (the deductions tied to no order of the
 // period apart, under it), the way from the sales to the profit
@@ -579,7 +583,7 @@ function OverviewFigures({ data, money }: { data: ReportSales; money: Money | nu
     .sort((left, right) => right.value - left.value).map(item => ({ key: item.row.key, label: platformName(item.row.label), value: format(item.value) }))
   const items: Kpi[] = [
     { key: 'net', label: 'Toplam Ciro', value: noAmount ? null : now.grossSales, format: formatTl, delta: noAmount ? null : change(now.grossSales, then.grossSales),
-      note: noAmount ? previousText(null) : `Net ${formatTl(now.netRevenue)} · iade ${formatTl(now.returnedAmount)}`,
+      note: noAmount ? previousText(null) : `Net ${dash(now.netRevenue, formatTl)} · iade ${dash(now.returnedAmount, formatTl)}`,
       tip: `Dönemin toplam satış tutarı; iptaller sayılmaz, iadeler düşülmez. Alttaki net, iadeler düşülünce kalandır.\n${previousLine(then.ordersWithAmount > 0 ? formatTl(then.grossSales) : null)}`, split: split(row => row.ordersWithAmount > 0 ? row.grossSales : null, formatTl) },
     { key: 'profit', label: profitLabel(money), value: profit, format: formatTl,
       delta: change(profit, earlierProfit),
@@ -592,12 +596,12 @@ function OverviewFigures({ data, money }: { data: ReportSales; money: Money | nu
     { key: 'cost', label: 'Maliyete Göre Kâr', value: onCost, format: percent, delta: change(onCost, earlierOnCost, 'rate'),
       note: `Ürün maliyeti ${money?.cost && money.profit !== null ? formatTl(money.cost) : '—'}`,
       tip: `Net kârın ürün maliyetine oranı: ürüne harcanan her liranın getirdiği kâr.${estimateLine(money)}\n${previousLine(formatPercent(earlierOnCost))}`, tone: (onCost ?? 0) < 0 ? 'bad' : undefined },
-    { key: 'orders', label: 'Sipariş', value: now.orders, format: formatCount, delta: change(now.orders, then.orders), note: `${formatCount(now.cancelledOrders)} iptal · sepet ${noAmount ? '—' : formatTl(now.averageOrderValue)}`,
+    { key: 'orders', label: 'Sipariş', value: now.orders > 0 ? now.orders : null, format: formatCount, delta: change(now.orders, then.orders), note: `${dash(now.cancelledOrders, formatCount)} iptal · sepet ${noAmount ? '—' : formatTl(now.averageOrderValue)}`,
       tip: `Dönemde gelen sipariş sayısı; iptal edilenler sayılmaz, tutarı okunmayan ve TL dışındaki siparişler sayılır. Ana sayfadaki Toplam Sipariş yalnız tutarı olanları sayar; sepet de tutarı olan siparişlere bölünür.\n${previousLine(formatCount(then.orders))}`, split: split(row => row.orders, formatCount) },
     // The units sold (cancellations out, returns not taken off), with what the customers kept and sent back under it;
     // the Satış card under the strip leads with the same figure (owner, 7 Nov 2026: the strip as 3 + 3).
-    { key: 'sold', label: 'Satılan Adet', value: now.soldQuantity, delta: change(now.soldQuantity, then.soldQuantity),
-      note: `Net ${formatNumber(now.keptQuantity)} · ${formatNumber(now.returnedQuantity)} iade`,
+    { key: 'sold', label: 'Satılan Adet', value: now.soldQuantity > 0 ? now.soldQuantity : null, delta: change(now.soldQuantity, then.soldQuantity),
+      note: `Net ${dash(now.keptQuantity, formatNumber)} · ${dash(now.returnedQuantity, formatNumber)} iade`,
       tip: `Dönemde satılan ürün adedi; iptaller sayılmaz, iadeler düşülmez. Net adet, iadeler düşülünce müşteride kalandır.\n${previousLine(formatNumber(then.soldQuantity))}`,
       split: split(row => row.soldQuantity, formatNumber) }
   ]
@@ -1155,7 +1159,7 @@ function returnMetrics(data: ReportSales): Metric[] {
     { key: 'rate', label: 'İade Oranı', value: formatPercent(now.returnRate), sub: `önceki ${formatPercent(before.returnRate)}`, delta: change(now.returnRate, before.returnRate, 'rate'), invert: true, previous: formatPercent(before.returnRate), detail: 'returns',
       note: `${returnRateTip}\n${previousLine(formatPercent(before.returnRate))}` },
     // The amount the customers paid for what they sent back: the İade Edilen Tutar taken off on Kâr Köprüsü.
-    { key: 'returned', label: 'İade Edilen', value: `${formatNumber(now.returnedQuantity)} adet`, sub: `${formatCount(now.returnClaims)} talep · ${formatTl(now.returnedAmount)}`, detail: 'returns',
+    { key: 'returned', label: 'İade Edilen', value: now.returnedQuantity > 0 ? `${formatNumber(now.returnedQuantity)} adet` : noValue, sub: `${dash(now.returnClaims, formatCount)} talep · ${dash(now.returnedAmount, formatTl)}`, detail: 'returns',
       note: 'Müşterilerin iade ettiği ürün adedi; reddedilen ve iptal edilen talepler sayılmaz.' },
     { key: 'cargo', label: 'İade Kargo Zararı', value: returnCargo === null ? '—' : formatTl(returnCargo), sub: returnCargo === null ? undefined : 'yalnız Trendyol', detail: 'returns',
       note: 'İadelerin faturası gelen kargo ve operasyon maliyeti, yalnız Trendyol.' },
@@ -1170,7 +1174,7 @@ function returnMetrics(data: ReportSales): Metric[] {
       note: `İade taleplerinde en sık bildirilen neden${topReason ? `: ${topReason.reason}` : ''}.` },
     { key: 'cancel', label: 'İptal Oranı', value: formatPercent(now.cancelRate), tone: (now.cancelRate ?? 0) > warning ? 'warn' : undefined, detail: 'cancellations',
       note: `Sipariş edilen ürün adedinin yüzde kaçının iptal edildiği. ${formatPercent(warning)} eşiğini geçince uyarı rengiyle yazılır.` },
-    { key: 'cancelled', label: 'İptal Edilen', value: `${formatCount(now.cancelledOrders)} sipariş`, sub: `${formatNumber(data.cancellations.cancelledQuantity)} adet · ${cancelled === undefined ? '—' : formatTl(cancelled)}`, detail: 'cancellations',
+    { key: 'cancelled', label: 'İptal Edilen', value: now.cancelledOrders > 0 ? `${formatCount(now.cancelledOrders)} sipariş` : noValue, sub: `${dash(data.cancellations.cancelledQuantity, formatNumber)} adet · ${dash(cancelled, formatTl)}`, detail: 'cancellations',
       note: 'İptal edilen sipariş, adet ve liste fiyatıyla tutar; satışa girmez.' }
   ]
 }
