@@ -480,6 +480,9 @@ function RichTextEditor({ value, onChange }: { value: string; onChange: (value: 
   function runCommand(command: string, argument?: string) {
     if (htmlMode || !visualEditor.current) return
     visualEditor.current.focus()
+    // Colour and size are written as inline styles (<span style>), which the sanitizer keeps; the default <font> tag
+    // is not allowed and was stripped, so the tools did nothing.
+    try { document.execCommand('styleWithCSS', false, 'true') } catch { /* unsupported command */ }
     document.execCommand(command, false, argument)
     syncVisualValue(true)
   }
