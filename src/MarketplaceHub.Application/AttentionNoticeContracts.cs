@@ -43,6 +43,23 @@ public static class AttentionNoticePolicy
     // The bell's id for the notice (shared/notifications.ts attentionNotification): the center keeps one row for both.
     public static string OffsiteBackupClientKey(DateTimeOffset failingSince) => $"attention:{OffsiteBackupKey}:{OffsiteBackupRevision(failingSince)}";
 
+    // The notification center's row for a listed notice, recorded by the server for the whole tenant (the browsers may not
+    // write attention keys, PanelNotificationPolicy.IsServerKey). Same key, title, message and target as the bell's
+    // (shared/notifications.ts attentionNotification), so the bell and the center name it alike.
+    public static PanelNotificationInput CenterInput(AttentionNoticeView notice)
+    {
+        var expired = notice.Code == ApprovalDeadlineExpiredCode;
+        var backup = notice.Code == OffsiteBackupFailingCode;
+        var (href, label) = expired
+            ? notice.Items is [{ ProductId: { } productId }] ? ($"/products/{productId}", "Ürüne Git") : ($"/jobs?ara={ApprovalDeadlineExpiredCode}", "İşlem Takibine Git")
+            : backup ? (OffsiteBackupHref, "Ayarlara Git") : ($"/integrations/{notice.ConnectionId}", "Entegrasyona Git");
+        var key = $"attention:{notice.Key}:{notice.Revision}";
+        return new PanelNotificationInput(key.Length > PanelNotificationPolicy.MaximumClientKeyLength ? key[..PanelNotificationPolicy.MaximumClientKeyLength] : key,
+            PanelNotificationSeverities.Error, PanelNotificationCategories.Attention, notice.Title.Length > 80 ? notice.Title[..80] : notice.Title, notice.Message,
+            Href: href, ActionLabel: label, PlatformCode: backup ? null : notice.PlatformCode.ToUpperInvariant(), StoreName: backup ? null : notice.StoreName,
+            Count: Math.Max(1, notice.FailureCount), Shared: true);
+    }
+
     // Three failed runs in a row make a read worth a notice: one or two are usually a passing marketplace hiccup.
     public const int ConsecutiveFailureThreshold = 3;
 

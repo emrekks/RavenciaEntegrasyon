@@ -161,7 +161,7 @@ public sealed class ApiRouteAuthorizationMatrixTests(ApiPipelineHost fixture) : 
         "POST   /api/v1/invoices/{id:guid}/marketplace-link-revocations/{stateId:guid} Elevated",
         "POST   /api/v1/invoices/{id:guid}/reconcile-jobs Working",
         "PUT    /api/v1/invoices/{id:guid}/shopify-status Working",
-        "POST   /api/v1/invoices/{id:guid}/stage-capability-probe-jobs Working",
+        "POST   /api/v1/invoices/{id:guid}/stage-capability-probe-jobs Elevated",
         "POST   /api/v1/invoices/{id:guid}/submit-jobs Elevated",
         "POST   /api/v1/invoices/{id:guid}/validate Working",
         "GET    /api/v1/invoices/{invoiceId:guid}/documents/{documentId:guid}/content Working",
@@ -305,10 +305,10 @@ public sealed class ApiRouteAuthorizationMatrixTests(ApiPipelineHost fixture) : 
         "GET    /api/v1/settings/factory-reset Elevated",
         "POST   /api/v1/settings/factory-reset Elevated",
         "GET    /api/v1/settings/offsite-backup/ Elevated",
-        "PUT    /api/v1/settings/offsite-backup/ Elevated",
-        "POST   /api/v1/settings/offsite-backup/google/authorize Elevated",
-        "POST   /api/v1/settings/offsite-backup/google/complete Elevated",
-        "POST   /api/v1/settings/offsite-backup/google/disconnect Elevated",
+        "PUT    /api/v1/settings/offsite-backup/ Owner",
+        "POST   /api/v1/settings/offsite-backup/google/authorize Owner",
+        "POST   /api/v1/settings/offsite-backup/google/complete Owner",
+        "POST   /api/v1/settings/offsite-backup/google/disconnect Owner",
         "POST   /api/v1/settings/offsite-backup/run Elevated",
         "POST   /api/v1/settings/offsite-backup/test Elevated",
         "GET    /api/v1/settings/platform-update SignedIn",
@@ -350,7 +350,8 @@ public sealed class ApiRouteAuthorizationMatrixTests(ApiPipelineHost fixture) : 
         ["Working"] = ["ACCOUNTING", "ADMINISTRATOR", "OPERATIONS", "OWNER"],
         ["Operations"] = ["ADMINISTRATOR", "OPERATIONS", "OWNER"],
         ["Accounting"] = ["ACCOUNTING", "ADMINISTRATOR", "OWNER"],
-        ["Elevated"] = ["ADMINISTRATOR", "OWNER"]
+        ["Elevated"] = ["ADMINISTRATOR", "OWNER"],
+        ["Owner"] = ["OWNER"]
     };
 
     private sealed record Route(string Method, string Pattern, string Gate);

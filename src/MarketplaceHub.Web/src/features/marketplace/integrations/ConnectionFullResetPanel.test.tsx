@@ -87,13 +87,15 @@ describe('ConnectionFullResetPanel', () => {
     const go = () => Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === 'Tam Sıfırla')
     expect(go()!.disabled).toBe(true)
     act(() => setValue(container.querySelector<HTMLInputElement>('#full-reset-c1-confirm')!, 'Trendyol Test'))
+    expect(go()!.disabled).toBe(true)
+    act(() => setValue(container.querySelector<HTMLInputElement>('#full-reset-c1-password')!, 'Owner-Password#1'))
     expect(go()!.disabled).toBe(false)
     await act(async () => { go()!.click() })
     await settle()
 
     const post = apiState.calls.find(call => call.method === 'POST')!
     expect(post.path).toBe('/connections/c1/full-reset')
-    expect(JSON.parse(post.body!)).toEqual({ confirmation: 'Trendyol Test' })
+    expect(JSON.parse(post.body!)).toEqual({ confirmation: 'Trendyol Test', password: 'Owner-Password#1' })
     expect(post.ifMatch).toBe('"v7"')
     expect(container.querySelector('.connection-full-reset-status')!.textContent).toContain('Sıfırlama sürüyor: Sıfırlama sırada bekliyor')
     expect(Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === 'Sıfırlama Sürüyor…')!.disabled).toBe(true)

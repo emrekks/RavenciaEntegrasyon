@@ -62,7 +62,7 @@ const severities: Record<AppNotification['kind'], NotificationSeverity> = { succ
 const maximumPayload = 15_000
 
 /** What the server keeps of a bell notification: the fields it filters by, and the whole notification for the card. */
-export function centerInput(notification: AppNotification, shared = false) {
+export function centerInput(notification: AppNotification) {
   let payload = JSON.stringify(notification)
   if (payload.length > maximumPayload) payload = JSON.stringify({ ...notification, items: notification.items?.slice(0, 10), details: notification.details?.slice(0, 10) })
   return {
@@ -78,7 +78,7 @@ export function centerInput(notification: AppNotification, shared = false) {
     count: notification.count ?? 1,
     payload: payload.length > maximumPayload ? null : JSON.parse(payload) as unknown,
     createdAt: notification.firstAt ?? notification.createdAt,
-    shared,
+    shared: false,
     read: notification.read
   }
 }
@@ -152,7 +152,8 @@ export function startNotificationCenterSink(send: (path: string, body: unknown) 
     }
   }
   const sink: NotificationSink = {
-    saved: (notification, options) => { pending.saves.set(notification.id, centerInput(notification, options?.shared ?? notification.groupKey?.startsWith('attention:') ?? false)); schedule() },
+    // Background notices (attention:…) are the server's to record; the rest is this person's own.
+    saved: notification => { if (notification.id.startsWith('attention:')) return; pending.saves.set(notification.id, centerInput(notification)); schedule() },
     read: ids => { ids.forEach(id => pending.read.add(id)); schedule() },
     dismissed: ids => { ids.forEach(id => pending.dismissed.add(id)); schedule() }
   }
@@ -199,3 +200,12 @@ export const markCenterNotificationsRead = (selection: { ids?: string[]; all?: b
 
 /** İşlem Takibi › Bildirimler, where the bell's "Tüm Bildirimler" leads (jobs-url-state: ?sekme=bildirimler). */
 export const notificationCenterHref = '/jobs?sekme=bildirimler'
+
+/** A notification links only inside the panel: one leading '/', not "//host" or "/\host", no control characters. */
+export function internalNotificationHref(href: string | null | undefined): string | null {
+  const value = href?.trim() ?? ''
+  if (!value.startsWith('/') || value.startsWith('//')) return null
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f\\]/.test(value)) return null
+  return value
+}

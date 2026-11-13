@@ -12,6 +12,24 @@ public static class PanelNotificationPolicy
     public const int MaximumMessageLength = 2_000;
     public const int MaximumPayloadLength = 16_000;
     public const int MaximumSearchLength = 100;
+
+    // The background notices (AttentionNoticePolicy) and the server's own records: written by the server only.
+    public const string AttentionKeyPrefix = "attention:";
+    public static readonly IReadOnlyList<string> ServerKeyPrefixes = [AttentionKeyPrefix, "offsite-backup:"];
+
+    public static bool IsServerKey(string? clientKey) =>
+        clientKey is not null && ServerKeyPrefixes.Any(prefix => clientKey.TrimStart().StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+
+    // A notification links only inside the panel: a path that starts with one '/', not "//host" or "/\host" (which a
+    // browser reads as another site), and nothing with a scheme or control characters. Anything else is dropped.
+    public static string? InternalHref(string? href)
+    {
+        var value = href?.Trim();
+        if (string.IsNullOrEmpty(value) || value.Length > 500 || value[0] != '/') return null;
+        if (value.Length > 1 && value[1] is '/' or '\\') return null;
+        if (value.Any(c => char.IsControl(c) || c == '\\')) return null;
+        return value;
+    }
 }
 
 public static class PanelNotificationSeverities

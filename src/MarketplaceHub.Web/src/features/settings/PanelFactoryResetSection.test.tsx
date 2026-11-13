@@ -105,15 +105,18 @@ describe('panel factory reset confirmation', () => {
     expect(goButton()!.disabled).toBe(true)
     expect(container.querySelector('.ss-fr-ok')).toBeNull()
     type(input, ' paneli sıfırla')
+    // The word alone is not enough: the password is asked again.
+    expect(goButton()!.disabled).toBe(true)
+    type(container.querySelector<HTMLInputElement>('#panel-factory-reset-password')!, 'Owner-Password#1')
     expect(goButton()!.disabled).toBe(false)
     // The expected words stay above the field all along; a match shows the green tick.
-    expect(container.querySelector('label[for="panel-factory-reset-confirm"]')!.textContent).toBe('Onaylamak için PANELİ SIFIRLA yazın')
+    expect(container.querySelector('label[for="panel-factory-reset-confirm"]')!.textContent).toBe('Onaylamak için PANELİ SIFIRLA yazın ve parolanızı girin')
     expect(container.querySelector('.ss-fr-ok')).not.toBeNull()
     await act(async () => { goButton()!.click() })
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
     const post = state.calls.find(call => call.method === 'POST')!
     expect(post.path).toBe('/settings/factory-reset')
-    expect(JSON.parse(post.body!)).toEqual({ confirmation: 'PANELİ SIFIRLA' })
+    expect(JSON.parse(post.body!)).toEqual({ confirmation: 'PANELİ SIFIRLA', password: 'Owner-Password#1' })
     expect(post.key).toBeTruthy()
     // While the job runs the form is gone and the steps show where it is.
     expect(goButton()).toBeUndefined()

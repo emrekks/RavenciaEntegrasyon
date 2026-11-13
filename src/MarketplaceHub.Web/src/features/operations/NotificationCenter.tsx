@@ -10,7 +10,7 @@ import { formatDateTime, formatIstanbul } from '../../shared/format-date'
 import { describeNotification } from '../../shared/notification-describe'
 import { markAllNotificationsRead, markNotificationRead } from '../../shared/notifications'
 import {
-  centerFilterCount, centerNotificationCard, centerQueryString, emptyCenterFilters, markCenterNotificationsRead, notificationCategoryLabels, notificationSeverityLabels,
+  centerFilterCount, centerNotificationCard, centerQueryString, emptyCenterFilters, internalNotificationHref, markCenterNotificationsRead, notificationCategoryLabels, notificationSeverityLabels,
   subscribeNotificationCenter, type CenterFilters, type CenterNotification, type CenterNotificationPage, type CenterNotificationSummary, type NotificationCategory, type NotificationSeverity
 } from '../../shared/notification-center'
 import { RrIcon } from '../marketplace/returns-ui'
@@ -115,9 +115,12 @@ export function NotificationCenter() {
       await refresh()
     } catch { /* the list shows what the server holds after the next refresh */ } finally { setMarking(false) }
   }
+  // Only a path inside the panel is followed; anything else a row carries is ignored.
   const open = (row: CenterNotification) => (href: string) => {
+    const target = internalNotificationHref(href)
+    if (!target) return
     if (!row.readAt) void markRead(row)
-    navigate(href)
+    navigate(target)
   }
 
   return <div className="ncl">

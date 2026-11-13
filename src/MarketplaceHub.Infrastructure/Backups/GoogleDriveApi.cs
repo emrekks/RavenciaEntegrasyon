@@ -2,6 +2,7 @@ using System.IO.Pipelines;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -12,7 +13,8 @@ public sealed record GoogleOAuthClient(string ClientId, string ClientSecret);
 // What the authorization-code exchange gave: the long-lived refresh token, the scopes Google granted and the account.
 public sealed record GoogleTokenGrant(string? RefreshToken, string AccessToken, string? Scope, string? Email);
 
-public sealed record DriveObject(string Id, string Name, long Size);
+// Md5: Drive's md5Checksum of the stored bytes (lower-case hex), null when Drive did not give one.
+public sealed record DriveObject(string Id, string Name, long Size, string? Md5 = null);
 
 // Authorization: the refresh token is no longer accepted (revoked by the owner, expired, or the client changed);
 // nothing works again until the owner reconnects. Anything else is passing and is retried.
@@ -122,11 +124,11 @@ public sealed class GoogleDriveApi(IHttpClientFactory httpClientFactory) : IGoog
         var query = $"'{folderId}' in parents and trashed = false";
         do
         {
-            var url = $"{FilesEndpoint}?q={Uri.EscapeDataString(query)}&fields=nextPageToken,files(id,name,size)&pageSize=1000{(pageToken is null ? string.Empty : "&pageToken=" + Uri.EscapeDataString(pageToken))}";
+            var url = $"{FilesEndpoint}?q={Uri.EscapeDataString(query)}&fields=nextPageToken,files(id,name,size,md5Checksum)&pageSize=1000{(pageToken is null ? string.Empty : "&pageToken=" + Uri.EscapeDataString(pageToken))}";
             using var request = Authorized(HttpMethod.Get, url, accessToken);
             using var response = await Http().SendAsync(request, cancellationToken);
             var list = await JsonAsync<FileList>(response, "Drive klasörü listelenemedi", cancellationToken);
-            objects.AddRange((list.Files ?? []).Where(file => file.Id is not null && file.Name is not null).Select(file => new DriveObject(file.Id!, file.Name!, ParseSize(file.Size))));
+            objects.AddRange((list.Files ?? []).Where(file => file.Id is not null && file.Name is not null).Select(file => new DriveObject(file.Id!, file.Name!, ParseSize(file.Size), file.Md5Checksum?.ToLowerInvariant())));
             pageToken = list.NextPageToken;
         }
         while (!string.IsNullOrEmpty(pageToken) && objects.Count < 20_000);
@@ -135,7 +137,7 @@ public sealed class GoogleDriveApi(IHttpClientFactory httpClientFactory) : IGoog
 
     public async Task<DriveObject> UploadAsync(string accessToken, string folderId, string name, Func<Stream, CancellationToken, Task> writeContent, CancellationToken cancellationToken)
     {
-        using var start = Authorized(HttpMethod.Post, $"{UploadEndpoint}?uploadType=resumable&fields=id,name,size", accessToken);
+        using var start = Authorized(HttpMethod.Post, $"{UploadEndpoint}?uploadType=resumable&fields=id,name,size,md5Checksum", accessToken);
         start.Headers.Add("X-Upload-Content-Type", "application/octet-stream");
         start.Content = JsonContent.Create(new { name, parents = new[] { folderId }, mimeType = "application/octet-stream" });
         using var started = await Http().SendAsync(start, cancellationToken);
@@ -163,9 +165,12 @@ public sealed class GoogleDriveApi(IHttpClientFactory httpClientFactory) : IGoog
             await using var source = pipe.Reader.AsStream();
             var buffer = new byte[ChunkSize];
             long offset = 0;
+            // MD5 is what Drive reports (md5Checksum); it is only compared, never trusted for anything else.
+            using var md5 = IncrementalHash.CreateHash(HashAlgorithmName.MD5);
             while (true)
             {
                 var filled = await FillAsync(source, buffer, linked.Token);
+                md5.AppendData(buffer, 0, filled);
                 var last = filled < buffer.Length;
                 if (filled == 0 && offset == 0)
                     throw new GoogleDriveException("DRIVE_UPLOAD_EMPTY", "Yüklenecek içerik boş.");
@@ -190,14 +195,18 @@ public sealed class GoogleDriveApi(IHttpClientFactory httpClientFactory) : IGoog
                 var file = await response.Content.ReadFromJsonAsync<FileResource>(linked.Token)
                     ?? throw new GoogleDriveException("DRIVE_UPLOAD_NO_FILE", "Drive yüklenen dosyayı bildirmedi.");
                 await producer;
-                var stored = new DriveObject(file.Id ?? string.Empty, file.Name ?? name, ParseSize(file.Size));
-                // Drive must hold exactly what was sent; anything else is removed and the copy fails (retried later).
-                if (stored.Size != offset)
+                var sent = Convert.ToHexStringLower(md5.GetHashAndReset());
+                var stored = new DriveObject(file.Id ?? string.Empty, file.Name ?? name, ParseSize(file.Size), file.Md5Checksum?.ToLowerInvariant());
+                // Drive must hold exactly what was sent, byte count and MD5 of the encrypted stream alike; anything else is
+                // removed and the copy fails (retried later).
+                if (stored.Size != offset || !string.Equals(stored.Md5, sent, StringComparison.Ordinal))
                 {
                     if (stored.Id.Length > 0) { try { await DeleteAsync(accessToken, stored.Id, CancellationToken.None); } catch (GoogleDriveException) { } }
-                    throw new GoogleDriveException("DRIVE_UPLOAD_SIZE_MISMATCH", $"Drive'daki kopya {stored.Size} bayt, gönderilen {offset} bayt; kopya silindi ve yeniden denenecek.");
+                    throw stored.Size != offset
+                        ? new GoogleDriveException("DRIVE_UPLOAD_SIZE_MISMATCH", $"Drive'daki kopya {stored.Size} bayt, gönderilen {offset} bayt; kopya silindi ve yeniden denenecek.")
+                        : new GoogleDriveException("DRIVE_UPLOAD_CHECKSUM_MISMATCH", $"Drive'daki kopyanın MD5'i ({stored.Md5 ?? "yok"}) gönderilenle ({sent}) tutmuyor; kopya silindi ve yeniden denenecek.");
                 }
-                return stored;
+                return stored with { Md5 = sent };
             }
         }
         catch
@@ -328,6 +337,7 @@ public sealed class GoogleDriveApi(IHttpClientFactory httpClientFactory) : IGoog
         [JsonPropertyName("id")] public string? Id { get; set; }
         [JsonPropertyName("name")] public string? Name { get; set; }
         [JsonPropertyName("size")] public string? Size { get; set; }
+        [JsonPropertyName("md5Checksum")] public string? Md5Checksum { get; set; }
         [JsonPropertyName("mimeType")] public string? MimeType { get; set; }
         [JsonPropertyName("trashed")] public bool? Trashed { get; set; }
     }

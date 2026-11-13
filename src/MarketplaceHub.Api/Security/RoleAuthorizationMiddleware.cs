@@ -6,6 +6,7 @@ namespace MarketplaceHub.Api.Security;
 public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
 {
     private static readonly HashSet<string> ElevatedRoles = new(StringComparer.OrdinalIgnoreCase) { "OWNER", "ADMINISTRATOR" };
+    private static readonly HashSet<string> OwnerRoles = new(StringComparer.OrdinalIgnoreCase) { "OWNER" };
     private static readonly HashSet<string> OperationalRoles = new(StringComparer.OrdinalIgnoreCase) { "OWNER", "ADMINISTRATOR", "OPERATIONS" };
     private static readonly HashSet<string> InvoiceRoles = new(StringComparer.OrdinalIgnoreCase) { "OWNER", "ADMINISTRATOR", "OPERATIONS", "ACCOUNTING" };
     private static readonly HashSet<string> AccountingRoles = new(StringComparer.OrdinalIgnoreCase) { "OWNER", "ADMINISTRATOR", "ACCOUNTING" };
@@ -100,7 +101,7 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
             // or removing its link at the marketplace are for the owner and administrators. Drafts, validation,
             // previews, uploads and status reads stay invoice work.
             case "invoices":
-                return last is "submit-jobs" or "cancellation-jobs" or "marketplace-delivery-jobs" or "delivery-retry-jobs"
+                return last is "submit-jobs" or "stage-capability-probe-jobs" or "cancellation-jobs" or "marketplace-delivery-jobs" or "delivery-retry-jobs"
                         || segments.Length == 6 && segments[4].Equals("marketplace-link-revocations", StringComparison.OrdinalIgnoreCase)
                     ? ElevatedRoles
                     : InvoiceRoles;
@@ -137,6 +138,11 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
             // Toplu Değer Ata rewrites one field across whole models at once: the owner's and administrators'.
             case "products" when segments.Length == 4 && last == "bulk-field":
                 return ElevatedRoles;
+            // Where the off-site backup goes (the age key, the Google account and OAuth client, the folder) decides who can
+            // read a copy of the whole database and its encryption keys: the owner's alone. Testing the connection and
+            // "Şimdi Gönder" change nothing of that and stay with the administrators.
+            case "settings" when segments.Length > 3 && segments[3].Equals("offsite-backup", StringComparison.OrdinalIgnoreCase):
+                return last is "test" or "run" ? ElevatedRoles : OwnerRoles;
             // The Hızlı Güncelle choice (fields and stores) is kept by whoever sends product updates.
             case "settings" when segments.Length == 4 && last == "platform-update":
                 return OperationalRoles;

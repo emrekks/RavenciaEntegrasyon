@@ -240,11 +240,14 @@ describe('SystemSettingsPage', () => {
     const confirm = container.querySelector<HTMLButtonElement>('.ss-dr-go')!
     expect(confirm.disabled).toBe(true)
     input(container.querySelector<HTMLInputElement>('#settings-reset-confirm')!, 'Verileri sil')
+    // The word alone is not enough: the password is asked again.
+    expect(confirm.disabled).toBe(true)
+    input(container.querySelector<HTMLInputElement>('#settings-reset-password')!, 'Owner-Password#1')
     expect(confirm.disabled).toBe(false)
     click(confirm)
     await settle()
     const request = apiState.calls.find(call => call.path === '/settings/factory-reset' && call.method === 'POST')
-    expect(JSON.parse(request?.body ?? '{}')).toEqual({ categories: ['STOCK', 'PRODUCTS'], confirmation: 'Verileri sil' })
+    expect(JSON.parse(request?.body ?? '{}')).toEqual({ categories: ['STOCK', 'PRODUCTS'], confirmation: 'Verileri sil', password: 'Owner-Password#1' })
   })
 
   it('lists the active marketplace connections as a group with counts and totals', async () => {
@@ -272,6 +275,7 @@ describe('SystemSettingsPage', () => {
     click(Array.from(container.querySelectorAll<HTMLLabelElement>('.ss-dr-opt')).find(item => item.textContent?.includes('Marka Listesi'))!.querySelector('input')!)
     const confirm = container.querySelector<HTMLButtonElement>('.ss-dr-go')!
     expect(confirm.disabled).toBe(true)
+    input(container.querySelector<HTMLInputElement>('#settings-reset-password')!, 'Owner-Password#1')
     input(container.querySelector<HTMLInputElement>('#settings-reset-confirm')!, 'Trendyol')
     expect(confirm.disabled).toBe(true)
     expect(apiState.calls.some(call => call.method === 'POST')).toBe(false)
@@ -282,7 +286,9 @@ describe('SystemSettingsPage', () => {
     const posts = apiState.calls.filter(call => call.method === 'POST' && (call.path.endsWith('/full-reset') || call.path === '/settings/factory-reset'))
     expect(posts.map(call => call.path)).toEqual(['/connections/c-ty/full-reset', '/settings/factory-reset'])
     expect(posts[0].headers?.['if-match']).toBe('"v5"')
-    expect(JSON.parse(posts[0].body ?? '{}')).toEqual({ confirmation: 'Trendyol' })
+    // Every reset of the run carries the password; the server checks it once for the run.
+    expect(JSON.parse(posts[0].body ?? '{}')).toEqual({ confirmation: 'Trendyol', password: 'Owner-Password#1' })
+    expect(JSON.parse(posts[1].body ?? '{}').password).toBe('Owner-Password#1')
     expect(group.querySelector('.ss-dr-prog')?.textContent).toBe('Tamamlandı')
   })
 
@@ -294,6 +300,7 @@ describe('SystemSettingsPage', () => {
     expect(ask.textContent).toContain('Onaylamak için Verileri sil yazın')
     expect(ask.querySelector('b')?.textContent).toBe('Verileri sil')
     const confirm = container.querySelector<HTMLButtonElement>('.ss-dr-go')!
+    input(container.querySelector<HTMLInputElement>('#settings-reset-password')!, 'Owner-Password#1')
     input(container.querySelector<HTMLInputElement>('#settings-reset-confirm')!, ' VERİLERİ SİL ')
     expect(confirm.disabled).toBe(false)
     expect(container.querySelector('label.ss-dr-ask')?.textContent).toContain('Onaylamak için Verileri sil yazın')
@@ -314,6 +321,7 @@ describe('SystemSettingsPage', () => {
     expect(warning?.textContent).toContain('oturumlar kapanır')
     expect(container.querySelector('label.ss-dr-ask b')?.textContent).toBe('PANELİ SIFIRLA')
     const confirm = container.querySelector<HTMLButtonElement>('.ss-dr-go')!
+    input(container.querySelector<HTMLInputElement>('#settings-reset-password')!, 'Owner-Password#1')
     input(container.querySelector<HTMLInputElement>('#settings-reset-confirm')!, 'Verileri sil')
     expect(confirm.disabled).toBe(true)
     input(container.querySelector<HTMLInputElement>('#settings-reset-confirm')!, 'PANELİ SIFIRLA')

@@ -4,7 +4,11 @@ using MarketplaceHub.Api.Operations;
 using MarketplaceHub.Api.Security;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
+using MarketplaceHub.Infrastructure.Identity;
 using MarketplaceHub.Infrastructure.Persistence;
+using MarketplaceHub.Infrastructure.Security;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Api.Marketplace;
@@ -67,10 +71,10 @@ public static class MarketplaceEndpoints
         });
         api.MapPost("/connections/{id:guid}/deep-delete", DeepDeleteConnectionAsync);
         api.MapGet("/connections/{id:guid}/full-reset", async (Guid id, HttpContext http, IOperationalDataMaintenanceService service) => Tenant(http) is { } tenant ? Result(await service.FullResetAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http));
-        api.MapPost("/connections/{id:guid}/full-reset", async (Guid id, FullResetConnectionCommand command, HttpContext http, IOperationalDataMaintenanceService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? Result(await service.RequestFullResetAsync(tenant.TenantId, tenant.UserId, id, version, command, http.TraceIdentifier, http.RequestAborted), Results.Ok) : failure! : MissingContext(http));
+        api.MapPost("/connections/{id:guid}/full-reset", FullResetConnectionAsync);
         // Paneli Tamamen Sıfırla (owner and administrators only, RoleAuthorizationMiddleware): the session that asks stays signed in.
         api.MapGet("/settings/factory-reset", async (HttpContext http, IPanelFactoryResetService service) => Tenant(http) is { } tenant ? Result(await service.GetAsync(tenant.TenantId, http.RequestAborted), Results.Ok) : Unauthorized(http));
-        api.MapPost("/settings/factory-reset", async (PanelFactoryResetCommand command, HttpContext http, IPanelFactoryResetService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.RequestAsync(tenant.TenantId, tenant.UserId, (http.Items["UserSession"] as UserSession)?.Id, command, http.TraceIdentifier, http.RequestAborted), Results.Ok) : MissingContext(http));
+        api.MapPost("/settings/factory-reset", FactoryResetAsync);
         api.MapGet("/connections/{id:guid}/capabilities", async (Guid id, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant ? Result(await service.CapabilitiesAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapPost("/connections/{id:guid}/sync-policies/{resourceType}/runs", async (Guid id, string resourceType, HttpContext http, IScheduledJobProducer producer) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null
@@ -297,10 +301,33 @@ public static class MarketplaceEndpoints
 
     // The connection's data goes in the delete; its settings, keys and the row itself right after (ConnectionLeftovers),
     // and the hourly sweep finishes what a failure here leaves.
-    private static async Task<IResult> DeepDeleteConnectionAsync(Guid id, DeleteConnectionCommand command, HttpContext http, IOperationalDataMaintenanceService service, AppDbContext db, TimeProvider timeProvider, ILoggerFactory loggers)
+    // Resets that empty data take the caller's password again (and the authenticator code when it is on); one passed check
+    // covers the session's resets for a few minutes (AuthEndpoints.ReauthenticateForResetAsync). The secrets never reach
+    // the services.
+    private static async Task<IResult> FullResetConnectionAsync(Guid id, FullResetConnectionCommand command, HttpContext http, IOperationalDataMaintenanceService service,
+        UserManager<ApplicationUser> users, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time)
     {
         if (Tenant(http) is not { } tenant || RequireIdempotency(http) is not null) return MissingContext(http);
         if (!TryIfMatch(http, out var version, out var failure)) return failure!;
+        if (await AuthEndpoints.ReauthenticateForResetAsync(command.Password, command.Code, command.RecoveryCode, http, users, db, protection, totp, hasher, time) is { } refusal) return refusal;
+        return Result(await service.RequestFullResetAsync(tenant.TenantId, tenant.UserId, id, version, command with { Password = null, Code = null, RecoveryCode = null }, http.TraceIdentifier, http.RequestAborted), Results.Ok);
+    }
+
+    private static async Task<IResult> FactoryResetAsync(PanelFactoryResetCommand command, HttpContext http, IPanelFactoryResetService service,
+        UserManager<ApplicationUser> users, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time)
+    {
+        if (Tenant(http) is not { } tenant || RequireIdempotency(http) is not null) return MissingContext(http);
+        if (await AuthEndpoints.ReauthenticateForResetAsync(command.Password, command.Code, command.RecoveryCode, http, users, db, protection, totp, hasher, time) is { } refusal) return refusal;
+        return Result(await service.RequestAsync(tenant.TenantId, tenant.UserId, (http.Items["UserSession"] as UserSession)?.Id, command with { Password = null, Code = null, RecoveryCode = null }, http.TraceIdentifier, http.RequestAborted), Results.Ok);
+    }
+
+    private static async Task<IResult> DeepDeleteConnectionAsync(Guid id, DeleteConnectionCommand command, HttpContext http, IOperationalDataMaintenanceService service, AppDbContext db, TimeProvider timeProvider, ILoggerFactory loggers,
+        UserManager<ApplicationUser> users, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher)
+    {
+        if (Tenant(http) is not { } tenant || RequireIdempotency(http) is not null) return MissingContext(http);
+        if (!TryIfMatch(http, out var version, out var failure)) return failure!;
+        if (await AuthEndpoints.ReauthenticateForResetAsync(command.Password, command.Code, command.RecoveryCode, http, users, db, protection, totp, hasher, timeProvider) is { } refusal) return refusal;
+        command = command with { Password = null, Code = null, RecoveryCode = null };
         var result = await service.DeleteConnectionAsync(tenant.TenantId, tenant.UserId, id, version, command, http.TraceIdentifier, http.RequestAborted);
         if (result.Succeeded)
         {

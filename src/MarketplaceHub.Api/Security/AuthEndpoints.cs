@@ -445,6 +445,21 @@ public static class AuthEndpoints
         return null;
     }
 
+    // The re-check before a reset that empties data (Paneli Tamamen Sıfırla, a connection's Tam Sıfırlama, Bağlantıyı
+    // Sil). One passed re-check covers this session's resets for RecentReauthentication.Window, so Ayarlar › Veri can run
+    // several marketplaces' resets and the category cleanup in a row with one password and one authenticator code (the
+    // code is refused a second time). A request without a password is refused before anything is counted.
+    internal static async Task<IResult?> ReauthenticateForResetAsync(string? password, string? code, string? recoveryCode, HttpContext context, UserManager<ApplicationUser> users, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time)
+    {
+        var session = CurrentSession(context);
+        if (session is not null && RecentReauthentication.IsFresh(session.Id, time.GetUtcNow())) return null;
+        if (string.IsNullOrEmpty(password))
+            return Problem("REAUTHENTICATION_REQUIRED", "Bu işlem için parolanızı (iki adımlı doğrulama açıksa kodunuzu da) yeniden girin.", 400);
+        var refusal = await ReauthenticateAsync(new ReauthenticateRequest(password, code, recoveryCode), context, users, db, protection, totp, hasher, time);
+        if (refusal is null && session is not null) RecentReauthentication.Mark(session.Id, time.GetUtcNow());
+        return refusal;
+    }
+
     private static string SecondFactorMethod(ReauthenticateRequest request) => string.IsNullOrWhiteSpace(request.RecoveryCode) ? "totp" : "recovery-code";
 
     private static async Task<bool> ValidateSecondFactorAsync(ReauthenticateRequest request, Guid userId, UserSecurity security, HttpContext context, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time)
