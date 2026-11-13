@@ -34,7 +34,7 @@ public sealed class BulkProductFieldsTests
     [Theory]
     [InlineData("title", "Yeni ad", "field")]
     [InlineData(null, "1", "field")]
-    [InlineData("vatRate", "8", "value")]
+    [InlineData("vatRate", "18", "value")]
     [InlineData("vatRate", "", "value")]
     [InlineData("vatInclusion", "SOMETIMES", "value")]
     [InlineData("desi", "0", "value")]

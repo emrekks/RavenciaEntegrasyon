@@ -245,7 +245,7 @@ public static partial class ProductTransferFileParser
     // The product card's VAT rate, as the export writes it ("%10") or a plain number; it cannot be removed. Scan C-10
     // (13 Nov 2026): a cell Excel formats as a percentage holds the fraction (%10 is stored 0.1), which was taken as a
     // rate of 0.1 %: a value between 0 and 1 without a % sign is read as that fraction of 100. The result must be one of
-    // the rates the panel takes (BulkProductFields.VatRates: 0, 1, 10, 20).
+    // the rates the panel takes (BulkProductFields.VatRates: 0, 1, 8, 10, 20; 8 by the owner, 13 Nov 2026).
     public static ProductTransferValue ParseVat(string text, bool fromCsv)
     {
         var trimmed = text.Trim();
@@ -258,7 +258,7 @@ public static partial class ProductTransferFileParser
         var rate = !percentSign && amount > 0m && amount < 1m ? decimal.Round(amount * 100m, 4, MidpointRounding.ToEven) : amount;
         return BulkProductFields.VatRates.Contains(rate)
             ? ProductTransferValue.Set(rate)
-            : ProductTransferValue.Invalid($"KDV oranı 0, 1, 10 veya 20 olmalıdır; dosyada {trimmed} yazıyor.");
+            : ProductTransferValue.Invalid($"KDV oranı 0, 1, 8, 10 veya 20 olmalıdır; dosyada {trimmed} yazıyor.");
     }
 
     // The product title: text up to 320 characters; it cannot be removed.

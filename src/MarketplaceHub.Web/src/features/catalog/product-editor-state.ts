@@ -200,7 +200,7 @@ export function rekeySavedVariantRows<T extends { key: string; sku: string }>(ro
 }
 
 // Turkey's VAT rates since 10 July 2023 (8 and 18 became 10 and 20); 0 is for exempt goods.
-export const TURKISH_VAT_RATES = ['0', '1', '10', '20']
+export const TURKISH_VAT_RATES = ['0', '1', '8', '10', '20']
 export const DEFAULT_VAT_RATE = '10'
 
 type VatSource = { vatRate?: number | null; vatInclusion?: string | null }
