@@ -264,7 +264,8 @@
   .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-modal .invoice-detail-summary > div { padding: 10px 12px; border-left: 0; border-top: 1px solid var(--rv-color-border); }
   .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-modal .invoice-detail-summary > div:nth-child(even) { border-left: 1px solid var(--rv-color-border); }
   .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-modal .invoice-detail-summary > div:nth-child(-n+2) { border-top: 0; }
-  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-modal .invoice-detail-summary > div > strong { word-break: normal; overflow-wrap: anywhere; white-space: nowrap; }
+  /* One line: a value longer than its tile (a long amount) ends in an ellipsis instead of being cut off. */
+  .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-modal .invoice-detail-summary > div > strong { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; word-break: normal; overflow-wrap: anywhere; white-space: nowrap; }
   .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-modal .invoice-detail-summary > div > :is(span, button, .status-badge, [class*="badge"]) { max-width: 100%; }
   .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-modal .invoice-detail-summary :is(small:not(:first-child), code) { font-size: 12px; white-space: normal; overflow-wrap: anywhere; word-break: normal; }
   .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-modal .invoice-detail-summary .cargo-provider-icon { width: 96px; height: 22px; }
@@ -401,3 +402,9 @@
 /* Dark theme: the carrier logos are dark text on a transparent picture; a light plate keeps "trendyol express" readable
    in the invoice detail. */
 html[data-theme="dark"] .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-modal .invoice-detail-cargo .cargo-provider-icon { box-sizing: content-box; padding: 3px 6px; background: #f4f4f6; border-radius: 7px; }
+
+/* Phones: the filter card is a raised block under the top bar (z-index 80 < the bar's 85), as on Siparişler, İadeler
+   and Ürünler (.rr-fshell). Without it the open sheet and its scrim covered the top bar. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .reference-invoices-page .rr.invoice-filter-scope { position: relative; z-index: 80; }
+}
