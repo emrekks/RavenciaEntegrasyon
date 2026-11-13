@@ -1,8 +1,8 @@
 # Ravencia Marketplace Hub — İşleyiş Kılavuzu
 
 Panelin bugün nasıl çalıştığını anlatan tam başvuru belgesidir: hangi ekran ne gösterir, veri nereden gelir, hangi düğme
-pazaryerine ne gönderir, hangi kural nerede durur. Kaynak: `origin/main` = `4fc160b69` (13 Kasım 2026; 12 Kasım'daki beş bölüm-9 düzeltme turundan sonra). Canlıda api,
-worker ve caddy aynı sürümü çalıştırıyor (canlı: `manual-4fc160b69e33`, 12 Kas 2026 21:59Z).
+pazaryerine ne gönderir, hangi kural nerede durur. Kaynak: `origin/main` = `e47b8be1a` (13 Kasım 2026; sahibin 13 Kasım'da yanıtladığı 14 sorunun kararları ve sonrası dahil). Canlıda api,
+worker ve caddy aynı sürümü çalıştırıyor (canlı: `manual-e47b8be1aab8`, 13 Kas 2026 00:04Z).
 
 ---
 
@@ -98,8 +98,8 @@ Entegrasyonlar, Eşleştirmeler, İşlem Takibi. Altta **Sistem Ayarları** ve *
 | **Promosyon** (`/promotions`) | Trendyol promosyon kârlılığı: Ürün Komisyon Tarifesi, Plus Komisyon Tarifesi, Avantajlı Ürün Etiketi, Flash Ürünler. Pazaryerine hiçbir şey göndermez. | 5.4 |
 | **Entegrasyonlar** (`/integrations`, `/integrations/:id`) | Pazaryeri ve E-Faturam bağlantıları; bağlantı menüsü, akışlar, dış yazma anahtarları, Verileri Sıfırla. | 2 |
 | **Eşleştirmeler** (`/mappings/categories`) | İki sekme: **Kategori Eşleme** ve **Marka Eşleme** (`MappingPages.tsx:92`). Panel kategori, seçenek, özellik ve markalarının pazaryeri karşılıkları. Markalar `?view=brands`. | 3.10 |
-| **İşlem Takibi** (`/jobs`) | Arka plan işleri. Ana sekmeler: **İşler**, **Loglar** (Ürün Hareketleri, Pazaryeri Gönderimleri), **API Sağlık** (`operations/pages.tsx:588`). | 6.10 |
-| **Sistem Ayarları** (`/settings`) | Güvenlik ve Oturumlar, Veri, Yapay Zekâ, Kargo Ayarları, Görünüm. | 7 |
+| **İşlem Takibi** (`/jobs`) | Arka plan işleri. Ana sekmeler: **İşler**, **Loglar** (Ürün Hareketleri, Pazaryeri Gönderimleri), **API Sağlık**, **Kuyruk ve Kota**, **Bildirimler** (`operations/pages.tsx:53,590`). | 6.10 |
+| **Sistem Ayarları** (`/settings`) | Güvenlik ve Oturumlar, Kullanıcılar, Veri, Yapay Zekâ, Kargo Ayarları, Görünüm. | 7 |
 
 Menüde olmayan detay sayfaları: Gönderi Ayrıntıları (`/shipments/:id`), Fatura detayı (`/invoices/:id`), İçe Aktarma
 Ayrıntıları (`/imports/:id`). Ayrı Kategoriler/Markalar/Özellikler sayfası yoktur; hepsi Eşleştirmeler'dedir.
@@ -141,8 +141,8 @@ Ayrıntıları (`/imports/:id`). Ayrı Kategoriler/Markalar/Özellikler sayfası
   - **Hatırlanmayan oturum**: 30 dakika boşta kalınca, 12 saat dolunca ya da tarayıcı kapanınca biter.
   - **İkinci adımı tamamlanmamış oturum** (iki adımlı doğrulama ya da zorunlu parola değişikliği bekleyen): her zaman 30
     dakikalık kısa süre.
-- **Parolamı Unuttum** parola sıfırlamaz; yalnız "sistem yöneticinizle iletişime geçin" yazar (`App.tsx:432`). Panelden
-  parola sıfırlama yolu yok.
+- **Parolamı Unuttum** parola sıfırlamaz; yalnız "sistem yöneticinizle iletişime geçin" yazar (`App.tsx:442`). Parolayı
+  Sahip ya da Yönetici **Ayarlar › Kullanıcılar**'dan sıfırlar (7.5); kullanıcı yeni tek kullanımlık parola alır.
 - **Yeni parola** 15–64 karakter; büyük ve küçük harf, rakam ve simge içermeli (`App.tsx:467`).
 - Oturum açıkken sunucu "oturum yok" (401) derse panel yeniden yüklenmeden giriş ekranına döner; girişten sonra aynı
   sayfaya devam edilir (`App.tsx:243-252`).
@@ -192,7 +192,7 @@ Ayrıntıları (`/imports/:id`). Ayrı Kategoriler/Markalar/Özellikler sayfası
 | `DRAFT` | **Test Edilmedi** | Yeni oluşturuldu ya da kimlik/User-Agent değişti (`MarketplaceConnectionService.cs:170,401,490`). Okuma yapmaz. |
 | `VERIFIED` | **Bağlı, Aktifleştirilmedi** | Bağlantı testi geçti. Okur, ama canlı ortamda pazaryerine yazmaz; menüde **Bağlantıyı Aktifleştir** çıkar (`IntegrationPages.tsx:145-149`). |
 | `ACTIVE` | **Bağlı ve Aktif** | Etkinleştirildi. Şart: başarılı test **ve** pasife alındıktan sonra yeni bir test (`MarketplaceConnectionService.cs:555-557`). |
-| `DISABLED` | **Pasif** | **Bağlantıyı Pasife Al** (`MarketplaceConnectionService.cs:569`). Okuma ve yazma durur; kimlik ve mağaza bilgisi kartta "Gizli" görünür. Pazaryerindeki webhook kaydı **silinmez**; onay penceresi bunu söyler, gelen bildirimler bağlantı yeniden aktifleşene dek alınmaz (sahip kararı bekliyor, 9.1). |
+| `DISABLED` | **Pasif** | **Bağlantıyı Pasife Al** (`MarketplaceConnectionService.cs:569`). Okuma ve yazma durur; kimlik ve mağaza bilgisi kartta "Gizli" görünür. **Trendyol ve Shopify webhook'u pazaryerinde de kapatılır**, bağlantı yeniden aktifleşince panel webhook'u kendiliğinden açar ve aradaki siparişleri okur; Hepsiburada webhook'u elle tanımlı olduğu için kapatılmaz (sahip kararı, 13 Kas; 2.6). |
 | `HIDDEN` | Veriler Gizli | Ayarlar'daki veri görünürlüğü; doğrudan etkinleştirilemez (`MarketplaceConnectionService.cs:552`). |
 | `DELETED` | listede yok | **Bağlantıyı Sil** sonrası; ayarları ve satırı hemen ardından kaldırılır (2.7). |
 
@@ -475,8 +475,16 @@ Bir yazma işinin gitmesi için **hepsi** açık olmalı:
 - Trendyol başarısız teslimatlar yüzünden webhook'u pasif yapabilir; Worker açılıştan 1 dk sonra ve saatte bir pasif
   webhook'ları yeniden etkinleştirir (`Worker.cs:640-660`).
 - **Webhook'u Kapat**: siparişler zamanlanmış okumayla gelmeye devam eder.
-- **Bağlantıyı Pasife Al webhook kaydını silmez** (pazaryerinde abonelik açık kalır; panel pasif bağlantının bildirimlerini
-  almaz). **Bağlantıyı Sil** ise silmeden önce Trendyol ve Shopify aboneliğini **Webhook'u Kapat**'taki çağrıyla kapatır;
+- **Bağlantıyı Pasife Al** (sahip kararı, 13 Kas 2026): **Trendyol ve Shopify**'da açık webhook'u pazaryerinde de kapatır
+  (**Webhook'u Kapat**'ın çağrısıyla) ve kapatılan tanımı `PAUSED` olarak saklar; **Bağlantıyı Aktifleştir** webhook'u
+  (**Webhook'u Aç**'ın çağrısıyla; Shopify'da aynı imza anahtarıyla) yeniden açar ve etkinleştirme açılışı aradaki siparişleri
+  okur. **Hepsiburada**'da kayıt elle yapıldığı için panelden kapatılmaz: pasifken gelen bildirimler işlenmez, bağlantı
+  aktifleşince yeniden alınır; pencere bunu söyler (`InstantNotificationService.cs:245,284,363`;
+  `MarketplaceConnectionService.cs:584-606`; pencere metni `integration-helpers.ts:285-294`). Kapatma ya da açma pazaryerinde
+  başarısız olursa bağlantı değişikliği yine yapılır, ekran notla uyarır ("Webhook'u Kapat/Aç'a basın") ve Worker kaydı
+  saatte bir yeniden dener; bağlantı durumu değişirse kayıt kapanır (`InstantNotificationService.cs:323`; `Worker.cs:656`;
+  `MarketplaceContracts.cs` `WebhookNotice`).
+- **Bağlantıyı Sil** ise silmeden önce Trendyol ve Shopify aboneliğini aynı **Webhook'u Kapat** çağrısıyla kapatır;
   çağrı olmazsa silme yine yapılır ve "webhook kaydını pazaryeri tarafında silin" notu gösterilir; Hepsiburada'da kayıt
   elle yapıldığı için panelden kaldırılamaz, notu aynı şekilde söyler (`OperationalDataMaintenanceService.cs`
   `CloseMarketplaceWebhookAsync`; `MarketplaceContracts.cs` `WebhookNotice`).
@@ -635,14 +643,20 @@ Eksik alanla açılan kart yine açılır, alan kırmızı çerçeveli kalır.
   saklı kartta verilmiş sayılır.
 - **Excel içe aktarma** taslak olmayan kartın **Desi**'sini ya da **Model Kodu**'nu silemez ("{Alan} zorunlu alandır; taslak
   olmayan üründe silinemez."; `ProductTransferService.cs:297-306`).
-- **Toplu Satışa Aç / Kapat**: kapalı kartlardan biri bile eksikse hiçbiri açılmaz; ilk 5 eksikli kart adıyla sayılır
-  (`CatalogService.cs:620-628`). **Toplu Değer Ata › Satış Durumu** ise eksikli kartı adıyla bırakır, tam olanları açar
-  (`CatalogService.BulkField.cs:211`). İki yolun farkı sahip kararı bekliyor (9.1).
-- **Klasik içe aktarma** (`/imports`): zorunlu alanı eksik yeni ürün **taslak** açılır (`ImportJobProcessor.cs:181,434`); dosyada
-  garanti ve teslimat sütunu olmadığı için bu ikisi verilmiş sayılır (kart garanti 0 ve varsayılan teslimat günüyle açılır).
-  Bunun taslak mı varsayılan mı olması gerektiği sahip kararı bekliyor (9.1).
-- **Platformdan Ürün Aktar** yeni ürünü zorunlu alan denetimi olmadan **satışa açık** açar (`MarketplaceJobProcessor.cs:8457`);
-  eksikli ürünün taslak olup olmayacağı sahip kararı bekliyor (9.1).
+- **Toplu Satışa Aç** (sahip kararı, 13 Kas: "eksik olanı atlasın, bildirsin"): zorunlu alanı tam olan kartlar satışa açılır,
+  eksikli kapalı kart **atlanır** ve adı, model koduyla ve eksik alanlarıyla bildirimde listelenir ("N ürün eksik alan
+  nedeniyle satışa açılmadı: … Ürün düzenleme ekranından tamamlayıp tekrar deneyin."; bildirimdeki **Eksik Ürünleri Göster**
+  bağlantısı kapalı kartları açar); atlanan kart seçili kalır, tekrar denenebilir (`CatalogService.cs:621-634`;
+  `required-fields-skip.ts:26`). **Toplu Değer Ata › Satış Durumu** aynı kuralı uygular (`CatalogService.BulkField.cs:215`).
+  Toplu Satışa Kapat zorunlu alana bakmaz.
+- **Klasik içe aktarma** (`/imports`): zorunlu alanı eksik yeni ürün **taslak** açılır (`ImportJobProcessor.cs:181,229,438`).
+  Dosyada **Garanti Süresi (Ay)** ve **Teslimat Süresi (Gün)** sütunları verilebilir (sahip kararı, 13 Kas): garanti 0–240 ay
+  (0 = garanti yok), teslimat 1–30 gün tam sayı; geçersiz değer satırı hatalı yapar, boş hücre ya da sütunsuz dosya garanti 0 ve
+  varsayılan teslimat günüyle açılır (`ImportFileReader.cs:281-284`; `ImportJobProcessor.cs:249-250`; şablon
+  `imports/import-template.ts`).
+- **Platformdan Ürün Aktar** yeni ürünü zorunlu alan denetimi olmadan **normal (satışa açık) kaydeder, taslak açmaz** (sahip
+  kararı, 13 Kas); eksik alan sonradan düzenleyicide tamamlanır, kayıt satışta olduğu için düzenleyicide Kaydet eksik alan varken
+  durur (`MarketplaceJobProcessor.cs:8457`).
 
 ### 3.3 Stok kodu, barkod, model kodu
 
@@ -804,8 +818,9 @@ Pasif kategoriye bağlı ürün ya da eşleme için engel yok. **Kategoriyi kald
 Başlık "Eşleştirmeler". İki sekme: **Kategori Eşleme** ve **Marka Eşleme**. Ayrı "Özellik Eşleme" ya da "Değer Eşleme"
 sekmesi yoktur; ikisi de kategori satırındaki **Kategori Özellikleri** penceresinde yapılır.
 
-**Kategori Eşleme** bölümleri:
-
+**Kategori Eşleme** bölümleri (Panel ve Platform seçicileri aynı hizadadır: iki etiket tek 18 px satırda, iki 36 px seçici aynı
+yükseklikte başlar, bağlantı simgesi seçicilerin ortasındadır; bilgi simgesi etikette satır içi 16 px'tir ve aynı kural
+Marka Eşleme'de de geçerlidir; 13 Kas, `mapping-workspace.css`):\n
 1. **Yeni Kategori Ekle**.
 2. **Yeni Kategori Eşleştirme**: **Senkronize Et** kategori listesini yeniler; platform sekmeleri (bağlantı yoksa
    "{Platform} bağlantısı gerekli"); Panel Kategorisi ↔ {Platform} Kategorisi (Shopify'da **Ürün Türü**); "Önerilen
@@ -1053,7 +1068,7 @@ Yer: İşlem Takibi › Loglar › **Ürün Hareketleri** (diğer sekme **Pazary
   marka, kategori, garanti, teslimat süresi ve açıklama değişiklikleri eski → yeni metniyle görünür. Düzenleyici, Toplu Değer
   Ata, Toplu KDV Ata ve Excel içe aktarma 12 Kas 2026'dan itibaren kaydeder; Hareket Türü süzgeci alan başına bir giriş sunar
   (`ProductFieldChangeRecorder.cs`; `product-activity.ts:154-167`). Açıklama metninin ilk 120 karakteri tutulur.
-- Üstteki beş tür anahtarı (Stok, Fiyat, Durum, İade, Ürün Bilgisi) özet çubuğudur (uygun olup olmadığı sahip kararı bekliyor, 9.1).
+- Üstteki beş tür anahtarı (Stok, Fiyat, Durum, İade, Ürün Bilgisi) özet çubuğudur (uygun olup olmadığı sahip kararı bekliyor, 9.1; `product-activity.ts:58-62`).
 
 ---
 
@@ -1114,9 +1129,10 @@ sayaçlarda gizlenir; ekranda "Paket bilgisi doğrulanmadı" yazar (`OrderModels
 | **Bekleyen İşler** (sekme satırında görünmez) | Depo kuyruğu: NEW, PROCESSING, READY_TO_SHIP, PARTIALLY_CANCELLED, MANUAL_REVIEW; yalnız etkin (`ACTIVE`/`VERIFIED`/`CONNECTED`) bağlantılarınkiler. Menü rozeti ve Genel Bakış kartı açar (`DashboardReadService.cs:48-54`). |
 | **Geciken** | Bekleyen İşler içinden kargoya verme süresi (`ShipmentDueAt`) **geçmiş** olanlar (`DashboardReadService.cs:70-73`) |
 
-Ödeme bekleyen (Trendyol) sipariş ayrı sekme olmadığı için yalnız **Tümü**'de görünür; sunucunun saydığı `RETURNED`,
-`RETURN_IN_TRANSIT`, `PAYMENT_PENDING`, `UNVERIFIED` sayaçlarının sekmesi yoktur (`MarketplaceSalesService.cs:237`; sahip
-kararı bekliyor, 9.1). Satırdaki kırmızı süre uyarısı süreye **24 saatten az kalmış** (ya da geçmiş) siparişi gösterir;
+**İade Edildi, İadede, Ödeme Bekleniyor ve Doğrulanmadı sekmeleri gelmeyecek** (sahip kararı, 13 Kas 2026): ödeme bekleyen
+(Trendyol) ve iadedeki siparişler ve sayıları **Tümü**'nde kalır; sunucu `RETURNED`, `RETURN_IN_TRANSIT`, `PAYMENT_PENDING`,
+`UNVERIFIED` sayaçlarını yine sayar ama sekme satırı bunları listelemez (`order-status-tabs.ts:3-19`;
+`MarketplaceSalesService.cs:237`). Satırdaki kırmızı süre uyarısı süreye **24 saatten az kalmış** (ya da geçmiş) siparişi gösterir;
 üzerine gelince "Süre Doluyor" yazar. "Geciken" yalnız süresi **geçmiş** siparişe denir (`order-delivery.ts:44-48`).
 Bir sipariş durumu sekmede, satırdaki halkada, dışa aktarmada ve Shopify durum penceresinde **aynı adla** yazılır: Askıda,
 İnceleme Gerekli, Ödeme Bekleniyor, Doğrulanmadı (`order-status-tabs.ts:38-50`).
@@ -1503,7 +1519,8 @@ Hata Var / İşlem Yok) ve Webhook. Alt satır: "Son 24 saatte N istek · Açık
 
 1. **Toplam Sipariş (ana sayfa) ≠ Sipariş (Raporlar)**: ana sayfa yalnız tutarı > 0 ve ana para birimindeki siparişleri sayar;
    Raporlar tutarsız ve döviz siparişler dahil hepsini (`ReportBuilder.cs:499-501`). İki ekranın ipucu da bunu söyler
-   (`DashboardPage.tsx` Toplam Sipariş; `ReportsPage.tsx` Sipariş); sayıların eşitlenmesi sahip kararı bekliyor (9.1).
+   (`DashboardPage.tsx` Toplam Sipariş; `ReportsPage.tsx` Sipariş). **Sahip kararı (13 Kas 2026): değişmedi**; döviz siparişi
+   yok ve tutarsız sipariş geçmişi sıfırlama yüzünden kontrol edilemedi, sayılar bilerek ayrı kalır.
 2. **Satış = Toplam Ciro** yalnız şu durumda kesin tutar: aynı dönem, Raporlar'da platform süzgeci yok, ana sayfada mağaza
    seçili değil, TRY dışı satış yok. Ana sayfa başlık tutarı 0 olan siparişi almaz; Raporlar alır. Satış kartının ipucu bu
    üç koşulu yazar.
@@ -1523,7 +1540,7 @@ Sekmeler: Genel Bakış, Kârlılık (yanında kâr marjı %), Hakediş, Sipari�
 | Kart | Formül |
 |---|---|
 | **Toplam Ciro** | Σ satış tutarı (TRY); iptaller yok, **iadeler düşülmez**. Alt satır "Net … · iade …" (`ReportsPage.tsx:576-578`) |
-| **Net Kâr** / **Tahmini Zarar** | 5.3.2'deki Net Kâr; "Sipariş başına" = Net Kâr ÷ tutarı olan sipariş. Maliyet hiç girilmemişse "Maliyet girilmemiş", kalan adetlerden biri maliyetsizse **"Maliyet Eksik"** (`ReportsPage.tsx:450`) |
+| **Net Kâr** / **Tahmini Net Kâr** / **Tahmini Zarar** | 5.3.2'deki Net Kâr; "Sipariş başına" = Net Kâr ÷ tutarı olan sipariş. Maliyet hiç girilmemişse "Maliyet girilmemiş", müşteride kalan adetlerin %95'inden azının maliyeti girili ise **"Maliyet Eksik"**; %95–%100 arasında kâr gösterilir ve **Tahmini** yazar (`ReportsPage.tsx:432-439,465`) |
 | **Kâr Marjı** | Net Kâr ÷ Toplam Ciro; alt satır "Reklam öncesi" = (Net Kâr + Trendyol reklamı) ÷ Toplam Ciro |
 | **Maliyete Göre Kâr** | Net Kâr ÷ Ürün Maliyeti |
 | **Sipariş** | İptal edilmemiş sipariş sayısı (tutarsızlar dahil); alt satır iptal sayısı · sepet |
@@ -1550,8 +1567,7 @@ Kesintiler, platform tablosu. **Brüt Kâr kartı yoktur**: 9 Kas'ta eklenip ayn
 | **Masraflar Sonrası** | Toplam Ciro − (İade + Komisyon + Kargo + Kesintiler) | — | `ReportsPage.tsx:443-444` |
 | **Net KDV** | Yurt içi satışların KDV'si − ürün maliyetinin KDV'si − pazaryeri giderlerinin %20 KDV'si; eksiyse devreden KDV'dir, kârı artırır | kalan satış | `ReportCosts.cs:400-411` |
 | **Reklam ve Diğer Kesintiler** | Siparişe bağlı olmayan Trendyol kesintileri: Reklam, Ceza, Erken Ödeme Kesintisi, Diğer Kesinti; işlem tarihine göre | — | `ReportsPage.tsx:705-720` |
-| **Net Kâr** = **Tahmini Net Kâr** | Masraflar Sonrası − Net KDV − Ürün Maliyeti − Reklam ve Diğer Kesintiler. **Müşteride kalan her adedin maliyeti girili değilse Net Kâr hiç gösterilmez** ("Maliyet Eksik"; hiçbiri girili değilse "Maliyet girilmemiş"); aynı
-koşul Kâr Köprüsü'nde Ürün Maliyeti adımını ve Stok'taki aylık kâr oranını da kapatır. Eksiyse kart adı **Tahmini Zarar**. | — | `ReportsPage.tsx:433-434,573`; `ReportProfitRate.cs:45` |
+| **Net Kâr** = **Tahmini Net Kâr** | Masraflar Sonrası − Net KDV − Ürün Maliyeti − Reklam ve Diğer Kesintiler. **Müşteride kalan adetlerin en az %95'inin maliyeti girili değilse Net Kâr gösterilmez** ("Maliyet Eksik"; hiçbiri girili değilse "Maliyet girilmemiş"); **%95 ve üstünde** kâr gösterilir, eksik adetlerin maliyeti satış payına göre tahmin edilir ve kart **Tahmini Net Kâr** yazar. Aynı koşul Kâr Köprüsü'nde Ürün Maliyeti adımını ve Stok'taki aylık kâr oranını da kapatır. Eksiyse kart adı **Tahmini Zarar**. | — | `ReportsPage.tsx:432-439,465`; `ReportProfitRate.cs:16-23,73` |
 | **Net Kâr / Satış Fiyatı Oranı** = Genel Bakış'taki **Kâr Marjı** | Net Kâr ÷ Toplam Ciro | — | `ReportsPage.tsx:1471-1473` |
 | **Net Kâr / Ürün Maliyeti Oranı** = **Maliyete Göre Kâr** | Net Kâr ÷ Ürün Maliyeti | — | `ReportsPage.tsx:1474-1476` |
 
@@ -1559,10 +1575,13 @@ koşul Kâr Köprüsü'nde Ürün Maliyeti adımını ve Stok'taki aylık kâr o
   stopaj, reklam, ceza düşülmez ve açıklamada yazılır.
 - Masraf Kalemleri (halka) ile Kâr Köprüsü aynı rakamları kullanır; her kategori bir kez sayılır.
 - İki dönemden biri Trendyol cari hesabını okumuş, diğeri okumamışsa kârlar karşılaştırılmaz ("—").
-- **Maliyet eksikse Net Kâr gösterilmez**: kesintiler tüm satışlardan düşüldüğü için maliyetin bir kısmıyla hesaplanan kâr
-  olduğundan yüksek çıkardı; bu yüzden müşteride kalan bütün adetlerin maliyeti girilene kadar kart "Maliyet Eksik" yazar ve
-  ipucu kaç adedin eksik olduğunu söyler (`ReportsPage.tsx:433-434,451-455`). Eşik (ör. %90 girili) yoktur; sahip kararı
-  bekliyor (9.1).
+- **Net Kâr maliyet kapsamına bağlıdır** (sahip kararı, 13 Kas 2026; önceki "tek adet bile eksikse gizli" kural kalktı):
+  kesintiler tüm satışlardan düşüldüğü için maliyetin küçük bir kısmıyla hesaplanan kâr olduğundan yüksek çıkardı. Müşteride kalan
+  adetlerin **en az %95'inin maliyeti girili** ise kâr hesaplanır; **eksik adetlerin maliyeti satış payına göre tahmin edilir**
+  (girili maliyetin, o adetlerin cirosuna oranı × maliyetsiz adetlerin cirosu; ciro bilgisi yoksa adet başına ortalama maliyet) ve
+  kart, ipucu ve Ürün Maliyeti satırı **"Tahmini"** yazar, kaç adedin eksik olduğunu söyler. **%95'in altında** kart **"Maliyet
+  Eksik"** yazar ve kâr gösterilmez (`ReportProfitRate.cs:16-23`; aynı kural ekranda `report-format.ts:19-23`;
+  `ReportsPage.tsx:432-439,458-465`). Sunucuda kâr oranı da aynı kuralı kullanır (`ReportProfitRate.cs:73`).
 - **Maliyet KDV dahil kabul edilir**: Net KDV maliyetin içindeki KDV'yi düşer. Maliyet KDV hariç girilirse Net Kâr
   olduğundan yüksek çıkar; Ürün Maliyeti, Net KDV ve Promosyon ipuçları bu varsayımı yazar (`ReportCosts.cs:409,528`;
   `ReportsPage.tsx:602,613`).
@@ -1642,8 +1661,8 @@ Sayfa **Promosyon** (üstte "Analiz"). Yalnız **Trendyol** mağazaları; silinm
   Maliyet, KDV ya da kargo tarifesinden biri yoksa kâr **bilinmiyor**. "Kâr Oranı" = kâr ÷ maliyet (`UnitProfit.cs:10-24`).
   Panelin ipucu bunu aynen söyler (`PromotionOffersPanel.tsx`).
 - Raporlardaki komisyon tarifeden değil, sipariş ve finans kayıtlarından gelir (ipucu da böyle yazar,
-  `CommissionTariffsPanel.tsx`). Satışın tarifedeki komisyonunu bulan `CommissionTariffLookup` sınıfı kayıtlıdır ama üretimde
-  hiçbir yerden çağrılmaz (`CommissionTariffService.cs:695`; `DependencyInjection.cs:84`; sahip kararı bekliyor, 9.1).
+  `CommissionTariffsPanel.tsx`). Satışın tarifedeki komisyonunu bulan `CommissionTariffLookup` sınıfı **silindi**
+  (sahip kararı, 13 Kas 2026: siparişin kendi komisyonu var; `8cd9ab12b`, `1b2be7dbd`); kodda artık yoktur.
 
 **Plus Komisyon Tarifesi, Avantajlı Ürün Etiketi, Flash Ürünler**
 
@@ -1793,7 +1812,7 @@ işlenmiş 30 gün, en geç 90 gün; kota kullanım satırları 2 gün. (canlı,
 | `TRENDYOL_CAPABILITY_PROBE` / `EFATURAM_STAGE_CAPABILITY_PROBE` | Yetki Kontrolü / Test Ortamı Yetki Kontrolü | Okuma | Kullanıcı |
 | `TRENDYOL_STAGE_TEST_ORDER` | Test Siparişi Oluşturma | Yazma | Kullanıcı (yalnız test ortamı; Hepsiburada testi de bu tipte) |
 | `*_REFERENCE_SYNC` | Kategori ve Özellik Listesi Çekme | Okuma | Zamanlayıcı (Katalog Referansları), etkinleştirme, Kullanıcı |
-| `CATALOG_STRUCTURE_IMPORT` | Ürün Yapısı Çekme | Okuma | Yalnız API (ekranda düğme yok) |
+| `CATALOG_STRUCTURE_IMPORT` | Ürün Yapısı Çekme | Okuma | Yalnız API; Kategori Eşleme'ye "Yapıyı Pazaryerinden Çek" düğmesi **eklenmeyecek** (sahip kararı, 13 Kas: yapı ürün çekiminde zaten geliyor; `MarketplaceSalesService.cs:1555-1565`) |
 | `*_ORDER_SYNC` | Yeni Sipariş Çekme | Okuma | Zamanlayıcı (Siparişler ve Paket Durumları), Kullanıcı |
 | `*_ORDER_RECOVERY_SYNC` | Sipariş Geçmişi Taraması | Okuma | Zamanlayıcı (Sipariş Geçmişi Kurtarma) |
 | `ORDER_STATUS_SYNC`, `*_ORDER_STATUS_SYNC` | Açık Sipariş Durumu Kontrolü | Okuma | Zamanlayıcı; açık paket yoksa konmaz |
@@ -1895,7 +1914,7 @@ sürdükçe saatte bir, düzelince bir "Recovered".
 
 (canlı, 12 Kas 22:10Z) Zamanlayıcılar doğru; disk %49 (94 / 193 GB). Yedek klasöründe yalnız 5 set var (hepsi 12 Kas
 20:26–21:58Z, 156–197 MB) — saklama kuralına göre önceki yarım günlerin, haftaların ve ayların setleri de durmalıydı;
-silinmeleri 12 Kas 11:36–18:02Z arasında olmuş, nedeni sahibin journal'ına bakmasını bekliyor (9.1). `backup.sh` yorumu artık
+silinmeleri 12 Kas 11:36–18:02Z arasında olmuş; sahip eski setleri kendisi silmiş olabileceğini bildirdi (13 Kas; konu kapandı). `backup.sh` yorumu artık
 gerçek boyutu söyler (set 0,3–0,5 GB, disk 193 GB). Aylık bakım: ayın ilk pazarı 04:00 İstanbul, paket güncellemesi.
 
 **Günlükler**: üretimde konteynerler journald'a yazar, deploy'larda kaybolmaz (önerilen 2 GB / 30 gün). Okuma yalnız
@@ -1907,11 +1926,18 @@ hesap için 15 dk durur, her yeni blokta iki katı, en çok 1 gün; daha önce b
 (`SignInThrottle.cs:5-19`).
 
 **CrowdSec** (saldırı engelleyici): sunucuda SSH ve Caddy günlüklerini izler. **Kurulumdan beri simülasyon modunda**: uyarı
-kaydeder, hiçbir IP'yi engellemez. Kapatmak **sahibin adımıdır**: uyarılar gözden geçirildikten sonra
-`bash deploy/scripts/install-crowdsec.sh --enforce` simülasyonu kapatır, topluluk blok listesini açar ve bir işaret
-dosyası bırakır; deploy bu betiği çalıştırmaz, geri dönüş yolu belgededir (`docs/CI-CD-DEPLOY.md` "CrowdSec";
-`deploy/scripts/install-crowdsec.sh`). (canlı, 12 Kas 22:10Z: `global simulation: enabled`; açık (simul)ban kararı:
-159.146.51.200 — TürkNet, `http-probing` — sahibin kendi IP'si olup olmadığı belirsiz, 9.1.)
+kaydeder, hiçbir IP'yi engellemez. Sahibin IP'si dinamiktir (ev ve mobil hat), bu yüzden izin listesi **IP'ye göre değil, isteğin
+şekline göre** kurulur: **panel beyaz listesi** (`ravencia/panel-whitelist`, ayrıştırıcı) panelin kendi API okumalarını,
+SignalR'ı, derlenmiş dosyalarını, simgelerini ve sayfa adreslerini HTTP senaryolarından düşürür; `.env`, `.git`, `*.php`, `/wp-*`
+gibi tarama yolları ve API'ye her `POST`/`PUT`/`DELETE` görünür kalır. 12 Kas 18:20Z'de sahibin tarayıcısının (TürkNet,
+159.146.51.200) aldığı `http-probing` (simul)ban'ının nedeni, silinmiş bir ürünü yoklayan açık sayfanın 404'leriydi.
+Beyaz liste **12 Kas 23:54Z'de simülasyon modunda kuruldu** (sahibin bildirimi); regex RE2 sınırına uyduruldu
+(`deploy/crowdsec/ravencia-panel-whitelist.yaml`; `deploy/scripts/install-crowdsec.sh`; çevrimdışı test
+`tests/ops/test-crowdsec-whitelist.sh`). **Sahip kararı (13 Kas):** `--enforce` **2–3 sessiz günden sonra** çalıştırılır; bu
+sürede `cscli alerts list`'te sahibin IP'siyle yeni `http-*` uyarısı çıkmamalı, çıkarsa yol kuralı eklenir, IP değil. Enforce
+yine **sahibin adımıdır**: `bash deploy/scripts/install-crowdsec.sh --enforce` simülasyonu kapatır, topluluk blok listesini açar
+ve bir işaret dosyası bırakır; deploy bu betiği çalıştırmaz, geri dönüş yolu belgededir (`docs/CI-CD-DEPLOY.md` "CrowdSec").
+(canlı, 13 Kas: `global simulation: enabled`; 159.146.51.200 için 12 Kas 18:20Z'den kalma (simul)ban kararı durur.)
 
 ### 6.9 Dosyalar ve saatlik kalıntı temizliği
 
@@ -1925,11 +1951,12 @@ dosyası bırakır; deploy bu betiği çalıştırmaz, geri dönüş yolu belged
      önce başka sahibi olup olmadığı yeniden denetlenir (`PurgedFileRetention.cs:17-28`).
   3. **Değiştirilmiş eski anahtarlar** silinir.
   4. **Silinmiş bağlantıların** kalan ayarları ve satırı kaldırılır (2.7).
+- Worker'ın saatlik iş temizliği **bildirim merkezinin** 7 günden eski satırlarını da siler (`JobRetentionService.cs:225`; `Worker.cs:588`; 6.10).
 - Silinen ürünlerin görselleri ve beden tabloları, Tam Sıfırlama ve panel sıfırlamasının bıraktığı dosyalar da bu yolla gider.
 
 ### 6.10 İşlem Takibi sayfası
 
-- Ana sekmeler: **İşler**, **Loglar**, **API Sağlık** (`operations/pages.tsx:588`).
+- Ana sekmeler: **İşler**, **Loglar**, **API Sağlık**, **Kuyruk ve Kota**, **Bildirimler** (`operations/pages.tsx:53,590-596`).
 - **İşler kategori sekmeleri** (`job-categories.ts:33-41`): Tüm İşlemler; Sipariş/Kargo (sipariş, paket, kargo, etiket,
   webhook; fatura işleri hariç); Fiyat/Stok; Ürün/Yayın (ürün, katalog, içe aktarma, kategori, marka; soru eşitlemesi de
   burada); Faturalar (fatura, E-Faturam, finans, hakediş; paket fatura kontrolü ve Fatura Süresi Taraması da); İadeler; Sistem
@@ -1940,19 +1967,28 @@ dosyası bırakır; deploy bu betiği çalıştırmaz, geri dönüş yolu belged
 - **Loglar**: **Ürün Hareketleri** (stok, fiyat, durum, iade hareketleri; 3.14) ve **Pazaryeri Gönderimleri** (pazaryerine
   gönderilen fiyat ve stok satırları) (`OperationLogs.tsx:12-19`).
 - Bazı düğmeler yalnız Sahip ve Yönetici'ye açılır (`operations/pages.tsx:425`).
-- Kuyruk ve kota ölçüm uçları (`/jobs/metrics`, `/metrics/lanes`, `/metrics/quota`) sunucuda var ama hiçbir ekran çağırmıyor;
-  şerit doluluğu ve kota kullanımı panelden görülemez (`JobEndpoints.cs:36-46`; sahip kararı bekliyor, 9.1).
+- **Kuyruk ve Kota** (sahip kararı, 13 Kas 2026; salt okunur, 30 sn'de bir yenilenir): worker şeritlerinin doluluğu (çalışan iş / yuva,
+  yuvayı bekleyen), seçilen pencerenin işleri duruma ve iş tipine göre, her mağazanın pazaryeri kotasının son saatteki kullanımı
+  (`QueueQuotaView.tsx`; uçlar `/jobs/metrics`, `/jobs/metrics/lanes`, `/jobs/metrics/quota`, `/jobs/counts`:
+  `JobEndpoints.cs:32-46`).
+- **Bildirimler** (bildirim merkezi; sahip kararı, 13 Kas 2026): zilin gösterdiği **her bildirim** sunucuda **7 gün** saklanır;
+  zilden temizlenenler "Zilden Kaldırıldı" etiketiyle, hesap geneli uyarılar "Herkese" etiketiyle kalır. Yeniden eskiye, sayfada
+  50 kayıt; kategori, önem, tarih, durum (Okunmuş/Okunmamış) ve arama süzgeçleri vardır; ilk sayfa 30 sn'de bir yenilenir.
+  Salt Okunur dahil her rol bildirimleri okur; yazma ve okundu işaretleme çalışan rollerindir. 7 günü geçen satırı Worker'ın
+  saatlik temizliği siler (`NotificationCenter.tsx`; `NotificationEndpoints.cs:12-40`; `PanelNotificationContracts.cs:8`;
+  `JobRetentionService.cs:225`; `RoleAuthorizationMiddleware.cs:116`).
 
 ---
 
 ## 7. Sistem Ayarları, Kullanıcılar, Bildirimler ve Veri Temizliği
 
-**Sistem Ayarları** beş grup sekmesinden oluşur; bir grubun birden çok bölümü varsa grup içinde ikinci sekme satırı çıkar.
-Açık bölüm adreste `?tab=` ile tutulur; bilinmeyen değer Authenticator'ı açar (`SystemSettingsPage.tsx:41-58`).
+**Sistem Ayarları** altı grup sekmesinden oluşur; bir grubun birden çok bölümü varsa grup içinde ikinci sekme satırı çıkar.
+Açık bölüm adreste `?tab=` ile tutulur; bilinmeyen değer Authenticator'ı açar (`SystemSettingsPage.tsx:41-60`).
 
 | Grup | Bölüm (`tab`) | Kim görür / değiştirir |
 |---|---|---|
 | Güvenlik ve Oturumlar | Authenticator (`auth`), Oturumlar (`sessions`), Alarm Bildirimleri (`alerts`) | Authenticator ve Oturumlar: herkes, kendi hesabı için. Alarm Bildirimleri: Sahip ve Yönetici |
+| Kullanıcılar | Kullanıcılar (`users`) | Yalnız Sahip ve Yönetici (okuma dahil) |
 | Veri | Veritabanı Temizliği (`database`) | Sahip ve Yönetici |
 | Yapay Zekâ | Yapay Zekâ (`ai`) | Sahip ve Yönetici |
 | Kargo Ayarları | Gönderici ve Yazdırma (`sender`), Etiket Ölçüleri (`dims`), Etiket Tasarımı (`designer`) | Okuma herkes; kaydetme Sahip ve Yönetici |
@@ -2019,9 +2055,9 @@ seçilir; Ürünler seçilince Stok ve Fiyatlar da seçilir; bir kategori kaldı
 | | Marka Listesi | Markalar ve marka eşlemeleri; ürünlerin marka bağı boşalır |
 | Pazaryeri Kayıtları | Pazaryeri Referans Listeleri | İndirilen kategori, özellik ve marka listeleri |
 | | Promosyon, Komisyon ve Reklam Dosyaları | Komisyon tarifeleri, promosyon dosyaları, reklam raporları |
-| Sistem Kayıtları | İşlem Takibi | Bütün işler ve denemeleri (çalışan sıfırlama işi hariç), mutabakat, dış işlem kayıtları, **eşitleme imleçleri** (sonraki eşitleme baştan başlar), bağlantı beklemeleri (`PanelFactoryResetService.cs:229-239`) |
-| | Loglar | İşlem ve denetim logu, API istek kayıtları, **yapay zekâ kullanım kaydı**, ürün etkinlik logu, fiyat/stok gönderim logu, gelen webhook kayıtları |
-| | Bildirimler | Sorun kayıtları ve değişiklik olayları; iş bitince **bu tarayıcıdaki** zil geçmişi de silinir |
+| Sistem Kayıtları | İşlem Takibi | Bütün işler ve denemeleri (çalışan sıfırlama işi hariç), mutabakat, dış işlem kayıtları, **değişiklik olayları** (iç olaylar; eskiden Bildirimler'deydi, `PanelFactoryResetInventory.cs:156`), **eşitleme imleçleri** (sonraki eşitleme baştan başlar), bağlantı beklemeleri (`PanelFactoryResetService.cs:229-239`) |
+| | Loglar | İşlem ve denetim logu (**hesaba bağlanamamış giriş denemeleri** dahil: kiracısız kayıtlar, kullanıcısı yalnız bu hesabın üyesiyse; kullanıcısı bilinmeyenler ancak tek hesap varsa), API istek kayıtları, **yapay zekâ kullanım kaydı**, ürün etkinlik logu, fiyat/stok gönderim logu, gelen webhook kayıtları |
+| | Bildirimler | Sorun kayıtları ve alarmlar, **bildirim merkezi** (`ops.panel_notifications`); iş bitince **bu tarayıcıdaki** zil geçmişi de silinir (`PanelFactoryResetInventory.cs:50,173`) |
 | | Raporlar ve Özet Tabloları | Pano özeti, günlük ciro, düşük stok, eşitleme durumu; sonra yeniden hesaplanır |
 | | Eski Bağlantı Kayıtları ve İptal Edilmiş Anahtarlar | Silinmiş bağlantıların kalan ayar satırları ve satırın kendisi, iptal edilmiş anahtarlar (`PanelFactoryResetService.cs:241-279`). 12 Kas'tan beri bunları saatlik temizlik de kendiliğinden siler; kategori çoğunlukla boş gelir. |
 
@@ -2032,6 +2068,9 @@ seçilir; Ürünler seçilince Stok ve Fiyatlar da seçilir; bir kategori kaldı
 - Her bağlantının eşitleme kilitleri alınır; tablolar 20.000 satırlık partilerle, önce alt sonra üst tablolar silinir.
 - Silinen kayıtların kullandığı ve başka hiçbir kaydın kullanmadığı dosyalar işaretlenir; saatlik temizlik siler.
 - **Pazaryerine ve e-fatura sağlayıcısına hiçbir şey gönderilmez.**
+- Sıfırlama **kendi izlerini kalan kayıt saymaz**: kendi işi ve denemesi, tek denetim satırı, çıkardığı olaylar ve yeniden
+  kurulan boş pano özeti sayılan "kalan" kayıtlara girmez; kiracısız giriş kayıtları Loglar'la silinir
+  (`PanelFactoryResetService.cs:166,248-256,258-270`).
 - Sonuç denetim loguna tek satır yazılır. Yarıda kalan iş yeniden çalışınca kaldığı yerden devam eder. İlerleme sayfanın
   altındaki "Sıfırlama İlerlemesi" alanında.
 - **Bütün veri türleri seçilirse** bu Paneli Tamamen Sıfırla'dır: bu oturum dışındaki **bütün oturumlar kapanır**, dosyaların
@@ -2042,7 +2081,7 @@ seçilir; Ürünler seçilince Stok ve Fiyatlar da seçilir; bir kategori kaldı
 
 **b) Pazaryerleri (toplu Tam Sıfırlama).** Silinmemiş ve gizlenmemiş her pazaryeri bağlantısı listelenir; E-Faturam listede
 yoktur (onun kayıtları faturalardır). Pasif bağlantının satırında "Bağlantı pasif." yazar. Seçilen bağlantının Tam
-Sıfırlaması 2.7'deki listeyi siler; bağlantı ayarları korunur. Satırdaki sayı ürün bağlarını toplama katmaz. Bağlantının
+Sıfırlaması 2.7'deki listeyi siler (**eşleme şablonlarını ve Platform Varsayılanları'nı da**; kural 10.6); bağlantı ayarları korunur. Satırdaki sayı ürün bağlarını toplama katmaz. Bağlantının
 Tam Sıfırlama sayıları ve ilerlemesi de yalnız Sahip ve Yönetici içindir (`RoleAuthorizationMiddleware.cs:72`). Sayfadaki
 bilgi kutusu artık "Yukarıdaki veri türleri bütün pazaryerleri için birlikte silinir; yalnız bir pazaryeri için Pazaryerleri
 bölümünü ya da bağlantının Verileri Sıfırla menüsünü kullanın" der.
@@ -2059,7 +2098,7 @@ bölümünü ya da bağlantının Verileri Sıfırla menüsünü kullanın" der.
 - 19 kategorinin tamamını seçmekle aynı iştir (sunucu ikisini ayırmaz). **Silinenler** listesi kategori sayılarını gösterir.
 - **Kalanlar** listesi: "Hesap, kullanıcılar ve bu oturum", "Entegrasyon bağlantıları ve giriş bilgileri", "Sistem ayarları"
   (`PanelFactoryResetInventory.cs:85-90`).
-- Uyarılar: geri alınamaz; bu oturum açık kalır, diğer cihazlardaki oturumlar kapanır. **Açık bağlantılar sıfırlamadan sonra
+- Uyarılar: **Geri alınamaz** notu sade metindir (yalnız uyarı simgesi, sarı bant yok; `SystemSettingsPage.tsx:249`; `PanelFactoryResetSection.tsx:97`; `settings-sade.css`); bu oturum açık kalır, diğer cihazlardaki oturumlar kapanır. **Açık bağlantılar sıfırlamadan sonra
   pazaryerinin izin verdiği tarih aralığındaki siparişleri yeniden çeker**; hiç veri gelmesin isteniyorsa önce bağlantılar
   kapatılmalı.
 
@@ -2126,7 +2165,7 @@ ve pasif bağlantıların ayarlarına dokunulmaz.
 
 **Üç ayrı bildirim türü vardır, karıştırılmamalı:**
 
-1. **Zil (Bildirim geçmişi)** — tarayıcıda tutulur (`notifications.ts:134-139`):
+1. **Zil (Bildirim geçmişi)** — görünen liste tarayıcıda tutulur (`notifications.ts:134-139`); zilin gösterdiği her bildirimin, okundu ve temizlendi bilgisinin bir kopyası ayrıca sunucuya gider ve **7 gün** **İşlem Takibi › Bildirimler**'de durur (6.10); zilden Temizle yalnız zilden kaldırır:
    - Hesap ve kullanıcı başına ayrı; başka cihazda görünmez; en çok **20** kayıt; 5 dakika içinde tekrarlanan aynı bildirim
      tek kayıtta birleşir ("N×").
    - Yazılanlar: her hata; sonuç doğuran başarılar (gönderim, iade kararı, fatura, etiket, kargo, paket, stok, yayın, silme,
@@ -2148,8 +2187,15 @@ ve pasif bağlantıların ayarlarına dokunulmaz.
 
 - **Roller**: Sahip (`OWNER`), Yönetici (`ADMINISTRATOR`), İşletme (`OPERATIONS`), Muhasebe (`ACCOUNTING`), Salt Okunur
   (`READONLY`) (`RoleAuthorizationMiddleware.cs:143-151`).
-- **Panelde kullanıcı ekleme, rol atama ya da parola sıfırlama ekranı yok**; sunucuda da uç noktası bulunamadı. Sahip hesabı
-  ilk kurulumda zorunlu parola değişikliğiyle oluşturulur (`BootstrapService.cs:47-53`). (canlı: tek üyelik, Sahip.)
+- **Kullanıcı yönetimi: Ayarlar › Kullanıcılar** (sahip kararı, 13 Kas 2026; **yalnız Sahip ve Yönetici**, okuma dahil;
+  `SystemSettingsPage.tsx:45,538`; `RoleAuthorizationMiddleware.cs:83`). Listede ad, e-posta, rol, iki adımlı doğrulama, son giriş
+  ve durum görünür. İşlemler: **ekleme** (yeni hesap tek seferlik parola alır, ilk girişte değiştirilir; var olan hesap çalışma
+  alanına katılır; e-posta daveti gönderilmez), rol değiştirme, parola sıfırlama (yeni tek kullanımlık parola, oturumlar kapanır),
+  iki adımlı doğrulamayı sıfırlama, Pasife Al / Etkinleştir ve oturumları kapatma. Her değişiklik çağıranın parolasını (ve
+  doğrulama açıksa kodunu) yeniden ister ve denetim loguna yazılır. Korumalar: kimse kendi hesabını burada değiştirmez, Yönetici
+  Sahip'e dokunamaz ya da Sahip yapamaz, son etkin Sahip'in rolü düşürülemez ya da pasife alınamaz
+  (`UserManagementEndpoints.cs:49-56,111,152,247,256`). Sahip hesabı ilk kurulumda zorunlu parola değişikliğiyle oluşturulur
+  (`BootstrapService.cs:47-53`).
 
 | İşlem | İzinli roller | Kaynak (`RoleAuthorizationMiddleware.cs`) |
 |---|---|---|
@@ -2157,7 +2203,8 @@ ve pasif bağlantıların ayarlarına dokunulmaz.
 | Fatura PDF ve belgelerini açma | Sahip, Yönetici, İşletme, Muhasebe | `:64` |
 | Etiket ve gönderi belgeleri, içe aktarma hata dosyası | Sahip, Yönetici, İşletme | `:66-67` |
 | Pazaryerini canlı sorgulayan okumalar | Salt Okunur hariç hepsi | `:68-72` |
-| Alarm Bildirimleri, Yapay Zekâ, Paneli Tamamen Sıfırla (okuma dahil) | Sahip, Yönetici | `:74-78` |
+| Alarm Bildirimleri, Yapay Zekâ, Kullanıcılar, Paneli Tamamen Sıfırla (okuma dahil) | Sahip, Yönetici | `:74-83` |
+| Bildirim merkezi (okuma, okundu, zilden kaldırma) | Çalışan roller yazar; Salt Okunur okur | `:116` |
 | Sipariş işleri (işleme alma, paket vb.) | Sahip, Yönetici, İşletme | `:107-108` |
 | "Etiket yazdırıldı" kaydı | Sahip, Yönetici, İşletme, Muhasebe | `:107-108` |
 | Ürün, katalog, stok, eşleştirme, iade ve soru işleri | Sahip, Yönetici, İşletme | `:109-110,129-130` |
@@ -2332,43 +2379,17 @@ Ekranda geçen ad kalın yazılıdır. "Kaçınılacak" sütunu, aynı şey içi
 ## 9. Bilinen Tutarsızlıklar
 
 12 Kasım 2026'da beş düzeltme turu (siparişler/iadeler/faturalar/stok, entegrasyonlar, raporlar, sistem/ayarlar, katalog)
-`origin/main`'e girdi ve canlıya çıktı (`4fc160b69`). Önceki sürümdeki 67 maddenin 53'ü kodda giderildi ve ilgili bölümler
-(1–7) güncel davranışı anlatacak biçimde düzeltildi; 9'u sahip sorusuna, 5'i açık teknik nota dönüştü. Kodun yeni
-durumundan 5 yeni soru doğdu. "Doğrulanmadı" yazanlar koddan çıkarılmıştır, canlıda denenmemiştir.
+`origin/main`'e girdi ve canlıya çıktı (`4fc160b69`). Önceki sürümdeki 67 maddenin 53'ü kodda giderildi; 14 sahip sorusunun
+tamamı **13 Kasım 2026'da sahip tarafından yanıtlandı** ve kararlar ilgili bölümlere ile 10. bölüme yazıldı. Yalnız bir madde
+(Ürün Hareketleri özeti) belirsiz kaldı. "Doğrulanmadı" yazanlar koddan çıkarılmıştır, canlıda denenmemiştir.
 
 ### 9.1 Sahip Kararı Bekleyenler
 
-Her satır tek soru; sahip karar verene kadar mevcut davranış bölümde anlatıldığı gibi sürer.
+Sahibin 13 Kasım 2026'da yanıtladığı 14 sorunun 13'ü kapandı (kararlar ilgili bölümlerde ve 10. bölümün 8. kuralında);
+mevcut davranış sürer.
 
-1. **İade Edildi / İadede / Ödeme Bekleniyor / Doğrulanmadı sekmeleri geri gelsin mi?** Sunucu bu dört durumu sayar ama
-   Siparişler'de sekmeleri yoktur; ödeme bekleyen Trendyol siparişi yalnız Tümü'de görünür (4.2; `MarketplaceSalesService.cs:237`).
-2. **Pasife Al webhook kaydını da pazaryerinde kapatsın mı?** Bağlantıyı Sil kapatır, Pasife Al kapatmaz; pencere bunu
-   söyler (2.6; `IntegrationPages.tsx` Pasife Al penceresi).
-3. **Net Kâr maliyet eksikse tamamen gizli; bir eşik (ör. %90 maliyeti girili) olsun mu?** Şimdi tek adet bile eksikse "Maliyet
-   Eksik" yazar (5.3.2; `ReportsPage.tsx:433-434`).
-4. **Ana sayfa Toplam Sipariş Raporlar'daki Sipariş'ten farklı; döviz ve tutarsız siparişler de sayılsın mı?** Ana sayfa
-   yalnız tutarı olan ana para birimli siparişi sayar; iki ekranın ipucu farkı yazar (5.2.5; `ReportBuilder.cs:499-501`).
-5. **`CommissionTariffLookup` silinsin mi, devreye mi alınsın?** Siparişin komisyonunu yüklü tarifeden bulan sınıf kayıtlı ama
-   hiçbir yerden çağrılmıyor; raporlar komisyonu sipariş ve finans kayıtlarından alıyor (5.4; `CommissionTariffService.cs:695`).
-6. **Kuyruk ve kota ölçümleri için bir ekran mı yapılsın, uçlar mı kaldırılsın?** `/jobs/metrics`, `/metrics/lanes`,
-   `/metrics/quota` hiçbir ekrandan çağrılmıyor (6.10; `JobEndpoints.cs:36-46`).
-7. **Kullanıcı yönetimi ekranları (ekleme, rol atama, parola sıfırlama, doğrulamayı kapatma) yapılsın mı, hangi rollerle?**
-   Şimdi hiçbiri yok; Parolamı Unuttum yalnız yönlendirir (1.4, 7.1, 7.5).
-8. **CrowdSec `--enforce` çalıştırılsın mı: 159.146.51.200 (TürkNet, `http-probing`, 12 Kas 18:20Z) sahibin kendi IP'si mi?**
-   Öyleyse önce `ravencia-private` izin listesine eklenmeli; sonra `install-crowdsec.sh --enforce` (6.8).
-9. **Platformdan Ürün Aktar zorunlu alanı eksik yeni ürünü taslak mı açsın?** Şimdi satışa açık açar; klasik içe aktarma taslak
-   açar (3.2; `MarketplaceJobProcessor.cs:8457`).
-10. **Klasik `/imports` dosyasında garanti ve teslimat sütunu yok: bu iki alan varsayılanla verilmiş mi sayılsın, ürün taslak mı
-    açılsın?** Şimdi verilmiş sayılır (3.2; `ImportJobProcessor.cs:434`).
-11. **Toplu Satışa Aç: zorunlu alanı tam olan kartlar açılsın, eksikler adıyla kalsın mı?** Şimdi tek eksik kart varsa hiçbiri
-    açılmaz; Toplu Değer Ata › Satış Durumu tam olanları açar (3.2; `CatalogService.cs:620-628`).
-12. **Kategori Eşleme'ye "Yapıyı Pazaryerinden Çek" düğmesi eklensin mi?** `CATALOG_STRUCTURE_IMPORT` (yayındaki ürünlerden
-    kategori/özellik yapısı çıkarma) yalnız API'den başlar (6.4; `MarketplaceSalesService.cs:1555-1565`).
-13. **Ürün Hareketleri'ndeki beş türlük özet çubuğu (Stok, Fiyat, Durum, İade, Ürün Bilgisi) uygun mu?** (3.14;
-    `product-activity.ts:58-62`)
-14. **Yedek setlerinin 12 Kas 11:36–18:02Z arasında silinmesinin nedeni nedir?** Sahibin journal'a bakması gerekir; canlıda 12 Kas
-    22:10Z'de yalnız 20:26–21:58Z arası 5 set duruyor, saklama kuralına göre eskileri de durmalıydı (6.8;
-    `deploy/backup/backup.sh:89-121`). Yedek yaşı uyarısı (30 saat) bunu yakalamaz.
+1. **Ürün Hareketleri'ndeki beş türlük özet çubuğu (Stok, Fiyat, Durum, İade, Ürün Bilgisi) uygun mu?** Sahip yanıtı belirsiz;
+   çubuk şimdiki hâliyle durur (3.14; `product-activity.ts:58-62`).
 
 ### 9.2 Açık Teknik Notlar
 
@@ -2384,7 +2405,6 @@ Karar değil, bilinen kalan işler ya da doğrulanamayanlar.
 4. **N11 iade sayfalaması**: 20'den fazla iade olan pencerede yalnız ilk sayfa okunabilir — doğrulanmadı
    (`docs:n11:30-32`).
 5. **Bağlantıyı Sil sonrası kalan finans kayıtlarının raporlara etkisi** doğrulanmadı (2.7; `ConnectionLeftovers.cs:10-16`).
-   Kodda kalan bir yorum (`ReportsPage.tsx` Money.uncosted) eski numarayla "9.1.3" diye bu kılavuza gönderme yapar; doğrusu 5.3.2.
 
 ---
 
@@ -2414,7 +2434,28 @@ Sahibin verdiği ve sistemin uyduğu kararlar. Bir değişiklik bunlardan birine
 7. **Yeni promosyon ya da komisyon dosyası eskisini değiştirir.** Plus, Avantajlı Ürün Etiketi ve Flash dosyalarında önceki
    dosya koşulsuz silinir; Ürün Komisyon Tarifesi'nde günleri çakışan ve süresi geçmiş dosyalar silinir, yürürlükteki başka
    haftanın tarifesi bitene kadar kalır (5.4).
-8. Diğer yürürlükteki kararlar (ilgili bölümde ayrıntılı):
+8. **13 Kasım 2026 kararları** (sahibin 14 soruya yanıtı):
+   - **İade Edildi / İadede / Ödeme Bekleniyor / Doğrulanmadı sekmeleri gelmeyecek**; bu siparişler ve sayıları Tümü'dedir
+     (4.2; `order-status-tabs.ts:3-19`).
+   - **Pasife Al** Trendyol ve Shopify webhook'unu pazaryerinde kapatır, **Aktifleştir** yeniden açar ve aradaki siparişleri okur;
+     Hepsiburada webhook'u elle kalır (2.6; `InstantNotificationService.cs:245,284`; `3e91997d2`).
+   - **Net Kâr**: maliyet kapsamı ≥ %95 ise gösterilir, eksik maliyet satış payına göre tahmin edilir ve "Tahmini" yazar; altında
+     "Maliyet Eksik" (5.3.2; `ReportProfitRate.cs:16-23`; `b9af15939`).
+   - **Toplam Sipariş** (ana sayfa) değişmedi; Raporlar'daki Sipariş'ten ayrı kalır (5.2.5; `ReportBuilder.cs:499-501`).
+   - **`CommissionTariffLookup` silindi**: siparişin komisyonu kendi kaydında (5.4; `8cd9ab12b`, `1b2be7dbd`).
+   - **Kuyruk ve Kota** ekranı ve **Bildirimler** merkezi İşlem Takibi'ndedir; bildirimler 7 gün saklanır (6.10; `5783e80f`).
+   - **Kullanıcı yönetimi** Sistem Ayarları › Kullanıcılar'dadır, yalnız Sahip ve Yönetici (7.5; `91997d416`).
+   - **CrowdSec**: panel beyaz listesi isteğin şekline göre kuruldu (12 Kas 23:54Z, simülasyon); sahibin IP'si dinamik olduğu için
+     IP izin listesi yok; `--enforce` 2–3 sessiz günden sonra, sahibin adımıyla (6.8; `deploy/crowdsec`,
+     `docs/CI-CD-DEPLOY.md`).
+   - **Pazaryerinden aktarılan eksik alanlı ürün normal (taslak değil) kaydedilir**; klasik içe aktarmaya Garanti/Teslimat
+     sütunları eklendi; **Toplu Satışa Aç eksikleri atlar ve bildirir** (3.2; `c5dec4c00`).
+   - Kategori Eşleme'ye **"Yapıyı Pazaryerinden Çek" eklenmeyecek**; yapı ürün çekiminde gelir (6.4).
+   - Yedek setlerinin silinmesi: sahip eskileri kendisi silmiş olabilir; konu kapandı (6.8).
+   - **Fabrika sıfırlaması kendi izlerini saymaz** ve kiracısız giriş loglarını siler (7.2; `b07ac9686`, `6a8687290`);
+     Ayarlar › Veri'de "Geri alınamaz" notu sade metindir (7.2; `e1ce7e96`); Eşleştirmeler'de Panel ve Platform seçicileri
+     aynı hizadadır (3.10; `987add449`).
+9. Diğer yürürlükteki kararlar (ilgili bölümde ayrıntılı):
    - Rezervasyon tutulmaz; sipariş okununca stok düşer, eksik adet yalnız bilgi amaçlıdır (30 Eki; 4.5).
    - İade faturası panelde kesilmez; kısmi iade faturayı yerinde bırakır, tam iade düzeltme bekletir (6 Kas; 4.4).
    - Fatura kesme, iptal ve iletim yalnız Sahip ve Yönetici (6 Kas; 7.5).
@@ -2425,10 +2466,10 @@ Sahibin verdiği ve sistemin uyduğu kararlar. Bir değişiklik bunlardan birine
    - 11 zorunlu alan; fiyatlar 0'dan büyük; taslak eksik olabilir, satıştaki kartın eksikli kaydı durur (10–11 Kas; 3.2).
      Bu kural artık **sunucuda** da tutulur (düzenleyici, Toplu Değer Ata, Excel ve API aynı kuralı görür); **desi** her yolda
      0'dan büyük ve en çok **9.999**'dur (12 Kas; `ProductRequiredFields.cs`, `ProductDesi.cs`).
-   - Maliyet eksikse **Net Kâr gösterilmez** ("Maliyet Eksik"): yanlış rakam eksik rakamdan kötüdür; maliyet KDV dahil kabul
-     edilir ve ekran bunu yazar (12 Kas; 5.3.2).
+   - Maliyet kapsamı %95'in altındaysa **Net Kâr gösterilmez** ("Maliyet Eksik"): yanlış rakam eksik rakamdan kötüdür; maliyet
+     KDV dahil kabul edilir ve ekran bunu yazar (12 Kas; eşik 13 Kas'ta %95 oldu; 5.3.2).
    - Raporlar dönem düğmeleri ve ana sayfa aynı **İstanbul günüyle** çalışır (12 Kas; 5.2.5).
-   - **Bağlantıyı Sil** Trendyol ve Shopify webhook kaydını pazaryerinde de kapatır; olmazsa nota yazar (12 Kas; 2.6).
+   - **Bağlantıyı Sil** Trendyol ve Shopify webhook kaydını pazaryerinde de kapatır; olmazsa nota yazar (12 Kas; 2.6). Pasife Al için kural 8.
    - Ayarlar › Veri'de **bütün veri türleri** seçilirse bu Paneli Tamamen Sıfırla sayılır ve **PANELİ SIFIRLA** ister; sayfa
      yalnız Sahip ve Yönetici'ye açıktır (12 Kas; 7.2).
    - **Hızlı Güncelle** seçimi hesap başına sunucuda tutulur (12 Kas; 3.13).
