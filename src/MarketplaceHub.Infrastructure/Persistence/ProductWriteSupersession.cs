@@ -49,6 +49,68 @@ public static class ProductWriteSupersession
         catch (JsonException) { return Guid.Empty; }
     }
 
+    // Scan C-7 (13 Nov 2026): a later update closed an earlier failed one whatever it sent, so refused pictures were
+    // "superseded" by a later update that sent only the description and the product kept selling with its old pictures.
+    // A later product update closes an earlier one only when it sent every part the earlier one did: each of the four
+    // requests (unapproved, content, variants, delivery) the earlier one carried, with every field it carried there
+    // (pictures, title, attributes...). Identity keys (barcode, content id, SKUs) are not fields. A publish or an
+    // archive sends the whole card, so it is not compared.
+    private static readonly string[] UpdateParts = ["UnapprovedPayloadJson", "ApprovedContentPayloadJson", "ApprovedVariantPayloadJson", "ApprovedDeliveryPayloadJson"];
+    private static readonly HashSet<string> IdentityKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "barcode", "contentId", "productMainId", "merchantId", "merchantSku", "hbSku", "stockCode", "sku", "id", "items", "payload", "skus"
+    };
+
+    public static bool CoversSentParts(string jobType, string failedPayloadJson, string laterPayloadJson)
+    {
+        if (!string.Equals(jobType, MarketplaceJobTypes.ProductUpdate, StringComparison.Ordinal)) return true;
+        var failed = SentParts(failedPayloadJson);
+        if (failed is null) return true;
+        var later = SentParts(laterPayloadJson);
+        return later is not null && failed.IsSubsetOf(later);
+    }
+
+    // "part:field" for every field a product update's requests carry; null when the payload cannot be read.
+    internal static HashSet<string>? SentParts(string payloadJson)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            if (document.RootElement.ValueKind != JsonValueKind.Object) return null;
+            var parts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var part in UpdateParts)
+            {
+                if (!document.RootElement.TryGetProperty(part, out var raw) || raw.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(raw.GetString())) continue;
+                using var inner = JsonDocument.Parse(raw.GetString()!);
+                Collect(inner.RootElement, part, parts, 0);
+            }
+            return parts;
+        }
+        catch (JsonException) { return null; }
+
+        static void Collect(JsonElement element, string part, HashSet<string> parts, int depth)
+        {
+            if (depth > 4) return;
+            if (element.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in element.EnumerateArray())
+                {
+                    if (item.ValueKind == JsonValueKind.String) parts.Add($"{part}:={item.GetString()}");
+                    else Collect(item, part, parts, depth + 1);
+                }
+                return;
+            }
+            if (element.ValueKind != JsonValueKind.Object) return;
+            foreach (var property in element.EnumerateObject())
+            {
+                if (!IdentityKeys.Contains(property.Name)) parts.Add($"{part}:{property.Name}");
+                // The item lists (items, n11's payload.skus) are walked; a field's own value is not.
+                if (property.Name is "items" or "payload" or "skus" or "Items" or "Fields" or "fields")
+                    Collect(property.Value, part, parts, depth + 1);
+            }
+        }
+    }
+
     // Plain words only (owner, 7 Nov 2026): no job id, no raw code; the earlier error stays in the job's attempts.
     public static string Summary(DateTimeOffset laterCreatedAt)
     {
@@ -66,7 +128,7 @@ public static class ProductWriteSupersession
                 .Select(x => new { x.Id, x.TenantId, ConnectionId = x.ConnectionId!.Value, x.JobType, x.Status, x.CreatedAt, x.LastErrorCode, x.PayloadJson })
                 .Take(500)
                 .ToListAsync(cancellationToken))
-            .Select(x => new { x.Id, x.TenantId, x.ConnectionId, x.JobType, x.Status, x.CreatedAt, x.LastErrorCode, ProductId = ProductIdOf(x.PayloadJson) })
+            .Select(x => new { x.Id, x.TenantId, x.ConnectionId, x.JobType, x.Status, x.CreatedAt, x.LastErrorCode, x.PayloadJson, ProductId = ProductIdOf(x.PayloadJson) })
             .Where(x => x.ProductId != Guid.Empty)
             .ToList();
         var closed = 0;
@@ -75,18 +137,22 @@ public static class ProductWriteSupersession
             var productText = product.Key.ProductId.ToString("D");
             var earliest = product.Min(x => x.CreatedAt);
             // The payload names the product; the text match narrows the rows, the parsed id decides.
-            var latest = (await db.IntegrationJobs.AsNoTracking()
+            var successes = (await db.IntegrationJobs.AsNoTracking()
                     .Where(x => x.TenantId == product.Key.TenantId && x.ConnectionId == product.Key.ConnectionId && x.JobType == product.Key.JobType
                         && x.Status == JobStatus.Succeeded && x.CreatedAt > earliest && x.PayloadJson.Contains(productText))
                     .OrderByDescending(x => x.CreatedAt)
                     .Select(x => new { x.Id, x.CreatedAt, x.PayloadJson })
                     .Take(20)
                     .ToListAsync(cancellationToken))
-                .FirstOrDefault(x => ProductIdOf(x.PayloadJson) == product.Key.ProductId);
-            if (latest is null) continue;
-            foreach (var job in product.Where(x => Supersedes(
-                         (x.ConnectionId, x.JobType, x.ProductId, x.Status, x.CreatedAt),
-                         (product.Key.ConnectionId, product.Key.JobType, product.Key.ProductId, JobStatus.Succeeded, latest.CreatedAt))))
+                .Where(x => ProductIdOf(x.PayloadJson) == product.Key.ProductId)
+                .ToList();
+            if (successes.Count == 0) continue;
+            foreach (var (job, latest) in product
+                         .Select(x => (Job: x, Latest: successes.FirstOrDefault(later => later.CreatedAt > x.CreatedAt && CoversSentParts(x.JobType, x.PayloadJson, later.PayloadJson))))
+                         .Where(pair => pair.Latest is not null && Supersedes(
+                             (pair.Job.ConnectionId, pair.Job.JobType, pair.Job.ProductId, pair.Job.Status, pair.Job.CreatedAt),
+                             (product.Key.ConnectionId, product.Key.JobType, product.Key.ProductId, JobStatus.Succeeded, pair.Latest.CreatedAt)))
+                         .Select(pair => (pair.Job, pair.Latest!)))
             {
                 var summary = Summary(latest.CreatedAt);
                 closed += await db.IntegrationJobs
