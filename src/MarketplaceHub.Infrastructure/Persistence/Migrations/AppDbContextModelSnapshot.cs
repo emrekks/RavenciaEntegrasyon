@@ -701,6 +701,8 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "ParentId", "NormalizedName")
                         .IsUnique();
 
+                    NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("TenantId", "ParentId", "NormalizedName"), false);
+
                     b.ToTable("categories", "catalog");
                 });
 

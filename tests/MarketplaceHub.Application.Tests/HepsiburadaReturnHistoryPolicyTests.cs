@@ -25,6 +25,20 @@ public sealed class HepsiburadaReturnHistoryPolicyTests
         Assert.False(HepsiburadaReturnHistoryPolicy.IsOrderWithinReturnHistory(anchor.AddSeconds(1), anchor));
     }
 
+    // A late claim of an order the panel already holds is taken whatever the order's age; one of an order the panel does
+    // not hold and that is old or of unknown date is not taken (the caller names it in an issue).
+    [Fact]
+    public void A_claim_of_a_stored_order_is_taken_whatever_its_age()
+    {
+        var anchor = new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.Zero);
+
+        Assert.True(HepsiburadaReturnHistoryPolicy.ImportsClaim(anchor.AddDays(-90), anchor, orderStored: true));
+        Assert.True(HepsiburadaReturnHistoryPolicy.ImportsClaim(null, anchor, orderStored: true));
+        Assert.True(HepsiburadaReturnHistoryPolicy.ImportsClaim(anchor.AddDays(-3), anchor, orderStored: false));
+        Assert.False(HepsiburadaReturnHistoryPolicy.ImportsClaim(anchor.AddDays(-31), anchor, orderStored: false));
+        Assert.False(HepsiburadaReturnHistoryPolicy.ImportsClaim(null, anchor, orderStored: false));
+    }
+
     [Fact]
     public void An_incremental_pass_looks_back_at_least_two_days_even_right_after_the_last_one()
     {

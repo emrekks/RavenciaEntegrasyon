@@ -937,10 +937,14 @@ yok · Çakışma.
 - **Yerel düzenleme koruması**: panelde gönderilmemiş değişiklik varsa içerik korunur ve bağ `LOCAL_CHANGES_PENDING` olur;
   bu korumayı yalnız Mevcut Ürün Bilgilerini Güncelle aşar (`SynchronizationPolicies.cs:473-478`).
 
-**Aktarımda kategori, özellik, seçenek, marka (yalnız Trendyol tam yazar):**
+**Aktarımda kategori, özellik, seçenek, marka** (sahip kararı 13 Kas 2026: aktarım kategori ve markayı kendisi kurar ve
+eşler; Shopify dışındaki her pazaryerinde):
 
 - **Kategori**: önce kullanıcının kategori eşlemesi; yoksa ada/yola göre kök panel kategorisi; yoksa yeni kök yaprak
-  kategori ve doğrulanmış eşleme açılır (`MarketplaceJobProcessor.cs:7135-7178`).
+  kategori ve doğrulanmış eşleme açılır (`MarketplaceJobProcessor.cs` `EnsureMappedCategory`). Bu, gözlem kipindeki
+  Hepsiburada, N11, Pazarama ve PttAVM'de de yapılır; aktarımın **açtığı** ürün eşlenen kategoriyi alır, var olan ürünün
+  kategorisine dokunulmaz (`ObservedProductCategory`). Kök kategori adları tekildir (aynı adla ikinci kök açılmaz;
+  `RootCategoryNamesUnique`, 13 Kas 2026).
 - **Özellik**: aynı adlı etkin panel özelliği kullanılır, yoksa açılır; değerler Trendyol listesinden yazılır. "Web Color"
   değerleri panel değeri olarak eklenmez.
 - **Seçenek**: Renk/Beden panel seçeneği ve değerleri açılır ya da yeniden kullanılır.
@@ -960,7 +964,8 @@ yok · Çakışma.
     Bilgilerini Güncelle** kapalı, yalnız beden ekleyen ya da yalnız gözlem yapan çalıştırma markaya dokunmaz. Yalnız
     fiyat/stok ve **Ürün Eşleme** markaya hiç dokunmaz.
 - Shopify, HB, N11, Pazarama, PttAVM **yalnız gözlem** modundadır: mevcut ürünün içeriğine, markasına ve kategorisine
-  dokunmaz, yalnız eşleşen panel ürününe bağlanır (`MarketplaceJobProcessor.cs:6776,8284-8289,8314-8411`).
+  dokunmaz, yalnız eşleşen panel ürününe bağlanır; panelde olmayan ürünü açarken marka ve eşlenen kategoriyi verir.
+  Varyantlarının hepsi başka panel ürünlerine çıktığı için açılmayan ürünün yeni markası da açılmaz.
 - İş türleri: `PRODUCT_SYNC`, `SHOPIFY_PRODUCT_SYNC`, `HEPSIBURADA_PRODUCT_SYNC`; her seçili bağlantıya ayrı iş. İlerleme
   kartı **Devam Eden Aktarımlar** (Alınan / İşlenen / Atlanan / Hatalı; **Durdur**). Bir ürün grubu hata verirse
   `PRODUCT_IMPORT_FAILED` yazılır ve devam edilir; hepsi başarısızsa iş incelemeye düşer.
