@@ -984,8 +984,14 @@ public sealed partial class InvoicingBillingService(
     private static InvoiceWorkspacePageView EmptyWorkspacePage(int pageNumber, int pageSize) =>
         new([], 0, pageNumber, pageSize, 1, 0, 0, 0, 0, 0, false, [], [], []);
 
+    // The status filter's value of a row, in the order the web list shows it (invoice-workspace-status.ts, scan F-11,
+    // 13 Nov 2026): an invoice that needs correcting, then a failure that cannot simply be issued again, come before
+    // the marketplace's own "invoiced", so such a row is not filed under "Faturası Mevcut".
     private static string WorkspaceInvoiceDisplayStatus(WorkspaceCandidate candidate)
     {
+        if (candidate.InvoiceStatus == AdjustmentRequiredLabel) return candidate.InvoiceStatus;
+        if (!candidate.CanCreateInvoice && candidate.InvoiceStatus is "FATURA_REDDEDILDI" or "FATURA_PLATFORMA_AKTARILMADI" or "REJECTED" or "VALIDATION_FAILED" or "MANUAL_REVIEW" or "MARKETPLACE_FAILED")
+            return candidate.InvoiceStatus;
         if (HasMarketplaceInvoiceObservation(candidate)) return "FATURA_KONTROLDE";
         if (candidate.InvoiceStatus == MarketplaceSalesService.ShopifyUnconfirmedInvoiceLabel) return candidate.InvoiceStatus;
         if (candidate.CanCreateInvoice || candidate.InvoiceStatus == "FATURA_BEKLIYOR") return "FATURA_BEKLIYOR";
