@@ -68,6 +68,21 @@ public static class ProductApprovalReconciliationPolicy
         return estimate < waitingBarcodes ? waitingBarcodes : 0;
     }
 
+    // A barcode whose create result was unknown (the result named no line for it, or Pazarama accepted the create without
+    // ids) and that the marketplace's lists still do not show after this long goes to review: it may never have gone in
+    // (live: 6 sizes sent, 1 opened, the other 5 waited as "Onay Bekliyor" for the whole 7-day check).
+    public const string UnconfirmedNotFoundCode = "PRODUCT_CREATE_NOT_FOUND";
+    public static readonly TimeSpan UnconfirmedNotFoundLimit = TimeSpan.FromHours(24);
+
+    // The local status of a barcode the marketplace answers NOT_FOUND for. One whose create was confirmed waits for
+    // approval as before (n11, Pazarama and PTT AVM list a just-sent product late). One whose create result is unknown
+    // stays unknown (never taken as awaiting approval) until UnconfirmedNotFoundLimit after the check began, then goes
+    // to review.
+    public static string NotFoundStatus(string? listingStatus, DateTimeOffset checkStartedAt, DateTimeOffset now) =>
+        !string.Equals(listingStatus, ProductBatchResultPolicy.ResultUnknownStatus, StringComparison.Ordinal) ? "APPROVAL_PENDING"
+        : now - checkStartedAt >= UnconfirmedNotFoundLimit ? "MANUAL_REVIEW"
+        : ProductBatchResultPolicy.ResultUnknownStatus;
+
     // A variant this reconciliation already found approved (listed LIVE, with its product and variant links) is not
     // read again on later checks: only the barcodes still waiting are asked about.
     public static bool IsSettledLive(string? listingStatus, bool hasProductLink, bool hasVariantLink) =>
