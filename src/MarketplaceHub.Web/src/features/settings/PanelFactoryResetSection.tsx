@@ -42,7 +42,10 @@ export function PanelFactoryResetSection() {
   const [factor, setFactor] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showEmpty, setShowEmpty] = useState(false)
   const job = view.data?.job ?? null
+  const filled = (view.data?.groups ?? []).filter(group => group.count > 0)
+  const empty = (view.data?.groups ?? []).filter(group => group.count <= 0)
   const running = panelResetRunning(job?.status)
   const word = view.data?.confirmationWord ?? panelResetConfirmationWord
   const confirmed = panelResetConfirmed(confirmation, word)
@@ -89,19 +92,19 @@ export function PanelFactoryResetSection() {
       <div><h3 id="panel-factory-reset-title">Paneli Tamamen Sıfırla</h3><p>Panelin bütün kayıtları ve logları silinir; hesap, kullanıcılar ve entegrasyon bağlantıları kalır.</p></div>
       <span className="ss-tag ss-fr-total">{view.data ? `${resetNumber(view.data.total)} Kayıt` : view.isError ? 'Sayı Alınamadı' : 'Sayılıyor…'}</span>
     </header>
-    <div className="ss-fr-cols">
-      <div className="ss-fr-col" aria-label="Silinecekler">
-        <h4>Silinecekler</h4>
-        <ul>{(view.data?.groups ?? []).map(group => <li key={group.key}><span>{group.label}</span><b>{resetNumber(group.count)}</b></li>)}</ul>
-      </div>
-      <div className="ss-fr-col is-kept" aria-label="Kalanlar">
-        <h4>Kalanlar</h4>
-        <ul>{(view.data?.kept ?? []).map(item => <li key={item}><span>{item}</span></li>)}</ul>
-      </div>
+    <div className="ss-fr-body" aria-label="Silinecekler">
+      {view.data && (filled.length > 0
+        ? <ul className="ss-fr-list">{filled.map(group => <li key={group.key}><span>{group.label}</span><b>{resetNumber(group.count)}</b></li>)}</ul>
+        : <p className="ss-fr-none">Silinecek kayıt yok</p>)}
+      {empty.length > 0 && <>
+        <button type="button" className="ss-fr-more" aria-expanded={showEmpty} onClick={() => setShowEmpty(value => !value)}>Boş Olanlar ({empty.length})</button>
+        {showEmpty && <ul className="ss-fr-list is-empty">{empty.map(group => <li key={group.key}><span>{group.label}</span><b>{resetNumber(group.count)}</b></li>)}</ul>}
+      </>}
     </div>
-    <div className="ss-callout ss-dr-note ss-fr-note">
-      <p className="is-warn"><AlertGlyph /><span><b>Geri alınamaz.</b> Silinen kayıtlar hiçbir yerden geri getirilemez; pazaryerlerine ve e-fatura sağlayıcısına hiçbir şey gönderilmez. Bu oturum açık kalır, diğer cihazlardaki oturumlar kapanır.</span></p>
-      <p><AlertGlyph /><span>Açık bağlantılar sıfırlamadan sonra pazaryerinin izin verdiği tarih aralığındaki siparişleri yeniden çeker; hiç veri gelmesin istiyorsanız önce bağlantıları kapatın.</span></p>
+    <div className="ss-fr-kept" aria-label="Kalanlar"><span>Kalanlar</span>{(view.data?.kept ?? []).map(item => <span key={item} className="ss-tag">{item}</span>)}</div>
+    <div className="ss-callout ss-fr-note">
+      <AlertGlyph />
+      <p><b>Geri alınamaz.</b> Silinen kayıtlar geri getirilemez; pazaryerlerine ve e-fatura sağlayıcısına hiçbir şey gönderilmez, diğer cihazlardaki oturumlar kapanır. Açık bağlantılar sıfırlamadan sonra pazaryerinin izin verdiği tarih aralığındaki siparişleri yeniden çeker; hiç veri gelmesin istiyorsanız önce bağlantıları kapatın.</p>
     </div>
     {showProgress && job && <div className="ss-fr-progress" role="status" aria-live="polite">
       <div className="ss-fr-bar" aria-hidden="true"><i style={{ width: `${percent}%` }} /></div>
@@ -111,11 +114,9 @@ export function PanelFactoryResetSection() {
     </div>}
     {!running && <div className="ss-fr-confirm">
       <label htmlFor="panel-factory-reset-confirm" className={confirmed ? 'is-match' : undefined}>{confirmed ? <MatchGlyph /> : null}<span>Onaylamak için <b>{word}</b> yazın ve parolanızı{mfa ? ' ile doğrulama kodunuzu' : ''} girin</span></label>
-      <div className="ss-fr-confirm-row">
-        <input id="panel-factory-reset-confirm" className={`ss-in ss-fr-in${confirmed ? ' is-match' : ''}`} value={confirmation} onChange={event => setConfirmation(event.target.value)} disabled={sending || !view.data} autoComplete="off" spellCheck={false} />
-        <ReauthInputs bare idPrefix="panel-factory-reset" password={password} onPassword={setPassword} factor={factor} onFactor={setFactor} mfa={mfa} disabled={sending || !view.data} inputClassName="ss-in ss-fr-in ss-fr-auth" />
-        <button type="button" className="ss-btn is-danger is-solid ss-fr-go" disabled={!ready || sending || !view.data} onClick={() => void start()}>{sending ? 'Başlatılıyor…' : 'Paneli Sıfırla'}</button>
-      </div>
+      <input id="panel-factory-reset-confirm" className={`ss-in ss-fr-in${confirmed ? ' is-match' : ''}`} value={confirmation} onChange={event => setConfirmation(event.target.value)} disabled={sending || !view.data} autoComplete="off" spellCheck={false} />
+      <ReauthInputs bare idPrefix="panel-factory-reset" password={password} onPassword={setPassword} factor={factor} onFactor={setFactor} mfa={mfa} disabled={sending || !view.data} inputClassName="ss-in ss-fr-in ss-fr-auth" />
+      <button type="button" className="ss-btn is-danger is-solid ss-fr-go" disabled={!ready || sending || !view.data} onClick={() => void start()}>{sending ? 'Başlatılıyor…' : 'Paneli Sıfırla'}</button>
       {error && <p className="ss-fr-error" role="alert">{error}</p>}
     </div>}
   </section>
