@@ -23,6 +23,7 @@ import type { DayCard } from './daily-cards'
 import { orderCountText, type OrderCargoCount } from './order-summary'
 import { cargoLabel } from '../../../shared/components/CargoProviderIcon'
 import { maxResendReminder, parseResendReminder } from './resend-reminder'
+import { toneAbove } from '../../../shared/metric-value'
 import './order-metrics.css'
 
 // error: the count could not be read; shown as "—", never as 0 or an endless "…".
@@ -37,7 +38,7 @@ function metricText({ value, loading, error }: Metric) {
   return orderCountText(value, { loading, error: Boolean(error) })
 }
 // A count that is known: neither loading, nor failed, nor missing (those read "…" or "—" with no "Paket" after them).
-const known = (metric: Metric) => !metric.loading && !metric.error && metric.value !== undefined
+const known = (metric: Metric) => !metric.loading && !metric.error
 
 const count = (value: number) => value.toLocaleString('tr-TR')
 
@@ -158,8 +159,10 @@ const tipped = (...names: Array<string | false | undefined>) => names.filter(Boo
 // A card that reads "N Paket | M Adet Ürün" and lists the products per store on hover or focus (no panel without them).
 function UnitsCard({ title, icon, tone, packages, units, rows, cargo }: { title: string; icon: CardIconName; tone?: CardTone; packages: Metric; units: number | undefined; rows: UnitRow[] | undefined; cargo?: OrderCargoCount[] | null }) {
   const stores = known(packages) ? rows ?? [] : []
-  return <article className={tipped(tone && `rr-${tone}`, stores.length > 0 && 'rr-metric-tipped')} tabIndex={stores.length > 0 ? 0 : undefined}>
-    <CardBackgroundIcon name={icon} tone={tone} />
+  // The tone marks a count above nought only; zero stays in the neutral ink.
+  const shownTone = toneAbove(packages.value, tone ?? 'warn') && tone
+  return <article className={tipped(shownTone && `rr-${shownTone}`, stores.length > 0 && 'rr-metric-tipped')} tabIndex={stores.length > 0 ? 0 : undefined}>
+    <CardBackgroundIcon name={icon} tone={shownTone} />
     <small>{title}</small><Packages packages={packages} units={units} />
     {stores.length > 0 && <StoreTip rows={stores.map(row => ({ ...row, value: row.packages !== undefined ? `${count(row.packages)} paket · ${count(row.units)} adet` : `${count(row.units)} adet` }))} cargo={(cargo ?? []).filter(row => row.orders > 0)} />}
   </article>

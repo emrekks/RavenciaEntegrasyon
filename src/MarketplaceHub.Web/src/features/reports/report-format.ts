@@ -1,5 +1,6 @@
 import { dateRangePresets } from '../../shared/date-range'
 import { istanbulDateKey } from '../../shared/format-date'
+import { noValue } from '../../shared/metric-value'
 import { platformDisplayName, platformDisplayOrder } from '../../shared/platform-names'
 
 // The periods one click away above the reports: the panel's shared ranges (dateRangePresets; weeks start on Monday) for
@@ -186,7 +187,7 @@ export function formatDay(value: string) { const [year, month, day] = value.spli
 // The one rule for a figure that is not known (no amount, no cost, no price, no comparison): "—" in the normal ink, never a
 // word and never a colour; the reason, when it helps, is the card's sub-line or its explanation. A count that is really zero
 // stays "0" (owner, 13 Nov 2026).
-export const noValue = '—'
+export { noValue }
 export function moneyOrMissing(value: number, ordersWithAmount: number) { return ordersWithAmount > 0 ? formatTl(value) : noValue }
 
 // The change against the previous period. A rate is compared by its difference (13,7 % to 11,8 % is −%1,9); a count

@@ -21,10 +21,10 @@ describe('order tab counters', () => {
     expect(orderTabCount('UNDELIVERED', summary({ undelivered: 0 }))).toBe(0)
   })
 
-  it('shows a dash for an unknown or unread counter and dots only while loading', () => {
+  it('shows 0 for a counter a read summary leaves out, a dash for a failed read and dots only while loading', () => {
     expect(orderCountText(1234, { loading: false, error: false })).toBe('1.234')
     expect(orderCountText(0, { loading: false, error: false })).toBe('0')
-    expect(orderCountText(undefined, { loading: false, error: false })).toBe('—')
+    expect(orderCountText(undefined, { loading: false, error: false })).toBe('0')
     expect(orderCountText(undefined, { loading: true, error: false })).toBe('…')
     expect(orderCountText(5, { loading: true, error: true })).toBe('—')
   })
