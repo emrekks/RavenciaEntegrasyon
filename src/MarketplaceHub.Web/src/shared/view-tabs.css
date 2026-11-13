@@ -47,7 +47,7 @@
   main .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs { overflow-x: auto !important; overflow-y: hidden; scroll-padding-inline: 8px; overscroll-behavior-x: contain; }
   /* 10px sides instead of 12px, so short rows fit more often; a row that still does not fit slides. The
      notification and Hakediş tabs also drop their icons there: their names alone fill the row. */
-  html body .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs > :is(button, a) { padding: 0 10px !important; }
+  html body .rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs > :is(button, a) { flex-shrink: 0; padding: 0 10px !important; }
   html body :is(.rv-notification-history .rv-tabs, .rv-tabs.reports-subtabs).rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs .rv-view-tab-icon { display: none; }
 }
 /* a tab label reserves the width of the selected weight (a zero-height copy), so selecting a tab never moves the others */
