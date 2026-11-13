@@ -96,7 +96,19 @@ Dal: `claude/inspiring-noether-cbwvkm`. Bu dal **canlıya ship edilmedi** (bkz. 
 
 ## Testler
 
-Tam backend test paketi bu commit sırasında çalışıyordu; sonucu bir sonraki commit bu bölüme yazacak. Bulgu başına filtreli koşular (PostgreSQL dahil) her commit öncesi geçti.
+Son birleşik dal üzerinde (13 Kasım, yerel PostgreSQL 16 + `uuidv7`/`uuid_extract_timestamp` eşdeğerleri; CI'da 18.6):
+
+| Kontrol | Sonuç |
+|---|---|
+| `dotnet build MarketplaceHub.sln` | Başarılı, 0 uyarı |
+| `dotnet test tests/MarketplaceHub.Application.Tests` (tam paket, PostgreSQL dahil) | **6.404 / 6.404 geçti** |
+| `dotnet format --verify-no-changes` (değişen dosyalar) | Temiz |
+| `npm run typecheck` / `npm run lint` | Temiz |
+| `npx vitest run` (invoicing, catalog, shared, operations, reports) | 217 dosya, 1.394 test geçti |
+| `npm run build` / `npm run check:bundle` | Başarılı; ana JS 124,9 / 450 KiB, ana CSS 537 / 672 KiB |
+
+Her düzeltmenin testi, düzeltme olmadan düştüğü ve düzeltmeyle geçtiği doğrulanarak yazıldı (A-1/A-2 testleri eski kodda 4/5 düştü).
+Ortam notu: API uçtan uca testleri, bu konteynerin `SSL_CERT_FILE` / `PIP_CONFIG_FILE` değişkenlerini gizli dosya sanıyor; testler bu değişkenler kaldırılarak koşuldu (koddan bağımsız).
 
 ## Yapılmayanlar ve sıradaki adımlar
 - **Canlıya ship:** yapılmadı. `ship.sh` Actions durumunu `gh run` ile, canlı imajları SSH anahtarıyla okuyor; bu bulut oturumunda ikisi de yok. Ship ve canlı doğrulama, betiğin çalıştığı bir ortamdan yapılmalı.
