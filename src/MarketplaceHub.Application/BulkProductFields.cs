@@ -21,7 +21,7 @@ public static class BulkProductFields
     public static readonly IReadOnlyList<string> All = [VatRate, VatInclusion, Desi, WarrantyMonths, DeliveryDays, Status, Brand, Category, SafetyStock, Description];
 
     // The rates the editor offers (TURKISH_VAT_RATES).
-    public static readonly IReadOnlyList<decimal> VatRates = [0m, 1m, 10m, 20m];
+    public static readonly IReadOnlyList<decimal> VatRates = [0m, 1m, 8m, 10m, 20m];
     public const int MaxWarrantyMonths = 240;
     public const decimal MaxDesi = ProductDesi.Maximum;
     public const int MaxSafetyStock = 100_000;
@@ -75,7 +75,7 @@ public static class BulkProductFields
             case VatRate:
                 return TryNumber(text, out var rate) && VatRates.Contains(rate)
                     ? ParseResult.Ok(new(name, Number: rate))
-                    : ParseResult.Fail("value", "KDV oranı %0, %1, %10 veya %20 olmalıdır.");
+                    : ParseResult.Fail("value", "KDV oranı %0, %1, %8, %10 veya %20 olmalıdır.");
             case VatInclusion:
                 return text.ToUpperInvariant() is "INCLUDED" or "EXCLUDED"
                     ? ParseResult.Ok(new(name, Text: text.ToUpperInvariant()))

@@ -209,7 +209,7 @@ public sealed partial class PostgreSqlTenantIsolationTests
         var service = new CatalogService(db, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider, new MemoryCache(new MemoryCacheOptions()));
         async Task<ServiceError?> Error(IReadOnlyList<Guid> ids, string? field, string? value) => (await service.BulkSetFieldAsync(tenant.Id, new BulkProductFieldCommand(ids, field, value), CancellationToken.None)).Error;
 
-        foreach (var (field, value) in new[] { ("desi", "0"), ("warrantyMonths", "-1"), ("deliveryDays", "31"), ("vatRate", "8"), ("title", "Yeni"), ("safetyStock", "-2"), ("status", "DRAFT"), ("description", " ") })
+        foreach (var (field, value) in new[] { ("desi", "0"), ("warrantyMonths", "-1"), ("deliveryDays", "31"), ("vatRate", "18"), ("title", "Yeni"), ("safetyStock", "-2"), ("status", "DRAFT"), ("description", " ") })
         {
             var error = await Error([card.Id], field, value);
             Assert.Equal("VALIDATION_FAILED", error?.Code);

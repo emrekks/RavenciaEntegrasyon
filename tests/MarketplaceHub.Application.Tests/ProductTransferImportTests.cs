@@ -667,6 +667,8 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
     [InlineData("0", false, 0)]
     [InlineData("1", false, 1)]
     [InlineData("0,1", true, 10)]
+    [InlineData("%8", false, 8)]
+    [InlineData("0.08", false, 8)]
     public void AVatRate_IsReadAsThePercentageExcelShows(string cell, bool fromCsv, int expected)
     {
         var value = ProductTransferFileParser.ParseVat(cell, fromCsv);
@@ -676,8 +678,8 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
     [Theory]
     [InlineData("0.5")]
     [InlineData("%0,1")]
-    [InlineData("8")]
     [InlineData("18")]
+    [InlineData("5")]
     public void AVatRateThePanelDoesNotTake_IsAnError(string cell)
     {
         Assert.Equal(ProductTransferValueKind.Invalid, ProductTransferFileParser.ParseVat(cell, fromCsv: true).Kind);
