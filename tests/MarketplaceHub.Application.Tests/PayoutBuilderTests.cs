@@ -174,8 +174,9 @@ public sealed class PayoutBuilderTests
     // A deduction goes with the first payout on or after its due day.
     [InlineData("2026-11-06", false, "2026-11-09")]
     [InlineData("2026-11-10", false, "2026-11-12")]
-    // A day already past moves to the next payout to come (today is Wednesday 4 Nov).
-    [InlineData("2026-11-03", true, "2026-11-05")]
+    // A payout day already past moves to the next payout to come while the record is not past due (today is Wednesday
+    // 4 Nov: Monday's payout has passed, the sale is due today).
+    [InlineData("2026-11-04", true, "2026-11-05")]
     public void Turkiye_records_are_expected_on_the_payout_day_that_takes_them(string due, bool sale, string expected)
     {
         var day = DateOnly.Parse(due, System.Globalization.CultureInfo.InvariantCulture);
@@ -186,6 +187,14 @@ public sealed class PayoutBuilderTests
         // Avrupa's records, whatever their due day in early November, wait for its monthly payout on Monday 23 Nov.
         Assert.Equal((new DateOnly(2026, 11, 23), "PAYOUT_DAY", PayoutBuilder.Europe),
             PayoutBuilder.Expect(row with { Country = "Bulgaristan" }, PayoutBuilder.Line(row with { Country = "Bulgaristan" }, Today), Today));
+    }
+
+    // A record past its due day waits apart, OVERDUE, on no payout day (owner, 13 Nov 2026: one record, one place).
+    [Fact]
+    public void A_turkiye_record_past_its_due_day_waits_apart()
+    {
+        var row = Sale("s", 100m, 80m, Today.AddDays(-1));
+        Assert.Equal((Today, "OVERDUE", PayoutBuilder.TrGulf), PayoutBuilder.Expect(row, PayoutBuilder.Line(row, Today), Today));
     }
 
     [Theory]
@@ -216,6 +225,8 @@ public sealed class PayoutBuilderTests
                     var row = sale ? Sale("s", 549.14m, 431.07m, due, country: country, affiliate: country == "Azerbaycan" ? "TRENDYOLAZJV" : "TRENDYOLTR")
                         : Deduction("k", "Kargo Fatura", MarketplaceFinanceCategories.Cargo, 98.34m, due);
                     var (day, kind, _) = PayoutBuilder.Expect(row, PayoutBuilder.Line(row, wednesday), wednesday);
+                    // A record past its due day waits apart on no payout day.
+                    if (due < wednesday) { Assert.Equal((wednesday, "OVERDUE"), (day, kind)); continue; }
                     Assert.Equal("PAYOUT_DAY", kind);
                     Assert.True(day >= wednesday && day.DayOfWeek is DayOfWeek.Monday or DayOfWeek.Thursday, $"{country} {due} -> {day}");
                 }
@@ -236,8 +247,11 @@ public sealed class PayoutBuilderTests
         PayoutOrderRow[] tr = [new(Store, "TR-1", 17777.82m, Due(new DateOnly(2026, 11, 9)), "TR", "Türkiye, Körfez")];
         PayoutOrderRow[] withEurope = [.. tr, new(Store, "CEE-1", 19620.22m, Due(new DateOnly(2026, 10, 26)), "CEE", "Avrupa")];
         var view = PayoutBuilder.Build(rows, withEurope, Stores, today, 90, []);
-        var europe = Assert.Single(view.Upcoming);
-        Assert.Equal((new DateOnly(2026, 11, 23), PayoutBuilder.Europe, "PAYOUT_DAY", 431.07m - 52.76m - 192.20m), (europe.Day, europe.Region, europe.Kind, europe.Amount));
+        // They stand in Avrupa, but past their due day they wait apart (owner, 13 Nov 2026), out of its 23 Nov payout.
+        var europe = Assert.Single(view.Upcoming, x => x.Kind == "PAYOUT_DAY");
+        Assert.Equal((new DateOnly(2026, 11, 23), PayoutBuilder.Europe, 431.07m), (europe.Day, europe.Region, europe.Amount));
+        var waiting = Assert.Single(view.Upcoming, x => x.Kind == "OVERDUE");
+        Assert.Equal((PayoutBuilder.Europe, -244.96m), (waiting.Region, waiting.Amount));
         // A store never paid in Avrupa keeps them apart, OVERDUE.
         var apart = PayoutBuilder.Build(rows, tr, Stores, today, 90, []);
         Assert.Equal(-244.96m, Assert.Single(apart.Upcoming, x => x.Kind == "OVERDUE").Amount);
@@ -252,7 +266,7 @@ public sealed class PayoutBuilderTests
         Assert.Equal(expected, PayoutBuilder.PayoutRegion(code, name));
 
     [Fact]
-    public void An_avrupa_record_past_its_due_day_waits_for_the_monthly_payout_out_of_the_next_one()
+    public void An_avrupa_record_past_its_due_day_waits_apart_out_of_every_payout()
     {
         // Avrupa, paid on the fourth Monday: due last week, no payout yet. Türkiye-Körfez is paid on Thursday 5 Nov.
         PayoutRow[] rows = [Sale("eu", 1000m, 800m, Today.AddDays(-7), country: "Bulgaristan"), Sale("tr", 500m, 400m, Today.AddDays(1))];
@@ -260,8 +274,9 @@ public sealed class PayoutBuilderTests
         Assert.Equal(1200m, view.Expected);
         Assert.Equal(800m, view.Unknown);
         Assert.Equal((Today.AddDays(1), 400m), (view.Next!.Day, view.Next.Amount));
+        // One record, one place: it stands under Vadesi Geçmiş Bekleyen only, never in a payout day's row too.
         var europeDay = Assert.Single(view.Upcoming, group => group.Region == PayoutBuilder.Europe);
-        Assert.Equal((new DateOnly(2026, 11, 23), "PAYOUT_DAY", 800m), (europeDay.Day, europeDay.Kind, europeDay.Amount));
+        Assert.Equal((Today, "OVERDUE", 800m), (europeDay.Day, europeDay.Kind, europeDay.Amount));
         var europe = Assert.Single(view.Regions, region => region.Region == PayoutBuilder.Europe);
         // Past its due day it counts in Vadesi Geçmiş Bekleyen alone: no next Avrupa payout from it (owner, 13 Nov 2026).
         Assert.Null(europe.NextDay);
@@ -458,5 +473,72 @@ public sealed class PayoutBuilderTests
 
         Assert.True(PayoutBuilder.Open(line));
         Assert.Equal((Today, PayoutBuilder.Undated), (PayoutBuilder.Expect(undated, line, Today).Day, PayoutBuilder.Expect(undated, line, Today).Kind));
+    }
+
+    private static PayoutRow Hepsiburada(Guid store, string id, decimal credit, DateOnly due, string? currency = null) => new()
+    {
+        ConnectionId = store,
+        PlatformCode = "HEPSIBURADA",
+        Source = HepsiburadaFinanceSyncJobHandler.Source,
+        ExternalId = id,
+        RequestedType = "x",
+        TransactionType = "Payment",
+        TransactionSubType = "WillBePaid",
+        Category = MarketplaceFinanceCategories.Sale,
+        Credit = credit,
+        PaymentDate = Due(due),
+        Currency = currency
+    };
+
+    // Hepsiburada pays on the Tuesday on or after the due day: on Friday 13 Nov a record due Wednesday 11 Nov waits for
+    // Tuesday 17 Nov and is in Sıradaki Ödeme; one due Monday 9 Nov missed Tuesday 10 Nov and is past due, apart.
+    [Fact]
+    public void A_hepsiburada_record_is_past_due_only_once_its_payout_tuesday_has_passed()
+    {
+        var store = Guid.CreateVersion7();
+        var stores = new Dictionary<Guid, PayoutStore> { [store] = new(store, "HEPSIBURADA", "HB", false) };
+        var friday = new DateOnly(2026, 11, 13);
+        PayoutRow[] rows = [Hepsiburada(store, "w", 300m, new(2026, 11, 11)), Hepsiburada(store, "m", 100m, new(2026, 11, 9))];
+
+        var view = PayoutBuilder.Build(rows, [], stores, friday, 90, []);
+
+        Assert.Equal((new DateOnly(2026, 11, 17), 300m), (view.Next!.Day, view.Next.Amount));
+        Assert.Equal((100m, 1), (view.Unknown, view.UnknownRecords));
+        Assert.Equal(PayoutBuilder.Expected, PayoutBuilder.Line(rows[0], friday).Status);
+        Assert.Equal(PayoutBuilder.Unknown, PayoutBuilder.Line(rows[1], friday).Status);
+        var hb = Assert.Single(view.Platforms);
+        Assert.Equal((new DateOnly(2026, 11, 17), 300m, 100m), (hb.NextDay, hb.NextAmount, hb.Unknown));
+    }
+
+    // One record, one place: a day's row holds no record past its due day, so the rows add up to the balance.
+    [Fact]
+    public void A_record_counts_in_one_group_only()
+    {
+        PayoutRow[] rows = [Sale("thu", 700m, 580m, Today.AddDays(1)), Sale("late", 300m, 240m, Today.AddDays(-2))];
+
+        var view = PayoutBuilder.Build(rows, [], Stores, Today, 90, []);
+
+        var thursday = Assert.Single(view.Upcoming, x => x.Kind == "PAYOUT_DAY");
+        Assert.Equal((Today.AddDays(1), 580m, 1), (thursday.Day, thursday.Amount, thursday.Records));
+        Assert.Equal(240m, Assert.Single(view.Upcoming, x => x.Kind == "OVERDUE").Amount);
+        Assert.Equal(view.Expected, view.Upcoming.Sum(x => x.Amount));
+        Assert.Equal((580m, 240m), (view.Next!.Amount, view.Unknown));
+    }
+
+    // A record in another currency is never added to a lira figure: its currency's total stands apart.
+    [Fact]
+    public void A_record_in_another_currency_stays_apart_from_the_lira()
+    {
+        var store = Guid.CreateVersion7();
+        var stores = new Dictionary<Guid, PayoutStore> { [store] = new(store, "HEPSIBURADA", "HB", false) };
+        PayoutRow[] rows = [Hepsiburada(store, "try", 300m, Today.AddDays(2), "TRY"), Hepsiburada(store, "usd", 100m, Today.AddDays(2), "USD")];
+
+        var view = PayoutBuilder.Build(rows, [], stores, Today, 90, []);
+
+        Assert.Equal((300m, 1), (view.Expected, view.ExpectedRecords));
+        Assert.Equal(300m, view.Next!.Amount);
+        Assert.Equal(300m, view.Upcoming.Sum(x => x.Amount));
+        Assert.Equal(new PayoutCurrencyView("USD", 100m, 1), Assert.Single(view.OtherCurrencies!));
+        Assert.Equal("USD", PayoutBuilder.Line(rows[1], Today).Currency);
     }
 }

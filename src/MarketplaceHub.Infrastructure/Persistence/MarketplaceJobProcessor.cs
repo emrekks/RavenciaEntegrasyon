@@ -10777,7 +10777,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 telemetryUpdatedCount++;
             }
             if (package is not null) await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken, isTrendyol ? "stream" : null);
-            if (package is not null && package.Status == ShipmentPackageStatus.ManualReview && package.RawStatus == remotePackage.RawStatus && target != ShipmentPackageStatus.ManualReview) { package.Status = target; package.UpdatedAt = now; package.Version++; continue; }
+            if (package is not null && package.Status == ShipmentPackageStatus.ManualReview && package.RawStatus == remotePackage.RawStatus && target != ShipmentPackageStatus.ManualReview) { package.Status = target; package.UpdatedAt = now; package.Version++; ApplyReadLineQuantities(tenantId, package, remotePackage, packageObservation.Allocations, safeAllocations, lines, allocationsByKey, eventId); continue; }
             // An observation that left the status unchanged writes no history row (below); its replay is still
             // known as applied by the line allocations it stored under the same event id.
             var eventAlreadyRecorded = knownEventIds.Contains(eventId)
@@ -10816,14 +10816,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                         UpsertLineAllocation(tenantId, package.Id, line.Id, eventId, safe.ActiveAllocatedQuantity, safe.CancelledQuantity, safe.ShippedQuantity, safe.DeliveredQuantity, safe.ReturnedQuantity, allocationsByKey);
                     }
                 }
-                // PTT AVM sends no status time, so its package event is named by the package status alone: a line cancelled
-                // or returned while the package keeps its status (another line still waits to ship) arrives under the
-                // event already recorded. Its lines' quantities follow the read, or the cancelled line kept its stock.
-                if (package is not null && !statusChanged && remotePackage.StatusTimeUnknown && !remotePackage.IsStatusObservation
+                // PTT AVM sends no status time, so its package event is named by the package status alone; Pazarama's is its
+                // items' latest history entry, and an item can change status with no new entry (live 674544454: status 7 with
+                // the history ending at 11). A line cancelled or returned while the package keeps its status (another line
+                // still waits or stays delivered) then arrives under the event already recorded. Its lines' quantities
+                // follow the read, or the cancelled line kept its stock and the returned one read as kept.
+                if (package is not null && !statusChanged && (remotePackage.StatusTimeUnknown || platformCode == "PAZARAMA") && !remotePackage.IsStatusObservation
                     && package.Status == target && string.Equals(package.RawStatus, remotePackage.RawStatus, StringComparison.Ordinal))
-                    foreach (var remoteAllocation in packageObservation.Allocations)
-                        if (lines.TryGetValue(remoteAllocation.ExternalLineId, out var line) && safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe))
-                            UpsertLineAllocation(tenantId, package.Id, line.Id, eventId, safe.ActiveAllocatedQuantity, safe.CancelledQuantity, safe.ShippedQuantity, safe.DeliveredQuantity, safe.ReturnedQuantity, allocationsByKey);
+                    ApplyReadLineQuantities(tenantId, package, remotePackage, packageObservation.Allocations, safeAllocations, lines, allocationsByKey, eventId);
                 if (package is not null && (statusChanged || packageMetadataChanged))
                 {
                     package.OriginExternalPackageId = string.IsNullOrWhiteSpace(remotePackage.OriginExternalPackageId) ? package.OriginExternalPackageId : remotePackage.OriginExternalPackageId;
@@ -10851,7 +10851,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     package.UpdatedAt = now;
                     package.Version++;
                 }
-                if (package is not null && package.Status == ShipmentPackageStatus.ManualReview && package.RawStatus == remotePackage.RawStatus && target != ShipmentPackageStatus.ManualReview) { package.Status = target; package.UpdatedAt = now; package.Version++; }
+                if (package is not null && package.Status == ShipmentPackageStatus.ManualReview && package.RawStatus == remotePackage.RawStatus && target != ShipmentPackageStatus.ManualReview) { package.Status = target; package.UpdatedAt = now; package.Version++; ApplyReadLineQuantities(tenantId, package, remotePackage, packageObservation.Allocations, safeAllocations, lines, allocationsByKey, eventId); }
                 // The event is known, but a line the detailed read places in this package may have none: an order
                 // first built from a return claim held only the returned lines when the event was recorded, and the
                 // order read that brought the other lines found the event already recorded.
@@ -11886,6 +11886,27 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // delivered following the package's stored status. Stock follows the lines' ordered and cancelled quantities, so
     // the allocation does not take the units from stock again; it only lets the line's shipped and delivered
     // quantities be projected.
+    // The read's line quantities for a package whose status they were not written with: one leaving ManualReview for the
+    // status its read names (a raw status the panel now knows; a package that turns Returned has its lines returned, or
+    // the reports and the sale invoice kept them as sold), or a PTT AVM / Pazarama line that changed under a known event.
+    // They are stored under the event the package's status is projected from (PackageLineProjectionPolicy: the read's own
+    // event without a status time, else the package's status time), so the lines follow them.
+    private void ApplyReadLineQuantities(
+        Guid tenantId,
+        ShipmentPackage package,
+        RemotePackage remote,
+        IReadOnlyList<RemotePackageAllocation> remoteAllocations,
+        IReadOnlyDictionary<string, NormalizedPackageAllocation> safeAllocations,
+        IReadOnlyDictionary<string, OrderLine> lines,
+        Dictionary<string, PackageLineAllocation> allocationsByKey,
+        string eventId)
+    {
+        var projectedEventId = remote.StatusTimeUnknown ? eventId : PackageIngestionSafety.EventId(package.ExternalPackageId, package.StatusOccurredAt);
+        foreach (var remoteAllocation in remoteAllocations)
+            if (lines.TryGetValue(remoteAllocation.ExternalLineId, out var line) && safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe))
+                UpsertLineAllocation(tenantId, package.Id, line.Id, projectedEventId, safe.ActiveAllocatedQuantity, safe.CancelledQuantity, safe.ShippedQuantity, safe.DeliveredQuantity, safe.ReturnedQuantity, allocationsByKey);
+    }
+
     private int AddMissingLineAllocations(
         Guid tenantId,
         ShipmentPackage package,

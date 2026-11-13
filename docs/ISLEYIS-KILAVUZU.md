@@ -1609,8 +1609,10 @@ ve ödeme emirleri. Dönem süzgecine bağlı değildir; geçmiş ödemeler son 
 | **Teslim Bekleyen Sipariş** | NEW, PROCESSING, READY_TO_SHIP, SHIPPED durumundaki TRY siparişlerin net tutarı; bakiyede yok, teslimden sonra girer. Kısmi iptal ve inceleme durumları dahil değil. |
 | **Sıradaki Ödeme** | Gelecek ilk ödeme günü ki toplamı > 0; ≤0 olan gün atlanır. Vadesi geçmiş/tarihsiz bekleyenler girmez. |
 | **Son Ödeme** | Pazaryerinin bildirdiği son pozitif ödeme. |
-| **Vadesi Geçmiş Bekleyen** | Vadesi geçmiş ama bir ödemeye bağlanmamış bakiye; eksiyse bekleyen kesinti. "Ödenmeyecek" demek değil. |
+| **Vadesi Geçmiş Bekleyen** | Vadesi geçmiş ama bir ödemeye bağlanmamış bakiye; eksiyse bekleyen kesinti. "Ödenmeyecek" demek değil. Bir kayıt tek yerde sayılır: vadesi geçen kayıt gün satırından çıkar, yalnız burada görünür (sahip kararı, 13 Kas 2026). Hepsiburada'da vade geçti = vadeden sonraki ödeme salısı geçti; o salıyı bekleyen kayıt Sıradaki Ödeme'dedir. |
 | **Erken Ödeme** | Son 90 günde alınan erken ödemeler (Trendyol `CashAdvance`). |
+
+Para birimi: tutarlar yalnız TL kayıtlardan toplanır; başka para birimindeki kayıt (ör. Hepsiburada USD) TL'ye eklenmez, Toplam Güncel Bakiye ipucunda kendi para birimiyle ayrı yazılır ve kayıt listesinde kendi simgesiyle görünür.
 
 Kayıt durumu: **Ödendi**, **Tahmini** (vadesi gelmemiş), **Vadesi Geçti** (ödeme henüz okunmamış olabilir); liste süzgecinde
 ayrıca **Bekleyen Kesinti**.
@@ -1621,7 +1623,7 @@ ayrıca **Bekleyen Kesinti**.
 |---|---|
 | Trendyol Türkiye-Körfez ve Azerbaycan | **Pazartesi** ödemesi o haftanın Pzt–Çar vadelerini, **perşembe** ödemesi Per–Paz vadelerini öder. Satış kaydı vadesinden önceki ilk Pzt/Per'e, kesinti sonrakine düşer. Salı/Cuma "Erken Ödeme" günüdür. Resmî tatil kaydırır; gün tahminidir. |
 | Trendyol Avrupa | Ayın **4. pazartesisi** (22–28'i arası); o güne kadar vadesi gelen her şey. |
-| Hepsiburada | Her **salı**: vadeden sonraki ilk salı. |
+| Hepsiburada | Her **salı**: vadeden sonraki ilk salı (vade salıysa o gün); o salı geçmeden kayıt "Vadesi Geçti" olmaz. |
 | N11 | **Perşembe**; bekleyen kayıt havale gününden sonraki ilk perşembeye. |
 | Pazarama | Aktarım tarihinde; tarihi geçmiş ve ödenmemiş kayıt "Vadesi Geçti". |
 

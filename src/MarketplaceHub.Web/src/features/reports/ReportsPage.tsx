@@ -17,7 +17,7 @@ import { AdReportModal, adReportQuery, adReportRow, combined, reportAge, roasTex
 import { OrderProfitability } from './OrderProfitability'
 import { SalesMap } from './SalesMap'
 import { transactionLabel } from './transaction-labels'
-import { byDay, emptyPayoutFilters, estimateNote, filterGroups, isRolledToPayoutDay, isWaitingPayout, nextPayout, rolledPayoutNote, payoutRuleText, payoutGap, payoutLinesQuery, payoutState, payoutStateLabels, payoutsQuery, regionLabel, regionLabels, shortDay, statusLabels, type PayoutFilters, type PayoutGroup, type PayoutLines, type PayoutRegion, type PayoutSort, type PayoutState, type Payouts } from './payouts'
+import { byDay, emptyPayoutFilters, estimateNote, filterGroups, isRolledToPayoutDay, isWaitingPayout, lineMoney, nextPayout, otherCurrenciesText, rolledPayoutNote, payoutRuleText, payoutGap, payoutLinesQuery, payoutState, payoutStateLabels, payoutsQuery, regionLabel, regionLabels, shortDay, statusLabels, type PayoutFilters, type PayoutGroup, type PayoutLines, type PayoutRegion, type PayoutSort, type PayoutState, type Payouts } from './payouts'
 import { readUrlChoice, readUrlList, readUrlText, useListUrlSync } from '../../shared/list-url-state'
 import { RrAnchor, RrFilterCard, RrIcon } from '../marketplace/returns-ui'
 import { RETURN_NO_PLATFORM, ReturnColumnPop, ReturnPlatformPop } from '../marketplace/shared'
@@ -2455,6 +2455,7 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
   const payoutDay = covered.length !== 1 ? '' : covered[0] === 'TRENDYOL' ? ' Trendyol, Türkiye-Körfez ve Azerbaycan ödemelerini pazartesi ve perşembe, Avrupa ödemelerini ayın 4. pazartesi günü yapar.' : payoutRuleText[covered[0]] ? ` ${payoutRuleText[covered[0]]}` : ''
   // Trendyol records a payout paid but not read yet (read a day after the payout): out of the balance, said in its tip.
   const paidUnread = none || picked ? 0 : data?.paidUnreadRecords ?? 0
+  const otherText = none || picked ? '' : otherCurrenciesText(data?.otherCurrencies)
   const paidUnreadText = paidUnread > 0 ? `\nSon Trendyol ödemesinin ${formatCount(paidUnread)} kaydı (${formatTl(data?.paidUnread ?? 0)}) ödendi; kayıtları ödemeden bir gün sonra okunur, bu yüzden bakiyeye sayılmadı.` : ''
   // What earlier days that netted to nothing or less take off the next payout (the overall figure only).
   const carried = region === 'ALL' && !none ? data?.next?.carried ?? null : null
@@ -2462,7 +2463,8 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
 
   const items: Kpi[] = [
     { key: 'expected', label: 'Toplam Güncel Bakiye', value: balance, format: formatTl, icon: 'wallet', note: picked ? regionLabels[picked.region] : `${formatCount(data?.expectedRecords ?? 0)} kayıt`,
-      tip: `Teslim edilmiş, henüz ödenmemiş siparişlerin komisyon ve bekleyen kesintiler düşülmüş hakedişi. Kesilmemiş kesinti faturaları dahil değil.${paidUnreadText}` },
+      tip: `Teslim edilmiş, henüz ödenmemiş siparişlerin komisyon ve bekleyen kesintiler düşülmüş hakedişi. Kesilmemiş kesinti faturaları dahil değil.${paidUnreadText}${otherText ? `
+${otherText}` : ''}` },
     { key: 'pending', label: 'Teslim Bekleyen Sipariş', value: pendingDelivery, format: formatTl, icon: 'truck',
       note: pendingOrders > 0 ? `${formatCount(pendingOrders)} sipariş` : 'Yok',
       tip: 'Onaylanmış ya da kargodaki, henüz teslim edilmemiş siparişlerin müşterinin ödediği tutarı. Teslimden sonra bakiyeye girer.' },
@@ -2652,9 +2654,9 @@ function PayoutLinesTable({ platforms, group, search }: { platforms: string[] | 
         <td>{day(line.transactionDate)}</td>
         <td>{line.dueDay ? shortDay(line.dueDay, false) : '—'}</td>
         {searching && <td>{line.country ?? (regionLabels[line.region] || '—')}</td>}
-        <td className="is-num">{formatTl(line.gross)}</td>
-        <td className="is-num">{line.commission === null ? '—' : formatTl(line.commission)}</td>
-        <td className={`is-num ${line.net < 0 ? 'is-loss' : ''}`}>{formatTl(line.net)}</td>
+        <td className="is-num">{lineMoney(line.gross, line.currency)}</td>
+        <td className="is-num">{line.commission === null ? '—' : lineMoney(line.commission, line.currency)}</td>
+        <td className={`is-num ${line.net < 0 ? 'is-loss' : ''}`}>{lineMoney(line.net, line.currency)}</td>
         {searching && <td><em className={`reports-payout-badge is-${line.status.toLowerCase()}`}>{statusLabels[line.status]}</em></td>}
       </tr>)}</tbody>
       <tfoot><tr><th scope="row" colSpan={searching ? 8 : 7}>{formatCount(data.totalCount)} kayıt</th><td className="is-num">{formatTl(data.net)}</td>{searching && <td />}</tr></tfoot>

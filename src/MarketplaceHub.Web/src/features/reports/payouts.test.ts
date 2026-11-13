@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { estimateNote, isRolledToPayoutDay, nextPayout, parseAmount, payoutGap, payoutLinesQuery, rolledPayoutNote, type PayoutGroup } from './payouts'
+import { estimateNote, isRolledToPayoutDay, lineMoney, nextPayout, otherCurrenciesText, parseAmount, payoutGap, payoutLinesQuery, rolledPayoutNote, type PayoutGroup } from './payouts'
 
 describe('estimate note', () => {
   it('explains the deductions taken off a Trendyol payout day to come', () => {
@@ -20,13 +20,13 @@ describe('estimate note', () => {
 })
 
 describe('payout day roll', () => {
-  it('notes a Trendyol or Hepsiburada payout day as the next payout day of records already due, nothing else', () => {
-    expect(isRolledToPayoutDay({ kind: 'PAYOUT_DAY', platformCode: 'HEPSIBURADA' })).toBe(true)
+  it('notes a Trendyol payout day as the next payout day of sales whose payout day passed, nothing else', () => {
+    expect(isRolledToPayoutDay({ kind: 'PAYOUT_DAY', platformCode: 'HEPSIBURADA' })).toBe(false)
     expect(isRolledToPayoutDay({ kind: 'PAYOUT_DAY', platformCode: 'trendyol' })).toBe(true)
     expect(isRolledToPayoutDay({ kind: 'DUE_DAY', platformCode: 'TRENDYOL' })).toBe(false)
     expect(isRolledToPayoutDay({ kind: 'PAYOUT', platformCode: 'HEPSIBURADA' })).toBe(false)
     expect(isRolledToPayoutDay({ kind: 'PAYOUT_DAY', platformCode: 'N11' })).toBe(false)
-    expect(rolledPayoutNote).toBe('Vadesi dolan kayıtlar sonraki ödeme gününe aktarıldı.')
+    expect(rolledPayoutNote).toBe('Ödeme günü geçmiş, vadesi henüz dolmamış satışlar sonraki ödeme gününe aktarıldı.')
   })
 })
 
@@ -79,5 +79,17 @@ describe('next payout of a picked region', () => {
     expect(nextPayout(data([]), 'ALL')).toEqual({ day: '2026-11-09', amount: 500 })
     expect(nextPayout(data([]), 'EUROPE')).toEqual({ day: null, amount: null })
     expect(nextPayout(undefined, 'ALL')).toEqual({ day: null, amount: null })
+  })
+})
+
+describe('other currencies', () => {
+  it('says the balance in another currency apart and shows a record in its own currency', () => {
+    expect(otherCurrenciesText(null)).toBe('')
+    const text = otherCurrenciesText([{ currency: 'USD', expected: 100, records: 1 }])
+    expect(text.startsWith('Diğer para birimleri (bakiyeye eklenmedi): ')).toBe(true)
+    expect(text).toContain('100,00')
+    expect(text).toContain('(1 kayıt)')
+    expect(lineMoney(100, 'USD')).toContain('$')
+    expect(lineMoney(100, undefined)).toContain('₺')
   })
 })

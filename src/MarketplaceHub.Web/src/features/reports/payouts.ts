@@ -1,3 +1,4 @@
+import { formatMoney } from '../../shared/format-money'
 // Hakediş (PayoutContracts.cs): what the marketplaces will pay and have paid, from their accounting records.
 // Expected is the balance (every record not paid yet); unknown, its overdue part, is never "unpaid".
 // Region NONE: a marketplace that pays without Trendyol's regions.
@@ -27,10 +28,15 @@ export type Payouts = { today: string; daysBack: number; expected: number; expec
   unknown: number; unknownRecords: number; earlyPaymentsTaken: number; earlyPayments: number; regions: PayoutRegionSummary[]; platforms: PayoutPlatformSummary[]
   upcoming: PayoutGroup[]; past: PayoutGroup[]; coverage: PayoutCoverage[]; pendingDelivery: number; pendingDeliveryOrders: number
   // Trendyol sales and returns a payout paid whose records are not read yet: out of expected (absent in an older answer).
-  paidUnread?: number; paidUnreadRecords?: number }
+  paidUnread?: number; paidUnreadRecords?: number
+  // The records not paid yet in another currency than the lira, each currency apart: never in the lira figures.
+  otherCurrencies?: PayoutCurrency[] | null }
+export type PayoutCurrency = { currency: string; expected: number; records: number }
 export type PayoutLine = { externalId: string; connectionId: string; platformCode: string; transactionType: string | null; category: string; transactionDate: string
   dueDay: string | null; orderNumber: string | null; invoiceNumber: string | null; country: string | null; region: PayoutRegion; gross: number; commission: number | null
-  net: number; status: PayoutStatus; paymentOrderId: string | null; barcode: string | null }
+  net: number; status: PayoutStatus; paymentOrderId: string | null; barcode: string | null
+  // The record's currency (absent in an older answer: the lira); the lines' total adds only the lira ones.
+  currency?: string }
 export type PayoutLines = { items: PayoutLine[]; totalCount: number; page: number; pageSize: number; net: number }
 
 // The next payout the "Sıradaki Ödeme" card shows: the server's own figure, overall or for the picked Trendyol region
@@ -142,9 +148,11 @@ export function filterGroups(groups: PayoutGroup[], filters: PayoutFilters) {
 
 // Trendyol and Hepsiburada pay on fixed days, so a record falls due on its own day but is paid on the next payout day
 // (PAYOUT_DAY groups): the rule stays, and the group says so in a short note.
-export const rolledPayoutNote = 'Vadesi dolan kayıtlar sonraki ödeme gününe aktarıldı.'
+// A record past its due day waits apart under Vadesi Geçmiş Bekleyen, never on a payout day; only a Trendyol sale whose
+// payout day passed before its due day moves to the next payout day.
+export const rolledPayoutNote = 'Ödeme günü geçmiş, vadesi henüz dolmamış satışlar sonraki ödeme gününe aktarıldı.'
 export function isRolledToPayoutDay(group: Pick<PayoutGroup, 'kind' | 'platformCode'>) {
-  return group.kind === 'PAYOUT_DAY' && ['TRENDYOL', 'HEPSIBURADA'].includes(group.platformCode.trim().toUpperCase())
+  return group.kind === 'PAYOUT_DAY' && group.platformCode.trim().toUpperCase() === 'TRENDYOL'
 }
 
 // When each marketplace pays, as read from its paid records (Oct-Nov 2026), for the next payout's explanation.
@@ -159,6 +167,15 @@ const estimateLabels: Record<PayoutEstimateKind, string> = {
   CARGO: 'Kargo', RETURN_CARGO: 'İade kargosu', PLATFORM_FEE: 'Platform hizmet bedeli', INTERNATIONAL_FEE: 'Uluslararası hizmet bedeli', STOPPAGE: 'Stopaj'
 }
 const money = (value: number) => value.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+// The balance in other currencies, said apart from the lira balance; empty when every record is in lira.
+export function otherCurrenciesText(list: PayoutCurrency[] | null | undefined) {
+  if (!list?.length) return ''
+  return `Diğer para birimleri (bakiyeye eklenmedi): ${list.map(item => `${formatMoney(item.expected, item.currency)} (${item.records} kayıt)`).join(', ')}`
+}
+
+// A record's amount in its own currency.
+export const lineMoney = (value: number, currency: string | undefined) => formatMoney(value, currency ?? 'TRY')
 
 // How a Trendyol payout day's estimate is made: its records less the deductions billed only the evening before the payout.
 // Null when the group has none. Trendyol knows each parcel's desi and fee tier, so its figure can differ by a few lira a

@@ -73,14 +73,14 @@ public sealed class N11SettlementSyncJobHandler(AppDbContext db, IN11SettlementP
             }
             received += lines.Count + skipped.Count;
             if (day < recent && lines.Count > 0) olderStored++;
-            var ids = lines.Select(x => ExternalId(x.OrderItemId, day)).ToList();
+            var records = Records(lines, day);
+            var ids = records.Select(x => x.Id).ToList();
             await FinanceRecordIssues.RecordAsync(db, request.TenantId, request.ConnectionId, "N11", skipped, ids, now, cancellationToken);
             var stored = await db.MarketplaceFinanceTransactions
                 .Where(x => x.TenantId == request.TenantId && x.ConnectionId == request.ConnectionId && x.Source == Source && ids.Contains(x.ExternalId))
                 .ToDictionaryAsync(x => x.ExternalId, StringComparer.Ordinal, cancellationToken);
-            foreach (var line in lines.DistinctBy(x => x.OrderItemId))
+            foreach (var (id, line) in records)
             {
-                var id = ExternalId(line.OrderItemId, day);
                 if (!stored.TryGetValue(id, out var row))
                 {
                     row = new MarketplaceFinanceTransaction
@@ -163,7 +163,15 @@ public sealed class N11SettlementSyncJobHandler(AppDbContext db, IN11SettlementP
         return new(listed.Where(day => day >= recent).ToList(), older.Take(perRun).ToList(), older.Count > perRun);
     }
 
-    internal static string ExternalId(string orderItemId, DateOnly day) => $"{Short(orderItemId, 100)}:{Key(day)}";
+    // A day's lines by the id each is stored under. A sale and a return of the same order item on one day are two records
+    // (a return line pays a negative settlement amount): both are kept, so the day nets to what n11 pays. Only a line
+    // listed twice under the same id is one record.
+    internal static IReadOnlyList<(string Id, RemoteSettlementItem Line)> Records(IEnumerable<RemoteSettlementItem> lines, DateOnly day) =>
+        lines.Select(line => (Id: ExternalId(line.OrderItemId, day, line.SettlementAmount < 0), Line: line)).DistinctBy(x => x.Id, StringComparer.Ordinal).ToList();
+
+    // The day stays after the last ':' (the days read before are told by it); a return line carries its kind before it.
+    internal static string ExternalId(string orderItemId, DateOnly day, bool isReturn = false) =>
+        isReturn ? $"{Short(orderItemId, 100)}:RETURN:{Key(day)}" : $"{Short(orderItemId, 100)}:{Key(day)}";
 
     private static string Key(DateOnly day) => day.ToString("yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture);
 

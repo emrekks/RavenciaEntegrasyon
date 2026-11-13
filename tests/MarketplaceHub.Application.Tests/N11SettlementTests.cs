@@ -1,4 +1,5 @@
 using System.Xml.Linq;
+using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.N11;
 using MarketplaceHub.Infrastructure.Jobs.Handlers;
@@ -116,5 +117,19 @@ public sealed class N11SettlementTests
         Assert.Equal(DateOnly.Parse(due, System.Globalization.CultureInfo.InvariantCulture), PayoutBuilder.DueDay(row));
         // On the Thursday itself a waiting record is still expected.
         if (status != "Success") Assert.Equal(PayoutBuilder.Expected, PayoutBuilder.Status(row, new DateOnly(2026, 11, 12)));
+    }
+
+    // n11 lists a sale (+799) and its return (-799) of the same order item on one day: both are stored, the day nets to 0;
+    // the same line listed twice is stored once.
+    [Fact]
+    public void A_sale_and_its_return_on_one_day_are_two_records()
+    {
+        var day = new DateOnly(2026, 11, 5);
+        RemoteSettlementItem Line(decimal amount) => new("998877", "205512345678", 20m, 0m, 0m, 0m, 0m, 0m, amount, amount, null, day, day, day, $"{{\"a\":{amount}}}");
+
+        var records = N11SettlementSyncJobHandler.Records([Line(799m), Line(-799m), Line(799m)], day);
+
+        Assert.Equal(["998877:20261105", "998877:RETURN:20261105"], records.Select(x => x.Id));
+        Assert.Equal(0m, records.Sum(x => x.Line.SettlementAmount));
     }
 }

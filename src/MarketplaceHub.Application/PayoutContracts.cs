@@ -36,7 +36,13 @@ public sealed record PayoutView(
     // Trendyol sales and returns a payout already paid whose records are not read yet (a payout is read a day after it is
     // made): out of Expected and the days to come, counted here so the page can say so.
     decimal PaidUnread = 0,
-    int PaidUnreadRecords = 0);
+    int PaidUnreadRecords = 0,
+    // The records not paid yet in another currency than the lira (a Hepsiburada USD record): never added to the lira
+    // figures above, each currency's total shown apart.
+    IReadOnlyList<PayoutCurrencyView>? OtherCurrencies = null);
+
+// One currency's records not paid yet, apart from the lira balance.
+public sealed record PayoutCurrencyView(string Currency, decimal Expected, int Records);
 
 // Region: TR_GULF (Türkiye and the Gulf storefronts), EUROPE, AZ, UNKNOWN (a country no rule names).
 public sealed record PayoutRegionView(string Region, decimal Expected, int Records, DateOnly? NextDay, decimal? NextAmount, decimal Unknown,
@@ -74,8 +80,9 @@ public sealed record PayoutCoverageView(Guid ConnectionId, string PlatformCode, 
 // One record. Net: what it adds to (or takes from) the payout. Status PAID, EXPECTED or UNKNOWN as in PayoutView.
 // Barcode: the product the record is for; an order of two products has a sale (and a discount) for each.
 public sealed record PayoutLineView(string ExternalId, Guid ConnectionId, string PlatformCode, string? TransactionType, string Category, DateTimeOffset TransactionDate,
-    DateOnly? DueDay, string? OrderNumber, string? InvoiceNumber, string? Country, string Region, decimal Gross, decimal? Commission, decimal Net, string Status, string? PaymentOrderId, string? Barcode = null);
+    DateOnly? DueDay, string? OrderNumber, string? InvoiceNumber, string? Country, string Region, decimal Gross, decimal? Commission, decimal Net, string Status, string? PaymentOrderId, string? Barcode = null, string Currency = "TRY");
 
+// Net: the lira records' sum; a record in another currency is listed with its currency but never added to it.
 public sealed record PayoutLinesPage(IReadOnlyList<PayoutLineView> Items, int TotalCount, int Page, int PageSize, decimal Net);
 
 public interface IPayoutsService
