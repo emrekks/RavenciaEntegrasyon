@@ -114,6 +114,28 @@ export function offsiteBackupState(view: OffsiteBackupView): OffsiteBackupState 
   return { tone: 'pending', label: 'İlk Gönderim Bekleniyor' }
 }
 
+/** Setup is finished when the client, the encryption key and a Google connection are all there; then the section shows the compact view. */
+export function offsiteSetupDone(view: OffsiteBackupView) {
+  return !!view.clientId && view.clientSecretSaved && !!view.ageRecipient && view.connected
+}
+
+/** The age public key as one short piece: age1 + its start and its last characters. */
+export function shortAgeKey(key: string | null | undefined) {
+  const value = (key ?? '').trim()
+  return value.length > 20 ? `${value.slice(0, 10)}…${value.slice(-6)}` : value
+}
+
+/** The status query keeps following a copy that was asked for or is running: true while it is not finished. */
+export function offsiteCopyPending(view: OffsiteBackupView | undefined, askedAt: number | null) {
+  if (!view) return false
+  if (view.runningSince) return true
+  const requested = view.requestedAt ? Date.parse(view.requestedAt) : NaN
+  const attempted = view.lastAttemptAt ? Date.parse(view.lastAttemptAt) : NaN
+  if (Number.isFinite(requested) && (!Number.isFinite(attempted) || requested > attempted)) return true
+  // Just asked from this page: follow until a newer attempt shows (or three minutes pass).
+  return askedAt !== null && Date.now() - askedAt < 180_000 && (!Number.isFinite(attempted) || attempted < askedAt - 5_000)
+}
+
 export function formatBackupSize(bytes: number | null | undefined) {
   if (bytes == null || !Number.isFinite(bytes) || bytes <= 0) return '—'
   const units = ['B', 'KB', 'MB', 'GB', 'TB']

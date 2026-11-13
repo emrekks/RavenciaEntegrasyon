@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { Encrypter } from 'age-encryption'
 import { decryptBackup, decryptedFileName, generateBackupKeyPair, identityFromKeyFile } from './offsite-backup-crypto'
-import { formatBackupSize, offsiteBackupDraftError, offsiteBackupSaveBody, offsiteBackupState, readGoogleCallback, type OffsiteBackupDraft, type OffsiteBackupView } from './offsite-backup'
+import { formatBackupSize, offsiteCopyPending, offsiteSetupDone, shortAgeKey, offsiteBackupDraftError, offsiteBackupSaveBody, offsiteBackupState, readGoogleCallback, type OffsiteBackupDraft, type OffsiteBackupView } from './offsite-backup'
 
 const draft: OffsiteBackupDraft = {
   enabled: true, ageRecipient: 'age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p', folderMode: 'NAME', folderValue: '', keepDays: '14', keepMonths: '12',
@@ -10,6 +10,29 @@ const draft: OffsiteBackupDraft = {
 }
 
 describe('offsite backup rules', () => {
+  it('shows the compact view only when the client, the key and the connection are all there', () => {
+    const view = { clientId: '123456789-abcdefghijklmnop.apps.googleusercontent.com', clientSecretSaved: true, ageRecipient: draft.ageRecipient, connected: true } as OffsiteBackupView
+    expect(offsiteSetupDone(view)).toBe(true)
+    expect(offsiteSetupDone({ ...view, connected: false })).toBe(false)
+    expect(offsiteSetupDone({ ...view, clientSecretSaved: false })).toBe(false)
+    expect(offsiteSetupDone({ ...view, ageRecipient: null })).toBe(false)
+    expect(offsiteSetupDone({ ...view, clientId: null })).toBe(false)
+    expect(shortAgeKey(draft.ageRecipient)).toBe('age1ql3z7h…aqmcac8p'.replace('aqmcac8p', draft.ageRecipient.slice(-6)))
+    expect(shortAgeKey(null)).toBe('')
+  })
+
+  it('keeps following a copy that was asked for or is running, and stops when it is finished', () => {
+    const idle = { runningSince: null, requestedAt: null, lastAttemptAt: '2026-11-13T15:28:56Z' } as OffsiteBackupView
+    expect(offsiteCopyPending(undefined, null)).toBe(false)
+    expect(offsiteCopyPending(idle, null)).toBe(false)
+    expect(offsiteCopyPending({ ...idle, runningSince: '2026-11-13T15:29:00Z' }, null)).toBe(true)
+    expect(offsiteCopyPending({ ...idle, requestedAt: '2026-11-13T15:30:00+00:00' }, null)).toBe(true)
+    expect(offsiteCopyPending({ ...idle, requestedAt: '2026-11-13T15:28:00Z' }, null)).toBe(false)
+    // Asked a moment ago, the server has not shown a newer attempt yet.
+    expect(offsiteCopyPending(idle, Date.now())).toBe(true)
+    expect(offsiteCopyPending({ ...idle, lastAttemptAt: new Date(Date.now() + 60_000).toISOString() }, Date.now())).toBe(false)
+  })
+
   it('refuses a private key, a short key and an incomplete client before asking the server', () => {
     expect(offsiteBackupDraftError(draft, true)).toBeNull()
     expect(offsiteBackupDraftError({ ...draft, ageRecipient: 'AGE-SECRET-KEY-1ABC' }, true)).toContain('ÖZEL')

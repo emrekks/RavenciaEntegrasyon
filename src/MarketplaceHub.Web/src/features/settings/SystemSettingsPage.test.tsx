@@ -472,8 +472,17 @@ describe('SystemSettingsPage', () => {
     expect(container.textContent).toContain('Çalışıyor')
     expect(container.textContent).toContain('owner@gmail.com')
     expect(container.textContent).toContain('20261113T085901Z · 150 MB')
+    // Set up and connected: the compact view with one summary line per part; "Değiştir" opens a part in place.
+    expect(container.querySelector('.ss-ob-wizard')).toBeNull()
+    expect(container.querySelector('input[aria-label="age Açık Anahtarı"]')).toBeNull()
+    expect(container.querySelector('.ss-ob-rows')?.textContent).toContain('Klasör ve Saklama')
+    expect(container.querySelector('.ss-ob-rows')?.textContent).toContain('Ravencia Yedek · 14 gün / 12 ay')
+    expect(container.querySelector('.ss-bar, [class*="settings-bar"]')).toBeNull()
+    click(container.querySelector<HTMLButtonElement>('button[aria-label="Google İstemcisi Değiştir"]')!)
     expect(container.querySelector('input[aria-label="İstemci Gizli Anahtarı"]')).toBeNull()
     expect(container.querySelector<HTMLInputElement>('input[aria-label="Yönlendirme Adresi"]')?.value).toBe('https://panel.example.invalid/settings/google-drive-callback')
+    click(container.querySelector<HTMLButtonElement>('button[aria-label="Şifreleme Anahtarı Değiştir"]')!)
+    click(container.querySelector<HTMLButtonElement>('button[aria-label="Klasör ve Saklama Değiştir"]')!)
 
     // A private key pasted by mistake is refused before anything is sent.
     input(container.querySelector<HTMLInputElement>('input[aria-label="age Açık Anahtarı"]')!, 'AGE-SECRET-KEY-1QQQ')
@@ -492,6 +501,19 @@ describe('SystemSettingsPage', () => {
     const sent = JSON.parse(save.body!)
     expect(sent).toMatchObject({ enabled: true, keepDays: 21, keepMonths: 12, folderMode: 'NAME', folderValue: 'Ravencia Yedek', clientSecret: null, password: 'my-password' })
     expect(save.headers?.['if-match']).toBe('"v4"')
+  })
+
+  it('shows the three-step setup while the client, the key or the connection is missing, and keeps the full block for an invalid grant', async () => {
+    const saved = { ...offsiteView }
+    Object.assign(offsiteView, { connected: false, ageRecipient: null as string | null, clientId: null as string | null, clientSecretSaved: false })
+    try {
+      await renderPage('/settings?tab=offsite')
+      expect(container.querySelector('.ss-ob-wizard')).not.toBeNull()
+      expect(container.querySelectorAll('.ss-ob-step').length).toBe(3)
+      expect(container.querySelector('.ss-ob-rows')).toBeNull()
+      expect(container.querySelector('details.ss-ob-how')?.hasAttribute('open')).toBe(false)
+      expect(button('Google ile Bağlan').disabled).toBe(true)
+    } finally { Object.assign(offsiteView, saved) }
   })
 
   it('asks the worker for a copy now', async () => {

@@ -655,6 +655,27 @@
 .ss-page .ss-ob-folder { display: grid; grid-template-columns: minmax(240px, 300px) minmax(0, 1fr); gap: 8px; align-items: center; }
 .ss-page .ss-ob-oauth { display: grid; gap: 12px; padding: 14px 16px; border: 1px solid var(--rv-color-border); border-radius: 12px; }
 .ss-page .ss-ob-oauth > h3 { margin: 0; color: var(--rv-color-ink); font-size: 14px; font-weight: 600; }
+.ss-page .ss-ob-wizard, .ss-page .ss-ob-rows { display: grid; gap: 12px; }
+.ss-page .ss-ob-step, .ss-page .ss-ob-row, .ss-page .ss-ob-adv { display: grid; gap: 10px; padding: 12px 16px; border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.ss-page .ss-ob-rows { gap: 8px; }
+.ss-page .ss-ob-step-head, .ss-page .ss-ob-row-line { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 36px; }
+.ss-page .ss-ob-step-head > .ss-btn, .ss-page .ss-ob-row-line > .ss-btn { margin-left: auto; }
+.ss-page .ss-ob-step-head h3 { margin: 0; color: var(--rv-color-ink); font-size: 14px; font-weight: 600; }
+.ss-page .ss-ob-step-no { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; color: #fff; background: var(--rv-color-primary); font-size: 12px; font-weight: 600; }
+.ss-page .ss-ob-step.is-done .ss-ob-step-no { background: transparent; }
+.ss-page .ss-ob-step-body, .ss-page .ss-ob-row-body, .ss-page .ss-ob-adv-body { display: grid; gap: 12px; min-width: 0; }
+.ss-page .ss-ob-row-line > b { font-size: 13px; font-weight: 600; white-space: nowrap; }
+.ss-page .ss-ob-row-line > span { color: var(--rv-color-muted); font-size: 13px; }
+.ss-page .ss-ob-row-value { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ss-page .ss-ob-how > summary, .ss-page .ss-ob-adv > summary { cursor: pointer; color: var(--rv-color-primary); font-size: 13px; font-weight: 600; }
+.ss-page .ss-ob-how[open] > summary, .ss-page .ss-ob-adv[open] > summary { margin-bottom: 10px; }
+.ss-page .ss-ob-how { display: block; }
+.ss-page .ss-link { padding: 0; min-height: 0; color: var(--rv-color-primary); background: none; border: 0; font-size: 13px; font-weight: 600; text-decoration: underline; cursor: pointer; }
+.ss-page .ss-ob-menu { position: relative; }
+.ss-page .ss-ob-menu-list { position: absolute; z-index: 20; top: calc(100% + 4px); right: 0; display: grid; min-width: 180px; padding: 4px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.18); }
+.ss-page .ss-ob-menu-list > button { display: flex; align-items: center; gap: 8px; height: 36px; min-height: 0; padding: 0 10px; color: var(--rv-color-ink); background: none; border: 0; border-radius: 7px; font-size: 13px; text-align: left; white-space: nowrap; cursor: pointer; }
+.ss-page .ss-ob-menu-list > button:hover:not(:disabled) { background: rgb(127 127 127 / 0.12); }
+.ss-page .ss-ob-menu-list > button.is-danger { color: var(--rv-color-danger, #c0392b); }
 .ss-page .ss-ob-steps { display: grid; gap: 4px; margin: 0; padding-left: 20px; color: var(--rv-color-muted); font-size: 13px; line-height: 1.5; }
 .ss-page .ss-ob-check { display: flex; align-items: flex-start; gap: 8px; color: var(--rv-color-ink); font-size: 13px; line-height: 1.45; cursor: pointer; }
 .ss-page .ss-ob-check > input { flex: none; margin-top: 1px; }
