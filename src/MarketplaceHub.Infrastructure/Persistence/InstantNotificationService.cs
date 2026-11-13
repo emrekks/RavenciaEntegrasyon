@@ -22,6 +22,9 @@ public sealed class InstantNotificationService(
     TimeProvider timeProvider,
     ILogger<InstantNotificationService> logger) : IInstantNotificationService
 {
+    // Passive Trendyol webhooks this scope has already removed at Trendyol (or found gone), so RetirePausedAsync does not
+    // ask Trendyol to remove them a second time.
+    private readonly HashSet<string> removedAtMarketplace = new(StringComparer.Ordinal);
     // Panel-managed subscriptions are marked by their Basic Auth user name prefix.
     internal const string ManagedUserPrefix = "ravencia-";
     // Hepsiburada registers webhooks by hand (a request from the seller), so the panel only
@@ -161,7 +164,7 @@ public sealed class InstantNotificationService(
             await SettlePendingRegistrationsAsync(connection, TimeSpan.Zero, correlationId, cancellationToken);
             if (await ManagedSubscriptionAsync(tenantId, connectionId, cancellationToken) is not null)
             {
-                await RetirePausedAsync(tenantId, connectionId, cancellationToken);
+                await RetirePausedAsync(tenantId, connectionId, correlationId, cancellationToken);
                 return await StatusAsync(tenantId, connectionId, correlationId, cancellationToken);
             }
         }
@@ -226,7 +229,7 @@ public sealed class InstantNotificationService(
         }
         logger.LogInformation("{Platform} order webhook {WebhookId} registered for connection {ConnectionId}", connection.PlatformCode, subscription.ExternalSubscriptionId, connectionId);
         // A webhook opened again replaces the one Pasife Al closed.
-        await RetirePausedAsync(tenantId, connectionId, cancellationToken);
+        await RetirePausedAsync(tenantId, connectionId, correlationId, cancellationToken);
         // Registered, but no notification has come yet: the same state the status read gives until the first one.
         return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, subscription, "WAITING", RegisteredMessage(connection.PlatformCode, "WAITING", healthy: true, WebhookPollingPolicy.SafetyNetSeconds / 60), cancellationToken));
     }
@@ -250,7 +253,7 @@ public sealed class InstantNotificationService(
                 if (!removed.IsSuccess)
                     return ServiceResult<InstantNotificationView>.Fail("WEBHOOK_REMOVAL_FAILED", $"{PlatformName(connection.PlatformCode)} bildirim kaydı silinemedi: {removed.Error!.SafeMessage}", 502);
                 await CloseAsync(passive, "DELETED", cancellationToken);
-                await RetirePausedAsync(tenantId, connectionId, cancellationToken);
+                await RetirePausedAsync(tenantId, connectionId, correlationId, cancellationToken);
             }
             return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, null, "OFF", null, cancellationToken));
         }
@@ -344,7 +347,7 @@ public sealed class InstantNotificationService(
         string? failure;
         if (paused is null || await ManagedSubscriptionAsync(tenantId, connectionId, cancellationToken) is not null)
         {
-            await RetirePausedAsync(tenantId, connectionId, cancellationToken);
+            await RetirePausedAsync(tenantId, connectionId, correlationId, cancellationToken);
             // A Shopify registration the panel keeps as open is checked against Shopify's list: Shopify removes a
             // subscription after eight failed deliveries in a row, and one removed altogether is opened anew.
             if (connection.PlatformCode == "SHOPIFY" && await ManagedSubscriptionAsync(tenantId, connectionId, cancellationToken) is { ExternalSubscriptionId: not ManualRegistration } shopify)
@@ -360,16 +363,21 @@ public sealed class InstantNotificationService(
                 }
                 if (failure is not null) return await ResumeFailedAsync(connection, failure, cancellationToken);
             }
-            await ResolvePendingAsync(tenantId, ResumePendingKey(connectionId), cancellationToken);
+            await FinishResumeAsync(tenantId, connectionId, cancellationToken);
             return null;
         }
         // Trendyol: the webhook Pasife Al set passive is activated again (same id and address). One Trendyol no longer has,
-        // or that does not activate, is removed (best effort) and a new one is made, as Webhook'u Aç does.
-        if (connection.PlatformCode == "TRENDYOL" && paused.ExternalSubscriptionId is { } pausedId && pausedId != ManualRegistration
-            && await ActivatePausedTrendyolAsync(connection, paused.Id, pausedId, correlationId, cancellationToken))
+        // or that refuses to activate, is removed and a new one is made, as Webhook'u Aç does. A quota wait, a network or
+        // server fault leaves the passive webhook as it is: the hourly upkeep activates the same one again.
+        if (connection.PlatformCode == "TRENDYOL" && paused.ExternalSubscriptionId is { } pausedId && pausedId != ManualRegistration)
         {
-            await ResolvePendingAsync(tenantId, ResumePendingKey(connectionId), cancellationToken);
-            return null;
+            var (outcome, reason) = await ActivatePausedTrendyolAsync(connection, paused.Id, pausedId, correlationId, cancellationToken);
+            if (outcome == PausedActivation.Activated)
+            {
+                await FinishResumeAsync(tenantId, connectionId, cancellationToken);
+                return null;
+            }
+            if (outcome == PausedActivation.Later) return await ResumeFailedAsync(connection, reason ?? $"{platform}'a ulaşılamadı", cancellationToken);
         }
         try
         {
@@ -381,7 +389,7 @@ public sealed class InstantNotificationService(
             failure = $"{platform}'a ulaşılamadı";
         }
         if (failure is not null) return await ResumeFailedAsync(connection, failure, cancellationToken);
-        await ResolvePendingAsync(tenantId, ResumePendingKey(connectionId), cancellationToken);
+        await FinishResumeAsync(tenantId, connectionId, cancellationToken);
         return null;
     }
 
@@ -393,10 +401,19 @@ public sealed class InstantNotificationService(
         return note;
     }
 
+    internal enum PausedActivation { Activated, Recreate, Later }
+
+    // Whether a failed activation of a passive Trendyol webhook waits for the next try: a quota wait or the panel's own
+    // circuit (the request never left), a network or server fault. Only a refusal or a webhook Trendyol no longer has
+    // makes a new one; deleting a sound passive webhook for a passing fault left ownerless copies behind.
+    internal static bool ActivationRetriesLater(AdapterError? error) =>
+        error?.Class is AdapterErrorClass.RateLimit or AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx;
+
     // Activates the Trendyol webhook Pasife Al set passive and opens its row again (the same address and credentials).
-    // False when Trendyol refuses or no longer has it: that webhook is then removed (best effort, so no passive copy is
-    // left counting towards Trendyol's 15) and the caller makes a new one.
-    private async Task<bool> ActivatePausedTrendyolAsync(PlatformConnection connection, Guid pausedRowId, string externalId, string correlationId, CancellationToken cancellationToken)
+    // Recreate when Trendyol refuses or no longer has it: that webhook is removed (best effort; RetirePausedAsync tries
+    // again once the new one is open, so no passive copy is left counting towards Trendyol's 15) and the caller makes a
+    // new one. Later when the failure passes on its own: the row stays PAUSED and the hourly upkeep tries again.
+    private async Task<(PausedActivation Outcome, string? Reason)> ActivatePausedTrendyolAsync(PlatformConnection connection, Guid pausedRowId, string externalId, string correlationId, CancellationToken cancellationToken)
     {
         var context = Context(connection.TenantId, connection.Id, correlationId, "webhook-resume");
         AdapterResult<bool> activated;
@@ -411,24 +428,31 @@ public sealed class InstantNotificationService(
             row.Status = "ACTIVE";
             row.Version++;
             await db.SaveChangesAsync(cancellationToken);
-            await RetirePausedAsync(connection.TenantId, connection.Id, cancellationToken);
+            await RetirePausedAsync(connection.TenantId, connection.Id, correlationId, cancellationToken);
             logger.LogInformation("Trendyol order webhook {WebhookId} of connection {ConnectionId} activated again with the connection", externalId, connection.Id);
-            return true;
+            return (PausedActivation.Activated, null);
+        }
+        if (ActivationRetriesLater(activated.Error))
+        {
+            logger.LogWarning("Trendyol order webhook {WebhookId} of connection {ConnectionId} did not activate ({Code}); it is tried again hourly", externalId, connection.Id, activated.Error?.Code);
+            return (PausedActivation.Later, activated.Error?.SafeMessage);
         }
         logger.LogWarning("Trendyol order webhook {WebhookId} of connection {ConnectionId} did not activate ({Code}); a new one is made", externalId, connection.Id, activated.Error?.Code);
-        if (activated.Error?.Class != AdapterErrorClass.NotFound)
+        if (activated.Error?.Class == AdapterErrorClass.NotFound) removedAtMarketplace.Add(externalId);
+        else
         {
             try
             {
                 var removed = await registrations.DeleteWebhookAsync(context, externalId, cancellationToken);
-                if (!removed.IsSuccess) logger.LogWarning("Passive Trendyol order webhook {WebhookId} could not be removed: {Code}", externalId, removed.Error?.Code);
+                if (removed.IsSuccess) removedAtMarketplace.Add(externalId);
+                else logger.LogWarning("Passive Trendyol order webhook {WebhookId} could not be removed: {Code}", externalId, removed.Error?.Code);
             }
             catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
             {
                 logger.LogWarning(exception, "Passive Trendyol order webhook {WebhookId} could not be removed", externalId);
             }
         }
-        return false;
+        return (PausedActivation.Recreate, null);
     }
 
     internal enum ShopifyRegistrationCheck { Unchanged, Restored, Recreated, Failed }
@@ -452,9 +476,16 @@ public sealed class InstantNotificationService(
         if (restored.Error!.Code != MarketplaceHub.Infrastructure.Adapters.Shopify.ShopifyHttpClient.WebhooksRemovedCode)
             return (ShopifyRegistrationCheck.Failed, restored.Error.SafeMessage);
         var secret = PausedClientSecret(subscription);
-        await CloseAsync(subscription, "DELETED", cancellationToken);
+        // Closed as PAUSED, not DELETED: should the new opening fail (a quota wait, a refused request), the definition and
+        // its secret stay for the hourly retry, which opens it again, instead of the webhook being silently gone.
+        await CloseAsync(subscription, PausedStatus, cancellationToken);
         var enabled = await EnableAsync(tenantId, connectionId, correlationId, cancellationToken, secret);
-        if (!enabled.Succeeded) return (ShopifyRegistrationCheck.Failed, enabled.Error!.Message);
+        if (!enabled.Succeeded)
+        {
+            if (await ConnectionAsync(tenantId, connectionId, cancellationToken) is { } connection)
+                await ResumeFailedAsync(connection, enabled.Error!.Message, cancellationToken);
+            return (ShopifyRegistrationCheck.Failed, enabled.Error!.Message);
+        }
         logger.LogInformation("Shopify had removed every order webhook of connection {ConnectionId}; they were made again", connectionId);
         return (ShopifyRegistrationCheck.Recreated, null);
     }
@@ -605,9 +636,45 @@ public sealed class InstantNotificationService(
             : $"Bağlantı pasife alınırken {platform} webhook'u kapatıldı; bağlantı yeniden aktifleşince panel webhook'u kendiliğinden açar.";
     }
 
-    private Task<int> RetirePausedAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
-        db.WebhookSubscriptions.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == PausedStatus)
-            .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Status, "DELETED").SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
+    // Retires the definitions Pasife Al closed once another webhook is open. A Trendyol one is still registered there
+    // (passive): it is removed at Trendyol first (a 404 counts as removed), so no ownerless passive webhook is left
+    // counting towards Trendyol's 15. One that cannot be removed stays PAUSED with a pending record, and the hourly
+    // upkeep removes it later. Shopify removed its subscriptions on Pasife Al, so its rows only close here.
+    private async Task RetirePausedAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    {
+        var rows = await db.WebhookSubscriptions.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == PausedStatus).ToListAsync(cancellationToken);
+        if (rows.Count == 0) return;
+        var connection = await ConnectionAsync(tenantId, connectionId, cancellationToken);
+        var left = 0;
+        foreach (var row in rows)
+        {
+            if (connection?.PlatformCode == "TRENDYOL" && row.ExternalSubscriptionId is { } externalId && externalId != ManualRegistration && !removedAtMarketplace.Contains(externalId))
+            {
+                bool removed;
+                try { removed = (await registrations.DeleteWebhookAsync(Context(tenantId, connectionId, correlationId, "webhook-delete"), externalId, cancellationToken)).IsSuccess; }
+                catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested) { removed = false; }
+                if (!removed)
+                {
+                    left++;
+                    logger.LogWarning("Passive Trendyol order webhook {WebhookId} of connection {ConnectionId} could not be removed; it is tried again hourly", externalId, connectionId);
+                    continue;
+                }
+            }
+            row.Status = "DELETED";
+            row.Version++;
+        }
+        await db.SaveChangesAsync(cancellationToken);
+        if (left > 0 && connection is { Status: "ACTIVE" or "VERIFIED" })
+            await NotePendingAsync(tenantId, ResumePendingKey(connectionId), "WEBHOOK_PASSIVE_LEFT",
+                $"{connection.DisplayName}: Trendyol'daki eski pasif webhook kaydı silinemedi; panel saatte bir yeniden dener. Yeni webhook açık, siparişler gelir.", cancellationToken);
+    }
+
+    // The end of a resume: the pending record closes unless a passive definition is still left to remove.
+    private async Task FinishResumeAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        if (await db.WebhookSubscriptions.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == PausedStatus, cancellationToken)) return;
+        await ResolvePendingAsync(tenantId, ResumePendingKey(connectionId), cancellationToken);
+    }
 
     // The Shopify app secret a paused webhook was signed with, so the reopened one verifies the same way.
     private string? PausedClientSecret(WebhookSubscription paused)
@@ -653,32 +720,53 @@ public sealed class InstantNotificationService(
         var reactivated = 0;
         foreach (var subscription in subscriptions)
         {
-            var context = Context(subscription.TenantId, subscription.ConnectionId, $"webhook-upkeep:{subscription.ConnectionId:N}", "webhook-upkeep");
-            if (subscription.PlatformCode == "SHOPIFY")
+            // One connection's fault (a database error, an unreachable marketplace) does not end the pass for the others,
+            // nor the pending webhook retries that run after it in the same hourly step.
+            try
             {
-                // Shopify drops subscriptions after repeated failures (8 in a row): the dropped topics are made again, and
-                // a registration Shopify removed altogether is opened anew instead of being taken for live.
-                db.ChangeTracker.Clear();
-                var check = await EnsureShopifyRegisteredAsync(subscription.TenantId, subscription.ConnectionId, subscription.Id, $"webhook-upkeep:{subscription.ConnectionId:N}", cancellationToken);
-                if (check.Outcome is ShopifyRegistrationCheck.Restored or ShopifyRegistrationCheck.Recreated) reactivated++;
-                else if (check.Outcome == ShopifyRegistrationCheck.Failed)
-                    logger.LogWarning("Shopify order webhooks of connection {ConnectionId} could not be restored: {Reason}", subscription.ConnectionId, check.Failure);
-                continue;
+                var context = Context(subscription.TenantId, subscription.ConnectionId, $"webhook-upkeep:{subscription.ConnectionId:N}", "webhook-upkeep");
+                if (subscription.PlatformCode == "SHOPIFY")
+                {
+                    // Shopify drops subscriptions after repeated failures (8 in a row): the dropped topics are made again, and
+                    // a registration Shopify removed altogether is opened anew instead of being taken for live.
+                    db.ChangeTracker.Clear();
+                    if (!await StillOpenAsync(subscription.TenantId, subscription.ConnectionId, subscription.Id, cancellationToken)) continue;
+                    var check = await EnsureShopifyRegisteredAsync(subscription.TenantId, subscription.ConnectionId, subscription.Id, $"webhook-upkeep:{subscription.ConnectionId:N}", cancellationToken);
+                    if (check.Outcome is ShopifyRegistrationCheck.Restored or ShopifyRegistrationCheck.Recreated) reactivated++;
+                    else if (check.Outcome == ShopifyRegistrationCheck.Failed)
+                        logger.LogWarning("Shopify order webhooks of connection {ConnectionId} could not be restored: {Reason}", subscription.ConnectionId, check.Failure);
+                    continue;
+                }
+                var remote = await registrations.ListWebhooksAsync(context, cancellationToken);
+                if (!remote.IsSuccess) continue;
+                var match = remote.Value!.FirstOrDefault(webhook => webhook.Id == subscription.ExternalSubscriptionId);
+                if (match is null || match.Status == "ACTIVE") continue;
+                // Read again right before activating: a Pasife Al made while this pass ran has set the webhook passive on
+                // purpose, and activating it would undo that.
+                if (!await StillOpenAsync(subscription.TenantId, subscription.ConnectionId, subscription.Id, cancellationToken)) continue;
+                var activated = await registrations.ActivateWebhookAsync(context, subscription.ExternalSubscriptionId!, cancellationToken);
+                if (activated.IsSuccess)
+                {
+                    reactivated++;
+                    logger.LogInformation("Trendyol order webhook {WebhookId} was passive and has been reactivated", subscription.ExternalSubscriptionId);
+                }
+                else logger.LogWarning("Trendyol order webhook {WebhookId} could not be reactivated: {Code}", subscription.ExternalSubscriptionId, activated.Error?.Code);
             }
-            var remote = await registrations.ListWebhooksAsync(context, cancellationToken);
-            if (!remote.IsSuccess) continue;
-            var match = remote.Value!.FirstOrDefault(webhook => webhook.Id == subscription.ExternalSubscriptionId);
-            if (match is null || match.Status == "ACTIVE") continue;
-            var activated = await registrations.ActivateWebhookAsync(context, subscription.ExternalSubscriptionId!, cancellationToken);
-            if (activated.IsSuccess)
+            catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                reactivated++;
-                logger.LogInformation("Trendyol order webhook {WebhookId} was passive and has been reactivated", subscription.ExternalSubscriptionId);
+                logger.LogWarning(exception, "Webhook upkeep of connection {ConnectionId} failed", subscription.ConnectionId);
             }
-            else logger.LogWarning("Trendyol order webhook {WebhookId} could not be reactivated: {Code}", subscription.ExternalSubscriptionId, activated.Error?.Code);
         }
         return reactivated;
     }
+
+    // The registration is still open and its connection still reads (no Pasife Al since the upkeep listed it).
+    private Task<bool> StillOpenAsync(Guid tenantId, Guid connectionId, Guid subscriptionId, CancellationToken cancellationToken) =>
+        (from subscription in db.WebhookSubscriptions.AsNoTracking()
+         join connection in db.PlatformConnections.AsNoTracking() on subscription.ConnectionId equals connection.Id
+         where subscription.TenantId == tenantId && subscription.Id == subscriptionId && subscription.ConnectionId == connectionId && subscription.Status == "ACTIVE"
+             && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")
+         select subscription.Id).AnyAsync(cancellationToken);
 
     // Trendyol keeps one webhook; Shopify one subscription per topic, all of which must be listed.
     internal static string RemoteState(string externalId, IReadOnlyList<RemoteWebhook> remote)

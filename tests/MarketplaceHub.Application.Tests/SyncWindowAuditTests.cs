@@ -60,6 +60,26 @@ public sealed class SyncWindowAuditTests
         Assert.Equal(["O3", "O5", "O4"], due.Select(x => x.OrderNumber));
     }
 
+    // Orders Pazarama answers with no movement yet (not delivered) stay unread: they never fill a whole run, and runs
+    // move through them block by block, so the stored ones are refreshed and every unread one is asked again.
+    [Fact]
+    public void Pazarama_finance_unread_orders_never_starve_the_stored_ones_and_rotate()
+    {
+        var now = new DateTimeOffset(2026, 11, 6, 0, 0, 0, TimeSpan.Zero);
+        var unread = Enumerable.Range(1, 10).Select(n => ($"U{n}", now.AddHours(-n))).ToList();
+        var stored = Enumerable.Range(1, 3).Select(n => ($"S{n}", now.AddDays(-n))).ToList();
+        var refreshed = stored.ToDictionary(x => x.Item1, x => now.AddDays(-1));
+
+        var runs = Enumerable.Range(0, 3).Select(run => PazaramaFinanceSyncJobHandler.Due([.. unread, .. stored], refreshed, perRun: 4, rotation: run).Select(x => x.OrderNumber).ToList()).ToList();
+
+        Assert.All(runs, run => Assert.Equal(2, run.Count(number => number.StartsWith('S'))));
+        Assert.Equal(["U1", "U2"], runs[0].Where(number => number.StartsWith('U')));
+        Assert.Equal(["U3", "U4"], runs[1].Where(number => number.StartsWith('U')));
+        Assert.Equal(["U5", "U6"], runs[2].Where(number => number.StartsWith('U')));
+        // Alone, unread orders take the whole run.
+        Assert.Equal(4, PazaramaFinanceSyncJobHandler.Due(unread, new Dictionary<string, DateTimeOffset>(), perRun: 4).Count);
+    }
+
     [Theory]
     [InlineData(AdapterErrorClass.NotFound, true)]
     [InlineData(AdapterErrorClass.Validation, true)]
