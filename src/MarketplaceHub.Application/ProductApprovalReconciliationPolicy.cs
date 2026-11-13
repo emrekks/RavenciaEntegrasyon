@@ -90,10 +90,18 @@ public static class ProductApprovalReconciliationPolicy
     // approval as before (n11, Pazarama and PTT AVM list a just-sent product late). One whose create result is unknown
     // stays unknown (never taken as awaiting approval) until UnconfirmedNotFoundLimit after the check began, then goes
     // to review.
-    public static string NotFoundStatus(string? listingStatus, DateTimeOffset checkStartedAt, DateTimeOffset now) =>
-        !string.Equals(listingStatus, ProductBatchResultPolicy.ResultUnknownStatus, StringComparison.Ordinal) ? "APPROVAL_PENDING"
+    // A barcode an earlier check already sent to review for this reason stays there while it is still not found (it does
+    // not fall back to "awaiting approval" on the next check of its siblings).
+    public static string NotFoundStatus(string? listingStatus, DateTimeOffset checkStartedAt, DateTimeOffset now, string? rejectionCode = null) =>
+        string.Equals(listingStatus, "MANUAL_REVIEW", StringComparison.Ordinal) && string.Equals(rejectionCode, UnconfirmedNotFoundCode, StringComparison.Ordinal) ? "MANUAL_REVIEW"
+        : !string.Equals(listingStatus, ProductBatchResultPolicy.ResultUnknownStatus, StringComparison.Ordinal) ? "APPROVAL_PENDING"
         : now - checkStartedAt >= UnconfirmedNotFoundLimit ? "MANUAL_REVIEW"
         : ProductBatchResultPolicy.ResultUnknownStatus;
+
+    // A check whose only exceptional sizes are ones never found after UnconfirmedNotFoundLimit keeps checking the card's
+    // other waiting sizes instead of ending: one missing size does not stop its siblings' approval (13 Nov 2026).
+    public static bool KeepsCheckingSiblings(int exceptional, int unconfirmedNotFound, int pending) =>
+        exceptional > 0 && exceptional == unconfirmedNotFound && pending > 0;
 
     // A variant this reconciliation already found approved (listed LIVE, with its product and variant links) is not
     // read again on later checks: only the barcodes still waiting are asked about.

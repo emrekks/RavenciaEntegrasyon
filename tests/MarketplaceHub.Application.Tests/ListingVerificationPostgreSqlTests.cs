@@ -624,9 +624,13 @@ public sealed class ListingVerificationPostgreSqlTests(PostgreSqlTenantIsolation
         await using (var db = fixture.CreateContext())
         {
             var late = await Processor(db, port).ProcessAsync(seed.Tenant.Id, seed.Connection.Id, MarketplaceJobTypes.ProductApprovalReconcile, ApprovalPayload(TimeSpan.FromHours(25)), "pa", CancellationToken.None, approvalJobId);
-            Assert.Equal(JobCompletionKind.ManualReview, late.Kind);
-            Assert.Equal(ProductApprovalReconciliationPolicy.UnconfirmedNotFoundCode, late.ErrorCode);
+            // The size never found goes to review; the check keeps following its sibling still awaiting approval.
+            Assert.Equal(JobCompletionKind.Retry, late.Kind);
+            Assert.Equal("PRODUCT_APPROVAL_PENDING", late.ErrorCode);
         }
+        // A later check leaves the missing size in review instead of reading it as awaiting approval again.
+        await using (var db = fixture.CreateContext())
+            Assert.Equal(JobCompletionKind.Retry, (await Processor(db, port).ProcessAsync(seed.Tenant.Id, seed.Connection.Id, MarketplaceJobTypes.ProductApprovalReconcile, ApprovalPayload(TimeSpan.FromHours(26)), "pa", CancellationToken.None, approvalJobId)).Kind);
         await using var after = fixture.CreateContext();
         var settled = await after.ChannelListingVariants.AsNoTracking().Where(x => x.ProfileId == profileId).ToDictionaryAsync(x => x.VariantId);
         Assert.Equal("APPROVAL_PENDING", settled[seed.Seen.Id].ActualStatus);

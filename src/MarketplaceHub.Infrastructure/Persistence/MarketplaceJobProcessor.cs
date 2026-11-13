@@ -1069,6 +1069,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var rejected = listings.Count - candidates.Count;
         var pending = 0;
         var exceptional = 0;
+        var unconfirmedNotFound = 0;
         string? firstCode = listings.Where(x => string.Equals(x.ActualStatus, "CREATE_REJECTED", StringComparison.Ordinal) || string.Equals(x.ActualStatus, "UPDATE_REJECTED", StringComparison.Ordinal)).Select(x => x.RejectionCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
@@ -1084,7 +1085,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 "APPROVED" => "LIVE",
                 "PENDING_APPROVAL" => "APPROVAL_PENDING",
                 // A barcode whose create was never confirmed stays unknown while not found, and goes to review after 24 h.
-                "NOT_FOUND" => ProductApprovalReconciliationPolicy.NotFoundStatus(listing.ActualStatus, payload.StartedAt, timeProvider.GetUtcNow()),
+                "NOT_FOUND" => ProductApprovalReconciliationPolicy.NotFoundStatus(listing.ActualStatus, payload.StartedAt, timeProvider.GetUtcNow(), listing.RejectionCode),
                 "REJECTED" => "REJECTED",
                 "ARCHIVED" => "ARCHIVED",
                 "LOCKED" => "LOCKED",
@@ -1120,7 +1121,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     break;
                 case "REJECTED": rejected++; firstCode ??= code; break;
                 case "APPROVAL_PENDING" or ProductBatchResultPolicy.ResultUnknownStatus: pending++; break;
-                default: exceptional++; firstCode ??= code; break;
+                default:
+                    exceptional++; firstCode ??= code;
+                    if (code == ProductApprovalReconciliationPolicy.UnconfirmedNotFoundCode) unconfirmedNotFound++;
+                    break;
             }
         }
 
@@ -1163,6 +1167,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
+        if (ProductApprovalReconciliationPolicy.KeepsCheckingSiblings(exceptional, unconfirmedNotFound, pending))
+            return JobExecutionResult.Retry("PRODUCT_APPROVAL_PENDING", $"{marketplaceName} ürün onayı kartın diğer varyantları için sürüyor; bulunamayan varyant incelemede.", ProductApprovalReconciliationPolicy.PendingRecheckDelay(payload.StartedAt, payload.DeadlineAt, timeProvider.GetUtcNow()));
         if (exceptional > 0) return JobExecutionResult.ManualReview(firstCode ?? "PRODUCT_APPROVAL_REVIEW_REQUIRED", $"{marketplaceName} ürün onayında operatör incelemesi gerektiren terminal durum oluştu.");
         if (pending > 0) return JobExecutionResult.Retry("PRODUCT_APPROVAL_PENDING", $"{marketplaceName} ürün onayı henüz tamamlanmadı.", ProductApprovalReconciliationPolicy.PendingRecheckDelay(payload.StartedAt, payload.DeadlineAt, timeProvider.GetUtcNow()));
         if (live == listings.Count) return JobExecutionResult.Success();
