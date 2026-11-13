@@ -115,4 +115,17 @@ public sealed class ProductApprovalReconciliationPolicyTests
         Assert.False(ProductApprovalReconciliationPolicy.IsSettledLive("LIVE", hasProductLink: false, hasVariantLink: true));
         Assert.False(ProductApprovalReconciliationPolicy.IsSettledLive("LIVE", hasProductLink: true, hasVariantLink: false));
     }
+
+    [Theory]
+    [InlineData("CREATE_ACCEPTED", 30, "APPROVAL_PENDING")]
+    [InlineData("APPROVAL_PENDING", 30, "APPROVAL_PENDING")]
+    [InlineData(ProductBatchResultPolicy.ResultUnknownStatus, 0, ProductBatchResultPolicy.ResultUnknownStatus)]
+    [InlineData(ProductBatchResultPolicy.ResultUnknownStatus, 23, ProductBatchResultPolicy.ResultUnknownStatus)]
+    [InlineData(ProductBatchResultPolicy.ResultUnknownStatus, 24, "MANUAL_REVIEW")]
+    public void ANotFoundBarcodeWhoseCreateWasNeverConfirmedStaysUnknownThenGoesToReview(string listingStatus, int hoursSinceCheckBegan, string expected)
+    {
+        var started = new DateTimeOffset(2026, 11, 13, 9, 0, 0, TimeSpan.Zero);
+
+        Assert.Equal(expected, ProductApprovalReconciliationPolicy.NotFoundStatus(listingStatus, started, started.AddHours(hoursSinceCheckBegan)));
+    }
 }

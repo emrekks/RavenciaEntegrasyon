@@ -15,8 +15,9 @@ namespace MarketplaceHub.Infrastructure.Adapters.Pazarama;
 // Operation ids carry what the poll needs, so any process (API or worker) can answer it:
 // "b:{batchRequestId}:{count}:{barcodes}" for a create batch polled with getProductBatchResult (the barcodes
 // let a finished batch be reported line by line when Pazarama lists only the failures), and
-// "c:{lines}" for an answer Pazarama gave at once (a single product create answers without a batch id;
-// sale open/close answers per barcode). {barcodes} and {lines} are base64url JSON. Ids from before this
+// "c:{lines}" for an answer Pazarama gave at once (sale open/close answers per barcode), and "u:{barcodes}" for a
+// create Pazarama accepted without a batch id: nothing names which barcodes it took, so their outcome is unknown and
+// the approval check reads each from Pazarama's lists. {barcodes} and {lines} are base64url JSON. Ids from before this
 // encoding ("b:{id}:{count}" and "i:{guid}:{count}") are still read; an "i:" result was only in memory.
 public sealed partial class PazaramaHttpClient
 {
@@ -40,12 +41,10 @@ public sealed partial class PazaramaHttpClient
         if (created.Error is not null)
             return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "PAZARAMA_PRODUCT_CREATE_REJECTED", $"Pazarama ürün açma isteğini reddetti: {created.Error}", HttpStatusCode.UnprocessableEntity);
         var now = timeProvider.GetUtcNow();
+        // An accepted answer without a batch id names no barcode: it does not say every size went in (6 sizes sent, 1
+        // opened, all 6 were shown awaiting approval). Unknown stays unknown; the approval check reads each barcode.
         if (created.BatchId is null)
-        {
-            // A single product is answered without a batch: the accepted answer is the result.
-            var inline = PazaramaOperationId.Completed(codes.Select(code => new RemoteOperationLine(code, true, null, null, false, "Ürün ekleme isteği iletildi.")).ToList());
-            return AdapterResult<RemoteOperationRef>.Success(new(inline, "PRODUCT_CREATE", now), result.RateLimit);
-        }
+            return AdapterResult<RemoteOperationRef>.Success(new(PazaramaOperationId.Unconfirmed(codes), "PRODUCT_CREATE", now), result.RateLimit);
         return AdapterResult<RemoteOperationRef>.Success(new(PazaramaOperationId.Batch(created.BatchId, codes), "PRODUCT_CREATE", now), result.RateLimit);
     }
 
@@ -54,6 +53,10 @@ public sealed partial class PazaramaHttpClient
     {
         if (operationId.StartsWith("i:", StringComparison.Ordinal))
             return Failure<RemoteOperationStatus>(AdapterErrorClass.NotFound, "PAZARAMA_OPERATION_FORGOTTEN", "Pazarama işleminin sonucu bellekte kalmadı; ürünü Pazarama'dan yeniden okuyarak kontrol edin.", HttpStatusCode.NotFound);
+        if (operationId.StartsWith("u:", StringComparison.Ordinal))
+            return PazaramaOperationId.TryUnconfirmed(operationId, out _)
+                ? AdapterResult<RemoteOperationStatus>.Success(new(operationId, "COMPLETED", [], UnlistedLinesUnconfirmed: true))
+                : Failure<RemoteOperationStatus>(AdapterErrorClass.Validation, "PAZARAMA_OPERATION_ID_INVALID", "Pazarama işlem numarası geçersiz.", HttpStatusCode.UnprocessableEntity);
         if (operationId.StartsWith("c:", StringComparison.Ordinal))
             return PazaramaOperationId.TryCompletedLines(operationId, out var lines)
                 ? AdapterResult<RemoteOperationStatus>.Success(new(operationId, "COMPLETED", lines))
@@ -180,6 +183,23 @@ public static class PazaramaOperationId
 {
     public static string Completed(IReadOnlyList<RemoteOperationLine> lines) =>
         "c:" + Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(lines));
+
+    // A create accepted without a batch id: the barcodes sent, none of them confirmed.
+    public static string Unconfirmed(IReadOnlyList<string> codes) =>
+        "u:" + Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(codes));
+
+    public static bool TryUnconfirmed(string operationId, out IReadOnlyList<string> codes)
+    {
+        codes = [];
+        if (!operationId.StartsWith("u:", StringComparison.Ordinal)) return false;
+        try
+        {
+            if (JsonSerializer.Deserialize<List<string>>(Base64Url.DecodeFromChars(operationId.AsSpan(2))) is not { } decoded) return false;
+            codes = decoded;
+            return true;
+        }
+        catch (Exception exception) when (exception is FormatException or JsonException) { return false; }
+    }
 
     public static string Batch(string batchId, IReadOnlyList<string> codes) =>
         $"b:{batchId}:{codes.Count.ToString(CultureInfo.InvariantCulture)}:{Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(codes))}";

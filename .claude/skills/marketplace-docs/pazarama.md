@@ -111,6 +111,11 @@ Turkey time without offset; finance dates sent in Turkey time with milliseconds.
 - Product create batch (status 2 done / 3 error) names its failed and, sometimes, its done products. A sent barcode
   it names neither way is no longer taken as created: it is CREATE_RESULT_UNKNOWN at once (the batch will not name it
   later) and the approval check reads it from the lists (`PazaramaProductWriteMapper.BatchStatus`, report item 14).
+- A create Pazarama accepts without a `batchRequestId` names no barcode. Before 13 Nov 2026 every sent size was taken
+  as created ("Onay Bekliyor"); seen: 6 sizes sent, 1 opened, 5 waited the whole 7-day check. Now its operation id is
+  `u:{barcodes}` and every size is CREATE_RESULT_UNKNOWN (`PazaramaOperationId.Unconfirmed`). The approval check keeps
+  a size its lists do not show unknown, and one still not found 24 h after the check began goes to review
+  (PRODUCT_CREATE_NOT_FOUND, `ProductApprovalReconciliationPolicy.NotFoundStatus`; all marketplaces, for unknown sizes only).
 - Order list `data: null` is still read as an empty page (`PazaramaOrderMapper`): whether Pazarama answers an empty
   window with `null` or `[]` needs a read-only look at live logs first (report item 15, left as is on 5 Nov 2026).
 
