@@ -1,5 +1,6 @@
 import { createElement, useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type ComponentPropsWithoutRef, type ReactNode, type RefObject } from 'react'
 import { useRememberedTabCounts } from '../tab-counts'
+import { useTabStripScroll } from '../tab-strip-scroll'
 import { UiIcon } from './UiIcon'
 import { lockPageScroll } from '../hooks/useScrollLock'
 import { TitleHint } from './TitleHint'
@@ -105,7 +106,9 @@ export function IconButton({ label, size = 'md', variant = 'ghost', type = 'butt
 
 export function Tabs({ items: givenItems, value, onChange, ariaLabel = 'Sekmeler', className }: { items: Array<{ value: string; label: ReactNode; count?: ReactNode }>; value: string; onChange: (value: string) => void; ariaLabel?: string; className?: string }) {
   const items = useRememberedTabCounts(ariaLabel, givenItems)
-  return <div className={['rv-tabs', className].filter(Boolean).join(' ')} role="tablist" aria-label={ariaLabel}>{items.map((item, index) => <button key={item.value} type="button" role="tab" tabIndex={item.value === value ? 0 : -1} aria-selected={item.value === value} className={item.value === value ? 'is-active' : ''} onClick={() => onChange(item.value)} onKeyDown={event => {
+  const strip = useRef<HTMLDivElement>(null)
+  useTabStripScroll(strip, value)
+  return <div ref={strip} className={['rv-tabs', className].filter(Boolean).join(' ')} role="tablist" aria-label={ariaLabel}>{items.map((item, index) => <button key={item.value} type="button" role="tab" tabIndex={item.value === value ? 0 : -1} aria-selected={item.value === value} className={item.value === value ? 'is-active' : ''} onClick={() => onChange(item.value)} onKeyDown={event => {
     const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : event.key === 'ArrowRight' ? (index + 1) % items.length : event.key === 'ArrowLeft' ? (index - 1 + items.length) % items.length : -1
     if (next < 0) return
     event.preventDefault()
