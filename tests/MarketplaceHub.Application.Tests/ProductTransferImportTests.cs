@@ -718,6 +718,43 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
         Assert.True(renamed.Succeeded, renamed.Error?.Message);
     }
 
+    // Scan C-9, imports: a marketplace import may not move a variant's model code onto a card the marketplace does not
+    // know (no link on the connection); a card linked on the connection is the same marketplace model's family.
+    [PostgreSqlFact]
+    public async Task AnImportedModelCode_IsHeldOnlyByCardsTheConnectionDoesNotKnow()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"import-model-{Guid.NewGuid():N}", DisplayName = "import", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
+        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "TRENDYOL", Environment = "PRODUCTION", DisplayName = "Trendyol", ExternalStoreId = $"store-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V2", SettingsJson = "{}", Version = 1 };
+        var imported = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "İçe aktarılan", Description = "", Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now };
+        var panelOnly = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "Panel Gömleği", Description = "", Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now };
+        var importedVariant = Variant(tenant, imported, "IMP-1", "8690000600001", cost: null, desi: null, now);
+        importedVariant.ModelCode = "ESKI-MODEL";
+        var panelVariant = Variant(tenant, panelOnly, "PNL-1", "8690000600002", cost: null, desi: null, now);
+        panelVariant.ModelCode = "ORTAK-MODEL";
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(connection);
+            seed.Products.AddRange(imported, panelOnly);
+            seed.ProductVariants.AddRange(importedVariant, panelVariant);
+            seed.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ProductId = imported.Id, ExternalId = $"content-{Guid.NewGuid():N}", SyncStatus = "SYNCED", Version = 1 });
+            await seed.SaveChangesAsync();
+        }
+
+        await using (var db = fixture.CreateContext())
+            Assert.Equal(panelOnly.Id, (await ModelCodeOwnership.FindUnlinkedHolderAsync(db, tenant.Id, connection.Id, "ortak model", imported.Id, CancellationToken.None))?.ProductId);
+
+        // Once the panel card is linked on the connection it is the same marketplace model: no conflict.
+        await using (var link = fixture.CreateContext())
+        {
+            link.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ProductId = panelOnly.Id, ExternalId = $"content-{Guid.NewGuid():N}", SyncStatus = "SYNCED", Version = 1 });
+            await link.SaveChangesAsync();
+        }
+        await using (var db = fixture.CreateContext())
+            Assert.Null(await ModelCodeOwnership.FindUnlinkedHolderAsync(db, tenant.Id, connection.Id, "ORTAK-MODEL", imported.Id, CancellationToken.None));
+    }
+
     private static ProductVariant Variant(Tenant tenant, Product product, string sku, string barcode, decimal? cost, decimal? desi, DateTimeOffset now) => new()
     {
         Id = Guid.CreateVersion7(),

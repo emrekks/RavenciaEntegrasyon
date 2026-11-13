@@ -9338,6 +9338,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         else
         {
             var nextModelCode = preferBarcode ? null : Short(remote.ModelCode, 160);
+            // C-9: the marketplace changing this variant's model code to one a card it does not know holds (no link on
+            // this connection) would merge two products into one family; the panel keeps its code and says why.
+            if (!observeOnly && ModelCodeUniquenessPolicy.ChangedCodes([(variant.ModelCode, nextModelCode)]).Count > 0
+                && await ModelCodeOwnership.FindUnlinkedHolderAsync(db, tenantId, connectionId, nextModelCode!, product.Id, cancellationToken) is { } modelCodeHolder)
+            {
+                await RecordIssue(tenantId, $"product-sync-model-code-conflict:{connectionId}:{variant.Id:N}", ModelCodeUniquenessPolicy.ChangeConflictCode,
+                    $"Pazaryerindeki yeni model kodu ({nextModelCode}) '{modelCodeHolder.Title}' ürününde kullanılıyor; iki ürün birleşmesin diye {variant.Sku} varyantının model kodu değiştirilmedi.", cancellationToken);
+                nextModelCode = variant.ModelCode;
+            }
             // A stored key in the legacy form that names the same code is kept until the data recompute, so
             // rewriting it can never collide with another row under the unique index. "" becomes NULL.
             var nextSkuNormalized = CatalogKeyNormalizer.SameKey(variant.SkuNormalized, skuNormalized) ? variant.SkuNormalized : skuNormalized;
