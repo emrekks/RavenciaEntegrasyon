@@ -82,15 +82,18 @@ else
   trap - EXIT
 fi
 
-# Keep recent layer cache so the next deploy only rebuilds what changed. Fall
-# back to dropping all builder cache only when the disk is getting tight, so an
-# otherwise successful build cannot leave too little space for the backup.
+# Keep one day of layer cache so the next deploy only rebuilds what changed
+# (several deploys a day kept a week of cache at ~90 GB). Fall back to dropping
+# all builder cache when the disk is getting tight, so an otherwise successful
+# build cannot leave too little space for the backup. Untagged (dangling) images
+# left by rebuilt tags go too.
 free_kib="$(df --output=avail -k / | tail -n 1 | tr -d ' ')"
 if (( free_kib < 15000000 )); then
   sudo -n docker builder prune --all --force
 else
-  sudo -n docker builder prune --all --force --filter until=168h
+  sudo -n docker builder prune --all --force --filter until=24h
 fi
+sudo -n docker image prune --force >/dev/null
 
 # A fresh set (BACKUP_FORCE=true inside run_verified_backup), never the one taken
 # earlier today: a broken migration must not cost the hours since that set.
