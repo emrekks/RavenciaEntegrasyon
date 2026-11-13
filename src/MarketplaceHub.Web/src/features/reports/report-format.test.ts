@@ -30,7 +30,7 @@ describe('report formatting', () => {
     expect(change(120, 100)).toEqual({ text: '+%20', direction: 'up' })
     expect(change(80, 100)).toEqual({ text: '−%20', direction: 'down' })
     expect(change(5, 0)).toBeNull()
-    expect(change(0, 0)).toBeNull()
+    expect(change(0, 0)).toEqual({ text: '%0', direction: 'flat' })
     expect(change(0.05, 0.03, 'rate')).toEqual({ text: '+%2,0', direction: 'up' })
     expect(change(null, 3)).toBeNull()
   })
