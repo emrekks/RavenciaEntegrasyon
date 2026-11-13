@@ -26,6 +26,18 @@ Shared across all of them:
 - Quotas: one PostgreSQL token bucket shared by the API and every worker (`integration.take_rate_token`,
   `Adapters/SharedRateLimiter.cs`), keyed `"{platform}:{account-hash}:{bucket}"`. If it is unreachable traffic
   continues and the marketplace's own 429 becomes a retry.
+- Circuit breakers (`TrendyolResilienceHandler`, `MarketplaceCircuitBreakerHandler` for the others): after repeated
+  faults a family is paused and its requests are answered locally, never sent. The fault circuit's 503 carries the
+  header `X-MarketplaceHub-Local-Circuit` (`LocalCircuitResponse`); every adapter maps it to RateLimit
+  `{PREFIX}_LOCAL_CIRCUIT_OPEN` (`LocalCircuitOpen`), not Remote5xx. Before 13 Nov 2026 it read as a server fault, so a
+  write refused locally (product create/update/archive, sale status, common label, package action, return decision)
+  went to manual review as an uncertain outcome with its resend blocked. Now no ExternalEffect is left, the job keeps
+  its attempt (no connection back-off) and runs again when the break (30 s) is over. A quota stop still answers 429.
+- Webhook opening (Trendyol, Shopify): a create call that ends in a timeout or server fault may have registered the
+  address anyway. The row is kept and settled against the marketplace's list (`InstantNotificationService.
+  SettleRegistrationAsync`, matched by the route token in the URL): found, adopted; none, the row goes; an unreadable
+  list keeps it for the next opening or the hourly upkeep (5-minute grace). Before 13 Nov 2026 the row was deleted
+  and the marketplace kept an orphan webhook (Trendyol: 15 per seller).
 - Time: a text timestamp without an offset is Turkey time, UTC+3 with no daylight saving (`Adapters/TurkeyTime.cs`).
   Trendyol and n11 epoch-ms dates are documented as GMT+3 but are deliberately sent and read as plain UTC epochs.
 - Sync windows and lookbacks live in `SynchronizationPolicies.cs`; quotas and URLs in each adapter's `*Options.cs`.

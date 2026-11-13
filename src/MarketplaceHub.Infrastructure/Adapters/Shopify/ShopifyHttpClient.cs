@@ -1264,6 +1264,8 @@ public sealed partial class ShopifyHttpClient(
         try
         {
             using var response = await client.SendAsync(request, cancellationToken);
+            // The panel's own open circuit refused it: never sent, so never an outcome-unknown write.
+            if (LocalCircuitResponse.Refusal(response, "SHOPIFY", "Shopify") is { } localCircuit) return Failure<JsonDocument>(localCircuit);
             var raw = await response.Content.ReadAsStringAsync(cancellationToken);
             // An error answer may be an HTML page (a 502 or 503 from Shopify's edge); it is classed by its
             // status instead of failing as unreadable JSON.

@@ -1406,7 +1406,9 @@ public sealed partial class HepsiburadaHttpClient(
             {
                 var retryAfter = response.Headers.RetryAfter?.Delta
                     ?? (response.Headers.RetryAfter?.Date is { } retryDate ? retryDate - timeProvider.GetUtcNow() : null);
-                var error = response.StatusCode == HttpStatusCode.Unauthorized && IsProductUpdatePath(path)
+                var error = LocalCircuitResponse.Refusal(response, "HEPSIBURADA", "Hepsiburada") is { } localCircuit
+                    ? localCircuit
+                    : response.StatusCode == HttpStatusCode.Unauthorized && IsProductUpdatePath(path)
                     ? ProductUpdateAuthenticationRejected(requestId)
                     : MarketplaceErrorRules.GatewayBlocked(response.StatusCode, body, "Hepsiburada", "HEPSIBURADA", requestId)
                         ?? Error(response.StatusCode, retryAfter ?? rate?.RetryAfter, requestId);

@@ -44,6 +44,10 @@ public sealed record JobExecutionResult(
 
     public static JobExecutionResult FromAdapterError(AdapterError error) => error.Class switch
     {
+        // The panel's own open circuit refused the request before it was sent (LocalCircuitOpen): the job keeps its
+        // attempt and runs again when the break is over; the connection's other families are not held back.
+        AdapterErrorClass.RateLimit when LocalCircuitOpen.IsCode(error.Code) =>
+            Deferred(error.Code, error.SafeMessage, BoundedRemoteWait(error.RetryAfter) ?? TimeSpan.FromSeconds(30)),
         // A quota rejection is not the job's fault: it keeps its attempt and the connection backs off.
         AdapterErrorClass.RateLimit =>
             new(JobCompletionKind.Retry, error.Code, Safe(error.SafeMessage), BoundedRemoteWait(error.RetryAfter) ?? TimeSpan.FromSeconds(30), error.RemoteRequestId, RefundAttempt: true, BackOffConnection: true),

@@ -155,6 +155,16 @@ public sealed class InstantNotificationService(
             return ServiceResult<InstantNotificationView>.Fail("WEBHOOK_PUBLIC_URL_INVALID", "Panelin dışarıdan erişilen HTTPS adresi tanımlı değil ya da Trendyol'un kabul etmediği bir ifade içeriyor.", 422);
         var existing = await ManagedSubscriptionAsync(tenantId, connectionId, cancellationToken);
         if (existing is not null) return await StatusAsync(tenantId, connectionId, correlationId, cancellationToken);
+        // A registration an earlier attempt left unclear is settled first: the marketplace may already hold it.
+        if (connection.PlatformCode is "TRENDYOL" or "SHOPIFY")
+        {
+            await SettlePendingRegistrationsAsync(connection, TimeSpan.Zero, correlationId, cancellationToken);
+            if (await ManagedSubscriptionAsync(tenantId, connectionId, cancellationToken) is not null)
+            {
+                await RetirePausedAsync(tenantId, connectionId, cancellationToken);
+                return await StatusAsync(tenantId, connectionId, correlationId, cancellationToken);
+            }
+        }
 
         var routeToken = TokenHasher.NewToken();
         var username = ManagedUserPrefix + Convert.ToHexString(RandomNumberGenerator.GetBytes(4)).ToLowerInvariant();
@@ -190,15 +200,31 @@ public sealed class InstantNotificationService(
         var created = await registrations.CreateWebhookAsync(Context(tenantId, connectionId, correlationId, "webhook-create"), url, username, password, cancellationToken);
         if (!created.IsSuccess)
         {
-            db.WebhookSubscriptions.Remove(subscription);
-            await db.SaveChangesAsync(cancellationToken);
-            return ServiceResult<InstantNotificationView>.Fail("WEBHOOK_REGISTRATION_FAILED", $"{PlatformName(connection.PlatformCode)} bildirim kaydını kabul etmedi: {created.Error!.SafeMessage}", created.Error.HttpStatus is >= 400 and < 500 ? 422 : 502);
+            // A timeout or server fault may hide a registration the marketplace made: the row is kept until the marketplace's
+            // list shows whether one points at this address (adopted) or not (the row goes), never dropped blind.
+            if (WriteOutcomePolicy.IsUncertain(created.Error!))
+            {
+                var settled = await SettleRegistrationAsync(connection, subscription, correlationId, cancellationToken);
+                if (settled == RegistrationSettlement.Unknown)
+                    return ServiceResult<InstantNotificationView>.Fail("WEBHOOK_REGISTRATION_UNCERTAIN", $"{PlatformName(connection.PlatformCode)} bildirim kaydının sonucu belirsiz ({created.Error!.SafeMessage.TrimEnd('.')}). Panel kaydı {PlatformName(connection.PlatformCode)}'daki listeden saatte bir kontrol eder; varsa sahiplenir, yoksa kaldırır.", 502);
+                if (settled == RegistrationSettlement.Absent)
+                    return ServiceResult<InstantNotificationView>.Fail("WEBHOOK_REGISTRATION_FAILED", $"{PlatformName(connection.PlatformCode)} bildirim kaydını kabul etmedi: {created.Error!.SafeMessage}", 502);
+            }
+            else
+            {
+                db.WebhookSubscriptions.Remove(subscription);
+                await db.SaveChangesAsync(cancellationToken);
+                return ServiceResult<InstantNotificationView>.Fail("WEBHOOK_REGISTRATION_FAILED", $"{PlatformName(connection.PlatformCode)} bildirim kaydını kabul etmedi: {created.Error!.SafeMessage}", created.Error.HttpStatus is >= 400 and < 500 ? 422 : 502);
+            }
         }
-        subscription.ExternalSubscriptionId = created.Value;
-        subscription.VerifiedAt = timeProvider.GetUtcNow();
-        subscription.Version++;
-        await db.SaveChangesAsync(cancellationToken);
-        logger.LogInformation("{Platform} order webhook {WebhookId} registered for connection {ConnectionId}", connection.PlatformCode, created.Value, connectionId);
+        else
+        {
+            subscription.ExternalSubscriptionId = created.Value;
+            subscription.VerifiedAt = timeProvider.GetUtcNow();
+            subscription.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        logger.LogInformation("{Platform} order webhook {WebhookId} registered for connection {ConnectionId}", connection.PlatformCode, subscription.ExternalSubscriptionId, connectionId);
         // A webhook opened again replaces the one Pasife Al closed.
         await RetirePausedAsync(tenantId, connectionId, cancellationToken);
         // Registered, but no notification has come yet: the same state the status read gives until the first one.
@@ -352,7 +378,101 @@ public sealed class InstantNotificationService(
                 logger.LogWarning(exception, "Webhook retry of connection {ConnectionId} failed", connectionId);
             }
         }
+        // Registrations whose opening ended unclear (a timeout or server fault) and that are old enough not to be in
+        // flight: the marketplace's list decides whether they are adopted or removed.
+        db.ChangeTracker.Clear();
+        var unclearConnections = await (from subscription in db.WebhookSubscriptions.AsNoTracking()
+                                        join connection in db.PlatformConnections.AsNoTracking() on new { subscription.TenantId, subscription.ConnectionId } equals new { connection.TenantId, ConnectionId = connection.Id }
+                                        where subscription.Status == "ACTIVE" && subscription.ExternalSubscriptionId == null && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "SHOPIFY")
+                                        select connection).Distinct().ToListAsync(cancellationToken);
+        foreach (var connection in unclearConnections)
+        {
+            try
+            {
+                db.ChangeTracker.Clear();
+                done += await SettlePendingRegistrationsAsync(connection, PendingRegistrationGrace, $"webhook-upkeep:{connection.Id:N}", cancellationToken);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                logger.LogWarning(exception, "Unclear webhook registration of connection {ConnectionId} could not be settled", connection.Id);
+            }
+        }
         return done;
+    }
+
+    // An opening younger than this may still be waiting for the marketplace's answer; the hourly upkeep leaves it alone.
+    internal static readonly TimeSpan PendingRegistrationGrace = TimeSpan.FromMinutes(5);
+
+    internal enum RegistrationSettlement { Adopted, Absent, Unknown }
+
+    // The connection's registrations left without a marketplace id (their opening ended unclear), older than the grace,
+    // settled against the marketplace's list. Returns how many were adopted or removed.
+    private async Task<int> SettlePendingRegistrationsAsync(PlatformConnection connection, TimeSpan grace, string correlationId, CancellationToken cancellationToken)
+    {
+        var cutoff = timeProvider.GetUtcNow() - grace;
+        var unclear = (await db.WebhookSubscriptions
+                .Where(x => x.TenantId == connection.TenantId && x.ConnectionId == connection.Id && x.Status == "ACTIVE" && x.ExternalSubscriptionId == null)
+                .ToListAsync(cancellationToken))
+            .Where(x => PreparedAt(x.Id) <= cutoff)
+            .OrderByDescending(x => x.Id)
+            .ToList();
+        var settled = 0;
+        foreach (var subscription in unclear)
+            if (await SettleRegistrationAsync(connection, subscription, correlationId, cancellationToken) != RegistrationSettlement.Unknown) settled++;
+        return settled;
+    }
+
+    // Reads the marketplace's webhooks and finds the ones pointing at this subscription's address (its route token). A
+    // complete registration is adopted (Trendyol: one webhook; Shopify: one subscription for every topic) and any further
+    // copy removed; an incomplete Shopify set is removed with the row; none found removes the row. Unknown when the
+    // list (or a removal) could not be read: the row stays for the next try.
+    private async Task<RegistrationSettlement> SettleRegistrationAsync(PlatformConnection connection, WebhookSubscription subscription, string correlationId, CancellationToken cancellationToken)
+    {
+        var context = Context(connection.TenantId, connection.Id, correlationId, "webhook-settle");
+        var listed = await registrations.ListWebhooksAsync(context, cancellationToken);
+        if (!listed.IsSuccess) return RegistrationSettlement.Unknown;
+        var ours = listed.Value!.Where(webhook => RouteTokenHashOf(webhook.Url) is { } hash && hash == subscription.RouteTokenHash).ToList();
+        var adopted = AdoptableIds(connection.PlatformCode, ours);
+        var adoptedIds = adopted?.Split(MarketplaceHub.Infrastructure.Adapters.Shopify.ShopifyHttpClient.WebhookIdSeparator) ?? [];
+        foreach (var extra in ours.Where(webhook => !adoptedIds.Contains(webhook.Id, StringComparer.Ordinal)))
+        {
+            var removed = await registrations.DeleteWebhookAsync(context, extra.Id, cancellationToken);
+            if (!removed.IsSuccess && adopted is null) return RegistrationSettlement.Unknown;
+        }
+        if (adopted is not null)
+        {
+            subscription.ExternalSubscriptionId = adopted;
+            subscription.VerifiedAt = timeProvider.GetUtcNow();
+            subscription.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+            logger.LogInformation("{Platform} order webhook {WebhookId} of an unclear opening was adopted for connection {ConnectionId}", connection.PlatformCode, adopted, connection.Id);
+            return RegistrationSettlement.Adopted;
+        }
+        db.WebhookSubscriptions.Remove(subscription);
+        await db.SaveChangesAsync(cancellationToken);
+        return RegistrationSettlement.Absent;
+    }
+
+    // Trendyol keeps one webhook per registration; Shopify one subscription per topic, all of which must be there.
+    internal static string? AdoptableIds(string platformCode, IReadOnlyList<RemoteWebhook> ours)
+    {
+        if (ours.Count == 0) return null;
+        if (platformCode != "SHOPIFY") return ours[0].Id;
+        var byTopic = MarketplaceHub.Infrastructure.Adapters.Shopify.ShopifyHttpClient.WebhookTopics
+            .Select(topic => ours.FirstOrDefault(webhook => string.Equals(webhook.Topic, topic, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+        return byTopic.All(webhook => webhook is not null)
+            ? string.Join(MarketplaceHub.Infrastructure.Adapters.Shopify.ShopifyHttpClient.WebhookIdSeparator, byTopic.Select(webhook => webhook!.Id))
+            : null;
+    }
+
+    // The hash of the route token in a receiving address (…/api/v1/hooks/{connection}/{token}), or null for any other URL.
+    internal string? RouteTokenHashOf(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url) || !Uri.TryCreate(url, UriKind.Absolute, out var uri)) return null;
+        var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var hooks = Array.FindIndex(segments, segment => string.Equals(segment, "hooks", StringComparison.OrdinalIgnoreCase));
+        return hooks < 0 || hooks + 2 >= segments.Length ? null : tokenHasher.Hash(Uri.UnescapeDataString(segments[hooks + 2]));
     }
 
     internal const string PausedStatus = "PAUSED";

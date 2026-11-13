@@ -220,7 +220,10 @@ purpose (`TurkeyTime.cs`).
   char(3)); both join the re-read list (`TrendyolJsonMapper.Orders`, `RefusedOrders`).
 - Price-inventory batches report only per-item SUCCESS/FAILED.
 - Webhooks: max 15 per seller; URL may not contain "Trendyol", "Dolap", "Localhost"; retried every 5 min then set
-  PASSIVE; payload has `orderCountryCode`, no storefront. The stream stays the source of truth.
+  PASSIVE; payload has `orderCountryCode`, no storefront. The stream stays the source of truth. The list
+  (`GET webhook/sellers/{id}/webhooks`, offline docs `trendyol-api-son.md` getWebhook ~6280: `id`, `url`, `status`)
+  returns each webhook's `url`, so an opening that timed out is settled by the
+  route token in it (adopted or removed; SKILL.md, 13 Nov 2026).
 - Product update polling: every 2 min for 10 min, then 5, 15, 30 min; stops after 4 h.
 - Commission tariff workbook ("KomisyonTarifeleriÜrünleri", seller panel → Ürün Komisyon Tarifeleri; no API): one
   row per barcode, band limits `1.Fiyat Alt Limit`, `2.Fiyat Üst/Alt Limit`, `3.Fiyat Üst/Alt Limit`,

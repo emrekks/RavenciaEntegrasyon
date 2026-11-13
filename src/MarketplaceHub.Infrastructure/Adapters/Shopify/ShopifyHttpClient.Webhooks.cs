@@ -25,6 +25,11 @@ public sealed partial class ShopifyHttpClient : IWebhookRegistrationPort
     {
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
         if (shop is null) return CredentialFailure(Fail<IReadOnlyList<RemoteWebhook>>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized));
+        return await ListAsync(shop, cancellationToken);
+    }
+
+    private async Task<AdapterResult<IReadOnlyList<RemoteWebhook>>> ListAsync(ShopifyRequestContext shop, CancellationToken cancellationToken)
+    {
         var result = await QueryAsync(shop, "query{webhookSubscriptions(first:100){nodes{id topic uri}}}", null, cancellationToken);
         if (!result.IsSuccess) return AdapterResult<IReadOnlyList<RemoteWebhook>>.Failure(result.Error!, result.RateLimit);
         using var document = result.Value!;
@@ -49,11 +54,24 @@ public sealed partial class ShopifyHttpClient : IWebhookRegistrationPort
         {
             var result = await CreateSubscriptionAsync(shop, topic, url, cancellationToken);
             if (result.IsSuccess) { created.Add(result.Value!); continue; }
+            // A timeout or server fault may hide a subscription Shopify made: the list says whether this topic now points
+            // at the address. Found, it is kept; not found, the topics made so far are removed as before. Unreadable, the
+            // unclear outcome is passed on and the panel settles the address against the list later
+            // (InstantNotificationService.SettleRegistrationAsync).
+            if (WriteOutcomePolicy.IsUncertain(result.Error!))
+            {
+                var listed = await ListAsync(shop, cancellationToken);
+                if (listed.IsSuccess && FindSubscription(listed.Value!, topic, url) is { } found) { created.Add(found); continue; }
+            }
             foreach (var id in created) await DeleteSubscriptionAsync(shop, id, cancellationToken);
             return AdapterResult<string>.Failure(result.Error!, result.RateLimit);
         }
         return AdapterResult<string>.Success(string.Join(WebhookIdSeparator, created));
     }
+
+    // The id of a subscription of the topic at the address, or null.
+    internal static string? FindSubscription(IReadOnlyList<RemoteWebhook> listed, string topic, string url) =>
+        listed.FirstOrDefault(webhook => string.Equals(webhook.Topic, topic, StringComparison.OrdinalIgnoreCase) && string.Equals(webhook.Url, url, StringComparison.Ordinal))?.Id;
 
     public async Task<AdapterResult<bool>> DeleteWebhookAsync(AdapterContext context, string externalId, CancellationToken cancellationToken)
     {
