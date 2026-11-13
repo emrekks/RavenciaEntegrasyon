@@ -192,6 +192,11 @@ public sealed partial class CatalogService
                     foreach (var offer in offers.Where(offer => offer.SafetyStock != value.Integer!.Value))
                     {
                         offer.SafetyStock = value.Integer!.Value;
+                        // The quantity sent is the stock less the safety stock, so the new value is a stock change: the
+                        // stock mark is cleared as the single edit does (InventoryService), and the next send of the
+                        // connection (the stock reconcile pass, a manual send, a stock move) carries it. Nothing is sent
+                        // at once (scan A-3, 13 Nov 2026: the marketplace kept the old quantity until the next stock move).
+                        offer.LastStockProjectionVersion = null;
                         offer.Version++;
                         changed.Add(productOfVariant[offer.VariantId]);
                     }
