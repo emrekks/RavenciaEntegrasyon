@@ -1159,3 +1159,7 @@ main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-prod { width: auto; }
 @media (prefers-reduced-motion: reduce) { :is(main .rr.rr, .rr-layer.rr-layer) .rr-metrics article.rr-metric-alarm { animation: none; } }
 /* Phones: a footer with only Kapat is gone; the header's × closes the window (owner, 5 Nov 2026). */
 @media (max-width: 760px) { :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal > .rr-m-foot.rr-m-foot-close-only { display: none; } }
+
+/* Empty state of a wide table: stays as wide as the visible card and pinned to its left edge, so it centres in view whatever the table's min-width. */
+main .rr.rr .rr-tblwrap.rr-tblwrap { container-type: inline-size; }
+main .rr.rr .rr-tbl td.rr-empty-row > .rr-empty { position: sticky; left: 0; box-sizing: border-box; width: 100cqw; max-width: 100%; }
