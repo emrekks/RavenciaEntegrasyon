@@ -326,7 +326,7 @@
 @media (min-width: 1025px) {
 main .rr.rr-products > .rr-panel { min-width: 0; }
 main .rr.rr-products .rr-tblwrap.rr-tblwrap { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; }
-main .rr.rr-products .rr-ptbl.rr-ptbl { min-width: 1060px; }
+main .rr.rr-products .rr-ptbl.rr-ptbl { min-width: 1040px; } /* 1054 px panel at 1336 px: 1060 ran 6 px past it */
 main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; white-space: nowrap; }
 }
 /* Phones: the variant list opens inside the product card at full card width (it opened from the variant cell and ran
