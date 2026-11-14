@@ -1,4 +1,5 @@
 import { priceInputNumber } from './card-prices'
+import { parseProductDesi } from '../product-desi'
 
 // The product editor's required fields (owner, 10 Nov 2026: "bunlar zorunlu alandır, boş olamazlar"). Every save but
 // Taslak Olarak Kaydet stops while one is empty: on a new card, on an edit and before publishing. A card that opens with
@@ -24,6 +25,7 @@ export const requiredEditorFieldLabels: Record<RequiredEditorField, string> = {
 export type RequiredFieldsForm = Record<'title' | 'brandId' | 'categoryId' | 'modelCode' | 'baseSku' | 'barcode' | 'listPrice' | 'salePrice' | 'warrantyMonths' | 'deliveryDays' | 'desi', string>
 
 const filled = (value: string) => value.trim() !== ''
+const positiveDesi = (value: string) => parseProductDesi(value) > 0
 const positivePrice = (value: string) => priceInputNumber(value) > 0
 
 // The required fields that are empty, in the order the page shows them.
@@ -37,7 +39,7 @@ export function missingRequiredEditorFields(form: RequiredFieldsForm, options: {
     ['modelCode', filled(form.modelCode)],
     ['baseSku', codesElsewhere || filled(form.baseSku)],
     ['barcode', codesElsewhere || filled(form.barcode)],
-    ['desi', filled(form.desi)],
+    ['desi', positiveDesi(form.desi)],
     ['warrantyMonths', filled(form.warrantyMonths)],
     ['deliveryDays', filled(form.deliveryDays)],
     ['listPrice', positivePrice(form.listPrice)],
