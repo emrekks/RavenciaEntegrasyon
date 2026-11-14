@@ -77,8 +77,3 @@
 .app-shell.stitch-shell main .qq .qq-table :is(th, td) { padding-inline: 10px; }
 .app-shell.stitch-shell main .qq .qq-table td.qq-usage-cell .qq-usage { min-width: 130px; }
 .app-shell.stitch-shell main .qq .qq-table td.qq-usage-cell .qq-bar { min-width: 60px; }
-.qq-info { position: relative; display: inline-grid; min-height: 0; padding: 0; background: none; border: 0; flex: none; place-items: center; width: 24px; height: 24px; color: var(--rv-color-muted); cursor: help; }
-.qq-info:is(:hover, :focus-visible) { color: var(--rv-color-ink); }
-.qq-info::after { content: attr(data-tip); position: absolute; z-index: 5; top: calc(100% + 6px); left: -8px; width: 320px; padding: 8px 10px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 7px; font-size: 12px; font-weight: 400; line-height: 1.4; white-space: normal; visibility: hidden; opacity: 0; pointer-events: none; }
-.qq-info:is(:hover, :focus-visible)::after { visibility: visible; opacity: 1; }
-@media (max-width: 720px) { .qq-info::after { width: min(300px, calc(100vw - 48px)); } }
