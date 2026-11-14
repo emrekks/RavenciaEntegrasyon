@@ -2210,7 +2210,7 @@ public sealed partial class InvoicingBillingService(
 
     private static ServiceResult<T> Refuse<T>(InvoiceIssueRefusal refusal) => ServiceResult<T>.Fail(refusal.Code, refusal.Message, 422);
     private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);
-    private static ServiceResult<T> Precondition<T>(long version) => ServiceResult<T>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{version}.", 412);
+    private static ServiceResult<T> Precondition<T>(long version) => ServiceResult<T>.Fail("CONCURRENCY_CONFLICT", "Kayıt siz düzenlerken başka bir işlemle güncellendi. Sayfayı yenileyip tekrar deneyin.", 412);
     private static ServiceResult<T> CapabilityUnknown<T>(string capability) => ServiceResult<T>.Fail("EXTERNAL_WRITE_NOT_ENABLED", "Bu bağlantıda dış yazma işlemi etkin değil.", 422);
 }
 

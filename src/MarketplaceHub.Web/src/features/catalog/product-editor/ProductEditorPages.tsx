@@ -61,7 +61,7 @@ import { VariantMediaBulkSelect } from './VariantMediaBulkSelect'
 import { PriceSuggestionLink } from './PriceSuggestionDialog'
 import { cardPrices } from './card-prices'
 import { editorWarrantyMonths, missingRequiredEditorFields, requiredEditorFieldLabels, requiredFieldMessage, requiredFieldsMessage, type RequiredEditorField } from './required-fields'
-import { maxProductDesi, productDesiTooLarge, productDesiTooLargeMessage } from '../product-desi'
+import { maxProductDesi, parseProductDesi, productDesiTooLarge, productDesiTooLargeMessage } from '../product-desi'
 import { SizeChartButton } from './SizeChartDialog'
 import { isSizeChartRef, pinSizeChartLast, replaceSizeChart, sizeChartKey } from './size-chart-order'
 import { mediaPickerLabel, mediaPickerRefs } from './media-picker-order'
@@ -2780,7 +2780,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
      // Owner, 10 Nov 2026 ("0 olmayacak onlarda"): a variant's list and sale price are above 0, like the card's.
      if (rows.some(row => !(row.salePrice > 0) || !(row.listPrice > 0))) issues.push('Her varyantta liste ve satış fiyatı 0\'dan büyük olmalı.')
      // A card none of whose variants has a desi opens with the field empty (no guessed 1) and may be saved so.
-     if (!(editProductId && initialEditDesi.current === 0 && !form.desi.trim()) && (!form.desi.trim() || !Number.isFinite(Number(form.desi)) || Number(form.desi) <= 0)) issues.push('Desi sıfırdan büyük olmalıdır.')
+     if (!(editProductId && initialEditDesi.current === 0 && !form.desi.trim()) && (!form.desi.trim() || parseProductDesi(form.desi) <= 0)) issues.push('Desi sıfırdan büyük olmalıdır.')
      if (productDesiTooLarge(form.desi)) issues.push(productDesiTooLargeMessage)
      if (form.warrantyMonths.trim() && (!Number.isInteger(Number(form.warrantyMonths)) || Number(form.warrantyMonths) < 0 || Number(form.warrantyMonths) > 240)) issues.push('Garanti süresi 0-240 ay arasında tam sayı olmalıdır.')
      if (!isProductDeliveryDays(form.deliveryDays)) issues.push('Teslimat süresi 1-30 gün arasında tam sayı olmalıdır.')
@@ -2954,7 +2954,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         optionRequirements: optionRequirementsForSubmit
       })
       const safeDescription = sanitizeRichText(form.description)
-      const variantPayload = (row: VariantDraft, index: number) => ({ sku: row.sku, barcode: row.barcode || null, modelCode: form.modelCode.trim() || null, sortOrder: index, weight: calculateDesi ? Number(form.weight) || null : null, width: calculateDesi ? Number(form.width) || null : null, height: calculateDesi ? Number(form.height) || null : null, length: calculateDesi ? Number(form.length) || null : null, desi: calculateDesi ? desi || 1 : Number(form.desi) || null, costPrice: row.costPrice, defaultListPrice: row.listPrice, defaultSalePrice: row.salePrice, options: row.options, attributes: variantAttributesForPayload(row), onHand: editorOpeningStock(row.stock) })
+      const variantPayload = (row: VariantDraft, index: number) => ({ sku: row.sku, barcode: row.barcode || null, modelCode: form.modelCode.trim() || null, sortOrder: index, weight: calculateDesi ? Number(form.weight) || null : null, width: calculateDesi ? Number(form.width) || null : null, height: calculateDesi ? Number(form.height) || null : null, length: calculateDesi ? Number(form.length) || null : null, desi: calculateDesi ? desi || 1 : parseProductDesi(form.desi) || null, costPrice: row.costPrice, defaultListPrice: row.listPrice, defaultSalePrice: row.salePrice, options: row.options, attributes: variantAttributesForPayload(row), onHand: editorOpeningStock(row.stock) })
       const existingVariantIds = new Set(productToEdit.data?.variants.map(variant => variant.id) ?? [])
       const placeholderIdsToDelete = replacedPlaceholderIds.filter(id => existingVariantIds.has(id) && !rows.some(row => row.key === id) && !removedVariantIds.includes(id))
       const modelCodeForRow = (variantId: string) => modelCodeForExistingVariant(
@@ -2993,7 +2993,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
             // Only a cost the user changed is sent, with the cost it was loaded with; an unsent (null) cost is left as
             // it is on the server, and a cost changed there meanwhile refuses the save (409).
             ...editorVariantCostUpdate(row),
-            ...editorVariantDesiUpdate(calculateDesi ? desi || 1 : Number(form.desi) || 0, desiEdited.current || calculateDesi, editProduct.variants.find(variant => variant.id === row.key)?.desi),
+            ...editorVariantDesiUpdate(calculateDesi ? desi || 1 : parseProductDesi(form.desi), desiEdited.current || calculateDesi, editProduct.variants.find(variant => variant.id === row.key)?.desi),
             defaultListPrice: row.listPrice,
             defaultSalePrice: row.salePrice,
             // The version the row was loaded with: a row changed meanwhile elsewhere refuses the save (409) instead of
@@ -3015,7 +3015,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           if (!(reason instanceof ApiRequestError) || reason.status !== 412) throw reason
           const latestProduct = await hubApi<Product>(`/products/${editProduct.id}`)
           if (!sameProductSnapshotIgnoringVersion(editProduct, latestProduct)) {
-            throw new Error(`Ürün bu form açıkken başka bir işlemle değişti (güncel sürüm v${latestProduct.version}). Diğer değişiklikleri korumak için sayfayı yenileyip tekrar deneyin.`)
+            throw new Error(`Ürün siz düzenlerken panelde başka bir işlemle güncellendi, bu yüzden değişiklikleriniz kaydedilmedi. Sayfayı yenileyip tekrar deneyin.`)
           }
           try {
             product = await updateProductAtVersion(latestProduct.version)
@@ -3738,7 +3738,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
 
   return <EditorShell publishOnly={publishOnly} className={`product-add-page${editProductId ? ' product-edit-page' : ''}${editorHydrating ? ' is-hydrating' : ''}`} title={editProductId ? productToEdit.data?.title || 'Ürün Düzenle' : 'Yeni Ürün Ekle'} eyebrow={editProductId ? 'Ürün Düzenle' : 'Katalog'} meta={editProductId && productToEdit.data?.modelCode ? <p className="product-page-heading-meta">Model Kodu: <b>{productToEdit.data.modelCode}</b></p> : editProductId && productToEdit.isPending ? <p className="product-page-heading-meta" aria-hidden="true">Model Kodu: <b>…</b></p> : undefined}>
     {!publishOnly && <UnsavedChangesGuard when={editorDirty} allowNavigationRef={leavingAfterSave} />}
-    {staleProductVersion != null && <div className="product-stale-banner" role="alert"><span><strong>Ürün başka bir işlemle güncellendi</strong> (güncel sürüm v{staleProductVersion}). Kaydedilmemiş değişiklikleriniz korunuyor; kaydederseniz sunucu sürüm çakışmasını bildirir.</span><button type="button" className="secondary" onClick={reloadEditedProduct}>Güncel Ürünü Yükle</button></div>}
+    {staleProductVersion != null && <div className="product-stale-banner" role="alert"><span><strong>Ürün başka bir işlemle güncellendi.</strong> Kaydedilmemiş değişiklikleriniz korunuyor; kaydederseniz sunucu sürüm çakışmasını bildirir.</span><button type="button" className="secondary" onClick={reloadEditedProduct}>Güncel Ürünü Yükle</button></div>}
     {quickEditOpen && <Suspense fallback={null}><ProductQuickEditModal mode="both" onClose={() => setQuickEditOpen(false)} draft={{ title: form.title, modelCode: form.modelCode, rows: variantRows, onApply: changes => {
       // Only the table changes: the rows are saved (and sent on) with the page's Kaydet, as a hand-typed cell would be.
       const byKey = new Map(changes.map(change => [change.key, change]))

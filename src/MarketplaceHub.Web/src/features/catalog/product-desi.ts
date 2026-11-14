@@ -5,6 +5,11 @@ export const maxProductDesi = 9999
 export const productDesiTooLargeMessage = 'Desi en fazla 9.999 olabilir.'
 
 export function productDesiTooLarge(value: string) {
+  return parseProductDesi(value) > maxProductDesi
+}
+
+// A desi as the owner types it: "0.5" and "0,5" are both a half; anything that is not a number is 0.
+export function parseProductDesi(value: string): number {
   const desi = Number(value.trim().replace(',', '.'))
-  return value.trim() !== '' && Number.isFinite(desi) && desi > maxProductDesi
+  return Number.isFinite(desi) ? desi : 0
 }
