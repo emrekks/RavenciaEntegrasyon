@@ -103,4 +103,21 @@ public sealed class ProductPublicationComposerTests
     [InlineData(-1d, false)]
     public void TrendyolPublication_AcceptsOnlyTurkishVatRates(double rate, bool expected) =>
         Assert.Equal(expected, ProductPublicationComposer.IsTrendyolVatRate((decimal)rate));
+
+    // Model Kaydı Faz 2b (owner, 14 Nov 2026: "eşlenmiş olduğuna eklesin"): a new colour card joins the Trendyol product
+    // its model is linked to; a card on Trendyol or sent before keeps its code; no link (or an ambiguous model) is today's rule.
+    [Theory]
+    [InlineData("MZ090", false, null, "TY-MZ-90", "TY-MZ-90")]
+    [InlineData("MZ090", false, null, "Mz090", "Mz090")]
+    [InlineData("MZ090", false, null, null, "MZ090")]
+    [InlineData("MZ090", false, null, "   ", "MZ090")]
+    [InlineData("MZ090", false, null, "A123456789012345678901234567890123456789X", "MZ090")]
+    [InlineData("MZ090", true, null, "TY-MZ-90", "MZ090")]
+    [InlineData("MZ090", true, null, "Mz090", "Mz090")]
+    [InlineData("MZ090", false, "MZ090", "TY-MZ-90", "MZ090")]
+    [InlineData("MZ090", false, "TY-MZ-90", "TY-MZ-90", "TY-MZ-90")]
+    [InlineData("MZ090", false, "OLD-CODE", "TY-MZ-90", "MZ090")]
+    [InlineData("MZ090", false, "OLD-CODE", "Mz090", "Mz090")]
+    public void TrendyolProductMainId_NewColourJoinsTheLinkedProduct_LiveOrSentCardsKeepTheirs(string panel, bool onMarketplace, string? sentBefore, string? modelLink, string expected) =>
+        Assert.Equal(expected, ProductPublicationComposer.ProductMainIdFor(panel, onMarketplace, sentBefore, modelLink));
 }

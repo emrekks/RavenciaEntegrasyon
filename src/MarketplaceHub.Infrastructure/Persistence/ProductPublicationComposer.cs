@@ -137,13 +137,8 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
         // productMainId is the whole card's model code, so the variants a matched card adds join its Trendyol product.
         var modelCodes = cardVariants.Select(x => x.ModelCode?.Trim()).Distinct(StringComparer.Ordinal).ToList();
         if (modelCodes.Count != 1 || string.IsNullOrWhiteSpace(modelCodes[0]) || modelCodes[0]!.Length > 40) return Fail("MODEL_CODE_REQUIRED", "Varyant grubu tek bir ortak ve en fazla 40 karakterlik model kodu kullanmalıdır.");
-        // Model Kaydı Faz 2: the productMainId Trendyol keeps the model by (the model link an import recorded) when it is the
-        // same code in another spelling: Trendyol compares it case-sensitively (live 7 Nov 2026 "Ryp003t" / "RYP003T"), so a
-        // new colour joins the model Trendyol has. A different code is not taken over: the panel's model code goes as before.
-        var productMainId = modelCodes[0]!;
-        if (await MarketplaceModelLinks.ForCardAsync(db, tenantId, connectionId, product.FamilyId, cancellationToken, cardLinksAreModelLevel: false) is { ExternalId: { } remoteMainId }
-            && remoteMainId.Length <= 40 && ProductFamilyKeyPolicy.ModelCodeKey(remoteMainId) == ProductFamilyKeyPolicy.ModelCodeKey(productMainId))
-            productMainId = remoteMainId;
+        // Model Kaydı Faz 2b: the productMainId the model link holds (TrendyolProductMainIdAsync).
+        var productMainId = await TrendyolProductMainIdAsync(db, tenantId, connectionId, product, cardVariants.Select(x => x.Id).ToArray(), modelCodes[0]!, cancellationToken);
         var variants = cardVariants;
         IReadOnlySet<Guid> present = new HashSet<Guid>();
         if (onlyUnsentVariants)
@@ -592,6 +587,81 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
         ?? value.BooleanValue?.ToString().ToLowerInvariant();
 
     private static string NormalizeLabel(string value) => value.Trim().ToUpperInvariant();
+
+    // Model Kaydı Faz 2b, the productMainId a Trendyol send carries (owner, 14 Nov 2026: "eşlenmiş olduğuna eklesin"). The
+    // model link (the productMainId an import read from the model's Trendyol product, held by a variant link of the model:
+    // MarketplaceModelLinks.ForCardAsync) is the code Trendyol keeps the model by; a model whose code key is under several
+    // brands (open PRODUCT_MODEL_AMBIGUOUS) has none. ProductMainIdFor decides between it and the panel's model code.
+    private static async Task<string> TrendyolProductMainIdAsync(AppDbContext db, Guid tenantId, Guid connectionId, Product product, Guid[] cardVariantIds, string panelCode, CancellationToken cancellationToken)
+    {
+        string? modelLinkCode = null;
+        if (await MarketplaceModelLinks.ForCardAsync(db, tenantId, connectionId, product.FamilyId, cancellationToken, cardLinksAreModelLevel: false) is { ExternalId: { } linked } modelLink)
+        {
+            var modelKey = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == modelLink.ModelId).Select(x => x.ModelCodeKey).SingleOrDefaultAsync(cancellationToken);
+            var ambiguousKeys = new[] { ProductModelLinks.AmbiguousDedupeKey(modelKey ?? ""), ProductModelLinks.AmbiguousDedupeKey(ProductFamilyKeyPolicy.ModelCodeKey(panelCode) ?? "") };
+            var ambiguous = modelKey is null || await db.OperationalIssues.AsNoTracking()
+                .AnyAsync(x => x.TenantId == tenantId && x.Code == ProductModelLinks.AmbiguousCode && x.Status != IssueStatus.Resolved && ambiguousKeys.Contains(x.DedupeKey), cancellationToken);
+            if (!ambiguous) modelLinkCode = linked;
+        }
+        var onMarketplace = await db.MarketplaceProductLinks.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == product.Id, cancellationToken)
+            || await db.MarketplaceVariantLinks.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && cardVariantIds.Contains(x.VariantId), cancellationToken);
+        var sentBefore = onMarketplace ? null : await SentProductMainIdAsync(db, tenantId, connectionId, product.Id, cancellationToken);
+        return ProductMainIdFor(panelCode, onMarketplace, sentBefore, modelLinkCode);
+    }
+
+    // The productMainId the card's last Trendyol create carried, when that send reached Trendyol or is still to go
+    // (a job cancelled, or dead before it was submitted, sent nothing). Null when there is none.
+    private static async Task<string?> SentProductMainIdAsync(AppDbContext db, Guid tenantId, Guid connectionId, Guid productId, CancellationToken cancellationToken)
+    {
+        var prefix = $"product-create:{connectionId:N}:{productId:N}:";
+        var jobs = await db.IntegrationJobs.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.JobType == MarketplaceJobTypes.ProductCreate && x.JobDedupKey.StartsWith(prefix) && x.Status != JobStatus.Cancelled)
+            .OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id)
+            .Select(x => new { x.Status, x.PayloadJson })
+            .Take(20)
+            .ToListAsync(cancellationToken);
+        foreach (var job in jobs)
+        {
+            try
+            {
+                if (JsonSerializer.Deserialize<ProductPublicationJobPayload>(job.PayloadJson) is not { } payload) continue;
+                if (job.Status == JobStatus.Dead && payload.SubmittedAt is null && payload.ExternalOperationId is null) continue;
+                using var draft = JsonDocument.Parse(payload.PayloadJson);
+                if (draft.RootElement.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array)
+                    foreach (var item in items.EnumerateArray())
+                        if (item.TryGetProperty("productMainId", out var code) && code.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(code.GetString()))
+                            return code.GetString()!.Trim();
+            }
+            catch (JsonException)
+            {
+            }
+        }
+        return null;
+    }
+
+    // panelCode: the card's model code. onMarketplace: the card has a product or variant link on the connection (some of
+    // it is on Trendyol already). sentBefore: the productMainId of the card's last create that went or is to go.
+    // modelLinkCode: the verified model link's productMainId (null for none, or for an ambiguous model).
+    // - A card on Trendyol keeps today's rule, so no live variant moves: the panel code, or the model link's spelling of
+    //   the same code (Trendyol compares case-sensitively; live 7 Nov 2026 "Ryp003t" / "RYP003T").
+    // - A card sent before and not linked yet (waiting for approval) keeps the code it went with while that is still the
+    //   panel code (any spelling) or the model link's; otherwise it goes by today's rule.
+    // - A new colour card (nothing sent) takes the model link's productMainId, so Trendyol adds it as a new colour of
+    //   the product the model is linked to, even when the panel's model code differs.
+    internal static string ProductMainIdFor(string panelCode, bool onMarketplace, string? sentBefore, string? modelLinkCode)
+    {
+        static bool Usable(string? code) => !string.IsNullOrWhiteSpace(code) && code.Trim().Length <= 40;
+        var panelKey = ProductFamilyKeyPolicy.ModelCodeKey(panelCode);
+        var linked = Usable(modelLinkCode) ? modelLinkCode!.Trim() : null;
+        var sameSpelling = linked is not null && ProductFamilyKeyPolicy.ModelCodeKey(linked) == panelKey ? linked : null;
+        if (onMarketplace) return sameSpelling ?? panelCode;
+        if (Usable(sentBefore))
+        {
+            var sent = sentBefore!.Trim();
+            return ProductFamilyKeyPolicy.ModelCodeKey(sent) == panelKey || string.Equals(sent, linked, StringComparison.Ordinal) ? sent : sameSpelling ?? panelCode;
+        }
+        return linked ?? panelCode;
+    }
 
     internal static bool HasDesi(decimal? desi) => desi is > 0;
 

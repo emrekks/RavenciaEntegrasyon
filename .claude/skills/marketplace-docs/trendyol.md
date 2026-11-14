@@ -423,5 +423,11 @@ packages only, no claim events.
 - `catalog.marketplace_model_links.ExternalId` = the `productMainId` of the import's rows (one content per colour, the
   model groups them); card links stay contentIds. Written after each product import/match from the variant links just
   saved (`MarketplaceModelLinks.ModelListings` / `RecordAsync`), never backfilled (productMainId was stored nowhere).
-- Create payload: `productMainId` takes the model link's spelling only when it is the same code key as the panel model
-  code (Trendyol compares case-sensitively); a different code is not taken (`ProductPublicationComposer`).
+- Create payload `productMainId` (`ProductPublicationComposer.ProductMainIdFor`, owner 14 Nov 2026 "eşlenmiş olduğuna
+  eklesin"): a card with nothing on Trendyol and never sent takes the verified model link's productMainId even when the
+  panel model code differs, so Trendyol adds it as a new colour of the linked product. A card already on Trendyol (product
+  or variant link) keeps the panel code, or the link's spelling when it is the same code key (Trendyol compares
+  case-sensitively: "Ryp003t" / "RYP003T"); a card sent before but not linked yet keeps the code its last create job
+  carried. No link, a link no variant link holds, a code over 40 characters or an open `PRODUCT_MODEL_AMBIGUOUS` for
+  the model's key: the panel model code. The update composer builds on the same payload, so an update never moves a
+  live card's productMainId.

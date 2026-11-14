@@ -163,6 +163,34 @@ public sealed class FamilyChangesRegressionPostgreSqlTests(PostgreSqlTenantIsola
         Assert.All(siyah, item => Assert.Equal(ModelCode, item!["groupCode"]!.GetValue<string>()));
     }
 
+    // Model Kaydı Faz 2b (owner, 14 Nov 2026: "eşlenmiş olduğuna eklesin"): a colour card nothing was sent of goes to
+    // Trendyol under the productMainId of the product its model is linked to, even when the panel's model code differs; the
+    // card already on Trendyol keeps the panel code, and an ambiguous model takes no link-based code.
+    [PostgreSqlFact]
+    public async Task ATrendyolColourCard_JoinsTheProductItsModelIsLinkedTo_ByTheModelLinksProductMainId()
+    {
+        var seed = await SeedAsync(live: false);
+        await using var db = fixture.CreateContext();
+        var trendyol = seed.Connections["TRENDYOL"];
+        var bordo = await db.Products.AsNoTracking().SingleAsync(x => x.Id == seed.Cards["Bordo"].Id);
+        Assert.NotNull(bordo.FamilyId);
+        db.MarketplaceModelLinks.Add(new MarketplaceModelLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = trendyol.Id, ModelId = bordo.FamilyId!.Value, ExternalId = "TY-MZ051", CreatedAt = DateTimeOffset.UtcNow, Version = 1 });
+        db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = trendyol.Id, VariantId = seed.Sizes["Bordo"][0].Id, ExternalId = seed.Sizes["Bordo"][0].Barcode!, Version = 1 });
+        await db.SaveChangesAsync();
+        var composer = new ProductPublicationComposer(db, new ConfigurationBuilder().Build());
+        string[] MainIds(string payload) => [.. JsonNode.Parse(payload)!["items"]!.AsArray().Select(item => item!["productMainId"]!.GetValue<string>()).Distinct()];
+
+        Assert.Equal(["TY-MZ051"], MainIds(await BuildAsync(composer, seed, "TRENDYOL", seed.Cards["Siyah"].Id)));
+        // Bordo is on Trendyol (its variant link): its productMainId stays the panel's, no live variant moves.
+        Assert.Equal([ModelCode], MainIds(await BuildAsync(composer, seed, "TRENDYOL", seed.Cards["Bordo"].Id)));
+
+        // The model's code key under several brands (PRODUCT_MODEL_AMBIGUOUS open): no link-based code.
+        var modelKey = await db.ProductModels.AsNoTracking().Where(x => x.Id == bordo.FamilyId).Select(x => x.ModelCodeKey).SingleAsync();
+        db.OperationalIssues.Add(new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, DedupeKey = ProductModelLinks.AmbiguousDedupeKey(modelKey), Code = ProductModelLinks.AmbiguousCode, Summary = "test", Status = IssueStatus.Open, FirstSeenAt = DateTimeOffset.UtcNow, LastSeenAt = DateTimeOffset.UtcNow, OccurrenceCount = 1 });
+        await db.SaveChangesAsync();
+        Assert.Equal([ModelCode], MainIds(await BuildAsync(composer, seed, "TRENDYOL", seed.Cards["Siyah"].Id)));
+    }
+
     // The owner changes the model's brand and name from the Siyah row: every colour card takes them, so each card's
     // payload goes with the new brand (Pazarama by its brand mapping), PttAVM still finds the whole family under the new
     // brand, and no card drops out of the model.
