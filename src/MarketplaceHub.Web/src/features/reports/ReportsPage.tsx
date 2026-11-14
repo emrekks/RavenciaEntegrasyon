@@ -121,11 +121,9 @@ export function ReportsPage() {
         {/* The custom period and the platforms at the row's right end; the charts group by day, week or month on their own. */}
         <div className="reports-period-platforms"><PlatformFilter label="Platform" hideLabel options={platformOptions} selected={platforms ?? []} onChange={next => setPlatforms(next.length ? next : null)} /></div>
       </div></div>
-      {/* Always in place (the card's top right, level with Dönem), so showing it moves nothing; it fades in while a
-          filter change loads. */}
-      <span className={`reports-refreshing${report.isFetching && data ? ' is-active' : ''}`} role="status">
-        <UiIcon name="loader" size={14} /><span>{report.isFetching && data ? 'Güncelleniyor' : ''}</span>
-      </span>
+      {/* A thin line along the card's top edge runs while a filter change loads: inside the card, so it moves nothing and
+          sticks out nowhere. */}
+      <span className={`reports-refreshing${report.isFetching && data ? ' is-active' : ''}`} role="status"><span className="sr-only">{report.isFetching && data ? 'Güncelleniyor' : ''}</span></span>
     </div>
     {report.isLoading && <Busy text="Rapor hazırlanıyor…" />}
     {report.isError && !data && <ErrorBox error={report.error} onRetry={() => void report.refetch()} />}
