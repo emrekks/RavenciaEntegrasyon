@@ -32,3 +32,4 @@ html:root:root:root:root:root:root .reports-qmark { vertical-align: middle; posi
 html:root:root:root:root:root:root :is(button.title-hint, button.field-help) { align-self: center; margin-top: 0; margin-bottom: 0; vertical-align: middle; }
 html:root:root:root:root:root:root .reports-kpis .reports-kpi-label { padding-right: 0; }
 html:root:root:root:root:root:root .reports-kpis .reports-kpi-label > .reports-qmark { position: relative; top: -1px; right: auto; margin: 0 0 0 4px; }
+html:root:root:root:root:root:root button.title-hint { translate: 0 -1px; }
