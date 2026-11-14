@@ -7,7 +7,8 @@ import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { Button, EmptyState, UiIcon } from '../../shared/components'
 import { Busy } from '../../shared/components/AsyncState'
 import { formatDateTime, formatIstanbul } from '../../shared/format-date'
-import { describeNotification } from '../../shared/notification-describe'
+import { describeNotification, notificationItemList } from '../../shared/notification-describe'
+import { composeNotice } from '../../shared/notice-copy'
 import { markAllNotificationsRead, markNotificationRead } from '../../shared/notifications'
 import {
   centerFilterCount, centerNotificationCard, centerQueryString, emptyCenterFilters, internalNotificationHref, markCenterNotificationsRead, notificationCategoryLabels, notificationSeverityLabels,
@@ -25,15 +26,21 @@ const pollMs = 30_000
 const searchDelayMs = 350
 
 const categoryGroups: FilterMenuGroup[] = [{ options: (Object.keys(notificationCategoryLabels) as NotificationCategory[]).map(value => ({ value, label: notificationCategoryLabels[value] })) }]
-const severityGroups: FilterMenuGroup[] = [{ options: (['ERROR', 'SUCCESS', 'INFO'] as NotificationSeverity[]).map(value => ({ value, label: notificationSeverityLabels[value] })) }]
+const severityGroups: FilterMenuGroup[] = [{ options: (['ERROR', 'WARNING', 'SUCCESS', 'INFO'] as NotificationSeverity[]).map(value => ({ value, label: notificationSeverityLabels[value] })) }]
 const stateOptions = [{ value: '', label: 'Tümü' }, { value: 'UNREAD', label: 'Okunmamış' }, { value: 'READ', label: 'Okunmuş' }]
-const glyphTone: Record<NotificationSeverity, string> = { ERROR: 'error', SUCCESS: 'success', INFO: 'waiting' }
+const glyphTone: Record<NotificationSeverity, string> = { ERROR: 'error', WARNING: 'waiting', SUCCESS: 'success', INFO: 'waiting' }
 const timeOptions: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }
 const dayOptions: Intl.DateTimeFormatOptions = { day: '2-digit', month: '2-digit', year: 'numeric' }
+
+// The line under the title never says the title again (notice-copy.ts).
+function centerBody(row: CenterNotification) {
+  return composeNotice(row.severity === 'ERROR' ? 'error' : row.severity === 'SUCCESS' ? 'success' : row.severity === 'WARNING' ? 'warning' : 'info', row.title, row.message).body
+}
 
 function CenterRow({ row, expanded, onToggle, onOpen, onRead }: { row: CenterNotification; expanded: boolean; onToggle: () => void; onOpen: (href: string) => void; onRead: () => void }) {
   const card = useMemo(() => centerNotificationCard(row), [row])
   const facts = expanded && card ? describeNotification(card) : []
+  const itemList = card ? notificationItemList(card) : { total: 0, shown: [], more: 0 }
   const unread = !row.readAt
   const source = row.storeName ?? null
   return <article className={`ncl-row is-${row.severity.toLowerCase()}${unread ? ' is-unread' : ''}`}>
@@ -43,7 +50,7 @@ function CenterRow({ row, expanded, onToggle, onOpen, onRead }: { row: CenterNot
         <strong className="ncl-title">{row.title}{row.count > 1 && <b className="ncl-count" aria-label={`${row.count} kez`}>{row.count}×</b>}</strong>
         {unread && <i className="ncl-unread" aria-label="Okunmadı" />}
       </div>
-      <p className="ncl-message">{row.message}</p>
+      {centerBody(row) && <p className="ncl-message">{centerBody(row)}</p>}
       <div className="ncl-meta">
         <span className="ncl-tag">{notificationCategoryLabels[row.category] ?? 'Diğer'}</span>
         {(row.platformCode || source) && <span className="ncl-source">{row.platformCode && <PlatformSquareMark code={row.platformCode} name={source} />}{source && <span>{source}</span>}</span>}
@@ -58,11 +65,11 @@ function CenterRow({ row, expanded, onToggle, onOpen, onRead }: { row: CenterNot
           {row.updatedAt !== row.createdAt && <div><dt>Son Güncelleme</dt><dd>{formatDateTime(row.updatedAt)}</dd></div>}
           {row.readAt && <div><dt>Okundu</dt><dd>{formatDateTime(row.readAt)}</dd></div>}
         </dl>
-        {card?.items && card.items.length > 1 && <ul className="ncl-items">{card.items.map((item, index) => <li key={`${item.id ?? item.label}:${index}`}>{item.href ? <button type="button" className="ncl-link" onClick={() => onOpen(item.href!)}>{item.label}</button> : item.label}</li>)}</ul>}
+        {itemList.total > 1 && <ul className="ncl-items">{itemList.shown.map((item, index) => <li key={`${item.id ?? item.label}:${index}`}>{item.href ? <button type="button" className="ncl-link" onClick={() => onOpen(item.href!)}>{item.label}</button> : item.label}{item.note && <em className={`is-${item.result}`}> · {item.note}</em>}</li>)}{itemList.more > 0 && <li className="ncl-more-items">+{itemList.more} daha</li>}</ul>}
       </div>}
       <div className="ncl-actions">
         {row.href && <button type="button" className="ncl-btn" onClick={() => onOpen(row.href!)}><span>{row.actionLabel ?? 'Sayfaya Git'}</span><UiIcon name="arrowRight" size={14} /></button>}
-        <button type="button" className="ncl-btn" aria-expanded={expanded} onClick={onToggle}><span>{expanded ? 'Ayrıntıyı Gizle' : 'Ayrıntı'}</span><UiIcon name="chevronDown" size={14} /></button>
+        <button type="button" className="ncl-btn" aria-expanded={expanded} onClick={onToggle}><span>{expanded ? 'Gizle' : 'Ayrıntı'}</span><UiIcon name="chevronDown" size={14} /></button>
         {unread && <button type="button" className="ncl-btn" onClick={onRead}><UiIcon name="circleCheck" size={14} /><span>Okundu</span></button>}
       </div>
     </div>

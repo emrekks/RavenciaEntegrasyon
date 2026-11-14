@@ -18,7 +18,7 @@ describe('many jobs of one press (Toplu Yayın, a store-wide push)', () => {
       jobOutcome(jobs[3], one('LEASED'))
     ]
     expect(groupedOutcomeFeedback(jobs, outcomes, '2 Platforma')).toEqual({
-      title: 'Kısmen Aktarıldı', kind: 'error', settled: false,
+      title: '2 Platforma Kısmen Aktarıldı', kind: 'warning', settled: false,
       lines: ['Trendyol: 1 ürün aktarıldı, 1 ürün aktarılamadı.', 'n11: 1 ürün aktarıldı, 1 ürün sürüyor.', 'Trendyol · Gömlek: Desi eksik: GM-1 varyantına desi girin.']
     })
   })
@@ -55,13 +55,13 @@ describe('the result of a followed marketplace job', () => {
     const outcome = jobOutcome(trendyol, detail('MANUAL_REVIEW', { lastErrorCode: 'PRODUCT_UPDATE_STATE_INCOMPLETE', lastErrorSummary: 'Bu ürünün pazaryeri kaydı panelde eksik; güncelleme pazaryerine gönderilmedi.' }))
     expect(outcome.state).toBe('review')
     expect(outcome.line).toBe('Trendyol: inceleme bekliyor — Bu ürünün pazaryeri kaydı panelde eksik; güncelleme pazaryerine gönderilmedi.')
-    expect(jobOutcomeFeedback([outcome], 'Trendyol’a')).toMatchObject({ title: 'İnceleme Bekliyor', kind: 'error', settled: true })
+    expect(jobOutcomeFeedback([outcome], 'Trendyol’a')).toMatchObject({ title: 'İnceleme Bekliyor', kind: 'warning', settled: true })
   })
 
   it('names the refused variants and their reasons, and a partial result is not a success', () => {
     const outcome = jobOutcome(trendyol, detail('SUCCEEDED', {}, [variant('RYP003T-T17', 'SENT'), variant('RYP003T-T18', 'SENT'), variant('RYP003T-T20', 'APPROVED'), variant('RYP003T-T19', 'REJECTED', 'Desi eksik.')]))
     expect(outcome).toMatchObject({ state: 'partial', line: 'Trendyol: 3 varyant aktarıldı, 1 varyant aktarılamadı — RYP003T-T19: Desi eksik.', reason: 'RYP003T-T19: Desi eksik' })
-    expect(jobOutcomeFeedback([outcome], 'Trendyol’a')).toMatchObject({ title: 'Kısmen Aktarıldı', kind: 'error' })
+    expect(jobOutcomeFeedback([outcome], 'Trendyol’a')).toMatchObject({ title: 'Trendyol’a Kısmen Aktarıldı', kind: 'warning' })
   })
 
   it('counts the variants left out as already live as live, not refused (RYP006: the missing colour sent)', () => {
@@ -111,7 +111,7 @@ describe('following the jobs of one press', () => {
     })
     expect(updates).toHaveLength(1)
     expect(updates[0][1]).toBe(false)
-    expect(updates[0][0]).toMatchObject({ title: 'İnceleme Bekliyor', kind: 'error' })
+    expect(updates[0][0]).toMatchObject({ title: 'İnceleme Bekliyor', kind: 'warning' })
   })
 
   it('says the transfer is still running after the short wait, then gives the result when it comes', async () => {

@@ -141,7 +141,7 @@ export function bulkFieldResultMessage(result: ChunkRunResult, counts: BulkField
   const label = bulkFieldLabel(field)
   const reason = result.error instanceof Error ? result.error.message : 'Toplu değer ataması başarısız.'
   const done = `${counts.updatedCount.toLocaleString('tr-TR')} ürün kartı güncellendi (${counts.variantCount.toLocaleString('tr-TR')} varyant)${counts.unchangedCount ? `, ${counts.unchangedCount.toLocaleString('tr-TR')} kart zaten bu değerdeydi` : ''}`
-  const failed = counts.failures.length ? ` Yazılamayanlar: ${counts.failures.map(failure => `${failure.model}: ${failure.message}`).join(' · ')}` : ''
+  const failed = counts.failures.length ? ` Yazılamayanlar: ${counts.failures.map(failure => `${failure.model}: ${failure.message}`).join('; ')}` : ''
   const notice = requiredFieldsSkipNotice(counts.skipped ?? [])
   const skipped = notice ? ` ${notice.message}` : ''
   const withSkipped = notice ? { skipped: notice } : {}

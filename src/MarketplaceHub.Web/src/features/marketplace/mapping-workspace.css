@@ -750,3 +750,13 @@ html body .app-shell.stitch-shell main section.mapping-page .mapping-label-line 
 @media (prefers-reduced-motion: reduce) {
   .app-shell.stitch-shell main section.mapping-page .library-collapse * { transition: none !important; }
 }
+
+/* The attribute and option libraries fold the same way; their search row sits above the records. */
+.app-shell.stitch-shell main section.mapping-page .library-search-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.app-shell.stitch-shell main section.mapping-page .library-search-row > span { min-width: 8ch; color: var(--rv-color-muted); font-size: 13px; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+
+/* On a computer the open lists show exactly five rows (row height + gap, so no half row), then scroll; phones keep three. */
+@media (min-width: 761px) {
+  .app-shell.stitch-shell main section.mapping-page .mapping-local-category-builder .category-library-list { grid-auto-rows: 44px; gap: 6px; min-height: 0; max-height: calc(5 * 44px + 4 * 6px); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
+  .app-shell.stitch-shell main section.mapping-page .panel-attribute-library .panel-attribute-records { grid-auto-rows: 56px; gap: 8px; max-height: calc(5 * 56px + 4 * 8px); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
+}

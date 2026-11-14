@@ -12,7 +12,7 @@ public sealed class PanelNotification
     public Guid TenantId { get; set; }
     public Guid? UserId { get; set; }
     public required string ClientKey { get; set; }
-    // SUCCESS, ERROR or INFO (PanelNotificationSeverities).
+    // SUCCESS, ERROR, WARNING or INFO (PanelNotificationSeverities).
     public required string Severity { get; set; }
     // What it is about (PanelNotificationCategories): ORDER, PRODUCT, INVOICE, CONNECTION, JOB, ATTENTION...
     public required string Category { get; set; }

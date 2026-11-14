@@ -14,6 +14,7 @@
 .ncl-row.is-error .ncl-glyph { color: var(--rv-color-danger); }
 .ncl-row.is-success .ncl-glyph { color: var(--rv-color-accent); }
 .ncl-row.is-info .ncl-glyph { color: var(--rv-color-muted); }
+.ncl-row.is-warning .ncl-glyph { color: var(--rv-color-warning); }
 .ncl-body { display: grid; gap: 6px; min-width: 0; }
 .ncl-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .ncl-title { overflow: hidden; color: var(--rv-color-ink); font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
@@ -24,7 +25,8 @@
 .ncl-tag { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 7px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
 .ncl-tag.is-muted { color: var(--rv-color-muted); }
 .ncl-source { display: inline-flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; }
-.ncl-actions { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 2px; }
+.ncl-actions { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; padding-top: 2px; min-width: 0; }
+.ncl-actions > .ncl-btn { flex: 0 0 auto; }
 .app-shell .ncl .ncl-btn { display: inline-flex; width: auto; height: 30px; min-height: 0; align-items: center; gap: 6px; padding: 0 10px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 12.5px; font-weight: 500; white-space: nowrap; }
 .app-shell .ncl .ncl-btn:hover { background: var(--rv-hover, var(--rv-color-surface-soft)); }
 .ncl-btn[aria-expanded='true'] svg { transform: rotate(180deg); }
@@ -48,3 +50,8 @@
   .ncl-toolbar .jobs-reference-toolbar-actions { justify-content: space-between; }
   .ncl-mark-all.rv-button { flex: 1; }
 }
+
+.ncl-items em { font-style: normal; color: var(--rv-color-muted); }
+.ncl-items em.is-success { color: var(--rv-color-accent); }
+.ncl-items em.is-error { color: var(--rv-color-danger); }
+.ncl-more-items { color: var(--rv-color-muted); list-style: none; margin-left: -16px; }

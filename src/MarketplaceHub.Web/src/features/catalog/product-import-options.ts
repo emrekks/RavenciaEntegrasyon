@@ -143,10 +143,6 @@ export function productImportChoiceSummary(method: ProductImportMethod, choices:
 
 // Prices and stock are two separate choices; each one only decides whether the marketplace value overwrites
 // the value the panel already holds for an existing product.
-export function productImportPriceStockLabel(updatePrices: boolean, updateStock: boolean): string {
-  return ` · mevcut fiyatlar ${updatePrices ? 'güncellenecek' : 'korunacak'} · mevcut stoklar ${updateStock ? 'güncellenecek' : 'korunacak'}`
-}
-
 export function productImportOverwriteConfirmation(updatePrices: boolean, updateStock: boolean): { title: string; message: string } | null {
   if (!updatePrices && !updateStock) return null
   const stockNote = ' Değişen stoklar, otomatik gönderimi açık olan diğer pazaryerlerine de gönderilir.'
@@ -166,4 +162,35 @@ export function productImportOverwriteConfirmation(updatePrices: boolean, update
     title: 'Panel Stokları Değiştirilsin mi?',
     message: `Mevcut ürünlerin panel stoğu pazaryerindeki stokla değiştirilecek. Panel ana stoktur; bunu yalnız pazaryerindeki stokların doğru olduğundan eminseniz yapın.${stockNote}`
   }
+}
+
+export type ProductImportStartedInput = {
+  connectionCount: number
+  scope: 'single' | 'full' | 'new' | 'mapping' | 'existing'
+  includeArchived: boolean
+  includeDrafts: boolean
+  includePendingApproval: boolean
+  /** Whether the run touches the panel's existing product data at all; false for new-only and mapping runs. */
+  contentChoice: boolean | null
+  /** The price and stock choices, when the run offers them. */
+  priceStock: { updatePrices: boolean; updateStock: boolean } | null
+}
+
+const importScopeWords: Record<ProductImportStartedInput['scope'], string> = {
+  single: 'seçtiğiniz ürün', full: 'tüm ürünler', new: 'yeni ürünler', mapping: 'ürün eşlemeleri', existing: 'mevcut ürünlerin bilgileri'
+}
+
+function joinWords(parts: string[]) {
+  return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} ve ${parts[parts.length - 1]}` : parts[0] ?? ''
+}
+
+/** The body of the "Ürün Aktarımı Başladı" toast, written as sentences instead of a chain of fragments. */
+export function productImportStartedMessage(input: ProductImportStartedInput): string {
+  const included = [input.includeArchived ? (input.includeDrafts ? 'arşivdekiler ve taslaklar' : 'arşivdekiler') : '', input.includePendingApproval ? 'onay bekleyenler' : ''].filter(Boolean)
+  const where = input.connectionCount === 1 ? 'Mağazadaki' : `${input.connectionCount} mağazadaki`
+  const first = `${where} ${importScopeWords[input.scope]}${included.length ? `, ${joinWords(included)} dahil,` : ''} panele aktarılıyor.`
+  const kept: string[] = []
+  if (input.contentChoice !== null) kept.push(`Paneldeki mevcut ürün bilgileri ${input.contentChoice ? 'güncellenecek' : 'değişmeyecek'}.`)
+  if (input.priceStock) kept.push(`Mevcut fiyatlar ${input.priceStock.updatePrices ? 'güncellenecek' : 'korunacak'}, mevcut stoklar ${input.priceStock.updateStock ? 'güncellenecek' : 'korunacak'}.`)
+  return [first, ...kept, 'İlerlemeyi İşlem Takibi’nden izleyebilirsiniz.'].join(' ')
 }
