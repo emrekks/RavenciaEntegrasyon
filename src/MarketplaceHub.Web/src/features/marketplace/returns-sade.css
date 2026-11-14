@@ -1223,24 +1223,28 @@ main .rr.rr.rr-returns .rr-tbl.rr-tbl th .rr-hf { max-width: 100%; min-width: 0;
 /* owner, 14 Nov: a buyer name never breaks inside a word, and each Bilgiler "Label: value" line stays on one line */
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl td[data-l="Alıcı"] .rr-cust b { overflow-wrap: normal !important; word-break: normal !important; hyphens: manual !important; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl .rr-pline small:not(.rr-card-only) { white-space: nowrap; overflow-wrap: normal; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl,
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer),
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select,
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select:has(col.rr-c-buyer) { min-width: 1040px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-order { width: 208px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-order { width: 222px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-buyer { width: 84px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl { min-width: 1343px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) { min-width: 1449px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select { min-width: 1357px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select:has(col.rr-c-buyer) { min-width: 1463px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-order { width: 262px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-order { width: 276px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-buyer { width: 106px; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-prod,
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-prod { width: 158px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-price { width: 82px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-cargo { width: 108px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-inv { width: 92px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-reason { width: 104px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-status { width: 108px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-act { width: 108px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-prod { width: 290px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-price { width: 93px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-cargo { width: 145px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-inv { width: 140px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-reason { width: 130px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-status { width: 152px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-act { width: 131px; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl td { padding-inline: 8px; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl th { padding-inline: 8px 26px; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl :is(th:first-child, td:first-child) { padding-left: 12px; }
+/* owner, 14 Nov: İadeler follows the Siparişler one-line rules - order lines, tracking number, Bilgiler lines and buyer words never break inside */
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl :is(.rr-ordercell small, .rr-cargocell small.rr-num, .rr-pline small:not(.rr-card-only)) { white-space: nowrap; overflow-wrap: normal; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl .rr-ordercell small .rr-nv { display: inline; overflow-wrap: normal; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl td[data-l="Alıcı"] .rr-cust b { overflow-wrap: normal !important; word-break: normal !important; hyphens: manual !important; }
 :root:root:root:root main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl :is(thead th:first-child, tbody td:first-child) { position: sticky; left: 0; z-index: 2; }
 :root:root:root:root main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl tbody td:first-child { background: var(--rr-surface); }
 }
