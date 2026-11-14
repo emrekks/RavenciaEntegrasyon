@@ -123,8 +123,8 @@ public sealed record ReportCommissionView(decimal CoveredRevenue, decimal? Cover
 // Cost only over kept units with a cost price (the one the line kept at the sale, else the variant's current one). CostedRevenue
 // is those units' share of the order's revenue (GrossSales); GrossProfit = CostedRevenue - CostTotal. NetProfit is over units
 // that carry both a cost and a commission: their revenue - cost - estimated commission (before cargo and VAT).
-// CostedSales: the sales of the lines with a cost the way GrossSales (Toplam Ciro) counts them, returns not taken off
-// (the Kârlılık card Maliyeti Olan Ciro, owner 9 Nov 2026).
+// CostedSales: the sales of the lines with a cost the way GrossSales counts them, returns not taken off (not shown since
+// 14 Nov 2026: Maliyeti Olan Ciro is CostedRevenue, returns taken off like Net Ciro).
 public sealed record ReportCostView(
     decimal KeptQuantity,
     decimal CostedQuantity,
