@@ -569,6 +569,8 @@ function OverviewFigures({ data, money }: { data: ReportSales; money: Money | nu
   const then = data.previousSummary
   const earlier = previousMoney(data)
   const noAmount = now.ordersWithAmount === 0
+  // No order at all in the period: the sources exist and every figure is a real zero ("₺0"); orders without an amount are an unknown ("—").
+  const empty = noAmount && now.orders === 0
   const profit = money?.profit ?? null
   const onCost = profit !== null && money?.cost ? profit / money.cost : null
   const earlierProfit = earlier?.profit ?? null
@@ -581,10 +583,10 @@ function OverviewFigures({ data, money }: { data: ReportSales; money: Money | nu
     .map(row => ({ row, value: pick(row) })).filter((item): item is { row: ReportGroup; value: number } => item.value !== null && item.value !== 0)
     .sort((left, right) => right.value - left.value).map(item => ({ key: item.row.key, label: platformName(item.row.label), value: format(item.value) }))
   const items: Kpi[] = [
-    { key: 'net', label: 'Toplam Ciro', value: noAmount ? null : now.grossSales, format: formatTl, delta: noAmount ? null : change(now.grossSales, then.grossSales),
-      note: noAmount ? previousText(null, '₺0') : `Net ${formatTl(now.netRevenue)} · iade ${formatTl(now.returnedAmount)}`,
+    { key: 'net', label: 'Toplam Ciro', value: noAmount && !empty ? null : now.grossSales, format: formatTl, delta: noAmount && !empty ? null : change(now.grossSales, then.grossSales),
+      note: noAmount && !empty ? previousText(null, '₺0') : `Net ${formatTl(now.netRevenue)} · iade ${formatTl(now.returnedAmount)}`,
       tip: `Dönemin toplam satış tutarı; iptaller sayılmaz, iadeler düşülmez. Alttaki net, iadeler düşülünce kalandır.\n${previousLine(then.ordersWithAmount > 0 ? formatTl(then.grossSales) : null, '₺0')}`, split: split(row => row.ordersWithAmount > 0 ? row.grossSales : null, formatTl) },
-    { key: 'profit', label: profitLabel(money), value: profit, format: formatTl,
+    { key: 'profit', label: profitLabel(money), value: empty ? 0 : profit, format: formatTl,
       delta: change(profit, earlierProfit),
       note: profit === null ? profitReason(money, noAmount) ?? 'Sipariş başına ₺0' : now.ordersWithAmount === 0 ? 'Sipariş başına ₺0' : `Sipariş başına ${signedTl(profit / now.ordersWithAmount)}`,
       tip: `${profit === null ? missingCostTip(money) : profit < 0 ? netLossTip : netProfitTip}${estimateLine(money)}\n${previousLine(earlierProfit === null ? null : signedTl(earlierProfit), '₺0')}`,
@@ -595,11 +597,11 @@ function OverviewFigures({ data, money }: { data: ReportSales; money: Money | nu
     { key: 'cost', label: 'Maliyete Göre Kâr', value: onCost, format: percent, delta: change(onCost, earlierOnCost, 'rate'),
       note: `Ürün maliyeti ${money?.cost && money.profit !== null ? formatTl(money.cost) : '₺0'}`,
       tip: `Net kârın ürün maliyetine oranı: ürüne harcanan her liranın getirdiği kâr.${estimateLine(money)}\n${previousLine(formatPercent(earlierOnCost), '%0')}`, tone: (onCost ?? 0) < 0 ? 'bad' : undefined },
-    { key: 'orders', label: 'Sipariş', value: now.orders > 0 ? now.orders : null, format: formatCount, delta: change(now.orders, then.orders), note: `${formatCount(now.cancelledOrders)} iptal · sepet ${noAmount ? '₺0' : formatTl(now.averageOrderValue)}`,
+    { key: 'orders', label: 'Sipariş', value: now.orders, format: formatCount, delta: change(now.orders, then.orders), note: `${formatCount(now.cancelledOrders)} iptal · sepet ${noAmount ? '₺0' : formatTl(now.averageOrderValue)}`,
       tip: `Dönemde gelen sipariş sayısı; iptal edilenler sayılmaz, tutarı okunmayan ve TL dışındaki siparişler sayılır. Ana sayfadaki Toplam Sipariş yalnız tutarı olanları sayar; sepet de tutarı olan siparişlere bölünür.\n${previousLine(formatCount(then.orders))}`, split: split(row => row.orders, formatCount) },
     // The units sold (cancellations out, returns not taken off), with what the customers kept and sent back under it;
     // the Satış card under the strip leads with the same figure (owner, 7 Nov 2026: the strip as 3 + 3).
-    { key: 'sold', label: 'Satılan Adet', value: now.soldQuantity > 0 ? now.soldQuantity : null, delta: change(now.soldQuantity, then.soldQuantity),
+    { key: 'sold', label: 'Satılan Adet', value: now.soldQuantity, delta: change(now.soldQuantity, then.soldQuantity),
       note: `Net ${formatNumber(now.keptQuantity)} · ${formatNumber(now.returnedQuantity)} iade`,
       tip: `Dönemde satılan ürün adedi; iptaller sayılmaz, iadeler düşülmez. Net adet, iadeler düşülünce müşteride kalandır.\n${previousLine(formatNumber(then.soldQuantity))}`,
       split: split(row => row.soldQuantity, formatNumber) }
