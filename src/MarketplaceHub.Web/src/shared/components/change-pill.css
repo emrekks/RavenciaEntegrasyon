@@ -1,0 +1,5 @@
+/* The shared change pill (ChangePill.tsx): the Raporlar KPI cards' look, used on every screen that shows a change. */
+.rv-change { display: inline-flex; align-items: center; gap: 4px; width: fit-content; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-style: normal; font-weight: 600; line-height: 1.4; white-space: nowrap; font-variant-numeric: tabular-nums; background: color-mix(in srgb, currentColor 12%, transparent); }
+.rv-change.is-good { color: var(--rv-color-accent); }
+.rv-change.is-bad { color: var(--rv-color-danger); }
+.rv-change.is-flat { color: var(--rv-color-subtle); }
