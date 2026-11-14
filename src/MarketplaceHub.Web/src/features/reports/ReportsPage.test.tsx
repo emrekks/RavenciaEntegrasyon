@@ -273,7 +273,7 @@ describe('ReportsPage', () => {
     expect(heroCard(page, 'cancels').textContent).not.toContain('En Sık Neden')
     expect(hero(page, 'todo')).toBe('1 · faturasız paket')
     expect(page.querySelector('.reports-hero-card.is-todo.is-alert')).not.toBeNull()
-    expect(heroTiles(page, 'todo')).toEqual(['Stok Riski 0 ürün', 'Soru Yanıt Süresi —'])
+    expect(heroTiles(page, 'todo')).toEqual(['Stok Riski —', 'Soru Yanıt Süresi —'])
     // Every figure explains itself under the pointer.
     expect(page.querySelectorAll('.reports-hero-card .reports-hover-tip')).toHaveLength(9 + 29)
     // The old cards are gone, and no card repeats another.
@@ -1039,8 +1039,8 @@ describe('ReportsPage', () => {
     act(() => root?.unmount())
     const empty = await open('?view=payouts&hmin=100000')
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
-    expect(empty.querySelector('.reports-payout-empty')?.textContent).toContain('Bu filtrelerle ödeme yok.')
-    await act(async () => { (empty.querySelector('.reports-payout-empty button') as HTMLButtonElement).click() })
+    expect(empty.querySelector('.rv-empty-state')?.textContent).toContain('Bu filtrelerle ödeme yok.')
+    await act(async () => { (empty.querySelector('.rv-empty-state button') as HTMLButtonElement).click() })
     expect(texts(empty, '.reports-payout-row')).toHaveLength(4)
     act(() => root?.unmount())
     // The explanations follow the picked marketplace: Hepsiburada's payout day, no Trendyol balance claim.

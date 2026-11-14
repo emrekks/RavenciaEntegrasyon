@@ -14,6 +14,7 @@ import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import '../commission-tariffs.css'
 import { PanelSelect } from '../../../shared/PanelSelect'
 import { forgetTariff, loadRowPage, rememberTariff, tariffsQuery, type RowPage } from './commission-tariff-rows'
+import { EmptyState } from '../../../shared/components/EmptyState'
 // One formatter per format, made once: toLocaleString with options builds a new Intl.NumberFormat on every call, and
 // the tariff table formats thousands of amounts per render.
 const twoDecimals = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -390,7 +391,7 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
 
     {tariffs.isLoading && <Busy />}
     {tariffs.isError && <ErrorBox error={tariffs.error} onRetry={() => void tariffs.refetch()} />}
-    {tariffs.data && tariffs.data.length === 0 && <p className="cs-empty">Henüz tarife yüklenmedi. Komisyon yalnız siparişin kendi bilgisinden okunuyor.</p>}
+    {tariffs.data && tariffs.data.length === 0 && <EmptyState icon="percent" title="Henüz Tarife Yok">Komisyon yalnız siparişin kendi bilgisinden okunuyor.</EmptyState>}
     {groups.length > 0 && <div className="commission-periods" role="list">
       {groups.map(group => {
         const first = group.periods[0]
@@ -1036,7 +1037,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
     </>}
     {loading && <Busy />}
     {error !== null && <ErrorBox error={error} onRetry={onRetry} />}
-    {rows && rows.items.length === 0 && <p className="cs-empty">Filtreye uyan ürün yok.</p>}
+    {rows && rows.items.length === 0 && <EmptyState icon="products" title="Ürün Bulunamadı">Filtreye uyan ürün yok.</EmptyState>}
     {phone && rows && rows.items.length > 0 && <div ref={tableTop} className="commission-cards">{shownGroups.map(phoneCard)}</div>}
     {/* Phones: the count and Excel İndir in a bar on the screen's bottom edge, joining the last card at the list's end. */}
     {phone && <StickyActionBar label="Seçimler" className="commission-phone-bar">

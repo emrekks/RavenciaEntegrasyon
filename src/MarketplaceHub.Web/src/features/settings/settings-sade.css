@@ -237,6 +237,8 @@
 .ss-page .ss-fr-progress { display: grid; gap: 8px; padding: 10px 14px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; }
 .ss-page .ss-fr-bar { height: 6px; overflow: hidden; background: var(--rv-color-surface-raised); border-radius: 99px; }
 .ss-page .ss-fr-bar i { display: block; height: 100%; background: var(--rv-color-danger); border-radius: 99px; transition: width .3s; }
+.ss-page .ss-fr-progress.is-done .ss-fr-bar i { background: var(--rv-color-accent); }
+.app-shell.stitch-shell main .ss-page .ss-fr-steps-toggle { justify-self: start; }
 .ss-page .ss-fr-progress-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 13px; }
 .ss-page .ss-fr-progress-head span { color: var(--rv-color-muted); font-variant-numeric: tabular-nums; }
 .ss-page .ss-fr-steps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 16px; margin: 0; padding: 0; list-style: none; }
@@ -715,3 +717,7 @@
   .ss-page .ss-auth.ss-auth { grid-template-columns: 40px minmax(0, 1fr); gap: 12px; padding: 12px; }
   .ss-page .ss-auth.ss-auth > .ss-auth-side { grid-column: 1 / -1; }
 }
+
+/* A group band above a table head reads as one block with it: same head colour, one divider between them. */
+.ss-page .ss-sess-sub { background: var(--rv-color-table-head); }
+.ss-page .ss-sess-sub:has(+ .ss-users, + .rr-qtable, + table), .ss-page .ss-body.is-flush > .ss-sess-sub:first-child { border-bottom: 1px solid var(--rv-color-border); }

@@ -965,7 +965,7 @@
 .product-publish-popup :is(.product-add-workspace, .product-publish-step, .product-publish-layout, .product-publish-main) { margin: 0; padding: 0; }
 /* In a popup the bar (the single product's and the bulk publish's) is the popup's bottom edge: flush with its sides and
    bottom, square, only a top hairline, so it meets the popup's own rounded corners. */
-.app-shell.stitch-shell main .product-publish-popup .product-publish-step .publish-selection-footer { position: sticky; bottom: 0; z-index: var(--rv-z-sticky, 30); margin: 16px calc(-1 * var(--popup-pad-x, 24px)) 0; padding-inline: var(--popup-pad-x, 24px); background: var(--rv-color-surface-raised, var(--rv-color-surface)); border: 0; border-top: 1px solid var(--rv-color-border-strong, var(--rv-color-border)); border-radius: 0; box-shadow: 0 -10px 24px -12px rgb(0 0 0 / 35%); }
+.app-shell.stitch-shell main .product-publish-popup .product-publish-step .publish-selection-footer { position: sticky; bottom: 0; z-index: var(--rv-z-sticky, 30); margin: 16px calc(-1 * var(--popup-pad-x, 24px)) 0; padding-inline: var(--popup-pad-x, 24px); background: var(--rv-color-surface-raised, var(--rv-color-surface)); border: 0; border-top: 1px solid var(--rv-color-border-strong, var(--rv-color-border)); border-radius: 0; box-shadow: var(--rv-action-bar-shadow); }
 @media (max-width: 760px) {
   .product-publish-popup-body { --popup-gap: 16px; --popup-pad-x: 16px; padding-inline: 16px; }
 }

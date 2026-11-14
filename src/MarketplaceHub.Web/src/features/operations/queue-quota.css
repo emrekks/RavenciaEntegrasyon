@@ -5,8 +5,7 @@
 .app-shell.stitch-shell main .qq .qq-window .rr-fld { display: flex; flex: none; align-items: center; gap: 8px; width: auto; }
 .app-shell.stitch-shell main .qq .qq-window .rr-fld small { white-space: nowrap; }
 .app-shell.stitch-shell main .qq .qq-window .rr-fld .rr-trigger { width: 200px; min-height: 0; height: 36px; }
-.qq-window .qq-note { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.qq-note, .qq-sub { margin: 0; color: var(--rv-color-muted); font-size: 12.5px; line-height: 1.4; }
+.qq-sub { margin: 0; color: var(--rv-color-muted); font-size: 12.5px; line-height: 1.4; }
 .qq-toolbar .jobs-reference-refresh.is-busy svg { animation: qq-spin 1s linear infinite; }
 @keyframes qq-spin { to { transform: rotate(360deg); } }
 
@@ -20,7 +19,7 @@
 .qq-section h2 { margin: 0; color: var(--rv-color-ink); font-size: 14.5px; font-weight: 600; }
 .qq-section .qq-sub { margin-top: -6px; }
 .qq-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: stretch; }
-.qq-empty, .qq-error { margin: 0; padding: 12px 0; color: var(--rv-color-muted); font-size: 13px; }
+.qq-error { margin: 0; padding: 12px 0; color: var(--rv-color-muted); font-size: 13px; }
 .qq-error { color: var(--rv-color-danger); }
 
 .qq-table-scroll { overflow-x: auto; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
@@ -68,7 +67,18 @@
   .qq-window { flex-direction: column; align-items: stretch; gap: 6px; }
   .app-shell.stitch-shell main .qq .qq-window .rr-fld { width: 100%; }
   .app-shell.stitch-shell main .qq .qq-window .rr-fld .rr-trigger { flex: 1; width: auto; }
-  .qq-window .qq-note { white-space: normal; }
   .qq-card strong { font-size: 19px; }
   .qq-states { grid-template-columns: minmax(0, 1fr); }
 }
+.app-shell.stitch-shell main .qq .qq-table td strong { display: block; font-weight: 600; white-space: nowrap; }
+.app-shell.stitch-shell main .qq .qq-table td small { display: block; margin-top: 2px; color: var(--rv-color-muted); font-size: 11.5px; font-weight: 400; }
+.app-shell.stitch-shell main .qq .qq-table td.qq-first { min-width: 190px; white-space: normal; }
+.app-shell.stitch-shell main .qq .qq-table td.qq-first :is(strong, small) { white-space: normal; overflow-wrap: anywhere; }
+.app-shell.stitch-shell main .qq .qq-table :is(th, td) { padding-inline: 10px; }
+.app-shell.stitch-shell main .qq .qq-table td.qq-usage-cell .qq-usage { min-width: 130px; }
+.app-shell.stitch-shell main .qq .qq-table td.qq-usage-cell .qq-bar { min-width: 60px; }
+.qq-info { position: relative; display: inline-grid; min-height: 0; padding: 0; background: none; border: 0; flex: none; place-items: center; width: 24px; height: 24px; color: var(--rv-color-muted); cursor: help; }
+.qq-info:is(:hover, :focus-visible) { color: var(--rv-color-ink); }
+.qq-info::after { content: attr(data-tip); position: absolute; z-index: 5; top: calc(100% + 6px); left: -8px; width: 320px; padding: 8px 10px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 7px; font-size: 12px; font-weight: 400; line-height: 1.4; white-space: normal; visibility: hidden; opacity: 0; pointer-events: none; }
+.qq-info:is(:hover, :focus-visible)::after { visibility: visible; opacity: 1; }
+@media (max-width: 720px) { .qq-info::after { width: min(300px, calc(100vw - 48px)); } }

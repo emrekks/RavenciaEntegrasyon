@@ -112,7 +112,7 @@
   html body .app-shell.stitch-shell main .reports-page .reports-period-field > span { grid-column: 1 / -1; margin-bottom: -2px; }
   html body .app-shell.stitch-shell main .reports-page .reports-period-row > .reports-segmented { grid-column: 1 / -1; margin-bottom: 6px; }
   html body .app-shell.stitch-shell main .reports-page .reports-filters > .reports-field { min-width: 0; }
-  html body .app-shell.stitch-shell main .reports-page .reports-filters > .reports-refreshing { position: absolute; top: 16px; right: 18px; }
+  html body .app-shell.stitch-shell main .reports-page .reports-filters > .reports-refreshing { position: absolute; top: 0; left: 14px; right: 14px; }
   /* The custom period's dates fit its third of the row whole (they ended "10.11...."), compact as on phones. */
   html body .app-shell.stitch-shell main .reports-page .reports-period-custom .date-range-picker-trigger { gap: 6px; padding: 0 10px; font-size: 12.5px; }
 }

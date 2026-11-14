@@ -11,6 +11,7 @@ import { PromotionOffersPanel, promotionTitles, type PromotionKind } from '../ma
 import { bySalesChannel, platformName } from '../reports/report-format'
 import '../reports/reports.css'
 import { PanelSelect } from '../../shared/PanelSelect'
+import { EmptyState } from '../../shared/components/EmptyState'
 
 type Connection = { id: string; platformCode: string; displayName: string; status: string; environment: string }
 
@@ -63,7 +64,7 @@ export function PromotionsPage() {
     </div>
     {connections.isLoading && <Busy />}
     {connections.isError && <ErrorBox error={connections.error} onRetry={() => void connections.refetch()} />}
-    {connections.data && !store && <p className="reports-empty">Promosyon dosyası yüklenebilecek bir mağaza yok; şimdilik Trendyol dosyaları okunuyor.</p>}
+    {connections.data && !store && <EmptyState icon="promotion" title="Mağaza Yok">Promosyon dosyası yüklenebilecek bir mağaza yok; şimdilik Trendyol dosyaları okunuyor.</EmptyState>}
     {store && <div className="reports-tariffs">
       <div className="promotion-platform-tabs">
         <Tabs className="rv-view-tabs" ariaLabel="Pazaryeri" value={store.platformCode} onChange={code => go({ store: stores.find(item => item.platformCode === code)?.id })}

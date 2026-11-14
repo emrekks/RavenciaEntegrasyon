@@ -534,7 +534,6 @@
 }
 
 @layer features {
-  .mapping-saved-table td.mapping-empty-table-cell .mapping-table-empty { min-height: 140px; margin: 0; border: 0; border-radius: 0; }
 }
 
 @layer features {

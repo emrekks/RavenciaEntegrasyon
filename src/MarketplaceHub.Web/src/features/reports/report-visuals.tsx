@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { EmptyState } from '../../shared/components/EmptyState'
 
 // The overview's charts. Each plays once, when its card first comes into view: bars and gauges grow from zero to their
 // value and figures count up, then everything stays still. Without IntersectionObserver (tests, old browsers) or with
@@ -58,7 +59,7 @@ export type ColumnPoint = { key: string; short: string; title: string; value: nu
 // with a card of its value beside the previous period's. The columns rise one after another when first seen.
 export function Columns({ points, format, axisFormat, shown, label }: { points: ColumnPoint[]; format: (value: number) => string; axisFormat: (value: number) => string; shown: boolean; label: string }) {
   const [hover, setHover] = useState<number | null>(null)
-  if (!points.length) return <p className="reports-empty">Bu dönemde veri yok.</p>
+  if (!points.length) return <EmptyState icon="chart" title="Veri Yok">Bu dönemde veri yok.</EmptyState>
   const top = niceMax(Math.max(0, ...points.map(point => point.value)))
   const peak = points.reduce((best, point, index) => point.value > points[best].value ? index : best, 0)
   const every = Math.max(1, Math.ceil(points.length / 7))
