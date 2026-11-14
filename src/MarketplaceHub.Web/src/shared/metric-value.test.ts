@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cardCountText, isAboveZero, noValue, toneAbove } from './metric-value'
+import { cardCountText, isAboveZero, noValue, toneAbove, valueWithUnit } from './metric-value'
 
 describe('the one empty-value rule', () => {
   it('reads nothing to show as a dash, for a zero count as for an unknown one', () => {
@@ -15,5 +15,13 @@ describe('the one empty-value rule', () => {
     expect(isAboveZero(undefined)).toBe(false)
     expect(toneAbove(0, 'warn')).toBeUndefined()
     expect(toneAbove(3, 'warn')).toBe('warn')
+  })
+})
+
+describe('a unit word next to a main value', () => {
+  it('is left out when the value is a dash', () => {
+    expect(valueWithUnit(3, 'Paket')).toBe('3 Paket')
+    expect(valueWithUnit(0, 'Paket')).toBe('—')
+    expect(valueWithUnit(undefined, 'adet')).toBe('—')
   })
 })

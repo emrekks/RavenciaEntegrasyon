@@ -23,3 +23,8 @@ export const isAboveZero = (value: number | null | undefined) => typeof value ==
 export function toneAbove<T extends string>(value: number | null | undefined, tone: T): T | undefined {
   return isAboveZero(value) ? tone : undefined
 }
+
+/** A main value with the unit word that belongs to it ("3 Paket"); a dash takes no unit ("—"): the word is left out. */
+export function valueWithUnit(value: number | null | undefined, unit: string, format: (value: number) => string = number => number.toLocaleString('tr-TR')): string {
+  return isAboveZero(value) ? `${format(value as number)} ${unit}` : noValue
+}
