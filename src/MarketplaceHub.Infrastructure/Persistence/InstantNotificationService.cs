@@ -151,7 +151,7 @@ public sealed class InstantNotificationService(
             return ServiceResult<InstantNotificationView>.Fail("SHOPIFY_CLIENT_SECRET_INVALID", "Shopify gizli anahtarı geçersiz.", 422);
         // An access token typed in place of the secret would make every delivery fail its signature.
         if (connection.PlatformCode == "SHOPIFY" && clientSecret is not null && IsShopifyAccessToken(clientSecret))
-            return ServiceResult<InstantNotificationView>.Fail("SHOPIFY_CLIENT_SECRET_INVALID", "Girilen değer bir erişim anahtarı (access token); Shopify bildirimleri uygulamanın API secret key'i ile imzalar. O anahtarı girin ya da alanı boş bırakın.", 422);
+            return ServiceResult<InstantNotificationView>.Fail("SHOPIFY_CLIENT_SECRET_INVALID", "Webhook gizli anahtarı alanına erişim anahtarı girilmiş. Shopify bildirimleri uygulamanın API Secret Key'i ile imzalar; o anahtarı girin ya da alanı boş bırakın.", 422);
         if (connection.Status is not ("ACTIVE" or "VERIFIED"))
             return ServiceResult<InstantNotificationView>.Fail("CONNECTION_INACTIVE", "Bağlantı pasif olduğu için anlık bildirim açılamaz.", 422);
         if (PublicBaseUrl() is not { } baseUrl)
@@ -327,7 +327,7 @@ public sealed class InstantNotificationService(
         }
         if (failure is not null)
         {
-            var note = $"{platform} webhook'u {(trendyol ? "pasife alınamadı" : "kapatılamadı")} ({failure.TrimEnd('.')}); bağlantı pasifken gelen bildirimler yine işlenmez. Panel saatte bir yeniden dener; isterseniz Webhook bölümünden Webhook'u Kapat'a basın.";
+            var note = $"{platform} webhook'u {(trendyol ? "pasife alınamadı" : "kapatılamadı")}. Neden: {failure.TrimEnd('.')}. Bağlantı pasifken gelen bildirimler yine işlenmez; Webhook bölümünden Webhook'u Kapat'a basın, panel de saatte bir yeniden dener.";
             await NotePendingAsync(tenantId, PausePendingKey(connectionId), "WEBHOOK_PAUSE_FAILED", $"{connection.DisplayName}: {note}", cancellationToken);
             logger.LogWarning("Order webhook of passive connection {ConnectionId} could not be closed at {Platform}", connectionId, connection.PlatformCode);
             return note;
@@ -402,7 +402,7 @@ public sealed class InstantNotificationService(
 
     private async Task<string> ResumeFailedAsync(PlatformConnection connection, string failure, CancellationToken cancellationToken)
     {
-        var note = $"{PlatformName(connection.PlatformCode)} webhook'u yeniden açılamadı ({failure.TrimEnd('.')}). Webhook bölümünden Webhook'u Aç'a basın; panel saatte bir yeniden dener. Siparişler bu arada düzenli kontrolle gelir.";
+        var note = $"{PlatformName(connection.PlatformCode)} webhook'u yeniden açılamadı. Neden: {failure.TrimEnd('.')}. Webhook bölümünden Webhook'u Aç'a basın; panel saatte bir yeniden dener, siparişler bu sürede düzenli kontrolle gelir.";
         await NotePendingAsync(connection.TenantId, ResumePendingKey(connection.Id), "WEBHOOK_RESUME_FAILED", $"{connection.DisplayName}: {note}", cancellationToken);
         logger.LogWarning("Order webhook of reactivated connection {ConnectionId} could not be opened again at {Platform}", connection.Id, connection.PlatformCode);
         return note;
@@ -633,14 +633,14 @@ public sealed class InstantNotificationService(
     internal const string ResumePendingPrefix = "webhook-resume:";
     internal static string PausePendingKey(Guid connectionId) => $"{PausePendingPrefix}{connectionId:N}";
     internal static string ResumePendingKey(Guid connectionId) => $"{ResumePendingPrefix}{connectionId:N}";
-    internal const string HepsiburadaPauseNote = "Hepsiburada webhook'u Hepsiburada'da elle tanımlandığı için kapatılmadı; bağlantı pasifken gelen bildirimler işlenmez, bağlantı aktifleşince yeniden alınır.";
+    internal const string HepsiburadaPauseNote = "Hepsiburada webhook'u elle tanımlandığı için kapatılmadı. Bağlantı pasifken gelen bildirimler işlenmez; bağlantı etkinleşince yeniden alınır.";
 
     private static string PausedMessage(PlatformConnection connection)
     {
         var platform = PlatformName(connection.PlatformCode);
         return connection.Status is "ACTIVE" or "VERIFIED"
-            ? $"Bağlantı yeniden aktifleşti ama {platform} webhook'u yeniden açılamadı; Webhook'u Aç'a basın. Panel saatte bir yeniden dener; siparişler bu arada düzenli kontrolle gelir."
-            : $"Bağlantı pasife alınırken {platform} webhook'u kapatıldı; bağlantı yeniden aktifleşince panel webhook'u kendiliğinden açar.";
+            ? $"{platform} webhook'u yeniden açılamadı. Webhook bölümünden Webhook'u Aç'a basın; panel saatte bir yeniden dener, siparişler bu sürede düzenli kontrolle gelir."
+            : $"{platform} webhook'u bağlantı pasife alınırken kapatıldı. Bağlantı yeniden etkinleşince panel webhook'u kendiliğinden açar.";
     }
 
     // Retires the definitions Pasife Al closed once another webhook is open. A Trendyol one is still registered there

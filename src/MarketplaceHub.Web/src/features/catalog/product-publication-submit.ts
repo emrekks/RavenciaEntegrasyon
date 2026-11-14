@@ -90,7 +90,7 @@ export type ProductSaveOutcome = {
 export type ProductSaveFeedback = {
   title: string
   lines: string[]
-  kind: 'success' | 'error' | 'info'
+  kind: 'success' | 'error' | 'info' | 'warning'
   persistent: boolean
   durationMs?: number
 }

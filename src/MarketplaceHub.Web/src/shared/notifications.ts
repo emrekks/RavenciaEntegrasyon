@@ -7,12 +7,15 @@ export type NotificationDetail = { label: string; value: string; tone?: 'success
 
 // What a notification is about: a product, an order, an invoice… with the page that shows it when there is one.
 export type NotificationSubjectKind = 'product' | 'order' | 'package' | 'invoice' | 'return' | 'connection' | 'job' | 'mapping' | 'question' | 'import' | 'account'
-export type NotificationSubject = { kind: NotificationSubjectKind; id?: string; label: string; href?: string }
+/** What happened to one record of a batch: done, left out (already in that state) or refused with its reason. */
+export type NotificationItemResult = 'success' | 'skipped' | 'error'
+export type NotificationSubject = { kind: NotificationSubjectKind; id?: string; label: string; href?: string; result?: NotificationItemResult; reason?: string }
+export type NotificationStatusChange = { from?: string; to: string }
 
 export type AppNotification = {
   id: string
   message: string
-  kind: 'success' | 'error' | 'info'
+  kind: 'success' | 'error' | 'info' | 'warning'
   createdAt: string
   read: boolean
   // Where the notification leads: the page that explains or fixes what it reports.
@@ -42,6 +45,12 @@ export type AppNotification = {
   items?: NotificationSubject[]
   // A producer kept it on purpose, outside the wording policy (shouldRecordNotification).
   recorded?: boolean
+  // Who did it (the signed-in user's name) and from where (the page, or "Otomatik" for the panel's own jobs).
+  actor?: string
+  source?: string
+  // How long the operation took, and the status it moved a record from and to.
+  durationMs?: number
+  statusChange?: NotificationStatusChange
 }
 
 // Context a producer knows about its notification. Everything is optional: a bare sentence still makes a notification.
@@ -63,6 +72,13 @@ export type NotificationContext = {
   record?: boolean
   /** The button of the notification; by default the subject's page, else a page derived from the message. */
   target?: NotificationTarget | null
+  /** Every record a batch touched (the detail lists up to ten, with their result). */
+  items?: NotificationSubject[]
+  /** The page or action it came from; by default the page the user is on, "Otomatik" for background notices. */
+  source?: string
+  actor?: string
+  durationMs?: number
+  statusChange?: NotificationStatusChange
 }
 
 export type NotificationInput = NotificationContext & { message: string; kind?: AppNotification['kind'] }
@@ -77,6 +93,23 @@ export const notificationSubjectLabels: Record<NotificationSubjectKind, string> 
 }
 
 const platformNames: Record<string, string> = platformDisplayNames
+
+const pageAreas: Array<[string, string]> = [
+  ['/returns', 'İade Yönetimi'], ['/orders', 'Siparişler'], ['/invoices', 'Faturalar'], ['/products', 'Ürün Kataloğu'],
+  ['/mappings', 'Eşleştirmeler'], ['/jobs', 'İşlem Takibi'], ['/integrations', 'Entegrasyonlar'], ['/shipments', 'Gönderiler'], ['/settings', 'Ayarlar'],
+  ['/imports', 'İçe Aktarım'], ['/questions', 'Müşteri Soruları'], ['/reports', 'Raporlar'], ['/dashboard', 'Genel Bakış']
+]
+/** The panel area an address belongs to ("/invoices/12" gives "Faturalar"). */
+export function notificationArea(path: string | null | undefined) {
+  const value = path?.split('?')[0] ?? ''
+  return pageAreas.find(([prefix]) => value.startsWith(prefix))?.[1] ?? null
+}
+
+// The signed-in user's name, for the "Kullanıcı" row; the shell registers it once.
+let actorResolver: (() => string | null) | null = null
+export function registerNotificationActorResolver(resolver: (() => string | null) | null) {
+  actorResolver = resolver
+}
 
 export function notificationPlatformName(platformCode: string | null | undefined) {
   const code = platformCode?.trim().toUpperCase() ?? ''
@@ -139,6 +172,8 @@ const historyLimit = 20
 const burstWindowMs = 5 * 60_000
 
 export function normalizeNotificationKind(message: string, kind: AppNotification['kind']): AppNotification['kind'] {
+  // A producer that calls its result a warning (partly done, action needed) knows more than the wording does.
+  if (kind === 'warning') return kind
   // A count of none ("3 başarılı, 0 başarısız") reports no failure.
   const normalized = message.toLocaleLowerCase('tr-TR').replace(/(?<![\d.,])0\s+(?:başarısız|hatalı|hata)/gu, '')
   if (/(hata|başarısız|kaydedilemedi|güncellenemedi|silinemedi|oluşturulamadı|alınamadı|bulunamadı|geçersiz|uygulanamadı|okunamadı|yenilenemedi|eşlenemedi|sorgulanamadı|aktarılamadı|gönderilemedi|inceleme bekliyor|reddi|reddedildi|yayın uyarısı|eşlemesi (?:yok|gerek)|zorunlu özellik)/u.test(normalized)) return 'error'
@@ -166,6 +201,8 @@ function readSubject(value: unknown): NotificationSubject | undefined {
   return {
     kind: entry.kind as NotificationSubjectKind,
     label: entry.label.slice(0, 160),
+    result: entry.result === 'success' || entry.result === 'skipped' || entry.result === 'error' ? entry.result : undefined,
+    reason: typeof entry.reason === 'string' && entry.reason.trim() ? entry.reason.trim().slice(0, 200) : undefined,
     id: typeof entry.id === 'string' ? entry.id.slice(0, 80) : undefined,
     href: typeof entry.href === 'string' && entry.href.startsWith('/') ? entry.href.slice(0, 300) : undefined
   }
@@ -175,6 +212,13 @@ function readSubjects(value: unknown): NotificationSubject[] | undefined {
   if (!Array.isArray(value)) return undefined
   const items = value.map(readSubject).filter((item): item is NotificationSubject => !!item).slice(0, 50)
   return items.length > 0 ? items : undefined
+}
+
+function readStatusChange(value: unknown): NotificationStatusChange | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const entry = value as Record<string, unknown>
+  if (typeof entry.to !== 'string' || !entry.to.trim()) return undefined
+  return { to: entry.to.trim().slice(0, 80), from: typeof entry.from === 'string' && entry.from.trim() ? entry.from.trim().slice(0, 80) : undefined }
 }
 
 const text = (value: unknown, max: number) => typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : undefined
@@ -321,7 +365,7 @@ export function readNotificationHistory(): AppNotification[] {
       if (!item || typeof item !== 'object') return []
       const value = item as Record<string, unknown>
       if (typeof value.id !== 'string' || typeof value.message !== 'string' || typeof value.createdAt !== 'string'
-        || (value.kind !== 'success' && value.kind !== 'error' && value.kind !== 'info')) return []
+        || (value.kind !== 'success' && value.kind !== 'error' && value.kind !== 'info' && value.kind !== 'warning')) return []
       const title = text(value.title, 80)
       const kind = normalizeNotificationKind(value.message, value.kind as AppNotification['kind'])
       // History saved before the recording policy existed may hold routine messages; drop them on read. A notification
@@ -355,7 +399,11 @@ export function readNotificationHistory(): AppNotification[] {
         count,
         firstAt: typeof value.firstAt === 'string' ? value.firstAt : undefined,
         items: readSubjects(value.items),
-        recorded: value.recorded === true ? true : undefined
+        recorded: value.recorded === true ? true : undefined,
+        actor: text(value.actor, 120),
+        source: text(value.source, 80),
+        durationMs: typeof value.durationMs === 'number' && value.durationMs >= 0 ? Math.round(value.durationMs) : undefined,
+        statusChange: readStatusChange(value.statusChange)
       } satisfies AppNotification]
     })
     return collapseBursts(entries).slice(0, historyLimit)
@@ -389,7 +437,7 @@ export function appendNotification(input: string | NotificationInput, kind: AppN
   const title = value.title?.trim() || undefined
   const normalizedKind = normalizeNotificationKind(`${title ? `${title}: ` : ''}${message}`, value.kind ?? 'info')
   // An explicit kind from a producer that knows the outcome wins over the wording, except an error stays an error.
-  const resolvedKind = value.kind === 'error' || normalizedKind === 'error' ? 'error' : title && value.kind ? value.kind : normalizedKind
+  const resolvedKind = value.kind === 'error' || (normalizedKind === 'error' && !(value.kind === 'warning' && title)) ? 'error' : title && value.kind ? value.kind : normalizedKind
   if (!value.record && !shouldRecordNotification(title ? `${title}: ${message}` : message, resolvedKind)) return null
   const connection = value.connectionId && (!value.storeName || !value.platformCode) ? connectionResolver?.(value.connectionId) ?? null : null
   const subject = value.subject ?? undefined
@@ -416,7 +464,13 @@ export function appendNotification(input: string | NotificationInput, kind: AppN
     code: value.code?.trim() || undefined,
     jobId: value.jobId ?? undefined,
     groupKey: value.groupKey,
-    groupMessage: value.groupMessage
+    groupMessage: value.groupMessage,
+    items: value.items && value.items.length > 0 ? value.items.slice(0, 50) : undefined,
+    actor: value.actor?.trim() || actorResolver?.() || undefined,
+    // A notice the panel raises on its own says so; a user's action says which page it was done on.
+    source: value.source?.trim() || (value.groupKey?.startsWith('attention:') ? 'Otomatik' : notificationArea(typeof window === 'undefined' ? null : window.location.pathname) ?? undefined),
+    durationMs: value.durationMs,
+    statusChange: value.statusChange
   }
   if (value.record) notification.recorded = true
   const history = readNotificationHistory()
