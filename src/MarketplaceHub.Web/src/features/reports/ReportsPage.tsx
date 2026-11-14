@@ -115,7 +115,7 @@ export function ReportsPage() {
     <div className="page-heading reports-heading">
       <div><p className="eyebrow">Analiz</p><h1>Raporlar</h1><p className="reports-lead">Satış, iade, iptal, kargo ve kârlılık; platform, şehir ve ürün kırılımıyla, önceki dönemle karşılaştırmalı.</p></div>    </div>
     <div className="reports-filters" role="search" aria-label="Rapor filtreleri">
-      <div className="reports-field reports-period-field"><span>Dönem</span><div className="reports-period-row">
+      <div className="reports-field reports-period-field" role="group" aria-label="Dönem"><div className="reports-period-row">
         <div className="reports-segmented" role="group" aria-label="Hazır dönemler">{presets.map(preset => <button key={preset.key} type="button" aria-pressed={preset.key === activePreset} onClick={() => { setDraft(null); setPickedPreset(preset.key); setRange(preset.range) }}><span>{preset.label}</span></button>)}</div>
         <div className={`reports-period-custom${activePreset ? '' : ' is-active'}`}><DateRangePicker from={draft?.from ?? range.from} to={draft ? draft.to : range.to} label="Özel Dönem"
           onChange={next => { if (next.from && next.to) { setDraft(null); setRange({ from: next.from, to: next.to }) } else setDraft(next) }} /></div>
