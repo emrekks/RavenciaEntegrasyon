@@ -935,6 +935,19 @@
 .app-shell.stitch-shell main .product-identifiers-grid label[title] { cursor: default; }
 
 /* Unlayered: the global button and select rules sit outside the layers and would win over the ones above. */
+/* The variant row's status light (VariantStatusDot): a 10px round light in a 16px button before the option text; green
+   no problem, red a problem, grey nothing known. Its card is the shared field-help tip. */
+:root .app-shell.stitch-shell main .variant-option-cell > button.variant-status-dot { flex: none; display: inline-grid; place-items: center; width: 16px; height: 16px; min-width: 0; min-height: 0; margin: 0; padding: 0; background: none; border: 0; border-radius: 50%; box-shadow: none; cursor: default; }
+:root .app-shell.stitch-shell main .variant-option-cell > button.variant-status-dot:focus-visible { outline: 2px solid color-mix(in srgb, var(--rv-color-primary) 70%, transparent); outline-offset: 1px; }
+.variant-status-dot > .variant-status-dot-light { display: block; width: 10px; height: 10px; border-radius: 50%; background: var(--rv-color-muted); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-muted) 22%, transparent); }
+.variant-status-dot.is-ok > .variant-status-dot-light { background: var(--rv-color-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-accent) 24%, transparent); }
+.variant-status-dot.is-error > .variant-status-dot-light { background: var(--rv-color-danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-danger) 24%, transparent); }
+.variant-status-tip > strong { display: block; margin-bottom: 4px; font-weight: 600; }
+.variant-status-tip > ul { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.variant-status-tip > ul > li { position: relative; padding-left: 14px; }
+.variant-status-tip > ul > li::before { content: ""; position: absolute; left: 0; top: .5em; width: 7px; height: 7px; border-radius: 50%; background: var(--rv-color-muted); }
+.variant-status-tip > ul > li.is-ok::before { background: var(--rv-color-accent); }
+.variant-status-tip > ul > li.is-error::before { background: var(--rv-color-danger); }
 .app-shell.stitch-shell main .variant-option-cell > .variant-option-edit-button { width: 28px; height: 28px; min-height: 0; padding: 0; background: none; border: 0; box-shadow: none; }
 .app-shell.stitch-shell main .variant-option-edit-pair select, .app-shell.stitch-shell main .variant-option-edit-pair input { height: 36px; min-height: 0; padding-block: 0; }
 .app-shell.stitch-shell main .variant-option-edit-body > footer button { height: 36px; min-height: 0; }

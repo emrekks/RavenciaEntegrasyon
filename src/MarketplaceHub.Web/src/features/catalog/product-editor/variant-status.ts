@@ -1,0 +1,44 @@
+import type { VariantPlatformStatus } from '../shared'
+
+// The status light before each variant's options in the editor's variant table (owner, 14 Nov 2026: "yeşil kırmızı
+// yanan, hatalarını göstersin, üstüne gelince"). Red when the row has a field problem or a marketplace refused or lost
+// the variant; green only when nothing is wrong and at least one marketplace has the variant; grey otherwise (nothing
+// known yet). A state is never inferred from a missing field: a connection without a listing or link says nothing.
+export type VariantStatusTone = 'ok' | 'error' | 'unknown'
+export type VariantStatusLine = { tone: 'ok' | 'error' | 'info'; text: string }
+export type VariantStatus = { tone: VariantStatusTone; lines: VariantStatusLine[] }
+
+type Row = { barcodeIssue?: string; skuIssue?: string; salePrice: number; listPrice: number; platformStatuses?: VariantPlatformStatus[] | null }
+
+export function variantFieldIssues(row: Row): string[] {
+  const issues: string[] = []
+  if (row.barcodeIssue) issues.push(row.barcodeIssue)
+  if (row.skuIssue) issues.push(row.skuIssue)
+  if (!(row.salePrice > 0)) issues.push('Satış fiyatı 0\'dan büyük olmalı.')
+  if (!(row.listPrice > 0)) issues.push('Liste fiyatı 0\'dan büyük olmalı.')
+  else if (row.salePrice > 0 && row.listPrice < row.salePrice) issues.push('Liste fiyatı satış fiyatından küçük olamaz.')
+  return issues
+}
+
+function platformLine(status: VariantPlatformStatus): VariantStatusLine | null {
+  const name = status.platform || status.platformCode
+  const listing = status.listingStatus?.trim().toUpperCase() ?? ''
+  if (listing === 'REJECTED') return { tone: 'error', text: `${name}: Reddedildi${status.rejectionReason?.trim() ? ` · ${status.rejectionReason.trim()}` : ''}` }
+  if (status.isMissing) return { tone: 'error', text: `${name}: Pazaryerinde bulunamadı` }
+  if (listing === 'APPROVAL_PENDING') return { tone: 'info', text: `${name}: Onay bekliyor` }
+  if (status.isMatched || listing === 'LIVE') return { tone: 'ok', text: `${name}: Eşleşti` }
+  return null
+}
+
+export function variantStatus(row: Row): VariantStatus {
+  const fieldLines: VariantStatusLine[] = variantFieldIssues(row).map(text => ({ tone: 'error', text }))
+  const platformLines = (row.platformStatuses ?? []).map(platformLine).filter((line): line is VariantStatusLine => line !== null)
+  const lines = [...fieldLines, ...platformLines.filter(line => line.tone === 'error'), ...platformLines.filter(line => line.tone !== 'error')]
+  const tone: VariantStatusTone = lines.some(line => line.tone === 'error') ? 'error' : lines.some(line => line.tone === 'ok') ? 'ok' : 'unknown'
+  if (tone === 'unknown' && !lines.length) lines.push({ tone: 'info', text: 'Henüz pazaryeri bilgisi yok.' })
+  return { tone, lines }
+}
+
+export function variantStatusLabel(tone: VariantStatusTone) {
+  return tone === 'error' ? 'Sorun var' : tone === 'ok' ? 'Sorun yok' : 'Durum bilinmiyor'
+}
