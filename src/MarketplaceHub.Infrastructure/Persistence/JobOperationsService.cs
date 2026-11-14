@@ -15,11 +15,12 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         var query = db.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenantId);
         if (since is { } from) query = InWindow(query, from);
         query = OfPlatforms(query, tenantId, platforms);
+        // A job that only continues in windows (RETRY_SCHEDULED with SLICE_CONTINUES) is counted apart: it is running, not retrying.
         var groups = await query
-            .GroupBy(x => new { x.Status, x.JobType })
-            .Select(group => new { group.Key.Status, group.Key.JobType, Count = group.Count() })
+            .GroupBy(x => new { x.Status, x.JobType, Continuing = x.Status == JobStatus.RetryScheduled && x.LastErrorCode == JobExecutionResult.ContinueCode })
+            .Select(group => new { group.Key.Status, group.Key.JobType, group.Key.Continuing, Count = group.Count() })
             .ToListAsync(cancellationToken);
-        return groups.Select(group => new JobCountView(JobStatusText(group.Status), group.JobType, group.Count)).ToList();
+        return groups.Select(group => new JobCountView(group.Continuing ? ContinuingStatus : JobStatusText(group.Status), group.JobType, group.Count)).ToList();
     }
 
     public async Task<IReadOnlyList<JobSummaryView>> ListAsync(Guid tenantId, JobListQuery listQuery, CancellationToken cancellationToken)
@@ -56,14 +57,19 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         if (!string.IsNullOrWhiteSpace(listQuery.Status))
         {
             // One status or several separated by commas (the list's state filters ask for all of their statuses at once).
+            // CONTINUING stands for a job that continues in windows (RETRY_SCHEDULED with SLICE_CONTINUES); RETRY_SCHEDULED leaves it out.
             var statuses = new List<JobStatus>();
+            var continuing = false;
             foreach (var part in listQuery.Status.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             {
+                if (string.Equals(part, ContinuingStatus, StringComparison.OrdinalIgnoreCase)) { continuing = true; continue; }
                 if (!TryParseStatus(part, out var parsed)) return null;
                 statuses.Add(parsed);
             }
-            if (statuses.Count == 0) return null;
-            query = query.Where(x => statuses.Contains(x.Status));
+            if (statuses.Count == 0 && !continuing) return null;
+            const string continueCode = JobExecutionResult.ContinueCode;
+            query = query.Where(x => (statuses.Contains(x.Status) && !(x.Status == JobStatus.RetryScheduled && x.LastErrorCode == continueCode))
+                || (continuing && x.Status == JobStatus.RetryScheduled && x.LastErrorCode == continueCode));
         }
         if (listQuery.Since is { } since) query = InWindow(query, since);
         if (listQuery.JobTypes is { Count: > 0 } jobTypes)
@@ -1079,6 +1085,8 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         });
     }
 
+    internal const string ContinuingStatus = "CONTINUING";
+
     private static string JobStatusText(JobStatus status) => status == JobStatus.RetryScheduled ? "RETRY_SCHEDULED" : status == JobStatus.ManualReview ? "MANUAL_REVIEW" : status.ToString().ToUpperInvariant();
 
     private static Guid? GuidValue(System.Text.Json.JsonElement root, string name) =>
@@ -1235,7 +1243,8 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         lastAttemptStartedAt, x.HeartbeatAt,
         failure?.WaitingChecks ?? 0,
         Math.Max(1, x.MaxAttempts - x.WaitingChecks),
-        x.Status is JobStatus.Pending or JobStatus.RetryScheduled && JobWaitingPolicy.IsWaitingCode(x.LastErrorCode));
+        x.Status is JobStatus.Pending or JobStatus.RetryScheduled && JobWaitingPolicy.IsWaitingCode(x.LastErrorCode),
+        PayloadResource(x.PayloadJson));
 
     internal const string OwnerAcceptedCode = "OWNER_ACCEPTED";
 
@@ -1325,6 +1334,19 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             "PTTAVM" => "PttAVM",
             _ => "Ravencia",
         };
+    }
+
+    // The list the job works on (a reference sync reads CATEGORIES, BRANDS or CATEGORY_ATTRIBUTES), which tells two jobs of one type apart.
+    private static string? PayloadResource(string payloadJson)
+    {
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(payloadJson);
+            return document.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object
+                && document.RootElement.TryGetProperty("resourceType", out var value) && value.ValueKind == System.Text.Json.JsonValueKind.String
+                ? value.GetString() : null;
+        }
+        catch (System.Text.Json.JsonException) { return null; }
     }
 
     private static string? ExternalId(string payloadJson)

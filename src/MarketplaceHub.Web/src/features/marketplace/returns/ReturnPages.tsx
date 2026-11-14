@@ -461,7 +461,8 @@ export function ReturnsPage() {
   const tabCount = (value: string) => summary.isLoading ? '…' : summary.isError || !summary.data ? '—' : summary.data.tabCounts[value] ?? 0
   // The Reddedilen and Bugün cards read the summary's metrics; no data for a card reads "—" (shared rule, shared/metric-value.ts).
   const metrics = summary.data?.metrics
-  const metricValue = (count: number | undefined) => cardCountText(count, { loading: summary.isLoading, error: summary.isError || !summary.data })
+  // Data source: an active connection that reads returns; without one the cards read a dash, with one a real zero reads 0 (shared rule, shared/metric-value.ts).
+  const metricValue = (count: number | undefined) => cardCountText(count ?? 0, { loading: summary.isLoading, error: summary.isError || !summary.data, hasSource: connections.data ? returnConnections.length > 0 : undefined })
   const actionRequired = summary.data?.tabCounts.ACTION_REQUIRED ?? 0
   const todayApproved = metrics?.todayApproved ?? 0
   const todayRejected = metrics?.todayRejected ?? 0

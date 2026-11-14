@@ -118,7 +118,9 @@ public sealed record JobSummaryView(
     // checks gave back, and whether the job now only waits for the marketplace to finish.
     int WaitingChecks = 0,
     int AttemptBudget = 0,
-    bool Waiting = false);
+    bool Waiting = false,
+    // The payload's resourceType (CATEGORIES, BRANDS ...): which list a reference sync reads.
+    string? Resource = null);
 
 public sealed record JobOrderContextView(
     Guid OrderId,
