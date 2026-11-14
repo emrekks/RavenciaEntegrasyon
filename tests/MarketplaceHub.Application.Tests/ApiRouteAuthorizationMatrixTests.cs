@@ -196,6 +196,7 @@ public sealed class ApiRouteAuthorizationMatrixTests(ApiPipelineHost fixture) : 
         "GET    /api/v1/mappings/categories/{localId:guid} SignedIn",
         "PUT    /api/v1/mappings/categories/{localId:guid} Operations",
         "DELETE /api/v1/mappings/categories/{localId:guid} Operations",
+        "POST   /api/v1/mappings/categories/exact-match Operations",
         "GET    /api/v1/mappings/conflicts SignedIn",
         "GET    /api/v1/mappings/name-hints SignedIn",
         "GET    /api/v1/orders SignedIn",

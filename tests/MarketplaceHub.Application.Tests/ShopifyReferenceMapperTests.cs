@@ -72,12 +72,33 @@ public sealed class ShopifyReferenceMapperTests
     }
 
     [Theory]
-    [InlineData("Bluz", "Anne Bluz", "Bluz")]
-    [InlineData("Alt - Üst Takım ", "Takım", "Alt - Üst Takım ")]
-    [InlineData(null, " Anne Bluz ", "Anne Bluz")]
-    [InlineData(null, null, null)]
-    public void PublicationSendsTheMappedProductTypeBeforeThePanelCategoryName(string? mapped, string? panel, string? expected)
+    [InlineData("  Anne Bluz ", "Anne Bluz")]
+    [InlineData("", null)]
+    [InlineData("   ", null)]
+    [InlineData(null, null)]
+    [InlineData("Bluz\nElbise", null)]
+    public void ATypedProductTypeIsTrimmedAndRefusedWhenEmptyOrControl(string? typed, string? expected)
     {
-        Assert.Equal(expected, ShopifyProductPublicationComposer.ShopifyProductType(mapped, panel));
+        Assert.Equal(expected, ShopifyProductTypeNames.Clean(typed));
+        Assert.Null(ShopifyProductTypeNames.Clean(new string('a', ShopifyProductTypeNames.MaximumLength + 1)));
+        Assert.Equal(ShopifyProductTypeNames.MaximumLength, ShopifyProductTypeNames.Clean(new string('a', ShopifyProductTypeNames.MaximumLength))!.Length);
+    }
+
+    [Fact]
+    public void ExactMatchPairsSameNamedCategoriesOnlyAndCreatesNothing()
+    {
+        var bluz = Guid.NewGuid();
+        var icGiyim = Guid.NewGuid();
+        var anneBluz = Guid.NewGuid();
+        var tunik = Guid.NewGuid();
+        var plan = ShopifyProductTypeNames.PlanExactMatches(
+            [(bluz, " BLUZ "), (icGiyim, "iç giyim"), (anneBluz, "Anne Bluz"), (tunik, "Tunik")],
+            ["Bluz", "İç  Giyim", "Elbise", "Tunik", "tunik"]);
+
+        // Case and Turkish letters do not matter; the store's own spelling is what gets mapped.
+        Assert.Equal([(bluz, "Bluz"), (icGiyim, "İç  Giyim")], plan.Matches.Select(x => (x.CategoryId, x.ProductType)));
+        // Anne Bluz has no type of that name (no near matches), Tunik matches two of the store's types: left to the user.
+        Assert.Equal(1, plan.WithoutTypeCount);
+        Assert.Equal(1, plan.AmbiguousCount);
     }
 }

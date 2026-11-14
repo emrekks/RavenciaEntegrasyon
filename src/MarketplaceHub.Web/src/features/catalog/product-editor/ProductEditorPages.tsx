@@ -1004,7 +1004,7 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   })
   const jobRunning = jobView.state === 'running'
   const missingChecks = card.mode === 'PUBLISH' ? missingPublicationChecks(productChecks, card.connection.platformCode) : []
-  const mappingReadinessEnabled = card.mode === 'PUBLISH' && !isShopifyCard && (!productId || !publication.isPending)
+  const mappingReadinessEnabled = card.mode === 'PUBLISH' && (!productId || !publication.isPending)
     && (pttAvmRetry ? Boolean(categoryId) : shouldCheckPublicationAttributes(categoryId, selectionStatus, publication.data?.lastJobStatus))
   const mappingReadiness = useQuery({
     queryKey: publicationReadinessQueryKey(card.connection.id, categoryId, selectedAttributes),
