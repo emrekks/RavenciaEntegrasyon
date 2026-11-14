@@ -1223,12 +1223,12 @@ main .rr.rr.rr-returns .rr-tbl.rr-tbl th .rr-hf { max-width: 100%; min-width: 0;
 /* owner, 14 Nov: a buyer name never breaks inside a word, and each Bilgiler "Label: value" line stays on one line */
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl td[data-l="Alıcı"] .rr-cust b { overflow-wrap: normal !important; word-break: normal !important; hyphens: manual !important; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl .rr-pline small:not(.rr-card-only) { white-space: nowrap; overflow-wrap: normal; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl { min-width: 1343px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) { min-width: 1449px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select { min-width: 1357px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select:has(col.rr-c-buyer) { min-width: 1463px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-order { width: 262px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-order { width: 276px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl { min-width: 1297px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) { min-width: 1403px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select { min-width: 1311px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select:has(col.rr-c-buyer) { min-width: 1417px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-order { width: 216px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-order { width: 230px; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-buyer { width: 106px; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-prod,
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-prod { width: 290px; }
@@ -1243,8 +1243,12 @@ main .rr.rr.rr-returns .rr-tbl.rr-tbl th .rr-hf { max-width: 100%; min-width: 0;
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl :is(th:first-child, td:first-child) { padding-left: 12px; }
 /* owner, 14 Nov: İadeler follows the Siparişler one-line rules - order lines, tracking number, Bilgiler lines and buyer words never break inside */
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl :is(.rr-ordercell small, .rr-cargocell small.rr-num, .rr-pline small:not(.rr-card-only)) { white-space: nowrap; overflow-wrap: normal; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl .rr-ordercell small .rr-nv { display: inline; overflow-wrap: normal; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl .rr-ordercell small .rr-nv { display: block; overflow-wrap: normal; white-space: nowrap; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl td[data-l="Alıcı"] .rr-cust b { overflow-wrap: normal !important; word-break: normal !important; hyphens: manual !important; }
 :root:root:root:root main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl :is(thead th:first-child, tbody td:first-child) { position: sticky; left: 0; z-index: 2; }
 :root:root:root:root main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl tbody td:first-child { background: var(--rr-surface); }
+/* the pinned first column stays opaque in every row state (hover and selection tints are layered over the surface colour, never see-through), above the scrolled cells */
+:root:root:root:root main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl tbody tr:hover td:first-child { background: linear-gradient(var(--rv-hover, var(--rr-hover)), var(--rv-hover, var(--rr-hover))), var(--rr-surface); }
+:root:root:root:root main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl tbody tr.rr-sel td:first-child { background: linear-gradient(var(--rr-primary-soft), var(--rr-primary-soft)), var(--rr-surface); }
+:root:root:root:root main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl thead th:first-child { z-index: 3; }
 }
