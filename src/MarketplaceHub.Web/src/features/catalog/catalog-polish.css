@@ -42,7 +42,9 @@
 
 /* Variant table toolbar: both actions stay on one line. */
 .app-shell.stitch-shell main .variant-table-toolbar { flex-wrap: wrap; }
-.app-shell.stitch-shell main .variant-table-toolbar-actions { flex-wrap: nowrap; margin-left: auto; }
+.app-shell.stitch-shell main .variant-table-toolbar-actions { flex-wrap: wrap; min-width: 0; max-width: 100%; margin-left: auto; }
+/* Ürün Düzenle never scrolls sideways: the toolbar wraps when it has no room, anything else wider than the page is clipped at its edge. */
+.app-shell.stitch-shell.stitch-shell > main > .content.product-add-page { overflow-x: clip; }
 .app-shell.stitch-shell main .variant-table-toolbar-actions > button { white-space: nowrap; }
 /* Clearing the variant rows is destructive: the panel's danger outline (as in the mapping and commission dialogs). */
 .app-shell.stitch-shell main .variant-table-toolbar-actions > button.variant-clear-button.is-danger { color: var(--rv-color-danger); border-color: color-mix(in srgb, var(--rv-color-danger) 45%, var(--rv-color-border)); }
@@ -90,3 +92,10 @@
 .app-shell.stitch-shell main .catalog-list-page :is(.inline-form, .form-grid, form.panel) > label { display: grid; gap: 6px; color: var(--rv-color-muted); font-size: 13px; font-weight: 500; }
 .app-shell.stitch-shell main .catalog-list-page :is(.inline-form, .form-grid, form.panel) :is(input:not([type="file"]), select) { box-sizing: border-box; height: 36px; min-height: 36px; padding-top: 0; padding-bottom: 0; color: var(--rv-color-ink); font-size: 14px; }
 .app-shell.stitch-shell main .catalog-list-page :is(.inline-form, .form-grid, form.panel, .page-heading .actions, .actions.spaced) > :is(button, .button-link) { height: 36px; min-height: 36px; padding-block: 0; }
+
+/* Ürün Düzenle: grid tracks are minmax(0, 1fr) so no editor child (option add row, chips, summaries) can widen the page; the variant table scrolls inside its own card. */
+.app-shell.stitch-shell.stitch-shell > main > .content.product-add-page { grid-template-columns: minmax(0, 1fr); }
+.app-shell.stitch-shell main .product-add-page .product-creation-workspace { grid-template-columns: minmax(0, 1fr); }
+.app-shell.stitch-shell main .product-add-page :is(.product-creation-workspace, .attribute-builder-values, .attribute-builder-card, .product-variant-groups-section) > * { min-width: 0; }
+.app-shell.stitch-shell main .product-add-page :is(.attribute-builder-values, .attribute-builder-card, .product-variant-groups-section) { grid-template-columns: minmax(0, 1fr); }
+.app-shell.stitch-shell main .product-add-page .option-value-add :is(small, span) { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
