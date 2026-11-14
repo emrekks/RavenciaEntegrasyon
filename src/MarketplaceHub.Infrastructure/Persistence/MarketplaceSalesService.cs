@@ -2824,7 +2824,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         if (prior is not null || stillOpen.Any(open => ReturnDecisionLinePolicy.Overlaps(open, lineIds)))
             return ServiceResult<ReturnDetailView>.Fail("RETURN_DECISION_IN_PROGRESS", "Bu iade için başka bir karar az önce pazaryerine gönderildi; sonuç kesinleşene kadar yeni bir karar gönderilemez.", 409);
         var currentVersion = await db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == claimId).Select(x => x.Version).FirstOrDefaultAsync(cancellationToken);
-        return ServiceResult<ReturnDetailView>.Fail("CONCURRENCY_CONFLICT", $"İade bu sırada değişti; güncel sürüm v{currentVersion}. Sayfayı yenileyip tekrar deneyin.", 409);
+        return ServiceResult<ReturnDetailView>.Fail("CONCURRENCY_CONFLICT", "İade siz düzenlerken başka bir işlemle güncellendi. Sayfayı yenileyip tekrar deneyin.", 409);
     }
 
     public async Task<ServiceResult<ReturnDetailView>> ApplyDispositionAsync(Guid tenantId, Guid userId, Guid claimId, ReturnDispositionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
@@ -3901,5 +3901,5 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
     private static bool IsAmbiguous(AdapterError error) => WriteOutcomePolicy.IsUncertain(error);
     private static ServiceResult<T> Invalid<T>(string field, string message) => ServiceResult<T>.Fail("VALIDATION_FAILED", message, 422, new Dictionary<string, string[]> { [field] = [message] });
     private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);
-    private static ServiceResult<T> Precondition<T>(long version) => ServiceResult<T>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{version}.", 412);
+    private static ServiceResult<T> Precondition<T>(long version) => ServiceResult<T>.Fail("CONCURRENCY_CONFLICT", "Kayıt siz düzenlerken başka bir işlemle güncellendi. Sayfayı yenileyip tekrar deneyin.", 412);
 }
