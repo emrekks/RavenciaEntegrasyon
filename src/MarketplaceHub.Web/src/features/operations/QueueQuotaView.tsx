@@ -3,12 +3,13 @@ import { useMemo, useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { hubPoll } from '../../shared/api'
 import { UiIcon } from '../../shared/components'
+import { Tabs } from '../../shared/components/DesignSystem'
 import { Busy } from '../../shared/components/AsyncState'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { jobTitle } from './job-presentation'
 import { ChoiceField } from './filter-fields'
 import {
-  activeJobTypes, countsByStatus, formatSeconds, laneHint, laneLabel, laneTotals, queueWindowOptions, quotaLaneLabels, usagePercent, usageTone, windowSince,
+  activeJobTypes, countsByStatus, filterJobsByTab, generalJobTab, jobPlatformTabs, formatSeconds, laneHint, laneLabel, laneTotals, queueWindowOptions, quotaLaneLabels, usagePercent, usageTone, windowSince,
   type JobCount, type JobTypeMetric, type LaneMetric, type QueueWindow, type QuotaUsage
 } from './queue-quota'
 import './queue-quota.css'
@@ -28,6 +29,7 @@ function UsageBar({ used, limit, label }: { used: number; limit: number; label: 
 
 export function QueueQuotaView() {
   const [hours, setHours] = useState<QueueWindow>('24')
+  const [platformTab, setPlatformTab] = useState('ALL')
   const since = useMemo(() => windowSince(hours), [hours])
   const options = { placeholderData: keepPreviousData, refetchInterval: pollMs } as const
   const lanes = useQuery({ queryKey: ['queue-quota', 'lanes', hours], queryFn: () => hubPoll<LaneMetric[]>(`/jobs/metrics/lanes?hours=${hours}`), ...options })
@@ -39,6 +41,9 @@ export function QueueQuotaView() {
 
   const totals = lanes.data ? laneTotals(lanes.data) : null
   const types = metrics.data ? activeJobTypes(metrics.data) : []
+  const platformTabs = jobPlatformTabs(types)
+  const activeTab = platformTabs.some(tab => tab.value === platformTab) ? platformTab : 'ALL'
+  const shownTypes = filterJobsByTab(types, activeTab)
   const states = counts.data ? countsByStatus(counts.data) : []
   const windowLabel = queueWindowOptions.find(option => option.value === hours)?.label ?? ''
   const number = (value: number | undefined) => cardCountText(value)
@@ -99,9 +104,14 @@ export function QueueQuotaView() {
 
     <section className="qq-section" aria-labelledby="qq-types">
       <h2 id="qq-types">İş Türüne Göre Kuyruk</h2>
-      {metrics.isLoading ? <Busy text="İş türleri yükleniyor…" /> : metrics.isError && !metrics.data ? <p role="alert" className="qq-error">İş türü ölçümleri alınamadı.</p> : types.length === 0 ? <EmptyState icon="jobs" title="İş Yok">Bu aralıkta çalışan ya da bekleyen iş yok.</EmptyState> : <div className="qq-table-scroll"><table className="qq-table">
+      {metrics.isLoading ? <Busy text="İş türleri yükleniyor…" /> : metrics.isError && !metrics.data ? <p role="alert" className="qq-error">İş türü ölçümleri alınamadı.</p> : types.length === 0 ? <EmptyState icon="jobs" title="İş Yok">Bu aralıkta çalışan ya da bekleyen iş yok.</EmptyState> : <>
+        <Tabs className="rv-view-tabs qq-platform-tabs" ariaLabel="İş türü platformu" value={activeTab} onChange={setPlatformTab} items={platformTabs.map(tab => ({
+          value: tab.value, count: tab.count,
+          label: tab.value === 'ALL' || tab.value === generalJobTab ? tab.label : <><PlatformSquareMark code={tab.value} name={tab.label} size="sm" />{tab.label}</>
+        }))} />
+        <div className="qq-table-scroll"><table className="qq-table">
         <thead><tr><th className="qq-first">İş Türü</th><th className="is-num">Bekleyen</th><th className="is-num">Çalışan</th><th className="is-num">Deneme</th><th className="is-num">Hata</th><th className="is-num">Ort. Bekleme</th><th className="is-num">Ort. Süre</th></tr></thead>
-        <tbody>{types.map(row => <tr key={row.jobType}>
+        <tbody>{shownTypes.map(row => <tr key={row.jobType}>
           <td className="qq-first"><strong>{jobTitle(row.jobType)}</strong><small>{row.jobType}</small></td>
           <td className="is-num" data-label="Bekleyen">{row.queued.toLocaleString('tr-TR')}</td>
           <td className="is-num" data-label="Çalışan">{row.running.toLocaleString('tr-TR')}</td>
@@ -110,7 +120,7 @@ export function QueueQuotaView() {
           <td className="is-num" data-label="Ort. Bekleme">{formatSeconds(row.averageWaitSeconds)}</td>
           <td className="is-num" data-label="Ort. Süre">{formatSeconds(row.averageDurationSeconds)}</td>
         </tr>)}</tbody>
-      </table></div>}
+      </table></div></>}
     </section>
   </div>
 }
