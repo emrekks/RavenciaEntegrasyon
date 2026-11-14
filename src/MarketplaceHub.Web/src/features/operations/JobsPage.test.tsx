@@ -339,7 +339,8 @@ describe('JobsPage address state (W16)', () => {
     await settle()
 
     expect(rowCount()).toBe(2)
-    expect(container.textContent).toContain('Listenin devamı okunamadı.')
+    expect(container.textContent).toContain('Listenin Devamı Okunamadı')
+    expect(container.textContent).toContain('Listeyi yenileyip tekrar deneyin.')
   })
 })
 

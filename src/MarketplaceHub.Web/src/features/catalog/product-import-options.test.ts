@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { productImportChoiceSummary, productImportModeDescription, productImportNeedsChoice, productImportOptionVisibility, productImportOverwriteConfirmation, productImportPriceStockLabel } from './product-import-options'
+import { productImportChoiceSummary, productImportModeDescription, productImportNeedsChoice, productImportOptionVisibility, productImportOverwriteConfirmation, productImportStartedMessage } from './product-import-options'
 
 describe('product import price and stock choices', () => {
-  it('labels prices and stock separately', () => {
-    expect(productImportPriceStockLabel(true, false)).toBe(' · mevcut fiyatlar güncellenecek · mevcut stoklar korunacak')
-    expect(productImportPriceStockLabel(false, true)).toBe(' · mevcut fiyatlar korunacak · mevcut stoklar güncellenecek')
-    expect(productImportPriceStockLabel(false, false)).toBe(' · mevcut fiyatlar korunacak · mevcut stoklar korunacak')
+  it('writes the started toast as sentences, never a chain of fragments', () => {
+    const message = productImportStartedMessage({ connectionCount: 1, scope: 'full', includeArchived: true, includeDrafts: false, includePendingApproval: true, contentChoice: false, priceStock: null })
+    expect(message).toBe('Mağazadaki tüm ürünler, arşivdekiler ve onay bekleyenler dahil, panele aktarılıyor. Paneldeki mevcut ürün bilgileri değişmeyecek. İlerlemeyi İşlem Takibi’nden izleyebilirsiniz.')
+    expect(message).not.toContain('·')
+    expect(productImportStartedMessage({ connectionCount: 2, scope: 'existing', includeArchived: false, includeDrafts: false, includePendingApproval: false, contentChoice: true, priceStock: { updatePrices: true, updateStock: false } }))
+      .toBe('2 mağazadaki mevcut ürünlerin bilgileri panele aktarılıyor. Paneldeki mevcut ürün bilgileri güncellenecek. Mevcut fiyatlar güncellenecek, mevcut stoklar korunacak. İlerlemeyi İşlem Takibi’nden izleyebilirsiniz.')
   })
 
   it('asks for confirmation only when something is overwritten, and names what', () => {

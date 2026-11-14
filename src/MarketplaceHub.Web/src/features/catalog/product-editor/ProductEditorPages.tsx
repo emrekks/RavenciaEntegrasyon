@@ -3182,7 +3182,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       // a stock changed meanwhile (order, return, another tab) is refused for that row instead of being overwritten.
       // A new variant's stock went with the variant itself (its Açılış Stoğu).
       const stockResult = await applyVariantStockSets(editorStockUpdates(rows, product.variants), update => setVariantOnHand(update, 'Ürün düzenleme stoğu'))
-      if (stockResult.failed.length) warnings.push(`Stok kaydedilemedi: ${stockResult.failed.map(item => `${item.sku}: ${item.message}`).join(' · ')}`)
+      if (stockResult.failed.length) warnings.push(`Stok kaydedilemedi: ${stockResult.failed.map(item => `${item.sku}: ${item.message}`).join('; ')}`)
       // A marketplace switched to or from "Özel Fiyat" stores the choice on the card's offers there, even when no price
       // is written to it (no price changes, nothing goes to the marketplace).
       if (editProductId) {
