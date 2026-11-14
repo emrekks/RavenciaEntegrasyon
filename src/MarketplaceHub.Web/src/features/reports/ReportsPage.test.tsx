@@ -168,46 +168,46 @@ describe('ReportsPage', () => {
     const page = await open()
     expect(requests[0]).toMatch(/^\/reports\/sales\?from=\d{4}-\d{2}-\d{2}&to=\d{4}-\d{2}-\d{2}$/)
     // One account: 350 of sales, 100 back and an estimated commission of 43 taken off, the product cost of 80, 127 of
-    // estimated profit (green); its margin over the sales and over the cost; 4 orders against 2, 4 of 5 units kept.
+    // estimated profit (green); its margin over Net Ciro and over the cost; 4 orders against 2, 4 of 5 units kept.
     const figures = texts(page, '.reports-kpis > div')
     expect(figures).toHaveLength(6)
-    expect(figures[0]).toContain('Toplam Ciro')
-    // Money in a strip is shown in whole liras, the previous period's too.
-    expect(figures[0]).toContain('Toplam Ciro₺350')
+    expect(figures[0]).toContain('Net Ciro')
+    // Money in a strip is shown in whole liras, the previous period's too: Net Ciro is the 350 of sales less the 100 back.
+    expect(figures[0]).toContain('Net Ciro₺250')
     // Every figure has a short note of real figures under it (owner, 7 Nov 2026); the previous period's figure is in the
     // explanation, so no change chip opens it.
     expect(page.querySelectorAll('.reports-kpis .reports-kpi-note')).toHaveLength(6)
     expect(page.querySelector('.reports-kpis .reports-kpi-delta-toggle')).toBeNull()
-    expect(figures[0]).toContain('Net ₺250 · iade ₺100')
-    expect(figures[0]).toContain('Önceki dönem: ₺350')
+    expect(figures[0]).toContain('Toplam ₺350 · İade ₺100')
+    expect(figures[0]).toContain('Önceki dönem: ₺200')
     expect(figures[1]).toContain('Sipariş başına ₺42')
     expect(figures[3]).toContain('Ürün maliyeti ₺80')
     expect(figures[4]).toContain('1 iptal · sepet ₺117')
     // O5: the overview's Ciro has the returns in it, Net Ciro not; the margin says which amount it is over.
-    expect(figures[0]).toContain('iadeler düşülmez')
-    expect(figures[2]).toContain('Net kârın satış tutarına oranı')
+    expect(figures[0]).toContain('iadeler düşülünce kalan')
+    expect(figures[2]).toContain("Net kârın Net Ciro'ya oranı")
     // The owner's style (9 Nov 2026): no formula chains, no "Sipariş başına" line in the explanation.
     expect(figures[1]).toContain('Tüm kesintiler, ürün maliyeti ve reklam düşüldükten sonra kalan tahmini kâr. Dökümü Kâr Hesabı\'nda.')
     expect(figures[1]).not.toContain('Sipariş başına: Sipariş Başına Kâr')
-    expect(figures[0]).not.toContain('+%25') // the change is of the total sales (350 against 350), not of the net revenue
+    expect(figures[0]).toContain('+%25') // the change is of Net Ciro (250 against 200), not of the total sales (350 against 350)
     expect(figures[1]).toContain('Net Kâr')
     expect(figures[1]).toContain('Net Kâr₺127')
     expect(page.querySelectorAll('.reports-kpis > div')[1].classList.contains('is-good')).toBe(true)
-    expect(figures[2]).toContain('%36,3')
+    expect(figures[2]).toContain('%50,8')
     expect(figures[3]).toContain('%158,8')
     expect(figures[4]).toContain('+%100')
     // Satılan Adet: 5 sold (returns not taken off), the 4 kept and 1 return under it; the Satış card leads with it too.
     expect(figures[5]).toContain('Satılan Adet5')
     expect(figures[5]).toContain('Net 4 · 1 iade')
     expect(figures[5]).toContain('iptaller sayılmaz, iadeler düşülmez')
-    // Every figure against the previous period: the profit against its 160, the margin against 45,7 % (a rate's change
+    // Every figure against the previous period: the profit against its 160, the margin against 80,0 % (160 over 200 of Net Ciro) (a rate's change
     // written in per cent, not points); every change on its own line, so the notes under them start level.
     expect(figures[1]).toContain('−%20,6')
     expect(figures[1]).toContain('Önceki dönem: ₺160')
-    expect(figures[2]).toContain('−9,4 puan')
-    expect(figures[2]).toContain('Önceki dönem: %45,7')
+    expect(figures[2]).toContain('−29,2 puan')
+    expect(figures[2]).toContain('Önceki dönem: %80,0')
     expect(page.querySelectorAll('.reports-kpis > div > .reports-kpi-change')).toHaveLength(6)
-    // A rate's change is in percentage points, said so ("−9,4 puan"), not a relative "%" like the counts.
+    // A rate's change is in percentage points, said so ("−29,2 puan"), not a relative "%" like the counts.
     // Masraf Kalemleri: the account's costs (not the returns, which are taken off the sales) and the product cost, largest
     // first, 123 in all (35,1 % of the sales); what is not read without Trendyol's statement is "—", never ₺0.
     const card = page.querySelector('.reports-card-costlines')!
@@ -226,7 +226,7 @@ describe('ReportsPage', () => {
     // Kâr Köprüsü: each deduction taken from where the one before ended, down to the same 127.
     expect(bridgeRows(page)).toEqual(['Satış Tutarı ₺350,00', '− İade Edilen Tutar − ₺100,00', '− Pazaryeri Masrafları − ₺43,00', '− Ürün Maliyeti − ₺80,00', 'Tahmini Net Kâr ₺127,00'])
     // A row's explanation is there for the pointer, not printed under it.
-    expect(page.querySelector('.reports-bridge > li.is-end .reports-hover-tip')?.textContent).toContain('Net marj %36,3')
+    expect(page.querySelector('.reports-bridge > li.is-end .reports-hover-tip')?.textContent).toContain('Net marj %50,8')
     // The sales open their platforms in a window over the page.
     expect(page.querySelector('.reports-journey-modal')).toBeNull()
     await act(async () => { page.querySelector<HTMLButtonElement>('.reports-bridge button[aria-label^="Satış tutarı"]')!.click() })
@@ -379,7 +379,7 @@ describe('ReportsPage', () => {
     // unlinked deductions taken off) and its rates; no second "what is left" figure on another basis.
     const strip = texts(page, '.reports-kpis > div')
     expect(strip).toHaveLength(5)
-    ;['Toplam Ciro₺350', 'Maliyeti Olan Ciro₺240', 'Tahmini Zarar− ₺6.639', 'Net Kâr / Satış Fiyatı Oranı− %1.896,9', 'Net Kâr / Ürün Maliyeti Oranı− %8.299,0']
+    ;['Net Ciro₺250', 'Maliyeti Olan Ciro₺200', 'Tahmini Zarar− ₺6.639', 'Net Kâr / Satış Fiyatı Oranı− %2.655,7', 'Net Kâr / Ürün Maliyeti Oranı− %8.299,0']
       .forEach((figure, index) => expect(strip[index]).toContain(figure))
     expect(page.querySelector('.reports-kpis')?.textContent).not.toContain('Hakediş')
     // Kâr Hesabı: the deductions tied to no order on a line of their own before the result, which agrees with the strip.
@@ -655,22 +655,21 @@ describe('ReportsPage', () => {
     expect(strip.classList.contains('is-5')).toBe(true)
     expect(strip.getAttribute('aria-label')).toBe('Kârlılığın göstergeleri')
     expect([...strip.querySelectorAll('.reports-kpi-label')].map(label => label.textContent)).toEqual([
-      'Toplam Ciro', 'Maliyeti Olan Ciro', 'Net Kâr', 'Net Kâr / Satış Fiyatı Oranı', 'Net Kâr / Ürün Maliyeti Oranı'])
-    // 350 of sales; 200 of it (after returns) carries a cost; the same 127 of net profit as the overview and Kâr
-    // Hesabı, 36,3 % of the sales and 158,8 % of the cost of 80. Each against the previous period: the same 350, 150
+      'Net Ciro', 'Maliyeti Olan Ciro', 'Net Kâr', 'Net Kâr / Satış Fiyatı Oranı', 'Net Kâr / Ürün Maliyeti Oranı'])
+    // 350 of sales less 100 back: 250 of Net Ciro; 200 of it carries a cost; the same 127 of net profit as the overview and
+    // Kâr Hesabı, 50,8 % of Net Ciro and 158,8 % of the cost of 80. Each against the previous period: 200 of Net Ciro, 150
     // costed, 160 net.
     const figures = texts(page, '.reports-kpis > div')
-    expect(figures[0]).toContain('Toplam Ciro₺350')
-    expect(figures[0]).toContain('%0')
-    // Maliyeti Olan Ciro counts like Toplam Ciro, returns not taken off: 240 (the previous period's API sent only the
-    // kept-units 150).
-    expect(figures[1]).toContain('Maliyeti Olan Ciro₺240')
-    expect(figures[1]).toContain('+%60')
-    expect(figures[1]).toContain('iadeler düşülmeden')
+    expect(figures[0]).toContain('Net Ciro₺250')
+    expect(figures[0]).toContain('+%25')
+    // Maliyeti Olan Ciro counts like Net Ciro, returns taken off: 200 against the previous period's 150.
+    expect(figures[1]).toContain('Maliyeti Olan Ciro₺200')
+    expect(figures[1]).toContain('+%33,3')
+    expect(figures[1]).toContain('iadeler düşülmüş')
     expect(figures[2]).toContain('Net Kâr₺127')
     expect(figures[2]).toContain('−%20,6')
     expect(figures[2]).toContain('ürün maliyeti ve reklam düşüldükten sonra')
-    expect(figures[3]).toContain('%36,3')
+    expect(figures[3]).toContain('%50,8')
     expect(figures[4]).toContain('%158,8')
     expect(figures[4]).toContain('Net kârın ürün maliyetine oranı')
     expect(page.querySelectorAll('.reports-kpis > div')[2].classList.contains('is-good')).toBe(true)
@@ -732,7 +731,7 @@ describe('ReportsPage', () => {
   it('says the cost is not entered on Kârlılık\'s cost figures when no cost is known', async () => {
     const page = await open('?view=profit', { ...report, cost: { ...report.cost, costedQuantity: 0, coverage: 0, costTotal: 0, costedRevenue: 0, profitQuantity: 0, profitCoverage: 0, netProfit: 0 } })
     const figures = texts(page, '.reports-kpis > div')
-    expect(figures[0]).toContain('Toplam Ciro₺350')
+    expect(figures[0]).toContain('Net Ciro₺250')
     expect(figures[1]).toContain('Maliyet girilmemiş')
     expect(figures[2]).toContain('Maliyet girilmemiş')
     expect(figures[3]).toContain('—')
@@ -743,7 +742,7 @@ describe('ReportsPage', () => {
     const none = { orders: 0, ordersWithAmount: 0, grossSales: 0, netRevenue: 0, returnedAmount: 0, soldQuantity: 0, keptQuantity: 0, returnedQuantity: 0, cancelledOrders: 0, averageOrderValue: 0 }
     const page = await open('', { ...report, summary: { ...report.summary, ...none }, previousSummary: { ...report.previousSummary, ...none } })
     const figures = texts(page, '.reports-kpis > div')
-    expect(figures[0]).toContain('Toplam Ciro₺0')
+    expect(figures[0]).toContain('Net Ciro₺0')
     expect(figures[1]).toContain('Sipariş başına ₺0')
     expect(figures[2]).toContain('Reklam öncesi %0')
     expect(figures[3]).toContain('Ürün maliyeti ₺0')
