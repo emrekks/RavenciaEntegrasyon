@@ -32,6 +32,19 @@ type PreviewItem = {
 type PreviewReturnedLine = { description: string; sku: string | null; quantity: number; returnedQuantity: number }
 type ConfirmResult = { items: Array<{ packageId: string; invoiceId: string | null; jobId: string | null; status: string; action: string; message: string }> }
 
+// One status read of an invoice (or of the queued job that makes it): read-only, never a submission.
+async function readInvoiceFollow(item: BulkInvoiceFollow): Promise<BulkInvoiceRead> {
+  if (item.invoiceId) {
+    const invoice = await hubPoll<{ status: string; lastErrorCode: string | null }>(`/invoices/${item.invoiceId}`)
+    return invoiceReadState(invoice.status, invoice.lastErrorCode ? invoiceFailureReason(invoice.lastErrorCode) ?? invoice.lastErrorCode : null)
+  }
+  if (item.jobId) {
+    const detail = await hubPoll<{ job: { status: string; lastErrorSummary: string | null } }>(`/jobs/${item.jobId}`)
+    return jobReadState(detail.job.status, detail.job.lastErrorSummary)
+  }
+  return { state: 'pending' }
+}
+
 const identifier = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\s*[,;:-]?\s*/gi
 // Mirrors the fiscal payload: one street text (by the same field priority), then district, city, country and postal code.
 export function addressLines(json: string) {
@@ -120,9 +133,20 @@ export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete, onN
           const failed = ['FAILED', 'BLOCKED', 'VALIDATION_FAILED', 'PREVIEW_STALE', 'CONFLICT'].includes(result.status)
           if (failed) { onNotice(`${label} nolu siparişin faturası oluşturulamadı: ${result.message}`, 'error', resultContext(result, 'Fatura Kesilemedi')) }
           else if (result.status === 'COMPLETED') { succeeded++; onNotice(/^Fatura (kesildi|E-Faturam)/u.test(result.message) ? `${label} nolu siparişin faturası ${result.message.replace(/^Fatura /u, '')}` : `${label} nolu sipariş: ${result.message}`, 'success', resultContext(result, 'Fatura Kesildi')) }
-          else onNotice(`${label} nolu siparişin faturası: ${result.message}`, 'info', resultContext(result, 'Fatura İşleniyor'))
+          else onNotice(`${label} nolu siparişin faturası: ${result.message}`, response.items.length === 1 ? 'pending' : 'info', resultContext(result, 'Fatura İşleniyor'))
         }
         if (queued.length) onNotice(`${queued.length} siparişin faturası sıraya alındı; arka planda kesilecek. İlerlemeyi İşlem Takibi’nde görebilirsiniz.`, 'info')
+        // One order still going: the pending notice is read again until the invoice ends, then turns into its result.
+        const single = response.items.length === 1 && response.items[0].status !== 'COMPLETED' && !['FAILED', 'BLOCKED', 'VALIDATION_FAILED', 'PREVIEW_STALE', 'CONFLICT'].includes(response.items[0].status) ? response.items[0] : null
+        if (single && (single.invoiceId || single.jobId)) {
+          const label = labels.get(single.packageId) ?? '#?'
+          void followPendingInvoices([{ packageId: single.packageId, label, invoiceId: single.invoiceId, jobId: single.jobId }], readInvoiceFollow, (item, result) => {
+            if (result.state === 'done') onNotice(`${item.label} nolu siparişin faturası kesildi.`, 'success', resultContext({ ...single, status: 'COMPLETED' }, 'Fatura Kesildi'))
+            else onNotice(`${item.label} nolu siparişin faturası oluşturulamadı: ${result.reason ?? 'neden bildirilmedi'}`, 'error', resultContext({ ...single, status: 'FAILED', message: result.reason ?? '' }, 'Fatura Kesilemedi'))
+          }).then(unfinished => {
+            if (unfinished.length) onNotice(`${label} nolu siparişin faturasının sonucu henüz bilinmiyor; Faturalar sayfasından kontrol edin.`, 'info', { title: 'Fatura Sonucu Bekleniyor', operation: 'Fatura kesme' })
+          }).finally(onComplete)
+        }
         if (response.items.length > 1) {
           const failedStatuses = ['FAILED', 'BLOCKED', 'VALIDATION_FAILED', 'PREVIEW_STALE', 'CONFLICT']
           const open = response.items.filter(result => result.status !== 'COMPLETED' && !failedStatuses.includes(result.status))
@@ -136,18 +160,7 @@ export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete, onN
             const bad: Array<{ label: string; reason?: string }> = [...failures]
             let left = open.length
             const follow: BulkInvoiceFollow[] = open.map(result => ({ packageId: result.packageId, label: labels.get(result.packageId) ?? '#?', invoiceId: result.invoiceId, jobId: result.jobId }))
-            const read = async (item: BulkInvoiceFollow): Promise<BulkInvoiceRead> => {
-              if (item.invoiceId) {
-                const invoice = await hubPoll<{ status: string; lastErrorCode: string | null }>(`/invoices/${item.invoiceId}`)
-                return invoiceReadState(invoice.status, invoice.lastErrorCode ? invoiceFailureReason(invoice.lastErrorCode) ?? invoice.lastErrorCode : null)
-              }
-              if (item.jobId) {
-                const detail = await hubPoll<{ job: { status: string; lastErrorSummary: string | null } }>(`/jobs/${item.jobId}`)
-                return jobReadState(detail.job.status, detail.job.lastErrorSummary)
-              }
-              return { state: 'pending' }
-            }
-            void followPendingInvoices(follow, read, (item, result) => {
+            void followPendingInvoices(follow, readInvoiceFollow, (item, result) => {
               const original = open.find(entry => entry.packageId === item.packageId)
               if (!original) return
               left--
