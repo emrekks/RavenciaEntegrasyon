@@ -465,7 +465,7 @@
 .cm-card .cm-foot > .cm-legend { display: inline-flex; flex-wrap: nowrap; gap: 14px; margin-left: 12px; padding: 0; border: 0; white-space: nowrap; }
 @media (max-width: 1100px) { .cm-card .cm-foot > .cm-legend { display: none; } }
 .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-context { gap: 8px 20px; padding: 10px 20px; }
-.app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-detail { padding: 12px 20px 8px; }
+.app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-detail { padding: 12px 20px 20px; }
 .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-detail-head { margin-bottom: 8px; }
 .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-detail-head h4 { font-size: 16px; }
 .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-form { row-gap: 8px; padding-bottom: 0; border-bottom: 0; }
