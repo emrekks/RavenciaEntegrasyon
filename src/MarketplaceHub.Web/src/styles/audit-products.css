@@ -32,7 +32,7 @@
 /* Ürün Düzenleyici variant table: Liste Fiyatı (heading, pencil and bulk icon) was 96 px and wrapped to two lines while
    Seçenek and Barkod had room; every heading stays on one line and the table fits at 1280 px without sideways scroll. */
 @media (min-width: 1201px) {
-  :root:root:root body .variant-table-editor :is(.variant-table-head, .variant-table-row) { min-width: 0; column-gap: 8px; grid-template-columns: 42px minmax(110px, 1.1fr) minmax(96px, .9fr) minmax(96px, .9fr) 64px 96px 96px 112px 184px; }
+  :root:root:root body .variant-table-editor :is(.variant-table-head, .variant-table-row) { min-width: calc(830px + var(--vopt-w, 170px)); column-gap: 6px; grid-template-columns: 34px minmax(var(--vopt-w, 170px), 1.1fr) minmax(96px, .9fr) minmax(96px, .9fr) 76px 104px 104px 104px 168px; }
   :root:root:root body .variant-table-editor .variant-table-head > * > span { white-space: nowrap; }
 }
 
@@ -120,3 +120,29 @@
 :root:root:root:root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-prodcell small { display: flex; align-items: center; gap: 4px; min-height: 22px; line-height: 1.2; }
 :root:root:root:root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-prodcell small > .rr-code-copy { flex: none; display: inline-grid; place-items: center; width: 22px; min-width: 22px; height: 22px; min-height: 0; margin: 0 0 0 2px; padding: 0; vertical-align: baseline; }
 :root:root:root:root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-prodcell small > .rr-code-copy > svg, :root:root:root:root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-prodcell small > .rr-code-copy > .ui-icon { display: block; width: 13px; height: 13px; }
+
+/* Ürün Düzenleyici variant table: the option name is never cut. Its column is as wide as the longest option name of the
+   product (--vopt-ch characters, set by the editor) plus status dot, pencil and gaps; the table scrolls in its own box
+   when the card is narrower. */
+:root:root:root body .variant-table-editor { --vopt-w: calc(64px + var(--vopt-ch, 12) * 7.8px); }
+@media (min-width: 1025px) and (max-width: 1200px) {
+  :root:root:root body .variant-table-editor :is(.variant-table-head, .variant-table-row) { min-width: calc(1106px + max(180px, var(--vopt-w))); grid-template-columns: 54px minmax(max(180px, var(--vopt-w)), 1.35fr) minmax(145px, 1fr) minmax(145px, 1fr) 90px 110px 110px 110px 184px; }
+}
+@media (min-width: 1025px) {
+  :root:root:root body .variant-table-editor .variant-option-cell > .variant-option-text { overflow: visible; text-overflow: clip; }
+}
+
+/* Ürün Düzenleyici variant table: Maliyet, Fiyat and Liste Fiyatı are the same width; head cells keep 8 px on both sides and
+   6 px between a label and its icon; the action icons sit 4 px apart (36 px buttons) and the count badge stays on its button. */
+@media (min-width: 1201px) {
+  :root:root:root body .variant-table-editor .variant-table-head > * { padding-inline: 8px; }
+  :root:root:root body .variant-table-editor .variant-table-head .variant-table-header-with-action { gap: 6px; }
+  :root:root:root body .variant-table-editor .variant-row-actions { gap: 4px; }
+  :root:root:root body .variant-table-editor .variant-row-actions > .variant-row-action { width: 36px; min-width: 36px; height: 36px; min-height: 36px; flex: 0 0 36px; }
+  :root:root:root body .variant-table-editor .variant-media-button > i { top: -4px; right: -2px; }
+}
+
+@media (min-width: 1201px) {
+  :root:root:root body .variant-table-editor :is(.variant-table-head, .variant-table-row) > :first-child { padding-inline: 4px; justify-content: center; text-align: center; }
+  :root:root:root body .variant-table-editor .variant-option-cell { gap: 6px; }
+}

@@ -10,6 +10,9 @@ import { thumbnailUrl } from '../../../shared/product-thumbnail'
 // ordan tıklayıp o görseli seçelim"): the per-picture ⋮ menu is gone; the button turns on a pick mode in which a tap on
 // one of the card's own pictures marks it as the size chart.
 const pictures = ['a', 'b', 'c'].map(name => `https://cdn.dsmcdn.com/pick/${name}.jpg`)
+// A size chart imported from the marketplace on another colour card of the model (owner, 15 Nov 2026: "kendi
+// eklemediğim şeylerden de beden tablosu seçebileyim"): shown in the strip as a family tile, and pickable too.
+const imported = 'https://cdn.dsmcdn.com/pick/bluz-beden-tablosu.jpg'
 
 vi.mock('../../../shared/api', async importOriginal => {
   const original = await importOriginal<typeof import('../../../shared/api')>()
@@ -23,8 +26,8 @@ vi.mock('../../../shared/api', async importOriginal => {
     if (path === '/products/p1') return {
       id: 'p1', version: 3, title: 'Kazak', description: '', brandId: null, categoryId: null, status: 'ACTIVE', updatedAt: '2026-11-10T10:00:00Z',
       variants: [variant], primaryImageUrl: pictures[0], totalStock: 0, startingPrice: 90, currency: 'TRY', modelCode: 'PICK', activePlatforms: [],
-      mediaUrls: [...pictures], familyMediaUrls: [...pictures],
-      familyMediaItems: pictures.map((url, index) => ({ url, mediaIds: [`m${index + 1}`], sourceProductTitles: ['Kazak'] })),
+      mediaUrls: [...pictures], familyMediaUrls: [...pictures, imported],
+      familyMediaItems: [...pictures, imported].map((url, index) => ({ url, mediaIds: [`m${index + 1}`], sourceProductTitles: [index === 3 ? 'Kazak Siyah' : 'Kazak'] })),
       hasCustomMediaOrder: false, attributes: [], familyProductIds: ['p1']
     }
     if (path.includes('/capabilities')) return []
@@ -75,7 +78,7 @@ async function renderEditor() {
 describe('Beden Tablosu Seç', () => {
   it('has no per-picture menu; the button sits beside Tümünü Temizle', async () => {
     await renderEditor()
-    expect(tiles()).toHaveLength(3)
+    expect(tiles()).toHaveLength(4)
     expect(container.querySelector('.size-chart-menu-btn, .size-chart-menu')).toBeNull()
     expect(Array.from(container.querySelectorAll('.product-media-header-actions button')).map(item => item.getAttribute('aria-label'))).toEqual(['Beden Tablosu Seç', 'Tümünü Temizle'])
   })
@@ -85,7 +88,7 @@ describe('Beden Tablosu Seç', () => {
     await click(button('Beden Tablosu Seç'))
     expect(hint()?.textContent).toContain('Beden tablosu olacak görsele dokunun')
     expect(container.querySelector('.media-preview-strip.is-size-chart-picking')).not.toBeNull()
-    expect(container.querySelectorAll('.size-chart-pick-target')).toHaveLength(3)
+    expect(container.querySelectorAll('.size-chart-pick-target')).toHaveLength(4)
     expect(tiles().every(tile => tile.getAttribute('draggable') === 'false')).toBe(true)
 
     await act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })) })
@@ -114,8 +117,8 @@ describe('Beden Tablosu Seç', () => {
     expect(openPicker).toBeDefined()
     await click(openPicker)
     const options = Array.from(document.querySelectorAll<HTMLElement>('.variant-media-picker-grid .variant-media-option'))
-    expect(options.map(option => option.querySelector('img')?.getAttribute('src'))).toEqual([pictures[1], pictures[2], pictures[0]])
-    expect(options.map(option => option.getAttribute('aria-label'))).toEqual(['Görsel 01', 'Görsel 02', 'Görsel 03 · Beden Tablosu: Otomatik eklenir (sonda)'])
+    expect(options.map(option => option.querySelector('img')?.getAttribute('src'))).toEqual([pictures[1], pictures[2], imported, pictures[0]])
+    expect(options.map(option => option.getAttribute('aria-label'))).toEqual(['Görsel 01', 'Görsel 02', 'Görsel 03', 'Görsel 04 · Beden Tablosu: Otomatik eklenir (sonda)'])
     // The chart is not a choice: ticked and locked, it goes last with every variant by itself.
     expect(options.at(-1)!.getAttribute('aria-pressed')).toBe('true')
     expect(options.at(-1)!.getAttribute('aria-disabled')).toBe('true')
@@ -125,5 +128,19 @@ describe('Beden Tablosu Seç', () => {
     expect(container.querySelector('[data-size-chart]')).toBeNull()
     expect(container.querySelector('.size-chart-badge')).toBeNull()
     expect(button('İşareti Kaldır')).toBeUndefined()
+  })
+
+  it('marks a picture imported on another colour card (a family tile) as the size chart', async () => {
+    await renderEditor()
+    const familyTile = tiles().find(tile => tileSource(tile) === thumbnailUrl(imported))!
+    expect(familyTile.classList.contains('family-media-preview')).toBe(true)
+    await click(button('Beden Tablosu Seç'))
+    expect(familyTile.classList.contains('is-size-chart-pickable')).toBe(true)
+    await click(familyTile.querySelector('.size-chart-pick-target'))
+    const last = tiles().at(-1)!
+    expect(tileSource(last)).toBe(thumbnailUrl(imported))
+    expect(last.dataset.sizeChart).toBe('true')
+    expect(last.querySelector('.size-chart-badge')?.textContent).toBe('Beden Tablosu')
+    expect(button('İşareti Kaldır')).toBeDefined()
   })
 })

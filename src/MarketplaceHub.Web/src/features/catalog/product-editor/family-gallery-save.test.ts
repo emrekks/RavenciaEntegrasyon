@@ -75,6 +75,18 @@ describe('familyGalleryPlan', () => {
     expect(result.chartMarks).toEqual([{ productId: 'bordo', url: chart }])
   })
 
+  it('makes a picture imported on another colour card the chart of every colour (owner, 15 Nov 2026)', () => {
+    // The chart came with Siyah's marketplace import: Bordo, opened in the editor, never held it.
+    const imported = url('bluz-beden-tablosu')
+    const cards: FamilyCardPictures[] = [
+      { productId: 'bordo', mediaUrls: bordo, variantMediaUrls: bordo, sizeChartUrl: null },
+      { productId: 'siyah', mediaUrls: [...siyah, imported], variantMediaUrls: siyah, sizeChartUrl: null }
+    ]
+    const result = familyGalleryPlan({ strip: [...bordo, ...siyah, imported], cards, rows: importedRows.slice(0, 4), uploaded: new Map(), newUrls: [], removedKeys: new Set(), chart: { url: imported, initialUrl: null } })
+    expect(result.galleryWrites).toEqual([{ productId: 'bordo', urls: [...bordo, imported], added: 1, removed: 0 }])
+    expect(result.chartMarks).toEqual([{ productId: 'bordo', url: imported }, { productId: 'siyah', url: imported }])
+  })
+
   it('takes a picture the owner removed off every card', () => {
     const { galleryWrites } = plan(importedRows, { removedKeys: new Set([siyah[2], ...kahve, ...murdum].map(item => item.toLowerCase())) })
     expect(galleryWrites).toEqual([{ productId: 'siyah', urls: siyah.slice(0, 2), added: 0, removed: 10 }])
