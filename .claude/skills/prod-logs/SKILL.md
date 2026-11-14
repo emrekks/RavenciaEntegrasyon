@@ -33,6 +33,8 @@ bash "$CLAUDE_PROJECT_DIR/.claude/skills/prod-logs/run.sh" journal caddy --since
   `--grep '"@l":"Warning"'` finds warnings; `--grep 'TRENDYOL_ORDER_SYNC'` follows one job type.
 - Output is capped at the last 400 lines (80 per container for `errors`); narrow with `--since` or `--grep`
   instead of raising it.
-- A deploy is live only when `status` shows the shipped sha on api, worker and caddy.
+- A deploy is live only when `status` shows the shipped sha on api, worker and caddy, or, for a web-only release
+  (only web/edge files changed, `deploy/scripts/release-scope.sh`), on caddy while api and worker keep the older
+  release they ran (their image is the same; its new tag is not on the containers).
 - Log lines can hold customer data (names, addresses, phones): quote ids, states and error messages to the user,
   not personal fields.
