@@ -346,3 +346,6 @@
    phone the two-column rule above squeezed it into half the card). */
 .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync:has(> .qi-sync-empty) { display: block !important; grid-template-columns: none !important; min-height: 0; height: auto; }
 .qi-page .qi-sync > .qi-sync-empty { display: block; padding: 12px 16px; line-height: 1.45; text-wrap: pretty; }
+
+/* The list footer and the conversation's closed bar sit side by side: one height, so their top borders form one line. */
+.qi-page :is(.qi-foot, .qi-closed) { box-sizing: border-box; min-height: 49px; padding-block: 6px; }

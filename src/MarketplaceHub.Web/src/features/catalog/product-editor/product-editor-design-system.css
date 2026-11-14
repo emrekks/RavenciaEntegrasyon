@@ -1285,3 +1285,7 @@ html body .app-shell .variant-bulk-edit-modal .variant-bulk-modes > button { hei
   html body .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card > .media-move-buttons.media-move-buttons > .media-move-btn .ui-icon { filter: drop-shadow(0 1px 1px rgb(0 0 0 / 55%)); }
   html body .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card > .media-move-buttons.media-move-buttons > .media-move-btn:disabled { opacity: .35; }
 }
+/* Bottom bar status (14 Nov audit): the counts line ("27 satış satırı · 3 seçili kanal") wraps under the title when the bar is
+   narrow instead of being cut with an ellipsis. */
+:root:root:root .app-shell.stitch-shell main .product-add-page .product-submit-sticky.product-submit-sticky.product-submit-sticky.rv-action-bar > div:first-child { flex-wrap: wrap; }
+:root:root:root .app-shell.stitch-shell main .product-add-page .product-submit-sticky.product-submit-sticky.product-submit-sticky.rv-action-bar > div:first-child > :is(p, small) { overflow: visible; text-overflow: clip; white-space: normal; }
