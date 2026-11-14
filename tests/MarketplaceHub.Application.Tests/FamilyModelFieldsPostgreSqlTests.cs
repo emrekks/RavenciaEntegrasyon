@@ -110,6 +110,7 @@ public sealed class FamilyModelFieldsPostgreSqlTests(PostgreSqlTenantIsolationFi
         }
     }
 
+    // What the editor sends: an empty warranty goes as 0 (Number(form.warrantyMonths || 0)), which the card stores as null.
     private static UpdateProductCommand Command(ProductView shown, string title) =>
-        new(title, shown.Description, shown.BrandId, shown.CategoryId, WarrantyMonths: shown.WarrantyMonths, VatRate: shown.VatRate, VatInclusion: shown.VatInclusion, DeliveryDays: shown.DeliveryDays, FamilySharedFields: ProductFamilySharedFields.All);
+        new(title, shown.Description, shown.BrandId, shown.CategoryId, WarrantyMonths: shown.WarrantyMonths ?? 0, VatRate: shown.VatRate, VatInclusion: shown.VatInclusion, DeliveryDays: shown.DeliveryDays, FamilySharedFields: ProductFamilySharedFields.All);
 }
