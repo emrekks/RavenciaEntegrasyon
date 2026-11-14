@@ -1,5 +1,7 @@
 import { notificationPlatformName, notificationSubjectLabels, type AppNotification, type NotificationSubject } from './notifications'
 import { formatDateTime } from './format-date'
+import { notificationArea } from './notifications'
+import { composeNotice, defaultNoticeTitles } from './notice-copy'
 
 export type NotificationFact = { label: string; value: string; tone?: 'success' | 'error'; href?: string }
 
@@ -51,12 +53,6 @@ const operationRules: Array<[RegExp, string]> = [
   [/eşleş|kategori|marka/u, 'Eşleştirme işlemi']
 ]
 
-const areas: Array<[string, string]> = [
-  ['/returns', 'İade Yönetimi'], ['/orders', 'Siparişler'], ['/invoices', 'Faturalar'], ['/products', 'Ürün Kataloğu'],
-  ['/mappings', 'Eşleştirmeler'], ['/jobs', 'İşlem Takibi'], ['/integrations', 'Entegrasyonlar'], ['/shipments', 'Gönderiler'], ['/settings', 'Ayarlar'],
-  ['/imports', 'İçe Aktarım'], ['/questions', 'Müşteri Soruları']
-]
-
 const platformPatterns: Array<[RegExp, string]> = [[/trendyol/u, 'TRENDYOL'], [/hepsiburada/u, 'HEPSIBURADA'], [/shopify/u, 'SHOPIFY'], [/\bn11\b/u, 'N11'], [/pazarama/u, 'PAZARAMA'], [/ptt ?avm/u, 'PTTAVM']]
 
 // The marketplace a sentence names, when it names exactly one ("Pazarama: …"); a list of several names none.
@@ -80,7 +76,31 @@ export function deriveNotificationTitle(message: string, kind: AppNotification['
   const text = message.toLocaleLowerCase('tr-TR')
   const rule = titleRules.find(([pattern]) => pattern.test(text))
   if (rule) return kind === 'success' ? rule[1] : kind === 'error' ? rule[2] : rule[3]
-  return kind === 'error' ? 'İşlem Başarısız' : kind === 'success' ? 'İşlem Tamamlandı' : 'Bilgi'
+  return defaultNoticeTitles[kind]
+}
+
+export function formatDuration(ms: number) {
+  if (ms < 1000) return `${ms} ms`
+  const seconds = Math.round(ms / 100) / 10
+  if (seconds < 60) return `${seconds.toLocaleString('tr-TR')} sn`
+  const minutes = Math.floor(seconds / 60)
+  return `${minutes} dk ${Math.round(seconds - minutes * 60)} sn`
+}
+
+const resultWords = { success: 'Başarılı', skipped: 'Atlandı', error: 'Hata' } as const
+export const NOTIFICATION_ITEMS_SHOWN = 10
+
+/** The records a notification touched: the first ten with their result ("Başarılı", "Atlandı", "Hata: reason") and the rest as a count. */
+export function notificationItemList(notification: AppNotification) {
+  const items = notification.items ?? []
+  return {
+    total: items.length,
+    shown: items.slice(0, NOTIFICATION_ITEMS_SHOWN).map(item => ({
+      ...item,
+      note: item.result ? `${resultWords[item.result]}${item.reason ? `: ${item.reason.replace(/[.\s]+$/u, '')}` : ''}` : null
+    })),
+    more: Math.max(0, items.length - NOTIFICATION_ITEMS_SHOWN)
+  }
 }
 
 export type NotificationPresentation = {
@@ -105,10 +125,12 @@ export function presentNotification(notification: AppNotification): Notification
   const platformName = notificationPlatformName(platformCode)
   const storeName = notification.storeName && notification.storeName.toLocaleLowerCase('tr-TR') !== platformName?.toLocaleLowerCase('tr-TR') ? notification.storeName : null
   const path = notification.href?.split('?')[0] ?? ''
-  const area = areas.find(([prefix]) => path.startsWith(prefix))?.[1] ?? null
+  const area = notificationArea(path)
   const items = notification.items ?? []
   // "{count} ürün için …" counts the records a burst touched; repeats of one record keep the sentence and the count badge.
-  const summary = items.length > 1 && notification.groupMessage ? notification.groupMessage.replaceAll('{count}', String(items.length)) : summaryText
+  // The summary is the part of the sentence the title does not already say (notice-copy.ts).
+  const body = composeNotice(notification.kind, title, summaryText).body
+  const summary = items.length > 1 && notification.groupMessage ? notification.groupMessage.replaceAll('{count}', String(items.length)) : body
   return { title, summary, platformCode, platformName, storeName, area, subject: notification.subject ?? null, count, items }
 }
 
@@ -123,11 +145,25 @@ export function describeNotification(notification: AppNotification): Notificatio
   else if (!presentation.platformName && presentation.area) facts.push({ label: 'Bölüm', value: presentation.area })
   const operation = notification.operation ?? operationRules.find(([pattern]) => pattern.test(text))?.[1]
   if (operation) facts.push({ label: 'İşlem', value: operation })
+  // Who did it and from where: the user and the page, or "Otomatik" for the panel's own work.
+  if (notification.source === 'Otomatik') facts.push({ label: 'Başlatan', value: 'Otomatik · Panelin kendi işi' })
+  else {
+    if (notification.actor) facts.push({ label: 'Kullanıcı', value: notification.actor })
+    if (notification.source) facts.push({ label: 'Kaynak', value: `${notification.source} Sayfası` })
+  }
+  const records = notification.items?.length ?? 0
+  if (records > 1) {
+    const words = { success: 'başarılı', skipped: 'atlandı', error: 'hatalı' } as const
+    const counts = (['success', 'skipped', 'error'] as const).map(result => [result, notification.items!.filter(item => item.result === result).length] as const).filter(([, count]) => count > 0)
+    const kindLabel = notificationSubjectLabels[notification.items![0].kind].toLocaleLowerCase('tr-TR')
+    facts.push({ label: 'Etkilenen Kayıt', value: `${records} ${kindLabel}${counts.length ? ` · ${counts.map(([result, count]) => `${count} ${words[result]}`).join(', ')}` : ''}` })
+  }
+  if (notification.statusChange) facts.push({ label: 'Durum', value: notification.statusChange.from ? `${notification.statusChange.from} → ${notification.statusChange.to}` : notification.statusChange.to })
   if (presentation.subject && presentation.items.length <= 1) facts.push({ label: notificationSubjectLabels[presentation.subject.kind], value: presentation.subject.label, href: presentation.subject.href })
   const queued = /kuyruğa alındı|sıraya alındı|kuyrukta|aktarım (?:başladı|sürüyor|sırada)|gönderiliyor/u.test(text)
   facts.push({
     label: 'Sonuç',
-    value: notification.kind === 'error' ? 'Başarısız · İnceleme gerekiyor' : queued ? 'Kuyruğa alındı · İşlem Takibi’nden izlenebilir' : notification.kind === 'success' ? 'Tamamlandı' : 'Bilgi',
+    value: notification.kind === 'error' ? 'Başarısız · İnceleme gerekiyor' : notification.kind === 'warning' ? 'Kısmen tamamlandı · Dikkat gerekiyor' : queued ? 'Kuyruğa alındı · İşlem Takibi’nden izlenebilir' : notification.kind === 'success' ? 'Tamamlandı' : 'Bilgi',
     tone: notification.kind === 'error' ? 'error' : notification.kind === 'success' ? 'success' : undefined
   })
   if (notification.code) facts.push({ label: 'Kod', value: notification.code })
@@ -139,7 +175,8 @@ export function describeNotification(notification: AppNotification): Notificatio
     // The full sentence of the latest one, when the summary shows the collapsed count instead.
     if (notification.groupMessage && presentation.items.length > 1) facts.push({ label: 'Son Bildirim', value: sentence })
   }
-  if (notification.jobId) facts.push({ label: 'İş No', value: notification.jobId })
+  if (notification.jobId) facts.push({ label: 'İlgili İş', value: 'İşlem Takibi’nde Aç', href: `/jobs?ara=${encodeURIComponent(notification.jobId)}` })
+  if (notification.durationMs !== undefined) facts.push({ label: 'Süre', value: formatDuration(notification.durationMs) })
   facts.push({
     label: 'Zaman',
     value: presentation.count > 1 && notification.firstAt && notification.firstAt !== notification.createdAt

@@ -14,7 +14,7 @@ import { usePageEntryReveal } from './hooks/usePageEntryReveal'
 import { releaseOrphanedScrollLock, useScrollLock } from '../shared/hooks/useScrollLock'
 import { useMediaQuery } from '../shared/hooks/useMediaQuery'
 import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontScale, useAppearanceSettings } from '../features/settings/appearance-settings'
-import { readNotificationHistory, registerNotificationConnectionResolver, subscribeNotificationHistory, syncAttentionNotices, type AppNotification, type AttentionNotice } from '../shared/notifications'
+import { readNotificationHistory, registerNotificationActorResolver, registerNotificationConnectionResolver, subscribeNotificationHistory, syncAttentionNotices, type AppNotification, type AttentionNotice } from '../shared/notifications'
 import { connectionIdentityFromCache } from '../shared/notification-connections'
 import { startNotificationCenterSink } from '../shared/notification-center'
 import { orderNavigationCount, pendingOrdersQuery } from '../shared/order-navigation-count'
@@ -51,6 +51,12 @@ function Shell({ me }: { me: Me }) {
     registerNotificationConnectionResolver(connectionId => connectionIdentityFromCache(queryClient, connectionId))
     return () => registerNotificationConnectionResolver(null)
   }, [queryClient])
+  // The "Kullanıcı" row of a notification's detail names who did it.
+  const actorName = me.displayName || me.email
+  useEffect(() => {
+    registerNotificationActorResolver(() => actorName || null)
+    return () => registerNotificationActorResolver(null)
+  }, [actorName])
   // Every notification the bell shows is kept a week in the notification center (İşlem Takibi › Bildirimler); a
   // read-only role only reads, so its bell stays in this browser.
   useEffect(() => me.role?.toUpperCase() === 'READONLY' ? undefined : startNotificationCenterSink(), [me.tenantId, me.id, me.role])

@@ -425,7 +425,7 @@ describe('QuestionsPage workspace flows', () => {
     // The marketplace's own words do not decide the tone: a failure is a red failure toast, not a green success.
     const toast = container.querySelector('.app-toast')
     expect(toast?.classList.contains('app-toast-error')).toBe(true)
-    expect(toast?.textContent).toContain('İşlem Başarısız')
+    expect(toast?.querySelector('strong')?.textContent).toBe('Pazaryeri Cevabı Kabul Etmedi')
   })
 
   it('keeps a reported Hepsiburada question and an expired rejection closed', async () => {
