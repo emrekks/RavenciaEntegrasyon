@@ -407,15 +407,43 @@ public static class TrendyolJsonMapper
         return counts.Count == 0 ? "none" : string.Join(", ", counts);
     }
 
+    // An unapproved row's `status`: pendingApproval or rejected (offline doc "Ürün Filtreleme - Onaysız Ürün v2"); any
+    // other or none stays unknown (null).
+    internal static string? UnapprovedStatus(JsonElement product) => NullText(product, "status")?.Trim() switch
+    {
+        var status when string.Equals(status, "pendingApproval", StringComparison.OrdinalIgnoreCase) => "PENDING_APPROVAL",
+        var status when string.Equals(status, "rejected", StringComparison.OrdinalIgnoreCase) => "REJECTED",
+        _ => null
+    };
+
+    // The reasons of a rejected row as Trendyol wrote them: each `rejectReasonDetails[].rejectReason` (its
+    // `rejectReasonDetail` when the title is empty), distinct, joined by " · ", at most 1,000 characters; null when the
+    // row names none. Nothing is made up for a row without one.
+    internal static string? RejectionReasons(JsonElement product)
+    {
+        if (!product.TryGetProperty("rejectReasonDetails", out var reasons) || reasons.ValueKind != JsonValueKind.Array) return null;
+        var texts = reasons.EnumerateArray()
+            .Where(reason => reason.ValueKind == JsonValueKind.Object)
+            .Select(reason => NullText(reason, "rejectReason") is { } title && !string.IsNullOrWhiteSpace(title) ? title : NullText(reason, "rejectReasonDetail"))
+            .Where(text => !string.IsNullOrWhiteSpace(text))
+            .Select(text => text!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (texts.Count == 0) return null;
+        var joined = string.Join(" · ", texts);
+        return joined.Length <= 1_000 ? joined : joined[..1_000];
+    }
+
     private static AdapterPageResult<RemoteCatalogProduct> CatalogProducts(string json, bool isPendingApproval)
     {
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
-        // The unapproved list holds products waiting for approval and rejected ones: only a row Trendyol marks rejected
-        // is left out; a row with no or another status is still a product not yet approved and stays.
+        // The unapproved list holds products waiting for approval and rejected ones; every row is kept (owner, 14 Nov
+        // 2026: rejected ones are imported too) and carries the approval state and rejection reasons it was given.
         var rows = Content(root)
-            .Where(product => !isPendingApproval || !string.Equals(NullText(product, "status"), "rejected", StringComparison.OrdinalIgnoreCase))
-            .Select(product => ProductSnapshot(product, isPendingApproval))
+            .Select(product => isPendingApproval
+                ? ProductSnapshot(product, isPendingApproval) with { ApprovalStatus = UnapprovedStatus(product), RejectionReason = RejectionReasons(product) }
+                : ProductSnapshot(product, isPendingApproval))
             .Where(x => !string.IsNullOrWhiteSpace(x.ExternalProductId))
             .ToList();
         var currentPage = Long(root, "page");

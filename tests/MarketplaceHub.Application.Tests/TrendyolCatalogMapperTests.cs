@@ -224,27 +224,51 @@ public sealed class TrendyolCatalogMapperTests
     }
 
     [Fact]
-    public void UnapprovedList_KeepsWaitingAndUnmarkedRows_DropsOnlyRejected()
+    // Owner, 14 Nov 2026: rejected products are imported too (live: the unapproved list held "rejected=6" only), with
+    // the state and reasons Trendyol gave; a row without a known state or without reasons gets none made up.
+    public void UnapprovedList_KeepsEveryRow_WithItsApprovalStateAndRejectionReasons()
     {
         const string json = """
         {
           "content": [
             { "productMainId": "M-1", "status": "pendingApproval", "title": "A", "barcode": "B1", "stockCode": "S1" },
-            { "productMainId": "M-2", "status": "rejected", "title": "B", "barcode": "B2", "stockCode": "S2" },
-            { "productMainId": "M-3", "title": "C", "barcode": "B3", "stockCode": "S3" }
+            { "productMainId": "M-2", "status": "rejected", "title": "B", "barcode": "B2", "stockCode": "S2",
+              "rejectReasonDetails": [
+                { "rejectReason": "Hatalı Marka Bilgisi", "rejectReasonDetail": "Uzun açıklama" },
+                { "rejectReason": "", "rejectReasonDetail": "Zorunlu özellik değeri eksik." },
+                { "rejectReason": "Hatalı Marka Bilgisi" }
+              ] },
+            { "productMainId": "M-3", "title": "C", "barcode": "B3", "stockCode": "S3" },
+            { "productMainId": "M-4", "status": "rejected", "title": "D", "barcode": "B4", "stockCode": "S4", "rejectReasonDetails": [] }
           ],
-          "page": 0, "size": 100, "totalPages": 1, "totalElements": 3
+          "page": 0, "size": 100, "totalPages": 1, "totalElements": 4
         }
         """;
 
         var result = TrendyolJsonMapper.PendingApprovalCatalogProducts(json);
 
-        Assert.Equal(["M-1", "M-3"], result.Items.Select(item => item.ExternalProductId).ToArray());
+        Assert.Equal(["M-1", "M-2", "M-3", "M-4"], result.Items.Select(item => item.ExternalProductId).ToArray());
         Assert.All(result.Items, item => Assert.True(item.IsPendingApproval));
+        Assert.Equal(new string?[] { "PENDING_APPROVAL", "REJECTED", null, "REJECTED" }, result.Items.Select(item => item.ApprovalStatus).ToArray());
+        Assert.Equal(new string?[] { null, "Hatalı Marka Bilgisi · Zorunlu özellik değeri eksik.", null, null }, result.Items.Select(item => item.RejectionReason).ToArray());
         Assert.False(result.HasMore);
-        Assert.Equal("(none)=1, pendingApproval=1, rejected=1", TrendyolJsonMapper.UnapprovedStatusCounts(json));
+        Assert.Equal("(none)=1, pendingApproval=1, rejected=2", TrendyolJsonMapper.UnapprovedStatusCounts(json));
+        // The approved list carries no approval state.
+        Assert.Null(TrendyolJsonMapper.CatalogProducts("""{ "content": [ { "contentId": 1, "productMainId": "M-9", "title": "E", "status": "rejected", "variants": [ { "variantId": 2, "barcode": "B9", "stockCode": "S9" } ] } ], "totalPages": 1 }""").Items.Single().ApprovalStatus);
         Assert.Equal("none", TrendyolJsonMapper.UnapprovedStatusCounts("""{ "content": [], "totalElements": 0 }"""));
     }
+
+    [Theory]
+    [InlineData("REJECTED", "UNKNOWN", "REJECTED")]
+    [InlineData("REJECTED,REJECTED", "UNKNOWN", "REJECTED")]
+    [InlineData("APPROVAL_PENDING", "UNKNOWN", "APPROVAL_PENDING")]
+    [InlineData("APPROVAL_PENDING,UNKNOWN", "UNKNOWN", "APPROVAL_PARTIAL_PENDING")]
+    [InlineData("REJECTED,UNKNOWN", "UNKNOWN", "PARTIAL_REJECTED")]
+    [InlineData("REJECTED,APPROVAL_PENDING", "UNKNOWN", "APPROVAL_PARTIAL_PENDING")]
+    [InlineData("UNKNOWN", "REJECTED", "UNKNOWN")]
+    [InlineData("UNKNOWN", "LIVE", "LIVE")]
+    public void ImportedApprovalState_ProfileFollowsItsListings(string listings, string current, string expected) =>
+        Assert.Equal(expected, MarketplaceHub.Infrastructure.Persistence.ImportedApprovalStates.ProfileStatus(listings.Split(','), current));
 
     [Fact]
     public void ReturnClaim_ReadsScalarCargoProvider()

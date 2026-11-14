@@ -73,6 +73,55 @@ public sealed class ImportedListingProfilePostgreSqlTests(PostgreSqlTenantIsolat
         }
     }
 
+    // Owner, 14 Nov 2026: a product Trendyol rejected is imported and says "Reddedildi" with the reasons Trendyol gave;
+    // a waiting one "Onay Bekliyor"; once the approved list holds it, the state goes back to UNKNOWN.
+    [PostgreSqlFact]
+    public async Task UnapprovedRead_WritesRejectedAndWaitingStates_OnTheImportedProfile_AndTheApprovedReadClearsThem()
+    {
+        var seeded = await SeedAsync("imported-rejected", "TRENDYOL", linkId: "RYP010M", linkBarcode: "RYP010M", linkSku: "RYP010M");
+        RemoteCatalogProduct Snapshot(bool pending, string? status, string? reason, string variantId) => new(
+            "RYP010", "RYP010", "Ürün", "", null, null, null, null, [],
+            [new RemoteCatalogVariant(variantId, "RYP010M", "RYP010M", "RYP010", new Dictionary<string, string>(), false, 100m, 120m, 20m, 1m, "TRY", "{}", null)],
+            "{}", IsPendingApproval: pending, ApprovalStatus: status, RejectionReason: reason);
+
+        await using (var db = fixture.CreateContext())
+            await ImportedApprovalStates.ApplyAsync(db, seeded.Tenant.Id, seeded.Connection.Id, [Snapshot(true, "REJECTED", "Hatalı Marka Bilgisi", "RYP010M")], CancellationToken.None);
+        await using (var db = fixture.CreateContext())
+        {
+            var profile = await db.ChannelListingProfiles.AsNoTracking().SingleAsync(x => x.TenantId == seeded.Tenant.Id);
+            Assert.Equal((ChannelListingProfileSource.MarketplaceImport, "REJECTED", "Hatalı Marka Bilgisi"), (profile.Source, profile.ActualStatus, profile.LastRejectionCode));
+            var listing = await db.ChannelListingVariants.AsNoTracking().SingleAsync(x => x.TenantId == seeded.Tenant.Id);
+            Assert.Equal(("REJECTED", "Hatalı Marka Bilgisi"), (listing.ActualStatus, listing.RejectionCode));
+            var state = await db.MarketplaceListingStates.AsNoTracking().SingleAsync(x => x.TenantId == seeded.Tenant.Id);
+            Assert.Equal(("REJECTED", "Hatalı Marka Bilgisi"), (state.ActualStatus, state.LastRejectionCode));
+        }
+
+        // Rejected without a reason: no reason is made up. Then waiting.
+        await using (var db = fixture.CreateContext())
+            await ImportedApprovalStates.ApplyAsync(db, seeded.Tenant.Id, seeded.Connection.Id, [Snapshot(true, "REJECTED", null, "RYP010M")], CancellationToken.None);
+        await using (var db = fixture.CreateContext())
+            Assert.Equal(("REJECTED", (string?)null), await db.ChannelListingProfiles.AsNoTracking().Where(x => x.TenantId == seeded.Tenant.Id).Select(x => ValueTuple.Create(x.ActualStatus, x.LastRejectionCode)).SingleAsync());
+        await using (var db = fixture.CreateContext())
+            await ImportedApprovalStates.ApplyAsync(db, seeded.Tenant.Id, seeded.Connection.Id, [Snapshot(true, "PENDING_APPROVAL", null, "RYP010M")], CancellationToken.None);
+        await using (var db = fixture.CreateContext())
+            Assert.Equal("APPROVAL_PENDING", await db.ChannelListingProfiles.AsNoTracking().Where(x => x.TenantId == seeded.Tenant.Id).Select(x => x.ActualStatus).SingleAsync());
+
+        // An unknown state on the unapproved list writes nothing.
+        await using (var db = fixture.CreateContext())
+            await ImportedApprovalStates.ApplyAsync(db, seeded.Tenant.Id, seeded.Connection.Id, [Snapshot(true, null, null, "RYP010M")], CancellationToken.None);
+        await using (var db = fixture.CreateContext())
+            Assert.Equal("APPROVAL_PENDING", await db.ChannelListingProfiles.AsNoTracking().Where(x => x.TenantId == seeded.Tenant.Id).Select(x => x.ActualStatus).SingleAsync());
+
+        // On the approved list (by barcode, under its new variant id) it goes back to UNKNOWN.
+        await using (var db = fixture.CreateContext())
+            await ImportedApprovalStates.ApplyAsync(db, seeded.Tenant.Id, seeded.Connection.Id, [Snapshot(false, null, null, "1500000001")], CancellationToken.None);
+        await using (var db = fixture.CreateContext())
+        {
+            Assert.Equal(("UNKNOWN", (string?)null), await db.ChannelListingProfiles.AsNoTracking().Where(x => x.TenantId == seeded.Tenant.Id).Select(x => ValueTuple.Create(x.ActualStatus, x.LastRejectionCode)).SingleAsync());
+            Assert.Equal("UNKNOWN", await db.MarketplaceListingStates.AsNoTracking().Where(x => x.TenantId == seeded.Tenant.Id).Select(x => x.ActualStatus).SingleAsync());
+        }
+    }
+
     [PostgreSqlFact]
     public async Task PanelProfile_IsLeftAsThePanelMadeIt()
     {

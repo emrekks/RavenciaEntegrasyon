@@ -93,11 +93,20 @@ export function productPlatformDisplayLabel(
   statuses: readonly string[],
   matchedVariantCount: number,
   variantCount: number,
-  state: ProductPlatformDisplayState
+  state: ProductPlatformDisplayState,
+  rejectionReason?: string | null
 ) {
   const normalized = normalizedStatuses(statuses)
   const coverage = matchedVariantCount > 0 && variantCount > 0 ? ` (${matchedVariantCount}/${variantCount})` : ''
   const linkedCoverage = matchedVariantCount > 0 && variantCount > 0 ? ` (${matchedVariantCount}/${variantCount} Varyant)` : ''
+
+  // The marketplace's own approval word (Trendyol's unapproved list, the panel's approval check): waiting or refused,
+  // with the reasons it gave when it gave any (owner, 14 Nov 2026). No reason is made up.
+  const reason = rejectionReason?.trim() ? ` · ${rejectionReason.trim()}` : ''
+  const every = (...values: string[]) => normalized.length > 0 && normalized.every(status => values.includes(status))
+  if (state === 'processing' && every('APPROVAL_PENDING')) return `${platform}: Onay Bekliyor`
+  if (state === 'error' && every('REJECTED')) return `${platform}: Reddedildi${reason}`
+  if (state === 'error' && every('REJECTED', 'PARTIAL_REJECTED')) return `${platform}: Bazı Varyantlar Reddedildi${reason}`
 
   if (state === 'processing') return `${platform}: Yayın Durumu Güncelleniyor`
   if (state === 'error') return `${platform}: Yayın İşlemi Başarısız veya İncelemede`

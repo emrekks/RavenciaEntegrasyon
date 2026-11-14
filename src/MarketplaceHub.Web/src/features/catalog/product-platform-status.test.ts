@@ -2,6 +2,19 @@ import { describe, expect, it } from 'vitest'
 import { productPlatformDisplayLabel, productPlatformDisplayState } from './product-platform-status'
 
 describe('product platform list status', () => {
+  // Owner, 14 Nov 2026: products Trendyol rejected or still reviews are imported and say so, with Trendyol's reasons.
+  it('names a rejected card with the reasons the marketplace gave, and a waiting one Onay Bekliyor', () => {
+    const rejected = productPlatformDisplayState(['REJECTED'], false, 3, 3)
+    expect(rejected).toBe('error')
+    expect(productPlatformDisplayLabel('Trendyol', ['REJECTED'], 3, 3, rejected, 'Hatalı Marka Bilgisi')).toBe('Trendyol: Reddedildi · Hatalı Marka Bilgisi')
+    expect(productPlatformDisplayLabel('Trendyol', ['REJECTED'], 3, 3, rejected, null)).toBe('Trendyol: Reddedildi')
+    const some = productPlatformDisplayState(['PARTIAL_REJECTED'], false, 3, 3)
+    expect(productPlatformDisplayLabel('Trendyol', ['PARTIAL_REJECTED'], 3, 3, some, '  ')).toBe('Trendyol: Bazı Varyantlar Reddedildi')
+    const waiting = productPlatformDisplayState(['APPROVAL_PENDING'], true, 3, 3)
+    expect(productPlatformDisplayLabel('Trendyol', ['APPROVAL_PENDING'], 3, 3, waiting)).toBe('Trendyol: Onay Bekliyor')
+    expect(productPlatformDisplayLabel('Trendyol', ['CREATE_REJECTED'], 0, 3, 'error')).toBe('Trendyol: Yayın İşlemi Başarısız veya İncelemede')
+  })
+
   it('shows imported and fully matched variants as linked without claiming publication', () => {
     const state = productPlatformDisplayState(['LINKED'], false, 35)
 

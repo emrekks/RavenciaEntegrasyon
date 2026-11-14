@@ -101,7 +101,10 @@ public sealed record ProductPlatformStatusView(
     int OnSaleVariantCount = 0,
     int OffSaleVariantCount = 0,
     int OffSaleStockZeroVariantCount = 0,
-    IReadOnlyDictionary<string, int>? OffSaleReasonCounts = null);
+    IReadOnlyDictionary<string, int>? OffSaleReasonCounts = null,
+    // Why the marketplace refused the card (the profile's last rejection, as the marketplace wrote it), only while its
+    // status is a marketplace refusal (REJECTED, PARTIAL_REJECTED); null when none was given.
+    string? RejectionReason = null);
 public sealed record ProductView(
     Guid Id,
     string Title,

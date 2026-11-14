@@ -6902,6 +6902,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                         snapshotGroups.Select(snapshot => (Short(snapshot.ExternalProductId, 256), (IReadOnlyCollection<string>)[.. snapshot.Variants.Where(variant => !string.IsNullOrWhiteSpace(variant.ExternalVariantId)).Select(variant => Short(variant.ExternalVariantId, 256))])),
                         timeProvider.GetUtcNow(), cancellationToken);
                 if (completesListingProfiles) await CompleteImportedListingProfiles(tenantId, connectionId, snapshotGroups, cancellationToken);
+                // Trendyol's waiting and refused products show as such, with the reasons it gave (ImportedApprovalStates).
+                if (connection.PlatformCode == "TRENDYOL") await RecordImportedApprovalStates(tenantId, connectionId, snapshotGroups, cancellationToken);
                 await db.ProductImportStagingRecords
                     .Where(x => x.TenantId == tenantId && x.JobId == importJobId && x.ModelKey == modelKey && x.State == "STAGED")
                     .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.State, "COMPLETED").SetProperty(x => x.FinalizedAt, timeProvider.GetUtcNow()), cancellationToken);
@@ -6990,6 +6992,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         {
             var productIds = await ImportedListingProfiles.ProductIdsForCodesAsync(db, tenantId, connectionId, codes, cancellationToken);
             await ImportedListingProfiles.EnsureAsync(db, tenantId, connectionId, productIds, cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            db.ChangeTracker.Clear();
+        }
+    }
+
+    private async Task RecordImportedApprovalStates(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteCatalogProduct> snapshots, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await ImportedApprovalStates.ApplyAsync(db, tenantId, connectionId, snapshots, cancellationToken);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {

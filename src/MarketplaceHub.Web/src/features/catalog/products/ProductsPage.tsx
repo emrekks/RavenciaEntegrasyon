@@ -255,7 +255,7 @@ function ProductColorRows({ group, priority, selected, onSelect, selectionMode: 
   const navigate = useNavigate()
   const product = group.primary
   const platformStatuses = group.products.flatMap(item => item.platformStatuses ?? [])
-  const platformStatusAggregates = new Map<string, { platform: string; platformCode: string; statuses: string[]; matchedVariantCount: number; variantCount: number; isChecking: boolean; onSale: number; offSale: number; offSaleStockZero: number; reasons: Record<string, number> }>()
+  const platformStatusAggregates = new Map<string, { platform: string; platformCode: string; statuses: string[]; matchedVariantCount: number; variantCount: number; isChecking: boolean; onSale: number; offSale: number; offSaleStockZero: number; reasons: Record<string, number>; rejectionReason: string | null }>()
   for (const item of platformStatuses) {
     const platform = item.platform?.trim() || 'Platform'
     const platformCode = item.platformCode?.trim().toUpperCase() || (platform.toUpperCase().includes('SHOPIFY') ? 'SHOPIFY' : platform.toUpperCase().includes('HEPSIBURADA') ? 'HEPSIBURADA' : platform.toUpperCase().includes('TRENDYOL') ? 'TRENDYOL' : platform.toUpperCase().includes('N11') ? 'N11' : platform.toUpperCase().includes('PAZARAMA') ? 'PAZARAMA' : platform.toUpperCase().replace(/\s/g, '').includes('PTTAVM') ? 'PTTAVM' : 'UNKNOWN')
@@ -270,13 +270,14 @@ function ProductColorRows({ group, priority, selected, onSelect, selectionMode: 
       current.offSale += item.offSaleVariantCount ?? 0
       current.offSaleStockZero += item.offSaleStockZeroVariantCount ?? 0
       for (const [reason, count] of Object.entries(item.offSaleReasonCounts ?? {})) current.reasons[reason] = (current.reasons[reason] ?? 0) + count
+      current.rejectionReason ??= item.rejectionReason?.trim() || null
     } else {
-      platformStatusAggregates.set(key, { platform, platformCode, statuses: [item.status], matchedVariantCount: item.matchedVariantCount ?? 0, variantCount: item.variantCount ?? 0, isChecking: Boolean(item.isChecking), onSale: item.onSaleVariantCount ?? 0, offSale: item.offSaleVariantCount ?? 0, offSaleStockZero: item.offSaleStockZeroVariantCount ?? 0, reasons: { ...item.offSaleReasonCounts } })
+      platformStatusAggregates.set(key, { platform, platformCode, statuses: [item.status], matchedVariantCount: item.matchedVariantCount ?? 0, variantCount: item.variantCount ?? 0, isChecking: Boolean(item.isChecking), onSale: item.onSaleVariantCount ?? 0, offSale: item.offSaleVariantCount ?? 0, offSaleStockZero: item.offSaleStockZeroVariantCount ?? 0, reasons: { ...item.offSaleReasonCounts }, rejectionReason: item.rejectionReason?.trim() || null })
     }
   }
   const platformCards = [...platformStatusAggregates.entries()].map(([key, item]) => {
     const publicationState = productPlatformDisplayState(item.statuses, item.isChecking, item.matchedVariantCount, item.variantCount)
-    const publicationLabel = productPlatformDisplayLabel(item.platform, item.statuses, item.matchedVariantCount, item.variantCount, publicationState)
+    const publicationLabel = productPlatformDisplayLabel(item.platform, item.statuses, item.matchedVariantCount, item.variantCount, publicationState, item.rejectionReason)
     // The sale state goes over the publication state (a stock of 0 is never a closure; see withProductPlatformSaleState).
     const { state, label } = withProductPlatformSaleState(item.platform, publicationState, publicationLabel, { matched: item.matchedVariantCount, variantCount: item.variantCount, onSale: item.onSale, offSale: item.offSale, offSaleStockZero: item.offSaleStockZero, reasons: item.reasons })
     return { key, platform: item.platform, platformCode: item.platformCode, state, label, matchedVariantCount: item.matchedVariantCount, variantCount: item.variantCount }

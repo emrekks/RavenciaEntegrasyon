@@ -82,6 +82,16 @@ Code: `Adapters/Trendyol/` — `TrendyolHttpClient.cs` (+ `.Webhooks.cs`), `Tren
   2026; "Temel Bilgiler v2" `.../product/{barcode}` answers one barcode only). Host, path and seller id are those of
   the approved list that reads fine. Source: offline docs "Ürün Filtreleme - Onaysız Ürün v2", "Ürün Filtreleme V1",
   "Ürün Filtreleme - Temel Bilgiler v2"; live job 01a1da88 and its worker log line, 14 Nov 2026.
+- Live 14 Nov 2026 15:33Z, the whole list without status or date: `statuses "rejected=6", total 6`. The seller panel's
+  "Onay Bekleyenler" held products the API names `rejected`, not `pendingApproval`. Owner: rejected ones are imported
+  too. Since 14 Nov every unapproved row is imported; its `status` becomes the imported listing profile's state
+  (`pendingApproval` -> APPROVAL_PENDING "Onay Bekliyor", `rejected` -> REJECTED "Reddedildi"; another or none is
+  unknown and writes nothing), and a rejected row's reasons are each `rejectReasonDetails[].rejectReason` (its
+  `rejectReasonDetail` when the title is empty), joined by " · ", kept in `LastRejectionCode` and shown in the products
+  list tooltip and the editor ("Red nedeni: …"). No reason is made up for a row without one. When a later read finds the
+  code on the approved list the state goes back to UNKNOWN; panel-made profiles are never touched
+  (`ImportedApprovalStates`, `TrendyolJsonMapper.UnapprovedStatus/RejectionReasons`). Source: offline doc "Ürün
+  Filtreleme - Onaysız Ürün v2" sample response; live worker log of job at 15:33Z, 14 Nov 2026.
 - Products: the PRODUCTS watermark is the moment a full catalog read began, less 60 s (the next read starts 2 min
   before it). Before 6 Nov 2026 it was the job's end (a scan took 11 min on 31 Oct, its own changes were lost) and a
   scoped read (newOnly, existingOnly, mappingOnly, optionsOnly) moved it too, so products it skipped were missed by

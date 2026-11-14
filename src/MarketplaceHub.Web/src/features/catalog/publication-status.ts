@@ -161,7 +161,10 @@ export function publicationStatusNote(statusCode?: string | null, platformCode?:
   if (statusCode?.trim().toUpperCase() === approvalDeadlineExpiredCode) return approvalDeadlineExpiredNote(platformCode)
   // The dry run's job message, and the "already on PttAVM" status, say what happened; their codes are no rejection.
   if (['PRODUCT_APPROVAL_CONTENT_SPLIT', 'PTTAVM_VARIANT_SEND_DRY_RUN', 'PTTAVM_VARIANTS_ALREADY_PRESENT'].includes(statusCode?.trim().toUpperCase() ?? '')) return null
-  return statusCode ? `Red kodu: ${statusCode}` : null
+  // A code of ours (UPPER_SNAKE) is a code; anything else is the reason the marketplace wrote (Trendyol's
+  // rejectReason, owner 14 Nov 2026).
+  if (!statusCode?.trim()) return null
+  return /^[A-Z0-9_.:-]+$/.test(statusCode.trim()) ? `Red kodu: ${statusCode.trim()}` : `Red nedeni: ${statusCode.trim()}`
 }
 
 // PttAVM can accept a model family send and still not add its variants (live 2026-10-28: MZ059YNC opened with no

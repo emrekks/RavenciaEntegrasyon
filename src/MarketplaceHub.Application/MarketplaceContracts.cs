@@ -610,7 +610,11 @@ public sealed record RemoteCatalogProduct(
     IReadOnlyList<RemoteCatalogVariant> Variants,
     string RawJson,
     bool IsDraft = false,
-    bool IsPendingApproval = false);
+    bool IsPendingApproval = false,
+    // A product not yet approved (IsPendingApproval): the approval state its marketplace gave, PENDING_APPROVAL or
+    // REJECTED, null when it named none or one we do not know; and, when rejected, the reasons it named (null if none).
+    string? ApprovalStatus = null,
+    string? RejectionReason = null);
 public sealed record RemoteInventoryLevel(string ExternalLocationId, string? LocationName, decimal Quantity, string RawJson);
 public sealed record RemoteCatalogVariant(
     string ExternalVariantId,

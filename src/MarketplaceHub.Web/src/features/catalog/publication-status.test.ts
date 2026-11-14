@@ -67,6 +67,9 @@ describe('product publication status', () => {
     expect(publicationStatusTone('PARTIAL_LIVE')).toBe('success')
     expect(publicationStatusNote('PRODUCT_APPROVAL_CONTENT_SPLIT')).toBeNull()
     expect(publicationStatusNote('PRODUCT_CREATE_REJECTED')).toBe('Red kodu: PRODUCT_CREATE_REJECTED')
+    // Trendyol's own words for a rejected product are its reason, not a code.
+    expect(publicationStatusNote('Hatalı Marka Bilgisi · Zorunlu Ürün Özellik Değeri Eksik/Yanlış')).toBe('Red nedeni: Hatalı Marka Bilgisi · Zorunlu Ürün Özellik Değeri Eksik/Yanlış')
+    expect(publicationStatusNote(null)).toBeNull()
   })
 
   it('shows a PttAVM dry run as prepared and not sent, without a rejection code', () => {

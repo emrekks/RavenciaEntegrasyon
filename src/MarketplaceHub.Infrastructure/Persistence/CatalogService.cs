@@ -2642,6 +2642,12 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         return ServiceResult<PublicationStatusView>.Ok(new(productId, connectionId, profile?.Id, profile?.DesiredStatus, profile?.ActualStatus, profile?.LastRejectionCode, job?.Id, job is null ? null : JobWire(job.Status), lines));
     }
 
+    // The products list's rejection reason: the profile's last one, only while the card's status is a refusal.
+    internal static string? PlatformRejectionReason(string? status, string? lastRejectionCode) =>
+        status?.Trim().ToUpperInvariant() is "REJECTED" or "PARTIAL_REJECTED" && !string.IsNullOrWhiteSpace(lastRejectionCode)
+            ? lastRejectionCode.Trim()
+            : null;
+
     internal static bool IsPlatformUpdateInProgress(string? status) => status?.Trim().ToUpperInvariant() is
         "QUEUED" or "UPDATE_QUEUED" or "BATCH_SUBMITTED" or "BATCH_IN_PROGRESS" or "CREATE_ACCEPTED" or "IMPORT_SUBMITTED" or "IMPORT_IN_PROGRESS" or "IMPORT_ACCEPTED" or "UPDATE_SUBMITTED" or "UPDATE_IN_PROGRESS" or
         "APPROVAL_PENDING" or "APPROVAL_PARTIAL_PENDING" or "ARCHIVE_QUEUED" or "ARCHIVE_BATCH_SUBMITTED" or "ARCHIVE_RECONCILING" or
@@ -2978,7 +2984,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                         saleLinks.Count(x => x.SaleState == ListingSaleState.OnSale),
                         saleLinks.Count(x => x.SaleState == ListingSaleState.OffSale),
                         saleLinks.Count(x => x.SaleState == ListingSaleState.OffSale && x.SaleStateReason == ListingSaleState.StockZero),
-                        ListingSaleState.ClosedBeyondStockReasonCounts(saleLinks.Select(x => (x.SaleState, x.SaleStateReason))));
+                        ListingSaleState.ClosedBeyondStockReasonCounts(saleLinks.Select(x => (x.SaleState, x.SaleStateReason))),
+                        PlatformRejectionReason(status, profile?.LastRejectionCode));
                 })
                 .OrderBy(x => x.Platform, StringComparer.OrdinalIgnoreCase)
                 .ToList();
