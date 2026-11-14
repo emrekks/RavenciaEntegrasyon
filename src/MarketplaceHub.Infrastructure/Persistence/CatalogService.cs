@@ -470,17 +470,32 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             var variantsByProductForPlatform = allVariants
                 .GroupBy(variant => variant.ProductId)
                 .ToDictionary(group => group.Key, group => (IReadOnlyList<ProductVariant>)group.ToList());
-            var (matchedVariantIds, missingVariantIds, offSaleVariantIds) = await PlatformVariantStatesAsync(tenantId, platformFilterCode, allProducts, allVariants, cancellationToken);
-            var matchingFamilyKeys = allProducts
+            var familyGroups = allProducts
                 .GroupBy(product => ProductFamilyKey(product, variantsByProductForPlatform.GetValueOrDefault(product.Id) ?? []), StringComparer.Ordinal)
-                .Where(group => PlatformFilterMatchesFamily(
-                    group.SelectMany(product => variantsByProductForPlatform.GetValueOrDefault(product.Id) ?? []).Select(variant => variant.Id),
-                    matchedVariantIds,
-                    missingVariantIds,
-                    offSaleVariantIds,
-                    platformFilterState))
-                .Select(group => group.Key)
-                .ToHashSet(StringComparer.Ordinal);
+                .ToList();
+            var matchingFamilyKeys = new HashSet<string>(StringComparer.Ordinal);
+            // "ALL" (Tüm Platformlar › a state, owner 14 Nov 2026): the family is in that state on at least one marketplace.
+            foreach (var code in platformFilterCode == AllPlatformsFilterCode ? ProductFilterPlatformCodes : [platformFilterCode])
+            {
+                var (matchedVariantIds, missingVariantIds, offSaleVariantIds) = await PlatformVariantStatesAsync(tenantId, code, allProducts, allVariants, cancellationToken);
+                // Hatalı / Onay Bekliyor: a card of the family whose publication there the marketplace refused or failed
+                // (the products list's red mark), or still reviews (ProductListingHealth.ErrorStatuses / WaitingStatuses).
+                var flaggedProductIds = platformFilterState is ProductListingHealth.Error or ProductListingHealth.Waiting
+                    ? await PlatformFlaggedProductIdsAsync(tenantId, code, allProductIds, platformFilterState == ProductListingHealth.Error ? ProductListingHealth.ErrorStatuses : ProductListingHealth.WaitingStatuses, cancellationToken)
+                    : null;
+                foreach (var group in familyGroups.Where(group => !matchingFamilyKeys.Contains(group.Key)))
+                {
+                    var matches = flaggedProductIds is not null
+                        ? group.Any(product => flaggedProductIds.Contains(product.Id))
+                        : PlatformFilterMatchesFamily(
+                            group.SelectMany(product => variantsByProductForPlatform.GetValueOrDefault(product.Id) ?? []).Select(variant => variant.Id),
+                            matchedVariantIds,
+                            missingVariantIds,
+                            offSaleVariantIds,
+                            platformFilterState);
+                    if (matches) matchingFamilyKeys.Add(group.Key);
+                }
+            }
             allProducts = allProducts
                 .Where(product => matchingFamilyKeys.Contains(ProductFamilyKey(product, variantsByProductForPlatform.GetValueOrDefault(product.Id) ?? [])))
                 .ToList();
@@ -3026,7 +3041,11 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                         saleLinks.Count(x => x.SaleState == ListingSaleState.OffSale),
                         saleLinks.Count(x => x.SaleState == ListingSaleState.OffSale && x.SaleStateReason == ListingSaleState.StockZero),
                         ListingSaleState.ClosedBeyondStockReasonCounts(saleLinks.Select(x => (x.SaleState, x.SaleStateReason))),
-                        PlatformRejectionReason(status, profile?.LastRejectionCode));
+                        PlatformRejectionReason(status, profile?.LastRejectionCode),
+                        // The variants the marketplace refused or still reviews there (their listing's state), for the
+                        // list mark's breakdown; they are in neither the matched nor the missing count.
+                        profile is null ? 0 : listingVariants.Where(x => x.ProfileId == profile.Id && productVariantIds.Contains(x.VariantId) && x.ActualStatus == ImportedApprovalStates.Rejected).Select(x => x.VariantId).Distinct().Count(),
+                        profile is null ? 0 : listingVariants.Where(x => x.ProfileId == profile.Id && productVariantIds.Contains(x.VariantId) && x.ActualStatus == ImportedApprovalStates.Pending).Select(x => x.VariantId).Distinct().Count());
                 })
                 .OrderBy(x => x.Platform, StringComparer.OrdinalIgnoreCase)
                 .ToList();
@@ -3425,13 +3444,36 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         return ProductListingHealth.MatchesFilter(platformState, variantIds.Length, variantIds.Count(matchedVariantIds.Contains), variantIds.Count(missingVariantIds.Contains), variantIds.Count(offSaleVariantIds.Contains));
     }
 
+    internal const string AllPlatformsFilterCode = "ALL";
+    internal static readonly string[] ProductFilterPlatformCodes = ["TRENDYOL", "SHOPIFY", "HEPSIBURADA", "N11", "PAZARAMA", "PTTAVM"];
+
     internal static bool TryProductPlatformFilter(string value, out string platformCode, out string platformState)
     {
         var parts = value.Split(':', 2, StringSplitOptions.TrimEntries);
         platformCode = parts.Length == 2 ? parts[0].ToUpperInvariant() : string.Empty;
         platformState = parts.Length == 2 ? parts[1].ToUpperInvariant() : string.Empty;
-        return platformCode is "TRENDYOL" or "SHOPIFY" or "HEPSIBURADA" or "N11" or "PAZARAMA" or "PTTAVM"
-            && platformState is "ACTIVE" or "PARTIAL" or "PASSIVE" or ProductListingHealth.NotFound or ProductListingHealth.OffSale;
+        return (ProductFilterPlatformCodes.Contains(platformCode) || platformCode == AllPlatformsFilterCode)
+            && platformState is "ACTIVE" or "PARTIAL" or "PASSIVE" or ProductListingHealth.NotFound or ProductListingHealth.OffSale or ProductListingHealth.Error or ProductListingHealth.Waiting;
+    }
+
+    // The products whose enabled publication on one of the marketplace's active connections is in one of these states,
+    // or has a listing in it (a refused colour card's listing REJECTED under an imported profile).
+    private async Task<HashSet<Guid>> PlatformFlaggedProductIdsAsync(Guid tenantId, string platformCode, IReadOnlyCollection<Guid> productIds, IReadOnlyCollection<string> statuses, CancellationToken cancellationToken)
+    {
+        if (productIds.Count == 0) return [];
+        var ids = productIds.ToArray();
+        var states = statuses.ToArray();
+        var connectionIds = db.PlatformConnections
+            .Where(connection => connection.TenantId == tenantId && connection.PlatformCode == platformCode && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
+            .Select(connection => connection.Id);
+        var byProfile = await db.ChannelListingProfiles.AsNoTracking()
+            .Where(profile => profile.TenantId == tenantId && profile.Enabled && connectionIds.Contains(profile.ConnectionId) && ids.Contains(profile.ProductId) && states.Contains(profile.ActualStatus))
+            .Select(profile => profile.ProductId).ToListAsync(cancellationToken);
+        var byListing = await (from listing in db.ChannelListingVariants.AsNoTracking()
+                               join profile in db.ChannelListingProfiles.AsNoTracking() on new { listing.TenantId, Id = listing.ProfileId } equals new { profile.TenantId, profile.Id }
+                               where listing.TenantId == tenantId && profile.Enabled && connectionIds.Contains(profile.ConnectionId) && ids.Contains(profile.ProductId) && states.Contains(listing.ActualStatus)
+                               select profile.ProductId).ToListAsync(cancellationToken);
+        return [.. byProfile, .. byListing];
     }
 
     private Guid Decode(string? cursor) => cursors.TryDecode(cursor, out var id) ? id : throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(cursor));

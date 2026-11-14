@@ -46,6 +46,18 @@ internal static class ProductListingHealth
     // reason other than a stock of 0. The sale state never changes Status, so price/stock eligibility stays as it was.
     public const string OffSale = "OFF_SALE";
 
+    // The products filter's "Hatalı" and "Onay Bekliyor" (owner, 14 Nov 2026): a card whose publication the marketplace
+    // refused or that failed (the products list's red mark: product-platform-status.ts errorStatuses), or one it still
+    // reviews.
+    public const string Error = "ERROR";
+    public const string Waiting = "APPROVAL";
+    public static readonly IReadOnlyCollection<string> ErrorStatuses =
+    [
+        "REJECTED", "PARTIAL_REJECTED", "CREATE_REJECTED", "UPDATE_REJECTED", "PARTIAL_FAILURE", "UPDATE_PARTIAL_FAILURE",
+        "ARCHIVE_REJECTED", "ARCHIVE_PARTIAL_FAILURE", "UPDATE_BLOCKED", "BLOCKED", "MANUAL_REVIEW", "LOCKED", "BLACKLISTED"
+    ];
+    public static readonly IReadOnlyCollection<string> WaitingStatuses = ["APPROVAL_PENDING", "APPROVAL_PARTIAL_PENDING"];
+
     // The products list's platform filter over a family's variants on one marketplace.
     public static bool MatchesFilter(string platformState, int variantCount, int matchedVariantCount, int missingVariantCount, int offSaleVariantCount = 0) => platformState switch
     {

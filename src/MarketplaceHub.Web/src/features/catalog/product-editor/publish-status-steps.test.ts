@@ -20,6 +20,17 @@ describe('publishStatusSteps', () => {
     expect(steps({ live: true, job: sending }).label).toBe('Yayında')
   })
 
+  // Owner 2026-11-14: MZ056's rejected Mürdüm card beside nine live colours read "Kısmen Yayında".
+  it('fails the Onay step of a refused card whose family is partly live', () => {
+    const partial = { live: 27, total: 33, unit: 'varyant' as const }
+    for (const actualStatus of ['REJECTED', 'PARTIAL_REJECTED']) {
+      const result = steps({ actualStatus, partial, requiredGaps: 1 })
+      expect(result.steps).toEqual(['done', 'done', 'fail', 'half'])
+      expect(result.label).toBe('Kısmen Reddedildi')
+    }
+    expect(steps({ actualStatus: 'APPROVAL_PENDING', partial }).label).toBe('Onay Bekliyor')
+  })
+
   it('reads a never sent card that is ready as Hazırlık done, Gönderim next', () => {
     const result = steps({ actualStatus: 'UNKNOWN' })
     expect(result.steps).toEqual(['done', 'next', 'idle', 'idle'])
