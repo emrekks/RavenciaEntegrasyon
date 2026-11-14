@@ -3277,7 +3277,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
                 try {
                   const accepted = await hubApi<ProductUpdateAccepted>(`/products/${card.productId}/update-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId, fields: plan.productFields, sendGroupId }) })
                   recordProductUpdateNotices(accepted, { productId: card.productId, productName: form.title, modelCode: form.modelCode, platformCode: updatePlatformCode, connectionId })
-                  if (accepted?.jobId) followedJobs.push({ jobId: accepted.jobId, platformName, what: familyPlan.send.length > 1 ? `${cardName} ${informationLabel}` : informationLabel })
+                  if (accepted?.jobId) followedJobs.push({ jobId: accepted.jobId, platformName, what: informationLabel, update: true, ...(familyPlan.send.length > 1 ? { card: cardName } : {}) })
                   family.queuedCards++
                   family.queuedVariants += card.variants
                   update.queued.productInformation = true
@@ -3292,7 +3292,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
             }
             if (plan.price || plan.stock) {
               const priceInventoryJob = await hubApi<AcceptedJob>(`/products/${product.id}/connections/${connectionId}/price-inventory-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ price: plan.price, stock: plan.stock }) })
-              if (priceInventoryJob?.jobId) followedJobs.push({ jobId: priceInventoryJob.jobId, platformName, what: plan.price && plan.stock ? 'fiyat-stok' : plan.price ? 'fiyat' : 'stok' })
+              if (priceInventoryJob?.jobId) followedJobs.push({ jobId: priceInventoryJob.jobId, platformName, what: plan.price && plan.stock ? 'fiyat-stok' : plan.price ? 'fiyat' : 'stok', update: true })
               update.queued.priceInventory = true
               update.priceInventoryParts = { price: plan.price, stock: plan.stock }
             }

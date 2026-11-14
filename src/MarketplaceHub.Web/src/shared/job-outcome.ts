@@ -21,7 +21,9 @@ export type FollowedJobDetail = {
 /** One job the screen follows: which marketplace and what it carries ("ürün bilgisi", "fiyat-stok", "ürün"). */
 export type FollowedJob = { jobId: string; platformName: string; what: string; /** The record it is about (a product title), for a summary of many jobs. */ label?: string
   /** Set when the job is one colour card of a model ("Bordo", '' when unnamed): the result then speaks of the product once per marketplace, not once per card. */
-  card?: string }
+  card?: string
+  /** An update (not a first publish) of the card: the grouped lines then say güncellendi / güncellenemedi. */
+  update?: boolean }
 
 export type JobOutcomeState = 'running' | 'scheduled' | 'succeeded' | 'partial' | 'failed' | 'review' | 'cancelled' | 'unknown'
 export type JobOutcome = { state: JobOutcomeState; line: string; /** Why it did not go through, for a summary of many jobs. */ reason?: string }
@@ -96,21 +98,24 @@ export function outcomeLines(outcomes: readonly JobOutcome[], jobs?: readonly Fo
   outcomes.forEach((outcome, index) => {
     const job = jobs?.[index]
     if (!job || job.card === undefined) { lines.push(outcome.line); return }
-    if (done.has(job.platformName)) return
-    done.add(job.platformName)
-    const members = outcomes.flatMap((member, at) => jobs?.[at]?.platformName === job.platformName && jobs[at].card !== undefined ? [{ outcome: member, card: jobs[at].card ?? '' }] : [])
+    const key = `${job.platformName}|${job.update ? 'u' : 'p'}`
+    if (done.has(key)) return
+    done.add(key)
+    const members = outcomes.flatMap((member, at) => jobs?.[at]?.platformName === job.platformName && !jobs[at].update === !job.update && jobs[at].card !== undefined ? [{ outcome: member, card: jobs[at].card ?? '' }] : [])
     const bad = members.filter(member => member.outcome.state === 'failed' || member.outcome.state === 'partial')
     const other = members.filter(member => !bad.includes(member) && member.outcome.state !== 'succeeded')
     const prefix = platforms.size > 1 ? `${job.platformName}: ` : ''
-    const to = dative(job.platformName)
+    const to = job.update ? locative(job.platformName) : dative(job.platformName)
+    const doneWord = job.update ? 'güncellendi' : 'aktarıldı'
+    const failedWord = job.update ? 'güncellenemedi' : 'aktarılamadı'
     if (bad.length === 0 && other.length === 0) {
-      lines.push(`Ürün ${to}${members.length > 1 ? ` ${members.length} renk ile` : ''} aktarıldı.`)
+      lines.push(`Ürün ${to}${members.length > 1 ? ` ${members.length} renk ile` : ''} ${doneWord}.`)
       return
     }
     if (bad.length) {
       const reasons = [...new Set(bad.map(member => member.outcome.reason?.trim() || 'nedeni kaydedilmedi'))].join('; ')
       const all = bad.length === members.length
-      lines.push(`${all ? '' : prefix}${all ? `Ürün ${to}` : joinColours(bad.map(member => member.card || 'Renksiz kart'))} aktarılamadı: ${reasons}.`)
+      lines.push(`${all ? '' : prefix}${all ? `Ürün ${to}` : joinColours(bad.map(member => member.card || 'Renksiz kart'))} ${failedWord}: ${reasons}.`)
     }
     lines.push(...new Set(other.map(member => member.outcome.line)))
   })
@@ -120,21 +125,25 @@ export function outcomeLines(outcomes: readonly JobOutcome[], jobs?: readonly Fo
 /** The toast for several followed jobs: titled by the worst one, one line each (a model's colour cards as one). */
 export function jobOutcomeFeedback(outcomes: readonly JobOutcome[], target: string, jobs?: readonly FollowedJob[]): JobOutcomeFeedback {
   const lines = outcomeLines(outcomes, jobs)
+  // An update press (every followed job is an update) is titled "güncellendi", a first publish "aktarıldı" (owner, 14 Nov 2026).
+  const updating = !!jobs?.length && jobs.every(job => job.update)
+  const names = [...new Set((jobs ?? []).map(job => job.platformName))]
+  const where = names.length === 1 ? locative(names[0]) : `${names.length} Platformda`
   const has = (state: JobOutcomeState) => outcomes.some(outcome => outcome.state === state)
   const settled = outcomes.every(isSettledOutcome)
   if (has('failed') || has('partial') || has('review')) {
     const anyDone = has('succeeded') || has('partial')
     // Partly done or waiting for review is a warning; only a transfer that did not happen at all is an error.
-    if (anyDone) return { title: `${target} Kısmen Aktarıldı`, kind: 'warning', lines, settled }
+    if (anyDone) return { title: updating ? `${where} Kısmen Güncellendi` : `${target} Kısmen Aktarıldı`, kind: 'warning', lines, settled }
     if (!has('failed')) return { title: 'İnceleme Bekliyor', kind: 'warning', lines, settled }
-    return { title: `${target} Aktarılamadı`, kind: 'error', lines, settled }
+    return { title: updating ? `${where} Güncellenemedi` : `${target} Aktarılamadı`, kind: 'error', lines, settled }
   }
   if (!settled) {
     const scheduled = has('scheduled') && !has('running') && !has('unknown')
     return { title: has('unknown') ? 'Sonuç Henüz Bilinmiyor' : scheduled ? 'Aktarım Sırada' : 'Aktarım Sürüyor', kind: 'info', lines, settled }
   }
   if (has('cancelled')) return { title: 'Aktarım Durduruldu', kind: 'info', lines, settled }
-  return { title: `${target} Aktarıldı`, kind: 'success', lines, settled }
+  return { title: updating ? 'Güncellendi' : `${target} Aktarıldı`, kind: 'success', lines, settled }
 }
 
 /** Every followed marketplace by name ("Trendyol", "Trendyol ve N11", "3 Platforma"). */
@@ -152,6 +161,15 @@ export function dative(name: string) {
   const back = 'aıou'.includes(lastVowel)
   const buffer = /[aeıioöuü]$/u.test(spoken.toLocaleLowerCase('tr-TR')) ? 'y' : ''
   return `${name}’${buffer}${back ? 'a' : 'e'}`
+}
+
+// "Trendyol’da", "N11’de", "Hepsiburada’da", "PttAVM’de": the locative by the last vowel and a hard final consonant.
+export function locative(name: string) {
+  const spoken = name.replace(/11$/u, 'onbir').replace(/AVM$/u, 'aveme').replace(/ify$/iu, 'ifay').toLocaleLowerCase('tr-TR')
+  const lastVowel = spoken.match(/[aeıioöuü](?=[^aeıioöuü]*$)/u)?.[0]
+  if (!lastVowel) return `${name} Platformunda`
+  const hard = /[pçtkfhsş]$/u.test(spoken)
+  return `${name}’${hard ? 't' : 'd'}${'aıou'.includes(lastVowel) ? 'a' : 'e'}`
 }
 
 export type FollowOptions = {
@@ -230,7 +248,7 @@ const outcomeOrder: JobOutcomeState[] = ['succeeded', 'partial', 'failed', 'revi
  * then the first refusals by record and reason. Titled like jobOutcomeFeedback, by the worst outcome.
  */
 export function groupedOutcomeFeedback(jobs: readonly FollowedJob[], outcomes: readonly JobOutcome[], target: string, noun = 'ürün'): JobOutcomeFeedback {
-  const base = jobOutcomeFeedback(outcomes, target)
+  const base = jobOutcomeFeedback(outcomes, target, jobs)
   const byPlatform = new Map<string, Map<JobOutcomeState, number>>()
   outcomes.forEach((outcome, index) => {
     const name = jobs[index]?.platformName ?? 'Pazaryeri'

@@ -129,7 +129,7 @@ export function BulkPlatformUpdateDialog({ productIds, cardCount, connections, p
           ? await hubApi<{ jobId?: string }>(`/products/${request.productId}/update-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId: request.connectionId, fields: request.fields, sendGroupId: request.sendGroupId }) })
           : await hubApi<{ jobId?: string }>(`/products/${request.productId}/connections/${request.connectionId}/price-inventory-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ price: request.price, stock: request.stock }) })
         const what = request.kind === 'product' ? productInformationLabel(request.fields) : request.price && request.stock ? 'fiyat-stok' : request.price ? 'fiyat' : 'stok'
-        if (accepted?.jobId) followed.push({ jobId: accepted.jobId, platformName: platformOf(request.connectionId), what, label: titleOf(request.productId) })
+        if (accepted?.jobId) followed.push({ jobId: accepted.jobId, platformName: platformOf(request.connectionId), what, label: titleOf(request.productId), update: true })
       } catch (reason) {
         const message = reason instanceof Error ? reason.message : 'Güncelleme işi oluşturulamadı.'
         failures.set(message, [...(failures.get(message) ?? []), `${titleOf(request.productId)} · ${platformOf(request.connectionId)}`])

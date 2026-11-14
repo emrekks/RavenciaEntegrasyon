@@ -73,6 +73,15 @@ Code: `Adapters/Trendyol/` — `TrendyolHttpClient.cs` (+ `.Webhooks.cs`), `Tren
   status is still **unverified**: read that log line after the next import. Source: offline docs "Ürün Filtreleme -
   Onaysız Ürün v2" and the filterUnapprovedProducts OpenAPI; live `catalog.product_import_sessions` and
   `LISTING_VERIFY_STATE` cursor, 14 Nov 2026.
+- The unapproved pass takes no date window either (since 14 Nov 2026). An incremental run ("Yeni Ürünleri Aktar",
+  job 01a1da88, 14:49Z, 13 approved rows) sent `startDate=<PRODUCTS watermark>&dateQueryType=LAST_MODIFIED_DATE` to
+  `/products/unapproved` and got `total 0`, while products put up on the 13th waited unchanged in "Onay Bekleyenler":
+  a waiting product's `lastUpdateDate` does not move, so a "since last read" window never sees it. The pass now reads
+  the whole list every time (barcode / productMainId lookups keep their filter). The offline docs name no other list
+  of waiting products: `/products/unapproved` is the only one (v1 `filterProducts?approved=false` was retired 15 Oct
+  2026; "Temel Bilgiler v2" `.../product/{barcode}` answers one barcode only). Host, path and seller id are those of
+  the approved list that reads fine. Source: offline docs "Ürün Filtreleme - Onaysız Ürün v2", "Ürün Filtreleme V1",
+  "Ürün Filtreleme - Temel Bilgiler v2"; live job 01a1da88 and its worker log line, 14 Nov 2026.
 - Products: the PRODUCTS watermark is the moment a full catalog read began, less 60 s (the next read starts 2 min
   before it). Before 6 Nov 2026 it was the job's end (a scan took 11 min on 31 Oct, its own changes were lost) and a
   scoped read (newOnly, existingOnly, mappingOnly, optionsOnly) moved it too, so products it skipped were missed by

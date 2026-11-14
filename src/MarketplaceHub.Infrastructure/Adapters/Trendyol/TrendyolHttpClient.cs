@@ -1081,6 +1081,10 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
     // whole unapproved list ("onay süreci devam eden ve reddedilen ürünler") comes back and the mapper drops only the
     // rows marked rejected. The import of 14 Nov 2026 asked status=pendingApproval and got an empty page while the owner
     // had products waiting for approval; the barcode status check reads the same endpoint without a status.
+    // Nor does the pass take the incremental date window: a product waits for approval for days without being changed,
+    // so "since the last read" left out every product put up before it (live 14 Nov 2026 14:49Z: the "Yeni Ürünleri
+    // Aktar" run read the unapproved list from that morning's watermark and got total 0 while the owner's products
+    // waited in "Onay Bekleyenler" since the 13th). The unapproved list is short; it is read whole every time.
     internal static List<string> CatalogQuery(TrendyolCatalogPass pass, string? cursor, int limit, ProductReadFilter filter)
     {
         var pending = pass == TrendyolCatalogPass.PendingApproval;
@@ -1094,16 +1098,11 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         if (!string.IsNullOrWhiteSpace(filter.Barcode)) query.Add("barcode=" + Uri.EscapeDataString(filter.Barcode));
         if (!string.IsNullOrWhiteSpace(filter.ProductMainId)) query.Add("productMainId=" + Uri.EscapeDataString(filter.ProductMainId));
         if (!pending && !string.IsNullOrWhiteSpace(filter.ContentId)) query.Add("contentId=" + Uri.EscapeDataString(filter.ContentId));
-        if (filter.ModifiedAfter is { } modifiedAfter)
+        if (!pending && filter.ModifiedAfter is { } modifiedAfter)
         {
-            // Approved products by variant or content change; waiting products by their last change.
+            // Approved products by variant or content change.
             query.Add("startDate=" + modifiedAfter.ToUnixTimeMilliseconds());
-            query.Add("dateQueryType=" + pass switch
-            {
-                TrendyolCatalogPass.ContentChanged => "CONTENT_MODIFIED_DATE",
-                TrendyolCatalogPass.PendingApproval => "LAST_MODIFIED_DATE",
-                _ => "VARIANT_MODIFIED_DATE"
-            });
+            query.Add("dateQueryType=" + (pass == TrendyolCatalogPass.ContentChanged ? "CONTENT_MODIFIED_DATE" : "VARIANT_MODIFIED_DATE"));
         }
         return query;
     }
