@@ -92,6 +92,14 @@ Code: `Adapters/Trendyol/` — `TrendyolHttpClient.cs` (+ `.Webhooks.cs`), `Tren
   code on the approved list the state goes back to UNKNOWN; panel-made profiles are never touched
   (`ImportedApprovalStates`, `TrendyolJsonMapper.UnapprovedStatus/RejectionReasons`). Source: offline doc "Ürün
   Filtreleme - Onaysız Ürün v2" sample response; live worker log of job at 15:33Z, 14 Nov 2026.
+- An unapproved row has no `contentId`, so the import links the product by its `productMainId` (live MZ056: product
+  link `MZ056`, variant links = barcodes). Such a product is not on sale: a variant whose listing is REJECTED or
+  APPROVAL_PENDING does not count as matched (products list, publish card, filters, bulk publish), and a model group
+  with any refused card shows red. A Trendyol contentId is numeric, so a non-numeric product link means "not approved":
+  its update and its Yayınla go whole to `unapproved-bulk-update` (the service Trendyol names for sending a rejected
+  product back to review), never a second create (`ProductUpdateComposer.ApprovedContentId`,
+  `CatalogService.IsTrendyolUnapprovedImportAsync`). Source: offline doc "Ürün Filtreleme - Onaysız Ürün v2"
+  ("gerekli güncellemeleri yapmanız halinde, ürününüz tekrar onay sürecine girecektir"); live SQL 14 Nov 2026.
 - Products: the PRODUCTS watermark is the moment a full catalog read began, less 60 s (the next read starts 2 min
   before it). Before 6 Nov 2026 it was the job's end (a scan took 11 min on 31 Oct, its own changes were lost) and a
   scoped read (newOnly, existingOnly, mappingOnly, optionsOnly) moved it too, so products it skipped were missed by

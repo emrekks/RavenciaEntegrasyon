@@ -48,6 +48,8 @@ const errorStatuses = new Set([
   'BLACKLISTED'
 ])
 
+const isMarketplaceRefusal = (status: string) => status === 'REJECTED' || status === 'PARTIAL_REJECTED'
+
 function normalizedStatuses(statuses: readonly string[]) {
   return statuses.map(status => status.trim().toUpperCase()).filter(Boolean)
 }
@@ -59,6 +61,9 @@ export function productPlatformDisplayState(
   variantCount = 0
 ): ProductPlatformDisplayState {
   const normalized = normalizedStatuses(statuses)
+  // A card or variant the marketplace refused (REJECTED, PARTIAL_REJECTED) makes the row red: the refusal wins over
+  // waiting, live and linked ones (owner, 14 Nov 2026: MZ056, one rejected colour card of ten read blue).
+  if (normalized.some(isMarketplaceRefusal)) return 'error'
   if (isChecking || normalized.some(status => inProgressStatuses.has(status))) return 'processing'
   const present = normalized.filter(status => !absentStatuses.has(status))
   if (present.length > 0 && present.every(status => status === 'NOT_FOUND')) return 'missing'
@@ -106,7 +111,7 @@ export function productPlatformDisplayLabel(
   const every = (...values: string[]) => normalized.length > 0 && normalized.every(status => values.includes(status))
   if (state === 'processing' && every('APPROVAL_PENDING')) return `${platform}: Onay Bekliyor`
   if (state === 'error' && every('REJECTED')) return `${platform}: Reddedildi${reason}`
-  if (state === 'error' && every('REJECTED', 'PARTIAL_REJECTED')) return `${platform}: Bazı Varyantlar Reddedildi${reason}`
+  if (state === 'error' && normalized.some(isMarketplaceRefusal)) return `${platform}: Bazı Varyantlar Reddedildi${reason}`
 
   if (state === 'processing') return `${platform}: Yayın Durumu Güncelleniyor`
   if (state === 'error') return `${platform}: Yayın İşlemi Başarısız veya İncelemede`
