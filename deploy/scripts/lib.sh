@@ -195,6 +195,44 @@ running_service_image() {
   "${sudo_cmd[@]}" docker inspect --format '{{.Config.Image}}' "$container"
 }
 
+# Image ID (sha256:...) the running service container was created from (empty when not running).
+running_service_image_id() {
+  local container
+  container="$("${sudo_cmd[@]}" docker ps -q \
+    --filter label=com.docker.compose.project=marketplacehub \
+    --filter "label=com.docker.compose.service=$1" | head -n 1)"
+  [[ -n "$container" ]] || return 0
+  "${sudo_cmd[@]}" docker inspect --format '{{.Image}}' "$container"
+}
+
+# 12-character revision of the release that is serving (empty when unknown): caddy runs
+# marketplacehub-edge:manual-<rev>, and marketplacehub-app:manual-<rev> is the very image api and worker run. After a
+# web-only release (fast-deploy.sh) api and worker keep a container created from an older tag of that same image, so
+# the release is taken from caddy and checked by image ID rather than by the containers' tag names.
+running_release_revision() {
+  local edge api_id worker_id rev tag_id
+  edge="$(running_service_image caddy)"
+  [[ "$edge" == marketplacehub-edge:manual-* ]] || return 0
+  rev="${edge##*:manual-}"
+  [[ "$rev" =~ ^[0-9a-f]{12}$ ]] || return 0
+  api_id="$(running_service_image_id api)"
+  worker_id="$(running_service_image_id worker)"
+  [[ -n "$api_id" && "$api_id" == "$worker_id" ]] || return 0
+  tag_id="$("${sudo_cmd[@]}" docker image inspect --format '{{.Id}}' "marketplacehub-app:manual-$rev" 2>/dev/null)" || return 0
+  [[ "$tag_id" == "$api_id" ]] || return 0
+  printf '%s\n' "$rev"
+}
+
+# Compose config hash label of the running service container (empty when not running).
+running_service_config_hash() {
+  local container
+  container="$("${sudo_cmd[@]}" docker ps -q \
+    --filter label=com.docker.compose.project=marketplacehub \
+    --filter "label=com.docker.compose.service=$1" | head -n 1)"
+  [[ -n "$container" ]] || return 0
+  "${sudo_cmd[@]}" docker inspect --format '{{index .Config.Labels "com.docker.compose.config-hash"}}' "$container"
+}
+
 # Removes manual-* app/edge tags except the ones passed as arguments (the new
 # release and the one it replaced, kept for deploy/scripts/rollback.sh).
 prune_manual_images_except() {

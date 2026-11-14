@@ -14,6 +14,12 @@ Reply to the user in Turkish: answers, summaries, closing reports and tool descr
 - Web (in `src/MarketplaceHub.Web`): `npm run typecheck` (it is `tsc -b`; `tsc -p .` misses project references),
   `npx vitest run <dir>`, `npm run lint`, `npm run build`, `npm run check:bundle`.
 - Run the tests again after merging `origin/main`: another session's commits can break a test that passed before.
+- In a worktree run `bash .claude/scripts/link-web-deps.sh` instead of `npm ci`: it links `node_modules` (a junction)
+  to a shared install of the same lockfile. Delete such a worktree with `git worktree remove` or `rm -rf`, never
+  PowerShell `Remove-Item -Recurse` (it follows the junction).
+- Locally run only what the change touches: `npm run typecheck`, `npx vitest run <changed dirs>`, `npx eslint <changed
+  files>`; backend: build plus the affected tests. Validate runs the full build, bundle check, lint and test suites;
+  run those locally only when the change touches build config, `package*.json`, shared test setup or many areas.
 
 ## Shipping (`/ship`)
 - Ship a finished change yourself; do not wait for the user to type `/ship`. When the skill cannot be invoked, run
@@ -24,7 +30,11 @@ Reply to the user in Turkish: answers, summaries, closing reports and tool descr
 - Commit messages in English, no attribution lines.
 - Push to `codex/<topic>`, wait for Validate, then push the same sha to `main` only when
   `git merge-base --is-ancestor origin/main <sha>`. Never force-push; when `main` moved, merge `origin/main` first.
-- Watch the live images (`docker inspect`) reach the sha before calling it live.
+- Watch the live images (`docker inspect`) reach the sha before calling it live. A web-only release (nothing but
+  `src/MarketplaceHub.Web/`, `deploy/caddy/`, `.claude/`, `docs/` or root `*.md` changed since the running release)
+  rebuilds and restarts only caddy: api and worker keep running their image, also tagged with the new sha, and
+  `ship.sh` reports it live once caddy runs the sha.
+- Batch small UI requests that arrive close together into one ship instead of one ship each.
 - The host runs around the clock (no nightly stop since 27 October 2026) and a validated push deploys at any hour. If the
   host was stopped by hand, ship what was pushed meanwhile with `gh workflow run deploy.yml --ref main` once it is up.
 - Several sessions commit in this checkout and on `main` at once. Work in a worktree under `.claude/worktrees/` and
