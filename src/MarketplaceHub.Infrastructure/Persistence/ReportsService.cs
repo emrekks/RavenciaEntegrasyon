@@ -556,7 +556,6 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider, R
         var allocations = db.PackageLineAllocations.AsNoTracking().Where(allocation => allocation.TenantId == tenantId);
         var rows = await (from row in PeriodOrders(tenantId, allowedIds, period)
                           join package in MarketplaceSalesService.CurrentShipmentPackages(db) on new { row.Order.TenantId, OrderId = row.Order.Id } equals new { package.TenantId, package.OrderId }
-                          let siblings = currentPackages.Where(other => other.OrderId == package.OrderId && other.Status != ShipmentPackageStatus.Cancelled)
                           select new ReportPackageRow
                           {
                               Id = package.Id,
@@ -569,10 +568,10 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider, R
                                                  join line in orderLines on allocation.OrderLineId equals line.Id
                                                  select line.UnitPrice * (allocation.AllocatedQuantity - allocation.CancelledQuantity)).Sum(),
                               OrderAmount = row.Order.NetAmount > 0 ? row.Order.NetAmount : row.Order.GrossAmount,
-                              PricedSiblingsAmount = siblings.Where(other => other.Id != package.Id && (other.NetAmount > 0 || other.GrossAmount > 0))
+                              PricedSiblingsAmount = currentPackages.Where(other => other.OrderId == package.OrderId && other.Status != ShipmentPackageStatus.Cancelled && other.Id != package.Id && (other.NetAmount > 0 || other.GrossAmount > 0))
                                   .Sum(other => other.NetAmount > 0 ? other.NetAmount : other.GrossAmount),
-                              LivePackages = siblings.Count(),
-                              UnpricedPackages = siblings.Count(other => other.NetAmount <= 0 && other.GrossAmount <= 0),
+                              LivePackages = currentPackages.Count(other => other.OrderId == package.OrderId && other.Status != ShipmentPackageStatus.Cancelled),
+                              UnpricedPackages = currentPackages.Count(other => other.OrderId == package.OrderId && other.Status != ShipmentPackageStatus.Cancelled && other.NetAmount <= 0 && other.GrossAmount <= 0),
                               MarketplaceInvoiceStatus = package.MarketplaceInvoiceStatus,
                               ManualInvoiceStatus = package.ManualInvoiceStatus,
                               PanelInvoiced = db.Invoices.Any(invoice => invoice.TenantId == tenantId && invoice.OrderId == package.OrderId
