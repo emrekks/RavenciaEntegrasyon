@@ -184,7 +184,39 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # A codex/** push or pull request checks only the .cs files it changed against main (the three-dot
+      # compare, i.e. since the merge base): format and analyzer results of the other files cannot change.
+      # The whole solution is checked on main, on a manual run, when the compare cannot be read or lists 300+
+      # files, and when anything that changes the rules or the analyzers changed (project, props, targets,
+      # lock files, .editorconfig, global.json, .config, this workflow). Without any such file or .cs change
+      # there is nothing format could report.
+      - name: Choose format scope
+        id: format-scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -Eeuo pipefail
+          mode=full
+          if [[ "$GITHUB_REF" != refs/heads/main && ( "$EVENT_NAME" == push || "$EVENT_NAME" == pull_request ) ]]; then
+            if files="$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$HEAD_SHA" --jq '.files[] | select(.status != "removed") | .filename, (.previous_filename // empty)')" \
+              && count="$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$HEAD_SHA" --jq '.files | length')" \
+              && [[ "$count" =~ ^[0-9]+$ ]] && (( count < 300 )); then
+              if grep -qE '(\.csproj|\.props|\.targets|packages\.lock\.json|\.editorconfig|global\.json|\.sln)$|^\.config/|^\.github/workflows/ci\.yml$' <<<"$files"; then
+                echo "Rule or analyzer inputs changed: checking the whole solution."
+              else
+                grep -E '\.cs$' <<<"$files" | while IFS= read -r file; do [[ ! -f "$file" ]] || echo "$file"; done > "$RUNNER_TEMP/format-files.txt" || true
+                if [[ -s "$RUNNER_TEMP/format-files.txt" ]]; then mode=changed; else mode=none; echo "No .cs file changed: nothing to format."; fi
+              fi
+            else
+              echo "Compare with main unavailable or too large: checking the whole solution."
+            fi
+          fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+
       - name: Setup .NET
+        if: steps.format-scope.outputs.mode != 'none'
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.302
@@ -192,6 +224,7 @@ jobs:
       # Read-only on branches: only main writes the NuGet cache (job nuget-cache), and every
       # branch can read main's caches, so no branch fills the 10 GB quota with its own copy.
       - name: Restore NuGet cache
+        if: steps.format-scope.outputs.mode != 'none'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.nuget/packages
@@ -199,10 +232,22 @@ jobs:
           restore-keys: nuget-${{ runner.os }}-
 
       - name: Restore backend
+        if: steps.format-scope.outputs.mode != 'none'
         run: dotnet restore MarketplaceHub.sln --locked-mode
 
       - name: Verify .NET format
-        run: dotnet format MarketplaceHub.sln --verify-no-changes --no-restore
+        if: steps.format-scope.outputs.mode != 'none'
+        env:
+          FORMAT_MODE: ${{ steps.format-scope.outputs.mode }}
+        run: |
+          set -Eeuo pipefail
+          if [[ "$FORMAT_MODE" == changed ]]; then
+            mapfile -t files < "$RUNNER_TEMP/format-files.txt"
+            echo "Checking the ${#files[@]} changed .cs file(s) only."
+            dotnet format MarketplaceHub.sln --verify-no-changes --no-restore --include "${files[@]}"
+          else
+            dotnet format MarketplaceHub.sln --verify-no-changes --no-restore
+          fi
 
   # The solution is built once (Release) in backend-build; backend and the two PostgreSQL lanes test that build
   # (--no-build) instead of each building it again (80-120 s each). The archive holds bin and obj of every backend
@@ -313,10 +358,20 @@ jobs:
     timeout-minutes: 15
     strategy:
       fail-fast: false
+      # The non-Load PostgreSQL tests ("Category=PostgreSql&PostgreSqlLane!=Load", ~330 s of tests on 15 Nov 2026)
+      # run in three shards built as a partition, so together they run each of those tests exactly once whatever
+      # new tests are added: main-1 is the single 2-minute dashboard-equivalence case (theory row from 2026-09-01),
+      # main-2 the other dashboard-equivalence rows plus three heavy classes (~120 s), main-3 everything else, as the
+      # complement of main-1 and main-2 (~90 s). New tests land in main-3; move a class to main-2 (in BOTH
+      # filters) when main-3 grows past the others.
       matrix:
         include:
-          - lane: main
-            filter: Category=PostgreSql&PostgreSqlLane!=Load
+          - lane: main-1
+            filter: Category=PostgreSql&PostgreSqlLane!=Load&FullyQualifiedName~.PostgreSqlDashboardEquivalenceTests.&DisplayName~2026-09-01
+          - lane: main-2
+            filter: Category=PostgreSql&PostgreSqlLane!=Load&((FullyQualifiedName~.PostgreSqlDashboardEquivalenceTests.&DisplayName!~2026-09-01)|FullyQualifiedName~.PostgreSqlTenantIsolationTests.|FullyQualifiedName~.TrendyolImportRegressionPostgreSqlTests.|FullyQualifiedName~.InvoiceLinkAndWriteSwitchApiTests.)
+          - lane: main-3
+            filter: Category=PostgreSql&PostgreSqlLane!=Load&FullyQualifiedName!~.PostgreSqlDashboardEquivalenceTests.&FullyQualifiedName!~.PostgreSqlTenantIsolationTests.&FullyQualifiedName!~.TrendyolImportRegressionPostgreSqlTests.&FullyQualifiedName!~.InvoiceLinkAndWriteSwitchApiTests.
           - lane: load
             filter: PostgreSqlLane=Load
     services:
