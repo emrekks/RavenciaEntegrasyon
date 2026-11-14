@@ -28,7 +28,7 @@ html:root:root:root:root:root:root button.reports-tip-trigger:has(> .reports-qma
 html:root:root:root:root:root:root button:is(.title-hint, .field-help):focus-visible { outline: 0; }
 /* Position: every mark sits inline right after its label, centred on the text line (never pinned to a card corner,
    never hung from the line's top). Horizontal gaps stay with each place's own margin (4 px by default). */
-html:root:root:root:root:root:root .reports-qmark { vertical-align: middle; }
+html:root:root:root:root:root:root .reports-qmark { vertical-align: middle; position: relative; top: -1px; }
 html:root:root:root:root:root:root :is(button.title-hint, button.field-help) { align-self: center; margin-top: 0; margin-bottom: 0; vertical-align: middle; }
 html:root:root:root:root:root:root .reports-kpis .reports-kpi-label { padding-right: 0; }
-html:root:root:root:root:root:root .reports-kpis .reports-kpi-label > .reports-qmark { position: static; margin: 0 0 0 4px; }
+html:root:root:root:root:root:root .reports-kpis .reports-kpi-label > .reports-qmark { position: relative; top: -1px; right: auto; margin: 0 0 0 4px; }
