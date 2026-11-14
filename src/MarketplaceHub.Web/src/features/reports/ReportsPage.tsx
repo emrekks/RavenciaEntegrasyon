@@ -5,6 +5,7 @@ import { hubApi } from '../../shared/api'
 import { Busy, CardBackgroundIcon, EmptyState, ErrorBox, Modal, Pager, UiIcon, type CardIconName, type UiIconName } from '../../shared/components'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { formatIstanbul, istanbulDateKey } from '../../shared/format-date'
+import { valueWithUnit } from '../../shared/metric-value'
 import { PlatformFilter } from '../../shared/PlatformFilter'
 import { PanelSelect } from '../../shared/PanelSelect'
 import { ViewTabsWithMore } from '../../shared/view-tabs'
@@ -1157,7 +1158,7 @@ function returnMetrics(data: ReportSales): Metric[] {
     { key: 'rate', label: 'İade Oranı', value: formatPercent(now.returnRate), sub: `önceki ${formatPercent(before.returnRate)}`, delta: change(now.returnRate, before.returnRate, 'rate'), invert: true, previous: formatPercent(before.returnRate), detail: 'returns',
       note: `${returnRateTip}\n${previousLine(formatPercent(before.returnRate), '%0')}` },
     // The amount the customers paid for what they sent back: the İade Edilen Tutar taken off on Kâr Köprüsü.
-    { key: 'returned', label: 'İade Edilen', value: now.returnedQuantity > 0 ? `${formatNumber(now.returnedQuantity)} adet` : noValue, sub: `${formatCount(now.returnClaims)} talep · ${formatTl(now.returnedAmount)}`, detail: 'returns',
+    { key: 'returned', label: 'İade Edilen', value: valueWithUnit(now.returnedQuantity, 'adet', formatNumber), sub: `${formatCount(now.returnClaims)} talep · ${formatTl(now.returnedAmount)}`, detail: 'returns',
       note: 'Müşterilerin iade ettiği ürün adedi; reddedilen ve iptal edilen talepler sayılmaz.' },
     { key: 'cargo', label: 'İade Kargo Zararı', value: returnCargo === null ? '—' : formatTl(returnCargo), sub: returnCargo === null ? undefined : 'yalnız Trendyol', detail: 'returns',
       note: 'İadelerin faturası gelen kargo ve operasyon maliyeti, yalnız Trendyol.' },
@@ -1172,7 +1173,7 @@ function returnMetrics(data: ReportSales): Metric[] {
       note: `İade taleplerinde en sık bildirilen neden${topReason ? `: ${topReason.reason}` : ''}.` },
     { key: 'cancel', label: 'İptal Oranı', value: formatPercent(now.cancelRate), tone: (now.cancelRate ?? 0) > warning ? 'warn' : undefined, detail: 'cancellations',
       note: `Sipariş edilen ürün adedinin yüzde kaçının iptal edildiği. ${formatPercent(warning)} eşiğini geçince uyarı rengiyle yazılır.` },
-    { key: 'cancelled', label: 'İptal Edilen', value: now.cancelledOrders > 0 ? `${formatCount(now.cancelledOrders)} sipariş` : noValue, sub: `${formatNumber(data.cancellations.cancelledQuantity)} adet · ${formatTl(cancelled ?? 0)}`, detail: 'cancellations',
+    { key: 'cancelled', label: 'İptal Edilen', value: valueWithUnit(now.cancelledOrders, 'sipariş', formatCount), sub: `${formatNumber(data.cancellations.cancelledQuantity)} adet · ${formatTl(cancelled ?? 0)}`, detail: 'cancellations',
       note: 'İptal edilen sipariş, adet ve liste fiyatıyla tutar; satışa girmez.' }
   ]
 }
@@ -1201,7 +1202,7 @@ function operationMetrics(data: ReportSales): Metric[] {
       note: `Kargoya verilen paketin müşteriye ulaşmasına kadar geçen ortalama süre.${deliver.hours === null ? ' Bu dönemde teslim anı okunan paket yok.' : ` ${formatCount(deliver.measured)} pakette ölçüldü.`}` },
     { key: 'invoice', label: 'Faturasız Paket', value: formatCount(notInvoiced), sub: `${formatCount(packages)} paket içinde`, tone: notInvoiced > 0 ? 'warn' : undefined, detail: 'invoices',
       note: 'Faturası henüz kesilmemiş paketler; bir tane bile varsa uyarı rengiyle yazılır.' },
-    { key: 'stock', label: 'Stok Riski', value: `${formatCount(low)} ürün`, tone: low > 0 ? 'warn' : undefined, detail: 'stock',
+    { key: 'stock', label: 'Stok Riski', value: valueWithUnit(low, 'ürün', formatCount), tone: low > 0 ? 'warn' : undefined, detail: 'stock',
       note: 'Stoğu, dönemin satış hızıyla bir haftadan az yetecek çok satan ürünler.' },
     // Trendyol and Hepsiburada only: N11's and Pazarama's answer times are not reliable (marketplace-docs).
     { key: 'questions', label: 'Soru Yanıt Süresi', value: questions?.averageHours == null ? '—' : formatHours(questions.averageHours),
@@ -1337,7 +1338,7 @@ function overviewCards(data: ReportSales, money: Money | null, ads: AdReports | 
 
   return [
     // Satış: the units sold (cancellations out, returns not taken off) with the variants behind them.
-    { key: 'sales', title: 'Satış', tipTitle: 'Satılan Adet', value: `${formatNumber(now.soldQuantity)} adet`,
+    { key: 'sales', title: 'Satış', tipTitle: 'Satılan Adet', value: valueWithUnit(now.soldQuantity, 'adet', formatNumber),
       aside: now.soldVariants === undefined ? 'satılan adet' : `${formatCount(now.soldVariants)} farklı varyant`,
       delta: change(now.soldQuantity, before.soldQuantity), previous: formatNumber(before.soldQuantity),
       note: `Dönemde satılan ürün adedi ve satılan farklı varyant sayısı; iptaller sayılmaz, iadeler düşülmez.\n${previousLine(formatNumber(before.soldQuantity))}`,

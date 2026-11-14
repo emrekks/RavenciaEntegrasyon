@@ -4,7 +4,7 @@ import { ApiRequestError, hubApi, hubPoll } from '../../shared/api'
 import { formatIstanbul } from '../../shared/format-date'
 import { clearNotificationHistory } from '../../shared/notifications'
 import { ReauthInputs, reauthBody, reauthReady, useSecondFactorEnabled } from '../../shared/reauth'
-import { normalizePanelResetConfirmation, panelResetConfirmationWord, panelResetConfirmed, panelResetFailed, panelResetRunning, panelResetStepStates, type PanelFactoryResetView, type PanelResetStepState } from './panel-factory-reset'
+import { normalizePanelResetConfirmation, panelResetConfirmationWord, panelResetConfirmed, panelResetFailed, panelResetRunning, panelResetStepLabel, panelResetStepStates, type PanelFactoryResetView, type PanelResetStepState } from './panel-factory-reset'
 
 const resetNumber = (value: number) => value.toLocaleString('tr-TR')
 const queryKey = ['panel-factory-reset']
@@ -43,6 +43,7 @@ export function PanelFactoryResetSection() {
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showEmpty, setShowEmpty] = useState(false)
+  const [showSteps, setShowSteps] = useState(false)
   const job = view.data?.job ?? null
   const filled = (view.data?.groups ?? []).filter(group => group.count > 0)
   const empty = (view.data?.groups ?? []).filter(group => group.count <= 0)
@@ -83,6 +84,7 @@ export function PanelFactoryResetSection() {
   const steps = job?.steps ?? view.data?.steps ?? []
   const states = panelResetStepStates(steps, job)
   const failed = panelResetFailed(job?.status)
+  const finished = job?.status === 'SUCCEEDED'
   const showProgress = job !== null && (running || failed || job.status === 'SUCCEEDED')
   const percent = job?.status === 'SUCCEEDED' ? 100 : job?.progressPercent ?? 0
 
@@ -106,10 +108,11 @@ export function PanelFactoryResetSection() {
       <AlertGlyph />
       <p><b>Geri alınamaz.</b> Silinen kayıtlar geri getirilemez; pazaryerlerine ve e-fatura sağlayıcısına hiçbir şey gönderilmez, diğer cihazlardaki oturumlar kapanır. Açık bağlantılar sıfırlamadan sonra pazaryerinin izin verdiği tarih aralığındaki siparişleri yeniden çeker; hiç veri gelmesin istiyorsanız önce bağlantıları kapatın.</p>
     </div>
-    {showProgress && job && <div className="ss-fr-progress" role="status" aria-live="polite">
+    {showProgress && job && <div className={`ss-fr-progress${finished ? ' is-done' : ''}${failed ? ' is-failed' : ''}`} role="status" aria-live="polite">
       <div className="ss-fr-bar" aria-hidden="true"><i style={{ width: `${percent}%` }} /></div>
-      <div className="ss-fr-progress-head"><strong>{job.full ? 'Tam Sıfırlama İlerlemesi' : 'Sıfırlama İlerlemesi'}</strong><span>%{percent}{job.status === 'SUCCEEDED' && job.completedAt ? ` · ${formatIstanbul(job.completedAt, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}</span></div>
-      <ol className="ss-fr-steps">{steps.map((step, index) => <li key={step} className={`is-${states[index]}`}><StepGlyph state={states[index]} /><span>{step}</span></li>)}</ol>
+      <div className="ss-fr-progress-head"><strong>{finished ? (job.full ? 'Tam Sıfırlama Tamamlandı' : 'Sıfırlama Tamamlandı') : failed ? (job.full ? 'Tam Sıfırlama Yarıda Kaldı' : 'Sıfırlama Yarıda Kaldı') : job.full ? 'Tam Sıfırlama İlerlemesi' : 'Sıfırlama İlerlemesi'}</strong><span>{finished ? (job.completedAt ? `${formatIstanbul(job.completedAt, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })} tarihinde tamamlandı` : '%100') : `%${percent}`}</span></div>
+      {finished && <button type="button" className="ss-fr-more ss-fr-steps-toggle" aria-expanded={showSteps} onClick={() => setShowSteps(value => !value)}>{showSteps ? 'Adımları Gizle' : 'Adımları Göster'}</button>}
+      {(!finished || showSteps) && <ol className="ss-fr-steps">{steps.map((step, index) => <li key={step} className={`is-${states[index]}`}><StepGlyph state={states[index]} /><span>{panelResetStepLabel(step, states[index])}</span></li>)}</ol>}
       {failed && <p className="ss-fr-error">{job.error ?? 'Sıfırlama tamamlanamadı.'}</p>}
     </div>}
     {!running && <div className="ss-fr-confirm">
