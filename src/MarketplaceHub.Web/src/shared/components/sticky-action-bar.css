@@ -8,7 +8,8 @@
    editor). Every bar is one 56px row: 10px above and below 36px controls, its title and note on one line. Page rules keep
    their own inner layout (flex/grid, gap). */
 /* One surface for every bar: the list card's footer (pager) colour, light and dark. */
-:root { --rv-action-bar-bg: var(--rv-color-surface); --rv-action-bar-radius: var(--rv-radius-lg, 12px); }
+:root { --rv-action-bar-bg: var(--rv-color-surface); --rv-action-bar-radius: var(--rv-radius-lg, 12px); --rv-action-bar-shadow: 0 -4px 12px -6px rgb(15 23 42 / 12%); }
+html[data-theme="dark"] { --rv-action-bar-shadow: 0 -4px 12px -6px rgb(0 0 0 / 28%); }
 .app-shell.stitch-shell > main > .content { --rv-page-pad-x: 24px; --rv-page-pad-b: 28px; }
 @media (max-width: 760px) { .app-shell.stitch-shell > main > .content { --rv-page-pad-x: 16px; --rv-page-pad-b: 16px; } }
 
@@ -26,7 +27,7 @@
   border: 0;
   border-top: 1px solid var(--rv-color-border);
   border-radius: 0;
-  box-shadow: 0 -10px 24px -12px rgb(0 0 0 / 35%);
+  box-shadow: var(--rv-action-bar-shadow);
   animation: rv-action-bar-in .18s cubic-bezier(.2, .8, .2, 1) both;
 }
 /* A page's own bar (a direct child of the page, or of its form) is the settings bar: flush with the window's bottom edge

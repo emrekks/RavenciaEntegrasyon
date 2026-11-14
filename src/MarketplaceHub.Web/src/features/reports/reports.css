@@ -415,10 +415,10 @@ html body .app-shell.stitch-shell main .reports-page .reports-card-actions .repo
 }
 
 /* A segmented choice (a statement's marketplace): one rounded track, the picked one raised. */
-.app-shell.stitch-shell main .reports-page .reports-segmented { display: inline-flex; flex-wrap: wrap; justify-self: start; gap: 2px; max-width: 100%; padding: 3px; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 12px; }
-.app-shell.stitch-shell main .reports-page .reports-segmented button { min-height: 0; height: 32px; padding: 0 12px; color: var(--rv-color-muted); font: inherit; font-size: 12.5px; font-weight: 500; text-transform: none; white-space: nowrap; background: transparent; border: 0; border-radius: 7px; box-shadow: none; cursor: pointer; }
+.app-shell.stitch-shell main .reports-page .reports-segmented { display: inline-flex; flex-wrap: wrap; justify-self: start; gap: 2px; max-width: 100%; padding: 3px; background: var(--rv-color-bg); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; }
+.app-shell.stitch-shell main .reports-page .reports-segmented button { min-height: 0; height: 32px; padding: 0 12px; color: var(--rv-color-muted); font: inherit; font-size: 12.5px; font-weight: 500; text-transform: none; white-space: nowrap; background: transparent; border: 1px solid transparent; border-radius: 7px; box-shadow: none; cursor: pointer; }
 .app-shell.stitch-shell main .reports-page .reports-segmented button:hover { color: var(--rv-color-ink); }
-.app-shell.stitch-shell main .reports-page .reports-segmented button:is([aria-pressed='true'], [aria-selected='true']) { color: var(--rv-color-ink); font-weight: 500; background: var(--rv-color-surface); box-shadow: 0 1px 2px rgb(0 0 0 / 14%); }
+.app-shell.stitch-shell main .reports-page .reports-segmented button:is([aria-pressed='true'], [aria-selected='true']) { color: var(--rv-color-ink); font-weight: 500; background: var(--rv-color-surface-raised); border-color: var(--rv-color-border-strong); box-shadow: none; }
 .app-shell.stitch-shell main .reports-page .reports-segmented button:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 1px; }
 /* A label is centred on its capitals and digits, not on Inter's taller line box, which left the text 1.6 px high in its
    28 px pill (owner, 10 Nov: "yazıları ortala"). Browsers without text-box keep the old placement. */
