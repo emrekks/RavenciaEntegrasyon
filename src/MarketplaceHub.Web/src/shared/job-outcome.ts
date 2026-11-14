@@ -19,7 +19,9 @@ export type FollowedJobDetail = {
 }
 
 /** One job the screen follows: which marketplace and what it carries ("ürün bilgisi", "fiyat-stok", "ürün"). */
-export type FollowedJob = { jobId: string; platformName: string; what: string; /** The record it is about (a product title), for a summary of many jobs. */ label?: string }
+export type FollowedJob = { jobId: string; platformName: string; what: string; /** The record it is about (a product title), for a summary of many jobs. */ label?: string
+  /** Set when the job is one colour card of a model ("Bordo", '' when unnamed): the result then speaks of the product once per marketplace, not once per card. */
+  card?: string }
 
 export type JobOutcomeState = 'running' | 'scheduled' | 'succeeded' | 'partial' | 'failed' | 'review' | 'cancelled' | 'unknown'
 export type JobOutcome = { state: JobOutcomeState; line: string; /** Why it did not go through, for a summary of many jobs. */ reason?: string }
@@ -80,9 +82,44 @@ export const isSettledOutcome = (outcome: JobOutcome) => settledStates.has(outco
 
 export type JobOutcomeFeedback = { title: string; kind: 'success' | 'error' | 'info' | 'warning'; lines: string[]; settled: boolean }
 
-/** The toast for several followed jobs: titled by the worst one, one line each. */
-export function jobOutcomeFeedback(outcomes: readonly JobOutcome[], target: string): JobOutcomeFeedback {
-  const lines = outcomes.map(outcome => outcome.line)
+const joinColours = (names: readonly string[]) => names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} ve ${names[names.length - 1]}`
+
+/**
+ * The lines of a toast: one per job, except that the colour cards of one marketplace (FollowedJob.card) are one
+ * product (owner, 14 Nov 2026): all through is "Ürün Shopify’a aktarıldı.", a part through names only the colours that
+ * failed, and everything refused says the reason once.
+ */
+export function outcomeLines(outcomes: readonly JobOutcome[], jobs?: readonly FollowedJob[]) {
+  const platforms = new Set((jobs ?? []).map(job => job.platformName))
+  const lines: string[] = []
+  const done = new Set<string>()
+  outcomes.forEach((outcome, index) => {
+    const job = jobs?.[index]
+    if (!job || job.card === undefined) { lines.push(outcome.line); return }
+    if (done.has(job.platformName)) return
+    done.add(job.platformName)
+    const members = outcomes.flatMap((member, at) => jobs?.[at]?.platformName === job.platformName && jobs[at].card !== undefined ? [{ outcome: member, card: jobs[at].card ?? '' }] : [])
+    const bad = members.filter(member => member.outcome.state === 'failed' || member.outcome.state === 'partial')
+    const other = members.filter(member => !bad.includes(member) && member.outcome.state !== 'succeeded')
+    const prefix = platforms.size > 1 ? `${job.platformName}: ` : ''
+    const to = dative(job.platformName)
+    if (bad.length === 0 && other.length === 0) {
+      lines.push(`Ürün ${to}${members.length > 1 ? ` ${members.length} renk ile` : ''} aktarıldı.`)
+      return
+    }
+    if (bad.length) {
+      const reasons = [...new Set(bad.map(member => member.outcome.reason?.trim() || 'nedeni kaydedilmedi'))].join('; ')
+      const all = bad.length === members.length
+      lines.push(`${all ? '' : prefix}${all ? `Ürün ${to}` : joinColours(bad.map(member => member.card || 'Renksiz kart'))} aktarılamadı: ${reasons}.`)
+    }
+    lines.push(...new Set(other.map(member => member.outcome.line)))
+  })
+  return lines
+}
+
+/** The toast for several followed jobs: titled by the worst one, one line each (a model's colour cards as one). */
+export function jobOutcomeFeedback(outcomes: readonly JobOutcome[], target: string, jobs?: readonly FollowedJob[]): JobOutcomeFeedback {
+  const lines = outcomeLines(outcomes, jobs)
   const has = (state: JobOutcomeState) => outcomes.some(outcome => outcome.state === state)
   const settled = outcomes.every(isSettledOutcome)
   if (has('failed') || has('partial') || has('review')) {
@@ -155,7 +192,7 @@ export async function readJobsByIds(jobIds: readonly string[]) {
 export async function followJobOutcomes(jobs: readonly FollowedJob[], target: string, onUpdate: (feedback: JobOutcomeFeedback, interim: boolean) => void, options: FollowOptions = {}) {
   const read = options.readJob ?? defaultRead
   const readMany = options.readJobs ?? (jobs.length > 3 && !options.readJob ? readJobsByIds : null)
-  const summarize = options.summarize ?? ((outcomes: readonly JobOutcome[]) => jobOutcomeFeedback(outcomes, target))
+  const summarize = options.summarize ?? ((outcomes: readonly JobOutcome[]) => jobOutcomeFeedback(outcomes, target, jobs))
   const sleep = options.sleep ?? defaultSleep
   const now = options.now ?? Date.now
   const shortWaitMs = options.shortWaitMs ?? 25_000
