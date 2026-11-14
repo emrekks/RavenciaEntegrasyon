@@ -1039,8 +1039,8 @@ describe('ReportsPage', () => {
     act(() => root?.unmount())
     const empty = await open('?view=payouts&hmin=100000')
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
-    expect(empty.querySelector('.reports-payout-empty')?.textContent).toContain('Bu filtrelerle ödeme yok.')
-    await act(async () => { (empty.querySelector('.reports-payout-empty button') as HTMLButtonElement).click() })
+    expect(empty.querySelector('.rv-empty-state')?.textContent).toContain('Bu filtrelerle ödeme yok.')
+    await act(async () => { (empty.querySelector('.rv-empty-state button') as HTMLButtonElement).click() })
     expect(texts(empty, '.reports-payout-row')).toHaveLength(4)
     act(() => root?.unmount())
     // The explanations follow the picked marketplace: Hepsiburada's payout day, no Trendyol balance claim.

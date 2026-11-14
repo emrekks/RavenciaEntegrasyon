@@ -9,6 +9,7 @@ import { newIdempotencyKey, sendWithVersionedIdempotencyKey, versionedIdempotenc
 import { thumbnailUrl } from '../../shared/product-thumbnail'
 import { marketplaceProductSearchUrl } from './marketplace-product-link'
 import { Button, EmptyState, LoadingState, Tabs, UiIcon } from '../../shared/components'
+import { ListEmptyState } from '../../shared/components/EmptyState'
 import { platformLogoClass, platformLogoSource } from '../../shared/platform-logos'
 import { productImageFallbackUrls } from '../marketplace/product-image-lookups'
 import { questionDeadline } from './question-time'
@@ -395,7 +396,7 @@ export function QuestionsPage() {
           </div>
         </div>
         <div className="qi-list">
-          {questions.isLoading ? <LoadingState>Sorular yükleniyor…</LoadingState> : questions.isError ? <EmptyState title="Sorular Alınamadı">Biraz sonra yeniden deneyin.</EmptyState> : rows.length === 0 ? <EmptyState title="Henüz Soru Yok">Bu filtrelerde soru bulunamadı. Geçmiş aktarımı tamamlandıkça erişilebilen sorular listelenir.</EmptyState> : rows.map(row => {
+          {questions.isLoading ? <LoadingState>Sorular yükleniyor…</LoadingState> : questions.isError ? <EmptyState title="Sorular Alınamadı">Biraz sonra yeniden deneyin.</EmptyState> : rows.length === 0 ? <ListEmptyState icon="questions" noun="Soru" hasActiveFilters={canClearFilters} onClear={clearFilters} filteredHint="Bu filtrelerle eşleşen soru yok." emptyHint="Geçmiş aktarımı tamamlandıkça erişilebilen sorular listelenir." /> : rows.map(row => {
             const state = questionStatus(row.status)
             const deadline = isAnswerable(row.status, row) ? questionDeadline(row.expiresAt, now) : null
             return <button type="button" className={`qi-item rv-question-card${selected?.id === row.id ? ' is-on' : ''}`} key={row.id} aria-current={selected?.id === row.id ? 'true' : undefined} onClick={() => openQuestion(row.id)}>

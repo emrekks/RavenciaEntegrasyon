@@ -16,6 +16,7 @@ import { formatMoney } from '../../shared/format-money'
 import { periodTrend as trend, channelTotals, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, periodFigures, prefetchInTurn, presetLabels, presetOrder, primaryCurrency, revenueReport, type DashboardChannel, type DayPoint, type Performance, type Range } from './dashboard-performance'
 import { smoothPath } from './smooth-path'
 import { IntegrationStatusPanel, knownCount, useIntegrationHealth, type DashboardMetrics } from './IntegrationStatusPanel'
+import { EmptyState } from '../../shared/components/EmptyState'
 
 // The overview page, as drawn in docs/tasarim-onerileri/genel-bakis-yeni.html.
 
@@ -331,14 +332,14 @@ export function DashboardPage() {
       </p>}
       <div className="rr-pf-body">
         <div className="rr-pf-chart"><b className="rr-pf-label">{chartValues[metric][2]}{channel === 'ALL' ? '' : ` · ${selectedName}`}</b>
-          {loading ? <div className="rr-chart rr-chart-wait" aria-hidden="true" style={{ aspectRatio: '760 / 260' }} /> : series.some(point => chartValues[metric][0](point) > 0) ? <RevenueChart key={metric} hourly={hourly} points={series} previous={previousSeries} currency={currency} value={chartValues[metric][0]} axis={chartValues[metric][1]} /> : <div className="rr-empty"><span className="rr-ei"><RrIcon name="box" /></span><b>Gelir Verisi Yok</b><span className="rr-lead">Bu dönem için gelir verisi bulunmuyor.</span></div>}
+          {loading ? <div className="rr-chart rr-chart-wait" aria-hidden="true" style={{ aspectRatio: '760 / 260' }} /> : series.some(point => chartValues[metric][0](point) > 0) ? <RevenueChart key={metric} hourly={hourly} points={series} previous={previousSeries} currency={currency} value={chartValues[metric][0]} axis={chartValues[metric][1]} /> : <EmptyState icon="chart" title="Gelir Verisi Yok">Bu dönem için gelir verisi bulunmuyor.</EmptyState>}
           <div className="rr-legend"><span><i className="rr-lg-cur" />Bu Dönem</span><span><i className="rr-lg-prev" />Önceki Dönem</span></div></div>
         <div className="rr-pf-chan">
           <div className="rr-pf-chan-h"><b>Kanallara Göre Ciro</b>{selected && <span className="rr-ftag"><RrLogo code={selected.platformCode} />{selectedName}<button type="button" onClick={() => setChannel('ALL')} aria-label="Mağaza süzgecini kaldır"><RrIcon name="close" /></button></span>}</div>
           {channelShares.length ? <>
             <span className="rr-stack" aria-hidden="true">{channelShares.map(item => <i key={item.connectionId} style={{ width: `${item.share}%`, background: item.color }} />)}</span>
             <div className={`rr-crows${performance.isPlaceholderData ? ' rr-crows-wait' : ''}`}>{channelShares.map(item => { const on = channel === item.connectionId; const delta = trend(item.amount, item.previousAmount); return <button key={item.connectionId} type="button" className={`rr-crow${on ? ' rr-on' : channel !== 'ALL' ? ' rr-dim' : ''}`} aria-pressed={on} onClick={() => setChannel(on ? 'ALL' : item.connectionId)}><RrLogo code={item.platformCode} /><span className="rr-ct"><span><b>{item.name}</b><small className="rr-num">{money(item.amount, currency)}</small></span><span className="rr-cbar"><i style={{ width: `${item.share}%`, background: item.color }} /></span></span><span className="rr-cv"><b className="rr-num">%{item.share.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}</b>{delta ? <small className={`rr-num ${delta[1] ? 'rr-up' : 'rr-down'}`}>{delta[1] ? '+' : ''}{delta[0]}</small> : <small className="rr-num">—</small>}</span></button> })}</div>
-          </> : <div className="rr-empty"><span className="rr-ei"><RrIcon name="box" /></span><b>Kanal Dağılımı Yok</b><span className="rr-lead">Bu dönem için kanal dağılımı bulunmuyor.</span></div>}
+          </> : <EmptyState icon="platforms" title="Kanal Dağılımı Yok">Bu dönem için kanal dağılımı bulunmuyor.</EmptyState>}
           <Link className="rr-btn rr-link" to="/integrations">Kanalları Yönet <RrIcon name="arrowR" /></Link>
         </div>
       </div>
