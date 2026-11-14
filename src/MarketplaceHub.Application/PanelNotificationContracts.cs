@@ -36,8 +36,9 @@ public static class PanelNotificationSeverities
 {
     public const string Success = "SUCCESS";
     public const string Error = "ERROR";
+    public const string Warning = "WARNING";
     public const string Info = "INFO";
-    public static readonly IReadOnlyList<string> All = [Success, Error, Info];
+    public static readonly IReadOnlyList<string> All = [Success, Error, Warning, Info];
 }
 
 // What a notification is about; the browser derives it from the notification's subject (an order, a product...) or its

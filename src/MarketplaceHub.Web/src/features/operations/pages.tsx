@@ -408,7 +408,7 @@ export function JobsPage({ me }: { me: Me }) {
   const platformGroups = useMemo<FilterMenuGroup[]>(() => [{ options: platformOptions.map(code => ({ value: code, label: jobPlatformLabel(code), mark: <RrLogo code={code} /> })) }], [platformOptions])
   const cardFilterCount = [platforms.length > 0, Boolean(direction), Boolean(status), timeRange !== '24h'].filter(Boolean).length
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [feedback, setFeedback] = useState<{ message: string; tone: 'success' | 'danger' | 'info'; context?: NotificationContext } | null>(null)
+  const [feedback, setFeedback] = useState<{ message: string; tone: 'success' | 'danger' | 'info' | 'warning'; context?: NotificationContext } | null>(null)
   useEffect(() => {
     if (!feedback) return
     appendNotification({ ...feedback.context, message: feedback.message, kind: feedback.tone === 'danger' ? 'error' : feedback.tone })

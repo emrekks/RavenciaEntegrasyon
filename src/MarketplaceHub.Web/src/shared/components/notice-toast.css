@@ -12,6 +12,7 @@
 .app-toast-success { --app-toast-tone: var(--rv-color-accent); }
 .app-toast-error { --app-toast-tone: var(--rv-color-danger); }
 .app-toast-info { --app-toast-tone: var(--rv-color-info); }
+.app-toast-warning { --app-toast-tone: var(--rv-color-warning); }
 .app-toast-pending { --app-toast-tone: var(--rv-color-primary); }
 .app-toast-icon { display: grid; width: 36px; height: 36px; place-items: center; color: var(--app-toast-tone); background: color-mix(in srgb, var(--app-toast-tone) 16%, transparent); border-radius: 7px; }
 .app-toast-icon svg { width: 20px; height: 20px; }

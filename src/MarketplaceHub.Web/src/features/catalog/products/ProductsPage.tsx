@@ -16,7 +16,7 @@ import { productPlatformDisplayLabel, productPlatformDisplayState, withProductPl
 import { nextProductCatalogSort, parseProductCatalogSort, productCatalogSortOptions, productCatalogSortValue, type ProductCatalogSort } from '../product-catalog-sorting'
 import { activeProductSyncJobs as filterActiveProductSyncJobs, productSyncJobsPath, settleTrackedProductSyncJobs, trackProductSyncJobs } from '../product-sync-tracking'
 import { productImportConnection, singleProductLookupHint, singleProductLookupLabel } from '../product-import-platforms'
-import { productImportChoiceSummary, productImportModeDescription, productImportNeedsChoice, productImportOptionVisibility as getProductImportOptionVisibility, productImportWritesContent, productImportWritesPriceStock, productImportOverwriteConfirmation, productImportPriceStockLabel, type ProductImportMethod, type ProductImportMode } from '../product-import-options'
+import { productImportChoiceSummary, productImportModeDescription, productImportNeedsChoice, productImportOptionVisibility as getProductImportOptionVisibility, productImportWritesContent, productImportWritesPriceStock, productImportOverwriteConfirmation, productImportStartedMessage, type ProductImportMethod, type ProductImportMode } from '../product-import-options'
 import { productPlatformFilterGroups } from '../product-platform-filter'
 import { QUICK_EDIT_SYNC_KEYS } from '../quick-price-edit'
 import { bulkStatusPlan, bulkStatusResultMessage, runInChunks } from '../bulk-status-run'
@@ -515,7 +515,7 @@ export function ProductsPage() {
   // A quick edit changes what the product editor shows too (panel price, channel prices, stock): both refresh.
   const refreshQuickEdit = () => Promise.all(QUICK_EDIT_SYNC_KEYS.map(queryKey => client.invalidateQueries({ queryKey })))
   // Each result lands below the toasts already shown and goes to the notification history.
-  function showProductToast(title: string, message: string, kind: 'success' | 'error' | 'info', context?: NotificationContext, shape: { lines?: string[]; persistent?: boolean } = {}) {
+  function showProductToast(title: string, message: string, kind: 'success' | 'error' | 'info' | 'warning', context?: NotificationContext, shape: { lines?: string[]; persistent?: boolean } = {}) {
     appendNotification({ ...context, title, message, kind })
     toastStack.show({ kind, title, message, lines: shape.lines, durationMs: shape.persistent ? undefined : shape.lines?.length ? 8000 : 4000 })
   }
@@ -562,10 +562,16 @@ export function ProductsPage() {
         return hubApi<AcceptedJob>(`/connections/${connectionId}/product-sync-jobs?${query.toString()}`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' })
       }))
       setTrackedProductImportJobIds(current => trackProductSyncJobs(current, queuedProductSyncJobs.map(job => job.jobId)))
-      const modeLabel = productImportMethod === 'SINGLE' ? 'tek ürün' : full ? 'tam katalog' : productImportMode === 'NEW_ONLY' ? 'yeni ürün' : productImportMode === 'MAPPING_ONLY' ? 'ürün eşleme' : 'mevcut ürün güncelleme'
-      const contentLabel = productImportMethod === 'BULK' && (full || existingOnly) ? productImportChoices.updateExisting ? ' · mevcut ürün bilgileri güncellenecek' : ' · mevcut ürün bilgileri korunacak' : ''
-       const priceStockLabel = (productImportMethod === 'SINGLE' || existingOnly) && productImportOptions.showPriceStock ? productImportPriceStockLabel(productImportChoices.updatePrices, productImportChoices.updateStock) : ''
-       showProductToast('Ürün Aktarımı Kuyruğa Alındı', `${productImportConnectionIds.length} bağlantı için ${modeLabel} aktarımı kuyruğa alındı${productImportIncludeArchived ? selectedImportHasShopify ? ' · arşiv ve taslak ürünler dahil' : ' · arşiv ürünleri dahil' : ''}${includePendingApproval ? ' · onay bekleyen ürünler dahil' : ''}${contentLabel}${priceStockLabel}.`, 'info')
+      const scope = productImportMethod === 'SINGLE' ? 'single' as const : full ? 'full' as const : productImportMode === 'NEW_ONLY' ? 'new' as const : productImportMode === 'MAPPING_ONLY' ? 'mapping' as const : 'existing' as const
+      showProductToast('Ürün Aktarımı Başladı', productImportStartedMessage({
+        connectionCount: productImportConnectionIds.length,
+        scope,
+        includeArchived: productImportIncludeArchived,
+        includeDrafts: productImportIncludeArchived && selectedImportHasShopify,
+        includePendingApproval,
+        contentChoice: productImportMethod === 'BULK' && (full || existingOnly) ? productImportChoices.updateExisting : null,
+        priceStock: (productImportMethod === 'SINGLE' || existingOnly) && productImportOptions.showPriceStock ? { updatePrices: productImportChoices.updatePrices, updateStock: productImportChoices.updateStock } : null
+      }), 'info')
       void productSyncJobsQuery.refetch()
       void client.invalidateQueries({ queryKey: ['jobs'] })
     } catch (err) {

@@ -68,7 +68,7 @@ export function MissingValueMappingDialog({ connectionId, platformName, category
       await refreshMappingConflicts(client, connectionId)
     } finally { setSaving(false) }
     if (result.failures.length) {
-      setError(`${result.saved} eşleme kaydedildi, ${result.failures.length} eşleme kaydedilemedi: ${result.failures.map(failure => `${failure.item.fix.valueLabel || failure.item.fix.attributeName}: ${mappingSaveErrorMessage(failure.error, 'kaydedilemedi')}`).join(' · ')}`)
+      setError(`${result.saved} eşleme kaydedildi, ${result.failures.length} eşleme kaydedilemedi: ${result.failures.map(failure => `${failure.item.fix.valueLabel || failure.item.fix.attributeName}: ${mappingSaveErrorMessage(failure.error, 'kaydedilemedi')}`).join('; ')}`)
       return
     }
     onSaved(result.saved ? `${result.saved} değer eşlemesi kaydedildi. Diğer kategoriler de bu eşlemeyi kullanacak.` : 'Kaydedilecek seçim yapılmadı.')

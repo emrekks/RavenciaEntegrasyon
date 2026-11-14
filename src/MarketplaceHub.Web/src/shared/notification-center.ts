@@ -2,6 +2,7 @@ import { backgroundPollInit, hubApi, isPermanentRequestError } from './api'
 import { istanbulDayBoundary } from './format-date'
 import { readStoredItem, writeStoredItem } from './local-storage'
 import { readNotificationHistory, registerNotificationSink, type AppNotification, type NotificationSink, type NotificationSubjectKind } from './notifications'
+import { presentNotification } from './notification-describe'
 import { scopedStorageKey } from './storage-scope'
 
 // The notification center: the server's copy of every notification the bell shows, kept a week (İşlem Takibi ›
@@ -10,13 +11,13 @@ import { scopedStorageKey } from './storage-scope'
 // notification from the bell (Temizle) only dismisses it for the bell; the center keeps listing it until its week is over.
 
 export type NotificationCategory = 'ORDER' | 'PACKAGE' | 'INVOICE' | 'RETURN' | 'PRODUCT' | 'CONNECTION' | 'JOB' | 'MAPPING' | 'QUESTION' | 'IMPORT' | 'ACCOUNT' | 'ATTENTION' | 'OTHER'
-export type NotificationSeverity = 'SUCCESS' | 'ERROR' | 'INFO'
+export type NotificationSeverity = 'SUCCESS' | 'ERROR' | 'WARNING' | 'INFO'
 
 export const notificationCategoryLabels: Record<NotificationCategory, string> = {
   ORDER: 'Sipariş', PACKAGE: 'Gönderi', INVOICE: 'Fatura', RETURN: 'İade', PRODUCT: 'Ürün', CONNECTION: 'Entegrasyon', JOB: 'İşlem',
   MAPPING: 'Eşleştirme', QUESTION: 'Müşteri Sorusu', IMPORT: 'Aktarım', ACCOUNT: 'Hesap', ATTENTION: 'Arka Plan Uyarısı', OTHER: 'Diğer'
 }
-export const notificationSeverityLabels: Record<NotificationSeverity, string> = { ERROR: 'Hata', SUCCESS: 'Başarılı', INFO: 'Bilgi' }
+export const notificationSeverityLabels: Record<NotificationSeverity, string> = { ERROR: 'Hata', WARNING: 'Uyarı', SUCCESS: 'Başarılı', INFO: 'Bilgi' }
 
 export type CenterNotification = {
   id: string
@@ -58,7 +59,7 @@ export function notificationCategory(notification: Pick<AppNotification, 'groupK
   return pathCategories.find(([pattern]) => pattern.test(href))?.[1] ?? 'OTHER'
 }
 
-const severities: Record<AppNotification['kind'], NotificationSeverity> = { success: 'SUCCESS', error: 'ERROR', info: 'INFO' }
+const severities: Record<AppNotification['kind'], NotificationSeverity> = { success: 'SUCCESS', error: 'ERROR', warning: 'WARNING', info: 'INFO' }
 const maximumPayload = 15_000
 
 /** What the server keeps of a bell notification: the fields it filters by, and the whole notification for the card. */
@@ -69,7 +70,8 @@ export function centerInput(notification: AppNotification) {
     clientKey: notification.id,
     severity: severities[notification.kind],
     category: notificationCategory(notification),
-    title: notification.title ?? null,
+    // Without a producer title the row is titled like the bell card (never the sentence cut at 80 characters).
+    title: notification.title ?? presentNotification(notification).title,
     message: notification.message,
     href: notification.href ?? null,
     actionLabel: notification.actionLabel ?? null,

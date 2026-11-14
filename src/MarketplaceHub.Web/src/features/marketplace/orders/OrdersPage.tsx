@@ -775,9 +775,9 @@ function ShopifyBulkStatusModal({ kind, items, onClose, onFeedback, onUpdated }:
         : orderStatusLabel(status)
       const noun = isInvoice ? 'fatura durumu' : 'sipariş durumu'
       const prefix = `${succeeded.length}/${items.length} Shopify siparişinin ${noun} “${statusName}” olarak güncellendi.`
-      const failureDetails = failed.slice(0, 4).map(result => `${displayOrderNumber(result.item.orderNumber)}: ${result.error}`).join(' · ')
-      const remainingFailures = failed.length > 4 ? ` · ${failed.length - 4} ek hata` : ''
-      onFeedback(failed.length ? `${prefix} Başarısız: ${failureDetails}${remainingFailures}` : prefix, failed.length === 0 ? 'success' : 'error')
+      const failureDetails = failed.slice(0, 4).map(result => `${displayOrderNumber(result.item.orderNumber)}: ${result.error}`).join('; ')
+      const remainingFailures = failed.length > 4 ? `; ${failed.length - 4} sipariş daha` : ''
+      onFeedback(failed.length ? `${prefix} ${failed.length} sipariş işlenemedi: ${failureDetails}${remainingFailures}.` : prefix, failed.length === 0 ? 'success' : 'error')
       onClose()
     }
   })

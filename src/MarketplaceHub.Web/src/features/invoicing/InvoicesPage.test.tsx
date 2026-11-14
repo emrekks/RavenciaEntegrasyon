@@ -426,7 +426,7 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     expect(apiState.statusUpdates).toEqual([{ path: '/invoice-workspace/manual-status', status: 'UPLOADED', packageIds: ['shopify-package-1', 'shopify-package-2'] }])
     expect(apiState.uploads).toEqual([])
     expect(container.querySelector('[role="dialog"]')).toBeNull()
-    expect(container.textContent).toContain('2 siparişin fatura durumu')
+    expect(container.textContent).toContain('2 sipariş “Faturası yüklendi” olarak işaretlendi')
   })
 })
 
