@@ -62,7 +62,7 @@ public static class MarketplaceEndpoints
             var result = await n11.ShipmentTemplatesAsync(tenant.TenantId, id, http.RequestAborted);
             return result.IsSuccess ? Results.Ok(result.Value) : Problem(http, MarketplaceErrorStatus.ToServiceError(result.Error));
         }).RequireSameOriginFetch();
-        api.MapPut("/connections/{id:guid}/active", async (Guid id, ActiveCommand command, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.SetActiveAsync(tenant.TenantId, id, version, command.Active, http.RequestAborted), x => x.Version) : failure! : MissingContext(http));
+        api.MapPut("/connections/{id:guid}/active", async (Guid id, ActiveCommand command, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.SetActiveAsync(tenant.TenantId, id, version, command.Active, http.RequestAborted), x => x.Version) : failure! : MissingContext(http)).WithServerBudget();
         api.MapPost("/connections/{id:guid}/initial-data-sync-jobs", async (Guid id, HttpContext http, IMarketplaceConnectionService service) =>
         {
             if (Tenant(http) is not { } tenant || RequireIdempotency(http) is not null) return MissingContext(http);

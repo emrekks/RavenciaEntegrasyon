@@ -623,6 +623,9 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
                     // Trendyol quantity refusals of packages superseded by their split children, or no longer listed.
                     var superseded = await issues.ResolveSupersededPackageQuantityIssuesAsync(TimeSpan.FromDays(3), stoppingToken);
                     if (superseded > 0) logger.LogInformation("Issue retention resolved {Count} package quantity refusal(s) of superseded or removed Trendyol packages", superseded);
+                    // Return lines reported as unlinked whose line has since been linked to its order line.
+                    var linked = await issues.ResolveLinkedReturnLineIssuesAsync(stoppingToken);
+                    if (linked > 0) logger.LogInformation("Issue retention resolved {Count} return line notice(s) whose line is linked now", linked);
                     var deleted = await issues.DeleteResolvedAsync(resolvedRetention, stoppingToken);
                     if (deleted > 0) logger.LogInformation("Issue retention deleted {Count} resolved operational issue(s) not seen for {Days} days", deleted, resolvedRetention.TotalDays);
                 }

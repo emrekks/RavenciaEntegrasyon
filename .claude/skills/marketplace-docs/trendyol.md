@@ -21,7 +21,10 @@ Code: `Adapters/Trendyol/` — `TrendyolHttpClient.cs` (+ `.Webhooks.cs`), `Tren
   holds a day. 40% of the order quota is reserved for foreground work.
 - Stream: at least 5 s between pages of one query (docs); code waits 1 s between new queries.
 - Group limits since 14 Sep 2026: Product Read 1000-2000/min, Product Write 200-600/min, Inventory & Price Write
-  350-2000/min, per-barcode price 30/min, claim approve/reject 5/min, finance 100/min, brand/category lists 50/min.
+  350-2000/min, per-barcode price 30/min, claim approve/reject 5/min, finance 100/min. Brand and category lists
+  (Marka Listesi, Kategori Listesi, its attributes and values) count in Product Integration Read (1000-2000/min); the
+  "TY Marka/Kategori Listesi 50 req/min" rows are the table valid until 14 Sep 2026 (offline doc
+  `trendyol-api-son.md:503-526` vs `:572-575`; corrected 14 Nov 2026).
   Code models claim approve/reject (5/min per seller, every non-GET under `claims/`) and finance (`finance/che`,
   100/min per seller) as their own quotas (`TrendyolResilienceHandler.GroupQuotaFor`, 13 Nov 2026); the others are
   covered by the tighter 50/10 s cap. Claim approve/reject also has its own circuit (`order:claim-actions`): before

@@ -64,7 +64,11 @@ public sealed class PanelFactoryResetService(AppDbContext db, TimeProvider timeP
         if (!(typed == ConfirmationWord || !full && typed == PartialConfirmationWord))
             return Invalid("confirmation", full ? $"Bütün veri türleri seçili: bu Paneli Tamamen Sıfırla demektir. Onay alanına tam olarak {ConfirmationWord} yazın." : "Onay alanına tam olarak Verileri sil yazın.");
 
-        // A second request while one is queued or running answers with that one.
+        // A second request while one is queued or running answers with that one. The check and the insert run under the
+        // tenant's reset lock (audit 14 Nov 2026): two requests at once used to queue two resets, and each one kept the
+        // other (and every job of the tenant) from being leased.
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({RequestLockKey(tenantId)})", cancellationToken);
         if (!await db.IntegrationJobs.AnyAsync(x => x.TenantId == tenantId && x.JobType == PanelJobTypes.FactoryReset && OpenJobStatuses.Contains(x.Status), cancellationToken))
         {
             var now = timeProvider.GetUtcNow();
@@ -95,7 +99,15 @@ public sealed class PanelFactoryResetService(AppDbContext db, TimeProvider timeP
             });
             await db.SaveChangesAsync(cancellationToken);
         }
+        await transaction.CommitAsync(cancellationToken);
         return ServiceResult<PanelFactoryResetView>.Ok(await ViewAsync(tenantId, cancellationToken));
+    }
+
+    // The tenant's reset request lock key: the tenant id's two halves folded together with a fixed tag.
+    internal static long RequestLockKey(Guid tenantId)
+    {
+        var bytes = tenantId.ToByteArray();
+        return unchecked(BitConverter.ToInt64(bytes, 0) ^ BitConverter.ToInt64(bytes, 8) ^ 0x5052_5354_5245_5154L);
     }
 
     private static IReadOnlyList<PanelResetGroup> ChosenOf(Payload payload) =>
@@ -212,6 +224,7 @@ public sealed class PanelFactoryResetService(AppDbContext db, TimeProvider timeP
         {
             "integration.jobs" => """ AND "Id" <> @job""",
             "integration.job_attempts" or "integration.job_read_summaries" or "integration.job_variant_results" => """ AND "JobId" <> @job""",
+            "ops.operational_issues" => PendingWebhookRetryKeep,
             _ => string.Empty
         };
         var filter = $"""
@@ -264,8 +277,15 @@ public sealed class PanelFactoryResetService(AppDbContext db, TimeProvider timeP
             $""" AND NOT ("AggregateType" = 'Tenant' AND "OperationType" = 'reset') AND NOT ("AggregateType" = 'IntegrationJob' AND "AggregateId" IN (SELECT "Id" FROM integration.jobs WHERE "TenantId" = @tenant AND "JobType" = '{PanelJobTypes.FactoryReset}'))""",
         "ops.audit_logs" => """ AND "Action" NOT IN ('PANEL_FACTORY_RESET', 'PANEL_DATA_RESET')""",
         "dashboard.snapshot" => " AND false",
+        "ops.operational_issues" => PendingWebhookRetryKeep,
         _ => string.Empty
     };
+
+    // An open webhook-pause: / webhook-resume: record is not a notice but the hourly upkeep's work list (a close or an
+    // opening at the marketplace still owed, InstantNotificationService.RetryConnectionWebhooksAsync), so a reset keeps
+    // it: deleting it left the webhook open on a passive connection with nothing to retry it (audit 14 Nov 2026).
+    internal static readonly string PendingWebhookRetryKeep =
+        $""" AND NOT ("Status" <> '{IssueStatus.Resolved}' AND ("DedupeKey" LIKE '{InstantNotificationService.PausePendingPrefix}%' OR "DedupeKey" LIKE '{InstantNotificationService.ResumePendingPrefix}%'))""";
 
     // The settings tables a connection keeps; a deleted connection's rows in them go with it.
     private static readonly string[] ConnectionSettingTables =

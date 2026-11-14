@@ -60,6 +60,17 @@ internal static class RejectedOrderRereadPolicy
         return kept;
     }
 
+    // Orders an open refusal notice names (MarketplaceJobProcessor.RefusedOrdersToRereadAsync): they waited already, so
+    // their first try is due now. An order already listed keeps its entry; a full list takes no more.
+    public static IReadOnlyList<Entry> Seed(IReadOnlyList<Entry> entries, IEnumerable<string> orderIds, DateTimeOffset now)
+    {
+        var listed = entries.ToList();
+        var known = listed.Select(entry => entry.OrderId).ToHashSet(StringComparer.Ordinal);
+        foreach (var orderId in orderIds.Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id.Trim()))
+            if (listed.Count < MaxTracked && known.Add(orderId)) listed.Add(new Entry(orderId, 0, now));
+        return listed;
+    }
+
     public const string OverflowIssueCode = "ORDER_REREAD_LIST_FULL";
 
     public static string OverflowSummary(IReadOnlyList<string> dropped) =>

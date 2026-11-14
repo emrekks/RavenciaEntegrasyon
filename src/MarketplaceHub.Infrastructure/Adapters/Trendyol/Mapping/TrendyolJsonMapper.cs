@@ -243,7 +243,11 @@ public static class TrendyolJsonMapper
                     .First();
                 var quantity = group.Sum(x => x.candidate.Package.Allocations
                     .Where(allocation => string.Equals(allocation.ExternalLineId, x.line.ExternalLineId, StringComparison.Ordinal))
-                    .Select(allocation => allocation.AllocatedQuantity)
+                    // A line's ordered quantity is what its packages hold active plus what they cancelled. Trendyol never
+                    // reports a cancelled quantity here (0); PttAVM and Pazarama allocate a cancelled line as 0 active and
+                    // its quantity cancelled, and counting only the active part made it 0 ordered with 1 cancelled, which
+                    // the package check refused (audit 14 Nov 2026: PTT-1C2OSLF2R-120926 was never imported).
+                    .Select(allocation => allocation.AllocatedQuantity + allocation.CancelledQuantity)
                     .DefaultIfEmpty(x.line.Quantity)
                     .Sum());
                 return metadata with { Quantity = quantity };
