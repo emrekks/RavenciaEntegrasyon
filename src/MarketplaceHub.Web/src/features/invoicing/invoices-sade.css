@@ -363,3 +363,16 @@ html body .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-
 .app-shell.stitch-shell main .invoices-page .invoice-reference-product-summary > small { white-space: nowrap; }
 /* Invoice facts: a little more height in each row. */
 html body .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary-facts > div { min-height: 46px; padding-block: 10px; }
+
+/* owner, 14 Nov evening: Faturalar follows the Siparişler and İadeler tables - every head and body cell has the same 12px
+   gap on its left and right (the row checkbox sits in the order cell's 12px gap, the order content 28px after it), a head's
+   filter button follows its label, and the Alıcı column is wide enough for a typical full name on one line. */
+@media (min-width: 1025px) {
+:root:root:root body .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-head, .invoice-reference-row) { grid-template-columns: minmax(0, 192fr) minmax(0, 146fr) minmax(0, 150fr) minmax(0, 150fr) minmax(0, 150fr) minmax(0, 117fr) minmax(0, 128fr); }
+:root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head > * { padding-inline: 12px; }
+:root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head :is(.order-column-filter, .invoice-reference-platform-heading) { gap: 4px; }
+:root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head .order-column-filter-trigger { position: static; transform: none; }
+:root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row > div { padding-inline: 12px; }
+:root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row > .invoice-reference-order > input.invoice-reference-select { left: 12px; }
+:root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row > .invoice-reference-order > :not(input) { margin-left: 28px; }
+}
