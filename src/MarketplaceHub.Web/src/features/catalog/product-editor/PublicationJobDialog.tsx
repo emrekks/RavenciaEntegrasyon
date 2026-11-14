@@ -77,7 +77,7 @@ export function PublicationJobDialog({ jobId, platformCode, platformName, storeN
   const attempts = detail.data?.attempts ?? []
   const facts: Array<[string, string | null]> = job ? [
     ['Durum', statusText],
-    ['İşlem', presentation ? `${presentation.area} · ${presentation.action}` : job.jobType],
+    ['İşlem', presentation ? presentation.action : job.jobType],
     ['İlerleme', progress],
     ['Deneme', jobAttemptsText(job)],
     ['Durum Kontrolü', job.waitingChecks ? String(job.waitingChecks) : null],

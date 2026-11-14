@@ -7,7 +7,7 @@ import type { JobDirection } from './job-presentation'
 // Every default is left out of the address. `platform` keeps its own reader (job-list-query.ts).
 
 export type JobStatusChip = 'success' | 'running' | 'waiting' | 'error' | 'cancelled'
-export type JobStatusCode = 'PENDING' | 'LEASED' | 'RETRY_SCHEDULED' | 'BLOCKED' | 'MANUAL_REVIEW' | 'SUCCEEDED' | 'DEAD' | 'CANCELLED'
+export type JobStatusCode = 'PENDING' | 'LEASED' | 'RETRY_SCHEDULED' | 'CONTINUING' | 'BLOCKED' | 'MANUAL_REVIEW' | 'SUCCEEDED' | 'DEAD' | 'CANCELLED'
 
 export type JobsViewState = {
   category: JobCategory
@@ -24,7 +24,7 @@ const categorySlugs: Record<JobCategory, string> = { ALL: '', ORDERS: 'siparis',
 const directionSlugs: Record<JobDirection, string> = { Okuma: 'okuma', Yazma: 'yazma', Bildirim: 'bildirim', 'Panel İçi': 'panel' }
 const chipSlugs: Record<JobStatusChip, string> = { success: 'basarili', running: 'calisiyor', waiting: 'bekliyor', error: 'hata', cancelled: 'iptal' }
 const rangeSlugs: Record<JobListTimeRange, string> = { '24h': '', '7d': '7g', today: 'bugun', week: 'hafta', month: 'ay', '30d': '30g', year: 'yil', all: 'tum' }
-const statusCodes: readonly JobStatusCode[] = ['PENDING', 'LEASED', 'RETRY_SCHEDULED', 'BLOCKED', 'MANUAL_REVIEW', 'SUCCEEDED', 'DEAD', 'CANCELLED']
+const statusCodes: readonly JobStatusCode[] = ['PENDING', 'LEASED', 'RETRY_SCHEDULED', 'CONTINUING', 'BLOCKED', 'MANUAL_REVIEW', 'SUCCEEDED', 'DEAD', 'CANCELLED']
 export const jobPageSizes = [20, 50, 100, 200] as const
 const defaultPageSize = 20
 
