@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { Fragment, createContext, useContext, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router'
 import { hubApi } from '../../shared/api'
@@ -6,6 +6,11 @@ import { Busy, CardBackgroundIcon, EmptyState, ErrorBox, Modal, Pager, UiIcon, t
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { formatIstanbul, istanbulDateKey } from '../../shared/format-date'
 import { valueWithUnit } from '../../shared/metric-value'
+import { useMetricSource } from '../marketplace/use-metric-source'
+
+// Whether an active connection (of the chosen platforms) feeds the report's figures: without one every main value is a dash
+// (shared rule, shared/metric-value.ts). Undefined while the connections are not read.
+const MetricSourceContext = createContext<boolean | undefined>(undefined)
 import { PlatformFilter } from '../../shared/PlatformFilter'
 import { PanelSelect } from '../../shared/PanelSelect'
 import { ViewTabsWithMore } from '../../shared/view-tabs'
@@ -94,6 +99,7 @@ export function ReportsPage() {
   const matching = presets.filter(preset => preset.range.from === range.from && preset.range.to === range.to)
   const activePreset = (matching.find(preset => preset.key === pickedPreset) ?? matching[0])?.key ?? null
   const [platforms, setPlatforms] = useState<string[] | null>(null)
+  const metricSource = useMetricSource({ platforms })
   const query = reportQuery({ from: range.from, to: range.to, platforms, granularity: '', includeTest: false })
   const report = useQuery({ queryKey: ['reports-sales', query], queryFn: () => hubApi<ReportSales>(`/reports/sales?${query}`), staleTime: 60_000, placeholderData: previous => previous })
   const data = report.data
@@ -111,7 +117,7 @@ export function ReportsPage() {
   // "Tümünü Gör": the area's tab, opened like any tab: from the page's top.
   const openDetail = (key: DetailKey) => { go(detailHome[key].view, detailHome[key].sub ?? null) }
 
-  return <section ref={page} className="content reports-page">
+  return <MetricSourceContext.Provider value={metricSource}><section ref={page} className="content reports-page">
     <div className="page-heading reports-heading">
       <div><p className="eyebrow">Analiz</p><h1>Raporlar</h1><p className="reports-lead">Satış, iade, iptal, kargo ve kârlılık; platform, şehir ve ürün kırılımıyla, önceki dönemle karşılaştırmalı.</p></div>    </div>
     <div className="reports-filters" role="search" aria-label="Rapor filtreleri">
@@ -146,7 +152,7 @@ export function ReportsPage() {
         </TabSlidePanel>
       </>
     })()}
-  </section>
+  </section></MetricSourceContext.Provider>
 }
 
 type ReportTab = { value: ViewKey; label: string; icon: UiIconName; count?: string; warn?: boolean }
@@ -507,6 +513,7 @@ const kpiIcon = (item: Kpi): CardIconName => item.icon ?? kpiIcons.find(([patter
 // goes to rows of three while its box would be too narrow for a label on one line, then two and one, as Genel Bakış's.
 // stack: one box a row on a phone only (a label too long for half a phone's width, Müşteriler).
 export function KpiStrip({ label, items, marks = true, aligned = false, long = false, stack = false }: { label: string; items: Kpi[]; marks?: boolean; aligned?: boolean; long?: boolean; stack?: boolean }) {
+  const hasSource = useContext(MetricSourceContext)
   const [ref, shown] = useReveal<HTMLDivElement>()
   const tip = useId()
   const [open, setOpen] = useState<{ key: string; left: number; top: number; width: number } | null>(null)
@@ -534,7 +541,7 @@ export function KpiStrip({ label, items, marks = true, aligned = false, long = f
           // With a "?" mark the tip belongs to the label: it closes as the pointer leaves it, not only the card.
           onMouseLeave={marks && !item.split?.length ? hide : undefined}
           onFocus={item.tip ? event => event.currentTarget.parentElement && show(item.key, event.currentTarget.parentElement) : undefined} onBlur={hide}>{item.label}{marks && item.tip && <TipMark />}</button>
-        <strong>{item.text ?? (item.value === null ? noValue : <Figure value={item.value} format={format} shown={shown} />)}</strong>
+        <strong>{hasSource === false ? noValue : item.text ?? (item.value === null ? noValue : <Figure value={item.value} format={format} shown={shown} />)}</strong>
         {/* The previous period's figure opens under the change chip on a tap, instead of always taking a line. */}
         {compares && <span className="reports-kpi-change">{item.delta !== undefined && (previousNote(item) ? <button type="button" className="reports-kpi-delta-toggle" aria-expanded={peek === item.key} onClick={() => setPeek(peek === item.key ? null : item.key)}><Delta delta={item.delta} invert={item.invert} /></button> : <Delta delta={item.delta} invert={item.invert} />)}</span>}
         {item.note !== undefined && (!previousNote(item) || peek === item.key) && <span className="reports-kpi-note">{wholeLiras(item.note)}</span>}
@@ -1238,6 +1245,7 @@ type HeroCardDef = {
 const fitChars = (value: string) => ({ '--chars': value.length }) as CSSProperties
 
 function HeroCard({ card, onMore }: { card: HeroCardDef; onMore: OpenDetail }) {
+  const noSource = useContext(MetricSourceContext) === false
   const tip = useId()
   const [ref, shown] = useReveal<HTMLElement>()
   const bar = card.bar
@@ -1251,7 +1259,7 @@ function HeroCard({ card, onMore }: { card: HeroCardDef; onMore: OpenDetail }) {
       </div>
       <div className="reports-hero">
         <button type="button" className="reports-tip-trigger reports-hero-value" aria-describedby={`${tip}-hero`}>
-          <strong className={card.tone ? `is-${card.tone}` : undefined} style={fitChars(card.value)}>{card.value}</strong>
+          <strong className={card.tone ? `is-${card.tone}` : undefined} style={fitChars(noSource ? noValue : card.value)}>{noSource ? noValue : card.value}</strong>
         </button>
         {card.aside && <span className="reports-hero-aside">{card.aside}</span>}
       </div>
@@ -1266,7 +1274,7 @@ function HeroCard({ card, onMore }: { card: HeroCardDef; onMore: OpenDetail }) {
       return <li key={row.key} className="reports-tip-host">
         <button type="button" className={`reports-hero-row${open ? '' : ' is-static'}`} onClick={open} aria-describedby={`${tip}-${row.key}`} aria-haspopup={row.onOpen ? 'dialog' : undefined}>
           <span className="reports-hero-row-label">{row.label}</span>
-          <strong className={[row.tone ? `is-${row.tone}` : '', row.text ? 'is-text' : ''].filter(Boolean).join(' ') || undefined}>{row.value}</strong>
+          <strong className={[row.tone ? `is-${row.tone}` : '', row.text ? 'is-text' : ''].filter(Boolean).join(' ') || undefined}>{noSource ? noValue : row.value}</strong>
         </button>
         <span role="tooltip" id={`${tip}-${row.key}`} className="reports-hover-tip"><TipText title={row.label} text={row.note} /></span>
       </li>

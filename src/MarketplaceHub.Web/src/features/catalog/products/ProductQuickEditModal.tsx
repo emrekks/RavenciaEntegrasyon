@@ -438,7 +438,7 @@ function QuickEditPriceCell({ column, followers, variant, product, connectionCou
       if (priceTarget.kind === 'panel') {
         await hubApi(`/variants/${priceTarget.variantId}/default-prices`, { method: 'PATCH', headers: { 'If-Match': `"v${priceTarget.version}"` }, body: JSON.stringify({ listPrice: prices.listPrice, salePrice: prices.salePrice, reason: 'Hızlı varyant fiyat düzenleme' }) })
         const failures = await writePanelFollowers(variant, followers, prices, 'Hızlı varyant fiyat düzenleme')
-        if (failures.length) { await onChanged().catch(() => undefined); failPrice(`panel fiyatı kaydedildi; ${failures.map(failure => failure.message).join(' · ')}`); return }
+        if (failures.length) { await onChanged().catch(() => undefined); failPrice(`panel fiyatı kaydedildi; ${failures.map(failure => failure.message).join('; ')}`); return }
       } else {
         // A marketplace cell is editable only while its "Özel Fiyat" is ticked: the price is stored as its own.
         const body = quickPriceBody(priceTarget, variant, prices, 'Hızlı varyant fiyat düzenleme', false)

@@ -7,7 +7,7 @@ export const OPERATION_FEEDBACK_TOAST_DURATION_MS = 3500
 
 export type OperationFeedback = {
   message: string
-  kind: 'success' | 'error' | 'info'
+  kind: 'success' | 'error' | 'info' | 'warning'
   persistent?: boolean
   /** A structured result (save + publish): its own title, one line per marketplace, and its own reading time. */
   title?: string

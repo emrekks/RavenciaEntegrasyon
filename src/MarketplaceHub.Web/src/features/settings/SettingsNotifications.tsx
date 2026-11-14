@@ -4,7 +4,7 @@ import { appendNotification } from '../../shared/notifications'
 
 const toastDurationMs = 5500
 
-export type SettingsNoticeKind = 'success' | 'error' | 'info'
+export type SettingsNoticeKind = 'success' | 'error' | 'info' | 'warning'
 export type SettingsNoticeState = { message: string; kind: SettingsNoticeKind }
 
 // Result message of a settings page, shown as the panel's standard notification. The caller always says whether it

@@ -33,7 +33,7 @@ type MarketplaceQuestion = {
   // NOT_DELIVERED: an earlier answer never reached the marketplace; pendingAnswerText is its text, kept as a draft.
   answerSubmissionStatus?: string | null; pendingAnswerText?: string | null
 }
-type Notice = { message: string; kind: 'success' | 'error' | 'info' }
+type Notice = { message: string; kind: 'success' | 'error' | 'info' | 'warning' }
 // A question the seller still has to answer: a new one, or one whose answer the marketplace rejected.
 // Hepsiburada's "rejected" is the question closed after the seller reported it; elsewhere a rejected answer may be
 // rewritten until the question expires (the same rule as the server's IsOpenRejection).

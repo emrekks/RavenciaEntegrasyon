@@ -36,6 +36,7 @@ import { formatPackageLabel } from '../../../shared/package-label'
 import { readUrlChoice, readUrlList, readUrlNumber, readUrlText, useChangeEffect, useListUrlSync } from '../../../shared/list-url-state'
 import { labelPersonalData, loadOrderLabelDetails, type OrderLabelDetail } from './shipping-label-data'
 import { OrderMetricCards } from './OrderMetricCards'
+import { useMetricSource } from '../use-metric-source'
 import { useResendReminder } from './resend-reminder'
 import { orderDetailQueryKey } from './order-query-keys'
 import { deliveryDueLine, deliveryText, dueLineTitle, orderRingDetail } from './order-delivery'
@@ -774,9 +775,9 @@ function ShopifyBulkStatusModal({ kind, items, onClose, onFeedback, onUpdated }:
         : orderStatusLabel(status)
       const noun = isInvoice ? 'fatura durumu' : 'sipariş durumu'
       const prefix = `${succeeded.length}/${items.length} Shopify siparişinin ${noun} “${statusName}” olarak güncellendi.`
-      const failureDetails = failed.slice(0, 4).map(result => `${displayOrderNumber(result.item.orderNumber)}: ${result.error}`).join(' · ')
-      const remainingFailures = failed.length > 4 ? ` · ${failed.length - 4} ek hata` : ''
-      onFeedback(failed.length ? `${prefix} Başarısız: ${failureDetails}${remainingFailures}` : prefix, failed.length === 0 ? 'success' : 'error')
+      const failureDetails = failed.slice(0, 4).map(result => `${displayOrderNumber(result.item.orderNumber)}: ${result.error}`).join('; ')
+      const remainingFailures = failed.length > 4 ? `; ${failed.length - 4} sipariş daha` : ''
+      onFeedback(failed.length ? `${prefix} ${failed.length} sipariş işlenemedi: ${failureDetails}${remainingFailures}.` : prefix, failed.length === 0 ? 'success' : 'error')
       onClose()
     }
   })
@@ -853,7 +854,7 @@ export function OrdersPage() {
   const providers = connections.data?.items.filter(x => x.platformCode === 'TRENDYOL_EFATURAM' && !x.lastErrorCode && (x.status === 'ACTIVE' || x.status === 'VERIFIED')) ?? []
   const marketplaceConnections = connections.data?.items.filter(isActiveMarketplaceConnection) ?? []
   // Without an active marketplace connection no card has a data source: its big number is a dash, not a zero (shared/metric-value.ts).
-  const noCardSource = connections.data !== undefined && marketplaceConnections.length === 0
+  const noCardSource = useMetricSource() === false
   const cardSource = <T extends { value: number | undefined }>(metric: T): T => noCardSource ? { ...metric, value: undefined } : metric
   const shopifyConnections = connections.data?.items.filter(x => x.platformCode === 'SHOPIFY') ?? []
   const allOrders = ordersQuery.data?.items ?? [];

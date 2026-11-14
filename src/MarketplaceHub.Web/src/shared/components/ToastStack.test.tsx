@@ -24,7 +24,7 @@ function render(children: React.ReactNode = null) {
   return host
 }
 
-const messages = () => [...host!.querySelectorAll('.app-toast-stack > .app-toast p')].map(item => item.textContent)
+const messages = () => [...host!.querySelectorAll('.app-toast-stack > .app-toast')].map(item => (item.querySelector('p') ?? item.querySelector('strong'))?.textContent)
 
 afterEach(() => {
   if (root) act(() => root?.unmount())

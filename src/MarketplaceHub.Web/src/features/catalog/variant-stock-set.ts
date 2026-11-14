@@ -57,7 +57,7 @@ export async function applyVariantStockSets(updates: VariantStockSet[], send: (u
 export function bulkEditSummary(total: number, failures: Array<{ sku: string; message: string }>) {
   const succeeded = total - failures.length
   if (!failures.length) return `${total} varyant başarıyla güncellendi.`
-  const details = failures.slice(0, 3).map(failure => `${failure.sku}: ${failure.message}`).join(' · ')
+  const details = failures.slice(0, 3).map(failure => `${failure.sku}: ${failure.message}`).join('; ')
   const more = failures.length > 3 ? ` (+${failures.length - 3} varyant daha)` : ''
   return `${succeeded} varyant güncellendi, ${failures.length} varyant güncellenemedi. ${details}${more}`
 }

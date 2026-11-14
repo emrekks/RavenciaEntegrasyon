@@ -15,6 +15,7 @@ import { formatIstanbul, istanbulDateKey } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
 import { periodTrend as trend, channelTotals, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, periodFigures, prefetchInTurn, presetLabels, presetOrder, primaryCurrency, revenueReport, type DashboardChannel, type DayPoint, type Performance, type Range } from './dashboard-performance'
 import { smoothPath } from './smooth-path'
+import { useMetricSource } from '../marketplace/use-metric-source'
 import { IntegrationStatusPanel, knownCount, useIntegrationHealth, type DashboardMetrics } from './IntegrationStatusPanel'
 import { EmptyState } from '../../shared/components/EmptyState'
 
@@ -124,7 +125,8 @@ function RevenueChart({ points, previous, currency, value = point => point.amoun
 // Option A of genel-bakis-platform-sekmeleri.html: one metric of the performance card. The cells that can be drawn
 // pick the chart's metric; the bar shows where the latest day sits between the weakest and the strongest one.
 // hint is a word or two beside the label ("İadeler Dahil"); tip says under the pointer how the figure is worked out.
-function KpiCell({ icon: cardIcon, label, hint, tip, value, delta, note, avgLabel = 'Günlük Ortalama', avg, min, max, position, on, onPick, loading, unit }: { icon: CardIconName; loading?: boolean; unit?: ReactNode; label: string; hint?: string; tip?: string; value: string; delta: [string, boolean] | null; note?: string; avgLabel?: string; avg: string; min: string; max: string; position: number; on?: boolean; onPick?: () => void }) {
+function KpiCell({ icon: cardIcon, label, hint, tip, value: readValue, noSource, delta, note, avgLabel = 'Günlük Ortalama', avg, min, max, position, on, onPick, loading, unit }: { icon: CardIconName; loading?: boolean; unit?: ReactNode; label: string; hint?: string; tip?: string; value: string; noSource?: boolean; delta: [string, boolean] | null; note?: string; avgLabel?: string; avg: string; min: string; max: string; position: number; on?: boolean; onPick?: () => void }) {
+  const value = noSource ? '—' : readValue
   return <div className={`rr-kc${on ? ' rr-on' : ''}${onPick ? ' rr-pick' : ''}${loading ? ' rr-kc-wait' : ''}`} title={tip} role={onPick ? 'tab' : undefined} aria-selected={onPick ? Boolean(on) : undefined} tabIndex={onPick ? 0 : undefined} onClick={onPick} onKeyDown={event => { if (onPick && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onPick() } }}>
     <CardBackgroundIcon name={cardIcon} />
     <small>{label}{hint && <span className="rr-kc-hint"> · {hint}</span>}</small><strong className={value === '—' ? 'rr-num rr-op-empty' : 'rr-num'}>{loading ? <span className="rr-kc-skel" role="status" aria-label="Yükleniyor" /> : <>{value}{unit && <span className="rr-op-x">{unit}</span>}</>}</strong>
@@ -177,6 +179,8 @@ export function DashboardPage() {
   const invoiceSummary = useQuery({ queryKey: ['invoice-workspace-summary'], queryFn: () => hubApi<{ dueSoonCount: number; uninvoicedCount?: number }>('/invoice-workspace/summary', poll), ...refresh })
   const productSummary = useQuery({ queryKey: ['products', 'summary'], queryFn: () => hubApi<ProductSummary>('/products/summary', poll), ...refresh })
   const integration = useIntegrationHealth()
+  // No active connection (or not the chosen store) feeds the cards: their big numbers read a dash (shared rule, shared/metric-value.ts).
+  const noSource = useMetricSource({ connectionId: channel }) === false
   // A custom range picked only halfway asks for nothing until its end is picked too.
   const days = periodDays(range, custom, today)
   // Today's cancellations, each counted on the day the marketplace says it happened.
@@ -266,7 +270,7 @@ export function DashboardPage() {
     ]
   })
   const dueSoon = knownCount(invoiceSummary.isLoading, invoiceSummary.data?.dueSoonCount)
-  const ops: Array<[CardIconName, string, number | null, 'warn' | 'bad' | '', string, Record<string, number> | BreakdownRow[] | undefined, ReactNode?]> = [
+  const opsRead: Array<[CardIconName, string, number | null, 'warn' | 'bad' | '', string, Record<string, number> | BreakdownRow[] | undefined, ReactNode?]> = [
     // "N Paket | M Adet Ürün": the units are left out while they are not known (an older API), never shown as 0.
     ['orders', 'Bekleyen Siparişler', knownCount(pendingSummary.isPending, pendingSummary.isError ? undefined : pending?.pending), 'warn', dashboardOperationalLinks.pendingOrders, pendingRows, <><span className="rr-op-unit">Paket</span>{pendingUnitTotal !== undefined && <>{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}{count(pendingUnitTotal)} <span className="rr-op-adet">Adet </span>Ürün</>}</>],
     ['clock', 'Geciken Siparişler', knownCount(bootstrap.isLoading, metrics?.lateOrders), 'bad', dashboardOperationalLinks.lateOrders, metrics?.lateByConnection],
@@ -280,6 +284,7 @@ export function DashboardPage() {
     // The same count as the product list's low-stock filter it opens.
     ['alertTriangle', 'Düşük Stok', knownCount(productSummary.isLoading, products?.lowStockCount), 'warn', dashboardOperationalLinks.lowStock, undefined],
   ]
+  const ops = noSource ? opsRead.map(row => { const next = [...row] as typeof row; next[2] = null; next[6] = undefined; return next }) : opsRead
   // The file is made from the data on screen only once it belongs to the chosen period and store.
   const reportReady = Boolean(data) && days !== null && !performance.isPlaceholderData && !performance.isFetching && data!.from === days.from && data!.to === days.to
   function downloadReport() {
@@ -319,10 +324,10 @@ export function DashboardPage() {
       </div></div>
       {days === null && <p className="rr-pf-note" role="status">Raporu görmek için bitiş tarihini de seçin.</p>}
       <div className="rr-kgrid" role="tablist" aria-label="Grafikte gösterilecek metrik">
-        <KpiCell icon="lira" loading={loading} label="Satış" tip={'Dönemde satılan her şey, iadeler dahil; iptaller hariç.\nRaporlar’daki Toplam Ciro ile aynı kuralla hesaplanır; mağaza seçiliyken, Raporlar’da platform süzgeci varken ya da TL dışında satış olduğunda iki tutar farklıdır. Net Ciro iadeleri düşer.'} avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loading ? '—' : money(total, currency)} delta={trend(total, previousTotal)} {...revenueStats} on={metric === 0} onPick={() => setMetric(0)} />
-        <KpiCell icon="orders" loading={loading} unit={<><span className="rr-op-unit">Sipariş</span>{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}{count(units)} Adet Ürün</>} label="Toplam Sipariş" tip={'Tutarı olan siparişler, iade edilenler dahil; iptaller hariç.\nRaporlar’daki Sipariş tutarı okunmayan ve TL dışındaki siparişleri de sayar.'} avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loadingValue(loading, orders)} delta={trend(orders, previousOrders)} {...orderStats} on={metric === 1} onPick={() => setMetric(1)} />
-        <KpiCell icon="bag" loading={loading} label="Ortalama Sepet" tip={'Ciro ÷ Toplam Sipariş, ikisi de iadeler dahil.'} avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loading || !basket ? '—' : money(basket, currency)} delta={trend(basket, previousBasket)} {...basketStats} on={metric === 2} onPick={() => setMetric(2)} />
-        <KpiCell icon="products" loading={productSummary.isLoading} label="Aktif Ürün" value={loadingValue(productSummary.isLoading, products?.activeCount)} delta={null} note={channel === 'ALL' ? 'Katalogdaki güncel durum' : 'Tüm platformlar'} avgLabel="Stoksuz ürün" avg={loadingValue(productSummary.isLoading, products?.outOfStockCount)} min={`Düşük stok ${loadingValue(productSummary.isLoading, products?.lowStockCount)}`} max={`Toplam ${loadingValue(productSummary.isLoading, products?.totalCount)}`} position={products?.totalCount ? products.activeCount / products.totalCount : 0} />
+        <KpiCell noSource={noSource} icon="lira" loading={loading} label="Satış" tip={'Dönemde satılan her şey, iadeler dahil; iptaller hariç.\nRaporlar’daki Toplam Ciro ile aynı kuralla hesaplanır; mağaza seçiliyken, Raporlar’da platform süzgeci varken ya da TL dışında satış olduğunda iki tutar farklıdır. Net Ciro iadeleri düşer.'} avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loading ? '—' : money(total, currency)} delta={trend(total, previousTotal)} {...revenueStats} on={metric === 0} onPick={() => setMetric(0)} />
+        <KpiCell noSource={noSource} icon="orders" loading={loading} unit={<><span className="rr-op-unit">Sipariş</span>{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}{count(units)} Adet Ürün</>} label="Toplam Sipariş" tip={'Tutarı olan siparişler, iade edilenler dahil; iptaller hariç.\nRaporlar’daki Sipariş tutarı okunmayan ve TL dışındaki siparişleri de sayar.'} avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loadingValue(loading, orders)} delta={trend(orders, previousOrders)} {...orderStats} on={metric === 1} onPick={() => setMetric(1)} />
+        <KpiCell noSource={noSource} icon="bag" loading={loading} label="Ortalama Sepet" tip={'Ciro ÷ Toplam Sipariş, ikisi de iadeler dahil.'} avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loading || !basket ? '—' : money(basket, currency)} delta={trend(basket, previousBasket)} {...basketStats} on={metric === 2} onPick={() => setMetric(2)} />
+        <KpiCell noSource={noSource} icon="products" loading={productSummary.isLoading} label="Aktif Ürün" value={loadingValue(productSummary.isLoading, products?.activeCount)} delta={null} note={channel === 'ALL' ? 'Katalogdaki güncel durum' : 'Tüm platformlar'} avgLabel="Stoksuz ürün" avg={loadingValue(productSummary.isLoading, products?.outOfStockCount)} min={`Düşük stok ${loadingValue(productSummary.isLoading, products?.lowStockCount)}`} max={`Toplam ${loadingValue(productSummary.isLoading, products?.totalCount)}`} position={products?.totalCount ? products.activeCount / products.totalCount : 0} />
       </div>
       {!loading && foreign.length > 0 && <p className="rr-pf-note">
         {foreign.length > 0 && <span>Diğer para birimleri: {foreign.map(item => <b key={item.currency} className="rr-num">{money(item.amount, item.currency)} ({count(item.orders)} sipariş) </b>)}</span>}
