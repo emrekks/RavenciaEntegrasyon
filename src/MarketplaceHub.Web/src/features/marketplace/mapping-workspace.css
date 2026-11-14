@@ -747,7 +747,6 @@ html body .app-shell.stitch-shell main section.mapping-page .mapping-label-line 
 .app-shell.stitch-shell main section.mapping-page .library-collapse.is-open > .library-collapse-region { grid-template-rows: 1fr; }
 .app-shell.stitch-shell main section.mapping-page .library-collapse-inner { display: grid; gap: 12px; min-height: 0; min-width: 0; padding-top: 0; overflow: hidden; visibility: hidden; transition: padding-top 0.22s ease, visibility 0s linear 0.22s; }
 .app-shell.stitch-shell main section.mapping-page .library-collapse.is-open .library-collapse-inner { padding-top: 12px; overflow: visible; visibility: visible; transition: padding-top 0.22s ease, overflow 0s linear 0.22s, visibility 0s; }
-.app-shell.stitch-shell main section.mapping-page .category-library-empty { margin: 0; padding: 0 2px; color: var(--rv-color-muted); font-size: 13px; }
 @media (prefers-reduced-motion: reduce) {
   .app-shell.stitch-shell main section.mapping-page .library-collapse * { transition: none !important; }
 }

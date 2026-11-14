@@ -1162,7 +1162,7 @@ main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-prod { width: auto; }
 
 /* Empty state of a wide table: stays as wide as the visible card and pinned to its left edge, so it centres in view whatever the table's min-width. */
 main .rr.rr .rr-tblwrap.rr-tblwrap { container-type: inline-size; }
-main .rr.rr .rr-tbl td.rr-empty-row > .rr-empty { position: sticky; left: 0; box-sizing: border-box; width: 100cqw; max-width: 100%; }
+main .rr.rr .rr-tbl td.rr-empty-row > .rv-empty-state { position: sticky; left: 0; box-sizing: border-box; width: 100cqw; max-width: 100%; }
 main .rr.rr .rr-tbl.rr-tbl td.rr-empty-row.rr-empty-row { padding: 0; }
 
 /* İadeler table fits the card of a 1440 screen (1158px; owner, 13 Nov): tracking numbers, order numbers and amounts keep one

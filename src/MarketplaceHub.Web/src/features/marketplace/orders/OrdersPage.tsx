@@ -17,7 +17,7 @@ import { ShopifyInvoiceStatusDialog, shopifyInvoiceStatusHint, shopifyUploadedNo
 import { NoticeToast } from '../../../shared/components/NoticeToast'
 import { invoiceStatusDisplayLabel, statusLabel } from '../../../shared/status-labels'
 import { DateRangePicker } from '../../../shared/DateRangePicker'
-import { RrAnchor, RrBadge, RrEmptyList, RrError, RrFilterCard, RrIcon, RrImagePreview, RrLoading, RrLogo, RrModal, RrPageSize, RrRing, RrThumb, RrWordmark, titleTr, type RingTone } from '../returns-ui'
+import { RrAnchor, RrBadge, RrError, RrFilterCard, RrIcon, RrImagePreview, RrLoading, RrLogo, RrModal, RrPageSize, RrRing, RrThumb, RrWordmark, titleTr, type RingTone } from '../returns-ui'
 import { useScrollLock } from '../../../shared/hooks/useScrollLock'
 import { appendNotification, normalizeNotificationKind, notificationError, notificationLinks, type NotificationContext } from '../../../shared/notifications'
 import { canTakeOrderIntoWork, orderLinkOnlyTabs, orderStatusLabel, orderStatusMoreTabs, orderStatusTabs, resolveOrderStatusTab } from '../order-status-tabs'
@@ -49,6 +49,7 @@ import { isPartlyCancelled, lineCancel, partialQuantityText, remainingText, rowL
 import { Connection, IntegrationFeedback, Order, OrderAddress, OrderLine, Page, ProductTitleLink, ReturnColumnPop, ReturnFactLines, ReturnHeadCell, ReturnInvoiceRing, ReturnPlatformPop, Shipment, displayOrderNumber, orderDisplayShipment, productLineQuantity, returnDateText, returnLineFacts, returnPlatformName } from '../shared'
 import { insideSelector, useDismissable } from '../../../shared/hooks/useDismissable'
 import { personName } from '../../../shared/person-name'
+import { ListEmptyState } from '../../../shared/components/EmptyState'
 
 const orderStatusTabOrder = orderStatusTabs.map(([value]) => value)
 const invoiceCreationDisabledHelp = 'Fatura oluşturmak için Entegrasyonlar > bu bağlantı ayarlarından “Fatura oluşturma” seçeneğini açın.'
@@ -1044,7 +1045,7 @@ export function OrdersPage() {
           <ReturnHeadCell label="Fatura" active={filters.invoice !== 'ALL' || filters.invoiceType !== 'ALL' || filters.invoiceRegion !== 'ALL'} pop={invoicePop} />
           <ReturnHeadCell label="İşlemler" active={filters.label !== 'ALL'} pop={close => <ReturnColumnPop label="Etiket Durumu" options={labelOptions} value={filterForm.label} right onPick={value => { applyFilterValue('label', value); close() }} />} />
         </tr></thead>
-        <tbody>{!pageItems.length ? <tr><td className="rr-empty-row" colSpan={noBuyer ? 6 : 7}><RrEmptyList noun="Sipariş" hasActiveFilters={hasFiltersToClear} filteredHint="Seçili filtrelerle eşleşen sipariş yok." emptyHint="Pazaryerlerinden gelen siparişler burada listelenir." onClear={resetFilters} /></td></tr> : orderRows}</tbody>
+        <tbody>{!pageItems.length ? <tr><td className="rr-empty-row" colSpan={noBuyer ? 6 : 7}><ListEmptyState icon="orders" noun="Sipariş" hasActiveFilters={hasFiltersToClear} filteredHint="Seçili filtrelerle eşleşen sipariş yok." emptyHint="Pazaryerlerinden gelen siparişler burada listelenir." onClear={resetFilters} /></td></tr> : orderRows}</tbody>
       </table>}</div>
       {pageItems.length > 0 && <div className="rr-pager"><span>Toplam <b style={{ color: 'var(--rr-ink)' }}>{totalOrderCount.toLocaleString('tr-TR')}</b> adet</span><div className="rr-pages"><button type="button" aria-label="Önceki" disabled={page <= 1 || ordersQuery.isFetching} onClick={goToPreviousPage}><RrIcon name="left" /></button>{pageList.map(value => <button key={value} type="button" className={value === page ? 'rr-on' : undefined} aria-current={value === page ? 'page' : undefined} disabled={ordersQuery.isFetching} onClick={() => goToPage(value)}>{value}</button>)}<button type="button" aria-label="Sonraki" disabled={!hasNextPage || ordersQuery.isFetching} onClick={goToNextPage}><RrIcon name="right" /></button></div><label className="rr-jump"><span className="rr-jump-label">Sayfaya Git</span><input className="rr-in" type="number" min={1} max={totalPages} placeholder={`1–${totalPages}`} aria-label="Sayfa numarası" value={jumpPage} onChange={event => setJumpPage(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && Number(jumpPage) >= 1) { goToPage(Math.floor(Number(jumpPage))); setJumpPage('') } }} /><button type="button" className="rr-btn" onClick={() => { if (Number(jumpPage) >= 1) { goToPage(Math.floor(Number(jumpPage))); setJumpPage('') } }}>Git</button></label></div>}
     </div>

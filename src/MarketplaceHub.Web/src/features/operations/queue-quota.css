@@ -19,7 +19,7 @@
 .qq-section h2 { margin: 0; color: var(--rv-color-ink); font-size: 14.5px; font-weight: 600; }
 .qq-section .qq-sub { margin-top: -6px; }
 .qq-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: stretch; }
-.qq-empty, .qq-error { margin: 0; padding: 12px 0; color: var(--rv-color-muted); font-size: 13px; }
+.qq-error { margin: 0; padding: 12px 0; color: var(--rv-color-muted); font-size: 13px; }
 .qq-error { color: var(--rv-color-danger); }
 
 .qq-table-scroll { overflow-x: auto; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }

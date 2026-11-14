@@ -8,6 +8,7 @@ import { thumbnailUrl } from '../../shared/product-thumbnail'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { platformName } from './report-format'
 import { KpiStrip, type Kpi } from './ReportsPage'
+import { EmptyState } from '../../shared/components/EmptyState'
 
 // Sipariş Kârlılık Analizi (ReportsContracts.cs, ReportOrderProfitView): each order of the period with what it leaves
 // after product cost, commission, cargo, the platform's fees, withholding tax and net VAT, and its items one by one.
@@ -113,7 +114,7 @@ export function OrderProfitability({ from, to, platforms }: { from: string; to: 
     {data && <div className="reports-order-summary"><KpiStrip label="Siparişlerin özeti" items={summaryKpis(data)} long /></div>}
     {result.isLoading && <Busy />}
     {result.isError && <ErrorBox error={result.error} onRetry={() => void result.refetch()} />}
-    {data && data.items.length === 0 && <p className="reports-empty">Bu dönemde sipariş yok.</p>}
+    {data && data.items.length === 0 && <EmptyState icon="orders" title="Sipariş Yok">Bu dönemde sipariş yok.</EmptyState>}
     {data && data.items.length > 0 && <div className="reports-table-wrap"><table className="reports-table reports-order-table">
       <thead><tr><th scope="col">Sipariş Numarası</th>{header('date', 'Sipariş Tarihi')}{header('amount', 'Sipariş Tutarı')}{header('profit', 'Kâr Tutarı')}{header('profitOnCost', 'Kâr Oranı')}{header('margin', 'Kâr Marjı')}<th scope="col"><span className="reports-sr">Ayrıntı</span></th></tr></thead>
       <tbody>{data.items.map(item => <tr key={item.orderId}>

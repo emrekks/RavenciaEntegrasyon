@@ -4,6 +4,7 @@ import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { formatCount, formatNumber, formatPercent, platformColor, platformName, unknownLabel, type ReportGroup, type ReportSales } from './report-format'
 import type { MapRegion } from './sales-map-types'
 import { otherZone, turkeyZones, worldZones, type MapZone } from './sales-map-regions'
+import { EmptyState } from '../../shared/components/EmptyState'
 
 type Scope = 'turkey' | 'world'
 type Metric = 'revenue' | 'orders' | 'basket'
@@ -210,7 +211,7 @@ export function SalesMap({ data }: { data: ReportSales }) {
     <Highlights areas={areas} scope={scope} metric={metric} previous={[...before.values()]} zones={zones} />
     <div className="reports-map-body">
       <div className="reports-map-canvas" ref={canvas} onPointerLeave={() => setHover(null)}>
-        {failed && !map ? <p className="reports-empty">Harita yüklenemedi; sayfayı yenileyin.</p>
+        {failed && !map ? <EmptyState icon="globe" title="Sipariş Yok">Harita yüklenemedi; sayfayı yenileyin.</EmptyState>
           : !map ? <div className="reports-map-loading" role="status">Harita yükleniyor…</div>
           : <svg viewBox={viewBox} role="img" aria-label={`${scope === 'turkey' ? 'Türkiye illeri' : 'Ülkeler'}: ${metricLabels[metric]} haritası; ayrıntılı liste yanda.`}>
             <g className="reports-map-regions">
@@ -361,7 +362,7 @@ function SplitBar({ area, metric, width, platform }: { area: Area; metric: Metri
 
 // The areas ranked by the metric; each bar is split by platform.
 function AreaList({ areas, scope, metric, max, selected, platform, onPick }: { areas: Area[]; scope: Scope; metric: Metric; max: number; selected: string | null; platform: string | null; onPick: (key: string) => void }) {
-  if (areas.length === 0) return <p className="reports-empty">{platform ? `${platformName(platform)} için bu haritada sipariş yok.` : scope === 'turkey' ? 'Bu dönemde il bilgisi olan sipariş yok.' : 'Bu dönemde yurt dışına giden sipariş yok.'}</p>
+  if (areas.length === 0) return <EmptyState icon="globe" title="Sipariş Yok">{platform ? `${platformName(platform)} için bu haritada sipariş yok.` : scope === 'turkey' ? 'Bu dönemde il bilgisi olan sipariş yok.' : 'Bu dönemde yurt dışına giden sipariş yok.'}</EmptyState>
   return <ol className="reports-map-list">{areas.map((area, index) => {
     const delta = change(area.value, area.previous)
     return <li key={area.key}>
@@ -385,7 +386,7 @@ function ZoneList({ areas, zones, scope, metric, focus, onFocus, onPick }: { are
     return { zone, value: metricValue(sum(members.map(area => area.view)), metric), sold: sold.length, lead: sold[0]?.group.label ?? null }
   }).filter(row => scope === 'turkey' || row.sold > 0).sort((a, b) => (b.value ?? -1) - (a.value ?? -1))
   const top = Math.max(0, ...rows.map(row => row.value ?? 0))
-  if (rows.length === 0) return <p className="reports-empty">Bu dönemde bölgeye ayrılacak sipariş yok.</p>
+  if (rows.length === 0) return <EmptyState icon="globe" title="Sipariş Yok">Bu dönemde bölgeye ayrılacak sipariş yok.</EmptyState>
   return <ol className="reports-map-list is-zones" onPointerLeave={() => onFocus(null)}>{rows.map(row => <li key={row.zone.key}>
     <button type="button" aria-pressed={focus === row.zone.key} className={row.sold === 0 ? 'is-empty' : undefined}
       onPointerEnter={() => onFocus(row.zone.key)} onFocus={() => onFocus(row.zone.key)} onBlur={() => onFocus(null)} onClick={() => onPick(row.zone.key)}>
@@ -406,7 +407,7 @@ function PlatformList({ groups, scope, metric, picked, onPick }: { groups: Repor
     return { code, value: metricValue(sum(parts.map(item => item.part)), metric), weight: parts.reduce((all, item) => all + partWeight(item.part, metric), 0), areas: parts.length, lead: lead?.group.label ?? null }
   }).sort((a, b) => b.weight - a.weight)
   const total = rows.reduce((all, row) => all + row.weight, 0)
-  if (rows.length === 0) return <p className="reports-empty">Bu dönemde platforma ayrılacak sipariş yok.</p>
+  if (rows.length === 0) return <EmptyState icon="globe" title="Sipariş Yok">Bu dönemde platforma ayrılacak sipariş yok.</EmptyState>
   return <ol className="reports-map-list is-platforms">{rows.map(row => <li key={row.code}>
     <button type="button" aria-pressed={picked === row.code} onClick={() => onPick(row.code)} aria-label={`${platformName(row.code)}: haritada yalnız bu platform`}>
       <PlatformSquareMark code={row.code} name={platformName(row.code)} />

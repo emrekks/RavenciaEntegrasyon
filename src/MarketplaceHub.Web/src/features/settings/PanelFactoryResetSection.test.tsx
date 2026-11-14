@@ -2,7 +2,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { panelResetConfirmed, panelResetStepStates, togglePanelResetCategories, type PanelFactoryResetView } from './panel-factory-reset'
+import { panelResetConfirmed, panelResetStepLabel, panelResetStepStates, togglePanelResetCategories, type PanelFactoryResetView } from './panel-factory-reset'
 
 const state = vi.hoisted(() => ({ calls: [] as Array<{ path: string; method: string; body?: string; key?: string | null }>, view: null as unknown, forbidden: false }))
 
@@ -124,6 +124,49 @@ describe('panel factory reset confirmation', () => {
     const steps = Array.from(container.querySelectorAll('.ss-fr-steps li')).map(item => item.className)
     expect(steps).toEqual(['is-done', 'is-done', 'is-running', 'is-pending'])
     expect(container.textContent).toContain('%20')
+  })
+
+  it('words a step in the past tense once done and says what failed', () => {
+    expect(panelResetStepLabel('Loglar siliniyor', 'running')).toBe('Loglar siliniyor')
+    expect(panelResetStepLabel('Loglar siliniyor', 'pending')).toBe('Loglar siliniyor')
+    expect(panelResetStepLabel('Siparişler, paketler ve iadeler siliniyor', 'done')).toBe('Siparişler, paketler ve iadeler silindi')
+    expect(panelResetStepLabel('Süren işlerin bitmesi bekleniyor', 'done')).toBe('Süren işler bitti')
+    expect(panelResetStepLabel('Kullanılmayan dosyalar temizleniyor', 'done')).toBe('Kullanılmayan dosyalar temizlendi')
+    expect(panelResetStepLabel('Tamamlandı', 'done')).toBe('Tamamlandı')
+    expect(panelResetStepLabel('Loglar siliniyor', 'failed')).toBe('Loglar silinemedi')
+  })
+
+  it('shows a finished run as completed with its steps folded behind a toggle', async () => {
+    const job = { jobId: 'j', status: 'SUCCEEDED', full: true, categories: [], steps: baseView.steps, step: 3, progressLabel: null, progressPercent: 100, error: null, createdAt: '2026-11-13T21:49:00Z', completedAt: '2026-11-13T21:50:00Z' }
+    state.view = { ...baseView, job }
+    await render()
+    const progress = container.querySelector('.ss-fr-progress')!
+    expect(progress.className).toContain('is-done')
+    expect(progress.querySelector('strong')!.textContent).toBe('Tam Sıfırlama Tamamlandı')
+    expect(progress.textContent).toContain('tarihinde tamamlandı')
+    expect(container.querySelector('.ss-fr-steps')).toBeNull()
+    const toggle = container.querySelector<HTMLButtonElement>('.ss-fr-steps-toggle')!
+    expect(toggle.textContent).toBe('Adımları Göster')
+    await act(async () => { toggle.click() })
+    expect(Array.from(container.querySelectorAll('.ss-fr-steps li')).map(item => item.textContent)).toEqual(['Süren işler bitti', 'Faturalar ve belgeleri silindi', 'Siparişler, paketler, iadeler ve sorular silindi', 'Tamamlandı'])
+  })
+
+  it('keeps the list open while running', async () => {
+    const job = { jobId: 'j', status: 'LEASED', full: true, categories: [], steps: baseView.steps, step: 1, progressLabel: null, progressPercent: 20, error: null, createdAt: '', completedAt: null }
+    state.view = { ...baseView, job }
+    await render()
+    expect(container.querySelector('.ss-fr-progress strong')!.textContent).toBe('Tam Sıfırlama İlerlemesi')
+    expect(container.querySelector('.ss-fr-steps-toggle')).toBeNull()
+    expect(Array.from(container.querySelectorAll('.ss-fr-steps li')).map(item => item.textContent)).toEqual(['Süren işler bitti', 'Faturalar ve belgeleri siliniyor', 'Siparişler, paketler, iadeler ve sorular siliniyor', 'Tamamlandı'])
+  })
+
+  it('marks a failed run as interrupted and names the step that failed', async () => {
+    const job = { jobId: 'j', status: 'DEAD', full: true, categories: [], steps: baseView.steps, step: 1, progressLabel: null, progressPercent: 20, error: 'Zaman aşımı', createdAt: '', completedAt: null }
+    state.view = { ...baseView, job }
+    await render()
+    expect(container.querySelector('.ss-fr-progress')!.className).toContain('is-failed')
+    expect(container.querySelector('.ss-fr-progress strong')!.textContent).toBe('Tam Sıfırlama Yarıda Kaldı')
+    expect(container.querySelectorAll('.ss-fr-steps li')[1].textContent).toBe('Faturalar ve belgeleri silinemedi')
   })
 
   it('lists only the categories with records and tucks the empty ones behind a toggle', async () => {

@@ -15,7 +15,7 @@ import { handSetInvoiceStatus, handSetInvoiceStatusNote, setManualInvoiceStatus 
 import { ShopifyInvoiceStatusDialog } from './ShopifyInvoiceStatusDialog'
 import { invoiceDueText } from './invoice-due-text'
 import { invoicePreviewNotice } from './invoice-preview-notice'
-import { Busy, CardBackgroundIcon, CargoProviderIcon, cargoFilterOptions, CountUp, ErrorBox, EmptyState, InvoiceStatusBadge, Modal, Pager, StickyActionBar, TitleHint, UiIcon, DialogSurface } from '../../shared/components'
+import { Busy, CardBackgroundIcon, CargoProviderIcon, cargoFilterOptions, CountUp, ErrorBox, InvoiceStatusBadge, Modal, Pager, StickyActionBar, TitleHint, UiIcon, DialogSurface } from '../../shared/components'
 import { fullyReturnedNoInvoiceStatus, invoiceStatusLabel, statusLabel } from '../../shared/status-labels'
 import { appendNotification, notificationError, notificationLinks, notificationPlatformName, type NotificationContext } from '../../shared/notifications'
 import { useJobOutcomeNotice } from '../../shared/job-outcome-notice'
@@ -52,6 +52,7 @@ import { isLinkRevocationStatus, linkRevocationStatusLabel, type InvoiceLinkRevo
 import { useDismissable } from '../../shared/hooks/useDismissable'
 import { unknownCount } from '../../shared/tab-counts'
 import { personName } from '../../shared/person-name'
+import { ListEmptyState } from '../../shared/components/EmptyState'
 // Platforms whose invoice state is kept by hand (the API server's ManualInvoiceStatusPlatforms): Shopify has no invoice
 // of its own; N11, PttAVM and Pazarama report only invoices sent through their API, not ones uploaded in their panel.
 const manualInvoiceStatusPlatforms = new Set(['SHOPIFY', 'N11', 'PTTAVM', 'PAZARAMA'])
@@ -632,7 +633,7 @@ export function InvoicesPage() {
           <div className={`order-column-filter${invoiceActionFilter !== 'ALL' ? ' has-filter' : ''}`}><span className="order-column-filter-label">İşlemler</span>{headFilter('Oluşturma Durumu', 'Fatura oluşturma filtresini aç', invoiceActionFilter, invoiceActionPopOptions, value => setInvoiceActionFilter(value as typeof invoiceActionFilter))}</div>
         </div>
         {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-to-interactive-role -- phone tap target that selects the row; its checkbox and buttons are the keyboard controls */}
-        {!pageItems.length && <div className="invoice-reference-state" role="row"><EmptyState title="Kayıt Bulunamadı" onClearFilters={hasInvoiceFilters ? clearFilters : undefined}>Seçili fatura sekmesi ve filtrelerle eşleşen paket bulunamadı.</EmptyState></div>}{pageItems.map(item => { const isPicked = selectedPackages.has(item.packageId); return <article className={`invoice-reference-row ${item.isDueSoon ? 'due-soon' : ''}${isPicked ? ' is-selected' : ''}`} key={item.packageId} role="row" aria-selected={selectionMode ? isPicked : undefined} onClick={event => tapRow(event, item)}>
+        {!pageItems.length && <div className="invoice-reference-state" role="row"><ListEmptyState icon="invoice" noun="Paket" hasActiveFilters={hasInvoiceFilters} onClear={clearFilters} filteredHint="Seçili fatura sekmesi ve filtrelerle eşleşen paket yok." emptyHint="Siparişlerden oluşan fatura paketleri burada listelenir." /></div>}{pageItems.map(item => { const isPicked = selectedPackages.has(item.packageId); return <article className={`invoice-reference-row ${item.isDueSoon ? 'due-soon' : ''}${isPicked ? ' is-selected' : ''}`} key={item.packageId} role="row" aria-selected={selectionMode ? isPicked : undefined} onClick={event => tapRow(event, item)}>
           <div className="invoice-reference-order"><input className="invoice-reference-select" type="checkbox" aria-label={`${item.platformDisplayName} ${displayInvoiceOrderNumber(item.orderNumber)} siparişini seç`} checked={selectedPackages.has(item.packageId)} onChange={() => { togglePackage(item.packageId); if (isPhoneViewport()) setSelectionMode(true) }} /><div className="order-reference-platform"><PlatformMark code={item.platformCode} name={item.platformDisplayName} /></div><div><InvoiceOrderNumber item={item} /><small>{formatIstanbul(item.orderedAt, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}{item.invoiceNumber?.trim() ? ` · ${item.invoiceNumber}` : ''}</small></div></div>
           <div className="invoice-reference-buyer"><strong>{invoiceCustomerDisplayName(item)}</strong><InvoiceProductSummary item={item} /></div>
           <div className="invoice-reference-products"><div className="cargo-provider-display invoice-cargo-provider"><CargoProviderIcon value={item.cargoProviderName ?? 'Kargo bilgisi yok'} fallbackText /></div><small>{item.cargoTrackingNumber ?? 'Takip numarası yok'}</small></div>
