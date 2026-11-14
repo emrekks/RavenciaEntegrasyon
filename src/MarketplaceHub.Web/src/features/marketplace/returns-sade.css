@@ -1204,12 +1204,12 @@ main .rr.rr.rr-returns .rr-tbl.rr-tbl th .rr-hf { max-width: 100%; min-width: 0;
    column visible (text wraps instead of the table scrolling). Narrower screens scroll inside the card; the first column
    stays pinned so the order is always in view. */
 @media (min-width: 1025px) {
-:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl { min-width: 1040px; }
-:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-order { width: 232px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl { min-width: 1076px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-order { width: 296px; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-buyer { width: 88px; }
-:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-prod { width: 240px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-prod { width: 200px; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-price { width: 84px; }
-:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-cargo { width: 132px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-cargo { width: 144px; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-inv { width: 140px; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-act { width: 124px; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl td { padding-inline: 10px 8px; }
@@ -1218,6 +1218,8 @@ main .rr.rr.rr-returns .rr-tbl.rr-tbl th .rr-hf { max-width: 100%; min-width: 0;
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl .rr-num { overflow-wrap: anywhere; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl .rr-ordercell small .rr-nv { display: block; overflow-wrap: anywhere; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl .rr-cargocell small { max-width: 100%; overflow: visible; white-space: normal; text-overflow: clip; overflow-wrap: anywhere; }
+/* owner, 14 Nov: the order cell lines and the tracking number stay on one line (no break inside a number) */
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl :is(.rr-ordercell small, .rr-cargocell small.rr-num:not(.rr-shipdate)) { white-space: nowrap; overflow-wrap: normal; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl,
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer),
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select,
