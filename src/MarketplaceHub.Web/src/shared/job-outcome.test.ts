@@ -192,3 +192,22 @@ describe('the colour cards of one model in an update', () => {
     expect(['Trendyol', 'N11', 'Hepsiburada', 'Pazarama', 'PttAVM', 'Shopify'].map(locative)).toEqual(['Trendyol’da', 'N11’de', 'Hepsiburada’da', 'Pazarama’da', 'PttAVM’de', 'Shopify’da'])
   })
 })
+
+describe('titles of an update press', () => {
+  const upd: FollowedJob[] = [{ jobId: 'a', platformName: 'Trendyol', what: 'ürün bilgisi', update: true }]
+  const pub: FollowedJob[] = [{ jobId: 'a', platformName: 'Trendyol', what: 'ürün' }]
+  const titleOf = (jobs: FollowedJob[], status: string) => jobOutcomeFeedback(jobs.map(item => jobOutcome(item, { job: { id: 'x', status, lastErrorCode: null, lastErrorSummary: 'Neden.' } })), outcomeTarget(jobs), jobs)
+
+  it('says güncellendi for updates and keeps the publish titles', () => {
+    expect(titleOf(upd, 'SUCCEEDED').title).toBe('Güncellendi')
+    expect(titleOf(upd, 'BLOCKED')).toMatchObject({ title: 'Trendyol’da Güncellenemedi', kind: 'error' })
+    expect(titleOf(pub, 'SUCCEEDED').title).toBe('Trendyol’a Aktarıldı')
+    expect(titleOf(pub, 'BLOCKED').title).toBe('Trendyol’a Aktarılamadı')
+  })
+
+  it('says kısmen güncellendi when some colours went through', () => {
+    const jobs: FollowedJob[] = [{ ...upd[0], card: 'Siyah' }, { ...upd[0], jobId: 'b', card: 'Bordo' }]
+    const result = jobOutcomeFeedback([jobOutcome(jobs[0], { job: { id: 'x', status: 'SUCCEEDED', lastErrorCode: null, lastErrorSummary: null } }), jobOutcome(jobs[1], { job: { id: 'y', status: 'BLOCKED', lastErrorCode: null, lastErrorSummary: 'Neden.' } })], outcomeTarget(jobs), jobs)
+    expect(result).toMatchObject({ title: 'Trendyol’da Kısmen Güncellendi', kind: 'warning' })
+  })
+})

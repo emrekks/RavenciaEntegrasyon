@@ -125,21 +125,25 @@ export function outcomeLines(outcomes: readonly JobOutcome[], jobs?: readonly Fo
 /** The toast for several followed jobs: titled by the worst one, one line each (a model's colour cards as one). */
 export function jobOutcomeFeedback(outcomes: readonly JobOutcome[], target: string, jobs?: readonly FollowedJob[]): JobOutcomeFeedback {
   const lines = outcomeLines(outcomes, jobs)
+  // An update press (every followed job is an update) is titled "güncellendi", a first publish "aktarıldı" (owner, 14 Nov 2026).
+  const updating = !!jobs?.length && jobs.every(job => job.update)
+  const names = [...new Set((jobs ?? []).map(job => job.platformName))]
+  const where = names.length === 1 ? locative(names[0]) : `${names.length} Platformda`
   const has = (state: JobOutcomeState) => outcomes.some(outcome => outcome.state === state)
   const settled = outcomes.every(isSettledOutcome)
   if (has('failed') || has('partial') || has('review')) {
     const anyDone = has('succeeded') || has('partial')
     // Partly done or waiting for review is a warning; only a transfer that did not happen at all is an error.
-    if (anyDone) return { title: `${target} Kısmen Aktarıldı`, kind: 'warning', lines, settled }
+    if (anyDone) return { title: updating ? `${where} Kısmen Güncellendi` : `${target} Kısmen Aktarıldı`, kind: 'warning', lines, settled }
     if (!has('failed')) return { title: 'İnceleme Bekliyor', kind: 'warning', lines, settled }
-    return { title: `${target} Aktarılamadı`, kind: 'error', lines, settled }
+    return { title: updating ? `${where} Güncellenemedi` : `${target} Aktarılamadı`, kind: 'error', lines, settled }
   }
   if (!settled) {
     const scheduled = has('scheduled') && !has('running') && !has('unknown')
     return { title: has('unknown') ? 'Sonuç Henüz Bilinmiyor' : scheduled ? 'Aktarım Sırada' : 'Aktarım Sürüyor', kind: 'info', lines, settled }
   }
   if (has('cancelled')) return { title: 'Aktarım Durduruldu', kind: 'info', lines, settled }
-  return { title: `${target} Aktarıldı`, kind: 'success', lines, settled }
+  return { title: updating ? 'Güncellendi' : `${target} Aktarıldı`, kind: 'success', lines, settled }
 }
 
 /** Every followed marketplace by name ("Trendyol", "Trendyol ve N11", "3 Platforma"). */
@@ -244,7 +248,7 @@ const outcomeOrder: JobOutcomeState[] = ['succeeded', 'partial', 'failed', 'revi
  * then the first refusals by record and reason. Titled like jobOutcomeFeedback, by the worst outcome.
  */
 export function groupedOutcomeFeedback(jobs: readonly FollowedJob[], outcomes: readonly JobOutcome[], target: string, noun = 'ürün'): JobOutcomeFeedback {
-  const base = jobOutcomeFeedback(outcomes, target)
+  const base = jobOutcomeFeedback(outcomes, target, jobs)
   const byPlatform = new Map<string, Map<JobOutcomeState, number>>()
   outcomes.forEach((outcome, index) => {
     const name = jobs[index]?.platformName ?? 'Pazaryeri'
