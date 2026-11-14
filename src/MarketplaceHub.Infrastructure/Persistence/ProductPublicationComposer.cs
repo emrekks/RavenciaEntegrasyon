@@ -137,6 +137,13 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
         // productMainId is the whole card's model code, so the variants a matched card adds join its Trendyol product.
         var modelCodes = cardVariants.Select(x => x.ModelCode?.Trim()).Distinct(StringComparer.Ordinal).ToList();
         if (modelCodes.Count != 1 || string.IsNullOrWhiteSpace(modelCodes[0]) || modelCodes[0]!.Length > 40) return Fail("MODEL_CODE_REQUIRED", "Varyant grubu tek bir ortak ve en fazla 40 karakterlik model kodu kullanmalıdır.");
+        // Model Kaydı Faz 2: the productMainId Trendyol keeps the model by (the model link an import recorded) when it is the
+        // same code in another spelling: Trendyol compares it case-sensitively (live 7 Nov 2026 "Ryp003t" / "RYP003T"), so a
+        // new colour joins the model Trendyol has. A different code is not taken over: the panel's model code goes as before.
+        var productMainId = modelCodes[0]!;
+        if (await MarketplaceModelLinks.ForCardAsync(db, tenantId, connectionId, product.FamilyId, cancellationToken, cardLinksAreModelLevel: false) is { ExternalId: { } remoteMainId }
+            && remoteMainId.Length <= 40 && ProductFamilyKeyPolicy.ModelCodeKey(remoteMainId) == ProductFamilyKeyPolicy.ModelCodeKey(productMainId))
+            productMainId = remoteMainId;
         var variants = cardVariants;
         IReadOnlySet<Guid> present = new HashSet<Guid>();
         if (onlyUnsentVariants)
@@ -410,7 +417,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
                 ["barcode"] = variant.Barcode!.Trim(),
                 ["title"] = title,
                 ["description"] = description,
-                ["productMainId"] = modelCodes[0],
+                ["productMainId"] = productMainId,
                 ["brandId"] = externalBrandId,
                 ["categoryId"] = externalCategoryId,
                 ["quantity"] = salesOffer is not null && inventory is not null ? TrendyolStockRules.Quantity(Math.Max(0, inventory.Available - salesOffer.SafetyStock)) : null,

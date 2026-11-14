@@ -106,6 +106,12 @@ internal sealed class PazaramaProductPublicationComposer(AppDbContext db, IConfi
                     .Select(x => x.ExternalId).ToListAsync(cancellationToken)) is { } existingGroup)
                 groupCode = existingGroup;
         }
+        // Model Kaydı Faz 2: a colour card with no Pazarama product of its own joins the group its model already has there
+        // (the model link an import recorded, still held by a variant link of the model); without one, the derived code.
+        if (!await db.MarketplaceProductLinks.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == productId, cancellationToken)
+            && await MarketplaceModelLinks.ForCardAsync(db, tenantId, connectionId, product.FamilyId, cancellationToken) is { } modelLink
+            && ExistingGroupCode([modelLink.ExternalId]) is { } modelGroup)
+            groupCode = modelGroup;
         if (variants.Count > PazaramaProductPayloadRules.MaxProductsPerRequest) return Fail("PRODUCT_BATCH_LIMIT_EXCEEDED", $"Tek Pazarama ürün açma isteğinde en fazla {PazaramaProductPayloadRules.MaxProductsPerRequest} varyant gönderilebilir.");
         if (variants.Any(x => string.IsNullOrWhiteSpace(x.Barcode) || x.Barcode.Trim().Length > 500)) return Fail("BARCODE_REQUIRED", "Pazarama ürün açma için her varyantın barkodu (en fazla 500 karakter) olmalıdır.");
         if (variants.Any(x => string.IsNullOrWhiteSpace(x.Sku) || x.Sku.Trim().Length > 100)) return Fail("STOCK_CODE_INVALID", "Pazarama stok kodu olarak kullanılan SKU boş olmamalı ve en fazla 100 karakter olmalıdır.");

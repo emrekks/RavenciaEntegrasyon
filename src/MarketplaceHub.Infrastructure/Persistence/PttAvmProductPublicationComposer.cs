@@ -53,7 +53,7 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
 
         // The model family: the card's own model code (its first variant carrying one) names it.
         var modelCode = variants.OrderBy(x => x.SortOrder).ThenBy(x => x.Id).Select(x => x.ModelCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
-        var familyIds = await ProductFamilyScope.ProductIdsAsync(db, tenantId, product.BrandId, modelCode, db.ProductVariants.AsNoTracking(), cancellationToken);
+        var familyIds = await ProductFamilyScope.ProductIdsAsync(db, tenantId, product.BrandId, modelCode, db.ProductVariants.AsNoTracking(), cancellationToken, product.FamilyId);
         if (!familyIds.Contains(productId)) familyIds.Add(productId);
         // Card order is creation order (the id breaks a tie), so the family keeps one order on every publication.
         var members = await db.Products.AsNoTracking()
@@ -156,6 +156,11 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && memberIds.Contains(x.ProductId) && x.ExternalCode != null)
             .Select(x => x.ExternalCode!)
             .ToListAsync(cancellationToken);
+        // Model Kaydı Faz 2: the barcode the model's PTT AVM product has (its model link, still held by a variant link of
+        // the model) counts too, e.g. when the colour card holding the product link is archived; PlanFamily refuses a
+        // family whose codes disagree with the model code, so it can only stop a send, never redirect one.
+        if (await MarketplaceModelLinks.ForCardAsync(db, tenantId, connectionId, product.FamilyId, cancellationToken) is { ExternalCode: { } modelBarcode } && !string.IsNullOrWhiteSpace(modelBarcode))
+            externalCodes.Add(modelBarcode);
         var titles = members.ToDictionary(x => x.Id, x => x.Title);
         var rows = familyVariants.Select(variant =>
         {
@@ -197,7 +202,7 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
         var familyChart = members.All(member => chartByMember.ContainsKey(member.Id)) ? null
             : await SizeCharts.SizeChartPlacement.FamilyAssetIdAsync(db, tenantId, await ProductFamilyScope.ProductIdsAsync(db, tenantId, product.BrandId,
                 familyVariants.Where(x => x.ProductId == productId).OrderBy(x => x.SortOrder).ThenBy(x => x.Id).Select(x => x.ModelCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)),
-                db.ProductVariants.AsNoTracking(), cancellationToken), cancellationToken);
+                db.ProductVariants.AsNoTracking(), cancellationToken, product.FamilyId), cancellationToken);
         Guid? ChartOf(Guid memberId) => chartByMember.TryGetValue(memberId, out var own) ? own : familyChart;
         // Each chart's row for a card whose own rows lack it: another card's row of the same picture, else the file itself.
         var chartRowById = media.Where(item => chartByMember.ContainsValue(item.Id) || item.Id == familyChart).DistinctBy(item => item.Id).ToDictionary(item => item.Id);

@@ -243,13 +243,14 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
     internal async Task<Guid[]?> ProductFamilyScopeAsync(Guid tenantId, Guid? productId, CancellationToken cancellationToken)
     {
         if (productId is not { } opened) return null;
-        var brandId = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == opened).Select(x => x.BrandId).SingleOrDefaultAsync(cancellationToken);
+        var card = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == opened).Select(x => new { x.BrandId, x.FamilyId }).SingleOrDefaultAsync(cancellationToken);
+        var brandId = card?.BrandId;
         var modelCode = await db.ProductVariants.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ProductId == opened && x.ModelCode != null && x.ModelCode.Trim() != "")
             .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
             .Select(x => x.ModelCode)
             .FirstOrDefaultAsync(cancellationToken);
-        var family = await ProductFamilyScope.ProductIdsAsync(db, tenantId, brandId, modelCode, db.ProductVariants.AsNoTracking(), cancellationToken);
+        var family = await ProductFamilyScope.ProductIdsAsync(db, tenantId, brandId, modelCode, db.ProductVariants.AsNoTracking(), cancellationToken, card?.FamilyId);
         var siblings = family.Where(id => id != opened).ToList();
         List<Guid> drafts = siblings.Count == 0 ? [] : await db.Products.AsNoTracking()
             .Where(x => x.TenantId == tenantId && siblings.Contains(x.Id) && x.Status == ProductStatus.Draft)
@@ -689,8 +690,22 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                 .Distinct()
                 .ToListAsync(cancellationToken))
             .ToHashSet(StringComparer.Ordinal);
+        // Model Kaydı Faz 2: a product without a link of its own reaches its model's PTT AVM product through the model link
+        // an import recorded from that product's own variants (MarketplaceModelLinks.ForCardAsync), before the model-code rule.
+        var familyOf = (await db.Products.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && productIds.Contains(x.Id) && x.FamilyId != null)
+                .Select(x => new { x.Id, x.FamilyId })
+                .ToListAsync(cancellationToken))
+            .Where(x => !productCodes.ContainsKey(x.Id))
+            .ToDictionary(x => x.Id, x => x.FamilyId!.Value);
+        var codeByFamily = new Dictionary<Guid, string>();
+        foreach (var familyId in familyOf.Values.Distinct())
+            if (await MarketplaceModelLinks.ForCardAsync(db, tenantId, connectionId, familyId, cancellationToken) is { ExternalCode: { } familyCode } && !string.IsNullOrWhiteSpace(familyCode))
+                codeByFamily[familyId] = familyCode.Trim();
         string? PttProductCode(Guid productId, string? modelCode) =>
-            productCodes.TryGetValue(productId, out var code) ? code : modelCode is not null && codesByModel.Contains(modelCode) ? modelCode.Trim() : null;
+            productCodes.TryGetValue(productId, out var code) ? code
+            : familyOf.TryGetValue(productId, out var family) && codeByFamily.TryGetValue(family, out var modelLinkCode) ? modelLinkCode
+            : modelCode is not null && codesByModel.Contains(modelCode) ? modelCode.Trim() : null;
 
         var items = new List<PttAvmPriceInventoryRules.Item>();
         var lines = new List<PriceInventoryPushLine>();

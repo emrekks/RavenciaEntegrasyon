@@ -139,6 +139,30 @@ public sealed class FamilyChangesRegressionPostgreSqlTests(PostgreSqlTenantIsola
         Assert.Equal(3, ptt["variants"]!.AsArray().Count);
     }
 
+    // Model Kaydı Faz 2: a colour card with no Pazarama product of its own joins the group its model already has there (the
+    // model link an import recorded, held by a variant link of the model); a card with its own product goes as before.
+    [PostgreSqlFact]
+    public async Task APazaramaColourCard_JoinsTheGroupItsModelHas_ByTheModelLink()
+    {
+        var seed = await SeedAsync(live: false);
+        await using var db = fixture.CreateContext();
+        var pazaramaConnection = seed.Connections["PAZARAMA"];
+        var bordo = await db.Products.AsNoTracking().SingleAsync(x => x.Id == seed.Cards["Bordo"].Id);
+        Assert.NotNull(bordo.FamilyId);
+        db.MarketplaceModelLinks.Add(new MarketplaceModelLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = pazaramaConnection.Id, ModelId = bordo.FamilyId!.Value, ExternalId = "group:REMOTE-G", ExternalCode = "REMOTE-G", CreatedAt = DateTimeOffset.UtcNow, Version = 1 });
+        db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = pazaramaConnection.Id, VariantId = seed.Sizes["Bordo"][0].Id, ExternalId = seed.Sizes["Bordo"][0].Barcode!, Version = 1 });
+        await db.SaveChangesAsync();
+        var composer = new ProductPublicationComposer(db, new ConfigurationBuilder().Build());
+        var siyah = JsonNode.Parse(await BuildAsync(composer, seed, "PAZARAMA", seed.Cards["Siyah"].Id))!["products"]!.AsArray();
+        Assert.All(siyah, item => Assert.Equal("REMOTE-G", item!["groupCode"]!.GetValue<string>()));
+
+        // The Siyah card has a Pazarama product of its own: the model link is not taken (it no longer holds either).
+        db.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = pazaramaConnection.Id, ProductId = seed.Cards["Siyah"].Id, ExternalId = "group:OWN", SyncStatus = "SYNCED", Version = 1 });
+        await db.SaveChangesAsync();
+        siyah = JsonNode.Parse(await BuildAsync(composer, seed, "PAZARAMA", seed.Cards["Siyah"].Id))!["products"]!.AsArray();
+        Assert.All(siyah, item => Assert.Equal(ModelCode, item!["groupCode"]!.GetValue<string>()));
+    }
+
     // The owner changes the model's brand and name from the Siyah row: every colour card takes them, so each card's
     // payload goes with the new brand (Pazarama by its brand mapping), PttAVM still finds the whole family under the new
     // brand, and no card drops out of the model.

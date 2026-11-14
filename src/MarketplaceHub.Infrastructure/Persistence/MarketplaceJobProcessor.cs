@@ -1683,13 +1683,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
     private async Task<List<Guid>> FamilyProductIdsAsync(Guid tenantId, Guid productId, CancellationToken cancellationToken)
     {
-        var brandId = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == productId).Select(x => x.BrandId).SingleOrDefaultAsync(cancellationToken);
+        var card = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == productId).Select(x => new { x.BrandId, x.FamilyId }).SingleOrDefaultAsync(cancellationToken);
+        var brandId = card?.BrandId;
         var modelCode = await db.ProductVariants.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ProductId == productId && x.ModelCode != null)
             .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
             .Select(x => x.ModelCode)
             .FirstOrDefaultAsync(cancellationToken);
-        var ids = await ProductFamilyScope.ProductIdsAsync(db, tenantId, brandId, modelCode, db.ProductVariants.AsNoTracking(), cancellationToken);
+        var ids = await ProductFamilyScope.ProductIdsAsync(db, tenantId, brandId, modelCode, db.ProductVariants.AsNoTracking(), cancellationToken, card?.FamilyId);
         if (!ids.Contains(productId)) ids.Add(productId);
         return ids;
     }
@@ -9067,7 +9068,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
             .Select(x => x.ModelCode)
             .FirstOrDefaultAsync(cancellationToken);
-        var familyIds = await ProductFamilyScope.ProductIdsAsync(db, tenantId, product.BrandId, modelCode, db.ProductVariants.AsNoTracking(), cancellationToken);
+        var familyIds = await ProductFamilyScope.ProductIdsAsync(db, tenantId, product.BrandId, modelCode, db.ProductVariants.AsNoTracking(), cancellationToken, product.FamilyId);
         if (!familyIds.Contains(product.Id)) familyIds.Add(product.Id);
         var rows = await db.ProductVariants.AsNoTracking()
             .Where(x => x.TenantId == tenantId && familyIds.Contains(x.ProductId))

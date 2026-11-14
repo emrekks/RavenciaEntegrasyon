@@ -87,7 +87,7 @@ public static class SizeChartPlacement
     {
         if (await AssetIdAsync(db, tenantId, product.Id, cancellationToken) is Guid own) return own;
         var modelCode = cardVariants.OrderBy(x => x.SortOrder).ThenBy(x => x.Id).Select(x => x.ModelCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
-        var familyIds = await ProductFamilyScope.ProductIdsAsync(db, tenantId, product.BrandId, modelCode, db.ProductVariants.AsNoTracking(), cancellationToken);
+        var familyIds = await ProductFamilyScope.ProductIdsAsync(db, tenantId, product.BrandId, modelCode, db.ProductVariants.AsNoTracking(), cancellationToken, product.FamilyId);
         familyIds.Remove(product.Id);
         return await FamilyAssetIdAsync(db, tenantId, familyIds, cancellationToken);
     }

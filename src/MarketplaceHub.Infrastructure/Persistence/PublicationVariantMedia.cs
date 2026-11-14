@@ -106,7 +106,7 @@ internal sealed class PublicationColours(IReadOnlyDictionary<Guid, string> colou
     public static async Task<PublicationColours> LoadAsync(AppDbContext db, Guid tenantId, Product product, IReadOnlyCollection<ProductVariant> cardVariants, CancellationToken cancellationToken)
     {
         var modelCode = cardVariants.OrderBy(x => x.SortOrder).ThenBy(x => x.Id).Select(x => x.ModelCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
-        var familyIds = await ProductFamilyScope.ProductIdsAsync(db, tenantId, product.BrandId, modelCode, db.ProductVariants.AsNoTracking(), cancellationToken);
+        var familyIds = await ProductFamilyScope.ProductIdsAsync(db, tenantId, product.BrandId, modelCode, db.ProductVariants.AsNoTracking(), cancellationToken, product.FamilyId);
         if (!familyIds.Contains(product.Id)) familyIds.Add(product.Id);
         var rows = await (from media in db.ProductMedia.AsNoTracking()
                           join variant in db.ProductVariants.AsNoTracking() on media.VariantId equals (Guid?)variant.Id
