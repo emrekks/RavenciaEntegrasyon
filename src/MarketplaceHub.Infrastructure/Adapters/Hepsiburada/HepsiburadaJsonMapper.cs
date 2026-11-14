@@ -742,7 +742,9 @@ internal static class HepsiburadaJsonMapper
         return (result, totalCount);
     }
 
-    public static (string? Status, string? CargoCompany, string? TrackingInfoCode, string? OrderNumber) PackageTrackingInfo(JsonElement root, string expectedPackageNumber)
+    // "barcode" is the package's cargo barcode ("Oluşturulan paketin kargo barkodudur", hepsiburada-api-son.md:9739),
+    // not its tracking number (trackingInfoCode): the two agree for hepsiJET and differ for Aras Kargo.
+    public static (string? Status, string? CargoCompany, string? TrackingInfoCode, string? OrderNumber, string? Barcode) PackageTrackingInfo(JsonElement root, string expectedPackageNumber)
     {
         var data = Unwrap(root);
         var items = Find(data, "items", "packages", "content");
@@ -756,7 +758,8 @@ internal static class HepsiburadaJsonMapper
                 Text(item, "status", "Status"),
                 Text(item, "cargoCompany", "CargoCompany", "cargoCompanyName", "CargoCompanyName"),
                 Text(item, "trackingInfoCode", "TrackingInfoCode"),
-                Text(item, "orderNumber", "OrderNumber", "orderNo", "OrderNo"));
+                Text(item, "orderNumber", "OrderNumber", "orderNo", "OrderNo"),
+                Text(item, "barcode", "Barcode"));
         }
 
         throw new JsonException("Hepsiburada kargo yanıtında istenen packageNumber bulunamadı.");
@@ -1178,7 +1181,9 @@ internal static class HepsiburadaJsonMapper
             GrossAmount: Money(item, "totalPrice", "TotalPrice", "totalAmount", "TotalAmount") ?? 0m,
             NetAmount: Money(item, "netAmount", "NetAmount", "totalPrice", "TotalPrice") ?? 0m,
             Invoice: InvoiceObservation(item),
-            UnreadableLineCount: unreadable);
+            UnreadableLineCount: unreadable,
+            // The open package's cargo barcode ("Siparişin kargo barkod numarasıdır", hepsiburada-api-son.md:9282).
+            CargoBarcode: Text(item, "barcode", "Barcode"));
         return new(orderNumber, package, PackageOrderSnapshot(item, orderNumber, package));
     }
 
@@ -1216,7 +1221,8 @@ internal static class HepsiburadaJsonMapper
             [],
             Invoice: rawStatus == "Delivered" ? InvoiceObservation(item) : null,
             CreatedBy: "HEPSIBURADA_STATUS_FEED",
-            IsStatusObservation: true);
+            IsStatusObservation: true,
+            CargoBarcode: Text(item, "barcode", "Barcode"));
         return new(orderNumber, package);
     }
 
@@ -1680,6 +1686,7 @@ internal static class HepsiburadaJsonMapper
         var element = Find(order, "packages", "Packages", "shipments", "Shipments");
         if (element.ValueKind != JsonValueKind.Array) return [];
         var packages = new List<RemotePackage>();
+        var itemGroups = ItemPackageGroups(order);
         foreach (var package in element.EnumerateArray())
         {
             var packageId = Text(package, "packageNumber", "PackageNumber", "packageId", "PackageId", "id", "Id");
@@ -1706,9 +1713,28 @@ internal static class HepsiburadaJsonMapper
             }
             if (allocations.Count == 0 && unreadable == 0) continue;
             var occurred = Date(package, "shippedDate", "ShippedDate", "createdAt", "CreatedAt") ?? orderDate;
-            packages.Add(new RemotePackage(packageId, null, status, occurred, Text(package, "cargoCompany", "CargoCompany"), tracking, allocations, Invoice: invoice, UnreadableLineCount: unreadable));
+            var cargoBarcode = Text(package, "barcode", "Barcode")
+                ?? (itemGroups.TryGetValue(packageId.Trim(), out var packageLines) ? LineCargoBarcode(packageLines) : null);
+            packages.Add(new RemotePackage(packageId, null, status, occurred, Text(package, "cargoCompany", "CargoCompany"), tracking, allocations, Invoice: invoice, UnreadableLineCount: unreadable, CargoBarcode: cargoBarcode));
         }
         return packages;
+    }
+
+    // The cargo barcode the order detail's lines of one package carry: a line's "barcode" is its package's cargo barcode
+    // and its own product barcode is "productBarcode" (live 4893555494: 62755438736587 and 0000RYP003T13). Taken only
+    // when every line names a product barcode that differs from it and all lines agree; otherwise unknown.
+    internal static string? LineCargoBarcode(IReadOnlyList<JsonElement> lines)
+    {
+        string? found = null;
+        foreach (var line in lines)
+        {
+            var barcode = Text(line, "barcode", "Barcode")?.Trim();
+            var productBarcode = Text(line, "productBarcode", "ProductBarcode")?.Trim();
+            if (string.IsNullOrEmpty(barcode) || string.IsNullOrEmpty(productBarcode) || string.Equals(barcode, productBarcode, StringComparison.Ordinal)) return null;
+            if (found is not null && !string.Equals(found, barcode, StringComparison.Ordinal)) return null;
+            found = barcode;
+        }
+        return found;
     }
 
     private static IReadOnlyDictionary<string, string> Options(JsonElement item)

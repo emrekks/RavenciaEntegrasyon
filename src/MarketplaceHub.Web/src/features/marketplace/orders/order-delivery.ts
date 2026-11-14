@@ -36,7 +36,10 @@ export function orderRingDetail(delivery: DeliveryInfo): { text: string; cls?: s
 
 // The time-left line under the order: shown while there is a deadline to meet or the order is late.
 export function deliveryDueLine(delivery: DeliveryInfo) {
-  return delivery.kind === 'remaining' || delivery.kind === 'late' || delivery.overdue ? orderRingDetail(delivery) : null
+  if (!(delivery.kind === 'remaining' || delivery.kind === 'late' || delivery.overdue)) return null
+  const detail = orderRingDetail(delivery)
+  // the "Termin:" label already says it is the time left, so the due line drops the trailing "kaldı"
+  return { ...detail, text: detail.text.replace(/\s*kaldı$/u, '') }
 }
 
 // The red due line names what it warns of. "Geciken" (the tab, the dashboard card) is an order past its ship-by time;

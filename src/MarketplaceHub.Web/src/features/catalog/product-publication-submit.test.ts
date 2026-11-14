@@ -86,11 +86,11 @@ describe('marketplace publish lines', () => {
   it('names the marketplace and the cards on every refusal', () => {
     const failures = new Map([['Birden fazla varyant Shopify\'da ancak renk, beden gibi bir seçenekle ayrılabilir.', [0, 1, 2, 3, 4, 5, 6, 7]]])
     expect(marketplacePublishLines(publish({ platformName: 'Shopify', platformCode: 'SHOPIFY', familyCards: 8, failures }))).toEqual([
-      'Shopify: reddedildi — Birden fazla varyant Shopify\'da ancak renk, beden gibi bir seçenekle ayrılabilir. (8 renk kartında)'
+      'Shopify: gönderilmedi — Birden fazla varyant Shopify\'da ancak renk, beden gibi bir seçenekle ayrılabilir. (8 renk kartında)'
     ])
     expect(marketplacePublishLines(publish({ platformName: 'n11', platformCode: 'N11', familyCards: 8, enqueuedCards: 7, enqueuedVariants: 21, failures: new Map([['Kategori eksik.', [2]]]) }))).toEqual([
       'n11: 7 renk kartı (21 varyant) gönderiliyor.',
-      'n11: reddedildi — Kategori eksik. (3. renk kartı)'
+      'n11: gönderilmedi — Kategori eksik. (3. renk kartı)'
     ])
   })
 })
@@ -121,19 +121,19 @@ describe('product save feedback', () => {
     expect(feedback).toMatchObject({ kind: 'info', persistent: true })
   })
 
-  it('keeps a partly refused publication on screen as an error', () => {
+  it('keeps a partly refused publication on screen as a warning', () => {
     const feedback = productSaveFeedback(save({
       publications: [publish({ enqueuedCards: 1, enqueuedVariants: 3 })],
       publicationErrors: [{ platformName: 'Pazarama', message: 'Marka eşleşmesi yok.' }]
     }))
     expect(feedback.title).toBe('Yayın Kısmen Başlatıldı')
-    expect(feedback.lines).toContain('Pazarama: reddedildi — Marka eşleşmesi yok.')
-    expect(feedback).toMatchObject({ kind: 'error', persistent: true })
+    expect(feedback.lines).toContain('Pazarama: gönderilmedi — Marka eşleşmesi yok.')
+    expect(feedback).toMatchObject({ kind: 'warning', persistent: true })
   })
 
   it('titles a publication that queued nothing and was refused "Yayın Başlatılamadı"', () => {
     const feedback = productSaveFeedback(save({ productChanged: false, publications: [publish({ failures: new Map([['Kategori eksik.', [0]]]) })] }))
-    expect(feedback).toMatchObject({ title: 'Yayın Başlatılamadı', lines: ['Trendyol: reddedildi — Kategori eksik.'], kind: 'error', persistent: true })
+    expect(feedback).toMatchObject({ title: 'Yayın Başlatılamadı', lines: ['Trendyol: gönderilmedi — Kategori eksik.'], kind: 'error', persistent: true })
   })
 
   it('says "Ürün Kaydedildi" when every marketplace was already live, as information', () => {
@@ -264,5 +264,22 @@ describe('a publish to the chosen marketplaces only', () => {
       gapSkipped: chosenGapSkipped(connections, ['ty'], gaps, connection => connection.name)
     }))
     expect(feedback).toEqual({ title: 'Aktarım Başladı', lines: ['Trendyol: ürün (18 varyant) gönderiliyor.'], kind: 'info', persistent: true })
+  })
+})
+
+describe('missing value mappings of several colours', () => {
+  const gap = (colour: string, card: string) => [`'Web Color: ${colour}' için doğrulanmış Trendyol değer eşlemesi yok. Eşleştirmeler › Kategori Eşleme'de kategorinin Kategori Özellikleri penceresinden bu panel değerini bir Trendyol değeriyle eşleyin.`, [card]] as const
+
+  it('says the gap once with every value, not one refusal per colour, and as a warning', () => {
+    const feedback = productSaveFeedback({
+      created: false, productChanged: false, savedParts: [], versionRetried: false, saveWarnings: [], publishRequested: false, publications: [], publicationErrors: [],
+      updates: [{ platformName: 'Trendyol', queued: { productInformation: true, priceInventory: false }, productInformationLabel: 'görseller', family: { cards: 10, queuedCards: 5, queuedVariants: 15, absent: [], failures: new Map([gap('İndigo', 'İndigo'), gap('Mürdüm', 'Kahverengi')]) } }]
+    })
+    expect(feedback).toMatchObject({ title: 'Aktarım Kısmen Başladı', kind: 'warning', persistent: true })
+    expect(feedback.lines).toEqual([
+      'Trendyol: görseller (10 renkten 5 renk, 15 varyant) gönderiliyor.',
+      'Trendyol: 2 renk gönderilmedi: Web Color eşlemesi eksik — İndigo, Mürdüm.',
+      "Eşleştirmeler › Kategori Eşleme › Kategori Özellikleri'nden eşleyin."
+    ])
   })
 })

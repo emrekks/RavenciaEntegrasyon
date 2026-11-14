@@ -31,7 +31,7 @@ describe('marketplacePublishLines with the colour order', () => {
   const outcome = (failures: Map<string, number[]>, openedCard: number) => ({ platformName: 'Pazarama', platformCode: 'PAZARAMA', familyCards: 8, openedCard, enqueuedCards: 7, enqueuedVariants: 21, skipped: { live: 0, running: 0, matched: 0 }, failures })
 
   it('names a refused card by its place in the colour order and leaves the opened card unnamed', () => {
-    expect(marketplacePublishLines(outcome(new Map([['Kategori eksik.', [0]]]), 4))).toContain('Pazarama: reddedildi — Kategori eksik. (1. renk kartı)')
-    expect(marketplacePublishLines(outcome(new Map([['Kategori eksik.', [4]]]), 4))).toContain('Pazarama: reddedildi — Kategori eksik.')
+    expect(marketplacePublishLines(outcome(new Map([['Kategori eksik.', [0]]]), 4))).toContain('Pazarama: gönderilmedi — Kategori eksik. (1. renk kartı)')
+    expect(marketplacePublishLines(outcome(new Map([['Kategori eksik.', [4]]]), 4))).toContain('Pazarama: gönderilmedi — Kategori eksik.')
   })
 })

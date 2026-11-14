@@ -15,7 +15,7 @@ describe('order delivery line', () => {
     const ring = orderRingDetail(delivery)
     expect(ring.text).toMatch(/kaldı$/u)
     expect(ring.cls).toBeUndefined()
-    expect(deliveryDueLine(delivery)).toEqual(ring)
+    expect(deliveryDueLine(delivery)).toEqual({ ...ring, text: ring.text.replace(/ kaldı$/u, '') })
   })
 
   it('marks the remaining time red inside the last day', () => {

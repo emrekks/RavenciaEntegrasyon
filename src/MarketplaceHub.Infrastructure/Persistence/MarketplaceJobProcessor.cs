@@ -3579,7 +3579,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     tracking.Value.CargoCompany,
                     tracking.Value.TrackingInfoCode,
                     [],
-                    IsStatusObservation: true);
+                    IsStatusObservation: true,
+                    CargoBarcode: tracking.Value.Barcode);
                 remoteOrder = remoteOrder with
                 {
                     Packages = [observation]
@@ -3834,6 +3835,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                         OccurredAt = observation.Package.OccurredAt > existingPackage.OccurredAt ? observation.Package.OccurredAt : existingPackage.OccurredAt,
                         CargoProviderExternalId = observation.Package.CargoProviderExternalId ?? existingPackage.CargoProviderExternalId,
                         CargoTrackingNumber = observation.Package.CargoTrackingNumber ?? existingPackage.CargoTrackingNumber,
+                        CargoBarcode = observation.Package.CargoBarcode ?? existingPackage.CargoBarcode,
                         Invoice = observation.Package.Invoice ?? existingPackage.Invoice,
                         IsStatusObservation = false
                     };
@@ -5146,6 +5148,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 string? rawStatus = remotePackage?.RawStatus;
                 string? cargoCompany = remotePackage?.CargoProviderExternalId;
                 string? trackingCode = remotePackage?.CargoTrackingNumber;
+                string? cargoBarcode = remotePackage?.CargoBarcode;
                 var occurredAt = remotePackage?.OccurredAt ?? now;
 
                 // The order detail already read each of its packages' tracking info; a package is asked for on its
@@ -5186,6 +5189,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     rawStatus = tracking.Value.Status;
                     cargoCompany = tracking.Value.CargoCompany;
                     trackingCode = tracking.Value.TrackingInfoCode;
+                    cargoBarcode = tracking.Value.Barcode;
                     occurredAt = now;
                     remoteStatus = string.IsNullOrWhiteSpace(rawStatus)
                         ? ShipmentPackageStatus.ManualReview
@@ -5236,7 +5240,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     remotePackage?.NetAmount ?? 0,
                     remotePackage?.Invoice,
                     remotePackage?.CreatedBy,
-                    IsStatusObservation: true));
+                    IsStatusObservation: true,
+                    CargoBarcode: cargoBarcode));
             }
 
             await ResolveIssue(tenantId, $"hepsiburada-package-reconcile:{connectionId}:{orderGroup.Key}", cancellationToken);
@@ -10934,7 +10939,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     && package.Status != target;
                 var packageMetadataChanged = package is not null
                     && ((!string.IsNullOrWhiteSpace(remotePackage.CargoProviderExternalId) && package.CargoProviderExternalId != remotePackage.CargoProviderExternalId)
-                        || (!string.IsNullOrWhiteSpace(remotePackage.CargoTrackingNumber) && package.CargoTrackingNumber != remotePackage.CargoTrackingNumber));
+                        || (!string.IsNullOrWhiteSpace(remotePackage.CargoTrackingNumber) && package.CargoTrackingNumber != remotePackage.CargoTrackingNumber)
+                        || (!string.IsNullOrWhiteSpace(remotePackage.CargoBarcode) && package.CargoBarcode != remotePackage.CargoBarcode.Trim()));
                 if (statusChanged && package is not null)
                 {
                     package.Status = target;
@@ -10962,6 +10968,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     package.OriginExternalPackageId = string.IsNullOrWhiteSpace(remotePackage.OriginExternalPackageId) ? package.OriginExternalPackageId : remotePackage.OriginExternalPackageId;
                     package.CargoProviderExternalId = string.IsNullOrWhiteSpace(remotePackage.CargoProviderExternalId) ? package.CargoProviderExternalId : remotePackage.CargoProviderExternalId;
                     package.CargoTrackingNumber = string.IsNullOrWhiteSpace(remotePackage.CargoTrackingNumber) ? package.CargoTrackingNumber : remotePackage.CargoTrackingNumber;
+                    package.CargoBarcode = string.IsNullOrWhiteSpace(remotePackage.CargoBarcode) ? package.CargoBarcode : remotePackage.CargoBarcode.Trim();
                     package.UpdatedAt = now;
                     package.Version++;
                     telemetryUpdatedCount++;
@@ -11068,7 +11075,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (package is not null && !remotePackage.IsStatusObservation && !string.IsNullOrWhiteSpace(remotePackage.CreatedBy)) package.CreatedBy = remotePackage.CreatedBy;
             if (accept && package is not null)
             {
-                package.OriginExternalPackageId = string.IsNullOrWhiteSpace(remotePackage.OriginExternalPackageId) ? package.OriginExternalPackageId : remotePackage.OriginExternalPackageId; package.CargoProviderExternalId = string.IsNullOrWhiteSpace(remotePackage.CargoProviderExternalId) ? package.CargoProviderExternalId : remotePackage.CargoProviderExternalId; package.CargoTrackingNumber = string.IsNullOrWhiteSpace(remotePackage.CargoTrackingNumber) ? package.CargoTrackingNumber : remotePackage.CargoTrackingNumber; PackageAmountPolicy.Apply(package, remotePackage); package.UpdatedAt = now; if (!statusUnchanged) db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, PackageId = package.Id, CanonicalStatus = Wire(target), RawStatus = remotePackage.RawStatus, SourceEventId = eventId, OccurredAt = statusAt, RecordedAt = now }); knownEventIds.Add(eventId);
+                package.OriginExternalPackageId = string.IsNullOrWhiteSpace(remotePackage.OriginExternalPackageId) ? package.OriginExternalPackageId : remotePackage.OriginExternalPackageId; package.CargoProviderExternalId = string.IsNullOrWhiteSpace(remotePackage.CargoProviderExternalId) ? package.CargoProviderExternalId : remotePackage.CargoProviderExternalId; package.CargoTrackingNumber = string.IsNullOrWhiteSpace(remotePackage.CargoTrackingNumber) ? package.CargoTrackingNumber : remotePackage.CargoTrackingNumber; package.CargoBarcode = string.IsNullOrWhiteSpace(remotePackage.CargoBarcode) ? package.CargoBarcode : remotePackage.CargoBarcode.Trim(); PackageAmountPolicy.Apply(package, remotePackage); package.UpdatedAt = now; if (!statusUnchanged) db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, PackageId = package.Id, CanonicalStatus = Wire(target), RawStatus = remotePackage.RawStatus, SourceEventId = eventId, OccurredAt = statusAt, RecordedAt = now }); knownEventIds.Add(eventId);
                 foreach (var remoteAllocation in packageObservation.Allocations)
                     if (lines.TryGetValue(remoteAllocation.ExternalLineId, out var line) && safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe)
                         && UpsertLineAllocation(tenantId, package.Id, line.Id, eventId, safe.ActiveAllocatedQuantity, safe.CancelledQuantity, safe.ShippedQuantity, safe.DeliveredQuantity, safe.ReturnedQuantity, allocationsByKey))
@@ -11251,6 +11258,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var changed = false;
         if (!string.IsNullOrWhiteSpace(remotePackage.CargoProviderExternalId) && package.CargoProviderExternalId != remotePackage.CargoProviderExternalId) { package.CargoProviderExternalId = remotePackage.CargoProviderExternalId; changed = true; }
         if (!string.IsNullOrWhiteSpace(remotePackage.CargoTrackingNumber) && package.CargoTrackingNumber != remotePackage.CargoTrackingNumber) { package.CargoTrackingNumber = remotePackage.CargoTrackingNumber; changed = true; }
+        if (!string.IsNullOrWhiteSpace(remotePackage.CargoBarcode) && package.CargoBarcode != remotePackage.CargoBarcode.Trim()) { package.CargoBarcode = remotePackage.CargoBarcode.Trim(); changed = true; }
         if (!string.IsNullOrWhiteSpace(remotePackage.OriginExternalPackageId) && package.OriginExternalPackageId != remotePackage.OriginExternalPackageId) { package.OriginExternalPackageId = remotePackage.OriginExternalPackageId; changed = true; }
         return changed;
     }
