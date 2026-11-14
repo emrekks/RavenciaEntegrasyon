@@ -297,7 +297,7 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
   const [selected, setSelected] = useState<string | null>(null)
   const [filter, setFilter] = useState<TariffFilter>(noFilter)
   const [page, setPage] = useState(0)
-  const [message, setMessage] = useState<{ kind: 'success' | 'error' | 'info'; text: string; warnings?: string[] } | null>(null)
+  const [message, setMessage] = useState<{ kind: 'success' | 'error' | 'info' | 'warning'; text: string; warnings?: string[] } | null>(null)
   // The days the next upload is valid for, and the file whose days are being changed.
   const [uploadDays, setUploadDays] = useState<ValidityDays>({ from: '', to: '' })
   const uploadProblem = validityProblem(uploadDays)
@@ -443,7 +443,7 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
   </section>
 }
 
-type PanelMessage = { kind: 'success' | 'error' | 'info'; text: string; warnings?: string[] }
+type PanelMessage = { kind: 'success' | 'error' | 'info' | 'warning'; text: string; warnings?: string[] }
 const tiers = [1, 2, 3, 4]
 // Model rows drawn at once in the tariff table (see TariffPlanBody).
 export const modelsPerView = 25

@@ -17,7 +17,7 @@ import '../product-editor/product-editor-design-system.css'
 import '../product-editor/product-editor-hydration.css'
 import './bulk-platform-update.css'
 
-export type BulkPlatformUpdateNotice = { title: string; message: string; kind: 'success' | 'error' | 'info'; details?: NotificationDetail[]; lines?: string[]; persistent?: boolean }
+export type BulkPlatformUpdateNotice = { title: string; message: string; kind: 'success' | 'error' | 'info' | 'warning'; details?: NotificationDetail[]; lines?: string[]; persistent?: boolean }
 
 const checkConcurrency = 6
 const sendConcurrency = 4

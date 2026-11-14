@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ToneIcon, UiIcon } from '../shared/components'
 import './notification-panel.css'
-import { describeNotification, presentNotification } from '../shared/notification-describe'
+import { describeNotification, notificationItemList, presentNotification } from '../shared/notification-describe'
 import { ViewTabIcon, type ViewTabIconName } from '../shared/view-tabs'
 import { clearNotificationHistory, markAllNotificationsRead, markNotificationRead, notificationSubjectLabels, type AppNotification } from '../shared/notifications'
 import { platformLogoClass, platformLogoSource } from '../shared/platform-logos'
@@ -40,6 +40,7 @@ function NotificationItem({ notification, expanded, onToggle, onOpen }: ItemProp
   const source = [presentation.platformName, presentation.storeName].filter(Boolean).join(' · ') || presentation.area
   const subject = presentation.items.length <= 1 ? presentation.subject : null
   const facts = expanded ? describeNotification(notification) : []
+  const itemList = notificationItemList(notification)
   return <article className={`rv-notification-history-item is-${notification.kind} ${unread ? 'is-unread' : 'is-read'}${expanded ? ' is-expanded' : ''}`}>
     <span className="rv-notification-icon" aria-hidden="true"><ToneIcon kind={notification.kind} size={18} /></span>
     <div className="rv-notification-history-copy rv-notification-card">
@@ -52,22 +53,22 @@ function NotificationItem({ notification, expanded, onToggle, onOpen }: ItemProp
         <time dateTime={notification.createdAt} title={formatDateTime(notification.createdAt)}>{relativeTime(notification.createdAt)}</time>
       </div>
       <strong className="rv-notification-title">{presentation.title}{presentation.count > 1 && <b className="rv-notification-count" aria-label={`${presentation.count} kez`}>{presentation.count}×</b>}</strong>
-      <p>{presentation.summary}</p>
+      {presentation.summary && <p>{presentation.summary}</p>}
       {subject && <p className="rv-notification-subject"><span>{notificationSubjectLabels[subject.kind]}</span><b>{subject.label}</b></p>}
       {expanded && <div className="rv-notification-detail">
         <dl>
           {facts.map(fact => <div key={fact.label}><dt>{fact.label}</dt><dd className={fact.tone ? `is-${fact.tone}` : undefined}>{fact.href ? <button type="button" className="rv-notification-link" onClick={() => onOpen(fact.href!)}>{fact.value}</button> : fact.value}</dd></div>)}
           {notification.details?.map((detail, index) => <div key={`${detail.label}:${index}`}><dt>{detail.label}</dt><dd className={detail.tone ? `is-${detail.tone}` : undefined}>{detail.value}</dd></div>)}
         </dl>
-        {presentation.items.length > 1 && <div className="rv-notification-items">
-          <span>Etkilenen Kayıtlar · {presentation.items.length}</span>
-          <ul>{presentation.items.map((item, index) => <li key={`${item.kind}:${item.id ?? item.label}:${index}`}>{item.href ? <button type="button" className="rv-notification-link" onClick={() => onOpen(item.href!)}>{item.label}</button> : item.label}</li>)}</ul>
+        {itemList.total > 1 && <div className="rv-notification-items">
+          <span>Etkilenen Kayıtlar · {itemList.total}</span>
+          <ul>{itemList.shown.map((item, index) => <li key={`${item.kind}:${item.id ?? item.label}:${index}`}>{item.href ? <button type="button" className="rv-notification-link" onClick={() => onOpen(item.href!)}>{item.label}</button> : item.label}{item.note && <em className={`is-${item.result}`}> · {item.note}</em>}</li>)}{itemList.more > 0 && <li className="rv-notification-more-items">+{itemList.more} daha</li>}</ul>
         </div>}
       </div>}
       <div className="rv-notification-foot">
         {notification.href && <button type="button" className="rv-notification-go" onClick={() => onOpen(notification.href!)}><span>{notification.actionLabel ?? 'Sayfaya Git'}</span><UiIcon name="arrowRight" size={14} /></button>}
-        <button type="button" className="rv-notification-more" aria-expanded={expanded} onClick={onToggle}><span>{expanded ? 'Ayrıntıyı Gizle' : 'Ayrıntı'}</span><UiIcon name="chevronDown" size={14} /></button>
-        {unread && <button type="button" className="rv-notification-mark-read" onClick={() => markNotificationRead(notification.id)} title="Bu bildirimi okundu olarak işaretle"><UiIcon name="circleCheck" size={14} /><span>Okundu</span></button>}
+        <button type="button" className="rv-notification-more" aria-expanded={expanded} onClick={onToggle}><span>{expanded ? 'Gizle' : 'Ayrıntı'}</span><UiIcon name="chevronDown" size={14} /></button>
+        {unread && <button type="button" className="rv-notification-mark-read" onClick={() => markNotificationRead(notification.id)} title="Okundu Olarak İşaretle" aria-label="Okundu Olarak İşaretle"><UiIcon name="circleCheck" size={14} /></button>}
       </div>
     </div>
   </article>

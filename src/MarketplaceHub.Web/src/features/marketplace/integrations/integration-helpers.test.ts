@@ -86,9 +86,10 @@ describe('Pasife Al and the webhook', () => {
   })
 
   it('shows a webhook note with the result, else a plain success', () => {
-    expect(connectionActiveFeedback(false, null)).toEqual({ kind: 'success', title: 'Bağlantı Pasife Alındı', message: 'Bağlantı pasife alındı.' })
-    const warned = connectionActiveFeedback(true, "Trendyol webhook'u yeniden açılamadı. Webhook'u Aç'a basın.")
-    expect(warned.kind).toBe('info')
-    expect(warned.message).toBe("Bağlantı etkinleştirildi. Trendyol webhook'u yeniden açılamadı. Webhook'u Aç'a basın.")
+    expect(connectionActiveFeedback(false, null, 'Trendyol')).toMatchObject({ kind: 'success', title: 'Trendyol Pasife Alındı' })
+    const warned = connectionActiveFeedback(true, "Shopify webhook'u yeniden açılamadı. Neden: Webhook gizli anahtarı alanına erişim anahtarı girilmiş. Webhook'u Aç'a basın.", 'Shopify')
+    // Partly done: the connection is active, the webhook is not. The title names both, the body does not repeat it.
+    expect(warned).toEqual({ kind: 'warning', title: 'Shopify Etkin, Webhook Açılamadı', message: "Neden: Webhook gizli anahtarı alanına erişim anahtarı girilmiş. Webhook'u Aç'a basın." })
+    expect(connectionActiveFeedback(false, "Hepsiburada webhook'u elle tanımlandığı için kapatılmadı.", 'Hepsiburada')).toMatchObject({ kind: 'info', title: 'Hepsiburada Pasife Alındı' })
   })
 })

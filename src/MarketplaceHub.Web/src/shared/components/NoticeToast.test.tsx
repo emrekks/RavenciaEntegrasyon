@@ -32,7 +32,7 @@ describe('notice toast', () => {
       act(() => root?.unmount()); view.remove(); root = undefined; host = undefined
       return [title, role]
     })
-    expect(titles).toEqual([['İşlem Başarılı', 'status'], ['İşlem Sürüyor', 'status'], ['İşlem Başarısız', 'alert'], ['Bilgi', 'status']])
+    expect(titles).toEqual([['İşlem Tamamlandı', 'status'], ['İşlem Sürüyor', 'status'], ['İşlem Başarısız', 'alert'], ['Bilgi', 'status']])
   })
 
   it('shows a countdown bar for timed toasts, a running bar while pending and closes on request', () => {

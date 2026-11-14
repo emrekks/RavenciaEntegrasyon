@@ -514,7 +514,7 @@ export function ProductsPage() {
   // A quick edit changes what the product editor shows too (panel price, channel prices, stock): both refresh.
   const refreshQuickEdit = () => Promise.all(QUICK_EDIT_SYNC_KEYS.map(queryKey => client.invalidateQueries({ queryKey })))
   // Each result lands below the toasts already shown and goes to the notification history.
-  function showProductToast(title: string, message: string, kind: 'success' | 'error' | 'info', context?: NotificationContext, shape: { lines?: string[]; persistent?: boolean } = {}) {
+  function showProductToast(title: string, message: string, kind: 'success' | 'error' | 'info' | 'warning', context?: NotificationContext, shape: { lines?: string[]; persistent?: boolean } = {}) {
     appendNotification({ ...context, title, message, kind })
     toastStack.show({ kind, title, message, lines: shape.lines, durationMs: shape.persistent ? undefined : shape.lines?.length ? 8000 : 4000 })
   }

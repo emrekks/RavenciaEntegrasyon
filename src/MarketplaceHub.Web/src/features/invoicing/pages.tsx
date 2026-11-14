@@ -64,7 +64,7 @@ type InvoiceWorkspace = { orderId: string; packageId: string; orderNumber: strin
 type InvoiceWorkspacePage = { items: InvoiceWorkspace[]; totalCount: number; pageNumber: number; pageSize: number; totalPages: number; uninvoicedCount: number; invoicedCount: number; dueSoonCount: number; hiddenCount: number; totalPackageCount: number; hasPendingMarketplaceInvoices: boolean; shipmentStatuses: string[]; cargoProviders: string[]; invoiceStatuses: string[]; platformCounts?: Record<string, number> | null }
 type InvoiceDetail = Invoice & { orderId: string; packageId: string | null; providerConnectionId: string; sequencePurpose: string; ettnUuid: string | null; taxExclusiveTotal: number; discountTotal: number; taxTotal: number; note: string; issuedAt: string | null; lastErrorCode: string | null; lines: Array<{ id: string; lineSequence: number; description: string; sku: string | null; unit: string; quantity: number; unitPrice: number; discountAmount: number; vatRate: number; vatAmount: number; lineTotal: number }>; documents: Array<{ id: string; documentType: string; sha256: string; createdAt: string }>; attempts: Array<{ attemptNumber: number; outcome: string; errorCode: string | null; startedAt: string; completedAt: string | null }>; deliveries: Array<{ id: string; deliveryType: string; status: string; externalReference: string | null; errorCode: string | null; createdAt: string }>; allowedActions: string[]; requiresSensitiveConfirmation: boolean; linkRevocations?: InvoiceLinkRevocation[] | null; deliveryRetry?: InvoiceDeliveryRetry | null; returnDocumentNote?: string | null }
 type Connection = { id: string; platformCode: string; displayName: string; status: string; environment: string; hasCredential: boolean }
-type InvoiceNoticeKind = 'success' | 'error' | 'info' | 'pending'
+type InvoiceNoticeKind = 'success' | 'error' | 'info' | 'warning' | 'pending'
 // The order an invoice notice is about, with its marketplace and store; a failure keeps the server's code.
 function invoiceOrderContext(item: Pick<InvoiceWorkspace, 'orderNumber' | 'platformCode' | 'marketplaceConnectionId'>, title: string, operation: string, reason?: unknown): NotificationContext {
   return { title, operation, platformCode: item.platformCode, connectionId: item.marketplaceConnectionId ?? undefined, code: reason === undefined ? undefined : notificationError(reason, '').code, subject: { kind: 'order', id: item.orderNumber, label: `#${item.orderNumber}`, href: notificationLinks.order(item.orderNumber) } }
@@ -359,7 +359,8 @@ export function InvoicesPage() {
   function pickPlatformsNow(next: string[]) { const value = next.length ? next : null; setPlatformDraft(value); setSelectedPlatforms(value) }
   function clearFilters() { setSearch(''); setSearchFilter(''); setPlatformDraft(null); setSelectedPlatforms(null); setShipmentStatusFilter('ALL'); setCargoFilter('ALL'); setInvoiceStatusFilter('ALL'); setInvoiceActionFilter('ALL'); setDraftFrom(''); setDraftTo(''); setDateFrom(''); setDateTo(''); setSortDraft('ORDER_DESC'); setSortOrder('ORDER_DESC') }
   useEffect(() => { setTab(initialTab) }, [initialTab])
-  function setMessage(value: string, kind: InvoiceNoticeKind = 'info', context?: NotificationContext) { setMessageState(value); setMessageKind(kind); if (value && kind !== 'pending') appendNotification({ ...context, message: value, kind }) }
+  const [messageTitle, setMessageTitle] = useState<string | undefined>()
+  function setMessage(value: string, kind: InvoiceNoticeKind = 'info', context?: NotificationContext) { setMessageState(value); setMessageKind(kind); setMessageTitle(context?.title); if (value && kind !== 'pending') appendNotification({ ...context, message: value, kind }) }
   useEffect(() => {
     if (!message || messageKind === 'pending') return
     const timeout = window.setTimeout(() => setMessageState(''), messageKind === 'info' ? 7000 : 5500)
@@ -597,7 +598,7 @@ export function InvoicesPage() {
     <div className="page-heading invoices-reference-heading">
       <div><p className="eyebrow">Mali Belgeler</p><h1>Faturalar</h1></div>
     </div>
-    {message && <NoticeToast key={`${messageKind}:${message}`} kind={messageKind} message={message} onClose={() => setMessageState('')} durationMs={messageKind === 'pending' ? undefined : messageKind === 'info' ? 7000 : 5500} />}
+    {message && <NoticeToast key={`${messageKind}:${message}`} kind={messageKind} title={messageTitle} message={message} onClose={() => setMessageState('')} durationMs={messageKind === 'pending' ? undefined : messageKind === 'info' ? 7000 : 5500} />}
     <div className="invoice-reference-metrics">
       <article className="invoice-metric-pending" title="Paket bazlı işlem"><CardBackgroundIcon name="fileClock" tone="warn" /><small>Fatura Bekleyen</small><strong><CountUp value={cardCountText(pageData ? counts.unInvoiced : undefined)} /></strong></article>
       <article className="invoice-metric-due" title="Teslimden 4 gün geçen"><CardBackgroundIcon name="calendarClock" tone="bad" /><small>Süresi Yaklaşan</small><strong><CountUp value={cardCountText(pageData ? counts.dueSoon : undefined)} /></strong></article>
@@ -724,7 +725,7 @@ function InvoiceManualConfirmationModal({ kind, item, onCancel, onConfirm }: { k
   </Modal>
 }
 
-function InvoiceWorkspaceBulkStatusModal({ items, onClose, onFeedback }: { items: InvoiceWorkspace[]; onClose: () => void; onFeedback: (message: string, kind: InvoiceNoticeKind) => void }) {
+function InvoiceWorkspaceBulkStatusModal({ items, onClose, onFeedback }: { items: InvoiceWorkspace[]; onClose: () => void; onFeedback: (message: string, kind: InvoiceNoticeKind, context?: NotificationContext) => void }) {
   const client = useQueryClient()
   const [status, setStatus] = useState<'PENDING' | 'UPLOADED'>('PENDING')
   const update = useMutation({
@@ -733,7 +734,18 @@ function InvoiceWorkspaceBulkStatusModal({ items, onClose, onFeedback }: { items
       await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['invoice'] })])
       const label = status === 'UPLOADED' ? 'Faturası yüklendi' : 'Fatura bekliyor'
       const reopened = result.reopenedCount ? ` ${result.reopenedCount} siparişte iptal edilen faturanın linki geçersiz sayıldı; yeni fatura kesilebilir.` : ''
-      onFeedback(`${result.updatedCount} siparişin fatura durumu “${label}” olarak güncellendi. Dosya yüklenmedi ve pazaryerine fatura gönderilmedi.${reopened}`, 'success')
+      const platforms = [...new Set(items.map(item => item.platformCode))]
+      // The old status is named only when every selected order was in the same one.
+      const previous = [...new Set(items.map(item => item.manualInvoiceStatus ?? ''))]
+      const previousLabel = previous.length === 1 && previous[0] ? (previous[0] === 'UPLOADED' ? 'Faturası yüklendi' : 'Fatura bekliyor') : undefined
+      onFeedback(`${result.updatedCount} sipariş “${label}” olarak işaretlendi. Dosya yüklenmedi, pazaryerine fatura gönderilmedi.${reopened}`, 'success', {
+        title: 'Fatura Durumu Güncellendi',
+        operation: 'Fatura durumunu elle işaretleme',
+        platformCode: platforms.length === 1 ? platforms[0] : undefined,
+        statusChange: { from: previousLabel, to: label },
+        items: items.map(item => ({ kind: 'order' as const, id: item.orderId, label: `#${item.orderNumber.replace(/^#+/u, '')}`, href: notificationLinks.order(item.orderNumber), result: 'success' as const })),
+        record: true
+      })
       onClose()
     },
     onError: error => onFeedback(error instanceof Error ? error.message : 'Fatura durumları güncellenemedi.', 'error')

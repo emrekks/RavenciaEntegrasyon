@@ -27,7 +27,7 @@ describe('describing a notification', () => {
       subject: { kind: 'product', id: 'p1', label: 'Saten Elbise (MZ054)', href: '/products/p1' }
     })
     const rows = describeNotification(notification)
-    expect(rows.map(row => row.label)).toEqual(['Platform', 'Mağaza', 'İşlem', 'Ürün', 'Sonuç', 'Kod', 'İş No', 'Zaman'])
+    expect(rows.map(row => row.label)).toEqual(['Platform', 'Mağaza', 'İşlem', 'Ürün', 'Sonuç', 'Kod', 'İlgili İş', 'Zaman'])
     expect(rows.find(row => row.label === 'Ürün')).toMatchObject({ value: 'Saten Elbise (MZ054)', href: '/products/p1' })
     const presentation = presentNotification(notification)
     expect([presentation.title, presentation.platformName, presentation.storeName]).toEqual(['Yayın Durumu Sorgulanamadı', 'Pazarama', 'Ravencia'])
