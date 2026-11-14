@@ -109,7 +109,11 @@ public sealed record ProductPlatformStatusView(
     IReadOnlyDictionary<string, int>? OffSaleReasonCounts = null,
     // Why the marketplace refused the card (the profile's last rejection, as the marketplace wrote it), only while its
     // status is a marketplace refusal (REJECTED, PARTIAL_REJECTED); null when none was given.
-    string? RejectionReason = null);
+    string? RejectionReason = null,
+    // Variants whose listing there the marketplace refused (REJECTED) or still reviews (APPROVAL_PENDING): in neither
+    // MatchedVariantCount nor MissingVariantCount.
+    int RejectedVariantCount = 0,
+    int PendingVariantCount = 0);
 public sealed record ProductView(
     Guid Id,
     string Title,

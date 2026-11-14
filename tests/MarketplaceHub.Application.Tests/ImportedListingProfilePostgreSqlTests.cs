@@ -98,7 +98,7 @@ public sealed class ImportedListingProfilePostgreSqlTests(PostgreSqlTenantIsolat
             // (live 14 Nov 2026: MZ056's publish card read "Zaten yayında").
             var view = (await NewCatalogService(db).GetProductAsync(seeded.Tenant.Id, seeded.Product.Id, CancellationToken.None)).Value!;
             var platform = Assert.Single(view.PlatformStatuses!, x => x.PlatformCode == "TRENDYOL");
-            Assert.Equal(("REJECTED", 0, "Hatalı Marka Bilgisi"), (platform.Status, platform.MatchedVariantCount, platform.RejectionReason));
+            Assert.Equal(("REJECTED", 0, "Hatalı Marka Bilgisi", 1, 0), (platform.Status, platform.MatchedVariantCount, platform.RejectionReason, platform.RejectedVariantCount, platform.PendingVariantCount));
             Assert.False(Assert.Single(view.Variants.Single().PlatformStatuses!, x => x.PlatformCode == "TRENDYOL").IsMatched);
         }
 

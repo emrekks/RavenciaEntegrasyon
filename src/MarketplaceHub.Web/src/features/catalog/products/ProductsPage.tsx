@@ -12,7 +12,7 @@ import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import { productStatusLabel } from '../../../shared/status-labels'
 import { RrAnchor, RrBadge, RrColumnPop, RrError, RrFilterCard, RrHeadCell, RrIcon, RrLoading, RrLogo, RrModal, RrPageSize, RrRing, RrThumb, titleTr, type RingTone } from '../../marketplace/returns-ui'
 import { appendNotification, notificationError, productNotificationSubject, type NotificationContext } from '../../../shared/notifications'
-import { productPlatformDisplayLabel, productPlatformDisplayState, withProductPlatformSaleState } from '../product-platform-status'
+import { productPlatformBreakdownTip, productPlatformDisplayLabel, productPlatformDisplayState, withProductPlatformSaleState } from '../product-platform-status'
 import { nextProductCatalogSort, parseProductCatalogSort, productCatalogSortOptions, productCatalogSortValue, type ProductCatalogSort } from '../product-catalog-sorting'
 import { activeProductSyncJobs as filterActiveProductSyncJobs, productSyncJobsPath, settleTrackedProductSyncJobs, trackProductSyncJobs } from '../product-sync-tracking'
 import { productImportConnection, singleProductLookupHint, singleProductLookupLabel } from '../product-import-platforms'
@@ -255,7 +255,7 @@ function ProductColorRows({ group, priority, selected, onSelect, selectionMode: 
   const navigate = useNavigate()
   const product = group.primary
   const platformStatuses = group.products.flatMap(item => item.platformStatuses ?? [])
-  const platformStatusAggregates = new Map<string, { platform: string; platformCode: string; statuses: string[]; matchedVariantCount: number; variantCount: number; isChecking: boolean; onSale: number; offSale: number; offSaleStockZero: number; reasons: Record<string, number>; rejectionReason: string | null }>()
+  const platformStatusAggregates = new Map<string, { platform: string; platformCode: string; statuses: string[]; matchedVariantCount: number; variantCount: number; isChecking: boolean; onSale: number; offSale: number; offSaleStockZero: number; reasons: Record<string, number>; rejectionReason: string | null; missing: number; rejected: number; pending: number }>()
   for (const item of platformStatuses) {
     const platform = item.platform?.trim() || 'Platform'
     const platformCode = item.platformCode?.trim().toUpperCase() || (platform.toUpperCase().includes('SHOPIFY') ? 'SHOPIFY' : platform.toUpperCase().includes('HEPSIBURADA') ? 'HEPSIBURADA' : platform.toUpperCase().includes('TRENDYOL') ? 'TRENDYOL' : platform.toUpperCase().includes('N11') ? 'N11' : platform.toUpperCase().includes('PAZARAMA') ? 'PAZARAMA' : platform.toUpperCase().replace(/\s/g, '').includes('PTTAVM') ? 'PTTAVM' : 'UNKNOWN')
@@ -271,8 +271,11 @@ function ProductColorRows({ group, priority, selected, onSelect, selectionMode: 
       current.offSaleStockZero += item.offSaleStockZeroVariantCount ?? 0
       for (const [reason, count] of Object.entries(item.offSaleReasonCounts ?? {})) current.reasons[reason] = (current.reasons[reason] ?? 0) + count
       current.rejectionReason ??= item.rejectionReason?.trim() || null
+      current.missing += item.missingVariantCount ?? 0
+      current.rejected += item.rejectedVariantCount ?? 0
+      current.pending += item.pendingVariantCount ?? 0
     } else {
-      platformStatusAggregates.set(key, { platform, platformCode, statuses: [item.status], matchedVariantCount: item.matchedVariantCount ?? 0, variantCount: item.variantCount ?? 0, isChecking: Boolean(item.isChecking), onSale: item.onSaleVariantCount ?? 0, offSale: item.offSaleVariantCount ?? 0, offSaleStockZero: item.offSaleStockZeroVariantCount ?? 0, reasons: { ...item.offSaleReasonCounts }, rejectionReason: item.rejectionReason?.trim() || null })
+      platformStatusAggregates.set(key, { platform, platformCode, statuses: [item.status], matchedVariantCount: item.matchedVariantCount ?? 0, variantCount: item.variantCount ?? 0, isChecking: Boolean(item.isChecking), onSale: item.onSaleVariantCount ?? 0, offSale: item.offSaleVariantCount ?? 0, offSaleStockZero: item.offSaleStockZeroVariantCount ?? 0, reasons: { ...item.offSaleReasonCounts }, rejectionReason: item.rejectionReason?.trim() || null, missing: item.missingVariantCount ?? 0, rejected: item.rejectedVariantCount ?? 0, pending: item.pendingVariantCount ?? 0 })
     }
   }
   const platformCards = [...platformStatusAggregates.entries()].map(([key, item]) => {
@@ -280,7 +283,9 @@ function ProductColorRows({ group, priority, selected, onSelect, selectionMode: 
     const publicationLabel = productPlatformDisplayLabel(item.platform, item.statuses, item.matchedVariantCount, item.variantCount, publicationState, item.rejectionReason)
     // The sale state goes over the publication state (a stock of 0 is never a closure; see withProductPlatformSaleState).
     const { state, label } = withProductPlatformSaleState(item.platform, publicationState, publicationLabel, { matched: item.matchedVariantCount, variantCount: item.variantCount, onSale: item.onSale, offSale: item.offSale, offSaleStockZero: item.offSaleStockZero, reasons: item.reasons })
-    return { key, platform: item.platform, platformCode: item.platformCode, state, label, matchedVariantCount: item.matchedVariantCount, variantCount: item.variantCount }
+    // The tooltip breaks the group's variants down by state (owner, 14 Nov 2026); the dot keeps the state's colour.
+    const tip = productPlatformBreakdownTip(item.platform, { variantCount: item.variantCount, matched: item.matchedVariantCount, missing: item.missing, onSale: item.onSale, offSale: item.offSale, offSaleStockZero: item.offSaleStockZero, rejected: item.rejected, pending: item.pending }, item.rejectionReason)
+    return { key, platform: item.platform, platformCode: item.platformCode, state, label, tip, matchedVariantCount: item.matchedVariantCount, variantCount: item.variantCount }
   })
   const totalStock = group.products.reduce((sum, item) => sum + item.totalStock, 0)
   const prices = group.products.map(item => item.startingPrice).filter((price): price is number => price != null)
@@ -306,7 +311,8 @@ function ProductColorRows({ group, priority, selected, onSelect, selectionMode: 
     const name = platformDisplayNames[code]
     const linkedTone = card && card.variantCount > 0 && card.matchedVariantCount < card.variantCount ? 'part' : 'on'
     const state = card ? ({ active: 'on', partial: 'link', linked: linkedTone, processing: 'busy', error: 'err', missing: 'err', inactive: 'none', closed: 'off', blocked: 'err' } as Record<string, string>)[card.state] ?? 'none' : 'none'
-    return { code, state, label: card?.label ?? `${name}: Ürün Eşleşmesi Bulunamadı` }
+    const label = card?.label ?? `${name}: Ürün Eşleşmesi Bulunamadı`
+    return { code, state, label, tip: card?.tip ?? label }
   })
   const [ringTone, ringProgress] = ({ ACTIVE: ['ok', 1], DRAFT: ['prog', 0.3], ARCHIVED: ['off', 0], MIXED: ['bad', 0.66] } as Record<string, [RingTone, number]>)[status] ?? ['off', 0]
   const statusLabelText = status === 'MIXED' ? 'Hatalı' : titleTr(statusLabel)
@@ -323,7 +329,7 @@ function ProductColorRows({ group, priority, selected, onSelect, selectionMode: 
     <td className="rr-mid" data-l="Fiyat"><button type="button" className="rr-qbtn" title="Fiyatı hızlı düzenle" aria-label={`${product.title}: fiyatı düzenle`} onClick={() => onQuickEdit('price')}><b className="rr-num">{formatMoney(startingPrice ?? 0, product.currency)}</b>{listPrice != null && <small className="rr-num">{formatMoney(listPrice, product.currency)}</small>}</button></td>
     <td className="rr-mid" data-l="Stok"><button type="button" className={`rr-qbtn${totalStock === 0 ? ' rr-zero' : ''}`} title="Stoğu hızlı düzenle" aria-label={`${product.title}: stoğu düzenle`} onClick={() => onQuickEdit('stock')}><b className="rr-num">{totalStock}</b><small>{totalStock === 0 ? 'Stoksuz' : 'adet'}</small></button></td>
     {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- tooltip trigger: focusable so keyboards can read the platform state */}
-    <td className="rr-mid" data-l="Platform Durumu"><div className="rr-pmarks">{platformMarks.map(mark => <span key={mark.code} className={`rr-pm rr-${mark.state}`} tabIndex={0} data-tip={mark.label} aria-label={mark.label}><RrLogo code={mark.code} /><i /></span>)}</div></td>
+    <td className="rr-mid" data-l="Platform Durumu"><div className="rr-pmarks">{platformMarks.map(mark => <span key={mark.code} className={`rr-pm rr-${mark.state}`} tabIndex={0} data-tip={mark.tip} aria-label={`${mark.label}. ${mark.tip.replaceAll('\n', ', ')}`}><RrLogo code={mark.code} /><i /></span>)}</div></td>
     <td className="rr-mid" data-l="Durum"><RrRing tone={ringTone} progress={ringProgress} label={statusLabelText} /></td>
     <td className="rr-mid" data-l="İşlemler"><div className="rr-actcell"><RrAnchor trigger={(open, toggle) => <button type="button" className={`rr-trigger${open ? ' rr-on' : ''}`} aria-haspopup="menu" aria-expanded={open} onClick={toggle}><span>İşlemler</span><RrIcon name="chev" /></button>}>{close => <div className="rr-menu" role="menu" aria-label={`${product.title} işlemleri`}>{menuItems.map((entry, index) => entry === 'hr' ? <hr key={`hr-${index}`} /> : <button key={entry[1]} type="button" role="menuitem" className={entry[3] || undefined} onClick={() => { close(); entry[2]() }}><RrIcon name={entry[0]} />{entry[1]}</button>)}</div>}</RrAnchor><Link className="rr-btn rr-link" to={`/products/${product.id}`}>Düzenle <RrIcon name="open" /></Link></div></td>
   </tr>

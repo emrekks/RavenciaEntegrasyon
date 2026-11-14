@@ -3041,7 +3041,11 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                         saleLinks.Count(x => x.SaleState == ListingSaleState.OffSale),
                         saleLinks.Count(x => x.SaleState == ListingSaleState.OffSale && x.SaleStateReason == ListingSaleState.StockZero),
                         ListingSaleState.ClosedBeyondStockReasonCounts(saleLinks.Select(x => (x.SaleState, x.SaleStateReason))),
-                        PlatformRejectionReason(status, profile?.LastRejectionCode));
+                        PlatformRejectionReason(status, profile?.LastRejectionCode),
+                        // The variants the marketplace refused or still reviews there (their listing's state), for the
+                        // list mark's breakdown; they are in neither the matched nor the missing count.
+                        profile is null ? 0 : listingVariants.Where(x => x.ProfileId == profile.Id && productVariantIds.Contains(x.VariantId) && x.ActualStatus == ImportedApprovalStates.Rejected).Select(x => x.VariantId).Distinct().Count(),
+                        profile is null ? 0 : listingVariants.Where(x => x.ProfileId == profile.Id && productVariantIds.Contains(x.VariantId) && x.ActualStatus == ImportedApprovalStates.Pending).Select(x => x.VariantId).Distinct().Count());
                 })
                 .OrderBy(x => x.Platform, StringComparer.OrdinalIgnoreCase)
                 .ToList();

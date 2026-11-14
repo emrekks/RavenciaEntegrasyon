@@ -168,3 +168,42 @@ export function withProductPlatformSaleState(
   const partialLabel = state === 'active' ? `${platform}: Kısmen Satışta · ${sale.label}` : `${label} · ${sale.label}`
   return { state: sale.blocking ? 'blocked' : 'partial', label: partialLabel }
 }
+
+// What the server counted for one marketplace across a model group's cards (ProductPlatformStatusView).
+export type ProductPlatformBreakdownCounts = {
+  variantCount: number
+  matched: number
+  missing: number
+  onSale: number
+  offSale: number
+  offSaleStockZero: number
+  rejected: number
+  pending: number
+}
+
+// The list mark's tooltip (owner, 14 Nov 2026: "kaçı aktif kaçı pasifte"): the group's variants on one marketplace by
+// state, only the states that hold any. Aktif: matched and on sale (a stock of 0 is never a closure); a matched variant
+// whose sale state the marketplace has not said is counted as matched with its sale state unknown, never as active.
+// Pasif: neither matched, lost, refused nor waiting there. Nothing is inferred beyond the server's counts.
+export function productPlatformBreakdownLines(counts: ProductPlatformBreakdownCounts, rejectionReason?: string | null): string[] {
+  const active = counts.onSale + counts.offSaleStockZero
+  const closed = Math.max(0, counts.offSale - counts.offSaleStockZero)
+  const unknownSale = Math.max(0, counts.matched - counts.onSale - counts.offSale)
+  const passive = Math.max(0, counts.variantCount - counts.matched - counts.missing - counts.rejected - counts.pending)
+  const reason = rejectionReason?.trim() ? ` · ${rejectionReason.trim()}` : ''
+  const lines: Array<[number, string]> = [
+    [active, 'Aktif'],
+    [unknownSale, 'Eşleşti · Satış Durumu Bilinmiyor'],
+    [closed, 'Satışa Kapalı'],
+    [counts.pending, 'Onay Bekliyor'],
+    [counts.rejected, `Reddedildi${reason}`],
+    [counts.missing, 'Bulunamadı'],
+    [passive, 'Pasif']
+  ]
+  return lines.filter(([count]) => count > 0).map(([count, text]) => `${count} ${text}`)
+}
+
+export function productPlatformBreakdownTip(platform: string, counts: ProductPlatformBreakdownCounts, rejectionReason?: string | null): string | null {
+  if (counts.variantCount <= 0) return null
+  return [`${platform} · ${counts.variantCount} varyant`, ...productPlatformBreakdownLines(counts, rejectionReason)].join('\n')
+}
