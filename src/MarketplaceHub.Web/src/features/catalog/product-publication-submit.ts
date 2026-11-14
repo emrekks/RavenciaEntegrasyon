@@ -103,6 +103,35 @@ function cardsNote(indexes: readonly number[], openedCard = 0) {
   return indexes.length === 1 && indexes[0] !== openedCard ? ` (${indexes[0] + 1}. renk kartı)` : ''
 }
 
+// Our own pre-check refuses a card whose value has no verified mapping ("'Web Color: İndigo' için doğrulanmış Trendyol
+// değer eşlemesi yok. Eşleştirmeler › …"): that is not a marketplace rejection, and ten colours of it are one problem,
+// said once with the values (owner, 14 Nov 2026).
+const missingMapping = /^'([^']+)' için doğrulanmış .+? değer eşlemesi yok./u
+export const mappingFixHint = "Eşleştirmeler › Kategori Eşleme › Kategori Özellikleri'nden eşleyin."
+
+/** The refusal lines of one marketplace: identical mapping gaps joined per attribute, other refusals one line each. */
+export function refusalLines(name: string, refusals: ReadonlyArray<{ message: string; cards: readonly string[]; note: string }>) {
+  const lines: string[] = []
+  const gaps = new Map<string, { values: string[]; cards: Set<string> }>()
+  for (const refusal of refusals) {
+    const label = missingMapping.exec(refusal.message.trim())?.[1]
+    if (!label) { lines.push(`${name}: gönderilmedi — ${refusal.message.replace(/s+$/u, '')}${refusal.note}`); continue }
+    const at = label.indexOf(': ')
+    const attribute = at > 0 ? label.slice(0, at) : label
+    const value = at > 0 ? label.slice(at + 2) : ''
+    const gap = gaps.get(attribute) ?? { values: [], cards: new Set<string>() }
+    if (value && !gap.values.includes(value)) gap.values.push(value)
+    refusal.cards.forEach(card => gap.cards.add(card))
+    gaps.set(attribute, gap)
+  }
+  for (const [attribute, gap] of gaps) {
+    const count = gap.cards.size
+    lines.push(`${name}: ${count > 1 ? `${count} renk` : count === 1 ? '1 renk' : 'Renk'} gönderilmedi: ${attribute} eşlemesi eksik${gap.values.length ? ` — ${gap.values.join(', ')}` : ''}.`)
+  }
+  if (gaps.size) lines.push(mappingFixHint)
+  return lines
+}
+
 function skippedPhrase(outcome: MarketplacePublishOutcome) {
   const single = outcome.familyCards <= 1
   const parts: string[] = []
@@ -169,9 +198,7 @@ export function marketplacePublishLines(outcome: MarketplacePublishOutcome) {
   if (skippedVariants.length) {
     lines.push(`${name}: ${skippedVariants.length} varyant gönderilmedi — ${skippedVariants.map(item => `${item.sku}: ${item.message.replace(/\s+$/u, '')}`).join(' ')}`)
   }
-  for (const [failure, indexes] of outcome.failures) {
-    lines.push(`${name}: reddedildi — ${failure.replace(/\s+$/u, '')}${cardsNote(indexes, outcome.openedCard)}`)
-  }
+  lines.push(...refusalLines(name, [...outcome.failures].map(([message, indexes]) => ({ message, cards: indexes.map(String), note: cardsNote(indexes, outcome.openedCard) }))))
   if (!lines.length) lines.push(`${name}: gönderilecek renk kartı bulunamadı.`)
   return lines
 }
@@ -203,7 +230,7 @@ function marketplaceUpdateLines(outcome: MarketplaceUpdateOutcome) {
   }
   const family = outcome.family
   if (family?.absent.length) lines.push(`${name}: ${family.absent.length} renk bu mağazada yok (${family.absent.join(', ')}); bu renkler güncellenmedi. Önce Yayınla ile gönderilmeleri gerekir.`)
-  for (const [failure, colours] of family?.failures ?? []) lines.push(`${name}: reddedildi — ${failure.replace(/\s+$/u, '')} (${colours.join(', ')})`)
+  lines.push(...refusalLines(name, [...(family?.failures ?? [])].map(([message, colours]) => ({ message, cards: colours, note: ` (${colours.join(', ')})` }))))
   return lines
 }
 
@@ -232,7 +259,7 @@ export function productSaveFeedback(outcome: ProductSaveOutcome): ProductSaveFee
     title = !failed.length ? 'Aktarım Başladı' : started.length ? 'Aktarım Kısmen Başladı' : 'Aktarım Başlatılamadı'
   } else if (outcome.publishRequested) {
     for (const publication of outcome.publications) lines.push(...marketplacePublishLines(publication))
-    for (const error of outcome.publicationErrors) lines.push(`${error.platformName}: reddedildi — ${error.message}`)
+    for (const error of outcome.publicationErrors) lines.push(`${error.platformName}: gönderilmedi — ${error.message}`)
     const gapSkipped = outcome.gapSkipped ?? []
     for (const gap of gapSkipped) lines.push(`${gap.platformName}: gönderilmedi — yayın için ${gap.requiredGaps} zorunlu eksik var; kartındaki eksikler giderilince seçilebilir.`)
     const anyQueued = outcome.publications.some(publication => publication.enqueuedCards > 0)
@@ -254,10 +281,16 @@ export function productSaveFeedback(outcome: ProductSaveOutcome): ProductSaveFee
     title = outcome.created ? 'Ürün Oluşturuldu' : 'Ürün Kaydedildi'
   }
   if (!lines.length) lines.push('Kaydedilecek yeni değişiklik yoktu.')
+  const shown = [...new Set(lines)]
+  lines.splice(0, lines.length, ...shown)
 
   // A refusal or a stock that was not saved stays on screen until it is closed; a full success closes by itself, a
   // little later when it has several lines to read; "nothing new to send" is information, not an error.
-  if (refused) return { title, lines, kind: 'error', persistent: true }
+  // Part of it went out and part did not: a warning, not an error (owner, 14 Nov 2026).
+  const partlySent = outcome.updates
+    ? outcome.updates.some(update => update.queued.productInformation || update.queued.priceInventory)
+    : outcome.publishRequested && outcome.publications.some(publication => publication.enqueuedCards > 0)
+  if (refused) return { title, lines, kind: partlySent && !outcome.saveWarnings.length ? 'warning' : 'error', persistent: true }
   // Something went to a marketplace: it is on its way, not done. The toast stays as work in progress until the followed
   // jobs say how it ended (shared/job-outcome); a success never shows before that (owner, 7 Nov 2026: RYP003T).
   const sending = outcome.updates

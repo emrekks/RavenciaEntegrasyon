@@ -72,11 +72,11 @@ describe('the update result of a model family', () => {
 
   it('names the colours not on the marketplace and the refused ones, and stays on screen', () => {
     const feedback = save([{ platformName: 'Trendyol', queued: { productInformation: true, priceInventory: false }, family: { cards: 7, queuedCards: 4, queuedVariants: 12, absent: ['Bej', 'Siyah'], failures: new Map([['Ürün güncellenemedi.', ['Vizon']]]) } }])
-    expect(feedback).toMatchObject({ title: 'Aktarım Kısmen Başladı', kind: 'error', persistent: true })
+    expect(feedback).toMatchObject({ title: 'Aktarım Kısmen Başladı', kind: 'warning', persistent: true })
     expect(feedback.lines).toEqual([
       'Trendyol: ürün bilgisi (7 renkten 4 renk, 12 varyant) gönderiliyor.',
       'Trendyol: 2 renk bu mağazada yok (Bej, Siyah); bu renkler güncellenmedi. Önce Yayınla ile gönderilmeleri gerekir.',
-      'Trendyol: reddedildi — Ürün güncellenemedi. (Vizon)'
+      'Trendyol: gönderilmedi — Ürün güncellenemedi. (Vizon)'
     ])
   })
 
