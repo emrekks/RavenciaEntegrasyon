@@ -97,7 +97,9 @@ export function publishStatusSteps(input: PublishStepsInput): PublishSteps {
   if (input.notFound) return build(['done', 'done', 'done', 'fail'], 'Bulunamadı')
 
   if (partial) {
-    if (status === 'PARTIAL_REJECTED') return build(['done', 'done', 'fail', 'half'], 'Kısmen Reddedildi')
+    // This card refused while the rest of its family is live (owner, 14 Nov 2026: MZ056's Mürdüm card, Trendyol
+    // "Hatalı Görsel Linki", read "Kısmen Yayında"): the Onay step fails, also over a required gap.
+    if (status === 'PARTIAL_REJECTED' || status === 'REJECTED') return build(['done', 'done', 'fail', 'half'], 'Kısmen Reddedildi')
     if (jobRunning && !approvalStatuses.has(status)) return build(['done', 'now', 'idle', 'half'], 'Gönderiliyor')
     if (approvalStatuses.has(status) && !input.retry) return build(['done', 'done', 'now', 'half'], input.checking ? 'Kontrol Ediliyor' : 'Onay Bekliyor')
     if (prepFailed) return build(['fail', 'idle', 'idle', 'half'], 'Kısmen Yayında')
