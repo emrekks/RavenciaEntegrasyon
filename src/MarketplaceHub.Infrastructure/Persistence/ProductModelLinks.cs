@@ -430,6 +430,34 @@ public static class ProductModelLinks
         return written;
     }
 
+    // Faz 2 (editor read): the model record's shared fields for the editor, when they are the cards' current values: the
+    // editor saved them (FieldsSavedAt) after the last change of every card of the family, every card is linked to this
+    // model and the model's category is one a card holds. Null otherwise: the editor goes by the cards' majority
+    // (ProductFamilySharedFields.ModelValues) as before. The name is given with the opened card's colour.
+    public static async Task<ProductFamilySharedFields.ModelFields?> SavedFieldsAsync(AppDbContext db, Guid tenantId, Guid? familyId, IReadOnlyCollection<Product> cards, string? openedColor, CancellationToken cancellationToken)
+    {
+        if (familyId is not { } modelId || cards.Count == 0 || cards.Any(x => x.FamilyId != modelId)) return null;
+        var model = await db.ProductModels.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == modelId, cancellationToken);
+        if (model?.FieldsSavedAt is not { } savedAt || cards.Any(x => x.UpdatedAt > savedAt) || cards.All(x => x.CategoryId != model.CategoryId)) return null;
+        return new ProductFamilySharedFields.ModelFields(
+            ProductFamilySharedFields.TitleFor(model.Title, model.TitleColor, openedColor), model.Description, model.BrandId, model.CategoryId,
+            model.VatRate, model.VatInclusion, model.WarrantyMonths, model.DeliveryDays);
+    }
+
+    // Faz 2 (editor read): the model record's category attributes (without colour), when the editor saved them after the
+    // last change of every card and the opened card still holds exactly that set; null otherwise (the cards' majority).
+    public static async Task<IReadOnlyList<ProductModelAttribute>?> SavedAttributesAsync(AppDbContext db, Guid tenantId, Guid? familyId, IReadOnlyCollection<Product> cards, IReadOnlyCollection<(Guid AttributeId, Guid? ValueId, string? TextValue, decimal? NumberValue, bool? BooleanValue)> openedCardAttributes, CancellationToken cancellationToken)
+    {
+        if (familyId is not { } modelId || cards.Count == 0 || cards.Any(x => x.FamilyId != modelId)) return null;
+        var savedAt = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == modelId).Select(x => x.AttributesSavedAt).SingleOrDefaultAsync(cancellationToken);
+        if (savedAt is not { } at || cards.Any(x => x.UpdatedAt > at)) return null;
+        var rows = await db.ProductModelAttributes.AsNoTracking().Where(x => x.TenantId == tenantId && x.ModelId == modelId).OrderBy(x => x.SortOrder).ThenBy(x => x.Id).ToListAsync(cancellationToken);
+        var colors = await ColorAttributeIdsAsync(db, tenantId, [.. openedCardAttributes.Select(x => x.AttributeId).Distinct()], cancellationToken);
+        var opened = openedCardAttributes.Where(x => !colors.Contains(x.AttributeId)).Select(x => AttributeKey(x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal);
+        var model = rows.Select(x => AttributeKey(x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal);
+        return opened.SequenceEqual(model, StringComparer.Ordinal) ? rows : null;
+    }
+
     // The editor saved the model's fields to every card: the model takes the same values (write-through).
     public static async Task WriteFieldsAsync(AppDbContext db, Guid tenantId, Guid productId, string? titleColor, DateTimeOffset now, CancellationToken cancellationToken)
     {

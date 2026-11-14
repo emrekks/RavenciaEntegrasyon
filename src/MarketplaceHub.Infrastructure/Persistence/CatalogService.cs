@@ -1325,8 +1325,13 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         List<ProductView> familyCardViews = [.. familyCardOrder.Select(cardId => familyViews.First(view => view.Id == cardId))];
         List<ProductFamilySharedFields.CardFields> familyCardFields = [.. familyCardViews.Select(SharedFieldsOf)];
         // Temel Ürün Bilgileri are the model's, one value whichever colour row was opened (ProductFamilySharedFields).
-        var model = ProductFamilySharedFields.ModelValues(familyCardFields, familyCardFields.First(card => card.ProductId == id).Color);
-        var modelAttributes = await ModelAttributesAsync(tenantId, familyCardViews, primaryView, cancellationToken);
+        var openedColor = familyCardFields.First(card => card.ProductId == id).Color;
+        // Model Kaydı Faz 2: the model record's values when the editor saved them after every card's last change (they are
+        // then the cards' own values); the cards' majority otherwise.
+        var model = await ProductModelLinks.SavedFieldsAsync(db, tenantId, product.FamilyId, familyProducts, openedColor, cancellationToken)
+            ?? ProductFamilySharedFields.ModelValues(familyCardFields, openedColor);
+        var modelAttributes = await SavedModelAttributesAsync(tenantId, product.FamilyId, familyProducts, primaryView, cancellationToken)
+            ?? await ModelAttributesAsync(tenantId, familyCardViews, primaryView, cancellationToken);
         // Every card's size chart closes the strip, in the strip's own order: no chart stands among the colours' pictures,
         // and the opened card's is not singled out.
         IReadOnlyList<string> FamilyStripWithChartsLast(IReadOnlyList<string> urls) => SizeCharts.SizeChartPlacement.LastAll(urls, familyChartUrls);
@@ -1447,6 +1452,17 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         view.Id,
         view.Variants.Select(variant => ProductFamilyColorOrder.ColorOf(variant.OptionSignature)).FirstOrDefault(color => !string.IsNullOrWhiteSpace(color)),
         view.Title, view.Description, view.BrandId, view.CategoryId, view.VatRate, view.VatInclusion, view.WarrantyMonths, view.DeliveryDays);
+
+    // Faz 2: the model record's attributes (ProductModelLinks.SavedAttributesAsync) with the opened card's own colour
+    // attributes, in the opened card's order; null when the record is not the cards' current set.
+    private async Task<IReadOnlyList<ProductAttributeAssignmentView>?> SavedModelAttributesAsync(Guid tenantId, Guid? familyId, IReadOnlyCollection<Product> cards, ProductView opened, CancellationToken cancellationToken)
+    {
+        var own = opened.Attributes ?? [];
+        var rows = await ProductModelLinks.SavedAttributesAsync(db, tenantId, familyId, cards, [.. own.Select(x => (x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue))], cancellationToken);
+        if (rows is null) return null;
+        // The opened card holds the model's set (checked): its own rows are the model's plus its colour attributes.
+        return own;
+    }
 
     // The model's category attributes: the set most colour cards hold (on a tie the oldest card's), with the opened card's
     // own colour attributes (Renk, Web Color), which stay each card's.

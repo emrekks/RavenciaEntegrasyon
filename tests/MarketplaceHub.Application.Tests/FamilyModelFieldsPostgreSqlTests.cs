@@ -89,6 +89,21 @@ public sealed class FamilyModelFieldsPostgreSqlTests(PostgreSqlTenantIsolationFi
         Assert.True(saved.Succeeded, saved.Error?.Message);
         db.ChangeTracker.Clear();
         await AssertCards(colour => $"Kadın {colour} Yeni {Name}");
+
+        // Model Kaydı Faz 2: after the save the editor reads the model record (saved after every card's last change), the
+        // name in each opened card's colour: the same values the cards hold.
+        var modelId = (await db.Products.AsNoTracking().SingleAsync(x => x.Id == gri.Id)).FamilyId!.Value;
+        var record = await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == modelId);
+        Assert.NotNull(record.FieldsSavedAt);
+        await db.ProductModels.Where(x => x.Id == modelId).ExecuteUpdateAsync(s => s.SetProperty(x => x.Description, "Model kaydının açıklaması"));
+        foreach (var (card, colour) in cards)
+        {
+            var opened = (await service.GetProductAsync(tenant.Id, card.Id, CancellationToken.None)).Value!;
+            Assert.Equal(($"Kadın {colour} Yeni {Name}", "Model kaydının açıklaması"), (opened.Title, opened.Description));
+        }
+        // A card changed after the model was saved: the cards' own values again.
+        await db.Products.Where(x => x.Id == zumrut.Id).ExecuteUpdateAsync(s => s.SetProperty(x => x.UpdatedAt, record.FieldsSavedAt!.Value.AddMinutes(1)));
+        Assert.Equal("Model açıklaması", (await service.GetProductAsync(tenant.Id, gri.Id, CancellationToken.None)).Value!.Description);
         await transaction.RollbackAsync();
 
         async Task AssertCards(Func<string, string> title)
