@@ -149,3 +149,9 @@
 @media (max-width: 760px) {
   html body .app-shell.stitch-shell .rv-topbar { z-index: 85; background: var(--rv-color-surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
+/* Touch targets (14 Nov audit): small controls keep their look but get a 36px hit area. The invisible ::before is centred on
+   the control and is as big as the control or 36px, whichever is larger; checkboxes stay 16px to the eye. */
+@media (max-width: 760px) {
+  :root:root main :is(.rr-seg > button, .rr-op-q, .rr-btn.rr-link, .rr-icon-btn, .rr-reminder-gear, .rr-cb, .order-number-copy, .invoice-reference-product-summary, .invoice-reference-select) { position: relative; }
+  :root:root main :is(.rr-seg > button, .rr-op-q, .rr-btn.rr-link, .rr-icon-btn, .rr-reminder-gear, .rr-cb, .order-number-copy, .invoice-reference-product-summary, .invoice-reference-select)::before { content: ""; position: absolute; top: 50%; left: 50%; width: max(100%, 36px); height: max(100%, 36px); transform: translate(-50%, -50%); }
+}

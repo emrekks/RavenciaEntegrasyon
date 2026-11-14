@@ -1200,3 +1200,42 @@ main .rr.rr.rr-returns .rr-tbl.rr-tbl th { padding-inline: 8px 38px; }
 main .rr.rr.rr-returns .rr-tbl.rr-tbl th:first-child { padding-left: 16px; }
 main .rr.rr.rr-returns .rr-tbl.rr-tbl th .rr-hf { max-width: 100%; min-width: 0; }
 }
+/* Fit pass (owner, 14 Nov): the Siparişler and İadeler tables fit the 1054px content area of a 1336px window with every
+   column visible (text wraps instead of the table scrolling). Narrower screens scroll inside the card; the first column
+   stays pinned so the order is always in view. */
+@media (min-width: 1025px) {
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl { min-width: 1040px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-order { width: 232px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-buyer { width: 88px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-prod { width: 240px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-price { width: 84px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-cargo { width: 132px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-inv { width: 140px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-act { width: 124px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl td { padding-inline: 10px 8px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl :is(th:first-child, td:first-child) { padding-left: 12px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl td { overflow-wrap: break-word; word-break: normal; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl .rr-num { overflow-wrap: anywhere; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl .rr-ordercell small .rr-nv { display: block; overflow-wrap: anywhere; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl .rr-cargocell small { max-width: 100%; overflow: visible; white-space: normal; text-overflow: clip; overflow-wrap: anywhere; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl,
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer),
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select,
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select:has(col.rr-c-buyer) { min-width: 1040px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-order { width: 208px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-order { width: 222px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-buyer { width: 84px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-prod,
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-prod { width: 158px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-price { width: 82px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-cargo { width: 108px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-inv { width: 92px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-reason { width: 104px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-status { width: 108px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-act { width: 108px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl td { padding-inline: 8px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl th { padding-inline: 8px 26px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl :is(th:first-child, td:first-child) { padding-left: 12px; }
+:root:root:root:root main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl :is(thead th:first-child, tbody td:first-child) { position: sticky; left: 0; z-index: 2; }
+:root:root:root:root main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl tbody td:first-child { background: var(--rr-surface); }
+}
