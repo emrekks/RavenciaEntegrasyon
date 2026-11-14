@@ -1,4 +1,5 @@
 // Ürün ekleme ve düzenleme (/products/new, /products/:id).
+import { moveListboxFocus } from '../../../shared/listbox-keys'
 import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { platformDisplayNames, knownPlatformName, platformDisplayOrder } from '../../../shared/platform-names'
 import './product-editor-design-system.css'
@@ -616,7 +617,7 @@ function CategoryAttributeValueDropdown({
       <span>{summary}</span>
       <UiIcon name="chevronDown" />
     </button>
-    {open && <div className={`category-attribute-dropdown-menu ${alignMenuRight ? 'is-edge-aligned' : ''}`} role="listbox" aria-label={`${attributeName} değerleri`}>
+    {open && <div className={`category-attribute-dropdown-menu ${alignMenuRight ? 'is-edge-aligned' : ''}`} role="listbox" aria-label={`${attributeName} değerleri`} tabIndex={-1} onKeyDown={moveListboxFocus}>
       <div className="category-attribute-dropdown-tools">
         <input ref={touchScreen ? undefined : focusOnMount} value={search} onChange={event => setSearch(event.target.value)} placeholder="Değer ara..." aria-label={`${attributeName} değerlerinde ara`} />
       </div>
@@ -677,7 +678,7 @@ function VariantFilterDropdown({
       <span><small>{selected.length ? `${selected.length} değer seçildi` : group.name}</small><strong>{summary}</strong></span>
       <UiIcon name="chevronDown" />
     </button>
-    {open && <div className="variant-filter-dropdown-menu" style={menuStyle} role="listbox" aria-label={`${group.name} filtre değerleri`}>
+    {open && <div className="variant-filter-dropdown-menu" style={menuStyle} role="listbox" aria-label={`${group.name} filtre değerleri`} tabIndex={-1} onKeyDown={moveListboxFocus}>
       <div className="variant-filter-dropdown-tools">
         <input ref={touchScreen ? undefined : focusOnMount} value={search} onChange={event => setSearch(event.target.value)} placeholder="Değer ara..." aria-label={`${group.name} değerlerinde ara`} />
         <button type="button" className="variant-filter-clear-selection" onClick={onClear} disabled={selected.length === 0} tabIndex={selected.length === 0 ? -1 : undefined} aria-hidden={selected.length === 0 ? true : undefined} aria-label="Seçimi Temizle" title="Seçimi Temizle"><UiIcon name="close" /></button>
