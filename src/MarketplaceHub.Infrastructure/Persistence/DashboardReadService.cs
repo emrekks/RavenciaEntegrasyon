@@ -126,9 +126,22 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
                 && currentPackages.Any(package => package.OrderId == order.Id
                     && package.Status != ShipmentPackageStatus.Cancelled && package.UnreadableLineCount > 0))
             .CountAsync(cancellationToken);
+        var firstOrderDays = await FirstOrderDaysAsync(db, tenantId, channels.Select(x => x.ConnectionId).ToArray(), timezone, cancellationToken);
         return ServiceResult<DashboardPerformanceView>.Ok(new(period.From, period.To, period.PreviousFrom, period.PreviousTo,
             period.CurrentStart, period.CurrentEnd, period.PreviousStart, period.PreviousEnd, period.PartialDay, channels, current, previous, currentHours, previousHours,
-            unreadableLineOrders));
+            unreadableLineOrders, firstOrderDays));
+    }
+
+    // Each store's first imported order, as a day of the tenant's calendar: where the panel's data for that store begins.
+    internal static async Task<Dictionary<Guid, DateOnly>> FirstOrderDaysAsync(AppDbContext db, Guid tenantId, Guid[] connectionIds, TimeZoneInfo timezone, CancellationToken cancellationToken)
+    {
+        if (connectionIds.Length == 0) return [];
+        var firsts = await db.Orders.AsNoTracking()
+            .Where(order => order.TenantId == tenantId && connectionIds.Contains(order.ConnectionId))
+            .GroupBy(order => order.ConnectionId)
+            .Select(group => new { group.Key, First = group.Min(order => order.OrderedAt) })
+            .ToListAsync(cancellationToken);
+        return firsts.ToDictionary(x => x.Key, x => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(x.First, timezone).DateTime));
     }
 
     // The day's cancellations (DashboardCancellationRowView) over the stores the revenue report counts.

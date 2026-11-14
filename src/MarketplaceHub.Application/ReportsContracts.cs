@@ -49,7 +49,10 @@ public sealed record ReportSalesView(
     IReadOnlyList<ReportProductView>? Rising = null,
     IReadOnlyList<ReportProductView>? Falling = null,
     ReportPreviousAccountView? PreviousAccount = null,
-    ReportQuestionTimeView? QuestionTimes = null);
+    ReportQuestionTimeView? QuestionTimes = null,
+    // The chosen stores' first order day (tenant's local calendar): a previous period starting before it has no data
+    // source for part of it, so the panel does not compare with it ("Önceki dönem için veri yok"). Null: no order yet.
+    DateOnly? DataStartsOn = null);
 
 // How fast the customers' questions asked in the period were answered, from the stored conversation (HistoryJson): the
 // customer's first message to the store's first answer after it. Only Trendyol and Hepsiburada are measured: their

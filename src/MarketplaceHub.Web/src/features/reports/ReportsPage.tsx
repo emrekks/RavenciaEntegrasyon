@@ -5,13 +5,16 @@ import { hubApi } from '../../shared/api'
 import { Busy, CardBackgroundIcon, EmptyState, ErrorBox, Modal, Pager, UiIcon, type CardIconName, type UiIconName } from '../../shared/components'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { formatIstanbul, istanbulDateKey } from '../../shared/format-date'
-import { ChangePill } from '../../shared/components/ChangePill'
+import { ChangePill, previousHasData } from '../../shared/components/ChangePill'
 import { valueWithUnit } from '../../shared/metric-value'
 import { useMetricSource } from '../marketplace/use-metric-source'
 
 // Whether an active connection (of the chosen platforms) feeds the report's figures: without one every main value is a dash
 // (shared rule, shared/metric-value.ts). Undefined while the connections are not read.
 const MetricSourceContext = createContext<boolean | undefined>(undefined)
+// Whether the previous period starts before the chosen stores' first order (no data source for part of it): every change
+// pill then reads a neutral "—" ("Önceki dönem için veri yok") instead of comparing with a half-empty period.
+const NoPreviousDataContext = createContext(false)
 import { PlatformFilter } from '../../shared/PlatformFilter'
 import { PanelSelect } from '../../shared/PanelSelect'
 import { ViewTabsWithMore } from '../../shared/view-tabs'
@@ -118,7 +121,7 @@ export function ReportsPage() {
   // "Tümünü Gör": the area's tab, opened like any tab: from the page's top.
   const openDetail = (key: DetailKey) => { go(detailHome[key].view, detailHome[key].sub ?? null) }
 
-  return <MetricSourceContext.Provider value={metricSource}><section ref={page} className="content reports-page">
+  return <MetricSourceContext.Provider value={metricSource}><NoPreviousDataContext.Provider value={data ? !previousHasData(data.previousFrom, data.dataStartsOn) : false}><section ref={page} className="content reports-page">
     <div className="page-heading reports-heading">
       <div><p className="eyebrow">Analiz</p><h1>Raporlar</h1><p className="reports-lead">Satış, iade, iptal, kargo ve kârlılık; platform, şehir ve ürün kırılımıyla, önceki dönemle karşılaştırmalı.</p></div>    </div>
     <div className="reports-filters" role="search" aria-label="Rapor filtreleri">
@@ -153,7 +156,7 @@ export function ReportsPage() {
         </TabSlidePanel>
       </>
     })()}
-  </section></MetricSourceContext.Provider>
+  </section></NoPreviousDataContext.Provider></MetricSourceContext.Provider>
 }
 
 type ReportTab = { value: ViewKey; label: string; icon: UiIconName; count?: string; warn?: boolean }
@@ -189,8 +192,9 @@ function SubTabs<T extends string>({ label, value, items, onChange }: { label: s
 // A change is good or bad by its direction; for returns and cancellations, up is bad.
 // previous: the previous period's value, shown under the pointer instead of the generic "Önceki döneme göre".
 function Delta({ delta, invert = false, previous }: { delta: Change | null | undefined; invert?: boolean; previous?: string }) {
+  const noData = useContext(NoPreviousDataContext)
   // A change pill with nothing to compare reads a flat "%0" (a tab badge or pill is a counter, not a card value).
-  return <ChangePill className="reports-delta" change={delta} invert={invert} title={previous ? `Önceki dönem: ${previous}` : 'Önceki döneme göre değişim'} />
+  return <ChangePill className="reports-delta" change={delta} invert={invert} noData={noData} title={previous ? `Önceki dönem: ${previous}` : 'Önceki döneme göre değişim'} />
 }
 
 // A panel's explanation shows under its title while the pointer or the focus is on the title, as the overview's rows
@@ -823,11 +827,12 @@ function ProfitBridge({ data, money, onMore }: { data: ReportSales; money: Money
     rows.push({ key: item.key, label: item.label, from: at - item.value, to: at, kind: 'minus', note: item.note })
     at -= item.value
   }
-  // Without a product cost the steps still take the net VAT off, so the result is where they end, not Masraflar Sonrası.
+  // Without a product cost the steps still take the net VAT and the unlinked deductions off, so the result is where they
+  // end, "Maliyet Öncesi Kalan": never "Masraflar Sonrası", the ledger's figure before the VAT (one label, one value).
   const result = money.profit ?? money.left - (money.tax ?? 0) - money.unlinked
   // What the account could not take off is listed under the bridge (EstimateGaps), so the result's note stays short.
-  rows.push({ key: 'result', label: money.profit === null ? 'Masraflar Sonrası' : result < 0 ? 'Tahmini Zarar' : 'Tahmini Net Kâr', from: 0, to: result, kind: 'end',
-    note: money.profit === null ? `Kesintiler düşüldükten sonra kalan tutar. ${money.uncosted > 0 ? `Satılan ${formatNumber(money.uncosted)} adedin ürün maliyeti girilmediği için kâr hesaplanamadı; satılan adetlerin en az %95'inin maliyeti girilince hesaplanır.` : 'Ürün maliyeti girilmediği için kâr hesaplanamadı.'}`
+  rows.push({ key: 'result', label: money.profit === null ? 'Maliyet Öncesi Kalan' : result < 0 ? 'Tahmini Zarar' : 'Tahmini Net Kâr', from: 0, to: result, kind: 'end',
+    note: money.profit === null ? `İade, pazaryeri kesintileri, stopaj, net KDV${money.unlinked !== 0 ? ' ve reklam / diğer kesintiler' : ''} düşüldükten sonra kalan; ürün maliyeti düşülmeden (Kârlılık'taki Masraflar Sonrası KDV'den öncedir). ${money.uncosted > 0 ? `Satılan ${formatNumber(money.uncosted)} adedin ürün maliyeti girilmediği için kâr hesaplanamadı; satılan adetlerin en az %95'inin maliyeti girilince hesaplanır.` : 'Ürün maliyeti girilmediği için kâr hesaplanamadı.'}`
       : `${resultSentence(result)}\nNet marj ${formatPercent(money.margin)}` })
   const low = Math.min(0, ...rows.flatMap(row => [row.from, row.to]))
   const span = Math.max(1, Math.max(money.total, ...rows.flatMap(row => [row.from, row.to])) - low)
@@ -1191,6 +1196,9 @@ function returnMetrics(data: ReportSales): Metric[] {
 const lateWarningRate = 0.04
 
 // Operasyon: how fast and how late the packages left, how long they took to arrive, and what waits to be invoiced or
+// The report's period as the invoice figures name it ("son 30 günde"), so they are not read as every open package.
+function invoicePeriod(data: ReportSales) { return `${formatCount(data.stock.periodDays)} günde` }
+
 // restocked; each row opens its tab.
 function operationMetrics(data: ReportSales): Metric[] {
   const ship = weightedHours(data.cargo, row => row.averageHoursToShip, row => row.measuredShip)
@@ -1208,8 +1216,9 @@ function operationMetrics(data: ReportSales): Metric[] {
       note: `Süresinde kargoya verilmeyen paketlerin oranı; PttAVM ölçülmez. ${measuredLate > 0 ? `${formatPercent(lateWarningRate)} eşiğini geçince uyarı rengiyle yazılır.` : 'Bu dönemde süresi bilinen paket yok.'}` },
     { key: 'deliver', label: 'Teslim Süresi', value: formatHours(deliver.hours), detail: 'cargo',
       note: `Kargoya verilen paketin müşteriye ulaşmasına kadar geçen ortalama süre.${deliver.hours === null ? ' Bu dönemde teslim anı okunan paket yok.' : ` ${formatCount(deliver.measured)} pakette ölçüldü.`}` },
-    { key: 'invoice', label: 'Faturasız Paket', value: formatCount(notInvoiced), sub: `${formatCount(packages)} paket içinde`, tone: notInvoiced > 0 ? 'warn' : undefined, detail: 'invoices',
-      note: 'Faturası henüz kesilmemiş paketler; bir tane bile varsa uyarı rengiyle yazılır.' },
+    // The period's packages only (its orders): Faturalar and the overview count every open package, so the period is named.
+    { key: 'invoice', label: 'Faturasız Paket', value: formatCount(notInvoiced), sub: `${invoicePeriod(data)} ${formatCount(packages)} paket içinde`, tone: notInvoiced > 0 ? 'warn' : undefined, detail: 'invoices',
+      note: `Seçilen dönemin (${invoicePeriod(data)}) siparişlerinde faturası henüz kesilmemiş paketler; bir tane bile varsa uyarı rengiyle yazılır.\nFaturalar sayfası ve Genel Bakış dönemden bağımsız bütün açık paketleri sayar, bu yüzden sayıları farklı olabilir.` },
     { key: 'stock', label: 'Stok Riski', value: valueWithUnit(low, 'ürün', formatCount), tone: low > 0 ? 'warn' : undefined, detail: 'stock',
       note: 'Stoğu, dönemin satış hızıyla bir haftadan az yetecek çok satan ürünler.' },
     // Trendyol and Hepsiburada only: N11's and Pazarama's answer times are not reliable (marketplace-docs).
@@ -1355,7 +1364,10 @@ function overviewCards(data: ReportSales, money: Money | null, ads: AdReports | 
         note: 'Müşteride kalan ürün adedi: satılan adetten iadeler düşülür.' },
         line(product, 'price', 'Adet Başına Satış'), line(product, 'vatFree', 'KDV Hariç Net Satış'), line(product, 'discount', 'Satıcı İndirimi', discountShare)] },
     { key: 'orders', title: 'Sipariş ve Müşteri', tipTitle: 'Sepet Ortalaması', value: metric(order, 'basket').value, aside: 'sepet ortalaması', note: metric(order, 'basket').note,
-      rows: [line(order, 'units', 'Sipariş Başına Adet'), line(order, 'repeat', 'Tekrar Gelen Müşteri'), line(order, 'profit', 'Sipariş Başına Kâr')] },
+      // Sipariş Başına Kâr is Kârlılık's row only: one figure, one place.
+      rows: [line(order, 'units', 'Sipariş Başına Adet'), line(order, 'repeat', 'Tekrar Gelen Müşteri'),
+        { key: 'perCustomer', label: 'Müşteri Başına Sipariş', value: data.customers.ordersPerCustomer === null ? '—' : formatNumber(data.customers.ordersPerCustomer),
+          note: 'Müşterisi tanınan siparişlerin müşteri başına ortalaması.' }] },
     { key: 'profit', title: 'Kârlılık', tipTitle: 'Reklam Öncesi Marj', value: metric(cost, 'beforeAds').value, aside: 'reklam öncesi marj', note: metric(cost, 'beforeAds').note,
       tone: beforeAds === null ? undefined : beforeAds < 0 ? 'bad' : 'good', bar: beforeAds === null ? undefined : { value: Math.max(0, beforeAds), scale: 1, tone: 'good' },
       rows: [line(product, 'profit', 'Adet Başına Kâr'), line(order, 'profit', 'Sipariş Başına Kâr'),
@@ -1388,7 +1400,7 @@ function overviewCards(data: ReportSales, money: Money | null, ads: AdReports | 
       rows: [{ key: 'cancelUnits', label: 'İptal Edilen Adet', value: formatNumber(data.cancellations.cancelledQuantity), detail: 'cancellations', note: 'İptal edilen ürün adedi; kısmi iptaller dahil.' },
         { key: 'cancelAmount', label: 'İptal Edilen Tutar', value: cancelled === undefined ? '—' : formatTlWhole(cancelled), detail: 'cancellations', note: 'İptal edilen ürünlerin liste fiyatıyla tutarı; satışa girmez.' },
         ...reasonRow('cancelReason', topCancel, cancelTotal, 'İptallerde', 'cancellations')] },
-    { key: 'todo', title: 'Yapılacaklar', tipTitle: 'Faturasız Paket', value: metric(ops, 'invoice').value, aside: 'faturasız paket', badge: `${formatCount(packages)} paket içinde`, note: metric(ops, 'invoice').note,
+    { key: 'todo', title: 'Yapılacaklar', tipTitle: 'Faturasız Paket', value: metric(ops, 'invoice').value, aside: `${invoicePeriod(data)} faturasız paket`, badge: `${formatCount(packages)} paket içinde`, note: metric(ops, 'invoice').note,
       tone: metric(ops, 'invoice').tone, alert: notInvoiced > 0,
       rows: [line(ops, 'stock', 'Stok Riski'), line(ops, 'questions', 'Soru Yanıt Süresi')] }
   ]

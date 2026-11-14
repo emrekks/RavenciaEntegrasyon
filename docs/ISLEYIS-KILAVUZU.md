@@ -1498,7 +1498,7 @@ Başlık "Genel Bakış", üst satırda "Operasyon Merkezi". Açılış dönemi 
 | Kart | Formül |
 |---|---|
 | **Satış** | Dönemde satılan her şey: **iadeler dahil, iptaller hariç**. Raporlar'daki **Toplam Ciro** ile aynı tutar olması amaçlanır (`DashboardReadService.cs:209-222`). |
-| **Toplam Sipariş** · "Sipariş \| N Adet Ürün" | Tutarı > 0 olan iptal edilmemiş siparişler, **iade edilenler dahil**. Adet = sipariş − iptal − iade adetleri (`DashboardReadService.cs:216,226-238`). |
+| **Toplam Sipariş** · "Sipariş \| N Net Adet" | Tutarı > 0 olan iptal edilmemiş siparişler, **iade edilenler dahil**. Adet = sipariş − iptal − iade adetleri (`DashboardReadService.cs:216,226-238`). |
 | **Ortalama Sepet** | Satış ÷ Toplam Sipariş (ikisi de iadeler dahil). |
 | **Aktif Ürün** | Katalogdaki aktif ürün; dönemden ve mağazadan bağımsız. Altında "Stoksuz ürün", "Düşük stok", "Toplam". |
 
@@ -1570,6 +1570,7 @@ Kesintiler, platform tablosu. **Brüt Kâr kartı yoktur**: 9 Kas'ta eklenip ayn
 | **Kargo** | Trendyol: kargo faturası gelende gerçek; gelmeyende mağazanın son 60 gün tarifesi (en sık faturalanan tutar, Eki 2026: 98,34 TL), iadede dönüş kargosu da. Diğerleri: 2026 sözleşme tarifeleri (desi ve kargo firmasına göre, KDV dahil; desi yoksa 1 desi; iadede iki yön). Shopify: sipariş başı 120 TL. | dönüş kargosu eklenir | `ReportCosts.cs:24-35,271-291`; `ReportPlatformCosts.cs:22-86` |
 | **Kesintiler** (Hizmet Bedeli, Ödeme Komisyonu, Stopaj) | Trendyol: ödeme günü faturası siparişlere paylaştırılır; yoksa tahmin — hizmet bedeli 13,19 TL (Azerbaycan 10,99 KDV'siz), yurt dışında +%6 uluslararası hizmet bedeli, stopaj KDV'siz satışın %1'i. HB 10,99+KDV; N11 %1,67+KDV; Pazarama 6,90+KDV; PttAVM %1,5; Shopify iyzico %4,29+0,25 TL ve %2. | — | `ReportCosts.cs:83-102`; `ReportPlatformCosts.cs:15-79` |
 | **Masraflar Sonrası** | Toplam Ciro − (İade + Komisyon + Kargo + Kesintiler) | — | `ReportsPage.tsx:443-444` |
+| **Maliyet Öncesi Kalan** (Kâr Köprüsü, maliyet girilmemişken) | Masraflar Sonrası − Net KDV − Reklam ve Diğer Kesintiler; ürün maliyeti düşülmeden. "Masraflar Sonrası" adı yalnız KDV öncesi tutardır (iki farklı tutar aynı adı taşımaz). | — | `ReportsPage.tsx` ProfitBridge |
 | **Net KDV** | Yurt içi satışların KDV'si − ürün maliyetinin KDV'si − pazaryeri giderlerinin %20 KDV'si; eksiyse devreden KDV'dir, kârı artırır | kalan satış | `ReportCosts.cs:400-411` |
 | **Reklam ve Diğer Kesintiler** | Siparişe bağlı olmayan Trendyol kesintileri: Reklam, Ceza, Erken Ödeme Kesintisi, Diğer Kesinti; işlem tarihine göre | — | `ReportsPage.tsx:705-720` |
 | **Net Kâr** = **Tahmini Net Kâr** | Masraflar Sonrası − Net KDV − Ürün Maliyeti − Reklam ve Diğer Kesintiler. **Müşteride kalan adetlerin en az %95'inin maliyeti girili değilse Net Kâr gösterilmez** ("Maliyet Eksik"; hiçbiri girili değilse "Maliyet girilmemiş"); **%95 ve üstünde** kâr gösterilir, eksik adetlerin maliyeti satış payına göre tahmin edilir ve kart **Tahmini Net Kâr** yazar. Aynı koşul Kâr Köprüsü'nde Ürün Maliyeti adımını ve Stok'taki aylık kâr oranını da kapatır. Eksiyse kart adı **Tahmini Zarar**. | — | `ReportsPage.tsx:432-439,465`; `ReportProfitRate.cs:16-23,73` |
@@ -1614,7 +1615,7 @@ ve ödeme emirleri. Dönem süzgecine bağlı değildir; geçmiş ödemeler son 
 | **Teslim Bekleyen Sipariş** | NEW, PROCESSING, READY_TO_SHIP, SHIPPED durumundaki TRY siparişlerin net tutarı; bakiyede yok, teslimden sonra girer. Kısmi iptal ve inceleme durumları dahil değil. |
 | **Sıradaki Ödeme** | Gelecek ilk ödeme günü ki toplamı > 0; ≤0 olan gün atlanır. Vadesi geçmiş/tarihsiz bekleyenler girmez. |
 | **Son Ödeme** | Pazaryerinin bildirdiği son pozitif ödeme. |
-| **Vadesi Geçmiş Bekleyen** | Vadesi geçmiş ama bir ödemeye bağlanmamış bakiye; eksiyse bekleyen kesinti. "Ödenmeyecek" demek değil. Bir kayıt tek yerde sayılır: vadesi geçen kayıt gün satırından çıkar, yalnız burada görünür (sahip kararı, 13 Kas 2026). Hepsiburada'da vade geçti = vadeden sonraki ödeme salısı geçti; o salıyı bekleyen kayıt Sıradaki Ödeme'dedir. |
+| **Vadesi Geçmiş Bekleyen** | Vadesi geçmiş ama bir ödemeye bağlanmamış bakiye; eksiyse bekleyen kesinti. "Ödenmeyecek" demek değil. Bir kayıt tek yerde sayılır: vadesi geçen kayıt gün satırından çıkar, yalnız burada görünür (sahip kararı, 13 Kas 2026). Hepsiburada'da vade geçti = vadeden sonraki ödeme salısı geçti; o salıyı bekleyen kayıt Sıradaki Ödeme'dedir. Trendyol Avrupa'da vade geçti = vadeden sonraki ayın 4. pazartesisi (ödeme günü) geçti; o güne kadar kayıt o ödemenin satırındadır. |
 | **Erken Ödeme** | Son 90 günde alınan erken ödemeler (Trendyol `CashAdvance`). |
 
 Para birimi: tutarlar yalnız TL kayıtlardan toplanır; başka para birimindeki kayıt (ör. Hepsiburada USD) TL'ye eklenmez, Toplam Güncel Bakiye ipucunda kendi para birimiyle ayrı yazılır ve kayıt listesinde kendi simgesiyle görünür.
@@ -1627,7 +1628,7 @@ ayrıca **Bekleyen Kesinti**.
 | Pazaryeri | Kural |
 |---|---|
 | Trendyol Türkiye-Körfez ve Azerbaycan | **Pazartesi** ödemesi o haftanın Pzt–Çar vadelerini, **perşembe** ödemesi Per–Paz vadelerini öder. Satış kaydı vadesinden önceki ilk Pzt/Per'e, kesinti sonrakine düşer. Salı/Cuma "Erken Ödeme" günüdür. Resmî tatil kaydırır; gün tahminidir. |
-| Trendyol Avrupa | Ayın **4. pazartesisi** (22–28'i arası); o güne kadar vadesi gelen her şey. |
+| Trendyol Avrupa | Ayın **4. pazartesisi** (22–28'i arası); o güne kadar vadesi gelen her şey; kayıt o pazartesi geçmeden "Vadesi Geçti" olmaz. |
 | Hepsiburada | Her **salı**: vadeden sonraki ilk salı (vade salıysa o gün); o salı geçmeden kayıt "Vadesi Geçti" olmaz. |
 | N11 | **Perşembe**; bekleyen kayıt havale gününden sonraki ilk perşembeye. |
 | Pazarama | Aktarım tarihinde; tarihi geçmiş ve ödenmemiş kayıt "Vadesi Geçti". |

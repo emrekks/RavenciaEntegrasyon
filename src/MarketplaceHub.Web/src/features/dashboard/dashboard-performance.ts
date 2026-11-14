@@ -6,6 +6,7 @@
 // Ortalama Sepet is that ciro over those orders: the report's Satış Tutarı ÷ Tutarı Olan Sipariş, not its Net Ciro.
 
 import { dateRangePresets } from '../../shared/date-range'
+import { newChangeText } from '../../shared/components/ChangePill'
 
 export type PerformanceRow = { day: string; connectionId: string; currency: string; amount: number; orderCount: number; productQuantity: number; packageCount: number; returnedAmount: number; returnedOrderCount: number }
 export type DashboardChannel = { connectionId: string; platformCode: string; displayName: string; status: string }
@@ -17,6 +18,8 @@ export type Performance = {
   currentHours?: HourRow[] | null; previousHours?: HourRow[] | null
   // The period's orders (every store) with a product line the panel could not read; shown apart in a note.
   unreadableLineOrders?: number
+  // Each store's first order day (yyyy-MM-dd): a previous period starting before the chosen stores' one is not compared with.
+  firstOrderDays?: Record<string, string> | null
 }
 export type HourRow = Omit<PerformanceRow, 'day'> & { hour: string }
 // day is the calendar day, or the hour key ("yyyy-MM-ddTHH:00") of an hourly series; label is the axis text then.
@@ -162,9 +165,10 @@ export function istanbulHour(instant: string) {
   return Number.isFinite(hour) ? hour : 23
 }
 
-// The change against the previous period; none (shown as "—") when the previous period had nothing to compare with.
+// The change against the previous period: "Yeni" (the pill's "▲ Yeni") when it rose from nothing, none (the pill's
+// "■ %0") when both are nothing.
 export function periodTrend(current: number, previous: number): [string, boolean] | null {
-  if (previous <= 0) return null
+  if (previous <= 0) return current > 0 ? [newChangeText, true] : null
   // Rounded to the one decimal shown first, so a change that shows as %0 carries no minus and no falling colour.
   const delta = Math.round(((current - previous) / previous) * 1000) / 10
   return [`${delta < 0 ? '-' : ''}%${Math.abs(delta).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}`, delta >= 0]
@@ -190,4 +194,14 @@ export async function prefetchInTurn(reads: ReadonlyArray<() => Promise<unknown>
     if (cancelled()) return
     await read().catch(() => undefined)
   }
+}
+
+/**
+ * The first order day of the chosen store (or of every store, ALL) by the performance answer: undefined when the server
+ * does not say (an older API), null when the chosen stores have no order.
+ */
+export function dataStartsOn(data: Performance, channel: string): string | null | undefined {
+  if (!data.firstOrderDays) return undefined
+  const days = channel === 'ALL' ? Object.values(data.firstOrderDays) : [data.firstOrderDays[channel]].filter((day): day is string => Boolean(day))
+  return days.length ? days.reduce((first, day) => day < first ? day : first) : null
 }

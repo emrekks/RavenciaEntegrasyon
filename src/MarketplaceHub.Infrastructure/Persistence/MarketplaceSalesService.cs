@@ -998,8 +998,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         var connection = connectionId is { } requestedConnectionId
             ? await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId
                 && x.Id == requestedConnectionId
-                && (x.Status == "ACTIVE" || x.Status == "VERIFIED")
-                && (x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY"), cancellationToken)
+                && (x.Status == "ACTIVE" || x.Status == "VERIFIED"), cancellationToken)
             : null;
         if (connectionId is not null && connection is null) return NotFound<string>();
 
@@ -1130,7 +1129,9 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         }
 
         if (string.IsNullOrWhiteSpace(normalizedBarcode)) return NotFound<string>();
-        connection ??= await ActiveTrendyolConnection(tenantId, cancellationToken);
+        // A store whose marketplace can be asked for a barcode's photo is asked; n11 and Pazarama have no such read, so their
+        // lines (return details carry the claim's store) ask Trendyol, as a lookup without a store does.
+        if (connection is null || !HasLiveImageLookup(connection.PlatformCode)) connection = await ActiveTrendyolConnection(tenantId, cancellationToken);
         if (connection is null) return NotFound<string>();
 
         var result = await productVisuals.FindByBarcodeAsync(
@@ -3864,6 +3865,11 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         }
         return null;
     }
+    // The marketplaces whose adapter reads a product's photo by barcode (IProductVisualLookupPort); any store's lookup is
+    // accepted (its order lines and the catalog are searched first), these are also asked live.
+    internal static bool HasLiveImageLookup(string? platformCode) =>
+        platformCode?.Trim().ToUpperInvariant() is "HEPSIBURADA" or "TRENDYOL" or "SHOPIFY" or "PTTAVM";
+
     private async Task<PlatformConnection?> ActiveTrendyolConnection(Guid tenantId, CancellationToken cancellationToken) =>
         await (from connection in db.PlatformConnections.AsNoTracking()
                where connection.TenantId == tenantId && connection.PlatformCode == "TRENDYOL" && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")

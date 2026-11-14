@@ -132,11 +132,14 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider, R
                 .Select(x => new { x.Key, Available = x.Sum(item => item.Available) })
                 .ToDictionaryAsync(x => x.Key, x => x.Available, cancellationToken);
 
+        // Where the chosen stores' data begins: the panel does not compare with a previous period starting before it.
+        var firstDays = await DashboardReadService.FirstOrderDaysAsync(db, tenantId, allowedIds, timezone, cancellationToken);
         var report = ReportBuilder.Build(input, previousInput, stock) with
         {
             GeneratedAt = timeProvider.GetUtcNow(),
             Channels = channels,
-            QuestionTimes = questionTimes.Result
+            QuestionTimes = questionTimes.Result,
+            DataStartsOn = firstDays.Count == 0 ? null : firstDays.Values.Min()
         };
         return await WithProductDetailsAsync(tenantId, report, cancellationToken);
     }
@@ -542,28 +545,45 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider, R
     }
 
     // The current packages of the period's orders with their first "shipped" and "delivered" status times and what
-    // tells whether they hold an invoice.
+    // tells whether they hold an invoice. A package stored without an amount (Hepsiburada's shipped / delivered lists
+    // carry none, HepsiburadaJsonMapper.OrderStatusPackage) takes its share of the order total, as the revenue falls
+    // back to the order's amount (OrderRowsAsync): ReportBuilder.PackageAmount.
     private async Task<List<ReportPackageRow>> PackageRowsAsync(Guid tenantId, Guid[] allowedIds, ReportPeriod period, CancellationToken cancellationToken)
     {
         var issued = IssuedInvoiceStatuses;
-        return await (from row in PeriodOrders(tenantId, allowedIds, period)
-                      join package in MarketplaceSalesService.CurrentShipmentPackages(db) on new { row.Order.TenantId, OrderId = row.Order.Id } equals new { package.TenantId, package.OrderId }
-                      select new ReportPackageRow
-                      {
-                          Id = package.Id,
-                          OrderId = package.OrderId,
-                          CargoProvider = package.CargoProviderExternalId,
-                          Status = package.Status,
-                          Amount = package.NetAmount > 0 ? package.NetAmount : package.GrossAmount,
-                          MarketplaceInvoiceStatus = package.MarketplaceInvoiceStatus,
-                          ManualInvoiceStatus = package.ManualInvoiceStatus,
-                          PanelInvoiced = db.Invoices.Any(invoice => invoice.TenantId == tenantId && invoice.OrderId == package.OrderId
-                              && (invoice.PackageId == null || invoice.PackageId == package.Id) && issued.Contains(invoice.Status)),
-                          ShippedAt = db.OrderStatusHistory.Where(history => history.TenantId == tenantId && history.PackageId == package.Id && history.CanonicalStatus == "SHIPPED")
-                              .Min(history => (DateTimeOffset?)history.OccurredAt),
-                          DeliveredAt = db.OrderStatusHistory.Where(history => history.TenantId == tenantId && history.PackageId == package.Id && history.CanonicalStatus == "DELIVERED")
-                              .Min(history => (DateTimeOffset?)history.OccurredAt)
-                      }).ToListAsync(cancellationToken);
+        var currentPackages = MarketplaceSalesService.CurrentShipmentPackages(db).Where(package => package.TenantId == tenantId);
+        var orderLines = db.OrderLines.AsNoTracking().Where(line => line.TenantId == tenantId);
+        var allocations = db.PackageLineAllocations.AsNoTracking().Where(allocation => allocation.TenantId == tenantId);
+        var rows = await (from row in PeriodOrders(tenantId, allowedIds, period)
+                          join package in MarketplaceSalesService.CurrentShipmentPackages(db) on new { row.Order.TenantId, OrderId = row.Order.Id } equals new { package.TenantId, package.OrderId }
+                          let siblings = currentPackages.Where(other => other.OrderId == package.OrderId && other.Status != ShipmentPackageStatus.Cancelled)
+                          select new ReportPackageRow
+                          {
+                              Id = package.Id,
+                              OrderId = package.OrderId,
+                              CargoProvider = package.CargoProviderExternalId,
+                              Status = package.Status,
+                              Amount = package.NetAmount > 0 ? package.NetAmount : package.GrossAmount,
+                              AllocatedAmount = (from allocation in allocations
+                                                 where allocation.PackageId == package.Id
+                                                 join line in orderLines on allocation.OrderLineId equals line.Id
+                                                 select line.UnitPrice * (allocation.AllocatedQuantity - allocation.CancelledQuantity)).Sum(),
+                              OrderAmount = row.Order.NetAmount > 0 ? row.Order.NetAmount : row.Order.GrossAmount,
+                              PricedSiblingsAmount = siblings.Where(other => other.Id != package.Id && (other.NetAmount > 0 || other.GrossAmount > 0))
+                                  .Sum(other => other.NetAmount > 0 ? other.NetAmount : other.GrossAmount),
+                              LivePackages = siblings.Count(),
+                              UnpricedPackages = siblings.Count(other => other.NetAmount <= 0 && other.GrossAmount <= 0),
+                              MarketplaceInvoiceStatus = package.MarketplaceInvoiceStatus,
+                              ManualInvoiceStatus = package.ManualInvoiceStatus,
+                              PanelInvoiced = db.Invoices.Any(invoice => invoice.TenantId == tenantId && invoice.OrderId == package.OrderId
+                                  && (invoice.PackageId == null || invoice.PackageId == package.Id) && issued.Contains(invoice.Status)),
+                              ShippedAt = db.OrderStatusHistory.Where(history => history.TenantId == tenantId && history.PackageId == package.Id && history.CanonicalStatus == "SHIPPED")
+                                  .Min(history => (DateTimeOffset?)history.OccurredAt),
+                              DeliveredAt = db.OrderStatusHistory.Where(history => history.TenantId == tenantId && history.PackageId == package.Id && history.CanonicalStatus == "DELIVERED")
+                                  .Min(history => (DateTimeOffset?)history.OccurredAt)
+                          }).ToListAsync(cancellationToken);
+        foreach (var package in rows) package.Amount = ReportBuilder.PackageAmount(package);
+        return rows;
     }
 
     // The carrier of each current package of the period's orders and nothing else, in one narrow read: rows holding only
