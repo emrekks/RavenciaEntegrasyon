@@ -157,7 +157,7 @@ describe('order summary cards', () => {
     cleanup()
     const quiet = render(<OrderMetricCards {...props({ late: metric(0), cancelled: metric(0), partiallyCancelled: metric(0), newRows: [] })} />).host
     expect(classes(quiet)['Geciken']).toBe('rr-metric-tipped')
-    expect(classes(quiet)['İptal']).toBe('rr-metric-link rr-metric-tipped')
+    expect(classes(quiet)['İptal']).toBe('rr-metric-link rr-metric-tipped rr-metric-idle')
     expect(classes(quiet)['Yeni Sipariş']).toBe('rr-warn')
     cleanup()
     // While the summary loads nothing warns.
@@ -299,5 +299,19 @@ describe('order summary cards', () => {
       expect(['0', ' 12 ', '100000'].map(parseResendReminder)).toEqual([0, 12, 100000])
       expect(['', '-1', '1.5', 'abc', '100001', '1234567'].map(parseResendReminder)).toEqual([undefined, undefined, undefined, undefined, undefined, undefined])
     })
+  })
+
+  it('a card that counts a known zero is not a button to press (disabled, no highlight); above zero or while its list is open it stays pressable', () => {
+    const { host } = render(<OrderMetricCards {...props({ microExport: metric(0), cancelled: metric(0), partiallyCancelled: metric(0), resent: metric(0), onSaveResentReminder: async () => undefined })} />)
+    for (const title of ['Mikro İhracat Sipariş', 'İptal', 'Yeniden Gönderim']) {
+      expect(card(host, title).classList.contains('rr-metric-idle')).toBe(true)
+      expect(card(host, title).querySelector<HTMLButtonElement>('.rr-metric-open')!.disabled).toBe(true)
+    }
+    expect(card(host, 'Yeniden Gönderim').querySelector<HTMLButtonElement>('.rr-reminder-gear')!.disabled).toBe(false)
+    const busy = render(<OrderMetricCards {...props()} />)
+    expect(card(busy.host, 'Yeniden Gönderim').classList.contains('rr-metric-idle')).toBe(false)
+    expect(card(busy.host, 'Yeniden Gönderim').querySelector<HTMLButtonElement>('.rr-metric-open')!.disabled).toBe(false)
+    const on = render(<OrderMetricCards {...props({ microExport: metric(0), activeCard: 'micro' })} />)
+    expect(card(on.host, 'Mikro İhracat Sipariş').querySelector<HTMLButtonElement>('.rr-metric-open')!.disabled).toBe(false)
   })
 })
