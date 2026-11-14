@@ -118,13 +118,17 @@ export function editorOpenedDesi(variants: ReadonlyArray<{ desi?: number | null 
   return best ? best[0] : null
 }
 
-// The desi field of an existing variant's update. The desi is the model's (owner, 11.11.2026): written only when the
-// owner edited the field (typed or Hesapla), then to every size of every colour whose stored desi differs, a missing
-// one included; untouched, nothing is written and each variant keeps its own (the editor names the colours that
-// differ). The variant's stored desi goes with it as loaded, so the server refuses a desi changed meanwhile elsewhere
-// (ürün içe aktarma) instead of overwriting it.
+// The desi field of an existing variant's update. The desi is the model's (owner, 11.11.2026): written when the owner
+// edited the field (typed or Hesapla), then to every size of every colour whose stored desi differs, a missing one
+// included. Untouched, a variant that holds a desi keeps it (the editor names the colours that differ), but a variant
+// with no desi takes the card's: every row needs one above 0 (ProductRequiredFields), and the field shows the value most
+// rows hold, so a card whose other rows hold 0.5 and one holds none opened with 0.5 and was refused with "Desi" missing
+// (live 14.11.2026, MZ056). The variant's stored desi goes with it as loaded, so the server refuses a desi changed
+// meanwhile elsewhere (ürün içe aktarma) instead of overwriting it.
 export function editorVariantDesiUpdate(desi: number, edited: boolean, loadedDesi: number | null | undefined): { desi?: number; loadedDesi?: number | null } {
-  if (!edited || !(desi > 0) || loadedDesi === desi) return {}
+  if (!(desi > 0) || loadedDesi === desi) return {}
+  const holdsOwn = loadedDesi != null && loadedDesi > 0
+  if (!edited && holdsOwn) return {}
   return { desi, loadedDesi: loadedDesi ?? null }
 }
 

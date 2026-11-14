@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ApiRequestError } from '../../shared/api'
 import { SAME_SAVE_CODE_HOLDER, variantCodeFieldIssueText } from './platform-code-rules'
+import { parseProductDesi } from './product-desi'
 import { editorAwaitingSeed, editorDataStamp, editorFieldErrors, editorOpeningStock, editorSeedKey, editorSnapshot, editorSnapshotWithWebColor, editorStockUpdates, editorOpenedDesi, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, rekeySavedVariantRows, VAT_RATE_REQUIRED_MESSAGE, variantCodeConflictsFrom, variantCodeKey } from './product-editor-state'
 
 describe('saved variant rows and code conflicts', () => {
@@ -88,9 +89,14 @@ describe('product editor state', () => {
     // Typed again with the value the field opened with: the colours that held another desi (or none) take it too.
     expect(editorVariantDesiUpdate(2, true, 5)).toEqual({ desi: 2, loadedDesi: 5 })
     expect(editorVariantDesiUpdate(2, true, 2)).toEqual({})
-    // Untouched: nothing is written, a differing or missing desi stays as each variant holds it (the editor names it).
+    // Untouched: a variant holding a desi keeps it (the editor names it); one with none takes the card's, since every row
+    // needs a desi above 0 (live 14.11.2026, MZ056: rows null / 0.5 / null opened with 0.5 and the save was refused).
     expect(editorVariantDesiUpdate(2, false, 5)).toEqual({})
-    expect(editorVariantDesiUpdate(2, false, null)).toEqual({})
+    expect(editorVariantDesiUpdate(0.5, false, null)).toEqual({ desi: 0.5, loadedDesi: null })
+    expect(editorVariantDesiUpdate(0.5, false, undefined)).toEqual({ desi: 0.5, loadedDesi: null })
+    expect(editorVariantDesiUpdate(0.5, false, 0.5)).toEqual({})
+    expect(editorVariantDesiUpdate(0.5, true, 1)).toEqual({ desi: 0.5, loadedDesi: 1 })
+    expect(editorVariantDesiUpdate(parseProductDesi('0,5'), false, null)).toEqual({ desi: 0.5, loadedDesi: null })
     expect(editorVariantDesiUpdate(0, true, 2)).toEqual({})
   })
 
