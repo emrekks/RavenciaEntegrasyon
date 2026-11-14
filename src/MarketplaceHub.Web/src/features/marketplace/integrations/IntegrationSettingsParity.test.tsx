@@ -24,7 +24,7 @@ vi.mock('../../../shared/api', async importOriginal => {
     if (path === '/connections/c1') return connection()
     if (path.endsWith('/sync-policies')) return policies()
     if (path.endsWith('/capabilities')) return ['PRICE_WRITE', 'INVENTORY_WRITE', 'SHIPMENT_WRITE', 'RETURN_READ', 'RETURN_WRITE'].map(code => ({ code, supportLevel: 'SUPPORTED', verifiedForConnection: true, verifiedAt: '2026-10-28T10:00:00Z' }))
-    if (path.endsWith('/instant-notifications')) return { supported: false }
+    if (path.endsWith('/instant-notifications')) return { state: 'OFF', endpoint: null, registeredAt: null, lastReceivedAt: null, receivedLast24Hours: 0, message: null }
     return []
   }
   return { ...original, hubApi: vi.fn(respond), hubPoll: vi.fn(respond), loadAllPages: vi.fn(async () => ({ items: [connection()], nextCursor: null, hasMore: false })) }
@@ -86,13 +86,23 @@ describe('integration settings parity', () => {
     expect(common).toEqual([...common].sort((left, right) => left - right))
   })
 
-  it.each(marketplaces)('%s overview has the five common parts and names both write modes', async platformCode => {
+  it.each(marketplaces)('%s overview has its two cards and the summary column names both write modes', async platformCode => {
     await renderFor(platformCode)
     const pane = container.querySelector('.cs-pane')!.textContent ?? ''
-    for (const part of ['Kimlik Bilgisi', 'Son Doğrulama', 'Pazaryerine Yazma', 'Akış Sağlığı', 'Dikkat İsteyenler'])
-      expect(pane).toContain(part)
-    expect(pane).toContain('Otomatik: ')
-    expect(pane).toContain('Manuel: ')
+    for (const part of ['Akış Sağlığı', 'Dikkat İsteyenler']) expect(pane).toContain(part)
+    const summary = container.querySelector('.cs-summary')!.textContent ?? ''
+    for (const part of ['Durum', 'Ortam', 'Kimlik Bilgisi', 'Son Doğrulama', 'Pazaryerine Yazma', 'Bağlantıyı Test Et']) expect(summary).toContain(part)
+    expect(summary).toContain('Otomatik: ')
+    expect(summary).toContain('Manuel: ')
+  })
+
+  it('keeps the summary column beside every tab and its Webhook shortcut opens Veri Eşitleme', async () => {
+    await renderFor('TRENDYOL')
+    openSection('Mağaza ve Kimlik')
+    expect(container.querySelector('.cs-summary')).not.toBeNull()
+    const shortcut = Array.from(container.querySelectorAll<HTMLButtonElement>('.cs-quick button')).find(button => button.textContent === 'Webhook Ayarları')!
+    act(() => { shortcut.click() })
+    expect(container.querySelector('.cs-tabs [role="tab"][aria-selected="true"]')!.textContent).toContain('Veri Eşitleme')
   })
 
   it.each(marketplaces)('%s splits Pazaryerine Yazma into Automatic and Manual', async platformCode => {

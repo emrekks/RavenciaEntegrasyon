@@ -12,7 +12,6 @@ html body .date-range-picker-popover :is(.date-range-picker-calendars > header, 
 
 /* Connection window, Mağaza Bilgileri: the lone save button spans the whole row (the row grid has a second, empty column
    that left it 12 px short of the fields above). */
-html body .cs-workspace .connection-settings-input-row > button:only-child { grid-column: 1 / -1; width: 100%; }
 
 /* Eşleştirmeler, saved mappings: the search field is a flex row (icon + input); the card's generic "label = grid" rule
    stacked the magnifier above the text. */

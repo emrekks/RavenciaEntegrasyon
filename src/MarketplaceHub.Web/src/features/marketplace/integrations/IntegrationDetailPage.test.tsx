@@ -98,14 +98,14 @@ describe('IntegrationDetailPage credentials (W10)', () => {
   it('shows the store without editing it, saves only the name and points to a new connection', async () => {
     await renderPage()
     openSection('Mağaza ve Kimlik')
-    const store = Array.from(container.querySelectorAll<HTMLInputElement>('.connection-settings-fields input')).find(input => input.value === '9999')!
+    const store = Array.from(container.querySelectorAll<HTMLInputElement>('.cs-form-grid input')).find(input => input.value === '9999')!
     expect(store.readOnly).toBe(true)
     // The lock is explained behind the store field's help mark, which the field names.
     const lock = document.getElementById(store.getAttribute('aria-describedby')!)!
     expect(lock.textContent).toContain('Ortam ve mağaza bağlantı eklenirken belirlenir, sonradan değiştirilemez')
     expect(lock.querySelector('a')!.getAttribute('href')).toBe('/integrations?yeni=1')
 
-    const name = container.querySelector<HTMLInputElement>('.connection-settings-fields input:not([readonly])')!
+    const name = container.querySelector<HTMLInputElement>('.cs-form-grid input:not([readonly])')!
     act(() => setValue(name, 'Trendyol Yeni Ad'))
     await act(async () => { name.form!.requestSubmit() })
     await settle()

@@ -26,6 +26,8 @@ type PanelSelectProps<T extends string> = {
   width?: number
   /** A heading over the rows (as on the filter cards' menus). */
   title?: string
+  /** Shown on the trigger instead of the picked option (the list still names the picked row). */
+  triggerLabel?: ReactNode
 }
 
 function optionText<T extends string>(option: PanelSelectOption<T> | undefined) {
@@ -33,7 +35,7 @@ function optionText<T extends string>(option: PanelSelectOption<T> | undefined) 
   return option.text ?? (typeof option.label === 'string' || typeof option.label === 'number' ? String(option.label) : String(option.value))
 }
 
-export function PanelSelect<T extends string>({ value, options, onChange, ariaLabel, ariaLabelledBy, id, name, disabled = false, className, placeholder = 'Seçin', width = 180, title }: PanelSelectProps<T>) {
+export function PanelSelect<T extends string>({ value, options, onChange, ariaLabel, ariaLabelledBy, id, name, disabled = false, className, placeholder = 'Seçin', width = 180, title, triggerLabel }: PanelSelectProps<T>) {
   const trigger = useRef<HTMLButtonElement>(null)
   const [triggerWidth, setTriggerWidth] = useState(0)
   const current = options.find(option => option.value === value)
@@ -45,7 +47,7 @@ export function PanelSelect<T extends string>({ value, options, onChange, ariaLa
         aria-haspopup="listbox" aria-expanded={open} aria-label={ariaLabel ? `${ariaLabel}: ${text}` : undefined} aria-labelledby={!ariaLabel && ariaLabelledBy ? `${ariaLabelledBy} ${id ?? ''}`.trim() : undefined}
         onClick={openList}
         onKeyDown={event => { if (!open && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) { event.preventDefault(); openList() } }}>
-        <span>{current ? current.label : <span className="rr-muted">{placeholder}</span>}</span><RrIcon name="chev" />
+        <span>{triggerLabel ?? (current ? current.label : <span className="rr-muted">{placeholder}</span>)}</span><RrIcon name="chev" />
       </button>
     }}>{close => <PanelSelectList title={title} ariaLabel={ariaLabel ?? title} options={options} value={value} width={Math.max(width, triggerWidth)} onPick={next => { close(); trigger.current?.focus(); if (next !== value) onChange(next) }} />}</RrAnchor>
     {name !== undefined && <input type="hidden" name={name} value={value} />}
