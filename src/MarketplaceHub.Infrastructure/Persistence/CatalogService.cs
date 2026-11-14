@@ -2046,8 +2046,10 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 var profile = profiles.FirstOrDefault(x => x.ProductId == product.Id && x.ConnectionId == connectionId);
                 var cardLinks = links.Where(link => link.ConnectionId == connectionId && productVariants.Any(variant => variant.Id == link.VariantId)).ToList();
                 var hasMissingVariant = cardLinks.Any(link => ProductListingHealth.CountsAsMissing(link.HealthStatus, product.Status == ProductStatus.Archived, profile?.ActualStatus));
+                // A card the marketplace refused is not on it, though an import linked its variants: it goes again.
+                var refused = profile?.ActualStatus?.Trim().ToUpperInvariant() is "REJECTED" or "PARTIAL_REJECTED";
                 if (IsPlatformUpdateInProgress(profile?.ActualStatus)
-                    || !hasMissingVariant && (cardLinks.Count > 0 || profile?.ActualStatus?.Trim().ToUpperInvariant() is "LIVE" or "ACTIVE" or "ON_SALE"))
+                    || !hasMissingVariant && !refused && (cardLinks.Count > 0 || profile?.ActualStatus?.Trim().ToUpperInvariant() is "LIVE" or "ACTIVE" or "ON_SALE"))
                 {
                     if (selectedIds.Contains(product.Id)) skipped++;
                     continue;
@@ -2136,6 +2138,18 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
 
     private static ServiceResult<T> DraftSendBlocked<T>() => ServiceResult<T>.Fail(ProductDraftPolicy.SendBlockedCode, ProductDraftPolicy.SendBlockedMessage, 422);
 
+    // A Trendyol card imported from the unapproved list: an imported profile and a product link that is no approved
+    // contentId (that list gives none; ProductUpdateComposer.ApprovedContentId).
+    private async Task<bool> IsTrendyolUnapprovedImportAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        if (platformCode != "TRENDYOL") return false;
+        var imported = await db.ChannelListingProfiles.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId && x.Source == ChannelListingProfileSource.MarketplaceImport, cancellationToken);
+        if (!imported) return false;
+        var linkId = await db.MarketplaceProductLinks.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == productId).Select(x => x.ExternalId).SingleOrDefaultAsync(cancellationToken);
+        return linkId is not null && ProductUpdateComposer.ApprovedContentId(linkId) is null;
+    }
+
     // The marketplaces where one product carries a model family's every colour card (one request sends them all).
     private static bool SendsModelFamily(string platformCode) => platformCode is "PTTAVM" or "SHOPIFY";
 
@@ -2169,6 +2183,17 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     private async Task<ServiceResult<PublicationEnqueued>> EnqueuePublicationAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, bool shopifyUpdateOnly, CancellationToken cancellationToken)
     {
         if (await IsDraftProductAsync(tenantId, productId, cancellationToken)) return DraftSendBlocked<PublicationEnqueued>();
+        // A product Trendyol holds on its unapproved list (imported from it, waiting or rejected) is already there: a
+        // create would send the same barcodes again. Yayınla sends the whole card to unapproved-bulk-update instead,
+        // which puts a rejected product back into review (owner, 14 Nov 2026; offline doc "Ürün Filtreleme - Onaysız
+        // Ürün v2").
+        if (!shopifyUpdateOnly && await IsTrendyolUnapprovedImportAsync(tenantId, productId, connectionId, cancellationToken))
+        {
+            var update = await EnqueueProductUpdateCoreAsync(tenantId, productId, connectionId, idempotencyKey, correlationId, cancellationToken, fields: null);
+            return update.Succeeded
+                ? ServiceResult<PublicationEnqueued>.Ok(new(update.Value, []))
+                : ServiceResult<PublicationEnqueued>.Fail(update.Error!.Code, update.Error.Message, update.Error.Status, update.Error.FieldErrors);
+        }
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
         if (connection is null || connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA" or "SHOPIFY" or "N11" or "PAZARAMA" or "PTTAVM") || !IntegrationRuntimePolicy.IsManualProductWriteReady(connection)) return ServiceResult<PublicationEnqueued>.Fail("ACTIVE_CONNECTION_REQUIRED", "Yayın için etkin bir mağaza bağlantısı gerekir; bağlantıyı Entegrasyonlar ekranından etkinleştirin.", 422);
@@ -2901,7 +2926,16 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 .ToList();
             var productVariantIds = productVariants.Select(x => x.Id).ToHashSet();
             var productProfiles = profiles.Where(x => x.ProductId == product.Id).ToList();
-            var productLinks = variantLinks.Where(x => productVariantIds.Contains(x.VariantId)).ToList();
+            // A variant the marketplace still reviews or refused (its listing APPROVAL_PENDING or REJECTED: Trendyol's
+            // unapproved list) is not on sale there, though an import linked it: it is not matched, so the card reads
+            // "Reddedildi" / "Onay Bekliyor", not "Yayında", and Yayınla can send it again (owner, 14 Nov 2026: MZ056).
+            var heldLinks = listingVariants
+                .Where(x => ImportedApprovalStates.IsHeldListing(x.ActualStatus) && productVariantIds.Contains(x.VariantId))
+                .Select(x => (x.VariantId, ConnectionId: productProfiles.FirstOrDefault(profile => profile.Id == x.ProfileId)?.ConnectionId))
+                .Where(x => x.ConnectionId is not null)
+                .Select(x => (x.VariantId, x.ConnectionId!.Value))
+                .ToHashSet();
+            var productLinks = variantLinks.Where(x => productVariantIds.Contains(x.VariantId) && !heldLinks.Contains((x.VariantId, x.ConnectionId))).ToList();
             // The variants the marketplace no longer knows, per connection: neither matched nor live there.
             var productArchived = product.Status == ProductStatus.Archived;
             var missingLinks = productLinks
@@ -3350,7 +3384,11 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var listings = await (from listing in db.ChannelListingVariants.AsNoTracking()
                               join profile in db.ChannelListingProfiles.AsNoTracking() on new { listing.TenantId, Id = listing.ProfileId } equals new { profile.TenantId, profile.Id }
                               where listing.TenantId == tenantId && profile.Enabled && connectionIds.Contains(profile.ConnectionId) && variantIds.Contains(listing.VariantId)
-                              select new { listing.VariantId, profile.ConnectionId }).Distinct().ToListAsync(cancellationToken);
+                              select new { listing.VariantId, profile.ConnectionId, listing.ActualStatus }).Distinct().ToListAsync(cancellationToken);
+        // A variant the marketplace still reviews or refused is not matched there (ImportedApprovalStates.IsHeldListing).
+        var held = listings.Where(listing => ImportedApprovalStates.IsHeldListing(listing.ActualStatus)).Select(listing => (listing.VariantId, listing.ConnectionId)).ToHashSet();
+        links = links.Where(link => !held.Contains((link.VariantId, link.ConnectionId))).ToList();
+        listings = listings.Where(listing => !held.Contains((listing.VariantId, listing.ConnectionId))).ToList();
         var brokenLinks = links.Where(link => MarketplaceVariantLinkHealth.IsBroken(link.HealthStatus)).ToList();
         var archivedProfiles = new HashSet<(Guid ProductId, Guid ConnectionId)>();
         if (brokenLinks.Count > 0)
