@@ -546,3 +546,7 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-filters.rr-has-sort { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) auto; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-filters.rr-has-sort .rr-fbtns { grid-column: auto; align-self: end; justify-content: flex-end; }
 }
+
+/* Platform Durumu: six 26 px marks with 6 px gaps need 186 px; the column keeps them inside its 14 px side padding so the
+   first and last marks never touch the cell edges (owner, 14 Nov 2026). */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl td[data-l="Platform Durumu"] { min-width: 216px; }
