@@ -272,4 +272,45 @@ public sealed class PostgreSqlMarketplaceModelLinksTests(PostgreSqlTenantIsolati
         Assert.Equal(mz101.Id, (await db.ProductMedia.AsNoTracking().SingleAsync(x => x.ProductId == siyah.Id)).FamilyId);
         await transaction.RollbackAsync();
     }
+    [PostgreSqlFact]
+    public async Task TheModelsAttributes_AreTheCardsMajoritySet_LessColour_ThenTheEditorsWrite()
+    {
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        var seed = AddSeed(db);
+        var now = DateTimeOffset.FromUnixTimeMilliseconds(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        var gri = AddCard(db, seed, seed.Ravencia, "MZ110", "Gri", "Kadın Gri Bluz", 0, null);
+        var siyah = AddCard(db, seed, seed.Ravencia, "MZ110", "Siyah", "Kadın Siyah Bluz", 1, null);
+        var mavi = AddCard(db, seed, seed.Ravencia, "MZ110", "Mavi", "Kadın Mavi Bluz", 2, null);
+        var renk = new AttributeDefinition { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, Code = $"renk-{Guid.NewGuid():N}", Name = "Renk", DataType = AttributeDataType.SingleSelect, CreatedAt = now, UpdatedAt = now };
+        var kumas = new AttributeDefinition { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, Code = $"kumas-{Guid.NewGuid():N}", Name = "Kumaş", DataType = AttributeDataType.SingleSelect, CreatedAt = now, UpdatedAt = now };
+        db.AttributeDefinitions.AddRange(renk, kumas);
+        AttributeValue Value(AttributeDefinition attribute, string text) { var value = new AttributeValue { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, AttributeId = attribute.Id, Value = text, NormalizedValue = text.ToLowerInvariant() }; db.AttributeValues.Add(value); return value; }
+        var pamuk = Value(kumas, "Pamuk");
+        var keten = Value(kumas, "Keten");
+        void Assign(Product card, AttributeDefinition attribute, AttributeValue value) =>
+            db.ProductAttributeAssignments.Add(new ProductAttributeAssignment { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ProductId = card.Id, AttributeId = attribute.Id, ValueId = value.Id, Version = 1 });
+        Assign(gri, kumas, keten);
+        Assign(siyah, kumas, pamuk);
+        Assign(mavi, kumas, pamuk);
+        Assign(gri, renk, Value(renk, "Gri"));
+        Assign(siyah, renk, Value(renk, "Siyah"));
+        await db.SaveChangesAsync();
+        var model = await db.ProductModels.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.ModelCodeKey == "MZ110");
+
+        // Two of three cards hold Pamuk: the model's set, without Renk; again writes nothing.
+        Assert.True(await ProductModelLinks.RecomputeUnsavedAttributesAsync(db, CancellationToken.None) >= 1);
+        var rows = await db.ProductModelAttributes.AsNoTracking().Where(x => x.ModelId == model.Id).ToListAsync();
+        Assert.Equal((kumas.Id, (Guid?)pamuk.Id), (Assert.Single(rows).AttributeId, rows[0].ValueId));
+        await ProductModelLinks.RecomputeUnsavedAttributesAsync(db, CancellationToken.None);
+        Assert.Equal(rows[0].Id, (await db.ProductModelAttributes.AsNoTracking().SingleAsync(x => x.ModelId == model.Id)).Id);
+
+        // The editor writes the Gri card's set: the model takes it and is no longer recomputed.
+        await ProductModelLinks.WriteAttributesAsync(db, seed.Tenant.Id, gri.Id, now, CancellationToken.None);
+        Assert.Equal((Guid?)keten.Id, (await db.ProductModelAttributes.AsNoTracking().SingleAsync(x => x.ModelId == model.Id)).ValueId);
+        Assert.Equal(now, (await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == model.Id)).AttributesSavedAt);
+        await ProductModelLinks.RecomputeUnsavedAttributesAsync(db, CancellationToken.None);
+        Assert.Equal((Guid?)keten.Id, (await db.ProductModelAttributes.AsNoTracking().SingleAsync(x => x.ModelId == model.Id)).ValueId);
+        await transaction.RollbackAsync();
+    }
 }

@@ -5551,6 +5551,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<DateTimeOffset?>("AttributesSavedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid?>("BrandId")
                         .HasColumnType("uuid");
 
@@ -5622,6 +5625,52 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("TenantId", "BrandId", "ModelCodeKey"), false);
 
                     b.ToTable("product_models", "catalog");
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ProductModelAttribute", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AttributeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool?>("BooleanValue")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("ModelId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("NumberValue")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TextValue")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("ValueId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "AttributeId");
+
+                    b.HasIndex("TenantId", "ValueId");
+
+                    b.HasIndex("TenantId", "ModelId", "AttributeId", "ValueId")
+                        .IsUnique();
+
+                    b.ToTable("product_model_attributes", "catalog", t =>
+                        {
+                            t.HasCheckConstraint("ck_product_model_attributes_exactly_one_value", "num_nonnulls(\"ValueId\",\"TextValue\",\"NumberValue\",\"BooleanValue\")=1");
+                        });
                 });
 
             modelBuilder.Entity("MarketplaceHub.Domain.ProductOption", b =>
@@ -8575,6 +8624,29 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.HasOne("MarketplaceHub.Domain.Category", null)
                         .WithMany()
                         .HasForeignKey("TenantId", "CategoryId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade);
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ProductModelAttribute", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.AttributeDefinition", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "AttributeId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.ProductModel", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ModelId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.AttributeValue", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ValueId")
                         .HasPrincipalKey("TenantId", "Id")
                         .OnDelete(DeleteBehavior.Cascade);
                 });

@@ -342,6 +342,90 @@ public static class ProductModelLinks
         return written;
     }
 
+    // Faz 2: the model's category attributes. The colour attributes (Renk, Web Color) stay each card's.
+    private static async Task<HashSet<Guid>> ColorAttributeIdsAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<Guid> attributeIds, CancellationToken cancellationToken)
+    {
+        if (attributeIds.Count == 0) return [];
+        var ids = attributeIds.ToArray();
+        return (await db.AttributeDefinitions.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.Id)).Select(x => new { x.Id, x.Name }).ToListAsync(cancellationToken))
+            .Where(x => VariantOptionSignature.IsColorName(x.Name) || VariantOptionSignature.IsWebColorName(x.Name)).Select(x => x.Id).ToHashSet();
+    }
+
+    // The key the editor compares attribute sets by (numbers as 0.####: the database gives numeric(19,4)).
+    internal static string AttributeKey(Guid attributeId, Guid? valueId, string? text, decimal? number, bool? flag) =>
+        $"{attributeId:N}|{valueId:N}|{text?.Trim()}|{number?.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}|{flag}";
+
+    private sealed record AttributeRow(Guid ProductId, Guid AttributeId, Guid? ValueId, string? TextValue, decimal? NumberValue, bool? BooleanValue, int SortOrder);
+
+    // Replaces the model's attribute rows with the given set when it differs; returns whether it wrote.
+    private static async Task<bool> ReplaceModelAttributesAsync(AppDbContext db, Guid tenantId, Guid modelId, IReadOnlyList<AttributeRow> rows, DateTimeOffset? savedAt, CancellationToken cancellationToken)
+    {
+        var current = await db.ProductModelAttributes.AsNoTracking().Where(x => x.TenantId == tenantId && x.ModelId == modelId).ToListAsync(cancellationToken);
+        var same = current.Select(x => AttributeKey(x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue)).Order(StringComparer.Ordinal)
+            .SequenceEqual(rows.Select(x => AttributeKey(x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue)).Order(StringComparer.Ordinal), StringComparer.Ordinal);
+        if (!same)
+        {
+            await db.ProductModelAttributes.Where(x => x.TenantId == tenantId && x.ModelId == modelId).ExecuteDeleteAsync(cancellationToken);
+            foreach (var row in rows.DistinctBy(x => (x.AttributeId, x.ValueId)))
+                await db.Database.ExecuteSqlInterpolatedAsync($"""
+                    INSERT INTO catalog.product_model_attributes ("Id", "TenantId", "ModelId", "AttributeId", "ValueId", "TextValue", "NumberValue", "BooleanValue", "SortOrder")
+                    VALUES ({Guid.CreateVersion7()}, {tenantId}, {modelId}, {row.AttributeId}, {row.ValueId}, {row.TextValue}, {row.NumberValue}, {row.BooleanValue}, {row.SortOrder})
+                    ON CONFLICT DO NOTHING
+                    """, cancellationToken);
+        }
+        if (savedAt is { } at)
+            await db.ProductModels.Where(x => x.TenantId == tenantId && x.Id == modelId)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.AttributesSavedAt, at).SetProperty(x => x.UpdatedAt, at).SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
+        return !same;
+    }
+
+    // The editor saved the model's attributes to every card: the model takes the opened card's card-level set, less its
+    // colour attributes (write-through, AttributesSavedAt).
+    public static async Task WriteAttributesAsync(AppDbContext db, Guid tenantId, Guid productId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var modelId = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == productId).Select(x => x.FamilyId).SingleOrDefaultAsync(cancellationToken);
+        if (modelId is not { } model) return;
+        var rows = await db.ProductAttributeAssignments.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId && x.VariantId == null)
+            .Select(x => new AttributeRow(x.ProductId, x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue, x.SortOrder)).ToListAsync(cancellationToken);
+        var colors = await ColorAttributeIdsAsync(db, tenantId, [.. rows.Select(x => x.AttributeId).Distinct()], cancellationToken);
+        await ReplaceModelAttributesAsync(db, tenantId, model, [.. rows.Where(x => !colors.Contains(x.AttributeId))], now, cancellationToken);
+    }
+
+    // Faz 2: the attributes of every model the editor has not saved them for yet (AttributesSavedAt null) are the set most
+    // of its cards hold, the oldest card's on a tie (the editor's ModelAttributeCard rule), less the colour attributes.
+    // Runs after the migrations (DatabaseMigrator); a model whose rows already agree is not written. Returns the count.
+    public static async Task<int> RecomputeUnsavedAttributesAsync(AppDbContext db, CancellationToken cancellationToken)
+    {
+        var models = await db.ProductModels.AsNoTracking().Where(x => x.AttributesSavedAt == null).Select(x => new { x.Id, x.TenantId }).ToListAsync(cancellationToken);
+        if (models.Count == 0) return 0;
+        var written = 0;
+        foreach (var tenant in models.GroupBy(x => x.TenantId))
+        {
+            var tenantId = tenant.Key;
+            var modelIds = tenant.Select(x => x.Id).ToArray();
+            var cards = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.FamilyId != null && modelIds.Contains(x.FamilyId.Value))
+                .Select(x => new { x.Id, FamilyId = x.FamilyId!.Value, x.CreatedAt }).ToListAsync(cancellationToken);
+            var cardIds = cards.Select(x => x.Id).ToArray();
+            var rows = (await db.ProductAttributeAssignments.AsNoTracking().Where(x => x.TenantId == tenantId && cardIds.Contains(x.ProductId) && x.VariantId == null)
+                    .Select(x => new AttributeRow(x.ProductId, x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue, x.SortOrder)).ToListAsync(cancellationToken))
+                .ToLookup(x => x.ProductId);
+            var colors = await ColorAttributeIdsAsync(db, tenantId, [.. rows.SelectMany(x => x).Select(x => x.AttributeId).Distinct()], cancellationToken);
+            foreach (var model in cards.GroupBy(x => x.FamilyId))
+            {
+                var ordered = model.OrderBy(x => x.CreatedAt).ThenBy(x => x.Id).Select(x => rows[x.Id].Where(row => !colors.Contains(row.AttributeId)).ToList()).ToList();
+                var keys = ordered.Select(set => string.Join(";", set.Select(x => AttributeKey(x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue)).Order(StringComparer.Ordinal))).ToList();
+                var chosen = ordered[ProductFamilySharedFields.ModelAttributeCard(keys)];
+                // One model at a time: a model a save is writing is left for the next deploy, the rest go on.
+                try
+                {
+                    if (await ReplaceModelAttributesAsync(db, tenantId, model.Key, chosen, null, cancellationToken)) written++;
+                }
+                catch (System.Data.Common.DbException) when (db.Database.CurrentTransaction is null) { }
+            }
+        }
+        return written;
+    }
+
     // The editor saved the model's fields to every card: the model takes the same values (write-through).
     public static async Task WriteFieldsAsync(AppDbContext db, Guid tenantId, Guid productId, string? titleColor, DateTimeOffset now, CancellationToken cancellationToken)
     {

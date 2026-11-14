@@ -46,6 +46,16 @@ internal static class CatalogModelConfiguration
             entity.HasOne<Brand>().WithMany().HasForeignKey(x => new { x.TenantId, x.BrandId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<Category>().WithMany().HasForeignKey(x => new { x.TenantId, x.CategoryId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
         });
+        builder.Entity<ProductModelAttribute>(entity =>
+        {
+            entity.ToTable("product_model_attributes", "catalog", table => table.HasCheckConstraint("ck_product_model_attributes_exactly_one_value", "num_nonnulls(\"ValueId\",\"TextValue\",\"NumberValue\",\"BooleanValue\")=1"));
+            entity.HasKey(x => x.Id); entity.Property(x => x.NumberValue).HasPrecision(19, 4);
+            entity.HasIndex(x => new { x.TenantId, x.ModelId, x.AttributeId, x.ValueId }).IsUnique();
+            // Derived from the cards: it goes with its model, and with an attribute or value the panel deletes.
+            entity.HasOne<ProductModel>().WithMany().HasForeignKey(x => new { x.TenantId, x.ModelId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<AttributeDefinition>().WithMany().HasForeignKey(x => new { x.TenantId, x.AttributeId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<AttributeValue>().WithMany().HasForeignKey(x => new { x.TenantId, x.ValueId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
+        });
         builder.Entity<Category>(entity =>
         {
             entity.ToTable("categories", "catalog"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id });

@@ -56,9 +56,28 @@ public sealed class ProductModel
     public int? WarrantyMonths { get; set; }
     public int? DeliveryDays { get; set; }
     public DateTimeOffset? FieldsSavedAt { get; set; }
+    // When the editor last wrote the model's category attributes (product_model_attributes); null: they are the cards'
+    // majority set (ProductModelLinks.RecomputeUnsavedAttributesAsync), not yet saved from the editor.
+    public DateTimeOffset? AttributesSavedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public long Version { get; set; } = 1;
+}
+
+// The model's shared category attributes (Model Kaydı Faz 2): the card-level set every colour card holds, less the colour
+// attributes (Renk, Web Color), which stay on each card. Written through from the editor save that writes them to every
+// card; the cards keep their own rows (every reader still reads them).
+public sealed class ProductModelAttribute
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid ModelId { get; set; }
+    public Guid AttributeId { get; set; }
+    public Guid? ValueId { get; set; }
+    public string? TextValue { get; set; }
+    public decimal? NumberValue { get; set; }
+    public bool? BooleanValue { get; set; }
+    public int SortOrder { get; set; }
 }
 
 public sealed class Category
