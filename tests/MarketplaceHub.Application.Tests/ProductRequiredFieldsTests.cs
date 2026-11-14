@@ -54,6 +54,20 @@ public sealed class ProductRequiredFieldsTests
         Assert.Equal("Garanti Süresi zorunludur.", Assert.Single(ProductRequiredFields.Missing(CompleteCard() with { WarrantyGiven = false })).Message);
     }
 
+    [Theory]
+    [InlineData("0.5")]
+    [InlineData("0,5")]
+    public void AHalfDesi_IsAccepted_OnEveryRow_AndZeroOrEmptyIsNot(string typed)
+    {
+        // Live 14 Nov 2026 (MZ056): a half is above 0 however it was typed; the server holds decimals, the editor reads both separators.
+        var half = decimal.Parse(typed, System.Globalization.CultureInfo.GetCultureInfo(typed.Contains(',') ? "tr-TR" : "en-US"));
+        Assert.Equal(0.5m, half);
+        Assert.True(ProductDesi.IsValid(half));
+        Assert.Empty(ProductRequiredFields.Missing(CompleteCard(CompleteRow("A-1") with { Desi = half }, CompleteRow("A-2") with { Desi = half })));
+        Assert.Equal(["desi"], ProductRequiredFields.Missing(CompleteCard(CompleteRow("A-1") with { Desi = half }, CompleteRow("A-2") with { Desi = null })).Select(gap => gap.Field));
+        Assert.Equal(["desi"], ProductRequiredFields.Missing(CompleteCard(CompleteRow("A-1") with { Desi = 0m })).Select(gap => gap.Field));
+    }
+
     [Fact]
     public void TheDesiLimit_IsOneNumberOnEveryPath()
     {

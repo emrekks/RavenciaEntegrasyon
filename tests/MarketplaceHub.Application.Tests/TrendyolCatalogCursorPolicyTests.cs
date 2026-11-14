@@ -42,5 +42,22 @@ public sealed class TrendyolCatalogCursorPolicyTests
         Assert.Equal("p:4", TrendyolCatalogCursorPolicy.Advance(Page("p:4"), TrendyolCatalogPass.Approved, false, false).NextCursor);
     }
 
+    // Live 14 Nov 2026: the full import's pending pass asked status=pendingApproval and read an empty page while the
+    // owner had products waiting for approval. The pass now reads the whole unapproved list without a status filter.
+    [Fact]
+    public void ThePendingPassReadsTheWholeUnapprovedListWithoutAStatusFilter()
+    {
+        var full = TrendyolHttpClient.CatalogQuery(TrendyolCatalogPass.PendingApproval, "p:0", 100, new ProductReadFilter(null, IncludePendingApproval: true));
+        Assert.Equal(["size=100", "page=0"], full);
+
+        var since = DateTimeOffset.FromUnixTimeMilliseconds(1_794_000_000_000);
+        var incremental = TrendyolHttpClient.CatalogQuery(TrendyolCatalogPass.PendingApproval, "t:abc", 100, new ProductReadFilter(since, ContentId: "123", IncludePendingApproval: true));
+        Assert.Equal(["size=100", "nextPageToken=abc", "startDate=1794000000000", "dateQueryType=LAST_MODIFIED_DATE"], incremental);
+        Assert.DoesNotContain(incremental, part => part.StartsWith("status=", StringComparison.Ordinal));
+
+        var approved = TrendyolHttpClient.CatalogQuery(TrendyolCatalogPass.Approved, null, 500, new ProductReadFilter(since, ContentId: "123"));
+        Assert.Equal(["size=100", "page=0", "contentId=123", "startDate=1794000000000", "dateQueryType=VARIANT_MODIFIED_DATE"], approved);
+    }
+
     private static AdapterPageResult<int> Page(string? next) => new([1], next, next is not null, null);
 }

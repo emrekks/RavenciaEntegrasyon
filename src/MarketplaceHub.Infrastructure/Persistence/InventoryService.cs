@@ -166,7 +166,7 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
                 command.VatInclusion.Trim().ToUpperInvariant(), command.RoundingMode.Trim().ToUpperInvariant(),
                 decimal.Round(command.SafetyStock, 4, MidpointRounding.ToEven), command.Status.Trim());
             if (change.Any)
-                return ServiceResult<ChannelOfferView>.Fail("CHANNEL_OFFER_EXISTS", $"Bu varyantın bu kanalda fiyatı zaten var (güncel sürüm v{existing.Version}) ve ekrandaki fiyat güncel değil. Sayfayı yenileyip tekrar deneyin.", 409);
+                return ServiceResult<ChannelOfferView>.Fail("CHANNEL_OFFER_EXISTS", "Bu varyantın bu kanalda fiyatı başka bir işlemle eklenmiş, ekrandaki fiyat güncel değil. Sayfayı yenileyip tekrar deneyin.", 409);
             return await UpdateOfferAsync(tenantId, userId, existing.Id, existing.Version, new(command.ListPrice, command.SalePrice, command.Currency, command.VatRate, command.VatInclusion, command.RoundingMode, command.SafetyStock, command.Status, command.Reason, command.FollowsPanelPrice), cancellationToken);
         }
 
@@ -212,7 +212,7 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
     {
         var offer = await db.ChannelOffers.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
         if (offer is null) return NotFound<ChannelOfferView>();
-        if (offer.Version != expectedVersion) return ServiceResult<ChannelOfferView>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{offer.Version}.", 412);
+        if (offer.Version != expectedVersion) return ServiceResult<ChannelOfferView>.Fail("CONCURRENCY_CONFLICT", "Kayıt siz düzenlerken başka bir işlemle güncellendi. Sayfayı yenileyip tekrar deneyin.", 412);
         if (command.SalePrice <= 0) return Invalid<ChannelOfferView>("salePrice", SalePriceRequired);
         if (command.ListPrice < 0 || command.SalePrice < 0 || command.ListPrice < command.SalePrice) return Invalid<ChannelOfferView>("salePrice", "Fiyatlar negatif olamaz ve listPrice salePrice değerinden küçük olamaz.");
         var currency = command.Currency.Trim().ToUpperInvariant();

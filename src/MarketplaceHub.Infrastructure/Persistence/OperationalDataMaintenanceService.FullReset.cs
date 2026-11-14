@@ -35,7 +35,7 @@ public sealed partial class OperationalDataMaintenanceService
     {
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.Status != "DELETED", cancellationToken);
         if (connection is null) return ServiceResult<ConnectionFullResetView>.Fail("RESOURCE_NOT_FOUND", "Bağlantı bulunamadı.", 404);
-        if (connection.Version != expectedVersion) return ServiceResult<ConnectionFullResetView>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{connection.Version}.", 412);
+        if (connection.Version != expectedVersion) return ServiceResult<ConnectionFullResetView>.Fail("CONCURRENCY_CONFLICT", "Kayıt siz düzenlerken başka bir işlemle güncellendi. Sayfayı yenileyip tekrar deneyin.", 412);
         if (!SupportsFullReset(connection.PlatformCode))
             return ServiceResult<ConnectionFullResetView>.Fail("FULL_RESET_UNSUPPORTED", "Tam sıfırlama yalnız pazaryeri bağlantılarında kullanılabilir.", 422);
         if (!ConfirmationText.Matches(command.Confirmation, connection.DisplayName))

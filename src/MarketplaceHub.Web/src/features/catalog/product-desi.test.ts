@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { bulkFieldIssue, bulkMaxDesi } from './bulk-field-run'
-import { maxProductDesi, productDesiTooLarge } from './product-desi'
-import { editorWarrantyMonths } from './product-editor/required-fields'
+import { maxProductDesi, parseProductDesi, productDesiTooLarge } from './product-desi'
+import { editorWarrantyMonths, missingRequiredEditorFields } from './product-editor/required-fields'
 import { toggleProductTransferGroup } from './products/ProductTransferDialog'
 
 describe('one desi limit', () => {
@@ -28,5 +28,20 @@ describe('Excel import fields', () => {
   it('puts Marka in Ürün Bilgileri, after Ürün Adı', () => {
     expect(toggleProductTransferGroup(['COST'], ['TITLE', 'BRAND', 'BARCODE', 'MODEL_CODE'])).toEqual(['TITLE', 'BRAND', 'BARCODE', 'MODEL_CODE', 'COST'])
     expect(toggleProductTransferGroup(['COST'], ['TITLE', 'BRAND', 'BARCODE', 'MODEL_CODE'], ['TITLE', 'BRAND', 'COST'])).toEqual(['TITLE', 'BRAND', 'COST'])
+  })
+})
+
+describe('a half desi', () => {
+  it('reads 0.5 and 0,5 alike and keeps the required Desi satisfied', () => {
+    expect(parseProductDesi('0.5')).toBe(0.5)
+    expect(parseProductDesi('0,5')).toBe(0.5)
+    expect(parseProductDesi('')).toBe(0)
+    expect(parseProductDesi('abc')).toBe(0)
+    const form = { title: 'a', brandId: 'b', categoryId: 'c', modelCode: 'm', baseSku: 's', barcode: 'x', listPrice: '10', salePrice: '9', warrantyMonths: '0', deliveryDays: '1', desi: '0.5' }
+    const options = { automaticBarcodes: false }
+    expect(missingRequiredEditorFields(form, options)).toEqual([])
+    expect(missingRequiredEditorFields({ ...form, desi: '0,5' }, options)).toEqual([])
+    expect(missingRequiredEditorFields({ ...form, desi: '0' }, options)).toEqual(['desi'])
+    expect(missingRequiredEditorFields({ ...form, desi: '' }, options)).toEqual(['desi'])
   })
 })

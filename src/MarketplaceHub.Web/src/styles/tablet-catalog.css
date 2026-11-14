@@ -45,7 +45,6 @@
   html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl :is(.rr-qbtn, .rr-varcell) { justify-items: start; padding: 0; text-align: left; }
   html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-qbtn.rr-qbtn { min-height: 0; margin: 0; padding: 0; }
   html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-qbtn.rr-qbtn:hover { background: none; border-color: transparent; }
-  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-qbtn > b { text-decoration: underline dotted; text-underline-offset: 3px; }
   html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-pmarks { justify-content: flex-start; flex-wrap: nowrap; }
   html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-actcell { display: grid !important; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
   html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-actcell > *,
