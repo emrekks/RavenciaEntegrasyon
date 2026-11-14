@@ -875,6 +875,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         }
 
         var targetIds = products.Select(x => x.Id).ToArray();
+        var modelKeys = await ProductModelLinks.KeysOfProductsAsync(db, tenantId, targetIds, cancellationToken);
         var variantIds = await db.ProductVariants.AsNoTracking()
             .Where(x => x.TenantId == tenantId && targetIds.Contains(x.ProductId))
             .Select(x => x.Id)
@@ -1041,6 +1042,10 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         // ACTIVE is found by the hourly orphan sweep (FileAssetReferences.MarkOrphansAsync).
         try { await FileAssetReferences.MarkForPurgeAsync(db, tenantId, fileAssetIds, timeProvider.GetUtcNow(), cancellationToken); }
         catch (Exception exception) when (exception is DbException or InvalidOperationException) { }
+        // Model Kaydı Faz 1: the models of the deleted cards (a model whose last card went is deleted, a group left under
+        // one brand is linked); outside the serializable delete for the same reason, a failure leaves only a stale model.
+        try { await ProductModelLinks.ReconcileAsync(db, tenantId, modelKeys, timeProvider.GetUtcNow(), cancellationToken); }
+        catch (Exception exception) when (exception is DbException or InvalidOperationException) { }
         return ServiceResult<ProductDeleteResult>.Ok(new(products.Count, pendingJobs.Count));
     }
 
@@ -1139,7 +1144,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         if (product is null) return NotFound<ProductMarketplaceCodesView>();
         var modelCode = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == id && x.ModelCode != null && x.ModelCode != "")
             .OrderBy(x => x.SortOrder).ThenBy(x => x.Id).Select(x => x.ModelCode).FirstOrDefaultAsync(cancellationToken);
-        var familyProductIds = await VisibleFamilyProductIdsAsync(tenantId, product.BrandId, modelCode?.Trim(), cancellationToken);
+        var familyProductIds = await VisibleFamilyProductIdsAsync(tenantId, product.BrandId, modelCode?.Trim(), cancellationToken, product.FamilyId);
         if (!familyProductIds.Contains(id)) familyProductIds.Add(id);
         var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && familyProductIds.Contains(x.ProductId))
             .OrderBy(x => x.SortOrder).ThenBy(x => x.Id).Select(x => new { x.Id, x.Sku, x.Barcode }).ToListAsync(cancellationToken);
@@ -1266,7 +1271,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var ownVariants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == id)
             .OrderBy(x => x.SortOrder).ThenBy(x => x.Id).ToListAsync(cancellationToken);
         var modelCode = ownVariants.Select(x => x.ModelCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))?.Trim();
-        var familyProductIds = await VisibleFamilyProductIdsAsync(tenantId, product.BrandId, modelCode, cancellationToken);
+        var familyProductIds = await VisibleFamilyProductIdsAsync(tenantId, product.BrandId, modelCode, cancellationToken, product.FamilyId);
         if (!familyProductIds.Contains(id)) familyProductIds.Add(id);
         var familyProducts = await VisibleProducts(tenantId)
             .Where(x => familyProductIds.Contains(x.Id))
@@ -1361,7 +1366,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             : (await db.AttributeDefinitions.AsNoTracking().Where(x => x.TenantId == tenantId && attributeIds.Contains(x.Id)).Select(x => new { x.Id, x.Name }).ToListAsync(cancellationToken))
                 .Where(x => VariantOptionSignature.IsColorName(x.Name) || VariantOptionSignature.IsWebColorName(x.Name)).Select(x => x.Id).ToHashSet();
         var sharedValues = sharedAttributes ? command.Attributes!.Where(x => !colorAttributeIds.Contains(x.AttributeId)).ToList() : [];
-        static string AttributeKey(Guid attributeId, Guid? valueId, string? text, decimal? number, bool? flag) => $"{attributeId:N}|{valueId:N}|{text?.Trim()}|{number}|{flag}";
+        // The number as ModelAttributesAsync writes it: the database gives numeric(19,4) (5.0000), the editor 5.
+        static string AttributeKey(Guid attributeId, Guid? valueId, string? text, decimal? number, bool? flag) => $"{attributeId:N}|{valueId:N}|{text?.Trim()}|{number?.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}|{flag}";
 
         var changedIds = new List<Guid>();
         foreach (var sibling in siblings)
@@ -1895,7 +1901,27 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         await ProductFieldChangeRecorder.RecordAsync(db, tenantId, ProductChangeSources.Editor, actorUserId, correlation, changedAt, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         if (variantPurgeTransaction is not null) await variantPurgeTransaction.CommitAsync(cancellationToken);
+        await LinkSavedModelAsync(tenantId, id, familyVariantProductIds, command, cancellationToken);
         return await GetProductAsync(tenantId, id, cancellationToken);
+    }
+
+    // Model Kaydı Faz 1: after an editor save the family's model link is checked again (a variant the save deleted by SQL
+    // is not seen by AppDbContext), and the model takes the shared fields the save wrote to every card (write-through).
+    // The save itself already stands: a failure here only leaves the link or the model's fields for the next save.
+    private async Task LinkSavedModelAsync(Guid tenantId, Guid productId, IReadOnlyCollection<Guid> familyProductIds, UpdateProductCommand command, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var now = timeProvider.GetUtcNow();
+            var keys = await ProductModelLinks.KeysOfProductsAsync(db, tenantId, [.. familyProductIds.Append(productId).Distinct()], cancellationToken);
+            await ProductModelLinks.ReconcileAsync(db, tenantId, keys, now, cancellationToken);
+            if (!(command.FamilySharedFields ?? []).Any(ProductFamilySharedFields.IsKnown)) return;
+            var signatures = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId)
+                .OrderBy(x => x.SortOrder).ThenBy(x => x.Id).Select(x => x.OptionSignature).ToListAsync(cancellationToken);
+            var color = signatures.Select(ProductFamilyColorOrder.ColorOf).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+            await ProductModelLinks.WriteFieldsAsync(db, tenantId, productId, color, now, cancellationToken);
+        }
+        catch (Exception exception) when (exception is DbException or InvalidOperationException) { }
     }
 
     // The panel's own price of one variant (the editor's Liste/Satış Fiyatı). It is what a new marketplace offer starts
@@ -2729,18 +2755,22 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
             .Select(x => x.ModelCode)
             .FirstOrDefaultAsync(cancellationToken);
-        var ids = await VisibleFamilyProductIdsAsync(tenantId, product.BrandId, modelCode, cancellationToken);
+        var ids = await VisibleFamilyProductIdsAsync(tenantId, product.BrandId, modelCode, cancellationToken, product.FamilyId);
         if (!ids.Contains(product.Id)) ids.Add(product.Id);
         return ids;
     }
 
-    // D9: the visible products of the same brand whose model code has the same key.
-    private Task<List<Guid>> VisibleFamilyProductIdsAsync(Guid tenantId, Guid? brandId, string? modelCode, CancellationToken cancellationToken) =>
-        ProductFamilyScope.ProductIdsAsync(db, tenantId, brandId, modelCode,
+    // D9: the visible products of the same brand whose model code has the same key. With the opened card's model
+    // (Model Kaydı Faz 1, familyId): the model's linked cards, plus the rule's unlinked ones, less a card of another model.
+    private async Task<List<Guid>> VisibleFamilyProductIdsAsync(Guid tenantId, Guid? brandId, string? modelCode, CancellationToken cancellationToken, Guid? familyId = null)
+    {
+        var ruleIds = await ProductFamilyScope.ProductIdsAsync(db, tenantId, brandId, modelCode,
             from siblingVariant in db.ProductVariants.AsNoTracking()
             join siblingProduct in VisibleProducts(tenantId) on siblingVariant.ProductId equals siblingProduct.Id
             select siblingVariant,
             cancellationToken);
+        return await ProductModelLinks.FamilyAwareAsync(db, tenantId, familyId, ruleIds, VisibleProducts(tenantId), cancellationToken);
+    }
 
     // listShape: the products list's slim card (GET /products). It carries what the list screens show (the card's platform
     // marks and sale state, prices, stock, options, the first picture) and leaves out what only the product editor reads
