@@ -101,3 +101,10 @@ PTTAVM_CONNECTION_TEST, _REFERENCE_SYNC, _ORDER_SYNC, _ORDER_RECOVERY_SYNC, _ORD
 - No shipment due date in the order API (the field table near `pttavm-api-son.md:1600-1660` has IslemTarihi only):
   ShipmentDueAt stays empty (0/2 orders), so the reports cannot measure late shipping on PTT AVM and say so.
 - Returns page sort (11 Nov 2026): `ReturnClaim.RequestedAt` is the claim request date the İadeler page sorts by (default "En Yeni İade Talebi"); a claim without it lists last, never guessed. PTT AVM has no claim (a return is an order line in iade status), so RequestedAt stays empty and its returns list last.
+
+## Model link (Model Kaydı Faz 2, 14 Nov 2026)
+- Model-level id = the product id (`UrunId`), ExternalCode = the product barcode (`Barkod`; the model code for a product
+  with variants, a variant barcode for some one-variant products: live 18 of 196). Live backfill: 68 models (only where no
+  other colour card holds PTT AVM variant links; the rest wait for the next import's evidence).
+- Family publication adds the model link's barcode to the parent-barcode check (can only stop a send); price/stock of a
+  card without its own link goes under the model link's barcode before the model-code rule (`TrendyolWriteComposers`).

@@ -169,3 +169,8 @@ _FINANCE_SYNC (issue code PAZARAMA_FINANCE_SYNC_FAILED).
   ("Api yollamıyor mu?"): the API sends the amount only in that text, no structured funder field.
 - Due date: the lines' `estimatedShippingDate` (the earliest) fills ShipmentDueAt (5/5 orders in 60 days).
 - Returns page sort (11 Nov 2026): `ReturnClaim.RequestedAt` is the claim request date the İadeler page sorts by (default "En Yeni İade Talebi"); a claim without it lists last, never guessed. Pazarama: getRefund `refundDate` (Istanbul, `PazaramaReturnMapper.Instant`).
+
+## Model link (Model Kaydı Faz 2, 14 Nov 2026)
+- Model-level id = `group:<groupCode>` (ExternalCode = groupCode); `code:<barcode>` products have no group and record
+  nothing. Live backfill: 59 models. A colour card with no Pazarama product of its own is created with its model's
+  groupCode from the verified model link, so it joins that product (`PazaramaProductPublicationComposer`).

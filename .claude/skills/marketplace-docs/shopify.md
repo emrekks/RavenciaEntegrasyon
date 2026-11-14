@@ -135,3 +135,7 @@ _ORDER_INVOICE_RECONCILIATION, _WEBHOOK_INGEST, _ORDER_CSV_IMPORT. Returns use t
   `shopPrimaryDomainUrl`. Means: cash on delivery ON_DELIVERY, bank deposit EFT, card gateways (Shopify Payments,
   iyzico, PayTR, Stripe) CREDIT_CARD, others OTHER. The carrier is known only after a fulfillment.
 - Returns page sort (11 Nov 2026): `ReturnClaim.RequestedAt` is the claim request date the İadeler page sorts by (default "En Yeni İade Talebi"); a claim without it lists last, never guessed. Shopify: the Return's `createdAt` (ISO with offset, `MapShopifyReturn`).
+
+## Model link (Model Kaydı Faz 2, 14 Nov 2026)
+- Model-level id = the Shopify product id (a multi-colour model is one product, which no colour card's link holds).
+  Live: 190 rows. Publication still upserts by handle (`ShopifyHandle`); the model link is not read by the writer.

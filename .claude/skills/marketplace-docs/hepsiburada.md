@@ -211,3 +211,6 @@ cursor `PACKAGES`), _ORDER_STATUS_SYNC, _WEBHOOK_INGEST, _RETURN_SYNC, _ORDER_IN
 - A claim whose order is older than the 30-day history (or of unknown date) is taken when the panel holds the order;
   otherwise it is named in `HEPSIBURADA_RETURN_ORDER_OUTSIDE_HISTORY`, never dropped silently
   (`HepsiburadaReturnHistoryPolicy.ImportsClaim`).
+
+## Model link (Model Kaydı Faz 2, 14 Nov 2026)
+- Hepsiburada has no model-level listing: no `marketplace_model_links` row is ever written (unknown stays unknown).

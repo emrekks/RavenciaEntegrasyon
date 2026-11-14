@@ -418,3 +418,10 @@ packages only, no claim events.
   `sales.shipment_packages`, 11 Nov 2026); the panel's Yeniden Gönderim card (`ShipmentPackageClassification.IsResend`)
   cannot count Trendyol resends from the order API. Source: one-time diagnostic read (resolved operational issue
   TRENDYOL_RESEND_DIAGNOSTIC, `MarketplaceJobProcessor.ResendDiagnostic.cs`), 11 Nov 2026 16:10Z and 17:10Z.
+
+## Model link (Model Kaydı Faz 2, 14 Nov 2026)
+- `catalog.marketplace_model_links.ExternalId` = the `productMainId` of the import's rows (one content per colour, the
+  model groups them); card links stay contentIds. Written after each product import/match from the variant links just
+  saved (`MarketplaceModelLinks.ModelListings` / `RecordAsync`), never backfilled (productMainId was stored nowhere).
+- Create payload: `productMainId` takes the model link's spelling only when it is the same code key as the panel model
+  code (Trendyol compares case-sensitively); a different code is not taken (`ProductPublicationComposer`).
