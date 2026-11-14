@@ -184,11 +184,12 @@ export type ProductPlatformBreakdownCounts = {
 // The list mark's tooltip (owner, 14 Nov 2026: "kaçı aktif kaçı pasifte"): the group's variants on one marketplace by
 // state, only the states that hold any. Aktif: matched and on sale (a stock of 0 is never a closure); a matched variant
 // whose sale state the marketplace has not said is counted as matched with its sale state unknown, never as active.
-// Pasif: neither matched, lost, refused nor waiting there. Nothing is inferred beyond the server's counts.
+// Pasif: neither matched, lost, refused nor waiting there (the marketplace's catalog read did not name it: owner, 14 Nov
+// 2026, MZ059YNC-03 on n11, refused there on 28 Oct and absent from its read). Nothing is inferred beyond the counts.
 export function productPlatformBreakdownLines(counts: ProductPlatformBreakdownCounts, rejectionReason?: string | null): string[] {
   const active = counts.onSale + counts.offSaleStockZero
   const closed = Math.max(0, counts.offSale - counts.offSaleStockZero)
-  const unknownSale = Math.max(0, counts.matched - counts.onSale - counts.offSale)
+  const unknownSale = unknownSaleCount(counts)
   const passive = Math.max(0, counts.variantCount - counts.matched - counts.missing - counts.rejected - counts.pending)
   const reason = rejectionReason?.trim() ? ` · ${rejectionReason.trim()}` : ''
   const lines: Array<[number, string]> = [
@@ -198,14 +199,21 @@ export function productPlatformBreakdownLines(counts: ProductPlatformBreakdownCo
     [counts.pending, 'Onay Bekliyor'],
     [counts.rejected, `Reddedildi${reason}`],
     [counts.missing, 'Bulunamadı'],
-    [passive, 'Pasif']
+    [passive, 'Pasif · Eşleşme Yok']
   ]
   return lines.filter(([count]) => count > 0).map(([count, text]) => `${count} ${text}`)
 }
 
+const unknownSaleCount = (counts: ProductPlatformBreakdownCounts) => Math.max(0, counts.matched - counts.onSale - counts.offSale)
+
 export function productPlatformBreakdownTip(platform: string, counts: ProductPlatformBreakdownCounts, rejectionReason?: string | null): string | null {
   if (counts.variantCount <= 0) return null
   // Owner, 14 Nov 2026: the head reads "27/33 varyant aktif"; only the variants that are not active get a line.
+  // While the sale state of some matched variants is unknown, an active count would read as "none are active" (n11
+  // MZ050YNC: "0/24 varyant aktif" though all 24 are matched and n11 had not said): the head then counts the matched
+  // ones, and every line (Aktif too) follows.
+  if (unknownSaleCount(counts) > 0)
+    return [`${platform} · ${counts.matched}/${counts.variantCount} varyant eşleşti`, ...productPlatformBreakdownLines(counts, rejectionReason)].join('\n')
   const active = counts.onSale + counts.offSaleStockZero
   const rest = productPlatformBreakdownLines(counts, rejectionReason).filter(line => !/^\d+ Aktif$/.test(line))
   return [`${platform} · ${active}/${counts.variantCount} varyant aktif`, ...rest].join('\n')

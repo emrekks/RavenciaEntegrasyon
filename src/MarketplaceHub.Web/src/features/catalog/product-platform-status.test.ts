@@ -161,8 +161,20 @@ describe('product platform mark breakdown', () => {
 
   it('names only the states that hold variants, keeps an unknown sale state unknown and counts the rest as Pasif', () => {
     expect(productPlatformBreakdownLines({ ...base, variantCount: 20, matched: 10, onSale: 4, offSale: 3, offSaleStockZero: 1, missing: 2, pending: 3 }))
-      .toEqual(['5 Aktif', '3 Eşleşti · Satış Durumu Bilinmiyor', '2 Satışa Kapalı', '3 Onay Bekliyor', '2 Bulunamadı', '5 Pasif'])
-    expect(productPlatformBreakdownTip('Hepsiburada', { ...base, variantCount: 6 })).toBe('Hepsiburada · 0/6 varyant aktif\n6 Pasif')
+      .toEqual(['5 Aktif', '3 Eşleşti · Satış Durumu Bilinmiyor', '2 Satışa Kapalı', '3 Onay Bekliyor', '2 Bulunamadı', '5 Pasif · Eşleşme Yok'])
+    expect(productPlatformBreakdownTip('Hepsiburada', { ...base, variantCount: 6 })).toBe('Hepsiburada · 0/6 varyant aktif\n6 Pasif · Eşleşme Yok')
     expect(productPlatformBreakdownTip('N11', base)).toBeNull()
+  })
+
+  // Owner, 14 Nov 2026 ("burdaki durum yanlış"): n11 had not given a sale state for any matched variant, and the head
+  // read "0/24 varyant aktif" as if none were. With any sale state unknown the head counts the matched variants.
+  it('heads with the matched count while a sale state is unknown (n11 MZ059YNC, MZ050YNC)', () => {
+    expect(productPlatformBreakdownTip('N11', { ...base, variantCount: 24, matched: 23 }))
+      .toBe('N11 · 23/24 varyant eşleşti\n23 Eşleşti · Satış Durumu Bilinmiyor\n1 Pasif · Eşleşme Yok')
+    expect(productPlatformBreakdownTip('N11', { ...base, variantCount: 24, matched: 24 }))
+      .toBe('N11 · 24/24 varyant eşleşti\n24 Eşleşti · Satış Durumu Bilinmiyor')
+    expect(productPlatformBreakdownTip('N11', { ...base, variantCount: 24, matched: 24, onSale: 20 }))
+      .toBe('N11 · 24/24 varyant eşleşti\n20 Aktif\n4 Eşleşti · Satış Durumu Bilinmiyor')
+    expect(productPlatformBreakdownTip('N11', { ...base, variantCount: 24, matched: 24, onSale: 24 })).toBe('N11 · 24/24 varyant aktif')
   })
 })
