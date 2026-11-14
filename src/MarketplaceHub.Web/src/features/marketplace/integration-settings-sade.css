@@ -454,4 +454,4 @@ html body .cs-workspace.cs-workspace .cs-title-switch .pm-anchor { display: inli
 /* The title button is as wide as the longest connection name, so the head does not shift when the connection changes. */
 .cs-workspace .cs-title-stack { display: inline-grid; justify-items: start; }
 .cs-workspace .cs-title-stack > * { grid-area: 1 / 1; }
-.cs-workspace .cs-title-stack .cs-title-ghost { visibility: hidden; height: 0; overflow: hidden; font-size: 18px; font-weight: 600; line-height: 24px; white-space: nowrap; }
+.cs-workspace .cs-title-stack .cs-title-ghost { visibility: hidden; height: 0; overflow: hidden; pointer-events: none; }
