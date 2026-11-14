@@ -61,7 +61,7 @@ function Packages({ packages, units, reminder }: { packages: Metric; units: numb
   return <strong className="rr-metric-pk" title={packages.error ? 'Sayı okunamadı; sayfayı yenileyip tekrar deneyin.' : undefined}>
     <CountUp value={metricText(packages)} />
     {known(packages) && ' '}
-    {known(packages) && <span className="rr-metric-sub">Paket{units !== undefined && <>{' '}<span className="rr-metric-sep" aria-hidden="true">|</span>{' '}{count(units)} <span className="rr-metric-adet">Adet </span>Ürün</>}{reminder !== undefined && reminder > 0 && <span className="rr-metric-note">{' '}<span className="rr-metric-sep" aria-hidden="true">|</span>{' '}Hatırlatıcı: {count(reminder)}</span>}</span>}
+    {known(packages) && <span className="rr-metric-sub">{(packages.value ?? 0) > 0 && 'Paket'}{units !== undefined && <>{' '}<span className="rr-metric-sep" aria-hidden="true">|</span>{' '}{count(units)} <span className="rr-metric-adet">Adet </span>Ürün</>}{reminder !== undefined && reminder > 0 && <span className="rr-metric-note">{' '}<span className="rr-metric-sep" aria-hidden="true">|</span>{' '}Hatırlatıcı: {count(reminder)}</span>}</span>}
   </strong>
 }
 

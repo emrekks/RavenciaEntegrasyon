@@ -31,7 +31,7 @@ function writeAssumptions(value: Assumptions) { try { window.localStorage.setIte
 function Field({ label, hint, children }: { label: string; hint?: ReactNode; children: (id: string) => ReactNode }) {
   const id = useId()
   return <div className="price-suggestion-field">
-    <span className="price-suggestion-label"><label htmlFor={id}>{label}</label>{hint ? <TitleHint label={label} icon="info">{hint}</TitleHint> : null}</span>
+    <span className="price-suggestion-label"><label htmlFor={id}>{label}</label>{hint ? <TitleHint label={label}>{hint}</TitleHint> : null}</span>
     {children(id)}
   </div>
 }
