@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { activeJobTypes, countsByStatus, formatSeconds, laneLabel, laneTotals, usagePercent, usageTone, windowSince, type JobTypeMetric } from './queue-quota'
+import { filterJobsByTab, jobPlatformCode, jobPlatformTabs, activeJobTypes, countsByStatus, formatSeconds, laneLabel, laneTotals, usagePercent, usageTone, windowSince, type JobTypeMetric } from './queue-quota'
 import { jobsMainTab, withJobsMainTab } from './jobs-url-state'
 
 const metric = (jobType: string, queued: number, running: number, attempts: number): JobTypeMetric =>
@@ -47,5 +47,20 @@ describe('Kuyruk ve Kota', () => {
     expect(opened.toString()).toBe('kategori=fatura&sekme=kuyruk-kota')
     expect(jobsMainTab(opened)).toBe('queue')
     expect(jobsMainTab(withJobsMainTab(opened, 'notifications'))).toBe('notifications')
+  })
+
+  it('groups job types by platform tab', () => {
+    expect(jobPlatformCode('HEPSIBURADA_ORDER_SYNC')).toBe('HEPSIBURADA')
+    expect(jobPlatformCode('PTTAVM_CATALOG')).toBe('PTTAVM')
+    expect(jobPlatformCode('QUESTION_SYNC')).toBeNull()
+    expect(jobPlatformCode('INVOICE_SUBMIT')).toBeNull()
+    const rows = [metric('TRENDYOL_ORDER_SYNC', 1, 0, 1), metric('PAZARAMA_CATALOG', 0, 0, 2), metric('TRENDYOL_CATALOG', 0, 0, 1), metric('QUESTION_SYNC', 0, 0, 3)]
+    expect(jobPlatformTabs(rows)).toEqual([
+      { value: 'ALL', label: 'Tümü', count: 4 }, { value: 'TRENDYOL', label: 'Trendyol', count: 2 },
+      { value: 'PAZARAMA', label: 'Pazarama', count: 1 }, { value: 'GENERAL', label: 'Genel', count: 1 }
+    ])
+    expect(filterJobsByTab(rows, 'TRENDYOL').map(row => row.jobType)).toEqual(['TRENDYOL_ORDER_SYNC', 'TRENDYOL_CATALOG'])
+    expect(filterJobsByTab(rows, 'GENERAL').map(row => row.jobType)).toEqual(['QUESTION_SYNC'])
+    expect(filterJobsByTab(rows, 'N11')).toHaveLength(4)
   })
 })

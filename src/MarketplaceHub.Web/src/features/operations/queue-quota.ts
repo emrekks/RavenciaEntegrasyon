@@ -1,4 +1,5 @@
 import { jobStatusLabel } from '../../shared/job-status-labels'
+import { platformDisplayName, platformDisplayOrder } from '../../shared/platform-names'
 
 // İşlem Takibi › Kuyruk ve Kota: what GET /jobs/metrics, /jobs/metrics/lanes, /jobs/metrics/quota and /jobs/counts
 // answer, and the words the tab shows for them.
@@ -83,4 +84,33 @@ export function countsByStatus(counts: readonly JobCount[]) {
 export function windowSince(hours: QueueWindow, now = Date.now()) {
   const minute = Math.floor(now / 60_000) * 60_000
   return new Date(minute - Number(hours) * 3_600_000).toISOString()
+}
+
+/** The tab of the jobs that belong to no marketplace (question sync, reset, retention, invoice provider…). */
+export const generalJobTab = 'GENERAL'
+
+/** The marketplace code a job type starts with (TRENDYOL_, HEPSIBURADA_, N11_, PAZARAMA_, PTTAVM_, SHOPIFY_), else null. */
+export function jobPlatformCode(jobType: string): string | null {
+  const type = jobType.toUpperCase()
+  const prefix = type.split('_')[0]
+  return (platformDisplayOrder as readonly string[]).includes(prefix) && type.includes('_') && !type.includes('EFATURAM') ? prefix : null
+}
+
+export type JobPlatformTab = { value: string; label: string; count: number }
+
+/** "Tümü" first, then only the platforms that have rows (display order), then "Genel" for platform-less jobs. */
+export function jobPlatformTabs(rows: readonly JobTypeMetric[]): JobPlatformTab[] {
+  const counts = new Map<string, number>()
+  for (const row of rows) { const key = jobPlatformCode(row.jobType) ?? generalJobTab; counts.set(key, (counts.get(key) ?? 0) + 1) }
+  const tabs: JobPlatformTab[] = [{ value: 'ALL', label: 'Tümü', count: rows.length }]
+  for (const code of platformDisplayOrder) if (counts.has(code)) tabs.push({ value: code, label: platformDisplayName(code), count: counts.get(code)! })
+  if (counts.has(generalJobTab)) tabs.push({ value: generalJobTab, label: 'Genel', count: counts.get(generalJobTab)! })
+  return tabs
+}
+
+/** The rows of one tab; a tab with no rows any more (the window changed) shows everything. */
+export function filterJobsByTab<T extends JobTypeMetric>(rows: readonly T[], tab: string): T[] {
+  if (tab === 'ALL') return [...rows]
+  const matching = rows.filter(row => (jobPlatformCode(row.jobType) ?? generalJobTab) === tab)
+  return matching.length > 0 ? matching : [...rows]
 }

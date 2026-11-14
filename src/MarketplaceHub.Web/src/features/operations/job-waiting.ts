@@ -32,6 +32,13 @@ export function isWaitingJob(job: Pick<JobLike, 'status' | 'waiting'>) {
   return Boolean(job.waiting) && (job.status === 'PENDING' || job.status === 'RETRY_SCHEDULED')
 }
 
+// A long job that read one window and saved its position (RETRY_SCHEDULED with SLICE_CONTINUES) runs again in seconds:
+// it is not retrying and has not failed. The server counts it apart as CONTINUING.
+export const sliceContinuesCode = 'SLICE_CONTINUES'
+export function isContinuingJob(job: Pick<JobLike, 'status' | 'lastErrorCode'>) {
+  return job.status === 'RETRY_SCHEDULED' && job.lastErrorCode?.trim().toUpperCase() === sliceContinuesCode
+}
+
 export function waitingJobLabel(job: Pick<JobLike, 'lastErrorCode'>) {
   return isApprovalWait(job.lastErrorCode) ? 'Onay Bekleniyor' : 'İşleniyor'
 }
