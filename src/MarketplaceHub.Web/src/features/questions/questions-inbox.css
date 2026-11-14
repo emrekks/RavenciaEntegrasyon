@@ -97,7 +97,7 @@
 /* flex: none: an older rule gives every picture in the question card a 62px flex basis, which stretched the logo frame. */
 .qi-page .qi-platform img { box-sizing: border-box; flex: none; width: 24px; height: 24px; object-fit: contain; border-radius: 5px; }
 .qi-page .qi-facts { display: grid; grid-template-columns: max-content repeat(3, minmax(0, 1fr)); margin: 0; border-top: 1px solid var(--rv-color-border); }
-.qi-page .qi-facts > div { display: grid; align-content: center; gap: 2px; min-width: 0; min-height: 44px; padding: 6px 12px; border-left: 1px solid var(--rv-color-border); }
+.qi-page .qi-facts > div { display: grid; align-content: center; gap: 2px; min-width: 0; min-height: 44px; padding: 6px 10px; border-left: 1px solid var(--rv-color-border); }
 .qi-page .qi-facts > div:first-child { border-left: 0; }
 .qi-page .qi-facts dt { color: var(--rv-color-subtle); font-size: 12px; }
 .qi-page .qi-facts dd { margin: 0; overflow: hidden; color: var(--rv-color-ink); font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -197,11 +197,11 @@
 .app-shell.stitch-shell main .qi-page .qi-sync b { font-size: 14px; white-space: nowrap; }
 .qi-page .qi-item-logo img { object-fit: contain; }
 /* Facts stay on one line (a long value ends with an ellipsis) and the status tag never breaks. When the
-   detail card is narrow (list and detail side by side on a tablet-width screen) the four facts sit two by two. */
+   detail card is narrower than 520 px the four facts sit two by two (owner, 14 Nov 2026: one row whenever it fits). */
 .qi-page .qi-facts dd { white-space: nowrap; }
 .qi-page .qi-tag { flex: none; max-width: 100%; white-space: nowrap; }
 .qi-page .qi-dcard { container-type: inline-size; }
-@container (max-width: 660px) {
+@container (max-width: 520px) {
   .qi-page .qi-facts { grid-template-columns: max-content minmax(0, 1fr); }
   .qi-page .qi-facts > div:nth-child(3) { border-left: 0; }
   .qi-page .qi-facts > div:nth-child(n + 3) { border-top: 1px solid var(--rv-color-border); }

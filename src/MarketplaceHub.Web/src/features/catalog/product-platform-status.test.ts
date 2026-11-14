@@ -156,13 +156,13 @@ describe('product platform mark breakdown', () => {
 
   it('lists MZ056 on Trendyol: 27 active, 6 rejected with the reason', () => {
     expect(productPlatformBreakdownTip('Trendyol', { ...base, variantCount: 33, matched: 27, onSale: 20, offSale: 7, offSaleStockZero: 7, rejected: 6 }, 'Hatalı Görsel Linki'))
-      .toBe('Trendyol · 33 varyant\n27 Aktif\n6 Reddedildi · Hatalı Görsel Linki')
+      .toBe('Trendyol · 27/33 varyant aktif\n6 Reddedildi · Hatalı Görsel Linki')
   })
 
   it('names only the states that hold variants, keeps an unknown sale state unknown and counts the rest as Pasif', () => {
     expect(productPlatformBreakdownLines({ ...base, variantCount: 20, matched: 10, onSale: 4, offSale: 3, offSaleStockZero: 1, missing: 2, pending: 3 }))
       .toEqual(['5 Aktif', '3 Eşleşti · Satış Durumu Bilinmiyor', '2 Satışa Kapalı', '3 Onay Bekliyor', '2 Bulunamadı', '5 Pasif'])
-    expect(productPlatformBreakdownTip('Hepsiburada', { ...base, variantCount: 6 })).toBe('Hepsiburada · 6 varyant\n6 Pasif')
+    expect(productPlatformBreakdownTip('Hepsiburada', { ...base, variantCount: 6 })).toBe('Hepsiburada · 0/6 varyant aktif\n6 Pasif')
     expect(productPlatformBreakdownTip('N11', base)).toBeNull()
   })
 })

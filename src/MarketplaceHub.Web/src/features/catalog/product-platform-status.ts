@@ -205,5 +205,8 @@ export function productPlatformBreakdownLines(counts: ProductPlatformBreakdownCo
 
 export function productPlatformBreakdownTip(platform: string, counts: ProductPlatformBreakdownCounts, rejectionReason?: string | null): string | null {
   if (counts.variantCount <= 0) return null
-  return [`${platform} · ${counts.variantCount} varyant`, ...productPlatformBreakdownLines(counts, rejectionReason)].join('\n')
+  // Owner, 14 Nov 2026: the head reads "27/33 varyant aktif"; only the variants that are not active get a line.
+  const active = counts.onSale + counts.offSaleStockZero
+  const rest = productPlatformBreakdownLines(counts, rejectionReason).filter(line => !/^\d+ Aktif$/.test(line))
+  return [`${platform} · ${active}/${counts.variantCount} varyant aktif`, ...rest].join('\n')
 }
