@@ -96,7 +96,7 @@
 .app-shell.stitch-shell main .qi-page .qi-platform { display: inline-flex; align-items: center; gap: 8px; color: var(--rv-color-muted); font-size: 13px; }
 /* flex: none: an older rule gives every picture in the question card a 62px flex basis, which stretched the logo frame. */
 .qi-page .qi-platform img { box-sizing: border-box; flex: none; width: 24px; height: 24px; object-fit: contain; border-radius: 5px; }
-.qi-page .qi-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; border-top: 1px solid var(--rv-color-border); }
+.qi-page .qi-facts { display: grid; grid-template-columns: max-content repeat(3, minmax(0, 1fr)); margin: 0; border-top: 1px solid var(--rv-color-border); }
 .qi-page .qi-facts > div { display: grid; align-content: center; gap: 2px; min-width: 0; min-height: 44px; padding: 6px 12px; border-left: 1px solid var(--rv-color-border); }
 .qi-page .qi-facts > div:first-child { border-left: 0; }
 .qi-page .qi-facts dt { color: var(--rv-color-subtle); font-size: 12px; }
@@ -174,7 +174,7 @@
   .qi-page .qi-inbox.is-detail .qi-right { display: flex; }
   .app-shell.stitch-shell main .qi-page .qi-back { display: inline-flex; }
   .qi-page .qi-list { max-height: none; }
-  .qi-page .qi-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .qi-page .qi-facts { grid-template-columns: max-content minmax(0, 1fr); }
   .qi-page .qi-facts > div:nth-child(3) { border-left: 0; }
   .qi-page .qi-facts > div:nth-child(n + 3) { border-top: 1px solid var(--rv-color-border); }
   .app-shell.stitch-shell main .qi-page .qi-product { grid-template-columns: 48px minmax(0, 1fr); }
@@ -201,8 +201,8 @@
 .qi-page .qi-facts dd { white-space: nowrap; }
 .qi-page .qi-tag { flex: none; max-width: 100%; white-space: nowrap; }
 .qi-page .qi-dcard { container-type: inline-size; }
-@container (max-width: 500px) {
-  .qi-page .qi-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@container (max-width: 660px) {
+  .qi-page .qi-facts { grid-template-columns: max-content minmax(0, 1fr); }
   .qi-page .qi-facts > div:nth-child(3) { border-left: 0; }
   .qi-page .qi-facts > div:nth-child(n + 3) { border-top: 1px solid var(--rv-color-border); }
 }
