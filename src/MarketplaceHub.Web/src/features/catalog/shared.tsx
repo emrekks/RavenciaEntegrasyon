@@ -65,8 +65,6 @@ export type Product = Versioned & {
   familyProductIds?: string[] | null
   // Every colour card's own pictures (gallery, variant pictures, size chart), oldest card first whichever was opened.
   familyGalleries?: Array<{ productId: string; mediaUrls: string[]; variantMediaUrls: string[]; sizeChartUrl: string | null }> | null
-  // The model-row fields other colour cards hold differently from this one, with their colours.
-  familyFieldDifferences?: Array<{ field: string; colors: string[] }> | null
   // The products list: the model's front picture, the family gallery's first picture as the editor shows it (never the
   // size chart), the same on every card of the model. A colour card's own front picture stays primaryImageUrl.
   familyImageUrl?: string | null

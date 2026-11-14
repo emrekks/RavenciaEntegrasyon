@@ -1302,12 +1302,26 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var (familyMediaUrls, familyMediaItems) = CatalogFamilyMedia.Build(familyRows, familyProductTitles, familyCardOrder);
         var familyOrderedMediaUrls = CatalogFamilyMedia.OrderedUrls(familyRows);
         var familyChartUrls = familyViews.Select(view => view.SizeChartUrl).ToList();
-        List<ProductFamilySharedFields.CardFields> familyCardFields = [.. familyCardOrder.Select(cardId => SharedFieldsOf(familyViews.First(view => view.Id == cardId)))];
+        List<ProductView> familyCardViews = [.. familyCardOrder.Select(cardId => familyViews.First(view => view.Id == cardId))];
+        List<ProductFamilySharedFields.CardFields> familyCardFields = [.. familyCardViews.Select(SharedFieldsOf)];
+        // Temel Ürün Bilgileri are the model's, one value whichever colour row was opened (ProductFamilySharedFields).
+        var model = ProductFamilySharedFields.ModelValues(familyCardFields, familyCardFields.First(card => card.ProductId == id).Color);
+        var modelAttributes = await ModelAttributesAsync(tenantId, familyCardViews, primaryView, cancellationToken);
         // Every card's size chart closes the strip, in the strip's own order: no chart stands among the colours' pictures,
         // and the opened card's is not singled out.
         IReadOnlyList<string> FamilyStripWithChartsLast(IReadOnlyList<string> urls) => SizeCharts.SizeChartPlacement.LastAll(urls, familyChartUrls);
         return ServiceResult<ProductView>.Ok(primaryView with
         {
+            Title = model.Title,
+            Description = model.Description,
+            BrandId = model.BrandId,
+            CategoryId = model.CategoryId,
+            CategoryPath = familyCardViews.First(view => view.CategoryId == model.CategoryId).CategoryPath,
+            VatRate = model.VatRate,
+            VatInclusion = model.VatInclusion,
+            WarrantyMonths = model.WarrantyMonths,
+            DeliveryDays = model.DeliveryDays,
+            Attributes = modelAttributes,
             Variants = allVariants,
             TotalStock = allVariants.Sum(x => x.OnHand),
             StartingPrice = CatalogPricePolicy.MinimumPositivePrice(familyViews.SelectMany(view => view.Variants.Select(variant => CatalogPricePolicy.EffectiveSalePrice(variant.SalePrice, variant.DefaultSalePrice, view.DefaultSalePrice)))),
@@ -1316,14 +1330,14 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             FamilyMediaItems = familyMediaItems,
             FamilyOrderedMediaUrls = familyViews.Any(view => view.HasCustomMediaOrder) ? FamilyStripWithChartsLast(familyOrderedMediaUrls) : null,
             FamilyProductIds = familyViews.Select(view => view.Id).ToList(),
-            FamilyGalleries = CatalogFamilyMedia.Galleries(familyRows, familyCardOrder, familyViews.ToDictionary(view => view.Id, view => view.SizeChartUrl)),
-            FamilyFieldDifferences = ProductFamilySharedFields.Differences(familyCardFields, await ModelCodeBrandCardsAsync(tenantId, modelCode, familyProducts, familyCardFields, cancellationToken))
+            FamilyGalleries = CatalogFamilyMedia.Galleries(familyRows, familyCardOrder, familyViews.ToDictionary(view => view.Id, view => view.SizeChartUrl))
         });
     }
 
-    // The model-row fields the owner changed in the editor (command.FamilySharedFields) go to every other colour card of
-    // the model (ProductFamilySharedFields); a card already holding the value is not touched. A field the owner left
-    // alone stays as each card has it. A colour card's name keeps its own colour word; its colour attributes stay its own.
+    // The model-row fields the editor names (command.FamilySharedFields: every one on each save, owner 14.11.2026) go to
+    // every other colour card of the model (ProductFamilySharedFields), in the same transaction as the opened card; a card
+    // already holding the value is not touched. A colour card's name keeps its own colour word; its colour attributes,
+    // variants, prices and marketplace data stay its own.
     private async Task ApplyFamilySharedFieldsAsync(Guid tenantId, Product opened, UpdateProductCommand command, IReadOnlyCollection<Guid> familyProductIds, CancellationToken cancellationToken)
     {
         var fields = (command.FamilySharedFields ?? []).Where(ProductFamilySharedFields.IsKnown).ToHashSet(StringComparer.Ordinal);
@@ -1411,28 +1425,24 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     private static ProductFamilySharedFields.CardFields SharedFieldsOf(ProductView view) => new(
         view.Id,
         view.Variants.Select(variant => ProductFamilyColorOrder.ColorOf(variant.OptionSignature)).FirstOrDefault(color => !string.IsNullOrWhiteSpace(color)),
-        view.Title, view.Description, view.BrandId, view.CategoryId, view.VatRate, view.VatInclusion, view.WarrantyMonths, view.DeliveryDays, [.. view.Variants.Select(variant => variant.Desi)]);
+        view.Title, view.Description, view.BrandId, view.CategoryId, view.VatRate, view.VatInclusion, view.WarrantyMonths, view.DeliveryDays);
 
-    // The colour cards of the same model code under another brand (KENE01 on live: Lavian and Ravencia), with the model's
-    // own cards, oldest first: the brand is the model's too, so the editor names a card that sits under another brand.
-    // Null when every card of the model code is in the model.
-    private async Task<IReadOnlyList<ProductFamilySharedFields.CardFields>?> ModelCodeBrandCardsAsync(Guid tenantId, string? modelCode, IReadOnlyList<Product> familyProducts, IReadOnlyList<ProductFamilySharedFields.CardFields> familyCards, CancellationToken cancellationToken)
+    // The model's category attributes: the set most colour cards hold (on a tie the oldest card's), with the opened card's
+    // own colour attributes (Renk, Web Color), which stay each card's.
+    private async Task<IReadOnlyList<ProductAttributeAssignmentView>?> ModelAttributesAsync(Guid tenantId, IReadOnlyList<ProductView> cardsInOrder, ProductView opened, CancellationToken cancellationToken)
     {
-        if (ProductFamilyKeyPolicy.ModelCodeKey(modelCode) is not { } key) return null;
-        var familyIds = familyProducts.Select(item => item.Id).ToHashSet();
-        var pattern = modelCode!.Trim();
-        var rows = await (from variant in db.ProductVariants.AsNoTracking()
-                          join item in VisibleProducts(tenantId) on variant.ProductId equals item.Id
-                          where variant.TenantId == tenantId && variant.ModelCode != null && EF.Functions.ILike(variant.ModelCode, pattern) && item.Status != ProductStatus.Archived && !familyIds.Contains(item.Id)
-                          select new { item.Id, item.Title, item.BrandId, item.CreatedAt, variant.ModelCode, variant.OptionSignature, variant.SortOrder })
-                         .ToListAsync(cancellationToken);
-        var others = rows.Where(row => ProductFamilyKeyPolicy.ModelCodeKey(row.ModelCode) == key)
-            .GroupBy(row => row.Id)
-            .Select(group => group.OrderBy(row => row.SortOrder).First())
-            .Select(row => (row.CreatedAt, Card: new ProductFamilySharedFields.CardFields(row.Id, ProductFamilyColorOrder.ColorOf(row.OptionSignature), row.Title, "", row.BrandId, null, null, null, null, null)))
-            .ToList();
-        if (others.Count == 0) return null;
-        return [.. familyProducts.Select(item => (item.CreatedAt, Card: familyCards.First(card => card.ProductId == item.Id))).Concat(others).OrderBy(item => item.CreatedAt).ThenBy(item => item.Card.ProductId).Select(item => item.Card)];
+        if (cardsInOrder.Count < 2) return opened.Attributes;
+        var attributeIds = cardsInOrder.SelectMany(view => view.Attributes ?? []).Select(item => item.AttributeId).Distinct().ToArray();
+        if (attributeIds.Length == 0) return opened.Attributes;
+        var colorAttributeIds = (await db.AttributeDefinitions.AsNoTracking().Where(x => x.TenantId == tenantId && attributeIds.Contains(x.Id)).Select(x => new { x.Id, x.Name }).ToListAsync(cancellationToken))
+            .Where(x => VariantOptionSignature.IsColorName(x.Name) || VariantOptionSignature.IsWebColorName(x.Name)).Select(x => x.Id).ToHashSet();
+        static string Key(ProductAttributeAssignmentView item) => $"{item.AttributeId:N}|{item.ValueId:N}|{item.TextValue?.Trim()}|{item.NumberValue?.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}|{item.BooleanValue}";
+        var keys = cardsInOrder.Select(view => string.Join(";", (view.Attributes ?? []).Where(item => !colorAttributeIds.Contains(item.AttributeId)).Select(Key).Order(StringComparer.Ordinal))).ToList();
+        var modelCard = cardsInOrder[ProductFamilySharedFields.ModelAttributeCard(keys)];
+        if (modelCard.Id == opened.Id) return opened.Attributes;
+        return [.. (modelCard.Attributes ?? []).Where(item => !colorAttributeIds.Contains(item.AttributeId))
+            .Concat((opened.Attributes ?? []).Where(item => colorAttributeIds.Contains(item.AttributeId)))
+            .OrderBy(item => item.SortOrder)];
     }
 
     public async Task<ServiceResult<ProductView>> UpdateProductAsync(Guid tenantId, Guid id, long expectedVersion, UpdateProductCommand command, CancellationToken cancellationToken, Guid? actorUserId = null, string? correlationId = null)
