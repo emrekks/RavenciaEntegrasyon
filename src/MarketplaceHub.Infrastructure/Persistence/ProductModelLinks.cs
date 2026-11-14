@@ -360,18 +360,22 @@ public static class ProductModelLinks
     // Replaces the model's attribute rows with the given set when it differs; returns whether it wrote.
     private static async Task<bool> ReplaceModelAttributesAsync(AppDbContext db, Guid tenantId, Guid modelId, IReadOnlyList<AttributeRow> rows, DateTimeOffset? savedAt, CancellationToken cancellationToken)
     {
+        rows = [.. rows.DistinctBy(x => (x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue))];
         var current = await db.ProductModelAttributes.AsNoTracking().Where(x => x.TenantId == tenantId && x.ModelId == modelId).ToListAsync(cancellationToken);
         var same = current.Select(x => AttributeKey(x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue)).Order(StringComparer.Ordinal)
             .SequenceEqual(rows.Select(x => AttributeKey(x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue)).Order(StringComparer.Ordinal), StringComparer.Ordinal);
         if (!same)
         {
+            // Delete and insert in one transaction: a failed insert leaves the model's set as it was.
+            await using var transaction = db.Database.CurrentTransaction is null ? await db.Database.BeginTransactionAsync(cancellationToken) : null;
             await db.ProductModelAttributes.Where(x => x.TenantId == tenantId && x.ModelId == modelId).ExecuteDeleteAsync(cancellationToken);
-            foreach (var row in rows.DistinctBy(x => (x.AttributeId, x.ValueId)))
+            foreach (var row in rows)
                 await db.Database.ExecuteSqlInterpolatedAsync($"""
                     INSERT INTO catalog.product_model_attributes ("Id", "TenantId", "ModelId", "AttributeId", "ValueId", "TextValue", "NumberValue", "BooleanValue", "SortOrder")
                     VALUES ({Guid.CreateVersion7()}, {tenantId}, {modelId}, {row.AttributeId}, {row.ValueId}, {row.TextValue}, {row.NumberValue}, {row.BooleanValue}, {row.SortOrder})
                     ON CONFLICT DO NOTHING
                     """, cancellationToken);
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         }
         if (savedAt is { } at)
             await db.ProductModels.Where(x => x.TenantId == tenantId && x.Id == modelId)

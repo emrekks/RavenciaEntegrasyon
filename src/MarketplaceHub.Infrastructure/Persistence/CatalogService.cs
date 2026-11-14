@@ -1934,7 +1934,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             var signatures = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId)
                 .OrderBy(x => x.SortOrder).ThenBy(x => x.Id).Select(x => x.OptionSignature).ToListAsync(cancellationToken);
             var color = signatures.Select(ProductFamilyColorOrder.ColorOf).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
-            await ProductModelLinks.WriteFieldsAsync(db, tenantId, productId, color, now, cancellationToken);
+            try { await ProductModelLinks.WriteFieldsAsync(db, tenantId, productId, color, now, cancellationToken); }
+            catch (Exception exception) when (exception is DbException or InvalidOperationException) { }
             if ((command.FamilySharedFields ?? []).Contains(ProductFamilySharedFields.Attributes, StringComparer.Ordinal) && command.Attributes is not null)
                 await ProductModelLinks.WriteAttributesAsync(db, tenantId, productId, now, cancellationToken);
         }

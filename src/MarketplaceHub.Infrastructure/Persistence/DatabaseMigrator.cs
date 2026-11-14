@@ -50,12 +50,19 @@ public static class DatabaseMigrator
                 {
                     var recomputed = await ProductModelLinks.RecomputeUnsavedFieldsAsync(migrationContext, cancellationToken);
                     logger.LogInformation("Product model fields recomputed for {Count} models", recomputed);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    logger.LogWarning(exception, "Product model fields were not recomputed");
+                }
+                try
+                {
                     var attributes = await ProductModelLinks.RecomputeUnsavedAttributesAsync(migrationContext, cancellationToken);
                     logger.LogInformation("Product model attributes recomputed for {Count} models", attributes);
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException)
                 {
-                    logger.LogWarning(exception, "Product model fields were not recomputed");
+                    logger.LogWarning(exception, "Product model attributes were not recomputed");
                 }
                 return;
             }
