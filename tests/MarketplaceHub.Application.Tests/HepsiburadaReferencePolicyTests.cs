@@ -54,6 +54,11 @@ public sealed class HepsiburadaReferencePolicyTests
     [InlineData("HEPSIBURADA:ACTIVE", "HEPSIBURADA", "ACTIVE")]
     [InlineData("HEPSIBURADA:PARTIAL", "HEPSIBURADA", "PARTIAL")]
     [InlineData("HEPSIBURADA:PASSIVE", "HEPSIBURADA", "PASSIVE")]
+    // Owner, 14 Nov 2026: Hatalı and Onay Bekliyor per marketplace and under Tüm Platformlar (on any marketplace).
+    [InlineData("TRENDYOL:ERROR", "TRENDYOL", "ERROR")]
+    [InlineData("TRENDYOL:APPROVAL", "TRENDYOL", "APPROVAL")]
+    [InlineData("ALL:ERROR", "ALL", "ERROR")]
+    [InlineData("all:off_sale", "ALL", "OFF_SALE")]
     public void Hepsiburada_product_status_filters_parse(string filter, string platformCode, string state)
     {
         Assert.True(CatalogService.TryProductPlatformFilter(filter, out var parsedPlatform, out var parsedState));
