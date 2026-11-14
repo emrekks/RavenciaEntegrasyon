@@ -44,16 +44,23 @@ public sealed class TrendyolCatalogCursorPolicyTests
 
     // Live 14 Nov 2026: the full import's pending pass asked status=pendingApproval and read an empty page while the
     // owner had products waiting for approval. The pass now reads the whole unapproved list without a status filter.
+    // Live 14 Nov 2026 14:49Z: a "Yeni Ürünleri Aktar" run read the unapproved list from that morning's watermark and
+    // got total 0 while products waited since the 13th; the pass now ignores the incremental date window too.
     [Fact]
-    public void ThePendingPassReadsTheWholeUnapprovedListWithoutAStatusFilter()
+    public void ThePendingPassReadsTheWholeUnapprovedListWithoutAStatusOrDateFilter()
     {
         var full = TrendyolHttpClient.CatalogQuery(TrendyolCatalogPass.PendingApproval, "p:0", 100, new ProductReadFilter(null, IncludePendingApproval: true));
         Assert.Equal(["size=100", "page=0"], full);
 
         var since = DateTimeOffset.FromUnixTimeMilliseconds(1_794_000_000_000);
         var incremental = TrendyolHttpClient.CatalogQuery(TrendyolCatalogPass.PendingApproval, "t:abc", 100, new ProductReadFilter(since, ContentId: "123", IncludePendingApproval: true));
-        Assert.Equal(["size=100", "nextPageToken=abc", "startDate=1794000000000", "dateQueryType=LAST_MODIFIED_DATE"], incremental);
-        Assert.DoesNotContain(incremental, part => part.StartsWith("status=", StringComparison.Ordinal));
+        Assert.Equal(["size=100", "nextPageToken=abc"], incremental);
+
+        var lookup = TrendyolHttpClient.CatalogQuery(TrendyolCatalogPass.PendingApproval, null, 100, new ProductReadFilter(null, ProductMainId: "RYP010", IncludePendingApproval: true));
+        Assert.Equal(["size=100", "page=0", "productMainId=RYP010"], lookup);
+
+        var content = TrendyolHttpClient.CatalogQuery(TrendyolCatalogPass.ContentChanged, "p:2", 100, new ProductReadFilter(since));
+        Assert.Equal(["size=100", "page=2", "startDate=1794000000000", "dateQueryType=CONTENT_MODIFIED_DATE"], content);
 
         var approved = TrendyolHttpClient.CatalogQuery(TrendyolCatalogPass.Approved, null, 500, new ProductReadFilter(since, ContentId: "123"));
         Assert.Equal(["size=100", "page=0", "contentId=123", "startDate=1794000000000", "dateQueryType=VARIANT_MODIFIED_DATE"], approved);
