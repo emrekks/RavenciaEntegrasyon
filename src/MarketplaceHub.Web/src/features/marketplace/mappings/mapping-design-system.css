@@ -84,7 +84,7 @@
 }
 
 @layer features {
-  .searchable-select-options { display: grid; max-height: 300px; min-width: 0; gap: 2px; overflow-y: auto; overscroll-behavior: contain; }
+  .searchable-select-options { display: grid; max-height: min(300px, calc(100dvh - 220px)); min-height: 0; min-width: 0; gap: 2px; overflow-y: auto; overscroll-behavior: contain; }
 }
 
 @layer features {

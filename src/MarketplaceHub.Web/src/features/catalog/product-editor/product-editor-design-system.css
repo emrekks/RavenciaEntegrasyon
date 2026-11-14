@@ -430,7 +430,7 @@
 }
 
 @layer features {
-  .variant-filter-dropdown-options { display: grid; min-height: 0; gap: 3px; overflow-y: auto; }
+  .variant-filter-dropdown-options { display: grid; min-height: 0; align-content: start; gap: 3px; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; }
 }
 
 @layer features {
