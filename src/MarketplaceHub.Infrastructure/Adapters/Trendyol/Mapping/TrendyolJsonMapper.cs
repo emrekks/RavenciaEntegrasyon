@@ -391,11 +391,26 @@ public static class TrendyolJsonMapper
 
     public static AdapterPageResult<RemoteCatalogProduct> PendingApprovalCatalogProducts(string json) => CatalogProducts(json, isPendingApproval: true);
 
+    // "pendingApproval=3, rejected=1" for an unapproved-list page, for the worker log ("none" when the page is empty).
+    public static string UnapprovedStatusCounts(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        var counts = Content(document.RootElement)
+            .GroupBy(product => NullText(product, "status") ?? "(none)", StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(group => $"{group.Key}={group.Count()}")
+            .ToList();
+        return counts.Count == 0 ? "none" : string.Join(", ", counts);
+    }
+
     private static AdapterPageResult<RemoteCatalogProduct> CatalogProducts(string json, bool isPendingApproval)
     {
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
+        // The unapproved list holds products waiting for approval and rejected ones: only a row Trendyol marks rejected
+        // is left out; a row with no or another status is still a product not yet approved and stays.
         var rows = Content(root)
+            .Where(product => !isPendingApproval || !string.Equals(NullText(product, "status"), "rejected", StringComparison.OrdinalIgnoreCase))
             .Select(product => ProductSnapshot(product, isPendingApproval))
             .Where(x => !string.IsNullOrWhiteSpace(x.ExternalProductId))
             .ToList();

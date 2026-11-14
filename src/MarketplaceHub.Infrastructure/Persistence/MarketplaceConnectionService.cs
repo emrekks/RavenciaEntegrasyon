@@ -1076,7 +1076,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     private static ServiceResult<T> Invalid<T>(string field, string message) => ServiceResult<T>.Fail("VALIDATION_FAILED", message, 422, new Dictionary<string, string[]> { [field] = [message] });
     private static ServiceResult<T> Deferred<T>() => ServiceResult<T>.Fail("PLATFORM_OUT_OF_SCOPE", "Bu platform için işlem henüz desteklenmiyor.", 409);
     private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);
-    private static ServiceResult<T> Precondition<T>(long version) => ServiceResult<T>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{version}.", 412);
+    private static ServiceResult<T> Precondition<T>(long version) => ServiceResult<T>.Fail("CONCURRENCY_CONFLICT", "Kayıt siz düzenlerken başka bir işlemle güncellendi. Sayfayı yenileyip tekrar deneyin.", 412);
     private sealed record CredentialPayload(string ApiKey, string ApiSecret);
     private sealed record ShopifyCredentialPayload(string AccessToken);
     private sealed record ConnectionSettings(string UserAgentIdentity, bool ExternalWritesEnabled, bool InvoiceCreationEnabled = true);

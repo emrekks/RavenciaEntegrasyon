@@ -5,6 +5,7 @@ import { hubApi } from '../../shared/api'
 import { Busy, CardBackgroundIcon, EmptyState, ErrorBox, Modal, Pager, UiIcon, type CardIconName, type UiIconName } from '../../shared/components'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { formatIstanbul, istanbulDateKey } from '../../shared/format-date'
+import { ChangePill } from '../../shared/components/ChangePill'
 import { valueWithUnit } from '../../shared/metric-value'
 import { useMetricSource } from '../marketplace/use-metric-source'
 
@@ -189,9 +190,7 @@ function SubTabs<T extends string>({ label, value, items, onChange }: { label: s
 // previous: the previous period's value, shown under the pointer instead of the generic "Önceki döneme göre".
 function Delta({ delta, invert = false, previous }: { delta: Change | null | undefined; invert?: boolean; previous?: string }) {
   // A change pill with nothing to compare reads a flat "%0" (a tab badge or pill is a counter, not a card value).
-  if (!delta) return <em className="reports-delta is-flat" title="Önceki dönem: —">■ %0</em>
-  const tone = delta.direction === 'flat' ? 'flat' : (delta.direction === 'up') !== invert ? 'good' : 'bad'
-  return <em className={`reports-delta is-${tone}`} title={previous ? `Önceki dönem: ${previous}` : 'Önceki döneme göre değişim'}>{delta.direction === 'up' ? '▲' : delta.direction === 'down' ? '▼' : '■'} {delta.text}</em>
+  return <ChangePill className="reports-delta" change={delta} invert={invert} title={previous ? `Önceki dönem: ${previous}` : 'Önceki döneme göre değişim'} />
 }
 
 // A panel's explanation shows under its title while the pointer or the focus is on the title, as the overview's rows

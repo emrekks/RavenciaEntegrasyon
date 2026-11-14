@@ -15,6 +15,7 @@ import { formatIstanbul, istanbulDateKey } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
 import { periodTrend as trend, channelTotals, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, periodFigures, prefetchInTurn, presetLabels, presetOrder, primaryCurrency, revenueReport, type DashboardChannel, type DayPoint, type Performance, type Range } from './dashboard-performance'
 import { smoothPath } from './smooth-path'
+import { ChangePill, trendChange } from '../../shared/components/ChangePill'
 import { useMetricSource } from '../marketplace/use-metric-source'
 import { IntegrationStatusPanel, knownCount, useIntegrationHealth, type DashboardMetrics } from './IntegrationStatusPanel'
 import { EmptyState } from '../../shared/components/EmptyState'
@@ -35,11 +36,6 @@ const platformColor = (code: string, index: number) => PLATFORMS.find(([value]) 
 const refresh = { refetchInterval: 60_000, refetchIntervalInBackground: false, refetchOnWindowFocus: true, staleTime: 30_000 } as const
 const poll = { headers: backgroundPollHeaders }
 
-const icon = (body: ReactNode, size = 18) => <svg className="rr-ico" width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{body}</svg>
-const ICONS = {
-  up: icon(<path d="M4 10l4-4 4 4" />, 12),
-  down: icon(<path d="M4 6l4 4 4-4" />, 12),
-}
 
 const money = (amount: number, currency = 'TRY') => formatMoney(amount, currency || 'TRY', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
 const count = (value: number) => value.toLocaleString('tr-TR', { maximumFractionDigits: 0 })
@@ -130,8 +126,8 @@ function KpiCell({ icon: cardIcon, label, hint, tip, value: readValue, noSource,
   return <div className={`rr-kc${on ? ' rr-on' : ''}${onPick ? ' rr-pick' : ''}${loading ? ' rr-kc-wait' : ''}`} title={tip} role={onPick ? 'tab' : undefined} aria-selected={onPick ? Boolean(on) : undefined} tabIndex={onPick ? 0 : undefined} onClick={onPick} onKeyDown={event => { if (onPick && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onPick() } }}>
     <CardBackgroundIcon name={cardIcon} />
     <small>{label}{hint && <span className="rr-kc-hint"> · {hint}</span>}</small><strong className={value === '—' ? 'rr-num rr-op-empty' : 'rr-num'}>{loading ? <span className="rr-kc-skel" role="status" aria-label="Yükleniyor" /> : <>{value}{unit && <span className="rr-op-x">{unit}</span>}</>}</strong>
-    {delta ? <span className={`rr-trend ${delta[1] ? 'rr-up' : 'rr-down'}`} title="Önceki döneme göre">{delta[1] ? ICONS.up : ICONS.down}<span className="rr-trend-v">{delta[0]}</span></span>
-      : note !== undefined ? <span className="rr-trend"><em>{note}</em></span> : <span className="rr-trend"><span className="rr-trend-v">%0</span><em>önceki dönem</em></span>}
+    {delta ? <span className="rr-trend"><ChangePill change={trendChange(delta)} title="Önceki döneme göre" /></span>
+      : note !== undefined ? <span className="rr-trend"><em>{note}</em></span> : <span className="rr-trend"><ChangePill change={null} /><em>önceki dönem</em></span>}
     <span className="rr-avg">{avgLabel} <b className="rr-num">{avg}</b></span>
     <div className="rr-krange" role="img" aria-label={`${min} – ${max}`}><span className="rr-kbar"><i style={{ left: `${Math.max(0, Math.min(1, position)) * 100}%` }} /></span><span className="rr-kends"><span className="rr-num">{min}</span><span className="rr-num">{max}</span></span></div>
   </div>
@@ -343,7 +339,7 @@ export function DashboardPage() {
           <div className="rr-pf-chan-h"><b>Kanallara Göre Ciro</b>{selected && <span className="rr-ftag"><RrLogo code={selected.platformCode} />{selectedName}<button type="button" onClick={() => setChannel('ALL')} aria-label="Mağaza süzgecini kaldır"><RrIcon name="close" /></button></span>}</div>
           {channelShares.length ? <>
             <span className="rr-stack" aria-hidden="true">{channelShares.map(item => <i key={item.connectionId} style={{ width: `${item.share}%`, background: item.color }} />)}</span>
-            <div className={`rr-crows${performance.isPlaceholderData ? ' rr-crows-wait' : ''}`}>{channelShares.map(item => { const on = channel === item.connectionId; const delta = trend(item.amount, item.previousAmount); return <button key={item.connectionId} type="button" className={`rr-crow${on ? ' rr-on' : channel !== 'ALL' ? ' rr-dim' : ''}`} aria-pressed={on} onClick={() => setChannel(on ? 'ALL' : item.connectionId)}><RrLogo code={item.platformCode} /><span className="rr-ct"><span><b>{item.name}</b><small className="rr-num">{money(item.amount, currency)}</small></span><span className="rr-cbar"><i style={{ width: `${item.share}%`, background: item.color }} /></span></span><span className="rr-cv"><b className="rr-num">%{item.share.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}</b>{delta ? <small className={`rr-num ${delta[1] ? 'rr-up' : 'rr-down'}`}>{delta[1] ? '+' : ''}{delta[0]}</small> : <small className="rr-num">—</small>}</span></button> })}</div>
+            <div className={`rr-crows${performance.isPlaceholderData ? ' rr-crows-wait' : ''}`}>{channelShares.map(item => { const on = channel === item.connectionId; const delta = trend(item.amount, item.previousAmount); return <button key={item.connectionId} type="button" className={`rr-crow${on ? ' rr-on' : channel !== 'ALL' ? ' rr-dim' : ''}`} aria-pressed={on} onClick={() => setChannel(on ? 'ALL' : item.connectionId)}><RrLogo code={item.platformCode} /><span className="rr-ct"><span><b>{item.name}</b><small className="rr-num">{money(item.amount, currency)}</small></span><span className="rr-cbar"><i style={{ width: `${item.share}%`, background: item.color }} /></span></span><span className="rr-cv"><b className="rr-num">%{item.share.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}</b>{delta ? <ChangePill change={trendChange(delta)} title="Önceki döneme göre" /> : <ChangePill change={null} />}</span></button> })}</div>
           </> : <EmptyState icon="platforms" title="Kanal Dağılımı Yok">Bu dönem için kanal dağılımı bulunmuyor.</EmptyState>}
           <Link className="rr-btn rr-link" to="/integrations">Kanalları Yönet <RrIcon name="arrowR" /></Link>
         </div>

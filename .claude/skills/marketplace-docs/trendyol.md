@@ -58,6 +58,18 @@ Code: `Adapters/Trendyol/` — `TrendyolHttpClient.cs` (+ `.Webhooks.cs`), `Tren
 - Return reconciliation (RETURN_RECONCILIATION, 3/90 days) follows the per-bucket cursor `s:Accepted=2` like
   RETURN_SYNC; before 6 Nov 2026 it asked all eight buckets page + 1, finished ones too (live Accepted had 188 claims
   in 90 days, page size 200) (`MarketplaceJobProcessor.NextReconcilePage`).
+- Products waiting for approval ("Onay Bekleyen Ürünleri Dahil Et"): after the approved pass the import reads GET
+  `.../products/unapproved` (page ≤ 1000, page × size ≤ 10,000, `nextPageToken` beyond; rows are per barcode, keyed by
+  `productMainId`, no `contentId`/`variantId`, `status` = `pendingApproval` or `rejected`, `docNeeded`,
+  `rejectReasonDetails`). The docs list `status=rejected|pendingApproval` as a filter, but live 14 Nov 2026 the full
+  import (job 01a1d77e, 12 pages = 11 approved + 1 unapproved) and LISTING_VERIFY both read **0 rows** with
+  `status=pendingApproval` while the owner had products waiting in the seller panel. Since 14 Nov the pass sends no
+  status and drops only rows marked `rejected` (`TrendyolHttpClient.CatalogQuery`,
+  `TrendyolJsonMapper.CatalogProducts`); the worker logs each unapproved page's status counts ("Trendyol unapproved
+  catalog page"). Whether `status=pendingApproval` itself is broken or the panel's waiting products carry another
+  status is still **unverified**: read that log line after the next import. Source: offline docs "Ürün Filtreleme -
+  Onaysız Ürün v2" and the filterUnapprovedProducts OpenAPI; live `catalog.product_import_sessions` and
+  `LISTING_VERIFY_STATE` cursor, 14 Nov 2026.
 - Products: the PRODUCTS watermark is the moment a full catalog read began, less 60 s (the next read starts 2 min
   before it). Before 6 Nov 2026 it was the job's end (a scan took 11 min on 31 Oct, its own changes were lost) and a
   scoped read (newOnly, existingOnly, mappingOnly, optionsOnly) moved it too, so products it skipped were missed by
