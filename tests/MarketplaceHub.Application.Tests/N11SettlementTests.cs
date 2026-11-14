@@ -132,4 +132,24 @@ public sealed class N11SettlementTests
         Assert.Equal(["998877:20261105", "998877:RETURN:20261105"], records.Select(x => x.Id));
         Assert.Equal(0m, records.Sum(x => x.Line.SettlementAmount));
     }
+
+    // Live 15 Nov 2026: after a reset only the 45-day list (from 30 Sep) came back; the store's orders reach to 11 Aug.
+    [Fact]
+    public void Older_settlement_days_are_read_in_slices_back_to_the_oldest_order()
+    {
+        var lookback = new DateOnly(2026, 9, 30);
+        var oldest = new DateOnly(2026, 8, 11);
+
+        var first = N11SettlementSyncJobHandler.NextBackfillWindow(null, lookback, oldest, 45);
+        Assert.Equal(new(new DateOnly(2026, 8, 16), new DateOnly(2026, 9, 29), false), first);
+        var second = N11SettlementSyncJobHandler.NextBackfillWindow(first!.Start, lookback, oldest, 45);
+        Assert.Equal(new(oldest, new DateOnly(2026, 8, 15), true), second);
+        // Done: nothing older than the oldest order is asked for.
+        Assert.Null(N11SettlementSyncJobHandler.NextBackfillWindow(second!.Start, lookback, oldest, 45));
+        // An order found older later carries the read on from where it stopped.
+        Assert.Equal(new(new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 10), true), N11SettlementSyncJobHandler.NextBackfillWindow(oldest, lookback, new DateOnly(2026, 8, 1), 45));
+        // No orders, or every order inside the regular list: nothing to read.
+        Assert.Null(N11SettlementSyncJobHandler.NextBackfillWindow(null, lookback, null, 45));
+        Assert.Null(N11SettlementSyncJobHandler.NextBackfillWindow(null, lookback, new DateOnly(2026, 10, 2), 45));
+    }
 }
