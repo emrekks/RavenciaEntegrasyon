@@ -53,6 +53,20 @@ describe('bulkPlatformUpdateRequests', () => {
     expect(requests).toEqual([{ kind: 'priceInventory', productId: 'a', connectionId: 'hb', price: true, stock: true }])
   })
 
+  // Owner, 15 Nov 2026 (MZ056): a product Trendyol rejected or still reviews is on its unapproved list; the product
+  // information goes there (unapproved-bulk-update), the price and stock do not (Trendyol has no offer for it yet).
+  it('sends the product information to a product Trendyol still reviews or refused, never its price and stock', () => {
+    groups = 0
+    const held = (status: string) => ({ platform: 'Ravencia Trendyol', platformCode: 'TRENDYOL', status, matchedVariantCount: 0, variantCount: 6 })
+    const records = [record('rejected', [held('REJECTED')]), record('waiting', [held('APPROVAL_PENDING')]), record('hbRejected', [{ ...held('REJECTED'), platform: 'Ravencia HB', platformCode: 'HEPSIBURADA' }])]
+    expect(bulkPlatformUpdateMenuState(records.slice(0, 1), [trendyol]).disabled).toBe(false)
+    const requests = bulkPlatformUpdateRequests(records, [trendyol, hepsiburada], ['ty', 'hb'], ['IMAGES', 'PRICE', 'STOCK'], newGroupId)
+    expect(requests).toEqual([
+      { kind: 'product', productId: 'rejected', connectionId: 'ty', fields: ['IMAGES'], sendGroupId: 'group-1' },
+      { kind: 'product', productId: 'waiting', connectionId: 'ty', fields: ['IMAGES'], sendGroupId: 'group-1' }
+    ])
+  })
+
   it('keeps a Trendyol send group small', () => {
     groups = 0
     const records = Array.from({ length: bulkUpdateGroupSize + 1 }, (_, index) => record(`p${index}`, [live('Ravencia Trendyol', 'TRENDYOL')]))

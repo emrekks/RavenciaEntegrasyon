@@ -1,5 +1,6 @@
 import { familyCardsInPanelOrder } from '../family-card-order'
 import { preferredColorOption, variantOptionEntries, type Variant, type VariantPlatformStatus } from '../shared'
+import { isTrendyolHeld } from '../trendyol-unapproved'
 import { publishCardVariantLinks } from './publish-card-variants'
 
 // "Platformlarda Güncelle" on a model family. The editor shows the colour cards of one model code as one product
@@ -49,9 +50,15 @@ export function familyUpdatePlan({ openedProductId, familyProductIds, variants, 
   platformCode: string | null | undefined
 }): FamilyUpdatePlan {
   const ids = familyCardsInPanelOrder([openedProductId, ...(familyProductIds ?? [])], variants, openedProductId)
+  // A card Trendyol still reviews or refused is on its unapproved list: it is there, and the server sends it to
+  // unapproved-bulk-update (trendyol-unapproved.ts).
+  const held = (variant: FamilyVariant) => {
+    const status = variant.platformStatuses?.find(item => item.connectionId === connectionId)
+    return Boolean(status?.isLinked) && isTrendyolHeld(platformCode, status?.listingStatus)
+  }
   const cards = ids.map(productId => {
     const cardVariants = variants.filter(variant => (variant.productId ?? openedProductId) === productId)
-    return { productId, colour: cardColour(cardVariants), variants: cardVariants.length, present: publishCardVariantLinks(cardVariants, connectionId).linked > 0 }
+    return { productId, colour: cardColour(cardVariants), variants: cardVariants.length, present: publishCardVariantLinks(cardVariants, connectionId).linked > 0 || cardVariants.some(held) }
   })
   const familyVariants = cards.reduce((sum, card) => sum + card.variants, 0)
   const strip = ({ productId, colour, variants: count }: (typeof cards)[number]): FamilyUpdateCard => ({ productId, colour, variants: count })

@@ -2178,10 +2178,14 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     {
         var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
         if (platformCode != "TRENDYOL") return false;
-        var imported = await db.ChannelListingProfiles.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId && x.Source == ChannelListingProfileSource.MarketplaceImport, cancellationToken);
-        if (!imported) return false;
         var linkId = await db.MarketplaceProductLinks.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == productId).Select(x => x.ExternalId).SingleOrDefaultAsync(cancellationToken);
-        return linkId is not null && ProductUpdateComposer.ApprovedContentId(linkId) is null;
+        if (ProductUpdateComposer.ApprovedContentId(linkId) is not null) return false;
+        var imported = await db.ChannelListingProfiles.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId && x.Source == ChannelListingProfileSource.MarketplaceImport, cancellationToken);
+        if (imported && linkId is not null) return true;
+        // A card whose variants Trendyol still reviews or refused (their listing APPROVAL_PENDING or REJECTED) is on its
+        // unapproved list whoever sent it: a create would send the same barcodes again (owner, 15 Nov 2026: MZ056).
+        var variantIds = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId).Select(x => x.Id).ToArrayAsync(cancellationToken);
+        return (await ProductUpdateComposer.HeldVariantIdsAsync(db, tenantId, connectionId, variantIds, cancellationToken)).Length > 0;
     }
 
     // The marketplaces where one product carries a model family's every colour card (one request sends them all).

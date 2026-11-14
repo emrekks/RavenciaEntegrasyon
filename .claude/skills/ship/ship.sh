@@ -97,10 +97,24 @@ fi
 git push -q origin "$full:refs/heads/main" && echo "pushed" || { echo "not pushed"; exit 1; }
 release
 
+# Live: caddy runs the commit, and api and worker run it too, or (a web-only release, deploy/scripts/fast-deploy.sh)
+# they still run one release whose distance to the commit is web-only (deploy/scripts/release-scope.sh).
+# shellcheck source=/dev/null
+source "$(git rev-parse --show-toplevel)/deploy/scripts/release-scope.sh"
+is_live() {
+  local edge api worker app_full short="${full:0:12}"
+  read -r edge api worker _ <<<"$1"
+  [[ "$edge" == *":manual-$short" ]] || return 1
+  [[ "$api" == *":manual-$short" && "$worker" == *":manual-$short" ]] && return 0
+  [[ "$api" == marketplacehub-app:manual-* && "$api" == "$worker" ]] || return 1
+  app_full="$(git rev-parse --verify --quiet "${api##*:manual-}^{commit}")" || return 1
+  web_only_change "$app_full" "$full" && echo "web-only release: api/worker keep ${api##*:manual-}"
+}
+
 images=""
 for _ in $(seq 1 80); do
   images=$("${sshx[@]}" "$host" "ravencia-ro images" 2>/dev/null | tr '\n' ' ')
-  [ "$(echo "$images" | grep -o "${full:0:12}" | wc -l)" = "3" ] && { echo "live: $images"; exit 0; }
+  is_live "$images" && { echo "live: $images"; exit 0; }
   sleep 30
 done
 echo "not live yet: $images"
