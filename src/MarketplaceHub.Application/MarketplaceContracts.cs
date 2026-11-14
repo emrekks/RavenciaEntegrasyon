@@ -761,7 +761,7 @@ public static class TrendyolInvoiceReconciliationPolicy
 // UnreadableLineCount: product lines the marketplace listed in the package that could not be read (no id, quantity,
 // price, SKU or name), so the package is kept without them; 0 when every line was read; null when this read does not
 // judge the package's lines (a status observation, a claim, a marketplace that refuses such a package instead).
-public sealed record RemotePackage(string ExternalPackageId, string? OriginExternalPackageId, string RawStatus, DateTimeOffset OccurredAt, string? CargoProviderExternalId, string? CargoTrackingNumber, IReadOnlyList<RemotePackageAllocation> Allocations, decimal GrossAmount = 0, decimal DiscountAmount = 0, decimal NetAmount = 0, RemotePackageInvoiceObservation? Invoice = null, string? CreatedBy = null, bool IsStatusObservation = false, bool StatusTimeUnknown = false, DateTimeOffset? CancelledAt = null, int? UnreadableLineCount = null);
+public sealed record RemotePackage(string ExternalPackageId, string? OriginExternalPackageId, string RawStatus, DateTimeOffset OccurredAt, string? CargoProviderExternalId, string? CargoTrackingNumber, IReadOnlyList<RemotePackageAllocation> Allocations, decimal GrossAmount = 0, decimal DiscountAmount = 0, decimal NetAmount = 0, RemotePackageInvoiceObservation? Invoice = null, string? CreatedBy = null, bool IsStatusObservation = false, bool StatusTimeUnknown = false, DateTimeOffset? CancelledAt = null, int? UnreadableLineCount = null, string? CargoBarcode = null);
 public sealed record RemoteOrderRefund(string ExternalRefundId, DateTimeOffset OccurredAt, decimal Amount, string Currency, string RawJson);
 public sealed record RemoteOrder(string ExternalOrderId, string OrderNumber, DateTimeOffset OrderedAt, DateTimeOffset LastModifiedAt, string Currency, decimal GrossAmount, decimal DiscountAmount, decimal NetAmount, string CustomerSnapshotJson, string ShipmentAddressSnapshotJson, string InvoiceAddressSnapshotJson, IReadOnlyList<RemoteOrderLine> Lines, IReadOnlyList<RemotePackage> Packages, string RawJson, DateTimeOffset? ShipmentDueAt = null, string PaymentStatus = "UNKNOWN", string CancellationStatus = "NOT_CANCELLED", string RefundStatus = "NOT_REFUNDED", decimal RefundedAmount = 0, IReadOnlyList<RemoteOrderRefund>? Refunds = null, string? LifecycleStatus = null, string? StoreFrontCode = null);
 // The order as the panel last saw it: when it was placed, last changed and which storefront it belongs to.
@@ -772,7 +772,7 @@ public sealed record PackageLookup(DateTimeOffset? StatusOccurredAt, OrderLookup
 // read can leave them out and take them every few minutes (HepsiburadaPackagePolicy).
 public sealed record PackagePollWindow(DateTimeOffset? ModifiedAfter, DateTimeOffset? ModifiedBefore, bool IncludeStatusLists = true);
 public sealed record RemoteOrderPackage(string ExternalOrderId, RemotePackage Package, RemoteOrder? OrderSnapshot = null);
-public sealed record PackageTrackingStatusSnapshot(string PackageNumber, string? Status, string? CargoCompany, string? TrackingInfoCode, string? OrderNumber = null);
+public sealed record PackageTrackingStatusSnapshot(string PackageNumber, string? Status, string? CargoCompany, string? TrackingInfoCode, string? OrderNumber = null, string? Barcode = null);
 
 public sealed record ShopifyOrderCsvImportResult(
     int FileRows,
@@ -1495,7 +1495,10 @@ public sealed record ShipmentView(
     int UnreadableLineCount = 0,
     // The invoice status the seller set by hand ("UPLOADED" / "PENDING"), so the screens can say the label was marked
     // by hand; null when no status was set by hand.
-    string? ManualInvoiceStatus = null);
+    string? ManualInvoiceStatus = null,
+    // The package's cargo barcode as the marketplace gave it (Hepsiburada "barcode"), known before any tracking number;
+    // the screens show it while CargoTrackingNumber is empty. Null when the marketplace gave none.
+    string? CargoBarcode = null);
 public sealed record OrderDetailView(
     Guid Id,
     string OrderNumber,
