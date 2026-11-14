@@ -51,7 +51,7 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pcardm small { color: var(--rr-muted); font-size: 13px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pcardm strong { font-size: 24px; font-weight: 600; line-height: 1.3; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-trend { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-trend em { color: var(--rr-subtle); font-style: normal; font-weight: 400; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-trend em:not(.rv-change) { color: var(--rr-subtle); font-style: normal; font-weight: 400; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-trend.rr-up { color: var(--rr-ok); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-trend.rr-down { color: var(--rr-bad); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-detail-grid { display: grid; grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr); gap: 16px; align-items: stretch; }
@@ -332,7 +332,7 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc.rr-on::after { display: none; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc > strong { font-size: 18px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc { --rv-card-bg-size: 64px; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc .rr-trend em, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc .rr-avg, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc .rr-krange { display: none; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc .rr-trend em:not(.rv-change), :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc .rr-avg, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc .rr-krange { display: none; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-body { padding: 12px; border-top: 1px solid var(--rr-line); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-chan { padding: 12px 0 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt tr { grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 12px; }
