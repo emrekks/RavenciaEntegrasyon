@@ -12,6 +12,7 @@ import {
   type JobCount, type JobTypeMetric, type LaneMetric, type QueueWindow, type QuotaUsage
 } from './queue-quota'
 import './queue-quota.css'
+import { EmptyState } from '../../shared/components/EmptyState'
 
 // İşlem Takibi › Kuyruk ve Kota: how full the worker's lanes are (running jobs against their slots, what waits for a
 // slot), the jobs of the window by state and by type, and how much of each store's marketplace quota the last hour
@@ -46,7 +47,7 @@ export function QueueQuotaView() {
     <div className="jobs-reference-toolbar qq-toolbar">
       <div className="rr qq-window">
         <ChoiceField name="Ölçüm Aralığı" value={hours} options={queueWindowOptions} onChange={value => setHours(value as QueueWindow)} width={200} />
-        <p className="qq-note">Çalışan ve bekleyen işler şu anı, deneme ve bekleme süreleri seçili aralığı gösterir.</p>
+        <button type="button" className="qq-info" aria-label="Ölçüm aralığı açıklaması" data-tip="Çalışan ve bekleyen işler şu anı, deneme ve bekleme süreleri seçili aralığı gösterir."><UiIcon name="info" size={16} /></button>
       </div>
       <div className="jobs-reference-toolbar-actions">
         <button type="button" className={`jobs-reference-refresh${fetching ? ' is-busy' : ''}`} title="Yenile" aria-label="Kuyruk ve kota ölçümlerini yenile" onClick={refresh}><UiIcon name="refresh" size={16} /></button>
@@ -79,14 +80,14 @@ export function QueueQuotaView() {
       <section className="qq-section" aria-labelledby="qq-states">
         <h2 id="qq-states">Duruma Göre İşler</h2>
         <p className="qq-sub">{windowLabel} içinde oluşturulan işler.</p>
-        {counts.isLoading ? <Busy text="Sayılar yükleniyor…" /> : states.length === 0 ? <p className="qq-empty">Bu aralıkta iş yok.</p> : <ul className="qq-states">
+        {counts.isLoading ? <Busy text="Sayılar yükleniyor…" /> : states.length === 0 ? <EmptyState icon="jobs" title="İş Yok">Bu aralıkta iş yok.</EmptyState> : <ul className="qq-states">
           {states.map(state => <li key={state.status} className={`is-${state.status.toLowerCase()}`}><span>{state.label}</span><strong>{state.count.toLocaleString('tr-TR')}</strong></li>)}
         </ul>}
       </section>
       <section className="qq-section" aria-labelledby="qq-quota">
         <h2 id="qq-quota">Pazaryeri Kotası</h2>
         <p className="qq-sub">Son 1 saatte gönderilen istekler; en yoğun dakika, dakikalık sınırla karşılaştırılır. Şimdilik Trendyol sipariş okumaları ölçülüyor.</p>
-        {quota.isLoading ? <Busy text="Kota yükleniyor…" /> : quota.isError && !quota.data ? <p role="alert" className="qq-error">Kota ölçümleri alınamadı.</p> : (quota.data ?? []).length === 0 ? <p className="qq-empty">Kotası ölçülen etkin bağlantı yok.</p> : <ul className="qq-quota">
+        {quota.isLoading ? <Busy text="Kota yükleniyor…" /> : quota.isError && !quota.data ? <p role="alert" className="qq-error">Kota ölçümleri alınamadı.</p> : (quota.data ?? []).length === 0 ? <EmptyState icon="connect" title="Bağlantı Yok">Kotası ölçülen etkin bağlantı yok.</EmptyState> : <ul className="qq-quota">
           {(quota.data ?? []).map(row => <li key={`${row.storeName}:${row.lane}`}>
             <div className="qq-quota-head"><PlatformSquareMark code={row.platformCode} name={row.storeName} /><strong>{row.storeName}</strong><span className="qq-tag">{quotaLaneLabels[row.lane] ?? row.lane}</span></div>
             <div className="qq-usage"><UsageBar used={row.peakMinuteRequests} limit={row.limitPerMinute} label={`${row.storeName} ${quotaLaneLabels[row.lane] ?? row.lane}: en yoğun dakika ${row.peakMinuteRequests} / ${row.limitPerMinute}`} /><span>{row.peakMinuteRequests} / {row.limitPerMinute} dk</span></div>
@@ -98,7 +99,7 @@ export function QueueQuotaView() {
 
     <section className="qq-section" aria-labelledby="qq-types">
       <h2 id="qq-types">İş Türüne Göre Kuyruk</h2>
-      {metrics.isLoading ? <Busy text="İş türleri yükleniyor…" /> : metrics.isError && !metrics.data ? <p role="alert" className="qq-error">İş türü ölçümleri alınamadı.</p> : types.length === 0 ? <p className="qq-empty">Bu aralıkta çalışan ya da bekleyen iş yok.</p> : <div className="qq-table-scroll"><table className="qq-table">
+      {metrics.isLoading ? <Busy text="İş türleri yükleniyor…" /> : metrics.isError && !metrics.data ? <p role="alert" className="qq-error">İş türü ölçümleri alınamadı.</p> : types.length === 0 ? <EmptyState icon="jobs" title="İş Yok">Bu aralıkta çalışan ya da bekleyen iş yok.</EmptyState> : <div className="qq-table-scroll"><table className="qq-table">
         <thead><tr><th className="qq-first">İş Türü</th><th className="is-num">Bekleyen</th><th className="is-num">Çalışan</th><th className="is-num">Deneme</th><th className="is-num">Hata</th><th className="is-num">Ort. Bekleme</th><th className="is-num">Ort. Süre</th></tr></thead>
         <tbody>{types.map(row => <tr key={row.jobType}>
           <td className="qq-first"><strong>{jobTitle(row.jobType)}</strong><small>{row.jobType}</small></td>

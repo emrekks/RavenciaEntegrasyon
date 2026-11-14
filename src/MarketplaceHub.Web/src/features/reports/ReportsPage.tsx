@@ -227,7 +227,7 @@ function DataTable<T>({ title, description, rows, columns, rowKey, unknown, expa
   const exportCsv = () => downloadCsv(`${csvName}.csv`, toCsv(sorted, columns.map<CsvColumn<T>>(item => ({ header: item.header, value: item.csv ?? item.value }))))
   return <Panel title={title} description={description} actions={<>{tools}<button type="button" className="secondary reports-csv" onClick={exportCsv} disabled={!rows.length}><UiIcon name="download" size={16} />CSV</button></>}>
     {toolbar}
-    {rows.length === 0 ? <p className="reports-empty">{empty}</p> : <div className="reports-table-wrap"><table className="reports-table">
+    {rows.length === 0 ? <EmptyState icon="chart" title="Veri Yok">{empty}</EmptyState> : <div className="reports-table-wrap"><table className="reports-table">
       <thead><tr>{expand && <th aria-label="Ayrıntı" className="reports-expand-col" />}{columns.map(item => <th key={item.key} className={item.numeric ? 'is-num' : undefined} aria-sort={sort.key === item.key ? (sort.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
         <button type="button" onClick={() => setSort(current => ({ key: item.key, direction: current.key === item.key && current.direction === 'desc' ? 'asc' : 'desc' }))}>{item.header}{sort.key === item.key && <span aria-hidden="true">{sort.direction === 'desc' ? '↓' : '↑'}</span>}</button>
       </th>)}</tr></thead>
@@ -253,7 +253,7 @@ function DataTable<T>({ title, description, rows, columns, rowKey, unknown, expa
 function Bars({ items, format, label }: { items: Array<{ key: string; label: string; value: number | null; muted?: boolean; note?: string }>; format: (value: number) => string; label: string }) {
   const [ref, shown] = useReveal<HTMLUListElement>()
   const max = Math.max(0, ...items.map(item => item.value ?? 0))
-  if (!items.length || max <= 0) return <p className="reports-empty">Gösterilecek değer yok.</p>
+  if (!items.length || max <= 0) return <EmptyState icon="chart" title="Veri Yok">Gösterilecek değer yok.</EmptyState>
   return <ul ref={ref} className="reports-bars" aria-label={label}>{items.map((item, index) => <li key={item.key} className={item.muted ? 'is-unknown' : undefined}>
     <span className="reports-bar-label" title={item.label}>{item.label}</span>
     <span className="reports-bar-track" aria-hidden="true"><span style={{ width: shown && item.value !== null ? `${Math.max(2, item.value / max * 100)}%` : '0%', transitionDelay: `${index * 60}ms` }} /></span>
@@ -366,7 +366,7 @@ function PeriodCard({ data }: { data: ReportSales }) {
   return <Card title={names.title} className="reports-card-period"
     actions={<PanelSelect className="reports-measure-select" ariaLabel="Grafik ölçüsü" value={measure} options={(Object.keys(measures) as Measure[]).map(key => ({ value: key, label: measures[key] }))} onChange={setMeasure} />}>
     {shown => <>
-      {noAmount ? <p className="reports-empty">Bu dönemde tutarı olan sipariş yok.</p>
+      {noAmount ? <EmptyState icon="chart" title="Veri Yok">Bu dönemde tutarı olan sipariş yok.</EmptyState>
         : <Columns points={points} format={format} axisFormat={money ? formatTlShort : formatNumber} shown={shown} label={`${measures[measure]} dönem içinde`} />}
       {/* One row of three columns divided by hairlines, no boxes (owner, 7 Nov 2026): the best bucket's figure and its
           date, the average with its change and the previous one, and how many buckets beat the same bucket of the
@@ -674,7 +674,7 @@ function CostLinesCard({ data, money }: { data: ReportSales; money: Money | null
   const tip = useId()
   // The cost under the pointer, on the ring or in the list: the ring shows it in its middle instead of the total.
   const [active, setActive] = useState<string | null>(null)
-  if (!money) return <Card title="Masraf Kalemleri" className="reports-card-costlines">{() => <p className="reports-empty">Bu dönemde tutarı olan sipariş yok.</p>}</Card>
+  if (!money) return <Card title="Masraf Kalemleri" className="reports-card-costlines">{() => <EmptyState icon="chart" title="Veri Yok">Bu dönemde tutarı olan sipariş yok.</EmptyState>}</Card>
   const lines = costLines(data, money)
   const parts: Part[] = lines.filter(line => line.value !== null && line.value > 0).map(line => ({ key: line.key, label: line.label, value: line.value ?? 0, tone: line.tone }))
   // The total is what the ring draws, so the shares add up to 100 %.
@@ -789,7 +789,7 @@ function ProfitBridge({ data, money, onMore }: { data: ReportSales; money: Money
   const [detail, setDetail] = useState<string | null>(null)
   const tip = useId()
   const more = <MoreButton title="Kâr Köprüsü" onClick={() => onMore('cost')} compact />
-  if (!money) return <Card title="Kâr Köprüsü" className="reports-card-bridge" actions={more}>{() => <p className="reports-empty">Bu dönemde tutarı olan sipariş yok.</p>}</Card>
+  if (!money) return <Card title="Kâr Köprüsü" className="reports-card-bridge" actions={more}>{() => <EmptyState icon="chart" title="Veri Yok">Bu dönemde tutarı olan sipariş yok.</EmptyState>}</Card>
   const part = (key: string) => money.deductions.find(item => item.key === key)
   // Each step is the account's figure (moneyBreakdown, costFigure), the same number Masraf Kalemleri shows: the Stopaj
   // step is that line's stopaj, and the fees beside the commission are the account's Kesintiler without it.
@@ -1005,7 +1005,7 @@ function SalesDetail({ data }: { data: ReportSales }) {
   const total = rows.reduce((sum, group) => sum + group.grossSales, 0)
   return <div className="reports-journey-pane">
     <h3>Platformlara Göre Satış</h3>
-    {rows.length === 0 ? <p className="reports-empty">Bu dönemde tutarı olan satış yok.</p> : <ul className="reports-platform-list is-columns">{rows.map(group => <li key={group.key}>
+    {rows.length === 0 ? <EmptyState icon="chart" title="Veri Yok">Bu dönemde tutarı olan satış yok.</EmptyState> : <ul className="reports-platform-list is-columns">{rows.map(group => <li key={group.key}>
       <PlatformSquareMark code={group.key} name={platformName(group.label)} />
       <span>{platformName(group.label)}<small>{formatPercent(group.grossSales / total)} · {formatCount(group.orders)} sipariş</small></span>
       <strong>{formatTl(group.grossSales)}</strong>
@@ -1802,7 +1802,7 @@ const soldChange = (row: ReportProduct) => row.previousSoldQuantity === undefine
 // bars on one scale (before muted, now in colour) and the change. The bars fill once when the list first comes into view.
 function Movers({ items, tone, empty }: { items: ReportProduct[]; tone: 'up' | 'down'; empty: string }) {
   const [ref, shown] = useReveal<HTMLUListElement>()
-  if (!items.length) return <p className="reports-empty">{empty}</p>
+  if (!items.length) return <EmptyState icon="chart" title="Veri Yok">{empty}</EmptyState>
   const rows = items.slice(0, 8)
   const max = Math.max(1, ...rows.flatMap(item => [item.soldQuantity, item.previousSoldQuantity ?? 0]))
   return <ul ref={ref} className={`reports-movers is-${tone}`} aria-label={tone === 'up' ? 'Yükselen ürünler' : 'Düşen ürünler'}>{rows.map((item, index) => {
@@ -1872,7 +1872,7 @@ function ReasonsCard({ title, description, reasons, csvName, empty }: { title: s
   const exportCsv = () => downloadCsv(`${csvName}.csv`, toCsv(reasons, reasonColumns(total, 'Neden').map<CsvColumn<ReportReason>>(column => ({ header: column.header, value: column.value }))))
   return <Panel title={title} description={description} className="reports-list"
     actions={<button type="button" className="secondary reports-csv" onClick={exportCsv} disabled={!reasons.length}><UiIcon name="download" size={16} />CSV</button>}>
-    {total > 0 ? <Bars label={title} format={formatCount} items={topReasons(reasons, 8).map(item => ({ ...item, note: formatPercent(item.value / total) }))} /> : <p className="reports-empty">{empty}</p>}
+    {total > 0 ? <Bars label={title} format={formatCount} items={topReasons(reasons, 8).map(item => ({ ...item, note: formatPercent(item.value / total) }))} /> : <EmptyState icon="chart" title="Veri Yok">{empty}</EmptyState>}
   </Panel>
 }
 
@@ -2009,7 +2009,7 @@ function TimeOfDay({ data }: { data: ReportSales }) {
           </button>)}
         </div>
         <p className="reports-time-summary"><span>{scope}</span><b>{formatCount(total)} sipariş</b>{total > 0 && <em>En yoğun saat {hourRange(busiestHour)} · {formatCount(byHour[busiestHour])} sipariş</em>}</p>
-        {total > 0 ? <Columns points={hours} format={value => `${formatCount(value)} sipariş`} axisFormat={formatCount} shown={shown} label={`${scope}: saatlere göre siparişler`} /> : <p className="reports-empty">Bu seçimde sipariş yok.</p>}
+        {total > 0 ? <Columns points={hours} format={value => `${formatCount(value)} sipariş`} axisFormat={formatCount} shown={shown} label={`${scope}: saatlere göre siparişler`} /> : <EmptyState icon="chart" title="Veri Yok">Bu seçimde sipariş yok.</EmptyState>}
       </>}
     </RevealPanel>
   </div>
@@ -2034,7 +2034,7 @@ function Customers({ data }: { data: ReportSales }) {
           <li><i className="is-left" aria-hidden="true" />Tekrar Alan<b>{formatCount(customers.repeatCustomers)}</b></li>
           <li><i className="is-fees" aria-hidden="true" />Bir Kez Alan<b>{formatCount(customers.uniqueCustomers - customers.repeatCustomers)}</b></li>
         </ul>
-      </> : <p className="reports-empty">Kimliği okunan müşteri yok.</p>}
+      </> : <EmptyState icon="chart" title="Veri Yok">Kimliği okunan müşteri yok.</EmptyState>}
     </RevealPanel>
   </div>
 }
@@ -2073,7 +2073,7 @@ function CostAndProfit({ data }: { data: ReportSales }) {
   const money = moneyBreakdown(data, profitSteps(data))
   return <div className="reports-grid">
     <Panel title="Kâr Hesabı" description="Satıştan net kâra kadar hesabın satır satır dökümü. Satırın üzerine gelince satış tutarına oranı görünür." className="reports-ledger-panel">
-      {money ? <><ProfitLedger data={data} money={money} notes={ledgerNotes(data)} /><EstimateGaps money={money} shown /></> : <p className="reports-empty">Bu dönemde tutarı olan sipariş yok.</p>}
+      {money ? <><ProfitLedger data={data} money={money} notes={ledgerNotes(data)} /><EstimateGaps money={money} shown /></> : <EmptyState icon="chart" title="Veri Yok">Bu dönemde tutarı olan sipariş yok.</EmptyState>}
     </Panel>
     <div className="reports-stack">
       <Ledger title="Komisyon ve Trendyol Kargo" description="Komisyon pazaryeri kaydı olan siparişte gerçek, kalanında tahmini; kargo Trendyol cari hesabından." rows={trendyolLedger(data)}
@@ -2106,7 +2106,7 @@ type LedgerRow = { label: string; value: string; hint?: string; kind?: 'minus' |
 function Ledger({ title, description, rows, empty }: { title: string; description: string; rows: LedgerRow[]; empty: string }) {
   const tip = useId()
   return <Panel title={title} description={description} className="reports-ledger-panel">
-    {rows.length === 0 ? <p className="reports-empty">{empty}</p> : <dl className="reports-ledger">{rows.map((row, index) => <div key={row.label} className={['reports-tip-host', row.kind && `is-${row.kind}`, row.tone && `is-${row.tone}`].filter(Boolean).join(' ')}>
+    {rows.length === 0 ? <EmptyState icon="chart" title="Veri Yok">{empty}</EmptyState> : <dl className="reports-ledger">{rows.map((row, index) => <div key={row.label} className={['reports-tip-host', row.kind && `is-${row.kind}`, row.tone && `is-${row.tone}`].filter(Boolean).join(' ')}>
       <dt>{row.hint ? <button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-${index}`}>{row.label}<TipMark /></button> : row.label}</dt>
       <dd>{row.kind === 'minus' ? `− ${row.value}` : row.value}</dd>
       {row.hint && <span role="tooltip" id={`${tip}-${index}`} className="reports-hover-tip"><TipText title={row.label} text={row.hint} /></span>}
@@ -2181,7 +2181,7 @@ function Invoices({ data }: { data: ReportSales }) {
       {shown => total > 0 ? <>
         <StackedBar parts={parts} total={total} shown={shown} label={`Fatura durumu: ${parts.map(part => `${part.label} ${formatCount(part.value)}`).join(', ')}`} />
         <ul className="reports-legend-row">{parts.map(part => <li key={part.key}><i className={`is-${part.tone}`} aria-hidden="true" />{part.label}<b>{formatPercent(part.value / total)}</b></li>)}</ul>
-      </> : <p className="reports-empty">Bu dönemde paket yok.</p>}
+      </> : <EmptyState icon="chart" title="Veri Yok">Bu dönemde paket yok.</EmptyState>}
     </RevealPanel>
     <div><DataTable title="Platformlara Göre Fatura Durumu" csvName="rapor-fatura" rows={data.invoices.platforms} rowKey={row => row.platformCode} initialSort="invoiced"
       footer={data.invoices.platforms.length > 1 && <tr><td>Toplam</td>{(['invoiced', 'notInvoiced', 'returned', 'unknown'] as const).map(key => <td key={key} className="is-num">{formatCount(data.invoices.platforms.reduce((sum, row) => sum + row[key], 0))}</td>)}</tr>}
@@ -2242,7 +2242,7 @@ function StockReport({ from, to, platforms, sales }: { from: string; to: string;
   if (!data) return <StockSkeleton />
   const summary = data.summary
   if (summary.units <= 0) return <div className="reports-summary">
-    <p className="reports-empty">{platforms?.length ? 'Seçilen platformlarda satışta olan stoklu ürün yok.' : 'Ana depoda stoğu olan ürün yok.'}</p>
+    <EmptyState icon="chart" title="Veri Yok">{platforms?.length ? 'Seçilen platformlarda satışta olan stoklu ürün yok.' : 'Ana depoda stoğu olan ürün yok.'}</EmptyState>
   </div>
   // The cards show their label and value only; what the notes said is in each card's explanation.
   const money: Kpi[] = [
@@ -2578,8 +2578,7 @@ ${otherText}` : ''}` },
           <SubTabs label="Ödemeler" value={tab} onChange={next => { setTab(next); setOpen(null) }}
             items={[{ value: 'upcoming', label: 'Gelecek Ödemeler', icon: 'calendarClock' }, { value: 'past', label: 'Geçmiş Ödemeler', icon: 'circleCheck' }]} />
           <TabSlidePanel active={tab} order={['upcoming', 'past']} role="tabpanel">{days.length === 0 && waiting.length === 0 && undated.length === 0 && deductions.length === 0
-            ? <div className="reports-empty reports-payout-empty"><p>{filtered || none || region !== 'ALL' ? 'Bu filtrelerle ödeme yok.' : tab === 'upcoming' ? 'Bekleyen ödeme yok.' : `Son ${data?.daysBack ?? 90} günde okunmuş ödeme yok.`}</p>
-              {activeCount > 0 && <button type="button" className="secondary reports-payout-all" onClick={clear}>Filtreleri Temizle</button>}</div>
+            ? <EmptyState icon="wallet" title={activeCount > 0 ? 'Ödeme Bulunamadı' : 'Henüz Ödeme Yok'} onClearFilters={activeCount > 0 ? clear : undefined}>{filtered || none || region !== 'ALL' ? 'Bu filtrelerle ödeme yok.' : tab === 'upcoming' ? 'Bekleyen ödeme yok.' : `Son ${data?.daysBack ?? 90} günde okunmuş ödeme yok.`}</EmptyState>
             : <div className="reports-payout-days">
               {days.map((item, index) => {
                 const next = tab === 'upcoming' && applied.sort === 'date' && item.day === nextDay

@@ -702,3 +702,6 @@
 .ss-page .ss-ai-skill-copy { grid-template-columns: minmax(0, 1fr); overflow-wrap: anywhere; }
 .ss-page .ss-ai-skill-result { min-width: 0; }
 .ss-page .ss-ai-skill .ss-tag {  max-width: 100%; height: auto; min-height: 22px; padding-block: 3px; white-space: normal; overflow-wrap: anywhere; text-align: left; }
+/* A group band above a table head reads as one block with it: same head colour, one divider between them. */
+.ss-page .ss-sess-sub { background: var(--rv-color-table-head); }
+.ss-page .ss-sess-sub:has(+ .ss-users, + .rr-qtable, + table), .ss-page .ss-body.is-flush > .ss-sess-sub:first-child { border-bottom: 1px solid var(--rv-color-border); }

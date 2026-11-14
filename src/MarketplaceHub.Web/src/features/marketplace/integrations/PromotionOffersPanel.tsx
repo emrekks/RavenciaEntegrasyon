@@ -11,6 +11,7 @@ import { UiIcon } from '../../../shared/components'
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import '../commission-tariffs.css'
 import { PanelSelect } from '../../../shared/PanelSelect'
+import { EmptyState } from '../../../shared/components/EmptyState'
 // One formatter per format, made once: toLocaleString with options builds a new Intl.NumberFormat on every call, and
 // the tariff table formats thousands of amounts per render.
 const twoDecimals = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -157,7 +158,7 @@ export function PromotionOffersPanel({ connectionId, kind }: { connectionId: str
     {message && <div className={`commission-message is-${message.kind}`} role={message.kind === 'error' ? 'alert' : 'status'}><p>{message.text}</p>{message.warnings?.length ? <ul>{message.warnings.map(warning => <li key={warning}>{warning}</li>)}</ul> : null}</div>}
     {offers.isLoading && <Busy />}
     {offers.isError && <ErrorBox error={offers.error} onRetry={() => void offers.refetch()} />}
-    {offers.data && !summary && <p className="cs-empty">Henüz {promotionTitles[kind]} dosyası yüklenmedi.</p>}
+    {offers.data && !summary && <EmptyState icon="promotion" title="Henüz Dosya Yok">Henüz {promotionTitles[kind]} dosyası yüklenmedi.</EmptyState>}
     {summary && <div className="commission-period is-on">
       <div className="commission-period-main">
         <span className="commission-period-title">{summary.periodText ?? summary.fileName}</span>
@@ -295,7 +296,7 @@ function OfferCards<T extends Product>({ groups, label, now, stocks, nowNote, ca
   nowNote?: (rows: T[]) => ReactNode; cards: (row: T) => ReactNode; groupCards: (rows: T[]) => ReactNode
 }) {
   const [opened, setOpened] = useState<Set<string>>(() => new Set())
-  if (!groups.length) return <p className="cs-empty">Filtreye uyan ürün yok.</p>
+  if (!groups.length) return <EmptyState icon="products" title="Ürün Bulunamadı">Filtreye uyan ürün yok.</EmptyState>
   const stockText = (values: Array<number | null>) => values.some(stock => stock != null) ? values.reduce<number>((sum, stock) => sum + (stock ?? 0), 0).toLocaleString('tr-TR', { maximumFractionDigits: 0 }) : '—'
   const priceText = (rows: T[]) => { const known = rows.flatMap(row => { const price = now(row)?.price; return price == null ? [] : [price] }); return known.length ? priceRange(known) : '—' }
   return <div className="commission-cards">{groups.map(([key, rows]) => {
