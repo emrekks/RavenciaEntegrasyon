@@ -42,6 +42,10 @@ public sealed class PostgreSqlDashboardEquivalenceTests(PostgreSqlTenantIsolatio
             // Fresh statistics for the planner: on a young test database (a CI shard that starts with this test) the
             // legacy queries otherwise get row estimates from empty tables and ran 5 min instead of 2 (15 Nov 2026).
             await db.Database.ExecuteSqlRawAsync("ANALYZE");
+            // The legacy statements are huge (815 KB of SQL), so their cost estimate trips PostgreSQL's JIT, whose
+            // compile time is what made each row take 30-40 s on CI. One open connection keeps the setting.
+            await db.Database.OpenConnectionAsync();
+            await db.Database.ExecuteSqlRawAsync("SET jit = off");
             // The old queries inline every per-order figure and read slowly once the shared test database has filled up
             // (the full run: 30 s timeouts on 13 Nov 2026, alone it passes); the comparison, not the speed, is tested here.
             db.Database.SetCommandTimeout(TimeSpan.FromMinutes(3));
