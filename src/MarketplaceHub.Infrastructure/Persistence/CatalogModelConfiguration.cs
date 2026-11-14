@@ -195,7 +195,7 @@ internal static class CatalogModelConfiguration
         builder.Entity<MarketplaceModelLink>(entity =>
         {
             entity.ToTable("marketplace_model_links", "catalog"); entity.HasKey(x => x.Id);
-            entity.Property(x => x.ExternalId).HasMaxLength(256); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.Property(x => x.ExternalId).HasMaxLength(256); entity.Property(x => x.ExternalCode).HasMaxLength(256); entity.Property(x => x.Version).IsConcurrencyToken();
             // One listing per model and connection; one marketplace product may hold more than one model (never merged here).
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ModelId }).IsUnique();
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalId });

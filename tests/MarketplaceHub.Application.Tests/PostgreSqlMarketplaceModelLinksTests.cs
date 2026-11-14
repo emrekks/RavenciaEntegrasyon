@@ -143,4 +143,104 @@ public sealed class PostgreSqlMarketplaceModelLinksTests(PostgreSqlTenantIsolati
         Assert.Equal(version, (await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == models["MZ070"].Id)).Version);
         await transaction.RollbackAsync();
     }
+
+    private static PlatformConnection AddConnection(AppDbContext db, Seed seed, string platform)
+    {
+        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = platform, Environment = "PRODUCTION", DisplayName = platform, ExternalStoreId = $"store-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V1", SettingsJson = "{}", Version = 1 };
+        db.PlatformConnections.Add(connection);
+        return connection;
+    }
+
+    // The card's variant links on the Shopify connection moved to another connection (the seed links Shopify only).
+    private static async Task MoveVariantLinksAsync(AppDbContext db, Seed seed, Product card, PlatformConnection connection) =>
+        await db.MarketplaceVariantLinks.Where(x => x.TenantId == seed.Tenant.Id && x.ConnectionId == seed.Shopify.Id && db.ProductVariants.Any(v => v.Id == x.VariantId && v.ProductId == card.Id))
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.ConnectionId, connection.Id));
+
+    [PostgreSqlFact]
+    public async Task APttAvmModelProduct_IsRecordedWithItsCode_TheReaderVerifiesIt_AndAnOrphanGoes()
+    {
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        var seed = AddSeed(db);
+        var ptt = AddConnection(db, seed, "PTTAVM");
+        // MZ080: two colour cards, one PTT AVM product (UrunId 1523, barcode MZ080) whose card link sits on the first.
+        var siyah = AddCard(db, seed, seed.Ravencia, "MZ080", "Siyah", "Kadın Siyah Bluz", 0, "ptt");
+        var mavi = AddCard(db, seed, seed.Ravencia, "MZ080", "Mavi", "Kadın Mavi Bluz", 1, "ptt");
+        await db.SaveChangesAsync();
+        await MoveVariantLinksAsync(db, seed, siyah, ptt);
+        await MoveVariantLinksAsync(db, seed, mavi, ptt);
+        var snapshot = new RemoteCatalogProduct("1523", "MZ080", "Kadın Bluz", "", null, null, null, null, [],
+            [.. Variants("ptt", "Siyah", "Mavi").Select(id => new RemoteCatalogVariant(id, id, id, "MZ080", new Dictionary<string, string>(), false, null, null, null, null, "TRY", "{}"))], "{}");
+        var listings = MarketplaceModelLinks.ModelListings("PTTAVM", [snapshot]);
+        Assert.Equal(("1523", "MZ080", 4), (listings.Single().ExternalId, listings.Single().ExternalCode, listings.Single().ExternalVariantIds.Count));
+        var now = DateTimeOffset.FromUnixTimeMilliseconds(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        await MarketplaceModelLinks.RecordAsync(db, seed.Tenant.Id, ptt.Id, listings, now, CancellationToken.None);
+        var model = (await db.Products.AsNoTracking().SingleAsync(x => x.Id == siyah.Id)).FamilyId;
+        var link = Assert.Single(await ModelLinksAsync(db, seed));
+        Assert.Equal((model, "1523", "MZ080"), ((Guid?)link.ModelId, link.ExternalId, link.ExternalCode));
+
+        // The reader takes it while a card of the model holds a variant link there; a card link to another product voids it.
+        Assert.Equal("MZ080", (await MarketplaceModelLinks.ForCardAsync(db, seed.Tenant.Id, ptt.Id, model, CancellationToken.None))?.ExternalCode);
+        db.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = ptt.Id, ProductId = mavi.Id, ExternalId = "9999", SyncStatus = "SYNCED", Version = 1 });
+        await db.SaveChangesAsync();
+        Assert.Null(await MarketplaceModelLinks.ForCardAsync(db, seed.Tenant.Id, ptt.Id, model, CancellationToken.None));
+        Assert.NotNull(await MarketplaceModelLinks.ForCardAsync(db, seed.Tenant.Id, ptt.Id, model, CancellationToken.None, cardLinksAreModelLevel: false));
+        await db.MarketplaceProductLinks.Where(x => x.TenantId == seed.Tenant.Id).ExecuteDeleteAsync();
+
+        // Every variant link gone: the reconcile removes the link, which nothing holds any more.
+        await db.MarketplaceVariantLinks.Where(x => x.TenantId == seed.Tenant.Id).ExecuteDeleteAsync();
+        Assert.Null(await MarketplaceModelLinks.ForCardAsync(db, seed.Tenant.Id, ptt.Id, model, CancellationToken.None));
+        await ProductModelLinks.ReconcileTenantAsync(db, seed.Tenant.Id, now, CancellationToken.None);
+        Assert.Empty(await ModelLinksAsync(db, seed));
+        await transaction.RollbackAsync();
+    }
+
+    [PostgreSqlFact]
+    public async Task TheOtherMarketplacesBackfill_TakesOneModelLevelLinkPerModel_AndRunsTwiceAlike()
+    {
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        var seed = AddSeed(db);
+        var ptt = AddConnection(db, seed, "PTTAVM");
+        var n11 = AddConnection(db, seed, "N11");
+        var pazarama = AddConnection(db, seed, "PAZARAMA");
+        var trendyol = AddConnection(db, seed, "TRENDYOL");
+        // MZ090: two colours, the PTT AVM product link on one card; N11 main: link; Pazarama group link; Trendyol contents.
+        var siyah = AddCard(db, seed, seed.Ravencia, "MZ090", "Siyah", "Kadın Siyah Bluz", 0, null);
+        var mavi = AddCard(db, seed, seed.Ravencia, "MZ090", "Mavi", "Kadın Mavi Bluz", 1, null);
+        // MZ091: one N11 product per SKU ("n11:"): no model id. MZ092: two PTT AVM products, one per colour.
+        var single = AddCard(db, seed, seed.Ravencia, "MZ091", "Gri", "Kadın Gri Etek", 2, null);
+        var gri = AddCard(db, seed, seed.Ravencia, "MZ092", "Gri", "Kadın Gri Ceket", 3, null);
+        var bej = AddCard(db, seed, seed.Ravencia, "MZ092", "Bej", "Kadın Bej Ceket", 4, null);
+        // MZ093: two colours, the PTT AVM link on one card while the other card holds PTT AVM variant links: left to the import.
+        var lacivert = AddCard(db, seed, seed.Ravencia, "MZ093", "Lacivert", "Kadın Lacivert Bluz", 7, "p93");
+        var yesil = AddCard(db, seed, seed.Ravencia, "MZ093", "Yesil", "Kadın Yeşil Bluz", 8, "p93");
+        // KENE01 without a model.
+        var kene = AddCard(db, seed, seed.Lavian, "KENE01", "Mavi", "Kadın Mavi Etek", 5, null);
+        AddCard(db, seed, seed.Ravencia, "KENE01", "Siyah", "Kadın Siyah Etek", 6, null);
+        void Link(PlatformConnection connection, Product card, string external, string? code = null) =>
+            db.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = connection.Id, ProductId = card.Id, ExternalId = external, ExternalCode = code, SyncStatus = "SYNCED", Version = 1 });
+        Link(ptt, siyah, "1523", "MZ090");
+        Link(n11, mavi, "main:MZ090");
+        Link(pazarama, siyah, "group:g-90");
+        Link(trendyol, siyah, "c-1");
+        Link(trendyol, mavi, "c-2");
+        Link(n11, single, "n11:42");
+        Link(ptt, gri, "1600", "MZ092G");
+        Link(ptt, bej, "1601", "MZ092B");
+        Link(ptt, lacivert, "1800", "MZ093");
+        Link(ptt, kene, "1700", "KENE01");
+        await db.SaveChangesAsync();
+        await MoveVariantLinksAsync(db, seed, lacivert, ptt);
+        await MoveVariantLinksAsync(db, seed, yesil, ptt);
+
+        var backfill = Infrastructure.Persistence.Migrations.ModelLinksAllMarketplaces.BackfillSql;
+        await db.Database.ExecuteSqlRawAsync(backfill);
+        await db.Database.ExecuteSqlRawAsync(backfill);
+        var model = (await db.Products.AsNoTracking().SingleAsync(x => x.Id == siyah.Id)).FamilyId;
+        var links = (await ModelLinksAsync(db, seed)).Select(x => ((Guid?)x.ModelId, x.ConnectionId, x.ExternalId, x.ExternalCode)).OrderBy(x => x.ExternalId).ToList();
+        Assert.Equal([(model, ptt.Id, "1523", (string?)"MZ090"), (model, pazarama.Id, "group:g-90", "g-90"), (model, n11.Id, "main:MZ090", null)], links);
+        Assert.Equal(10, await db.MarketplaceProductLinks.AsNoTracking().CountAsync(x => x.TenantId == seed.Tenant.Id));
+        await transaction.RollbackAsync();
+    }
 }

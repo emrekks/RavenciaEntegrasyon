@@ -407,6 +407,9 @@ public sealed class MarketplaceModelLink
     public Guid ConnectionId { get; set; }
     public Guid ModelId { get; set; }
     public required string ExternalId { get; set; }
+    // The code the marketplace keeps the listing by beside its id: PTT AVM the product barcode (often, not always, the
+    // model code), Pazarama the groupCode. Null where the id is the code.
+    public string? ExternalCode { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? LastSeenAt { get; set; }
     public long Version { get; set; } = 1;

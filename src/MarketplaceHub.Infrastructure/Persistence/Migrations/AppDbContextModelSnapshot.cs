@@ -3874,6 +3874,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("ExternalCode")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
                     b.Property<string>("ExternalId")
                         .IsRequired()
                         .HasMaxLength(256)

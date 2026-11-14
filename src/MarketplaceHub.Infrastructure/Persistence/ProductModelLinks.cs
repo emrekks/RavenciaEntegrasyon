@@ -266,6 +266,8 @@ public static class ProductModelLinks
             .ExecuteDeleteAsync(cancellationToken);
         if (keyArray is null)
             await db.ProductModels.Where(x => x.TenantId == tenantId && !db.Products.Any(product => product.FamilyId == x.Id)).ExecuteDeleteAsync(cancellationToken);
+        // Faz 2: a model link whose model no longer has a card holding a variant link on its connection goes.
+        await MarketplaceModelLinks.RemoveOrphansAsync(db, tenantId, keyArray is null ? null : modelIds, cancellationToken);
 
         Guid? CurrentFamily(Guid productId) =>
             products.TryGetValue(productId, out var card) ? card.FamilyId : linkedElsewhere.FirstOrDefault(x => x.Id == productId)?.FamilyId;

@@ -6915,11 +6915,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 // they were.
                 if (!isPttAvm) await RecordVariantLinkCodes(tenantId, connectionId, snapshotGroups, cancellationToken, onlyAdded: importSummaryMode is ImportSummaryMode.NewOnly or ImportSummaryMode.FocusedPriceStock);
                 await db.SaveChangesAsync(cancellationToken);
-                // Model Kaydı Faz 2: the Shopify product each model is listed as, from the variant links just saved.
-                if (isShopify)
-                    await MarketplaceModelLinks.RecordAsync(db, tenantId, connectionId,
-                        snapshotGroups.Select(snapshot => (Short(snapshot.ExternalProductId, 256), (IReadOnlyCollection<string>)[.. snapshot.Variants.Where(variant => !string.IsNullOrWhiteSpace(variant.ExternalVariantId)).Select(variant => Short(variant.ExternalVariantId, 256))])),
-                        timeProvider.GetUtcNow(), cancellationToken);
+                // Model Kaydı Faz 2: the listing each model is on this marketplace, from the variant links just saved
+                // (MarketplaceModelLinks.ModelListings: Shopify product, Trendyol productMainId, N11 main:, Pazarama group:, PTT AVM product).
+                await MarketplaceModelLinks.RecordAsync(db, tenantId, connectionId, MarketplaceModelLinks.ModelListings(connection.PlatformCode, snapshotGroups), timeProvider.GetUtcNow(), cancellationToken);
                 if (completesListingProfiles) await CompleteImportedListingProfiles(tenantId, connectionId, snapshotGroups, cancellationToken);
                 // Trendyol's waiting and refused products show as such, with the reasons it gave (ImportedApprovalStates).
                 if (connection.PlatformCode == "TRENDYOL") await RecordImportedApprovalStates(tenantId, connectionId, snapshotGroups, cancellationToken);
