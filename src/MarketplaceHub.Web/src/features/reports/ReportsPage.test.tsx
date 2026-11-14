@@ -273,7 +273,7 @@ describe('ReportsPage', () => {
     expect(heroCard(page, 'cancels').textContent).not.toContain('En Sık Neden')
     expect(hero(page, 'todo')).toBe('1 · faturasız paket')
     expect(page.querySelector('.reports-hero-card.is-todo.is-alert')).not.toBeNull()
-    expect(heroTiles(page, 'todo')).toEqual(['Stok Riski 0 ürün', 'Soru Yanıt Süresi —'])
+    expect(heroTiles(page, 'todo')).toEqual(['Stok Riski —', 'Soru Yanıt Süresi —'])
     // Every figure explains itself under the pointer.
     expect(page.querySelectorAll('.reports-hero-card .reports-hover-tip')).toHaveLength(9 + 29)
     // The old cards are gone, and no card repeats another.
