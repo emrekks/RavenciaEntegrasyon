@@ -42,6 +42,24 @@ describe('familyUpdatePlan', () => {
     expect(plan.absent.map(item => item.productId)).toEqual(['b'])
   })
 
+  // Owner, 15 Nov 2026 (MZ056): the Kahverengi/Mürdüm card Trendyol rejected ("Hatalı Görsel Linki") sits on its
+  // unapproved list; the update must reach it there (unapproved-bulk-update), not call it "bu mağazada yok".
+  it('sends a card Trendyol still reviews or refused: it is on the unapproved list, not absent', () => {
+    const held = (status: string) => ({ ...linked, isMatched: false, listingStatus: status, rejectionReason: status === 'REJECTED' ? 'Hatalı Görsel Linki' : null })
+    const variants = [
+      ...card('live', 'Bej', true),
+      ...card('rejected', 'Kahverengi', false).map(variant => ({ ...variant, platformStatuses: [held('REJECTED')] })),
+      ...card('waiting', 'Mürdüm', false).map(variant => ({ ...variant, platformStatuses: [held('APPROVAL_PENDING')] }))
+    ]
+    const plan = familyUpdatePlan({ openedProductId: 'rejected', familyProductIds: ['live', 'waiting'], variants, connectionId: TRENDYOL, platformCode: 'TRENDYOL' })
+    expect(plan.send.map(item => item.productId).sort()).toEqual(['live', 'rejected', 'waiting'])
+    expect(plan.absent).toEqual([])
+    expect(familyUpdateReach(plan)).toBe('3 rengin tamamı (9 varyant) güncellenir.')
+    // Only Trendyol keeps a refused product to update; elsewhere a refused send is not on the store.
+    const elsewhere = familyUpdatePlan({ openedProductId: 'live', familyProductIds: ['rejected'], variants: variants.filter(variant => variant.productId !== 'waiting').map(variant => ({ ...variant, platformStatuses: variant.platformStatuses.map(status => ({ ...status, platformCode: 'N11' })) })), connectionId: TRENDYOL, platformCode: 'N11' })
+    expect(elsewhere.absent.map(item => item.productId)).toEqual(['rejected'])
+  })
+
   it('keeps a product without a family as it was: the opened card goes and the server answers for it', () => {
     const plan = familyUpdatePlan({ openedProductId: 'solo', familyProductIds: [], variants: card('solo', 'Bej', false), connectionId: TRENDYOL, platformCode: 'TRENDYOL' })
     expect(plan.send.map(item => item.productId)).toEqual(['solo'])

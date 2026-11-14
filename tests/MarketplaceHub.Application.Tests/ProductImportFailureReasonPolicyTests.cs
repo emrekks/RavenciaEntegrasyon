@@ -1,11 +1,28 @@
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
 
 public sealed class ProductImportFailureReasonPolicyTests
 {
+    // A version conflict in the product import names its rows (table, key, state, the version the save expected), so
+    // the next MZ002K-like failure shows what it collided with.
+    [Fact]
+    public void ConcurrencyConflictRows_NamesTableKeyStateAndExpectedVersion()
+    {
+        using var db = new AppDbContext(new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<AppDbContext>().UseNpgsql("Host=localhost;Database=unused").Options, TimeProvider.System);
+        var id = Guid.Parse("01a1dc03-0000-7000-8000-000000000001");
+        var product = new Product { Id = id, TenantId = Guid.NewGuid(), Title = "t", Description = "d", Version = 3 };
+        var entry = db.Attach(product);
+        entry.State = Microsoft.EntityFrameworkCore.EntityState.Modified;
+        var conflict = new Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException("conflict", [((Microsoft.EntityFrameworkCore.Infrastructure.IInfrastructure<Microsoft.EntityFrameworkCore.ChangeTracking.Internal.InternalEntityEntry>)entry).Instance]);
+
+        Assert.Equal($"catalog.products Id={id} Modified Version=3", MarketplaceJobProcessor.ConcurrencyConflictRows(conflict));
+        Assert.Equal("kayıt bilgisi yok", MarketplaceJobProcessor.ConcurrencyConflictRows(new Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException("conflict", Array.Empty<Microsoft.EntityFrameworkCore.Update.IUpdateEntry>())));
+    }
+
     [Fact]
     public void Build_GroupsRepeatedNestedTransactionFailures_AndExplainsCause()
     {

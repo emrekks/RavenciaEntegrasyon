@@ -1513,8 +1513,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const desi = useMemo(() => { const width = Number(form.width); const length = Number(form.length); const height = Number(form.height); return width > 0 && length > 0 && height > 0 ? width * length * height / 3000 : 0 }, [form.width, form.length, form.height])
   // The size chart stays the card's last picture whatever order the draft holds (size-chart-order.ts).
   const mediaUrls = useMemo(() => pinSizeChartLast(form.mediaUrls.split(/\r?\n|[;|]/).map(item => item.trim()).filter(Boolean), chartKey), [form.mediaUrls, chartKey])
-  // Picking stays on only while the card has a saved picture of its own to mark.
-  const pickingSizeChart = sizeChartPicking && Boolean(editProductId) && mediaUrls.length > 0
+  // Picking is asked for on a saved card; it stays on only while the strip shows a saved picture to mark (pickingSizeChart).
+  const sizeChartPickRequested = sizeChartPicking && Boolean(editProductId)
 
   const allRequirements = useMemo(() => (requirements.data ?? []).slice().sort((a, b) => a.displayOrder - b.displayOrder), [requirements.data])
   // A category requirement is usable in the product editor when its mapped
@@ -3586,6 +3586,11 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const visibleMediaUrls = pinSizeChartLast(mediaUrlsInPreferredOrder(uniqueMediaUrls([...defaultFamilyOrder, ...mediaUrls]), familyMediaOrder.length ? familyMediaOrder : defaultFamilyOrder)
     .filter(url => !pendingRemovalMediaKeys.has(mediaImageKey(url))), chartKey)
   const mediaStrip = pinSizeChartLast(mediaStripRefs(visibleMediaUrls, mediaFiles.map(item => item.id), mediaStripOrder), chartKey)
+  // Any saved picture of the model can be the size chart: the card's own uploads, pictures imported from a marketplace and
+  // the other colours' pictures (owner, 15 Nov 2026: "kendi eklemediğim şeylerden de beden tablosu seçebileyim"). Kaydet
+  // then writes it to every colour card and marks it there (family-gallery-save.ts). A file not uploaded yet cannot be.
+  const sizeChartPickable = Boolean(editProductId) && mediaStrip.some(ref => ref.startsWith('url|'))
+  const pickingSizeChart = sizeChartPickRequested && sizeChartPickable
   const familyOnlyMediaItems = familyItemsShownInStrip(visibleMediaUrls, familyMediaItems, draftMediaKeys)
   // Each tile names the colours its picture is saved to (Kaydet writes it to those colour cards), by the save's own rule.
   const familyGalleries = editProductId ? stripProduct?.familyGalleries ?? null : null
@@ -3840,7 +3845,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           <span>4</span>
             <div><h2>Görseller<TitleHint label="Görseller">JPEG veya PNG yükleyin, sürükleyerek sıralayın. Modelin tüm renklerinin görselleri tek galeride görünür. Kaydet her görseli Seçeneklere Görsel Ata ile atandığı rengin kartına yazar; beden tablosu ve atanmamış yeni görseller her renge gider. Kutucuktaki ad görselin gideceği renktir.</TitleHint></h2></div>
             <div className="product-media-header-actions">
-              {editProductId && mediaUrls.length > 0 && <button type="button" className="secondary product-media-size-chart-button" aria-pressed={pickingSizeChart} disabled={submitting} title="Kartın kayıtlı görsellerinden birini beden tablosu olarak işaretleyin; her varyantta son sıraya alınır." aria-label="Beden Tablosu Seç" onClick={() => setSizeChartPicking(current => !current)}><span className="media-action-full">Beden Tablosu Seç</span><span className="media-action-short" aria-hidden="true">Beden Tablosu</span></button>}
+              {sizeChartPickable && <button type="button" className="secondary product-media-size-chart-button" aria-pressed={pickingSizeChart} disabled={submitting} title="Kayıtlı görsellerden birini (pazaryerinden gelenler ve diğer renklerinkiler dahil) beden tablosu olarak işaretleyin; her renkte son sıraya alınır." aria-label="Beden Tablosu Seç" onClick={() => setSizeChartPicking(current => !current)}><span className="media-action-full">Beden Tablosu Seç</span><span className="media-action-short" aria-hidden="true">Beden Tablosu</span></button>}
               {editProductId && sizeChartUrl && <button type="button" className="secondary product-media-size-chart-button" disabled={submitting} title="Beden tablosu işaretini kaldırın; görsel kartta kalır." aria-label="İşareti Kaldır" onClick={() => markSizeChart(null)}>İşareti Kaldır</button>}
               {(mediaUrls.length > 0 || mediaFiles.length > 0 || familyOnlyMediaItems.length > 0 || variantRows.some(row => row.mediaRefs.length > 0)) && <button type="button" className="secondary product-media-clear-all-button" aria-label="Tümünü Temizle" title="Tümünü Temizle" onClick={() => clearAllMedia()}><span className="media-action-full">Tümünü Temizle</span><span className="media-action-short" aria-hidden="true">Temizle</span></button>}
             </div>
@@ -3874,7 +3879,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
             const isProductMedia = ownedUrl !== undefined
             const deletingProductMedia = deletingProductMediaKey === mediaImageKey(url)
             const isSizeChart = isSizeChartRef(ref, chartKey)
-            const pickable = pickingSizeChart && isProductMedia && Boolean(editProductId)
+            const pickable = pickingSizeChart
             return <figure key={`family-${mediaImageKey(url)}`} data-media-kind="url" data-media-index={index} data-size-chart={isSizeChart || undefined} className={`image-preview-card media-sortable${isProductMedia ? '' : ' family-media-preview'}${pickable ? ' is-size-chart-pickable' : ''} ${dragOverMedia === index ? 'is-media-drag-over' : ''}`} draggable={!touchPointer && !submitting && !deletingProductMediaKey && !isSizeChart && !pickingSizeChart} {...mediaDrag}>
               <img src={thumbnailUrl(url)} srcSet={thumbnailSrcSet(url)} sizes="88px" alt={`${form.title || 'Ürün'} ${index + 1}`} className="media-tile-image" draggable={false} />
               {isSizeChart && <span className="size-chart-badge">Beden Tablosu</span>}

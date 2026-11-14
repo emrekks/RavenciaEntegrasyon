@@ -16,11 +16,12 @@ using MarketplaceHub.Infrastructure.Imports;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnectionPort connections, IReferenceDataPort references, IProductPort products, IInventoryPricePort inventoryPrice, IOrderPort orders, IHepsiburadaInvoiceStatusPort hepsiburadaInvoiceStatus, IOrderPackageReadPort orderPackages, IReturnPort returns, IMarketplaceQuestionService questions, IPrivateFileStorage files, IConfiguration configuration, TimeProvider timeProvider, IInvoicingBillingService? invoiceBilling = null, IEnumerable<IJobHandler>? handlers = null) : IMarketplaceJobProcessor
+public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnectionPort connections, IReferenceDataPort references, IProductPort products, IInventoryPricePort inventoryPrice, IOrderPort orders, IHepsiburadaInvoiceStatusPort hepsiburadaInvoiceStatus, IOrderPackageReadPort orderPackages, IReturnPort returns, IMarketplaceQuestionService questions, IPrivateFileStorage files, IConfiguration configuration, TimeProvider timeProvider, IInvoicingBillingService? invoiceBilling = null, IEnumerable<IJobHandler>? handlers = null, ILogger<MarketplaceJobProcessor>? logger = null) : IMarketplaceJobProcessor
 {
     // The payload deadline is the authoritative approval bound. The worker currently
     // applies exponential backoff, but this ceiling also keeps retry accounting from
@@ -6809,6 +6810,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 .GroupBy(x => x.ExternalProductId, StringComparer.OrdinalIgnoreCase)
                 .Select(MergeCatalogSnapshots)
                 .ToList();
+            // A model whose save hits a version conflict (DbUpdateConcurrencyException) is read and written once more from
+            // a clean change tracker before its products count as failed (MZ002K, 14 Nov 2026: 12 cards lost to one
+            // conflict nobody could trace). The counters and the link sets the first attempt moved are put back first.
+            var modelAttempt = 0;
+        retryModel:
+            modelAttempt++;
+            var attemptCounters = (telemetryImportProcessedCount, telemetryImportSkippedCount, telemetryAlreadyInPanelCount, telemetryNewProductCount, telemetryNewSizeCount, telemetryUnaddedSizeCount, telemetryUnchangedVariantCount);
+            List<string> attemptAddedProductIds = [];
+            List<string> attemptAddedVariantIds = [];
             catalogStockReadAt = stagingRows.Min(row => row.CreatedAt);
             try
             {
@@ -6899,10 +6909,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     productUnaddedSizeCount = 0;
                     productImportedNewVariantCount = 0;
                     var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify || isHepsiburada || flatCatalog, preferBarcode: isShopify, matchBySku: isN11, onlyExistingVariants: existingOnly && isShopify, updateExistingProducts: updateExistingProducts, overwriteLocalChanges: ProductImportMergePolicy.OverwriteLocalChanges(updateExistingProducts, singleLookup, existingOnly, isShopify || isHepsiburada || flatCatalog, fullScanRequested: fullScan && updateExistingProductsRequested), updatePrices: updatePrices, updateStock: updateStock, isHepsiburada: isHepsiburada, observedPlatformName: isPazarama ? "Pazarama" : isPttAvm ? "PttAVM" : null, createdAt: CatalogImportOrdering.RemoteCreatedAt(snapshot, catalogOrderStamp) ?? catalogOrderStamp.AddMilliseconds(-catalogOrderPosition++), allowNewProduct: !existingOnly, onlyAddExternalVariantIds: newOnlyAddIds, brandMappedByExternalId: ConnectionReferencePlan.SupportsBrands(connection.PlatformCode));
-                    existingProductExternalIds?.Add(snapshot.ExternalProductId);
+                    if (existingProductExternalIds?.Add(snapshot.ExternalProductId) == true) attemptAddedProductIds.Add(snapshot.ExternalProductId);
                     if (existingVariantExternalIds is not null)
                         foreach (var variant in snapshot.Variants)
-                            existingVariantExternalIds.Add(Short(variant.ExternalVariantId, 256));
+                            if (existingVariantExternalIds.Add(Short(variant.ExternalVariantId, 256))) attemptAddedVariantIds.Add(Short(variant.ExternalVariantId, 256));
                     if (changed) telemetryImportProcessedCount++;
                     else telemetryImportSkippedCount++;
                     if (importSummaryMode == ImportSummaryMode.NewOnly)
@@ -6932,8 +6942,22 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             {
                 throw;
             }
+            catch (DbUpdateConcurrencyException conflict) when (modelAttempt == 1)
+            {
+                logger?.LogWarning(conflict, "Product import model {ModelKey} of job {JobId} hit a version conflict; retrying it once. Conflicting rows: {ConflictingRows}", modelKey, importJobId, ConcurrencyConflictRows(conflict));
+                db.ChangeTracker.Clear();
+                categoryContexts.Clear();
+                importedAttributeLibrary.Clear();
+                (telemetryImportProcessedCount, telemetryImportSkippedCount, telemetryAlreadyInPanelCount, telemetryNewProductCount, telemetryNewSizeCount, telemetryUnaddedSizeCount, telemetryUnchangedVariantCount) = attemptCounters;
+                foreach (var id in attemptAddedProductIds) existingProductExternalIds?.Remove(id);
+                foreach (var id in attemptAddedVariantIds) existingVariantExternalIds?.Remove(id);
+                goto retryModel;
+            }
             catch (Exception exception)
             {
+                var conflictRows = exception is DbUpdateConcurrencyException failedConflict ? ConcurrencyConflictRows(failedConflict) : null;
+                if (conflictRows is not null)
+                    logger?.LogWarning(exception, "Product import model {ModelKey} of job {JobId} hit a version conflict again on its retry; its products count as failed. Conflicting rows: {ConflictingRows}", modelKey, importJobId, conflictRows);
                 db.ChangeTracker.Clear();
                 categoryContexts.Clear();
                 importedAttributeLibrary.Clear();
@@ -6944,16 +6968,17 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 {
                     try
                     {
-                        await RecordProductImportFailure(tenantId, connectionId, snapshot, exception, cancellationToken);
+                        await RecordProductImportFailure(tenantId, connectionId, snapshot, exception, cancellationToken, conflictRows);
                     }
                     catch (Exception issueException) when (issueException is not OperationCanceledException)
                     {
                         db.ChangeTracker.Clear();
                     }
                 }
+                var stagingError = conflictRows is null ? exception.Message : $"{exception.Message} Çakışan kayıtlar: {conflictRows}";
                 await db.ProductImportStagingRecords
                     .Where(x => x.TenantId == tenantId && x.JobId == importJobId && x.ModelKey == modelKey && x.State == "STAGED")
-                    .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.State, "FAILED").SetProperty(x => x.ErrorSummary, Short(exception.Message, 2_000)), cancellationToken);
+                    .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.State, "FAILED").SetProperty(x => x.ErrorSummary, Short(stagingError, 2_000)), cancellationToken);
             }
             finally
             {
@@ -7065,7 +7090,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     internal static string UnaddedSizesNote(int count) =>
         $"{count} yeni beden var; eklemek için Yeni Ürünleri Aktar ya da Mevcut Ürün Bilgilerini Güncelle ile çekin.";
 
-    private async Task RecordProductImportFailure(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, Exception exception, CancellationToken cancellationToken)
+    private async Task RecordProductImportFailure(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, Exception exception, CancellationToken cancellationToken, string? conflictRows = null)
     {
         var externalProductId = Short(snapshot.ExternalProductId, 256);
         var issueIdentity = string.IsNullOrWhiteSpace(externalProductId)
@@ -7074,10 +7099,27 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var root = exception.GetBaseException();
         var constraint = root is PostgresException postgres
             ? $"sqlState={postgres.SqlState}; constraint={postgres.ConstraintName ?? "—"}; table={postgres.TableName ?? "—"}; detail={postgres.Detail ?? postgres.MessageText}"
-            : $"exception={root.GetType().Name}; detail={root.Message}";
+            : $"exception={root.GetType().Name}; detail={root.Message}{(conflictRows is null ? "" : $" rows={conflictRows}")}";
         var summary = Short($"Pazar yeri ürünü '{(string.IsNullOrWhiteSpace(externalProductId) ? "kimlik yok" : externalProductId)}' aktarılmadı; sonraki ürünle devam edildi. Veritabanı ayrıntısı: {constraint}", 2_000);
         await RecordIssue(tenantId, $"product-sync-import:{connectionId}:{issueIdentity}", "PRODUCT_IMPORT_FAILED", summary, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    // The rows a version conflict was about, read from the exception's entries before the change tracker is cleared:
+    // table, primary key, state and the version the save expected, e.g. "catalog.products Id=… Modified Version=3".
+    internal static string ConcurrencyConflictRows(DbUpdateConcurrencyException conflict)
+    {
+        var rows = conflict.Entries.Take(5).Select(entry =>
+        {
+            var type = entry.Metadata;
+            var table = type.GetTableName() is { } name ? (type.GetSchema() is { } schema ? $"{schema}.{name}" : name) : type.ClrType.Name;
+            var key = type.FindPrimaryKey()?.Properties.Select(property => $"{property.Name}={entry.Property(property.Name).CurrentValue}") ?? [];
+            var tokens = type.GetProperties().Where(property => property.IsConcurrencyToken).Select(property => $"{property.Name}={entry.Property(property.Name).OriginalValue}");
+            return string.Join(" ", new[] { table }.Concat(key).Append(entry.State.ToString()).Concat(tokens));
+        }).ToList();
+        if (rows.Count == 0) return "kayıt bilgisi yok";
+        var more = conflict.Entries.Count - rows.Count;
+        return string.Join("; ", rows) + (more > 0 ? $"; +{more}" : "");
     }
 
     private async Task<ReferenceSnapshot?> EnsureReferenceSnapshot(Guid tenantId, Guid connectionId, string resourceType, string? parentExternalId, string correlationId, CancellationToken cancellationToken)

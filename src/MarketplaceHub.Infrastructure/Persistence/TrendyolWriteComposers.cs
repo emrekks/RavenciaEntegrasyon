@@ -68,9 +68,13 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
         var contentId = ApprovedContentId(productLink?.ExternalId);
         // Trendyol approved a product whose colours it split into contents of their own: its variants are linked (they
         // link only once approved) but no single content is the product's. It is not an unapproved product.
+        // A variant Trendyol still reviews or refused (its listing APPROVAL_PENDING or REJECTED: the unapproved list) is
+        // linked by an import too, but by its barcode: it is no approved content, so it never makes the card a split one
+        // (live 14.11.2026: MZ056 Kahverengi/Mürdüm, rejected, must go to unapproved-bulk-update, not content-bulk-update).
         var variantIds = draft.Variants.Select(variant => variant.VariantId).ToArray();
-        var splitContents = productLink is null && await db.MarketplaceVariantLinks.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && variantIds.Contains(x.VariantId), cancellationToken);
-        if (SalesDataIssue(draft, sections, unapproved: contentId is null && !splitContents) is { } salesDataIssue)
+        var heldVariantIds = await HeldVariantIdsAsync(db, tenantId, connectionId, variantIds, cancellationToken);
+        var splitContents = productLink is null && await db.MarketplaceVariantLinks.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && variantIds.Contains(x.VariantId) && !heldVariantIds.Contains(x.VariantId), cancellationToken);
+        if (SalesDataIssue(draft, sections) is { } salesDataIssue)
             return ServiceResult<ProductUpdateDraft>.Fail(salesDataIssue.Code, salesDataIssue.Message, salesDataIssue.Status, salesDataIssue.FieldErrors);
         if (DesiMissingSku(draft, sections, unapproved: contentId is null && !splitContents) is { } missingDesiSku)
             return ServiceResult<ProductUpdateDraft>.Fail("DESI_REQUIRED", ProductPublicationComposer.DesiMissingMessage(missingDesiSku), 422);
@@ -79,11 +83,11 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
         return ServiceResult<ProductUpdateDraft>.Ok(new(draft.ProfileId, publication.Value!, draft.Variants));
     }
 
-    // Why the update cannot go when it sends a price, VAT rate or stock: the whole card of a product Trendyol has not
-    // approved yet (price and quantity are required there), or VAT Oranı picked. Null when it sends none of them (the
-    // content fields, desi or delivery alone) or every variant has a usable offer and stock row.
-    internal static ServiceError? SalesDataIssue(ProductPublicationDraft draft, ProductUpdateSections sections, bool unapproved) =>
-        unapproved || sections.VariantFields.VatRate ? draft.SalesDataIssue : null;
+    // Why the update cannot go when it sends a VAT rate: VAT Oranı picked and a variant without a usable offer. The
+    // unapproved update sends no price or stock (UnapprovedUpdatePayload), so it needs none either; a field the card
+    // lacks is left out there.
+    internal static ServiceError? SalesDataIssue(ProductPublicationDraft draft, ProductUpdateSections sections) =>
+        sections.VariantFields.VatRate ? draft.SalesDataIssue : null;
 
     // The first variant (by stock code) without a desi when this update sends one: the whole card of a product Trendyol
     // has not approved yet (dimensionalWeight is required there), or Desi picked. Null when no desi is needed or all have one.
@@ -112,6 +116,33 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
     internal static string? ApprovedContentId(string? productLinkId) =>
         !string.IsNullOrWhiteSpace(productLinkId) && productLinkId.Trim().All(char.IsAsciiDigit) ? productLinkId.Trim() : null;
 
+    // The card's variants whose listing on this connection Trendyol still reviews or refused (ImportedApprovalStates).
+    internal static async Task<Guid[]> HeldVariantIdsAsync(AppDbContext db, Guid tenantId, Guid connectionId, IReadOnlyCollection<Guid> variantIds, CancellationToken cancellationToken) =>
+        await (from listing in db.ChannelListingVariants.AsNoTracking()
+               join profile in db.ChannelListingProfiles.AsNoTracking() on listing.ProfileId equals profile.Id
+               where listing.TenantId == tenantId && profile.TenantId == tenantId && profile.ConnectionId == connectionId
+                   && variantIds.Contains(listing.VariantId) && ImportedApprovalStates.HeldListingStatuses.Contains(listing.ActualStatus)
+               select listing.VariantId).Distinct().ToArrayAsync(cancellationToken);
+
+    // The fields "Ürün Güncelleme - Onaysız Ürün v2" does not take: it updates the product information only (offline
+    // trendyol-api-son.md ~9036; its sample request names no quantity or price). Price and stock never ride along
+    // (automatic price/stock writes are off by owner choice, 1.11.2026).
+    private static readonly HashSet<string> UnapprovedUpdateLeftOut = new(StringComparer.Ordinal) { "quantity", "listPrice", "salePrice", "currencyType" };
+
+    // The create payload as the unapproved update's request: each item without price and stock and without a field the
+    // card has no value for. Trendyol deletes a field sent as null (same doc: "bir alanı null olarak göndermek … mevcut
+    // değerin ürün üzerinden tamamen silinmesine neden olur"), so such a field is left out and stays as Trendyol has it.
+    internal static string UnapprovedUpdatePayload(string createPayloadJson)
+    {
+        if (JsonNode.Parse(createPayloadJson) is not JsonObject root || root["items"] is not JsonArray items) return createPayloadJson;
+        foreach (var item in items.OfType<JsonObject>())
+        {
+            foreach (var name in item.Where(pair => pair.Value is null || UnapprovedUpdateLeftOut.Contains(pair.Key)).Select(pair => pair.Key).ToList())
+                item.Remove(name);
+        }
+        return root.ToJsonString();
+    }
+
     internal static ServiceResult<ProductUpdatePublication> Split(Guid productId, string? contentIdText, string createPayloadJson, ProductUpdateSections sections, bool splitContents = false)
     {
         var mode = contentIdText is null && !splitContents ? "UNAPPROVED" : "APPROVED";
@@ -119,7 +150,7 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
         if (!source.RootElement.TryGetProperty("items", out var sourceItems) || sourceItems.ValueKind != JsonValueKind.Array || sourceItems.GetArrayLength() == 0)
             return ServiceResult<ProductUpdatePublication>.Fail("PRODUCT_UPDATE_PAYLOAD_INVALID", "Ürün güncellemesi hazırlanamadı; Trendyol'a gönderilmedi. Ürünü kaydedip yeniden deneyin.", 422);
 
-        var unapprovedPayload = createPayloadJson;
+        var unapprovedPayload = mode == "UNAPPROVED" ? UnapprovedUpdatePayload(createPayloadJson) : createPayloadJson;
         var contentItems = new List<Dictionary<string, object?>>();
         var variantItems = new List<Dictionary<string, object?>>();
         var deliveryItems = new List<Dictionary<string, object?>>();

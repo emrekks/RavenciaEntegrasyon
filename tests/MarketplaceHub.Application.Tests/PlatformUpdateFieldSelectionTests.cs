@@ -297,8 +297,26 @@ public sealed class PlatformUpdateFieldSelectionTests
     {
         var publication = Split(null, new(true, false, false));
         Assert.Equal("UNAPPROVED", publication.Mode);
-        Assert.Equal(CreatePayload, publication.UnapprovedPayloadJson);
+        var items = Items(publication.UnapprovedPayloadJson);
+        Assert.Equal(["B1", "B2"], items.Select(item => item!["barcode"]!.GetValue<string>()));
+        // The whole card's product information goes (title, description, images, attributes, desi, origin, VAT, delivery)…
+        var first = items[0]!.AsObject();
+        Assert.Equal(["attributes", "barcode", "deliveryOption", "description", "dimensionalWeight", "images", "origin", "stockCode", "title", "vatRate"], first.Select(pair => pair.Key).Order(StringComparer.Ordinal));
         Assert.Empty(Items(publication.ApprovedContentPayloadJson));
+    }
+
+    // "Ürün Güncelleme - Onaysız Ürün v2" updates the product information only and deletes a field sent as null: the
+    // unapproved update carries no price or stock (owner: price/stock writes off) and no null field.
+    [Fact]
+    public void UnapprovedTrendyol_LeavesOutPriceStockAndEmptyFields()
+    {
+        const string card = """{"items":[{"barcode":"MZ056-13","title":"Ad","origin":null,"dimensionalWeight":null,"deliveryOption":null,"quantity":3,"listPrice":500,"salePrice":400,"currencyType":"TRY","images":[{"url":"https://x/1.jpg"}],"attributes":[]}]}""";
+        var publication = ProductUpdateComposer.Split(Guid.CreateVersion7(), null, card, ProductUpdateSections.All);
+        Assert.Equal("UNAPPROVED", publication.Value!.Mode);
+        var item = Assert.Single(Items(publication.Value.UnapprovedPayloadJson))!.AsObject();
+        Assert.Equal(["attributes", "barcode", "images", "title"], item.Select(pair => pair.Key).Order(StringComparer.Ordinal));
+        // An approved card keeps the create payload untouched beside its approved requests (it never sends it).
+        Assert.Equal(card, ProductUpdateComposer.Split(Guid.CreateVersion7(), "123", card, ProductUpdateSections.All).Value!.UnapprovedPayloadJson);
     }
 
     [Fact]
