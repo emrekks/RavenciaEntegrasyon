@@ -226,6 +226,8 @@
 /* Opened in the top layer by placeVariantTip: above the filter card, tabs and sidebar. */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover > .rr-vtip:popover-open { display: grid; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover:has(> .rr-varcell:hover) > .rr-vtip, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover:focus-visible > .rr-vtip { display: grid; }
+/* Closed by Esc, a scroll or a press outside (variant-tip.ts) while the pointer may still be on it: no :hover reopens it at a stale place. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover[data-vtip-shut] > .rr-vtip:not(:popover-open) { display: none; }
 /* Opened above its row when the list's scroll box has no room below (placeVariantTip in ProductsPage.tsx). */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover[data-up] > .rr-vtip { top: auto; bottom: calc(100% + 6px); }
 /* compact variant stock table: colours down, sizes across */

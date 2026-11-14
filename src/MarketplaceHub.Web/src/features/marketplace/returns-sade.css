@@ -1204,15 +1204,15 @@ main .rr.rr.rr-returns .rr-tbl.rr-tbl th .rr-hf { max-width: 100%; min-width: 0;
    column visible (text wraps instead of the table scrolling). Narrower screens scroll inside the card; the first column
    stays pinned so the order is always in view. */
 @media (min-width: 1025px) {
-:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl { min-width: 1141px; }
-:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-order { width: 252px; }
-:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-buyer { width: 104px; }
-:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-prod { width: 304px; }
-:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-price { width: 84px; }
-:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-cargo { width: 144px; }
-:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-inv { width: 141px; }
-:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-act { width: 112px; }
-:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl td { padding-inline: 10px 8px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl { min-width: 1158px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-order { width: 250px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-buyer { width: 142px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-prod { width: 282px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-price { width: 90px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-cargo { width: 148px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-inv { width: 142px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-act { width: 104px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl td { padding-inline: 12px; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl :is(th:first-child, td:first-child) { padding-left: 12px; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl td { overflow-wrap: break-word; word-break: normal; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl .rr-num { overflow-wrap: anywhere; }
@@ -1223,23 +1223,23 @@ main .rr.rr.rr-returns .rr-tbl.rr-tbl th .rr-hf { max-width: 100%; min-width: 0;
 /* owner, 14 Nov: a buyer name never breaks inside a word, and each Bilgiler "Label: value" line stays on one line */
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl td[data-l="Alıcı"] .rr-cust b { overflow-wrap: normal !important; word-break: normal !important; hyphens: manual !important; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl .rr-pline small:not(.rr-card-only) { white-space: nowrap; overflow-wrap: normal; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl { min-width: 1297px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) { min-width: 1403px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select { min-width: 1311px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select:has(col.rr-c-buyer) { min-width: 1417px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-order { width: 216px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-order { width: 230px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-buyer { width: 106px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl { min-width: 1256px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) { min-width: 1398px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select { min-width: 1270px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select:has(col.rr-c-buyer) { min-width: 1412px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-order { width: 218px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-order { width: 232px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-buyer { width: 142px; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-prod,
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-prod { width: 290px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-price { width: 93px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-cargo { width: 145px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-inv { width: 140px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-prod { width: 262px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-price { width: 92px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-cargo { width: 148px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-inv { width: 142px; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-reason { width: 130px; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-status { width: 152px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-act { width: 131px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl td { padding-inline: 8px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl th { padding-inline: 8px 26px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-act { width: 112px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl td { padding-inline: 12px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl th { padding-inline: 12px; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl :is(th:first-child, td:first-child) { padding-left: 12px; }
 /* owner, 14 Nov: İadeler follows the Siparişler one-line rules - order lines, tracking number, Bilgiler lines and buyer words never break inside */
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl :is(.rr-ordercell small, .rr-cargocell small.rr-num, .rr-pline small:not(.rr-card-only)) { white-space: nowrap; overflow-wrap: normal; }
@@ -1248,9 +1248,18 @@ main .rr.rr.rr-returns .rr-tbl.rr-tbl th .rr-hf { max-width: 100%; min-width: 0;
 :root:root:root:root main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl :is(thead th:first-child, tbody td:first-child) { position: sticky; left: 0; z-index: 2; }
 :root:root:root:root main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl tbody td:first-child { background: var(--rr-surface); }
 /* the pinned first column stays opaque in every row state (hover and selection tints are layered over the surface colour, never see-through), above the scrolled cells */
-:root:root:root:root main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl tbody tr:hover td:first-child { background: linear-gradient(var(--rv-hover, var(--rr-hover)), var(--rv-hover, var(--rr-hover))), var(--rr-surface); }
+:root:root:root:root main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl tbody tr:hover td:first-child { background: linear-gradient(var(--rv-hover, color-mix(in srgb, var(--rv-color-surface-soft) 55%, transparent)), var(--rv-hover, color-mix(in srgb, var(--rv-color-surface-soft) 55%, transparent))), var(--rr-surface); }
 :root:root:root:root main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl tbody tr.rr-sel td:first-child { background: linear-gradient(var(--rr-primary-soft), var(--rr-primary-soft)), var(--rr-surface); }
 :root:root:root:root main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl thead th:first-child { z-index: 3; }
+/* owner, 14 Nov evening: every head and body cell has the same 12px gap on its left and right; a head's filter button
+   follows its label instead of holding 26-38px free on the right. */
+:root:root:root:root main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl :is(th, td, th:first-child, td:first-child, th:last-child, td:last-child) { padding-inline: 12px; }
+:root:root:root:root main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl th .rr-hf > .rr-anchor { position: relative; top: auto; right: auto; transform: none; }
+/* the pinned first column is never drawn over or seen through: the shared row hover (design-system.css) sets a
+   see-through background-color with !important on every cell, so the pinned cell keeps its solid surface under the hover
+   tint; a closed head filter button stays below the pinned head cell (it rises to 70 only while its list is open). */
+:root:root:root:root main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl tbody td:first-child { background-color: var(--rr-surface) !important; }
+:root:root:root:root main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl th .rr-hf > .rr-anchor:not(:has(> .rr-pop)) { z-index: auto; }
 }
 
 /* owner, 14 Nov: the copy buttons beside order numbers have a small hover frame everywhere (22 px, 6 px radius, icon stays 14 px);
