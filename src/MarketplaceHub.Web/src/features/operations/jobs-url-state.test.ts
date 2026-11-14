@@ -21,8 +21,8 @@ describe('İşlem Takibi address state (W16)', () => {
     expect(state.timeRange).toBe('7d')
   })
 
-  it('opens ?kategori=sistem on Tüm İşlemler, since Sistem & Test has no tab to show or leave', () => {
-    expect(readJobsViewState(new URLSearchParams('kategori=sistem')).category).toBe('ALL')
+  it('reads every category slug, Sistem and the new groups included', () => {
+    for (const [slug, key] of [['sistem', 'SYSTEM'], ['liste', 'LISTS'], ['soru', 'QUESTIONS'], ['finans', 'FINANCE']] as const) expect(readJobsViewState(new URLSearchParams('kategori=' + slug)).category).toBe(key)
   })
 
   it('ignores values it does not know', () => {

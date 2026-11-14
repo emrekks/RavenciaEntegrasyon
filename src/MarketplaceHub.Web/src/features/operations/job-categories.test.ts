@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { jobCategoryTabs, jobTypesForCategoryTab, knownJobTypes } from './job-categories'
+import { jobCategoryOf, jobCategoryTabs, jobTypesForCategoryTab, knownJobTypes } from './job-categories'
 
 // The server source sits outside Vite's allowed root, so it is read with Node's fs (the web build has no Node types).
 // The edge image build copies only the web folder; there the check is skipped (CI's frontend job runs it).
@@ -31,22 +31,22 @@ describe('job category tabs (G22)', () => {
     expect(jobTypesForCategoryTab('ORDERS')).toBe(orders)
     expect(jobTypesForCategoryTab('INVOICES')).toContain('INVOICE_SUBMIT')
     expect(jobTypesForCategoryTab('CATALOG')).toContain('IMPORT_PREVIEW')
+    expect(jobTypesForCategoryTab('CATALOG')).not.toContain('TRENDYOL_REFERENCE_SYNC')
   })
 
-  it('show every known type in at least one tab besides Tüm İşlemler', () => {
+  it('put every known type in exactly one tab besides Tüm İşlemler', () => {
     const tabs = jobCategoryTabs.filter(item => item.key !== 'ALL')
-    expect(knownJobTypes.filter(type => !tabs.some(tab => tab.match(type)))).toEqual([])
+    for (const type of knownJobTypes) expect(tabs.filter(tab => tab.match(type)).map(tab => tab.key), type).toEqual([jobCategoryOf(type)])
   })
 
-  it('put reference reads in Ürün/Yayın, notifications in Sipariş/Kargo, questions and finance in a tab of their own kind', () => {
-    for (const type of ['TRENDYOL_REFERENCE_SYNC', 'HEPSIBURADA_REFERENCE_SYNC', 'N11_REFERENCE_SYNC', 'PAZARAMA_REFERENCE_SYNC', 'PTTAVM_REFERENCE_SYNC', 'MARKETPLACE_QUESTION_SYNC'])
-      expect(jobTypesForCategoryTab('CATALOG')).toContain(type)
-    for (const type of ['TRENDYOL_WEBHOOK_INGEST', 'SHOPIFY_WEBHOOK_INGEST', 'HEPSIBURADA_WEBHOOK_INGEST'])
-      expect(jobTypesForCategoryTab('ORDERS')).toContain(type)
-    expect(jobTypesForCategoryTab('INVOICES')).toContain('TRENDYOL_FINANCE_SYNC')
-    expect(jobTypesForCategoryTab('INVOICES')).toContain('PAZARAMA_FINANCE_SYNC')
-    expect(jobTypesForCategoryTab('SYSTEM')).toContain('EXTERNAL_EFFECT_RECONCILE')
-    expect(jobTypesForCategoryTab('SYSTEM')).toContain('PANEL_FACTORY_RESET')
+  it('keep unrelated work apart: product imports, category and brand lists, questions and finance each in their own tab', () => {
+    for (const type of ['PRODUCT_SYNC', 'HEPSIBURADA_PRODUCT_SYNC', 'PRODUCT_CREATE', 'PRODUCT_UPDATE', 'LISTING_VERIFY', 'CATALOG_STRUCTURE_IMPORT', 'IMPORT_APPLY']) expect(jobCategoryOf(type), type).toBe('CATALOG')
+    for (const type of ['TRENDYOL_REFERENCE_SYNC', 'HEPSIBURADA_REFERENCE_SYNC', 'N11_REFERENCE_SYNC', 'PAZARAMA_REFERENCE_SYNC', 'PTTAVM_REFERENCE_SYNC']) expect(jobCategoryOf(type), type).toBe('LISTS')
+    expect(jobCategoryOf('MARKETPLACE_QUESTION_SYNC')).toBe('QUESTIONS')
+    for (const type of ['TRENDYOL_FINANCE_SYNC', 'PAZARAMA_FINANCE_SYNC', 'N11_SETTLEMENT_SYNC', 'HEPSIBURADA_FINANCE_SYNC']) expect(jobCategoryOf(type), type).toBe('FINANCE')
+    for (const type of ['TRENDYOL_WEBHOOK_INGEST', 'SHOPIFY_WEBHOOK_INGEST', 'HEPSIBURADA_WEBHOOK_INGEST', 'TRENDYOL_COMMON_LABEL']) expect(jobCategoryOf(type), type).toBe('ORDERS')
+    for (const type of ['TRENDYOL_CONNECTION_TEST', 'EFATURAM_CONNECTION_TEST', 'TRENDYOL_CAPABILITY_PROBE', 'EXTERNAL_EFFECT_RECONCILE', 'PANEL_FACTORY_RESET', 'CONNECTION_FULL_RESET']) expect(jobCategoryOf(type), type).toBe('SYSTEM')
+    expect(jobCategoryOf('SOME_UNKNOWN_JOB')).toBe('SYSTEM')
   })
 
   it('count the invoice checks under Faturalar only', () => {
