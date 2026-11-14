@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const apiState = vi.hoisted(() => ({ failing: new Set<string>() }))
-const bootstrapOverride = vi.hoisted(() => ({ units: undefined as Record<string, number> | null | undefined, due: 3 as number | null }))
+const bootstrapOverride = vi.hoisted(() => ({ connections: true, units: undefined as Record<string, number> | null | undefined, due: 3 as number | null }))
 
 vi.mock('../../shared/api', async importOriginal => {
   const original = await importOriginal<typeof import('../../shared/api')>()
@@ -26,7 +26,7 @@ vi.mock('../../shared/api', async importOriginal => {
     if (route.endsWith('/instant-notifications')) return { state: 'UNSUPPORTED', endpoint: null, registeredAt: null, lastReceivedAt: null, receivedLast24Hours: 0, message: null }
     throw new Error(`unhandled ${path}`)
   }
-  return { ...original, hubApi: vi.fn(respond), hubPoll: vi.fn(respond), loadAllPages: vi.fn(async () => ({ items: [], totalCount: 0 })) }
+  return { ...original, hubApi: vi.fn(respond), hubPoll: vi.fn(respond), loadAllPages: vi.fn(async (path: string) => ({ items: path.startsWith('/connections') && bootstrapOverride.connections ? [{ id: 'conn-1', platformCode: 'TRENDYOL', status: 'ACTIVE' }] : [], totalCount: 0 })) }
 })
 
 import { DashboardPage, knownCount, matrixJobsLink } from './DashboardPage'
@@ -66,6 +66,16 @@ describe('DashboardPage', () => {
     expect(card('Bekleyen Siparişler')).toBe('4Paket | 35 Adet Ürün')
     expect(card('Faturalar')).toBe('7Bekleyen | 3 Yaklaşan')
     expect(container.querySelector('.rr-callout.rr-warn')).toBeNull()
+  })
+
+  it('reads a dash without its unit word on every card when no active connection feeds the values', async () => {
+    bootstrapOverride.connections = false
+    try {
+      await render()
+      expect(card('Bekleyen Siparişler')).toBe('—')
+      expect(card('Faturalar')).toBe('—')
+      expect(card('Geciken Siparişler')).toBe('—')
+    } finally { bootstrapOverride.connections = true }
   })
 
   // Geciken Siparişler is bad-toned only with something late; the mock has 1 late and 0 of nothing else bad.

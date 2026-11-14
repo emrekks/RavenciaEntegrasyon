@@ -1,4 +1,5 @@
 import { cardCountText } from '../../shared/metric-value'
+import { useMetricSource } from '../marketplace/use-metric-source'
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { needsOrderNumberSearch } from './invoice-order-number-search'
 import { platformDisplayNames } from '../../shared/platform-names'
@@ -585,6 +586,7 @@ export function InvoicesPage() {
   useEffect(() => { setSelectedPackages(new Set()) }, [searchFilter, tab, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo, pageNumber, pageSize])
   // Another tab or filter shows other rows: the phone selection mode closes with the emptied selection.
   useEffect(() => { setSelectionMode(false) }, [searchFilter, tab, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo])
+  const metricSource = useMetricSource()
   const counts = { all: (pageData?.uninvoicedCount ?? 0) + (pageData?.invoicedCount ?? 0), unInvoiced: pageData?.uninvoicedCount ?? 0, invoiced: pageData?.invoicedCount ?? 0, dueSoon: pageData?.dueSoonCount ?? 0, hidden: pageData?.hiddenCount ?? 0 }
   const activeTabLabel = tabs.find(([value]) => value === tab)?.[1] ?? 'Faturalar'
   function selectTab(value: string) {
@@ -600,10 +602,10 @@ export function InvoicesPage() {
     </div>
     {message && <NoticeToast key={`${messageKind}:${message}`} kind={messageKind} message={message} onClose={() => setMessageState('')} durationMs={messageKind === 'pending' ? undefined : messageKind === 'info' ? 7000 : 5500} />}
     <div className="invoice-reference-metrics">
-      <article className="invoice-metric-pending" title="Paket bazlı işlem"><CardBackgroundIcon name="fileClock" tone="warn" /><small>Fatura Bekleyen</small><strong><CountUp value={cardCountText(pageData ? counts.unInvoiced : undefined)} /></strong></article>
-      <article className="invoice-metric-due" title="Teslimden 4 gün geçen"><CardBackgroundIcon name="calendarClock" tone="bad" /><small>Süresi Yaklaşan</small><strong><CountUp value={cardCountText(pageData ? counts.dueSoon : undefined)} /></strong></article>
-      <article className="invoice-metric-complete" title="İkinci fatura kapalı"><CardBackgroundIcon name="fileCheck" tone="ok" /><small>Faturalandırılan</small><strong><CountUp value={cardCountText(pageData ? counts.invoiced : undefined)} /></strong></article>
-      <article className="invoice-metric-total" title="Fatura çalışma alanındaki paketler"><CardBackgroundIcon name="orders" /><small>Toplam Paket</small><strong><CountUp value={cardCountText(pageData?.totalPackageCount)} /></strong></article>
+      <article className="invoice-metric-pending" title="Paket bazlı işlem"><CardBackgroundIcon name="fileClock" tone="warn" /><small>Fatura Bekleyen</small><strong><CountUp value={cardCountText(pageData ? counts.unInvoiced : undefined, { hasSource: metricSource })} /></strong></article>
+      <article className="invoice-metric-due" title="Teslimden 4 gün geçen"><CardBackgroundIcon name="calendarClock" tone="bad" /><small>Süresi Yaklaşan</small><strong><CountUp value={cardCountText(pageData ? counts.dueSoon : undefined, { hasSource: metricSource })} /></strong></article>
+      <article className="invoice-metric-complete" title="İkinci fatura kapalı"><CardBackgroundIcon name="fileCheck" tone="ok" /><small>Faturalandırılan</small><strong><CountUp value={cardCountText(pageData ? counts.invoiced : undefined, { hasSource: metricSource })} /></strong></article>
+      <article className="invoice-metric-total" title="Fatura çalışma alanındaki paketler"><CardBackgroundIcon name="orders" /><small>Toplam Paket</small><strong><CountUp value={cardCountText(pageData?.totalPackageCount, { hasSource: metricSource })} /></strong></article>
     </div>
     <div className="invoice-reference-filter-shell">
       <ViewTabsWithMore more={[]} className="invoice-reference-tabs" ariaLabel="Fatura görünümleri" value={tab} onChange={selectTab} items={tabs.map(([value, label]) => ({ value, label: viewTabLabel(({ ALL: 'all', UNINVOICED: 'invoiceMissing', INVOICED: 'invoiceDone', DUE_SOON: 'due', HIDDEN: 'hidden' } as const)[value], label), count: !pageData ? (query.isError ? unknownCount : undefined) : (value === 'ALL' ? counts.all : value === 'UNINVOICED' ? counts.unInvoiced : value === 'INVOICED' ? counts.invoiced : value === 'DUE_SOON' ? counts.dueSoon : counts.hidden).toLocaleString('tr-TR') }))} />

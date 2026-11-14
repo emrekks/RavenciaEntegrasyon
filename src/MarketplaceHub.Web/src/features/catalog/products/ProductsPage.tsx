@@ -41,6 +41,7 @@ const BulkPublishDialog = lazy(() => import('./BulkPublishDialog').then(module =
 const BulkPlatformUpdateDialog = lazy(() => import('./BulkPlatformUpdateDialog').then(module => ({ default: module.BulkPlatformUpdateDialog })))
 const BulkFieldDialog = lazy(() => import('./BulkFieldDialog').then(module => ({ default: module.BulkFieldDialog })))
 import { cardCountText, toneAbove } from '../../../shared/metric-value'
+import { useMetricSource } from '../../marketplace/use-metric-source'
 import { AcceptedJob, ImageLightboxModal, LightboxImage, MarketplaceConnection, Product, Variant, compareOptionValues, formatCatalogOptionLabel, isColorOptionName, isProductPublicationConnection, isVariantOptionName, optionValueSortRank, preferredColorOption, variantOptionEntries } from '../shared'
 import { EmptyState, ListEmptyState } from '../../../shared/components/EmptyState'
 
@@ -764,7 +765,8 @@ export function ProductsPage() {
     setCatalogSort(current => nextProductCatalogSort(current, field))
   }
 
-  const metric = (value: number | undefined, query: { isLoading: boolean; isError: boolean } = summaryQuery) => cardCountText(value, { loading: query.isLoading, error: query.isError })
+  const metricSource = useMetricSource()
+  const metric = (value: number | undefined, query: { isLoading: boolean; isError: boolean } = summaryQuery) => cardCountText(value, { loading: query.isLoading, error: query.isError, hasSource: metricSource })
   const outOfStock = summaryQuery.data?.outOfStockCount ?? 0
   const lowStock = summaryQuery.data?.lowStockCount ?? 0
   const statusTabs: Array<[string, string, 'all' | 'done' | 'invoice' | 'paused']> = [['', 'Tüm Ürünler', 'all'], ['ACTIVE', 'Satışa Açık', 'done'], ['DRAFT', 'Taslak', 'invoice'], ['ARCHIVED', 'Satışa Kapalı', 'paused']]

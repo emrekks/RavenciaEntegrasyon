@@ -39,6 +39,7 @@ import { ReturnFinalizedWithChoice } from '../ReturnFinalizedWithChoice'
 import { Connection, Order, OrderLine, Page, ProductTitleLink, RETURN_NO_PLATFORM, ReturnColumnPop, ReturnFactLines, ReturnHeadCell, ReturnInvoiceRing, ReturnLine, ReturnNoticeKind, ReturnPlatformPop, type ReturnAmounts, displayOrderNumber, orderDisplayShipment, productLineQuantity, remainingText, returnDateText, returnLineFacts, returnLineFieldValue, returnOptionalValue, returnPlatformName, usableShipmentDueAt } from '../shared'
 import { personName } from '../../../shared/person-name'
 import { cardCountText, toneAbove } from '../../../shared/metric-value'
+import { useMetricSource } from '../use-metric-source'
 import { EmptyState } from '../../../shared/components/EmptyState'
 
 // Empty text of the tabs that list a special state, instead of the generic "sync the returns" line.
@@ -462,7 +463,8 @@ export function ReturnsPage() {
   // The Reddedilen and Bugün cards read the summary's metrics; no data for a card reads "—" (shared rule, shared/metric-value.ts).
   const metrics = summary.data?.metrics
   // Data source: an active connection that reads returns; without one the cards read a dash, with one a real zero reads 0 (shared rule, shared/metric-value.ts).
-  const metricValue = (count: number | undefined) => cardCountText(count ?? 0, { loading: summary.isLoading, error: summary.isError || !summary.data, hasSource: connections.data ? returnConnections.length > 0 : undefined })
+  const metricSource = useMetricSource({ kind: 'returns' })
+  const metricValue = (count: number | undefined) => cardCountText(count ?? 0, { loading: summary.isLoading, error: summary.isError || !summary.data, hasSource: metricSource })
   const actionRequired = summary.data?.tabCounts.ACTION_REQUIRED ?? 0
   const todayApproved = metrics?.todayApproved ?? 0
   const todayRejected = metrics?.todayRejected ?? 0

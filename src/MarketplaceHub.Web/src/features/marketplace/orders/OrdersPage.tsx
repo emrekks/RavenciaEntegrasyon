@@ -36,6 +36,7 @@ import { formatPackageLabel } from '../../../shared/package-label'
 import { readUrlChoice, readUrlList, readUrlNumber, readUrlText, useChangeEffect, useListUrlSync } from '../../../shared/list-url-state'
 import { labelPersonalData, loadOrderLabelDetails, type OrderLabelDetail } from './shipping-label-data'
 import { OrderMetricCards } from './OrderMetricCards'
+import { useMetricSource } from '../use-metric-source'
 import { useResendReminder } from './resend-reminder'
 import { orderDetailQueryKey } from './order-query-keys'
 import { deliveryDueLine, deliveryText, dueLineTitle, orderRingDetail } from './order-delivery'
@@ -853,7 +854,7 @@ export function OrdersPage() {
   const providers = connections.data?.items.filter(x => x.platformCode === 'TRENDYOL_EFATURAM' && !x.lastErrorCode && (x.status === 'ACTIVE' || x.status === 'VERIFIED')) ?? []
   const marketplaceConnections = connections.data?.items.filter(isActiveMarketplaceConnection) ?? []
   // Without an active marketplace connection no card has a data source: its big number is a dash, not a zero (shared/metric-value.ts).
-  const noCardSource = connections.data !== undefined && marketplaceConnections.length === 0
+  const noCardSource = useMetricSource() === false
   const cardSource = <T extends { value: number | undefined }>(metric: T): T => noCardSource ? { ...metric, value: undefined } : metric
   const shopifyConnections = connections.data?.items.filter(x => x.platformCode === 'SHOPIFY') ?? []
   const allOrders = ordersQuery.data?.items ?? [];
