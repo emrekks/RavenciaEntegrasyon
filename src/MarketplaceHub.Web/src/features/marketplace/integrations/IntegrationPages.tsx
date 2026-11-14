@@ -821,6 +821,7 @@ function IntegrationDetailWorkspace({ id, inline = false, onClose, onSwitch }: {
     {marketplace && flowCardEmpty && <div className="cs-card"><p className="cs-label">Akış Sağlığı</p><EmptyState icon="sync" title="Akış Yok">{flowCardEmpty}</EmptyState></div>}
     {marketplace && flowCardEmpty && <div className="cs-card"><p className="cs-label">Dikkat İsteyenler</p><p className="cs-empty">{!flowsAvailable ? 'Bağlantı doğrulanmadan akış uyarısı üretilmez.' : syncPolicies.isLoading || syncPolicies.isError ? 'Akış durumu okununca dikkat isteyenler burada listelenir.' : 'Dikkat isteyen akış yok.'}</p></div>}
     {flowsAvailable && allFlows.length > 0 && <div className="cs-card"><p className="cs-label">Akış Sağlığı</p><div className="cs-health-big"><b>{flowCounts.ok} / {flowCounts.all}</b><span>Akış Güncel</span></div><div className="cs-meter" aria-hidden="true"><i className="is-ok" style={{ width: flowShare(flowCounts.ok) }} /><i className="is-warn" style={{ width: flowShare(flowCounts.issue) }} /><i className="is-rest" style={{ width: flowShare(flowCounts.wait + flowCounts.off) }} /></div><div className="cs-legend"><span><i className="is-ok" />Güncel {flowCounts.ok}</span><span><i className="is-warn" />Dikkat {flowCounts.issue}</span><span><i className="is-rest" />Bekleyen / Kapalı {flowCounts.wait + flowCounts.off}</span></div></div>}
+    {flowsAvailable && allFlows.length > 0 && <div className="cs-card"><p className="cs-label">Akış Durumları</p>{allFlows.map(row => <div className="cs-issue" key={row.policy.id}><MappingStateGlyph state={row.glyph} /><div><b>{row.label}</b><small>{row.health.label}{row.policy.lastSuccessAt ? <> · son başarılı <DateText value={row.policy.lastSuccessAt} /></> : null}</small></div></div>)}</div>}
     {flowsAvailable && allFlows.length > 0 && <div className="cs-card"><p className="cs-label">Dikkat İsteyenler</p>{attentionFlows.length ? attentionFlows.map(row => <div className="cs-issue" key={row.policy.id}><MappingStateGlyph state={row.glyph} /><div><b>{row.label}</b><small>{row.health.label}{row.policy.lastSuccessAt ? <> · son başarılı <DateText value={row.policy.lastSuccessAt} /></> : null}</small></div><span className="cs-issue-actions"><button type="button" className="secondary" onClick={() => setSyncPolicyOpen(row.policy)}>Ayarlar</button><Link className="cs-link" to="/jobs">İşlem Takibi</Link></span></div>) : <EmptyState icon="circleCheck" title="Akış Sorunsuz">Dikkat isteyen akış yok.</EmptyState>}</div>}
   </>
   const flowTable = syncPolicies.isLoading ? <Busy text="Eşitleme ayarları yükleniyor…" /> : syncPolicies.isError ? <ErrorBox error={syncPolicies.error} onRetry={() => void syncPolicies.refetch()} /> : <>
@@ -866,8 +867,8 @@ function IntegrationDetailWorkspace({ id, inline = false, onClose, onSwitch }: {
     { key: 'durum', label: 'Durum', value: <span className="cs-fact-state"><MappingStateGlyph state={readConnectionReady ? 'done' : 'none'} />{connectionStatusLabel(item.status) ?? titleTr(statusLabel(item.status))}</span> },
     { key: 'ortam', label: 'Ortam', value: connectionEnvironmentLabel(item.platformCode, displayEnvironment) },
     { key: 'magaza', label: efaturam ? 'Kapsam' : 'Mağaza Kimliği', value: storeFact, stacked: storeFact.length > 16 },
-    { key: 'kimlik', label: 'Kimlik Bilgisi', value: credentialLabel(item), note: credentialHelp(item) },
-    { key: 'test', label: 'Son Doğrulama', value: <DateText value={item.lastTestedAt} />, stacked: true, note: connectionTestHelp(item) },
+    { key: 'kimlik', label: 'Kimlik Bilgisi', value: credentialLabel(item), note: item.lastErrorCode || !item.hasCredential ? credentialHelp(item) : undefined },
+    { key: 'test', label: 'Son Doğrulama', value: <DateText value={item.lastTestedAt} />, stacked: true, note: item.lastErrorCode ? connectionTestHelp(item) : undefined },
     ...(marketplace ? [{ key: 'senkron', label: 'Son Senkronizasyon', value: <DateText value={lastSyncAt} />, stacked: true }] : []),
     ...(webhookFact ? [{ key: 'webhook', label: 'Webhook', value: webhookFact, stacked: webhookFact.length > 16 }] : []),
     { key: 'yazma', label: stageManual ? 'Test Ortamı İşlemleri' : 'Pazaryerine Yazma', value: stageManual ? stageReady ? 'Hazır' : 'Bloke' : item.externalWritesEnabled ? 'Açık' : 'Kapalı', note: stageManual ? stageReady ? 'Manuel denemeler doğrulamalarla çalışır.' : 'Bağlantı testi düzeltilmeden işlem başlatılmaz.' : marketplace ? writeModeSummary : 'Ana anahtar ve bağlantı anahtarıyla korunur.' }
@@ -880,7 +881,7 @@ function IntegrationDetailWorkspace({ id, inline = false, onClose, onSwitch }: {
       <div className="cs-quick">
         {item.hasCredential && <button type="button" className="secondary" disabled={run.isPending || saveCredential.isPending} onClick={() => run.mutate({ path: `/connections/${id}/test-jobs` })}>{run.isPending ? 'Test Ediliyor…' : 'Bağlantıyı Test Et'}</button>}
         {webhookSupported && activeSection.key !== 'akis' && <button type="button" className="secondary" onClick={() => { setSettingsSection('akis'); setSummaryOpen(false) }}>Webhook Ayarları</button>}
-        {activeSection.key !== 'magaza' && <button type="button" className="secondary" onClick={() => { setSettingsSection('magaza'); setSummaryOpen(false) }}>Kimlik Bilgisini Güncelle</button>}
+        
       </div>
     </div>
   </aside>
