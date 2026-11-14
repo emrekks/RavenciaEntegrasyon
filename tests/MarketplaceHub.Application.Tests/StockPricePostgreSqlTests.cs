@@ -1409,9 +1409,14 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
             var map = typeof(MarketplaceJobProcessor).GetMethod("MapExistingCatalogProduct", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
             Assert.True(await (Task<bool>)map.Invoke(processor, [tenant.Id, shopify.Id, snapshot, true, CancellationToken.None, false, false, false, null, "N11", false])!);
             await db.SaveChangesAsync();
+            // Model Kaydı Faz 2: what the import run does after its save: the Shopify product becomes the model's listing.
+            await MarketplaceModelLinks.RecordAsync(db, tenant.Id, shopify.Id, [(snapshot.ExternalProductId, [.. remoteVariants.Select(x => x.ExternalVariantId)])], DateTimeOffset.UtcNow, CancellationToken.None);
         }
 
         await using var check = fixture.CreateContext();
+        var familyIds = await check.Products.AsNoTracking().Where(x => x.TenantId == tenant.Id).Select(x => x.FamilyId).Distinct().ToListAsync();
+        var modelLink = await check.MarketplaceModelLinks.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ConnectionId == shopify.Id);
+        Assert.Equal((Assert.Single(familyIds), "10372109271124"), ((Guid?)modelLink.ModelId, modelLink.ExternalId));
         var links = await check.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.ConnectionId == shopify.Id).ToDictionaryAsync(x => x.VariantId, x => x.ExternalId);
         Assert.Equal(variants.Count, links.Count);
         for (var i = 0; i < variants.Count; i++) Assert.Equal($"gid-{4700 + i}", links[variants[i].Id]);

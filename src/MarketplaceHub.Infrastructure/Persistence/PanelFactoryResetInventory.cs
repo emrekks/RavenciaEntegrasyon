@@ -125,7 +125,7 @@ public static class PanelFactoryResetInventory
         D("catalog.product_options", Options), D("catalog.product_option_values", Options), D("catalog.variant_option_values", Options),
         D("catalog.products", Products), D("catalog.product_models", Products), D("catalog.product_variants", Products), D("catalog.product_media", Products),
         D("catalog.product_attribute_assignments", Products), D("catalog.product_size_charts", Products),
-        D("catalog.marketplace_product_links", Products), D("catalog.marketplace_variant_links", Products), D("catalog.marketplace_listing_states", Products),
+        D("catalog.marketplace_product_links", Products), D("catalog.marketplace_model_links", Products), D("catalog.marketplace_variant_links", Products), D("catalog.marketplace_listing_states", Products),
         D("catalog.external_identifier_aliases", Products), D("catalog.channel_listing_profiles", Products), D("catalog.channel_listing_attributes", Products),
         D("catalog.channel_listing_variants", Products), D("catalog.channel_media_order", Products),
         D("catalog.import_sessions", Products), D("catalog.import_staging_records", Products), D("catalog.import_match_candidates", Products),

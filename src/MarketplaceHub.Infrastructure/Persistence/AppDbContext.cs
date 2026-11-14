@@ -41,6 +41,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<ApiIdempotencyRecord> ApiIdempotencyRecords => Set<ApiIdempotencyRecord>();
     public DbSet<Product> Products => Set<Product>();
     public DbSet<ProductModel> ProductModels => Set<ProductModel>();
+    public DbSet<MarketplaceModelLink> MarketplaceModelLinks => Set<MarketplaceModelLink>();
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Brand> Brands => Set<Brand>();
     public DbSet<AttributeDefinition> AttributeDefinitions => Set<AttributeDefinition>();

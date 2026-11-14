@@ -44,6 +44,17 @@ public static class DatabaseMigrator
             {
                 await using var migrationContext = new AppDbContext(options);
                 await migrationContext.Database.MigrateAsync(cancellationToken);
+                // Model Kaydı Faz 2: the fields of models the editor has not saved yet, by the editor's own rule (C#, so not
+                // a migration). Idempotent; a failure leaves the backfill's values and does not stop the deploy.
+                try
+                {
+                    var recomputed = await ProductModelLinks.RecomputeUnsavedFieldsAsync(migrationContext, cancellationToken);
+                    logger.LogInformation("Product model fields recomputed for {Count} models", recomputed);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    logger.LogWarning(exception, "Product model fields were not recomputed");
+                }
                 return;
             }
             catch (Exception exception) when (IsLockTimeout(exception) && attempt < LockAttempts)

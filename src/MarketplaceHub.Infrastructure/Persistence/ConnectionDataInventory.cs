@@ -14,7 +14,7 @@ public static class ConnectionDataInventory
         "sales.marketplace_finance_transactions", "sales.marketplace_cargo_invoice_items", "sales.marketplace_payout_orders",
         "billing.invoices", "billing.marketplace_deliveries", "billing.marketplace_delivery_states",
         "billing.manual_order_invoice_documents", "billing.manual_order_invoice_delivery_states",
-        "catalog.marketplace_product_links", "catalog.marketplace_variant_links", "catalog.marketplace_listing_states",
+        "catalog.marketplace_product_links", "catalog.marketplace_model_links", "catalog.marketplace_variant_links", "catalog.marketplace_listing_states",
         "catalog.channel_listing_profiles", "catalog.external_identifier_aliases",
         "catalog.category_mappings", "catalog.brand_mappings", "catalog.attribute_mappings", "catalog.attribute_value_mappings",
         "catalog.attribute_mapping_templates", "catalog.attribute_value_mapping_templates", "catalog.mapping_template_dismissals", "catalog.connection_attribute_defaults",

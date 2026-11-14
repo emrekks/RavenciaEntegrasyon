@@ -48,7 +48,10 @@ internal sealed class ShopifyProductPublicationComposer(AppDbContext db, IConfig
             .Select(x => x.ModelCode)
             .FirstOrDefaultAsync(cancellationToken);
         var familyKey = ProductFamilyKeyPolicy.FamilyKey(productId, product.BrandId, modelCode);
-        var familyIds = await ProductFamilyScope.ProductIdsAsync(db, tenantId, product.BrandId, modelCode, db.ProductVariants.AsNoTracking(), cancellationToken);
+        // Model Kaydı Faz 2: the family by the card's model (FamilyId), with the model-code rule for cards not linked yet.
+        var familyIds = await ProductModelLinks.FamilyAwareAsync(db, tenantId, product.FamilyId,
+            await ProductFamilyScope.ProductIdsAsync(db, tenantId, product.BrandId, modelCode, db.ProductVariants.AsNoTracking(), cancellationToken),
+            db.Products.AsNoTracking(), cancellationToken);
         if (!familyIds.Contains(productId)) familyIds.Add(productId);
         // Card order is creation order (the id breaks a tie), so the colours keep one order on every publication.
         var members = await db.Products.AsNoTracking()

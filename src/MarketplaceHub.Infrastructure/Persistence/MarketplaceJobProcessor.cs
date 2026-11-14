@@ -6896,6 +6896,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 // they were.
                 if (!isPttAvm) await RecordVariantLinkCodes(tenantId, connectionId, snapshotGroups, cancellationToken, onlyAdded: importSummaryMode is ImportSummaryMode.NewOnly or ImportSummaryMode.FocusedPriceStock);
                 await db.SaveChangesAsync(cancellationToken);
+                // Model Kaydı Faz 2: the Shopify product each model is listed as, from the variant links just saved.
+                if (isShopify)
+                    await MarketplaceModelLinks.RecordAsync(db, tenantId, connectionId,
+                        snapshotGroups.Select(snapshot => (Short(snapshot.ExternalProductId, 256), (IReadOnlyCollection<string>)[.. snapshot.Variants.Where(variant => !string.IsNullOrWhiteSpace(variant.ExternalVariantId)).Select(variant => Short(variant.ExternalVariantId, 256))])),
+                        timeProvider.GetUtcNow(), cancellationToken);
                 if (completesListingProfiles) await CompleteImportedListingProfiles(tenantId, connectionId, snapshotGroups, cancellationToken);
                 await db.ProductImportStagingRecords
                     .Where(x => x.TenantId == tenantId && x.JobId == importJobId && x.ModelKey == modelKey && x.State == "STAGED")
