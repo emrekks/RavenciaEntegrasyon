@@ -256,7 +256,7 @@ function ProductColorRows({ group, priority, selected, onSelect, selectionMode: 
   const navigate = useNavigate()
   const product = group.primary
   const platformStatuses = group.products.flatMap(item => item.platformStatuses ?? [])
-  const platformStatusAggregates = new Map<string, { platform: string; platformCode: string; statuses: string[]; matchedVariantCount: number; variantCount: number; isChecking: boolean; onSale: number; offSale: number; offSaleStockZero: number; reasons: Record<string, number>; rejectionReason: string | null; missing: number; rejected: number; pending: number; resubmitted: number; updating: number }>()
+  const platformStatusAggregates = new Map<string, { platform: string; platformCode: string; statuses: string[]; matchedVariantCount: number; variantCount: number; isChecking: boolean; onSale: number; offSale: number; offSaleStockZero: number; reasons: Record<string, number>; rejectionReason: string | null; missing: number; rejected: number; pending: number; resubmitted: number; updating: number; review: number }>()
   for (const item of platformStatuses) {
     const platform = item.platform?.trim() || 'Platform'
     const platformCode = item.platformCode?.trim().toUpperCase() || (platform.toUpperCase().includes('SHOPIFY') ? 'SHOPIFY' : platform.toUpperCase().includes('HEPSIBURADA') ? 'HEPSIBURADA' : platform.toUpperCase().includes('TRENDYOL') ? 'TRENDYOL' : platform.toUpperCase().includes('N11') ? 'N11' : platform.toUpperCase().includes('PAZARAMA') ? 'PAZARAMA' : platform.toUpperCase().replace(/\s/g, '').includes('PTTAVM') ? 'PTTAVM' : 'UNKNOWN')
@@ -277,8 +277,9 @@ function ProductColorRows({ group, priority, selected, onSelect, selectionMode: 
       current.pending += item.pendingVariantCount ?? 0
       current.resubmitted += item.resubmittedVariantCount ?? 0
       current.updating += item.updatingVariantCount ?? 0
+      current.review += item.reviewVariantCount ?? 0
     } else {
-      platformStatusAggregates.set(key, { platform, platformCode, statuses: [item.status], matchedVariantCount: item.matchedVariantCount ?? 0, variantCount: item.variantCount ?? 0, isChecking: Boolean(item.isChecking), onSale: item.onSaleVariantCount ?? 0, offSale: item.offSaleVariantCount ?? 0, offSaleStockZero: item.offSaleStockZeroVariantCount ?? 0, reasons: { ...item.offSaleReasonCounts }, rejectionReason: item.rejectionReason?.trim() || null, missing: item.missingVariantCount ?? 0, rejected: item.rejectedVariantCount ?? 0, pending: item.pendingVariantCount ?? 0, resubmitted: item.resubmittedVariantCount ?? 0, updating: item.updatingVariantCount ?? 0 })
+      platformStatusAggregates.set(key, { platform, platformCode, statuses: [item.status], matchedVariantCount: item.matchedVariantCount ?? 0, variantCount: item.variantCount ?? 0, isChecking: Boolean(item.isChecking), onSale: item.onSaleVariantCount ?? 0, offSale: item.offSaleVariantCount ?? 0, offSaleStockZero: item.offSaleStockZeroVariantCount ?? 0, reasons: { ...item.offSaleReasonCounts }, rejectionReason: item.rejectionReason?.trim() || null, missing: item.missingVariantCount ?? 0, rejected: item.rejectedVariantCount ?? 0, pending: item.pendingVariantCount ?? 0, resubmitted: item.resubmittedVariantCount ?? 0, updating: item.updatingVariantCount ?? 0, review: item.reviewVariantCount ?? 0 })
     }
   }
   const platformCards = [...platformStatusAggregates.entries()].map(([key, item]) => {
@@ -289,7 +290,7 @@ function ProductColorRows({ group, priority, selected, onSelect, selectionMode: 
     // The sale state goes over the publication state (a stock of 0 is never a closure; see withProductPlatformSaleState).
     const { state, label } = withProductPlatformSaleState(item.platform, publicationState, publicationLabel, { matched: item.matchedVariantCount, variantCount: item.variantCount, onSale: item.onSale, offSale: item.offSale, offSaleStockZero: item.offSaleStockZero, reasons: item.reasons })
     // The tooltip breaks the group's variants down by state (owner, 14 Nov 2026); the dot keeps the state's colour.
-    const tip = productPlatformBreakdownTip(item.platform, { variantCount: item.variantCount, matched: item.matchedVariantCount, missing: item.missing, onSale: item.onSale, offSale: item.offSale, offSaleStockZero: item.offSaleStockZero, rejected: item.rejected, pending: item.pending, resubmitted: item.resubmitted, updating: item.updating }, item.rejectionReason)
+    const tip = productPlatformBreakdownTip(item.platform, { variantCount: item.variantCount, matched: item.matchedVariantCount, missing: item.missing, onSale: item.onSale, offSale: item.offSale, offSaleStockZero: item.offSaleStockZero, rejected: item.rejected, pending: item.pending, resubmitted: item.resubmitted, updating: item.updating, review: item.review }, item.rejectionReason)
     return { key, platform: item.platform, platformCode: item.platformCode, state, label, tip, matchedVariantCount: item.matchedVariantCount, variantCount: item.variantCount }
   })
   const totalStock = group.products.reduce((sum, item) => sum + item.totalStock, 0)

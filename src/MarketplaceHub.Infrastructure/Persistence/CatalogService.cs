@@ -3052,6 +3052,10 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                     }
                     // A variant the marketplace no longer knows is not matched there, even with a LIVE listing behind it.
                     var missingVariantCount = linkedVariantIds.RemoveWhere(variantId => missingLinks.Contains((variantId, connectionId)));
+                    // A variant whose listing waits for a person (MANUAL_REVIEW: the marketplace's answer could not be
+                    // settled, e.g. Trendyol's approval check found another product id) is not counted live there: the
+                    // mark says "İncelemede" (owner, 15 Nov 2026: MZ056 Mürdüm read as matched).
+                    var reviewVariantCount = profile is null ? 0 : linkedVariantIds.RemoveWhere(variantId => listingVariants.Any(x => x.ProfileId == profile.Id && x.VariantId == variantId && x.ActualStatus == "MANUAL_REVIEW"));
 
                     var matchedVariantCount = linkedVariantIds.Count;
                     var status = ProductListingHealth.Status(profile?.ActualStatus, matchedVariantCount, missingVariantCount, productVariantIds.Count);
@@ -3075,7 +3079,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                         profile is null ? 0 : listingVariants.Where(x => x.ProfileId == profile.Id && productVariantIds.Contains(x.VariantId) && x.ActualStatus == ImportedApprovalStates.Pending).Select(x => x.VariantId).Distinct().Count())
                     {
                         ResubmittedVariantCount = updating ? rejectedVariantCount : 0,
-                        UpdatingVariantCount = updating ? matchedVariantCount : 0
+                        UpdatingVariantCount = updating ? matchedVariantCount : 0,
+                        ReviewVariantCount = reviewVariantCount
                     };
                 })
                 .OrderBy(x => x.Platform, StringComparer.OrdinalIgnoreCase)

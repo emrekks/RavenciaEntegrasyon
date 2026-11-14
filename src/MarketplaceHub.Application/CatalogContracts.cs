@@ -120,6 +120,8 @@ public sealed record ProductPlatformStatusView(
     // matched ones the update goes out for ("Güncelleniyor", also in MatchedVariantCount).
     public int ResubmittedVariantCount { get; init; }
     public int UpdatingVariantCount { get; init; }
+    // Linked variants whose listing waits for a person (MANUAL_REVIEW): not in MatchedVariantCount ("İncelemede").
+    public int ReviewVariantCount { get; init; }
 }
 public sealed record ProductView(
     Guid Id,

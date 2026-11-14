@@ -192,14 +192,16 @@ export type ProductPlatformBreakdownCounts = {
   // again, not in rejected; and matched ones the update goes out for, also in matched.
   resubmitted?: number
   updating?: number
+  // Linked variants whose listing waits for a person (server ReviewVariantCount, MANUAL_REVIEW): not in matched.
+  review?: number
 }
 
 // The dot follows the same counts as the tooltip (owner, 15 Nov 2026: MZ056 read green while 6 variants waited for
 // Trendyol and the other cards were being updated). A variant still refused makes it red; a refused variant sent again
 // or a card being updated makes it "processing" (blue) until the marketplace answers; green stays for a family whose
 // every variant is live with nothing on its way.
-export function withProductPlatformWork(state: ProductPlatformDisplayState, counts: Pick<ProductPlatformBreakdownCounts, 'rejected' | 'resubmitted' | 'updating'>): ProductPlatformDisplayState {
-  if (counts.rejected > 0 && state !== 'missing' && state !== 'blocked') return 'error'
+export function withProductPlatformWork(state: ProductPlatformDisplayState, counts: Pick<ProductPlatformBreakdownCounts, 'rejected' | 'resubmitted' | 'updating' | 'review'>): ProductPlatformDisplayState {
+  if ((counts.rejected > 0 || (counts.review ?? 0) > 0) && state !== 'missing' && state !== 'blocked') return 'error'
   if (state === 'error' || state === 'missing' || state === 'blocked') return state
   if ((counts.resubmitted ?? 0) > 0 || (counts.updating ?? 0) > 0) return 'processing'
   return state
@@ -215,7 +217,8 @@ export function productPlatformBreakdownLines(counts: ProductPlatformBreakdownCo
   const closed = Math.max(0, counts.offSale - counts.offSaleStockZero)
   const unknownSale = unknownSaleCount(counts)
   const resubmitted = counts.resubmitted ?? 0
-  const passive = Math.max(0, counts.variantCount - counts.matched - counts.missing - counts.rejected - counts.pending - resubmitted)
+  const review = counts.review ?? 0
+  const passive = Math.max(0, counts.variantCount - counts.matched - counts.missing - counts.rejected - counts.pending - resubmitted - review)
   const reason = rejectionReason?.trim() ? ` · ${rejectionReason.trim()}` : ''
   const lines: Array<[number, string]> = [
     [active, 'Aktif'],
@@ -226,6 +229,7 @@ export function productPlatformBreakdownLines(counts: ProductPlatformBreakdownCo
     [resubmitted, 'Onaya Gönderildi (Yeniden)'],
     [counts.pending, 'Onay Bekliyor'],
     [counts.rejected, `Reddedildi${reason}`],
+    [review, 'İncelemede · Sonuç Kesinleşmedi'],
     [counts.missing, 'Bulunamadı'],
     [passive, 'Pasif · Eşleşme Yok']
   ]

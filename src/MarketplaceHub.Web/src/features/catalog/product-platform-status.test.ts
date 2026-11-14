@@ -204,5 +204,12 @@ describe('product platform mark while an update is on its way', () => {
     expect(withProductPlatformWork('partial', { rejected: 0, resubmitted: 6, updating: 0 })).toBe('processing')
     expect(withProductPlatformWork('processing', { rejected: 6, resubmitted: 0, updating: 24 })).toBe('error')
     expect(withProductPlatformWork('missing', { rejected: 0, resubmitted: 0, updating: 3 })).toBe('missing')
+    expect(withProductPlatformWork('partial', { rejected: 0, review: 6 })).toBe('error')
+  })
+
+  // Live 15 Nov 2026: Trendyol's approval check of MZ056 Mürdüm found another product id (MANUAL_REVIEW).
+  it('counts variants waiting for a person apart, never as active', () => {
+    expect(productPlatformBreakdownTip('Trendyol', { ...base, variantCount: 33, matched: 27, onSale: 27, review: 6 }))
+      .toBe('Trendyol · 27/33 varyant aktif\n6 İncelemede · Sonuç Kesinleşmedi')
   })
 })
