@@ -413,6 +413,83 @@ public sealed class ConnectionWebhookPausePostgreSqlTests(PostgreSqlTenantIsolat
         }
     }
 
+    // Audit 14 Nov 2026: Pasife Al saved DISABLED and then called the marketplace; a request cut off there (the tab closed
+    // before PUT /active had the server budget, a shutdown) left the webhook open with no retry record. The retry record
+    // is written before the call, so the hourly upkeep closes it.
+    [PostgreSqlFact]
+    public async Task PasifeAl_CutOffWhileClosingTheWebhook_LeavesTheCloseToTheHourlyUpkeep()
+    {
+        var context = await SeedWebhookPauseAsync("webhook-pause-cut", "TRENDYOL");
+        try
+        {
+            await using (var db = fixture.CreateContext())
+                Assert.Null((await context.Notifications(db).EnableAsync(context.TenantId, context.ConnectionId, "enable", CancellationToken.None)).Error);
+            context.Port.CancelDeactivate = true;
+            await using (var db = fixture.CreateContext())
+                await Assert.ThrowsAsync<OperationCanceledException>(async () =>
+                    await context.Connections(db).SetActiveAsync(context.TenantId, context.ConnectionId, await VersionAsync(db, context), false, CancellationToken.None));
+            await using (var db = fixture.CreateContext())
+            {
+                Assert.Equal("DISABLED", (await db.PlatformConnections.AsNoTracking().SingleAsync(x => x.Id == context.ConnectionId)).Status);
+                Assert.True(await db.OperationalIssues.AnyAsync(x => x.TenantId == context.TenantId && x.DedupeKey == InstantNotificationService.PausePendingKey(context.ConnectionId) && x.Status == IssueStatus.Open));
+            }
+            context.Port.CancelDeactivate = false;
+            await using (var db = fixture.CreateContext())
+            {
+                Assert.True(await context.Notifications(db).RetryConnectionWebhooksAsync(CancellationToken.None) >= 1);
+                Assert.Equal(["remote-webhook-1"], context.Port.Deactivated);
+                Assert.Equal(InstantNotificationService.PausedStatus, (await db.WebhookSubscriptions.AsNoTracking().SingleAsync(x => x.TenantId == context.TenantId)).Status);
+                Assert.False(await db.OperationalIssues.AnyAsync(x => x.TenantId == context.TenantId && x.DedupeKey.StartsWith("webhook-pause:") && x.Status != IssueStatus.Resolved));
+            }
+        }
+        finally
+        {
+            await DeleteWebhookPauseTenantAsync(context.TenantId);
+        }
+    }
+
+    // Audit 14 Nov 2026: an opening that ended unclear (no marketplace id) was taken as "nothing to close" by Pasife Al,
+    // and the hourly settlement then adopted it and left it open on the passive connection. Now Pasife Al keeps the close
+    // pending, and the settlement closes what it adopts for a passive connection.
+    [PostgreSqlFact]
+    public async Task PasifeAl_WithAnUnclearOpening_ClosesTheWebhookOnceTheHourlySettlementAdoptsIt()
+    {
+        var context = await SeedWebhookPauseAsync("webhook-pause-unclear", "TRENDYOL");
+        try
+        {
+            await using (var db = fixture.CreateContext())
+            {
+                Assert.Null((await context.Notifications(db).EnableAsync(context.TenantId, context.ConnectionId, "enable", CancellationToken.None)).Error);
+                // The same registration as one whose answer never came, made ten minutes ago (past the grace).
+                var opened = await db.WebhookSubscriptions.SingleAsync(x => x.TenantId == context.TenantId);
+                db.WebhookSubscriptions.Remove(opened);
+                db.WebhookSubscriptions.Add(new WebhookSubscription { Id = Guid.CreateVersion7(DateTimeOffset.UtcNow.AddMinutes(-10)), TenantId = opened.TenantId, ConnectionId = opened.ConnectionId, RouteTokenHash = opened.RouteTokenHash, AuthenticationType = opened.AuthenticationType, ProtectedVerifierSecret = opened.ProtectedVerifierSecret, ExternalSubscriptionId = null, Status = "ACTIVE", RoutePublicId = opened.RoutePublicId });
+                await db.SaveChangesAsync();
+            }
+            await using (var db = fixture.CreateContext())
+            {
+                var deactivated = await context.Connections(db).SetActiveAsync(context.TenantId, context.ConnectionId, await VersionAsync(db, context), false, CancellationToken.None);
+                Assert.Equal("DISABLED", deactivated.Value!.Status);
+                Assert.Contains("belirsiz", deactivated.Value.WebhookNotice);
+                Assert.True(await db.OperationalIssues.AnyAsync(x => x.TenantId == context.TenantId && x.DedupeKey == InstantNotificationService.PausePendingKey(context.ConnectionId) && x.Status == IssueStatus.Open));
+            }
+            // Trendyol lists the webhook: the hourly upkeep adopts it and, the connection being passive, sets it passive.
+            context.Port.Listed.Add(new RemoteWebhook("remote-webhook-1", context.Port.LastUrl, "ACTIVE", null));
+            await using (var db = fixture.CreateContext())
+            {
+                await context.Notifications(db).RetryConnectionWebhooksAsync(CancellationToken.None);
+                Assert.Equal(["remote-webhook-1"], context.Port.Deactivated);
+                var row = await db.WebhookSubscriptions.AsNoTracking().SingleAsync(x => x.TenantId == context.TenantId);
+                Assert.Equal((InstantNotificationService.PausedStatus, "remote-webhook-1"), (row.Status, row.ExternalSubscriptionId));
+                Assert.False(await db.OperationalIssues.AnyAsync(x => x.TenantId == context.TenantId && x.DedupeKey.StartsWith("webhook-pause:") && x.Status != IssueStatus.Resolved));
+            }
+        }
+        finally
+        {
+            await DeleteWebhookPauseTenantAsync(context.TenantId);
+        }
+    }
+
     private sealed record WebhookPauseContext(Guid TenantId, Guid ConnectionId, SwitchableWebhookPort Port, Func<AppDbContext, InstantNotificationService> Notifications, Func<AppDbContext, MarketplaceConnectionService> Connections);
 
     private async Task<WebhookPauseContext> SeedWebhookPauseAsync(string code, string platformCode)
@@ -468,12 +545,19 @@ public sealed class ConnectionWebhookPausePostgreSqlTests(PostgreSqlTenantIsolat
         public bool FailCreate { get; set; }
         private static AdapterError Refused => new(AdapterErrorClass.TransientNetwork, "TEST_REFUSED", "Pazaryeri yanıt vermedi.", 503, null, null);
 
+        // What the marketplace lists (empty by default); the address of the last registration made.
+        public List<RemoteWebhook> Listed { get; } = [];
+        public string? LastUrl { get; private set; }
+        // The close is cut off midway (a shutdown or the request budget's hard stop).
+        public bool CancelDeactivate { get; set; }
+
         public Task<AdapterResult<IReadOnlyList<RemoteWebhook>>> ListWebhooksAsync(AdapterContext context, CancellationToken cancellationToken) =>
-            Task.FromResult(AdapterResult<IReadOnlyList<RemoteWebhook>>.Success([]));
+            Task.FromResult(AdapterResult<IReadOnlyList<RemoteWebhook>>.Success(Listed.ToList()));
 
         public Task<AdapterResult<string>> CreateWebhookAsync(AdapterContext context, string url, string username, string password, CancellationToken cancellationToken)
         {
             if (FailCreate) return Task.FromResult(AdapterResult<string>.Failure(Refused));
+            LastUrl = url;
             Created++;
             return Task.FromResult(AdapterResult<string>.Success($"remote-webhook-{Created}"));
         }
@@ -511,6 +595,7 @@ public sealed class ConnectionWebhookPausePostgreSqlTests(PostgreSqlTenantIsolat
 
         public Task<AdapterResult<bool>> DeactivateWebhookAsync(AdapterContext context, string externalId, CancellationToken cancellationToken)
         {
+            if (CancelDeactivate) throw new OperationCanceledException("cut off");
             if (FailDelete) return Task.FromResult(AdapterResult<bool>.Failure(Refused));
             Deactivated.Add(externalId);
             return Task.FromResult(AdapterResult<bool>.Success(true));

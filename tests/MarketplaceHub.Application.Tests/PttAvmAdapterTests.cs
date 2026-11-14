@@ -433,7 +433,7 @@ public sealed class PttAvmAdapterTests
 
     // Order Control V2 as published (two orders of the sample, the first cut to two of its lines), plus an open
     // order with one line waiting for cargo and one already sent.
-    private const string OrderListAnswer = """
+    internal const string OrderListAnswer = """
         <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
            <s:Body>
               <SiparisKontrolListesiV2Response xmlns="http://tempuri.org/">

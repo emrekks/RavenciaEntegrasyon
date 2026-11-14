@@ -188,7 +188,8 @@ public sealed partial class PazaramaHttpClient(
                 if (EnvelopeError(document.RootElement) is { } refused)
                 {
                     document.Dispose();
-                    logger.LogWarning("Pazarama isteği reddetti. ConnectionId: {ConnectionId}, Path: {Path}, Code: {Code}, Message: {Message}", account.Connection.Id, request.RequestUri!.AbsolutePath, refused.Code, refused.SafeMessage);
+                    // "Listelenecek veri bulunamadı" is Pazarama's empty list (the brand list's end page): not a warning.
+                    logger.Log(RefusalLogLevel(refused), "Pazarama isteği reddetti. ConnectionId: {ConnectionId}, Path: {Path}, Code: {Code}, Message: {Message}", account.Connection.Id, request.RequestUri!.AbsolutePath, refused.Code, refused.SafeMessage);
                     return AdapterResult<JsonDocument>.Failure(refused, rate);
                 }
                 return AdapterResult<JsonDocument>.Success(document, rate);
@@ -365,6 +366,11 @@ public sealed partial class PazaramaHttpClient(
 
     // The shared test (MarketplaceErrorRules); Pazarama keeps its own wording for the gateway block above.
     internal static bool LooksLikeHtml(string body) => MarketplaceErrorRules.LooksLikeHtml(body);
+
+    // An empty list answered as a refusal (PazaramaReferenceMapper.IsNoDataRefusal) is logged at Debug; any other refusal
+    // stays a warning.
+    internal static LogLevel RefusalLogLevel(AdapterError refused) =>
+        PazaramaReferenceMapper.IsNoDataRefusal(refused) ? LogLevel.Debug : LogLevel.Warning;
 
     // A 200 answer can still say success=false; userMessage is meant for the seller.
     internal static AdapterError? EnvelopeError(JsonElement root)

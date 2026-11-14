@@ -53,7 +53,7 @@ public sealed partial class MarketplaceJobProcessor
         return accepted;
     }
 
-    private async Task UpsertReturn(Guid tenantId, Guid connectionId, RemoteReturnClaim remote, CancellationToken cancellationToken)
+    internal async Task UpsertReturn(Guid tenantId, Guid connectionId, RemoteReturnClaim remote, CancellationToken cancellationToken)
     {
         if (!readRecordingEnabled) { await UpsertReturnCore(tenantId, connectionId, remote, cancellationToken); return; }
         readReturnSkipReason = null;

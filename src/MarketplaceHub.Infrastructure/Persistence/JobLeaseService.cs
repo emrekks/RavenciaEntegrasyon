@@ -78,7 +78,11 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
                       WHERE panel_reset."TenantId" = candidate."TenantId"
                         AND panel_reset."JobType" = {PanelJobTypes.FactoryReset}
                         AND panel_reset."Status" IN ('PENDING', 'LEASED', 'RETRY_SCHEDULED')
-                        AND panel_reset."Id" <> candidate."Id")
+                        AND panel_reset."Id" <> candidate."Id"
+                        -- Two open resets (queued before the request lock) do not block each other for ever: the
+                        -- oldest one runs, the later one waits for it.
+                        AND (candidate."JobType" <> {PanelJobTypes.FactoryReset}
+                          OR (panel_reset."CreatedAt", panel_reset."Id") < (candidate."CreatedAt", candidate."Id")))
                 ORDER BY candidate."Priority" ASC, candidate."AvailableAt" ASC, candidate."CreatedAt" ASC
                 LIMIT {CandidateLimit}) tenant_pick)
             SELECT job.* FROM integration.jobs job

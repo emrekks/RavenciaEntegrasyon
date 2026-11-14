@@ -4261,11 +4261,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var saved = await db.SyncCursors.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == RejectedOrderRereadPolicy.CursorResource, cancellationToken);
         var entries = RejectedOrderRereadPolicy.Note(RejectedOrderRereadPolicy.Parse(saved?.OpaqueCursor), rereadOrderIds, now, out var dropped);
         rereadOrderIds.Clear();
+        // Orders an open refusal notice names and no entry holds (a refusal from before every marketplace re-read its
+        // refused new orders, or one whose tries ran out a week ago) are read again now.
+        var seeded = await RefusedOrdersToRereadAsync(tenantId, connectionId, entries.Select(entry => entry.OrderId).ToHashSet(StringComparer.Ordinal), now, cancellationToken);
+        if (seeded.Count > 0) entries = RejectedOrderRereadPolicy.Seed(entries, seeded, now);
         if (dropped.Count > 0)
             await RecordIssue(tenantId, $"order-reread-full:{connectionId}", RejectedOrderRereadPolicy.OverflowIssueCode, RejectedOrderRereadPolicy.OverflowSummary(dropped), cancellationToken);
         if (saved is null && entries.Count == 0)
         {
-            if (dropped.Count > 0) await db.SaveChangesAsync(cancellationToken);
+            if (dropped.Count > 0 || db.ChangeTracker.HasChanges()) await db.SaveChangesAsync(cancellationToken);
             return;
         }
         var cursor = saved ?? await Cursor(tenantId, connectionId, RejectedOrderRereadPolicy.CursorResource, cancellationToken);
@@ -4291,7 +4295,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var serialized = RejectedOrderRereadPolicy.Serialize(entries);
         if (serialized == cursor.OpaqueCursor && db.Entry(cursor).State != EntityState.Added)
         {
-            if (dropped.Count > 0) await db.SaveChangesAsync(cancellationToken);
+            if (dropped.Count > 0 || db.ChangeTracker.HasChanges()) await db.SaveChangesAsync(cancellationToken);
             return;
         }
         cursor.OpaqueCursor = serialized;
@@ -10605,7 +10609,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var keptWithUnreadableLines = remote.Packages.Any(package => package.UnreadableLineCount > 0);
         if ((!isTrendyol && remote.Lines.Count == 0 && !keptWithUnreadableLines) || remote.Packages.Count == 0 && !isHepsiburada)
         {
-            if (isTrendyol) rereadOrderIds.Add(remote.ExternalOrderId);
+            await NoteRefusedOrderAsync(tenantId, connectionId, remote, isTrendyol, order is null, cancellationToken);
             await RecordIssue(tenantId, $"order-contract:{connectionId}:{remote.ExternalOrderId}:{remote.LastModifiedAt.ToUnixTimeMilliseconds()}", "ORDER_CONTRACT_INVALID", "Pazar yeri siparişinde satır veya paket verisi eksikti; eksik sipariş projeksiyonu uygulanmadı.", cancellationToken);
             if (saveChanges) await db.SaveChangesAsync(cancellationToken);
             return false;
@@ -10615,7 +10619,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             remoteLineQuantities = new Dictionary<string, decimal>(StringComparer.Ordinal);
             if (remote.Lines.Count > 0 && !PackageIngestionSafety.TryGetOrderedQuantities(remote.Lines, out remoteLineQuantities))
             {
-                if (isTrendyol) rereadOrderIds.Add(remote.ExternalOrderId);
+                await NoteRefusedOrderAsync(tenantId, connectionId, remote, isTrendyol, order is null, cancellationToken);
                 await RecordIssue(tenantId, $"order-lines:{connectionId}:{remote.ExternalOrderId}:{remote.LastModifiedAt.ToUnixTimeMilliseconds()}", "ORDER_LINE_QUANTITY_INVARIANT_REJECTED", "Sipariş satır kimliği veya miktarı geçersizdi; olayın hiçbir parçası uygulanmadı.", cancellationToken);
                 if (saveChanges) await db.SaveChangesAsync(cancellationToken);
                 return false;
@@ -10642,7 +10646,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var allocatedLineIds = detailedPackages.SelectMany(x => x.Allocations).Select(x => x.ExternalLineId).ToHashSet(StringComparer.Ordinal);
         if (remoteLineQuantities.Count > 0 && detailedPackages.Length > 0 && remoteLineQuantities.Keys.Any(lineId => !allocatedLineIds.Contains(lineId)))
         {
-            if (isTrendyol) rereadOrderIds.Add(remote.ExternalOrderId);
+            await NoteRefusedOrderAsync(tenantId, connectionId, remote, isTrendyol, order is null, cancellationToken);
             await RecordIssue(tenantId, $"order-coverage:{connectionId}:{remote.ExternalOrderId}:{remote.LastModifiedAt.ToUnixTimeMilliseconds()}", "ORDER_LINE_COVERAGE_INVALID", "Pazar yeri cevabındaki sipariş satırlarının tamamı paket tahsisinde yer almıyordu; eksik veri uygulanmadı.", cancellationToken);
             if (saveChanges) await db.SaveChangesAsync(cancellationToken);
             return false;
@@ -10661,7 +10665,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var rejectedEventId = remote.Packages.Count > 0
                 ? PackageIngestionSafety.EventId(remote.Packages[0].ExternalPackageId, remote.Packages[0].OccurredAt)
                 : remote.ExternalOrderId;
-            if (isTrendyol) rereadOrderIds.Add(remote.ExternalOrderId);
+            await NoteRefusedOrderAsync(tenantId, connectionId, remote, isTrendyol, order is null, cancellationToken);
             await RecordIssue(tenantId, $"package-quantity:{connectionId}:{rejectedEventId}", "PACKAGE_QUANTITY_INVARIANT_REJECTED", "Paket miktarları sipariş satırı bütünlüğünü sağlamadı; olayın hiçbir parçası uygulanmadı.", cancellationToken);
             if (saveChanges) await db.SaveChangesAsync(cancellationToken);
             return false;
@@ -10685,6 +10689,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // An order never changes storefront; the first read that names it is kept for later targeted reads.
         if (order.StoreFrontCode is null && !string.IsNullOrWhiteSpace(remote.StoreFrontCode)) order.StoreFrontCode = remote.StoreFrontCode;
         var isNewOrder = db.Entry(order).State == EntityState.Added;
+        if (isNewOrder) await ResolveOrderRefusalsAsync(tenantId, connectionId, remote, cancellationToken);
         var previousAmounts = (order.GrossAmount, order.DiscountAmount, order.NetAmount);
         if (orderIsFresh)
         {
@@ -10848,7 +10853,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             {
                 if (!PackageIngestionSafety.TryNormalizeAll(orderedQuantities, packageAllocations, target, out safeAllocations))
                 {
-                    if (isTrendyol) rereadOrderIds.Add(remote.ExternalOrderId);
+                    if (isTrendyol || isNewOrder) rereadOrderIds.Add(remote.ExternalOrderId);
                     await RecordIssue(tenantId, $"package-quantity:{connectionId}:{eventId}", "PACKAGE_QUANTITY_INVARIANT_REJECTED", "Package miktarları sipariş satırı bütünlüğünü sağlamadı; olayın hiçbir parçası uygulanmadı.", cancellationToken);
                     continue;
                 }
@@ -13700,6 +13705,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         else if (storedStatusUnknown)
             await ResolveIssue(tenantId, unknownStatusIssueKey, cancellationToken);
         var lineStatuses = new Dictionary<Guid, string?>();
+        // The claim's open "line not linked" notices, read once per claim.
+        var unlinkedPrefix = ReturnLineUnlinkedIssueKey(connectionId, claim.ExternalClaimId, "");
+        var openUnlinkedIssues = (await db.OperationalIssues.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.Status != IssueStatus.Resolved && x.DedupeKey.StartsWith(unlinkedPrefix))
+                .Select(x => x.DedupeKey).ToListAsync(cancellationToken))
+            .ToHashSet(StringComparer.Ordinal);
         foreach (var remoteLine in remoteLines)
         {
             var candidateIds = new[] { remoteLine.ExternalOrderLineId }
@@ -13714,14 +13725,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 if (orderLine is not null) break;
             }
             // A claimed line the order does not have is reported instead of dropped without a trace.
+            var unlinkedIssueKey = ReturnLineUnlinkedIssueKey(connectionId, claim.ExternalClaimId, remoteLine.ExternalLineId);
             if (orderLine is null)
             {
-                await RecordIssue(tenantId, $"return-line-unlinked:{connectionId}:{claim.ExternalClaimId}:{remoteLine.ExternalLineId}", "RETURN_LINE_ORDER_LINE_NOT_FOUND",
+                await RecordIssue(tenantId, unlinkedIssueKey, "RETURN_LINE_ORDER_LINE_NOT_FOUND",
                     candidateIds.Length == 0
                         ? $"{claim.ExternalClaimId} numaralı iadenin bir kaleminin siparişteki hangi kaleme ait olduğu bildirilmedi (doğrulanmamış iade kalemi); iade bu kalem olmadan kaydedildi."
                         : $"{claim.ExternalClaimId} numaralı iadenin bir kalemi siparişteki kalemlerle eşleşmedi; iade bu kalem olmadan kaydedildi.", cancellationToken);
                 continue;
             }
+            // The line now matches an order line (the order was read after the claim): the earlier "not linked" notice
+            // no longer holds (audit 14 Nov 2026: five stayed open after their lines were linked).
+            if (openUnlinkedIssues.Contains(unlinkedIssueKey)) await ResolveIssue(tenantId, unlinkedIssueKey, cancellationToken);
             var line = await db.ReturnLines.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ClaimId == claim.Id && x.ExternalLineId == remoteLine.ExternalLineId, cancellationToken);
             // A line whose returned quantity the marketplace did not say is not stored with a guessed quantity: an issue
             // is recorded, and a quantity read earlier is kept (report item 10).
@@ -13751,6 +13766,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 now, cancellationToken))
             await db.SaveChangesAsync(cancellationToken);
     }
+
+    internal static string ReturnLineUnlinkedIssueKey(Guid connectionId, string externalClaimId, string externalLineId) =>
+        $"return-line-unlinked:{connectionId}:{externalClaimId}:{externalLineId}";
 
     // A read whose marketplace change time is older than the one stored is stale. A read without a change time (or a
     // claim stored without one) cannot be called stale: unknown stays unknown, so it is taken as fresh.

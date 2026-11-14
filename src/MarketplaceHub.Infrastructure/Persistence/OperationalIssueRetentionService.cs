@@ -11,12 +11,16 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // pass resolves today is therefore kept for the retention period instead of being deleted in the same pass.
 public sealed class OperationalIssueRetentionService(AppDbContext db, TimeProvider timeProvider)
 {
+    // An order the import refused stays on screen until it is imported (owner, 14 Nov 2026): its notice is not stale
+    // however long it waits; the import resolves it.
+    public const string OrderNotImportedCode = "ORDER_NOT_IMPORTED";
+
     public async Task<int> ResolveStaleAsync(TimeSpan staleAfter, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
         var cutoff = now - staleAfter;
         return await db.OperationalIssues
-            .Where(issue => issue.Status == IssueStatus.Open && issue.LastSeenAt < cutoff)
+            .Where(issue => issue.Status == IssueStatus.Open && issue.LastSeenAt < cutoff && issue.Code != OrderNotImportedCode)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(issue => issue.Status, IssueStatus.Resolved)
                 .SetProperty(issue => issue.ResolvedAt, now), cancellationToken);
@@ -65,6 +69,23 @@ public sealed class OperationalIssueRetentionService(AppDbContext db, TimeProvid
         }
         if (resolved > 0) await db.SaveChangesAsync(cancellationToken);
         return resolved;
+    }
+
+    // A return line reported as not matching any order line (return-line-unlinked:{connection}:{claim}:{line}) whose
+    // line the importer has linked since (the order was read after the claim). A claim that is not read again would keep
+    // the notice open for ever (audit 14 Nov 2026: five such notices, every line linked).
+    public async Task<int> ResolveLinkedReturnLineIssuesAsync(CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        return await db.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE ops.operational_issues issue SET "Status" = {IssueStatus.Resolved.ToString()}, "ResolvedAt" = {now}
+            WHERE issue."Code" = 'RETURN_LINE_ORDER_LINE_NOT_FOUND' AND issue."Status" <> {IssueStatus.Resolved.ToString()} AND issue."TenantId" IS NOT NULL
+              AND EXISTS (
+                SELECT 1 FROM sales.return_claims claim
+                JOIN sales.return_lines line ON line."TenantId" = claim."TenantId" AND line."ClaimId" = claim."Id"
+                WHERE claim."TenantId" = issue."TenantId"
+                  AND issue."DedupeKey" = 'return-line-unlinked:' || claim."ConnectionId"::text || ':' || claim."ExternalClaimId" || ':' || line."ExternalLineId")
+            """, cancellationToken);
     }
 
     public async Task<int> DeleteResolvedAsync(TimeSpan retention, CancellationToken cancellationToken)

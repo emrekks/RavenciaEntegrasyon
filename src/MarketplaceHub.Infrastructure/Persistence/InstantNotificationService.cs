@@ -301,6 +301,15 @@ public sealed class InstantNotificationService(
         if (connection is null) return null;
         await ResolvePendingAsync(tenantId, ResumePendingKey(connectionId), cancellationToken);
         var subscription = await ManagedSubscriptionAsync(tenantId, connectionId, cancellationToken, tracked: true);
+        // An opening that ended unclear (no marketplace id yet) may still be a live webhook at the marketplace: it is not
+        // taken as "nothing to close". The record stays pending; the hourly upkeep settles the registration against the
+        // marketplace's list and closes what it adopts (audit 14 Nov 2026).
+        if (subscription is null && connection.PlatformCode is "TRENDYOL" or "SHOPIFY" && await HasUnclearRegistrationAsync(tenantId, connectionId, cancellationToken))
+        {
+            var unclearNote = $"{PlatformName(connection.PlatformCode)} webhook'unun açılışı belirsiz kaldı (pazaryerinin cevabı gelmedi). Panel saatte bir pazaryerindeki kaydı kontrol edip kapatır; bağlantı pasifken gelen bildirimler işlenmez.";
+            await NotePendingAsync(tenantId, PausePendingKey(connectionId), "WEBHOOK_PAUSE_PENDING", $"{connection.DisplayName}: {unclearNote}", cancellationToken);
+            return unclearNote;
+        }
         if (subscription is null || connection.PlatformCode is not ("TRENDYOL" or "SHOPIFY" or "HEPSIBURADA"))
         {
             await ResolvePendingAsync(tenantId, PausePendingKey(connectionId), cancellationToken);
@@ -308,6 +317,11 @@ public sealed class InstantNotificationService(
         }
         if (subscription.ExternalSubscriptionId == ManualRegistration) return HepsiburadaPauseNote;
         var platform = PlatformName(connection.PlatformCode);
+        // Written before the marketplace is called (InlineExecutionBudget rule): a request cut off midway (a shutdown, the
+        // budget's hard stop, a crash) leaves the close pending for the hourly upkeep instead of a webhook left open on a
+        // passive connection with no trace. A close that goes through resolves it below.
+        await NotePendingAsync(tenantId, PausePendingKey(connectionId), "WEBHOOK_PAUSE_PENDING",
+            $"{connection.DisplayName}: {platform} webhook'u pasife alınırken kapatılıyor; yarıda kalırsa panel saatte bir yeniden dener.", cancellationToken);
         // Owner, 13 Nov 2026: Trendyol's webhook is set passive (its deactivate service), keeping its id and address for
         // the activation; Shopify has no passive state, so its subscriptions are removed and made again on activation.
         var trendyol = connection.PlatformCode == "TRENDYOL";
@@ -351,6 +365,11 @@ public sealed class InstantNotificationService(
             .OrderByDescending(x => x.Id)
             .FirstOrDefaultAsync(cancellationToken);
         var platform = PlatformName(connection.PlatformCode);
+        // A closed webhook to open again: pending before the marketplace is called, so an opening cut off midway is retried
+        // hourly (FinishResumeAsync resolves it, ResumeFailedAsync keeps it with the reason).
+        if (paused is not null)
+            await NotePendingAsync(tenantId, ResumePendingKey(connectionId), "WEBHOOK_RESUME_PENDING",
+                $"{connection.DisplayName}: {platform} webhook'u bağlantı etkinleşirken yeniden açılıyor; yarıda kalırsa panel saatte bir yeniden dener.", cancellationToken);
         string? failure;
         if (paused is null || await ManagedSubscriptionAsync(tenantId, connectionId, cancellationToken) is not null)
         {
@@ -543,7 +562,15 @@ public sealed class InstantNotificationService(
             try
             {
                 db.ChangeTracker.Clear();
-                done += await SettlePendingRegistrationsAsync(connection, PendingRegistrationGrace, $"webhook-upkeep:{connection.Id:N}", cancellationToken);
+                var settled = await SettlePendingRegistrationsAsync(connection, PendingRegistrationGrace, $"webhook-upkeep:{connection.Id:N}", cancellationToken);
+                done += settled;
+                // A registration adopted for a passive connection is not left open there: it is closed as Pasife Al does
+                // (a failure keeps the pause pending for the next hour).
+                if (settled > 0 && connection.Status is not ("ACTIVE" or "VERIFIED"))
+                {
+                    db.ChangeTracker.Clear();
+                    await PauseForInactiveConnectionAsync(connection.TenantId, connection.Id, $"webhook-upkeep:{connection.Id:N}", cancellationToken);
+                }
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
@@ -552,6 +579,9 @@ public sealed class InstantNotificationService(
         }
         return done;
     }
+
+    private Task<bool> HasUnclearRegistrationAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
+        db.WebhookSubscriptions.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "ACTIVE" && x.ExternalSubscriptionId == null, cancellationToken);
 
     // An opening younger than this may still be waiting for the marketplace's answer; the hourly upkeep leaves it alone.
     internal static readonly TimeSpan PendingRegistrationGrace = TimeSpan.FromMinutes(5);
