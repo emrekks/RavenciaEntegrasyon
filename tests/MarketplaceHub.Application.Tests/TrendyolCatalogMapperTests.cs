@@ -224,6 +224,29 @@ public sealed class TrendyolCatalogMapperTests
     }
 
     [Fact]
+    public void UnapprovedList_KeepsWaitingAndUnmarkedRows_DropsOnlyRejected()
+    {
+        const string json = """
+        {
+          "content": [
+            { "productMainId": "M-1", "status": "pendingApproval", "title": "A", "barcode": "B1", "stockCode": "S1" },
+            { "productMainId": "M-2", "status": "rejected", "title": "B", "barcode": "B2", "stockCode": "S2" },
+            { "productMainId": "M-3", "title": "C", "barcode": "B3", "stockCode": "S3" }
+          ],
+          "page": 0, "size": 100, "totalPages": 1, "totalElements": 3
+        }
+        """;
+
+        var result = TrendyolJsonMapper.PendingApprovalCatalogProducts(json);
+
+        Assert.Equal(["M-1", "M-3"], result.Items.Select(item => item.ExternalProductId).ToArray());
+        Assert.All(result.Items, item => Assert.True(item.IsPendingApproval));
+        Assert.False(result.HasMore);
+        Assert.Equal("(none)=1, pendingApproval=1, rejected=1", TrendyolJsonMapper.UnapprovedStatusCounts(json));
+        Assert.Equal("none", TrendyolJsonMapper.UnapprovedStatusCounts("""{ "content": [], "totalElements": 0 }"""));
+    }
+
+    [Fact]
     public void ReturnClaim_ReadsScalarCargoProvider()
     {
         const string json = """
