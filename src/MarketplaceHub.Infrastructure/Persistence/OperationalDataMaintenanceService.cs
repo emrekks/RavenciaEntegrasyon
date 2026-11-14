@@ -33,6 +33,7 @@ public sealed partial class OperationalDataMaintenanceService(AppDbContext db, T
         await DeleteInvoicesAsync(tenantId, connectionId, cancellationToken);
         await DeleteOrdersAsync(tenantId, connectionId, cancellationToken);
         await DeleteProductsAsync(tenantId, connectionId, cancellationToken);
+        await ProductModelLinks.ReconcileTenantAsync(db, tenantId, timeProvider.GetUtcNow(), cancellationToken);
         await DeleteConnectionArtifactsAsync(tenantId, connectionId, cancellationToken);
         await ArchivePurgedFilesAsync(tenantId, cancellationToken);
         connection.Status = "DELETED";

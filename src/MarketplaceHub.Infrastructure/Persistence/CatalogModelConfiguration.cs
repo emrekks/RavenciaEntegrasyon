@@ -25,6 +25,26 @@ internal static class CatalogModelConfiguration
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<Category>().WithMany().HasForeignKey(x => new { x.TenantId, x.CategoryId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<Brand>().WithMany().HasForeignKey(x => new { x.TenantId, x.BrandId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+            // A deleted model only unlinks its cards (they fall back to the model-code rule). The key is the model id alone
+            // so that SET NULL clears FamilyId and not the card's tenant; ProductModelLinks always narrows by tenant.
+            entity.HasOne<ProductModel>().WithMany().HasForeignKey(x => x.FamilyId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasIndex(x => x.FamilyId);
+        });
+        builder.Entity<ProductModel>(entity =>
+        {
+            entity.ToTable("product_models", "catalog"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id });
+            entity.Property(x => x.ModelCode).HasMaxLength(160); entity.Property(x => x.ModelCodeKey).HasMaxLength(160);
+            entity.Property(x => x.Title).HasMaxLength(320); entity.Property(x => x.TitleColor).HasMaxLength(120);
+            entity.Property(x => x.VatRate).HasPrecision(7, 4); entity.Property(x => x.VatInclusion).HasMaxLength(16);
+            entity.Property(x => x.Version).IsConcurrencyToken();
+            // One model per brand and model-code key; cards without a brand are one brand too (NULLS NOT DISTINCT).
+            entity.HasIndex(x => new { x.TenantId, x.BrandId, x.ModelCodeKey }).IsUnique().AreNullsDistinct(false);
+            entity.HasIndex(x => new { x.TenantId, x.ModelCodeKey });
+            // A model is derived from its cards: when its tenant, brand or category goes, it goes too and its cards fall back to
+            // the model-code rule (products.FamilyId SET NULL) until ProductModelLinks links them again.
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Brand>().WithMany().HasForeignKey(x => new { x.TenantId, x.BrandId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Category>().WithMany().HasForeignKey(x => new { x.TenantId, x.CategoryId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
         });
         builder.Entity<Category>(entity =>
         {

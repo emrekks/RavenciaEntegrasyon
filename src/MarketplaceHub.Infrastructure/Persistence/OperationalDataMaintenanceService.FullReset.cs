@@ -150,6 +150,7 @@ public sealed partial class OperationalDataMaintenanceService
         await DeleteInvoicesAsync(tenantId, connectionId, cancellationToken);
         await DeleteOrdersAsync(tenantId, connectionId, cancellationToken, carryStock: true);
         await DeleteProductsAsync(tenantId, connectionId, cancellationToken, importedOnly: true);
+        await ProductModelLinks.ReconcileTenantAsync(db, tenantId, timeProvider.GetUtcNow(), cancellationToken);
         await db.Database.ExecuteSqlInterpolatedAsync($$"""
             DELETE FROM sales.marketplace_questions WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
             DELETE FROM integration.marketplace_question_sync_states WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
