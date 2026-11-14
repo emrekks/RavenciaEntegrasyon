@@ -100,7 +100,7 @@ public sealed class ImportedListingProfilePostgreSqlTests(PostgreSqlTenantIsolat
         await using (var db = fixture.CreateContext())
             await ImportedApprovalStates.ApplyAsync(db, seeded.Tenant.Id, seeded.Connection.Id, [Snapshot(true, "REJECTED", null, "RYP010M")], CancellationToken.None);
         await using (var db = fixture.CreateContext())
-            Assert.Equal(("REJECTED", (string?)null), await db.ChannelListingProfiles.AsNoTracking().Where(x => x.TenantId == seeded.Tenant.Id).Select(x => ValueTuple.Create(x.ActualStatus, x.LastRejectionCode)).SingleAsync());
+            Assert.Equal(("REJECTED", (string?)null), await ProfileState(db, seeded.Tenant.Id));
         await using (var db = fixture.CreateContext())
             await ImportedApprovalStates.ApplyAsync(db, seeded.Tenant.Id, seeded.Connection.Id, [Snapshot(true, "PENDING_APPROVAL", null, "RYP010M")], CancellationToken.None);
         await using (var db = fixture.CreateContext())
@@ -117,9 +117,15 @@ public sealed class ImportedListingProfilePostgreSqlTests(PostgreSqlTenantIsolat
             await ImportedApprovalStates.ApplyAsync(db, seeded.Tenant.Id, seeded.Connection.Id, [Snapshot(false, null, null, "1500000001")], CancellationToken.None);
         await using (var db = fixture.CreateContext())
         {
-            Assert.Equal(("UNKNOWN", (string?)null), await db.ChannelListingProfiles.AsNoTracking().Where(x => x.TenantId == seeded.Tenant.Id).Select(x => ValueTuple.Create(x.ActualStatus, x.LastRejectionCode)).SingleAsync());
+            Assert.Equal(("UNKNOWN", (string?)null), await ProfileState(db, seeded.Tenant.Id));
             Assert.Equal("UNKNOWN", await db.MarketplaceListingStates.AsNoTracking().Where(x => x.TenantId == seeded.Tenant.Id).Select(x => x.ActualStatus).SingleAsync());
         }
+    }
+
+    private static async Task<(string Status, string? Reason)> ProfileState(AppDbContext db, Guid tenantId)
+    {
+        var profile = await db.ChannelListingProfiles.AsNoTracking().SingleAsync(x => x.TenantId == tenantId);
+        return (profile.ActualStatus, profile.LastRejectionCode);
     }
 
     [PostgreSqlFact]
