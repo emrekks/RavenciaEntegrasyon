@@ -3015,7 +3015,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           if (!(reason instanceof ApiRequestError) || reason.status !== 412) throw reason
           const latestProduct = await hubApi<Product>(`/products/${editProduct.id}`)
           if (!sameProductSnapshotIgnoringVersion(editProduct, latestProduct)) {
-            throw new Error(`Ürün bu form açıkken başka bir işlemle değişti (güncel sürüm v${latestProduct.version}). Diğer değişiklikleri korumak için sayfayı yenileyip tekrar deneyin.`)
+            throw new Error(`Ürün siz düzenlerken panelde başka bir işlemle güncellendi, bu yüzden değişiklikleriniz kaydedilmedi. Sayfayı yenileyip tekrar deneyin.`)
           }
           try {
             product = await updateProductAtVersion(latestProduct.version)
@@ -3738,7 +3738,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
 
   return <EditorShell publishOnly={publishOnly} className={`product-add-page${editProductId ? ' product-edit-page' : ''}${editorHydrating ? ' is-hydrating' : ''}`} title={editProductId ? productToEdit.data?.title || 'Ürün Düzenle' : 'Yeni Ürün Ekle'} eyebrow={editProductId ? 'Ürün Düzenle' : 'Katalog'} meta={editProductId && productToEdit.data?.modelCode ? <p className="product-page-heading-meta">Model Kodu: <b>{productToEdit.data.modelCode}</b></p> : editProductId && productToEdit.isPending ? <p className="product-page-heading-meta" aria-hidden="true">Model Kodu: <b>…</b></p> : undefined}>
     {!publishOnly && <UnsavedChangesGuard when={editorDirty} allowNavigationRef={leavingAfterSave} />}
-    {staleProductVersion != null && <div className="product-stale-banner" role="alert"><span><strong>Ürün başka bir işlemle güncellendi</strong> (güncel sürüm v{staleProductVersion}). Kaydedilmemiş değişiklikleriniz korunuyor; kaydederseniz sunucu sürüm çakışmasını bildirir.</span><button type="button" className="secondary" onClick={reloadEditedProduct}>Güncel Ürünü Yükle</button></div>}
+    {staleProductVersion != null && <div className="product-stale-banner" role="alert"><span><strong>Ürün başka bir işlemle güncellendi.</strong> Kaydedilmemiş değişiklikleriniz korunuyor; kaydederseniz sunucu sürüm çakışmasını bildirir.</span><button type="button" className="secondary" onClick={reloadEditedProduct}>Güncel Ürünü Yükle</button></div>}
     {quickEditOpen && <Suspense fallback={null}><ProductQuickEditModal mode="both" onClose={() => setQuickEditOpen(false)} draft={{ title: form.title, modelCode: form.modelCode, rows: variantRows, onApply: changes => {
       // Only the table changes: the rows are saved (and sent on) with the page's Kaydet, as a hand-typed cell would be.
       const byKey = new Map(changes.map(change => [change.key, change]))
