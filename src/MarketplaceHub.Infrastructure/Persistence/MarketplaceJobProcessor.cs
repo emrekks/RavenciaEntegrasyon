@@ -6511,7 +6511,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 .Where(x => x.TenantId == tenantId && x.JobId == importJobId)
                 .ExecuteDeleteAsync(cancellationToken);
             if (jobId is { } finishedJob)
-                await UpdateProductSyncProgressAsync(tenantId, finishedJob, importSession.ReceivedProducts, importSession.TotalProducts, 100, $"{importSession.ReceivedProducts:N0} · Aktarımı tamamlandı", cancellationToken, keepExistingTotal: true);
+                await UpdateProductSyncProgressAsync(tenantId, finishedJob, importSession.ReceivedProducts, importSession.TotalProducts, 100, "Aktarımı tamamlandı", cancellationToken, keepExistingTotal: true);
             return true;
         }
         var previousProgress = jobId is { } progressJob
@@ -6591,7 +6591,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     totalProducts is { } knownTotal && knownTotal > 0
                         ? Math.Clamp((int)Math.Floor(receivedProducts * 100d / knownTotal), 0, 99)
                         : null,
-                    $"{scanLabel}{lifecycleLabel} · {pageNumber}. sayfa okunuyor · Alınan {receivedProducts:N0} · İşlenen {telemetryImportProcessedCount:N0} · Atlanan {telemetryImportSkippedCount:N0} · Hatalı {telemetryImportFailedCount:N0}",
+                    $"{scanLabel}{lifecycleLabel} · {pageNumber}. sayfa okunuyor · Alınan {TrCount(receivedProducts)} · İşlenen {TrCount(telemetryImportProcessedCount)} · Atlanan {TrCount(telemetryImportSkippedCount)} · Hatalı {TrCount(telemetryImportFailedCount)}",
                     cancellationToken);
             }
             TrackRequest();
@@ -6717,7 +6717,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var stagedSession = await db.ProductImportSessions.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.JobId == importJobId, cancellationToken);
         receivedProducts = stagedSession.ReceivedProducts;
         telemetryImportReceivedCount = receivedProducts;
-        totalProducts = stagedSession.TotalProducts;
+        // The whole catalog is read here, so what was received is the total the processing below works through
+        // (Trendyol's cursor paging reports none): the bar and percent run on it instead of staying unknown.
+        totalProducts = stagedSession.TotalProducts ?? (receivedProducts > 0 ? receivedProducts : null);
         pageNumber = stagedSession.PageNumber;
 
         if (jobId is { } referenceJob)
@@ -7038,24 +7040,26 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     }
 
     // Counts only: the internal stage (page number, "referanslar hazırlanıyor", model groups) is not shown to the user.
+    // Grouped with dots (1.018), whatever culture the container runs in.
+    internal static string TrCount(int value) => value.ToString("N0", System.Globalization.CultureInfo.InvariantCulture).Replace(',', '.');
+
     private string ProductImportProgressLabel(int? total, int received, bool mappingOnly)
     {
-        var totalPart = total is > 0 ? $" / {total:N0}" : "";
-        var failedPart = $" · Hatalı {telemetryImportFailedCount:N0}";
+        var failedPart = $" · Hatalı {TrCount(telemetryImportFailedCount)}";
         switch (importSummaryMode)
         {
             case ImportSummaryMode.FocusedPriceStock:
-                return $"{received:N0}{totalPart} · Alınan {received:N0} · Fiyatı değişen {priceChangedVariantIds.Count:N0} varyant · Stoğu değişen {stockChangedVariantIds.Count:N0} varyant · Değişmeyen {telemetryUnchangedVariantCount:N0} · Yeni beden {telemetryUnaddedSizeCount:N0}{failedPart}";
+                return $"Alınan {TrCount(received)} · Fiyatı değişen {TrCount(priceChangedVariantIds.Count)} varyant · Stoğu değişen {TrCount(stockChangedVariantIds.Count)} varyant · Değişmeyen {TrCount(telemetryUnchangedVariantCount)} · Yeni beden {TrCount(telemetryUnaddedSizeCount)}{failedPart}";
             case ImportSummaryMode.NewOnly:
-                return $"{received:N0}{totalPart} · Alınan {received:N0} · Yeni ürün {telemetryNewProductCount:N0} · Yeni beden {telemetryNewSizeCount:N0} · Zaten panelde {telemetryAlreadyInPanelCount:N0}{failedPart}";
+                return $"Alınan {TrCount(received)} · Yeni ürün {TrCount(telemetryNewProductCount)} · Yeni beden {TrCount(telemetryNewSizeCount)} · Zaten panelde {TrCount(telemetryAlreadyInPanelCount)}{failedPart}";
             case ImportSummaryMode.Mapping:
                 // "Eşlenen" also tells the panel's job card to name its counters for mapping.
-                return $"{received:N0}{totalPart} · Alınan {received:N0} · Eşlenen {telemetryMappedCount:N0} · Zaten eşli {telemetryAlreadyMappedCount:N0} · Panelde karşılığı yok {telemetryNoCounterpartCount:N0} · Çakışma {telemetryMappingConflictCount:N0}{failedPart}";
+                return $"Alınan {TrCount(received)} · Eşlenen {TrCount(telemetryMappedCount)} · Zaten eşli {TrCount(telemetryAlreadyMappedCount)} · Panelde karşılığı yok {TrCount(telemetryNoCounterpartCount)} · Çakışma {TrCount(telemetryMappingConflictCount)}{failedPart}";
         }
         var processedLabel = mappingOnly ? "Eşlenen" : "İşlenen";
         var skippedLabel = mappingOnly ? "Eşleşmeyen" : "Atlanan";
-        var unaddedPart = telemetryUnaddedSizeCount > 0 ? $" · Eklenmeyen yeni beden {telemetryUnaddedSizeCount:N0}" : "";
-        return $"{received:N0}{totalPart} · Alınan {received:N0} · {processedLabel} {telemetryImportProcessedCount:N0} · {skippedLabel} {telemetryImportSkippedCount:N0} · Hatalı {telemetryImportFailedCount:N0}{unaddedPart}";
+        var unaddedPart = telemetryUnaddedSizeCount > 0 ? $" · Eklenmeyen yeni beden {TrCount(telemetryUnaddedSizeCount)}" : "";
+        return $"Alınan {TrCount(received)} · {processedLabel} {TrCount(telemetryImportProcessedCount)} · {skippedLabel} {TrCount(telemetryImportSkippedCount)} · Hatalı {TrCount(telemetryImportFailedCount)}{unaddedPart}";
     }
 
     internal static string UnaddedSizesNote(int count) =>
