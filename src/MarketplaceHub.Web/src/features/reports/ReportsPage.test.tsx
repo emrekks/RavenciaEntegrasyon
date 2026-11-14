@@ -273,7 +273,7 @@ describe('ReportsPage', () => {
     expect(heroCard(page, 'cancels').textContent).not.toContain('En Sık Neden')
     expect(hero(page, 'todo')).toBe('1 · faturasız paket')
     expect(page.querySelector('.reports-hero-card.is-todo.is-alert')).not.toBeNull()
-    expect(heroTiles(page, 'todo')).toEqual(['Stok Riski —', 'Soru Yanıt Süresi —'])
+    expect(heroTiles(page, 'todo')).toEqual(['Stok Riski 0 ürün', 'Soru Yanıt Süresi —'])
     // Every figure explains itself under the pointer.
     expect(page.querySelectorAll('.reports-hero-card .reports-hover-tip')).toHaveLength(9 + 29)
     // The old cards are gone, and no card repeats another.
@@ -736,17 +736,17 @@ describe('ReportsPage', () => {
     expect(figures[4]).toContain('—')
   })
 
-  it('shows a dash only as the main value of a card in a period with no order; sub-lines, change pills and tab badges read zero', async () => {
+  it('reads a real zero as 0 with its unit when the sources exist and nothing sold; averages over a zero base stay a dash', async () => {
     const none = { orders: 0, ordersWithAmount: 0, grossSales: 0, netRevenue: 0, returnedAmount: 0, soldQuantity: 0, keptQuantity: 0, returnedQuantity: 0, cancelledOrders: 0, averageOrderValue: 0 }
     const page = await open('', { ...report, summary: { ...report.summary, ...none }, previousSummary: { ...report.previousSummary, ...none } })
     const figures = texts(page, '.reports-kpis > div')
-    expect(figures[0]).toContain('Toplam Ciro—')
+    expect(figures[0]).toContain('Toplam Ciro₺0')
     expect(figures[1]).toContain('Sipariş başına ₺0')
     expect(figures[2]).toContain('Reklam öncesi %0')
     expect(figures[3]).toContain('Ürün maliyeti ₺0')
     expect(figures[4]).toContain('0 iptal · sepet ₺0')
     expect(figures[5]).toContain('Net 0 · 0 iade')
-    for (const strong of page.querySelectorAll('.reports-kpis > div > strong')) expect(strong.textContent).toBe('—')
+    expect([...page.querySelectorAll('.reports-kpis > div > strong')].map(strong => strong.textContent ?? '').map(text => text.slice(0, text === '—' ? 1 : text.length / 2))).toEqual(['₺0', '₺0', '—', '—', '0', '0'])
     expect(page.querySelector('.reports-kpis .reports-delta.is-flat')?.textContent).toBe('■ %0')
     for (const badge of page.querySelectorAll('.rv-tab-count')) expect(badge.textContent).not.toBe('—')
   })

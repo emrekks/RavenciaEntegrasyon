@@ -5,6 +5,7 @@ export const jobStatusLabels = {
   PENDING: 'Bekliyor',
   LEASED: 'Çalışıyor',
   RETRY_SCHEDULED: 'Yeniden Denenecek',
+  CONTINUING: 'Devam Ediyor',
   BLOCKED: 'Engellendi',
   MANUAL_REVIEW: 'İnceleme Bekliyor',
   SUCCEEDED: 'Başarılı',
