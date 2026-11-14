@@ -98,29 +98,7 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         var catalogPage = TrendyolCatalogCursorPolicy.Resolve(page.Cursor);
         var incremental = filter.ModifiedAfter is not null;
         var pending = catalogPage.Pass == TrendyolCatalogPass.PendingApproval;
-        var size = Math.Clamp(page.Limit, 1, 100);
-        var query = new List<string> { $"size={size}" };
-        if (TryProductCursor(catalogPage.Cursor, out var pageNumber, out var nextPageToken))
-        {
-            if (!string.IsNullOrWhiteSpace(nextPageToken)) query.Add("nextPageToken=" + Uri.EscapeDataString(nextPageToken));
-            else query.Add($"page={pageNumber}");
-        }
-        else query.Add("page=0");
-        if (!string.IsNullOrWhiteSpace(filter.Barcode)) query.Add("barcode=" + Uri.EscapeDataString(filter.Barcode));
-        if (!string.IsNullOrWhiteSpace(filter.ProductMainId)) query.Add("productMainId=" + Uri.EscapeDataString(filter.ProductMainId));
-        if (!pending && !string.IsNullOrWhiteSpace(filter.ContentId)) query.Add("contentId=" + Uri.EscapeDataString(filter.ContentId));
-        if (filter.ModifiedAfter is { } modifiedAfter)
-        {
-            // Approved products by variant or content change; waiting products by their last change.
-            query.Add("startDate=" + modifiedAfter.ToUnixTimeMilliseconds());
-            query.Add("dateQueryType=" + catalogPage.Pass switch
-            {
-                TrendyolCatalogPass.ContentChanged => "CONTENT_MODIFIED_DATE",
-                TrendyolCatalogPass.PendingApproval => "LAST_MODIFIED_DATE",
-                _ => "VARIANT_MODIFIED_DATE"
-            });
-        }
-        if (pending) query.Add("status=pendingApproval");
+        var query = CatalogQuery(catalogPage.Pass, catalogPage.Cursor, page.Limit, filter);
         var endpoint = pending
             ? TrendyolEndpoints.UnapprovedProducts(authorized.Connection.ExternalStoreId)
             : TrendyolEndpoints.ApprovedProducts(authorized.Connection.ExternalStoreId);
@@ -131,6 +109,9 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
             var result = pending
                 ? TrendyolJsonMapper.PendingApprovalCatalogProducts(response.Value!)
                 : TrendyolJsonMapper.CatalogProducts(response.Value!);
+            if (pending)
+                logger.LogInformation("Trendyol unapproved catalog page {Cursor} for connection {ConnectionId}: {Kept} rows kept, statuses {Statuses}, total {Total}.",
+                    catalogPage.Cursor ?? "p:0", context.ConnectionId, result.Items.Count, TrendyolJsonMapper.UnapprovedStatusCounts(response.Value!), result.TotalCount);
             // C15: contentId is not a documented filter of /products/approved; if Trendyol ignores it the page holds
             // other products, so the page is narrowed here to the asked content.
             if (!pending && !string.IsNullOrWhiteSpace(filter.ContentId))
@@ -1096,6 +1077,37 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         }
     }
     private static int Page(string? value) => int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var page) && page >= 0 ? page : 0;
+    // The catalog read's query. The waiting-for-approval pass reads /products/unapproved WITHOUT a status filter: the
+    // whole unapproved list ("onay süreci devam eden ve reddedilen ürünler") comes back and the mapper drops only the
+    // rows marked rejected. The import of 14 Nov 2026 asked status=pendingApproval and got an empty page while the owner
+    // had products waiting for approval; the barcode status check reads the same endpoint without a status.
+    internal static List<string> CatalogQuery(TrendyolCatalogPass pass, string? cursor, int limit, ProductReadFilter filter)
+    {
+        var pending = pass == TrendyolCatalogPass.PendingApproval;
+        var query = new List<string> { $"size={Math.Clamp(limit, 1, 100)}" };
+        if (TryProductCursor(cursor, out var pageNumber, out var nextPageToken))
+        {
+            if (!string.IsNullOrWhiteSpace(nextPageToken)) query.Add("nextPageToken=" + Uri.EscapeDataString(nextPageToken));
+            else query.Add($"page={pageNumber}");
+        }
+        else query.Add("page=0");
+        if (!string.IsNullOrWhiteSpace(filter.Barcode)) query.Add("barcode=" + Uri.EscapeDataString(filter.Barcode));
+        if (!string.IsNullOrWhiteSpace(filter.ProductMainId)) query.Add("productMainId=" + Uri.EscapeDataString(filter.ProductMainId));
+        if (!pending && !string.IsNullOrWhiteSpace(filter.ContentId)) query.Add("contentId=" + Uri.EscapeDataString(filter.ContentId));
+        if (filter.ModifiedAfter is { } modifiedAfter)
+        {
+            // Approved products by variant or content change; waiting products by their last change.
+            query.Add("startDate=" + modifiedAfter.ToUnixTimeMilliseconds());
+            query.Add("dateQueryType=" + pass switch
+            {
+                TrendyolCatalogPass.ContentChanged => "CONTENT_MODIFIED_DATE",
+                TrendyolCatalogPass.PendingApproval => "LAST_MODIFIED_DATE",
+                _ => "VARIANT_MODIFIED_DATE"
+            });
+        }
+        return query;
+    }
+
     private static bool TryProductCursor(string? value, out int page, out string? token)
     {
         page = 0; token = null;
