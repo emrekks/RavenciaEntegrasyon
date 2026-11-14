@@ -5,6 +5,8 @@
 //          repeats the title, never carries a raw parenthetical dump or an internal code.
 //   Kind:  success; info (nothing to do); warning (partly done or action needed); error (it did not happen).
 //          A partial result is a warning whose title names the problem.
+//   Form:  proper sentences. No "·" chains or lists of fragments in a body ("a · b · c"); a list of reasons is joined with
+//          "; " or written as a second sentence. (Table cells and meta lines may keep their separators.)
 //
 // Producers should write title and body that follow this; composeNotice is the safety net every surface applies, so a
 // producer that sends one sentence still reads as a title and a body, and a body that repeats its title is dropped.
