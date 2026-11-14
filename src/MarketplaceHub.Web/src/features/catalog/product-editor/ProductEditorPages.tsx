@@ -1,4 +1,5 @@
 // Ürün ekleme ve düzenleme (/products/new, /products/:id).
+import { moveListboxFocus } from '../../../shared/listbox-keys'
 import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { platformDisplayNames, knownPlatformName, platformDisplayOrder } from '../../../shared/platform-names'
 import './product-editor-design-system.css'
@@ -60,7 +61,7 @@ import { VariantMediaBulkSelect } from './VariantMediaBulkSelect'
 import { PriceSuggestionLink } from './PriceSuggestionDialog'
 import { cardPrices } from './card-prices'
 import { editorWarrantyMonths, missingRequiredEditorFields, requiredEditorFieldLabels, requiredFieldMessage, requiredFieldsMessage, type RequiredEditorField } from './required-fields'
-import { maxProductDesi, productDesiTooLarge, productDesiTooLargeMessage } from '../product-desi'
+import { maxProductDesi, parseProductDesi, productDesiTooLarge, productDesiTooLargeMessage } from '../product-desi'
 import { SizeChartButton } from './SizeChartDialog'
 import { isSizeChartRef, pinSizeChartLast, replaceSizeChart, sizeChartKey } from './size-chart-order'
 import { mediaPickerLabel, mediaPickerRefs } from './media-picker-order'
@@ -616,7 +617,7 @@ function CategoryAttributeValueDropdown({
       <span>{summary}</span>
       <UiIcon name="chevronDown" />
     </button>
-    {open && <div className={`category-attribute-dropdown-menu ${alignMenuRight ? 'is-edge-aligned' : ''}`} role="listbox" aria-label={`${attributeName} değerleri`}>
+    {open && <div className={`category-attribute-dropdown-menu ${alignMenuRight ? 'is-edge-aligned' : ''}`} role="listbox" aria-label={`${attributeName} değerleri`} tabIndex={-1} onKeyDown={moveListboxFocus}>
       <div className="category-attribute-dropdown-tools">
         <input ref={touchScreen ? undefined : focusOnMount} value={search} onChange={event => setSearch(event.target.value)} placeholder="Değer ara..." aria-label={`${attributeName} değerlerinde ara`} />
       </div>
@@ -677,7 +678,7 @@ function VariantFilterDropdown({
       <span><small>{selected.length ? `${selected.length} değer seçildi` : group.name}</small><strong>{summary}</strong></span>
       <UiIcon name="chevronDown" />
     </button>
-    {open && <div className="variant-filter-dropdown-menu" style={menuStyle} role="listbox" aria-label={`${group.name} filtre değerleri`}>
+    {open && <div className="variant-filter-dropdown-menu" style={menuStyle} role="listbox" aria-label={`${group.name} filtre değerleri`} tabIndex={-1} onKeyDown={moveListboxFocus}>
       <div className="variant-filter-dropdown-tools">
         <input ref={touchScreen ? undefined : focusOnMount} value={search} onChange={event => setSearch(event.target.value)} placeholder="Değer ara..." aria-label={`${group.name} değerlerinde ara`} />
         <button type="button" className="variant-filter-clear-selection" onClick={onClear} disabled={selected.length === 0} tabIndex={selected.length === 0 ? -1 : undefined} aria-hidden={selected.length === 0 ? true : undefined} aria-label="Seçimi Temizle" title="Seçimi Temizle"><UiIcon name="close" /></button>
@@ -2779,7 +2780,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
      // Owner, 10 Nov 2026 ("0 olmayacak onlarda"): a variant's list and sale price are above 0, like the card's.
      if (rows.some(row => !(row.salePrice > 0) || !(row.listPrice > 0))) issues.push('Her varyantta liste ve satış fiyatı 0\'dan büyük olmalı.')
      // A card none of whose variants has a desi opens with the field empty (no guessed 1) and may be saved so.
-     if (!(editProductId && initialEditDesi.current === 0 && !form.desi.trim()) && (!form.desi.trim() || !Number.isFinite(Number(form.desi)) || Number(form.desi) <= 0)) issues.push('Desi sıfırdan büyük olmalıdır.')
+     if (!(editProductId && initialEditDesi.current === 0 && !form.desi.trim()) && (!form.desi.trim() || parseProductDesi(form.desi) <= 0)) issues.push('Desi sıfırdan büyük olmalıdır.')
      if (productDesiTooLarge(form.desi)) issues.push(productDesiTooLargeMessage)
      if (form.warrantyMonths.trim() && (!Number.isInteger(Number(form.warrantyMonths)) || Number(form.warrantyMonths) < 0 || Number(form.warrantyMonths) > 240)) issues.push('Garanti süresi 0-240 ay arasında tam sayı olmalıdır.')
      if (!isProductDeliveryDays(form.deliveryDays)) issues.push('Teslimat süresi 1-30 gün arasında tam sayı olmalıdır.')
@@ -2953,7 +2954,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         optionRequirements: optionRequirementsForSubmit
       })
       const safeDescription = sanitizeRichText(form.description)
-      const variantPayload = (row: VariantDraft, index: number) => ({ sku: row.sku, barcode: row.barcode || null, modelCode: form.modelCode.trim() || null, sortOrder: index, weight: calculateDesi ? Number(form.weight) || null : null, width: calculateDesi ? Number(form.width) || null : null, height: calculateDesi ? Number(form.height) || null : null, length: calculateDesi ? Number(form.length) || null : null, desi: calculateDesi ? desi || 1 : Number(form.desi) || null, costPrice: row.costPrice, defaultListPrice: row.listPrice, defaultSalePrice: row.salePrice, options: row.options, attributes: variantAttributesForPayload(row), onHand: editorOpeningStock(row.stock) })
+      const variantPayload = (row: VariantDraft, index: number) => ({ sku: row.sku, barcode: row.barcode || null, modelCode: form.modelCode.trim() || null, sortOrder: index, weight: calculateDesi ? Number(form.weight) || null : null, width: calculateDesi ? Number(form.width) || null : null, height: calculateDesi ? Number(form.height) || null : null, length: calculateDesi ? Number(form.length) || null : null, desi: calculateDesi ? desi || 1 : parseProductDesi(form.desi) || null, costPrice: row.costPrice, defaultListPrice: row.listPrice, defaultSalePrice: row.salePrice, options: row.options, attributes: variantAttributesForPayload(row), onHand: editorOpeningStock(row.stock) })
       const existingVariantIds = new Set(productToEdit.data?.variants.map(variant => variant.id) ?? [])
       const placeholderIdsToDelete = replacedPlaceholderIds.filter(id => existingVariantIds.has(id) && !rows.some(row => row.key === id) && !removedVariantIds.includes(id))
       const modelCodeForRow = (variantId: string) => modelCodeForExistingVariant(
@@ -2992,7 +2993,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
             // Only a cost the user changed is sent, with the cost it was loaded with; an unsent (null) cost is left as
             // it is on the server, and a cost changed there meanwhile refuses the save (409).
             ...editorVariantCostUpdate(row),
-            ...editorVariantDesiUpdate(calculateDesi ? desi || 1 : Number(form.desi) || 0, desiEdited.current || calculateDesi, editProduct.variants.find(variant => variant.id === row.key)?.desi),
+            ...editorVariantDesiUpdate(calculateDesi ? desi || 1 : parseProductDesi(form.desi), desiEdited.current || calculateDesi, editProduct.variants.find(variant => variant.id === row.key)?.desi),
             defaultListPrice: row.listPrice,
             defaultSalePrice: row.salePrice,
             // The version the row was loaded with: a row changed meanwhile elsewhere refuses the save (409) instead of
