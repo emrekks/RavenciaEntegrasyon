@@ -1133,11 +1133,11 @@ main .rr.rr.reports-payout-filters .rr-trigger:disabled { opacity: .5; cursor: n
   .app-shell.stitch-shell main .reports-page .reports-table-wrap { margin-inline: 0; padding-inline: 0; }
   .app-shell.stitch-shell main .reports-page .reports-segmented > button { flex: 0 0 auto; }
 }
-/* Phones: Raporlar keeps the page's one gap (10px) everywhere: the empty scroll anchor before the tabs takes no gap of
-   its own, the overview's rows and the figures' cards are 10px apart, as the rest of the page. */
+/* Phones: Raporlar keeps one gap (14px, the tabs' grid gap) everywhere: the empty scroll anchor before the tabs takes no
+   gap of its own, the overview's rows and the figures' cards are 14px apart like every other tab's cards (14 Nov 2026). */
 @media (max-width: 760px) {
-  .app-shell.stitch-shell main .reports-page :is(.reports-overview, .reports-overview-row) { gap: 10px; }
-  .app-shell.stitch-shell main .reports-page .reports-kpis { gap: 10px; }
+  .app-shell.stitch-shell main .reports-page :is(.reports-overview, .reports-overview-row) { gap: 14px; }
+  .app-shell.stitch-shell main .reports-page .reports-kpis { gap: 14px; }
 }
 /* A figure's change chip is a button when it hides the previous period's figure: a tap shows it under the chip. */
 .app-shell.stitch-shell main .reports-page .reports-kpi-delta-toggle { display: inline-flex; min-height: 0; height: auto; margin: 0; padding: 0; background: none; border: 0; border-radius: 999px; box-shadow: none; cursor: pointer; }
