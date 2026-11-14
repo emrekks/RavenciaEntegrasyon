@@ -3344,7 +3344,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               await client.invalidateQueries({ queryKey: ['listing-profile', familyProductId, connectionId] })
               const publicationJob = await hubApi<PublicationAccepted>(`/products/${familyProductId}/publication-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId }) })
               await client.invalidateQueries({ queryKey: ['publication-status', familyProductId, connectionId] })
-              if (publicationJob?.jobId) followedJobs.push({ jobId: publicationJob.jobId, platformName, what: familyIds.length > 1 ? `${familyIndex + 1}. renk kartı` : 'ürün' })
+              if (publicationJob?.jobId) followedJobs.push({ jobId: publicationJob.jobId, platformName, what: 'ürün', card: familyIds.length > 1 ? preferredColorOption(variantOptionEntries(cardVariants[0] ?? product.variants[0]))?.value ?? '' : undefined })
               outcome.enqueuedCards++
               outcome.enqueuedVariants += plan.variants
               if (plan.addsToListing) {

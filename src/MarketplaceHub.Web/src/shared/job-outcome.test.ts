@@ -144,3 +144,36 @@ describe('following the jobs of one press', () => {
     expect(last.title).toBe('Trendyol’a Aktarıldı')
   })
 })
+
+describe('the colour cards of one model are one product in the result', () => {
+  const colours = ['Siyah', 'Bordo', 'Lacivert']
+  const cards = (platform: string): FollowedJob[] => colours.map((card, index) => ({ jobId: `${platform}${index}`, platformName: platform, what: 'ürün', card }))
+  const job = (status: string, summary: string | null = null): FollowedJobDetail => ({ job: { id: 'x', status, lastErrorCode: null, lastErrorSummary: summary } })
+  const feedback = (jobs: FollowedJob[], statuses: Array<[string, string?]>) =>
+    jobOutcomeFeedback(jobs.map((item, index) => jobOutcome(item, job(statuses[index][0], statuses[index][1] ?? null))), outcomeTarget(jobs), jobs)
+
+  it('says the product went through once when every colour did', () => {
+    expect(feedback(cards('Shopify'), [['SUCCEEDED'], ['SUCCEEDED'], ['SUCCEEDED']]))
+      .toMatchObject({ title: 'Shopify’a Aktarıldı', kind: 'success', lines: ['Ürün Shopify’a 3 renk ile aktarıldı.'] })
+  })
+
+  it('names only the failed colours when some went through', () => {
+    expect(feedback(cards('Shopify'), [['SUCCEEDED'], ['BLOCKED', 'Kategori eksik.'], ['BLOCKED', 'Kategori eksik.']]))
+      .toMatchObject({ title: 'Shopify’a Kısmen Aktarıldı', kind: 'warning', lines: ['Bordo ve Lacivert aktarılamadı: Kategori eksik.'] })
+  })
+
+  it('says the reason once when every colour failed', () => {
+    expect(feedback(cards('Trendyol'), [['BLOCKED', 'Marka yok.'], ['BLOCKED', 'Marka yok.'], ['BLOCKED', 'Marka yok.']]))
+      .toMatchObject({ title: 'Trendyol’a Aktarılamadı', kind: 'error', lines: ['Ürün Trendyol’a aktarılamadı: Marka yok.'] })
+  })
+
+  it('keeps the platform name on a colour line when several marketplaces are followed', () => {
+    const jobs = [...cards('Shopify'), ...cards('n11')]
+    const result = feedback(jobs, [['SUCCEEDED'], ['SUCCEEDED'], ['SUCCEEDED'], ['SUCCEEDED'], ['BLOCKED', 'Desi eksik.'], ['SUCCEEDED']])
+    expect(result.lines).toEqual(['Ürün Shopify’a 3 renk ile aktarıldı.', 'n11: Bordo aktarılamadı: Desi eksik.'])
+  })
+
+  it('says a running model once', () => {
+    expect(feedback(cards('Shopify'), [['LEASED'], ['LEASED'], ['SUCCEEDED']]).lines).toEqual(['Shopify: ürün aktarımı sürüyor; sonuç gelince bildirilecek.'])
+  })
+})
