@@ -5,6 +5,7 @@ import { hubPoll } from '../../shared/api'
 import { UiIcon } from '../../shared/components'
 import { Tabs } from '../../shared/components/DesignSystem'
 import { Busy } from '../../shared/components/AsyncState'
+import { FieldHelp } from '../../shared/components/FieldHelp'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { jobTitle } from './job-presentation'
 import { ChoiceField } from './filter-fields'
@@ -52,7 +53,7 @@ export function QueueQuotaView() {
     <div className="jobs-reference-toolbar qq-toolbar">
       <div className="rr qq-window">
         <ChoiceField name="Ölçüm Aralığı" value={hours} options={queueWindowOptions} onChange={value => setHours(value as QueueWindow)} width={200} />
-        <button type="button" className="qq-info" aria-label="Ölçüm aralığı açıklaması" data-tip="Çalışan ve bekleyen işler şu anı, deneme ve bekleme süreleri seçili aralığı gösterir."><UiIcon name="info" size={16} /></button>
+        <FieldHelp label="Ölçüm Aralığı">Çalışan ve bekleyen işler şu anı, deneme ve bekleme süreleri seçili aralığı gösterir.</FieldHelp>
       </div>
       <div className="jobs-reference-toolbar-actions">
         <button type="button" className={`jobs-reference-refresh${fetching ? ' is-busy' : ''}`} title="Yenile" aria-label="Kuyruk ve kota ölçümlerini yenile" onClick={refresh}><UiIcon name="refresh" size={16} /></button>

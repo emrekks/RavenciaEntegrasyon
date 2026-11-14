@@ -339,7 +339,8 @@ describe('JobsPage address state (W16)', () => {
     await settle()
 
     expect(rowCount()).toBe(2)
-    expect(container.textContent).toContain('Listenin devamı okunamadı.')
+    expect(container.textContent).toContain('Listenin Devamı Okunamadı')
+    expect(container.textContent).toContain('Listeyi yenileyip tekrar deneyin.')
   })
 })
 
@@ -549,7 +550,7 @@ describe('JobsPage Loglar tab (price/stock send log)', () => {
     expect(categories.textContent).not.toContain('Loglar')
     // The second level is a segment with every category in it: no Diğer menu, no icons.
     expect(categories.className).toBe('jobs-category-segment')
-    expect(Array.from(categories.querySelectorAll('.jobs-category-segment-label')).map(label => label.textContent)).toEqual(['Tüm İşlemler', 'Sipariş/Kargo', 'Fiyat/Stok', 'Ürün/Yayın', 'Faturalar', 'İadeler'])
+    expect(Array.from(categories.querySelectorAll('.jobs-category-segment-label')).map(label => label.textContent)).toEqual(['Tümü', 'Sipariş/Kargo', 'Fiyat/Stok'])  // groups without a job are left out
     expect(categories.querySelector('[aria-haspopup], svg')).toBeNull()
     expect(main.compareDocumentPosition(categories) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 

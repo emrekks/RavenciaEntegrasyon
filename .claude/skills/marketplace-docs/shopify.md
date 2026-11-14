@@ -66,6 +66,10 @@ UTC, ISO with Z.
 - A line item without `id`, quantity or `originalUnitPriceSet` is counted on its package (unreadable line), never
   stops the page; an order that still cannot be mapped is skipped with an issue and read again by id; a line without
   a SKU keeps none (no "SHOPIFY-LINE" code since 5 Nov 2026) (`ShopifyHttpClient.PollAsync`, `MapOrder`).
+- Catalog shape: Shopify keeps a model as one product with every colour and size; the panel keeps one card per colour
+  (Trendyol shape). Ürün Eşleme links each Shopify variant to its panel variant by barcode / stock code without a
+  product link and records no review issue. From 5 Nov to 14 Nov 2026 such products counted as "Çakışma" and were
+  never linked (live: 121 of 215 products, 2,779 variants) (`MarketplaceJobProcessor.MapExistingCatalogProduct`).
 - `returnDeclineRequest` notifies the customer only with `notifyCustomer: true`.
 - A return is approved or declined as a whole (`shopify-rehberler-son.md:18614`): the panel locks the line choice
   (`ReturnDecisionScope`, as Hepsiburada). A claim left at PARTIAL_LINE_DECISION_PENDING by the older line choice

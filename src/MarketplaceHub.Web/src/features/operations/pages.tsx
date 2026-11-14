@@ -48,7 +48,7 @@ import { formatMoney } from '../../shared/format-money'
 import { formatPackageLabel } from '../../shared/package-label'
 import { newIdempotencyKey } from '../../shared/idempotency'
 import { jobAttemptDuration } from './job-duration'
-import { isContinuingJob, isWaitingJob, jobAttemptOutcome, jobAttemptResultLabel, jobAttemptsText, waitingJobDescription, waitingJobLabel } from './job-waiting'
+import { isContinuingJob, isWaitingJob, queuedWait, jobAttemptOutcome, jobAttemptResultLabel, jobAttemptsText, waitingJobDescription, waitingJobLabel } from './job-waiting'
 import { JobStateGlyph } from './job-state-glyph'
 import { useTabSlide } from '../../shared/tab-slide'
 
@@ -113,11 +113,14 @@ const statuses: Array<{ value: '' | JobStatus; label: string }> = [
 // A job that only waits for the marketplace to finish (a batch task, an approval) reads as waiting, not as a retry.
 function jobStateLabel(job: JobSummary) {
   if (isContinuingJob(job)) return jobStatusLabel('CONTINUING')
+  const queued = queuedWait(job)
+  if (queued) return queued.label
   return isWaitingJob(job) ? waitingJobLabel(job) : jobStatusLabel(job.status)
 }
 
 function jobStateTone(job: JobSummary) {
   if (isContinuingJob(job)) return 'running'
+  if (queuedWait(job)) return 'neutral'
   return isWaitingJob(job) ? 'neutral' : jobStatusTone(job.status)
 }
 
@@ -203,6 +206,8 @@ function formatJobCount(value: number) {
 }
 
 function jobStatusDescription(job: JobSummary) {
+  const queued = queuedWait(job)
+  if (queued) return queued.description
   if (isContinuingJob(job)) return job.lastErrorSummary?.trim() || 'Uzun işlem pencereler hâlinde okunuyor; sıradaki pencere birkaç saniye içinde çalışacak. Bu bir hata değil.'
   if (job.status === 'SUCCEEDED') return 'İşlem başarıyla tamamlandı; aşağıdaki özet, yapılan çalışmanın kapsamını gösterir.'
   if (job.status === 'LEASED') return job.heartbeatAt
@@ -341,7 +346,7 @@ function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retrya
 
 // The categories are the second level under İşler: one segmented strip of equal text buttons (the dashboard's period
 // picker), every category in view with a quiet count; on a narrow screen the strip scrolls sideways.
-function JobCategorySegment({ items: givenItems, value, onChange }: { items: Array<{ value: string; label: string; count?: number }>; value: string; onChange: (value: string) => void }) {
+function JobCategorySegment({ items: givenItems, value, onChange }: { items: Array<{ value: string; label: string; title?: string; count?: number }>; value: string; onChange: (value: string) => void }) {
   const items = useRememberedTabCounts('İşlem kategorileri', givenItems)
   const strip = useRef<HTMLDivElement>(null)
   // A category opened from a link may sit past the edge of a phone's strip: scroll the strip (only it) to show it.
@@ -353,7 +358,7 @@ function JobCategorySegment({ items: givenItems, value, onChange }: { items: Arr
     const tab = active.getBoundingClientRect()
     if (tab.left < box.left || tab.right > box.right) element.scrollLeft += tab.left - box.left - (box.width - tab.width) / 2
   }, [value])
-  return <div ref={strip} className="jobs-category-segment" role="tablist" aria-label="İşlem kategorileri">{items.map((item, index) => <button key={item.value} type="button" role="tab" tabIndex={item.value === value ? 0 : -1} aria-selected={item.value === value} className={item.value === value ? 'is-active' : undefined} onClick={() => onChange(item.value)} onKeyDown={event => {
+  return <div ref={strip} className="jobs-category-segment" role="tablist" aria-label="İşlem kategorileri">{items.map((item, index) => <button key={item.value} type="button" role="tab" tabIndex={item.value === value ? 0 : -1} aria-selected={item.value === value} title={item.title} aria-label={item.title ? `${item.title}${item.count !== undefined ? ` ${item.count}` : ''}` : undefined} className={item.value === value ? 'is-active' : undefined} onClick={() => onChange(item.value)} onKeyDown={event => {
     const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : event.key === 'ArrowRight' ? (index + 1) % items.length : event.key === 'ArrowLeft' ? (index - 1 + items.length) % items.length : -1
     if (next < 0) return
     event.preventDefault()
@@ -408,7 +413,7 @@ export function JobsPage({ me }: { me: Me }) {
   const platformGroups = useMemo<FilterMenuGroup[]>(() => [{ options: platformOptions.map(code => ({ value: code, label: jobPlatformLabel(code), mark: <RrLogo code={code} /> })) }], [platformOptions])
   const cardFilterCount = [platforms.length > 0, Boolean(direction), Boolean(status), timeRange !== '24h'].filter(Boolean).length
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [feedback, setFeedback] = useState<{ message: string; tone: 'success' | 'danger' | 'info'; context?: NotificationContext } | null>(null)
+  const [feedback, setFeedback] = useState<{ message: string; tone: 'success' | 'danger' | 'info' | 'warning'; context?: NotificationContext } | null>(null)
   useEffect(() => {
     if (!feedback) return
     appendNotification({ ...feedback.context, message: feedback.message, kind: feedback.tone === 'danger' ? 'error' : feedback.tone })
@@ -597,7 +602,7 @@ export function JobsPage({ me }: { me: Me }) {
     </div>
     <Tabs className="rv-view-tabs jobs-reference-main-tabs" ariaLabel="İşlem Takibi görünümü" value={mainTab} onChange={setMainTab} items={[{ value: 'jobs', label: viewTabLabel('processing', 'İşler') }, { value: 'logs', label: viewTabLabel('log', 'Loglar') }, { value: 'health', label: viewTabLabel('connected', 'API Sağlık') }, { value: 'queue', label: viewTabLabel('waiting', 'Kuyruk ve Kota') }, { value: 'notifications', label: viewTabLabel('unread', 'Bildirimler') }]} />
     <div key={mainSlide.key} className={`jobs-reference-canvas${mainSlide.className ? ` ${mainSlide.className}` : ''}`}>
-      {!listHidden && <JobCategorySegment value={category} onChange={setCategory} items={jobCategoryTabs.filter(tab => tab.key !== 'SYSTEM').map(tab => ({ value: tab.key, label: tab.label, count: list.isLoading ? undefined : categoryCounts.get(tab.key) ?? 0 }))} />}
+      {!listHidden && <JobCategorySegment value={category} onChange={setCategory} items={jobCategoryTabs.filter(tab => tab.key === 'ALL' || tab.key === category || categoryCounts.get(tab.key) !== 0).map(tab => ({ value: tab.key, label: tab.label, title: tab.title, count: list.isLoading ? undefined : categoryCounts.get(tab.key) ?? 0 }))} />}
       {mainTab === 'logs' ? <Suspense fallback={<Busy text="Loglar yükleniyor…" />}><OperationLogs platformOptions={platformOptions} onOpenJob={setSelectedId} /></Suspense>
         : mainTab === 'health' ? <Suspense fallback={<Busy text="API sağlığı yükleniyor…" />}><ApiHealthView onFeedback={showPanelFeedback} /></Suspense>
         : mainTab === 'queue' ? <Suspense fallback={<Busy text="Kuyruk ölçümleri yükleniyor…" />}><QueueQuotaView /></Suspense>
@@ -633,7 +638,7 @@ export function JobsPage({ me }: { me: Me }) {
               <td><div className="jobs-reference-type"><span className="jobs-reference-type-icon" aria-hidden="true"><JobsIcon name={presentation.icon} /></span><span className="jobs-reference-type-content"><strong>{jobTitle(job.jobType, job.marketplace, job.resource)}</strong><small>{jobSubtitle(job.jobType, job.resource)}{job.externalId ? ` · ${job.externalId}` : ''}{job.batchCount > 1 ? ` · ${job.batchCount} kayıt birlikte` : ''}</small><span id={typeDescriptionId} className="jobs-reference-type-tooltip" role="tooltip">{presentation.description}</span></span></div></td>
               <td><span className={`jobs-reference-status ${jobStateTone(job)}`}><JobStateGlyph tone={jobStateTone(job)} />{jobStateLabel(job)}</span></td>
               <td className="jobs-reference-attempt">{jobAttemptsText(job)}</td>
-              <td><div className="jobs-reference-time"><strong>{time.time}</strong><small>{time.day} · {isContinuingJob(job) ? 'sıradaki pencere okunuyor' : job.attemptCount > 0 ? `son deneme ${jobAttemptDuration(job)}` : 'çalışma başlamadı'}</small></div></td>
+              <td><div className="jobs-reference-time"><strong>{time.time}</strong><small>{time.day} · {isContinuingJob(job) ? 'sıradaki pencere okunuyor' : queuedWait(job) ? queuedWait(job)!.line : job.attemptCount > 0 ? `son deneme ${jobAttemptDuration(job)}` : 'çalışma başlamadı'}</small></div></td>
               <td><span className="jobs-reference-correlation" title={job.correlationId}>{job.correlationId}</span></td>
             </tr>
           })}
