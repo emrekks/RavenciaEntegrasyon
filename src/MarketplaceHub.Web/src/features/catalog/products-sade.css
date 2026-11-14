@@ -7,13 +7,13 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metric-btn strong { font-size: 24px; font-weight: 600; line-height: 1.3; color: var(--rr-warn); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metric-btn span { display: inline-flex; align-items: center; gap: 4px; color: var(--rr-violet); font-size: 12px; font-weight: 500; }
 @media (min-width: 1025px) {
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl col.rr-c-pd { width: 32%; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl col.rr-c-pd { width: 34%; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl col.rr-c-var { width: 9%; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl col.rr-c-pr { width: 9%; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl col.rr-c-st { width: 9%; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl col.rr-c-pl { width: 16%; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl col.rr-c-status { width: 13%; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl col.rr-c-act { width: 12%; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl col.rr-c-status { width: 12%; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl col.rr-c-act { width: 11%; }
 }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-prodcell { display: grid; grid-template-columns: 16px auto minmax(0, 1fr); gap: 12px; align-items: center; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-prodcell > div { min-width: 0; }
@@ -560,3 +560,11 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 
 /* Durum: the sale state ("Satışa Açık", "Satışa Kapalı") stays on one line (owner, 14 Nov 2026). */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-ring b { white-space: nowrap; }
+
+/* Wide screens: every head and body cell of the table has one symmetric 10px side padding (left == right, first and last
+   column included); the head's filter funnel sits in the flow next to the title instead of in a reserved right gutter. */
+@media (min-width: 1025px) {
+:root:root:root:root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl > thead > tr > th,
+:root:root:root:root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl > tbody > tr > td { padding-left: 10px !important; padding-right: 10px !important; }
+:root:root:root:root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl > thead > tr > th .rr-hf > .rr-anchor { position: static; transform: none; }
+}
