@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { hubApi } from '../../shared/api'
+import { hubApi, hubPoll } from '../../shared/api'
 import { Busy, CargoProviderIcon, ErrorBox, UiIcon, DialogSurface } from '../../shared/components'
 import { productImageFallbackUrls, productImageThumbnailLookup } from '../marketplace/product-image-lookups'
 import { formatDate } from '../../shared/format-date'
@@ -8,6 +8,8 @@ import { formatPackageLabel } from '../../shared/package-label'
 import { newIdempotencyKey } from '../../shared/idempotency'
 import { invoiceSendDeniedReason, useCanSendInvoices } from '../../shared/hooks/useCanSendInvoices'
 import { notificationError, notificationLinks, type NotificationContext } from '../../shared/notifications'
+import { bulkInvoiceNotice, followPendingInvoices, invoiceReadState, jobReadState, type BulkInvoiceFollow, type BulkInvoiceRead } from './invoice-bulk-outcome'
+import { invoiceFailureReason } from './invoice-failure-reasons'
 import { invoiceEnvironmentLabel, invoiceTypeLabel, taxpayerStatusLabel } from './invoice-copy'
 import { personName } from '../../shared/person-name'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
@@ -108,7 +110,7 @@ export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete, onN
     void hubApi<ConfirmResult>('/invoice-workspace/confirm', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('invoice-workspace-confirm') }, body })
       .then(response => {
         let succeeded = 0
-        let failedCount = 0
+
         // The server finishes at most five invoices while the window waits; the rest are queued as jobs and finish in
         // the background (the lists refresh as they complete), so they get one line instead of one notice each.
         const queued = response.items.filter(result => result.status === 'QUEUED')
@@ -116,12 +118,48 @@ export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete, onN
           if (result.status === 'QUEUED') continue
           const label = labels.get(result.packageId) ?? '#?'
           const failed = ['FAILED', 'BLOCKED', 'VALIDATION_FAILED', 'PREVIEW_STALE', 'CONFLICT'].includes(result.status)
-          if (failed) { failedCount++; onNotice(`${label} nolu siparişin faturası oluşturulamadı: ${result.message}`, 'error', resultContext(result, 'Fatura Kesilemedi')) }
+          if (failed) { onNotice(`${label} nolu siparişin faturası oluşturulamadı: ${result.message}`, 'error', resultContext(result, 'Fatura Kesilemedi')) }
           else if (result.status === 'COMPLETED') { succeeded++; onNotice(/^Fatura (kesildi|E-Faturam)/u.test(result.message) ? `${label} nolu siparişin faturası ${result.message.replace(/^Fatura /u, '')}` : `${label} nolu sipariş: ${result.message}`, 'success', resultContext(result, 'Fatura Kesildi')) }
           else onNotice(`${label} nolu siparişin faturası: ${result.message}`, 'info', resultContext(result, 'Fatura İşleniyor'))
         }
         if (queued.length) onNotice(`${queued.length} siparişin faturası sıraya alındı; arka planda kesilecek. İlerlemeyi İşlem Takibi’nde görebilirsiniz.`, 'info')
-        if (response.items.length > 1) onNotice(`${response.items.length} siparişin faturası işlendi: ${succeeded} başarılı, ${failedCount} başarısız${response.items.length - succeeded - failedCount > 0 ? `, ${response.items.length - succeeded - failedCount} devam ediyor` : ''}.`, failedCount > 0 ? 'error' : succeeded > 0 ? 'success' : 'info', { title: failedCount > 0 ? 'Toplu Fatura Kısmen Kesildi' : 'Toplu Fatura Kesildi', operation: 'Toplu fatura kesme' })
+        if (response.items.length > 1) {
+          const failedStatuses = ['FAILED', 'BLOCKED', 'VALIDATION_FAILED', 'PREVIEW_STALE', 'CONFLICT']
+          const open = response.items.filter(result => result.status !== 'COMPLETED' && !failedStatuses.includes(result.status))
+          const failures = response.items.filter(result => failedStatuses.includes(result.status)).map(result => ({ label: labels.get(result.packageId) ?? '#?', reason: result.message }))
+          const say = (ok: number, bad: ReadonlyArray<{ label: string; reason?: string }>, pending: number) => { const notice = bulkInvoiceNotice(response.items.length, ok, bad, pending); onNotice(notice.text, notice.kind, { title: notice.title, operation: 'Toplu fatura kesme' }) }
+          say(succeeded, failures, open.length)
+          // The ones still going are read until they end (status reads only; nothing is submitted again) and the same notice
+          // then turns into the final result.
+          if (open.length) {
+            let ok = succeeded
+            const bad: Array<{ label: string; reason?: string }> = [...failures]
+            let left = open.length
+            const follow: BulkInvoiceFollow[] = open.map(result => ({ packageId: result.packageId, label: labels.get(result.packageId) ?? '#?', invoiceId: result.invoiceId, jobId: result.jobId }))
+            const read = async (item: BulkInvoiceFollow): Promise<BulkInvoiceRead> => {
+              if (item.invoiceId) {
+                const invoice = await hubPoll<{ status: string; lastErrorCode: string | null }>(`/invoices/${item.invoiceId}`)
+                return invoiceReadState(invoice.status, invoice.lastErrorCode ? invoiceFailureReason(invoice.lastErrorCode) ?? invoice.lastErrorCode : null)
+              }
+              if (item.jobId) {
+                const detail = await hubPoll<{ job: { status: string; lastErrorSummary: string | null } }>(`/jobs/${item.jobId}`)
+                return jobReadState(detail.job.status, detail.job.lastErrorSummary)
+              }
+              return { state: 'pending' }
+            }
+            void followPendingInvoices(follow, read, (item, result) => {
+              const original = open.find(entry => entry.packageId === item.packageId)
+              if (!original) return
+              left--
+              if (result.state === 'done') { ok++; onNotice(`${item.label} nolu siparişin faturası kesildi.`, 'success', resultContext({ ...original, status: 'COMPLETED' }, 'Fatura Kesildi')) }
+              else { bad.push({ label: item.label, reason: result.reason }); onNotice(`${item.label} nolu siparişin faturası oluşturulamadı: ${result.reason ?? 'neden bildirilmedi'}`, 'error', resultContext({ ...original, status: 'FAILED', message: result.reason ?? '' }, 'Fatura Kesilemedi')) }
+              if (left > 0) onNotice(bulkInvoiceNotice(response.items.length, ok, bad, left).text, 'pending', { title: 'Toplu Fatura Gönderiliyor' })
+              else say(ok, bad, 0)
+            }).then(unfinished => {
+              if (unfinished.length) onNotice(`${unfinished.length} siparişin faturasının sonucu henüz bilinmiyor; Faturalar sayfasından kontrol edin.`, 'info', { title: 'Toplu Fatura Sonucu Bekleniyor', operation: 'Toplu fatura kesme' })
+            }).finally(onComplete)
+          }
+        }
       })
       .catch(reason => {
         const failure = notificationError(reason, 'Bilinmeyen hata')
