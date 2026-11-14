@@ -47,16 +47,17 @@ export function jobCategoryOf(type: string): Exclude<JobCategory, 'ALL'> {
   return 'SYSTEM'
 }
 
-const tab = (key: Exclude<JobCategory, 'ALL'>, label: string) => ({ key, label, match: (type: string) => jobCategoryOf(type) === key })
-export const jobCategoryTabs: ReadonlyArray<{ key: JobCategory; label: string; match: (type: string) => boolean }> = [
-  { key: 'ALL', label: 'Tüm İşlemler', match: () => true },
+const tab = (key: Exclude<JobCategory, 'ALL'>, label: string, title = label) => ({ key, label, title, match: (type: string) => jobCategoryOf(type) === key })
+// label is the short name on the segment (it must fit one line at 1280 px); title is the full name for the tooltip and screen readers.
+export const jobCategoryTabs: ReadonlyArray<{ key: JobCategory; label: string; title: string; match: (type: string) => boolean }> = [
+  { key: 'ALL', label: 'Tümü', title: 'Tüm İşlemler', match: () => true },
   tab('ORDERS', 'Sipariş/Kargo'),
   tab('PRICE_INVENTORY', 'Fiyat/Stok'),
   tab('CATALOG', 'Ürün/Yayın'),
-  tab('LISTS', 'Katalog Listeleri'),
-  tab('QUESTIONS', 'Müşteri Soruları'),
+  tab('LISTS', 'Katalog', 'Katalog Listeleri'),
+  tab('QUESTIONS', 'Sorular', 'Müşteri Soruları'),
   tab('INVOICES', 'Faturalar'),
-  tab('FINANCE', 'Finans/Hakediş'),
+  tab('FINANCE', 'Hakediş', 'Finans ve Hakediş'),
   tab('RETURNS', 'İadeler'),
   tab('SYSTEM', 'Sistem')
 ]

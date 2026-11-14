@@ -341,7 +341,7 @@ function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retrya
 
 // The categories are the second level under İşler: one segmented strip of equal text buttons (the dashboard's period
 // picker), every category in view with a quiet count; on a narrow screen the strip scrolls sideways.
-function JobCategorySegment({ items: givenItems, value, onChange }: { items: Array<{ value: string; label: string; count?: number }>; value: string; onChange: (value: string) => void }) {
+function JobCategorySegment({ items: givenItems, value, onChange }: { items: Array<{ value: string; label: string; title?: string; count?: number }>; value: string; onChange: (value: string) => void }) {
   const items = useRememberedTabCounts('İşlem kategorileri', givenItems)
   const strip = useRef<HTMLDivElement>(null)
   // A category opened from a link may sit past the edge of a phone's strip: scroll the strip (only it) to show it.
@@ -353,7 +353,7 @@ function JobCategorySegment({ items: givenItems, value, onChange }: { items: Arr
     const tab = active.getBoundingClientRect()
     if (tab.left < box.left || tab.right > box.right) element.scrollLeft += tab.left - box.left - (box.width - tab.width) / 2
   }, [value])
-  return <div ref={strip} className="jobs-category-segment" role="tablist" aria-label="İşlem kategorileri">{items.map((item, index) => <button key={item.value} type="button" role="tab" tabIndex={item.value === value ? 0 : -1} aria-selected={item.value === value} className={item.value === value ? 'is-active' : undefined} onClick={() => onChange(item.value)} onKeyDown={event => {
+  return <div ref={strip} className="jobs-category-segment" role="tablist" aria-label="İşlem kategorileri">{items.map((item, index) => <button key={item.value} type="button" role="tab" tabIndex={item.value === value ? 0 : -1} aria-selected={item.value === value} title={item.title} aria-label={item.title ? `${item.title}${item.count !== undefined ? ` ${item.count}` : ''}` : undefined} className={item.value === value ? 'is-active' : undefined} onClick={() => onChange(item.value)} onKeyDown={event => {
     const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : event.key === 'ArrowRight' ? (index + 1) % items.length : event.key === 'ArrowLeft' ? (index - 1 + items.length) % items.length : -1
     if (next < 0) return
     event.preventDefault()
@@ -597,7 +597,7 @@ export function JobsPage({ me }: { me: Me }) {
     </div>
     <Tabs className="rv-view-tabs jobs-reference-main-tabs" ariaLabel="İşlem Takibi görünümü" value={mainTab} onChange={setMainTab} items={[{ value: 'jobs', label: viewTabLabel('processing', 'İşler') }, { value: 'logs', label: viewTabLabel('log', 'Loglar') }, { value: 'health', label: viewTabLabel('connected', 'API Sağlık') }, { value: 'queue', label: viewTabLabel('waiting', 'Kuyruk ve Kota') }, { value: 'notifications', label: viewTabLabel('unread', 'Bildirimler') }]} />
     <div key={mainSlide.key} className={`jobs-reference-canvas${mainSlide.className ? ` ${mainSlide.className}` : ''}`}>
-      {!listHidden && <JobCategorySegment value={category} onChange={setCategory} items={jobCategoryTabs.filter(tab => tab.key === 'ALL' || tab.key === category || categoryCounts.get(tab.key) !== 0).map(tab => ({ value: tab.key, label: tab.label, count: list.isLoading ? undefined : categoryCounts.get(tab.key) ?? 0 }))} />}
+      {!listHidden && <JobCategorySegment value={category} onChange={setCategory} items={jobCategoryTabs.filter(tab => tab.key === 'ALL' || tab.key === category || categoryCounts.get(tab.key) !== 0).map(tab => ({ value: tab.key, label: tab.label, title: tab.title, count: list.isLoading ? undefined : categoryCounts.get(tab.key) ?? 0 }))} />}
       {mainTab === 'logs' ? <Suspense fallback={<Busy text="Loglar yükleniyor…" />}><OperationLogs platformOptions={platformOptions} onOpenJob={setSelectedId} /></Suspense>
         : mainTab === 'health' ? <Suspense fallback={<Busy text="API sağlığı yükleniyor…" />}><ApiHealthView onFeedback={showPanelFeedback} /></Suspense>
         : mainTab === 'queue' ? <Suspense fallback={<Busy text="Kuyruk ölçümleri yükleniyor…" />}><QueueQuotaView /></Suspense>

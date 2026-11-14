@@ -61,3 +61,12 @@ describe('job category tabs (G22)', () => {
     for (const tab of jobCategoryTabs.filter(item => item.key !== 'ALL')) expect(jobTypesForCategoryTab(tab.key)!.length).toBeGreaterThan(0)
   })
 })
+
+describe('category segment labels', () => {
+  it('are short enough for one line and keep the full name as the title', () => {
+    expect(jobCategoryTabs.map(tab => tab.label)).toEqual(['Tümü', 'Sipariş/Kargo', 'Fiyat/Stok', 'Ürün/Yayın', 'Katalog', 'Sorular', 'Faturalar', 'Hakediş', 'İadeler', 'Sistem'])
+    expect(jobCategoryTabs.find(tab => tab.key === 'ALL')!.title).toBe('Tüm İşlemler')
+    expect(jobCategoryTabs.find(tab => tab.key === 'QUESTIONS')!.title).toBe('Müşteri Soruları')
+    for (const tab of jobCategoryTabs) expect(tab.title.length).toBeGreaterThanOrEqual(tab.label.length)
+  })
+})
