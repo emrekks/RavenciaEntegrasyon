@@ -8166,10 +8166,10 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
 
     // Live 10.11.2026 (MZ052BOD, 7 colours): "Platformlarda Güncelle" with Görseller alone refused two approved colours with
     // "Her varyant için etkin Trendyol fiyat teklifi gerekir": a variant had no price there, although no price goes. The
-    // pictures now go; a pick that sends a price, VAT rate or stock (the whole card of an unapproved product, VAT Oranı)
-    // still needs every offer.
+    // pictures now go; a pick that sends a VAT rate (VAT Oranı) still needs every offer, and the unapproved update
+    // sends no price or stock (15.11.2026).
     [PostgreSqlFact]
-    public async Task TrendyolImagesOnlyUpdate_DoesNotNeedPriceOffers_ButVatAndUnapprovedCardsStillDo()
+    public async Task TrendyolImagesOnlyUpdate_DoesNotNeedPriceOffers_ButVatStillDoes()
     {
         var tenant = NewTenant("images-only-update");
         var connection = NewQuestionConnection(tenant);
@@ -8225,9 +8225,10 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         // Yayınla (the publication) still needs every offer.
         Assert.Equal("CHANNEL_OFFER_REQUIRED", (await new ProductPublicationComposer(db, new ConfigurationBuilder().Build()).BuildAsync(tenant.Id, productId, connection.Id, CancellationToken.None)).Error?.Code);
 
-        // Not approved yet (no link): the whole card goes, price and stock included, so the offer is required again.
+        // Not approved yet (no link): the whole card goes to unapproved-bulk-update, which takes no price or stock
+        // ("Onaysız Ürün v2" updates the product information only; 15.11.2026), so no offer is required; the desi is.
         await db.MarketplaceVariantLinks.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
-        Assert.Equal("CHANNEL_OFFER_REQUIRED", (await composer.BuildAsync(tenant.Id, productId, connection.Id, CancellationToken.None, ProductUpdateFields.Sections(["IMAGES"]).Value)).Error?.Code);
+        Assert.Equal("DESI_REQUIRED", (await composer.BuildAsync(tenant.Id, productId, connection.Id, CancellationToken.None, ProductUpdateFields.Sections(["IMAGES"]).Value)).Error?.Code);
 
         await transaction.RollbackAsync();
     }

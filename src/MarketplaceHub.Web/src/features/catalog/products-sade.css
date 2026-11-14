@@ -568,3 +568,10 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 :root:root:root:root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl > tbody > tr > td { padding-left: 10px !important; padding-right: 10px !important; }
 :root:root:root:root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl > thead > tr > th .rr-hf > .rr-anchor { position: static; transform: none; }
 }
+
+/* A job whose total is not known yet: a sliding stretch instead of a made-up percent. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-job .rr-bar.rr-bar-wait i { width: 40%; animation: rr-job-slide 1.2s ease-in-out infinite; }
+@keyframes rr-job-slide { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+@media (prefers-reduced-motion: reduce) {
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-job .rr-bar.rr-bar-wait i { animation-duration: 3s; }
+}

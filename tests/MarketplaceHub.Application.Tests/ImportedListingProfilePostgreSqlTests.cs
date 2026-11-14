@@ -99,7 +99,13 @@ public sealed class ImportedListingProfilePostgreSqlTests(PostgreSqlTenantIsolat
             var view = (await NewCatalogService(db).GetProductAsync(seeded.Tenant.Id, seeded.Product.Id, CancellationToken.None)).Value!;
             var platform = Assert.Single(view.PlatformStatuses!, x => x.PlatformCode == "TRENDYOL");
             Assert.Equal(("REJECTED", 0, "Hatalı Marka Bilgisi", 1, 0), (platform.Status, platform.MatchedVariantCount, platform.RejectionReason, platform.RejectedVariantCount, platform.PendingVariantCount));
-            Assert.False(Assert.Single(view.Variants.Single().PlatformStatuses!, x => x.PlatformCode == "TRENDYOL").IsMatched);
+            var variantStatus = Assert.Single(view.Variants.Single().PlatformStatuses!, x => x.PlatformCode == "TRENDYOL");
+            Assert.False(variantStatus.IsMatched);
+            // It is still there, on Trendyol's unapproved list: the editor's family update sends it (owner, 15 Nov 2026:
+            // MZ056 Kahverengi was left out as "bu mağazada yok"), and the update composer counts it as held, not as an
+            // approved colour content.
+            Assert.Equal((true, "REJECTED"), (variantStatus.IsLinked, variantStatus.ListingStatus));
+            Assert.Equal([seeded.Variant.Id], await ProductUpdateComposer.HeldVariantIdsAsync(db, seeded.Tenant.Id, seeded.Connection.Id, [seeded.Variant.Id], CancellationToken.None));
         }
 
         // Rejected without a reason: no reason is made up. Then waiting.

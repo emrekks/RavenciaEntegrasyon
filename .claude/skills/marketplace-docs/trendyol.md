@@ -100,6 +100,16 @@ Code: `Adapters/Trendyol/` — `TrendyolHttpClient.cs` (+ `.Webhooks.cs`), `Tren
   product back to review), never a second create (`ProductUpdateComposer.ApprovedContentId`,
   `CatalogService.IsTrendyolUnapprovedImportAsync`). Source: offline doc "Ürün Filtreleme - Onaysız Ürün v2"
   ("gerekli güncellemeleri yapmanız halinde, ürününüz tekrar onay sürecine girecektir"); live SQL 14 Nov 2026.
+- Not matched is not "not there" (15 Nov 2026): a REJECTED / APPROVAL_PENDING card is still on Trendyol, so every
+  write path reaches it through `unapproved-bulk-update`: the editor's family update (Hızlı Güncelle / Platformlarda
+  Güncelle) sends it instead of naming it "bu mağazada yok" (`family-update-plan.ts`, `trendyol-unapproved.ts`), the
+  product list's bulk update sends it its product information (no price/stock job), Yayınla re-sends any card with a
+  held listing and no numeric content link as an update, and a held variant link never makes a card a "split content"
+  (`ProductUpdateComposer.HeldVariantIdsAsync`). Live 14 Nov 22:00Z: a family update of MZ056 queued 9 cards and left
+  out the rejected Kahverengi/Mürdüm card. The unapproved update carries product information only: no
+  `quantity` / `listPrice` / `salePrice` / `currencyType`, and no field the card has no value for, since Trendyol
+  deletes a field sent as null (`ProductUpdateComposer.UnapprovedUpdatePayload`). Source: offline
+  `trendyol-api-son.md` ~9036 "Ürün Güncelleme - Onaysız Ürün v2".
 - Products: the PRODUCTS watermark is the moment a full catalog read began, less 60 s (the next read starts 2 min
   before it). Before 6 Nov 2026 it was the job's end (a scan took 11 min on 31 Oct, its own changes were lost) and a
   scoped read (newOnly, existingOnly, mappingOnly, optionsOnly) moved it too, so products it skipped were missed by
