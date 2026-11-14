@@ -355,7 +355,7 @@ internal static class PayoutBuilder
         // Hepsiburada says it: Paid, or WillBePaid (expected until its due day, then overdue).
         if (row.Source == HepsiburadaFinanceSyncJobHandler.Source && string.Equals(row.TransactionSubType, "Paid", StringComparison.OrdinalIgnoreCase)) return Paid;
         if (!string.IsNullOrEmpty(row.PaymentOrderId)) return Paid;
-        return row.PaymentDate is { } due && PaidOn(row, Day(due)) >= today ? Expected : Unknown;
+        return row.PaymentDate is { } due && PaidOn(row, Day(due), row.RegionOverride ?? Region(row.PlatformCode, row.Country, row.Affiliate)) >= today ? Expected : Unknown;
     }
 
     public const string Lira = "TRY";
@@ -420,7 +420,7 @@ internal static class PayoutBuilder
         var (day, kind) = PayDay(row, due, lastPaid, ref region);
         // Past due (PaidOn) with no payout seen: it waits apart, OVERDUE, and counts in Vadesi Geçmiş Bekleyen alone, never in
         // a day to come, the next payout or a region's or marketplace's next payout (owner, 13 Nov 2026: one record, one place).
-        if (kind == "OVERDUE" || PaidOn(row, due) < today) return (today, "OVERDUE");
+        if (kind == "OVERDUE" || PaidOn(row, due, region) < today) return (today, "OVERDUE");
         // A Trendyol sale whose payout day (the one before its due day) has passed while it is not due yet: the next one.
         if (day < today) return (region == Europe ? EuropePayoutDayOnOrAfter(today) : PayoutDayOnOrAfter(today), kind);
         return (day, kind);
@@ -448,9 +448,13 @@ internal static class PayoutBuilder
 
     // The last day a record due on a day is paid on time, after which it is past due. Hepsiburada pays every Tuesday what
     // fell due since the Tuesday before, so its record is past due only once that Tuesday has passed (owner, 13 Nov 2026);
-    // every other record once its due day has passed.
-    private static DateOnly PaidOn(PayoutRow row, DateOnly due) =>
-        row.PlatformCode == "HEPSIBURADA" ? WeekdayOnOrAfter(due, DayOfWeek.Tuesday) : due;
+    // Trendyol Avrupa pays on the fourth Monday of the month everything due by then (docs/ISLEYIS-KILAVUZU.md, payouts of
+    // 28 Sep and 26 Oct 2026), so its record is past due only once that Monday has passed; every other record once its
+    // due day has passed.
+    private static DateOnly PaidOn(PayoutRow row, DateOnly due, string region) =>
+        row.PlatformCode == "HEPSIBURADA" ? WeekdayOnOrAfter(due, DayOfWeek.Tuesday)
+        : row.PlatformCode == "TRENDYOL" && region == Europe ? EuropePayoutDayOnOrAfter(due)
+        : due;
 
     // Avrupa's payout day: the fourth Monday of the month (its 22nd-28th), the first on or after the day.
     internal static DateOnly EuropePayoutDayOnOrAfter(DateOnly day)

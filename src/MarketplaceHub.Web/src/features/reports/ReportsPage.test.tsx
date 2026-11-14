@@ -247,7 +247,7 @@ describe('ReportsPage', () => {
     expect(heroTiles(page, 'sales')).toEqual(['Net Satılan Adet 4', 'Adet Başına Satış ₺70,00', 'KDV Hariç Net Satış ₺227,27', 'Satıcı İndirimi %7,9'])
     expect(tipOf(page, 'sales', 'Satıcı İndirimi')).toContain('yalnız Trendyol ve Hepsiburada')
     expect(hero(page, 'orders')).toBe('₺116,67 · sepet ortalaması')
-    expect(heroTiles(page, 'orders')).toEqual(['Sipariş Başına Adet 1,25', 'Tekrar Gelen Müşteri %50,0', 'Sipariş Başına Kâr ₺42,33'])
+    expect(heroTiles(page, 'orders')).toEqual(['Sipariş Başına Adet 1,25', 'Tekrar Gelen Müşteri %50,0', 'Müşteri Başına Sipariş 1,5'])
     expect(hero(page, 'profit')).toBe('— · reklam öncesi marj')
     expect(heroTiles(page, 'profit')).toEqual(['Adet Başına Kâr ₺31,75', 'Sipariş Başına Kâr ₺42,33', 'Adet Başına Maliyet ₺20,00'])
     expect(hero(page, 'fees')).toBe('₺14,33 · sipariş başına')
@@ -274,7 +274,7 @@ describe('ReportsPage', () => {
     expect(heroTiles(page, 'cancels')).toEqual(['İptal Edilen Adet 1', 'İptal Edilen Tutar ₺120'])
     // No known cancel reason: no line for it.
     expect(heroCard(page, 'cancels').textContent).not.toContain('En Sık Neden')
-    expect(hero(page, 'todo')).toBe('1 · faturasız paket')
+    expect(hero(page, 'todo')).toBe('1 · 22 günde faturasız paket')
     expect(page.querySelector('.reports-hero-card.is-todo.is-alert')).not.toBeNull()
     expect(heroTiles(page, 'todo')).toEqual(['Stok Riski 0 ürün', 'Soru Yanıt Süresi —'])
     // Every figure explains itself under the pointer.
@@ -544,7 +544,7 @@ describe('ReportsPage', () => {
     const rows = bridgeRows(page)
     expect(rows).toContain('− Net KDV − ₺10,00')
     expect(rows).toContain('− Reklam ve Diğer Kesintiler − ₺5.000,00')
-    expect(rows.at(-1)).toBe('Masraflar Sonrası − ₺6.569,23')
+    expect(rows.at(-1)).toBe('Maliyet Öncesi Kalan − ₺6.569,23')
   })
 
   it('adds a deduction credited back to the profit, on the bridge and in the account alike', async () => {
@@ -722,7 +722,7 @@ describe('ReportsPage', () => {
     expect(page.querySelectorAll('.reports-kpis > div')[3].textContent).toContain('—')
     const rows = texts(page, '.reports-bridge > li')
     expect(rows.some(row => row.startsWith('− Ürün Maliyeti'))).toBe(false)
-    expect(rows.at(-1)).toMatch(/^Masraflar Sonrası/u)
+    expect(rows.at(-1)).toMatch(/^Maliyet Öncesi Kalan/u)
     expect(texts(page, '.reports-card-bridge .reports-bridge-gaps > div')).toEqual(['Maliyeti Girili51 adet eksik, kâr hesaplanamadı%94,9'])
     // The cost entered is still listed among the costs, with how much of it is entered.
     const cost = [...page.querySelectorAll('.reports-costlines li')].find(line => line.textContent?.startsWith('Ürün Maliyeti'))
@@ -812,7 +812,7 @@ describe('ReportsPage', () => {
     const cost = [...page.querySelectorAll('.reports-costlines li')].find(line => line.textContent?.includes('Ürün Maliyeti'))!
     expect(cost.textContent).toContain('—')
     expect(cost.textContent).toContain('Ürün kartında maliyet girilince hesaplanır')
-    expect(bridgeRows(page).at(-1)).toBe('Masraflar Sonrası ₺207,00')
+    expect(bridgeRows(page).at(-1)).toBe('Maliyet Öncesi Kalan ₺207,00')
     expect(bridgeRows(page).some(row => row.includes('Ürün Maliyeti'))).toBe(false)
     expect(heroTiles(page, 'profit')[0]).toBe('Adet Başına Kâr —')
     // The profit tab's account says the same instead of a row of zeros.

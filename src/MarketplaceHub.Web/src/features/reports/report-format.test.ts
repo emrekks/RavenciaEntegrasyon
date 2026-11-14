@@ -29,7 +29,9 @@ describe('report formatting', () => {
   it('compares counts as a percentage, rates by their difference written in per cent, and not at all from an empty previous period', () => {
     expect(change(120, 100)).toEqual({ text: '+%20', direction: 'up' })
     expect(change(80, 100)).toEqual({ text: '−%20', direction: 'down' })
-    expect(change(5, 0)).toBeNull()
+    // Something against nothing is new, nothing against something is a full fall, nothing against nothing no change.
+    expect(change(5, 0)).toEqual({ text: 'Yeni', direction: 'up' })
+    expect(change(0, 5)).toEqual({ text: '−%100', direction: 'down' })
     expect(change(0, 0)).toBeNull()
     expect(change(0.05, 0.03, 'rate')).toEqual({ text: '+%2,0', direction: 'up' })
     expect(change(null, 3)).toBeNull()

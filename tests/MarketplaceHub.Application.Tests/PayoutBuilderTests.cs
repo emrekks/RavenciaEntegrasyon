@@ -225,8 +225,9 @@ public sealed class PayoutBuilderTests
                     var row = sale ? Sale("s", 549.14m, 431.07m, due, country: country, affiliate: country == "Azerbaycan" ? "TRENDYOLAZJV" : "TRENDYOLTR")
                         : Deduction("k", "Kargo Fatura", MarketplaceFinanceCategories.Cargo, 98.34m, due);
                     var (day, kind, _) = PayoutBuilder.Expect(row, PayoutBuilder.Line(row, wednesday), wednesday);
-                    // A record past its due day waits apart on no payout day.
-                    if (due < wednesday) { Assert.Equal((wednesday, "OVERDUE"), (day, kind)); continue; }
+                    // A record past the day it is paid on (Avrupa: the fourth Monday on or after its due day) waits apart.
+                    var paidOn = sale && country == "Yunanistan" ? PayoutBuilder.EuropePayoutDayOnOrAfter(due) : due;
+                    if (paidOn < wednesday) { Assert.Equal((wednesday, "OVERDUE"), (day, kind)); continue; }
                     Assert.Equal("PAYOUT_DAY", kind);
                     Assert.True(day >= wednesday && day.DayOfWeek is DayOfWeek.Monday or DayOfWeek.Thursday, $"{country} {due} -> {day}");
                 }
@@ -247,11 +248,10 @@ public sealed class PayoutBuilderTests
         PayoutOrderRow[] tr = [new(Store, "TR-1", 17777.82m, Due(new DateOnly(2026, 11, 9)), "TR", "Türkiye, Körfez")];
         PayoutOrderRow[] withEurope = [.. tr, new(Store, "CEE-1", 19620.22m, Due(new DateOnly(2026, 10, 26)), "CEE", "Avrupa")];
         var view = PayoutBuilder.Build(rows, withEurope, Stores, today, 90, []);
-        // They stand in Avrupa, but past their due day they wait apart (owner, 13 Nov 2026), out of its 23 Nov payout.
+        // They go with Avrupa's 23 Nov payout, which takes everything due by that fourth Monday.
         var europe = Assert.Single(view.Upcoming, x => x.Kind == "PAYOUT_DAY");
-        Assert.Equal((new DateOnly(2026, 11, 23), PayoutBuilder.Europe, 431.07m), (europe.Day, europe.Region, europe.Amount));
-        var waiting = Assert.Single(view.Upcoming, x => x.Kind == "OVERDUE");
-        Assert.Equal((PayoutBuilder.Europe, -244.96m), (waiting.Region, waiting.Amount));
+        Assert.Equal((new DateOnly(2026, 11, 23), PayoutBuilder.Europe, 186.11m), (europe.Day, europe.Region, europe.Amount));
+        Assert.DoesNotContain(view.Upcoming, x => x.Kind == "OVERDUE");
         // A store never paid in Avrupa keeps them apart, OVERDUE.
         var apart = PayoutBuilder.Build(rows, tr, Stores, today, 90, []);
         Assert.Equal(-244.96m, Assert.Single(apart.Upcoming, x => x.Kind == "OVERDUE").Amount);
@@ -266,21 +266,25 @@ public sealed class PayoutBuilderTests
         Assert.Equal(expected, PayoutBuilder.PayoutRegion(code, name));
 
     [Fact]
-    public void An_avrupa_record_past_its_due_day_waits_apart_out_of_every_payout()
+    public void An_avrupa_record_past_its_due_day_waits_for_the_fourth_monday_payout()
     {
-        // Avrupa, paid on the fourth Monday: due last week, no payout yet. Türkiye-Körfez is paid on Thursday 5 Nov.
+        // Avrupa pays on the fourth Monday of the month everything due by then: a record due last week (28 Oct) goes with
+        // the 23 Nov payout and is not past due before that Monday has passed. Türkiye-Körfez is paid on Thursday 5 Nov.
         PayoutRow[] rows = [Sale("eu", 1000m, 800m, Today.AddDays(-7), country: "Bulgaristan"), Sale("tr", 500m, 400m, Today.AddDays(1))];
         var view = PayoutBuilder.Build(rows, [], Stores, Today, 90, []);
         Assert.Equal(1200m, view.Expected);
-        Assert.Equal(800m, view.Unknown);
+        Assert.Equal(0m, view.Unknown);
         Assert.Equal((Today.AddDays(1), 400m), (view.Next!.Day, view.Next.Amount));
-        // One record, one place: it stands under Vadesi Geçmiş Bekleyen only, never in a payout day's row too.
         var europeDay = Assert.Single(view.Upcoming, group => group.Region == PayoutBuilder.Europe);
-        Assert.Equal((Today, "OVERDUE", 800m), (europeDay.Day, europeDay.Kind, europeDay.Amount));
+        Assert.Equal((new DateOnly(2026, 11, 23), "PAYOUT_DAY", 800m), (europeDay.Day, europeDay.Kind, europeDay.Amount));
         var europe = Assert.Single(view.Regions, region => region.Region == PayoutBuilder.Europe);
-        // Past its due day it counts in Vadesi Geçmiş Bekleyen alone: no next Avrupa payout from it (owner, 13 Nov 2026).
-        Assert.Null(europe.NextDay);
-        Assert.Equal(800m, europe.Unknown);
+        Assert.Equal(new DateOnly(2026, 11, 23), europe.NextDay);
+        Assert.Equal(0m, europe.Unknown);
+        // Once that Monday has passed with no payout seen, it waits apart, Vadesi Geçmiş.
+        var later = PayoutBuilder.Build(rows, [], Stores, new DateOnly(2026, 11, 24), 90, []);
+        var overdue = Assert.Single(later.Upcoming, group => group.Region == PayoutBuilder.Europe);
+        Assert.Equal(("OVERDUE", 800m), (overdue.Kind, overdue.Amount));
+        Assert.Equal(800m, Assert.Single(later.Regions, region => region.Region == PayoutBuilder.Europe).Unknown);
     }
 
     [Fact]
@@ -301,7 +305,7 @@ public sealed class PayoutBuilderTests
         Assert.Equal(["TRENDYOL", "PAZARAMA"], view.Platforms.Select(x => x.PlatformCode));
         Assert.Equal(view.Expected, view.Platforms.Sum(x => x.Expected));
         var trendyol = view.Platforms[0];
-        Assert.Equal((650m, 250m, Today.AddDays(1), 400m), (trendyol.Expected, trendyol.Unknown, trendyol.NextDay!.Value, trendyol.NextAmount!.Value));
+        Assert.Equal((650m, 0m, Today.AddDays(1), 400m), (trendyol.Expected, trendyol.Unknown, trendyol.NextDay!.Value, trendyol.NextAmount!.Value));
         Assert.Equal((100m, Today.AddDays(3)), (view.Platforms[1].Expected, view.Platforms[1].NextDay!.Value));
     }
 

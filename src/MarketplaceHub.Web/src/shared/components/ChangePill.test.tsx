@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { ChangePill, trendChange } from './ChangePill'
+import { ChangePill, newChange, trendChange } from './ChangePill'
 
 describe('ChangePill', () => {
   it('writes the glyph, the sign and the tone like the Raporlar cards', () => {
@@ -19,5 +19,15 @@ describe('ChangePill', () => {
     expect(trendChange(['%10,7', true])).toEqual({ text: '+%10,7', direction: 'up' })
     expect(trendChange(['-%33,3', false])).toEqual({ text: '−%33,3', direction: 'down' })
     expect(trendChange(['%0', true])).toEqual({ text: '%0', direction: 'flat' })
+    expect(trendChange(['Yeni', true])).toEqual({ text: 'Yeni', direction: 'up' })
+  })
+  it('reads a rise from nothing as a green Yeni and a previous period without data as a neutral dash', () => {
+    const fresh = renderToStaticMarkup(<ChangePill change={newChange} />)
+    expect(fresh).toContain('▲ Yeni')
+    expect(fresh).toContain('is-good')
+    const none = renderToStaticMarkup(<ChangePill change={newChange} noData />)
+    expect(none).toContain('—')
+    expect(none).toContain('is-flat')
+    expect(none).toContain('Önceki dönem için veri yok')
   })
 })

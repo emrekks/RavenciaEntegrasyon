@@ -130,7 +130,15 @@ internal sealed class ReportPackageRow
     public Guid OrderId { get; init; }
     public string? CargoProvider { get; init; }
     public ShipmentPackageStatus Status { get; init; }
-    public decimal Amount { get; init; }
+    // The package's own amount as read; ReportsService.PackageRowsAsync replaces it with ReportBuilder.PackageAmount.
+    public decimal Amount { get; set; }
+    // The package's lines at their unit price (allocated less cancelled units), the order's total, the other priced live
+    // packages' amounts and the order's live packages (all, and those stored without an amount): PackageAmount.
+    public decimal AllocatedAmount { get; init; }
+    public decimal OrderAmount { get; init; }
+    public decimal PricedSiblingsAmount { get; init; }
+    public int LivePackages { get; init; }
+    public int UnpricedPackages { get; init; }
     public MarketplaceInvoiceStatus MarketplaceInvoiceStatus { get; init; }
     public string? ManualInvoiceStatus { get; init; }
     public bool PanelInvoiced { get; init; }
@@ -710,6 +718,17 @@ internal static class ReportBuilder
                 : package.MarketplaceInvoiceStatus is MarketplaceInvoiceStatus.NotInvoiced or MarketplaceInvoiceStatus.Rejected ? "NOT_INVOICED"
                 : "UNKNOWN"
         };
+
+    // A package's amount for the invoice buckets: its own when stored; one stored without (Hepsiburada's status lists
+    // carry no amount) is the order's whole total when it is the order's only live package, else its lines' value,
+    // else an even share of what the priced packages leave of the order total.
+    internal static decimal PackageAmount(ReportPackageRow package)
+    {
+        if (package.Amount > 0m) return package.Amount;
+        if (package.LivePackages <= 1) return Math.Max(0m, package.OrderAmount);
+        if (package.AllocatedAmount > 0m) return package.AllocatedAmount;
+        return package.UnpricedPackages > 0 ? Math.Max(0m, package.OrderAmount - package.PricedSiblingsAmount) / package.UnpricedPackages : 0m;
+    }
 
     internal static decimal PartlyListUnitPrice(LineFact line) => line.ListUnitPrice > 0m ? line.ListUnitPrice : line.Row.UnitPrice + line.Row.PlatformDiscount;
 

@@ -58,7 +58,10 @@ public sealed record DashboardPerformanceView(
     IReadOnlyList<DashboardPerformanceHourView>? PreviousHours = null,
     // The period's orders holding a product line the panel could not read (ShipmentPackage.UnreadableLineCount): their
     // units are short and, where the marketplace sends no order total (PTT AVM), their amount may be too. Shown apart.
-    int UnreadableLineOrders = 0);
+    int UnreadableLineOrders = 0,
+    // Each store's first order day (tenant's local calendar), every order it ever imported: a previous period starting before
+    // the chosen stores' first day has no data source for part of it, so the panel does not compare with it.
+    IReadOnlyDictionary<Guid, DateOnly>? FirstOrderDays = null);
 
 // One hour (tenant's local time, "yyyy-MM-ddTHH:00") of one connection in one currency; same rules as the day rows.
 public sealed record DashboardPerformanceHourView(

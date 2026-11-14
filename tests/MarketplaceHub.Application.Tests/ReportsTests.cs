@@ -153,6 +153,18 @@ public sealed class ReportsTests
     }
 
     [Fact]
+    public void A_package_stored_without_an_amount_takes_its_share_of_the_order_total()
+    {
+        // Its own amount when stored.
+        Assert.Equal(250m, ReportBuilder.PackageAmount(new ReportPackageRow { Amount = 250m, OrderAmount = 900m, LivePackages = 1 }));
+        // Hepsiburada's status lists carry no amount: the order's only package is the whole order.
+        Assert.Equal(899.90m, ReportBuilder.PackageAmount(new ReportPackageRow { OrderAmount = 899.90m, LivePackages = 1, UnpricedPackages = 1 }));
+        // One of several: its lines' value, else an even share of what the priced packages leave.
+        Assert.Equal(300m, ReportBuilder.PackageAmount(new ReportPackageRow { AllocatedAmount = 300m, OrderAmount = 900m, LivePackages = 2, UnpricedPackages = 2 }));
+        Assert.Equal(350m, ReportBuilder.PackageAmount(new ReportPackageRow { OrderAmount = 900m, PricedSiblingsAmount = 200m, LivePackages = 3, UnpricedPackages = 2 }));
+    }
+
+    [Fact]
     public void A_not_invoiced_package_that_came_back_is_no_invoice_due()
     {
         static ReportBuilder.OrderFact Order(decimal active, decimal back) =>

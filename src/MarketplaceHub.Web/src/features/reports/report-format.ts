@@ -2,6 +2,7 @@ import { dateRangePresets } from '../../shared/date-range'
 import { istanbulDateKey } from '../../shared/format-date'
 import { noValue } from '../../shared/metric-value'
 import { platformDisplayName, platformDisplayOrder } from '../../shared/platform-names'
+import { newChangeText } from '../../shared/components/ChangePill'
 
 // The periods one click away above the reports: the panel's shared ranges (dateRangePresets; weeks start on Monday) for
 // today's Istanbul calendar day, the account's time zone, as on Genel Bakış, so a computer set to another time zone does
@@ -88,6 +89,8 @@ export type ReportSales = {
   // How fast the period's questions were answered, Trendyol and Hepsiburada only (absent in an older answer, null without
   // such a store): answered (measured), waiting (no answer yet), average and median hours.
   questionTimes?: { answered: number; waiting: number; averageHours: number | null; medianHours: number | null; platforms: string[] } | null
+  // The chosen stores' first order day (yyyy-MM-dd): a previous period starting before it is not compared with.
+  dataStartsOn?: string | null
 }
 
 // The sales map: countries for every order (a Trendyol cross-border storefront's order in its country), the previous
@@ -200,8 +203,9 @@ export function change(current: number | null | undefined, previous: number | nu
     if (Math.abs(points) < 0.05) return { text: '%0,0', direction: 'flat' }
     return { text: `${points > 0 ? '+' : '−'}%${Math.abs(points).toLocaleString('tr-TR', { maximumFractionDigits: 1, minimumFractionDigits: 1 })}`, direction: points > 0 ? 'up' : 'down' }
   }
-  // Nothing in the previous period is nothing to compare with (no "+∞%", no "■ %0" for zero against zero).
-  if (previous === 0) return null
+  // Something against nothing in the previous period is new ("▲ Yeni", no "+∞%"); nothing against nothing has no
+  // change (the pill's "■ %0").
+  if (previous === 0) return current > 0 ? { text: newChangeText, direction: 'up' } : null
   const percent = (current - previous) / Math.abs(previous) * 100
   if (Math.abs(percent) < 0.05) return { text: '%0', direction: 'flat' }
   return { text: `${percent > 0 ? '+' : '−'}%${Math.abs(percent).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}`, direction: percent > 0 ? 'up' : 'down' }
