@@ -25,8 +25,13 @@ export type FollowedJob = { jobId: string; platformName: string; what: string; /
   /** An update (not a first publish) of the card: the grouped lines then say güncellendi / güncellenemedi. */
   update?: boolean }
 
-export type JobOutcomeState = 'running' | 'scheduled' | 'succeeded' | 'partial' | 'failed' | 'review' | 'cancelled' | 'unknown'
+export type JobOutcomeState = 'running' | 'scheduled' | 'succeeded' | 'partial' | 'failed' | 'review' | 'cancelled' | 'replaced' | 'unknown'
 export type JobOutcome = { state: JobOutcomeState; line: string; /** Why it did not go through, for a summary of many jobs. */ reason?: string }
+
+// The job code of an update a newer update of the same product replaced (MarketplaceJobProcessor, PRODUCT_UPDATE_SUPERSEDED):
+// it was stopped before any call to the marketplace and the newer job gives the result, so it is no failure (owner, 15 Nov 2026).
+const replacedErrorCodes = new Set(['PRODUCT_UPDATE_SUPERSEDED'])
+export const replacedUpdateLine = 'Daha yeni güncelleme bunun yerine gönderildi; sonuç onunla bildirilecek.'
 
 const failedVariantStatuses = new Set(['REJECTED', 'NOT_SENT'])
 const sentVariantStatuses = new Set(['SENT', 'APPROVED', 'PENDING'])
@@ -67,6 +72,7 @@ export function jobOutcome(followed: FollowedJob, detail: FollowedJobDetail | nu
     if (live.length && sent.length) return { state: 'succeeded', line: `${name}: ${sent.length} varyant aktarıldı${liveNote}.` }
     return { state: 'succeeded', line: `${name}: ${followed.what} aktarıldı.` }
   }
+  if (replacedErrorCodes.has(job.lastErrorCode?.trim().toUpperCase() ?? '') && (status === 'BLOCKED' || status === 'DEAD' || status === 'CANCELLED')) return { state: 'replaced', line: `${name}: ${replacedUpdateLine}` }
   const why = refused.length ? variantReasons(refused) : reasonOf(job)
   if (status === 'MANUAL_REVIEW') return { state: 'review', line: `${name}: inceleme bekliyor — ${why}.`, reason: why }
   if (status === 'BLOCKED' || status === 'DEAD') return { state: 'failed', line: `${name}: aktarılamadı — ${why}.`, reason: why }
@@ -76,10 +82,10 @@ export function jobOutcome(followed: FollowedJob, detail: FollowedJobDetail | nu
     const at = job.nextRetryAt ? new Date(job.nextRetryAt).toLocaleTimeString('tr-TR', { timeZone: 'Europe/Istanbul', hour: '2-digit', minute: '2-digit' }) : null
     return { state: 'scheduled', line: `${name}: sırada — ${reasonOf(job)}${at ? `; ${at}'de yeniden denenecek` : ''}.`, reason: reasonOf(job) }
   }
-  return { state: 'running', line: `${name}: ${followed.what} aktarımı sürüyor; sonuç gelince bildirilecek.` }
+  return { state: 'running', line: `${name}: ${followed.what} ${followed.update ? 'güncellemesi' : 'aktarımı'} sürüyor; sonuç gelince bildirilecek.` }
 }
 
-const settledStates: ReadonlySet<JobOutcomeState> = new Set(['succeeded', 'partial', 'failed', 'review', 'cancelled'])
+const settledStates: ReadonlySet<JobOutcomeState> = new Set(['succeeded', 'partial', 'failed', 'review', 'cancelled', 'replaced'])
 export const isSettledOutcome = (outcome: JobOutcome) => settledStates.has(outcome.state)
 
 export type JobOutcomeFeedback = { title: string; kind: 'success' | 'error' | 'info' | 'warning'; lines: string[]; settled: boolean }
@@ -103,13 +109,17 @@ export function outcomeLines(outcomes: readonly JobOutcome[], jobs?: readonly Fo
     done.add(key)
     const members = outcomes.flatMap((member, at) => jobs?.[at]?.platformName === job.platformName && !jobs[at].update === !job.update && jobs[at].card !== undefined ? [{ outcome: member, card: jobs[at].card ?? '' }] : [])
     const bad = members.filter(member => member.outcome.state === 'failed' || member.outcome.state === 'partial')
-    const other = members.filter(member => !bad.includes(member) && member.outcome.state !== 'succeeded')
+    const replaced = members.filter(member => member.outcome.state === 'replaced')
+    const other = members.filter(member => !bad.includes(member) && member.outcome.state !== 'succeeded' && member.outcome.state !== 'replaced')
     const prefix = platforms.size > 1 ? `${job.platformName}: ` : ''
     const to = job.update ? locative(job.platformName) : dative(job.platformName)
     const doneWord = job.update ? 'güncellendi' : 'aktarıldı'
     const failedWord = job.update ? 'güncellenemedi' : 'aktarılamadı'
     if (bad.length === 0 && other.length === 0) {
-      lines.push(`Ürün ${to}${members.length > 1 ? ` ${members.length} renk ile` : ''} ${doneWord}.`)
+      // Only replaced cards: the newer job answers. Replaced cards next to finished ones just do not count.
+      if (replaced.length === members.length) { lines.push(replacedUpdateLine); return }
+      const counted = members.length - replaced.length
+      lines.push(`Ürün ${to}${counted > 1 ? ` ${counted} renk ile` : ''} ${doneWord}.`)
       return
     }
     if (bad.length) {
@@ -142,6 +152,8 @@ export function jobOutcomeFeedback(outcomes: readonly JobOutcome[], target: stri
     const scheduled = has('scheduled') && !has('running') && !has('unknown')
     return { title: has('unknown') ? 'Sonuç Henüz Bilinmiyor' : scheduled ? 'Aktarım Sırada' : 'Aktarım Sürüyor', kind: 'info', lines, settled }
   }
+  // Every job was replaced by a newer update: a quiet note, never an error (the newer job's result follows).
+  if (outcomes.every(outcome => outcome.state === 'replaced')) return { title: 'Güncelleme Yenisiyle Değişti', kind: 'info', lines, settled }
   if (has('cancelled')) return { title: 'Aktarım Durduruldu', kind: 'info', lines, settled }
   return { title: updating ? 'Güncellendi' : `${target} Aktarıldı`, kind: 'success', lines, settled }
 }
@@ -230,7 +242,7 @@ export async function followJobOutcomes(jobs: readonly FollowedJob[], target: st
     if (feedback.settled) { onUpdate(feedback, false); return feedback }
     if (elapsed >= shortWaitMs + longWaitMs) {
       // Unknown stays unknown: what is still open is said to be open, never done.
-      const open = outcomes.map(outcome => isSettledOutcome(outcome) ? outcome : { state: 'unknown' as const, line: outcome.line.replace(/aktarımı sürüyor; sonuç gelince bildirilecek\./u, "sonucu henüz bilinmiyor; İşlem Takibi'nden ya da ürün kartından kontrol edin.") })
+      const open = outcomes.map(outcome => isSettledOutcome(outcome) ? outcome : { state: 'unknown' as const, line: outcome.line.replace(/(?:aktarımı|güncellemesi) sürüyor; sonuç gelince bildirilecek\./u, "sonucu henüz bilinmiyor; İşlem Takibi'nden ya da ürün kartından kontrol edin.") })
       const last = summarize(open)
       onUpdate(last, false)
       return last
@@ -240,8 +252,8 @@ export async function followJobOutcomes(jobs: readonly FollowedJob[], target: st
   }
 }
 
-const outcomeWords: Record<JobOutcomeState, string> = { succeeded: 'aktarıldı', partial: 'kısmen aktarıldı', failed: 'aktarılamadı', review: 'inceleme bekliyor', cancelled: 'durduruldu', scheduled: 'sırada', running: 'sürüyor', unknown: 'sonucu bilinmiyor' }
-const outcomeOrder: JobOutcomeState[] = ['succeeded', 'partial', 'failed', 'review', 'scheduled', 'running', 'unknown', 'cancelled']
+const outcomeWords: Record<JobOutcomeState, string> = { succeeded: 'aktarıldı', partial: 'kısmen aktarıldı', failed: 'aktarılamadı', review: 'inceleme bekliyor', cancelled: 'durduruldu', replaced: 'yenisiyle değişti', scheduled: 'sırada', running: 'sürüyor', unknown: 'sonucu bilinmiyor' }
+const outcomeOrder: JobOutcomeState[] = ['succeeded', 'partial', 'failed', 'review', 'scheduled', 'running', 'unknown', 'cancelled', 'replaced']
 
 /**
  * The toast for many jobs (Toplu Yayın, a store-wide push): one line per marketplace with how many ended which way,
