@@ -106,6 +106,15 @@ A line in `ClaimCreated` must not put the order on hold.
 Claims: NewRequest, AwaitingAction, InDispute, Accepted, Rejected, Refunded, Cancelled, AwaitingPreApproval.
 
 ## Quirks
+- Cargo barcode vs tracking number (14 Nov 2026): a package's `barcode` is its cargo barcode, given as soon as the
+  package exists (Open): the open package list (`hepsiburada-api-son.md:9282` "Siparişin kargo barkod numarasıdır"),
+  the package cargo read `.../packagenumber/{p}` (:9739 "Oluşturulan paketin kargo barkodudur"), the shipped/delivered
+  lists (:10321, :10418, :10502), the Create Packages webhook (:13365, with `"status": "Open"`), and every order-detail
+  line (`barcode` beside the product's `productBarcode`). `trackingInfoCode` comes later. Live read-only SQL: for hepsiJET
+  the two are the same number (6275 + package number + check digit) on all 30 packages; for Aras Kargo they differ
+  (5534650975: barcode 62255346509755, tracking 6520112224589). So the panel keeps it apart
+  (`ShipmentPackage.CargoBarcode`, never `CargoTrackingNumber`), shows it on the order row only while no tracking number
+  exists, and labels/tracking links keep using the tracking number or package number.
 - Variants are separate listings grouped by `VaryantGroupID` ("Renk, Beden vb özelliklere göre ayrılan aynı ürünler
   için bu değerin aynı gönderilmesi gerekmektedir"): a new size or a new colour of a card already there is sent as new
   SKUs with the same group id and joins the group; each SKU carries its own images. Source: offline

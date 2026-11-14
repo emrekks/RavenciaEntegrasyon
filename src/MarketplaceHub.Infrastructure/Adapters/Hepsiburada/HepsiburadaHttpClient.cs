@@ -777,7 +777,7 @@ public sealed partial class HepsiburadaHttpClient(
         {
             var tracking = HepsiburadaJsonMapper.PackageTrackingInfo(response.Value!.RootElement, normalizedPackageNumber);
             return AdapterResult<PackageTrackingStatusSnapshot>.Success(
-                new(normalizedPackageNumber, tracking.Status, tracking.CargoCompany, tracking.TrackingInfoCode, tracking.OrderNumber), response.RateLimit);
+                new(normalizedPackageNumber, tracking.Status, tracking.CargoCompany, tracking.TrackingInfoCode, tracking.OrderNumber, tracking.Barcode), response.RateLimit);
         }
         catch (JsonException)
         {
@@ -850,6 +850,7 @@ public sealed partial class HepsiburadaHttpClient(
             OccurredAt = latest.Package.OccurredAt > detailed.Package.OccurredAt ? latest.Package.OccurredAt : detailed.Package.OccurredAt,
             CargoProviderExternalId = latest.Package.CargoProviderExternalId ?? detailed.Package.CargoProviderExternalId,
             CargoTrackingNumber = latest.Package.CargoTrackingNumber ?? detailed.Package.CargoTrackingNumber,
+            CargoBarcode = latest.Package.CargoBarcode ?? detailed.Package.CargoBarcode,
             Invoice = latest.Package.Invoice ?? detailed.Package.Invoice,
             IsStatusObservation = false
         };
@@ -895,7 +896,8 @@ public sealed partial class HepsiburadaHttpClient(
                 RawStatus = trackingStatus,
                 OccurredAt = advanced && observedAt > remotePackage.Package.OccurredAt ? observedAt : remotePackage.Package.OccurredAt,
                 CargoProviderExternalId = string.IsNullOrWhiteSpace(tracking.CargoCompany) ? remotePackage.Package.CargoProviderExternalId : tracking.CargoCompany,
-                CargoTrackingNumber = string.IsNullOrWhiteSpace(tracking.TrackingInfoCode) ? remotePackage.Package.CargoTrackingNumber : tracking.TrackingInfoCode
+                CargoTrackingNumber = string.IsNullOrWhiteSpace(tracking.TrackingInfoCode) ? remotePackage.Package.CargoTrackingNumber : tracking.TrackingInfoCode,
+                CargoBarcode = string.IsNullOrWhiteSpace(tracking.Barcode) ? remotePackage.Package.CargoBarcode : tracking.Barcode
             };
             var orderSnapshot = remotePackage.OrderSnapshot is null
                 ? null
