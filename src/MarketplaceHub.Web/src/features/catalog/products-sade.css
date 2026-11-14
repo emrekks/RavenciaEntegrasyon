@@ -30,7 +30,7 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-thumb { width: 48px; height: 72px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover { position: relative; display: inline-block; outline: none; cursor: pointer; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-varcell { display: grid; justify-items: center; gap: 1px; cursor: default; user-select: none; -webkit-user-select: none; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-varcell b { font-weight: 500; text-decoration: underline dotted; text-underline-offset: 3px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-varcell b { font-weight: 500; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-varcell small { color: var(--rr-subtle); font-size: 12px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vtip { left: 50%; width: 280px; transform: translateX(-50%); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vt-h { font-size: 12px; font-weight: 600; color: var(--rr-muted); }
@@ -331,13 +331,12 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 }
 /* Phones: the variant list opens inside the product card at full card width (it opened from the variant cell and ran
    off the right edge); the stock button has no fill on hover (a lighter box inside the grey panel, which stayed after a
-   tap) and shows it is editable by a dotted underline like the variant count. */
+   tap) and shows it is editable by the pencil mark below. */
 @media (max-width: 760px) {
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl tbody tr { position: relative; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl td.rr-mid, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl .rr-vhover { position: static; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl .rr-vhover > .rr-vtip { top: auto; right: 12px; left: 12px; width: auto; max-width: none; margin-top: 6px; transform: none; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl .rr-qbtn.rr-qbtn:hover { background: none; border-color: transparent; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl .rr-qbtn > b { text-decoration: underline dotted; text-underline-offset: 3px; }
 }
 /* Bulk bar: the selection count carries the "select every page" link, so the separate notice above the list is not
    needed on phones; short labels and an icon-only clear keep the phone bar to two lines. */
@@ -551,3 +550,19 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
    so the first and last marks keep a gap from the cell edges and the table no longer runs past its card (owner, 14 Nov 2026). */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl td[data-l="Platform Durumu"] .rr-pmarks { gap: 3px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl td[data-l="Platform Durumu"] .rr-pm .rr-logo { width: 24px; height: 24px; }
+
+/* Quick-edit affordance (owner, 14 Nov 2026: no dotted underline). The price, stock and variant triggers show a small
+   pencil at the top-right corner of the value: on hover / keyboard focus with a tinted field behind the value, and always
+   on touch screens (no hover there). The mark is absolutely placed, so nothing shifts when it appears. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl :is(.rr-qbtn, .rr-varcell) { position: relative; cursor: pointer; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl :is(.rr-qbtn, .rr-varcell)::after {
+  content: ""; position: absolute; top: -3px; right: -13px; width: 11px; height: 11px; pointer-events: none;
+  background-color: var(--rr-primary); opacity: 0; transition: opacity .12s;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 20h9'/%3E%3Cpath d='M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 20h9'/%3E%3Cpath d='M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl :is(.rr-qbtn:hover, .rr-qbtn:focus-visible, .rr-vhover:hover .rr-varcell, .rr-vhover:focus-visible .rr-varcell)::after { opacity: 1; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-vhover:is(:hover, :focus-visible) .rr-varcell { background: var(--rv-hover, var(--rr-hover)); box-shadow: 0 0 0 4px var(--rv-hover, var(--rr-hover)); border-radius: 7px; }
+@media (hover: none), (max-width: 760px) {
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl :is(.rr-qbtn, .rr-varcell)::after { opacity: .7; }
+}

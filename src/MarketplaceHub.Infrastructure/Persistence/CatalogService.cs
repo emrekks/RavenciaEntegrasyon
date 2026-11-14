@@ -1606,7 +1606,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 if (update.LoadedVersion is not long loadedVersion) continue;
                 var variant = existingVariants.Single(x => x.Id == update.Id);
                 if (variant.Version != loadedVersion && VariantDataChanged(variant, update, storedVariantAttributes.Where(x => x.VariantId == variant.Id)))
-                    return Conflict<ProductView>("VARIANT_CHANGED", $"{variant.Sku} varyantı bu form açıkken başka bir işlemle değişti (ör. aynı modelin başka bir renk kartı kaydedildi ya da hızlı fiyat düzenlendi). Değişiklikler kaydedilmedi; sayfayı yenileyip tekrar deneyin.");
+                    return Conflict<ProductView>("VARIANT_CHANGED", $"{variant.Sku} varyantı siz düzenlerken panelde başka bir işlemle güncellendi, örneğin aynı modelin başka bir rengi kaydedildi ya da hızlı fiyat değişti. Değişiklikleriniz kaydedilmedi; sayfayı yenileyip tekrar deneyin.");
             }
             foreach (var update in variantUpdates)
             {
@@ -3386,5 +3386,5 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var (message, fields) = VariantCodeAvailability.Describe(lead, taken);
         return ServiceResult<T>.Fail(code, message, 409, fields);
     }
-    private static ServiceResult<T> Precondition<T>(long version) => ServiceResult<T>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{version}.", 412);
+    private static ServiceResult<T> Precondition<T>(long version) => ServiceResult<T>.Fail("CONCURRENCY_CONFLICT", "Kayıt siz düzenlerken başka bir işlemle güncellendi. Sayfayı yenileyip tekrar deneyin.", 412);
 }

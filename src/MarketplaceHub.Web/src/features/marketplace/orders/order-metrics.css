@@ -106,7 +106,7 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article:has(> .rr-reminder) .rr-metric-open > small { padding-right: 30px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article:has(> .rr-reminder) { position: relative; z-index: 1; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder-gear { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; min-height: 0; padding: 0; color: var(--rr-muted); background: transparent; border: 0; border-radius: 7px; box-shadow: none; cursor: pointer; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder-gear:is(:hover, [aria-expanded="true"]) { color: var(--rr-ink); background: var(--rr-soft); }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder-gear:is(:hover, [aria-expanded="true"]) { color: var(--rr-ink); background: transparent; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder-gear:focus-visible { outline: 2px solid var(--rr-primary); outline-offset: 1px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder-pop { position: absolute; z-index: 30; top: calc(100% + 6px); right: 0; display: grid; gap: 8px; width: 232px; max-width: calc(100vw - 32px); padding: 12px; color: var(--rr-ink); background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 12px; box-shadow: var(--rv-shadow-popover, 0 8px 24px rgb(0 0 0 / 18%)); text-align: left; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-reminder-pop label { color: var(--rr-muted); font-size: 12px; font-weight: 600; white-space: nowrap; }

@@ -384,7 +384,7 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         else
         {
             if (expectedVersion is null) return ServiceResult<CatalogMappingView>.Fail("PRECONDITION_REQUIRED", "Kaydın sürümü gönderilmedi; sayfayı yenileyip yeniden deneyin.", 428);
-            if (mapping.Version != expectedVersion) return ServiceResult<CatalogMappingView>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{mapping.Version}.", 412);
+            if (mapping.Version != expectedVersion) return ServiceResult<CatalogMappingView>.Fail("CONCURRENCY_CONFLICT", "Kayıt siz düzenlerken başka bir işlemle güncellendi. Sayfayı yenileyip tekrar deneyin.", 412);
             mapping.Version++;
             if (mappingType == "attribute-values") mapping.LocalId = localId;
         }
@@ -715,7 +715,7 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         if (candidates.Count > 1) return ServiceResult<bool>.Fail("MAPPING_EXTERNAL_ID_REQUIRED", "Bu panel değerinin birden fazla pazar yeri değeri var; externalId belirtilmelidir.", 409);
         var mapping = candidates.SingleOrDefault();
         if (mapping is null) return NotFound<bool>();
-        if (mapping.Version != expectedVersion) return ServiceResult<bool>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{mapping.Version}.", 412);
+        if (mapping.Version != expectedVersion) return ServiceResult<bool>.Fail("CONCURRENCY_CONFLICT", "Kayıt siz düzenlerken başka bir işlemle güncellendi. Sayfayı yenileyip tekrar deneyin.", 412);
         db.Remove(mapping);
         // The user removed it from this category: the template fill must not bring it back here.
         if (mapping is AttributeValueMapping)
