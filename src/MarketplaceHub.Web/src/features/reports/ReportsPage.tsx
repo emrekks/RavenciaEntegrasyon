@@ -457,7 +457,8 @@ function moneyBreakdown(data: ReportSales, flow: ProfitSteps): Money | null {
   return {
     gaps: { commission: !commissionKnown, platforms: unread, lines: finance ? [] : unreadCostLines },
     total: now.grossSales, deductions, deducted, left, tax, unlinked, cost, costCoverage: cost === null ? null : coverage, uncosted, estimated, estimate, profit,
-    margin: profit !== null && now.grossSales > 0 ? profit / now.grossSales : null, description: flow.description
+    // The margin is over Net Ciro (sales less returns, owner 14 Nov 2026): the profit is earned on the kept sales only.
+    margin: profit !== null && now.netRevenue > 0 ? profit / now.netRevenue : null, description: flow.description
   }
 }
 
@@ -572,8 +573,8 @@ function previousMoney(data: ReportSales): Money | null {
   return moneyBreakdown(earlier, profitSteps(earlier))
 }
 
-// The period's six figures in one strip: the net revenue, the estimated net profit, its margin over the sales and
-// over the product cost, the orders and the units the customers kept, each against the previous period.
+// The period's six figures in one strip: Net Ciro (sales less returns, owner 14 Nov 2026), the estimated net profit, its
+// margin over Net Ciro and over the product cost, the orders and the units sold, each against the previous period.
 function OverviewFigures({ data, money }: { data: ReportSales; money: Money | null }) {
   const now = data.summary
   const then = data.previousSummary
@@ -587,15 +588,15 @@ function OverviewFigures({ data, money }: { data: ReportSales; money: Money | nu
   const earlierOnCost = earlierProfit !== null && earlier?.cost ? earlierProfit / earlier.cost : null
   // The margin before the advertising, as the Kârlılık card has it.
   const spend = adSpend(data)
-  const beforeAds = spend !== null && profit !== null && now.grossSales > 0 ? (profit + spend) / now.grossSales : null
+  const beforeAds = spend !== null && profit !== null && now.netRevenue > 0 ? (profit + spend) / now.netRevenue : null
   // What each platform brought to the figure, the biggest first; a platform without the figure is left out.
   const split = (pick: (row: ReportGroup) => number | null, format: (value: number) => string) => data.platforms
     .map(row => ({ row, value: pick(row) })).filter((item): item is { row: ReportGroup; value: number } => item.value !== null && item.value !== 0)
     .sort((left, right) => right.value - left.value).map(item => ({ key: item.row.key, label: platformName(item.row.label), value: format(item.value) }))
   const items: Kpi[] = [
-    { key: 'net', label: 'Toplam Ciro', value: noAmount && !empty ? null : now.grossSales, format: formatTl, delta: noAmount && !empty ? null : change(now.grossSales, then.grossSales),
-      note: noAmount && !empty ? previousText(null, '₺0') : `Net ${formatTl(now.netRevenue)} · iade ${formatTl(now.returnedAmount)}`,
-      tip: `Dönemin toplam satış tutarı; iptaller sayılmaz, iadeler düşülmez. Alttaki net, iadeler düşülünce kalandır.\n${previousLine(then.ordersWithAmount > 0 ? formatTl(then.grossSales) : null, '₺0')}`, split: split(row => row.ordersWithAmount > 0 ? row.grossSales : null, formatTl) },
+    { key: 'net', label: 'Net Ciro', value: noAmount && !empty ? null : now.netRevenue, format: formatTl, delta: noAmount && !empty ? null : change(now.netRevenue, then.netRevenue),
+      note: noAmount && !empty ? previousText(null, '₺0') : `Toplam ${formatTl(now.grossSales)} · İade ${formatTl(now.returnedAmount)}`,
+      tip: `${netSalesTip} Alttaki toplam, iadeler düşülmeden önceki satış tutarıdır.\n${previousLine(then.ordersWithAmount > 0 ? formatTl(then.netRevenue) : null, '₺0')}`, split: split(row => row.ordersWithAmount > 0 ? row.netRevenue : null, formatTl) },
     { key: 'profit', label: profitLabel(money), value: empty ? 0 : profit, format: formatTl,
       delta: change(profit, earlierProfit),
       note: profit === null ? profitReason(money, noAmount) ?? 'Sipariş başına ₺0' : now.ordersWithAmount === 0 ? 'Sipariş başına ₺0' : `Sipariş başına ${signedTl(profit / now.ordersWithAmount)}`,
@@ -603,7 +604,7 @@ function OverviewFigures({ data, money }: { data: ReportSales; money: Money | nu
       tone: profit === null ? undefined : profit < 0 ? 'bad' : profit > 0 ? 'good' : undefined },
     { key: 'margin', label: 'Kâr Marjı', value: money?.margin ?? null, format: percent, delta: change(money?.margin ?? null, earlier?.margin ?? null, 'rate'),
       note: `Reklam öncesi ${beforeAds === null ? '%0' : formatPercent(beforeAds)}`,
-      tip: `Net kârın satış tutarına oranı. Reklam öncesi oranda Trendyol reklamı düşülmez.${estimateLine(money)}\n${previousLine(formatPercent(earlier?.margin), '%0')}`, tone: (money?.margin ?? 0) < 0 ? 'bad' : undefined },
+      tip: `Net kârın Net Ciro'ya oranı. Reklam öncesi oranda Trendyol reklamı düşülmez.${estimateLine(money)}\n${previousLine(formatPercent(earlier?.margin), '%0')}`, tone: (money?.margin ?? 0) < 0 ? 'bad' : undefined },
     { key: 'cost', label: 'Maliyete Göre Kâr', value: onCost, format: percent, delta: change(onCost, earlierOnCost, 'rate'),
       note: `Ürün maliyeti ${money?.cost && money.profit !== null ? formatTl(money.cost) : '₺0'}`,
       tip: `Net kârın ürün maliyetine oranı: ürüne harcanan her liranın getirdiği kâr.${estimateLine(money)}\n${previousLine(formatPercent(earlierOnCost), '%0')}`, tone: (onCost ?? 0) < 0 ? 'bad' : undefined },
@@ -746,6 +747,8 @@ const resultSentence = (value: number) => value < 0 ? lossSentence : 'Tüm kesin
 const noCostTip = 'Ürün maliyeti girilince hesaplanır. Maliyeti ürün kartından girin.'
 // Satış Tutarı: the list price less the seller's discount (the marketplace's own discount is the marketplace's to pay).
 const salesTip = 'Satıcı indirimi düşülmüş satış tutarı; iptaller sayılmaz, iadeler henüz düşülmedi.'
+// Net Ciro: the same sales less what went back (Satış Tutarı − İade Edilen Tutar in Kâr Hesabı); one figure on every tab.
+const netSalesTip = 'Satıcı indirimi düşülmüş satış tutarından iadeler düşülünce kalan; iptaller sayılmaz. Kâr Hesabı\'ndaki Satış Tutarı − İade Edilen Tutar.'
 // İade Oranı: the units returned over every unit ordered, the cancelled ones included (ReportBuilder, as Trendyol has it).
 const returnRateTip = 'Sipariş edilen ürün adedinin (iptaller dahil) yüzde kaçının iade edildiği, Trendyol gibi.'
 
@@ -984,7 +987,7 @@ function bridgeDetail(data: ReportSales, key: string, total: number): BridgeDeta
     return { groups: groups(kinds([{ key: 'costed', label: 'Maliyeti Girili Satışlar', value: cost.costTotal, note: `${formatCount(cost.costedQuantity)} adet, ${formatCount(cost.costedVariants)} varyant.` }])),
       facts: [
         { label: 'Maliyeti Girili Adet', value: `${formatCount(cost.costedQuantity)} / ${formatCount(cost.keptQuantity)} (${formatPercent(cost.coverage)})` },
-        { label: 'Maliyeti Girili Satış', value: formatTl(cost.costedSales ?? cost.costedRevenue) },
+        { label: 'Maliyeti Girili Satış', value: formatTl(cost.costedRevenue) },
         ...((cost.coverage ?? 1) < 1 ? [{ label: 'Düşülmeyen', value: 'Maliyeti girilmeyen ürünlerin maliyeti' }] : [])
       ] }
   }
@@ -1052,7 +1055,7 @@ function ProfitLedger({ data, money, notes = {} }: { data: ReportSales; money: M
     {money.unlinked !== 0 && row('unlinked', money.unlinked < 0 ? undefined : 'is-minus', unlinkedTitle, money.unlinked < 0 ? `+ ${formatTl(-money.unlinked)}` : `− ${formatTl(money.unlinked)}`,
       `${unlinkedNote}\n${share(money.unlinked)}`)}
     {money.profit !== null && row('profit', `is-result is-${money.profit < 0 ? 'bad' : 'good'}`, money.profit < 0 ? 'Tahmini Zarar' : 'Tahmini Net Kâr', amount(money.profit),
-      `${resultSentence(money.profit)}\n${share(money.profit)} Bu oran net marjdır.`, <small>Net marj {formatPercent(money.margin)}</small>)}
+      `${resultSentence(money.profit)}\nNet Ciro'nun ${formatPercent(money.margin === null ? null : Math.abs(money.margin))} kadarı; bu oran net marjdır.`, <small>Net marj {formatPercent(money.margin)}</small>)}
   </dl>
 }
 
@@ -1134,7 +1137,7 @@ function adMetrics(data: ReportSales, money: Money | null): Metric[] {
   const trendyol = data.platforms.find(row => row.key.toUpperCase() === 'TRENDYOL' && row.ordersWithAmount > 0)
   const revenue = trendyol?.netRevenue ?? null
   const trendyolOrders = trendyol?.ordersWithAmount ?? 0
-  const sales = data.summary.grossSales
+  const sales = data.summary.netRevenue
   // The profit with the advertising given back, over the sales: what the sales leave before the advertising.
   const beforeAds = spend !== null && profit !== null && sales > 0 ? (profit + spend) / sales : null
   return [
@@ -1146,7 +1149,7 @@ function adMetrics(data: ReportSales, money: Money | null): Metric[] {
     { key: 'perOrder', label: 'Sipariş Başına Reklam', value: spend !== null && trendyolOrders > 0 ? formatTl(spend / trendyolOrders) : '—',
       note: 'Bir Trendyol siparişine düşen ortalama reklam harcaması.' },
     { key: 'beforeAds', label: 'Reklam Öncesi Marj', value: beforeAds === null ? '—' : formatPercent(beforeAds), tone: beforeAds !== null && beforeAds < 0 ? 'bad' : undefined,
-      note: `Trendyol reklamı düşülmeden kalan kârın satış tutarına oranı.${beforeAds === null ? ' Ürün maliyeti girilince ve Trendyol cari hesabı okununca hesaplanır.' : ''}` }
+      note: `Trendyol reklamı düşülmeden kalan kârın Net Ciro'ya oranı.${beforeAds === null ? ' Ürün maliyeti girilince ve Trendyol cari hesabı okununca hesaplanır.' : ''}` }
   ]
 }
 
@@ -1320,7 +1323,7 @@ function overviewCards(data: ReportSales, money: Money | null, ads: AdReports | 
   // Kârlılık: the margin before the advertising, its bar from 0 to 100 %.
   const spend = adSpend(data)
   const profit = money?.profit ?? null
-  const beforeAds = spend !== null && profit !== null && now.grossSales > 0 ? (profit + spend) / now.grossSales : null
+  const beforeAds = spend !== null && profit !== null && now.netRevenue > 0 ? (profit + spend) / now.netRevenue : null
   const unitCost = data.cost.costedQuantity > 0 ? data.cost.costTotal / data.cost.costedQuantity : null
 
   // Reklam: the statement's spend with its share of Trendyol's revenue against the 5 % line, and the uploaded report.
@@ -1482,24 +1485,23 @@ function ProfitView({ data }: { data: ReportSales }) {
   const onCost = profit !== null && money?.cost ? profit / money.cost : null
   const earlierOnCost = earlierProfit !== null && earlier?.cost ? earlierProfit / earlier.cost : null
   const noCost = noAmount ? null : 'Maliyet girilmemiş'
-  // Maliyeti Olan Ciro counts like Toplam Ciro (returns not taken off); an older API without costedSales falls back to the
-  // kept-units figure.
-  const costedSales = cost.costedSales ?? cost.costedRevenue
-  const earlierCostedSales = earlierCost ? earlierCost.costedSales ?? earlierCost.costedRevenue : null
+  // Maliyeti Olan Ciro counts like Net Ciro: the kept units' sales, returns taken off (owner 14 Nov 2026).
+  const costedSales = cost.costedRevenue
+  const earlierCostedSales = earlierCost ? earlierCost.costedRevenue : null
   const tone = (value: number | null) => value === null ? undefined : value < 0 ? 'bad' as const : value > 0 ? 'good' as const : undefined
   const items: Kpi[] = [
-    { key: 'revenue', label: 'Toplam Ciro', value: noAmount ? null : now.grossSales, format: formatTl, delta: noAmount ? null : change(now.grossSales, then.grossSales),
-      note: previousText(then.ordersWithAmount > 0 ? formatTl(then.grossSales) : null, '₺0'),
-      tip: salesTip },
+    { key: 'revenue', label: 'Net Ciro', value: noAmount ? null : now.netRevenue, format: formatTl, delta: noAmount ? null : change(now.netRevenue, then.netRevenue),
+      note: previousText(then.ordersWithAmount > 0 ? formatTl(then.netRevenue) : null, '₺0'),
+      tip: `${netSalesTip} Genel Bakış'taki Net Ciro ile aynı.` },
     { key: 'costed', label: 'Maliyeti Olan Ciro', value: costed ? costedSales : null, format: formatTl,
       delta: costed && earlierCosted ? change(costedSales, earlierCostedSales) : null, note: !costed && noCost ? noCost : previousText(earlierCosted ? formatTl(earlierCostedSales) : null, '₺0'),
-      tip: `Ürün maliyeti girili satışların tutarı; iadeler düşülmeden. Toplam Ciro'nun ${formatPercent(now.grossSales > 0 ? costedSales / now.grossSales : null)} kadarı.` },
+      tip: `Ürün maliyeti girili satışların tutarı; iadeler düşülmüş. Net Ciro'nun ${formatPercent(now.netRevenue > 0 ? costedSales / now.netRevenue : null)} kadarı.` },
     { key: 'profit', label: profitLabel(money), value: profit, format: formatTl,
       delta: change(profit, earlierProfit), note: profit === null && profitReason(money, noAmount) ? profitReason(money, noAmount)! : previousText(earlierProfit === null ? null : signedTl(earlierProfit), '₺0'), tone: tone(profit),
       tip: `${profit === null ? missingCostTip(money) : profit < 0 ? netLossTip : netProfitTip}${estimateLine(money)}` },
     { key: 'margin', label: 'Net Kâr / Satış Fiyatı Oranı', value: money?.margin ?? null, format: percent, delta: change(money?.margin ?? null, earlier?.margin ?? null, 'rate'),
       note: previousText(formatPercent(earlier?.margin), '%0'), tone: (money?.margin ?? 0) < 0 ? 'bad' : undefined,
-      tip: 'Net kârın satış tutarına oranı; Genel Bakış\'taki Kâr Marjı ile aynı.' },
+      tip: 'Net kârın Net Ciro\'ya oranı; Genel Bakış\'taki Kâr Marjı ile aynı.' },
     { key: 'onCost', label: 'Net Kâr / Ürün Maliyeti Oranı', value: onCost, format: percent, delta: change(onCost, earlierOnCost, 'rate'),
       note: previousText(formatPercent(earlierOnCost), '%0'), tone: (onCost ?? 0) < 0 ? 'bad' : undefined,
       tip: 'Net kârın ürün maliyetine oranı; Genel Bakış\'taki Maliyete Göre Kâr ile aynı.' }
@@ -2201,7 +2203,7 @@ function Invoices({ data }: { data: ReportSales }) {
   const parts: Part[] = data.invoices.buckets.map(bucket => ({ key: bucket.key, label: invoiceLabel(bucket), value: bucket.packages, tone: tone(bucket.key) }))
   return <div className="reports-grid">
     <div className="is-wide"><KpiStrip label="Faturanın göstergeleri" items={data.invoices.buckets.map(bucket => ({ key: bucket.key, label: invoiceLabel(bucket), value: bucket.packages, format: formatCount,
-      note: `Paketlerin ${formatPercent(total > 0 ? bucket.packages / total : null)} kadarı`, tip: `${bucket.key === 'RETURNED' ? 'İade edilen, fatura gerekmeyen paketler' : 'Bu fatura durumundaki paketler'}; toplam tutarları ${formatTl(bucket.amount)}.\nTutar müşterinin ödediğidir: pazaryerinin kendi indirimi Toplam Ciro'ya eklenir, buraya eklenmez.`, tone: bucket.key === 'NOT_INVOICED' && bucket.packages > 0 ? 'warn' as const : undefined }))} /></div>
+      note: `Paketlerin ${formatPercent(total > 0 ? bucket.packages / total : null)} kadarı`, tip: `${bucket.key === 'RETURNED' ? 'İade edilen, fatura gerekmeyen paketler' : 'Bu fatura durumundaki paketler'}; toplam tutarları ${formatTl(bucket.amount)}.\nTutar müşterinin ödediğidir: pazaryerinin kendi indirimi Net Ciro'ya eklenir, buraya eklenmez.`, tone: bucket.key === 'NOT_INVOICED' && bucket.packages > 0 ? 'warn' as const : undefined }))} /></div>
     <RevealPanel title="Fatura Durumu" description="Panelde kesilen fatura, elle seçilen ya da pazaryerinin bildirdiği duruma göre; hiçbiri yoksa Bilinmiyor. Ayrıntı Faturalar sayfasında.">
       {shown => total > 0 ? <>
         <StackedBar parts={parts} total={total} shown={shown} label={`Fatura durumu: ${parts.map(part => `${part.label} ${formatCount(part.value)}`).join(', ')}`} />
