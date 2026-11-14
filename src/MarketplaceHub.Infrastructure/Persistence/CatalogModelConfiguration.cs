@@ -154,6 +154,8 @@ internal static class CatalogModelConfiguration
             entity.HasOne<Product>().WithMany().HasForeignKey(x => new { x.TenantId, x.ProductId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<ProductVariant>().WithMany().HasForeignKey(x => new { x.TenantId, x.VariantId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<FileAsset>().WithMany().HasForeignKey(x => x.FileAssetId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ProductModel>().WithMany().HasForeignKey(x => x.FamilyId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasIndex(x => x.FamilyId);
         });
     }
 

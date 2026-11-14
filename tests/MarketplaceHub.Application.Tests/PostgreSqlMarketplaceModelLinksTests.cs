@@ -243,4 +243,33 @@ public sealed class PostgreSqlMarketplaceModelLinksTests(PostgreSqlTenantIsolati
         Assert.Equal(10, await db.MarketplaceProductLinks.AsNoTracking().CountAsync(x => x.TenantId == seed.Tenant.Id));
         await transaction.RollbackAsync();
     }
+    [PostgreSqlFact]
+    public async Task APicture_BelongsToItsCardsModel_AndFollowsTheCardToAnotherModel()
+    {
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        var seed = AddSeed(db);
+        var siyah = AddCard(db, seed, seed.Ravencia, "MZ100", "Siyah", "Kadın Siyah Bluz", 0, null);
+        AddCard(db, seed, seed.Ravencia, "MZ100", "Mavi", "Kadın Mavi Bluz", 1, null);
+        AddCard(db, seed, seed.Ravencia, "MZ101", "Gri", "Kadın Gri Bluz", 2, null);
+        var asset = new FileAsset { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, Classification = "PRODUCT_MEDIA_URL", RelativePath = "https://cdn.example.com/mz100.jpg", MimeType = "image/remote", Sha256 = Guid.NewGuid().ToString("N"), Status = "ACTIVE", CreatedAt = DateTimeOffset.UtcNow };
+        db.FileAssets.Add(asset);
+        // The card and its picture in one save, as an import adds them.
+        db.ProductMedia.Add(new ProductMedia { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ProductId = siyah.Id, FileAssetId = asset.Id, MediaRole = "PRIMARY", SortOrder = 0, Status = "ACTIVE" });
+        await db.SaveChangesAsync();
+        var mz100 = await db.ProductModels.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.ModelCodeKey == "MZ100");
+        Assert.Equal(mz100.Id, (await db.ProductMedia.AsNoTracking().SingleAsync(x => x.ProductId == siyah.Id)).FamilyId);
+
+        // The card is re-coded to MZ101: it and its picture move to that model.
+        foreach (var variant in await db.ProductVariants.Where(x => x.ProductId == siyah.Id).ToListAsync()) variant.ModelCode = "MZ101";
+        await db.SaveChangesAsync();
+        var mz101 = await db.ProductModels.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.ModelCodeKey == "MZ101");
+        Assert.Equal(mz101.Id, (await db.ProductMedia.AsNoTracking().SingleAsync(x => x.ProductId == siyah.Id)).FamilyId);
+
+        // The backfill gives the same value.
+        await db.ProductMedia.Where(x => x.ProductId == siyah.Id).ExecuteUpdateAsync(s => s.SetProperty(x => x.FamilyId, (Guid?)null));
+        await db.Database.ExecuteSqlRawAsync(Infrastructure.Persistence.Migrations.ProductMediaFamily.BackfillSql);
+        Assert.Equal(mz101.Id, (await db.ProductMedia.AsNoTracking().SingleAsync(x => x.ProductId == siyah.Id)).FamilyId);
+        await transaction.RollbackAsync();
+    }
 }

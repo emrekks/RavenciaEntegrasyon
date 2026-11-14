@@ -205,6 +205,10 @@ public sealed class ProductMedia
     public Guid Id { get; set; }
     public Guid TenantId { get; set; }
     public Guid ProductId { get; set; }
+    // The model the picture belongs to (Model Kaydı Faz 2): its card's model, kept equal to products.FamilyId by
+    // ProductModelLinks (after each save and reconcile); null for a card without a model. ProductId stays the card the
+    // picture was uploaded on (read compatibility); the colour assignment stays VariantId.
+    public Guid? FamilyId { get; set; }
     public Guid? VariantId { get; set; }
     public Guid FileAssetId { get; set; }
     public required string MediaRole { get; set; }

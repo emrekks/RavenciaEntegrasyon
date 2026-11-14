@@ -5503,6 +5503,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<string>("AltText")
                         .HasColumnType("text");
 
+                    b.Property<Guid?>("FamilyId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("FileAssetId")
                         .HasColumnType("uuid");
 
@@ -5529,6 +5532,8 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("FamilyId");
 
                     b.HasIndex("FileAssetId");
 
@@ -8528,6 +8533,11 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("MarketplaceHub.Domain.ProductMedia", b =>
                 {
+                    b.HasOne("MarketplaceHub.Domain.ProductModel", null)
+                        .WithMany()
+                        .HasForeignKey("FamilyId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("MarketplaceHub.Domain.FileAsset", null)
                         .WithMany()
                         .HasForeignKey("FileAssetId")

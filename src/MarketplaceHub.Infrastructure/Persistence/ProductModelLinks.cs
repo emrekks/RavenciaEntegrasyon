@@ -42,8 +42,12 @@ public static class ProductModelLinks
         public Dictionary<Guid, HashSet<string>> Keys { get; } = [];
         public Dictionary<Guid, HashSet<Guid>> ProductIds { get; } = [];
         public Dictionary<Guid, HashSet<Guid>> ModelIds { get; } = [];
-        public bool IsEmpty => Keys.Count == 0 && ProductIds.Count == 0 && ModelIds.Count == 0;
-        public IEnumerable<Guid> Tenants => Keys.Keys.Concat(ProductIds.Keys).Concat(ModelIds.Keys).Distinct();
+        // Cards whose pictures were added or moved by the save: their FamilyId is set from the card after it (Faz 2).
+        public Dictionary<Guid, HashSet<Guid>> MediaProductIds { get; } = [];
+        public bool IsEmpty => Keys.Count == 0 && ProductIds.Count == 0 && ModelIds.Count == 0 && MediaProductIds.Count == 0;
+        public IEnumerable<Guid> Tenants => Keys.Keys.Concat(ProductIds.Keys).Concat(ModelIds.Keys).Concat(MediaProductIds.Keys).Distinct();
+
+        internal void AddMedia(Guid tenantId, Guid productId) => Set(MediaProductIds, tenantId).Add(productId);
 
         internal void AddKey(Guid tenantId, string? modelCode)
         {
@@ -110,6 +114,11 @@ public static class ProductModelLinks
                     break;
             }
         }
+        foreach (var entry in tracker.Entries<ProductMedia>())
+        {
+            if (entry.State == EntityState.Added || entry.State == EntityState.Modified && (Changed(entry.Property(x => x.ProductId)) || Changed(entry.Property(x => x.FamilyId))))
+                pending.AddMedia(entry.Entity.TenantId, entry.Entity.ProductId);
+        }
         return pending.IsEmpty ? null : pending;
     }
 
@@ -129,6 +138,8 @@ public static class ProductModelLinks
                 keys.UnionWith(await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.Id)).Select(x => x.ModelCodeKey).ToListAsync(cancellationToken));
             }
             if (keys.Count > 0) await ReconcileAsync(db, tenantId, keys, now, cancellationToken);
+            if (pending.MediaProductIds.TryGetValue(tenantId, out var mediaProductIds) && mediaProductIds.Count > 0)
+                await SyncMediaFamiliesAsync(db, tenantId, [.. mediaProductIds], cancellationToken);
         }
     }
 
@@ -261,6 +272,8 @@ public static class ProductModelLinks
             await db.Products.Where(x => x.TenantId == tenantId && ids.Contains(x.Id) && x.FamilyId != familyId)
                 .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.FamilyId, familyId), cancellationToken);
         }
+        // Faz 2: the pictures follow their card's model.
+        await SyncMediaFamiliesAsync(db, tenantId, keyArray is null ? null : [.. desired.Keys], cancellationToken);
         // Models left without a card go.
         await db.ProductModels.Where(x => x.TenantId == tenantId && targetKeyArray.Contains(x.ModelCodeKey) && !db.Products.Any(product => product.FamilyId == x.Id))
             .ExecuteDeleteAsync(cancellationToken);
@@ -272,6 +285,16 @@ public static class ProductModelLinks
         Guid? CurrentFamily(Guid productId) =>
             products.TryGetValue(productId, out var card) ? card.FamilyId : linkedElsewhere.FirstOrDefault(x => x.Id == productId)?.FamilyId;
     }
+
+    // Faz 2: a picture belongs to its card's model (product_media.FamilyId = products.FamilyId); productIds null: the tenant.
+    // Only rows that differ are written.
+    public static Task<int> SyncMediaFamiliesAsync(AppDbContext db, Guid tenantId, Guid[]? productIds, CancellationToken cancellationToken) =>
+        db.Database.ExecuteSqlRawAsync("""
+            UPDATE catalog.product_media m SET "FamilyId" = p."FamilyId"
+            FROM catalog.products p
+            WHERE m."TenantId" = @tenant AND p."TenantId" = m."TenantId" AND p."Id" = m."ProductId"
+              AND (@all OR m."ProductId" = ANY(@products)) AND m."FamilyId" IS DISTINCT FROM p."FamilyId"
+            """, [new NpgsqlParameter("tenant", tenantId), new NpgsqlParameter("all", productIds is null), new NpgsqlParameter("products", productIds ?? [])], cancellationToken);
 
     // Faz 2: the fields of every model the editor has not saved yet (FieldsSavedAt null) are the editor's ModelValues of
     // its linked cards (oldest first), the same rule a model opened by the application gets. The backfill's SQL could only
