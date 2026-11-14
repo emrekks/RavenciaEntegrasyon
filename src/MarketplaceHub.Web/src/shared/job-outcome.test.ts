@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { followJobOutcomes, groupedOutcomeFeedback, jobOutcome, jobOutcomeFeedback, outcomeTarget, type FollowedJob, type FollowedJobDetail, type JobOutcomeFeedback } from './job-outcome'
+import { followJobOutcomes, groupedOutcomeFeedback, jobOutcome, jobOutcomeFeedback, locative, outcomeTarget, type FollowedJob, type FollowedJobDetail, type JobOutcomeFeedback } from './job-outcome'
 
 describe('many jobs of one press (Toplu Yayın, a store-wide push)', () => {
   const jobs: FollowedJob[] = [
@@ -175,5 +175,20 @@ describe('the colour cards of one model are one product in the result', () => {
 
   it('says a running model once', () => {
     expect(feedback(cards('Shopify'), [['LEASED'], ['LEASED'], ['SUCCEEDED']]).lines).toEqual(['Shopify: ürün aktarımı sürüyor; sonuç gelince bildirilecek.'])
+  })
+})
+
+describe('the colour cards of one model in an update', () => {
+  const jobs: FollowedJob[] = ['Siyah', 'Bordo'].map((card, index) => ({ jobId: `u${index}`, platformName: 'Trendyol', what: 'ürün bilgisi', card, update: true }))
+  const run = (statuses: Array<[string, string | null]>) => jobOutcomeFeedback(jobs.map((item, index) => jobOutcome(item, { job: { id: 'x', status: statuses[index][0], lastErrorCode: null, lastErrorSummary: statuses[index][1] } })), outcomeTarget(jobs), jobs)
+
+  it('says the product was updated once, names only the failed colours, or the reason once', () => {
+    expect(run([['SUCCEEDED', null], ['SUCCEEDED', null]]).lines).toEqual(['Ürün Trendyol’da 2 renk ile güncellendi.'])
+    expect(run([['SUCCEEDED', null], ['BLOCKED', 'Desi eksik.']])).toMatchObject({ kind: 'warning', lines: ['Bordo güncellenemedi: Desi eksik.'] })
+    expect(run([['BLOCKED', 'Kota doldu.'], ['BLOCKED', 'Kota doldu.']])).toMatchObject({ kind: 'error', lines: ['Ürün Trendyol’da güncellenemedi: Kota doldu.'] })
+  })
+
+  it('reads the locative of each marketplace name', () => {
+    expect(['Trendyol', 'N11', 'Hepsiburada', 'Pazarama', 'PttAVM', 'Shopify'].map(locative)).toEqual(['Trendyol’da', 'N11’de', 'Hepsiburada’da', 'Pazarama’da', 'PttAVM’de', 'Shopify’da'])
   })
 })

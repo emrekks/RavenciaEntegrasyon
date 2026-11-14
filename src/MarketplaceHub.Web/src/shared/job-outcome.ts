@@ -21,7 +21,9 @@ export type FollowedJobDetail = {
 /** One job the screen follows: which marketplace and what it carries ("ürün bilgisi", "fiyat-stok", "ürün"). */
 export type FollowedJob = { jobId: string; platformName: string; what: string; /** The record it is about (a product title), for a summary of many jobs. */ label?: string
   /** Set when the job is one colour card of a model ("Bordo", '' when unnamed): the result then speaks of the product once per marketplace, not once per card. */
-  card?: string }
+  card?: string
+  /** An update (not a first publish) of the card: the grouped lines then say güncellendi / güncellenemedi. */
+  update?: boolean }
 
 export type JobOutcomeState = 'running' | 'scheduled' | 'succeeded' | 'partial' | 'failed' | 'review' | 'cancelled' | 'unknown'
 export type JobOutcome = { state: JobOutcomeState; line: string; /** Why it did not go through, for a summary of many jobs. */ reason?: string }
@@ -96,21 +98,24 @@ export function outcomeLines(outcomes: readonly JobOutcome[], jobs?: readonly Fo
   outcomes.forEach((outcome, index) => {
     const job = jobs?.[index]
     if (!job || job.card === undefined) { lines.push(outcome.line); return }
-    if (done.has(job.platformName)) return
-    done.add(job.platformName)
-    const members = outcomes.flatMap((member, at) => jobs?.[at]?.platformName === job.platformName && jobs[at].card !== undefined ? [{ outcome: member, card: jobs[at].card ?? '' }] : [])
+    const key = `${job.platformName}|${job.update ? 'u' : 'p'}`
+    if (done.has(key)) return
+    done.add(key)
+    const members = outcomes.flatMap((member, at) => jobs?.[at]?.platformName === job.platformName && !jobs[at].update === !job.update && jobs[at].card !== undefined ? [{ outcome: member, card: jobs[at].card ?? '' }] : [])
     const bad = members.filter(member => member.outcome.state === 'failed' || member.outcome.state === 'partial')
     const other = members.filter(member => !bad.includes(member) && member.outcome.state !== 'succeeded')
     const prefix = platforms.size > 1 ? `${job.platformName}: ` : ''
-    const to = dative(job.platformName)
+    const to = job.update ? locative(job.platformName) : dative(job.platformName)
+    const doneWord = job.update ? 'güncellendi' : 'aktarıldı'
+    const failedWord = job.update ? 'güncellenemedi' : 'aktarılamadı'
     if (bad.length === 0 && other.length === 0) {
-      lines.push(`Ürün ${to}${members.length > 1 ? ` ${members.length} renk ile` : ''} aktarıldı.`)
+      lines.push(`Ürün ${to}${members.length > 1 ? ` ${members.length} renk ile` : ''} ${doneWord}.`)
       return
     }
     if (bad.length) {
       const reasons = [...new Set(bad.map(member => member.outcome.reason?.trim() || 'nedeni kaydedilmedi'))].join('; ')
       const all = bad.length === members.length
-      lines.push(`${all ? '' : prefix}${all ? `Ürün ${to}` : joinColours(bad.map(member => member.card || 'Renksiz kart'))} aktarılamadı: ${reasons}.`)
+      lines.push(`${all ? '' : prefix}${all ? `Ürün ${to}` : joinColours(bad.map(member => member.card || 'Renksiz kart'))} ${failedWord}: ${reasons}.`)
     }
     lines.push(...new Set(other.map(member => member.outcome.line)))
   })
@@ -152,6 +157,15 @@ export function dative(name: string) {
   const back = 'aıou'.includes(lastVowel)
   const buffer = /[aeıioöuü]$/u.test(spoken.toLocaleLowerCase('tr-TR')) ? 'y' : ''
   return `${name}’${buffer}${back ? 'a' : 'e'}`
+}
+
+// "Trendyol’da", "N11’de", "Hepsiburada’da", "PttAVM’de": the locative by the last vowel and a hard final consonant.
+export function locative(name: string) {
+  const spoken = name.replace(/11$/u, 'onbir').replace(/AVM$/u, 'aveme').replace(/ify$/iu, 'ifay').toLocaleLowerCase('tr-TR')
+  const lastVowel = spoken.match(/[aeıioöuü](?=[^aeıioöuü]*$)/u)?.[0]
+  if (!lastVowel) return `${name} Platformunda`
+  const hard = /[pçtkfhsş]$/u.test(spoken)
+  return `${name}’${hard ? 't' : 'd'}${'aıou'.includes(lastVowel) ? 'a' : 'e'}`
 }
 
 export type FollowOptions = {

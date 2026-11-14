@@ -3277,7 +3277,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
                 try {
                   const accepted = await hubApi<ProductUpdateAccepted>(`/products/${card.productId}/update-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId, fields: plan.productFields, sendGroupId }) })
                   recordProductUpdateNotices(accepted, { productId: card.productId, productName: form.title, modelCode: form.modelCode, platformCode: updatePlatformCode, connectionId })
-                  if (accepted?.jobId) followedJobs.push({ jobId: accepted.jobId, platformName, what: familyPlan.send.length > 1 ? `${cardName} ${informationLabel}` : informationLabel })
+                  if (accepted?.jobId) followedJobs.push({ jobId: accepted.jobId, platformName, what: informationLabel, ...(familyPlan.send.length > 1 ? { card: cardName, update: true } : {}) })
                   family.queuedCards++
                   family.queuedVariants += card.variants
                   update.queued.productInformation = true
