@@ -408,6 +408,10 @@ public sealed record CatalogMappingView(Guid Id, Guid ConnectionId, Guid Snapsho
 // UpdateTemplate: also use this decision for the connection's other categories (the default);
 // false keeps it to this category only.
 public sealed record UpsertCatalogMappingCommand(Guid ConnectionId, Guid SnapshotId, string ExternalId, string Status, string Role = "ATTRIBUTE", bool UpdateTemplate = true);
+// "Birebir Eşle" (Shopify): the panel categories mapped (or to be mapped) to the store product type of the same name, how
+// many unmapped ones have no such type, and how many match two of the store's types (left to the user).
+public sealed record ShopifyExactCategoryMatchView(int MatchCount, int WithoutTypeCount, int AmbiguousCount, bool Applied, IReadOnlyList<ShopifyExactCategoryMatchItem> Matches);
+public sealed record ShopifyExactCategoryMatchItem(Guid CategoryId, string CategoryName, string ProductType);
 
 
 // Names a panel attribute and its values carry on the other marketplace connections (from their
@@ -465,4 +469,6 @@ public interface IReferenceDataService
     Task<ServiceResult<CatalogMappingView?>> GetMappingAsync(Guid tenantId, string mappingType, Guid localId, Guid connectionId, string? scopeExternalId, string? externalId, CancellationToken cancellationToken);
     Task<ServiceResult<CatalogMappingView>> UpsertMappingAsync(Guid tenantId, string mappingType, Guid localId, long? expectedVersion, UpsertCatalogMappingCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<bool>> DeleteMappingAsync(Guid tenantId, string mappingType, Guid localId, Guid connectionId, string? scopeExternalId, string? externalId, long expectedVersion, CancellationToken cancellationToken);
+    // "Birebir Eşle" on the Shopify category mappings: apply false only counts what would be mapped.
+    Task<ServiceResult<ShopifyExactCategoryMatchView>> ExactMatchShopifyCategoriesAsync(Guid tenantId, Guid connectionId, bool apply, CancellationToken cancellationToken);
 }

@@ -388,6 +388,11 @@
 .app-shell.stitch-shell main section.mapping-page .mapping-builder-head h2 { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 16px; font-weight: 600; text-transform: none; }
 .app-shell.stitch-shell main section.mapping-page .mapping-builder-head h2 .ui-icon { width: 16px; height: 16px; color: var(--rv-color-muted); }
 .app-shell.stitch-shell main section.mapping-page .mapping-builder-head > button { display: inline-flex; align-items: center; gap: 8px; height: 36px !important; min-height: 36px !important; }
+/* The header's buttons sit together on the right (Shopify: Birebir Eşle beside Senkronize Et), on one line. */
+.app-shell.stitch-shell main section.mapping-page .mapping-builder-head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
+.app-shell.stitch-shell main section.mapping-page .mapping-builder-head-actions > button { display: inline-flex; align-items: center; gap: 8px; height: 36px !important; min-height: 36px !important; white-space: nowrap; }
+/* A typed Shopify product type the store does not hold yet, offered above the list. */
+.app-shell.stitch-shell main section.mapping-page .platform-category-picker .platform-category-new-type span { font-weight: 600; color: var(--rv-color-primary); }
 .app-shell.stitch-shell main section.mapping-page .mapping-reference-refresh-row:not(:has(*)) { display: none; }
 .app-shell.stitch-shell main section.mapping-page .mapping-reference-refresh-row { justify-content: flex-start; }
 .app-shell.stitch-shell main section.mapping-page .mapping-reference-grid { row-gap: 0; }
@@ -457,6 +462,8 @@
 @media (max-width: 760px) {
   .app-shell.stitch-shell main section.mapping-page .mapping-category-builder > .mapping-builder-head { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
   .app-shell.stitch-shell main section.mapping-page .mapping-category-builder > .mapping-builder-head > button { width: 100%; height: 36px; min-height: 36px; justify-content: center; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-builder-head-actions { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+  .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-builder-head-actions > button { width: 100%; justify-content: center; }
   .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid > * { grid-column: 1; grid-row: auto; width: 100%; min-width: 0; }
   /* the link mark sits between the two category pickers, on a hairline */

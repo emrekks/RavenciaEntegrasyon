@@ -188,7 +188,7 @@ export function publicationProductChecks(draft: PublicationReadinessDraft, requi
     { title: 'Temel Ürün Verileri', detail: hasBasicProductData ? 'İsim, açıklama, marka, model ve barkod bilgileri eksiksiz.' : `Eksik alanlar: ${basicProductMissingParts.join(', ')}.`, ok: hasBasicProductData, shopifyOk: Boolean(draft.title.trim() && draft.description.trim()), shopifyDetail: 'Shopify ürünü için ad ve açıklama gereklidir.' },
     { title: 'Görsel Kalitesi', detail: hasProductMedia ? `${mediaCount} adet ürün görseli eklendi.${mediaCount > 8 ? ' Trendyol için sıralamadaki ilk 8 görsel kullanılır.' : ''}` : 'En az bir yüksek çözünürlüklü görsel ekleyin.', ok: hasProductMedia, shopifyOk: hasProductMedia, shopifyDetail: 'Shopify yayını için en az bir geçerli HTTPS görseli gerekir.' },
     { title: 'Varyant Bilgileri', detail: hasVariantData ? 'Varyant yapısı yayınlanmaya hazır.' : 'Seçilen seçenekler için varyant satırlarını oluşturun.', ok: hasVariantData, shopifyOk: hasVariantData, shopifyDetail: 'Shopify yayını için en az bir stok kodlu varyant oluşturun.' },
-    { title: 'Kategori ve Seçenekler', detail: catalogValidationDetail, ok: catalogValidationIssues.length === 0, shopifyOk: true, shopifyDetail: 'Shopify yayını için pazaryeri kategori özellikleri gerekmez.' },
+    { title: 'Kategori ve Seçenekler', detail: catalogValidationDetail, ok: catalogValidationIssues.length === 0, shopifyOk: Boolean(draft.categoryId), shopifyDetail: 'Shopify yayını için ürün kategorisi seçilmeli ve Eşleştirmeler › Kategori Eşleme › Shopify sekmesinde bir ürün türüyle eşlenmelidir.' },
     ...(draft.variantsWithoutMedia ? [{ title: 'Varyant Görselleri', detail: `${draft.variantRows.length} varyanttan ${draft.variantsWithoutMedia} tanesine görsel seçilmedi. Varyant tablosundan veya “Seçeneklere görsel ata” ile görsel atayın.`, ok: false, shopifyOk: true, shopifyDetail: 'Shopify yayını varyant görseli olmadan da yapılır.' }] : []),
     { title: 'Web Color', detail: webColorValidationIssues.length ? webColorValidationIssues.join(' ') : 'Web Color yayınlamaya hazır.', ok: webColorValidationIssues.length === 0, platforms: ['TRENDYOL'] }
   ]
@@ -316,7 +316,8 @@ export async function loadPublicationAttributeIssues(client: QueryClient, connec
   if (categoryMapping.snapshotId !== categoryReferences.snapshotId || !mappedCategory) {
     return { requiredIssues: [{ attribute: 'Kategori eşlemesi', detail: `${cardName} kategori eşlemesi güncel değil; kategori eşlemesini yenileyin.` }], optionalWarnings: [], categoryMapping: 'stale' }
   }
-  if (connection.platformCode.trim().toUpperCase() === 'PTTAVM') return { requiredIssues: [], optionalWarnings: [], categoryScope }
+  // PttAVM has no attribute service and Shopify maps product types only (the type is the whole category mapping).
+  if (['PTTAVM', 'SHOPIFY'].includes(connection.platformCode.trim().toUpperCase())) return { requiredIssues: [], optionalWarnings: [], categoryScope }
 
   const [attributeReferences, attributeMappings, attributeDefaults] = await Promise.all([
     readPublicationReadinessSource(`${cardName} kategori özellik listesi`, () => cached('reference-attributes', [categoryScope], () => hubApi<{ snapshotId: string; items: Array<{ externalId: string; name: string; isActive: boolean; isRequired?: boolean | null; allowsCustomValue?: boolean | null }> }>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes?connectionId=${connectionId}`))),

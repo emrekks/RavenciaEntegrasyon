@@ -46,6 +46,15 @@ UTC, ISO with Z.
 - Mutations: `productSet` (synchronous), `productVariantsBulkUpdate` (price), `inventorySetQuantities` (needs an
   `@idempotent` key since 2026-04), `publishablePublish`, `metafieldsSet`, `fulfillmentTrackingInfoUpdate`,
   `returnApproveRequest`, `returnDeclineRequest`, `webhookSubscriptionCreate` / `Delete`.
+- Categories are the store's own product types (`productTypes` query, read_products; a flat list read from the
+  store's products, so a store without products answers an empty list). Publication sends the product type the panel
+  category is mapped to on Eşleştirmeler › Kategori Eşleme › Shopify as `productType`; without that mapping the
+  publication/update is refused with CATEGORY_MAPPING_REQUIRED and nothing is mapped on the way (owner decision
+  14 Nov 2026; before that the panel category name went out). A type typed on Eşleştirmeler that the store does not hold
+  yet joins the CATEGORIES list and stays in it on a refresh while a mapping uses it; the first productSet creates it.
+  "Birebir Eşle" maps unmapped panel categories to the store type of the same name (Turkish case-insensitive), never
+  changing a mapping. Product import still creates and maps categories itself (`ShopifyProductPublicationComposer`,
+  `ReferenceDataService.ExactMatchShopifyCategoriesAsync`, `MarketplaceJobProcessor.SyncReferences`).
 
 ## Sale state (T2-D30, 2026-11-05)
 - Product `status` (ACTIVE/DRAFT/ARCHIVED) "controls visibility across all sales channels" (offline reference). DRAFT

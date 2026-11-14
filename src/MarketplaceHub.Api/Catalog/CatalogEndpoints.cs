@@ -350,6 +350,9 @@ public static class CatalogEndpoints
         // Several fields' value mappings of one category in one read (attributeIds=a,b,c), by field id.
         api.MapGet("/mappings/attribute-values/batch", async (Guid connectionId, string? categoryExternalId, string? attributeIds, HttpContext http, IReferenceDataService service) =>
             Tenant(http) is { } tenant ? Result(await service.ListAttributeValueMappingsAsync(tenant.TenantId, connectionId, categoryExternalId ?? "", SplitIds(attributeIds), http.RequestAborted), Results.Ok) : Unauthorized(http));
+        // "Birebir Eşle" (Shopify): apply=false counts for the confirmation, apply=true maps; it never changes a mapping.
+        api.MapPost("/mappings/categories/exact-match", async (Guid connectionId, bool? apply, HttpContext http, IReferenceDataService service) =>
+            Tenant(http) is { } tenant ? Result(await service.ExactMatchShopifyCategoriesAsync(tenant.TenantId, connectionId, apply == true, http.RequestAborted), Results.Ok) : Unauthorized(http));
         foreach (var type in new[] { "categories", "brands", "attributes", "attribute-values" })
         {
             var routeType = type;

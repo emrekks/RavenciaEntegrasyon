@@ -99,8 +99,8 @@ export async function checkProductReadiness(client: QueryClient, productId: stri
     }
     let mapping: PublicationAttributeIssues | undefined
     let mappingError: unknown = null
-    // As the editor's card: Shopify needs no category mapping, and nothing is checked without a category.
-    if (!isShopify && categoryId) {
+    // As the editor's card: every store needs its category mapping (Shopify its product type), nothing is checked without a category.
+    if (categoryId) {
       try {
         mapping = await client.query({ queryKey: publicationReadinessQueryKey(connection.id, categoryId, selectedAttributes), queryFn: () => loadPublicationAttributeIssues(client, connection, cardName, categoryId, selectedAttributes, categoryName), staleTime: 15_000, retry: false })
       } catch (reason) { mappingError = reason }

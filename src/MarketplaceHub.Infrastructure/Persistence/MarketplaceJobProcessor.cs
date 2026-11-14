@@ -3078,7 +3078,21 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         } while (!cancellationToken.IsCancellationRequested);
 
         cancellationToken.ThrowIfCancellationRequested();
-        if (items.Count == 0 && resourceType is "CATEGORIES" or "BRANDS") throw new JobProcessingException(JobExecutionResult.Blocked("REFERENCE_EMPTY_RESPONSE", $"Marketplace {resourceType} salt-okunur çağrısı boş koleksiyon döndürdü; mevcut snapshot korunuyor."));
+        // Shopify's categories are the store's product types, read from its products: a store with none answers an empty
+        // list, and a type a panel category is mapped to that no product carries yet (typed on Eşleştirmeler, created by
+        // the first publication) stays in the list so its mapping holds.
+        var shopifyProductTypes = resourceType == "CATEGORIES"
+            && await db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "SHOPIFY", cancellationToken);
+        if (shopifyProductTypes)
+        {
+            var listed = items.Select(x => x.ExternalId).ToHashSet(StringComparer.Ordinal);
+            var mappedTypes = await db.CategoryMappings.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == "" && x.Status == "VERIFIED")
+                .Select(x => x.ExternalId).Distinct().ToListAsync(cancellationToken);
+            foreach (var mappedType in mappedTypes.Where(x => !listed.Contains(x) && ShopifyProductTypeNames.Clean(x) is not null))
+                items.Add(new RemoteReferenceItem("CATEGORIES", mappedType, null, mappedType.Trim(), mappedType.Trim(), 0, true, true, JsonSerializer.Serialize(mappedType)));
+        }
+        if (items.Count == 0 && resourceType is "CATEGORIES" or "BRANDS" && !shopifyProductTypes) throw new JobProcessingException(JobExecutionResult.Blocked("REFERENCE_EMPTY_RESPONSE", $"Marketplace {resourceType} salt-okunur çağrısı boş koleksiyon döndürdü; mevcut snapshot korunuyor."));
         if (items.Any(x => !string.Equals(x.ResourceType, resourceType, StringComparison.Ordinal) || string.IsNullOrWhiteSpace(x.ExternalId) || string.IsNullOrWhiteSpace(x.Name))) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_CONTRACT_INVALID", "Referans yanıtı zorunlu kimlik, ad veya kapsam sözleşmesini sağlamıyor."));
         var ordered = items.OrderBy(x => x.ExternalId, StringComparer.Ordinal).ToList();
         if (resourceType == "ATTRIBUTE_VALUES")

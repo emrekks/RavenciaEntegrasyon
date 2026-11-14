@@ -359,11 +359,21 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         var expectedResource = mappingType switch { "categories" => "CATEGORIES", "brands" => "BRANDS", "attributes" => "CATEGORY_ATTRIBUTES", "attribute-values" => "ATTRIBUTE_VALUES", _ => "" };
         if (!string.Equals(snapshot.ResourceType, expectedResource, StringComparison.Ordinal)) return ServiceResult<CatalogMappingView>.Fail("REFERENCE_RESOURCE_MISMATCH", "Seçilen liste bu eşleme türüyle uyuşmuyor; sayfayı yenileyip yeniden deneyin.", 422);
         var external = await db.ReferenceItems.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.SnapshotId == command.SnapshotId && x.ResourceType == expectedResource && x.ExternalId == command.ExternalId, cancellationToken);
+        // Shopify's categories are the store's product types (free text): a type the user types that the store does not
+        // hold yet joins the list and the first publication creates it in the store (owner decision 14 Nov 2026).
+        var shopifyProductTypes = mappingType == "categories" && await IsShopifyAsync(tenantId, command.ConnectionId, cancellationToken);
+        if (external is null && shopifyProductTypes)
+        {
+            var typed = ShopifyProductTypeNames.Clean(command.ExternalId);
+            if (typed is null) return ServiceResult<CatalogMappingView>.Fail("SHOPIFY_PRODUCT_TYPE_INVALID", $"Shopify ürün türü 1-{ShopifyProductTypeNames.MaximumLength} karakter olmalı ve kontrol karakteri içermemelidir.", 422);
+            external = await ShopifyProductTypeEntryAsync(tenantId, snapshot, typed, cancellationToken);
+        }
         if (external is null) return ServiceResult<CatalogMappingView>.Fail("EXTERNAL_REFERENCE_NOT_FOUND", "Seçilen pazaryeri değeri güncel listede bulunamadı; listeyi yenileyip yeniden seçin.", 422);
         if (mappingType == "categories" && (!external.IsLeaf || !external.IsActive)) return ServiceResult<CatalogMappingView>.Fail("ACTIVE_LEAF_CATEGORY_REQUIRED", "Ürün eşlemesi yalnız etkin, en alt düzeydeki bir kategoriye yapılabilir; alt kategori seçin.", 422);
 
         var scope = snapshot.ScopeExternalId;
-        var externalId = command.ExternalId.Trim();
+        // A Shopify product type is kept exactly as the store holds it: publication sends it back as productType.
+        var externalId = shopifyProductTypes ? external.ExternalId : command.ExternalId.Trim();
         var mapping = await Query(mappingType).SingleOrDefaultAsync(x => x.TenantId == tenantId && x.LocalId == localId && x.ConnectionId == command.ConnectionId && x.ScopeExternalId == scope && x.ExternalId == externalId, cancellationToken);
         if (mapping is null && mappingType != "attribute-values" && expectedVersion is not null)
         {
@@ -704,6 +714,80 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
     }
 
     private static ConnectionAttributeDefaultView MapDefault(ConnectionAttributeDefault value) => new(value.ExternalAttributeId, value.AttributeName, value.ExternalValueId, value.ValueName, value.CustomValue, value.UpdatedAt, value.Version, value.SourceField);
+
+    private Task<bool> IsShopifyAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
+        db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "SHOPIFY", cancellationToken);
+
+    // The current list's entry for a typed Shopify product type: the store's own spelling when it already holds the type
+    // (by ShopifyProductTypeNames.Key), else a new flat entry added to the list.
+    private async Task<ReferenceItem> ShopifyProductTypeEntryAsync(Guid tenantId, ReferenceSnapshot snapshot, string typed, CancellationToken cancellationToken)
+    {
+        var items = await db.ReferenceItems.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.SnapshotId == snapshot.Id && x.ResourceType == "CATEGORIES")
+            .ToListAsync(cancellationToken);
+        var key = ShopifyProductTypeNames.Key(typed);
+        var known = items.Where(x => x.ParentExternalId == null && ShopifyProductTypeNames.Key(x.ExternalId) == key)
+            .OrderByDescending(x => x.IsActive).ThenBy(x => x.ExternalId == typed ? 0 : 1).ThenBy(x => x.ExternalId, StringComparer.Ordinal)
+            .FirstOrDefault();
+        if (known is not null) return known;
+        var item = new ReferenceItem
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenantId,
+            ConnectionId = snapshot.ConnectionId,
+            SnapshotId = snapshot.Id,
+            ResourceType = "CATEGORIES",
+            ExternalId = typed,
+            ParentExternalId = null,
+            Name = typed,
+            NormalizedName = typed.ToUpperInvariant(),
+            Path = typed,
+            Depth = 0,
+            IsLeaf = true,
+            IsActive = true,
+            PayloadHash = ShopifyProductTypeNames.PayloadHash(typed),
+            SortOrder = items.Count
+        };
+        db.ReferenceItems.Add(item);
+        var tracked = await db.ReferenceSnapshots.SingleAsync(x => x.TenantId == tenantId && x.Id == snapshot.Id, cancellationToken);
+        tracked.ItemCount = items.Count + 1;
+        return item;
+    }
+
+    // "Birebir Eşle" on Eşleştirmeler › Kategori Eşleme › Shopify: every active leaf panel category without a mapping on
+    // this store whose name is one of the store's product types gets it. A user action; it never changes a mapping and
+    // never creates a type. With apply false it only counts, for the confirmation.
+    public async Task<ServiceResult<ShopifyExactCategoryMatchView>> ExactMatchShopifyCategoriesAsync(Guid tenantId, Guid connectionId, bool apply, CancellationToken cancellationToken)
+    {
+        if (!await VisibleConnectionAsync(tenantId, connectionId, cancellationToken)) return NotFound<ShopifyExactCategoryMatchView>();
+        if (!await IsShopifyAsync(tenantId, connectionId, cancellationToken)) return ServiceResult<ShopifyExactCategoryMatchView>.Fail("SHOPIFY_CONNECTION_REQUIRED", "Birebir eşleme yalnız Shopify bağlantısında yapılır.", 422);
+        var snapshot = await db.ReferenceSnapshots.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "CATEGORIES" && x.ScopeExternalId == "" && x.IsCurrent, cancellationToken);
+        if (snapshot is null) return ServiceResult<ShopifyExactCategoryMatchView>.Fail("REFERENCE_SNAPSHOT_UNAVAILABLE", "Shopify ürün türü listesi henüz alınmamış; önce Senkronize Et ile listeyi alın.", 422);
+        var productTypes = await db.ReferenceItems.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.SnapshotId == snapshot.Id && x.ResourceType == "CATEGORIES" && x.IsActive && x.IsLeaf && x.ParentExternalId == null)
+            .Select(x => x.ExternalId)
+            .ToListAsync(cancellationToken);
+        var mappedIds = db.CategoryMappings.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == "").Select(x => x.LocalId);
+        var unmapped = await db.Categories.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.IsActive && x.IsLeaf && !mappedIds.Contains(x.Id))
+            .Select(x => new { x.Id, x.Name })
+            .ToListAsync(cancellationToken);
+        var plan = ShopifyProductTypeNames.PlanExactMatches(unmapped.Select(x => (x.Id, x.Name)), productTypes);
+        if (apply && plan.Matches.Count > 0)
+        {
+            var now = timeProvider.GetUtcNow();
+            foreach (var match in plan.Matches)
+                db.CategoryMappings.Add(new CategoryMapping { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, SnapshotId = snapshot.Id, LocalId = match.CategoryId, ScopeExternalId = "", ExternalId = match.ProductType, Status = "VERIFIED", VerifiedAt = now, Version = 1 });
+            try { await db.SaveChangesAsync(cancellationToken); }
+            catch (DbUpdateException)
+            {
+                return ServiceResult<ShopifyExactCategoryMatchView>.Fail("CONCURRENCY_CONFLICT", "Eşlemeler bu sırada başka bir işlemle değişti; sayfayı yenileyip yeniden deneyin.", 409);
+            }
+        }
+        return ServiceResult<ShopifyExactCategoryMatchView>.Ok(new(
+            plan.Matches.Count, plan.WithoutTypeCount, plan.AmbiguousCount, apply && plan.Matches.Count > 0,
+            plan.Matches.Select(x => new ShopifyExactCategoryMatchItem(x.CategoryId, x.CategoryName, x.ProductType)).ToList()));
+    }
 
     public async Task<ServiceResult<bool>> DeleteMappingAsync(Guid tenantId, string mappingType, Guid localId, Guid connectionId, string? scopeExternalId, string? externalId, long expectedVersion, CancellationToken cancellationToken)
     {

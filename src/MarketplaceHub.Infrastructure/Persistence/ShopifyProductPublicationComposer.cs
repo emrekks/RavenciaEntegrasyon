@@ -63,6 +63,12 @@ internal sealed class ShopifyProductPublicationComposer(AppDbContext db, IConfig
         var leadProfile = await db.ChannelListingProfiles.AsNoTracking()
             .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == lead.Id, cancellationToken);
 
+        // The product type sent is the one the panel category is mapped to on this store (Eşleştirmeler › Kategori Eşleme ›
+        // Shopify), like every other marketplace's category; without a mapping nothing is sent and nothing is mapped here
+        // (owner decision 14 Nov 2026: the panel category name went out as the product type before).
+        var productType = lead.CategoryId is Guid leadCategoryId ? await MappedProductTypeAsync(db, tenantId, connectionId, leadCategoryId, cancellationToken) : null;
+        if (productType is null) return Fail(CategoryMappingRequiredCode, CategoryMappingRequiredMessage, field: "categoryId");
+
         var title = (leadProfile?.TitleOverride ?? lead.Title).Trim();
         var description = (leadProfile?.DescriptionOverride ?? lead.Description).Trim();
         if (title.Length is < 1 or > 255) return Fail("PRODUCT_TITLE_INVALID", "Shopify ürün adı 1-255 karakter olmalıdır.", field: "title");
@@ -119,23 +125,6 @@ internal sealed class ShopifyProductPublicationComposer(AppDbContext db, IConfig
         var brand = lead.BrandId is Guid brandId
             ? await db.Brands.AsNoTracking().Where(item => item.TenantId == tenantId && item.Id == brandId).Select(item => item.Name).SingleOrDefaultAsync(cancellationToken)
             : null;
-        var category = lead.CategoryId is Guid categoryId
-            ? await db.Categories.AsNoTracking().Where(item => item.TenantId == tenantId && item.Id == categoryId).Select(item => item.Name).SingleOrDefaultAsync(cancellationToken)
-            : null;
-        // The category mapped for this store is one of its own product types (a flat entry of the current
-        // CATEGORIES snapshot); it is sent exactly as the store holds it. Without a mapping the panel
-        // category name is sent, as before.
-        var mappedProductType = lead.CategoryId is Guid mappedCategoryId
-            ? await (from mapping in db.CategoryMappings.AsNoTracking()
-                     join snapshot in db.ReferenceSnapshots.AsNoTracking() on mapping.SnapshotId equals snapshot.Id
-                     join item in db.ReferenceItems.AsNoTracking() on new { mapping.SnapshotId, mapping.ExternalId } equals new { item.SnapshotId, item.ExternalId }
-                     where mapping.TenantId == tenantId && mapping.ConnectionId == connectionId && mapping.LocalId == mappedCategoryId && mapping.Status == "VERIFIED"
-                         && snapshot.TenantId == tenantId && snapshot.ConnectionId == connectionId && snapshot.ResourceType == "CATEGORIES" && snapshot.IsCurrent
-                         && item.TenantId == tenantId && item.ResourceType == "CATEGORIES" && item.IsActive && item.ParentExternalId == null
-                     select item.ExternalId)
-                .FirstOrDefaultAsync(cancellationToken)
-            : null;
-        var productType = ShopifyProductType(mappedProductType, category);
 
         var mediaRows = await (from media in db.ProductMedia.AsNoTracking()
                                join asset in db.FileAssets.AsNoTracking() on media.FileAssetId equals asset.Id
@@ -227,9 +216,20 @@ internal sealed class ShopifyProductPublicationComposer(AppDbContext db, IConfig
         return ServiceResult<ProductPublicationDraft>.Ok(new(profile.Id, string.Empty, string.Empty, payloadHash, payloadJson, draftVariants));
     }
 
-    internal static string? ShopifyProductType(string? mappedProductType, string? panelCategoryName) =>
-        !string.IsNullOrWhiteSpace(mappedProductType) ? mappedProductType
-        : string.IsNullOrWhiteSpace(panelCategoryName) ? null : panelCategoryName.Trim();
+    internal const string CategoryMappingRequiredCode = "CATEGORY_MAPPING_REQUIRED";
+    internal const string CategoryMappingRequiredMessage = "Yayın öncesi güncel Shopify kategori eşlemesi gerekir; ürün kategorisini Eşleştirmeler › Kategori Eşleme › Shopify sekmesinden mağazanın bir ürün türüyle eşleyin.";
+
+    // The store's product type the panel category is mapped to: a verified mapping on the current CATEGORIES list whose
+    // entry (a flat product type) is still active, sent exactly as the store holds it; null when there is none.
+    internal static Task<string?> MappedProductTypeAsync(AppDbContext db, Guid tenantId, Guid connectionId, Guid categoryId, CancellationToken cancellationToken) =>
+        (from mapping in db.CategoryMappings.AsNoTracking()
+         join snapshot in db.ReferenceSnapshots.AsNoTracking() on mapping.SnapshotId equals snapshot.Id
+         join item in db.ReferenceItems.AsNoTracking() on new { mapping.SnapshotId, mapping.ExternalId } equals new { item.SnapshotId, item.ExternalId }
+         where mapping.TenantId == tenantId && mapping.ConnectionId == connectionId && mapping.LocalId == categoryId && mapping.Status == "VERIFIED"
+             && snapshot.TenantId == tenantId && snapshot.ConnectionId == connectionId && snapshot.ResourceType == "CATEGORIES" && snapshot.IsCurrent
+             && item.TenantId == tenantId && item.ResourceType == "CATEGORIES" && item.IsActive && item.ParentExternalId == null
+         select (string?)item.ExternalId)
+        .FirstOrDefaultAsync(cancellationToken);
 
     // The same handle and the same variant SKUs: prices and stock may have moved since, the variant list has not.
     internal static bool SameVariantSkus(string queuedPayloadJson, string currentPayloadJson)

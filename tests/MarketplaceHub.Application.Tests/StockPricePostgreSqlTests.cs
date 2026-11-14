@@ -1751,6 +1751,9 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         var (brown, brownL) = NewVariant(tenant, "FAM-K-L", "8690000000303");
         var brownXl = NewVariant(tenant, "FAM-K-XL", "8690000000304", brown.Id).Variant;
         black.Title = brown.Title = "Yonca Bluz";
+        var category = new Category { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Name = "Bluz", NormalizedName = $"BLUZ-{Guid.NewGuid():N}", Path = "Bluz", IsLeaf = true, IsActive = true, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow, Version = 1 };
+        black.CategoryId = brown.CategoryId = category.Id;
+        var productTypes = new ReferenceSnapshot { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = shopify.Id, ResourceType = "CATEGORIES", ScopeExternalId = "", SourceVersion = "2026-10", ContentHash = $"hash-{Guid.NewGuid():N}", FetchedAt = DateTimeOffset.UtcNow, IsCurrent = true, ItemCount = 1 };
         var now = DateTimeOffset.UtcNow;
         black.CreatedAt = now.AddMinutes(-5);
         brown.CreatedAt = now;
@@ -1785,6 +1788,10 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
             seed.InventoryItems.AddRange(variants.Select(variant => NewInventory(tenant, variant, 3m)));
             seed.ChannelOffers.AddRange(variants.Select(variant => NewOffer(tenant, shopify, variant)));
             seed.ChannelListingProfiles.Add(profile);
+            seed.Categories.Add(category);
+            seed.ReferenceSnapshots.Add(productTypes);
+            seed.ReferenceItems.Add(new ReferenceItem { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = shopify.Id, SnapshotId = productTypes.Id, ResourceType = "CATEGORIES", ExternalId = "Kadın Bluz", Name = "Kadın Bluz", NormalizedName = "KADIN BLUZ", Path = "Kadın Bluz", IsLeaf = true, IsActive = true, PayloadHash = "payload-kadin-bluz" });
+            seed.CategoryMappings.Add(new CategoryMapping { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = shopify.Id, SnapshotId = productTypes.Id, LocalId = category.Id, ExternalId = "Kadın Bluz", Status = "VERIFIED", VerifiedAt = DateTimeOffset.UtcNow, Version = 1 });
             await seed.SaveChangesAsync();
         }
 
@@ -1799,6 +1806,8 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.Equal(["FAM-S-L", "FAM-S-XL", "FAM-K-L", "FAM-K-XL"], root.GetProperty("variants").EnumerateArray().Select(variant => variant.GetProperty("sku").GetString()));
         var options = root.GetProperty("productOptions").EnumerateArray().ToArray();
         // The panel sorts Beden first; Shopify gets Renk first so its admin groups the variant list by colour.
+        // The product type is the one the panel category is mapped to on this store (owner decision 14 Nov 2026).
+        Assert.Equal("Kadın Bluz", root.GetProperty("productType").GetString());
         Assert.Equal(["Renk", "Beden"], options.Select(option => option.GetProperty("name").GetString()));
         Assert.Equal([1, 2], options.Select(option => option.GetProperty("position").GetInt32()));
         Assert.Equal(["Siyah", "Kahverengi"], options[0].GetProperty("values").EnumerateArray().Select(value => value.GetProperty("name").GetString()));
