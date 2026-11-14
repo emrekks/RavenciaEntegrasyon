@@ -596,6 +596,10 @@ public sealed class ShipmentPackage
     public string? CreatedBy { get; set; }
     public string? CargoProviderExternalId { get; set; }
     public string? CargoTrackingNumber { get; set; }
+    // The cargo barcode the marketplace gave the package (Hepsiburada "barcode": "Oluşturulan paketin kargo barkodudur"),
+    // known while the package is still Open, before any tracking number. Not a tracking number: for hepsiJET it is the
+    // same value, for Aras Kargo it is not (live 5534650975), so CargoTrackingNumber is never filled from it.
+    public string? CargoBarcode { get; set; }
     public decimal GrossAmount { get; set; }
     public decimal DiscountAmount { get; set; }
     public decimal NetAmount { get; set; }

@@ -18,6 +18,9 @@ internal static class ImportedApprovalStates
     public const string Rejected = "REJECTED";
     public const string PartialRejected = "PARTIAL_REJECTED";
 
+    // A listing the marketplace still reviews or refused: not on sale there, whatever link an import made for it.
+    public static bool IsHeldListing(string? actualStatus) => actualStatus is Pending or Rejected;
+
     private static readonly HashSet<string> OwnStatuses = new(StringComparer.Ordinal) { Pending, PartialPending, Rejected, PartialRejected };
 
     // The listing state of one not-yet-approved row: its marketplace word, or null (unknown, nothing is written).

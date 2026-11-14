@@ -196,6 +196,11 @@ public static class PackageIngestionSafety
             package.CargoTrackingNumber = remote.CargoTrackingNumber.Trim();
             changed = true;
         }
+        if (string.IsNullOrWhiteSpace(package.CargoBarcode) && !string.IsNullOrWhiteSpace(remote.CargoBarcode))
+        {
+            package.CargoBarcode = remote.CargoBarcode.Trim();
+            changed = true;
+        }
         if (string.IsNullOrWhiteSpace(package.OriginExternalPackageId) && !string.IsNullOrWhiteSpace(remote.OriginExternalPackageId))
         {
             package.OriginExternalPackageId = remote.OriginExternalPackageId.Trim();
