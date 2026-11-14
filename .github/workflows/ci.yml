@@ -367,7 +367,7 @@ jobs:
           MARKETPLACEHUB_TEST_CONNECTION: "Host=localhost;Port=5432;Database=marketplacehub_test;Username=marketplacehub;Password=development-only"
           FeatureFlags__ExternalWrites: "false"
           TEST_FILTER: ${{ matrix.filter }}
-        run: dotnet test MarketplaceHub.sln --no-build --configuration Release --filter "$TEST_FILTER"
+        run: dotnet test MarketplaceHub.sln --no-build --configuration Release --filter "$TEST_FILTER" --logger "console;verbosity=normal"
 
   # Fills main's NuGet cache, which every branch reads, once per lock-file set. Not a check:
   # gate does not wait for it and a failure here cannot hold back Validate or Deploy.
