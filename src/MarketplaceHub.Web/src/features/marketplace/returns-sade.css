@@ -1245,7 +1245,8 @@ main .rr.rr.rr-returns .rr-tbl.rr-tbl th .rr-hf { max-width: 100%; min-width: 0;
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl :is(.rr-ordercell small, .rr-cargocell small.rr-num, .rr-pline small:not(.rr-card-only)) { white-space: nowrap; overflow-wrap: normal; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl .rr-ordercell small .rr-nv { display: block; overflow-wrap: normal; white-space: nowrap; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl td[data-l="Alıcı"] .rr-cust b { overflow-wrap: normal !important; word-break: normal !important; hyphens: manual !important; }
-:root:root:root:root main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl :is(thead th:first-child, tbody td:first-child) { position: sticky; left: 0; z-index: 2; }
+/* owner, 14 Nov night: the first column is not pinned - it scrolls with the rest of the table. */
+:root:root:root:root main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl :is(thead th:first-child, tbody td:first-child) { position: static; left: auto; z-index: auto; }
 :root:root:root:root main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl tbody td:first-child { background: var(--rr-surface); }
 /* the pinned first column stays opaque in every row state (hover and selection tints are layered over the surface colour, never see-through), above the scrolled cells */
 :root:root:root:root main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl tbody tr:hover td:first-child { background: linear-gradient(var(--rv-hover, color-mix(in srgb, var(--rv-color-surface-soft) 55%, transparent)), var(--rv-hover, color-mix(in srgb, var(--rv-color-surface-soft) 55%, transparent))), var(--rr-surface); }
