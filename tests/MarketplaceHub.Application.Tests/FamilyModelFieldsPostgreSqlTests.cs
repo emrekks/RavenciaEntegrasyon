@@ -26,11 +26,12 @@ public sealed class FamilyModelFieldsPostgreSqlTests(PostgreSqlTenantIsolationFi
         var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "TRENDYOL", Environment = "PRODUCTION", DisplayName = "Trendyol model alanları", ExternalStoreId = $"store-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V1", SettingsJson = "{}", Version = 1 };
         var categoryId = Guid.CreateVersion7();
         var brandId = Guid.CreateVersion7();
-        Product Card(string colour, string title, string description, int warranty, int minute) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = title, Description = description, CategoryId = categoryId, BrandId = brandId, VatRate = 10m, VatInclusion = "INCLUDED", WarrantyMonths = warranty, DeliveryDays = 1, Status = ProductStatus.Active, CreatedAt = now.AddMinutes(minute), UpdatedAt = now, Version = 1 };
-        // The Gri card holds the Zümrüt card's name (a copy), Lacivert a name without colour, a description and a warranty of its own.
-        var gri = Card("Gri", $"Kadın Zümrüt {Name}", "Model açıklaması", 0, 0);
+        Product Card(string colour, string title, string description, int? warranty, int minute) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = title, Description = description, CategoryId = categoryId, BrandId = brandId, VatRate = 10m, VatInclusion = "INCLUDED", WarrantyMonths = warranty, DeliveryDays = 1, Status = ProductStatus.Active, CreatedAt = now.AddMinutes(minute), UpdatedAt = now, Version = 1 };
+        // The Gri card holds the Zümrüt card's name (a copy), Lacivert a name without colour, a description and a warranty of its own
+        // (no warranty is stored as null).
+        var gri = Card("Gri", $"Kadın Zümrüt {Name}", "Model açıklaması", null, 0);
         var lacivert = Card("Lacivert", $"Kadın {Name}", "Lacivert eski açıklama", 24, 1);
-        var zumrut = Card("Zümrüt", $"Kadın Zümrüt {Name}", "Model açıklaması", 0, 2);
+        var zumrut = Card("Zümrüt", $"Kadın Zümrüt {Name}", "Model açıklaması", null, 2);
         var cards = new[] { (gri, "Gri"), (lacivert, "Lacivert"), (zumrut, "Zümrüt") };
         var variants = new List<ProductVariant>();
         var offers = new List<ChannelOffer>();
@@ -71,7 +72,7 @@ public sealed class FamilyModelFieldsPostgreSqlTests(PostgreSqlTenantIsolationFi
             var opened = (await service.GetProductAsync(tenant.Id, card.Id, CancellationToken.None)).Value!;
             Assert.Equal($"Kadın {colour} {Name}", opened.Title);
             Assert.Equal("Model açıklaması", opened.Description);
-            Assert.Equal(0, opened.WarrantyMonths);
+            Assert.Null(opened.WarrantyMonths);
         }
 
         // Kaydet from the Lacivert row with the fields as the editor showed them (the owner touched nothing): every card
@@ -98,7 +99,7 @@ public sealed class FamilyModelFieldsPostgreSqlTests(PostgreSqlTenantIsolationFi
                 var product = stored.Single(item => item.Id == card.Id);
                 Assert.Equal(title(colour), product.Title);
                 Assert.Equal("Model açıklaması", product.Description);
-                Assert.Equal(0, product.WarrantyMonths);
+                Assert.Null(product.WarrantyMonths);
                 Assert.Equal((10m, "INCLUDED"), (product.VatRate, product.VatInclusion));
             }
             // The variant rows stay each variant's own: codes, barcodes, colour/size and prices, and every marketplace price.
