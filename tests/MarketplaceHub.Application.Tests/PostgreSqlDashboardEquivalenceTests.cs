@@ -39,6 +39,9 @@ public sealed class PostgreSqlDashboardEquivalenceTests(PostgreSqlTenantIsolatio
             var period = DashboardPerformancePeriod.Resolve(DateOnly.Parse(from, CultureInfo.InvariantCulture), DateOnly.Parse(to, CultureInfo.InvariantCulture), Now, TimeZoneInfo.FindSystemTimeZoneById(Timezone)).Value!;
 
             await using var db = fixture.CreateContext();
+            // Fresh statistics for the planner: on a young test database (a CI shard that starts with this test) the
+            // legacy queries otherwise get row estimates from empty tables and ran 5 min instead of 2 (15 Nov 2026).
+            await db.Database.ExecuteSqlRawAsync("ANALYZE");
             // The old queries inline every per-order figure and read slowly once the shared test database has filled up
             // (the full run: 30 s timeouts on 13 Nov 2026, alone it passes); the comparison, not the speed, is tested here.
             db.Database.SetCommandTimeout(TimeSpan.FromMinutes(3));
