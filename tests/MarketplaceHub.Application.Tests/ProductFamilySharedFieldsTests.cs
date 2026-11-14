@@ -2,8 +2,8 @@ using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
 
-// The model's shared fields (owner, 11.11.2026): a colour card's name keeps its own colour word, and the editor names the
-// colours whose model-row fields differ from the opened card's.
+// The model's shared fields (owner, 11.11 and 14.11.2026): Temel Ürün Bilgileri are one value for the whole model, the
+// value most colour cards hold, shown the same whichever colour row was opened; a name keeps each card's colour word.
 public sealed class ProductFamilySharedFieldsTests
 {
     [Fact]
@@ -17,46 +17,45 @@ public sealed class ProductFamilySharedFieldsTests
         Assert.Equal("Grimsi Bluz", ProductFamilySharedFields.TitleFor("Grimsi Bluz", "Gri", "Siyah"));
     }
 
-    private static ProductFamilySharedFields.CardFields Card(string color, string title, string description = "Açıklama", decimal? vat = 10m) =>
-        new(Guid.NewGuid(), color, title, description, Guid.Empty, Guid.Empty, vat, "INCLUDED", null, 1);
+    private static ProductFamilySharedFields.CardFields Card(string color, string title, string description = "Açıklama", decimal? vat = 10m, int? warranty = null) =>
+        new(Guid.NewGuid(), color, title, description, Guid.Empty, Guid.Empty, vat, "INCLUDED", warranty, 1);
 
+    // Live MZ056 (14.11.2026): five cards read "Kadın Zümrüt …" (the Gri, İndigo, Tarçın and Bordo cards too, copied from
+    // the Zümrüt card), two read the name without a colour; the descriptions differ on Lacivert.
     [Fact]
-    public void Differences_NameTheColoursThatDiffer_AndIgnoreTheirOwnColourWord()
+    public void ModelValues_AreWhatMostCardsHold_TheNameInTheOpenedCardsColour_TheSameFromEveryRow()
     {
-        var bordo = Card("Bordo", "Kadın Bordo Hırka");
-        var fume = Card("Füme", "Kadın Füme Hırka");
-        var mor = Card("Mor", "Kadın Hırka", description: "Eski", vat: 20m);
-        var murdum = Card("Mürdüm", "Kadın Hırka Mürdüm", description: "Eski");
-
-        // The cards in the family's order: the answer does not depend on which card was opened.
-        var differences = ProductFamilySharedFields.Differences([bordo, fume, mor, murdum]);
-
-        Assert.Equal([ProductFamilySharedFields.Title, ProductFamilySharedFields.Description, ProductFamilySharedFields.Vat], differences.Select(item => item.Field));
-        Assert.Equal(["Mor", "Mürdüm"], differences[0].Colors);
-        // Two against two: the first card's value is the model's, the others are named.
-        Assert.Equal(["Mor", "Mürdüm"], differences[1].Colors);
-        Assert.Equal(["Mor"], differences[2].Colors);
-        Assert.Empty(ProductFamilySharedFields.Differences([bordo, fume]));
-        // The same VAT stored with another scale (10.0000 and 10.00) is the same VAT.
-        Assert.Empty(ProductFamilySharedFields.Differences([Card("Siyah", "Bluz", vat: 10.0000m), Card("Gri", "Bluz", vat: 10.00m)]));
+        const string name = "Dik Çizgi Desenli Anne Penye Bluz";
+        IReadOnlyList<ProductFamilySharedFields.CardFields> cards =
+        [
+            Card("Gri", $"Kadın Zümrüt {name}"), Card("Lacivert", $"Kadın {name}", description: "Uzun açıklama"), Card("Pudra", $"Kadın {name}"),
+            Card("İndigo", $"Kadın Zümrüt {name}"), Card("Tarçın", $"Kadın Zümrüt {name}"), Card("Zümrüt", $"Kadın Zümrüt {name}"), Card("Bordo", $"Kadın Zümrüt {name}")
+        ];
+        foreach (var opened in cards)
+        {
+            var model = ProductFamilySharedFields.ModelValues(cards, opened.Color);
+            Assert.Equal($"Kadın {opened.Color} {name}", model.Title);
+            Assert.Equal("Açıklama", model.Description);
+        }
     }
 
-    // "desi marka ortak" (owner, 11.11.2026): live MZ010D has sizes with desi 1 and sizes without one; KENE01 has its two
-    // colours under two brands. Both show in the note.
     [Fact]
-    public void Differences_NameTheColoursWhoseDesiOrBrandDiffers()
+    public void ModelValues_OnATie_TakeTheFirstCards_AndCompareTheVatWhateverItsScale()
     {
-        var siyah = Card("Siyah", "Bluz") with { Desis = [1.00m, 1m] };
-        var gri = Card("Gri", "Bluz") with { Desis = [1m, 1m] };
-        var lacivert = Card("Lacivert", "Bluz") with { Desis = [1m, null] };
-        var desi = Assert.Single(ProductFamilySharedFields.Differences([siyah, gri, lacivert]));
-        Assert.Equal(ProductFamilySharedFields.Desi, desi.Field);
-        Assert.Equal(["Lacivert"], desi.Colors);
+        var bordo = Card("Bordo", "Kadın Hırka", description: "Bordo açıklama", vat: 10.0000m, warranty: 0);
+        var fume = Card("Füme", "Kadın Hırka", description: "Füme açıklama", vat: 10.00m, warranty: 24);
+        var model = ProductFamilySharedFields.ModelValues([bordo, fume], "Füme");
+        Assert.Equal("Kadın Hırka", model.Title);
+        Assert.Equal("Bordo açıklama", model.Description);
+        Assert.Equal(10m, model.VatRate);
+        Assert.Equal(0, model.WarrantyMonths);
+        Assert.Equal(model, ProductFamilySharedFields.ModelValues([bordo, fume], "Bordo"));
+    }
 
-        var mavi = Card("Mavi", "Kot Etek") with { BrandId = Guid.NewGuid() };
-        var denim = Card("Denim Rengi", "Kot Etek") with { BrandId = Guid.NewGuid() };
-        var brand = Assert.Single(ProductFamilySharedFields.Differences([denim], [mavi, denim]));
-        Assert.Equal(ProductFamilySharedFields.Brand, brand.Field);
-        Assert.Equal(["Denim Rengi"], brand.Colors);
+    [Fact]
+    public void ModelAttributeCard_IsTheSetMostCardsHold_OnATieTheFirst()
+    {
+        Assert.Equal(1, ProductFamilySharedFields.ModelAttributeCard(["a", "b", "b"]));
+        Assert.Equal(0, ProductFamilySharedFields.ModelAttributeCard(["a", "b"]));
     }
 }

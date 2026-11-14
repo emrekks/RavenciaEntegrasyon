@@ -34,8 +34,6 @@ function family(opened: string) {
     familyOrderedMediaUrls: [...bordo, ...siyah],
     familyMediaItems: [...bordo, ...siyah].map((item, index) => ({ url: item, mediaIds: [`m${index}`], sourceProductTitles: ['Kışlık Triko Bluz'] })),
     familyGalleries: galleries,
-    // Siyah's description differs from the model's (MZ051BYC: two description groups on live).
-    familyFieldDifferences: [{ field: 'description', colors: ['Siyah'] }],
     familyProductIds: [opened, opened === 'siyah' ? 'bordo' : 'siyah'],
     options: [{ id: 'o1', label: 'Renk', values: [{ id: 'r1', label: 'Bordo' }, { id: 'r2', label: 'Siyah' }] }, { id: 'o2', label: 'Beden', values: [{ id: 's1', label: 'L' }, { id: 's2', label: 'XL' }] }],
     attributes: []
@@ -91,7 +89,7 @@ async function saveFrom(opened: string, newTitle?: string) {
     </Routes></main></MemoryRouter></QueryClientProvider>)
   })
   await settle()
-  const note = container.querySelector('.family-field-note')?.textContent ?? ''
+  const note = container.querySelector('.family-field-note:not(.trendyol-picture-note)')?.textContent ?? ''
   if (newTitle) {
     const input = container.querySelector<HTMLInputElement>('.product-title-field input')!
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
@@ -102,10 +100,10 @@ async function saveFrom(opened: string, newTitle?: string) {
   await act(async () => { save.form!.requestSubmit(save) })
   await settle(30)
   const writes = fixture.calls.filter(call => call.path.startsWith('/files/') || call.path.endsWith('/size-chart')).map(call => ({ method: call.method, path: call.path, body: call.body }))
-  const patch = fixture.calls.find(call => call.method === 'PATCH')?.body as { title: string; familySharedFields: string[] } | undefined
+  const patch = fixture.calls.find(call => call.method === 'PATCH')?.body as { title: string; familySharedFields: string[]; variantUpdates: Array<{ id: string; barcode: string | null; sku: string; defaultSalePrice: number }> } | undefined
   act(() => root.unmount())
   root = createRoot(container)
-  return { writes, captions, note, shared: patch?.familySharedFields, title: patch?.title }
+  return { writes, captions, note, shared: patch?.familySharedFields, title: patch?.title, variants: patch?.variantUpdates }
 }
 
 describe('Kaydet on a model from any colour row', () => {
@@ -121,18 +119,21 @@ describe('Kaydet on a model from any colour row', () => {
     // The strip is the same and names each picture's colour.
     expect(fromSiyah.captions).toEqual(['Bordo', 'Bordo', 'Siyah', 'Siyah'])
     expect(fromBordo.captions).toEqual(fromSiyah.captions)
-    // Nothing of the model's fields was changed: no colour card gets another's name or description.
-    expect(fromSiyah.shared).toEqual([])
-    expect(fromBordo.shared).toEqual([])
-    expect(fromSiyah.note).toContain('Renklerde farklı: Açıklama (Siyah)')
-    expect(fromBordo.note).toBe(fromSiyah.note)
+    // Temel Ürün Bilgileri are the model's (owner, 14.11.2026): even untouched, every save names all of them for the
+    // server to write to every colour card, and no 'Renklerde farklı' note stands above them.
+    expect(fromSiyah.shared).toEqual(['title', 'description', 'brand', 'category', 'vat', 'warranty', 'deliveryDays', 'attributes'])
+    expect(fromBordo.shared).toEqual(fromSiyah.shared)
+    expect(fromSiyah.note).toBe('')
+    expect(fromBordo.note).toBe('')
+    // The variant rows stay each variant's own: every row keeps its own code and barcode.
+    expect(fromSiyah.variants?.map(row => [row.id, row.sku, row.barcode])).toEqual([['b-l', 'MZ051BYC-1', 'MZ051BYC-1'], ['b-xl', 'MZ051BYC-2', 'MZ051BYC-2'], ['s-l', 'MZ051BYC-31', 'MZ051BYC-31'], ['s-xl', 'MZ051BYC-32', 'MZ051BYC-32']])
   })
 
-  it('names a changed model field the same way from every colour row, for the server to write to every colour', async () => {
+  it('sends a changed model name the same way from every colour row, with every model field, for the server to write to every colour', async () => {
     const fromSiyah = await saveFrom('siyah', 'Kışlık Yumuşak Triko Bluz')
     const fromBordo = await saveFrom('bordo', 'Kışlık Yumuşak Triko Bluz')
-    expect(fromSiyah.shared).toEqual(['title'])
-    expect(fromBordo.shared).toEqual(['title'])
+    expect(fromSiyah.shared).toContain('title')
+    expect(fromBordo.shared).toEqual(fromSiyah.shared)
     expect(fromBordo.title).toBe(fromSiyah.title)
   })
 })

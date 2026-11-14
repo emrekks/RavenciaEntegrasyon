@@ -1,11 +1,11 @@
 namespace MarketplaceHub.Application;
 
 // A model (same brand and model code) is one product in the editor whichever colour row was opened (owner, 11.11.2026):
-// its model-row fields (Sopyo's main row: name, description, category, brand, VAT, warranty, delivery days and the
+// its model-row fields (Temel Ürün Bilgileri: name, description, category, brand, VAT, warranty, delivery days and the
 // card's category attributes) are the model's, while each colour card keeps its colour, its variants' codes, stock,
-// prices and pictures. A field the owner changed in the editor is written to every colour card of the model (a card
-// already holding the value is left alone); a field the owner did not touch stays as each card has it, and the editor
-// names the colours that differ instead of silently picking one.
+// prices, marketplace prices and pictures. The fields are one value for the whole model (owner, 14.11.2026: "Bunlar
+// ortak değerlerdir, her varyantında eşit olmalı"): the editor shows the model's value (ModelValues) and every save
+// writes all of them to every colour card, so cards that drifted apart become equal again.
 public static class ProductFamilySharedFields
 {
     public const string Title = "title";
@@ -16,8 +16,6 @@ public static class ProductFamilySharedFields
     public const string Warranty = "warranty";
     public const string DeliveryDays = "deliveryDays";
     public const string Attributes = "attributes";
-    // Desi lives on the variants: the editor sends a changed desi to every size of every colour (shown, not written here).
-    public const string Desi = "desi";
 
     public static readonly IReadOnlyList<string> All = [Title, Description, Brand, Category, Vat, Warranty, DeliveryDays, Attributes];
 
@@ -32,39 +30,47 @@ public static class ProductFamilySharedFields
         return ProductFamilyNewColorCard.Title(title, openedColor, cardColor);
     }
 
-    public sealed record CardFields(Guid ProductId, string? Color, string Title, string Description, Guid? BrandId, Guid? CategoryId, decimal? VatRate, string? VatInclusion, int? WarrantyMonths, int? DeliveryDays, IReadOnlyList<decimal?>? Desis = null);
+    public sealed record CardFields(Guid ProductId, string? Color, string Title, string Description, Guid? BrandId, Guid? CategoryId, decimal? VatRate, string? VatInclusion, int? WarrantyMonths, int? DeliveryDays);
 
-    // The model-row fields the colour cards of a model (given in the family's card order) do not all share, with the
-    // colours that differ from the value most cards hold (on a tie, the first card's). The same whichever card was opened.
-    // A name that differs only by the card's own colour word is the same name.
-    // brandCards: the cards of the same model code under any brand (KENE01 on live: one colour on Lavian, one on
-    // Ravencia); the brand is checked over them, the other fields over the model.
-    public static IReadOnlyList<ProductFamilyFieldDifferenceView> Differences(IReadOnlyList<CardFields> cards, IReadOnlyList<CardFields>? brandCards = null)
+    public sealed record ModelFields(string Title, string Description, Guid? BrandId, Guid? CategoryId, decimal? VatRate, string? VatInclusion, int? WarrantyMonths, int? DeliveryDays);
+
+    // The value of each field most of the colour cards hold, on a tie the first card's (cards in the family's order,
+    // oldest first): the same whichever colour row was opened. A name is compared without the colour word it holds (its
+    // own colour, or another colour of the model left there by a copy: live MZ056's Gri card read "Kadın Zümrüt …") and
+    // is given with the opened card's colour in that place.
+    public static ModelFields ModelValues(IReadOnlyList<CardFields> cards, string? openedColor)
     {
-        var result = new List<ProductFamilyFieldDifferenceView>();
-        void Check(string field, Func<CardFields, string> keyOf, IReadOnlyList<CardFields>? over = null)
+        if (cards.Count == 0) throw new ArgumentException("A model has at least one colour card.", nameof(cards));
+        var colors = cards.Select(card => card.Color?.Trim()).OfType<string>().Where(color => color.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        string? ColorWordOf(CardFields card)
         {
-            var checkedCards = over ?? cards;
-            if (checkedCards.Count < 2) return;
-            var keys = checkedCards.Select(keyOf).ToList();
-            var common = keys.Select((key, index) => (key, index)).GroupBy(item => item.key, StringComparer.Ordinal)
-                .OrderByDescending(group => group.Count()).ThenBy(group => group.Min(item => item.index)).First().Key;
-            var colors = checkedCards.Where((_, index) => !string.Equals(keys[index], common, StringComparison.Ordinal))
-                .Select(card => string.IsNullOrWhiteSpace(card.Color) ? card.Title.Trim() : card.Color.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            if (colors.Count > 0) result.Add(new ProductFamilyFieldDifferenceView(field, colors));
+            var title = card.Title.Trim();
+            return ProductFamilyNewColorCard.HasColorWord(title, card.Color) ? card.Color!.Trim() : colors.FirstOrDefault(color => ProductFamilyNewColorCard.HasColorWord(title, color));
         }
-        Check(Title, card => ProductFamilyNewColorCard.HasColorWord(card.Title.Trim(), card.Color) ? ProductFamilyNewColorCard.Title(card.Title.Trim(), card.Color, "\u0001") : card.Title.Trim());
-        Check(Description, card => card.Description.Trim());
-        Check(Brand, card => $"{card.BrandId}", brandCards is { Count: > 0 } ? brandCards : null);
-        Check(Category, card => $"{card.CategoryId}");
-        Check(Vat, card => $"{card.VatRate?.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}|{card.VatInclusion?.ToUpperInvariant()}");
-        Check(Warranty, card => $"{card.WarrantyMonths}");
-        Check(DeliveryDays, card => $"{card.DeliveryDays}");
-        // A card whose sizes hold different desis (or none) is a value of its own; an empty desi is a value too.
-        Check(Desi, card => string.Join("|", (card.Desis ?? []).Select(desi => desi is decimal value && value > 0 ? value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) : "-").Distinct().Order(StringComparer.Ordinal)));
-        return result;
-    }
-}
+        string TitleKey(CardFields card) => ColorWordOf(card) is { } word ? ProductFamilyNewColorCard.Title(card.Title.Trim(), word, "\u0001") : card.Title.Trim();
+        CardFields Most(Func<CardFields, string> keyOf) => cards.Select((card, index) => (card, key: keyOf(card), index))
+            .GroupBy(item => item.key, StringComparer.Ordinal)
+            .OrderByDescending(group => group.Count()).ThenBy(group => group.Min(item => item.index))
+            .First().OrderBy(item => item.index).First().card;
 
-public sealed record ProductFamilyFieldDifferenceView(string Field, IReadOnlyList<string> Colors);
+        var titleCard = Most(TitleKey);
+        var title = ColorWordOf(titleCard) is { } titleWord && !string.IsNullOrWhiteSpace(openedColor)
+            ? ProductFamilyNewColorCard.Title(titleCard.Title.Trim(), titleWord, openedColor.Trim())
+            : titleCard.Title.Trim();
+        var vatCard = Most(card => $"{card.VatRate?.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}|{card.VatInclusion?.ToUpperInvariant()}");
+        return new ModelFields(
+            title,
+            Most(card => card.Description.Trim()).Description,
+            Most(card => $"{card.BrandId}").BrandId,
+            Most(card => $"{card.CategoryId}").CategoryId,
+            vatCard.VatRate, vatCard.VatInclusion,
+            Most(card => $"{card.WarrantyMonths}").WarrantyMonths,
+            Most(card => $"{card.DeliveryDays}").DeliveryDays);
+    }
+
+    // The card (index in the family's order) whose attribute set most cards hold, on a tie the first: the model's attributes.
+    public static int ModelAttributeCard(IReadOnlyList<string> attributeKeys) => attributeKeys.Select((key, index) => (key, index))
+        .GroupBy(item => item.key, StringComparer.Ordinal)
+        .OrderByDescending(group => group.Count()).ThenBy(group => group.Min(item => item.index))
+        .First().Min(item => item.index);
+}

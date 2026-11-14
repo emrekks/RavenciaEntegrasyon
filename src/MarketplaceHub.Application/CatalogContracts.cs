@@ -140,8 +140,6 @@ public sealed record ProductView(
     // Every colour card's own pictures (gallery, variant pictures, size chart), oldest card first whichever was opened:
     // the editor writes each colour's pictures to its own card from these.
     public IReadOnlyList<ProductFamilyGalleryView>? FamilyGalleries { get; init; }
-    // The model-row fields on which other colour cards differ from this one (ProductFamilySharedFields), with their colours.
-    public IReadOnlyList<ProductFamilyFieldDifferenceView>? FamilyFieldDifferences { get; init; }
     // The card's picture marked as its size chart (Beden Tablosu); it is the last of MediaUrls and of every variant's.
     public string? SizeChartUrl { get; init; }
     // The products list only: the model's front picture, the first picture of the family gallery as the editor shows it

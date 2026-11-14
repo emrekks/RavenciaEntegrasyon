@@ -44,7 +44,7 @@ import { attributeMappingPlatform, mappingFocusItems } from '../../marketplace/m
 import { PRODUCT_IMAGE_ACCEPT, toProductImage } from './product-image-file'
 import { LocalImagePreview, MediaAddTile, MediaMoveButtons, MediaZoomButton } from './media-tiles'
 import { mapWithConcurrency, mediaFilesLeftAfterFailedSave, mediaSaveProgressMessage, newColoursWithoutPictures, savedMediaOrder, storedProductMediaUrl, variantMediaReconcilePlan } from './product-media-save'
-import { editedSharedFields, familyDifferenceText, sharedFieldSnapshot } from './family-shared-fields'
+import { FAMILY_SHARED_FIELDS } from './family-shared-fields'
 import { assignedColoursByPicture, coloursWithMixedPictures, inheritAssignments, variantOutgoingRefs, familyGalleryPlan, familyPictureOwners, familySizeChartUrl, familyUploadTargets, pictureColourLabel, type ColourRowPictures, type FamilyCardPictures } from './family-gallery-save'
 import { keepPendingCreateMedia, pendingVariantMediaRefs, takePendingCreateMedia, type PendingCreateMedia } from './pending-create-media'
 import { MarketplaceCodesDialog } from './MarketplaceCodesDialog'
@@ -1338,8 +1338,6 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const initialSizeChartUrl = useRef<string | null>(null)
   // The chart a pending family picture removal cleared, restored by its Geri Al.
   const sizeChartBeforeFamilyRemoval = useRef<string | null>(null)
-  // The model-row fields as the editor loaded them: a save names the ones the owner changed (family-shared-fields.ts).
-  const initialSharedFields = useRef<Record<string, string> | null>(null)
   // "Beden Tablosu Seç" beside Tümünü Temizle: while on, a tap on one of the card's own saved pictures marks it as the
   // size chart (the tiles' zoom, remove and move buttons and dragging are off meanwhile); Escape or Vazgeç leaves it.
   const [sizeChartPicking, setSizeChartPicking] = useState(false)
@@ -1450,8 +1448,6 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const initialEditMediaUrl = useRef('')
   const initialEditModelCode = useRef('')
   const initialEditDesi = useRef(1)
-  // The owner edited the desi field (typed or Hesapla): only then the model desi goes to the variants.
-  const desiEdited = useRef(false)
   const initialEditVariantMediaRefs = useRef<Record<string, string[]>>({})
   // The two column menus draw their list in a portal marked data-variant-header-popover.
   useDismissable(barcodeSkuMenuOpen, [barcodeSkuActionRef], () => setBarcodeSkuMenuOpen(false), { isInside: insideSelector('[data-variant-header-popover="true"]') })
@@ -1566,7 +1562,6 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     initialEditModelCode.current = initialModelCode.trim()
     const openedDesi = editorOpenedDesi(product.variants)
     initialEditDesi.current = openedDesi ?? 0
-    desiEdited.current = false
     setForm({ title: product.title, description: product.description ?? '', brandId: product.brandId ?? '', categoryId: product.categoryId ?? '', baseSku: mode === 'copy' ? '' : primary?.sku ?? '', barcode: mode === 'copy' ? '' : primary?.barcode ?? '', modelCode: initialModelCode, weight: String(primary?.weight ?? ''), width: String(primary?.width ?? ''), length: String(primary?.length ?? ''), height: String(primary?.height ?? ''), desi: openedDesi == null ? '' : String(openedDesi), warrantyMonths: String(product.warrantyMonths ?? 0), deliveryDays: String(product.deliveryDays ?? 1), listPrice: String(initialListPrice), salePrice: String(initialSalePrice), costPrice: primary?.costPrice == null ? '' : String(primary.costPrice), currency: primary?.currency ?? 'TRY', ...editorVat(product, primary), initialStock: String(primary?.onHand ?? 0), safetyStock: String(primary?.safetyStock ?? 0), mediaUrls: savedMediaUrls.join('\n'), status: editorStatusFor(product.status) })
     // An existing product opens with each marketplace's stored choice (else what its offer prices say): a marketplace
     // with its own price has its switch on and shows that price; a card with variants is on as soon as one variant's
@@ -1606,7 +1601,6 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     const selected: Record<string, string[]> = {}; const typed: Record<string, string> = {}
     for (const attribute of product.attributes ?? []) { if (attribute.valueId) selected[attribute.attributeId] = [...(selected[attribute.attributeId] ?? []), attribute.valueId]; else if (attribute.textValue != null) typed[attribute.attributeId] = attribute.textValue; else if (attribute.numberValue != null) typed[attribute.attributeId] = String(attribute.numberValue); else if (attribute.booleanValue != null) typed[attribute.attributeId] = attribute.booleanValue ? 'evet' : 'hayır' }
     setAttributeSelections(selected); setAttributeTextValues(typed); setVariantAttributeIds([])
-    initialSharedFields.current = editProductId ? sharedFieldSnapshot({ title: product.title, description: product.description ?? '', brandId: product.brandId ?? '', categoryId: product.categoryId ?? '', ...editorVat(product, primary), warrantyMonths: String(product.warrantyMonths ?? 0), deliveryDays: String(product.deliveryDays ?? 1), attributeSelections: selected, attributeTextValues: typed }) : null
     setRemovedVariantIds([]); setRemovedVariantRows([]); setReplacedPlaceholderIds([])
     setFieldErrors({})
     setSnapshotRequest(value => value + 1)
@@ -2979,8 +2973,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           vatRate: savedVatRate,
           vatInclusion: savedVatInclusion,
           trendyolWebColorValueId: !webColorAutoEnabled && manualWebColorValueId ? manualWebColorValueId : '00000000-0000-0000-0000-000000000000',
-          // The model-row fields the owner changed go to every colour card of the model (the server keeps each name's colour).
-          familySharedFields: initialSharedFields.current ? editedSharedFields(initialSharedFields.current, sharedFieldSnapshot({ ...form, attributeSelections, attributeTextValues })) : [],
+          // Temel Ürün Bilgileri are the model's: every save writes them to every colour card (family-shared-fields.ts).
+          familySharedFields: [...FAMILY_SHARED_FIELDS],
           ...(shouldPersistAttributes ? { attributes: globalAttributes } : {}),
           variantIdsToDelete: removedVariantIds.filter(id => existingVariantIds.has(id) && !rows.some(row => row.key === id)),
           placeholderVariantIdsToDelete: placeholderIdsToDelete,
@@ -2993,7 +2987,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
             // Only a cost the user changed is sent, with the cost it was loaded with; an unsent (null) cost is left as
             // it is on the server, and a cost changed there meanwhile refuses the save (409).
             ...editorVariantCostUpdate(row),
-            ...editorVariantDesiUpdate(calculateDesi ? desi || 1 : parseProductDesi(form.desi), desiEdited.current || calculateDesi, editProduct.variants.find(variant => variant.id === row.key)?.desi),
+            // The desi is the model's too (owner, 14.11.2026): every save gives it to every size of every colour.
+            ...editorVariantDesiUpdate(calculateDesi ? desi || 1 : parseProductDesi(form.desi), true, editProduct.variants.find(variant => variant.id === row.key)?.desi),
             defaultListPrice: row.listPrice,
             defaultSalePrice: row.salePrice,
             // The version the row was loaded with: a row changed meanwhile elsewhere refuses the save (409) instead of
@@ -3615,7 +3610,6 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const trendyolMixedColours = (connections.data?.items ?? []).some(connection => connection.platformCode === 'TRENDYOL')
     ? coloursWithMixedPictures(variantRows.map(row => ({ colour: rowColour(row), refs: outgoingByRow.get(row.key)?.refs ?? [] })))
     : []
-  const familyFieldNote = editProductId ? familyDifferenceText(stripProduct?.familyFieldDifferences) : ''
   const hasMediaTiles = mediaUrls.length > 0 || mediaFiles.length > 0 || familyOnlyMediaItems.length > 0
   const mediaUploadHint = "Adet sınırı yok · JPEG, PNG veya WebP · WebP ve 6 MB üstü JPEG'e çevrilir"
   const mediaFileInput = <input ref={mediaFileInputRef} type="file" accept={PRODUCT_IMAGE_ACCEPT} multiple tabIndex={hasMediaTiles ? -1 : undefined} aria-label="Ürün görsellerini dosya olarak seç" onChange={event => { void handleMediaFiles(Array.from(event.target.files ?? [])); event.currentTarget.value = '' }} />
@@ -3750,7 +3744,6 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     <div className="product-top-layout">
       <section className="panel product-step-card product-basics-card">
         <div className="editor-section-title"><span>1</span><div><h2>Temel Ürün Bilgileri</h2></div></div>
-        {familyFieldNote && <p className="family-field-note" role="note">{familyFieldNote}. Değiştirip kaydettiğiniz alanı modelin tüm renkleri alır; dokunmadığınız alan her renkte olduğu gibi kalır.</p>}
         <div className="product-step-grid product-basics-grid">
           <label className="product-title-field"><RequiredLabel>Ürün Adı</RequiredLabel><input value={form.title} aria-invalid={fieldErrors.title || requiredFieldInvalid('title') ? true : undefined} onChange={event => updateField('title', event.target.value)} required maxLength={320} /><EditorFieldError message={requiredError('title') ?? fieldErrors.title} /></label>
           <label htmlFor="product-editor-status">Satış Durumu<PanelSelect id="product-editor-status" ariaLabel="Satış Durumu" value={form.status} onChange={value => updateField('status', value)} options={[{ value: 'ACTIVE', label: 'Satışa Açık' }, { value: 'ARCHIVED', label: 'Satışa Kapalı' }]} /></label>
@@ -3770,7 +3763,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
                 <label>{automaticBarcodeGeneration ? <FieldLabel text="Stok Kodu" help={automaticCodeHelp('stock')} /> : <RequiredLabel>Stok Kodu</RequiredLabel>}<input className="technical-field sku-value" value={form.baseSku} aria-invalid={requiredFieldInvalid('baseSku')} onChange={event => updateField('baseSku', event.target.value)} placeholder={automaticBarcodeGeneration ? '' : 'RAV-BLUZ'} disabled={automaticBarcodeGeneration} /><EditorFieldError message={requiredError('baseSku')} /></label>
                 <label>{automaticBarcodeGeneration ? <FieldLabel text="Barkod" help={automaticCodeHelp('barcode')} /> : <RequiredLabel>Barkod</RequiredLabel>}<input className="technical-field barcode-value" value={form.barcode} aria-invalid={requiredFieldInvalid('barcode')} onChange={event => updateField('barcode', event.target.value)} placeholder={automaticBarcodeGeneration ? '' : 'EAN / barkod'} disabled={automaticBarcodeGeneration} /><EditorFieldError message={requiredError('barcode')} /></label>
               </>}
-            <label className="desi-input-field"><RequiredLabel>Desi</RequiredLabel><span className="desi-inline-control"><input value={form.desi} aria-invalid={requiredFieldInvalid('desi')} onChange={event => { desiEdited.current = true; setCalculateDesi(false); updateField('desi', event.target.value) }} type="number" min="0.01" max={maxProductDesi} step="0.01" placeholder="Girilmemiş" required /><button type="button" className="secondary" onClick={() => setDesiCalculatorOpen(true)}>Hesapla</button></span><EditorFieldError message={requiredError('desi')} /></label>
+            <label className="desi-input-field"><RequiredLabel>Desi</RequiredLabel><span className="desi-inline-control"><input value={form.desi} aria-invalid={requiredFieldInvalid('desi')} onChange={event => { setCalculateDesi(false); updateField('desi', event.target.value) }} type="number" min="0.01" max={maxProductDesi} step="0.01" placeholder="Girilmemiş" required /><button type="button" className="secondary" onClick={() => setDesiCalculatorOpen(true)}>Hesapla</button></span><EditorFieldError message={requiredError('desi')} /></label>
             <label className="warranty-input-field" title="0: garanti yok"><RequiredLabel>Garanti Süresi (Ay)</RequiredLabel><input value={form.warrantyMonths} aria-invalid={requiredFieldInvalid('warrantyMonths')} onChange={event => updateField('warrantyMonths', event.target.value)} type="number" min="0" max="240" step="1" inputMode="numeric" placeholder="0 = garanti yok" /><EditorFieldError message={requiredError('warrantyMonths')} /></label>
             <label className="delivery-days-input-field" title="Siparişin kargoya teslim süresi; pazaryerlerine teslimat (sevkiyat) süresi olarak gider."><RequiredLabel>Teslimat Süresi (Gün)</RequiredLabel><input value={form.deliveryDays} aria-invalid={requiredFieldInvalid('deliveryDays')} onChange={event => updateField('deliveryDays', event.target.value)} type="number" min="1" max="30" step="1" inputMode="numeric" required /><EditorFieldError message={requiredError('deliveryDays')} /></label>
           </div>

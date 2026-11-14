@@ -105,7 +105,7 @@ public sealed class FamilyGalleryPublicationPostgreSqlTests(PostgreSqlTenantIsol
         var service = new CatalogService(db, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider, new Microsoft.Extensions.Caching.Memory.MemoryCache(new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()));
         var updated = await service.UpdateProductAsync(tenant.Id, siyah.Id, siyah.Version, new UpdateProductCommand("Kadın Siyah Yumuşak Triko Bluz", "Model açıklaması", brandId, categoryId, FamilySharedFields: [ProductFamilySharedFields.Title, ProductFamilySharedFields.Description]), CancellationToken.None);
         Assert.True(updated.Succeeded, updated.Error?.Message);
-        Assert.Empty(updated.Value!.FamilyFieldDifferences!);
+        Assert.Equal("Model açıklaması", updated.Value!.Description);
         await AssertPayloads(colour => $"Kadın {colour} Yumuşak Triko Bluz", _ => "Model açıklaması");
         await transaction.RollbackAsync();
     }
