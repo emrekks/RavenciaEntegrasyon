@@ -21,6 +21,22 @@ Geri alma: [RUNBOOK-GERI-ALMA.md](RUNBOOK-GERI-ALMA.md).
 
 Eşzamanlı çalışmalar `production-deploy` concurrency grubu ve sunucudaki `flock` ile sıraya girer.
 
+### Yalnız-web sürüm (15 Kasım 2026)
+
+Çalışan sürümden bu yana yalnız `src/MarketplaceHub.Web/`, `deploy/caddy/`, `.claude/`, `docs/` ya da kökteki
+`*.md` değiştiyse (`deploy/scripts/release-scope.sh`) `fast-deploy.sh` yalnız edge imajını derler ve yalnız caddy'yi
+yeniden oluşturur (`--no-deps caddy`). api ve worker yeniden başlamaz; taze yedek, `install-backup-timer.sh`, migration
+provası ve migrate atlanır. Çalışan app imajı ek olarak `manual-<yeni sha>` etiketini alır, böylece app+edge yine tek
+`manual-<rev>` çifti olur: `rollback.sh` ve otomatik geri alma aynı kurallarla çalışır. Çalışan sürüm,
+`running_release_revision` (`lib.sh`) ile caddy etiketinden ve imaj kimliğinden (api ve worker'ın imajı =
+`marketplacehub-app:manual-<caddy rev>`) bulunur. Şüphede tam deploy: çalışan sürüm bilinmiyorsa, elle çalıştırmada,
+yazma ayarı geçersiz kılındığında, aynı sürümün `redeploy`'unda, `RAVENCIA_DEPLOY_MODE=full` ile ya da api/worker'ın
+Compose yapılandırma özeti (`docker compose config --hash`, ör. `production.env` değişikliği) çalışan konteynerin
+`com.docker.compose.config-hash` etiketinden farklıysa. Gizli dosya (`deploy/secrets/*.txt`) içeriği özete girmez:
+onu api/worker'a uygulamak için Actions → Deploy → Run workflow `redeploy`. Log satırı: `Release scope: web-only.`
+ya da `Release scope: full (<neden>).`; `releases.tsv`'de tür `deploy-web`. Bu durumda `ravencia-ro images` api ve
+worker'da eski sha'yı gösterir; `ship.sh` caddy yeni sha'dayken ve aradaki fark yalnız-web ise "live" der.
+
 ### ci-entrypoint karar tablosu (`~/deploy-logs/` durum dosyaları)
 
 | Durum | Sonuç |

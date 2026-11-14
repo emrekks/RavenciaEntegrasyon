@@ -20,6 +20,7 @@ internal static class ImportedApprovalStates
 
     // A listing the marketplace still reviews or refused: not on sale there, whatever link an import made for it.
     public static bool IsHeldListing(string? actualStatus) => actualStatus is Pending or Rejected;
+    public static readonly string[] HeldListingStatuses = [Pending, Rejected];
 
     private static readonly HashSet<string> OwnStatuses = new(StringComparer.Ordinal) { Pending, PartialPending, Rejected, PartialRejected };
 

@@ -234,4 +234,35 @@ public sealed class SizeChartGenerationPostgreSqlTests(PostgreSqlTenantIsolation
         Assert.Contains("'Kol Boyu'", failure.Message, StringComparison.Ordinal);
         Assert.Null(fake.Request);
     }
+
+    // Owner, 15 Nov 2026 ("kendi eklemediğim şeylerden de beden tablosu seçebileyim"): a picture imported from a
+    // marketplace (a PRODUCT_MEDIA_URL asset) is marked like an uploaded one, and the publication then sends it as the
+    // card's chart. One the card does not hold yet is refused: the editor writes it to the card's gallery first.
+    [PostgreSqlFact]
+    public async Task An_imported_url_picture_on_the_card_can_be_its_size_chart_and_goes_as_its_chart()
+    {
+        await using var db = fixture.CreateContext();
+        var settings = new AiSettingsService(db, new EphemeralDataProtectionProvider(), TimeProvider.System);
+        var (tenantId, productId) = await SeedAsync(settings);
+        var claude = new ClaudeService(settings, new FakeClaude(SizeChartRules.Validate(Input()).Table!), db, TimeProvider.System);
+        var service = new SizeChartService(db, claude, new FailingStorage(), TimeProvider.System);
+        const string imported = "https://cdn.example.invalid/bluz.jpg";
+
+        Assert.Equal(imported, await service.SetAsync(tenantId, Guid.Empty, productId, imported, CancellationToken.None));
+        await using (var read = fixture.CreateContext())
+        {
+            var chartAsset = await SizeChartPlacement.AssetIdAsync(read, tenantId, productId, CancellationToken.None);
+            var urlAsset = await read.FileAssets.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.RelativePath == imported);
+            Assert.Equal(urlAsset.Id, chartAsset);
+        }
+
+        var otherCards = new FileAsset { Id = Guid.CreateVersion7(), TenantId = tenantId, Classification = "PRODUCT_MEDIA_URL", RelativePath = "https://cdn.example.invalid/baska-renk-tablo.jpg", MimeType = "image/remote", Sha256 = Guid.NewGuid().ToString("N"), Status = "ACTIVE", CreatedAt = DateTimeOffset.UtcNow };
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.FileAssets.Add(otherCards);
+            await seed.SaveChangesAsync();
+        }
+        var refused = await Assert.ThrowsAsync<SizeChartException>(() => service.SetAsync(tenantId, Guid.Empty, productId, otherCards.RelativePath, CancellationToken.None));
+        Assert.Equal("SIZE_CHART_NOT_ON_PRODUCT", refused.Code);
+    }
 }

@@ -835,6 +835,63 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         Assert.Equal(await MurdumAsync(full), await MurdumAsync(newOnly));
     }
 
+    // MZ002K (14 Nov 2026): one version conflict on a model's save cost all its 12 cards. The model is now read and
+    // written once more from a clean change tracker: the run opens every card once, counts nothing failed and the
+    // progress counts each product once.
+    [PostgreSqlFact]
+    public async Task VersionConflictOnAModelsSave_IsRetriedOnce_AndEveryCardOpensOnce()
+    {
+        var seed = await SeedAsync();
+        var conflict = new ConflictOnProductSave(times: 1);
+        await RunAsync(seed, new TrendyolCatalogPort(Read(Colours.Select(entry => Spec(entry.Colour)))), "{\"full\":true}", saveInterceptor: conflict);
+
+        Assert.Equal(1, conflict.Thrown);
+        await using var db = fixture.CreateContext();
+        Assert.Equal(Colours.Length, (await CardsAsync(db, seed)).Count);
+        Assert.Equal(Colours.Length * Sizes.Length, await db.ProductVariants.CountAsync(row => row.TenantId == seed.TenantId));
+        Assert.False(await db.ProductImportStagingRecords.AnyAsync(row => row.TenantId == seed.TenantId && row.State != "COMPLETED"));
+        var job = await db.IntegrationJobs.AsNoTracking().Where(row => row.TenantId == seed.TenantId && row.JobType == MarketplaceJobTypes.ProductSync).OrderByDescending(row => row.CreatedAt).FirstOrDefaultAsync();
+        if (job is not null) Assert.Equal(0, job.ProgressFailed);
+    }
+
+    // A conflict that comes back on the retry fails the model as before, and the issue names the conflicting rows.
+    [PostgreSqlFact]
+    public async Task VersionConflictAgainOnTheRetry_FailsTheModel_AndNamesTheConflictingRows()
+    {
+        var seed = await SeedAsync();
+        var conflict = new ConflictOnProductSave(times: int.MaxValue);
+        await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")!).AddInterceptors(conflict).Options, fixture.TimeProvider);
+        var processor = new MarketplaceJobProcessor(db, null!, new RefusingReferencePort(), new TrendyolCatalogPort(Read([Spec("Bordo")])), null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+        await processor.ProcessAsync(seed.TenantId, seed.ConnectionId, MarketplaceJobTypes.ProductSync, "{\"full\":true}", $"trendyol-import-regression-{Guid.NewGuid():N}", CancellationToken.None);
+
+        Assert.Equal(2, conflict.Thrown);
+        await using var check = fixture.CreateContext();
+        Assert.Empty(await CardsAsync(check, seed));
+        var issue = Assert.Single(await check.OperationalIssues.AsNoTracking().Where(row => row.TenantId == seed.TenantId && row.Code == "PRODUCT_IMPORT_FAILED").ToListAsync());
+        Assert.Contains("DbUpdateConcurrencyException", issue.Summary, StringComparison.Ordinal);
+        Assert.Contains("rows=catalog.products Id=", issue.Summary, StringComparison.Ordinal);
+        var staging = Assert.Single(await check.ProductImportStagingRecords.AsNoTracking().Where(row => row.TenantId == seed.TenantId).ToListAsync());
+        Assert.Equal("FAILED", staging.State);
+        Assert.Contains("Çakışan kayıtlar: catalog.products", staging.ErrorSummary, StringComparison.Ordinal);
+    }
+
+    // Throws a version conflict, naming the card being added, on the first `times` saves that add a card.
+    private sealed class ConflictOnProductSave(int times) : Microsoft.EntityFrameworkCore.Diagnostics.SaveChangesInterceptor
+    {
+        public int Thrown { get; private set; }
+
+        public override ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int>> SavingChangesAsync(Microsoft.EntityFrameworkCore.Diagnostics.DbContextEventData eventData, Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            var added = eventData.Context!.ChangeTracker.Entries<Product>().FirstOrDefault(entry => entry.State == EntityState.Added);
+            if (added is not null && Thrown < times)
+            {
+                Thrown++;
+                throw new DbUpdateConcurrencyException("simulated version conflict", [((Microsoft.EntityFrameworkCore.Infrastructure.IInfrastructure<Microsoft.EntityFrameworkCore.ChangeTracking.Internal.InternalEntityEntry>)added).Instance]);
+            }
+            return ValueTask.FromResult(result);
+        }
+    }
+
     // --- helpers ---
 
     private sealed record Seed(Guid TenantId, Guid ConnectionId, Guid BrandId, Guid CategoryId)
@@ -873,10 +930,12 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         return new(tenant.Id, connection.Id, brandId, categoryId);
     }
 
-    private async Task<RunStats> RunAsync(Seed seed, TrendyolCatalogPort port, string payload, IReferenceDataPort? references = null)
+    private async Task<RunStats> RunAsync(Seed seed, TrendyolCatalogPort port, string payload, IReferenceDataPort? references = null, Microsoft.EntityFrameworkCore.Diagnostics.IInterceptor? saveInterceptor = null)
     {
         var counter = new QueryCounter();
-        await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")!).AddInterceptors(counter).Options, fixture.TimeProvider);
+        var options = new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")!).AddInterceptors(counter);
+        if (saveInterceptor is not null) options.AddInterceptors(saveInterceptor);
+        await using var db = new AppDbContext(options.Options, fixture.TimeProvider);
         var processor = new MarketplaceJobProcessor(db, null!, references ?? new RefusingReferencePort(), port, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
         var clock = System.Diagnostics.Stopwatch.StartNew();
         var result = await processor.ProcessAsync(seed.TenantId, seed.ConnectionId, MarketplaceJobTypes.ProductSync, payload, $"trendyol-import-regression-{Guid.NewGuid():N}", CancellationToken.None);

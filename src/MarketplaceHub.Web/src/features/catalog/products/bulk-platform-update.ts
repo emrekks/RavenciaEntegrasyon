@@ -2,6 +2,7 @@ import { editorOpenedDesi } from '../product-editor-state'
 import { platformUpdatePlan, type PlatformUpdateField } from '../product-editor/platform-update-fields'
 import { missingRequiredEditorFields, requiredEditorFieldLabels, type RequiredEditorField } from '../product-editor/required-fields'
 import type { MarketplaceConnection, Product } from '../shared'
+import { isTrendyolHeld } from '../trendyol-unapproved'
 import { bulkPublishStatusBucket, productConnectionStatus } from './bulk-publish-status'
 
 // The product list's "Platformlara Güncelle": the editor's "Platformlarda Güncelle" for several saved products. Only
@@ -11,11 +12,22 @@ import { bulkPublishStatusBucket, productConnectionStatus } from './bulk-publish
 
 type Connection = Pick<MarketplaceConnection, 'id' | 'platformCode' | 'displayName'>
 
-// On the store already: live, partly live or matched there. In progress, refused or not there is not (an update needs
-// the marketplace's listing).
+// On the store already: live, partly live or matched there, or on Trendyol's unapproved list (still reviewed or refused
+// there; trendyol-unapproved.ts). In progress, refused elsewhere or not there is not (an update needs the
+// marketplace's listing).
 export function isOnMarketplace(record: Pick<Product, 'platformStatuses'>, connection: Pick<MarketplaceConnection, 'platformCode' | 'displayName'>) {
+  return isListedOn(record, connection) || isHeldOn(record, connection)
+}
+
+function isListedOn(record: Pick<Product, 'platformStatuses'>, connection: Pick<MarketplaceConnection, 'platformCode' | 'displayName'>) {
   const bucket = bulkPublishStatusBucket(productConnectionStatus(record, connection))
   return bucket === 'live' || bucket === 'partial' || bucket === 'linked'
+}
+
+// A product Trendyol still reviews or refused takes the product information (its unapproved update), not the price and
+// stock: Trendyol has no offer for it yet.
+function isHeldOn(record: Pick<Product, 'platformStatuses'>, connection: Pick<MarketplaceConnection, 'platformCode' | 'displayName'>) {
+  return isTrendyolHeld(connection.platformCode, productConnectionStatus(record, connection)?.status)
 }
 
 // The menu item: off with its reason while none of the selected products is on any store that takes an update.
@@ -80,7 +92,7 @@ export function bulkPlatformUpdateRequests(records: readonly BulkUpdateRecord[],
         for (const record of group) requests.push({ kind: 'product', productId: record.id, connectionId, fields: [...plan.productFields], ...(sendGroupId ? { sendGroupId } : {}) })
       }
     }
-    if (plan.price || plan.stock) for (const record of onStore) requests.push({ kind: 'priceInventory', productId: record.id, connectionId, price: plan.price, stock: plan.stock })
+    if (plan.price || plan.stock) for (const record of onStore.filter(item => isListedOn(item, connection))) requests.push({ kind: 'priceInventory', productId: record.id, connectionId, price: plan.price, stock: plan.stock })
   }
   return requests
 }

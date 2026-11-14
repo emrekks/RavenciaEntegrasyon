@@ -61,7 +61,62 @@ validation_compose=("${sudo_cmd[@]}" env "MARKETPLACEHUB_APP_IMAGE=$app_image" "
 warn_on_unbounded_connection_pool
 warn_when_alerts_unconfigured
 
-sudo -n docker build --pull=false -t "$app_image" -f Dockerfile .
+# The images serving right now become the rollback target of this release. After a web-only release api/worker run
+# an older tag of the release's app image; running_release_revision (lib.sh) names the consistent app+edge pair.
+running_app_image="$(running_service_image api)"
+running_worker_image="$(running_service_image worker)"
+previous_app_image="$running_app_image"
+previous_edge_image="$(running_service_image caddy)"
+running_release="$(running_release_revision)"
+if [[ -n "$running_release" ]]; then
+  previous_app_image="marketplacehub-app:manual-$running_release"
+  previous_edge_image="marketplacehub-edge:manual-$running_release"
+fi
+
+# Web-only release (RAVENCIA_DEPLOY_MODE=auto, the default; "full" turns it off): when nothing but the web app and
+# the edge image's files changed since the serving release, the app image would be the same build, so only the edge
+# image is built and only caddy is recreated. api and worker keep running untouched (no restart, no migration, no
+# backup: the schema and the app code are unchanged); the serving app image is also tagged manual-<this revision>,
+# so app and edge stay one manual-<rev> pair for rollback.sh and the next deploy. Anything else, or any doubt
+# (unknown serving release, a manual run, a write-setting override, an api/worker Compose configuration that
+# changed, e.g. production.env), takes the full path below. A redeploy of the serving revision is always full.
+# shellcheck source=/dev/null
+source "$script_dir/release-scope.sh"
+deploy_mode="${RAVENCIA_DEPLOY_MODE:-auto}"
+[[ "$deploy_mode" =~ ^(auto|full)$ ]] || { echo "RAVENCIA_DEPLOY_MODE must be auto or full (got '$deploy_mode')." >&2; exit 1; }
+# Compose's config hash of api/worker as they would be created now, with the image they run, must equal the hash
+# label of the running container: then a full deploy would change nothing for them but the image tag.
+app_service_config_unchanged() {
+  local service="$1" running_image="$2" label computed
+  label="$(running_service_config_hash "$service")"
+  computed="$("${sudo_cmd[@]}" env "MARKETPLACEHUB_APP_IMAGE=$running_image" "MARKETPLACEHUB_EDGE_IMAGE=$edge_image" "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED=$external_writes_enabled" "MARKETPLACEHUB_INVOICE_MARKETPLACE_DELIVERY_WRITES_ENABLED=$invoice_marketplace_delivery_writes_enabled" docker compose --env-file "$environment_file" -f "$base_compose" -f "$production_compose" config --hash "$service" 2>/dev/null \
+    | awk -v service="$service" '$1 == service { print $2 }')" || computed=""
+  [[ -n "$label" && "$label" == "$computed" ]]
+}
+web_only=false
+web_only_decision() {
+  local running_full
+  [[ "$deploy_mode" == auto ]] || { echo "full (RAVENCIA_DEPLOY_MODE=$deploy_mode)"; return; }
+  [[ -n "${DEPLOY_REVISION:-}" ]] || { echo "full (manual run)"; return; }
+  [[ "$disable_external_writes" == false && "$enable_invoice_marketplace_delivery" == false ]] || { echo "full (write settings overridden)"; return; }
+  [[ -n "$running_release" ]] || { echo "full (serving release unknown: api=${running_app_image:-none}, caddy=${previous_edge_image:-none})"; return; }
+  running_full="$(git rev-parse --verify --quiet "$running_release^{commit}")" || { echo "full ($running_release not in the local history)"; return; }
+  [[ "$running_full" != "$full_revision" ]] || { echo "full (redeploy of the serving revision)"; return; }
+  web_only_change "$running_full" "$full_revision" || { echo "full (files outside the web app changed since $running_release)"; return; }
+  app_service_config_unchanged api "$running_app_image" || { echo "full (api Compose configuration changed or unreadable)"; return; }
+  app_service_config_unchanged worker "$running_worker_image" || { echo "full (worker Compose configuration changed or unreadable)"; return; }
+  echo "web-only"
+}
+deploy_decision="$(web_only_decision)"
+[[ "$deploy_decision" != web-only ]] || web_only=true
+echo "Release scope: $deploy_decision."
+
+if [[ "$web_only" == true ]]; then
+  # Same image, one more tag: api/worker containers are not touched.
+  sudo -n docker tag "$previous_app_image" "$app_image"
+else
+  sudo -n docker build --pull=false -t "$app_image" -f Dockerfile .
+fi
 sudo -n docker build --pull=false -t "$edge_image" -f deploy/caddy/Dockerfile.production .
 
 if [[ -n "${DEPLOY_REVISION:-}" ]]; then
@@ -97,14 +152,13 @@ sudo -n docker image prune --force >/dev/null
 
 # A fresh set (BACKUP_FORCE=true inside run_verified_backup), never the one taken
 # earlier today: a broken migration must not cost the hours since that set.
-run_verified_backup
-
-# Install/refresh the backup, restore-drill, health-watch and alert units.
-bash "$repository_root/deploy/scripts/install-backup-timer.sh"
-
-# The images serving right now become the rollback target of this release.
-previous_app_image="$(running_service_image api)"
-previous_edge_image="$(running_service_image caddy)"
+# A web-only release runs no migration and leaves the database to the scheduled sets.
+if [[ "$web_only" == false ]]; then
+  run_verified_backup
+  # Install/refresh the backup, restore-drill, health-watch and alert units
+  # (deploy/scripts is outside the web-only paths, so a web-only release has nothing new here).
+  bash "$repository_root/deploy/scripts/install-backup-timer.sh"
+fi
 
 # Migration rehearsal: CI only migrates an empty database, so a data-repair
 # migration would otherwise meet real rows for the first time in production. The
@@ -128,9 +182,12 @@ rehearsal_timeout="${RAVENCIA_MIGRATION_REHEARSAL_TIMEOUT_SECONDS:-1200}"
 rehearse=false
 # true when the migrations changed since the running release, or that release is unknown
 migrations_changed=false
+# A web-only release keeps the serving app image, so there is no migration to rehearse.
+[[ "$web_only" == false ]] || migration_rehearsal=web-only
 case "$migration_rehearsal" in
   always) rehearse=true ;;
   never) echo "Migration rehearsal skipped (never)." ;;
+  web-only) echo "Migration rehearsal skipped: web-only release." ;;
   auto)
     running_revision=""
     [[ "$previous_app_image" != marketplacehub-app:manual-* ]] || running_revision="${previous_app_image##*:manual-}"
@@ -179,35 +236,37 @@ fi
 # protects a fresh stack, but starting the one-shot migration separately makes
 # the failure boundary explicit and avoids replacing healthy application
 # containers with a stack that can never become ready.
-"${compose[@]}" up -d --no-build postgres migrate
-migrate_id="$("${compose[@]}" ps -q migrate)"
-[[ -n "$migrate_id" ]] || { echo "Migration container was not created." >&2; exit 1; }
-# A data migration can legitimately run for minutes; each statement is bounded by
-# the migrate command's own statement_timeout (20 min) and lock_timeout (15 s,
-# retried), so the wait here is only the outer bound. On timeout the container is
-# stopped: its open transaction rolls back and the old stack keeps serving the
-# schema of the last completed migration.
-migration_timeout="${RAVENCIA_MIGRATION_TIMEOUT_SECONDS:-1800}"
-[[ "$migration_timeout" =~ ^[1-9][0-9]*$ ]] || { echo "RAVENCIA_MIGRATION_TIMEOUT_SECONDS must be a positive integer." >&2; exit 1; }
-echo "Waiting up to ${migration_timeout}s for the database migration."
-migration_started="$(date +%s)"
-migration_exit_code=""
-wait_status=0
-migration_exit_code="$(timeout "$migration_timeout" sudo -n docker wait "$migrate_id")" || wait_status=$?
-migration_seconds="$(( $(date +%s) - migration_started ))"
-if (( wait_status == 124 )); then
-  echo "Database migration did not finish within ${migration_timeout}s; stopping the migrate container (the old stack keeps serving)." >&2
-  sudo -n docker stop --time 30 "$migrate_id" >/dev/null || true
-  sudo -n docker logs --tail 40 "$migrate_id" >&2 || true
-  exit 1
+if [[ "$web_only" == false ]]; then
+  "${compose[@]}" up -d --no-build postgres migrate
+  migrate_id="$("${compose[@]}" ps -q migrate)"
+  [[ -n "$migrate_id" ]] || { echo "Migration container was not created." >&2; exit 1; }
+  # A data migration can legitimately run for minutes; each statement is bounded by
+  # the migrate command's own statement_timeout (20 min) and lock_timeout (15 s,
+  # retried), so the wait here is only the outer bound. On timeout the container is
+  # stopped: its open transaction rolls back and the old stack keeps serving the
+  # schema of the last completed migration.
+  migration_timeout="${RAVENCIA_MIGRATION_TIMEOUT_SECONDS:-1800}"
+  [[ "$migration_timeout" =~ ^[1-9][0-9]*$ ]] || { echo "RAVENCIA_MIGRATION_TIMEOUT_SECONDS must be a positive integer." >&2; exit 1; }
+  echo "Waiting up to ${migration_timeout}s for the database migration."
+  migration_started="$(date +%s)"
+  migration_exit_code=""
+  wait_status=0
+  migration_exit_code="$(timeout "$migration_timeout" sudo -n docker wait "$migrate_id")" || wait_status=$?
+  migration_seconds="$(( $(date +%s) - migration_started ))"
+  if (( wait_status == 124 )); then
+    echo "Database migration did not finish within ${migration_timeout}s; stopping the migrate container (the old stack keeps serving)." >&2
+    sudo -n docker stop --time 30 "$migrate_id" >/dev/null || true
+    sudo -n docker logs --tail 40 "$migrate_id" >&2 || true
+    exit 1
+  fi
+  [[ "$wait_status" == "0" && "$migration_exit_code" == "0" ]] || {
+    migration_status="$(sudo -n docker inspect --format '{{.State.Status}}' "$migrate_id" 2>/dev/null || echo unknown)"
+    echo "Database migration did not complete successfully: state=$migration_status exit_code=${migration_exit_code:-unknown} after ${migration_seconds}s." >&2
+    sudo -n docker logs --tail 40 "$migrate_id" >&2 || true
+    exit 1
+  }
+  echo "Database migration completed in ${migration_seconds}s."
 fi
-[[ "$wait_status" == "0" && "$migration_exit_code" == "0" ]] || {
-  migration_status="$(sudo -n docker inspect --format '{{.State.Status}}' "$migrate_id" 2>/dev/null || echo unknown)"
-  echo "Database migration did not complete successfully: state=$migration_status exit_code=${migration_exit_code:-unknown} after ${migration_seconds}s." >&2
-  sudo -n docker logs --tail 40 "$migrate_id" >&2 || true
-  exit 1
-}
-echo "Database migration completed in ${migration_seconds}s."
 
 # Automatic rollback (RAVENCIA_AUTO_ROLLBACK, default true): when the new release
 # does not start or fails verify_stack, the previous release's images are run
@@ -260,7 +319,10 @@ rollback_attempted=false
 
 site_address="${MARKETPLACEHUB_SITE_ADDRESS:-https://panel.ravencia.com}"
 release_status=0
-"${compose[@]}" up -d --no-build api worker caddy || release_status=$?
+release_services=(api worker caddy)
+# --no-deps: a web-only release recreates caddy alone; api, worker and the migration stay as they are.
+[[ "$web_only" == false ]] || release_services=(--no-deps caddy)
+"${compose[@]}" up -d --no-build "${release_services[@]}" || release_status=$?
 if (( release_status == 0 )) && [[ "$verify" == true ]]; then
   verify_stack "$site_address" || release_status=$?
 fi
@@ -281,13 +343,16 @@ if (( release_status != 0 )); then
   fi
   exit 1
 fi
-record_release deploy "$full_revision" "$app_image" "$edge_image"
+release_kind=deploy
+[[ "$web_only" == false ]] || release_kind=deploy-web
+record_release "$release_kind" "$full_revision" "$app_image" "$edge_image"
 record_last_success "$full_revision"
 
 # Keep this release and the one it replaced (N-1, for deploy/scripts/rollback.sh);
 # remove older manual-* tags. Docker refuses removal while a container still
 # references an image, so active containers stay recoverable.
-prune_manual_images_except "$app_image" "$edge_image" "$previous_app_image" "$previous_edge_image"
+# The tags api/worker containers were created from are kept too (after a web-only release they still name them).
+prune_manual_images_except "$app_image" "$edge_image" "$previous_app_image" "$previous_edge_image" "$running_app_image" "$running_worker_image"
 if [[ "$previous_app_image" == marketplacehub-app:manual-* && "$previous_app_image" != "$app_image" ]]; then
   echo "Rollback target kept: $previous_app_image / $previous_edge_image (deploy/scripts/rollback.sh ${previous_app_image##*:manual-})"
 fi
