@@ -7,6 +7,11 @@ const inProgressStatuses = new Set([
   'BATCH_IN_PROGRESS',
   'CREATE_RESULT_UNKNOWN',
   'UPDATE_SUBMITTED',
+  // A product update's phases sent and waiting for the batch result (MarketplaceJobProcessor: UPDATE_{phase}_SUBMITTED).
+  'UPDATE_UNAPPROVED_SUBMITTED',
+  'UPDATE_CONTENT_SUBMITTED',
+  'UPDATE_VARIANTS_SUBMITTED',
+  'UPDATE_DELIVERY_SUBMITTED',
   'UPDATE_IN_PROGRESS',
   'IMPORT_SUBMITTED',
   'IMPORT_IN_PROGRESS',
@@ -33,6 +38,10 @@ const publicationLabels: Record<string, string> = {
   // The create batch ended without a line for this variant: its state is read by barcode in the approval check.
   CREATE_RESULT_UNKNOWN: 'Trendyol sonucu bekleniyor',
   UPDATE_SUBMITTED: "Güncelleme Trendyol'a gönderildi",
+  UPDATE_UNAPPROVED_SUBMITTED: 'Onaya gönderildi, sonuç bekleniyor',
+  UPDATE_CONTENT_SUBMITTED: "Güncelleme Trendyol'a gönderildi",
+  UPDATE_VARIANTS_SUBMITTED: "Güncelleme Trendyol'a gönderildi",
+  UPDATE_DELIVERY_SUBMITTED: "Güncelleme Trendyol'a gönderildi",
   UPDATE_IN_PROGRESS: 'Trendyol güncellemeyi kontrol ediyor',
   IMPORT_SUBMITTED: "Hepsiburada'ya gönderildi",
   IMPORT_IN_PROGRESS: 'Hepsiburada kontrol ediyor',

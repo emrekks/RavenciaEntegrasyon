@@ -2715,7 +2715,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     internal static string? VariantRejectionReason(string? listingStatus, string? rejectionCode) =>
         listingStatus?.Trim().ToUpperInvariant() == "REJECTED" && !string.IsNullOrWhiteSpace(rejectionCode) ? rejectionCode.Trim() : null;
 
-    internal static bool IsPlatformUpdateInProgress(string? status) => status?.Trim().ToUpperInvariant() is
+    internal static bool IsPlatformUpdateInProgress(string? status) => ProductListingHealth.IsUpdateInFlight(status) || status?.Trim().ToUpperInvariant() is
         "QUEUED" or "UPDATE_QUEUED" or "BATCH_SUBMITTED" or "BATCH_IN_PROGRESS" or "CREATE_ACCEPTED" or "IMPORT_SUBMITTED" or "IMPORT_IN_PROGRESS" or "IMPORT_ACCEPTED" or "UPDATE_SUBMITTED" or "UPDATE_IN_PROGRESS" or
         "APPROVAL_PENDING" or "APPROVAL_PARTIAL_PENDING" or "ARCHIVE_QUEUED" or "ARCHIVE_BATCH_SUBMITTED" or "ARCHIVE_RECONCILING" or
         "UNARCHIVE_QUEUED";
@@ -3059,6 +3059,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                     // The sale state of the matched variants, from their links (a variant matched only through a LIVE
                     // listing has no link and stays unknown).
                     var saleLinks = productLinks.Where(x => x.ConnectionId == connectionId && linkedVariantIds.Contains(x.VariantId)).ToList();
+                    var updating = ProductListingHealth.IsUpdateInFlight(profile?.ActualStatus);
+                    var rejectedVariantCount = profile is null ? 0 : listingVariants.Where(x => x.ProfileId == profile.Id && productVariantIds.Contains(x.VariantId) && x.ActualStatus == ImportedApprovalStates.Rejected).Select(x => x.VariantId).Distinct().Count();
                     return new ProductPlatformStatusView(connection.DisplayName, status, matchedVariantCount, productVariantIds.Count, IsPlatformUpdateInProgress(profile?.ActualStatus), connection.PlatformCode, missingVariantCount,
                         saleLinks.Count(x => x.SaleState == ListingSaleState.OnSale),
                         saleLinks.Count(x => x.SaleState == ListingSaleState.OffSale),
@@ -3066,9 +3068,15 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                         ListingSaleState.ClosedBeyondStockReasonCounts(saleLinks.Select(x => (x.SaleState, x.SaleStateReason))),
                         PlatformRejectionReason(status, profile?.LastRejectionCode),
                         // The variants the marketplace refused or still reviews there (their listing's state), for the
-                        // list mark's breakdown; they are in neither the matched nor the missing count.
-                        profile is null ? 0 : listingVariants.Where(x => x.ProfileId == profile.Id && productVariantIds.Contains(x.VariantId) && x.ActualStatus == ImportedApprovalStates.Rejected).Select(x => x.VariantId).Distinct().Count(),
-                        profile is null ? 0 : listingVariants.Where(x => x.ProfileId == profile.Id && productVariantIds.Contains(x.VariantId) && x.ActualStatus == ImportedApprovalStates.Pending).Select(x => x.VariantId).Distinct().Count());
+                        // list mark's breakdown; they are in neither the matched nor the missing count. A refused variant of
+                        // a card whose update is on its way was sent again: "Onaya Gönderildi", not "Reddedildi", until
+                        // the marketplace answers (ProductListingHealth.UpdateInFlightStatuses).
+                        updating ? 0 : rejectedVariantCount,
+                        profile is null ? 0 : listingVariants.Where(x => x.ProfileId == profile.Id && productVariantIds.Contains(x.VariantId) && x.ActualStatus == ImportedApprovalStates.Pending).Select(x => x.VariantId).Distinct().Count())
+                    {
+                        ResubmittedVariantCount = updating ? rejectedVariantCount : 0,
+                        UpdatingVariantCount = updating ? matchedVariantCount : 0
+                    };
                 })
                 .OrderBy(x => x.Platform, StringComparer.OrdinalIgnoreCase)
                 .ToList();
@@ -3492,9 +3500,15 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var byProfile = await db.ChannelListingProfiles.AsNoTracking()
             .Where(profile => profile.TenantId == tenantId && profile.Enabled && connectionIds.Contains(profile.ConnectionId) && ids.Contains(profile.ProductId) && states.Contains(profile.ActualStatus))
             .Select(profile => profile.ProductId).ToListAsync(cancellationToken);
+        // A refused variant whose card's update is on its way was sent again (the list mark's "Onaya Gönderildi"): it is
+        // waiting, not failed, until the marketplace answers.
+        var inFlight = ProductListingHealth.UpdateInFlightStatuses.ToArray();
+        var waiting = states.Contains(ImportedApprovalStates.Pending);
         var byListing = await (from listing in db.ChannelListingVariants.AsNoTracking()
                                join profile in db.ChannelListingProfiles.AsNoTracking() on new { listing.TenantId, Id = listing.ProfileId } equals new { profile.TenantId, profile.Id }
-                               where listing.TenantId == tenantId && profile.Enabled && connectionIds.Contains(profile.ConnectionId) && ids.Contains(profile.ProductId) && states.Contains(listing.ActualStatus)
+                               where listing.TenantId == tenantId && profile.Enabled && connectionIds.Contains(profile.ConnectionId) && ids.Contains(profile.ProductId)
+                                   && (states.Contains(listing.ActualStatus) && !(listing.ActualStatus == ImportedApprovalStates.Rejected && inFlight.Contains(profile.ActualStatus))
+                                       || waiting && listing.ActualStatus == ImportedApprovalStates.Rejected && inFlight.Contains(profile.ActualStatus))
                                select profile.ProductId).ToListAsync(cancellationToken);
         return [.. byProfile, .. byListing];
     }

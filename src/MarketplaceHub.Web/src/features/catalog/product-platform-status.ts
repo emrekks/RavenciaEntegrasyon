@@ -21,6 +21,10 @@ const inProgressStatuses = new Set([
   'CREATE_RESULT_UNKNOWN',
   'SHOPIFY_SUBMITTED',
   'UPDATE_SUBMITTED',
+  'UPDATE_UNAPPROVED_SUBMITTED',
+  'UPDATE_CONTENT_SUBMITTED',
+  'UPDATE_VARIANTS_SUBMITTED',
+  'UPDATE_DELIVERY_SUBMITTED',
   'UPDATE_IN_PROGRESS',
   'APPROVAL_PENDING',
   'ARCHIVE_QUEUED',
@@ -31,6 +35,11 @@ const inProgressStatuses = new Set([
   'UNARCHIVE_QUEUED',
   'UNARCHIVE_ACCEPTED'
 ])
+
+// A card whose product update is on its way: queued, a phase sent and waiting for the batch result, or between phases
+// (the server's ProductListingHealth.UpdateInFlightStatuses). Only the update job writes these on the card.
+const updateInFlightStatuses = new Set(['UPDATE_QUEUED', 'UPDATE_SUBMITTED', 'UPDATE_UNAPPROVED_SUBMITTED', 'UPDATE_CONTENT_SUBMITTED', 'UPDATE_VARIANTS_SUBMITTED', 'UPDATE_DELIVERY_SUBMITTED', 'UPDATE_IN_PROGRESS'])
+export const isProductUpdateInFlight = (status: string | null | undefined) => updateInFlightStatuses.has(status?.trim().toUpperCase() ?? '')
 
 const errorStatuses = new Set([
   'REJECTED',
@@ -179,6 +188,21 @@ export type ProductPlatformBreakdownCounts = {
   offSaleStockZero: number
   rejected: number
   pending: number
+  // While a card's update is on its way (server ResubmittedVariantCount / UpdatingVariantCount): refused variants sent
+  // again, not in rejected; and matched ones the update goes out for, also in matched.
+  resubmitted?: number
+  updating?: number
+}
+
+// The dot follows the same counts as the tooltip (owner, 15 Nov 2026: MZ056 read green while 6 variants waited for
+// Trendyol and the other cards were being updated). A variant still refused makes it red; a refused variant sent again
+// or a card being updated makes it "processing" (blue) until the marketplace answers; green stays for a family whose
+// every variant is live with nothing on its way.
+export function withProductPlatformWork(state: ProductPlatformDisplayState, counts: Pick<ProductPlatformBreakdownCounts, 'rejected' | 'resubmitted' | 'updating'>): ProductPlatformDisplayState {
+  if (counts.rejected > 0 && state !== 'missing' && state !== 'blocked') return 'error'
+  if (state === 'error' || state === 'missing' || state === 'blocked') return state
+  if ((counts.resubmitted ?? 0) > 0 || (counts.updating ?? 0) > 0) return 'processing'
+  return state
 }
 
 // The list mark's tooltip (owner, 14 Nov 2026: "kaçı aktif kaçı pasifte"): the group's variants on one marketplace by
@@ -190,12 +214,16 @@ export function productPlatformBreakdownLines(counts: ProductPlatformBreakdownCo
   const active = counts.onSale + counts.offSaleStockZero
   const closed = Math.max(0, counts.offSale - counts.offSaleStockZero)
   const unknownSale = unknownSaleCount(counts)
-  const passive = Math.max(0, counts.variantCount - counts.matched - counts.missing - counts.rejected - counts.pending)
+  const resubmitted = counts.resubmitted ?? 0
+  const passive = Math.max(0, counts.variantCount - counts.matched - counts.missing - counts.rejected - counts.pending - resubmitted)
   const reason = rejectionReason?.trim() ? ` · ${rejectionReason.trim()}` : ''
   const lines: Array<[number, string]> = [
     [active, 'Aktif'],
     [unknownSale, 'Eşleşti · Satış Durumu Bilinmiyor'],
     [closed, 'Satışa Kapalı'],
+    // Live there, with the panel's update sent and not yet answered: part of the matched ones, not another state.
+    [counts.updating ?? 0, 'Yayında · Güncelleniyor'],
+    [resubmitted, 'Onaya Gönderildi (Yeniden)'],
     [counts.pending, 'Onay Bekliyor'],
     [counts.rejected, `Reddedildi${reason}`],
     [counts.missing, 'Bulunamadı'],

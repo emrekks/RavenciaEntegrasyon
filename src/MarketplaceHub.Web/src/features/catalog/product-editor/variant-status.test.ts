@@ -39,6 +39,14 @@ describe('variantStatus', () => {
     expect(none.tone).toBe('unknown')
     expect(none.lines).toEqual([{ tone: 'info', text: 'Henüz pazaryeri bilgisi yok.' }])
     expect(variantStatus({ ...ok }).tone).toBe('unknown')
-    expect(variantStatus({ ...ok, platformStatuses: [{ ...trendyol, listingStatus: 'APPROVAL_PENDING' }] })).toEqual({ tone: 'unknown', lines: [{ tone: 'info', text: 'Trendyol: Onay bekliyor' }] })
+  })
+
+  // Owner, 15 Nov 2026: the light agrees with the list mark; blue while the marketplace's word is awaited.
+  it('is blue while approval is pending, a refused variant was sent again or its card is being updated', () => {
+    expect(variantStatus({ ...ok, platformStatuses: [{ ...trendyol, listingStatus: 'APPROVAL_PENDING' }] })).toEqual({ tone: 'pending', lines: [{ tone: 'pending', text: 'Trendyol: Onay bekliyor' }] })
+    const resent = variantStatus({ ...ok, platformStatuses: [{ ...trendyol, status: 'UPDATE_UNAPPROVED_SUBMITTED', listingStatus: 'REJECTED', rejectionReason: 'Hatalı Görsel Linki' }] })
+    expect(resent).toEqual({ tone: 'pending', lines: [{ tone: 'pending', text: 'Trendyol: Onaya gönderildi (yeniden), sonuç bekleniyor · Önceki ret · Hatalı Görsel Linki' }] })
+    expect(variantStatus({ ...ok, platformStatuses: [{ ...trendyol, status: 'UPDATE_IN_PROGRESS', isMatched: true, listingStatus: 'LIVE' }] }).lines).toEqual([{ tone: 'pending', text: 'Trendyol: Yayında · güncelleniyor' }])
+    expect(variantStatus({ ...ok, platformStatuses: [{ ...trendyol, status: 'REJECTED', listingStatus: 'REJECTED' }] }).tone).toBe('error')
   })
 })

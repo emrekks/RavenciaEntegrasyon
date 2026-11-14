@@ -108,6 +108,21 @@ public sealed class ImportedListingProfilePostgreSqlTests(PostgreSqlTenantIsolat
             Assert.Equal([seeded.Variant.Id], await ProductUpdateComposer.HeldVariantIdsAsync(db, seeded.Tenant.Id, seeded.Connection.Id, [seeded.Variant.Id], CancellationToken.None));
         }
 
+        // Sent again (the update job's unapproved phase waits for Trendyol's batch result): "Onaya Gönderildi", neither
+        // refused nor matched, and the card is being processed (owner, 15 Nov 2026: MZ056 read green).
+        await using (var db = fixture.CreateContext())
+        {
+            var profile = await db.ChannelListingProfiles.SingleAsync(x => x.TenantId == seeded.Tenant.Id);
+            profile.ActualStatus = "UPDATE_UNAPPROVED_SUBMITTED";
+            await db.SaveChangesAsync();
+        }
+        await using (var db = fixture.CreateContext())
+        {
+            var view = (await NewCatalogService(db).GetProductAsync(seeded.Tenant.Id, seeded.Product.Id, CancellationToken.None)).Value!;
+            var platform = Assert.Single(view.PlatformStatuses!, x => x.PlatformCode == "TRENDYOL");
+            Assert.Equal((true, 0, 0, 1, 0), (platform.IsChecking, platform.MatchedVariantCount, platform.RejectedVariantCount, platform.ResubmittedVariantCount, platform.UpdatingVariantCount));
+        }
+
         // Rejected without a reason: no reason is made up. Then waiting.
         await using (var db = fixture.CreateContext())
             await ImportedApprovalStates.ApplyAsync(db, seeded.Tenant.Id, seeded.Connection.Id, [Snapshot(true, "REJECTED", null, "RYP010M")], CancellationToken.None);

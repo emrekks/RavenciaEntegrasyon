@@ -12,7 +12,7 @@ import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import { productStatusLabel } from '../../../shared/status-labels'
 import { RrAnchor, RrBadge, RrColumnPop, RrError, RrFilterCard, RrHeadCell, RrIcon, RrLoading, RrLogo, RrModal, RrPageSize, RrRing, RrThumb, titleTr, type RingTone } from '../../marketplace/returns-ui'
 import { appendNotification, notificationError, productNotificationSubject, type NotificationContext } from '../../../shared/notifications'
-import { productPlatformBreakdownTip, productPlatformDisplayLabel, productPlatformDisplayState, withProductPlatformSaleState } from '../product-platform-status'
+import { productPlatformBreakdownTip, productPlatformDisplayLabel, productPlatformDisplayState, withProductPlatformSaleState, withProductPlatformWork } from '../product-platform-status'
 import { nextProductCatalogSort, parseProductCatalogSort, productCatalogSortOptions, productCatalogSortValue, type ProductCatalogSort } from '../product-catalog-sorting'
 import { productSyncLabel, productSyncPercent } from '../product-sync-progress'
 import { activeProductSyncJobs as filterActiveProductSyncJobs, productSyncJobsPath, settleTrackedProductSyncJobs, trackProductSyncJobs } from '../product-sync-tracking'
@@ -256,7 +256,7 @@ function ProductColorRows({ group, priority, selected, onSelect, selectionMode: 
   const navigate = useNavigate()
   const product = group.primary
   const platformStatuses = group.products.flatMap(item => item.platformStatuses ?? [])
-  const platformStatusAggregates = new Map<string, { platform: string; platformCode: string; statuses: string[]; matchedVariantCount: number; variantCount: number; isChecking: boolean; onSale: number; offSale: number; offSaleStockZero: number; reasons: Record<string, number>; rejectionReason: string | null; missing: number; rejected: number; pending: number }>()
+  const platformStatusAggregates = new Map<string, { platform: string; platformCode: string; statuses: string[]; matchedVariantCount: number; variantCount: number; isChecking: boolean; onSale: number; offSale: number; offSaleStockZero: number; reasons: Record<string, number>; rejectionReason: string | null; missing: number; rejected: number; pending: number; resubmitted: number; updating: number }>()
   for (const item of platformStatuses) {
     const platform = item.platform?.trim() || 'Platform'
     const platformCode = item.platformCode?.trim().toUpperCase() || (platform.toUpperCase().includes('SHOPIFY') ? 'SHOPIFY' : platform.toUpperCase().includes('HEPSIBURADA') ? 'HEPSIBURADA' : platform.toUpperCase().includes('TRENDYOL') ? 'TRENDYOL' : platform.toUpperCase().includes('N11') ? 'N11' : platform.toUpperCase().includes('PAZARAMA') ? 'PAZARAMA' : platform.toUpperCase().replace(/\s/g, '').includes('PTTAVM') ? 'PTTAVM' : 'UNKNOWN')
@@ -275,17 +275,21 @@ function ProductColorRows({ group, priority, selected, onSelect, selectionMode: 
       current.missing += item.missingVariantCount ?? 0
       current.rejected += item.rejectedVariantCount ?? 0
       current.pending += item.pendingVariantCount ?? 0
+      current.resubmitted += item.resubmittedVariantCount ?? 0
+      current.updating += item.updatingVariantCount ?? 0
     } else {
-      platformStatusAggregates.set(key, { platform, platformCode, statuses: [item.status], matchedVariantCount: item.matchedVariantCount ?? 0, variantCount: item.variantCount ?? 0, isChecking: Boolean(item.isChecking), onSale: item.onSaleVariantCount ?? 0, offSale: item.offSaleVariantCount ?? 0, offSaleStockZero: item.offSaleStockZeroVariantCount ?? 0, reasons: { ...item.offSaleReasonCounts }, rejectionReason: item.rejectionReason?.trim() || null, missing: item.missingVariantCount ?? 0, rejected: item.rejectedVariantCount ?? 0, pending: item.pendingVariantCount ?? 0 })
+      platformStatusAggregates.set(key, { platform, platformCode, statuses: [item.status], matchedVariantCount: item.matchedVariantCount ?? 0, variantCount: item.variantCount ?? 0, isChecking: Boolean(item.isChecking), onSale: item.onSaleVariantCount ?? 0, offSale: item.offSaleVariantCount ?? 0, offSaleStockZero: item.offSaleStockZeroVariantCount ?? 0, reasons: { ...item.offSaleReasonCounts }, rejectionReason: item.rejectionReason?.trim() || null, missing: item.missingVariantCount ?? 0, rejected: item.rejectedVariantCount ?? 0, pending: item.pendingVariantCount ?? 0, resubmitted: item.resubmittedVariantCount ?? 0, updating: item.updatingVariantCount ?? 0 })
     }
   }
   const platformCards = [...platformStatusAggregates.entries()].map(([key, item]) => {
-    const publicationState = productPlatformDisplayState(item.statuses, item.isChecking, item.matchedVariantCount, item.variantCount)
+    // The dot and the tooltip read the same counts: a variant still refused is red, one sent again or a card being
+    // updated is "processing" until the marketplace answers (withProductPlatformWork).
+    const publicationState = withProductPlatformWork(productPlatformDisplayState(item.statuses, item.isChecking, item.matchedVariantCount, item.variantCount), item)
     const publicationLabel = productPlatformDisplayLabel(item.platform, item.statuses, item.matchedVariantCount, item.variantCount, publicationState, item.rejectionReason)
     // The sale state goes over the publication state (a stock of 0 is never a closure; see withProductPlatformSaleState).
     const { state, label } = withProductPlatformSaleState(item.platform, publicationState, publicationLabel, { matched: item.matchedVariantCount, variantCount: item.variantCount, onSale: item.onSale, offSale: item.offSale, offSaleStockZero: item.offSaleStockZero, reasons: item.reasons })
     // The tooltip breaks the group's variants down by state (owner, 14 Nov 2026); the dot keeps the state's colour.
-    const tip = productPlatformBreakdownTip(item.platform, { variantCount: item.variantCount, matched: item.matchedVariantCount, missing: item.missing, onSale: item.onSale, offSale: item.offSale, offSaleStockZero: item.offSaleStockZero, rejected: item.rejected, pending: item.pending }, item.rejectionReason)
+    const tip = productPlatformBreakdownTip(item.platform, { variantCount: item.variantCount, matched: item.matchedVariantCount, missing: item.missing, onSale: item.onSale, offSale: item.offSale, offSaleStockZero: item.offSaleStockZero, rejected: item.rejected, pending: item.pending, resubmitted: item.resubmitted, updating: item.updating }, item.rejectionReason)
     return { key, platform: item.platform, platformCode: item.platformCode, state, label, tip, matchedVariantCount: item.matchedVariantCount, variantCount: item.variantCount }
   })
   const totalStock = group.products.reduce((sum, item) => sum + item.totalStock, 0)
@@ -306,7 +310,7 @@ function ProductColorRows({ group, priority, selected, onSelect, selectionMode: 
   // Every marketplace is listed, those without a match greyed out. The dot is green when every variant is live or
   // connected there, yellow when only some are (or some failed, or some are closed to sale), red when all failed, the
   // marketplace no longer knows any of them (Bulunamadı) or a variant is blacklisted or locked there, orange when it is
-  // listed there but archived or closed to sale (Satışa Kapalı), and cycles while it updates. A stock of 0 never closes.
+  // listed there but archived or closed to sale (Satışa Kapalı), and pulses blue while an update or a send waits for the marketplace. A stock of 0 never closes.
   const platformMarks = platformDisplayOrder.map(code => {
     const card = platformCards.find(item => item.platformCode === code)
     const name = platformDisplayNames[code]
