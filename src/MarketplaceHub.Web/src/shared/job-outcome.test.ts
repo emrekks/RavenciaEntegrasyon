@@ -211,3 +211,23 @@ describe('titles of an update press', () => {
     expect(result).toMatchObject({ title: 'Trendyol’da Kısmen Güncellendi', kind: 'warning' })
   })
 })
+
+describe('an update replaced by a newer one', () => {
+  const jobs: FollowedJob[] = ['Siyah', 'Bordo'].map((card, index) => ({ jobId: `r${index}`, platformName: 'Trendyol', what: 'ürün adı', card, update: true }))
+  const replacedJob = { id: 'x', status: 'BLOCKED', lastErrorCode: 'PRODUCT_UPDATE_SUPERSEDED', lastErrorSummary: 'Bu ürün için daha yeni bir güncelleme başlatıldığı için bu eski güncelleme gönderilmedi; geçerli olan yenisidir.' }
+  const ok = { id: 'y', status: 'SUCCEEDED', lastErrorCode: null, lastErrorSummary: null }
+
+  it('is a quiet info note, not an error', () => {
+    const result = jobOutcomeFeedback(jobs.map(item => jobOutcome(item, { job: replacedJob })), outcomeTarget(jobs), jobs)
+    expect(result).toMatchObject({ kind: 'info', settled: true, lines: ['Daha yeni güncelleme bunun yerine gönderildi; sonuç onunla bildirilecek.'] })
+  })
+
+  it('does not count against cards that went through', () => {
+    const result = jobOutcomeFeedback([jobOutcome(jobs[0], { job: ok }), jobOutcome(jobs[1], { job: replacedJob })], outcomeTarget(jobs), jobs)
+    expect(result).toMatchObject({ kind: 'success', lines: ['Ürün Trendyol’da güncellendi.'] })
+  })
+
+  it('says a running update as güncellemesi, not aktarımı', () => {
+    expect(jobOutcome(jobs[0], { job: { id: 'z', status: 'LEASED', lastErrorCode: null, lastErrorSummary: null } }).line).toBe('Trendyol: ürün adı güncellemesi sürüyor; sonuç gelince bildirilecek.')
+  })
+})
