@@ -2688,6 +2688,10 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             ? lastRejectionCode.Trim()
             : null;
 
+    // A variant listing's rejection reason, only while the listing itself is refused.
+    internal static string? VariantRejectionReason(string? listingStatus, string? rejectionCode) =>
+        listingStatus?.Trim().ToUpperInvariant() == "REJECTED" && !string.IsNullOrWhiteSpace(rejectionCode) ? rejectionCode.Trim() : null;
+
     internal static bool IsPlatformUpdateInProgress(string? status) => status?.Trim().ToUpperInvariant() is
         "QUEUED" or "UPDATE_QUEUED" or "BATCH_SUBMITTED" or "BATCH_IN_PROGRESS" or "CREATE_ACCEPTED" or "IMPORT_SUBMITTED" or "IMPORT_IN_PROGRESS" or "IMPORT_ACCEPTED" or "UPDATE_SUBMITTED" or "UPDATE_IN_PROGRESS" or
         "APPROVAL_PENDING" or "APPROVAL_PARTIAL_PENDING" or "ARCHIVE_QUEUED" or "ARCHIVE_BATCH_SUBMITTED" or "ARCHIVE_RECONCILING" or
@@ -2840,7 +2844,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var profileIds = profiles.Select(x => x.Id).ToArray();
         var listingVariants = await db.ChannelListingVariants.AsNoTracking()
             .Where(x => x.TenantId == tenantId && profileIds.Contains(x.ProfileId) && variantIds.Contains(x.VariantId))
-            .Select(x => new { x.ProfileId, x.VariantId, x.ActualStatus })
+            .Select(x => new { x.ProfileId, x.VariantId, x.ActualStatus, x.RejectionCode })
             .ToListAsync(cancellationToken);
         var productAttributes = listShape ? [] : await db.ProductAttributeAssignments.AsNoTracking()
             .Where(x => x.TenantId == tenantId && productIds.Contains(x.ProductId) && x.VariantId == null)
@@ -2983,6 +2987,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                         offerByVariantConnection.TryGetValue((variant.Id, connectionId), out var channelOffer);
                         // The sale state rides on the variant's link; a variant the marketplace no longer knows has none.
                         var saleLink = isMissing ? null : productLinks.FirstOrDefault(x => x.VariantId == variant.Id && x.ConnectionId == connectionId);
+                        var listing = profile is null ? null : listingVariants.FirstOrDefault(x => x.VariantId == variant.Id && x.ProfileId == profile.Id);
                         return new ProductVariantPlatformStatusView(
                             connection.Value.DisplayName,
                             connection.Value.PlatformCode,
@@ -3003,7 +3008,9 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                             channelOffer?.Status,
                             channelOffer?.FollowsPanelPrice,
                             saleLink?.SaleState,
-                            saleLink?.SaleStateReason);
+                            saleLink?.SaleStateReason,
+                            listing?.ActualStatus,
+                            VariantRejectionReason(listing?.ActualStatus, listing?.RejectionCode));
                     })
                     .ToList();
                 return ListVariantShape(listShape, new ProductVariantView(variant.Id, variant.Sku, variant.Barcode, variant.ModelCode, variant.OptionSignature, variant.Status.ToString().ToUpperInvariant(), variant.Version, variant.Weight, variant.Width, variant.Height, variant.Length, variant.Desi, variant.CostPrice, inventory?.OnHand ?? 0, inventory?.Available ?? 0, inventory?.Version, offer?.Id, offer?.ListPrice, offer?.SalePrice, offer?.Currency, offer?.Status, offer?.PriceVersion, offer?.Version, offer?.VatRate, offer?.VatInclusion, offer?.RoundingMode, offer?.SafetyStock, VariantMediaUrls(mediaUrlsByVariant.GetValueOrDefault(variant.Id), listShape), variantOptionsByVariant.GetValueOrDefault(variant.Id), variantPlatformStatuses, variant.DefaultListPrice, variant.DefaultSalePrice, variantAttributesByVariant.GetValueOrDefault(variant.Id), variant.ProductId));

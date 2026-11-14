@@ -51,6 +51,9 @@ export type VariantPlatformStatus = {
   // Whether the marketplace sells the variant now (ON_SALE / OFF_SALE; null unknown) and why it is closed, beside the
   // publication status and never part of it (sale-state.ts).
   saleState?: string | null; saleStateReason?: string | null
+  // The variant's own listing state there (LIVE, REJECTED, APPROVAL_PENDING, UNKNOWN …; null = no listing) and the
+  // marketplace's reason while it is REJECTED (variant-status.ts).
+  listingStatus?: string | null; rejectionReason?: string | null
 }
 export type Product = Versioned & {
   title: string; description: string; brandId: string | null; categoryId: string | null; status: string; updatedAt: string
