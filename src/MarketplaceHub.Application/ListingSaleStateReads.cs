@@ -25,6 +25,17 @@ public static class ListingSaleStateReads
         return reads.Count == 1 ? reads[0] : new ListingSaleStateRead(null, null);
     }
 
+    // A link an import writes takes the sale state its page named. The page's sale states are recorded (MarkVariantLinksSeen)
+    // before the import makes its links, so a first import after a reset left every new link unknown until the next
+    // catalog read (live 14 Nov 2026: 3,162 n11, 3,137 Hepsiburada, 3,103 Pazarama links made 09:05-09:11, none with a
+    // sale state). Unknown stays unknown.
+    public static void ApplyToNewLink(MarketplaceVariantLink link, string? state, string? reason, DateTimeOffset now)
+    {
+        link.SaleState = state;
+        link.SaleStateReason = state == ListingSaleState.OffSale ? reason : null;
+        link.SaleStateReadAt = state is null ? null : now;
+    }
+
     private static string? Clean(string? code) =>
         string.IsNullOrWhiteSpace(code) || MarketplaceVariantLinkHealth.IsListingPlaceholder(code) ? null : code.Trim();
 

@@ -209,4 +209,24 @@ public sealed class ListingSaleStateTests
     [Fact]
     public void ThePublicationStatusIgnoresTheSaleState() =>
         Assert.Equal("LIVE", ProductListingHealth.Status("LIVE", 3, 0, 3));
+
+    // A link an import writes takes its page's sale state (the page's states were recorded before the link existed; live
+    // 14 Nov 2026 every n11 link of the first import after a reset read unknown). A reason rides only on a closure, and
+    // an unknown state stays unknown with no read time.
+    [Fact]
+    public void ANewImportLinkTakesThePagesSaleState()
+    {
+        var now = new DateTimeOffset(2026, 11, 14, 9, 6, 0, TimeSpan.Zero);
+        var closed = new MarketplaceVariantLink { ExternalId = "S1" };
+        ListingSaleStateReads.ApplyToNewLink(closed, ListingSaleState.OffSale, ListingSaleState.StockZero, now);
+        Assert.Equal((ListingSaleState.OffSale, ListingSaleState.StockZero, (DateTimeOffset?)now), (closed.SaleState, closed.SaleStateReason, closed.SaleStateReadAt));
+
+        var onSale = new MarketplaceVariantLink { ExternalId = "S1" };
+        ListingSaleStateReads.ApplyToNewLink(onSale, ListingSaleState.OnSale, ListingSaleState.StockZero, now);
+        Assert.Equal((ListingSaleState.OnSale, (string?)null, (DateTimeOffset?)now), (onSale.SaleState, onSale.SaleStateReason, onSale.SaleStateReadAt));
+
+        var unknown = new MarketplaceVariantLink { ExternalId = "S1" };
+        ListingSaleStateReads.ApplyToNewLink(unknown, null, null, now);
+        Assert.Equal(((string?)null, (string?)null, (DateTimeOffset?)null), (unknown.SaleState, unknown.SaleStateReason, unknown.SaleStateReadAt));
+    }
 }

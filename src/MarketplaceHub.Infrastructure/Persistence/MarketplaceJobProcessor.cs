@@ -8076,7 +8076,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 continue;
             }
 
-            db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = candidate.Id, ExternalId = externalVariantId, Version = 1 });
+            var mappedLink = new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = candidate.Id, ExternalId = externalVariantId, Version = 1 };
+            ListingSaleStateReads.ApplyToNewLink(mappedLink, remote.SaleState, remote.SaleStateReason, now);
+            db.MarketplaceVariantLinks.Add(mappedLink);
             existingVariantLinks.Add(new MarketplaceVariantLink { TenantId = tenantId, ConnectionId = connectionId, VariantId = candidate.Id, ExternalId = externalVariantId, Version = 1 });
             claimedVariantIds.Add(candidate.Id);
             matchedVariantCount++;
@@ -8207,6 +8209,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (own is null)
             {
                 own = new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variant.Id, ExternalId = code, ExternalBarcode = variant.Barcode?.Trim(), ExternalSku = variant.Sku.Trim(), Version = 1 };
+                // The model's sale state, as MarkPttAvmModelLinksSeen reads it for a link that already existed.
+                var (modelSaleState, modelSaleReason) = PttAvmModelSaleState(snapshot);
+                ListingSaleStateReads.ApplyToNewLink(own, modelSaleState, modelSaleReason, timeProvider.GetUtcNow());
                 db.MarketplaceVariantLinks.Add(own);
                 existingVariantLinks.Add(own);
                 telemetryInsertedCount++;
@@ -8982,6 +8987,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     ExternalId = externalId,
                     Version = 1
                 };
+                ListingSaleStateReads.ApplyToNewLink(link, remote.SaleState, remote.SaleStateReason, timeProvider.GetUtcNow());
                 db.MarketplaceVariantLinks.Add(link);
                 existingLinks.Add(link);
                 linkedExternalIds.Add(externalKey);
@@ -9535,7 +9541,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 ?? await db.MarketplaceVariantLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variant.Id, cancellationToken);
             if (existingVariantLink is null)
             {
-                db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variant.Id, ExternalId = externalVariantId, Version = 1 });
+                var importedLink = new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variant.Id, ExternalId = externalVariantId, Version = 1 };
+                ListingSaleStateReads.ApplyToNewLink(importedLink, remote.SaleState, remote.SaleStateReason, now);
+                db.MarketplaceVariantLinks.Add(importedLink);
                 telemetryInsertedCount++;
             }
             // A link written for a panel publication before the marketplace named the variant (a "listing:" placeholder)
