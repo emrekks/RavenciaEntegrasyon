@@ -493,3 +493,12 @@ html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer)
   html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard > .rr-tip.rr-bd .rr-bd-r > b { grid-column: 1 / -1; font-size: 12px; }
   html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard:not(.rr-bd-open) > .rr-tip.rr-bd { display: none !important; }
 }
+/* Phones (owner, 14 Nov: "tek satır olmalı"): a card's figure, unit and note stay on ONE line without an ellipsis: the note is
+   smaller with tight gaps, sits beside the figure in the Performans cells too, and "Adet Ürün" reads "Adet". */
+@media (max-width: 760px) {
+:root:root:root main .rr.rr.rr-dashboard :is(.rr-opcard .rr-op-t > strong, .rr-kc > strong) { white-space: nowrap; }
+:root:root:root main .rr.rr.rr-dashboard :is(.rr-opcard, .rr-kc) .rr-op-x { margin-left: 4px; font-size: 10.5px; letter-spacing: -.1px; white-space: nowrap; }
+:root:root:root main .rr.rr.rr-dashboard :is(.rr-opcard, .rr-kc) .rr-op-x .rr-op-sep { margin-inline: 2px; }
+:root:root:root main .rr.rr.rr-dashboard .rr-kc > strong .rr-op-x { display: inline; }
+:root:root:root main .rr.rr.rr-dashboard .rr-kc .rr-op-drop { display: none; }
+}
