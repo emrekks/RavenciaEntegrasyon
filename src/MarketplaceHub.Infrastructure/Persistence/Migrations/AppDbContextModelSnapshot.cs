@@ -6596,6 +6596,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("CargoBarcode")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
                     b.Property<string>("CargoProviderExternalId")
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
