@@ -3862,6 +3862,48 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.ToTable("marketplace_listing_states", "catalog");
                 });
 
+            modelBuilder.Entity("MarketplaceHub.Domain.MarketplaceModelLink", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<DateTimeOffset?>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ModelId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ModelId");
+
+                    b.HasIndex("TenantId", "ConnectionId", "ExternalId");
+
+                    b.HasIndex("TenantId", "ConnectionId", "ModelId")
+                        .IsUnique();
+
+                    b.ToTable("marketplace_model_links", "catalog");
+                });
+
             modelBuilder.Entity("MarketplaceHub.Domain.MarketplacePayoutOrder", b =>
                 {
                     b.Property<Guid>("Id")
@@ -5560,8 +5602,6 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
-
-                    b.HasAlternateKey("TenantId", "Id");
 
                     b.HasIndex("TenantId", "CategoryId");
 
@@ -8204,6 +8244,16 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasForeignKey("TenantId", "PackageId")
                         .HasPrincipalKey("TenantId", "Id")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.MarketplaceModelLink", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.ProductModel", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ModelId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 

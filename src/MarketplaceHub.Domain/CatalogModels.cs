@@ -397,6 +397,21 @@ public sealed class MarketplaceProductLink
     public long Version { get; set; } = 1;
 }
 
+// A model's own listing on one marketplace connection (MODEL-KAYDI-PLANI Faz 2): Shopify keeps a model with every colour
+// as one product, which no colour card's product link can hold. Written from what an import or match read (never sent
+// to the marketplace); the card and variant links stay as they are.
+public sealed class MarketplaceModelLink
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid ConnectionId { get; set; }
+    public Guid ModelId { get; set; }
+    public required string ExternalId { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? LastSeenAt { get; set; }
+    public long Version { get; set; } = 1;
+}
+
 public sealed class MarketplaceVariantLink
 {
     public Guid Id { get; set; }

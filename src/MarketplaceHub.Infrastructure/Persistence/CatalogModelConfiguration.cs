@@ -192,6 +192,15 @@ internal static class CatalogModelConfiguration
             entity.ToTable("marketplace_product_links", "catalog"); entity.HasKey(x => x.Id); entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalId }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ProductId }).IsUnique(); entity.Property(x => x.LastImportedPayloadHash).HasMaxLength(128); entity.Property(x => x.SyncStatus).HasMaxLength(32).HasDefaultValue("SYNCED"); entity.Property(x => x.DirtyFieldsJson).HasColumnType("jsonb"); entity.Property(x => x.LastError).HasMaxLength(1024); entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasOne<Product>().WithMany().HasForeignKey(x => new { x.TenantId, x.ProductId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         });
+        builder.Entity<MarketplaceModelLink>(entity =>
+        {
+            entity.ToTable("marketplace_model_links", "catalog"); entity.HasKey(x => x.Id);
+            entity.Property(x => x.ExternalId).HasMaxLength(256); entity.Property(x => x.Version).IsConcurrencyToken();
+            // One listing per model and connection; one marketplace product may hold more than one model (never merged here).
+            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ModelId }).IsUnique();
+            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalId });
+            entity.HasOne<ProductModel>().WithMany().HasForeignKey(x => new { x.TenantId, x.ModelId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
+        });
         builder.Entity<MarketplaceVariantLink>(entity =>
         {
             entity.ToTable("marketplace_variant_links", "catalog"); entity.HasKey(x => x.Id); entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalId }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.VariantId }).IsUnique(); entity.Property(x => x.Version).IsConcurrencyToken();

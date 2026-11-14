@@ -271,6 +271,52 @@ public static class ProductModelLinks
             products.TryGetValue(productId, out var card) ? card.FamilyId : linkedElsewhere.FirstOrDefault(x => x.Id == productId)?.FamilyId;
     }
 
+    // Faz 2: the fields of every model the editor has not saved yet (FieldsSavedAt null) are the editor's ModelValues of
+    // its linked cards (oldest first), the same rule a model opened by the application gets. The backfill's SQL could only
+    // approximate it (whole-title majority, a colour found as a substring). Runs after the migrations (DatabaseMigrator);
+    // a model whose fields already agree is not written. Returns the number of models written.
+    public static async Task<int> RecomputeUnsavedFieldsAsync(AppDbContext db, CancellationToken cancellationToken)
+    {
+        var models = await db.ProductModels.AsNoTracking().Where(x => x.FieldsSavedAt == null).ToListAsync(cancellationToken);
+        if (models.Count == 0) return 0;
+        var modelIds = models.Select(x => x.Id).ToArray();
+        var cards = await db.Products.AsNoTracking().Where(x => x.FamilyId != null && modelIds.Contains(x.FamilyId.Value))
+            .Select(x => new { x.Id, x.FamilyId, x.CreatedAt, x.Title, x.Description, x.BrandId, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays })
+            .ToListAsync(cancellationToken);
+        var cardIds = cards.Select(x => x.Id).ToArray();
+        var signatures = (await db.ProductVariants.AsNoTracking().Where(x => cardIds.Contains(x.ProductId))
+                .Select(x => new { x.ProductId, x.SortOrder, x.Id, x.OptionSignature }).ToListAsync(cancellationToken))
+            .GroupBy(x => x.ProductId)
+            .ToDictionary(group => group.Key, group => group.OrderBy(x => x.SortOrder).ThenBy(x => x.Id).Select(x => ProductFamilyColorOrder.ColorOf(x.OptionSignature)).FirstOrDefault(color => !string.IsNullOrWhiteSpace(color)));
+        var byModel = cards.ToLookup(x => x.FamilyId);
+        var written = 0;
+        foreach (var model in models)
+        {
+            var linked = byModel[model.Id].OrderBy(x => x.CreatedAt).ThenBy(x => x.Id).ToList();
+            if (linked.Count == 0) continue;
+            var fields = ProductFamilySharedFields.ModelValues(
+                [.. linked.Select(x => new ProductFamilySharedFields.CardFields(x.Id, signatures.GetValueOrDefault(x.Id), x.Title, x.Description, x.BrandId, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays))],
+                null);
+            var titleCard = linked.FirstOrDefault(x => x.Title.Trim() == fields.Title);
+            var titleColor = titleCard is not null && signatures.GetValueOrDefault(titleCard.Id) is { } color && ProductFamilyNewColorCard.HasColorWord(fields.Title, color) ? Short(color.Trim(), 120) : null;
+            var title = Short(fields.Title, 320);
+            if ((model.Title, model.TitleColor, model.Description, model.CategoryId, model.VatRate, model.VatInclusion, model.WarrantyMonths, model.DeliveryDays)
+                == (title, titleColor, fields.Description, fields.CategoryId, fields.VatRate, fields.VatInclusion, fields.WarrantyMonths, fields.DeliveryDays)) continue;
+            // One model at a time: a model a save holds locked is left for the next deploy, the rest go on.
+            try
+            {
+                written += await db.ProductModels.Where(x => x.Id == model.Id && x.Version == model.Version && x.FieldsSavedAt == null)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(x => x.Title, title).SetProperty(x => x.TitleColor, titleColor).SetProperty(x => x.Description, fields.Description)
+                        .SetProperty(x => x.CategoryId, fields.CategoryId).SetProperty(x => x.VatRate, fields.VatRate).SetProperty(x => x.VatInclusion, fields.VatInclusion)
+                        .SetProperty(x => x.WarrantyMonths, fields.WarrantyMonths).SetProperty(x => x.DeliveryDays, fields.DeliveryDays)
+                        .SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
+            }
+            catch (System.Data.Common.DbException) when (db.Database.CurrentTransaction is null) { }
+        }
+        return written;
+    }
+
     // The editor saved the model's fields to every card: the model takes the same values (write-through).
     public static async Task WriteFieldsAsync(AppDbContext db, Guid tenantId, Guid productId, string? titleColor, DateTimeOffset now, CancellationToken cancellationToken)
     {
