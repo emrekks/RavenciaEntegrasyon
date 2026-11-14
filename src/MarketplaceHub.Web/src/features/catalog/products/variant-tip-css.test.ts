@@ -7,7 +7,7 @@ const read = (path: string) => fs.readFileSync(new URL(path, import.meta.url), '
 describe('variant tip stacking', () => {
   it('is shown in the top layer, so no sticky card, tab bar or sidebar can cover or clip it', () => {
     expect(read('../products-sade.css')).toContain('.rr-vhover > .rr-vtip:popover-open { display: grid; }')
-    const page = read('./ProductsPage.tsx')
+    const page = read('./variant-tip.ts')
     expect(page).toContain("tip.setAttribute('popover', 'manual')")
     expect(page).toContain('tip.showPopover()')
   })
