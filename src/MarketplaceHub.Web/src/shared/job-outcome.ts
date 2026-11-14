@@ -78,7 +78,7 @@ export function jobOutcome(followed: FollowedJob, detail: FollowedJobDetail | nu
 const settledStates: ReadonlySet<JobOutcomeState> = new Set(['succeeded', 'partial', 'failed', 'review', 'cancelled'])
 export const isSettledOutcome = (outcome: JobOutcome) => settledStates.has(outcome.state)
 
-export type JobOutcomeFeedback = { title: string; kind: 'success' | 'error' | 'info'; lines: string[]; settled: boolean }
+export type JobOutcomeFeedback = { title: string; kind: 'success' | 'error' | 'info' | 'warning'; lines: string[]; settled: boolean }
 
 /** The toast for several followed jobs: titled by the worst one, one line each. */
 export function jobOutcomeFeedback(outcomes: readonly JobOutcome[], target: string): JobOutcomeFeedback {
@@ -87,8 +87,10 @@ export function jobOutcomeFeedback(outcomes: readonly JobOutcome[], target: stri
   const settled = outcomes.every(isSettledOutcome)
   if (has('failed') || has('partial') || has('review')) {
     const anyDone = has('succeeded') || has('partial')
-    const title = has('review') && !has('failed') && !anyDone ? 'İnceleme Bekliyor' : anyDone ? 'Kısmen Aktarıldı' : 'Aktarılamadı'
-    return { title, kind: 'error', lines, settled }
+    // Partly done or waiting for review is a warning; only a transfer that did not happen at all is an error.
+    if (anyDone) return { title: `${target} Kısmen Aktarıldı`, kind: 'warning', lines, settled }
+    if (!has('failed')) return { title: 'İnceleme Bekliyor', kind: 'warning', lines, settled }
+    return { title: `${target} Aktarılamadı`, kind: 'error', lines, settled }
   }
   if (!settled) {
     const scheduled = has('scheduled') && !has('running') && !has('unknown')

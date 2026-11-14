@@ -20,7 +20,7 @@ import './bulk-publish-model-tip.css'
 import '../product-editor/product-editor-design-system.css'
 import '../product-editor/product-editor-hydration.css'
 
-export type BulkPublishNotice = { title: string; message: string; kind: 'success' | 'error' | 'info'; details?: NotificationDetail[]; lines?: string[]; persistent?: boolean }
+export type BulkPublishNotice = { title: string; message: string; kind: 'success' | 'error' | 'info' | 'warning'; details?: NotificationDetail[]; lines?: string[]; persistent?: boolean }
 
 const emptyResult: BulkPublicationResult = { queued: 0, skipped: 0, failed: [] }
 

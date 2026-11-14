@@ -7956,6 +7956,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // The panel product follows the variants the remote ones resolved to, never the first candidate a query
         // returned. Variants that land on several panel products (a model kept as one card per colour) decide none:
         // the product link is not made and the product is put up for review.
+        // Shopify (preferBarcode) keeps a model as one product with every colour while the panel keeps one card per
+        // colour: that is its normal shape, not a doubt. Its variants are paired by barcode or stock code, one panel
+        // variant each, so they are linked one by one without a product link and nothing is put up for review
+        // (owner, 14 Nov 2026: MZ035YNC, 8 cards x 3 sizes in one Shopify product, was never linked).
         var linkProduct = true;
         Guid? productId = link?.ProductId;
         if (productId is null)
@@ -7965,7 +7969,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 .Select(item => item.Candidate!.ProductId)
                 .Distinct()
                 .ToList();
-            if (resolvedProductIds.Count > 1)
+            if (resolvedProductIds.Count > 1 && preferBarcode)
+            {
+                await ResolveIssue(tenantId, $"product-mapping-unmatched:{connectionId}:{externalProductId}", cancellationToken);
+                linkProduct = false;
+            }
+            else if (resolvedProductIds.Count > 1)
             {
                 await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:{externalProductId}", "PRODUCT_MAPPING_UNMATCHED",
                     Short($"Pazar yeri ürününün varyantları panelde {resolvedProductIds.Count} ayrı ürüne (renk kartlarına) düştü; ürün bağlantısı seçilmedi, eşleşmeyi kontrol edin · {snapshot.Title}.", 1000), cancellationToken);

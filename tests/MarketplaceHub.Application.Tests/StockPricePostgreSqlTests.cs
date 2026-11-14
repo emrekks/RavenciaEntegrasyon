@@ -1363,6 +1363,64 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.Contains($"product-mapping-unmatched:{trendyol.Id}:704", issues);
     }
 
+    // Live MZ035YNC (owner, 14 Nov 2026): Shopify keeps the model as one product with every colour and size, the panel
+    // keeps one card per colour. Each Shopify variant names its panel variant by barcode and stock code, so the mapping
+    // links every variant without a product link and leaves no review issue; before, the whole product counted as
+    // "Çakışma" and nothing was linked (Shopify had 150 variant links against ~3,000 on the other marketplaces).
+    [PostgreSqlFact]
+    public async Task ShopifyModelKeptAsOneProduct_LinksEveryColourCardsVariants()
+    {
+        var tenant = NewTenant("shopify-colour-cards");
+        var shopify = NewConnection(tenant, "SHOPIFY");
+        string[] colours = ["Açık Kahverengi", "Bordo", "Gri"];
+        string[] sizes = ["L", "XL", "2XL"];
+        var cards = new List<Product>();
+        var variants = new List<ProductVariant>();
+        for (var c = 0; c < colours.Length; c++)
+        {
+            Guid? cardId = null;
+            for (var s = 0; s < sizes.Length; s++)
+            {
+                var code = $"MZ035YNC-{c * 3 + s + 1:00}";
+                var (card, variant) = NewVariant(tenant, code, code, cardId);
+                variant.ModelCode = "MZ035YNC";
+                variant.OptionSignature = $"Renk: {colours[c]} | Beden: {sizes[s]}";
+                if (cardId is null) { cards.Add(card); cardId = card.Id; }
+                variants.Add(variant);
+            }
+        }
+        var staleIssueKey = $"product-mapping-unmatched:{shopify.Id}:10372109271124";
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(shopify);
+            seed.Products.AddRange(cards);
+            seed.ProductVariants.AddRange(variants);
+            seed.OperationalIssues.Add(new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = tenant.Id, DedupeKey = staleIssueKey, Code = "PRODUCT_MAPPING_UNMATCHED", Summary = "Pazar yeri ürününün varyantları panelde 3 ayrı ürüne (renk kartlarına) düştü", Status = IssueStatus.Open, FirstSeenAt = DateTimeOffset.UtcNow, LastSeenAt = DateTimeOffset.UtcNow, OccurrenceCount = 1 });
+            await seed.SaveChangesAsync();
+        }
+        var remoteVariants = variants.Select((variant, index) => new RemoteCatalogVariant($"gid-{4700 + index}", variant.Sku, variant.Barcode, null,
+            new Dictionary<string, string> { ["Renk"] = colours[index / 3], ["Beden"] = sizes[index % 3] }, false, 899m, null, 10m, 2m, "TRY", "{}")).ToList();
+        var snapshot = new RemoteCatalogProduct("10372109271124", null, "Kışlık Yonca Yaprak Desenli Taşlı Yırtmaçlı Likralı Kadın Anne Penye Bluz", "", null, null, null, null, [], remoteVariants, "{}");
+
+        await using (var db = fixture.CreateContext())
+        {
+            var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            var map = typeof(MarketplaceJobProcessor).GetMethod("MapExistingCatalogProduct", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            Assert.True(await (Task<bool>)map.Invoke(processor, [tenant.Id, shopify.Id, snapshot, true, CancellationToken.None, false, false, false, null, "N11", false])!);
+            await db.SaveChangesAsync();
+        }
+
+        await using var check = fixture.CreateContext();
+        var links = await check.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.ConnectionId == shopify.Id).ToDictionaryAsync(x => x.VariantId, x => x.ExternalId);
+        Assert.Equal(variants.Count, links.Count);
+        for (var i = 0; i < variants.Count; i++) Assert.Equal($"gid-{4700 + i}", links[variants[i].Id]);
+        // No colour card is picked for the Shopify product.
+        Assert.False(await check.MarketplaceProductLinks.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.ConnectionId == shopify.Id));
+        var issue = await check.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.DedupeKey == staleIssueKey);
+        Assert.Equal(IssueStatus.Resolved, issue.Status);
+    }
+
     // A PTT AVM product without variants is kept by the product's own code, which may differ from its panel model code.
     [PostgreSqlFact]
     public async Task PttAvmMapping_LinksAProductWithoutVariantsByItsOwnCode()

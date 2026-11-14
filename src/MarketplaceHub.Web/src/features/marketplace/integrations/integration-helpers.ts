@@ -1,3 +1,4 @@
+import { noticeSentences } from '../../../shared/notice-copy'
 // Small pure pieces of the integrations pages, kept here so they can be tested on their own.
 
 /** Owner decision B: what switching the automatic writes (or the master switch) on means for the changes made while off. */
@@ -295,10 +296,21 @@ export function disconnectDialogDescription(platformCode: string): string {
 }
 
 // The message after Pasife Al or activation: a webhook that could not follow (or Hepsiburada's note) is shown with it.
-export function connectionActiveFeedback(active: boolean, webhookNotice: string | null | undefined) {
-  const title = active ? 'Bağlantı Etkinleştirildi' : 'Bağlantı Pasife Alındı'
-  const message = active ? 'Bağlantı etkinleştirildi.' : 'Bağlantı pasife alındı.'
-  return webhookNotice?.trim()
-    ? { kind: 'info' as const, title, message: `${message} ${webhookNotice.trim()}` }
-    : { kind: 'success' as const, title, message }
+// A webhook that could not follow is a warning: the connection itself did change, so the title says both.
+export function connectionActiveFeedback(active: boolean, webhookNotice: string | null | undefined, platformName?: string | null) {
+  const platform = platformName?.trim() || 'Bağlantı'
+  const note = webhookNotice?.trim()
+  if (!note) {
+    return active
+      ? { kind: 'success' as const, title: `${platform} Etkinleştirildi`, message: 'Bağlantı yeniden kullanıma açıldı; veri çekimi düzenli kontrolle devam eder.' }
+      : { kind: 'success' as const, title: `${platform} Pasife Alındı`, message: 'Pasifken bu bağlantıdan bildirim işlenmez; dilediğiniz zaman yeniden etkinleştirebilirsiniz.' }
+  }
+  const failed = /(açılamadı|kapatılamadı|pasife alınamadı)/u.test(note)
+  if (!failed) return { kind: 'info' as const, title: `${platform} Pasife Alındı`, message: note }
+  // The first sentence only repeats what the title says ("Trendyol webhook'u yeniden açılamadı."); the rest is why and what to do.
+  const [first, ...rest] = noticeSentences(note)
+  const reason = rest.length && /(açılamadı|kapatılamadı|pasife alınamadı)/u.test(first) ? rest.join(' ') : note
+  return active
+    ? { kind: 'warning' as const, title: `${platform} Etkin, Webhook Açılamadı`, message: reason }
+    : { kind: 'warning' as const, title: `${platform} Pasif, Webhook Kapatılamadı`, message: reason }
 }

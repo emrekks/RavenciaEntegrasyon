@@ -1,19 +1,21 @@
-// The one rule for empty values on every page (owner, 14 Nov 2026):
-//  - The big number of a summary card with no data - no records in the period or list, nothing to base it on, not loaded,
-//    failed - reads "—" in the neutral ink, for money, a percentage and a count alike (never a word: "Veri yok", "Tutar yok").
-//  - Everything around it reads zero in its own format when empty: sub-lines and notes ("Sipariş başına ₺0", "Reklam öncesi %0",
-//    "Net 0 · 0 iade", "Paket | 0 Adet Ürün", "— Bekleyen | 0 Yaklaşan"), change pills ("%0"), tab, chip, badge and sidebar
-//    counters ("0", "₺0", "%0"). A reason note ("Maliyet Eksik") stays as it is.
-//  - A real non-zero value reads as it is; a warning, good or bad colour only marks such a value.
+// The one rule for empty values on every page (owner, 14 Nov 2026).
+//  - The big number of a summary card reads "—" only when there is no data source for it: no active connection that feeds
+//    it, not loaded, the request failed, or it cannot be worked out (a margin or an average over a zero base).
+//  - When the source exists and the count or amount is really zero, it reads "0" / "₺0" / "%0" in the neutral ink, with
+//    its unit word ("0 Paket", "0 Bekleyen"). A dash takes no unit word.
+//  - Sub-lines, notes, change pills and tab, chip, badge and sidebar counters read zero in their own format when empty
+//    ("Sipariş başına ₺0", "%0", "0"). A reason note ("Maliyet Eksik") stays as it is.
+//  - A warning, good or bad colour only marks a number above nought.
 export const noValue = '—'
 
-type CountState = { loading?: boolean; error?: boolean }
+type CountState = { loading?: boolean; error?: boolean; hasSource?: boolean }
 
-/** A card's count: "…" while it is on its way, "—" when it failed or there is nothing to count, else the number. */
+/** A card's count: "…" while it is on its way, "—" without a data source or when it failed, else the number ("0" included). */
 export function cardCountText(value: number | null | undefined, state: CountState = {}): string {
   if (state.error) return noValue
   if (state.loading) return '…'
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value.toLocaleString('tr-TR') : noValue
+  if (state.hasSource === false) return noValue
+  return typeof value === 'number' && Number.isFinite(value) ? value.toLocaleString('tr-TR') : noValue
 }
 
 /** True when a figure deserves its semantic colour: a number above nought. */
@@ -24,7 +26,7 @@ export function toneAbove<T extends string>(value: number | null | undefined, to
   return isAboveZero(value) ? tone : undefined
 }
 
-/** A main value with the unit word that belongs to it ("3 Paket"); a dash takes no unit ("—"): the word is left out. */
+/** A main value with the unit word that belongs to it ("0 Paket"); a dash takes no unit: the word is left out. */
 export function valueWithUnit(value: number | null | undefined, unit: string, format: (value: number) => string = number => number.toLocaleString('tr-TR')): string {
-  return isAboveZero(value) ? `${format(value as number)} ${unit}` : noValue
+  return typeof value === 'number' && Number.isFinite(value) ? `${format(value)} ${unit}` : noValue
 }

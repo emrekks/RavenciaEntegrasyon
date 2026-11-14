@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isWaitingJob, jobAttemptOutcome, jobAttemptResultLabel, jobAttemptsText, waitingJobLabel } from './job-waiting'
+import { isWaitingJob, jobAttemptOutcome, jobAttemptResultLabel, jobAttemptsText, waitingJobLabel, isContinuingJob, queuedWait } from './job-waiting'
 
 const attempt = (patch: Partial<{ completedAt: string | null; succeeded: boolean; errorCode: string | null; outcome: string }>) => ({ completedAt: '2026-10-29T11:17:02Z', succeeded: false, errorCode: null, ...patch })
 
@@ -36,5 +36,24 @@ describe('waiting checks', () => {
     expect(isWaitingJob({ status: 'DEAD', waiting: true })).toBe(false)
     expect(waitingJobLabel({ lastErrorCode: 'HEPSIBURADA_PRODUCT_APPROVAL_PENDING' })).toBe('Onay Bekleniyor')
     expect(waitingJobLabel({ lastErrorCode: 'PRODUCT_BATCH_PENDING' })).toBe('İşleniyor')
+  })
+})
+
+describe('a job that continues in windows', () => {
+  it('is running, not a retry', () => {
+    expect(isContinuingJob({ status: 'RETRY_SCHEDULED', lastErrorCode: 'SLICE_CONTINUES' })).toBe(true)
+    expect(isContinuingJob({ status: 'RETRY_SCHEDULED', lastErrorCode: 'RATE_LIMITED' })).toBe(false)
+    expect(isContinuingJob({ status: 'DEAD', lastErrorCode: 'SLICE_CONTINUES' })).toBe(false)
+  })
+})
+
+describe('a job waiting its turn', () => {
+  it('reads as queued, not as a retry', () => {
+    expect(queuedWait({ status: 'RETRY_SCHEDULED', lastErrorCode: 'CONNECTION_OPERATION_BUSY' })).toMatchObject({ label: 'Sırada', line: 'aynı bağlantıdaki işlem bitince başlayacak' })
+    expect(queuedWait({ status: 'PENDING', lastErrorCode: 'INITIAL_SYNC_PENDING' })?.label).toBe('Sırada')
+    expect(queuedWait({ status: 'RETRY_SCHEDULED', lastErrorCode: 'N11_LOCAL_QUOTA_WAIT' })?.label).toBe('Kota Bekleniyor')
+    expect(queuedWait({ status: 'RETRY_SCHEDULED', lastErrorCode: 'LOCAL_QUOTA_WAIT' })?.label).toBe('Kota Bekleniyor')
+    expect(queuedWait({ status: 'RETRY_SCHEDULED', lastErrorCode: 'HTTP_500' })).toBeNull()
+    expect(queuedWait({ status: 'DEAD', lastErrorCode: 'CONNECTION_OPERATION_BUSY' })).toBeNull()
   })
 })

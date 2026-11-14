@@ -61,7 +61,7 @@ export function adReportRow(data: AdReports | undefined, failed: boolean, now = 
   return { value, sub, note, tone: stale ? 'warn' as const : undefined }
 }
 
-type Message = { kind: 'success' | 'error' | 'info'; text: string; warnings?: string[] }
+type Message = { kind: 'success' | 'error' | 'info' | 'warning'; text: string; warnings?: string[] }
 
 // The report in a window: what it says in total (labelled a campaign total with its date), the campaigns, and the upload.
 export function AdReportModal({ open, onClose, data }: { open: boolean; onClose: () => void; data: AdReports | undefined }) {

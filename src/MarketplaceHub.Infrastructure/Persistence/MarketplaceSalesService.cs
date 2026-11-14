@@ -2192,7 +2192,6 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 : null;
             var firstLine = claimLines.Select(x => orderLines.GetValueOrDefault(x.OrderLineId)).FirstOrDefault(x => x is not null);
             var firstVariant = firstLine is null ? null : ResolveReturnVariant(firstLine);
-            var image = firstVariant is null ? null : returnImageUrls.GetValueOrDefault(firstVariant.Id);
             var lineViews = claimLines.Select(returnLine =>
             {
                 var line = orderLines.GetValueOrDefault(returnLine.OrderLineId);
@@ -2201,14 +2200,17 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 var variant = ResolveReturnVariant(line);
                 // The marketplace's photo with the catalog's behind it: a marketplace address that stops loading (a
                 // Pazarama img.pzrmcdn.com link answered 403 on 6 Nov 2026) falls back to our own picture.
-                var images = LineImageUrls(source.ImageUrl, variant is null ? null : returnImageUrls.GetValueOrDefault(variant.Id));
+                // With neither a marketplace nor a catalog photo (the catalog may be empty) the barcode lookup the order
+                // screens use gives the photo, so a return line shows what its order line shows.
+                var images = ReturnDetailLineImageUrls(source.ImageUrl, variant is null ? null : returnImageUrls.GetValueOrDefault(variant.Id),
+                    string.IsNullOrWhiteSpace(line.Barcode) ? string.IsNullOrWhiteSpace(line.Sku) ? variant?.Barcode : line.Sku : line.Barcode, claim.ConnectionId);
                 return new OrderLineView(line.Id, line.Sku, line.Barcode ?? variant?.Barcode, line.TitleSnapshot, returnLine.Quantity, line.CancelledQuantity, line.ShippedQuantity, line.DeliveredQuantity, line.ReturnedQuantity, line.UnitPrice, line.VatRate, line.RawStatus, line.VariantId ?? variant?.Id, ReturnLineModelCode(variant, source.ModelCode), variant?.OptionSignature ?? source.OptionSignature, images.ImageUrl,
                     FallbackImageUrl: images.FallbackImageUrl,
                     ReturnAmounts: ReturnMarketplaceAmounts.Line(platformCode, line.SourceSnapshotJson, returnLine.Quantity, claim.ExternalClaimId));
             }).Where(line => line is not null).Select(line => line!).ToList();
             return new ReturnListView(claim.Id, claim.ExternalClaimId, order?.OrderNumber ?? "—", ReturnStatusWire(claim.Status, claimLines.Select(x => x.RawStatus).ToList()), claim.RawStatus, claim.ReasonText, ReturnActionDueAt(platformCode, claim.RawStatus, claim.ActionDueAt, claim.LastRemoteModifiedAt), claim.Version,
                 order is null ? "—" : Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).Name,
-                order?.OrderedAt, order?.NetAmount ?? 0, order?.Currency ?? "TRY", claim.CargoProviderName, claim.CargoTrackingNumber, image, claimLines.Count, firstLine?.Barcode ?? firstVariant?.Barcode,
+                order?.OrderedAt, order?.NetAmount ?? 0, order?.Currency ?? "TRY", claim.CargoProviderName, claim.CargoTrackingNumber, lineViews.FirstOrDefault()?.ImageUrl, claimLines.Count, firstLine?.Barcode ?? firstVariant?.Barcode,
                 lineViews, package?.ExternalPackageId, order is null ? "FATURA_BEKLIYOR" : ReturnInvoiceLabel(invoice, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, package is null ? [] : [package.RawStatus], packageDeliveryConfirmed), order?.GrossAmount ?? 0, order?.DiscountAmount ?? 0,
                 order is not null && Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).IsMicroExport,
                 claimConnection?.Id ?? connection?.Id, platformCode, claimConnection?.DisplayName ?? connection?.DisplayName ?? "Trendyol", outboundPackage?.CargoProviderExternalId, outboundPackage?.CargoTrackingNumber, claim.ReasonCode, approvedAt, claim.CargoTrackingLink,
@@ -2419,7 +2421,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             var sourceSnapshot = source is null ? null : SourceLine(source.SourceSnapshotJson);
             var variant = source is null ? null : ResolveReturnDetailVariant(source);
             var disposed = dispositions.GetValueOrDefault(line.Id);
-            var images = ReturnDetailLineImageUrls(sourceSnapshot?.ImageUrl, variant is null ? null : imageUrls.GetValueOrDefault(variant.Id), source?.Barcode);
+            var images = ReturnDetailLineImageUrls(sourceSnapshot?.ImageUrl, variant is null ? null : imageUrls.GetValueOrDefault(variant.Id), string.IsNullOrWhiteSpace(source?.Barcode) ? source?.Sku : source.Barcode, claim.ConnectionId);
             return new ReturnLineView(line.Id, line.ExternalLineId, line.OrderLineId, source?.Sku ?? "—", source?.Barcode, source?.TitleSnapshot ?? "—", line.Quantity, disposed, Math.Max(0, line.Quantity - disposed), source?.UnitPrice ?? 0,
                 images.ImageUrl,
                 variant is not null && inventoryVariants.Contains(variant.Id),
@@ -3648,11 +3650,12 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
 
     // A return detail line's photo: the marketplace's with the catalog's as fallback (LineImageUrls); with neither, the
     // barcode lookup (/orders/product-image) is the photo.
-    internal static (string? ImageUrl, string? FallbackImageUrl) ReturnDetailLineImageUrls(string? sourceImageUrl, string? catalogImageUrl, string? barcode)
+    // The lookup carries the claim's store (connectionId) when known, as the order screens' own lookup does.
+    internal static (string? ImageUrl, string? FallbackImageUrl) ReturnDetailLineImageUrls(string? sourceImageUrl, string? catalogImageUrl, string? barcode, Guid? connectionId = null)
     {
         var images = LineImageUrls(sourceImageUrl, catalogImageUrl);
         return images.ImageUrl is null && !string.IsNullOrWhiteSpace(barcode)
-            ? ($"/api/v1/orders/product-image?barcode={Uri.EscapeDataString(barcode)}", null)
+            ? ($"/api/v1/orders/product-image?barcode={Uri.EscapeDataString(barcode)}{(connectionId is { } id && id != Guid.Empty ? $"&connectionId={id:D}" : "")}", null)
             : images;
     }
 

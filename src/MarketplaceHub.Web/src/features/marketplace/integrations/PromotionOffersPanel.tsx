@@ -33,7 +33,7 @@ export type FlashSlot = { slot: string; start: string | null; end: string | null
 export type FlashOffer = Product & { barcodes: string[]; costLow: number | null; costHigh: number | null; inTariff: boolean | null; campaign: boolean | null; now: PromotionPrice | null; slots: FlashSlot[] }
 type Detail = { offer: PromotionSummary; plus: PlusOffer[] | null; advantage: AdvantageOffer[] | null; flash: FlashOffer[] | null }
 type UploadResult = { offer: PromotionSummary; skippedRows: number; warnings: string[] }
-type PanelMessage = { kind: 'success' | 'error' | 'info'; text: string; warnings?: string[] }
+type PanelMessage = { kind: 'success' | 'error' | 'info' | 'warning'; text: string; warnings?: string[] }
 
 export const promotionTitles: Record<PromotionKind, string> = { PLUS: 'Plus Komisyon Tarifesi', ADVANTAGE: 'Avantajlı Ürün Etiketi', FLASH: 'Flash Ürünler' }
 const promotionHelp: Record<PromotionKind, string> = {

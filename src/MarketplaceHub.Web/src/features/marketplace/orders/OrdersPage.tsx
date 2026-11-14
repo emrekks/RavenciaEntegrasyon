@@ -36,6 +36,7 @@ import { formatPackageLabel } from '../../../shared/package-label'
 import { readUrlChoice, readUrlList, readUrlNumber, readUrlText, useChangeEffect, useListUrlSync } from '../../../shared/list-url-state'
 import { labelPersonalData, loadOrderLabelDetails, type OrderLabelDetail } from './shipping-label-data'
 import { OrderMetricCards } from './OrderMetricCards'
+import { useMetricSource } from '../use-metric-source'
 import { useResendReminder } from './resend-reminder'
 import { orderDetailQueryKey } from './order-query-keys'
 import { deliveryDueLine, deliveryText, dueLineTitle, orderRingDetail } from './order-delivery'
@@ -774,9 +775,9 @@ function ShopifyBulkStatusModal({ kind, items, onClose, onFeedback, onUpdated }:
         : orderStatusLabel(status)
       const noun = isInvoice ? 'fatura durumu' : 'sipariş durumu'
       const prefix = `${succeeded.length}/${items.length} Shopify siparişinin ${noun} “${statusName}” olarak güncellendi.`
-      const failureDetails = failed.slice(0, 4).map(result => `${displayOrderNumber(result.item.orderNumber)}: ${result.error}`).join(' · ')
-      const remainingFailures = failed.length > 4 ? ` · ${failed.length - 4} ek hata` : ''
-      onFeedback(failed.length ? `${prefix} Başarısız: ${failureDetails}${remainingFailures}` : prefix, failed.length === 0 ? 'success' : 'error')
+      const failureDetails = failed.slice(0, 4).map(result => `${displayOrderNumber(result.item.orderNumber)}: ${result.error}`).join('; ')
+      const remainingFailures = failed.length > 4 ? `; ${failed.length - 4} sipariş daha` : ''
+      onFeedback(failed.length ? `${prefix} ${failed.length} sipariş işlenemedi: ${failureDetails}${remainingFailures}.` : prefix, failed.length === 0 ? 'success' : 'error')
       onClose()
     }
   })
@@ -852,6 +853,9 @@ export function OrdersPage() {
   const connections = useQuery({ queryKey: ['connections', 'orders-invoice'], queryFn: () => loadAllPages<Connection>('/connections') })
   const providers = connections.data?.items.filter(x => x.platformCode === 'TRENDYOL_EFATURAM' && !x.lastErrorCode && (x.status === 'ACTIVE' || x.status === 'VERIFIED')) ?? []
   const marketplaceConnections = connections.data?.items.filter(isActiveMarketplaceConnection) ?? []
+  // Without an active marketplace connection no card has a data source: its big number is a dash, not a zero (shared/metric-value.ts).
+  const noCardSource = useMetricSource() === false
+  const cardSource = <T extends { value: number | undefined }>(metric: T): T => noCardSource ? { ...metric, value: undefined } : metric
   const shopifyConnections = connections.data?.items.filter(x => x.platformCode === 'SHOPIFY') ?? []
   const allOrders = ordersQuery.data?.items ?? [];
   const all = allOrders.filter(item => isMarketplacePlatformSelected(selectedPlatforms, item.platformCode));
@@ -1012,7 +1016,7 @@ export function OrdersPage() {
   const statusSlide = useTabSlide(filters.status, orderStatusTabOrder)
   return <section className="content f3 rr rr-orders">
     <div className="rr-ph"><div><div className="rr-crumb">Pazaryeri Operasyonu</div><h1>Siparişler</h1></div><div className="rr-acts"><button type="button" className="rr-btn" disabled={!items.length || exporting} aria-busy={exporting} title={exporting ? 'Dışa Aktarılıyor…' : undefined} onClick={() => void exportOrders()}><RrIcon name="export" />Dışa Aktar</button><button type="button" className="rr-btn" onClick={() => setShopifyCsvImportOpen(true)}><RrIcon name="import" />İçe Aktar</button><button type="button" className="rr-btn rr-primary" onClick={() => setSingleSyncOpen(true)}><RrIcon name="refresh" /><span className="rr-long">Sipariş Senkronizasyonu</span><span className="rr-short">Senkronize Et</span></button></div></div>
-    <OrderMetricCards newOrders={summaryMetric(summary, value => value.new)} newUnits={newUnits?.units} newRows={newUnits?.rows} newCargo={summary.data?.newByCargo} processing={summaryMetric(summary, value => value.processing)} processingUnits={processingUnits?.units} processingRows={processingUnits?.rows} processingCargo={summary.data?.processingByCargo} late={summaryMetric(summary, value => value.late)} microExport={summaryMetric(microPending, value => value.microExport)} microCountries={microPending.isError ? undefined : microPending.data?.microExportCountries ?? undefined} resent={summaryMetric(resentNotShipped, value => value.resent)} resentRows={resentStores} resentReminder={resendReminder.count} onSaveResentReminder={resendReminder.save} lateRows={lateStores} cancelledRows={cancelStores} onOpenDay={openDayCard} activeCard={openCard} cancelled={todayCancellationMetric(counts => counts.whole + counts.partial)} cancelledUnits={todayCancellations?.wholeUnits} partiallyCancelled={todayCancellationMetric(counts => counts.partial)} partialUnits={todayCancellations?.partialUnits} />
+    <OrderMetricCards newOrders={cardSource(summaryMetric(summary, value => value.new))} newUnits={newUnits?.units} newRows={newUnits?.rows} newCargo={summary.data?.newByCargo} processing={cardSource(summaryMetric(summary, value => value.processing))} processingUnits={processingUnits?.units} processingRows={processingUnits?.rows} processingCargo={summary.data?.processingByCargo} late={cardSource(summaryMetric(summary, value => value.late))} microExport={cardSource(summaryMetric(microPending, value => value.microExport))} microCountries={microPending.isError ? undefined : microPending.data?.microExportCountries ?? undefined} resent={cardSource(summaryMetric(resentNotShipped, value => value.resent))} resentRows={resentStores} resentReminder={resendReminder.count} onSaveResentReminder={resendReminder.save} lateRows={lateStores} cancelledRows={cancelStores} onOpenDay={openDayCard} activeCard={openCard} cancelled={cardSource(todayCancellationMetric(counts => counts.whole + counts.partial))} cancelledUnits={todayCancellations?.wholeUnits} partiallyCancelled={todayCancellationMetric(counts => counts.partial)} partialUnits={todayCancellations?.partialUnits} />
     {bulkNotice && <NoticeToast key={bulkNoticeVersion} kind={bulkNoticeKind} message={bulkNotice} onClose={() => setBulkNotice('')} durationMs={bulkNoticeKind === 'pending' ? undefined : 5000} />}
     <div className="rr-fshell">
       <ViewTabsWithMore className="order-tabs" more={orderStatusMoreTabs} ariaLabel="Sipariş durumları" value={filters.status} onChange={selectStatus} items={orderStatusTabs.filter(([value]) => !orderLinkOnlyTabs.includes(value) || value === filters.status).map(([value, label]) => { const counted = summary.isError ? undefined : tabCount(value); return { value, label: viewTabLabel(({ ALL: 'all', NEW: 'new', PROCESSING: 'processing', SHIPPED: 'shipping', DELIVERED: 'delivered', CANCELLED: 'cancelled', RESENT: 'resend', ON_HOLD: 'paused', PARTIALLY_CANCELLED: 'partial', UNDELIVERED: 'attention', RETURN_IN_TRANSIT: 'return', RETURNED: 'return', MANUAL_REVIEW: 'review', PAYMENT_PENDING: 'waiting', UNVERIFIED: 'attention', PENDING: 'due', LATE: 'attention' } as const)[value], label), count: tabCountText(value), countTone: value === 'NEW' && !summary.isLoading && (counted ?? 0) > 0 ? 'warn' as const : undefined } })} />

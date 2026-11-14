@@ -32,6 +32,30 @@ export function isWaitingJob(job: Pick<JobLike, 'status' | 'waiting'>) {
   return Boolean(job.waiting) && (job.status === 'PENDING' || job.status === 'RETRY_SCHEDULED')
 }
 
+// A long job that read one window and saved its position (RETRY_SCHEDULED with SLICE_CONTINUES) runs again in seconds:
+// it is not retrying and has not failed. The server counts it apart as CONTINUING.
+export const sliceContinuesCode = 'SLICE_CONTINUES'
+export function isContinuingJob(job: Pick<JobLike, 'status' | 'lastErrorCode'>) {
+  return job.status === 'RETRY_SCHEDULED' && job.lastErrorCode?.trim().toUpperCase() === sliceContinuesCode
+}
+
+// A job deferred on purpose, with its attempt given back (the connection is busy with another job, an earlier read is
+// pending, the platform's request quota is used up): it is waiting its turn, not retrying after an error.
+export type QueuedWait = { label: string; line: string; description: string }
+const turnWait: Omit<QueuedWait, 'label'> = {
+  line: 'aynı bağlantıdaki işlem bitince başlayacak',
+  description: 'Bu bağlantıda aynı türde başka bir işlem sürüyor; işlem tamamlanınca otomatik çalıştırılacak. Bu bir hata değil.'
+}
+const turnCodes = new Set(['CONNECTION_OPERATION_BUSY', 'ORDER_INVOICE_RECONCILIATION_BUSY', 'TARGETED_ORDER_SYNC_BUSY', 'CONNECTION_FULL_RESET_BUSY', 'PANEL_RESET_BUSY', 'ORDER_READ_PENDING', 'PRODUCT_FAMILY_ORDER_WAIT'])
+export function queuedWait(job: Pick<JobLike, 'status' | 'lastErrorCode'>): QueuedWait | null {
+  if (job.status !== 'PENDING' && job.status !== 'RETRY_SCHEDULED') return null
+  const code = job.lastErrorCode?.trim().toUpperCase() ?? ''
+  if (turnCodes.has(code)) return { label: 'Sırada', ...turnWait }
+  if (code === 'INITIAL_SYNC_PENDING') return { label: 'Sırada', line: 'ilk veri aktarımı bitince başlayacak', description: 'İlk kapsamlı veri aktarımı tamamlanmadan bu işlem başlamaz; aktarım bitince otomatik çalıştırılacak. Bu bir hata değil.' }
+  if (code === 'LOCAL_QUOTA_WAIT' || code.endsWith('_LOCAL_QUOTA_WAIT')) return { label: 'Kota Bekleniyor', line: 'platform istek kotası dolunca yeniden denenecek', description: 'Platformun istek kotası dolu olduğu için istek gönderilmedi; kota yenilenince otomatik çalıştırılacak. Bu bir hata değil.' }
+  return null
+}
+
 export function waitingJobLabel(job: Pick<JobLike, 'lastErrorCode'>) {
   return isApprovalWait(job.lastErrorCode) ? 'Onay Bekleniyor' : 'İşleniyor'
 }

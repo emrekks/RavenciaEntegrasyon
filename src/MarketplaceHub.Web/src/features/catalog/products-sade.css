@@ -546,3 +546,8 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-filters.rr-has-sort { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) auto; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-filters.rr-has-sort .rr-fbtns { grid-column: auto; align-self: end; justify-content: flex-end; }
 }
+
+/* Platform Durumu in the product list: six 24 px marks with 3 px gaps (159 px) fit inside the column's 14 px side padding,
+   so the first and last marks keep a gap from the cell edges and the table no longer runs past its card (owner, 14 Nov 2026). */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl td[data-l="Platform Durumu"] .rr-pmarks { gap: 3px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl td[data-l="Platform Durumu"] .rr-pm .rr-logo { width: 24px; height: 24px; }

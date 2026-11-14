@@ -114,6 +114,17 @@ public sealed class MarketplaceSalesImageUrlTests
             MarketplaceSalesService.ReturnDetailLineImageUrls(null, "/api/v1/files/product-media/1/content", "MZ028IH6"));
     }
 
+    // Live 14 Nov 2026: the catalog held no variant, so return list rows (unlike the order list, whose thumbnails ask the
+    // barcode lookup) showed "Görsel yok"; the list now carries the lookup, with the claim's store.
+    [Fact]
+    public void ReturnLineLookupCarriesTheClaimStoreAndSkipsAnEmptyOne()
+    {
+        var store = Guid.Parse("01a05a69-86cd-7a57-af4f-d9d7276a5437");
+        Assert.Equal<(string?, string?)>(("/api/v1/orders/product-image?barcode=KRL11010103&connectionId=01a05a69-86cd-7a57-af4f-d9d7276a5437", null), MarketplaceSalesService.ReturnDetailLineImageUrls(null, null, "KRL11010103", store));
+        Assert.Equal<(string?, string?)>(("/api/v1/orders/product-image?barcode=KRL11010103", null), MarketplaceSalesService.ReturnDetailLineImageUrls(null, null, "KRL11010103", Guid.Empty));
+        Assert.Equal<(string?, string?)>(("https://cdn.example.test/a.jpg", null), MarketplaceSalesService.ReturnDetailLineImageUrls("https://cdn.example.test/a.jpg", null, "KRL11010103", store));
+    }
+
     [Fact]
     public void ReturnDetailLineLooksTheBarcodeUpOnlyWhenNoPhotoIsKnown()
     {

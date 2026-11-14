@@ -1,19 +1,13 @@
 import { useContext, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { appendNotification, normalizeNotificationKind, notificationError, type NotificationContext } from '../notifications'
+import { composeNotice } from '../notice-copy'
 import { ToneIcon } from './ToneIcon'
 import { ToastViewportContext } from './toast-stack-context'
 import { UiIcon } from './UiIcon'
 import './notice-toast.css'
 
-export type NoticeToastKind = 'success' | 'error' | 'info' | 'pending'
-
-const defaultTitles: Record<NoticeToastKind, string> = {
-  success: 'İşlem Başarılı',
-  error: 'İşlem Başarısız',
-  info: 'Bilgi',
-  pending: 'İşlem Sürüyor'
-}
+export type NoticeToastKind = 'success' | 'error' | 'info' | 'warning' | 'pending'
 
 // A top-right notification of the panel. Inside the shell it is drawn into the shared toast column, below the toasts
 // already shown. Tone shows only in the icon tile and the countdown bar, the card itself always follows the theme.
@@ -28,6 +22,9 @@ export function NoticeToast({ kind, message, lines, title, onClose, durationMs, 
   className?: string
 }) {
   const failed = kind === 'error'
+  const several = !!lines && lines.length > 1
+  // Title and body follow the wording policy (notice-copy.ts): a body never repeats its title.
+  const copy = composeNotice(kind, title, several ? '' : lines?.[0] ?? message)
   const viewport = useContext(ToastViewportContext)
   const toast = <div
     className={['app-toast', `app-toast-${kind}`, className].filter(Boolean).join(' ')}
@@ -42,10 +39,10 @@ export function NoticeToast({ kind, message, lines, title, onClose, durationMs, 
         : <ToneIcon kind={kind} />}
     </span>
     <div className="app-toast-content">
-      <strong>{title ?? defaultTitles[kind]}</strong>
-      {lines && lines.length > 1
+      <strong>{copy.title}</strong>
+      {several
         ? <ul className="app-toast-lines">{lines.map((line, index) => <li key={index}>{line}</li>)}</ul>
-        : <p>{lines?.[0] ?? message}</p>}
+        : copy.body && <p>{copy.body}</p>}
     </div>
     {onClose && <button type="button" className="app-toast-close" onClick={onClose} aria-label="Bildirimi kapat"><UiIcon name="close" size={16} /></button>}
     {(durationMs || kind === 'pending') && <span className="app-toast-track" aria-hidden="true"><span className="app-toast-progress" /></span>}
@@ -56,8 +53,8 @@ export function NoticeToast({ kind, message, lines, title, onClose, durationMs, 
 // A plain message: the tone is the one the caller names, or else comes from its wording the way the notification
 // history reads it. A caller that knows it is reporting a failure says so: a marketplace's own error text rarely
 // contains the words the wording check looks for and would otherwise show as a green success.
-export function MessageToast({ message, onClose, kind: explicitKind }: { message: string; onClose: () => void; kind?: 'success' | 'error' | 'info' }) {
-  const kind = explicitKind ?? normalizeNotificationKind(message, 'success')
+export function MessageToast({ message, onClose, kind: explicitKind }: { message: string; onClose: () => void; kind?: 'success' | 'error' | 'info' | 'warning' }) {
+  const kind = explicitKind ?? (normalizeNotificationKind(message, 'success') as 'success' | 'error' | 'info')
   const durationMs = kind === 'info' ? 7000 : 5500
   const onCloseRef = useRef(onClose)
   useEffect(() => { onCloseRef.current = onClose })

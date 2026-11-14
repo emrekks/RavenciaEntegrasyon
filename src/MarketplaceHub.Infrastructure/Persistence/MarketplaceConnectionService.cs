@@ -591,8 +591,8 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             return active
-                ? "Bağlantı etkinleşti ama webhook yeniden açılamadı; Webhook bölümünden Webhook'u Aç'a basın."
-                : "Bağlantı pasife alındı ama webhook kapatılamadı; Webhook bölümünden Webhook'u Kapat'a basın.";
+                ? "Webhook yeniden açılamadı. Webhook bölümünden Webhook'u Aç'a basın; panel saatte bir yeniden dener."
+                : "Webhook kapatılamadı. Webhook bölümünden Webhook'u Kapat'a basın; panel saatte bir yeniden dener.";
         }
     }
 
