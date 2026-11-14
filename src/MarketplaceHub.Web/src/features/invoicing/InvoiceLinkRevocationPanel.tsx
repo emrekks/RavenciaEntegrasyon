@@ -3,6 +3,8 @@ import { hubApi } from '../../shared/api'
 import { newIdempotencyKey } from '../../shared/idempotency'
 import { invoiceSendDeniedReason, useCanSendInvoices } from '../../shared/hooks/useCanSendInvoices'
 import { formatPackageLabel } from '../../shared/package-label'
+import { platformCodeFromName } from '../../shared/notifications'
+import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { Badge, Button, useConfirmDialog } from '../../shared/components'
 import { linkRevocationActionLabel, linkRevocationConfirmCopy, linkRevocationNote, linkRevocationStatusLabel, linkRevocationSuccessMessage, linkRevocationTone, type InvoiceLinkRevocation } from './invoice-link-revocation'
 import './invoice-link-revocation.css'
@@ -51,7 +53,7 @@ export function InvoiceLinkRevocationPanel({ invoiceId, invoiceNumber, items, on
       const running = revoke.isPending && revoke.variables?.deliveryStateId === item.deliveryStateId
       return <div className="record-card invoice-link-revocation" key={item.deliveryStateId}>
         <span className="invoice-link-revocation-body">
-          <strong>{item.platformName}{item.packageNumber ? ` · Paket ${formatPackageLabel(item.packageNumber)}` : ''}</strong>
+          <strong><PlatformSquareMark code={platformCodeFromName(item.platformName)} name={item.platformName} size="sm" /> {item.platformName}{item.packageNumber ? ` · Paket ${formatPackageLabel(item.packageNumber)}` : ''}</strong>
           {item.status !== 'LINK_REMOVED' && <small>{item.instructions}</small>}
           {note && <small>{note}</small>}
           {item.errorCode && item.status !== 'LINK_REMOVED' && <small>Son hata: <code className="technical-text">{item.errorCode}</code></small>}

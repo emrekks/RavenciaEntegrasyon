@@ -408,6 +408,15 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     await settle()
     const hint = container.querySelector<HTMLButtonElement>('[role="dialog"] h2 button.title-hint')!
     expect(document.getElementById(hint.getAttribute('aria-describedby')!)?.textContent).toContain('fatura dosyası yüklenmez')
+    const platformCells = Array.from(container.querySelectorAll<HTMLElement>('.invoice-bulk-status-orders .invoice-bulk-status-platform'))
+    expect(platformCells.length).toBeGreaterThan(0)
+    for (const cell of platformCells) {
+      expect(cell.textContent).toBe('')
+      const mark = cell.querySelector<HTMLElement>('.platform-square-mark.platform-logo-shopify')
+      expect(mark?.getAttribute('role')).toBe('img')
+      expect(mark?.getAttribute('aria-label')).toBeTruthy()
+      expect(mark?.querySelector('img')?.getAttribute('src')).toBe('/platforms/shopify.webp')
+    }
     const status = container.querySelector<HTMLButtonElement>('button[aria-label^="Yeni fatura durumu"]')!
     act(() => status.click())
     act(() => Array.from(document.querySelectorAll<HTMLButtonElement>('[role="option"]')).find(option => option.textContent === 'Faturası Yüklendi')!.click())
