@@ -700,11 +700,11 @@ function CostLinesCard({ data, money }: { data: ReportSales; money: Money | null
         <div key={picked?.key ?? 'total'} className="reports-donut-swap" aria-live="polite">{picked ? <>
           <small>{picked.label}</small>
           <strong>{formatTlWhole(picked.value)}</strong>
-          <span>masrafların {formatPercent(total > 0 ? picked.value / total : null)} kadarı</span>
+          <span>Masraf payı {formatPercent(total > 0 ? picked.value / total : null)}</span>
         </> : <>
           <small>Toplam Masraf</small>
           <strong>{formatTlWhole(total)}</strong>
-          <span>satışın {formatPercent(money.total > 0 ? total / money.total : null)} kadarı</span>
+          <span>Satış payı {formatPercent(money.total > 0 ? total / money.total : null)}</span>
         </>}</div>
       </Donut>
       {/* A line's name is a button like the panel's "?": a tap on a phone or Tab on a keyboard opens its explanation too. */}
@@ -1377,7 +1377,7 @@ function overviewCards(data: ReportSales, money: Money | null, ads: AdReports | 
       rows: [line(cost, 'commission', 'Komisyon Oranı'), line(order, 'cargo', 'Sipariş Başına Kargo'), line(order, 'unitCargo', 'Adet Başına Kargo')] },
     { key: 'ads', title: 'Reklam · Trendyol', tipTitle: 'Trendyol Reklamı', value: spend === null ? '—' : formatTlWhole(spend),
       aside: tacos === null ? 'reklam harcaması' : `sınır ${limitText(tacosLine)}`,
-      badge: tacos === null ? undefined : `payı ${formatPercent(tacos, 2)}`, badgeTone: over(tacos, tacosLine) ? 'warn' : undefined,
+      badge: tacos === null ? undefined : `payı ${formatPercent(tacos)}`, badgeTone: over(tacos, tacosLine) ? 'warn' : undefined,
       note: `${metric(cost, 'spend').note}\nPayı, Trendyol net cirosuna oranıdır; ${formatPercent(tacosLine)} sınırını geçince uyarı rengiyle yazılır.`,
       tone: over(tacos, tacosLine) ? 'warn' : undefined, bar: tacos === null ? undefined : { value: tacos, scale: 0.1, threshold: tacosLine, tone: over(tacos, tacosLine) ? 'warn' : 'plain' },
       rows: [line(cost, 'perOrder', 'Sipariş Başına Reklam'), ...adRows] },
@@ -2190,27 +2190,31 @@ function statementRows(costs: ReportCosts): CostLine[] {
   return [...rows.values()]
 }
 
+// The returned bucket's short name: "İade – Fatura Gerekmez" did not fit a strip cell or a table header (14 Nov 2026).
+const returnedShort = 'Fatura Gerekmez'
+const invoiceLabel = (bucket: { key: string; label: string }) => bucket.key === 'RETURNED' ? returnedShort : bucket.label
+
 // Fatura: the packages by invoice state as one bar beside each platform's counts.
 function Invoices({ data }: { data: ReportSales }) {
   const total = data.invoices.buckets.reduce((sum, bucket) => sum + bucket.packages, 0)
   const tone = (key: string) => key === 'INVOICED' ? 'left' : key === 'NOT_INVOICED' ? 'returned' : key === 'RETURNED' ? 'cargo' : 'fees'
-  const parts: Part[] = data.invoices.buckets.map(bucket => ({ key: bucket.key, label: bucket.label, value: bucket.packages, tone: tone(bucket.key) }))
+  const parts: Part[] = data.invoices.buckets.map(bucket => ({ key: bucket.key, label: invoiceLabel(bucket), value: bucket.packages, tone: tone(bucket.key) }))
   return <div className="reports-grid">
-    <div className="is-wide"><KpiStrip label="Faturanın göstergeleri" items={data.invoices.buckets.map(bucket => ({ key: bucket.key, label: bucket.label, value: bucket.packages, format: formatCount,
-      note: `Paketlerin ${formatPercent(total > 0 ? bucket.packages / total : null)} kadarı`, tip: `Bu fatura durumundaki paketler; toplam tutarları ${formatTl(bucket.amount)}.`, tone: bucket.key === 'NOT_INVOICED' && bucket.packages > 0 ? 'warn' as const : undefined }))} /></div>
+    <div className="is-wide"><KpiStrip label="Faturanın göstergeleri" items={data.invoices.buckets.map(bucket => ({ key: bucket.key, label: invoiceLabel(bucket), value: bucket.packages, format: formatCount,
+      note: `Paketlerin ${formatPercent(total > 0 ? bucket.packages / total : null)} kadarı`, tip: `${bucket.key === 'RETURNED' ? 'İade edilen, fatura gerekmeyen paketler' : 'Bu fatura durumundaki paketler'}; toplam tutarları ${formatTl(bucket.amount)}.\nTutar müşterinin ödediğidir: pazaryerinin kendi indirimi Toplam Ciro'ya eklenir, buraya eklenmez.`, tone: bucket.key === 'NOT_INVOICED' && bucket.packages > 0 ? 'warn' as const : undefined }))} /></div>
     <RevealPanel title="Fatura Durumu" description="Panelde kesilen fatura, elle seçilen ya da pazaryerinin bildirdiği duruma göre; hiçbiri yoksa Bilinmiyor. Ayrıntı Faturalar sayfasında.">
       {shown => total > 0 ? <>
         <StackedBar parts={parts} total={total} shown={shown} label={`Fatura durumu: ${parts.map(part => `${part.label} ${formatCount(part.value)}`).join(', ')}`} />
         <ul className="reports-legend-row">{parts.map(part => <li key={part.key}><i className={`is-${part.tone}`} aria-hidden="true" />{part.label}<b>{formatPercent(part.value / total)}</b></li>)}</ul>
       </> : <EmptyState icon="chart" title="Veri Yok">Bu dönemde paket yok.</EmptyState>}
     </RevealPanel>
-    <div><DataTable title="Platformlara Göre Fatura Durumu" csvName="rapor-fatura" rows={data.invoices.platforms} rowKey={row => row.platformCode} initialSort="invoiced"
+    <div className="is-wide"><DataTable title="Platformlara Göre Fatura Durumu" csvName="rapor-fatura" rows={data.invoices.platforms} rowKey={row => row.platformCode} initialSort="invoiced"
       footer={data.invoices.platforms.length > 1 && <tr><td>Toplam</td>{(['invoiced', 'notInvoiced', 'returned', 'unknown'] as const).map(key => <td key={key} className="is-num">{formatCount(data.invoices.platforms.reduce((sum, row) => sum + row[key], 0))}</td>)}</tr>}
       columns={[
       { key: 'platform', header: 'Platform', value: row => platformName(row.platformCode) },
       { key: 'invoiced', header: 'Faturalı', value: row => row.invoiced, render: row => formatCount(row.invoiced), numeric: true },
       { key: 'notInvoiced', header: 'Faturasız', value: row => row.notInvoiced, render: row => formatCount(row.notInvoiced), numeric: true },
-      { key: 'returned', header: 'İade – Fatura Gerekmez', value: row => row.returned, render: row => formatCount(row.returned), numeric: true },
+      { key: 'returned', header: returnedShort, value: row => row.returned, render: row => formatCount(row.returned), numeric: true },
       { key: 'unknown', header: unknownLabel, value: row => row.unknown, render: row => formatCount(row.unknown), numeric: true }
     ]} empty="Bu dönemde paket yok." /></div>
   </div>

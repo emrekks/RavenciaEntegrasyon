@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { change, periodPresets, desiSourcesNote, formatPercent, moneyOrMissing, profitCost, reportQuery, sortRows, toCsv, type ReportSales } from './report-format'
+import { change, periodPresets, desiSourcesNote, formatPercent, formatTlShort, moneyOrMissing, profitCost, reportQuery, sortRows, toCsv, type ReportSales } from './report-format'
 
 describe('report formatting', () => {
+  it('writes an axis zero as ₺0 like the short figures beside it', () => {
+    expect(formatTlShort(0)).toBe(new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(0))
+    expect(formatTlShort(0)).not.toContain(',00')
+  })
   // The same rule as the server's ReportProfitCost (owner, 13 Nov 2026): a profit from 95 % of the kept units with a cost,
   // the rest priced by their share of the sales.
   const cost = (costed: number, extra: Partial<ReportSales['cost']> = {}): ReportSales['cost'] => ({
@@ -33,7 +37,7 @@ describe('report formatting', () => {
     expect(change(5, 0)).toEqual({ text: 'Yeni', direction: 'up' })
     expect(change(0, 5)).toEqual({ text: '−%100', direction: 'down' })
     expect(change(0, 0)).toBeNull()
-    expect(change(0.05, 0.03, 'rate')).toEqual({ text: '+%2,0', direction: 'up' })
+    expect(change(0.05, 0.03, 'rate')).toEqual({ text: '+2,0 puan', direction: 'up' })
     expect(change(null, 3)).toBeNull()
   })
 

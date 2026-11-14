@@ -204,10 +204,10 @@ describe('ReportsPage', () => {
     // written in per cent, not points); every change on its own line, so the notes under them start level.
     expect(figures[1]).toContain('−%20,6')
     expect(figures[1]).toContain('Önceki dönem: ₺160')
-    expect(figures[2]).toContain('−%9,4')
+    expect(figures[2]).toContain('−9,4 puan')
     expect(figures[2]).toContain('Önceki dönem: %45,7')
     expect(page.querySelectorAll('.reports-kpis > div > .reports-kpi-change')).toHaveLength(6)
-    expect(page.querySelector('.reports-kpis')?.textContent).not.toContain('puan')
+    // A rate's change is in percentage points, said so ("−9,4 puan"), not a relative "%" like the counts.
     // Masraf Kalemleri: the account's costs (not the returns, which are taken off the sales) and the product cost, largest
     // first, 123 in all (35,1 % of the sales); what is not read without Trendyol's statement is "—", never ₺0.
     const card = page.querySelector('.reports-card-costlines')!
@@ -219,7 +219,7 @@ describe('ReportsPage', () => {
     expect(card.textContent).not.toContain('₺0,00')
     // A cost picked beside the ring (by the pointer or the keyboard) is shown in its middle and thickens on the ring.
     await act(async () => { card.querySelector<HTMLButtonElement>('.reports-costlines li:first-child button')!.focus() })
-    expect(card.querySelector('.reports-donut-centre')?.textContent).toBe('Ürün Maliyeti₺80masrafların %65,0 kadarı')
+    expect(card.querySelector('.reports-donut-centre')?.textContent).toBe('Ürün Maliyeti₺80Masraf payı %65,0')
     expect(card.querySelector('.reports-donut.has-active .reports-donut-part.is-active')).not.toBeNull()
     await act(async () => { card.querySelector<HTMLButtonElement>('.reports-costlines li:first-child button')!.blur() })
     expect(card.querySelector('.reports-donut-centre')?.textContent).toContain('Toplam Masraf')
@@ -354,7 +354,7 @@ describe('ReportsPage', () => {
     // The advertising spend is told from the deductions tied to no order.
     expect(hero(page, 'ads')).toBe('₺5.000 · sınır %5')
     // TACoS: the spend over Trendyol's net revenue (₺250), not every platform's.
-    expect(heroCard(page, 'ads').querySelector('.reports-hero-badge.is-warn')?.textContent).toBe(`payı ${formatPercent(5000 / 250, 2)}`)
+    expect(heroCard(page, 'ads').querySelector('.reports-hero-badge.is-warn')?.textContent).toBe(`payı ${formatPercent(5000 / 250)}`)
     expect(heroCard(page, 'ads').querySelector('.reports-hero-value strong.is-warn')).not.toBeNull()
     // The spend over Trendyol's 3 orders with an amount; the margin before it gives the advertising back to the profit.
     expect(heroTiles(page, 'ads')[0]).toBe('Sipariş Başına Reklam ₺1.667')

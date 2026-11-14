@@ -176,7 +176,8 @@ export function formatCount(value: number | null | undefined) { return value ===
 export function formatTl(value: number | null | undefined) { return value === null || value === undefined || Number.isNaN(value) ? '—' : money.format(value) }
 const moneyWhole = new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })
 export function formatTlWhole(value: number) { return moneyWhole.format(value) }
-export function formatTlShort(value: number) { return Math.abs(value) >= 10_000 ? moneyShort.format(value) : money.format(value) }
+// Zero is "₺0" like the short figures beside it on an axis ("₺50 B"), not "₺0,00".
+export function formatTlShort(value: number) { return value === 0 ? moneyWhole.format(0) : Math.abs(value) >= 10_000 ? moneyShort.format(value) : money.format(value) }
 export function formatPercent(rate: number | null | undefined, digits = 1) {
   return rate === null || rate === undefined || Number.isNaN(rate) ? '—' : `%${(rate * 100).toLocaleString('tr-TR', { minimumFractionDigits: digits, maximumFractionDigits: digits })}`
 }
@@ -193,15 +194,15 @@ export function formatDay(value: string) { const [year, month, day] = value.spli
 export { noValue }
 export function moneyOrMissing(value: number, ordersWithAmount: number) { return ordersWithAmount > 0 ? formatTl(value) : noValue }
 
-// The change against the previous period. A rate is compared by its difference (13,7 % to 11,8 % is −%1,9); a count
-// or amount as a percentage, and not at all when the previous period had nothing (no "+∞%").
+// The change against the previous period. A rate is compared by its difference in percentage points, written as such
+// (13,7 % to 11,8 % is "−1,9 puan"), so it is not read as a relative change; a count or amount as a percentage.
 export type Change = { text: string; direction: 'up' | 'down' | 'flat' }
 export function change(current: number | null | undefined, previous: number | null | undefined, kind: 'value' | 'rate' = 'value'): Change | null {
   if (current === null || current === undefined || previous === null || previous === undefined) return null
   if (kind === 'rate') {
     const points = (current - previous) * 100
-    if (Math.abs(points) < 0.05) return { text: '%0,0', direction: 'flat' }
-    return { text: `${points > 0 ? '+' : '−'}%${Math.abs(points).toLocaleString('tr-TR', { maximumFractionDigits: 1, minimumFractionDigits: 1 })}`, direction: points > 0 ? 'up' : 'down' }
+    if (Math.abs(points) < 0.05) return { text: '0,0 puan', direction: 'flat' }
+    return { text: `${points > 0 ? '+' : '−'}${Math.abs(points).toLocaleString('tr-TR', { maximumFractionDigits: 1, minimumFractionDigits: 1 })} puan`, direction: points > 0 ? 'up' : 'down' }
   }
   // Something against nothing in the previous period is new ("▲ Yeni", no "+∞%"); nothing against nothing has no
   // change (the pill's "■ %0").
