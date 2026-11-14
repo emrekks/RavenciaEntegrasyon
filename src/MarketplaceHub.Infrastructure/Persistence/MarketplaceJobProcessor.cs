@@ -7969,7 +7969,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 .Select(item => item.Candidate!.ProductId)
                 .Distinct()
                 .ToList();
-            if (resolvedProductIds.Count > 1 && preferBarcode)
+            // Only the colour cards of one model (one linked model, or one brand and model code) make that normal shape;
+            // cards of different models fall to the conflict handling below (audit 14 Nov 2026).
+            if (resolvedProductIds.Count > 1 && preferBarcode && await ProductModelLinks.OneModelAsync(db, tenantId, resolvedProductIds, cancellationToken))
             {
                 await ResolveIssue(tenantId, $"product-mapping-unmatched:{connectionId}:{externalProductId}", cancellationToken);
                 linkProduct = false;

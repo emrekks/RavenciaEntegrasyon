@@ -29,6 +29,33 @@ public sealed class Product
     public ProductStatus Status { get; set; } = ProductStatus.Active;
     public long SourcePolicyVersion { get; set; } = 1;
     public DateTimeOffset? ArchivedAt { get; set; }
+    // The model (ProductModel) this colour card belongs to; null while it is not linked (a model code shared by several
+    // brands, a card without a model code). Kept by ProductModelLinks only: never set by hand, never part of Version.
+    public Guid? FamilyId { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public long Version { get; set; } = 1;
+}
+
+// A model (MODEL-KAYDI-PLANI Faz 1): one brand's model code, whose colour cards (Product.FamilyId) share the model-row
+// fields. In Faz 1 the cards stay what the screens, jobs and reports read; the editor writes the fields here and to every
+// card. FieldsSavedAt is null until the editor first saves the model (until then the fields are the cards' majority).
+public sealed class ProductModel
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid? BrandId { get; set; }
+    public required string ModelCode { get; set; }
+    public required string ModelCodeKey { get; set; }
+    public required string Title { get; set; }
+    public string? TitleColor { get; set; }
+    public required string Description { get; set; }
+    public Guid? CategoryId { get; set; }
+    public decimal? VatRate { get; set; }
+    public string? VatInclusion { get; set; }
+    public int? WarrantyMonths { get; set; }
+    public int? DeliveryDays { get; set; }
+    public DateTimeOffset? FieldsSavedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public long Version { get; set; } = 1;

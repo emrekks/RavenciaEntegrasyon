@@ -123,7 +123,7 @@ public static class PanelFactoryResetInventory
 
         // catalog: options, products and what hangs on them
         D("catalog.product_options", Options), D("catalog.product_option_values", Options), D("catalog.variant_option_values", Options),
-        D("catalog.products", Products), D("catalog.product_variants", Products), D("catalog.product_media", Products),
+        D("catalog.products", Products), D("catalog.product_models", Products), D("catalog.product_variants", Products), D("catalog.product_media", Products),
         D("catalog.product_attribute_assignments", Products), D("catalog.product_size_charts", Products),
         D("catalog.marketplace_product_links", Products), D("catalog.marketplace_variant_links", Products), D("catalog.marketplace_listing_states", Products),
         D("catalog.external_identifier_aliases", Products), D("catalog.channel_listing_profiles", Products), D("catalog.channel_listing_attributes", Products),
