@@ -65,15 +65,16 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
         if (!create.Succeeded) return ServiceResult<ProductUpdateDraft>.Fail(create.Error!.Code, create.Error.Message, create.Error.Status, create.Error.FieldErrors);
         var draft = create.Value!;
         var productLink = await db.MarketplaceProductLinks.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == productId, cancellationToken);
+        var contentId = ApprovedContentId(productLink?.ExternalId);
         // Trendyol approved a product whose colours it split into contents of their own: its variants are linked (they
         // link only once approved) but no single content is the product's. It is not an unapproved product.
         var variantIds = draft.Variants.Select(variant => variant.VariantId).ToArray();
         var splitContents = productLink is null && await db.MarketplaceVariantLinks.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && variantIds.Contains(x.VariantId), cancellationToken);
-        if (SalesDataIssue(draft, sections, unapproved: productLink is null && !splitContents) is { } salesDataIssue)
+        if (SalesDataIssue(draft, sections, unapproved: contentId is null && !splitContents) is { } salesDataIssue)
             return ServiceResult<ProductUpdateDraft>.Fail(salesDataIssue.Code, salesDataIssue.Message, salesDataIssue.Status, salesDataIssue.FieldErrors);
-        if (DesiMissingSku(draft, sections, unapproved: productLink is null && !splitContents) is { } missingDesiSku)
+        if (DesiMissingSku(draft, sections, unapproved: contentId is null && !splitContents) is { } missingDesiSku)
             return ServiceResult<ProductUpdateDraft>.Fail("DESI_REQUIRED", ProductPublicationComposer.DesiMissingMessage(missingDesiSku), 422);
-        var publication = Split(productId, productLink?.ExternalId, draft.PayloadJson, sections, splitContents);
+        var publication = Split(productId, contentId, draft.PayloadJson, sections, splitContents);
         if (!publication.Succeeded) return ServiceResult<ProductUpdateDraft>.Fail(publication.Error!.Code, publication.Error.Message, publication.Error.Status);
         return ServiceResult<ProductUpdateDraft>.Ok(new(draft.ProfileId, publication.Value!, draft.Variants));
     }
@@ -104,6 +105,13 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
     // product link holds at most one of them (live 6.11.2026: RYP006's link is one colour's content of six), so the job
     // asks Trendyol which content each barcode is in right before the send and sends each content once, with its own
     // variants' data (TrendyolContentGroups).
+    // The product link's id as an approved content: Trendyol's contentId is a number. A product imported from the
+    // unapproved list (waiting or rejected) is linked by its productMainId (that list has no contentId; live 14 Nov 2026:
+    // MZ056, rejected), so it is still an unapproved product and goes whole to unapproved-bulk-update, the service
+    // Trendyol names for sending a rejected product back to review (offline doc "Ürün Filtreleme - Onaysız Ürün v2").
+    internal static string? ApprovedContentId(string? productLinkId) =>
+        !string.IsNullOrWhiteSpace(productLinkId) && productLinkId.Trim().All(char.IsAsciiDigit) ? productLinkId.Trim() : null;
+
     internal static ServiceResult<ProductUpdatePublication> Split(Guid productId, string? contentIdText, string createPayloadJson, ProductUpdateSections sections, bool splitContents = false)
     {
         var mode = contentIdText is null && !splitContents ? "UNAPPROVED" : "APPROVED";

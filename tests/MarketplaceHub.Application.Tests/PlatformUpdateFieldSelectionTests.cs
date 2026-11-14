@@ -374,5 +374,17 @@ public sealed class PlatformUpdateFieldSelectionTests
         return result.Value!;
     }
 
+    // A product imported from Trendyol's unapproved list is linked by its productMainId (live 14 Nov 2026: MZ056,
+    // rejected): it is no approved content, so its update goes whole to unapproved-bulk-update.
+    [Theory]
+    [InlineData("12715815", "12715815")]
+    [InlineData(" 123 ", "123")]
+    [InlineData("MZ056", null)]
+    [InlineData("RYP010-A", null)]
+    [InlineData("", null)]
+    [InlineData(null, null)]
+    public void TrendyolContentId_IsOnlyANumericLinkId(string? linkId, string? expected) =>
+        Assert.Equal(expected, ProductUpdateComposer.ApprovedContentId(linkId));
+
     private static JsonArray Items(string payloadJson) => JsonNode.Parse(payloadJson)!["items"]!.AsArray();
 }
