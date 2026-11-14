@@ -4341,6 +4341,11 @@ small,
 .app-shell.stitch-shell main .platform-square-mark.platform-logo-n11 { background: #252525; }
 .app-shell.stitch-shell main .platform-square-mark.platform-logo-trendyol-efaturam { color: #1e1e1e; background: #ffc928; }
 
+/* Small mark for rows, chips and menus: 20 px, beside the platform name or alone with its name as the label. */
+.app-shell.stitch-shell main .platform-square-mark.is-sm { display: inline-grid; width: 20px; height: 20px; flex: 0 0 20px; margin-right: 2px; border-radius: 7px; vertical-align: -5px; }
+.app-shell.stitch-shell main .integration-filter-menu button .platform-square-mark.is-sm { margin-right: 0; vertical-align: baseline; }
+.app-shell.stitch-shell main .invoice-bulk-status-platform .platform-square-mark.is-sm { width: 24px; height: 24px; flex-basis: 24px; margin-right: 0; vertical-align: baseline; }
+
 /* A mapped marketplace listing is connected, but not necessarily published. */
 
 .app-shell.stitch-shell main .integration-settings-modal > .integration-inline-workspace > .split {
@@ -6066,7 +6071,7 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .invoice-reference-bulk-toolbar button:first-of-type { border-color: var(--rv-color-primary); background: var(--rv-color-primary); color: #fff; }
 .invoice-bulk-status-orders { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 7px; max-height: min(44vh, 420px); overflow: auto; margin: 10px 0 0; padding: 2px; list-style: none; }
 .invoice-bulk-status-orders > li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); background: var(--rv-color-surface-raised); }
-.invoice-bulk-status-platform { color: var(--rv-color-primary); font-size: 11px; font-weight: 800; }
+.invoice-bulk-status-platform { display: inline-flex; align-items: center; }
 .invoice-bulk-status-order { display: grid; gap: 3px; font-size: 13px; font-weight: 750; }
 .invoice-bulk-status-order small { color: var(--rv-color-muted); font-size: 11px; font-weight: 500; }
 .invoice-bulk-status-value { justify-self: end; color: var(--rv-color-muted); font-size: 11px; font-weight: 700; text-align: right; }

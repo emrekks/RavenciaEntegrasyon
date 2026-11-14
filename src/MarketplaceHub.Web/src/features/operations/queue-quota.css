@@ -77,3 +77,8 @@
 .app-shell.stitch-shell main .qq .qq-table :is(th, td) { padding-inline: 10px; }
 .app-shell.stitch-shell main .qq .qq-table td.qq-usage-cell .qq-usage { min-width: 130px; }
 .app-shell.stitch-shell main .qq .qq-table td.qq-usage-cell .qq-bar { min-width: 60px; }
+
+/* Platform tabs above the job-type table: logo mark and name on one line, scrolling sideways when they do not fit. */
+.qq-platform-tabs { max-width: 100%; }
+.qq-platform-tabs .rv-tab-label { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.qq-platform-tabs .platform-square-mark.is-sm { margin-right: 0; vertical-align: baseline; }

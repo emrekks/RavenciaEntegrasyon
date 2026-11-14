@@ -27,13 +27,12 @@ tbody > tr:first-child .rr-omark[data-tip]:is(:hover, :focus-visible)::after { t
 /* under the buyer's name in the Alıcı column; the order detail writes the reason beside the tag */
 .rr-cust .rr-buyer-tag { margin-top: 4px; }
 .rr-buyer-reason { color: var(--rr-muted); font-size: 12px; }
-/* The order number, its copy button and the marks sat ~14 px apart (the 28 px button around a 14 px icon, plus the gap):
-   the button keeps its 28 px target but pulls 6 px in on each side, so its icon sits 3 px from the number and from
-   the marks (owner, 9 and 11 Nov 2026). */
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-ordercell .rr-on-no { column-gap: 2px; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-ordercell .rr-on-no > .rr-icon-btn { margin-inline: -6px; }
-/* The marks after it sit 3-4 px from the copy icon and from each other, not 6-8 px (owner, 11 Nov 2026). */
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-ordercell .rr-on-no > .rr-omarks { margin-left: -2px; gap: 0; }
+/* The order number, its copy button and the marks: comfortable, even spacing and no overlapping hit areas (owner, 14 Nov
+   2026: the 9-11 Nov pull-in left them too close). The 28 px button keeps its own box with no negative margin; its 14 px
+   icon already sits 7 px inside it, so the number and the marks read about 6-7 px from the icon; the marks sit 4 px apart. */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-ordercell .rr-on-no { column-gap: 0; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-ordercell .rr-on-no > .rr-icon-btn { margin-inline: 0; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-ordercell .rr-on-no > .rr-omarks { margin-left: 0; gap: 4px; }
 /* "Alıcı: Name [Bireysel]" in the order cell: the tag 6 px from the name and centred on its line (it touched the name and
    sat on the text's baseline, owner 9 Nov 2026). */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ordercell small.rr-buyer-inline > .rr-buyer-tag { margin: -2px 0 0 6px; vertical-align: middle; line-height: 1; }

@@ -37,7 +37,7 @@ type TipRow = Store & { value: ReactNode }
 function metricText({ value, loading, error }: Metric) {
   return cardCountText(value, { loading, error: Boolean(error) })
 }
-// A count that is known: neither loading, nor failed, nor missing (those read "…" or "—" with no "Paket" after them). A known zero reads "—" big and keeps its small "Paket | 0 Adet Ürün" line.
+// A count that is known: neither loading, nor failed, nor missing (those read "…" or "—" with no "Paket" after them). A real zero reads "0 Paket".
 const known = (metric: Metric) => !metric.loading && !metric.error && metric.value !== undefined
 
 const count = (value: number) => value.toLocaleString('tr-TR')
@@ -61,7 +61,7 @@ function Packages({ packages, units, reminder }: { packages: Metric; units: numb
   return <strong className="rr-metric-pk" title={packages.error ? 'Sayı okunamadı; sayfayı yenileyip tekrar deneyin.' : undefined}>
     <CountUp value={metricText(packages)} />
     {known(packages) && ' '}
-    {known(packages) && <span className="rr-metric-sub">{(packages.value ?? 0) > 0 && 'Paket'}{units !== undefined && <>{' '}<span className="rr-metric-sep" aria-hidden="true">|</span>{' '}{count(units)} <span className="rr-metric-adet">Adet </span>Ürün</>}{reminder !== undefined && reminder > 0 && <span className="rr-metric-note">{' '}<span className="rr-metric-sep" aria-hidden="true">|</span>{' '}Hatırlatıcı: {count(reminder)}</span>}</span>}
+    {known(packages) && <span className="rr-metric-sub">Paket{units !== undefined && <>{' '}<span className="rr-metric-sep" aria-hidden="true">|</span>{' '}{count(units)} <span className="rr-metric-adet">Adet </span>Ürün</>}{reminder !== undefined && reminder > 0 && <span className="rr-metric-note">{' '}<span className="rr-metric-sep" aria-hidden="true">|</span>{' '}Hatırlatıcı: {count(reminder)}</span>}</span>}
   </strong>
 }
 
