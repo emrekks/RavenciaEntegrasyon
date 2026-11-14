@@ -103,6 +103,7 @@ public static class AttentionNoticePolicy
         "PRODUCT_APPROVAL" => "Ürün onay kontrolü",
         "STOCK_RECONCILIATION" => "Stok uzlaştırma",
         "FINANCE" => "Finans okuma",
+        "N11_SETTLEMENT_BACKFILL" => "N11 geçmiş hakediş okuması",
         "WEBHOOK_INGEST" or "WEBHOOK_INGEST_RETURNS" => "Anlık bildirim işleme",
         "LISTING_VERIFY" => "İlan doğrulama",
         "LISTING_LOOKUP" => "İlan arama",
