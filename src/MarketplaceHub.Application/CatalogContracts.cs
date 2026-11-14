@@ -83,7 +83,12 @@ public sealed record ProductVariantPlatformStatusView(
     // Whether the marketplace sells the matched variant now (ListingSaleState ON_SALE / OFF_SALE, null unknown) and,
     // when closed, the reason it named. Beside Status, never part of it.
     string? SaleState = null,
-    string? SaleStateReason = null);
+    string? SaleStateReason = null,
+    // The variant's own listing state on this connection (catalog.channel_listing_variants: LIVE, REJECTED,
+    // APPROVAL_PENDING, UNKNOWN …), null when it has no listing there; and why the marketplace refused it, only while
+    // that state is REJECTED (null when no reason was given). The editor's variant status light reads these.
+    string? ListingStatus = null,
+    string? RejectionReason = null);
 public sealed record ProductPlatformStatusView(
     string Platform,
     string Status,

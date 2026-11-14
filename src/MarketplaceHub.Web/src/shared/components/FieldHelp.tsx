@@ -23,13 +23,15 @@ type HelpMarkProps = {
   edge: number
   // Centred over the mark and above it while there is room (a field), or under it starting at the mark (a title).
   prefer: 'above' | 'below'
+  // What the button shows instead of the round info mark (the variant table's status light).
+  mark?: ReactNode
   // The glyph in the round mark: a question mark (help) or an "i" (a note about the data beside the label).
   children: ReactNode
 }
 
 // The question mark and its card, shared by FieldHelp and TitleHint. The card is drawn on the page body with a fixed
 // position, so a panel that clips its content cannot cut it, and it is kept inside the window on a phone.
-export function HelpMark({ id, idPrefix, ariaLabel, className, tipClassName, iconSize, tipWidth, edge, prefer, children }: HelpMarkProps) {
+export function HelpMark({ id, idPrefix, ariaLabel, className, tipClassName, iconSize, tipWidth, edge, prefer, mark, children }: HelpMarkProps) {
   const generated = useId()
   const tipId = id ?? `${idPrefix}-${generated}`
   const buttonRef = useRef<HTMLButtonElement>(null)
@@ -78,7 +80,7 @@ export function HelpMark({ id, idPrefix, ariaLabel, className, tipClassName, ico
       onFocus={event => { if (event.currentTarget.matches(':focus-visible') && !isTouchOnly()) setFocused(true) }}
       onBlur={() => setFocused(false)}
       onClick={event => { event.preventDefault(); event.stopPropagation(); setPinned(value => !value) }}>
-      <UiIcon name="infoCircle" size={iconSize} />
+      {mark ?? <UiIcon name="infoCircle" size={iconSize} />}
     </button>
     {createPortal(<span ref={tipRef} id={tipId} role="tooltip" className={`${tipClassName}${place?.above ? ' is-above' : ''}`} hidden={!open || !place} style={place ? { left: place.left, top: place.top } : undefined}>{children}</span>, document.body)}
   </>

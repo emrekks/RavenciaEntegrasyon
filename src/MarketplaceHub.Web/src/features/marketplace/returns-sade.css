@@ -1204,10 +1204,10 @@ main .rr.rr.rr-returns .rr-tbl.rr-tbl th .rr-hf { max-width: 100%; min-width: 0;
    column visible (text wraps instead of the table scrolling). Narrower screens scroll inside the card; the first column
    stays pinned so the order is always in view. */
 @media (min-width: 1025px) {
-:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl { min-width: 1076px; }
-:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-order { width: 296px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl { min-width: 1092px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-order { width: 320px; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-buyer { width: 88px; }
-:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-prod { width: 200px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-prod { width: 192px; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-price { width: 84px; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-cargo { width: 144px; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-inv { width: 140px; }
