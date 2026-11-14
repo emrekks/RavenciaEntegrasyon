@@ -98,6 +98,14 @@ describe('product platform list status', () => {
       .toBe('Trendyol: Kısmen Yayında (1/2)')
   })
 
+  // Owner, 14 Nov 2026: MZ056, ten colour cards, one Trendyol rejected ("Hatalı Görsel Linki"), read blue.
+  it('makes a model group red when any of its cards the marketplace refused, over live, linked and waiting ones', () => {
+    const statuses = ['LIVE', 'LINKED', 'UNKNOWN', 'APPROVAL_PENDING', 'REJECTED']
+    const state = productPlatformDisplayState(statuses, true, 54, 60)
+    expect(state).toBe('error')
+    expect(productPlatformDisplayLabel('Trendyol', statuses, 54, 60, state, 'Hatalı Görsel Linki')).toBe('Trendyol: Bazı Varyantlar Reddedildi · Hatalı Görsel Linki')
+  })
+
   it('does not let a rejected sibling hide a confirmed live listing', () => {
     const statuses = ['LIVE', 'CREATE_REJECTED']
     const state = productPlatformDisplayState(statuses, false)
