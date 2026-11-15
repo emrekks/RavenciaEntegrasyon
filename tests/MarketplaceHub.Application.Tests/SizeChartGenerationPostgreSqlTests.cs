@@ -113,7 +113,8 @@ public sealed class SizeChartGenerationPostgreSqlTests(PostgreSqlTenantIsolation
         var (tenantId, productId) = await SeedAsync(settings);
         var otherTab = new ChartRowOpenedMeanwhile(tenantId, productId);
         await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")).AddInterceptors(otherTab).Options);
-        var claude = new ClaudeService(new AiSettingsService(db, new EphemeralDataProtectionProvider(), TimeProvider.System), new FakeClaude(SizeChartRules.Validate(Input()).Table!), db, TimeProvider.System);
+        // The settings service that saved the key reads it back (an ephemeral protector is one per instance).
+        var claude = new ClaudeService(settings, new FakeClaude(SizeChartRules.Validate(Input()).Table!), db, TimeProvider.System);
         var service = new SizeChartService(db, claude, new FailingStorage(), TimeProvider.System);
 
         // The storage fails after the call, as in the test above; what matters is that the row write before it went through.
