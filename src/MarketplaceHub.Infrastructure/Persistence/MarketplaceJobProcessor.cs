@@ -9822,7 +9822,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 ?? await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == variant.ProductId).Select(x => x.VatRate).SingleOrDefaultAsync(cancellationToken)
             : null;
         var (vatRate, vatUnknown) = CatalogOfferVatRate(remote.VatRate, offer?.VatRate, cardVatRate);
-        var observationSource = observeOnly ? "SHOPIFY" : "TRENDYOL";
+        var observationSource = CatalogImportSource(await ConnectionPlatformCode(tenantId, connectionId, cancellationToken), observeOnly);
         if (offer is null)
         {
             if (vatUnknown)
@@ -9900,6 +9900,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             });
         }
     }
+
+    // The source a catalog import writes on the price history (Reason "<source>_CATALOG_IMPORT", ActorSource
+    // "SYSTEM:<source>"): the connection's marketplace (ISLEYICI-3, 15 Nov 2026). Before, every observe-only import
+    // (Hepsiburada, N11, Pazarama, PTT AVM too) was written as SHOPIFY; the old guess stays only for a connection not found.
+    internal static string CatalogImportSource(string? platformCode, bool observeOnly) =>
+        string.IsNullOrWhiteSpace(platformCode) ? observeOnly ? "SHOPIFY" : "TRENDYOL" : platformCode.Trim().ToUpperInvariant();
 
     // The VAT a catalog import gives an offer (ISLEYICI-2, 15 Nov 2026). A marketplace that does not report it (Shopify
     // never does; a Hepsiburada listing without vatRate) leaves an existing offer's VAT as it was, and a new offer takes the
@@ -12056,8 +12062,17 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return $"Sipariş stoğu kısmen düşürüldü: {order} {product} paneldeki fiziksel stoğu yetersizdi, {units} adet stoktan düşülemedi. Paneldeki stok sayısını kontrol edin. Rezervasyon tutulmaz; stok sıfırın altına inmedi (bilgi amaçlı).";
     }
 
-    private async Task<string?> ConnectionPlatformCode(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
-        await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+    // Read once per connection for the processor's life (ISLEYICI-3/8, 15 Nov 2026): a connection never changes its
+    // marketplace. A connection not found is not remembered (null).
+    private readonly Dictionary<(Guid TenantId, Guid ConnectionId), string> connectionPlatformCodes = [];
+
+    private async Task<string?> ConnectionPlatformCode(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        if (connectionPlatformCodes.TryGetValue((tenantId, connectionId), out var known)) return known;
+        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        if (platformCode is not null) connectionPlatformCodes[(tenantId, connectionId)] = platformCode;
+        return platformCode;
+    }
 
     private async Task<string?> OrderNumberOf(Guid tenantId, Guid orderId, CancellationToken cancellationToken) =>
         db.Orders.Local.FirstOrDefault(x => x.TenantId == tenantId && x.Id == orderId)?.OrderNumber
