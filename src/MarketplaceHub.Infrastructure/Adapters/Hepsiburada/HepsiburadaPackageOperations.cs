@@ -333,9 +333,13 @@ public sealed partial class HepsiburadaHttpClient
             if (!response.IsSuccessStatusCode)
             {
                 var retryAfter = RetryAfter(response);
+                // D14: a 403 HTML page is the gateway's temporary block, as on Hepsiburada's other paths.
                 var error = LocalCircuitResponse.Refusal(response, "HEPSIBURADA", "Hepsiburada")
                     ?? (response.StatusCode == HttpStatusCode.BadRequest
                     ? LabelRejected(await ReadBoundedTextAsync(response.Content, 16 * 1024, timeout.Token), requestId)
+                    : response.StatusCode == HttpStatusCode.Forbidden
+                        && MarketplaceErrorRules.GatewayBlocked(response.StatusCode, await ReadBoundedTextAsync(response.Content, 16 * 1024, timeout.Token), "Hepsiburada", "HEPSIBURADA", requestId) is { } gatewayBlock
+                    ? gatewayBlock
                     : Error(response.StatusCode, retryAfter ?? rate?.RetryAfter, requestId));
                 return AdapterResult<byte[]>.Failure(error, rate);
             }

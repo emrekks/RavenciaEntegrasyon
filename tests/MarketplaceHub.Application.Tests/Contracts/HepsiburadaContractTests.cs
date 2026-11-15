@@ -172,6 +172,19 @@ public sealed class HepsiburadaContractTests
         answer.AssertMatches(name, result.Error);
     }
 
+    // D14: the label read (its own byte path) classes a 403 HTML gateway page as the temporary block the other paths do.
+    [Fact]
+    public async Task TheLabelReadClassesA403HtmlPageAsAGatewayBlock()
+    {
+        var http = CannedHttp.GatewayBlocked();
+        var client = new HepsiburadaHttpClient(http, null!, Options.Create(new HepsiburadaOptions { AuthenticationMode = "BASIC" }), TimeProvider.System, new ConfigurationBuilder().Build(), NullLogger<HepsiburadaHttpClient>.Instance);
+
+        var result = await client.GetCommonLabelAsync(Account(), "5000000101", "ZPL", CancellationToken.None);
+
+        Assert.Equal(1, http.Requests);
+        new CannedHttpCase(CannedHttp.GatewayBlocked, AdapterErrorClass.RateLimit, "HEPSIBURADA_GATEWAY_BLOCKED", 403, TimeSpan.FromMinutes(15)).AssertMatches("label 403 HTML", result.Error);
+    }
+
     private static HepsiburadaRequestContext Account() => new(
         new PlatformConnection { PlatformCode = "HEPSIBURADA", Environment = "PRODUCTION", Status = "ACTIVE", DisplayName = "Hepsiburada", ExternalStoreId = "00000000-0000-4000-8000-0000000000e1", ApiVersion = "v1" },
         new Uri("https://oms.example.test/"), new Uri("https://listing.example.test/"), "fakeintegrator", "fake-secret");
