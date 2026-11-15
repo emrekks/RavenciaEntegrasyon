@@ -5590,6 +5590,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<decimal?>("Desi")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
                     b.Property<DateTimeOffset?>("FieldsSavedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -5693,6 +5697,32 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         {
                             t.HasCheckConstraint("ck_product_model_attributes_exactly_one_value", "num_nonnulls(\"ValueId\",\"TextValue\",\"NumberValue\",\"BooleanValue\")=1");
                         });
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ProductModelSizeChart", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("MeasurementsJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<Guid>("ModelId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ModelId")
+                        .IsUnique();
+
+                    b.ToTable("product_model_size_charts", "catalog");
                 });
 
             modelBuilder.Entity("MarketplaceHub.Domain.ProductOption", b =>
@@ -8673,6 +8703,16 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasForeignKey("TenantId", "ValueId")
                         .HasPrincipalKey("TenantId", "Id")
                         .OnDelete(DeleteBehavior.Cascade);
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ProductModelSizeChart", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.ProductModel", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ModelId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("MarketplaceHub.Domain.ProductOption", b =>
