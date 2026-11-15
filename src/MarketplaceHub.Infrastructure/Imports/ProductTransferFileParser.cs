@@ -571,11 +571,14 @@ public static class ProductTransferImportPlanner
         return result;
     }
 
-    private static string TitleKey((ProductTransferFileRow Row, ProductTransferCandidate Variant) item)
+    private static string TitleKey((ProductTransferFileRow Row, ProductTransferCandidate Variant) item) =>
+        ModelTitleKey(item.Row.Title.Text, ProductFamilyColorOrder.ColorOf(item.Variant.VariantLabel));
+
+    // A model's name as rows of its colour cards are compared: without the card's own colour word.
+    internal static string ModelTitleKey(string? title, string? color)
     {
-        var title = item.Row.Title.Text?.Trim() ?? "";
-        var color = ProductFamilyColorOrder.ColorOf(item.Variant.VariantLabel);
-        return ProductFamilyNewColorCard.HasColorWord(title, color) ? ProductFamilyNewColorCard.Title(title, color, "\u0001") : title;
+        var trimmed = title?.Trim() ?? "";
+        return ProductFamilyNewColorCard.HasColorWord(trimmed, color) ? ProductFamilyNewColorCard.Title(trimmed, color, "\u0001") : trimmed;
     }
 
     private static bool IsEmpty(ProductTransferFileRow row) =>

@@ -177,17 +177,21 @@ public sealed partial class MarketplaceSalesService
             totalBytes += bytes.LongLength;
         }
 
-        var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = effectType, IdempotencyKey = normalizedKey, CreatedAt = now, ConnectionId = claim.ConnectionId, TargetId = claim.Id, Action = $"RETURN_{action}" };
+        // ISLEYICI-10/6: the marketplace line ids are read before the record is saved (with the reservation), so nothing
+        // but the request runs between that save and the send; the guard sends and sorts the answer.
+        var lineIds = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == claimId && returnLineIds.Contains(x.Id)).OrderBy(x => x.Id).Select(x => x.ExternalLineId).ToListAsync(cancellationToken);
+        var effects = new ExternalEffectGuard(db, timeProvider);
+        var effect = effects.New(tenantId, effectType, normalizedKey, claim.ConnectionId, claim.Id, $"RETURN_{action}", createdAt: now);
         db.ExternalEffectRecords.Add(effect);
         if (await ReserveReturnDecisionAsync(tenantId, claimId, decision, isHepsiburada, cancellationToken) is { } reservationError) return reservationError;
 
-        var lineIds = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == claimId && returnLineIds.Contains(x.Id)).OrderBy(x => x.Id).Select(x => x.ExternalLineId).ToListAsync(cancellationToken);
         var context = new AdapterContext(tenantId, claim.ConnectionId, correlationId, normalizedKey, now.AddSeconds(30));
-        AdapterResult<ReturnActionResult> result;
+        ExternalEffectSend<ReturnActionResult> sent;
         try
         {
-            result = await returns.ExecuteAsync(context, new(claim.ExternalClaimId, lineIds, action, action == "APPROVE" && isHepsiburada ? null : decision.ReasonCode, decision.Explanation, evidenceFiles, isHepsiburada ? finalizedWith : null,
-                action == "REJECT" && isN11 ? command.ReturnShipment : null), cancellationToken);
+            // The reservation saved the record with the decision: it is sent as stored.
+            sent = await effects.SendAsync(effect, () => returns.ExecuteAsync(context, new(claim.ExternalClaimId, lineIds, action, action == "APPROVE" && isHepsiburada ? null : decision.ReasonCode, decision.Explanation, evidenceFiles, isHepsiburada ? finalizedWith : null,
+                action == "REJECT" && isN11 ? command.ReturnShipment : null), cancellationToken), cancellationToken, saveBeforeSend: false);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -199,13 +203,13 @@ public sealed partial class MarketplaceSalesService
             await db.SaveChangesAsync(CancellationToken.None);
             return await VerifyLaterAsync<ReturnDetailView>(effect, CancellationToken.None);
         }
-        if (!result.IsSuccess)
+        if (!sent.Accepted)
         {
-            var error = result.Error;
-            decision.ErrorCode = error?.Code ?? "RETURN_ACTION_FAILED";
-            decision.ExternalOperationId ??= error?.RemoteRequestId;
+            var error = sent.Error;
+            decision.ErrorCode = error.Code;
+            decision.ExternalOperationId ??= error.RemoteRequestId;
             decision.CompletedAt = timeProvider.GetUtcNow();
-            if (error is null || IsAmbiguous(error))
+            if (sent.Outcome == ExternalEffectSendOutcome.Uncertain)
             {
                 // The outcome is settled by the effect check or the next claim
                 // read; the code marks it as waiting for that, not as a conflict.
@@ -214,21 +218,22 @@ public sealed partial class MarketplaceSalesService
                 await db.SaveChangesAsync(cancellationToken);
                 return await VerifyLaterAsync<ReturnDetailView>(effect, cancellationToken);
             }
-            db.ExternalEffectRecords.Remove(effect);
+            // Not applied (a refusal, a quota answer or the panel's own circuit): the record goes; the instant decision fails.
+            effects.Release(effect);
             decision.Status = "FAILED";
             ReturnPendingStock.Drop(decision, decision.CompletedAt.Value);
             await db.SaveChangesAsync(cancellationToken);
             return ServiceResult<ReturnDetailView>.Fail(error.Code, error.SafeMessage, error.HttpStatus is >= 400 and <= 599 ? error.HttpStatus.Value : 502);
         }
 
+        var result = sent.Result;
         decision.Status = "SUBMITTED";
         decision.ExternalOperationId = result.Value?.ExternalOperationId;
         decision.ErrorCode = null;
-        effect.CompletedAt = timeProvider.GetUtcNow();
         // The accepted write is recorded first, on its own: a conflict in the claim or stock save below must not turn a
         // decision the marketplace already took into a server error (SIPARIS-STOK-5).
         await db.SaveChangesAsync(cancellationToken);
-        var completedAt = effect.CompletedAt.Value;
+        var completedAt = effect.CompletedAt!.Value;
         // The claim and the restock are written on fresh values; a sale or a claim read that changes the same rows in
         // between runs the attempt again. When it keeps colliding, the decision stays SUBMITTED with its pending stock
         // choice, which the next read of the claim settles (ReturnPendingStock.SettleClaimAsync).

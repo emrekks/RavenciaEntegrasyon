@@ -21,6 +21,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
     private const long MaximumExpandedBytes = 64 * 1024 * 1024;
     private const int Chunk = 2_000;
     private const string ImportReason = "Ürün dosyası içe aktarma";
+    public const string ModelFieldMixedCode = "PRODUCT_TRANSFER_MODEL_FIELD_MIXED";
 
     public async Task<ServiceResult<ProductTransferSummaryView>> SummaryAsync(Guid tenantId, CancellationToken cancellationToken)
     {
@@ -365,6 +366,32 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
                     return ServiceResult<ProductTransferApplyResult>.Fail(CatalogService.ModelCodeMixedCode, "Model kodu bir kartın tüm satırlarında birlikte değişir; dosya bir kartın yalnız bazı satırlarına yeni model kodu yazıyor. Hiçbir değişiklik kaydedilmedi; ürünün tüm satırlarına aynı model kodunu yazıp yeniden yükleyin.", 422);
             }
         }
+        // KATALOG-3: the name and the VAT are the model's; the rows of one model may not ask for two values (the preview
+        // refuses it; checked again here, as the client's plan is not trusted). The cards of a model are those the write
+        // below gives the value to; a name is compared without its card's colour word, as the preview compares it.
+        var modelFieldChanges = productChanges.Where(change => change.Title is not null || change.VatRate is not null).ToList();
+        var fieldCards = new Dictionary<Guid, HashSet<Guid>>();
+        var colours = new Dictionary<Guid, string?>();
+        if (modelFieldChanges.Count > 0)
+        {
+            fieldCards = await ModelCardsAsync(tenantId, modelFieldChanges.Select(change => change.ProductId).ToArray(), cancellationToken);
+            var colourCardIds = fieldCards.Values.SelectMany(cards => cards).Distinct().ToArray();
+            foreach (var chunk in colourCardIds.Chunk(Chunk))
+                foreach (var card in (await db.ProductVariants.AsNoTracking().Where(variant => variant.TenantId == tenantId && chunk.Contains(variant.ProductId))
+                             .OrderBy(variant => variant.SortOrder).ThenBy(variant => variant.Id).Select(variant => new { variant.ProductId, variant.OptionSignature }).ToListAsync(cancellationToken))
+                             .GroupBy(variant => variant.ProductId))
+                    colours[card.Key] = card.Select(variant => ProductFamilyColorOrder.ColorOf(variant.OptionSignature)).FirstOrDefault(colour => !string.IsNullOrWhiteSpace(colour));
+            foreach (var change in modelFieldChanges)
+                foreach (var other in modelFieldChanges.Where(other => other.ProductId != change.ProductId && fieldCards[change.ProductId].Contains(other.ProductId)))
+                {
+                    var label = change.Title is { } title && other.Title is { } otherTitle
+                        && ProductTransferImportPlanner.ModelTitleKey(title, colours.GetValueOrDefault(change.ProductId)) != ProductTransferImportPlanner.ModelTitleKey(otherTitle, colours.GetValueOrDefault(other.ProductId))
+                            ? "ürün adı"
+                            : change.VatRate is decimal vat && other.VatRate is decimal otherVat && vat != otherVat ? "KDV oranı" : null;
+                    if (label is not null)
+                        return ServiceResult<ProductTransferApplyResult>.Fail(ModelFieldMixedCode, $"Aynı modelin satırlarında farklı {label} var; {label} modelin tüm renklerinde aynıdır, tüm satırlara aynı değeri yazın. Hiçbir değişiklik kaydedilmedi; dosyayı düzeltip yeniden yükleyin.", 422);
+                }
+        }
 
         var now = timeProvider.GetUtcNow();
         var applyId = Guid.CreateVersion7();
@@ -429,32 +456,12 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
             }
             if (change.Stock is { } stock && itemByVariant[change.VariantId] is var item && item.OnHand != stock.OnHand)
             {
-                // As InventoryService.SetOnHandAsync: a manual adjustment in the ledger, then the projection outbox.
-                var reserved = reservedByItem.GetValueOrDefault(item.Id);
-                var delta = stock.OnHand - item.OnHand;
-                item.OnHand = stock.OnHand;
-                item.Reserved = reserved;
-                item.Available = InventoryProjection.Available(stock.OnHand, reserved);
-                item.ProjectionVersion++;
-                item.Version++;
+                // As InventoryService.SetOnHandAsync (SIPARIS-STOK-8): a manual adjustment through the one stock writer,
+                // the count rounded as the manual count rounds it (a whole number here), then the projection outbox.
+                item.Reserved = reservedByItem.GetValueOrDefault(item.Id);
                 var sourceEventId = $"product-transfer:{applyId:N}:{variant.Id:N}";
-                db.StockLedgerEntries.Add(new StockLedgerEntry
-                {
-                    Id = Guid.CreateVersion7(),
-                    TenantId = tenantId,
-                    InventoryItemId = item.Id,
-                    MovementType = "MANUAL_ADJUSTMENT",
-                    QuantityDelta = delta,
-                    SourceType = "MANUAL",
-                    SourceId = ImportReason,
-                    SourceEventId = sourceEventId,
-                    IdempotencyKey = sourceEventId,
-                    OccurredAt = now,
-                    RecordedAt = now,
-                    ActorUserId = userId,
-                    CorrelationId = correlationId
-                });
-                projections.Add(new StockProjectionChange(item.VariantId, item.ProjectionVersion, $"manual:{sourceEventId}"));
+                projections.Add(StockMovementWriter.SetOnHand(db, item, decimal.Round(stock.OnHand, 4, MidpointRounding.ToEven),
+                    new StockLedgerSource("MANUAL_ADJUSTMENT", "MANUAL", ImportReason, sourceEventId, sourceEventId, now, now, correlationId, userId), $"manual:{sourceEventId}"));
                 stockSetItemIds.Add(item.Id);
                 stocksUpdated++;
                 Written(variant);
@@ -496,19 +503,10 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
         // cards' majority): a file row's name or VAT goes to every colour card of its model under the same brand, each card
         // with its own colour word in the name, so a later editor save does not quietly take the old value back. A card the
         // file names itself keeps the file's own value; a model code under two brands (ambiguous) is never crossed.
-        var modelFieldChanges = productChanges.Where(change => change.Title is not null || change.VatRate is not null).ToList();
         if (modelFieldChanges.Count > 0)
         {
-            var fieldCards = await ModelCardsAsync(tenantId, modelFieldChanges.Select(change => change.ProductId).ToArray(), cancellationToken);
             var ownTitles = productChanges.Where(change => change.Title is not null).Select(change => change.ProductId).ToHashSet();
             var ownVats = productChanges.Where(change => change.VatRate is not null).Select(change => change.ProductId).ToHashSet();
-            var colourCardIds = fieldCards.Values.SelectMany(cards => cards).Distinct().ToArray();
-            var colours = new Dictionary<Guid, string?>();
-            foreach (var chunk in colourCardIds.Chunk(Chunk))
-                foreach (var card in (await db.ProductVariants.AsNoTracking().Where(variant => variant.TenantId == tenantId && chunk.Contains(variant.ProductId))
-                             .OrderBy(variant => variant.SortOrder).ThenBy(variant => variant.Id).Select(variant => new { variant.ProductId, variant.OptionSignature }).ToListAsync(cancellationToken))
-                             .GroupBy(variant => variant.ProductId))
-                    colours[card.Key] = card.Select(variant => ProductFamilyColorOrder.ColorOf(variant.OptionSignature)).FirstOrDefault(colour => !string.IsNullOrWhiteSpace(colour));
             foreach (var change in modelFieldChanges)
             {
                 var changed = productById[change.ProductId];
@@ -593,7 +591,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
         }
         await CatalogLocalEdits.MarkLinksDirtyAsync(db, tenantId, contentProducts, CatalogLocalEdits.ProductField, cancellationToken);
         // A stock count set from the file is the owner's count, as in InventoryService: it closes the shortfall notices.
-        await StockShortfallNotices.ResolveForInventoryItemsAsync(db, tenantId, stockSetItemIds, now, cancellationToken);
+        await StockMovementWriter.CloseShortfallNoticesAsync(db, tenantId, stockSetItemIds, now, cancellationToken);
         await StockProjectionOutbox.EnqueueAsync(db, tenantId, projections, now, cancellationToken);
         // E: file prices are sent like panel edits: only the offers whose price changed, to their own connection.
         await StockProjectionOutbox.EnqueuePriceChangesAsync(db, tenantId, repricedOffers, now, cancellationToken);
@@ -697,9 +695,12 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
         var cardsByKey = new Dictionary<string, HashSet<Guid>>(StringComparer.Ordinal);
         if (keys.Count > 0)
         {
+            // KATALOG-8: only the cards that may hold one of the keys are read; the key still decides below.
+            var candidates = ModelCodeOwnership.ProductIdsWithKeys(db, tenantId, keys);
             var rows = await (from variant in db.ProductVariants.AsNoTracking()
                               join product in db.Products.AsNoTracking() on new { variant.TenantId, Id = variant.ProductId } equals new { product.TenantId, product.Id }
                               where variant.TenantId == tenantId && variant.ModelCode != null && variant.ModelCode != "" && product.Status != ProductStatus.Archived
+                                  && candidates.Contains(product.Id)
                               select new { product.Id, variant.ModelCode }).Distinct().ToListAsync(cancellationToken);
             foreach (var row in rows)
                 if (ProductFamilyKeyPolicy.ModelCodeKey(row.ModelCode) is { } key && keys.Contains(key))
