@@ -76,6 +76,18 @@ public static class DatabaseMigrator
                 {
                     logger.LogWarning(exception, "Product model values were not refreshed");
                 }
+                // SIPARIS-STOK-9: the Returns page's card columns of claims written before they existed (or by the previous
+                // code while this deploy runs). The rule is C#, so not a migration; idempotent and batched. A failure only
+                // keeps the page on its old computation until the worker's repair pass; it does not stop the deploy.
+                try
+                {
+                    var (claims, written) = await ReturnCardColumns.RepairAsync(migrationContext, cancellationToken);
+                    logger.LogInformation("Return card columns: {Claims} claims read, {Written} written", claims, written);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    logger.LogWarning(exception, "Return card columns were not filled");
+                }
                 return;
             }
             catch (Exception exception) when (IsLockTimeout(exception) && attempt < LockAttempts)

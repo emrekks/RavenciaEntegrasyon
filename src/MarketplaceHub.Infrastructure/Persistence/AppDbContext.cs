@@ -169,6 +169,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         ResetReaddressedOfferMarks(); TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); OrderBuyerTypes.Apply(ChangeTracker); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit();
+        ReturnCardColumns.ApplyToSaveAsync(this, CancellationToken.None).GetAwaiter().GetResult();
         var models = ProductModelLinks.Capture(ChangeTracker);
         int saved;
         _saving = true;
@@ -182,6 +183,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         await ResetReaddressedOfferMarksAsync(cancellationToken); TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); OrderBuyerTypes.Apply(ChangeTracker); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit();
+        // SIPARIS-STOK-9: the Returns page's card columns of every return claim this save touches (after the outbox events,
+        // so a claim changed only in these columns raises none).
+        await ReturnCardColumns.ApplyToSaveAsync(this, cancellationToken);
         var models = ProductModelLinks.Capture(ChangeTracker);
         int saved;
         _saving = true;
