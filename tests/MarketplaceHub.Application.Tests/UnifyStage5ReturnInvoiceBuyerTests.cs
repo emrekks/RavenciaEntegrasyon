@@ -97,6 +97,22 @@ public sealed class UnifyStage5ReturnInvoiceBuyerTests
         Assert.Equal(30m, PazaramaReturnMapper.RefundAmount(withoutQuantity));
     }
 
+    // D13: Pazarama documents its money with "," as the decimal separator (valueString "1,75 TL", decimalSeparator ","):
+    // a value sent as text with a comma is a Turkish decimal, never a thousands separator ("1234,50" was read as 123450).
+    // Text without a comma is the invariant dot decimal, as JSON writes it.
+    [Theory]
+    [InlineData("\"1234,50\"", "1234.50")]
+    [InlineData("\"1.234,50\"", "1234.50")]
+    [InlineData("\"1234.50\"", "1234.50")]
+    [InlineData("1234.5", "1234.5")]
+    [InlineData("\"12,3,4\"", null)]
+    [InlineData("\"abc\"", null)]
+    public void Pazarama_refund_amount_text_is_read_with_its_decimal_comma(string value, string? expected)
+    {
+        var row = JsonDocument.Parse($$$"""{"refundId":"r","orderNumber":1,"refundStatus":1,"refundAmount":{"value":{{{value}}}}}""").RootElement;
+        Assert.Equal(expected is null ? null : decimal.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), PazaramaReturnMapper.RefundAmount(row));
+    }
+
     [Theory]
     [InlineData(2, null, 10, 3, 2)]     // sent
     [InlineData(0, null, 10, 1, 1)]     // a line of one unit

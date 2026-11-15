@@ -268,8 +268,22 @@ public static class PazaramaReturnMapper
     {
         if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(property, out var value)) return null;
         if (value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number)) return number;
-        return value.ValueKind == JsonValueKind.String && decimal.TryParse(value.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed) ? parsed : null;
+        return value.ValueKind == JsonValueKind.String ? TextDecimal(value.GetString()) : null;
     }
+
+    // D13: a number sent as text. Pazarama writes its money with "," as the decimal separator (valueString "1,75 TL",
+    // decimalSeparator ",", pazarama-api-son.md ~3270-4140), so text with a comma is read the Turkish way ("1.234,50" is
+    // 1234.50); NumberStyles.Number with the invariant culture took the comma for a thousands separator and read
+    // "1234,50" as 123450. Text without a comma is the invariant dot decimal JSON uses (RemoteJson). Anything else is
+    // unknown (null).
+    private static readonly CultureInfo Turkish = CultureInfo.GetCultureInfo("tr-TR");
+    private const NumberStyles TurkishDecimal = NumberStyles.AllowLeadingWhite | NumberStyles.AllowTrailingWhite
+        | NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint | NumberStyles.AllowThousands;
+
+    internal static decimal? TextDecimal(string? text) =>
+        string.IsNullOrWhiteSpace(text) ? null
+        : !text.Contains(',', StringComparison.Ordinal) ? RemoteJson.ParseDecimal(text)
+        : decimal.TryParse(text, TurkishDecimal, Turkish, out var parsed) ? parsed : null;
 
     // "6 Ekim 2021 19:46" (Turkish month names) or an ISO instant; Pazarama's clock is Turkey time.
     public static DateTimeOffset? Instant(string? value)
