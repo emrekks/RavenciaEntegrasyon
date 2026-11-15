@@ -149,10 +149,26 @@ http://127.0.0.1:8081 {
 	handle @backend {
 		reverse_proxy api:8080
 	}
+	# Hashed build files. A name that is not there (a chunk an older release had, asked for by a tab still open on it) is
+	# a plain 404 with no-store, never the SPA shell: index.html under an asset name with the one-year immutable header
+	# would stay in the browser cache as that chunk and break the screen again if that release came back. Only a file
+	# that exists gets the immutable header. A single-path handle sorts before the named-matcher handles above.
+	handle /assets/* {
+		root * /srv
+		@asset_found file
+		header @asset_found Cache-Control "public, max-age=31536000, immutable"
+		@asset_missing not file
+		header @asset_missing Cache-Control "no-store"
+		# The build writes a brotli (.br) and a zstd (.zst) copy next to each script and stylesheet
+		# (src/MarketplaceHub.Web/scripts/precompress-assets.mjs); they are sent as they are, at the highest
+		# compression levels, without compressing on every request. A client that takes neither gets the file through
+		# `encode` above.
+		file_server {
+			precompressed br zstd
+		}
+	}
 	handle {
 		root * /srv
-		@static_assets path /assets/*
-		header @static_assets Cache-Control "public, max-age=31536000, immutable"
 		# Logos, brand artwork and fonts keep their names across releases: cached for a day and
 		# refreshed in the background, instead of being downloaded again on every page.
 		@public_media path /platforms/* /pack/* /fonts/*
@@ -160,13 +176,6 @@ http://127.0.0.1:8081 {
 		@application_shell not path /assets/* /platforms/* /pack/* /fonts/*
 		header @application_shell Cache-Control "no-store, no-cache, must-revalidate"
 		try_files {path} /index.html
-		# The build writes a brotli (.br) and a zstd (.zst) copy next to each script and stylesheet
-		# (src/MarketplaceHub.Web/scripts/precompress-assets.mjs); they are sent as they are, at the highest
-		# compression levels, without compressing on every request. A client that takes neither gets the file through
-		# `encode` above.
-		file_server @static_assets {
-			precompressed br zstd
-		}
 		file_server
 	}
 	# The access log keeps no request secrets: the CSRF token and idempotency keys are dropped and query
