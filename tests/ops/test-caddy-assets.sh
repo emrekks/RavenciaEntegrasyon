@@ -29,6 +29,11 @@ for name in Caddyfile Caddyfile.production; do
   assert_contains "$assets" 'header @asset_found Cache-Control "public, max-age=31536000, immutable"' "$name: an existing asset is cached for a year"
   assert_contains "$assets" 'header @asset_missing Cache-Control "no-store"' "$name: a missing asset is not cached"
   assert_contains "$assets" 'precompressed br zstd' "$name: the .br/.zst copies are still served"
+  # A missing file must end in file_server's own 404: nothing in the block may hand the request on or answer otherwise.
+  for passer in pass_thru rewrite redir respond reverse_proxy index.html; do
+    assert_not_contains "$assets" "$passer" "$name: a missing asset is not passed on or rewritten ($passer)"
+  done
+  assert_eq "1" "$(grep -c 'file_server' <<<"$assets")" "$name: /assets ends in one file_server"
   assert_contains "$shell" 'try_files {path} /index.html' "$name: application paths keep the SPA fallback"
   assert_not_contains "$shell" 'immutable' "$name: the SPA fallback never sends the immutable header"
 done

@@ -85,6 +85,35 @@ migration 20990101000001_Concurrent '            migrationBuilder.Sql("SET lock_
             migrationBuilder.Sql("RESET lock_timeout", suppressTransaction: true);'
 expect_pass "the CONCURRENTLY and NOT VALID patterns"
 
+migration 20990101000001_SqlType '            migrationBuilder.Sql("ALTER TABLE sales.orders ALTER COLUMN \"Total\" TYPE numeric(18,4)");'
+expect_fail "SQL that changes a column type" "lock: SQL \"ALTER COLUMN"
+
+migration 20990101000001_SqlSetDataType '            migrationBuilder.Sql(@"ALTER TABLE sales.orders ALTER COLUMN ""Total"" SET DATA TYPE bigint");'
+expect_fail "SQL SET DATA TYPE" "rewrites the table"
+
+migration 20990101000001_TypeLockOk '            migrationBuilder.Sql("ALTER TABLE ops.tiny ALTER COLUMN \"Name\" TYPE character varying(512)");' \
+  '// migration-lock-ok: a varchar widening needs no table rewrite'
+expect_pass "a type change marked as a deliberate exception"
+
+migration 20990101000001_SqlCheck '            migrationBuilder.Sql("ALTER TABLE sales.orders ADD CONSTRAINT ck_total CHECK (\"Total\" >= 0)");'
+expect_fail "SQL ADD CONSTRAINT CHECK without NOT VALID" "lock: SQL ADD CONSTRAINT on existing table orders"
+
+migration 20990101000001_SqlFk '            migrationBuilder.Sql("""
+                ALTER TABLE ONLY "sales"."orders" ADD CONSTRAINT "FK_orders_x" FOREIGN KEY ("TenantId", "XId") REFERENCES sales.x ("TenantId", "Id")
+                """, suppressTransaction: true);'
+expect_fail "SQL ADD CONSTRAINT FOREIGN KEY without NOT VALID" "existing table orders"
+
+migration 20990101000001_SqlFkNotValid '            migrationBuilder.Sql("""
+                ALTER TABLE sales.orders ADD CONSTRAINT "FK_orders_x" FOREIGN KEY ("TenantId", "XId") REFERENCES sales.x ("TenantId", "Id") NOT VALID;
+                """, suppressTransaction: true);
+            migrationBuilder.Sql("ALTER TABLE sales.orders VALIDATE CONSTRAINT \"FK_orders_x\"", suppressTransaction: true);
+            migrationBuilder.Sql("ALTER TABLE sales.orders ADD CONSTRAINT \"UX_orders_a\" UNIQUE USING INDEX \"UX_orders_a\"");'
+expect_pass "SQL ADD CONSTRAINT NOT VALID (raw string) and UNIQUE USING INDEX"
+
+migration 20990101000001_SqlNewTable '            migrationBuilder.Sql("CREATE TABLE IF NOT EXISTS sales.\"fresh\" (\"Id\" uuid NOT NULL, \"A\" integer)");
+            migrationBuilder.Sql("ALTER TABLE sales.\"fresh\" ADD CONSTRAINT ck_fresh_a CHECK (\"A\" > 0)");'
+expect_pass "SQL ADD CONSTRAINT on a table the migration creates"
+
 migration 20990101000001_NewTable '            migrationBuilder.CreateTable(
                 name: "fresh",
                 schema: "sales",

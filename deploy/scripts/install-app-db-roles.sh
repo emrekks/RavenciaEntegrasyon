@@ -19,8 +19,11 @@ set -Eeuo pipefail
 #   --apply      create or refresh both roles, move ownership, grant, and write
 #                deploy/secrets/migrate_db_connection.txt (owner) and deploy/secrets/app_db_connection.app-role.txt
 #                (app), root:1654 0640, each from the current app_db_connection.txt with its own user and password.
-#                Idempotent: an existing file's password is kept. ALTER ... OWNER takes a short ACCESS EXCLUSIVE lock
+#                Idempotent and safe to run again after the switch (app_db_connection.txt then names the app role):
+#                a password in use or in an existing file is kept. ALTER ... OWNER takes a short ACCESS EXCLUSIVE lock
 #                per table; lock_timeout 5s makes a busy table fail the run instead of queueing writes (run it again).
+# Also: the app role's idle_in_transaction_session_timeout is 5 min, and default privileges cover tables created by
+# marketplacehub_owner and, until migrate switches, by marketplacehub.
 
 mode="${1:---check}"
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -43,6 +46,8 @@ END
 $$;
 ALTER ROLE marketplacehub_owner WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS INHERIT PASSWORD :'owner_password';
 ALTER ROLE marketplacehub_app WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS INHERIT PASSWORD :'app_password';
+-- A transaction the code leaves open and idle (a bug, a hung call) no longer holds its locks and blocks vacuum for good.
+ALTER ROLE marketplacehub_app SET idle_in_transaction_session_timeout = '5min';
 -- Ownership moves object by object: marketplacehub is the bootstrap superuser (it owns the system catalogs), so
 -- REASSIGN OWNED is refused for that role. Extension objects (pg_trgm) stay with it.
 ALTER DATABASE marketplacehub OWNER TO marketplacehub_owner;
@@ -85,6 +90,12 @@ GRANT CONNECT, TEMPORARY ON DATABASE marketplacehub TO marketplacehub_app;
 ALTER DEFAULT PRIVILEGES FOR ROLE marketplacehub_owner GRANT USAGE ON SCHEMAS TO marketplacehub_app;
 ALTER DEFAULT PRIVILEGES FOR ROLE marketplacehub_owner GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO marketplacehub_app;
 ALTER DEFAULT PRIVILEGES FOR ROLE marketplacehub_owner GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO marketplacehub_app;
+-- Until the migrate service switches to marketplacehub_owner (runbook section 7 step 4), migrations still run as
+-- marketplacehub: their new tables are reachable for the app role too (no 42501 after the switch). Their ownership
+-- moves to marketplacehub_owner on the next --apply.
+ALTER DEFAULT PRIVILEGES FOR ROLE marketplacehub GRANT USAGE ON SCHEMAS TO marketplacehub_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE marketplacehub GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO marketplacehub_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE marketplacehub GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO marketplacehub_app;
 COMMIT;
 SQL
 }
@@ -123,22 +134,38 @@ fi
 current="$secrets_root/app_db_connection.txt"
 [[ -s "$current" ]] || { echo "Missing $current." >&2; exit 1; }
 connection="$("${sudo_cmd[@]}" cat -- "$current")"
-[[ "$connection" == *"Username=marketplacehub;"* ]] \
-  || { echo "app_db_connection.txt does not use Username=marketplacehub; the switch was made already or the file is unusual." >&2; exit 1; }
+# Before the switch the file names the superuser; after it (runbook section 7 step 5) the app role. Both are fine: the
+# run only takes host, database and options from it. Re-running after the switch is how objects created by hand or by
+# a migration that still ran as marketplacehub are moved to the owner role (runbook section 7, risk b; section 3).
+connection_user=""
+if [[ "$connection" =~ (^|;)Username=([A-Za-z0-9_]+)(;|$) ]]; then connection_user="${BASH_REMATCH[2]}"; fi
+case "$connection_user" in
+  marketplacehub|"$app_role") ;;
+  *) echo "app_db_connection.txt uses Username=${connection_user:-<none>}, expected marketplacehub or $app_role; the file is unusual." >&2; exit 1 ;;
+esac
 
-# The password of an existing file is kept, so a second run does not break a connection already switched over.
+# Passwords are never changed under a running connection: when app_db_connection.txt already logs in as the role, its
+# password is kept; else the password of the role's existing file; else a new random one.
+password_of() {
+  if [[ "$1" =~ (^|;)Password=([A-Za-z0-9]+)(;|$) ]]; then printf '%s' "${BASH_REMATCH[2]}"; else return 1; fi
+}
 password_from() {
-  local file="$1" existing
-  if existing="$("${sudo_cmd[@]}" cat -- "$file" 2>/dev/null)" && [[ "$existing" =~ (^|;)Password=([A-Za-z0-9]+)(;|$) ]]; then
-    printf '%s' "${BASH_REMATCH[2]}"
-  else
-    openssl rand -hex 24
+  local file="$1" role="$2" existing
+  if [[ "$connection_user" == "$role" ]]; then
+    password_of "$connection" && return 0
+    echo "app_db_connection.txt logs in as $role with a password this script does not parse; not changing it." >&2
+    return 1
   fi
+  if existing="$("${sudo_cmd[@]}" cat -- "$file" 2>/dev/null)" && password_of "$existing"; then
+    return 0
+  fi
+  openssl rand -hex 24
 }
 owner_file="$secrets_root/migrate_db_connection.txt"
 app_file="$secrets_root/app_db_connection.app-role.txt"
-owner_password="$(password_from "$owner_file")"
-app_password="$(password_from "$app_file")"
+owner_password="$(password_from "$owner_file" "$owner_role")"
+app_password="$(password_from "$app_file" "$app_role")"
+[[ -n "$owner_password" && -n "$app_password" ]] || { echo "Could not determine the role passwords." >&2; exit 1; }
 
 with_user() { # the current connection string with Username and Password replaced
   local part parts=() out=()
@@ -165,5 +192,9 @@ write_secret() {
 write_secret "$owner_file" "$(with_user "$owner_role" "$owner_password")"
 write_secret "$app_file" "$(with_user "$app_role" "$app_password")"
 echo "Roles $owner_role and $app_role are ready; wrote ${owner_file#"$repository_root"/} and ${app_file#"$repository_root"/}."
-echo "Nothing uses them yet: follow docs/RUNBOOK-GERI-ALMA.md \"Uygulama veritabanı rolleri\" to switch."
+if [[ "$connection_user" == "$app_role" ]]; then
+  echo "API and Worker already log in as $app_role; ownership and grants are refreshed, passwords unchanged."
+else
+  echo "Nothing uses them yet: follow docs/RUNBOOK-GERI-ALMA.md \"Uygulama veritabanı rolleri\" to switch."
+fi
 check_sql | "${psql_cmd[@]}"

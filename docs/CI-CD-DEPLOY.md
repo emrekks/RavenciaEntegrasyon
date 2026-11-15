@@ -189,9 +189,11 @@ Deploy önce migration'ı uygular, yeni API/Worker ancak sonra başlar (`fast-de
 2. **Uzun kilit tutmaz**: satırı olan bir tabloya index `CREATE [UNIQUE] INDEX CONCURRENTLY` ile eklenir
    (`AddProductVariantModelCodeIndex` kalıbı: `SET lock_timeout = 0`, `DROP INDEX CONCURRENTLY IF EXISTS`, `CREATE ...
    CONCURRENTLY`, `RESET lock_timeout`, hepsi `suppressTransaction: true`; modelde `HasIndex` aynı adla kalır). Var olan
-   tabloya FK ya da CHECK `... NOT VALID` ile eklenir, ardından ayrı ifadede `VALIDATE CONSTRAINT` (yazmaları bloke etmez).
+   tabloya FK ya da CHECK `... NOT VALID` ile eklenir, ardından ayrı ifadede `VALIDATE CONSTRAINT` (yazmaları bloke etmez);
+   UNIQUE/PRIMARY KEY önce `CONCURRENTLY` index, sonra `ADD CONSTRAINT ... USING INDEX`. Sütun türü değişikliği
+   (`ALTER COLUMN ... TYPE`) tabloyu ACCESS EXCLUSIVE altında baştan yazar: yeni sütun eklenip doldurulur (genişlet-daralt).
    Aynı migration'ın yarattığı tabloda düz `CreateIndex`/`AddForeignKey` serbesttir. Bilinçli istisna (birkaç satırlık
-   tablo): dosyaya `// migration-lock-ok: <neden>`.
+   tablo, yeniden yazmayan varchar genişletmesi): dosyaya `// migration-lock-ok: <neden>`.
 
 `tests/ops/migration-guard.sh` bu kuralları 20261115000000 ve sonrası migration'larda denetler (Validate `ops` işi,
 `tests/ops/test-migration-guard.sh`); önceki migration'lar canlıda uygulanmış olduğundan denetlenmez.

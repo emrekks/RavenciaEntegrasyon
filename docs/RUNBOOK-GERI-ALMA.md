@@ -113,7 +113,8 @@ silinir — yani bir haftadan eski bir noktaya dönüş her zaman garanti değil
    şekilde açılır; Data Protection anahtarları değişmediyse dokunmayın.
    Uygulama rollerine geçildiyse (bölüm 7) `--no-owner` geri yükleme nesneleri yine `marketplacehub`'a yazar:
    API'yi başlatmadan önce `bash deploy/scripts/install-app-db-roles.sh --apply` sahipliği ve yetkileri yeniden kurar
-   (parolalar `deploy/secrets/` içindeki dosyalardan korunur).6. **Bekleyen işleri karantinaya al** (worker'ı başlatmadan önce, zorunlu). Yedek alındığı anda kuyrukta
+   (parolalar `deploy/secrets/` içindeki dosyalardan korunur).
+6. **Bekleyen işleri karantinaya al** (worker'ı başlatmadan önce, zorunlu). Yedek alındığı anda kuyrukta
    bekleyen ya da çalışan işler arasında fatura gönderimi, kargo/iade aksiyonu ve fiyat-stok yazımı
    olabilir. Bunlar yedekten sonra zaten gönderilmiş olabilir; worker onları yeniden çalıştırırsa
    çift fatura veya pazaryerine eski stok yazılır. Hepsini manuel incelemeye çek:
@@ -187,6 +188,9 @@ doğrulanmış seti aynı açık anahtarla şifreleyip rclone ile Google Drive'a
 `ravencia-restore-drill.timer` her ayın ilk Pazar'ı 22:00 TR'de en yeni seti izole konteynerlere geri
 yükler; başarısızlıkta alarm gelir. Sonucu görmek: `journalctl -u ravencia-restore-drill -n 50`.
 Elle çalıştırmak: `sudo systemctl start ravencia-restore-drill.service`.
+**Sahibin kontrol listesi:** 3 Kasım 2026 Hostinger taşınmasından beri tatbikat hiç çalışmadı (zamanlayıcının ilk
+çalışması 6 Aralık 2026); sessiz bir saatte bir kez elle başlatın (`sudo systemctl start ravencia-restore-drill.service`)
+ve `journalctl -u ravencia-restore-drill -n 50`'de sonucun başarılı olduğunu görün.
 
 ## 7. Uygulama veritabanı rolleri (sahibin adımı, VERITABANI-DAGITIM-1)
 
@@ -204,18 +208,31 @@ kilidi tutulurken, sırayla:
    için varsayılan yetkiler. Her tablo için kısa ACCESS EXCLUSIVE kilit alır (birkaç saniye API yazmaları bekler);
    `lock_timeout 5s` dolarsa hiçbir şey değişmez, tekrar çalıştırın. `deploy/secrets/migrate_db_connection.txt` ve
    `deploy/secrets/app_db_connection.app-role.txt` (root:1654 0640) yazılır. Bu adımdan sonra da her şey eskisi gibi
-   `marketplacehub` ile çalışır (o rol süper olduğundan sahiplik değişimi onu etkilemez).
-4. Kod/yapılandırma değişikliği (bir oturum hazırlayıp gönderir; dosyalar sunucuda var olmadan **gönderilmez**,
-   yoksa Compose secret dosyasını bulamaz ve deploy durur):
+   `marketplacehub` ile çalışır (o rol süper olduğundan sahiplik değişimi onu etkilemez). Bu adımdan sonraki yedekler
+   iki role `GRANT` taşır; migration provası ve aylık tatbikat izole veritabanında iki rolü `NOLOGIN` olarak önceden
+   yaratır (`restore-drill.sh`; bu değişiklik adım 3'ten önce canlıda olmalı), yoksa geri yükleme ilk `GRANT`'ta durur
+   ve migration'lı her deploy provada kalır.
+   Varsayılan yetkiler `marketplacehub`'ın yarattığı tabloları da kapsar: 3 ile 5 arasında migration'lı bir deploy
+   olursa yeni tablolar `marketplacehub_app`'e açıktır; sahiplikleri için adım 5'ten önce `--apply`'ı bir kez daha
+   çalıştırın. Rol ayarı: `marketplacehub_app` için `idle_in_transaction_session_timeout = 5min`.
+4. Kod/yapılandırma değişikliği: hazır, **uygulanmamış** yama
+   [`docs/patches/VERITABANI-DAGITIM-1-app-db-roles-switch.patch`](patches/VERITABANI-DAGITIM-1-app-db-roles-switch.patch).
+   Deploy onu kendiliğinden almaz; dosyalar sunucuda var olmadan **gönderilmez**, yoksa Compose secret dosyasını
+   bulamaz ve deploy durur. Bir oturum (ya da sahip) yeni bir dalda `git apply docs/patches/VERITABANI-DAGITIM-1-app-db-roles-switch.patch`
+   ile uygular, yamayı ve bu maddeyi "uygulandı" diye günceller, Validate'i bekler ve gönderir. Yama:
    - `deploy/compose/compose.yaml`: `secrets:` altına `migrate_db_connection: { file: ../secrets/migrate_db_connection.txt }`;
-     `migrate` servisine `environment: { ConnectionStrings__AppDb_FILE: /run/secrets/migrate_db_connection }` ve
-     `secrets: [migrate_db_connection, credential_key]`; `compose.production.yaml`'da `migrate` için
-     `secrets: [migrate_db_connection, credential_key, dp_certificate, dp_certificate_password]` (`*production_secrets`
-     yerine).
+     `migrate` servisi `secrets: [{ source: migrate_db_connection, target: app_db_connection }, credential_key]`
+     (aynı hedef yol, `ConnectionStrings__AppDb_FILE` değişmez); `compose.production.yaml`'da `migrate` için
+     `secrets: !override [{ source: migrate_db_connection, target: app_db_connection }, credential_key, dp_certificate,
+     dp_certificate_password]`, `worker` kendi listesini açıkça yazar (`*production_secrets` kalkar).
    - `deploy/backup/restore-drill.sh` (migration provası ve aylık tatbikat): yalnız `marketplacehub` süper kullanıcısı
-     olan izole bir veritabanı açar; bağlantıyı `app_db_connection.txt`'den kopyalamak yerine `postgres_password.txt` ile
-     `Username=marketplacehub` olarak kurmalı, yoksa her deploy'un provası "password authentication failed" ile durur.
-   - `deploy/scripts/lib.sh` `lib_required_secret_files`'a `migrate_db_connection.txt`.
+     olan izole bir veritabanı açar; bağlantıyı `app_db_connection.txt`'nin sunucu/veritabanı/ayarlarından,
+     `Username=marketplacehub` ve `postgres_password.txt` parolasıyla kurar (yoksa her deploy'un provası
+     "password authentication failed" ile durur).
+   - `deploy/scripts/lib.sh` `lib_required_secret_files`'a `migrate_db_connection.txt`; `ci.yml` Compose doğrulamasının
+     yer tutucu dosyalarına da.
+   `tests/ops/test-app-db-roles.sh` yamanın hâlâ temiz uygulandığını denetler; o dosyalarda başka bir değişiklik yamayı
+   bozarsa test kırmızı olur: yamayı bu maddedeki tarife göre yeniden üretin (`git diff > …patch`, dosyaları geri alın).
 5. Sunucuda geçiş (yukarıdaki değişiklik canlıya çıktıktan hemen sonra):
    `sudo cp deploy/secrets/app_db_connection.txt deploy/secrets/app_db_connection.superuser.txt` (geri dönüş için),
    `sudo install -o root -g 1654 -m 0640 deploy/secrets/app_db_connection.app-role.txt deploy/secrets/app_db_connection.txt`,
@@ -230,8 +247,10 @@ deploy/secrets/app_db_connection.txt` ve yeniden deploy (süper kullanıcı her 
 gerekmez). Migrate değişikliği geri alınırsa `migrate_db_connection.txt` dosyası durabilir.
 **Riskler:** (a) kodda bugün görülmeyen süper kullanıcı gerektiren bir yol (ör. `ALTER`, `TRUNCATE` gerçek tabloda)
 `42501` ile düşer, hata loglarında görünür — geri dönüşle kapanır; (b) yeni şema/tablo açan migration'lar
-varsayılan yetkilerle kapsanır, ama `marketplacehub` ile elle yaratılan bir nesne kapsanmaz: `--apply`'ı yeniden
-çalıştırın; (c) geri yükleme sonrası bölüm 3'teki not.
+varsayılan yetkilerle kapsanır (`marketplacehub_owner`'ın ve `marketplacehub`'ın yarattıkları), ama `marketplacehub`
+ile yaratılan bir nesnenin sahibi o kalır: `--apply`'ı yeniden çalıştırın (geçişten sonra da güvenli; kullanılan
+parolaları değiştirmez); (c) geri yükleme sonrası bölüm 3'teki not; (d) `idle_in_transaction_session_timeout=5min`
+5 dakikadan uzun boşta bekleyen bir uygulama işlemini keser (bugün bilinen yok; kesilen iş hata alıp yeniden dener).
 
 ## 8. PostgreSQL ayar paketi (sahibin adımı, VERITABANI-DAGITIM-6 ve -7)
 
@@ -241,19 +260,58 @@ kapanma süresi Docker varsayılanı 10 sn. Değişiklik postgres'i **yeniden ba
 yeniden başlatma ister; birkaç saniye kesinti, API/Worker yeniden bağlanır), bu yüzden deploy'a otomatik konmadı.
 Sessiz bir saatte, tek seferde:
 
-1. `deploy/compose/compose.yaml` postgres servisine `stop_grace_period: 120s` ve `command` listesine
-   `-c idle_in_transaction_session_timeout=10min -c log_lock_waits=on -c deadlock_timeout=1s
-   -c log_autovacuum_min_duration=10s -c log_temp_files=65536 -c track_io_timing=on
-   -c shared_preload_libraries=pg_stat_statements -c pg_stat_statements.track=top -c max_wal_size=4GB`
-   (her `-c` ve değer ayrı liste öğesi, mevcut biçimde). Gönderilen ilk deploy postgres'i yeniden yaratır.
-2. Ardından bir migration (yalnız SQL, `// migration-lock-ok: ALTER TABLE SET (...) takes SHARE UPDATE EXCLUSIVE`):
-   `CREATE EXTENSION IF NOT EXISTS pg_stat_statements;` ve sık güncellenen tablolara
+1. `deploy/compose/compose.yaml` postgres servisi, tam satırlar (mevcut `command` listesinin
+   `- log_min_duration_statement=2000` satırından sonra eklenir; `stop_grace_period` `init: true`'nun altına):
+   ```yaml
+       init: true
+       # PostgreSQL writes 1.5 GiB of shared buffers out before it stops; Docker's 10 s default kills it mid-way.
+       stop_grace_period: 120s
+   ```
+   ```yaml
+         - log_min_duration_statement=2000
+         - -c
+         - idle_in_transaction_session_timeout=10min
+         - -c
+         - log_lock_waits=on
+         - -c
+         - deadlock_timeout=1s
+         - -c
+         - log_autovacuum_min_duration=10s
+         - -c
+         - log_temp_files=65536
+         - -c
+         - track_io_timing=on
+         - -c
+         - shared_preload_libraries=pg_stat_statements
+         - -c
+         - pg_stat_statements.track=top
+         - -c
+         - max_wal_size=4GB
+   ```
+   Aynı gönderimde CI denetimi (`ci.yml` "Validate merged Compose manifests", api/worker `stop_grace_period`
+   satırının yanına): `"${compose[@]}" config --format json | jq -e '.services.postgres.stop_grace_period and
+   (.services.postgres.command | index("shared_preload_libraries=pg_stat_statements") != null) and
+   (.services.postgres.command | index("idle_in_transaction_session_timeout=10min") != null)'`. Bu denetim bugün
+   konmadı: ayarlar `compose.yaml`'da yokken kırmızı olurdu. Gönderilen ilk deploy postgres'i yeniden yaratır.
+2. Uzantıyı **süper kullanıcıyla** kurun: `pg_stat_statements` "trusted" bir uzantı değildir, `CREATE EXTENSION`
+   süper kullanıcı ister. Bölüm 7'den sonra migrate `marketplacehub_owner` ile çalışacağından bunu migration'a koymayın
+   (migration orada `permission denied to create extension` ile düşer ve deploy durur). Adım 1 canlıya çıktıktan sonra
+   sunucuda bir kez:
+   `sudo docker exec marketplacehub-postgres-1 psql -X -v ON_ERROR_STOP=1 -U marketplacehub -d marketplacehub -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements"`
+   (yedek ve geri yükleme `marketplacehub` ile çalıştığı için uzantı yedekten de geri gelir).
+3. Ardından bir migration (yalnız SQL, `// migration-lock-ok: ALTER TABLE SET (...) takes SHARE UPDATE EXCLUSIVE`) sık
+   güncellenen tablolara:
    `ALTER TABLE integration.jobs SET (autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.02);`
    (aynısı `integration.job_attempts`, `integration.rate_limit_usage`, `integration.inbox_messages`,
-   `integration.reference_items`, `inventory.inventory_items`, `inventory.channel_offers`). Salt-okunur rol için
-   `GRANT pg_read_all_stats TO ravencia_ro;` (sahibin `install-readonly-db-role.sh`'ına eklenir).
-3. Doğrula: `/prod-sql "show idle_in_transaction_session_timeout"` → `10min`; `/prod-sql "select count(*) from
-   pg_stat_statements"` > 0; `docker inspect -f '{{.Config.StopTimeout}}' marketplacehub-postgres-1` → 120;
+   `integration.reference_items`, `inventory.inventory_items`, `inventory.channel_offers`). Tablonun sahibi
+   çalıştırabilir: bölüm 7'den önce de sonra da çalışır.
+4. Salt-okunur rol için `GRANT pg_read_all_stats, pg_read_all_settings TO ravencia_ro;` (sahibin
+   `install-readonly-db-role.sh`'ına eklenir ve betik bir kez çalıştırılır). `pg_read_all_stats` diğer rollerin
+   sorgu metnini `pg_stat_statements`'ta görmek için, `pg_read_all_settings` doğrulamadaki
+   `show shared_preload_libraries` için gerekir (süper kullanıcıya özel ayar; o olmadan "permission denied").
+5. Doğrula: `/prod-sql "show idle_in_transaction_session_timeout"` → `10min`; `/prod-sql "show
+   shared_preload_libraries"` → `pg_stat_statements`; `/prod-sql "select count(*) from pg_stat_statements"` > 0;
+   `docker inspect -f '{{.Config.StopTimeout}}' marketplacehub-postgres-1` → 120;
    `/prod-logs logs postgres --grep "shut down"` → bir sonraki yeniden başlatmada "database system is shut down".
 **Risk:** `idle_in_transaction_session_timeout=10min` 10 dakikadan uzun boşta bekleyen bir uygulama işlemini keser
 (bugün bilinen yok; kesilirse ilgili iş hata alıp yeniden dener). Geri dönüş: satırları silip yeniden deploy.
