@@ -264,13 +264,15 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     // Model Kaydı Faz 1: the cards and variants this save added, deleted, re-coded or re-branded are linked to their model
     // (ProductModelLinks), right after the save and in its transaction when there is one. The link only follows the
     // model-code rule, so outside a transaction a failure here leaves a card unlinked (today's rule) and the save stands;
-    // inside one the error is the transaction's (PostgreSQL has already aborted it).
+    // inside one the error is the transaction's (PostgreSQL has already aborted it). Outside one any failure (the model
+    // refresh included) is recorded as the PRODUCT_MODEL_LINK_FAILED issue: a save that stands never becomes an error.
     private async Task LinkProductModelsAsync(ProductModelLinks.Pending models)
     {
-        try { await ProductModelLinks.AfterSaveAsync(this, models, _timeProvider.GetUtcNow(), CancellationToken.None); }
-        catch (Exception exception) when (Database.CurrentTransaction is null && exception is System.Data.Common.DbException or InvalidOperationException)
+        var now = _timeProvider.GetUtcNow();
+        try { await ProductModelLinks.AfterSaveAsync(this, models, now, CancellationToken.None); }
+        catch (Exception exception) when (Database.CurrentTransaction is null && exception is not OperationCanceledException)
         {
-            System.Diagnostics.Trace.TraceWarning($"Product model links not updated: {exception.GetType().Name}: {exception.Message}");
+            foreach (var tenantId in models.Tenants.ToList()) await ProductModelLinks.RecordLinkFailureAsync(this, tenantId, exception, now);
         }
     }
 

@@ -406,6 +406,28 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.Null((await ModelOfAsync(db, siyah.Id)).WarrantyMonths);
     }
 
+    // F5: any failure of the model refresh after a save that stands (outside a caller's transaction) is recorded as the
+    // PRODUCT_MODEL_LINK_FAILED issue; the save returns normally and its changes stay.
+    [PostgreSqlFact]
+    public async Task ARefreshThatThrowsAfterTheSave_IsRecorded_AndTheSaveStands()
+    {
+        var tap = new CommandTap(LocksAModel, () => new InvalidCastException("injected"));
+        await using var db = ContextWith(tap);
+        var seed = await SeedAsync(db);
+        var siyah = AddCard(db, seed, seed.Ravencia, "MZ700", "Siyah", "Kadın Siyah Etek", 0);
+        AddCard(db, seed, seed.Ravencia, "MZ700", "Mavi", "Kadın Mavi Etek", 1);
+        await db.SaveChangesAsync();
+
+        tap.Fail = true;
+        siyah.WarrantyMonths = 18;
+        await db.SaveChangesAsync();
+        tap.Fail = false;
+        Assert.Equal(18, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == siyah.Id)).WarrantyMonths);
+        var issue = await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.Code == ProductModelLinks.LinkFailedCode);
+        Assert.Equal(IssueStatus.Open, issue.Status);
+        Assert.Contains("InvalidCastException", issue.Summary);
+    }
+
     // F2: fields and attributes the owner saved in the editor after the last change of every card stay the owner's, even
     // when most cards (here cards the editor does not show) hold another value; the stamps stay; a second run writes
     // nothing either.

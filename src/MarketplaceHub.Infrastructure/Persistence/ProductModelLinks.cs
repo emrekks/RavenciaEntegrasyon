@@ -670,7 +670,7 @@ public static class ProductModelLinks
                     "ResolvedAt" = NULL
                 """, CancellationToken.None);
         }
-        catch (Exception recordFailure) when (recordFailure is System.Data.Common.DbException or InvalidOperationException) { }
+        catch (Exception recordFailure) when (recordFailure is not OperationCanceledException) { }
     }
 
     private static Task ResolveAmbiguityAsync(AppDbContext db, Guid tenantId, string key, DateTimeOffset now, CancellationToken cancellationToken)
