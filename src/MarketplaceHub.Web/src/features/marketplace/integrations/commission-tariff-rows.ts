@@ -46,9 +46,9 @@ export function expandRowPage(raw: CompactRowPage): RowPage {
 }
 
 // A page of a tariff's rows, asked for in the short form and given back in the long one.
-export async function loadRowPage(connectionId: string, tariffId: string, query: Record<string, string>): Promise<RowPage> {
+export async function loadRowPage(connectionId: string, tariffId: string, query: Record<string, string>, signal?: AbortSignal): Promise<RowPage> {
   const params = new URLSearchParams({ ...query, shape: 'compact' })
-  return expandRowPage(await hubApi<CompactRowPage>(`/connections/${connectionId}/commission-tariffs/${tariffId}/rows?${params}`))
+  return expandRowPage(await hubApi<CompactRowPage>(`/connections/${connectionId}/commission-tariffs/${tariffId}/rows?${params}`, { signal }))
 }
 
 // The tariffs a store's tab lists, and the tab's first page of rows; the panel and the prefetch below share them.
@@ -83,10 +83,10 @@ function lastTariff(): LastTariff | null {
 // Opening Promosyon, the tariff list and the first page of rows the tab last opened on are asked for at once, beside
 // the stores, instead of one after the other (stores, then tariffs, then rows). The panel's own queries take them over
 // when they are the ones it opens on; otherwise they are only not used.
-export function prefetchLastTariff(client: QueryClient, store: string | null, rowsQuery: (connectionId: string, tariffId: string) => { queryKey: readonly unknown[]; queryFn: () => Promise<RowPage> }) {
+export function prefetchLastTariff(client: QueryClient, store: string | null, rowsQuery: (connectionId: string, tariffId: string) => { queryKey: readonly unknown[]; queryFn: (context: { signal: AbortSignal }) => Promise<RowPage> }) {
   const last = lastTariff()
   if (!last || (store && store !== last.connectionId)) return
   void client.prefetchQuery(tariffsQuery(last.connectionId))
   const rows = rowsQuery(last.connectionId, last.tariffId)
-  void client.prefetchQuery({ ...rows, retry: false, queryFn: () => rows.queryFn().catch(error => { forgetTariff(); throw error }) })
+  void client.prefetchQuery({ ...rows, retry: false, queryFn: context => rows.queryFn(context).catch(error => { forgetTariff(); throw error }) })
 }

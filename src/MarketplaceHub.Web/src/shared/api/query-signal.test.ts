@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest'
 
 // WEB-ALTYAPI-11: a query hands TanStack Query's signal to its request ({ signal }) => hubApi(path, { signal }), so a
 // query that left the screen or was replaced is aborted instead of running on. The reads below still take no signal:
-// they go through a helper of their own (product pages, order pages, tariff rows, the publication checks, /me) that
-// would need the signal threaded through first. The number may only go down.
-const queriesWithoutSignal = 19
+// the publication check (loadPublicationAttributeIssues, in PublishPlatformCard and bulk-publish-readiness) reads its
+// sources through cached queries of their own that several cards share, so one card's abort must not cancel them
+// (W5, scan 2026-11-15). The number may only go down.
+const queriesWithoutSignal = 2
 
 const sources = import.meta.glob<string>(['../../**/*.ts', '../../**/*.tsx', '!../../**/*.test.ts', '!../../**/*.test.tsx'], { query: '?raw', import: 'default', eager: true })
 

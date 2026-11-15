@@ -228,7 +228,7 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   const isShopifyCard = card.connection.platformCode.trim().toUpperCase() === 'SHOPIFY'
   const shopifyWriteCapabilities = useQuery({
     queryKey: connectionCapabilitiesQueryKey(card.connection.id),
-    queryFn: () => loadConnectionCapabilities(card.connection.id),
+    queryFn: ({ signal }) => loadConnectionCapabilities(card.connection.id, signal),
     enabled: card.mode === 'PUBLISH' && isShopifyCard,
     staleTime: 15_000,
     retry: false
