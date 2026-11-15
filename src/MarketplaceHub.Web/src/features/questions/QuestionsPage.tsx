@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import './questions-design-system.css'
 import { useRememberedHeight } from '../../shared/remembered-height'
@@ -26,14 +27,8 @@ import { useMenuFlip } from '../../shared/hooks/useMenuFlip'
 import { PanelSelect } from '../../shared/PanelSelect'
 import { queryKeys } from '../../shared/api/query-keys'
 
-type MarketplaceQuestion = {
-  id: string; connectionId: string; platformCode: string; storeName: string; externalQuestionId: string; kind: string; status: string
-  questionText: string; subject?: string | null; productName?: string | null; productImageUrl?: string | null; productSku?: string | null; productBarcode?: string | null
-  productModelCode?: string | null; productUrl?: string | null; customerName?: string | null; externalOrderNumber?: string | null; conversations: QuestionConversation[]
-  createdAt: string | null; expiresAt?: string | null; lastRemoteModifiedAt: string | null; lastSyncedAt: string; version: number
-  // NOT_DELIVERED: an earlier answer never reached the marketplace; pendingAnswerText is its text, kept as a draft.
-  answerSubmissionStatus?: string | null; pendingAnswerText?: string | null
-}
+// NOT_DELIVERED (answerSubmissionStatus): an earlier answer never reached the marketplace; pendingAnswerText is its text, kept as a draft.
+type MarketplaceQuestion = ApiAnswer<'getQuestionsById'>
 type Notice = { message: string; kind: 'success' | 'error' | 'info' | 'warning' }
 // A question the seller still has to answer: a new one, or one whose answer the marketplace rejected.
 // Hepsiburada's "rejected" is the question closed after the seller reported it; elsewhere a rejected answer may be
@@ -49,10 +44,10 @@ const autoSyncAfterMs = 15 * 60_000
 export function questionSyncIsStale(states: Array<{ lastSuccessAt?: string | null; progressStatus: string }>, now: number) {
   return states.some(state => state.progressStatus !== 'INITIAL' && (!state.lastSuccessAt || now - new Date(state.lastSuccessAt).getTime() > autoSyncAfterMs))
 }
-type Template = { id: string; title: string; text: string; version: number; updatedAt: string }
+type Template = ApiAnswer<'getQuestionTemplates'>[number]
 type Connection = { id: string; platformCode: string; displayName: string; status: string }
-type SyncState = { connectionId: string; platformCode: string; storeName: string; historyImported: boolean; historyStartedAt?: string | null; progressStatus: string; importedCount: number; productQuestionCount?: number; orderQuestionCount?: number; lastRunStartedAt?: string | null; lastSuccessAt?: string | null; lastError?: string | null }
-type QuestionListPage = { items: MarketplaceQuestion[]; page: number; limit: number; totalCount: number }
+type SyncState = ApiAnswer<'getQuestionsSyncState'>[number]
+type QuestionListPage = ApiAnswer<'getQuestions'>
 type QuestionStatus = 'WAITING' | 'ANSWERED' | 'EXPIRED' | 'OTHER' | 'ALL'
 // Hepsiburada has its own order questions; Pazarama marks a question that names an order. Trendyol and N11 only ask about products.
 const ORDER_QUESTION_PLATFORMS = ['HEPSIBURADA', 'PAZARAMA']
@@ -257,7 +252,7 @@ export function QuestionsPage() {
   const deleteTemplate = useMutation({ mutationFn: (item: Template) => hubApi<void>(`/question-templates/${item.id}`, { method: 'DELETE', headers: { 'If-Match': `"v${item.version}"` } }), onSuccess: async () => { setNotice(null); setDeletingTemplate(null); await client.invalidateQueries({ queryKey: queryKeys.questionTemplates() }) }, onError: error => { setDeletingTemplate(null); fail(error, 'Hazır cevap silinemedi.') } })
   const sendAnswer = useMutation({
     mutationFn: async ({ id, version, text }: { id: string; version: number; text: string }) => {
-      const post = (current: number) => { const body = JSON.stringify({ text, version: current }); return sendWithVersionedIdempotencyKey(versionedIdempotencyKey('question-answer', id, current, body), key => hubApi<MarketplaceQuestion>(`/questions/${id}/answer`, { method: 'POST', headers: { 'Idempotency-Key': key }, body })) }
+      const post = (current: number) => { const body = JSON.stringify({ text, version: current }); return sendWithVersionedIdempotencyKey(versionedIdempotencyKey('question-answer', id, current, body), key => hubApi<ApiAnswer<'postQuestionsByIdAnswer'>>(`/questions/${id}/answer`, { method: 'POST', headers: { 'Idempotency-Key': key }, body })) }
       try { return await post(version) }
       catch (error) {
         // The question was refreshed in the background since it was opened: it is read again and, while it
