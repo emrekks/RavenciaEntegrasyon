@@ -467,6 +467,28 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.Equal(IssueStatus.Resolved, await db.OperationalIssues.AsNoTracking().Where(x => x.TenantId == empty.Id).Select(x => x.Status).SingleAsync());
     }
 
+    // F8: the model's size chart is written only when it differs: a second run issues no write for it, neither for a
+    // model with a chart nor for one without.
+    [PostgreSqlFact]
+    public async Task ASecondRun_IssuesNoSizeChartWrite()
+    {
+        var tap = new CommandTap(sql => sql.Contains("product_model_size_charts", StringComparison.Ordinal) && (sql.Contains("INSERT", StringComparison.Ordinal) || sql.Contains("DELETE", StringComparison.Ordinal)));
+        await using var db = ContextWith(tap);
+        var seed = await SeedAsync(db);
+        var siyah = AddCard(db, seed, seed.Ravencia, "MZ900", "Siyah", "Kadın Siyah Etek", 0);
+        var mavi = AddCard(db, seed, seed.Ravencia, "MZ900", "Mavi", "Kadın Mavi Etek", 1);
+        AddCard(db, seed, seed.Ravencia, "MZ901", "Siyah", "Kadın Siyah Bluz", 2);
+        await db.SaveChangesAsync();
+        db.ProductSizeCharts.AddRange(Chart(seed, siyah.Id, "70"), Chart(seed, mavi.Id, "70"));
+        await db.SaveChangesAsync();
+        Assert.True(await db.ProductModelSizeCharts.AsNoTracking().AnyAsync(x => x.TenantId == seed.Tenant.Id));
+
+        var before = tap.Count;
+        var outcome = await ProductModelValues.RefreshTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
+        Assert.Equal((2, 0), (outcome.Models, outcome.Written));
+        Assert.Equal(before, tap.Count);
+    }
+
     // F2: fields and attributes the owner saved in the editor after the last change of every card stay the owner's, even
     // when most cards (here cards the editor does not show) hold another value; the stamps stay; a second run writes
     // nothing either.

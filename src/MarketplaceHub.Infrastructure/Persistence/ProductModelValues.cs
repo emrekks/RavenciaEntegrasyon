@@ -147,7 +147,7 @@ public static class ProductModelValues
     // What one model should hold, and where its cards disagree.
     private sealed record Target(
         ProductModel Model, IReadOnlyList<Card> Cards, ProductFamilySharedFields.ModelFields Fields, string? TitleColor, bool KeepTitle, bool FieldsSaved,
-        decimal? Desi, IReadOnlyList<ProductModelLinks.ModelAttributeRow> Attributes, bool AttributesDiffer, string? Chart, IReadOnlyList<string> Differing);
+        decimal? Desi, IReadOnlyList<ProductModelLinks.ModelAttributeRow> Attributes, bool AttributesDiffer, string? Chart, bool ChartDiffers, IReadOnlyList<string> Differing);
 
     private static Target? Compute(Snapshot snapshot, ProductModel model)
     {
@@ -170,6 +170,9 @@ public static class ProductModelValues
 
         var charts = cards.Select(card => snapshot.ChartByCard.GetValueOrDefault(card.Id)).ToList();
         var chart = ModelChartCard(charts) is int chartCard ? charts[chartCard] : null;
+        // The model's chart row as it is (both columns jsonb, so equal measurements read back as equal text): written
+        // only on a difference.
+        var chartDiffers = snapshot.ModelCharts.TryGetValue(model.Id, out var modelChart) ? chart is null || modelChart != chart : chart is not null;
 
         var differing = DifferingFields(cards).ToList();
         if (setKeys.Distinct(StringComparer.Ordinal).Skip(1).Any()) differing.Add(Attributes);
@@ -181,7 +184,7 @@ public static class ProductModelValues
         var fieldsSaved = ProductModelLinks.HoldsSavedFields(model, cards.Select(card => (snapshot.CardUpdatedAt[card.Id], card.CategoryId)));
         var attributesDiffer = !ProductModelLinks.HoldsSavedAttributes(model.AttributesSavedAt, updatedAt)
             && AttributeSetKey(snapshot.ModelAttributes.GetValueOrDefault(model.Id) ?? []) != setKeys[ProductFamilySharedFields.ModelAttributeCard(setKeys)];
-        return new Target(model, cards, fields, titleColor, keepTitle, fieldsSaved, desi, attributes, attributesDiffer, chart, differing);
+        return new Target(model, cards, fields, titleColor, keepTitle, fieldsSaved, desi, attributes, attributesDiffer, chart, chartDiffers, differing);
     }
 
     // Skipped: models left for the next run because their refresh failed (a lock wait timeout, a deadlock).
@@ -287,7 +290,7 @@ public static class ProductModelValues
         }
         if (target.AttributesDiffer)
             wrote |= await ProductModelLinks.ReplaceModelAttributesAsync(db, model.TenantId, model.Id, target.Attributes, cancellationToken);
-        wrote |= await WriteChartAsync(db, model.TenantId, model.Id, target.Chart, now, cancellationToken);
+        if (target.ChartDiffers) wrote |= await WriteChartAsync(db, model.TenantId, model.Id, target.Chart, now, cancellationToken);
         return wrote;
     }
 
