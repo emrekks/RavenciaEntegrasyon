@@ -37,6 +37,48 @@ public sealed class JobQueueAuditTests
         Assert.Contains(sqlState, result.ErrorSummary);
     }
 
+    // KUYRUK-4: a foreign key, NOT NULL, range or format fault is not "transient"; it goes to review at once.
+    [Theory]
+    [InlineData(PostgresErrorCodes.ForeignKeyViolation)]
+    [InlineData(PostgresErrorCodes.NotNullViolation)]
+    [InlineData(PostgresErrorCodes.NumericValueOutOfRange)]
+    [InlineData(PostgresErrorCodes.InvalidTextRepresentation)]
+    [InlineData(PostgresErrorCodes.DatetimeFieldOverflow)]
+    public void APermanentDataFaultGoesToManualReview(string sqlState)
+    {
+        var violation = new PostgresException("data fault", "ERROR", "ERROR", sqlState);
+        var result = MarketplaceHub.Worker.Worker.ExceptionResult(new DbUpdateException("An error occurred while saving the entity changes.", violation));
+
+        Assert.Equal(JobCompletionKind.ManualReview, result.Kind);
+        Assert.Equal("DATABASE_CONSTRAINT_VIOLATION", result.ErrorCode);
+        Assert.Contains(sqlState, result.ErrorSummary);
+    }
+
+    [Theory]
+    [InlineData(PostgresErrorCodes.SerializationFailure)]
+    [InlineData(PostgresErrorCodes.DeadlockDetected)]
+    [InlineData(PostgresErrorCodes.QueryCanceled)]
+    [InlineData(PostgresErrorCodes.TooManyConnections)]
+    public void ATransientDatabaseErrorIsRetriedAsTransient(string sqlState)
+    {
+        var error = new PostgresException("transient", "ERROR", "ERROR", sqlState);
+        var result = MarketplaceHub.Worker.Worker.ExceptionResult(new DbUpdateException("save failed", error));
+
+        Assert.Equal(JobCompletionKind.Retry, result.Kind);
+        Assert.Equal("TRANSIENT_EXECUTION_FAILURE", result.ErrorCode);
+    }
+
+    [Fact]
+    public void AnyOtherDatabaseErrorIsRetriedButNotCalledTransient()
+    {
+        var error = new PostgresException("relation does not exist", "ERROR", "ERROR", PostgresErrorCodes.UndefinedTable);
+        var result = MarketplaceHub.Worker.Worker.ExceptionResult(error);
+
+        Assert.Equal(JobCompletionKind.Retry, result.Kind);
+        Assert.Equal("UNHANDLED_EXECUTION_FAILURE", result.ErrorCode);
+        Assert.Contains(PostgresErrorCodes.UndefinedTable, result.ErrorSummary);
+    }
+
     [Fact]
     public void FailureSummariesNameTheExceptionType()
     {

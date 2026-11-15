@@ -788,9 +788,14 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         // row): the next run finds that row. It is retried a couple of times before it goes to review.
         _ when DataConstraintViolation(exception) is { SqlState: PostgresErrorCodes.UniqueViolation } duplicate =>
             JobExecutionResult.Retry(MarketplaceHub.Infrastructure.Jobs.JobConflictPolicy.DuplicateInsert, $"Aynı kayıt başka bir işlem tarafından eklendi; işlem kısa süre içinde yeniden denenecek. ({duplicate.ConstraintName})", TimeSpan.FromSeconds(Random.Shared.Next(5, 16))),
-        // A violated check or a value too long is a data fault that six retries cannot fix.
+        // A violated check, foreign key or NOT NULL rule, a value too long or out of range is a data fault that six
+        // retries cannot fix.
         _ when DataConstraintViolation(exception) is { } violation =>
             JobExecutionResult.ManualReview("DATABASE_CONSTRAINT_VIOLATION", $"Kayıt bir veritabanı kuralına takıldı ve incelenmeli. ({violation.SqlState} {violation.ConstraintName}: {violation.MessageText.ReplaceLineEndings(" ")})"),
+        // Any other error the database reported that is not transient (a serialization failure, deadlock, cancelled
+        // query, connection or resource fault is) is still retried, but not under the "transient" code.
+        _ when NonTransientDatabaseError(exception) is { } error =>
+            JobExecutionResult.Retry("UNHANDLED_EXECUTION_FAILURE", $"Veritabanı beklenmeyen bir hata bildirdi; işlem otomatik deneme sınırı içinde yeniden denenecek. ({error.SqlState}: {error.MessageText.ReplaceLineEndings(" ")})"),
         TimeoutException or HttpRequestException or IOException or System.Data.Common.DbException or DbUpdateException =>
             JobExecutionResult.Retry("TRANSIENT_EXECUTION_FAILURE", $"Geçici altyapı hatası nedeniyle işlem yeniden denenecek. ({Describe(exception)})"),
         // A broken or closed database connection, a disposed service during shutdown or EF's transient-failure
@@ -822,8 +827,23 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     private static PostgresException? DataConstraintViolation(Exception exception)
     {
         for (Exception? current = exception; current is not null; current = current.InnerException)
-            if (current is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation or PostgresErrorCodes.CheckViolation or PostgresErrorCodes.StringDataRightTruncation } postgres)
+            if (current is PostgresException
+                {
+                    SqlState: PostgresErrorCodes.UniqueViolation or PostgresErrorCodes.CheckViolation or PostgresErrorCodes.StringDataRightTruncation
+                        or PostgresErrorCodes.ForeignKeyViolation or PostgresErrorCodes.NotNullViolation or PostgresErrorCodes.NumericValueOutOfRange
+                        or PostgresErrorCodes.InvalidTextRepresentation or PostgresErrorCodes.DatetimeFieldOverflow
+                } postgres)
                 return postgres;
+        return null;
+    }
+
+    // A database error that a retry may well not get past. Npgsql marks the transient ones (serialization failure,
+    // deadlock, connection and resource faults); a query cancelled by a statement timeout counts as transient too.
+    private static PostgresException? NonTransientDatabaseError(Exception exception)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+            if (current is PostgresException postgres)
+                return postgres.IsTransient || postgres.SqlState == PostgresErrorCodes.QueryCanceled ? null : postgres;
         return null;
     }
 
