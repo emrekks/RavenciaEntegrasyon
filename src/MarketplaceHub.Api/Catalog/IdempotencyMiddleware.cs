@@ -13,6 +13,17 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
 {
     private const int MaximumRequestBytes = 10 * 1024 * 1024;
 
+    /// <summary>
+    /// How long a running request holds its key as IN_PROGRESS. A request the process lost (a deploy kills
+    /// the API, the container dies) never finishes its record; once this lease runs out the record is
+    /// settled as UNKNOWN (never retried blindly) instead of answering "still running" for a whole day. It
+    /// is longer than the slowest synchronous endpoint (the size chart's 4-minute Claude call).
+    /// </summary>
+    public static readonly TimeSpan InProgressLease = TimeSpan.FromMinutes(10);
+
+    /// <summary>How long a finished request's answer is replayed for the same key.</summary>
+    public static readonly TimeSpan ReplayWindow = TimeSpan.FromHours(24);
+
     public async Task InvokeAsync(HttpContext context, AppDbContext db, ITenantContextAccessor tenants, TimeProvider timeProvider, TokenHasher hasher)
     {
         var isMutation = HttpMethods.IsPost(context.Request.Method) || HttpMethods.IsPut(context.Request.Method) || HttpMethods.IsPatch(context.Request.Method) || HttpMethods.IsDelete(context.Request.Method);
@@ -62,14 +73,11 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
         // The version the request was made against is part of it: the same key with another If-Match is a
         // different request, not a replay.
         var ifMatch = context.Request.Headers.IfMatch.ToString();
-        var versionLine = string.IsNullOrEmpty(ifMatch) ? string.Empty : $"if-match:{ifMatch}\n";
-        var hashInput = Encoding.UTF8.GetBytes($"{context.Request.Method}\n{requestPath}\n{context.Request.QueryString}\n{versionLine}");
-        var combined = new byte[hashInput.Length + requestBytes.Length];
-        hashInput.CopyTo(combined, 0); requestBytes.ToArray().CopyTo(combined, hashInput.Length);
         // Bodies can carry credentials (connection keys, webhook passwords). A plain SHA-256 of them, kept
         // for a day, would let anyone who reads the table test guesses offline; the digest is keyed with the
-        // server's key instead.
-        var hash = hasher.HashBytes(IdempotencyRequestDigest.Prefix(combined));
+        // server's key instead. A multipart upload is digested without its random boundary (CanonicalBodyAsync).
+        var hash = await IdempotencyRequestDigest.RequestHashAsync(hasher, context.Request.Method, requestPath, context.Request.QueryString.ToString(),
+            ifMatch, context.Request.ContentType, requestBytes.ToArray(), context.RequestAborted);
         // Records belong to the user who made the request: another user of the tenant who happens to send
         // the same key neither replays nor blocks it.
         var storedKey = IdempotencyRequestDigest.StoredKey(tenant.UserId, key);
@@ -145,7 +153,7 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
             return;
         }
 
-        var record = new ApiIdempotencyRecord { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, RouteTemplate = route, IdempotencyKey = storedKey, RequestHash = hash, State = "IN_PROGRESS", CreatedAt = now, ExpiresAt = now.AddHours(24) };
+        var record = new ApiIdempotencyRecord { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, RouteTemplate = route, IdempotencyKey = storedKey, RequestHash = hash, State = "IN_PROGRESS", CreatedAt = now, ExpiresAt = now.Add(InProgressLease) };
         db.ApiIdempotencyRecords.Add(record);
         try { await db.SaveChangesAsync(context.RequestAborted); }
         catch (DbUpdateException exception) when (IsExpectedIdempotencyRace(exception))
@@ -181,6 +189,8 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
             if (context.Response.StatusCode < 500)
             {
                 record.State = "COMPLETED";
+                // The IN_PROGRESS lease ends here; the answer is replayed for the full window from now on.
+                record.ExpiresAt = timeProvider.GetUtcNow().Add(ReplayWindow);
                 string? body = null;
                 var withhold = secretResponse && context.Response.StatusCode is >= 200 and < 300;
                 if (!withhold && IdempotentResponse.IsStorableBody(context.Response.ContentType, responseBuffer.Length))

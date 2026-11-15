@@ -126,6 +126,27 @@ public sealed class SizeChartGenerationPostgreSqlTests(PostgreSqlTenantIsolation
         Assert.Equal(ClaudeService.CancelledStatus, row.Status);
     }
 
+    // API-GUVENLIK-3: once the tenant's runs of the last 24 hours cost the daily ceiling, no further run reaches Claude.
+    [PostgreSqlFact]
+    public async Task A_run_over_the_daily_spend_limit_never_reaches_Claude()
+    {
+        await using var db = fixture.CreateContext();
+        var settings = new AiSettingsService(db, new EphemeralDataProtectionProvider(), TimeProvider.System);
+        var (tenantId, productId) = await SeedAsync(settings);
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.AiUsageLogs.Add(new AiUsageLog { Id = Guid.CreateVersion7(), TenantId = tenantId, Feature = "SIZE_CHART", Model = "claude-sonnet-5-5", CostUsd = 6m, Status = "SUCCEEDED", DurationMs = 1000, CreatedAt = DateTimeOffset.UtcNow.AddHours(-2) });
+            await seed.SaveChangesAsync();
+        }
+        var fake = new FakeClaude(SizeChartRules.Validate(Input()).Table!);
+        var service = new SizeChartService(db, new ClaudeService(settings, fake, db, TimeProvider.System, new AiSpendLimit(5m)), new MemoryStorage(), TimeProvider.System);
+
+        var failure = await Assert.ThrowsAsync<SizeChartException>(() => service.GenerateAsync(tenantId, Guid.Empty, productId, Input(), CancellationToken.None));
+
+        Assert.Equal("AI_BUDGET_EXCEEDED", failure.Code);
+        Assert.Null(fake.Request);
+    }
+
     private sealed class MemoryStorage : IPrivateFileStorage
     {
         public List<string> Saved { get; } = [];

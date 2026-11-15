@@ -53,6 +53,24 @@ public sealed class UserManagementGuardTests
     [InlineData("")]
     [InlineData("ROOT")]
     public void UnknownRolesAreRefused(string? wire) => Assert.Null(UserManagementEndpoints.ParseRole(wire));
+
+    // API-GUVENLIK-6: the answer to "add user" carries no account id and no "existing account" flag.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("one-time-password-0000000")]
+    public async Task AddingAUser_AnswersWithoutTheAccountIdOrAnExistingAccountFlag(string? temporaryPassword)
+    {
+        var context = new Microsoft.AspNetCore.Http.DefaultHttpContext { RequestServices = new ServiceCollection().AddLogging().BuildServiceProvider() };
+        context.Response.Body = new MemoryStream();
+
+        await UserManagementEndpoints.AddedResponse(temporaryPassword).ExecuteAsync(context);
+
+        context.Response.Body.Position = 0;
+        var body = await JsonSerializer.DeserializeAsync<JsonElement>(context.Response.Body);
+        Assert.Equal(["added", "temporaryPassword"], body.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal).ToArray());
+        Assert.True(body.GetProperty("added").GetBoolean());
+        Assert.Equal(temporaryPassword, body.GetProperty("temporaryPassword").GetString());
+    }
 }
 
 // The whole flow through the real pipeline and PostgreSQL. Its own host and tenant (fixture per class).
@@ -202,6 +220,74 @@ public sealed class UserManagementEndToEndTests(ApiEndToEndFixture fixture) : IC
             Assert.Contains(UserManagementEndpoints.PasswordReset, actions);
             Assert.Contains(UserManagementEndpoints.MfaReset, actions);
             Assert.Contains(UserManagementEndpoints.SessionsRevoked, actions);
+        }
+    }
+
+    // API-GUVENLIK-5: two owners demoting each other at the same moment leave exactly one owner, never none.
+    [PostgreSqlFact]
+    public async Task TwoOwnersDemotingEachOtherAtOnce_LeaveOneOwner()
+    {
+        var otherEmail = $"owner2-um-{fixture.Run}@example.invalid";
+        var otherId = await CreateUserAsync(otherEmail, MembershipRole.Owner);
+        var ownerId = await UserIdAsync(fixture.Email(MembershipRole.Owner));
+        var (owner, ownerCsrf, ownerSignIn) = await fixture.SignInAsync(MembershipRole.Owner);
+        using var other = fixture.Host!.CreateClient();
+        var otherCsrf = await fixture.Host.CsrfAsync(other);
+        using (var login = await other.SendAsync(ApiTestHost.Json(HttpMethod.Post, "/api/v1/auth/login", otherCsrf, new { email = otherEmail, password = ApiEndToEndFixture.Password })))
+            Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+        using (owner)
+        using (ownerSignIn)
+        {
+            var responses = await Task.WhenAll(
+                owner.SendAsync(ApiTestHost.Json(HttpMethod.Put, $"{Base}/{otherId}/role", ownerCsrf, new { role = "ADMINISTRATOR", password = ApiEndToEndFixture.Password })),
+                other.SendAsync(ApiTestHost.Json(HttpMethod.Put, $"{Base}/{ownerId}/role", otherCsrf, new { role = "ADMINISTRATOR", password = ApiEndToEndFixture.Password })));
+            try
+            {
+                // One change goes through; the other is refused as the last owner (or, when it starts after the first
+                // committed, because its sender is no longer an owner).
+                Assert.Single(responses, response => response.StatusCode == HttpStatusCode.NoContent);
+                Assert.Single(responses, response => response.StatusCode is HttpStatusCode.Conflict or HttpStatusCode.Forbidden);
+            }
+            finally
+            {
+                foreach (var response in responses) response.Dispose();
+            }
+
+            await using var scope = fixture.Host.Services.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            Assert.Equal(1, await db.TenantMemberships.CountAsync(x => x.TenantId == fixture.TenantId && (x.UserId == ownerId || x.UserId == otherId) && x.Role == MembershipRole.Owner && x.Status == RecordStatus.Active));
+        }
+    }
+
+    // API-GUVENLIK-6: an account of another workspace joins with the same answer shape as a new one: no account id, no flag.
+    [PostgreSqlFact]
+    public async Task AddingAnAccountOfAnotherWorkspace_DoesNotRevealItsId()
+    {
+        var email = $"elsewhere-um-{fixture.Run}@example.invalid";
+        Guid elsewhereId;
+        await using (var scope = fixture.Host!.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var now = DateTimeOffset.UtcNow;
+            var otherTenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"um-other-{fixture.Run}", DisplayName = "Başka Alan", CreatedAt = now, UpdatedAt = now };
+            db.Tenants.Add(otherTenant);
+            var user = new ApplicationUser { Id = Guid.CreateVersion7(), UserName = email, Email = email, DisplayName = "Başka Kullanıcı", CreatedAt = now, UpdatedAt = now };
+            Assert.True((await users.CreateAsync(user, ApiEndToEndFixture.Password)).Succeeded);
+            db.TenantMemberships.Add(new TenantMembership { Id = Guid.CreateVersion7(), TenantId = otherTenant.Id, UserId = user.Id, Role = MembershipRole.Operations, CreatedAt = now, UpdatedAt = now });
+            await db.SaveChangesAsync();
+            elsewhereId = user.Id;
+        }
+        var (admin, csrf, signIn) = await fixture.SignInAsync(MembershipRole.Administrator);
+        using (admin)
+        using (signIn)
+        using (var added = await admin.SendAsync(ApiTestHost.Json(HttpMethod.Post, Base, csrf, new { email, displayName = "Başka Kullanıcı", role = "READONLY", password = ApiEndToEndFixture.Password })))
+        {
+            Assert.Equal(HttpStatusCode.OK, added.StatusCode);
+            var raw = await added.Content.ReadAsStringAsync();
+            Assert.DoesNotContain(elsewhereId.ToString(), raw, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("existingAccount", raw, StringComparison.Ordinal);
+            Assert.DoesNotContain("userId", raw, StringComparison.Ordinal);
         }
     }
 

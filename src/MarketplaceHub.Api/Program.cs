@@ -50,6 +50,9 @@ builder.Host.UseSerilog((_, configuration) => configuration
     .Enrich.With<SecretPathEnricher>()
     .WriteTo.Console(new RenderedCompactJsonFormatter()));
 builder.Services.AddMarketplaceInfrastructure(builder.Configuration);
+// A deploy stops the API with SIGTERM; requests still running get up to 40 s to finish (as the worker does) so
+// fewer of them are cut off and left as an unknown outcome. The container's stop_grace_period must exceed it.
+builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = TimeSpan.FromSeconds(40));
 builder.Services.AddScoped<BreakGlassService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantContextAccessor, HttpTenantContextAccessor>();
@@ -91,6 +94,9 @@ builder.Services.AddScoped<MarketplaceHub.Infrastructure.Backups.OffsiteBackupCh
 builder.Services.AddHttpClient(MarketplaceHub.Infrastructure.Ai.ClaudeClient.HttpClientName, client => client.Timeout = Timeout.InfiniteTimeSpan);
 builder.Services.AddSingleton<MarketplaceHub.Infrastructure.Ai.IClaudeClient, MarketplaceHub.Infrastructure.Ai.ClaudeClient>();
 builder.Services.AddScoped<MarketplaceHub.Infrastructure.Ai.AiSettingsService>();
+// One size chart per product and two Claude runs per tenant at once; a 24-hour spend ceiling (Ai:DailySpendLimitUsd).
+builder.Services.AddSingleton<MarketplaceHub.Infrastructure.Ai.AiRunGate>();
+builder.Services.AddSingleton(MarketplaceHub.Infrastructure.Ai.AiSpendLimit.From(builder.Configuration));
 builder.Services.AddScoped<MarketplaceHub.Infrastructure.Ai.ClaudeService>();
 builder.Services.AddScoped<MarketplaceHub.Infrastructure.SizeCharts.SizeChartService>();
 builder.Services.AddSingleton<MarketplaceHub.Infrastructure.Alerts.IAlertEmailSender, MarketplaceHub.Infrastructure.Alerts.GmailSmtpAlertSender>();
