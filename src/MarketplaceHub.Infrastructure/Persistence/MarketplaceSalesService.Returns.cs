@@ -100,9 +100,11 @@ public sealed partial class MarketplaceSalesService
                 if (returnVariantsByMarketplaceIdentity.TryGetValue((connectionId ?? Guid.Empty, identity), out var linkedId) && returnVariantsById.GetValueOrDefault(linkedId) is { } linked) return linked;
             return null;
         }
-        var packages = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)).OrderByDescending(x => x.StatusOccurredAt).ToListAsync(cancellationToken);
+        // The latest package and invoice by date, then by id (ties had no order): the invoice label filter reads them alike
+        // (ReturnInvoiceLabelRows).
+        var packages = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)).OrderByDescending(x => x.StatusOccurredAt).ThenByDescending(x => x.Id).ToListAsync(cancellationToken);
         var invoices = await db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId) && x.OriginalInvoiceId == null
-            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))).OrderByDescending(x => x.CreatedAt).ToListAsync(cancellationToken);
+            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))).OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).ToListAsync(cancellationToken);
         var invoiceIds = invoices.Select(invoice => invoice.Id).ToArray();
         var returnDeliveryStates = invoiceIds.Length == 0
             ? []

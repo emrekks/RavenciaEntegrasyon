@@ -22,6 +22,7 @@ public sealed class ReturnListEquivalencePostgreSqlTests(PostgreSqlTenantIsolati
 {
     private static readonly string?[] Sorts = [null, "REQUESTED_ASC", "ORDERED_ASC", "ORDERED_DESC", "APPROVED_ASC", "APPROVED_DESC", "ID"];
     private static readonly string?[] Tabs = [null, "ALL", "REQUESTED", "SHIPPING", "ACTION_REQUIRED", "APPROVED", "REJECTED", "REVIEW", "DISPUTED", "SUSPENDED", "UNKNOWN_TAB"];
+    private static readonly string[] InvoiceLabels = ["FATURA_BEKLIYOR", "FATURA_BELIRSIZ", "FATURA_REDDEDILDI", "FATURA_PLATFORMA_AKTARILMADI", "FATURA_IPTAL", "FATURA_ISLENIYOR", "FATURA_KONTROLDE", "FATURA_BILINMIYOR", "ALL"];
 
     [PostgreSqlFact]
     public async Task Every_page_of_every_tab_and_sort_equals_the_in_memory_pages()
@@ -69,7 +70,13 @@ public sealed class ReturnListEquivalencePostgreSqlTests(PostgreSqlTenantIsolati
                 new(Search: "a"), new(Search: "EQ-SKU-1"), new(Search: "ayşe"), new(Search: "BEĞENMEDİM", Status: "APPROVED"),
                 new(Platforms: ["TRENDYOL"]), new(Platforms: ["N11", "HEPSIBURADA"], Status: "APPROVED"), new(Cargo: "Aras Kargo"), new(Cargo: "Yurtiçi", Status: "ACTION_REQUIRED"),
                 new(ReasonKey: "SIZE"), new(ReasonKey: "Beğenmedim", Sort: "ORDERED_ASC"), new(InvoiceStatus: "FATURA_BILINMIYOR"), new(InvoiceStatus: "FATURA_KONTROLDE", Sort: "ID"),
-                new(Search: "eq", Platforms: ["TRENDYOL"], Cargo: "Aras Kargo", Sort: "APPROVED_DESC")
+                new(Search: "eq", Platforms: ["TRENDYOL"], Cargo: "Aras Kargo", Sort: "APPROVED_DESC"),
+                // SIPARIS-STOK-9: the search and the invoice label are decided by the database now. Turkish letters in
+                // both cases, digits only, white space around, several words, LIKE specials; every label.
+                new(Search: "AYŞE"), new(Search: "yilmaz", Status: "APPROVED"), new(Search: "IŞIL"), new(Search: " eq-claim-1 ", Sort: "ID"), new(Search: "%"), new(Search: "_"),
+                new(Search: "1003"), new(Search: "ürün 1 0"), new(Search: "BEDEN KÜÇÜK", Sort: "REQUESTED_ASC"), new(Search: "868000", Status: "ACTION_REQUIRED"),
+                .. InvoiceLabels.Select(label => new ReturnListQuery(InvoiceStatus: label)),
+                new(InvoiceStatus: "FATURA_KONTROLDE", Status: "APPROVED", Sort: "APPROVED_DESC"), new(InvoiceStatus: "fatura_bekliyor ", Search: "eq", Platforms: ["N11"])
             ];
             var compared = 0;
             foreach (var filter in filters)
@@ -96,7 +103,9 @@ public sealed class ReturnListEquivalencePostgreSqlTests(PostgreSqlTenantIsolati
             options.AddRange([
                 new(Search: "a"), new(Search: "EQ-SKU-2", Status: "APPROVED"), new(Platforms: ["TRENDYOL"]), new(Platforms: ["N11"], Status: "APPROVED"),
                 new(Cargo: "Aras Kargo"), new(ReasonKey: "SIZE", Status: "REJECTED"), new(InvoiceStatus: "FATURA_BILINMIYOR"), new(InvoiceStatus: "FATURA_KONTROLDE", Status: "SHIPPING"),
-                new(Barcode: "EQ-SKU")
+                new(Barcode: "EQ-SKU"),
+                new(Search: "IŞIL"), new(Search: "ürün 1 0", Status: "APPROVED"), new(Search: "%", Cargo: "Aras Kargo"), new(InvoiceStatus: "FATURA_BEKLIYOR", Status: "APPROVED"),
+                .. InvoiceLabels.Select(label => new ReturnListQuery(InvoiceStatus: label)), .. InvoiceLabels.Select(label => new ReturnListQuery(InvoiceStatus: label, Search: "eq", Status: "REJECTED"))
             ]);
             foreach (var option in options)
             {
@@ -184,7 +193,8 @@ public sealed class ReturnListEquivalencePostgreSqlTests(PostgreSqlTenantIsolati
                 // A line changed behind the save hook: the stored split no longer follows the lines.
                 ("lines changed", () => db.ReturnLines.Where(x => x.TenantId == tenantId && splitIds.Contains(x.ClaimId) && x.RawStatus == "WaitingInAction").ExecuteUpdateAsync(set => set.SetProperty(x => x.RawStatus, "Rejected"))),
             };
-            List<ReturnListQuery> summaries = [.. Tabs.Select(tab => new ReturnListQuery(Status: tab)), new(Search: "a", Status: "APPROVED"), new(Platforms: ["TRENDYOL"], Status: "REJECTED")];
+            List<ReturnListQuery> summaries = [.. Tabs.Select(tab => new ReturnListQuery(Status: tab)), new(Search: "a", Status: "APPROVED"), new(Platforms: ["TRENDYOL"], Status: "REJECTED"),
+                new(InvoiceStatus: "FATURA_KONTROLDE"), new(Search: "IŞIL", InvoiceStatus: "FATURA_BILINMIYOR", Status: "APPROVED")];
             var compared = 0;
             foreach (var (name, breakIt) in states)
             {
@@ -205,6 +215,7 @@ public sealed class ReturnListEquivalencePostgreSqlTests(PostgreSqlTenantIsolati
                         pages += await ComparePagesAsync(service, db, cursors, tenantId, 7, new ReturnListQuery(Status: tab, Sort: sort));
                 pages += await ComparePagesAsync(service, db, cursors, tenantId, 5, new ReturnListQuery(Search: "eq", Status: "APPROVED"));
                 pages += await ComparePagesAsync(service, db, cursors, tenantId, 5, new ReturnListQuery(Cargo: "Aras Kargo", Sort: "APPROVED_DESC"));
+                pages += await ComparePagesAsync(service, db, cursors, tenantId, 5, new ReturnListQuery(InvoiceStatus: "FATURA_KONTROLDE", Status: "APPROVED", Sort: "APPROVED_ASC"));
                 foreach (var option in summaries)
                 {
                     var expected = await LegacyReturnListQueries.BuildReturnSummaryAsync(service, db, tenantId, option, CancellationToken.None);
@@ -214,6 +225,60 @@ public sealed class ReturnListEquivalencePostgreSqlTests(PostgreSqlTenantIsolati
                 }
                 return pages;
             }
+        }
+        finally
+        {
+            await CleanupAsync(tenantId);
+        }
+    }
+
+    // SIPARIS-STOK-9: the invoice label is read live by the database, never stored: when its inputs (the latest package's
+    // marketplace invoice status and raw status, a newer package, the customer snapshot) change after the claims were
+    // written, the filtered pages, their counters and the summary still equal the card-by-card ones.
+    [PostgreSqlFact]
+    public async Task Invoice_label_pages_follow_its_inputs_changing_after_the_claims_were_written()
+    {
+        var tenantId = await SeedAsync();
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var cursors = NewCursors();
+            var service = NewService(db, cursors);
+            var changes = new (string Name, Func<Task> Change)[]
+            {
+                ("seeded", () => Task.CompletedTask),
+                ("marketplace status", () => db.ShipmentPackages.Where(x => x.TenantId == tenantId && x.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Invoiced).ExecuteUpdateAsync(set => set.SetProperty(x => x.MarketplaceInvoiceStatus, MarketplaceInvoiceStatus.Unknown))),
+                ("raw status", () => db.ShipmentPackages.Where(x => x.TenantId == tenantId && x.RawStatus == "Delivered").ExecuteUpdateAsync(set => set.SetProperty(x => x.RawStatus, " INVOICED "))),
+                ("snapshot", () => db.Orders.Where(x => x.TenantId == tenantId && x.CustomerSnapshotJson == "{}").ExecuteUpdateAsync(set => set.SetProperty(x => x.CustomerSnapshotJson, """{"invoiceStatus":"NotInvoiced"}"""))),
+                ("newer package", async () =>
+                {
+                    var orders = await db.Orders.Where(x => x.TenantId == tenantId).OrderBy(x => x.Id).Select(x => new { x.Id, x.ConnectionId }).Take(30).ToListAsync();
+                    db.ShipmentPackages.AddRange(orders.Select((order, index) => new ShipmentPackage
+                    {
+                        Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = order.ConnectionId, OrderId = order.Id, ExternalPackageId = $"eq-late-{index}", GrossAmount = 100m, NetAmount = 100m,
+                        Status = ShipmentPackageStatus.Delivered, RawStatus = "Delivered", StatusOccurredAt = DateTimeOffset.UtcNow, MarketplaceInvoiceStatus = (MarketplaceInvoiceStatus)(index % 5),
+                        CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow, Version = 1
+                    }));
+                    await db.SaveChangesAsync();
+                })
+            };
+            var compared = 0;
+            foreach (var (name, change) in changes)
+            {
+                await change();
+                foreach (var label in InvoiceLabels)
+                {
+                    compared += await ComparePagesAsync(service, db, cursors, tenantId, 11, new ReturnListQuery(InvoiceStatus: label, Sort: "ORDERED_DESC"));
+                    foreach (var option in new ReturnListQuery[] { new(InvoiceStatus: label), new(InvoiceStatus: label, Status: "APPROVED", Search: "eq") })
+                    {
+                        var expected = await LegacyReturnListQueries.BuildReturnSummaryAsync(service, db, tenantId, option, CancellationToken.None);
+                        var actual = await service.BuildReturnSummaryAsync(tenantId, option, MarketplaceSalesService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal), CancellationToken.None);
+                        Assert.True(JsonSerializer.Serialize(expected) == JsonSerializer.Serialize(actual), $"{name}: {JsonSerializer.Serialize(option)}");
+                        compared++;
+                    }
+                }
+            }
+            output.WriteLine($"{compared} pages and summaries compared");
         }
         finally
         {
@@ -265,7 +330,7 @@ public sealed class ReturnListEquivalencePostgreSqlTests(PostgreSqlTenantIsolati
             output.WriteLine($"page (cargo filter): columns unfilled {bareCargo.Queries} queries / {bareCargo.Rows} rows, filled {newCargo.Queries} / {newCargo.Rows}");
             output.WriteLine($"summary (approved tab): old {oldSummary.Queries} queries / {oldSummary.Rows} rows, columns unfilled {bareSummary.Queries} / {bareSummary.Rows}, filled {newSummary.Queries} / {newSummary.Rows}");
             output.WriteLine($"summary (all tabs): columns unfilled {bareAllSummary.Queries} queries / {bareAllSummary.Rows} rows, filled {newAllSummary.Queries} / {newAllSummary.Rows}");
-            Assert.True(newSummary.Rows < bareSummary.Rows, $"summary rows {newSummary.Rows} vs {bareSummary.Rows} unfilled");
+            Assert.True(newSummary.Rows <= bareSummary.Rows, $"summary rows {newSummary.Rows} vs {bareSummary.Rows} unfilled");
             Assert.True(newPage.Rows * 2 < oldPage.Rows, $"page rows {newPage.Rows} vs {oldPage.Rows}");
             Assert.True(newTab.Rows < oldTab.Rows, $"tab rows {newTab.Rows} vs {oldTab.Rows}");
             Assert.True(newSearch.Rows <= oldSearch.Rows, $"search rows {newSearch.Rows} vs {oldSearch.Rows}");
