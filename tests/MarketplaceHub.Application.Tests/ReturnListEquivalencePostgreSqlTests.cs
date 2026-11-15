@@ -32,6 +32,8 @@ public sealed class ReturnListEquivalencePostgreSqlTests(PostgreSqlTenantIsolati
             await using var db = fixture.CreateContext();
             var cursors = NewCursors();
             var service = NewService(db, cursors);
+            // The seed's saves filled the card columns: the pages below are read through them.
+            Assert.True((await service.ReturnColumnStateAsync(tenantId, CancellationToken.None)).Fresh);
             var compared = 0;
             foreach (var sort in Sorts)
                 foreach (var tab in Tabs)
@@ -113,6 +115,74 @@ public sealed class ReturnListEquivalencePostgreSqlTests(PostgreSqlTenantIsolati
         }
     }
 
+    // SIPARIS-STOK-9 card columns: rows never filled (the claims the old code wrote), some filled and some not (a deploy's
+    // backfill half way), and filled rows made stale behind the save hook's back must never change a page or a summary: the
+    // staleness check sends the tenant back to the computation from claims and lines, and the repair pass brings the
+    // columns back.
+    [PostgreSqlFact]
+    public async Task Pages_and_summaries_stay_the_same_while_the_card_columns_are_unfilled_or_stale()
+    {
+        var tenantId = await SeedAsync();
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var cursors = NewCursors();
+            var service = NewService(db, cursors);
+            var claims = db.ReturnClaims.Where(x => x.TenantId == tenantId);
+            var ids = await claims.OrderBy(x => x.Id).Select(x => x.Id).ToListAsync();
+            var splitIds = await claims.Where(x => x.CardSplit == true).Select(x => x.Id).ToListAsync();
+            var approvedIds = await claims.Where(x => x.ApprovedAt != null).Select(x => x.Id).ToListAsync();
+            Assert.NotEmpty(splitIds);
+            Assert.NotEmpty(approvedIds);
+            var everyThird = ids.Where((_, index) => index % 3 == 0).ToList();
+            var states = new (string Name, Func<Task> Break)[]
+            {
+                ("unfilled", () => claims.ExecuteUpdateAsync(set => set.SetProperty(x => x.TabGroup, (string?)null).SetProperty(x => x.CardSplit, (bool?)null).SetProperty(x => x.ApprovedAt, (DateTimeOffset?)null))),
+                ("a third unfilled", () => claims.Where(x => everyThird.Contains(x.Id)).ExecuteUpdateAsync(set => set.SetProperty(x => x.TabGroup, (string?)null).SetProperty(x => x.CardSplit, (bool?)null).SetProperty(x => x.ApprovedAt, (DateTimeOffset?)null))),
+                ("tab stale", () => claims.Where(x => x.TabGroup == "REJECTED").ExecuteUpdateAsync(set => set.SetProperty(x => x.TabGroup, "APPROVED"))),
+                ("split stale", () => claims.Where(x => splitIds.Contains(x.Id)).ExecuteUpdateAsync(set => set.SetProperty(x => x.CardSplit, false))),
+                ("split stale the other way", () => claims.Where(x => x.CardSplit == false).ExecuteUpdateAsync(set => set.SetProperty(x => x.CardSplit, true))),
+                ("approval date stale", () => claims.Where(x => approvedIds.Contains(x.Id)).ExecuteUpdateAsync(set => set.SetProperty(x => x.ApprovedAt, new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero)))),
+                // A line changed behind the save hook: the stored split no longer follows the lines.
+                ("lines changed", () => db.ReturnLines.Where(x => x.TenantId == tenantId && splitIds.Contains(x.ClaimId) && x.RawStatus == "WaitingInAction").ExecuteUpdateAsync(set => set.SetProperty(x => x.RawStatus, "Rejected"))),
+            };
+            List<ReturnListQuery> summaries = [.. Tabs.Select(tab => new ReturnListQuery(Status: tab)), new(Search: "a", Status: "APPROVED"), new(Platforms: ["TRENDYOL"], Status: "REJECTED")];
+            var compared = 0;
+            foreach (var (name, breakIt) in states)
+            {
+                await breakIt();
+                Assert.False((await service.ReturnColumnStateAsync(tenantId, CancellationToken.None)).Fresh, name);
+                compared += await CompareAllAsync();
+                await ReturnCardColumns.RepairAsync(db, CancellationToken.None);
+                Assert.True((await service.ReturnColumnStateAsync(tenantId, CancellationToken.None)).Fresh, $"{name} repaired");
+                compared += await CompareAllAsync();
+            }
+            output.WriteLine($"{compared} pages and summaries compared");
+
+            async Task<int> CompareAllAsync()
+            {
+                var pages = 0;
+                foreach (var sort in new[] { null, "APPROVED_DESC", "APPROVED_ASC", "ORDERED_ASC" })
+                    foreach (var tab in new[] { null, "APPROVED", "ACTION_REQUIRED", "REJECTED", "SHIPPING" })
+                        pages += await ComparePagesAsync(service, db, cursors, tenantId, 7, new ReturnListQuery(Status: tab, Sort: sort));
+                pages += await ComparePagesAsync(service, db, cursors, tenantId, 5, new ReturnListQuery(Search: "eq", Status: "APPROVED"));
+                pages += await ComparePagesAsync(service, db, cursors, tenantId, 5, new ReturnListQuery(Cargo: "Aras Kargo", Sort: "APPROVED_DESC"));
+                foreach (var option in summaries)
+                {
+                    var expected = await LegacyReturnListQueries.BuildReturnSummaryAsync(service, db, tenantId, option, CancellationToken.None);
+                    var actual = await service.BuildReturnSummaryAsync(tenantId, option, MarketplaceSalesService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal), CancellationToken.None);
+                    Assert.Equal(JsonSerializer.Serialize(expected), JsonSerializer.Serialize(actual));
+                    pages++;
+                }
+                return pages;
+            }
+        }
+        finally
+        {
+            await CleanupAsync(tenantId);
+        }
+    }
+
     // What one request reads, old and new, on the seeded tenant: queries sent and rows the database returned.
     [PostgreSqlFact]
     public async Task The_unfiltered_page_reads_a_page_of_rows_instead_of_every_claim_and_line()
@@ -137,12 +207,27 @@ public sealed class ReturnListEquivalencePostgreSqlTests(PostgreSqlTenantIsolati
             var newSearch = await MeasureAsync((service, _) => service.ReturnCardPageAsync(tenantId, 20, 1, null, options with { Search = "eq" }, CancellationToken.None));
             var oldSummary = await MeasureAsync((service, db) => LegacyReturnListQueries.BuildReturnSummaryAsync(service, db, tenantId, options with { Status = "APPROVED" }, CancellationToken.None));
             var newSummary = await MeasureAsync((service, _) => service.BuildReturnSummaryAsync(tenantId, options with { Status = "APPROVED" }, MarketplaceSalesService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal), CancellationToken.None));
+            var newCargo = await MeasureAsync((service, _) => service.ReturnCardPageAsync(tenantId, 20, 1, null, options with { Cargo = "Aras Kargo" }, CancellationToken.None));
+            var newAllSummary = await MeasureAsync((service, _) => service.BuildReturnSummaryAsync(tenantId, options, MarketplaceSalesService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal), CancellationToken.None));
+            // The same requests with the card columns not filled (the claims the old code wrote): the computation of
+            // 15 Nov 2026 wave 3 plus the staleness check.
+            await using (var clear = fixture.CreateContext())
+                await clear.ReturnClaims.Where(x => x.TenantId == tenantId).ExecuteUpdateAsync(set => set.SetProperty(x => x.TabGroup, (string?)null));
+            var bareSummary = await MeasureAsync((service, _) => service.BuildReturnSummaryAsync(tenantId, options with { Status = "APPROVED" }, MarketplaceSalesService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal), CancellationToken.None));
+            var bareAllSummary = await MeasureAsync((service, _) => service.BuildReturnSummaryAsync(tenantId, options, MarketplaceSalesService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal), CancellationToken.None));
+            var barePage = await MeasureAsync((service, _) => service.ReturnCardPageAsync(tenantId, 20, 1, null, options, CancellationToken.None));
+            var bareTab = await MeasureAsync((service, _) => service.ReturnCardPageAsync(tenantId, 20, 1, null, options with { Status = "APPROVED", Sort = "APPROVED_DESC" }, CancellationToken.None));
+            var bareSearch = await MeasureAsync((service, _) => service.ReturnCardPageAsync(tenantId, 20, 1, null, options with { Search = "eq" }, CancellationToken.None));
+            var bareCargo = await MeasureAsync((service, _) => service.ReturnCardPageAsync(tenantId, 20, 1, null, options with { Cargo = "Aras Kargo" }, CancellationToken.None));
             await using (var count = fixture.CreateContext())
                 output.WriteLine($"seed: {await count.ReturnClaims.CountAsync(x => x.TenantId == tenantId)} claims, {await count.ReturnLines.CountAsync(x => x.TenantId == tenantId)} lines");
-            output.WriteLine($"page (all tabs, newest request): old {oldPage.Queries} queries / {oldPage.Rows} rows, new {newPage.Queries} queries / {newPage.Rows} rows");
-            output.WriteLine($"page (approved tab, approval date): old {oldTab.Queries} queries / {oldTab.Rows} rows, new {newTab.Queries} queries / {newTab.Rows} rows");
-            output.WriteLine($"page (search): old {oldSearch.Queries} queries / {oldSearch.Rows} rows, new {newSearch.Queries} queries / {newSearch.Rows} rows");
-            output.WriteLine($"summary (approved tab): old {oldSummary.Queries} queries / {oldSummary.Rows} rows, new {newSummary.Queries} queries / {newSummary.Rows} rows");
+            output.WriteLine($"page (all tabs, newest request): old {oldPage.Queries} queries / {oldPage.Rows} rows, columns unfilled {barePage.Queries} / {barePage.Rows}, filled {newPage.Queries} / {newPage.Rows}");
+            output.WriteLine($"page (approved tab, approval date): old {oldTab.Queries} queries / {oldTab.Rows} rows, columns unfilled {bareTab.Queries} / {bareTab.Rows}, filled {newTab.Queries} / {newTab.Rows}");
+            output.WriteLine($"page (search): old {oldSearch.Queries} queries / {oldSearch.Rows} rows, columns unfilled {bareSearch.Queries} / {bareSearch.Rows}, filled {newSearch.Queries} / {newSearch.Rows}");
+            output.WriteLine($"page (cargo filter): columns unfilled {bareCargo.Queries} queries / {bareCargo.Rows} rows, filled {newCargo.Queries} / {newCargo.Rows}");
+            output.WriteLine($"summary (approved tab): old {oldSummary.Queries} queries / {oldSummary.Rows} rows, columns unfilled {bareSummary.Queries} / {bareSummary.Rows}, filled {newSummary.Queries} / {newSummary.Rows}");
+            output.WriteLine($"summary (all tabs): columns unfilled {bareAllSummary.Queries} queries / {bareAllSummary.Rows} rows, filled {newAllSummary.Queries} / {newAllSummary.Rows}");
+            Assert.True(newSummary.Rows < bareSummary.Rows, $"summary rows {newSummary.Rows} vs {bareSummary.Rows} unfilled");
             Assert.True(newPage.Rows * 2 < oldPage.Rows, $"page rows {newPage.Rows} vs {oldPage.Rows}");
             Assert.True(newTab.Rows < oldTab.Rows, $"tab rows {newTab.Rows} vs {oldTab.Rows}");
             Assert.True(newSearch.Rows <= oldSearch.Rows, $"search rows {newSearch.Rows} vs {oldSearch.Rows}");
