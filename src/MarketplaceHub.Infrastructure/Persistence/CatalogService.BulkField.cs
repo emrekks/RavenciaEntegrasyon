@@ -93,9 +93,11 @@ public sealed partial class CatalogService
         var candidatesByKey = new Dictionary<string, List<(Guid Id, Guid? BrandId, ProductStatus Status)>>(StringComparer.Ordinal);
         if (codes.Count > 0)
         {
+            // KATALOG-8: only the cards that may hold one of the selected keys are read; the key still decides below.
+            var candidates = ModelCodeOwnership.ProductIdsWithKeys(db, tenantId, ModelCodeUniquenessPolicy.Keys(codes.Values));
             var rows = await (from variant in db.ProductVariants.AsNoTracking()
                               join product in VisibleProducts(tenantId) on variant.ProductId equals product.Id
-                              where variant.TenantId == tenantId && variant.ModelCode != null && variant.ModelCode != ""
+                              where variant.TenantId == tenantId && variant.ModelCode != null && variant.ModelCode != "" && candidates.Contains(product.Id)
                               select new { product.Id, product.BrandId, product.Status, variant.ModelCode }).Distinct().ToListAsync(cancellationToken);
             foreach (var row in rows)
             {

@@ -697,9 +697,12 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
         var cardsByKey = new Dictionary<string, HashSet<Guid>>(StringComparer.Ordinal);
         if (keys.Count > 0)
         {
+            // KATALOG-8: only the cards that may hold one of the keys are read; the key still decides below.
+            var candidates = ModelCodeOwnership.ProductIdsWithKeys(db, tenantId, keys);
             var rows = await (from variant in db.ProductVariants.AsNoTracking()
                               join product in db.Products.AsNoTracking() on new { variant.TenantId, Id = variant.ProductId } equals new { product.TenantId, product.Id }
                               where variant.TenantId == tenantId && variant.ModelCode != null && variant.ModelCode != "" && product.Status != ProductStatus.Archived
+                                  && candidates.Contains(product.Id)
                               select new { product.Id, variant.ModelCode }).Distinct().ToListAsync(cancellationToken);
             foreach (var row in rows)
                 if (ProductFamilyKeyPolicy.ModelCodeKey(row.ModelCode) is { } key && keys.Contains(key))
