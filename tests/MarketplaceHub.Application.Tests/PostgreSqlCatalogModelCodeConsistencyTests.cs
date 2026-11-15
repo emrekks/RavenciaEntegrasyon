@@ -87,6 +87,33 @@ public sealed class PostgreSqlCatalogModelCodeConsistencyTests(PostgreSqlTenantI
         Assert.False(await db.Products.AnyAsync(x => x.TenantId == seed.Tenant.Id));
     }
 
+    // KATALOG-3: the name and the VAT the products file writes on one colour card go to every colour card of the model
+    // (each with its own colour word), so the editor's next save does not take them back; another brand's card under the
+    // same code is not touched.
+    [PostgreSqlFact]
+    public async Task AProductsFile_NameAndVatOnOneColour_GoToEveryColourOfTheModel()
+    {
+        await using var db = fixture.CreateContext();
+        var seed = await SeedAsync(db);
+        var siyah = AddCard(db, seed, "MZ600", "Siyah");
+        var mavi = AddCard(db, seed, "MZ600", "Mavi");
+        var otherBrand = Guid.CreateVersion7();
+        db.Brands.Add(new Brand { Id = otherBrand, TenantId = seed.Tenant.Id, Name = "Lavian", NormalizedName = "LAVIAN", IsActive = true, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow, Version = 1 });
+        var lavian = AddCard(db, seed, "MZ600", "Gri");
+        lavian.BrandId = otherBrand;
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var service = new ProductTransferService(db, fixture.TimeProvider);
+        var applied = await service.ApplyAsync(seed.Tenant.Id, Guid.CreateVersion7(), new ApplyProductTransferCommand([], [new ProductTransferProductChange(siyah.Id, 1, "Kadın Siyah Yırtmaçlı Bluz", 20m)]), "transfer-model-fields", CancellationToken.None);
+        Assert.True(applied.Succeeded, applied.Error?.Message);
+        db.ChangeTracker.Clear();
+        var cards = await db.Products.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).ToDictionaryAsync(x => x.Id);
+        Assert.Equal(("Kadın Siyah Yırtmaçlı Bluz", 20m), (cards[siyah.Id].Title, cards[siyah.Id].VatRate));
+        Assert.Equal(("Kadın Mavi Yırtmaçlı Bluz", 20m, "INCLUDED"), (cards[mavi.Id].Title, cards[mavi.Id].VatRate, cards[mavi.Id].VatInclusion));
+        Assert.Equal(("Kadın Gri Bluz", 10m), (cards[lavian.Id].Title, cards[lavian.Id].VatRate));
+    }
+
     [PostgreSqlFact]
     public async Task AProductsFile_RecodingOneRowOfACard_IsRefusedOnApply()
     {

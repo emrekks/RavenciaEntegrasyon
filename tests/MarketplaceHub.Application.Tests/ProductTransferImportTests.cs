@@ -488,6 +488,29 @@ public sealed class ProductTransferImportTests
         Assert.All(together.Rows, row => Assert.Equal("UPDATE", row.Outcome));
     }
 
+    // KATALOG-3: the name and the VAT are the model's: rows of two colour cards of one model asking for different VATs are
+    // refused; names that differ only by each card's own colour word are one name.
+    [Fact]
+    public void TheNameAndVat_AreCheckedAcrossTheColourCardsOfAModel()
+    {
+        var siyah = Candidate("MZ600-S", null, null, null) with { ModelCode = "MZ600", VariantLabel = "Renk: Siyah | Beden: S", ProductTitle = "Kadın Siyah Bluz" };
+        var mavi = Candidate("MZ600-M", null, null, null) with { ModelCode = "MZ600", VariantLabel = "Renk: Mavi | Beden: S", ProductTitle = "Kadın Mavi Bluz" };
+        string[] fields = [ProductTransferFields.Title, ProductTransferFields.Vat];
+
+        var vat = ProductTransferImportPlanner.Plan("f.xlsx", [
+            new ProductTransferFileRow(2, "MZ600-S", null, Empty, Empty, Vat: Set(20m)),
+            new ProductTransferFileRow(3, "MZ600-M", null, Empty, Empty, Vat: Set(10m))], [siyah, mavi], fields);
+        Assert.Empty(vat.ProductChanges!);
+        Assert.All(vat.Rows, row => Assert.Equal("ERROR", row.Outcome));
+        Assert.Contains("Aynı modelin", vat.Rows[0].Message);
+
+        var names = ProductTransferImportPlanner.Plan("f.xlsx", [
+            new ProductTransferFileRow(2, "MZ600-S", null, Empty, Empty, Title: Text("Kadın Siyah Yeni Bluz")),
+            new ProductTransferFileRow(3, "MZ600-M", null, Empty, Empty, Title: Text("Kadın Mavi Yeni Bluz"))], [siyah, mavi], fields);
+        Assert.Equal(2, names.ProductChanges!.Count);
+        Assert.All(names.Rows, row => Assert.Equal("UPDATE", row.Outcome));
+    }
+
     private static ProductTransferValue Empty => ProductTransferValue.Empty;
     private static ProductTransferValue Set(decimal value) => ProductTransferValue.Set(value);
     private static ProductTransferValue Text(string value) => ProductTransferValue.SetText(value);

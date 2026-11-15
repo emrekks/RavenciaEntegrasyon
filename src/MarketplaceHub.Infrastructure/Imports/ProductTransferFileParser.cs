@@ -421,8 +421,8 @@ public static class ProductTransferImportPlanner
 
         var pendingRows = resolved.Where(item => item.Outcome == "PENDING").Select(item => (item.Row, Variant: item.Variant!)).ToList();
         var conflicts = new ProductConflicts(
-            Disagreements(pendingRows, row => row.Title, "ürün adı"),
-            Disagreements(pendingRows, row => row.Vat, "KDV oranı"),
+            Disagreements(pendingRows, item => item.Row.Title, TitleKey, "ürün adı"),
+            Disagreements(pendingRows, item => item.Row.Vat, item => Key(item.Row.Vat), "KDV oranı"),
             BrandDisagreements(pendingRows),
             ModelCodeDisagreements(pendingRows, variants));
         // A barcode asked for by more than one variant in the file cannot be given to any of them.
@@ -555,12 +555,28 @@ public static class ProductTransferImportPlanner
         return result;
     }
 
-    // The products whose rows ask for more than one value of a product-level field, with the message their rows get.
-    private static Dictionary<Guid, string> Disagreements(IEnumerable<(ProductTransferFileRow Row, ProductTransferCandidate Variant)> rows, Func<ProductTransferFileRow, ProductTransferValue> value, string label) =>
-        rows.Where(item => value(item.Row).Kind == ProductTransferValueKind.Set)
-            .GroupBy(item => item.Variant.ProductId)
-            .Where(group => group.Select(item => Key(value(item.Row))).Distinct(StringComparer.Ordinal).Count() > 1)
-            .ToDictionary(group => group.Key, group => $"Aynı ürünün satırlarında farklı {label} var (satır {string.Join(", ", group.Select(item => item.Row.RowNumber))}); ürünün tüm satırlarına aynı değeri yazın.");
+    // KATALOG-3: the name and the VAT are the model's (the cards sharing the model code; a card without one is a model of its
+    // own), as the editor and Toplu Değer Ata keep them: the products of a model whose rows ask for more than one value, with
+    // the message their rows get. A name is compared without its row's colour word (each colour card names its own colour).
+    private static Dictionary<Guid, string> Disagreements(IEnumerable<(ProductTransferFileRow Row, ProductTransferCandidate Variant)> rows, Func<(ProductTransferFileRow Row, ProductTransferCandidate Variant), ProductTransferValue> value, Func<(ProductTransferFileRow Row, ProductTransferCandidate Variant), string> key, string label)
+    {
+        var result = new Dictionary<Guid, string>();
+        foreach (var model in rows.Where(item => value(item).Kind == ProductTransferValueKind.Set)
+                     .GroupBy(item => ProductFamilyKeyPolicy.ModelCodeKey(item.Variant.ModelCode) ?? item.Variant.ProductId.ToString("N"), StringComparer.Ordinal))
+        {
+            if (model.Select(key).Distinct(StringComparer.Ordinal).Count() < 2) continue;
+            var message = $"Aynı modelin satırlarında farklı {label} var (satır {string.Join(", ", model.Select(item => item.Row.RowNumber))}); {label} modelin tüm renklerinde aynıdır, tüm satırlara aynı değeri yazın.";
+            foreach (var item in model) result[item.Variant.ProductId] = message;
+        }
+        return result;
+    }
+
+    private static string TitleKey((ProductTransferFileRow Row, ProductTransferCandidate Variant) item)
+    {
+        var title = item.Row.Title.Text?.Trim() ?? "";
+        var color = ProductFamilyColorOrder.ColorOf(item.Variant.VariantLabel);
+        return ProductFamilyNewColorCard.HasColorWord(title, color) ? ProductFamilyNewColorCard.Title(title, color, "\u0001") : title;
+    }
 
     private static bool IsEmpty(ProductTransferFileRow row) =>
         new[] { row.Cost, row.Desi, row.Stock, row.Title, row.NewBarcode, row.ModelCode, row.PanelSale, row.PanelList, row.Vat, row.Brand }.All(value => value.Kind == ProductTransferValueKind.Empty) && row.StorePrices.Count == 0;
