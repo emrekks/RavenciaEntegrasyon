@@ -17,7 +17,7 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
         var candidates = await (from item in db.WebhookSubscriptions.AsNoTracking()
                                 join owner in db.PlatformConnections.AsNoTracking() on new { item.TenantId, item.ConnectionId } equals new { owner.TenantId, ConnectionId = owner.Id }
                                 where item.Status == "ACTIVE" && (item.RoutePublicId == connectionPublicId || (item.RoutePublicId == null && owner.PublicId == connectionPublicId))
-                                    && (owner.PlatformCode == "TRENDYOL" || owner.PlatformCode == "SHOPIFY" || owner.PlatformCode == "HEPSIBURADA") && (owner.Status == "ACTIVE" || owner.Status == "VERIFIED")
+                                    && (owner.PlatformCode == "TRENDYOL" || owner.PlatformCode == "SHOPIFY" || owner.PlatformCode == "HEPSIBURADA") && AnsweringConnectionStatuses.Contains(owner.Status)
                                 select new { Subscription = item, Connection = owner }).ToListAsync(cancellationToken);
         var match = candidates.SingleOrDefault(x => SafeVerify(routeToken, x.Subscription.RouteTokenHash));
         if (match is null)
@@ -31,13 +31,21 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
         // A stale product delete (one held back during a deploy) still starts the link check at once: its body is not
         // read, the check finds the deleted codes itself, so the card does not show them as live until the nightly scan.
         if (!verified.IsSuccess && verified.Error!.Code == MarketplaceHub.Infrastructure.Adapters.Shopify.ShopifyWebhookVerifier.StaleCode)
-            return connection.PlatformCode == "SHOPIFY" && StaleStartsListingVerify(headers, connection.ExternalStoreId, subscription.AuthenticationType == "ROUTE_TOKEN")
+            return connection.PlatformCode == "SHOPIFY" && connection.Status is ("ACTIVE" or "VERIFIED") && StaleStartsListingVerify(headers, connection.ExternalStoreId, subscription.AuthenticationType == "ROUTE_TOKEN")
                 ? await QueueListingVerifyAsync(connection, subscription.Id, correlationId, cancellationToken)
                 : ServiceResult<bool>.Ok(false);
         if (!verified.IsSuccess)
         {
             await NoteRejectedAsync(connection, verified.Error!.Code, verified.Error.SafeMessage, cancellationToken);
             return ServiceResult<bool>.Fail(verified.Error!.Code, verified.Error.SafeMessage, verified.Error.HttpStatus ?? 422);
+        }
+        // A paused connection (Pasife Al, or its data hidden) keeps its address: an authenticated delivery is answered 2xx,
+        // recorded and not processed. A 404 made Hepsiburada mail the owner about orders of the 12-14 Nov 2026 pause;
+        // reactivation re-reads the connection's orders from the marketplace anyway.
+        if (connection.Status is not ("ACTIVE" or "VERIFIED"))
+        {
+            await NoteRejectedAsync(connection, PausedConnectionCode, "bağlantı pasifken geldi; kabul edildi ama işlenmedi (bağlantı yeniden etkinleştirilince siparişler pazaryerinden yeniden okunur)", cancellationToken, received: true);
+            return ServiceResult<bool>.Ok(false);
         }
         var envelope = verified.Value!;
         // A Hepsiburada body names the merchant it belongs to. One of another merchant (a test store's feed still sent to
@@ -103,6 +111,11 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
 
     internal const string MerchantMismatchCode = "WEBHOOK_MERCHANT_MISMATCH";
     internal const string UnknownEventCode = "WEBHOOK_UNKNOWN_EVENT";
+    internal const string PausedConnectionCode = "WEBHOOK_CONNECTION_PAUSED";
+
+    // Connection states whose webhook address still answers. Only ACTIVE and VERIFIED deliveries are processed; those of a
+    // DISABLED (Pasife Al) or HIDDEN connection are acknowledged and recorded, so the marketplace never sees a 404 for them.
+    public static readonly string[] AnsweringConnectionStatuses = ["ACTIVE", "VERIFIED", "DISABLED", "HIDDEN"];
 
     private Task<int> ResolveRejectedAsync(PlatformConnection connection, DateTimeOffset now, CancellationToken cancellationToken)
     {
@@ -141,7 +154,7 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
     // still answers on.
     private async Task<PlatformConnection?> ReceivingConnectionAsync(Guid connectionPublicId, CancellationToken cancellationToken)
     {
-        var receiving = db.PlatformConnections.AsNoTracking().Where(x => (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA") && (x.Status == "ACTIVE" || x.Status == "VERIFIED"));
+        var receiving = db.PlatformConnections.AsNoTracking().Where(x => (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA") && AnsweringConnectionStatuses.Contains(x.Status));
         return await receiving.SingleOrDefaultAsync(x => x.PublicId == connectionPublicId, cancellationToken)
             ?? await receiving.Where(x => db.WebhookSubscriptions.Any(item => item.TenantId == x.TenantId && item.ConnectionId == x.Id && item.Status == "ACTIVE" && item.RoutePublicId == connectionPublicId)).FirstOrDefaultAsync(cancellationToken);
     }

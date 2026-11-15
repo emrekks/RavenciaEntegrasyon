@@ -159,6 +159,10 @@ Claims: NewRequest, AwaitingAction, InDispute, Accepted, Rejected, Refunded, Can
   sum (`HepsiburadaHttpClient.PollAsync`, `HepsiburadaJsonMapper.PaidOrderLine`, `MarketplaceJobProcessor`).
 - Webhooks: Basic auth only; answer within 5 s — more than 20 slow answers in an hour blacklists the feed. Changes
   made through the API are not echoed back as webhooks.
+- A non-2xx answer makes Hepsiburada retry and mail the seller ("404 Not Found" with the RequestUri and body; the mail
+  shows the merchant's other integrator's Base Url). A paused connection (Pasife Al, 12-14 Nov 2026) answered 404 from
+  the route gate; its authenticated deliveries are now acknowledged, recorded (WEBHOOK_CONNECTION_PAUSED) and not
+  processed. 8 deliveries came within one second at 14 Nov 00:23:50Z, ~6 min after reactivation (likely the retries).
 - A 403 HTML page is a gateway block (HEPSIBURADA_GATEWAY_BLOCKED, RateLimit, 15 min); a 403 that is not a page stays
   HEPSIBURADA_ACCESS_FORBIDDEN (`MarketplaceErrorRules`, report item 16, 5 Nov 2026).
 - Price/stock results list only the refused SKUs, so a SKU left out was applied: the one marketplace where an unnamed
