@@ -61,6 +61,26 @@ public sealed class JobEnqueuerTests
         Assert.Equal("op", job.OperationType);
     }
 
+    // Every new job row is built by IntegrationJobFactory: nothing else in src constructs an IntegrationJob.
+    [Fact]
+    public void OnlyTheFactoryConstructsAJob()
+    {
+        string? root = null;
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null && root is null; directory = directory.Parent)
+            if (File.Exists(Path.Combine(directory.FullName, "MarketplaceHub.sln"))) root = directory.FullName;
+        Assert.NotNull(root);
+        var construction = new System.Text.RegularExpressions.Regex(@"new\s+IntegrationJob\b(?!\w)|IntegrationJob\s+\w+\s*=\s*new\s*\(|=>\s*new\s*\(\)\s*\{\s*Id\s*=.*JobDedupKey");
+        var offenders = Directory.EnumerateFiles(Path.Combine(root, "src"), "*.cs", SearchOption.AllDirectories)
+            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                && !path.Contains($"{Path.DirectorySeparatorChar}Migrations{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                && !path.EndsWith("JobEnqueueContracts.cs", StringComparison.Ordinal))
+            .SelectMany(path => File.ReadLines(path).Select((line, index) => (path, line, index)))
+            .Where(item => construction.IsMatch(item.line))
+            .Select(item => $"{Path.GetRelativePath(root, item.path)}:{item.index + 1}")
+            .ToList();
+        Assert.Empty(offenders);
+    }
+
     [Fact]
     public void ACallerCheckedJobIsAddedToTheUnitOfWorkUnsaved()
     {
