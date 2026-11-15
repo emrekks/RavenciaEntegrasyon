@@ -1,6 +1,8 @@
+using MarketplaceHub.Api.Common;
 using MarketplaceHub.Api.Security;
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Persistence;
+using static MarketplaceHub.Api.Common.EndpointHelpers;
 
 namespace MarketplaceHub.Api.Catalog;
 
@@ -15,7 +17,7 @@ internal static class ProductTransferEndpoints
         api.MapGet("/products/transfer/summary", SummaryAsync);
         api.MapGet("/products/transfer/export.xlsx", ExportAsync);
         api.MapPost("/products/transfer/import", PreviewAsync).DisableAntiforgery();
-        api.MapPost("/products/transfer/apply", ApplyAsync);
+        api.MapPost("/products/transfer/apply", ApplyAsync).RequireIdempotencyKey();
         return api;
     }
 
@@ -75,12 +77,8 @@ internal static class ProductTransferEndpoints
     private static async Task<IResult> ApplyAsync(ApplyProductTransferCommand command, HttpContext http, IProductTransferService service)
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
-        if (string.IsNullOrWhiteSpace(http.Request.Headers["Idempotency-Key"])) return Problem(http, new("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key başlığı zorunludur.", 400));
+        if (RequireIdempotency(http) is { } missingKey) return missingKey;
         return Result(await service.ApplyAsync(tenant.TenantId, tenant.UserId, command, http.TraceIdentifier, http.RequestAborted));
     }
 
-    private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
-    private static IResult Result<T>(ServiceResult<T> result) => result.Succeeded ? Results.Ok(result.Value) : ApiProblems.Of(null, result.Error!);
-    private static IResult Unauthorized(HttpContext http) => Problem(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
-    private static IResult Problem(HttpContext http, ServiceError error) => ApiProblems.Of(http, error);
 }

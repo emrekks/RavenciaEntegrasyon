@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text;
+using MarketplaceHub.Api.Common;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Identity;
 using MarketplaceHub.Infrastructure.Persistence;
@@ -21,7 +22,7 @@ public static class AuthEndpoints
 
     public static RouteGroupBuilder MapAuthEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var group = endpoints.MapGroup("/api/v1/auth");
+        var group = endpoints.MapGroup("/api/v1/auth").WithGates(ApiGate.Open, ApiGate.Open);
         group.MapGet("/csrf", (HttpResponse response) => Results.Ok(new { token = RequestSecurityMiddleware.IssueCsrf(response) }));
         group.MapPost("/login", LoginAsync).RequireRateLimiting(SignInRateLimit);
         group.MapPost("/logout", LogoutAsync);

@@ -13,17 +13,22 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
     // Every role that works with orders; READONLY is left out.
     private static readonly HashSet<string> WorkingRoles = new(StringComparer.OrdinalIgnoreCase) { "OWNER", "ADMINISTRATOR", "OPERATIONS", "ACCOUNTING" };
 
+    // A request passes two gates: the path rule below and the gate its endpoint declares (RequiredGate metadata,
+    // API-GUVENLIK-8). ApiEndpointRulesTests holds them equal for every mapped route, so today they decide alike; a
+    // value-dependent rule (a permission sync policy) exists only in the path rule, and a request that matched no
+    // endpoint meets the path rule alone.
     public async Task InvokeAsync(HttpContext context)
     {
         var required = RolesFor(context.Request.Method, context.Request.Path.Value);
-        if (required is null)
+        var declared = context.GetEndpoint()?.Metadata.GetMetadata<Common.RequiredGate>()?.Roles;
+        if (required is null && declared is null)
         {
             await next(context);
             return;
         }
 
         var role = Normalize(context.User.FindFirstValue(ClaimTypes.Role));
-        var allowed = !string.IsNullOrEmpty(role) && required.Contains(role);
+        var allowed = !string.IsNullOrEmpty(role) && (required is null || required.Contains(role)) && (declared is null || declared.Contains(role));
         if (allowed)
         {
             await next(context);

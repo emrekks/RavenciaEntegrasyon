@@ -1,5 +1,7 @@
 using System.Text.Json;
+using MarketplaceHub.Api.Common;
 using MarketplaceHub.Application;
+using static MarketplaceHub.Api.Common.EndpointHelpers;
 
 namespace MarketplaceHub.Api.Operations;
 
@@ -10,7 +12,7 @@ public static class NotificationEndpoints
 {
     public static IEndpointRouteBuilder MapNotificationEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var api = endpoints.MapGroup("/api/v1/notifications");
+        var api = endpoints.MapGroup("/api/v1/notifications").WithGates(ApiGate.SignedIn, ApiGate.Working);
         // { items, nextCursor, hasMore }, newest first. categories and severities are comma lists; state is UNREAD or READ.
         api.MapGet("", async (HttpContext http, IPanelNotificationService service, int? limit, string? after, string? categories, string? severities,
             DateTimeOffset? from, DateTimeOffset? to, string? search, string? state) =>
@@ -47,8 +49,4 @@ public static class NotificationEndpoints
         string? PlatformCode, string? StoreName, int? Count, JsonElement? Payload, DateTimeOffset? CreatedAt, bool Shared, bool Read);
     // Shared is still read from older browsers and ignored.
 
-    private static string[]? List(string? value) => value?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-    private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
-    private static IResult Unauthorized(HttpContext http) => Problem(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
-    private static IResult Problem(HttpContext http, ServiceError error) => MarketplaceHub.Api.Security.ApiProblems.Of(http, error);
 }

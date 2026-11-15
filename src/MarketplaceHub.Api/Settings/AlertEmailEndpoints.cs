@@ -1,9 +1,11 @@
 using System.Security.Cryptography;
 using System.Text;
+using MarketplaceHub.Api.Common;
 using MarketplaceHub.Api.Security;
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Alerts;
 using Microsoft.EntityFrameworkCore;
+using static MarketplaceHub.Api.Common.EndpointHelpers;
 
 namespace MarketplaceHub.Api.Settings;
 
@@ -24,7 +26,7 @@ public static class AlertEmailEndpoints
 
     public static IEndpointRouteBuilder MapAlertEmailEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var api = endpoints.MapGroup("/api/v1/settings/alert-email");
+        var api = endpoints.MapGroup("/api/v1/settings/alert-email").WithGates(ApiGate.Elevated, ApiGate.Elevated);
         api.MapGet("", GetAsync);
         api.MapPut("", SaveAsync);
         api.MapPost("/test", TestAsync);
@@ -107,24 +109,10 @@ public static class AlertEmailEndpoints
         return presented.Length > 0 && CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(presented), Encoding.UTF8.GetBytes(expected.Trim()));
     }
 
-    private static IResult? IfMatchVersion(HttpContext http, out long? expected)
-    {
-        expected = null;
-        var value = http.Request.Headers.IfMatch.ToString();
-        if (string.IsNullOrWhiteSpace(value)) return null;
-        if (value.Length < 4 || !value.StartsWith("\"v", StringComparison.Ordinal) || !value.EndsWith('"') || !long.TryParse(value[2..^1], out var version) || version <= 0)
-            return Problem(http, new("INVALID_ETAG", "If-Match güçlü ETag biçiminde olmalıdır: \"v{version}\".", 400));
-        expected = version;
-        return null;
-    }
-
     private static IResult Versioned(HttpContext http, AlertEmailSettingsView view)
     {
         if (view.Version > 0) http.Response.Headers.ETag = $"\"v{view.Version}\"";
         return Results.Ok(new { senderAddress = view.SenderAddress, recipients = view.Recipients, appPasswordSaved = view.AppPasswordSaved, updatedAt = view.UpdatedAt, version = view.Version });
     }
 
-    private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
-    private static IResult Unauthorized(HttpContext http) => Problem(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
-    private static IResult Problem(HttpContext http, ServiceError error) => ApiProblems.Of(http, error);
 }

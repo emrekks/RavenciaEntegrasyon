@@ -102,6 +102,9 @@ builder.Services.AddScoped<MarketplaceHub.Infrastructure.SizeCharts.SizeChartSer
 builder.Services.AddSingleton<MarketplaceHub.Infrastructure.Alerts.IAlertEmailSender, MarketplaceHub.Infrastructure.Alerts.GmailSmtpAlertSender>();
 builder.Services.AddScoped<IWebhookRouteGate, WebhookRouteGate>();
 builder.Services.AddSingleton<WebhookConnectionQuota>();
+// The OpenAPI description of the panel's API (API-GUVENLIK-8). Only the document service is registered: no route
+// serves it in any environment; ApiOpenApiDocumentTests writes it to the contract file the web is generated from.
+builder.Services.AddOpenApi("v1", options => options.AddDocumentTransformer<MarketplaceHub.Api.Common.OpenApiContract>());
 
 var app = builder.Build();
 var isAdministrativeCommand = args.Any(argument => argument is "migrate" or "bootstrap" or "healthcheck");

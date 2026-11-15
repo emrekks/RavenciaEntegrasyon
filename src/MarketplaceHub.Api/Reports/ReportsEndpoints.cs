@@ -1,4 +1,6 @@
+using MarketplaceHub.Api.Common;
 using MarketplaceHub.Application;
+using static MarketplaceHub.Api.Common.EndpointHelpers;
 
 namespace MarketplaceHub.Api.Reports;
 
@@ -6,7 +8,7 @@ public static class ReportsEndpoints
 {
     public static IEndpointRouteBuilder MapReportsEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var api = endpoints.MapGroup("/api/v1");
+        var api = endpoints.MapGroup("/api/v1").WithGates(ApiGate.SignedIn, ApiGate.Elevated);
         // The sales report: calendar days in the tenant's time zone (yyyy-MM-dd), optional platform codes and store ids
         // (comma separated), day / week / month buckets (chosen by the period length when left out), and whether test
         // stores count.
@@ -103,5 +105,4 @@ public static class ReportsEndpoints
         return true;
     }
 
-    private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
 }

@@ -1,4 +1,6 @@
+using MarketplaceHub.Api.Common;
 using MarketplaceHub.Application;
+using static MarketplaceHub.Api.Common.EndpointHelpers;
 
 namespace MarketplaceHub.Api.Operations;
 
@@ -6,7 +8,7 @@ public static class JobEndpoints
 {
     public static IEndpointRouteBuilder MapJobEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var api = endpoints.MapGroup("/api/v1/jobs");
+        var api = endpoints.MapGroup("/api/v1/jobs").WithGates(ApiGate.SignedIn, ApiGate.Elevated);
         api.MapGet("", async (HttpContext http, IJobOperationsService service, string? status, DateTimeOffset? since, string? jobTypes, int? limit, string? platform, string? platforms, string? ids) =>
             Tenant(http) is { } tenant
                 ? Results.Ok(await service.ListAsync(
@@ -64,7 +66,7 @@ public static class JobEndpoints
         api.MapPost("/{id:guid}/retry", async (Guid id, HttpContext http, IJobOperationsService service) =>
             Tenant(http) is { } tenant
                 ? RequireIdempotency(http) ?? Result(http, await service.RetryAsync(tenant.TenantId, id, http.RequestAborted))
-                : Unauthorized(http));
+                : Unauthorized(http)).RequireIdempotencyKey();
         api.MapPost("/{id:guid}/invoice-delivery-once", async (Guid id, OneTimeInvoiceDeliveryAction command, HttpContext http, IJobOperationsService service) =>
         {
             var tenant = Tenant(http);
@@ -80,31 +82,21 @@ public static class JobEndpoints
                 http.TraceIdentifier,
                 http.RequestAborted);
             return Result(http, result);
-        });
+        }).RequireIdempotencyKey();
         api.MapPost("/{id:guid}/cancel", async (Guid id, HttpContext http, IJobOperationsService service) =>
             Tenant(http) is { } tenant
                 ? RequireIdempotency(http) ?? Result(http, await service.CancelAsync(tenant.TenantId, id, http.RequestAborted))
-                : Unauthorized(http));
+                : Unauthorized(http)).RequireIdempotencyKey();
         return endpoints;
     }
 
     // ids: a comma list of job ids; anything that is not an id is left out.
     public static IReadOnlyList<Guid>? Ids(string? value) => List(value)?.Select(part => Guid.TryParse(part, out var id) ? id : Guid.Empty).Where(id => id != Guid.Empty).Take(JobListQuery.MaximumIds).ToArray();
-    private static string[]? List(string? value) => value?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     public static IReadOnlyList<string>? Platforms(string? platform, string? platforms)
     {
         var codes = (List(platform) ?? []).Concat(List(platforms) ?? []).Select(code => code.ToUpperInvariant()).Distinct(StringComparer.Ordinal).Take(20).ToArray();
         return codes.Length == 0 ? null : codes;
     }
-    private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
-    private static IResult? RequireIdempotency(HttpContext http) => string.IsNullOrWhiteSpace(http.Request.Headers["Idempotency-Key"])
-        ? Problem(http, new("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key başlığı zorunludur.", 400))
-        : http.Request.Headers["Idempotency-Key"].ToString().Length > 256
-            ? Problem(http, new("IDEMPOTENCY_KEY_INVALID", "Idempotency-Key en fazla 256 karakterdir.", 400))
-            : null;
-    private static IResult Result<T>(HttpContext http, ServiceResult<T> result) => result.Succeeded ? Results.Ok(result.Value) : Problem(http, result.Error!);
-    private static IResult Unauthorized(HttpContext http) => Problem(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
-    private static IResult Problem(HttpContext http, ServiceError error) => MarketplaceHub.Api.Security.ApiProblems.Of(http, error);
 
     public sealed record OneTimeInvoiceDeliveryAction(bool Confirmed, string OrderNumber);
 }

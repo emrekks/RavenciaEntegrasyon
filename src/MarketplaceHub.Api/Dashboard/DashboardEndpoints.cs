@@ -1,5 +1,7 @@
+using MarketplaceHub.Api.Common;
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Persistence;
+using static MarketplaceHub.Api.Common.EndpointHelpers;
 
 namespace MarketplaceHub.Api.Dashboard;
 
@@ -7,7 +9,7 @@ public static class DashboardEndpoints
 {
     public static IEndpointRouteBuilder MapDashboardEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var api = endpoints.MapGroup("/api/v1");
+        var api = endpoints.MapGroup("/api/v1").WithGates(ApiGate.SignedIn, ApiGate.Elevated);
         api.MapGet("/dashboard/bootstrap", async (HttpContext http, IDashboardReadService service) =>
             Tenant(http) is { } tenant ? Results.Ok(await service.BootstrapAsync(tenant.TenantId, http.RequestAborted)) : MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http));
         // The performance panel in one request: the chosen calendar days (tenant time zone, yyyy-MM-dd) and the
@@ -43,5 +45,4 @@ public static class DashboardEndpoints
         return true;
     }
 
-    private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
 }

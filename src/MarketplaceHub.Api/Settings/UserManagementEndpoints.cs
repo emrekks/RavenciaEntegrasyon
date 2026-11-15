@@ -1,4 +1,5 @@
 using System.Net.Mail;
+using MarketplaceHub.Api.Common;
 using MarketplaceHub.Api.Operations;
 using MarketplaceHub.Api.Security;
 using MarketplaceHub.Application;
@@ -9,6 +10,7 @@ using MarketplaceHub.Infrastructure.Security;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using static MarketplaceHub.Api.Common.EndpointHelpers;
 
 namespace MarketplaceHub.Api.Settings;
 
@@ -46,7 +48,7 @@ public static class UserManagementEndpoints
 
     public static IEndpointRouteBuilder MapUserManagementEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var group = endpoints.MapGroup("/api/v1/settings/users");
+        var group = endpoints.MapGroup("/api/v1/settings/users").WithGates(ApiGate.Elevated, ApiGate.Elevated);
         group.MapGet("", ListAsync);
         group.MapPost("", CreateAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
         group.MapPut("/{id:guid}/role", ChangeRoleAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
@@ -333,7 +335,6 @@ public static class UserManagementEndpoints
         return MailAddress.TryCreate(value, out var parsed) && string.Equals(parsed.Address, value, StringComparison.OrdinalIgnoreCase) && parsed.Host.Contains('.', StringComparison.Ordinal);
     }
 
-    private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
     private static IResult Invalid(string message) => ApiProblems.Of(null, "INVALID_REQUEST", message, 400);
     private static IResult Refused(string code, string message) => ApiProblems.Of(null, code, message, 403);
     private static IResult Conflict(string code, string message) => ApiProblems.Of(null, code, message, 409);
