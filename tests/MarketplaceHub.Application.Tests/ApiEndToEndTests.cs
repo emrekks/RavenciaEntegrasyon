@@ -24,7 +24,7 @@ namespace MarketplaceHub.Application.Tests;
 // The real API pipeline (middleware order, cookies, CSRF, role gate, idempotency) in memory. The worker
 // project also exposes a top-level Program to this assembly, so the factory is anchored on a type of the
 // API assembly instead of Program.
-public sealed class ApiTestHost(string connectionString) : WebApplicationFactory<SessionAuthMiddleware>
+public class ApiTestHost(string connectionString) : WebApplicationFactory<SessionAuthMiddleware>
 {
     private readonly string root = Path.Combine(Path.GetTempPath(), "marketplacehub-api-tests", Guid.NewGuid().ToString("N"));
 
