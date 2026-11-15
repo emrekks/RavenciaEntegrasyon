@@ -18,10 +18,13 @@ public sealed partial class MarketplaceJobProcessor
     {
         var connection = await db.PlatformConnections.AsNoTracking()
             .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "HEPSIBURADA"), cancellationToken);
-        if (connection is null || connection.Environment is not ("STAGE" or "PRODUCTION") || connection.Status is not ("ACTIVE" or "VERIFIED")) return false;
-        if (!Guid.TryParse(ReadText(payloadJson, "runId"), out var runId)) return false;
+        // J1 (15 Nov 2026): the stops before the read name their cause. Both last: the store's platform and environment do not
+        // change under a queued job (a passive store is stopped before this, CONNECTION_INACTIVE), and a run is not recreated.
+        if (connection is null || connection.Environment is not ("STAGE" or "PRODUCTION") || connection.Status is not ("ACTIVE" or "VERIFIED"))
+            throw new JobProcessingException(JobExecutionResult.Blocked("CATALOG_STRUCTURE_NOT_SUPPORTED", "Katalog yapısı aktarımı yalnız etkin Trendyol ve Hepsiburada mağazalarında yapılır; bu mağazada okunmadı."));
+        if (!Guid.TryParse(ReadText(payloadJson, "runId"), out var runId)) throw CatalogStructureRunMissing();
         var run = await db.CatalogStructureRuns.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == runId && x.ConnectionId == connectionId, cancellationToken);
-        if (run is null) return false;
+        if (run is null) throw CatalogStructureRunMissing();
         if (run.Status == "COMPLETED") return true;
 
         var apply = string.Equals(run.Mode, "APPLY", StringComparison.Ordinal);
@@ -55,6 +58,9 @@ public sealed partial class MarketplaceJobProcessor
             throw;
         }
     }
+
+    private static JobProcessingException CatalogStructureRunMissing() =>
+        new(JobExecutionResult.Blocked("CATALOG_STRUCTURE_RUN_MISSING", "Katalog yapısı aktarımının kaydı panelde bulunamadı; ürünler okunmadı. Aktarımı yeniden başlatın."));
 
     private async Task<StructureReport> RunCatalogStructure(Guid tenantId, PlatformConnection connection, bool apply, string correlationId, Guid? jobId, CancellationToken cancellationToken)
     {

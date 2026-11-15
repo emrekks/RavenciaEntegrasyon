@@ -17,11 +17,15 @@ public sealed partial class MarketplaceJobProcessor
     {
         ShipmentActionJobPayload? payload;
         try { payload = JsonSerializer.Deserialize<ShipmentActionJobPayload>(payloadJson, JsonOptions); }
-        catch (JsonException) { return false; }
-        if (payload is null || payload.JobId == Guid.Empty || payload.PackageId == Guid.Empty || string.IsNullOrWhiteSpace(payload.Action)) return false;
+        // J1 (15 Nov 2026): each refusal before the send names its cause instead of the generic F3_JOB_REJECTED. All of them
+        // are lasting: the request is the panel's own, and a package row is only removed by a reset (a split keeps it), so a
+        // later run would find the same thing; nothing was sent to the marketplace.
+        catch (JsonException) { throw ShipmentActionPayloadInvalid(); }
+        if (payload is null || payload.JobId == Guid.Empty || payload.PackageId == Guid.Empty || string.IsNullOrWhiteSpace(payload.Action)) throw ShipmentActionPayloadInvalid();
         var job = await db.IntegrationJobs.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == payload.JobId && x.ConnectionId == connectionId && x.JobType == MarketplaceJobTypes.ShipmentAction, cancellationToken);
+        if (job is null) throw ShipmentActionPayloadInvalid();
         var package = await db.ShipmentPackages.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == payload.PackageId && x.ConnectionId == connectionId, cancellationToken);
-        if (job is null || package is null) return false;
+        if (package is null) throw new JobProcessingException(JobExecutionResult.Blocked("SHIPMENT_PACKAGE_NOT_FOUND", "Paket panelde artık yok (mağaza verisi sıfırlanmış olabilir); pazaryerine bir şey gönderilmedi. Siparişi yenileyip işlemi yeniden başlatın."));
         if (!await ExternalWriteAllowedAsync(tenantId, connectionId, MarketplaceExternalWritePolicies.Shipment, cancellationToken)) throw new JobProcessingException(JobExecutionResult.Blocked("EXTERNAL_WRITE_POLICY_DISABLED", "Kargo dış yazma akışı kapalı; pazar yeri isteği gönderilmedi."));
         var effect = await effectGuard.FindAsync(tenantId, MarketplaceJobTypes.ShipmentAction, job.EffectIdempotencyKey, cancellationToken);
         switch (ExternalEffectGuard.Gate(effect))
@@ -60,6 +64,9 @@ public sealed partial class MarketplaceJobProcessor
         else { await RecordIssue(tenantId, $"shipment-readback:{connectionId}:{package.ExternalPackageId}:{payload.Action}", "SHIPMENT_ACTION_READBACK_PENDING", "Paket aksiyonu kabul edildi ancak anlık order read-back tamamlanamadı; planlı sync kesinleştirecek.", cancellationToken); await db.SaveChangesAsync(cancellationToken); }
         return true;
     }
+
+    private static JobProcessingException ShipmentActionPayloadInvalid() =>
+        new(JobExecutionResult.Blocked("SHIPMENT_ACTION_PAYLOAD_INVALID", "Paket işlemi isteği okunamadı; pazaryerine bir şey gönderilmedi. İşlemi sipariş ekranından yeniden başlatın."));
 
     // Q-2: a record closed as unresolved was sent once with an outcome no read could confirm. A retry must not
     // send it again (a second split or picking) nor take it as done: where an order read can judge the action
@@ -154,23 +161,28 @@ public sealed partial class MarketplaceJobProcessor
                 ? selectedLinesElement.EnumerateArray().Select(value => value.GetGuid()).Distinct().ToArray()
                 : null;
         }
-        catch (Exception exception) when (exception is JsonException or KeyNotFoundException or FormatException or InvalidOperationException) { return false; }
+        // J1 (15 Nov 2026): every stop before the send names its cause; none of them changes on a later run (a decision or
+        // claim is only removed with a cancelled claim or a reset), so they stay blocked, and nothing was sent.
+        catch (Exception exception) when (exception is JsonException or KeyNotFoundException or FormatException or InvalidOperationException)
+        {
+            throw new JobProcessingException(JobExecutionResult.Blocked("RETURN_ACTION_PAYLOAD_INVALID", "İade kararı isteği okunamadı; pazaryerine bir şey gönderilmedi. Kararı iade ekranından yeniden verin."));
+        }
         var decision = await db.ReturnDecisions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == decisionId, cancellationToken);
-        if (decision is null) return false;
+        if (decision is null) throw new JobProcessingException(JobExecutionResult.Blocked("RETURN_DECISION_NOT_FOUND", "İade kararı panelde artık yok; pazaryerine bir şey gönderilmedi. İadeyi yenileyip kararı yeniden verin."));
         if (decision.Status == "SUCCEEDED") return true;
         if (decision.Status == "MANUAL_REVIEW") throw new JobProcessingException(JobExecutionResult.ManualReview(decision.ErrorCode ?? "RETURN_ACTION_REVIEW_REQUIRED", "İade kararı manuel inceleme bekliyor.", decision.ExternalOperationId));
         var claim = await db.ReturnClaims.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == decision.ClaimId && x.ConnectionId == connectionId, cancellationToken);
-        if (claim is null) return false;
+        if (claim is null) throw new JobProcessingException(JobExecutionResult.Blocked("RETURN_CLAIM_NOT_FOUND", "İade talebi panelde artık yok (müşteri iptal etmiş olabilir); pazaryerine bir şey gönderilmedi."));
         if (!await ExternalWriteAllowedAsync(tenantId, connectionId, MarketplaceExternalWritePolicies.Return, cancellationToken)) throw new JobProcessingException(JobExecutionResult.Blocked("EXTERNAL_WRITE_POLICY_DISABLED", "İade dış yazma akışı kapalı; pazar yeri isteği gönderilmedi."));
         var returnLines = db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == claim.Id);
         if (selectedReturnLineIds is not null) returnLines = returnLines.Where(x => selectedReturnLineIds.Contains(x.Id));
         var lineIds = await returnLines.OrderBy(x => x.Id).Select(x => x.ExternalLineId).ToListAsync(cancellationToken);
-        if (lineIds.Count == 0) { decision.Status = "FAILED"; decision.ErrorCode = "RETURN_LINES_REQUIRED"; decision.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return false; }
+        if (lineIds.Count == 0) { decision.Status = "FAILED"; decision.ErrorCode = "RETURN_LINES_REQUIRED"; decision.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); throw new JobProcessingException(JobExecutionResult.Blocked("RETURN_LINES_REQUIRED", "İade kararında seçili ürün satırı kalmadı; pazaryerine bir şey gönderilmedi. Satırları seçip kararı yeniden verin.")); }
         var evidenceRows = await (from evidence in db.ReturnEvidence.AsNoTracking() where evidence.TenantId == tenantId && evidence.DecisionId == decisionId join asset in db.FileAssets.AsNoTracking() on new { evidence.TenantId, Id = evidence.FileAssetId } equals new { asset.TenantId, asset.Id } select asset).ToListAsync(cancellationToken);
         var evidenceFiles = new List<ReturnEvidenceFile>(); long totalBytes = 0;
         foreach (var asset in evidenceRows)
         {
-            if (asset.SizeBytes <= 0 || asset.SizeBytes > 10 * 1024 * 1024 || totalBytes + asset.SizeBytes > 25 * 1024 * 1024) { decision.Status = "FAILED"; decision.ErrorCode = "RETURN_EVIDENCE_LIMIT_EXCEEDED"; decision.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return false; }
+            if (asset.SizeBytes <= 0 || asset.SizeBytes > 10 * 1024 * 1024 || totalBytes + asset.SizeBytes > 25 * 1024 * 1024) { decision.Status = "FAILED"; decision.ErrorCode = "RETURN_EVIDENCE_LIMIT_EXCEEDED"; decision.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); throw new JobProcessingException(JobExecutionResult.Blocked("RETURN_EVIDENCE_LIMIT_EXCEEDED", "İade kanıt dosyaları boyut sınırını aşıyor (dosya başına 10 MB, toplam 25 MB); pazaryerine bir şey gönderilmedi.")); }
             await using var source = await files.OpenReadAsync(tenantId, asset.RelativePath, cancellationToken); await using var buffer = new MemoryStream(); await source.CopyToAsync(buffer, cancellationToken); if (buffer.Length != asset.SizeBytes) { decision.Status = "MANUAL_REVIEW"; decision.ErrorCode = "RETURN_EVIDENCE_SIZE_MISMATCH"; decision.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); throw new JobProcessingException(JobExecutionResult.ManualReview(decision.ErrorCode, "İade kanıt dosyasının kayıtlı boyutu ile okunan içerik eşleşmedi.")); }
             var bytes = buffer.ToArray(); var checksum = Convert.ToHexString(SHA256.HashData(bytes)); if (!string.Equals(checksum, asset.Sha256, StringComparison.OrdinalIgnoreCase)) { decision.Status = "MANUAL_REVIEW"; decision.ErrorCode = "RETURN_EVIDENCE_CHECKSUM_MISMATCH"; decision.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); throw new JobProcessingException(JobExecutionResult.ManualReview(decision.ErrorCode, "İade kanıt dosyasının checksum doğrulaması başarısız oldu.")); }
             evidenceFiles.Add(new(asset.OriginalNameSafe ?? $"evidence-{asset.Id:N}", asset.MimeType, bytes)); totalBytes += bytes.LongLength;

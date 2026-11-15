@@ -35,6 +35,6 @@ public sealed class MarketplaceJobDispatchTests
     public void OnlyTheTrendyolOnlyPathsAreInBothTables()
     {
         var both = MarketplaceJobProcessor.DirectDispatchJobTypes.Intersect(MarketplaceJobProcessor.BoolDispatchJobTypes).Order(StringComparer.Ordinal);
-        Assert.Equal([MarketplaceJobTypes.OrderInvoiceReconciliation, MarketplaceJobTypes.OrderReconciliation], both);
+        Assert.Equal([MarketplaceJobTypes.OrderInvoiceReconciliation, MarketplaceJobTypes.OrderReconciliation, MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation], both);
     }
 }
