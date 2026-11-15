@@ -19,6 +19,7 @@ import type { PublicationValueMappingFix } from '../publication-attribute-readin
 import './bulk-publish-model-tip.css'
 import '../product-editor/product-editor-design-system.css'
 import '../product-editor/product-editor-hydration.css'
+import { queryKeys } from '../../../shared/api/query-keys'
 
 export type BulkPublishNotice = { title: string; message: string; kind: 'success' | 'error' | 'info' | 'warning'; details?: NotificationDetail[]; lines?: string[]; persistent?: boolean }
 
@@ -115,7 +116,7 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
     }
     if (index === first) return
     const interrupted = index < plan.chunks.length
-    await Promise.all([client.invalidateQueries({ queryKey: ['products'] }), client.invalidateQueries({ queryKey: ['publication-status'] })])
+    await Promise.all([client.invalidateQueries({ queryKey: queryKeys.products() }), client.invalidateQueries({ queryKey: queryKeys.publicationStatus() })])
     const refused = sent.failed.length > 0
     onDone({
       title: interrupted ? 'Toplu Yayın Yarıda Kesildi' : !refused ? 'Toplu Aktarım Başladı' : sent.queued ? 'Toplu Aktarım Kısmen Başladı' : 'Toplu Yayın Gönderilemedi',

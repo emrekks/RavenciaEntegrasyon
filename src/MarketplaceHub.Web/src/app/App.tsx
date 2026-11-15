@@ -30,6 +30,7 @@ import { installOverlayScrollLock } from '../shared/overlay-scroll-lock'
 import { ToastStackProvider } from '../shared/components/ToastStack'
 import { followNotificationBell } from './notification-history-placement'
 import type { DashboardMetrics } from '../features/dashboard/IntegrationStatusPanel'
+import { queryKeys } from '../shared/api/query-keys'
 
 // Loaded ahead (when the page is idle, or when the pointer reaches the bell) so the first open does not wait for it.
 // Once loaded it is rendered directly: through React.lazy even a loaded panel suspends on its first render,
@@ -100,15 +101,15 @@ function Shell({ me }: { me: Me }) {
     window.addEventListener('pageshow', onReturn)
     return () => { document.removeEventListener('visibilitychange', onReturn); window.removeEventListener('pageshow', onReturn) }
   }, [])
-  const navigationSummary = useQuery({ queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap'), staleTime: 30_000, refetchOnWindowFocus: true })
-  const invoiceWorkspaceSummary = useQuery({ queryKey: ['invoice-workspace-summary'], queryFn: () => hubApi<{ dueSoonCount: number; uninvoicedCount?: number }>('/invoice-workspace/summary'), staleTime: 30_000, refetchOnWindowFocus: true })
+  const navigationSummary = useQuery({ queryKey: queryKeys.dashboardBootstrap(), queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap'), staleTime: 30_000, refetchOnWindowFocus: true })
+  const invoiceWorkspaceSummary = useQuery({ queryKey: queryKeys.invoiceWorkspaceSummary(), queryFn: () => hubApi<{ dueSoonCount: number; uninvoicedCount?: number }>('/invoice-workspace/summary'), staleTime: 30_000, refetchOnWindowFocus: true })
   // The menu counts poll only while the tab is on screen, and say they are automatic (hubPoll) so the server does not count
   // them as the person using the panel (otherwise an open tab would never reach the idle sign-out).
   // The same query as the overview's Bekleyen Siparişler card: the badge and the card always say the same number.
   const orderSummary = useQuery(pendingOrdersQuery)
-  const questionWaitingSummary = useQuery({ queryKey: ['questions', 'navigation-waiting'], queryFn: () => hubPoll<{ totalCount: number }>(questionWaitingSummaryPath), staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true })
+  const questionWaitingSummary = useQuery({ queryKey: queryKeys.questions('navigation-waiting'), queryFn: () => hubPoll<{ totalCount: number }>(questionWaitingSummaryPath), staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true })
   // Background states for the notification center (reads failing again and again, approvals that ran out of time).
-  const attentionNotices = useQuery({ queryKey: ['jobs', 'attention'], queryFn: () => hubPoll<AttentionNotice[]>('/jobs/attention'), staleTime: 60_000, refetchInterval: 300_000, refetchOnWindowFocus: true })
+  const attentionNotices = useQuery({ queryKey: queryKeys.jobs('attention'), queryFn: () => hubPoll<AttentionNotice[]>('/jobs/attention'), staleTime: 60_000, refetchInterval: 300_000, refetchOnWindowFocus: true })
   useEffect(() => { if (Array.isArray(attentionNotices.data)) syncAttentionNotices(attentionNotices.data) }, [attentionNotices.data])
   const [sidebarPinned, setSidebarPinned] = useState(() => readStoredItem('ravencia.sidebarPinned') !== 'false')
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
@@ -237,7 +238,7 @@ export function App() {
   const client = useQueryClient()
   // The session is never restored from the reload snapshot (another tab may have signed into another tenant since), so
   // the workspace waits for this answer; restored answers of another tenant or user are dropped before it lands.
-  const me = useQuery({ queryKey: ['me'], queryFn: async () => {
+  const me = useQuery({ queryKey: queryKeys.me(), queryFn: async () => {
     const current = await api<Me>('/me')
     confirmQuerySnapshotScope(client, current.tenantId, current.id)
     return current
@@ -245,12 +246,12 @@ export function App() {
   // A request heard 401: the session ended while the panel was open. The workspace gives way to the sign-in screen at
   // once (no reload, no screens retrying forever); signing in again brings the person back to the same page.
   useEffect(() => setUnauthorizedHandler(() => {
-    const current = client.getQueryData<Me>(['me'])
+    const current = client.getQueryData<Me>(queryKeys.me())
     if (!current || current.state === 'REVOKED') return
     // Nothing of the ended session stays in, or is written again to, this tab's reload snapshot until the next sign-in.
     clearQuerySnapshot()
     void client.cancelQueries({ predicate: query => query.queryKey[0] !== 'me' })
-    client.setQueryData<Me>(['me'], { ...current, state: 'REVOKED' })
+    client.setQueryData<Me>(queryKeys.me(), { ...current, state: 'REVOKED' })
   }), [client])
   useOperationsRealtime(me.data?.state === 'ACTIVE')
   // Key presses, clicks and scrolling mark the person as present; polls made while nobody is (see hubPoll) leave the
@@ -414,7 +415,7 @@ function Login({ notice }: { notice?: string }) {
       // Nothing read under the previous session (perhaps another account or workspace) is shown to this one.
       forgetPreviousSession(client)
       confirmQuerySnapshotScope(client, currentUser.tenantId, currentUser.id)
-      client.setQueryData(['me'], currentUser)
+      client.setQueryData(queryKeys.me(), currentUser)
       if (location.pathname === '/' || location.pathname === '') navigate('/dashboard', { replace: true })
     } catch (reason) {
       if (reason instanceof ApiRequestError && reason.code === 'TENANT_SELECTION_REQUIRED') { setTenantOptions(reason.tenants ?? []); setError('Bir çalışma alanı seçip girişe devam edin.') }
@@ -456,7 +457,7 @@ function ChangePassword() {
     }
     try {
       await api('/change-password', { method: 'POST', body: JSON.stringify({ currentPassword: data.get('current'), newPassword: data.get('next') }) })
-      await client.invalidateQueries({ queryKey: ['me'] })
+      await client.invalidateQueries({ queryKey: queryKeys.me() })
     } catch (reason) {
       setError(passwordChangeErrorMessage(reason))
     } finally {
@@ -517,7 +518,7 @@ function MfaChallenge() {
         ? { code: null, recoveryCode: null, tenantId: tenantId || null }
         : { code: mode === 'code' ? data.get('code') : null, recoveryCode: mode === 'recovery' ? data.get('recovery') : null }
       await api('/mfa/challenge', { method: 'POST', body: JSON.stringify(body) })
-      await client.invalidateQueries({ queryKey: ['me'] })
+      await client.invalidateQueries({ queryKey: queryKeys.me() })
     } catch (reason) {
       if (reason instanceof ApiRequestError && reason.code === 'TENANT_SELECTION_REQUIRED') { setTenantOptions(reason.tenants ?? []); setError(choosingTenant ? 'Listeden bir çalışma alanı seçin.' : '') }
       else setError(mfaChallengeErrorMessage(reason, mode))

@@ -4,6 +4,7 @@ import { cleanOptionValue, isColorOptionName, isVariantOptionName, isWebColorOpt
 import { classifyPublicationAttributeIssues, type PublicationAttributeIssue, type PublicationAttributeIssues, type PublicationAttributeSelection, type PublicationMappingReference, type PublicationValueReferenceSet } from '../publication-attribute-readiness'
 import { publicationReadinessFailureDetail, readPublicationReadinessSource } from '../publication-readiness-error'
 import { matchingVariantOptionValues, normalizeVariantOptionValue, parseVariantOptionSignature } from '../variant-option-matching'
+import { queryKeys } from '../../../shared/api/query-keys'
 
 // The publish step's readiness check, in one place: the editor's cards run it on the form, the product list's bulk
 // publish runs it on each selected record (publicationReadinessDraftFromProduct fills the same input the editor's form
@@ -282,7 +283,7 @@ export function publicationReadinessDraftFromProduct(product: Product, allRequir
 type ReadinessConnection = Pick<MarketplaceConnection, 'id' | 'platformCode'>
 
 export function publicationReadinessQueryKey(connectionId: string, categoryId: string, selectedAttributes: PublicationAttributeSelection[]) {
-  return ['publication-attribute-readiness', connectionId, categoryId, selectedAttributes] as const
+  return queryKeys.publicationAttributeReadiness(connectionId, categoryId, selectedAttributes)
 }
 
 // One read of the mapping check, cached in the query client under the check's own prefix: the editor's cards (one
@@ -290,7 +291,7 @@ export function publicationReadinessQueryKey(connectionId: string, categoryId: s
 // goes once. It sits under ['publication-attribute-readiness'], so every save that invalidates the check marks these
 // reads stale too and the next run reads what was saved.
 export function publicationReadinessSourceKey(connectionId: string, source: string, ...parts: string[]) {
-  return ['publication-attribute-readiness', 'source', connectionId, source, ...parts] as const
+  return queryKeys.publicationAttributeReadiness('source', connectionId, source, ...parts)
 }
 
 // A batch read of several fields of one marketplace category (attributeIds=a,b,c); `connectionId` is already encoded.
@@ -370,7 +371,7 @@ export function missingPublicationChecks(productChecks: PublicationProductCheck[
 export type ConnectionCapability = { code: string; supportLevel: string; verifiedForConnection: boolean }
 export const requiredShopifyCapabilities = ['PRODUCT_WRITE', 'INVENTORY_WRITE', 'PUBLICATION_READ', 'PUBLICATION_WRITE'] as const
 export function connectionCapabilitiesQueryKey(connectionId: string) {
-  return ['capabilities', connectionId] as const
+  return queryKeys.capabilities(connectionId)
 }
 export function loadConnectionCapabilities(connectionId: string) {
   return hubApi<ConnectionCapability[]>(`/connections/${connectionId}/capabilities`)

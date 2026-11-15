@@ -30,6 +30,7 @@ import { backupKeyFileName, decryptBackup, decryptedFileName, downloadText, gene
 import { ReauthInputs, reauthReady } from '../../shared/reauth'
 import { useLacksElevatedRole } from '../elevated-role'
 import { assignableRoles, availableUserActions, isEmailAddress, reauthBody, userLockReason, userRoleHints, userRoleLabel, userRoleLabels, type ManagedUser, type ManagedUserList, type UserAction, type UserRole } from './user-management'
+import { queryKeys } from '../../shared/api/query-keys'
 
 type SecurityStatus = { totpState: string; recoveryCodesRemaining: number }
 type SecuritySession = { id: string; state: string; current: boolean; issuedAt: string; lastSeenAt: string; expiresAt: string }
@@ -334,16 +335,16 @@ export function SystemSettingsPage() {
   useEffect(() => { resetCancelled.current = false; return () => { resetCancelled.current = true } }, [])
   // What each list holds now, the counts the reset reports when it is done. Owner and administrators only: for the
   // other roles the server answers 403 and the page asks nothing else.
-  const resetView = useQuery({ queryKey: ['panel-factory-reset'], queryFn: () => hubPoll<PanelFactoryResetView>('/settings/factory-reset'), enabled: section === 'database', staleTime: 0, retry: false })
+  const resetView = useQuery({ queryKey: queryKeys.panelFactoryReset(), queryFn: () => hubPoll<PanelFactoryResetView>('/settings/factory-reset'), enabled: section === 'database', staleTime: 0, retry: false })
   const resetForbidden = resetView.error instanceof ApiRequestError && resetView.error.status === 403
   const resetGroups = resetGroupsOf(resetView.data)
   // The active marketplace connections, each with what its Tam Sıfırlama would remove (the same view its window shows).
-  const resetConnections = useQuery({ queryKey: ['connections', 'settings-reset'], queryFn: async () => (await loadAllPages<Connection>('/connections')).items.filter(item => item.status !== 'DELETED' && item.status !== 'HIDDEN' && connectionFullResetSupported(item.platformCode)), enabled: section === 'database' && resetView.isSuccess, staleTime: 0 })
-  const resetViews = useQueries({ queries: (resetConnections.data ?? []).map(item => ({ queryKey: ['connection-full-reset', item.id], queryFn: () => hubPoll<ConnectionFullResetView>(`/connections/${item.id}/full-reset`), enabled: section === 'database' && resetView.isSuccess, staleTime: 0 })) })
+  const resetConnections = useQuery({ queryKey: queryKeys.connections('settings-reset'), queryFn: async () => (await loadAllPages<Connection>('/connections')).items.filter(item => item.status !== 'DELETED' && item.status !== 'HIDDEN' && connectionFullResetSupported(item.platformCode)), enabled: section === 'database' && resetView.isSuccess, staleTime: 0 })
+  const resetViews = useQueries({ queries: (resetConnections.data ?? []).map(item => ({ queryKey: queryKeys.connectionFullReset(item.id), queryFn: () => hubPoll<ConnectionFullResetView>(`/connections/${item.id}/full-reset`), enabled: section === 'database' && resetView.isSuccess, staleTime: 0 })) })
   const resetMarketplaces: ResetMarketplace[] = (resetConnections.data ?? []).map((item, index) => ({ id: item.id, platformCode: item.platformCode, displayName: item.displayName, passive: item.status !== 'ACTIVE' && item.status !== 'VERIFIED', count: marketplaceResetCount(resetViews[index]?.data) }))
   // Through hubApi: a session that ended shows the sign-in screen instead of an error box.
-  const status = useQuery({ queryKey: ['security'], queryFn: () => hubApi<SecurityStatus>('/auth/security-status') })
-  const sessions = useQuery({ queryKey: ['sessions'], queryFn: () => hubApi<SecuritySession[]>('/auth/sessions') })
+  const status = useQuery({ queryKey: queryKeys.security(), queryFn: () => hubApi<SecurityStatus>('/auth/security-status') })
+  const sessions = useQuery({ queryKey: queryKeys.sessions(), queryFn: () => hubApi<SecuritySession[]>('/auth/sessions') })
   const [sessionCount] = useRememberedTabCounts('Ayarlar oturumlar', [{ value: 'sessions', count: sessions.isError ? unknownCount : sessions.data?.length }])
   const [mfaStep, setMfaStep] = useState<'closed' | 'password' | 'verify' | 'recovery'>('closed')
   const [setup, setSetup] = useState<MfaSetup | null>(null)
@@ -396,7 +397,7 @@ export function SystemSettingsPage() {
       if (resetScopes.length) {
         // One job for every chosen category (the same one Paneli Tamamen Sıfırla runs); its steps show below.
         const next = await hubApi<PanelFactoryResetView>('/settings/factory-reset', { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ categories: resetScopes, confirmation: resetConfirmation.trim(), ...reauthBody(resetPassword, resetFactor) }) })
-        client.setQueryData(['panel-factory-reset'], next)
+        client.setQueryData(queryKeys.panelFactoryReset(), next)
         succeed('Seçilen veriler silinmeye başladı; adımlar sayfanın altındaki Sıfırlama İlerlemesi bölümünde.')
       }
       setResetScopes([]); setResetConfirmation(''); setResetPassword(''); setResetFactor('')
@@ -426,7 +427,7 @@ export function SystemSettingsPage() {
     setBusy(true); setMfaError('')
     try {
       const result = await hubApi<{ recoveryCodes: string[] }>('/auth/mfa/confirm', { method: 'POST', body: JSON.stringify({ code }) })
-      setRecoveryCodes(result.recoveryCodes); setMfaStep('recovery'); await client.invalidateQueries({ queryKey: ['security'] })
+      setRecoveryCodes(result.recoveryCodes); setMfaStep('recovery'); await client.invalidateQueries({ queryKey: queryKeys.security() })
     } catch (reason) { setMfaError(mfaErrorMessage(reason, 'Doğrulayıcı etkinleştirilemedi.')) } finally { setBusy(false) }
   }
   // The recovery codes are shown once: Escape or a click outside does not close this step, only "Kodları Sakladım".
@@ -459,7 +460,7 @@ export function SystemSettingsPage() {
         await hubApi('/auth/sessions/closed', { method: 'DELETE' })
         succeed('Kapalı oturumlar silindi.')
       }
-      await client.invalidateQueries({ queryKey: ['sessions'] })
+      await client.invalidateQueries({ queryKey: queryKeys.sessions() })
     } catch {
       fail(confirmation.action.startsWith('delete') ? 'Kapalı oturum silinemedi.' : 'Oturumlar sonlandırılamadı.')
     } finally {
@@ -1232,7 +1233,7 @@ function OffsiteBackupSection({ mfa }: { mfa: boolean }) {
   const location = useLocation()
   const [askedAt, setAskedAt] = useState<number | null>(null)
   const query = useQuery({
-    queryKey: ['offsite-backup'],
+    queryKey: queryKeys.offsiteBackup(),
     queryFn: () => hubPoll<OffsiteBackupView>('/settings/offsite-backup'),
     retry: false,
     // While a copy is running or asked for, the status follows it every 5 s, and it refreshes when the tab gets focus again.
@@ -1301,14 +1302,14 @@ function OffsiteBackupSection({ mfa }: { mfa: boolean }) {
     try {
       if (confirm === 'save') {
         const next = await hubApi<OffsiteBackupView>('/settings/offsite-backup', { method: 'PUT', headers: settingsIfMatch(saved.version), body: JSON.stringify({ ...offsiteBackupSaveBody(draft, changingSecret), ...reauth }) })
-        client.setQueryData(['offsite-backup'], next)
+        client.setQueryData(queryKeys.offsiteBackup(), next)
         setNotice({ kind: 'success', message: next.connected ? 'Google Drive yedeği ayarları kaydedildi.' : 'Ayarlar kaydedildi. Şimdi “Google ile Bağlan” ile Drive hesabınızı bağlayın.' })
       } else if (confirm === 'setup') {
         if (setupKey && !keyStored) return
         const plan = offsiteSetupPlan(saved, draft, saved.clientSecretSaved && !changingSecret)
         if (plan.needsSave) {
           const next = await hubApi<OffsiteBackupView>('/settings/offsite-backup', { method: 'PUT', headers: settingsIfMatch(saved.version), body: JSON.stringify({ ...offsiteBackupSaveBody({ ...draft, enabled: true, ageRecipient: setupKey?.recipient ?? draft.ageRecipient }, changingSecret), ...reauth }) })
-          client.setQueryData(['offsite-backup'], next)
+          client.setQueryData(queryKeys.offsiteBackup(), next)
         }
         const { url } = await hubApi<{ url: string }>('/settings/offsite-backup/google/authorize', { method: 'POST', body: JSON.stringify(reauth) })
         markFirstRun()
@@ -1320,7 +1321,7 @@ function OffsiteBackupSection({ mfa }: { mfa: boolean }) {
         return
       } else {
         const next = await hubApi<OffsiteBackupView>('/settings/offsite-backup/google/disconnect', { method: 'POST', body: JSON.stringify(reauth) })
-        client.setQueryData(['offsite-backup'], next)
+        client.setQueryData(queryKeys.offsiteBackup(), next)
         setNotice({ kind: 'success', message: 'Google Drive bağlantısı kesildi ve yetki iptal edildi.' })
       }
       setConfirm(null)
@@ -1337,7 +1338,7 @@ function OffsiteBackupSection({ mfa }: { mfa: boolean }) {
       setActionResult({ kind: 'bad', message: reason instanceof Error ? reason.message : 'Bağlantı denenemedi.' })
     } finally {
       setBusy(null)
-      void client.invalidateQueries({ queryKey: ['offsite-backup'] })
+      void client.invalidateQueries({ queryKey: queryKeys.offsiteBackup() })
     }
   }
   async function sendNow() {
@@ -1350,7 +1351,7 @@ function OffsiteBackupSection({ mfa }: { mfa: boolean }) {
       setActionResult({ kind: 'bad', message: reason instanceof Error ? reason.message : 'Gönderim başlatılamadı.' })
     } finally {
       setBusy(null)
-      void client.invalidateQueries({ queryKey: ['offsite-backup'] })
+      void client.invalidateQueries({ queryKey: queryKeys.offsiteBackup() })
     }
   }
   async function openKeyMaker() {
@@ -1543,7 +1544,7 @@ const maximumAlertRecipients = 5
 // keeps a root-only copy for alerts while the panel is down (deploy/scripts/alert-settings-sync.sh).
 function AlertEmailSettingsSection() {
   const client = useQueryClient()
-  const query = useQuery({ queryKey: ['alert-email-settings'], queryFn: () => hubApi<AlertEmailSettings>('/settings/alert-email'), retry: false })
+  const query = useQuery({ queryKey: queryKeys.alertEmailSettings(), queryFn: () => hubApi<AlertEmailSettings>('/settings/alert-email'), retry: false })
   const saved = query.data
   const [sender, setSender] = useState('')
   const [recipients, setRecipients] = useState<string[]>([''])
@@ -1571,7 +1572,7 @@ function AlertEmailSettingsSection() {
     setBusy('save'); setNotice(null); setTestResult(null)
     try {
       const next = await hubApi<AlertEmailSettings>('/settings/alert-email', { method: 'PUT', headers: settingsIfMatch(saved.version), body: JSON.stringify({ senderAddress: sender.trim(), recipients: cleanRecipients, appPassword: changingPassword ? password : null }) })
-      client.setQueryData(['alert-email-settings'], next)
+      client.setQueryData(queryKeys.alertEmailSettings(), next)
       setNotice({ kind: 'success', message: 'Alarm e-postası ayarları kaydedildi. Sunucu sonraki alarmda bu ayarları kullanır.' })
     } catch (reason) {
       setNotice({ kind: 'error', message: reason instanceof Error ? reason.message : 'Alarm e-postası ayarları kaydedilemedi.' })
@@ -1652,7 +1653,7 @@ function ReauthFields({ password, onPassword, factor, onFactor, mfa }: { passwor
 // Ayarlar › Kullanıcılar: owners and administrators list, add and change the workspace's users (user-management.ts).
 function UserManagementSection({ mfa }: { mfa: boolean }) {
   const client = useQueryClient()
-  const query = useQuery({ queryKey: ['managed-users'], queryFn: () => hubApi<ManagedUserList>('/settings/users'), retry: false })
+  const query = useQuery({ queryKey: queryKeys.managedUsers(), queryFn: () => hubApi<ManagedUserList>('/settings/users'), retry: false })
   const forbidden = query.error instanceof ApiRequestError && query.error.status === 403
   const [dialog, setDialog] = useState<UserDialog | null>(null)
   const [step, setStep] = useState<UserAction | null>(null)
@@ -1686,7 +1687,7 @@ function UserManagementSection({ mfa }: { mfa: boolean }) {
     setBusy(true); setError('')
     try {
       const result = await hubApi<{ userId: string; existingAccount: boolean; temporaryPassword: string | null }>('/settings/users', { method: 'POST', body: JSON.stringify({ email: email.trim(), displayName: displayName.trim(), role, ...reauthBody(password, factor) }) })
-      await client.invalidateQueries({ queryKey: ['managed-users'] })
+      await client.invalidateQueries({ queryKey: queryKeys.managedUsers() })
       setDialog(null)
       if (result.temporaryPassword) setOneTime({ title: 'Kullanıcı Eklendi', email: email.trim(), password: result.temporaryPassword })
       else setNotice({ kind: 'success', message: `${email.trim()} hesabı bu çalışma alanına ${userRoleLabel(role)} olarak eklendi; mevcut parolasıyla girer.` })
@@ -1710,7 +1711,7 @@ function UserManagementSection({ mfa }: { mfa: boolean }) {
         const result = await hubApi<{ temporaryPassword: string }>(`${base}/password-reset`, { method: 'POST', body: JSON.stringify(reauth) })
         setOneTime({ title: 'Şifre Sıfırlandı', email: managed.email, password: result.temporaryPassword })
       }
-      await client.invalidateQueries({ queryKey: ['managed-users'] })
+      await client.invalidateQueries({ queryKey: queryKeys.managedUsers() })
       const done: Record<UserAction, string> = { role: `${managed.displayName} artık ${userRoleLabel(role)}.`, 'password-reset': '', 'mfa-reset': `${managed.displayName} için iki adımlı doğrulama sıfırlandı.`, sessions: `${managed.displayName} için açık oturumlar kapatıldı.`, disable: `${managed.displayName} pasife alındı.`, enable: `${managed.displayName} etkinleştirildi.` }
       if (done[step]) setNotice({ kind: 'success', message: done[step] })
       setDialog(null); setStep(null); setPassword(''); setFactor('')
@@ -1826,9 +1827,9 @@ function aiSkillState(skill: AiSkillView) {
 // write-only like the alert app password: the server never returns it, the form shows "Kayıtlı" and "Değiştir".
 function AiSettingsSection() {
   const client = useQueryClient()
-  const query = useQuery({ queryKey: ['ai-settings'], queryFn: () => hubApi<AiSettings>('/settings/ai'), retry: false })
+  const query = useQuery({ queryKey: queryKeys.aiSettings(), queryFn: () => hubApi<AiSettings>('/settings/ai'), retry: false })
   const forbidden = query.error instanceof ApiRequestError && query.error.status === 403
-  const usage = useQuery({ queryKey: ['ai-usage'], queryFn: () => hubApi<{ items: AiUsageEntry[] }>('/settings/ai/usage?limit=50'), retry: false, enabled: query.isSuccess })
+  const usage = useQuery({ queryKey: queryKeys.aiUsage(), queryFn: () => hubApi<{ items: AiUsageEntry[] }>('/settings/ai/usage?limit=50'), retry: false, enabled: query.isSuccess })
   const saved = query.data
   const [apiKey, setApiKey] = useState('')
   const [changingKey, setChangingKey] = useState(false)
@@ -1857,7 +1858,7 @@ function AiSettingsSection() {
     try {
       const next = await hubApi<AiSettings>('/settings/ai', { method: 'PUT', headers: settingsIfMatch(saved.version), body: JSON.stringify({ apiKey: changingKey && apiKey.trim() ? apiKey.trim() : null, defaultModel: model.trim() }) })
       setApiKey('')
-      client.setQueryData(['ai-settings'], next)
+      client.setQueryData(queryKeys.aiSettings(), next)
       // O9: a new key belongs to another workspace; the skills uploaded with the old one are forgotten.
       const skillsForgotten = saved.skills.some(skill => skill.uploaded) && !next.skills.some(skill => skill.uploaded)
       setNotice({ kind: 'success', message: skillsForgotten ? 'Yapay zekâ ayarları kaydedildi. Yeni anahtar için becerileri “Beceriyi Yükle” ile yeniden yükleyin; beden tablosu ancak ondan sonra oluşturulabilir.' : 'Yapay zekâ ayarları kaydedildi.' })
@@ -1874,7 +1875,7 @@ function AiSettingsSection() {
       setTestResult({ kind: 'bad', message: reason instanceof Error ? reason.message : 'Bağlantı sınanamadı.' })
     } finally {
       setBusy(null)
-      void client.invalidateQueries({ queryKey: ['ai-usage'] })
+      void client.invalidateQueries({ queryKey: queryKeys.aiUsage() })
     }
   }
   // file: the owner's .skill / .zip file; none: the copy bundled with the panel (only offered while nothing is uploaded).
@@ -1888,7 +1889,7 @@ function AiSettingsSection() {
       let body: FormData | undefined
       if (file) { body = new FormData(); body.append('file', file, file.name) }
       const next = await hubApi<AiSettings>(`/settings/ai/skills/${encodeURIComponent(skill.key)}/upload`, { method: 'POST', body })
-      client.setQueryData(['ai-settings'], next)
+      client.setQueryData(queryKeys.aiSettings(), next)
       const updated = next.skills.find(item => item.key === skill.key)
       setSkillResult({ key: skill.key, kind: 'done', message: updated ? `${aiSkillState(updated)}.` : 'Beceri yüklendi.' })
     } catch (reason) {
@@ -1896,7 +1897,7 @@ function AiSettingsSection() {
     } finally {
       setBusy(null)
       setSkillFile(null)
-      void client.invalidateQueries({ queryKey: ['ai-usage'] })
+      void client.invalidateQueries({ queryKey: queryKeys.aiUsage() })
     }
   }
 

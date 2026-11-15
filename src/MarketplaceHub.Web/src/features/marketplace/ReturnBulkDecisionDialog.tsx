@@ -13,6 +13,7 @@ import { bulkApproveConfirmText, bulkApproveFailureText } from './return-bulk-ap
 import { isActionableReturnLine } from './return-claim-visibility'
 import { finalizedWithFor, type FinalizedWith } from './return-finalized-with'
 import { ReturnFinalizedWithChoice } from './ReturnFinalizedWithChoice'
+import { queryKeys } from '../../shared/api/query-keys'
 
 export type BulkDecisionLine = {
   id: string
@@ -89,7 +90,7 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
   // Stock is chosen per product, so the claim details give the line ids and whether each product maps to stock.
   const details = useQueries({
     queries: items.map(item => ({
-      queryKey: ['return', item.id],
+      queryKey: queryKeys.return(item.id),
       queryFn: () => hubApi<DetailLines>(`/returns/${item.id}`),
       enabled: approving,
       staleTime: 15_000
@@ -116,7 +117,7 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
   // Rejecting needs a reason the marketplace accepts without evidence files. The reasons come from the
   // first selected return; a reason a later return does not accept is reported on that return only.
   const reasons = useQuery({
-    queryKey: ['return-reasons', 'bulk', items[0]?.id],
+    queryKey: queryKeys.returnReasons('bulk', items[0]?.id),
     queryFn: () => hubApi<RejectReason[]>(`/returns/${items[0]!.id}/rejection-reasons`),
     enabled: !approving && singlePlatform && items.length > 0,
     retry: false
@@ -152,7 +153,7 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
     if (!approving) setRunning(false)
     // ['returns'] does not reach the detail cache (['return', id]): each decided claim's detail is read again, or its
     // next action would send the old version in If-Match and get 409.
-    await Promise.all([client.invalidateQueries({ queryKey: ['returns'] }), ...items.map(item => client.invalidateQueries({ queryKey: ['return', item.id] })), ...(stocked > 0 ? [client.invalidateQueries({ queryKey: ['products'] })] : [])]).catch(() => undefined)
+    await Promise.all([client.invalidateQueries({ queryKey: queryKeys.returns() }), ...items.map(item => client.invalidateQueries({ queryKey: queryKeys.return(item.id) })), ...(stocked > 0 ? [client.invalidateQueries({ queryKey: queryKeys.products() })] : [])]).catch(() => undefined)
     const okCount = results.filter(outcome => outcome.ok).length
     const failCount = results.length - okCount
     const noun = approving ? 'onaylandı' : 'reddedildi'

@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { PanelSelect } from '../../shared/PanelSelect'
 import { RrIcon, RrModal } from '../marketplace/returns-ui'
 import { handSetInvoiceStatus, handSetInvoiceStatusNote, setManualInvoiceStatus, type ManualInvoiceStatus } from './manual-invoice-status'
+import { queryKeys } from '../../shared/api/query-keys'
 
 // The one "Fatura Durumunu Değiştir" window for a Shopify order, opened from the invoice page and the orders page
 // (audit W13). It only records the status by hand: no invoice is issued and nothing is sent to Shopify. "Faturası
@@ -27,7 +28,7 @@ export function ShopifyInvoiceStatusDialog({ orderNumber, invoiceStatus, manualI
   const update = useMutation({
     mutationFn: async () => setManualInvoiceStatus([await resolvePackageId()], status),
     onSuccess: async () => {
-      await Promise.all([['orders'], ['invoice-viewer'], ['invoice'], ['invoice-workspace-summary'], ['invoice-workspace-page']].map(queryKey => client.invalidateQueries({ queryKey })))
+      await Promise.all([queryKeys.orders(), queryKeys.invoiceViewer(), queryKeys.invoice(), queryKeys.invoiceWorkspaceSummary(), queryKeys.invoiceWorkspacePage()].map(queryKey => client.invalidateQueries({ queryKey })))
       onFeedback(status === 'UPLOADED' ? 'Shopify fatura durumu “Faturası yüklendi” olarak elle işaretlendi.' : 'Shopify fatura durumu “Fatura bekliyor” olarak elle işaretlendi.', 'success')
       onClose()
     },

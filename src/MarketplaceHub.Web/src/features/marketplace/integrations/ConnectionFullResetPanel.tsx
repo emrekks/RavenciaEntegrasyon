@@ -12,11 +12,12 @@ import { ReauthInputs, reauthBody, reauthReady, useSecondFactorEnabled } from '.
 import { connectionFullResetItems, connectionFullResetRunning, type ConnectionFullResetJob, type ConnectionFullResetView } from '../connection-data-reset'
 import type { Connection, IntegrationFeedback } from '../shared'
 import '../../../shared/components/data-reset-ledger.css'
+import { queryKeys } from '../../../shared/api/query-keys'
 
 const number = (value: number) => value.toLocaleString('tr-TR')
 
 export function connectionFullResetQueryKey(connectionId: string) {
-  return ['connection-full-reset', connectionId] as const
+  return queryKeys.connectionFullReset(connectionId)
 }
 
 export function fullResetStatusText(job: ConnectionFullResetView['job']) {

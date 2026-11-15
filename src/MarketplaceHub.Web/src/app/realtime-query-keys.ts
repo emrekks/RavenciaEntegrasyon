@@ -1,23 +1,13 @@
+import { queryKeys, queryRootList, type RealtimeResource } from '../shared/api/query-keys'
+
 // What a realtime change announcement refreshes. The server names the resource that changed (AppDbContext.OutboxChange:
 // orders, products, inventory, returns, invoices, connections; jobs from the job broadcaster); each one maps to the
-// roots of the queries that show it. Every root here must be used by at least one query (realtime-query-keys.test.ts).
-export const realtimeQueryKeysByResource: Record<string, readonly (readonly string[])[]> = {
-  // Orders carry their packages, so shipments change with them; the invoice workspace lists orders waiting for invoices.
-  // The dashboard's revenue panel is not refreshed per order event: it reads a whole period and refreshes itself every
-  // minute while on screen; the operational cards (dashboard-bootstrap) are a cheap snapshot read.
-  orders: [['orders'], ['shipment'], ['invoice-workspace-page'], ['invoice-workspace-summary'], ['dashboard-bootstrap']],
-  returns: [['returns'], ['return'], ['dashboard-bootstrap']],
-  products: [['products'], ['product'], ['publication-status'], ['dashboard-bootstrap']],
-  // Stock lives on the product screens; there is no separate inventory query.
-  inventory: [['products'], ['product'], ['dashboard-bootstrap']],
-  // Invoice state is shown on the invoice screens and on each order row.
-  invoices: [['invoice'], ['invoice-viewer'], ['invoice-workspace-page'], ['invoice-workspace-summary'], ['orders'], ['dashboard-bootstrap']],
-  connections: [['connections'], ['connection'], ['invoice-workspace-page'], ['invoice-workspace-summary'], ['dashboard-bootstrap'], ['dashboard']],
-  questions: [['questions']],
-  // The worker rebuilt the dashboard snapshot after a change was already announced: the menu badges and cards re-read it.
-  dashboard: [['dashboard-bootstrap']],
-  jobs: [['jobs'], ['job']],
-}
+// roots of the queries that show it. The map is derived from the query key factory (shared/api/query-keys.ts), where
+// every root names the announcements that refresh it. Every root here must be used by at least one query
+// (realtime-query-keys.test.ts).
+const realtimeResources: readonly RealtimeResource[] = ['orders', 'returns', 'products', 'inventory', 'invoices', 'connections', 'questions', 'dashboard', 'jobs']
+export const realtimeQueryKeysByResource: Record<string, readonly (readonly string[])[]> = Object.fromEntries(realtimeResources.map(resource =>
+  [resource, queryRootList.filter(root => root.refreshedBy.includes(resource)).map(root => root())]))
 
 // After the connection comes back, anything may have changed while it was away.
 export const realtimeReconnectQueryKeys: readonly (readonly string[])[] = Array.from(
@@ -73,9 +63,9 @@ export function realtimeInvalidationsFor(resources: readonly string[], events: r
     const status = event.status?.toUpperCase() ?? ''
     const startedByPerson = event.aggregateType === 'IntegrationJob' && Boolean(event.resource) && event.resource!.toLowerCase() !== 'jobs'
     const urgent = attentionJobStatuses.has(status) || startedByPerson
-    add(['jobs'], urgent ? 0 : realtimeJobThrottleMs)
-    if (event.aggregateId && (urgent || isWatchedJob(event.aggregateId))) add(['job', event.aggregateId], 0)
-    else add(['job'], realtimeJobThrottleMs)
+    add(queryKeys.jobs(), urgent ? 0 : realtimeJobThrottleMs)
+    if (event.aggregateId && (urgent || isWatchedJob(event.aggregateId))) add(queryKeys.job(event.aggregateId), 0)
+    else add(queryKeys.job(), realtimeJobThrottleMs)
   }
   return [...out.values()]
 }

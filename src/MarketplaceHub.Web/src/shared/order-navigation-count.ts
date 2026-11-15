@@ -1,4 +1,5 @@
 import { hubPoll } from './api'
+import { queryKeys } from './api/query-keys'
 
 export type OrderNavigationSummary = {
   new: number
@@ -16,7 +17,7 @@ export type OrderNavigationSummary = {
 // order arrives, so the two disagreed (owner, 6 Nov 2026: badge 13, card 12). It polls only while the tab is on screen
 // and says it is automatic, so an open tab still reaches the idle sign-out.
 export const pendingOrdersQuery = {
-  queryKey: ['orders', 'summary', 'pending'] as const,
+  queryKey: queryKeys.orders('summary', 'pending'),
   queryFn: () => hubPoll<OrderNavigationSummary>('/orders/summary?tabs=PENDING'),
   staleTime: 30_000,
   refetchOnMount: 'always' as const,

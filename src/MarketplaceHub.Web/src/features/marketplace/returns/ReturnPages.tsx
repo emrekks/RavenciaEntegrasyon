@@ -41,6 +41,7 @@ import { personName } from '../../../shared/person-name'
 import { cardCountText, toneAbove } from '../../../shared/metric-value'
 import { useMetricSource } from '../use-metric-source'
 import { EmptyState } from '../../../shared/components/EmptyState'
+import { queryKeys } from '../../../shared/api/query-keys'
 
 // Empty text of the tabs that list a special state, instead of the generic "sync the returns" line.
 const tabEmptyCopy: Record<string, [string, string]> = {
@@ -140,7 +141,7 @@ function ReturnReferenceRow({ item, order, onNotice, selection, selectColumn, no
   const [dialogMode, setDialogMode] = useState<'DETAIL' | 'APPROVE' | 'REJECT' | null>(null)
   const [selectedReturnLineIds, setSelectedReturnLineIds] = useState<string[]>([])
   const rowRef = useRef<HTMLTableRowElement>(null)
-  const detailQuery = useQuery({ queryKey: ['return', item.id], queryFn: () => hubApi<ReturnDetail>(`/returns/${item.id}`), enabled: dialogMode !== null, staleTime: 30_000 })
+  const detailQuery = useQuery({ queryKey: queryKeys.return(item.id), queryFn: () => hubApi<ReturnDetail>(`/returns/${item.id}`), enabled: dialogMode !== null, staleTime: 30_000 })
   const navigate = useNavigate()
   const lines = order?.lines?.length ? order.lines : item.lines ?? []
   const currency = order?.currency ?? item.currency
@@ -274,8 +275,8 @@ function ReturnReceiptButton({ item, onNotice }: { item: ReturnDetail; onNotice?
     mutationFn: () => hubApi(`/returns/${item.id}/received`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(), 'If-Match': `"v${item.version}"` } }),
     onSuccess: async () => {
       notifyReturn(onNotice, 'İade paketi teslim alındı. Onay veya ret işlemleri açıldı.', 'success', undefined, undefined, { ...returnNotificationContext(item), title: 'İade Paketi Teslim Alındı', operation: 'İade teslim alma' })
-      await client.invalidateQueries({ queryKey: ['return', item.id] })
-      await client.invalidateQueries({ queryKey: ['returns'] })
+      await client.invalidateQueries({ queryKey: queryKeys.return(item.id) })
+      await client.invalidateQueries({ queryKey: queryKeys.returns() })
     },
     onError: error => { const failure = notificationError(error, 'İade teslim alındı olarak işaretlenemedi.'); notifyReturn(onNotice, failure.message, 'error', undefined, undefined, { ...returnNotificationContext(item), title: 'İade Teslim Alınamadı', operation: 'İade teslim alma', code: failure.code }) }
   })
@@ -290,10 +291,10 @@ function ReturnDecisionActions({ item, onNotice, onComplete, selectedLineIds: co
   const fileInput = useRef<HTMLInputElement>(null)
   const resetDecision = useEffectEvent(() => { if (!isControlled) setLocalSelectedLineIds(lines.map(line => line.id)); setConfirmation(null); setShipmentCompanyId(''); setTrackingNumber(''); setFinalizedWith(finalizedWithFor(item.customerRequest)); setAction(initialAction ?? (isAwaitingPreApproval ? 'PREAPPROVAL_CONFIRM' : 'APPROVE')) })
   useEffect(() => resetDecision(), [item.id, item.version, item.lines, item.customerRequest, isControlled, isAwaitingPreApproval, initialAction])
-  const reasons = useQuery({ queryKey: ['return-reasons', item.id], queryFn: () => hubApi<ReturnIssueReason[]>(`/returns/${item.id}/rejection-reasons`), enabled: item.allowedActions.includes('REJECT'), retry: false })
+  const reasons = useQuery({ queryKey: queryKeys.returnReasons(item.id), queryFn: () => hubApi<ReturnIssueReason[]>(`/returns/${item.id}/rejection-reasons`), enabled: item.allowedActions.includes('REJECT'), retry: false })
   // N11: a denial (other than reason 41) names the shipment of the product back to the buyer; CAMPAIGN is never offered.
   const needsReturnShipment = action === 'REJECT' && item.rejectNeedsReturnShipment === true && reasonId !== '' && reasonId !== n11ProductNotReceivedReasonId
-  const shipmentCompanies = useQuery({ queryKey: ['return-shipment-companies', item.connectionId], queryFn: () => hubApi<ReturnShipmentCompany[]>(`/returns/${item.id}/return-shipment-companies`), enabled: action === 'REJECT' && item.rejectNeedsReturnShipment === true, retry: false, staleTime: 60 * 60_000 })
+  const shipmentCompanies = useQuery({ queryKey: queryKeys.returnShipmentCompanies(item.connectionId), queryFn: () => hubApi<ReturnShipmentCompany[]>(`/returns/${item.id}/return-shipment-companies`), enabled: action === 'REJECT' && item.rejectNeedsReturnShipment === true, retry: false, staleTime: 60 * 60_000 })
   const decision = useMutation({
     mutationFn: (payload: ReturnDecisionDraft) => hubApi<ReturnDetail>(`/returns/${item.id}/actions`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ action: payload.action, reasonCode: payload.reasonCode, explanation: payload.explanation, evidenceAssetIds: payload.evidenceAssetIds, returnLineIds: payload.returnLineIds, finalizedWith: payload.finalizedWith, returnShipment: payload.returnShipment ? { shipmentCompanyId: payload.returnShipment.shipmentCompanyId, trackingNumber: payload.returnShipment.trackingNumber } : null }) }),
     onSuccess: async (result, payload) => {
@@ -311,8 +312,8 @@ function ReturnDecisionActions({ item, onNotice, onComplete, selectedLineIds: co
       const kind = payload.action === 'PREAPPROVAL_CONFIRM' ? 'info' : result.status === 'REJECTED' ? 'error' : result.status === 'APPROVED' ? returnPlatformStatusKind(result.rawStatus) : 'info'
       const title = payload.action === 'PREAPPROVAL_CONFIRM' ? 'İnceleme Talebi İletildi' : result.status === 'APPROVED' ? 'İade Kabul Kararı İletildi' : result.status === 'REJECTED' ? 'İade Ret Kararı İletildi' : 'İade Kararı İletildi'
       notifyReturn(onNotice, message, kind, [{ label: 'Müşteri', value: item.customerName }, ...(result.rawStatus ? [{ label: `${marketplaceName} Durumu`, value: returnPlatformStatusText(result.rawStatus, marketplaceName) }] : [])], undefined, { ...returnNotificationContext(item), title, operation: 'İade kararı' })
-      await client.invalidateQueries({ queryKey: ['return', item.id] })
-      await client.invalidateQueries({ queryKey: ['returns'] })
+      await client.invalidateQueries({ queryKey: queryKeys.return(item.id) })
+      await client.invalidateQueries({ queryKey: queryKeys.returns() })
       onComplete?.()
     },
     onError: error => {
@@ -419,13 +420,13 @@ export function ReturnsPage() {
   if (cursorKey !== listKey) { setCursorKey(listKey); setPageCursors({ 1: null }); setPageNumber(1) }
   const cursor = pageNumber > 1 ? pageCursors[pageNumber] ?? null : null
   useListUrlSync({ status: appliedFilters.status, search: appliedFilters.search, from: appliedFilters.from, to: appliedFilters.to, platforms: selectedPlatforms, cargo: cargoFilter, reason: reasonFilter, invoice: invoiceStatusFilter, sort, size: pageSize, page: pageNumber }, { status: 'ALL', cargo: 'ALL', reason: 'ALL', invoice: 'ALL', sort: DEFAULT_RETURN_SORT, size: 20, page: 1 })
-  const query = useQuery({ queryKey: ['returns', 'list', appliedFilters, refinements, sort, pageSize, pageNumber, cursor], queryFn: () => hubPoll<Page<ReturnClaim>>(`/returns?${returnListParams(appliedFilters, refinements, { sort: sort === DEFAULT_RETURN_SORT ? null : sort, limit: pageSize, after: cursor, page: pageNumber }).toString()}`), placeholderData: keepPreviousData, refetchInterval: 30_000 })
-  const summary = useQuery({ queryKey: ['returns', 'summary', appliedFilters, refinements], queryFn: () => hubPoll<ReturnSummary>(`/returns/summary?${returnSummaryParams(appliedFilters, refinements).toString()}`), placeholderData: keepPreviousData, refetchInterval: 30_000 })
+  const query = useQuery({ queryKey: queryKeys.returns('list', appliedFilters, refinements, sort, pageSize, pageNumber, cursor), queryFn: () => hubPoll<Page<ReturnClaim>>(`/returns?${returnListParams(appliedFilters, refinements, { sort: sort === DEFAULT_RETURN_SORT ? null : sort, limit: pageSize, after: cursor, page: pageNumber }).toString()}`), placeholderData: keepPreviousData, refetchInterval: 30_000 })
+  const summary = useQuery({ queryKey: queryKeys.returns('summary', appliedFilters, refinements), queryFn: () => hubPoll<ReturnSummary>(`/returns/summary?${returnSummaryParams(appliedFilters, refinements).toString()}`), placeholderData: keepPreviousData, refetchInterval: 30_000 })
   const nextCursor = query.data?.nextCursor ?? null
   if (nextCursor && !query.isPlaceholderData && pageCursors[pageNumber + 1] !== nextCursor) setPageCursors(current => ({ ...current, [pageNumber + 1]: nextCursor }))
-  const connections = useQuery({ queryKey: ['connections', 'returns'], queryFn: () => loadAllPages<Connection>('/connections') })
+  const connections = useQuery({ queryKey: queryKeys.connections('returns'), queryFn: () => loadAllPages<Connection>('/connections') })
   const returnConnections = activeReturnSyncConnections(connections.data?.items ?? [])
-  const sync = useMutation({ mutationFn: () => enqueueReturnSyncs(returnConnections, connection => hubApi(`/connections/${connection.id}/return-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() } })), onSuccess: async result => { notifyReturn(handleNotice, result.failed ? `${result.succeeded} bağlantıda iade eşitlemesi kuyruğa alındı; ${result.failed} bağlantıda başlatılamadı.` : `${result.succeeded} bağlantıda iade eşitlemesi kuyruğa alındı. İş tamamlandığında tüm iadeler otomatik yenilenir.`, result.failed ? 'error' : 'info'); await client.invalidateQueries({ queryKey: ['returns'] }) }, onError: value => notifyReturn(handleNotice, value instanceof Error ? value.message : 'İade eşitlemesi başlatılamadı.', 'error') })
+  const sync = useMutation({ mutationFn: () => enqueueReturnSyncs(returnConnections, connection => hubApi(`/connections/${connection.id}/return-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() } })), onSuccess: async result => { notifyReturn(handleNotice, result.failed ? `${result.succeeded} bağlantıda iade eşitlemesi kuyruğa alındı; ${result.failed} bağlantıda başlatılamadı.` : `${result.succeeded} bağlantıda iade eşitlemesi kuyruğa alındı. İş tamamlandığında tüm iadeler otomatik yenilenir.`, result.failed ? 'error' : 'info'); await client.invalidateQueries({ queryKey: queryKeys.returns() }) }, onError: value => notifyReturn(handleNotice, value instanceof Error ? value.message : 'İade eşitlemesi başlatılamadı.', 'error') })
   const [bulkIds, setBulkIds] = useState<string[]>([])
   // The bulk selection belongs to the cards on screen: another tab, filter, page or page size starts it empty, so a
   // return that is no longer shown is never approved or rejected by mistake.
@@ -532,7 +533,7 @@ export function ReturnDetailPage() {
     const timeout = window.setTimeout(() => setNoticeState(''), noticeKind === 'info' ? 7000 : 5500)
     return () => window.clearTimeout(timeout)
   }, [notice, noticeKind])
-  const query = useQuery({ queryKey: ['return', id], queryFn: () => hubApi<ReturnDetail>(`/returns/${id}`) })
+  const query = useQuery({ queryKey: queryKeys.return(id), queryFn: () => hubApi<ReturnDetail>(`/returns/${id}`) })
   // Each stock decision is its own request: a decision does not change the return's version, so a key
   // made from the version and the body would replay the first of two equal decisions (audit 2026-10-20 W11).
   // The key is kept per pending decision instead (sendStockDisposition): a resend after a lost answer replays it.
@@ -548,7 +549,7 @@ export function ReturnDetailPage() {
       const kind = String(data.get('disposition'))
       await dispositionRequest.mutateAsync({ lineId: line.id, body: JSON.stringify({ returnLineId: line.id, disposition: kind, quantity: Number(data.get('quantity')), reason: data.get('reason') }) })
       notifyReturn(setNotice, kind === 'PASS' ? 'İade stok kararı kaydedildi; ürün stoğa eklendi.' : 'İade stok kararı kaydedildi; stok değişmedi.', 'success', undefined, undefined, { ...returnNotificationContext(query.data), title: 'İade Stok Kararı Kaydedildi', operation: 'İade stok kararı' })
-      await Promise.all([client.invalidateQueries({ queryKey: ['return', id] }), ...(kind === 'PASS' ? [client.invalidateQueries({ queryKey: ['products'] })] : [])])
+      await Promise.all([client.invalidateQueries({ queryKey: queryKeys.return(id) }), ...(kind === 'PASS' ? [client.invalidateQueries({ queryKey: queryKeys.products() })] : [])])
     } catch (reason) { const failure = notificationError(reason, 'Stok kararı kaydedilemedi.'); notifyReturn(setNotice, failure.message, 'error', undefined, undefined, { ...returnNotificationContext(query.data), title: 'İade Stok Kararı Kaydedilemedi', operation: 'İade stok kararı', code: failure.code }) }
     finally { dispositionInFlight.current = false }
   }

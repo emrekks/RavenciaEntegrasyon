@@ -4,6 +4,7 @@ import type { HubConnection } from '@microsoft/signalr'
 import { RecentOperationEventIds } from '../operations-event-deduplication'
 import { RealtimeInvalidationThrottle, realtimeInvalidationsFor, realtimeReconnectQueryKeys, skipsRealtimeRefetch, type RealtimeEvent } from '../realtime-query-keys'
 import { onUnauthorized } from '../../shared/api/client'
+import { queryKeys } from '../../shared/api/query-keys'
 
 // Seconds before the next connection try: 3, 6, 12, 24, then every 60.
 export function realtimeRetryDelayMs(attempt: number) {
@@ -30,7 +31,7 @@ export function useOperationsRealtime(enabled: boolean) {
     const refetchable = (query: Query) => !skipsRealtimeRefetch(query.queryKey, query.state.data)
     const throttle = new RealtimeInvalidationThrottle(queryKey => { void client.invalidateQueries({ queryKey, predicate: refetchable }) })
     // The job a screen has open (İşlem Takibi's detail) follows its own changes at once.
-    const isWatchedJob = (jobId: string) => client.getQueryCache().findAll({ queryKey: ['job', jobId], exact: true, type: 'active' }).length > 0
+    const isWatchedJob = (jobId: string) => client.getQueryCache().findAll({ queryKey: queryKeys.job(jobId), exact: true, type: 'active' }).length > 0
     const flush = () => {
       flushTimer = null
       const resources = [...pendingResources]

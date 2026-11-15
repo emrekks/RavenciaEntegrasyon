@@ -21,6 +21,7 @@ import {
 import { ProductThumb } from './ProductThumb'
 import './price-stock-send-log.css'
 import './product-activity-log.css'
+import { queryKeys } from '../../shared/api/query-keys'
 
 // İşlem Takibi › Loglar › Ürün Hareketleri: every stock, price, sale status and return change of the products, newest
 // first. The first page is polled every 30 seconds while it is the only one loaded; older pages are read on demand.
@@ -109,7 +110,7 @@ export function ProductActivityLog({ platformOptions, kept }: { platformOptions:
   // The summary counts every kind under the other filters, so a picked kind keeps the others' counts in view.
   const countFilters = useMemo(() => ({ ...filters, kinds: [] }), [filters])
   const counts = useQuery({
-    queryKey: ['product-activity', 'counts', countFilters],
+    queryKey: queryKeys.productActivity('counts', countFilters),
     queryFn: () => hubPoll<Array<{ kind: string; count: number }>>(`/product-activity/counts${activityCountsQueryString(countFilters)}`),
     placeholderData: keepPreviousData,
     refetchInterval: firstPagePollMs
@@ -117,7 +118,7 @@ export function ProductActivityLog({ platformOptions, kept }: { platformOptions:
   const summary = useMemo(() => counts.data ? activityKindCounts(counts.data) : null, [counts.data])
 
   const list = useInfiniteQuery({
-    queryKey: ['product-activity', filters],
+    queryKey: queryKeys.productActivity(filters),
     queryFn: context => hubPoll<ProductActivityPage>(`/product-activity${activityQueryString(filters, context.pageParam)}`),
     initialPageParam: null as string | null,
     getNextPageParam: lastPage => lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,

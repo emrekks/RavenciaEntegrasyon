@@ -1,6 +1,7 @@
 import { useQueries } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 import type { MarketplaceConnection } from './shared'
+import { queryKeys } from '../../shared/api/query-keys'
 
 // PttAVM's "Manuel Dış Yazmalar" switch (the MANUAL_WRITE policy, Entegrasyonlar › mağaza › Pazaryerine Yazma) gates the
 // sends a user starts there, besides the Dış Yazma Ana Anahtarı. Read from the same sync-policies list the integration
@@ -10,7 +11,7 @@ export function usePttAvmManualWrites(connections: readonly MarketplaceConnectio
   const pttAvm = connections.filter(connection => connection.platformCode.trim().toUpperCase() === 'PTTAVM')
   const results = useQueries({
     queries: pttAvm.map(connection => ({
-      queryKey: ['sync-policies', connection.id],
+      queryKey: queryKeys.syncPolicies(connection.id),
       queryFn: () => hubApi<Array<{ resourceType: string; enabled: boolean }>>(`/connections/${connection.id}/sync-policies`),
       staleTime: 30_000
     }))

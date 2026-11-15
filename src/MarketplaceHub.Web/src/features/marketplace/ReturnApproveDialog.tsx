@@ -10,6 +10,7 @@ import { formatPackageLabel } from '../../shared/package-label'
 import { sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../shared/idempotency'
 import { finalizedWithFor, finalizedWithLabels, type FinalizedWith } from './return-finalized-with'
 import { ReturnFinalizedWithChoice } from './ReturnFinalizedWithChoice'
+import { queryKeys } from '../../shared/api/query-keys'
 
 export type ReturnApproveRow = {
   id: string
@@ -124,9 +125,9 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
         ...(stockRequests.length > 0 ? [{ label: 'Stok', value: `+${added.toLocaleString('tr-TR')} / ${stockQuantity.toLocaleString('tr-TR')} adet stoğa eklendi`, tone: stockShort ? 'error' as const : 'success' as const }] : [])
       ], { href: `/returns?status=APPROVED&search=${encodeURIComponent(order.orderNumber.replace(/^#/, ''))}`, label: 'İadeyi Gör' })
       await Promise.all([
-        client.invalidateQueries({ queryKey: ['return', claimId] }),
-        client.invalidateQueries({ queryKey: ['returns'] }),
-        ...(added > 0 ? [client.invalidateQueries({ queryKey: ['products'] })] : [])
+        client.invalidateQueries({ queryKey: queryKeys.return(claimId) }),
+        client.invalidateQueries({ queryKey: queryKeys.returns() }),
+        ...(added > 0 ? [client.invalidateQueries({ queryKey: queryKeys.products() })] : [])
       ])
       onClose()
     },

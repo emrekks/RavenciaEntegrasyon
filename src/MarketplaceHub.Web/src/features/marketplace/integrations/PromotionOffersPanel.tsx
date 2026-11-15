@@ -12,6 +12,7 @@ import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import '../commission-tariffs.css'
 import { PanelSelect } from '../../../shared/PanelSelect'
 import { EmptyState } from '../../../shared/components/EmptyState'
+import { queryKeys } from '../../../shared/api/query-keys'
 // One formatter per format, made once: toLocaleString with options builds a new Intl.NumberFormat on every call, and
 // the tariff table formats thousands of amounts per render.
 const twoDecimals = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -113,9 +114,9 @@ export function PromotionOffersPanel({ connectionId, kind }: { connectionId: str
   const [dragging, setDragging] = useState(false)
   const [message, setMessage] = useState<PanelMessage | null>(null)
   const [confirm, confirmDialog] = useConfirmDialog()
-  const offers = useQuery({ queryKey: ['promotion-offers', connectionId], queryFn: () => hubApi<PromotionSummary[]>(`/connections/${connectionId}/promotion-offers`) })
+  const offers = useQuery({ queryKey: queryKeys.promotionOffers(connectionId), queryFn: () => hubApi<PromotionSummary[]>(`/connections/${connectionId}/promotion-offers`) })
   const summary = offers.data?.find(offer => offer.kind === kind) ?? null
-  const detail = useQuery({ queryKey: ['promotion-offer', connectionId, kind, summary?.uploadedAt], queryFn: () => hubApi<Detail>(`/connections/${connectionId}/promotion-offers/${kind}`), enabled: summary !== null })
+  const detail = useQuery({ queryKey: queryKeys.promotionOffer(connectionId, kind, summary?.uploadedAt), queryFn: () => hubApi<Detail>(`/connections/${connectionId}/promotion-offers/${kind}`), enabled: summary !== null })
   const upload = useMutation({
     mutationFn: (file: File) => {
       const body = new FormData()
@@ -125,13 +126,13 @@ export function PromotionOffersPanel({ connectionId, kind }: { connectionId: str
     onSuccess: async result => {
       const other = result.offer.kind !== kind ? ` Bu bir ${promotionTitles[result.offer.kind]} dosyası; o sayfada gösteriliyor.` : ''
       setMessage({ kind: result.skippedRows || other ? 'info' : 'success', text: `${promotionTitles[result.offer.kind]}: ${result.offer.rowCount.toLocaleString('tr-TR')} satır yüklendi${result.skippedRows ? `, ${result.skippedRows.toLocaleString('tr-TR')} satır okunamadı` : ''}.${other}`, warnings: result.warnings })
-      await client.invalidateQueries({ queryKey: ['promotion-offers', connectionId] })
+      await client.invalidateQueries({ queryKey: queryKeys.promotionOffers(connectionId) })
     },
     onError: reason => setMessage({ kind: 'error', text: reason instanceof Error ? reason.message : 'Dosya yüklenemedi.' })
   })
   const remove = useMutation({
     mutationFn: () => hubApi<boolean>(`/connections/${connectionId}/promotion-offers/${kind}`, { method: 'DELETE', headers: { 'Idempotency-Key': newIdempotencyKey('promotion-offer-delete') } }),
-    onSuccess: async () => { setMessage({ kind: 'success', text: 'Dosya silindi.' }); await client.invalidateQueries({ queryKey: ['promotion-offers', connectionId] }) },
+    onSuccess: async () => { setMessage({ kind: 'success', text: 'Dosya silindi.' }); await client.invalidateQueries({ queryKey: queryKeys.promotionOffers(connectionId) }) },
     onError: reason => setMessage({ kind: 'error', text: reason instanceof Error ? reason.message : 'Dosya silinemedi.' })
   })
   const choose = (file: File | undefined) => {

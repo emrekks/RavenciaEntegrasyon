@@ -53,6 +53,7 @@ import { Connection, IntegrationFeedback, Order, OrderAddress, OrderLine, Page, 
 import { insideSelector, useDismissable } from '../../../shared/hooks/useDismissable'
 import { personName } from '../../../shared/person-name'
 import { ListEmptyState } from '../../../shared/components/EmptyState'
+import { queryKeys } from '../../../shared/api/query-keys'
 
 const orderStatusTabOrder = orderStatusTabs.map(([value]) => value)
 const invoiceCreationDisabledHelp = 'Fatura oluşturmak için Entegrasyonlar > bu bağlantı ayarlarından “Fatura oluşturma” seçeneğini açın.'
@@ -193,11 +194,11 @@ function InvoiceDraftModal({ item, providers, onClose, onFeedback }: { item: Ord
   if (detail.isError || !order) return <div className="workspace-modal-backdrop" role="presentation" onMouseDown={onClose}><DialogSurface as="section" onClose={onClose} className="workspace-modal invoice-draft-modal" aria-label="Fatura önizlemesi" onMouseDown={event => event.stopPropagation()}><ErrorBox error={detail.error} onRetry={() => void detail.refetch()} /><button type="button" className="secondary" onClick={onClose}>Kapat</button></DialogSurface></div>
   if (!packageId || !provider) return <div className="workspace-modal-backdrop" role="presentation" onMouseDown={onClose}><DialogSurface as="section" onClose={onClose} className="workspace-modal invoice-draft-modal" aria-labelledby="invoice-draft-blocked-title" onMouseDown={event => event.stopPropagation()}><header><div><h2 id="invoice-draft-blocked-title">Fatura Önizlemesi Açılamadı</h2><p>{displayOrderNumber(order.orderNumber)}</p></div><button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header><p className="notice" role="status">{!packageId ? 'Fatura için pazaryeri paket bilgisi henüz yok. Paket eşitlemesinden sonra yeniden deneyin.' : `Sipariş ortamında (${marketplace?.environment ?? 'bilinmiyor'}) etkin ve credential’ı olan E-Faturam bağlantısı bulunamadı.`}</p><footer><button type="button" className="secondary" onClick={onClose}>Kapat</button></footer></DialogSurface></div>
   const target: InvoicePreviewTarget = { orderId: order.id, packageId, providerConnectionId: provider.id }
-  return <InvoiceWorkspacePreviewModal targets={[target]} onClose={onClose} onNotice={(text, kind, context) => onFeedback(text, kind, context)} onComplete={() => { void Promise.all([client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] })]) }} />
+  return <InvoiceWorkspacePreviewModal targets={[target]} onClose={onClose} onNotice={(text, kind, context) => onFeedback(text, kind, context)} onComplete={() => { void Promise.all([client.invalidateQueries({ queryKey: queryKeys.orders() }), client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspacePage() }), client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspaceSummary() })]) }} />
 }
 function InvoiceViewerModal({ item, onClose }: { item: Order; onClose: () => void }) {
   const invoiceId = item.invoiceId
-  const detail = useQuery({ queryKey: ['invoice-viewer', invoiceId], queryFn: () => hubApi<InvoiceViewer>(`/invoices/${invoiceId}`), enabled: !!invoiceId })
+  const detail = useQuery({ queryKey: queryKeys.invoiceViewer(invoiceId), queryFn: () => hubApi<InvoiceViewer>(`/invoices/${invoiceId}`), enabled: !!invoiceId })
   const invoice = detail.data
   const money = (value: number) => formatMoney(value, invoice?.currency ?? item.currency)
   return <RrModal crumb="Fatura" title={displayOrderNumber(item.orderNumber)} desc={`${invoice?.invoiceNumber ?? 'Numara bekleniyor'}${invoice ? ` · ${titleTr(statusLabel(invoice.invoiceType))}` : ''}`} size="md" onClose={onClose} foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={onClose}>Kapat</button><button type="button" className="rr-btn rr-primary" disabled={!invoice} onClick={() => window.print()}><RrIcon name="print" />Yazdır</button></>}>
@@ -241,7 +242,7 @@ function InvoiceUploadModal({ item, onClose, onFeedback }: { item: Order; onClos
       const notice = 'Manuel belge siparişe kaydedildi. Pazaryerine henüz gönderilmedi; isterseniz aşağıdaki ayrı düğmeden iletebilirsiniz.'
       setMessage(notice)
       onFeedback('Manuel fatura belgesi kaydedildi; pazaryerine gönderim başlatılmadı.', 'success')
-      await Promise.all([client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['invoice-viewer'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] })])
+      await Promise.all([client.invalidateQueries({ queryKey: queryKeys.orders() }), client.invalidateQueries({ queryKey: queryKeys.invoiceViewer() }), client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspaceSummary() }), client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspacePage() })])
     },
     onError: error => { const errorMessage = error instanceof Error ? error.message : 'Manuel fatura belgesi kaydedilemedi.'; setMessage(errorMessage); onFeedback(errorMessage, 'error') }
   })
@@ -258,7 +259,7 @@ function InvoiceUploadModal({ item, onClose, onFeedback }: { item: Order; onClos
         : `${result.queuedPackageCount} paket için manuel fatura iletimi kuyruğa alındı.`
       setMessage(notice)
       onFeedback(notice, 'info')
-      await Promise.all([client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
+      await Promise.all([client.invalidateQueries({ queryKey: queryKeys.orders() }), client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspacePage() }), client.invalidateQueries({ queryKey: queryKeys.jobs() })])
     },
     onError: error => { const errorMessage = error instanceof Error ? error.message : 'Manuel fatura iletimi kuyruğa alınamadı.'; setMessage(errorMessage); onFeedback(errorMessage, 'error') }
   })
@@ -298,7 +299,7 @@ function patchOrderShipment(order: Order, updatedShipment: Shipment): Order {
 }
 function moveOrderAcrossStatusCaches(client: ReturnType<typeof useQueryClient>, order: Order, updatedShipment: Shipment) {
   const updatedOrder = patchOrderShipment(order, updatedShipment)
-  client.setQueriesData<Page<Order>>({ queryKey: ['orders', 'page'] }, current => current ? { ...current, items: current.items.map(item => item.id === order.id ? updatedOrder : item) } : current)
+  client.setQueriesData<Page<Order>>({ queryKey: queryKeys.orders('page') }, current => current ? { ...current, items: current.items.map(item => item.id === order.id ? updatedOrder : item) } : current)
   return updatedOrder
 }
 // The panel changes a package's carrier only on Trendyol (the server refuses the others with
@@ -347,7 +348,7 @@ function CourierChangeModal({ item, items, onClose, onConfirmed }: { item: Order
         }
       }
       if (updatedShipments.length) onConfirmed(updatedShipments)
-      void client.invalidateQueries({ queryKey: ['orders'] })
+      void client.invalidateQueries({ queryKey: queryKeys.orders() })
       if (!failed.length && !pending.length) { onClose(); return }
       const changed = updatedShipments.length ? `${updatedShipments.length} paket güncellendi. ` : ''
       if (failed.length) {
@@ -375,7 +376,7 @@ function ShippingLabelModal({ item, settings, format, onClose, onPrinted, inline
   const client = useQueryClient()
   const [overflowing, setOverflowing] = useState<string[]>([])
   // The buyer's e-mail (and name and address) are read from the order detail when the label is printed.
-  const detailQuery = useQuery({ queryKey: ['order-label-detail', item.id], queryFn: () => hubApi<OrderLabelDetail>(`/orders/${item.id}`), enabled: !inline && !suppliedDetail, staleTime: 30_000 })
+  const detailQuery = useQuery({ queryKey: queryKeys.orderLabelDetail(item.id), queryFn: () => hubApi<OrderLabelDetail>(`/orders/${item.id}`), enabled: !inline && !suppliedDetail, staleTime: 30_000 })
   const detail = suppliedDetail ?? detailQuery.data
   const personal = labelPersonalData(item, detail)
   const shipment = orderDisplayShipment(item)
@@ -411,7 +412,7 @@ function ShippingLabelBatchModal({ items, settings, format, onClose, onPrinted }
   // Each selected order's detail is read (a few at a time) for the personal fields the labels print.
   const ids = items.map(item => item.id)
   const batchPages = shippingLabelPages(items, format, settings)
-  const details = useQuery({ queryKey: ['order-label-details', ids], queryFn: () => loadOrderLabelDetails(ids, id => hubApi<OrderLabelDetail>(`/orders/${id}`)), staleTime: 30_000 })
+  const details = useQuery({ queryKey: queryKeys.orderLabelDetails(ids), queryFn: () => loadOrderLabelDetails(ids, id => hubApi<OrderLabelDetail>(`/orders/${id}`)), staleTime: 30_000 })
   function printLabels() {
     if (!details.data) return
     window.print()
@@ -694,8 +695,8 @@ function ShopifyOrderCsvImportModal({ connections, onClose, onFeedback }: { conn
     onSuccess: async value => {
       setResult(value)
       onFeedback(`${value.updatedOrders} Shopify siparişi ve ${value.updatedLines} ürün satırı CSV dışa aktarımından güncellendi.`, value.unmatchedOrders || value.issues.length ? 'info' : 'success')
-      await client.invalidateQueries({ queryKey: ['orders'] })
-      await client.invalidateQueries({ queryKey: ['orders', 'summary'] })
+      await client.invalidateQueries({ queryKey: queryKeys.orders() })
+      await client.invalidateQueries({ queryKey: queryKeys.orders('summary') })
     },
     onError: reason => onFeedback(reason instanceof Error ? reason.message : 'Shopify CSV aktarımı tamamlanamadı.', 'error')
   })
@@ -725,7 +726,7 @@ function ShopifyOrderStatusModal({ item, onClose, onFeedback }: { item: Order; o
     onSuccess: async () => {
       const message = `Shopify sipariş durumu “${orderStatusLabel(status)}” olarak güncellendi.`
       onFeedback(message, 'success')
-      await client.invalidateQueries({ queryKey: ['orders'] })
+      await client.invalidateQueries({ queryKey: queryKeys.orders() })
       onClose()
     },
     onError: reason => onFeedback(reason instanceof Error ? reason.message : 'Shopify sipariş durumu güncellenemedi.', 'error')
@@ -770,7 +771,7 @@ function ShopifyBulkStatusModal({ kind, items, onClose, onFeedback, onUpdated }:
       return results
     },
     onSuccess: async results => {
-      await client.invalidateQueries({ queryKey: ['orders'] })
+      await client.invalidateQueries({ queryKey: queryKeys.orders() })
       const succeeded = results.filter(result => result.ok)
       const failed = results.filter(result => !result.ok)
       onUpdated(succeeded.map(result => result.item.id))
@@ -822,26 +823,26 @@ export function OrdersPage() {
   // the server filters it).
   const orderCursor = pageCursors[page] ?? null
   const orderQueryFilters: OrderFilters = { ...filters, sort: keepSort(filters.status, filters.sort), platform: 'ALL', platforms: selectedPlatforms ?? [] }
-  const ordersQuery = useQuery({ queryKey: ['orders', 'page', orderQueryFilters, pageSize, page, orderCursor], queryFn: () => loadOrderPage(orderQueryFilters, pageSize, orderCursor, page), placeholderData: keepPreviousData, staleTime: 30_000, refetchOnWindowFocus: true })
+  const ordersQuery = useQuery({ queryKey: queryKeys.orders('page', orderQueryFilters, pageSize, page, orderCursor), queryFn: () => loadOrderPage(orderQueryFilters, pageSize, orderCursor, page), placeholderData: keepPreviousData, staleTime: 30_000, refetchOnWindowFocus: true })
   // The tab counters count the orders each tab lists for the same filters (date, search, platforms, cargo,
   // invoice, label), so a counter equals its tab's total (audit 2026-10-20 S12).
   const summaryParams = orderFilterParams(orderQueryFilters).toString()
   // The column filters' counts: orders per platform and cargo under the other filters and the status tab.
   const facetParams = new URLSearchParams(summaryParams); if (orderQueryFilters.status !== 'ALL') facetParams.set('status', orderQueryFilters.status)
-  const facets = useQuery({ queryKey: ['orders', 'facets', facetParams.toString()], queryFn: () => hubApi<OrderFacets>(`/orders/facets?${facetParams.toString()}`), staleTime: 30_000 })
+  const facets = useQuery({ queryKey: queryKeys.orders('facets', facetParams.toString()), queryFn: () => hubApi<OrderFacets>(`/orders/facets?${facetParams.toString()}`), staleTime: 30_000 })
   const facetCounts = (key: keyof OrderFacets) => facets.isError ? undefined : facets.data?.[key] ?? null
   // The cancellation cards count today (the Istanbul day) whatever the list's filters are; the cancellations
   // are the Genel Bakış card's own rows, so both count them the same way.
   const day = istanbulDateKey()
   // The resends that have not been handed to the carrier, counted as the Yeniden Gönderimler list counts them, per store.
-  const resentNotShipped = useQuery({ queryKey: ['orders', 'summary', 'resent-not-shipped'], queryFn: () => hubPoll<OrderSummary>(`/orders/summary?${resentPendingParams()}`), staleTime: 30_000, refetchInterval: 60_000 })
+  const resentNotShipped = useQuery({ queryKey: queryKeys.orders('summary', 'resent-not-shipped'), queryFn: () => hubPoll<OrderSummary>(`/orders/summary?${resentPendingParams()}`), staleTime: 30_000, refetchInterval: 60_000 })
   // The micro-export card: the pending micro-export orders (not yet handed to the carrier, any day) and their countries.
-  const microPending = useQuery({ queryKey: ['orders', 'summary', 'micro-pending'], queryFn: () => hubPoll<OrderSummary>(`/orders/summary?${microPendingParams()}`), staleTime: 30_000, refetchInterval: 60_000 })
-  const cancellationsToday = useQuery({ queryKey: ['dashboard', 'cancellations', day], queryFn: () => hubPoll<{ stores: DailyCancellationRow[] }>(`/dashboard/cancellations?day=${day}`), staleTime: 30_000, refetchInterval: 60_000 })
+  const microPending = useQuery({ queryKey: queryKeys.orders('summary', 'micro-pending'), queryFn: () => hubPoll<OrderSummary>(`/orders/summary?${microPendingParams()}`), staleTime: 30_000, refetchInterval: 60_000 })
+  const cancellationsToday = useQuery({ queryKey: queryKeys.dashboard('cancellations', day), queryFn: () => hubPoll<{ stores: DailyCancellationRow[] }>(`/dashboard/cancellations?day=${day}`), staleTime: 30_000, refetchInterval: 60_000 })
   const todayCancellations = dailyCancellationCounts(cancellationsToday.data?.stores)
-  const summary = useQuery({ queryKey: ['orders', 'summary', 'filtered', summaryParams], queryFn: () => hubApi<OrderSummary>(summaryParams ? `/orders/summary?${summaryParams}` : '/orders/summary'), placeholderData: keepPreviousData })
+  const summary = useQuery({ queryKey: queryKeys.orders('summary', 'filtered', summaryParams), queryFn: () => hubApi<OrderSummary>(summaryParams ? `/orders/summary?${summaryParams}` : '/orders/summary'), placeholderData: keepPreviousData })
   // The bootstrap names the stores of the cards' hover lists; its unfiltered late total is never shown for the list.
-  const lateOrdersQuery = useQuery({ queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap'), staleTime: 30_000 })
+  const lateOrdersQuery = useQuery({ queryKey: queryKeys.dashboardBootstrap(), queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap'), staleTime: 30_000 })
   // The Yeni Sipariş and İşleme Alınan cards' products per store: the filtered summary's units, named by the bootstrap's stores.
   const newUnits = storeUnits(summary.data?.newUnitsByConnection, lateOrdersQuery.data?.channels, summary.data?.newByConnection)
   const processingUnits = storeUnits(summary.data?.processingUnitsByConnection, lateOrdersQuery.data?.channels, summary.data?.processingByConnection)
@@ -852,7 +853,7 @@ export function OrdersPage() {
   const resentStores = storeCounts(resentNotShipped.data?.resentByConnection, channels)
   const resendReminder = useResendReminder()
   const noBuyer = useMediaQuery('(min-width: 1025px) and (max-width: 1240px)')
-  const connections = useQuery({ queryKey: ['connections', 'orders-invoice'], queryFn: () => loadAllPages<Connection>('/connections') })
+  const connections = useQuery({ queryKey: queryKeys.connections('orders-invoice'), queryFn: () => loadAllPages<Connection>('/connections') })
   const providers = connections.data?.items.filter(x => x.platformCode === 'TRENDYOL_EFATURAM' && !x.lastErrorCode && (x.status === 'ACTIVE' || x.status === 'VERIFIED')) ?? []
   const marketplaceConnections = connections.data?.items.filter(isActiveMarketplaceConnection) ?? []
   // Without an active marketplace connection no card has a data source: its big number is a dash, not a zero (shared/metric-value.ts).
@@ -977,11 +978,11 @@ export function OrdersPage() {
       }))
       moveOrderAcrossStatusCaches(client, item, updatedShipment)
       setSelectedIds(current => current.filter(id => id !== item.id))
-      await client.refetchQueries({ queryKey: ['orders', 'summary'], type: 'active' })
-      await client.refetchQueries({ queryKey: ['orders'], type: 'active' })
+      await client.refetchQueries({ queryKey: queryKeys.orders('summary'), type: 'active' })
+      await client.refetchQueries({ queryKey: queryKeys.orders(), type: 'active' })
       showBulkNotice(`Sipariş ${displayOrderNumber(item.orderNumber)} anlık olarak işleme alındı ve panelde güncellendi.`, 'success', { ...orderNotificationContext(item), title: 'Sipariş İşleme Alındı', operation: 'Siparişi işleme alma' })
     } catch (error) {
-      if (isPendingAction(error)) { showBulkNotice(error.message, 'info', { ...orderNotificationContext(item), operation: 'Siparişi işleme alma' }); void client.invalidateQueries({ queryKey: ['orders'] }) }
+      if (isPendingAction(error)) { showBulkNotice(error.message, 'info', { ...orderNotificationContext(item), operation: 'Siparişi işleme alma' }); void client.invalidateQueries({ queryKey: queryKeys.orders() }) }
       else { const failure = notificationError(error, 'Sipariş işleme alınamadı.'); showBulkNotice(failure.message, 'error', { ...orderNotificationContext(item), title: 'Sipariş İşleme Alınamadı', operation: 'Siparişi işleme alma', code: failure.code }) }
     } finally {
       setProcessingOrderId(current => current === item.id ? null : current)
@@ -1055,8 +1056,8 @@ export function OrdersPage() {
       {pageItems.length > 0 && <div className="rr-pager"><span>Toplam <b style={{ color: 'var(--rr-ink)' }}>{totalOrderCount.toLocaleString('tr-TR')}</b> adet</span><div className="rr-pages"><button type="button" aria-label="Önceki" disabled={page <= 1 || ordersQuery.isFetching} onClick={goToPreviousPage}><RrIcon name="left" /></button>{pageList.map(value => <button key={value} type="button" className={value === page ? 'rr-on' : undefined} aria-current={value === page ? 'page' : undefined} disabled={ordersQuery.isFetching} onClick={() => goToPage(value)}>{value}</button>)}<button type="button" aria-label="Sonraki" disabled={!hasNextPage || ordersQuery.isFetching} onClick={goToNextPage}><RrIcon name="right" /></button></div><label className="rr-jump"><span className="rr-jump-label">Sayfaya Git</span><input className="rr-in" type="number" min={1} max={totalPages} placeholder={`1–${totalPages}`} aria-label="Sayfa numarası" value={jumpPage} onChange={event => setJumpPage(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && Number(jumpPage) >= 1) { goToPage(Math.floor(Number(jumpPage))); setJumpPage('') } }} /><button type="button" className="rr-btn" onClick={() => { if (Number(jumpPage) >= 1) { goToPage(Math.floor(Number(jumpPage))); setJumpPage('') } }}>Git</button></label></div>}
     </div>
     <StickyActionBar open={selectedOrders.length > 0} label="Toplu sipariş işlemleri" className="rr-bulk"><span className="rr-grow">{selectedOrders.length} sipariş seçildi{shopifySelectedOrders.length > 0 && shopifySelectedOrders.length < selectedOrders.length && <small className="rr-bulk-note">Shopify toplu işlemleri yalnızca seçili Shopify siparişlerine uygulanır.</small>}</span><button type="button" className="rr-btn rr-quiet rr-bulk-clear" aria-label="Seçimi Temizle" onClick={() => setSelectedIds([])}><RrIcon name="close" /><span className="rr-bulk-lbl">Seçimi Temizle</span></button>{cargoEditableOrders.length > 0 && <button type="button" className="rr-btn rr-bulk-act" title={cargoChangeHelp} aria-label={`Kargo Firması Değiştir (${cargoEditableOrders.length})`} onClick={() => setCourierOrder({ item: cargoEditableOrders[0], items: cargoEditableOrders })}><RrIcon name="truck" /><span className="rr-bulk-lbl">Kargo Firması Değiştir ({cargoEditableOrders.length})</span><span className="rr-bulk-badge" aria-hidden="true">{cargoEditableOrders.length}</span></button>}{shopifyBulkButtons}{labelBatchItems.length > 0 && <button type="button" className="rr-btn rr-primary rr-bulk-act" title="Etiketleri Yazdır" aria-label={`Etiketleri Yazdır (${labelBatchItems.length})`} onClick={() => setShippingLabelBatch({ items: labelBatchItems, format: labelSettings.defaultFormat })}><RrIcon name="print" /><span className="rr-bulk-lbl">Etiketleri Yazdır ({labelBatchItems.length})</span><span className="rr-bulk-badge" aria-hidden="true">{labelBatchItems.length}</span></button>}</StickyActionBar>
-     {invoiceInfoOrder && <InvoiceInfoModal item={invoiceInfoOrder} onClose={() => setInvoiceInfoOrder(null)} />}{invoiceViewerOrder && <InvoiceViewerModal item={invoiceViewerOrder} onClose={() => setInvoiceViewerOrder(null)} />}{invoiceDraftOrder && <InvoiceDraftModal item={invoiceDraftOrder} providers={providers} onClose={() => setInvoiceDraftOrder(null)} onFeedback={orderFeedback(invoiceDraftOrder)} />}{invoiceUploadOrder && <InvoiceUploadModal item={invoiceUploadOrder} onClose={() => setInvoiceUploadOrder(null)} onFeedback={orderFeedback(invoiceUploadOrder)} />}{shopifyStatusOrder && <ShopifyOrderStatusModal item={shopifyStatusOrder} onClose={() => setShopifyStatusOrder(null)} onFeedback={orderFeedback(shopifyStatusOrder)} />}{shopifyCsvImportOpen && <ShopifyOrderCsvImportModal connections={shopifyConnections} onClose={() => setShopifyCsvImportOpen(false)} onFeedback={showBulkNotice} />}{courierOrder && <CourierChangeModal item={courierOrder.item} items={courierOrder.items} onClose={() => setCourierOrder(null)} onConfirmed={updatedShipments => { client.setQueriesData<Page<Order>>({ queryKey: ['orders', 'page'] }, current => current ? { ...current, items: current.items.map(order => updatedShipments.reduce((updated, shipment) => updated.id === shipment.orderId ? patchOrderShipment(updated, shipment) : updated, order)) } : current); showBulkNotice(`${updatedShipments.length} paket kargo firması “${cargoLabel(updatedShipments[0]?.cargoProviderName)}” olarak güncellendi ve panelde doğrulandı.`) }} />}{shippingLabel && <ShippingLabelModal item={shippingLabel.item} settings={labelSettings} format={shippingLabel.format} onClose={() => setShippingLabel(null)} onPrinted={() => setPrintedLabels(new Set(loadPrintedShippingLabels()))} />}{shippingLabelBatch && <ShippingLabelBatchModal items={shippingLabelBatch.items.filter(item => !isMicroExportLabelBlocked(item))} settings={labelSettings} format={shippingLabelBatch.format} onClose={() => setShippingLabelBatch(null)} onPrinted={() => setPrintedLabels(new Set(loadPrintedShippingLabels()))} />}{singleSyncOpen && <SingleOrderSyncModal activeConnection={marketplaceConnections} onClose={() => setSingleSyncOpen(false)} onSuccess={(connectionCount, orderNo) => { showBulkNotice(orderNo ? `${connectionCount} bağlantıdan #${orderNo} sipariş senkronizasyonu başlatıldı.` : `${connectionCount} bağlantıdan yeni sipariş senkronizasyonu başlatıldı.`, 'info'); void client.invalidateQueries({ queryKey: ['orders'] }); window.setTimeout(() => void client.invalidateQueries({ queryKey: ['orders'] }), 1500); window.setTimeout(() => void client.invalidateQueries({ queryKey: ['orders'] }), 3500) }} />}{previewImage && <ProductImagePreviewModal preview={previewImage} onClose={() => setPreviewImage(null)} />}
-    {hepsiburadaPackageOrder && <HepsiburadaPackageCreateModal item={hepsiburadaPackageOrder} onClose={() => setHepsiburadaPackageOrder(null)} onCreated={packageNumber => { const packagedOrder = hepsiburadaPackageOrder; setHepsiburadaPackageOrder(null); showBulkNotice(`Hepsiburada paketi ${packageNumber} oluşturuldu; siparişin güncel hali pazaryerinden yeniden okunacak.`, 'success', { ...orderNotificationContext(packagedOrder), title: 'Hepsiburada Paketi Oluşturuldu', operation: 'Paket oluşturma', details: [{ label: 'Paket No', value: packageNumber }] }); void client.invalidateQueries({ queryKey: ['orders'] }) }} />}
+     {invoiceInfoOrder && <InvoiceInfoModal item={invoiceInfoOrder} onClose={() => setInvoiceInfoOrder(null)} />}{invoiceViewerOrder && <InvoiceViewerModal item={invoiceViewerOrder} onClose={() => setInvoiceViewerOrder(null)} />}{invoiceDraftOrder && <InvoiceDraftModal item={invoiceDraftOrder} providers={providers} onClose={() => setInvoiceDraftOrder(null)} onFeedback={orderFeedback(invoiceDraftOrder)} />}{invoiceUploadOrder && <InvoiceUploadModal item={invoiceUploadOrder} onClose={() => setInvoiceUploadOrder(null)} onFeedback={orderFeedback(invoiceUploadOrder)} />}{shopifyStatusOrder && <ShopifyOrderStatusModal item={shopifyStatusOrder} onClose={() => setShopifyStatusOrder(null)} onFeedback={orderFeedback(shopifyStatusOrder)} />}{shopifyCsvImportOpen && <ShopifyOrderCsvImportModal connections={shopifyConnections} onClose={() => setShopifyCsvImportOpen(false)} onFeedback={showBulkNotice} />}{courierOrder && <CourierChangeModal item={courierOrder.item} items={courierOrder.items} onClose={() => setCourierOrder(null)} onConfirmed={updatedShipments => { client.setQueriesData<Page<Order>>({ queryKey: queryKeys.orders('page') }, current => current ? { ...current, items: current.items.map(order => updatedShipments.reduce((updated, shipment) => updated.id === shipment.orderId ? patchOrderShipment(updated, shipment) : updated, order)) } : current); showBulkNotice(`${updatedShipments.length} paket kargo firması “${cargoLabel(updatedShipments[0]?.cargoProviderName)}” olarak güncellendi ve panelde doğrulandı.`) }} />}{shippingLabel && <ShippingLabelModal item={shippingLabel.item} settings={labelSettings} format={shippingLabel.format} onClose={() => setShippingLabel(null)} onPrinted={() => setPrintedLabels(new Set(loadPrintedShippingLabels()))} />}{shippingLabelBatch && <ShippingLabelBatchModal items={shippingLabelBatch.items.filter(item => !isMicroExportLabelBlocked(item))} settings={labelSettings} format={shippingLabelBatch.format} onClose={() => setShippingLabelBatch(null)} onPrinted={() => setPrintedLabels(new Set(loadPrintedShippingLabels()))} />}{singleSyncOpen && <SingleOrderSyncModal activeConnection={marketplaceConnections} onClose={() => setSingleSyncOpen(false)} onSuccess={(connectionCount, orderNo) => { showBulkNotice(orderNo ? `${connectionCount} bağlantıdan #${orderNo} sipariş senkronizasyonu başlatıldı.` : `${connectionCount} bağlantıdan yeni sipariş senkronizasyonu başlatıldı.`, 'info'); void client.invalidateQueries({ queryKey: queryKeys.orders() }); window.setTimeout(() => void client.invalidateQueries({ queryKey: queryKeys.orders() }), 1500); window.setTimeout(() => void client.invalidateQueries({ queryKey: queryKeys.orders() }), 3500) }} />}{previewImage && <ProductImagePreviewModal preview={previewImage} onClose={() => setPreviewImage(null)} />}
+    {hepsiburadaPackageOrder && <HepsiburadaPackageCreateModal item={hepsiburadaPackageOrder} onClose={() => setHepsiburadaPackageOrder(null)} onCreated={packageNumber => { const packagedOrder = hepsiburadaPackageOrder; setHepsiburadaPackageOrder(null); showBulkNotice(`Hepsiburada paketi ${packageNumber} oluşturuldu; siparişin güncel hali pazaryerinden yeniden okunacak.`, 'success', { ...orderNotificationContext(packagedOrder), title: 'Hepsiburada Paketi Oluşturuldu', operation: 'Paket oluşturma', details: [{ label: 'Paket No', value: packageNumber }] }); void client.invalidateQueries({ queryKey: queryKeys.orders() }) }} />}
   </section>
 }
 // Order status as a ring: how far the order has come, coloured by its state.

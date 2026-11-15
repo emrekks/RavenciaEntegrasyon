@@ -51,6 +51,7 @@ import { jobAttemptDuration } from './job-duration'
 import { isContinuingJob, isWaitingJob, queuedWait, jobAttemptOutcome, jobAttemptResultLabel, jobAttemptsText, waitingJobDescription, waitingJobLabel } from './job-waiting'
 import { JobStateGlyph } from './job-state-glyph'
 import { useTabSlide } from '../../shared/tab-slide'
+import { queryKeys } from '../../shared/api/query-keys'
 
 const jobsMainTabOrder = ['jobs', 'logs', 'health', 'queue', 'notifications']
 // CONTINUING is the server's own name, in counts and filters, for a job that continues in windows (isContinuingJob).
@@ -407,7 +408,7 @@ export function JobsPage({ me }: { me: Me }) {
   const setPlatforms = (codes: string[]) => setSearchParams(current => withPlatforms(current, codes), { replace: true })
   // Temizle: the card's fields back to their defaults (the status counts above the list stay as they are).
   const clearFilters = () => setSearchParams(current => withPlatforms(writeJobsViewState(current, { direction: '', status: '', search: '', timeRange: '24h' }), []), { replace: true })
-  const connections = useQuery({ queryKey: ['connections', 'job-platforms'], queryFn: () => loadAllPages<{ platformCode: string }>('/connections'), staleTime: 60_000 })
+  const connections = useQuery({ queryKey: queryKeys.connections('job-platforms'), queryFn: () => loadAllPages<{ platformCode: string }>('/connections'), staleTime: 60_000 })
   const connectionPlatforms = connections.data?.items
   const platformOptions = useMemo(() => jobPlatformOptions((connectionPlatforms ?? []).map(connection => connection.platformCode), platform ? platform.split(',') : []), [connectionPlatforms, platform])
   const platformGroups = useMemo<FilterMenuGroup[]>(() => [{ options: platformOptions.map(code => ({ value: code, label: jobPlatformLabel(code), mark: <RrLogo code={code} /> })) }], [platformOptions])
@@ -425,7 +426,7 @@ export function JobsPage({ me }: { me: Me }) {
   // The list holds only the jobs loaded so far, so the counts come from the server's real totals; until they arrive
   // the loaded list is counted instead.
   const serverCounts = useQuery({
-    queryKey: ['jobs', 'counts', timeRange, platform],
+    queryKey: queryKeys.jobs('counts', timeRange, platform),
     // Not read while the Loglar or API Sağlık tab is shown (the list itself is off then too).
     enabled: !listHidden,
     queryFn: () => hubPoll<Array<{ status: JobStatus; jobType: string; count: number }>>(`/jobs/counts${jobCountsQueryString(timeRange, platform)}`),
@@ -445,7 +446,7 @@ export function JobsPage({ me }: { me: Me }) {
   // 50 jobs per server page, or one screen page when a bigger one is chosen (job-list-query.ts).
   const serverPageSize = jobListServerPageSize(pageSize)
   const list = useInfiniteQuery({
-    queryKey: ['jobs', 'page', serverStatus, timeRange, category, direction, platform, serverPageSize],
+    queryKey: queryKeys.jobs('page', serverStatus, timeRange, category, direction, platform, serverPageSize),
     queryFn: context => hubPoll<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, after: context.pageParam, platform, limit: serverPageSize })}`),
     initialPageParam: null as string | null,
     getNextPageParam: lastPage => lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,
@@ -457,16 +458,16 @@ export function JobsPage({ me }: { me: Me }) {
   // With older pages loaded the list itself stops polling; its first page is polled on its own and put in front.
   const loadedServerPages = list.data?.pages.length ?? 0
   const listHead = useQuery({
-    queryKey: ['jobs', 'page-head', serverStatus, timeRange, category, direction, platform, serverPageSize],
+    queryKey: queryKeys.jobs('page-head', serverStatus, timeRange, category, direction, platform, serverPageSize),
     queryFn: () => hubPoll<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, platform, limit: serverPageSize })}`),
     enabled: loadedServerPages > 1 && !listHidden,
     refetchInterval: jobListHeadPollInterval(loadedServerPages)
   })
   useEffect(() => {
-    if (listHead.data) client.setQueryData<InfiniteData<JobPage, string | null>>(['jobs', 'page', serverStatus, timeRange, category, direction, platform, serverPageSize], current => withFreshFirstPage(current, listHead.data))
+    if (listHead.data) client.setQueryData<InfiniteData<JobPage, string | null>>(queryKeys.jobs('page', serverStatus, timeRange, category, direction, platform, serverPageSize), current => withFreshFirstPage(current, listHead.data))
   }, [listHead.data, client, serverStatus, timeRange, category, direction, platform, serverPageSize])
   const detail = useQuery({
-    queryKey: ['job', selectedId],
+    queryKey: queryKeys.job(selectedId),
     queryFn: () => hubPoll<JobDetail>(`/jobs/${selectedId}`),
     enabled: Boolean(selectedId),
     refetchInterval: query => selectedId ? jobDetailPollInterval(query.state.data?.job.status) : false
@@ -479,7 +480,7 @@ export function JobsPage({ me }: { me: Me }) {
       setSelectedId(current => current === variables.id ? data.job.id : current)
       const title = jobTitle(data.job.jobType, data.job.marketplace, data.job.resource)
       setFeedback({ message: variables.verb === 'retry' ? `${title} yeniden kuyruğa alındı.` : `${title} iptal edildi.`, tone: variables.verb === 'retry' ? 'info' : 'success', context: { ...jobNotificationContext(data.job), title: variables.verb === 'retry' ? 'İşlem Yeniden Denenecek' : 'İşlem İptal Edildi' } })
-      await Promise.all([client.invalidateQueries({ queryKey: ['jobs'] }), client.invalidateQueries({ queryKey: ['job', data.job.id] })])
+      await Promise.all([client.invalidateQueries({ queryKey: queryKeys.jobs() }), client.invalidateQueries({ queryKey: queryKeys.job(data.job.id) })])
     },
     onError: (error, variables) => {
       const failure = notificationError(error, 'İşlem güncellenemedi.')
@@ -496,7 +497,7 @@ export function JobsPage({ me }: { me: Me }) {
     onSuccess: async data => {
       setSelectedId(data.job.id)
       setFeedback({ message: 'Seçilen sipariş için tek seferlik fatura iletimi kuyruğa alındı. Genel dış yazma kapıları kapalı kaldı.', tone: 'info' })
-      await Promise.all([client.invalidateQueries({ queryKey: ['jobs'] }), client.invalidateQueries({ queryKey: ['job', data.job.id] })])
+      await Promise.all([client.invalidateQueries({ queryKey: queryKeys.jobs() }), client.invalidateQueries({ queryKey: queryKeys.job(data.job.id) })])
     },
     onError: error => setFeedback({ message: error instanceof Error ? error.message : 'Tek seferlik fatura işlemi başlatılamadı.', tone: 'danger' })
   })
@@ -504,7 +505,7 @@ export function JobsPage({ me }: { me: Me }) {
   // marketplace id even when it is older than the loaded pages or the selected range (notification links: ?ara=<job id>).
   const lookupTerm = listHidden ? null : jobLookupTerm(search)
   const lookup = useQuery({
-    queryKey: ['jobs', 'lookup', lookupTerm],
+    queryKey: queryKeys.jobs('lookup', lookupTerm),
     queryFn: () => hubPoll<JobPage>(`/jobs/page${jobLookupQueryString(lookupTerm ?? '')}`),
     enabled: Boolean(lookupTerm)
   })
@@ -586,8 +587,8 @@ export function JobsPage({ me }: { me: Me }) {
   const categoryCounts = useMemo(() => new Map(jobCategoryTabs.map(tab => [tab.key, countRows.reduce((total, row) => total + (tab.match(row.jobType) ? row.count : 0), 0)])), [countRows])
   const refreshJobs = () => {
     void Promise.all([
-      client.invalidateQueries({ queryKey: ['jobs'] }),
-      selectedId ? client.invalidateQueries({ queryKey: ['job', selectedId] }) : Promise.resolve()
+      client.invalidateQueries({ queryKey: queryKeys.jobs() }),
+      selectedId ? client.invalidateQueries({ queryKey: queryKeys.job(selectedId) }) : Promise.resolve()
     ])
   }
   // A main tab slides its view in from its side and starts the page from its top (shared/tab-slide.tsx).

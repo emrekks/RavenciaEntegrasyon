@@ -10,6 +10,7 @@ import type { StatusExtras } from '../../dashboard/IntegrationStatusPanel'
 import type { IntegrationFeedback } from '../shared'
 import { orderSourceHint, priceStockMonitorQueryKey,priceStockProblemSignature, priceStockWriteState, relativeAgeText, type PriceStockConnectionMonitor, type PriceStockLostListing, type PriceStockMonitor } from './integration-helpers'
 import './price-stock-monitor.css'
+import { queryKeys } from '../../../shared/api/query-keys'
 
 const notifiedKey = 'price-stock-monitor-notified'
 
@@ -143,7 +144,7 @@ export function EmergencyStopButton({ anyOpen, onFeedback }: { anyOpen: boolean;
     mutationFn: () => hubApi<{ connectionsStopped: number; policiesDisabled: number; jobsCancelled: number }>('/price-stock-monitor/emergency-stop', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' }),
     onSuccess: async result => {
       onFeedback({ kind: 'success', title: 'Otomatik Yazmalar Durduruldu', message: `${result.connectionsStopped} bağlantıda otomatik fiyat-stok gönderimi kapatıldı; ${result.jobsCancelled} gönderilmemiş otomatik iş iptal edildi. Panelden başlatılan gönderimler ve sonucu beklenen istekler sürer.` })
-      await Promise.all([client.invalidateQueries({ queryKey: priceStockMonitorQueryKey }), client.invalidateQueries({ queryKey: ['sync-policies'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
+      await Promise.all([client.invalidateQueries({ queryKey: priceStockMonitorQueryKey }), client.invalidateQueries({ queryKey: queryKeys.syncPolicies() }), client.invalidateQueries({ queryKey: queryKeys.jobs() })])
     },
     onError: reason => onFeedback(failureNotice(reason, 'Otomatik yazmalar durdurulamadı.'))
   })

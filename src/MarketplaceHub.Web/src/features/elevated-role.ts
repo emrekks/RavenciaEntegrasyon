@@ -1,5 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import type { Me } from '../shared/api'
+import { queryKeys } from '../shared/api/query-keys'
 
 // The owner and administrators: the roles RoleAuthorizationMiddleware.ElevatedRoles lets write Toplu Değer Ata
 // (products/{id}/bulk-field) and the account's Görünüm and Kargo Etiketi settings (PUT settings/appearance,
@@ -18,5 +19,5 @@ export function lacksElevatedRole(role: string | null | undefined) {
 }
 
 export function useLacksElevatedRole() {
-  return lacksElevatedRole(useQueryClient().getQueryData<Me>(['me'])?.role)
+  return lacksElevatedRole(useQueryClient().getQueryData<Me>(queryKeys.me())?.role)
 }

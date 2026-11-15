@@ -10,6 +10,7 @@ import { connectionAuthSummary } from '../marketplace/integrations/connection-au
 import { instantNotificationsQueryKey, type InstantNotificationStatus } from '../marketplace/instant-notification-status'
 import { webhookCell } from './integration-health'
 import './dashboard-sade.css'
+import { queryKeys } from '../../shared/api/query-keys'
 
 // Entegrasyon Durumu: one row per marketplace store with the last 7 days of each data flow, the webhook and the
 // 24-hour job counts. Genel Bakış and İşlem Takibi › API Sağlık draw the same panel from the same queries.
@@ -33,7 +34,7 @@ const CELL_STATE = { ok: 'Güncel', warn: 'Gecikiyor', bad: 'Hata var', off: 'So
 const refresh = { refetchInterval: 60_000, refetchIntervalInBackground: false, refetchOnWindowFocus: true, staleTime: 30_000 } as const
 const poll = { headers: backgroundPollHeaders }
 
-export const dashboardBootstrapQuery = { queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<{ metrics: DashboardMetrics; channels?: unknown[] }>('/dashboard/bootstrap', poll), ...refresh }
+export const dashboardBootstrapQuery = { queryKey: queryKeys.dashboardBootstrap(), queryFn: () => hubApi<{ metrics: DashboardMetrics; channels?: unknown[] }>('/dashboard/bootstrap', poll), ...refresh }
 
 export function age(timestamp: string | null) {
   if (!timestamp) return null
@@ -70,10 +71,10 @@ export const storeLabel = (row: MatrixRow) => /^\d+$/.test(row.externalStoreId) 
 
 /** The matrix rows with each store's credentials and webhook as the integration page shows them, and whether it needs a look. */
 export function useIntegrationHealth() {
-  const matrix = useQuery({ queryKey: ['dashboard', 'integration-matrix'], queryFn: () => hubApi<MatrixRow[]>('/dashboard/integration-matrix', poll), ...refresh, refetchInterval: 300_000, staleTime: 120_000 })
+  const matrix = useQuery({ queryKey: queryKeys.dashboard('integration-matrix'), queryFn: () => hubApi<MatrixRow[]>('/dashboard/integration-matrix', poll), ...refresh, refetchInterval: 300_000, staleTime: 120_000 })
   const rows = (matrix.data ?? []).filter(row => MARKETPLACES.includes(row.platformCode.toUpperCase()))
   // The webhook status of a Trendyol or Shopify store asks the marketplace, so it is read again only every five minutes.
-  const connections = useQuery({ queryKey: ['connections'], queryFn: () => loadAllPages<Connection>('/connections'), staleTime: 120_000 })
+  const connections = useQuery({ queryKey: queryKeys.connections(), queryFn: () => loadAllPages<Connection>('/connections'), staleTime: 120_000 })
   const webhooks = useQueries({ queries: rows.map(row => ({ queryKey: instantNotificationsQueryKey(row.connectionId), queryFn: () => hubApi<InstantNotificationStatus>(`/connections/${row.connectionId}/instant-notifications`, poll), staleTime: 300_000, refetchInterval: 300_000, refetchIntervalInBackground: false })) })
   const health = rows.map((row, index) => {
     const connection = connections.data?.items.find(item => item.id === row.connectionId)

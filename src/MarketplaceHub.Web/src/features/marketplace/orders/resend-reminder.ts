@@ -2,9 +2,10 @@
 // of resends waiting. It is kept per tenant on the server (every device shows it), never in this browser.
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, settingsIfMatch } from '../../../shared/api'
+import { queryKeys } from '../../../shared/api/query-keys'
 
 export type ResendReminderEnvelope = { count: number; version: number }
-export const resendReminderQueryKey = ['settings', 'resend-reminder'] as const
+export const resendReminderQueryKey = queryKeys.settings('resend-reminder')
 export const maxResendReminder = 100_000
 
 // What the field holds -> the number to save; undefined for anything that is not a whole number from 0 to the maximum.

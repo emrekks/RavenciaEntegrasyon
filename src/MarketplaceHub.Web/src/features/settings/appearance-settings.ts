@@ -2,6 +2,7 @@ import { useEffect, useEffectEvent, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, settingsIfMatch } from '../../shared/api'
 import { scopedStorageKey } from '../../shared/storage-scope'
+import { queryKeys } from '../../shared/api/query-keys'
 
 export type AppearanceFontFamily = 'inter' | 'system' | 'segoe' | 'arial'
 export type AppearanceFontSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl'
@@ -220,7 +221,7 @@ export function normalizeAppearanceSettings(value: unknown): AppearanceSettings 
   }
 }
 
-export const appearanceSettingsQueryKey = ['appearance-settings'] as const
+export const appearanceSettingsQueryKey = queryKeys.appearanceSettings()
 
 // The last settings this browser read are shown from the first paint of a new tab, so the panel does not open in the
 // default font and colours and switch a moment later. The server's answer still decides.

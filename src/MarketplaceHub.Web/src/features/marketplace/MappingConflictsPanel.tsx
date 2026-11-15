@@ -5,13 +5,14 @@ import { TitleHint, useConfirmDialog } from '../../shared/components'
 import { mappingSaveErrorMessage } from './mappings/mapping-refresh'
 import { changeLine, crossConflictAttribute, crossConflictKey, planUnify, scopeAttribute, scopeCategory, scopesNeedingValueList, unifySummary, type Conflict, type ConflictOption, type Conflicts, type UnifyTarget, type ValueList } from './mapping-conflict-unify'
 import './mapping-conflicts-panel.css'
+import { queryKeys } from '../../shared/api/query-keys'
 
 // Value mappings worth a look: a panel value mapped to several marketplace values in one category
 // (only one can be sent, so the user keeps one) and a panel value mapped differently across
 // categories (the user can pick one and use it in every category, which also makes it the template).
 export function MappingConflictsPanel({ connectionId, platformLabel, onNotice, expanded = false }: { connectionId: string; platformLabel: string; onNotice: (value: string) => void; expanded?: boolean }) {
   const client = useQueryClient()
-  const conflictsKey = ['mapping-conflicts', connectionId] as const
+  const conflictsKey = queryKeys.mappingConflicts(connectionId)
   const loadConflicts = () => hubApi<Conflicts>(`/mappings/conflicts?connectionId=${encodeURIComponent(connectionId)}`)
   // Always read fresh: any mapping save elsewhere on the page can add or clear a conflict.
   const conflicts = useQuery({ queryKey: conflictsKey, queryFn: loadConflicts, retry: false, staleTime: 0, refetchOnWindowFocus: true })
@@ -25,8 +26,8 @@ export function MappingConflictsPanel({ connectionId, platformLabel, onNotice, e
 
   async function refreshAfterSave(scopes: Iterable<string>) {
     await client.invalidateQueries({ queryKey: conflictsKey })
-    await Promise.all([...new Set(scopes)].map(scope => client.invalidateQueries({ queryKey: ['attribute-value-mappings', connectionId, scope] })))
-    await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] })
+    await Promise.all([...new Set(scopes)].map(scope => client.invalidateQueries({ queryKey: queryKeys.attributeValueMappings(connectionId, scope) })))
+    await client.invalidateQueries({ queryKey: queryKeys.publicationAttributeReadiness() })
   }
 
   // Removing the other mappings is not undoable, so it is confirmed first and then done against the versions the
@@ -62,7 +63,7 @@ export function MappingConflictsPanel({ connectionId, platformLabel, onNotice, e
   }
 
   const valueList = (scope: string) => client.fetchQuery({
-    queryKey: ['reference-attribute-values', connectionId, scope],
+    queryKey: queryKeys.referenceAttributeValues(connectionId, scope),
     queryFn: () => hubApi<ValueList>(`/reference-data/categories/${encodeURIComponent(scopeCategory(scope))}/attributes/${encodeURIComponent(scopeAttribute(scope))}/values?connectionId=${encodeURIComponent(connectionId)}`),
     staleTime: 0
   })

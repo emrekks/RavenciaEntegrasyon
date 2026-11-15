@@ -20,6 +20,7 @@ import {
 } from './price-stock-send-log'
 import { ProductThumb } from './ProductThumb'
 import './price-stock-send-log.css'
+import { queryKeys } from '../../shared/api/query-keys'
 
 // İşlem Takibi › Loglar: every price/stock line sent to a marketplace, newest first, like an API log. The first page is
 // polled every 30 seconds while it is the only one loaded; older pages are read on demand.
@@ -94,7 +95,7 @@ export function PriceStockSendLog({ platformOptions, onOpenJob, kept }: { platfo
   // The summary counts every result under the other filters, so a picked group keeps the rest of the counts in view.
   const countFilters = useMemo(() => ({ ...filters, results: [] }), [filters])
   const counts = useQuery({
-    queryKey: ['price-stock-send-log', 'counts', countFilters],
+    queryKey: queryKeys.priceStockSendLog('counts', countFilters),
     queryFn: () => hubPoll<Array<{ result: string; count: number }>>(`/price-stock-send-log/counts${sendLogCountsQueryString(countFilters)}`),
     placeholderData: keepPreviousData,
     refetchInterval: firstPagePollMs
@@ -102,7 +103,7 @@ export function PriceStockSendLog({ platformOptions, onOpenJob, kept }: { platfo
   const summary = useMemo(() => counts.data ? sendLogSummaryCounts(counts.data) : null, [counts.data])
 
   const list = useInfiniteQuery({
-    queryKey: ['price-stock-send-log', filters, oldestFirst],
+    queryKey: queryKeys.priceStockSendLog(filters, oldestFirst),
     queryFn: context => hubPoll<PriceStockSendLogPage>(`/price-stock-send-log${sendLogQueryString(filters, context.pageParam, undefined, oldestFirst)}`),
     initialPageParam: null as string | null,
     getNextPageParam: lastPage => lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,

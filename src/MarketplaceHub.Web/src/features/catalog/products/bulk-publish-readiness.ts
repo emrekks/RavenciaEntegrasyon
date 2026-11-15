@@ -7,6 +7,7 @@ import { connectionCapabilitiesQueryKey, loadConnectionCapabilities, loadPublica
 import type { Category, MarketplaceConnection, Product } from '../shared'
 import { bulkPublishChunks } from './bulk-publish-run'
 import { bulkPublishStatusBucket, productConnectionStatus } from './bulk-publish-status'
+import { queryKeys } from '../../../shared/api/query-keys'
 
 // The bulk publish popup runs the editor's publish checks on every selected record, a few at a time, so a card says
 // what the editor's card would say for each product: the same gaps, the same value mappings to complete.
@@ -46,7 +47,7 @@ async function marketplaceStanding(client: QueryClient, listRecord: Product | nu
   if (bucket === 'live' || bucket === 'processing' || bucket === 'linked') return 'skip'
   if (bucket !== 'unknown') return 'check'
   const status = await client.query({
-    queryKey: ['publication-status', productId, connection.id],
+    queryKey: queryKeys.publicationStatus(productId, connection.id),
     queryFn: () => hubApi<PublicationStatus>(`/products/${productId}/publication-status/${connection.id}`, { cache: 'no-store' }),
     staleTime: 15_000,
     retry: false
@@ -61,20 +62,20 @@ export async function checkProductReadiness(client: QueryClient, productId: stri
   const results = new Map<string, BulkProductReadiness>()
   let product: Product
   try {
-    product = await client.query({ queryKey: ['product', productId], queryFn: () => hubApi<Product>(`/products/${productId}`), staleTime: 15_000, retry: false })
+    product = await client.query({ queryKey: queryKeys.product(productId), queryFn: () => hubApi<Product>(`/products/${productId}`), staleTime: 15_000, retry: false })
   } catch {
     for (const connection of connections) results.set(connection.id, { productId, title: listRecord?.title ?? 'Ürün kartı', skipped: false, issues: [{ attribute: 'Ürün kaydı', detail: 'Ürün okunamadı; listeyi yenileyip yeniden deneyin.' }], fixes: [] })
     return results
   }
   const categoryId = product.categoryId ?? ''
   // The editor's category list (same query), for the category's name in the "not mapped" gap.
-  const categories = categoryId ? await client.query({ queryKey: ['categories', 'new-product'], queryFn: () => loadAllPages<Category>('/catalog/categories'), staleTime: 60_000, retry: false }).catch(() => null) : null
+  const categories = categoryId ? await client.query({ queryKey: queryKeys.categories('new-product'), queryFn: () => loadAllPages<Category>('/catalog/categories'), staleTime: 60_000, retry: false }).catch(() => null) : null
   const categoryName = categories?.items.find(item => item.id === categoryId)?.name ?? ''
   let requirements: CategoryRequirement[] = []
   let requirementsFailed = false
   if (categoryId) {
     try {
-      requirements = sortRequirements(await client.query({ queryKey: ['category-requirements', categoryId], queryFn: () => hubApi<CategoryRequirement[]>(`/catalog/categories/${categoryId}/attribute-requirements`), staleTime: 15_000, retry: false }))
+      requirements = sortRequirements(await client.query({ queryKey: queryKeys.categoryRequirements(categoryId), queryFn: () => hubApi<CategoryRequirement[]>(`/catalog/categories/${categoryId}/attribute-requirements`), staleTime: 15_000, retry: false }))
     } catch { requirementsFailed = true }
   }
   const draft = publicationReadinessDraftFromProduct(product, requirements)

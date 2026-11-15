@@ -1,4 +1,5 @@
 import type { WebhookSetup } from './webhook-setup'
+import { queryKeys } from '../../shared/api/query-keys'
 
 // GET /connections/{id}/instant-notifications (InstantNotificationService.StatusAsync): the connection's webhook as the
 // integration page shows it. The overview reads the same answer under the same query key.
@@ -23,7 +24,7 @@ export function instantNotificationStateLabel(state: InstantNotificationState, p
   return instantNotificationStateLabels[state]
 }
 
-export const instantNotificationsQueryKey = (connectionId: string) => ['instant-notifications', connectionId] as const
+export const instantNotificationsQueryKey = (connectionId: string) => queryKeys.instantNotifications(connectionId)
 
 /**
  * How the overview marks a webhook: "bad" when notifications cannot arrive until the user acts (the registration is

@@ -12,6 +12,7 @@ import { bySalesChannel, platformName } from '../reports/report-format'
 import '../reports/reports.css'
 import { PanelSelect } from '../../shared/PanelSelect'
 import { EmptyState } from '../../shared/components/EmptyState'
+import { queryKeys } from '../../shared/api/query-keys'
 
 type Connection = { id: string; platformCode: string; displayName: string; status: string; environment: string }
 
@@ -34,7 +35,7 @@ export const promotionStores = (connections: Connection[]) => connections
 export function PromotionsPage() {
   const [params, setParams] = useSearchParams()
   const section = sectionOf(params.get('tab'))
-  const connections = useQuery({ queryKey: ['connections', 'promotions'], queryFn: () => loadAllPages<Connection>('/connections') })
+  const connections = useQuery({ queryKey: queryKeys.connections('promotions'), queryFn: () => loadAllPages<Connection>('/connections') })
   // The tariff tab's list and first page of rows are asked for beside the stores, not after them (prefetchLastTariff).
   const client = useQueryClient()
   const opensOnTariff = section === 'TARIFF'

@@ -14,6 +14,7 @@ import { formatMoney } from '../../../shared/format-money'
 import { formatPackageLabel } from '../../../shared/package-label'
 import { Badge, DateText, Shipment, notificationKindFromMessage } from '../shared'
 import { titleTr } from '../returns-ui'
+import { queryKeys } from '../../../shared/api/query-keys'
 
 type ShipmentDetail = { package: Shipment; allowedActions: string[]; supportedLabelFormats: string[]; isStageConnection: boolean; platformCode: string; documents: Array<{ id: string; documentKind: string; format: string; source: string; documentVersion: number; createdAt: string; expiresAt: string | null }> }
 type RemoteCargoCompany = { shortName: string; name: string }
@@ -33,7 +34,7 @@ type PazaramaFinance = { readAt: string; transactions: Array<{ transactionCode: 
 // Pazarama finance of one order (commission, allowance, transfer date): a live read when asked for, never stored.
 function PazaramaFinancePanel({ orderId }: { orderId: string }) {
   const [requested, setRequested] = useState(false)
-  const finance = useQuery({ queryKey: ['pazarama-finance', orderId], queryFn: () => hubApi<PazaramaFinance>(`/orders/${orderId}/finance`), enabled: requested, retry: false, staleTime: 60_000 })
+  const finance = useQuery({ queryKey: queryKeys.pazaramaFinance(orderId), queryFn: () => hubApi<PazaramaFinance>(`/orders/${orderId}/finance`), enabled: requested, retry: false, staleTime: 60_000 })
   const money = (value: number) => formatMoney(value, 'TRY')
   const day = (value: string | null) => value ? formatDate(value) : '—'
   return <article className="panel">
@@ -54,8 +55,8 @@ function PazaramaFinancePanel({ orderId }: { orderId: string }) {
   </article>
 }
 export function ShipmentDetailPage() {
-  const { id = '' } = useParams(); const client = useQueryClient(); const [notice, setNotice] = useState(''); const [selectedCargoShortName, setSelectedCargoShortName] = useState(''); const [actionChoice, setActionChoice] = useState(''); const [labelFormat, setLabelFormat] = useState(''); const [probeCapability, setProbeCapability] = useState('LABEL_READ'); const query = useQuery({ queryKey: ['shipment', id], queryFn: () => hubApi<ShipmentDetail>(`/shipments/${id}`) })
-  const carriers = useQuery({ queryKey: ['shipment-carriers', id], queryFn: () => hubApi<RemoteCargoCompany[]>(`/shipments/${id}/changeable-cargo-companies`), enabled: query.data?.platformCode === 'HEPSIBURADA' && query.data.allowedActions.includes('CHANGE_CARGO_PROVIDER'), retry: false })
+  const { id = '' } = useParams(); const client = useQueryClient(); const [notice, setNotice] = useState(''); const [selectedCargoShortName, setSelectedCargoShortName] = useState(''); const [actionChoice, setActionChoice] = useState(''); const [labelFormat, setLabelFormat] = useState(''); const [probeCapability, setProbeCapability] = useState('LABEL_READ'); const query = useQuery({ queryKey: queryKeys.shipment(id), queryFn: () => hubApi<ShipmentDetail>(`/shipments/${id}`) })
+  const carriers = useQuery({ queryKey: queryKeys.shipmentCarriers(id), queryFn: () => hubApi<RemoteCargoCompany[]>(`/shipments/${id}/changeable-cargo-companies`), enabled: query.data?.platformCode === 'HEPSIBURADA' && query.data.allowedActions.includes('CHANGE_CARGO_PROVIDER'), retry: false })
   useEffect(() => { if (carriers.data?.length && !carriers.data.some(item => item.shortName === selectedCargoShortName)) setSelectedCargoShortName(carriers.data[0].shortName) }, [carriers.data, selectedCargoShortName])
   const shipmentRef = useRef(query.data)
   // The failed request's own title and code, kept until its notice is recorded.
@@ -82,7 +83,7 @@ export function ShipmentDetailPage() {
   const busy = packageRequest.isPending
   // Pending state reaches the buttons on the next render; this guard also stops a second send within the same moment.
   const requestInFlight = useRef(false)
-  async function sendPackageRequest(path: string, payload: unknown, success: string, failure: string, refresh: unknown[][] = [['shipment', id]]) {
+  async function sendPackageRequest(path: string, payload: unknown, success: string, failure: string, refresh: (readonly unknown[])[] = [queryKeys.shipment(id)]) {
     if (!query.data || requestInFlight.current) return
     requestInFlight.current = true
     try {
@@ -90,7 +91,7 @@ export function ShipmentDetailPage() {
       noticeFailureRef.current = null
       setNotice(success)
       // The order and package lists (and the order details under ['orders']) show the package's state too.
-      await Promise.all([...refresh, ['orders']].map(queryKey => client.invalidateQueries({ queryKey })))
+      await Promise.all([...refresh, queryKeys.orders()].map(queryKey => client.invalidateQueries({ queryKey })))
     } catch (reason) { const failed = notificationError(reason, failure); noticeFailureRef.current = { title: sentenceTitle(failure), code: failed.code }; setNotice(failed.message) }
     finally { requestInFlight.current = false }
   }
@@ -118,7 +119,7 @@ export function ShipmentDetailPage() {
   }
   async function hbAction(actionName: 'UNPACK' | 'CHANGE_CARGO_PROVIDER', payloadJson = '{}') {
     if (actionName === 'UNPACK' && !(await confirm({ title: 'Paket Açılsın mı?', message: 'Bu paket Hepsiburada’da açılacak; kalemler yeniden paketlenmeyi bekler.', confirmLabel: 'Paketi Aç', destructive: true }))) return
-    await sendPackageRequest(`/shipments/${id}/actions`, { action: actionName, payloadJson }, `${actionName === 'UNPACK' ? 'Paket açma' : 'Kargo değişikliği'} sıraya alındı; Hepsiburada’nın yanıtı sipariş yeniden okunarak doğrulanacak.`, 'Paket işlemi başlatılamadı.', [['shipment', id], ['shipment-carriers', id]])
+    await sendPackageRequest(`/shipments/${id}/actions`, { action: actionName, payloadJson }, `${actionName === 'UNPACK' ? 'Paket açma' : 'Kargo değişikliği'} sıraya alındı; Hepsiburada’nın yanıtı sipariş yeniden okunarak doğrulanacak.`, 'Paket işlemi başlatılamadı.', [queryKeys.shipment(id), queryKeys.shipmentCarriers(id)])
   }
   async function label(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
