@@ -377,6 +377,42 @@ public sealed class BackgroundProcessingPostgreSqlTests(PostgreSqlTenantIsolatio
         await transaction.RollbackAsync();
     }
 
+    // KUYRUK-2: a shipment action that wrote its record and still waits (for its quota) is not verified behind its back;
+    // once the job has ended, the record gets its verification job.
+    [PostgreSqlFact]
+    public async Task TheSweepLeavesARecordAloneWhileItsOwnJobIsStillRunning()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var tenant = NewTenant("bg-owner");
+        var connection = NewConnection(tenant);
+        var key = $"bg-{Guid.NewGuid():N}";
+        var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenant.Id, EffectType = MarketplaceJobTypes.ShipmentAction, IdempotencyKey = key, CreatedAt = now.AddMinutes(-5), ConnectionId = connection.Id, Action = "PICKING", TargetId = Guid.CreateVersion7() };
+        var owner = NewJob(tenant.Id, MarketplaceJobTypes.ShipmentAction);
+        owner.ConnectionId = connection.Id;
+        owner.EffectIdempotencyKey = key;
+        owner.Status = JobStatus.Leased;
+        owner.AttemptCount = 1;
+
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.PlatformConnections.Add(connection);
+        db.ExternalEffectRecords.Add(effect);
+        db.IntegrationJobs.Add(owner);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await new ExternalEffectSweep(db, fixture.TimeProvider).SweepAsync(CancellationToken.None);
+        var verificationKey = ExternalEffectReconcilePolicy.JobDedupKey(effect.Id);
+        Assert.False(await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.JobDedupKey.StartsWith(verificationKey)));
+
+        await db.IntegrationJobs.Where(x => x.Id == owner.Id).ExecuteUpdateAsync(setters => setters
+            .SetProperty(x => x.Status, JobStatus.ManualReview).SetProperty(x => x.CompletedAt, now));
+        await new ExternalEffectSweep(db, fixture.TimeProvider).SweepAsync(CancellationToken.None);
+        Assert.True(await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.JobDedupKey == verificationKey));
+        await transaction.RollbackAsync();
+    }
+
     [PostgreSqlFact]
     public async Task AnIncrementalReadWaitingForTheFirstImportKeepsItsAttempts()
     {

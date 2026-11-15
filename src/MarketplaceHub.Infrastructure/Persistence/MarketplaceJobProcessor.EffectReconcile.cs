@@ -26,6 +26,10 @@ public sealed partial class MarketplaceJobProcessor
         }
         var effect = await db.ExternalEffectRecords.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == effectId, cancellationToken);
         if (effect is null || effect.CompletedAt is not null) return JobExecutionResult.Success();
+        // The job that wrote the record was queued again or leased after this check was queued: a read now could come
+        // before its request goes out. It settles the record itself; the check reads after it.
+        if (await ExternalEffectSweep.OwnerJobOpenAsync(db, effect, cancellationToken))
+            return JobExecutionResult.Continue("Asıl işlem sürüyor; sonuç ondan sonra okunacak.", TimeSpan.FromSeconds(30));
 
         var now = timeProvider.GetUtcNow();
         var verdict = effect.Action switch

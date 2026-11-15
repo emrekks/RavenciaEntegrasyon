@@ -53,6 +53,17 @@ public sealed class ExternalEffectSweep(AppDbContext db, TimeProvider timeProvid
         return next is null ? new(true, null, null, false) : new(false, next, null, false);
     }
 
+    // Jobs that may still send or settle the action their effect record stands for: running, or queued with an
+    // attempt left. A job writes its record under its own type and its EffectIdempotencyKey (shipment actions);
+    // instant actions have no job, so their records are not matched.
+    internal static IQueryable<IntegrationJob> OpenOwnerJobs(AppDbContext db) =>
+        db.IntegrationJobs.AsNoTracking().Where(job => job.EffectIdempotencyKey != null
+            && (job.Status == JobStatus.Leased
+                || (job.Status == JobStatus.Pending || job.Status == JobStatus.RetryScheduled) && job.AttemptCount < job.MaxAttempts));
+
+    internal static Task<bool> OwnerJobOpenAsync(AppDbContext db, ExternalEffectRecord effect, CancellationToken cancellationToken) =>
+        OpenOwnerJobs(db).AnyAsync(job => job.TenantId == effect.TenantId && job.JobType == effect.EffectType && job.EffectIdempotencyKey == effect.IdempotencyKey, cancellationToken);
+
     private static bool IsConnectionBlock(VerificationJob job) =>
         job.Status == JobStatus.Blocked && job.ErrorCode is { } code && ConnectionBlockCodes.Contains(code) && job.AttemptCount < job.MaxAttempts;
 
@@ -62,9 +73,13 @@ public sealed class ExternalEffectSweep(AppDbContext db, TimeProvider timeProvid
         var verifyBefore = now - ExternalEffectReconcilePolicy.MinimumAgeForNotApplied;
         // Only records with work left are taken: one whose verification job is still queued or running, or
         // an old record not yet due to be closed, is skipped, so a backlog of those cannot keep newer
-        // records from being verified.
+        // records from being verified. A record whose own job (a queued shipment action waiting for its
+        // quota) is still queued or running is not verified either: that job writes its outcome itself, and a
+        // read made before its request went out would take the action for not applied and drop the record.
+        var ownerJobs = OpenOwnerJobs(db);
         var candidates = await db.ExternalEffectRecords.AsNoTracking()
-            .Where(x => x.CompletedAt == null && x.CreatedAt <= verifyBefore)
+            .Where(x => x.CompletedAt == null && x.CreatedAt <= verifyBefore
+                && !ownerJobs.Any(job => job.TenantId == x.TenantId && job.JobType == x.EffectType && job.EffectIdempotencyKey == x.IdempotencyKey))
             .Select(x => new { x.Id, x.TenantId, x.CreatedAt, x.ConnectionId, Verifiable = x.ConnectionId != null && x.Action != null })
             .ToListAsync(cancellationToken);
         var verificationKeys = candidates.Where(x => x.Verifiable).SelectMany(x => VerificationKeys(x.Id)).ToArray();
