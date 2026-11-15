@@ -117,23 +117,33 @@
   },
   "src/styles/area-d.css": {
     "important": 15,
-    "rootBumps": 16
+    "rootBumps": 16,
+    "lines": 89
   },
   "src/styles/audit-products.css": {
     "important": 2,
-    "rootBumps": 137
+    "rootBumps": 137,
+    "lines": 161
   },
   "src/styles/design-cleanup.css": {
     "important": 2,
-    "rootBumps": 31
+    "rootBumps": 31,
+    "lines": 74
+  },
+  "src/styles/design-step2-filters.css": {
+    "important": 0,
+    "rootBumps": 0,
+    "lines": 100
   },
   "src/styles/design-step2.css": {
     "important": 4,
-    "rootBumps": 152
+    "rootBumps": 152,
+    "lines": 121
   },
   "src/styles/design-step3-navigation.css": {
     "important": 53,
-    "rootBumps": 0
+    "rootBumps": 0,
+    "lines": 65
   },
   "src/styles/design-system.css": {
     "important": 118,
@@ -153,11 +163,13 @@
   },
   "src/styles/one-row.css": {
     "important": 0,
-    "rootBumps": 51
+    "rootBumps": 51,
+    "lines": 86
   },
   "src/styles/orders-returns-invoices-audit.css": {
     "important": 1,
-    "rootBumps": 37
+    "rootBumps": 37,
+    "lines": 55
   },
   "src/styles/phone-spacing.css": {
     "important": 118,
