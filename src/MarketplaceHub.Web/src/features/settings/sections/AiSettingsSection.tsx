@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, settingsIfMatch } from '../../../shared/api'
@@ -7,11 +8,10 @@ import { PanelSelect } from '../../../shared/PanelSelect'
 import { queryKeys } from '../../../shared/api/query-keys'
 import { formatSettingsDate, SettingsIcon, SettingsGlyph, SettingsPaneHead, SettingsBar } from '../settings-ui'
 
-type AiSkillView = { key: string; title: string; description: string; bundleHash: string; uploaded: { skillId: string; version: string; uploadedAt: string; bundleHash: string; source?: AiSkillSource; fileName?: string | null } | null; upToDate: boolean }
-// FILE: a .skill file the owner uploaded (it is the one generation uses); BUNDLED: the copy that comes with the panel.
-type AiSkillSource = 'FILE' | 'BUNDLED'
+type AiSettings = ApiAnswer<'getSettingsAi'>
+type AiSkillView = AiSettings['skills'][number]
+// uploaded.source: FILE, a .skill file the owner uploaded (it is the one generation uses); BUNDLED, the copy that comes with the panel.
 const maxSkillFileBytes = 10 * 1024 * 1024
-type AiSettings = { apiKeySaved: boolean; defaultModel: string; updatedAt: string | null; version: number; skills: AiSkillView[] }
 type AiUsageEntry = { id: string; createdAt: string; feature: string; featureLabel: string; userName: string | null; subjectLabel: string | null; model: string; inputTokens: number | null; outputTokens: number | null; costUsd: number | null; status: 'SUCCEEDED' | 'FAILED' | 'CANCELLED'; error: string | null; durationMs: number }
 const defaultAiModel = 'claude-sonnet-5-5'
 // The Claude models the panel offers, with their list price per million tokens (input / output, USD).
@@ -46,7 +46,7 @@ function aiSkillState(skill: AiSkillView) {
 // write-only like the alert app password: the server never returns it, the form shows "Kayıtlı" and "Değiştir".
 export function AiSettingsSection() {
   const client = useQueryClient()
-  const query = useQuery({ queryKey: queryKeys.aiSettings(), queryFn: ({ signal }) => hubApi<AiSettings>('/settings/ai', { signal }), retry: false })
+  const query = useQuery({ queryKey: queryKeys.aiSettings(), queryFn: ({ signal }) => hubApi<ApiAnswer<'getSettingsAi'>>('/settings/ai', { signal }), retry: false })
   const forbidden = query.error instanceof ApiRequestError && query.error.status === 403
   const usage = useQuery({ queryKey: queryKeys.aiUsage(), queryFn: ({ signal }) => hubApi<{ items: AiUsageEntry[] }>('/settings/ai/usage?limit=50', { signal }), retry: false, enabled: query.isSuccess })
   const saved = query.data
@@ -75,7 +75,7 @@ export function AiSettingsSection() {
     if (!saved) return
     setBusy('save'); setNotice(null); setTestResult(null)
     try {
-      const next = await hubApi<AiSettings>('/settings/ai', { method: 'PUT', headers: settingsIfMatch(saved.version), body: JSON.stringify({ apiKey: changingKey && apiKey.trim() ? apiKey.trim() : null, defaultModel: model.trim() }) })
+      const next = await hubApi<ApiAnswer<'putSettingsAi'>>('/settings/ai', { method: 'PUT', headers: settingsIfMatch(saved.version), body: JSON.stringify({ apiKey: changingKey && apiKey.trim() ? apiKey.trim() : null, defaultModel: model.trim() }) })
       setApiKey('')
       client.setQueryData(queryKeys.aiSettings(), next)
       // O9: a new key belongs to another workspace; the skills uploaded with the old one are forgotten.

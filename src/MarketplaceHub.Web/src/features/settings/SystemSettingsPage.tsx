@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -7,8 +8,8 @@ import { normalizeShippingLabelSettings, useShippingLabelSettings } from '../shi
 import { SettingsNotice, type SettingsNoticeState } from './SettingsNotifications'
 import { unknownCount, useRememberedTabCounts } from '../../shared/tab-counts'
 import { marketplaceResetCount, runMarketplaceResets, type BulkResetProgress } from './marketplace-bulk-reset'
-import { connectionFullResetSupported, type ConnectionFullResetView } from '../marketplace/connection-data-reset'
-import { dataResetConfirmWord, panelResetConfirmed, togglePanelResetCategories, type PanelFactoryResetView } from './panel-factory-reset'
+import { connectionFullResetSupported } from '../marketplace/connection-data-reset'
+import { dataResetConfirmWord, panelResetConfirmed, togglePanelResetCategories } from './panel-factory-reset'
 import type { Connection } from '../marketplace/shared'
 import './settings-sade.css'
 import '../../shared/view-tabs.css'
@@ -25,8 +26,7 @@ import { AlertEmailSettingsSection } from './sections/AlertEmailSection'
 import { UserManagementSection } from './sections/UserManagementSection'
 import { AiSettingsSection } from './sections/AiSettingsSection'
 
-type SecurityStatus = { totpState: string; recoveryCodesRemaining: number }
-type SecuritySession = { id: string; state: string; current: boolean; issuedAt: string; lastSeenAt: string; expiresAt: string }
+type SecuritySession = ApiAnswer<'getAuthSessions'>[number]
 type MfaSetup = { otpauthUri: string; secret?: string; qrSvg: string; expiresAt: string }
 type SessionConfirmation = { action: 'revoke' | 'revoke-others' | 'delete' | 'delete-closed'; sessionId?: string }
 
@@ -106,16 +106,16 @@ export function SystemSettingsPage() {
   useEffect(() => { resetCancelled.current = false; return () => { resetCancelled.current = true } }, [])
   // What each list holds now, the counts the reset reports when it is done. Owner and administrators only: for the
   // other roles the server answers 403 and the page asks nothing else.
-  const resetView = useQuery({ queryKey: queryKeys.panelFactoryReset(), queryFn: ({ signal }) => hubPoll<PanelFactoryResetView>('/settings/factory-reset', { signal }), enabled: section === 'database', staleTime: 0, retry: false })
+  const resetView = useQuery({ queryKey: queryKeys.panelFactoryReset(), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getSettingsFactoryReset'>>('/settings/factory-reset', { signal }), enabled: section === 'database', staleTime: 0, retry: false })
   const resetForbidden = resetView.error instanceof ApiRequestError && resetView.error.status === 403
   const resetGroups = resetGroupsOf(resetView.data)
   // The active marketplace connections, each with what its Tam Sıfırlama would remove (the same view its window shows).
   const resetConnections = useQuery({ queryKey: queryKeys.connections('settings-reset'), queryFn: async ({ signal }) => (await loadAllPages<Connection>('/connections', { signal })).items.filter(item => item.status !== 'DELETED' && item.status !== 'HIDDEN' && connectionFullResetSupported(item.platformCode)), enabled: section === 'database' && resetView.isSuccess, staleTime: 0 })
-  const resetViews = useQueries({ queries: (resetConnections.data ?? []).map(item => ({ queryKey: queryKeys.connectionFullReset(item.id), queryFn: ({ signal }) => hubPoll<ConnectionFullResetView>(`/connections/${item.id}/full-reset`, { signal }), enabled: section === 'database' && resetView.isSuccess, staleTime: 0 })) })
+  const resetViews = useQueries({ queries: (resetConnections.data ?? []).map(item => ({ queryKey: queryKeys.connectionFullReset(item.id), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getConnectionsByIdFullReset'>>(`/connections/${item.id}/full-reset`, { signal }), enabled: section === 'database' && resetView.isSuccess, staleTime: 0 })) })
   const resetMarketplaces: ResetMarketplace[] = (resetConnections.data ?? []).map((item, index) => ({ id: item.id, platformCode: item.platformCode, displayName: item.displayName, passive: item.status !== 'ACTIVE' && item.status !== 'VERIFIED', count: marketplaceResetCount(resetViews[index]?.data) }))
   // Through hubApi: a session that ended shows the sign-in screen instead of an error box.
-  const status = useQuery({ queryKey: queryKeys.security(), queryFn: ({ signal }) => hubApi<SecurityStatus>('/auth/security-status', { signal }) })
-  const sessions = useQuery({ queryKey: queryKeys.sessions(), queryFn: ({ signal }) => hubApi<SecuritySession[]>('/auth/sessions', { signal }) })
+  const status = useQuery({ queryKey: queryKeys.security(), queryFn: ({ signal }) => hubApi<ApiAnswer<'getAuthSecurityStatus'>>('/auth/security-status', { signal }) })
+  const sessions = useQuery({ queryKey: queryKeys.sessions(), queryFn: ({ signal }) => hubApi<ApiAnswer<'getAuthSessions'>>('/auth/sessions', { signal }) })
   const [sessionCount] = useRememberedTabCounts('Ayarlar oturumlar', [{ value: 'sessions', count: sessions.isError ? unknownCount : sessions.data?.length }])
   const [mfaStep, setMfaStep] = useState<'closed' | 'password' | 'verify' | 'recovery'>('closed')
   const [setup, setSetup] = useState<MfaSetup | null>(null)
@@ -155,8 +155,8 @@ export function SystemSettingsPage() {
       const chosen = (resetConnections.data ?? []).filter(item => marketplacePicked.includes(item.id))
       if (chosen.length) {
         const ok = await runMarketplaceResets(chosen, {
-          request: item => hubApi<ConnectionFullResetView>(`/connections/${item.id}/full-reset`, { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ confirmation: item.displayName, ...reauthBody(resetPassword, resetFactor) }) }),
-          poll: item => hubPoll<ConnectionFullResetView>(`/connections/${item.id}/full-reset`),
+          request: item => hubApi<ApiAnswer<'postConnectionsByIdFullReset'>>(`/connections/${item.id}/full-reset`, { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ confirmation: item.displayName, ...reauthBody(resetPassword, resetFactor) }) }),
+          poll: item => hubPoll<ApiAnswer<'getConnectionsByIdFullReset'>>(`/connections/${item.id}/full-reset`),
           sleep: ms => new Promise(resolve => window.setTimeout(resolve, ms)),
           onProgress: (id, state) => setMarketplaceProgress(current => ({ ...current, [id]: state })),
           isCancelled: () => resetCancelled.current
@@ -167,7 +167,7 @@ export function SystemSettingsPage() {
       }
       if (resetScopes.length) {
         // One job for every chosen category (the same one Paneli Tamamen Sıfırla runs); its steps show below.
-        const next = await hubApi<PanelFactoryResetView>('/settings/factory-reset', { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ categories: resetScopes, confirmation: resetConfirmation.trim(), ...reauthBody(resetPassword, resetFactor) }) })
+        const next = await hubApi<ApiAnswer<'postSettingsFactoryReset'>>('/settings/factory-reset', { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ categories: resetScopes, confirmation: resetConfirmation.trim(), ...reauthBody(resetPassword, resetFactor) }) })
         client.setQueryData(queryKeys.panelFactoryReset(), next)
         succeed('Seçilen veriler silinmeye başladı; adımlar sayfanın altındaki Sıfırlama İlerlemesi bölümünde.')
       }

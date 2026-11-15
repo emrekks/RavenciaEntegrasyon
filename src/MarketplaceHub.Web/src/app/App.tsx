@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../shared/api/api-answer'
 import { Suspense, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { BrandSymbol } from '../shared/components/BrandSymbol'
 import { BrandWordmark } from '../shared/components/BrandWordmark'
@@ -14,7 +15,7 @@ import { usePageEntryReveal } from './hooks/usePageEntryReveal'
 import { releaseOrphanedScrollLock, useScrollLock } from '../shared/hooks/useScrollLock'
 import { useMediaQuery } from '../shared/hooks/useMediaQuery'
 import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontScale, useAppearanceSettings } from '../features/settings/appearance-settings'
-import { readNotificationHistory, registerNotificationActorResolver, registerNotificationConnectionResolver, subscribeNotificationHistory, syncAttentionNotices, type AppNotification, type AttentionNotice } from '../shared/notifications'
+import { readNotificationHistory, registerNotificationActorResolver, registerNotificationConnectionResolver, subscribeNotificationHistory, syncAttentionNotices, type AppNotification } from '../shared/notifications'
 import { connectionIdentityFromCache } from '../shared/notification-connections'
 import { startNotificationCenterSink } from '../shared/notification-center'
 import { orderNavigationCount, pendingOrdersQuery } from '../shared/order-navigation-count'
@@ -29,7 +30,6 @@ import { closeTouchTip, installTouchTips } from '../shared/touch-tips'
 import { installOverlayScrollLock } from '../shared/overlay-scroll-lock'
 import { ToastStackProvider } from '../shared/components/ToastStack'
 import { followNotificationBell } from './notification-history-placement'
-import type { DashboardMetrics } from '../features/dashboard/IntegrationStatusPanel'
 import { queryKeys } from '../shared/api/query-keys'
 
 // Loaded ahead (when the page is idle, or when the pointer reaches the bell) so the first open does not wait for it.
@@ -101,15 +101,15 @@ function Shell({ me }: { me: Me }) {
     window.addEventListener('pageshow', onReturn)
     return () => { document.removeEventListener('visibilitychange', onReturn); window.removeEventListener('pageshow', onReturn) }
   }, [])
-  const navigationSummary = useQuery({ queryKey: queryKeys.dashboardBootstrap(), queryFn: ({ signal }) => hubApi<DashboardBootstrap>('/dashboard/bootstrap', { signal }), staleTime: 30_000, refetchOnWindowFocus: true })
-  const invoiceWorkspaceSummary = useQuery({ queryKey: queryKeys.invoiceWorkspaceSummary(), queryFn: ({ signal }) => hubApi<{ dueSoonCount: number; uninvoicedCount?: number }>('/invoice-workspace/summary', { signal }), staleTime: 30_000, refetchOnWindowFocus: true })
+  const navigationSummary = useQuery({ queryKey: queryKeys.dashboardBootstrap(), queryFn: ({ signal }) => hubApi<ApiAnswer<'getDashboardBootstrap'>>('/dashboard/bootstrap', { signal }), staleTime: 30_000, refetchOnWindowFocus: true })
+  const invoiceWorkspaceSummary = useQuery({ queryKey: queryKeys.invoiceWorkspaceSummary(), queryFn: ({ signal }) => hubApi<ApiAnswer<'getInvoiceWorkspaceSummary'>>('/invoice-workspace/summary', { signal }), staleTime: 30_000, refetchOnWindowFocus: true })
   // The menu counts poll only while the tab is on screen, and say they are automatic (hubPoll) so the server does not count
   // them as the person using the panel (otherwise an open tab would never reach the idle sign-out).
   // The same query as the overview's Bekleyen Siparişler card: the badge and the card always say the same number.
   const orderSummary = useQuery(pendingOrdersQuery)
   const questionWaitingSummary = useQuery({ queryKey: queryKeys.questions('navigation-waiting'), queryFn: ({ signal }) => hubPoll<{ totalCount: number }>(questionWaitingSummaryPath, { signal }), staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true })
   // Background states for the notification center (reads failing again and again, approvals that ran out of time).
-  const attentionNotices = useQuery({ queryKey: queryKeys.jobs('attention'), queryFn: ({ signal }) => hubPoll<AttentionNotice[]>('/jobs/attention', { signal }), staleTime: 60_000, refetchInterval: 300_000, refetchOnWindowFocus: true })
+  const attentionNotices = useQuery({ queryKey: queryKeys.jobs('attention'), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getJobsAttention'>>('/jobs/attention', { signal }), staleTime: 60_000, refetchInterval: 300_000, refetchOnWindowFocus: true })
   useEffect(() => { if (Array.isArray(attentionNotices.data)) syncAttentionNotices(attentionNotices.data) }, [attentionNotices.data])
   const [sidebarPinned, setSidebarPinned] = useState(() => readStoredItem('ravencia.sidebarPinned') !== 'false')
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
@@ -535,8 +535,6 @@ function MfaChallenge() {
     </form>
   </AuthPageFrame>
 }
-// The side menu reads only the bootstrap's metrics (the overview's own type; the server sends no other figure).
-type DashboardBootstrap = { metrics: DashboardMetrics }
 
 // The session is neither active nor waiting for a sign-in step: the way out is a fresh sign-in.
 function LockedSession() {

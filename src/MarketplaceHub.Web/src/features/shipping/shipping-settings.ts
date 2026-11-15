@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useLayoutEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, settingsIfMatch, type Me } from '../../shared/api'
@@ -41,7 +42,7 @@ export function useShippingLabelSettings() {
   const migrationAttempted = useRef(false)
   const query = useQuery({
     queryKey: shippingLabelSettingsQueryKey,
-    queryFn: ({ signal }) => hubApi<ShippingLabelSettingsEnvelope>('/settings/shipping-label', { signal }),
+    queryFn: ({ signal }) => hubApi<ApiAnswer<'getSettingsShippingLabel'>>('/settings/shipping-label', { signal }),
     staleTime: 60_000,
     retry: 2,
     refetchOnWindowFocus: true
@@ -71,7 +72,7 @@ export function useShippingLabelSettings() {
     // Only the owner and administrators may write the account's settings: the other roles keep the browser copy on
     // screen without a PUT the server would refuse.
     if (lacksElevatedRole(client.getQueryData<Me>(queryKeys.me())?.role)) return
-    void hubApi<ShippingLabelSettingsEnvelope>('/settings/shipping-label', {
+    void hubApi<ApiAnswer<'putSettingsShippingLabel'>>('/settings/shipping-label', {
       method: 'PUT',
       headers: settingsIfMatch(query.data.version),
       body: JSON.stringify(legacySettings)
@@ -86,8 +87,8 @@ export function useShippingLabelSettings() {
     try {
       // D9: a stored setting is written only over the version read (If-Match); one not read yet is read first. The
       // version is the one the draft was made from, so a draft kept over newer settings is refused, not written over them.
-      const current = query.data ?? await client.fetchQuery({ queryKey: shippingLabelSettingsQueryKey, queryFn: ({ signal }) => hubApi<ShippingLabelSettingsEnvelope>('/settings/shipping-label', { signal }) })
-      saved = await hubApi<ShippingLabelSettingsEnvelope>('/settings/shipping-label', { method: 'PUT', headers: settingsIfMatch(overVersion ?? baseRef.current?.version ?? current?.version), body: JSON.stringify(normalized) })
+      const current = query.data ?? await client.fetchQuery({ queryKey: shippingLabelSettingsQueryKey, queryFn: ({ signal }) => hubApi<ApiAnswer<'getSettingsShippingLabel'>>('/settings/shipping-label', { signal }) })
+      saved = await hubApi<ApiAnswer<'putSettingsShippingLabel'>>('/settings/shipping-label', { method: 'PUT', headers: settingsIfMatch(overVersion ?? baseRef.current?.version ?? current?.version), body: JSON.stringify(normalized) })
     } catch (error) {
       // changed elsewhere meanwhile: read the current settings; the draft stays and the newer copy waits as a conflict
       if (error instanceof ApiRequestError && (error.status === 412 || error.status === 428)) void client.invalidateQueries({ queryKey: shippingLabelSettingsQueryKey })

@@ -1,37 +1,11 @@
 // Sistem Ayarları › Google Drive Yedeği (OffsiteBackupEndpoints): what the server says, and the small rules the section
 // shows before it asks the server. The server checks everything again; the client secret and the Google token never
 // come back to the browser.
+import type { ApiAnswer } from '../../shared/api/api-answer'
 
-export type OffsiteBackupView = {
-  enabled: boolean
-  ageRecipient: string | null
+export type OffsiteBackupView = Omit<ApiAnswer<'getSettingsOffsiteBackup'>, 'folderMode'> & {
+  // CONTRACT: the API declares a string; OffsiteBackupRules.FolderError normalizes every saved mode to NAME or ID.
   folderMode: 'NAME' | 'ID'
-  folderValue: string
-  keepDays: number
-  keepMonths: number
-  clientId: string | null
-  clientSecretSaved: boolean
-  redirectUri: string
-  scopes: string
-  connected: boolean
-  account: string | null
-  connectedAt: string | null
-  authorizationInvalid: boolean
-  authorizationError: string | null
-  folderId: string | null
-  lastAttemptAt: string | null
-  lastSuccessAt: string | null
-  lastSet: string | null
-  lastSize: number | null
-  lastError: string | null
-  lastErrorAt: string | null
-  consecutiveFailures: number
-  requestedAt: string | null
-  runningSince: string | null
-  nextRunAt: string | null
-  remoteCopies: number | null
-  updatedAt: string | null
-  version: number
 }
 
 export type OffsiteBackupDraft = {
