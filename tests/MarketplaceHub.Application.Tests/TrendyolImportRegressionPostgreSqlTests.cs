@@ -41,7 +41,7 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
     private static string VariantId(int colour, int size) => (900_000 + colour * 100 + size).ToString(System.Globalization.CultureInfo.InvariantCulture);
     private static string Title(string colour) => $"Kadın {colour} Triko Bluz";
 
-    private sealed record ContentSpec(string Colour, string[] Sizes, string? Title = null, string[]? Pictures = null, int Stock = 4, string? Description = null, string? StockCodePrefix = null, decimal SalePrice = 630m, decimal ListPrice = 900m, string[]? ArchivedSizes = null);
+    private sealed record ContentSpec(string Colour, string[] Sizes, string? Title = null, string[]? Pictures = null, int Stock = 4, string? Description = null, string? StockCodePrefix = null, decimal SalePrice = 630m, decimal ListPrice = 900m, string[]? ArchivedSizes = null, string? MainId = null);
 
     private static ContentSpec Spec(string colour) => new(colour, Sizes);
 
@@ -61,7 +61,7 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         return new
         {
             contentId = long.Parse(ContentId(colour), System.Globalization.CultureInfo.InvariantCulture),
-            productMainId = ModelCode,
+            productMainId = spec.MainId ?? ModelCode,
             title = spec.Title ?? Title(colour),
             description = spec.Description ?? "Yumuşak dokulu triko bluz.",
             brand = new { id = long.Parse(BrandExternalId, System.Globalization.CultureInfo.InvariantCulture), name = "Ravencia" },
@@ -873,6 +873,68 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         var staging = Assert.Single(await check.ProductImportStagingRecords.AsNoTracking().Where(row => row.TenantId == seed.TenantId).ToListAsync());
         Assert.Equal("FAILED", staging.State);
         Assert.Contains("Çakışan kayıtlar: catalog.products", staging.ErrorSummary, StringComparison.Ordinal);
+    }
+
+    // ISLEYICI-1 (15 Nov 2026): one failed model no longer moves the PRODUCTS watermark past it; the run still succeeds
+    // and the other model opens its cards.
+    [PostgreSqlFact]
+    public async Task AFailedModel_KeepsTheProductsWatermark_AndTheRunSucceeds()
+    {
+        var seed = await SeedAsync();
+        var watermark = fixture.Now.AddHours(-3).ToUniversalTime();
+        await SeedProductsCursorAsync(seed, watermark);
+        var failing = new ConflictOnCardTitled("Haki");
+        await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")!).AddInterceptors(failing).Options, fixture.TimeProvider);
+        var port = new TrendyolCatalogPort(Read([Spec("Bordo"), Spec("Haki") with { MainId = "MZ999HK" }]));
+        var processor = new MarketplaceJobProcessor(db, null!, new RefusingReferencePort(), port, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+        var result = await processor.ProcessAsync(seed.TenantId, seed.ConnectionId, MarketplaceJobTypes.ProductSync, "{\"full\":true}", $"trendyol-import-regression-{Guid.NewGuid():N}", CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.ErrorSummary);
+        Assert.True(failing.Thrown > 0);
+        await using var check = fixture.CreateContext();
+        Assert.Single(await CardsAsync(check, seed));
+        var cursor = await check.SyncCursors.AsNoTracking().SingleAsync(row => row.TenantId == seed.TenantId && row.ConnectionId == seed.ConnectionId && row.ResourceType == "PRODUCTS");
+        Assert.Equal(watermark, cursor.LastModifiedWatermark);
+    }
+
+    // ISLEYICI-1: the products a run filters out (here a content whose every size is archived) no longer count towards
+    // "not all failed": a run whose only processed model failed is not a success.
+    [PostgreSqlFact]
+    public async Task ARunWhoseOnlyProcessedModelFailed_IsNotASuccess_EvenWithFilteredProducts()
+    {
+        var seed = await SeedAsync();
+        var failing = new ConflictOnCardTitled("Bordo");
+        await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")!).AddInterceptors(failing).Options, fixture.TimeProvider);
+        var port = new TrendyolCatalogPort(Read([Spec("Bordo"), Spec("Haki") with { MainId = "MZ999HK", ArchivedSizes = Sizes }]));
+        var processor = new MarketplaceJobProcessor(db, null!, new RefusingReferencePort(), port, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+        var result = await processor.ProcessAsync(seed.TenantId, seed.ConnectionId, MarketplaceJobTypes.ProductSync, "{\"full\":true}", $"trendyol-import-regression-{Guid.NewGuid():N}", CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("PRODUCT_IMPORT_ALL_FAILED", result.ErrorCode);
+    }
+
+    private async Task SeedProductsCursorAsync(Seed seed, DateTimeOffset watermark)
+    {
+        await using var db = fixture.CreateContext();
+        db.SyncCursors.Add(new SyncCursor { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, ConnectionId = seed.ConnectionId, ResourceType = "PRODUCTS", LastModifiedWatermark = watermark, LastSuccessAt = watermark, Version = 1 });
+        await db.SaveChangesAsync();
+    }
+
+    // Throws a version conflict on every save that adds a card whose title holds `fragment`.
+    private sealed class ConflictOnCardTitled(string fragment) : Microsoft.EntityFrameworkCore.Diagnostics.SaveChangesInterceptor
+    {
+        public int Thrown { get; private set; }
+
+        public override ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int>> SavingChangesAsync(Microsoft.EntityFrameworkCore.Diagnostics.DbContextEventData eventData, Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            var added = eventData.Context!.ChangeTracker.Entries<Product>().FirstOrDefault(entry => entry.State == EntityState.Added && entry.Entity.Title.Contains(fragment, StringComparison.Ordinal));
+            if (added is not null)
+            {
+                Thrown++;
+                throw new DbUpdateConcurrencyException("simulated version conflict", [((Microsoft.EntityFrameworkCore.Infrastructure.IInfrastructure<Microsoft.EntityFrameworkCore.ChangeTracking.Internal.InternalEntityEntry>)added).Instance]);
+            }
+            return ValueTask.FromResult(result);
+        }
     }
 
     // Throws a version conflict, naming the card being added, on the first `times` saves that add a card.

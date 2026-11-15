@@ -7037,7 +7037,16 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
 
         await db.SaveChangesAsync(cancellationToken);
-        if (receivedProducts > 0 && telemetryImportFailedCount >= receivedProducts)
+        // The run's staging rows by state, before they are deleted below: a FAILED model keeps the PRODUCTS watermark
+        // where it was and a run without a COMPLETED model failed as a whole (ProductImportScanPolicy).
+        var stagingStates = await db.ProductImportStagingRecords.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.JobId == importJobId && (x.State == "FAILED" || x.State == "COMPLETED"))
+            .GroupBy(x => x.State)
+            .Select(group => new { State = group.Key, Rows = group.Count() })
+            .ToListAsync(cancellationToken);
+        var failedModels = stagingStates.Where(x => x.State == "FAILED").Sum(x => x.Rows);
+        var completedModels = stagingStates.Where(x => x.State == "COMPLETED").Sum(x => x.Rows);
+        if (ProductImportScanPolicy.AllFailed(telemetryImportFailedCount, completedModels))
         {
             if (jobId is { } failedJob)
                 await UpdateProductSyncProgressAsync(tenantId, failedJob, receivedProducts, totalProducts, 100, ProductImportProgressLabel(totalProducts, receivedProducts, mappingOnly), cancellationToken);
@@ -7048,7 +7057,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var completedCursor = await Cursor(tenantId, connectionId, "PRODUCTS", cancellationToken);
             completedCursor.OpaqueCursor = null;
             completedCursor.LastModifiedWatermark = ProductImportScanPolicy.CompletedWatermark(importSession.CreatedAt, completedCursor.LastModifiedWatermark,
-                scoped: newOnly || existingOnly || mappingOnly || optionsOnly);
+                scoped: newOnly || existingOnly || mappingOnly || optionsOnly, failedModels: failedModels);
             completedCursor.Version++;
         }
         await db.SaveChangesAsync(cancellationToken);

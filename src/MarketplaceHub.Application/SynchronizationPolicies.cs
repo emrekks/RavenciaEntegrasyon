@@ -537,8 +537,16 @@ public static class ProductImportScanPolicy
     // scan (11 minutes live, 31 Oct) were never read. A scoped read (new only, existing only, mapping, options) skips
     // part of the catalog and leaves the watermark where it was; before, it moved it, and the next incremental read
     // missed the products it had skipped.
-    public static DateTimeOffset? CompletedWatermark(DateTimeOffset scanStartedAt, DateTimeOffset? current, bool scoped) =>
-        scoped ? current : scanStartedAt.ToUniversalTime().AddSeconds(-60);
+    // A run with a failed model (a FAILED staging row) also leaves it where it was (ISLEYICI-1, 15 Nov 2026): before, the
+    // watermark moved past the failed products and the next incremental read never asked for them again unless they
+    // changed at the marketplace once more. The import is idempotent, so the next run reads the same window again.
+    public static DateTimeOffset? CompletedWatermark(DateTimeOffset scanStartedAt, DateTimeOffset? current, bool scoped, int failedModels = 0) =>
+        scoped || failedModels > 0 ? current : scanStartedAt.ToUniversalTime().AddSeconds(-60);
+
+    // A catalog run failed as a whole when products failed and no model reached the end of its processing (no COMPLETED
+    // staging row). Before, it compared the failed count with every product received, drafts and archived ones the run
+    // filters out included, so a run whose every processed product failed could still count as a success.
+    public static bool AllFailed(int failedProducts, int completedModels) => failedProducts > 0 && completedModels == 0;
 }
 
 public static class ProductImportConcurrencyPolicy
