@@ -9,8 +9,6 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvider) : IDashboardReadService
 {
     private static readonly JsonSerializerOptions BreakdownJson = new() { PropertyNameCaseInsensitive = true };
-    private static readonly ReturnClaimStatus[] AcceptedClaims = DashboardRevenuePolicy.AcceptedReturnStatuses;
-    private static readonly string[] AcceptedLines = DashboardRevenuePolicy.AcceptedReturnLineRawStatuses;
 
     public async Task<DashboardBootstrapView> BootstrapAsync(Guid tenantId, CancellationToken cancellationToken)
     {
@@ -340,15 +338,11 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
                };
     }
 
-    // Each order line's quantity taken back by an accepted return claim: the line's own word for its state decides over
-    // the claim's status, and an exchange counts only once refunded.
+    // Each order line's quantity taken back by an accepted return claim, by the invoice's rule (AcceptedReturnPolicy):
+    // the overview and the reports count a unit as returned exactly when the sale invoice leaves it out.
     internal static IQueryable<AcceptedReturnQuantity> AcceptedReturnQuantities(AppDbContext db, Guid tenantId) =>
-        db.ReturnLines.AsNoTracking()
-            .Where(returned => returned.TenantId == tenantId
-                && db.ReturnClaims.Any(claim => claim.TenantId == tenantId && claim.Id == returned.ClaimId && (claim.CustomerRequest != ReturnCustomerRequestPolicy.Change || claim.RawStatus.ToUpper() == ReturnCustomerRequestPolicy.RefundedRawStatus)
-                    && (returned.RawStatus == null || returned.RawStatus == ""
-                        ? AcceptedClaims.Contains(claim.Status)
-                        : AcceptedLines.Contains(returned.RawStatus.ToUpper()))))
+        AcceptedReturnPolicy.ClaimLines(db, tenantId)
+            .Where(AcceptedReturnPolicy.LineCountsInDatabase)
             .GroupBy(returned => returned.OrderLineId)
             .Select(group => new AcceptedReturnQuantity { OrderLineId = group.Key, Quantity = group.Sum(returned => returned.Quantity) });
 
@@ -486,10 +480,7 @@ public static class DashboardRevenuePolicy
     // A store's past sales stay in the report while it waits for new credentials or is switched off; only a
     // store whose data the owner hid, or deleted, leaves it.
     public static readonly string[] ExcludedConnectionStatuses = ["DELETED", "HIDDEN"];
-    // A return claim takes its units off the sale once the return is accepted.
-    public static readonly ReturnClaimStatus[] AcceptedReturnStatuses = [ReturnClaimStatus.Approved, ReturnClaimStatus.Completed];
-    // The marketplace's own per-line words for an accepted return (upper case), which decide over the claim's status.
-    public static readonly string[] AcceptedReturnLineRawStatuses = ["ACCEPTED", "APPROVED", "COMPLETED", "REFUNDED"];
+    // A return claim takes its units off the sale by the invoice's rule: AcceptedReturnPolicy.
 
     public static decimal Amount(decimal netAmount, decimal grossAmount) => netAmount > 0 ? netAmount : grossAmount;
     // Trendyol micro-export orders (a storefront other than Turkey's) whose statement records no refund. Their return (claim,
