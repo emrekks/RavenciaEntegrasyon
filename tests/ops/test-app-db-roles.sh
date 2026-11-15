@@ -29,7 +29,7 @@ status=0
 bash "$script" --unknown >/dev/null 2>&1 || status=$?
 assert_eq "2" "$status" "an unknown option is refused before anything runs"
 
-callers="$(cd -- "$repository_root" && grep -rl 'install-app-db-roles' deploy/scripts deploy/systemd deploy/compose deploy/backup .github 2>/dev/null | grep -v 'deploy/scripts/install-app-db-roles.sh' || true)"
+callers="$(grep -rl 'install-app-db-roles' "$repository_root/deploy/scripts" "$repository_root/deploy/systemd" "$repository_root/deploy/compose" "$repository_root/deploy/backup" "$repository_root/.github" 2>/dev/null | grep -v 'deploy/scripts/install-app-db-roles.sh' || true)"
 assert_eq "" "$callers" "no deploy script, unit, compose file or workflow runs it"
 
 finish "app database roles"

@@ -262,24 +262,24 @@ guard_disk_space
 # and verified; a failure on the way removes the working directory (trap) instead of leaving a half set behind.
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 target="$backup_root/$stamp"
-work="$backup_root/.incomplete-$stamp"
-while test -e "$target" || ! mkdir "$work" 2>/dev/null; do
+staging="$backup_root/.incomplete-$stamp"
+while test -e "$target" || ! mkdir "$staging" 2>/dev/null; do
   sleep 1
   stamp="$(date -u +%Y%m%dT%H%M%SZ)"
   target="$backup_root/$stamp"
-  work="$backup_root/.incomplete-$stamp"
+  staging="$backup_root/.incomplete-$stamp"
 done
-trap 'rm -rf -- "$work"' EXIT
-pg_dump --format=custom --file="$work/database.dump"
-tar -C /source -czf "$work/private-volumes.tar.gz" files dp-keys
-printf '{"createdAt":"%s","postgresMajor":18,"filesIncluded":true,"dataProtectionKeysIncluded":true}\n' "$stamp" > "$work/manifest.json"
+trap 'rm -rf -- "$staging"' EXIT
+pg_dump --format=custom --file="$staging/database.dump"
+tar -C /source -czf "$staging/private-volumes.tar.gz" files dp-keys
+printf '{"createdAt":"%s","postgresMajor":18,"filesIncluded":true,"dataProtectionKeysIncluded":true}\n' "$stamp" > "$staging/manifest.json"
 # The manifest is covered by the checksums too, so nothing in the set travels unchecked. Names are relative: the
 # directory is renamed after this.
-(cd "$work" && sha256sum database.dump private-volumes.tar.gz manifest.json > SHA256SUMS)
-verify_backup "$work"
+(cd "$staging" && sha256sum database.dump private-volumes.tar.gz manifest.json > SHA256SUMS)
+verify_backup "$staging"
 # Only a set whose own check passed carries the marker; the off-site copy (BackupSetDirectory) sends no other set.
-mark_verified "$work"
-mv -T -- "$work" "$target"
+mark_verified "$staging"
+mv -T -- "$staging" "$target"
 share_with_reader "$target"
 prune_expired_backups
 echo "Backup set created at $target; verified successfully."
