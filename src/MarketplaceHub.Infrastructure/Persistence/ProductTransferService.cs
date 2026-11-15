@@ -456,32 +456,12 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
             }
             if (change.Stock is { } stock && itemByVariant[change.VariantId] is var item && item.OnHand != stock.OnHand)
             {
-                // As InventoryService.SetOnHandAsync: a manual adjustment in the ledger, then the projection outbox.
-                var reserved = reservedByItem.GetValueOrDefault(item.Id);
-                var delta = stock.OnHand - item.OnHand;
-                item.OnHand = stock.OnHand;
-                item.Reserved = reserved;
-                item.Available = InventoryProjection.Available(stock.OnHand, reserved);
-                item.ProjectionVersion++;
-                item.Version++;
+                // As InventoryService.SetOnHandAsync (SIPARIS-STOK-8): a manual adjustment through the one stock writer,
+                // the count rounded as the manual count rounds it (a whole number here), then the projection outbox.
+                item.Reserved = reservedByItem.GetValueOrDefault(item.Id);
                 var sourceEventId = $"product-transfer:{applyId:N}:{variant.Id:N}";
-                db.StockLedgerEntries.Add(new StockLedgerEntry
-                {
-                    Id = Guid.CreateVersion7(),
-                    TenantId = tenantId,
-                    InventoryItemId = item.Id,
-                    MovementType = "MANUAL_ADJUSTMENT",
-                    QuantityDelta = delta,
-                    SourceType = "MANUAL",
-                    SourceId = ImportReason,
-                    SourceEventId = sourceEventId,
-                    IdempotencyKey = sourceEventId,
-                    OccurredAt = now,
-                    RecordedAt = now,
-                    ActorUserId = userId,
-                    CorrelationId = correlationId
-                });
-                projections.Add(new StockProjectionChange(item.VariantId, item.ProjectionVersion, $"manual:{sourceEventId}"));
+                projections.Add(StockMovementWriter.SetOnHand(db, item, decimal.Round(stock.OnHand, 4, MidpointRounding.ToEven),
+                    new StockLedgerSource("MANUAL_ADJUSTMENT", "MANUAL", ImportReason, sourceEventId, sourceEventId, now, now, correlationId, userId), $"manual:{sourceEventId}"));
                 stockSetItemIds.Add(item.Id);
                 stocksUpdated++;
                 Written(variant);
@@ -611,7 +591,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
         }
         await CatalogLocalEdits.MarkLinksDirtyAsync(db, tenantId, contentProducts, CatalogLocalEdits.ProductField, cancellationToken);
         // A stock count set from the file is the owner's count, as in InventoryService: it closes the shortfall notices.
-        await StockShortfallNotices.ResolveForInventoryItemsAsync(db, tenantId, stockSetItemIds, now, cancellationToken);
+        await StockMovementWriter.CloseShortfallNoticesAsync(db, tenantId, stockSetItemIds, now, cancellationToken);
         await StockProjectionOutbox.EnqueueAsync(db, tenantId, projections, now, cancellationToken);
         // E: file prices are sent like panel edits: only the offers whose price changed, to their own connection.
         await StockProjectionOutbox.EnqueuePriceChangesAsync(db, tenantId, repricedOffers, now, cancellationToken);

@@ -597,6 +597,10 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
         var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "N11", Environment = "STAGE", DisplayName = "N11", ExternalStoreId = $"s-{Guid.NewGuid():N}"[..12], Status = "VERIFIED", ApiVersion = "V1" };
         var item = new InventoryItem { Id = Guid.CreateVersion7(), TenantId = tenant.Id, VariantId = variant.Id, LocationCode = "MAIN", OnHand = 3m, Available = 3m };
         var offer = new ChannelOffer { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, VariantId = variant.Id, ListPrice = 500m, SalePrice = 400m, Currency = "TRY", VatRate = 10m, VatInclusion = "INCLUDED", RoundingMode = "HALF_EVEN", Status = "ACTIVE" };
+        // SIPARIS-STOK-8: an order line found too little stock earlier; the count the file sets answers its notice.
+        var shortLineId = Guid.CreateVersion7();
+        var shortfallMarker = new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenant.Id, InventoryItemId = item.Id, MovementType = OrderInventoryStockPolicy.ShortfallMovementType, QuantityDelta = 0m, SourceType = "ORDER_LINE", SourceId = shortLineId.ToString(), SourceEventId = $"short-{shortLineId:N}", IdempotencyKey = $"short-{shortLineId:N}", OccurredAt = now, RecordedAt = now, CorrelationId = "seed" };
+        var shortfallNotice = new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = tenant.Id, DedupeKey = StockShortfallNotices.DedupeKey(shortLineId), Code = StockShortfallNotices.IssueCode, Summary = "stok yetersiz", Status = IssueStatus.Open, FirstSeenAt = now, LastSeenAt = now, OccurrenceCount = 1 };
         await using (var seed = fixture.CreateContext())
         {
             seed.Tenants.Add(tenant);
@@ -605,6 +609,9 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
             seed.PlatformConnections.Add(connection);
             seed.InventoryItems.Add(item);
             seed.ChannelOffers.Add(offer);
+            await seed.SaveChangesAsync();
+            seed.StockLedgerEntries.Add(shortfallMarker);
+            seed.OperationalIssues.Add(shortfallNotice);
             await seed.SaveChangesAsync();
         }
 
@@ -622,15 +629,20 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
 
         var preview = await service.PreviewAsync(tenant.Id, "urunler.csv", new MemoryStream(Encoding.UTF8.GetBytes(csv)), [ProductTransferFields.Stock, ProductTransferFields.Prices], CancellationToken.None);
         Assert.True(preview.Succeeded, preview.Error?.Message);
-        var applied = await service.ApplyAsync(tenant.Id, Guid.CreateVersion7(), new ApplyProductTransferCommand(preview.Value!.Changes), "transfer-stock", CancellationToken.None);
+        var userId = Guid.CreateVersion7();
+        var applied = await service.ApplyAsync(tenant.Id, userId, new ApplyProductTransferCommand(preview.Value!.Changes), "transfer-stock", CancellationToken.None);
         Assert.True(applied.Succeeded, applied.Error?.Message);
         Assert.Equal(new ProductTransferApplyResult(1, 0, 0, 0, 0, 1, 1, 1), applied.Value);
         await using (var check = fixture.CreateContext())
         {
             var storedItem = await check.InventoryItems.AsNoTracking().SingleAsync(x => x.Id == item.Id);
-            Assert.Equal((8m, 8m, 2L), (storedItem.OnHand, storedItem.Available, storedItem.ProjectionVersion));
-            var ledger = await check.StockLedgerEntries.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id);
-            Assert.Equal(("MANUAL_ADJUSTMENT", 5m), (ledger.MovementType, ledger.QuantityDelta));
+            Assert.Equal((8m, 8m, 0m, 2L), (storedItem.OnHand, storedItem.Available, storedItem.Reserved, storedItem.ProjectionVersion));
+            var ledger = await check.StockLedgerEntries.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.MovementType != OrderInventoryStockPolicy.ShortfallMovementType);
+            Assert.Equal(("MANUAL_ADJUSTMENT", 5m, "MANUAL", "Ürün dosyası içe aktarma", (Guid?)userId, "transfer-stock"), (ledger.MovementType, ledger.QuantityDelta, ledger.SourceType, ledger.SourceId, ledger.ActorUserId, ledger.CorrelationId));
+            Assert.StartsWith("product-transfer:", ledger.IdempotencyKey);
+            Assert.Equal(ledger.SourceEventId, ledger.IdempotencyKey);
+            var notice = await check.OperationalIssues.AsNoTracking().SingleAsync(x => x.Id == shortfallNotice.Id);
+            Assert.Equal(IssueStatus.Resolved, notice.Status);
             var storedOffer = await check.ChannelOffers.AsNoTracking().SingleAsync(x => x.Id == offer.Id);
             Assert.Equal((450m, 500m, 2L), (storedOffer.SalePrice, storedOffer.ListPrice, storedOffer.PriceVersion));
             Assert.Equal(1, await check.ChannelPriceHistory.CountAsync(x => x.OfferId == offer.Id));
