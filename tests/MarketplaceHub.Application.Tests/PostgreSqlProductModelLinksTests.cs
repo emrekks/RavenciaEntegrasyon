@@ -334,6 +334,95 @@ public sealed class PostgreSqlProductModelLinksTests(PostgreSqlTenantIsolationFi
         await transaction.RollbackAsync();
     }
 
+    // KATALOG-6: two reconciles of one key at once (an import and an editor save) take turns: every card ends linked to the
+    // key's one model, none is left unlinked by the other's "model without cards" delete.
+    [PostgreSqlFact]
+    public async Task ConcurrentReconcilesOfOneKey_LeaveEveryCardLinked()
+    {
+        var seed = NewSeed();
+        await using (var db = fixture.CreateContext())
+        {
+            AddSeed(db, seed);
+            AddCard(db, seed, seed.Ravencia, "MZ500", "Siyah", "Kadın Siyah Etek", 0);
+            AddCard(db, seed, seed.Ravencia, "MZ500", "Mavi", "Kadın Mavi Etek", 1);
+            await db.SaveChangesAsync();
+        }
+        for (var round = 0; round < 8; round++)
+        {
+            await using (var reset = fixture.CreateContext())
+            {
+                await reset.Products.Where(x => x.TenantId == seed.Tenant.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.FamilyId, (Guid?)null));
+                await reset.ProductModels.Where(x => x.TenantId == seed.Tenant.Id).ExecuteDeleteAsync();
+            }
+            await using var first = fixture.CreateContext();
+            await using var second = fixture.CreateContext();
+            await Task.WhenAll(
+                ProductModelLinks.ReconcileAsync(first, seed.Tenant.Id, ["MZ500"], DateTimeOffset.UtcNow, CancellationToken.None),
+                ProductModelLinks.ReconcileAsync(second, seed.Tenant.Id, ["MZ500"], DateTimeOffset.UtcNow, CancellationToken.None));
+            await using var check = fixture.CreateContext();
+            var model = await check.ProductModels.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id);
+            Assert.All((await LinksAsync(check, seed.Tenant.Id)).Values, familyId => Assert.Equal(model.Id, familyId));
+        }
+    }
+
+    // KATALOG-7: the Kategoriler reset empties the cards' category and deletes the categories; the models stay (their
+    // category emptied) with their marketplace links and saved attributes. Needs the migration's
+    // ON DELETE SET NULL ("CategoryId") on FK_product_models_categories_TenantId_CategoryId.
+    [PostgreSqlFact]
+    public async Task ADeletedCategory_EmptiesTheModelsCategory_AndKeepsTheModelAndItsLinks()
+    {
+        var seed = NewSeed();
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        AddSeed(db, seed);
+        AddCard(db, seed, seed.Ravencia, "MZ300", "Siyah", "Kadın Siyah Etek", 0);
+        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "TRENDYOL", Environment = "PRODUCTION", DisplayName = "Trendyol", ExternalStoreId = $"store-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V1", SettingsJson = "{}", Version = 1 };
+        db.PlatformConnections.Add(connection);
+        await db.SaveChangesAsync();
+        var model = await db.ProductModels.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id);
+        Assert.Equal(seed.CategoryId, model.CategoryId);
+        db.MarketplaceModelLinks.Add(new MarketplaceModelLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = connection.Id, ModelId = model.Id, ExternalId = "TY-MZ300", CreatedAt = DateTimeOffset.UtcNow, Version = 1 });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        // As PanelFactoryResetInventory's Kategoriler group: the cards let go of the category, then the categories go.
+        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "CategoryId" = NULL WHERE "TenantId" = {seed.Tenant.Id}""");
+        await db.Database.ExecuteSqlInterpolatedAsync($"""DELETE FROM catalog.categories WHERE "TenantId" = {seed.Tenant.Id}""");
+
+        var kept = await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == model.Id);
+        Assert.Equal((seed.Tenant.Id, (Guid?)null), (kept.TenantId, kept.CategoryId));
+        Assert.Single(await db.MarketplaceModelLinks.AsNoTracking().Where(x => x.ModelId == model.Id).ToListAsync());
+        await transaction.RollbackAsync();
+    }
+
+    // KATALOG-15: the database itself keeps a card on its own tenant's model and a card's attribute written once. Needs the
+    // migration's tenant-scoped FamilyId key and the NULLS NOT DISTINCT unique index.
+    [PostgreSqlFact]
+    public async Task TheDatabase_RefusesAForeignTenantsModel_AndACardAttributeWrittenTwice()
+    {
+        var seed = NewSeed();
+        var other = NewSeed();
+        await using var db = fixture.CreateContext();
+        AddSeed(db, seed);
+        AddSeed(db, other);
+        var card = AddCard(db, seed, seed.Ravencia, "MZ400", "Siyah", "Kadın Siyah Etek", 0);
+        AddCard(db, other, other.Ravencia, "MZ400", "Mavi", "Kadın Mavi Etek", 0);
+        var fabric = new AttributeDefinition { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, Code = $"FABRIC-{Guid.NewGuid():N}", Name = "Kumaş", DataType = AttributeDataType.Text, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow, Version = 1 };
+        db.AttributeDefinitions.Add(fabric);
+        await db.SaveChangesAsync();
+        var foreignModel = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == other.Tenant.Id).Select(x => x.Id).SingleAsync();
+
+        var crossTenant = await Assert.ThrowsAsync<Npgsql.PostgresException>(() =>
+            db.Products.Where(x => x.Id == card.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.FamilyId, foreignModel)));
+        Assert.Equal(Npgsql.PostgresErrorCodes.ForeignKeyViolation, crossTenant.SqlState);
+
+        db.ProductAttributeAssignments.Add(new ProductAttributeAssignment { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ProductId = card.Id, AttributeId = fabric.Id, TextValue = "Pamuk" });
+        await db.SaveChangesAsync();
+        db.ProductAttributeAssignments.Add(new ProductAttributeAssignment { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ProductId = card.Id, AttributeId = fabric.Id, TextValue = "Keten" });
+        var twice = await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        Assert.Equal(Npgsql.PostgresErrorCodes.UniqueViolation, Assert.IsType<Npgsql.PostgresException>(twice.InnerException).SqlState);
+    }
+
     [PostgreSqlFact]
     public async Task OneModel_IsOneLinkedModelOrOneBrandAndCode()
     {
