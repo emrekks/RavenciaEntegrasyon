@@ -11,7 +11,8 @@ import { Busy, ErrorBox, Modal, Pagination, TitleHint, UiIcon, useConfirmDialog,
 import { isStaleMappingError, mappingSaveErrorMessage, refreshMappingConflicts, saveAllMappings } from './mapping-refresh'
 import { ValuePicker, pickerOptions, type PickerOption } from './ValuePicker'
 import { mappedLocalIds, valueListQuery, valueMappingProgressQuery, valueMappingsQuery } from './value-field-queries'
-import { draftsKeptAfterSave, webColorDraftSelections, webColorSelectionsFromDraft, groupSavedSelections, rebaseSelections, runInBatches, selectionsDiffer, valueDraftOperations, type ValueDraft, type ValueDraftOperation } from './value-drafts'
+import { brandMappingImportMessage, importBrandMappingItems, type BrandImportFailure } from './brand-mapping-import'
+import { draftsKeptAfterSave,webColorDraftSelections, webColorSelectionsFromDraft, groupSavedSelections, rebaseSelections, runInBatches, selectionsDiffer, valueDraftOperations, type ValueDraft, type ValueDraftOperation } from './value-drafts'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { dative } from '../../../shared/job-outcome'
 import { categoryDeactivationBody } from './category-deactivation'
@@ -2020,33 +2021,46 @@ export function BrandMappingPage() {
       const allLocalBrands = localBrands.data?.items ?? []
       const brandIdMap = new Map<string, string>()
       let created = 0
-      let mapped = 0
-      let skipped = 0
+      // A brand or a mapping refused on the way no longer stops the rest (WEB-SAYFALAR-7): each is counted and named.
+      const brandFailures: BrandImportFailure[] = []
+      let result: Awaited<ReturnType<typeof importBrandMappingItems>> = { mapped: 0, skipped: 0, failures: [] }
       for (const source of brandTransferBundle.brands) {
         const normalizedName = source.name.trim().toLocaleLowerCase('tr-TR')
         const existing = allLocalBrands.find(item => item.id === source.id || item.name.trim().toLocaleLowerCase('tr-TR') === normalizedName)
         let target = existing
         if (brandTransferSelection.brands) {
-          if (target && !target.isActive) {
-            target = await hubApi<LocalBrand>(`/catalog/brands/${target.id}`, { method: 'PATCH', headers: { 'If-Match': `"v${target.version}"` }, body: JSON.stringify({ name: target.name, isActive: true }) })
-          } else if (!target) {
-            target = await hubApi<LocalBrand>('/catalog/brands', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ name: source.name.trim() }) })
-            created++
+          try {
+            if (target && !target.isActive) {
+              target = await hubApi<LocalBrand>(`/catalog/brands/${target.id}`, { method: 'PATCH', headers: { 'If-Match': `"v${target.version}"` }, body: JSON.stringify({ name: target.name, isActive: true }) })
+            } else if (!target) {
+              target = await hubApi<LocalBrand>('/catalog/brands', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ name: source.name.trim() }) })
+              created++
+            }
+          } catch (reason) {
+            brandFailures.push({ name: source.name.trim(), message: reason instanceof Error ? reason.message : 'Kaydedilemedi.' })
+            continue
           }
         }
         if (target) brandIdMap.set(source.id, target.id)
       }
       if (brandTransferSelection.mappings) {
         const externalIds = new Set((await lookupBrandReferences(savedConnectionId, brandTransferBundle.mappings.map(item => item.externalId))).map(brand => brand.externalId))
-        for (const item of brandTransferBundle.mappings) {
-          const targetLocalId = brandIdMap.get(item.localId) ?? allLocalBrands.find(brand => brand.id === item.localId)?.id
-          if (!targetLocalId || !externalIds.has(item.externalId)) { skipped++; continue }
-          await hubApi<CatalogMapping>(`/mappings/brands/${targetLocalId}`, { method: 'PUT', body: JSON.stringify({ connectionId: savedConnectionId, snapshotId: savedReferences.data?.snapshotId, externalId: item.externalId, status: 'VERIFIED' }) })
-          mapped++
-        }
+        const brandNames = new Map(brandTransferBundle.brands.map(brand => [brand.id, brand.name.trim()]))
+        result = await importBrandMappingItems(brandTransferBundle.mappings, {
+          target: item => { const targetLocalId = brandIdMap.get(item.localId) ?? allLocalBrands.find(brand => brand.id === item.localId)?.id; return targetLocalId && externalIds.has(item.externalId) ? targetLocalId : null },
+          nameOf: item => brandNames.get(item.localId) ?? item.externalId,
+          send: (item, targetLocalId) => hubApi<CatalogMapping>(`/mappings/brands/${targetLocalId}`, { method: 'PUT', body: JSON.stringify({ connectionId: savedConnectionId, snapshotId: savedReferences.data?.snapshotId, externalId: item.externalId, status: 'VERIFIED' }) })
+        })
       }
-      setBrandTransferOpen(false); setBrandTransferBundle(null); setNotice(`${created} marka ve ${mapped} marka eşleştirmesi içe aktarıldı.${skipped ? ` ${skipped} eşleştirme güncel referansta bulunamadığı için atlandı.` : ''}`); await Promise.all([client.invalidateQueries({ queryKey: ['brands', 'mapping'] }), client.invalidateQueries({ queryKey: ['brand-mapping'] }), client.invalidateQueries({ queryKey: ['brand-mappings', savedConnectionId] })])
-    } catch (reason) { setNotice(reason instanceof Error ? reason.message : 'Marka eşleştirme aktarımı uygulanamadı.') } finally { setBrandTransferBusy(false) }
+      const message = brandMappingImportMessage({ created, brandFailures, ...result })
+      // A clean import closes the window; one with refusals keeps it open beside its message.
+      if (!brandFailures.length && !result.failures.length) { setBrandTransferOpen(false); setBrandTransferBundle(null) }
+      setNotice(message)
+    } catch (reason) { setNotice(reason instanceof Error ? reason.message : 'Marka eşleştirme aktarımı uygulanamadı.') } finally {
+      // What was written before a stop is on the server: the lists are read again whatever happened.
+      await Promise.all([client.invalidateQueries({ queryKey: ['brands', 'mapping'] }), client.invalidateQueries({ queryKey: ['brand-mapping'] }), client.invalidateQueries({ queryKey: ['brand-mappings', savedConnectionId] })]).catch(() => undefined)
+      setBrandTransferBusy(false)
+    }
   }
   function readBrandMappingBundle(event: ChangeEvent<HTMLInputElement>) {
     const file = event.currentTarget.files?.[0]
