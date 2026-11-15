@@ -1,3 +1,4 @@
+using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
@@ -15,8 +16,7 @@ public static class ProductModelScan
 
     public static async Task<Result> RunAsync(AppDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var tenants = await db.Products.AsNoTracking().Select(x => x.TenantId)
-            .Union(db.ProductModels.AsNoTracking().Select(x => x.TenantId)).ToListAsync(cancellationToken);
+        var tenants = await TenantsAsync(db, cancellationToken);
         var total = new Result(0, 0, 0, 0, 0);
         foreach (var tenantId in tenants)
         {
@@ -26,6 +26,15 @@ public static class ProductModelScan
         }
         return total;
     }
+
+    // The tenants with cards or models, and those with an open model warning but nothing left (their warning is resolved).
+    public static Task<List<Guid>> TenantsAsync(AppDbContext db, CancellationToken cancellationToken) =>
+        db.Products.AsNoTracking().Select(x => x.TenantId)
+            .Union(db.ProductModels.AsNoTracking().Select(x => x.TenantId))
+            .Union(db.OperationalIssues.AsNoTracking()
+                .Where(x => (x.Code == ProductModelValues.DifferCode || x.Code == ProductModelLinks.AmbiguousCode) && x.Status != IssueStatus.Resolved && x.TenantId != null)
+                .Select(x => x.TenantId!.Value))
+            .ToListAsync(cancellationToken);
 
     public static async Task<Result> RunTenantAsync(AppDbContext db, Guid tenantId, DateTimeOffset now, CancellationToken cancellationToken)
     {

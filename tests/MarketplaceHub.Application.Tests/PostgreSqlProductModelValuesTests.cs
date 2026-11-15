@@ -428,6 +428,45 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.Contains("InvalidCastException", issue.Summary);
     }
 
+    // F6: a run that skipped a model (locked) does not resolve the PRODUCT_MODEL_VALUES_DIFFER warning; the scan visits a
+    // tenant whose warning is open though its cards are gone, and resolves it there.
+    [PostgreSqlFact]
+    public async Task TheWarning_IsNotResolvedByARunThatSkippedAModel_AndTheScanVisitsATenantWithOnlyAWarning()
+    {
+        await using var db = fixture.CreateContext();
+        var seed = await SeedAsync(db);
+        var siyah = AddCard(db, seed, seed.Ravencia, "MZ800", "Siyah", "Kadın Siyah Etek", 0, description: "Bir");
+        AddCard(db, seed, seed.Ravencia, "MZ800", "Mavi", "Kadın Mavi Etek", 1, description: "İki");
+        await db.SaveChangesAsync();
+        var model = await ModelOfAsync(db, siyah.Id);
+        await ProductModelValues.RefreshTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
+        Task<IssueStatus> StatusAsync() => db.OperationalIssues.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id && x.Code == ProductModelValues.DifferCode).Select(x => x.Status).SingleAsync();
+        Assert.Equal(IssueStatus.Open, await StatusAsync());
+
+        // The owner makes the cards agree while the model is locked: the run skips it and the warning stays.
+        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "Description" = 'Ortak' WHERE "TenantId" = {seed.Tenant.Id}""");
+        await using (await LockModelAsync(model.Id))
+        {
+            var outcome = await ProductModelValues.RefreshTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
+            Assert.Equal((0, 1), (outcome.Differing.Count, outcome.Skipped));
+        }
+        Assert.Equal(IssueStatus.Open, await StatusAsync());
+        Assert.Empty((await ProductModelValues.RefreshTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None)).Differing);
+        Assert.Equal(IssueStatus.Resolved, await StatusAsync());
+
+        // A tenant whose cards are all gone with its warning still open is visited by the scan.
+        var empty = new Tenant { Id = Guid.CreateVersion7(), Code = $"values-{Guid.NewGuid():N}", DisplayName = "values", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow, Version = 1 };
+        db.Tenants.Add(empty);
+        await db.SaveChangesAsync();
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO ops.operational_issues ("Id", "TenantId", "DedupeKey", "Code", "Summary", "Status", "FirstSeenAt", "LastSeenAt", "OccurrenceCount")
+            VALUES ({Guid.CreateVersion7()}, {empty.Id}, {ProductModelValues.DifferDedupeKey}, {ProductModelValues.DifferCode}, 'eski', 'Open', now(), now(), 1)
+            """);
+        Assert.Contains(empty.Id, await ProductModelScan.TenantsAsync(db, CancellationToken.None));
+        await ProductModelScan.RunTenantAsync(db, empty.Id, DateTimeOffset.UtcNow, CancellationToken.None);
+        Assert.Equal(IssueStatus.Resolved, await db.OperationalIssues.AsNoTracking().Where(x => x.TenantId == empty.Id).Select(x => x.Status).SingleAsync());
+    }
+
     // F2: fields and attributes the owner saved in the editor after the last change of every card stay the owner's, even
     // when most cards (here cards the editor does not show) hold another value; the stamps stay; a second run writes
     // nothing either.

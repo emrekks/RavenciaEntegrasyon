@@ -328,13 +328,16 @@ public static class ProductModelValues
     public static async Task<Outcome> RefreshTenantAsync(AppDbContext db, Guid tenantId, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var outcome = await RefreshAsync(db, tenantId, null, now, cancellationToken);
-        await RecordDifferingAsync(db, tenantId, outcome.Differing, now, cancellationToken);
+        await RecordDifferingAsync(db, tenantId, outcome.Differing, outcome.Skipped, now, cancellationToken);
         return outcome;
     }
 
-    private static Task RecordDifferingAsync(AppDbContext db, Guid tenantId, IReadOnlyList<(string ModelCode, IReadOnlyList<string> Fields)> differing, DateTimeOffset now, CancellationToken cancellationToken)
+    // A model skipped by the run (a lock timeout) may still differ: the warning is resolved only by a run that saw every
+    // model.
+    private static Task RecordDifferingAsync(AppDbContext db, Guid tenantId, IReadOnlyList<(string ModelCode, IReadOnlyList<string> Fields)> differing, int skipped, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var at = now.ToUniversalTime();
+        if (differing.Count == 0 && skipped > 0) return Task.CompletedTask;
         if (differing.Count == 0)
             return db.Database.ExecuteSqlInterpolatedAsync($"""
                 UPDATE ops.operational_issues SET "Status" = 'Resolved', "ResolvedAt" = {at}, "LastSeenAt" = {at}
