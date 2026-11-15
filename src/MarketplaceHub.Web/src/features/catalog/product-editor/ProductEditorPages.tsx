@@ -1392,6 +1392,10 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const allowReseedUntil = useRef(0)
   // True while the editor's own save runs: a refetch landing then does not refill the form or flag a newer version.
   const editorSaveInFlight = useRef(false)
+  // The saved product the edit form was filled from (WEB-SAYFALAR-1). A refetch landing on a form with unsaved edits
+  // only raises the stale banner, so Kaydet must name this version in If-Match, not the refetched one: else the server
+  // takes the save and the other change is overwritten. The editor's own writes move it on (adoptOwnProductWrite).
+  const seededProduct = useRef<Product | null>(null)
   // The product as it was when Kaydet was pressed: the "Görseller" strip reads it until the save is done. Each upload
   // raises a realtime refetch, and a product with colour variants lists only its first product-level picture until the
   // variants get theirs, so the strip took every other stored copy for a family picture and showed it beside its own
@@ -1420,6 +1424,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const currentEditorSnapshot = useMemo(() => editorSnapshot({ form, variantRows, attributeSelections, attributeTextValues, familyMediaOrder, pendingMediaFileCount: mediaFiles.length, removedVariantIds, pendingFamilyMediaRemovalUrls: pendingFamilyMediaRemovals.map(item => item.url), channelPricing, variantChannelPricing, webColor: { autoEnabled: webColorAutoEnabled, manualValueId: manualWebColorValueId }, sizeChartUrl }), [attributeSelections, attributeTextValues, channelPricing, familyMediaOrder, form, manualWebColorValueId, mediaFiles.length, pendingFamilyMediaRemovals, removedVariantIds, sizeChartUrl, variantChannelPricing, variantRows, webColorAutoEnabled])
   // A new product compares with the empty form it opened with; a copy and an edit with the form right after seeding.
   const editorDirty = seedSnapshot !== null && seedSnapshot !== currentEditorSnapshot
+  const editorDirtyRef = useRef(editorDirty)
+  editorDirtyRef.current = editorDirty
   // Media a create left behind (pending-create-media.ts): put back right after the snapshot is taken, so they are
   // unsaved changes of the product's page.
   const restoreAfterSnapshot = useRef<PendingCreateMedia<PendingProductMediaFile> | null>(null)
@@ -1547,12 +1553,13 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     // nor a reason to refill half way. The save asks for the reseed when it is done (live 2026-11-02: a refetch during
     // the media step took the new version, so the refetch after the save matched it, the form was never refilled, its
     // 21 new rows kept their temporary keys and the next Kaydet sent them as new variants again: SKU conflict).
-    if (editProductId && alreadySeededThisProduct && editorSaveInFlight.current) return
+    // A picture assignment saved on its own (saveVariantMediaAssignments) is the editor's own write as well.
+    if (editProductId && alreadySeededThisProduct && (editorSaveInFlight.current || mediaAutoSaveInFlight.current)) return
     if (editProductId && alreadySeededThisProduct && editorDirty && Date.now() > allowReseedUntil.current) { setStaleProductVersion(product.version); return }
     allowReseedUntil.current = 0
     setStaleProductVersion(null)
     initializedEditProductKey.current = productKey
-    if (mode === 'edit') setSeededProductId(product.id)
+    if (mode === 'edit') { setSeededProductId(product.id); seededProduct.current = product }
     const primary = product.variants[0]
     const initialModelCode = primary?.modelCode ?? product.modelCode ?? ''
     const sortedVariants = sortVariantsAlphabetically(product.variants)
@@ -1610,6 +1617,17 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const [reseedRequest, setReseedRequest] = useState(0)
   const seedStamp = seedProduct ? editorDataStamp(seedProduct.variants) : ''
   useLayoutEffect(() => seedForm(), [editProductId, seedProduct?.id, seedProduct?.version, seedStamp, reseedRequest])
+  // The editor's own writes outside Kaydet (a saved picture removed, picture assignments, marketplace prices) change
+  // the saved product too. A clean form refills from the product they leave as usual; a form with other unsaved edits
+  // keeps them and stands on that product from then on, so Kaydet names its version and no banner calls the editor's
+  // own write another operation's change.
+  function adoptOwnProductWrite(product: Product | undefined) {
+    if (!product || !editProductId || product.id !== editProductId) return
+    seededProduct.current = product
+    if (!editorDirtyRef.current) { setReseedRequest(value => value + 1); return }
+    initializedEditProductKey.current = editorSeedKey('edit', product.id, product.version, editorDataStamp(product.variants))
+    setStaleProductVersion(null)
+  }
   // The banner's "reload": drops the unsaved edits and fills the form from the latest saved product.
   function reloadEditedProduct() {
     allowReseedUntil.current = Date.now() + 10_000
@@ -2087,7 +2105,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         familyOrderedMediaUrls: cachedProduct.familyOrderedMediaUrls?.filter(item => mediaImageKey(item) !== targetKey),
         variants: cachedProduct.variants.map(variant => ({ ...variant, mediaUrls: (variant.mediaUrls ?? []).filter(item => mediaImageKey(item) !== targetKey) }))
       })
-      await productToEdit.refetch()
+      adoptOwnProductWrite((await productToEdit.refetch()).data)
       await client.invalidateQueries({ queryKey: ['products'] })
       showFeedback('Görsel Kaldırıldı', `${result.deletedCount} görsel bağlantısı kaldırıldı ve ürün yenilendi.`, 'success')
     } catch (reason) {
@@ -2306,7 +2324,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       await client.invalidateQueries({ queryKey: ['products'] })
       if (editProductId) {
         await client.invalidateQueries({ queryKey: ['product', editProductId] })
-        await productToEdit.refetch()
+        adoptOwnProductWrite((await productToEdit.refetch()).data)
       }
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : 'Pazaryeri varyant fiyatları kaydedilemedi.'
@@ -2348,7 +2366,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       await client.invalidateQueries({ queryKey: ['products'] })
       if (editProductId) {
         await client.invalidateQueries({ queryKey: ['product', editProductId] })
-        await productToEdit.refetch()
+        adoptOwnProductWrite((await productToEdit.refetch()).data)
       }
     } catch (reason) {
       showFeedback('Platform Fiyatı Kaydedilemedi', reason instanceof Error ? reason.message : 'Varyant kanal fiyatı kaydedilemedi.', 'error')
@@ -2441,7 +2459,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       await client.invalidateQueries({ queryKey: ['products'] })
       if (editProductId) {
         await client.invalidateQueries({ queryKey: ['product', editProductId] })
-        await productToEdit.refetch()
+        adoptOwnProductWrite((await productToEdit.refetch()).data)
       }
     } catch (reason) {
       showFeedback('Platform Fiyatları Kaydedilemedi', reason instanceof Error ? reason.message : 'Pazaryeri varyant fiyatları kaydedilemedi.', 'error')
@@ -2666,6 +2684,10 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   // pictures, never the rest of the form (unsaved prices or stock stay unsaved). The effect runs after variantRows has
   // committed so it sees the new references. New variants and pictures still to upload wait for the product save.
   const mediaAssignmentFormWasClean = useRef(false)
+  // The running assignment save (WEB-SAYFALAR-9): Kaydet waits for it, and a refetch landing meanwhile is the editor's
+  // own write, neither a refill nor another operation's change (seedForm).
+  const mediaAutoSave = useRef<Promise<void> | null>(null)
+  const mediaAutoSaveInFlight = useRef(false)
   const saveVariantMediaAssignments = useEffectEvent(async () => {
     const product = productToEdit.data
     if (!mediaAutoSaveTick || !editProductId || !product) return
@@ -2677,6 +2699,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     }
     if (!requests.length) return
     const formWasClean = mediaAssignmentFormWasClean.current
+    mediaAutoSaveInFlight.current = true
     try {
       for (const request of requests) {
         await hubApi('/files/product-media-reconcile', { method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ productId: variantOwnerProductId(product.variants, request.variantId, product.id), variantId: request.variantId, items: request.items, altText: `${product.title} · ${request.optionSignature}` }) })
@@ -2685,13 +2708,22 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       // A form with no other edits stays clean; other unsaved edits are left for the Kaydet button.
       if (formWasClean) setSnapshotRequest(value => value + 1)
       void client.invalidateQueries({ queryKey: ['products'] })
+      // The product the assignments left: a clean form refills from it, one with other unsaved edits stands on it.
+      const saved = (await productToEdit.refetch()).data
+      mediaAutoSaveInFlight.current = false
+      adoptOwnProductWrite(saved)
       showFeedback('Görsel Ataması Kaydedildi', `${requests.length} varyantın görsel ataması kaydedildi.${formWasClean ? '' : ' Formdaki diğer değişiklikler henüz kaydedilmedi.'}`, 'success')
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : 'Görsel ataması kaydedilemedi.'
       showFeedback('Görsel Ataması Kaydedilemedi', `Görsel ataması kaydedilemedi: ${message} Atama formda duruyor; ürünü kaydettiğinizde yeniden denenir.`, 'error')
+    } finally {
+      mediaAutoSaveInFlight.current = false
     }
   })
-  useEffect(() => { void saveVariantMediaAssignments() }, [mediaAutoSaveTick])
+  useEffect(() => {
+    const running = saveVariantMediaAssignments().finally(() => { if (mediaAutoSave.current === running) mediaAutoSave.current = null })
+    mediaAutoSave.current = running
+  }, [mediaAutoSaveTick])
   function requestVariantMediaSave() {
     mediaAssignmentFormWasClean.current = !editorDirty
     setMediaAutoSaveTick(tick => tick + 1)
@@ -2894,13 +2926,16 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           ? ['Ürün Yayınlanıyor', productChangedAtSubmit ? `Ürün kaydediliyor ve ${storeCount} gönderiliyor…` : `Ürün ${storeCount} gönderiliyor…`]
           : ['Ürün Oluşturuluyor', `Ürün oluşturuluyor ve ${storeCount} gönderiliyor…`]
         : editProductId ? ['Ürün Kaydediliyor', 'Ürün değişiklikleri kaydediliyor…'] : ['Ürün Oluşturuluyor', 'Ürün oluşturuluyor…']
-    setError(undefined); setFieldErrors({}); setNotice(''); showFeedback(pendingTitle, pendingMessage, 'info', { persistent: true, key: productSaveToastKey }); setSubmitting(true); editorSaveInFlight.current = true; setProductAtSave(productToEdit.data ?? null); let productCreated: Product | undefined; let familyMediaChanged = false; let mediaStep = false
+    setError(undefined); setFieldErrors({}); setNotice(''); showFeedback(pendingTitle, pendingMessage, 'info', { persistent: true, key: productSaveToastKey }); setSubmitting(true); editorSaveInFlight.current = true; setProductAtSave(seededProduct.current ?? productToEdit.data ?? null); let productCreated: Product | undefined; let familyMediaChanged = false; let mediaStep = false
     const uploadedMediaFileIds = new Set<string>()
     // What a create that stops after the product exists hands to the product's page (pending-create-media.ts).
     const storedUrlByFileId = new Map<string, string>()
     const writtenVariantMediaIds = new Set<string>()
     let submittedRows: VariantDraft[] = []
     try {
+      // A picture assignment still being saved on its own goes first (WEB-SAYFALAR-9): the save then starts from the
+      // product it left, instead of racing it.
+      if (mediaAutoSave.current) await mediaAutoSave.current
       let submitRequirements = requirements.data ?? []
       if (form.categoryId && !requirements.data) {
         const loadedRequirements = await requirements.refetch()
@@ -2951,17 +2986,20 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       })
       const safeDescription = sanitizeRichText(form.description)
       const variantPayload = (row: VariantDraft, index: number) => ({ sku: row.sku, barcode: row.barcode || null, modelCode: form.modelCode.trim() || null, sortOrder: index, weight: calculateDesi ? Number(form.weight) || null : null, width: calculateDesi ? Number(form.width) || null : null, height: calculateDesi ? Number(form.height) || null : null, length: calculateDesi ? Number(form.length) || null : null, desi: calculateDesi ? desi || 1 : parseProductDesi(form.desi) || null, costPrice: row.costPrice, defaultListPrice: row.listPrice, defaultSalePrice: row.salePrice, options: row.options, attributes: variantAttributesForPayload(row), onHand: editorOpeningStock(row.stock) })
-      const existingVariantIds = new Set(productToEdit.data?.variants.map(variant => variant.id) ?? [])
+      // The product the form was filled from (WEB-SAYFALAR-1): its version, variants, model codes and desi are what this
+      // save is made against; a newer refetch held back by the stale banner is not.
+      const loadedProduct = editProductId ? seededProduct.current ?? productToEdit.data : undefined
+      const existingVariantIds = new Set(loadedProduct?.variants.map(variant => variant.id) ?? [])
       const placeholderIdsToDelete = replacedPlaceholderIds.filter(id => existingVariantIds.has(id) && !rows.some(row => row.key === id) && !removedVariantIds.includes(id))
       const modelCodeForRow = (variantId: string) => modelCodeForExistingVariant(
         form.modelCode,
         initialEditModelCode.current,
-        productToEdit.data?.variants.find(variant => variant.id === variantId)?.modelCode
+        loadedProduct?.variants.find(variant => variant.id === variantId)?.modelCode
       )
       let product: Product
       let productVersionRetryUsed = false
-      if (productToEdit.data) {
-        const editProduct = productToEdit.data
+      if (loadedProduct) {
+        const editProduct = loadedProduct
         const updatePayload = {
           title: savedTitle,
           status: savedStatus,
