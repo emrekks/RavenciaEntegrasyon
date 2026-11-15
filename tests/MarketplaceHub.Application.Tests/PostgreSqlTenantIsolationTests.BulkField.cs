@@ -32,12 +32,16 @@ public sealed partial class PostgreSqlTenantIsolationTests
         var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "TRENDYOL", Environment = "STAGE", DisplayName = "Bulk field test", ExternalStoreId = $"store-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V2", Version = 1 };
         var brand = new Brand { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Name = "Ravencia", NormalizedName = "RAVENCIA", IsActive = true, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
         var otherBrand = new Brand { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Name = "Lavian", NormalizedName = "LAVIAN", IsActive = true, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
+        var thirdBrand = new Brand { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Name = "Mirela", NormalizedName = "MIRELA", IsActive = true, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
         var category = new Category { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Name = "Bluz", NormalizedName = "BLUZ", Path = "Bluz", IsLeaf = true, IsActive = true, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
         var otherCategory = new Category { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Name = "Gömlek", NormalizedName = "GOMLEK", Path = "Gömlek", IsLeaf = true, IsActive = true, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
         Product Card(string title, int minutes) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = title, Description = "<p>Eski açıklama</p>", BrandId = brand.Id, CategoryId = category.Id, VatRate = 20m, VatInclusion = "EXCLUDED", WarrantyMonths = 12, DeliveryDays = 3, Status = ProductStatus.Active, CreatedAt = fixture.Now.AddMinutes(minutes), UpdatedAt = fixture.Now, Version = 1 };
         var black = Card("Bluz Siyah", 0);
         var red = Card("Bluz Kırmızı", 1);
         var unrelated = Card("Başka model", 2);
+        // The model code under another brand (KENE01): never pulled into the selected model, only warned about.
+        var foreign = Card("Bluz Mavi", 3);
+        foreign.BrandId = thirdBrand.Id;
         var variants = new List<ProductVariant>();
         var offers = new List<ChannelOffer>();
         void Sizes(Product card, string modelCode, string colour)
@@ -53,15 +57,16 @@ public sealed partial class PostgreSqlTenantIsolationTests
         Sizes(black, "BLZ01", "Siyah");
         Sizes(red, "BLZ01", "Kırmızı");
         Sizes(unrelated, "GML02", "Beyaz");
+        Sizes(foreign, "BLZ01", "Mavi");
         var redLink = new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ProductId = red.Id, ExternalId = $"remote-{Guid.NewGuid():N}", SyncStatus = "SYNCED", Version = 1 };
 
         await using var db = fixture.CreateContext();
         await using var transaction = await db.Database.BeginTransactionAsync();
         db.Tenants.Add(tenant);
         db.PlatformConnections.Add(connection);
-        db.Brands.AddRange(brand, otherBrand);
+        db.Brands.AddRange(brand, otherBrand, thirdBrand);
         db.Categories.AddRange(category, otherCategory);
-        db.Products.AddRange(black, red, unrelated);
+        db.Products.AddRange(black, red, unrelated, foreign);
         db.ProductVariants.AddRange(variants);
         db.ChannelOffers.AddRange(offers);
         db.MarketplaceProductLinks.Add(redLink);
@@ -69,6 +74,7 @@ public sealed partial class PostgreSqlTenantIsolationTests
         db.ChangeTracker.Clear();
         var service = new CatalogService(db, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider, new MemoryCache(new MemoryCacheOptions()));
         var unrelatedBefore = await BulkFieldStateAsync(db, unrelated.Id);
+        var foreignBefore = await BulkFieldStateAsync(db, foreign.Id);
 
         // Only the black card is selected: the red colour card of the same model takes the value too.
         async Task<BulkProductFieldResult> Set(string field, string value)
@@ -98,6 +104,7 @@ public sealed partial class PostgreSqlTenantIsolationTests
                 Assert.Equal(expected, after[index]);
             }
             Assert.Equal(unrelatedBefore, await BulkFieldStateAsync(db, unrelated.Id));
+            Assert.Equal(foreignBefore, await BulkFieldStateAsync(db, foreign.Id));
             return result.Value!;
         }
 

@@ -786,7 +786,9 @@ Yalnız Sahip ve Yönetici kullanabilir.
 
 Kurallar (`CatalogService.BulkField.cs:7-13`):
 
-- Model alanları seçilen modellerin **tüm renk kartlarına** yazılır; Marka aynı model kodunun başka markadaki kartına da.
+- Model alanları seçilen modellerin **tüm renk kartlarına** yazılır. Aynı model kodunun başka markadaki kartı (belirsiz model,
+  `PRODUCT_MODEL_AMBIGUOUS`) modele dahil değildir: yalnız kendisi seçildiyse yazılır, Marka dahil hiçbir alanı kendiliğinden
+  değişmez (ürün düzenleyicinin kaydı da ona yazmaz).
 - **Desi** her varyanta; **Güvenlik Stoğu** her varyantın her pazaryeri teklifine yazılır.
 - Yalnız seçilen alan yazılır; kartın diğer alanları denetlenmez.
 - **Pazaryerine hiçbir şey gönderilmez.** Değişen kartların bağlantıları "yerel değişiklik var" işaretlenir; gönderim için

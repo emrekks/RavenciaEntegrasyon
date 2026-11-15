@@ -42,9 +42,9 @@ public sealed partial class CatalogService
         var selected = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.Id))
             .Select(x => new BulkFieldCard(x.Id, x.BrandId, x.Title)).ToListAsync(cancellationToken);
         if (selected.Count != ids.Length) return ServiceResult<BulkProductFieldResult>.Fail("BULK_PRODUCT_NOT_FOUND", "Seçilen ürünlerden biri bulunamadı veya bu çalışma alanına ait değil.", 404);
-        // The brand is the model code's (ApplyFamilySharedFieldsAsync): a card of the same model code under another brand
-        // takes it too.
-        var families = await BulkFieldFamiliesAsync(tenantId, selected, acrossBrands: value.Field == BulkProductFields.Brand, cancellationToken);
+        // A selected card's model is its brand's cards of its code; a card of the code under another brand (KENE01) takes
+        // the value only when it is selected itself (PRODUCT_MODEL_AMBIGUOUS is only warned about, never merged).
+        var families = await BulkFieldFamiliesAsync(tenantId, selected, cancellationToken);
 
         var correlation = string.IsNullOrWhiteSpace(correlationId) ? Guid.NewGuid().ToString("N") : correlationId;
         var reason = $"Toplu Değer Ata: {BulkProductFields.Label(value.Field)} = {display}";
@@ -82,7 +82,7 @@ public sealed partial class CatalogService
 
     // The selected cards grouped by model (same brand and model code; any brand for the brand itself), each with every
     // visible colour card of the model. A card without a model code is a model of its own, named by its title.
-    private async Task<List<BulkFieldFamily>> BulkFieldFamiliesAsync(Guid tenantId, IReadOnlyList<BulkFieldCard> selected, bool acrossBrands, CancellationToken cancellationToken)
+    private async Task<List<BulkFieldFamily>> BulkFieldFamiliesAsync(Guid tenantId, IReadOnlyList<BulkFieldCard> selected, CancellationToken cancellationToken)
     {
         var selectedIds = selected.Select(x => x.Id).ToArray();
         var codes = (await db.ProductVariants.AsNoTracking()
@@ -120,9 +120,9 @@ public sealed partial class CatalogService
             // The selected card always belongs to its model, even when another marketplace's link hides it from the list.
             var members = new List<Guid> { card.Id };
             members.AddRange((candidatesByKey.GetValueOrDefault(key) ?? [])
-                .Where(candidate => candidate.BrandId == card.BrandId || acrossBrands && candidate.Status != ProductStatus.Archived)
+                .Where(candidate => candidate.BrandId == card.BrandId)
                 .Select(candidate => candidate.Id));
-            members.AddRange(selected.Where(other => ProductFamilyKeyPolicy.ModelCodeKey(codes.GetValueOrDefault(other.Id)) == key && (other.BrandId == card.BrandId || acrossBrands)).Select(other => other.Id));
+            members.AddRange(selected.Where(other => ProductFamilyKeyPolicy.ModelCodeKey(codes.GetValueOrDefault(other.Id)) == key && other.BrandId == card.BrandId).Select(other => other.Id));
             var ids = members.Where(id => !placed.Contains(id)).Distinct().ToList();
             placed.UnionWith(ids);
             families.Add(new(code!, ids));
