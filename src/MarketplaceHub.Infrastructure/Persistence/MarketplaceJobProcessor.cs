@@ -14085,10 +14085,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // The record carries what the action changes, like the instant actions do, so an unclear outcome is
         // verified by reading the marketplace instead of waiting a week to be closed as unresolved.
         var (effectAction, expectedValue) = ShipmentEffectContext(payload.Action, payload.PayloadJson);
+        // ISLEYICI-6 (15 Nov 2026): every database read comes before the effect record; after it only the marketplace
+        // call runs, so a failed read can no longer leave a request that was never sent as an unclear effect.
+        var storeFrontCode = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => x.StoreFrontCode).SingleOrDefaultAsync(cancellationToken);
         effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = MarketplaceJobTypes.ShipmentAction, IdempotencyKey = job.EffectIdempotencyKey, CreatedAt = timeProvider.GetUtcNow(), ConnectionId = connectionId, TargetId = package.Id, Action = effectAction, ExpectedValue = expectedValue };
         db.ExternalEffectRecords.Add(effect); await db.SaveChangesAsync(cancellationToken);
         TrackRequest();
-        var result = await orders.ExecutePackageActionAsync(Context(tenantId, connectionId, correlationId, job.EffectIdempotencyKey), new(package.ExternalPackageId, payload.Action, payload.PayloadJson, await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => x.StoreFrontCode).SingleOrDefaultAsync(cancellationToken)), cancellationToken);
+        var result = await orders.ExecutePackageActionAsync(Context(tenantId, connectionId, correlationId, job.EffectIdempotencyKey), new(package.ExternalPackageId, payload.Action, payload.PayloadJson, storeFrontCode), cancellationToken);
         if (!result.IsSuccess)
         {
             TrackResultFailure(result.Error);
