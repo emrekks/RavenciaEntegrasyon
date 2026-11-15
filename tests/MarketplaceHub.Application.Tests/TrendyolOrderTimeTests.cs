@@ -52,7 +52,8 @@ public sealed class TrendyolOrderTimeTests
         var withOrderDate = TrendyolJsonMapper.OrderFromReturnClaim($$"""{"orderNumber":"ord-1","orderDate":{{OrderDate}},"claimDate":{{LastModifiedDate}},"items":[]}""");
         Assert.Equal(new DateTimeOffset(2026, 11, 2, 19, 1, 41, 397, TimeSpan.Zero), withOrderDate?.OrderedAt);
 
+        // ADAPTOR-TY-HB-1: the claim's date is not when the order was placed; without the order's own date no order is built.
         var claimDateOnly = TrendyolJsonMapper.OrderFromReturnClaim($$"""{"orderNumber":"ord-1","claimDate":{{LastModifiedDate}},"items":[]}""");
-        Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(LastModifiedDate), claimDateOnly?.OrderedAt);
+        Assert.Null(claimDateOnly);
     }
 }

@@ -894,8 +894,16 @@ public static class TrendyolJsonMapper
         var orderNumber = Text(claim, "orderNumber");
         if (string.IsNullOrWhiteSpace(orderNumber)) return null;
 
-        // D13: a claim with neither an order date nor a claim date is not projected as an order placed in 1970.
-        if ((OrderDate(claim) ?? Instant(claim, "claimDate")) is not { } ordered) return null;
+        // D13: a claim with neither an order date nor a claim date is not projected as an order placed in 1970. Nothing is
+        // guessed (ADAPTOR-TY-HB-1): a claim without its order's own date (getClaims carries orderDate) is not dated by
+        // its claim date, a line without a readable price is not priced 0 and an unknown currency is not taken as lira;
+        // each builds no order and the claim waits (RETURN_ORDER_NOT_FOUND) until the order itself is read.
+        if (OrderDate(claim) is not { } ordered) return null;
+        // getClaims has no currency field (trendyol-api-son.md, getClaims sample): lira, as the claim is read for the TR
+        // core channel only; a currency it does send must be one the panel knows.
+        var rawCurrency = NullText(claim, "currencyCode");
+        var currency = rawCurrency is null ? "TRY" : RefusedOrders.Currency(rawCurrency);
+        if (currency is null) return null;
         var packageOccurredAt = Instant(claim, "lastModifiedDate") ?? Instant(claim, "claimDate") ?? ordered;
         // This is a partial order projection reconstructed from a return claim.
         // Its claim timestamp can be newer than the original order timestamp,
@@ -911,7 +919,7 @@ public static class TrendyolJsonMapper
         foreach (var entry in ClaimLineEntries(claim))
         {
             if (entry.OrderLine is not { } orderLine) continue;
-            AddReturnOrderLine(lines, entry.ExternalOrderLineId, orderLine, Decimal(entry.Item, "quantity", "returnedQuantity"), lineStatus);
+            if (!AddReturnOrderLine(lines, entry.ExternalOrderLineId, orderLine, Decimal(entry.Item, "quantity", "returnedQuantity"), lineStatus)) return null;
         }
 
         var gross = Decimal(claim, "packageGrossAmount", "grossAmount", "packageTotalPrice");
@@ -922,7 +930,7 @@ public static class TrendyolJsonMapper
         var package = new RemotePackage(packageId, null, lineStatus, packageOccurredAt,
             NullText(claim, "cargoProviderName", "cargoProviderCode", "cargoProvider"),
             NullText(claim, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), allocations, gross, 0, gross, CreatedBy: NormalizeCreatedBy(NullText(claim, "createdBy")));
-        return new(orderNumber, orderNumber, ordered, modified, NullText(claim, "currencyCode") ?? "TRY", gross, 0, gross,
+        return new(orderNumber, orderNumber, ordered, modified, currency, gross, 0, gross,
             ReturnClaimCustomerSnapshot(claim), ObjectSnapshot(claim, "shipmentAddress"), ObjectSnapshot(claim, "invoiceAddress"), lines, [package], claim.GetRawText(),
             StoreFrontCode: ClaimStorefront(claim));
     }
@@ -979,14 +987,17 @@ public static class TrendyolJsonMapper
         return snapshot.ToJsonString();
     }
 
-    private static void AddReturnOrderLine(List<RemoteOrderLine> lines, string externalLineId, JsonElement orderLine, decimal quantity, string status)
+    // False when the order line carries no readable price: the caller builds no order rather than one priced 0.
+    private static bool AddReturnOrderLine(List<RemoteOrderLine> lines, string externalLineId, JsonElement orderLine, decimal quantity, string status)
     {
         if (quantity <= 0) quantity = 1;
         var index = lines.FindIndex(x => string.Equals(x.ExternalLineId, externalLineId, StringComparison.Ordinal));
-        if (index >= 0) { lines[index] = lines[index] with { Quantity = lines[index].Quantity + quantity }; return; }
+        if (index >= 0) { lines[index] = lines[index] with { Quantity = lines[index].Quantity + quantity }; return true; }
+        if (!TryDecimal(orderLine, out var unitPrice, "price", "lineUnitPrice", "amount")) return false;
         lines.Add(new(externalLineId, Text(orderLine, "merchantSku", "stockCode", "sku"), NullText(orderLine, "barcode"),
-            Text(orderLine, "productName", "title"), quantity, Decimal(orderLine, "price", "lineUnitPrice", "amount"),
+            Text(orderLine, "productName", "title"), quantity, unitPrice,
             TryDecimal(orderLine, out var vatRate, "vatRate") ? vatRate : null, status, orderLine.GetRawText()));
+        return true;
     }
 
     private static string? NormalizeCreatedBy(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToLowerInvariant();

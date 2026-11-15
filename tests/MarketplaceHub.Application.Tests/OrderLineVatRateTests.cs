@@ -17,7 +17,7 @@ public sealed class OrderLineVatRateTests
         const string payload = """
         {
           "claimNumber": "032985701", "status": "AwaitingAction", "claimDate": "2026-09-28T12:15:00Z",
-          "orderNumber": "0414141341", "lineItemId": "line-17", "merchantSku": "merchant-sku-17",
+          "orderDate": "2026-09-20T10:00:00Z", "orderNumber": "0414141341", "lineItemId": "line-17", "merchantSku": "merchant-sku-17",
           "productName": "Test Product", "quantity": 1, "price": { "amount": 25.50, "currency": "TRY" }
         }
         """;
