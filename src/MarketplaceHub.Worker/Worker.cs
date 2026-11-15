@@ -638,8 +638,11 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<MarketplaceHub.Infrastructure.Persistence.AppDbContext>();
-            var (claims, written) = await MarketplaceHub.Infrastructure.Persistence.ReturnCardColumns.RepairAsync(db, token);
-            if (written > 0) logger.LogInformation("Return card columns repaired: {Written} of {Claims} claim(s) written", written, claims);
+            var (claims, written, lost) = await MarketplaceHub.Infrastructure.Persistence.ReturnCardColumns.RepairAsync(db, token);
+            logger.LogInformation("Return card columns repair: {Claims} claim(s) read, {Written} written, {Lost} changed meanwhile and left to their own save", claims, written, lost);
+            // A tenant still off the columns has its Returns page computed the slow way until the next pass.
+            foreach (var tenantId in await MarketplaceHub.Infrastructure.Persistence.ReturnCardColumns.StaleTenantsAsync(db, token))
+                logger.LogWarning("Return card columns are still missing or stale for tenant {TenantId} after the repair pass; its Returns page reads every claim until they are right", tenantId);
         }, exception => logger.LogError(exception, "Return card columns repair failed"), stoppingToken);
 
     // Trendyol passivates a webhook whose deliveries keep failing (for example while the server is

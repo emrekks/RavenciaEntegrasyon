@@ -169,12 +169,13 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         ResetReaddressedOfferMarks(); TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); OrderBuyerTypes.Apply(ChangeTracker); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit();
-        ReturnCardColumns.ApplyToSaveAsync(this, CancellationToken.None).GetAwaiter().GetResult();
+        var returnClaims = ReturnCardColumns.GuardAsync(this, () => ReturnCardColumns.BeforeSaveAsync(this, CancellationToken.None), []).GetAwaiter().GetResult();
         var models = ProductModelLinks.Capture(ChangeTracker);
         int saved;
         _saving = true;
         try { saved = base.SaveChanges(acceptAllChangesOnSuccess); }
         finally { _saving = false; }
+        ReturnCardColumns.GuardAsync(this, async () => { await ReturnCardColumns.AfterSaveAsync(this, returnClaims, CancellationToken.None); return 0; }, 0).GetAwaiter().GetResult();
         if (models is not null) LinkProductModelsAsync(models).GetAwaiter().GetResult();
         RefreshDeferredModelValuesAsync().GetAwaiter().GetResult();
         return saved;
@@ -183,14 +184,16 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         await ResetReaddressedOfferMarksAsync(cancellationToken); TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); OrderBuyerTypes.Apply(ChangeTracker); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit();
-        // SIPARIS-STOK-9: the Returns page's card columns of every return claim this save touches (after the outbox events,
-        // so a claim changed only in these columns raises none).
-        await ReturnCardColumns.ApplyToSaveAsync(this, cancellationToken);
+        // SIPARIS-STOK-9: the Returns page's card columns of every return claim this save touches: the claims it changes in
+        // the save itself (after the outbox events, so the columns raise none), the others right after it, outside the
+        // tracker (ReturnCardColumns).
+        var returnClaims = await ReturnCardColumns.GuardAsync(this, () => ReturnCardColumns.BeforeSaveAsync(this, cancellationToken), []);
         var models = ProductModelLinks.Capture(ChangeTracker);
         int saved;
         _saving = true;
         try { saved = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken); }
         finally { _saving = false; }
+        await ReturnCardColumns.GuardAsync(this, async () => { await ReturnCardColumns.AfterSaveAsync(this, returnClaims, cancellationToken); return 0; }, 0);
         if (models is not null) await LinkProductModelsAsync(models);
         await RefreshDeferredModelValuesAsync();
         return saved;

@@ -2,6 +2,9 @@ using System.Linq.Expressions;
 using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
@@ -9,12 +12,15 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // database can count, filter and page the page's cards instead of the server reading every claim and line of the tenant.
 // The rules stay the page's own C# rules (MarketplaceSalesService.ReturnTabGroup, ReturnStatusWire, MaySplitReturnClaim and
 // the approval date ReturnSortDatesAsync reads); this class is the one place that writes the columns:
-//   - every save (AppDbContext.SaveChanges) of a claim, of its lines or of its decisions sets them from the state being
-//     saved, in the same save (ApplyToSaveAsync);
+//   - every save (AppDbContext.SaveChanges) of a claim, of its lines or of its decisions: a claim the save itself adds or
+//     changes takes them in the same save (BeforeSaveAsync); any other claim whose lines or decisions it saves is written
+//     right after it, without the change tracker (AfterSaveAsync), so a save that leaves the claim alone never depends on
+//     the claim's version (SIPARIS-STOK-5) and never starts tracking it;
 //   - the deploy (DatabaseMigrator) and the worker's periodic repair pass fill the rows written before the columns existed,
 //     by the old code during a deploy, or by anything that bypassed the save (RepairAsync);
 //   - the page uses them only while every claim of the tenant has them filled and equal to the rule (Stale), and otherwise
-//     computes the page as before, so a missing or stale value never changes what the user sees.
+//     computes the page as before, so a missing or stale value never changes what the user sees. That is also why a
+//     failure of the hook outside a transaction is only logged: the claim stays stale and the page falls back.
 public static class ReturnCardColumns
 {
     private const string ApproveAction = "APPROVE";
@@ -32,9 +38,11 @@ public static class ReturnCardColumns
     public static (string TabGroup, bool CardSplit, DateTimeOffset? ApprovedAt) Values(ReturnClaimStatus status, DateTimeOffset? lastRemoteModifiedAt, IReadOnlyCollection<string?> lineRawStatuses, DateTimeOffset? lastApproval) =>
         (TabGroup(status, lineRawStatuses), CardSplit(lineRawStatuses), ApprovedAt(status, lastApproval, lastRemoteModifiedAt));
 
-    // The save hook: each claim saved, or whose lines or decisions are saved, takes its columns from the state being saved
-    // (the rows in the database overlaid with the tracked ones). Runs after the context has detected its changes.
-    public static async Task ApplyToSaveAsync(AppDbContext db, CancellationToken cancellationToken)
+    // Before the save (after the context detected its changes): the claims the save itself adds or changes take their
+    // columns through the tracker, from the database rows overlaid with the lines and decisions this save adds, changes or
+    // deletes (an unchanged tracked row counts as the database has it now). Returns the other claims the save touches
+    // (their lines or decisions saved), for AfterSaveAsync. Never queries with tracking.
+    public static async Task<IReadOnlyCollection<(Guid TenantId, Guid ClaimId)>> BeforeSaveAsync(AppDbContext db, CancellationToken cancellationToken)
     {
         var tracker = db.ChangeTracker;
         var autoDetect = tracker.AutoDetectChangesEnabled;
@@ -43,41 +51,34 @@ public static class ReturnCardColumns
         {
             static bool Saved(EntityState state) => state is EntityState.Added or EntityState.Modified or EntityState.Deleted;
             var claimEntries = tracker.Entries<ReturnClaim>().ToList();
-            var lineEntries = tracker.Entries<ReturnLine>().ToList();
-            var decisionEntries = tracker.Entries<ReturnDecision>().ToList();
-            var affected = claimEntries.Where(entry => entry.State is EntityState.Added or EntityState.Modified).Select(entry => (entry.Entity.TenantId, ClaimId: entry.Entity.Id))
-                .Concat(lineEntries.Where(entry => Saved(entry.State)).Select(entry => (entry.Entity.TenantId, entry.Entity.ClaimId)))
-                .Concat(decisionEntries.Where(entry => Saved(entry.State)).Select(entry => (entry.Entity.TenantId, entry.Entity.ClaimId)))
+            var lineEntries = tracker.Entries<ReturnLine>().Where(entry => Saved(entry.State)).ToList();
+            var decisionEntries = tracker.Entries<ReturnDecision>().Where(entry => Saved(entry.State)).ToList();
+            var touched = lineEntries.Select(entry => (entry.Entity.TenantId, ClaimId: entry.Entity.ClaimId))
+                .Concat(decisionEntries.Select(entry => (entry.Entity.TenantId, entry.Entity.ClaimId)))
                 .ToHashSet();
-            if (affected.Count == 0) return;
-            affected.ExceptWith(claimEntries.Where(entry => entry.State == EntityState.Deleted).Select(entry => (entry.Entity.TenantId, entry.Entity.Id)));
-            if (affected.Count == 0) return;
+            var claims = claimEntries.Where(entry => entry.State is EntityState.Added or EntityState.Modified)
+                .ToDictionary(entry => (entry.Entity.TenantId, ClaimId: entry.Entity.Id));
+            touched.ExceptWith(claimEntries.Where(entry => entry.State == EntityState.Deleted).Select(entry => (entry.Entity.TenantId, entry.Entity.Id)));
+            touched.ExceptWith(claims.Keys);
+            if (claims.Count == 0) return touched;
 
-            var claims = claimEntries.Where(entry => entry.State is not (EntityState.Deleted or EntityState.Detached) && affected.Contains((entry.Entity.TenantId, entry.Entity.Id)))
-                .ToDictionary(entry => (entry.Entity.TenantId, entry.Entity.Id));
-            var tenantIds = affected.Select(key => key.TenantId).Distinct().ToArray();
-            var claimIds = affected.Select(key => key.ClaimId).Distinct().ToArray();
-            var untracked = affected.Where(key => !claims.ContainsKey(key)).Select(key => key.ClaimId).ToArray();
-            if (untracked.Length > 0)
-                foreach (var claim in await db.ReturnClaims.Where(x => tenantIds.Contains(x.TenantId) && untracked.Contains(x.Id)).ToListAsync(cancellationToken))
-                    if (affected.Contains((claim.TenantId, claim.Id))) claims[(claim.TenantId, claim.Id)] = db.Entry(claim);
-            if (claims.Count == 0) return;
-
+            var tenantIds = claims.Keys.Select(key => key.TenantId).Distinct().ToArray();
+            var claimIds = claims.Keys.Select(key => key.ClaimId).ToArray();
             var lines = (await db.ReturnLines.AsNoTracking().Where(x => tenantIds.Contains(x.TenantId) && claimIds.Contains(x.ClaimId))
                     .Select(x => new { x.Id, x.TenantId, x.ClaimId, x.RawStatus }).ToListAsync(cancellationToken))
                 .ToDictionary(x => x.Id, x => (x.TenantId, x.ClaimId, x.RawStatus));
-            foreach (var entry in lineEntries.Where(entry => affected.Contains((entry.Entity.TenantId, entry.Entity.ClaimId))))
+            foreach (var entry in lineEntries)
             {
                 lines.Remove(entry.Entity.Id);
-                if (entry.State is not (EntityState.Deleted or EntityState.Detached)) lines[entry.Entity.Id] = (entry.Entity.TenantId, entry.Entity.ClaimId, entry.Entity.RawStatus);
+                if (entry.State != EntityState.Deleted) lines[entry.Entity.Id] = (entry.Entity.TenantId, entry.Entity.ClaimId, entry.Entity.RawStatus);
             }
             var approvals = (await db.ReturnDecisions.AsNoTracking().Where(x => tenantIds.Contains(x.TenantId) && claimIds.Contains(x.ClaimId) && x.Action == ApproveAction && x.Status == Succeeded)
                     .Select(x => new { x.Id, x.TenantId, x.ClaimId, x.CompletedAt }).ToListAsync(cancellationToken))
                 .ToDictionary(x => x.Id, x => (x.TenantId, x.ClaimId, x.CompletedAt));
-            foreach (var entry in decisionEntries.Where(entry => affected.Contains((entry.Entity.TenantId, entry.Entity.ClaimId))))
+            foreach (var entry in decisionEntries)
             {
                 approvals.Remove(entry.Entity.Id);
-                if (entry.State is not (EntityState.Deleted or EntityState.Detached) && entry.Entity.Action == ApproveAction && entry.Entity.Status == Succeeded)
+                if (entry.State != EntityState.Deleted && entry.Entity.Action == ApproveAction && entry.Entity.Status == Succeeded)
                     approvals[entry.Entity.Id] = (entry.Entity.TenantId, entry.Entity.ClaimId, entry.Entity.CompletedAt);
             }
             var linesByClaim = lines.Values.ToLookup(x => (x.TenantId, x.ClaimId), x => x.RawStatus);
@@ -91,10 +92,38 @@ public static class ReturnCardColumns
                 Set(entry, x => x.CardSplit, values.CardSplit);
                 Set(entry, x => x.ApprovedAt, values.ApprovedAt);
             }
+            return touched;
         }
         finally
         {
             tracker.AutoDetectChangesEnabled = autoDetect;
+        }
+    }
+
+    // After a successful save: the other claims it touched are written from the database as it now stands, by the repair
+    // pass's conditional update (no tracker, no version check).
+    public static async Task AfterSaveAsync(AppDbContext db, IReadOnlyCollection<(Guid TenantId, Guid ClaimId)> claims, CancellationToken cancellationToken)
+    {
+        if (claims.Count == 0) return;
+        var tenantIds = claims.Select(key => key.TenantId).Distinct().ToArray();
+        var claimIds = claims.Select(key => key.ClaimId).Distinct().ToArray();
+        await RefreshAsync(db, db.ReturnClaims.AsNoTracking().Where(x => tenantIds.Contains(x.TenantId) && claimIds.Contains(x.Id)), cancellationToken);
+    }
+
+    // AppDbContext's guard around both steps: inside the caller's transaction a failure fails the save (it is rolled back
+    // with it); outside one it is logged and the claim stays stale until the repair pass (the page falls back meanwhile).
+    public static async Task<T> GuardAsync<T>(AppDbContext db, Func<Task<T>> step, T fallback)
+    {
+        if (db.Database.CurrentTransaction is not null) return await step();
+        try
+        {
+            return await step();
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            var logger = (db.GetService<ILoggerFactory>() ?? NullLoggerFactory.Instance).CreateLogger(typeof(ReturnCardColumns));
+            logger.LogWarning(exception, "Return card columns were not written with this save; the repair pass writes them later");
+            return fallback;
         }
     }
 
@@ -107,41 +136,64 @@ public static class ReturnCardColumns
 
     // The deploy's backfill and the worker's repair pass: every claim whose columns are missing or differ from the rule is
     // written, in batches by claim id. A claim changed meanwhile (its status, last change or columns no longer as read) is
-    // left to its own save, which writes the columns itself. Idempotent: a second run writes nothing.
-    public static async Task<(int Claims, int Written)> RepairAsync(AppDbContext db, CancellationToken cancellationToken, int batchSize = 500)
+    // left to its own save, which writes the columns itself (counted as Lost). Idempotent: a second run writes nothing.
+    public static async Task<(int Claims, int Written, int Lost)> RepairAsync(AppDbContext db, CancellationToken cancellationToken, int batchSize = 500)
     {
-        var (seen, written) = (0, 0);
+        var (seen, written, lost) = (0, 0, 0);
         Guid? after = null;
         while (true)
         {
             var query = db.ReturnClaims.AsNoTracking();
             if (after is { } last) query = query.Where(x => x.Id.CompareTo(last) > 0);
-            var batch = await query.OrderBy(x => x.Id).Take(batchSize)
-                .Select(x => new { x.Id, x.TenantId, x.Status, x.LastRemoteModifiedAt, x.TabGroup, x.CardSplit, x.ApprovedAt })
-                .ToListAsync(cancellationToken);
-            if (batch.Count == 0) return (seen, written);
-            seen += batch.Count;
-            after = batch[^1].Id;
-            var tenantIds = batch.Select(x => x.TenantId).Distinct().ToArray();
-            var claimIds = batch.Select(x => x.Id).ToArray();
-            var lines = (await db.ReturnLines.AsNoTracking().Where(x => tenantIds.Contains(x.TenantId) && claimIds.Contains(x.ClaimId))
-                    .Select(x => new { x.ClaimId, x.RawStatus }).ToListAsync(cancellationToken))
-                .ToLookup(x => x.ClaimId, x => x.RawStatus);
-            var approvals = await db.ReturnDecisions.AsNoTracking()
-                .Where(x => tenantIds.Contains(x.TenantId) && claimIds.Contains(x.ClaimId) && x.Action == ApproveAction && x.Status == Succeeded)
-                .GroupBy(x => x.ClaimId).Select(group => new { ClaimId = group.Key, CompletedAt = group.Max(x => x.CompletedAt) })
-                .ToDictionaryAsync(x => x.ClaimId, x => x.CompletedAt, cancellationToken);
-            foreach (var row in batch)
-            {
-                var (tabGroup, cardSplit, approvedAt) = Values(row.Status, row.LastRemoteModifiedAt, lines[row.Id].ToList(), approvals.GetValueOrDefault(row.Id));
-                if (row.TabGroup == tabGroup && row.CardSplit == cardSplit && row.ApprovedAt == approvedAt) continue;
-                var (status, remoteModifiedAt, oldTab, oldSplit, oldApproved) = (row.Status, row.LastRemoteModifiedAt, row.TabGroup, row.CardSplit, row.ApprovedAt);
-                written += await db.ReturnClaims
-                    .Where(x => x.TenantId == row.TenantId && x.Id == row.Id && x.Status == status && x.LastRemoteModifiedAt == remoteModifiedAt
-                        && x.TabGroup == oldTab && x.CardSplit == oldSplit && x.ApprovedAt == oldApproved)
-                    .ExecuteUpdateAsync(set => set.SetProperty(x => x.TabGroup, tabGroup).SetProperty(x => x.CardSplit, cardSplit).SetProperty(x => x.ApprovedAt, approvedAt), cancellationToken);
-            }
+            var batch = await RefreshAsync(db, query.OrderBy(x => x.Id).Take(batchSize), cancellationToken);
+            if (batch.Seen == 0) return (seen, written, lost);
+            (seen, written, lost, after) = (seen + batch.Seen, written + batch.Written, lost + batch.Lost, batch.Last);
         }
+    }
+
+    // Reads these claims (no tracking), their lines and approvals, and writes each claim whose columns differ from the rule,
+    // on condition that its status, last change and columns are still as read.
+    private static async Task<(int Seen, int Written, int Lost, Guid? Last)> RefreshAsync(AppDbContext db, IQueryable<ReturnClaim> claims, CancellationToken cancellationToken)
+    {
+        var batch = await claims.Select(x => new { x.Id, x.TenantId, x.Status, x.LastRemoteModifiedAt, x.TabGroup, x.CardSplit, x.ApprovedAt }).ToListAsync(cancellationToken);
+        if (batch.Count == 0) return (0, 0, 0, null);
+        var tenantIds = batch.Select(x => x.TenantId).Distinct().ToArray();
+        var claimIds = batch.Select(x => x.Id).ToArray();
+        var lines = (await db.ReturnLines.AsNoTracking().Where(x => tenantIds.Contains(x.TenantId) && claimIds.Contains(x.ClaimId))
+                .Select(x => new { x.ClaimId, x.RawStatus }).ToListAsync(cancellationToken))
+            .ToLookup(x => x.ClaimId, x => x.RawStatus);
+        var approvals = await db.ReturnDecisions.AsNoTracking()
+            .Where(x => tenantIds.Contains(x.TenantId) && claimIds.Contains(x.ClaimId) && x.Action == ApproveAction && x.Status == Succeeded)
+            .GroupBy(x => x.ClaimId).Select(group => new { ClaimId = group.Key, CompletedAt = group.Max(x => x.CompletedAt) })
+            .ToDictionaryAsync(x => x.ClaimId, x => x.CompletedAt, cancellationToken);
+        var (written, lost) = (0, 0);
+        foreach (var row in batch)
+        {
+            var (tabGroup, cardSplit, approvedAt) = Values(row.Status, row.LastRemoteModifiedAt, lines[row.Id].ToList(), approvals.GetValueOrDefault(row.Id));
+            if (row.TabGroup == tabGroup && row.CardSplit == cardSplit && row.ApprovedAt == approvedAt) continue;
+            var (status, remoteModifiedAt, oldTab, oldSplit, oldApproved) = (row.Status, row.LastRemoteModifiedAt, row.TabGroup, row.CardSplit, row.ApprovedAt);
+            var updated = await db.ReturnClaims
+                .Where(x => x.TenantId == row.TenantId && x.Id == row.Id && x.Status == status && x.LastRemoteModifiedAt == remoteModifiedAt
+                    && x.TabGroup == oldTab && x.CardSplit == oldSplit && x.ApprovedAt == oldApproved)
+                .ExecuteUpdateAsync(set => set.SetProperty(x => x.TabGroup, tabGroup).SetProperty(x => x.CardSplit, cardSplit).SetProperty(x => x.ApprovedAt, approvedAt), cancellationToken);
+            if (updated > 0) written += updated; else lost++;
+        }
+        return (batch.Count, written, lost, batch[^1].Id);
+    }
+
+    // The tenants that still have a claim whose columns are missing or stale (Stale), so the worker can say which tenants'
+    // Returns pages are computed the slow way.
+    public static async Task<List<Guid>> StaleTenantsAsync(AppDbContext db, CancellationToken cancellationToken)
+    {
+        var stale = new List<Guid>();
+        foreach (var tenantId in await db.ReturnClaims.AsNoTracking().Select(x => x.TenantId).Distinct().ToListAsync(cancellationToken))
+        {
+            var rawStatuses = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId).Select(x => x.RawStatus).Distinct().ToListAsync(cancellationToken);
+            var accepted = rawStatuses.Where(MarketplaceSalesService.IsAcceptedSplitLineStatus).ToArray();
+            var waiting = rawStatuses.Where(raw => raw is not null && MarketplaceSalesService.IsWaitingSplitLineStatus(raw)).ToArray();
+            if (await Stale(db, tenantId, accepted, waiting).AnyAsync(cancellationToken)) stale.Add(tenantId);
+        }
+        return stale;
     }
 
     // The claims of the tenant whose columns are missing or differ from the rule, as the database computes the rule:

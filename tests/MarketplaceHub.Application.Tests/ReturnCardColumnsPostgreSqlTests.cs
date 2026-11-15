@@ -132,7 +132,7 @@ public sealed class ReturnCardColumnsPostgreSqlTests(PostgreSqlTenantIsolationFi
             {
                 await breakage();
                 Assert.True(await StaleAsync());
-                var (claims, written) = await ReturnCardColumns.RepairAsync(db, CancellationToken.None, batchSize: 1);
+                var (claims, written, _) = await ReturnCardColumns.RepairAsync(db, CancellationToken.None, batchSize: 1);
                 Assert.True(claims >= 1 && written >= 1);
                 Assert.False(await StaleAsync());
                 Assert.Equal(0, (await ReturnCardColumns.RepairAsync(db, CancellationToken.None)).Written);
@@ -143,6 +143,178 @@ public sealed class ReturnCardColumnsPostgreSqlTests(PostgreSqlTenantIsolationFi
         finally
         {
             await CleanupAsync(tenantId);
+        }
+    }
+
+    // Review finding 1: a save that does not change the claim (a decision saved alone, SIPARIS-STOK-5) must not depend on the
+    // claim's version: another process changing the claim meanwhile must not make it fail. The columns follow after it.
+    [PostgreSqlFact]
+    public async Task A_save_that_leaves_the_claim_alone_never_fails_on_the_claims_version()
+    {
+        var (tenantId, claimId, _) = await SeedAsync();
+        try
+        {
+            await using var caller = fixture.CreateContext();
+            var claim = await caller.ReturnClaims.SingleAsync(x => x.Id == claimId);
+            await using (var other = fixture.CreateContext())
+            {
+                var changed = await other.ReturnClaims.SingleAsync(x => x.Id == claimId);
+                changed.Status = ReturnClaimStatus.Approved;
+                changed.Version++;
+                await other.SaveChangesAsync();
+            }
+            var approvedAt = new DateTimeOffset(2026, 11, 15, 8, 0, 0, TimeSpan.Zero);
+            caller.ReturnDecisions.Add(new ReturnDecision { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claimId, Action = "APPROVE", IdempotencyKey = $"ver-{claimId:N}", Status = "SUCCEEDED", CreatedAt = approvedAt, CompletedAt = approvedAt });
+            await caller.SaveChangesAsync();
+            Assert.Equal(EntityState.Unchanged, caller.Entry(claim).State);
+            await using var read = fixture.CreateContext();
+            var stored = await read.ReturnClaims.AsNoTracking().SingleAsync(x => x.Id == claimId);
+            Assert.Equal(("APPROVED", (DateTimeOffset?)approvedAt), (stored.TabGroup, stored.ApprovedAt));
+        }
+        finally
+        {
+            await CleanupAsync(tenantId);
+        }
+    }
+
+    // Review finding 2: the hook never starts tracking a claim the caller read without tracking.
+    [PostgreSqlFact]
+    public async Task The_save_hook_never_starts_tracking_a_claim()
+    {
+        var (tenantId, claimId, _) = await SeedAsync();
+        try
+        {
+            await using var caller = fixture.CreateContext();
+            caller.ReturnDecisions.Add(new ReturnDecision { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claimId, Action = "REJECT", IdempotencyKey = $"track-{claimId:N}", Status = "PENDING", CreatedAt = DateTimeOffset.UtcNow });
+            await caller.SaveChangesAsync();
+            Assert.Empty(caller.ChangeTracker.Entries<ReturnClaim>());
+        }
+        finally
+        {
+            await CleanupAsync(tenantId);
+        }
+    }
+
+    // Review finding 3: a line the caller loaded and left unchanged reads as the database has it now, not as it was loaded.
+    [PostgreSqlFact]
+    public async Task An_unchanged_tracked_line_reads_as_the_database_has_it()
+    {
+        var (tenantId, claimId, _) = await SeedAsync();
+        try
+        {
+            await using var caller = fixture.CreateContext();
+            var claim = await caller.ReturnClaims.SingleAsync(x => x.Id == claimId);
+            _ = await caller.ReturnLines.Where(x => x.ClaimId == claimId).ToListAsync();
+            await using (var other = fixture.CreateContext())
+                await other.ReturnLines.Where(x => x.ClaimId == claimId && x.RawStatus == "WaitingInAction").ExecuteUpdateAsync(set => set.SetProperty(x => x.RawStatus, "Accepted"));
+            claim.ReasonText = "changed";
+            await caller.SaveChangesAsync();
+            await using var read = fixture.CreateContext();
+            Assert.False((await read.ReturnClaims.AsNoTracking().SingleAsync(x => x.Id == claimId)).CardSplit);
+        }
+        finally
+        {
+            await CleanupAsync(tenantId);
+        }
+    }
+
+    // Review finding 4: the hook failing outside a transaction leaves the save done (the read check falls back on the stale
+    // claim); inside the caller's transaction it fails the save.
+    [PostgreSqlFact]
+    public async Task A_failing_hook_never_fails_a_save_outside_a_transaction()
+    {
+        var (tenantId, claimId, _) = await SeedAsync();
+        try
+        {
+            var failing = new FailingReturnReads();
+            AppDbContext Context() => new(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")).AddInterceptors(failing).Options);
+            await using (var caller = Context())
+            {
+                caller.ReturnDecisions.Add(new ReturnDecision { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claimId, Action = "REJECT", IdempotencyKey = $"fail-a-{claimId:N}", Status = "PENDING", CreatedAt = DateTimeOffset.UtcNow });
+                (await caller.ReturnClaims.SingleAsync(x => x.Id == claimId)).ReasonText = "changed";
+                failing.Armed = true;
+                await caller.SaveChangesAsync();
+                failing.Armed = false;
+            }
+            Assert.True(failing.Failed > 0);
+            await using (var read = fixture.CreateContext())
+            {
+                Assert.True(await read.ReturnDecisions.AnyAsync(x => x.IdempotencyKey == $"fail-a-{claimId:N}"));
+                Assert.Equal("changed", (await read.ReturnClaims.AsNoTracking().SingleAsync(x => x.Id == claimId)).ReasonText);
+            }
+            await using (var caller = Context())
+            {
+                await using var transaction = await caller.Database.BeginTransactionAsync();
+                caller.ReturnDecisions.Add(new ReturnDecision { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claimId, Action = "REJECT", IdempotencyKey = $"fail-b-{claimId:N}", Status = "PENDING", CreatedAt = DateTimeOffset.UtcNow });
+                failing.Armed = true;
+                await Assert.ThrowsAnyAsync<Exception>(() => caller.SaveChangesAsync());
+                failing.Armed = false;
+            }
+        }
+        finally
+        {
+            await CleanupAsync(tenantId);
+        }
+    }
+
+    // Review finding 5: the repair pass says which tenants are still off the columns after it.
+    [PostgreSqlFact]
+    public async Task The_repair_pass_names_the_tenants_still_stale()
+    {
+        var (tenantId, claimId, _) = await SeedAsync();
+        try
+        {
+            await using var db = fixture.CreateContext();
+            Assert.DoesNotContain(tenantId, await ReturnCardColumns.StaleTenantsAsync(db, CancellationToken.None));
+            await db.ReturnClaims.Where(x => x.Id == claimId).ExecuteUpdateAsync(set => set.SetProperty(x => x.CardSplit, false));
+            Assert.Contains(tenantId, await ReturnCardColumns.StaleTenantsAsync(db, CancellationToken.None));
+            var result = await ReturnCardColumns.RepairAsync(db, CancellationToken.None);
+            Assert.True(result.Written >= 1 && result.Lost == 0);
+            Assert.DoesNotContain(tenantId, await ReturnCardColumns.StaleTenantsAsync(db, CancellationToken.None));
+        }
+        finally
+        {
+            await CleanupAsync(tenantId);
+        }
+    }
+
+    // Review finding 6: the staleness check and the counts are separate reads; a claim written without its columns in
+    // between (the previous worker during a deploy) sends that summary back to the computation from claims and lines.
+    [PostgreSqlFact]
+    public async Task A_claim_unfilled_after_the_check_sends_the_summary_back_to_the_full_computation()
+    {
+        var (tenantId, claimId, _) = await SeedAsync();
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var service = new MarketplaceSalesService(db, new CursorCodec(new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider(), TimeProvider.System), new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(), null!, null!, null!, null!, TimeProvider.System);
+            var fresh = await service.ReturnColumnStateAsync(tenantId, CancellationToken.None);
+            Assert.True(fresh.Fresh);
+            await db.ReturnClaims.Where(x => x.Id == claimId).ExecuteUpdateAsync(set => set.SetProperty(x => x.TabGroup, (string?)null));
+            var counts = MarketplaceSalesService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal);
+            Assert.Null(await service.CountReturnCardsInDatabaseAsync(tenantId, new ReturnListQuery(Status: "APPROVED"), counts, fresh, CancellationToken.None));
+            Assert.All(counts.Values, count => Assert.Equal(0, count));
+        }
+        finally
+        {
+            await CleanupAsync(tenantId);
+        }
+    }
+
+    // Fails the hook's own reads (the approvals it reads from sales.return_decisions) while armed.
+    private sealed class FailingReturnReads : Microsoft.EntityFrameworkCore.Diagnostics.DbCommandInterceptor
+    {
+        public volatile bool Armed;
+        public int Failed;
+
+        public override ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<System.Data.Common.DbDataReader>> ReaderExecutingAsync(System.Data.Common.DbCommand command, Microsoft.EntityFrameworkCore.Diagnostics.CommandEventData eventData, Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<System.Data.Common.DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            if (Armed && command.CommandText.Contains("FROM sales.return_decisions", StringComparison.Ordinal))
+            {
+                Interlocked.Increment(ref Failed);
+                throw new InvalidOperationException("return decisions unreadable (test)");
+            }
+            return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
         }
     }
 
