@@ -1593,9 +1593,9 @@ public sealed partial class HepsiburadaHttpClient(
         return parts.Length == 2;
     }
 
-    // The Retry-After of a refused answer.
+    // The Retry-After of a refused answer; a date in the past is no wait (it used to be a negative one, ADAPTOR-TY-HB-7).
     internal TimeSpan? RetryAfter(HttpResponseMessage response) =>
-        RetryAfterHeader.Unchecked(response.Headers.RetryAfter, timeProvider.GetUtcNow());
+        RetryAfterHeader.Delay(response.Headers.RetryAfter, timeProvider.GetUtcNow());
 
     internal RateLimitMetadata? RateLimit(HttpResponseMessage response)
     {
