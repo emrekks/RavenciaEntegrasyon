@@ -113,39 +113,69 @@ public sealed class PostgreSqlProductModelLinksTests(PostgreSqlTenantIsolationFi
         await transaction.RollbackAsync();
     }
 
+    // KENE01 on live, 15 Nov 2026: the owner saved the Ravencia card in the editor (its own row, desi filled) and the Lavian
+    // card of the same model code took Ravencia, was linked into one model with it and the warning closed; his next save
+    // wrote the model's fields, prices and desi onto it. The rule (owner, 14 Nov): a code under two brands is only warned
+    // about, never merged or re-branded by the system. The editor sends every model field (familySharedFields) on every
+    // save, so a save must never reach a card of another brand.
     [PostgreSqlFact]
-    public async Task AnEditorSave_WritesTheModelFields_AndTodaysBrandPullThenLinksTheTwoBrandCode()
+    public async Task AnEditorSave_OfOneBrandsCard_NeverRebrandsOrLinksTheOtherBrandsCardOfTheCode()
     {
         var seed = NewSeed();
         await using var db = fixture.CreateContext();
         await using var transaction = await db.Database.BeginTransactionAsync();
         AddSeed(db, seed);
         var lavian = AddCard(db, seed, seed.Lavian, "KENE01", "Mavi", "Kadın Mavi Asimetrik Kesim Kot Etek", 0);
-        var ravencia = AddCard(db, seed, seed.Ravencia, "KENE01", "Siyah", "Kadın Siyah Asimetrik Kesim Kot Etek", 1);
+        var ravencia = AddCard(db, seed, seed.Ravencia, "KENE01", "Denim Rengi", "Kadın Denim Asimetrik Kesim Kot Etek", 1);
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
         Assert.Equal(IssueStatus.Open, Assert.Single(await AmbiguityIssuesAsync(db, seed.Tenant.Id)).Status);
+        var lavianBefore = await db.Products.AsNoTracking().SingleAsync(x => x.Id == lavian.Id);
+        var lavianVariantsBefore = await db.ProductVariants.AsNoTracking().Where(x => x.ProductId == lavian.Id).OrderBy(x => x.Id)
+            .Select(x => new { x.Id, x.Desi, x.DefaultListPrice, x.DefaultSalePrice, x.Version }).ToListAsync();
 
-        // The owner saves the Ravencia card: the brand is the model code's, so (as today, f680abdd1) the Lavian card takes
-        // Ravencia and joins; now one brand holds the code, the model opens, both cards link and the report closes.
+        // Each card opens alone in the editor: the other brand's card is not in its family.
         var service = Service(db);
         var shown = (await service.GetProductAsync(seed.Tenant.Id, ravencia.Id, CancellationToken.None)).Value!;
-        var saved = await service.UpdateProductAsync(seed.Tenant.Id, ravencia.Id, shown.Version, Command(shown) with { Description = "Yeni açıklama" }, CancellationToken.None);
+        Assert.Equal([ravencia.Id], shown.FamilyProductIds!);
+        Assert.All(shown.Variants, variant => Assert.Equal(ravencia.Id, variant.ProductId));
+        Assert.Equal([lavian.Id], (await service.GetProductAsync(seed.Tenant.Id, lavian.Id, CancellationToken.None)).Value!.FamilyProductIds!);
+
+        // The editor's body (use-editor-submit.ts): the brand left as it is, every model field named, the family's
+        // versions as read, its own rows with the desi the owner filled.
+        var body = Command(shown) with
+        {
+            LoadedFamilyVersions = shown.FamilyVersions,
+            VariantUpdates = [.. shown.Variants.Select((variant, index) => new UpdateVariantCommand(variant.Id, variant.Sku, variant.Barcode, variant.ModelCode, index,
+                DefaultListPrice: variant.DefaultListPrice, DefaultSalePrice: variant.DefaultSalePrice, Desi: 0.5m, LoadedDesi: variant.Desi, LoadedVersion: variant.Version))]
+        };
+        var saved = await service.UpdateProductAsync(seed.Tenant.Id, ravencia.Id, shown.Version, body, CancellationToken.None);
         Assert.True(saved.Succeeded, saved.Error?.Message);
         db.ChangeTracker.Clear();
-        Assert.Equal(seed.Ravencia, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == lavian.Id)).BrandId);
-        var model = await db.ProductModels.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id);
-        var links = await LinksAsync(db, seed.Tenant.Id);
-        Assert.Equal([model.Id, model.Id], [links[lavian.Id], links[ravencia.Id]]);
-        Assert.Equal(IssueStatus.Resolved, Assert.Single(await AmbiguityIssuesAsync(db, seed.Tenant.Id)).Status);
-        // Write-through: the model holds what the save wrote to every card.
-        Assert.NotNull(model.FieldsSavedAt);
-        Assert.Equal(("Kadın Siyah Asimetrik Kesim Kot Etek", "Siyah", "Yeni açıklama", seed.CategoryId, 10m, "INCLUDED"), (model.Title, model.TitleColor, model.Description, model.CategoryId, model.VatRate, model.VatInclusion));
-        // As today, the card the brand pulled in takes only the brand on this save; the next save writes the rest to it.
-        Assert.Equal("Model açıklaması", (await db.Products.AsNoTracking().SingleAsync(x => x.Id == lavian.Id)).Description);
 
-        // The editor's family is the model's cards, from either row.
-        Assert.Equal(2, (await service.GetProductAsync(seed.Tenant.Id, lavian.Id, CancellationToken.None)).Value!.FamilyProductIds!.Count);
+        // The Lavian card is exactly as it was: brand, version, fields, rows; still unlinked, the warning still open.
+        var lavianAfter = await db.Products.AsNoTracking().SingleAsync(x => x.Id == lavian.Id);
+        Assert.Equal((lavianBefore.BrandId, lavianBefore.Version, lavianBefore.Title, lavianBefore.Description, lavianBefore.UpdatedAt),
+            (lavianAfter.BrandId, lavianAfter.Version, lavianAfter.Title, lavianAfter.Description, lavianAfter.UpdatedAt));
+        Assert.Equal(lavianVariantsBefore, await db.ProductVariants.AsNoTracking().Where(x => x.ProductId == lavian.Id).OrderBy(x => x.Id)
+            .Select(x => new { x.Id, x.Desi, x.DefaultListPrice, x.DefaultSalePrice, x.Version }).ToListAsync());
+        var links = await LinksAsync(db, seed.Tenant.Id);
+        Assert.Null(links[lavian.Id]);
+        Assert.Null(links[ravencia.Id]);
+        Assert.False(await db.ProductModels.AsNoTracking().AnyAsync(x => x.TenantId == seed.Tenant.Id && x.ModelCodeKey == "KENE01"));
+        Assert.Equal(IssueStatus.Open, Assert.Single(await AmbiguityIssuesAsync(db, seed.Tenant.Id)).Status);
+        Assert.False(await db.ProductChangeEntries.AsNoTracking().AnyAsync(x => x.TenantId == seed.Tenant.Id && x.ProductId == lavian.Id));
+        // The saved card took its own desi.
+        Assert.All(await db.ProductVariants.AsNoTracking().Where(x => x.ProductId == ravencia.Id).ToListAsync(), variant => Assert.Equal(0.5m, variant.Desi));
+
+        // A brand change the owner makes himself moves only the cards he opened: the other card is not written by it.
+        shown = (await service.GetProductAsync(seed.Tenant.Id, ravencia.Id, CancellationToken.None)).Value!;
+        saved = await service.UpdateProductAsync(seed.Tenant.Id, ravencia.Id, shown.Version, Command(shown) with { BrandId = seed.Lavian, Description = "Yeni açıklama", LoadedFamilyVersions = shown.FamilyVersions }, CancellationToken.None);
+        Assert.True(saved.Succeeded, saved.Error?.Message);
+        db.ChangeTracker.Clear();
+        lavianAfter = await db.Products.AsNoTracking().SingleAsync(x => x.Id == lavian.Id);
+        Assert.Equal((lavianBefore.Version, lavianBefore.Description), (lavianAfter.Version, lavianAfter.Description));
+        Assert.Equal(seed.Lavian, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == ravencia.Id)).BrandId);
         await transaction.RollbackAsync();
     }
 

@@ -1421,27 +1421,9 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             sibling.Version++;
             changedIds.Add(sibling.Id);
         }
-        // The brand is the model code's: a card of the same model code under another brand (KENE01) takes it too, and so
-        // joins the model; nothing else of such a card changes.
-        if (fields.Contains(ProductFamilySharedFields.Brand))
-        {
-            var modelCode = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == opened.Id && x.ModelCode != null && x.ModelCode != "").OrderBy(x => x.SortOrder).ThenBy(x => x.Id).Select(x => x.ModelCode).FirstOrDefaultAsync(cancellationToken);
-            if (ProductFamilyKeyPolicy.ModelCodeKey(modelCode) is { } key)
-            {
-                var pattern = modelCode!.Trim();
-                var candidates = await db.ProductVariants.AsNoTracking()
-                    .Where(x => x.TenantId == tenantId && x.ModelCode != null && EF.Functions.ILike(x.ModelCode, pattern) && x.ProductId != opened.Id && !siblingIds.Contains(x.ProductId))
-                    .Select(x => new { x.ProductId, x.ModelCode }).Distinct().ToListAsync(cancellationToken);
-                var otherIds = candidates.Where(x => ProductFamilyKeyPolicy.ModelCodeKey(x.ModelCode) == key).Select(x => x.ProductId).Distinct().ToArray();
-                foreach (var other in otherIds.Length == 0 ? [] : await db.Products.Where(x => x.TenantId == tenantId && otherIds.Contains(x.Id) && x.Status != ProductStatus.Archived && x.BrandId != opened.BrandId).ToListAsync(cancellationToken))
-                {
-                    other.BrandId = opened.BrandId;
-                    other.UpdatedAt = opened.UpdatedAt;
-                    other.Version++;
-                    changedIds.Add(other.Id);
-                }
-            }
-        }
+        // A card of the same model code under another brand (KENE01) is not of this model: the save never re-brands it or
+        // writes to it, even though every editor save names the brand (owner, 14 Nov 2026: such a code is only warned
+        // about, PRODUCT_MODEL_AMBIGUOUS; he fixes it himself).
         if (changedIds.Count > 0) await CatalogLocalEdits.MarkLinksDirtyAsync(db, tenantId, changedIds, CatalogLocalEdits.ProductField, cancellationToken);
         return true;
     }
