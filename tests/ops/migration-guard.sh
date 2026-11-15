@@ -5,9 +5,12 @@
 #   1. contract: DropColumn, DropTable, RenameColumn, RenameTable, DropSchema, an AlterColumn that makes a column
 #      NOT NULL, or SQL DROP COLUMN / DROP TABLE / RENAME COLUMN / ALTER TABLE ... RENAME TO. Allowed only as the
 #      second release of an expand-contract change, marked "// expand-contract: phase 2 of <earlier migration>".
-#   2. lock: CreateIndex, AddForeignKey or AddCheckConstraint on a table the same migration does not create, or SQL
-#      CREATE INDEX without CONCURRENTLY. Use the CONCURRENTLY / NOT VALID + VALIDATE pattern
-#      (AddProductVariantModelCodeIndex), or mark a deliberate exception "// migration-lock-ok: <reason>".
+#   2. lock: CreateIndex, AddForeignKey or AddCheckConstraint on a table the same migration does not create, SQL
+#      CREATE INDEX without CONCURRENTLY, SQL ALTER COLUMN ... [SET DATA] TYPE (a type change rewrites the table under
+#      ACCESS EXCLUSIVE), or SQL ALTER TABLE ... ADD CONSTRAINT on a table the migration does not create without
+#      NOT VALID (CHECK, FOREIGN KEY) or USING INDEX (UNIQUE, PRIMARY KEY). Use the CONCURRENTLY / NOT VALID + VALIDATE
+#      pattern (AddProductVariantModelCodeIndex, ScanFixesSchema), or mark a deliberate exception
+#      "// migration-lock-ok: <reason>" (e.g. a varchar widening, which PostgreSQL does without a rewrite).
 # Usage: migration-guard.sh [migrations-dir] (MIGRATION_GUARD_SINCE: first migration id checked, default below;
 # every migration on main before it predates the rules).
 set -Eeuo pipefail
@@ -45,6 +48,9 @@ for file in "$migrations_dir"/*.cs; do
     unless (m{//\s*migration-lock-ok:\s*\S}) {
       my %created;
       $created{$1} = 1 while $up =~ /\.CreateTable\s*\(\s*name:\s*"([^"]+)"/g;
+      # A table name as SQL writes it (schema."Name", \"quoted\" in a C# string) reduced to the bare table name.
+      my $bare = sub { my $n = shift; $n =~ s/[\\"]//g; $n =~ s/^.*\.//; return $n; };
+      $created{$bare->($1)} = 1 while $up =~ /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([^\s(;]+)/gi;
       while ($up =~ /\.(CreateIndex|AddForeignKey|AddCheckConstraint)\s*\((.*?)\)\s*;/gs) {
         my ($call, $args) = ($1, $2);
         my ($table) = $args =~ /\btable:\s*"([^"]+)"/;
@@ -54,6 +60,15 @@ for file in "$migrations_dir"/*.cs; do
       }
       while ($up =~ /(CREATE\s+(?:UNIQUE\s+)?INDEX\b(?!\s+CONCURRENTLY)[^"]*)/gi) {
         push @problems, "lock: SQL \"$1\" without CONCURRENTLY";
+      }
+      while ($up =~ /(ALTER\s+COLUMN\s+\S+\s+(?:SET\s+DATA\s+)?TYPE)\b/gi) {
+        push @problems, "lock: SQL \"$1\" rewrites the table under ACCESS EXCLUSIVE (add a new column and backfill it)";
+      }
+      # The statement runs to the next ";" (the SQL one or the C# one that ends the Sql(...) call).
+      while ($up =~ /ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?([^\s;]+)\s+ADD\s+CONSTRAINT\s+[^\s;]+\s+([^;]*)/gi) {
+        my ($table, $definition) = ($bare->($1), $2);
+        next if $created{$table} || $definition =~ /\bNOT\s+VALID\b|\bUSING\s+INDEX\b/i;
+        push @problems, "lock: SQL ADD CONSTRAINT on existing table $table without NOT VALID (add it NOT VALID, then VALIDATE CONSTRAINT)";
       }
     }
     print "$file: $_\n" for @problems;
