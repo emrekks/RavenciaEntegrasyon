@@ -18,8 +18,40 @@ public sealed class AcceptedReturnRuleParityTests
         "Created", "NewRequest", "WaitingInAction", "Waiting_In_Action", "AwaitingAction", "AwaitingPreApproval", "InAnalysis",
         "WaitingFraudCheck", "WaitingForSellerAction", "Requested", "WaitingForShipment", "WaitingInCargo", "Waiting In Cargo",
         "InTransit", "ReturnInTransit", "Shipped", "Unresolved", "InDispute", "Disputed", "Rejected", "Declined", "Cancelled",
-        "Canceled", "Manual_Refund", "SomethingNew", "1"
+        "Canceled", "Manual_Refund", "SomethingNew", "1",
+        // FATURA-FINANS-2: a letter or digit outside ASCII is kept by Canonicalize (unknown), anything else outside ASCII
+        // is skipped like a separator; the long s reads as S, the other letters do not fold to ASCII.
+        "ACCEPTEDé", "Acceptéd", "ACCEPTEDı", "Rejectedé", "WaıtıngInActıon", "ACCEPTED١", "WaitingFraudChecK", "Accepted ",
+        "Waiting–In–Action", "Accepted\U0001F600", "CLOſED", "ACCEPTEDſ", "İnTransit"
     ];
+
+    // The patterns as PostgreSQL reads them (Npgsql writes Regex.IsMatch as ~ and ~* with the pattern unchanged) give the
+    // invoice's answer too.
+    public static TheoryData<string> DatabaseStatuses()
+    {
+        var data = new TheoryData<string>();
+        foreach (var line in LineStatuses) data.Add(line ?? "");
+        return data;
+    }
+
+    [PostgreSqlTheory]
+    [MemberData(nameof(DatabaseStatuses))]
+    public async Task PostgreSQL_reads_the_patterns_as_the_invoice_rule(string line)
+    {
+        await using var connection = new Npgsql.NpgsqlConnection(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION"));
+        await connection.OpenAsync();
+        await using var command = new Npgsql.NpgsqlCommand("SELECT @line ~ @foreign, @line ~* @accepted, @line ~* @refused", connection);
+        command.Parameters.AddWithValue("line", line);
+        command.Parameters.AddWithValue("foreign", AcceptedReturnPolicy.ForeignLetterPattern);
+        command.Parameters.AddWithValue("accepted", AcceptedReturnPolicy.AcceptedLinePattern);
+        command.Parameters.AddWithValue("refused", AcceptedReturnPolicy.RefusedLinePattern);
+        await using var reader = await command.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        var (foreign, accepted, refused) = (reader.GetBoolean(0), reader.GetBoolean(1), reader.GetBoolean(2));
+        var status = MarketplaceReturnStatus.Canonicalize(line);
+        Assert.Equal(status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed, !foreign && accepted);
+        Assert.Equal(status is ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled or ReturnClaimStatus.ActionRequired, !foreign && refused);
+    }
 
     public static TheoryData<ReturnClaimStatus, string?> Combinations()
     {
