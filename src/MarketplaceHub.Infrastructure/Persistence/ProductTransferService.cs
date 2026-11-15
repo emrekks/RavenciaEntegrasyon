@@ -538,17 +538,30 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
                 }
             }
         }
-        // The brand is the model's: it goes to every colour card of the model, under any brand (as Toplu Değer Ata writes it).
+        // The brand is the model's: it goes to every colour card of the model that has the row's own brand. A card of the
+        // same code under another brand is never re-branded by another card's row (owner, 15.11.2026: such a group is only
+        // warned about); its own row in the file changes it.
         var brandChanges = productChanges.Where(change => change.Brand is not null).ToList();
         if (brandChanges.Count > 0)
         {
             var modelCards = await ModelCardsAsync(tenantId, brandChanges.Select(change => change.ProductId).ToArray(), cancellationToken);
+            var brandBefore = new Dictionary<Guid, Guid?>();
+            foreach (var cardId in modelCards.Values.SelectMany(ids => ids).Concat(brandChanges.Select(change => change.ProductId)).Distinct())
+            {
+                if (!productById.TryGetValue(cardId, out var known))
+                {
+                    known = await db.Products.SingleAsync(item => item.TenantId == tenantId && item.Id == cardId, cancellationToken);
+                    productById[cardId] = known;
+                }
+                brandBefore[cardId] = known.BrandId;
+            }
             foreach (var change in brandChanges)
             {
                 var match = await brandLookup.FindOrCreateAsync(change.Brand, now, cancellationToken);
                 if (match.Created) brandsCreated++;
                 foreach (var cardId in modelCards[change.ProductId])
                 {
+                    if (cardId != change.ProductId && brandBefore[cardId] != brandBefore[change.ProductId]) continue;
                     if (!productById.TryGetValue(cardId, out var card))
                     {
                         card = await db.Products.SingleAsync(item => item.TenantId == tenantId && item.Id == cardId, cancellationToken);
