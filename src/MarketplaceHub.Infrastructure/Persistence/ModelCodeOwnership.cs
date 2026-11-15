@@ -55,16 +55,30 @@ public static class ModelCodeOwnership
             .FirstOrDefault();
     }
 
+    // KATALOG-8: the cards that may hold one of the model-code keys, narrowed in the database: a code of ASCII and Turkish
+    // letters is keyed there exactly (ProductModelLinks.SqlKey), any other code is kept for the in-memory key check. The
+    // callers compare the key in memory as before; only the catalog's other codes are no longer read into memory.
+    internal static IQueryable<Guid> ProductIdsWithKeys(AppDbContext db, Guid tenantId, IReadOnlyCollection<string> keys)
+    {
+        const string code = "v.\"ModelCode\"";
+        return db.Database.SqlQueryRaw<Guid>($"""
+            SELECT v."ProductId" AS "Value" FROM catalog.product_variants v
+            WHERE v."TenantId" = @key_tenant AND v."ModelCode" IS NOT NULL AND v."ModelCode" ~ '[^[:space:]]'
+              AND (NOT {ProductModelLinks.SqlKeySafe(code)} OR {ProductModelLinks.SqlKey(code)} = ANY(@key_keys))
+            """, new Npgsql.NpgsqlParameter("key_tenant", tenantId), new Npgsql.NpgsqlParameter("key_keys", keys.ToArray()));
+    }
+
     public static async Task<ModelCodeUniquenessPolicy.Holder?> FindOtherAsync(AppDbContext db, Guid tenantId, IEnumerable<string?> modelCodes, IReadOnlyCollection<Guid> ownProductIds, CancellationToken cancellationToken)
     {
         var keys = ModelCodeUniquenessPolicy.Keys(modelCodes);
         if (keys.Count == 0) return null;
         var own = ownProductIds.ToArray();
+        var candidates = ProductIdsWithKeys(db, tenantId, keys);
         var rows = await (
                 from variant in db.ProductVariants.AsNoTracking()
                 join product in db.Products.AsNoTracking() on variant.ProductId equals product.Id
                 where variant.TenantId == tenantId && product.TenantId == tenantId && variant.ModelCode != null && variant.ModelCode != ""
-                    && !own.Contains(variant.ProductId)
+                    && !own.Contains(variant.ProductId) && candidates.Contains(variant.ProductId)
                 select new { variant.ProductId, product.Title, variant.ModelCode, product.CreatedAt })
             .Distinct()
             .ToListAsync(cancellationToken);
