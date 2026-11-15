@@ -13751,6 +13751,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     internal static string SerializeReturnSyncState(ReturnSyncState state) => JsonSerializer.Serialize(state);
     private static ReturnSyncState InitialReturnWindow(DateTimeOffset now) => new(ReturnSyncStateVersion, 0, 0, false, now.AddMonths(-3), now);
 
+    // The claim the seller marked received (MarkReturnReceivedAsync: Aksiyon Bekliyor, raw RECEIVED_BY_SELLER) while the
+    // marketplace still reports a status from before the receipt.
+    internal static bool AwaitsMarketplaceAfterSellerReceipt(string? storedRawStatus, ReturnClaimStatus target) =>
+        string.Equals(storedRawStatus, "RECEIVED_BY_SELLER", StringComparison.Ordinal)
+        && target is ReturnClaimStatus.Requested or ReturnClaimStatus.AwaitingShipment or ReturnClaimStatus.InTransit;
+
     private async Task UpsertReturnCore(Guid tenantId, Guid connectionId, RemoteReturnClaim remote, CancellationToken cancellationToken)
     {
         var remoteLines = remote.Lines.Count > 0 ? remote.Lines : TrendyolJsonMapper.ReturnLines(remote.RawJson);
@@ -13834,6 +13840,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 claim.Status = target;
                 claim.RawStatus = remote.RawStatus;
                 claim.LastRemoteModifiedAt = remote.LastModifiedAt ?? claim.LastRemoteModifiedAt;
+            }
+            else if (remoteIsFresh && !partialLineDecisionPending && AwaitsMarketplaceAfterSellerReceipt(claim.RawStatus, target))
+            {
+                // SIPARIS-STOK-1: the seller marked the return received (Teslim Aldım, a whole-claim marketplace) and the
+                // marketplace still reports it as requested or on its way. That is not a refused transition: the claim
+                // stays Aksiyon Bekliyor with its RECEIVED_BY_SELLER mark (so the next read does not raise it either),
+                // and only the marketplace's change time is kept.
+                if (remote.LastModifiedAt is not null && claim.LastRemoteModifiedAt != remote.LastModifiedAt)
+                {
+                    claim.LastRemoteModifiedAt = remote.LastModifiedAt;
+                    claimChanged = true;
+                }
             }
             else if (remoteIsFresh && !partialLineDecisionPending
                 && (claim.Status != target || !string.Equals(claim.RawStatus, remote.RawStatus, StringComparison.Ordinal) || (remote.LastModifiedAt is not null && claim.LastRemoteModifiedAt != remote.LastModifiedAt)))
