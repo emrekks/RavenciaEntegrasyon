@@ -10,6 +10,7 @@ namespace MarketplaceHub.Application.Tests;
 
 // KATALOG-4: the status a product save asks for is read in any case and an unknown one is refused, never taken as a draft.
 // KATALOG-11: a status-only save that opens a model leaves a colour card missing a required field closed.
+// KATALOG-5: a save that loses the version race is answered 412, not a 500.
 [Collection("postgres-integration")]
 public sealed class CatalogServiceStatusPostgreSqlTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
@@ -73,6 +74,27 @@ public sealed class CatalogServiceStatusPostgreSqlTests(PostgreSqlTenantIsolatio
 
         var created = await service.CreateProductAsync(seed.Tenant.Id, new CreateProductCommand("Kadın Siyah Bluz", "Açıklama", seed.BrandId, seed.CategoryId, [new CreateVariantCommand($"YK-{Guid.NewGuid():N}"[..20], null, "YK1")], Status: "Passive"), CancellationToken.None);
         Assert.Equal(("VALIDATION_FAILED", 422), (created.Error!.Code, created.Error.Status));
+    }
+
+    // KATALOG-5: a card another save changed between this save's checks and its write is the editor's "changed
+    // meanwhile" (412), not a 500; nothing of the save is written.
+    [PostgreSqlFact]
+    public async Task ASaveLosingTheVersionRace_IsAPreconditionFailure_NotAnError()
+    {
+        await using var db = fixture.CreateContext();
+        var seed = await SeedAsync(db);
+        var card = AddCard(db, seed, "ST300", "Siyah", ProductStatus.Active);
+        await db.SaveChangesAsync();
+        var service = Service(db);
+        var shown = (await service.GetProductAsync(seed.Tenant.Id, card.Id, CancellationToken.None)).Value!;
+        // The card stays tracked as this context read it; another save moves it on underneath.
+        await using (var other = fixture.CreateContext())
+            await other.Products.Where(x => x.Id == card.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Version, x => x.Version + 1).SetProperty(x => x.Description, "Başka kayıt"));
+
+        var result = await service.UpdateProductAsync(seed.Tenant.Id, card.Id, shown.Version, new UpdateProductCommand(shown.Title, "Benim açıklamam", shown.BrandId, shown.CategoryId), CancellationToken.None);
+        Assert.Equal(("CONCURRENCY_CONFLICT", 412), (result.Error!.Code, result.Error.Status));
+        db.ChangeTracker.Clear();
+        Assert.Equal("Başka kayıt", (await db.Products.AsNoTracking().SingleAsync(x => x.Id == card.Id)).Description);
     }
 
     [PostgreSqlFact]

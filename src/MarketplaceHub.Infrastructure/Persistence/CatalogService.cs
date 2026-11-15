@@ -1117,7 +1117,16 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         await PersistVariantOptionsAsync(tenantId, product.Id, variants, command.Variants, cancellationToken);
         await EnsureMainInventoryAsync(tenantId, variants, command.Variants.Select(x => x.OnHand).ToList(), actorUserId,
             string.IsNullOrWhiteSpace(correlationId) ? Guid.NewGuid().ToString("N") : correlationId, now, cancellationToken);
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception exception) when (SaveConflict<ProductView>(exception) is { } createConflict)
+        {
+            // KATALOG-5: a stock code or barcode another save took between the checks above and this one.
+            db.ChangeTracker.Clear();
+            return createConflict;
+        }
         return await GetProductAsync(tenantId, product.Id, cancellationToken);
     }
 
@@ -1918,10 +1927,40 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         }
         // Ürün Hareketleri: the information fields this save changed on the card, its model family and their variants.
         await ProductFieldChangeRecorder.RecordAsync(db, tenantId, ProductChangeSources.Editor, actorUserId, correlation, changedAt, cancellationToken);
-        await db.SaveChangesAsync(cancellationToken);
-        if (variantPurgeTransaction is not null) await variantPurgeTransaction.CommitAsync(cancellationToken);
+        // KATALOG-5: a row another save changed meanwhile (the version check), a code another save took, or a serializable
+        // conflict of the variant purge is the user's "changed meanwhile, try again", not a 500. Nothing is saved.
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            if (variantPurgeTransaction is not null) await variantPurgeTransaction.CommitAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            db.ChangeTracker.Clear();
+            return Precondition<ProductView>(product.Version);
+        }
+        catch (Exception exception) when (SaveConflict<ProductView>(exception) is { } updateConflict)
+        {
+            db.ChangeTracker.Clear();
+            return updateConflict;
+        }
         await LinkSavedModelAsync(tenantId, id, familyVariantProductIds, command, cancellationToken);
         return await GetProductAsync(tenantId, id, cancellationToken);
+    }
+
+    // KATALOG-5: a save that lost a race the checks could not see: a unique code taken meanwhile (409, nothing saved) or a
+    // serializable / deadlock conflict (409, try again). Anything else stays an error.
+    private static ServiceResult<T>? SaveConflict<T>(Exception exception)
+    {
+        var sqlState = (exception as Npgsql.PostgresException ?? exception.InnerException as Npgsql.PostgresException)?.SqlState;
+        return sqlState switch
+        {
+            Npgsql.PostgresErrorCodes.UniqueViolation when exception is DbUpdateException =>
+                Conflict<T>("VARIANT_CODE_CONFLICT_REVIEW_REQUIRED", "Stok kodu veya barkod kayıt sırasında başka bir ürüne verildi; hiçbir değişiklik kaydedilmedi. Sayfayı yenileyip tekrar deneyin."),
+            Npgsql.PostgresErrorCodes.SerializationFailure or Npgsql.PostgresErrorCodes.DeadlockDetected =>
+                Conflict<T>("SAVE_CONFLICT_RETRY", "Kayıt aynı anda başka bir işlemle çakıştı; hiçbir değişiklik kaydedilmedi. Tekrar deneyin."),
+            _ => null
+        };
     }
 
     public const string ModelCodeMixedCode = "MODEL_CODE_MIXED";
