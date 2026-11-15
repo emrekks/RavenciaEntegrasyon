@@ -318,6 +318,51 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.Equal("Pazaryeri açıklaması", (await ModelOfAsync(db, siyah.Id)).Description);
     }
 
+    // Another session holding the model row locked (an editor save of the model) until it is disposed.
+    private async Task<AppDbContext> LockModelAsync(Guid modelId)
+    {
+        var locker = fixture.CreateContext();
+        await locker.Database.BeginTransactionAsync();
+        await locker.Database.ExecuteSqlInterpolatedAsync($"""SELECT 1 FROM catalog.product_models WHERE "Id" = {modelId} FOR UPDATE""");
+        return locker;
+    }
+
+    // F3: the refresh's own transaction waits a few seconds for a model a save holds, then skips it for the next run; a
+    // refresh inside a caller's transaction leaves that transaction's lock wait as it is.
+    [PostgreSqlFact]
+    public async Task TheRefresh_WaitsBriefly_ForALockedModel_AndSkipsIt()
+    {
+        await using var db = fixture.CreateContext();
+        var seed = await SeedAsync(db);
+        var siyah = AddCard(db, seed, seed.Ravencia, "MZ500", "Siyah", "Kadın Siyah Etek", 0);
+        AddCard(db, seed, seed.Ravencia, "MZ500", "Mavi", "Kadın Mavi Etek", 1);
+        await db.SaveChangesAsync();
+        var model = await ModelOfAsync(db, siyah.Id);
+        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_models SET "Description" = 'eski' WHERE "Id" = {model.Id}""");
+
+        await using (await LockModelAsync(model.Id))
+        {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            var outcome = await ProductModelValues.RefreshAsync(db, seed.Tenant.Id, [model.Id], DateTimeOffset.UtcNow, CancellationToken.None);
+            Assert.InRange(clock.Elapsed, TimeSpan.FromSeconds(2.5), TimeSpan.FromSeconds(20));
+            Assert.Equal((0, 0, 1), (outcome.Models, outcome.Written, outcome.Skipped));
+        }
+        Assert.Equal("eski", (await ModelOfAsync(db, siyah.Id)).Description);
+        Assert.Equal((1, 1, 0), await RefreshAsync());
+
+        await using (await db.Database.BeginTransactionAsync())
+        {
+            await ProductModelValues.RefreshAsync(db, seed.Tenant.Id, [model.Id], DateTimeOffset.UtcNow, CancellationToken.None);
+            Assert.Equal("0", await db.Database.SqlQueryRaw<string>("""SELECT current_setting('lock_timeout') AS "Value" """).SingleAsync());
+        }
+
+        async Task<(int, int, int)> RefreshAsync()
+        {
+            var outcome = await ProductModelValues.RefreshAsync(db, seed.Tenant.Id, [model.Id], DateTimeOffset.UtcNow, CancellationToken.None);
+            return (outcome.Models, outcome.Written, outcome.Skipped);
+        }
+    }
+
     // F2: fields and attributes the owner saved in the editor after the last change of every card stay the owner's, even
     // when most cards (here cards the editor does not show) hold another value; the stamps stay; a second run writes
     // nothing either.

@@ -184,12 +184,18 @@ public static class ProductModelValues
         return new Target(model, cards, fields, titleColor, keepTitle, fieldsSaved, desi, attributes, attributesDiffer, chart, differing);
     }
 
-    public sealed record Outcome(int Models, int Written, IReadOnlyList<(string ModelCode, IReadOnlyList<string> Fields)> Differing);
+    // Skipped: models left for the next run because their refresh failed (a lock wait timeout, a deadlock).
+    public sealed record Outcome(int Models, int Written, IReadOnlyList<(string ModelCode, IReadOnlyList<string> Fields)> Differing, int Skipped = 0);
+
+    // How long the refresh's own transaction waits for a model row (and anything else) a save holds locked.
+    public const string LockTimeout = "3s";
+    private const string SetLockTimeout = "SET LOCAL lock_timeout = '" + LockTimeout + "'";
 
     // Writes the given models (null: every model of the tenant) where they differ from their cards. Inside a caller's
     // transaction the models are read and written in it (a save's write-through); outside one each model is written in a
     // short transaction of its own that first locks the model row and only then reads its cards, so a save of the model
-    // made meanwhile is either seen or waits (VERITABANI-DAGITIM-12's rule for the attribute recompute).
+    // made meanwhile is either seen or waits (VERITABANI-DAGITIM-12's rule for the attribute recompute); the wait is
+    // bounded by LockTimeout there, never in a caller's transaction.
     public static async Task<Outcome> RefreshAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<Guid>? modelIds, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var ids = modelIds?.Distinct().Order().ToArray();
@@ -208,36 +214,45 @@ public static class ProductModelValues
             return new(snapshot.Models.Count, written, differing);
         }
         ids ??= [.. await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId).OrderBy(x => x.Id).Select(x => x.Id).ToListAsync(cancellationToken)];
-        var count = 0;
+        int count = 0, skipped = 0;
         foreach (var modelId in ids)
         {
-            // One model at a time: a model that fails (a lock timeout during a deploy) is left for the next run.
+            // One model at a time: a model that fails (a lock timeout during a deploy) is skipped and left for the next run.
             try
             {
                 await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken);
+                // An editor save of the model waits at most this long behind the refresh, and the refresh behind it (the
+                // pool's command timeout is 120 s); a model still locked is skipped.
+                await db.Database.ExecuteSqlRawAsync(SetLockTimeout, cancellationToken);
                 var locked = await db.Database.SqlQuery<int>($"""
                     SELECT 1 AS "Value" FROM catalog.product_models WHERE "TenantId" = {tenantId} AND "Id" = {modelId} FOR UPDATE
                     """).ToListAsync(cancellationToken);
+                Target? target = null;
+                var wrote = false;
                 if (locked.Count == 1)
                 {
                     var snapshot = await ReadAsync(db, tenantId, [modelId], cancellationToken);
-                    if (snapshot.Models.Count == 1 && Compute(snapshot, snapshot.Models[0]) is { } target)
+                    if (snapshot.Models.Count == 1 && Compute(snapshot, snapshot.Models[0]) is { } computed)
                     {
-                        count++;
-                        if (await WriteAsync(db, target, now, cancellationToken)) written++;
-                        if (target.Differing.Count > 0) differing.Add((target.Model.ModelCode, target.Differing));
+                        target = computed;
+                        wrote = await WriteAsync(db, target, now, cancellationToken);
                     }
                 }
                 await transaction.CommitAsync(cancellationToken);
+                if (target is null) continue;
+                count++;
+                if (wrote) written++;
+                if (target.Differing.Count > 0) differing.Add((target.Model.ModelCode, target.Differing));
             }
             // Nothing to detach: the refresh tracks nothing (AsNoTracking reads, raw SQL, ExecuteUpdate / ExecuteDelete), and
             // the caller's tracked entities (an import's cards between its saves) stay tracked for the caller's next save.
             // A transient error (lock timeout, deadlock) comes wrapped by Npgsql's execution strategy.
             catch (Exception exception) when (IsDatabaseError(exception) && !cancellationToken.IsCancellationRequested)
             {
+                skipped++;
             }
         }
-        return new(count, written, differing);
+        return new(count, written, differing, skipped);
     }
 
     private static bool IsDatabaseError(Exception exception) =>
