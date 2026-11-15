@@ -41,6 +41,10 @@ public static partial class TrendyolJsonMapper
         }
         return JsonSerializer.Serialize(map);
     }
+    // Text, NullText, Decimal, TryDecimal, Bool and BoolAny stay Trendyol's own, not RemoteFields': text is any non-null
+    // value as written (untrimmed, true/false and objects as their JSON), a missing text or amount is "" or 0 for the
+    // mapper's non-null fields, a "true"/1 reads as true, and a non-object element throws instead of reading as
+    // missing. The golden contract fixtures pin these readings. Whole numbers go through RemoteFields.Long.
     private static string Text(JsonElement value, params string[] names) => NullText(value, names) ?? "";
     private static string? NullText(JsonElement value, params string[] names) { foreach (var name in names) if (value.TryGetProperty(name, out var item) && item.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)) return item.ToString(); return null; }
     private static string? NestedText(JsonElement value, string objectName, params string[] names) => value.TryGetProperty(objectName, out var nested) && nested.ValueKind == JsonValueKind.Object ? NullText(nested, names) : null;
@@ -82,11 +86,11 @@ public static partial class TrendyolJsonMapper
         }
         return null;
     }
-    private static long Long(JsonElement value, string name) => value.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.Number && item.TryGetInt64(out var result) ? result : 0;
+    private static long Long(JsonElement value, string name) => RemoteFields.Long(value, name) ?? 0;
     private static long? NullableLong(JsonElement value, params string[] names)
     {
         foreach (var name in names)
-            if (value.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.Number && item.TryGetInt64(out var result)) return result;
+            if (RemoteFields.Long(value, name) is { } result) return result;
         return null;
     }
     private static bool Bool(JsonElement value, string name)

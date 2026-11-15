@@ -94,4 +94,32 @@ public sealed class HepsiburadaFinanceTests
     [InlineData("MarketingSupportParticipationRefund", MarketplaceFinanceCategories.Advertising)]
     [InlineData("AdBalanceTopUpFromAllowance", MarketplaceFinanceCategories.Other)]
     public void Ad_types_are_advertising(string type, string category) => Assert.Equal(category, HepsiburadaFinanceSyncJobHandler.Category(type));
+
+    // ADAPTOR-TY-HB-8: finance days are read through TurkeyTime like every other Hepsiburada text timestamp.
+    [Theory]
+    [InlineData("2026-10-28T14:05:00", "2026-10-28T11:05:00Z")]
+    [InlineData("2026-10-28", "2026-10-27T21:00:00Z")]
+    [InlineData("2026-10-28T14:05:00Z", "2026-10-28T14:05:00Z")]
+    [InlineData("2026-10-28T14:05:00+03:00", "2026-10-28T11:05:00Z")]
+    [InlineData("2026-10-28T14:05:00+0300", "2026-10-28T11:05:00Z")]
+    [InlineData("2026-10-28 14:05:00 +03:00", "2026-10-28T11:05:00Z")]
+    [InlineData("2026-10-28T14:05:00-02:00", "2026-10-28T16:05:00Z")]
+    [InlineData(" 2026-10-28T14:05:00 ", "2026-10-28T11:05:00Z")]
+    [InlineData("not a date", null)]
+    public void Finance_times_follow_the_istanbul_text_timestamp_policy(string text, string? expected)
+    {
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(new { dueDate = text }));
+        var read = HepsiburadaFinanceMapper.Time(document.RootElement, "dueDate");
+        Assert.Equal(expected is null ? null : DateTimeOffset.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), read);
+        Assert.True(read is null || read.Value.Offset == TimeSpan.Zero);
+    }
+
+    // The question service's numeric dates: seconds below 10^10, milliseconds from there, out of range unknown.
+    [Theory]
+    [InlineData(1_761_000_000L, 1_761_000_000_000L)]
+    [InlineData(1_761_000_000_000L, 1_761_000_000_000L)]
+    [InlineData(9_999_999_999L, 9_999_999_999_000L)]
+    [InlineData(99_999_999_999_999_999L, null)]
+    public void Question_epochs_are_seconds_or_milliseconds_by_size(long epoch, long? expectedMilliseconds) =>
+        Assert.Equal(expectedMilliseconds is { } ms ? DateTimeOffset.FromUnixTimeMilliseconds(ms) : null, HepsiburadaQuestionMapper.EpochSecondsOrMilliseconds(epoch));
 }
