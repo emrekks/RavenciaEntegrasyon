@@ -3,6 +3,19 @@ import { type VariantCodeChange } from '../variant-generation'
 import { type PlatformUpdateField } from './platform-update-fields'
 import { type VariantMediaAssignmentDrafts } from '../variant-media-assignments'
 import { Product, ProductAttributeAssignment, VariantPlatformStatus } from '../shared'
+import type { QueryClient } from '@tanstack/react-query'
+import type { Location, NavigateFunction } from 'react-router'
+
+// What the editor page hands its hooks first: its props and the router and query client it reads.
+export type EditorProps = {
+  editProductId: string | undefined
+  publishOnly: boolean
+  client: QueryClient
+  location: Location
+  navigate: NavigateFunction
+  routeState: { duplicateProductId?: unknown; wizardStep?: unknown } | null
+  duplicateProductId: string | undefined
+}
 
 // quick: sent by Hızlı Güncelle (else by the settings window's Gönder); the store prices name it as their reason.
 export type ProductUpdateRequest = { connectionIds: string[]; fields: PlatformUpdateField[]; quick?: boolean }

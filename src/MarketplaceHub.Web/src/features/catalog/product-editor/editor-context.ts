@@ -1,0 +1,20 @@
+// Everything the product editor's hooks give the page and its sections, in the order they are called.
+import type { EditorProps } from './editor-types'
+import type { EditorStateResult } from './use-editor-state'
+import type { EditorMediaPointerResult } from './use-editor-media-pointer'
+import type { EditorDirtyStateResult } from './use-editor-dirty-state'
+import type { VariantCodeMenusResult } from './use-variant-code-menus'
+import type { EditorDataResult } from './use-editor-data'
+import type { EditorSeedResult } from './use-editor-seed'
+import type { VariantRowDragResult } from './use-variant-row-drag'
+import type { VariantMediaAutoSaveResult } from './use-variant-media-autosave'
+import type { EditorViewResult } from './use-editor-view'
+import type { AttributeActionsResult } from './use-attribute-actions'
+import type { VariantActionsResult } from './use-variant-actions'
+import type { VariantCodeActionsResult } from './use-variant-code-actions'
+import type { EditorMediaActionsResult } from './use-editor-media-actions'
+import type { PlatformUpdateResult } from './use-platform-update'
+import type { ChannelPricingResult } from './use-channel-pricing'
+import type { EditorSubmitResult } from './use-editor-submit'
+
+export type EditorContext = EditorProps & EditorStateResult & EditorMediaPointerResult & EditorDirtyStateResult & VariantCodeMenusResult & EditorDataResult & EditorSeedResult & VariantRowDragResult & VariantMediaAutoSaveResult & EditorViewResult & AttributeActionsResult & VariantActionsResult & VariantCodeActionsResult & EditorMediaActionsResult & PlatformUpdateResult & ChannelPricingResult & EditorSubmitResult
