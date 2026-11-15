@@ -137,6 +137,14 @@ export const queryKeys = {
 
 export type QueryKeyName = keyof typeof queryKeys
 
+/**
+ * Every cached copy of one invoice (or, without an id, of all invoices): the invoice page's detail and the order screen's
+ * invoice viewer (W1). An invoice action refreshes both, so the viewer never shows the invoice as it was before.
+ */
+export const invoiceCopies = (id?: string) => id === undefined
+  ? [queryKeys.invoice(), queryKeys.invoiceViewer()] as const
+  : [queryKeys.invoice(id), queryKeys.invoiceViewer(id)] as const
+
 /** Every root, in declaration order. */
 export const queryRootList: readonly QueryRoot[] = Object.values(queryKeys)
 

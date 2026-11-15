@@ -55,7 +55,7 @@ import { useDismissable } from '../../shared/hooks/useDismissable'
 import { unknownCount } from '../../shared/tab-counts'
 import { personName } from '../../shared/person-name'
 import { ListEmptyState } from '../../shared/components/EmptyState'
-import { connectionQueries, queryKeys } from '../../shared/api/query-keys'
+import { connectionQueries, invoiceCopies, queryKeys } from '../../shared/api/query-keys'
 // Platforms whose invoice state is kept by hand (the API server's ManualInvoiceStatusPlatforms): Shopify has no invoice
 // of its own; N11, PttAVM and Pazarama report only invoices sent through their API, not ones uploaded in their panel.
 const manualInvoiceStatusPlatforms = new Set(['SHOPIFY', 'N11', 'PTTAVM', 'PAZARAMA'])
@@ -429,7 +429,7 @@ export function InvoicesPage() {
     onSuccess: async (result, item) => {
       setMessage(`#${item.orderNumber} nolu siparişin faturası yeniden gönderiliyor; sonuç gelince bildirilecek. Yeni fatura kesilmedi.`, 'info', invoiceOrderContext(item, 'Fatura İletimi Yeniden Deneniyor', 'Fatura iletimini yeniden deneme'))
       if (result?.jobId) followJobs([{ jobId: result.jobId, platformName: notificationPlatformName(item.platformCode) ?? 'Pazaryeri', what: `#${item.orderNumber} faturası` }], invoiceOrderContext(item, '', 'Fatura iletimini yeniden deneme'))
-      await Promise.all([client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspacePage() }), client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspaceSummary() }), client.invalidateQueries({ queryKey: queryKeys.invoice() }), client.invalidateQueries({ queryKey: queryKeys.jobs() })])
+      await Promise.all([client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspacePage() }), client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspaceSummary() }), ...invoiceCopies().map(queryKey => client.invalidateQueries({ queryKey })), client.invalidateQueries({ queryKey: queryKeys.jobs() })])
     },
     onError: (error, item) => setMessage(error instanceof Error ? error.message : 'Yeniden deneme sıraya alınamadı.', 'error', invoiceOrderContext(item, 'Yeniden Deneme Başlatılamadı', 'Fatura iletimini yeniden deneme', error))
   })
@@ -688,7 +688,7 @@ export function InvoicesPage() {
     {manualUploadItem && <InvoiceWorkspaceUploadModal item={manualUploadItem} onClose={() => setManualUploadItem(null)} onFeedback={setMessage} />}
     {manualStatusBatch && <InvoiceWorkspaceBulkStatusModal items={manualStatusBatch} onClose={() => setManualStatusBatch(null)} onFeedback={setMessage} />}
     {manualConfirmation && <InvoiceManualConfirmationModal kind={manualConfirmation.kind} item={manualConfirmation.item} onCancel={() => setManualConfirmation(null)} onConfirm={runManualConfirmation} />}
-    {previewTargets && <InvoiceWorkspacePreviewModal targets={previewTargets} onClose={() => setPreviewTargets(null)} onNotice={(text, kind, context) => setMessage(text, kind, context)} onComplete={() => { void Promise.all([client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspaceSummary() }), client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspacePage() }), client.invalidateQueries({ queryKey: queryKeys.orders() }), client.invalidateQueries({ queryKey: queryKeys.invoice() })]) }} />}
+    {previewTargets && <InvoiceWorkspacePreviewModal targets={previewTargets} onClose={() => setPreviewTargets(null)} onNotice={(text, kind, context) => setMessage(text, kind, context)} onComplete={() => { void Promise.all([client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspaceSummary() }), client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspacePage() }), client.invalidateQueries({ queryKey: queryKeys.orders() }), ...invoiceCopies().map(queryKey => client.invalidateQueries({ queryKey }))]) }} />}
   </section>
 }
 
@@ -735,7 +735,7 @@ function InvoiceWorkspaceBulkStatusModal({ items, onClose, onFeedback }: { items
   const update = useMutation({
     mutationFn: () => setManualInvoiceStatus(items.map(item => item.packageId), status),
     onSuccess: async result => {
-      await Promise.all([client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspaceSummary() }), client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspacePage() }), client.invalidateQueries({ queryKey: queryKeys.orders() }), client.invalidateQueries({ queryKey: queryKeys.invoice() })])
+      await Promise.all([client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspaceSummary() }), client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspacePage() }), client.invalidateQueries({ queryKey: queryKeys.orders() }), ...invoiceCopies().map(queryKey => client.invalidateQueries({ queryKey }))])
       const label = status === 'UPLOADED' ? 'Faturası yüklendi' : 'Fatura bekliyor'
       const reopened = result.reopenedCount ? ` ${result.reopenedCount} siparişte iptal edilen faturanın linki geçersiz sayıldı; yeni fatura kesilebilir.` : ''
       const platforms = [...new Set(items.map(item => item.platformCode))]
@@ -773,7 +773,7 @@ function InvoiceWorkspaceUploadModal({ item, onClose, onFeedback }: { item: Invo
     },
     onSuccess: async () => {
       onFeedback('Manuel fatura belgesi siparişe kaydedildi. Platforma iletim başlamadı; iletimi ayrı düğmeden başlatabilirsiniz.', 'success')
-      await Promise.all([client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspaceSummary() }), client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspacePage() }), client.invalidateQueries({ queryKey: queryKeys.orders() }), client.invalidateQueries({ queryKey: queryKeys.invoice() })])
+      await Promise.all([client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspaceSummary() }), client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspacePage() }), client.invalidateQueries({ queryKey: queryKeys.orders() }), ...invoiceCopies().map(queryKey => client.invalidateQueries({ queryKey }))])
       onClose()
     },
     onError: error => { const errorMessage = error instanceof Error ? error.message : 'Manuel fatura belgesi kaydedilemedi.'; setMessage(errorMessage); onFeedback(errorMessage, 'error') }
@@ -823,7 +823,7 @@ export function InvoiceDetailPage() {
       return hubApi(`/invoices/${id}/${endpoint}`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(), ...(!versionless ? { 'If-Match': `"v${invoice.version}"` } : {}) }, ...(action === 'STAGE_CAPABILITY_PROBE' ? {} : { body: JSON.stringify({ confirmed }) }) })
     },
     onSuccess: (value, variables) => {
-      setNotice(variables.action === 'VALIDATE' ? 'Yerel doğrulama tamamlandı.' : variables.action === 'RETRY_DELIVERY' ? 'Fatura yeniden gönderiliyor; sonuç gelince bildirilecek. Yeni fatura kesilmedi.' : 'İşlem başladı; sonuç gelince bildirilecek.', variables.action === 'VALIDATE' ? 'success' : 'info'); setConfirmed(false); void client.invalidateQueries({ queryKey: queryKeys.invoice(id) })
+      setNotice(variables.action === 'VALIDATE' ? 'Yerel doğrulama tamamlandı.' : variables.action === 'RETRY_DELIVERY' ? 'Fatura yeniden gönderiliyor; sonuç gelince bildirilecek. Yeni fatura kesilmedi.' : 'İşlem başladı; sonuç gelince bildirilecek.', variables.action === 'VALIDATE' ? 'success' : 'info'); setConfirmed(false); void Promise.all(invoiceCopies(id).map(queryKey => client.invalidateQueries({ queryKey })))
       // A send is followed to its result (gönderildi / gönderilemedi with the reason); the page's own status follows too.
       const jobId = (value as { jobId?: string } | null)?.jobId
       const what = variables.action === 'SUBMIT' ? 'fatura kesimi' : variables.action === 'CANCEL' ? 'fatura iptali' : 'fatura iletimi'
@@ -833,7 +833,7 @@ export function InvoiceDetailPage() {
   })
   const upload = useMutation({
     mutationFn: (file: File) => { const form = new FormData(); form.append('file', file); return hubApi<{ duplicate: boolean }>(`/invoices/${id}/documents/manual`, { method: 'POST', headers: { 'Idempotency-Key': `invoice-document:${id}:${file.name}:${file.size}:${file.lastModified}` }, body: form }) },
-    onSuccess: async result => { setNotice(result.duplicate ? 'Bu fatura belgesi zaten güvenli arşivde bulunuyor.' : 'Fatura belgesi güvenli özel arşive yüklendi. Belge henüz pazaryerine veya E‑Faturam’a iletilmedi.', 'success'); setUploadFile(null); await client.invalidateQueries({ queryKey: queryKeys.invoice(id) }) },
+    onSuccess: async result => { setNotice(result.duplicate ? 'Bu fatura belgesi zaten güvenli arşivde bulunuyor.' : 'Fatura belgesi güvenli özel arşive yüklendi. Belge henüz pazaryerine veya E‑Faturam’a iletilmedi.', 'success'); setUploadFile(null); await Promise.all(invoiceCopies(id).map(queryKey => client.invalidateQueries({ queryKey }))) },
     onError: error => setNotice(error instanceof Error ? error.message : 'Fatura belgesi yüklenemedi.', 'error')
   })
   if (query.isLoading) return <section className="content"><Busy /></section>; if (query.isError || !query.data) return <section className="content"><ErrorBox error={query.error} onRetry={() => void query.refetch()} /></section>; const invoice = query.data

@@ -8,7 +8,7 @@ import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { Badge, Button, useConfirmDialog } from '../../shared/components'
 import { linkRevocationActionLabel, linkRevocationConfirmCopy, linkRevocationNote, linkRevocationStatusLabel, linkRevocationSuccessMessage, linkRevocationTone, type InvoiceLinkRevocation } from './invoice-link-revocation'
 import './invoice-link-revocation.css'
-import { queryKeys } from '../../shared/api/query-keys'
+import { invoiceCopies } from '../../shared/api/query-keys'
 
 type Props = {
   invoiceId: string
@@ -31,11 +31,11 @@ export function InvoiceLinkRevocationPanel({ invoiceId, invoiceNumber, items, on
     }),
     onSuccess: async (_result, item) => {
       onNotice(linkRevocationSuccessMessage(item), 'success')
-      await client.invalidateQueries({ queryKey: queryKeys.invoice(invoiceId) })
+      await Promise.all(invoiceCopies(invoiceId).map(queryKey => client.invalidateQueries({ queryKey })))
     },
     onError: async error => {
       onNotice(error instanceof Error ? error.message : 'Fatura linki kaldırılamadı.', 'error')
-      await client.invalidateQueries({ queryKey: queryKeys.invoice(invoiceId) })
+      await Promise.all(invoiceCopies(invoiceId).map(queryKey => client.invalidateQueries({ queryKey })))
     },
   })
 
