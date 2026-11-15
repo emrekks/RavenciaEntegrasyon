@@ -11,6 +11,7 @@ public sealed class InvoiceSubmissionStateTests
     [InlineData("CAPABILITY_NOT_VERIFIED")]
     [InlineData("EFATURAM_SIGNIN_UNAVAILABLE")]
     [InlineData("EFATURAM_RATE_LIMITED")]
+    [InlineData("EFATURAM_GATEWAY_BLOCKED")]
     public void Provider_refusal_before_any_invoice_exists_is_retryable_and_shown_as_an_error(string errorCode)
     {
         Assert.True(InvoicingBillingService.IsStoppedBeforeProvider(InvoiceStatus.Submitting, errorCode, null));

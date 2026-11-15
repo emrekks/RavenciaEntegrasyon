@@ -1952,6 +1952,8 @@ public sealed partial class InvoicingBillingService(
         "EFATURAM_OPERATION_FORBIDDEN",
         "EFATURAM_CONFIGURATION_UNAVAILABLE",
         "EFATURAM_RATE_LIMITED",
+        // D11: the gateway turned the request away (403 HTML page): it never reached E-Faturam.
+        "EFATURAM_GATEWAY_BLOCKED",
         "CAPABILITY_NOT_VERIFIED",
         MarketplaceInvoiceCreationPolicy.DisabledErrorCode
     };

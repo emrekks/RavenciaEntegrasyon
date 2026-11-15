@@ -266,7 +266,8 @@ public sealed class TrendyolEFaturamHttpClient(
             var retryAfter = response.Headers.RetryAfter?.Delta;
             var rate = new RateLimitMetadata(null, response.Headers.RetryAfter?.Date, retryAfter);
             var remoteId = response.Headers.TryGetValues("x-request-id", out var ids) ? ids.FirstOrDefault() : null;
-            if (!response.IsSuccessStatusCode) return AdapterResult<string>.Failure(TrendyolEFaturamErrorMapper.FromStatus(response.StatusCode, retryAfter, remoteId), rate);
+            if (!response.IsSuccessStatusCode)
+                return AdapterResult<string>.Failure(await GatewayBlockAsync(response, remoteId, linked.Token) ?? TrendyolEFaturamErrorMapper.FromStatus(response.StatusCode, retryAfter, remoteId), rate);
             if (!response.Headers.TryGetValues("x-access-token", out var tokens) || string.IsNullOrWhiteSpace(tokens.FirstOrDefault())) return AdapterResult<string>.Failure(TrendyolEFaturamErrorMapper.Contract(), rate);
             return AdapterResult<string>.Success(tokens.First(), rate);
         }
@@ -300,6 +301,10 @@ public sealed class TrendyolEFaturamHttpClient(
             {
                 // The cached token was refused; the next operation signs in again.
                 if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized) tokens.Forget(context.CredentialId);
+                // D11: a 403 HTML page is the gateway's temporary block, as on every other adapter: the request did not
+                // reach E-Faturam (no invoice can exist from it) and is retried later, never a refusal of the account.
+                if (await GatewayBlockAsync(response, remoteId, linked.Token) is { } gatewayBlock)
+                    return AdapterResult<AuthorizedResponse>.Failure(gatewayBlock, rate);
                 // Y4: the problem body is read even when the gateway sent an x-request-id. Its type decides the outcome
                 // (tax-payer-not-found → not registered, earchive-not-found → no such invoice, application-mismatch),
                 // so it is the reference kept; the request id stays only when the body names no problem.
@@ -315,4 +320,19 @@ public sealed class TrendyolEFaturamHttpClient(
     }
 
     internal sealed record AuthorizedResponse(string Body, string? RemoteRequestId);
+
+    // The gateway block of a 403 HTML page (MarketplaceErrorRules.GatewayBlocked), or null. The body is buffered (at most
+    // 64 KiB) so a JSON problem body can still be read after this look; a larger or broken body is no gateway page.
+    private static async Task<AdapterError?> GatewayBlockAsync(HttpResponseMessage response, string? remoteId, CancellationToken cancellationToken)
+    {
+        if (response.StatusCode != System.Net.HttpStatusCode.Forbidden) return null;
+        try
+        {
+            await response.Content.LoadIntoBufferAsync(64 * 1024, cancellationToken);
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            return MarketplaceErrorRules.GatewayBlocked(response.StatusCode, body, "E-Faturam", "EFATURAM", remoteId);
+        }
+        catch (HttpRequestException) { return null; }
+        catch (IOException) { return null; }
+    }
 }

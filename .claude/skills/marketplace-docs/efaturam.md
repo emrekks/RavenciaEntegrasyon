@@ -15,6 +15,9 @@ Code: `Adapters/TrendyolEFaturam/` — `TrendyolEFaturamHttpClient.cs`, `Trendyo
 - A 408 is a timeout (EFATURAM_REMOTE_TIMEOUT, TransientNetwork), not a refusal: on an invoice creation the outcome
   is unknown (`InvoiceSubmissionOutcomePolicy`) and the invoice is read back by its own UUID, never sent again blind
   (`TrendyolEFaturamErrorMapper.FromStatus`, report item 16, 5 Nov 2026). Before, a 408 read as "request refused".
+- A 403 whose body is an HTML page is the gateway's temporary block (EFATURAM_GATEWAY_BLOCKED, RateLimit, 15 min), as on
+  every adapter (`MarketplaceErrorRules.GatewayBlocked`): the request never reached E-Faturam, so it is a pre-provider
+  refusal and a resend is safe (same ETTN). A 403 JSON problem stays EFATURAM_OPERATION_FORBIDDEN (scan D11, 15 Nov 2026).
 
 ## e-Fatura taxpayer lookup (live since 31 Oct 2026)
 - `GET api/invoice/taxpayers/{taxId}?showDeleted=false` ("Mükellef Sorgulama / getTaxPayersByTaxId").

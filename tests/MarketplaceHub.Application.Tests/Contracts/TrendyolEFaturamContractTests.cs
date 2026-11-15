@@ -75,9 +75,10 @@ public sealed class TrendyolEFaturamContractTests
     {
         { "429 with Retry-After", new(() => CannedHttp.RateLimited(19), AdapterErrorClass.RateLimit, "EFATURAM_RATE_LIMITED", 429, TimeSpan.FromSeconds(19)) },
         { "401 token rejected", new(() => CannedHttp.Unauthorized(), AdapterErrorClass.Authentication, "EFATURAM_ACCESS_TOKEN_REJECTED", 401, null) },
-        // DEVIATION: E-Faturam's send path has no HTML gateway rule (MarketplaceErrorRules.GatewayBlocked): a 403 HTML
-        // page reads as EFATURAM_OPERATION_FORBIDDEN (Authentication) instead of a temporary gateway block.
-        { "403 HTML gateway page", new(CannedHttp.GatewayBlocked, AdapterErrorClass.Authentication, "EFATURAM_OPERATION_FORBIDDEN", 403, null) },
+        // D11: a 403 HTML page is the gateway's temporary block, as on every other adapter (MarketplaceErrorRules.GatewayBlocked):
+        // retried after a quarter hour, never a refusal of the account. The request did not reach E-Faturam.
+        { "403 HTML gateway page", new(CannedHttp.GatewayBlocked, AdapterErrorClass.RateLimit, "EFATURAM_GATEWAY_BLOCKED", 403, TimeSpan.FromMinutes(15)) },
+        { "403 JSON problem", new(() => new CannedHttp(HttpStatusCode.Forbidden, """{"type":"about:blank","title":"Forbidden","status":403}"""), AdapterErrorClass.Authentication, "EFATURAM_OPERATION_FORBIDDEN", 403, null) },
         { "404 documented problem", new(() => CannedHttp.Fixture(HttpStatusCode.NotFound, "EFaturam/problem-earchive-not-found.json"), AdapterErrorClass.NotFound, "EFATURAM_RESOURCE_NOT_FOUND", 404, null) },
         { "400 validation", new(() => new CannedHttp(HttpStatusCode.BadRequest, """{"type":"about:blank","title":"Bad Request","status":400}"""), AdapterErrorClass.Validation, "EFATURAM_REQUEST_REJECTED", 400, null) },
         { "408 provider timeout", new(() => new CannedHttp(HttpStatusCode.RequestTimeout, ""), AdapterErrorClass.TransientNetwork, "EFATURAM_REMOTE_TIMEOUT", 408, TimeSpan.FromSeconds(30)) },
