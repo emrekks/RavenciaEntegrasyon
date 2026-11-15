@@ -48,5 +48,4 @@ public static class NotificationEndpoints
         string? PlatformCode, string? StoreName, int? Count, JsonElement? Payload, DateTimeOffset? CreatedAt, bool Shared, bool Read);
     // Shared is still read from older browsers and ignored.
 
-    private static string[]? List(string? value) => value?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 }

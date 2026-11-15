@@ -27,6 +27,9 @@ public static class EndpointHelpers
     /// <summary>A 1-based page number: 1 when omitted, else 1-100000.</summary>
     public static int PageNumber(int? page) => page is null ? 1 : page is >= 1 and <= MaximumPageNumber ? page.Value : throw new ArgumentException("page 1-100000 arasında olmalıdır.");
 
+    /// <summary>A comma list query value (platforms, results, triggers, job types): trimmed, empty items dropped; null when absent.</summary>
+    public static string[]? List(string? value) => value?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
     /// <summary>
     /// The refusal for a write that must carry an Idempotency-Key, or null when it has a usable one. A key over 256
     /// characters is refused earlier by IdempotencyMiddleware with the same answer.

@@ -91,7 +91,6 @@ public static class JobEndpoints
 
     // ids: a comma list of job ids; anything that is not an id is left out.
     public static IReadOnlyList<Guid>? Ids(string? value) => List(value)?.Select(part => Guid.TryParse(part, out var id) ? id : Guid.Empty).Where(id => id != Guid.Empty).Take(JobListQuery.MaximumIds).ToArray();
-    private static string[]? List(string? value) => value?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     public static IReadOnlyList<string>? Platforms(string? platform, string? platforms)
     {
         var codes = (List(platform) ?? []).Concat(List(platforms) ?? []).Select(code => code.ToUpperInvariant()).Distinct(StringComparer.Ordinal).Take(20).ToArray();
