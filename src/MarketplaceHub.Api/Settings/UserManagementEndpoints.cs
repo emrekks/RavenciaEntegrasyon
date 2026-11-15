@@ -49,12 +49,12 @@ public static class UserManagementEndpoints
     public static IEndpointRouteBuilder MapUserManagementEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/settings/users").WithGates(ApiGate.Elevated, ApiGate.Elevated);
-        group.MapGet("", ListAsync);
+        group.MapGet("", ListAsync).Produces<TenantUsersView>();
         group.MapPost("", CreateAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
-        group.MapPut("/{id:guid}/role", ChangeRoleAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
-        group.MapPut("/{id:guid}/status", ChangeStatusAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
+        group.MapPut("/{id:guid}/role", ChangeRoleAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Produces(StatusCodes.Status204NoContent);
+        group.MapPut("/{id:guid}/status", ChangeStatusAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Produces(StatusCodes.Status204NoContent);
         group.MapPost("/{id:guid}/password-reset", ResetPasswordAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
-        group.MapPost("/{id:guid}/mfa-reset", ResetMfaAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
+        group.MapPost("/{id:guid}/mfa-reset", ResetMfaAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Produces(StatusCodes.Status204NoContent);
         group.MapPost("/{id:guid}/sessions/revoke", RevokeSessionsAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
         return endpoints;
     }

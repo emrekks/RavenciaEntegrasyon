@@ -15,7 +15,7 @@ public static class JobEndpoints
                     tenant.TenantId,
                     new JobListQuery(status, since, List(jobTypes), limit, Platforms: Platforms(platform, platforms), Ids: Ids(ids)),
                     http.RequestAborted))
-                : Unauthorized(http));
+                : Unauthorized(http)).Produces<IReadOnlyList<JobSummaryView>>();
         // Cursor-paged list for the operations page: { items, nextCursor, hasMore }; after continues a previous page.
         // platform (or platforms, a comma list) keeps the jobs of those connection platforms; search keeps the jobs one
         // identifier names (job id, correlation id, marketplace id), so a job is found by its number at any age.
@@ -25,7 +25,7 @@ public static class JobEndpoints
                     tenant.TenantId,
                     new JobListQuery(status, since, List(jobTypes), limit, after, Platforms(platform, platforms), Search: search),
                     http.RequestAborted))
-                : Unauthorized(http));
+                : Unauthorized(http)).Produces<PageResult<JobSummaryView>>();
         // The notification center's background notices: reads failing run after run, approvals that ran out of time.
         // Each listed notice is also kept in the notification center for the whole tenant (the server records them; a
         // browser may not), once per notice and revision.
@@ -42,31 +42,31 @@ public static class JobEndpoints
                 }
             }
             return Results.Ok(notices);
-        });
+        }).Produces<IReadOnlyList<AttentionNoticeView>>();
         api.MapGet("/counts", async (HttpContext http, IJobOperationsService service, DateTimeOffset? since, string? platform, string? platforms) =>
             Tenant(http) is { } tenant
                 ? Results.Ok(await service.CountAsync(tenant.TenantId, since, Platforms(platform, platforms), http.RequestAborted))
-                : Unauthorized(http));
+                : Unauthorized(http)).Produces<IReadOnlyList<JobCountView>>();
         api.MapGet("/metrics", async (HttpContext http, IJobOperationsService service, int? hours, string? platform, string? platforms) =>
             Tenant(http) is { } tenant
                 ? Results.Ok(await service.MetricsAsync(tenant.TenantId, TimeSpan.FromHours(Math.Clamp(hours ?? 24, 1, 168)), Platforms(platform, platforms), http.RequestAborted))
-                : Unauthorized(http));
+                : Unauthorized(http)).Produces<IReadOnlyList<JobTypeMetricView>>();
         api.MapGet("/metrics/lanes", async (HttpContext http, IQueueHealthService service, int? hours) =>
             Tenant(http) is { } tenant
                 ? Results.Ok(await service.LanesAsync(tenant.TenantId, TimeSpan.FromHours(Math.Clamp(hours ?? 24, 1, 168)), http.RequestAborted))
-                : Unauthorized(http));
+                : Unauthorized(http)).Produces<IReadOnlyList<LaneMetricView>>();
         api.MapGet("/metrics/quota", async (HttpContext http, IQueueHealthService service) =>
             Tenant(http) is { } tenant
                 ? Results.Ok(await service.QuotaAsync(tenant.TenantId, http.RequestAborted))
-                : Unauthorized(http));
+                : Unauthorized(http)).Produces<IReadOnlyList<QuotaUsageView>>();
         api.MapGet("/{id:guid}", async (Guid id, HttpContext http, IJobOperationsService service) =>
             Tenant(http) is { } tenant
                 ? Result(http, await service.GetAsync(tenant.TenantId, id, http.RequestAborted))
-                : Unauthorized(http));
+                : Unauthorized(http)).Produces<JobDetailView>();
         api.MapPost("/{id:guid}/retry", async (Guid id, HttpContext http, IJobOperationsService service) =>
             Tenant(http) is { } tenant
                 ? RequireIdempotency(http) ?? Result(http, await service.RetryAsync(tenant.TenantId, id, http.RequestAborted))
-                : Unauthorized(http)).RequireIdempotencyKey();
+                : Unauthorized(http)).RequireIdempotencyKey().Produces<JobDetailView>();
         api.MapPost("/{id:guid}/invoice-delivery-once", async (Guid id, OneTimeInvoiceDeliveryAction command, HttpContext http, IJobOperationsService service) =>
         {
             var tenant = Tenant(http);
@@ -82,11 +82,11 @@ public static class JobEndpoints
                 http.TraceIdentifier,
                 http.RequestAborted);
             return Result(http, result);
-        }).RequireIdempotencyKey();
+        }).RequireIdempotencyKey().Produces<JobDetailView>();
         api.MapPost("/{id:guid}/cancel", async (Guid id, HttpContext http, IJobOperationsService service) =>
             Tenant(http) is { } tenant
                 ? RequireIdempotency(http) ?? Result(http, await service.CancelAsync(tenant.TenantId, id, http.RequestAborted))
-                : Unauthorized(http)).RequireIdempotencyKey();
+                : Unauthorized(http)).RequireIdempotencyKey().Produces<JobDetailView>();
         return endpoints;
     }
 

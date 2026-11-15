@@ -58,6 +58,20 @@ public sealed class IdempotencyKeyRequired
     private IdempotencyKeyRequired() { }
 }
 
+/// <summary>
+/// Endpoint metadata (documentation only): the write reads If-Match "v{version}". Required: 428 PRECONDITION_REQUIRED
+/// without it (EndpointHelpers.TryIfMatch); optional: a blind write when absent (OptionalIfMatch). Either way a stale
+/// version is refused (412 or 409, per service) and a malformed one is 400 INVALID_ETAG.
+/// </summary>
+public sealed class IfMatchMetadata
+{
+    public static readonly IfMatchMetadata RequiredHeader = new(true);
+    public static readonly IfMatchMetadata OptionalHeader = new(false);
+    private IfMatchMetadata(bool required) => Required = required;
+
+    public bool Required { get; }
+}
+
 /// <summary>Endpoint metadata: the read calls a marketplace live and spends its quota (API-GUVENLIK-7).</summary>
 public sealed class LiveMarketplaceReadMetadata
 {
@@ -93,6 +107,10 @@ public static class EndpointRules
     /// </summary>
     public static TBuilder RequireIdempotencyKey<TBuilder>(this TBuilder builder) where TBuilder : IEndpointConventionBuilder =>
         builder.WithMetadata(IdempotencyKeyRequired.Instance);
+
+    /// <summary>Documents the If-Match header the handler reads (the check itself stays in the handler).</summary>
+    public static TBuilder IfMatch<TBuilder>(this TBuilder builder, bool required = true) where TBuilder : IEndpointConventionBuilder =>
+        builder.WithMetadata(required ? IfMatchMetadata.RequiredHeader : IfMatchMetadata.OptionalHeader);
 
     /// <summary>A read answered by a live marketplace call: every role that works with orders, and only from the panel itself.</summary>
     public static TBuilder LiveMarketplaceRead<TBuilder>(this TBuilder builder) where TBuilder : IEndpointConventionBuilder =>

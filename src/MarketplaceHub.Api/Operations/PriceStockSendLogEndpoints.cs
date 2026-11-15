@@ -21,7 +21,7 @@ public static class PriceStockSendLogEndpoints
                     string.Equals(order, "asc", StringComparison.OrdinalIgnoreCase)),
                 http.RequestAborted);
             return result.Succeeded ? Results.Ok(result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
-        }).RequireGate(ApiGate.SignedIn);
+        }).RequireGate(ApiGate.SignedIn).Produces<PageResult<PriceStockSendLogView>>();
         // The summary above the log: [{ result, count }] under the same filters as the list, without its result filter.
         endpoints.MapGet("/api/v1/price-stock-send-log/counts", async (HttpContext http, IPriceStockSendLogService service, string? platform, string? platforms,
             Guid? connectionId, DateTimeOffset? from, DateTimeOffset? to, string? search, string? triggers) =>
@@ -32,7 +32,7 @@ public static class PriceStockSendLogEndpoints
                 new PriceStockSendLogQuery(Platforms: JobEndpoints.Platforms(platform, platforms), ConnectionId: connectionId, From: from, To: to, Search: search, Triggers: List(triggers)),
                 http.RequestAborted);
             return result.Succeeded ? Results.Ok(result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
-        }).RequireGate(ApiGate.SignedIn);
+        }).RequireGate(ApiGate.SignedIn).Produces<IReadOnlyList<PriceStockSendLogCount>>();
         return endpoints;
     }
 

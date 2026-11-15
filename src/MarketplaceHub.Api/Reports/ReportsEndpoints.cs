@@ -25,7 +25,7 @@ public static class ReportsEndpoints
             }
             var result = await service.SalesAsync(tenant.TenantId, new ReportSalesQuery(start, end, Split(platformCodes), ids, granularity, includeTest ?? false), http.RequestAborted);
             return result.Succeeded ? Results.Ok(result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
-        });
+        }).Produces<ReportSalesView>();
         // Sipariş Kârlılık Analizi: the period's orders with each one's profit, a page at a time.
         api.MapGet("/reports/order-profitability", async (HttpContext http, IReportsService service, string? from, string? to, string? platformCodes, string? search, string? sort, string? dir, int? page, int? limit) =>
         {
@@ -37,14 +37,14 @@ public static class ReportsEndpoints
             var result = await service.OrderProfitabilityAsync(tenant.TenantId, new ReportOrderProfitQuery(start, end, Split(platformCodes), search?.Length > 120 ? search[..120] : search,
                 sort, dir != "asc", page ?? 0, limit ?? 50), http.RequestAborted);
             return result.Succeeded ? Results.Ok(result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
-        });
+        }).Produces<ReportOrderProfitPage>();
         // Fiyat Hesapla's hints: each store's commission, cargo and service fee on the clothing orders of the last 60 days.
         api.MapGet("/reports/price-assumptions", async (HttpContext http, IReportsService service) =>
         {
             if (Tenant(http) is not { } tenant) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
             var result = await service.PriceAssumptionsAsync(tenant.TenantId, http.RequestAborted);
             return result.Succeeded ? Results.Ok(result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
-        });
+        }).Produces<PriceAssumptionsView>();
         // Stok raporu: the stock now with its cost and value; the period only sets the sales the cover days are read from.
         api.MapGet("/reports/stock", async (HttpContext http, IReportsService service, string? from, string? to, string? platformCodes, bool? includeTest) =>
         {
@@ -53,14 +53,14 @@ public static class ReportsEndpoints
                 return MarketplaceHub.Api.Security.ApiProblems.Of(http, "REPORT_RANGE_INVALID", "Tarihler yyyy-AA-gg biçiminde olmalıdır.", 400);
             var result = await service.StockAsync(tenant.TenantId, new ReportStockQuery(start, end, Split(platformCodes), includeTest ?? false), http.RequestAborted);
             return result.Succeeded ? Results.Ok(result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
-        });
+        }).Produces<ReportInventoryView>();
         // Stok's Tahmini Kâr: the real profit on cost of each of the last whole months (the platforms as the tab's filter).
         api.MapGet("/reports/profit-rate", async (HttpContext http, IReportsService service, string? platformCodes) =>
         {
             if (Tenant(http) is not { } tenant) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
             var result = await service.ProfitRateAsync(tenant.TenantId, Split(platformCodes), http.RequestAborted);
             return result.Succeeded ? Results.Ok(result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
-        });
+        }).Produces<ReportProfitRateView>();
         // Hakediş: what the marketplaces will pay and have paid, now (no period: due days and payouts of the last days).
         api.MapGet("/reports/payouts", async (HttpContext http, IPayoutsService service, string? platformCodes, string? connectionIds, bool? includeTest) =>
         {
@@ -68,7 +68,7 @@ public static class ReportsEndpoints
             if (!TryIds(connectionIds, out var ids)) return MarketplaceHub.Api.Security.ApiProblems.Of(http, "REPORT_CONNECTION_INVALID", "Mağaza kimliği geçersiz.", 400);
             var result = await service.SummaryAsync(tenant.TenantId, new PayoutQuery(Split(platformCodes), ids, includeTest ?? false), http.RequestAborted);
             return result.Succeeded ? Results.Ok(result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
-        });
+        }).Produces<PayoutView>();
         // The records of one payout, of a store's due day in a region, or of a search by order, invoice or record number.
         api.MapGet("/reports/payouts/lines", async (HttpContext http, IPayoutsService service, string? platformCodes, Guid? connectionId, string? payoutId, string? day, string? region, string? kind, string? q, int? page) =>
         {
@@ -85,7 +85,7 @@ public static class ReportsEndpoints
             var result = await service.LinesAsync(tenant.TenantId, new PayoutQuery(Split(platformCodes), null, false),
                 new PayoutLinesQuery(connectionId, payoutId, due, region, q, page ?? 0, string.IsNullOrEmpty(kind) ? null : kind), http.RequestAborted);
             return result.Succeeded ? Results.Ok(result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
-        });
+        }).Produces<PayoutLinesPage>();
         // Trendyol's product ads report: the newest upload of each store, and the upload.
         api.MapAdReportEndpoints();
         return endpoints;

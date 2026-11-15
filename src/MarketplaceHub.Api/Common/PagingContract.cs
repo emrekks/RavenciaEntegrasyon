@@ -17,6 +17,21 @@ namespace MarketplaceHub.Api.Common;
 // The contract below is format 1 for lists and NumberedPage for page-numbered reports; neither is adopted by an
 // existing endpoint here, because each would change parameter names or member names the panel sends or reads.
 
+/// <summary>A query parameter's accepted range as the endpoint checks it.</summary>
+public readonly record struct PagingRange(int Minimum, int? Maximum, int? Default);
+
+/// <summary>One of the paging formats on the wire, as the OpenAPI document names it (x-paging).</summary>
+public readonly record struct PagingFormat(string Name, IReadOnlyDictionary<string, PagingRange> Ranges)
+{
+    public PagingRange? RangeOf(string parameter) => Ranges.TryGetValue(parameter, out var range) ? range : null;
+}
+
+public static class PagingContract
+{
+    /// <summary>The paging format of a list operation, from the query parameters it reads; null for an operation that pages nothing.</summary>
+    public static PagingFormat? FormatOf(string path, IReadOnlySet<string> query) => null;
+}
+
 /// <summary>A cursor list request: up to <see cref="Limit"/> items after the opaque <see cref="After"/> cursor.</summary>
 public readonly record struct CursorPageRequest(int Limit, string? After)
 {

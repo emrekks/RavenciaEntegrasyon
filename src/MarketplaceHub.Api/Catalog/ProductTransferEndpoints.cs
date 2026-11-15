@@ -14,10 +14,10 @@ internal static class ProductTransferEndpoints
 
     public static RouteGroupBuilder MapProductTransferEndpoints(this RouteGroupBuilder api)
     {
-        api.MapGet("/products/transfer/summary", SummaryAsync);
+        api.MapGet("/products/transfer/summary", SummaryAsync).Produces<ProductTransferSummaryView>();
         api.MapGet("/products/transfer/export.xlsx", ExportAsync);
-        api.MapPost("/products/transfer/import", PreviewAsync).DisableAntiforgery();
-        api.MapPost("/products/transfer/apply", ApplyAsync).RequireIdempotencyKey();
+        api.MapPost("/products/transfer/import", PreviewAsync).DisableAntiforgery().Produces<ProductTransferImportPreview>();
+        api.MapPost("/products/transfer/apply", ApplyAsync).RequireIdempotencyKey().Produces<ProductTransferApplyResult>();
         return api;
     }
 

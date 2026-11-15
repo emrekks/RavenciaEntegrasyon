@@ -12,24 +12,24 @@ internal static class CommissionTariffEndpoints
 {
     public static RouteGroupBuilder MapCommissionTariffEndpoints(this RouteGroupBuilder api)
     {
-        api.MapGet("/connections/{connectionId:guid}/commission-tariffs", ListAsync);
-        api.MapPost("/connections/{connectionId:guid}/commission-tariffs", UploadAsync).DisableAntiforgery().RequireIdempotencyKey();
+        api.MapGet("/connections/{connectionId:guid}/commission-tariffs", ListAsync).Produces<IReadOnlyList<CommissionTariffView>>();
+        api.MapPost("/connections/{connectionId:guid}/commission-tariffs", UploadAsync).DisableAntiforgery().RequireIdempotencyKey().Produces<CommissionTariffUploadResult>();
         api.MapGet("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/rows", RowsAsync);
-        api.MapDelete("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}", DeleteAsync);
+        api.MapDelete("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}", DeleteAsync).Produces<bool>();
         // The days a tariff is valid for, picked by the seller (operational roles, as the upload and delete).
-        api.MapPut("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/period", UpdatePeriodAsync);
-        api.MapGet("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/facets", FacetsAsync);
+        api.MapPut("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/period", UpdatePeriodAsync).Produces<IReadOnlyList<CommissionTariffView>>();
+        api.MapGet("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/facets", FacetsAsync).Produces<CommissionTariffFacets>();
         // The seller's band picks as an Excel file. It writes nothing; as a POST under /connections it takes the operational
         // roles, as the upload does.
         api.MapPost("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/export", ExportAsync);
         // The seller's saved picks: read by every role, replaced (PUT, the operational roles) after each change on the page.
-        api.MapGet("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/selection", SelectionAsync);
-        api.MapPut("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/selection", SaveSelectionAsync);
+        api.MapGet("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/selection", SelectionAsync).Produces<CommissionTariffSelectionView>();
+        api.MapPut("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/selection", SaveSelectionAsync).Produces<CommissionTariffSelectionView>();
         // Promotion offers (Plus, advantage label, flash): the latest file of each kind, the kind told by its columns.
-        api.MapGet("/connections/{connectionId:guid}/promotion-offers", ListOffersAsync);
-        api.MapPost("/connections/{connectionId:guid}/promotion-offers", UploadOfferAsync).DisableAntiforgery().RequireIdempotencyKey();
-        api.MapGet("/connections/{connectionId:guid}/promotion-offers/{kind}", OfferAsync);
-        api.MapDelete("/connections/{connectionId:guid}/promotion-offers/{kind}", DeleteOfferAsync);
+        api.MapGet("/connections/{connectionId:guid}/promotion-offers", ListOffersAsync).Produces<IReadOnlyList<PromotionOfferSummary>>();
+        api.MapPost("/connections/{connectionId:guid}/promotion-offers", UploadOfferAsync).DisableAntiforgery().RequireIdempotencyKey().Produces<PromotionOfferUploadResult>();
+        api.MapGet("/connections/{connectionId:guid}/promotion-offers/{kind}", OfferAsync).Produces<PromotionOfferDetail>();
+        api.MapDelete("/connections/{connectionId:guid}/promotion-offers/{kind}", DeleteOfferAsync).Produces<bool>();
         return api;
     }
 
