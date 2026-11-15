@@ -88,12 +88,69 @@ public sealed class ApiErrorEnvelopeTests
         Assert.Equal(code, (await ReadBody(context)).GetProperty("code").GetString());
     }
 
+    // API-GUVENLIK-4: an unexpected failure answers in the panel's shape (Turkish, with a code, the correlation id and
+    // retryable), never the framework's English ProblemDetails, and never with the exception's own text.
     [Fact]
-    public async Task OtherExceptions_KeepTheDefaultHandling()
+    public async Task UnexpectedException_IsAnInternalErrorInTheSharedShape()
     {
-        var handled = await new ApiExceptionHandler().TryHandleAsync(NewContext(), new InvalidOperationException("boom"), CancellationToken.None);
+        var context = NewContext();
+        context.TraceIdentifier = "corr-500";
 
-        Assert.False(handled);
+        var handled = await new ApiExceptionHandler().TryHandleAsync(context, new InvalidOperationException("boom at Secret.Path"), CancellationToken.None);
+
+        Assert.True(handled);
+        Assert.Equal(500, context.Response.StatusCode);
+        Assert.Equal(ApiProblems.ContentType, context.Response.ContentType?.Split(';')[0]);
+        var body = await ReadBody(context);
+        Assert.Equal("INTERNAL_ERROR", body.GetProperty("code").GetString());
+        Assert.Equal("corr-500", body.GetProperty("correlationId").GetString());
+        Assert.True(body.GetProperty("retryable").GetBoolean());
+        Assert.Contains("corr-500", body.GetProperty("title").GetString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("boom", body.GetRawText(), StringComparison.Ordinal);
+        Assert.DoesNotContain("Secret.Path", body.GetRawText(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ConcurrencyException_IsAConflict()
+    {
+        var context = NewContext();
+
+        Assert.True(await new ApiExceptionHandler().TryHandleAsync(context, new Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException("row changed"), CancellationToken.None));
+
+        Assert.Equal(409, context.Response.StatusCode);
+        Assert.Equal("CONCURRENCY_CONFLICT", (await ReadBody(context)).GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task ArgumentException_IsABadRequest_InEveryEndpointGroup()
+    {
+        var context = NewContext();
+
+        Assert.True(await new ApiExceptionHandler().TryHandleAsync(context, new ArgumentException("limit 1-200 arasında olmalıdır.", "limit"), CancellationToken.None));
+
+        Assert.Equal(400, context.Response.StatusCode);
+        var body = await ReadBody(context);
+        Assert.Equal("INVALID_REQUEST", body.GetProperty("code").GetString());
+        Assert.Equal("limit 1-200 arasında olmalıdır.", body.GetProperty("title").GetString());
+    }
+
+    [Fact]
+    public async Task ARequestTheClientAbandoned_AndAStartedResponse_KeepTheDefaultHandling()
+    {
+        using var aborted = new CancellationTokenSource();
+        await aborted.CancelAsync();
+        var abandoned = NewContext();
+        abandoned.RequestAborted = aborted.Token;
+        Assert.False(await new ApiExceptionHandler().TryHandleAsync(abandoned, new OperationCanceledException(aborted.Token), CancellationToken.None));
+
+        var started = NewContext();
+        started.Features.Set<Microsoft.AspNetCore.Http.Features.IHttpResponseFeature>(new StartedResponse());
+        Assert.False(await new ApiExceptionHandler().TryHandleAsync(started, new InvalidOperationException("late"), CancellationToken.None));
+    }
+
+    private sealed class StartedResponse : Microsoft.AspNetCore.Http.Features.HttpResponseFeature
+    {
+        public override bool HasStarted => true;
     }
 
     [Theory]
