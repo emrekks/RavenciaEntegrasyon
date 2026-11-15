@@ -73,6 +73,16 @@ internal static class InvoicingModelConfiguration
                 .IsUnique()
                 .HasDatabaseName("IX_invoices_TenantId_PackageId_ActiveSaleFiscal")
                 .HasFilter("\"PackageId\" IS NOT NULL AND \"OriginalInvoiceId\" IS NULL AND \"SequencePurpose\" = 'SALE'");
+            // The provider's ETTN and invoice number identify one official invoice: two rows holding the same one would
+            // send a return or a cancellation to the wrong order (VERITABANI-DAGITIM-11). Numbers are unique per issuer.
+            entity.HasIndex(x => new { x.TenantId, x.EttnUuid })
+                .IsUnique()
+                .HasDatabaseName("UX_invoices_TenantId_EttnUuid")
+                .HasFilter("\"EttnUuid\" IS NOT NULL");
+            entity.HasIndex(x => new { x.TenantId, x.LegalEntityProfileId, x.InvoiceNumber })
+                .IsUnique()
+                .HasDatabaseName("UX_invoices_TenantId_LegalEntityProfileId_InvoiceNumber")
+                .HasFilter("\"InvoiceNumber\" IS NOT NULL");
             entity.HasOne<Order>().WithMany().HasForeignKey(x => new { x.TenantId, x.OrderId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<ShipmentPackage>().WithMany().HasForeignKey(x => new { x.TenantId, x.PackageId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ProviderConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
