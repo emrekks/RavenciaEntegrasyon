@@ -9,7 +9,6 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
     private static readonly HashSet<string> OwnerRoles = new(StringComparer.OrdinalIgnoreCase) { "OWNER" };
     private static readonly HashSet<string> OperationalRoles = new(StringComparer.OrdinalIgnoreCase) { "OWNER", "ADMINISTRATOR", "OPERATIONS" };
     private static readonly HashSet<string> InvoiceRoles = new(StringComparer.OrdinalIgnoreCase) { "OWNER", "ADMINISTRATOR", "OPERATIONS", "ACCOUNTING" };
-    private static readonly HashSet<string> AccountingRoles = new(StringComparer.OrdinalIgnoreCase) { "OWNER", "ADMINISTRATOR", "ACCOUNTING" };
     // Every role that works with orders; READONLY is left out.
     private static readonly HashSet<string> WorkingRoles = new(StringComparer.OrdinalIgnoreCase) { "OWNER", "ADMINISTRATOR", "OPERATIONS", "ACCOUNTING" };
 
@@ -116,8 +115,6 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
         var last = segments.Length > 3 ? segments[^1].ToLowerInvariant() : string.Empty;
         switch (area)
         {
-            case "billing":
-                return AccountingRoles;
             // No invoice goes out without the owner's approval (6 Nov): issuing an e-invoice, cancelling it, and sending
             // or removing its link at the marketplace are for the owner and administrators. Drafts, validation,
             // previews, uploads and status reads stay invoice work.

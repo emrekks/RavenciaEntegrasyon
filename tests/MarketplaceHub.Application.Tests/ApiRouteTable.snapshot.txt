@@ -232,8 +232,8 @@ GET    /api/v1/public/manual-invoice-documents/{token}/invoice.pdf | gate=Open |
 GET    /api/v1/public/product-media/{assetId:guid}/content | gate=Open | sameOrigin=no | anon=500 INTERNAL_ERROR | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 GET    /api/v1/question-templates | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 POST   /api/v1/question-templates | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=500 INTERNAL_ERROR | ownerIfMatch=500 INTERNAL_ERROR
-DELETE /api/v1/question-templates/{id:guid} | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IF_MATCH_REQUIRED | ownerIfMatch=400 IF_MATCH_REQUIRED
-PUT    /api/v1/question-templates/{id:guid} | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IF_MATCH_REQUIRED | ownerIfMatch=400 IF_MATCH_REQUIRED
+DELETE /api/v1/question-templates/{id:guid} | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IF_MATCH_REQUIRED | ownerIfMatch=500 INTERNAL_ERROR
+PUT    /api/v1/question-templates/{id:guid} | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IF_MATCH_REQUIRED | ownerIfMatch=500 INTERNAL_ERROR
 GET    /api/v1/questions | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 GET    /api/v1/questions/report-reasons | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=400 QUESTION_REPORT_PLATFORM_INVALID | cross=400 QUESTION_REPORT_PLATFORM_INVALID
 POST   /api/v1/questions/sync | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED

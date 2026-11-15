@@ -20,9 +20,9 @@ public static class NotificationEndpoints
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
             var result = await service.PageAsync(tenant.TenantId, tenant.UserId, new PanelNotificationQuery(limit, after, List(categories), List(severities), from, to, search, state), http.RequestAborted);
             return result.Succeeded ? Results.Ok(result.Value) : Problem(http, result.Error!);
-        });
+        }).Produces<PageResult<PanelNotificationView>>();
         api.MapGet("/summary", async (HttpContext http, IPanelNotificationService service) =>
-            Tenant(http) is { } tenant ? Results.Ok(await service.SummaryAsync(tenant.TenantId, tenant.UserId, http.RequestAborted)) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Results.Ok(await service.SummaryAsync(tenant.TenantId, tenant.UserId, http.RequestAborted)) : Unauthorized(http)).Produces<PanelNotificationSummary>();
         api.MapPost("", async (HttpContext http, IPanelNotificationService service, SaveRequest request) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
@@ -37,9 +37,9 @@ public static class NotificationEndpoints
             return result.Succeeded ? Results.Ok(new { saved = result.Value }) : Problem(http, result.Error!);
         });
         api.MapPost("/read", async (HttpContext http, IPanelNotificationService service, PanelNotificationSelection selection) =>
-            Tenant(http) is { } tenant ? Results.Ok(new { updated = await service.MarkReadAsync(tenant.TenantId, tenant.UserId, selection, http.RequestAborted) }) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Results.Ok(new { updated = await service.MarkReadAsync(tenant.TenantId, tenant.UserId, selection, http.RequestAborted) }) : Unauthorized(http)).Produces<NotificationsUpdatedView>();
         api.MapPost("/dismiss", async (HttpContext http, IPanelNotificationService service, PanelNotificationSelection selection) =>
-            Tenant(http) is { } tenant ? Results.Ok(new { updated = await service.DismissAsync(tenant.TenantId, tenant.UserId, selection, http.RequestAborted) }) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Results.Ok(new { updated = await service.DismissAsync(tenant.TenantId, tenant.UserId, selection, http.RequestAborted) }) : Unauthorized(http)).Produces<NotificationsUpdatedView>();
         return endpoints;
     }
 

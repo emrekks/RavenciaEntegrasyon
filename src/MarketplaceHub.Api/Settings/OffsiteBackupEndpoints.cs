@@ -35,8 +35,8 @@ public static class OffsiteBackupEndpoints
     public static IEndpointRouteBuilder MapOffsiteBackupEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/settings/offsite-backup").WithGates(ApiGate.Elevated, ApiGate.Owner);
-        group.MapGet("", GetAsync);
-        group.MapPut("", SaveAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
+        group.MapGet("", GetAsync).Produces<OffsiteBackupSettingsView>();
+        group.MapPut("", SaveAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).IfMatch(required: false);
         group.MapPost("/google/authorize", AuthorizeAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
         group.MapPost("/google/complete", CompleteAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
         group.MapPost("/google/disconnect", DisconnectAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);

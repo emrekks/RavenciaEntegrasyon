@@ -12,8 +12,8 @@ internal static class AdReportEndpoints
 {
     public static RouteGroupBuilder MapAdReportEndpoints(this RouteGroupBuilder api)
     {
-        api.MapGet("/reports/ad-report", LatestAsync);
-        api.MapPost("/connections/{connectionId:guid}/ad-reports", UploadAsync).DisableAntiforgery().RequireGate(ApiGate.Operations).RequireIdempotencyKey();
+        api.MapGet("/reports/ad-report", LatestAsync).Produces<AdReportsView>();
+        api.MapPost("/connections/{connectionId:guid}/ad-reports", UploadAsync).DisableAntiforgery().RequireGate(ApiGate.Operations).RequireIdempotencyKey().Produces<AdReportUploadResult>();
         return api;
     }
 

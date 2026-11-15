@@ -23,22 +23,22 @@ public static class AuthEndpoints
     public static RouteGroupBuilder MapAuthEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/auth").WithGates(ApiGate.Open, ApiGate.Open);
-        group.MapGet("/csrf", (HttpResponse response) => Results.Ok(new { token = RequestSecurityMiddleware.IssueCsrf(response) }));
-        group.MapPost("/login", LoginAsync).RequireRateLimiting(SignInRateLimit);
-        group.MapPost("/logout", LogoutAsync);
-        group.MapPost("/change-password", ChangePasswordAsync).RequireRateLimiting(StepRateLimit);
-        group.MapGet("/me", MeAsync);
-        group.MapGet("/security-status", SecurityStatusAsync);
-        group.MapGet("/sessions", SessionsAsync);
+        group.MapGet("/csrf", (HttpResponse response) => Results.Ok(new { token = RequestSecurityMiddleware.IssueCsrf(response) })).Produces<CsrfTokenView>();
+        group.MapPost("/login", LoginAsync).RequireRateLimiting(SignInRateLimit).Produces<SessionStateView>();
+        group.MapPost("/logout", LogoutAsync).Produces(StatusCodes.Status204NoContent);
+        group.MapPost("/change-password", ChangePasswordAsync).RequireRateLimiting(StepRateLimit).Produces<SessionStateView>();
+        group.MapGet("/me", MeAsync).Produces<CurrentUserView>();
+        group.MapGet("/security-status", SecurityStatusAsync).Produces<SecurityStatusView>();
+        group.MapGet("/sessions", SessionsAsync).Produces<IReadOnlyList<SignInSessionView>>();
         group.MapPost("/mfa/setup", MfaSetupAsync).RequireRateLimiting(StepRateLimit);
         group.MapPost("/mfa/confirm", MfaConfirmAsync).RequireRateLimiting(StepRateLimit);
         group.MapPost("/mfa/challenge", MfaChallengeAsync).RequireRateLimiting(StepRateLimit);
-        group.MapPost("/mfa/disable", MfaDisableAsync).RequireRateLimiting(StepRateLimit);
+        group.MapPost("/mfa/disable", MfaDisableAsync).RequireRateLimiting(StepRateLimit).Produces(StatusCodes.Status204NoContent);
         group.MapPost("/recovery-codes/regenerate", RecoveryRegenerateAsync).RequireRateLimiting(StepRateLimit);
-        group.MapPost("/sessions/{id:guid}/revoke", RevokeSessionAsync);
-        group.MapPost("/sessions/revoke-others", RevokeOthersAsync);
-        group.MapDelete("/sessions/{id:guid}", DeleteClosedSessionAsync);
-        group.MapDelete("/sessions/closed", DeleteClosedSessionsAsync);
+        group.MapPost("/sessions/{id:guid}/revoke", RevokeSessionAsync).Produces(StatusCodes.Status204NoContent);
+        group.MapPost("/sessions/revoke-others", RevokeOthersAsync).Produces(StatusCodes.Status204NoContent);
+        group.MapDelete("/sessions/{id:guid}", DeleteClosedSessionAsync).Produces(StatusCodes.Status204NoContent);
+        group.MapDelete("/sessions/closed", DeleteClosedSessionsAsync).Produces(StatusCodes.Status204NoContent);
         return group;
     }
 

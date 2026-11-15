@@ -33,62 +33,62 @@ public static class CatalogEndpoints
         api.MapProductTransferEndpoints();
 
         api.MapGet("/catalog/categories", async (HttpContext http, ICatalogService service, int? limit, string? after) =>
-            Tenant(http) is { } tenant ? Results.Ok(await service.ListCategoriesAsync(tenant.TenantId, PageSize(limit), after, http.RequestAborted)) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Results.Ok(await service.ListCategoriesAsync(tenant.TenantId, PageSize(limit), after, http.RequestAborted)) : Unauthorized(http)).Produces<PageResult<CategoryView>>();
         api.MapGet("/catalog/categories/{id:guid}", async (Guid id, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? WithEtag(http, await service.GetCategoryAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
+            Tenant(http) is { } tenant ? WithEtag(http, await service.GetCategoryAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http)).Produces<CategoryView>();
         api.MapPost("/catalog/categories", async (CreateCategoryCommand command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateCategoryAsync(tenant.TenantId, command, http.RequestAborted), "/api/v1/catalog/categories") : MissingContext(http)).RequireIdempotencyKey();
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateCategoryAsync(tenant.TenantId, command, http.RequestAborted), "/api/v1/catalog/categories") : MissingContext(http)).RequireIdempotencyKey().Produces<CategoryView>(StatusCodes.Status201Created);
         api.MapPatch("/catalog/categories/{id:guid}", async (Guid id, UpdateCategoryCommand command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateCategoryAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http));
+            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateCategoryAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http)).Produces<CategoryView>().IfMatch();
 
         api.MapGet("/catalog/brands", async (HttpContext http, ICatalogService service, int? limit, string? after) =>
-            Tenant(http) is { } tenant ? Results.Ok(await service.ListBrandsAsync(tenant.TenantId, PageSize(limit), after, http.RequestAborted)) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Results.Ok(await service.ListBrandsAsync(tenant.TenantId, PageSize(limit), after, http.RequestAborted)) : Unauthorized(http)).Produces<PageResult<BrandView>>();
         api.MapGet("/catalog/brands/{id:guid}", async (Guid id, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? WithEtag(http, await service.GetBrandAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
+            Tenant(http) is { } tenant ? WithEtag(http, await service.GetBrandAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http)).Produces<BrandView>();
         api.MapPost("/catalog/brands", async (CreateBrandCommand command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateBrandAsync(tenant.TenantId, command, http.RequestAborted), "/api/v1/catalog/brands") : MissingContext(http)).RequireIdempotencyKey();
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateBrandAsync(tenant.TenantId, command, http.RequestAborted), "/api/v1/catalog/brands") : MissingContext(http)).RequireIdempotencyKey().Produces<BrandView>(StatusCodes.Status201Created);
         api.MapPatch("/catalog/brands/{id:guid}", async (Guid id, UpdateBrandCommand command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateBrandAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http));
+            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateBrandAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http)).Produces<BrandView>().IfMatch();
 
         api.MapGet("/catalog/attributes", async (HttpContext http, ICatalogService service, int? limit, string? after) =>
-            Tenant(http) is { } tenant ? Results.Ok(await service.ListAttributesAsync(tenant.TenantId, PageSize(limit), after, http.RequestAborted)) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Results.Ok(await service.ListAttributesAsync(tenant.TenantId, PageSize(limit), after, http.RequestAborted)) : Unauthorized(http)).Produces<PageResult<AttributeView>>();
         api.MapPost("/catalog/attributes", async (CreateAttributeCommand command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateAttributeAsync(tenant.TenantId, command, http.RequestAborted), "/api/v1/catalog/attributes") : MissingContext(http)).RequireIdempotencyKey();
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateAttributeAsync(tenant.TenantId, command, http.RequestAborted), "/api/v1/catalog/attributes") : MissingContext(http)).RequireIdempotencyKey().Produces<AttributeView>(StatusCodes.Status201Created);
         api.MapPatch("/catalog/attributes/{id:guid}", async (Guid id, RenameAttributeCommand command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.RenameAttributeAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http));
+            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.RenameAttributeAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http)).Produces<AttributeView>().IfMatch();
         api.MapDelete("/catalog/attributes/{id:guid}", async (Guid id, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? Result(await service.DeactivateAttributeAsync(tenant.TenantId, id, version, http.RequestAborted), Results.Ok) : failure!) : Unauthorized(http));
+            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? Result(await service.DeactivateAttributeAsync(tenant.TenantId, id, version, http.RequestAborted), Results.Ok) : failure!) : Unauthorized(http)).Produces<AttributeView>().IfMatch();
         api.MapPost("/catalog/attributes/{id:guid}/values", async (Guid id, IReadOnlyList<CreateAttributeValueCommand> command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.AddAttributeValuesAsync(tenant.TenantId, id, command, http.RequestAborted), Results.Ok) : MissingContext(http)).RequireIdempotencyKey();
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.AddAttributeValuesAsync(tenant.TenantId, id, command, http.RequestAborted), Results.Ok) : MissingContext(http)).RequireIdempotencyKey().Produces<AttributeView>();
         api.MapPut("/catalog/attributes/{id:guid}/values/{valueId:guid}", async (Guid id, Guid valueId, UpdateAttributeValueCommand command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateAttributeValueAsync(tenant.TenantId, id, valueId, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http));
+            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateAttributeValueAsync(tenant.TenantId, id, valueId, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http)).Produces<AttributeView>().IfMatch();
         api.MapPut("/catalog/attributes/{id:guid}/values/order", async (Guid id, ReorderAttributeValuesCommand command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.ReorderAttributeValuesAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http));
+            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.ReorderAttributeValuesAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http)).Produces<AttributeView>().IfMatch();
         api.MapGet("/catalog/attributes/{id:guid}/used-values", async (Guid id, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? Result(await service.UsedAttributeValueIdsAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Result(await service.UsedAttributeValueIdsAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<IReadOnlyList<Guid>>();
         api.MapDelete("/catalog/attributes/{id:guid}/values/{valueId:guid}", async (Guid id, Guid valueId, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? Result(await service.DeactivateAttributeValueAsync(tenant.TenantId, id, valueId, http.RequestAborted), Results.Ok) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Result(await service.DeactivateAttributeValueAsync(tenant.TenantId, id, valueId, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<AttributeView>();
         api.MapGet("/catalog/categories/{id:guid}/attribute-requirements", async (Guid id, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? Result(await service.GetRequirementsAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Result(await service.GetRequirementsAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<IReadOnlyList<CategoryAttributeRequirementView>>();
         api.MapPut("/catalog/categories/{id:guid}/attribute-requirements", async (Guid id, IReadOnlyList<AttributeRequirementCommand> command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? Result(await service.ReplaceRequirementsAsync(tenant.TenantId, id, version, command, http.RequestAborted), Results.Ok) : failure!) : Unauthorized(http));
+            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? Result(await service.ReplaceRequirementsAsync(tenant.TenantId, id, version, command, http.RequestAborted), Results.Ok) : failure!) : Unauthorized(http)).Produces<IReadOnlyList<AttributeRequirementCommand>>().IfMatch();
 
         api.MapGet("/products", async (HttpContext http, ICatalogService service, int? limit, string? after, string? status, string? search, string? platform, string? stock, string? sort) =>
-            Tenant(http) is { } tenant ? Results.Json(await service.ListProductsAsync(tenant.TenantId, PageSize(limit), after, status, search, platform, stock, sort, http.RequestAborted), ProductListJson) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Results.Json(await service.ListProductsAsync(tenant.TenantId, PageSize(limit), after, status, search, platform, stock, sort, http.RequestAborted), ProductListJson) : Unauthorized(http)).Produces<PageResult<ProductView>>();
         api.MapGet("/products/summary", async (HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? Results.Ok(await service.ProductSummaryAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Results.Ok(await service.ProductSummaryAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http)).Produces<ProductSummaryView>();
         api.MapPost("/products/bulk-status", async (BulkProductStatusCommand command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.BulkSetStatusAsync(tenant.TenantId, command, http.RequestAborted, tenant.UserId, http.TraceIdentifier), Results.Ok) : MissingContext(http)).RequireIdempotencyKey();
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.BulkSetStatusAsync(tenant.TenantId, command, http.RequestAborted, tenant.UserId, http.TraceIdentifier), Results.Ok) : MissingContext(http)).RequireIdempotencyKey().Produces<BulkProductStatusResult>();
         // Toplu Değer Ata: one field on every colour card and variant of the selected models (owner and administrators).
         api.MapPost("/products/bulk-field", async (BulkProductFieldCommand command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.BulkSetFieldAsync(tenant.TenantId, command, http.RequestAborted, tenant.UserId, http.TraceIdentifier), Results.Ok) : MissingContext(http)).RequireGate(ApiGate.Elevated).RequireIdempotencyKey();
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.BulkSetFieldAsync(tenant.TenantId, command, http.RequestAborted, tenant.UserId, http.TraceIdentifier), Results.Ok) : MissingContext(http)).RequireGate(ApiGate.Elevated).RequireIdempotencyKey().Produces<BulkProductFieldResult>();
         api.MapPost("/products/bulk-delete", async (BulkProductDeleteCommand command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.BulkDeleteProductsAsync(tenant.TenantId, command, http.RequestAborted), deleted => Results.Ok(new { deletedCount = deleted.DeletedCount, cancelledJobCount = deleted.CancelledJobCount })) : MissingContext(http)).RequireIdempotencyKey();
         // The jobs a delete would cancel, for its confirmation; it changes nothing.
         api.MapPost("/products/delete-preview", async (BulkProductDeleteCommand command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? Result(await service.PreviewProductDeleteAsync(tenant.TenantId, command, http.RequestAborted), Results.Ok) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Result(await service.PreviewProductDeleteAsync(tenant.TenantId, command, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<ProductDeletePreview>();
         api.MapGet("/products/{id:guid}", async (Guid id, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? WithEtag(http, await service.GetProductAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
+            Tenant(http) is { } tenant ? WithEtag(http, await service.GetProductAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http)).Produces<ProductView>();
         // Read only: which of the given codes the tenant's catalog already holds as a stock code or a barcode, with the
         // holding card. The editor asks once for a range of candidates before it generates codes from a model code.
         api.MapPost("/catalog/variant-codes/taken", async (TakenVariantCodesRequest request, HttpContext http, AppDbContext db) =>
@@ -107,18 +107,18 @@ public static class CatalogEndpoints
             if (modelCode.Length > ModelCodeUniquenessPolicy.MaxCodeLength) return Problem(http, new("VALIDATION_FAILED", $"Model kodu en fazla {ModelCodeUniquenessPolicy.MaxCodeLength} karakter olabilir.", 422));
             var holder = await ModelCodeOwnership.FindAsync(db, tenant.TenantId, [modelCode], http.RequestAborted);
             return Results.Ok(new { taken = holder is not null, productId = holder?.ProductId, productTitle = holder?.Title, message = holder is null ? null : ModelCodeUniquenessPolicy.Message(holder.Title) });
-        });
+        }).Produces<ModelCodeHolderView>();
         api.MapGet("/products/{id:guid}/marketplace-codes", async (Guid id, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? Result(await service.GetProductMarketplaceCodesAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Result(await service.GetProductMarketplaceCodesAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<ProductMarketplaceCodesView>();
         api.MapPut("/products/{id:guid}/marketplace-codes", async (Guid id, UpdateMarketplaceCodesCommand command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.UpdateProductMarketplaceCodesAsync(tenant.TenantId, id, command, http.RequestAborted), Results.Ok) : MissingContext(http)).RequireIdempotencyKey();
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.UpdateProductMarketplaceCodesAsync(tenant.TenantId, id, command, http.RequestAborted), Results.Ok) : MissingContext(http)).RequireIdempotencyKey().Produces<ProductMarketplaceCodesView>();
         api.MapPost("/products", async (CreateProductCommand command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateProductAsync(tenant.TenantId, command, http.RequestAborted, tenant.UserId, http.TraceIdentifier), "/api/v1/products") : MissingContext(http)).RequireIdempotencyKey();
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateProductAsync(tenant.TenantId, command, http.RequestAborted, tenant.UserId, http.TraceIdentifier), "/api/v1/products") : MissingContext(http)).RequireIdempotencyKey().Produces<ProductView>(StatusCodes.Status201Created);
         api.MapPatch("/products/{id:guid}", async (Guid id, UpdateProductCommand command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateProductAsync(tenant.TenantId, id, version, command, http.RequestAborted, tenant.UserId, http.TraceIdentifier), x => x.Version) : failure!) : Unauthorized(http));
+            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateProductAsync(tenant.TenantId, id, version, command, http.RequestAborted, tenant.UserId, http.TraceIdentifier), x => x.Version) : failure!) : Unauthorized(http)).Produces<ProductView>().IfMatch();
         // The panel's own price of a variant; If-Match carries the variant version. Nothing is sent to a marketplace.
         api.MapPatch("/variants/{id:guid}/default-prices", async (Guid id, UpdateVariantDefaultPricesCommand command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateVariantDefaultPricesAsync(tenant.TenantId, tenant.UserId, id, version, command, http.TraceIdentifier, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http));
+            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateVariantDefaultPricesAsync(tenant.TenantId, tenant.UserId, id, version, command, http.TraceIdentifier, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http)).Produces<VariantDefaultPricesView>().IfMatch();
         api.MapDelete("/products/{id:guid}", async (Guid id, HttpContext http, ICatalogService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
@@ -126,15 +126,15 @@ public static class CatalogEndpoints
             return TryIfMatch(http, out var version, out var failure)
                 ? Result(await service.DeleteProductAsync(tenant.TenantId, id, version, http.RequestAborted), deleted => Results.Ok(new { deletedCount = deleted.DeletedCount, cancelledJobCount = deleted.CancelledJobCount }))
                 : failure!;
-        }).RequireIdempotencyKey();
+        }).RequireIdempotencyKey().IfMatch();
         api.MapGet("/products/{id:guid}/listing-profiles/{connectionId:guid}", async (Guid id, Guid connectionId, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? WithEtag(http, await service.GetListingProfileAsync(tenant.TenantId, id, connectionId, http.RequestAborted), x => x.Version) : Unauthorized(http));
+            Tenant(http) is { } tenant ? WithEtag(http, await service.GetListingProfileAsync(tenant.TenantId, id, connectionId, http.RequestAborted), x => x.Version) : Unauthorized(http)).Produces<ListingProfileView>();
         api.MapPut("/products/{id:guid}/listing-profiles/{connectionId:guid}", async (Guid id, Guid connectionId, UpsertListingProfileCommand command, HttpContext http, ICatalogService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
             var expected = OptionalIfMatch(http, out var malformed); if (malformed is not null) return malformed;
             return WithEtag(http, await service.UpsertListingProfileAsync(tenant.TenantId, id, connectionId, expected, command, http.RequestAborted), x => x.Version);
-        });
+        }).Produces<ListingProfileView>().IfMatch(required: false);
         api.MapPost("/products/{id:guid}/publication-jobs", async (Guid id, PublicationRequest command, HttpContext http, ICatalogService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
@@ -148,7 +148,7 @@ public static class CatalogEndpoints
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
             var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
             return Result(await service.EnqueueBulkPublicationAsync(tenant.TenantId, tenant.UserId, command, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted), Results.Ok);
-        }).RequireIdempotencyKey();
+        }).RequireIdempotencyKey().Produces<BulkPublicationResult>();
         api.MapPost("/products/{id:guid}/update-jobs", async (Guid id, PublicationRequest command, HttpContext http, ICatalogService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
@@ -162,15 +162,15 @@ public static class CatalogEndpoints
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
             var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
             return Accepted(await service.EnqueuePazaramaSaleStatusAsync(tenant.TenantId, connectionId, command.Barcodes ?? [], command.Close, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted));
-        }).RequireIdempotencyKey();
+        }).RequireIdempotencyKey().Produces<JobAccepted>(StatusCodes.Status202Accepted);
         api.MapPost("/products/{id:guid}/publication-status/{connectionId:guid}/refresh", async (Guid id, Guid connectionId, HttpContext http, ICatalogService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
             var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
             return Accepted(await service.RequestPublicationStatusRefreshAsync(tenant.TenantId, id, connectionId, http.RequestAborted));
-        }).RequireIdempotencyKey();
+        }).RequireIdempotencyKey().Produces<JobAccepted>(StatusCodes.Status202Accepted);
         api.MapGet("/products/{id:guid}/publication-status/{connectionId:guid}", async (Guid id, Guid connectionId, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? Result(await service.GetPublicationStatusAsync(tenant.TenantId, id, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Result(await service.GetPublicationStatusAsync(tenant.TenantId, id, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<PublicationStatusView>();
         api.MapGet("/public/product-media/{assetId:guid}/content", async (Guid assetId, HttpContext http, AppDbContext db, IPrivateFileStorage storage) =>
         {
             var asset = await (from media in db.ProductMedia.AsNoTracking()
@@ -253,27 +253,27 @@ public static class CatalogEndpoints
         api.MapPost("/files/product-media-url", RegisterProductMediaUrlAsync).RequireIdempotencyKey();
         api.MapPut("/files/product-media-reconcile", ReconcileProductMediaAsync).RequireIdempotencyKey();
         api.MapPut("/files/product-media-family-reorder", ReorderProductFamilyMediaAsync).RequireIdempotencyKey();
-        api.MapDelete("/files/product-media-item", DeleteProductMediaItemAsync).RequireIdempotencyKey();
+        api.MapDelete("/files/product-media-item", DeleteProductMediaItemAsync).RequireIdempotencyKey().IfMatch();
         api.MapDelete("/files/product-media-items", DeleteProductMediaItemsAsync).RequireIdempotencyKey();
-        api.MapDelete("/files/product-media", ClearProductMediaAsync).RequireIdempotencyKey();
+        api.MapDelete("/files/product-media", ClearProductMediaAsync).RequireIdempotencyKey().Produces(StatusCodes.Status204NoContent);
 
         api.MapGet("/imports", async (HttpContext http, IImportService service, int? limit, string? after) =>
-            Tenant(http) is { } tenant ? Results.Ok(await service.ListAsync(tenant.TenantId, PageSize(limit), after, http.RequestAborted)) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Results.Ok(await service.ListAsync(tenant.TenantId, PageSize(limit), after, http.RequestAborted)) : Unauthorized(http)).Produces<PageResult<ImportSessionView>>();
         api.MapPost("/imports", async (CreateImportCommand command, HttpContext http, IImportService service) =>
-            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateAsync(tenant.TenantId, command, http.RequestAborted), "/api/v1/imports") : MissingContext(http)).RequireIdempotencyKey();
-        api.MapPost("/imports/{id:guid}/source-file", UploadImportSourceAsync).DisableAntiforgery().RequireIdempotencyKey();
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateAsync(tenant.TenantId, command, http.RequestAborted), "/api/v1/imports") : MissingContext(http)).RequireIdempotencyKey().Produces<ImportSessionView>(StatusCodes.Status201Created);
+        api.MapPost("/imports/{id:guid}/source-file", UploadImportSourceAsync).DisableAntiforgery().RequireIdempotencyKey().Produces<ImportSessionView>();
         api.MapPut("/imports/{id:guid}/column-mapping", async (Guid id, UpdateColumnMappingCommand command, HttpContext http, IImportService service) =>
-            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.ConfigureColumnsAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http));
+            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.ConfigureColumnsAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http)).Produces<ImportSessionView>().IfMatch();
         api.MapPost("/imports/{id:guid}/preview-jobs", async (Guid id, HttpContext http, IImportService service) =>
-            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueuePreviewAsync(tenant.TenantId, id, http.TraceIdentifier, http.RequestAborted)) : MissingContext(http)).RequireIdempotencyKey();
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueuePreviewAsync(tenant.TenantId, id, http.TraceIdentifier, http.RequestAborted)) : MissingContext(http)).RequireIdempotencyKey().Produces<JobAccepted>(StatusCodes.Status202Accepted);
         api.MapGet("/imports/{id:guid}", async (Guid id, HttpContext http, IImportService service) =>
-            Tenant(http) is { } tenant ? WithEtag(http, await service.GetAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
+            Tenant(http) is { } tenant ? WithEtag(http, await service.GetAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http)).Produces<ImportSessionView>();
         api.MapGet("/imports/{id:guid}/candidates", async (Guid id, HttpContext http, IImportService service, int? limit, string? after) =>
-            Tenant(http) is { } tenant ? Results.Ok(await service.CandidatesAsync(tenant.TenantId, id, PageSize(limit), after, http.RequestAborted)) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Results.Ok(await service.CandidatesAsync(tenant.TenantId, id, PageSize(limit), after, http.RequestAborted)) : Unauthorized(http)).Produces<PageResult<ImportCandidateView>>();
         api.MapPut("/imports/{id:guid}/decisions/{candidateId:guid}", async (Guid id, Guid candidateId, ImportDecisionCommand command, HttpContext http, IImportService service) =>
-            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.DecideAsync(tenant.TenantId, tenant.UserId, id, candidateId, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http));
+            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.DecideAsync(tenant.TenantId, tenant.UserId, id, candidateId, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http)).Produces<ImportCandidateView>().IfMatch();
         api.MapPost("/imports/{id:guid}/apply-jobs", async (Guid id, HttpContext http, IImportService service) =>
-            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueApplyAsync(tenant.TenantId, id, http.TraceIdentifier, http.RequestAborted)) : MissingContext(http)).RequireIdempotencyKey();
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueApplyAsync(tenant.TenantId, id, http.TraceIdentifier, http.RequestAborted)) : MissingContext(http)).RequireIdempotencyKey().Produces<JobAccepted>(StatusCodes.Status202Accepted);
         api.MapGet("/imports/{id:guid}/errors.csv", async (Guid id, HttpContext http, IImportService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
@@ -282,26 +282,26 @@ public static class CatalogEndpoints
         }).RequireGate(ApiGate.Operations);
 
         api.MapGet("/inventory", async (HttpContext http, IInventoryService service, int? limit, string? after) =>
-            Tenant(http) is { } tenant ? Results.Ok(await service.ListAsync(tenant.TenantId, PageSize(limit), after, http.RequestAborted)) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Results.Ok(await service.ListAsync(tenant.TenantId, PageSize(limit), after, http.RequestAborted)) : Unauthorized(http)).Produces<PageResult<InventoryItemView>>();
         api.MapPut("/inventory/{variantId:guid}/on-hand", async (Guid variantId, StockSetCommand command, HttpContext http, IInventoryService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http); var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
             return WithEtag(http, await service.SetOnHandAsync(tenant.TenantId, tenant.UserId, variantId, command, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted), x => x.Version);
-        }).RequireIdempotencyKey();
+        }).RequireIdempotencyKey().Produces<InventoryItemView>();
         api.MapPost("/channel-offers", async (UpsertChannelOfferCommand command, HttpContext http, IInventoryService service) =>
-            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.UpsertOfferAsync(tenant.TenantId, tenant.UserId, command, http.RequestAborted), value => Results.Created($"/api/v1/channel-offers/{value.Id:D}", value)) : MissingContext(http)).RequireIdempotencyKey();
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.UpsertOfferAsync(tenant.TenantId, tenant.UserId, command, http.RequestAborted), value => Results.Created($"/api/v1/channel-offers/{value.Id:D}", value)) : MissingContext(http)).RequireIdempotencyKey().Produces<ChannelOfferView>(StatusCodes.Status201Created);
         api.MapGet("/channel-offers/{id:guid}", async (Guid id, HttpContext http, IInventoryService service) =>
-            Tenant(http) is { } tenant ? WithEtag(http, await service.GetOfferAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
+            Tenant(http) is { } tenant ? WithEtag(http, await service.GetOfferAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http)).Produces<ChannelOfferView>();
         api.MapPatch("/channel-offers/{id:guid}", async (Guid id, UpdateChannelOfferCommand command, HttpContext http, IInventoryService service) =>
-            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateOfferAsync(tenant.TenantId, tenant.UserId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http));
+            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateOfferAsync(tenant.TenantId, tenant.UserId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http)).Produces<ChannelOfferView>().IfMatch();
         // The "Özel Fiyat" choice of the variants' offers on one connection, stored without a price change.
         api.MapPut("/channel-offers/panel-price-follow", async (SetChannelOfferPanelFollowCommand command, HttpContext http, IInventoryService service) =>
-            Tenant(http) is { } tenant ? Result(await service.SetOfferPanelFollowAsync(tenant.TenantId, command, http.RequestAborted), Results.Ok) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Result(await service.SetOfferPanelFollowAsync(tenant.TenantId, command, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<ChannelOfferPanelFollowView>();
         api.MapPost("/connections/{connectionId:guid}/price-inventory-sync-jobs", async (Guid connectionId, string? stockCode, HttpContext http, IInventoryService service) =>
-            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueuePriceInventorySyncAsync(tenant.TenantId, connectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted, stockCode)) : MissingContext(http)).RequireIdempotencyKey();
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueuePriceInventorySyncAsync(tenant.TenantId, connectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted, stockCode)) : MissingContext(http)).RequireIdempotencyKey().Produces<JobAccepted>(StatusCodes.Status202Accepted);
         // The body may name the parts to send ({"price": true, "stock": false}); an empty body sends both, as before.
         api.MapPost("/products/{productId:guid}/connections/{connectionId:guid}/price-inventory-sync-jobs", async (Guid productId, Guid connectionId, PriceInventoryFieldsRequest? command, HttpContext http, IInventoryService service) =>
-            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueProductPriceInventorySyncAsync(tenant.TenantId, productId, connectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted, command?.Price ?? true, command?.Stock ?? true)) : MissingContext(http)).RequireIdempotencyKey();
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueProductPriceInventorySyncAsync(tenant.TenantId, productId, connectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted, command?.Price ?? true, command?.Stock ?? true)) : MissingContext(http)).RequireIdempotencyKey().Produces<JobAccepted>(StatusCodes.Status202Accepted);
 
         MapReferenceEndpoints(api);
         return endpoints;
@@ -312,43 +312,43 @@ public static class CatalogEndpoints
         // ?externalId= reads one category of the list (with the list's snapshot id) instead of the whole tree.
         api.MapGet("/reference-data/categories", async (Guid connectionId, string? externalId, HttpContext http, IReferenceDataService service) =>
             externalId is null ? await Reference(http, service, connectionId, "CATEGORIES", null)
-                : Tenant(http) is { } tenant ? Result(await service.FindCategoryAsync(tenant.TenantId, connectionId, externalId, http.RequestAborted), Results.Ok) : Unauthorized(http));
+                : Tenant(http) is { } tenant ? Result(await service.FindCategoryAsync(tenant.TenantId, connectionId, externalId, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<ReferenceDataView>();
         // Several fields' value lists of one category in one read (attributeIds=a,b,c), by field id.
         api.MapGet("/reference-data/categories/{categoryId}/attribute-values", async (string categoryId, Guid connectionId, string? attributeIds, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.ListAttributeValueReferencesAsync(tenant.TenantId, connectionId, categoryId, SplitIds(attributeIds), http.RequestAborted), Results.Ok) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Result(await service.ListAttributeValueReferencesAsync(tenant.TenantId, connectionId, categoryId, SplitIds(attributeIds), http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<IReadOnlyDictionary<string, ReferenceDataView>>();
         api.MapGet("/reference-data/categories/{externalId}/attributes", (string externalId, Guid connectionId, HttpContext http, IReferenceDataService service) => Reference(http, service, connectionId, "CATEGORY_ATTRIBUTES", externalId));
         api.MapGet("/reference-data/categories/{categoryId}/attributes/{attributeId}/values", (string categoryId, string attributeId, Guid connectionId, HttpContext http, IReferenceDataService service) => Reference(http, service, connectionId, "ATTRIBUTE_VALUES", $"{categoryId}/{attributeId}"));
         api.MapGet("/reference-data/brands", (Guid connectionId, HttpContext http, IReferenceDataService service) => Reference(http, service, connectionId, "BRANDS", null));
         // A brand list can hold 800k rows: the panel reads its size and age, searches it and resolves saved ids instead.
         api.MapGet("/reference-data/brands/summary", async (Guid connectionId, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.BrandSummaryAsync(tenant.TenantId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Result(await service.BrandSummaryAsync(tenant.TenantId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<ReferenceSliceView>();
         api.MapGet("/reference-data/brands/search", async (Guid connectionId, string? q, int? limit, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.SearchBrandsAsync(tenant.TenantId, connectionId, q, limit, http.RequestAborted), Results.Ok) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Result(await service.SearchBrandsAsync(tenant.TenantId, connectionId, q, limit, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<ReferenceSliceView>();
         // Marketplace brands a catalog import met that the user has not mapped yet; the import never maps by name.
         api.MapGet("/reference-data/brands/unmapped", async (Guid connectionId, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.UnmappedBrandsAsync(tenant.TenantId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Result(await service.UnmappedBrandsAsync(tenant.TenantId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<IReadOnlyList<UnmappedMarketplaceBrandView>>();
         api.MapGet("/reference-data/brands/lookup", async (Guid connectionId, string? ids, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.LookupBrandsAsync(tenant.TenantId, connectionId, (ids ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), http.RequestAborted), Results.Ok) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Result(await service.LookupBrandsAsync(tenant.TenantId, connectionId, (ids ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<ReferenceSliceView>();
         api.MapGet("/connections/{connectionId:guid}/attribute-defaults", async (Guid connectionId, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.ListAttributeDefaultsAsync(tenant.TenantId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Result(await service.ListAttributeDefaultsAsync(tenant.TenantId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<IReadOnlyList<ConnectionAttributeDefaultView>>();
         api.MapPut("/connections/{connectionId:guid}/attribute-defaults/{externalAttributeId}", async (Guid connectionId, string externalAttributeId, UpsertConnectionAttributeDefaultCommand command, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.UpsertAttributeDefaultAsync(tenant.TenantId, connectionId, externalAttributeId, command, http.RequestAborted), Results.Ok) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Result(await service.UpsertAttributeDefaultAsync(tenant.TenantId, connectionId, externalAttributeId, command, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<ConnectionAttributeDefaultView>();
         api.MapDelete("/connections/{connectionId:guid}/attribute-defaults/{externalAttributeId}", async (Guid connectionId, string externalAttributeId, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.DeleteAttributeDefaultAsync(tenant.TenantId, connectionId, externalAttributeId, http.RequestAborted), Results.Ok) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Result(await service.DeleteAttributeDefaultAsync(tenant.TenantId, connectionId, externalAttributeId, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<bool>();
         api.MapGet("/mappings/name-hints", async (Guid attributeId, Guid connectionId, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.MarketplaceNameHintsAsync(tenant.TenantId, attributeId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Result(await service.MarketplaceNameHintsAsync(tenant.TenantId, attributeId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<MarketplaceNameHintsView>();
         api.MapGet("/mappings/attribute-name-hints", async (Guid connectionId, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.AttributeNameHintsAsync(tenant.TenantId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Result(await service.AttributeNameHintsAsync(tenant.TenantId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<IReadOnlyDictionary<Guid, IReadOnlyList<string>>>();
         api.MapGet("/mappings/conflicts", async (Guid connectionId, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.ListMappingConflictsAsync(tenant.TenantId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Result(await service.ListMappingConflictsAsync(tenant.TenantId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<MappingConflictsView>();
         api.MapGet("/mappings/attribute-value-progress", async (Guid connectionId, string? categoryExternalId, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.AttributeValueMappingProgressAsync(tenant.TenantId, connectionId, categoryExternalId ?? "", http.RequestAborted), Results.Ok) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Result(await service.AttributeValueMappingProgressAsync(tenant.TenantId, connectionId, categoryExternalId ?? "", http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<IReadOnlyDictionary<string, IReadOnlyList<Guid>>>();
         // Several fields' value mappings of one category in one read (attributeIds=a,b,c), by field id.
         api.MapGet("/mappings/attribute-values/batch", async (Guid connectionId, string? categoryExternalId, string? attributeIds, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.ListAttributeValueMappingsAsync(tenant.TenantId, connectionId, categoryExternalId ?? "", SplitIds(attributeIds), http.RequestAborted), Results.Ok) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Result(await service.ListAttributeValueMappingsAsync(tenant.TenantId, connectionId, categoryExternalId ?? "", SplitIds(attributeIds), http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<IReadOnlyDictionary<string, IReadOnlyList<CatalogMappingView>>>();
         // "Birebir Eşle" (Shopify): apply=false counts for the confirmation, apply=true maps; it never changes a mapping.
         api.MapPost("/mappings/categories/exact-match", async (Guid connectionId, bool? apply, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.ExactMatchShopifyCategoriesAsync(tenant.TenantId, connectionId, apply == true, http.RequestAborted), Results.Ok) : Unauthorized(http));
+            Tenant(http) is { } tenant ? Result(await service.ExactMatchShopifyCategoriesAsync(tenant.TenantId, connectionId, apply == true, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<ShopifyExactCategoryMatchView>();
         foreach (var type in new[] { "categories", "brands", "attributes", "attribute-values" })
         {
             var routeType = type;

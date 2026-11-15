@@ -61,6 +61,33 @@ public sealed class ApiOpenApiDocumentTests(ApiPipelineHost fixture) : IClassFix
         Assert.Null(document.Servers is { Count: > 0 } ? document.Servers : null);
     }
 
+    // A client generator names its functions by operationId: every operation has one, derived from nothing but its
+    // method and route (so it stays put while the handler changes), and no two share one, not even by case.
+    [Fact]
+    public async Task EveryOperationHasAUniqueOperationIdFromItsMethodAndRoute()
+    {
+        _ = fixture.Host.CreateClient();
+        var document = await fixture.Host.Services.GetRequiredKeyedService<IOpenApiDocumentProvider>("v1").GetOpenApiDocumentAsync();
+        var ids = new List<string>();
+        foreach (var (path, item) in document.Paths)
+        {
+            foreach (var (method, operation) in item.Operations ?? [])
+            {
+                Assert.Equal(OpenApiOperationContract.OperationId(method.Method, path), operation.OperationId);
+                ids.Add(operation.OperationId!);
+            }
+        }
+        Assert.True(ids.Count > 300, $"{ids.Count} operations");
+        var shared = ids.GroupBy(id => id, StringComparer.OrdinalIgnoreCase).Where(group => group.Count() > 1).Select(group => group.Key).ToList();
+        Assert.True(shared.Count == 0, "Shared operationIds: " + string.Join(", ", shared));
+
+        Assert.Equal("getCatalogCategoriesById", OpenApiOperationContract.OperationId("GET", "/api/v1/catalog/categories/{id}"));
+        Assert.Equal("getCatalogCategoriesById", OpenApiOperationContract.OperationId("GET", "/api/v1/catalog/categories/{id:guid}"));
+        Assert.Equal("getJobs", OpenApiOperationContract.OperationId("GET", "/api/v1/jobs/"));
+        Assert.Equal("getProductsTransferExportXlsx", OpenApiOperationContract.OperationId("GET", "/api/v1/products/transfer/export.xlsx"));
+        Assert.Equal("postHooksByConnectionPublicIdByRouteTokenByEventPath", OpenApiOperationContract.OperationId("POST", "/api/v1/hooks/{connectionPublicId}/{routeToken}/{**eventPath}"));
+    }
+
     // The document is not served: no route of the API answers it, in production or in tests.
     [Fact]
     public void NoRouteServesTheDocument() =>

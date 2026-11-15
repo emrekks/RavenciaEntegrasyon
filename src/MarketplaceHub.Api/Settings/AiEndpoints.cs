@@ -27,15 +27,15 @@ public static class AiEndpoints
     public static IEndpointRouteBuilder MapAiEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var settings = endpoints.MapGroup("/api/v1/settings/ai").WithGates(ApiGate.Elevated, ApiGate.Elevated);
-        settings.MapGet("", GetAsync);
-        settings.MapPut("", SaveAsync);
+        settings.MapGet("", GetAsync).Produces<AiSettingsView>();
+        settings.MapPut("", SaveAsync).Produces<AiSettingsView>().IfMatch(required: false);
         settings.MapPost("/test", TestAsync);
         settings.MapPost("/skills/{key}/upload", UploadSkillAsync).DisableAntiforgery();
         settings.MapGet("/usage", UsageAsync);
 
         var products = endpoints.MapGroup("/api/v1/products/{id:guid}/size-chart").WithGates(ApiGate.SignedIn, ApiGate.Operations);
-        products.MapGet("", GetSizeChartAsync);
-        products.MapPost("/generate", GenerateSizeChartAsync);
+        products.MapGet("", GetSizeChartAsync).Produces<SizeChartView>();
+        products.MapPost("/generate", GenerateSizeChartAsync).Produces<SizeChartGenerated>();
         products.MapPut("", MarkSizeChartAsync);
         return endpoints;
     }
