@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using MarketplaceHub.Api.Common;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.Extensions.DependencyInjection;
@@ -67,5 +66,5 @@ public sealed class ApiOpenApiDocumentTests(ApiPipelineHost fixture) : IClassFix
     public void NoRouteServesTheDocument() =>
         Assert.DoesNotContain(ApiRouteTable.Routes(fixture.Host), route => route.Pattern.Contains("openapi", StringComparison.OrdinalIgnoreCase));
 
-    private static string Here([CallerFilePath] string source = "") => Path.GetDirectoryName(source)!;
+    private static string Here() => TestRepository.TestProject();
 }

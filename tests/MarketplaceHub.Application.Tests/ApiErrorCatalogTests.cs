@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using MarketplaceHub.Api.Common;
 using MarketplaceHub.Api.Security;
@@ -101,5 +100,5 @@ public sealed partial class ApiErrorCatalogTests
                 && !file.EndsWith("ApiErrorCatalog.cs", StringComparison.Ordinal))
             .Select(file => (Path.GetFileName(file), File.ReadAllText(file)));
 
-    private static string Root([CallerFilePath] string source = "") => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(source)!, "..", ".."));
+    private static string Root() => TestRepository.Root();
 }

@@ -50,8 +50,7 @@ public sealed class ApiRouteTableSnapshotTests(ApiRouteProbeHost fixture) : ICla
     }
 
     // The snapshot lives next to this file in the repository.
-    private static string SnapshotPath([System.Runtime.CompilerServices.CallerFilePath] string source = "") =>
-        Path.Combine(Path.GetDirectoryName(source)!, SnapshotFile);
+    private static string SnapshotPath() => Path.Combine(TestRepository.TestProject(), SnapshotFile);
 }
 
 public static class ApiRouteTable

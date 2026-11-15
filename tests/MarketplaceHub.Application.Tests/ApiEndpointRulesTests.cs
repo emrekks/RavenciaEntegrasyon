@@ -108,6 +108,6 @@ public sealed class ApiEndpointRulesTests(ApiRouteProbeHost fixture) : IClassFix
         return $"{parts[0]} {parts[1]}";
     }
 
-    private static IEnumerable<string> SnapshotLines([System.Runtime.CompilerServices.CallerFilePath] string source = "") =>
-        File.ReadAllLines(Path.Combine(Path.GetDirectoryName(source)!, "ApiRouteTable.snapshot.txt"));
+    private static IEnumerable<string> SnapshotLines() =>
+        File.ReadAllLines(Path.Combine(TestRepository.TestProject(), "ApiRouteTable.snapshot.txt"));
 }
