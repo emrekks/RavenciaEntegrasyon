@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
@@ -111,7 +112,7 @@ export function ProductActivityLog({ platformOptions, kept }: { platformOptions:
   const countFilters = useMemo(() => ({ ...filters, kinds: [] }), [filters])
   const counts = useQuery({
     queryKey: queryKeys.productActivity('counts', countFilters),
-    queryFn: ({ signal }) => hubPoll<Array<{ kind: string; count: number }>>(`/product-activity/counts${activityCountsQueryString(countFilters)}`, { signal }),
+    queryFn: ({ signal }) => hubPoll<ApiAnswer<'getProductActivityCounts'>>(`/product-activity/counts${activityCountsQueryString(countFilters)}`, { signal }),
     placeholderData: keepPreviousData,
     refetchInterval: firstPagePollMs
   })

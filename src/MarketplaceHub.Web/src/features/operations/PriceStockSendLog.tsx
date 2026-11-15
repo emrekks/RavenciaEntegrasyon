@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useEffect, useMemo, useState } from 'react'
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { hubPoll } from '../../shared/api'
@@ -96,7 +97,7 @@ export function PriceStockSendLog({ platformOptions, onOpenJob, kept }: { platfo
   const countFilters = useMemo(() => ({ ...filters, results: [] }), [filters])
   const counts = useQuery({
     queryKey: queryKeys.priceStockSendLog('counts', countFilters),
-    queryFn: ({ signal }) => hubPoll<Array<{ result: string; count: number }>>(`/price-stock-send-log/counts${sendLogCountsQueryString(countFilters)}`, { signal }),
+    queryFn: ({ signal }) => hubPoll<ApiAnswer<'getPriceStockSendLogCounts'>>(`/price-stock-send-log/counts${sendLogCountsQueryString(countFilters)}`, { signal }),
     placeholderData: keepPreviousData,
     refetchInterval: firstPagePollMs
   })

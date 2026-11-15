@@ -1,41 +1,14 @@
 import { istanbulDayBoundary } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
 import { timeRangeStart, type JobListTimeRange } from './job-list-query'
+import type { ApiAnswer } from '../../shared/api/api-answer'
 
 // The price/stock send log (İşlem Takibi › Loglar): one row per line of a price/stock request sent to a marketplace,
 // read from GET /price-stock-send-log. These helpers turn a row into the text the table shows and the filters into
 // the request; they read no state of their own.
 
-export type PriceStockSendLogEntry = {
-  id: string
-  createdAt: string
-  completedAt: string | null
-  connectionId: string
-  platformCode: string
-  storeName: string | null
-  jobId: string
-  variantId: string
-  productId: string | null
-  productTitle: string | null
-  imageUrl: string | null
-  barcode: string
-  stockCode: string | null
-  modelCode: string | null
-  previousQuantity: number | null
-  newQuantity: number | null
-  previousSalePrice: number | null
-  newSalePrice: number | null
-  previousListPrice: number | null
-  newListPrice: number | null
-  currency: string
-  trigger: string
-  result: string
-  errorCode: string | null
-  errorMessage: string | null
-  externalRequestId: string | null
-}
-
-export type PriceStockSendLogPage = { items: PriceStockSendLogEntry[]; nextCursor: string | null; hasMore: boolean }
+export type PriceStockSendLogPage = ApiAnswer<'getPriceStockSendLog'>
+export type PriceStockSendLogEntry = PriceStockSendLogPage['items'][number]
 
 export const sendLogPageSize = 50
 
