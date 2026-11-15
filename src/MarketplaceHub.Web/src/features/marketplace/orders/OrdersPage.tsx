@@ -17,7 +17,7 @@ import { ShopifyInvoiceStatusDialog, shopifyInvoiceStatusHint, shopifyUploadedNo
 import { NoticeToast } from '../../../shared/components/NoticeToast'
 import { invoiceStatusDisplayLabel, statusLabel } from '../../../shared/status-labels'
 import { DateRangePicker } from '../../../shared/DateRangePicker'
-import { RrAnchor, RrBadge, RrError, RrFilterCard, RrIcon, RrImagePreview, RrLoading, RrLogo, RrModal, RrPageSize, RrRing, RrThumb, RrWordmark, titleTr, type RingTone } from '../returns-ui'
+import { RrAnchor, RrBadge, RrError, RrFilterCard, RrIcon, RrImagePreview, RrLoading, RrLogo, RrModal, RrPageSize, RrRing, RrThumb, RrWordmark, titleTr, type RingTone } from '../../../shared/ui/rr-components'
 import { useScrollLock } from '../../../shared/hooks/useScrollLock'
 import { PlatformSquareMark } from '../../../shared/platform-square-mark'
 import { appendNotification, normalizeNotificationKind, notificationError, notificationLinks, type NotificationContext } from '../../../shared/notifications'

@@ -7,7 +7,7 @@ import { DateRangePicker } from './DateRangePicker'
 import { ViewTabsWithMore } from './view-tabs'
 import { closeAllDismissables } from './hooks/useDismissable'
 import { InvoiceSortSelect } from '../features/invoicing/InvoiceSortSelect'
-import { RrAnchor } from '../features/marketplace/returns-ui'
+import { RrAnchor } from './ui/rr-components'
 
 // Every picker closes on a press outside (also on an element that stops the event), on Escape with focus back on its
 // trigger, on a route change, and when another picker opens (shared/hooks/useDismissable).

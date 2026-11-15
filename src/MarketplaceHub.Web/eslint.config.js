@@ -46,6 +46,30 @@ export default defineConfig([
     },
   },
   {
+    // WEB-ALTYAPI-12: src/shared is the layer every feature builds on, so it never imports a feature (a change to one
+    // screen must not reach every other screen through it). The panel's rr- components live in src/shared/ui.
+    files: ['src/shared/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [{
+          // Any path through a features folder, with these known exceptions (each to be removed once its cause is gone):
+          // - marketplace/returns-sade.css: shared/ui/rr-components.tsx imports the rr- stylesheet from where it has
+          //   always lived; moving the CSS file needs the live computed-style comparison CLAUDE.md asks for.
+          regex: '(^|/)features/(?!marketplace/returns-sade\\.css$)',
+          message: 'src/shared must not import from src/features: move the shared piece to src/shared (src/shared/ui for components).',
+        }],
+      }],
+    },
+  },
+  {
+    // Exceptions to the rule above: tests in src/shared that check a feature together with a shared piece.
+    // - attention-notices.test.ts: publication status texts of features/catalog next to the shared notices
+    // - dismissable-pickers.test.tsx: the invoices sort picker (features/invoicing) among the shared pickers
+    // - notification-center.test.ts: the jobs page tab (features/operations) a notification opens
+    files: ['src/shared/attention-notices.test.ts', 'src/shared/dismissable-pickers.test.tsx', 'src/shared/notification-center.test.ts'],
+    rules: { 'no-restricted-imports': 'off' },
+  },
+  {
     files: ['scripts/**/*.{js,mjs}', 'tests/**/*.mjs', '*.config.{js,ts}', 'vite.config.ts', 'vitest.config.ts'],
     languageOptions: { globals: globals.node },
   },

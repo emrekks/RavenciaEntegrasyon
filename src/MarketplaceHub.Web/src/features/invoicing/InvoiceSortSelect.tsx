@@ -1,4 +1,4 @@
-import { RrAnchor, RrIcon } from '../marketplace/returns-ui'
+import { RrAnchor, RrIcon } from '../../shared/ui/rr-components'
 
 type SortOption = { value: string; label: string }
 

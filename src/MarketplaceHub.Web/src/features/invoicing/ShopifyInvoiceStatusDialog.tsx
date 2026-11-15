@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { PanelSelect } from '../../shared/PanelSelect'
-import { RrIcon, RrModal } from '../marketplace/returns-ui'
+import { RrIcon, RrModal } from '../../shared/ui/rr-components'
 import { handSetInvoiceStatus, handSetInvoiceStatusNote, setManualInvoiceStatus, type ManualInvoiceStatus } from './manual-invoice-status'
 import { queryKeys } from '../../shared/api/query-keys'
 

@@ -9,7 +9,7 @@ import { CardBackgroundIcon, type CardIconName } from '../../shared/components/C
 import { UiIcon } from '../../shared/components/UiIcon'
 import { dashboardOperationalLinks, dayCancellationsLink } from '../../shared/dashboard-operational-links'
 import { pendingOrdersQuery } from '../../shared/order-navigation-count'
-import { RrIcon, RrLogo } from '../marketplace/returns-ui'
+import { RrIcon, RrLogo } from '../../shared/ui/rr-components'
 import './dashboard-sade.css'
 import { formatIstanbul, istanbulDateKey } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'

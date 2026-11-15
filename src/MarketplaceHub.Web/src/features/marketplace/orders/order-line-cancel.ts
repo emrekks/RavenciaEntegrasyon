@@ -1,5 +1,5 @@
 import { statusLabel } from '../../../shared/status-labels'
-import { titleTr } from '../returns-ui'
+import { titleTr } from '../../../shared/ui/rr-components'
 import type { Order, OrderLine } from '../shared'
 
 // How an order line was cancelled. A line cancelled whole is struck through and marked İptal; a line cancelled in

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { hubPoll } from '../../shared/api'
-import { RrLogo } from '../marketplace/returns-ui'
+import { RrLogo } from '../../shared/ui/rr-components'
 import { signalCells, type ApiHealthSignals } from './api-health-signals'
 import { queryKeys } from '../../shared/api/query-keys'
 

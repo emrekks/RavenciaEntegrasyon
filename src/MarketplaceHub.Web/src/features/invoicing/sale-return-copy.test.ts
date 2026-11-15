@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { returnedLineText, saleReturnTitle, workspaceInvoiceStatusFilterLabel } from './invoice-copy'
-import { invoiceGlyphKind, invoiceStatusProgress } from './invoice-state-glyph'
+import { invoiceGlyphKind, invoiceStatusProgress } from '../../shared/ui/invoice-state-glyph'
 import { fullyReturnedNoInvoiceStatus, invoiceStatusLabel } from '../../shared/status-labels'
 
 // Owner's rule of 6 Nov 2026: returned units never go on a sale invoice not issued yet.

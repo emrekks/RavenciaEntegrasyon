@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { thumbnailUrl } from './returns-ui'
+import { thumbnailUrl } from '../../shared/ui/rr-components'
 import { thumbnailSources } from '../../shared/product-thumbnail'
 
 describe('thumbnailSources', () => {

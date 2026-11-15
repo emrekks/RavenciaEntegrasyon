@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
 import { formatDateTime } from '../../../shared/format-date'
 import { statusLabel } from '../../../shared/status-labels'
-import { RrError, RrIcon, RrLoading } from '../returns-ui'
+import { RrError, RrIcon, RrLoading } from '../../../shared/ui/rr-components'
 import { TitleHint } from '../../../shared/components'
 import { queryKeys } from '../../../shared/api/query-keys'
 

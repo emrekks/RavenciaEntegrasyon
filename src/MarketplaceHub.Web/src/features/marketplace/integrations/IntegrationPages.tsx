@@ -15,7 +15,7 @@ import { platformLogoClass, platformLogoSource } from '../../../shared/platform-
 import { PlatformSquareMark } from '../../../shared/platform-square-mark'
 import { webhookSetupText, type WebhookSetup } from '../webhook-setup'
 import { instantNotificationsQueryKey, instantNotificationStateLabel, routeOnlyWebhookMessage, type InstantNotificationStatus } from '../instant-notification-status'
-import { RrModal, titleTr } from '../returns-ui'
+import { RrModal, titleTr } from '../../../shared/ui/rr-components'
 import { externalWriteEvidenceState, externalWriteGroupState } from '../external-write-group-state'
 import { lockPageScroll } from '../../../shared/hooks/useScrollLock'
 import { appendNotification, failureNotice, inferNotificationTarget, notificationError, notificationPlatformName } from '../../../shared/notifications'
