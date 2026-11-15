@@ -47,7 +47,9 @@ internal sealed class PttAvmProductUpdateComposer(AppDbContext db, IConfiguratio
         int? warranty = null;
         if (Picked(ProductUpdateFields.Warranty))
         {
-            warranty = warrantyMonths ?? 0;
+            // 0 is "no warranty" and is sent; an empty warranty is a missing required field, never sent as 0.
+            if (warrantyMonths is not int cardWarranty) return (null, new(ProductWarranty.RequiredCode, ProductWarranty.RequiredMessage));
+            warranty = cardWarranty;
             if (warranty is < 0 or > PttAvmProductUpdateRules.MaxWarrantyMonths)
                 return (null, new("PTTAVM_WARRANTY_INVALID", $"PttAVM garanti süresini en çok {PttAvmProductUpdateRules.MaxWarrantyMonths} ay alır; ürünün garanti süresi {warranty} ay."));
         }
