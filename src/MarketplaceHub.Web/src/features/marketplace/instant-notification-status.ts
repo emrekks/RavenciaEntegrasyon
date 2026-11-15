@@ -1,10 +1,11 @@
-import type { WebhookSetup } from './webhook-setup'
 import { queryKeys } from '../../shared/api/query-keys'
+import type { ApiAnswer } from '../../shared/api/api-answer'
 
 // GET /connections/{id}/instant-notifications (InstantNotificationService.StatusAsync): the connection's webhook as the
 // integration page shows it. The overview reads the same answer under the same query key.
 export type InstantNotificationState = 'UNSUPPORTED' | 'OFF' | 'ACTIVE' | 'PASSIVE' | 'MISSING' | 'UNKNOWN' | 'WAITING' | 'QUIET' | 'CONNECTION_INACTIVE'
-export type InstantNotificationStatus = { state: InstantNotificationState; endpoint: string | null; registeredAt: string | null; lastReceivedAt: string | null; receivedLast24Hours: number; message: string | null; setup?: WebhookSetup | null; lastRejectedAt?: string | null; lastRejectedReason?: string | null; previousPreparedAt?: string | null; adoptableFrom?: { connectionName: string; environment: string; preparedAt: string } | null; routeOnly?: boolean }
+// CONTRACT: the API declares the state as a string; InstantNotificationService writes only these.
+export type InstantNotificationStatus = Omit<ApiAnswer<'getConnectionsByIdInstantNotifications'>, 'state'> & { state: InstantNotificationState }
 
 // A Shopify webhook opened without the app's secret key is admitted by its secret address and store name alone; the
 // panel asks for the key so every delivery's signature is checked too.

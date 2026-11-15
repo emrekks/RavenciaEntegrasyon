@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import type { ReactNode } from 'react'
 import { platformDisplayOrder } from '../../shared/platform-names'
 import { Link } from 'react-router'
@@ -15,7 +16,7 @@ import { connectionQueries, queryKeys } from '../../shared/api/query-keys'
 // Entegrasyon Durumu: one row per marketplace store with the last 7 days of each data flow, the webhook and the
 // 24-hour job counts. Genel Bakış and İşlem Takibi › API Sağlık draw the same panel from the same queries.
 
-export type DashboardMetrics = { pendingOrders: number; lateOrders: number; pendingReturns: number; pendingByConnection?: Record<string, number>; lateByConnection?: Record<string, number>; pendingReturnsByConnection?: Record<string, number>; pendingUnitsByConnection?: Record<string, number> | null; deadJobCount?: number; manualReviewJobCount?: number; recentJobCount?: number }
+export type DashboardMetrics = ApiAnswer<'getDashboardBootstrap'>['metrics']
 /** What API Sağlık adds to a store's row: the automatic price/stock write state, a problem count and the order-source note (all as tooltips). */
 export type StatusExtras = {
   write: { label: string; tone: 'on' | 'partial' | 'off'; title: string }
@@ -34,7 +35,7 @@ const CELL_STATE = { ok: 'Güncel', warn: 'Gecikiyor', bad: 'Hata var', off: 'So
 const refresh = { refetchInterval: 60_000, refetchIntervalInBackground: false, refetchOnWindowFocus: true, staleTime: 30_000 } as const
 const poll = { headers: backgroundPollHeaders }
 
-export const dashboardBootstrapQuery = { queryKey: queryKeys.dashboardBootstrap(), queryFn: ({ signal }: { signal: AbortSignal }) => hubApi<{ metrics: DashboardMetrics; channels?: unknown[] }>('/dashboard/bootstrap', { ...poll, signal }), ...refresh }
+export const dashboardBootstrapQuery = { queryKey: queryKeys.dashboardBootstrap(), queryFn: ({ signal }: { signal: AbortSignal }) => hubApi<ApiAnswer<'getDashboardBootstrap'>>('/dashboard/bootstrap', { ...poll, signal }), ...refresh }
 
 export function age(timestamp: string | null) {
   if (!timestamp) return null
