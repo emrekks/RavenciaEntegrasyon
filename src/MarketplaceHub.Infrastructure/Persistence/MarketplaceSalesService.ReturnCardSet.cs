@@ -9,8 +9,9 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // first card, whose tab follows the claim's own status (ReturnStatusWire only turns an approved or completed claim into
 // PARTIALLY_APPROVED, the same tab); a claim that splits (an accepted line beside a waiting one) has an accepted card
 // more. The invoice label is the claim's (both cards of a claim share it) and is decided by the database
-// (ReturnInvoiceLabelAsync). A search is still read card by card (ScanReturnCardsAsync). Only the claims that split are
-// read row by row.
+// (ReturnInvoiceLabelAsync); the search is decided by the database for a whole card on its columns
+// (ReturnSearchInDatabase) and from the view for the rest. Only the claims that split, and the claims the search leaves to
+// their view, are read row by row.
 public sealed partial class MarketplaceSalesService
 {
     // Claims: every claim the filters keep (the tab's database filter included). FirstCard: the claims whose first card is
@@ -35,11 +36,12 @@ public sealed partial class MarketplaceSalesService
         }
     }
 
-    // The cards of the filter, or null with a search (the in-memory scan decides).
+    // The cards of the filter, or null when the search term cannot be sent to the database (the in-memory scan decides).
     // Without a tab every card counts; without refinements the platform, cargo, reason and invoice choices are left out.
     internal async Task<ReturnCardSet?> ReturnCardSetAsync(Guid tenantId, ReturnListQuery options, bool applyTab, bool applyRefinements, ReturnColumnState columns, CancellationToken cancellationToken)
     {
-        if (!string.IsNullOrWhiteSpace(options.Search)) return null;
+        var search = ReturnSearchTermOf(options.Search);
+        if (search is null && !string.IsNullOrWhiteSpace(options.Search)) return null;
         var query = ReturnBaseQuery(tenantId);
         ApplyReturnFilters(ref query, applyTab ? options : options with { Status = null });
         if (applyRefinements) ApplyReturnRefinements(ref query, tenantId, options);
@@ -69,6 +71,22 @@ public sealed partial class MarketplaceSalesService
         var splitCards = (await ReturnCardsAsync(tenantId, splitRows, null, withLineIds: false, columns.Fresh, cancellationToken))
             .GroupBy(card => card.ClaimId).Where(group => group.Count() > 1).ToDictionary(group => group.Key, group => group.ToList());
         var extras = splitCards.Values.Select(cards => cards[^1]).Where(card => everyTab || ReturnTabGroup(card.Status) == tab).ToList();
+
+        if (search is not null)
+        {
+            // A whole card the columns match is listed; the others, and every card of a claim that splits (each card's own
+            // lines decide), are decided from their views, as the page always did.
+            var splitIds = splitCards.Keys.ToArray();
+            var columnsMatch = ReturnSearchInDatabase(tenantId, search);
+            var undecided = await query.Where(firstCard).Where(Not(columnsMatch)).Where(claim => !splitIds.Contains(claim.Id)).Select(claim => claim.Id).ToListAsync(cancellationToken);
+            var viewIds = undecided.Concat(splitIds).ToArray();
+            var views = viewIds.Length == 0 ? new Dictionary<Guid, ReturnListView>() : await ReturnViewsByIdAsync(tenantId, viewIds, cancellationToken);
+            bool Matches(Guid claimId, IReadOnlyCollection<Guid>? lineIds) =>
+                views.TryGetValue(claimId, out var view) && MatchesReturnSearch(view, lineIds ?? [.. (view.Lines ?? []).Select(line => line.Id)], search.Term);
+            Guid[] matched = [.. undecided.Where(id => Matches(id, null)), .. splitCards.Where(pair => Matches(pair.Key, pair.Value[0].LineIds)).Select(pair => pair.Key)];
+            firstCard = AndAlso(firstCard, OrElse(AndAlso(columnsMatch, claim => !splitIds.Contains(claim.Id)), claim => matched.Contains(claim.Id)));
+            extras = extras.Where(card => Matches(card.ClaimId, card.LineIds)).ToList();
+        }
         return new(query, firstCard, splitCards, splitRows.ToDictionary(row => row.Id), extras);
     }
 

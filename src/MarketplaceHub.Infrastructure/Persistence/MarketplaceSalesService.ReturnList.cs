@@ -325,9 +325,9 @@ public sealed partial class MarketplaceSalesService
     internal async Task<PageResult<ReturnListView>> ReturnCardPageAsync(Guid tenantId, int limit, int page, string? after, ReturnListQuery options, CancellationToken cancellationToken)
     {
         var sort = NormalizeReturnSort(options.Sort);
-        var columns = string.IsNullOrWhiteSpace(options.Search) ? await ReturnColumnStateAsync(tenantId, cancellationToken) : UnfilledColumns;
-        // SIPARIS-STOK-9: every filter but the search is decided by the database (ReturnCardSetAsync); a search is still
-        // read card by card, as before.
+        var columns = await ReturnColumnStateAsync(tenantId, cancellationToken);
+        // SIPARIS-STOK-9: every filter is decided by the database (ReturnCardSetAsync); only a search term that cannot be
+        // sent to the database (a lone surrogate or a NUL) is still read card by card, as before.
         if (await ReturnCardSetAsync(tenantId, options, applyTab: true, applyRefinements: true, columns, cancellationToken) is { } set)
             return await ReturnCardPageInDatabaseAsync(tenantId, limit, page, after, set, sort, columns, cancellationToken);
         var scan = await ScanReturnCardsAsync(tenantId, options, applyTab: true, applyRefinements: true, UnfilledColumns, cancellationToken);
@@ -534,7 +534,8 @@ public sealed partial class MarketplaceSalesService
         return view;
     }
 
-    // The summary from every listed claim and line read card by card: only for a search (BuildReturnSummaryAsync).
+    // The summary from every listed claim and line read card by card: only for a search term that cannot be sent to the
+    // database (BuildReturnSummaryAsync).
     private async Task<ReturnSummaryView> BuildReturnSummaryFromScanAsync(Guid tenantId, ReturnListQuery options, Dictionary<string, int> counts, CancellationToken cancellationToken)
     {
         var columns = UnfilledColumns;
