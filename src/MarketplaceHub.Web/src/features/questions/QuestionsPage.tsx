@@ -195,7 +195,7 @@ export function QuestionsPage() {
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null)
   const requestedSync = useRef(false)
   const kind = tab === 'ORDER' ? 'ORDER' : 'PRODUCT'
-  const connections = useQuery({ queryKey: queryKeys.questions('connections'), queryFn: async () => (await loadAllPages<Connection>('/connections', 100)).items.filter(item => ['TRENDYOL', 'HEPSIBURADA', 'N11', 'PAZARAMA'].includes(item.platformCode) && ['ACTIVE', 'VERIFIED'].includes(item.status.toUpperCase())), staleTime: 60_000 })
+  const connections = useQuery({ queryKey: queryKeys.questions('connections'), queryFn: async ({ signal }) => (await loadAllPages<Connection>('/connections', { limit: 100, signal })).items.filter(item => ['TRENDYOL', 'HEPSIBURADA', 'N11', 'PAZARAMA'].includes(item.platformCode) && ['ACTIVE', 'VERIFIED'].includes(item.status.toUpperCase())), staleTime: 60_000 })
   const filters = new URLSearchParams({ kind, status })
   if (platform !== 'ALL') filters.set('platform', platform)
   if (connectionId !== 'ALL') filters.set('connectionId', connectionId)
@@ -206,7 +206,7 @@ export function QuestionsPage() {
   filters.set('page', String(page)); filters.set('limit', '50')
   // Questions arrive from the marketplaces every few minutes, so the inbox and its counts read the local copy every two
   // minutes (sync states every minute) instead of keeping the server busy.
-  const questions = useQuery({ queryKey: queryKeys.questions(kind, status, platform, connectionId, dateFrom, dateTo, search, sort, page), queryFn: () => hubPoll<QuestionListPage>(`/questions?${filters.toString()}`), placeholderData: keepPreviousData, refetchInterval: 120_000, staleTime: 10_000 })
+  const questions = useQuery({ queryKey: queryKeys.questions(kind, status, platform, connectionId, dateFrom, dateTo, search, sort, page), queryFn: ({ signal }) => hubPoll<QuestionListPage>(`/questions?${filters.toString()}`, { signal }), placeholderData: keepPreviousData, refetchInterval: 120_000, staleTime: 10_000 })
   // A count is keyed by the exact request it makes, so the tab's waiting count and the unfiltered status count (the same
   // request when no filter is set) share one cache entry and one request instead of two.
   const countPath = (countKind: string, countStatus: QuestionStatus, scoped: boolean) => {
@@ -220,7 +220,7 @@ export function QuestionsPage() {
     }
     return `/questions?${params.toString()}`
   }
-  const countQuery = (path: string) => ({ queryKey: queryKeys.questions('count', path), queryFn: () => hubPoll<QuestionListPage>(path).then(result => result.totalCount), refetchInterval: 120_000, staleTime: 10_000 })
+  const countQuery = (path: string) => ({ queryKey: queryKeys.questions('count', path), queryFn: ({ signal }: { signal: AbortSignal }) => hubPoll<QuestionListPage>(path, { signal }).then(result => result.totalCount), refetchInterval: 120_000, staleTime: 10_000 })
   const statusCounts = useQueries({ queries: statusFilters.map(item => ({ ...countQuery(countPath(kind, item.value, true)), enabled: tab !== 'TEMPLATES' })) })
   const waitingCounts = useQueries({ queries: (['PRODUCT', 'ORDER'] as const).map(countKind => countQuery(countPath(countKind, 'WAITING', false))) })
   // The list and the chosen status's count ask the same question but were polled two minutes apart, so a question that
@@ -236,8 +236,8 @@ export function QuestionsPage() {
   const refetchList = questions.refetch
   useEffect(() => { if (shownCount !== undefined && listTotal !== undefined && shownCount !== listTotal) void refetchList() }, [shownCount]) // eslint-disable-line react-hooks/exhaustive-deps -- only a changed count reads the list again
   const formatCount = (value: number | undefined) => value === undefined ? undefined : value.toLocaleString('tr-TR')
-  const templates = useQuery({ queryKey: queryKeys.questionTemplates(), queryFn: () => hubApi<Template[]>('/question-templates'), staleTime: 30_000 })
-  const syncStates = useQuery({ queryKey: queryKeys.questions('sync-state'), queryFn: () => hubPoll<SyncState[]>('/questions/sync-state'), refetchInterval: 60_000 })
+  const templates = useQuery({ queryKey: queryKeys.questionTemplates(), queryFn: ({ signal }) => hubApi<Template[]>('/question-templates', { signal }), staleTime: 30_000 })
+  const syncStates = useQuery({ queryKey: queryKeys.questions('sync-state'), queryFn: ({ signal }) => hubPoll<SyncState[]>('/questions/sync-state', { signal }), refetchInterval: 60_000 })
   useEffect(() => { if (syncStates.data) rememberSyncCount(syncStates.data.length) }, [syncStates.data])
   const syncHeight = useRememberedHeight<HTMLElement>('question-sync-chips', syncStates.isLoading)
 
@@ -301,10 +301,10 @@ export function QuestionsPage() {
   // place to another question.
   if (selectedId === null && rows[0] && !questions.isPlaceholderData) setSelectedId(rows[0].id)
   const listedSelection = rows.find(item => item.id === selectedId)
-  const pinned = useQuery({ queryKey: queryKeys.questions('detail', selectedId), queryFn: () => hubApi<MarketplaceQuestion>(`/questions/${selectedId}`), enabled: Boolean(selectedId) && !listedSelection && questions.isSuccess, staleTime: 10_000 })
+  const pinned = useQuery({ queryKey: queryKeys.questions('detail', selectedId), queryFn: ({ signal }) => hubApi<MarketplaceQuestion>(`/questions/${selectedId}`, { signal }), enabled: Boolean(selectedId) && !listedSelection && questions.isSuccess, staleTime: 10_000 })
   const selected = listedSelection ?? (selectedId && pinned.data?.id === selectedId ? pinned.data : undefined) ?? (selectedId ? undefined : rows[0])
   // What the same customer asked this marketplace before (newest first), shown above the open question.
-  const customerHistory = useQuery({ queryKey: queryKeys.questions('customer-history', selected?.id), queryFn: () => hubApi<MarketplaceQuestion[]>(`/questions/${selected!.id}/customer-history`), enabled: Boolean(selected), staleTime: 60_000 })
+  const customerHistory = useQuery({ queryKey: queryKeys.questions('customer-history', selected?.id), queryFn: ({ signal }) => hubApi<MarketplaceQuestion[]>(`/questions/${selected!.id}/customer-history`, { signal }), enabled: Boolean(selected), staleTime: 60_000 })
   const totalCount = questions.data?.totalCount ?? 0
   const pageCount = Math.max(1, Math.ceil(totalCount / 50))
   const currentStatus = statusFilters.find(item => item.value === status) ?? statusFilters[0]

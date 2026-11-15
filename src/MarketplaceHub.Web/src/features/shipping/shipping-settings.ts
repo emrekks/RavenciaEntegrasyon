@@ -41,7 +41,7 @@ export function useShippingLabelSettings() {
   const migrationAttempted = useRef(false)
   const query = useQuery({
     queryKey: shippingLabelSettingsQueryKey,
-    queryFn: () => hubApi<ShippingLabelSettingsEnvelope>('/settings/shipping-label'),
+    queryFn: ({ signal }) => hubApi<ShippingLabelSettingsEnvelope>('/settings/shipping-label', { signal }),
     staleTime: 60_000,
     retry: 2,
     refetchOnWindowFocus: true
@@ -86,7 +86,7 @@ export function useShippingLabelSettings() {
     try {
       // D9: a stored setting is written only over the version read (If-Match); one not read yet is read first. The
       // version is the one the draft was made from, so a draft kept over newer settings is refused, not written over them.
-      const current = query.data ?? await client.fetchQuery({ queryKey: shippingLabelSettingsQueryKey, queryFn: () => hubApi<ShippingLabelSettingsEnvelope>('/settings/shipping-label') })
+      const current = query.data ?? await client.fetchQuery({ queryKey: shippingLabelSettingsQueryKey, queryFn: ({ signal }) => hubApi<ShippingLabelSettingsEnvelope>('/settings/shipping-label', { signal }) })
       saved = await hubApi<ShippingLabelSettingsEnvelope>('/settings/shipping-label', { method: 'PUT', headers: settingsIfMatch(overVersion ?? baseRef.current?.version ?? current?.version), body: JSON.stringify(normalized) })
     } catch (error) {
       // changed elsewhere meanwhile: read the current settings; the draft stays and the newer copy waits as a conflict

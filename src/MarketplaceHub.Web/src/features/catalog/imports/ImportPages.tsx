@@ -36,7 +36,7 @@ function useImportTask() {
 export function ImportsPage() {
   const client = useQueryClient()
   const { error, pending } = useImportTask()
-  const query = useQuery({ queryKey: queryKeys.imports(), queryFn: () => loadAllPages<ImportSession>('/imports') })
+  const query = useQuery({ queryKey: queryKeys.imports(), queryFn: ({ signal }) => loadAllPages<ImportSession>('/imports', { signal }) })
   function create(sourceType: string) {
     if (pending.isPending) return
     pending.mutate(async () => {
@@ -57,11 +57,11 @@ export function ImportDetailPage() {
   // Re-read only while the worker moves the import on; a finished import is not polled.
   const session = useQuery({
     queryKey: queryKeys.import(id),
-    queryFn: () => hubPoll<ImportSession>(`/imports/${id}`),
+    queryFn: ({ signal }) => hubPoll<ImportSession>(`/imports/${id}`, { signal }),
     enabled: !!id,
     refetchInterval: query => importSessionPollInterval(query.state.data?.status)
   })
-  const candidates = useQuery({ queryKey: queryKeys.candidates(id), queryFn: () => loadAllPages<Candidate>(`/imports/${id}/candidates`), enabled: session.data?.status === 'REVIEW_REQUIRED' })
+  const candidates = useQuery({ queryKey: queryKeys.candidates(id), queryFn: ({ signal }) => loadAllPages<Candidate>(`/imports/${id}/candidates`, { signal }), enabled: session.data?.status === 'REVIEW_REQUIRED' })
   function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (pending.isPending) return

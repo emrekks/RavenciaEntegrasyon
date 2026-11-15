@@ -204,7 +204,7 @@ function ReferenceConnectionCard({ item, onSaved, onFeedback: emitFeedback }: { 
   }
   const privateDataHidden = hidden || !connected
   // The card also warns when a flow is late past its window or partly failing (the same reading as Akış Sağlığı).
-  const flowPolicies = useQuery({ queryKey: queryKeys.syncPolicies(item.id), queryFn: () => hubPoll<SyncPolicy[]>(`/connections/${item.id}/sync-policies`), enabled: connected && !hidden && supportsSyncPolicyManagement(item.platformCode), staleTime: 60_000, refetchInterval: 300_000, refetchIntervalInBackground: false })
+  const flowPolicies = useQuery({ queryKey: queryKeys.syncPolicies(item.id), queryFn: ({ signal }) => hubPoll<SyncPolicy[]>(`/connections/${item.id}/sync-policies`, { signal }), enabled: connected && !hidden && supportsSyncPolicyManagement(item.platformCode), staleTime: 60_000, refetchInterval: 300_000, refetchIntervalInBackground: false })
   const flowAttention = { count: flowsNeedingAttention((flowPolicies.data ?? []).filter(policy => !['PRODUCTS', 'PRODUCT_WRITE', 'PRICE_STOCK_WRITE'].includes(policy.resourceType) && supportsSyncPolicy(item.platformCode, policy.resourceType))).length }
   const testSummary = connectionAuthSummary(item)
   const authSummary = connectionAuthSummary(item, flowAttention)
@@ -347,7 +347,7 @@ function InstantNotificationsPanel({ connectionId, connectionActive, platformCod
   const [setup, setSetup] = useState<WebhookSetup | null>(null)
   const [clientSecret, setClientSecret] = useState('')
   const client = useQueryClient()
-  const status = useQuery({ queryKey: instantNotificationsQueryKey(connectionId), queryFn: () => hubApi<InstantNotificationStatus>(`/connections/${connectionId}/instant-notifications`), staleTime: 30_000 })
+  const status = useQuery({ queryKey: instantNotificationsQueryKey(connectionId), queryFn: ({ signal }) => hubApi<InstantNotificationStatus>(`/connections/${connectionId}/instant-notifications`, { signal }), staleTime: 30_000 })
   const [confirm, setConfirm] = useState<'on' | 'off' | 'restore' | 'adopt' | null>(null)
   const [feedback, setFeedback] = useState<IntegrationFeedback | null>(null)
   const change = useMutation({
@@ -560,7 +560,7 @@ function N11PublishSettingsPanel({ connectionId, displayName, version, shipmentT
   const [template, setTemplate] = useState(shipmentTemplate ?? '')
   const [days, setDays] = useState(String(preparingDay ?? 3))
   const [feedback, setFeedback] = useState<IntegrationFeedback | null>(null)
-  const templates = useQuery({ queryKey: queryKeys.n11ShipmentTemplates(connectionId), queryFn: () => hubApi<string[]>(`/connections/${connectionId}/n11-shipment-templates`), staleTime: 5 * 60_000, retry: false })
+  const templates = useQuery({ queryKey: queryKeys.n11ShipmentTemplates(connectionId), queryFn: ({ signal }) => hubApi<string[]>(`/connections/${connectionId}/n11-shipment-templates`, { signal }), staleTime: 5 * 60_000, retry: false })
   const templateChoices = templates.data ?? []
   const parsedDays = Number(days)
   const daysValid = Number.isInteger(parsedDays) && parsedDays >= 1 && parsedDays <= 30
@@ -598,9 +598,9 @@ function SettingsIcon({ name }: { name: SettingsIconName }) {
 }
 function IntegrationDetailWorkspace({ id, inline = false, onClose, onSwitch }: { id: string; inline?: boolean; onClose?: () => void; onSwitch?: (id: string) => void }) {
   // The other connections the title can switch to (same list the integrations page shows).
-  const switchable = useQuery({ queryKey: queryKeys.connections(), queryFn: () => loadAllPages<Connection>('/connections'), enabled: Boolean(onSwitch) })
+  const switchable = useQuery({ queryKey: queryKeys.connections(), queryFn: ({ signal }) => loadAllPages<Connection>('/connections', { signal }), enabled: Boolean(onSwitch) })
   const switchOptions = (switchable.data?.items ?? []).filter(option => activePlatformCodes.has(option.platformCode))
-  const client = useQueryClient(); const [feedback, setFeedback] = useState<IntegrationFeedback | null>(null); const [syncPolicyOpen, setSyncPolicyOpen] = useState<SyncPolicy | null>(null); const connection = useQuery({ queryKey: queryKeys.connection(id), queryFn: () => hubApi<Connection>(`/connections/${id}`), refetchOnMount: 'always' }); const syncPolicies = useQuery({ queryKey: queryKeys.syncPolicies(id), queryFn: () => hubPoll<SyncPolicy[]>(`/connections/${id}/sync-policies`), enabled: supportsSyncPolicyManagement(connection.data?.platformCode ?? ''), refetchInterval: 30_000, refetchIntervalInBackground: false }); const capabilities = useQuery({ queryKey: queryKeys.capabilities(id), queryFn: () => hubApi<Capability[]>(`/connections/${id}/capabilities`), enabled: shouldLoadConnectionCapabilities(connection.data?.platformCode) });
+  const client = useQueryClient(); const [feedback, setFeedback] = useState<IntegrationFeedback | null>(null); const [syncPolicyOpen, setSyncPolicyOpen] = useState<SyncPolicy | null>(null); const connection = useQuery({ queryKey: queryKeys.connection(id), queryFn: ({ signal }) => hubApi<Connection>(`/connections/${id}`, { signal }), refetchOnMount: 'always' }); const syncPolicies = useQuery({ queryKey: queryKeys.syncPolicies(id), queryFn: ({ signal }) => hubPoll<SyncPolicy[]>(`/connections/${id}/sync-policies`, { signal }), enabled: supportsSyncPolicyManagement(connection.data?.platformCode ?? ''), refetchInterval: 30_000, refetchIntervalInBackground: false }); const capabilities = useQuery({ queryKey: queryKeys.capabilities(id), queryFn: ({ signal }) => hubApi<Capability[]>(`/connections/${id}/capabilities`, { signal }), enabled: shouldLoadConnectionCapabilities(connection.data?.platformCode) });
   useEffect(() => {
     if (!feedback) return
     const timeout = window.setTimeout(() => setFeedback(null), 5000)
@@ -647,7 +647,7 @@ function IntegrationDetailWorkspace({ id, inline = false, onClose, onSwitch }: {
   const [summaryOpen, setSummaryOpen] = useState(false)
   // The summary's webhook row reads the same status (and cache entry) the Webhook card does.
   const webhookPlatformCode = connection.data?.platformCode
-  const webhookStatus = useQuery({ queryKey: instantNotificationsQueryKey(id), queryFn: () => hubApi<InstantNotificationStatus>(`/connections/${id}/instant-notifications`), staleTime: 30_000, enabled: webhookPlatformCode === 'TRENDYOL' || webhookPlatformCode === 'HEPSIBURADA' || webhookPlatformCode === 'SHOPIFY' })
+  const webhookStatus = useQuery({ queryKey: instantNotificationsQueryKey(id), queryFn: ({ signal }) => hubApi<InstantNotificationStatus>(`/connections/${id}/instant-notifications`, { signal }), staleTime: 30_000, enabled: webhookPlatformCode === 'TRENDYOL' || webhookPlatformCode === 'HEPSIBURADA' || webhookPlatformCode === 'SHOPIFY' })
   const sectionBody = useRef<HTMLDivElement>(null)
   // The picked section's tab, cut at the edge of a phone's strip, slides into view (only the strip scrolls).
   useEffect(() => {

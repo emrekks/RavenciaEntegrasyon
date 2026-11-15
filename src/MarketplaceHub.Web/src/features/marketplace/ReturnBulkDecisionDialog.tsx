@@ -91,7 +91,7 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
   const details = useQueries({
     queries: items.map(item => ({
       queryKey: queryKeys.return(item.id),
-      queryFn: () => hubApi<DetailLines>(`/returns/${item.id}`),
+      queryFn: ({ signal }) => hubApi<DetailLines>(`/returns/${item.id}`, { signal }),
       enabled: approving,
       staleTime: 15_000
     }))
@@ -118,7 +118,7 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
   // first selected return; a reason a later return does not accept is reported on that return only.
   const reasons = useQuery({
     queryKey: queryKeys.returnReasons('bulk', items[0]?.id),
-    queryFn: () => hubApi<RejectReason[]>(`/returns/${items[0]!.id}/rejection-reasons`),
+    queryFn: ({ signal }) => hubApi<RejectReason[]>(`/returns/${items[0]!.id}/rejection-reasons`, { signal }),
     enabled: !approving && singlePlatform && items.length > 0,
     retry: false
   })

@@ -28,7 +28,7 @@ export function MissingValueMappingDialog({ connectionId, platformName, category
   const lists = useQueries({
     queries: attributeIds.map(externalAttributeId => ({
       queryKey: queryKeys.referenceAttributeValues(connectionId, `${categoryScope}/${externalAttributeId}`),
-      queryFn: () => hubApi<ValueList>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(externalAttributeId)}/values?connectionId=${encodeURIComponent(connectionId)}`),
+      queryFn: ({ signal }) => hubApi<ValueList>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(externalAttributeId)}/values?connectionId=${encodeURIComponent(connectionId)}`, { signal }),
       retry: false
     }))
   })

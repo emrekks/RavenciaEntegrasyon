@@ -245,7 +245,7 @@ export function useAppearanceSettings() {
   const client = useQueryClient()
   const query = useQuery({
     queryKey: appearanceSettingsQueryKey,
-    queryFn: () => hubApi<AppearanceSettingsEnvelope>('/settings/appearance').then(envelope => rememberAppearance(envelope)),
+    queryFn: ({ signal }: { signal: AbortSignal }) => hubApi<AppearanceSettingsEnvelope>('/settings/appearance', { signal }).then(envelope => rememberAppearance(envelope)),
     placeholderData: () => readRememberedAppearance(),
     staleTime: 60_000,
     refetchOnWindowFocus: true
@@ -275,7 +275,7 @@ export function useAppearanceSettings() {
     // D9: a stored setting is written only over the version read (If-Match); one not read yet is read first. The version
     // is the one the draft was made from, so a draft kept over newer settings is refused, not written over them.
     const current = client.getQueryData<AppearanceSettingsEnvelope>(appearanceSettingsQueryKey)
-      ?? await client.fetchQuery({ queryKey: appearanceSettingsQueryKey, queryFn: () => hubApi<AppearanceSettingsEnvelope>('/settings/appearance').then(envelope => rememberAppearance(envelope)) })
+      ?? await client.fetchQuery({ queryKey: appearanceSettingsQueryKey, queryFn: ({ signal }: { signal: AbortSignal }) => hubApi<AppearanceSettingsEnvelope>('/settings/appearance', { signal }).then(envelope => rememberAppearance(envelope)) })
     let saved: AppearanceSettingsEnvelope
     try {
       saved = await hubApi<AppearanceSettingsEnvelope>('/settings/appearance', { method: 'PUT', headers: settingsIfMatch(overVersion ?? base.version ?? current?.version), body: JSON.stringify(normalized) })

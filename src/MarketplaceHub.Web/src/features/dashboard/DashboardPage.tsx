@@ -166,24 +166,24 @@ export function DashboardPage() {
     window.addEventListener('scroll', close, { passive: true })
     return () => { document.removeEventListener('pointerdown', close); window.removeEventListener('scroll', close) }
   }, [breakdownOpen])
-  const lowStock = useQuery({ queryKey: queryKeys.products('low-stock-details'), queryFn: () => loadAllPages<Product>('/products?stock=LOW', 200), enabled: lowStockOpen, staleTime: 15_000 })
+  const lowStock = useQuery({ queryKey: queryKeys.products('low-stock-details'), queryFn: ({ signal }) => loadAllPages<Product>('/products?stock=LOW', { limit: 200, signal }), enabled: lowStockOpen, staleTime: 15_000 })
   const [metric, setMetric] = useState<0 | 1 | 2>(0)
   const [noticeClosed, setNoticeClosed] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   // Bekleyen Siparişler reads the menu badge's own query (the Siparişler page's Bekleyen tab), not the worker's snapshot:
   // the badge and the card are one answer and refresh together on every order change.
   const pendingSummary = useQuery(pendingOrdersQuery)
-  const bootstrap = useQuery({ queryKey: queryKeys.dashboardBootstrap(), queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap', poll), ...refresh })
-  const invoiceSummary = useQuery({ queryKey: queryKeys.invoiceWorkspaceSummary(), queryFn: () => hubApi<{ dueSoonCount: number; uninvoicedCount?: number }>('/invoice-workspace/summary', poll), ...refresh })
-  const productSummary = useQuery({ queryKey: queryKeys.products('summary'), queryFn: () => hubApi<ProductSummary>('/products/summary', poll), ...refresh })
+  const bootstrap = useQuery({ queryKey: queryKeys.dashboardBootstrap(), queryFn: ({ signal }) => hubApi<DashboardBootstrap>('/dashboard/bootstrap', { ...poll, signal }), ...refresh })
+  const invoiceSummary = useQuery({ queryKey: queryKeys.invoiceWorkspaceSummary(), queryFn: ({ signal }) => hubApi<{ dueSoonCount: number; uninvoicedCount?: number }>('/invoice-workspace/summary', { ...poll, signal }), ...refresh })
+  const productSummary = useQuery({ queryKey: queryKeys.products('summary'), queryFn: ({ signal }) => hubApi<ProductSummary>('/products/summary', { ...poll, signal }), ...refresh })
   const integration = useIntegrationHealth()
   // No active connection (or not the chosen store) feeds the cards: their big numbers read a dash (shared rule, shared/metric-value.ts).
   const noSource = useMetricSource({ connectionId: channel }) === false
   // A custom range picked only halfway asks for nothing until its end is picked too.
   const days = periodDays(range, custom, today)
   // Today's cancellations, each counted on the day the marketplace says it happened.
-  const cancellations = useQuery({ queryKey: queryKeys.dashboard('cancellations', today), queryFn: () => hubApi<{ stores: CancellationRow[] }>(`/dashboard/cancellations?day=${today}`, poll), ...refresh })
-  const performance = useQuery({ placeholderData: keepPreviousData, queryKey: queryKeys.dashboard('performance', days?.from, days?.to), queryFn: () => hubApi<Performance>(`/dashboard/performance?from=${days!.from}&to=${days!.to}`, poll), enabled: days !== null, ...refresh })
+  const cancellations = useQuery({ queryKey: queryKeys.dashboard('cancellations', today), queryFn: ({ signal }) => hubApi<{ stores: CancellationRow[] }>(`/dashboard/cancellations?day=${today}`, { ...poll, signal }), ...refresh })
+  const performance = useQuery({ placeholderData: keepPreviousData, queryKey: queryKeys.dashboard('performance', days?.from, days?.to), queryFn: ({ signal }) => hubApi<Performance>(`/dashboard/performance?from=${days!.from}&to=${days!.to}`, { ...poll, signal }), enabled: days !== null, ...refresh })
   // Once a period has loaded, the other ready-made periods are read in the background, one at a time when the browser
   // is idle, so switching to them is instant without a burst of parallel reads.
   const queryClient = useQueryClient()
@@ -193,7 +193,7 @@ export function DashboardPage() {
     let cancelled = false
     const reads = presetOrder.flatMap(other => {
       const span = periodDays(other, custom, today)
-      return span ? [() => queryClient.prefetchQuery({ queryKey: queryKeys.dashboard('performance', span.from, span.to), queryFn: () => hubApi<Performance>(`/dashboard/performance?from=${span.from}&to=${span.to}`, poll), staleTime: 60_000 })] : []
+      return span ? [() => queryClient.prefetchQuery({ queryKey: queryKeys.dashboard('performance', span.from, span.to), queryFn: ({ signal }) => hubApi<Performance>(`/dashboard/performance?from=${span.from}&to=${span.to}`, { ...poll, signal }), staleTime: 60_000 })] : []
     })
     void prefetchInTurn(reads, () => cancelled)
     return () => { cancelled = true }

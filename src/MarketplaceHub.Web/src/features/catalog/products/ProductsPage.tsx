@@ -182,7 +182,7 @@ function lowStockMissingVariantCount(group: ProductGroup) {
 // and Tükenen Varyantlar (any variant sold out while the product still has stock, read when its tab is opened).
 export function LowStockDetailsModal({ products: lowProducts, loading: lowLoading, error: lowError, onClose, onImageClick }: { products: Product[]; loading: boolean; error: unknown; onClose: () => void; onImageClick: (url: string, title: string, modelCode?: string) => void }) {
   const [mode, setMode] = useState<'LOW' | 'GAP'>('LOW')
-  const gapQuery = useQuery({ queryKey: queryKeys.products('sold-out-variant-details'), queryFn: () => loadAllPages<Product>('/products?stock=GAP', 200), enabled: mode === 'GAP', staleTime: 15_000 })
+  const gapQuery = useQuery({ queryKey: queryKeys.products('sold-out-variant-details'), queryFn: ({ signal }) => loadAllPages<Product>('/products?stock=GAP', { limit: 200, signal }), enabled: mode === 'GAP', staleTime: 15_000 })
   const products = useMemo(() => mode === 'LOW' ? lowProducts : gapQuery.data?.items ?? [], [mode, lowProducts, gapQuery.data])
   const loading = mode === 'LOW' ? lowLoading : gapQuery.isLoading
   const error = mode === 'LOW' ? lowError : gapQuery.error
@@ -406,13 +406,13 @@ export function ProductsPage() {
     refetchInterval: 60_000,
     refetchIntervalInBackground: false
   })
-  const summaryQuery = useQuery({ queryKey: queryKeys.products('summary'), queryFn: () => hubApi<ProductSummary>('/products/summary'), staleTime: 30_000, refetchOnWindowFocus: true })
+  const summaryQuery = useQuery({ queryKey: queryKeys.products('summary'), queryFn: ({ signal }) => hubApi<ProductSummary>('/products/summary', { signal }), staleTime: 30_000, refetchOnWindowFocus: true })
   // The summary has no draft or archived counts; a one-item page carries the total.
   const draftCountQuery = useQuery({ queryKey: queryKeys.products('count', 'DRAFT'), queryFn: () => fetchProductPage(1, { search: '', status: 'DRAFT', platform: '', stock: '', sort: '' }, null), staleTime: 60_000 })
   const archivedCountQuery = useQuery({ queryKey: queryKeys.products('count', 'ARCHIVED'), queryFn: () => fetchProductPage(1, { search: '', status: 'ARCHIVED', platform: '', stock: '', sort: '' }, null), staleTime: 60_000 })
-  const lowStockQuery = useQuery({ queryKey: queryKeys.products('low-stock-details'), queryFn: () => loadAllPages<Product>('/products?stock=LOW', 200), enabled: lowStockOpen, staleTime: 15_000, refetchOnWindowFocus: true })
+  const lowStockQuery = useQuery({ queryKey: queryKeys.products('low-stock-details'), queryFn: ({ signal }) => loadAllPages<Product>('/products?stock=LOW', { limit: 200, signal }), enabled: lowStockOpen, staleTime: 15_000, refetchOnWindowFocus: true })
   const connectionsQuery = useQuery(connectionQueries.list<MarketplaceConnection>())
-  const productSyncJobsQuery = useQuery({ queryKey: queryKeys.jobs('product-import'), queryFn: () => hubPoll<ProductSyncJob[]>(productSyncJobsPath, { cache: 'no-store' }), enabled: productImportOpen || trackedProductImportJobIds.length > 0, refetchInterval: query => productImportOpen && filterActiveProductSyncJobs(query.state.data ?? []).length ? 1500 : trackedProductImportJobIds.length ? 3000 : false, refetchIntervalInBackground: true, refetchOnWindowFocus: true, staleTime: 0 })
+  const productSyncJobsQuery = useQuery({ queryKey: queryKeys.jobs('product-import'), queryFn: ({ signal }) => hubPoll<ProductSyncJob[]>(productSyncJobsPath, { cache: 'no-store', signal }), enabled: productImportOpen || trackedProductImportJobIds.length > 0, refetchInterval: query => productImportOpen && filterActiveProductSyncJobs(query.state.data ?? []).length ? 1500 : trackedProductImportJobIds.length ? 3000 : false, refetchIntervalInBackground: true, refetchOnWindowFocus: true, staleTime: 0 })
   const products = useMemo(() => query.data?.items ?? [], [query.data]); const connections = (connectionsQuery.data?.items ?? []).filter(isProductImportConnection); const publicationConnections = (connectionsQuery.data?.items ?? []).filter(isProductPublicationConnection); const selectedImportPlatforms = productImportConnectionIds.map(connectionId => connections.find(connection => connection.id === connectionId)?.platformCode ?? '').filter(Boolean); const selectedImportHasShopify = selectedImportPlatforms.some(code => code.trim().toUpperCase() === 'SHOPIFY'); const singleLookupLabel = singleProductLookupLabel(selectedImportPlatforms[0] ?? ''); const platforms = summaryQuery.data?.platforms ?? []
   const selectedImportHasTrendyol = selectedImportPlatforms.some(code => code.trim().toUpperCase() === 'TRENDYOL')
   const productImportSupportsPendingApproval = productImportMethod === 'BULK' && selectedImportHasTrendyol && (productImportMode === 'FULL' || productImportMode === 'NEW_ONLY' || productImportMode === 'MAPPING_ONLY')

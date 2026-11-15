@@ -96,7 +96,7 @@ export function PriceStockSendLog({ platformOptions, onOpenJob, kept }: { platfo
   const countFilters = useMemo(() => ({ ...filters, results: [] }), [filters])
   const counts = useQuery({
     queryKey: queryKeys.priceStockSendLog('counts', countFilters),
-    queryFn: () => hubPoll<Array<{ result: string; count: number }>>(`/price-stock-send-log/counts${sendLogCountsQueryString(countFilters)}`),
+    queryFn: ({ signal }) => hubPoll<Array<{ result: string; count: number }>>(`/price-stock-send-log/counts${sendLogCountsQueryString(countFilters)}`, { signal }),
     placeholderData: keepPreviousData,
     refetchInterval: firstPagePollMs
   })

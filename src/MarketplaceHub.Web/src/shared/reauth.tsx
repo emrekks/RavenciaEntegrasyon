@@ -8,7 +8,7 @@ type SecurityStatus = { totpState: string; recoveryCodesRemaining: number }
 
 // Whether the signed-in user's authenticator is on, so the code field is shown (the same query Güvenlik uses).
 export function useSecondFactorEnabled() {
-  const status = useQuery({ queryKey: queryKeys.security(), queryFn: () => hubApi<SecurityStatus>('/auth/security-status') })
+  const status = useQuery({ queryKey: queryKeys.security(), queryFn: ({ signal }) => hubApi<SecurityStatus>('/auth/security-status', { signal }) })
   return status.data?.totpState === 'ENABLED'
 }
 

@@ -429,7 +429,7 @@ export function JobsPage({ me }: { me: Me }) {
     queryKey: queryKeys.jobs('counts', timeRange, platform),
     // Not read while the Loglar or API Sağlık tab is shown (the list itself is off then too).
     enabled: !listHidden,
-    queryFn: () => hubPoll<Array<{ status: JobStatus; jobType: string; count: number }>>(`/jobs/counts${jobCountsQueryString(timeRange, platform)}`),
+    queryFn: ({ signal }) => hubPoll<Array<{ status: JobStatus; jobType: string; count: number }>>(`/jobs/counts${jobCountsQueryString(timeRange, platform)}`, { signal }),
     refetchInterval: jobListPollMs
   })
   // The tab's job types come from its fixed definition, never from the live counts, so a count refresh that brings a
@@ -447,7 +447,7 @@ export function JobsPage({ me }: { me: Me }) {
   const serverPageSize = jobListServerPageSize(pageSize)
   const list = useInfiniteQuery({
     queryKey: queryKeys.jobs('page', serverStatus, timeRange, category, direction, platform, serverPageSize),
-    queryFn: context => hubPoll<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, after: context.pageParam, platform, limit: serverPageSize })}`),
+    queryFn: context => hubPoll<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, after: context.pageParam, platform, limit: serverPageSize })}`, { signal: context.signal }),
     initialPageParam: null as string | null,
     getNextPageParam: lastPage => lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,
     placeholderData: keepPreviousData,
@@ -459,7 +459,7 @@ export function JobsPage({ me }: { me: Me }) {
   const loadedServerPages = list.data?.pages.length ?? 0
   const listHead = useQuery({
     queryKey: queryKeys.jobs('page-head', serverStatus, timeRange, category, direction, platform, serverPageSize),
-    queryFn: () => hubPoll<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, platform, limit: serverPageSize })}`),
+    queryFn: ({ signal }) => hubPoll<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, platform, limit: serverPageSize })}`, { signal }),
     enabled: loadedServerPages > 1 && !listHidden,
     refetchInterval: jobListHeadPollInterval(loadedServerPages)
   })
@@ -468,7 +468,7 @@ export function JobsPage({ me }: { me: Me }) {
   }, [listHead.data, client, serverStatus, timeRange, category, direction, platform, serverPageSize])
   const detail = useQuery({
     queryKey: queryKeys.job(selectedId),
-    queryFn: () => hubPoll<JobDetail>(`/jobs/${selectedId}`),
+    queryFn: ({ signal }) => hubPoll<JobDetail>(`/jobs/${selectedId}`, { signal }),
     enabled: Boolean(selectedId),
     refetchInterval: query => selectedId ? jobDetailPollInterval(query.state.data?.job.status) : false
   })
@@ -506,7 +506,7 @@ export function JobsPage({ me }: { me: Me }) {
   const lookupTerm = listHidden ? null : jobLookupTerm(search)
   const lookup = useQuery({
     queryKey: queryKeys.jobs('lookup', lookupTerm),
-    queryFn: () => hubPoll<JobPage>(`/jobs/page${jobLookupQueryString(lookupTerm ?? '')}`),
+    queryFn: ({ signal }) => hubPoll<JobPage>(`/jobs/page${jobLookupQueryString(lookupTerm ?? '')}`, { signal }),
     enabled: Boolean(lookupTerm)
   })
   const lookupItems = useMemo(() => lookupTerm ? lookup.data?.items ?? [] : [], [lookupTerm, lookup.data])

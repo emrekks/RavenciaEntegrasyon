@@ -44,7 +44,7 @@ export function useModelCodeHolder(modelCode: string, enabled: boolean) {
   const settled = useSettledValue(code, modelCodeCheckDelayMs)
   const query = useQuery({
     queryKey: queryKeys.modelCodeHolder(settled),
-    queryFn: () => hubApi<ModelCodeHolder>(`/catalog/model-codes/holder?code=${encodeURIComponent(settled)}`),
+    queryFn: ({ signal }) => hubApi<ModelCodeHolder>(`/catalog/model-codes/holder?code=${encodeURIComponent(settled)}`, { signal }),
     enabled: enabled && Boolean(settled) && settled === code,
     staleTime: 15_000
   })

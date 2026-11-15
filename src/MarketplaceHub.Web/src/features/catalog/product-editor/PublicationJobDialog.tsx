@@ -63,7 +63,7 @@ const when = (value: string | null | undefined) => value
 export function PublicationJobDialog({ jobId, platformCode, platformName, storeName, onClose }: { jobId: string; platformCode: string; platformName: string; storeName: string; onClose: () => void }) {
   const detail = useQuery({
     queryKey: queryKeys.publicationJobDetail(jobId),
-    queryFn: () => hubPoll<PublicationJobDialogDetail>(`/jobs/${jobId}`),
+    queryFn: ({ signal }) => hubPoll<PublicationJobDialogDetail>(`/jobs/${jobId}`, { signal }),
     refetchInterval: query => publicationJobPollInterval(query.state.data?.job.status, query.state.status === 'error')
   })
   const job = detail.data?.job

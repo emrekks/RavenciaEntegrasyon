@@ -31,7 +31,7 @@ export function PanelFactoryResetSection() {
   const queryClient = useQueryClient()
   const view = useQuery({
     queryKey,
-    queryFn: () => hubPoll<PanelFactoryResetView>('/settings/factory-reset'),
+    queryFn: ({ signal }) => hubPoll<PanelFactoryResetView>('/settings/factory-reset', { signal }),
     staleTime: 0,
     retry: false,
     refetchInterval: query => panelResetRunning(query.state.data?.job?.status) ? 2000 : false

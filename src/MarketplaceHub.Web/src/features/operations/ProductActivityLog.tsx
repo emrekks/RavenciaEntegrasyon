@@ -111,7 +111,7 @@ export function ProductActivityLog({ platformOptions, kept }: { platformOptions:
   const countFilters = useMemo(() => ({ ...filters, kinds: [] }), [filters])
   const counts = useQuery({
     queryKey: queryKeys.productActivity('counts', countFilters),
-    queryFn: () => hubPoll<Array<{ kind: string; count: number }>>(`/product-activity/counts${activityCountsQueryString(countFilters)}`),
+    queryFn: ({ signal }) => hubPoll<Array<{ kind: string; count: number }>>(`/product-activity/counts${activityCountsQueryString(countFilters)}`, { signal }),
     placeholderData: keepPreviousData,
     refetchInterval: firstPagePollMs
   })
@@ -119,7 +119,7 @@ export function ProductActivityLog({ platformOptions, kept }: { platformOptions:
 
   const list = useInfiniteQuery({
     queryKey: queryKeys.productActivity(filters),
-    queryFn: context => hubPoll<ProductActivityPage>(`/product-activity${activityQueryString(filters, context.pageParam)}`),
+    queryFn: context => hubPoll<ProductActivityPage>(`/product-activity${activityQueryString(filters, context.pageParam)}`, { signal: context.signal }),
     initialPageParam: null as string | null,
     getNextPageParam: lastPage => lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,
     placeholderData: keepPreviousData,

@@ -38,7 +38,7 @@ export function useTakenVariantCodes(rows: readonly CodeRow[], ownVariantIds: re
   }, [request])
   const taken = useQuery({
     queryKey: queryKeys.variantCodesTaken(settled),
-    queryFn: () => hubApi<{ items?: TakenVariantCode[] }>('/catalog/variant-codes/taken', { method: 'POST', body: settled }),
+    queryFn: ({ signal }) => hubApi<{ items?: TakenVariantCode[] }>('/catalog/variant-codes/taken', { method: 'POST', body: settled, signal }),
     enabled: codes.length > 0 && settled === request,
     staleTime: 30_000
   })

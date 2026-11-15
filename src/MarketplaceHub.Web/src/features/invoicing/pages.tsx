@@ -385,7 +385,7 @@ export function InvoicesPage() {
   if (dateTo) pageQuery.set('to', istanbulDayBoundary(dateTo, true))
   const query = useQuery({
     queryKey: queryKeys.invoiceWorkspacePage(pageNumber, pageSize, tab, searchFilter, sortOrder, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo, Boolean(provider?.hasCredential)),
-    queryFn: () => hubPoll<InvoiceWorkspacePage>(`/invoice-workspace/page?${pageQuery.toString()}`),
+    queryFn: ({ signal }) => hubPoll<InvoiceWorkspacePage>(`/invoice-workspace/page?${pageQuery.toString()}`, { signal }),
     // The key carries whether the e-invoice provider has a credential, which is known only once the connections have
     // loaded: waiting for them keeps the page from being read twice (once with false, again with the real value).
     enabled: !connections.isPending,
@@ -811,7 +811,7 @@ export function InvoiceDetailPage() {
     const timeout = window.setTimeout(() => setNoticeState(''), noticeKind === 'info' ? 7000 : 5500)
     return () => window.clearTimeout(timeout)
   }, [notice, noticeKind])
-  const query = useQuery({ queryKey: queryKeys.invoice(id), queryFn: () => hubApi<InvoiceDetail>(`/invoices/${id}`) })
+  const query = useQuery({ queryKey: queryKeys.invoice(id), queryFn: ({ signal }) => hubApi<InvoiceDetail>(`/invoices/${id}`, { signal }) })
   const canSend = useCanSendInvoices()
   const followJobs = useJobOutcomeNotice()
   const operation = useMutation({

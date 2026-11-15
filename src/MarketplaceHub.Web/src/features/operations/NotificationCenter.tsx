@@ -93,10 +93,10 @@ export function NotificationCenter() {
   const clear = () => { setSearchText(''); setFilters(emptyCenterFilters) }
   const apply = () => setFilters(current => current.search === searchText ? current : { ...current, search: searchText })
 
-  const summary = useQuery({ queryKey: queryKeys.notificationCenter('summary'), queryFn: () => hubPoll<CenterNotificationSummary>('/notifications/summary'), refetchInterval: pollMs })
+  const summary = useQuery({ queryKey: queryKeys.notificationCenter('summary'), queryFn: ({ signal }) => hubPoll<CenterNotificationSummary>('/notifications/summary', { signal }), refetchInterval: pollMs })
   const list = useInfiniteQuery({
     queryKey: queryKeys.notificationCenter('list', filters),
-    queryFn: context => hubPoll<CenterNotificationPage>(`/notifications${centerQueryString(filters, context.pageParam)}`),
+    queryFn: context => hubPoll<CenterNotificationPage>(`/notifications${centerQueryString(filters, context.pageParam)}`, { signal: context.signal }),
     initialPageParam: null as string | null,
     getNextPageParam: lastPage => lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,
     placeholderData: keepPreviousData,

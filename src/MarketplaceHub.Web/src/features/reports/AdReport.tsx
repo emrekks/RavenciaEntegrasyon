@@ -23,7 +23,7 @@ export type AdTotals = {
 export type AdReport = { id: string; connectionId: string; storeName: string; fileName: string; exportedAt: string; exportedAtFromFileName: boolean; uploadedAt: string; totals: AdTotals; campaigns: AdCampaign[] }
 export type AdReports = { reports: AdReport[]; stores: Array<{ connectionId: string; storeName: string }> }
 
-export const adReportQuery = { queryKey: queryKeys.reports('ad-report'), queryFn: () => hubApi<AdReports>('/reports/ad-report') }
+export const adReportQuery = { queryKey: queryKeys.reports('ad-report'), queryFn: ({ signal }: { signal: AbortSignal }) => hubApi<AdReports>('/reports/ad-report', { signal }) }
 
 // A report older than this is said to be old: the totals have moved on since.
 export const staleDays = 7

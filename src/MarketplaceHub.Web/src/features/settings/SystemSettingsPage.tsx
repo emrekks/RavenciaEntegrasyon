@@ -335,16 +335,16 @@ export function SystemSettingsPage() {
   useEffect(() => { resetCancelled.current = false; return () => { resetCancelled.current = true } }, [])
   // What each list holds now, the counts the reset reports when it is done. Owner and administrators only: for the
   // other roles the server answers 403 and the page asks nothing else.
-  const resetView = useQuery({ queryKey: queryKeys.panelFactoryReset(), queryFn: () => hubPoll<PanelFactoryResetView>('/settings/factory-reset'), enabled: section === 'database', staleTime: 0, retry: false })
+  const resetView = useQuery({ queryKey: queryKeys.panelFactoryReset(), queryFn: ({ signal }) => hubPoll<PanelFactoryResetView>('/settings/factory-reset', { signal }), enabled: section === 'database', staleTime: 0, retry: false })
   const resetForbidden = resetView.error instanceof ApiRequestError && resetView.error.status === 403
   const resetGroups = resetGroupsOf(resetView.data)
   // The active marketplace connections, each with what its Tam Sıfırlama would remove (the same view its window shows).
-  const resetConnections = useQuery({ queryKey: queryKeys.connections('settings-reset'), queryFn: async () => (await loadAllPages<Connection>('/connections')).items.filter(item => item.status !== 'DELETED' && item.status !== 'HIDDEN' && connectionFullResetSupported(item.platformCode)), enabled: section === 'database' && resetView.isSuccess, staleTime: 0 })
-  const resetViews = useQueries({ queries: (resetConnections.data ?? []).map(item => ({ queryKey: queryKeys.connectionFullReset(item.id), queryFn: () => hubPoll<ConnectionFullResetView>(`/connections/${item.id}/full-reset`), enabled: section === 'database' && resetView.isSuccess, staleTime: 0 })) })
+  const resetConnections = useQuery({ queryKey: queryKeys.connections('settings-reset'), queryFn: async ({ signal }) => (await loadAllPages<Connection>('/connections', { signal })).items.filter(item => item.status !== 'DELETED' && item.status !== 'HIDDEN' && connectionFullResetSupported(item.platformCode)), enabled: section === 'database' && resetView.isSuccess, staleTime: 0 })
+  const resetViews = useQueries({ queries: (resetConnections.data ?? []).map(item => ({ queryKey: queryKeys.connectionFullReset(item.id), queryFn: ({ signal }) => hubPoll<ConnectionFullResetView>(`/connections/${item.id}/full-reset`, { signal }), enabled: section === 'database' && resetView.isSuccess, staleTime: 0 })) })
   const resetMarketplaces: ResetMarketplace[] = (resetConnections.data ?? []).map((item, index) => ({ id: item.id, platformCode: item.platformCode, displayName: item.displayName, passive: item.status !== 'ACTIVE' && item.status !== 'VERIFIED', count: marketplaceResetCount(resetViews[index]?.data) }))
   // Through hubApi: a session that ended shows the sign-in screen instead of an error box.
-  const status = useQuery({ queryKey: queryKeys.security(), queryFn: () => hubApi<SecurityStatus>('/auth/security-status') })
-  const sessions = useQuery({ queryKey: queryKeys.sessions(), queryFn: () => hubApi<SecuritySession[]>('/auth/sessions') })
+  const status = useQuery({ queryKey: queryKeys.security(), queryFn: ({ signal }) => hubApi<SecurityStatus>('/auth/security-status', { signal }) })
+  const sessions = useQuery({ queryKey: queryKeys.sessions(), queryFn: ({ signal }) => hubApi<SecuritySession[]>('/auth/sessions', { signal }) })
   const [sessionCount] = useRememberedTabCounts('Ayarlar oturumlar', [{ value: 'sessions', count: sessions.isError ? unknownCount : sessions.data?.length }])
   const [mfaStep, setMfaStep] = useState<'closed' | 'password' | 'verify' | 'recovery'>('closed')
   const [setup, setSetup] = useState<MfaSetup | null>(null)
@@ -1234,7 +1234,7 @@ function OffsiteBackupSection({ mfa }: { mfa: boolean }) {
   const [askedAt, setAskedAt] = useState<number | null>(null)
   const query = useQuery({
     queryKey: queryKeys.offsiteBackup(),
-    queryFn: () => hubPoll<OffsiteBackupView>('/settings/offsite-backup'),
+    queryFn: ({ signal }) => hubPoll<OffsiteBackupView>('/settings/offsite-backup', { signal }),
     retry: false,
     // While a copy is running or asked for, the status follows it every 5 s, and it refreshes when the tab gets focus again.
     refetchInterval: current => offsiteCopyPending(current.state.data, askedAt) ? 5_000 : false,
@@ -1544,7 +1544,7 @@ const maximumAlertRecipients = 5
 // keeps a root-only copy for alerts while the panel is down (deploy/scripts/alert-settings-sync.sh).
 function AlertEmailSettingsSection() {
   const client = useQueryClient()
-  const query = useQuery({ queryKey: queryKeys.alertEmailSettings(), queryFn: () => hubApi<AlertEmailSettings>('/settings/alert-email'), retry: false })
+  const query = useQuery({ queryKey: queryKeys.alertEmailSettings(), queryFn: ({ signal }) => hubApi<AlertEmailSettings>('/settings/alert-email', { signal }), retry: false })
   const saved = query.data
   const [sender, setSender] = useState('')
   const [recipients, setRecipients] = useState<string[]>([''])
@@ -1653,7 +1653,7 @@ function ReauthFields({ password, onPassword, factor, onFactor, mfa }: { passwor
 // Ayarlar › Kullanıcılar: owners and administrators list, add and change the workspace's users (user-management.ts).
 function UserManagementSection({ mfa }: { mfa: boolean }) {
   const client = useQueryClient()
-  const query = useQuery({ queryKey: queryKeys.managedUsers(), queryFn: () => hubApi<ManagedUserList>('/settings/users'), retry: false })
+  const query = useQuery({ queryKey: queryKeys.managedUsers(), queryFn: ({ signal }) => hubApi<ManagedUserList>('/settings/users', { signal }), retry: false })
   const forbidden = query.error instanceof ApiRequestError && query.error.status === 403
   const [dialog, setDialog] = useState<UserDialog | null>(null)
   const [step, setStep] = useState<UserAction | null>(null)
@@ -1827,9 +1827,9 @@ function aiSkillState(skill: AiSkillView) {
 // write-only like the alert app password: the server never returns it, the form shows "Kayıtlı" and "Değiştir".
 function AiSettingsSection() {
   const client = useQueryClient()
-  const query = useQuery({ queryKey: queryKeys.aiSettings(), queryFn: () => hubApi<AiSettings>('/settings/ai'), retry: false })
+  const query = useQuery({ queryKey: queryKeys.aiSettings(), queryFn: ({ signal }) => hubApi<AiSettings>('/settings/ai', { signal }), retry: false })
   const forbidden = query.error instanceof ApiRequestError && query.error.status === 403
-  const usage = useQuery({ queryKey: queryKeys.aiUsage(), queryFn: () => hubApi<{ items: AiUsageEntry[] }>('/settings/ai/usage?limit=50'), retry: false, enabled: query.isSuccess })
+  const usage = useQuery({ queryKey: queryKeys.aiUsage(), queryFn: ({ signal }) => hubApi<{ items: AiUsageEntry[] }>('/settings/ai/usage?limit=50', { signal }), retry: false, enabled: query.isSuccess })
   const saved = query.data
   const [apiKey, setApiKey] = useState('')
   const [changingKey, setChangingKey] = useState(false)

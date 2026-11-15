@@ -70,7 +70,7 @@ describe('model code holder', () => {
     expect(hubApi).not.toHaveBeenCalled()
     expect(container.querySelector('[data-testid="state"]')?.textContent).toBe('free')
     await settle()
-    expect(hubApi).toHaveBeenCalledWith('/catalog/model-codes/holder?code=MZ021Y-CD')
+    expect(hubApi).toHaveBeenCalledWith('/catalog/model-codes/holder?code=MZ021Y-CD', expect.objectContaining({ signal: expect.any(AbortSignal) }))
     expect(container.querySelector('[data-testid="state"]')?.textContent).toBe('blocked')
     const notice = container.querySelector('.model-code-holder-notice')
     expect(notice?.textContent).toContain('Kullanımda: Kadın Bluz.')

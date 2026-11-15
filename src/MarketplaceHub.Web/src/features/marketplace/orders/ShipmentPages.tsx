@@ -34,7 +34,7 @@ type PazaramaFinance = { readAt: string; transactions: Array<{ transactionCode: 
 // Pazarama finance of one order (commission, allowance, transfer date): a live read when asked for, never stored.
 function PazaramaFinancePanel({ orderId }: { orderId: string }) {
   const [requested, setRequested] = useState(false)
-  const finance = useQuery({ queryKey: queryKeys.pazaramaFinance(orderId), queryFn: () => hubApi<PazaramaFinance>(`/orders/${orderId}/finance`), enabled: requested, retry: false, staleTime: 60_000 })
+  const finance = useQuery({ queryKey: queryKeys.pazaramaFinance(orderId), queryFn: ({ signal }) => hubApi<PazaramaFinance>(`/orders/${orderId}/finance`, { signal }), enabled: requested, retry: false, staleTime: 60_000 })
   const money = (value: number) => formatMoney(value, 'TRY')
   const day = (value: string | null) => value ? formatDate(value) : '—'
   return <article className="panel">
@@ -55,8 +55,8 @@ function PazaramaFinancePanel({ orderId }: { orderId: string }) {
   </article>
 }
 export function ShipmentDetailPage() {
-  const { id = '' } = useParams(); const client = useQueryClient(); const [notice, setNotice] = useState(''); const [selectedCargoShortName, setSelectedCargoShortName] = useState(''); const [actionChoice, setActionChoice] = useState(''); const [labelFormat, setLabelFormat] = useState(''); const [probeCapability, setProbeCapability] = useState('LABEL_READ'); const query = useQuery({ queryKey: queryKeys.shipment(id), queryFn: () => hubApi<ShipmentDetail>(`/shipments/${id}`) })
-  const carriers = useQuery({ queryKey: queryKeys.shipmentCarriers(id), queryFn: () => hubApi<RemoteCargoCompany[]>(`/shipments/${id}/changeable-cargo-companies`), enabled: query.data?.platformCode === 'HEPSIBURADA' && query.data.allowedActions.includes('CHANGE_CARGO_PROVIDER'), retry: false })
+  const { id = '' } = useParams(); const client = useQueryClient(); const [notice, setNotice] = useState(''); const [selectedCargoShortName, setSelectedCargoShortName] = useState(''); const [actionChoice, setActionChoice] = useState(''); const [labelFormat, setLabelFormat] = useState(''); const [probeCapability, setProbeCapability] = useState('LABEL_READ'); const query = useQuery({ queryKey: queryKeys.shipment(id), queryFn: ({ signal }) => hubApi<ShipmentDetail>(`/shipments/${id}`, { signal }) })
+  const carriers = useQuery({ queryKey: queryKeys.shipmentCarriers(id), queryFn: ({ signal }) => hubApi<RemoteCargoCompany[]>(`/shipments/${id}/changeable-cargo-companies`, { signal }), enabled: query.data?.platformCode === 'HEPSIBURADA' && query.data.allowedActions.includes('CHANGE_CARGO_PROVIDER'), retry: false })
   useEffect(() => { if (carriers.data?.length && !carriers.data.some(item => item.shortName === selectedCargoShortName)) setSelectedCargoShortName(carriers.data[0].shortName) }, [carriers.data, selectedCargoShortName])
   const shipmentRef = useRef(query.data)
   // The failed request's own title and code, kept until its notice is recorded.

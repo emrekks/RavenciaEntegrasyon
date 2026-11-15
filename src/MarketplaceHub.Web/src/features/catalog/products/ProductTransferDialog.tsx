@@ -97,7 +97,7 @@ const formatText = (value: string | null) => value ?? '—'
 
 export function ProductTransferDialog({ onClose }: { onClose: () => void }) {
   const client = useQueryClient()
-  const summary = useQuery({ queryKey: productTransferSummaryKey, queryFn: () => hubApi<ProductTransferSummary>('/products/transfer/summary') })
+  const summary = useQuery({ queryKey: productTransferSummaryKey, queryFn: ({ signal }) => hubApi<ProductTransferSummary>('/products/transfer/summary', { signal }) })
   const [filter, setFilter] = useState<ProductTransferExportFilter>('all')
   const [fields, setFields] = useState<ProductTransferField[]>(defaultFields)
   const [file, setFile] = useState<File | null>(null)

@@ -11,7 +11,7 @@ export const valueMappingStaleTime = 2 * 60_000
 export function valueListQuery<T>(connectionId: string, categoryScope: string, externalAttributeId: string) {
   return {
     queryKey: queryKeys.referenceAttributeValues(connectionId, `${categoryScope}/${externalAttributeId}`),
-    queryFn: () => hubApi<T>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(externalAttributeId)}/values?connectionId=${encodeURIComponent(connectionId)}`),
+    queryFn: ({ signal }: { signal: AbortSignal }) => hubApi<T>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(externalAttributeId)}/values?connectionId=${encodeURIComponent(connectionId)}`, { signal }),
     retry: false,
     staleTime: valueListStaleTime
   }
@@ -20,7 +20,7 @@ export function valueListQuery<T>(connectionId: string, categoryScope: string, e
 export function valueMappingsQuery<T>(connectionId: string, valueScope: string) {
   return {
     queryKey: queryKeys.attributeValueMappings(connectionId, valueScope),
-    queryFn: () => hubApi<T>(`/mappings/attribute-values?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}`),
+    queryFn: ({ signal }: { signal: AbortSignal }) => hubApi<T>(`/mappings/attribute-values?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}`, { signal }),
     retry: false,
     staleTime: valueMappingStaleTime
   }
@@ -33,7 +33,7 @@ export type ValueMappingProgress = Record<string, string[]>
 export function valueMappingProgressQuery(connectionId: string, categoryScope: string) {
   return {
     queryKey: queryKeys.attributeValueMappings(connectionId, `${categoryScope}/*`, 'progress'),
-    queryFn: () => hubApi<ValueMappingProgress>(`/mappings/attribute-value-progress?connectionId=${encodeURIComponent(connectionId)}&categoryExternalId=${encodeURIComponent(categoryScope)}`),
+    queryFn: ({ signal }: { signal: AbortSignal }) => hubApi<ValueMappingProgress>(`/mappings/attribute-value-progress?connectionId=${encodeURIComponent(connectionId)}&categoryExternalId=${encodeURIComponent(categoryScope)}`, { signal }),
     retry: false,
     staleTime: valueMappingStaleTime
   }

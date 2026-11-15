@@ -861,7 +861,7 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   const otherFamilyIds = (familyProductIds ?? []).filter(id => id !== productId)
   const publication = useQuery({
     queryKey: statusKey,
-    queryFn: () => hubPoll<PublicationStatus>(`/products/${productId}/publication-status/${card.connection.id}`, { cache: 'no-store' }),
+    queryFn: ({ signal }) => hubPoll<PublicationStatus>(`/products/${productId}/publication-status/${card.connection.id}`, { cache: 'no-store', signal }),
     enabled: !!productId && card.mode === 'PUBLISH',
     refetchInterval: query => isPublicationStatusJobRunning(query.state.data?.lastJobStatus) ? 3000 : false,
     refetchIntervalInBackground: true,
@@ -922,7 +922,7 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   const familyStatuses = useQueries({
     queries: otherFamilyIds.map(id => ({
       queryKey: queryKeys.publicationStatus(id, card.connection.id),
-      queryFn: () => hubPoll<PublicationStatus>(`/products/${id}/publication-status/${card.connection.id}`, { cache: 'no-store' }),
+      queryFn: ({ signal }) => hubPoll<PublicationStatus>(`/products/${id}/publication-status/${card.connection.id}`, { cache: 'no-store', signal }),
       enabled: card.mode === 'PUBLISH',
       // A sibling's own send or status check is followed until it ends, like this card's.
       refetchInterval: (query: { state: { data?: PublicationStatus } }) => isPublicationStatusJobRunning(query.state.data?.lastJobStatus) ? 3000 : false,
@@ -1211,7 +1211,7 @@ function usePublicationJobInline(jobId: string | null | undefined, productId: st
   const enabled = Boolean(productId && jobId)
   const job = useQuery({
     queryKey,
-    queryFn: () => hubPoll<PublicationJobDetail>(`/jobs/${jobId}`, { cache: 'no-store' }),
+    queryFn: ({ signal }) => hubPoll<PublicationJobDetail>(`/jobs/${jobId}`, { cache: 'no-store', signal }),
     enabled,
     refetchInterval: query => publicationJobPollInterval(query.state.data?.job.status, query.state.status === 'error'),
     refetchIntervalInBackground: true,
@@ -1243,7 +1243,7 @@ function useCardRefreshJob(jobId: string | null, onSettled: (job: PublicationJob
   const queryKey = queryKeys.publicationJob(jobId ?? '')
   const job = useQuery({
     queryKey,
-    queryFn: () => hubPoll<PublicationJobDetail>(`/jobs/${jobId}`, { cache: 'no-store' }),
+    queryFn: ({ signal }) => hubPoll<PublicationJobDetail>(`/jobs/${jobId}`, { cache: 'no-store', signal }),
     enabled: Boolean(jobId),
     refetchInterval: query => publicationJobPollInterval(query.state.data?.job.status, query.state.status === 'error'),
     refetchIntervalInBackground: true,
@@ -1493,18 +1493,18 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   }
   // Always fresh on open and on returning to the tab: the products list's quick edit (or another tab) may have changed
   // its prices, channel prices or stock. Unsaved edits are kept; the stale banner offers the newer data instead.
-  const productToEdit = useQuery({ queryKey: queryKeys.product(editProductId), queryFn: () => hubApi<Product>(`/products/${editProductId}`), enabled: !!editProductId, staleTime: 0, refetchOnWindowFocus: true })
-  const productToCopy = useQuery({ queryKey: queryKeys.product(duplicateProductId), queryFn: () => hubApi<Product>(`/products/${duplicateProductId}`), enabled: !editProductId && Boolean(duplicateProductId) })
+  const productToEdit = useQuery({ queryKey: queryKeys.product(editProductId), queryFn: ({ signal }) => hubApi<Product>(`/products/${editProductId}`, { signal }), enabled: !!editProductId, staleTime: 0, refetchOnWindowFocus: true })
+  const productToCopy = useQuery({ queryKey: queryKeys.product(duplicateProductId), queryFn: ({ signal }) => hubApi<Product>(`/products/${duplicateProductId}`, { signal }), enabled: !editProductId && Boolean(duplicateProductId) })
   const seedProduct = editProductId ? productToEdit.data : productToCopy.data
-  const categories = useQuery({ queryKey: queryKeys.categories('new-product'), queryFn: () => loadAllPages<Category>('/catalog/categories') })
-  const brands = useQuery({ queryKey: queryKeys.brands('new-product'), queryFn: () => loadAllPages<Brand>('/catalog/brands') })
+  const categories = useQuery({ queryKey: queryKeys.categories('new-product'), queryFn: ({ signal }) => loadAllPages<Category>('/catalog/categories', { signal }) })
+  const brands = useQuery({ queryKey: queryKeys.brands('new-product'), queryFn: ({ signal }) => loadAllPages<Brand>('/catalog/brands', { signal }) })
   const connections = useQuery(connectionQueries.list<MarketplaceConnection>())
   const pttAvmManualWrites = usePttAvmManualWrites((connections.data?.items ?? []).filter(isProductUpdateConnection))
   // An edit or a copy keeps its fields masked until the product and the category and brand lists that name its values
   // are in: the empty defaults and the single-product SKU, barcode and price fields must not show before the variant
   // rows turn them into the varyantlı state.
   const editorHydrating = editorAwaitingSeed({ seeding: Boolean(editProductId || duplicateProductId), productPending: editProductId ? productToEdit.isPending : productToCopy.isPending, listsPending: categories.isPending || brands.isPending })
-  const requirements = useQuery({ queryKey: queryKeys.categoryRequirements(form.categoryId), queryFn: () => hubApi<CategoryRequirement[]>(`/catalog/categories/${form.categoryId}/attribute-requirements`), enabled: !!form.categoryId, retry: false, staleTime: categoryRequirementsStaleTimeMs })
+  const requirements = useQuery({ queryKey: queryKeys.categoryRequirements(form.categoryId), queryFn: ({ signal }) => hubApi<CategoryRequirement[]>(`/catalog/categories/${form.categoryId}/attribute-requirements`, { signal }), enabled: !!form.categoryId, retry: false, staleTime: categoryRequirementsStaleTimeMs })
   const leafCategories = (categories.data?.items ?? []).filter(item => item.isLeaf && item.isActive); const activeBrands = (brands.data?.items ?? []).filter(item => item.isActive)
   // The card's Liste/Satış (decimal comma read): a new variant row's first prices (buildVariantGenerationDefaults).
   const cardPriceDefaults = cardPrices(form.listPrice, form.salePrice); const fallbackListPrice = cardPriceDefaults.listPrice; const fallbackSalePrice = cardPriceDefaults.salePrice; const fallbackCostPrice = form.costPrice.trim() === '' ? null : Number(form.costPrice); const initialStock = Number(form.initialStock || 0)

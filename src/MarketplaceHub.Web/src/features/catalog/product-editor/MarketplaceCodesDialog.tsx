@@ -80,7 +80,7 @@ function CodeHead({ connection, connections }: { connection: MarketplaceCodeConn
 // the variant, an emptied one removes its link.
 export function MarketplaceCodesDialog({ productId, rows, onClose }: { productId: string; rows: MarketplaceCodeRow[]; onClose: () => void }) {
   const client = useQueryClient()
-  const codes = useQuery({ queryKey: queryKeys.productMarketplaceCodes(productId), queryFn: () => hubApi<MarketplaceCodes>(`/products/${productId}/marketplace-codes`, { cache: 'no-store' }) })
+  const codes = useQuery({ queryKey: queryKeys.productMarketplaceCodes(productId), queryFn: ({ signal }) => hubApi<MarketplaceCodes>(`/products/${productId}/marketplace-codes`, { cache: 'no-store', signal }) })
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [cellErrors, setCellErrors] = useState<Record<string, string>>({})
   const [status, setStatus] = useState<{ kind: 'success' | 'error'; message: string } | null>(null)

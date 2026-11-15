@@ -56,7 +56,7 @@ export function BulkPlatformUpdateDialog({ productIds, cardCount, connections, p
     void mapWithConcurrency(productIds, checkConcurrency, async id => {
       let result: Checked
       try {
-        result = { product: await client.query({ queryKey: queryKeys.product(id), queryFn: () => hubApi<Product>(`/products/${id}`), staleTime: 15_000, retry: false }), failed: false }
+        result = { product: await client.query({ queryKey: queryKeys.product(id), queryFn: ({ signal }) => hubApi<Product>(`/products/${id}`, { signal }), staleTime: 15_000, retry: false }), failed: false }
       } catch {
         result = { product: null, failed: true }
       }

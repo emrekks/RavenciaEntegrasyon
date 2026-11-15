@@ -851,7 +851,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
     setGroupPageOf({ rows, page: next })
     tableTop.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
   }
-  const facets = useQuery({ queryKey: queryKeys.commissionTariffFacets(connectionId, tariff.id), queryFn: () => hubApi<{ categories: string[]; brands: string[] }>(`/connections/${connectionId}/commission-tariffs/${tariff.id}/facets`) })
+  const facets = useQuery({ queryKey: queryKeys.commissionTariffFacets(connectionId, tariff.id), queryFn: ({ signal }) => hubApi<{ categories: string[]; brands: string[] }>(`/connections/${connectionId}/commission-tariffs/${tariff.id}/facets`, { signal }) })
   const ownPicks = [...picks.values()].filter(pick => pick.tier !== null || pick.price !== null).length
   // A file with more than one period: the picks are the open period's, and the Excel carries every period's.
   const manyPeriods = periods.length > 1

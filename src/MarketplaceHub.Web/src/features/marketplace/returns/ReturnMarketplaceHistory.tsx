@@ -45,7 +45,7 @@ const yesNo = (value: boolean | null | undefined) => value == null ? null : valu
 // showSettlement: false where the lines' own table already shows the settlement (the Detaylı Bilgi window).
 export function ReturnMarketplaceHistory({ returnId, lines, showSettlement = true }: { returnId: string; lines: SettledLine[]; showSettlement?: boolean }) {
   const [historyOpen, setHistoryOpen] = useState(false)
-  const audits = useQuery({ queryKey: queryKeys.returnAudits(returnId), queryFn: () => hubApi<LineAudit[]>(`/returns/${returnId}/audits`), enabled: historyOpen, staleTime: 5 * 60_000 })
+  const audits = useQuery({ queryKey: queryKeys.returnAudits(returnId), queryFn: ({ signal }) => hubApi<LineAudit[]>(`/returns/${returnId}/audits`, { signal }), enabled: historyOpen, staleTime: 5 * 60_000 })
   const settled = lines.map(line => ({ line, facts: [
     ['Kabul Şekli', acceptDetailText(line.acceptDetail)],
     ['İhtilaf Çözüldü', yesNo(line.resolved)],

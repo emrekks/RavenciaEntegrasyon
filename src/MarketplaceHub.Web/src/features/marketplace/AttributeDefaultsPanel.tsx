@@ -31,7 +31,7 @@ export function AttributeDefaultsPanel({ connectionId, categoryScope, platformLa
 }) {
   const client = useQueryClient()
   const defaultsKey = queryKeys.attributeDefaults(connectionId)
-  const defaults = useQuery({ queryKey: defaultsKey, queryFn: () => hubApi<AttributeDefault[]>(`/connections/${connectionId}/attribute-defaults`), retry: false })
+  const defaults = useQuery({ queryKey: defaultsKey, queryFn: ({ signal }) => hubApi<AttributeDefault[]>(`/connections/${connectionId}/attribute-defaults`, { signal }), retry: false })
   const [attributeId, setAttributeId] = useState('')
   const [search, setSearch] = useState('')
   const [valueId, setValueId] = useState('')
@@ -46,7 +46,7 @@ export function AttributeDefaultsPanel({ connectionId, categoryScope, platformLa
   const freeText = selected?.allowsCustomValue === true
   const values = useQuery({
     queryKey: queryKeys.referenceAttributeValues(connectionId, `${categoryScope}/${attributeId}`),
-    queryFn: () => hubApi<ValueList>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(attributeId)}/values?connectionId=${encodeURIComponent(connectionId)}`),
+    queryFn: ({ signal }) => hubApi<ValueList>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(attributeId)}/values?connectionId=${encodeURIComponent(connectionId)}`, { signal }),
     enabled: Boolean(selected) && !freeText,
     retry: false
   })

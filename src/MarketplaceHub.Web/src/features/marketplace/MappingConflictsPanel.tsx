@@ -64,7 +64,7 @@ export function MappingConflictsPanel({ connectionId, platformLabel, onNotice, e
 
   const valueList = (scope: string) => client.fetchQuery({
     queryKey: queryKeys.referenceAttributeValues(connectionId, scope),
-    queryFn: () => hubApi<ValueList>(`/reference-data/categories/${encodeURIComponent(scopeCategory(scope))}/attributes/${encodeURIComponent(scopeAttribute(scope))}/values?connectionId=${encodeURIComponent(connectionId)}`),
+    queryFn: ({ signal }) => hubApi<ValueList>(`/reference-data/categories/${encodeURIComponent(scopeCategory(scope))}/attributes/${encodeURIComponent(scopeAttribute(scope))}/values?connectionId=${encodeURIComponent(connectionId)}`, { signal }),
     staleTime: 0
   })
   const putValue = (localValueId: string, scope: string, snapshotId: string, externalId: string, version: number | null) =>

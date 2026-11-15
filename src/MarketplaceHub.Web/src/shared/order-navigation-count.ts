@@ -18,7 +18,7 @@ export type OrderNavigationSummary = {
 // and says it is automatic, so an open tab still reaches the idle sign-out.
 export const pendingOrdersQuery = {
   queryKey: queryKeys.orders('summary', 'pending'),
-  queryFn: () => hubPoll<OrderNavigationSummary>('/orders/summary?tabs=PENDING'),
+  queryFn: ({ signal }: { signal: AbortSignal }) => hubPoll<OrderNavigationSummary>('/orders/summary?tabs=PENDING', { signal }),
   staleTime: 30_000,
   refetchOnMount: 'always' as const,
   refetchOnWindowFocus: true,

@@ -94,7 +94,7 @@ export function OrderProfitability({ from, to, platforms }: { from: string; to: 
   const [pageScope, setPageScope] = useState(scope)
   if (pageScope !== scope) { setPageScope(scope); setPage(0) }
   const query = orderProfitQuery({ from, to, platforms, search: applied, sort, descending, page: pageScope === scope ? page : 0 })
-  const result = useQuery({ queryKey: queryKeys.reportOrderProfit(query), queryFn: () => hubApi<OrderProfitPage>(`/reports/order-profitability?${query}`), staleTime: 60_000, placeholderData: previous => previous })
+  const result = useQuery({ queryKey: queryKeys.reportOrderProfit(query), queryFn: ({ signal }) => hubApi<OrderProfitPage>(`/reports/order-profitability?${query}`, { signal }), staleTime: 60_000, placeholderData: previous => previous })
   const data = result.data
   const pageCount = data ? Math.max(1, Math.ceil(data.totalCount / data.pageSize)) : 1
   // A page past the end (the list shrank since it was opened) moves to the last page there is.

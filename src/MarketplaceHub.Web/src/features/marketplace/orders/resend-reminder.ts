@@ -20,14 +20,14 @@ export function useResendReminder() {
   const client = useQueryClient()
   const query = useQuery({
     queryKey: resendReminderQueryKey,
-    queryFn: () => hubApi<ResendReminderEnvelope>('/settings/resend-reminder'),
+    queryFn: ({ signal }) => hubApi<ResendReminderEnvelope>('/settings/resend-reminder', { signal }),
     staleTime: 60_000,
     refetchOnWindowFocus: true
   })
   async function save(count: number) {
     // A stored setting is written only over the version read (If-Match); one not read yet is read first.
     const current = client.getQueryData<ResendReminderEnvelope>(resendReminderQueryKey)
-      ?? await client.fetchQuery({ queryKey: resendReminderQueryKey, queryFn: () => hubApi<ResendReminderEnvelope>('/settings/resend-reminder') })
+      ?? await client.fetchQuery({ queryKey: resendReminderQueryKey, queryFn: ({ signal }) => hubApi<ResendReminderEnvelope>('/settings/resend-reminder', { signal }) })
     try {
       const saved = await hubApi<ResendReminderEnvelope>('/settings/resend-reminder', { method: 'PUT', headers: settingsIfMatch(current?.version), body: JSON.stringify({ count }) })
       client.setQueryData(resendReminderQueryKey, saved)

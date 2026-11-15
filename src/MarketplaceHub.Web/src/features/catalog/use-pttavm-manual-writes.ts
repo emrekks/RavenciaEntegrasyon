@@ -12,7 +12,7 @@ export function usePttAvmManualWrites(connections: readonly MarketplaceConnectio
   const results = useQueries({
     queries: pttAvm.map(connection => ({
       queryKey: queryKeys.syncPolicies(connection.id),
-      queryFn: () => hubApi<Array<{ resourceType: string; enabled: boolean }>>(`/connections/${connection.id}/sync-policies`),
+      queryFn: ({ signal }) => hubApi<Array<{ resourceType: string; enabled: boolean }>>(`/connections/${connection.id}/sync-policies`, { signal }),
       staleTime: 30_000
     }))
   })

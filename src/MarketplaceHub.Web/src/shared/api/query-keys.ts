@@ -148,5 +148,5 @@ export const connectionQueries = {
    * and the dashboard all read this one entry, so switching between them does not read the list again; every write
    * that refreshes ['connections'] refreshes it. `T` is only the shape the screen reads of each item.
    */
-  list: <T = unknown>() => queryOptions({ queryKey: queryKeys.connections(), queryFn: () => loadAllPages<T>('/connections') }),
+  list: <T = unknown>() => queryOptions({ queryKey: queryKeys.connections(), queryFn: ({ signal }) => loadAllPages<T>('/connections', { signal }) }),
 }

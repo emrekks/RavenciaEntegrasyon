@@ -101,15 +101,15 @@ function Shell({ me }: { me: Me }) {
     window.addEventListener('pageshow', onReturn)
     return () => { document.removeEventListener('visibilitychange', onReturn); window.removeEventListener('pageshow', onReturn) }
   }, [])
-  const navigationSummary = useQuery({ queryKey: queryKeys.dashboardBootstrap(), queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap'), staleTime: 30_000, refetchOnWindowFocus: true })
-  const invoiceWorkspaceSummary = useQuery({ queryKey: queryKeys.invoiceWorkspaceSummary(), queryFn: () => hubApi<{ dueSoonCount: number; uninvoicedCount?: number }>('/invoice-workspace/summary'), staleTime: 30_000, refetchOnWindowFocus: true })
+  const navigationSummary = useQuery({ queryKey: queryKeys.dashboardBootstrap(), queryFn: ({ signal }) => hubApi<DashboardBootstrap>('/dashboard/bootstrap', { signal }), staleTime: 30_000, refetchOnWindowFocus: true })
+  const invoiceWorkspaceSummary = useQuery({ queryKey: queryKeys.invoiceWorkspaceSummary(), queryFn: ({ signal }) => hubApi<{ dueSoonCount: number; uninvoicedCount?: number }>('/invoice-workspace/summary', { signal }), staleTime: 30_000, refetchOnWindowFocus: true })
   // The menu counts poll only while the tab is on screen, and say they are automatic (hubPoll) so the server does not count
   // them as the person using the panel (otherwise an open tab would never reach the idle sign-out).
   // The same query as the overview's Bekleyen Siparişler card: the badge and the card always say the same number.
   const orderSummary = useQuery(pendingOrdersQuery)
-  const questionWaitingSummary = useQuery({ queryKey: queryKeys.questions('navigation-waiting'), queryFn: () => hubPoll<{ totalCount: number }>(questionWaitingSummaryPath), staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true })
+  const questionWaitingSummary = useQuery({ queryKey: queryKeys.questions('navigation-waiting'), queryFn: ({ signal }) => hubPoll<{ totalCount: number }>(questionWaitingSummaryPath, { signal }), staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true })
   // Background states for the notification center (reads failing again and again, approvals that ran out of time).
-  const attentionNotices = useQuery({ queryKey: queryKeys.jobs('attention'), queryFn: () => hubPoll<AttentionNotice[]>('/jobs/attention'), staleTime: 60_000, refetchInterval: 300_000, refetchOnWindowFocus: true })
+  const attentionNotices = useQuery({ queryKey: queryKeys.jobs('attention'), queryFn: ({ signal }) => hubPoll<AttentionNotice[]>('/jobs/attention', { signal }), staleTime: 60_000, refetchInterval: 300_000, refetchOnWindowFocus: true })
   useEffect(() => { if (Array.isArray(attentionNotices.data)) syncAttentionNotices(attentionNotices.data) }, [attentionNotices.data])
   const [sidebarPinned, setSidebarPinned] = useState(() => readStoredItem('ravencia.sidebarPinned') !== 'false')
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)

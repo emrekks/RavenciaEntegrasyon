@@ -128,7 +128,7 @@ export function priceStockMonitorNotice(rows: PriceStockConnectionMonitor[] | un
 
 /** The price/stock monitor read once (and its problem notifications raised), as per-connection extras for Entegrasyon Durumu. */
 export function usePriceStockMonitor() {
-  const monitor = useQuery({ queryKey: priceStockMonitorQueryKey, queryFn: () => hubPoll<PriceStockMonitor>('/price-stock-monitor'), refetchInterval: 60_000, refetchIntervalInBackground: false })
+  const monitor = useQuery({ queryKey: priceStockMonitorQueryKey, queryFn: ({ signal }) => hubPoll<PriceStockMonitor>('/price-stock-monitor', { signal }), refetchInterval: 60_000, refetchIntervalInBackground: false })
   const rows = monitor.data?.connections
   useEffect(() => { if (rows) notifyNewProblems(rows) }, [rows])
   const extras = useMemo(() => rows ? Object.fromEntries(rows.map(row => [row.connectionId, statusExtras(row)])) : undefined, [rows])

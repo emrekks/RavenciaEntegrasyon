@@ -114,9 +114,9 @@ export function PromotionOffersPanel({ connectionId, kind }: { connectionId: str
   const [dragging, setDragging] = useState(false)
   const [message, setMessage] = useState<PanelMessage | null>(null)
   const [confirm, confirmDialog] = useConfirmDialog()
-  const offers = useQuery({ queryKey: queryKeys.promotionOffers(connectionId), queryFn: () => hubApi<PromotionSummary[]>(`/connections/${connectionId}/promotion-offers`) })
+  const offers = useQuery({ queryKey: queryKeys.promotionOffers(connectionId), queryFn: ({ signal }) => hubApi<PromotionSummary[]>(`/connections/${connectionId}/promotion-offers`, { signal }) })
   const summary = offers.data?.find(offer => offer.kind === kind) ?? null
-  const detail = useQuery({ queryKey: queryKeys.promotionOffer(connectionId, kind, summary?.uploadedAt), queryFn: () => hubApi<Detail>(`/connections/${connectionId}/promotion-offers/${kind}`), enabled: summary !== null })
+  const detail = useQuery({ queryKey: queryKeys.promotionOffer(connectionId, kind, summary?.uploadedAt), queryFn: ({ signal }) => hubApi<Detail>(`/connections/${connectionId}/promotion-offers/${kind}`, { signal }), enabled: summary !== null })
   const upload = useMutation({
     mutationFn: (file: File) => {
       const body = new FormData()

@@ -173,7 +173,7 @@ function addressText(value: string, platformCode = 'TRENDYOL') { const source = 
 function listAddressText(address: OrderAddress | null | undefined, platformCode = 'TRENDYOL') { return addressDataText((address ?? {}) as Record<string, unknown>, platformCode) }
 function addressDataText(data: Record<string, unknown>, platformCode: string) { const fullAddress = typeof data.fullAddress === 'string' ? data.fullAddress.trim() : ''; const pointPrefix = data.isDeliveryPoint === true ? `Teslimat noktası${typeof data.deliveryPointType === 'string' ? ` (${data.deliveryPointType})` : ''}: ` : ''; if (meaningfulText(fullAddress)) return pointPrefix + completeAddressLine(fullAddress, data); const seen = new Set<string>(); const parts = ['address1', 'address2', 'neighborhood', 'district', 'countyName', 'city', 'province', 'provinceCode', 'country', 'countryCode', 'zip', 'postalCode'].map(key => data[key]).filter(meaningfulText).map(item => item.trim()).filter(item => { const normalized = item.toLocaleLowerCase('tr-TR'); if (seen.has(normalized)) return false; seen.add(normalized); return true }); return parts.length ? pointPrefix + parts.join(' · ') : platformCode === 'SHOPIFY' ? 'Shopify adres bilgisi bulunamadı' : 'Trendyol adres bilgisini maskeledi' }
 function InvoiceInfoModal({ item, onClose }: { item: Order; onClose: () => void }) {
-  const detail = useQuery({ queryKey: orderDetailQueryKey(item.id), queryFn: () => hubApi<OrderDetail>(`/orders/${item.id}`) })
+  const detail = useQuery({ queryKey: orderDetailQueryKey(item.id), queryFn: ({ signal }) => hubApi<OrderDetail>(`/orders/${item.id}`, { signal }) })
   const order = detail.data
   const missing = (value: string | null | undefined) => value ? value : 'Bilgi gelmedi'
   return <RrModal crumb={displayOrderNumber(item.orderNumber)} title="Fatura ve Adres Bilgileri" hint="Faturayı başka bir yerde kestiyseniz Fatura İşlemleri › Fatura Yükle ile siparişe ekleyin. PDF, JPEG, JPG veya PNG kabul edilir." size="md" onClose={onClose} foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={onClose}>Kapat</button><button type="button" className="rr-btn rr-primary" disabled={!order} onClick={() => window.print()}><RrIcon name="print" />Yazdır</button></>}>
@@ -185,7 +185,7 @@ function InvoiceInfoModal({ item, onClose }: { item: Order; onClose: () => void 
 }
 function InvoiceDraftModal({ item, providers, onClose, onFeedback }: { item: Order; providers: Connection[]; onClose: () => void; onFeedback: IntegrationFeedbackHandler }) {
   const client = useQueryClient()
-  const detail = useQuery({ queryKey: orderDetailQueryKey(item.id), queryFn: () => hubApi<OrderDetail>(`/orders/${item.id}`) })
+  const detail = useQuery({ queryKey: orderDetailQueryKey(item.id), queryFn: ({ signal }) => hubApi<OrderDetail>(`/orders/${item.id}`, { signal }) })
   const order = detail.data
   const marketplace = providers.find(connection => connection.id === order?.connectionId)
   const provider = invoiceProviderForEnvironment(providers, marketplace?.environment)
@@ -198,7 +198,7 @@ function InvoiceDraftModal({ item, providers, onClose, onFeedback }: { item: Ord
 }
 function InvoiceViewerModal({ item, onClose }: { item: Order; onClose: () => void }) {
   const invoiceId = item.invoiceId
-  const detail = useQuery({ queryKey: queryKeys.invoiceViewer(invoiceId), queryFn: () => hubApi<InvoiceViewer>(`/invoices/${invoiceId}`), enabled: !!invoiceId })
+  const detail = useQuery({ queryKey: queryKeys.invoiceViewer(invoiceId), queryFn: ({ signal }) => hubApi<InvoiceViewer>(`/invoices/${invoiceId}`, { signal }), enabled: !!invoiceId })
   const invoice = detail.data
   const money = (value: number) => formatMoney(value, invoice?.currency ?? item.currency)
   return <RrModal crumb="Fatura" title={displayOrderNumber(item.orderNumber)} desc={`${invoice?.invoiceNumber ?? 'Numara bekleniyor'}${invoice ? ` · ${titleTr(statusLabel(invoice.invoiceType))}` : ''}`} size="md" onClose={onClose} foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={onClose}>Kapat</button><button type="button" className="rr-btn rr-primary" disabled={!invoice} onClick={() => window.print()}><RrIcon name="print" />Yazdır</button></>}>
@@ -220,7 +220,7 @@ function InvoiceUploadModal({ item, onClose, onFeedback }: { item: Order; onClos
   const [savedDocumentId, setSavedDocumentId] = useState<string | null>(null)
   const [documentRequestKey, setDocumentRequestKey] = useState(() => `manual-invoice-document:${item.id}:${newIdempotencyKey()}`)
   const [dragging, setDragging] = useState(false)
-  const detail = useQuery({ queryKey: orderDetailQueryKey(item.id), queryFn: () => hubApi<OrderDetail>(`/orders/${item.id}`) })
+  const detail = useQuery({ queryKey: orderDetailQueryKey(item.id), queryFn: ({ signal }) => hubApi<OrderDetail>(`/orders/${item.id}`, { signal }) })
   const saveDocument = useMutation({
     mutationFn: async () => {
       if (Boolean(file) === Boolean(invoiceUrl.trim())) throw new Error('PDF dosyası veya HTTPS fatura bağlantısından yalnızca birini girin.')
@@ -376,7 +376,7 @@ function ShippingLabelModal({ item, settings, format, onClose, onPrinted, inline
   const client = useQueryClient()
   const [overflowing, setOverflowing] = useState<string[]>([])
   // The buyer's e-mail (and name and address) are read from the order detail when the label is printed.
-  const detailQuery = useQuery({ queryKey: queryKeys.orderLabelDetail(item.id), queryFn: () => hubApi<OrderLabelDetail>(`/orders/${item.id}`), enabled: !inline && !suppliedDetail, staleTime: 30_000 })
+  const detailQuery = useQuery({ queryKey: queryKeys.orderLabelDetail(item.id), queryFn: ({ signal }) => hubApi<OrderLabelDetail>(`/orders/${item.id}`, { signal }), enabled: !inline && !suppliedDetail, staleTime: 30_000 })
   const detail = suppliedDetail ?? detailQuery.data
   const personal = labelPersonalData(item, detail)
   const shipment = orderDisplayShipment(item)
@@ -829,20 +829,20 @@ export function OrdersPage() {
   const summaryParams = orderFilterParams(orderQueryFilters).toString()
   // The column filters' counts: orders per platform and cargo under the other filters and the status tab.
   const facetParams = new URLSearchParams(summaryParams); if (orderQueryFilters.status !== 'ALL') facetParams.set('status', orderQueryFilters.status)
-  const facets = useQuery({ queryKey: queryKeys.orders('facets', facetParams.toString()), queryFn: () => hubApi<OrderFacets>(`/orders/facets?${facetParams.toString()}`), staleTime: 30_000 })
+  const facets = useQuery({ queryKey: queryKeys.orders('facets', facetParams.toString()), queryFn: ({ signal }) => hubApi<OrderFacets>(`/orders/facets?${facetParams.toString()}`, { signal }), staleTime: 30_000 })
   const facetCounts = (key: keyof OrderFacets) => facets.isError ? undefined : facets.data?.[key] ?? null
   // The cancellation cards count today (the Istanbul day) whatever the list's filters are; the cancellations
   // are the Genel Bakış card's own rows, so both count them the same way.
   const day = istanbulDateKey()
   // The resends that have not been handed to the carrier, counted as the Yeniden Gönderimler list counts them, per store.
-  const resentNotShipped = useQuery({ queryKey: queryKeys.orders('summary', 'resent-not-shipped'), queryFn: () => hubPoll<OrderSummary>(`/orders/summary?${resentPendingParams()}`), staleTime: 30_000, refetchInterval: 60_000 })
+  const resentNotShipped = useQuery({ queryKey: queryKeys.orders('summary', 'resent-not-shipped'), queryFn: ({ signal }) => hubPoll<OrderSummary>(`/orders/summary?${resentPendingParams()}`, { signal }), staleTime: 30_000, refetchInterval: 60_000 })
   // The micro-export card: the pending micro-export orders (not yet handed to the carrier, any day) and their countries.
-  const microPending = useQuery({ queryKey: queryKeys.orders('summary', 'micro-pending'), queryFn: () => hubPoll<OrderSummary>(`/orders/summary?${microPendingParams()}`), staleTime: 30_000, refetchInterval: 60_000 })
-  const cancellationsToday = useQuery({ queryKey: queryKeys.dashboard('cancellations', day), queryFn: () => hubPoll<{ stores: DailyCancellationRow[] }>(`/dashboard/cancellations?day=${day}`), staleTime: 30_000, refetchInterval: 60_000 })
+  const microPending = useQuery({ queryKey: queryKeys.orders('summary', 'micro-pending'), queryFn: ({ signal }) => hubPoll<OrderSummary>(`/orders/summary?${microPendingParams()}`, { signal }), staleTime: 30_000, refetchInterval: 60_000 })
+  const cancellationsToday = useQuery({ queryKey: queryKeys.dashboard('cancellations', day), queryFn: ({ signal }) => hubPoll<{ stores: DailyCancellationRow[] }>(`/dashboard/cancellations?day=${day}`, { signal }), staleTime: 30_000, refetchInterval: 60_000 })
   const todayCancellations = dailyCancellationCounts(cancellationsToday.data?.stores)
-  const summary = useQuery({ queryKey: queryKeys.orders('summary', 'filtered', summaryParams), queryFn: () => hubApi<OrderSummary>(summaryParams ? `/orders/summary?${summaryParams}` : '/orders/summary'), placeholderData: keepPreviousData })
+  const summary = useQuery({ queryKey: queryKeys.orders('summary', 'filtered', summaryParams), queryFn: ({ signal }) => hubApi<OrderSummary>(summaryParams ? `/orders/summary?${summaryParams}` : '/orders/summary', { signal }), placeholderData: keepPreviousData })
   // The bootstrap names the stores of the cards' hover lists; its unfiltered late total is never shown for the list.
-  const lateOrdersQuery = useQuery({ queryKey: queryKeys.dashboardBootstrap(), queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap'), staleTime: 30_000 })
+  const lateOrdersQuery = useQuery({ queryKey: queryKeys.dashboardBootstrap(), queryFn: ({ signal }) => hubApi<DashboardBootstrap>('/dashboard/bootstrap', { signal }), staleTime: 30_000 })
   // The Yeni Sipariş and İşleme Alınan cards' products per store: the filtered summary's units, named by the bootstrap's stores.
   const newUnits = storeUnits(summary.data?.newUnitsByConnection, lateOrdersQuery.data?.channels, summary.data?.newByConnection)
   const processingUnits = storeUnits(summary.data?.processingUnitsByConnection, lateOrdersQuery.data?.channels, summary.data?.processingByConnection)

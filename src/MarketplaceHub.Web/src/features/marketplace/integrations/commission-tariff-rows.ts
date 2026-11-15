@@ -54,7 +54,7 @@ export async function loadRowPage(connectionId: string, tariffId: string, query:
 // The tariffs a store's tab lists, and the tab's first page of rows; the panel and the prefetch below share them.
 export const tariffsQuery = (connectionId: string) => ({
   queryKey: queryKeys.commissionTariffs(connectionId),
-  queryFn: () => hubApi<CommissionTariff[]>(`/connections/${connectionId}/commission-tariffs`)
+  queryFn: ({ signal }: { signal: AbortSignal }) => hubApi<CommissionTariff[]>(`/connections/${connectionId}/commission-tariffs`, { signal })
 })
 
 // The store and tariff the tab last opened on by itself (no period picked), kept in this browser only and per person

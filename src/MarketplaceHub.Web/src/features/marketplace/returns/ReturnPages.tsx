@@ -141,7 +141,7 @@ function ReturnReferenceRow({ item, order, onNotice, selection, selectColumn, no
   const [dialogMode, setDialogMode] = useState<'DETAIL' | 'APPROVE' | 'REJECT' | null>(null)
   const [selectedReturnLineIds, setSelectedReturnLineIds] = useState<string[]>([])
   const rowRef = useRef<HTMLTableRowElement>(null)
-  const detailQuery = useQuery({ queryKey: queryKeys.return(item.id), queryFn: () => hubApi<ReturnDetail>(`/returns/${item.id}`), enabled: dialogMode !== null, staleTime: 30_000 })
+  const detailQuery = useQuery({ queryKey: queryKeys.return(item.id), queryFn: ({ signal }) => hubApi<ReturnDetail>(`/returns/${item.id}`, { signal }), enabled: dialogMode !== null, staleTime: 30_000 })
   const navigate = useNavigate()
   const lines = order?.lines?.length ? order.lines : item.lines ?? []
   const currency = order?.currency ?? item.currency
@@ -291,10 +291,10 @@ function ReturnDecisionActions({ item, onNotice, onComplete, selectedLineIds: co
   const fileInput = useRef<HTMLInputElement>(null)
   const resetDecision = useEffectEvent(() => { if (!isControlled) setLocalSelectedLineIds(lines.map(line => line.id)); setConfirmation(null); setShipmentCompanyId(''); setTrackingNumber(''); setFinalizedWith(finalizedWithFor(item.customerRequest)); setAction(initialAction ?? (isAwaitingPreApproval ? 'PREAPPROVAL_CONFIRM' : 'APPROVE')) })
   useEffect(() => resetDecision(), [item.id, item.version, item.lines, item.customerRequest, isControlled, isAwaitingPreApproval, initialAction])
-  const reasons = useQuery({ queryKey: queryKeys.returnReasons(item.id), queryFn: () => hubApi<ReturnIssueReason[]>(`/returns/${item.id}/rejection-reasons`), enabled: item.allowedActions.includes('REJECT'), retry: false })
+  const reasons = useQuery({ queryKey: queryKeys.returnReasons(item.id), queryFn: ({ signal }) => hubApi<ReturnIssueReason[]>(`/returns/${item.id}/rejection-reasons`, { signal }), enabled: item.allowedActions.includes('REJECT'), retry: false })
   // N11: a denial (other than reason 41) names the shipment of the product back to the buyer; CAMPAIGN is never offered.
   const needsReturnShipment = action === 'REJECT' && item.rejectNeedsReturnShipment === true && reasonId !== '' && reasonId !== n11ProductNotReceivedReasonId
-  const shipmentCompanies = useQuery({ queryKey: queryKeys.returnShipmentCompanies(item.connectionId), queryFn: () => hubApi<ReturnShipmentCompany[]>(`/returns/${item.id}/return-shipment-companies`), enabled: action === 'REJECT' && item.rejectNeedsReturnShipment === true, retry: false, staleTime: 60 * 60_000 })
+  const shipmentCompanies = useQuery({ queryKey: queryKeys.returnShipmentCompanies(item.connectionId), queryFn: ({ signal }) => hubApi<ReturnShipmentCompany[]>(`/returns/${item.id}/return-shipment-companies`, { signal }), enabled: action === 'REJECT' && item.rejectNeedsReturnShipment === true, retry: false, staleTime: 60 * 60_000 })
   const decision = useMutation({
     mutationFn: (payload: ReturnDecisionDraft) => hubApi<ReturnDetail>(`/returns/${item.id}/actions`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ action: payload.action, reasonCode: payload.reasonCode, explanation: payload.explanation, evidenceAssetIds: payload.evidenceAssetIds, returnLineIds: payload.returnLineIds, finalizedWith: payload.finalizedWith, returnShipment: payload.returnShipment ? { shipmentCompanyId: payload.returnShipment.shipmentCompanyId, trackingNumber: payload.returnShipment.trackingNumber } : null }) }),
     onSuccess: async (result, payload) => {
@@ -420,8 +420,8 @@ export function ReturnsPage() {
   if (cursorKey !== listKey) { setCursorKey(listKey); setPageCursors({ 1: null }); setPageNumber(1) }
   const cursor = pageNumber > 1 ? pageCursors[pageNumber] ?? null : null
   useListUrlSync({ status: appliedFilters.status, search: appliedFilters.search, from: appliedFilters.from, to: appliedFilters.to, platforms: selectedPlatforms, cargo: cargoFilter, reason: reasonFilter, invoice: invoiceStatusFilter, sort, size: pageSize, page: pageNumber }, { status: 'ALL', cargo: 'ALL', reason: 'ALL', invoice: 'ALL', sort: DEFAULT_RETURN_SORT, size: 20, page: 1 })
-  const query = useQuery({ queryKey: queryKeys.returns('list', appliedFilters, refinements, sort, pageSize, pageNumber, cursor), queryFn: () => hubPoll<Page<ReturnClaim>>(`/returns?${returnListParams(appliedFilters, refinements, { sort: sort === DEFAULT_RETURN_SORT ? null : sort, limit: pageSize, after: cursor, page: pageNumber }).toString()}`), placeholderData: keepPreviousData, refetchInterval: 30_000 })
-  const summary = useQuery({ queryKey: queryKeys.returns('summary', appliedFilters, refinements), queryFn: () => hubPoll<ReturnSummary>(`/returns/summary?${returnSummaryParams(appliedFilters, refinements).toString()}`), placeholderData: keepPreviousData, refetchInterval: 30_000 })
+  const query = useQuery({ queryKey: queryKeys.returns('list', appliedFilters, refinements, sort, pageSize, pageNumber, cursor), queryFn: ({ signal }) => hubPoll<Page<ReturnClaim>>(`/returns?${returnListParams(appliedFilters, refinements, { sort: sort === DEFAULT_RETURN_SORT ? null : sort, limit: pageSize, after: cursor, page: pageNumber }).toString()}`, { signal }), placeholderData: keepPreviousData, refetchInterval: 30_000 })
+  const summary = useQuery({ queryKey: queryKeys.returns('summary', appliedFilters, refinements), queryFn: ({ signal }) => hubPoll<ReturnSummary>(`/returns/summary?${returnSummaryParams(appliedFilters, refinements).toString()}`, { signal }), placeholderData: keepPreviousData, refetchInterval: 30_000 })
   const nextCursor = query.data?.nextCursor ?? null
   if (nextCursor && !query.isPlaceholderData && pageCursors[pageNumber + 1] !== nextCursor) setPageCursors(current => ({ ...current, [pageNumber + 1]: nextCursor }))
   const connections = useQuery(connectionQueries.list<Connection>())
@@ -533,7 +533,7 @@ export function ReturnDetailPage() {
     const timeout = window.setTimeout(() => setNoticeState(''), noticeKind === 'info' ? 7000 : 5500)
     return () => window.clearTimeout(timeout)
   }, [notice, noticeKind])
-  const query = useQuery({ queryKey: queryKeys.return(id), queryFn: () => hubApi<ReturnDetail>(`/returns/${id}`) })
+  const query = useQuery({ queryKey: queryKeys.return(id), queryFn: ({ signal }) => hubApi<ReturnDetail>(`/returns/${id}`, { signal }) })
   // Each stock decision is its own request: a decision does not change the return's version, so a key
   // made from the version and the body would replay the first of two equal decisions (audit 2026-10-20 W11).
   // The key is kept per pending decision instead (sendStockDisposition): a resend after a lost answer replays it.

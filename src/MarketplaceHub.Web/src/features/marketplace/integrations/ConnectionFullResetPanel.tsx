@@ -43,7 +43,7 @@ export function ConnectionFullResetPanel({ item, onFeedback, onFinished, onCance
   const [password, setPassword] = useState('')
   const [factor, setFactor] = useState('')
   const queryKey = connectionFullResetQueryKey(item.id)
-  const view = useQuery({ queryKey, queryFn: () => hubPoll<ConnectionFullResetView>(`/connections/${item.id}/full-reset`), staleTime: 0, refetchInterval: query => connectionFullResetRunning(query.state.data?.job?.status) ? 3000 : false })
+  const view = useQuery({ queryKey, queryFn: ({ signal }) => hubPoll<ConnectionFullResetView>(`/connections/${item.id}/full-reset`, { signal }), staleTime: 0, refetchInterval: query => connectionFullResetRunning(query.state.data?.job?.status) ? 3000 : false })
   const job = view.data?.job ?? null
   const running = connectionFullResetRunning(job?.status)
   // When the reset this panel watched ends, the lists that showed the removed records are read again.
