@@ -244,23 +244,10 @@ public sealed partial class MarketplaceJobProcessor
     private void AddListingLookupJob(Guid tenantId, Guid connectionId, string dedup, ListingLookupJobPayload payload, DateTimeOffset now)
     {
         var json = JsonSerializer.Serialize(payload);
-        db.IntegrationJobs.Add(new IntegrationJob
+        Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, connectionId, MarketplaceJobTypes.ListingLookup, json, dedup, $"listing-lookup:{connectionId:N}", now)
         {
-            Id = Guid.CreateVersion7(),
-            TenantId = tenantId,
-            ConnectionId = connectionId,
-            JobType = MarketplaceJobTypes.ListingLookup,
-            PayloadJson = json,
-            PayloadVersion = 1,
-            PayloadHash = Hash(json),
-            JobDedupKey = dedup,
-            EffectIdempotencyKey = dedup,
             Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ListingLookup, userInitiated: false),
-            Status = JobStatus.Pending,
-            AvailableAt = now,
-            CorrelationId = $"listing-lookup:{connectionId:N}",
-            CreatedAt = now,
-            Version = 1
+            CreatedAt = now
         });
     }
 

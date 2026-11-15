@@ -3289,7 +3289,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         }
         catch (JsonException) { return null; }
     }
-    private IntegrationJob NewJob(Guid tenantId, Guid connectionId, string type, string dedup, string payload, string correlationId) => new() { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, JobType = type, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))), JobDedupKey = dedup, EffectIdempotencyKey = dedup, Priority = Priority(type), TriggerType = "user", AvailableAt = timeProvider.GetUtcNow(), CorrelationId = correlationId, Version = 1 };
+    private IntegrationJob NewJob(Guid tenantId, Guid connectionId, string type, string dedup, string payload, string correlationId) => IntegrationJobFactory.New(new IntegrationJobRequest(tenantId, connectionId, type, payload, dedup, correlationId, timeProvider.GetUtcNow()) { Priority = Priority(type), TriggerType = "user" });
     internal static int Priority(string type) => JobPriorityPolicy.ForUser(type);
     private Task<bool> Supported(Guid tenantId, Guid connectionId, string code, CancellationToken cancellationToken) => db.PlatformCapabilities.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == code && x.SupportLevel == CapabilitySupportLevel.Supported, cancellationToken);
     // Return decisions whose outcome is still open: waiting to be sent or verified, or sent while the request's effect

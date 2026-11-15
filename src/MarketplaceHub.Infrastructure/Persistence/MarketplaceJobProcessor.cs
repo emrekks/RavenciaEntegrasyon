@@ -1582,13 +1582,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var now = timeProvider.GetUtcNow();
         foreach (var oldCheck in relatedJobs.Where(job => job.JobType == MarketplaceJobTypes.ProductApprovalReconcile && job.Id != currentJobId
             && job.Status is JobStatus.Pending or JobStatus.RetryScheduled))
-        {
-            oldCheck.Status = JobStatus.Cancelled;
-            oldCheck.CompletedAt = now;
-            oldCheck.LastErrorCode = "PRODUCT_MISSING_RESET";
-            oldCheck.LastErrorSummary = "Trendyol ilanının bulunmadığı doğrulandığı için eski durum kontrolü kapatıldı.";
-            oldCheck.Version++;
-        }
+            Jobs.JobStateMachine.Cancel(db, oldCheck, now, "PRODUCT_MISSING_RESET", "Trendyol ilanının bulunmadığı doğrulandığı için eski durum kontrolü kapatıldı.", Jobs.JobEvent.None);
         var previousCreate = relatedJobs.SingleOrDefault(job => job.JobType == MarketplaceJobTypes.ProductCreate && job.JobDedupKey == productCreateDedup);
         if (previousCreate is not null)
         {
@@ -1643,24 +1637,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var now = timeProvider.GetUtcNow();
         var jobId = Guid.CreateVersion7();
         var payload = JsonSerializer.Serialize(new ProductApprovalReconciliationJobPayload(jobId, productId, profileId, payloadHash, now, now.AddDays(7), externalOperationId));
-        db.IntegrationJobs.Add(new IntegrationJob
+        Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, connectionId, MarketplaceJobTypes.ProductApprovalReconcile, payload, dedup, correlationId, now + (firstCheckDelay ?? TimeSpan.Zero))
         {
             Id = jobId,
-            TenantId = tenantId,
-            ConnectionId = connectionId,
-            JobType = MarketplaceJobTypes.ProductApprovalReconcile,
-            PayloadJson = payload,
-            PayloadVersion = 1,
-            PayloadHash = Hash(payload),
-            JobDedupKey = dedup,
-            EffectIdempotencyKey = dedup,
             Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ProductApprovalReconcile, userInitiated: true),
-            Status = JobStatus.Pending,
-            AvailableAt = now + (firstCheckDelay ?? TimeSpan.Zero),
             MaxAttempts = ProductApprovalReconcileMaxAttempts,
-            CorrelationId = correlationId,
-            CreatedAt = now,
-            Version = 1
+            CreatedAt = now
         });
     }
 
@@ -12538,7 +12520,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var id = Guid.CreateVersion7();
         var jobPayload = JsonSerializer.Serialize(new PriceInventoryJobPayload(id, connectionId, "SUBMIT", draft.PayloadHash, draft.PayloadJson, draft.Lines, null, null, variantId, Automatic: true, Trigger: trigger));
         var writeDelay = await ExternalWriteDelaySecondsAsync(tenantId, connectionId, MarketplaceExternalWritePolicies.Stock, cancellationToken);
-        db.IntegrationJobs.Add(new IntegrationJob { Id = id, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.PriceInventorySync, PayloadJson = jobPayload, PayloadVersion = 1, PayloadHash = Hash(jobPayload), JobDedupKey = dedup, EffectIdempotencyKey = dedup, Priority = JobPriorityPolicy.For(MarketplaceJobTypes.PriceInventorySync, userInitiated: true), Status = JobStatus.Pending, AvailableAt = now.AddSeconds(writeDelay), MaxAttempts = 10, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
+        Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, connectionId, MarketplaceJobTypes.PriceInventorySync, jobPayload, dedup, correlationId, now.AddSeconds(writeDelay)) { Id = id, Priority = JobPriorityPolicy.For(MarketplaceJobTypes.PriceInventorySync, userInitiated: true), MaxAttempts = 10, CreatedAt = now });
         await db.SaveChangesAsync(cancellationToken);
         return JobExecutionResult.Success();
     }

@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
@@ -899,11 +897,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             .ToListAsync(cancellationToken);
         var now = timeProvider.GetUtcNow();
         foreach (var job in jobs)
-        {
-            job.Status = JobStatus.Cancelled;
-            job.CompletedAt = now;
-            job.Version++;
-        }
+            Jobs.JobStateMachine.Cancel(db, job, now, code: null, summary: null, Jobs.JobEvent.None);
     }
 
     private async Task CancelScheduledSyncsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
@@ -913,11 +907,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             && (x.Status == JobStatus.Pending || x.Status == JobStatus.RetryScheduled)).ToListAsync(cancellationToken);
         var now = timeProvider.GetUtcNow();
         foreach (var job in jobs)
-        {
-            job.Status = JobStatus.Cancelled;
-            job.CompletedAt = now;
-            job.Version++;
-        }
+            Jobs.JobStateMachine.Cancel(db, job, now, code: null, summary: null, Jobs.JobEvent.None);
     }
     private void QueueActivationBootstrap(Guid tenantId, PlatformConnection connection)
     {
@@ -1070,7 +1060,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         && shop[^1] is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9'
         && shop.All(value => value is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9' or '-');
     private static string MaskEmail(string value) { var separator = value.IndexOf('@'); return separator <= 1 ? "***" : value[..1] + "***" + value[separator..]; }
-    private IntegrationJob NewJob(Guid tenantId, Guid connectionId, string type, string dedup, string payload, string correlationId) => new() { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, JobType = type, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))), JobDedupKey = dedup, EffectIdempotencyKey = dedup, AvailableAt = timeProvider.GetUtcNow(), CorrelationId = correlationId, Version = 1 };
+    private IntegrationJob NewJob(Guid tenantId, Guid connectionId, string type, string dedup, string payload, string correlationId) => IntegrationJobFactory.New(new IntegrationJobRequest(tenantId, connectionId, type, payload, dedup, correlationId, timeProvider.GetUtcNow()));
     internal const string UnsendableUserAgentMessage = "User-Agent kimliğinde Türkçe karakter (ç, ğ, ı, İ, ö, ş, ü) veya özel/kontrol karakteri kullanılamaz; bu kimlikle Trendyol’a hiçbir istek gönderilemez. Örn. “123456 - Ravencia”.";
 
     private static ServiceResult<T> Invalid<T>(string field, string message) => ServiceResult<T>.Fail("VALIDATION_FAILED", message, 422, new Dictionary<string, string[]> { [field] = [message] });

@@ -1,9 +1,8 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.ErrorMapping;
+using MarketplaceHub.Infrastructure.Jobs;
 using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
@@ -247,18 +246,8 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             job.Priority = Math.Min(job.Priority, InvoicingBillingService.InvoiceJobPriority(job.JobType));
         }
 
-        job.Status = JobStatus.RetryScheduled;
-        job.AvailableAt = now;
-        job.CompletedAt = null;
-        job.LeaseTokenHash = null;
-        job.LeaseExpiresAt = null;
-        job.HeartbeatAt = null;
-        job.LastErrorCode = null;
-        job.LastErrorSummary = null;
-        job.MaxAttempts = Math.Max(job.MaxAttempts, job.AttemptCount + 1);
         // The retry's attempt is spent on running the job: a busy lock or quota wait right after it keeps the attempt.
-        job.RetriedAt = now;
-        job.Version++;
+        JobStateMachine.Retry(db, job, now, JobEvent.Publish);
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<JobDetailView>.Ok(await DetailAsync(job, cancellationToken));
     }
@@ -359,29 +348,16 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
                 sourceJobId = sourceJob.Id
             }
         });
-        var job = new IntegrationJob
+        var job = JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, package.ConnectionId, InvoicingJobTypes.MarketplaceDelivery, payload, dedupKey, correlationId, now)
         {
-            Id = Guid.CreateVersion7(),
-            TenantId = tenantId,
-            ConnectionId = package.ConnectionId,
-            JobType = InvoicingJobTypes.MarketplaceDelivery,
-            PayloadJson = payload,
-            PayloadVersion = 1,
-            PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))),
-            JobDedupKey = dedupKey,
             EffectIdempotencyKey = $"{InvoicingJobTypes.MarketplaceDelivery}:one-time:{invoice.Id:N}:{idempotencyKey}",
             Priority = JobPriorityPolicy.UserAction,
             MaxAttempts = 1,
-            Status = JobStatus.Pending,
-            AvailableAt = now,
             TriggerType = "manual",
             ResourceType = "invoices",
             OperationType = "marketplace-delivery-once",
-            CorrelationId = correlationId,
-            CreatedAt = now,
-            Version = 1
-        };
-        db.IntegrationJobs.Add(job);
+            CreatedAt = now
+        });
         AddOutboxEvent(job, now);
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<JobDetailView>.Ok(await DetailAsync(job, cancellationToken));
@@ -410,31 +386,10 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
 
         var now = timeProvider.GetUtcNow();
         var wasLeased = job.Status == JobStatus.Leased;
-        if (wasLeased)
-        {
-            var attempt = await db.JobAttempts.SingleOrDefaultAsync(x =>
-                x.JobId == job.Id && x.AttemptNumber == job.AttemptCount && x.CompletedAt == null,
-                cancellationToken);
-            if (attempt is not null)
-            {
-                attempt.CompletedAt = now;
-                attempt.Succeeded = false;
-                attempt.ErrorCode = "CANCELLED_BY_OPERATOR";
-                attempt.ErrorSummary = "Çalışan job kullanıcı tarafından durduruldu.";
-            }
-        }
-
-        job.Status = JobStatus.Cancelled;
-        job.CompletedAt = now;
-        job.LastErrorCode = "CANCELLED_BY_OPERATOR";
-        job.LastErrorSummary = wasLeased
-            ? "Çalışan job kullanıcı tarafından durduruldu."
-            : "Job kullanıcı tarafından iptal edildi.";
-        job.LeaseTokenHash = null;
-        job.LeaseExpiresAt = null;
-        job.HeartbeatAt = null;
-        job.Version++;
-        AddOutboxEvent(job, now);
+        await JobStateMachine.CloseRunningAttemptAsync(db, job, now, "CANCELLED_BY_OPERATOR", "Çalışan job kullanıcı tarafından durduruldu.", cancellationToken);
+        JobStateMachine.Cancel(db, job, now, "CANCELLED_BY_OPERATOR",
+            wasLeased ? "Çalışan job kullanıcı tarafından durduruldu." : "Job kullanıcı tarafından iptal edildi.",
+            JobEvent.Publish, clearLease: true);
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<JobDetailView>.Ok(await DetailAsync(job, cancellationToken));
     }

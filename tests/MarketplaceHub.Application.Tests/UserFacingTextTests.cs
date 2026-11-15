@@ -18,9 +18,11 @@ public sealed class UserFacingTextTests
         @"ServiceResult(?:<[^>]*>)?\.Fail\(\s*""(?<code>[A-Z0-9_]+)""\s*,\s*\$?@?""(?<text>(?:[^""\\]|\\.)*)""",
         RegexOptions.CultureInvariant);
 
-    // A note set on a job by hand: job.LastErrorSummary = "…", SetProperty(x => x.LastErrorSummary, "…").
+    // A note set on a job by hand: job.LastErrorSummary = "…", SetProperty(x => x.LastErrorSummary, "…"), or the summary
+    // passed after the code to a JobStateMachine stop (Cancel, CancelWhereAsync). An attempt's note is not scanned here.
     private static readonly Regex SummaryWrite = new(
-        @"LastErrorSummary\s*(?:\?\?=|=|,)\s*\$?@?""(?<text>(?:[^""\\]|\\.)*)""",
+        @"LastErrorSummary\s*(?:\?\?=|=|,)\s*\$?@?""(?<text>(?:[^""\\]|\\.)*)"""
+        + @"|JobStateMachine\.(?:Cancel|CancelWhereAsync)\([^;]*?,\s*(?:""[A-Z0-9_]+""|[\w.]+)\s*,\s*\$?@?""(?<text>(?:[^""\\]|\\.)*\s(?:[^""\\]|\\.)*)""",
         RegexOptions.CultureInvariant);
 
     private static readonly Regex Hole = new(@"\{[^{}]*\}", RegexOptions.CultureInvariant);

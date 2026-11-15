@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
+using MarketplaceHub.Infrastructure.Jobs;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -253,8 +254,9 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             var queuedAny = false;
             foreach (var (dedup, payloadJson) in jobs)
             {
-                if (await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == row.Policy.TenantId && x.JobType == definition.Value.JobType && x.JobDedupKey == dedup, cancellationToken)) continue;
-                db.IntegrationJobs.Add(NewJob(row.Policy.TenantId, row.Connection.Id, definition.Value.JobType, dedup, payloadJson, now, $"scheduler-{Guid.NewGuid():N}"));
+                var queued = await JobEnqueuer.EnqueueAsync(db, NewJobRequest(row.Policy.TenantId, row.Connection.Id, definition.Value.JobType, dedup, payloadJson, now, $"scheduler-{Guid.NewGuid():N}"),
+                    JobDedupPolicy.ReuseAnyWithKey, cancellationToken);
+                if (!queued.Created) continue;
                 queuedAny = true;
                 added++;
             }
@@ -275,9 +277,9 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         foreach (var tenantId in dueTenants)
         {
             var dedup = $"scheduled:invoice-due:{tenantId:N}:{invoiceBucket}";
-            if (await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.JobType == InvoicingJobTypes.InvoiceDueScan && x.JobDedupKey == dedup, cancellationToken)) continue;
-            db.IntegrationJobs.Add(NewJob(tenantId, null, InvoicingJobTypes.InvoiceDueScan, dedup, "{}", now, $"scheduler-{Guid.NewGuid():N}"));
-            added++;
+            var queued = await JobEnqueuer.EnqueueAsync(db, NewJobRequest(tenantId, null, InvoicingJobTypes.InvoiceDueScan, dedup, "{}", now, $"scheduler-{Guid.NewGuid():N}"),
+                JobDedupPolicy.ReuseAnyWithKey, cancellationToken);
+            if (queued.Created) added++;
         }
 
         if (added == 0) return 0;
@@ -445,11 +447,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 && (x.Status == JobStatus.Pending || x.Status == JobStatus.RetryScheduled))
             .ToListAsync(cancellationToken);
         foreach (var job in scheduledProductJobs)
-        {
-            job.Status = JobStatus.Cancelled;
-            job.CompletedAt = timeProvider.GetUtcNow();
-            job.Version++;
-        }
+            JobStateMachine.Cancel(db, job, timeProvider.GetUtcNow(), code: null, summary: null, JobEvent.Publish);
 
         if (productPolicies.Count > 0 || scheduledProductJobs.Count > 0)
             await db.SaveChangesAsync(cancellationToken);
@@ -507,11 +505,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             .ToListAsync(cancellationToken);
         var now = timeProvider.GetUtcNow();
         foreach (var job in jobs)
-        {
-            job.Status = JobStatus.Cancelled;
-            job.CompletedAt = now;
-            job.Version++;
-        }
+            JobStateMachine.Cancel(db, job, now, code: null, summary: null, JobEvent.Publish);
 
         if (connectionSettingsChanged || disabledPolicies.Count > 0 || jobs.Count > 0)
             await db.SaveChangesAsync(cancellationToken);
@@ -1059,22 +1053,12 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         return false;
     }
 
-    private static IntegrationJob NewJob(Guid tenantId, Guid? connectionId, string type, string dedup, string payload, DateTimeOffset availableAt, string correlationId) => new()
-    {
-        Id = Guid.CreateVersion7(),
-        TenantId = tenantId,
-        ConnectionId = connectionId,
-        JobType = type,
-        PayloadJson = payload,
-        PayloadVersion = 1,
-        PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))),
-        JobDedupKey = dedup,
-        EffectIdempotencyKey = dedup,
-        Priority = Priority(type),
-        AvailableAt = availableAt,
-        CorrelationId = correlationId,
-        Version = 1
-    };
+    // A scheduler job: the type's background priority, the trigger left for AppDbContext to set from the type.
+    private static IntegrationJobRequest NewJobRequest(Guid tenantId, Guid? connectionId, string type, string dedup, string payload, DateTimeOffset availableAt, string correlationId) =>
+        new(tenantId, connectionId, type, payload, dedup, correlationId, availableAt) { Priority = Priority(type) };
+
+    private static IntegrationJob NewJob(Guid tenantId, Guid? connectionId, string type, string dedup, string payload, DateTimeOffset availableAt, string correlationId) =>
+        IntegrationJobFactory.New(NewJobRequest(tenantId, connectionId, type, dedup, payload, availableAt, correlationId));
 
     private static int Priority(string type) => JobPriorityPolicy.For(type, userInitiated: false);
 

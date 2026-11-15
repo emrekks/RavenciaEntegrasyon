@@ -188,13 +188,7 @@ internal static class InvoiceAdjustmentTracking
                 && (job.Status == JobStatus.Pending || job.Status == JobStatus.RetryScheduled))
             .ToListAsync(cancellationToken);
         foreach (var job in jobs)
-        {
-            job.Status = JobStatus.Cancelled;
-            job.CompletedAt = now;
-            job.LastErrorCode = InvoiceDeliveryGuardPolicy.CancelledJobCode;
-            job.LastErrorSummary = "Fatura iptal sürecine girdiği için pazaryeri teslimi durduruldu.";
-            job.Version++;
-        }
+            Jobs.JobStateMachine.Cancel(db, job, now, InvoiceDeliveryGuardPolicy.CancelledJobCode, "Fatura iptal sürecine girdiği için pazaryeri teslimi durduruldu.", Jobs.JobEvent.Publish);
         return jobs.Count;
     }
 

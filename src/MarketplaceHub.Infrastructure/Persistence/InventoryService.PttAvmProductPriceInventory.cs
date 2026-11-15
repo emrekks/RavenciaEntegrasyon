@@ -34,7 +34,7 @@ public sealed partial class InventoryService
         var id = Guid.CreateVersion7();
         var now = timeProvider.GetUtcNow();
         var payload = JsonSerializer.Serialize(new PriceInventoryJobPayload(id, connectionId, "SUBMIT", draft.PayloadHash, draft.PayloadJson, draft.Lines, null, null, null, productId, Manual: true, Trigger: PriceStockSendTriggers.PanelSend));
-        db.IntegrationJobs.Add(new IntegrationJob { Id = id, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.PriceInventorySync, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{Hash(idempotencyKey.Trim())}", Priority = JobPriorityPolicy.ForUser(MarketplaceJobTypes.PriceInventorySync), TriggerType = "user", Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 10, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
+        Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, connectionId, MarketplaceJobTypes.PriceInventorySync, payload, dedup, correlationId, now) { Id = id, EffectIdempotencyKey = $"{dedup}:{Hash(idempotencyKey.Trim())}", Priority = JobPriorityPolicy.ForUser(MarketplaceJobTypes.PriceInventorySync), TriggerType = "user", MaxAttempts = 10, CreatedAt = now });
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<Guid>.Ok(id);
     }

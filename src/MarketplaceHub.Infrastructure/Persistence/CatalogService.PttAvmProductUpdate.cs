@@ -47,7 +47,7 @@ public sealed partial class CatalogService
         var jobId = Guid.CreateVersion7();
         var now = timeProvider.GetUtcNow();
         var payload = JsonSerializer.Serialize(new ProductUpdateJobPayload(jobId, productId, profile.Id, "SUBMIT_UNAPPROVED", draft.Publication.Mode, draft.Publication.PayloadHash, draft.Publication.UnapprovedPayloadJson, "", "", "", null, null));
-        db.IntegrationJobs.Add(new IntegrationJob { Id = jobId, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.ProductUpdate, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{NormalizeKey(idempotencyKey)}", Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ProductUpdate, userInitiated: true), TriggerType = "user", Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 12, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
+        Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, connectionId, MarketplaceJobTypes.ProductUpdate, payload, dedup, correlationId, now) { Id = jobId, EffectIdempotencyKey = $"{dedup}:{NormalizeKey(idempotencyKey)}", Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ProductUpdate, userInitiated: true), TriggerType = "user", MaxAttempts = 12, CreatedAt = now });
         return await SavePublicationJobAsync(transaction, tenantId, MarketplaceJobTypes.ProductUpdate, dedup, jobId, cancellationToken);
     }
 }

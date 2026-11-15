@@ -79,14 +79,9 @@ public static class PublicationJobSupersession
                          (profile.Key.ConnectionId, latest.JobType, profile.Key.ProfileId, JobStatus.Succeeded, latest.CreatedAt))))
             {
                 var summary = Summary;
-                closed += await db.IntegrationJobs
-                    .Where(x => x.Id == job.Id && x.TenantId == job.TenantId && (x.Status == JobStatus.Blocked || x.Status == JobStatus.ManualReview))
-                    .ExecuteUpdateAsync(setters => setters
-                        .SetProperty(x => x.Status, JobStatus.Cancelled)
-                        .SetProperty(x => x.LastErrorCode, Code)
-                        .SetProperty(x => x.LastErrorSummary, summary)
-                        .SetProperty(x => x.CompletedAt, x => x.CompletedAt ?? now)
-                        .SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
+                closed += await Jobs.JobStateMachine.CancelWhereAsync(
+                    db.IntegrationJobs.Where(x => x.Id == job.Id && x.TenantId == job.TenantId && (x.Status == JobStatus.Blocked || x.Status == JobStatus.ManualReview)),
+                    now, Code, summary, keepEarlierCompletedAt: true, cancellationToken);
             }
         }
         await SettleCreateEffectsAsync(db, now, cancellationToken);

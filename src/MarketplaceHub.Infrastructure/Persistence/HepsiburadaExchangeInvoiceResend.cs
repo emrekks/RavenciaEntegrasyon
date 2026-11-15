@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
@@ -88,22 +86,10 @@ public static class HepsiburadaExchangeInvoiceResend
         }
 
         var payload = JsonSerializer.Serialize(new { invoiceId = target.InvoiceId, packageId = target.PackageId, exchangeResendClaimId = claim.Id });
-        db.IntegrationJobs.Add(new IntegrationJob
+        Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, claim.ConnectionId, InvoicingJobTypes.MarketplaceDelivery, payload, jobKey, $"hb-exchange:{claim.Id:N}", now)
         {
-            Id = Guid.CreateVersion7(),
-            TenantId = tenantId,
-            ConnectionId = claim.ConnectionId,
-            JobType = InvoicingJobTypes.MarketplaceDelivery,
-            PayloadJson = payload,
-            PayloadVersion = 1,
-            PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))),
-            JobDedupKey = jobKey,
-            EffectIdempotencyKey = jobKey,
             Priority = JobPriorityPolicy.ForFollowUp(null),
-            TriggerType = "system",
-            AvailableAt = now,
-            CorrelationId = $"hb-exchange:{claim.Id:N}",
-            Version = 1
+            TriggerType = "system"
         });
         // A note left while the package or the switch stood in the way is settled by the queued job.
         var stale = db.OperationalIssues.Local.FirstOrDefault(issue => issue.TenantId == tenantId && issue.DedupeKey == issueKey)

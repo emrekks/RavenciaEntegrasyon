@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
@@ -95,7 +93,7 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
         var now = timeProvider.GetUtcNow();
         var payload = JsonSerializer.Serialize(new { connectionId = connection.Id, externalMessageId, resourceType = envelope.ResourceType, rawJson = envelope.RawJson });
         var inbox = new InboxMessage { Id = Guid.CreateVersion7(), TenantId = connection.TenantId, Source = source, ExternalMessageId = externalMessageId, PayloadHash = envelope.PayloadHash, ReceivedAt = now };
-        var job = new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = connection.TenantId, ConnectionId = connection.Id, JobType = jobType, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))), JobDedupKey = dedup, EffectIdempotencyKey = dedup, TriggerType = "webhook", AvailableAt = now, CorrelationId = correlationId, LockGroup = MarketplaceSyncExecutionLock.WebhookIngestGroup(envelope.ResourceType), Version = 1 };
+        var job = IntegrationJobFactory.New(new IntegrationJobRequest(connection.TenantId, connection.Id, jobType, payload, dedup, correlationId, now) { TriggerType = "webhook", LockGroup = MarketplaceSyncExecutionLock.WebhookIngestGroup(envelope.ResourceType) });
         // Either answer is 200: a repeated delivery (Trendyol sends the same package twice, milliseconds apart) is already queued.
         await WebhookInboxWriter.InsertAsync(db, inbox, job, cancellationToken);
         await db.WebhookSubscriptions.Where(x => x.TenantId == connection.TenantId && x.Id == subscription.Id && x.Status == "ACTIVE").ExecuteUpdateAsync(setters => setters.SetProperty(x => x.LastReceivedAt, now).SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
@@ -133,7 +131,7 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
         if (!await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == connection.TenantId && x.JobType == MarketplaceJobTypes.ListingVerify && x.JobDedupKey == dedup, cancellationToken))
         {
             var payload = JsonSerializer.Serialize(new { connectionId = connection.Id });
-            db.IntegrationJobs.Add(new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = connection.TenantId, ConnectionId = connection.Id, JobType = MarketplaceJobTypes.ListingVerify, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))), JobDedupKey = dedup, EffectIdempotencyKey = dedup, Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ListingVerify, userInitiated: false), TriggerType = "webhook", AvailableAt = now, CorrelationId = correlationId, Version = 1 });
+            Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(connection.TenantId, connection.Id, MarketplaceJobTypes.ListingVerify, payload, dedup, correlationId, now) { Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ListingVerify, userInitiated: false), TriggerType = "webhook" });
             try { await db.SaveChangesAsync(cancellationToken); }
             catch (DbUpdateException exception) when (IsDuplicateCandidate(exception)) { db.ChangeTracker.Clear(); }
         }

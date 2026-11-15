@@ -134,23 +134,10 @@ public sealed partial class MarketplaceJobProcessor
             var dedup = $"hepsiburada-webhook-order:{connectionId:N}:{Hash($"{orderNumber}\n{eventKey}")}";
             if (await db.IntegrationJobs.AnyAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.HepsiburadaOrderSync && x.JobDedupKey == dedup, cancellationToken)) continue;
             var payload = JsonSerializer.Serialize(new { connectionId, externalOrderId = orderNumber, packageNumber = (string?)null });
-            db.IntegrationJobs.Add(new IntegrationJob
+            Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, connectionId, MarketplaceJobTypes.HepsiburadaOrderSync, payload, dedup, correlationId, now)
             {
-                Id = Guid.CreateVersion7(),
-                TenantId = tenantId,
-                ConnectionId = connectionId,
-                JobType = MarketplaceJobTypes.HepsiburadaOrderSync,
-                PayloadJson = payload,
-                PayloadVersion = 1,
-                PayloadHash = Hash(payload),
-                JobDedupKey = dedup,
-                EffectIdempotencyKey = dedup,
                 Priority = JobPriorityPolicy.For(MarketplaceJobTypes.HepsiburadaOrderSync, userInitiated: false),
-                Status = JobStatus.Pending,
-                AvailableAt = now,
-                CorrelationId = correlationId,
-                CreatedAt = now,
-                Version = 1
+                CreatedAt = now
             });
             queued++;
         }

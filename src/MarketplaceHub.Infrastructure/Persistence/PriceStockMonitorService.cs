@@ -153,13 +153,7 @@ public sealed class PriceStockMonitorService(AppDbContext db, IConfiguration con
             .ToListAsync(cancellationToken);
         var jobs = queued.Where(job => PriceStockEmergencyStopPolicy.Cancels(job.JobType, job.PayloadJson)).ToList();
         foreach (var job in jobs)
-        {
-            job.Status = JobStatus.Cancelled;
-            job.CompletedAt = now;
-            job.LastErrorCode = "AUTOMATIC_WRITES_STOPPED";
-            job.LastErrorSummary = "Tüm otomatik yazmalar acil durdurmayla kapatıldı; iş gönderilmeden iptal edildi.";
-            job.Version++;
-        }
+            Jobs.JobStateMachine.Cancel(db, job, now, "AUTOMATIC_WRITES_STOPPED", "Tüm otomatik yazmalar acil durdurmayla kapatıldı; iş gönderilmeden iptal edildi.", Jobs.JobEvent.None);
         var connectionsStopped = policies.Select(x => x.ConnectionId).Distinct().Count();
         db.AuditLogs.Add(new AuditLog
         {
