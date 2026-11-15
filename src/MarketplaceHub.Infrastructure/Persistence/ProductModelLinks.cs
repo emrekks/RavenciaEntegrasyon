@@ -446,8 +446,8 @@ public static class ProductModelLinks
     // so a recompute and an editor save of the same model take turns: a recompute that waited for a save finds the model
     // saved and leaves it, and a save that waited for a recompute replaces the recomputed rows. Before, the recompute
     // replaced the rows on the list it read at the start and could overwrite a set the editor saved meanwhile.
-    // KATALOG-14 phase B (ProductModelValues): the cards' majority set, whether or not the editor saved the model; the
-    // stamp is left as it is.
+    // KATALOG-14 phase B (ProductModelValues): the cards' majority set, unless the record holds the owner's saved set
+    // (HoldsSavedAttributes, checked by the caller); the stamp is left as it is.
     internal sealed record ModelAttributeRow(Guid AttributeId, Guid? ValueId, string? TextValue, decimal? NumberValue, bool? BooleanValue, int SortOrder);
 
     internal static Task<bool> ReplaceModelAttributesAsync(AppDbContext db, Guid tenantId, Guid modelId, IReadOnlyList<ModelAttributeRow> rows, CancellationToken cancellationToken) =>
@@ -549,11 +549,24 @@ public static class ProductModelLinks
     {
         if (familyId is not { } modelId || cards.Count == 0 || cards.Any(x => x.FamilyId != modelId)) return null;
         var model = await db.ProductModels.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == modelId, cancellationToken);
-        if (model?.FieldsSavedAt is not { } savedAt || cards.Any(x => x.UpdatedAt > savedAt) || cards.All(x => x.CategoryId != model.CategoryId)) return null;
+        if (model is null || !HoldsSavedFields(model, cards.Select(x => (x.UpdatedAt, x.CategoryId)))) return null;
         return new ProductFamilySharedFields.ModelFields(
             ProductFamilySharedFields.TitleFor(model.Title, model.TitleColor, openedColor), model.Description, model.BrandId, model.CategoryId,
             model.VatRate, model.VatInclusion, model.WarrantyMonths, model.DeliveryDays);
     }
+
+    // The record holds the owner's saved fields (the editor shows them): the editor saved them (FieldsSavedAt) after the
+    // last change of every card and a card still holds the record's category. ProductModelValues leaves such fields as
+    // they are, so the editor and the nightly scan never take turns overwriting each other.
+    internal static bool HoldsSavedFields(ProductModel model, IEnumerable<(DateTimeOffset UpdatedAt, Guid? CategoryId)> cards)
+    {
+        var list = cards.ToList();
+        return model.FieldsSavedAt is { } savedAt && list.All(x => x.UpdatedAt <= savedAt) && list.Any(x => x.CategoryId == model.CategoryId);
+    }
+
+    // The record holds the owner's saved category attributes: saved (AttributesSavedAt) after the last change of every card.
+    internal static bool HoldsSavedAttributes(DateTimeOffset? attributesSavedAt, IEnumerable<DateTimeOffset> cardsUpdatedAt) =>
+        attributesSavedAt is { } savedAt && cardsUpdatedAt.All(updatedAt => updatedAt <= savedAt);
 
     // Faz 2 (editor read): the model record's category attributes (without colour), when the editor saved them after the
     // last change of every card and the opened card still holds exactly that set; null otherwise (the cards' majority).
@@ -561,7 +574,7 @@ public static class ProductModelLinks
     {
         if (familyId is not { } modelId || cards.Count == 0 || cards.Any(x => x.FamilyId != modelId)) return null;
         var savedAt = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == modelId).Select(x => x.AttributesSavedAt).SingleOrDefaultAsync(cancellationToken);
-        if (savedAt is not { } at || cards.Any(x => x.UpdatedAt > at)) return null;
+        if (!HoldsSavedAttributes(savedAt, cards.Select(x => x.UpdatedAt))) return null;
         var rows = await db.ProductModelAttributes.AsNoTracking().Where(x => x.TenantId == tenantId && x.ModelId == modelId).OrderBy(x => x.SortOrder).ThenBy(x => x.Id).ToListAsync(cancellationToken);
         var colors = await ColorAttributeIdsAsync(db, tenantId, [.. openedCardAttributes.Select(x => x.AttributeId).Distinct()], cancellationToken);
         var opened = openedCardAttributes.Where(x => !colors.Contains(x.AttributeId)).Select(x => AttributeKey(x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal);

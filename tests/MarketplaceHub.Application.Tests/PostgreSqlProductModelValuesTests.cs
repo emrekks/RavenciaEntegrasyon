@@ -318,6 +318,44 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.Equal("Pazaryeri açıklaması", (await ModelOfAsync(db, siyah.Id)).Description);
     }
 
+    // F2: fields and attributes the owner saved in the editor after the last change of every card stay the owner's, even
+    // when most cards (here cards the editor does not show) hold another value; the stamps stay; a second run writes
+    // nothing either.
+    [PostgreSqlFact]
+    public async Task OwnerSavedValues_AreKept_AgainstAHiddenCardMajority()
+    {
+        await using var db = fixture.CreateContext();
+        var seed = await SeedAsync(db);
+        var siyah = AddCard(db, seed, seed.Ravencia, "MZ400", "Siyah", "Kadın Siyah Etek", 0);
+        var mavi = AddCard(db, seed, seed.Ravencia, "MZ400", "Mavi", "Kadın Mavi Etek", 1);
+        var gri = AddCard(db, seed, seed.Ravencia, "MZ400", "Gri", "Kadın Gri Etek", 2);
+        foreach (var card in new[] { siyah, mavi, gri })
+            db.ProductAttributeAssignments.Add(new ProductAttributeAssignment { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ProductId = card.Id, AttributeId = seed.FabricId, ValueId = seed.Cotton, Version = 1 });
+        await db.SaveChangesAsync();
+        var model = await ModelOfAsync(db, siyah.Id);
+        var cardsChanged = new DateTimeOffset(DateTimeOffset.UtcNow.UtcTicks / 10 * 10, TimeSpan.Zero).AddHours(-1);
+        var saved = cardsChanged.AddMinutes(1);
+        // The owner saved "Sahibin açıklaması" and Keten; two cards linked without a change of their own hold another value.
+        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "Description" = CASE WHEN "Id" = {siyah.Id} THEN 'Sahibin açıklaması' ELSE 'Gizli kartların açıklaması' END, "UpdatedAt" = {cardsChanged} WHERE "TenantId" = {seed.Tenant.Id}""");
+        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_models SET "Description" = 'Sahibin açıklaması', "FieldsSavedAt" = {saved}, "AttributesSavedAt" = {saved} WHERE "Id" = {model.Id}""");
+        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_model_attributes SET "ValueId" = {seed.Linen} WHERE "ModelId" = {model.Id}""");
+
+        foreach (var run in new[] { 1, 2 })
+        {
+            var outcome = await ProductModelValues.RefreshTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
+            Assert.Equal((run, 1, 0), (run, outcome.Models, outcome.Written));
+            var after = await ModelOfAsync(db, siyah.Id);
+            Assert.Equal(("Sahibin açıklaması", (DateTimeOffset?)saved, (DateTimeOffset?)saved), (after.Description, after.FieldsSavedAt?.ToUniversalTime(), after.AttributesSavedAt?.ToUniversalTime()));
+            Assert.Equal([seed.Linen], await ModelAttributeValuesAsync(db, model.Id));
+        }
+
+        // A card changed after the save: the cards' majority is the model's again.
+        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "UpdatedAt" = {saved.AddMinutes(1)} WHERE "Id" = {gri.Id}""");
+        Assert.Equal(1, (await ProductModelValues.RefreshTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None)).Written);
+        Assert.Equal("Gizli kartların açıklaması", (await ModelOfAsync(db, siyah.Id)).Description);
+        Assert.Equal([seed.Cotton], await ModelAttributeValuesAsync(db, model.Id));
+    }
+
     // KATALOG-6: a card whose link failed after its save (FamilyId left empty) is linked by the scan; the two-brand code
     // stays unlinked and reported; no card is written.
     [PostgreSqlFact]

@@ -13,7 +13,11 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // hold, on a tie the oldest card's (cards by CreatedAt, Id); the desi is the one most of its variants hold, on a tie the
 // smaller (the editor's editorOpenedDesi); the chart is the measurement set most charted cards hold, on a tie the oldest.
 // A model is written only where a value differs (the name compared by what it gives each colour, so an editor-saved name
-// spelled with another colour is kept); FieldsSavedAt / AttributesSavedAt are never touched here.
+// spelled with another colour is kept); FieldsSavedAt / AttributesSavedAt are never touched here. Fields or attributes
+// the owner saved in the editor after the last change of every card (ProductModelLinks.HoldsSavedFields /
+// HoldsSavedAttributes, the editor's own rule) are left as saved: the editor shows them, so writing the majority (which
+// may count cards the editor does not show) would flip the value between editor saves and nightly scans. The desi and
+// the size chart are always the cards'.
 // Callers: AppDbContext's save hook (ProductModelLinks.AfterSaveAsync) for every save that changes a card's shared field,
 // a variant's desi, a card-level attribute or a card's chart, so every EF write path (editor, create, Toplu Değer Ata,
 // Excel aktarımı, marketplace product imports, model-code correction, family save) writes through without code of its
@@ -87,6 +91,7 @@ public static class ProductModelValues
     {
         public required List<ProductModel> Models { get; init; }
         public required ILookup<Guid, Card> CardsByModel { get; init; }
+        public required Dictionary<Guid, DateTimeOffset> CardUpdatedAt { get; init; }
         public required ILookup<Guid, Variant> VariantsByCard { get; init; }
         public required ILookup<Guid, AttributeRow> AttributesByCard { get; init; }
         public required HashSet<Guid> ColorAttributeIds { get; init; }
@@ -100,7 +105,7 @@ public static class ProductModelValues
         var models = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && (modelIds == null || modelIds.Contains(x.Id))).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         var ids = models.Select(x => x.Id).ToArray();
         var cards = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.FamilyId != null && ids.Contains(x.FamilyId.Value))
-            .Select(x => new { x.Id, FamilyId = x.FamilyId!.Value, x.CreatedAt, x.Title, x.Description, x.BrandId, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays })
+            .Select(x => new { x.Id, FamilyId = x.FamilyId!.Value, x.CreatedAt, x.UpdatedAt, x.Title, x.Description, x.BrandId, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays })
             .ToListAsync(cancellationToken);
         var cardIds = cards.Select(x => x.Id).ToArray();
         var variants = (await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && cardIds.Contains(x.ProductId))
@@ -123,6 +128,7 @@ public static class ProductModelValues
             Models = models,
             CardsByModel = cards.OrderBy(x => x.CreatedAt).ThenBy(x => x.Id)
                 .ToLookup(x => x.FamilyId, x => new Card(x.Id, x.CreatedAt, colorOf.GetValueOrDefault(x.Id), x.Title, x.Description, x.BrandId, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays)),
+            CardUpdatedAt = cards.ToDictionary(x => x.Id, x => x.UpdatedAt),
             VariantsByCard = variants,
             AttributesByCard = attributes.ToLookup(x => x.ProductId),
             ColorAttributeIds = colorAttributeIds,
@@ -140,7 +146,7 @@ public static class ProductModelValues
 
     // What one model should hold, and where its cards disagree.
     private sealed record Target(
-        ProductModel Model, IReadOnlyList<Card> Cards, ProductFamilySharedFields.ModelFields Fields, string? TitleColor, bool KeepTitle,
+        ProductModel Model, IReadOnlyList<Card> Cards, ProductFamilySharedFields.ModelFields Fields, string? TitleColor, bool KeepTitle, bool FieldsSaved,
         decimal? Desi, IReadOnlyList<ProductModelLinks.ModelAttributeRow> Attributes, bool AttributesDiffer, string? Chart, IReadOnlyList<string> Differing);
 
     private static Target? Compute(Snapshot snapshot, ProductModel model)
@@ -170,8 +176,12 @@ public static class ProductModelValues
         // Variants of the model holding different desis (a variant with none only waits for one: the editor fills it).
         if (cards.SelectMany(card => snapshot.VariantsByCard[card.Id]).Select(x => x.Desi).OfType<decimal>().Where(x => x > 0).Distinct().Skip(1).Any()) differing.Add(Desi);
         if (charts.OfType<string>().Distinct(StringComparer.Ordinal).Skip(1).Any()) differing.Add(SizeChart);
-        var attributesDiffer = AttributeSetKey(snapshot.ModelAttributes.GetValueOrDefault(model.Id) ?? []) != setKeys[ProductFamilySharedFields.ModelAttributeCard(setKeys)];
-        return new Target(model, cards, fields, titleColor, keepTitle, desi, attributes, attributesDiffer, chart, differing);
+        // What the owner saved in the editor after the last change of every card stays (the editor's own rule).
+        var updatedAt = cards.Select(card => snapshot.CardUpdatedAt[card.Id]).ToList();
+        var fieldsSaved = ProductModelLinks.HoldsSavedFields(model, cards.Select(card => (snapshot.CardUpdatedAt[card.Id], card.CategoryId)));
+        var attributesDiffer = !ProductModelLinks.HoldsSavedAttributes(model.AttributesSavedAt, updatedAt)
+            && AttributeSetKey(snapshot.ModelAttributes.GetValueOrDefault(model.Id) ?? []) != setKeys[ProductFamilySharedFields.ModelAttributeCard(setKeys)];
+        return new Target(model, cards, fields, titleColor, keepTitle, fieldsSaved, desi, attributes, attributesDiffer, chart, differing);
     }
 
     public sealed record Outcome(int Models, int Written, IReadOnlyList<(string ModelCode, IReadOnlyList<string> Fields)> Differing);
@@ -240,7 +250,16 @@ public static class ProductModelValues
         var title = target.KeepTitle ? model.Title : Short(fields.Title, 320);
         var titleColor = target.KeepTitle ? model.TitleColor : target.TitleColor;
         var wrote = false;
-        if ((model.Title, model.TitleColor, model.Description, model.CategoryId, model.VatRate, model.VatInclusion, model.WarrantyMonths, model.DeliveryDays, model.Desi)
+        if (target.FieldsSaved)
+        {
+            if (model.Desi != target.Desi)
+            {
+                await db.ProductModels.Where(x => x.TenantId == model.TenantId && x.Id == model.Id)
+                    .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Desi, target.Desi).SetProperty(x => x.UpdatedAt, now).SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
+                wrote = true;
+            }
+        }
+        else if ((model.Title, model.TitleColor, model.Description, model.CategoryId, model.VatRate, model.VatInclusion, model.WarrantyMonths, model.DeliveryDays, model.Desi)
             != (title, titleColor, fields.Description, fields.CategoryId, fields.VatRate, fields.VatInclusion, fields.WarrantyMonths, fields.DeliveryDays, target.Desi))
         {
             await db.ProductModels.Where(x => x.TenantId == model.TenantId && x.Id == model.Id)
