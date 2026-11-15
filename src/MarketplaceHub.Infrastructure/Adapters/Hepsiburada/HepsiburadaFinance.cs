@@ -33,7 +33,7 @@ internal static class HepsiburadaFinanceRequestContract
     }
 
     // Istanbul calendar days, as the guide's example (dueDateStart=2021-08-01&dueDateEnd=2021-08-31); a date-time was refused (400).
-    private static string Local(DateTimeOffset value) => value.ToOffset(TimeSpan.FromHours(3)).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    private static string Local(DateTimeOffset value) => TurkeyTime.Format(value, "yyyy-MM-dd");
 }
 
 public static class HepsiburadaFinanceMapper
@@ -95,7 +95,7 @@ public static class HepsiburadaFinanceMapper
             && (text.EndsWith('Z') || text.Contains('+') || text.LastIndexOf('-') > 9))
             return withOffset.ToUniversalTime();
         return DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var local)
-            ? new DateTimeOffset(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), TimeSpan.FromHours(3)).ToUniversalTime()
+            ? TurkeyTime.FromLocal(local)
             : null;
     }
 }

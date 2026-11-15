@@ -103,7 +103,7 @@ public sealed partial class PazaramaHttpClient
     // Cancel requests carry refund ids; the waiting ones of the order are listed and decided one by one.
     private async Task<AdapterResult<PackageActionResult>> DecideCancelRequestsAsync(PazaramaRequestContext account, PackageActionCommand command, long orderNumber, int decision, CancellationToken cancellationToken)
     {
-        var today = timeProvider.GetUtcNow().ToOffset(TurkeyOffset).Date;
+        var today = timeProvider.GetUtcNow().ToOffset(TurkeyTime.Offset).Date;
         var listed = await SendAsync(account, HttpMethod.Post, CancelRequests, cancellationToken, Json(new
         {
             pageSize = 100,

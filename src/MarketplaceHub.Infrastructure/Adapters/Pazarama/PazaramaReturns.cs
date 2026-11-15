@@ -43,8 +43,8 @@ public sealed partial class PazaramaHttpClient : IReturnPort
     {
         pageSize = size,
         pageNumber = page,
-        requestStartDate = Day(start.ToOffset(TurkeyOffset).Date),
-        requestEndDate = Day(end.ToOffset(TurkeyOffset).Date.AddDays(1))
+        requestStartDate = Day(start.ToOffset(TurkeyTime.Offset).Date),
+        requestEndDate = Day(end.ToOffset(TurkeyTime.Offset).Date.AddDays(1))
     };
 
     // Explicit: IOrderPort.GetAsync has the same parameters on this class.
@@ -281,7 +281,7 @@ public static class PazaramaReturnMapper
         string[] formats = ["d MMMM yyyy HH:mm", "d MMMM yyyy H:mm", "yyyy-MM-dd HH:mm", "yyyy-MM-ddTHH:mm:ss", "yyyy-MM-ddTHH:mm:ss.FFFFFFF", "dd.MM.yyyy HH:mm"];
         foreach (var culture in new[] { CultureInfo.GetCultureInfo("tr-TR"), CultureInfo.InvariantCulture })
             if (DateTime.TryParseExact(text, formats, culture, DateTimeStyles.None, out var local))
-                return new DateTimeOffset(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), TimeSpan.FromHours(3)).ToUniversalTime();
+                return TurkeyTime.FromLocal(local);
         return null;
     }
 

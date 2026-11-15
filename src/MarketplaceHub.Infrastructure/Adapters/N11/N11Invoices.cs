@@ -101,17 +101,6 @@ public sealed partial class N11HttpClient : IInvoiceMarketplacePort
         && value[3..].All(char.IsAsciiDigit)
         && int.Parse(value[3..7], CultureInfo.InvariantCulture) is >= 2020 and <= 2099;
 
-    private static readonly TimeZoneInfo TurkeyTimeZone = FindTurkeyTimeZone();
-
-    private static TimeZoneInfo FindTurkeyTimeZone()
-    {
-        try { return TimeZoneInfo.FindSystemTimeZoneById("Europe/Istanbul"); }
-        catch (Exception exception) when (exception is TimeZoneNotFoundException or InvalidTimeZoneException)
-        {
-            return TimeZoneInfo.CreateCustomTimeZone("Turkey", TimeSpan.FromHours(3), "Turkey", "Turkey");
-        }
-    }
-
     private static string? Text(JsonElement element, string property) =>
         element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString())
             ? value.GetString()!.Trim()

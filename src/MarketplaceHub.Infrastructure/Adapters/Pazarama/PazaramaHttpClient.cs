@@ -30,7 +30,6 @@ public sealed partial class PazaramaHttpClient(
     internal const string Brands = "brand/getBrands";
     internal const string Orders = "order/getOrdersForApi";
     // Pazarama works in Turkey time; order dates are sent as plain dates.
-    internal static readonly TimeSpan TurkeyOffset = TimeSpan.FromHours(3);
     private readonly PazaramaOptions settings = options.Value;
 
     // Every Pazarama write goes through this gate: the server-wide switch, the connection switch,
@@ -128,7 +127,7 @@ public sealed partial class PazaramaHttpClient(
     // yesterday through tomorrow in Turkey time.
     internal static object OrderProbeBody(DateTimeOffset now)
     {
-        var today = now.ToOffset(TurkeyOffset).Date;
+        var today = now.ToOffset(TurkeyTime.Offset).Date;
         return new { pageSize = 1, pageNumber = 1, startDate = Day(today.AddDays(-1)), endDate = Day(today.AddDays(1)) };
     }
 

@@ -126,7 +126,7 @@ public static class PazaramaQuestionMapper
 
     // Turkey time, as Pazarama shows it.
     private static string Iso(DateTimeOffset value) =>
-        value.ToOffset(PazaramaHttpClient.TurkeyOffset).ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture);
+        value.ToOffset(TurkeyTime.Offset).ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture);
 
     public static MarketplaceQuestionPage Page(JsonElement root, int pageNumber)
     {

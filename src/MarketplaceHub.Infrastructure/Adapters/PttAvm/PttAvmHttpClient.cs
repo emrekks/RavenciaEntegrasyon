@@ -29,7 +29,6 @@ public sealed partial class PttAvmHttpClient(
     internal const string Orders = "SiparisKontrolListesiV2";
     internal const string StockList = "StokKontrolListesi";
     // PTT AVM works in Turkey time; order dates are sent as plain dates, as in the documented sample.
-    internal static readonly TimeSpan TurkeyOffset = TimeSpan.FromHours(3);
     private readonly PttAvmOptions settings = options.Value;
 
     private TimeSpan RequestTimeout => settings.Timeout > TimeSpan.Zero && settings.Timeout < TimeSpan.FromMinutes(2) ? settings.Timeout : TimeSpan.FromSeconds(30);
@@ -143,7 +142,7 @@ public sealed partial class PttAvmHttpClient(
     // SiparisKontrolListesiV2: at most 40 days apart; AktifSiparisler=0 returns every status.
     internal static IReadOnlyList<SoapParameter> OrderProbeParameters(DateTimeOffset now)
     {
-        var today = now.ToOffset(TurkeyOffset).Date;
+        var today = now.ToOffset(TurkeyTime.Offset).Date;
         return [new("BaslangicTarihi", Day(today.AddDays(-1))), new("BitisTarihi", Day(today)), new("AktifSiparisler", "0")];
     }
 

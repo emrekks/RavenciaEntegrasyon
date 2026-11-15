@@ -19,7 +19,7 @@ public sealed partial class PazaramaHttpClient : IOrderPort
         var size = Math.Clamp(page.Limit, 1, PazaramaOrderHistoryPolicy.PageSize);
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return CredentialMissing<AdapterPageResult<RemoteOrder>>();
-        var local = PazaramaOrderHistoryPolicy.TurkeyOffset;
+        var local = TurkeyTime.Offset;
         var body = new { pageSize = size, pageNumber, startDate = Day(start.ToOffset(local).Date), endDate = Day(end.ToOffset(local).Date) };
         var result = await SendAsync(account, HttpMethod.Post, Orders, cancellationToken, Json(body));
         var mapped = MapPage(result, size, pageNumber);
@@ -34,7 +34,7 @@ public sealed partial class PazaramaHttpClient : IOrderPort
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return CredentialMissing<RemoteOrder>();
         // By order number Pazarama looks six months back; the dates still have to be sent.
-        var today = timeProvider.GetUtcNow().ToOffset(PazaramaOrderHistoryPolicy.TurkeyOffset).Date;
+        var today = timeProvider.GetUtcNow().ToOffset(TurkeyTime.Offset).Date;
         var body = new { orderNumber = number, startDate = Day(today.AddMonths(-6)), endDate = Day(today.AddDays(1)) };
         var page = MapPage(await SendAsync(account, HttpMethod.Post, Orders, cancellationToken, Json(body)), 100, 1);
         if (!page.IsSuccess) return AdapterResult<RemoteOrder>.Failure(page.Error!, page.RateLimit);

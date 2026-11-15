@@ -265,7 +265,7 @@ public static class PazaramaOrderMapper
         if (text is null) return null;
         string[] formats = ["yyyy-MM-dd HH:mm", "yyyy-MM-dd HH:mm:ss", "yyyy-MM-ddTHH:mm:ss", "yyyy-MM-ddTHH:mm:ss.FFFFFFF", "yyyy-MM-dd"];
         return DateTime.TryParseExact(text, formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var local)
-            ? new DateTimeOffset(local, PazaramaOrderHistoryPolicy.TurkeyOffset).ToUniversalTime()
+            ? TurkeyTime.FromLocal(local)
             : TurkeyTime.Parse(text);
     }
 

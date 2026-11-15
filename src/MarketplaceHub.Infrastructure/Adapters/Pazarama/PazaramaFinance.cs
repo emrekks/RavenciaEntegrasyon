@@ -42,7 +42,7 @@ public static class PazaramaFinanceMapper
         orderId = orderNumber
     };
 
-    private static string Iso(DateTimeOffset value) => value.ToOffset(PazaramaHttpClient.TurkeyOffset).ToString("yyyy-MM-ddTHH:mm:ss.fff", CultureInfo.InvariantCulture);
+    private static string Iso(DateTimeOffset value) => value.ToOffset(TurkeyTime.Offset).ToString("yyyy-MM-ddTHH:mm:ss.fff", CultureInfo.InvariantCulture);
 
     // Only the lines of the asked order are kept: the service answers by date range. A line without a code (trxCode,
     // else trxId), its amount, its allowance (hakediş, what the payout pays) or its transaction date is not stored: it

@@ -165,7 +165,7 @@ public static class EfaturamRecipientNormalizer
 /// <summary>Every date and time sent to E-Faturam is Istanbul time (UTC+3 all year, no daylight saving since 2016).</summary>
 public static class EfaturamTurkeyTime
 {
-    public static readonly TimeSpan Offset = TimeSpan.FromHours(3);
+    public static readonly TimeSpan Offset = TurkeyTime.Offset;
 
     /// <summary>The Istanbul calendar day of an instant (order date, shipment date).</summary>
     public static DateOnly Day(DateTimeOffset value) => DateOnly.FromDateTime(value.ToOffset(Offset).DateTime);
