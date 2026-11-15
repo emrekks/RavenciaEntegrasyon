@@ -636,9 +636,29 @@ public sealed partial class MarketplaceJobProcessor
         {
             var completedCursor = await Cursor(tenantId, connectionId, "PRODUCTS", cancellationToken);
             completedCursor.OpaqueCursor = null;
-            completedCursor.LastModifiedWatermark = ProductImportScanPolicy.CompletedWatermark(importSession.CreatedAt, completedCursor.LastModifiedWatermark,
-                scoped: newOnly || existingOnly || mappingOnly || optionsOnly, failedModels: failedModels);
+            // ISLEYICI-1 follow-up: a failed model holds the watermark for at most MaxHeldRuns runs in a row. The count
+            // lives in a row of its own, made only once a run holds the watermark.
+            var holdCursor = await db.SyncCursors.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == ProductImportScanPolicy.WatermarkHoldResource, cancellationToken);
+            var completed = ProductImportScanPolicy.CompletedWatermark(importSession.CreatedAt, completedCursor.LastModifiedWatermark,
+                scoped: newOnly || existingOnly || mappingOnly || optionsOnly, failedModels, ProductImportScanPolicy.HeldRuns(holdCursor?.OpaqueCursor));
+            completedCursor.LastModifiedWatermark = completed.Watermark;
             completedCursor.Version++;
+            var heldCursorValue = ProductImportScanPolicy.HeldRunsCursor(completed.HeldRuns);
+            if (holdCursor is null && heldCursorValue is not null)
+                holdCursor = await Cursor(tenantId, connectionId, ProductImportScanPolicy.WatermarkHoldResource, cancellationToken);
+            if (holdCursor is not null && holdCursor.OpaqueCursor != heldCursorValue)
+            {
+                holdCursor.OpaqueCursor = heldCursorValue;
+                holdCursor.Version++;
+            }
+            var releaseKey = $"product-sync-watermark-released:{connectionId}";
+            if (completed.Released)
+                await RecordIssue(tenantId, releaseKey, "PRODUCT_IMPORT_FAILED_LEFT_BEHIND",
+                    $"Bazı ürünler art arda {ProductImportScanPolicy.MaxHeldRuns} ürün çekiminde aktarılamadı; değişen ürün taraması bu ürünleri beklemeden ilerledi. Aktarılamayan ürünler Operasyon Sorunları'ndaki ürün aktarım uyarılarında duruyor; Tam Katalog Taraması ya da tekil ürün çekimi onları yeniden okur.",
+                    cancellationToken);
+            // A whole catalog read without a failed model has read the products left behind again.
+            else if (failedModels == 0 && effectiveFullScan && !(newOnly || existingOnly || mappingOnly || optionsOnly))
+                await ResolveIssue(tenantId, releaseKey, cancellationToken);
         }
         await db.SaveChangesAsync(cancellationToken);
         await db.ProductImportSessions

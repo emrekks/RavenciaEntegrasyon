@@ -543,6 +543,33 @@ public static class ProductImportScanPolicy
     public static DateTimeOffset? CompletedWatermark(DateTimeOffset scanStartedAt, DateTimeOffset? current, bool scoped, int failedModels = 0) =>
         scoped || failedModels > 0 ? current : scanStartedAt.ToUniversalTime().AddSeconds(-60);
 
+    // The resource of the count of runs in a row that held the watermark for a failed model. Kept in OpaqueCursor
+    // ("held:n"), not in ConsecutiveFailureCount: the runs succeeded, and that column raises the failing-read notice.
+    public const string WatermarkHoldResource = "PRODUCTS_WATERMARK_HOLD";
+    // ISLEYICI-1 follow-up (16 Nov 2026): a model that fails on every run held the watermark for good, so every
+    // incremental read re-read a growing range. The watermark is held for at most this many runs in a row; then it moves
+    // on, and the failed model stays in its open PRODUCT_IMPORT_FAILED issue (a full scan or a single lookup reads it again).
+    public const int MaxHeldRuns = 3;
+
+    public static int HeldRuns(string? opaqueCursor) =>
+        opaqueCursor is { Length: > 5 } value && value.StartsWith("held:", StringComparison.Ordinal)
+            && int.TryParse(value.AsSpan(5), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var held)
+            ? held : 0;
+
+    public static string? HeldRunsCursor(int heldRuns) =>
+        heldRuns > 0 ? "held:" + heldRuns.ToString(System.Globalization.CultureInfo.InvariantCulture) : null;
+
+    // The watermark a completed unscoped run leaves, the runs in a row it has now held the watermark for a failed model
+    // (0 when it moved), and whether it moved only because the hold ran out. A scoped run neither moves nor counts.
+    public static (DateTimeOffset? Watermark, int HeldRuns, bool Released) CompletedWatermark(DateTimeOffset scanStartedAt, DateTimeOffset? current, bool scoped, int failedModels, int heldRunsBefore)
+    {
+        if (scoped) return (current, heldRunsBefore, false);
+        var moved = scanStartedAt.ToUniversalTime().AddSeconds(-60);
+        if (failedModels == 0) return (moved, 0, false);
+        var held = heldRunsBefore + 1;
+        return held >= MaxHeldRuns ? (moved, 0, true) : (current, held, false);
+    }
+
     // A catalog run failed as a whole when products failed and no model reached the end of its processing (no COMPLETED
     // staging row). Before, it compared the failed count with every product received, drafts and archived ones the run
     // filters out included, so a run whose every processed product failed could still count as a success.
