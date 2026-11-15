@@ -3,8 +3,8 @@
 Docs: https://developers.hepsiburada.com/tr/companies/hepsiburada (older: `/hepsiburada/reference/...`,
 changelog `/hepsiburada/changelog/...`). Both return 403 to WebFetch; use WebSearch snippets or the browser.
 
-Code: `Adapters/Hepsiburada/` — `HepsiburadaHttpClient.cs`, `HepsiburadaPackageOperations.cs`,
-`HepsiburadaQuestions.cs`, `HepsiburadaJsonMapper.cs`, `HepsiburadaAuthenticationHandler.cs`,
+Code: `Adapters/Hepsiburada/` — `HepsiburadaHttpClient.cs` (+ the `HepsiburadaHttpClient.*.cs` partials: Catalog, Connection, Invoices, Orders, PriceInventory, ProductWrites, Returns, Transport), `HepsiburadaPackageOperations.cs`,
+`HepsiburadaQuestions.cs`, `HepsiburadaJsonMapper.cs` (+ `.Catalog.cs`, `.Invoices.cs`, `.Orders.cs`, `.Packages.cs`, `.ProductImports.cs`, `.Returns.cs`), `HepsiburadaAuthenticationHandler.cs`,
 `HepsiburadaRateLimitHandler.cs`, `HepsiburadaWebhookVerifier.cs`, `HepsiburadaInvoiceDeliveryPolicy.cs`.
 
 ## Connection
@@ -34,7 +34,7 @@ Code: `Adapters/Hepsiburada/` — `HepsiburadaHttpClient.cs`, `HepsiburadaPackag
 - Reads `X-RateLimit-Limit/Remaining/Reset` and `Retry-After`; retry waits Retry-After, else the reset time.
   Request id header `X-Request-Id`. Timeout 30 s.
 - Seller cancellations max 100 per day. Inventory upload: adapter caps 1000 items ("4000 was never confirmed");
-  the price-inventory result check in `MarketplaceJobProcessor.cs` uses the same constant (`MaxInventoryUploadItems`).
+  the price-inventory result check in `MarketplaceJobProcessor.PriceInventory.cs` uses the same constant (`MaxInventoryUploadItems`).
 
 ## Windows and paging (offset + limit, always both)
 - Paid orders `GET orders/merchantid/{m}`: `begindate`/`enddate` max 24 h (else `HEPSIBURADA_ORDER_WINDOW_TOO_LARGE`),

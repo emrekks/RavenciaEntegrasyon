@@ -4,9 +4,9 @@ Docs: https://developers.trendyol.com (`/docs/1-servis-limitleri`, `/v2.0/docs/a
 `/v2.0/docs/getshipmentpackagesstream`, `/v2.0/docs/getshipmentpackages`, `/v2.0/docs/getting-returned-orders-getclaims`,
 `/v2.0/docs/current-account-statement-integration.md`).
 
-Code: `Adapters/Trendyol/` — `TrendyolHttpClient.cs` (+ `.Webhooks.cs`), `TrendyolFinance.cs`, `TrendyolQuestions.cs`,
+Code: `Adapters/Trendyol/` — `TrendyolHttpClient.cs` (+ the `TrendyolHttpClient.*.cs` partials: Catalog, Connection, Diagnostics, Invoices, Orders, Packages, ProductWrites, Returns, Transport, Webhooks), `TrendyolFinance.cs`, `TrendyolQuestions.cs`,
 `TrendyolAuthenticationHandler.cs`, `TrendyolResilienceHandler.cs`, `TrendyolOrderTier.cs`, `TrendyolOptions.cs`,
-`TrendyolStockRules.cs`, `Mapping/TrendyolJsonMapper.cs`.
+`TrendyolStockRules.cs`, `Mapping/TrendyolJsonMapper.cs` (+ `.Orders.cs`, `.Products.cs`, `.References.cs`, `.Returns.cs`).
 
 ## Connection
 - Prod `https://apigw.trendyol.com/integration/`, stage `https://stageapigw.trendyol.com/integration/`.
