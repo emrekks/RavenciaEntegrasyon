@@ -265,6 +265,36 @@ public sealed class StockMovementCharacterizationPostgreSqlTests(PostgreSqlTenan
         }
     }
 
+    // SIPARIS-STOK-8 (bug): the manual stock writes took any ledger row with the request's key as "already done", so a
+    // key a return restock had used made the stock count answer 200 without changing the stock. Only an earlier manual
+    // adjustment under the key is a replay now; a key of another movement is refused and the stock stays as it was.
+    [PostgreSqlFact]
+    public async Task ManualStockWrite_WithTheKeyOfAReturnRestock_IsRefusedInsteadOfReportedDone()
+    {
+        var seed = await SeedAsync("sm-key-reuse");
+        try
+        {
+            var key = $"sm-key-reuse-{Guid.NewGuid():N}";
+            await using (var db = fixture.CreateContext())
+                Assert.Null((await Sales(db).ApplyDispositionAsync(seed.TenantId, Actor, seed.ClaimId, new(seed.ReturnLineId, "PASS", 1m, "Kontrol edildi"), key, "corr", CancellationToken.None)).Error);
+            await using (var db = fixture.CreateContext())
+            {
+                var set = await Inventory(db).SetOnHandAsync(seed.TenantId, Actor, seed.VariantId, new StockSetCommand(10m, 6m, "Sayım", "ev-reuse"), key, "corr", CancellationToken.None);
+                Assert.Equal("IDEMPOTENCY_KEY_REUSED", set.Error?.Code);
+                Assert.Equal(409, set.Error!.Status);
+                var adjust = await Inventory(db).AdjustAsync(seed.TenantId, Actor, seed.VariantId, new StockAdjustmentCommand(4m, "Sayım", "ev-reuse"), key, "corr", CancellationToken.None);
+                Assert.Equal("IDEMPOTENCY_KEY_REUSED", adjust.Error?.Code);
+            }
+            await using var verify = fixture.CreateContext();
+            Assert.Equal(6m, (await verify.InventoryItems.AsNoTracking().SingleAsync(x => x.Id == seed.ItemId)).OnHand);
+            Assert.Equal(["RETURN_PASS"], (await MovementsAsync(verify, seed)).Select(x => x.MovementType));
+        }
+        finally
+        {
+            await CleanupAsync(seed.TenantId);
+        }
+    }
+
     private sealed record Seed(Guid TenantId, Guid ConnectionId, Guid ProductId, Guid VariantId, Guid ItemId, Guid OrderId, Guid OrderLineId, Guid ClaimId, Guid ReturnLineId, Guid ShortfallLineId, Guid ReservationId);
 
     private static string Describe(StockLedgerEntry row) =>
