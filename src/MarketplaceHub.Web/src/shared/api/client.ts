@@ -153,12 +153,17 @@ async function fetchThroughRestart(url: string, init?: RequestInit): Promise<Res
   }
 }
 
+// 409 IDEMPOTENCY_IN_PROGRESS: the first attempt with the same key is still being handled. Not a failure; the person is
+// told calmly that the result will show up, and the key is kept (shared/idempotency.ts isStillRunning).
+export const stillRunningMessage = 'Bu işlem hâlâ sürüyor; birkaç saniye sonra sonucu listede göreceksiniz.'
+
 export async function hubApi<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetchThroughRestart(`/api/v1${path}`, automaticReadInit(init))
   if (!response.ok) {
     const problem = await response.json().catch(() => ({})) as ApiProblem
     if (isSignedOutProblem(response.status, problem.code)) onUnauthorized()
-    throw new ApiRequestError(problem.title ?? problem.code ?? `İşlem tamamlanamadı (${response.status}).`, response.status, problem.code, problem.fieldErrors, problem.tenants)
+    const message = response.status === 409 && problem.code === 'IDEMPOTENCY_IN_PROGRESS' ? stillRunningMessage : problem.title ?? problem.code ?? `İşlem tamamlanamadı (${response.status}).`
+    throw new ApiRequestError(message, response.status, problem.code, problem.fieldErrors, problem.tenants)
   }
   if (response.status === 204) return undefined as T
   return readSuccessJson<T>(response)

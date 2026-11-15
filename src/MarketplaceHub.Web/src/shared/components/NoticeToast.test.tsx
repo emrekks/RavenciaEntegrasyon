@@ -2,6 +2,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ErrorToast, NoticeToast } from './NoticeToast'
+import { ApiRequestError, stillRunningMessage } from '../api/client'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -52,5 +53,13 @@ describe('notice toast', () => {
     const view = render(<ErrorToast title="Kategori Kaydedilemedi" error={new Error('Ad zorunlu.')} />)
     expect(view.querySelector('strong')?.textContent).toBe('Kategori Kaydedilemedi')
     expect(view.querySelector('p')?.textContent).toBe('Ad zorunlu.')
+  })
+
+  it('tells a still-running answer (409 IDEMPOTENCY_IN_PROGRESS) calmly, as information', () => {
+    const view = render(<ErrorToast title="Ürün Oluşturulamadı" error={new ApiRequestError(stillRunningMessage, 409, 'IDEMPOTENCY_IN_PROGRESS')} />)
+    expect(view.querySelector('.app-toast')?.className).toContain('app-toast-info')
+    expect(view.querySelector('.app-toast')?.getAttribute('role')).toBe('status')
+    expect(view.querySelector('strong')?.textContent).toBe('İşlem Sürüyor')
+    expect(view.querySelector('p')?.textContent).toBe(stillRunningMessage)
   })
 })

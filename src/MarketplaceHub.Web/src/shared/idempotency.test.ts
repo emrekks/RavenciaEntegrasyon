@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { ApiRequestError } from './api/client'
-import { failedWithHttpAnswer, idempotencyKeyForAttempt, newIdempotencyKey, resetAnsweredIdempotencyKeys, sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from './idempotency'
+import { failedWithHttpAnswer, idempotencyKeyForAttempt, isStillRunning, newIdempotencyKey, resetAnsweredIdempotencyKeys, sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from './idempotency'
 import { httpsUrlProblem, safeExternalUrl } from './safe-url'
 
 describe('versioned key attempts (G4)', () => {
@@ -65,7 +65,7 @@ describe('versioned key attempts (G4)', () => {
     const send = (outcome: 'ok' | 'network' | number) => sendWithVersionedIdempotencyKey(formKey, async key => {
       used.push(key)
       if (outcome === 'network') throw new TypeError('Failed to fetch')
-      if (typeof outcome === 'number') throw new ApiRequestError('SKU zaten var', outcome)
+      if (typeof outcome === 'number') throw new ApiRequestError('SKU zaten var', outcome, 'SKU_CONFLICT')
       return 'created'
     }).catch(() => undefined)
     await send('network')
@@ -77,6 +77,30 @@ describe('versioned key attempts (G4)', () => {
     expect(used[2]).toBe(formKey)
     expect(used[3]).not.toBe(formKey)
     expect(used[3]).toMatch(/^product-create:[0-9a-f-]{36}$/)
+  })
+
+  it('keeps the key while the server says the same request is still running (409 IDEMPOTENCY_IN_PROGRESS)', async () => {
+    const formKey = newIdempotencyKey('product-create')
+    const used: string[] = []
+    const send = (outcome: 'ok' | 'network' | 'running') => sendWithVersionedIdempotencyKey(formKey, async key => {
+      used.push(key)
+      if (outcome === 'network') throw new TypeError('Failed to fetch')
+      if (outcome === 'running') throw new ApiRequestError('Bu işlem hâlâ sürüyor.', 409, 'IDEMPOTENCY_IN_PROGRESS')
+      return 'created'
+    }).catch(() => undefined)
+    await send('network')
+    await send('running')
+    await send('running')
+    await send('ok')
+    expect(used).toEqual([formKey, formKey, formKey, formKey])
+    expect(idempotencyKeyForAttempt(formKey)).toBe(formKey)
+  })
+
+  it('tells a still-running answer from other refusals', () => {
+    expect(isStillRunning(new ApiRequestError('x', 409, 'IDEMPOTENCY_IN_PROGRESS'))).toBe(true)
+    expect(isStillRunning(new ApiRequestError('x', 409, 'IDEMPOTENCY_RESULT_UNKNOWN'))).toBe(false)
+    expect(isStillRunning(new ApiRequestError('x', 409, 'SKU_CONFLICT'))).toBe(false)
+    expect(isStillRunning(new TypeError('Failed to fetch'))).toBe(false)
   })
 })
 
