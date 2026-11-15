@@ -106,7 +106,7 @@ function csvSafeText(text: string) {
 }
 async function loadOrderPage(filters: OrderFilters, limit: number, after: string | null, page = 1): Promise<Page<Order>> {
   const params = new URLSearchParams({ limit: String(limit) })
-  orderFilterParams(filters, true).forEach((value, key) => params.set(key, value))
+  orderFilterParams(filters).forEach((value, key) => params.set(key, value))
   if (after) params.set('after', after)
   if (filters.status !== 'ALL') params.set('status', filters.status)
   params.set('sort', filters.sort)
@@ -115,7 +115,7 @@ async function loadOrderPage(filters: OrderFilters, limit: number, after: string
 }
 // The list filters as query parameters (status, sort and paging aside): the list and its tab counters
 // read the same set (audit 2026-10-20 S12).
-function orderFilterParams(filters: OrderFilters, serverLabelFilter: boolean) {
+function orderFilterParams(filters: OrderFilters) {
   const params = new URLSearchParams()
   if (filters.search.trim()) params.set('search', filters.search.trim())
   if (filters.platform !== 'ALL') params.set('platform', filters.platform)
@@ -125,7 +125,8 @@ function orderFilterParams(filters: OrderFilters, serverLabelFilter: boolean) {
   if (filters.invoice !== 'ALL') params.set('invoice', filters.invoice)
   if (filters.invoiceType !== 'ALL') params.set('invoiceType', filters.invoiceType)
   if (filters.invoiceRegion !== 'ALL') params.set('invoiceRegion', filters.invoiceRegion)
-  if (serverLabelFilter && filters.label !== 'ALL') params.set('labelPrinted', filters.label === 'PRINTED' ? 'true' : 'false')
+  // "Etiket Durumu" is the server's filter (labelPrintedAt kept per package).
+  if (filters.label !== 'ALL') params.set('labelPrinted', filters.label === 'PRINTED' ? 'true' : 'false')
   if (filters.dateFrom) params.set('dateFrom', istanbulDayBoundary(filters.dateFrom))
   if (filters.dateTo) params.set('dateTo', istanbulDayBoundary(filters.dateTo, true))
   // Orders with a line cancelled on these Istanbul days (the dashboard's İptaller card opens today's).
@@ -816,17 +817,15 @@ export function OrdersPage() {
     return () => window.clearTimeout(timeout)
   }, [bulkNotice, bulkNoticeKind, bulkNoticeVersion])
   const [pageCursors, setPageCursors] = useState<Record<number, string | null>>({ 1: null })
-  // "Etiket Durumu" is filtered by the server once it reports the filter (labelPrintedAt kept per package); until then the
-  // whole order history is read and filtered here, with the print marks of this browser.
-  const [serverLabelFilter, setServerLabelFilter] = useState(false)
-  const hasLocalFilters = filters.label !== 'ALL' && !serverLabelFilter
+  // "Etiket Durumu" is filtered by the server (labelPrintedAt kept per package), like every other list filter: an address
+  // opened with it reads one page (WEB-SAYFALAR-8: it read the whole order history first, until the first answer said
+  // the server filters it).
   const orderCursor = pageCursors[page] ?? null
   const orderQueryFilters: OrderFilters = { ...filters, sort: keepSort(filters.status, filters.sort), platform: 'ALL', platforms: selectedPlatforms ?? [] }
-  const ordersQuery = useQuery({ queryKey: hasLocalFilters ? ['orders', 'filtered-all', orderQueryFilters] : ['orders', 'page', orderQueryFilters, pageSize, page, orderCursor], queryFn: () => hasLocalFilters ? loadAllOrderPages(orderQueryFilters) : loadOrderPage(orderQueryFilters, pageSize, orderCursor, page), placeholderData: keepPreviousData, staleTime: 30_000, refetchOnWindowFocus: true })
-  useEffect(() => { if (ordersQuery.data?.supportedFilters?.includes('labelPrinted')) setServerLabelFilter(true) }, [ordersQuery.data])
+  const ordersQuery = useQuery({ queryKey: ['orders', 'page', orderQueryFilters, pageSize, page, orderCursor], queryFn: () => loadOrderPage(orderQueryFilters, pageSize, orderCursor, page), placeholderData: keepPreviousData, staleTime: 30_000, refetchOnWindowFocus: true })
   // The tab counters count the orders each tab lists for the same filters (date, search, platforms, cargo,
   // invoice, label), so a counter equals its tab's total (audit 2026-10-20 S12).
-  const summaryParams = orderFilterParams(orderQueryFilters, serverLabelFilter).toString()
+  const summaryParams = orderFilterParams(orderQueryFilters).toString()
   // The column filters' counts: orders per platform and cargo under the other filters and the status tab.
   const facetParams = new URLSearchParams(summaryParams); if (orderQueryFilters.status !== 'ALL') facetParams.set('status', orderQueryFilters.status)
   const facets = useQuery({ queryKey: ['orders', 'facets', facetParams.toString()], queryFn: () => hubApi<OrderFacets>(`/orders/facets?${facetParams.toString()}`), staleTime: 30_000 })
@@ -867,7 +866,6 @@ export function OrdersPage() {
   const cargos = Array.from(new Set([...Object.keys(facets.data?.cargos ?? {}).sort((left, right) => left.localeCompare(right, 'tr-TR')), ...all.flatMap(item => [orderDisplayShipment(item)?.cargoProviderName ?? item.cargoProviderName].filter((value): value is string => !!value)), ...(filters.cargo !== 'ALL' ? [filters.cargo] : [])]))
   const platformOptions = marketplacePlatformOptions(connections.data?.items ?? [], allOrders.map(item => ({ platformCode: item.platformCode, displayName: item.platformDisplayName })))
   const invoiceStatuses = [['FATURA_BEKLIYOR', 'Fatura Bekliyor'], ['FATURA_ISLENIYOR', 'Fatura İletiliyor'], ['FATURA_PLATFORMA_AKTARILMADI', 'Fatura İletilemedi'], ['FATURA_INCELEME_GEREKLI', 'İnceleme Gerekli'], ['FATURA_KONTROLDE', 'Faturası Mevcut'], ['FATURA_REDDEDILDI', 'Fatura Oluşturulamadı'], ['FATURA_BELIRSIZ', 'Fatura Sonucu Belirsiz'], ['FATURA_IPTAL', 'Fatura İptal']] as const
-  const isLabelPrinted = (item: Order) => Boolean(item.labelPrintedAt) || (['a4', 'sticker'] as ShippingLabelFormat[]).some(format => printedLabels.has(printedShippingLabelKey(item.id, format)))
   // The cancellation cards show today and the micro-export card the pending ones; each opens the list on exactly what it counted.
   const openCard = activeDayCard(filters)
   const openDayCard = (card: DayCard) => { const patch = card === openCard ? dayCardCloseFilters() : dayCardFilters(card, istanbulDateKey()); const next = applyFilterPatch(filters, filterForm, { ...patch, sort: keepSort(patch.status, filterForm.sort) }); setFilterForm(next.form); setFilters(next.applied); setPage(1) }
@@ -884,16 +882,15 @@ export function OrdersPage() {
   const todayCancellationMetric = (pick: (counts: NonNullable<typeof todayCancellations>) => number | undefined) => cancellationsToday.isError ? { value: undefined, loading: false, error: true } : { value: todayCancellations ? pick(todayCancellations) : undefined, loading: !todayCancellations, error: false }
   // Status, search, platform, cargo, listing, date range, sort and pagination
   // are applied by the API. Only local presentation filters remain here.
-  const items = all.filter(item => !hasLocalFilters || (filters.label === 'PRINTED' ? isLabelPrinted(item) : !isLabelPrinted(item)))
+  const items = all
   async function exportOrders() {
     setExporting(true)
     try {
-    // The orders the list shows: filtered by the server's labelPrintedAt (the list's own filter), or, while an older
-    // server cannot filter the label, the same locally filtered set the list shows; never re-filtered here with this
-    // browser's print marks, so the file and the list always agree.
-    const read = hasLocalFilters ? undefined : await loadAllOrderPages(orderQueryFilters)
+    // The orders the list shows: filtered by the server's labelPrintedAt (the list's own filter); never re-filtered here
+    // with this browser's print marks, so the file and the list always agree.
+    const read = await loadAllOrderPages(orderQueryFilters)
     const exportItems = ordersToExport(items, read)
-    const cut = read ?? (ordersQuery.data as Partial<Awaited<ReturnType<typeof loadAllOrderPages>>> | undefined)
+    const cut = read
     // A text cell that a spreadsheet would read as a formula starts with an apostrophe (audit 2026-10-20 S19).
     const escapeCsv = (value: unknown) => `"${csvSafeText(String(value ?? '')).replaceAll('"', '""')}"`
     const rows = [
@@ -929,12 +926,12 @@ export function OrdersPage() {
       setExporting(false)
     }
   }
-  const totalOrderCount = hasLocalFilters ? items.length : ordersQuery.data?.totalCount ?? items.length
+  const totalOrderCount = ordersQuery.data?.totalCount ?? items.length
   const totalPages = Math.max(1, Math.ceil(totalOrderCount / pageSize))
-  const pageItems = (hasLocalFilters ? items.slice((page - 1) * pageSize, page * pageSize) : items).map(item => ({ ...item, invoiceCreationEnabled: connections.data?.items.find(connection => connection.id === item.connectionId)?.invoiceCreationEnabled ?? false })); const selectablePageItems = pageItems.filter(item => item.derivedStatus.toUpperCase() !== 'CANCELLED'); const allPageSelected = selectablePageItems.length > 0 && selectablePageItems.every(item => selectedIds.includes(item.id)); const selectedOrders = pageItems.filter(item => selectedIds.includes(item.id)); const shopifySelectedOrders = selectedOrders.filter(item => item.platformCode === 'SHOPIFY'); const cargoEditableOrders = selectedOrders.filter(canChangeOrderCargo); const cargoChangeHelp = cargoEditableOrders.length < selectedOrders.length ? `Kargo firması yalnız kargoya verilmemiş Trendyol paketlerinde değiştirilebilir; seçili ${selectedOrders.length - cargoEditableOrders.length} sipariş atlanır.` : undefined; const shopifyInvoiceCreationBlocked = shopifySelectedOrders.some(item => !item.invoiceId && !item.invoiceCreationEnabled); const labelBatchItems = selectedOrders.filter(item => Boolean(orderDisplayShipment(item)?.cargoTrackingNumber ?? item.cargoTrackingNumber) && !isMicroExportLabelBlocked(item))
-  const hasNextPage = hasLocalFilters ? page < totalPages : Boolean(ordersQuery.data?.nextCursor)
+  const pageItems = items.map(item => ({ ...item, invoiceCreationEnabled: connections.data?.items.find(connection => connection.id === item.connectionId)?.invoiceCreationEnabled ?? false })); const selectablePageItems = pageItems.filter(item => item.derivedStatus.toUpperCase() !== 'CANCELLED'); const allPageSelected = selectablePageItems.length > 0 && selectablePageItems.every(item => selectedIds.includes(item.id)); const selectedOrders = pageItems.filter(item => selectedIds.includes(item.id)); const shopifySelectedOrders = selectedOrders.filter(item => item.platformCode === 'SHOPIFY'); const cargoEditableOrders = selectedOrders.filter(canChangeOrderCargo); const cargoChangeHelp = cargoEditableOrders.length < selectedOrders.length ? `Kargo firması yalnız kargoya verilmemiş Trendyol paketlerinde değiştirilebilir; seçili ${selectedOrders.length - cargoEditableOrders.length} sipariş atlanır.` : undefined; const shopifyInvoiceCreationBlocked = shopifySelectedOrders.some(item => !item.invoiceId && !item.invoiceCreationEnabled); const labelBatchItems = selectedOrders.filter(item => Boolean(orderDisplayShipment(item)?.cargoTrackingNumber ?? item.cargoTrackingNumber) && !isMicroExportLabelBlocked(item))
+  const hasNextPage = Boolean(ordersQuery.data?.nextCursor)
   function goToPreviousPage() { setPage(current => Math.max(1, current - 1)); setSelectedIds([]) }
-  function goToNextPage() { if (!hasNextPage) return; const next = ordersQuery.data?.nextCursor; if (next) setPageCursors(current => ({ ...current, [page + 1]: next })); setPage(current => hasLocalFilters ? Math.min(totalPages, current + 1) : current + 1); setSelectedIds([]) }
+  function goToNextPage() { if (!hasNextPage) return; const next = ordersQuery.data?.nextCursor; if (next) setPageCursors(current => ({ ...current, [page + 1]: next })); setPage(current => current + 1); setSelectedIds([]) }
   function goToPage(nextPage: number) { const target = Math.min(Math.max(1, nextPage), totalPages); if (target === page) return; setPage(target); setSelectedIds([]) }
   useEffect(() => {
     const next = ordersQuery.data?.nextCursor
