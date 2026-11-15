@@ -18,10 +18,14 @@ public static class ProductFamilyScope
 
     private static async Task<List<Guid>> RuleProductIdsAsync(AppDbContext db, Guid tenantId, Guid? brandId, string? modelCode, IQueryable<ProductVariant> variants, CancellationToken cancellationToken)
     {
-        if (ProductFamilyKeyPolicy.ModelCodeKey(modelCode) is null) return [];
+        if (ProductFamilyKeyPolicy.ModelCodeKey(modelCode) is not { } key) return [];
+        // KATALOG-8: only the brand's cards that may hold the key are read (ModelCodeOwnership.ProductIdsWithKeys), not
+        // every coded variant of the brand; the key is still compared in memory.
+        var candidates = ModelCodeOwnership.ProductIdsWithKeys(db, tenantId, [key]);
         var rows = await variants
             .Where(variant => variant.TenantId == tenantId
                 && variant.ModelCode != null
+                && candidates.Contains(variant.ProductId)
                 && db.Products.Any(product => product.TenantId == tenantId && product.Id == variant.ProductId && product.BrandId == brandId))
             .Select(variant => new { variant.ProductId, variant.ModelCode })
             .Distinct()

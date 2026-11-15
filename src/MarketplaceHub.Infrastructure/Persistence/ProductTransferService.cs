@@ -347,6 +347,24 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
         if (changedModelCodes.Count > 0
             && await ModelCodeOwnership.FindOtherAsync(db, tenantId, changedModelCodes, changes.Select(change => byId[change.VariantId].ProductId).Distinct().ToArray(), cancellationToken) is { } modelCodeHolder)
             return ServiceResult<ProductTransferApplyResult>.Fail("PRODUCT_TRANSFER_MODEL_CODE_TAKEN", $"Dosyadaki yeni bir model kodu '{modelCodeHolder.Title}' ürününde kullanılıyor; yazılırsa iki ürün tek ürünün renkleri gibi birleşir. Dosyayı düzeltip yeniden yükleyin.", 409);
+        // KATALOG-1: the model code is the model's: every row of a card the upload re-codes ends on one code (the preview
+        // refuses it too; checked again here, as the client's plan is not trusted).
+        var recodedChanges = modelCodeChanges.Where(change => ProductFamilyKeyPolicy.ModelCodeKey(byId[change.VariantId].ModelCode) != ProductFamilyKeyPolicy.ModelCodeKey(change.ModelCode)).ToList();
+        if (recodedChanges.Count > 0)
+        {
+            var recodedProductIds = recodedChanges.Select(change => byId[change.VariantId].ProductId).Distinct().ToArray();
+            var askedCodes = modelCodeChanges.GroupBy(change => change.VariantId).ToDictionary(group => group.Key, group => group.First().ModelCode);
+            var cardRows = new List<(Guid ProductId, Guid Id, string? ModelCode)>();
+            foreach (var chunk in recodedProductIds.Chunk(Chunk))
+                cardRows.AddRange((await db.ProductVariants.AsNoTracking().Where(variant => variant.TenantId == tenantId && chunk.Contains(variant.ProductId))
+                    .Select(variant => new { variant.ProductId, variant.Id, variant.ModelCode }).ToListAsync(cancellationToken)).Select(row => (row.ProductId, row.Id, row.ModelCode)));
+            foreach (var card in cardRows.GroupBy(row => row.ProductId))
+            {
+                var finals = card.Select(row => askedCodes.TryGetValue(row.Id, out var asked) ? asked : row.ModelCode).ToList();
+                if (finals.Select(ProductFamilyKeyPolicy.ModelCodeKey).OfType<string>().Distinct(StringComparer.Ordinal).Count() > 1)
+                    return ServiceResult<ProductTransferApplyResult>.Fail(CatalogService.ModelCodeMixedCode, "Model kodu bir kartın tüm satırlarında birlikte değişir; dosya bir kartın yalnız bazı satırlarına yeni model kodu yazıyor. Hiçbir değişiklik kaydedilmedi; ürünün tüm satırlarına aynı model kodunu yazıp yeniden yükleyin.", 422);
+            }
+        }
 
         var now = timeProvider.GetUtcNow();
         var applyId = Guid.CreateVersion7();
@@ -472,6 +490,52 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
                 product.VatInclusion = product.VatInclusion?.Trim().ToUpperInvariant() == "EXCLUDED" ? "EXCLUDED" : "INCLUDED";
                 vatUpdated++;
                 touchedProducts.Add(product.Id);
+            }
+        }
+        // KATALOG-3: the name and the VAT are the model's too (the editor writes them to every colour card and shows the
+        // cards' majority): a file row's name or VAT goes to every colour card of its model under the same brand, each card
+        // with its own colour word in the name, so a later editor save does not quietly take the old value back. A card the
+        // file names itself keeps the file's own value; a model code under two brands (ambiguous) is never crossed.
+        var modelFieldChanges = productChanges.Where(change => change.Title is not null || change.VatRate is not null).ToList();
+        if (modelFieldChanges.Count > 0)
+        {
+            var fieldCards = await ModelCardsAsync(tenantId, modelFieldChanges.Select(change => change.ProductId).ToArray(), cancellationToken);
+            var ownTitles = productChanges.Where(change => change.Title is not null).Select(change => change.ProductId).ToHashSet();
+            var ownVats = productChanges.Where(change => change.VatRate is not null).Select(change => change.ProductId).ToHashSet();
+            var colourCardIds = fieldCards.Values.SelectMany(cards => cards).Distinct().ToArray();
+            var colours = new Dictionary<Guid, string?>();
+            foreach (var chunk in colourCardIds.Chunk(Chunk))
+                foreach (var card in (await db.ProductVariants.AsNoTracking().Where(variant => variant.TenantId == tenantId && chunk.Contains(variant.ProductId))
+                             .OrderBy(variant => variant.SortOrder).ThenBy(variant => variant.Id).Select(variant => new { variant.ProductId, variant.OptionSignature }).ToListAsync(cancellationToken))
+                             .GroupBy(variant => variant.ProductId))
+                    colours[card.Key] = card.Select(variant => ProductFamilyColorOrder.ColorOf(variant.OptionSignature)).FirstOrDefault(colour => !string.IsNullOrWhiteSpace(colour));
+            foreach (var change in modelFieldChanges)
+            {
+                var changed = productById[change.ProductId];
+                foreach (var cardId in fieldCards[change.ProductId].Where(id => id != change.ProductId))
+                {
+                    if (!productById.TryGetValue(cardId, out var card))
+                    {
+                        card = await db.Products.SingleAsync(item => item.TenantId == tenantId && item.Id == cardId, cancellationToken);
+                        productById[cardId] = card;
+                    }
+                    if (card.BrandId != changed.BrandId) continue;
+                    if (change.Title is { } title && !ownTitles.Contains(cardId)
+                        && ProductFamilySharedFields.TitleFor(title, colours.GetValueOrDefault(change.ProductId), colours.GetValueOrDefault(cardId)) is var cardTitle && card.Title != cardTitle)
+                    {
+                        card.Title = cardTitle;
+                        titlesUpdated++;
+                        touchedProducts.Add(cardId);
+                        contentProducts.Add(cardId);
+                    }
+                    if (change.VatRate is decimal modelVat && !ownVats.Contains(cardId) && card.VatRate != modelVat)
+                    {
+                        card.VatRate = modelVat;
+                        card.VatInclusion = card.VatInclusion?.Trim().ToUpperInvariant() == "EXCLUDED" ? "EXCLUDED" : "INCLUDED";
+                        vatUpdated++;
+                        touchedProducts.Add(cardId);
+                    }
+                }
             }
         }
         // The brand is the model's: it goes to every colour card of the model, under any brand (as Toplu Değer Ata writes it).

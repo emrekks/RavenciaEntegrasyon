@@ -25,9 +25,11 @@ internal static class CatalogModelConfiguration
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<Category>().WithMany().HasForeignKey(x => new { x.TenantId, x.CategoryId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<Brand>().WithMany().HasForeignKey(x => new { x.TenantId, x.BrandId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
-            // A deleted model only unlinks its cards (they fall back to the model-code rule). The key is the model id alone
-            // so that SET NULL clears FamilyId and not the card's tenant; ProductModelLinks always narrows by tenant.
-            entity.HasOne<ProductModel>().WithMany().HasForeignKey(x => x.FamilyId).OnDelete(DeleteBehavior.SetNull);
+            // A deleted model only unlinks its cards (they fall back to the model-code rule). KATALOG-15: the key carries the
+            // tenant, so a card can only be linked to a model of its own tenant; in the database it is ON DELETE SET NULL
+            // ("FamilyId") (PostgreSQL 15+ column list, written by hand in the migration in place of EF's all-column SET NULL)
+            // so the card's tenant stays.
+            entity.HasOne<ProductModel>().WithMany().HasForeignKey(x => new { x.TenantId, x.FamilyId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.SetNull);
             entity.HasIndex(x => x.FamilyId);
         });
         builder.Entity<ProductModel>(entity =>
@@ -40,17 +42,21 @@ internal static class CatalogModelConfiguration
             // One model per brand and model-code key; cards without a brand are one brand too (NULLS NOT DISTINCT).
             entity.HasIndex(x => new { x.TenantId, x.BrandId, x.ModelCodeKey }).IsUnique().AreNullsDistinct(false);
             entity.HasIndex(x => new { x.TenantId, x.ModelCodeKey });
-            // A model is derived from its cards: when its tenant, brand or category goes, it goes too and its cards fall back to
-            // the model-code rule (products.FamilyId SET NULL) until ProductModelLinks links them again.
+            // A model is derived from its cards: when its tenant or brand goes, it goes too and its cards fall back to the
+            // model-code rule (products.FamilyId SET NULL) until ProductModelLinks links them again.
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<Brand>().WithMany().HasForeignKey(x => new { x.TenantId, x.BrandId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne<Category>().WithMany().HasForeignKey(x => new { x.TenantId, x.CategoryId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
+            // KATALOG-7: the category is a field of the model, not its identity: a deleted category (the Kategoriler reset)
+            // only empties the model's CategoryId, and the model keeps its marketplace links and saved attributes. In the
+            // database the key is ON DELETE SET NULL ("CategoryId") (PostgreSQL 15+ column list, written by hand in the
+            // migration in place of EF's all-column SET NULL, so the tenant column stays).
+            entity.HasOne<Category>().WithMany().HasForeignKey(x => new { x.TenantId, x.CategoryId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.SetNull);
         });
         builder.Entity<ProductModelAttribute>(entity =>
         {
             entity.ToTable("product_model_attributes", "catalog", table => table.HasCheckConstraint("ck_product_model_attributes_exactly_one_value", "num_nonnulls(\"ValueId\",\"TextValue\",\"NumberValue\",\"BooleanValue\")=1"));
             entity.HasKey(x => x.Id); entity.Property(x => x.NumberValue).HasPrecision(19, 4);
-            entity.HasIndex(x => new { x.TenantId, x.ModelId, x.AttributeId, x.ValueId }).IsUnique();
+            entity.HasIndex(x => new { x.TenantId, x.ModelId, x.AttributeId, x.ValueId }).IsUnique().AreNullsDistinct(false);
             // Derived from the cards: it goes with its model, and with an attribute or value the panel deletes.
             entity.HasOne<ProductModel>().WithMany().HasForeignKey(x => new { x.TenantId, x.ModelId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<AttributeDefinition>().WithMany().HasForeignKey(x => new { x.TenantId, x.AttributeId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
@@ -168,7 +174,8 @@ internal static class CatalogModelConfiguration
             entity.HasOne<Product>().WithMany().HasForeignKey(x => new { x.TenantId, x.ProductId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<ProductVariant>().WithMany().HasForeignKey(x => new { x.TenantId, x.VariantId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<FileAsset>().WithMany().HasForeignKey(x => x.FileAssetId).OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne<ProductModel>().WithMany().HasForeignKey(x => x.FamilyId).OnDelete(DeleteBehavior.SetNull);
+            // KATALOG-15: as products.FamilyId, tenant-scoped, ON DELETE SET NULL ("FamilyId") in the database.
+            entity.HasOne<ProductModel>().WithMany().HasForeignKey(x => new { x.TenantId, x.FamilyId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.SetNull);
             entity.HasIndex(x => x.FamilyId);
         });
     }

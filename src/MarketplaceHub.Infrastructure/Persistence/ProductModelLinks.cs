@@ -173,10 +173,38 @@ public static class ProductModelLinks
         ReconcileAsync(db, tenantId, null, now, cancellationToken);
 
     // keys null: the whole tenant.
+    // KATALOG-6: the reconcile of a key reads the cards, opens or re-keys a model, links the cards and deletes the models
+    // left without one in several statements; two reconciles of one key at once could delete the model the other just
+    // opened. Outside a caller's transaction it runs in a short transaction of its own holding an advisory lock per key
+    // (shared tenant lock, exclusive for the whole tenant), so such reconciles take turns and a failure leaves nothing
+    // half done. Inside a caller's transaction it runs as before (no lock, so a long import holds nothing for others).
     public static async Task ReconcileAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<string>? keys, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var keyArray = keys?.Distinct(StringComparer.Ordinal).ToArray();
+        var keyArray = keys?.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
         if (keyArray is { Length: 0 }) return;
+        if (db.Database.CurrentTransaction is not null)
+        {
+            await ReconcileCoreAsync(db, tenantId, keyArray, now, cancellationToken);
+            return;
+        }
+        await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken);
+        var tenantLock = $"product-models:{tenantId:N}";
+        if (keyArray is null)
+            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({tenantLock}, 0))", cancellationToken);
+        else
+        {
+            // The keys are locked in one statement and one global order (their hash), so two reconciles never wait on each
+            // other in a circle.
+            var keyLocks = keyArray.Select(key => $"{tenantLock}:{key}").ToArray();
+            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock_shared(hashtextextended({tenantLock}, 0))", cancellationToken);
+            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(s.h) FROM (SELECT DISTINCT hashtextextended(k, 0) AS h FROM unnest({keyLocks}) AS k ORDER BY 1) s", cancellationToken);
+        }
+        await ReconcileCoreAsync(db, tenantId, keyArray, now, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    private static async Task ReconcileCoreAsync(AppDbContext db, Guid tenantId, string[]? keyArray, DateTimeOffset now, CancellationToken cancellationToken)
+    {
         // The variants of every card that may hold one of the keys: SQL narrows by the key where it can compute it and
         // keeps every code it cannot (other non-ASCII letters); the exact key is computed here.
         var codeColumn = "c.\"ModelCode\"";
@@ -220,12 +248,14 @@ public static class ProductModelLinks
 
         var openIssueKeys = (await db.OperationalIssues.AsNoTracking().Where(x => x.TenantId == tenantId && x.Code == AmbiguousCode && x.Status != IssueStatus.Resolved).Select(x => x.DedupeKey).ToListAsync(cancellationToken)).ToHashSet(StringComparer.Ordinal);
         var desired = new Dictionary<Guid, Guid?>();
+        // Models given another key in this run (KATALOG-2): no longer a model of the key they were read under.
+        var rekeyed = new HashSet<Guid>();
         foreach (var key in targetKeys.Order(StringComparer.Ordinal))
         {
             var cards = cardKeys.Where(x => x.Key == key && products.ContainsKey(x.ProductId))
                 .Select(x => (Card: products[x.ProductId], x.Color, x.Code))
                 .OrderBy(x => x.Card.CreatedAt).ThenBy(x => x.Card.Id).ToList();
-            var keyModels = models.Where(x => x.ModelCodeKey == key).ToList();
+            var keyModels = models.Where(x => x.ModelCodeKey == key && !rekeyed.Contains(x.Id)).ToList();
             var brands = cards.Select(x => x.Card.BrandId).Distinct().ToList();
             if (brands.Count == 1)
             {
@@ -236,6 +266,22 @@ public static class ProductModelLinks
                     && await db.ProductModels.Where(x => x.TenantId == tenantId && x.Id == moving.Id && !db.ProductModels.Any(other => other.TenantId == tenantId && other.BrandId == brandId && other.ModelCodeKey == key))
                         .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.BrandId, brandId).SetProperty(x => x.UpdatedAt, now).SetProperty(x => x.Version, x => x.Version + 1), cancellationToken) == 1)
                     target = moving.Id;
+                // KATALOG-2: the cards' code was corrected together. A model is kept by its id, not re-opened under the new
+                // code: when every card linked to one model of another key now holds this key (none stays behind on the old
+                // code, and no card of another key was given it in this run), that model takes the new code, so its
+                // marketplace model links and saved attributes stay. Cards of another model or of none may join it.
+                if (target is null
+                    && models.Where(model => model.ModelCodeKey != key && !rekeyed.Contains(model.Id) && cards.Any(x => x.Card.FamilyId == model.Id))
+                        .OrderByDescending(model => cards.Count(x => x.Card.FamilyId == model.Id)).ThenBy(model => model.Id).FirstOrDefault() is { } recoding
+                    && linkedElsewhere.Where(x => x.FamilyId == recoding.Id).All(x => cards.Any(card => card.Card.Id == x.Id))
+                    && !desired.Any(pair => pair.Value == recoding.Id)
+                    && await db.ProductModels.Where(x => x.TenantId == tenantId && x.Id == recoding.Id && !db.ProductModels.Any(other => other.TenantId == tenantId && other.BrandId == brandId && other.ModelCodeKey == key))
+                        .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.BrandId, brandId).SetProperty(x => x.ModelCode, Short(cards[0].Code, 160)).SetProperty(x => x.ModelCodeKey, key)
+                            .SetProperty(x => x.UpdatedAt, now).SetProperty(x => x.Version, x => x.Version + 1), cancellationToken) == 1)
+                {
+                    rekeyed.Add(recoding.Id);
+                    target = recoding.Id;
+                }
                 if (target is null)
                 {
                     var fields = ProductFamilySharedFields.ModelValues(
@@ -518,6 +564,31 @@ public static class ProductModelLinks
                 "Status" = CASE WHEN i."Status" = 'Resolved' THEN 'Open' ELSE i."Status" END,
                 "ResolvedAt" = NULL
             """, cancellationToken);
+    }
+
+    public const string LinkFailedCode = "PRODUCT_MODEL_LINK_FAILED";
+    public const string LinkFailedDedupeKey = "product-model-link-failed";
+
+    // KATALOG-6: a model link or model field write that failed after the save stood (the save is kept, the link waits for
+    // the next save) is no longer silent: one open PRODUCT_MODEL_LINK_FAILED issue per tenant names the last failure. Best
+    // effort: a failure to record it is not the caller's.
+    public static async Task RecordLinkFailureAsync(AppDbContext db, Guid tenantId, Exception exception, DateTimeOffset now)
+    {
+        var summary = Short($"Ürün kartlarının model bağı kayıttan sonra güncellenemedi ({exception.GetType().Name}: {exception.Message}). Kayıt duruyor; bağ bir sonraki kayıtta yeniden denenir.", 1000);
+        try
+        {
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO ops.operational_issues AS i ("Id", "TenantId", "DedupeKey", "Code", "Summary", "Status", "FirstSeenAt", "LastSeenAt", "OccurrenceCount", "ResolvedAt")
+                VALUES ({Guid.CreateVersion7()}, {tenantId}, {LinkFailedDedupeKey}, {LinkFailedCode}, {summary}, 'Open', {now.ToUniversalTime()}, {now.ToUniversalTime()}, 1, NULL)
+                ON CONFLICT ("TenantId", "DedupeKey") DO UPDATE SET
+                    "Summary" = EXCLUDED."Summary",
+                    "LastSeenAt" = EXCLUDED."LastSeenAt",
+                    "OccurrenceCount" = i."OccurrenceCount" + 1,
+                    "Status" = CASE WHEN i."Status" = 'Resolved' THEN 'Open' ELSE i."Status" END,
+                    "ResolvedAt" = NULL
+                """, CancellationToken.None);
+        }
+        catch (Exception recordFailure) when (recordFailure is System.Data.Common.DbException or InvalidOperationException) { }
     }
 
     private static Task ResolveAmbiguityAsync(AppDbContext db, Guid tenantId, string key, DateTimeOffset now, CancellationToken cancellationToken)
