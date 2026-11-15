@@ -1,5 +1,21 @@
-import { describe, expect, it } from 'vitest'
-import { addressBlockFields, defaultShippingLabelSettings, normalizeShippingLabelSettings, shippingLabelPageCss } from './shipping-label'
+import { afterEach, describe, expect, it } from 'vitest'
+import { addressBlockFields, defaultShippingLabelSettings, loadPrintedShippingLabels, markShippingLabelPrinted, normalizeShippingLabelSettings, shippingLabelPageCss } from './shipping-label'
+
+describe('printed shipping labels (WEB-ALTYAPI-5)', () => {
+  afterEach(() => localStorage.clear())
+
+  it('keeps the printed keys as a bounded recent list and still reads an old plain list', () => {
+    localStorage.setItem('ravencia.printedShippingLabels', JSON.stringify(['old:a4']))
+    expect(loadPrintedShippingLabels()).toEqual(['old:a4'])
+
+    expect(markShippingLabelPrinted('o1', 'sticker')).toBe('o1:sticker')
+    expect(markShippingLabelPrinted('o1', 'sticker')).toBe('o1:sticker')
+    expect(loadPrintedShippingLabels()).toEqual(['old:a4', 'o1:sticker'])
+    const stored = JSON.parse(localStorage.getItem('ravencia.printedShippingLabels') ?? '[]') as Array<{ key: string; at: number }>
+    expect(stored.map(entry => entry.key)).toEqual(['old:a4', 'o1:sticker'])
+    expect(stored.every(entry => Number.isFinite(entry.at))).toBe(true)
+  })
+})
 
 describe('shipping label settings', () => {
   it('preserves multiple barcode blocks with distinct ids', () => {
