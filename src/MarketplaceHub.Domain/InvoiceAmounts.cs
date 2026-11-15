@@ -285,7 +285,7 @@ public static class InvoiceAmounts
         return text;
     }
 
-    private static decimal Money(decimal value) => decimal.Round(value, 2, MidpointRounding.AwayFromZero);
+    private static decimal Money(decimal value) => MoneyRounding.Round(value);
 
     private static string IntegerToTurkish(long value)
     {

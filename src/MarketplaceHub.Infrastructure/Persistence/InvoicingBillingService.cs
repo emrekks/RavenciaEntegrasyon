@@ -964,7 +964,7 @@ public sealed partial class InvoicingBillingService(
     }
 
     internal static decimal KeptAmount(decimal amount, decimal? keptShare) =>
-        keptShare is { } share and >= 0 and < 1 ? decimal.Round(amount * share, 2, MidpointRounding.AwayFromZero) : amount;
+        keptShare is { } share and >= 0 and < 1 ? MoneyRounding.Round(amount * share) : amount;
 
     // What the returns mean for an order no invoice was issued for yet (owner's rule of 6 Nov 2026): every unit back,
     // no sale invoice; some back, the invoice leaves them out. An issued invoice, or one the marketplace already holds,
