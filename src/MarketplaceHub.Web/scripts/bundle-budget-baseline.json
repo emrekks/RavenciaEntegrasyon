@@ -1,5 +1,5 @@
 {
-  "totalJs": 3064819,
+  "totalJs": 3094470,
   "chunks": {
     "ApiHealthView.css": [
       3494
@@ -11,19 +11,19 @@
       1337
     ],
     "BulkFieldDialog.js": [
-      10684
+      10674
     ],
     "BulkPlatformUpdateDialog.css": [
       1367
     ],
     "BulkPlatformUpdateDialog.js": [
-      6625
+      6613
     ],
     "BulkPublishDialog.css": [
       2042
     ],
     "BulkPublishDialog.js": [
-      19499
+      19502
     ],
     "ChangePill.css": [
       437
@@ -50,13 +50,13 @@
       629
     ],
     "DashboardPage.js": [
-      30892
+      30890
     ],
     "date-range.js": [
       854
     ],
     "DateRangePicker.js": [
-      6688
+      6926
     ],
     "dist.js": [
       145822
@@ -107,7 +107,7 @@
       79635
     ],
     "invoicing.js": [
-      88253
+      88349
     ],
     "job-outcome-notice.js": [
       592
@@ -128,7 +128,7 @@
       177385
     ],
     "MappingPages.js": [
-      203915
+      203625
     ],
     "marketplace-platform-support.js": [
       2464
@@ -170,7 +170,7 @@
       15533
     ],
     "OrdersPage.js": [
-      122414
+      122581
     ],
     "package-label.js": [
       77
@@ -193,38 +193,32 @@
     "PriceStockSendLog.js": [
       9374
     ],
-    "product-delivery-days.js": [
-      1748
-    ],
     "product-editor-hydration.css": [
       73761
     ],
     "product-image-lookups.js": [
       607
     ],
+    "product-media-save.js": [
+      16135
+    ],
     "ProductEditorPages.css": [
       13792
     ],
     "ProductEditorPages.js": [
-      281355
+      309874
     ],
     "ProductQuickEditModal.js": [
-      29056
+      29053
     ],
     "ProductsPage.css": [
       6856
     ],
     "ProductsPage.js": [
-      103300
+      103376
     ],
     "PromotionsPage.js": [
-      81731
-    ],
-    "publication-status.css": [
-      4729
-    ],
-    "publication-status.js": [
-      40046
+      81797
     ],
     "PublicationJobVariants.css": [
       2560
@@ -232,11 +226,17 @@
     "PublicationJobVariants.js": [
       21581
     ],
+    "PublishIssueBadge.css": [
+      4729
+    ],
+    "PublishIssueBadge.js": [
+      40066
+    ],
     "questions.css": [
       38253
     ],
     "questions.js": [
-      32982
+      33030
     ],
     "QueueQuotaView.css": [
       7142
@@ -257,7 +257,7 @@
       4941
     ],
     "ReportsPage.js": [
-      196746
+      196793
     ],
     "responsive.css": [
       27677
@@ -270,6 +270,9 @@
     ],
     "safe-url.js": [
       477
+    ],
+    "sanitizeHtml.js": [
+      1748
     ],
     "shared.css": [
       114815,
@@ -292,7 +295,7 @@
       61744
     ],
     "SystemSettingsPage.js": [
-      149725
+      149729
     ],
     "tab-slide.js": [
       1738
@@ -305,9 +308,6 @@
     ],
     "tr-number.js": [
       710
-    ],
-    "trendyol-unapproved.js": [
-      37782
     ],
     "turkey-map.js": [
       66385
@@ -324,9 +324,6 @@
     "use-metric-source.js": [
       1070
     ],
-    "use-pttavm-manual-writes.js": [
-      16138
-    ],
     "useDismissable.js": [
       1788
     ],
@@ -337,7 +334,10 @@
       2667
     ],
     "ValuePicker.js": [
-      6657
+      6803
+    ],
+    "variant-stock-set.js": [
+      38180
     ],
     "view-tabs.css": [
       10351
