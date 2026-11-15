@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CommissionTariffRow } from './CommissionTariffsPanel'
 import { compactRowPage } from './commission-tariff-rows.test-util'
 import { expandRowPage, prefetchLastTariff, rememberTariff } from './commission-tariff-rows'
+import { setStorageScope } from '../../../shared/storage-scope'
 
 // A live row (RYP004-07, 9 Nov 2026) as the long form gave it, and one whose bands' costs differ and whose band rate
 // is not its choice's rate.
@@ -53,5 +54,25 @@ describe('commission tariff rows in the short form', () => {
     expect(prefetch).not.toHaveBeenCalled()
     prefetchLastTariff(client, null, rowsQuery)
     expect(prefetch.mock.calls.map(([options]) => options.queryKey)).toEqual([['commission-tariffs', 'store-1'], ['commission-tariff-rows', 'store-1', 't1']])
+  })
+
+  it('keeps the last tariff per person: another account signed in here does not prefetch it (WEB-ALTYAPI-9)', () => {
+    const client = new QueryClient()
+    const prefetch = vi.spyOn(client, 'prefetchQuery').mockResolvedValue(undefined)
+    const rowsQuery = (connectionId: string, tariffId: string) => ({ queryKey: ['commission-tariff-rows', connectionId, tariffId], queryFn: async () => compactRowPage({ items: [] }) as never })
+    try {
+      setStorageScope('tenant-a', 'user-1')
+      rememberTariff({ connectionId: 'store-1', tariffId: 't1' })
+      expect(localStorage.getItem('rv-commission-tariff-last@tenant-a:user-1')).not.toBeNull()
+      setStorageScope('tenant-a', 'user-2')
+      prefetchLastTariff(client, null, rowsQuery)
+      expect(prefetch).not.toHaveBeenCalled()
+      setStorageScope('tenant-a', 'user-1')
+      prefetchLastTariff(client, null, rowsQuery)
+      expect(prefetch).toHaveBeenCalled()
+    } finally {
+      setStorageScope(null, null)
+      localStorage.clear()
+    }
   })
 })

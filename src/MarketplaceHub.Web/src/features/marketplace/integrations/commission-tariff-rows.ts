@@ -1,5 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
+import { scopedStorageKey } from '../../../shared/storage-scope'
 import type { CommissionBand, CommissionChoice, CommissionTariff, CommissionTariffRow } from './CommissionTariffsPanel'
 
 export type RowPage = { items: CommissionTariffRow[]; totalCount: number; page: number; pageSize: number }
@@ -55,22 +56,23 @@ export const tariffsQuery = (connectionId: string) => ({
   queryFn: () => hubApi<CommissionTariff[]>(`/connections/${connectionId}/commission-tariffs`)
 })
 
-// The store and tariff the tab last opened on by itself (no period picked), kept in this browser only.
+// The store and tariff the tab last opened on by itself (no period picked), kept in this browser only and per person
+// (WEB-ALTYAPI-9: another account signed in here neither reads nor prefetches it).
 const lastTariffKey = 'rv-commission-tariff-last'
 type LastTariff = { connectionId: string; tariffId: string }
 
 export function rememberTariff(last: LastTariff) {
-  try { localStorage.setItem(lastTariffKey, JSON.stringify(last)) } catch { /* storage off: nothing is prefetched next time */ }
+  try { localStorage.setItem(scopedStorageKey(lastTariffKey), JSON.stringify(last)) } catch { /* storage off: nothing is prefetched next time */ }
 }
 
 // A remembered tariff the server no longer has (deleted, store reset) is dropped, so the next visit opens on the list's own first tariff.
 export function forgetTariff() {
-  try { localStorage.removeItem(lastTariffKey) } catch { /* storage off */ }
+  try { localStorage.removeItem(scopedStorageKey(lastTariffKey)) } catch { /* storage off */ }
 }
 
 function lastTariff(): LastTariff | null {
   try {
-    const value = JSON.parse(localStorage.getItem(lastTariffKey) ?? 'null') as Partial<LastTariff> | null
+    const value = JSON.parse(localStorage.getItem(scopedStorageKey(lastTariffKey)) ?? 'null') as Partial<LastTariff> | null
     return typeof value?.connectionId === 'string' && typeof value.tariffId === 'string' ? { connectionId: value.connectionId, tariffId: value.tariffId } : null
   } catch {
     return null
