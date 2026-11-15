@@ -312,6 +312,21 @@ public sealed class ReturnListEquivalencePostgreSqlTests(PostgreSqlTenantIsolati
             var newSummary = await MeasureAsync((service, _) => service.BuildReturnSummaryAsync(tenantId, options with { Status = "APPROVED" }, MarketplaceSalesService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal), CancellationToken.None));
             var newCargo = await MeasureAsync((service, _) => service.ReturnCardPageAsync(tenantId, 20, 1, null, options with { Cargo = "Aras Kargo" }, CancellationToken.None));
             var newAllSummary = await MeasureAsync((service, _) => service.BuildReturnSummaryAsync(tenantId, options, MarketplaceSalesService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal), CancellationToken.None));
+            // SIPARIS-STOK-9 round 5: the search, the invoice label filter and the summary of every tab, old and new.
+            var oldAllSummary = await MeasureAsync((service, db) => LegacyReturnListQueries.BuildReturnSummaryAsync(service, db, tenantId, options, CancellationToken.None));
+            var invoiceOptions = options with { InvoiceStatus = "FATURA_KONTROLDE" };
+            var oldInvoice = await MeasureAsync((service, db) => LegacyReturnListQueries.ReturnCardPageAsync(service, db, cursors, tenantId, 20, 1, null, invoiceOptions, CancellationToken.None));
+            var newInvoice = await MeasureAsync((service, _) => service.ReturnCardPageAsync(tenantId, 20, 1, null, invoiceOptions, CancellationToken.None));
+            var oldInvoiceSummary = await MeasureAsync((service, db) => LegacyReturnListQueries.BuildReturnSummaryAsync(service, db, tenantId, invoiceOptions, CancellationToken.None));
+            var newInvoiceSummary = await MeasureAsync((service, _) => service.BuildReturnSummaryAsync(tenantId, invoiceOptions, MarketplaceSalesService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal), CancellationToken.None));
+            var nameOptions = options with { Search = "Ayşe" };
+            var oldName = await MeasureAsync((service, db) => LegacyReturnListQueries.ReturnCardPageAsync(service, db, cursors, tenantId, 20, 1, null, nameOptions, CancellationToken.None));
+            var newName = await MeasureAsync((service, _) => service.ReturnCardPageAsync(tenantId, 20, 1, null, nameOptions, CancellationToken.None));
+            var numberOptions = options with { Search = "EQ-1042" };
+            var oldNumber = await MeasureAsync((service, db) => LegacyReturnListQueries.ReturnCardPageAsync(service, db, cursors, tenantId, 20, 1, null, numberOptions, CancellationToken.None));
+            var newNumber = await MeasureAsync((service, _) => service.ReturnCardPageAsync(tenantId, 20, 1, null, numberOptions, CancellationToken.None));
+            var oldSearchSummary = await MeasureAsync((service, db) => LegacyReturnListQueries.BuildReturnSummaryAsync(service, db, tenantId, options with { Search = "eq" }, CancellationToken.None));
+            var newSearchSummary = await MeasureAsync((service, _) => service.BuildReturnSummaryAsync(tenantId, options with { Search = "eq" }, MarketplaceSalesService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal), CancellationToken.None));
             // The same requests with the card columns not filled (the claims the old code wrote): the computation of
             // 15 Nov 2026 wave 3 plus the staleness check.
             await using (var clear = fixture.CreateContext())
@@ -329,8 +344,16 @@ public sealed class ReturnListEquivalencePostgreSqlTests(PostgreSqlTenantIsolati
             output.WriteLine($"page (search): old {oldSearch.Queries} queries / {oldSearch.Rows} rows, columns unfilled {bareSearch.Queries} / {bareSearch.Rows}, filled {newSearch.Queries} / {newSearch.Rows}");
             output.WriteLine($"page (cargo filter): columns unfilled {bareCargo.Queries} queries / {bareCargo.Rows} rows, filled {newCargo.Queries} / {newCargo.Rows}");
             output.WriteLine($"summary (approved tab): old {oldSummary.Queries} queries / {oldSummary.Rows} rows, columns unfilled {bareSummary.Queries} / {bareSummary.Rows}, filled {newSummary.Queries} / {newSummary.Rows}");
-            output.WriteLine($"summary (all tabs): columns unfilled {bareAllSummary.Queries} queries / {bareAllSummary.Rows} rows, filled {newAllSummary.Queries} / {newAllSummary.Rows}");
+            output.WriteLine($"summary (all tabs): old {oldAllSummary.Queries} queries / {oldAllSummary.Rows} rows, columns unfilled {bareAllSummary.Queries} / {bareAllSummary.Rows}, filled {newAllSummary.Queries} / {newAllSummary.Rows}");
+            output.WriteLine($"page (invoice label): old {oldInvoice.Queries} queries / {oldInvoice.Rows} rows, new {newInvoice.Queries} / {newInvoice.Rows}");
+            output.WriteLine($"summary (invoice label): old {oldInvoiceSummary.Queries} queries / {oldInvoiceSummary.Rows} rows, new {newInvoiceSummary.Queries} / {newInvoiceSummary.Rows}");
+            output.WriteLine($"page (search, customer name): old {oldName.Queries} queries / {oldName.Rows} rows, new {newName.Queries} / {newName.Rows}");
+            output.WriteLine($"page (search, order number): old {oldNumber.Queries} queries / {oldNumber.Rows} rows, new {newNumber.Queries} / {newNumber.Rows}");
+            output.WriteLine($"summary (search): old {oldSearchSummary.Queries} queries / {oldSearchSummary.Rows} rows, new {newSearchSummary.Queries} / {newSearchSummary.Rows}");
             Assert.True(newSummary.Rows <= bareSummary.Rows, $"summary rows {newSummary.Rows} vs {bareSummary.Rows} unfilled");
+            Assert.True(newAllSummary.Rows < oldAllSummary.Rows, $"all tabs summary rows {newAllSummary.Rows} vs {oldAllSummary.Rows}");
+            Assert.True(newInvoice.Rows < oldInvoice.Rows, $"invoice page rows {newInvoice.Rows} vs {oldInvoice.Rows}");
+            Assert.True(newInvoiceSummary.Rows < oldInvoiceSummary.Rows, $"invoice summary rows {newInvoiceSummary.Rows} vs {oldInvoiceSummary.Rows}");
             Assert.True(newPage.Rows * 2 < oldPage.Rows, $"page rows {newPage.Rows} vs {oldPage.Rows}");
             Assert.True(newTab.Rows < oldTab.Rows, $"tab rows {newTab.Rows} vs {oldTab.Rows}");
             Assert.True(newSearch.Rows <= oldSearch.Rows, $"search rows {newSearch.Rows} vs {oldSearch.Rows}");
