@@ -344,7 +344,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             .ToHashSet();
         // Adding an outbox event updates ChangeTracker. Materialize the source
         // entries first so the enumeration is not invalidated by that append.
-        foreach (var entry in ChangeTracker.Entries().Where(x => x.State is EntityState.Added or EntityState.Modified).ToList())
+        // FATURA-FINANS-3: a deleted row is announced too (a return line, an allocation...): the reports read from it as from
+        // a changed one. One event per aggregate and save, as for the others; deletes outside the tracker
+        // (ExecuteDelete, raw SQL) still announce themselves.
+        foreach (var entry in ChangeTracker.Entries().Where(x => x.State is EntityState.Added or EntityState.Modified or EntityState.Deleted).ToList())
         {
             // A row whose only change is a "last checked" time is still saved, but the screens have nothing new to show.
             if (SyncNoOpWrites.IsCheckOnly(entry)) continue;
@@ -356,7 +359,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
                 Id = Guid.CreateVersion7(),
                 TenantId = change.Value.TenantId,
                 ResourceType = change.Value.ResourceType,
-                OperationType = entry.State == EntityState.Added ? "created" : "updated",
+                OperationType = entry.State switch { EntityState.Added => "created", EntityState.Deleted => "deleted", _ => "updated" },
                 AggregateType = change.Value.AggregateType,
                 AggregateId = change.Value.AggregateId,
                 AggregateVersion = change.Value.Version,
