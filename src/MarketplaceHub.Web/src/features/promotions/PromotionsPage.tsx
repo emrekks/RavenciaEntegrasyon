@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useEffect, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
@@ -13,7 +14,7 @@ import { PanelSelect } from '../../shared/PanelSelect'
 import { EmptyState } from '../../shared/components/EmptyState'
 import { connectionQueries } from '../../shared/api/query-keys'
 
-type Connection = { id: string; platformCode: string; displayName: string; status: string; environment: string }
+type Connection = ApiAnswer<'getConnections'>['items'][number]
 
 // The promotion pages: the weekly commission tariff first, then Trendyol's offers; the open one is kept in the address
 // (?tab=…) so a refresh or a shared link lands on it.

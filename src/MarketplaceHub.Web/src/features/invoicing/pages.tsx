@@ -66,7 +66,7 @@ type InvoiceWorkspaceAnswer = ApiAnswer<'getInvoiceWorkspacePage'>
 type InvoiceWorkspace = Omit<InvoiceWorkspaceAnswer['items'][number], 'saleReturnScope'> & { saleReturnScope: SaleReturnScope | null }
 type InvoiceWorkspacePage = Omit<InvoiceWorkspaceAnswer, 'items'> & { items: InvoiceWorkspace[] }
 type InvoiceDetail = ApiAnswer<'getInvoicesById'>
-type Connection = { id: string; platformCode: string; displayName: string; status: string; environment: string; hasCredential: boolean }
+type Connection = ApiAnswer<'getConnections'>['items'][number]
 type InvoiceNoticeKind = 'success' | 'error' | 'info' | 'warning' | 'pending'
 // The order an invoice notice is about, with its marketplace and store; a failure keeps the server's code.
 function invoiceOrderContext(item: Pick<InvoiceWorkspace, 'orderNumber' | 'platformCode' | 'marketplaceConnectionId'>, title: string, operation: string, reason?: unknown): NotificationContext {

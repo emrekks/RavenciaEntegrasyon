@@ -11,6 +11,7 @@
 // generated from the API's OpenAPI document can later give each root typed parts and a queryOptions with its queryFn
 // without changing the keys (connectionQueries below is the first such read).
 import { queryOptions } from '@tanstack/react-query'
+import type { ApiAnswer } from './api-answer'
 // Through the index, the module the screens import, so a test that mocks '…/shared/api' mocks these reads too.
 import { loadAllPages } from './index'
 
@@ -154,7 +155,8 @@ export const connectionQueries = {
   /**
    * Every connection (GET /connections, all pages). Orders, returns, invoices, mappings, promotions, the product editor
    * and the dashboard all read this one entry, so switching between them does not read the list again; every write
-   * that refreshes ['connections'] refreshes it. `T` is only the shape the screen reads of each item.
+   * that refreshes ['connections'] refreshes it; a screen narrows the list with `select`. `T` is only the shape the
+   * screen reads of each item (the contract's connection by default).
    */
-  list: <T = unknown>() => queryOptions({ queryKey: queryKeys.connections(), queryFn: ({ signal }) => loadAllPages<T>('/connections', { signal }) }),
+  list: <T = ApiAnswer<'getConnections'>['items'][number]>() => queryOptions({ queryKey: queryKeys.connections(), queryFn: ({ signal }) => loadAllPages<T>('/connections', { signal }) }),
 }

@@ -1,3 +1,4 @@
+import { testConnection } from '../../../test/connection'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -74,7 +75,7 @@ import { runLimited } from './bulk-publish-readiness'
 
 let container: HTMLElement
 let root: Root
-const connection = { id: 'ty', platformCode: 'TRENDYOL', displayName: 'Trendyol Mağaza', externalStoreId: '930112', status: 'ACTIVE', externalWritesEnabled: true }
+const connection = testConnection({ id: 'ty', platformCode: 'TRENDYOL', displayName: 'Trendyol Mağaza', externalStoreId: '930112', status: 'ACTIVE', externalWritesEnabled: true })
 
 beforeEach(() => {
   container = document.createElement('main')
@@ -160,7 +161,7 @@ describe('BulkPublishDialog readiness', () => {
   })
 
   it('says the category is not mapped on Hepsiburada and maps it from the card', async () => {
-    const hepsiburada = { id: 'hb', platformCode: 'HEPSIBURADA', displayName: 'Hepsiburada', externalStoreId: 'hb-1', status: 'ACTIVE', externalWritesEnabled: true }
+    const hepsiburada = testConnection({ id: 'hb', platformCode: 'HEPSIBURADA', displayName: 'Hepsiburada', externalStoreId: 'hb-1', status: 'ACTIVE', externalWritesEnabled: true })
     await render(['p7'], [hepsiburada])
     await settle()
     expect(card().querySelector('.publish-issue-required .publish-issue-chip')?.getAttribute('aria-label')).toContain('Kazak kategorisinin Hepsiburada karşılığı seçilmemiş; kategoriyi eşleyin.')
@@ -181,7 +182,7 @@ describe('BulkPublishDialog readiness', () => {
   })
 
   it('blocks a Shopify store whose write permissions are not verified, as the editor card does', async () => {
-    const shopify = { id: 'sh', platformCode: 'SHOPIFY', displayName: 'Shopify Mağaza', externalStoreId: 'sh-1', status: 'ACTIVE', externalWritesEnabled: true }
+    const shopify = testConnection({ id: 'sh', platformCode: 'SHOPIFY', displayName: 'Shopify Mağaza', externalStoreId: 'sh-1', status: 'ACTIVE', externalWritesEnabled: true })
     api.capabilities = ['PRODUCT_WRITE', 'INVENTORY_WRITE', 'PUBLICATION_READ']
     await render(['p7'], [shopify])
     await settle()
@@ -191,7 +192,7 @@ describe('BulkPublishDialog readiness', () => {
   })
 
   it('lets a Shopify store with every write permission verified through, reading them once', async () => {
-    const shopify = { id: 'sh', platformCode: 'SHOPIFY', displayName: 'Shopify Mağaza', externalStoreId: 'sh-1', status: 'ACTIVE', externalWritesEnabled: true }
+    const shopify = testConnection({ id: 'sh', platformCode: 'SHOPIFY', displayName: 'Shopify Mağaza', externalStoreId: 'sh-1', status: 'ACTIVE', externalWritesEnabled: true })
     api.capabilities = ['PRODUCT_WRITE', 'INVENTORY_WRITE', 'PUBLICATION_READ', 'PUBLICATION_WRITE']
     await render(['p7', 'p8'], [shopify])
     await settle()

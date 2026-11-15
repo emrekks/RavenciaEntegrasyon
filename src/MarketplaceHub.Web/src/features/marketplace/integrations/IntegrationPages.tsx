@@ -4,7 +4,7 @@ import { Fragment, useEffect, useEffectEvent, useLayoutEffect, useRef, useState,
 import { platformDisplayName, platformDisplayNames, platformDisplayOrder, knownPlatformName, connectionTitle, TRENDYOL_EFATURAM_CODE } from '../../../shared/platform-names'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { hubApi, hubPoll, loadAllPages } from '../../../shared/api'
+import { hubApi, hubPoll } from '../../../shared/api'
 import { automaticWritesBaselineMessage, cadenceChoices, connectionActiveFeedback, disconnectDialogDescription, cadenceNote, cadenceShortText, idleRuleText, type SyncCadence, connectionEnvironmentLabel, connectionStatusLabel, connectionTestFeedback, credentialRequestBody, integrationPlatformFilters, invoiceCreationFeedback, priceStockMonitorQueryKey, readIntegrationListState, stageTestOrderAvailable, trendyolUserAgentNotice, writeIntegrationListState, type IntegrationListState } from './integration-helpers'
 import { Busy, ErrorBox, Tabs, TitleHint, UiIcon, useConfirmDialog, DialogSurface, FieldLabel } from '../../../shared/components'
 import { newIdempotencyKey } from '../../../shared/idempotency'
@@ -598,7 +598,7 @@ function SettingsIcon({ name }: { name: SettingsIconName }) {
 }
 function IntegrationDetailWorkspace({ id, inline = false, onClose, onSwitch }: { id: string; inline?: boolean; onClose?: () => void; onSwitch?: (id: string) => void }) {
   // The other connections the title can switch to (same list the integrations page shows).
-  const switchable = useQuery({ queryKey: queryKeys.connections(), queryFn: ({ signal }) => loadAllPages<Connection>('/connections', { signal }), enabled: Boolean(onSwitch) })
+  const switchable = useQuery({ ...connectionQueries.list<Connection>(), enabled: Boolean(onSwitch) })
   const switchOptions = (switchable.data?.items ?? []).filter(option => activePlatformCodes.has(option.platformCode))
   const client = useQueryClient(); const [feedback, setFeedback] = useState<IntegrationFeedback | null>(null); const [syncPolicyOpen, setSyncPolicyOpen] = useState<SyncPolicy | null>(null); const connection = useQuery({ queryKey: queryKeys.connection(id), queryFn: ({ signal }) => hubApi<ApiAnswer<'getConnectionsById'>>(`/connections/${id}`, { signal }), refetchOnMount: 'always' }); const syncPolicies = useQuery({ queryKey: queryKeys.syncPolicies(id), queryFn: ({ signal }) => hubPoll<SyncPolicy[]>(`/connections/${id}/sync-policies`, { signal }), enabled: supportsSyncPolicyManagement(connection.data?.platformCode ?? ''), refetchInterval: 30_000, refetchIntervalInBackground: false }); const capabilities = useQuery({ queryKey: queryKeys.capabilities(id), queryFn: ({ signal }) => hubApi<ApiAnswer<'getConnectionsByIdCapabilities'>>(`/connections/${id}/capabilities`, { signal }), enabled: shouldLoadConnectionCapabilities(connection.data?.platformCode) });
   useEffect(() => {
