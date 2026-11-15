@@ -2438,6 +2438,175 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.Contains(checks, key => key.StartsWith($"product-approval:{pttAvm.Id:N}:{blackProfile.Id:N}:{hash}", StringComparison.Ordinal));
     }
 
+    // J7 (15 Nov 2026) scenario: switching a store's external writes off cancels its waiting automatic write jobs and tells
+    // the job screens with one bulk "jobs" event for all of them (K2), not one per job and not none.
+    [PostgreSqlFact]
+    public async Task J7_SwitchingExternalWritesOffCancelsTheWaitingWritesWithOneBulkJobEvent()
+    {
+        var tenant = NewTenant("j7-writes-off");
+        var trendyol = NewConnection(tenant, "TRENDYOL", writesEnabled: true);
+        var now = DateTimeOffset.UtcNow;
+        IntegrationJob Write(JobStatus status)
+        {
+            var id = Guid.CreateVersion7();
+            return new IntegrationJob { Id = id, TenantId = tenant.Id, ConnectionId = trendyol.Id, JobType = MarketplaceJobTypes.PriceInventorySync, PayloadJson = "{}", PayloadVersion = 1, PayloadHash = "h", JobDedupKey = $"j7-write:{id:N}", EffectIdempotencyKey = $"j7-write:{id:N}", Priority = 10, Status = status, AvailableAt = now.AddHours(1), MaxAttempts = 5, CorrelationId = "j7", CreatedAt = now, Version = 1 };
+        }
+        var waiting = new[] { Write(JobStatus.Pending), Write(JobStatus.RetryScheduled) };
+        var finished = Write(JobStatus.Succeeded);
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(trendyol);
+            seed.IntegrationJobs.AddRange([.. waiting, finished]);
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var service = NewConnectionService(db);
+        var current = await service.GetAsync(tenant.Id, trendyol.Id, CancellationToken.None);
+        Assert.True(current.Succeeded, current.Error?.Message);
+        var updated = await service.UpdateAsync(tenant.Id, trendyol.Id, current.Value!.Version, new UpdateConnectionCommand(trendyol.DisplayName, null, ExternalWritesEnabled: false), CancellationToken.None);
+
+        Assert.True(updated.Succeeded, updated.Error?.Message);
+        db.ChangeTracker.Clear();
+        var statuses = await db.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.Id, x => x.Status);
+        Assert.All(waiting, job => Assert.Equal(JobStatus.Cancelled, statuses[job.Id]));
+        Assert.Equal(JobStatus.Succeeded, statuses[finished.Id]);
+        await AssertOneBulkCancelEventAsync(db, tenant.Id, 2);
+    }
+
+    // J7 (15 Nov 2026) scenario: activating a store again cancels its waiting scheduled reads (the activation's first
+    // import replaces them) with one bulk "jobs" event.
+    [PostgreSqlFact]
+    public async Task J7_ActivatingAStoreAgainCancelsItsScheduledReadsWithOneBulkJobEvent()
+    {
+        var tenant = NewTenant("j7-reactivate");
+        var trendyol = NewConnection(tenant, "TRENDYOL");
+        var now = DateTimeOffset.UtcNow;
+        trendyol.Status = "DISABLED";
+        trendyol.DisabledAt = now.AddHours(-2);
+        trendyol.LastSuccessAt = now.AddHours(-1);
+        var scheduledId = Guid.CreateVersion7();
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(trendyol);
+            seed.PlatformCapabilities.Add(new PlatformCapability { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = trendyol.Id, Code = MarketplaceCapabilities.ConnectionTest, SupportLevel = CapabilitySupportLevel.Supported, Environment = trendyol.Environment, StoreScope = trendyol.ExternalStoreId, ApiVersion = "V1", VerifiedAt = now.AddHours(-1), Version = 1 });
+            seed.IntegrationJobs.Add(new IntegrationJob { Id = scheduledId, TenantId = tenant.Id, ConnectionId = trendyol.Id, JobType = MarketplaceJobTypes.OrderSync, PayloadJson = "{}", PayloadVersion = 1, PayloadHash = "h", JobDedupKey = $"scheduled:orders:{trendyol.Id:N}:1", EffectIdempotencyKey = $"j7-scheduled:{scheduledId:N}", Priority = 10, Status = JobStatus.Pending, AvailableAt = now.AddHours(1), MaxAttempts = 5, CorrelationId = "j7", CreatedAt = now, Version = 1 });
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var service = NewConnectionService(db);
+        var current = await service.GetAsync(tenant.Id, trendyol.Id, CancellationToken.None);
+        Assert.True(current.Succeeded, current.Error?.Message);
+        var activated = await service.SetActiveAsync(tenant.Id, trendyol.Id, current.Value!.Version, true, CancellationToken.None);
+
+        Assert.True(activated.Succeeded, activated.Error?.Message);
+        db.ChangeTracker.Clear();
+        Assert.Equal(JobStatus.Cancelled, (await db.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == scheduledId)).Status);
+        await AssertOneBulkCancelEventAsync(db, tenant.Id, 1);
+    }
+
+    private MarketplaceConnectionService NewConnectionService(AppDbContext db)
+    {
+        var dataProtection = new EphemeralDataProtectionProvider();
+        return new MarketplaceConnectionService(db, new CursorCodec(dataProtection, fixture.TimeProvider), dataProtection, fixture.TokenHasher, fixture.TimeProvider,
+            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["FeatureFlags:ExternalWrites"] = "true" }).Build());
+    }
+
+    private static async Task AssertOneBulkCancelEventAsync(AppDbContext db, Guid tenantId, int count)
+    {
+        var bulk = await db.IntegrationOutboxEvents.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ResourceType == MarketplaceHub.Infrastructure.Jobs.JobStateMachine.JobEventResource && x.OperationType == MarketplaceHub.Infrastructure.Jobs.JobStateMachine.BulkOperation)
+            .Select(x => x.PayloadJson).ToListAsync();
+        using var payload = System.Text.Json.JsonDocument.Parse(Assert.Single(bulk));
+        Assert.Equal("CANCELLED", payload.RootElement.GetProperty("status").GetString());
+        Assert.Equal(count, payload.RootElement.GetProperty("count").GetInt32());
+        await db.IntegrationOutboxEvents.Where(x => x.TenantId == tenantId).ExecuteDeleteAsync();
+    }
+
+    // J7 (15 Nov 2026) scenario: the status refresh of a card whose approval check is still waiting asks that check again
+    // (Requeue) and tells the job screens with one "jobs" event for that job.
+    [PostgreSqlFact]
+    public async Task J7_StatusRefreshAsksTheWaitingApprovalCheckAgainAndPublishesItsJobEvent()
+    {
+        var tenant = NewTenant("j7-refresh-requeue");
+        var trendyol = NewConnection(tenant, "TRENDYOL");
+        var (product, variant) = NewVariant(tenant, "J7-REQ", "8690000007001");
+        var now = DateTimeOffset.UtcNow;
+        const string hash = "J7HASH";
+        var profile = new ChannelListingProfile { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = trendyol.Id, ProductId = product.Id, Enabled = true, DesiredStatus = "LIVE", ActualStatus = "APPROVAL_PENDING", Version = 1 };
+        var checkId = Guid.CreateVersion7();
+        var dedup = $"product-approval:{trendyol.Id:N}:{profile.Id:N}:{hash}";
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(trendyol);
+            seed.Products.Add(product);
+            seed.ProductVariants.Add(variant);
+            seed.ChannelListingProfiles.Add(profile);
+            seed.ChannelListingVariants.Add(new ChannelListingVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProfileId = profile.Id, VariantId = variant.Id, ExternalSku = variant.Sku, ExternalBarcode = variant.Barcode, DesiredStatus = "LIVE", ActualStatus = "APPROVAL_PENDING" });
+            seed.MarketplaceListingStates.Add(new MarketplaceListingState { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = trendyol.Id, VariantId = variant.Id, DesiredStatus = "LIVE", ActualStatus = "APPROVAL_PENDING", PayloadHash = hash, Version = 1 });
+            seed.IntegrationJobs.Add(new IntegrationJob { Id = checkId, TenantId = tenant.Id, ConnectionId = trendyol.Id, JobType = MarketplaceJobTypes.ProductApprovalReconcile, PayloadJson = "{}", PayloadVersion = 1, PayloadHash = "h", JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:key", Priority = 10, Status = JobStatus.RetryScheduled, AvailableAt = now.AddHours(2), MaxAttempts = 50, CorrelationId = "j7", CreatedAt = now.AddHours(-1), Version = 1 });
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var refreshed = await NewCatalogService(db).RequestPublicationStatusRefreshAsync(tenant.Id, product.Id, trendyol.Id, CancellationToken.None);
+
+        Assert.True(refreshed.Succeeded, refreshed.Error?.Message);
+        Assert.Equal(checkId, refreshed.Value);
+        db.ChangeTracker.Clear();
+        var check = await db.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == checkId);
+        Assert.Equal(JobStatus.Pending, check.Status);
+        var events = await db.IntegrationOutboxEvents.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.ResourceType == MarketplaceHub.Infrastructure.Jobs.JobStateMachine.JobEventResource).ToListAsync();
+        var jobEvent = Assert.Single(events);
+        Assert.Equal(checkId, jobEvent.AggregateId);
+        Assert.Contains("\"PENDING\"", jobEvent.PayloadJson, StringComparison.Ordinal);
+        await db.IntegrationOutboxEvents.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+    }
+
+    // J7 (15 Nov 2026) scenario: a PTT AVM card sent again closes its waiting approval check (PRODUCT_APPROVAL_SUPERSEDED)
+    // and tells the job screens with that job's "jobs" event.
+    [PostgreSqlFact]
+    public async Task J7_APttAvmCardSentAgainClosesItsWaitingApprovalCheckAndPublishesItsJobEvent()
+    {
+        var (tenant, pttAvm, black, _, _) = await SeedPttAvmFamilyAsync("j7-pttavm-superseded");
+        var now = DateTimeOffset.UtcNow;
+        // The first send creates the card's profile and offers; it finished, and its approval check still waits.
+        await using (var first = fixture.CreateContext())
+        {
+            var sent = await NewCatalogService(first).EnqueueBulkPublicationAsync(tenant.Id, Guid.CreateVersion7(), new BulkPublicationCommand([black.Id], [pttAvm.Id]), $"bulk-{Guid.NewGuid():N}", "trace", CancellationToken.None);
+            Assert.True(sent.Succeeded && sent.Value!.Failed.Count == 0, sent.Error?.Message);
+            await first.IntegrationJobs.Where(x => x.TenantId == tenant.Id && x.JobType == MarketplaceJobTypes.ProductCreate)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Status, JobStatus.Succeeded).SetProperty(x => x.CompletedAt, now));
+            await first.IntegrationOutboxEvents.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+        }
+        await using var lookup = fixture.CreateContext();
+        var profile = await lookup.ChannelListingProfiles.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ConnectionId == pttAvm.Id && x.ProductId == black.Id);
+        var checkId = Guid.CreateVersion7();
+        var dedup = $"product-approval:{pttAvm.Id:N}:{profile.Id:N}:OLDHASH";
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.IntegrationJobs.Add(new IntegrationJob { Id = checkId, TenantId = tenant.Id, ConnectionId = pttAvm.Id, JobType = MarketplaceJobTypes.ProductApprovalReconcile, PayloadJson = "{}", PayloadVersion = 1, PayloadHash = "h", JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:key", Priority = 10, Status = JobStatus.RetryScheduled, AvailableAt = now.AddHours(2), MaxAttempts = 50, CorrelationId = "j7", CreatedAt = now.AddHours(-1), Version = 1 });
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var result = await NewCatalogService(db).EnqueuePublicationAsync(tenant.Id, black.Id, pttAvm.Id, $"send-{Guid.NewGuid():N}", "trace", CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Error?.Message);
+        db.ChangeTracker.Clear();
+        var check = await db.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == checkId);
+        Assert.Equal(JobStatus.Cancelled, check.Status);
+        Assert.Equal("PRODUCT_APPROVAL_SUPERSEDED", check.LastErrorCode);
+        var checkEvents = await db.IntegrationOutboxEvents.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.ResourceType == MarketplaceHub.Infrastructure.Jobs.JobStateMachine.JobEventResource
+            && x.AggregateId == checkId).Select(x => x.PayloadJson).ToListAsync();
+        Assert.Contains(checkEvents, payload => payload.Contains("CANCELLED", StringComparison.Ordinal));
+        await db.IntegrationOutboxEvents.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+    }
+
     [PostgreSqlFact]
     public async Task StatusRefresh_LeavesAPttAvmCardTheFamilysLatestSendDidNotCarry()
     {
