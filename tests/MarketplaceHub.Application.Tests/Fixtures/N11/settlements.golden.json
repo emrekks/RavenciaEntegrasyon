@@ -1,0 +1,66 @@
+{
+  "days": {
+    "Items": [
+      {
+        "SettlementDate": "2026-11-05",
+        "RemittanceDate": "2026-11-06",
+        "Status": "ODEME_BEKLENIYOR",
+        "PaymentAmount": 1200.50,
+        "DeductionAmount": 200.10,
+        "SettlementAmount": 1000.40
+      },
+      {
+        "SettlementDate": "2026-10-29",
+        "RemittanceDate": null,
+        "Status": null,
+        "PaymentAmount": 10,
+        "DeductionAmount": 0,
+        "SettlementAmount": 10
+      }
+    ],
+    "Page": 0,
+    "PageCount": 1
+  },
+  "items": {
+    "Items": [
+      {
+        "OrderItemId": "998877",
+        "OrderNumber": "205512345678",
+        "Commission": 150.25,
+        "ServiceFee": 24,
+        "AdFee": 6,
+        "CargoPrice": 9.85,
+        "Discount": 10,
+        "DeductionAmount": 200.10,
+        "PaymentAmount": 1200.50,
+        "SettlementAmount": 1000.40,
+        "CompletedAt": "2026-11-01T11:20:00+00:00",
+        "SettlementDate": "2026-11-05",
+        "RemittanceDate": "2026-11-06",
+        "PaymentDate": "2026-11-06",
+        "RawJson": "<raw 413 chars sha256:a770d1a9adf9>"
+      },
+      {
+        "OrderItemId": "998878",
+        "OrderNumber": "205512345679",
+        "Commission": 0,
+        "ServiceFee": 0,
+        "AdFee": 0,
+        "CargoPrice": 0,
+        "Discount": 0,
+        "DeductionAmount": 0,
+        "PaymentAmount": 0,
+        "SettlementAmount": 5,
+        "CompletedAt": null,
+        "SettlementDate": "2026-11-05",
+        "RemittanceDate": null,
+        "PaymentDate": null,
+        "RawJson": "<raw 106 chars sha256:683fa4a5bc25>"
+      }
+    ],
+    "Page": 0,
+    "PageCount": 1,
+    "Status": "ODEME_BEKLENIYOR",
+    "Skipped": []
+  }
+}

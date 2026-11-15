@@ -1,0 +1,72 @@
+[
+  {
+    "Id": "Q1",
+    "Kind": "PRODUCT",
+    "Status": "WAITING_FOR_ANSWER",
+    "Text": "M beden kaç cm?",
+    "ProductName": "Kadın Bluz",
+    "ProductImageUrl": "https://img.example.test/1.jpg",
+    "ProductSku": null,
+    "ProductBarcode": null,
+    "ProductModelCode": null,
+    "CustomerName": "T*** M***",
+    "OrderNumber": null,
+    "CreatedAt": "2026-10-11T21:00:00+00:00",
+    "ExpiresAt": null,
+    "LastModifiedAt": "2026-10-11T21:00:00+00:00",
+    "Conversations": [],
+    "ProductUrl": null,
+    "CustomerKey": null,
+    "ProductExternalId": "4455667788",
+    "Subject": "Beden"
+  },
+  {
+    "Id": "Q2",
+    "Kind": "PRODUCT",
+    "Status": "ANSWERED",
+    "Text": "L beden kaç cm?",
+    "ProductName": "Kadın Bluz",
+    "ProductImageUrl": null,
+    "ProductSku": null,
+    "ProductBarcode": null,
+    "ProductModelCode": null,
+    "CustomerName": "T*** M***",
+    "OrderNumber": null,
+    "CreatedAt": "2026-10-11T21:00:00+00:00",
+    "ExpiresAt": null,
+    "LastModifiedAt": "2026-10-12T21:00:00+00:00",
+    "Conversations": [
+      {
+        "Author": "Merchant",
+        "Text": "Göğüs 100 cm.",
+        "CreatedAt": "2026-10-12T21:00:00+00:00",
+        "RejectionReason": null
+      }
+    ],
+    "ProductUrl": null,
+    "CustomerKey": null,
+    "ProductExternalId": "4455667788",
+    "Subject": "Beden"
+  },
+  {
+    "Id": "Q3",
+    "Kind": "PRODUCT",
+    "Status": "WAITING_FOR_ANSWER",
+    "Text": "Durumu ve tarihi gelmeyen soru",
+    "ProductName": "Kadın Bluz",
+    "ProductImageUrl": null,
+    "ProductSku": null,
+    "ProductBarcode": null,
+    "ProductModelCode": null,
+    "CustomerName": null,
+    "OrderNumber": null,
+    "CreatedAt": null,
+    "ExpiresAt": null,
+    "LastModifiedAt": null,
+    "Conversations": [],
+    "ProductUrl": null,
+    "CustomerKey": null,
+    "ProductExternalId": "4455667788",
+    "Subject": ""
+  }
+]

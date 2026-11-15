@@ -65,7 +65,7 @@ internal static class ContractFixture
         Assert.True(File.Exists(expectedPath), $"Golden {goldenPath} is missing. Run the test once with {UpdateVariable}=1, then review the written file.");
         var expected = File.ReadAllText(expectedPath, Encoding.UTF8).Replace("\r\n", "\n", StringComparison.Ordinal);
         if (string.Equals(expected, actual, StringComparison.Ordinal)) return;
-        Assert.Fail($"Mapped contract differs from golden {goldenPath} (set {UpdateVariable}=1 to accept a deliberate change):\n{Diff(expected, actual)}");
+        Assert.Fail($"Mapped contract differs from golden {goldenPath} (set {UpdateVariable}=1 to accept a deliberate change; after regenerating, build again so the output copy is fresh):\n{Diff(expected, actual)}");
     }
 
     // The mapped value, or what the mapper refused it with, so a refusal is pinned in the golden like a result.

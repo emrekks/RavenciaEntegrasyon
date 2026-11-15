@@ -1,0 +1,71 @@
+{
+  "submitted": {
+    "queued": {
+      "Reference": {
+        "ExternalOperationId": "1092",
+        "Kind": "SKU_UPDATE",
+        "SubmittedAt": "2026-11-10T12:00:00+00:00"
+      },
+      "Error": null
+    },
+    "rejected": {
+      "Reference": null,
+      "Error": {
+        "Class": "Validation",
+        "Code": "N11_TASK_REJECTED",
+        "SafeMessage": "N11 fiyat-stok isteğini reddetti: listPrice, salePrice'dan düşük olamaz.",
+        "HttpStatus": 422,
+        "RetryAfter": null,
+        "RemoteRequestId": null
+      }
+    }
+  },
+  "statuses": {
+    "detailPartly": {
+      "ExternalOperationId": "detailPartly",
+      "Status": "COMPLETED",
+      "Lines": [
+        {
+          "ExternalKey": "1234567m",
+          "Succeeded": true,
+          "ExternalId": "1585",
+          "ErrorCode": null,
+          "Retryable": false,
+          "Status": "SUCCESS",
+          "Reasons": null
+        },
+        {
+          "ExternalKey": "1234567s",
+          "Succeeded": false,
+          "ExternalId": "1586",
+          "ErrorCode": "N11_SKU_REJECTED",
+          "Retryable": false,
+          "Status": "Ürün bulunamadı.",
+          "Reasons": null
+        }
+      ],
+      "UnlistedLinesUnconfirmed": false,
+      "IssueCode": null,
+      "IssueSummary": null,
+      "ReportedItemCount": null
+    },
+    "detailQueued": {
+      "ExternalOperationId": "detailQueued",
+      "Status": "IN_PROGRESS",
+      "Lines": [],
+      "UnlistedLinesUnconfirmed": false,
+      "IssueCode": null,
+      "IssueSummary": null,
+      "ReportedItemCount": null
+    },
+    "detailUnknown": {
+      "ExternalOperationId": "detailUnknown",
+      "Status": "SOME_FUTURE_TASK_STATUS",
+      "Lines": [],
+      "UnlistedLinesUnconfirmed": false,
+      "IssueCode": null,
+      "IssueSummary": null,
+      "ReportedItemCount": null
+    }
+  }
+}
