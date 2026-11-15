@@ -44,7 +44,8 @@ jobs:
           set -Eeuo pipefail
           backend="$(git ls-tree -r HEAD -- src tests global.json Directory.Build.props Directory.Packages.props MarketplaceHub.sln .editorconfig .config .github/workflows/ci.yml Dockerfile .dockerignore \
             | awk -F'\t' '$2 !~ /^src\/MarketplaceHub\.Web\//' | sha256sum | cut -d' ' -f1)"
-          frontend="$(git ls-tree -r HEAD -- src/MarketplaceHub.Web .github/workflows/ci.yml deploy/caddy .dockerignore | sha256sum | cut -d' ' -f1)"
+          # The frontend checks its generated API types against the API's contract file, so a change to it re-runs the frontend.
+          frontend="$(git ls-tree -r HEAD -- src/MarketplaceHub.Web tests/MarketplaceHub.Application.Tests/ApiContract .github/workflows/ci.yml deploy/caddy .dockerignore | sha256sum | cut -d' ' -f1)"
           echo "backend=$backend" >> "$GITHUB_OUTPUT"
           echo "frontend=$frontend" >> "$GITHUB_OUTPUT"
 
@@ -584,6 +585,10 @@ jobs:
       - name: Lint frontend
         working-directory: src/MarketplaceHub.Web
         run: npm run lint
+
+      - name: Check generated API types
+        working-directory: src/MarketplaceHub.Web
+        run: npm run check:api-types
 
       - name: Check CSS specificity growth
         working-directory: src/MarketplaceHub.Web
