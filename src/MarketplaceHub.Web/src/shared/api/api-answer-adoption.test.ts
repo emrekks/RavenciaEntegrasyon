@@ -3,8 +3,9 @@ import { describe, expect, it } from 'vitest'
 // API-TYPES: a read whose answer the API contract declares takes its type from the contract (ApiAnswer<'operationId'>,
 // shared/api/api-answer.ts) or from a type built on it, not from an object type written inline at the call (an
 // operation the contract leaves undeclared does not count). The product editor's publication check, channel pricing and
-// attribute values still write seven inline (15 Nov 2026). The number may only go down.
-const inlineAnswerTypes = 7
+// attribute values write seven inline; 28 more are calls of operations the contract declared later the same day
+// (16 Nov 2026: files, mappings, invoice workspace actions, settings). The number may only go down.
+const inlineAnswerTypes = 35
 
 const sources = import.meta.glob<string>(['../../**/*.ts', '../../**/*.tsx', '!../../**/*.test.ts', '!../../**/*.test.tsx', '!./generated/**'], { query: '?raw', import: 'default', eager: true })
 const contract = import.meta.glob<string>('./generated/api-types.ts', { query: '?raw', import: 'default', eager: true })['./generated/api-types.ts']
@@ -63,7 +64,7 @@ describe('contract answer types', () => {
   it('finds an inline answer type of a declared operation, and only that', () => {
     const files = {
       'a.ts': "hubApi<{ id: string }>(`/orders/${id}`, { signal })\nhubApi<ApiAnswer<'getOrdersById'>>(`/orders/${id}`)\nhubPoll<{ total: number }>('/notifications/summary')",
-      'b.ts': "hubApi<{ jobs: string[] }>('/questions/sync', { method: 'POST' })\nhubApi<{ id: string }>(path)"
+      'b.ts': "hubApi<{ jobs: string[] }>('/not-in-the-contract', { method: 'POST' })\nhubApi<{ id: string }>(path)"
     }
     expect(inlineAnswerCalls(files)).toEqual(['a.ts:1 getOrdersById', 'a.ts:3 getNotificationsSummary'])
   })
