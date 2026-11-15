@@ -24,6 +24,9 @@ export type PayoutRegionSummary = { region: PayoutRegion; expected: number; reco
 export type PayoutPlatformSummary = { platformCode: string; expected: number; records: number; nextDay: string | null; nextAmount: number | null; unknown: number
   pendingDelivery: number; pendingDeliveryOrders: number }
 export type PayoutCoverage = { connectionId: string; platformCode: string; storeName: string; state: 'READ' | 'NOT_READ' | 'NOT_SUPPORTED'; lastSyncedAt: string | null }
+// GET /reports/payouts and /reports/payouts/lines. CONTRACT: every member agrees with the contract (PayoutView,
+// PayoutLinesPage) but the codes the API declares as strings: region, status, kind, an estimate's kind and a coverage
+// state (the constants of PayoutContracts / PayoutBuilder). They sit in every group, so the types stay written here.
 export type Payouts = { today: string; daysBack: number; expected: number; expectedRecords: number; next: PayoutGroup | null; lastPaid: PayoutGroup | null
   unknown: number; unknownRecords: number; earlyPaymentsTaken: number; earlyPayments: number; regions: PayoutRegionSummary[]; platforms: PayoutPlatformSummary[]
   upcoming: PayoutGroup[]; past: PayoutGroup[]; coverage: PayoutCoverage[]; pendingDelivery: number; pendingDeliveryOrders: number
