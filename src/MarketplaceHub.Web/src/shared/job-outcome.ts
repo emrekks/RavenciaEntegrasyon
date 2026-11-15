@@ -1,3 +1,4 @@
+import type { ApiAnswer } from './api/api-answer'
 import { hubPoll } from './api'
 
 // What a send to a marketplace (Yayınla, Platformlarda Güncelle, Hızlı Güncelle) really ended in. Owner, 7 Nov 2026:
@@ -202,7 +203,7 @@ export type FollowOptions = {
 }
 
 const defaultSleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
-const defaultRead = (jobId: string) => hubPoll<FollowedJobDetail>(`/jobs/${jobId}`)
+const defaultRead = (jobId: string) => hubPoll<ApiAnswer<'getJobsById'>>(`/jobs/${jobId}`)
 
 /** Many jobs in one read per 200: the list API answers with the jobs' summaries (no per-variant answers). */
 export async function readJobsByIds(jobIds: readonly string[]) {

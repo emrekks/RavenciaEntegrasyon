@@ -1,27 +1,22 @@
 import { formatDateTime } from '../../shared/format-date'
 import { relativeAgeText } from '../marketplace/integrations/integration-helpers'
+import type { ApiAnswer } from '../../shared/api/api-answer'
 
 // "API Sağlığı": the six signals per connection as one cell each (a short value, a tone, the detail as a tooltip).
 // Every figure comes from the API as stored; a signal the data cannot answer says "Ölçülmüyor" and why.
 
-export type SignalAuth = { state: 'valid' | 'rejected' | 'unknown'; lastRejectedAt: string | null; lastRejectedCode: string | null; lastOkAt: string | null }
-export type SignalLag = { stream: string; lagSeconds: number; expectedSeconds: number; level: 'ok' | 'warn' | 'fault' }
-export type SignalErrorRate = { attempts: number; failed: number; remoteSide: number; ourSide: number; rateLimited: number; workflowWait: number }
-export type SignalRateLimit = { refused24h: number; waitingJobs: number; pausedUntil: string | null; lastRunRefusals: number }
-export type SignalQueue = { ageSeconds: number; jobType: string; pending: number }
-export type SignalWebhook = { used: boolean; lastReceivedAt: string | null; healthy: boolean; lastOrderReadAt: string | null; fallbackReadSeconds: number | null }
-export type ConnectionSignals = {
-  connectionId: string
-  platformCode: string
-  displayName: string
-  auth: SignalAuth
-  lag: SignalLag | null
-  errorRate: SignalErrorRate
-  rateLimit: SignalRateLimit
-  queue: SignalQueue | null
-  webhook: SignalWebhook
-}
-export type ApiHealthSignals = { generatedAt: string; connections: ConnectionSignals[] }
+type SignalsAnswer = ApiAnswer<'getApiHealthSignals'>
+type ConnectionAnswer = SignalsAnswer['connections'][number]
+// CONTRACT: the API declares the auth state and the lag level as strings; ApiHealthSignals.cs writes only these constants
+// (AuthValid / AuthRejected / AuthUnknown, LevelOk / LevelWarn / LevelFault).
+export type SignalAuth = Omit<ConnectionAnswer['auth'], 'state'> & { state: 'valid' | 'rejected' | 'unknown' }
+export type SignalLag = Omit<NonNullable<ConnectionAnswer['lag']>, 'level'> & { level: 'ok' | 'warn' | 'fault' }
+export type SignalErrorRate = ConnectionAnswer['errorRate']
+export type SignalRateLimit = ConnectionAnswer['rateLimit']
+export type SignalQueue = NonNullable<ConnectionAnswer['queue']>
+export type SignalWebhook = ConnectionAnswer['webhook']
+export type ConnectionSignals = Omit<ConnectionAnswer, 'auth' | 'lag'> & { auth: SignalAuth; lag: SignalLag | null }
+export type ApiHealthSignals = Omit<SignalsAnswer, 'connections'> & { connections: ConnectionSignals[] }
 
 export type SignalTone = 'ok' | 'warn' | 'bad' | 'off'
 export type SignalCell = { text: string; tone: SignalTone; title: string }
