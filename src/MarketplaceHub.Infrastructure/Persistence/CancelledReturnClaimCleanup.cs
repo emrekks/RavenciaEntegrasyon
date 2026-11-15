@@ -54,6 +54,15 @@ internal static class CancelledReturnClaimCleanup
     public static async Task RemoveAsync(AppDbContext db, Guid tenantId, Guid claimId, CancellationToken cancellationToken)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        // The deletes below bypass the change tracker, so no change event would tell a cached report (ReportCache) or an
+        // open screen that the order's return is gone: one is written here, as a change of the claim's order.
+        var eventId = Guid.CreateVersion7();
+        await db.Database.ExecuteSqlAsync($"""
+            INSERT INTO integration.outbox_events ("Id", "TenantId", "ResourceType", "OperationType", "AggregateType", "AggregateId", "PayloadJson", "CreatedAt", "NextAttemptAt", "DispatchAttempts")
+            SELECT {eventId}, claim."TenantId", 'returns', 'deleted', 'Order', claim."OrderId",
+                   jsonb_build_object('aggregateType', 'Order', 'aggregateId', claim."OrderId", 'returnClaimId', claim."Id"), clock_timestamp(), clock_timestamp(), 0
+            FROM sales.return_claims claim WHERE claim."TenantId" = {tenantId} AND claim."Id" = {claimId}
+            """, cancellationToken);
         await db.ReturnStockDispositions.Where(x => x.TenantId == tenantId && x.ClaimId == claimId).ExecuteDeleteAsync(cancellationToken);
         await db.ReturnEvidence.Where(x => x.TenantId == tenantId && x.ClaimId == claimId).ExecuteDeleteAsync(cancellationToken);
         await db.ReturnDecisions.Where(x => x.TenantId == tenantId && x.ClaimId == claimId).ExecuteDeleteAsync(cancellationToken);
