@@ -17,7 +17,7 @@ public sealed partial class HepsiburadaHttpClient
         if (account is null) return Failure<PackageActionResult>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
         if (string.IsNullOrWhiteSpace(command.ExternalPackageId) || command.ExternalPackageId.Any(char.IsWhiteSpace))
             return Failure<PackageActionResult>(AdapterErrorClass.Validation, "HEPSIBURADA_PACKAGE_ID_INVALID", "Paket numarası geçersiz.", HttpStatusCode.BadRequest);
-        if (!IntegrationRuntimePolicy.AllowsExternalWrite(account.Connection, context, GlobalWritesEnabled, ConnectionWritesEnabled(account.Connection.SettingsJson))
+        if (!ExternalWriteGate.AllowsRuntimeWrite(account.Connection, context, GlobalWritesEnabled)
             || !await authentication.HasVerifiedWriteEvidenceAsync(account.Connection, cancellationToken, MarketplaceCapabilities.ShipmentWrite))
             return await Unsupported<PackageActionResult>("Hepsiburada paket işlemleri mevcut dış yazma kapıları ve mağaza/ortam kapsamlı SHIPMENT_WRITE kanıtı gerektirir.");
 
@@ -101,7 +101,7 @@ public sealed partial class HepsiburadaHttpClient
             return await Unsupported<CreateOrderPackageResult>("Hepsiburada auth biçimi SIT hesabında doğrulanana kadar paket oluşturulmadı.");
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return Failure<CreateOrderPackageResult>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
-        if (!IntegrationRuntimePolicy.AllowsExternalWrite(account.Connection, context, GlobalWritesEnabled, ConnectionWritesEnabled(account.Connection.SettingsJson))
+        if (!ExternalWriteGate.AllowsRuntimeWrite(account.Connection, context, GlobalWritesEnabled)
             || !await authentication.HasVerifiedWriteEvidenceAsync(account.Connection, cancellationToken, MarketplaceCapabilities.ShipmentWrite))
             return await Unsupported<CreateOrderPackageResult>("Hepsiburada paket oluşturma mevcut dış yazma kapıları ve mağaza/ortam kapsamlı SHIPMENT_WRITE kanıtı gerektirir.");
         if (!ValidOrderPackageCommand(command)) return Failure<CreateOrderPackageResult>(AdapterErrorClass.Validation, "HEPSIBURADA_PACKAGE_CREATE_INPUT_INVALID", "Hepsiburada paket alanları veya satırları geçersiz.", HttpStatusCode.BadRequest);

@@ -46,15 +46,7 @@ public sealed partial class N11HttpClient : IInventoryPricePort
         }
     }
 
-    internal static bool ConnectionWritesEnabled(string settingsJson)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(settingsJson);
-            return document.RootElement.TryGetProperty("ExternalWritesEnabled", out var enabled) && enabled.ValueKind == JsonValueKind.True;
-        }
-        catch (JsonException) { return false; }
-    }
+    internal static bool ConnectionWritesEnabled(string settingsJson) => ExternalWriteGate.ConnectionWritesEnabled(settingsJson);
 }
 
 public static class N11TaskMapper

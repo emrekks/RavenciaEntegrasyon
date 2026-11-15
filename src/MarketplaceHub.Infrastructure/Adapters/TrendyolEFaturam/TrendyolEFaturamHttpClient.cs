@@ -26,7 +26,7 @@ public sealed class TrendyolEFaturamHttpClient(
     private const string ConnectionProbeInvoiceUuid = "00000000-0000-0000-0000-000000000000";
     private readonly TrendyolEFaturamOptions _options = options.Value;
     private TimeSpan RequestTimeout => _options.Timeout > TimeSpan.Zero && _options.Timeout <= TimeSpan.FromMinutes(2) ? _options.Timeout : TimeSpan.FromSeconds(30);
-    private bool GlobalWritesEnabled => configuration.GetValue<bool>("FeatureFlags:ExternalWrites");
+    private bool GlobalWritesEnabled => ExternalWriteGate.GlobalWritesEnabled(configuration);
 
     public async Task<AdapterResult<ConnectionIdentity>> TestConnectionAsync(AdapterContext context, CancellationToken cancellationToken)
     {

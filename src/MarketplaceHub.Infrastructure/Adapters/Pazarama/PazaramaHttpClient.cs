@@ -39,24 +39,13 @@ public sealed partial class PazaramaHttpClient(
     internal AdapterResult<T>? WriteBlocked<T>(PazaramaRequestContext account, string what)
     {
         var connection = account.Connection;
-        var allowed = configuration.GetValue<bool>("FeatureFlags:ExternalWrites")
-            && ConnectionWritesEnabled(connection.SettingsJson)
-            && string.Equals(connection.Environment, "PRODUCTION", StringComparison.OrdinalIgnoreCase)
-            && (string.Equals(connection.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase) || string.Equals(connection.Status, "VERIFIED", StringComparison.OrdinalIgnoreCase));
+        var allowed = ExternalWriteGate.AllowsProductionWrite(connection, ExternalWriteGate.GlobalWritesEnabled(configuration));
         return allowed
             ? null
             : Failure<T>(AdapterErrorClass.Validation, "PAZARAMA_EXTERNAL_WRITES_DISABLED", $"Pazarama bağlantısında dış yazma kapalı; {what} gönderilmedi.", HttpStatusCode.Forbidden);
     }
 
-    internal static bool ConnectionWritesEnabled(string settingsJson)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(settingsJson);
-            return document.RootElement.TryGetProperty("ExternalWritesEnabled", out var enabled) && enabled.ValueKind == JsonValueKind.True;
-        }
-        catch (JsonException) { return false; }
-    }
+    internal static bool ConnectionWritesEnabled(string settingsJson) => ExternalWriteGate.ConnectionWritesEnabled(settingsJson);
 
     public async Task<AdapterResult<ConnectionIdentity>> TestAsync(AdapterContext context, CancellationToken cancellationToken)
     {

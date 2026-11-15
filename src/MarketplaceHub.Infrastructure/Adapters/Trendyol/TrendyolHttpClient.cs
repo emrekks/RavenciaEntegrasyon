@@ -5,20 +5,20 @@ using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
+using MarketplaceHub.Infrastructure.Adapters.Http;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol.Contracts;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol.ErrorMapping;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using MarketplaceHub.Infrastructure.Adapters.Http;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Trendyol;
 
 public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthenticationHandler authentication, IConfiguration configuration, IOptions<TrendyolOptions> trendyolOptions, TimeProvider timeProvider, ILogger<TrendyolHttpClient> logger)
     : IConnectionPort, IReferenceDataPort, IProductPort, IProductVisualLookupPort, IInventoryPricePort, IOrderPort, IReturnPort, IReturnBatchReadPort, IReturnAuditPort, IInvoiceMarketplacePort
 {
-    private bool GlobalWritesEnabled => configuration.GetValue<bool>("FeatureFlags:ExternalWrites");
+    private bool GlobalWritesEnabled => ExternalWriteGate.GlobalWritesEnabled(configuration);
 
     public async Task<AdapterResult<ConnectionIdentity>> TestAsync(AdapterContext context, CancellationToken cancellationToken)
     {

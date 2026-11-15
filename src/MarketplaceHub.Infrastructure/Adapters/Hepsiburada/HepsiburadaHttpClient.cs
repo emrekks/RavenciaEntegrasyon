@@ -24,7 +24,7 @@ public sealed partial class HepsiburadaHttpClient(
     : IConnectionPort, IReferenceDataPort, IProductPort, IProductVisualLookupPort, IInventoryPricePort, IOrderPort, IOrderPackageReadPort, IReturnPort, IInvoiceMarketplacePort, IHepsiburadaInvoiceStatusPort
 {
     private readonly HepsiburadaOptions settings = options.Value;
-    private bool GlobalWritesEnabled => configuration.GetValue<bool>("FeatureFlags:ExternalWrites");
+    private bool GlobalWritesEnabled => ExternalWriteGate.GlobalWritesEnabled(configuration);
     // C19: the known clients upload at most 1,000 items per inventory-upload; 4,000 was never confirmed.
     internal const int MaxInventoryUploadItems = 1000;
     // Waits between the post-delivery reads of the order (about 10 s in all, well inside the job lease).
@@ -313,7 +313,7 @@ public sealed partial class HepsiburadaHttpClient(
         if (account.CatalogBaseAddress is null) return await Unsupported<RemoteOperationRef>("Hepsiburada ürün import için doğrulanmış katalog base URL'si yok.");
         // On a STAGE (SIT) connection the import is what produces PRODUCT_WRITE evidence, so only
         // PRICE_WRITE/INVENTORY_WRITE are required there; PRODUCTION still requires all three.
-        if (!IntegrationRuntimePolicy.AllowsExternalWrite(account.Connection, context, GlobalWritesEnabled, ConnectionWritesEnabled(account.Connection.SettingsJson))
+        if (!ExternalWriteGate.AllowsRuntimeWrite(account.Connection, context, GlobalWritesEnabled)
             || !await authentication.HasVerifiedWriteEvidenceAsync(account.Connection, cancellationToken, HepsiburadaStageCertificationPolicy.PublicationEvidenceCapabilities(account.Connection)))
             return await Unsupported<RemoteOperationRef>("Hepsiburada ürün import yalnız write kapıları ve PRODUCT_WRITE/PRICE_WRITE/INVENTORY_WRITE SIT fixture kanıtları açıldıktan sonra kullanılabilir.");
         if (publication.ProductId == Guid.Empty || string.IsNullOrWhiteSpace(publication.PayloadHash) || !ValidProductImportPayload(publication.PayloadJson, account.Connection.ExternalStoreId))
@@ -344,7 +344,7 @@ public sealed partial class HepsiburadaHttpClient(
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return Failure<RemoteOperationRef>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
         if (account.CatalogBaseAddress is null) return await Unsupported<RemoteOperationRef>("Hepsiburada ürün güncelleme için doğrulanmış katalog base URL'si yok.");
-        if (!IntegrationRuntimePolicy.AllowsExternalWrite(account.Connection, context, GlobalWritesEnabled, ConnectionWritesEnabled(account.Connection.SettingsJson))
+        if (!ExternalWriteGate.AllowsRuntimeWrite(account.Connection, context, GlobalWritesEnabled)
             || !await authentication.HasVerifiedWriteEvidenceAsync(account.Connection, cancellationToken, HepsiburadaStageCertificationPolicy.PublicationEvidenceCapabilities(account.Connection)))
             return await Unsupported<RemoteOperationRef>("Hepsiburada ürün güncellemesi yalnız dış yazma kapıları ve mağaza/ortam kapsamlı fiyat ve stok yazma kanıtı sağlandığında kullanılabilir.");
         if (publication.ProductId == Guid.Empty || string.IsNullOrWhiteSpace(publication.PayloadHash) || !ValidProductUpdatePayload(payloadJson, account.Connection.ExternalStoreId))
@@ -385,7 +385,7 @@ public sealed partial class HepsiburadaHttpClient(
             return await Unsupported<RemoteOperationRef>("Hepsiburada auth biçimi SIT hesabında doğrulanana kadar teslimat süresi gönderilmedi.");
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return Failure<RemoteOperationRef>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
-        if (!IntegrationRuntimePolicy.AllowsExternalWrite(account.Connection, context, GlobalWritesEnabled, ConnectionWritesEnabled(account.Connection.SettingsJson))
+        if (!ExternalWriteGate.AllowsRuntimeWrite(account.Connection, context, GlobalWritesEnabled)
             || !await authentication.HasVerifiedWriteEvidenceAsync(account.Connection, cancellationToken, HepsiburadaStageCertificationPolicy.PublicationEvidenceCapabilities(account.Connection)))
             return await Unsupported<RemoteOperationRef>("Hepsiburada teslimat süresi yalnız dış yazma kapıları ve mağaza/ortam kapsamlı fiyat ve stok yazma kanıtı sağlandığında gönderilebilir.");
         if (!ValidShippingInfoPayload(payloadJson, account.Connection.ExternalStoreId))
@@ -511,7 +511,7 @@ public sealed partial class HepsiburadaHttpClient(
             return await Unsupported<RemoteOperationRef>("Hepsiburada auth biçimi SIT hesabında doğrulanana kadar fiyat/stok yüklemesi gönderilmedi.");
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return Failure<RemoteOperationRef>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
-        if (!IntegrationRuntimePolicy.AllowsExternalWrite(account.Connection, context, GlobalWritesEnabled, ConnectionWritesEnabled(account.Connection.SettingsJson))
+        if (!ExternalWriteGate.AllowsRuntimeWrite(account.Connection, context, GlobalWritesEnabled)
             || !await authentication.HasVerifiedWriteEvidenceAsync(account.Connection, cancellationToken, MarketplaceCapabilities.PriceWrite, MarketplaceCapabilities.InventoryWrite))
             return await Unsupported<RemoteOperationRef>("Hepsiburada fiyat/stok yüklemesi yalnız dış yazma kapıları ve mağaza/ortam kapsamlı PRICE_WRITE/INVENTORY_WRITE SIT kanıtları sağlandığında kullanılabilir.");
         if (!ValidPriceInventoryPayload(payloadJson, account.Connection.ExternalStoreId))
@@ -947,7 +947,7 @@ public sealed partial class HepsiburadaHttpClient(
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return Failure<StageTestOrderResult>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
         if (!context.IsStageCapabilityProbe || !string.Equals(account.Connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase)
-            || !IntegrationRuntimePolicy.AllowsExternalWrite(account.Connection, context, GlobalWritesEnabled, ConnectionWritesEnabled(account.Connection.SettingsJson)))
+            || !ExternalWriteGate.AllowsRuntimeWrite(account.Connection, context, GlobalWritesEnabled))
             return AdapterResult<StageTestOrderResult>.Failure(new(AdapterErrorClass.NotSupported, "HEPSIBURADA_TEST_ORDER_STAGE_ONLY", "Hepsiburada test siparişi yalnız kullanıcı tarafından başlatılan Stage capability fixture'ında kullanılabilir.", null, null, null));
         if (account.StageTestOrderBaseAddress is null || !ValidTestOrderSku(sku))
             return Failure<StageTestOrderResult>(AdapterErrorClass.Validation, "HEPSIBURADA_TEST_ORDER_INPUT_INVALID", "Stage test siparişi için doğrulanmış HBSKU ve test ortamı adresi gerekir.", HttpStatusCode.BadRequest);
@@ -1019,7 +1019,7 @@ public sealed partial class HepsiburadaHttpClient(
             return await Unsupported<ReturnActionResult>("Hepsiburada auth biçimi SIT hesabında doğrulanana kadar talep aksiyonu gönderilmedi.");
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return Failure<ReturnActionResult>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
-        if (!IntegrationRuntimePolicy.AllowsExternalWrite(account.Connection, context, GlobalWritesEnabled, ConnectionWritesEnabled(account.Connection.SettingsJson)))
+        if (!ExternalWriteGate.AllowsRuntimeWrite(account.Connection, context, GlobalWritesEnabled))
             return await Unsupported<ReturnActionResult>("Hepsiburada talep aksiyonu yalnız doğrulanmış Stage bağlantısında veya dış yazma kapıları açılmış canlı bağlantıda kullanılabilir.");
         if (string.IsNullOrWhiteSpace(command.ExternalClaimId))
             return Failure<ReturnActionResult>(AdapterErrorClass.Validation, "HEPSIBURADA_CLAIM_NUMBER_REQUIRED", "Talep numarası zorunludur.", HttpStatusCode.BadRequest);
@@ -1070,7 +1070,7 @@ public sealed partial class HepsiburadaHttpClient(
         if (account is null) return Failure<InvoiceDeliveryResult>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
         if (!HepsiburadaInvoiceDeliveryPolicy.TryCreate(command, out var invoice, out var validationError))
             return Failure<InvoiceDeliveryResult>(AdapterErrorClass.Validation, "HEPSIBURADA_INVOICE_DELIVERY_INVALID", validationError, HttpStatusCode.BadRequest);
-        var regularWriteAllowed = IntegrationRuntimePolicy.AllowsExternalWrite(account.Connection, context, GlobalWritesEnabled, ConnectionWritesEnabled(account.Connection.SettingsJson));
+        var regularWriteAllowed = ExternalWriteGate.AllowsRuntimeWrite(account.Connection, context, GlobalWritesEnabled);
         var automaticInvoiceWriteAllowed = IntegrationRuntimePolicy.AllowsAutomaticInvoiceMarketplaceDelivery(
             account.Connection,
             context,
@@ -1535,15 +1535,7 @@ public sealed partial class HepsiburadaHttpClient(
         return (offset, Math.Clamp(page.Limit, 1, Math.Max(Math.Clamp(configuredLimit, 1, 10), documentedMaximum)));
     }
 
-    private static bool ConnectionWritesEnabled(string settingsJson)
-    {
-        try
-        {
-            using var settings = JsonDocument.Parse(settingsJson);
-            return settings.RootElement.TryGetProperty("ExternalWritesEnabled", out var enabled) && enabled.ValueKind == JsonValueKind.True;
-        }
-        catch (JsonException) { return false; }
-    }
+    private static bool ConnectionWritesEnabled(string settingsJson) => ExternalWriteGate.ConnectionWritesEnabled(settingsJson);
 
     internal static bool ValidProductImportPayload(string payloadJson, string merchantId)
     {

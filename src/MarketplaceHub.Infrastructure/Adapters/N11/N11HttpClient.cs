@@ -34,10 +34,7 @@ public sealed partial class N11HttpClient(
     internal AdapterResult<T>? WriteBlocked<T>(N11RequestContext account, string what)
     {
         var connection = account.Connection;
-        var allowed = configuration.GetValue<bool>("FeatureFlags:ExternalWrites")
-            && ConnectionWritesEnabled(connection.SettingsJson)
-            && string.Equals(connection.Environment, "PRODUCTION", StringComparison.OrdinalIgnoreCase)
-            && (string.Equals(connection.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase) || string.Equals(connection.Status, "VERIFIED", StringComparison.OrdinalIgnoreCase));
+        var allowed = ExternalWriteGate.AllowsProductionWrite(connection, ExternalWriteGate.GlobalWritesEnabled(configuration));
         return allowed
             ? null
             : Failure<T>(AdapterErrorClass.Validation, "N11_EXTERNAL_WRITES_DISABLED", $"N11 bağlantısında dış yazma kapalı; {what} gönderilmedi.", HttpStatusCode.Forbidden);
