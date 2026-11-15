@@ -110,6 +110,33 @@ public sealed class TrendyolAdapterAuditTests
         Assert.False(TrendyolJsonMapper.HasInvoiceObservation(null));
     }
 
+    // ADAPTOR-TY-HB-2: a 200 whose body breaks off while it streams is a classified network error, not an escaping exception.
+    [Fact]
+    public async Task ABodyThatBreaksOffWhileStreamingIsANetworkError()
+    {
+        var handler = new BrokenBody();
+        var client = new TrendyolHttpClient(new Factory(handler), null!, new ConfigurationBuilder().Build(), Options.Create(new TrendyolOptions()), TimeProvider.System, NullLogger<TrendyolHttpClient>.Instance);
+        var account = new TrendyolRequestContext(
+            new PlatformConnection { PlatformCode = "TRENDYOL", Environment = "PRODUCTION", Status = "ACTIVE", DisplayName = "Trendyol", ExternalStoreId = "seller-1", ApiVersion = "V2" },
+            new Uri("https://apigw.example/"), "key", "secret", "seller-1 - SelfIntegration", false);
+        var end = new DateTimeOffset(2026, 10, 20, 12, 0, 0, TimeSpan.Zero);
+
+        var scan = await client.ScanPackageStreamAsync(account, "PKG-1", null, null, end.AddDays(-12), end, "TR", CancellationToken.None);
+
+        Assert.Null(scan.Result);
+        Assert.Equal(AdapterErrorClass.TransientNetwork, scan.StreamError!.Class);
+        Assert.Equal("REMOTE_NETWORK_ERROR", scan.StreamError.Code);
+    }
+
+    private sealed class BrokenBody : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StreamContent(new AdapterHardeningTests.BrokenStream(new HttpIOException(HttpRequestError.ResponseEnded, "cut")))
+            });
+    }
+
     [Fact]
     public async Task ThePackageStreamScanStopsAfterItsPageCap()
     {
