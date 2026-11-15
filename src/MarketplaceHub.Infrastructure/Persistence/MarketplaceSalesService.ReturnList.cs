@@ -597,10 +597,10 @@ public sealed partial class MarketplaceSalesService
         // SIPARIS-STOK-9: with the card columns filled and nothing decided card by card, the tab counts and the metric cards
         // are counted by the database; only the selected tab's claims are read, for its filter choices.
         ReturnCardScan? counted = null;
-        ReturnMetricCounts metrics;
-        if (columns.Fresh && !everyTab && !ReturnCardsFilteredInMemory(options))
-            metrics = await CountReturnCardsInDatabaseAsync(tenantId, options, counts, columns, cancellationToken);
-        else
+        var metrics = columns.Fresh && !everyTab && !ReturnCardsFilteredInMemory(options)
+            ? await CountReturnCardsInDatabaseAsync(tenantId, options, counts, columns, cancellationToken)
+            : null;
+        if (metrics is null)
         {
             counted = await ScanReturnCardsAsync(tenantId, options, applyTab: false, applyRefinements: true, columns, cancellationToken);
             foreach (var card in counted.Cards)
@@ -650,15 +650,19 @@ public sealed partial class MarketplaceSalesService
     }
 
     // The tab counts and ReturnMetricsAsync of every card the filter keeps (the tab aside), counted by the database from the
-    // card columns. Without a card-by-card filter every claim is at least one card: its first card in its TabGroup, and a
+    // card columns (null: a claim without them turned up, compute as before). Without a card-by-card filter every claim is at least one card: its first card in its TabGroup, and a
     // claim that splits (only CardSplit claims can; their lines decide) has an accepted card more, under Onaylanan. A
     // rejected card is its claim's first card (TabGroup REJECTED), and every claim has a card for the decisions of today.
-    private async Task<ReturnMetricCounts> CountReturnCardsInDatabaseAsync(Guid tenantId, ReturnListQuery options, Dictionary<string, int> counts, ReturnColumnState columns, CancellationToken cancellationToken)
+    internal async Task<ReturnMetricCounts?> CountReturnCardsInDatabaseAsync(Guid tenantId, ReturnListQuery options, Dictionary<string, int> counts, ReturnColumnState columns, CancellationToken cancellationToken)
     {
         var query = ReturnBaseQuery(tenantId);
         ApplyReturnFilters(ref query, options with { Status = null });
         ApplyReturnRefinements(ref query, tenantId, options);
-        foreach (var group in await query.GroupBy(x => x.TabGroup).Select(group => new { group.Key, Count = group.Count() }).ToListAsync(cancellationToken))
+        var groups = await query.GroupBy(x => x.TabGroup).Select(group => new { group.Key, Count = group.Count() }).ToListAsync(cancellationToken);
+        // The staleness check ran in its own read: a claim written meanwhile without its columns (the previous worker
+        // during a deploy) sends this request back to the computation from claims and lines (null), counts untouched.
+        if (groups.Any(group => group.Key is null || !counts.ContainsKey(group.Key))) return null;
+        foreach (var group in groups)
         {
             counts["ALL"] += group.Count;
             counts[group.Key!] += group.Count;

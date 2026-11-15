@@ -81,8 +81,8 @@ public static class DatabaseMigrator
                 // keeps the page on its old computation until the worker's repair pass; it does not stop the deploy.
                 try
                 {
-                    var (claims, written) = await ReturnCardColumns.RepairAsync(migrationContext, cancellationToken);
-                    logger.LogInformation("Return card columns: {Claims} claims read, {Written} written", claims, written);
+                    var (claims, written, lost) = await ReturnCardColumns.RepairAsync(migrationContext, cancellationToken);
+                    logger.LogInformation("Return card columns: {Claims} claims read, {Written} written, {Lost} changed meanwhile", claims, written, lost);
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException)
                 {

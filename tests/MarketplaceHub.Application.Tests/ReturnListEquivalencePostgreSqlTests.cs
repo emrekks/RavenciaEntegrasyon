@@ -130,6 +130,8 @@ public sealed class ReturnListEquivalencePostgreSqlTests(PostgreSqlTenantIsolati
             ReturnListQuery[] filters =
             [
                 new(Platforms: ["TRENDYOL"]), new(Platforms: [" N11 ", "HEPSIBURADA"]), new(Cargo: "Aras Kargo"), new(Cargo: " Yurtiçi "), new(Cargo: "ALL"),
+                // White space inside a value, after a line break, stays: a multi-line pattern would trim it too.
+                new(Cargo: "Aras\n Kargo"),
                 new(ReasonKey: "SIZE"), new(ReasonKey: "Beğenmedim"), new(ReasonKey: "DEFECT"),
                 new(Platforms: ["TRENDYOL"], Cargo: "Aras Kargo", ReasonKey: "SIZE")
             ];
@@ -335,7 +337,7 @@ public sealed class ReturnListEquivalencePostgreSqlTests(PostgreSqlTenantIsolati
         // Spaces and other white space (tab, line feed, no-break, em and ideographic space) around the values: .NET Trim strips
         // them all, so the database filter must too.
         (string? Code, string? Text)[] reasons = [("SIZE", "Beden küçük"), (null, "Beğenmedim"), ("DEFECT", null), (null, null), (" SIZE", "Büyük"), ("SIZE ", "x"), ("　", "Beğenmedim\n")];
-        string?[] cargo = [" Aras Kargo", "Aras Kargo", "Yurtiçi", null, "Yurtiçi ", " Aras Kargo\t", "\u0085Yurtiçi\r\n"];
+        string?[] cargo = [" Aras Kargo", "Aras Kargo", "Yurtiçi", null, "Yurtiçi ", " Aras Kargo\t", "\u0085Yurtiçi\r\n", "Aras\n Kargo"];
         var requestedBase = new DateTimeOffset(2026, 11, 10, 9, 0, 0, TimeSpan.Zero);
         var orders = new List<Order>();
         var orderLines = new List<OrderLine>();
