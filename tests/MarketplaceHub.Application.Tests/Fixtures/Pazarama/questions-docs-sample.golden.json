@@ -53,7 +53,7 @@
       {
         "Id": "00000000-0000-4000-8000-000000000701",
         "Kind": "PRODUCT",
-        "Status": "WAITING_FOR_ANSWER",
+        "Status": "UNKNOWN",
         "Text": "Durumu gelmeyen soru",
         "ProductName": "Durumsuz Ürün",
         "ProductImageUrl": null,

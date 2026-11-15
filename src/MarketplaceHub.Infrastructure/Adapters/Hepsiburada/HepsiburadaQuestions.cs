@@ -167,7 +167,8 @@ internal static class HepsiburadaQuestionMapper
     private static RemoteMarketplaceQuestion? Map(JsonElement item, string kind)
     {
         var id = Text(item, "issueNumber", "number", "id"); if (string.IsNullOrWhiteSpace(id)) return null;
-        var product = Property(item, "product"); var rawStatus = Text(item, "status") ?? "WaitingForAnswer";
+        // D2: a question without a status stays unknown (never "waiting for an answer"): CLAUDE.md, unknown stays unknown.
+        var product = Property(item, "product"); var rawStatus = Text(item, "status") ?? "UNKNOWN";
         var status = rawStatus.Replace("_", "", StringComparison.Ordinal).Replace("-", "", StringComparison.Ordinal).ToUpperInvariant() switch
         // C33: 7 is "Satıcı iletişime geçti" (the seller contacted the customer): the question is handled.
         { "1" or "WAITINGFORANSWER" => "WAITING_FOR_ANSWER", "2" or "ANSWERED" or "7" or "SELLERCONTACTED" => "ANSWERED", "3" or "REJECTED" => "REJECTED", "4" or "AUTOCLOSED" => "EXPIRED", _ => rawStatus.ToUpperInvariant() };
@@ -177,7 +178,7 @@ internal static class HepsiburadaQuestionMapper
         if ((Date(item, "createdAt", "creationDate", "createdDate") ?? lastChange) is not { } created) return null;
         var modified = lastChange ?? created;
         var conversations = FindArray(item, "conversations").Select(message => new RemoteQuestionConversation(Text(message, "from", "author", "sender") ?? "Customer", Text(message, "content", "text", "message") ?? "", Date(message, "createdAt", "creationDate", "date") ?? created, Text(message, "rejectReason", "rejectionReason", "reason"))).ToList();
-        if (conversations.Count == 0 && Text(item, "lastContent") is { Length: > 0 } latest) conversations.Add(new(status == "WAITING_FOR_ANSWER" ? "Customer" : "Merchant", latest, modified, Text(item, "rejectReason", "rejectionReason")));
+        if (conversations.Count == 0 && Text(item, "lastContent") is { Length: > 0 } latest) conversations.Add(new(status is "WAITING_FOR_ANSWER" or "UNKNOWN" ? "Customer" : "Merchant", latest, modified, Text(item, "rejectReason", "rejectionReason")));
         var customerQuestion = conversations.FirstOrDefault(message => message.Author.Contains("customer", StringComparison.OrdinalIgnoreCase))?.Text
             ?? Text(item, "questionText", "question", "lastContent") ?? conversations.FirstOrDefault()?.Text ?? "";
         return new(id, kind, status, customerQuestion, Text(product, "name", "productName", "title"), HepsiburadaJsonMapper.ImageUrl(product) ?? HepsiburadaJsonMapper.ImageUrl(item), Text(product, "stockCode", "sku", "merchantSku", "sellerSku"), Text(product, "barcode", "productBarcode"), Text(product, "modelCode"), Text(item, "customerName"), Text(item, "orderNumber", "orderNo", "orderId"), created, Date(item, "expireDate"), modified, conversations);

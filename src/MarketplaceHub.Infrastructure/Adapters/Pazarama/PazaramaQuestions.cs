@@ -106,7 +106,9 @@ public static class PazaramaQuestionMapper
     // Pazarama adds later stays visible as itself instead of passing for an open question.
     public static string PanelStatus(int? status) => status switch
     {
-        null or 0 => "WAITING_FOR_ANSWER",
+        // D7: a row without questionStatus stays unknown, never "waiting for an answer" (CLAUDE.md).
+        null => "UNKNOWN",
+        0 => "WAITING_FOR_ANSWER",
         1 => "ANSWERED",
         2 => "WAITING_FOR_APPROVE",
         3 => "REJECTED",

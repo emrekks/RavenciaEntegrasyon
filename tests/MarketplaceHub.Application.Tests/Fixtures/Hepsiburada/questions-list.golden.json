@@ -93,7 +93,7 @@
     {
       "Id": "HBQ-FAKE-4",
       "Kind": "PRODUCT",
-      "Status": "WAITING_FOR_ANSWER",
+      "Status": "UNKNOWN",
       "Text": "Durumu gelmeyen soru",
       "ProductName": null,
       "ProductImageUrl": null,

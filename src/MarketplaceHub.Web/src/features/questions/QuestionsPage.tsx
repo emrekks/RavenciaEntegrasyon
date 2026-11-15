@@ -91,6 +91,8 @@ function questionStatus(status: string) {
   if (normalized === 'EXPIRED' || normalized === 'UNANSWERED' || normalized === 'AUTOCLOSED') return { label: 'Süresi Doldu', glyph: 'none' as Glyph }
   if (normalized === 'REJECTED') return { label: 'Reddedildi', glyph: 'bad' as Glyph }
   if (normalized === 'REPORTED') return { label: 'İnceleniyor', glyph: 'partial' as Glyph }
+  // The marketplace sent no status: unknown, never "waiting for an answer".
+  if (normalized === 'UNKNOWN') return { label: 'Bilinmiyor', glyph: 'none' as Glyph }
   return { label: status, glyph: 'none' as Glyph }
 }
 

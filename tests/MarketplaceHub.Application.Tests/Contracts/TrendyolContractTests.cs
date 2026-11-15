@@ -190,9 +190,8 @@ public sealed class TrendyolContractTests
         Assert.Equal(["WAITING_FOR_ANSWER", "ANSWERED", "REJECTED"], page.Items.Take(3).Select(item => item.Status).ToArray());
         // An unknown status is carried as sent.
         Assert.Equal("SOME_FUTURE_STATUS", page.Items[4].Status);
-        // DEVIATION: a question without any status is mapped to WAITING_FOR_ANSWER (TrendyolQuestionMapper.Map,
-        // `Text(item, "status") ?? "WAITING_FOR_ANSWER"`); CLAUDE.md says a missing field is never read as a state.
-        Assert.Equal("WAITING_FOR_ANSWER", page.Items[3].Status);
+        // D1: a question without any status stays unknown (CLAUDE.md: a missing field is never read as a state).
+        Assert.Equal("UNKNOWN", page.Items[3].Status);
     }
 
     [Fact]

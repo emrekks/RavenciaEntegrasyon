@@ -26,9 +26,17 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         "WAITING" => ["WAITING_FOR_ANSWER", "REJECTED"],
         "ANSWERED" => ["ANSWERED", "ANSWER_SUBMITTED", "WAITING_FOR_APPROVE"],
         "EXPIRED" => ["EXPIRED", "UNANSWERED", "AUTOCLOSED"],
-        "OTHER" => ["REPORTED"],
+        "OTHER" => ["REPORTED", UnknownStatus],
         var status => [status]
     };
+
+    // D1-D7 (15 Nov 2026): a question the marketplace sent without a status. It is never counted as waiting for an
+    // answer (CLAUDE.md: a missing field is not a state); the panel shows it as "Bilinmiyor".
+    internal const string UnknownStatus = "UNKNOWN";
+
+    // A read without a status keeps the status the panel already knows; only a new question starts out unknown.
+    internal static string StatusAfterRead(string? stored, string remote) =>
+        remote == UnknownStatus && stored is not null ? stored : remote;
 
     // A rejection the seller can still answer: Trendyol and Pazarama reject the seller's answer, which may be rewritten
     // until the question expires. Hepsiburada's "rejected" (status 3) is the question itself closed after the seller
@@ -628,7 +636,7 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         // A read without a change time cannot be called stale: unknown stays unknown, so it is taken as fresh.
         if (remote.LastModifiedAt is not { } remoteModifiedAt || row.LastRemoteModifiedAt is not { } storedModifiedAt || remoteModifiedAt >= storedModifiedAt)
         {
-            row.Kind = remote.Kind; row.Status = remote.Status;
+            row.Kind = remote.Kind; row.Status = StatusAfterRead(isNew ? null : row.Status, remote.Status);
             if (remote.Text.Length > 0) { row.QuestionText = remote.Text; row.QuestionSubject = remote.Subject; }
             row.ProductName = remote.ProductName; row.ProductImageUrl = remote.ProductImageUrl; row.ProductSku = remote.ProductSku; row.ProductBarcode = remote.ProductBarcode; row.ProductModelCode = remote.ProductModelCode; row.ProductExternalId = remote.ProductExternalId ?? row.ProductExternalId; row.ProductUrl = remote.ProductUrl ?? row.ProductUrl; row.CustomerName = remote.CustomerName; row.ExternalOrderNumber = remote.OrderNumber;
             // A read without the customer's number (another call of the marketplace) keeps the one already known.

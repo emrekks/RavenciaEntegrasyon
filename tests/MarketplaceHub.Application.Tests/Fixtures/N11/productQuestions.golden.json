@@ -51,7 +51,7 @@
   {
     "Id": "Q3",
     "Kind": "PRODUCT",
-    "Status": "WAITING_FOR_ANSWER",
+    "Status": "UNKNOWN",
     "Text": "Durumu ve tarihi gelmeyen soru",
     "ProductName": "Kadın Bluz",
     "ProductImageUrl": null,

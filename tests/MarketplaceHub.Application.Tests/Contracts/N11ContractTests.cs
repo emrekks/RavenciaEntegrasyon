@@ -132,9 +132,10 @@ public sealed class N11ContractTests
         Assert.Equal("WAITING_FOR_ANSWER", questions[0]!.Status);
         Assert.Equal("ANSWERED", questions[1]!.Status);
         Assert.Equal("Göğüs 100 cm.", Assert.Single(questions[1]!.Conversations).Text);
-        // DEVIATION: a question detail without any status (and without an answer) is mapped to WAITING_FOR_ANSWER
-        // (N11QuestionMapper.Question: isAnswered false → "WAITING_FOR_ANSWER"); an unknown n11 status would read the same.
-        Assert.Equal("WAITING_FOR_ANSWER", questions[2]!.Status);
+        // D5: a question detail without any status (and without an answer) stays unknown. One that the list returned for
+        // the OPEN filter is open by that answer, not by a guess.
+        Assert.Equal("UNKNOWN", questions[2]!.Status);
+        Assert.Equal("WAITING_FOR_ANSWER", N11QuestionMapper.Question("Q3", null, details[2], listedStatus: "OPEN")!.Status);
     }
 
     public static TheoryData<string, CannedHttpCase> ErrorAnswers => new()

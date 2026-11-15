@@ -128,9 +128,8 @@ public sealed class PazaramaContractTests
         // Status 2: an answer waiting for Pazarama's approval is not shown as answered.
         Assert.Equal(("WAITING_FOR_APPROVE", "Merchant"), (page.Items[0].Status, Assert.Single(page.Items[0].Conversations).Author));
         Assert.Equal("WAITING_FOR_ANSWER", page.Items[1].Status);
-        // DEVIATION: a row without questionStatus is mapped to WAITING_FOR_ANSWER (PazaramaQuestionMapper.PanelStatus,
-        // `null or 0 => "WAITING_FOR_ANSWER"`); CLAUDE.md says a missing field is never read as a state.
-        Assert.Equal("WAITING_FOR_ANSWER", page.Items[2].Status);
+        // D7: a row without questionStatus stays unknown (CLAUDE.md: a missing field is never read as a state).
+        Assert.Equal("UNKNOWN", page.Items[2].Status);
         // The GET list's rows carry no question text: none is made up, the rows are left out.
         Assert.Empty(withoutText.Items);
         Assert.Equal(("a82a1cf6-d113-4e73-0c48-08dde351ae8d", "567800436", "ORDER"), (detail!.Id, detail.OrderNumber, detail.Kind));

@@ -162,12 +162,24 @@ public sealed class MarketplaceQuestionAnswerReconciliationPolicyTests
         Assert.False(MarketplaceQuestionService.NeverReachedMarketplace(new TaskCanceledException()));
     }
 
+    // D1-D7: a read that carries no status keeps the status the panel already knows; a new question stays unknown.
+    [Fact]
+    public void A_read_without_a_status_keeps_the_known_status()
+    {
+        Assert.Equal("ANSWERED", MarketplaceQuestionService.StatusAfterRead("ANSWERED", MarketplaceQuestionService.UnknownStatus));
+        Assert.Equal(MarketplaceQuestionService.UnknownStatus, MarketplaceQuestionService.StatusAfterRead(null, MarketplaceQuestionService.UnknownStatus));
+        Assert.Equal("ANSWERED", MarketplaceQuestionService.StatusAfterRead("WAITING_FOR_ANSWER", "ANSWERED"));
+    }
+
     [Fact]
     public void Rejected_questions_wait_for_a_new_answer_and_approval_counts_as_answered()
     {
         Assert.Equal(["WAITING_FOR_ANSWER", "REJECTED"], MarketplaceQuestionService.StatusesOf("waiting"));
         Assert.Contains("WAITING_FOR_APPROVE", MarketplaceQuestionService.StatusesOf("ANSWERED"));
         Assert.DoesNotContain("REJECTED", MarketplaceQuestionService.StatusesOf("OTHER"));
+        // D1-D7: a question whose status the marketplace did not send is listed under "other", never as waiting.
+        Assert.Contains(MarketplaceQuestionService.UnknownStatus, MarketplaceQuestionService.StatusesOf("OTHER"));
+        Assert.DoesNotContain(MarketplaceQuestionService.UnknownStatus, MarketplaceQuestionService.StatusesOf("WAITING"));
         Assert.Equal(["EXPIRED"], MarketplaceQuestionService.StatusesOf("EXPIRED")[..1]);
     }
 

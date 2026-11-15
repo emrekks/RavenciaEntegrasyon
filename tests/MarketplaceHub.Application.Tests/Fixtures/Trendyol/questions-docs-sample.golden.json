@@ -99,7 +99,7 @@
     {
       "Id": "70000004",
       "Kind": "PRODUCT",
-      "Status": "WAITING_FOR_ANSWER",
+      "Status": "UNKNOWN",
       "Text": "Durumu gelmeyen soru",
       "ProductName": null,
       "ProductImageUrl": null,

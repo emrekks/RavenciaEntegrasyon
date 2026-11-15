@@ -171,6 +171,18 @@ describe('QuestionsPage workspace flows', () => {
     expect(history?.nextElementSibling?.textContent).toContain('Ürün boyu kaç santimetredir?')
   })
 
+  it('shows a question whose status the marketplace did not send as unknown', async () => {
+    apiState.customerHistory = [
+      { ...createQuestion(), id: 'q-unknown', status: 'UNKNOWN', productName: 'Örme hırka', questionText: 'Hırka kaç beden?', createdAt: '2026-10-03T09:00:00Z', conversations: [] },
+    ]
+    await renderPage()
+
+    const items = Array.from(container.querySelectorAll('.qi-customer-history .qi-history-item')).map(item => item.textContent ?? '')
+    expect(items).toHaveLength(1)
+    expect(items[0]).toContain('Bilinmiyor')
+    expect(items[0]).not.toContain('UNKNOWN')
+  })
+
   it('shows no earlier block when the customer asked nothing before', async () => {
     await renderPage()
     expect(container.querySelector('.qi-customer-history')).toBeNull()

@@ -143,9 +143,8 @@ public sealed class HepsiburadaContractTests
         Assert.Equal(4, page.Items.Count);
         Assert.Equal(["WAITING_FOR_ANSWER", "ANSWERED", "EXPIRED"], page.Items.Take(3).Select(item => item.Status).ToArray());
         Assert.Equal(new DateTimeOffset(2026, 11, 5, 7, 0, 0, TimeSpan.Zero), page.Items[0].CreatedAt);
-        // DEVIATION: a question without a status field is mapped to WAITING_FOR_ANSWER (HepsiburadaQuestionMapper.Map,
-        // `Text(item, "status") ?? "WaitingForAnswer"`); CLAUDE.md says a missing field is never read as a state.
-        Assert.Equal("WAITING_FOR_ANSWER", page.Items[3].Status);
+        // D2: a question without a status field stays unknown (CLAUDE.md: a missing field is never read as a state).
+        Assert.Equal("UNKNOWN", page.Items[3].Status);
     }
 
     public static TheoryData<string, CannedHttpCase> ErrorAnswers => new()
