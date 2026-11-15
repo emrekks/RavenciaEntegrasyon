@@ -899,11 +899,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             .ToListAsync(cancellationToken);
         var now = timeProvider.GetUtcNow();
         foreach (var job in jobs)
-        {
-            job.Status = JobStatus.Cancelled;
-            job.CompletedAt = now;
-            job.Version++;
-        }
+            Jobs.JobStateMachine.Cancel(db, job, now, code: null, summary: null, Jobs.JobEvent.None);
     }
 
     private async Task CancelScheduledSyncsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
@@ -913,11 +909,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             && (x.Status == JobStatus.Pending || x.Status == JobStatus.RetryScheduled)).ToListAsync(cancellationToken);
         var now = timeProvider.GetUtcNow();
         foreach (var job in jobs)
-        {
-            job.Status = JobStatus.Cancelled;
-            job.CompletedAt = now;
-            job.Version++;
-        }
+            Jobs.JobStateMachine.Cancel(db, job, now, code: null, summary: null, Jobs.JobEvent.None);
     }
     private void QueueActivationBootstrap(Guid tenantId, PlatformConnection connection)
     {

@@ -96,14 +96,9 @@ public static class ScheduledReadSupersession
                          (series.Key.ConnectionId, series.Key.JobType, latest.JobDedupKey, JobStatus.Succeeded, latest.CreatedAt), x.LastErrorCode)))
             {
                 var summary = Summary;
-                closed += await db.IntegrationJobs
-                    .Where(x => x.Id == job.Id && x.TenantId == job.TenantId && x.Status == job.Status && x.LastErrorCode == job.LastErrorCode)
-                    .ExecuteUpdateAsync(setters => setters
-                        .SetProperty(x => x.Status, JobStatus.Cancelled)
-                        .SetProperty(x => x.LastErrorCode, Code)
-                        .SetProperty(x => x.LastErrorSummary, summary)
-                        .SetProperty(x => x.CompletedAt, x => x.CompletedAt ?? now)
-                        .SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
+                closed += await Jobs.JobStateMachine.CancelWhereAsync(
+                    db.IntegrationJobs.Where(x => x.Id == job.Id && x.TenantId == job.TenantId && x.Status == job.Status && x.LastErrorCode == job.LastErrorCode),
+                    now, Code, summary, keepEarlierCompletedAt: true, cancellationToken);
             }
         }
         return closed;

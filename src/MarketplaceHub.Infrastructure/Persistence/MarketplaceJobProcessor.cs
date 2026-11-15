@@ -1582,13 +1582,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var now = timeProvider.GetUtcNow();
         foreach (var oldCheck in relatedJobs.Where(job => job.JobType == MarketplaceJobTypes.ProductApprovalReconcile && job.Id != currentJobId
             && job.Status is JobStatus.Pending or JobStatus.RetryScheduled))
-        {
-            oldCheck.Status = JobStatus.Cancelled;
-            oldCheck.CompletedAt = now;
-            oldCheck.LastErrorCode = "PRODUCT_MISSING_RESET";
-            oldCheck.LastErrorSummary = "Trendyol ilanının bulunmadığı doğrulandığı için eski durum kontrolü kapatıldı.";
-            oldCheck.Version++;
-        }
+            Jobs.JobStateMachine.Cancel(db, oldCheck, now, "PRODUCT_MISSING_RESET", "Trendyol ilanının bulunmadığı doğrulandığı için eski durum kontrolü kapatıldı.", Jobs.JobEvent.None);
         var previousCreate = relatedJobs.SingleOrDefault(job => job.JobType == MarketplaceJobTypes.ProductCreate && job.JobDedupKey == productCreateDedup);
         if (previousCreate is not null)
         {

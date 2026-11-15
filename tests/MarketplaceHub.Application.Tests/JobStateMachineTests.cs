@@ -144,6 +144,31 @@ public sealed class JobStateMachineTests
         Assert.Equal(2, job.Version);
     }
 
+    // Nothing outside JobStateMachine writes a job's Status: an existing job's status is never assigned or bulk-updated
+    // anywhere else (a new job's initializer may name its first status).
+    [Fact]
+    public void OnlyTheStateMachineWritesAJobsStatus()
+    {
+        var root = RepositoryRoot();
+        var assignment = new System.Text.RegularExpressions.Regex(@"\w\.Status\s*=\s*JobStatus\.|SetProperty\(\s*\w+\s*=>\s*\w+\.Status\s*,\s*JobStatus\.");
+        var offenders = Directory.EnumerateFiles(Path.Combine(root, "src"), "*.cs", SearchOption.AllDirectories)
+            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}Migrations{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                && !path.EndsWith("JobStateMachine.cs", StringComparison.Ordinal))
+            .SelectMany(path => File.ReadLines(path).Select((line, index) => (path, line, index)))
+            .Where(item => assignment.IsMatch(item.line))
+            .Select(item => $"{Path.GetRelativePath(root, item.path)}:{item.index + 1}")
+            .ToList();
+        Assert.Empty(offenders);
+    }
+
+    private static string RepositoryRoot()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+            if (File.Exists(Path.Combine(directory.FullName, "MarketplaceHub.sln"))) return directory.FullName;
+        throw new InvalidOperationException("MarketplaceHub.sln not found above the test output.");
+    }
+
     private static AppDbContext Context() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql("Host=localhost;Database=unused").Options);
 

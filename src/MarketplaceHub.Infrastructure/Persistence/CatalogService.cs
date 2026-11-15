@@ -878,26 +878,9 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var cancelledAt = timeProvider.GetUtcNow();
         foreach (var job in pendingJobs)
         {
-            if (job.Status == JobStatus.Leased)
-            {
-                var attempt = await db.JobAttempts.SingleOrDefaultAsync(x => x.JobId == job.Id && x.AttemptNumber == job.AttemptCount && x.CompletedAt == null, cancellationToken);
-                if (attempt is not null)
-                {
-                    attempt.CompletedAt = cancelledAt;
-                    attempt.Succeeded = false;
-                    attempt.ErrorCode = "PRODUCT_DELETED";
-                    attempt.ErrorSummary = "Ürün katalogdan silindiği için iş durduruldu.";
-                }
-            }
+            await Jobs.JobStateMachine.CloseRunningAttemptAsync(db, job, cancelledAt, "PRODUCT_DELETED", "Ürün katalogdan silindiği için iş durduruldu.", cancellationToken);
             // The lease goes too: a worker still holding it can no longer complete the job.
-            job.Status = JobStatus.Cancelled;
-            job.CompletedAt = cancelledAt;
-            job.LastErrorCode = "PRODUCT_DELETED";
-            job.LastErrorSummary = "Ürün katalogdan silindiği için iş iptal edildi; pazar yerine bir şey gönderilmedi.";
-            job.LeaseTokenHash = null;
-            job.LeaseExpiresAt = null;
-            job.HeartbeatAt = null;
-            job.Version++;
+            Jobs.JobStateMachine.Cancel(db, job, cancelledAt, "PRODUCT_DELETED", "Ürün katalogdan silindiği için iş iptal edildi; pazar yerine bir şey gönderilmedi.", Jobs.JobEvent.None, clearLease: true);
         }
         if (pendingJobs.Count > 0) await db.SaveChangesAsync(cancellationToken);
         // The pictures and size charts of the deleted cards: handed to the purge sweep once the delete has committed.
@@ -2628,12 +2611,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var existing = approvalJobs.FirstOrDefault();
         if (existing?.Status is JobStatus.Pending or JobStatus.RetryScheduled)
         {
-            existing.Status = JobStatus.Pending;
-            existing.AvailableAt = timeProvider.GetUtcNow();
-            existing.LastErrorCode = null;
-            existing.LastErrorSummary = null;
-            existing.CompletedAt = null;
-            existing.Version++;
+            Jobs.JobStateMachine.Requeue(db, existing, timeProvider.GetUtcNow(), Jobs.JobEvent.None);
             try
             {
                 await db.SaveChangesAsync(cancellationToken);
@@ -2860,12 +2838,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var now = timeProvider.GetUtcNow();
         foreach (var check in waiting)
         {
-            check.Status = JobStatus.Cancelled;
-            check.CompletedAt = now;
-            check.LastErrorCode = "PRODUCT_APPROVAL_SUPERSEDED";
-            check.LastErrorSummary = "Ürün yeniden gönderildi; eski onay kontrolü kapatıldı.";
+            Jobs.JobStateMachine.Cancel(db, check, now, "PRODUCT_APPROVAL_SUPERSEDED", "Ürün yeniden gönderildi; eski onay kontrolü kapatıldı.", Jobs.JobEvent.None);
             check.JobDedupKey = $"{check.JobDedupKey}:resent:{check.Id:N}";
-            check.Version++;
         }
     }
 

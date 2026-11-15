@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
+using MarketplaceHub.Infrastructure.Jobs;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -445,11 +446,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 && (x.Status == JobStatus.Pending || x.Status == JobStatus.RetryScheduled))
             .ToListAsync(cancellationToken);
         foreach (var job in scheduledProductJobs)
-        {
-            job.Status = JobStatus.Cancelled;
-            job.CompletedAt = timeProvider.GetUtcNow();
-            job.Version++;
-        }
+            JobStateMachine.Cancel(db, job, timeProvider.GetUtcNow(), code: null, summary: null, JobEvent.None);
 
         if (productPolicies.Count > 0 || scheduledProductJobs.Count > 0)
             await db.SaveChangesAsync(cancellationToken);
@@ -507,11 +504,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             .ToListAsync(cancellationToken);
         var now = timeProvider.GetUtcNow();
         foreach (var job in jobs)
-        {
-            job.Status = JobStatus.Cancelled;
-            job.CompletedAt = now;
-            job.Version++;
-        }
+            JobStateMachine.Cancel(db, job, now, code: null, summary: null, JobEvent.None);
 
         if (connectionSettingsChanged || disabledPolicies.Count > 0 || jobs.Count > 0)
             await db.SaveChangesAsync(cancellationToken);

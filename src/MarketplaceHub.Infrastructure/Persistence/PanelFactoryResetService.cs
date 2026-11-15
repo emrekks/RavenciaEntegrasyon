@@ -440,14 +440,9 @@ public sealed class PanelFactoryResetService(AppDbContext db, TimeProvider timeP
     }
 
     private Task<int> CancelWaitingJobsAsync(Guid tenantId, Guid? keep, DateTimeOffset now, CancellationToken cancellationToken) =>
-        db.IntegrationJobs
-            .Where(x => x.TenantId == tenantId && WaitingJobStatuses.Contains(x.Status) && x.JobType != PanelJobTypes.FactoryReset && x.Id != keep)
-            .ExecuteUpdateAsync(setters => setters
-                .SetProperty(x => x.Status, JobStatus.Cancelled)
-                .SetProperty(x => x.CompletedAt, now)
-                .SetProperty(x => x.LastErrorCode, "PANEL_FACTORY_RESET")
-                .SetProperty(x => x.LastErrorSummary, "Panel verileri sıfırlandığı için iptal edildi.")
-                .SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
+        Jobs.JobStateMachine.CancelWhereAsync(
+            db.IntegrationJobs.Where(x => x.TenantId == tenantId && WaitingJobStatuses.Contains(x.Status) && x.JobType != PanelJobTypes.FactoryReset && x.Id != keep),
+            now, "PANEL_FACTORY_RESET", "Panel verileri sıfırlandığı için iptal edildi.", keepEarlierCompletedAt: false, cancellationToken);
 
     private Task ReportAsync(Guid tenantId, Guid jobId, IReadOnlyList<string> steps, int step, CancellationToken cancellationToken)
     {

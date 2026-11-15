@@ -2339,12 +2339,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 ? invoiceStates.Any(state => state.PackageId == packageId && state.Status == "CONFIRMED")
                 : invoiceStates.Count > 0 && invoiceStates.All(state => state.Status == "CONFIRMED");
             if (!settled) continue;
-            job.Status = JobStatus.Cancelled;
-            job.CompletedAt = now;
-            job.LastErrorCode = DeliverySettledElsewhereCode;
-            job.LastErrorSummary = "Fatura pazaryerine başka bir işle iletildi ve doğrulandı; bu iş otomatik kapatıldı.";
-            job.Version++;
-            db.IntegrationOutboxEvents.Add(JobLeaseService.NewJobEvent(job, now));
+            Jobs.JobStateMachine.Cancel(db, job, now, DeliverySettledElsewhereCode, "Fatura pazaryerine başka bir işle iletildi ve doğrulandı; bu iş otomatik kapatıldı.", Jobs.JobEvent.Publish);
         }
     }
 
