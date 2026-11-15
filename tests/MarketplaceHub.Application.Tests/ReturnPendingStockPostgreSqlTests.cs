@@ -129,6 +129,43 @@ public sealed class ReturnPendingStockPostgreSqlTests(PostgreSqlTenantIsolationF
         }
     }
 
+    // SIPARIS-STOK-5: while the marketplace takes the approval, a sale changes the same stock row and a claim read saves
+    // the claim. The accepted decision is not turned into a server error: it is recorded, and the stock goes back once.
+    [PostgreSqlFact]
+    public async Task AnAcceptedApproval_SurvivesAStockAndClaimChangeDuringTheCall()
+    {
+        var seed = await SeedAsync("ps-race");
+        var port = new UnclearReturnPort("PS-CLAIM", "ps-race-order", seed.ExternalLineIds, answers: true, duringCall: async () =>
+        {
+            await using var other = fixture.CreateContext();
+            var item = await other.InventoryItems.SingleAsync(x => x.Id == seed.InventoryItemIds[0]);
+            item.OnHand += 5m; item.Available += 5m; item.Version++;
+            var claim = await other.ReturnClaims.SingleAsync(x => x.Id == seed.ClaimId);
+            claim.UpdatedAt = DateTimeOffset.UtcNow; claim.Version++;
+            await other.SaveChangesAsync();
+        });
+        try
+        {
+            await using (var db = fixture.CreateContext())
+            {
+                var result = await Service(db, port).ProcessReturnActionInstantAsync(seed.TenantId, seed.UserId, seed.ClaimId, await VersionAsync(seed.ClaimId),
+                    new("APPROVE", null, null, [], seed.LineIds, StockLineIds: [seed.LineIds[0]]), "ps-race:approve", "ps-race", CancellationToken.None);
+                Assert.Null(result.Error);
+            }
+            await using var verify = fixture.CreateContext();
+            var decision = await verify.ReturnDecisions.AsNoTracking().SingleAsync(x => x.TenantId == seed.TenantId);
+            Assert.Contains(decision.Status, new[] { "SUBMITTED", "SUCCEEDED" });
+            Assert.Equal(ReturnPendingStockPolicy.Applied, decision.StockStatus);
+            Assert.NotNull((await verify.ExternalEffectRecords.AsNoTracking().SingleAsync(x => x.TenantId == seed.TenantId)).CompletedAt);
+            Assert.Equal([7m, 0m], await OnHandAsync(verify, seed));
+            Assert.Equal(1, await verify.StockLedgerEntries.CountAsync(x => x.TenantId == seed.TenantId && x.MovementType == "RETURN_PASS"));
+        }
+        finally
+        {
+            await CleanupAsync(seed.TenantId);
+        }
+    }
+
     private sealed record Seed(Guid TenantId, Guid ConnectionId, Guid ClaimId, Guid UserId, Guid[] LineIds, string[] ExternalLineIds, Guid[] InventoryItemIds);
 
     private MarketplaceSalesService Service(AppDbContext db, IReturnPort port) =>
@@ -219,19 +256,20 @@ public sealed class ReturnPendingStockPostgreSqlTests(PostgreSqlTenantIsolationF
 
     // Trendyol whose approve call times out. With answers, the call goes through at once. Each claim item has its own
     // status, and the claim's status is its first item's.
-    private sealed class UnclearReturnPort(string claimId, string orderId, IReadOnlyList<string> externalLineIds, bool answers = false) : IReturnPort
+    private sealed class UnclearReturnPort(string claimId, string orderId, IReadOnlyList<string> externalLineIds, bool answers = false, Func<Task>? duringCall = null) : IReturnPort
     {
         private readonly Dictionary<string, string> statuses = externalLineIds.ToDictionary(id => id, _ => "WaitingInAction", StringComparer.Ordinal);
 
         public void Accept() { foreach (var id in externalLineIds) statuses[id] = "Accepted"; }
         public void Reject() { foreach (var id in externalLineIds) statuses[id] = "Rejected"; }
 
-        public Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken)
+        public async Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken)
         {
+            if (duringCall is not null) await duringCall();
             if (!answers)
-                return Task.FromResult(AdapterResult<ReturnActionResult>.Failure(new AdapterError(AdapterErrorClass.TransientNetwork, "TRENDYOL_TIMEOUT", "Zaman aşımı", null, null, null)));
+                return AdapterResult<ReturnActionResult>.Failure(new AdapterError(AdapterErrorClass.TransientNetwork, "TRENDYOL_TIMEOUT", "Zaman aşımı", null, null, null));
             foreach (var lineId in command.ExternalLineItemIds) statuses[lineId] = command.Action == "APPROVE" ? "Accepted" : "Rejected";
-            return Task.FromResult(AdapterResult<ReturnActionResult>.Success(new(command.ExternalClaimId, statuses[command.ExternalLineItemIds[0]], "op-1")));
+            return AdapterResult<ReturnActionResult>.Success(new(command.ExternalClaimId, statuses[command.ExternalLineItemIds[0]], "op-1"));
         }
 
         public Task<AdapterResult<RemoteReturnClaim>> GetAsync(AdapterContext context, string externalReturnId, CancellationToken cancellationToken) =>

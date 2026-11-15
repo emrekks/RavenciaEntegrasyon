@@ -2648,7 +2648,9 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             foreach (var approvedLine in approvedLines)
             {
                 var variantId = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == approvedLine.OrderLineId).Select(x => x.VariantId).SingleOrDefaultAsync(cancellationToken);
-                var inventoryItem = variantId is null ? null : await db.InventoryItems.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == variantId && x.LocationCode == "MAIN", cancellationToken);
+                // Only checked here, not tracked: the restock after the marketplace call reads the stock row afresh, so a sale
+                // meanwhile is not a stale version (SIPARIS-STOK-5).
+                var inventoryItem = variantId is null ? null : await db.InventoryItems.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == variantId && x.LocationCode == "MAIN", cancellationToken);
                 if (inventoryItem is null) return ServiceResult<ReturnDetailView>.Fail("INVENTORY_MAPPING_REQUIRED", "Seçilen ürünlerden biri yerel varyant ve stok kaydıyla eşleşmiyor; stoğa eklenemez.", 422);
                 if (stockPlan[approvedLine.Id] is { } wantedUnits && wantedUnits > approvedLine.Quantity) return Invalid<ReturnDetailView>("stockLines", "Stoğa eklenecek adet iade satırı adedini aşamaz.");
                 stockTargets.Add((approvedLine, inventoryItem));
@@ -2744,25 +2746,46 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         decision.ExternalOperationId = result.Value?.ExternalOperationId;
         decision.ErrorCode = null;
         effect.CompletedAt = timeProvider.GetUtcNow();
-        // The claim's lines decided before this one count: rejecting the last waiting lines of a claim whose other lines
-        // were approved leaves it approved in part ("Kısmen Onaylandı"), so those lines still reach the invoice.
-        claim.Status = ReturnClaimDecisionPolicy.StatusAfterLineDecision(claim.Status, action, returnLineIds.Length, actionableLineIds.Count,
-            claimLines.Where(line => !returnLineIds.Contains(line.Id)).Select(line => line.RawStatus).ToList());
-        if (!isHepsiburada && action is "APPROVE" or "REJECT")
+        // The accepted write is recorded first, on its own: a conflict in the claim or stock save below must not turn a
+        // decision the marketplace already took into a server error (SIPARIS-STOK-5).
+        await db.SaveChangesAsync(cancellationToken);
+        var completedAt = effect.CompletedAt.Value;
+        // The claim and the restock are written on fresh values; a sale or a claim read that changes the same rows in
+        // between runs the attempt again. When it keeps colliding, the decision stays SUBMITTED with its pending stock
+        // choice, which the next read of the claim settles (ReturnPendingStock.SettleClaimAsync).
+        var settled = await SerializableWriteRetry.RunAsync(db, async token =>
         {
-            var settledStatus = action == "APPROVE" ? "Accepted" : "Rejected";
-            foreach (var settled in await db.ReturnLines.Where(x => x.TenantId == tenantId && x.ClaimId == claimId && returnLineIds.Contains(x.Id)).ToListAsync(cancellationToken)) settled.RawStatus = settledStatus;
+            await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, token);
+            await db.Entry(claim).ReloadAsync(token);
+            await db.Entry(decision).ReloadAsync(token);
+            // The claim's lines decided before this one count: rejecting the last waiting lines of a claim whose other lines
+            // were approved leaves it approved in part ("Kısmen Onaylandı"), so those lines still reach the invoice.
+            claim.Status = ReturnClaimDecisionPolicy.StatusAfterLineDecision(claim.Status, action, returnLineIds.Length, actionableLineIds.Count,
+                claimLines.Where(line => !returnLineIds.Contains(line.Id)).Select(line => line.RawStatus).ToList());
+            if (!isHepsiburada && action is "APPROVE" or "REJECT")
+            {
+                var settledStatus = action == "APPROVE" ? "Accepted" : "Rejected";
+                foreach (var settledLine in await db.ReturnLines.Where(x => x.TenantId == tenantId && x.ClaimId == claimId && returnLineIds.Contains(x.Id)).ToListAsync(token)) settledLine.RawStatus = settledStatus;
+            }
+            claim.RawStatus = partialLineDecision ? "PARTIAL_LINE_DECISION_PENDING" : result.Value?.Status ?? (action switch
+            {
+                "APPROVE" => "ACCEPTED",
+                "REJECT" => "REJECTED",
+                _ => "PREAPPROVAL_CONFIRM_SUBMITTED"
+            });
+            // The marketplace accepted the approval: the chosen lines go back to stock now, once.
+            claim.UpdatedAt = completedAt;
+            claim.Version++;
+            await ReturnPendingStock.SettleAsync(db, decision, force: action == "APPROVE", correlationId, completedAt, token);
+            await db.SaveChangesAsync(token);
+            await transaction.CommitAsync(token);
+            return true;
+        }, () => false, cancellationToken);
+        if (!settled)
+        {
+            db.ChangeTracker.Clear();
+            return await ReturnAsync(tenantId, claimId, cancellationToken);
         }
-        claim.RawStatus = partialLineDecision ? "PARTIAL_LINE_DECISION_PENDING" : result.Value?.Status ?? (action switch
-        {
-            "APPROVE" => "ACCEPTED",
-            "REJECT" => "REJECTED",
-            _ => "PREAPPROVAL_CONFIRM_SUBMITTED"
-        });
-        // The marketplace accepted the approval: the chosen lines go back to stock now, once.
-        claim.UpdatedAt = effect.CompletedAt.Value;
-        claim.Version++;
-        await ReturnPendingStock.SettleAndSaveAsync(db, () => ReturnPendingStock.SettleAsync(db, decision, force: action == "APPROVE", correlationId, effect.CompletedAt.Value, cancellationToken), cancellationToken);
 
         // The action itself is already complete. Read-back is best-effort and
         // only refines the local status; it must not put the user action in a
@@ -2812,7 +2835,15 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             if (confirmed) { decision.Status = "SUCCEEDED"; decision.CompletedAt = claim.UpdatedAt; }
             else if (conflicting) { decision.Status = "MANUAL_REVIEW"; decision.ErrorCode = "RETURN_ACTION_READBACK_CONFLICT"; decision.CompletedAt = claim.UpdatedAt; }
         }
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // The read-back only refines a decision already recorded; a claim read that saved meanwhile keeps its own.
+            db.ChangeTracker.Clear();
+        }
         return await ReturnAsync(tenantId, claimId, cancellationToken);
     }
 
