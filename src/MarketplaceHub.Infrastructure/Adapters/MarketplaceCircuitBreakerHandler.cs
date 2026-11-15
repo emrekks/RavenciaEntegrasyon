@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
+using MarketplaceHub.Infrastructure.Adapters.Http;
 
 namespace MarketplaceHub.Infrastructure.Adapters;
 
@@ -132,12 +133,7 @@ public sealed class MarketplaceCircuitBreakerHandler(MarketplaceCircuitBreakerSt
         return segments.Length == 0 ? uri.Host : $"{uri.Host}/{string.Join('/', segments.Take(2))}";
     }
 
-    private TimeSpan? RetryAfter(RetryConditionHeaderValue? header)
-    {
-        if (header?.Delta is { } delta && delta > TimeSpan.Zero) return delta;
-        if (header?.Date is { } date && date - timeProvider.GetUtcNow() is var wait && wait > TimeSpan.Zero) return wait;
-        return null;
-    }
+    private TimeSpan? RetryAfter(RetryConditionHeaderValue? header) => RetryAfterHeader.Delay(header, timeProvider.GetUtcNow());
 }
 
 public sealed class MarketplaceCircuitBreakerState

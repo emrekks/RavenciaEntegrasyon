@@ -6,6 +6,7 @@ using System.Xml;
 using System.Xml.Linq;
 using MarketplaceHub.Application;
 using Microsoft.Extensions.Logging;
+using MarketplaceHub.Infrastructure.Adapters.Http;
 
 namespace MarketplaceHub.Infrastructure.Adapters.PttAvm;
 
@@ -71,8 +72,7 @@ public sealed partial class PttAvmHttpClient
             var body = await response.Content.ReadAsStringAsync(timeout.Token);
             if (LocalCircuitResponse.Refusal(response, "PTTAVM", "PttAVM") is { } localCircuit)
                 return AdapterResult<XElement>.Failure(localCircuit, new RateLimitMetadata(null, null, localCircuit.RetryAfter));
-            var retryAfter = response.Headers.RetryAfter?.Delta
-                ?? (response.Headers.RetryAfter?.Date is { } retryDate ? retryDate - timeProvider.GetUtcNow() : null);
+            var retryAfter = RetryAfterHeader.Unchecked(response.Headers.RetryAfter, timeProvider.GetUtcNow());
             var parsed = SoapResponse(response.StatusCode, body, operation, retryAfter);
             if (parsed.Error is { } error)
             {

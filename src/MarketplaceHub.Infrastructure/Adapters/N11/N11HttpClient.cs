@@ -6,6 +6,7 @@ using MarketplaceHub.Application;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using MarketplaceHub.Infrastructure.Adapters.Http;
 
 namespace MarketplaceHub.Infrastructure.Adapters.N11;
 
@@ -172,8 +173,7 @@ public sealed partial class N11HttpClient(
         {
             using var response = await client.SendAsync(request, timeout.Token);
             var body = await response.Content.ReadAsStringAsync(timeout.Token);
-            var retryAfter = response.Headers.RetryAfter?.Delta
-                ?? (response.Headers.RetryAfter?.Date is { } retryDate ? retryDate - timeProvider.GetUtcNow() : null);
+            var retryAfter = RetryAfterHeader.Unchecked(response.Headers.RetryAfter, timeProvider.GetUtcNow());
             var rate = retryAfter is null ? null : new RateLimitMetadata(null, null, retryAfter);
             if (!response.IsSuccessStatusCode)
             {

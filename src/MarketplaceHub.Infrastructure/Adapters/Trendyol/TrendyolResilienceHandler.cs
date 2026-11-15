@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using MarketplaceHub.Infrastructure.Adapters.Http;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Trendyol;
 
@@ -451,16 +452,7 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
         return $"{(service.Length == 0 ? "root" : service)}:{resource}".ToLowerInvariant();
     }
 
-    private TimeSpan? RetryAfterDelay(System.Net.Http.Headers.RetryConditionHeaderValue? retryAfter)
-    {
-        if (retryAfter?.Delta is { } delta && delta > TimeSpan.Zero) return delta;
-        if (retryAfter?.Date is { } date)
-        {
-            var delay = date - timeProvider.GetUtcNow();
-            if (delay > TimeSpan.Zero) return delay;
-        }
-        return null;
-    }
+    private TimeSpan? RetryAfterDelay(System.Net.Http.Headers.RetryConditionHeaderValue? retryAfter) => RetryAfterHeader.Delay(retryAfter, timeProvider.GetUtcNow());
 
     // A circuit opened by Trendyol's own 429 answers 429 as well, so the job keeps its attempt and the
     // connection backs off (as the shared circuit breaker does); any other open circuit answers a 503 marked as local

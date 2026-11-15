@@ -7,6 +7,7 @@ using MarketplaceHub.Application;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using MarketplaceHub.Infrastructure.Adapters.Http;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Pazarama;
 
@@ -160,8 +161,7 @@ public sealed partial class PazaramaHttpClient(
             {
                 using var response = await clients.CreateBoundedClient(ClientName).SendAsync(request, timeout.Token);
                 var text = await response.Content.ReadAsStringAsync(timeout.Token);
-                var retryAfter = response.Headers.RetryAfter?.Delta
-                    ?? (response.Headers.RetryAfter?.Date is { } retryDate ? retryDate - timeProvider.GetUtcNow() : null);
+                var retryAfter = RetryAfterHeader.Unchecked(response.Headers.RetryAfter, timeProvider.GetUtcNow());
                 var rate = retryAfter is null ? null : new RateLimitMetadata(null, null, retryAfter);
                 // A token revoked by "Yeni API Key Üret" in the seller panel is answered with 401; one
                 // fresh token is tried before the credentials count as rejected.

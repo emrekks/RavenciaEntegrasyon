@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Xml.Linq;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
+using MarketplaceHub.Infrastructure.Adapters.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -1406,8 +1407,7 @@ public sealed partial class HepsiburadaHttpClient(
                 logger.LogDebug("Hepsiburada yanıt hız sınırı başlıkları. ConnectionId: {ConnectionId}, Limit: {Limit}, Remaining: {Remaining}, ResetAt: {ResetAt}, RetryAfterSeconds: {RetryAfterSeconds}", context.Connection.Id, rate.Limit, rate.Remaining, rate.ResetAt, rate.RetryAfter?.TotalSeconds);
             if (!response.IsSuccessStatusCode)
             {
-                var retryAfter = response.Headers.RetryAfter?.Delta
-                    ?? (response.Headers.RetryAfter?.Date is { } retryDate ? retryDate - timeProvider.GetUtcNow() : null);
+                var retryAfter = RetryAfter(response);
                 var error = LocalCircuitResponse.Refusal(response, "HEPSIBURADA", "Hepsiburada") is { } localCircuit
                     ? localCircuit
                     : response.StatusCode == HttpStatusCode.Unauthorized && IsProductUpdatePath(path)
@@ -1592,6 +1592,10 @@ public sealed partial class HepsiburadaHttpClient(
         attributeId = parts.Length == 2 ? parts[1] : "";
         return parts.Length == 2;
     }
+
+    // The Retry-After of a refused answer.
+    internal TimeSpan? RetryAfter(HttpResponseMessage response) =>
+        RetryAfterHeader.Unchecked(response.Headers.RetryAfter, timeProvider.GetUtcNow());
 
     internal RateLimitMetadata? RateLimit(HttpResponseMessage response)
     {

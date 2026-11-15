@@ -11,6 +11,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ListingSaleState = MarketplaceHub.Domain.ListingSaleState;
+using MarketplaceHub.Infrastructure.Adapters.Http;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Shopify;
 
@@ -1306,8 +1307,7 @@ public sealed partial class ShopifyHttpClient(
                 // dropped from the cache, so the next request asks for a new one instead of reusing it until it expires.
                 if (response.StatusCode == HttpStatusCode.Unauthorized && context.ExpiresAt != DateTimeOffset.MaxValue)
                     ShopifyAuthenticationHandler.Forget(context.Connection.Id);
-                var retryAfter = response.Headers.RetryAfter?.Delta
-                    ?? (response.Headers.RetryAfter?.Date is { } resetAt ? resetAt - DateTimeOffset.UtcNow : null);
+                var retryAfter = RetryAfterHeader.Unchecked(response.Headers.RetryAfter, timeProvider.GetUtcNow());
                 return Failure<JsonDocument>(MapHttpError(response.StatusCode, raw, retryAfter, remoteRequestId), rate);
             }
             if (GraphQlError(document.RootElement, (int)response.StatusCode, remoteRequestId) is { } graphQlError)
