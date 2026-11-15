@@ -1,0 +1,24 @@
+// Source: Ravencia-API-Docs/trendyol-api-son.md "Toplu İşlem Kontrolü - Örnek Servis Cevabı - Stock Fiyat Güncelleme"
+// (~3012-3035): a price-and-inventory batch answers no batch-level status, only per-item SUCCESS/FAILED.
+{
+  "batchRequestId": "c57e3453-2c00-11f0-aa3a-be9298facace-1746718627",
+  "items": [
+    {
+      "requestItem": {
+        "updateRequestDate": "2025-05-08T11:37:07.950+00:00",
+        "quantity": 100,
+        "salePrice": 100,
+        "barcode": "11111111111",
+        "listPrice": 100
+      },
+      "status": "SUCCESS",
+      "failureReasons": []
+    }
+  ],
+  "creationDate": 1746704227943,
+  "lastModification": 1746704227943,
+  "sourceType": "API",
+  "itemCount": 1,
+  "failedItemCount": 0,
+  "batchRequestType": "ProductInventoryUpdate"
+}

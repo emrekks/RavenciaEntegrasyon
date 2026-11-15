@@ -1,0 +1,165 @@
+{
+  "Items": [
+    {
+      "ExternalOrderId": "10900000001",
+      "OrderNumber": "10900000001",
+      "OrderedAt": "2025-11-04T21:00:00+00:00",
+      "LastModifiedAt": "2025-11-04T21:00:00+00:00",
+      "Currency": "TRY",
+      "GrossAmount": 240.50,
+      "DiscountAmount": 0,
+      "NetAmount": 240.50,
+      "CustomerSnapshotJson": {
+        "shipmentPackageId": "3330900001",
+        "orderNumber": "10900000001",
+        "orderDate": 1762300800000,
+        "lastModifiedDate": "1762304400000",
+        "currencyCode": "TRY",
+        "status": "SomeFutureStatus",
+        "packageGrossAmount": "240.50",
+        "packageTotalPrice": "240.50",
+        "lines": [
+          {
+            "lineId": "4765900001",
+            "quantity": "2",
+            "stockCode": "SKU-FAKE-R1",
+            "barcode": "0000000000091",
+            "productName": "Fake Ürün R1",
+            "lineUnitPrice": "100.25",
+            "vatRate": "20",
+            "orderLineItemStatusName": "SomeFutureLineStatus"
+          },
+          {
+            "lineId": 4765900002,
+            "quantity": 1,
+            "stockCode": "SKU-FAKE-R2",
+            "productName": "Fake Ürün R2",
+            "lineUnitPrice": 40.00,
+            "orderLineItemStatusName": "Created"
+          }
+        ]
+      },
+      "ShipmentAddressSnapshotJson": {},
+      "InvoiceAddressSnapshotJson": {},
+      "Lines": [
+        {
+          "ExternalLineId": "4765900001",
+          "Sku": "SKU-FAKE-R1",
+          "Barcode": "0000000000091",
+          "Title": "Fake Ürün R1",
+          "Quantity": 2,
+          "UnitPrice": 100.25,
+          "VatRate": 20,
+          "RawStatus": "SomeFutureLineStatus",
+          "SourceSnapshotJson": "<raw 313 chars sha256:8632a634dd0d>",
+          "CancelledQuantity": 0,
+          "CancelledAt": null,
+          "PlatformDiscount": null
+        },
+        {
+          "ExternalLineId": "4765900002",
+          "Sku": "SKU-FAKE-R2",
+          "Barcode": null,
+          "Title": "Fake Ürün R2",
+          "Quantity": 1,
+          "UnitPrice": 40.00,
+          "VatRate": 20,
+          "RawStatus": "Created",
+          "SourceSnapshotJson": "<raw 228 chars sha256:b6908c387f81>",
+          "CancelledQuantity": 0,
+          "CancelledAt": null,
+          "PlatformDiscount": null
+        }
+      ],
+      "Packages": [
+        {
+          "ExternalPackageId": "3330900001",
+          "OriginExternalPackageId": null,
+          "RawStatus": "SomeFutureStatus",
+          "OccurredAt": "2025-11-04T21:00:00+00:00",
+          "CargoProviderExternalId": null,
+          "CargoTrackingNumber": null,
+          "Allocations": [
+            {
+              "ExternalLineId": "4765900001",
+              "AllocatedQuantity": 2,
+              "CancelledQuantity": 0,
+              "ShippedQuantity": 0,
+              "DeliveredQuantity": 0,
+              "ReturnedQuantity": 0
+            },
+            {
+              "ExternalLineId": "4765900002",
+              "AllocatedQuantity": 1,
+              "CancelledQuantity": 0,
+              "ShippedQuantity": 0,
+              "DeliveredQuantity": 0,
+              "ReturnedQuantity": 0
+            }
+          ],
+          "GrossAmount": 240.50,
+          "DiscountAmount": 0,
+          "NetAmount": 240.50,
+          "Invoice": {
+            "RawStatus": null,
+            "InvoiceNumber": null,
+            "InvoiceUrl": null,
+            "SourceUpdatedAt": "2025-11-04T21:00:00+00:00",
+            "ReferencesAreAuthoritative": false
+          },
+          "CreatedBy": null,
+          "IsStatusObservation": false,
+          "StatusTimeUnknown": false,
+          "CancelledAt": null,
+          "UnreadableLineCount": 0,
+          "CargoBarcode": null
+        }
+      ],
+      "RawJson": "<raw 886 chars sha256:20645642126e>",
+      "ShipmentDueAt": null,
+      "PaymentStatus": "UNKNOWN",
+      "CancellationStatus": "UNKNOWN",
+      "RefundStatus": "UNKNOWN",
+      "RefundedAmount": 0,
+      "Refunds": null,
+      "LifecycleStatus": null,
+      "StoreFrontCode": null
+    }
+  ],
+  "NextCursor": "p:1",
+  "HasMore": true,
+  "TotalCount": null,
+  "Issues": [
+    {
+      "Code": "ORDER_PACKAGE_LINE_VAT_RATE_INFERRED",
+      "Identity": "3330900001:4765900002",
+      "Message": "Sipariş paketi 3330900001 satırında KDV oranı yoktu; paketin diğer satırlarındaki %20 kullanıldı. Oran Trendyol'dan gelmeden bu siparişe fatura kesilmez.",
+      "RereadOrderId": null
+    },
+    {
+      "Code": "ORDER_PACKAGE_INVALID",
+      "Identity": "3330900002",
+      "Message": "Sipariş paketi 3330900002 (sipariş 10900000002) içeri alınmadı: siparişin kendi tarihi (orderDate) yok; değişiklik tarihi sipariş tarihi sayılmaz, sipariş yeniden okunacak.",
+      "RereadOrderId": "10900000002"
+    },
+    {
+      "Code": "ORDER_PACKAGE_INVALID",
+      "Identity": "3330900003",
+      "Message": "Sipariş paketi 3330900003 (sipariş 10900000003) içeri alınmadı: siparişin kendi tarihi (orderDate) yok; değişiklik tarihi sipariş tarihi sayılmaz, sipariş yeniden okunacak.",
+      "RereadOrderId": "10900000003"
+    },
+    {
+      "Code": "ORDER_PACKAGE_INVALID",
+      "Identity": "3330900004",
+      "Message": "Sipariş paketi 3330900004 (sipariş 10900000004) içeri alınmadı: para birimi (currencyCode) okunamadı (yok); sipariş yeniden okunacak.",
+      "RereadOrderId": "10900000004"
+    },
+    {
+      "Code": "ORDER_PACKAGE_INVALID",
+      "Identity": "10900000005",
+      "Message": "Sipariş paketi içeri alınmadı: paket kimliği ve sipariş numarası zorunludur.",
+      "RereadOrderId": "10900000005"
+    }
+  ],
+  "LastModifiedSeen": null
+}

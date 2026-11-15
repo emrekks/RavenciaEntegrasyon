@@ -1,0 +1,89 @@
+{
+  "Items": [
+    {
+      "ExternalId": "725041340",
+      "Source": "settlements",
+      "RequestedType": "Sale",
+      "TransactionSubType": null,
+      "TransactionType": "Satış",
+      "TransactionDate": "2021-02-15T14:01:11.561+00:00",
+      "Description": "Satış",
+      "OrderNumber": "501915861",
+      "ShipmentPackageId": "1111111111",
+      "Barcode": "8681385952874",
+      "Debt": 0.0,
+      "Credit": 449.99,
+      "CommissionRate": 15.0,
+      "CommissionAmount": 67.4985,
+      "SellerRevenue": 382.4915,
+      "PaymentOrderId": "112360",
+      "PaymentDate": "2021-03-17T14:01:11.561+00:00",
+      "RawJson": "<raw 749 chars sha256:3f0bb16d6834>",
+      "Country": "Türkiye",
+      "Affiliate": "TRENDYOLTR",
+      "Currency": null,
+      "InvoiceNumber": null
+    },
+    {
+      "ExternalId": "725041335",
+      "Source": "settlements",
+      "RequestedType": "Sale",
+      "TransactionSubType": null,
+      "TransactionType": "Satış",
+      "TransactionDate": "2021-02-15T14:01:11.557+00:00",
+      "Description": "Satış",
+      "OrderNumber": "501915861",
+      "ShipmentPackageId": "1111111111",
+      "Barcode": "8681387147421",
+      "Debt": 0.0,
+      "Credit": 699.99,
+      "CommissionRate": 15.0,
+      "CommissionAmount": 104.9985,
+      "SellerRevenue": 594.9915,
+      "PaymentOrderId": "112360",
+      "PaymentDate": "2021-03-17T14:01:11.557+00:00",
+      "RawJson": "<raw 750 chars sha256:6bca595f9b05>",
+      "Country": "Türkiye",
+      "Affiliate": "TRENDYOLTR",
+      "Currency": null,
+      "InvoiceNumber": null
+    },
+    {
+      "ExternalId": "725099001",
+      "Source": "settlements",
+      "RequestedType": "Sale",
+      "TransactionSubType": null,
+      "TransactionType": "Satış",
+      "TransactionDate": "2025-11-05T00:00:00+00:00",
+      "Description": "Satış",
+      "OrderNumber": "10900000201",
+      "ShipmentPackageId": "3330900201",
+      "Barcode": "0000000000031",
+      "Debt": 0,
+      "Credit": 120.50,
+      "CommissionRate": 15,
+      "CommissionAmount": 18.075,
+      "SellerRevenue": 102.425,
+      "PaymentOrderId": "990001",
+      "PaymentDate": null,
+      "RawJson": "<raw 510 chars sha256:e699a955190b>",
+      "Country": "Azerbaycan",
+      "Affiliate": "TRENDYOLAZ",
+      "Currency": "TRY",
+      "InvoiceNumber": null
+    }
+  ],
+  "Page": 0,
+  "TotalPages": 878,
+  "TotalElements": 438974,
+  "Skipped": [
+    {
+      "Key": "725099002",
+      "Description": "kayıt 725099002 (sipariş 10900000202, Satış): tarihi yok ya da okunamadı"
+    },
+    {
+      "Key": "725099003",
+      "Description": "kayıt 725099003 (sipariş 10900000203, Satış): tutarı yok ya da okunamadı"
+    }
+  ]
+}

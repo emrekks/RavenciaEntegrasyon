@@ -1,0 +1,166 @@
+{
+  "products": {
+    "Items": [
+      {
+        "ExternalProductId": "800001",
+        "ExternalVariantId": "810001",
+        "Barcode": "0000000000051",
+        "Sku": "SKU-FAKE-001-S",
+        "RawJson": "<raw 2432 chars sha256:41f9df441d57>"
+      },
+      {
+        "ExternalProductId": "800001",
+        "ExternalVariantId": "810002",
+        "Barcode": "0000000000052",
+        "Sku": "SKU-FAKE-001-M",
+        "RawJson": "<raw 2432 chars sha256:41f9df441d57>"
+      },
+      {
+        "ExternalProductId": "800001",
+        "ExternalVariantId": "810003",
+        "Barcode": "0000000000053",
+        "Sku": "SKU-FAKE-001-L",
+        "RawJson": "<raw 2432 chars sha256:41f9df441d57>"
+      }
+    ],
+    "NextCursor": "p:1",
+    "HasMore": true,
+    "TotalCount": 150,
+    "Issues": null,
+    "LastModifiedSeen": null
+  },
+  "catalog": {
+    "Items": [
+      {
+        "ExternalProductId": "800001",
+        "ProductMainId": "PRODUCT-FAKE-001",
+        "Title": "Fake Basic Tişört",
+        "Description": "Sahte açıklama",
+        "BrandExternalId": "1001",
+        "BrandName": "Fake Marka",
+        "CategoryExternalId": "2001",
+        "CategoryName": "Tişört",
+        "ImageUrls": [
+          "https://cdn.example.test/products/fake-001.jpg"
+        ],
+        "Variants": [
+          {
+            "ExternalVariantId": "810001",
+            "Sku": "SKU-FAKE-001-S",
+            "Barcode": "0000000000051",
+            "ModelCode": "PRODUCT-FAKE-001",
+            "Options": {
+              "Beden": "S"
+            },
+            "Archived": false,
+            "SalePrice": 199.9,
+            "ListPrice": 249.9,
+            "VatRate": 10,
+            "StockQuantity": null,
+            "Currency": null,
+            "RawJson": "<raw 720 chars sha256:d861cf1e273c>",
+            "ImageUrls": null,
+            "InventoryLevels": null,
+            "Desi": null,
+            "FulfilledByMarketplace": null,
+            "SaleState": "ON_SALE",
+            "SaleStateReason": null
+          },
+          {
+            "ExternalVariantId": "810002",
+            "Sku": "SKU-FAKE-001-M",
+            "Barcode": "0000000000052",
+            "ModelCode": "PRODUCT-FAKE-001",
+            "Options": {
+              "Beden": "M"
+            },
+            "Archived": false,
+            "SalePrice": 199.9,
+            "ListPrice": 249.9,
+            "VatRate": 10,
+            "StockQuantity": null,
+            "Currency": null,
+            "RawJson": "<raw 557 chars sha256:0d2a7c708f8c>",
+            "ImageUrls": null,
+            "InventoryLevels": null,
+            "Desi": null,
+            "FulfilledByMarketplace": null,
+            "SaleState": "OFF_SALE",
+            "SaleStateReason": "LOCKED"
+          },
+          {
+            "ExternalVariantId": "810003",
+            "Sku": "SKU-FAKE-001-L",
+            "Barcode": "0000000000053",
+            "ModelCode": "PRODUCT-FAKE-001",
+            "Options": {
+              "Beden": "L"
+            },
+            "Archived": true,
+            "SalePrice": 199.9,
+            "ListPrice": 249.9,
+            "VatRate": 10,
+            "StockQuantity": null,
+            "Currency": null,
+            "RawJson": "<raw 497 chars sha256:d460b7839803>",
+            "ImageUrls": null,
+            "InventoryLevels": null,
+            "Desi": null,
+            "FulfilledByMarketplace": null,
+            "SaleState": null,
+            "SaleStateReason": null
+          }
+        ],
+        "RawJson": "<raw 2432 chars sha256:41f9df441d57>",
+        "IsDraft": false,
+        "IsPendingApproval": false,
+        "ApprovalStatus": null,
+        "RejectionReason": null
+      }
+    ],
+    "NextCursor": "p:1",
+    "HasMore": true,
+    "TotalCount": 150,
+    "Issues": null,
+    "LastModifiedSeen": null
+  },
+  "states": [
+    {
+      "barcode": "0000000000051",
+      "status": {
+        "Barcode": "0000000000051",
+        "Status": "APPROVED",
+        "ExternalProductId": "800001",
+        "ExternalVariantId": "810001",
+        "RejectionCode": null,
+        "RawJson": "<raw 720 chars sha256:d861cf1e273c>"
+      }
+    },
+    {
+      "barcode": "0000000000052",
+      "status": {
+        "Barcode": "0000000000052",
+        "Status": "LOCKED",
+        "ExternalProductId": "800001",
+        "ExternalVariantId": "810002",
+        "RejectionCode": null,
+        "RawJson": "<raw 557 chars sha256:0d2a7c708f8c>"
+      }
+    },
+    {
+      "barcode": "0000000000053",
+      "status": {
+        "Barcode": "0000000000053",
+        "Status": "ARCHIVED",
+        "ExternalProductId": "800001",
+        "ExternalVariantId": "810003",
+        "RejectionCode": null,
+        "RawJson": "<raw 497 chars sha256:d460b7839803>"
+      }
+    },
+    {
+      "barcode": "0000000000099",
+      "status": null
+    }
+  ]
+}

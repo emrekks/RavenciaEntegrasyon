@@ -1,0 +1,39 @@
+// Source: former anonymous fixture product-unapproved.json plus hand-built rows on the "Ürün Filtreleme - Onaysız Ürün
+// (filterUnapprovedProducts)" shape (Ravencia-API-Docs/trendyol-api-son.md ~29373-29780): status pendingApproval or
+// rejected with rejectReasonDetails; the third row has no status (must stay unknown).
+{
+  "totalElements": 3,
+  "totalPages": 1,
+  "page": 0,
+  "size": 100,
+  "nextPageToken": null,
+  "content": [
+    {
+      "supplierId": 2748,
+      "productMainId": "PRODUCT-ANON-002",
+      "status": "rejected",
+      "barcode": "BARCODE-ANON-002",
+      "stockCode": "SKU-ANON-002",
+      "title": "Fake Reddedilen Ürün",
+      "rejectReasonDetails": [
+        { "rejectReason": "ANONYMIZED_CONTENT_REJECTION", "rejectReasonDetail": "Anonymized contract fixture detail." },
+        { "rejectReason": "", "rejectReasonDetail": "Görsel kalitesi yetersiz." }
+      ]
+    },
+    {
+      "supplierId": 2748,
+      "productMainId": "PRODUCT-ANON-003",
+      "status": "pendingApproval",
+      "barcode": "BARCODE-ANON-003",
+      "stockCode": "SKU-ANON-003",
+      "title": "Fake Onay Bekleyen Ürün"
+    },
+    {
+      "supplierId": 2748,
+      "productMainId": "PRODUCT-ANON-004",
+      "barcode": "BARCODE-ANON-004",
+      "stockCode": "SKU-ANON-004",
+      "title": "Fake Durumsuz Ürün"
+    }
+  ]
+}

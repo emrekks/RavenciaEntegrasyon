@@ -1,0 +1,159 @@
+{
+  "Items": [
+    {
+      "Id": "70000001",
+      "Kind": "PRODUCT",
+      "Status": "WAITING_FOR_ANSWER",
+      "Text": "Bu ürünün kalıbı dar mı?",
+      "ProductName": "Fake Ürün Q1",
+      "ProductImageUrl": "https://cdn.example.test/q1.jpg",
+      "ProductSku": null,
+      "ProductBarcode": null,
+      "ProductModelCode": null,
+      "CustomerName": "T** M**",
+      "OrderNumber": null,
+      "CreatedAt": "2025-11-05T00:00:00+00:00",
+      "ExpiresAt": null,
+      "LastModifiedAt": "2025-11-05T00:00:00+00:00",
+      "Conversations": [
+        {
+          "Author": "Customer",
+          "Text": "Bu ürünün kalıbı dar mı?",
+          "CreatedAt": "2025-11-05T00:00:00+00:00",
+          "RejectionReason": null
+        }
+      ],
+      "ProductUrl": "https://www.trendyol.com/fake/urun-p-1",
+      "CustomerKey": "888888888",
+      "ProductExternalId": null,
+      "Subject": null
+    },
+    {
+      "Id": "70000002",
+      "Kind": "PRODUCT",
+      "Status": "ANSWERED",
+      "Text": "Kargo ne zaman çıkar?",
+      "ProductName": "Fake Ürün Q2",
+      "ProductImageUrl": null,
+      "ProductSku": null,
+      "ProductBarcode": null,
+      "ProductModelCode": null,
+      "CustomerName": null,
+      "OrderNumber": null,
+      "CreatedAt": "2025-11-05T00:00:00+00:00",
+      "ExpiresAt": null,
+      "LastModifiedAt": "2025-11-05T01:00:00+00:00",
+      "Conversations": [
+        {
+          "Author": "Customer",
+          "Text": "Kargo ne zaman çıkar?",
+          "CreatedAt": "2025-11-05T00:00:00+00:00",
+          "RejectionReason": null
+        },
+        {
+          "Author": "Merchant",
+          "Text": "Aynı gün kargoya verilir.",
+          "CreatedAt": "2025-11-05T01:00:00+00:00",
+          "RejectionReason": null
+        }
+      ],
+      "ProductUrl": null,
+      "CustomerKey": null,
+      "ProductExternalId": null,
+      "Subject": null
+    },
+    {
+      "Id": "70000003",
+      "Kind": "PRODUCT",
+      "Status": "REJECTED",
+      "Text": "İndirim var mı?",
+      "ProductName": null,
+      "ProductImageUrl": null,
+      "ProductSku": null,
+      "ProductBarcode": null,
+      "ProductModelCode": null,
+      "CustomerName": null,
+      "OrderNumber": null,
+      "CreatedAt": "2025-11-05T00:00:00+00:00",
+      "ExpiresAt": null,
+      "LastModifiedAt": "2025-11-05T02:00:00+00:00",
+      "Conversations": [
+        {
+          "Author": "Customer",
+          "Text": "İndirim var mı?",
+          "CreatedAt": "2025-11-05T00:00:00+00:00",
+          "RejectionReason": null
+        },
+        {
+          "Author": "Merchant",
+          "Text": "Bizi telefonla arayın.",
+          "CreatedAt": "2025-11-05T01:00:00+00:00",
+          "RejectionReason": "Kişisel bilgi içeriyor"
+        }
+      ],
+      "ProductUrl": null,
+      "CustomerKey": "888888889",
+      "ProductExternalId": null,
+      "Subject": null
+    },
+    {
+      "Id": "70000004",
+      "Kind": "PRODUCT",
+      "Status": "WAITING_FOR_ANSWER",
+      "Text": "Durumu gelmeyen soru",
+      "ProductName": null,
+      "ProductImageUrl": null,
+      "ProductSku": null,
+      "ProductBarcode": null,
+      "ProductModelCode": null,
+      "CustomerName": null,
+      "OrderNumber": null,
+      "CreatedAt": "2025-11-05T00:00:00+00:00",
+      "ExpiresAt": null,
+      "LastModifiedAt": "2025-11-05T00:00:00+00:00",
+      "Conversations": [
+        {
+          "Author": "Customer",
+          "Text": "Durumu gelmeyen soru",
+          "CreatedAt": "2025-11-05T00:00:00+00:00",
+          "RejectionReason": null
+        }
+      ],
+      "ProductUrl": null,
+      "CustomerKey": null,
+      "ProductExternalId": null,
+      "Subject": null
+    },
+    {
+      "Id": "70000005",
+      "Kind": "PRODUCT",
+      "Status": "SOME_FUTURE_STATUS",
+      "Text": "Bilinmeyen durumlu soru",
+      "ProductName": null,
+      "ProductImageUrl": null,
+      "ProductSku": null,
+      "ProductBarcode": null,
+      "ProductModelCode": null,
+      "CustomerName": null,
+      "OrderNumber": null,
+      "CreatedAt": "2025-11-05T00:00:00+00:00",
+      "ExpiresAt": null,
+      "LastModifiedAt": "2025-11-05T00:00:00+00:00",
+      "Conversations": [
+        {
+          "Author": "Customer",
+          "Text": "Bilinmeyen durumlu soru",
+          "CreatedAt": "2025-11-05T00:00:00+00:00",
+          "RejectionReason": null
+        }
+      ],
+      "ProductUrl": null,
+      "CustomerKey": null,
+      "ProductExternalId": null,
+      "Subject": null
+    }
+  ],
+  "Page": 0,
+  "TotalPages": 1,
+  "TotalElements": 6
+}

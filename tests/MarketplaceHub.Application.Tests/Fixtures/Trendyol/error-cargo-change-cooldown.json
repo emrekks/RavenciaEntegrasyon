@@ -1,0 +1,11 @@
+// Source: hand-built after the changeCargoProvider error codes in Ravencia-API-Docs/trendyol-api-son.md "Paket Kargo
+// Firması Değiştirme" (~5153-5195: CPE001-CPE007, RTE003) on the documented errors[] envelope.
+{
+  "errors": [
+    {
+      "key": "cargo.provider.change.too.frequent",
+      "message": "Son 5 dakika içinde kargo firması değişikliği yapıldı.",
+      "code": "RTE003"
+    }
+  ]
+}
