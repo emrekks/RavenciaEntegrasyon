@@ -65,6 +65,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         if (schedulerEnabled) loops.Add(RunWebhookUpkeepAsync(stoppingToken));
         if (schedulerEnabled) loops.Add(RunExternalEffectSweepAsync(stoppingToken));
         if (schedulerEnabled && configuration.GetValue("Worker:ProductModelScan:Enabled", true)) loops.Add(RunProductModelScanAsync(stoppingToken));
+        if (schedulerEnabled && configuration.GetValue("Worker:ReturnCardColumns:Enabled", true)) loops.Add(RunReturnCardColumnsRepairAsync(stoppingToken));
         await Task.WhenAll(loops);
     }
 
@@ -627,6 +628,19 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             logger.LogInformation("Product model scan: {Tenants} tenant(s), coded unlinked cards {UnlinkedBefore} -> {UnlinkedAfter}, {Written} model(s) written, {Differing} model(s) whose cards disagree",
                 result.Tenants, result.UnlinkedCodedBefore, result.UnlinkedCodedAfter, result.ModelsWritten, result.ModelsDiffering);
         }, exception => logger.LogError(exception, "Product model scan failed"), stoppingToken);
+
+    // SIPARIS-STOK-9: a few minutes after start (after a deploy, the claims the previous code wrote while it migrated) and
+    // then every six hours, return claims whose Returns page card columns are missing or differ from the rule are written
+    // again (ReturnCardColumns.RepairAsync), so a write that bypassed the save hook heals. Until then the page computes
+    // that tenant's cards as before. It writes nothing else and sends nothing to a marketplace.
+    private Task RunReturnCardColumnsRepairAsync(CancellationToken stoppingToken) =>
+        RunPeriodicAsync(TimeSpan.FromMinutes(3), TimeSpan.FromHours(6), async token =>
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<MarketplaceHub.Infrastructure.Persistence.AppDbContext>();
+            var (claims, written) = await MarketplaceHub.Infrastructure.Persistence.ReturnCardColumns.RepairAsync(db, token);
+            if (written > 0) logger.LogInformation("Return card columns repaired: {Written} of {Claims} claim(s) written", written, claims);
+        }, exception => logger.LogError(exception, "Return card columns repair failed"), stoppingToken);
 
     // Trendyol passivates a webhook whose deliveries keep failing (for example while the server is
     // off at night). Shortly after start and then hourly, registered webhooks found passive are

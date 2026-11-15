@@ -15,7 +15,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 //     by the old code during a deploy, or by anything that bypassed the save (RepairAsync);
 //   - the page uses them only while every claim of the tenant has them filled and equal to the rule (Stale), and otherwise
 //     computes the page as before, so a missing or stale value never changes what the user sees.
-internal static class ReturnCardColumns
+public static class ReturnCardColumns
 {
     private const string ApproveAction = "APPROVE";
     private const string Succeeded = "SUCCEEDED";
