@@ -112,6 +112,43 @@ public sealed partial class PostgreSqlTenantIsolationTests
         finally { await DeleteInvoiceTestTenantAsync(tenant.Id); }
     }
 
+    // KUYRUK-9 (16 Nov 2026): the order read of every marketplace and the product import name their cause too.
+    [PostgreSqlTheory]
+    [InlineData("TRENDYOL")]
+    [InlineData("SHOPIFY")]
+    [InlineData("HEPSIBURADA")]
+    [InlineData("N11")]
+    [InlineData("PAZARAMA")]
+    [InlineData("PTTAVM")]
+    public async Task Kuyruk9_OrderReadWithAnUnreadableRequestNamesIt(string platform)
+    {
+        var tenant = NewTenant($"k9-orders-{platform.ToLowerInvariant()}");
+        var connection = NewQuestionConnection(tenant);
+        connection.PlatformCode = platform;
+        await SeedTenantAndConnectionAsync(tenant, connection);
+        try
+        {
+            var result = await RunHandlerRejectionJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ForPlatform(platform, MarketplaceJobTypes.OrderSync), "{not json");
+            AssertRejected(result, "ORDER_SYNC_PAYLOAD_INVALID");
+        }
+        finally { await DeleteInvoiceTestTenantAsync(tenant.Id); }
+    }
+
+    [PostgreSqlFact]
+    public async Task Kuyruk9_ProductImportOnAStoreOutsideItsEnvironmentsNamesIt()
+    {
+        var tenant = NewTenant("k9-products");
+        var connection = NewQuestionConnection(tenant);
+        connection.Environment = "SANDBOX";
+        await SeedTenantAndConnectionAsync(tenant, connection);
+        try
+        {
+            var result = await RunHandlerRejectionJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ProductSync, "{}");
+            AssertRejected(result, "PRODUCT_IMPORT_CONNECTION_NOT_ELIGIBLE");
+        }
+        finally { await DeleteInvoiceTestTenantAsync(tenant.Id); }
+    }
+
     private static void AssertRejected(JobExecutionResult result, string code)
     {
         Assert.Equal(JobCompletionKind.Blocked, result.Kind);

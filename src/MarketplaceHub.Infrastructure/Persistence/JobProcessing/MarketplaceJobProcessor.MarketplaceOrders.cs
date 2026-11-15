@@ -21,7 +21,7 @@ public sealed partial class MarketplaceJobProcessor
             if (payload.RootElement.TryGetProperty("externalOrderId", out var value) && value.ValueKind == JsonValueKind.String) externalOrderId = value.GetString();
             if (payload.RootElement.TryGetProperty("full", out var fullValue) && fullValue.ValueKind is JsonValueKind.True or JsonValueKind.False) full = fullValue.GetBoolean();
         }
-        catch (JsonException) { return false; }
+        catch (JsonException) { throw OrderSyncPayloadInvalid(); }
 
         if (!string.IsNullOrWhiteSpace(externalOrderId))
         {
@@ -117,7 +117,7 @@ public sealed partial class MarketplaceJobProcessor
             if (payload.RootElement.TryGetProperty("externalOrderId", out var value) && value.ValueKind == JsonValueKind.String) externalOrderId = value.GetString();
             if (payload.RootElement.TryGetProperty("full", out var fullValue) && fullValue.ValueKind is JsonValueKind.True or JsonValueKind.False) full = fullValue.GetBoolean();
         }
-        catch (JsonException) { return false; }
+        catch (JsonException) { throw OrderSyncPayloadInvalid(); }
 
         if (!string.IsNullOrWhiteSpace(externalOrderId))
         {
@@ -201,7 +201,7 @@ public sealed partial class MarketplaceJobProcessor
             if (payload.RootElement.TryGetProperty("externalOrderId", out var value) && value.ValueKind == JsonValueKind.String) externalOrderId = value.GetString();
             if (payload.RootElement.TryGetProperty("full", out var fullValue) && fullValue.ValueKind is JsonValueKind.True or JsonValueKind.False) full = fullValue.GetBoolean();
         }
-        catch (JsonException) { return false; }
+        catch (JsonException) { throw OrderSyncPayloadInvalid(); }
 
         if (!string.IsNullOrWhiteSpace(externalOrderId))
         {

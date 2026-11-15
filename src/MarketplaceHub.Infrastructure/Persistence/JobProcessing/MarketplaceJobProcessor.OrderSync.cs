@@ -10,6 +10,11 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed partial class MarketplaceJobProcessor
 {
+    // KUYRUK-9 (16 Nov 2026): an order read whose request body cannot be read names its cause instead of the generic
+    // F3_JOB_REJECTED. It stays blocked as before: the body is the same on every run, and nothing was read.
+    private static JobProcessingException OrderSyncPayloadInvalid() =>
+        new(JobExecutionResult.Blocked("ORDER_SYNC_PAYLOAD_INVALID", "Sipariş okuma isteği okunamadı; pazaryerinden sipariş okunmadı. Okumayı mağaza ekranından yeniden başlatın."));
+
     // A finished order read also matches the connection's lines that still have no panel variant
     // (RematchUnmatchedOrderLines): the variant or its link may have been created after the line was read.
     private async Task<bool> SyncOrdersAndMatchLines(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, string cursorResourceType, bool allowBaseline, CancellationToken cancellationToken)
@@ -55,7 +60,7 @@ public sealed partial class MarketplaceJobProcessor
                     && requestedOrderId.ValueKind == JsonValueKind.String
                     && !string.IsNullOrWhiteSpace(requestedOrderId.GetString())) return true;
             }
-            catch (JsonException) { return false; }
+            catch (JsonException) { throw OrderSyncPayloadInvalid(); }
             return await SyncHepsiburadaPackages(tenantId, connectionId, payloadJson, correlationId, cancellationToken);
         }
 
@@ -69,7 +74,7 @@ public sealed partial class MarketplaceJobProcessor
             if (payload.RootElement.TryGetProperty("full", out var fullValue) && fullValue.ValueKind is JsonValueKind.True or JsonValueKind.False) full = fullValue.GetBoolean();
             if (payload.RootElement.TryGetProperty("packageNumber", out var packageValue) && packageValue.ValueKind == JsonValueKind.String) packageNumber = packageValue.GetString();
         }
-        catch (JsonException) { return false; }
+        catch (JsonException) { throw OrderSyncPayloadInvalid(); }
         if (!string.IsNullOrWhiteSpace(externalOrderId))
         {
             var requestedPackageNumber = packageNumber?.Trim();

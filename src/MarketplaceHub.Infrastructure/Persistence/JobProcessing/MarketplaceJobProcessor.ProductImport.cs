@@ -30,7 +30,9 @@ public sealed partial class MarketplaceJobProcessor
         // Ravencia's local catalog. Shopify observations never become local
         // price/stock authority.
         // Keep it restricted to operational connections and recognised environments.
-        if (connection is null || connection.Environment is not ("STAGE" or "PRODUCTION") || connection.Status is not ("ACTIVE" or "VERIFIED")) return false;
+        // KUYRUK-9 (16 Nov 2026): named instead of the generic F3_JOB_REJECTED; still blocked, as before.
+        if (connection is null || connection.Environment is not ("STAGE" or "PRODUCTION") || connection.Status is not ("ACTIVE" or "VERIFIED"))
+            throw new JobProcessingException(JobExecutionResult.Blocked("PRODUCT_IMPORT_CONNECTION_NOT_ELIGIBLE", "Ürün aktarımı yalnız etkin ya da doğrulanmış, canlı veya test ortamındaki desteklenen mağazalarda yapılır; bu mağazada ürün okunmadı."));
         var inventoryPolicy = await db.ConnectionInventoryPolicies.AsNoTracking()
             .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
 

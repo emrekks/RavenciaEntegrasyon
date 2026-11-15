@@ -21,7 +21,7 @@ public sealed partial class MarketplaceJobProcessor
             if (payload.RootElement.TryGetProperty("packageNumber", out var package) && package.ValueKind == JsonValueKind.String) packageNumber = package.GetString()?.Trim();
             if (payload.RootElement.TryGetProperty("full", out var fullValue) && fullValue.ValueKind is JsonValueKind.True or JsonValueKind.False) full = fullValue.GetBoolean();
         }
-        catch (JsonException) { return false; }
+        catch (JsonException) { throw OrderSyncPayloadInvalid(); }
 
         if (!string.IsNullOrWhiteSpace(externalOrderId))
         {
@@ -205,7 +205,7 @@ public sealed partial class MarketplaceJobProcessor
             if (payload.RootElement.TryGetProperty("full", out var fullValue) && fullValue.ValueKind is JsonValueKind.True or JsonValueKind.False)
                 full = fullValue.GetBoolean();
         }
-        catch (JsonException) { return false; }
+        catch (JsonException) { throw OrderSyncPayloadInvalid(); }
 
         var cursor = await Cursor(tenantId, connectionId, "PACKAGES", cancellationToken);
         var now = timeProvider.GetUtcNow();
