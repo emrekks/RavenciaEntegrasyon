@@ -162,6 +162,9 @@ public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPri
     {
         if (!await db.Products.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken))
             throw new SizeChartException("RESOURCE_NOT_FOUND", "Ürün bulunamadı.", 404);
+        // Clearing the chart of a card that has no chart row writes nothing (no empty row is opened for it).
+        if (string.IsNullOrWhiteSpace(url) && !await db.ProductSizeCharts.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ProductId == productId, cancellationToken))
+            return null;
         var chart = await ChartRowAsync(tenantId, productId, cancellationToken);
         Guid? assetId = null;
         if (!string.IsNullOrWhiteSpace(url))
@@ -425,9 +428,14 @@ public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPri
     {
         var chart = await db.ProductSizeCharts.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId, cancellationToken);
         if (chart is not null) return chart;
-        chart = new ProductSizeChart { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = productId, UpdatedAt = timeProvider.GetUtcNow() };
-        db.ProductSizeCharts.Add(chart);
-        return chart;
+        // KATALOG-13: the row is opened at once and a row another request opened meanwhile (two tabs, Oluştur pressed
+        // twice) is taken over, instead of a duplicate-key error at the save.
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO catalog.product_size_charts ("Id", "TenantId", "ProductId", "UpdatedAt")
+            VALUES ({Guid.CreateVersion7()}, {tenantId}, {productId}, {timeProvider.GetUtcNow().ToUniversalTime()})
+            ON CONFLICT ("TenantId", "ProductId") DO NOTHING
+            """, cancellationToken);
+        return await db.ProductSizeCharts.SingleAsync(x => x.TenantId == tenantId && x.ProductId == productId, cancellationToken);
     }
 
     // The card's Beden option and its values in the panel's order (null label: no Beden option).
