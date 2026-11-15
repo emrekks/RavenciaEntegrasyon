@@ -118,7 +118,9 @@ internal static class CatalogModelConfiguration
             entity.HasOne<ProductVariant>().WithMany().HasForeignKey(x => new { x.TenantId, x.VariantId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<AttributeDefinition>().WithMany().HasForeignKey(x => new { x.TenantId, x.AttributeId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<AttributeValue>().WithMany().HasForeignKey(x => new { x.TenantId, x.ValueId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
-            entity.HasIndex(x => new { x.TenantId, x.ProductId, x.VariantId, x.AttributeId, x.ValueId }).IsUnique();
+            // NULLS NOT DISTINCT: a card-level row (VariantId null) or a text/number/yes-no value (ValueId null) is unique too;
+            // with distinct nulls the index let the same attribute be stored twice (VERITABANI-DAGITIM-10).
+            entity.HasIndex(x => new { x.TenantId, x.ProductId, x.VariantId, x.AttributeId, x.ValueId }).IsUnique().AreNullsDistinct(false);
         });
         builder.Entity<ProductOption>(entity =>
         {
@@ -160,7 +162,9 @@ internal static class CatalogModelConfiguration
         builder.Entity<ProductMedia>(entity =>
         {
             entity.ToTable("product_media", "catalog"); entity.HasKey(x => x.Id); entity.Property(x => x.MediaRole).HasMaxLength(32); entity.Property(x => x.Status).HasMaxLength(24);
-            entity.HasIndex(x => new { x.TenantId, x.ProductId, x.VariantId, x.SortOrder }).IsUnique();
+            // NULLS NOT DISTINCT: two card-level pictures (VariantId null) cannot share a place either (VERITABANI-DAGITIM-10);
+            // the upload and reorder endpoints already treat the place as unique (temporary negative places while reordering).
+            entity.HasIndex(x => new { x.TenantId, x.ProductId, x.VariantId, x.SortOrder }).IsUnique().AreNullsDistinct(false);
             entity.HasOne<Product>().WithMany().HasForeignKey(x => new { x.TenantId, x.ProductId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<ProductVariant>().WithMany().HasForeignKey(x => new { x.TenantId, x.VariantId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<FileAsset>().WithMany().HasForeignKey(x => x.FileAssetId).OnDelete(DeleteBehavior.Restrict);
