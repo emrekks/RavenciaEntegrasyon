@@ -78,7 +78,8 @@ public static class ProductModelValues
         Check(Brand, card => $"{card.BrandId}");
         Check(Category, card => $"{card.CategoryId}");
         Check(Vat, card => $"{card.VatRate?.ToString("0.####", CultureInfo.InvariantCulture)}|{card.VatInclusion?.ToUpperInvariant()}");
-        Check(Warranty, card => $"{card.WarrantyMonths}");
+        // An empty warranty (a draft not filled yet) is not a disagreement: only the filled ones are compared.
+        if (cards.Select(card => card.WarrantyMonths).OfType<int>().Distinct().Skip(1).Any()) differing.Add(Warranty);
         Check(DeliveryDays, card => $"{card.DeliveryDays}");
         return differing;
     }
