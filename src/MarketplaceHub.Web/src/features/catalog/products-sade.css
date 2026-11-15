@@ -63,9 +63,10 @@
 /* Listed but closed to sale there (Satışa Kapalı): orange, apart from the yellow "partly live" and the red errors. */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm.rr-off i { background: #f97316; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm.rr-link i { background: var(--rr-info); }
-/* An update on its way: the dot cycles red, green and blue until the marketplace answers. */
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm.rr-busy i { background: var(--rr-info); animation: rr-pm-rgb 1.8s linear infinite; }
-@keyframes rr-pm-rgb { 0%, 100% { background: #ef4444; } 33% { background: #22c55e; } 66% { background: #3b82f6; } }
+/* An update or a send on its way: a blue dot that pulses until the marketplace answers. It never passes through green
+   or red, so a family waiting for approval is not read as live (owner, 15 Nov 2026: MZ056). */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm.rr-busy i { background: var(--rr-info); animation: rr-pm-busy 1.6s ease-in-out infinite; }
+@keyframes rr-pm-busy { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm.rr-busy i { animation: none; } }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm.rr-err i { background: var(--rr-bad); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm.rr-none .rr-logo { opacity: .28; filter: grayscale(1); }

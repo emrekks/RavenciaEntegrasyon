@@ -113,7 +113,16 @@ public sealed record ProductPlatformStatusView(
     // Variants whose listing there the marketplace refused (REJECTED) or still reviews (APPROVAL_PENDING): in neither
     // MatchedVariantCount nor MissingVariantCount.
     int RejectedVariantCount = 0,
-    int PendingVariantCount = 0);
+    int PendingVariantCount = 0)
+{
+    // While the card's product update is on its way (its profile UPDATE_QUEUED, UPDATE_*_SUBMITTED or
+    // UPDATE_IN_PROGRESS): the refused variants sent again ("Onaya Gönderildi", not in RejectedVariantCount) and the
+    // matched ones the update goes out for ("Güncelleniyor", also in MatchedVariantCount).
+    public int ResubmittedVariantCount { get; init; }
+    public int UpdatingVariantCount { get; init; }
+    // Linked variants whose listing waits for a person (MANUAL_REVIEW): not in MatchedVariantCount ("İncelemede").
+    public int ReviewVariantCount { get; init; }
+}
 public sealed record ProductView(
     Guid Id,
     string Title,

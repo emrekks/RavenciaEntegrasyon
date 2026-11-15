@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { productPlatformBreakdownLines, productPlatformBreakdownTip, productPlatformDisplayLabel, productPlatformDisplayState } from './product-platform-status'
+import { isProductUpdateInFlight, productPlatformBreakdownLines, productPlatformBreakdownTip, productPlatformDisplayLabel, productPlatformDisplayState, withProductPlatformWork } from './product-platform-status'
 
 describe('product platform list status', () => {
   // Owner, 14 Nov 2026: products Trendyol rejected or still reviews are imported and say so, with Trendyol's reasons.
@@ -176,5 +176,40 @@ describe('product platform mark breakdown', () => {
     expect(productPlatformBreakdownTip('N11', { ...base, variantCount: 24, matched: 24, onSale: 20 }))
       .toBe('N11 · 24/24 varyant eşleşti\n20 Aktif\n4 Eşleşti · Satış Durumu Bilinmiyor')
     expect(productPlatformBreakdownTip('N11', { ...base, variantCount: 24, matched: 24, onSale: 24 })).toBe('N11 · 24/24 varyant aktif')
+  })
+})
+
+// Owner, 15 Nov 2026 (MZ056 on Trendyol, green dot): 6 refused variants sent again and the other cards being updated.
+describe('product platform mark while an update is on its way', () => {
+  const base = { variantCount: 0, matched: 0, missing: 0, onSale: 0, offSale: 0, offSaleStockZero: 0, rejected: 0, pending: 0 }
+
+  it('names the refused variants sent again and the live ones being updated, never as refused', () => {
+    expect(productPlatformBreakdownTip('Trendyol', { ...base, variantCount: 33, matched: 27, onSale: 27, resubmitted: 6, updating: 24 }))
+      .toBe('Trendyol · 27/33 varyant aktif\n24 Yayında · Güncelleniyor\n6 Onaya Gönderildi (Yeniden)')
+    expect(productPlatformBreakdownTip('Trendyol', { ...base, variantCount: 33, matched: 21, onSale: 21, pending: 12, updating: 18 }))
+      .toBe('Trendyol · 21/33 varyant aktif\n18 Yayında · Güncelleniyor\n12 Onay Bekliyor')
+  })
+
+  it('reads every UPDATE_* phase the update job writes as on its way', () => {
+    for (const status of ['UPDATE_QUEUED', 'UPDATE_UNAPPROVED_SUBMITTED', 'UPDATE_CONTENT_SUBMITTED', 'UPDATE_VARIANTS_SUBMITTED', 'UPDATE_DELIVERY_SUBMITTED', 'UPDATE_IN_PROGRESS'])
+      expect(isProductUpdateInFlight(status)).toBe(true)
+    expect(isProductUpdateInFlight('LIVE')).toBe(false)
+    expect(isProductUpdateInFlight('UPDATE_REJECTED')).toBe(false)
+    expect(productPlatformDisplayState(['LIVE', 'UPDATE_DELIVERY_SUBMITTED'], false, 27, 33)).toBe('processing')
+  })
+
+  it('is green only with every variant live and nothing on its way; red while one is still refused', () => {
+    expect(withProductPlatformWork('active', { rejected: 0, resubmitted: 0, updating: 0 })).toBe('active')
+    expect(withProductPlatformWork('active', { rejected: 0, resubmitted: 0, updating: 3 })).toBe('processing')
+    expect(withProductPlatformWork('partial', { rejected: 0, resubmitted: 6, updating: 0 })).toBe('processing')
+    expect(withProductPlatformWork('processing', { rejected: 6, resubmitted: 0, updating: 24 })).toBe('error')
+    expect(withProductPlatformWork('missing', { rejected: 0, resubmitted: 0, updating: 3 })).toBe('missing')
+    expect(withProductPlatformWork('partial', { rejected: 0, review: 6 })).toBe('error')
+  })
+
+  // Live 15 Nov 2026: Trendyol's approval check of MZ056 Mürdüm found another product id (MANUAL_REVIEW).
+  it('counts variants waiting for a person apart, never as active', () => {
+    expect(productPlatformBreakdownTip('Trendyol', { ...base, variantCount: 33, matched: 27, onSale: 27, review: 6 }))
+      .toBe('Trendyol · 27/33 varyant aktif\n6 İncelemede · Sonuç Kesinleşmedi')
   })
 })

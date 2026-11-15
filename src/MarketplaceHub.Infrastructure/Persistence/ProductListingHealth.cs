@@ -58,6 +58,18 @@ internal static class ProductListingHealth
     ];
     public static readonly IReadOnlyCollection<string> WaitingStatuses = ["APPROVAL_PENDING", "APPROVAL_PARTIAL_PENDING"];
 
+    // A card whose product update is on its way: queued (UPDATE_QUEUED), sent in one of its phases and waiting for the
+    // marketplace's batch result (UPDATE_{UNAPPROVED|CONTENT|VARIANTS|DELIVERY}_SUBMITTED, PTT AVM's UPDATE_SUBMITTED) or
+    // between phases (UPDATE_IN_PROGRESS). Only the update job writes these on the profile. A refused variant of such a
+    // card was sent again and waits for the marketplace's answer ("Onaya Gönderildi"): it is neither "Reddedildi" nor
+    // "Hatalı" until that answer comes (owner, 15 Nov 2026: MZ056 Kahverengi/Mürdüm).
+    public static readonly IReadOnlyCollection<string> UpdateInFlightStatuses =
+    [
+        "UPDATE_QUEUED", "UPDATE_SUBMITTED", "UPDATE_UNAPPROVED_SUBMITTED", "UPDATE_CONTENT_SUBMITTED", "UPDATE_VARIANTS_SUBMITTED",
+        "UPDATE_DELIVERY_SUBMITTED", "UPDATE_IN_PROGRESS"
+    ];
+    public static bool IsUpdateInFlight(string? profileStatus) => profileStatus is not null && UpdateInFlightStatuses.Contains(profileStatus.Trim().ToUpperInvariant());
+
     // The products list's platform filter over a family's variants on one marketplace.
     public static bool MatchesFilter(string platformState, int variantCount, int matchedVariantCount, int missingVariantCount, int offSaleVariantCount = 0) => platformState switch
     {
