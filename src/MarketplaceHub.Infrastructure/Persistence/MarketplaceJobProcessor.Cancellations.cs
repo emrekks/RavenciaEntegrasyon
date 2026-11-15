@@ -5,6 +5,10 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed partial class MarketplaceJobProcessor
 {
+    // At most MaxPages pages of 50 lines; a cursor that does not move ends the read. No stop on cancellation between pages:
+    // the read goes on to the next request (which fails on the cancelled token) instead of taking the stop for its end.
+    private static readonly PageGuard HepsiburadaCancellationPageGuard = new(MaxPages: HepsiburadaCancellationPolicy.MaxPages, StopOnRepeatedCursor: true, StopOnCancellation: false);
+
     // Hepsiburada's cancelled-order list: the last day every 15 minutes, the whole month once a day.
     // A listed order that the panel does not show as cancelled is read again by the open-order scan, unless every
     // line the list names is already cancelled in the panel: a partly cancelled order stays open for good, and
@@ -18,8 +22,10 @@ public sealed partial class MarketplaceJobProcessor
         if (HepsiburadaCancellationPolicy.Window(cursor.LastSuccessAt, wideCursor.LastSuccessAt, now) is not { } window) return [];
 
         var cancelledLines = new List<RemoteCancelledOrderLine>();
-        string? page = null;
-        for (var pageIndex = 0; pageIndex < HepsiburadaCancellationPolicy.MaxPages; pageIndex++)
+        var failed = false;
+        // ISLEYICI-11: at the page cap (and on a repeated cursor) the read stops as if the list ended, and the cursor still
+        // moves: the open-order scan finds any cancellation left unread order by order.
+        await PagedReadLoop.RunAsync(null, HepsiburadaCancellationPageGuard, async (page, pageIndex) =>
         {
             TrackRequest();
             var result = await hepsiburadaInvoiceStatus.ListCancelledOrderLinesAsync(
@@ -29,13 +35,14 @@ public sealed partial class MarketplaceJobProcessor
                 // The open-order scan still finds cancellations order by order.
                 TrackResultFailure(result.Error);
                 await RecordIssue(tenantId, $"hepsiburada-cancelled:{connectionId}", result.Error!.Code, $"Hepsiburada iptal edilen sipariş listesi okunamadı; açık siparişler tek tek taranmaya devam ediyor. {result.Error.SafeMessage}", cancellationToken);
-                return [];
+                failed = true;
+                return null;
             }
             TrackReceived();
             cancelledLines.AddRange(result.Value!.Items);
-            if (!result.Value.HasMore || string.IsNullOrWhiteSpace(result.Value.NextCursor) || result.Value.NextCursor == page) break;
-            page = result.Value.NextCursor;
-        }
+            return new PageStep(!result.Value.HasMore || string.IsNullOrWhiteSpace(result.Value.NextCursor) ? null : result.Value.NextCursor);
+        }, cancellationToken);
+        if (failed) return [];
         await ResolveIssue(tenantId, $"hepsiburada-cancelled:{connectionId}", cancellationToken);
         cursor.LastSuccessAt = now;
         cursor.Version++;

@@ -4616,18 +4616,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             PazaramaOrderHistoryPolicy.LookbackDays(cursorResourceType));
         foreach (var (windowStart, windowEnd) in PazaramaOrderHistoryPolicy.Windows(startDay, now))
         {
-            string? page = null;
-            string? previousPageKey = null;
-            var pagesRead = 0;
-            do
+            var walk = await PagedReadLoop.RunAsync(null, PazaramaOrderPageGuard, async (page, pageIndex) =>
             {
-                if (++pagesRead > PazaramaOrderPageCap)
-                {
-                    // A list that never ends (a page number it ignores) is not read for ever: the window is closed and named.
-                    await RecordIssue(tenantId, $"pazarama-order-page-cap:{connectionId}:{windowStart:yyyyMMdd}", "PAZARAMA_ORDER_PAGE_CAP",
-                        $"Pazarama sipariş listesi {windowStart:dd.MM.yyyy} başlangıçlı pencerede {PazaramaOrderPageCap} sayfayı aştı; okuma bu pencerede durduruldu.", cancellationToken);
-                    break;
-                }
                 TrackRequest();
                 var result = await orders.PollAsync(
                     Context(tenantId, connectionId, correlationId, $"pazarama-order-sync:{windowStart:yyyyMMdd}:{page ?? "1"}"),
@@ -4640,17 +4630,16 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     await RecordIssue(tenantId, $"pazarama-order-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);
                 NoteRefusedOrders(result.Value.Issues);
                 await UpsertOrders(tenantId, connectionId, result.Value.Items, cancellationToken);
-                var pageKey = PazaramaOrderPageKey(result.Value.Items);
-                if (PazaramaOrderPageRepeated(previousPageKey, pageKey))
-                {
-                    // The same orders again on the next page: the list ignored the page number. The window is closed.
-                    await RecordIssue(tenantId, $"pazarama-order-page-repeat:{connectionId}", "PAZARAMA_ORDER_PAGE_REPEATED",
-                        "Pazarama sipariş listesi sonraki sayfada aynı siparişleri döndürdü (sayfa numarası yok sayıldı); bu pencerede okuma durduruldu.", cancellationToken);
-                    break;
-                }
-                previousPageKey = pageKey;
-                page = result.Value.HasMore ? result.Value.NextCursor : null;
-            } while (page is not null && !cancellationToken.IsCancellationRequested);
+                return new PageStep(result.Value.HasMore ? result.Value.NextCursor : null, PazaramaOrderPageKey(result.Value.Items));
+            }, cancellationToken);
+            // A list that never ends (a page number it ignores) is not read for ever: the window is closed and named.
+            if (walk.Stop == PagedReadStop.PageCap)
+                await RecordIssue(tenantId, $"pazarama-order-page-cap:{connectionId}:{windowStart:yyyyMMdd}", "PAZARAMA_ORDER_PAGE_CAP",
+                    $"Pazarama sipariş listesi {windowStart:dd.MM.yyyy} başlangıçlı pencerede {PazaramaOrderPageCap} sayfayı aştı; okuma bu pencerede durduruldu.", cancellationToken);
+            // The same orders again on the next page: the list ignored the page number. The window is closed.
+            else if (walk.Stop == PagedReadStop.RepeatedPage)
+                await RecordIssue(tenantId, $"pazarama-order-page-repeat:{connectionId}", "PAZARAMA_ORDER_PAGE_REPEATED",
+                    "Pazarama sipariş listesi sonraki sayfada aynı siparişleri döndürdü (sayfa numarası yok sayıldı); bu pencerede okuma durduruldu.", cancellationToken);
         }
         // The watermark is the moment of this finished run; the next run starts a few days before it.
         cursor.LastModifiedWatermark = now;
@@ -8979,6 +8968,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
     internal static bool PazaramaOrderPageRepeated(string? previousPageKey, string? pageKey) =>
         pageKey is not null && string.Equals(previousPageKey, pageKey, StringComparison.Ordinal);
+
+    // Pazarama's order list: at most PazaramaOrderPageCap pages per window, and a page that repeats the one before ends it.
+    private static readonly PageGuard PazaramaOrderPageGuard = new(MaxPages: PazaramaOrderPageCap, PageRepeated: PazaramaOrderPageRepeated);
 
     // The mapped panel category an observe-only read gives a product it opens; null otherwise (an existing product, a
     // plain or add-only read, which choose their category themselves, or no mapped category).

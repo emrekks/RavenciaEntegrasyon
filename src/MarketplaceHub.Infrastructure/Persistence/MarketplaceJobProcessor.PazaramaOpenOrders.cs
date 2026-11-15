@@ -6,6 +6,9 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed partial class MarketplaceJobProcessor
 {
+    // At most MaxPagesPerWindow pages per window; a window cut there is reported as truncated.
+    private static readonly PageGuard PazaramaOpenOrderPageGuard = new(MaxPages: PazaramaOpenOrderPolicy.MaxPagesPerWindow);
+
     // When more Pazarama orders are open than one run reads by order number, the order-date
     // windows that hold them are read whole instead: a few list requests bring every open order
     // with its current item statuses. Returns false when the per-order read is enough.
@@ -26,9 +29,7 @@ public sealed partial class MarketplaceJobProcessor
         var truncatedWindows = new List<DateTime>();
         foreach (var (windowStart, windowEnd) in PazaramaOrderHistoryPolicy.Windows(startDay, now))
         {
-            string? page = null;
-            var pages = 0;
-            do
+            var walk = await PagedReadLoop.RunAsync(null, PazaramaOpenOrderPageGuard, async (page, pageIndex) =>
             {
                 TrackRequest();
                 var result = await orders.PollAsync(
@@ -39,9 +40,9 @@ public sealed partial class MarketplaceJobProcessor
                 if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
                 foreach (var _ in result.Value!.Items) TrackReceived();
                 await UpsertOrders(tenantId, connectionId, result.Value.Items, cancellationToken);
-                page = result.Value.HasMore ? result.Value.NextCursor : null;
-            } while (page is not null && ++pages < PazaramaOpenOrderPolicy.MaxPagesPerWindow && !cancellationToken.IsCancellationRequested);
-            if (page is not null && !cancellationToken.IsCancellationRequested) truncatedWindows.Add(windowStart);
+                return new PageStep(result.Value.HasMore ? result.Value.NextCursor : null);
+            }, cancellationToken);
+            if (walk.Stop == PagedReadStop.PageCap) truncatedWindows.Add(windowStart);
         }
         var truncatedKey = $"pazarama-open-orders-truncated:{connectionId}";
         if (truncatedWindows.Count > 0)
