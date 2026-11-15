@@ -1099,17 +1099,17 @@ public sealed partial class MarketplaceJobProcessor
     private async Task EnsureApprovalReconciliationJob(Guid tenantId, Guid connectionId, Guid productId, Guid profileId, string payloadHash, string correlationId, CancellationToken cancellationToken, string? externalOperationId = null, TimeSpan? firstCheckDelay = null)
     {
         var dedup = $"product-approval:{connectionId:N}:{profileId:N}:{payloadHash}";
-        if (await db.IntegrationJobs.AnyAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.ProductApprovalReconcile && x.JobDedupKey == dedup, cancellationToken)) return;
         var now = timeProvider.GetUtcNow();
         var jobId = Guid.CreateVersion7();
         var payload = JsonSerializer.Serialize(new ProductApprovalReconciliationJobPayload(jobId, productId, profileId, payloadHash, now, now.AddDays(7), externalOperationId));
-        Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, connectionId, MarketplaceJobTypes.ProductApprovalReconcile, payload, dedup, correlationId, now + (firstCheckDelay ?? TimeSpan.Zero))
+        // J4 (KUYRUK-8): a check with this key in any state is the check.
+        await Jobs.JobEnqueuer.EnqueueAsync(db, new IntegrationJobRequest(tenantId, connectionId, MarketplaceJobTypes.ProductApprovalReconcile, payload, dedup, correlationId, now + (firstCheckDelay ?? TimeSpan.Zero))
         {
             Id = jobId,
             Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ProductApprovalReconcile, userInitiated: true),
             MaxAttempts = ProductApprovalReconcileMaxAttempts,
             CreatedAt = now
-        });
+        }, JobDedupPolicy.ReuseAnyWithKey, cancellationToken);
     }
 
     // " Reddedilen: SKU (reason); …" for the refused lines that carry a reason, cut to stay readable; empty without one.

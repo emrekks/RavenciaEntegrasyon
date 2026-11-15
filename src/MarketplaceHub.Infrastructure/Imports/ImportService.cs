@@ -54,8 +54,11 @@ public sealed class ImportService(AppDbContext db, IPrivateFileStorage files, Cu
     public async Task<ServiceResult<Guid>> EnqueuePreviewAsync(Guid tenantId, Guid sessionId, string correlationId, CancellationToken cancellationToken)
     {
         var session = await db.ImportSessions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == sessionId, cancellationToken); if (session is null) return NotFound<Guid>(); if (session.SourceType == ImportSourceType.Marketplace) return ServiceResult<Guid>.Fail("CAPABILITY_UNKNOWN", "Trendyol'dan içe aktarma bu bağlantıda henüz doğrulanmadığı için başlatılamadı. Önce bağlantıyı test edin.", 422); if (session.SourceAssetId is null || session.ColumnProfileId is null || session.Status != ImportSessionStatus.Created) return Conflict<Guid>("IMPORT_NOT_READY", "Preview için kaynak dosya, kolon eşlemesi ve CREATED durum gerekir.");
-        var dedup = $"import-preview:{session.Id}:v{session.Version}"; var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == "IMPORT_PREVIEW" && x.JobDedupKey == dedup, cancellationToken); if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
-        var payload = JsonSerializer.Serialize(new { sessionId = session.Id, operation = "PREVIEW" }); var job = Job(tenantId, "IMPORT_PREVIEW", dedup, payload, correlationId); db.IntegrationJobs.Add(job); ImportStateMachine.Transition(session, ImportSessionStatus.Fetching); session.UpdatedAt = timeProvider.GetUtcNow(); session.Version++; await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(job.Id);
+        var dedup = $"import-preview:{session.Id}:v{session.Version}";
+        var payload = JsonSerializer.Serialize(new { sessionId = session.Id, operation = "PREVIEW" });
+        // J4 (KUYRUK-8): a job with this key in any state is the job.
+        var enqueued = await Jobs.JobEnqueuer.EnqueueAsync(db, JobRequest(tenantId, "IMPORT_PREVIEW", dedup, payload, correlationId), JobDedupPolicy.ReuseAnyWithKey, cancellationToken); if (!enqueued.Created) return ServiceResult<Guid>.Ok(enqueued.JobId);
+        ImportStateMachine.Transition(session, ImportSessionStatus.Fetching); session.UpdatedAt = timeProvider.GetUtcNow(); session.Version++; await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(enqueued.JobId);
     }
 
     public async Task<ServiceResult<ImportSessionView>> GetAsync(Guid tenantId, Guid sessionId, CancellationToken cancellationToken)
@@ -79,7 +82,10 @@ public sealed class ImportService(AppDbContext db, IPrivateFileStorage files, Cu
 
     public async Task<ServiceResult<Guid>> EnqueueApplyAsync(Guid tenantId, Guid sessionId, string correlationId, CancellationToken cancellationToken)
     {
-        var session = await db.ImportSessions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == sessionId, cancellationToken); if (session is null) return NotFound<Guid>(); if (session.Status != ImportSessionStatus.ReadyToApply) return Conflict<Guid>("IMPORT_DECISIONS_REQUIRED", "Tüm candidate kararları tamamlanmalıdır."); var dedup = $"import-apply:{session.Id}:v{session.Version}"; var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == "IMPORT_APPLY" && x.JobDedupKey == dedup, cancellationToken); if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id); var payload = JsonSerializer.Serialize(new { sessionId = session.Id, operation = "APPLY" }); var job = Job(tenantId, "IMPORT_APPLY", dedup, payload, correlationId); db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(job.Id);
+        var session = await db.ImportSessions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == sessionId, cancellationToken); if (session is null) return NotFound<Guid>(); if (session.Status != ImportSessionStatus.ReadyToApply) return Conflict<Guid>("IMPORT_DECISIONS_REQUIRED", "Tüm candidate kararları tamamlanmalıdır."); var dedup = $"import-apply:{session.Id}:v{session.Version}"; var payload = JsonSerializer.Serialize(new { sessionId = session.Id, operation = "APPLY" });
+        // J4 (KUYRUK-8): a job with this key in any state is the job.
+        var enqueued = await Jobs.JobEnqueuer.EnqueueAsync(db, JobRequest(tenantId, "IMPORT_APPLY", dedup, payload, correlationId), JobDedupPolicy.ReuseAnyWithKey, cancellationToken); if (!enqueued.Created) return ServiceResult<Guid>.Ok(enqueued.JobId);
+        await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(enqueued.JobId);
     }
 
     public async Task<ServiceResult<string>> BuildErrorsCsvAsync(Guid tenantId, Guid sessionId, CancellationToken cancellationToken)
@@ -87,7 +93,7 @@ public sealed class ImportService(AppDbContext db, IPrivateFileStorage files, Cu
         if (!await db.ImportSessions.AnyAsync(x => x.TenantId == tenantId && x.Id == sessionId, cancellationToken)) return NotFound<string>(); var rows = await db.ImportStagingRecords.AsNoTracking().Where(x => x.TenantId == tenantId && x.SessionId == sessionId && x.ValidationErrorsJson != "[]").OrderBy(x => x.RowNumber).Select(x => new { x.RowNumber, x.ValidationErrorsJson }).ToListAsync(cancellationToken); var builder = new StringBuilder("rowNumber,errors\r\n"); foreach (var row in rows) builder.Append(row.RowNumber).Append(',').Append(ImportCsvSecurity.Neutralize(row.ValidationErrorsJson)).Append("\r\n"); return ServiceResult<string>.Ok(builder.ToString());
     }
 
-    private IntegrationJob Job(Guid tenantId, string type, string dedup, string payload, string correlationId) => IntegrationJobFactory.New(new IntegrationJobRequest(tenantId, null, type, payload, dedup, correlationId, timeProvider.GetUtcNow()));
+    private IntegrationJobRequest JobRequest(Guid tenantId, string type, string dedup, string payload, string correlationId) => new(tenantId, null, type, payload, dedup, correlationId, timeProvider.GetUtcNow());
     private Guid Decode(string? cursor) => cursors.TryDecode(cursor, out var id) ? id : throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(cursor));
     private PageResult<TView> Page<TEntity, TView>(List<TEntity> rows, int limit, Func<TEntity, TView> map) where TEntity : class { var hasMore = rows.Count > limit; var items = rows.Take(limit).Select(map).ToList(); var next = hasMore ? cursors.Encode((Guid)typeof(TEntity).GetProperty("Id")!.GetValue(rows[limit - 1])!) : null; return new(items, next, hasMore); }
     private static ImportSessionView Map(ImportSession value) => new(value.Id, value.SourceType.ToString().ToUpperInvariant(), Status(value.Status), value.SourceAssetId, value.TotalRows, value.ValidRows, value.ErrorRows, value.ReviewRows, value.UpdatedAt, value.Version);
