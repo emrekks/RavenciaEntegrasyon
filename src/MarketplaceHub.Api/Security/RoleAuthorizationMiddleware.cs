@@ -54,6 +54,24 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
         return HttpMethods.IsGet(method) || HttpMethods.IsHead(method) ? ReadRoles(segments) : RequiredRoles(segments);
     }
 
+    // The reads that call a marketplace live and spend its quota (area = the segment after /api/v1, last = the final one).
+    private static bool IsLiveMarketplaceRead(string area, string last) => area switch
+    {
+        "connections" => last is "n11-shipment-templates" or "instant-notifications",
+        "orders" => last is "finance" or "product-image",
+        "shipments" => last == "changeable-cargo-companies",
+        "returns" => last is "rejection-reasons" or "audits" or "return-shipment-companies",
+        _ => false
+    };
+
+    /// <summary>Whether a GET of this path is a live marketplace read (API-GUVENLIK-7: each must refuse another site's request).</summary>
+    public static bool IsLiveMarketplaceRead(string path)
+    {
+        var segments = (path ?? string.Empty).Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length < 4 || !segments[0].Equals("api", StringComparison.OrdinalIgnoreCase) || !segments[1].Equals("v1", StringComparison.OrdinalIgnoreCase)) return false;
+        return IsLiveMarketplaceRead(segments[2].ToLowerInvariant(), segments[^1].ToLowerInvariant());
+    }
+
     // Null: any signed-in role may read it.
     private static HashSet<string>? ReadRoles(string[] segments)
     {
@@ -66,14 +84,12 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
             // Shipping labels and documents, import error files.
             "shipments" when last == "content" => OperationalRoles,
             "imports" when last == "errors.csv" => OperationalRoles,
-            // Reads answered by a live marketplace call.
-            "connections" when last is "n11-shipment-templates" or "instant-notifications" => WorkingRoles,
+            // Reads answered by a live marketplace call (IsLiveMarketplaceRead; each also refuses another site's request,
+            // FetchMetadata.RequireSameOriginFetch).
+            _ when IsLiveMarketplaceRead(area, last) => WorkingRoles,
             // A connection's Tam Sıfırlama counts and progress are for those who may run it (Ayarlar › Veri lists every
             // connection with them).
             "connections" when last == "full-reset" => ElevatedRoles,
-            "orders" when last is "finance" or "product-image" => WorkingRoles,
-            "shipments" when last == "changeable-cargo-companies" => WorkingRoles,
-            "returns" when last is "rejection-reasons" or "audits" or "return-shipment-companies" => WorkingRoles,
             // Who gets the operator alerts, and from which account, is for the owner and administrators.
             "settings" when last == "alert-email" => ElevatedRoles,
             // Sistem Ayarları › Google Drive Yedeği (the OAuth client, the Drive account, the copy status) is the owner's and administrators'.
