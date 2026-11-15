@@ -14267,6 +14267,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (IsAmbiguous(error)) { decision.Status = "MANUAL_REVIEW"; decision.CompletedAt = now; await db.SaveChangesAsync(cancellationToken); throw new JobProcessingException(JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "İade aksiyonunun uzak tarafta uygulanıp uygulanmadığı kesinleştirilemedi.", error.RemoteRequestId)); }
         // Never sent (the panel's own circuit is open): the decision stays waiting and the job sends it again later.
         if (LocalCircuitOpen.IsCode(error.Code)) { db.ExternalEffectRecords.Remove(effect); await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(error); }
+        // ISLEYICI-4 (15 Nov 2026): a refusal the job retries (a quota answer) was not applied and is sent again, so the
+        // decision stays waiting, as an open decision, instead of showing "Başarısız" while the job still sends it (the
+        // owner could open a second decision for the same lines meanwhile). Only a final refusal fails the decision.
+        var outcome = JobExecutionResult.FromAdapterError(error);
+        if (outcome.Kind == JobCompletionKind.Retry)
+        {
+            db.ExternalEffectRecords.Remove(effect); decision.Status = "PENDING"; decision.CompletedAt = null; await db.SaveChangesAsync(cancellationToken);
+            throw new JobProcessingException(outcome);
+        }
         db.ExternalEffectRecords.Remove(effect); decision.Status = "FAILED"; decision.CompletedAt = now; await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(error);
     }
 
