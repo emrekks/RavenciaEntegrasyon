@@ -2350,7 +2350,9 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         var actions = claim.Status switch
         {
             ReturnClaimStatus.Requested when awaitingPreApproval => HepsiburadaReturnActionPolicy.AllowedActions(claim.RawStatus, decisionPending),
-            ReturnClaimStatus.Requested or ReturnClaimStatus.InTransit => ["RECEIVE"],
+            // "Teslim Aldım" opens Onayla/Reddet only where the decision covers the whole claim; Trendyol, n11 and Pazarama
+            // decide by the lines' own statuses, which stay in transit until the marketplace says otherwise (SIPARIS-STOK-1).
+            ReturnClaimStatus.Requested or ReturnClaimStatus.InTransit => ReturnReceiptAllowed(platformCode) ? ["RECEIVE"] : Array.Empty<string>(),
             ReturnClaimStatus.AwaitingShipment when isHepsiburada => Array.Empty<string>(),
             ReturnClaimStatus.ActionRequired when isHepsiburada => HepsiburadaReturnActionPolicy.AllowedActions(claim.RawStatus, decisionPending),
             // n11 approvals and denials both go through the API (ClaimReturnApprove / ClaimReturnDeny); a denial always
@@ -2447,6 +2449,10 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
 
     private static bool IsN11(string? platformCode) => string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase);
 
+    // Marking a return received only helps where the decision is sent for the whole claim (Hepsiburada, Shopify); elsewhere
+    // the approve/reject call needs lines the marketplace itself reports as waiting, so the step would open dead buttons.
+    internal static bool ReturnReceiptAllowed(string? platformCode) => ReturnDecisionScope.IsWholeClaim(platformCode);
+
     // The carriers an n11 denial can name for the shipment back to the buyer; other marketplaces list none.
     public async Task<ServiceResult<IReadOnlyList<ReturnShipmentCompany>>> ReturnShipmentCompaniesAsync(Guid tenantId, Guid id, string correlationId, CancellationToken cancellationToken)
     {
@@ -2511,6 +2517,8 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         if (claim is null) return NotFound<ReturnDetailView>();
         if (claim.Version != expectedVersion) return Precondition<ReturnDetailView>(claim.Version);
         if (claim.Status is not (ReturnClaimStatus.Requested or ReturnClaimStatus.InTransit)) return ServiceResult<ReturnDetailView>.Fail("RETURN_RECEIPT_NOT_ALLOWED", "Teslim alındı işlemi yalnız talep oluşturulan veya kargodaki iadeler için kullanılabilir.", 409);
+        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == claim.ConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        if (!ReturnReceiptAllowed(platformCode)) return ServiceResult<ReturnDetailView>.Fail("RETURN_RECEIPT_NOT_ALLOWED", "Bu pazaryerinde iade kararı, pazaryeri iadeyi aksiyon bekliyor durumuna aldığında açılır; teslim alındı işareti kullanılmaz.", 409);
         if (!ReturnClaimStateMachine.CanTransition(claim.Status, ReturnClaimStatus.ActionRequired)) return ServiceResult<ReturnDetailView>.Fail("RETURN_STATE_CONFLICT", "İade durumu aksiyon bekliyor durumuna geçirilemedi.", 409);
 
         var now = timeProvider.GetUtcNow();

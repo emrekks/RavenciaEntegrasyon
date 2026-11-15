@@ -161,6 +161,48 @@ public sealed class ReturnDecisionScopePostgreSqlTests(PostgreSqlTenantIsolation
         }
     }
 
+    // SIPARIS-STOK-1: "Teslim Aldım" opened Onayla/Reddet on Trendyol, n11 and Pazarama although their decision needs lines
+    // the marketplace reports as waiting, so every approval failed with 409. The step stays only where the whole claim is sent.
+    [PostgreSqlTheory]
+    [InlineData("TRENDYOL", false)]
+    [InlineData("N11", false)]
+    [InlineData("PAZARAMA", false)]
+    [InlineData("HEPSIBURADA", true)]
+    [InlineData("SHOPIFY", true)]
+    public async Task ReturnReceipt_IsOfferedOnlyWhereTheWholeClaimIsDecided(string platformCode, bool offered)
+    {
+        var seed = await SeedAsync($"rcv-{platformCode.ToLowerInvariant()}", platformCode, [1]);
+        try
+        {
+            await using (var db = fixture.CreateContext())
+                await db.ReturnClaims.Where(x => x.Id == seed.ClaimIds[0]).ExecuteUpdateAsync(set => set.SetProperty(x => x.Status, ReturnClaimStatus.InTransit).SetProperty(x => x.RawStatus, "Created"));
+            await using (var db = fixture.CreateContext())
+                await db.ReturnLines.Where(x => x.ClaimId == seed.ClaimIds[0]).ExecuteUpdateAsync(set => set.SetProperty(x => x.RawStatus, "Created"));
+            await using var read = fixture.CreateContext();
+            var detail = (await Service(read, new RecordingReturnPort()).ReturnAsync(seed.TenantId, seed.ClaimIds[0], CancellationToken.None)).Value!;
+            Assert.Equal(offered, detail.AllowedActions.Contains("RECEIVE"));
+
+            var received = await Service(read, new RecordingReturnPort()).MarkReturnReceivedAsync(seed.TenantId, Guid.NewGuid(), seed.ClaimIds[0], detail.Version, "rcv", "rcv", CancellationToken.None);
+            await using var verify = fixture.CreateContext();
+            var claim = await verify.ReturnClaims.AsNoTracking().SingleAsync(x => x.Id == seed.ClaimIds[0]);
+            if (offered)
+            {
+                Assert.Null(received.Error);
+                Assert.Equal(ReturnClaimStatus.ActionRequired, claim.Status);
+            }
+            else
+            {
+                Assert.Equal("RETURN_RECEIPT_NOT_ALLOWED", received.Error?.Code);
+                Assert.Equal(ReturnClaimStatus.InTransit, claim.Status);
+                Assert.Equal("Created", claim.RawStatus);
+            }
+        }
+        finally
+        {
+            await CleanupAsync(seed.TenantId);
+        }
+    }
+
     private sealed record Seed(Guid TenantId, Guid ConnectionId, Guid[] ClaimIds, Guid[][] LineIds);
 
     private MarketplaceSalesService Service(AppDbContext db, IReturnPort port) =>
