@@ -2497,7 +2497,9 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         if (unknown.Count > 0) return ServiceResult<Guid>.Fail("PAZARAMA_BARCODE_NOT_LINKED", $"Şu barkodlar panelde bir varyanta bağlı değil: {string.Join(", ", unknown.Take(5))}{(unknown.Count > 5 ? " …" : "")}. Önce Pazarama ürün eşleştirmesini çalıştırın.", 404);
 
         var dedup = $"pazarama-sale:{connectionId:N}:{close}:{Hash(string.Join('|', normalized))}";
-        var existing = await db.IntegrationJobs.AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.ProductArchive && x.JobDedupKey == dedup && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled), cancellationToken);
+        // K1: the job is saved under "{dedup}:{jobId}", so an open one is found by that prefix.
+        var openPrefix = dedup + ":";
+        var existing = await db.IntegrationJobs.AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.ProductArchive && x.JobDedupKey.StartsWith(openPrefix) && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled), cancellationToken);
         if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
         var jobId = Guid.CreateVersion7(); var now = timeProvider.GetUtcNow();
         var payload = JsonSerializer.Serialize(new PazaramaSaleStatusJobPayload(jobId, normalized, close, now));
