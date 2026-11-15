@@ -27,6 +27,12 @@ internal static class PagedReadLoop
             if (guard.StopOnCancellation && cancellationToken.IsCancellationRequested) return new(PagedReadStop.Cancelled, cursor, pagesRead + 1);
         }
     }
+
+    // J3 (15 Nov 2026): how a read stops at a guard (page cap, repeated page or cursor) when the rest of its range is unread.
+    // The range is not taken as read: the job ends for review with the read's own code (as TRENDYOL_FINANCE_PAGE_CAP does),
+    // nothing after the stop moves a watermark or a cursor, and the next run reads the range again.
+    public static JobProcessingException GuardFailure(string code, string summary) =>
+        JobProcessingException.FromAdapter(new MarketplaceHub.Application.AdapterError(MarketplaceHub.Application.AdapterErrorClass.ContractViolation, code, summary, 502, null, null));
 }
 
 // MaxPages: the most pages one walk reads (null: no cap). StopOnRepeatedCursor: a next cursor equal to the one just read

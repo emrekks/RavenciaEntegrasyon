@@ -6,8 +6,8 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed partial class MarketplaceJobProcessor
 {
-    // At most MaxPagesPerWindow pages per window; a window cut there is reported as truncated.
-    private static readonly PageGuard PazaramaOpenOrderPageGuard = new(MaxPages: PazaramaOpenOrderPolicy.MaxPagesPerWindow);
+    // At most MaxPagesPerWindow pages per window (5,000 orders), and a page that repeats the one before ends the window.
+    private static readonly PageGuard PazaramaOpenOrderPageGuard = new(MaxPages: PazaramaOpenOrderPolicy.MaxPagesPerWindow, PageRepeated: PazaramaOrderPageRepeated);
 
     // When more Pazarama orders are open than one run reads by order number, the order-date
     // windows that hold them are read whole instead: a few list requests bring every open order
@@ -24,9 +24,11 @@ public sealed partial class MarketplaceJobProcessor
             .ToListAsync(cancellationToken);
         if (PazaramaOpenOrderPolicy.StartDay(openOrderedAt, batchSize, now) is not { } startDay) return false;
 
-        // A window that still has pages after the page cap is not dropped silently: it is reported, so the
-        // missing open orders (read again only by their own per-order checks) do not go unnoticed.
+        // A window that still has pages after the page cap (or repeats a page) is not dropped silently: it is reported, and
+        // J3 (15 Nov 2026) the scan stops there with that code instead of finishing and moving its watermark past open
+        // orders it did not read; the next scan reads them again.
         var truncatedWindows = new List<DateTime>();
+        var repeatedPage = false;
         foreach (var (windowStart, windowEnd) in PazaramaOrderHistoryPolicy.Windows(startDay, now))
         {
             var walk = await PagedReadLoop.RunAsync(null, PazaramaOpenOrderPageGuard, async (page, pageIndex) =>
@@ -40,16 +42,21 @@ public sealed partial class MarketplaceJobProcessor
                 if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
                 foreach (var _ in result.Value!.Items) TrackReceived();
                 await UpsertOrders(tenantId, connectionId, result.Value.Items, cancellationToken);
-                return new PageStep(result.Value.HasMore ? result.Value.NextCursor : null);
+                return new PageStep(result.Value.HasMore ? result.Value.NextCursor : null, PazaramaOrderPageKey(result.Value.Items));
             }, cancellationToken);
-            if (walk.Stop == PagedReadStop.PageCap) truncatedWindows.Add(windowStart);
+            if (walk.Stop is PagedReadStop.PageCap or PagedReadStop.RepeatedPage) truncatedWindows.Add(windowStart);
+            repeatedPage |= walk.Stop == PagedReadStop.RepeatedPage;
         }
+        cancellationToken.ThrowIfCancellationRequested();
         var truncatedKey = $"pazarama-open-orders-truncated:{connectionId}";
         if (truncatedWindows.Count > 0)
-            await RecordIssue(tenantId, truncatedKey, "PAZARAMA_OPEN_ORDER_WINDOW_TRUNCATED",
-                $"Pazarama açık sipariş taramasında {string.Join(", ", truncatedWindows.Select(day => day.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)))} tarihli pencere {PazaramaOpenOrderPolicy.MaxPagesPerWindow} sayfa sınırında kesildi; kalan siparişlerin durumu bu turda güncellenmedi.", cancellationToken);
-        else
-            await ResolveIssue(tenantId, truncatedKey, cancellationToken);
+        {
+            var summary = $"Pazarama açık sipariş taramasında {string.Join(", ", truncatedWindows.Select(day => day.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)))} tarihli pencere {(repeatedPage ? "aynı sayfa yeniden geldiği için" : $"{PazaramaOpenOrderPolicy.MaxPagesPerWindow} sayfa sınırında")} kesildi; kalan siparişlerin durumu bu turda güncellenmedi ve tarama tamamlanmış sayılmadı.";
+            await RecordIssue(tenantId, truncatedKey, "PAZARAMA_OPEN_ORDER_WINDOW_TRUNCATED", summary, cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+            throw PagedReadLoop.GuardFailure("PAZARAMA_OPEN_ORDER_WINDOW_TRUNCATED", summary);
+        }
+        await ResolveIssue(tenantId, truncatedKey, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
 
         // Open orders older than the windows are still read one by one.

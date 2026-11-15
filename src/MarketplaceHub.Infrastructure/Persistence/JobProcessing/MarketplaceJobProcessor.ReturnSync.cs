@@ -245,9 +245,9 @@ public sealed partial class MarketplaceJobProcessor
         {
             var windowEnd = windowStart.AddDays(PazaramaReturnWindowDays) < now ? windowStart.AddDays(PazaramaReturnWindowDays) : now;
             var window = new ReturnPollWindow(windowStart, windowEnd);
-            var page = 1;
-            while (!cancellationToken.IsCancellationRequested)
+            var walk = await PagedReadLoop.RunAsync("1", ReturnPageGuard, async (cursor, _) =>
             {
+                var page = int.Parse(cursor!, NumberStyles.None, CultureInfo.InvariantCulture);
                 TrackRequest();
                 var result = await returns.PollAsync(Context(tenantId, connectionId, correlationId, $"pazarama-return-sync:{windowStart:yyyyMMdd}:{page}"), window, new(page.ToString(CultureInfo.InvariantCulture), 100), cancellationToken);
                 if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
@@ -258,10 +258,11 @@ public sealed partial class MarketplaceJobProcessor
                     var resolved = await ResolvePazaramaReturnOrderLinesAsync(tenantId, connectionId, correlationId, claim, cancellationToken);
                     await UpsertReturn(tenantId, connectionId, resolved, cancellationToken);
                 }
-                if (!result.Value.HasMore) break;
-                page = int.TryParse(result.Value.NextCursor, NumberStyles.None, CultureInfo.InvariantCulture, out var next) && next > page ? next : page + 1;
-            }
+                return new PageStep(result.Value.HasMore ? NextReturnPageNumber(page, result.Value.NextCursor) : null, ReturnPageKey(result.Value.Items));
+            }, cancellationToken);
+            ThrowAtReturnPageGuard(walk, "Pazarama");
         }
+        cancellationToken.ThrowIfCancellationRequested();
         NoteWideReturnRead(wideCursor, lookbackDays, PazaramaReturnLookbackDays, now);
         cursor.OpaqueCursor = null;
         cursor.LastModifiedWatermark = now;
@@ -269,6 +270,29 @@ public sealed partial class MarketplaceJobProcessor
         cursor.Version++;
         await db.SaveChangesAsync(cancellationToken);
         return true;
+    }
+
+    // J3 (15 Nov 2026): n11's and Pazarama's numbered claim pages had no stop but HasMore: a list that kept saying "more"
+    // (or ignored the page number) was walked until the lease ran out. Now at most ReturnPageCap pages per window (100
+    // claims a page: far above real traffic), and a page that repeats the claims of the one before ends the walk; either
+    // stops the job with its code before the watermark moves, so the window is read again.
+    internal const int ReturnPageCap = 500;
+    private static readonly PageGuard ReturnPageGuard = new(MaxPages: ReturnPageCap, PageRepeated: PazaramaOrderPageRepeated);
+
+    // The next page number: the one the marketplace names when it moves forward, else the next one.
+    internal static string NextReturnPageNumber(int page, string? nextCursor) =>
+        (int.TryParse(nextCursor, NumberStyles.None, CultureInfo.InvariantCulture, out var next) && next > page ? next : page + 1).ToString(CultureInfo.InvariantCulture);
+
+    // The claims a page holds, for the repeated-page guard (null: an empty page, never a repeat).
+    internal static string? ReturnPageKey(IReadOnlyList<RemoteReturnClaim> items) =>
+        items.Count == 0 ? null : string.Join(',', items.Select(item => item.ExternalClaimId).Order(StringComparer.Ordinal));
+
+    private static void ThrowAtReturnPageGuard(PagedReadEnd walk, string marketplace)
+    {
+        if (walk.Stop == PagedReadStop.PageCap)
+            throw PagedReadLoop.GuardFailure($"{marketplace.ToUpperInvariant()}_RETURN_PAGE_CAP", $"{marketplace} iade listesi bir pencerede {ReturnPageCap} sayfayı aştı; okuma durduruldu ve bu dönem okunmuş sayılmadı. Sonraki okuma aynı dönemi yeniden okuyacak.");
+        if (walk.Stop == PagedReadStop.RepeatedPage)
+            throw PagedReadLoop.GuardFailure($"{marketplace.ToUpperInvariant()}_RETURN_PAGE_REPEATED", $"{marketplace} iade listesi sonraki sayfada aynı iadeleri döndürdü (sayfa numarası yok sayıldı); okuma durduruldu ve bu dönem okunmuş sayılmadı.");
     }
 
     private static void NoteWideReturnRead(SyncCursor wideCursor, int lookbackDays, int wideDays, DateTimeOffset now)
@@ -365,9 +389,9 @@ public sealed partial class MarketplaceJobProcessor
         var wideCursor = await Cursor(tenantId, connectionId, ReturnRereadPolicy.WideCursorResource, cancellationToken);
         var lookbackDays = ReturnRereadPolicy.LookbackDays(full, N11ReturnInitialLookbackDays, N11ReturnLookbackDays, wideCursor.LastSuccessAt, now);
         var window = new ReturnPollWindow(now.AddDays(-lookbackDays), now);
-        var page = 0;
-        while (!cancellationToken.IsCancellationRequested)
+        var walk = await PagedReadLoop.RunAsync("0", ReturnPageGuard, async (cursor, _) =>
         {
+            var page = int.Parse(cursor!, NumberStyles.None, CultureInfo.InvariantCulture);
             TrackRequest();
             var result = await returns.PollAsync(Context(tenantId, connectionId, correlationId, $"n11-return-sync:{page}"), window, new(page.ToString(CultureInfo.InvariantCulture), 100), cancellationToken);
             if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
@@ -378,9 +402,10 @@ public sealed partial class MarketplaceJobProcessor
                 var resolved = await ResolveN11ReturnOrderLinesAsync(tenantId, connectionId, correlationId, claim, cancellationToken);
                 await UpsertReturn(tenantId, connectionId, resolved, cancellationToken);
             }
-            if (!result.Value.HasMore) break;
-            page = int.TryParse(result.Value.NextCursor, NumberStyles.None, CultureInfo.InvariantCulture, out var next) && next > page ? next : page + 1;
-        }
+            return new PageStep(result.Value.HasMore ? NextReturnPageNumber(page, result.Value.NextCursor) : null, ReturnPageKey(result.Value.Items));
+        }, cancellationToken);
+        ThrowAtReturnPageGuard(walk, "N11");
+        cancellationToken.ThrowIfCancellationRequested();
         NoteWideReturnRead(wideCursor, lookbackDays, N11ReturnLookbackDays, now);
         cursor.OpaqueCursor = null;
         cursor.LastModifiedWatermark = now;
