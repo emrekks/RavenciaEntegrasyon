@@ -1,44 +1,39 @@
-// Kaydet, Ürünü Oluştur, Taslak, Yayınla and Platformlarda Güncelle: checks, the product write and the steps after it.
+// Kaydet, Ürünü Oluştur, Taslak, Yayınla and Platformlarda Güncelle: the product write and the steps after it.
+// Owns: Kaydet awaits a running picture assignment save, names the seeded version in If-Match, marks the save in
+// flight so a refetch meanwhile is no refill, and asks for the reseed after its own refetch.
 import { type FormEvent } from 'react'
 import { ApiRequestError, hubApi } from '../../../shared/api'
 import { newIdempotencyKey, sendWithVersionedIdempotencyKey } from '../../../shared/idempotency'
 import { sanitizeRichText } from '../../../shared/security/sanitizeHtml'
-import { revealFieldError } from './field-error-reveal'
 import { appendNotification, productNotificationSubject } from '../../../shared/notifications'
-import { recordProductUpdateNotices, type ProductUpdateAccepted } from './product-update-notices'
 import { followJobOutcomes, outcomeTarget, type FollowedJob } from '../../../shared/job-outcome'
 import { buildVariantAttributeAssignments } from '../variant-attribute-assignments'
-import { isStoredProductMediaUrl, mediaImageKey, mediaRefsEqual, modelCodeForExistingVariant, publicProductMediaUrls } from '../product-media-editor'
-import { buildVariantGenerationDefaults } from '../variant-generation'
+import { mediaImageKey, mediaRefsEqual, modelCodeForExistingVariant, publicProductMediaUrls } from '../product-media-editor'
 import { isVariantDeleteRefusal, restoreRemovedVariantRows, VARIANT_DELETE_REFUSED_HINT } from '../variant-row-removal'
-import { autoWebColorIssues, isOptionRequirement } from './publication-readiness'
+import { isOptionRequirement } from './publication-readiness'
 import { mapWithConcurrency, mediaFilesLeftAfterFailedSave, mediaSaveProgressMessage, newColoursWithoutPictures, savedMediaOrder, storedProductMediaUrl, variantMediaReconcilePlan } from './product-media-save'
 import { FAMILY_SHARED_FIELDS } from './family-shared-fields'
 import { familyGalleryPlan, familyUploadTargets, type ColourRowPictures, type FamilyCardPictures } from './family-gallery-save'
 import { keepPendingCreateMedia, pendingVariantMediaRefs } from './pending-create-media'
-import { isProductDeliveryDays, productDeliveryDays } from './product-delivery-days'
-import { editorOfferPriceReason, platformUpdatePlan, platformUpdateWritesOffers, productInformationLabel } from './platform-update-fields'
-import { publishCardPlan, withLatestVariantLinks } from './publish-card-variants'
-import { editorWarrantyMonths, requiredEditorFieldLabels, requiredFieldMessage, requiredFieldsMessage, type RequiredEditorField } from './required-fields'
-import { parseProductDesi, productDesiTooLarge, productDesiTooLargeMessage } from '../product-desi'
+import { productDeliveryDays } from './product-delivery-days'
+import { editorOfferPriceReason, platformUpdateWritesOffers } from './platform-update-fields'
+import { withLatestVariantLinks } from './publish-card-variants'
+import { editorWarrantyMonths, requiredEditorFieldLabels } from './required-fields'
+import { parseProductDesi } from '../product-desi'
 import { pinSizeChartLast } from './size-chart-order'
 import { productMediaUrlIssue } from '../product-media-url'
-import { productCopyIdentifierConflicts } from '../product-copy-identifiers'
 import { canSaveAsDraft, draftBlockingIssues, draftMissingSummary, draftProductTitle, isDraftStatus, variantCodeRulesStopSave } from '../product-draft'
 import { removePendingFamilyMedia } from '../family-media-clear'
 import { sameProductSnapshotIgnoringVersion } from '../product-save-version'
 import { channelTakesListPrice, editorChannelOfferPrices, editorOfferUnchanged, offerHasSalePrice, panelFollowChoiceVariantIds, unpricedOfferWarning } from '../quick-price-edit'
 import { editorFieldErrors, editorOpeningStock, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, editorVatRateIssue, rekeySavedVariantRows, variantCodeConflictsFrom } from '../product-editor-state'
 import { applyVariantStockSets, setVariantOnHand } from '../variant-stock-set'
-import { isPublicationLive, isSkippedByPublish } from '../publication-status'
-import { familyCardsInPanelOrder } from '../family-card-order'
-import { chosenGapSkipped, holdsFamilyAsOneProduct, productPublicationTargets, productSaveFeedback, type MarketplaceFamilyUpdate, type MarketplacePublishOutcome, type MarketplaceUpdateOutcome, type ProductSaveFeedback, type PublicationAccepted } from '../product-publication-submit'
-import { familyCardName, familyUpdatePlan } from './family-update-plan'
+import { chosenGapSkipped, productPublicationTargets, productSaveFeedback, type MarketplacePublishOutcome, type MarketplaceUpdateOutcome, type ProductSaveFeedback } from '../product-publication-submit'
 import { variantOwnerProductId } from '../variant-media-assignments'
-import { AcceptedJob, Product, isColorOptionName, preferredColorOption, variantOptionEntries } from '../shared'
+import { Product, isColorOptionName } from '../shared'
 import { queryKeys } from '../../../shared/api/query-keys'
-import { PublicationStatus, VariantDraft, SavedListingProfile } from './editor-types'
-import { productSaveToastKey, PLACEHOLDER_KEPT_MESSAGE, channelOfferWriteConcurrency, republishListingProfileBody, MAX_VARIANTS, productAttributePayload, publishPlatformName } from './editor-helpers'
+import { VariantDraft } from './editor-types'
+import { productSaveToastKey, PLACEHOLDER_KEPT_MESSAGE, channelOfferWriteConcurrency, productAttributePayload, publishPlatformName } from './editor-helpers'
 import type { EditorProps } from './editor-types'
 import type { EditorStateResult } from './use-editor-state'
 import type { EditorMediaPointerResult } from './use-editor-media-pointer'
@@ -55,110 +50,11 @@ import type { VariantCodeActionsResult } from './use-variant-code-actions'
 import type { EditorMediaActionsResult } from './use-editor-media-actions'
 import type { PlatformUpdateResult } from './use-platform-update'
 import type { ChannelPricingResult } from './use-channel-pricing'
+import type { EditorChecksResult } from './use-editor-checks'
+import { sendToMarketplaces } from './editor-marketplace-sends'
 
-export function useEditorSubmit(c: EditorProps & EditorStateResult & EditorMediaPointerResult & EditorDirtyStateResult & VariantCodeMenusResult & EditorDataResult & EditorSeedResult & VariantRowDragResult & VariantMediaAutoSaveResult & EditorViewResult & AttributeActionsResult & VariantActionsResult & VariantCodeActionsResult & EditorMediaActionsResult & PlatformUpdateResult & ChannelPricingResult) {
-  const { editProductId, publishOnly, client, navigate, duplicateProductId, setError, setNotice, operationToasts, setFeedback, setSubmitting, calculateDesi, form, attributeSelections, attributeTextValues, variantAttributeIds, variantRows, setVariantRows, selectedChannelIds, blockedPublishCards, channelPricing, variantChannelPricing, automaticBarcodeGeneration, wizardStep, setWizardStep, pendingPlatformUpdate, mediaFiles, setMediaFiles, pendingFamilyMediaRemovals, setPendingFamilyMediaRemovals, familyMediaOrderDirty, setFamilyMediaOrderDirty, sizeChartUrl, initialSizeChartUrl, sizeChartBeforeFamilyRemoval, chartKey, removedVariantIds, setRemovedVariantIds, removedVariantRows, setRemovedVariantRows, replacedPlaceholderIds, setReplacedPlaceholderIds, setSnapshotRequest, webColorAutoEnabled, manualWebColorValueId, setStaleProductVersion, allowReseedUntil, editorSaveInFlight, seededProduct, setProductAtSave, setVariantCodeConflicts, mediaFilesKeptOnReseed, initialCustomChannelIds, setFieldErrors, setRequiredErrors, lastFieldReveal, productCreateKey, leavingAfterSave, initialEditModelCode, initialEditDesi, initialEditVariantMediaRefs, showFeedback, mediaAutoSave, editorDirty, productToEdit, productToCopy, connections, requirements, cardPriceDefaults, fallbackListPrice, fallbackSalePrice, fallbackCostPrice, initialStock, missingRequiredFields, desi, mediaUrls, mappedRequirements, colorOptionRequirement, webColorRequirement, setReseedRequest, draftCodeSaveBlock, codeRuleSaveBlock, modelCodeHolder, blockedByVariantCodeRules, draftMediaKeys, pendingRemovalMediaKeys, mediaStrip, trendyolMixedColours, channelPriceDraft, channelPriceEdited } = c
-  function rowsForSubmit(requireCompleteCatalog = true) {
-    if (requireCompleteCatalog && variantAttributeIds.length && !variantRows.length) throw new Error('Varyant özellikleri seçili. Önce “Ürünleri Ekle” ile varyantları oluşturun.')
-    if (editProductId && !variantRows.length) {
-      if (removedVariantIds.length) throw new Error('Tüm kayıtlı varyantlar temizlendi. Kaydetmeden önce “Ürünleri Ekle” ile yeni varyant satırları oluşturun; ürünün en az bir varyantı kalmalıdır.')
-      return []
-    }
-    if (variantRows.length) return variantRows
-    const generatedDefaults = automaticBarcodeGeneration ? buildVariantGenerationDefaults({ modelCode: form.modelCode, sequence: 1, automaticBarcodes: true, fallbackSalePrice, fallbackListPrice }) : null
-    return [{ key: crypto.randomUUID(), optionSignature: 'Tek Ürün', options: {}, attributeValueIds: {}, sku: generatedDefaults?.sku ?? form.baseSku.trim(), barcode: generatedDefaults?.barcode ?? form.barcode, stock: initialStock, salePrice: generatedDefaults?.salePrice ?? fallbackSalePrice, listPrice: generatedDefaults?.listPrice ?? fallbackListPrice, costPrice: fallbackCostPrice, mediaRefs: [] }]
-  }
-  function validate(rows: VariantDraft[], requireCompleteCatalog = true, requirePublicationReadiness = true) {
-    const issues: string[] = []; const requirementList = mappedRequirements
-    if (requireCompleteCatalog && (variantAttributeIds.length > 2 || variantAttributeIds.some(id => { const requirement = requirementList.find(item => item.attributeId === id); return !requirement || !isOptionRequirement(requirement) }))) issues.push('Varyant için en fazla 2 seçenek başlığı kullanılabilir.')
-    if (requireCompleteCatalog && !webColorAutoEnabled && (!webColorRequirement || !manualWebColorValueId)) issues.push('Manuel Web Color aktarımı için gönderilecek panel renk değerini seçin.')
-    if (!webColorAutoEnabled && webColorRequirement && manualWebColorValueId && !webColorRequirement.attribute.values.some(value => value.id === manualWebColorValueId)) issues.push('Manuel Web Color için seçilen değer geçerli değil.')
-    // Automatic Web Color reads each row's own Renk, as the publish checks and the server do (publication-readiness).
-    if (requireCompleteCatalog && webColorAutoEnabled && webColorRequirement) issues.push(...autoWebColorIssues({ variantRows: rows, variantAttributeIds, attributeSelections }, colorOptionRequirement))
-    if (!form.title.trim()) issues.push('Ürün adı zorunludur.')
-    if (cardPriceDefaults.issue) issues.push(cardPriceDefaults.issue)
-    if (automaticBarcodeGeneration && !form.modelCode.trim()) issues.push('Otomatik barkod oluşturmak için model kodu zorunludur.')
-    if (requireCompleteCatalog && !form.description.trim()) issues.push('Açıklama zorunludur.')
-    if (requireCompleteCatalog) {
-      for (const requirement of requirementList) {
-        const selectedCount = attributeSelections[requirement.attributeId]?.length ?? 0
-        if (!variantAttributeIds.includes(requirement.attributeId) && requirement.attribute.dataType === 'SINGLE_SELECT' && selectedCount > 1) issues.push(`${requirement.attribute.name} yalnız bir ürün değeri kabul eder.`)
-        if (isOptionRequirement(requirement) || !requirement.isRequired) continue
-        if (variantAttributeIds.includes(requirement.attributeId)) {
-          if (rows.some(row => !row.attributeValueIds[requirement.attributeId])) issues.push(`${requirement.attribute.name} tüm varyantlarda seçilmelidir.`)
-        } else if (!(attributeSelections[requirement.attributeId]?.length) && !(attributeTextValues[requirement.attributeId] ?? '').trim()) issues.push(`${requirement.attribute.name} zorunludur.`)
-      }
-    }
-    if (rows.length > MAX_VARIANTS) issues.push(`En fazla ${MAX_VARIANTS} varyant oluşturulabilir.`)
-    const publicationMediaRefs = [...mediaUrls, ...rows.flatMap(row => row.mediaRefs.filter(ref => ref.startsWith('url|')).map(ref => ref.slice(4)))]
-    const allMediaUrls = publicProductMediaUrls(publicationMediaRefs)
-    const invalidMediaUrl = allMediaUrls.map(productMediaUrlIssue).find((issue): issue is string => issue !== null)
-    if (invalidMediaUrl) issues.push(`Görsel bağlantısı geçersiz: ${invalidMediaUrl} Ürün kaydedilmeden önce düzeltin veya kaldırın.`)
-    const skus = rows.map(row => row.sku.trim().toLocaleUpperCase('tr-TR')); if (skus.some(value => !value)) issues.push('Tüm varyantlarda stok kodu zorunludur.'); if (new Set(skus).size !== skus.length) issues.push('Stok kodları benzersiz olmalıdır.')
-    const signatures = rows.map(row => row.optionSignature); if (new Set(signatures).size !== signatures.length) issues.push('Aynı varyant kombinasyonu iki kez oluşturulamaz.')
-    const barcodes = rows.map(row => row.barcode.trim()).filter(Boolean); if (new Set(barcodes.map(value => value.toLocaleUpperCase('tr-TR'))).size !== barcodes.length) issues.push('Barkodlar benzersiz olmalıdır.')
-    if (duplicateProductId && productToCopy.data) {
-      const conflicts = productCopyIdentifierConflicts(productToCopy.data.variants, rows)
-      if (conflicts.barcodes) issues.push('Kaynak ürünün barkodları zaten kayıtlı. Yeni ürünü oluşturmak için çakışan barkodları değiştirin.')
-      if (conflicts.skus) issues.push('Kaynak ürünün stok kodları zaten kayıtlı. Yeni ürünü oluşturmak için çakışan stok kodlarını değiştirin.')
-    }
-     if (rows.some(row => row.salePrice < 0 || row.listPrice < row.salePrice)) issues.push('Her varyantta liste fiyatı satış fiyatından küçük olamaz.')
-     // Owner, 10 Nov 2026 ("0 olmayacak onlarda"): a variant's list and sale price are above 0, like the card's.
-     if (rows.some(row => !(row.salePrice > 0) || !(row.listPrice > 0))) issues.push('Her varyantta liste ve satış fiyatı 0\'dan büyük olmalı.')
-     // A card none of whose variants has a desi opens with the field empty (no guessed 1) and may be saved so.
-     if (!(editProductId && initialEditDesi.current === 0 && !form.desi.trim()) && (!form.desi.trim() || parseProductDesi(form.desi) <= 0)) issues.push('Desi sıfırdan büyük olmalıdır.')
-     if (productDesiTooLarge(form.desi)) issues.push(productDesiTooLargeMessage)
-     if (form.warrantyMonths.trim() && (!Number.isInteger(Number(form.warrantyMonths)) || Number(form.warrantyMonths) < 0 || Number(form.warrantyMonths) > 240)) issues.push('Garanti süresi 0-240 ay arasında tam sayı olmalıdır.')
-     if (!isProductDeliveryDays(form.deliveryDays)) issues.push('Teslimat süresi 1-30 gün arasında tam sayı olmalıdır.')
-     if (requireCompleteCatalog && requirePublicationReadiness && selectedChannelIds.length) {
-      if (!form.brandId) issues.push('Trendyol yayını için marka zorunludur.'); if (!form.modelCode.trim() || form.modelCode.trim().length > 40) issues.push('Trendyol yayını için en fazla 40 karakterlik model kodu zorunludur.'); if (form.title.trim().length > 100) issues.push('Trendyol ürün başlığı en fazla 100 karakter olabilir.')
-      const publicMediaUrls = publicProductMediaUrls(publicationMediaRefs)
-      const hasLocalPublicationMedia = mediaFiles.length > 0 || publicationMediaRefs.some(isStoredProductMediaUrl)
-      if (!publicMediaUrls.length && !hasLocalPublicationMedia) issues.push('Trendyol yayını için en az bir ürün görseli ekleyin.')
-      if (publicMediaUrls.some(url => !url.startsWith('https://'))) issues.push('Tüm görsel adresleri HTTPS olmalıdır.')
-      if (rows.some(row => !row.barcode.trim() || !/^[a-zA-Z0-9._-]+$/.test(row.barcode.trim()))) issues.push('Trendyol yayını için her varyantta geçerli ve benzersiz barkod zorunludur.'); if (rows.some(row => row.salePrice <= 0)) issues.push('Trendyol yayını için satış fiyatı sıfırdan büyük olmalıdır.')
-      for (const connectionId of selectedChannelIds) {
-        const draft = channelPriceDraft(connectionId); const listPrice = Number(draft.listPrice); const salePrice = Number(draft.salePrice)
-        if (!Number.isFinite(listPrice) || !Number.isFinite(salePrice) || salePrice <= 0 || listPrice < salePrice) {
-          const name = (connections.data?.items ?? []).find(item => item.id === connectionId)?.displayName ?? 'Seçili kanal'
-          issues.push(`${name} için liste fiyatı satış fiyatından küçük olamaz; satış fiyatı sıfırdan büyük olmalıdır.`)
-        }
-      }
-    }
-    if (issues.length) throw new Error(issues.join(' '))
-  }
-
-  function handleInvalid(event: FormEvent<HTMLFormElement>) {
-    const target = event.target as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-    const message = target.validationMessage || 'Lütfen zorunlu alanları doldurun.'
-    // Only the first refused field of one save is brought into view.
-    if (Date.now() - lastFieldReveal.current > 600) { lastFieldReveal.current = Date.now(); revealFieldError(null, target) }
-    setError(new Error(message))
-    setNotice(message)
-    showFeedback('Zorunlu Alan Eksik', message, 'error')
-  }
-
-  // Editing the form takes back the error it was showing.
-  function dismissProductError() {
-    setError(undefined)
-    setNotice('')
-    operationToasts.dismissErrors()
-  }
-
-  // Empty required fields stop this action: each is framed red with its message, the first step opens on the first one.
-  function stopOnRequiredFields(missing: readonly RequiredEditorField[], liveCard = false) {
-    const message = `${requiredFieldsMessage(missing)} ${liveCard ? 'Satıştaki ürün taslağa alınmaz; alanları doldurup kaydedin.' : 'Yayınlamak ve pazaryerlerinde güncellemek için önce bu alanları doldurun.'}`
-    setRequiredErrors(Object.fromEntries(missing.map(field => [field, requiredFieldMessage(field, form)])))
-    if (!publishOnly) setWizardStep(1)
-    requestAnimationFrame(() => { lastFieldReveal.current = Date.now(); revealFieldError(document.getElementById('product-creation-form')) })
-    setError(new Error(message)); setNotice(message)
-    showFeedback('Zorunlu Alan Eksik', message, 'error')
-  }
-  function blockedByRequiredFields() {
-    if (!missingRequiredFields.length) return false
-    stopOnRequiredFields(missingRequiredFields)
-    return true
-  }
+export function useEditorSubmit(c: EditorProps & EditorStateResult & EditorMediaPointerResult & EditorDirtyStateResult & VariantCodeMenusResult & EditorDataResult & EditorSeedResult & VariantRowDragResult & VariantMediaAutoSaveResult & EditorViewResult & AttributeActionsResult & VariantActionsResult & VariantCodeActionsResult & EditorMediaActionsResult & PlatformUpdateResult & ChannelPricingResult & EditorChecksResult) {
+  const { editProductId, publishOnly, client, navigate, setError, setNotice, operationToasts, setFeedback, setSubmitting, calculateDesi, form, attributeSelections, attributeTextValues, variantAttributeIds, setVariantRows, selectedChannelIds, blockedPublishCards, channelPricing, variantChannelPricing, wizardStep, setWizardStep, pendingPlatformUpdate, mediaFiles, setMediaFiles, pendingFamilyMediaRemovals, setPendingFamilyMediaRemovals, familyMediaOrderDirty, setFamilyMediaOrderDirty, sizeChartUrl, initialSizeChartUrl, sizeChartBeforeFamilyRemoval, chartKey, removedVariantIds, setRemovedVariantIds, removedVariantRows, setRemovedVariantRows, replacedPlaceholderIds, setReplacedPlaceholderIds, setSnapshotRequest, webColorAutoEnabled, manualWebColorValueId, setStaleProductVersion, allowReseedUntil, editorSaveInFlight, seededProduct, setProductAtSave, setVariantCodeConflicts, mediaFilesKeptOnReseed, initialCustomChannelIds, setFieldErrors, productCreateKey, leavingAfterSave, initialEditModelCode, initialEditVariantMediaRefs, showFeedback, mediaAutoSave, editorDirty, productToEdit, connections, requirements, fallbackListPrice, fallbackSalePrice, missingRequiredFields, desi, mediaUrls, mappedRequirements, webColorRequirement, setReseedRequest, draftCodeSaveBlock, codeRuleSaveBlock, modelCodeHolder, blockedByVariantCodeRules, draftMediaKeys, pendingRemovalMediaKeys, mediaStrip, trendyolMixedColours, channelPriceDraft, channelPriceEdited, rowsForSubmit, validate, stopOnRequiredFields } = c
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const platformUpdate = pendingPlatformUpdate.current
@@ -590,122 +486,7 @@ export function useEditorSubmit(c: EditorProps & EditorStateResult & EditorMedia
       // A card already matched there is not sent again: its links are read from the latest product (a status check or a
       // store lookup since the form was filled), then from the saved product when it carries them.
       const linkRowsBySku = new Map(withLatestVariantLinks(withLatestVariantLinks(rows, productToEdit.data?.variants), product.variants).map(row => [row.sku.trim().toLocaleUpperCase('tr-TR'), row]))
-      for (const [connectionIndex, connectionId] of publicationConnectionIds.entries()) {
-        const platformName = connectionPlatformName(connectionId)
-        const progress = publicationConnectionIds.length > 1 ? ` (${connectionIndex + 1}/${publicationConnectionIds.length})` : ''
-        showFeedback(platformUpdate ? 'Güncelleme Kuyruğa Alınıyor' : 'Yayın Kuyruğa Alınıyor', platformUpdate ? `${platformName}: güncelleme işleri kuyruğa alınıyor${progress}…` : `${platformName}: yayın işleri kuyruğa alınıyor${progress}…`, 'info', { persistent: true, key: productSaveToastKey })
-        const update: MarketplaceUpdateOutcome = { platformName, queued: { productInformation: false, priceInventory: false } }
-        try {
-          if (platformUpdate) {
-            updates.push(update)
-            // Only what this marketplace takes of the pick goes: the product fields it carries, and the price and/or stock.
-            const updatePlatformCode = connections.data?.items.find(item => item.id === connectionId)?.platformCode
-            const plan = platformUpdatePlan(updatePlatformCode ?? '', platformUpdate.fields)
-            if (plan.productFields.length) {
-              // The editor shows the model family as one product, so the product information goes for every colour
-              // card of it that is on this marketplace (family-update-plan.ts); a card not there is named, and one
-              // card's refusal does not stop the others.
-              const informationLabel = productInformationLabel(plan.productFields)
-              update.productInformationLabel = informationLabel
-              const familyPlan = familyUpdatePlan({ openedProductId: product.id, familyProductIds: productToEdit.data?.familyProductIds, variants: product.variants.map(variant => ({ ...variant, platformStatuses: linkRowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))?.platformStatuses ?? variant.platformStatuses })), connectionId, platformCode: updatePlatformCode })
-              const familyFailures = new Map<string, string[]>()
-              const family: MarketplaceFamilyUpdate = { cards: familyPlan.familyCards, queuedCards: 0, queuedVariants: 0, absent: familyPlan.absent.map(familyCardName), failures: familyFailures }
-              update.family = family
-              // The cards of one send share an id: Trendyol takes them in one request per step (TrendyolUpdateGroups).
-              const sendGroupId = familyPlan.send.length > 1 ? newIdempotencyKey() : undefined
-              for (const card of familyPlan.send) {
-                const cardName = familyCardName(card)
-                try {
-                  const accepted = await hubApi<ProductUpdateAccepted>(`/products/${card.productId}/update-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId, fields: plan.productFields, sendGroupId }) })
-                  recordProductUpdateNotices(accepted, { productId: card.productId, productName: form.title, modelCode: form.modelCode, platformCode: updatePlatformCode, connectionId })
-                  if (accepted?.jobId) followedJobs.push({ jobId: accepted.jobId, platformName, what: informationLabel, update: true, ...(familyPlan.send.length > 1 ? { card: cardName } : {}) })
-                  family.queuedCards++
-                  family.queuedVariants += card.variants
-                  update.queued.productInformation = true
-                  await client.invalidateQueries({ queryKey: queryKeys.publicationStatus(card.productId, connectionId) })
-                } catch (reason) {
-                  const failure = reason instanceof Error ? reason.message : 'Güncelleme işi oluşturulamadı.'
-                  familyFailures.set(failure, [...(familyFailures.get(failure) ?? []), cardName])
-                }
-              }
-              // A product without a family keeps its old line: its single refusal is the marketplace's error.
-              if (familyPlan.familyCards <= 1 && familyFailures.size) { update.family = undefined; throw new Error([...familyFailures.keys()][0]) }
-            }
-            if (plan.price || plan.stock) {
-              const priceInventoryJob = await hubApi<AcceptedJob>(`/products/${product.id}/connections/${connectionId}/price-inventory-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ price: plan.price, stock: plan.stock }) })
-              if (priceInventoryJob?.jobId) followedJobs.push({ jobId: priceInventoryJob.jobId, platformName, what: plan.price && plan.stock ? 'fiyat-stok' : plan.price ? 'fiyat' : 'stok', update: true })
-              update.queued.priceInventory = true
-              update.priceInventoryParts = { price: plan.price, stock: plan.stock }
-            }
-            await client.invalidateQueries({ queryKey: queryKeys.publicationStatus(product.id, connectionId) })
-            continue
-          }
-          // Every colour card of the family (same model code) goes with the opened one; a card already live or still
-          // being published on this marketplace is left as it is. One card's failure does not stop the others.
-          // The cards are queued in the panel's colour order (not the opened card first), so a marketplace that takes
-          // them as they come lists the colours as the products page does.
-          const familyIds = familyCardsInPanelOrder([product.id, ...(productToEdit.data?.familyProductIds ?? [])], product.variants, product.id)
-          // The same reason on several cards (a connection setting missing) is said once, with how many cards it stopped.
-          const familyFailures = new Map<string, number[]>()
-          const platformCode = connections.data?.items.find(item => item.id === connectionId)?.platformCode
-          const outcome: MarketplacePublishOutcome = { platformName, platformCode: platformCode ?? '', familyCards: familyIds.length, openedCard: familyIds.indexOf(product.id), enqueuedCards: 0, enqueuedVariants: 0, skipped: { live: 0, running: 0, matched: 0 }, failures: familyFailures }
-          publications.push(outcome)
-          for (const [familyIndex, familyProductId] of familyIds.entries()) {
-            try {
-              // Every marketplace: a card whose variants are all there is left as it is; a card partly there sends only the
-              // variants not there yet (new ones, or ones the marketplace lost), which the server adds to its listing.
-              const cardVariants = product.variants.filter(variant => (variant.productId ?? product.id) === familyProductId)
-              // The variants not there yet are sorted by colour: new sizes join their colour's listing, a new colour opens
-              // its own listing (Trendyol, Hepsiburada) or joins the one product (Shopify, n11, Pazarama, PttAVM); on a
-              // family split into colour cards a variant of another colour belongs on its own card.
-              const plan = publishCardPlan(cardVariants.map(variant => ({
-                platformStatuses: linkRowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))?.platformStatuses,
-                color: preferredColorOption(variantOptionEntries(variant))?.value,
-                sku: variant.sku
-              })), connectionId, { colourCardsInFamily: familyIds.length > 1, familyIsOneProduct: holdsFamilyAsOneProduct(platformCode) })
-              if (!plan.send && plan.reason === 'matched') { outcome.skipped.matched++; continue }
-              if (!plan.send) { familyFailures.set(plan.message, [...(familyFailures.get(plan.message) ?? []), familyIndex]); continue }
-              const status = await hubApi<PublicationStatus>(`/products/${familyProductId}/publication-status/${connectionId}`).catch(() => null)
-              // A PttAVM family card shown as "Tekrar Deneyin" goes again; the API closes its waiting approval checks.
-              const pttAvmFamily = familyIds.length > 1 || cardVariants.length > 1
-              if (status && isSkippedByPublish(platformCode, status.actualStatus, status.lastJobStatus, pttAvmFamily, plan.hasMissingVariant || plan.addsToListing)) {
-                if (isPublicationLive(status.actualStatus)) outcome.skipped.live++
-                else outcome.skipped.running++
-                continue
-              }
-              // A saved profile keeps its overrides (title, description, category, brand, delivery time) on a re-publish;
-              // only a new profile starts without any.
-              let listingProfile: SavedListingProfile | undefined
-              try {
-                listingProfile = await hubApi<SavedListingProfile>(`/products/${familyProductId}/listing-profiles/${connectionId}`)
-              } catch (reason) {
-                if (!(reason instanceof ApiRequestError) || reason.status !== 404) throw reason
-              }
-              await hubApi(`/products/${familyProductId}/listing-profiles/${connectionId}`, { method: 'PUT', headers: listingProfile == null ? {} : { 'If-Match': `"v${listingProfile.version}"` }, body: JSON.stringify(republishListingProfileBody(listingProfile)) })
-              const publicationJob = await hubApi<PublicationAccepted>(`/products/${familyProductId}/publication-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId }) })
-              await client.invalidateQueries({ queryKey: queryKeys.publicationStatus(familyProductId, connectionId) })
-              if (publicationJob?.jobId) followedJobs.push({ jobId: publicationJob.jobId, platformName, what: 'ürün', card: familyIds.length > 1 ? preferredColorOption(variantOptionEntries(cardVariants[0] ?? product.variants[0]))?.value ?? '' : undefined })
-              outcome.enqueuedCards++
-              outcome.enqueuedVariants += plan.variants
-              if (plan.addsToListing) {
-                outcome.addedToListingCards = (outcome.addedToListingCards ?? 0) + 1
-                outcome.liveVariants = (outcome.liveVariants ?? 0) + plan.liveVariants
-                outcome.groups = [...(outcome.groups ?? []), ...plan.groups]
-              }
-              // The variants the server left out (no price, barcode, pictures of a new colour …), each with its reason.
-              if (publicationJob?.skippedVariants?.length) outcome.skippedVariants = [...(outcome.skippedVariants ?? []), ...publicationJob.skippedVariants]
-            } catch (reason) {
-              const failure = reason instanceof Error ? reason.message : 'Yayın işi oluşturulamadı.'
-              familyFailures.set(failure, [...(familyFailures.get(failure) ?? []), familyIndex])
-            }
-          }
-          continue
-        } catch (reason) {
-          const failure = reason instanceof Error ? reason.message : platformUpdate ? 'Güncelleme işi oluşturulamadı.' : 'Yayın işi oluşturulamadı.'
-          if (platformUpdate) update.error = failure
-          else publicationErrors.push({ platformName, message: failure })
-        }
-      }
+      await sendToMarketplaces({ publicationConnectionIds, connectionPlatformName, platformUpdate, showFeedback, updates, connections, product, productToEdit, linkRowsBySku, followedJobs, form, client, publications, publicationErrors })
       const draftMissingItems = draftMissingSummary(draftMissing)
       const result: ProductSaveFeedback = saveDraft
         ? {
@@ -832,6 +613,6 @@ export function useEditorSubmit(c: EditorProps & EditorStateResult & EditorMedia
     } finally { editorSaveInFlight.current = false; setProductAtSave(null); setSubmitting(false) }
   }
 
-  return { rowsForSubmit, validate, handleInvalid, dismissProductError, stopOnRequiredFields, blockedByRequiredFields, submit }
+  return { submit }
 }
 export type EditorSubmitResult = ReturnType<typeof useEditorSubmit>

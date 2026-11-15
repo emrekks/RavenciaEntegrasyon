@@ -15,6 +15,7 @@ import type { VariantCodeActionsResult } from './use-variant-code-actions'
 import type { EditorMediaActionsResult } from './use-editor-media-actions'
 import type { PlatformUpdateResult } from './use-platform-update'
 import type { ChannelPricingResult } from './use-channel-pricing'
+import type { EditorChecksResult } from './use-editor-checks'
 import type { EditorSubmitResult } from './use-editor-submit'
 
-export type EditorContext = EditorProps & EditorStateResult & EditorMediaPointerResult & EditorDirtyStateResult & VariantCodeMenusResult & EditorDataResult & EditorSeedResult & VariantRowDragResult & VariantMediaAutoSaveResult & EditorViewResult & AttributeActionsResult & VariantActionsResult & VariantCodeActionsResult & EditorMediaActionsResult & PlatformUpdateResult & ChannelPricingResult & EditorSubmitResult
+export type EditorContext = EditorProps & EditorStateResult & EditorMediaPointerResult & EditorDirtyStateResult & VariantCodeMenusResult & EditorDataResult & EditorSeedResult & VariantRowDragResult & VariantMediaAutoSaveResult & EditorViewResult & AttributeActionsResult & VariantActionsResult & VariantCodeActionsResult & EditorMediaActionsResult & PlatformUpdateResult & ChannelPricingResult & EditorChecksResult & EditorSubmitResult
