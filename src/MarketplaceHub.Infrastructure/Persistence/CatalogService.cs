@@ -411,7 +411,11 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var current = await db.CategoryAttributeRequirements.Where(x => x.TenantId == tenantId && x.CategoryId == categoryId).ToListAsync(cancellationToken); db.CategoryAttributeRequirements.RemoveRange(current); db.CategoryAttributeRequirements.AddRange(requirements.Select(x => new CategoryAttributeRequirement { Id = Guid.CreateVersion7(), TenantId = tenantId, CategoryId = categoryId, AttributeId = x.AttributeId, IsRequired = x.IsRequired, AllowsCustomValue = x.AllowsCustomValue, IsPanelScoped = true, Role = NormalizeRequirementRole(x.Role), DisplayOrder = x.DisplayOrder })); category.Version++; category.UpdatedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return ServiceResult<IReadOnlyList<AttributeRequirementCommand>>.Ok(requirements);
     }
 
-    public async Task<PageResult<ProductView>> ListProductsAsync(Guid tenantId, int limit, string? after, string? status, string? search, string? platform, string? stock, string? sort, CancellationToken cancellationToken)
+    public Task<PageResult<ProductView>> ListProductsAsync(Guid tenantId, int limit, string? after, string? status, string? search, string? platform, string? stock, string? sort, CancellationToken cancellationToken) =>
+        ListProductsAsync(tenantId, limit, after, status, search, platform, stock, sort, sqlPaging: true, cancellationToken);
+
+    // sqlPaging false: always the in-memory grouping (the reference the SQL paging is tested against, KATALOG-10).
+    internal async Task<PageResult<ProductView>> ListProductsAsync(Guid tenantId, int limit, string? after, string? status, string? search, string? platform, string? stock, string? sort, bool sqlPaging, CancellationToken cancellationToken)
     {
         var hasPlatformStatusFilter = TryProductPlatformFilter(platform?.Trim() ?? string.Empty, out var platformFilterCode, out var platformFilterState);
         var query = VisibleProducts(tenantId);
@@ -429,6 +433,11 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 : cursors.TryDecodeProductSort(after, catalogSort.Value, out var sortKey) && (afterSortKey = sortKey) is not null;
             if (!validCursor) throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(after));
         }
+        // KATALOG-10: newest first without a stock or platform-state filter, the models are paged in SQL while the stored
+        // model links give the model-code rule's grouping; otherwise the in-memory grouping below.
+        if (sqlPaging && catalogSort is null && string.IsNullOrWhiteSpace(stock) && !hasPlatformStatusFilter
+            && await FamilyIdMatchesModelCodeRuleAsync(tenantId, cancellationToken))
+            return await ListProductFamiliesInSqlAsync(tenantId, query, afterCreatedAt, afterId, limit, countKey, cachedCount as int?, cancellationToken);
         // A platform refresh updates the card content, but must not reshuffle the
         // catalog. Keep the list in its original insertion order instead of the
         // mutable UpdatedAt order.
