@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../../../shared/api/api-answer'
 import { copyText } from '../../../../shared/copy-text'
 import { observeUnitPriceAlignment } from '../../unit-price-alignment'
 import { Fragment, useLayoutEffect, useRef, useState } from 'react'
@@ -25,7 +26,7 @@ import { isPartlyCancelled, lineCancel, partialQuantityText, remainingText, rowL
 import { CARGO_BARCODE_TITLE, cargoNumber } from '../cargo-number'
 import { Order, OrderLine, ProductTitleLink, ReturnFactLines, ReturnInvoiceRing, displayOrderNumber, orderDisplayShipment, returnDateText, returnLineFacts, returnPlatformName } from '../../shared'
 import { useDismissable } from '../../../../shared/hooks/useDismissable'
-import { invoiceCreationDisabledHelp, type ProductImagePreview, isInvoicePending, isMicroExportLabelBlocked, type OrderDetail, orderNotificationContext, customerDisplayName, canChangeOrderCargo } from './order-page-helpers'
+import { invoiceCreationDisabledHelp, type ProductImagePreview, isInvoicePending, isMicroExportLabelBlocked, orderNotificationContext, customerDisplayName, canChangeOrderCargo } from './order-page-helpers'
 
 function hepsiburadaPackageStatusHistoryCutoff(now = new Date()): Date {
   const cutoff = new Date(now)
@@ -39,7 +40,7 @@ function hepsiburadaPackageStatusHistoryCutoff(now = new Date()): Date {
 
 // The Shopify package whose invoice status is set by hand: the order detail names it (the list row may not carry it).
 async function shopifyInvoicePackageId(orderId: string) {
-  const detail = await hubApi<OrderDetail>(`/orders/${orderId}`)
+  const detail = await hubApi<ApiAnswer<'getOrdersById'>>(`/orders/${orderId}`)
   if (detail.platformCode !== 'SHOPIFY') throw new Error('Manuel fatura durumu yalnız Shopify siparişlerinde kullanılabilir.')
   const packageId = orderDisplayShipment(detail)?.id
   if (!packageId) throw new Error('Fatura durumu için Shopify sipariş paketi bulunamadı.')

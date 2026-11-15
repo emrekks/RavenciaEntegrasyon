@@ -1,5 +1,6 @@
 // Verileri Sıfırla › Tam Sıfırlama: every record of the connection goes, issued invoices included, while its settings
 // stay. The reset runs as a background job; the panel shows what it removes and, once it started, how far it is.
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, hubPoll } from '../../../shared/api'
@@ -43,7 +44,7 @@ export function ConnectionFullResetPanel({ item, onFeedback, onFinished, onCance
   const [password, setPassword] = useState('')
   const [factor, setFactor] = useState('')
   const queryKey = connectionFullResetQueryKey(item.id)
-  const view = useQuery({ queryKey, queryFn: ({ signal }) => hubPoll<ConnectionFullResetView>(`/connections/${item.id}/full-reset`, { signal }), staleTime: 0, refetchInterval: query => connectionFullResetRunning(query.state.data?.job?.status) ? 3000 : false })
+  const view = useQuery({ queryKey, queryFn: ({ signal }) => hubPoll<ApiAnswer<'getConnectionsByIdFullReset'>>(`/connections/${item.id}/full-reset`, { signal }), staleTime: 0, refetchInterval: query => connectionFullResetRunning(query.state.data?.job?.status) ? 3000 : false })
   const job = view.data?.job ?? null
   const running = connectionFullResetRunning(job?.status)
   // When the reset this panel watched ends, the lists that showed the removed records are read again.
@@ -55,7 +56,7 @@ export function ConnectionFullResetPanel({ item, onFeedback, onFinished, onCance
     else if (watched.current === job.jobId) { watched.current = null; finished(job) }
   }, [job, running])
   const start = useMutation({
-    mutationFn: () => hubApi<ConnectionFullResetView>(`/connections/${item.id}/full-reset`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ confirmation, ...reauthBody(password, factor) }) }),
+    mutationFn: () => hubApi<ApiAnswer<'postConnectionsByIdFullReset'>>(`/connections/${item.id}/full-reset`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ confirmation, ...reauthBody(password, factor) }) }),
     onSuccess: result => { client.setQueryData(queryKey, result); setConfirmation(''); setPassword(''); setFactor(''); onFeedback({ kind: 'info', title: 'Tam Sıfırlama Başladı', message: `${item.displayName} bağlantısının verileri arka planda siliniyor; ilerlemeyi bu pencerede ve İşlem Takibi’nde izleyebilirsiniz.` }) },
     onError: reason => onFeedback(failureNotice(reason, 'Tam sıfırlama başlatılamadı.'))
   })

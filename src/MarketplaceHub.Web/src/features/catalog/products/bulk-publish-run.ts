@@ -6,7 +6,7 @@ import { bulkPublishPlatformName } from './bulk-publish-status'
 
 export type BulkPublicationFailure = { productId: string; productTitle: string; connectionId: string; code: string; message: string }
 /** jobs: what was queued (the server names each job), so the result can be followed. */
-export type BulkPublicationResult = { queued: number; skipped: number; failed: BulkPublicationFailure[]; jobs?: Array<{ productId: string; connectionId: string; jobId: string }> }
+export type BulkPublicationResult = { queued: number; skipped: number; failed: BulkPublicationFailure[]; jobs?: Array<{ productId: string; connectionId: string; jobId: string }> | null }
 
 type FamilyRecord = Pick<Product, 'id' | 'modelCode' | 'variants'>
 

@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { cardCountText } from '../../shared/metric-value'
 import { useMemo, useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
@@ -11,7 +12,7 @@ import { jobTitle } from './job-presentation'
 import { ChoiceField } from './filter-fields'
 import {
   activeJobTypes, countsByStatus, filterJobsByTab, generalJobTab, jobPlatformTabs, formatSeconds, laneHint, laneLabel, laneTotals, queueWindowOptions, quotaLaneLabels, usagePercent, usageTone, windowSince,
-  type JobCount, type JobTypeMetric, type LaneMetric, type QueueWindow, type QuotaUsage
+  type QueueWindow
 } from './queue-quota'
 import './queue-quota.css'
 import { EmptyState } from '../../shared/components/EmptyState'
@@ -34,10 +35,10 @@ export function QueueQuotaView() {
   const [platformTab, setPlatformTab] = useState('ALL')
   const since = useMemo(() => windowSince(hours), [hours])
   const options = { placeholderData: keepPreviousData, refetchInterval: pollMs } as const
-  const lanes = useQuery({ queryKey: queryKeys.queueQuota('lanes', hours), queryFn: ({ signal }) => hubPoll<LaneMetric[]>(`/jobs/metrics/lanes?hours=${hours}`, { signal }), ...options })
-  const metrics = useQuery({ queryKey: queryKeys.queueQuota('metrics', hours), queryFn: ({ signal }) => hubPoll<JobTypeMetric[]>(`/jobs/metrics?hours=${hours}`, { signal }), ...options })
-  const quota = useQuery({ queryKey: queryKeys.queueQuota('quota'), queryFn: ({ signal }) => hubPoll<QuotaUsage[]>('/jobs/metrics/quota', { signal }), ...options })
-  const counts = useQuery({ queryKey: queryKeys.queueQuota('counts', since), queryFn: ({ signal }) => hubPoll<JobCount[]>(`/jobs/counts?since=${encodeURIComponent(since)}`, { signal }), ...options })
+  const lanes = useQuery({ queryKey: queryKeys.queueQuota('lanes', hours), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getJobsMetricsLanes'>>(`/jobs/metrics/lanes?hours=${hours}`, { signal }), ...options })
+  const metrics = useQuery({ queryKey: queryKeys.queueQuota('metrics', hours), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getJobsMetrics'>>(`/jobs/metrics?hours=${hours}`, { signal }), ...options })
+  const quota = useQuery({ queryKey: queryKeys.queueQuota('quota'), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getJobsMetricsQuota'>>('/jobs/metrics/quota', { signal }), ...options })
+  const counts = useQuery({ queryKey: queryKeys.queueQuota('counts', since), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getJobsCounts'>>(`/jobs/counts?since=${encodeURIComponent(since)}`, { signal }), ...options })
   const refresh = () => { void lanes.refetch(); void metrics.refetch(); void quota.refetch(); void counts.refetch() }
   const fetching = lanes.isFetching || metrics.isFetching || quota.isFetching || counts.isFetching
 

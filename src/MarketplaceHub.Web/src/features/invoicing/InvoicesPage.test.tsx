@@ -400,9 +400,9 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     expect(searched[0]).toContain('search=DSM')
   })
 
-  // W6 (scan 2026-11-15) pins today's behaviour; whether a sort change on page 1 should clear it too waits for the
-  // owner. Siparişler clears on every list change, Ürünler keeps the selection across pages on purpose.
-  it('keeps the selection when only the sort changes on page 1, clears it on a page or tab change, and a bulk action hits the rows it names', async () => {
+  // W6 (scan 2026-11-15), owner 15 Nov 2026: like Siparişler, every list change clears the selection, a sort change on
+  // page 1 too. Ürünler keeps the selection across pages on purpose.
+  it('clears the selection on a sort change on page 1, a page or a tab change, and a bulk action hits the rows it names', async () => {
     const selected = () => container.querySelector('.invoice-reference-bulk-toolbar')?.textContent ?? ''
     const pick = (orderNumber: string) => act(() => container.querySelector<HTMLInputElement>(`[aria-label$="#${orderNumber} siparişini seç"]`)!.click())
     apiState.totalPages = 3
@@ -417,6 +417,10 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     act(() => [...container.querySelectorAll<HTMLButtonElement>('.invoice-filter-scope .rr-fbtns button')].find(item => item.textContent === 'Filtrele')!.click())
     await settle()
     expect(apiState.pageRequests.at(-1)).toContain('sort=ORDER_ASC')
+    expect(Array.from(container.querySelectorAll<HTMLInputElement>('.invoice-reference-select')).some(input => input.checked)).toBe(false)
+
+    pick('SH-1001')
+    await settle()
     expect(selected()).toContain('1 sipariş seçildi')
 
     // The bulk action names the selected row on the page, and only that one.

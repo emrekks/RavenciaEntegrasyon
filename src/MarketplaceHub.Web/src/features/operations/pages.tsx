@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { jobStatusLabel } from '../../shared/job-status-labels'
 import { platformDisplayNames } from '../../shared/platform-names'
@@ -15,13 +16,12 @@ import { ListEmptyState } from '../../shared/components/EmptyState'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { appendNotification, notificationError, notificationLinks, platformCodeFromName, type NotificationContext } from '../../shared/notifications'
 import { statusLabel } from '../../shared/status-labels'
-import { fallbackJobChange, jobRelatedLinks, type JobChange } from './job-change'
-import { isProductLevelJob, type JobWriteSummary } from './job-write-summary'
+import { fallbackJobChange, jobRelatedLinks } from './job-change'
+import { isProductLevelJob } from './job-write-summary'
 import { JobWriteDetail } from './JobWriteDetail'
 import { JobSentDetail } from './JobSentDetail'
 import { JobReadRecords } from './JobReadRecords'
 import { jobProgressPercent, keepsReadRecords, readProgressCounts, type JobReadSummary } from './job-read-summary'
-import type { JobVariantResults } from '../catalog/product-editor/PublicationJobVariants'
 import { jobDirections, jobPresentation, jobSubtitle, jobTitle, jobTypeCode, jobTypesForDirection, type JobDirection, type JobTypeIconName } from './job-presentation'
 import { canOfferOneTimeInvoiceDelivery } from './one-time-invoice-delivery-visibility'
 import { oneTimeInvoiceDeliveryIdempotencyKey } from './one-time-invoice-delivery-idempotency'
@@ -56,53 +56,21 @@ import { connectionQueries, queryKeys } from '../../shared/api/query-keys'
 const jobsMainTabOrder = ['jobs', 'logs', 'health', 'queue', 'notifications']
 // CONTINUING is the server's own name, in counts and filters, for a job that continues in windows (isContinuingJob).
 type JobStatus = 'PENDING' | 'LEASED' | 'RETRY_SCHEDULED' | 'CONTINUING' | 'BLOCKED' | 'MANUAL_REVIEW' | 'SUCCEEDED' | 'DEAD' | 'CANCELLED'
-type JobSummary = {
-  id: string
-  connectionId: string | null
-  jobType: string
-  status: JobStatus
-  attemptCount: number
-  maxAttempts: number
-  availableAt: string
-  lastErrorCode: string | null
-  lastErrorSummary: string | null
-  correlationId: string
-  createdAt: string
-  startedAt: string | null
-  completedAt: string | null
-  marketplace: string
-  externalId: string | null
-  firstFailedAt: string | null
-  lastFailedAt: string | null
-  nextRetryAt: string | null
-  batchCount: number
-  progressCurrent: number
-  progressTotal: number | null
-  progressPercent: number | null
-  progressLabel: string | null
-  progressReceived: number
-  progressProcessed: number
-  progressSkipped: number
-  progressFailed: number
-  lastAttemptStartedAt: string | null
-  heartbeatAt: string | null
-  waitingChecks?: number
-  attemptBudget?: number
-  waiting?: boolean
-  // The payload's resourceType: which list a reference sync reads (CATEGORIES, BRANDS ...).
-  resource?: string | null
-}
-type JobOrderContext = { orderId: string; orderNumber: string; externalOrderId: string; status: string; currency: string; netAmount: number; orderedAt: string; externalPackageId: string | null; cargoProvider: string | null; cargoTrackingNumber: string | null; customerName: string | null; lineCount: number }
-type JobInvoiceContext = { invoiceId: string; orderNumber: string; status: string; invoiceType: string; currency: string; payableTotal: number; invoiceNumber: string | null; externalPackageId: string | null }
-type JobScan = { mode: string; label: string; detail: string; window: string | null; plannedIntervalSeconds: number | null; plannedIntervalLabel: string | null; previousScheduledAt: string | null; actualIntervalLabel: string | null }
-type JobFailureReason = { key: string; title: string; description: string; technicalDetail: string; affectedRecords: number; sampleProductIds: string[] }
-type JobDetail = { job: JobSummary; attempts: Array<{ attemptNumber: number; startedAt: string; completedAt: string | null; succeeded: boolean; errorCode: string | null; errorSummary: string | null; outcome?: string }>; order: JobOrderContext | null; change: JobChange | null; relatedOrders: JobOrderContext[]; scan: JobScan | null; failureReasons: JobFailureReason[] | null; invoice: JobInvoiceContext | null; productId?: string | null; variantResults?: JobVariantResults | null; write?: JobWriteSummary | null; read?: JobReadSummary | null }
+// CONTRACT: the API declares a job's status as a string; JobOperationsService.JobStatusText writes one of JobStatus.
+type JobSummary = Omit<ApiAnswer<'getJobsPage'>['items'][number], 'status'> & { status: JobStatus }
+type JobScan = NonNullable<JobDetailAnswer['scan']>
+type JobFailureReason = NonNullable<JobDetailAnswer['failureReasons']>[number]
+type JobDetailAnswer = ApiAnswer<'getJobsById'>
+// CONTRACT: relatedOrders is declared nullable (the record's default); JobOperationsService.GetAsync always sends a list.
+type JobDetail = Omit<JobDetailAnswer, 'job' | 'relatedOrders'> & { job: JobSummary; relatedOrders: NonNullable<JobDetailAnswer['relatedOrders']> }
 // The job a notice is about: its title ("Pazarama Ürün İşlemi"), number, marketplace and store.
 function jobNotificationContext(job: Pick<JobSummary, 'id' | 'connectionId' | 'jobType' | 'marketplace' | 'resource'>): NotificationContext {
   const title = jobTitle(job.jobType, job.marketplace, job.resource)
   return { operation: title, platformCode: platformCodeFromName(job.marketplace), connectionId: job.connectionId ?? undefined, jobId: job.id, subject: { kind: 'job', id: job.id, label: title, href: notificationLinks.job(job.id) } }
 }
-type JobPage = { items: JobSummary[]; nextCursor: string | null; hasMore: boolean }
+// CONTRACT: as JobSummary, a count's status is one of JobStatus (CONTINUING included).
+type JobCount = Omit<ApiAnswer<'getJobsCounts'>[number], 'status'> & { status: JobStatus }
+type JobPage = Omit<ApiAnswer<'getJobsPage'>, 'items'> & { items: JobSummary[] }
 
 // The Durum filter and the row badge name a status the same way (shared/job-status-labels).
 const statuses: Array<{ value: '' | JobStatus; label: string }> = [
@@ -429,7 +397,7 @@ export function JobsPage({ me }: { me: Me }) {
     queryKey: queryKeys.jobs('counts', timeRange, platform),
     // Not read while the Loglar or API Sağlık tab is shown (the list itself is off then too).
     enabled: !listHidden,
-    queryFn: ({ signal }) => hubPoll<Array<{ status: JobStatus; jobType: string; count: number }>>(`/jobs/counts${jobCountsQueryString(timeRange, platform)}`, { signal }),
+    queryFn: ({ signal }) => hubPoll<JobCount[]>(`/jobs/counts${jobCountsQueryString(timeRange, platform)}`, { signal }),
     refetchInterval: jobListPollMs
   })
   // The tab's job types come from its fixed definition, never from the live counts, so a count refresh that brings a
@@ -489,7 +457,7 @@ export function JobsPage({ me }: { me: Me }) {
     }
   })
   const oneTimeInvoiceDelivery = useMutation({
-    mutationFn: ({ id, confirmed, orderNumber }: { id: string; confirmed: boolean; orderNumber: string }) => hubApi<JobDetail>(`/jobs/${id}/invoice-delivery-once`, {
+    mutationFn: ({ id, confirmed, orderNumber }: { id: string; confirmed: boolean; orderNumber: string }) => hubApi<ApiAnswer<'postJobsByIdInvoiceDeliveryOnce'>>(`/jobs/${id}/invoice-delivery-once`, {
       method: 'POST',
       headers: { 'Idempotency-Key': oneTimeInvoiceDeliveryIdempotencyKey(id) },
       body: JSON.stringify({ confirmed, orderNumber })

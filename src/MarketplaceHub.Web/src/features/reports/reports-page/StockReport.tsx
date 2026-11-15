@@ -1,7 +1,8 @@
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { useQuery } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
 import { EmptyState, ErrorBox } from '../../../shared/components'
-import { formatCount, formatNumber, formatPercent, formatTl, formatTlShort, formatTlWhole, platformName, profitRateQuery, stockQuery, type ReportProfitRate, type ReportInventory, type ReportSales, type ReportStockGroup, type ReportStockItem, type ReportStockPlatform } from '../report-format'
+import { formatCount, formatNumber, formatPercent, formatTl, formatTlShort, formatTlWhole, platformName, profitRateQuery, stockQuery, type ReportProfitRate, type ReportSales, type ReportStockGroup, type ReportStockItem, type ReportStockPlatform } from '../report-format'
 import { PlatformSquareMark } from '../../../shared/platform-square-mark'
 import { thumbnailUrl } from '../../../shared/product-thumbnail'
 import { queryKeys } from '../../../shared/api/query-keys'
@@ -59,7 +60,7 @@ function stockProfitKpi(capital: number, rate: MonthlyProfitRate): Kpi {
 // sales (cover days); the platforms pick the variants on sale there. Money is VAT included, as the panel stores it.
 export function StockReport({ from, to, platforms, sales }: { from: string; to: string; platforms: string[] | null; sales: ReportSales }) {
   const query = stockQuery({ from, to, platforms })
-  const result = useQuery({ queryKey: queryKeys.reportsStock(query), queryFn: ({ signal }) => hubApi<ReportInventory>(`/reports/stock?${query}`, { signal }), staleTime: 60_000, placeholderData: previous => previous })
+  const result = useQuery({ queryKey: queryKeys.reportsStock(query), queryFn: ({ signal }) => hubApi<ApiAnswer<'getReportsStock'>>(`/reports/stock?${query}`, { signal }), staleTime: 60_000, placeholderData: previous => previous })
   const rate = useMonthlyProfitRate(platforms)
   const data = result.data
   if (result.isError && !data) return <ErrorBox error={result.error} onRetry={() => void result.refetch()} />

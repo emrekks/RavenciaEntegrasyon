@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { cadenceChoices, cadenceNote, cadenceShortText, type SyncCadence } from './integration-helpers'
 
 const intervals: Array<[number, string]> = [[30, '30 saniye'], [60, '1 dakika'], [120, '2 dakika'], [600, '10 dakika'], [1800, '30 dakika'], [3600, '1 saat'], [21600, '6 saat']]
-const cadence = (overrides: Partial<SyncCadence> = {}): SyncCadence => ({ effectiveIntervalSeconds: 120, defaultIntervalSeconds: 120, minimumIntervalSeconds: 60, maximumIntervalSeconds: 3600, basis: '', idleKind: 'WEBHOOK', idleBackoffEnabled: true, idleIntervalSeconds: 480, defaultIdleIntervalSeconds: 480, idleActive: false, stageFloor: false, ...overrides })
+const cadence = (overrides: Partial<SyncCadence> = {}): SyncCadence => ({ effectiveIntervalSeconds: 120, defaultIntervalSeconds: 120, minimumIntervalSeconds: 60, maximumIntervalSeconds: 3600, basis: '', idleKind: 'WEBHOOK', idleBackoffEnabled: true, idleIntervalSeconds: 480, defaultIdleIntervalSeconds: 480, idleActive: false, stageFloor: false, heldReason: null, ...overrides })
 
 describe('sync cadence', () => {
   it('writes intervals short for the flow table', () => {

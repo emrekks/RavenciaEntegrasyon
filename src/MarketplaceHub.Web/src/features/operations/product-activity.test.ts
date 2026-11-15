@@ -9,7 +9,7 @@ function entry(patch: Partial<ProductActivityEntry>): ProductActivityEntry {
     id: 'a', occurredAt: '2026-11-04T09:02:26Z', kind: 'STOCK', type: 'MANUAL_ADJUSTMENT', productId: 'p', productTitle: 'Bluz', imageUrl: null, variantId: 'v', sku: 'S', barcode: 'B',
     modelCode: null, optionText: null, quantityDelta: null, previousSalePrice: null, newSalePrice: null, previousListPrice: null, newListPrice: null, currency: null,
     previousStatus: null, newStatus: null, source: 'MANUAL', note: null, connectionId: null, platformCode: null, storeName: null, orderId: null, orderNumber: null,
-    returnId: null, returnNumber: null, actorUserId: null, actorName: null, ...patch
+    returnId: null, returnNumber: null, actorUserId: null, actorName: null, stockBefore: null, stockAfter: null, field: null, previousValue: null, newValue: null, ...patch
   }
 }
 

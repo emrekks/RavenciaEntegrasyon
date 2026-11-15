@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
@@ -15,17 +16,15 @@ import { queryKeys } from '../../shared/api/query-keys'
 // after product cost, commission, cargo, the platform's fees, withholding tax and net VAT, and its items one by one.
 // amount null: unknown (a Trendyol cargo with no invoice and no tariff to estimate it at, a commission with no rate on
 // the order nor of its store), and so the order's profit.
-export type OrderProfitCost = { key: string; label: string; amount: number | null; estimated: boolean; source: string | null }
-export type OrderProfitLine = { variantId: string | null; title: string; barcode: string | null; sku: string; quantity: number; returnedQuantity: number; amount: number
-  commissionRate: number | null; commission: number | null; costPrice: number | null; vatRate: number; imageUrl: string | null; options: string | null }
-export type OrderProfit = { orderId: string; orderNumber: string; platformCode: string; storeName: string; storeFront: string | null; microExport: boolean; orderedAt: string
-  state: 'SOLD' | 'PARTLY_RETURNED' | 'RETURNED'; amount: number; cost: number | null; profit: number | null; profitOnCost: number | null; margin: number | null
-  // Product lines the panel could not read: the order is marked and its cost and profit are unknown.
-  costs: OrderProfitCost[]; lines: OrderProfitLine[]; unreadableLines?: number }
+type OrderProfitAnswer = ApiAnswer<'getReportsOrderProfitability'>
+// unreadableLines: product lines the panel could not read; the order is marked and its cost and profit are unknown.
+// CONTRACT: the API declares the state as a string; ReportOrderProfit writes SOLD, PARTLY_RETURNED or RETURNED.
+export type OrderProfit = Omit<OrderProfitAnswer['items'][number], 'state'> & { state: 'SOLD' | 'PARTLY_RETURNED' | 'RETURNED' }
+export type OrderProfitCost = OrderProfit['costs'][number]
+export type OrderProfitLine = OrderProfit['lines'][number]
 // The totals of every order the filter keeps: amount over all of them; profit, profitAmount (their amount) and margin
 // only over the profitOrders whose profit is known (profit null when none is).
-export type OrderProfitPage = { items: OrderProfit[]; totalCount: number; page: number; pageSize: number; amount: number; profit: number | null; missingCost: number
-  profitAmount: number; profitOrders: number; margin: number | null; missingCargo: number; missingCommission?: number }
+export type OrderProfitPage = Omit<OrderProfitAnswer, 'items'> & { items: OrderProfit[] }
 type Sort = 'date' | 'amount' | 'profit' | 'profitOnCost' | 'margin'
 
 const money = (value: number) => `${value < 0 ? '−' : ''}₺${Math.abs(value).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`

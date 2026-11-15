@@ -1,7 +1,8 @@
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import type { QueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
 import { scopedStorageKey } from '../../../shared/storage-scope'
-import type { CommissionBand, CommissionChoice, CommissionTariff, CommissionTariffRow } from './CommissionTariffsPanel'
+import type { CommissionBand, CommissionChoice, CommissionTariffRow } from './CommissionTariffsPanel'
 import { queryKeys } from '../../../shared/api/query-keys'
 
 export type RowPage = { items: CommissionTariffRow[]; totalCount: number; page: number; pageSize: number }
@@ -54,7 +55,7 @@ export async function loadRowPage(connectionId: string, tariffId: string, query:
 // The tariffs a store's tab lists, and the tab's first page of rows; the panel and the prefetch below share them.
 export const tariffsQuery = (connectionId: string) => ({
   queryKey: queryKeys.commissionTariffs(connectionId),
-  queryFn: ({ signal }: { signal: AbortSignal }) => hubApi<CommissionTariff[]>(`/connections/${connectionId}/commission-tariffs`, { signal })
+  queryFn: ({ signal }: { signal: AbortSignal }) => hubApi<ApiAnswer<'getConnectionsByConnectionIdCommissionTariffs'>>(`/connections/${connectionId}/commission-tariffs`, { signal })
 })
 
 // The store and tariff the tab last opened on by itself (no period picked), kept in this browser only and per person

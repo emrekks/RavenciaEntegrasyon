@@ -22,7 +22,7 @@ export const settingsSectionGroups: Array<{ label: string; icon: SettingsIconNam
 ]
 export const settingsSections = settingsSectionGroups.flatMap(group => group.items.map(item => ({ ...item, group: group.label })))
 
-export function formatSettingsDate(value: string) {
+export function formatSettingsDate(value: string | null) {
   return formatIstanbul(value, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 

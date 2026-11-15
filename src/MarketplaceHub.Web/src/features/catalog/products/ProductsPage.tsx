@@ -1,4 +1,5 @@
 // Ürünler (/products).
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { platformDisplayNames, platformDisplayOrder } from '../../../shared/platform-names'
 import { Link, useNavigate, useSearchParams } from 'react-router'
@@ -44,12 +45,11 @@ const BulkPlatformUpdateDialog = lazy(() => import('./BulkPlatformUpdateDialog')
 const BulkFieldDialog = lazy(() => import('./BulkFieldDialog').then(module => ({ default: module.BulkFieldDialog })))
 import { cardCountText, toneAbove } from '../../../shared/metric-value'
 import { useMetricSource } from '../../marketplace/use-metric-source'
-import { AcceptedJob, ImageLightboxModal, LightboxImage, MarketplaceConnection, Product, Variant, compareOptionValues, formatCatalogOptionLabel, isColorOptionName, isProductPublicationConnection, isVariantOptionName, optionValueSortRank, preferredColorOption, variantOptionEntries } from '../shared'
+import { ImageLightboxModal, LightboxImage, MarketplaceConnection, Product, Variant, compareOptionValues, formatCatalogOptionLabel, isColorOptionName, isProductPublicationConnection, isVariantOptionName, optionValueSortRank, preferredColorOption, variantOptionEntries } from '../shared'
 import { EmptyState, ListEmptyState } from '../../../shared/components/EmptyState'
 import { connectionQueries, queryKeys } from '../../../shared/api/query-keys'
 
 type ProductListFilters = { search: string; status: string; platform: string; stock: string; sort: string }
-type ProductSummary = { totalCount: number; activeCount: number; outOfStockCount: number; lowStockCount: number; platforms: string[]; totalUnits?: number }
 type ProductSyncJob = { id: string; connectionId: string | null; jobType: string; status: string; progressCurrent: number; progressTotal: number | null; progressPercent: number | null; progressLabel: string | null; progressReceived: number; progressProcessed: number; progressSkipped: number; progressFailed: number; createdAt: string; completedAt: string | null }
 const isProductImportConnection = productImportConnection
 type ProductGroup = {
@@ -98,6 +98,9 @@ async function fetchProductPage(limit: number, filters: ProductListFilters, afte
   if (filters.platform) params.set('platform', filters.platform)
   if (filters.stock) params.set('stock', filters.stock)
   if (filters.sort) params.set('sort', filters.sort)
+  // Not the contract's ApiResponse<'getProducts'>: GET /products leaves a row's null members out (ProductListJson), so
+  // brandId, categoryId, primaryImageUrl, startingPrice, modelCode and the other nullable members may be absent, while
+  // Product (the editor's card type too) says they are present. The list reads them only with ?? / ?. / != null.
   return hubPoll<CursorPage<Product>>(`/products?${params.toString()}`, { signal })
 }
 type VariantDisplayValue = { label: string; quantity: number }
@@ -357,7 +360,7 @@ function ProductDeleteConfirmModal({ request, deleting, onClose, onConfirm }: { 
     queryFn: async ({ signal }) => {
       let pendingJobCount = 0
       for (let index = 0; index < request.productIds.length; index += 500)
-        pendingJobCount += (await hubApi<{ pendingJobCount: number }>('/products/delete-preview', { method: 'POST', body: JSON.stringify({ productIds: request.productIds.slice(index, index + 500) }), signal })).pendingJobCount
+        pendingJobCount += (await hubApi<ApiAnswer<'postProductsDeletePreview'>>('/products/delete-preview', { method: 'POST', body: JSON.stringify({ productIds: request.productIds.slice(index, index + 500) }), signal })).pendingJobCount
       return pendingJobCount
     },
     staleTime: 0
@@ -406,7 +409,7 @@ export function ProductsPage() {
     refetchInterval: 60_000,
     refetchIntervalInBackground: false
   })
-  const summaryQuery = useQuery({ queryKey: queryKeys.products('summary'), queryFn: ({ signal }) => hubApi<ProductSummary>('/products/summary', { signal }), staleTime: 30_000, refetchOnWindowFocus: true })
+  const summaryQuery = useQuery({ queryKey: queryKeys.products('summary'), queryFn: ({ signal }) => hubApi<ApiAnswer<'getProductsSummary'>>('/products/summary', { signal }), staleTime: 30_000, refetchOnWindowFocus: true })
   // The summary has no draft or archived counts; a one-item page carries the total.
   const draftCountQuery = useQuery({ queryKey: queryKeys.products('count', 'DRAFT'), queryFn: ({ signal }) => fetchProductPage(1, { search: '', status: 'DRAFT', platform: '', stock: '', sort: '' }, null, signal), staleTime: 60_000 })
   const archivedCountQuery = useQuery({ queryKey: queryKeys.products('count', 'ARCHIVED'), queryFn: ({ signal }) => fetchProductPage(1, { search: '', status: 'ARCHIVED', platform: '', stock: '', sort: '' }, null, signal), staleTime: 60_000 })
@@ -428,6 +431,8 @@ export function ProductsPage() {
   // While the quick edit is open its products are read by id (loadProductsByIds): its saves refresh ['products'], which
   // covers this query, so every cell works on the latest versions. The page's copies show until the first answer.
   const quickEditIds = quickEdit?.productIds ?? []
+  // Product, not ApiAnswer<'getProductsById'>: the card type the editor shares says a variant's options and mediaUrls are
+  // absent or set (?:), where GET /products/{id} writes null; every read of them uses ?. or ??.
   const quickEditQuery = useQuery({ queryKey: queryKeys.products('by-ids', quickEditIds), queryFn: ({ signal }) => loadProductsByIds(quickEditIds, id => hubApi<Product>(`/products/${id}`, { cache: 'no-store', signal }), pageCopyOf), enabled: quickEditIds.length > 0, staleTime: 0, gcTime: 0 })
   const quickEditProducts = quickEdit
     ? quickEditQuery.data ?? quickEdit.productIds.map(pageCopyOf).filter((product): product is Product => Boolean(product))
@@ -530,7 +535,7 @@ export function ProductsPage() {
         const updateStock = priceStockAllowed && productImportChoices.updateStock
         const query = new URLSearchParams({ full: String(productImportMethod === 'BULK' && full), newOnly: String(productImportMethod === 'BULK' && newOnly), existingOnly: String(productImportMethod === 'BULK' && existingOnly), mappingOnly: String(productImportMethod === 'BULK' && mappingOnly), optionsOnly: String(productImportMethod === 'BULK' && optionsOnly), includeArchived: String(productImportIncludeArchived), includeDrafts: String(productImportMethod === 'BULK' && productImportIncludeArchived && platformCode === 'SHOPIFY'), includePendingApproval: String(includePendingApproval && platformCode === 'TRENDYOL'), updateExistingProducts: String(updateExistingProducts), updatePrices: String(updatePrices), updateStock: String(updateStock) })
         if (productImportMethod === 'SINGLE') query.set('lookup', productImportLookup.trim())
-        return hubApi<AcceptedJob>(`/connections/${connectionId}/product-sync-jobs?${query.toString()}`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' })
+        return hubApi<ApiAnswer<'postConnectionsByConnectionIdProductSyncJobs'>>(`/connections/${connectionId}/product-sync-jobs?${query.toString()}`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' })
       }))
       setTrackedProductImportJobIds(current => trackProductSyncJobs(current, queuedProductSyncJobs.map(job => job.jobId)))
       const scope = productImportMethod === 'SINGLE' ? 'single' as const : full ? 'full' as const : productImportMode === 'NEW_ONLY' ? 'new' as const : productImportMode === 'MAPPING_ONLY' ? 'mapping' as const : 'existing' as const
@@ -643,7 +648,7 @@ export function ProductsPage() {
       // A closed card missing a required field is skipped by the server and returned; the run goes on with the rest.
       const skipped: RequiredFieldsSkipped[] = []
       const result = await runInChunks(targetIds, 500, async productIds => {
-        const response = await hubApi<{ updatedCount?: number; skipped?: RequiredFieldsSkipped[] } | null>('/products/bulk-status', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ productIds, status: newStatus }) })
+        const response = await hubApi<ApiAnswer<'postProductsBulkStatus'>>('/products/bulk-status', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ productIds, status: newStatus }) })
         skipped.push(...(response?.skipped ?? []))
       }, (done, total) => setStatusProgress({ done, total }))
       const outcome = bulkStatusResultMessage(productStatusLabel(newStatus), result, skipped.length)
@@ -702,7 +707,7 @@ export function ProductsPage() {
       if (request.product && request.productIds.length === 1) {
         // The delete goes against the product's current version, not the one the row had when the dialog opened
         // (a sync or an edit since then refused it with 412 again on every try).
-        const latest = await hubApi<Product>(`/products/${request.product.id}`, { cache: 'no-store' })
+        const latest = await hubApi<ApiAnswer<'getProductsById'>>(`/products/${request.product.id}`, { cache: 'no-store' })
         responses.push(await hubApi<ProductDeleteResponse>(`/products/${request.product.id}`, { method: 'DELETE', headers: { 'If-Match': `"v${latest.version}"`, 'Idempotency-Key': newIdempotencyKey() } }))
         deletedIds.add(request.product.id)
       } else {

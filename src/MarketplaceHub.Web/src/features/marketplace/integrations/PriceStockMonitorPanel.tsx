@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { useEffect, useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, hubPoll } from '../../../shared/api'
@@ -8,7 +9,7 @@ import { scopedStorageKey } from '../../../shared/storage-scope'
 import { formatDate, formatDateTime } from '../../../shared/format-date'
 import type { StatusExtras } from '../../dashboard/IntegrationStatusPanel'
 import type { IntegrationFeedback } from '../shared'
-import { orderSourceHint, priceStockMonitorQueryKey,priceStockProblemSignature, priceStockWriteState, relativeAgeText, type PriceStockConnectionMonitor, type PriceStockLostListing, type PriceStockMonitor } from './integration-helpers'
+import { orderSourceHint, priceStockMonitorQueryKey,priceStockProblemSignature, priceStockWriteState, relativeAgeText, type PriceStockConnectionMonitor, type PriceStockLostListing } from './integration-helpers'
 import './price-stock-monitor.css'
 import { queryKeys } from '../../../shared/api/query-keys'
 
@@ -128,7 +129,7 @@ export function priceStockMonitorNotice(rows: PriceStockConnectionMonitor[] | un
 
 /** The price/stock monitor read once (and its problem notifications raised), as per-connection extras for Entegrasyon Durumu. */
 export function usePriceStockMonitor() {
-  const monitor = useQuery({ queryKey: priceStockMonitorQueryKey, queryFn: ({ signal }) => hubPoll<PriceStockMonitor>('/price-stock-monitor', { signal }), refetchInterval: 60_000, refetchIntervalInBackground: false })
+  const monitor = useQuery({ queryKey: priceStockMonitorQueryKey, queryFn: ({ signal }) => hubPoll<ApiAnswer<'getPriceStockMonitor'>>('/price-stock-monitor', { signal }), refetchInterval: 60_000, refetchIntervalInBackground: false })
   const rows = monitor.data?.connections
   useEffect(() => { if (rows) notifyNewProblems(rows) }, [rows])
   const extras = useMemo(() => rows ? Object.fromEntries(rows.map(row => [row.connectionId, statusExtras(row)])) : undefined, [rows])
@@ -141,7 +142,7 @@ export function EmergencyStopButton({ anyOpen, onFeedback }: { anyOpen: boolean;
   const client = useQueryClient()
   const [confirm, confirmDialog] = useConfirmDialog()
   const stop = useMutation({
-    mutationFn: () => hubApi<{ connectionsStopped: number; policiesDisabled: number; jobsCancelled: number }>('/price-stock-monitor/emergency-stop', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' }),
+    mutationFn: () => hubApi<ApiAnswer<'postPriceStockMonitorEmergencyStop'>>('/price-stock-monitor/emergency-stop', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' }),
     onSuccess: async result => {
       onFeedback({ kind: 'success', title: 'Otomatik Yazmalar Durduruldu', message: `${result.connectionsStopped} bağlantıda otomatik fiyat-stok gönderimi kapatıldı; ${result.jobsCancelled} gönderilmemiş otomatik iş iptal edildi. Panelden başlatılan gönderimler ve sonucu beklenen istekler sürer.` })
       await Promise.all([client.invalidateQueries({ queryKey: priceStockMonitorQueryKey }), client.invalidateQueries({ queryKey: queryKeys.syncPolicies() }), client.invalidateQueries({ queryKey: queryKeys.jobs() })])

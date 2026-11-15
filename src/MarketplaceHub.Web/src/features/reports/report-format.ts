@@ -3,6 +3,7 @@ import { istanbulDateKey } from '../../shared/format-date'
 import { noValue } from '../../shared/metric-value'
 import { platformDisplayName, platformDisplayOrder } from '../../shared/platform-names'
 import { newChangeText } from '../../shared/components/ChangePill'
+import type { ApiAnswer } from '../../shared/api/api-answer'
 
 // The periods one click away above the reports: the panel's shared ranges (dateRangePresets; weeks start on Monday) for
 // today's Istanbul calendar day, the account's time zone, as on Genel Bakış, so a computer set to another time zone does
@@ -64,6 +65,9 @@ export type ReportCargo = {
   averageHoursToDeliver: number | null; measuredDeliver: number; lateShipments: number; measuredLate: number; lateRate: number | null
 }
 export type ReportStockRow = { variantId: string | null; title: string; sku: string; soldQuantity: number; available: number | null; dailyAverage: number | null; daysLeft: number | null }
+// GET /reports/sales. CONTRACT: every member agrees with the contract (ReportSalesView) but two codes the API declares as
+// strings: granularity (ReportBuilder.Day / Week / Month) and finance.source (ReportCosts.FinanceSource / EstimateSource).
+// It stays written here because those two sit deep in the answer and the report tests build it whole.
 export type ReportSales = {
   from: string; to: string; previousFrom: string; previousTo: string; granularity: 'day' | 'week' | 'month'; includesTest: boolean; generatedAt: string
   summary: ReportSummary; previousSummary: ReportSummary
@@ -276,7 +280,7 @@ export type ReportInventory = {
 }
 
 // Stok's Tahmini Kâr: the real profit on cost of each of the last whole months, oldest first (GET /reports/profit-rate).
-export type ReportProfitRate = { months: Array<{ from: string; to: string; rate: number | null }> }
+export type ReportProfitRate = ApiAnswer<'getReportsProfitRate'>
 
 export function profitRateQuery(platforms: string[] | null) {
   return platforms?.length ? new URLSearchParams({ platformCodes: platforms.join(',') }).toString() : ''

@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useEffect, useMemo, useState } from 'react'
 import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
@@ -12,7 +13,7 @@ import { composeNotice } from '../../shared/notice-copy'
 import { markAllNotificationsRead, markNotificationRead } from '../../shared/notifications'
 import {
   centerFilterCount, centerNotificationCard, centerQueryString, emptyCenterFilters, internalNotificationHref, markCenterNotificationsRead, notificationCategoryLabels, notificationSeverityLabels,
-  subscribeNotificationCenter, type CenterFilters, type CenterNotification, type CenterNotificationPage, type CenterNotificationSummary, type NotificationCategory, type NotificationSeverity
+  subscribeNotificationCenter, type CenterFilters, type CenterNotification, type CenterNotificationPage, type NotificationCategory, type NotificationSeverity
 } from '../../shared/notification-center'
 import { RrIcon } from '../../shared/ui/rr-components'
 import { JobStateGlyph } from './job-state-glyph'
@@ -93,7 +94,7 @@ export function NotificationCenter() {
   const clear = () => { setSearchText(''); setFilters(emptyCenterFilters) }
   const apply = () => setFilters(current => current.search === searchText ? current : { ...current, search: searchText })
 
-  const summary = useQuery({ queryKey: queryKeys.notificationCenter('summary'), queryFn: ({ signal }) => hubPoll<CenterNotificationSummary>('/notifications/summary', { signal }), refetchInterval: pollMs })
+  const summary = useQuery({ queryKey: queryKeys.notificationCenter('summary'), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getNotificationsSummary'>>('/notifications/summary', { signal }), refetchInterval: pollMs })
   const list = useInfiniteQuery({
     queryKey: queryKeys.notificationCenter('list', filters),
     queryFn: context => hubPoll<CenterNotificationPage>(`/notifications${centerQueryString(filters, context.pageParam)}`, { signal: context.signal }),

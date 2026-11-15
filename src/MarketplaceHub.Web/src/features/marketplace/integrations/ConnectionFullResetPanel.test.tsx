@@ -24,7 +24,7 @@ vi.mock('../../../shared/api', async importOriginal => {
 import { ConnectionFullResetPanel, fullResetFinishedFeedback, fullResetStatusText } from './ConnectionFullResetPanel'
 import type { Connection } from '../shared'
 
-const connection: Connection = { id: 'c1', publicId: 'c1', platformCode: 'TRENDYOL', environment: 'STAGE', displayName: 'Trendyol Test', externalStoreId: '9999', status: 'ACTIVE', apiVersion: 'V2', lastTestedAt: null, lastSuccessAt: null, lastErrorCode: null, hasCredential: true, externalWritesEnabled: false, invoiceCreationEnabled: true, version: 7 }
+const connection: Connection = { id: 'c1', publicId: 'c1', platformCode: 'TRENDYOL', environment: 'STAGE', displayName: 'Trendyol Test', externalStoreId: '9999', status: 'ACTIVE', apiVersion: 'V2', lastTestedAt: null, lastSuccessAt: null, lastErrorCode: null, hasCredential: true, externalWritesEnabled: false, invoiceCreationEnabled: true, n11ShipmentTemplate: null, n11PreparingDay: null, disabledAt: null, lastErrorAt: null, webhookNotice: null, version: 7 }
 
 let container: HTMLDivElement
 let root: Root

@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 import { newIdempotencyKey } from '../../shared/idempotency'
@@ -24,7 +25,7 @@ export function InvoiceLinkRevocationPanel({ invoiceId, invoiceNumber, items, on
   const allowed = useCanSendInvoices()
   const [confirm, confirmDialog] = useConfirmDialog()
   const revoke = useMutation({
-    mutationFn: (item: InvoiceLinkRevocation) => hubApi<InvoiceLinkRevocation>(`/invoices/${invoiceId}/marketplace-link-revocations/${item.deliveryStateId}`, {
+    mutationFn: (item: InvoiceLinkRevocation) => hubApi<ApiAnswer<'postInvoicesByIdMarketplaceLinkRevocationsByStateId'>>(`/invoices/${invoiceId}/marketplace-link-revocations/${item.deliveryStateId}`, {
       method: 'POST',
       headers: { 'Idempotency-Key': newIdempotencyKey() },
       body: JSON.stringify({ confirmed: true }),

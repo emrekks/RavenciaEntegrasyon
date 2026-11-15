@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { effectiveReturnSort, returnListParams, returnSortOptions, returnSummaryParams } from './return-list-query'
+import { effectiveReturnSort, returnListParams, returnShipmentCompaniesQuery, returnSortOptions, returnSummaryParams } from './return-list-query'
 
 const none = { platforms: [], cargo: 'ALL', reason: 'ALL', invoiceStatus: 'ALL' }
 
@@ -32,5 +32,14 @@ describe('returns list requests', () => {
     expect(effectiveReturnSort('ACTION_REQUIRED', 'APPROVED_ASC')).toBe('REQUESTED_DESC')
     expect(effectiveReturnSort('APPROVED', 'APPROVED_ASC')).toBe('APPROVED_ASC')
     expect(effectiveReturnSort('ALL', 'ORDERED_ASC')).toBe('ORDERED_ASC')
+  })
+})
+
+describe('return shipment companies', () => {
+  // GET /returns/{id} names no connection: the list was cached under one key for every claim, so a second N11 claim's
+  // denial offered the first claim's companies for an hour.
+  it('keeps the companies of each claim apart', () => {
+    expect(returnShipmentCompaniesQuery('claim-1').queryKey).toEqual(['return-shipment-companies', 'claim-1'])
+    expect(returnShipmentCompaniesQuery('claim-2').queryKey).toEqual(['return-shipment-companies', 'claim-2'])
   })
 })

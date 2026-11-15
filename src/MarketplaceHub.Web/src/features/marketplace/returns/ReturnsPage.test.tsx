@@ -238,4 +238,29 @@ describe('returns page', () => {
     expect(trigger().textContent).toBe('En Eski Sipariş')
     await waitFor(() => host.ownerDocument.querySelector('[data-testid="address"]')?.textContent?.includes('sort=ORDERED_ASC'))
   })
+
+  // GET /returns/{id} sends no request date (ReturnDetailView): the facts strip showed it from the row until the claim was
+  // read, then dropped it.
+  it('keeps the request date of the row in the detail popup once the claim is read', async () => {
+    const hubApi = (await import('../../../shared/api')).hubApi as unknown as { getMockImplementation(): ((path: string) => Promise<unknown>) | undefined; mockImplementation(fn: (path: string) => Promise<unknown>): void }
+    const original = hubApi.getMockImplementation()!
+    hubApi.mockImplementation(async (path: string) => {
+      if (path.startsWith('/returns?')) return { items: [claim('5', { status: 'APPROVED', requestedAt: '2026-10-11T09:00:00Z' })], nextCursor: null, hasMore: false, totalCount: 1 }
+      if (path === '/returns/5') {
+        api.paths.push(path)
+        return claim('5', { status: 'APPROVED', allowedActions: [], stockDispositionAvailable: false, externalWritesEnabled: true, decisionPending: false, wholeClaimDecision: false, rejectNeedsReturnShipment: false, actionDueAtEstimated: false, customerRequest: null, lines: [] })
+      }
+      return original(path)
+    })
+    try {
+      const { host } = renderPage()
+      await waitFor(() => host.textContent?.includes('#5'))
+      act(() => { byText<HTMLButtonElement>(host, 'button.rr-trigger', 'İşlemler').click() })
+      act(() => { byText<HTMLButtonElement>(host.ownerDocument.body, '[role="menuitem"]', 'Detaylı Bilgi').click() })
+      await waitFor(() => api.paths.includes('/returns/5') && host.ownerDocument.body.querySelector('.rr-facts') !== null && !host.ownerDocument.body.textContent?.includes('İade detayları yükleniyor'))
+      expect(host.ownerDocument.body.querySelector('.rr-facts')!.textContent).toContain('Talep Tarihi')
+    } finally {
+      hubApi.mockImplementation(original)
+    }
+  })
 })

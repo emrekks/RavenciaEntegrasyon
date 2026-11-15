@@ -1,3 +1,4 @@
+import type { ApiAnswer } from './api/api-answer'
 import { hubPoll } from './api'
 import { queryKeys } from './api/query-keys'
 
@@ -21,7 +22,7 @@ export type OrderNavigationSummary = {
 const pendingOrdersFreshMs = 5_000
 export const pendingOrdersQuery = {
   queryKey: queryKeys.orders('summary', 'pending'),
-  queryFn: ({ signal }: { signal: AbortSignal }) => hubPoll<OrderNavigationSummary>('/orders/summary?tabs=PENDING', { signal }),
+  queryFn: ({ signal }: { signal: AbortSignal }) => hubPoll<ApiAnswer<'getOrdersSummary'>>('/orders/summary?tabs=PENDING', { signal }),
   staleTime: 30_000,
   refetchOnMount: (query: { state: { dataUpdatedAt: number } }) => Date.now() - query.state.dataUpdatedAt < pendingOrdersFreshMs ? false : 'always' as const,
   refetchOnWindowFocus: true,

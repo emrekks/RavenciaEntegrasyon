@@ -1,14 +1,14 @@
 // The re-check a sensitive change carries: the signed-in user's password, and with an authenticator on, its 6-digit code
 // or a recovery code (Ayarlar › Kullanıcılar, Google Drive Yedeği, and every reset that empties data).
+import type { ApiAnswer } from './api/api-answer'
 import { useQuery } from '@tanstack/react-query'
 import { hubApi } from './api'
 import { queryKeys } from './api/query-keys'
 
-type SecurityStatus = { totpState: string; recoveryCodesRemaining: number }
 
 // Whether the signed-in user's authenticator is on, so the code field is shown (the same query Güvenlik uses).
 export function useSecondFactorEnabled() {
-  const status = useQuery({ queryKey: queryKeys.security(), queryFn: ({ signal }) => hubApi<SecurityStatus>('/auth/security-status', { signal }) })
+  const status = useQuery({ queryKey: queryKeys.security(), queryFn: ({ signal }) => hubApi<ApiAnswer<'getAuthSecurityStatus'>>('/auth/security-status', { signal }) })
   return status.data?.totpState === 'ENABLED'
 }
 

@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -33,7 +34,7 @@ export function CategoryMappingDialog({ connectionId, platformName, categoryId, 
   onSaved: (message: string) => void
 }) {
   const client = useQueryClient()
-  const references = useQuery({ queryKey: queryKeys.referenceCategories(connectionId), queryFn: ({ signal }) => hubApi<ReferenceCategories>(`/reference-data/categories?connectionId=${encodeURIComponent(connectionId)}`, { signal }), retry: false })
+  const references = useQuery({ queryKey: queryKeys.referenceCategories(connectionId), queryFn: ({ signal }) => hubApi<ApiAnswer<'getReferenceDataCategories'>>(`/reference-data/categories?connectionId=${encodeURIComponent(connectionId)}`, { signal }), retry: false })
   const existing = useQuery({ queryKey: queryKeys.categoryMapping(categoryId, connectionId), queryFn: ({ signal }) => hubApi<CategoryMapping | null>(`/mappings/categories/${categoryId}?connectionId=${encodeURIComponent(connectionId)}`, { signal }), retry: false })
   const [externalId, setExternalId] = useState('')
   const [saving, setSaving] = useState(false)

@@ -106,9 +106,9 @@ describe('notification center helpers', () => {
   it('keeps the whole bell card and reads it back', () => {
     const input = centerInput({ id: 'n1', message: 'Mesaj', kind: 'info', createdAt: '2026-11-13T08:00:00.000Z', read: false, details: [{ label: 'Kod', value: 'X' }] })
     expect(input).toMatchObject({ clientKey: 'n1', severity: 'INFO', category: 'OTHER', createdAt: '2026-11-13T08:00:00.000Z' })
-    const card = centerNotificationCard({ id: 'r', clientKey: 'n1', severity: 'INFO', category: 'OTHER', title: 'Mesaj', message: 'Mesaj', count: 1, shared: false, createdAt: '', updatedAt: '', payload: JSON.stringify(input.payload) })
+    const card = centerNotificationCard({ id: 'r', clientKey: 'n1', severity: 'INFO', category: 'OTHER', title: 'Mesaj', message: 'Mesaj', href: null, actionLabel: null, platformCode: null, storeName: null, count: 1, shared: false, createdAt: '', updatedAt: '', payload: JSON.stringify(input.payload), readAt: null, dismissedAt: null })
     expect(card?.details).toEqual([{ label: 'Kod', value: 'X' }])
-    expect(centerNotificationCard({ id: 'r', clientKey: 'n1', severity: 'INFO', category: 'OTHER', title: '', message: '', count: 1, shared: false, createdAt: '', updatedAt: '', payload: '{' })).toBeNull()
+    expect(centerNotificationCard({ id: 'r', clientKey: 'n1', severity: 'INFO', category: 'OTHER', title: '', message: '', href: null, actionLabel: null, platformCode: null, storeName: null, count: 1, shared: false, createdAt: '', updatedAt: '', payload: '{', readAt: null, dismissedAt: null })).toBeNull()
   })
 
   it('sends the filters with Istanbul day bounds', () => {

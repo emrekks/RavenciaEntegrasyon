@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useEffect, useEffectEvent, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, settingsIfMatch } from '../../shared/api'
@@ -29,9 +30,9 @@ export type AppearanceSettings = {
   colorThemes: AppearanceColorThemeProfile[]
 }
 
-export type AppearanceSettingsEnvelope = {
+export type AppearanceSettingsEnvelope = Omit<ApiAnswer<'getSettingsAppearance'>, 'settings'> & {
+  // CONTRACT: the API declares a free JSON object (VersionedSettingsView); what it holds is what this screen saved.
   settings: AppearanceSettings | null
-  version: number
 }
 
 const defaultDarkPalette: AppearancePalette = {

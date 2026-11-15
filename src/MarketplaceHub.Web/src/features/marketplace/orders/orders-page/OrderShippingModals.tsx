@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../../../shared/api/api-answer'
 import { useEffect, useState, type CSSProperties, type FormEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../../../shared/api'
@@ -44,7 +45,7 @@ export function CourierChangeModal({ item, items, onClose, onConfirmed }: { item
     try {
       for (const target of targets) {
         try {
-          const updatedShipment = await sendWithVersionedIdempotencyKey(`instant-cargo:${target.shipment.id}:v${target.shipment.version}:${chosen.code}`, key => hubApi<Shipment>(`/shipments/${target.shipment.id}/instant-cargo-provider`, {
+          const updatedShipment = await sendWithVersionedIdempotencyKey(`instant-cargo:${target.shipment.id}:v${target.shipment.version}:${chosen.code}`, key => hubApi<ApiAnswer<'postShipmentsByIdInstantCargoProvider'>>(`/shipments/${target.shipment.id}/instant-cargo-provider`, {
             method: 'POST',
             headers: { 'Idempotency-Key': key, 'If-Match': `"v${target.shipment.version}"` },
             body: JSON.stringify({ action: 'CHANGE_CARGO_PROVIDER', payloadJson: JSON.stringify({ cargoProvider: chosen.code }) })
@@ -84,7 +85,7 @@ export function ShippingLabelModal({ item, settings, format, onClose, onPrinted,
   const client = useQueryClient()
   const [overflowing, setOverflowing] = useState<string[]>([])
   // The buyer's e-mail (and name and address) are read from the order detail when the label is printed.
-  const detailQuery = useQuery({ queryKey: queryKeys.orderLabelDetail(item.id), queryFn: ({ signal }) => hubApi<OrderLabelDetail>(`/orders/${item.id}`, { signal }), enabled: !inline && !suppliedDetail, staleTime: 30_000 })
+  const detailQuery = useQuery({ queryKey: queryKeys.orderLabelDetail(item.id), queryFn: ({ signal }) => hubApi<ApiAnswer<'getOrdersById'>>(`/orders/${item.id}`, { signal }), enabled: !inline && !suppliedDetail, staleTime: 30_000 })
   const detail = suppliedDetail ?? detailQuery.data
   const personal = labelPersonalData(item, detail)
   const shipment = orderDisplayShipment(item)
@@ -120,7 +121,7 @@ export function ShippingLabelBatchModal({ items, settings, format, onClose, onPr
   // Each selected order's detail is read (a few at a time) for the personal fields the labels print.
   const ids = items.map(item => item.id)
   const batchPages = shippingLabelPages(items, format, settings)
-  const details = useQuery({ queryKey: queryKeys.orderLabelDetails(ids), queryFn: ({ signal }) => loadOrderLabelDetails(ids, id => hubApi<OrderLabelDetail>(`/orders/${id}`, { signal })), staleTime: 30_000 })
+  const details = useQuery({ queryKey: queryKeys.orderLabelDetails(ids), queryFn: ({ signal }) => loadOrderLabelDetails(ids, id => hubApi<ApiAnswer<'getOrdersById'>>(`/orders/${id}`, { signal })), staleTime: 30_000 })
   function printLabels() {
     if (!details.data) return
     window.print()

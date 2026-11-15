@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -13,21 +14,19 @@ import { RrIcon, RrLogo } from '../../shared/ui/rr-components'
 import './dashboard-sade.css'
 import { formatIstanbul, istanbulDateKey } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
-import { periodTrend as trend, channelTotals, dataStartsOn, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, periodFigures, prefetchInTurn, presetLabels, presetOrder, primaryCurrency, revenueReport, type DashboardChannel, type DayPoint, type Performance, type Range } from './dashboard-performance'
+import { periodTrend as trend, channelTotals, dataStartsOn, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, periodFigures, prefetchInTurn, presetLabels, presetOrder, primaryCurrency, revenueReport, type DayPoint, type Range } from './dashboard-performance'
 import { smoothPath } from './smooth-path'
 import { ChangePill, previousHasData, trendChange } from '../../shared/components/ChangePill'
 import { useMetricSource } from '../marketplace/use-metric-source'
-import { IntegrationStatusPanel, knownCount, useIntegrationHealth, type DashboardMetrics } from './IntegrationStatusPanel'
+import { IntegrationStatusPanel, knownCount, useIntegrationHealth } from './IntegrationStatusPanel'
 import { EmptyState } from '../../shared/components/EmptyState'
 import { queryKeys } from '../../shared/api/query-keys'
 
 // The overview page, as drawn in docs/tasarim-onerileri/genel-bakis-yeni.html.
 
-type DashboardBootstrap = { metrics: DashboardMetrics; channels?: DashboardChannel[] }
 // GET /dashboard/cancellations: one store's cancellations of the day (DashboardCancellationRowView).
 type CancellationRow = { connectionId: string; cancelledOrders: number; partialOrders: number; cancelledUnits: number; unknownTimeOrders: number; unknownTimeUnits: number }
 type BreakdownRow = { key: string; code: string; name: string; value: string }
-type ProductSummary = { totalCount: number; activeCount: number; outOfStockCount: number; lowStockCount: number }
 
 const PERIODS: Array<[Range, string]> = [...presetOrder.map(key => [key, presetLabels[key]] as [Range, string]), ['custom', 'Özel Tarih']]
 const periodLabel = (range: Range) => PERIODS.find(([value]) => value === range)?.[1] ?? ''
@@ -173,17 +172,17 @@ export function DashboardPage() {
   // Bekleyen Siparişler reads the menu badge's own query (the Siparişler page's Bekleyen tab), not the worker's snapshot:
   // the badge and the card are one answer and refresh together on every order change.
   const pendingSummary = useQuery(pendingOrdersQuery)
-  const bootstrap = useQuery({ queryKey: queryKeys.dashboardBootstrap(), queryFn: ({ signal }) => hubApi<DashboardBootstrap>('/dashboard/bootstrap', { ...poll, signal }), ...refresh })
-  const invoiceSummary = useQuery({ queryKey: queryKeys.invoiceWorkspaceSummary(), queryFn: ({ signal }) => hubApi<{ dueSoonCount: number; uninvoicedCount?: number }>('/invoice-workspace/summary', { ...poll, signal }), ...refresh })
-  const productSummary = useQuery({ queryKey: queryKeys.products('summary'), queryFn: ({ signal }) => hubApi<ProductSummary>('/products/summary', { ...poll, signal }), ...refresh })
+  const bootstrap = useQuery({ queryKey: queryKeys.dashboardBootstrap(), queryFn: ({ signal }) => hubApi<ApiAnswer<'getDashboardBootstrap'>>('/dashboard/bootstrap', { ...poll, signal }), ...refresh })
+  const invoiceSummary = useQuery({ queryKey: queryKeys.invoiceWorkspaceSummary(), queryFn: ({ signal }) => hubApi<ApiAnswer<'getInvoiceWorkspaceSummary'>>('/invoice-workspace/summary', { ...poll, signal }), ...refresh })
+  const productSummary = useQuery({ queryKey: queryKeys.products('summary'), queryFn: ({ signal }) => hubApi<ApiAnswer<'getProductsSummary'>>('/products/summary', { ...poll, signal }), ...refresh })
   const integration = useIntegrationHealth()
   // No active connection (or not the chosen store) feeds the cards: their big numbers read a dash (shared rule, shared/metric-value.ts).
   const noSource = useMetricSource({ connectionId: channel }) === false
   // A custom range picked only halfway asks for nothing until its end is picked too.
   const days = periodDays(range, custom, today)
   // Today's cancellations, each counted on the day the marketplace says it happened.
-  const cancellations = useQuery({ queryKey: queryKeys.dashboard('cancellations', today), queryFn: ({ signal }) => hubApi<{ stores: CancellationRow[] }>(`/dashboard/cancellations?day=${today}`, { ...poll, signal }), ...refresh })
-  const performance = useQuery({ placeholderData: keepPreviousData, queryKey: queryKeys.dashboard('performance', days?.from, days?.to), queryFn: ({ signal }) => hubApi<Performance>(`/dashboard/performance?from=${days!.from}&to=${days!.to}`, { ...poll, signal }), enabled: days !== null, ...refresh })
+  const cancellations = useQuery({ queryKey: queryKeys.dashboard('cancellations', today), queryFn: ({ signal }) => hubApi<ApiAnswer<'getDashboardCancellations'>>(`/dashboard/cancellations?day=${today}`, { ...poll, signal }), ...refresh })
+  const performance = useQuery({ placeholderData: keepPreviousData, queryKey: queryKeys.dashboard('performance', days?.from, days?.to), queryFn: ({ signal }) => hubApi<ApiAnswer<'getDashboardPerformance'>>(`/dashboard/performance?from=${days!.from}&to=${days!.to}`, { ...poll, signal }), enabled: days !== null, ...refresh })
   // Once a period has loaded, the other ready-made periods are read in the background, one at a time when the browser
   // is idle, so switching to them is instant without a burst of parallel reads.
   const queryClient = useQueryClient()
@@ -193,7 +192,7 @@ export function DashboardPage() {
     let cancelled = false
     const reads = presetOrder.flatMap(other => {
       const span = periodDays(other, custom, today)
-      return span ? [() => queryClient.prefetchQuery({ queryKey: queryKeys.dashboard('performance', span.from, span.to), queryFn: ({ signal }) => hubApi<Performance>(`/dashboard/performance?from=${span.from}&to=${span.to}`, { ...poll, signal }), staleTime: 60_000 })] : []
+      return span ? [() => queryClient.prefetchQuery({ queryKey: queryKeys.dashboard('performance', span.from, span.to), queryFn: ({ signal }) => hubApi<ApiAnswer<'getDashboardPerformance'>>(`/dashboard/performance?from=${span.from}&to=${span.to}`, { ...poll, signal }), staleTime: 60_000 })] : []
     })
     void prefetchInTurn(reads, () => cancelled)
     return () => { cancelled = true }

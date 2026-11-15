@@ -1,4 +1,5 @@
 // İçe aktarımlar (/imports, /imports/:id).
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -57,7 +58,7 @@ export function ImportDetailPage() {
   // Re-read only while the worker moves the import on; a finished import is not polled.
   const session = useQuery({
     queryKey: queryKeys.import(id),
-    queryFn: ({ signal }) => hubPoll<ImportSession>(`/imports/${id}`, { signal }),
+    queryFn: ({ signal }) => hubPoll<ApiAnswer<'getImportsById'>>(`/imports/${id}`, { signal }),
     enabled: !!id,
     refetchInterval: query => importSessionPollInterval(query.state.data?.status)
   })

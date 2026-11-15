@@ -1,25 +1,18 @@
 // Ayarlar › Kullanıcılar: the workspace's users, managed by the owner and administrators (the server answers others 403).
 // Rules the server enforces too (UserManagementEndpoints): nobody changes their own account here, an administrator
 // cannot touch an owner or make one, every change asks for the caller's password (and authenticator code) again.
+import type { ApiAnswer } from '../../shared/api/api-answer'
 
 export type UserRole = 'OWNER' | 'ADMINISTRATOR' | 'OPERATIONS' | 'ACCOUNTING' | 'READONLY'
 
-export type ManagedUser = {
-  id: string
-  displayName: string
-  email: string | null
+type ManagedUserAnswer = ApiAnswer<'getSettingsUsers'>
+
+export type ManagedUser = Omit<ManagedUserAnswer['items'][number], 'role'> & {
+  // CONTRACT: the API declares a string; a membership role is one of the five above (EndpointRules, UserManagementEndpoints).
   role: UserRole
-  active: boolean
-  lockedOut: boolean
-  mfaEnabled: boolean
-  passwordChangePending: boolean
-  lastLoginAt: string | null
-  createdAt: string
-  openSessions: number
-  self: boolean
 }
 
-export type ManagedUserList = { currentUserId: string; currentRole: string; items: ManagedUser[] }
+export type ManagedUserList = Omit<ManagedUserAnswer, 'items'> & { items: ManagedUser[] }
 
 export type UserAction = 'role' | 'password-reset' | 'mfa-reset' | 'sessions' | 'disable' | 'enable'
 

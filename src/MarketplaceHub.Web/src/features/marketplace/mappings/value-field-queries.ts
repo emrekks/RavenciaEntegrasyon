@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { hubApi } from '../../../shared/api'
 import { queryKeys } from '../../../shared/api/query-keys'
 
@@ -33,7 +34,7 @@ export type ValueMappingProgress = Record<string, string[]>
 export function valueMappingProgressQuery(connectionId: string, categoryScope: string) {
   return {
     queryKey: queryKeys.attributeValueMappings(connectionId, `${categoryScope}/*`, 'progress'),
-    queryFn: ({ signal }: { signal: AbortSignal }) => hubApi<ValueMappingProgress>(`/mappings/attribute-value-progress?connectionId=${encodeURIComponent(connectionId)}&categoryExternalId=${encodeURIComponent(categoryScope)}`, { signal }),
+    queryFn: ({ signal }: { signal: AbortSignal }) => hubApi<ApiAnswer<'getMappingsAttributeValueProgress'>>(`/mappings/attribute-value-progress?connectionId=${encodeURIComponent(connectionId)}&categoryExternalId=${encodeURIComponent(categoryScope)}`, { signal }),
     retry: false,
     staleTime: valueMappingStaleTime
   }

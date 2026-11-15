@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
@@ -31,7 +32,7 @@ export function AttributeDefaultsPanel({ connectionId, categoryScope, platformLa
 }) {
   const client = useQueryClient()
   const defaultsKey = queryKeys.attributeDefaults(connectionId)
-  const defaults = useQuery({ queryKey: defaultsKey, queryFn: ({ signal }) => hubApi<AttributeDefault[]>(`/connections/${connectionId}/attribute-defaults`, { signal }), retry: false })
+  const defaults = useQuery({ queryKey: defaultsKey, queryFn: ({ signal }) => hubApi<ApiAnswer<'getConnectionsByConnectionIdAttributeDefaults'>>(`/connections/${connectionId}/attribute-defaults`, { signal }), retry: false })
   const [attributeId, setAttributeId] = useState('')
   const [search, setSearch] = useState('')
   const [valueId, setValueId] = useState('')

@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../../../shared/api/api-answer'
 import { useRememberedHeight } from '../../../../shared/remembered-height'
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -22,7 +23,6 @@ import { connectionQueries, queryKeys } from '../../../../shared/api/query-keys'
 import { useMappingNotificationConnection, MappingDeleteIcon, type CatalogMapping, SearchableSelect, MappingViewTabs, wait } from './mapping-shared'
 
 type LocalBrand = { id: string; name: string; isActive: boolean; version: number }
-type UnmappedMarketplaceBrand = { externalId: string; name: string | null; occurrences: number; lastSeenAt: string }
 
 type BrandMappingTransferBundle = { format: 'RAVENCIA_BRAND_MAPPING_BUNDLE'; version: 1; exportedAt: string; brands: LocalBrand[]; mappings: CatalogMapping[] }
 
@@ -84,7 +84,7 @@ export function BrandMappingPage() {
   const brandMappings = useQuery({ queryKey: queryKeys.brandMappings(savedConnectionId), queryFn: ({ signal }) => hubApi<CatalogMapping[]>(`/mappings/brands?connectionId=${encodeURIComponent(savedConnectionId)}`, { signal }), enabled: !!savedConnectionId, retry: false })
   // Marketplace brands the product import met that no panel brand is mapped to: the import never maps by name, so
   // their products came in without a brand until the user maps them here.
-  const unmappedBrands = useQuery({ queryKey: queryKeys.brandUnmapped(connectionId), queryFn: ({ signal }) => hubApi<UnmappedMarketplaceBrand[]>(`/reference-data/brands/unmapped?connectionId=${encodeURIComponent(connectionId)}`, { signal }), enabled: brandMappingSupported && !!connectionId, retry: false })
+  const unmappedBrands = useQuery({ queryKey: queryKeys.brandUnmapped(connectionId), queryFn: ({ signal }) => hubApi<ApiAnswer<'getReferenceDataBrandsUnmapped'>>(`/reference-data/brands/unmapped?connectionId=${encodeURIComponent(connectionId)}`, { signal }), enabled: brandMappingSupported && !!connectionId, retry: false })
   const syncBrands = useMutation({
     mutationFn: () => {
       if (!connectionId) throw new Error(`Aktif ${brandPlatformLabel} bağlantısı bulunamadı.`)
@@ -130,7 +130,7 @@ export function BrandMappingPage() {
     if (!savedReferences.data || !savedConnectionId || !editingExternalId) { setNotice(`Güncel ${savedBrandPlatformLabel} marka listesi olmadan eşleştirme kaydedilemez.`); return }
     save.mutate({ connectionId: savedConnectionId, snapshotId: savedReferences.data.snapshotId, localId: item.localId, externalId: editingExternalId, version: item.version })
   }
-  const createBrand = useMutation({ mutationFn: () => { if (!brandName.trim()) throw new Error('Marka adı zorunludur.'); return hubApi<LocalBrand>('/catalog/brands', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ name: brandName.trim() }) }) }, onSuccess: async brand => { await refreshLocalBrands(client); setLocalId(brand.id); setExternalId(''); setBrandName(''); setNotice(`“${brand.name}” panel markası oluşturuldu ve seçildi.`) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Marka oluşturulamadı.') })
+  const createBrand = useMutation({ mutationFn: () => { if (!brandName.trim()) throw new Error('Marka adı zorunludur.'); return hubApi<ApiAnswer<'postCatalogBrands'>>('/catalog/brands', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ name: brandName.trim() }) }) }, onSuccess: async brand => { await refreshLocalBrands(client); setLocalId(brand.id); setExternalId(''); setBrandName(''); setNotice(`“${brand.name}” panel markası oluşturuldu ve seçildi.`) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Marka oluşturulamadı.') })
   // An existing mapping fills the platform brand; with none, a platform brand picked before the panel brand stays.
   useEffect(() => { if (mapping.data) setExternalId(mapping.data.externalId) }, [mapping.data])
   const activeLocalBrands = localBrands.data?.items.filter(item => item.isActive) ?? []
@@ -147,7 +147,7 @@ export function BrandMappingPage() {
   const savedMappingsPending = !!savedConnectionId && brandMappings.isPending && !brandMappings.isError
   const savedMappingCount = savedMappingsPending ? <span className="brand-reference-skeleton is-count" aria-hidden="true" /> : savedBrandMappings.length.toLocaleString('tr-TR')
   const localBrandById = new Map(activeLocalBrands.map(item => [item.id, item]))
-  const archiveBrand = useMutation({ mutationFn: (brand: LocalBrand) => hubApi<LocalBrand>(`/catalog/brands/${brand.id}`, { method: 'PATCH', headers: { 'If-Match': `"v${brand.version}"` }, body: JSON.stringify({ name: brand.name, isActive: false }) }), onSuccess: async (_, brand) => { if (localId === brand.id) { setLocalId(''); setExternalId('') }; await refreshLocalBrands(client); setNotice(`“${brand.name}” panel markalarından kaldırıldı.`) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Marka kaldırılamadı.') })
+  const archiveBrand = useMutation({ mutationFn: (brand: LocalBrand) => hubApi<ApiAnswer<'patchCatalogBrandsById'>>(`/catalog/brands/${brand.id}`, { method: 'PATCH', headers: { 'If-Match': `"v${brand.version}"` }, body: JSON.stringify({ name: brand.name, isActive: false }) }), onSuccess: async (_, brand) => { if (localId === brand.id) { setLocalId(''); setExternalId('') }; await refreshLocalBrands(client); setNotice(`“${brand.name}” panel markalarından kaldırıldı.`) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Marka kaldırılamadı.') })
   const removeMapping = useMutation({ mutationFn: async (item: CatalogMapping) => { const current = await hubApi<CatalogMapping | null>(`/mappings/brands/${item.localId}?connectionId=${encodeURIComponent(savedConnectionId)}`); if (!current || current.externalId !== item.externalId) throw new Error('Bu marka eşleştirmesi bu sırada değişti veya kaldırıldı. Liste yenilendi.'); return hubApi(`/mappings/brands/${item.localId}?connectionId=${encodeURIComponent(savedConnectionId)}`, { method: 'DELETE', headers: { 'If-Match': `"v${current.version}"` } }) }, onSuccess: (_, item) => { if (localId === item.localId && connectionId === savedConnectionId) setExternalId(''); setNotice('Marka eşleştirmesi kaldırıldı.') }, onError: reason => setNotice(mappingSaveErrorMessage(reason, 'Marka eşleştirmesi kaldırılamadı.')), onSettled: async (_, __, item) => { await Promise.all([client.invalidateQueries({ queryKey: queryKeys.brandMapping(item.localId, savedConnectionId) }), client.invalidateQueries({ queryKey: queryKeys.brandMappings(savedConnectionId) }), refreshMappingConflicts(client, savedConnectionId)]) } })
   async function exportBrandMappings() {
     if (!savedConnectionId) { setNotice(`Aktarım için önce ${savedBrandPlatformLabel} bağlantısı seçin.`); return }
@@ -184,9 +184,9 @@ export function BrandMappingPage() {
         if (brandTransferSelection.brands) {
           try {
             if (target && !target.isActive) {
-              target = await hubApi<LocalBrand>(`/catalog/brands/${target.id}`, { method: 'PATCH', headers: { 'If-Match': `"v${target.version}"` }, body: JSON.stringify({ name: target.name, isActive: true }) })
+              target = await hubApi<ApiAnswer<'patchCatalogBrandsById'>>(`/catalog/brands/${target.id}`, { method: 'PATCH', headers: { 'If-Match': `"v${target.version}"` }, body: JSON.stringify({ name: target.name, isActive: true }) })
             } else if (!target) {
-              target = await hubApi<LocalBrand>('/catalog/brands', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ name: source.name.trim() }) })
+              target = await hubApi<ApiAnswer<'postCatalogBrands'>>('/catalog/brands', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ name: source.name.trim() }) })
               created++
             }
           } catch (reason) {

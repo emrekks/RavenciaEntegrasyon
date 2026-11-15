@@ -470,7 +470,7 @@ describe('QuestionsPage workspace flows', () => {
   })
 
   it('says a failing store sync failed even after its history was imported', () => {
-    const failed = { connectionId: 'ty-store', platformCode: 'TRENDYOL', storeName: 'Trendyol', historyImported: true, importedCount: 3, progressStatus: 'FAILED' }
+    const failed = { connectionId: 'ty-store', platformCode: 'TRENDYOL', storeName: 'Trendyol', historyImported: true, historyStartedAt: null, importedCount: 3, progressStatus: 'FAILED', lastRunStartedAt: null, lastSuccessAt: null, lastError: null, productQuestionCount: 0, orderQuestionCount: 0 }
     expect(syncSummary(failed, 'PRODUCT').state).toBe('Son aktarım başarısız')
     expect(syncSummary({ ...failed, progressStatus: 'IDLE' }, 'PRODUCT').state).toBe('Geçmiş tamamlandı')
     expect(questionSyncIsStale([{ progressStatus: 'IDLE', lastSuccessAt: new Date(Date.now() - 20 * 60_000).toISOString() }], Date.now())).toBe(true)

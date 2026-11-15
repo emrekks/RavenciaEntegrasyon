@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, settingsIfMatch } from '../../../shared/api'
@@ -6,7 +7,6 @@ import { SettingsNotice, type SettingsNoticeState } from '../SettingsNotificatio
 import { queryKeys } from '../../../shared/api/query-keys'
 import { formatSettingsDate, SettingsIcon, SettingsGlyph, SettingsPaneHead, SettingsBar } from '../settings-ui'
 
-type AlertEmailSettings = { senderAddress: string | null; recipients: string[]; appPasswordSaved: boolean; updatedAt: string | null; version: number }
 const maximumAlertRecipients = 5
 
 // Settings → Alarm Bildirimleri: the Gmail account that sends the server's and the panel's alerts (security plan Y1).
@@ -14,7 +14,7 @@ const maximumAlertRecipients = 5
 // keeps a root-only copy for alerts while the panel is down (deploy/scripts/alert-settings-sync.sh).
 export function AlertEmailSettingsSection() {
   const client = useQueryClient()
-  const query = useQuery({ queryKey: queryKeys.alertEmailSettings(), queryFn: ({ signal }) => hubApi<AlertEmailSettings>('/settings/alert-email', { signal }), retry: false })
+  const query = useQuery({ queryKey: queryKeys.alertEmailSettings(), queryFn: ({ signal }) => hubApi<ApiAnswer<'getSettingsAlertEmail'>>('/settings/alert-email', { signal }), retry: false })
   const saved = query.data
   const [sender, setSender] = useState('')
   const [recipients, setRecipients] = useState<string[]>([''])
@@ -41,7 +41,7 @@ export function AlertEmailSettingsSection() {
     if (!saved) return
     setBusy('save'); setNotice(null); setTestResult(null)
     try {
-      const next = await hubApi<AlertEmailSettings>('/settings/alert-email', { method: 'PUT', headers: settingsIfMatch(saved.version), body: JSON.stringify({ senderAddress: sender.trim(), recipients: cleanRecipients, appPassword: changingPassword ? password : null }) })
+      const next = await hubApi<ApiAnswer<'putSettingsAlertEmail'>>('/settings/alert-email', { method: 'PUT', headers: settingsIfMatch(saved.version), body: JSON.stringify({ senderAddress: sender.trim(), recipients: cleanRecipients, appPassword: changingPassword ? password : null }) })
       client.setQueryData(queryKeys.alertEmailSettings(), next)
       setNotice({ kind: 'success', message: 'Alarm e-postası ayarları kaydedildi. Sunucu sonraki alarmda bu ayarları kullanır.' })
     } catch (reason) {

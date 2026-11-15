@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { cardCountText } from '../../shared/metric-value'
 import { useMetricSource } from '../marketplace/use-metric-source'
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
@@ -49,8 +50,8 @@ import { formatDate, formatDateTime, formatIstanbul, fromDateTimeLocal, istanbul
 import { formatMoney } from '../../shared/format-money'
 import { InvoiceLinkRevocationPanel } from './InvoiceLinkRevocationPanel'
 import { invoiceWorkspaceStatus, isInvoiceFailureStatus } from './invoice-workspace-status'
-import { adjustmentRequiredStatus, handSetInvoiceStatusPlatforms, platformInvoiceCheckAvailable, platformInvoiceCheckUnavailableReason, invoiceAwaitsProviderAnswer, invoiceDeliveryRetryDetail, invoiceDeliveryRetryText, invoiceDetailActionLabel, type InvoiceDeliveryRetry, invoiceErrorText, invoiceReopenNote, manualDeliveryIdempotencyKey, providerAnswerAwaitedStatus, returnedLineText, saleReturnTitle, type SaleReturnScope, workspaceInvoiceStatusFilterLabel } from './invoice-copy'
-import { isLinkRevocationStatus, linkRevocationStatusLabel, type InvoiceLinkRevocation } from './invoice-link-revocation'
+import { adjustmentRequiredStatus, handSetInvoiceStatusPlatforms, platformInvoiceCheckAvailable, platformInvoiceCheckUnavailableReason, invoiceAwaitsProviderAnswer, invoiceDeliveryRetryDetail, invoiceDeliveryRetryText, invoiceDetailActionLabel, invoiceErrorText, invoiceReopenNote, manualDeliveryIdempotencyKey, providerAnswerAwaitedStatus, returnedLineText, saleReturnTitle, type SaleReturnScope, workspaceInvoiceStatusFilterLabel } from './invoice-copy'
+import { isLinkRevocationStatus, linkRevocationStatusLabel } from './invoice-link-revocation'
 import { useDismissable } from '../../shared/hooks/useDismissable'
 import { unknownCount } from '../../shared/tab-counts'
 import { personName } from '../../shared/person-name'
@@ -60,12 +61,11 @@ import { connectionQueries, invoiceCopies, queryKeys } from '../../shared/api/qu
 // of its own; N11, PttAVM and Pazarama report only invoices sent through their API, not ones uploaded in their panel.
 const manualInvoiceStatusPlatforms = new Set(['SHOPIFY', 'N11', 'PTTAVM', 'PAZARAMA'])
 
-type Invoice = { id: string; orderNumber: string; invoiceType: string; status: string; currency: string; payableTotal: number; invoiceNumber: string | null; dueAt: string | null; createdAt: string; version: number }
-// returnedQuantity: the line's units that came back; a sale invoice not issued yet leaves them out (6 Nov 2026).
-type InvoiceWorkspaceLine = { sku: string; barcode: string | null; description: string; quantity: number; unitPrice: number; vatRate: number; imageUrl: string | null; returnedQuantity?: number }
-type InvoiceWorkspace = { orderId: string; packageId: string; orderNumber: string; customerName: string; orderedAt: string; shipmentStatus: string; deliveredAt: string | null; invoiceDueAt: string | null; isDueSoon: boolean; currency: string; amount: number; productCount: number; primaryImageUrl: string | null; cargoProviderName: string | null; cargoTrackingNumber: string | null; invoiceId: string | null; invoiceStatus: string; invoiceNumber: string | null; canCreateInvoice: boolean; shipmentAddressJson: string | null; invoiceAddressJson: string | null; lines: InvoiceWorkspaceLine[] | null; invoiceErrorCode: string | null; invoiceDeliveryStatus: string | null; invoiceDeliveryReference: string | null; invoiceDocumentAvailable: boolean; marketplaceInvoiceUrl: string | null; platformCode: string; platformDisplayName: string; invoiceCreationEnabled: boolean; marketplaceInvoiceReadErrorCode?: string | null; marketplaceInvoiceReadErrorSummary?: string | null; environment: string; manualInvoiceDocumentId: string | null; manualInvoiceDocumentType: string | null; manualInvoiceDocumentUrl: string | null; manualInvoiceNumber: string | null; manualInvoiceIssuedAt: string | null; manualInvoiceDeliveryStatus: string | null; manualInvoiceDeliveryErrorCode: string | null; fiscalStatus: string; platformInvoiceStatus: string; deliveryStatus: string; currentPlatformInvoiceUrl: string | null; lastSuccessfulCheckAt: string | null; allowedActions: string[]; previousPlatformInvoiceReferences?: Array<{ invoiceNumber: string | null; invoiceUrl: string | null; changeReason: string; changedAt: string }>; marketplaceConnectionId?: string | null; externalOrderId?: string | null; externalPackageNumber?: string | null; deliveryRetry?: InvoiceDeliveryRetry | null; returnDocumentNote?: string | null; manualInvoiceStatus?: string | null; saleReturnScope?: SaleReturnScope | null; saleReturnNote?: string | null }
-type InvoiceWorkspacePage = { items: InvoiceWorkspace[]; totalCount: number; pageNumber: number; pageSize: number; totalPages: number; uninvoicedCount: number; invoicedCount: number; dueSoonCount: number; hiddenCount: number; totalPackageCount: number; hasPendingMarketplaceInvoices: boolean; shipmentStatuses: string[]; cargoProviders: string[]; invoiceStatuses: string[]; platformCounts?: Record<string, number> | null }
-type InvoiceDetail = Invoice & { orderId: string; packageId: string | null; providerConnectionId: string; sequencePurpose: string; ettnUuid: string | null; taxExclusiveTotal: number; discountTotal: number; taxTotal: number; note: string; issuedAt: string | null; lastErrorCode: string | null; lines: Array<{ id: string; lineSequence: number; description: string; sku: string | null; unit: string; quantity: number; unitPrice: number; discountAmount: number; vatRate: number; vatAmount: number; lineTotal: number }>; documents: Array<{ id: string; documentType: string; sha256: string; createdAt: string }>; attempts: Array<{ attemptNumber: number; outcome: string; errorCode: string | null; startedAt: string; completedAt: string | null }>; deliveries: Array<{ id: string; deliveryType: string; status: string; externalReference: string | null; errorCode: string | null; createdAt: string }>; allowedActions: string[]; requiresSensitiveConfirmation: boolean; linkRevocations?: InvoiceLinkRevocation[] | null; deliveryRetry?: InvoiceDeliveryRetry | null; returnDocumentNote?: string | null }
+type InvoiceWorkspaceAnswer = ApiAnswer<'getInvoiceWorkspacePage'>
+// CONTRACT: the API declares saleReturnScope as a string; InvoicingBillingService.WorkspaceSaleReturn writes FULL or PARTIAL.
+type InvoiceWorkspace = Omit<InvoiceWorkspaceAnswer['items'][number], 'saleReturnScope'> & { saleReturnScope: SaleReturnScope | null }
+type InvoiceWorkspacePage = Omit<InvoiceWorkspaceAnswer, 'items'> & { items: InvoiceWorkspace[] }
+type InvoiceDetail = ApiAnswer<'getInvoicesById'>
 type Connection = { id: string; platformCode: string; displayName: string; status: string; environment: string; hasCredential: boolean }
 type InvoiceNoticeKind = 'success' | 'error' | 'info' | 'warning' | 'pending'
 // The order an invoice notice is about, with its marketplace and store; a failure keeps the server's code.
@@ -470,7 +470,7 @@ export function InvoicesPage() {
       if (!connection || !['ACTIVE', 'VERIFIED'].includes(connection.status)) throw new Error('Sipariş için etkin pazaryeri bağlantısı bulunamadı.')
       if (!item.externalOrderId?.trim()) throw new Error('Pazaryeri sipariş numarası bulunamadı.')
       const supportsPackageLookup = ['TRENDYOL', 'HEPSIBURADA'].includes(item.platformCode)
-      return hubApi<{ jobId: string }>(`/connections/${connection.id}/order-sync-jobs`, {
+      return hubApi<ApiAnswer<'postConnectionsByConnectionIdOrderSyncJobs'>>(`/connections/${connection.id}/order-sync-jobs`, {
         method: 'POST',
         headers: { 'Idempotency-Key': `invoice-order-refresh:${item.packageId}:${newIdempotencyKey()}` },
         body: JSON.stringify({ externalOrderId: item.externalOrderId, full: false, packageNumber: supportsPackageLookup ? item.externalPackageNumber : null })
@@ -487,7 +487,7 @@ export function InvoicesPage() {
     // Waits for the read-only check to end, so the row is reloaded with what the job read rather than right after queueing it.
     mutationFn: async (item: InvoiceWorkspace) => {
       const { jobId } = await hubApi<{ jobId: string }>(`/invoice-workspace/orders/${item.orderId}/reconcile-jobs`, { method: 'POST', headers: { 'Idempotency-Key': `invoice-workspace-check:${item.orderId}:${newIdempotencyKey()}` } })
-      const ended = await waitForReferenceSyncJobs([jobId], async id => (await hubApi<{ job: { status: string } }>(`/jobs/${id}`, { cache: 'no-store' })).job.status, { intervalMs: 1_500, timeoutMs: 90_000 })
+      const ended = await waitForReferenceSyncJobs([jobId], async id => (await hubApi<ApiAnswer<'getJobsById'>>(`/jobs/${id}`, { cache: 'no-store' })).job.status, { intervalMs: 1_500, timeoutMs: 90_000 })
       return ended.get(jobId)
     },
     onSuccess: async (status, item) => {
@@ -585,7 +585,9 @@ export function InvoicesPage() {
   // Not for the values the page opened with: a page restored from the address stays.
   useChangeEffect(JSON.stringify([searchFilter, sortOrder, tab, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo, pageSize]), () => setPageNumber(1))
   useListUrlSync({ q: searchFilter, platforms: selectedPlatforms, shipment: shipmentStatusFilter, from: dateFrom, to: dateTo, size: pageSize, page: pageNumber }, { shipment: 'ALL', size: 20, page: 1 })
-  useEffect(() => { setSelectedPackages(new Set()) }, [searchFilter, tab, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo, pageNumber, pageSize])
+  // Every list change drops the selection, a new sort too (as on Siparişler; owner, 15 Nov 2026): a row no longer in view
+  // is never acted on by mistake.
+  useEffect(() => { setSelectedPackages(new Set()) }, [searchFilter, sortOrder, tab, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo, pageNumber, pageSize])
   // Another tab or filter shows other rows: the phone selection mode closes with the emptied selection.
   useEffect(() => { setSelectionMode(false) }, [searchFilter, tab, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo])
   const metricSource = useMetricSource()
