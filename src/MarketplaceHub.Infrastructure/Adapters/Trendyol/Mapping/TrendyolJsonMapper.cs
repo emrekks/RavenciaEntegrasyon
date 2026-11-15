@@ -1333,9 +1333,14 @@ public static class TrendyolJsonMapper
         try { return TurkeyTime.FromTurkeyWallClockEpochMilliseconds(milliseconds); }
         catch (ArgumentOutOfRangeException) { return null; }
     }
+    // D12: the epoch may come as text ("1762304400000"), as Trendyol sends other numbers; it is read the same way instead
+    // of the field being taken as missing (and the package dated by its order).
     private static DateTimeOffset? Instant(JsonElement value, string name)
     {
-        if (!value.TryGetProperty(name, out var item) || item.ValueKind != JsonValueKind.Number || !item.TryGetInt64(out var milliseconds)) return null;
+        if (!value.TryGetProperty(name, out var item)) return null;
+        long milliseconds;
+        if (item.ValueKind == JsonValueKind.Number) { if (!item.TryGetInt64(out milliseconds)) return null; }
+        else if (item.ValueKind != JsonValueKind.String || !long.TryParse(item.GetString()?.Trim(), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out milliseconds)) return null;
         try { return DateTimeOffset.FromUnixTimeMilliseconds(milliseconds); }
         catch (ArgumentOutOfRangeException) { return null; }
     }

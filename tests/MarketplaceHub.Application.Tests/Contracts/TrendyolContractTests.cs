@@ -82,7 +82,10 @@ public sealed class TrendyolContractTests
         ContractFixture.MatchesGolden("Trendyol/shipmentPackages-robustness.golden.json", page);
         var order = Assert.Single(page.Items);
         Assert.Equal("10900000001", order.ExternalOrderId);
-        // Numbers given as text are read as numbers.
+        // Numbers given as text are read as numbers. D12: lastModifiedDate given as text ("1762304400000") is the package's
+        // change time (plain UTC epoch), not the order date.
+        Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(1762304400000), order.LastModifiedAt);
+        Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(1762304400000), Assert.Single(order.Packages).OccurredAt);
         var textual = Assert.Single(order.Lines, line => line.ExternalLineId == "4765900001");
         Assert.Equal((2m, 100.25m, 20m), (textual.Quantity, textual.UnitPrice, textual.VatRate));
         // An unknown status is carried as sent, not translated.
