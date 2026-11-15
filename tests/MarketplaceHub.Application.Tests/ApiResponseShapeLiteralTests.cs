@@ -34,11 +34,12 @@ public sealed class ApiResponseShapeLiteralTests(ApiPipelineHost fixture) : ICla
     }
 
     // CommissionTariffCompactRows.Of wrote an anonymous { strings, rows, totalCount, page, pageSize }; the record it
-    // returns now writes exactly that.
+    // returns now writes exactly that, followed by the cursor members of unified paging.
     [Fact]
-    public void TheCompactTariffPageIsTheFormerShape()
+    public void TheCompactTariffPageIsTheFormerShapeFollowedByTheCursorMembers()
     {
-        var compact = CommissionTariffCompactRows.Of(new CommissionTariffRowPage([], 7, 1, 2));
-        Assert.Equal(JsonSerializer.Serialize(new { strings = compact.Strings, rows = compact.Rows, totalCount = 7, page = 1, pageSize = 2 }, Api), JsonSerializer.Serialize(compact, Api));
+        var compact = CommissionTariffCompactRows.Of(new CommissionTariffRowPage([], 7, 1, 2) { NextCursor = "c", HasMore = true });
+        var former = JsonSerializer.Serialize(new { strings = compact.Strings, rows = compact.Rows, totalCount = 7, page = 1, pageSize = 2 }, Api);
+        Assert.Equal(former[..^1] + ",\"nextCursor\":\"c\",\"hasMore\":true}", JsonSerializer.Serialize(compact, Api));
     }
 }

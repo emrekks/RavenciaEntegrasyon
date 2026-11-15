@@ -76,6 +76,19 @@ public sealed class ApiPagingContractTests(ApiPipelineHost fixture) : IClassFixt
                 if (format.Name is PagingContract.Cursor or PagingContract.CursorWithPage
                     && (operation.Responses?["200"].Content?["application/json"].Schema as OpenApiSchemaReference)?.Reference.Id?.StartsWith("PageResultOf", StringComparison.Ordinal) != true)
                     problems.Add($"{key}: a cursor list that does not answer PageResult.");
+                // Unified paging: the cursor parameters next to the old ones (deprecated), and every shape it answers
+                // carries the cursor members next to its own.
+                if (format.TakesCursor)
+                {
+                    foreach (var parameter in new[] { "limit", "after" }.Where(parameter => !query.Contains(parameter))) problems.Add($"{key}: no query parameter {parameter}.");
+                    foreach (var parameter in (operation.Parameters ?? []).Where(parameter => parameter.In == ParameterLocation.Query && paging.Contains(parameter.Name!)))
+                        if (parameter.Deprecated != format.Deprecated!.Contains(parameter.Name!)) problems.Add($"{key}: {parameter.Name} deprecated is {parameter.Deprecated}.");
+                    var schema = operation.Responses!["200"].Content!["application/json"].Schema!;
+                    var shapes = schema is OpenApiSchemaReference ? [schema] : schema.OneOf!;
+                    foreach (var shape in shapes.Cast<OpenApiSchemaReference>())
+                        foreach (var member in new[] { "nextCursor", "hasMore", "totalCount" }.Where(member => document.Components!.Schemas![shape.Reference.Id!].Properties?.ContainsKey(member) != true))
+                            problems.Add($"{key}: {shape.Reference.Id} has no {member}.");
+                }
             }
         }
         problems.AddRange(PagingContract.PagedLists.Keys.Where(path => !seen.Contains(path)).Select(path => $"{path} is in PagingContract but not in the document."));
@@ -86,5 +99,19 @@ public sealed class ApiPagingContractTests(ApiPipelineHost fixture) : IClassFixt
         var sendLog = (OpenApiParameter)document.Paths["/api/v1/price-stock-send-log"].Operations![HttpMethod.Get].Parameters!.Single(parameter => parameter.Name == "limit");
         Assert.Null(sendLog.Schema!.Maximum);
         Assert.Contains("brings any other value", sendLog.Description, StringComparison.Ordinal);
+        Assert.Equal(3, PagingContract.PagedLists.Values.Count(format => format.TakesCursor));
+    }
+
+    [Fact]
+    public void OffsetCursor_NamesTheOffsetOfThePageItStarts()
+    {
+        Assert.Equal(2, OffsetCursor.PageIndex(OffsetCursor.Encode(40), 20));
+        Assert.Null(OffsetCursor.PageIndex(" ", 20));
+        Assert.Equal(OffsetCursor.Encode(20), OffsetCursor.Next(0, 20, 21));
+        Assert.Null(OffsetCursor.Next(1, 20, 40));
+        Assert.Throws<ArgumentException>(() => OffsetCursor.PageIndex(OffsetCursor.Encode(30), 20));
+        Assert.Throws<ArgumentException>(() => OffsetCursor.PageIndex("bozuk!", 20));
+        Assert.Throws<ArgumentException>(() => OffsetCursor.PageIndex(OffsetCursor.Encode(20)[..^1] + "x", 20));
+        Assert.Throws<ArgumentException>(() => OffsetCursor.RefuseWhereOrderIsNotTotal(OffsetCursor.Encode(20), orderIsTotal: false));
     }
 }

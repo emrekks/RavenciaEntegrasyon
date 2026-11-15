@@ -204,6 +204,11 @@ public sealed class OpenApiOperationContract : IOpenApiOperationTransformer
             operation.Extensions["x-paging"] = new JsonNodeExtension(JsonValue.Create(format.Value.Name));
             foreach (var parameter in operation.Parameters!.OfType<OpenApiParameter>().Where(parameter => parameter.In == ParameterLocation.Query))
             {
+                // Unified paging: the old parameters stay for old browser tabs (deprecated in the document only); after is
+                // the cursor the previous page answered.
+                if (format.Value.Deprecated?.Contains(parameter.Name ?? string.Empty) == true) parameter.Deprecated = true;
+                if (format.Value.TakesCursor && parameter.Name == "after")
+                    parameter.Description = "The nextCursor of the previous page; wins over the page number. Refused (400) when it is not one, when it falls inside a page of the asked limit, or where the list's order gives no cursor (nextCursor null).";
                 if (parameter.Schema is not OpenApiSchema schema) continue;
                 if (format.Value.RangeOf(parameter.Name ?? string.Empty) is not { } range) continue;
                 var invariant = System.Globalization.CultureInfo.InvariantCulture;

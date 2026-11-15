@@ -616,7 +616,14 @@ public sealed record InvoiceWorkspacePageView(
     IReadOnlyList<string> InvoiceStatuses,
     // Packages per platform code under the tab and every filter except the platform filter, so the platform
     // popover shows how many each platform would bring; every workspace platform is listed, 0 included.
-    IReadOnlyDictionary<string, int>? PlatformCounts = null);
+    IReadOnlyDictionary<string, int>? PlatformCounts = null)
+{
+    /// <summary>Unified paging (API-GUVENLIK-8): the cursor of the next page, null on the last page.</summary>
+    public string? NextCursor { get; init; }
+
+    /// <summary>Unified paging: whether a page follows this one.</summary>
+    public bool HasMore { get; init; }
+}
 public sealed record InvoiceLineView(Guid Id, int LineSequence, string Description, string? Sku, string Unit, decimal Quantity, decimal UnitPrice, decimal DiscountAmount, decimal VatRate, decimal VatAmount, decimal LineTotal);
 public sealed record InvoiceDocumentView(Guid Id, string DocumentType, string Sha256, DateTimeOffset CreatedAt);
 public sealed record InvoiceAttemptView(int AttemptNumber, string Outcome, string? ErrorCode, DateTimeOffset StartedAt, DateTimeOffset? CompletedAt);

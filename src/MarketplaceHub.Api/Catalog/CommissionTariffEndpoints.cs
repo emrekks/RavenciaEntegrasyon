@@ -156,7 +156,7 @@ internal static class CommissionTariffEndpoints
     }
 
     private static async Task<IResult> RowsAsync(Guid connectionId, Guid tariffId, string? search, int? page, int? limit, int? tier, string? cost, string? name, string? barcode, string? model,
-        decimal? minStock, decimal? maxStock, string? category, string? brand, string? sort, string? dir, int? profitTier, decimal? minProfit, decimal? maxProfit, decimal? minShare, decimal? maxShare, string? barcodes, string? shape, HttpContext http, ICommissionTariffService service)
+        decimal? minStock, decimal? maxStock, string? category, string? brand, string? sort, string? dir, int? profitTier, decimal? minProfit, decimal? maxProfit, decimal? minShare, decimal? maxShare, string? barcodes, string? shape, string? after, HttpContext http, ICommissionTariffService service)
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
         // A comma-separated list of exact barcodes, at most a page's worth.
@@ -174,7 +174,24 @@ internal static class CommissionTariffEndpoints
         var filter = new CommissionTariffRowFilter(tier, cost switch { "with" => true, "without" => false, _ => null }, name, barcode, model, minStock, maxStock, category, brand,
             string.IsNullOrEmpty(sort) ? null : sort, dir == "desc", profitTier, minProfit, maxProfit, minShare, maxShare, exact);
         if (shape is not (null or "" or "compact")) return Problem(http, new("SHAPE_INVALID", "shape compact olmalıdır.", 400));
-        var rows = await service.RowsAsync(tenant.TenantId, connectionId, tariffId, search, page ?? 0, limit ?? 50, filter, http.RequestAborted);
+        // Unified paging (PagingContract): after, the nextCursor of the previous page, wins over page. A page of models in
+        // name order (ties by the model key) is total; under a sort or a profit filter the models are ordered in memory
+        // with ties left in the read order, so there is no cursor.
+        var orderIsTotal = filter.Sort is null && !filter.FiltersProfit;
+        if (!orderIsTotal && !string.IsNullOrWhiteSpace(after)) return Problem(http, new("INVALID_REQUEST", "after bu sıralamada kullanılamaz: sıralama eşit değerleri sabit bir sıraya koymuyor; page kullanın.", 400));
+        int? cursorPage;
+        try { cursorPage = OffsetCursor.PageIndex(after, limit ?? 50); }
+        catch (ArgumentException exception) { return Problem(http, new("INVALID_REQUEST", exception.Message, 400)); }
+        var rows = await service.RowsAsync(tenant.TenantId, connectionId, tariffId, search, cursorPage ?? page ?? 0, limit ?? 50, filter, http.RequestAborted);
+        if (rows.Succeeded)
+        {
+            var value = rows.Value!;
+            rows = ServiceResult<CommissionTariffRowPage>.Ok(value with
+            {
+                HasMore = (long)(value.Page + 1) * value.PageSize < value.TotalCount,
+                NextCursor = orderIsTotal ? OffsetCursor.Next(value.Page, value.PageSize, value.TotalCount) : null
+            });
+        }
         // The panel asks for the short form (CommissionTariffCompactRows); without shape the rows come as they always did.
         return shape == "compact" && rows.Succeeded ? Results.Ok(CommissionTariffCompactRows.Of(rows.Value!)) : Result(rows);
     }
