@@ -58,7 +58,13 @@ public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPri
         if (!await db.Products.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken)) return null;
         var (label, sizes) = await SizesAsync(tenantId, productId, cancellationToken);
         var chart = await db.ProductSizeCharts.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId, cancellationToken);
-        var stored = Read(chart?.MeasurementsJson);
+        // KATALOG-13: a colour card without measurements of its own opens with its model's (the set most of the model's
+        // colours hold, ProductModelValues); its own chart row, picture and the marketplaces' chart are not touched.
+        var measurementsJson = chart?.MeasurementsJson ?? await (from product in db.Products.AsNoTracking()
+                                                                 join modelChart in db.ProductModelSizeCharts.AsNoTracking() on new { product.TenantId, ModelId = product.FamilyId!.Value } equals new { modelChart.TenantId, modelChart.ModelId }
+                                                                 where product.TenantId == tenantId && product.Id == productId && product.FamilyId != null
+                                                                 select modelChart.MeasurementsJson).FirstOrDefaultAsync(cancellationToken);
+        var stored = Read(measurementsJson);
         var measurements = stored is null ? null : new SizeChartMeasurementsView(stored.Columns,
             stored.Rows.Select(row => new SizeChartMeasurementRowView(row.Size, row.Values.Select(value => decimal.TryParse(value, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.GetCultureInfo("tr-TR"), out var number) ? number : (decimal?)null).ToList())).ToList());
         var url = chart?.FileAssetId is Guid assetId ? await UrlAsync(tenantId, assetId, cancellationToken) : null;
