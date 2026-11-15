@@ -190,9 +190,15 @@ describe('editor seeding and saving (characterization)', () => {
     expect(fixture.state.writes[0].ifMatch).toBe('"v1"')
     expect(titleInput().value).toBe('Yeni Ad')
     expect(container.querySelector('.product-stale-banner')).toBeNull()
-    // Found while writing this test (kept as it is by the split, reported): the new version re-runs the option
-    // inference of the seed, which retakes the snapshot, so the form reads clean although the title edit is unsaved.
+    // W1 (scan 2026-11-15): the title edit is still unsaved, so the form still reads dirty; the snapshot moved only for
+    // the picture the removal saved, so taking the title edit back leaves nothing unsaved.
+    expect(unloadBlocked()).toBe(true)
+    setValue(titleInput(), 'Yonca Desen Elbise')
+    await settle(2)
     expect(unloadBlocked()).toBe(false)
+    setValue(titleInput(), 'Yeni Ad')
+    await settle(2)
+    expect(unloadBlocked()).toBe(true)
     await save()
     const patch = fixture.state.writes.find(write => write.method === 'PATCH')!
     expect(patch.ifMatch).toBe('"v2"')

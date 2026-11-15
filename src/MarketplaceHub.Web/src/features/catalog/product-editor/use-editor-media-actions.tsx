@@ -7,7 +7,7 @@ import { PRODUCT_IMAGE_ACCEPT, toProductImage } from './product-image-file'
 import { pinSizeChartLast, replaceSizeChart, sizeChartKey } from './size-chart-order'
 import { historyStateWithCopyRemovedMedia, withCopyRemovedMedia } from '../product-copy-media-removals'
 import { clearAllMediaFeedbackText, familyMediaClearPlan, withPendingFamilyMediaRemovals } from '../family-media-clear'
-import { editorDataStamp, editorSeedKey } from '../product-editor-state'
+import { editorDataStamp, editorSeedKey, editorSnapshotWithSavedMedia } from '../product-editor-state'
 import { Product } from '../shared'
 import { queryKeys } from '../../../shared/api/query-keys'
 import { ProductFamilyMediaItem } from './editor-types'
@@ -27,7 +27,7 @@ import type { VariantActionsResult } from './use-variant-actions'
 import type { VariantCodeActionsResult } from './use-variant-code-actions'
 
 export function useEditorMediaActions(c: EditorProps & EditorStateResult & EditorMediaPointerResult & EditorDirtyStateResult & VariantCodeMenusResult & EditorDataResult & EditorSeedResult & VariantRowDragResult & VariantMediaAutoSaveResult & EditorViewResult & AttributeActionsResult & VariantActionsResult & VariantCodeActionsResult) {
-  const { editProductId, client, duplicateProductId, copyRemovedMedia, setNotice, submitting, form, setVariantRows, initializedEditProductKey, mediaFiles, setMediaFiles, setDeletingProductMediaKey, mediaRemovalConfirmation, setMediaRemovalConfirmation, pendingFamilyMediaRemovals, setPendingFamilyMediaRemovals, setFamilyMediaOrder, setFamilyMediaOrderDirty, setDraggedMedia, setDragOverMedia, setMediaStripOrder, sizeChartUrl, setSizeChartUrl, initialSizeChartUrl, sizeChartBeforeFamilyRemoval, setSizeChartPicking, chartKey, setSnapshotRequest, mediaFileInputRef, initialEditMediaUrl, initialEditVariantMediaRefs, showFeedback, updateField, mediaTouch, suppressMediaClick, editorDirty, productToEdit, mediaUrls, adoptOwnProductWrite, visibleMediaUrls, mediaStrip, familyOnlyMediaItems, hasMediaTiles } = c
+  const { editProductId, client, duplicateProductId, copyRemovedMedia, setNotice, submitting, form, setVariantRows, initializedEditProductKey, mediaFiles, setMediaFiles, setDeletingProductMediaKey, mediaRemovalConfirmation, setMediaRemovalConfirmation, pendingFamilyMediaRemovals, setPendingFamilyMediaRemovals, setFamilyMediaOrder, setFamilyMediaOrderDirty, setDraggedMedia, setDragOverMedia, setMediaStripOrder, sizeChartUrl, setSizeChartUrl, initialSizeChartUrl, sizeChartBeforeFamilyRemoval, setSizeChartPicking, chartKey, setSnapshotRequest, setSeedSnapshot, mediaFileInputRef, initialEditMediaUrl, initialEditVariantMediaRefs, showFeedback, updateField, mediaTouch, suppressMediaClick, editorDirty, productToEdit, mediaUrls, adoptOwnProductWrite, standOnOwnWrite, visibleMediaUrls, mediaStrip, familyOnlyMediaItems, hasMediaTiles } = c
   // A WebP, or a JPEG/PNG over 6 MB, is turned into a JPEG here (product-image-file.ts) instead of being refused.
   async function handleMediaFiles(files: File[]) {
     const accepted: File[] = []
@@ -214,13 +214,22 @@ export function useEditorMediaActions(c: EditorProps & EditorStateResult & Edito
         initialSizeChartUrl.current = null
         setSizeChartUrl(null)
       }
-      // The deletion is saved already: a form that had no other edits stays "clean" afterwards.
+      // The deletion is saved already: a form that had no other edits stays "clean" afterwards; one with other edits
+      // keeps them unsaved, its snapshot losing the removed picture only (W1).
       if (!editorDirty) setSnapshotRequest(value => value + 1)
+      else setSeedSnapshot(current => current == null ? current : editorSnapshotWithSavedMedia(current, {
+        mediaUrls: value => value.split(/\r?\n/u).filter(item => mediaImageKey(item) !== targetKey).join('\n'),
+        rowMediaRefs: (_rowKey, references) => references.filter(removeVariantReference),
+        familyMediaOrder: order => order.filter(item => mediaImageKey(item) !== targetKey),
+        ...(removesSizeChart ? { sizeChartUrl: () => null } : {})
+      }))
 
       const cachedProduct = client.getQueryData<Product>(queryKeys.product(product.id)) ?? product
       const cachedMediaUrls = (cachedProduct.mediaUrls ?? []).filter(item => mediaImageKey(item) !== targetKey)
       const productVersion = result.productVersions[product.id] ?? result.version
-      initializedEditProductKey.current = editorSeedKey('edit', product.id, productVersion, editorDataStamp(cachedProduct.variants))
+      const removalKey = editorSeedKey('edit', product.id, productVersion, editorDataStamp(cachedProduct.variants))
+      if (editorDirty) standOnOwnWrite(removalKey)
+      else initializedEditProductKey.current = removalKey
       client.setQueryData<Product>(queryKeys.product(product.id), {
         ...cachedProduct,
         version: productVersion,

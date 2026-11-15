@@ -76,6 +76,24 @@ export function editorSnapshotWithWebColor(snapshot: string, webColor: EditorWeb
   return JSON.stringify({ ...parsed, webColor: [webColor.autoEnabled, webColor.manualValueId] })
 }
 
+// The editor's own picture write (a saved picture removed, picture assignments saved on their own) over a form with
+// other unsaved edits: the snapshot moves for the pictures that write saved and nothing else, so those edits stay
+// unsaved and taking them back leaves the form clean (W1, scan 2026-11-15).
+export function editorSnapshotWithSavedMedia(snapshot: string, saved: {
+  mediaUrls?: (value: string) => string
+  rowMediaRefs?: (rowKey: string, references: string[]) => string[]
+  familyMediaOrder?: (order: string[]) => string[]
+  sizeChartUrl?: (url: string | null) => string | null
+}) {
+  const parsed = JSON.parse(snapshot) as { form: Record<string, string>; rows: unknown[][]; familyMediaOrder: string[]; sizeChartUrl?: string | null }
+  if (saved.mediaUrls) parsed.form = { ...parsed.form, mediaUrls: saved.mediaUrls(parsed.form.mediaUrls ?? '') }
+  const rowMediaRefs = saved.rowMediaRefs
+  if (rowMediaRefs) parsed.rows = parsed.rows.map(row => row.map((value, index) => index === 10 ? rowMediaRefs(String(row[0]), value as string[]) : value))
+  if (saved.familyMediaOrder) parsed.familyMediaOrder = saved.familyMediaOrder(parsed.familyMediaOrder)
+  if (saved.sizeChartUrl && 'sizeChartUrl' in parsed) parsed.sizeChartUrl = saved.sizeChartUrl(parsed.sizeChartUrl ?? null)
+  return JSON.stringify(parsed)
+}
+
 // Stock changes the editor sends after the product itself was saved: only rows whose stock the user changed, each as
 // an absolute value against the stock loaded into the form. A row without a loaded value is a new variant: its stock
 // went with the variant itself (editorOpeningStock), saved by the server with its Açılış Stoğu row, so it is not sent again.
