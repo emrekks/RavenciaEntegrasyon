@@ -1,6 +1,6 @@
 import { editorOpenedDesi } from '../product-editor-state'
 import { platformUpdatePlan, type PlatformUpdateField } from '../product-editor/platform-update-fields'
-import { missingRequiredEditorFields, requiredEditorFieldLabels, type RequiredEditorField } from '../product-editor/required-fields'
+import { editorWarrantyText, missingRequiredEditorFields, requiredEditorFieldLabels, type RequiredEditorField } from '../product-editor/required-fields'
 import type { MarketplaceConnection, Product } from '../shared'
 import { isTrendyolHeld } from '../trendyol-unapproved'
 import { bulkPublishStatusBucket, productConnectionStatus } from './bulk-publish-status'
@@ -38,8 +38,9 @@ export function bulkPlatformUpdateMenuState(records: ReadonlyArray<Pick<Product,
   return anyLive ? { disabled: false, detail: 'Seçili ürünlerin güncellemesini gönder' } : { disabled: true, detail: 'Seçili ürünlerin hiçbiri pazar yerinde yayında değil' }
 }
 
-// The editor's required fields, read from a saved product as the editor fills its form from it (an empty warranty or
-// delivery time opens as 0 and 1 there, so they are filled); the codes of a card with variants are on its rows.
+// The editor's required fields, read from a saved product as the editor fills its form from it (an empty delivery time
+// opens as 1 there; an empty warranty stays empty, as 0 and empty differ since 15 Nov 2026); the codes of a card with
+// variants are on its rows.
 export function productRequiredGaps(product: Pick<Product, 'title' | 'brandId' | 'categoryId' | 'modelCode' | 'variants' | 'defaultListPrice' | 'defaultSalePrice' | 'warrantyMonths' | 'deliveryDays'>): RequiredEditorField[] {
   const primary = product.variants[0]
   const desi = editorOpenedDesi(product.variants)
@@ -53,7 +54,7 @@ export function productRequiredGaps(product: Pick<Product, 'title' | 'brandId' |
     baseSku: primary?.sku ?? '',
     barcode: primary?.barcode ?? '',
     desi: desi == null ? '' : String(desi),
-    warrantyMonths: String(product.warrantyMonths ?? 0),
+    warrantyMonths: editorWarrantyText(product.warrantyMonths),
     deliveryDays: String(product.deliveryDays ?? 1),
     listPrice: String(listPrice),
     salePrice: String(salePrice)

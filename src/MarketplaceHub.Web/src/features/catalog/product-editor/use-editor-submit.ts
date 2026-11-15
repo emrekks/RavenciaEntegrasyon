@@ -18,7 +18,7 @@ import { keepPendingCreateMedia, pendingVariantMediaRefs } from './pending-creat
 import { productDeliveryDays } from './product-delivery-days'
 import { editorOfferPriceReason, platformUpdateWritesOffers } from './platform-update-fields'
 import { withLatestVariantLinks } from './publish-card-variants'
-import { editorWarrantyMonths, requiredEditorFieldLabels } from './required-fields'
+import { editorWarrantyMonths, editorWarrantyUpdate, requiredEditorFieldLabels } from './required-fields'
 import { parseProductDesi } from '../product-desi'
 import { pinSizeChartLast } from './size-chart-order'
 import { productMediaUrlIssue } from '../product-media-url'
@@ -202,7 +202,7 @@ export function useEditorSubmit(c: EditorProps & EditorStateResult & EditorMedia
           categoryId: form.categoryId || null,
           defaultListPrice: fallbackListPrice,
           defaultSalePrice: fallbackSalePrice,
-          warrantyMonths: Number(form.warrantyMonths || 0),
+          ...editorWarrantyUpdate(form.warrantyMonths),
           deliveryDays: productDeliveryDays(form.deliveryDays),
           vatRate: savedVatRate,
           vatInclusion: savedVatInclusion,

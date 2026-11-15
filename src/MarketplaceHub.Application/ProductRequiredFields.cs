@@ -4,8 +4,8 @@ namespace MarketplaceHub.Application;
 // every card that is not a draft: a draft may be incomplete and is never sent, a card on sale or closed may not be. Ürün
 // Adı, Marka, Panel Kategorisi, Model Kodu, Stok Kodu and Barkod (on every variant row), Desi (above 0 on every row),
 // Garanti Süresi (0 = no warranty; empty is missing), Teslimat Süresi, Liste Fiyatı and Satış Fiyatı (above 0, a row's
-// own price else the card's). The messages are the editor's. Garanti Süresi can only be told missing from what a save
-// sends (the card keeps 0 and empty alike as no warranty), so a stored card counts it as given.
+// own price else the card's). The messages are the editor's. The card stores 0 as 0 and empty as null (owner, 15 Nov
+// 2026), so a stored card's empty warranty is missing too.
 public static class ProductRequiredFields
 {
     public const string Code = "PRODUCT_REQUIRED_FIELDS_MISSING";

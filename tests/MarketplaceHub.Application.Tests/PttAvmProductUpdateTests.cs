@@ -56,8 +56,12 @@ public sealed class PttAvmProductUpdateTests
         var both = PttAvmProductUpdateComposer.Build(Family(), ["WARRANTY", "DELIVERY"], 24, 30).Draft!;
         Assert.Equal(24, both.WarrantyDuration);
         Assert.Equal(30, both.EstimatedCourierDelivery);
-        // No warranty on the card is none (0 months), never left unknown.
-        Assert.Equal(0, PttAvmProductUpdateComposer.Build(Family(), ["WARRANTY"], null, null).Draft!.WarrantyDuration);
+        // 0 on the card (no warranty) is sent as 0, as the previous code sent the null it stored for it; an empty
+        // warranty (15 Nov 2026: not 0) is a missing required field, refused instead of sent as 0.
+        Assert.Equal(0, PttAvmProductUpdateComposer.Build(Family(), ["WARRANTY"], 0, null).Draft!.WarrantyDuration);
+        Assert.Equal(MarketplaceHub.Infrastructure.Persistence.ProductWarranty.RequiredCode, PttAvmProductUpdateComposer.Build(Family(), ["WARRANTY"], null, null).Error!.Code);
+        // Not picked: an empty warranty is not read at all.
+        Assert.Null(PttAvmProductUpdateComposer.Build(Family(), ["DELIVERY"], null, 2).Error);
 
         Assert.Equal("PTTAVM_WARRANTY_INVALID", PttAvmProductUpdateComposer.Build(Family(), ["WARRANTY"], 36, 2).Error!.Code);
         Assert.Equal("DELIVERY_DAYS_REQUIRED", PttAvmProductUpdateComposer.Build(Family(), ["DELIVERY"], 12, null).Error!.Code);

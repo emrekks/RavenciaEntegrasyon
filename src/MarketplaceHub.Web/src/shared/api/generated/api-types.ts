@@ -3947,6 +3947,7 @@ export type UpdateProductCommand = {
   placeholderVariantIdsToDelete?: null | string[]
   familySharedFields?: null | string[]
   loadedFamilyVersions?: null | Record<string, number | string>
+  clearWarrantyMonths?: boolean
 }
 
 export type UpdateSyncPolicyCommand = {

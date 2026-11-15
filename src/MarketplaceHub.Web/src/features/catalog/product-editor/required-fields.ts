@@ -61,6 +61,20 @@ export function editorWarrantyMonths(value: string): number | null {
   return value.trim() === '' ? null : Number(value)
 }
 
+// Garanti Süresi as the form shows a saved card's (owner, 15 Nov 2026: "0 ile boş farklı"): 0 is "0" (no warranty), an
+// empty warranty stays empty so the editor asks for it (a required field); a new form starts at "0".
+export function editorWarrantyText(months: number | null | undefined) {
+  return months == null ? '' : String(months)
+}
+
+// Garanti Süresi as an edit save sends it: the months (0 included), or for an emptied field an explicit clear. Leaving
+// warrantyMonths out (or null) keeps the card's value on the server, so an emptied field must say so; only a draft can
+// be saved that way (a card on sale with it empty is refused as a missing required field).
+export function editorWarrantyUpdate(value: string): { warrantyMonths: number } | { warrantyMonths: null; clearWarrantyMonths: true } {
+  const months = editorWarrantyMonths(value)
+  return months === null ? { warrantyMonths: null, clearWarrantyMonths: true } : { warrantyMonths: months }
+}
+
 export function requiredFieldsMessage(missing: readonly RequiredEditorField[]) {
   return `Zorunlu alanları doldurun: ${missing.map(field => requiredEditorFieldLabels[field]).join(', ')}.`
 }

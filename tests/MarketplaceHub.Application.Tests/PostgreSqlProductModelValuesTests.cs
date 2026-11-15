@@ -403,7 +403,7 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         {
             await transaction.CommitAsync();
         }
-        Assert.Null((await ModelOfAsync(db, siyah.Id)).WarrantyMonths);
+        Assert.Equal(0, (await ModelOfAsync(db, siyah.Id)).WarrantyMonths);
     }
 
     // F5: any failure of the model refresh after a save that stands (outside a caller's transaction) is recorded as the

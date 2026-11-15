@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { cardPrices, priceInputNumber } from './card-prices'
-import { missingRequiredEditorFields, requiredFieldMessage, requiredFieldsMessage, type RequiredFieldsForm } from './required-fields'
+import { editorWarrantyText, editorWarrantyUpdate, missingRequiredEditorFields, requiredFieldMessage, requiredFieldsMessage, type RequiredFieldsForm } from './required-fields'
 
 describe('card prices', () => {
   it('reads a decimal comma, a point and thousands points', () => {
@@ -47,5 +47,18 @@ describe('required editor fields', () => {
   it('does not ask for the card Stok Kodu and Barkod on a card with variants, but does without them', () => {
     expect(missingRequiredEditorFields({ ...complete, baseSku: '', barcode: '' }, { automaticBarcodes: false, hasVariants: true })).toEqual([])
     expect(missingRequiredEditorFields({ ...complete, baseSku: '', barcode: '' }, { automaticBarcodes: false, hasVariants: false })).toEqual(['baseSku', 'barcode'])
+  })
+})
+
+// Owner, 15 Nov 2026: "0 ile boş farklı; boşsa doldurmasını istesin ama default 0 zaten".
+describe('Garanti Süresi', () => {
+  it('shows a saved 0 as 0 and an empty warranty empty', () => {
+    expect([editorWarrantyText(0), editorWarrantyText(24), editorWarrantyText(null), editorWarrantyText(undefined)]).toEqual(['0', '24', '', ''])
+  })
+
+  it('sends the months, 0 included, and an emptied field as an explicit clear', () => {
+    expect(editorWarrantyUpdate('0')).toEqual({ warrantyMonths: 0 })
+    expect(editorWarrantyUpdate('24')).toEqual({ warrantyMonths: 24 })
+    expect(editorWarrantyUpdate(' ')).toEqual({ warrantyMonths: null, clearWarrantyMonths: true })
   })
 })

@@ -679,7 +679,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         foreach (var product in products)
         {
             var productRows = rows.GetValueOrDefault(product.Id) ?? [];
-            var gaps = ProductRequiredFields.Missing(new ProductRequiredFields.Card(product.Title, product.BrandId, product.CategoryId, WarrantyGiven: true, DeliveryDaysGiven: product.DeliveryDays is not null,
+            var gaps = ProductRequiredFields.Missing(new ProductRequiredFields.Card(product.Title, product.BrandId, product.CategoryId, WarrantyGiven: product.WarrantyMonths is not null, DeliveryDaysGiven: product.DeliveryDays is not null,
                 product.DefaultListPrice, product.DefaultSalePrice, productRows, VatGiven: product.VatRate is not null && !string.IsNullOrWhiteSpace(product.VatInclusion)));
             if (gaps.Count > 0) result.Add(new(product, gaps, productRows.Select(row => row.ModelCode?.Trim()).FirstOrDefault(code => !string.IsNullOrEmpty(code))));
         }
@@ -1025,6 +1025,13 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         return ServiceResult<ProductDeleteResult>.Ok(new(products.Count, pendingJobs.Count));
     }
 
+    internal const string WarrantyClearConflictMessage = "Garanti süresi aynı kayıtta hem girilip hem boşaltılamaz.";
+
+    // Garanti Süresi after an editor save (owner, 15 Nov 2026: 0 and empty differ): the value sent, 0 included; empty on
+    // an explicit ClearWarrantyMonths (a draft saved with the field emptied); else the card's own.
+    private static int? WarrantyAfterSave(UpdateProductCommand command, int? current) =>
+        command.WarrantyMonths ?? (command.ClearWarrantyMonths ? null : current);
+
     public async Task<ServiceResult<ProductView>> CreateProductAsync(Guid tenantId, CreateProductCommand command, CancellationToken cancellationToken, Guid? actorUserId = null, string? correlationId = null)
     {
         if (command.DefaultListPrice is < 0 || command.DefaultSalePrice is < 0) return Invalid<ProductView>("prices", "Fiyat negatif olamaz.");
@@ -1100,7 +1107,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         if (createBarcodeClashes.Count > 0) return CodeConflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkod başka bir üründe kullanılıyor", createBarcodeClashes);
 
         var now = timeProvider.GetUtcNow();
-        var productStatus = requestedStatus ?? ProductStatus.Draft; var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenantId, Title = command.Title.Trim(), Description = command.Description.Trim(), BrandId = command.BrandId, CategoryId = command.CategoryId, DefaultListPrice = command.DefaultListPrice, DefaultSalePrice = command.DefaultSalePrice, WarrantyMonths = command.WarrantyMonths is > 0 ? command.WarrantyMonths : null, DeliveryDays = command.DeliveryDays ?? ProductDeliveryDays.Default, TrendyolWebColorValueId = command.TrendyolWebColorValueId is Guid createWebColor && createWebColor != Guid.Empty ? createWebColor : null, VatRate = command.VatRate, VatInclusion = command.VatRate is null ? null : NormalizeVatInclusion(command.VatInclusion), Status = productStatus, CreatedAt = now, UpdatedAt = now };
+        var productStatus = requestedStatus ?? ProductStatus.Draft; var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenantId, Title = command.Title.Trim(), Description = command.Description.Trim(), BrandId = command.BrandId, CategoryId = command.CategoryId, DefaultListPrice = command.DefaultListPrice, DefaultSalePrice = command.DefaultSalePrice, WarrantyMonths = command.WarrantyMonths, DeliveryDays = command.DeliveryDays ?? ProductDeliveryDays.Default, TrendyolWebColorValueId = command.TrendyolWebColorValueId is Guid createWebColor && createWebColor != Guid.Empty ? createWebColor : null, VatRate = command.VatRate, VatInclusion = command.VatRate is null ? null : NormalizeVatInclusion(command.VatInclusion), Status = productStatus, CreatedAt = now, UpdatedAt = now };
         if (command.Variants.Any(variant => variant.CostPrice is < 0)) return Invalid<ProductView>("variants", "Maliyet negatif olamaz.");
         var variants = command.Variants.Select((variant, index) => new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = product.Id, SortOrder = index, Sku = variant.Sku.Trim(), SkuNormalized = Normalize(variant.Sku), Barcode = NullTrim(variant.Barcode), BarcodeNormalized = NormalizeBarcode(variant.Barcode), ModelCode = NullTrim(variant.ModelCode), OptionSignature = Signature(variant.Options), Status = productStatus, Weight = PositiveOrNull(variant.Weight), Width = PositiveOrNull(variant.Width), Height = PositiveOrNull(variant.Height), Length = PositiveOrNull(variant.Length), Desi = PositiveOrNull(variant.Desi), CostPrice = PositiveOrNull(variant.CostPrice), DefaultListPrice = variant.DefaultListPrice, DefaultSalePrice = variant.DefaultSalePrice, CreatedAt = now, UpdatedAt = now }).ToList();
         db.Products.Add(product);
@@ -1472,6 +1479,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var effectiveSalePrice = command.DefaultSalePrice ?? product.DefaultSalePrice;
         if (command.DefaultListPrice is < 0 || command.DefaultSalePrice is < 0) return Invalid<ProductView>("prices", "Fiyat negatif olamaz.");
         if (command.WarrantyMonths is < 0 or > 240) return Invalid<ProductView>("warrantyMonths", "Garanti süresi 0-240 ay arasında olmalıdır.");
+        if (command.ClearWarrantyMonths && command.WarrantyMonths is not null) return Invalid<ProductView>("warrantyMonths", WarrantyClearConflictMessage);
         if (command.DeliveryDays is { } deliveryDays && !ProductDeliveryDays.IsValid(deliveryDays)) return Invalid<ProductView>("deliveryDays", ProductDeliveryDays.InvalidMessage);
         // A card stays a draft only while it is one (ProductDraftPolicy); a draft may still lack its KDV and the category's
         // required attributes. Only an explicit "DRAFT" (Taslak Olarak Kaydet) relaxes the checks; a save that leaves out
@@ -1525,8 +1533,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             variantIdsToDelete.AddRange(await RemovablePlaceholderVariantIdsAsync(tenantId, existingVariants, placeholderIdsToDelete, variantIdsToDelete, variantsToCreate.Count, variantUpdates.Select(update => update.Id).ToHashSet(), cancellationToken));
         // A card that stays (or goes) on sale or closed keeps every required field (ProductRequiredFields): a save that
         // would leave one empty is refused, never turned into a draft. Checked on the rows the save sends (the editor sends
-        // every row of the model), else on the card's stored rows. A left-out price, desi or delivery days keeps the stored
-        // one; a left-out warranty keeps the card's, which reads 0 and empty alike, so it counts as given.
+        // every row of the model), else on the card's stored rows. A left-out price, desi, delivery days or warranty keeps
+        // the stored one; the warranty is missing when it is empty after the save (0 is "no warranty", a value).
         var savedStatus = requestedStatus ?? product.Status;
         if (!ProductDraftPolicy.IsDraft(savedStatus))
         {
@@ -1542,7 +1550,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             if (requiredRows.Count == 0)
                 requiredRows = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == id && !variantIdsToDelete.Contains(x.Id))
                     .Select(x => new ProductRequiredFields.Row(x.Sku, x.Barcode, x.ModelCode, x.Desi, x.DefaultListPrice, x.DefaultSalePrice)).ToListAsync(cancellationToken);
-            var updateGaps = ProductRequiredFields.Missing(new ProductRequiredFields.Card(command.Title, command.BrandId, command.CategoryId, WarrantyGiven: true, DeliveryDaysGiven: (command.DeliveryDays ?? product.DeliveryDays) is not null, cardListPrice, cardSalePrice, requiredRows));
+            var updateGaps = ProductRequiredFields.Missing(new ProductRequiredFields.Card(command.Title, command.BrandId, command.CategoryId, WarrantyGiven: WarrantyAfterSave(command, product.WarrantyMonths) is not null, DeliveryDaysGiven: (command.DeliveryDays ?? product.DeliveryDays) is not null, cardListPrice, cardSalePrice, requiredRows));
             if (updateGaps.Count > 0) return ProductRequiredFields.Refusal<ProductView>(updateGaps);
         }
         // KATALOG-1: the model code is the model's, not a row's. A save that writes a row's code (or adds rows) leaves every
@@ -1888,8 +1896,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             db.ProductChangeEntries.Add(cardPriceChange);
         if (statusChanged && ProductChangeLog.Status(tenantId, id, null, previousStatus, productStatus, ProductChangeSources.Editor, actorUserId, null, correlation, changedAt) is { } statusChange)
             db.ProductChangeEntries.Add(statusChange);
-        // Sent only by the editor: 0 clears the warranty; a caller that leaves it out keeps it.
-        if (command.WarrantyMonths is int warrantyMonths) product.WarrantyMonths = warrantyMonths > 0 ? warrantyMonths : null;
+        // Garanti Süresi: 0 ("no warranty") is kept as 0; a caller that leaves it out keeps the card's.
+        product.WarrantyMonths = WarrantyAfterSave(command, product.WarrantyMonths);
         // Teslimat Süresi: a caller that leaves it out keeps the card's days.
         if (command.DeliveryDays is int deliveryDaysValue) product.DeliveryDays = deliveryDaysValue;
         // Sent only by the editor: Guid.Empty = automatic (each variant's own Renk), a value = that colour on Trendyol.
@@ -3338,7 +3346,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 CategoryId = command.CategoryId,
                 DefaultListPrice = command.DefaultListPrice ?? opened.DefaultListPrice,
                 DefaultSalePrice = command.DefaultSalePrice ?? opened.DefaultSalePrice,
-                WarrantyMonths = command.WarrantyMonths is int warranty ? (warranty > 0 ? warranty : null) : opened.WarrantyMonths,
+                WarrantyMonths = WarrantyAfterSave(command, opened.WarrantyMonths),
                 DeliveryDays = command.DeliveryDays ?? opened.DeliveryDays ?? ProductDeliveryDays.Default,
                 TrendyolWebColorValueId = null,
                 VatRate = command.VatRate ?? opened.VatRate,

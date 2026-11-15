@@ -28,10 +28,10 @@ public sealed class FamilyModelFieldsPostgreSqlTests(PostgreSqlTenantIsolationFi
         var brandId = Guid.CreateVersion7();
         Product Card(string colour, string title, string description, int? warranty, int minute) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = title, Description = description, CategoryId = categoryId, BrandId = brandId, VatRate = 10m, VatInclusion = "INCLUDED", WarrantyMonths = warranty, DeliveryDays = 1, Status = ProductStatus.Active, CreatedAt = now.AddMinutes(minute), UpdatedAt = now, Version = 1 };
         // The Gri card holds the Zümrüt card's name (a copy), Lacivert a name without colour, a description and a warranty of its own
-        // (no warranty is stored as null).
-        var gri = Card("Gri", $"Kadın Zümrüt {Name}", "Model açıklaması", null, 0);
+        // (no warranty is stored as 0 since 15 Nov 2026).
+        var gri = Card("Gri", $"Kadın Zümrüt {Name}", "Model açıklaması", 0, 0);
         var lacivert = Card("Lacivert", $"Kadın {Name}", "Lacivert eski açıklama", 24, 1);
-        var zumrut = Card("Zümrüt", $"Kadın Zümrüt {Name}", "Model açıklaması", null, 2);
+        var zumrut = Card("Zümrüt", $"Kadın Zümrüt {Name}", "Model açıklaması", 0, 2);
         var cards = new[] { (gri, "Gri"), (lacivert, "Lacivert"), (zumrut, "Zümrüt") };
         var variants = new List<ProductVariant>();
         var offers = new List<ChannelOffer>();
@@ -72,7 +72,7 @@ public sealed class FamilyModelFieldsPostgreSqlTests(PostgreSqlTenantIsolationFi
             var opened = (await service.GetProductAsync(tenant.Id, card.Id, CancellationToken.None)).Value!;
             Assert.Equal($"Kadın {colour} {Name}", opened.Title);
             Assert.Equal("Model açıklaması", opened.Description);
-            Assert.Null(opened.WarrantyMonths);
+            Assert.Equal(0, opened.WarrantyMonths);
         }
 
         // Kaydet from the Lacivert row with the fields as the editor showed them (the owner touched nothing): every card
@@ -114,7 +114,7 @@ public sealed class FamilyModelFieldsPostgreSqlTests(PostgreSqlTenantIsolationFi
                 var product = stored.Single(item => item.Id == card.Id);
                 Assert.Equal(title(colour), product.Title);
                 Assert.Equal("Model açıklaması", product.Description);
-                Assert.Null(product.WarrantyMonths);
+                Assert.Equal(0, product.WarrantyMonths);
                 Assert.Equal((10m, "INCLUDED"), (product.VatRate, product.VatInclusion));
             }
             // The variant rows stay each variant's own: codes, barcodes, colour/size and prices, and every marketplace price.
@@ -125,7 +125,7 @@ public sealed class FamilyModelFieldsPostgreSqlTests(PostgreSqlTenantIsolationFi
         }
     }
 
-    // What the editor sends: an empty warranty goes as 0 (Number(form.warrantyMonths || 0)), which the card stores as null.
+    // What the editor sends: the warranty it shows, 0 (no warranty) included, which the card stores as 0.
     private static UpdateProductCommand Command(ProductView shown, string title) =>
         new(title, shown.Description, shown.BrandId, shown.CategoryId, WarrantyMonths: shown.WarrantyMonths ?? 0, VatRate: shown.VatRate, VatInclusion: shown.VatInclusion, DeliveryDays: shown.DeliveryDays, FamilySharedFields: ProductFamilySharedFields.All);
 }

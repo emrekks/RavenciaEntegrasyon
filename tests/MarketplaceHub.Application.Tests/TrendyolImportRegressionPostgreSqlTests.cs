@@ -114,6 +114,8 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
             Assert.Equal(seed.BrandId, card.Product.BrandId);
             Assert.Equal(seed.CategoryId, card.Product.CategoryId);
             Assert.Equal(10m, card.Product.VatRate);
+            // A listing carries no panel warranty: the new card starts at 0 (no warranty), as a new editor form does.
+            Assert.Equal(0, card.Product.WarrantyMonths);
             Assert.Equal(Sizes.Length, card.Variants.Count);
             foreach (var (size, sizeIndex) in Sizes.Select((size, index) => (size, index)))
             {
@@ -203,11 +205,17 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
 
         // "Tekil ürün çekimi" with "Mevcut Ürün Bilgilerini Güncelle" takes Trendyol's title over the owner's edit
         // (ProductImportMergePolicy.OverwriteLocalChanges, owner decision 7 Nov), and still keeps the owner's pictures.
+        // The card's warranty (24 here) is never touched: a listing carries none.
+        await using (var db = fixture.CreateContext())
+            await db.Products.Where(row => row.Id == siyah.ProductId).ExecuteUpdateAsync(s => s.SetProperty(row => row.WarrantyMonths, 24));
         await RunAsync(seed, new TrendyolCatalogPort(Read(changed)), $"{{\"productLookup\":\"{ModelCode}\",\"updateExistingProducts\":true}}");
         Assert.Equal(placementBefore, await PlacementAsync(seed));
         Assert.Equal(siyah.Media, await MediaRowsAsync(seed, onlyProductId: siyah.ProductId));
         await using (var db = fixture.CreateContext())
-            Assert.Equal("Trendyol Siyah Başlık", (await db.Products.AsNoTracking().SingleAsync(row => row.Id == siyah.ProductId)).Title);
+        {
+            var card = await db.Products.AsNoTracking().SingleAsync(row => row.Id == siyah.ProductId);
+            Assert.Equal(("Trendyol Siyah Başlık", (int?)24), (card.Title, card.WarrantyMonths));
+        }
 
         // The lookup cleared the card's marks; a later changed full import still keeps the pictures, because the card
         // gallery holds the editor's ORDERED_ rows (MediaIsUserManagedAsync).

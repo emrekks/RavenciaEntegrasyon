@@ -22,7 +22,7 @@ const fixture = vi.hoisted(() => {
   }
   const variant = () => ({ id: 'v1', productId: 'p1', version: 1, sku: 'SKU-1', barcode: 'B-1', modelCode: 'M-1', optionSignature: 'Renk: Bej', status: 'ACTIVE', weight: null, width: null, height: null, length: null, desi: 1, costPrice: null, onHand: 0, available: 0, inventoryVersion: 1, offerId: null, listPrice: 100, salePrice: 90, currency: 'TRY', offerStatus: null, priceVersion: null, offerVersion: null, vatRate: 20, vatInclusion: 'INCLUDED', roundingMode: null, safetyStock: 0, mediaUrls: [...state.variantMedia], options: { Renk: 'Bej' }, attributes: [] })
   const product = () => ({
-    id: 'p1', version: state.version, title: 'Ürün', description: '', brandId: 'b1', categoryId: 'c1', status: 'ACTIVE', updatedAt: '2026-11-06T15:00:00Z',
+    id: 'p1', version: state.version, title: 'Ürün', description: '', brandId: 'b1', categoryId: 'c1', warrantyMonths: 0, status: 'ACTIVE', updatedAt: '2026-11-06T15:00:00Z',
     variants: [variant()], primaryImageUrl: state.productMedia[0] ?? null, totalStock: 0, startingPrice: 90, currency: 'TRY', modelCode: 'M-1', activePlatforms: [],
     mediaUrls: [...new Set([...state.productMedia, ...state.variantMedia])],
     familyMediaUrls: [...state.productMedia],

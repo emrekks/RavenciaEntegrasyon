@@ -211,7 +211,7 @@ public sealed class ProductRequiredFieldsPostgreSqlTests(PostgreSqlTenantIsolati
     }
 
     // Klasik içe aktarma (owner, 13 Nov 2026): the file's Garanti Süresi (Ay) and Teslimat Süresi (Gün) go to the new card
-    // as the editor stores them; a row without them keeps today's no warranty and the default days.
+    // as the editor stores them; a row without them gets a new card's defaults: 0 months (no warranty) and the default days.
     [PostgreSqlFact]
     public async Task TheClassicImport_WritesTheFilesWarrantyAndDeliveryDays_AndKeepsTheDefaultsWithoutThem()
     {
@@ -248,8 +248,8 @@ public sealed class ProductRequiredFieldsPostgreSqlTests(PostgreSqlTenantIsolati
         await using var check = fixture.CreateContext();
         var cards = await check.Products.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).ToDictionaryAsync(x => x.Title);
         Assert.Equal(((int?)24, (int?)3, ProductStatus.Active), (cards["Bluz A"].WarrantyMonths, cards["Bluz A"].DeliveryDays, cards["Bluz A"].Status));
-        Assert.Equal(((int?)null, (int?)1, ProductStatus.Active), (cards["Bluz B"].WarrantyMonths, cards["Bluz B"].DeliveryDays, cards["Bluz B"].Status));
-        // 0 is "no warranty" (kept empty, as the editor keeps it); an empty cell is not given.
-        Assert.Equal(((int?)null, (int?)1), (cards["Bluz C"].WarrantyMonths, cards["Bluz C"].DeliveryDays));
+        Assert.Equal(((int?)0, (int?)1, ProductStatus.Active), (cards["Bluz B"].WarrantyMonths, cards["Bluz B"].DeliveryDays, cards["Bluz B"].Status));
+        // 0 is "no warranty", kept as 0 (owner, 15 Nov 2026: 0 and empty differ); an empty cell takes the default.
+        Assert.Equal(((int?)0, (int?)1), (cards["Bluz C"].WarrantyMonths, cards["Bluz C"].DeliveryDays));
     }
 }

@@ -9,10 +9,11 @@ import { VariantStatusDot } from './VariantStatusDot'
 import { variantStatus } from './variant-status'
 import { displayVariantOptionSignature, variantBulkEditLabels } from './editor-helpers'
 import { VariantDragHandleIcon, BarcodeFillIcon, BarcodePasteIcon } from './EditorBits'
+import { variantCodeNoticeTail } from './variant-code-notice'
 import type { EditorContext } from './editor-context'
 
 export function VariantGroupsSection({ editor }: { editor: EditorContext }) {
-  const { editProductId, variantRows, draggedVariantKey, dragOverVariantKey, setMarketplaceCodesOpen, setQuickEditOpen, setMarketplaceCodesVariant, barcodeSkuMenuOpen, setBarcodeSkuMenuOpen, barcodeSkuActionRef, barcodePasteMenuOpen, setBarcodePasteMenuOpen, variantMobileGroup, setVariantMobileGroup, barcodePasteActionRef, variantBulkEdit, chartKey, fieldErrors, setOptionEditRowKey, beginVariantPointerDrag, variantCodeIssues, variantCodeDuplicateRows, heldVariantCodes, variantCodeIssueSummary, goToFirstVariantCodeIssue, variantPricingPlatforms, outgoingByRow, trendyolMixedColours, barcodeRowCount, emptySkuBarcodeRowCount, emptyBarcodeRowCount, rowOptionEntries, clearVariants, requestVariantRowRemoval, updateVariantRow, openVariantBulkEdit, openVariantMediaPicker, openBulkVariantMediaPicker, applyBarcodeToSku, pasteBarcodesFromClipboard, openVariantPlatformPricing } = editor
+  const { editProductId, variantRows, draggedVariantKey, dragOverVariantKey, setMarketplaceCodesOpen, setQuickEditOpen, setMarketplaceCodesVariant, barcodeSkuMenuOpen, setBarcodeSkuMenuOpen, barcodeSkuActionRef, barcodePasteMenuOpen, setBarcodePasteMenuOpen, variantMobileGroup, setVariantMobileGroup, barcodePasteActionRef, variantBulkEdit, chartKey, fieldErrors, setOptionEditRowKey, beginVariantPointerDrag, variantCodeIssues, variantCodeDuplicateRows, heldVariantCodes, variantCodeIssueSummary, editingDraftProduct, draftCodeSaveBlock, goToFirstVariantCodeIssue, variantPricingPlatforms, outgoingByRow, trendyolMixedColours, barcodeRowCount, emptySkuBarcodeRowCount, emptyBarcodeRowCount, rowOptionEntries, clearVariants, requestVariantRowRemoval, updateVariantRow, openVariantBulkEdit, openVariantMediaPicker, openBulkVariantMediaPicker, applyBarcodeToSku, pasteBarcodesFromClipboard, openVariantPlatformPricing } = editor
   return <>
       <div className="product-variant-groups-section">
         <div className="editor-section-title"><span>6</span><div><h2>Ürün Seçenek Grupları<TitleHint label="Ürün Seçenek Grupları">İşaretlediğiniz özellik değerlerinin tüm kombinasyonları varyant satırı olur.</TitleHint></h2></div></div>
@@ -27,7 +28,7 @@ export function VariantGroupsSection({ editor }: { editor: EditorContext }) {
               <div className="variant-code-rule-notice-text">
                 <strong>{variantCodeIssueSummary.title}</strong>
                 {variantCodeIssueSummary.rulePlatforms.length > 0 && <ul className="variant-code-rule-notice-platforms" aria-label="Kuralı ihlal edilen platformlar">{variantCodeIssueSummary.rulePlatforms.map(platform => <li key={platform}>{platform}</li>)}</ul>}
-                <small>{variantCodeIssueSummary.ruleRows ? 'Kırmızı alanların üzerine gelince ayrıntı görünür.' : 'Eksik kodları kırmızı alanlara girin.'} Düzeltilene kadar Kaydet pasif kalır.</small>
+                <small>{variantCodeIssueSummary.ruleRows ? 'Kırmızı alanların üzerine gelince ayrıntı görünür.' : 'Eksik kodları kırmızı alanlara girin.'} {variantCodeNoticeTail(variantCodeIssueSummary, editingDraftProduct, draftCodeSaveBlock)}</small>
               </div>
               <button type="button" className="secondary variant-code-rule-notice-action" onClick={goToFirstVariantCodeIssue}>İlk Hataya Git</button>
             </div>}
