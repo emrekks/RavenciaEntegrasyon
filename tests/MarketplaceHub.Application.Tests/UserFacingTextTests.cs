@@ -19,10 +19,11 @@ public sealed class UserFacingTextTests
         RegexOptions.CultureInvariant);
 
     // A note set on a job by hand: job.LastErrorSummary = "…", SetProperty(x => x.LastErrorSummary, "…"), or the summary
-    // passed after the code to a JobStateMachine stop (Cancel, CancelWhereAsync). An attempt's note is not scanned here.
+    // passed after the code to a JobStateMachine stop (Cancel, CancelWhereAsync) or to the running attempt it closes
+    // (CloseRunningAttemptAsync, K3: the attempt list shows it as written).
     private static readonly Regex SummaryWrite = new(
         @"LastErrorSummary\s*(?:\?\?=|=|,)\s*\$?@?""(?<text>(?:[^""\\]|\\.)*)"""
-        + @"|JobStateMachine\.(?:Cancel|CancelWhereAsync)\([^;]*?,\s*(?:""[A-Z0-9_]+""|[\w.]+)\s*,\s*\$?@?""(?<text>(?:[^""\\]|\\.)*\s(?:[^""\\]|\\.)*)""",
+        + @"|JobStateMachine\.(?:Cancel|CancelWhereAsync|CloseRunningAttemptAsync)\([^;]*?,\s*(?:""[A-Z0-9_]+""|[\w.]+)\s*,\s*\$?@?""(?<text>(?:[^""\\]|\\.)*\s(?:[^""\\]|\\.)*)""",
         RegexOptions.CultureInvariant);
 
     private static readonly Regex Hole = new(@"\{[^{}]*\}", RegexOptions.CultureInvariant);
@@ -54,6 +55,9 @@ public sealed class UserFacingTextTests
     {
         var notes = new List<string>
         {
+            // K3: the operator's stop of a waiting or a running job.
+            JobOperationsService.RunningStoppedNote,
+            JobOperationsService.CancelledNote,
             ProductWriteSupersession.Summary(DateTimeOffset.Parse("2026-11-07T00:48:00Z")),
             PublicationJobSupersession.Summary,
             ScheduledReadSupersession.Summary

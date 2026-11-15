@@ -377,6 +377,10 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         return true;
     }
 
+    // The operator's stop as the job and its attempt list show it (K3: plain Turkish, no "job").
+    internal const string RunningStoppedNote = "Çalışan iş kullanıcı tarafından durduruldu.";
+    internal const string CancelledNote = "İş kullanıcı tarafından iptal edildi.";
+
     public async Task<ServiceResult<JobDetailView>> CancelAsync(Guid tenantId, Guid jobId, CancellationToken cancellationToken)
     {
         var job = await db.IntegrationJobs.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == jobId, cancellationToken);
@@ -386,10 +390,8 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
 
         var now = timeProvider.GetUtcNow();
         var wasLeased = job.Status == JobStatus.Leased;
-        await JobStateMachine.CloseRunningAttemptAsync(db, job, now, "CANCELLED_BY_OPERATOR", "Çalışan job kullanıcı tarafından durduruldu.", cancellationToken);
-        JobStateMachine.Cancel(db, job, now, "CANCELLED_BY_OPERATOR",
-            wasLeased ? "Çalışan job kullanıcı tarafından durduruldu." : "Job kullanıcı tarafından iptal edildi.",
-            JobEvent.Publish, clearLease: true);
+        await JobStateMachine.CloseRunningAttemptAsync(db, job, now, "CANCELLED_BY_OPERATOR", RunningStoppedNote, cancellationToken);
+        JobStateMachine.Cancel(db, job, now, "CANCELLED_BY_OPERATOR", wasLeased ? RunningStoppedNote : CancelledNote, JobEvent.Publish, clearLease: true);
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<JobDetailView>.Ok(await DetailAsync(job, cancellationToken));
     }

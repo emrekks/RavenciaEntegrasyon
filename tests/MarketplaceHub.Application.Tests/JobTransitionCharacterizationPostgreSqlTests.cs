@@ -110,7 +110,7 @@ public sealed class JobTransitionCharacterizationPostgreSqlTests(PostgreSqlTenan
             Assert.Equal(JobStatus.Cancelled, stored.Status);
             Assert.NotNull(stored.CompletedAt);
             Assert.Equal("CANCELLED_BY_OPERATOR", stored.LastErrorCode);
-            Assert.Equal("Job kullanıcı tarafından iptal edildi.", stored.LastErrorSummary);
+            Assert.Equal("İş kullanıcı tarafından iptal edildi.", stored.LastErrorSummary);
             Assert.Equal(2, stored.Version);
             Assert.Equal(1, await JobEventsAsync(verification, job.Id));
         }
@@ -139,7 +139,7 @@ public sealed class JobTransitionCharacterizationPostgreSqlTests(PostgreSqlTenan
             await using var verification = fixture.CreateContext();
             var stored = await verification.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == job.Id);
             Assert.Equal(JobStatus.Cancelled, stored.Status);
-            Assert.Equal("Çalışan job kullanıcı tarafından durduruldu.", stored.LastErrorSummary);
+            Assert.Equal("Çalışan iş kullanıcı tarafından durduruldu.", stored.LastErrorSummary);
             Assert.Null(stored.LeaseTokenHash);
             Assert.Null(stored.LeaseExpiresAt);
             Assert.Null(stored.HeartbeatAt);
@@ -147,6 +147,7 @@ public sealed class JobTransitionCharacterizationPostgreSqlTests(PostgreSqlTenan
             Assert.NotNull(attempt.CompletedAt);
             Assert.False(attempt.Succeeded);
             Assert.Equal("CANCELLED_BY_OPERATOR", attempt.ErrorCode);
+            Assert.Equal("Çalışan iş kullanıcı tarafından durduruldu.", attempt.ErrorSummary);
             Assert.Equal(1, await JobEventsAsync(verification, job.Id));
         }
         finally
