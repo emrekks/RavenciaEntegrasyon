@@ -133,8 +133,14 @@ http://127.0.0.1:8081 {
 
 	# Only a 401 from the authentication endpoints clears the browser cache; a 401
 	# elsewhere (expired session on a data call) must not wipe the whole site cache.
+	# Both reverse_proxy blocks wait up to 45 s for the API (VERITABANI-DAGITIM-4): a full deploy replaces the single api
+	# container, and until the new one listens a request would get 502 at once. Caddy retries a request it could not
+	# connect upstream (any method: nothing was sent yet) every 500 ms; tests/ops/test-caddy-proxy.sh keeps both blocks
+	# and both Caddyfiles in step.
 	handle /api/v1/auth/* {
 		reverse_proxy api:8080 {
+			lb_try_duration 45s
+			lb_try_interval 500ms
 			@unauthenticated status 401
 			handle_response @unauthenticated {
 				header Clear-Site-Data "\"cache\""
@@ -147,7 +153,10 @@ http://127.0.0.1:8081 {
 	# /internal/* is the host's alert settings sync (private sources only, see above, plus a host token).
 	@backend path /api/* /health/* /hubs/* /internal/*
 	handle @backend {
-		reverse_proxy api:8080
+		reverse_proxy api:8080 {
+			lb_try_duration 45s
+			lb_try_interval 500ms
+		}
 	}
 	# Hashed build files. A name that is not there (a chunk an older release had, asked for by a tab still open on it) is
 	# a plain 404 with no-store, never the SPA shell: index.html under an asset name with the one-year immutable header
