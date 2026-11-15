@@ -20,7 +20,7 @@ pins="$(cd -- "$repository_root" && grep -ohE 'postgres:[0-9.]+@sha256:[0-9a-f]{
 assert_eq "1" "$(printf '%s\n' "$pins" | grep -c .)" "one postgres image across ${files[*]} (found: ${pins//$'\n'/ })"
 
 # An unpinned postgres image would slip past the check above.
-unpinned="$(cd -- "$repository_root" && grep -nE 'postgres:[0-9][^@[:space:]"]*([[:space:]"]|$)' "${files[@]}" || true)"
+unpinned="$(cd -- "$repository_root" || exit 1; grep -nE 'postgres:[0-9][^@[:space:]"]*([[:space:]"]|$)' "${files[@]}" || true)"
 assert_eq "" "$unpinned" "no postgres image without a digest"
 
 finish "postgres digest sync"
