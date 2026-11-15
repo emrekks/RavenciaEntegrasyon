@@ -72,6 +72,21 @@ public sealed class BackgroundProcessingAuditTests
         Assert.Equal(-2, JobConflictPolicy.Apply(busy, -2).ConflictCount);
     }
 
+    // VERITABANI-DAGITIM-11: an invoice number or ETTN another invoice holds goes to review at once; no retry.
+    [Theory]
+    [InlineData(MarketplaceHub.Infrastructure.Persistence.InvoiceProviderIdentityConflict.EttnIndex)]
+    [InlineData(MarketplaceHub.Infrastructure.Persistence.InvoiceProviderIdentityConflict.InvoiceNumberIndex)]
+    public void AnInvoiceIdentityAnotherInvoiceHoldsGoesToReviewWithoutARetry(string index)
+    {
+        var violation = new PostgresException("duplicate key value violates unique constraint", "ERROR", "ERROR", PostgresErrorCodes.UniqueViolation, constraintName: index);
+        var result = WorkerService.ExceptionResult(new DbUpdateException("save failed", violation));
+
+        Assert.Equal(JobCompletionKind.ManualReview, result.Kind);
+        Assert.Equal(MarketplaceHub.Infrastructure.Persistence.InvoiceProviderIdentityConflict.Code, result.ErrorCode);
+        Assert.Equal(MarketplaceHub.Infrastructure.Persistence.InvoiceProviderIdentityConflict.Message, result.ErrorSummary);
+        Assert.Equal(JobCompletionKind.ManualReview, JobConflictPolicy.Apply(result, 0).Result.Kind);
+    }
+
     [Fact]
     public void ADuplicateInsertIsRetriedTwiceBeforeItGoesToReview()
     {

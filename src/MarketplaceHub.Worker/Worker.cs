@@ -727,6 +727,10 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         // conflicts and lets only the first few go without an attempt (JobConflictPolicy).
         DbUpdateConcurrencyException =>
             JobExecutionResult.Deferred(MarketplaceHub.Infrastructure.Jobs.JobConflictPolicy.ConcurrentUpdate, "Aynı kayıtlar başka bir işlem tarafından güncellendi; işlem kısa süre içinde yeniden çalışacak.", TimeSpan.FromSeconds(Random.Shared.Next(10, 31))),
+        // An invoice number or ETTN the provider gave that another invoice already holds (VERITABANI-DAGITIM-11) is no
+        // race: a retry meets the same row, so the job goes to review at once and nothing is sent again.
+        _ when MarketplaceHub.Infrastructure.Persistence.InvoiceProviderIdentityConflict.Matches(exception) =>
+            JobExecutionResult.ManualReview(MarketplaceHub.Infrastructure.Persistence.InvoiceProviderIdentityConflict.Code, MarketplaceHub.Infrastructure.Persistence.InvoiceProviderIdentityConflict.Message),
         // A duplicate insert usually lost a race with another job (a webhook and a poll inserting the same
         // row): the next run finds that row. It is retried a couple of times before it goes to review.
         _ when DataConstraintViolation(exception) is { SqlState: PostgresErrorCodes.UniqueViolation } duplicate =>

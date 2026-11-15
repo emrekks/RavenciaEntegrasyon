@@ -432,12 +432,36 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 await db.SaveChangesAsync(CancellationToken.None);
                 return string.Equals(invoice.ExternalReference, submitted.ExternalReference, StringComparison.Ordinal);
             }
+            catch (DbUpdateException exception) when (InvoiceProviderIdentityConflict.Matches(exception))
+            {
+                await SaveProviderIdentityConflict(invoice, submitted);
+                throw new JobProcessingException(JobExecutionResult.ManualReview(InvoiceProviderIdentityConflict.Code, InvoiceProviderIdentityConflict.Message, submitted.RemoteRequestId));
+            }
             catch (Exception exception) when (retry < SubmissionSuccessSaveDelays.Length
                 && exception is DbUpdateException or System.Data.Common.DbException or TimeoutException or InvalidOperationException)
             {
                 await Task.Delay(SubmissionSuccessSaveDelays[retry], CancellationToken.None);
             }
         }
+    }
+
+    // The provider issued the invoice but answered with a number or ETTN another invoice holds (VERITABANI-DAGITIM-11).
+    // The invoice keeps the provider's reference, so it counts as issued and is never sent again, and goes to the
+    // owner's review without the number and ETTN that clash; the attempt keeps the answer. No status read is queued:
+    // it would meet the same clash.
+    private async Task SaveProviderIdentityConflict(Invoice invoice, InvoiceSubmissionResult submitted)
+    {
+        foreach (var queued in db.ChangeTracker.Entries<IntegrationJob>().Where(x => x.State == EntityState.Added).ToList())
+            queued.State = EntityState.Detached;
+        var entry = db.Entry(invoice);
+        await entry.ReloadAsync(CancellationToken.None);
+        if (entry.State == EntityState.Detached) return;
+        if (string.IsNullOrWhiteSpace(invoice.ExternalReference)) invoice.ExternalReference = submitted.ExternalReference;
+        invoice.Status = InvoiceStatus.ManualReview;
+        invoice.LastErrorCode = InvoiceProviderIdentityConflict.Code;
+        invoice.UpdatedAt = timeProvider.GetUtcNow();
+        invoice.Version++;
+        await db.SaveChangesAsync(CancellationToken.None);
     }
 
     // Queues the read of the UUID an uncertain attempt sent (InvoiceReconcile settles it by a status read, never by

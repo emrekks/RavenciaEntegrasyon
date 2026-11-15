@@ -293,6 +293,50 @@ public sealed class PostgreSqlInvoicingDeepAuditTests(PostgreSqlTenantIsolationF
         }
     }
 
+    // VERITABANI-DAGITIM-11: the provider issued the invoice but answered with an ETTN another invoice of the workspace
+    // holds. The save is refused by the unique index; the job stops for review at once (no retry), the invoice keeps the
+    // provider's reference so it counts as issued, and a second run sends nothing.
+    [PostgreSqlFact]
+    public async Task AProviderAnswerWithAnEttnAnotherInvoiceHolds_GoesToReviewAndIsNeverSentAgain()
+    {
+        const string takenEttn = "7a1e2d3c-1111-4222-8333-944455566688";
+        var seed = NewUnsentSeed("vd11-ettn");
+        var holder = NewInvoice(seed, InvoiceStatus.Cancelled);
+        holder.EttnUuid = takenEttn;
+        await SeedAsync(seed, db => db.Invoices.Add(holder));
+        try
+        {
+            var provider = new ScriptedProvider { SubmitResult = AdapterResult<InvoiceSubmissionResult>.Success(new("ref-vd11", NextInvoiceNumber(), takenEttn, "ACCEPTED", "req-vd11")) };
+            await using (var db = fixture.CreateContext())
+            {
+                var result = await NewProcessor(db, UnverifiedRead(), provider: provider).ProcessAsync(seed.Tenant.Id, seed.Provider.Id, InvoicingJobTypes.InvoiceSubmit, InvoicePayload(seed), "vd11-first", CancellationToken.None);
+                Assert.Equal(JobCompletionKind.ManualReview, result.Kind);
+                Assert.Equal(InvoiceProviderIdentityConflict.Code, result.ErrorCode);
+            }
+            await using (var db = fixture.CreateContext())
+            {
+                var again = await NewProcessor(db, UnverifiedRead(), provider: provider).ProcessAsync(seed.Tenant.Id, seed.Provider.Id, InvoicingJobTypes.InvoiceSubmit, InvoicePayload(seed), "vd11-again", CancellationToken.None);
+                Assert.False(again.Succeeded);
+            }
+            Assert.Equal(1, provider.SubmitCalls);
+
+            await using var verification = fixture.CreateContext();
+            var invoice = await verification.Invoices.AsNoTracking().SingleAsync(item => item.Id == seed.Invoice.Id);
+            Assert.Equal(InvoiceStatus.ManualReview, invoice.Status);
+            Assert.Equal(InvoiceProviderIdentityConflict.Code, invoice.LastErrorCode);
+            Assert.Equal("ref-vd11", invoice.ExternalReference);
+            Assert.Null(invoice.EttnUuid);
+            Assert.Null(invoice.InvoiceNumber);
+            var attempt = await verification.InvoiceSubmissionAttempts.AsNoTracking().SingleAsync(item => item.InvoiceId == seed.Invoice.Id);
+            Assert.Equal(("SUCCEEDED", "ref-vd11"), (attempt.Outcome, attempt.ExternalReference));
+            Assert.False(await verification.IntegrationJobs.AnyAsync(job => job.TenantId == seed.Tenant.Id && job.JobType == InvoicingJobTypes.InvoiceReconcile));
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
     // G-5: without a UUID nothing can be read yet, and the "no invoice at the provider, send again" confirmation stays shut.
     [PostgreSqlFact]
     public async Task AnUnreadableCreationAnswerWithoutAUuidCannotBeConfirmedAbsent()
