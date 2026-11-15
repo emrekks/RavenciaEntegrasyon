@@ -7037,7 +7037,16 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
 
         await db.SaveChangesAsync(cancellationToken);
-        if (receivedProducts > 0 && telemetryImportFailedCount >= receivedProducts)
+        // The run's staging rows by state, before they are deleted below: a FAILED model keeps the PRODUCTS watermark
+        // where it was and a run without a COMPLETED model failed as a whole (ProductImportScanPolicy).
+        var stagingStates = await db.ProductImportStagingRecords.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.JobId == importJobId && (x.State == "FAILED" || x.State == "COMPLETED"))
+            .GroupBy(x => x.State)
+            .Select(group => new { State = group.Key, Rows = group.Count() })
+            .ToListAsync(cancellationToken);
+        var failedModels = stagingStates.Where(x => x.State == "FAILED").Sum(x => x.Rows);
+        var completedModels = stagingStates.Where(x => x.State == "COMPLETED").Sum(x => x.Rows);
+        if (ProductImportScanPolicy.AllFailed(telemetryImportFailedCount, completedModels))
         {
             if (jobId is { } failedJob)
                 await UpdateProductSyncProgressAsync(tenantId, failedJob, receivedProducts, totalProducts, 100, ProductImportProgressLabel(totalProducts, receivedProducts, mappingOnly), cancellationToken);
@@ -7048,7 +7057,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var completedCursor = await Cursor(tenantId, connectionId, "PRODUCTS", cancellationToken);
             completedCursor.OpaqueCursor = null;
             completedCursor.LastModifiedWatermark = ProductImportScanPolicy.CompletedWatermark(importSession.CreatedAt, completedCursor.LastModifiedWatermark,
-                scoped: newOnly || existingOnly || mappingOnly || optionsOnly);
+                scoped: newOnly || existingOnly || mappingOnly || optionsOnly, failedModels: failedModels);
             completedCursor.Version++;
         }
         await db.SaveChangesAsync(cancellationToken);
@@ -9805,13 +9814,20 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var salePrice = decimal.Round(Math.Max(0m, remote.SalePrice ?? remote.ListPrice ?? 0m), 4, MidpointRounding.ToEven);
         var listPrice = decimal.Round(Math.Max(salePrice, Math.Max(0m, remote.ListPrice ?? salePrice)), 4, MidpointRounding.ToEven);
         var currency = NormalizeCurrency(remote.Currency);
-        var vatRate = decimal.Round(Math.Max(0m, remote.VatRate ?? 0m), 4, MidpointRounding.ToEven);
         var status = remote.Archived ? "INACTIVE" : "ACTIVE";
         var offer = db.ChannelOffers.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variant.Id)
             ?? await db.ChannelOffers.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variant.Id, cancellationToken);
-        var observationSource = observeOnly ? "SHOPIFY" : "TRENDYOL";
+        var cardVatRate = offer is null && remote.VatRate is null
+            ? db.Products.Local.FirstOrDefault(x => x.Id == variant.ProductId)?.VatRate
+                ?? await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == variant.ProductId).Select(x => x.VatRate).SingleOrDefaultAsync(cancellationToken)
+            : null;
+        var (vatRate, vatUnknown) = CatalogOfferVatRate(remote.VatRate, offer?.VatRate, cardVatRate);
+        var observationSource = CatalogImportSource(await ConnectionPlatformCode(tenantId, connectionId, cancellationToken), observeOnly);
         if (offer is null)
         {
+            if (vatUnknown)
+                await RecordIssue(tenantId, $"offer-vat-unknown:{connectionId:N}", "OFFER_VAT_UNKNOWN",
+                    "Pazar yeri ürün aktarımında KDV oranı bildirmedi ve ürün kartında KDV yok; yeni açılan tekliflerin KDV oranı %0 yazıldı. Ürün kartlarının ve tekliflerin KDV oranını kontrol edin.", cancellationToken);
             offer = new ChannelOffer
             {
                 Id = Guid.CreateVersion7(),
@@ -9883,6 +9899,23 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 EffectiveAt = now
             });
         }
+    }
+
+    // The source a catalog import writes on the price history (Reason "<source>_CATALOG_IMPORT", ActorSource
+    // "SYSTEM:<source>"): the connection's marketplace (ISLEYICI-3, 15 Nov 2026). Before, every observe-only import
+    // (Hepsiburada, N11, Pazarama, PTT AVM too) was written as SHOPIFY; the old guess stays only for a connection not found.
+    internal static string CatalogImportSource(string? platformCode, bool observeOnly) =>
+        string.IsNullOrWhiteSpace(platformCode) ? observeOnly ? "SHOPIFY" : "TRENDYOL" : platformCode.Trim().ToUpperInvariant();
+
+    // The VAT a catalog import gives an offer (ISLEYICI-2, 15 Nov 2026). A marketplace that does not report it (Shopify
+    // never does; a Hepsiburada listing without vatRate) leaves an existing offer's VAT as it was, and a new offer takes the
+    // card's VAT; 0 only when neither is known, and Unknown says so. Before, a missing VAT was written as 0.
+    internal static (decimal Rate, bool Unknown) CatalogOfferVatRate(decimal? remote, decimal? offer, decimal? card)
+    {
+        if (remote is { } remoteRate) return (decimal.Round(Math.Max(0m, remoteRate), 4, MidpointRounding.ToEven), false);
+        if (offer is { } offerRate) return (offerRate, false);
+        if (card is { } cardRate) return (decimal.Round(Math.Max(0m, cardRate), 4, MidpointRounding.ToEven), false);
+        return (0m, true);
     }
 
     // When the marketplace stock being written was read: the earliest page read of the model group being finalized,
@@ -10554,10 +10587,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // once the page is saved, so later SaveChanges calls do not walk every row read so far; rows the
         // caller already tracked (its cursor, its job) stay tracked.
         var trackedBefore = db.ChangeTracker.Entries().Select(entry => entry.Entity).ToHashSet(ReferenceEqualityComparer.Instance);
-        var platformCode = await db.PlatformConnections.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.Id == connectionId)
-            .Select(x => x.PlatformCode)
-            .SingleOrDefaultAsync(cancellationToken);
+        var platformCode = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         var isShopify = platformCode == "SHOPIFY";
         var isHepsiburada = platformCode == "HEPSIBURADA";
         // The stream is package-shaped: one order can occur once per package.
@@ -10697,10 +10727,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
     private async Task<bool> UpsertOrderCore(Guid tenantId, Guid connectionId, RemoteOrder remote, CancellationToken cancellationToken, OrderIngestionBatch? batch, bool saveChanges, bool persistFinancialObservations)
     {
-        var platformCode = await db.PlatformConnections.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.Id == connectionId)
-            .Select(x => x.PlatformCode)
-            .SingleOrDefaultAsync(cancellationToken);
+        // Read once per connection (ConnectionPlatformCode), not once per order of a page (ISLEYICI-8).
+        var platformCode = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         var isShopify = platformCode == "SHOPIFY";
         var isHepsiburada = platformCode == "HEPSIBURADA";
         var isTrendyol = platformCode == "TRENDYOL";
@@ -12029,8 +12057,17 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return $"Sipariş stoğu kısmen düşürüldü: {order} {product} paneldeki fiziksel stoğu yetersizdi, {units} adet stoktan düşülemedi. Paneldeki stok sayısını kontrol edin. Rezervasyon tutulmaz; stok sıfırın altına inmedi (bilgi amaçlı).";
     }
 
-    private async Task<string?> ConnectionPlatformCode(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
-        await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+    // Read once per connection for the processor's life (ISLEYICI-3/8, 15 Nov 2026): a connection never changes its
+    // marketplace. A connection not found is not remembered (null).
+    private readonly Dictionary<(Guid TenantId, Guid ConnectionId), string> connectionPlatformCodes = [];
+
+    private async Task<string?> ConnectionPlatformCode(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        if (connectionPlatformCodes.TryGetValue((tenantId, connectionId), out var known)) return known;
+        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        if (platformCode is not null) connectionPlatformCodes[(tenantId, connectionId)] = platformCode;
+        return platformCode;
+    }
 
     private async Task<string?> OrderNumberOf(Guid tenantId, Guid orderId, CancellationToken cancellationToken) =>
         db.Orders.Local.FirstOrDefault(x => x.TenantId == tenantId && x.Id == orderId)?.OrderNumber
@@ -14043,10 +14080,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // The record carries what the action changes, like the instant actions do, so an unclear outcome is
         // verified by reading the marketplace instead of waiting a week to be closed as unresolved.
         var (effectAction, expectedValue) = ShipmentEffectContext(payload.Action, payload.PayloadJson);
+        // ISLEYICI-6 (15 Nov 2026): every database read comes before the effect record; after it only the marketplace
+        // call runs, so a failed read can no longer leave a request that was never sent as an unclear effect.
+        var storeFrontCode = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => x.StoreFrontCode).SingleOrDefaultAsync(cancellationToken);
         effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = MarketplaceJobTypes.ShipmentAction, IdempotencyKey = job.EffectIdempotencyKey, CreatedAt = timeProvider.GetUtcNow(), ConnectionId = connectionId, TargetId = package.Id, Action = effectAction, ExpectedValue = expectedValue };
         db.ExternalEffectRecords.Add(effect); await db.SaveChangesAsync(cancellationToken);
         TrackRequest();
-        var result = await orders.ExecutePackageActionAsync(Context(tenantId, connectionId, correlationId, job.EffectIdempotencyKey), new(package.ExternalPackageId, payload.Action, payload.PayloadJson, await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => x.StoreFrontCode).SingleOrDefaultAsync(cancellationToken)), cancellationToken);
+        var result = await orders.ExecutePackageActionAsync(Context(tenantId, connectionId, correlationId, job.EffectIdempotencyKey), new(package.ExternalPackageId, payload.Action, payload.PayloadJson, storeFrontCode), cancellationToken);
         if (!result.IsSuccess)
         {
             TrackResultFailure(result.Error);
@@ -14225,6 +14265,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (IsAmbiguous(error)) { decision.Status = "MANUAL_REVIEW"; decision.CompletedAt = now; await db.SaveChangesAsync(cancellationToken); throw new JobProcessingException(JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "İade aksiyonunun uzak tarafta uygulanıp uygulanmadığı kesinleştirilemedi.", error.RemoteRequestId)); }
         // Never sent (the panel's own circuit is open): the decision stays waiting and the job sends it again later.
         if (LocalCircuitOpen.IsCode(error.Code)) { db.ExternalEffectRecords.Remove(effect); await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(error); }
+        // ISLEYICI-4 (15 Nov 2026): a refusal the job retries (a quota answer) was not applied and is sent again, so the
+        // decision stays waiting, as an open decision, instead of showing "Başarısız" while the job still sends it (the
+        // owner could open a second decision for the same lines meanwhile). Only a final refusal fails the decision.
+        var outcome = JobExecutionResult.FromAdapterError(error);
+        if (outcome.Kind == JobCompletionKind.Retry)
+        {
+            db.ExternalEffectRecords.Remove(effect); decision.Status = "PENDING"; decision.CompletedAt = null; await db.SaveChangesAsync(cancellationToken);
+            throw new JobProcessingException(outcome);
+        }
         db.ExternalEffectRecords.Remove(effect); decision.Status = "FAILED"; decision.CompletedAt = now; await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(error);
     }
 
@@ -14314,7 +14363,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             issue.ResolvedAt = timeProvider.GetUtcNow();
         }
     }
-    private async Task ResolveIssue(Guid tenantId, string key, CancellationToken cancellationToken) { var issue = await db.OperationalIssues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.DedupeKey == key, cancellationToken); if (issue is not null && issue.Status != IssueStatus.Resolved) { issue.Status = IssueStatus.Resolved; issue.ResolvedAt = timeProvider.GetUtcNow(); } }
+    // Looks at the issues this unit of work already holds first, as RecordIssue does (ISLEYICI-8): an issue opened and
+    // resolved before the next save is resolved, not left open.
+    private async Task ResolveIssue(Guid tenantId, string key, CancellationToken cancellationToken) { var issue = db.OperationalIssues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.DedupeKey == key) ?? await db.OperationalIssues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.DedupeKey == key, cancellationToken); if (issue is not null && issue.Status != IssueStatus.Resolved) { issue.Status = IssueStatus.Resolved; issue.ResolvedAt = timeProvider.GetUtcNow(); } }
     private AdapterContext Context(Guid tenantId, Guid connectionId, string correlationId, string idempotency) => new(tenantId, connectionId, correlationId, idempotency, timeProvider.GetUtcNow().AddMinutes(2));
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
     private static string Wire<T>(T value) where T : Enum => string.Concat(value.ToString().Select((ch, index) => char.IsUpper(ch) && index > 0 ? "_" + ch : ch.ToString())).ToUpperInvariant();
