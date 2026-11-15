@@ -99,8 +99,10 @@ public sealed partial class MarketplaceJobProcessor
                 var error = send.Error;
                 if (send.Outcome == ExternalEffectSendOutcome.Uncertain) return await MarkUpdateResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Ürün güncelleme çağrısının uygulanıp uygulanmadığı kesinleştirilemedi.", error.RemoteRequestId), cancellationToken);
                 await effectGuard.ReleaseAsync(effect, cancellationToken);
-                // Never sent (the panel's own circuit is open): the card keeps its state and the job runs again later.
-                if (send.Outcome == ExternalEffectSendOutcome.LocalCircuit) return JobExecutionResult.FromAdapterError(error);
+                // Never sent (the panel's own circuit is open), or refused for now (a quota answer) and sent again by the job's
+                // retry: the card keeps its in-progress state (J2, 15 Nov 2026: a quota answer showed UPDATE_BLOCKED while the
+                // job still sent it). Only a lasting refusal blocks the card.
+                if (send.Outcome is ExternalEffectSendOutcome.LocalCircuit or ExternalEffectSendOutcome.Retryable) return JobExecutionResult.FromAdapterError(error);
                 return await MarkUpdateResult(tenantId, connectionId, profile, "UPDATE_BLOCKED", error.Code, JobExecutionResult.FromAdapterError(error), cancellationToken);
             }
             var operation = send.Value;
@@ -324,7 +326,9 @@ public sealed partial class MarketplaceJobProcessor
                 TrackResultFailure(send.Error);
                 if (send.Outcome == ExternalEffectSendOutcome.Uncertain) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Arşiv çağrısının uzak tarafta uygulanıp uygulanmadığı kesinleştirilemedi.", send.Error.RemoteRequestId), cancellationToken);
                 await effectGuard.ReleaseAsync(effect, cancellationToken);
-                if (send.Outcome == ExternalEffectSendOutcome.LocalCircuit) return JobExecutionResult.FromAdapterError(send.Error);
+                // J2 (15 Nov 2026): a quota answer is sent again by the job's retry, so the card keeps its state as for the
+                // panel's own open circuit; only a lasting refusal shows ARCHIVE_BLOCKED.
+                if (send.Outcome is ExternalEffectSendOutcome.LocalCircuit or ExternalEffectSendOutcome.Retryable) return JobExecutionResult.FromAdapterError(send.Error);
                 return await MarkPublicationResult(tenantId, connectionId, profile, "ARCHIVE_BLOCKED", send.Error.Code, JobExecutionResult.FromAdapterError(send.Error), cancellationToken);
             }
             var op = send.Value;

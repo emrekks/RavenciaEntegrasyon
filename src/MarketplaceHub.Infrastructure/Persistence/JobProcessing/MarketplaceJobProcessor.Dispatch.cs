@@ -38,6 +38,11 @@ public sealed partial class MarketplaceJobProcessor
                 ? JobExecutionResult.Continue("Fatura kontrolü kaldığı siparişten birkaç saniye içinde devam edecek.")
                 : JobExecutionResult.Success()
             : null,
+        // J1 (15 Nov 2026): the cargo-info check reads Trendyol packages only. On another store it has nothing to do and
+        // succeeds with a note, instead of ending Blocked F3_JOB_REJECTED as if something had been refused.
+        [MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation] = (_, a, _) => Task.FromResult(a.Platform == "TRENDYOL"
+            ? null
+            : JobExecutionResult.SuccessWithNote("CARGO_INFO_NOT_APPLICABLE", "Kargo bilgisi kontrolü yalnız Trendyol mağazalarında yapılır; bu mağazada yapılacak bir şey yok.")),
     };
 
     // Methods that return bool: false ends the job Blocked F3_JOB_REJECTED.
@@ -53,8 +58,7 @@ public sealed partial class MarketplaceJobProcessor
         ([MarketplaceJobTypes.OrderStatusSync, MarketplaceJobTypes.ShopifyOrderStatusSync, MarketplaceJobTypes.HepsiburadaOrderStatusSync, MarketplaceJobTypes.PazaramaOrderStatusSync, MarketplaceJobTypes.PttAvmOrderStatusSync],
             async (p, a, cancellationToken) => await p.SyncOpenOrders(a.TenantId, a.ConnectionId, a.CorrelationId, cancellationToken)),
         ([MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation],
-            async (p, a, cancellationToken) => a.Platform == "TRENDYOL"
-                && await p.ReconcileTrendyolCargoInfo(a.TenantId, a.ConnectionId, a.CorrelationId, cancellationToken)),
+            async (p, a, cancellationToken) => await p.ReconcileTrendyolCargoInfo(a.TenantId, a.ConnectionId, a.CorrelationId, cancellationToken)),
         ([MarketplaceJobTypes.OrderReconciliation, MarketplaceJobTypes.ShopifyOrderReconciliation],
             async (p, a, cancellationToken) => await p.ReconcileOrders(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken)),
         ([MarketplaceJobTypes.OrderInvoiceReconciliation, MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation, MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation],

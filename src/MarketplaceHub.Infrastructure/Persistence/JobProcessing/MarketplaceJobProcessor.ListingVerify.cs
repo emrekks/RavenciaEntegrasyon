@@ -233,7 +233,7 @@ public sealed partial class MarketplaceJobProcessor
         {
             // One lookup job per run; the run's summary waits for its answers so the seller gets one notice.
             var payload = new ListingLookupJobPayload(connectionId, queued, ListingLookupScanSource, observe, state.RunJobId, newlyNotFound, RunSummary: summary);
-            AddListingLookupJob(tenantId, connectionId, $"listing-lookup:{connectionId:N}:scan:{state.RunJobId:N}", payload, timeProvider.GetUtcNow());
+            await AddListingLookupJobAsync(tenantId, connectionId, $"listing-lookup:{connectionId:N}:scan:{state.RunJobId:N}", payload, timeProvider.GetUtcNow(), cancellationToken);
         }
         else if (!observe && newlyNotFound.Count > 0)
             await RecordListingNotFoundSummary(tenantId, connectionId, platform, newlyNotFound, cancellationToken);
@@ -241,14 +241,18 @@ public sealed partial class MarketplaceJobProcessor
         return JobExecutionResult.SuccessWithNote(observe ? "LISTING_VERIFY_OBSERVED" : "LISTING_VERIFY_COMPLETED", summary);
     }
 
-    private void AddListingLookupJob(Guid tenantId, Guid connectionId, string dedup, ListingLookupJobPayload payload, DateTimeOffset now)
+    // J4 (KUYRUK-8): a lookup with this key in any state is the lookup. The scan's key names its run, which a run that
+    // completed but whose job ran again (a worker stopped after the save, before the job closed) reaches a second time:
+    // it used to add the same key again and fail on the unique index on every retry.
+    internal async Task<bool> AddListingLookupJobAsync(Guid tenantId, Guid connectionId, string dedup, ListingLookupJobPayload payload, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var json = JsonSerializer.Serialize(payload);
-        Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, connectionId, MarketplaceJobTypes.ListingLookup, json, dedup, $"listing-lookup:{connectionId:N}", now)
+        var enqueued = await Jobs.JobEnqueuer.EnqueueAsync(db, new IntegrationJobRequest(tenantId, connectionId, MarketplaceJobTypes.ListingLookup, json, dedup, $"listing-lookup:{connectionId:N}", now)
         {
             Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ListingLookup, userInitiated: false),
             CreatedAt = now
-        });
+        }, JobDedupPolicy.ReuseAnyWithKey, cancellationToken);
+        return enqueued.Created;
     }
 
     // Codes a price/stock answer refused as unknown are asked about at once, one lookup job per variant; a variant
@@ -277,8 +281,7 @@ public sealed partial class MarketplaceJobProcessor
         foreach (var variantId in due)
         {
             var dedup = $"listing-lookup:{connectionId:N}:push:{variantId:N}:{bucket}";
-            if (await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.ListingLookup && x.JobDedupKey == dedup, cancellationToken)) continue;
-            AddListingLookupJob(tenantId, connectionId, dedup, new ListingLookupJobPayload(connectionId, [variantId], ListingLookupPushSource, ObserveOnly: observe), now);
+            await AddListingLookupJobAsync(tenantId, connectionId, dedup, new ListingLookupJobPayload(connectionId, [variantId], ListingLookupPushSource, ObserveOnly: observe), now, cancellationToken);
         }
         await db.SaveChangesAsync(cancellationToken);
     }

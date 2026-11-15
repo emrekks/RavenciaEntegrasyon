@@ -157,9 +157,11 @@ public sealed partial class MarketplaceJobProcessor
                 TrackResultFailure(error);
                 if (send.Outcome == ExternalEffectSendOutcome.Uncertain) { attempt.Status = "MANUAL_REVIEW"; attempt.ErrorCode = "EXTERNAL_EFFECT_AMBIGUOUS"; attempt.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Ortak etiket oluşturma çağrısının sonucu kesinleştirilemedi.", error.RemoteRequestId); }
                 effectGuard.Release(effect);
-                // Never sent (the panel's own circuit is open): the attempt stays open and the job runs again later.
-                if (send.Outcome == ExternalEffectSendOutcome.LocalCircuit) { attempt.ErrorCode = error.Code; await db.SaveChangesAsync(cancellationToken); return JobExecutionResult.FromAdapterError(error); }
-                // A quota answer fails the attempt like a refusal, while the job itself retries.
+                // Never sent (the panel's own circuit is open), or refused for now (a quota answer) and sent again by the job's
+                // retry: the attempt stays open, so the label does not show failed while the job still sends it (J2, 15 Nov
+                // 2026: a quota answer used to fail the attempt and leave its end time set after the retry succeeded).
+                if (send.Outcome is ExternalEffectSendOutcome.LocalCircuit or ExternalEffectSendOutcome.Retryable) { attempt.ErrorCode = error.Code; await db.SaveChangesAsync(cancellationToken); return JobExecutionResult.FromAdapterError(error); }
+                // Only a lasting refusal fails the attempt.
                 attempt.Status = "FAILED"; attempt.ErrorCode = error.Code; attempt.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return JobExecutionResult.FromAdapterError(error);
             }
             attempt.Status = "POLLING";

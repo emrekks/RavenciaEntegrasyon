@@ -317,6 +317,11 @@ public sealed partial class MarketplaceJobProcessor
                 customerSnapshot = ShopifyOrderCsvSnapshotPolicy.MergeRemoteSnapshot(customerSnapshot, order.CustomerSnapshotJson);
                 shipmentAddressSnapshot = ShopifyOrderCsvSnapshotPolicy.MergeRemoteSnapshot(shipmentAddressSnapshot, order.ShipmentAddressSnapshotJson);
                 invoiceAddressSnapshot = ShopifyOrderCsvSnapshotPolicy.MergeRemoteSnapshot(invoiceAddressSnapshot, order.InvoiceAddressSnapshotJson);
+                // J5 (15 Nov 2026): the merge keeps the stored keys, so a claim-built order's return-claim mark would outlive
+                // the real order read and the order would stay "claim-built" for good. A read that is not itself built from
+                // a claim drops it.
+                if (!TrendyolJsonMapper.IsReturnClaimReadModelSnapshot(remote.CustomerSnapshotJson))
+                    customerSnapshot = MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaJsonMapper.WithoutReturnClaimReadModelMark(customerSnapshot);
             }
             order.OrderNumber = remote.OrderNumber; order.Currency = remote.Currency; order.GrossAmount = grossAmount; order.DiscountAmount = discountAmount; order.NetAmount = netAmount; order.OrderedAt = remote.OrderedAt; order.ShipmentDueAt = remote.ShipmentDueAt; order.LastRemoteModifiedAt = remote.LastModifiedAt; order.CustomerSnapshotJson = customerSnapshot; order.ShipmentAddressSnapshotJson = shipmentAddressSnapshot; order.InvoiceAddressSnapshotJson = invoiceAddressSnapshot; order.UpdatedAt = now; if (db.Entry(order).State != EntityState.Added) { order.Version++; telemetryUpdatedCount++; }
         }

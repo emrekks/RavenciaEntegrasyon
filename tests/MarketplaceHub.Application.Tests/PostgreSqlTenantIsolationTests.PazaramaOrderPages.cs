@@ -8,20 +8,20 @@ using Xunit;
 namespace MarketplaceHub.Application.Tests;
 
 // ISLEYICI-11 (15 Nov 2026) characterization of Pazarama's order page walk: a window is read to its last page; a list
-// that never ends is closed at PazaramaOrderPageCap pages with a PAZARAMA_ORDER_PAGE_CAP issue, and the run still moves
-// its watermark (the cap is named, not a failure).
+// that never ends is closed at PazaramaOrderPageCap pages with a PAZARAMA_ORDER_PAGE_CAP issue. J3 (15 Nov 2026): the run
+// then stops for review with the same code and no longer moves its watermark past the unread rest of the window.
 public sealed partial class PostgreSqlTenantIsolationTests
 {
     [PostgreSqlTheory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task PazaramaOrderPages_AWindowIsReadToItsEndOrClosedAtTheCap(bool endless)
+    public async Task PazaramaOrderPages_AWindowIsReadToItsEndOrStopsTheRunAtTheCap(bool endless)
     {
         var tenant = NewTenant(endless ? "pazarama-pages-cap" : "pazarama-pages-end");
         var connection = NewQuestionConnection(tenant);
         connection.PlatformCode = "PAZARAMA";
         connection.Environment = "PRODUCTION";
-        var watermark = fixture.Now.AddHours(-1);
+        var watermark = DateTimeOffset.FromUnixTimeSeconds(fixture.Now.AddHours(-1).ToUnixTimeSeconds());
         await using (var seedDb = fixture.CreateContext())
         {
             seedDb.Tenants.Add(tenant);
@@ -36,10 +36,13 @@ public sealed partial class PostgreSqlTenantIsolationTests
             {
                 var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, port, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
                 var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.PazaramaOrderSync, "{}", "pazarama-pages", CancellationToken.None);
-                Assert.Equal(JobCompletionKind.Succeeded, result.Kind);
+                Assert.Equal(endless ? JobCompletionKind.ManualReview : JobCompletionKind.Succeeded, result.Kind);
+                Assert.Equal(endless ? "PAZARAMA_ORDER_PAGE_CAP" : null, result.ErrorCode);
             }
             var windows = port.Calls.Select(call => call.Window).Distinct().Count();
             Assert.True(windows >= 1);
+            // The run stops in the first window that reaches the cap.
+            if (endless) Assert.Equal(1, windows);
             // Each window starts at page one (no cursor) and follows the cursor each page gives.
             foreach (var window in port.Calls.GroupBy(call => call.Window))
             {
@@ -52,7 +55,8 @@ public sealed partial class PostgreSqlTenantIsolationTests
             var issues = await check.OperationalIssues.AsNoTracking().Where(x => x.TenantId == tenant.Id).Select(x => x.Code).ToListAsync();
             Assert.Equal(endless ? Enumerable.Repeat("PAZARAMA_ORDER_PAGE_CAP", windows).ToList() : [], issues);
             var cursor = await check.SyncCursors.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ResourceType == "ORDERS_HOT");
-            Assert.True(cursor.LastModifiedWatermark > watermark);
+            if (endless) Assert.Equal(watermark, cursor.LastModifiedWatermark);
+            else Assert.True(cursor.LastModifiedWatermark > watermark);
         }
         finally
         {

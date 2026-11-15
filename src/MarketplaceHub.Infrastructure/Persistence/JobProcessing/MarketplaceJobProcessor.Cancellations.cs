@@ -23,9 +23,10 @@ public sealed partial class MarketplaceJobProcessor
 
         var cancelledLines = new List<RemoteCancelledOrderLine>();
         var failed = false;
-        // ISLEYICI-11: at the page cap (and on a repeated cursor) the read stops as if the list ended, and the cursor still
-        // moves: the open-order scan finds any cancellation left unread order by order.
-        await PagedReadLoop.RunAsync(null, HepsiburadaCancellationPageGuard, async (page, pageIndex) =>
+        // J3 (15 Nov 2026): at the page cap or on a repeated cursor the lines read so far are still used, but the list is not
+        // taken as read: its cursors stay where they were (the next run reads the window again) and an issue names the stop.
+        // (It used to stop as if the list had ended and move the cursor past the unread rest.)
+        var walk = await PagedReadLoop.RunAsync(null, HepsiburadaCancellationPageGuard, async (page, pageIndex) =>
         {
             TrackRequest();
             var result = await hepsiburadaInvoiceStatus.ListCancelledOrderLinesAsync(
@@ -43,13 +44,24 @@ public sealed partial class MarketplaceJobProcessor
             return new PageStep(!result.Value.HasMore || string.IsNullOrWhiteSpace(result.Value.NextCursor) ? null : result.Value.NextCursor);
         }, cancellationToken);
         if (failed) return [];
-        await ResolveIssue(tenantId, $"hepsiburada-cancelled:{connectionId}", cancellationToken);
-        cursor.LastSuccessAt = now;
-        cursor.Version++;
-        if (window.Wide)
+        var incompleteKey = $"hepsiburada-cancelled-incomplete:{connectionId}";
+        if (walk.Stop is PagedReadStop.PageCap or PagedReadStop.RepeatedCursor)
+            await RecordIssue(tenantId, incompleteKey, "HEPSIBURADA_CANCELLED_LIST_INCOMPLETE",
+                walk.Stop == PagedReadStop.PageCap
+                    ? $"Hepsiburada iptal edilen sipariş listesi {HepsiburadaCancellationPolicy.MaxPages} sayfayı aştı; okunan kısım işlendi, liste okunmuş sayılmadı ve sonraki taramada yeniden okunacak."
+                    : "Hepsiburada iptal edilen sipariş listesi aynı sayfayı yeniden sonraki sayfa olarak verdi; okunan kısım işlendi, liste okunmuş sayılmadı ve sonraki taramada yeniden okunacak.",
+                cancellationToken);
+        else
         {
-            wideCursor.LastSuccessAt = now;
-            wideCursor.Version++;
+            await ResolveIssue(tenantId, $"hepsiburada-cancelled:{connectionId}", cancellationToken);
+            await ResolveIssue(tenantId, incompleteKey, cancellationToken);
+            cursor.LastSuccessAt = now;
+            cursor.Version++;
+            if (window.Wide)
+            {
+                wideCursor.LastSuccessAt = now;
+                wideCursor.Version++;
+            }
         }
         if (cancelledLines.Count == 0) return [];
         listedLines.AddRange(cancelledLines);

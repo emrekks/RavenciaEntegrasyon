@@ -18,10 +18,13 @@ public sealed partial class MarketplaceJobProcessor
     {
         var connection = await db.PlatformConnections.AsNoTracking()
             .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "HEPSIBURADA"), cancellationToken);
-        if (connection is null || connection.Environment is not ("STAGE" or "PRODUCTION") || connection.Status is not ("ACTIVE" or "VERIFIED")) return false;
-        if (!Guid.TryParse(ReadText(payloadJson, "runId"), out var runId)) return false;
+        // J1 (15 Nov 2026): the stops before the read name their cause. Both last: the store's platform and environment do not
+        // change under a queued job (a passive store is stopped before this, CONNECTION_INACTIVE), and a run is not recreated.
+        if (connection is null || connection.Environment is not ("STAGE" or "PRODUCTION") || connection.Status is not ("ACTIVE" or "VERIFIED"))
+            throw new JobProcessingException(JobExecutionResult.Blocked("CATALOG_STRUCTURE_NOT_SUPPORTED", "Katalog yapısı aktarımı yalnız etkin Trendyol ve Hepsiburada mağazalarında yapılır; bu mağazada okunmadı."));
+        if (!Guid.TryParse(ReadText(payloadJson, "runId"), out var runId)) throw CatalogStructureRunMissing();
         var run = await db.CatalogStructureRuns.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == runId && x.ConnectionId == connectionId, cancellationToken);
-        if (run is null) return false;
+        if (run is null) throw CatalogStructureRunMissing();
         if (run.Status == "COMPLETED") return true;
 
         var apply = string.Equals(run.Mode, "APPLY", StringComparison.Ordinal);
@@ -56,6 +59,13 @@ public sealed partial class MarketplaceJobProcessor
         }
     }
 
+    // Product pages one structure import reads (100 Trendyol / 500 Hepsiburada products a page): far above a real catalog.
+    internal const int CatalogStructurePageCap = 2_000;
+    private static readonly PageGuard CatalogStructurePageGuard = new(MaxPages: CatalogStructurePageCap, StopOnRepeatedCursor: true);
+
+    private static JobProcessingException CatalogStructureRunMissing() =>
+        new(JobExecutionResult.Blocked("CATALOG_STRUCTURE_RUN_MISSING", "Katalog yapısı aktarımının kaydı panelde bulunamadı; ürünler okunmadı. Aktarımı yeniden başlatın."));
+
     private async Task<StructureReport> RunCatalogStructure(Guid tenantId, PlatformConnection connection, bool apply, string correlationId, Guid? jobId, CancellationToken cancellationToken)
     {
         var connectionId = connection.Id;
@@ -65,13 +75,10 @@ public sealed partial class MarketplaceJobProcessor
 
         // 1. Read the listed products and aggregate what each category uses.
         var usage = new Dictionary<string, StructureUsage>(StringComparer.Ordinal);
-        string? cursor = null;
-        var pageNumber = 0;
         var received = 0;
         string[]? sampleKeys = null;
-        while (true)
+        var walk = await PagedReadLoop.RunAsync(null, CatalogStructurePageGuard, async (cursor, _) =>
         {
-            pageNumber++;
             TrackRequest();
             var result = await products.ListCatalogAsync(
                 Context(tenantId, connectionId, correlationId, $"structure-scan:{cursor ?? "0"}"),
@@ -100,10 +107,15 @@ public sealed partial class MarketplaceJobProcessor
             }
             if (jobId is { } scanJob)
                 await UpdateProductSyncProgressAsync(tenantId, scanJob, received, result.Value.TotalCount, null, $"Ürünler okunuyor · {received:N0}", cancellationToken);
-            if (!result.Value.HasMore || string.IsNullOrWhiteSpace(result.Value.NextCursor) || cancellationToken.IsCancellationRequested) break;
-            cursor = result.Value.NextCursor;
-        }
+            return new PageStep(!result.Value.HasMore || string.IsNullOrWhiteSpace(result.Value.NextCursor) ? null : result.Value.NextCursor);
+        }, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
+        // J3 (15 Nov 2026): a product list that never ends, or names the page just read as the next one, stops the import
+        // (the run is marked failed) instead of reading until the lease runs out; nothing is applied from a partial read.
+        if (walk.Stop == PagedReadStop.PageCap)
+            throw PagedReadLoop.GuardFailure("CATALOG_STRUCTURE_PAGE_CAP", $"{platformLabel} ürün listesi {CatalogStructurePageCap} sayfayı aştı; katalog yapısı aktarımı durduruldu ve hiçbir şey uygulanmadı.");
+        if (walk.Stop == PagedReadStop.RepeatedCursor)
+            throw PagedReadLoop.GuardFailure("CATALOG_STRUCTURE_PAGE_REPEATED", $"{platformLabel} ürün listesi aynı sayfayı yeniden sonraki sayfa olarak verdi; katalog yapısı aktarımı durduruldu ve hiçbir şey uygulanmadı.");
         report.ResponseFields = (sampleKeys ?? []).ToList();
         if (report.Totals.Products > 0 && usage.Count == 0)
             report.Warnings.Add($"{platformLabel} ürün yanıtında kategori bilgisi bulunamadı. Yanıttaki alanlar: {string.Join(", ", sampleKeys ?? [])}");

@@ -132,14 +132,14 @@ public sealed partial class MarketplaceJobProcessor
         foreach (var orderNumber in orderNumbers)
         {
             var dedup = $"hepsiburada-webhook-order:{connectionId:N}:{Hash($"{orderNumber}\n{eventKey}")}";
-            if (await db.IntegrationJobs.AnyAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.HepsiburadaOrderSync && x.JobDedupKey == dedup, cancellationToken)) continue;
             var payload = JsonSerializer.Serialize(new { connectionId, externalOrderId = orderNumber, packageNumber = (string?)null });
-            Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, connectionId, MarketplaceJobTypes.HepsiburadaOrderSync, payload, dedup, correlationId, now)
+            // J4 (KUYRUK-8): a read with this key in any state is the read.
+            var enqueued = await Jobs.JobEnqueuer.EnqueueAsync(db, new IntegrationJobRequest(tenantId, connectionId, MarketplaceJobTypes.HepsiburadaOrderSync, payload, dedup, correlationId, now)
             {
                 Priority = JobPriorityPolicy.For(MarketplaceJobTypes.HepsiburadaOrderSync, userInitiated: false),
                 CreatedAt = now
-            });
-            queued++;
+            }, JobDedupPolicy.ReuseAnyWithKey, cancellationToken);
+            if (enqueued.Created) queued++;
         }
         if (queued > 0) await db.SaveChangesAsync(cancellationToken);
     }

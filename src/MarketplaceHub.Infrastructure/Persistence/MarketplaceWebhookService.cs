@@ -128,10 +128,10 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
     {
         var now = timeProvider.GetUtcNow();
         var dedup = $"webhook:listing-verify:{connection.Id:N}:{now.ToUnixTimeSeconds() / 600}";
-        if (!await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == connection.TenantId && x.JobType == MarketplaceJobTypes.ListingVerify && x.JobDedupKey == dedup, cancellationToken))
+        // J4 (KUYRUK-8): a verification with this key in any state is the verification.
+        var payload = JsonSerializer.Serialize(new { connectionId = connection.Id });
+        if ((await Jobs.JobEnqueuer.EnqueueAsync(db, new IntegrationJobRequest(connection.TenantId, connection.Id, MarketplaceJobTypes.ListingVerify, payload, dedup, correlationId, now) { Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ListingVerify, userInitiated: false), TriggerType = "webhook" }, JobDedupPolicy.ReuseAnyWithKey, cancellationToken)).Created)
         {
-            var payload = JsonSerializer.Serialize(new { connectionId = connection.Id });
-            Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(connection.TenantId, connection.Id, MarketplaceJobTypes.ListingVerify, payload, dedup, correlationId, now) { Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ListingVerify, userInitiated: false), TriggerType = "webhook" });
             try { await db.SaveChangesAsync(cancellationToken); }
             catch (DbUpdateException exception) when (IsDuplicateCandidate(exception)) { db.ChangeTracker.Clear(); }
         }

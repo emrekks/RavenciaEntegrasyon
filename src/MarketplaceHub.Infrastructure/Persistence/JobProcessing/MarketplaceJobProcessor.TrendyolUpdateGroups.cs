@@ -94,8 +94,9 @@ public sealed partial class MarketplaceJobProcessor
             await db.SaveChangesAsync(cancellationToken);
             var failure = JobExecutionResult.FromAdapterError(error);
             // A refusal is every card's; a passing error (quota, a busy service) leaves the others ready for the next send.
-            if (failure.Kind != JobCompletionKind.Retry)
-                await StopGroupCardsAsync(tenantId, others, TrendyolUpdateGroups.Outcome(failure, "UPDATE_BLOCKED", error.Code), cancellationToken);
+            // J2 (15 Nov 2026): the leader's card stays in progress too while the job sends the request again.
+            if (failure.Kind == JobCompletionKind.Retry) return failure;
+            await StopGroupCardsAsync(tenantId, others, TrendyolUpdateGroups.Outcome(failure, "UPDATE_BLOCKED", error.Code), cancellationToken);
             return await MarkUpdateResult(tenantId, connectionId, profile, "UPDATE_BLOCKED", error.Code, failure, cancellationToken);
         }
 

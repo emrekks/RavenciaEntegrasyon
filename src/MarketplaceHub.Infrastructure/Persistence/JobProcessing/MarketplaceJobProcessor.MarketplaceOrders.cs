@@ -82,6 +82,11 @@ public sealed partial class MarketplaceJobProcessor
         return true;
     }
 
+    // n11 order pages in one window (100 packages a page, 15 days a window): far above real traffic, a guard against a list
+    // that never ends. A window walked twice (a count change) counts both walks.
+    internal const int N11OrderPageCap = 1_000;
+    private static readonly PageGuard N11OrderPageGuard = new(MaxPages: N11OrderPageCap, StopOnRepeatedCursor: true);
+
     // n11 lists shipment packages by last modification, at most 15 days per
     // request, so a run walks consecutive windows from the watermark (or three
     // months back for a full scan) up to now. Status changes of older orders
@@ -123,10 +128,9 @@ public sealed partial class MarketplaceJobProcessor
             // Pages are numbered and sorted by last change: a package changed while the window is walked moves to
             // its end and shifts the rest up a place. When the window's count changes during the walk, it is
             // walked once more so the shifted package is not skipped.
-            string? page = null;
             int? firstTotal = null, lastTotal = null;
             var rewalked = false;
-            do
+            var walk = await PagedReadLoop.RunAsync(null, N11OrderPageGuard, async (page, _) =>
             {
                 TrackRequest();
                 var result = await orders.PollAsync(
@@ -138,14 +142,23 @@ public sealed partial class MarketplaceJobProcessor
                 await IngestOrderPageAsync(tenantId, connectionId, result.Value!, "n11-order-contract", cancellationToken);
                 if (page is null) firstTotal = result.Value!.TotalCount;
                 lastTotal = result.Value!.TotalCount;
-                page = result.Value.HasMore ? result.Value.NextCursor : null;
-                if (page is null && !rewalked && firstTotal is not null && lastTotal is not null && firstTotal != lastTotal)
+                var next = result.Value.HasMore ? result.Value.NextCursor : null;
+                if (next is null && !rewalked && firstTotal is not null && lastTotal is not null && firstTotal != lastTotal)
                 {
                     rewalked = true;
-                    page = "0";
+                    next = "0";
                     firstTotal = null;
                 }
-            } while (page is not null && !cancellationToken.IsCancellationRequested);
+                return new PageStep(next);
+            }, cancellationToken);
+            // J3 (15 Nov 2026): a list that never ends, or names the page just read as the next one, is not walked until the
+            // lease runs out, and the window is not taken as read: the job stops with its cause and the next run reads the
+            // window again. A cancelled run does not move the watermark either.
+            if (walk.Stop == PagedReadStop.PageCap)
+                throw PagedReadLoop.GuardFailure("N11_ORDER_PAGE_CAP", $"N11 sipariş listesi bir pencerede {N11OrderPageCap} sayfayı aştı; okuma durduruldu ve bu dönem okunmuş sayılmadı. Sonraki okuma aynı dönemi yeniden okuyacak.");
+            if (walk.Stop == PagedReadStop.RepeatedCursor)
+                throw PagedReadLoop.GuardFailure("N11_ORDER_PAGE_REPEATED", "N11 sipariş listesi aynı sayfayı yeniden sonraki sayfa olarak verdi; okuma durduruldu ve bu dönem okunmuş sayılmadı.");
+            cancellationToken.ThrowIfCancellationRequested();
 
             // Each finished window moves the watermark, so an interrupted run
             // resumes from the last complete window.
@@ -204,14 +217,25 @@ public sealed partial class MarketplaceJobProcessor
                 await IngestOrderPageAsync(tenantId, connectionId, result.Value!, "pazarama-order-contract", cancellationToken);
                 return new PageStep(result.Value!.HasMore ? result.Value.NextCursor : null, PazaramaOrderPageKey(result.Value.Items));
             }, cancellationToken);
-            // A list that never ends (a page number it ignores) is not read for ever: the window is closed and named.
+            // A list that never ends (a page number it ignores) is not read for ever, and it is named. J3 (15 Nov 2026): the
+            // run no longer goes on to move the watermark past the unread rest of the window; it stops with the same code,
+            // and the next run reads the window again.
             if (walk.Stop == PagedReadStop.PageCap)
-                await RecordIssue(tenantId, $"pazarama-order-page-cap:{connectionId}:{windowStart:yyyyMMdd}", "PAZARAMA_ORDER_PAGE_CAP",
-                    $"Pazarama sipariş listesi {windowStart:dd.MM.yyyy} başlangıçlı pencerede {PazaramaOrderPageCap} sayfayı aştı; okuma bu pencerede durduruldu.", cancellationToken);
-            // The same orders again on the next page: the list ignored the page number. The window is closed.
-            else if (walk.Stop == PagedReadStop.RepeatedPage)
-                await RecordIssue(tenantId, $"pazarama-order-page-repeat:{connectionId}", "PAZARAMA_ORDER_PAGE_REPEATED",
-                    "Pazarama sipariş listesi sonraki sayfada aynı siparişleri döndürdü (sayfa numarası yok sayıldı); bu pencerede okuma durduruldu.", cancellationToken);
+            {
+                var summary = $"Pazarama sipariş listesi {windowStart:dd.MM.yyyy} başlangıçlı pencerede {PazaramaOrderPageCap} sayfayı aştı; okuma bu pencerede durduruldu ve dönem okunmuş sayılmadı.";
+                await RecordIssue(tenantId, $"pazarama-order-page-cap:{connectionId}:{windowStart:yyyyMMdd}", "PAZARAMA_ORDER_PAGE_CAP", summary, cancellationToken);
+                await db.SaveChangesAsync(cancellationToken);
+                throw PagedReadLoop.GuardFailure("PAZARAMA_ORDER_PAGE_CAP", summary);
+            }
+            // The same orders again on the next page: the list ignored the page number.
+            if (walk.Stop == PagedReadStop.RepeatedPage)
+            {
+                const string summary = "Pazarama sipariş listesi sonraki sayfada aynı siparişleri döndürdü (sayfa numarası yok sayıldı); okuma durduruldu ve dönem okunmuş sayılmadı.";
+                await RecordIssue(tenantId, $"pazarama-order-page-repeat:{connectionId}", "PAZARAMA_ORDER_PAGE_REPEATED", summary, cancellationToken);
+                await db.SaveChangesAsync(cancellationToken);
+                throw PagedReadLoop.GuardFailure("PAZARAMA_ORDER_PAGE_REPEATED", summary);
+            }
+            cancellationToken.ThrowIfCancellationRequested();
         }
         // The watermark is the moment of this finished run; the next run starts a few days before it.
         cursor.LastModifiedWatermark = now;

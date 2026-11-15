@@ -1785,6 +1785,22 @@ public sealed class HepsiburadaAdapterTests
         Assert.Equal(DateTimeOffset.Parse("2026-09-20T10:00:00Z"), order.OrderedAt);
     }
 
+    // J5 (15 Nov 2026): a claim-only order carries the return-claim mark, as on Trendyol, so the reports count it
+    // claim-built and the next real read replaces it; the mark comes off a merged snapshot and nothing else changes.
+    [Fact]
+    public void ClaimOrderMapper_MarksTheOrderAsBuiltFromAClaim_AndTheMarkCanBeDropped()
+    {
+        var order = HepsiburadaJsonMapper.OrderFromReturnClaim(ClaimOrderPayload("""  "price": { "amount": 25.50, "currency": "TRY" },"""));
+
+        Assert.NotNull(order);
+        Assert.True(MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping.TrendyolJsonMapper.IsReturnClaimReadModelSnapshot(order.CustomerSnapshotJson));
+        var cleared = HepsiburadaJsonMapper.WithoutReturnClaimReadModelMark("""{"name":"x","_ravenciaReadModelSource":"RETURN_CLAIM"}""");
+        Assert.False(MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping.TrendyolJsonMapper.IsReturnClaimReadModelSnapshot(cleared));
+        Assert.Equal("""{"name":"x"}""", cleared);
+        Assert.Equal("""{"name":"x"}""", HepsiburadaJsonMapper.WithoutReturnClaimReadModelMark("""{"name":"x"}"""));
+        Assert.Equal("not json _ravenciaReadModelSource", HepsiburadaJsonMapper.WithoutReturnClaimReadModelMark("not json _ravenciaReadModelSource"));
+    }
+
     [Fact]
     public void ClaimOrderMapper_DoesNotPriceUnreadableLineAsZero()
     {

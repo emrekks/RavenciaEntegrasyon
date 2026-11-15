@@ -13,7 +13,7 @@ public sealed partial class MarketplaceJobProcessor
     {
         string raw; string externalMessageId; string resourceType;
         try { using var payload = JsonDocument.Parse(payloadJson); raw = payload.RootElement.GetProperty("rawJson").GetString() ?? ""; externalMessageId = payload.RootElement.GetProperty("externalMessageId").GetString() ?? ""; resourceType = payload.RootElement.TryGetProperty("resourceType", out var type) ? type.GetString() ?? "" : ""; }
-        catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException) { return false; }
+        catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException) { throw WebhookUnreadable(); }
 
         var platform = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
         var source = $"{platform}_WEBHOOK";
@@ -58,7 +58,7 @@ public sealed partial class MarketplaceJobProcessor
                     await UpsertReturn(tenantId, connectionId, claim, cancellationToken);
                 }
             }
-            catch (JsonException) { return false; }
+            catch (JsonException) { throw WebhookUnreadable(); }
         }
         else if (platform == "SHOPIFY")
         {
@@ -71,8 +71,9 @@ public sealed partial class MarketplaceJobProcessor
                 if (document.RootElement.TryGetProperty(orderIdProperty, out var id))
                     externalOrderId = id.ValueKind == JsonValueKind.Number ? id.GetInt64().ToString(System.Globalization.CultureInfo.InvariantCulture) : id.GetString();
             }
-            catch (Exception exception) when (exception is JsonException or InvalidOperationException or FormatException) { return false; }
-            if (string.IsNullOrWhiteSpace(externalOrderId)) return false;
+            catch (Exception exception) when (exception is JsonException or InvalidOperationException or FormatException) { throw WebhookUnreadable(); }
+            if (string.IsNullOrWhiteSpace(externalOrderId))
+                throw new JobProcessingException(JobExecutionResult.Blocked("WEBHOOK_ORDER_NUMBER_MISSING", "Shopify bildiriminde sipariş numarası yok; sipariş okunmadı. Değişiklik planlı sipariş okumasıyla gelecek."));
             TrackRequest();
             var order = await orders.GetAsync(Context(tenantId, connectionId, $"webhook:{externalMessageId}", $"shopify-webhook:{connectionId}:{externalMessageId}"), externalOrderId, cancellationToken);
             if (!order.IsSuccess) { TrackResultFailure(order.Error); throw JobProcessingException.FromAdapter(order.Error!); }
@@ -81,7 +82,7 @@ public sealed partial class MarketplaceJobProcessor
         }
         else
         {
-            AdapterPageResult<RemoteOrder> page; try { page = TrendyolJsonMapper.Orders(raw); } catch (JsonException) { return false; }
+            AdapterPageResult<RemoteOrder> page; try { page = TrendyolJsonMapper.Orders(raw); } catch (JsonException) { throw WebhookUnreadable(); }
             foreach (var issue in page.Issues ?? [])
                 await RecordIssue(tenantId, $"order-webhook-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);
             // The webhook carries no storefront header; orderCountryCode names the customer's
@@ -91,4 +92,9 @@ public sealed partial class MarketplaceJobProcessor
         }
         var inbox = await db.InboxMessages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Source == source && x.ExternalMessageId == externalMessageId, cancellationToken); if (inbox is not null) inbox.ProcessedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return true;
     }
+
+    // J1 (15 Nov 2026): a notice whose stored body cannot be read is the same body on every run, so it stays blocked with
+    // its own cause instead of the generic F3_JOB_REJECTED; the scheduled reads still bring the change it announced.
+    private static JobProcessingException WebhookUnreadable() =>
+        new(JobExecutionResult.Blocked("WEBHOOK_BODY_UNREADABLE", "Pazaryeri bildiriminin içeriği okunamadı; bildirim işlenmedi. Değişiklik planlı okumayla gelecek."));
 }

@@ -997,6 +997,22 @@ public sealed partial class MarketplaceJobProcessor
                       select result.Id).AnyAsync(cancellationToken);
     }
 
+    // The waiting approval checks of a publication Trendyol confirmed missing are closed. J6 (15 Nov 2026): they were closed
+    // without a "jobs" event, so an İşlemler screen open in another tab kept showing them queued; one bulk event for all of
+    // them (K2) is saved with the reset's own changes.
+    internal static int CloseApprovalChecksOfMissingPublication(AppDbContext db, Guid tenantId, IEnumerable<IntegrationJob> relatedJobs, Guid currentJobId, DateTimeOffset now)
+    {
+        var closed = 0;
+        foreach (var oldCheck in relatedJobs.Where(job => job.JobType == MarketplaceJobTypes.ProductApprovalReconcile && job.Id != currentJobId
+            && job.Status is JobStatus.Pending or JobStatus.RetryScheduled))
+        {
+            Jobs.JobStateMachine.Cancel(db, oldCheck, now, "PRODUCT_MISSING_RESET", "Trendyol ilanının bulunmadığı doğrulandığı için eski durum kontrolü kapatıldı.", Jobs.JobEvent.None);
+            closed++;
+        }
+        Jobs.JobStateMachine.PublishBulk(db, tenantId, now, JobStatus.Cancelled, closed);
+        return closed;
+    }
+
     private async Task<JobExecutionResult> ResetMissingPublication(
         Guid tenantId,
         Guid connectionId,
@@ -1032,9 +1048,7 @@ public sealed partial class MarketplaceJobProcessor
             return JobExecutionResult.Retry("PRODUCT_APPROVAL_CHECK_IN_PROGRESS", "Başka bir durum kontrolü sürüyor; ürünün bulunmadığı doğrulaması yeniden denenecek.", TimeSpan.FromMinutes(1));
 
         var now = timeProvider.GetUtcNow();
-        foreach (var oldCheck in relatedJobs.Where(job => job.JobType == MarketplaceJobTypes.ProductApprovalReconcile && job.Id != currentJobId
-            && job.Status is JobStatus.Pending or JobStatus.RetryScheduled))
-            Jobs.JobStateMachine.Cancel(db, oldCheck, now, "PRODUCT_MISSING_RESET", "Trendyol ilanının bulunmadığı doğrulandığı için eski durum kontrolü kapatıldı.", Jobs.JobEvent.None);
+        CloseApprovalChecksOfMissingPublication(db, tenantId, relatedJobs, currentJobId, now);
         var previousCreate = relatedJobs.SingleOrDefault(job => job.JobType == MarketplaceJobTypes.ProductCreate && job.JobDedupKey == productCreateDedup);
         if (previousCreate is not null)
         {
@@ -1085,17 +1099,17 @@ public sealed partial class MarketplaceJobProcessor
     private async Task EnsureApprovalReconciliationJob(Guid tenantId, Guid connectionId, Guid productId, Guid profileId, string payloadHash, string correlationId, CancellationToken cancellationToken, string? externalOperationId = null, TimeSpan? firstCheckDelay = null)
     {
         var dedup = $"product-approval:{connectionId:N}:{profileId:N}:{payloadHash}";
-        if (await db.IntegrationJobs.AnyAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.ProductApprovalReconcile && x.JobDedupKey == dedup, cancellationToken)) return;
         var now = timeProvider.GetUtcNow();
         var jobId = Guid.CreateVersion7();
         var payload = JsonSerializer.Serialize(new ProductApprovalReconciliationJobPayload(jobId, productId, profileId, payloadHash, now, now.AddDays(7), externalOperationId));
-        Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, connectionId, MarketplaceJobTypes.ProductApprovalReconcile, payload, dedup, correlationId, now + (firstCheckDelay ?? TimeSpan.Zero))
+        // J4 (KUYRUK-8): a check with this key in any state is the check.
+        await Jobs.JobEnqueuer.EnqueueAsync(db, new IntegrationJobRequest(tenantId, connectionId, MarketplaceJobTypes.ProductApprovalReconcile, payload, dedup, correlationId, now + (firstCheckDelay ?? TimeSpan.Zero))
         {
             Id = jobId,
             Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ProductApprovalReconcile, userInitiated: true),
             MaxAttempts = ProductApprovalReconcileMaxAttempts,
             CreatedAt = now
-        });
+        }, JobDedupPolicy.ReuseAnyWithKey, cancellationToken);
     }
 
     // " Reddedilen: SKU (reason); …" for the refused lines that carry a reason, cut to stay readable; empty without one.

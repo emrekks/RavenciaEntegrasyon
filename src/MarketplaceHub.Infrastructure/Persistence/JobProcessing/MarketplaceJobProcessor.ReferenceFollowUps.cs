@@ -17,7 +17,11 @@ public sealed partial class MarketplaceJobProcessor
         var fieldsWithValues = followUp.IncludeValues && resourceType == "CATEGORY_ATTRIBUTES" && parentExternalId is not null;
         // A field list read less than a day ago (or, without a boundary, read at all) is not read again; its value lists still are.
         var fieldsFresh = fieldsWithValues && ConnectionReferencePlan.IsFresh(await CurrentReferenceFetchedAtAsync(tenantId, connectionId, resourceType, parentExternalId!, cancellationToken), followUp.RefreshBefore);
-        if (!fieldsFresh && !await SyncReferences(tenantId, connectionId, payloadJson, correlationId, cancellationToken)) return false;
+        // J1 (15 Nov 2026): SyncReferences answers false only for a list the store does not have (a category missing from
+        // the current category tree, a malformed scope); every other failure throws its own result. That does not change on
+        // a later run, so the job stays blocked with its cause instead of the generic F3_JOB_REJECTED.
+        if (!fieldsFresh && !await SyncReferences(tenantId, connectionId, payloadJson, correlationId, cancellationToken))
+            throw new JobProcessingException(JobExecutionResult.Blocked("REFERENCE_SCOPE_INVALID", "İstenen liste bu mağazanın güncel kategori listesinde yok; okunmadı. Kategori listesini yenileyip eşlemeyi kontrol edin."));
         if (resourceType == "CATEGORIES" && followUp.FollowMappedCategories)
             await QueueMappedCategoryReferencesAsync(tenantId, connectionId, correlationId, jobId, cancellationToken);
         if (fieldsWithValues)

@@ -305,18 +305,17 @@ public sealed partial class InvoicingBillingService(
             return ServiceResult<Guid>.Fail("IDEMPOTENCY_KEY_INVALID", "İstek anahtarı geçersiz; sayfayı yenileyip yeniden deneyin.", 400);
         var jobType = MarketplaceJobTypes.ForPlatform(connection.PlatformCode, MarketplaceJobTypes.OrderInvoiceReconciliation);
         var dedup = $"workspace-invoice-check:{connection.Id:N}:{order.Id:N}:{Hash(normalizedKey)}";
-        var existing = await db.IntegrationJobs.AsNoTracking()
-            .SingleOrDefaultAsync(job => job.TenantId == tenantId && job.JobType == jobType && job.JobDedupKey == dedup, cancellationToken);
-        if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
-
         var now = timeProvider.GetUtcNow();
         var payload = JsonSerializer.Serialize(new { connectionId = connection.Id, targetOrderId = order.Id, batchSize = 1 });
-        var job = Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, connection.Id, jobType, payload, dedup, correlationId, now)
+        // J4 (KUYRUK-8): a check with this key in any state is the check.
+        var enqueued = await Jobs.JobEnqueuer.EnqueueAsync(db, new IntegrationJobRequest(tenantId, connection.Id, jobType, payload, dedup, correlationId, now)
         {
             Priority = JobPriorityPolicy.UserAction,
             TriggerType = "user",
             CreatedAt = now
-        });
+        }, JobDedupPolicy.ReuseAnyWithKey, cancellationToken);
+        if (!enqueued.Created) return ServiceResult<Guid>.Ok(enqueued.JobId);
+        var job = enqueued.Job!;
         try
         {
             await db.SaveChangesAsync(cancellationToken);
@@ -325,7 +324,7 @@ public sealed partial class InvoicingBillingService(
         catch (DbUpdateException)
         {
             db.Entry(job).State = EntityState.Detached;
-            existing = await db.IntegrationJobs.AsNoTracking()
+            var existing = await db.IntegrationJobs.AsNoTracking()
                 .SingleOrDefaultAsync(candidate => candidate.TenantId == tenantId && candidate.JobType == jobType && candidate.JobDedupKey == dedup, cancellationToken);
             return existing is not null
                 ? ServiceResult<Guid>.Ok(existing.Id)
@@ -1796,9 +1795,12 @@ public sealed partial class InvoicingBillingService(
 
     private async Task<ServiceResult<Guid>> AddJob(Invoice invoice, string jobType, string idempotencyKey, string correlationId, CancellationToken cancellationToken, Guid? connectionId = null, bool manualDeliveryRetry = false, bool bulk = false)
     {
-        var dedup = $"{jobType}:{invoice.Id}:{idempotencyKey}"; var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == invoice.TenantId && x.JobType == jobType && x.JobDedupKey == dedup, cancellationToken); if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
-        var payload = JsonSerializer.Serialize(new { invoiceId = invoice.Id, manualDeliveryRetry }); var job = IntegrationJobFactory.New(new IntegrationJobRequest(invoice.TenantId, connectionId ?? invoice.ProviderConnectionId, jobType, payload, dedup, correlationId, timeProvider.GetUtcNow()) { EffectIdempotencyKey = $"{jobType}:{invoice.Id}:{idempotencyKey}", Priority = InvoiceJobPriority(jobType, bulk) });
-        db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(job.Id);
+        var dedup = $"{jobType}:{invoice.Id}:{idempotencyKey}";
+        var payload = JsonSerializer.Serialize(new { invoiceId = invoice.Id, manualDeliveryRetry });
+        // J4 (KUYRUK-8): a job with this key in any state is the job.
+        var enqueued = await Jobs.JobEnqueuer.EnqueueAsync(db, new IntegrationJobRequest(invoice.TenantId, connectionId ?? invoice.ProviderConnectionId, jobType, payload, dedup, correlationId, timeProvider.GetUtcNow()) { EffectIdempotencyKey = $"{jobType}:{invoice.Id}:{idempotencyKey}", Priority = InvoiceJobPriority(jobType, bulk) }, JobDedupPolicy.ReuseAnyWithKey, cancellationToken);
+        if (!enqueued.Created) return ServiceResult<Guid>.Ok(enqueued.JobId);
+        await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(enqueued.JobId);
     }
 
     // Submission and delivery run in the user lane: a single request ahead of everything, a bulk or automatic one
