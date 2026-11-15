@@ -9028,6 +9028,23 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             Assert.Equal(anchor.AddDays(-41).ToUnixTimeMilliseconds().ToString(), QueryValue(streamRequest, "lastModifiedStartDate"));
             Assert.Equal(anchor.AddDays(-29).ToUnixTimeMilliseconds().ToString(), QueryValue(streamRequest, "lastModifiedEndDate"));
             Assert.Equal(["AE"], storeFrontCodes);
+
+            // Audit 2026-11-15 ADAPTOR-TY-HB-3: a package of that order with no status time (or one older than the
+            // stream's three months) cannot be asked for. No request goes out and the answer says so instead of "Trendyol
+            // did not find the package"; its class and status stay NotFound/404, so every caller takes the path it took.
+            foreach (var statusTime in new DateTimeOffset?[] { null, anchor.AddMonths(-4) })
+            {
+                var unaddressableStart = requests.Requests.Count;
+                var unaddressable = await client.GetShipmentPackageAsync(context, "419428742", new PackageLookup(statusTime, oldOrder), CancellationToken.None);
+                Assert.Equal(unaddressableStart, requests.Requests.Count);
+                Assert.False(unaddressable.IsSuccess);
+                Assert.Equal(TrendyolHttpClient.PackageNotAddressableCode, unaddressable.Error!.Code);
+                Assert.Equal(AdapterErrorClass.NotFound, unaddressable.Error.Class);
+                Assert.Equal(404, unaddressable.Error.HttpStatus);
+                Assert.Contains("bilinmiyor", unaddressable.Error.SafeMessage, StringComparison.Ordinal);
+                Assert.True(InvoiceWorkspaceReadIssuePolicy.ShouldDisplay(unaddressable.Error.Code));
+            }
+            Assert.False(InvoiceWorkspaceReadIssuePolicy.ShouldDisplay("REMOTE_PACKAGE_NOT_FOUND"));
         }
         finally
         {

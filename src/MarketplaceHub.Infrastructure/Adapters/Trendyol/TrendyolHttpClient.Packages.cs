@@ -164,12 +164,14 @@ public sealed partial class TrendyolHttpClient
         }
 
         AdapterError? streamError = null;
+        var streamRead = false;
         if (packageStatusOccurredAt is { } statusOccurredAt)
         {
             var now = timeProvider.GetUtcNow();
             var historyCutoff = now.AddMonths(-3);
             if (statusOccurredAt >= historyCutoff && statusOccurredAt <= now)
             {
+                streamRead = true;
                 var modifiedStart = statusOccurredAt.AddDays(-6);
                 if (modifiedStart < historyCutoff) modifiedStart = historyCutoff;
                 var modifiedEnd = statusOccurredAt.AddDays(6);
@@ -197,6 +199,11 @@ public sealed partial class TrendyolHttpClient
             return AdapterResult<RemoteOrderPackage>.Success(selectedPackage, v2RateLimit);
         if (streamError is not null)
             return AdapterResult<RemoteOrderPackage>.Failure(streamError, v2RateLimit);
+        // Audit 2026-11-15 ADAPTOR-TY-HB-3: no Order V2 window (an order older than a month) and no status time to read
+        // the stream around: nothing was asked, so Trendyol did not say the package is missing. Its own code and summary
+        // tell the two apart; the class and status stay NotFound/404, so every caller handles it as it did.
+        if (query is null && !streamRead)
+            return AdapterResult<RemoteOrderPackage>.Failure(PackageNotAddressable, v2RateLimit);
 
         var error = v2ReadError
             ?? new AdapterError(AdapterErrorClass.NotFound, "REMOTE_PACKAGE_NOT_FOUND", "Trendyol paket bilgisi bulunamadı.", 404, null, null);
@@ -209,6 +216,9 @@ public sealed partial class TrendyolHttpClient
     // minutes) cover the 12-day window of a busy seller without letting one package lookup hold the order quota.
     internal const int MaxPackageStreamPages = 20;
     internal const string PackageScanIncompleteCode = "TRENDYOL_PACKAGE_SCAN_INCOMPLETE";
+    internal const string PackageNotAddressableCode = "TRENDYOL_PACKAGE_OUT_OF_READ_WINDOW";
+    private static readonly AdapterError PackageNotAddressable = new(AdapterErrorClass.NotFound, PackageNotAddressableCode,
+        "Trendyol paketi okunabilir dönemin dışında kaldığı için sorulamadı; paketin durumu bilinmiyor.", 404, null, null);
     private static readonly AdapterError PackageScanIncomplete = new(AdapterErrorClass.TransientNetwork, PackageScanIncompleteCode,
         "Trendyol paket akışı sayfa sınırına kadar okundu ama paket bulunamadı; okuma daha sonra yeniden denenecek.", 503, TimeSpan.FromMinutes(15), null);
 
