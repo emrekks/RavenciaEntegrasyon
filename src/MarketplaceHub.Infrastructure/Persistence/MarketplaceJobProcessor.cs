@@ -9814,13 +9814,20 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var salePrice = decimal.Round(Math.Max(0m, remote.SalePrice ?? remote.ListPrice ?? 0m), 4, MidpointRounding.ToEven);
         var listPrice = decimal.Round(Math.Max(salePrice, Math.Max(0m, remote.ListPrice ?? salePrice)), 4, MidpointRounding.ToEven);
         var currency = NormalizeCurrency(remote.Currency);
-        var vatRate = decimal.Round(Math.Max(0m, remote.VatRate ?? 0m), 4, MidpointRounding.ToEven);
         var status = remote.Archived ? "INACTIVE" : "ACTIVE";
         var offer = db.ChannelOffers.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variant.Id)
             ?? await db.ChannelOffers.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variant.Id, cancellationToken);
+        var cardVatRate = offer is null && remote.VatRate is null
+            ? db.Products.Local.FirstOrDefault(x => x.Id == variant.ProductId)?.VatRate
+                ?? await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == variant.ProductId).Select(x => x.VatRate).SingleOrDefaultAsync(cancellationToken)
+            : null;
+        var (vatRate, vatUnknown) = CatalogOfferVatRate(remote.VatRate, offer?.VatRate, cardVatRate);
         var observationSource = observeOnly ? "SHOPIFY" : "TRENDYOL";
         if (offer is null)
         {
+            if (vatUnknown)
+                await RecordIssue(tenantId, $"offer-vat-unknown:{connectionId:N}", "OFFER_VAT_UNKNOWN",
+                    "Pazar yeri ürün aktarımında KDV oranı bildirmedi ve ürün kartında KDV yok; yeni açılan tekliflerin KDV oranı %0 yazıldı. Ürün kartlarının ve tekliflerin KDV oranını kontrol edin.", cancellationToken);
             offer = new ChannelOffer
             {
                 Id = Guid.CreateVersion7(),
@@ -9892,6 +9899,17 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 EffectiveAt = now
             });
         }
+    }
+
+    // The VAT a catalog import gives an offer (ISLEYICI-2, 15 Nov 2026). A marketplace that does not report it (Shopify
+    // never does; a Hepsiburada listing without vatRate) leaves an existing offer's VAT as it was, and a new offer takes the
+    // card's VAT; 0 only when neither is known, and Unknown says so. Before, a missing VAT was written as 0.
+    internal static (decimal Rate, bool Unknown) CatalogOfferVatRate(decimal? remote, decimal? offer, decimal? card)
+    {
+        if (remote is { } remoteRate) return (decimal.Round(Math.Max(0m, remoteRate), 4, MidpointRounding.ToEven), false);
+        if (offer is { } offerRate) return (offerRate, false);
+        if (card is { } cardRate) return (decimal.Round(Math.Max(0m, cardRate), 4, MidpointRounding.ToEven), false);
+        return (0m, true);
     }
 
     // When the marketplace stock being written was read: the earliest page read of the model group being finalized,
