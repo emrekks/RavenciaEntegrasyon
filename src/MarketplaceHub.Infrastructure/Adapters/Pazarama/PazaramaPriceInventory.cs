@@ -343,7 +343,10 @@ public static class PazaramaBatchMapper
             "başarılı" => BatchState.Succeeded,
             "onaya gönderildi" => BatchState.PendingApproval,
             "işleniyor" => BatchState.Processing,
-            _ => BatchState.Failed
+            "hata oluştu" or "tamamlanamadı" => BatchState.Failed,
+            // D10: no result and no text (or one the docs do not list) is no outcome yet: the result is read again
+            // (the operation stays IN_PROGRESS), never taken as a refusal.
+            _ => BatchState.Processing
         };
     }
 

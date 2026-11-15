@@ -105,9 +105,9 @@ public sealed class PazaramaContractTests
         // D9: the documented rows whose operationStatusText is "Onaya gönderildi" carry price.status 0 with "Ürün fiyat
         // onayına gönderildi" (pazarama-api-son.md ~905-935): they wait for Pazarama's approval, not done.
         Assert.Equal(PazaramaBatchMapper.BatchState.PendingApproval, page.Items[1].State);
-        // DEVIATION: a row with no price or stock result and no status text reads as Failed (the text switch's default),
-        // not as unknown/still processing.
-        Assert.Equal(PazaramaBatchMapper.BatchState.Failed, page.Items[4].State);
+        // D10: a row with no price or stock result and no status text has no outcome yet: it reads as still processing
+        // (read again), never as Failed.
+        Assert.Equal(PazaramaBatchMapper.BatchState.Processing, page.Items[4].State);
     }
 
     [Fact]

@@ -189,6 +189,9 @@ public sealed class PazaramaPriceInventoryTests
     [InlineData("İşleniyor", PazaramaBatchMapper.BatchState.Processing)]
     [InlineData("Hata oluştu", PazaramaBatchMapper.BatchState.Failed)]
     [InlineData("Tamamlanamadı", PazaramaBatchMapper.BatchState.Failed)]
+    // D10: no result and no text, or a text Pazarama does not document, is no outcome yet: read again, never Failed.
+    [InlineData("", PazaramaBatchMapper.BatchState.Processing)]
+    [InlineData("Yeni bir durum", PazaramaBatchMapper.BatchState.Processing)]
     public void Without_part_status_the_overall_text_decides(string text, PazaramaBatchMapper.BatchState expected)
     {
         var page = PazaramaBatchMapper.Page(Parse(Result(Row("B1", text: text))));
