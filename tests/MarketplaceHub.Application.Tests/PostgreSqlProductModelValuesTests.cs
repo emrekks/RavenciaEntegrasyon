@@ -5,6 +5,7 @@ using MarketplaceHub.Infrastructure.Persistence;
 using MarketplaceHub.Infrastructure.SizeCharts;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Xunit;
@@ -259,6 +260,62 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         var fields = await ProductModelLinks.SavedFieldsAsync(db, tenantId, opened.FamilyId, family, ColorOf(productId), CancellationToken.None)
             ?? ProductFamilySharedFields.ModelValues(cardFields, ColorOf(productId));
         return (fields.Title, fields.Description, fields.BrandId, fields.CategoryId, fields.VatRate, fields.VatInclusion, fields.WarrantyMonths, fields.DeliveryDays);
+    }
+
+    // A command interceptor for the review's failure cases: commands whose text matches fail with the given exception
+    // while Fail is set, and the matching commands are counted.
+    private sealed class CommandTap(Func<string, bool> matches, Func<Exception>? failure = null) : DbCommandInterceptor
+    {
+        public bool Fail { get; set; }
+        public int Count { get; private set; }
+
+        private void Check(System.Data.Common.DbCommand command)
+        {
+            if (!matches(command.CommandText)) return;
+            Count++;
+            if (Fail && failure is not null) throw failure();
+        }
+
+        public override InterceptionResult<System.Data.Common.DbDataReader> ReaderExecuting(System.Data.Common.DbCommand command, CommandEventData eventData, InterceptionResult<System.Data.Common.DbDataReader> result) { Check(command); return result; }
+        public override ValueTask<InterceptionResult<System.Data.Common.DbDataReader>> ReaderExecutingAsync(System.Data.Common.DbCommand command, CommandEventData eventData, InterceptionResult<System.Data.Common.DbDataReader> result, CancellationToken cancellationToken = default) { Check(command); return ValueTask.FromResult(result); }
+        public override InterceptionResult<int> NonQueryExecuting(System.Data.Common.DbCommand command, CommandEventData eventData, InterceptionResult<int> result) { Check(command); return result; }
+        public override ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(System.Data.Common.DbCommand command, CommandEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default) { Check(command); return ValueTask.FromResult(result); }
+    }
+
+    private AppDbContext ContextWith(IInterceptor interceptor)
+    {
+        using var plain = fixture.CreateContext();
+        return new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(plain.Database.GetConnectionString()).AddInterceptors(interceptor).Options);
+    }
+
+    // The refresh's lock of one model row (ProductModelValues.RefreshAsync, outside a caller's transaction).
+    private static bool LocksAModel(string sql) => sql.Contains("FROM catalog.product_models", StringComparison.Ordinal) && sql.Contains("FOR UPDATE", StringComparison.Ordinal);
+
+    // F1: a model refresh that fails with a database error leaves the caller's tracked entities as they are: an import
+    // that saves the same tracked cards again saves its next changes.
+    [PostgreSqlFact]
+    public async Task AFailedRefresh_LeavesTheCallersTrackedEntitiesTracked_AndTheNextSaveWritesThem()
+    {
+        var tap = new CommandTap(LocksAModel, () => new Npgsql.PostgresException("injected", "ERROR", "ERROR", Npgsql.PostgresErrorCodes.ForeignKeyViolation));
+        await using var db = ContextWith(tap);
+        var seed = await SeedAsync(db);
+        var siyah = AddCard(db, seed, seed.Ravencia, "MZ300", "Siyah", "Kadın Siyah Etek", 0);
+        var mavi = AddCard(db, seed, seed.Ravencia, "MZ300", "Mavi", "Kadın Mavi Etek", 1);
+        await db.SaveChangesAsync();
+
+        tap.Fail = true;
+        siyah.Description = "Pazaryeri açıklaması";
+        mavi.Description = "Pazaryeri açıklaması";
+        await db.SaveChangesAsync();
+        tap.Fail = false;
+        Assert.Equal("Model açıklaması", (await ModelOfAsync(db, siyah.Id)).Description);
+        Assert.Equal(EntityState.Unchanged, db.Entry(siyah).State);
+        Assert.Equal(EntityState.Unchanged, db.Entry(mavi).State);
+
+        mavi.WarrantyMonths = 12;
+        await db.SaveChangesAsync();
+        Assert.Equal(12, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == mavi.Id)).WarrantyMonths);
+        Assert.Equal("Pazaryeri açıklaması", (await ModelOfAsync(db, siyah.Id)).Description);
     }
 
     // KATALOG-6: a card whose link failed after its save (FamilyId left empty) is linked by the scan; the two-brand code

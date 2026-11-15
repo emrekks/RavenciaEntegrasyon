@@ -220,13 +220,18 @@ public static class ProductModelValues
                 }
                 await transaction.CommitAsync(cancellationToken);
             }
-            catch (System.Data.Common.DbException) when (!cancellationToken.IsCancellationRequested)
+            // Nothing to detach: the refresh tracks nothing (AsNoTracking reads, raw SQL, ExecuteUpdate / ExecuteDelete), and
+            // the caller's tracked entities (an import's cards between its saves) stay tracked for the caller's next save.
+            // A transient error (lock timeout, deadlock) comes wrapped by Npgsql's execution strategy.
+            catch (Exception exception) when (IsDatabaseError(exception) && !cancellationToken.IsCancellationRequested)
             {
-                db.ChangeTracker.Clear();
             }
         }
         return new(count, written, differing);
     }
+
+    private static bool IsDatabaseError(Exception exception) =>
+        exception is System.Data.Common.DbException || exception is InvalidOperationException { InnerException: System.Data.Common.DbException };
 
     private static async Task<bool> WriteAsync(AppDbContext db, Target target, DateTimeOffset now, CancellationToken cancellationToken)
     {
