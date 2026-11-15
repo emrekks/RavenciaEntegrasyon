@@ -448,3 +448,10 @@ packages only, no claim events.
   carried. No link, a link no variant link holds, a code over 40 characters or an open `PRODUCT_MODEL_AMBIGUOUS` for
   the model's key: the panel model code. The update composer builds on the same payload, so an update never moves a
   live card's productMainId.
+
+## Claim-built orders (15 Nov 2026, ADAPTOR-TY-HB-1)
+- getClaims carries `orderDate` and each `orderLine.price` but **no currency field** (trendyol-api-son.md, getClaims
+  sample around :6830). An order built from a claim (`TrendyolJsonMapper.OrderFromReturnClaim`) takes lira when the
+  claim names no currency, refuses an unknown one, and builds no order without `orderDate` (the claim date is not the
+  order date) or with a line whose price is unreadable (never priced 0); the claim then waits as RETURN_ORDER_NOT_FOUND
+  until the order itself is read. Live 15 Nov 2026: 20 Trendyol orders still carry the RETURN_CLAIM mark.
