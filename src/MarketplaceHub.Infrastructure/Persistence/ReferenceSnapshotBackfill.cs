@@ -62,7 +62,7 @@ public static class ReferenceSnapshotBackfill
                 var dedup = ConnectionReferencePlan.Truncate(gap.CategoryExternalId is null
                     ? $"{DedupPrefix}{connection.Id:N}:{gap.ResourceType.ToLowerInvariant()}:{day}"
                     : $"{DedupPrefix}{connection.Id:N}:attributes:{gap.CategoryExternalId}:{day}");
-                if (await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == connection.TenantId && x.JobType == jobType && x.JobDedupKey == dedup, cancellationToken)) continue;
+                if (await Jobs.JobEnqueuer.KeyTakenAsync(db, connection.TenantId, jobType, dedup, cancellationToken)) continue;
                 if (await ConnectionReferencePlan.OpenReadExistsAsync(db, connection.TenantId, connection.Id, jobType, gap.ResourceType, gap.CategoryExternalId, cancellationToken)) continue;
                 var payload = gap.CategoryExternalId is null
                     ? ConnectionReferencePlan.RootPayload(connection.Id, gap.ResourceType, gap.ResourceType == "CATEGORIES" && ConnectionReferencePlan.SupportsCategoryAttributes(connection.PlatformCode))

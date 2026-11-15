@@ -18,36 +18,62 @@ public enum ReturnClaimStatus
 
 public static class MarketplaceReturnStatus
 {
+    // The marketplaces' status words, written as Canonicalize compares them: letters and digits only, upper case.
+    private static readonly IReadOnlyDictionary<string, ReturnClaimStatus> Words = new Dictionary<string, ReturnClaimStatus>(StringComparer.Ordinal)
+    {
+        // Trendyol Created, Hepsiburada NewRequest; n11 REQUESTED arrives as Created (N11ReturnMapper.CanonicalStatus).
+        // A Created claim with a cargo tracking link is on its way back (Canonicalize).
+        ["CREATED"] = ReturnClaimStatus.Requested,
+        ["NEWREQUEST"] = ReturnClaimStatus.Requested,
+        // Waiting for the seller: Trendyol WaitingInAction/InAnalysis/WaitingFraudCheck, Hepsiburada AwaitingAction/
+        // AwaitingPreApproval, n11 PENDING/PENDED/APPROVAL_WAITING and Pazarama 1 (both arrive as WaitingInAction).
+        // Shopify REQUESTED is a return the customer asked for that waits for the seller's approve or decline.
+        ["AWAITINGPREAPPROVAL"] = ReturnClaimStatus.ActionRequired,
+        ["WAITINGINACTION"] = ReturnClaimStatus.ActionRequired,
+        ["AWAITINGACTION"] = ReturnClaimStatus.ActionRequired,
+        ["INANALYSIS"] = ReturnClaimStatus.ActionRequired,
+        ["WAITINGFRAUDCHECK"] = ReturnClaimStatus.ActionRequired,
+        ["WAITINGFORSELLERACTION"] = ReturnClaimStatus.ActionRequired,
+        ["REQUESTED"] = ReturnClaimStatus.ActionRequired,
+        ["WAITINGFORSHIPMENT"] = ReturnClaimStatus.AwaitingShipment,
+        ["WAITINGINCARGO"] = ReturnClaimStatus.InTransit,
+        ["INTRANSIT"] = ReturnClaimStatus.InTransit,
+        ["RETURNINTRANSIT"] = ReturnClaimStatus.InTransit,
+        ["SHIPPED"] = ReturnClaimStatus.InTransit,
+        ["ACCEPTED"] = ReturnClaimStatus.Approved,
+        ["APPROVED"] = ReturnClaimStatus.Approved,
+        ["REJECTED"] = ReturnClaimStatus.Rejected,
+        ["UNRESOLVED"] = ReturnClaimStatus.Disputed,
+        ["INDISPUTE"] = ReturnClaimStatus.Disputed,
+        ["DISPUTED"] = ReturnClaimStatus.Disputed,
+        // n11 MANUAL_REFUND arrives as Refunded; PTT AVM returned lines are Completed.
+        ["COMPLETED"] = ReturnClaimStatus.Completed,
+        ["REFUNDED"] = ReturnClaimStatus.Completed,
+        ["CANCELLED"] = ReturnClaimStatus.Cancelled,
+        ["CANCELED"] = ReturnClaimStatus.Cancelled,
+        // Shopify ReturnStatus (only Shopify reports these words for returns): OPEN is an approved return in progress,
+        // CLOSED a finished one, DECLINED a refused request.
+        ["OPEN"] = ReturnClaimStatus.Approved,
+        ["CLOSED"] = ReturnClaimStatus.Completed,
+        ["DECLINED"] = ReturnClaimStatus.Rejected
+    };
+
     public static ReturnClaimStatus Canonicalize(string? rawStatus, string? cargoTrackingLink = null)
     {
         var normalized = string.Concat((rawStatus ?? string.Empty).Where(char.IsLetterOrDigit)).ToUpperInvariant();
-        return normalized switch
-        {
-            "CREATED" when !string.IsNullOrWhiteSpace(cargoTrackingLink) => ReturnClaimStatus.InTransit,
-            // Trendyol Created, Hepsiburada NewRequest; n11 REQUESTED arrives as Created (N11ReturnMapper.CanonicalStatus).
-            "CREATED" or "NEWREQUEST" => ReturnClaimStatus.Requested,
-            // Waiting for the seller: Trendyol WaitingInAction/InAnalysis/WaitingFraudCheck, Hepsiburada AwaitingAction/
-            // AwaitingPreApproval, n11 PENDING/PENDED/APPROVAL_WAITING and Pazarama 1 (both arrive as WaitingInAction).
-            // Shopify REQUESTED is a return the customer asked for that waits for the seller's approve or decline.
-            "AWAITINGPREAPPROVAL" or "WAITINGINACTION" or "AWAITINGACTION" or "INANALYSIS" or "WAITINGFRAUDCHECK" or "WAITINGFORSELLERACTION" or "REQUESTED" => ReturnClaimStatus.ActionRequired,
-            "WAITINGFORSHIPMENT" => ReturnClaimStatus.AwaitingShipment,
-            "WAITINGINCARGO" or "INTRANSIT" or "RETURNINTRANSIT" or "SHIPPED" => ReturnClaimStatus.InTransit,
-            "ACCEPTED" or "APPROVED" => ReturnClaimStatus.Approved,
-            "REJECTED" => ReturnClaimStatus.Rejected,
-            "UNRESOLVED" or "INDISPUTE" or "DISPUTED" => ReturnClaimStatus.Disputed,
-            // n11 MANUAL_REFUND arrives as Refunded; PTT AVM returned lines are Completed.
-            "COMPLETED" or "REFUNDED" => ReturnClaimStatus.Completed,
-            "CANCELLED" or "CANCELED" => ReturnClaimStatus.Cancelled,
-            // Shopify ReturnStatus (only Shopify reports these words for returns): OPEN is an approved return in progress,
-            // CLOSED a finished one, DECLINED a refused request.
-            "OPEN" => ReturnClaimStatus.Approved,
-            "CLOSED" => ReturnClaimStatus.Completed,
-            "DECLINED" => ReturnClaimStatus.Rejected,
-            // Anything else (no status, a word not listed above) is unknown: unknown stays unknown, the claim offers no
-            // Onayla/Reddet and the read records an issue (report item 9).
-            _ => ReturnClaimStatus.Unknown
-        };
+        if (normalized == "CREATED" && !string.IsNullOrWhiteSpace(cargoTrackingLink)) return ReturnClaimStatus.InTransit;
+        // Anything else (no status, a word not listed above) is unknown: unknown stays unknown, the claim offers no
+        // Onayla/Reddet and the read records an issue (report item 9).
+        return Words.TryGetValue(normalized, out var status) ? status : ReturnClaimStatus.Unknown;
     }
+
+    /// <summary>
+    /// The words Canonicalize reads as one of the given statuses (letters and digits only, upper case), for a database
+    /// query that has to decide as Canonicalize does (AcceptedReturnPolicy). A Created claim with a cargo tracking link is
+    /// not among them: it depends on the link.
+    /// </summary>
+    public static string[] WordsOf(params ReturnClaimStatus[] statuses) =>
+        Words.Where(word => statuses.Contains(word.Value)).Select(word => word.Key).Order(StringComparer.Ordinal).ToArray();
 }
 
 public enum ReturnStockDispositionKind { Pass, Quarantine, Damaged, NotReceived }

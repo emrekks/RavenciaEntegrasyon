@@ -29,12 +29,11 @@ public sealed partial class InventoryService
         if (!build.Succeeded) return ServiceResult<Guid>.Fail(build.Error!.Code, build.Error.Message, build.Error.Status, build.Error.FieldErrors);
         var draft = build.Value!;
         var dedup = PriceInventoryOutboxPolicy.DedupKey(connectionId, draft.Lines);
-        var existing = await StandingPriceInventoryJobAsync(tenantId, dedup, cancellationToken);
-        if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
         var id = Guid.CreateVersion7();
         var now = timeProvider.GetUtcNow();
         var payload = JsonSerializer.Serialize(new PriceInventoryJobPayload(id, connectionId, "SUBMIT", draft.PayloadHash, draft.PayloadJson, draft.Lines, null, null, null, productId, Manual: true, Trigger: PriceStockSendTriggers.PanelSend));
-        Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, connectionId, MarketplaceJobTypes.PriceInventorySync, payload, dedup, correlationId, now) { Id = id, EffectIdempotencyKey = $"{dedup}:{Hash(idempotencyKey.Trim())}", Priority = JobPriorityPolicy.ForUser(MarketplaceJobTypes.PriceInventorySync), TriggerType = "user", MaxAttempts = 10, CreatedAt = now });
+        var enqueued = await Jobs.JobEnqueuer.EnqueueAsync(db, new IntegrationJobRequest(tenantId, connectionId, MarketplaceJobTypes.PriceInventorySync, payload, dedup, correlationId, now) { Id = id, EffectIdempotencyKey = $"{dedup}:{Hash(idempotencyKey.Trim())}", Priority = JobPriorityPolicy.ForUser(MarketplaceJobTypes.PriceInventorySync), TriggerType = "user", MaxAttempts = 10, CreatedAt = now }, JobDedupPolicy.ReuseHeldElseRetire, cancellationToken);
+        if (!enqueued.Created) return ServiceResult<Guid>.Ok(enqueued.JobId);
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<Guid>.Ok(id);
     }

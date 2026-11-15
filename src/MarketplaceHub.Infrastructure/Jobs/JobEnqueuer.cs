@@ -22,9 +22,26 @@ public static class JobEnqueuer
                 .FirstOrDefaultAsync(cancellationToken);
             if (existing is { } id) return new EnqueueResult(id, false, null);
         }
+        else if (policy == JobDedupPolicy.ReuseHeldElseRetire)
+        {
+            // Read tracked: a job that no longer holds its key gives it up in the caller's save, with the new job.
+            var existing = await db.IntegrationJobs
+                .SingleOrDefaultAsync(x => x.TenantId == request.TenantId && x.JobType == request.JobType && x.JobDedupKey == request.DedupKey, cancellationToken);
+            if (existing is not null)
+            {
+                if (PriceInventoryOutboxPolicy.HoldsDedupKey(existing.Status)) return new EnqueueResult(existing.Id, false, null);
+                existing.JobDedupKey = PriceInventoryOutboxPolicy.RetiredDedupKey(request.DedupKey, existing.Id);
+                existing.Version++;
+            }
+        }
         var job = Add(db, request);
         return new EnqueueResult(job.Id, true, job);
     }
+
+    // Whether a job of the type already has the key, in any status: the first check of a site that runs a check of its
+    // own before it adds the job (CallerChecked), in that order.
+    public static Task<bool> KeyTakenAsync(AppDbContext db, Guid tenantId, string jobType, string dedupKey, CancellationToken cancellationToken) =>
+        db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.JobType == jobType && x.JobDedupKey == dedupKey, cancellationToken);
 
     // Adds the job without a lookup (JobDedupPolicy.CallerChecked).
     public static IntegrationJob Add(AppDbContext db, IntegrationJobRequest request)

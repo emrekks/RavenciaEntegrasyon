@@ -11,8 +11,8 @@ internal static class LegacyReportQueries
 {
     internal static IQueryable<ReportOrderRow> OrderRows(AppDbContext db, Guid tenantId, IQueryable<ReportsService.PeriodOrder> periodOrders)
     {
-        var acceptedClaims = DashboardRevenuePolicy.AcceptedReturnStatuses;
-        var acceptedLines = DashboardRevenuePolicy.AcceptedReturnLineRawStatuses;
+        var acceptedClaims = LegacyAcceptedReturnRule.ClaimStatuses;
+        var acceptedLines = LegacyAcceptedReturnRule.LineRawStatuses;
         var currentPackages = MarketplaceSalesService.CurrentShipmentPackages(db).Where(package => package.TenantId == tenantId);
         var orderLines = db.OrderLines.AsNoTracking().Where(line => line.TenantId == tenantId);
         var allocations = db.PackageLineAllocations.AsNoTracking().Where(allocation => allocation.TenantId == tenantId);
@@ -84,8 +84,8 @@ internal static class LegacyReportQueries
 
     internal static IQueryable<ReportLineRow> LineRows(AppDbContext db, Guid tenantId, IQueryable<ReportsService.PeriodOrder> periodOrders)
     {
-        var acceptedClaims = DashboardRevenuePolicy.AcceptedReturnStatuses;
-        var acceptedLines = DashboardRevenuePolicy.AcceptedReturnLineRawStatuses;
+        var acceptedClaims = LegacyAcceptedReturnRule.ClaimStatuses;
+        var acceptedLines = LegacyAcceptedReturnRule.LineRawStatuses;
         var unbookedReturns = DashboardRevenuePolicy.OrdersWithUnbookedReturn(db, tenantId);
         return from row in periodOrders
                join line in db.OrderLines.AsNoTracking() on new { row.Order.TenantId, OrderId = row.Order.Id } equals new { line.TenantId, line.OrderId }
