@@ -7755,7 +7755,7 @@ export interface ApiOperations {
     }
     body: never
     status: 200
-    response: ManualInvoiceDeliveryConfirmedView
+    response: ManualInvoiceDeliveryConfirmedView | ManualInvoiceDeliveryQueuedView
     errorStatus: 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500
   }
   postInvoiceWorkspaceOrdersByOrderIdConfirmMarketplaceDelivered: {
