@@ -66,6 +66,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         if (schedulerEnabled) loops.Add(RunExternalEffectSweepAsync(stoppingToken));
         if (schedulerEnabled && configuration.GetValue("Worker:ProductModelScan:Enabled", true)) loops.Add(RunProductModelScanAsync(stoppingToken));
         if (schedulerEnabled && configuration.GetValue("Worker:ReturnCardColumns:Enabled", true)) loops.Add(RunReturnCardColumnsRepairAsync(stoppingToken));
+        if (schedulerEnabled) loops.Add(RunProductWarrantyRepairAsync(stoppingToken));
         await Task.WhenAll(loops);
     }
 
@@ -644,6 +645,19 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             foreach (var tenantId in await MarketplaceHub.Infrastructure.Persistence.ReturnCardColumns.StaleTenantsAsync(db, token))
                 logger.LogWarning("Return card columns are still missing or stale for tenant {TenantId} after the repair pass; its Returns page reads every claim until they are right", tenantId);
         }, exception => logger.LogError(exception, "Return card columns repair failed"), stoppingToken);
+
+    // Garanti Süresi (15 Nov 2026): two minutes after start (after a deploy, once the previous API and Worker are gone)
+    // and then daily, a card on sale or closed whose warranty the previous code left empty while the deploy migrated
+    // takes 0, which is what it meant (ProductWarranty.RepairAsync). A count above 0 after the first pass of a release
+    // means some writer still empties the warranty of a card that is not a draft.
+    private Task RunProductWarrantyRepairAsync(CancellationToken stoppingToken) =>
+        RunPeriodicAsync(TimeSpan.FromMinutes(2), TimeSpan.FromHours(24), async token =>
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<MarketplaceHub.Infrastructure.Persistence.AppDbContext>();
+            var (cards, models) = await MarketplaceHub.Infrastructure.Persistence.ProductWarranty.RepairAsync(db, token);
+            if (cards > 0 || models > 0) logger.LogInformation("Product warranty repair: {Cards} card(s) and {Models} model record(s) with an empty warranty took 0", cards, models);
+        }, exception => logger.LogError(exception, "Product warranty repair failed"), stoppingToken);
 
     // Trendyol passivates a webhook whose deliveries keep failing (for example while the server is
     // off at night). Shortly after start and then hourly, registered webhooks found passive are
