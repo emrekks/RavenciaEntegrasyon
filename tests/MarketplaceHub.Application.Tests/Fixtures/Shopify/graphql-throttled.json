@@ -1,0 +1,6 @@
+// Source: the Admin GraphQL throttling answer (HTTP 200 with errors[].extensions.code THROTTLED and
+// extensions.cost.throttleStatus), Ravencia-API-Docs/shopify-rehberler-son.md rate-limit guide (~1491, ~8430); values fake.
+{
+  "errors": [ { "message": "Throttled", "extensions": { "code": "THROTTLED", "documentation": "https://shopify.dev/api/usage/rate-limits" } } ],
+  "extensions": { "cost": { "requestedQueryCost": 502, "actualQueryCost": null, "throttleStatus": { "maximumAvailable": 2000.0, "currentlyAvailable": 100, "restoreRate": 100.0 } } }
+}
