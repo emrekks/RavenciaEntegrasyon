@@ -7,8 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // A store-specific price changed in "Pazaryerlerine Özel Fiyat" is an unsaved change of the editor.
 const fixture = vi.hoisted(() => {
   const variant = { id: 'v1', version: 1, sku: 'RYP006-S', barcode: 'RYP0060001', modelCode: 'RYP006', optionSignature: '-', status: 'ACTIVE', weight: null, width: null, height: null, length: null, desi: 1, costPrice: null, onHand: 3, available: 3, inventoryVersion: 1, offerId: null, listPrice: 100, salePrice: 90, currency: 'TRY', offerStatus: null, priceVersion: null, offerVersion: null, vatRate: 20, vatInclusion: 'INCLUDED', roundingMode: null, safetyStock: 0, mediaUrls: [], options: {}, attributes: [] }
-  const state = { version: 1, holdWrites: false }
-  const product = () => ({ id: 'p1', version: state.version, title: 'Yonca Desen Elbise', description: 'x', brandId: 'b1', categoryId: 'c1', status: 'ACTIVE', updatedAt: '2026-11-01T10:00:00Z', variants: [variant], primaryImageUrl: null, totalStock: 3, startingPrice: 90, currency: 'TRY', modelCode: 'RYP006', activePlatforms: [], mediaUrls: [], attributes: [], familyProductIds: ['p1'] })
+  const state = { version: 1, holdWrites: false, description: 'x', patches: [] as Array<{ ifMatch: string | null; body: Record<string, unknown> }> }
+  const product = () => ({ id: 'p1', version: state.version, title: 'Yonca Desen Elbise', description: state.description, brandId: 'b1', categoryId: 'c1', status: 'ACTIVE', updatedAt: '2026-11-01T10:00:00Z', variants: [variant], primaryImageUrl: null, totalStock: 3, startingPrice: 90, currency: 'TRY', modelCode: 'RYP006', activePlatforms: [], mediaUrls: [], attributes: [], familyProductIds: ['p1'] })
   const connection = { id: 'ty', platformCode: 'TRENDYOL', displayName: 'Trendyol Mağaza', externalStoreId: '930112', status: 'ACTIVE', externalWritesEnabled: true }
   return { product, connection, state }
 })
@@ -18,6 +18,14 @@ vi.mock('../../../shared/api', async importOriginal => {
   const respond = async (path: string, init?: RequestInit) => {
     // A save that has not answered yet.
     if (fixture.state.holdWrites && init?.method && init.method !== 'GET') return new Promise(() => undefined)
+    // A product write is checked against the version it names, as the server does (If-Match).
+    if (path === '/products/p1' && init?.method === 'PATCH') {
+      const ifMatch = new Headers(init.headers).get('If-Match')
+      fixture.state.patches.push({ ifMatch, body: JSON.parse(String(init.body)) as Record<string, unknown> })
+      if (ifMatch !== `"v${fixture.state.version}"`) throw new original.ApiRequestError('Sürüm değişti.', 412)
+      fixture.state.version++
+      return fixture.product()
+    }
     if (path === '/products/p1') return fixture.product()
     if (path.startsWith('/catalog/categories/c1/attribute-requirements')) return []
     if (path.startsWith('/products/p1/publication-status/')) return { actualStatus: 'UNKNOWN', lastJobStatus: null, profileId: null }
@@ -47,6 +55,8 @@ let client: QueryClient
 beforeEach(() => {
   fixture.state.version = 1
   fixture.state.holdWrites = false
+  fixture.state.description = 'x'
+  fixture.state.patches = []
   container = document.createElement('div')
   document.body.append(container)
   root = createRoot(container)
@@ -110,6 +120,40 @@ describe('editor dirty state with marketplace prices', () => {
     await bumpVersion()
     expect(container.querySelector('.product-stale-banner')).not.toBeNull()
     expect(container.querySelector<HTMLInputElement>('.product-title-field input')!.value).toBe('Yeni Ad')
+  })
+
+  it('after the stale banner, Kaydet names the version the form was filled from and does not overwrite the other change', async () => {
+    await openEditor()
+    setValue(container.querySelector<HTMLInputElement>('.product-title-field input')!, 'Yeni Ad')
+    await settle(2)
+    // Another tab saved a new description meanwhile.
+    fixture.state.description = 'Yeni kumaş: %100 pamuk'
+    await bumpVersion()
+    expect(container.querySelector('.product-stale-banner')).not.toBeNull()
+    const form = container.querySelector<HTMLFormElement>('#product-creation-form')!
+    const save = container.querySelector<HTMLButtonElement>('button[data-submit-intent="save"]')!
+    await act(async () => { form.requestSubmit(save) })
+    await settle()
+    // The 412 is not retried at the newer version: its content differs from what the form was filled from.
+    expect(fixture.state.patches.map(patch => patch.ifMatch)).toEqual(['"v1"'])
+    expect(fixture.state.version).toBe(2)
+    expect(fixture.product().description).toBe('Yeni kumaş: %100 pamuk')
+    // The unsaved edit stays in the form.
+    expect(container.querySelector<HTMLInputElement>('.product-title-field input')!.value).toBe('Yeni Ad')
+  })
+
+  it('the editor\'s own save moves the form on: the next Kaydet names the version that save made', async () => {
+    await openEditor()
+    const form = container.querySelector<HTMLFormElement>('#product-creation-form')!
+    setValue(container.querySelector<HTMLInputElement>('.product-title-field input')!, 'Yeni Ad')
+    await act(async () => { form.requestSubmit(container.querySelector<HTMLButtonElement>('button[data-submit-intent="save"]')!) })
+    await settle()
+    setValue(container.querySelector<HTMLInputElement>('.product-title-field input')!, 'Daha Yeni Ad')
+    await settle(2)
+    await act(async () => { form.requestSubmit(container.querySelector<HTMLButtonElement>('button[data-submit-intent="save"]')!) })
+    await settle()
+    expect(fixture.state.patches.map(patch => patch.ifMatch)).toEqual(['"v1"', '"v2"'])
+    expect(container.querySelector('.product-stale-banner')).toBeNull()
   })
 
   it('locks the form while a save is pending, so nothing typed meanwhile is lost to the refill after the save', async () => {

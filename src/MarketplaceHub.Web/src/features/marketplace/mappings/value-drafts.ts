@@ -63,6 +63,13 @@ export function valueDraftOperations(draft: ValueDraft): ValueDraftOperation[] {
   return operations
 }
 
+// The drafts left after Kaydet (WEB-SAYFALAR-6): a field with a refused request keeps its choices, so what was not
+// saved stays chosen and Kaydet can try it again; a field whose requests all went through starts from the server.
+export function draftsKeptAfterSave(pending: readonly ValueDraft[], failed: readonly Pick<ValueDraftOperation, 'valueScope'>[]): Map<string, ValueDraft> {
+  const failedScopes = new Set(failed.map(operation => operation.valueScope))
+  return new Map(pending.filter(draft => failedScopes.has(draft.valueScope)).map(draft => [draft.valueScope, draft]))
+}
+
 // Runs the requests a few at a time; every one is attempted and the refused ones are reported.
 export async function runInBatches<T>(items: readonly T[], size: number, run: (item: T) => Promise<unknown>) {
   let saved = 0

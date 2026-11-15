@@ -58,8 +58,9 @@ async function until(test: () => boolean, timeoutMs = 3000) {
   }
 }
 
-async function render() {
+async function render(role?: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  if (role) client.setQueryData(['me'], { id: 'u1', email: 'a@example.test', displayName: 'A', role, state: 'ACTIVE', tenantId: 't1' })
   root = createRoot(container)
   await act(async () => {
     root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/products']}><ProductsPage /></MemoryRouter></QueryClientProvider>)
@@ -82,6 +83,24 @@ describe('ProductsPage on the slim list answer', () => {
     const trendyol = row.querySelector('.rr-pm[aria-label^="Trendyol"]')
     expect(trendyol?.className).toContain('rr-on')
     expect(row.querySelector('img')?.getAttribute('src')).toBe('/api/v1/files/product-media/a/content')
+  })
+
+  // RoleAuthorizationMiddleware answers products/{id}/bulk-field with 403 to every role but the owner and administrators.
+  async function bulkFieldItem(role: string) {
+    await render(role)
+    act(() => container.querySelector<HTMLInputElement>('input[aria-label="Triko Kazak ürün grubunu seç"]')!.click())
+    await until(() => Boolean(container.querySelector('.rr-pbulk button[aria-haspopup="menu"]')))
+    act(() => container.querySelector<HTMLButtonElement>('.rr-pbulk button[aria-haspopup="menu"]')!.click())
+    return Array.from(container.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')).find(item => item.textContent?.includes('Toplu Değer Ata'))!
+  }
+
+  it('offers Toplu Değer Ata to the owner and administrators only', async () => {
+    const operations = await bulkFieldItem('OPERATIONS')
+    expect(operations.disabled).toBe(true)
+    expect(operations.textContent).toContain('yalnız hesap sahibi ve yöneticiler')
+    act(() => root.unmount())
+    const owner = await bulkFieldItem('OWNER')
+    expect(owner.disabled).toBe(false)
   })
 
   it('reads the next page ahead only after this page, not at once', async () => {

@@ -251,28 +251,55 @@ export function useAppearanceSettings() {
   })
   const settings = normalizeAppearanceSettings(query.data?.settings)
   const [draft, setDraft] = useState<AppearanceSettings>(settings)
+  // The saved appearance the draft was made from, with its version (WEB-SAYFALAR-4): newer settings read later replace
+  // only a draft equal to it; an edited draft is kept and the newer copy waits as a conflict (acceptServer, overwrite).
+  const [base, setBase] = useState<{ settings: AppearanceSettings; version: number | undefined }>(() => ({ settings, version: query.data?.version }))
   const settingsColorsKey = JSON.stringify(settings.colors)
   const settingsThemesKey = JSON.stringify(settings.colorThemes)
+  const serverVersion = query.data?.version
 
-  const resetDraft = useEffectEvent(() => setDraft(settings))
-  useEffect(() => resetDraft(), [settings.fontFamily, settings.fontSize, settings.themeMode, settingsColorsKey, settingsThemesKey])
+  const resetDraft = useEffectEvent(() => {
+    if (JSON.stringify(draft) === JSON.stringify(base.settings)) {
+      setDraft(settings)
+      setBase({ settings, version: serverVersion })
+    } else if (JSON.stringify(settings) === JSON.stringify(base.settings)) {
+      // Only the version moved: nothing to choose between.
+      setBase({ settings: base.settings, version: serverVersion })
+    }
+  })
+  useEffect(() => resetDraft(), [settings.fontFamily, settings.fontSize, settings.themeMode, settingsColorsKey, settingsThemesKey, serverVersion])
 
-  async function save(next: AppearanceSettings) {
+  async function save(next: AppearanceSettings, overVersion?: number) {
     const normalized = normalizeAppearanceSettings(next)
-    // D9: a stored setting is written only over the version read (If-Match); one not read yet is read first.
+    // D9: a stored setting is written only over the version read (If-Match); one not read yet is read first. The version
+    // is the one the draft was made from, so a draft kept over newer settings is refused, not written over them.
     const current = client.getQueryData<AppearanceSettingsEnvelope>(appearanceSettingsQueryKey)
       ?? await client.fetchQuery({ queryKey: appearanceSettingsQueryKey, queryFn: () => hubApi<AppearanceSettingsEnvelope>('/settings/appearance').then(envelope => rememberAppearance(envelope)) })
     let saved: AppearanceSettingsEnvelope
     try {
-      saved = await hubApi<AppearanceSettingsEnvelope>('/settings/appearance', { method: 'PUT', headers: settingsIfMatch(current?.version), body: JSON.stringify(normalized) })
+      saved = await hubApi<AppearanceSettingsEnvelope>('/settings/appearance', { method: 'PUT', headers: settingsIfMatch(overVersion ?? base.version ?? current?.version), body: JSON.stringify(normalized) })
     } catch (error) {
-      // changed elsewhere meanwhile: read the current settings so the next save is made on them
+      // changed elsewhere meanwhile: read the current settings; the draft stays and the newer copy waits as a conflict
       if (error instanceof ApiRequestError && (error.status === 412 || error.status === 428)) void client.invalidateQueries({ queryKey: appearanceSettingsQueryKey })
       throw error
     }
     client.setQueryData(appearanceSettingsQueryKey, rememberAppearance(saved))
-    setDraft(normalizeAppearanceSettings(saved.settings))
+    const savedSettings = normalizeAppearanceSettings(saved.settings)
+    setDraft(savedSettings)
+    setBase({ settings: savedSettings, version: saved.version })
   }
 
-  return { ...query, settings, draft, setDraft, save }
+  // Newer settings were saved elsewhere while this draft held edits.
+  const conflict = base.version != null && serverVersion != null && serverVersion !== base.version
+  // The draft gives way to the newer settings.
+  function acceptServer() {
+    setDraft(settings)
+    setBase({ settings, version: serverVersion })
+  }
+  // The draft is written over the newer settings, knowingly.
+  function overwrite() {
+    return save(draft, serverVersion)
+  }
+
+  return { ...query, settings, draft, setDraft, save, conflict, acceptServer, overwrite }
 }
