@@ -165,24 +165,35 @@ public sealed class OpenApiOperationContract : IOpenApiOperationTransformer
         AdditionalProperties = new OpenApiSchema()
     };
 
-    // The four paging formats on the wire (PagingContract), told apart by the query parameters a list reads.
+    /// <summary>A route as the document writes it: route constraints and catch-all marks dropped, no trailing slash.</summary>
+    public static string DocumentPath(string route) =>
+        System.Text.RegularExpressions.Regex.Replace(route, @"\{\*{0,2}([^}:]+)(:[^}]+)?\}", "{$1}") is { Length: > 1 } path ? path.TrimEnd('/') : route;
+
+    // The paging formats on the wire (PagingContract): an x-paging extension naming the operation's format, and each
+    // paging parameter's default and range as the endpoint reads it.
     private static class Paging
     {
         public static void Describe(OpenApiOperation operation, string path)
         {
             var query = operation.Parameters!.Where(parameter => parameter.In == ParameterLocation.Query).Select(parameter => parameter.Name ?? string.Empty).ToHashSet(StringComparer.Ordinal);
-            var format = PagingContract.FormatOf(path, query);
+            var format = PagingContract.FormatOf(DocumentPath(path), query);
             if (format is null) return;
             operation.Extensions ??= new Dictionary<string, IOpenApiExtension>(StringComparer.Ordinal);
             operation.Extensions["x-paging"] = new JsonNodeExtension(JsonValue.Create(format.Value.Name));
             foreach (var parameter in operation.Parameters!.OfType<OpenApiParameter>().Where(parameter => parameter.In == ParameterLocation.Query))
             {
                 if (parameter.Schema is not OpenApiSchema schema) continue;
-                var range = format.Value.RangeOf(parameter.Name ?? string.Empty);
-                if (range is null) continue;
-                schema.Minimum = range.Value.Minimum.ToString(System.Globalization.CultureInfo.InvariantCulture);
-                if (range.Value.Maximum is { } maximum) schema.Maximum = maximum.ToString(System.Globalization.CultureInfo.InvariantCulture);
-                if (range.Value.Default is { } fallback) schema.Default = JsonValue.Create(fallback);
+                if (format.Value.RangeOf(parameter.Name ?? string.Empty) is not { } range) continue;
+                var invariant = System.Globalization.CultureInfo.InvariantCulture;
+                var span = range.Maximum is { } top ? $"{range.Minimum}-{top}" : $"{range.Minimum} or more";
+                if (range.Refused)
+                {
+                    schema.Minimum = range.Minimum.ToString(invariant);
+                    if (range.Maximum is { } maximum) schema.Maximum = maximum.ToString(invariant);
+                }
+                if (range.Default is { } fallback) schema.Default = JsonValue.Create(fallback);
+                parameter.Description = (range.Refused ? $"{span}; outside it the request is refused (400)." : $"{span}; the service brings any other value into it.")
+                    + (range.Default is { } shown ? $" Default {shown}." : string.Empty) + (range.Note is { } note ? " " + note : string.Empty);
             }
         }
     }

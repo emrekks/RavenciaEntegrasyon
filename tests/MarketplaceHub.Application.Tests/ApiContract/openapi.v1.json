@@ -842,13 +842,17 @@
           {
             "name": "limit",
             "in": "query",
+            "description": "1-200; outside it the request is refused (400). Default 50.",
             "schema": {
+              "maximum": 200,
+              "minimum": 1,
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": [
                 "integer",
                 "string"
               ],
-              "format": "int32"
+              "format": "int32",
+              "default": 50
             }
           },
           {
@@ -882,7 +886,8 @@
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
-        }
+        },
+        "x-paging": "cursor"
       },
       "post": {
         "tags": [
@@ -951,7 +956,8 @@
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
-        }
+        },
+        "x-paging": "cursor"
       }
     },
     "/api/v1/catalog/attributes/{id}": {
@@ -1564,13 +1570,17 @@
           {
             "name": "limit",
             "in": "query",
+            "description": "1-200; outside it the request is refused (400). Default 50.",
             "schema": {
+              "maximum": 200,
+              "minimum": 1,
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": [
                 "integer",
                 "string"
               ],
-              "format": "int32"
+              "format": "int32",
+              "default": 50
             }
           },
           {
@@ -1604,7 +1614,8 @@
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
-        }
+        },
+        "x-paging": "cursor"
       },
       "post": {
         "tags": [
@@ -1673,7 +1684,8 @@
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
-        }
+        },
+        "x-paging": "cursor"
       }
     },
     "/api/v1/catalog/brands/{id}": {
@@ -1827,13 +1839,17 @@
           {
             "name": "limit",
             "in": "query",
+            "description": "1-200; outside it the request is refused (400). Default 50.",
             "schema": {
+              "maximum": 200,
+              "minimum": 1,
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": [
                 "integer",
                 "string"
               ],
-              "format": "int32"
+              "format": "int32",
+              "default": 50
             }
           },
           {
@@ -1867,7 +1883,8 @@
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
-        }
+        },
+        "x-paging": "cursor"
       },
       "post": {
         "tags": [
@@ -1936,7 +1953,8 @@
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
-        }
+        },
+        "x-paging": "cursor"
       }
     },
     "/api/v1/catalog/categories/{id}": {
@@ -2626,13 +2644,17 @@
           {
             "name": "limit",
             "in": "query",
+            "description": "1-200; outside it the request is refused (400). Default 50.",
             "schema": {
+              "maximum": 200,
+              "minimum": 1,
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": [
                 "integer",
                 "string"
               ],
-              "format": "int32"
+              "format": "int32",
+              "default": 50
             }
           },
           {
@@ -2666,7 +2688,8 @@
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
-        }
+        },
+        "x-paging": "cursor"
       },
       "post": {
         "tags": [
@@ -2735,7 +2758,8 @@
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
-        }
+        },
+        "x-paging": "cursor"
       }
     },
     "/api/v1/connections/{connectionId}/ad-reports": {
@@ -3624,25 +3648,33 @@
           {
             "name": "page",
             "in": "query",
+            "description": "0-100000; outside it the request is refused (400). Default 0.",
             "schema": {
+              "maximum": 100000,
+              "minimum": 0,
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": [
                 "integer",
                 "string"
               ],
-              "format": "int32"
+              "format": "int32",
+              "default": 0
             }
           },
           {
             "name": "limit",
             "in": "query",
+            "description": "1-200; outside it the request is refused (400). Default 50.",
             "schema": {
+              "maximum": 200,
+              "minimum": 1,
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": [
                 "integer",
                 "string"
               ],
-              "format": "int32"
+              "format": "int32",
+              "default": 50
             }
           },
           {
@@ -3831,7 +3863,8 @@
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
-        }
+        },
+        "x-paging": "page+limit"
       }
     },
     "/api/v1/connections/{connectionId}/commission-tariffs/{tariffId}/selection": {
@@ -7031,13 +7064,17 @@
           {
             "name": "limit",
             "in": "query",
+            "description": "1-200; outside it the request is refused (400). Default 50.",
             "schema": {
+              "maximum": 200,
+              "minimum": 1,
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": [
                 "integer",
                 "string"
               ],
-              "format": "int32"
+              "format": "int32",
+              "default": 50
             }
           },
           {
@@ -7071,7 +7108,8 @@
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
-        }
+        },
+        "x-paging": "cursor"
       },
       "post": {
         "tags": [
@@ -7140,7 +7178,8 @@
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
-        }
+        },
+        "x-paging": "cursor"
       }
     },
     "/api/v1/imports/{id}": {
@@ -7281,13 +7320,17 @@
           {
             "name": "limit",
             "in": "query",
+            "description": "1-200; outside it the request is refused (400). Default 50.",
             "schema": {
+              "maximum": 200,
+              "minimum": 1,
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": [
                 "integer",
                 "string"
               ],
-              "format": "int32"
+              "format": "int32",
+              "default": 50
             }
           },
           {
@@ -7324,7 +7367,8 @@
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
-        }
+        },
+        "x-paging": "cursor"
       }
     },
     "/api/v1/imports/{id}/column-mapping": {
@@ -7728,13 +7772,17 @@
           {
             "name": "limit",
             "in": "query",
+            "description": "1-200; outside it the request is refused (400). Default 50.",
             "schema": {
+              "maximum": 200,
+              "minimum": 1,
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": [
                 "integer",
                 "string"
               ],
-              "format": "int32"
+              "format": "int32",
+              "default": 50
             }
           },
           {
@@ -7768,7 +7816,8 @@
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
-        }
+        },
+        "x-paging": "cursor"
       }
     },
     "/api/v1/inventory/{variantId}/on-hand": {
@@ -8489,25 +8538,29 @@
           {
             "name": "pageNumber",
             "in": "query",
+            "description": "1 or more; the service brings any other value into it. Default 1.",
             "schema": {
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": [
                 "integer",
                 "string"
               ],
-              "format": "int32"
+              "format": "int32",
+              "default": 1
             }
           },
           {
             "name": "pageSize",
             "in": "query",
+            "description": "20-200; the service brings any other value into it. Default 20. 20, 50, 100 or 200; any other value reads as 20.",
             "schema": {
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": [
                 "integer",
                 "string"
               ],
-              "format": "int32"
+              "format": "int32",
+              "default": 20
             }
           },
           {
@@ -8613,7 +8666,8 @@
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
-        }
+        },
+        "x-paging": "pageNumber+pageSize"
       }
     },
     "/api/v1/invoice-workspace/preview": {
@@ -8731,13 +8785,17 @@
           {
             "name": "limit",
             "in": "query",
+            "description": "1-200; outside it the request is refused (400). Default 50.",
             "schema": {
+              "maximum": 200,
+              "minimum": 1,
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": [
                 "integer",
                 "string"
               ],
-              "format": "int32"
+              "format": "int32",
+              "default": 50
             }
           },
           {
@@ -8778,7 +8836,8 @@
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
-        }
+        },
+        "x-paging": "cursor"
       },
       "post": {
         "tags": [
@@ -8847,7 +8906,8 @@
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
-        }
+        },
+        "x-paging": "cursor"
       }
     },
     "/api/v1/invoices/{id}": {
@@ -10140,13 +10200,15 @@
           {
             "name": "limit",
             "in": "query",
+            "description": "1-1000; the service brings any other value into it. Default 200.",
             "schema": {
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": [
                 "integer",
                 "string"
               ],
-              "format": "int32"
+              "format": "int32",
+              "default": 200
             }
           },
           {
@@ -10201,7 +10263,8 @@
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
-        }
+        },
+        "x-paging": "cursor"
       }
     },
     "/api/v1/jobs/{id}": {
@@ -11885,13 +11948,15 @@
           {
             "name": "limit",
             "in": "query",
+            "description": "1-100; the service brings any other value into it. Default 50.",
             "schema": {
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": [
                 "integer",
                 "string"
               ],
-              "format": "int32"
+              "format": "int32",
+              "default": 50
             }
           },
           {
@@ -11969,7 +12034,8 @@
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
-        }
+        },
+        "x-paging": "cursor"
       },
       "post": {
         "tags": [
@@ -12030,7 +12096,8 @@
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
-        }
+        },
+        "x-paging": "cursor"
       }
     },
     "/api/v1/notifications/dismiss": {
@@ -12215,25 +12282,33 @@
           {
             "name": "limit",
             "in": "query",
+            "description": "1-200; outside it the request is refused (400). Default 50.",
             "schema": {
+              "maximum": 200,
+              "minimum": 1,
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": [
                 "integer",
                 "string"
               ],
-              "format": "int32"
+              "format": "int32",
+              "default": 50
             }
           },
           {
             "name": "page",
             "in": "query",
+            "description": "1-100000; outside it the request is refused (400). Default 1.",
             "schema": {
+              "maximum": 100000,
+              "minimum": 1,
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": [
                 "integer",
                 "string"
               ],
-              "format": "int32"
+              "format": "int32",
+              "default": 1
             }
           },
           {
@@ -12397,7 +12472,8 @@
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
-        }
+        },
+        "x-paging": "cursor+page"
       }
     },
     "/api/v1/orders/facets": {
@@ -13352,13 +13428,15 @@
           {
             "name": "limit",
             "in": "query",
+            "description": "1-100; the service brings any other value into it. Default 50.",
             "schema": {
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": [
                 "integer",
                 "string"
               ],
-              "format": "int32"
+              "format": "int32",
+              "default": 50
             }
           },
           {
@@ -13458,7 +13536,8 @@
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
-        }
+        },
+        "x-paging": "cursor"
       }
     },
     "/api/v1/price-stock-send-log/counts": {
@@ -13560,13 +13639,15 @@
           {
             "name": "limit",
             "in": "query",
+            "description": "1-100; the service brings any other value into it. Default 50.",
             "schema": {
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": [
                 "integer",
                 "string"
               ],
-              "format": "int32"
+              "format": "int32",
+              "default": 50
             }
           },
           {
@@ -13658,7 +13739,8 @@
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
-        }
+        },
+        "x-paging": "cursor"
       }
     },
     "/api/v1/product-activity/counts": {
@@ -13759,13 +13841,17 @@
           {
             "name": "limit",
             "in": "query",
+            "description": "1-200; outside it the request is refused (400). Default 50.",
             "schema": {
+              "maximum": 200,
+              "minimum": 1,
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": [
                 "integer",
                 "string"
               ],
-              "format": "int32"
+              "format": "int32",
+              "default": 50
             }
           },
           {
@@ -13834,7 +13920,8 @@
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
-        }
+        },
+        "x-paging": "cursor"
       },
       "post": {
         "tags": [
@@ -13903,7 +13990,8 @@
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
-        }
+        },
+        "x-paging": "cursor"
       }
     },
     "/api/v1/products/bulk-delete": {
@@ -16107,25 +16195,29 @@
           {
             "name": "page",
             "in": "query",
+            "description": "1 or more; the service brings any other value into it. Default 1.",
             "schema": {
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": [
                 "integer",
                 "string"
               ],
-              "format": "int32"
+              "format": "int32",
+              "default": 1
             }
           },
           {
             "name": "limit",
             "in": "query",
+            "description": "1-100; the service brings any other value into it. Default 50.",
             "schema": {
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": [
                 "integer",
                 "string"
               ],
-              "format": "int32"
+              "format": "int32",
+              "default": 50
             }
           },
           {
@@ -16159,7 +16251,8 @@
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
-        }
+        },
+        "x-paging": "page+limit"
       }
     },
     "/api/v1/questions/report-reasons": {
@@ -17100,25 +17193,33 @@
           {
             "name": "page",
             "in": "query",
+            "description": "0-100000; outside it the request is refused (400). Default 0.",
             "schema": {
+              "maximum": 100000,
+              "minimum": 0,
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": [
                 "integer",
                 "string"
               ],
-              "format": "int32"
+              "format": "int32",
+              "default": 0
             }
           },
           {
             "name": "limit",
             "in": "query",
+            "description": "1-200; outside it the request is refused (400). Default 50.",
             "schema": {
+              "maximum": 200,
+              "minimum": 1,
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": [
                 "integer",
                 "string"
               ],
-              "format": "int32"
+              "format": "int32",
+              "default": 50
             }
           }
         ],
@@ -17145,7 +17246,8 @@
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
-        }
+        },
+        "x-paging": "page+limit"
       }
     },
     "/api/v1/reports/payouts": {
@@ -17263,13 +17365,17 @@
           {
             "name": "page",
             "in": "query",
+            "description": "0-10000; outside it the request is refused (400). Default 0.",
             "schema": {
+              "maximum": 10000,
+              "minimum": 0,
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": [
                 "integer",
                 "string"
               ],
-              "format": "int32"
+              "format": "int32",
+              "default": 0
             }
           }
         ],
@@ -17296,7 +17402,8 @@
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
-        }
+        },
+        "x-paging": "page"
       }
     },
     "/api/v1/reports/price-assumptions": {
@@ -17520,25 +17627,33 @@
           {
             "name": "limit",
             "in": "query",
+            "description": "1-200; outside it the request is refused (400). Default 50.",
             "schema": {
+              "maximum": 200,
+              "minimum": 1,
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": [
                 "integer",
                 "string"
               ],
-              "format": "int32"
+              "format": "int32",
+              "default": 50
             }
           },
           {
             "name": "page",
             "in": "query",
+            "description": "1-100000; outside it the request is refused (400). Default 1.",
             "schema": {
+              "maximum": 100000,
+              "minimum": 1,
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": [
                 "integer",
                 "string"
               ],
-              "format": "int32"
+              "format": "int32",
+              "default": 1
             }
           },
           {
@@ -17679,7 +17794,8 @@
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
-        }
+        },
+        "x-paging": "cursor+page"
       }
     },
     "/api/v1/returns/summary": {
@@ -20137,13 +20253,17 @@
           {
             "name": "limit",
             "in": "query",
+            "description": "1-200; outside it the request is refused (400). Default 50.",
             "schema": {
+              "maximum": 200,
+              "minimum": 1,
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": [
                 "integer",
                 "string"
               ],
-              "format": "int32"
+              "format": "int32",
+              "default": 50
             }
           },
           {
@@ -20184,7 +20304,8 @@
           "500": {
             "$ref": "#/components/responses/ServerError"
           }
-        }
+        },
+        "x-paging": "cursor"
       }
     },
     "/api/v1/shipments/{id}": {
