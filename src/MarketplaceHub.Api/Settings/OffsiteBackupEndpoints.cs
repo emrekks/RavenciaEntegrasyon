@@ -40,7 +40,7 @@ public static class OffsiteBackupEndpoints
         group.MapPost("/google/authorize", AuthorizeAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Produces<OffsiteBackupAuthorizationView>();
         group.MapPost("/google/complete", CompleteAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Produces<OffsiteBackupSettingsView>();
         group.MapPost("/google/disconnect", DisconnectAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Produces<OffsiteBackupSettingsView>();
-        group.MapPost("/test", TestAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).RequireGate(ApiGate.Elevated);
+        group.MapPost("/test", TestAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).RequireGate(ApiGate.Elevated).Produces<OffsiteBackupTestView>();
         group.MapPost("/run", RunAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).RequireGate(ApiGate.Elevated).Produces<OffsiteBackupRunRequestedView>(StatusCodes.Status202Accepted);
         return endpoints;
     }

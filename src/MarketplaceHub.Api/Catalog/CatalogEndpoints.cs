@@ -142,7 +142,7 @@ public static class CatalogEndpoints
             // skippedVariants: what the send left out of a card already on the marketplace, each with its reason.
             var queued = await service.EnqueuePublicationWithSkippedAsync(tenant.TenantId, id, command.ConnectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted);
             return queued.Succeeded ? Results.Accepted($"/api/v1/jobs/{queued.Value!.JobId:D}", new { jobId = queued.Value.JobId, skippedVariants = queued.Value.SkippedVariants }) : MarketplaceHub.Api.Security.ApiProblems.Of(null, queued.Error!);
-        }).RequireIdempotencyKey();
+        }).RequireIdempotencyKey().Produces<ProductPublicationQueuedView>(StatusCodes.Status202Accepted);
         api.MapPost("/products/bulk-publication-jobs", async (BulkPublicationCommand command, HttpContext http, ICatalogService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
@@ -156,7 +156,7 @@ public static class CatalogEndpoints
             // notices: what the panel records in its notification center (a card value sent where the listing profile has none).
             var queued = await service.EnqueueProductUpdateWithNoticesAsync(tenant.TenantId, id, command.ConnectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted, command.Fields, command.SendGroupId);
             return queued.Succeeded ? Results.Accepted($"/api/v1/jobs/{queued.Value!.JobId:D}", new { jobId = queued.Value.JobId, notices = queued.Value.Notices }) : MarketplaceHub.Api.Security.ApiProblems.Of(null, queued.Error!);
-        }).RequireIdempotencyKey();
+        }).RequireIdempotencyKey().Produces<ProductUpdateQueuedView>(StatusCodes.Status202Accepted);
         api.MapPost("/connections/{connectionId:guid}/sale-status-jobs", async (Guid connectionId, PazaramaSaleStatusRequest command, HttpContext http, ICatalogService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);

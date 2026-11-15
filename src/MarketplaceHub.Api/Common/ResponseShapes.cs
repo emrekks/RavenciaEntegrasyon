@@ -174,3 +174,24 @@ public sealed record InvoiceReplacedView(bool Replaced);
 
 /// <summary>A webhook delivered to the connection's base address: { accepted: true }.</summary>
 public sealed record WebhookAcceptedView(bool Accepted);
+
+// Round 6 (API-GUVENLIK-8): the six answers round 5 left undeclared; the handlers keep their anonymous objects and
+// ApiResponseShapeLiteralTests compares each with its record.
+
+/// <summary>GET /orders/{id}/finance (Pazarama): the marketplace's finance rows for the order, read now.</summary>
+public sealed record OrderFinanceView(DateTimeOffset ReadAt, IReadOnlyList<MarketplaceHub.Application.RemoteFinanceTransaction> Transactions, IReadOnlyList<MarketplaceHub.Application.RemoteCommissionInvoice> CommissionInvoices);
+
+/// <summary>202 of POST /products/{id}/publication-jobs: the job and what the send left out of a card already on the marketplace.</summary>
+public sealed record ProductPublicationQueuedView(Guid JobId, IReadOnlyList<MarketplaceHub.Application.PublicationSkippedVariant> SkippedVariants);
+
+/// <summary>202 of POST /products/{id}/update-jobs: the job and the notices the panel records in its notification center.</summary>
+public sealed record ProductUpdateQueuedView(Guid JobId, IReadOnlyList<string> Notices);
+
+/// <summary>POST /settings/ai/test: the model that answered.</summary>
+public sealed record AiConnectionTestView(bool Ok, string Model, string Message);
+
+/// <summary>POST /settings/alert-email/test: { sent: true, recipients }.</summary>
+public sealed record AlertEmailTestView(bool Sent, IReadOnlyList<string> Recipients);
+
+/// <summary>POST /settings/offsite-backup/test: { ok: true, folderId }.</summary>
+public sealed record OffsiteBackupTestView(bool Ok, string? FolderId);

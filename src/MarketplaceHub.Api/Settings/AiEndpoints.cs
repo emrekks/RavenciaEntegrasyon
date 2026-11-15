@@ -29,7 +29,7 @@ public static class AiEndpoints
         var settings = endpoints.MapGroup("/api/v1/settings/ai").WithGates(ApiGate.Elevated, ApiGate.Elevated);
         settings.MapGet("", GetAsync).Produces<AiSettingsView>();
         settings.MapPut("", SaveAsync).Produces<AiSettingsView>().IfMatch(required: false);
-        settings.MapPost("/test", TestAsync);
+        settings.MapPost("/test", TestAsync).Produces<AiConnectionTestView>();
         settings.MapPost("/skills/{key}/upload", UploadSkillAsync).DisableAntiforgery().Produces<AiSettingsView>();
         settings.MapGet("/usage", UsageAsync).Produces<AiUsageView>();
 
