@@ -1238,25 +1238,13 @@ public static class ExternalEffectReconcilePolicy
     public static IntegrationJob NewJob(ExternalEffectRecord effect, DateTimeOffset now, DateTimeOffset availableAt)
     {
         var payload = System.Text.Json.JsonSerializer.Serialize(new { effectId = effect.Id });
-        return new IntegrationJob
+        return IntegrationJobFactory.New(new IntegrationJobRequest(effect.TenantId, effect.ConnectionId, MarketplaceJobTypes.ExternalEffectReconcile, payload, JobDedupKey(effect.Id), $"effect-reconcile:{effect.Id:N}", availableAt)
         {
-            Id = Guid.CreateVersion7(),
-            TenantId = effect.TenantId,
-            ConnectionId = effect.ConnectionId,
-            JobType = MarketplaceJobTypes.ExternalEffectReconcile,
-            PayloadJson = payload,
-            PayloadVersion = 1,
-            PayloadHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(payload))),
-            JobDedupKey = JobDedupKey(effect.Id),
-            EffectIdempotencyKey = JobDedupKey(effect.Id),
             Priority = JobPriorityPolicy.UserAction,
             TriggerType = "user",
             LockGroup = LockGroup(effect.Action),
-            AvailableAt = availableAt,
-            CorrelationId = $"effect-reconcile:{effect.Id:N}",
-            CreatedAt = now,
-            Version = 1
-        };
+            CreatedAt = now
+        });
     }
 }
 

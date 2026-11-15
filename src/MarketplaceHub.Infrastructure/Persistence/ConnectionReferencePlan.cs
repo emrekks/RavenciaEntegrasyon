@@ -126,24 +126,8 @@ public static class ConnectionReferencePlan
         return query.AnyAsync(cancellationToken);
     }
 
-    public static IntegrationJob NewJob(Guid tenantId, Guid connectionId, string jobType, string dedup, string payload, string correlationId, int priority, string triggerType, DateTimeOffset now) => new()
-    {
-        Id = Guid.CreateVersion7(),
-        TenantId = tenantId,
-        ConnectionId = connectionId,
-        JobType = jobType,
-        PayloadJson = payload,
-        PayloadVersion = 1,
-        PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))),
-        JobDedupKey = dedup,
-        EffectIdempotencyKey = dedup,
-        Priority = priority,
-        TriggerType = triggerType,
-        AvailableAt = now,
-        CreatedAt = now,
-        CorrelationId = correlationId,
-        Version = 1
-    };
+    public static IntegrationJob NewJob(Guid tenantId, Guid connectionId, string jobType, string dedup, string payload, string correlationId, int priority, string triggerType, DateTimeOffset now) =>
+        IntegrationJobFactory.New(new IntegrationJobRequest(tenantId, connectionId, jobType, payload, dedup, correlationId, now) { Priority = priority, TriggerType = triggerType, CreatedAt = now });
 
     // A category mapping saved on the panel: its fields and their value lists are read in the background unless a
     // copy younger than a day is already there. Not saved here; the caller saves with its own changes.
