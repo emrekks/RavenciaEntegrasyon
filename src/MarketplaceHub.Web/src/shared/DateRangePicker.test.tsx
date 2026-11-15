@@ -110,6 +110,27 @@ describe('DateRangePicker presets', () => {
     expect(document.activeElement).toBe(document.body.querySelector('.date-range-picker-presets button'))
   })
 
+  it('W4: ArrowDown or ArrowRight on a ready range moves focus into the calendar, to today', () => {
+    act(() => root.render(<DateRangePicker from="" to="" onChange={vi.fn()} />))
+    act(() => container.querySelector<HTMLButtonElement>('.date-range-picker-trigger')!.click())
+    const press = (key: string) => act(() => { document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })) })
+    const presets = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.date-range-picker-presets button'))
+    expect(document.activeElement).toBe(presets[0])
+    press('ArrowDown')
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('11 Ekim 2026')
+    // From there the days walk as before, and one day stays in the Tab order.
+    press('ArrowLeft')
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('10 Ekim 2026')
+    expect(Array.from(document.body.querySelectorAll('[role="gridcell"]')).filter(cell => (cell as HTMLElement).tabIndex === 0)).toHaveLength(1)
+    act(() => presets[1].focus())
+    press('ArrowRight')
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('11 Ekim 2026')
+    // Other keys on a ready range do nothing.
+    act(() => presets[1].focus())
+    press('ArrowLeft')
+    expect(document.activeElement).toBe(presets[1])
+  })
+
   it('walks the days with the arrow keys, turning the month, and keeps one day in the Tab order', () => {
     const onChange = vi.fn()
     act(() => root.render(<DateRangePicker from="2026-09-01" to="2026-09-03" onChange={onChange} />))
