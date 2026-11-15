@@ -1,7 +1,8 @@
 // API-GUVENLIK-8: TypeScript types of the panel's API, generated from the contract file the API's tests keep
 // (tests/MarketplaceHub.Application.Tests/ApiContract/openapi.v1.json). Types only: no runtime client, no fetch wrapper
 // (hubApi and the query-key factory stay what they are). Dependency-free on purpose: it reads the schemas the document
-// actually contains - objects, arrays, string/number/boolean/null unions, enums, additionalProperties, $ref and oneOf.
+// actually contains - objects, arrays, string/number/boolean/null unions, enums, additionalProperties, $ref and oneOf -
+// file answers (a binary string: Blob), answers without a body (void) and deprecated parameters (@deprecated).
 //
 //   npm run gen:api-types     writes src/shared/api/generated/api-types.ts
 //   npm run check:api-types   fails when that file is not what the contract file generates (CI)
@@ -106,23 +107,40 @@ for (const [path, item] of Object.entries(document.paths)) {
 operations.sort((a, b) => (a.operation.operationId < b.operation.operationId ? -1 : a.operation.operationId > b.operation.operationId ? 1 : 0))
 
 const resolveResponse = response => (response?.$ref ? responses[response.$ref.split('/').pop()] : response)
+// A parameter the document marks deprecated (an old paging parameter kept for old browser tabs) says so in its comment.
+const parameterComment = (parameter, indent) =>
+  parameter.deprecated
+    ? `${indent}/** @deprecated ${(parameter.description ?? 'Kept for old clients.').replaceAll('*/', '*\\/')} */\n`
+    : comment(parameter, indent)
 const params = (operation, where, indent) => {
   const list = (operation.parameters ?? []).filter(parameter => parameter.in === where)
   if (list.length === 0) return 'Record<string, never>'
-  return `{\n${list.map(parameter => `${comment(parameter, `${indent}  `)}${indent}  ${key(parameter.name)}${parameter.required ? '' : '?'}: ${typeOf(parameter.schema, `${indent}  `)}`).join('\n')}\n${indent}}`
+  return `{\n${list.map(parameter => `${parameterComment(parameter, `${indent}  `)}${indent}  ${key(parameter.name)}${parameter.required ? '' : '?'}: ${typeOf(parameter.schema, `${indent}  `)}`).join('\n')}\n${indent}}`
+}
+// A success answer that is not JSON: a file's bytes (a string in format binary) are a Blob, a text a string.
+const binary = schema => {
+  const resolved = schema?.$ref ? schemas[refName(schema.$ref)] : schema
+  return resolved?.type === 'string' && resolved.format === 'binary'
+}
+const fileAnswer = content => {
+  const media = Object.entries(content ?? {}).filter(([type]) => type !== 'application/json')
+  if (media.length === 0) return null
+  return media.every(([, value]) => binary(value.schema)) ? 'Blob' : 'string'
 }
 
-out.push('/** Every operation of the API by its operationId. Undeclared answers are `unknown`; a 204 is `void`. */')
+out.push('/** Every operation of the API by its operationId. Undeclared answers are `unknown`; an answer without a body is `void`; a file is a `Blob`. */')
 out.push('export interface ApiOperations {')
 for (const { path, method, operation } of operations) {
   const indent = '    '
-  const success = Object.entries(operation.responses).filter(([status]) => status.startsWith('2'))
+  const success = Object.entries(operation.responses).filter(([status]) => status.startsWith('2') || status.startsWith('3'))
   const declared = success.find(([, response]) => resolveResponse(response).content?.['application/json'])
+  const file = declared ? null : success.find(([, response]) => fileAnswer(resolveResponse(response).content))
   const answer = declared
     ? typeOf(resolveResponse(declared[1]).content['application/json'].schema, indent)
-    : success.length > 0 && success.every(([status]) => status === '204') ? 'void' : 'unknown'
-  const status = declared ? Number(declared[0]) : success.length > 0 ? Number(success[0][0]) : 200
-  const errors = Object.keys(operation.responses).filter(code => !code.startsWith('2')).map(Number)
+    : file ? fileAnswer(resolveResponse(file[1]).content)
+    : success.length > 0 && success.every(([status, response]) => status !== '200' && !resolveResponse(response).content) ? 'void' : 'unknown'
+  const status = declared ? Number(declared[0]) : file ? Number(file[0]) : success.length > 0 ? Number(success[0][0]) : 200
+  const errors = Object.keys(operation.responses).filter(code => !code.startsWith('2') && !code.startsWith('3')).map(Number)
   const body = operation.requestBody?.content?.['application/json']?.schema
   out.push(`  ${key(operation.operationId)}: {`)
   out.push(`    method: ${literal(method)}`)
