@@ -29,7 +29,7 @@ public sealed partial class MarketplaceSalesService
                 && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA" || x.PlatformCode == "PTTAVM")
                 && (x.Status == "ACTIVE" || x.Status == "VERIFIED"), cancellationToken);
 
-    private IQueryable<ReturnClaim> ReturnBaseQuery(Guid tenantId) =>
+    internal IQueryable<ReturnClaim> ReturnBaseQuery(Guid tenantId) =>
         OrderQueueQueries.ListedReturns(db, tenantId, timeProvider.GetUtcNow());
 
     // One list view per claim, in the claims' order.
@@ -211,7 +211,7 @@ public sealed partial class MarketplaceSalesService
         return isTrendyolRejected ? lastRemoteModifiedAt?.AddDays(7) : null;
     }
 
-    private void ApplyReturnFilters(ref IQueryable<ReturnClaim> query, ReturnListQuery options)
+    internal void ApplyReturnFilters(ref IQueryable<ReturnClaim> query, ReturnListQuery options)
     {
         var status = options.Status?.Trim().ToUpperInvariant();
         if (!string.IsNullOrWhiteSpace(status) && status != "ALL")

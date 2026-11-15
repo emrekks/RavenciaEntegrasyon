@@ -16,7 +16,16 @@ public sealed partial class MarketplaceSalesService
     internal static readonly string[] ReturnTabs = ["ALL", "REQUESTED", "SHIPPING", "ACTION_REQUIRED", "APPROVED", "REJECTED", "REVIEW", "DISPUTED", "SUSPENDED"];
     private static readonly CultureInfo TurkishCulture = CultureInfo.GetCultureInfo("tr-TR");
 
-    private sealed record ReturnClaimRow(Guid Id, ReturnClaimStatus Status, Guid OrderId, Guid ConnectionId, string ExternalClaimId, string? CargoProviderName, string? ReasonCode, string? ReasonText, DateTimeOffset? LastRemoteModifiedAt, string? RejectedPackageState = null, DateTimeOffset? DecidedAt = null, DateTimeOffset? RequestedAt = null);
+    internal sealed record ReturnClaimRow(Guid Id, ReturnClaimStatus Status, Guid OrderId, Guid ConnectionId, string ExternalClaimId, string? CargoProviderName, string? ReasonCode, string? ReasonText, DateTimeOffset? LastRemoteModifiedAt, string? RejectedPackageState = null, DateTimeOffset? DecidedAt = null, DateTimeOffset? RequestedAt = null);
+
+    private sealed record ReturnCardLine(Guid ClaimId, Guid OrderLineId, string? RawStatus);
+
+    // A claim's id and the date the page sorts it by (ReturnSortDatesAsync, read by the database).
+    private sealed class ReturnSortKey
+    {
+        public Guid Id { get; init; }
+        public DateTimeOffset? Date { get; init; }
+    }
 
     // One row of the Returns page. LineIds are the card's order lines (a claim's view lines).
     internal sealed record ReturnCard(Guid ClaimId, int Kind, string Status, string PlatformCode, string PlatformName, string? CargoProviderName, string? ReasonCode, string? ReasonText, IReadOnlyList<Guid> LineIds)
@@ -24,7 +33,7 @@ public sealed partial class MarketplaceSalesService
         public string? RowKey => Kind switch { WaitingCard => $"{ClaimId:D}:waiting", ApprovedCard => $"{ClaimId:D}:approved", _ => null };
     }
 
-    private sealed record ReturnCardScan(List<ReturnCard> Cards, IReadOnlyDictionary<Guid, ReturnClaimRow> Claims, IReadOnlyDictionary<Guid, ReturnListView>? Views);
+    internal sealed record ReturnCardScan(List<ReturnCard> Cards, IReadOnlyDictionary<Guid, ReturnClaimRow> Claims, IReadOnlyDictionary<Guid, ReturnListView>? Views);
 
     // The page's status groups. AWAITING_SHIPMENT belongs to "Kargoya Verilen", the tab that lists it.
     // A claim approved in part (PARTIALLY_APPROVED, "Kısmen Onaylandı") is listed with the approved ones.
@@ -49,6 +58,23 @@ public sealed partial class MarketplaceSalesService
         var accepted = lineIds.Where(id => Status(id) is "APPROVED" or "COMPLETED").ToList();
         var waiting = lineIds.Where(id => string.IsNullOrEmpty(Status(id)) || Status(id) == "ACTION_REQUIRED").ToList();
         return accepted.Count == 0 || waiting.Count == 0 ? [(WholeCard, lineIds)] : [(WaitingCard, waiting), (ApprovedCard, accepted)];
+    }
+
+    // The status SplitReturnClaim reads for a line (ScanReturnCardsAsync): the canonical status of a raw status that is not
+    // blank, else none.
+    private static string? SplitLineStatus(string? rawStatus) =>
+        string.IsNullOrWhiteSpace(rawStatus) ? null : Wire(MarketplaceReturnStatus.Canonicalize(rawStatus)).ToUpperInvariant();
+
+    // SIPARIS-STOK-9: a claim splits only when one of its lines reads as accepted and another as still waiting, so a claim
+    // without both kinds of raw status is one whole card and its lines need not be read for the list.
+    internal static bool IsAcceptedSplitLineStatus(string? rawStatus) => SplitLineStatus(rawStatus) is "APPROVED" or "COMPLETED";
+
+    internal static bool IsWaitingSplitLineStatus(string? rawStatus) => SplitLineStatus(rawStatus) is null or "ACTION_REQUIRED";
+
+    internal static bool MaySplitReturnClaim(IEnumerable<string?> rawStatuses)
+    {
+        var statuses = rawStatuses.ToList();
+        return statuses.Any(IsAcceptedSplitLineStatus) && statuses.Any(IsWaitingSplitLineStatus);
     }
 
     internal static string ReturnReasonKey(string? reasonCode, string? reasonText) =>
@@ -79,7 +105,7 @@ public sealed partial class MarketplaceSalesService
     }
 
     // The platform, cargo and reason choices of the page as a database filter (MatchesReturnRefinements).
-    private void ApplyReturnRefinements(ref IQueryable<ReturnClaim> query, Guid tenantId, ReturnListQuery options)
+    internal void ApplyReturnRefinements(ref IQueryable<ReturnClaim> query, Guid tenantId, ReturnListQuery options)
     {
         var platforms = options.Platforms?.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value.Trim()).Distinct().ToArray() ?? [];
         if (platforms.Length > 0)
@@ -105,32 +131,7 @@ public sealed partial class MarketplaceSalesService
         var claims = rows.ToDictionary(x => x.Id);
         if (rows.Count == 0) return new([], claims, null);
 
-        var connectionIds = rows.Select(x => x.ConnectionId).Distinct().ToArray();
-        var connections = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && connectionIds.Contains(x.Id))
-            .Select(x => new { x.Id, x.PlatformCode, x.DisplayName }).ToDictionaryAsync(x => x.Id, cancellationToken);
-        var claimIds = rows.Select(x => x.Id).ToArray();
-        var lines = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && claimIds.Contains(x.ClaimId))
-            .Select(x => new { x.ClaimId, x.OrderLineId, x.RawStatus })
-            .ToListAsync(cancellationToken);
-        // One lookup of the order lines that still exist instead of one sub-query per return line.
-        var referencedLineIds = lines.Select(x => x.OrderLineId).Distinct().ToArray();
-        var existingLineIds = (await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && referencedLineIds.Contains(x.Id))
-            .Select(x => x.Id).ToListAsync(cancellationToken)).ToHashSet();
-        var linesByClaim = lines.Select(x => new { x.ClaimId, x.OrderLineId, x.RawStatus, HasOrderLine = existingLineIds.Contains(x.OrderLineId) }).ToLookup(x => x.ClaimId);
-
-        var cards = new List<ReturnCard>();
-        foreach (var row in rows)
-        {
-            var connection = connections.GetValueOrDefault(row.ConnectionId);
-            var platformCode = connection?.PlatformCode ?? "TRENDYOL";
-            if (applyRefinements && !MatchesReturnRefinements(platformCode, row.CargoProviderName, row.ReasonCode, row.ReasonText, options)) continue;
-            var claimLines = linesByClaim[row.Id].ToList();
-            var statuses = claimLines.Where(x => !string.IsNullOrWhiteSpace(x.RawStatus)).GroupBy(x => x.OrderLineId)
-                .ToDictionary(group => group.Key, group => Wire(MarketplaceReturnStatus.Canonicalize(group.First().RawStatus)));
-            var status = ReturnStatusWire(row.Status, claimLines.Select(x => x.RawStatus).ToList());
-            foreach (var (kind, cardLines) in SplitReturnClaim(claimLines.Where(x => x.HasOrderLine).Select(x => x.OrderLineId).ToList(), statuses))
-                cards.Add(new(row.Id, kind, kind == ApprovedCard ? "APPROVED" : status, platformCode, connection?.DisplayName ?? "Trendyol", row.CargoProviderName, row.ReasonCode, row.ReasonText, cardLines));
-        }
+        var cards = await ReturnCardsAsync(tenantId, rows, applyRefinements ? options : null, withLineIds: !string.IsNullOrWhiteSpace(options.Search), cancellationToken);
 
         // Every card belongs only to the tab of its own group: the database filter of a tab is
         // broader (Onaylanan also reads claims still waiting with an accepted line), and a whole
@@ -157,7 +158,60 @@ public sealed partial class MarketplaceSalesService
         return new(cards, claims, views);
     }
 
-    private async Task<IReadOnlyDictionary<Guid, ReturnListView>> ReturnViewsByIdAsync(Guid tenantId, Guid[] claimIds, CancellationToken cancellationToken)
+    // The cards of these claims, in their order (refinements, when given, drop the claims they do not match). A claim's lines
+    // are read only when it may split (SIPARIS-STOK-9), or for every claim when the caller needs each card's lines (the
+    // search); any other claim is one whole card, its status read from the distinct statuses of its lines.
+    private async Task<List<ReturnCard>> ReturnCardsAsync(Guid tenantId, IReadOnlyList<ReturnClaimRow> rows, ReturnListQuery? refinements, bool withLineIds, CancellationToken cancellationToken)
+    {
+        var cards = new List<ReturnCard>();
+        if (rows.Count == 0) return cards;
+        var connectionIds = rows.Select(x => x.ConnectionId).Distinct().ToArray();
+        var connections = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && connectionIds.Contains(x.Id))
+            .Select(x => new { x.Id, x.PlatformCode, x.DisplayName }).ToDictionaryAsync(x => x.Id, cancellationToken);
+        var claimIds = rows.Select(x => x.Id).ToArray();
+        // With every claim's lines read anyway, their statuses need no read of their own.
+        var rawStatuses = withLineIds
+            ? Array.Empty<(Guid ClaimId, string? RawStatus)>().ToLookup(x => x.ClaimId, x => x.RawStatus)
+            : (await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && claimIds.Contains(x.ClaimId))
+                    .Select(x => new { x.ClaimId, x.RawStatus }).Distinct().ToListAsync(cancellationToken))
+                .ToLookup(x => x.ClaimId, x => x.RawStatus);
+        var lineClaimIds = withLineIds ? claimIds : claimIds.Where(id => MaySplitReturnClaim(rawStatuses[id])).ToArray();
+        List<ReturnCardLine> lines = lineClaimIds.Length == 0
+            ? []
+            : await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && lineClaimIds.Contains(x.ClaimId))
+                .Select(x => new ReturnCardLine(x.ClaimId, x.OrderLineId, x.RawStatus))
+                .ToListAsync(cancellationToken);
+        // One lookup of the order lines that still exist instead of one sub-query per return line.
+        var referencedLineIds = lines.Select(x => x.OrderLineId).Distinct().ToArray();
+        HashSet<Guid> existingLineIds = referencedLineIds.Length == 0
+            ? []
+            : (await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && referencedLineIds.Contains(x.Id))
+                .Select(x => x.Id).ToListAsync(cancellationToken)).ToHashSet();
+        var linesByClaim = lines.Select(x => new { x.ClaimId, x.OrderLineId, x.RawStatus, HasOrderLine = existingLineIds.Contains(x.OrderLineId) }).ToLookup(x => x.ClaimId);
+        var lineClaims = lineClaimIds.ToHashSet();
+
+        foreach (var row in rows)
+        {
+            var connection = connections.GetValueOrDefault(row.ConnectionId);
+            var platformCode = connection?.PlatformCode ?? "TRENDYOL";
+            if (refinements is not null && !MatchesReturnRefinements(platformCode, row.CargoProviderName, row.ReasonCode, row.ReasonText, refinements)) continue;
+            if (!lineClaims.Contains(row.Id))
+            {
+                // ReturnStatusWire only asks whether some line is approved and some rejected: the distinct statuses answer it.
+                cards.Add(new(row.Id, WholeCard, ReturnStatusWire(row.Status, rawStatuses[row.Id].ToList()), platformCode, connection?.DisplayName ?? "Trendyol", row.CargoProviderName, row.ReasonCode, row.ReasonText, []));
+                continue;
+            }
+            var claimLines = linesByClaim[row.Id].ToList();
+            var statuses = claimLines.Where(x => !string.IsNullOrWhiteSpace(x.RawStatus)).GroupBy(x => x.OrderLineId)
+                .ToDictionary(group => group.Key, group => Wire(MarketplaceReturnStatus.Canonicalize(group.First().RawStatus)));
+            var status = ReturnStatusWire(row.Status, claimLines.Select(x => x.RawStatus).ToList());
+            foreach (var (kind, cardLines) in SplitReturnClaim(claimLines.Where(x => x.HasOrderLine).Select(x => x.OrderLineId).ToList(), statuses))
+                cards.Add(new(row.Id, kind, kind == ApprovedCard ? "APPROVED" : status, platformCode, connection?.DisplayName ?? "Trendyol", row.CargoProviderName, row.ReasonCode, row.ReasonText, cardLines));
+        }
+        return cards;
+    }
+
+    internal async Task<IReadOnlyDictionary<Guid, ReturnListView>> ReturnViewsByIdAsync(Guid tenantId, Guid[] claimIds, CancellationToken cancellationToken)
     {
         var claims = await db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId && claimIds.Contains(x.Id)).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         return (await ReturnViewsAsync(tenantId, claims, cancellationToken)).ToDictionary(view => view.Id);
@@ -166,7 +220,7 @@ public sealed partial class MarketplaceSalesService
     // The invoice label each claim's view shows (ReturnInvoiceLabel), read without building the
     // views: the order's latest package and invoice, and its customer snapshot only when the label
     // falls back on it.
-    private async Task<Dictionary<Guid, string>> ReturnInvoiceLabelsAsync(Guid tenantId, IReadOnlyCollection<ReturnClaimRow> claims, CancellationToken cancellationToken)
+    internal async Task<Dictionary<Guid, string>> ReturnInvoiceLabelsAsync(Guid tenantId, IReadOnlyCollection<ReturnClaimRow> claims, CancellationToken cancellationToken)
     {
         var orderIds = claims.Select(x => x.OrderId).Distinct().ToArray();
         var existingOrders = (await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.Id)).Select(x => x.Id).ToListAsync(cancellationToken)).ToHashSet();
@@ -227,7 +281,7 @@ public sealed partial class MarketplaceSalesService
         return byClaim != 0 ? byClaim : left.Kind.CompareTo(right.Kind);
     }
 
-    private async Task<Dictionary<Guid, DateTimeOffset?>> ReturnSortDatesAsync(Guid tenantId, IReadOnlyCollection<ReturnClaimRow> claims, string sort, CancellationToken cancellationToken)
+    internal async Task<Dictionary<Guid, DateTimeOffset?>> ReturnSortDatesAsync(Guid tenantId, IReadOnlyCollection<ReturnClaimRow> claims, string sort, CancellationToken cancellationToken)
     {
         // The marketplace's own request date of the claim (ReturnClaim.RequestedAt); a claim it has not dated stays empty.
         if (sort.StartsWith("REQUESTED", StringComparison.Ordinal))
@@ -251,9 +305,10 @@ public sealed partial class MarketplaceSalesService
             : (DateTimeOffset?)null);
     }
 
-    private async Task<PageResult<ReturnListView>> ReturnCardPageAsync(Guid tenantId, int limit, int page, string? after, ReturnListQuery options, CancellationToken cancellationToken)
+    internal async Task<PageResult<ReturnListView>> ReturnCardPageAsync(Guid tenantId, int limit, int page, string? after, ReturnListQuery options, CancellationToken cancellationToken)
     {
         var sort = NormalizeReturnSort(options.Sort);
+        if (!ReturnCardsFilteredInMemory(options)) return await ReturnCardPageInDatabaseAsync(tenantId, limit, page, after, options, sort, cancellationToken);
         var scan = await ScanReturnCardsAsync(tenantId, options, applyTab: true, applyRefinements: true, cancellationToken);
         var dates = sort == "ID" ? null : await ReturnSortDatesAsync(tenantId, scan.Cards.Select(card => scan.Claims[card.ClaimId]).Distinct().ToList(), sort, cancellationToken);
         var ordered = scan.Cards.Select(card => (Card: card, Key: (Date: dates?.GetValueOrDefault(card.ClaimId), card.ClaimId, card.Kind))).ToList();
@@ -276,6 +331,178 @@ public sealed partial class MarketplaceSalesService
         var last = pageCards.LastOrDefault();
         var next = hasMore && pageCards.Count > 0 ? cursors.EncodeReturn(sort, last.Key.Date, last.Key.ClaimId, last.Key.Kind) : null;
         return new(items, next, hasMore, ordered.Count);
+    }
+
+    // The page's own search, its platform, cargo and reason choices and the invoice label are decided card by card on
+    // loaded rows; without them the cards are counted, ordered and paged by the database.
+    internal static bool ReturnCardsFilteredInMemory(ReturnListQuery options)
+    {
+        var invoice = options.InvoiceStatus?.Trim().ToUpperInvariant();
+        var cargo = options.Cargo?.Trim();
+        var reason = options.ReasonKey?.Trim();
+        return !string.IsNullOrWhiteSpace(options.Search)
+            || options.Platforms?.Any(value => !string.IsNullOrWhiteSpace(value)) == true
+            || !string.IsNullOrEmpty(cargo) && cargo != "ALL"
+            || !string.IsNullOrEmpty(reason) && reason != "ALL"
+            || !string.IsNullOrEmpty(invoice) && invoice != "ALL";
+    }
+
+    // SIPARIS-STOK-9: the same page as ReturnCardPageAsync without reading every claim and line of the tenant. Every claim
+    // in the tab's database filter is one card whose tab follows the claim's own status (ReturnStatusWire only turns an
+    // approved or completed claim into PARTIALLY_APPROVED, the same tab), so the database counts and orders those cards
+    // and reads one page of them. Only claims that may split (an accepted line beside a waiting one) have their lines
+    // read: such a claim's first card is the waiting one and its accepted card is placed among the others by count.
+    private async Task<PageResult<ReturnListView>> ReturnCardPageInDatabaseAsync(Guid tenantId, int limit, int page, string? after, ReturnListQuery options, string sort, CancellationToken cancellationToken)
+    {
+        var query = ReturnBaseQuery(tenantId);
+        ApplyReturnFilters(ref query, options);
+        var tab = options.Status?.Trim().ToUpperInvariant();
+        var everyTab = string.IsNullOrEmpty(tab) || tab == "ALL";
+        var tabStatuses = everyTab ? null : Enum.GetValues<ReturnClaimStatus>().Where(status => ReturnTabGroup(Wire(status)) == tab).ToArray();
+        var main = tabStatuses is null ? query : query.Where(x => tabStatuses.Contains(x.Status));
+        var mainKeys = ReturnSortKeys(main, tenantId, sort);
+
+        // The claims that may split, found by the raw statuses the tenant's lines carry; only their lines are read.
+        var rawStatuses = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId).Select(x => x.RawStatus).Distinct().ToListAsync(cancellationToken);
+        var accepted = rawStatuses.Where(IsAcceptedSplitLineStatus).ToArray();
+        var waiting = rawStatuses.Where(raw => raw is not null && IsWaitingSplitLineStatus(raw)).ToArray();
+        List<ReturnClaimRow> splitRows = accepted.Length == 0
+            ? []
+            : await query.Where(x => db.ReturnLines.Any(line => line.TenantId == tenantId && line.ClaimId == x.Id && accepted.Contains(line.RawStatus))
+                    && db.ReturnLines.Any(line => line.TenantId == tenantId && line.ClaimId == x.Id && (line.RawStatus == null || waiting.Contains(line.RawStatus))))
+                .OrderBy(x => x.Id)
+                .Select(x => new ReturnClaimRow(x.Id, x.Status, x.OrderId, x.ConnectionId, x.ExternalClaimId, x.CargoProviderName, x.ReasonCode, x.ReasonText, x.LastRemoteModifiedAt, x.RejectedPackageState, x.DecidedAt, x.RequestedAt))
+                .ToListAsync(cancellationToken);
+        var splitCards = (await ReturnCardsAsync(tenantId, splitRows, null, withLineIds: false, cancellationToken))
+            .GroupBy(card => card.ClaimId).Where(group => group.Count() > 1).ToDictionary(group => group.Key, group => group.ToList());
+        int MainKind(Guid claimId) => splitCards.ContainsKey(claimId) ? WaitingCard : WholeCard;
+
+        // The accepted cards in this tab, each with its place among all the tab's cards.
+        var extraIds = splitCards.Values.Select(cards => cards[^1]).Where(card => everyTab || ReturnTabGroup(card.Status) == tab).Select(card => card.ClaimId).ToArray();
+        var extras = new List<(DateTimeOffset? Date, Guid ClaimId, int Kind)>();
+        var places = new List<int>();
+        if (extraIds.Length > 0)
+        {
+            // One read: each accepted card's date, whether its claim's first card is listed too, and how many of the
+            // listed first cards of other claims come before it.
+            var placed = (await ReturnSortKeysBeforeEach(mainKeys, ReturnSortKeys(query.Where(x => extraIds.Contains(x.Id)), tenantId, sort), sort).ToListAsync(cancellationToken))
+                .Select(row => (Key: (row.Date, ClaimId: row.Id, Kind: ApprovedCard), row.Before, row.Listed)).ToList();
+            placed.Sort((left, right) => CompareReturnCards(left.Key, right.Key, sort));
+            extras = placed.Select(row => row.Key).ToList();
+            places = placed.Select((row, index) => row.Before + (row.Listed ? 1 : 0) + index).ToList();
+        }
+        var total = await main.CountAsync(cancellationToken) + extras.Count;
+
+        int start;
+        if (!string.IsNullOrWhiteSpace(after))
+        {
+            if (!cursors.TryDecodeReturn(after, out var cursorSort, out var cursorDate, out var cursorClaimId, out var cursorKind) || cursorSort != sort)
+                throw new ArgumentException("Cursor geçersiz veya seçili sıralamayla uyuşmuyor.", nameof(after));
+            var cursor = (cursorDate, cursorClaimId, cursorKind);
+            start = await ReturnSortKeysBefore(mainKeys.Where(x => x.Id != cursorClaimId), cursorDate, cursorClaimId, sort).CountAsync(cancellationToken);
+            start += (await mainKeys.Where(x => x.Id == cursorClaimId).ToListAsync(cancellationToken))
+                .Count(key => CompareReturnCards((key.Date, key.Id, MainKind(key.Id)), cursor, sort) <= 0);
+            start += extras.Count(extra => CompareReturnCards(extra, cursor, sort) <= 0);
+        }
+        else start = page > 1 ? (int)Math.Min(total, (long)(page - 1) * limit) : 0;
+
+        var pageKeys = new List<(DateTimeOffset? Date, Guid ClaimId, int Kind)>();
+        if (start < total && limit > 0)
+        {
+            var firstCards = await OrderReturnSortKeys(mainKeys, sort).Skip(start - places.Count(place => place < start)).Take(limit).ToListAsync(cancellationToken);
+            pageKeys = firstCards.Select(key => (key.Date, ClaimId: key.Id, Kind: MainKind(key.Id)))
+                .Concat(extras.Where((_, index) => places[index] >= start)).ToList();
+            pageKeys.Sort((left, right) => CompareReturnCards(left, right, sort));
+            pageKeys = pageKeys.Take(limit).ToList();
+        }
+        var views = await ReturnViewsByIdAsync(tenantId, pageKeys.Select(key => key.ClaimId).Distinct().ToArray(), cancellationToken);
+        var items = pageKeys.Where(key => views.ContainsKey(key.ClaimId))
+            .Select(key => key.Kind == WholeCard ? views[key.ClaimId] : ReturnCardView(views[key.ClaimId], splitCards[key.ClaimId].Single(card => card.Kind == key.Kind)))
+            .ToList();
+        var hasMore = start + pageKeys.Count < total;
+        var next = hasMore && pageKeys.Count > 0 ? cursors.EncodeReturn(sort, pageKeys[^1].Date, pageKeys[^1].ClaimId, pageKeys[^1].Kind) : null;
+        return new(items, next, hasMore, total);
+    }
+
+    // ReturnSortDatesAsync as one database read per claim: the request date, the order date, or an approved or completed
+    // claim's last successful approval (else its last change). The ID order sorts by the claim alone.
+    private IQueryable<ReturnSortKey> ReturnSortKeys(IQueryable<ReturnClaim> claims, Guid tenantId, string sort)
+    {
+        if (sort == "ID") return claims.Select(x => new ReturnSortKey { Id = x.Id, Date = null });
+        if (sort.StartsWith("REQUESTED", StringComparison.Ordinal)) return claims.Select(x => new ReturnSortKey { Id = x.Id, Date = x.RequestedAt });
+        if (sort.StartsWith("ORDERED", StringComparison.Ordinal))
+            return claims.Select(x => new ReturnSortKey
+            {
+                Id = x.Id,
+                Date = db.Orders.Where(order => order.TenantId == tenantId && order.Id == x.OrderId).Select(order => (DateTimeOffset?)order.OrderedAt).FirstOrDefault()
+            });
+        return claims.Select(x => new ReturnSortKey
+        {
+            Id = x.Id,
+            Date = x.Status == ReturnClaimStatus.Approved || x.Status == ReturnClaimStatus.Completed
+                ? db.ReturnDecisions.Where(decision => decision.TenantId == tenantId && decision.ClaimId == x.Id && decision.Action == "APPROVE" && decision.Status == "SUCCEEDED")
+                    .Max(decision => decision.CompletedAt) ?? x.LastRemoteModifiedAt
+                : null
+        });
+    }
+
+    // CompareReturnCards as database order: empty dates last in either direction, then the claim id (a uuid orders as its
+    // text does).
+    private static IQueryable<ReturnSortKey> OrderReturnSortKeys(IQueryable<ReturnSortKey> keys, string sort) =>
+        sort == "ID" ? keys.OrderBy(x => x.Id)
+        : sort.EndsWith("_DESC", StringComparison.Ordinal) ? keys.OrderBy(x => x.Date == null).ThenByDescending(x => x.Date).ThenBy(x => x.Id)
+        : keys.OrderBy(x => x.Date == null).ThenBy(x => x.Date).ThenBy(x => x.Id);
+
+    // The claims ordered before (date, claim id) by OrderReturnSortKeys.
+    private static IQueryable<ReturnSortKey> ReturnSortKeysBefore(IQueryable<ReturnSortKey> keys, DateTimeOffset? date, Guid claimId, string sort)
+    {
+        if (sort == "ID") return keys.Where(x => x.Id.CompareTo(claimId) < 0);
+        if (date is not { } value) return keys.Where(x => x.Date != null || x.Id.CompareTo(claimId) < 0);
+        var at = value.ToUniversalTime();
+        return sort.EndsWith("_DESC", StringComparison.Ordinal)
+            ? keys.Where(x => x.Date != null && (x.Date > at || x.Date == at && x.Id.CompareTo(claimId) < 0))
+            : keys.Where(x => x.Date != null && (x.Date < at || x.Date == at && x.Id.CompareTo(claimId) < 0));
+    }
+
+    private sealed class ReturnSortKeyPlace
+    {
+        public Guid Id { get; init; }
+        public DateTimeOffset? Date { get; init; }
+        public int Before { get; init; }
+        public bool Listed { get; init; }
+    }
+
+    // For each of the targets: how many keys of other claims ReturnSortKeysBefore counts before it, and whether its own
+    // claim is among the keys.
+    private static IQueryable<ReturnSortKeyPlace> ReturnSortKeysBeforeEach(IQueryable<ReturnSortKey> keys, IQueryable<ReturnSortKey> targets, string sort)
+    {
+        if (sort == "ID")
+            return targets.Select(target => new ReturnSortKeyPlace
+            {
+                Id = target.Id,
+                Date = target.Date,
+                Before = keys.Count(x => x.Id != target.Id && x.Id.CompareTo(target.Id) < 0),
+                Listed = keys.Any(x => x.Id == target.Id)
+            });
+        if (sort.EndsWith("_DESC", StringComparison.Ordinal))
+            return targets.Select(target => new ReturnSortKeyPlace
+            {
+                Id = target.Id,
+                Date = target.Date,
+                Before = keys.Count(x => x.Id != target.Id && (target.Date == null
+                    ? x.Date != null || x.Id.CompareTo(target.Id) < 0
+                    : x.Date != null && (x.Date > target.Date || x.Date == target.Date && x.Id.CompareTo(target.Id) < 0))),
+                Listed = keys.Any(x => x.Id == target.Id)
+            });
+        return targets.Select(target => new ReturnSortKeyPlace
+        {
+            Id = target.Id,
+            Date = target.Date,
+            Before = keys.Count(x => x.Id != target.Id && (target.Date == null
+                ? x.Date != null || x.Id.CompareTo(target.Id) < 0
+                : x.Date != null && (x.Date < target.Date || x.Date == target.Date && x.Id.CompareTo(target.Id) < 0))),
+            Listed = keys.Any(x => x.Id == target.Id)
+        });
     }
 
     // A split card shows only its own lines; the accepted card reads as an approved return.
@@ -318,7 +545,7 @@ public sealed partial class MarketplaceSalesService
         return view;
     }
 
-    private async Task<ReturnSummaryView> BuildReturnSummaryAsync(Guid tenantId, ReturnListQuery options, Dictionary<string, int> counts, CancellationToken cancellationToken)
+    internal async Task<ReturnSummaryView> BuildReturnSummaryAsync(Guid tenantId, ReturnListQuery options, Dictionary<string, int> counts, CancellationToken cancellationToken)
     {
 
         var counted = await ScanReturnCardsAsync(tenantId, options, applyTab: false, applyRefinements: true, cancellationToken);
@@ -385,7 +612,7 @@ public sealed partial class MarketplaceSalesService
 
     // The metric cards over the counted cards (every filter but the tab). Today's decisions: the marketplace's own date
     // (DecidedAt) or a panel decision confirmed today, the claim still standing in that outcome.
-    private async Task<ReturnMetricCounts> ReturnMetricsAsync(Guid tenantId, ReturnCardScan counted, CancellationToken cancellationToken)
+    internal async Task<ReturnMetricCounts> ReturnMetricsAsync(Guid tenantId, ReturnCardScan counted, CancellationToken cancellationToken)
     {
         var awaitingCargo = 0; var unknownCargo = 0;
         foreach (var card in counted.Cards)
