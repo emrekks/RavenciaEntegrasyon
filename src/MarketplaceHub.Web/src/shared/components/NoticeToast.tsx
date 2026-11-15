@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { appendNotification, normalizeNotificationKind, notificationError, type NotificationContext } from '../notifications'
 import { composeNotice } from '../notice-copy'
 import { isStillRunning, stillRunningTitle } from '../idempotency'
+import { isAbortedRequest } from '../api/abort'
 import { ToneIcon } from './ToneIcon'
 import { ToastViewportContext } from './toast-stack-context'
 import { UiIcon } from './UiIcon'
@@ -68,7 +69,8 @@ export function MessageToast({ message, onClose, kind: explicitKind }: { message
 
 /** An action's error as a toast that also goes to the notification history; it hides itself after eight seconds. */
 export function ErrorToast({ error, title, onDismiss, context }: { error: unknown; title?: string; onDismiss?: () => void; context?: NotificationContext }) {
-  const message = error ? (error instanceof Error ? error.message : 'İşlem tamamlanamadı.') : ''
+  // A request the panel stopped itself (the query left the screen, sign-out) did not fail: no toast, no history entry.
+  const message = error && !isAbortedRequest(error) ? (error instanceof Error ? error.message : 'İşlem tamamlanamadı.') : ''
   const [hiddenMessage, setHiddenMessage] = useState('')
   const contextRef = useRef(context)
   const errorRef = useRef(error)

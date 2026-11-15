@@ -46,9 +46,13 @@ function writeAnsweredVersionedKeys() {
   try { localStorage.setItem(answeredVersionedKeyStorage, JSON.stringify([...answeredVersionedKeys])) } catch { /* storage unavailable: the in-memory map still covers this page */ }
 }
 
-/** True when the failed request reached the server and got an HTTP answer (any status); false for a network error. */
+/**
+ * True when the failed request reached the server and got an HTTP answer (any status); false for a network error, an
+ * abort, or a read that ran out of time on the panel's side (status 0, CLIENT_TIMEOUT in shared/api/client.ts).
+ */
 export function failedWithHttpAnswer(error: unknown) {
-  return error instanceof Error && typeof (error as { status?: unknown }).status === 'number'
+  const status = (error as { status?: unknown } | null)?.status
+  return error instanceof Error && typeof status === 'number' && status > 0
 }
 
 /** Title of the information notice shown for a still-running answer. */
