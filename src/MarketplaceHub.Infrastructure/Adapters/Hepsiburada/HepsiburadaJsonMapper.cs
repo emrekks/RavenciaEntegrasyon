@@ -1382,10 +1382,17 @@ internal static class HepsiburadaJsonMapper
             CancellationStatusOf(status));
     }
 
-    // CANCELLED or NOT_CANCELLED from a status Hepsiburada sent; UNKNOWN when it sent none (ADAPTOR-TY-HB-6).
-    private static string CancellationStatusOf(string? status) =>
-        string.IsNullOrWhiteSpace(status) ? "UNKNOWN"
-        : status.Contains("cancel", StringComparison.OrdinalIgnoreCase) ? "CANCELLED" : "NOT_CANCELLED";
+    // CANCELLED or NOT_CANCELLED from a status Hepsiburada sent; UNKNOWN when it sent none (ADAPTOR-TY-HB-6). D4: a status
+    // this panel does not know (HepsiburadaOrderLifecycleStatusPolicy) says nothing about a cancellation either, unless it
+    // names one ("Cancelled…"); ClaimCreated is a line under a return claim, not a cancellation.
+    internal static string CancellationStatusOf(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status)) return "UNKNOWN";
+        if (status.Contains("cancel", StringComparison.OrdinalIgnoreCase)) return "CANCELLED";
+        return HepsiburadaOrderLifecycleStatusPolicy.FromRemote(status) is not null
+            || string.Equals(status.Trim(), "ClaimCreated", StringComparison.OrdinalIgnoreCase)
+            ? "NOT_CANCELLED" : "UNKNOWN";
+    }
 
     private static JsonElement AddressSnapshot(JsonElement source, params string[] names)
     {

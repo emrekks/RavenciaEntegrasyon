@@ -33,9 +33,10 @@ public sealed class HepsiburadaContractTests
         Assert.Equal((2m, 39.95m, 79.90m), (mapped[2].order!.Lines[0].Quantity, mapped[2].order!.Lines[0].UnitPrice, mapped[2].order!.GrossAmount));
         // An unknown status is carried as sent.
         Assert.Equal("SomeFutureStatus", mapped[2].order!.LifecycleStatus);
-        // DEVIATION: an unknown status reads as NOT_CANCELLED (HepsiburadaJsonMapper.CancellationStatusOf: any status
-        // without "cancel" in it); only a missing status stays UNKNOWN.
-        Assert.Equal("NOT_CANCELLED", mapped[2].order!.CancellationStatus);
+        // D4: a status this panel does not know says nothing about a cancellation: UNKNOWN, not NOT_CANCELLED. A known
+        // open status is not cancelled.
+        Assert.Equal("UNKNOWN", mapped[2].order!.CancellationStatus);
+        Assert.Equal("NOT_CANCELLED", first.CancellationStatus);
         Assert.Equal("UNKNOWN", first.PaymentStatus);
         // DEVIATION: a paid-order line without a status field gets LifecycleStatus "Open" (HepsiburadaJsonMapper.PaidOrderLine,
         // `rawStatus ?? "Open"`), while the order-detail mapper keeps a missing status unknown (null).

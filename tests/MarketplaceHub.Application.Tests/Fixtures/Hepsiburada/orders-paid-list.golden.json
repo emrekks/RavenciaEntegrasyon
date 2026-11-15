@@ -153,7 +153,7 @@
         "RawJson": "<raw 445 chars sha256:92750b3f5fb6>",
         "ShipmentDueAt": null,
         "PaymentStatus": "UNKNOWN",
-        "CancellationStatus": "NOT_CANCELLED",
+        "CancellationStatus": "UNKNOWN",
         "RefundStatus": "UNKNOWN",
         "RefundedAmount": 0,
         "Refunds": null,
