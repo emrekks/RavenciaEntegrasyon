@@ -2421,6 +2421,8 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.ToTable("jobs", "integration", t =>
                         {
                             t.HasCheckConstraint("ck_job_attempt_bounds", "\"AttemptCount\" >= 0 AND \"MaxAttempts\" > 0 AND \"AttemptCount\" <= \"MaxAttempts\"");
+
+                            t.HasCheckConstraint("ck_jobs_status", "\"Status\" IN ('PENDING', 'LEASED', 'RETRY_SCHEDULED', 'BLOCKED', 'MANUAL_REVIEW', 'SUCCEEDED', 'DEAD', 'CANCELLED')");
                         });
                 });
 
@@ -2711,12 +2713,15 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("TenantId", "EttnUuid")
+                        .IsUnique()
+                        .HasDatabaseName("UX_invoices_TenantId_EttnUuid")
+                        .HasFilter("\"EttnUuid\" IS NOT NULL");
+
                     b.HasIndex("TenantId", "IdempotencyKey")
                         .IsUnique();
 
                     b.HasIndex("TenantId", "InvoicePolicyId");
-
-                    b.HasIndex("TenantId", "LegalEntityProfileId");
 
                     b.HasIndex("TenantId", "OrderId")
                         .IsUnique()
@@ -2732,11 +2737,18 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "ProviderConnectionId");
 
+                    b.HasIndex("TenantId", "LegalEntityProfileId", "InvoiceNumber")
+                        .IsUnique()
+                        .HasDatabaseName("UX_invoices_TenantId_LegalEntityProfileId_InvoiceNumber")
+                        .HasFilter("\"InvoiceNumber\" IS NOT NULL");
+
                     b.HasIndex("TenantId", "OrderId", "Status");
 
                     b.ToTable("invoices", "billing", t =>
                         {
                             t.HasCheckConstraint("ck_invoice_totals_nonnegative", "\"TaxExclusiveTotal\" >= 0 AND \"DiscountTotal\" >= 0 AND \"TaxTotal\" >= 0 AND \"PayableTotal\" >= 0");
+
+                            t.HasCheckConstraint("ck_invoices_status", "\"Status\" IN ('Draft', 'Validating', 'ValidationFailed', 'Ready', 'Submitting', 'UnknownResult', 'Submitted', 'Accepted', 'Rejected', 'MarketplacePending', 'MarketplaceFailed', 'Completed', 'CancellationPending', 'Cancelled', 'CancellationRejected', 'AdjustmentRequired', 'ManualReview', 'CancelledLocal')");
                         });
                 });
 
@@ -5219,6 +5231,8 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "CategoryId");
 
+                    b.HasIndex("TenantId", "FamilyId");
+
                     b.HasIndex("TenantId", "Status", "UpdatedAt");
 
                     b.ToTable("products", "catalog");
@@ -5272,6 +5286,8 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "ProductId", "VariantId", "AttributeId", "ValueId")
                         .IsUnique();
+
+                    NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("TenantId", "ProductId", "VariantId", "AttributeId", "ValueId"), false);
 
                     b.ToTable("product_attribute_assignments", "catalog", t =>
                         {
@@ -5537,10 +5553,14 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("FileAssetId");
 
+                    b.HasIndex("TenantId", "FamilyId");
+
                     b.HasIndex("TenantId", "VariantId");
 
                     b.HasIndex("TenantId", "ProductId", "VariantId", "SortOrder")
                         .IsUnique();
+
+                    NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("TenantId", "ProductId", "VariantId", "SortOrder"), false);
 
                     b.ToTable("product_media", "catalog");
                 });
@@ -5666,6 +5686,8 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "ModelId", "AttributeId", "ValueId")
                         .IsUnique();
+
+                    NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("TenantId", "ModelId", "AttributeId", "ValueId"), false);
 
                     b.ToTable("product_model_attributes", "catalog", t =>
                         {
@@ -8203,7 +8225,7 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("TenantId", "ConnectionId")
                         .HasPrincipalKey("TenantId", "Id")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 
@@ -8281,7 +8303,7 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("TenantId", "ConnectionId")
                         .HasPrincipalKey("TenantId", "Id")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 
@@ -8331,7 +8353,7 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("TenantId", "ConnectionId")
                         .HasPrincipalKey("TenantId", "Id")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 
@@ -8495,11 +8517,6 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("MarketplaceHub.Domain.Product", b =>
                 {
-                    b.HasOne("MarketplaceHub.Domain.ProductModel", null)
-                        .WithMany()
-                        .HasForeignKey("FamilyId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("MarketplaceHub.Domain.Tenant", null)
                         .WithMany()
                         .HasForeignKey("TenantId")
@@ -8517,6 +8534,12 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasForeignKey("TenantId", "CategoryId")
                         .HasPrincipalKey("TenantId", "Id")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("MarketplaceHub.Domain.ProductModel", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "FamilyId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("MarketplaceHub.Domain.ProductAttributeAssignment", b =>
@@ -8582,16 +8605,17 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("MarketplaceHub.Domain.ProductMedia", b =>
                 {
-                    b.HasOne("MarketplaceHub.Domain.ProductModel", null)
-                        .WithMany()
-                        .HasForeignKey("FamilyId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("MarketplaceHub.Domain.FileAsset", null)
                         .WithMany()
                         .HasForeignKey("FileAssetId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.ProductModel", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "FamilyId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("MarketplaceHub.Domain.Product", null)
                         .WithMany()
@@ -8625,7 +8649,7 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("TenantId", "CategoryId")
                         .HasPrincipalKey("TenantId", "Id")
-                        .OnDelete(DeleteBehavior.Cascade);
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("MarketplaceHub.Domain.ProductModelAttribute", b =>
