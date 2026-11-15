@@ -194,6 +194,20 @@ describe('Hızlı Arama', () => {
     expect(menu.length).toBeGreaterThan(8)
     expect(found).toEqual(expect.arrayContaining([...menu, '/settings']))
   })
+
+  it('opens with Ctrl+K and offers its pages as links of a navigation, not as an empty choice list (WEB-ALTYAPI-16)', async () => {
+    server.me = [{ status: 200, body: active }]
+    const { host } = mount()
+    await waitFor(() => shell(host))
+    act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true, cancelable: true })) })
+    const results = await waitFor(() => document.querySelector<HTMLElement>('[aria-label="Hızlı arama sonuçları"]'))
+    expect(results.tagName).toBe('NAV')
+    expect(results.getAttribute('role')).toBeNull()
+    expect(document.querySelector('[role="listbox"] .rv-command-item')).toBeNull()
+    const links = Array.from(results.querySelectorAll<HTMLAnchorElement>('a.rv-command-item'))
+    expect(links.length).toBeGreaterThan(8)
+    expect(links.every(link => link.tabIndex >= 0 && link.getAttribute('href'))).toBe(true)
+  })
 })
 
 describe('a session that ends while the panel is open', () => {
