@@ -1,0 +1,65 @@
+// Source: hand-built after Ravencia-API-Docs/hepsiburada-api-son.md "Siparişe Ait Detay Listeleme" (~9786-9890: item
+// statuses Open, Packaged, CancelledByMerchant, Delivered, InTransit, ClaimCreated, CancelledByCustomer, CancelledBySap)
+// and the order-detail shapes the existing HepsiburadaAdapterTests use (orderNumber, orderDate, items[] with id,
+// merchantSku, quantity, price, status, dueDate; packages[] with packageNumber, status, items[orderLineId, quantity]).
+// Partly cancelled: one line cancelled by the customer, one multi-quantity discounted line packed and in transit
+// (hbDiscount = Hepsiburada's own campaign discount a unit, as HepsiburadaJsonMapper.PlatformDiscount documents it).
+// Times are Istanbul local without an offset.
+{
+  "orderNumber": "4000000101",
+  "orderDate": "2026-11-04T22:15:00",
+  "status": "Open",
+  "paymentStatus": "Paid",
+  "customerName": "Test Musteri",
+  "customer": { "customerId": "00000000-0000-4000-8000-0000000000f1", "name": "Test Musteri" },
+  "deliveryAddress": { "name": "Test Musteri", "address": "Fake Sokak 2", "city": "Ankara", "town": "Çankaya", "district": "Fake Mahalle", "countryCode": "TR", "phoneNumber": "5550000000" },
+  "invoice": {
+    "turkishIdentityNumber": "00000000000",
+    "isCorporate": false,
+    "address": { "name": "Test Musteri", "address": "Fake Sokak 2", "city": "Ankara", "town": "Çankaya", "countryCode": "TR" }
+  },
+  "items": [
+    {
+      "id": "00000000-0000-4000-8000-000000000101",
+      "merchantSku": "SKU-FAKE-HB10",
+      "hbSku": "HBV00000FAKE10",
+      "productBarcode": "0000000000110",
+      "name": "Fake HB Ürün 10",
+      "quantity": 2,
+      "price": { "currency": "TRY", "amount": 150.0 },
+      "totalPrice": { "currency": "TRY", "amount": 280.0 },
+      "unitMerchantDiscount": { "currency": "TRY", "amount": 10.0 },
+      "totalMerchantDiscount": { "currency": "TRY", "amount": 20.0 },
+      "hbDiscount": { "unitPrice": { "currency": "TRY", "amount": 7.5 } },
+      "vatRate": 20,
+      "status": "InTransit",
+      "dueDate": "2026-11-06T23:59:00",
+      "hasInvoice": true
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000102",
+      "merchantSku": "SKU-FAKE-HB11",
+      "hbSku": "HBV00000FAKE11",
+      "productBarcode": "0000000000111",
+      "name": "Fake HB Ürün 11",
+      "quantity": 1,
+      "price": { "currency": "TRY", "amount": 60.0 },
+      "totalPrice": { "currency": "TRY", "amount": 60.0 },
+      "vatRate": 10,
+      "status": "CancelledByCustomer",
+      "cancelDate": "2026-11-05T08:00:00"
+    }
+  ],
+  "packages": [
+    {
+      "packageNumber": "5000000101",
+      "status": "InTransit",
+      "cargoCompany": "HepsiJET",
+      "trackingInfoCode": "TRACK-FAKE-0101",
+      "hasInvoice": true,
+      "invoiceNumber": "FAKE2026000000101",
+      "invoiceLink": "https://documents.example.test/fake-0101.pdf",
+      "items": [ { "orderLineId": "00000000-0000-4000-8000-000000000101", "quantity": 2 } ]
+    }
+  ]
+}

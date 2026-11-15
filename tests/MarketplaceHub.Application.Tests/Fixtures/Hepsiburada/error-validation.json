@@ -1,0 +1,9 @@
+// Source: hand-built problem-details body (the offline Hepsiburada docs show no error body). Hepsiburada's classifier
+// decides on the HTTP status alone (HepsiburadaHttpClient.Error), so the body only has to be a non-HTML 400 answer.
+{
+  "type": "about:blank",
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "Validation failed",
+  "errors": [ { "field": "packageNumber", "message": "packageNumber is not valid" } ]
+}

@@ -1,0 +1,42 @@
+// Source: hand-built on the documented fields of Ravencia-API-Docs/hepsiburada-api-son.md "Paket Bilgilerini
+// Listeleme" (~9239-9555: packageNumber, status, orderNumber, orderDate, cargoCompany, trackingInfoCode, barcode,
+// recipientName, shippingCity/Town/District, lineItems[] with lineItemId, merchantSku, quantity, price/totalPrice
+// {currency, amount}, unitMerchantDiscount/totalMerchantDiscount, vatRate) and the package shapes in the existing
+// HepsiburadaAdapterTests. Istanbul local times. The second row has no orderDate (refused, never dated by its event).
+[
+  {
+    "packageNumber": "5000000201",
+    "status": "Packaged",
+    "orderNumber": "4000000201",
+    "orderDate": "2026-11-05T13:00:00",
+    "cargoCompany": "Aras Kargo",
+    "trackingInfoCode": "TRACK-FAKE-0201",
+    "barcode": "0000000000299",
+    "recipientName": "Test Musteri",
+    "shippingCity": "İzmir",
+    "shippingTown": "Konak",
+    "shippingCountryCode": "TR",
+    "totalPrice": { "currency": "TRY", "amount": 380.0 },
+    "lineItems": [
+      {
+        "lineItemId": "00000000-0000-4000-8000-000000000201",
+        "merchantSku": "SKU-FAKE-HB20",
+        "productBarcode": "0000000000201",
+        "name": "Fake HB Ürün 20",
+        "quantity": 4,
+        "price": { "currency": "TRY", "amount": 100.0 },
+        "totalPrice": { "currency": "TRY", "amount": 380.0 },
+        "unitMerchantDiscount": { "currency": "TRY", "amount": 5.0 },
+        "totalMerchantDiscount": { "currency": "TRY", "amount": 20.0 },
+        "vatRate": 20
+      }
+    ]
+  },
+  {
+    "packageNumber": "5000000202",
+    "status": "Packaged",
+    "orderNumber": "4000000202",
+    "totalPrice": { "currency": "TRY", "amount": 10.0 },
+    "lineItems": [ { "lineItemId": "00000000-0000-4000-8000-000000000202", "merchantSku": "SKU-FAKE-HB21", "quantity": 1, "price": { "currency": "TRY", "amount": 10.0 }, "vatRate": 20 } ]
+  }
+]

@@ -68,6 +68,16 @@ internal static class ContractFixture
         Assert.Fail($"Mapped contract differs from golden {goldenPath} (set {UpdateVariable}=1 to accept a deliberate change):\n{Diff(expected, actual)}");
     }
 
+    // The mapped value, or what the mapper refused it with, so a refusal is pinned in the golden like a result.
+    public static object? Outcome(Func<object?> map)
+    {
+        try { return map(); }
+        catch (Exception exception) when (exception is JsonException or FormatException or InvalidOperationException)
+        {
+            return new { Refused = exception.GetType().Name, exception.Message };
+        }
+    }
+
     public static string Serialize(object? value)
     {
         var node = JsonSerializer.SerializeToNode(value, value?.GetType() ?? typeof(object), Options);

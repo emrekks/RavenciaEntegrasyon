@@ -1,0 +1,11 @@
+// Source: the listing inventory-upload shapes the existing HepsiburadaAdapterTests use (accept: data.inventoryUploadId;
+// status: status + errors[{merchantSku, hepsiburadaSku, errors[]}]), after the Hepsiburada listing API "inventory-uploads"
+// endpoints (Ravencia-API-Docs/hepsiburada-api-son.md, Listing). One file, one answer per key: the accept answer (async
+// id), still processing, completed with a refused SKU (partial success), failed without any SKU, and an unknown status.
+{
+  "accepted": { "data": { "inventoryUploadId": 71 } },
+  "processing": { "status": "PROCESSING", "errors": [] },
+  "completedPartly": { "status": "COMPLETED", "errors": [ { "merchantSku": "SKU-FAKE-HB2", "hepsiburadaSku": "HBV00000FAKE2", "errors": [ "OutOfPriceRange" ] } ] },
+  "failedWhole": { "status": "Failed", "errors": [] },
+  "unknownStatus": { "status": "SomeFutureUploadStatus", "errors": [] }
+}
