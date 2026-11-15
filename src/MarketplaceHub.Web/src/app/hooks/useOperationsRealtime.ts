@@ -38,6 +38,11 @@ export function useOperationsRealtime(enabled: boolean) {
       pendingResources.clear()
       for (const invalidation of realtimeInvalidationsFor(resources, events, isWatchedJob)) throttle.request(invalidation)
     }
+    // After the connection comes back, by SignalR's own reconnect or by a new start, anything may have changed meanwhile.
+    let hadConnection = false
+    const refreshAfterGap = () => {
+      for (const queryKey of realtimeReconnectQueryKeys) void client.invalidateQueries({ queryKey, predicate: refetchable })
+    }
     const scheduleStart = () => {
       if (stopped || retryTimer !== null) return
       retryTimer = window.setTimeout(() => { retryTimer = null; void start() }, realtimeRetryDelayMs(failures))
@@ -57,9 +62,7 @@ export function useOperationsRealtime(enabled: boolean) {
         pendingEvents.push(...(events ?? []))
         if (flushTimer === null) flushTimer = window.setTimeout(flush, 250)
       })
-      built.onreconnected(() => {
-        for (const queryKey of realtimeReconnectQueryKeys) void client.invalidateQueries({ queryKey })
-      })
+      built.onreconnected(refreshAfterGap)
       built.onclose(() => scheduleStart())
       return built
     }
@@ -70,6 +73,10 @@ export function useOperationsRealtime(enabled: boolean) {
         if (stopped || connection.state !== 'Disconnected') return
         await connection.start()
         failures = 0
+        // Started again after the connection closed (a gap longer than the automatic reconnect: a deploy, sleep, a
+        // network change): changes announced meanwhile were missed, as after an automatic reconnect.
+        if (hadConnection) refreshAfterGap()
+        hadConnection = true
       } catch (error) {
         // The session is gone: trying again cannot help; the app shows the sign-in screen and a new sign-in starts over.
         if (signedOut(error)) { stopped = true; onUnauthorized(); return }
