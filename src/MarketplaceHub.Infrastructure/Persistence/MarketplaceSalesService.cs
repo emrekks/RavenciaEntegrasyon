@@ -705,16 +705,25 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         finally { gate.Release(); }
     }
 
-    // Changes of the tenant's orders, packages, return claims or connections: any of them can move a counter.
+    // Changes of the tenant's orders (a label print too: it sets LabelPrintedAt without touching UpdatedAt), packages,
+    // return claims, invoices and their deliveries, or connections: any of them can move a counter (SIPARIS-STOK-4).
     private async Task<string> OrderSummaryStampAsync(Guid tenantId, CancellationToken cancellationToken)
     {
         var orders = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId).GroupBy(_ => 1)
-            .Select(group => new { Count = group.Count(), Changed = group.Max(x => (DateTimeOffset?)x.UpdatedAt) }).SingleOrDefaultAsync(cancellationToken);
+            .Select(group => new { Count = group.Count(), Changed = group.Max(x => (DateTimeOffset?)x.UpdatedAt), LabelPrinted = group.Max(x => x.LabelPrintedAt) }).SingleOrDefaultAsync(cancellationToken);
         var packages = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId).GroupBy(_ => 1)
             .Select(group => new { Count = group.Count(), Changed = group.Max(x => (DateTimeOffset?)x.UpdatedAt) }).SingleOrDefaultAsync(cancellationToken);
         var claims = await db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId).MaxAsync(x => (DateTimeOffset?)x.UpdatedAt, cancellationToken);
+        var invoices = await db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId).GroupBy(_ => 1)
+            .Select(group => new { Count = group.Count(), Changed = group.Max(x => (DateTimeOffset?)x.UpdatedAt), Versions = group.Sum(x => x.Version) }).SingleOrDefaultAsync(cancellationToken);
+        var deliveryStates = await db.MarketplaceDeliveryStates.AsNoTracking().Where(x => x.TenantId == tenantId).GroupBy(_ => 1)
+            .Select(group => new { Count = group.Count(), Changed = group.Max(x => (DateTimeOffset?)x.UpdatedAt) }).SingleOrDefaultAsync(cancellationToken);
+        var deliveries = await db.MarketplaceDeliveries.AsNoTracking().Where(x => x.TenantId == tenantId).GroupBy(_ => 1)
+            .Select(group => new { Count = group.Count(), Completed = group.Max(x => x.CompletedAt) }).SingleOrDefaultAsync(cancellationToken);
         var connections = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId).SumAsync(x => (long)x.Version, cancellationToken);
-        return $"{orders?.Count}|{orders?.Changed:O}|{packages?.Count}|{packages?.Changed:O}|{claims:O}|{connections}|{timeProvider.GetUtcNow():yyyyMMddHH}";
+        return $"{orders?.Count}|{orders?.Changed:O}|{orders?.LabelPrinted:O}|{packages?.Count}|{packages?.Changed:O}|{claims:O}"
+            + $"|{invoices?.Count}|{invoices?.Changed:O}|{invoices?.Versions}|{deliveryStates?.Count}|{deliveryStates?.Changed:O}|{deliveries?.Count}|{deliveries?.Completed:O}"
+            + $"|{connections}|{timeProvider.GetUtcNow():yyyyMMddHH}";
     }
 
     private async Task<OrderSummaryView> CountOrderSummaryAsync(Guid tenantId, OrderListQuery options, string[] requested, bool includeMicro, CancellationToken cancellationToken)
