@@ -3,8 +3,15 @@ import { RealtimeInvalidationThrottle, realtimeDataThrottleMs, realtimeInvalidat
 
 // Every source file of the app, as text: a mapped root without a query that uses it refreshes nothing.
 const sources = import.meta.glob<string>(['../**/*.ts', '../**/*.tsx', '!../**/*.test.ts', '!../**/*.test.tsx', '!./realtime-query-keys.ts'], { query: '?raw', import: 'default', eager: true })
+// Only a query's own key counts: a refresh, lookup or cache write naming a key ({ queryKey: [...] } handed to
+// invalidateQueries and the like) is not a query, or a refresh of a root no screen reads would pass (WEB-ALTYAPI-7).
+const keyFilterCall = /(?:invalidateQueries|refetchQueries|removeQueries|cancelQueries|resetQueries|setQueriesData|getQueriesData|setQueryData|getQueryData|getQueryState|isFetching|findAll|find)\(\s*\{\s*$/
 const producers = new Set<string>()
-for (const text of Object.values(sources)) for (const match of text.matchAll(/queryKey:\s*\[\s*'([^']+)'/g)) producers.add(match[1])
+for (const text of Object.values(sources)) {
+  for (const match of text.matchAll(/queryKey:\s*\[\s*'([^']+)'/g)) {
+    if (!keyFilterCall.test(text.slice(Math.max(0, match.index - 80), match.index))) producers.add(match[1])
+  }
+}
 
 describe('realtime refresh map', () => {
   it('reads the app sources', () => {

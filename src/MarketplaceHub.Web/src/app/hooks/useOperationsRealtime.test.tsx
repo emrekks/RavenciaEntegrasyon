@@ -22,6 +22,7 @@ vi.mock('@microsoft/signalr', () => {
 import { HttpError } from '@microsoft/signalr'
 import { setUnauthorizedHandler } from '../../shared/api/client'
 import { realtimeRetryDelayMs, useOperationsRealtime } from './useOperationsRealtime'
+import { realtimeReconnectQueryKeys } from '../realtime-query-keys'
 
 function Probe({ enabled }: { enabled: boolean }) { useOperationsRealtime(enabled); return null }
 const view = (enabled: boolean, client = new QueryClient()) => <QueryClientProvider client={client}><Probe enabled={enabled} /></QueryClientProvider>
@@ -76,6 +77,20 @@ describe('operations realtime connection', () => {
     handler({ resources: ['jobs'], events: [{ eventId: 'dead', resource: 'jobs', aggregateType: 'IntegrationJob', aggregateId: 'j2', status: 'DEAD' }] })
     await vi.advanceTimersByTimeAsync(300)
     expect(jobRefreshes()).toBe(3)
+  })
+
+  it('refreshes every realtime root after it starts again following a closed connection, but not on the first start', async () => {
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    render(view(true, client))
+    await flush()
+    expect(invalidate).not.toHaveBeenCalled()
+    const connection = hub.connections[0] as unknown as { onclose: ReturnType<typeof vi.fn>; start: ReturnType<typeof vi.fn> }
+    ;(connection.onclose.mock.calls[0][0] as () => void)()
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(connection.start).toHaveBeenCalledTimes(2)
+    const refreshed = new Set(invalidate.mock.calls.map(([filters]) => (filters?.queryKey as string[]).join('/')))
+    for (const key of realtimeReconnectQueryKeys) expect(refreshed).toContain(key.join('/'))
   })
 
   it('connects again when it is switched off and on (signing in after the session ended)', async () => {

@@ -1,6 +1,7 @@
 import { formatDateTime } from './format-date'
 import { scopedStorageKey } from './storage-scope'
 import { platformDisplayNames } from './platform-names'
+import { isStillRunning, stillRunningTitle } from './idempotency'
 
 export type NotificationTarget = { href: string; label: string }
 export type NotificationDetail = { label: string; value: string; tone?: 'success' | 'error' }
@@ -300,6 +301,8 @@ export function sentenceTitle(sentence: string): string | undefined {
  */
 export function failureNotice(reason: unknown, fallback: string) {
   const failure = notificationError(reason, fallback)
+  // "Still running" (409 IDEMPOTENCY_IN_PROGRESS) is not a failure: it is told in an information tone.
+  if (isStillRunning(reason)) return { kind: 'info' as const, title: stillRunningTitle, message: failure.message, context: { code: failure.code } }
   return { kind: 'error' as const, title: sentenceTitle(fallback), message: failure.message, context: { code: failure.code } }
 }
 

@@ -5,8 +5,16 @@ export function readStoredItem(key: string): string | null {
   try { return localStorage.getItem(key) } catch { return null }
 }
 
+// A refused write is said once per key in the console, so a full quota is visible instead of settings silently not saving.
+const warnedKeys = new Set<string>()
+
 export function writeStoredItem(key: string, value: string) {
-  try { localStorage.setItem(key, value) } catch { /* blocked storage: the choice lasts for this page only */ }
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // Blocked or full storage: the choice lasts for this page only.
+    if (!warnedKeys.has(key)) { warnedKeys.add(key); console.warn('Tarayıcı deposuna yazılamadı (dolu ya da kapalı).', key) }
+  }
 }
 
 export function removeStoredItem(key: string) {

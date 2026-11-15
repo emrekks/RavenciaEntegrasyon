@@ -5,13 +5,13 @@ export const realtimeQueryKeysByResource: Record<string, readonly (readonly stri
   // Orders carry their packages, so shipments change with them; the invoice workspace lists orders waiting for invoices.
   // The dashboard's revenue panel is not refreshed per order event: it reads a whole period and refreshes itself every
   // minute while on screen; the operational cards (dashboard-bootstrap) are a cheap snapshot read.
-  orders: [['orders'], ['shipments'], ['shipment'], ['invoice-workspace'], ['invoice-workspace-page'], ['invoice-workspace-summary'], ['dashboard-bootstrap']],
+  orders: [['orders'], ['shipment'], ['invoice-workspace-page'], ['invoice-workspace-summary'], ['dashboard-bootstrap']],
   returns: [['returns'], ['return'], ['dashboard-bootstrap']],
   products: [['products'], ['product'], ['publication-status'], ['dashboard-bootstrap']],
   // Stock lives on the product screens; there is no separate inventory query.
   inventory: [['products'], ['product'], ['dashboard-bootstrap']],
   // Invoice state is shown on the invoice screens and on each order row.
-  invoices: [['invoice'], ['invoice-viewer'], ['invoice-workspace'], ['invoice-workspace-page'], ['invoice-workspace-summary'], ['orders'], ['dashboard-bootstrap']],
+  invoices: [['invoice'], ['invoice-viewer'], ['invoice-workspace-page'], ['invoice-workspace-summary'], ['orders'], ['dashboard-bootstrap']],
   connections: [['connections'], ['connection'], ['invoice-workspace-page'], ['invoice-workspace-summary'], ['dashboard-bootstrap'], ['dashboard']],
   questions: [['questions']],
   // The worker rebuilt the dashboard snapshot after a change was already announced: the menu badges and cards re-read it.
