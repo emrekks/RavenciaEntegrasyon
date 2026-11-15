@@ -54,11 +54,11 @@ public sealed class PazaramaContractTests
         Assert.Equal("Unknown99", unknown.Packages[0].RawStatus);
         Assert.Equal(2m, unknown.Lines[0].Quantity);
         Assert.DoesNotContain(page.Items, order => order.ExternalOrderId == "300000003");
-        // DEVIATION: an order in currency "XYZ" is imported in XYZ. PazaramaOrderMapper's own comment says a currency the
-        // panel does not know skips the order with an issue and Pazarama sells in lira only; RefusedOrders.Currency takes
-        // any three upper-case letters. (It is never stored as lira, which the rule requires.)
-        Assert.Equal("XYZ", Assert.Single(page.Items, order => order.ExternalOrderId == "300000004").Currency);
-        Assert.Equal(2, page.Issues!.Count(issue => issue.Code == "ORDER_PACKAGE_INVALID"));
+        // D8: an order in currency "XYZ" is refused with an issue naming it (Pazarama sells in lira only), never imported
+        // in XYZ nor stored as lira.
+        Assert.DoesNotContain(page.Items, order => order.ExternalOrderId == "300000004");
+        Assert.Contains(page.Issues!, issue => issue.Code == "ORDER_PACKAGE_INVALID" && issue.RereadOrderId == "300000004");
+        Assert.Equal(3, page.Issues!.Count(issue => issue.Code == "ORDER_PACKAGE_INVALID"));
     }
 
     [Fact]

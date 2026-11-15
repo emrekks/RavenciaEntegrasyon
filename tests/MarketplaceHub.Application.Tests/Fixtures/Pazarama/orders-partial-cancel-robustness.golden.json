@@ -195,76 +195,6 @@
       "Refunds": null,
       "LifecycleStatus": null,
       "StoreFrontCode": null
-    },
-    {
-      "ExternalOrderId": "300000004",
-      "OrderNumber": "300000004",
-      "OrderedAt": "2026-11-05T07:15:00+00:00",
-      "LastModifiedAt": "2026-11-05T07:15:00+00:00",
-      "Currency": "XYZ",
-      "GrossAmount": 10,
-      "DiscountAmount": 0,
-      "NetAmount": 10,
-      "CustomerSnapshotJson": {
-        "pazaramaOrderId": "00000000-0000-4000-8000-000000000304"
-      },
-      "ShipmentAddressSnapshotJson": {},
-      "InvoiceAddressSnapshotJson": {},
-      "Lines": [
-        {
-          "ExternalLineId": "00000000-0000-4000-8000-0000000003d1",
-          "Sku": "SKU-FAKE-PZ5",
-          "Barcode": null,
-          "Title": "SKU-FAKE-PZ5",
-          "Quantity": 1,
-          "UnitPrice": 10,
-          "VatRate": null,
-          "RawStatus": "Created",
-          "SourceSnapshotJson": "<raw 168 chars sha256:ca1487cbdaa2>",
-          "CancelledQuantity": 0,
-          "CancelledAt": null,
-          "PlatformDiscount": null
-        }
-      ],
-      "Packages": [
-        {
-          "ExternalPackageId": "order:300000004",
-          "OriginExternalPackageId": null,
-          "RawStatus": "Created",
-          "OccurredAt": "2026-11-05T07:15:00+00:00",
-          "CargoProviderExternalId": null,
-          "CargoTrackingNumber": null,
-          "Allocations": [
-            {
-              "ExternalLineId": "00000000-0000-4000-8000-0000000003d1",
-              "AllocatedQuantity": 1,
-              "CancelledQuantity": 0,
-              "ShippedQuantity": 0,
-              "DeliveredQuantity": 0,
-              "ReturnedQuantity": 0
-            }
-          ],
-          "GrossAmount": 10,
-          "DiscountAmount": 0,
-          "NetAmount": 10,
-          "Invoice": null,
-          "CreatedBy": null,
-          "IsStatusObservation": false,
-          "StatusTimeUnknown": false,
-          "CancelledAt": null,
-          "UnreadableLineCount": 0,
-          "CargoBarcode": null
-        }
-      ],
-      "RawJson": "<raw 367 chars sha256:d55d9b0174b7>",
-      "ShipmentDueAt": null,
-      "PaymentStatus": "UNKNOWN",
-      "CancellationStatus": "UNKNOWN",
-      "RefundStatus": "UNKNOWN",
-      "RefundedAmount": 0,
-      "Refunds": null,
-      "LifecycleStatus": null,
-      "StoreFrontCode": null
     }
   ],
   "NextCursor": null,
@@ -276,6 +206,12 @@
       "Identity": "300000003",
       "Message": "Pazarama siparişi 300000003 içeri alınmadı: siparişin kendi tarihi (orderDate) yok; kalem değişiklik tarihi sipariş tarihi sayılmaz, sipariş yeniden okunacak.",
       "RereadOrderId": "300000003"
+    },
+    {
+      "Code": "ORDER_PACKAGE_INVALID",
+      "Identity": "300000004",
+      "Message": "Pazarama siparişi 300000004 içeri alınmadı: para birimi tanınmadı (XYZ); Pazarama yalnız TL ile satar, sipariş yeniden okunacak.",
+      "RereadOrderId": "300000004"
     },
     {
       "Code": "ORDER_PACKAGE_INVALID",
