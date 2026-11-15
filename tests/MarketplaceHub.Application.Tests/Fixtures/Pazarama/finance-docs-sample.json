@@ -1,0 +1,41 @@
+// Source: Ravencia-API-Docs/pazarama-api-son.md "Muhasebe ve Finans Servisi" sample answer (~3692-3738), unchanged
+// (no personal data). Times without an offset are Istanbul local.
+{
+  "data": {
+    "transactionList": [
+      {
+        "orderId": 541235638,
+        "trxCode": "26095TyzB07114893",
+        "trxId": "8276c824-266f-4ad1-a846-63bb4abe5f96",
+        "amount": 1450,
+        "installmentNumber": 0,
+        "commissionAmount": -174,
+        "couponDiscount": 0,
+        "allowanceAmount": 1137.1,
+        "status": "Satış",
+        "transactionDate": "2026-04-05T00:00:00",
+        "transferredDate": "2026-05-21T00:00:00",
+        "integrationAmount": -8.28,
+        "merchantCargoDebt": -117.44,
+        "stoppageAmount": -13.18
+      }
+    ],
+    "commissionInvoiceDetails": [
+      {
+        "orderNumber": 541235638,
+        "totalAmountKDV": -180.9,
+        "commissionInvoiceNumber": "E052026000041171",
+        "commissionInvoiceDate": "2026-04-30T00:00:00",
+        "operationStatus": "Satış"
+      }
+    ],
+    "totalAmount": 0,
+    "totalCommission": 0,
+    "totalAllowance": 0
+  },
+  "success": true,
+  "messageCode": null,
+  "message": null,
+  "userMessage": null,
+  "fromCache": false
+}

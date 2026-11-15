@@ -1,0 +1,53 @@
+{
+  "Items": [
+    {
+      "Id": "HBFIN-FAKE-0001",
+      "TransactionType": "Sale",
+      "Category": "Order",
+      "Status": "Paid",
+      "OrderNumber": "4000000101",
+      "PackageNumber": "5000000101",
+      "InvoiceNumber": "FAKE2026000000101",
+      "Sku": "HBV00000FAKE10",
+      "Amount": 280.0,
+      "NetAmount": 233.33,
+      "Currency": "TRY",
+      "IsIncome": true,
+      "OrderDate": "2026-11-04T19:15:00+00:00",
+      "InvoiceDate": "2026-11-05T07:00:00+00:00",
+      "DueDate": "2026-11-19T21:00:00+00:00",
+      "PaymentDate": "2026-11-20T06:00:00+00:00",
+      "RawJson": "<raw 718 chars sha256:f51ab7e56257>"
+    },
+    {
+      "Id": "HBFIN-FAKE-0002",
+      "TransactionType": "Commission",
+      "Category": "Commission",
+      "Status": "Open",
+      "OrderNumber": "4000000101",
+      "PackageNumber": null,
+      "InvoiceNumber": null,
+      "Sku": null,
+      "Amount": -42.0,
+      "NetAmount": null,
+      "Currency": "TRY",
+      "IsIncome": false,
+      "OrderDate": null,
+      "InvoiceDate": null,
+      "DueDate": "2026-11-20T00:00:00+00:00",
+      "PaymentDate": null,
+      "RawJson": "<raw 307 chars sha256:ed78f80d4d9a>"
+    }
+  ],
+  "Count": 4,
+  "Skipped": [
+    {
+      "Key": "HBFIN-FAKE-0003",
+      "Description": "kayıt HBFIN-FAKE-0003 (sipariş 4000000102, Sale): tutarı yok ya da okunamadı"
+    },
+    {
+      "Key": "HBFIN-FAKE-0004",
+      "Description": "kayıt HBFIN-FAKE-0004 (sipariş 4000000103, Sale): tarihi yok ya da okunamadı"
+    }
+  ]
+}

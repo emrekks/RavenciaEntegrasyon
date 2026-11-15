@@ -1,0 +1,18 @@
+// Source: the three anonymous status answers formerly kept in src/.../TrendyolEFaturam/Fixtures/
+// (earchive-status-{approved,cancelled,rejected}-anonymous.json, deleted by ADAPTOR-DIGER-4, restored here), the
+// getEArchiveStatus sample of Ravencia-API-Docs/efaturam-api-son.md (~1094-1115: status 10, gibStatus REPORTED;
+// status values 10, 20, 29, 30, 40, 50, 100, 105, 200, 205, 305, 405) and hand-built cases on the same schema: a paged
+// answer holding two invoices, an undocumented status, status and gibStatusCode sent as text, and no status at all.
+{
+  "approved": { "invoiceUuid": "96a8b0f1-7e10-4a44-8d78-eb961539bb4b", "invoiceId": "RVN2026000000001", "status": 205, "gibStatus": "ONAYLANDI", "gibStatusCode": 205 },
+  "cancelled": { "invoiceUuid": "96a8b0f1-7e10-4a44-8d78-eb961539bb4b", "invoiceId": "RVN2026000000001", "status": 305, "gibStatus": "IPTAL EDILDI", "gibStatusCode": 305 },
+  "rejected": { "invoiceUuid": "96a8b0f1-7e10-4a44-8d78-eb961539bb4b", "invoiceId": "RVN2026000000001", "status": 105, "gibStatus": "REDDEDILDI", "gibStatusCode": 105 },
+  "docsPending": { "status": 10, "gibStatus": "REPORTED", "invoiceUuid": "3fa85f64-5717-4562-b3fc-2c963f66afa6" },
+  "paged": { "content": [
+    { "invoiceUuid": "00000000-0000-4000-8000-00000000e001", "invoiceId": "RVN2026000000002", "status": 205 },
+    { "invoiceUuid": "96a8b0f1-7e10-4a44-8d78-eb961539bb4b", "invoiceId": "RVN2026000000001", "status": 40 }
+  ] },
+  "undocumented": { "invoiceUuid": "96a8b0f1-7e10-4a44-8d78-eb961539bb4b", "status": 999 },
+  "asText": { "invoiceUuid": "96a8b0f1-7e10-4a44-8d78-eb961539bb4b", "status": "205", "gibStatusCode": "205" },
+  "noStatus": { "invoiceUuid": "96a8b0f1-7e10-4a44-8d78-eb961539bb4b", "gibStatus": "REPORTED" }
+}

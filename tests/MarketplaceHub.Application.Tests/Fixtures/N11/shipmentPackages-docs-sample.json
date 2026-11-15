@@ -1,0 +1,40 @@
+// Source: n11 GetShipmentPackages example (developer.n11.com/documentation/n11-siparis-entegrasyonu/siparis-listeleme-
+// servisi/, no offline copy in Ravencia-API-Docs), the same values N11OrderMapperTests.DocumentedPage uses; the e-mail
+// is replaced by a fake one. Epoch-ms dates are read as plain UTC (TurkeyTime.cs). No currency and no order-date
+// field: lira, and the order date is the packageHistories "Created" entry.
+{
+  "pageCount": 1,
+  "totalPages": 1,
+  "page": 0,
+  "size": 100,
+  "content": [
+    {
+      "billingAddress": { "address": "Reşitpaşa Mah Arı 3 D:8-9", "city": "İstanbul", "district": "Sarıyer", "neighborhood": "Reşitpaşa", "fullName": "N11 müşteri", "gsm": "5xxxxxxxxx", "postalCode": "34000", "invoiceType": 1 },
+      "shippingAddress": { "address": "Reşitpaşa Mah Arı 3 D:8-9", "city": "İstanbul", "district": "Sarıyer", "neighborhood": "Reşitpaşa", "fullName": "N11 müşteri", "gsm": "5xxxxxxxxx", "postalCode": "34000" },
+      "orderNumber": "203872347637",
+      "id": "112999455244259",
+      "customerEmail": "customer@example.test",
+      "customerfullName": "N11 müşteri",
+      "customerId": 12345678,
+      "cargoSenderNumber": null,
+      "cargoTrackingNumber": "112999455244259",
+      "shipmentCompanyId": 342,
+      "cargoProviderName": "MNG Kargo",
+      "shipmentMethod": 1,
+      "lines": [
+        { "quantity": 2, "productId": 123456789, "productName": "Erkek Spor Ayakkabı Bordo 45", "stockCode": "20242024", "price": 292.8, "sellerInvoiceAmount": 579.8, "totalSellerDiscountPrice": 5.8, "orderLineId": 415490391, "orderItemLineItemStatusName": "Picking", "vatRate": 10, "barcode": "8690000000001" },
+        { "quantity": 3, "productId": 123456799, "productName": " Erkek Klasik Ayakkabı Kahverengi 42", "stockCode": "202420241", "price": 250, "sellerInvoiceAmount": 750, "totalSellerDiscountPrice": 0, "orderLineId": 415490390, "orderItemLineItemStatusName": "Picking", "vatRate": 10 }
+      ],
+      "lastModifiedDate": 1724323386203,
+      "agreedDeliveryDate": 1725310828346,
+      "totalAmount": 1479.79,
+      "packageHistories": [
+        { "createdDate": 1724274054460, "status": "Created" },
+        { "createdDate": 1724274255751, "status": "Picking" },
+        { "createdDate": 1724396400000, "status": " Delivered" }
+      ],
+      "shipmentPackageStatus": " Delivered",
+      "sellerId": 9876543
+    }
+  ]
+}

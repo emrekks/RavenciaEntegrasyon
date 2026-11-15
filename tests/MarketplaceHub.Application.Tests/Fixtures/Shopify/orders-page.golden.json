@@ -1,0 +1,314 @@
+[
+  {
+    "ExternalOrderId": "1001",
+    "OrderNumber": "#1001",
+    "OrderedAt": "2026-11-05T09:30:00+00:00",
+    "LastModifiedAt": "2026-11-05T12:00:00+00:00",
+    "Currency": "TRY",
+    "GrossAmount": 300.00,
+    "DiscountAmount": 40.00,
+    "NetAmount": 260.00,
+    "CustomerSnapshotJson": {
+      "id": null,
+      "customerName": "Test Musteri",
+      "customerFirstName": "Test",
+      "customerLastName": "Musteri",
+      "email": "customer@example.test",
+      "phone": null,
+      "shopPrimaryDomainUrl": "https://fake-shop.example.test"
+    },
+    "ShipmentAddressSnapshotJson": {
+      "firstName": "Test",
+      "lastName": "Musteri",
+      "address1": "Fake Sokak 5",
+      "city": "İstanbul",
+      "country": "Turkey",
+      "phone": "+905550000000"
+    },
+    "InvoiceAddressSnapshotJson": {
+      "firstName": "Test",
+      "lastName": "Musteri",
+      "address1": "Fake Sokak 5",
+      "city": "İstanbul",
+      "country": "Turkey",
+      "company": null
+    },
+    "Lines": [
+      {
+        "ExternalLineId": "2001",
+        "Sku": "SKU-FAKE-SH1",
+        "Barcode": "0000000000601",
+        "Title": "Fake Shopify Ürün 1",
+        "Quantity": 2,
+        "UnitPrice": 120.00,
+        "VatRate": 20.0,
+        "RawStatus": "PAID",
+        "SourceSnapshotJson": "<raw 376 chars sha256:657c37e06a4d>",
+        "CancelledQuantity": 0,
+        "CancelledAt": null,
+        "PlatformDiscount": null
+      },
+      {
+        "ExternalLineId": "2002",
+        "Sku": "SKU-FAKE-SH2",
+        "Barcode": null,
+        "Title": "Fake Shopify Ürün 2",
+        "Quantity": 1,
+        "UnitPrice": 60.00,
+        "VatRate": 10.0,
+        "RawStatus": "PAID",
+        "SourceSnapshotJson": "<raw 283 chars sha256:fd9e6c7dde86>",
+        "CancelledQuantity": 0,
+        "CancelledAt": null,
+        "PlatformDiscount": null
+      }
+    ],
+    "Packages": [
+      {
+        "ExternalPackageId": "4001",
+        "OriginExternalPackageId": null,
+        "RawStatus": "SHIPPED",
+        "OccurredAt": "2026-11-05T11:05:00+00:00",
+        "CargoProviderExternalId": "Yurtiçi Kargo",
+        "CargoTrackingNumber": "TRACK-FAKE-SH1",
+        "Allocations": [
+          {
+            "ExternalLineId": "2001",
+            "AllocatedQuantity": 2,
+            "CancelledQuantity": 0,
+            "ShippedQuantity": 2,
+            "DeliveredQuantity": 0,
+            "ReturnedQuantity": 0
+          }
+        ],
+        "GrossAmount": 240.00,
+        "DiscountAmount": 32.00,
+        "NetAmount": 208.00,
+        "Invoice": null,
+        "CreatedBy": null,
+        "IsStatusObservation": false,
+        "StatusTimeUnknown": false,
+        "CancelledAt": null,
+        "UnreadableLineCount": 0,
+        "CargoBarcode": null
+      },
+      {
+        "ExternalPackageId": "order:1001:remainder",
+        "OriginExternalPackageId": null,
+        "RawStatus": "UNFULFILLED",
+        "OccurredAt": "2026-11-05T12:00:00+00:00",
+        "CargoProviderExternalId": null,
+        "CargoTrackingNumber": null,
+        "Allocations": [
+          {
+            "ExternalLineId": "2002",
+            "AllocatedQuantity": 1,
+            "CancelledQuantity": 0,
+            "ShippedQuantity": 0,
+            "DeliveredQuantity": 0,
+            "ReturnedQuantity": 0
+          }
+        ],
+        "GrossAmount": 60.00,
+        "DiscountAmount": 8.00,
+        "NetAmount": 52.00,
+        "Invoice": null,
+        "CreatedBy": null,
+        "IsStatusObservation": false,
+        "StatusTimeUnknown": false,
+        "CancelledAt": null,
+        "UnreadableLineCount": 0,
+        "CargoBarcode": null
+      }
+    ],
+    "RawJson": "<raw 2356 chars sha256:25647a3a8e8f>",
+    "ShipmentDueAt": null,
+    "PaymentStatus": "PAID",
+    "CancellationStatus": "NOT_CANCELLED",
+    "RefundStatus": "NOT_REFUNDED",
+    "RefundedAmount": 0,
+    "Refunds": [],
+    "LifecycleStatus": null,
+    "StoreFrontCode": null
+  },
+  {
+    "ExternalOrderId": "1002",
+    "OrderNumber": "#1002",
+    "OrderedAt": "2026-11-04T08:00:00+00:00",
+    "LastModifiedAt": "2026-11-06T08:00:00+00:00",
+    "Currency": "TRY",
+    "GrossAmount": 100.00,
+    "DiscountAmount": 0.00,
+    "NetAmount": 100.00,
+    "CustomerSnapshotJson": {
+      "customerName": null,
+      "customerFirstName": null,
+      "customerLastName": null,
+      "email": "customer@example.test",
+      "phone": null,
+      "shopPrimaryDomainUrl": "https://fake-shop.example.test"
+    },
+    "ShipmentAddressSnapshotJson": {},
+    "InvoiceAddressSnapshotJson": {},
+    "Lines": [
+      {
+        "ExternalLineId": "2101",
+        "Sku": "SKU-FAKE-SH3",
+        "Barcode": null,
+        "Title": "Fake Shopify Ürün 3",
+        "Quantity": 2,
+        "UnitPrice": 50.00,
+        "VatRate": 20.0,
+        "RawStatus": "PARTIALLY_REFUNDED",
+        "SourceSnapshotJson": "<raw 267 chars sha256:731ce2f74ab1>",
+        "CancelledQuantity": 0,
+        "CancelledAt": null,
+        "PlatformDiscount": null
+      },
+      {
+        "ExternalLineId": "2102",
+        "Sku": "SKU-FAKE-SH4",
+        "Barcode": null,
+        "Title": "Fake Shopify Ürün 4",
+        "Quantity": 1,
+        "UnitPrice": 50.00,
+        "VatRate": 20.0,
+        "RawStatus": "PARTIALLY_REFUNDED",
+        "SourceSnapshotJson": "<raw 267 chars sha256:17f636da048f>",
+        "CancelledQuantity": 1,
+        "CancelledAt": null,
+        "PlatformDiscount": null
+      }
+    ],
+    "Packages": [
+      {
+        "ExternalPackageId": "order:1002:remainder",
+        "OriginExternalPackageId": null,
+        "RawStatus": "UNFULFILLED",
+        "OccurredAt": "2026-11-06T08:00:00+00:00",
+        "CargoProviderExternalId": null,
+        "CargoTrackingNumber": null,
+        "Allocations": [
+          {
+            "ExternalLineId": "2101",
+            "AllocatedQuantity": 2,
+            "CancelledQuantity": 0,
+            "ShippedQuantity": 0,
+            "DeliveredQuantity": 0,
+            "ReturnedQuantity": 0
+          },
+          {
+            "ExternalLineId": "2102",
+            "AllocatedQuantity": 0,
+            "CancelledQuantity": 1,
+            "ShippedQuantity": 0,
+            "DeliveredQuantity": 0,
+            "ReturnedQuantity": 0
+          }
+        ],
+        "GrossAmount": 100.00,
+        "DiscountAmount": 0.00,
+        "NetAmount": 100.00,
+        "Invoice": null,
+        "CreatedBy": null,
+        "IsStatusObservation": false,
+        "StatusTimeUnknown": false,
+        "CancelledAt": null,
+        "UnreadableLineCount": 0,
+        "CargoBarcode": null
+      }
+    ],
+    "RawJson": "<raw 1454 chars sha256:fdbc7c71d06b>",
+    "ShipmentDueAt": null,
+    "PaymentStatus": "PARTIALLY_REFUNDED",
+    "CancellationStatus": "NOT_CANCELLED",
+    "RefundStatus": "PARTIALLY_REFUNDED",
+    "RefundedAmount": 50.00,
+    "Refunds": [
+      {
+        "ExternalRefundId": "5001",
+        "OccurredAt": "2026-11-06T08:00:00+00:00",
+        "Amount": 50.00,
+        "Currency": "TRY",
+        "RawJson": "<raw 157 chars sha256:e45d6fb8541a>"
+      }
+    ],
+    "LifecycleStatus": null,
+    "StoreFrontCode": null
+  },
+  {
+    "ExternalOrderId": "1003",
+    "OrderNumber": "#1003",
+    "OrderedAt": "2026-11-03T08:00:00+00:00",
+    "LastModifiedAt": "2026-11-03T10:00:00+00:00",
+    "Currency": "TRY",
+    "GrossAmount": 0.00,
+    "DiscountAmount": 0.00,
+    "NetAmount": 0.00,
+    "CustomerSnapshotJson": {
+      "customerName": null,
+      "customerFirstName": null,
+      "customerLastName": null,
+      "email": null,
+      "phone": null,
+      "shopPrimaryDomainUrl": "https://fake-shop.example.test"
+    },
+    "ShipmentAddressSnapshotJson": {},
+    "InvoiceAddressSnapshotJson": {},
+    "Lines": [
+      {
+        "ExternalLineId": "2201",
+        "Sku": "SKU-FAKE-SH5",
+        "Barcode": null,
+        "Title": "Fake Shopify Ürün 5",
+        "Quantity": 1,
+        "UnitPrice": 75.00,
+        "VatRate": null,
+        "RawStatus": "SOME_FUTURE_STATUS",
+        "SourceSnapshotJson": "<raw 234 chars sha256:18c6bb245000>",
+        "CancelledQuantity": 1,
+        "CancelledAt": "2026-11-03T10:00:00+00:00",
+        "PlatformDiscount": null
+      }
+    ],
+    "Packages": [
+      {
+        "ExternalPackageId": "order:1003:remainder",
+        "OriginExternalPackageId": null,
+        "RawStatus": "CANCELLED",
+        "OccurredAt": "2026-11-03T10:00:00+00:00",
+        "CargoProviderExternalId": null,
+        "CargoTrackingNumber": null,
+        "Allocations": [
+          {
+            "ExternalLineId": "2201",
+            "AllocatedQuantity": 0,
+            "CancelledQuantity": 1,
+            "ShippedQuantity": 0,
+            "DeliveredQuantity": 0,
+            "ReturnedQuantity": 0
+          }
+        ],
+        "GrossAmount": 0.00,
+        "DiscountAmount": 0.00,
+        "NetAmount": 0.00,
+        "Invoice": null,
+        "CreatedBy": null,
+        "IsStatusObservation": false,
+        "StatusTimeUnknown": false,
+        "CancelledAt": "2026-11-03T10:00:00+00:00",
+        "UnreadableLineCount": 0,
+        "CargoBarcode": null
+      }
+    ],
+    "RawJson": "<raw 893 chars sha256:d5559ee56915>",
+    "ShipmentDueAt": null,
+    "PaymentStatus": "SOME_FUTURE_STATUS",
+    "CancellationStatus": "CANCELLED",
+    "RefundStatus": "NOT_REFUNDED",
+    "RefundedAmount": 0,
+    "Refunds": [],
+    "LifecycleStatus": null,
+    "StoreFrontCode": null
+  }
+]

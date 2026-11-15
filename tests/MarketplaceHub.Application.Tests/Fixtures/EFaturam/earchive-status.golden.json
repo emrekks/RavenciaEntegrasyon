@@ -1,0 +1,76 @@
+{
+  "approved": {
+    "ExternalReference": "ref-1",
+    "RawStatus": "205",
+    "CanonicalStatus": "ACCEPTED",
+    "InvoiceNumber": "RVN2026000000001",
+    "EttnUuid": "96a8b0f1-7e10-4a44-8d78-eb961539bb4b",
+    "IsTerminal": true,
+    "GibStatus": "ONAYLANDI",
+    "GibStatusCode": 205
+  },
+  "cancelled": {
+    "ExternalReference": "ref-1",
+    "RawStatus": "305",
+    "CanonicalStatus": "CANCELLED",
+    "InvoiceNumber": "RVN2026000000001",
+    "EttnUuid": "96a8b0f1-7e10-4a44-8d78-eb961539bb4b",
+    "IsTerminal": true,
+    "GibStatus": "IPTAL EDILDI",
+    "GibStatusCode": 305
+  },
+  "rejected": {
+    "ExternalReference": "ref-1",
+    "RawStatus": "105",
+    "CanonicalStatus": "REJECTED",
+    "InvoiceNumber": "RVN2026000000001",
+    "EttnUuid": "96a8b0f1-7e10-4a44-8d78-eb961539bb4b",
+    "IsTerminal": true,
+    "GibStatus": "REDDEDILDI",
+    "GibStatusCode": 105
+  },
+  "docsPending": {
+    "ExternalReference": "ref-1",
+    "RawStatus": "10",
+    "CanonicalStatus": "PENDING",
+    "InvoiceNumber": null,
+    "EttnUuid": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "IsTerminal": false,
+    "GibStatus": "REPORTED",
+    "GibStatusCode": null
+  },
+  "paged": {
+    "ExternalReference": "ref-1",
+    "RawStatus": "40",
+    "CanonicalStatus": "PENDING",
+    "InvoiceNumber": "RVN2026000000001",
+    "EttnUuid": "96a8b0f1-7e10-4a44-8d78-eb961539bb4b",
+    "IsTerminal": false,
+    "GibStatus": null,
+    "GibStatusCode": null
+  },
+  "undocumented": {
+    "ExternalReference": "ref-1",
+    "RawStatus": "999",
+    "CanonicalStatus": "MANUAL_REVIEW",
+    "InvoiceNumber": null,
+    "EttnUuid": "96a8b0f1-7e10-4a44-8d78-eb961539bb4b",
+    "IsTerminal": true,
+    "GibStatus": null,
+    "GibStatusCode": null
+  },
+  "asText": {
+    "ExternalReference": "ref-1",
+    "RawStatus": "205",
+    "CanonicalStatus": "ACCEPTED",
+    "InvoiceNumber": null,
+    "EttnUuid": "96a8b0f1-7e10-4a44-8d78-eb961539bb4b",
+    "IsTerminal": true,
+    "GibStatus": null,
+    "GibStatusCode": 205
+  },
+  "noStatus": {
+    "Refused": "JsonException",
+    "Message": "status missing"
+  }
+}

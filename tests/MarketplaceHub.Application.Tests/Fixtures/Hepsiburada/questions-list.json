@@ -1,0 +1,51 @@
+// Source: hand-built on the documented fields of Ravencia-API-Docs/hepsiburada-api-son.md "Satıcıya Sor - Soru Listesi"
+// (~23039-23135: createdAt, issueNumber, customerId, orderNumber, lineItemId, status WaitingForAnswer/Answered/
+// Rejected/AutoClosed, subject, lastContent, conversations[] id/createdAt/content/from, expireDate) and the list counts
+// totalItemCount/totalPageCount. The fourth question has no status, the fifth no date at all (left for a later read).
+{
+  "totalItemCount": 5,
+  "totalPageCount": 1,
+  "data": [
+    {
+      "issueNumber": "HBQ-FAKE-1",
+      "createdAt": "2026-11-05T10:00:00",
+      "expireDate": "2026-11-06T10:00:00",
+      "customerId": "00000000-0000-4000-8000-000000000a01",
+      "customerName": "T*** M***",
+      "status": "WaitingForAnswer",
+      "subject": { "id": 1, "description": "Ürün Hakkında" },
+      "product": { "name": "Fake HB Ürün 10", "stockCode": "SKU-FAKE-HB10", "barcode": "0000000000110" },
+      "lastContent": "Bu ürün orijinal mi?",
+      "conversations": [ { "id": "c1", "createdAt": "2026-11-05T10:00:00", "content": "Bu ürün orijinal mi?", "from": "Customer" } ]
+    },
+    {
+      "issueNumber": "HBQ-FAKE-2",
+      "createdAt": "2026-11-05T10:00:00+03:00",
+      "lastModifiedAt": "2026-11-05T12:00:00+03:00",
+      "orderNumber": "4000000101",
+      "lineItemId": "00000000-0000-4000-8000-000000000101",
+      "status": "Answered",
+      "lastContent": "Evet, orijinaldir.",
+      "conversations": [
+        { "id": "c2", "createdAt": "2026-11-05T10:00:00+03:00", "content": "Kargo ne zaman?", "from": "Customer" },
+        { "id": "c3", "createdAt": "2026-11-05T12:00:00+03:00", "content": "Yarın çıkar.", "from": "Merchant" }
+      ]
+    },
+    {
+      "issueNumber": "HBQ-FAKE-3",
+      "createdAt": "2026-11-04T10:00:00",
+      "status": "AutoClosed",
+      "lastContent": "Cevapsız kalan soru"
+    },
+    {
+      "issueNumber": "HBQ-FAKE-4",
+      "createdAt": "2026-11-04T10:00:00",
+      "lastContent": "Durumu gelmeyen soru"
+    },
+    {
+      "issueNumber": "HBQ-FAKE-5",
+      "status": "WaitingForAnswer",
+      "lastContent": "Tarihi gelmeyen soru"
+    }
+  ]
+}

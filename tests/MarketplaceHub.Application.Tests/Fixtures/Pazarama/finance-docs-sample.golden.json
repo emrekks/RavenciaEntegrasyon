@@ -1,0 +1,28 @@
+{
+  "Transactions": [
+    {
+      "TransactionCode": "26095TyzB07114893",
+      "Status": "Satış",
+      "Amount": 1450,
+      "Commission": -174,
+      "Allowance": 1137.1,
+      "CouponDiscount": 0,
+      "IntegrationAmount": -8.28,
+      "CargoDebt": -117.44,
+      "Stoppage": -13.18,
+      "Installments": 0,
+      "TransactionDate": "2026-04-04T21:00:00+00:00",
+      "TransferredDate": "2026-05-20T21:00:00+00:00"
+    }
+  ],
+  "CommissionInvoices": [
+    {
+      "OrderNumber": "541235638",
+      "InvoiceNumber": "E052026000041171",
+      "InvoiceDate": "2026-04-29T21:00:00+00:00",
+      "VatAmount": -180.9,
+      "OperationStatus": "Satış"
+    }
+  ],
+  "Skipped": []
+}

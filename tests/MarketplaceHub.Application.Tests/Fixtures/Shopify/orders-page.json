@@ -1,0 +1,58 @@
+// Source: hand-built on the Admin GraphQL Order fields the adapter queries (Ravencia-API-Docs/shopify-admin-graphql-
+// referans-son.md, Order: name, createdAt, updatedAt, cancelledAt, displayFinancialStatus, taxesIncluded, MoneyBag
+// shopMoney {amount, currencyCode}, lineItems {quantity, currentQuantity, originalUnitPriceSet, taxLines {rate}},
+// fulfillments {status, displayStatus, fulfillmentLineItems}, refunds {totalRefundedSet}) and the node shape
+// ShopifyLineVatRateTests uses. Money amounts are decimal strings; times are ISO with Z. Fake customer data.
+// #1001: paid, a discounted two-unit line, one of two lines fulfilled. #1002: a line removed after the order
+// (currentQuantity 0) and a partial refund. #1003: cancelled, an unknown financial status, a line without taxLines.
+{
+  "data": { "orders": { "nodes": [
+    {
+      "id": "gid://shopify/Order/1001", "name": "#1001", "createdAt": "2026-11-05T09:30:00Z", "updatedAt": "2026-11-05T12:00:00Z", "cancelledAt": null,
+      "displayFinancialStatus": "PAID", "email": "customer@example.test", "phone": null, "taxesIncluded": true,
+      "customer": { "firstName": "Test", "lastName": "Musteri", "defaultEmailAddress": { "emailAddress": "customer@example.test" }, "defaultPhoneNumber": null },
+      "shippingAddress": { "firstName": "Test", "lastName": "Musteri", "address1": "Fake Sokak 5", "city": "İstanbul", "country": "Turkey", "phone": "+905550000000" },
+      "billingAddress": { "firstName": "Test", "lastName": "Musteri", "address1": "Fake Sokak 5", "city": "İstanbul", "country": "Turkey", "company": null },
+      "currentTotalPriceSet": { "shopMoney": { "amount": "260.00", "currencyCode": "TRY" } },
+      "totalDiscountsSet": { "shopMoney": { "amount": "40.00", "currencyCode": "TRY" } },
+      "currentTotalDiscountsSet": { "shopMoney": { "amount": "40.00", "currencyCode": "TRY" } },
+      "totalRefundedSet": { "shopMoney": { "amount": "0.0", "currencyCode": "TRY" } },
+      "lineItems": { "nodes": [
+        { "id": "gid://shopify/LineItem/2001", "name": "Fake Shopify Ürün 1", "sku": "SKU-FAKE-SH1", "quantity": 2, "currentQuantity": 2, "originalUnitPriceSet": { "shopMoney": { "amount": "120.00", "currencyCode": "TRY" } }, "taxLines": [ { "rate": 0.2, "title": "KDV" } ], "variant": { "id": "gid://shopify/ProductVariant/3001", "barcode": "0000000000601", "sku": "SKU-FAKE-SH1" } },
+        { "id": "gid://shopify/LineItem/2002", "name": "Fake Shopify Ürün 2", "sku": "SKU-FAKE-SH2", "quantity": 1, "currentQuantity": 1, "originalUnitPriceSet": { "shopMoney": { "amount": "60.00", "currencyCode": "TRY" } }, "taxLines": [ { "rate": 0.1, "title": "KDV" } ], "variant": null }
+      ] },
+      "fulfillments": [
+        { "id": "gid://shopify/Fulfillment/4001", "status": "SUCCESS", "displayStatus": "IN_TRANSIT", "createdAt": "2026-11-05T11:00:00Z", "updatedAt": "2026-11-05T11:05:00Z", "deliveredAt": null,
+          "trackingInfo": [ { "company": "Yurtiçi Kargo", "number": "TRACK-FAKE-SH1", "url": "https://tracking.example.test/SH1" } ],
+          "fulfillmentLineItems": { "nodes": [ { "quantity": 2, "lineItem": { "id": "gid://shopify/LineItem/2001" } } ] } }
+      ],
+      "refunds": []
+    },
+    {
+      "id": "gid://shopify/Order/1002", "name": "#1002", "createdAt": "2026-11-04T08:00:00Z", "updatedAt": "2026-11-06T08:00:00Z", "cancelledAt": null,
+      "displayFinancialStatus": "PARTIALLY_REFUNDED", "email": "customer@example.test", "phone": null, "taxesIncluded": true,
+      "currentTotalPriceSet": { "shopMoney": { "amount": "100.00", "currencyCode": "TRY" } },
+      "totalDiscountsSet": { "shopMoney": { "amount": "0.00", "currencyCode": "TRY" } },
+      "currentTotalDiscountsSet": { "shopMoney": { "amount": "0.00", "currencyCode": "TRY" } },
+      "totalRefundedSet": { "shopMoney": { "amount": "50.00", "currencyCode": "TRY" } },
+      "lineItems": { "nodes": [
+        { "id": "gid://shopify/LineItem/2101", "name": "Fake Shopify Ürün 3", "sku": "SKU-FAKE-SH3", "quantity": 2, "currentQuantity": 2, "originalUnitPriceSet": { "shopMoney": { "amount": "50.00", "currencyCode": "TRY" } }, "taxLines": [ { "rate": 0.2 } ], "variant": null },
+        { "id": "gid://shopify/LineItem/2102", "name": "Fake Shopify Ürün 4", "sku": "SKU-FAKE-SH4", "quantity": 1, "currentQuantity": 0, "originalUnitPriceSet": { "shopMoney": { "amount": "50.00", "currencyCode": "TRY" } }, "taxLines": [ { "rate": 0.2 } ], "variant": null }
+      ] },
+      "fulfillments": [],
+      "refunds": [ { "id": "gid://shopify/Refund/5001", "createdAt": "2026-11-06T08:00:00Z", "totalRefundedSet": { "shopMoney": { "amount": "50.00", "currencyCode": "TRY" } } } ]
+    },
+    {
+      "id": "gid://shopify/Order/1003", "name": "#1003", "createdAt": "2026-11-03T08:00:00Z", "updatedAt": "2026-11-03T10:00:00Z", "cancelledAt": "2026-11-03T10:00:00Z",
+      "displayFinancialStatus": "SOME_FUTURE_STATUS", "email": null, "phone": null, "taxesIncluded": true,
+      "currentTotalPriceSet": { "shopMoney": { "amount": "0.00", "currencyCode": "TRY" } },
+      "totalDiscountsSet": { "shopMoney": { "amount": "0.00", "currencyCode": "TRY" } },
+      "currentTotalDiscountsSet": { "shopMoney": { "amount": "0.00", "currencyCode": "TRY" } },
+      "lineItems": { "nodes": [
+        { "id": "gid://shopify/LineItem/2201", "name": "Fake Shopify Ürün 5", "sku": "SKU-FAKE-SH5", "quantity": 1, "currentQuantity": 0, "originalUnitPriceSet": { "shopMoney": { "amount": "75.00", "currencyCode": "TRY" } }, "variant": null }
+      ] },
+      "fulfillments": [],
+      "refunds": []
+    }
+  ] }, "pageInfo": { "hasNextPage": false, "endCursor": null } }
+}

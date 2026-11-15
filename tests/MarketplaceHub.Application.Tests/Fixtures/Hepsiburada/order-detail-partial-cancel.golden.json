@@ -1,0 +1,107 @@
+{
+  "ExternalOrderId": "4000000101",
+  "OrderNumber": "4000000101",
+  "OrderedAt": "2026-11-04T19:15:00+00:00",
+  "LastModifiedAt": "2026-11-04T19:15:00+00:00",
+  "Currency": "TRY",
+  "GrossAmount": 360.0,
+  "DiscountAmount": 0,
+  "NetAmount": 360.0,
+  "CustomerSnapshotJson": {
+    "customerId": "00000000-0000-4000-8000-0000000000f1",
+    "name": "Test Musteri"
+  },
+  "ShipmentAddressSnapshotJson": {
+    "name": "Test Musteri",
+    "address": "Fake Sokak 2",
+    "city": "Ankara",
+    "town": "Çankaya",
+    "district": "Fake Mahalle",
+    "countryCode": "TR",
+    "phoneNumber": "5550000000"
+  },
+  "InvoiceAddressSnapshotJson": {
+    "name": "Test Musteri",
+    "address": "Fake Sokak 2",
+    "city": "Ankara",
+    "town": "Çankaya",
+    "countryCode": "TR",
+    "turkishIdentityNumber": "00000000000",
+    "isCorporate": false
+  },
+  "Lines": [
+    {
+      "ExternalLineId": "00000000-0000-4000-8000-000000000101",
+      "Sku": "SKU-FAKE-HB10",
+      "Barcode": "0000000000110",
+      "Title": "Fake HB Ürün 10",
+      "Quantity": 2,
+      "UnitPrice": 150.0,
+      "VatRate": 20,
+      "RawStatus": "InTransit",
+      "SourceSnapshotJson": "<raw 669 chars sha256:81d8d2df9382>",
+      "CancelledQuantity": 0,
+      "CancelledAt": null,
+      "PlatformDiscount": 7.5
+    },
+    {
+      "ExternalLineId": "00000000-0000-4000-8000-000000000102",
+      "Sku": "SKU-FAKE-HB11",
+      "Barcode": "0000000000111",
+      "Title": "Fake HB Ürün 11",
+      "Quantity": 1,
+      "UnitPrice": 60.0,
+      "VatRate": 10,
+      "RawStatus": "CancelledByCustomer",
+      "SourceSnapshotJson": "<raw 440 chars sha256:0eeb0a0682dd>",
+      "CancelledQuantity": 1,
+      "CancelledAt": null,
+      "PlatformDiscount": null
+    }
+  ],
+  "Packages": [
+    {
+      "ExternalPackageId": "5000000101",
+      "OriginExternalPackageId": null,
+      "RawStatus": "InTransit",
+      "OccurredAt": "2026-11-04T19:15:00+00:00",
+      "CargoProviderExternalId": "HepsiJET",
+      "CargoTrackingNumber": "TRACK-FAKE-0101",
+      "Allocations": [
+        {
+          "ExternalLineId": "00000000-0000-4000-8000-000000000101",
+          "AllocatedQuantity": 2,
+          "CancelledQuantity": 0,
+          "ShippedQuantity": 0,
+          "DeliveredQuantity": 0,
+          "ReturnedQuantity": 0
+        }
+      ],
+      "GrossAmount": 0,
+      "DiscountAmount": 0,
+      "NetAmount": 0,
+      "Invoice": {
+        "RawStatus": "INVOICED",
+        "InvoiceNumber": "FAKE2026000000101",
+        "InvoiceUrl": "https://documents.example.test/fake-0101.pdf",
+        "SourceUpdatedAt": null,
+        "ReferencesAreAuthoritative": true
+      },
+      "CreatedBy": null,
+      "IsStatusObservation": false,
+      "StatusTimeUnknown": false,
+      "CancelledAt": null,
+      "UnreadableLineCount": 0,
+      "CargoBarcode": null
+    }
+  ],
+  "RawJson": "<raw 2203 chars sha256:e6630cd4db1d>",
+  "ShipmentDueAt": "2026-11-06T20:59:00+00:00",
+  "PaymentStatus": "Paid",
+  "CancellationStatus": "NOT_CANCELLED",
+  "RefundStatus": "UNKNOWN",
+  "RefundedAmount": 0,
+  "Refunds": null,
+  "LifecycleStatus": "Open",
+  "StoreFrontCode": null
+}

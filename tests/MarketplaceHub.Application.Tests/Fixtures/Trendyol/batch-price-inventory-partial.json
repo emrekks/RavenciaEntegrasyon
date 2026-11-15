@@ -1,0 +1,24 @@
+// Source: hand-built on the getBatchRequestResult price-and-inventory shape (Ravencia-API-Docs/trendyol-api-son.md
+// ~3012-3035; failureReasons as a text list). Partial success while still running: three items announced (itemCount 3),
+// two answered (one SUCCESS, one FAILED), so the batch is not complete yet.
+{
+  "batchRequestId": "00000000-0000-4000-8000-00000000b001-1762300800",
+  "items": [
+    {
+      "requestItem": { "quantity": 5, "salePrice": 199.9, "listPrice": 249.9, "barcode": "0000000000041" },
+      "status": "SUCCESS",
+      "failureReasons": []
+    },
+    {
+      "requestItem": { "quantity": 0, "salePrice": 0, "listPrice": 0, "barcode": "0000000000042" },
+      "status": "FAILED",
+      "failureReasons": [ "Satış fiyatı 0 olamaz.", "Liste fiyatı satış fiyatından küçük olamaz." ]
+    }
+  ],
+  "creationDate": 1762300800000,
+  "lastModification": 1762300860000,
+  "sourceType": "API",
+  "itemCount": 3,
+  "failedItemCount": 1,
+  "batchRequestType": "ProductInventoryUpdate"
+}

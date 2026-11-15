@@ -1,0 +1,509 @@
+{
+  "page": {
+    "Items": [
+      {
+        "ExternalOrderId": "10700000001",
+        "OrderNumber": "10700000001",
+        "OrderedAt": "2025-11-04T21:00:00+00:00",
+        "LastModifiedAt": "2025-11-05T04:00:00+00:00",
+        "Currency": "TRY",
+        "GrossAmount": 150.00,
+        "DiscountAmount": 0.00,
+        "NetAmount": 150.00,
+        "CustomerSnapshotJson": {
+          "shipmentPackageId": 3330200001,
+          "orderNumber": "10700000001",
+          "orderDate": 1762300800000,
+          "lastModifiedDate": 1762315200000,
+          "currencyCode": "TRY",
+          "status": "Cancelled",
+          "shipmentPackageStatus": "Cancelled",
+          "createdBy": "order-creation",
+          "originPackageIds": null,
+          "packageGrossAmount": 150.00,
+          "packageSellerDiscount": 0.00,
+          "packageTyDiscount": 0.00,
+          "packageTotalDiscount": 0.00,
+          "packageTotalPrice": 150.00,
+          "agreedDeliveryDate": 1762473600000,
+          "cargoProviderName": "Trendyol Express",
+          "commercial": false,
+          "micro": false,
+          "shipmentAddress": {
+            "firstName": "Test",
+            "lastName": "Musteri",
+            "city": "Ankara",
+            "countryCode": "TR",
+            "phone": "5550000000"
+          },
+          "invoiceAddress": {
+            "firstName": "Test",
+            "lastName": "Musteri",
+            "city": "Ankara",
+            "countryCode": "TR"
+          },
+          "customerFirstName": "Test",
+          "customerLastName": "Musteri",
+          "packageHistories": [
+            {
+              "createdDate": 1762290000000,
+              "status": "Created"
+            },
+            {
+              "createdDate": 1762311600000,
+              "status": "Cancelled"
+            }
+          ],
+          "lines": [
+            {
+              "lineId": 4765200002,
+              "quantity": 1,
+              "stockCode": "SKU-FAKE-B",
+              "barcode": "0000000000012",
+              "productName": "Fake Ürün B",
+              "lineGrossAmount": 150.00,
+              "lineSellerDiscount": 0.00,
+              "lineTyDiscount": 0.00,
+              "lineTotalDiscount": 0.00,
+              "lineUnitPrice": 150.00,
+              "vatRate": 10,
+              "currencyCode": "TRY",
+              "orderLineItemStatusName": "Cancelled",
+              "cancelledBy": "seller",
+              "cancelReason": "Tedarik edilemedi",
+              "cancelReasonCode": 500
+            }
+          ]
+        },
+        "ShipmentAddressSnapshotJson": {
+          "firstName": "Test",
+          "lastName": "Musteri",
+          "city": "Ankara",
+          "countryCode": "TR",
+          "phone": "5550000000"
+        },
+        "InvoiceAddressSnapshotJson": {
+          "firstName": "Test",
+          "lastName": "Musteri",
+          "city": "Ankara",
+          "countryCode": "TR"
+        },
+        "Lines": [
+          {
+            "ExternalLineId": "4765200002",
+            "Sku": "SKU-FAKE-B",
+            "Barcode": "0000000000012",
+            "Title": "Fake Ürün B",
+            "Quantity": 1,
+            "UnitPrice": 150.00,
+            "VatRate": 10,
+            "RawStatus": "Cancelled",
+            "SourceSnapshotJson": "<raw 588 chars sha256:00b4ad855124>",
+            "CancelledQuantity": 0,
+            "CancelledAt": null,
+            "PlatformDiscount": 0.00
+          }
+        ],
+        "Packages": [
+          {
+            "ExternalPackageId": "3330200001",
+            "OriginExternalPackageId": null,
+            "RawStatus": "Cancelled",
+            "OccurredAt": "2025-11-05T04:00:00+00:00",
+            "CargoProviderExternalId": "Trendyol Express",
+            "CargoTrackingNumber": null,
+            "Allocations": [
+              {
+                "ExternalLineId": "4765200002",
+                "AllocatedQuantity": 1,
+                "CancelledQuantity": 0,
+                "ShippedQuantity": 0,
+                "DeliveredQuantity": 0,
+                "ReturnedQuantity": 0
+              }
+            ],
+            "GrossAmount": 150.00,
+            "DiscountAmount": 0.00,
+            "NetAmount": 150.00,
+            "Invoice": {
+              "RawStatus": null,
+              "InvoiceNumber": null,
+              "InvoiceUrl": null,
+              "SourceUpdatedAt": "2025-11-05T04:00:00+00:00",
+              "ReferencesAreAuthoritative": false
+            },
+            "CreatedBy": "order-creation",
+            "IsStatusObservation": false,
+            "StatusTimeUnknown": false,
+            "CancelledAt": "2025-11-05T03:00:00+00:00",
+            "UnreadableLineCount": 0,
+            "CargoBarcode": null
+          }
+        ],
+        "RawJson": "<raw 1748 chars sha256:0474bd6e4930>",
+        "ShipmentDueAt": "2025-11-07T00:00:00+00:00",
+        "PaymentStatus": "UNKNOWN",
+        "CancellationStatus": "UNKNOWN",
+        "RefundStatus": "UNKNOWN",
+        "RefundedAmount": 0,
+        "Refunds": null,
+        "LifecycleStatus": null,
+        "StoreFrontCode": null
+      },
+      {
+        "ExternalOrderId": "10700000001",
+        "OrderNumber": "10700000001",
+        "OrderedAt": "2025-11-04T21:00:00+00:00",
+        "LastModifiedAt": "2025-11-05T03:01:40+00:00",
+        "Currency": "TRY",
+        "GrossAmount": 600.00,
+        "DiscountAmount": 90.00,
+        "NetAmount": 510.00,
+        "CustomerSnapshotJson": {
+          "shipmentPackageId": 3330200002,
+          "orderNumber": "10700000001",
+          "orderDate": 1762300800000,
+          "lastModifiedDate": 1762311700000,
+          "currencyCode": "TRY",
+          "status": "Created",
+          "shipmentPackageStatus": "ReadyToShip",
+          "createdBy": "cancel",
+          "originPackageIds": [
+            3330200001
+          ],
+          "packageGrossAmount": 600.00,
+          "packageSellerDiscount": 60.00,
+          "packageTyDiscount": 30.00,
+          "packageTotalDiscount": 90.00,
+          "packageTotalPrice": 510.00,
+          "agreedDeliveryDate": 1762473600000,
+          "cargoProviderName": "Trendyol Express",
+          "cargoTrackingNumber": 7280000000000002,
+          "commercial": false,
+          "micro": false,
+          "invoiceStatus": "NotInvoiced",
+          "shipmentAddress": {
+            "firstName": "Test",
+            "lastName": "Musteri",
+            "city": "Ankara",
+            "countryCode": "TR",
+            "phone": "5550000000"
+          },
+          "invoiceAddress": {
+            "firstName": "Test",
+            "lastName": "Musteri",
+            "city": "Ankara",
+            "countryCode": "TR"
+          },
+          "customerFirstName": "Test",
+          "customerLastName": "Musteri",
+          "packageHistories": [
+            {
+              "createdDate": 1762311700000,
+              "status": "Created"
+            }
+          ],
+          "lines": [
+            {
+              "lineId": 4765200001,
+              "quantity": 3,
+              "stockCode": "SKU-FAKE-A",
+              "barcode": "0000000000011",
+              "productName": "Fake Ürün A",
+              "lineGrossAmount": 200.00,
+              "lineSellerDiscount": 20.00,
+              "lineTyDiscount": 10.00,
+              "lineTotalDiscount": 30.00,
+              "lineUnitPrice": 170.00,
+              "discountDetails": [
+                {
+                  "lineItemId": "90000001",
+                  "lineItemPrice": 170.00,
+                  "lineItemSellerDiscount": 20.00,
+                  "lineItemTyDiscount": 10.00
+                },
+                {
+                  "lineItemId": "90000002",
+                  "lineItemPrice": 170.00,
+                  "lineItemSellerDiscount": 20.00,
+                  "lineItemTyDiscount": 10.00
+                },
+                {
+                  "lineItemId": "90000003",
+                  "lineItemPrice": 170.00,
+                  "lineItemSellerDiscount": 20.00,
+                  "lineItemTyDiscount": 10.00
+                }
+              ],
+              "vatRate": 20,
+              "currencyCode": "TRY",
+              "orderLineItemStatusName": "Created"
+            }
+          ]
+        },
+        "ShipmentAddressSnapshotJson": {
+          "firstName": "Test",
+          "lastName": "Musteri",
+          "city": "Ankara",
+          "countryCode": "TR",
+          "phone": "5550000000"
+        },
+        "InvoiceAddressSnapshotJson": {
+          "firstName": "Test",
+          "lastName": "Musteri",
+          "city": "Ankara",
+          "countryCode": "TR"
+        },
+        "Lines": [
+          {
+            "ExternalLineId": "4765200001",
+            "Sku": "SKU-FAKE-A",
+            "Barcode": "0000000000011",
+            "Title": "Fake Ürün A",
+            "Quantity": 3,
+            "UnitPrice": 170.00,
+            "VatRate": 20,
+            "RawStatus": "Created",
+            "SourceSnapshotJson": "<raw 902 chars sha256:44b8f58e37d7>",
+            "CancelledQuantity": 0,
+            "CancelledAt": null,
+            "PlatformDiscount": 10.00
+          }
+        ],
+        "Packages": [
+          {
+            "ExternalPackageId": "3330200002",
+            "OriginExternalPackageId": "3330200001",
+            "RawStatus": "Created",
+            "OccurredAt": "2025-11-05T03:01:40+00:00",
+            "CargoProviderExternalId": "Trendyol Express",
+            "CargoTrackingNumber": "7280000000000002",
+            "Allocations": [
+              {
+                "ExternalLineId": "4765200001",
+                "AllocatedQuantity": 3,
+                "CancelledQuantity": 0,
+                "ShippedQuantity": 0,
+                "DeliveredQuantity": 0,
+                "ReturnedQuantity": 0
+              }
+            ],
+            "GrossAmount": 600.00,
+            "DiscountAmount": 90.00,
+            "NetAmount": 510.00,
+            "Invoice": {
+              "RawStatus": "NotInvoiced",
+              "InvoiceNumber": null,
+              "InvoiceUrl": null,
+              "SourceUpdatedAt": "2025-11-05T03:01:40+00:00",
+              "ReferencesAreAuthoritative": false
+            },
+            "CreatedBy": "cancel",
+            "IsStatusObservation": false,
+            "StatusTimeUnknown": false,
+            "CancelledAt": null,
+            "UnreadableLineCount": 0,
+            "CargoBarcode": null
+          }
+        ],
+        "RawJson": "<raw 2073 chars sha256:5015a8815f07>",
+        "ShipmentDueAt": "2025-11-07T00:00:00+00:00",
+        "PaymentStatus": "UNKNOWN",
+        "CancellationStatus": "UNKNOWN",
+        "RefundStatus": "UNKNOWN",
+        "RefundedAmount": 0,
+        "Refunds": null,
+        "LifecycleStatus": null,
+        "StoreFrontCode": null
+      }
+    ],
+    "NextCursor": "cursor-fake-0002",
+    "HasMore": true,
+    "TotalCount": null,
+    "Issues": [],
+    "LastModifiedSeen": null
+  },
+  "merged": {
+    "ExternalOrderId": "10700000001",
+    "OrderNumber": "10700000001",
+    "OrderedAt": "2025-11-04T21:00:00+00:00",
+    "LastModifiedAt": "2025-11-05T04:00:00+00:00",
+    "Currency": "TRY",
+    "GrossAmount": 600.00,
+    "DiscountAmount": 90.00,
+    "NetAmount": 510.00,
+    "CustomerSnapshotJson": {
+      "shipmentPackageId": 3330200001,
+      "orderNumber": "10700000001",
+      "orderDate": 1762300800000,
+      "lastModifiedDate": 1762315200000,
+      "currencyCode": "TRY",
+      "status": "Cancelled",
+      "shipmentPackageStatus": "Cancelled",
+      "createdBy": "order-creation",
+      "originPackageIds": null,
+      "packageGrossAmount": 150.00,
+      "packageSellerDiscount": 0.00,
+      "packageTyDiscount": 0.00,
+      "packageTotalDiscount": 0.00,
+      "packageTotalPrice": 150.00,
+      "agreedDeliveryDate": 1762473600000,
+      "cargoProviderName": "Trendyol Express",
+      "commercial": false,
+      "micro": false,
+      "shipmentAddress": {
+        "firstName": "Test",
+        "lastName": "Musteri",
+        "city": "Ankara",
+        "countryCode": "TR",
+        "phone": "5550000000"
+      },
+      "invoiceAddress": {
+        "firstName": "Test",
+        "lastName": "Musteri",
+        "city": "Ankara",
+        "countryCode": "TR"
+      },
+      "customerFirstName": "Test",
+      "customerLastName": "Musteri",
+      "packageHistories": [
+        {
+          "createdDate": 1762290000000,
+          "status": "Created"
+        },
+        {
+          "createdDate": 1762311600000,
+          "status": "Cancelled"
+        }
+      ],
+      "lines": [
+        {
+          "lineId": 4765200002,
+          "quantity": 1,
+          "stockCode": "SKU-FAKE-B",
+          "barcode": "0000000000012",
+          "productName": "Fake Ürün B",
+          "lineGrossAmount": 150.00,
+          "lineSellerDiscount": 0.00,
+          "lineTyDiscount": 0.00,
+          "lineTotalDiscount": 0.00,
+          "lineUnitPrice": 150.00,
+          "vatRate": 10,
+          "currencyCode": "TRY",
+          "orderLineItemStatusName": "Cancelled",
+          "cancelledBy": "seller",
+          "cancelReason": "Tedarik edilemedi",
+          "cancelReasonCode": 500
+        }
+      ]
+    },
+    "ShipmentAddressSnapshotJson": {
+      "firstName": "Test",
+      "lastName": "Musteri",
+      "city": "Ankara",
+      "countryCode": "TR",
+      "phone": "5550000000"
+    },
+    "InvoiceAddressSnapshotJson": {
+      "firstName": "Test",
+      "lastName": "Musteri",
+      "city": "Ankara",
+      "countryCode": "TR"
+    },
+    "Lines": [
+      {
+        "ExternalLineId": "4765200001",
+        "Sku": "SKU-FAKE-A",
+        "Barcode": "0000000000011",
+        "Title": "Fake Ürün A",
+        "Quantity": 3,
+        "UnitPrice": 170.00,
+        "VatRate": 20,
+        "RawStatus": "Created",
+        "SourceSnapshotJson": "<raw 902 chars sha256:44b8f58e37d7>",
+        "CancelledQuantity": 0,
+        "CancelledAt": null,
+        "PlatformDiscount": 10.00
+      }
+    ],
+    "Packages": [
+      {
+        "ExternalPackageId": "3330200001",
+        "OriginExternalPackageId": null,
+        "RawStatus": "Cancelled",
+        "OccurredAt": "2025-11-05T04:00:00+00:00",
+        "CargoProviderExternalId": "Trendyol Express",
+        "CargoTrackingNumber": null,
+        "Allocations": [
+          {
+            "ExternalLineId": "4765200002",
+            "AllocatedQuantity": 1,
+            "CancelledQuantity": 0,
+            "ShippedQuantity": 0,
+            "DeliveredQuantity": 0,
+            "ReturnedQuantity": 0
+          }
+        ],
+        "GrossAmount": 150.00,
+        "DiscountAmount": 0.00,
+        "NetAmount": 150.00,
+        "Invoice": {
+          "RawStatus": null,
+          "InvoiceNumber": null,
+          "InvoiceUrl": null,
+          "SourceUpdatedAt": "2025-11-05T04:00:00+00:00",
+          "ReferencesAreAuthoritative": false
+        },
+        "CreatedBy": "order-creation",
+        "IsStatusObservation": false,
+        "StatusTimeUnknown": false,
+        "CancelledAt": "2025-11-05T03:00:00+00:00",
+        "UnreadableLineCount": 0,
+        "CargoBarcode": null
+      },
+      {
+        "ExternalPackageId": "3330200002",
+        "OriginExternalPackageId": "3330200001",
+        "RawStatus": "Created",
+        "OccurredAt": "2025-11-05T03:01:40+00:00",
+        "CargoProviderExternalId": "Trendyol Express",
+        "CargoTrackingNumber": "7280000000000002",
+        "Allocations": [
+          {
+            "ExternalLineId": "4765200001",
+            "AllocatedQuantity": 3,
+            "CancelledQuantity": 0,
+            "ShippedQuantity": 0,
+            "DeliveredQuantity": 0,
+            "ReturnedQuantity": 0
+          }
+        ],
+        "GrossAmount": 600.00,
+        "DiscountAmount": 90.00,
+        "NetAmount": 510.00,
+        "Invoice": {
+          "RawStatus": "NotInvoiced",
+          "InvoiceNumber": null,
+          "InvoiceUrl": null,
+          "SourceUpdatedAt": "2025-11-05T03:01:40+00:00",
+          "ReferencesAreAuthoritative": false
+        },
+        "CreatedBy": "cancel",
+        "IsStatusObservation": false,
+        "StatusTimeUnknown": false,
+        "CancelledAt": null,
+        "UnreadableLineCount": 0,
+        "CargoBarcode": null
+      }
+    ],
+    "RawJson": "<raw 1748 chars sha256:0474bd6e4930>",
+    "ShipmentDueAt": "2025-11-07T00:00:00+00:00",
+    "PaymentStatus": "UNKNOWN",
+    "CancellationStatus": "UNKNOWN",
+    "RefundStatus": "UNKNOWN",
+    "RefundedAmount": 0,
+    "Refunds": null,
+    "LifecycleStatus": null,
+    "StoreFrontCode": null
+  }
+}

@@ -1,0 +1,53 @@
+// Source: hand-built on the response schema of Ravencia-API-Docs/hepsiburada-api-son.md "Muhasebe Entegrasyonu"
+// OpenAPI (~19807-20619: count, items[] with id, transactionType, status, sku, packageNumber, orderNumber,
+// invoiceNumber, amount/taxAmount/netAmount {value, currencyCode}, orderDate, invoiceDate, dueDate, paymentDate,
+// isIncome, transactionTypeCategory). Currency codes are ISO numeric (949 = TRY). Times without an offset are Istanbul.
+// The third record's amount is text and the fourth has no day at all: both are skipped, never stored as 0.
+{
+  "count": 4,
+  "items": [
+    {
+      "id": "HBFIN-FAKE-0001",
+      "transactionType": "Sale",
+      "transactionTypeCategory": "Order",
+      "status": "Paid",
+      "sku": "HBV00000FAKE10",
+      "packageNumber": "5000000101",
+      "orderNumber": "4000000101",
+      "invoiceNumber": "FAKE2026000000101",
+      "orderItemNumber": "1",
+      "quantity": 2,
+      "amount": { "value": 280.0, "currencyCode": "949" },
+      "taxAmount": { "value": 46.67, "currencyCode": "949" },
+      "netAmount": { "value": 233.33, "currencyCode": "949" },
+      "orderDate": "2026-11-04T22:15:00",
+      "invoiceDate": "2026-11-05T10:00:00",
+      "dueDate": "2026-11-20T00:00:00",
+      "paymentDate": "2026-11-20T09:00:00+03:00",
+      "isIncome": true
+    },
+    {
+      "id": "HBFIN-FAKE-0002",
+      "transactionType": "Commission",
+      "transactionTypeCategory": "Commission",
+      "status": "Open",
+      "orderNumber": "4000000101",
+      "amount": { "value": -42.0, "currencyCode": "949" },
+      "dueDate": "2026-11-20T00:00:00Z",
+      "isIncome": false
+    },
+    {
+      "id": "HBFIN-FAKE-0003",
+      "transactionType": "Sale",
+      "orderNumber": "4000000102",
+      "amount": { "value": "99.90", "currencyCode": "949" },
+      "orderDate": "2026-11-05T10:00:00"
+    },
+    {
+      "id": "HBFIN-FAKE-0004",
+      "transactionType": "Sale",
+      "orderNumber": "4000000103",
+      "amount": { "value": 10.0, "currencyCode": "840" }
+    }
+  ]
+}

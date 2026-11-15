@@ -1,0 +1,27 @@
+// Source: n11 ClaimReturnList (developer.n11.com/documentation/iade-entgrasyonu/iade-talepleri-servisi/, read 5 Nov 2026
+// per n11.md; no offline copy), the shape N11ReturnTests uses, with pagingData at the top as the code reads it (the docs'
+// second sample nests it inside claimReturnList: unverified, n11.md). Claim 98765 waits for approval; 98766 has no
+// quantity (unknown, not 1); 98767 carries a state n11 does not document; one row has no claim id.
+<ns3:ClaimReturnListResponse xmlns:ns3="http://www.n11.com/ws/schemas">
+  <result><status>success</status></result>
+  <pagingData><currentPage>0</currentPage><pageSize>20</pageSize><totalCount>4</totalCount><pageCount>2</pageCount></pagingData>
+  <claimReturnList>
+    <claimReturn>
+      <claimReturnId>98765</claimReturnId><status>APPROVAL_WAITING</status><returnReasonType>DEFECTIVE</returnReasonType>
+      <returnReasonDescription>Ürün kusurlu</returnReasonDescription><orderNumber>205412345678</orderNumber><requestDate>2026-10-10</requestDate>
+      <productId>4455667788</productId><quantity>2</quantity><shipmentCompany>Yurtiçi Kargo</shipmentCompany><trackingNumber>YK123</trackingNumber>
+    </claimReturn>
+    <claimReturn>
+      <claimReturnId>98766</claimReturnId><status>REQUESTED</status><returnReasonType>WRONG_SIZE</returnReasonType>
+      <returnReasonDescription>Beden uymadı</returnReasonDescription><orderNumber>205412345679</orderNumber><requestDate>11/10/2026</requestDate>
+      <productId>4455667799</productId><quantity></quantity>
+    </claimReturn>
+    <claimReturn>
+      <claimReturnId>98767</claimReturnId><status>SOME_FUTURE_STATE</status><orderNumber>205412345680</orderNumber><requestDate>2026-10-12</requestDate>
+      <productId>4455667700</productId><quantity>1</quantity>
+    </claimReturn>
+    <claimReturn>
+      <status>REQUESTED</status><orderNumber>205412345681</orderNumber><requestDate>2026-10-12</requestDate><quantity>1</quantity>
+    </claimReturn>
+  </claimReturnList>
+</ns3:ClaimReturnListResponse>

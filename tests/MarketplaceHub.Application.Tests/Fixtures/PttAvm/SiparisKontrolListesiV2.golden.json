@@ -1,0 +1,400 @@
+{
+  "page": {
+    "Items": [
+      {
+        "ExternalOrderId": "PTT-A1712HP2E-071024",
+        "OrderNumber": "PTT-A1712HP2E-071024",
+        "OrderedAt": "2024-10-07T14:38:29+00:00",
+        "LastModifiedAt": "2024-10-07T14:38:36+00:00",
+        "Currency": "TRY",
+        "GrossAmount": 36.63,
+        "DiscountAmount": 2.71,
+        "NetAmount": 33.92,
+        "CustomerSnapshotJson": {
+          "customerName": "Test Musteri",
+          "customerFirstName": "Test",
+          "customerLastName": "Musteri",
+          "customerEmail": "customer@example.test",
+          "email": "customer@example.test",
+          "customerId": "900001",
+          "tcIdentityNumber": "00000000000",
+          "invoiceType": "Bireysel",
+          "shipmentAmount": 1330
+        },
+        "ShipmentAddressSnapshotJson": {
+          "address1": "Fake Teslimat Sokak 2",
+          "fullAddress": "Fake Teslimat Sokak 2, Keçiören, Ankara",
+          "district": "Keçiören",
+          "city": "Ankara",
+          "firstName": "Test",
+          "lastName": "Musteri",
+          "fullName": "Test Musteri",
+          "phone": "555*****00"
+        },
+        "InvoiceAddressSnapshotJson": {
+          "address1": "Fake Fatura Sokak 1",
+          "fullAddress": "Fake Fatura Sokak 1, Çankaya, Ankara",
+          "district": "Çankaya",
+          "city": "Ankara",
+          "firstName": "Test",
+          "lastName": "Musteri",
+          "fullName": "Test Musteri",
+          "phone": "555*****00"
+        },
+        "Lines": [
+          {
+            "ExternalLineId": "229049580",
+            "Sku": "0000000066266mainbrkd",
+            "Barcode": "0000000066266mainbrkd",
+            "Title": "parça yönetimi 6",
+            "Quantity": 1,
+            "UnitPrice": 36.63,
+            "VatRate": 10,
+            "RawStatus": "Returned",
+            "SourceSnapshotJson": "<raw 281 chars sha256:73e43e94a85b>",
+            "CancelledQuantity": 0,
+            "CancelledAt": null,
+            "PlatformDiscount": null
+          },
+          {
+            "ExternalLineId": "229049601",
+            "Sku": "abs123456",
+            "Barcode": "abs123456",
+            "Title": "parça yönetimi 4",
+            "Quantity": 1,
+            "UnitPrice": 41.25,
+            "VatRate": 10,
+            "RawStatus": "Cancelled",
+            "SourceSnapshotJson": "<raw 200 chars sha256:7c50f92b4ce5>",
+            "CancelledQuantity": 1,
+            "CancelledAt": null,
+            "PlatformDiscount": null
+          }
+        ],
+        "Packages": [
+          {
+            "ExternalPackageId": "order:PTT-A1712HP2E-071024",
+            "OriginExternalPackageId": null,
+            "RawStatus": "Returned",
+            "OccurredAt": "2024-10-07T14:38:36+00:00",
+            "CargoProviderExternalId": "PTT Kargo",
+            "CargoTrackingNumber": "2710243114843",
+            "Allocations": [
+              {
+                "ExternalLineId": "229049580",
+                "AllocatedQuantity": 1,
+                "CancelledQuantity": 0,
+                "ShippedQuantity": 1,
+                "DeliveredQuantity": 1,
+                "ReturnedQuantity": 1
+              },
+              {
+                "ExternalLineId": "229049601",
+                "AllocatedQuantity": 0,
+                "CancelledQuantity": 1,
+                "ShippedQuantity": 0,
+                "DeliveredQuantity": 0,
+                "ReturnedQuantity": 0
+              }
+            ],
+            "GrossAmount": 36.63,
+            "DiscountAmount": 2.71,
+            "NetAmount": 33.92,
+            "Invoice": null,
+            "CreatedBy": null,
+            "IsStatusObservation": false,
+            "StatusTimeUnknown": true,
+            "CancelledAt": null,
+            "UnreadableLineCount": 0,
+            "CargoBarcode": null
+          }
+        ],
+        "RawJson": "<raw 567 chars sha256:c85aea813636>",
+        "ShipmentDueAt": null,
+        "PaymentStatus": "UNKNOWN",
+        "CancellationStatus": "UNKNOWN",
+        "RefundStatus": "UNKNOWN",
+        "RefundedAmount": 0,
+        "Refunds": null,
+        "LifecycleStatus": null,
+        "StoreFrontCode": null
+      },
+      {
+        "ExternalOrderId": "PTT-L6LI1VK2D-211024",
+        "OrderNumber": "PTT-L6LI1VK2D-211024",
+        "OrderedAt": "2024-10-21T11:48:46+00:00",
+        "LastModifiedAt": "2024-10-21T11:48:52+00:00",
+        "Currency": "TRY",
+        "GrossAmount": 53.38,
+        "DiscountAmount": 3.72,
+        "NetAmount": 49.66,
+        "CustomerSnapshotJson": {
+          "customerName": "Test Musteri",
+          "customerFirstName": "Test",
+          "customerLastName": "Musteri"
+        },
+        "ShipmentAddressSnapshotJson": {},
+        "InvoiceAddressSnapshotJson": {},
+        "Lines": [
+          {
+            "ExternalLineId": "232318670",
+            "Sku": "10102024-85224",
+            "Barcode": "10102024-85224",
+            "Title": "Test ürünü Fırın",
+            "Quantity": 1,
+            "UnitPrice": 53.38,
+            "VatRate": 1,
+            "RawStatus": "Cancelled",
+            "SourceSnapshotJson": "<raw 222 chars sha256:2d9baaac4e84>",
+            "CancelledQuantity": 1,
+            "CancelledAt": null,
+            "PlatformDiscount": null
+          }
+        ],
+        "Packages": [
+          {
+            "ExternalPackageId": "order:PTT-L6LI1VK2D-211024",
+            "OriginExternalPackageId": null,
+            "RawStatus": "Cancelled",
+            "OccurredAt": "2024-10-21T11:48:52+00:00",
+            "CargoProviderExternalId": null,
+            "CargoTrackingNumber": null,
+            "Allocations": [
+              {
+                "ExternalLineId": "232318670",
+                "AllocatedQuantity": 0,
+                "CancelledQuantity": 1,
+                "ShippedQuantity": 0,
+                "DeliveredQuantity": 0,
+                "ReturnedQuantity": 0
+              }
+            ],
+            "GrossAmount": 53.38,
+            "DiscountAmount": 3.72,
+            "NetAmount": 49.66,
+            "Invoice": null,
+            "CreatedBy": null,
+            "IsStatusObservation": false,
+            "StatusTimeUnknown": true,
+            "CancelledAt": null,
+            "UnreadableLineCount": 0,
+            "CargoBarcode": null
+          }
+        ],
+        "RawJson": "<raw 118 chars sha256:4c24dce1d779>",
+        "ShipmentDueAt": null,
+        "PaymentStatus": "UNKNOWN",
+        "CancellationStatus": "UNKNOWN",
+        "RefundStatus": "UNKNOWN",
+        "RefundedAmount": 0,
+        "Refunds": null,
+        "LifecycleStatus": null,
+        "StoreFrontCode": null
+      },
+      {
+        "ExternalOrderId": "PTT-OPEN12345-211026",
+        "OrderNumber": "PTT-OPEN12345-211026",
+        "OrderedAt": "2026-10-21T06:15:00+00:00",
+        "LastModifiedAt": "2026-10-21T06:15:02+00:00",
+        "Currency": "TRY",
+        "GrossAmount": 250,
+        "DiscountAmount": 10,
+        "NetAmount": 240,
+        "CustomerSnapshotJson": {},
+        "ShipmentAddressSnapshotJson": {},
+        "InvoiceAddressSnapshotJson": {},
+        "Lines": [
+          {
+            "ExternalLineId": "300000001",
+            "Sku": "8690000000017",
+            "Barcode": "8690000000017",
+            "Title": "Gömlek",
+            "Quantity": 2,
+            "UnitPrice": 100,
+            "VatRate": 20,
+            "RawStatus": "Created",
+            "SourceSnapshotJson": "<raw 252 chars sha256:092994106e4b>",
+            "CancelledQuantity": 0,
+            "CancelledAt": null,
+            "PlatformDiscount": null
+          },
+          {
+            "ExternalLineId": "300000002",
+            "Sku": "8690000000024",
+            "Barcode": "8690000000024",
+            "Title": "Kemer",
+            "Quantity": 1,
+            "UnitPrice": 50,
+            "VatRate": 20,
+            "RawStatus": "Shipped",
+            "SourceSnapshotJson": "<raw 196 chars sha256:e2e8a80a2fbd>",
+            "CancelledQuantity": 0,
+            "CancelledAt": null,
+            "PlatformDiscount": null
+          }
+        ],
+        "Packages": [
+          {
+            "ExternalPackageId": "order:PTT-OPEN12345-211026",
+            "OriginExternalPackageId": null,
+            "RawStatus": "Created",
+            "OccurredAt": "2026-10-21T06:15:02+00:00",
+            "CargoProviderExternalId": null,
+            "CargoTrackingNumber": null,
+            "Allocations": [
+              {
+                "ExternalLineId": "300000001",
+                "AllocatedQuantity": 2,
+                "CancelledQuantity": 0,
+                "ShippedQuantity": 0,
+                "DeliveredQuantity": 0,
+                "ReturnedQuantity": 0
+              },
+              {
+                "ExternalLineId": "300000002",
+                "AllocatedQuantity": 1,
+                "CancelledQuantity": 0,
+                "ShippedQuantity": 1,
+                "DeliveredQuantity": 0,
+                "ReturnedQuantity": 0
+              }
+            ],
+            "GrossAmount": 250,
+            "DiscountAmount": 10,
+            "NetAmount": 240,
+            "Invoice": null,
+            "CreatedBy": null,
+            "IsStatusObservation": false,
+            "StatusTimeUnknown": true,
+            "CancelledAt": null,
+            "UnreadableLineCount": 0,
+            "CargoBarcode": null
+          }
+        ],
+        "RawJson": "<raw 72 chars sha256:9cd57d93fea7>",
+        "ShipmentDueAt": null,
+        "PaymentStatus": "UNKNOWN",
+        "CancellationStatus": "UNKNOWN",
+        "RefundStatus": "UNKNOWN",
+        "RefundedAmount": 0,
+        "Refunds": null,
+        "LifecycleStatus": null,
+        "StoreFrontCode": null
+      },
+      {
+        "ExternalOrderId": "PTT-NILFIELDS1-051126",
+        "OrderNumber": "PTT-NILFIELDS1-051126",
+        "OrderedAt": "2026-11-05T11:00:00+00:00",
+        "LastModifiedAt": "2026-11-05T11:00:00+00:00",
+        "Currency": "TRY",
+        "GrossAmount": 0,
+        "DiscountAmount": 0,
+        "NetAmount": 0,
+        "CustomerSnapshotJson": {},
+        "ShipmentAddressSnapshotJson": {},
+        "InvoiceAddressSnapshotJson": {},
+        "Lines": [],
+        "Packages": [
+          {
+            "ExternalPackageId": "order:PTT-NILFIELDS1-051126",
+            "OriginExternalPackageId": null,
+            "RawStatus": "Unknown:bilinmeyen_yeni_durum",
+            "OccurredAt": "2026-11-05T11:00:00+00:00",
+            "CargoProviderExternalId": null,
+            "CargoTrackingNumber": null,
+            "Allocations": [],
+            "GrossAmount": 0,
+            "DiscountAmount": 0,
+            "NetAmount": 0,
+            "Invoice": null,
+            "CreatedBy": null,
+            "IsStatusObservation": false,
+            "StatusTimeUnknown": true,
+            "CancelledAt": null,
+            "UnreadableLineCount": 1,
+            "CargoBarcode": null
+          }
+        ],
+        "RawJson": "<raw 73 chars sha256:4b04a8dd32e4>",
+        "ShipmentDueAt": null,
+        "PaymentStatus": "UNKNOWN",
+        "CancellationStatus": "UNKNOWN",
+        "RefundStatus": "UNKNOWN",
+        "RefundedAmount": 0,
+        "Refunds": null,
+        "LifecycleStatus": null,
+        "StoreFrontCode": null
+      }
+    ],
+    "NextCursor": null,
+    "HasMore": false,
+    "TotalCount": null,
+    "Issues": [
+      {
+        "Code": "ORDER_PACKAGE_LINE_INVALID",
+        "Identity": "order:PTT-NILFIELDS1-051126:300000101",
+        "Message": "PttAVM sipariş paketi order:PTT-NILFIELDS1-051126 kargo için alındı ancak bir ürün satırı (300000101) okunamadı: satır kimliği, adet veya tutar okunamadı. Satır bilinmiyor; bu siparişe fatura kesilmez ve sipariş yeniden okunacak.",
+        "RereadOrderId": null
+      },
+      {
+        "Code": "ORDER_AMOUNT_MAY_BE_INCOMPLETE",
+        "Identity": "order:PTT-NILFIELDS1-051126",
+        "Message": "PttAVM siparişi PTT-NILFIELDS1-051126: 1 ürün satırı okunamadı ve PttAVM sipariş toplamı göndermiyor; sipariş tutarı yalnız okunan satırların toplamı, eksik olabilir.",
+        "RereadOrderId": null
+      }
+    ],
+    "LastModifiedSeen": null
+  },
+  "returns": [
+    {
+      "ExternalOrderId": "PTT-A1712HP2E-071024",
+      "claim": {
+        "ExternalClaimId": "iade:PTT-A1712HP2E-071024",
+        "ExternalOrderId": "PTT-A1712HP2E-071024",
+        "RawStatus": "Completed",
+        "ReasonCode": null,
+        "ReasonText": null,
+        "ActionDueAt": null,
+        "LastModifiedAt": "2024-10-07T14:38:36+00:00",
+        "Lines": [
+          {
+            "ExternalLineId": "229049580",
+            "ExternalOrderLineId": "229049580",
+            "Quantity": 1,
+            "AlternateExternalOrderLineIds": null,
+            "RawStatus": "Completed",
+            "AcceptDetail": null,
+            "Note": null,
+            "Resolved": null,
+            "AcceptedBySeller": null,
+            "ProductCode": null,
+            "StockCode": null
+          }
+        ],
+        "RawJson": "<raw 195 chars sha256:41323a66d793>",
+        "CargoProviderName": "PTT Kargo",
+        "CargoTrackingNumber": "2710243114843",
+        "CargoTrackingLink": null,
+        "OrderCreatedAt": "2024-10-07T14:38:29+00:00",
+        "ActionDueAtEstimated": false,
+        "RejectedPackageState": null,
+        "DecidedAt": null,
+        "CustomerRequest": null,
+        "ResolvedWith": null,
+        "RequestedAt": null
+      }
+    },
+    {
+      "ExternalOrderId": "PTT-L6LI1VK2D-211024",
+      "claim": null
+    },
+    {
+      "ExternalOrderId": "PTT-OPEN12345-211026",
+      "claim": null
+    },
+    {
+      "ExternalOrderId": "PTT-NILFIELDS1-051126",
+      "claim": null
+    }
+  ]
+}

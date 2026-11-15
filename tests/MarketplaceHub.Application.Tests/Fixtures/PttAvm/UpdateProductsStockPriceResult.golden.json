@@ -1,0 +1,43 @@
+[
+  {
+    "IsSuccess": true,
+    "Value": {
+      "ExternalOperationId": "t:671a178183f9c51388bbb169",
+      "Kind": "PRICE_STOCK_UPDATE",
+      "SubmittedAt": "2026-11-10T12:00:00+00:00"
+    },
+    "Error": null,
+    "RateLimit": null
+  },
+  {
+    "IsSuccess": false,
+    "Value": null,
+    "Error": {
+      "Class": "Validation",
+      "Code": "PTTAVM_PRICE_STOCK_REJECTED",
+      "SafeMessage": "PttAVM fiyat-stok isteğini kabul etmedi: Barkod bulunamadı.",
+      "HttpStatus": 422,
+      "RetryAfter": null,
+      "RemoteRequestId": null
+    },
+    "RateLimit": null
+  },
+  {
+    "IsSuccess": false,
+    "Value": null,
+    "Error": {
+      "Class": "RateLimit",
+      "Code": "PTTAVM_REPEAT_REQUEST_WAIT",
+      "SafeMessage": "PttAVM aynı isteği beş dakika dolmadan yeniden almıyor; istek işlenmedi ve 6 dakika sonra yeniden denenecek.",
+      "HttpStatus": 429,
+      "RetryAfter": "00:06:00",
+      "RemoteRequestId": null
+    },
+    "RateLimit": {
+      "Remaining": null,
+      "ResetAt": null,
+      "RetryAfter": "00:06:00",
+      "Limit": null
+    }
+  }
+]

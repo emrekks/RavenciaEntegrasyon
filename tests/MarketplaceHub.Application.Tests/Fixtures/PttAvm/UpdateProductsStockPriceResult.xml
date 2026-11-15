@@ -1,0 +1,8 @@
+// Source: PttAVM UpdateProductsStockPrice answers (Ravencia-API-Docs/pttavm-api-son.md "Fiyat Stok Güncelle"
+// ~1230-1343: Success, Message, TrackingId), the shapes PriceInventoryDocComplianceTests uses; one answer per child:
+// accepted with an async tracking id, refused, and the five-minute repeat refusal.
+<answers>
+  <UpdateProductsStockPriceResult xmlns:a="http://schemas.datacontract.org/2004/07/ePttAVMService"><a:Success>true</a:Success><a:TrackingId>671a178183f9c51388bbb169</a:TrackingId></UpdateProductsStockPriceResult>
+  <UpdateProductsStockPriceResult xmlns:a="http://schemas.datacontract.org/2004/07/ePttAVMService"><a:Message>Barkod bulunamadı</a:Message><a:Success>false</a:Success></UpdateProductsStockPriceResult>
+  <UpdateProductsStockPriceResult xmlns:a="http://schemas.datacontract.org/2004/07/ePttAVMService" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><a:Message>Aynı isteği ancak 5 dakika sonra tekrardan gönderebilirsiniz.</a:Message><a:Success>false</a:Success><a:TrackingId i:nil="true"/></UpdateProductsStockPriceResult>
+</answers>

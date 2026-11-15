@@ -1,0 +1,113 @@
+[
+  {
+    "ExternalOrderId": "4000000201",
+    "Package": {
+      "ExternalPackageId": "5000000201",
+      "OriginExternalPackageId": null,
+      "RawStatus": "Packaged",
+      "OccurredAt": "2026-11-05T10:00:00+00:00",
+      "CargoProviderExternalId": "Aras Kargo",
+      "CargoTrackingNumber": "TRACK-FAKE-0201",
+      "Allocations": [
+        {
+          "ExternalLineId": "00000000-0000-4000-8000-000000000201",
+          "AllocatedQuantity": 4,
+          "CancelledQuantity": 0,
+          "ShippedQuantity": 0,
+          "DeliveredQuantity": 0,
+          "ReturnedQuantity": 0
+        }
+      ],
+      "GrossAmount": 380.0,
+      "DiscountAmount": 0,
+      "NetAmount": 380.0,
+      "Invoice": null,
+      "CreatedBy": null,
+      "IsStatusObservation": false,
+      "StatusTimeUnknown": false,
+      "CancelledAt": null,
+      "UnreadableLineCount": 0,
+      "CargoBarcode": "0000000000299"
+    },
+    "OrderSnapshot": {
+      "ExternalOrderId": "4000000201",
+      "OrderNumber": "4000000201",
+      "OrderedAt": "2026-11-05T10:00:00+00:00",
+      "LastModifiedAt": "2026-11-05T10:00:00+00:00",
+      "Currency": "TRY",
+      "GrossAmount": 380.0,
+      "DiscountAmount": 0,
+      "NetAmount": 380.0,
+      "CustomerSnapshotJson": {
+        "name": "Test Musteri",
+        "marketplaceCargoProviderName": "Aras Kargo"
+      },
+      "ShipmentAddressSnapshotJson": {
+        "recipientName": "Test Musteri",
+        "shippingCountryCode": "TR",
+        "shippingTown": "Konak",
+        "shippingCity": "İzmir"
+      },
+      "InvoiceAddressSnapshotJson": {},
+      "Lines": [
+        {
+          "ExternalLineId": "00000000-0000-4000-8000-000000000201",
+          "Sku": "SKU-FAKE-HB20",
+          "Barcode": "0000000000201",
+          "Title": "Fake HB Ürün 20",
+          "Quantity": 4,
+          "UnitPrice": 100.0,
+          "VatRate": 20,
+          "RawStatus": "Open",
+          "SourceSnapshotJson": "<raw 495 chars sha256:abe6ba4c4dfd>",
+          "CancelledQuantity": 0,
+          "CancelledAt": null,
+          "PlatformDiscount": null
+        }
+      ],
+      "Packages": [
+        {
+          "ExternalPackageId": "5000000201",
+          "OriginExternalPackageId": null,
+          "RawStatus": "Packaged",
+          "OccurredAt": "2026-11-05T10:00:00+00:00",
+          "CargoProviderExternalId": "Aras Kargo",
+          "CargoTrackingNumber": "TRACK-FAKE-0201",
+          "Allocations": [
+            {
+              "ExternalLineId": "00000000-0000-4000-8000-000000000201",
+              "AllocatedQuantity": 4,
+              "CancelledQuantity": 0,
+              "ShippedQuantity": 0,
+              "DeliveredQuantity": 0,
+              "ReturnedQuantity": 0
+            }
+          ],
+          "GrossAmount": 380.0,
+          "DiscountAmount": 0,
+          "NetAmount": 380.0,
+          "Invoice": null,
+          "CreatedBy": null,
+          "IsStatusObservation": false,
+          "StatusTimeUnknown": false,
+          "CancelledAt": null,
+          "UnreadableLineCount": 0,
+          "CargoBarcode": "0000000000299"
+        }
+      ],
+      "RawJson": "<raw 961 chars sha256:36c237d477c7>",
+      "ShipmentDueAt": null,
+      "PaymentStatus": "UNKNOWN",
+      "CancellationStatus": "NOT_CANCELLED",
+      "RefundStatus": "UNKNOWN",
+      "RefundedAmount": 0,
+      "Refunds": null,
+      "LifecycleStatus": null,
+      "StoreFrontCode": null
+    }
+  },
+  {
+    "Refused": "JsonException",
+    "Message": "Hepsiburada paket yanıtında kullanılabilir tarih alanı yok."
+  }
+]

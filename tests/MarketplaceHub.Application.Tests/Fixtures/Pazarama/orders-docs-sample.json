@@ -1,0 +1,101 @@
+// Source: Ravencia-API-Docs/pazarama-api-son.md "Siparişler" sample answer (~2392-2585), personal fields (names, e-mail,
+// phone, address text) replaced by fake values; amounts, dates, statuses and the money envelopes are kept as documented.
+// orderDate "2026-02-17 17:23" has no offset: Istanbul local. Item status 8 = "İade Onaylandı" (returned).
+{
+  "data": [
+    {
+      "orderId": "3099b7db-6a35-498d-a45a-4f6dd57a2ecb",
+      "orderNumber": 283534307,
+      "orderDate": "2026-02-17 17:23",
+      "orderAmount": 7,
+      "shipmentAmount": 0,
+      "discountAmount": 0,
+      "discountDescription": "",
+      "currency": "TL",
+      "paymentType": 1,
+      "orderStatus": 3,
+      "customerId": "d9a521ed-3b26-4797-a055-08d903cd4525",
+      "customerName": "Test Musteri",
+      "customerEmail": "customer@example.test",
+      "shipmentAddress": {
+        "addressId": "6a18b476-79db-4d28-ba0a-c5e284588334",
+        "title": "evimiz",
+        "nameSurname": "Test Alici",
+        "customerEmail": "customer@example.test",
+        "cityName": "Ankara",
+        "districtName": "Altındağ",
+        "neighborhoodName": "Karapürçek Mah",
+        "addressDetail": "Fake Sokak No:1",
+        "displayAddressText": "Karapürçek Mah (Fake Sokak No:1) Altındağ/Ankara",
+        "phoneNumber": "05550000000",
+        "postalCode": "06360"
+      },
+      "billingAddress": {
+        "addressId": "5b68cd63-aa88-4176-85db-57d0fcd93349",
+        "title": "evimiz",
+        "nameSurname": "Test Alici",
+        "customerEmail": "customer@example.test",
+        "cityName": "Ankara",
+        "districtName": "Altındağ",
+        "neighborhoodName": "Karapürçek Mah",
+        "addressDetail": "Fake Sokak No:1",
+        "displayAddressText": "Karapürçek Mah (Fake Sokak No:1) Altındağ/Ankara",
+        "phoneNumber": "05550000000",
+        "identityNumber": null,
+        "invoiceType": 1,
+        "companyName": null,
+        "taxNumber": null,
+        "taxOffice": null,
+        "isEInvoiceObliged": false,
+        "postalCode": "06360"
+      },
+      "items": [
+        {
+          "orderItemId": "d5f968f9-7ca2-4670-bcc7-407cb1539241",
+          "orderItemStatus": 8,
+          "orderItemStatusName": "İade Onaylandı",
+          "orderItemStatusHistory": [
+            { "historyStatus": 3, "historyStatusName": "Siparişiniz Alındı", "historyCreatedDate": "2026-02-17T17:23:33.16+03:00" },
+            { "historyStatus": 12, "historyStatusName": "Siparişiniz Hazırlanıyor", "historyCreatedDate": "2026-02-17T17:24:54.865+03:00" },
+            { "historyStatus": 5, "historyStatusName": "Siparişiniz Kargoya Verildi", "historyCreatedDate": "2026-04-09T14:25:39.02+03:00" },
+            { "historyStatus": 11, "historyStatusName": "Teslim Edildi", "historyCreatedDate": "2026-04-09T14:25:48.526+03:00" },
+            { "historyStatus": 8, "historyStatusName": "İade Onaylandı", "historyCreatedDate": "2026-04-09T15:00:25.669+03:00" }
+          ],
+          "shipmentCode": "PZ00250056371",
+          "estimatedShippingDate": "2026-02-18T19:00:00+03:00",
+          "shipmentCost": { "currency": "TL", "value": 0, "valueInt": 0, "valueString": "0,00 TL", "wholePartString": "0", "fractionPartString": "00", "decimalSeparator": "," },
+          "deliveryType": 1,
+          "deliveryDetail": null,
+          "quantity": 1,
+          "listPrice": { "currency": "TL", "value": 9, "valueInt": 900, "valueString": "9,00 TL", "wholePartString": "9", "fractionPartString": "00", "decimalSeparator": "," },
+          "salePrice": { "currency": "TL", "value": 7, "valueInt": 700, "valueString": "7,00 TL", "wholePartString": "7", "fractionPartString": "00", "decimalSeparator": "," },
+          "taxAmount": { "currency": "TL", "value": 0.07, "valueInt": 7, "valueString": "0,07 TL", "wholePartString": "0", "fractionPartString": "07", "decimalSeparator": "," },
+          "shipmentAmount": { "currency": "TL", "value": 0, "valueInt": 0, "valueString": "0,00 TL", "wholePartString": "0", "fractionPartString": "00", "decimalSeparator": "," },
+          "totalPrice": { "currency": "TL", "value": 7, "valueInt": 700, "valueString": "7,00 TL", "wholePartString": "7", "fractionPartString": "00", "decimalSeparator": "," },
+          "discountAmount": { "currency": "TL", "value": 0, "valueInt": 0, "valueString": "0,00 TL", "wholePartString": "0", "fractionPartString": "00", "decimalSeparator": "," },
+          "discountDescription": "",
+          "taxIncluded": true,
+          "cargo": { "companyId": "6d6e004a-23b1-43d1-4d30-08d8e87e3449", "companyName": "Aras Kargo", "trackingNumber": "655675687", "trackingUrl": "www.araskargo.com" },
+          "product": {
+            "productId": "2bd93964-fccd-44a6-9511-97446189ee18",
+            "name": "yeni ürün test ürünü ",
+            "title": null,
+            "url": "yeni-urun-test-urunu-p-testurunu001?magaza=quality-kafasi-test",
+            "imageURL": "https://img.pzrmcdn.com/asset/testurunu001/images/yenirntestrn-111277be2-d42b-4995-e22c-08de3e7d24cf.png",
+            "variantOptionDisplay": "Siyah",
+            "stockCode": "212",
+            "code": "testurunu001",
+            "vatRate": 1
+          },
+          "sellerAddressId": "2e4a57c4-1099-4440-7448-08dd157f4251",
+          "laborCostPerItem": { "currency": "TL", "value": 0, "valueInt": 0, "valueString": "0,00 TL", "wholePartString": "0", "fractionPartString": "00", "decimalSeparator": "," },
+          "laborCostUpdateable": false,
+          "packageNumber": 0
+        }
+      ],
+      "plusOrder": true,
+      "channelCode": 2,
+      "channelCodeName": "Pazarama"
+    }
+  ]
+}

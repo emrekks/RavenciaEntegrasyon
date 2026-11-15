@@ -1,0 +1,121 @@
+{
+  "Items": [
+    {
+      "ExternalClaimId": "98765",
+      "ExternalOrderId": "205412345678",
+      "RawStatus": "WaitingInAction",
+      "ReasonCode": "DEFECTIVE",
+      "ReasonText": "Ürün kusurlu",
+      "ActionDueAt": null,
+      "LastModifiedAt": "2026-10-09T21:00:00+00:00",
+      "Lines": [
+        {
+          "ExternalLineId": "98765",
+          "ExternalOrderLineId": "",
+          "Quantity": 2,
+          "AlternateExternalOrderLineIds": null,
+          "RawStatus": "WaitingInAction",
+          "AcceptDetail": null,
+          "Note": null,
+          "Resolved": null,
+          "AcceptedBySeller": null,
+          "ProductCode": "4455667788",
+          "StockCode": null
+        }
+      ],
+      "RawJson": "<raw 295 chars sha256:dacaf31b5b60>",
+      "CargoProviderName": "Yurtiçi Kargo",
+      "CargoTrackingNumber": "YK123",
+      "CargoTrackingLink": null,
+      "OrderCreatedAt": "2026-10-09T21:00:00+00:00",
+      "ActionDueAtEstimated": false,
+      "RejectedPackageState": null,
+      "DecidedAt": null,
+      "CustomerRequest": null,
+      "ResolvedWith": null,
+      "RequestedAt": "2026-10-09T21:00:00+00:00"
+    },
+    {
+      "ExternalClaimId": "98766",
+      "ExternalOrderId": "205412345679",
+      "RawStatus": "Created",
+      "ReasonCode": "WRONG_SIZE",
+      "ReasonText": "Beden uymadı",
+      "ActionDueAt": null,
+      "LastModifiedAt": "2026-10-10T21:00:00+00:00",
+      "Lines": [
+        {
+          "ExternalLineId": "98766",
+          "ExternalOrderLineId": "",
+          "Quantity": 0,
+          "AlternateExternalOrderLineIds": null,
+          "RawStatus": "Created",
+          "AcceptDetail": null,
+          "Note": null,
+          "Resolved": null,
+          "AcceptedBySeller": null,
+          "ProductCode": "4455667799",
+          "StockCode": null
+        }
+      ],
+      "RawJson": "<raw 219 chars sha256:5c3588642946>",
+      "CargoProviderName": null,
+      "CargoTrackingNumber": null,
+      "CargoTrackingLink": null,
+      "OrderCreatedAt": "2026-10-10T21:00:00+00:00",
+      "ActionDueAtEstimated": false,
+      "RejectedPackageState": null,
+      "DecidedAt": null,
+      "CustomerRequest": null,
+      "ResolvedWith": null,
+      "RequestedAt": "2026-10-10T21:00:00+00:00"
+    },
+    {
+      "ExternalClaimId": "98767",
+      "ExternalOrderId": "205412345680",
+      "RawStatus": "SOME_FUTURE_STATE",
+      "ReasonCode": null,
+      "ReasonText": null,
+      "ActionDueAt": null,
+      "LastModifiedAt": "2026-10-11T21:00:00+00:00",
+      "Lines": [
+        {
+          "ExternalLineId": "98767",
+          "ExternalOrderLineId": "",
+          "Quantity": 1,
+          "AlternateExternalOrderLineIds": null,
+          "RawStatus": "SOME_FUTURE_STATE",
+          "AcceptDetail": null,
+          "Note": null,
+          "Resolved": null,
+          "AcceptedBySeller": null,
+          "ProductCode": "4455667700",
+          "StockCode": null
+        }
+      ],
+      "RawJson": "<raw 150 chars sha256:faa019b74e06>",
+      "CargoProviderName": null,
+      "CargoTrackingNumber": null,
+      "CargoTrackingLink": null,
+      "OrderCreatedAt": "2026-10-11T21:00:00+00:00",
+      "ActionDueAtEstimated": false,
+      "RejectedPackageState": null,
+      "DecidedAt": null,
+      "CustomerRequest": null,
+      "ResolvedWith": null,
+      "RequestedAt": "2026-10-11T21:00:00+00:00"
+    }
+  ],
+  "NextCursor": "1",
+  "HasMore": true,
+  "TotalCount": null,
+  "Issues": [
+    {
+      "Code": "RETURN_CLAIM_INVALID",
+      "Identity": "unknown",
+      "Message": "N11 iadesi içeri alınmadı: iade veya sipariş numarası yok.",
+      "RereadOrderId": null
+    }
+  ],
+  "LastModifiedSeen": null
+}

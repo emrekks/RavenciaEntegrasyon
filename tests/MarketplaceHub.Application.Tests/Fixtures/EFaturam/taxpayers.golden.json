@@ -1,0 +1,25 @@
+{
+  "registered": {
+    "State": "Registered",
+    "Title": "FAKE TICARET A.S.",
+    "InvoiceAliases": [
+      {
+        "Alias": "urn:mail:defaultpk@example.test",
+        "PostBoxType": "PK"
+      }
+    ],
+    "ErrorCode": null
+  },
+  "otherTaxId": {
+    "State": "Unknown",
+    "Title": null,
+    "InvoiceAliases": [],
+    "ErrorCode": "EINVOICE_TAXPAYER_IDENTITY_MISMATCH"
+  },
+  "deletedOnly": {
+    "State": "Unknown",
+    "Title": null,
+    "InvoiceAliases": [],
+    "ErrorCode": "EINVOICE_TAXPAYER_NO_INVOICE_ALIAS"
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "documented": {
+    "ExternalOperationId": "c57e3453-2c00-11f0-aa3a-be9298facace-1746718627",
+    "Status": "COMPLETED",
+    "Lines": [
+      {
+        "ExternalKey": "11111111111",
+        "Succeeded": true,
+        "ExternalId": null,
+        "ErrorCode": null,
+        "Retryable": false,
+        "Status": null,
+        "Reasons": null
+      }
+    ],
+    "UnlistedLinesUnconfirmed": false,
+    "IssueCode": null,
+    "IssueSummary": null,
+    "ReportedItemCount": 1
+  },
+  "partial": {
+    "ExternalOperationId": "00000000-0000-4000-8000-00000000b001-1762300800",
+    "Status": "IN_PROGRESS",
+    "Lines": [
+      {
+        "ExternalKey": "0000000000041",
+        "Succeeded": true,
+        "ExternalId": null,
+        "ErrorCode": null,
+        "Retryable": false,
+        "Status": null,
+        "Reasons": null
+      },
+      {
+        "ExternalKey": "0000000000042",
+        "Succeeded": false,
+        "ExternalId": null,
+        "ErrorCode": "Satış fiyatı 0 olamaz.",
+        "Retryable": false,
+        "Status": null,
+        "Reasons": [
+          "Satış fiyatı 0 olamaz.",
+          "Liste fiyatı satış fiyatından küçük olamaz."
+        ]
+      }
+    ],
+    "UnlistedLinesUnconfirmed": false,
+    "IssueCode": null,
+    "IssueSummary": null,
+    "ReportedItemCount": 3
+  }
+}

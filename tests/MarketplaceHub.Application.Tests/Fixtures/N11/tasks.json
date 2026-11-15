@@ -1,0 +1,17 @@
+// Source: n11 price/stock task answers (developer.n11.com "Fiyat ve Stok Güncelleme" / task detail, no offline copy), the
+// shapes N11PriceInventoryTests uses. One answer per key: submit accepted (async task id), submit rejected, task detail
+// with one SKU succeeded and one failed (partial success), still queued, and an unknown task status.
+{
+  "submittedQueued": { "id": 1092, "type": "SKU_UPDATE", "status": "IN_QUEUE", "reasons": [ "1 sku işlenmeye alındı." ] },
+  "submittedRejected": { "id": 1093, "type": "SKU_UPDATE", "status": "REJECT", "reasons": [ "listPrice, salePrice'dan düşük olamaz." ] },
+  "detailPartly": {
+    "taskId": 1095,
+    "skus": { "content": [
+      { "id": 1585, "taskId": 1095, "itemCode": "1234567m", "status": "SUCCESS", "reasons": [ "Başarıyla tamamlandı." ] },
+      { "id": 1586, "taskId": 1095, "itemCode": "1234567s", "status": "FAIL", "reasons": [ "Ürün bulunamadı." ] }
+    ] },
+    "status": "PROCESSED"
+  },
+  "detailQueued": { "taskId": 1096, "skus": { "content": [] }, "status": "IN_QUEUE" },
+  "detailUnknown": { "taskId": 1097, "skus": { "content": [] }, "status": "SOME_FUTURE_TASK_STATUS" }
+}

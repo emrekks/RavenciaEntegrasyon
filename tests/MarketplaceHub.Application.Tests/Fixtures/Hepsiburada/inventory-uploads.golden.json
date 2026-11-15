@@ -1,0 +1,46 @@
+{
+  "uploadId": "71",
+  "statuses": {
+    "processing": {
+      "ExternalOperationId": "LISTING_INVENTORY:71",
+      "Status": "IN_PROGRESS",
+      "Lines": [],
+      "UnlistedLinesUnconfirmed": false,
+      "IssueCode": null,
+      "IssueSummary": null,
+      "ReportedItemCount": null
+    },
+    "completedPartly": {
+      "ExternalOperationId": "LISTING_INVENTORY:71",
+      "Status": "COMPLETED",
+      "Lines": [
+        {
+          "ExternalKey": "SKU-FAKE-HB2",
+          "Succeeded": false,
+          "ExternalId": "HBV00000FAKE2",
+          "ErrorCode": "OutOfPriceRange",
+          "Retryable": false,
+          "Status": "REJECTED",
+          "Reasons": null
+        }
+      ],
+      "UnlistedLinesUnconfirmed": false,
+      "IssueCode": null,
+      "IssueSummary": null,
+      "ReportedItemCount": null
+    },
+    "failedWhole": {
+      "ExternalOperationId": "LISTING_INVENTORY:71",
+      "Status": "REJECTED",
+      "Lines": [],
+      "UnlistedLinesUnconfirmed": false,
+      "IssueCode": null,
+      "IssueSummary": null,
+      "ReportedItemCount": null
+    },
+    "unknownStatus": {
+      "Refused": "JsonException",
+      "Message": "Hepsiburada listing yükleme durumu tanınmıyor."
+    }
+  }
+}

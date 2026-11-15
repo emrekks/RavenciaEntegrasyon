@@ -1,0 +1,97 @@
+// Source: hand-built on the documented fields of Ravencia-API-Docs/hepsiburada-api-son.md "Ödemesi Tamamlanmış
+// Siparişleri Listeleme" (~8391-9100: totalCount/limit/offset/pageCount, items.id, sku, orderId, orderNumber, orderDate,
+// dueDate, lastStatusUpdateDate, quantity, merchantId, totalPrice/unitPrice {currency, amount}, vatRate, customerName,
+// status Open/Unpacked, shippingAddress, invoice{turkishIdentityNumber, taxNumber, taxOffice, address{...}}), with
+// merchant discount fields from "Paket Bilgilerini Listeleme" (unitMerchantDiscount/totalMerchantDiscount). Hepsiburada
+// writes Istanbul local times without an offset. Personal fields are fake.
+// Line 1: multi-quantity with a merchant discount. Line 2: no status field. Line 3: amounts and quantity as text.
+// Line 4: no orderDate (refused). Line 5: no orderNumber (refused).
+{
+  "totalCount": 5,
+  "limit": 50,
+  "offset": 0,
+  "pageCount": 1,
+  "items": [
+    {
+      "id": "00000000-0000-4000-8000-0000000000c1",
+      "sku": "HBV00000FAKE1",
+      "merchantSku": "SKU-FAKE-HB1",
+      "orderId": "00000000-0000-4000-8000-0000000000d1",
+      "orderNumber": "4000000001",
+      "orderDate": "2026-11-05T14:30:00",
+      "dueDate": "2026-11-07T23:59:00",
+      "lastStatusUpdateDate": "2026-11-05T14:35:10",
+      "quantity": 3,
+      "merchantId": "00000000-0000-4000-8000-0000000000e1",
+      "totalPrice": { "currency": "TRY", "amount": 300.0 },
+      "unitPrice": { "currency": "TRY", "amount": 100.0 },
+      "unitMerchantDiscount": { "currency": "TRY", "amount": 10.0 },
+      "totalMerchantDiscount": { "currency": "TRY", "amount": 30.0 },
+      "vat": 45.0,
+      "vatRate": 20,
+      "customerName": "Test Musteri",
+      "status": "Open",
+      "name": "Fake HB Ürün 1",
+      "shippingAddress": { "addressId": "addr-fake-1", "address": "Fake Sokak 1", "name": "Test Musteri", "email": "customer@example.test", "countryCode": "TR", "phoneNumber": "5550000000", "district": "Fake Mahalle", "city": "İstanbul", "town": "Kadıköy" },
+      "invoice": {
+        "turkishIdentityNumber": "00000000000",
+        "taxNumber": "",
+        "taxOffice": "",
+        "address": { "addressId": "addr-fake-2", "address": "Fake Sokak 1", "name": "Test Musteri", "email": "customer@example.test", "countryCode": "TR", "phoneNumber": "5550000000", "district": "Fake Mahalle", "city": "İstanbul", "town": "Kadıköy" }
+      },
+      "sapNumber": "1",
+      "dispatchTime": 2,
+      "commission": { "currency": "TRY", "amount": 27.0 }
+    },
+    {
+      "id": "00000000-0000-4000-8000-0000000000c2",
+      "sku": "HBV00000FAKE2",
+      "merchantSku": "SKU-FAKE-HB2",
+      "orderNumber": "4000000002",
+      "orderDate": "2026-11-05T09:00:00",
+      "quantity": 1,
+      "totalPrice": { "currency": "TRY", "amount": 50.0 },
+      "unitPrice": { "currency": "TRY", "amount": 50.0 },
+      "vatRate": 10,
+      "customerName": "Test Musteri",
+      "name": "Fake HB Ürün 2"
+    },
+    {
+      "id": "00000000-0000-4000-8000-0000000000c3",
+      "sku": "HBV00000FAKE3",
+      "merchantSku": "SKU-FAKE-HB3",
+      "orderNumber": "4000000003",
+      "orderDate": "2026-11-05T09:00:00+03:00",
+      "quantity": "2",
+      "totalPrice": { "currency": "TRY", "amount": "79.90" },
+      "unitPrice": { "currency": "TRY", "amount": "39.95" },
+      "vatRate": "20",
+      "status": "SomeFutureStatus",
+      "name": "Fake HB Ürün 3"
+    },
+    {
+      "id": "00000000-0000-4000-8000-0000000000c4",
+      "sku": "HBV00000FAKE4",
+      "merchantSku": "SKU-FAKE-HB4",
+      "orderNumber": "4000000004",
+      "quantity": 1,
+      "totalPrice": { "currency": "TRY", "amount": 10.0 },
+      "unitPrice": { "currency": "TRY", "amount": 10.0 },
+      "vatRate": 20,
+      "status": "Open",
+      "name": "Fake HB Ürün 4"
+    },
+    {
+      "id": "00000000-0000-4000-8000-0000000000c5",
+      "sku": "HBV00000FAKE5",
+      "merchantSku": "SKU-FAKE-HB5",
+      "orderDate": "2026-11-05T09:00:00",
+      "quantity": 1,
+      "totalPrice": { "currency": "TRY", "amount": 10.0 },
+      "unitPrice": { "currency": "TRY", "amount": 10.0 },
+      "vatRate": 20,
+      "status": "Open",
+      "name": "Fake HB Ürün 5"
+    }
+  ]
+}

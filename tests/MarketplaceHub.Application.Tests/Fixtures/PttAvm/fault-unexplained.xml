@@ -1,0 +1,2 @@
+// Source: the cause-less fault PttAVM answered to reads on 31 Oct 2026 ("Bilinmeyen bir hata oluştu.", PttAvmSoap.FaultError).
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><s:Fault><faultcode>s:Server</faultcode><faultstring>Bilinmeyen bir hata oluştu.</faultstring></s:Fault></s:Body></s:Envelope>
