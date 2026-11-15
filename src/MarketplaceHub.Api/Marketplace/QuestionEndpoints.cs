@@ -136,7 +136,7 @@ public static class QuestionEndpoints
     private static bool TryVersion(string? value, out long version)
     {
         version = 0;
-        return value is { Length: >= 5 }
+        return value is { Length: >= 4 }
             && value.StartsWith("\"v", StringComparison.Ordinal)
             && value.EndsWith('"')
             && long.TryParse(value[2..^1], out version)
