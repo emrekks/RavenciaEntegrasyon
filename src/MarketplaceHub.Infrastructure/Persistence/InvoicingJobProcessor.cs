@@ -2718,7 +2718,8 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
     private async Task EnqueueAutomaticJob(Guid tenantId, Guid connectionId, Guid invoiceId, string jobType, string suffix, string correlationId, CancellationToken cancellationToken)
     {
         var dedup = $"{jobType}:{invoiceId}:{suffix}";
-        if (await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.JobType == jobType && x.JobDedupKey == dedup, cancellationToken)) return;
+        // The key first, then the delivery hold, then the priority lookup: a key already taken costs no further query.
+        if (await Jobs.JobEnqueuer.KeyTakenAsync(db, tenantId, jobType, dedup, cancellationToken)) return;
         // At most one delivery job of an invoice waits, runs or sits in review at a time, whatever key started it: a
         // later trigger adds none next to it. The owner's own retry (its key carries "delivery-retry:manual:") is not held
         // by a job in review, only by one that still runs.

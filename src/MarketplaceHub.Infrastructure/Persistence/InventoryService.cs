@@ -309,12 +309,11 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
         var build = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, variantId);
         if (!build.Succeeded) return ServiceResult<Guid>.Fail(build.Error!.Code, build.Error.Message, build.Error.Status, build.Error.FieldErrors);
         var draft = build.Value!; var dedup = PriceInventoryOutboxPolicy.DedupKey(connectionId, draft.Lines);
-        var existing = await StandingPriceInventoryJobAsync(tenantId, dedup, cancellationToken);
-        if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
         var id = Guid.CreateVersion7(); var now = timeProvider.GetUtcNow();
         var payload = JsonSerializer.Serialize(new PriceInventoryJobPayload(id, connectionId, "SUBMIT", draft.PayloadHash, draft.PayloadJson, draft.Lines, null, null, variantId, null, manual, Trigger: PriceStockSendTriggers.PanelSend));
         var writeDelay = pricePolicy is null || manual ? 0 : Math.Clamp(pricePolicy.IntervalSeconds, 0, 86_400);
-        Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, connectionId, MarketplaceJobTypes.PriceInventorySync, payload, dedup, correlationId, now.AddSeconds(writeDelay)) { Id = id, EffectIdempotencyKey = $"{dedup}:{Hash(idempotencyKey.Trim())}", Priority = JobPriorityPolicy.ForUser(MarketplaceJobTypes.PriceInventorySync), TriggerType = "user", MaxAttempts = 10, CreatedAt = now });
+        var enqueued = await Jobs.JobEnqueuer.EnqueueAsync(db, new IntegrationJobRequest(tenantId, connectionId, MarketplaceJobTypes.PriceInventorySync, payload, dedup, correlationId, now.AddSeconds(writeDelay)) { Id = id, EffectIdempotencyKey = $"{dedup}:{Hash(idempotencyKey.Trim())}", Priority = JobPriorityPolicy.ForUser(MarketplaceJobTypes.PriceInventorySync), TriggerType = "user", MaxAttempts = 10, CreatedAt = now }, JobDedupPolicy.ReuseHeldElseRetire, cancellationToken);
+        if (!enqueued.Created) return ServiceResult<Guid>.Ok(enqueued.JobId);
         await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(id);
     }
 
@@ -359,11 +358,11 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
         var draft = build.Value!;
         var key = idempotencyKey.Trim();
         var dedup = $"{PriceInventoryOutboxPolicy.DedupKey(connection.Id, draft.Lines)}:sit:{Hash(key)[..32]}";
-        var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.PriceInventorySync && x.JobDedupKey == dedup, cancellationToken);
-        if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
         var id = Guid.CreateVersion7(); var now = timeProvider.GetUtcNow();
         var payload = JsonSerializer.Serialize(new PriceInventoryJobPayload(id, connection.Id, "SUBMIT", draft.PayloadHash, draft.PayloadJson, draft.Lines, null, null, variantId, null, Manual: true, Trigger: PriceStockSendTriggers.PanelSend));
-        Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, connection.Id, MarketplaceJobTypes.PriceInventorySync, payload, dedup, correlationId, now) { Id = id, EffectIdempotencyKey = $"{dedup}:{Hash(key)}", Priority = JobPriorityPolicy.ForUser(MarketplaceJobTypes.PriceInventorySync), TriggerType = "user", MaxAttempts = 10, CreatedAt = now });
+        // Each click is its own upload (the key carries the Idempotency-Key): the same click again is that job, whatever its state.
+        var enqueued = await Jobs.JobEnqueuer.EnqueueAsync(db, new IntegrationJobRequest(tenantId, connection.Id, MarketplaceJobTypes.PriceInventorySync, payload, dedup, correlationId, now) { Id = id, EffectIdempotencyKey = $"{dedup}:{Hash(key)}", Priority = JobPriorityPolicy.ForUser(MarketplaceJobTypes.PriceInventorySync), TriggerType = "user", MaxAttempts = 10, CreatedAt = now }, JobDedupPolicy.ReuseAnyWithKey, cancellationToken);
+        if (!enqueued.Created) return ServiceResult<Guid>.Ok(enqueued.JobId);
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<Guid>.Ok(id);
     }
@@ -390,26 +389,13 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
         // A send of one part is a job of its own: a standing full send of the same values must not answer for it, nor
         // the other way round.
         var dedup = PriceInventoryOutboxPolicy.DedupKey(connectionId, draft.Lines) + (price && stock ? "" : price ? ":price" : ":stock");
-        var existing = await StandingPriceInventoryJobAsync(tenantId, dedup, cancellationToken);
-        if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
         var id = Guid.CreateVersion7();
         var now = timeProvider.GetUtcNow();
         var payload = JsonSerializer.Serialize(new PriceInventoryJobPayload(id, connectionId, "SUBMIT", draft.PayloadHash, draft.PayloadJson, draft.Lines, null, null, null, productId, Manual: true, Trigger: PriceStockSendTriggers.PanelSend, HoldPrice: !price, HoldStock: !stock));
-        Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, connectionId, MarketplaceJobTypes.PriceInventorySync, payload, dedup, correlationId, now) { Id = id, EffectIdempotencyKey = $"{dedup}:{Hash(idempotencyKey.Trim())}", Priority = JobPriorityPolicy.ForUser(MarketplaceJobTypes.PriceInventorySync), TriggerType = "user", MaxAttempts = 10, CreatedAt = now });
+        var enqueued = await Jobs.JobEnqueuer.EnqueueAsync(db, new IntegrationJobRequest(tenantId, connectionId, MarketplaceJobTypes.PriceInventorySync, payload, dedup, correlationId, now) { Id = id, EffectIdempotencyKey = $"{dedup}:{Hash(idempotencyKey.Trim())}", Priority = JobPriorityPolicy.ForUser(MarketplaceJobTypes.PriceInventorySync), TriggerType = "user", MaxAttempts = 10, CreatedAt = now }, JobDedupPolicy.ReuseHeldElseRetire, cancellationToken);
+        if (!enqueued.Created) return ServiceResult<Guid>.Ok(enqueued.JobId);
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<Guid>.Ok(id);
-    }
-
-    // Q-1/K-1: a queued, running or succeeded job of the same values is the answer to a send from the panel. A
-    // failed one (blocked, dead, cancelled, manual review) gives up its key, saved with the new job, so the
-    // values are sent again instead of the failed job being returned as if it had been queued.
-    private async Task<IntegrationJob?> StandingPriceInventoryJobAsync(Guid tenantId, string dedup, CancellationToken cancellationToken)
-    {
-        var existing = await db.IntegrationJobs.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.PriceInventorySync && x.JobDedupKey == dedup, cancellationToken);
-        if (existing is null || PriceInventoryOutboxPolicy.HoldsDedupKey(existing.Status)) return existing;
-        existing.JobDedupKey = PriceInventoryOutboxPolicy.RetiredDedupKey(dedup, existing.Id);
-        existing.Version++;
-        return null;
     }
 
     // A missing policy row means the flow was never switched off, the same rule the worker applies.

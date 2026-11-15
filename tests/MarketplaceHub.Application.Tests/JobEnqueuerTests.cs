@@ -139,4 +139,105 @@ public sealed class JobEnqueuerPostgreSqlTests(PostgreSqlTenantIsolationFixture 
             await cleanup.Tenants.Where(x => x.Id == tenantId).ExecuteDeleteAsync();
         }
     }
+
+    // ReuseHeldElseRetire, the rule the panel's price and stock sends kept in InventoryService.StandingPriceInventoryJobAsync
+    // (Q-1/K-1): a job that still holds its key (queued, running, retry waiting, succeeded) is the answer, nothing is added
+    // and nothing changes; a failed one gives up its key ("{key}:retired:{id}", one version up) in the same save as the
+    // new job; no job at all adds one.
+    [PostgreSqlFact]
+    public async Task ReuseHeldElseRetireReusesAHoldingJobAndRetiresAFailedOne()
+    {
+        var tenantId = await NewTenantAsync();
+        try
+        {
+            foreach (var status in Enum.GetValues<JobStatus>())
+            {
+                var key = $"held-{status}-{Guid.NewGuid():N}";
+                var request = new IntegrationJobRequest(tenantId, null, "TEST_HELD", "{}", key, "corr", DateTimeOffset.UtcNow);
+                Guid firstId;
+                await using (var db = fixture.CreateContext())
+                {
+                    var first = await JobEnqueuer.EnqueueAsync(db, request, JobDedupPolicy.ReuseHeldElseRetire, CancellationToken.None);
+                    Assert.True(first.Created);
+                    first.Job!.Status = status;
+                    await db.SaveChangesAsync();
+                    firstId = first.JobId;
+                }
+                var holds = status is JobStatus.Pending or JobStatus.Leased or JobStatus.RetryScheduled or JobStatus.Succeeded;
+                Assert.Equal(holds, PriceInventoryOutboxPolicy.HoldsDedupKey(status));
+                await using (var db = fixture.CreateContext())
+                {
+                    var again = await JobEnqueuer.EnqueueAsync(db, request with { Id = Guid.CreateVersion7() }, JobDedupPolicy.ReuseHeldElseRetire, CancellationToken.None);
+                    Assert.Equal(!holds, again.Created);
+                    if (holds)
+                    {
+                        Assert.Equal(firstId, again.JobId);
+                        Assert.DoesNotContain(db.ChangeTracker.Entries<IntegrationJob>(), entry => entry.State != EntityState.Unchanged);
+                    }
+                    else
+                    {
+                        Assert.NotEqual(firstId, again.JobId);
+                        var retired = Assert.Single(db.ChangeTracker.Entries<IntegrationJob>(), entry => entry.State == EntityState.Modified).Entity;
+                        Assert.Equal(firstId, retired.Id);
+                        Assert.Equal($"{key}:retired:{firstId:N}", retired.JobDedupKey);
+                        Assert.Equal(2, retired.Version);
+                    }
+                    await db.SaveChangesAsync();
+                }
+                await using (var db = fixture.CreateContext())
+                {
+                    var rows = await db.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenantId && x.JobDedupKey.StartsWith(key)).ToListAsync();
+                    Assert.Equal(holds ? 1 : 2, rows.Count);
+                    Assert.Single(rows, x => x.JobDedupKey == key);
+                }
+            }
+        }
+        finally
+        {
+            await DeleteTenantAsync(tenantId);
+        }
+    }
+
+    // KeyTakenAsync, the first check of the sites that run a check of their own before they add a job
+    // (InvoicingJobProcessor.EnqueueAutomaticJob, ReferenceSnapshotBackfill): the same tenant, type and key in any status.
+    [PostgreSqlFact]
+    public async Task KeyTakenFindsTheKeyInEveryStatusAndNothingElse()
+    {
+        var tenantId = await NewTenantAsync();
+        try
+        {
+            foreach (var status in Enum.GetValues<JobStatus>())
+            {
+                var key = $"taken-{status}-{Guid.NewGuid():N}";
+                await using var db = fixture.CreateContext();
+                var job = JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, null, "TEST_TAKEN", "{}", key, "corr", DateTimeOffset.UtcNow));
+                job.Status = status;
+                await db.SaveChangesAsync();
+                Assert.True(await JobEnqueuer.KeyTakenAsync(db, tenantId, "TEST_TAKEN", key, CancellationToken.None));
+                Assert.False(await JobEnqueuer.KeyTakenAsync(db, tenantId, "TEST_TAKEN_OTHER", key, CancellationToken.None));
+                Assert.False(await JobEnqueuer.KeyTakenAsync(db, tenantId, "TEST_TAKEN", key + ":2", CancellationToken.None));
+                Assert.False(await JobEnqueuer.KeyTakenAsync(db, Guid.CreateVersion7(), "TEST_TAKEN", key, CancellationToken.None));
+            }
+        }
+        finally
+        {
+            await DeleteTenantAsync(tenantId);
+        }
+    }
+
+    private async Task<Guid> NewTenantAsync()
+    {
+        var tenantId = Guid.CreateVersion7();
+        await using var setup = fixture.CreateContext();
+        setup.Tenants.Add(new Tenant { Id = tenantId, Code = $"enq-{Guid.NewGuid():N}", DisplayName = "enq", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow, Version = 1 });
+        await setup.SaveChangesAsync();
+        return tenantId;
+    }
+
+    private async Task DeleteTenantAsync(Guid tenantId)
+    {
+        await using var cleanup = fixture.CreateContext();
+        await cleanup.IntegrationJobs.Where(x => x.TenantId == tenantId).ExecuteDeleteAsync();
+        await cleanup.Tenants.Where(x => x.Id == tenantId).ExecuteDeleteAsync();
+    }
 }

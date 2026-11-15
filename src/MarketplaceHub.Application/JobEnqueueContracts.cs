@@ -38,7 +38,12 @@ public enum JobDedupPolicy
     // that is unique by construction: a timestamp, a Guid, a version). The job is added as it is.
     CallerChecked,
     // A row with the same key in any status is the job: nothing is added and its id is returned.
-    ReuseAnyWithKey
+    ReuseAnyWithKey,
+    // A row with the same key that still holds it (queued, running, waiting for a retry, or succeeded:
+    // PriceInventoryOutboxPolicy.HoldsDedupKey) is the job. A row that failed (blocked, dead, cancelled, manual review)
+    // gives up its key ("{key}:retired:{id}") in the caller's save, beside the new job (the panel's price and stock
+    // sends, Q-1/K-1). The automatic send retires by its own rule (AutomaticSendMayRetire) and does not use this.
+    ReuseHeldElseRetire
 }
 
 public static class IntegrationJobFactory
