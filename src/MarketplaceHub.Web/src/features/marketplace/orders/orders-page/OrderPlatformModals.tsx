@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../../../shared/api/api-answer'
 import { PanelSelect } from '../../../../shared/PanelSelect'
 import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -11,7 +12,7 @@ import { orderStatusLabel } from '../../order-status-tabs'
 import { formatPackageLabel } from '../../../../shared/package-label'
 import { Connection, Order, OrderLine, displayOrderNumber, orderDisplayShipment, productLineQuantity, returnDateText } from '../../shared'
 import { queryKeys } from '../../../../shared/api/query-keys'
-import { type OrderDetail, type IntegrationFeedbackHandler, customerDisplayName } from './order-page-helpers'
+import { type IntegrationFeedbackHandler, customerDisplayName } from './order-page-helpers'
 
 // An optional package field left empty is sent as null, so Hepsiburada's request leaves it out.
 function optionalText(value: FormDataEntryValue | null) {
@@ -49,7 +50,7 @@ export function HepsiburadaPackageCreateModal({ item, onClose, onCreated }: { it
     try {
       // The same key for a resend of the same form on the same order version (a lost answer reaches Hepsiburada once);
       // a corrected form, or any attempt after the server answered with an error (a 422), goes out with a new key.
-      const result = await sendWithVersionedIdempotencyKey(versionedIdempotencyKey('hb-package', item.id, item.version, body), key => hubApi<{ packageNumber: string }>(`/orders/${item.id}/packages`, {
+      const result = await sendWithVersionedIdempotencyKey(versionedIdempotencyKey('hb-package', item.id, item.version, body), key => hubApi<ApiAnswer<'postOrdersByIdPackages'>>(`/orders/${item.id}/packages`, {
         method: 'POST',
         headers: { 'Idempotency-Key': key, 'If-Match': `"v${item.version}"` },
         body,
@@ -88,7 +89,7 @@ export function ShopifyOrderCsvImportModal({ connections, onClose, onFeedback }:
       const body = new FormData()
       body.append('file', file)
       if (connectionId) body.append('connectionId', connectionId)
-      return hubApi<ShopifyOrderCsvImportResult>('/orders/shopify-csv-import', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body })
+      return hubApi<ApiAnswer<'postOrdersShopifyCsvImport'>>('/orders/shopify-csv-import', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body })
     },
     onSuccess: async value => {
       setResult(value)
@@ -150,7 +151,7 @@ export function ShopifyBulkStatusModal({ kind, items, onClose, onFeedback, onUpd
           try {
             if (item.platformCode !== 'SHOPIFY') throw new Error('Bu işlem yalnızca Shopify siparişlerinde kullanılabilir.')
             if (isInvoice) {
-              const order = await hubApi<OrderDetail>(`/orders/${item.id}`)
+              const order = await hubApi<ApiAnswer<'getOrdersById'>>(`/orders/${item.id}`)
               if (order.platformCode !== 'SHOPIFY') throw new Error('Sipariş Shopify bağlantısına ait değil.')
               const packageId = orderDisplayShipment(order)?.id
               if (!packageId) throw new Error('Fatura durumu için Shopify sipariş paketi bulunamadı.')

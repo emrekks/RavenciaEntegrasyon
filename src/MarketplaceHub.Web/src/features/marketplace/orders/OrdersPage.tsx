@@ -1,4 +1,5 @@
 // Siparişler (/orders).
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { useEffect, useEffectEvent, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -21,11 +22,11 @@ import { readUrlChoice, readUrlList, readUrlNumber, readUrlText, useChangeEffect
 import { OrderMetricCards } from './OrderMetricCards'
 import { useMetricSource } from '../use-metric-source'
 import { useResendReminder } from './resend-reminder'
-import { orderCountText, orderTabCount, summaryMetric, type OrderFacets, type OrderSummary } from './order-summary'
+import { orderCountText, orderTabCount, summaryMetric, type OrderFacets } from './order-summary'
 import { orderExportNotice, ordersToExport, readAllOrderPages } from './order-export'
 import { applyFilterPatch } from './order-filter-apply'
 import { isCancelTab, tabDateFilters, tabKind } from './order-date-filters'
-import { activeDayCard, cancellationStores, dailyCancellationCounts, dayCardCloseFilters, dayCardFilters, microPendingParams, resentPendingParams, storeCounts, storeUnits, type DailyCancellationRow, type DashboardBootstrap, type DayCard } from './daily-cards'
+import { activeDayCard, cancellationStores, dailyCancellationCounts, dayCardCloseFilters, dayCardFilters, microPendingParams, resentPendingParams, storeCounts, storeUnits, type DayCard } from './daily-cards'
 import { Connection, IntegrationFeedback, Order, Page, ReturnColumnPop, ReturnHeadCell, ReturnPlatformPop, Shipment, displayOrderNumber, orderDisplayShipment, productLineQuantity } from '../shared'
 import { insideSelector, useDismissable } from '../../../shared/hooks/useDismissable'
 import { ListEmptyState } from '../../../shared/components/EmptyState'
@@ -81,7 +82,7 @@ async function loadOrderPage(filters: OrderFilters, limit: number, after: string
   if (filters.status !== 'ALL') params.set('status', filters.status)
   params.set('sort', filters.sort)
   if (!after && page > 1) params.set('page', String(page))
-  return hubApi<Page<Order>>(`/orders?${params.toString()}`, { signal })
+  return hubApi<ApiAnswer<'getOrders'>>(`/orders?${params.toString()}`, { signal })
 }
 // The list filters as query parameters (status, sort and paging aside): the list and its tab counters
 // read the same set (audit 2026-10-20 S12).
@@ -163,20 +164,20 @@ export function OrdersPage() {
   const summaryParams = orderFilterParams(orderQueryFilters).toString()
   // The column filters' counts: orders per platform and cargo under the other filters and the status tab.
   const facetParams = new URLSearchParams(summaryParams); if (orderQueryFilters.status !== 'ALL') facetParams.set('status', orderQueryFilters.status)
-  const facets = useQuery({ queryKey: queryKeys.orders('facets', facetParams.toString()), queryFn: ({ signal }) => hubApi<OrderFacets>(`/orders/facets?${facetParams.toString()}`, { signal }), staleTime: 30_000 })
+  const facets = useQuery({ queryKey: queryKeys.orders('facets', facetParams.toString()), queryFn: ({ signal }) => hubApi<ApiAnswer<'getOrdersFacets'>>(`/orders/facets?${facetParams.toString()}`, { signal }), staleTime: 30_000 })
   const facetCounts = (key: keyof OrderFacets) => facets.isError ? undefined : facets.data?.[key] ?? null
   // The cancellation cards count today (the Istanbul day) whatever the list's filters are; the cancellations
   // are the Genel Bakış card's own rows, so both count them the same way.
   const day = istanbulDateKey()
   // The resends that have not been handed to the carrier, counted as the Yeniden Gönderimler list counts them, per store.
-  const resentNotShipped = useQuery({ queryKey: queryKeys.orders('summary', 'resent-not-shipped'), queryFn: ({ signal }) => hubPoll<OrderSummary>(`/orders/summary?${resentPendingParams()}`, { signal }), staleTime: 30_000, refetchInterval: 60_000 })
+  const resentNotShipped = useQuery({ queryKey: queryKeys.orders('summary', 'resent-not-shipped'), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getOrdersSummary'>>(`/orders/summary?${resentPendingParams()}`, { signal }), staleTime: 30_000, refetchInterval: 60_000 })
   // The micro-export card: the pending micro-export orders (not yet handed to the carrier, any day) and their countries.
-  const microPending = useQuery({ queryKey: queryKeys.orders('summary', 'micro-pending'), queryFn: ({ signal }) => hubPoll<OrderSummary>(`/orders/summary?${microPendingParams()}`, { signal }), staleTime: 30_000, refetchInterval: 60_000 })
-  const cancellationsToday = useQuery({ queryKey: queryKeys.dashboard('cancellations', day), queryFn: ({ signal }) => hubPoll<{ stores: DailyCancellationRow[] }>(`/dashboard/cancellations?day=${day}`, { signal }), staleTime: 30_000, refetchInterval: 60_000 })
+  const microPending = useQuery({ queryKey: queryKeys.orders('summary', 'micro-pending'), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getOrdersSummary'>>(`/orders/summary?${microPendingParams()}`, { signal }), staleTime: 30_000, refetchInterval: 60_000 })
+  const cancellationsToday = useQuery({ queryKey: queryKeys.dashboard('cancellations', day), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getDashboardCancellations'>>(`/dashboard/cancellations?day=${day}`, { signal }), staleTime: 30_000, refetchInterval: 60_000 })
   const todayCancellations = dailyCancellationCounts(cancellationsToday.data?.stores)
-  const summary = useQuery({ queryKey: queryKeys.orders('summary', 'filtered', summaryParams), queryFn: ({ signal }) => hubApi<OrderSummary>(summaryParams ? `/orders/summary?${summaryParams}` : '/orders/summary', { signal }), placeholderData: keepPreviousData })
+  const summary = useQuery({ queryKey: queryKeys.orders('summary', 'filtered', summaryParams), queryFn: ({ signal }) => hubApi<ApiAnswer<'getOrdersSummary'>>(summaryParams ? `/orders/summary?${summaryParams}` : '/orders/summary', { signal }), placeholderData: keepPreviousData })
   // The bootstrap names the stores of the cards' hover lists; its unfiltered late total is never shown for the list.
-  const lateOrdersQuery = useQuery({ queryKey: queryKeys.dashboardBootstrap(), queryFn: ({ signal }) => hubApi<DashboardBootstrap>('/dashboard/bootstrap', { signal }), staleTime: 30_000 })
+  const lateOrdersQuery = useQuery({ queryKey: queryKeys.dashboardBootstrap(), queryFn: ({ signal }) => hubApi<ApiAnswer<'getDashboardBootstrap'>>('/dashboard/bootstrap', { signal }), staleTime: 30_000 })
   // The Yeni Sipariş and İşleme Alınan cards' products per store: the filtered summary's units, named by the bootstrap's stores.
   const newUnits = storeUnits(summary.data?.newUnitsByConnection, lateOrdersQuery.data?.channels, summary.data?.newByConnection)
   const processingUnits = storeUnits(summary.data?.processingUnitsByConnection, lateOrdersQuery.data?.channels, summary.data?.processingByConnection)

@@ -1,4 +1,5 @@
 // Gönderi ayrıntısı (/shipments/:id); the old /shipments list redirects to the Kargoda tab of Siparişler.
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { Fragment, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -12,12 +13,10 @@ import { appendNotification, notificationError, notificationLinks, sentenceTitle
 import { formatDate } from '../../../shared/format-date'
 import { formatMoney } from '../../../shared/format-money'
 import { formatPackageLabel } from '../../../shared/package-label'
-import { Badge, DateText, Shipment, notificationKindFromMessage } from '../shared'
+import { Badge, DateText, notificationKindFromMessage } from '../shared'
 import { titleTr } from '../../../shared/ui/rr-components'
 import { queryKeys } from '../../../shared/api/query-keys'
 
-type ShipmentDetail = { package: Shipment; allowedActions: string[]; supportedLabelFormats: string[]; isStageConnection: boolean; platformCode: string; documents: Array<{ id: string; documentKind: string; format: string; source: string; documentVersion: number; createdAt: string; expiresAt: string | null }> }
-type RemoteCargoCompany = { shortName: string; name: string }
 // First controlled N11 write: one stock code at a time, then everything that
 // changed. Both go through the regular price-stock job and its N11 task check.
 // Every Pazarama package action changes the live store; the dialog says what it will do before it is queued.
@@ -55,8 +54,8 @@ function PazaramaFinancePanel({ orderId }: { orderId: string }) {
   </article>
 }
 export function ShipmentDetailPage() {
-  const { id = '' } = useParams(); const client = useQueryClient(); const [notice, setNotice] = useState(''); const [selectedCargoShortName, setSelectedCargoShortName] = useState(''); const [actionChoice, setActionChoice] = useState(''); const [labelFormat, setLabelFormat] = useState(''); const [probeCapability, setProbeCapability] = useState('LABEL_READ'); const query = useQuery({ queryKey: queryKeys.shipment(id), queryFn: ({ signal }) => hubApi<ShipmentDetail>(`/shipments/${id}`, { signal }) })
-  const carriers = useQuery({ queryKey: queryKeys.shipmentCarriers(id), queryFn: ({ signal }) => hubApi<RemoteCargoCompany[]>(`/shipments/${id}/changeable-cargo-companies`, { signal }), enabled: query.data?.platformCode === 'HEPSIBURADA' && query.data.allowedActions.includes('CHANGE_CARGO_PROVIDER'), retry: false })
+  const { id = '' } = useParams(); const client = useQueryClient(); const [notice, setNotice] = useState(''); const [selectedCargoShortName, setSelectedCargoShortName] = useState(''); const [actionChoice, setActionChoice] = useState(''); const [labelFormat, setLabelFormat] = useState(''); const [probeCapability, setProbeCapability] = useState('LABEL_READ'); const query = useQuery({ queryKey: queryKeys.shipment(id), queryFn: ({ signal }) => hubApi<ApiAnswer<'getShipmentsById'>>(`/shipments/${id}`, { signal }) })
+  const carriers = useQuery({ queryKey: queryKeys.shipmentCarriers(id), queryFn: ({ signal }) => hubApi<ApiAnswer<'getShipmentsByIdChangeableCargoCompanies'>>(`/shipments/${id}/changeable-cargo-companies`, { signal }), enabled: query.data?.platformCode === 'HEPSIBURADA' && query.data.allowedActions.includes('CHANGE_CARGO_PROVIDER'), retry: false })
   useEffect(() => { if (carriers.data?.length && !carriers.data.some(item => item.shortName === selectedCargoShortName)) setSelectedCargoShortName(carriers.data[0].shortName) }, [carriers.data, selectedCargoShortName])
   const shipmentRef = useRef(query.data)
   // The failed request's own title and code, kept until its notice is recorded.

@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../../../shared/api/api-answer'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../../../shared/api'
@@ -14,9 +15,8 @@ import { formatMoney } from '../../../../shared/format-money'
 import { orderDetailQueryKey } from '../order-query-keys'
 import { Connection, Order, displayOrderNumber, orderDisplayShipment } from '../../shared'
 import { queryKeys } from '../../../../shared/api/query-keys'
-import { type ProductImagePreview, type OrderDetail, type IntegrationFeedbackHandler, addressDataText } from './order-page-helpers'
+import { type ProductImagePreview, type IntegrationFeedbackHandler, addressDataText } from './order-page-helpers'
 
-type InvoiceViewer = { id: string; orderNumber: string; invoiceType: string; status: string; currency: string; payableTotal: number; taxTotal: number; invoiceNumber: string | null; lines: Array<{ id: string; description: string; sku: string | null; unit: string; quantity: number; vatRate: number; lineTotal: number }>; documents: Array<{ id: string; documentType: string; sha256: string }> }
 
 export function ProductImagePreviewModal({ preview, onClose }: { preview: ProductImagePreview; onClose: () => void }) {
   const sources = [...new Set([preview.url, ...(preview.fallbackUrls ?? []), preview.fallbackUrl].filter((value): value is string => Boolean(value)))]
@@ -29,7 +29,7 @@ function safeJson(value: string) { try { return JSON.parse(value || '{}') as Rec
 function addressText(value: string, platformCode = 'TRENDYOL') { const source = safeJson(value); return addressDataText([source.shipmentAddress, source.invoiceAddress, source.address].find(item => item && typeof item === 'object') as Record<string, unknown> | undefined ?? source, platformCode) }
 
 export function InvoiceInfoModal({ item, onClose }: { item: Order; onClose: () => void }) {
-  const detail = useQuery({ queryKey: orderDetailQueryKey(item.id), queryFn: ({ signal }) => hubApi<OrderDetail>(`/orders/${item.id}`, { signal }) })
+  const detail = useQuery({ queryKey: orderDetailQueryKey(item.id), queryFn: ({ signal }) => hubApi<ApiAnswer<'getOrdersById'>>(`/orders/${item.id}`, { signal }) })
   const order = detail.data
   const missing = (value: string | null | undefined) => value ? value : 'Bilgi gelmedi'
   return <RrModal crumb={displayOrderNumber(item.orderNumber)} title="Fatura ve Adres Bilgileri" hint="Faturayı başka bir yerde kestiyseniz Fatura İşlemleri › Fatura Yükle ile siparişe ekleyin. PDF, JPEG, JPG veya PNG kabul edilir." size="md" onClose={onClose} foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={onClose}>Kapat</button><button type="button" className="rr-btn rr-primary" disabled={!order} onClick={() => window.print()}><RrIcon name="print" />Yazdır</button></>}>
@@ -41,7 +41,7 @@ export function InvoiceInfoModal({ item, onClose }: { item: Order; onClose: () =
 }
 export function InvoiceDraftModal({ item, providers, onClose, onFeedback }: { item: Order; providers: Connection[]; onClose: () => void; onFeedback: IntegrationFeedbackHandler }) {
   const client = useQueryClient()
-  const detail = useQuery({ queryKey: orderDetailQueryKey(item.id), queryFn: ({ signal }) => hubApi<OrderDetail>(`/orders/${item.id}`, { signal }) })
+  const detail = useQuery({ queryKey: orderDetailQueryKey(item.id), queryFn: ({ signal }) => hubApi<ApiAnswer<'getOrdersById'>>(`/orders/${item.id}`, { signal }) })
   const order = detail.data
   const marketplace = providers.find(connection => connection.id === order?.connectionId)
   const provider = invoiceProviderForEnvironment(providers, marketplace?.environment)
@@ -54,7 +54,7 @@ export function InvoiceDraftModal({ item, providers, onClose, onFeedback }: { it
 }
 export function InvoiceViewerModal({ item, onClose }: { item: Order; onClose: () => void }) {
   const invoiceId = item.invoiceId
-  const detail = useQuery({ queryKey: queryKeys.invoiceViewer(invoiceId), queryFn: ({ signal }) => hubApi<InvoiceViewer>(`/invoices/${invoiceId}`, { signal }), enabled: !!invoiceId })
+  const detail = useQuery({ queryKey: queryKeys.invoiceViewer(invoiceId), queryFn: ({ signal }) => hubApi<ApiAnswer<'getInvoicesById'>>(`/invoices/${invoiceId}`, { signal }), enabled: !!invoiceId })
   const invoice = detail.data
   const money = (value: number) => formatMoney(value, invoice?.currency ?? item.currency)
   return <RrModal crumb="Fatura" title={displayOrderNumber(item.orderNumber)} desc={`${invoice?.invoiceNumber ?? 'Numara bekleniyor'}${invoice ? ` · ${titleTr(statusLabel(invoice.invoiceType))}` : ''}`} size="md" onClose={onClose} foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={onClose}>Kapat</button><button type="button" className="rr-btn rr-primary" disabled={!invoice} onClick={() => window.print()}><RrIcon name="print" />Yazdır</button></>}>
@@ -76,7 +76,7 @@ export function InvoiceUploadModal({ item, onClose, onFeedback }: { item: Order;
   const [savedDocumentId, setSavedDocumentId] = useState<string | null>(null)
   const [documentRequestKey, setDocumentRequestKey] = useState(() => `manual-invoice-document:${item.id}:${newIdempotencyKey()}`)
   const [dragging, setDragging] = useState(false)
-  const detail = useQuery({ queryKey: orderDetailQueryKey(item.id), queryFn: ({ signal }) => hubApi<OrderDetail>(`/orders/${item.id}`, { signal }) })
+  const detail = useQuery({ queryKey: orderDetailQueryKey(item.id), queryFn: ({ signal }) => hubApi<ApiAnswer<'getOrdersById'>>(`/orders/${item.id}`, { signal }) })
   const saveDocument = useMutation({
     mutationFn: async () => {
       if (Boolean(file) === Boolean(invoiceUrl.trim())) throw new Error('PDF dosyası veya HTTPS fatura bağlantısından yalnızca birini girin.')

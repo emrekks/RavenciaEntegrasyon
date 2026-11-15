@@ -2,9 +2,9 @@ import { useState } from 'react'
 import { ApiRequestError } from '../../../../shared/api'
 import { RrIcon } from '../../../../shared/ui/rr-components'
 import { notificationLinks, type NotificationContext } from '../../../../shared/notifications'
-import { type OrderBuyerType } from '../order-row-marks'
-import { IntegrationFeedback, Order, OrderLine, Shipment, displayOrderNumber } from '../../shared'
+import { IntegrationFeedback, Order, displayOrderNumber } from '../../shared'
 import { personName } from '../../../../shared/person-name'
+import type { ApiAnswer } from '../../../../shared/api/api-answer'
 
 export const invoiceCreationDisabledHelp = 'Fatura oluşturmak için Entegrasyonlar > bu bağlantı ayarlarından “Fatura oluşturma” seçeneğini açın.'
 export type ProductImagePreview = { url: string; fallbackUrl?: string | null; fallbackUrls?: string[]; title: string; modelCode?: string | null; variant?: string | null }
@@ -13,7 +13,7 @@ const invoiceCreationStatuses = new Set(['FATURA_BEKLIYOR', 'FATURA_INCELENECEK'
 export function isInvoicePending(item: Pick<Order, 'invoiceStatus'>) { return invoiceCreationStatuses.has(item.invoiceStatus) }
 export function isMicroExportLabelBlocked(item: Pick<Order, 'isMicroExport' | 'invoiceStatus'>) { return item.isMicroExport && isInvoicePending(item) }
 
-export type OrderDetail = { id: string; orderNumber: string; derivedStatus: string; currency: string; grossAmount: number; discountAmount: number; netAmount: number; orderedAt: string; connectionId: string | null; platformCode: string; platformDisplayName: string; customerName: string; customerEmail: string | null; customerPhone: string | null; customerTaxOrIdentityNumber: string | null; orderType: string; isMicroExport: boolean; isEInvoiceAvailable: boolean | null; shipmentAddressJson: string; invoiceAddressJson: string; shipmentDueAt: string | null; invoiceStatus: string; invoiceDocumentUrl: string | null; lines: OrderLine[]; packages: Shipment[]; version: number; buyerType?: OrderBuyerType | null }
+export type OrderDetail = ApiAnswer<'getOrdersById'>
 // The server could not confirm an action yet (it reads the marketplace and updates the panel) or
 // queued it because the marketplace quota was full: neither is a failure, and neither should be resent.
 export function isPendingAction(error: unknown): error is ApiRequestError {

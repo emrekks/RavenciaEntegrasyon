@@ -248,8 +248,7 @@ describe('returns page', () => {
       if (path.startsWith('/returns?')) return { items: [claim('5', { status: 'APPROVED', requestedAt: '2026-10-11T09:00:00Z' })], nextCursor: null, hasMore: false, totalCount: 1 }
       if (path === '/returns/5') {
         api.paths.push(path)
-        const { requestedAt: _requestedAt, ...detail } = claim('5', { status: 'APPROVED', allowedActions: [], stockDispositionAvailable: false, externalWritesEnabled: true, decisionPending: false, wholeClaimDecision: false, rejectNeedsReturnShipment: false, actionDueAtEstimated: false, customerRequest: null, lines: [] })
-        return detail
+        return claim('5', { status: 'APPROVED', allowedActions: [], stockDispositionAvailable: false, externalWritesEnabled: true, decisionPending: false, wholeClaimDecision: false, rejectNeedsReturnShipment: false, actionDueAtEstimated: false, customerRequest: null, lines: [] })
       }
       return original(path)
     })
