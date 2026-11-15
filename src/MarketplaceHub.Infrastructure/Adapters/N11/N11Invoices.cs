@@ -67,9 +67,8 @@ public sealed partial class N11HttpClient : IInvoiceMarketplacePort
             var stored = Text(root, "invoiceLink");
             var orderNumber = Text(root, "orderNumber");
             var invoiceNumber = Text(root, "invoiceNumber");
-            DateTimeOffset? issuedAt = root.TryGetProperty("invoiceDateTime", out var issued) && issued.ValueKind == JsonValueKind.Number && issued.TryGetInt64(out var milliseconds)
-                ? DateTimeOffset.FromUnixTimeMilliseconds(milliseconds)
-                : null;
+            // An epoch DateTimeOffset cannot hold is a missing date, not an exception past the JsonException catch below.
+            DateTimeOffset? issuedAt = root.TryGetProperty("invoiceDateTime", out var issued) ? RemoteJson.EpochMilliseconds(issued) : null;
             if (stored is null || orderNumber is null || invoiceNumber is null || issuedAt is null)
                 return new(null, stored, orderNumber, invoiceNumber, null, "N11 fatura linki için link, sipariş numarası, fatura numarası ve fatura tarihi gerekir.");
             var link = InvoiceDocumentLink.PdfAlias(stored);
