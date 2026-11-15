@@ -115,7 +115,11 @@ public sealed class JobStateMachineTests
         job.CompletedAt = Now.AddDays(-1);
         job.LastErrorCode = "X";
         job.LastErrorSummary = "Y";
+        job.ConflictCount = -3;
+        job.WaitingChecks = 2;
         JobStateMachine.Retry(db, job, Now, JobEvent.None);
+        Assert.Equal(0, job.ConflictCount);
+        Assert.Equal(2, job.WaitingChecks);
         Assert.Equal(JobStatus.RetryScheduled, job.Status);
         Assert.Equal(Now, job.AvailableAt);
         Assert.Equal(Now, job.RetriedAt);

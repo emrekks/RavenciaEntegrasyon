@@ -249,7 +249,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         }
 
         // The retry's attempt is spent on running the job: a busy lock or quota wait right after it keeps the attempt.
-        JobStateMachine.Retry(db, job, now, JobEvent.None);
+        JobStateMachine.Retry(db, job, now, JobEvent.Publish);
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<JobDetailView>.Ok(await DetailAsync(job, cancellationToken));
     }

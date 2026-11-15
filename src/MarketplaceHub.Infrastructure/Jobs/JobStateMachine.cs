@@ -77,7 +77,9 @@ public static class JobStateMachine
     }
 
     // An operator's retry of a stopped job: runnable at once with one more attempt, its error and lease cleared. The
-    // retry time starts the deferral and waiting allowances afresh (JobLeaseService.AllowanceAge).
+    // retry time starts the deferral and waiting allowances afresh (JobLeaseService.AllowanceAge), and the run of write
+    // conflicts starts again (a job sent to review for duplicates gets its duplicate retries back). The waiting checks
+    // stay: MaxAttempts - WaitingChecks is the job's own attempt budget.
     public static void Retry(AppDbContext db, IntegrationJob job, DateTimeOffset now, JobEvent jobEvent)
     {
         MoveTo(job, JobStatus.RetryScheduled);
@@ -87,6 +89,7 @@ public static class JobStateMachine
         job.LastErrorCode = null;
         job.LastErrorSummary = null;
         job.MaxAttempts = Math.Max(job.MaxAttempts, job.AttemptCount + 1);
+        job.ConflictCount = 0;
         job.RetriedAt = now;
         job.Version++;
         if (jobEvent == JobEvent.Publish) Publish(db, job, now);

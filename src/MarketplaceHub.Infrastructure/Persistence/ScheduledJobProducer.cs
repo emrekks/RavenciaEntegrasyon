@@ -446,7 +446,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 && (x.Status == JobStatus.Pending || x.Status == JobStatus.RetryScheduled))
             .ToListAsync(cancellationToken);
         foreach (var job in scheduledProductJobs)
-            JobStateMachine.Cancel(db, job, timeProvider.GetUtcNow(), code: null, summary: null, JobEvent.None);
+            JobStateMachine.Cancel(db, job, timeProvider.GetUtcNow(), code: null, summary: null, JobEvent.Publish);
 
         if (productPolicies.Count > 0 || scheduledProductJobs.Count > 0)
             await db.SaveChangesAsync(cancellationToken);
@@ -504,7 +504,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             .ToListAsync(cancellationToken);
         var now = timeProvider.GetUtcNow();
         foreach (var job in jobs)
-            JobStateMachine.Cancel(db, job, now, code: null, summary: null, JobEvent.None);
+            JobStateMachine.Cancel(db, job, now, code: null, summary: null, JobEvent.Publish);
 
         if (connectionSettingsChanged || disabledPolicies.Count > 0 || jobs.Count > 0)
             await db.SaveChangesAsync(cancellationToken);
