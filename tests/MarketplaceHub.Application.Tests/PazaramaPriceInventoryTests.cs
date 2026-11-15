@@ -313,6 +313,40 @@ public sealed class PazaramaPriceInventoryTests
         return (code, _) => outcome(code, status.Lines.SingleOrDefault(line => line.ExternalKey == code));
     }
 
+    // ADAPTOR-DIGER-3: a part answered "success" without a tracking id after another part was accepted keeps the accepted
+    // part's id; only that part is reported as not sent.
+    [Fact]
+    public async Task A_part_accepted_without_a_tracking_id_does_not_drop_the_parts_accepted_before_it()
+    {
+        var payload = PazaramaPriceInventoryRules.Payload([(Line("B0"), false, true), (Line("B1"), false, true)]);
+        var calls = 0;
+        Task<AdapterResult<JsonDocument>> Send(string path, string body, CancellationToken token) => Task.FromResult(++calls switch
+        {
+            1 => AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.Validation, "PAZARAMA_REQUEST_REJECTED", HeldMessage, null, null, null)),
+            2 => AdapterResult<JsonDocument>.Success(JsonDocument.Parse("""{"success":true,"data":"abc"}""")),
+            _ => AdapterResult<JsonDocument>.Success(JsonDocument.Parse("""{"success":true,"data":null}"""))
+        });
+
+        var result = await PazaramaHttpClient.PushAsync(PazaramaPriceInventoryRules.Split(payload)!, Send, () => DateTimeOffset.UnixEpoch, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("s:abc:1:0|s!:PAZARAMA_BATCH_ID_MISSING:1:1", result.Value!.ExternalOperationId);
+        var outcome = PazaramaBatchMapper.LineOutcomes(result.Value.ExternalOperationId, payload);
+        Assert.Equal("PAZARAMA_BATCH_ID_MISSING", outcome("B1", null).NotSentCode);
+    }
+
+    [Fact]
+    public async Task A_send_whose_only_part_has_no_tracking_id_still_fails_whole()
+    {
+        var payload = PazaramaPriceInventoryRules.Payload([(Line("B0"), false, true)]);
+        Task<AdapterResult<JsonDocument>> Send(string path, string body, CancellationToken token) =>
+            Task.FromResult(AdapterResult<JsonDocument>.Success(JsonDocument.Parse("""{"success":true,"data":null}""")));
+
+        var result = await PazaramaHttpClient.PushAsync(PazaramaPriceInventoryRules.Split(payload)!, Send, () => DateTimeOffset.UnixEpoch, CancellationToken.None);
+
+        Assert.Equal("PAZARAMA_BATCH_ID_MISSING", result.Error!.Code);
+    }
+
     [Fact]
     public async Task A_two_barcode_stock_request_refused_as_held_ends_with_the_unchanged_one_held_and_the_other_sent()
     {
