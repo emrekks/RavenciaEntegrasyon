@@ -1,3 +1,4 @@
+using MarketplaceHub.Api.Common;
 using MarketplaceHub.Api.Security;
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Ai;
@@ -25,14 +26,14 @@ public static class AiEndpoints
 
     public static IEndpointRouteBuilder MapAiEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var settings = endpoints.MapGroup("/api/v1/settings/ai");
+        var settings = endpoints.MapGroup("/api/v1/settings/ai").WithGates(ApiGate.Elevated, ApiGate.Elevated);
         settings.MapGet("", GetAsync);
         settings.MapPut("", SaveAsync);
         settings.MapPost("/test", TestAsync);
         settings.MapPost("/skills/{key}/upload", UploadSkillAsync).DisableAntiforgery();
         settings.MapGet("/usage", UsageAsync);
 
-        var products = endpoints.MapGroup("/api/v1/products/{id:guid}/size-chart");
+        var products = endpoints.MapGroup("/api/v1/products/{id:guid}/size-chart").WithGates(ApiGate.SignedIn, ApiGate.Operations);
         products.MapGet("", GetSizeChartAsync);
         products.MapPost("/generate", GenerateSizeChartAsync);
         products.MapPut("", MarkSizeChartAsync);

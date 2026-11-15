@@ -1,3 +1,4 @@
+using MarketplaceHub.Api.Common;
 using MarketplaceHub.Application;
 using static MarketplaceHub.Api.Common.EndpointHelpers;
 
@@ -7,7 +8,7 @@ public static class JobEndpoints
 {
     public static IEndpointRouteBuilder MapJobEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var api = endpoints.MapGroup("/api/v1/jobs");
+        var api = endpoints.MapGroup("/api/v1/jobs").WithGates(ApiGate.SignedIn, ApiGate.Elevated);
         api.MapGet("", async (HttpContext http, IJobOperationsService service, string? status, DateTimeOffset? since, string? jobTypes, int? limit, string? platform, string? platforms, string? ids) =>
             Tenant(http) is { } tenant
                 ? Results.Ok(await service.ListAsync(
@@ -65,7 +66,7 @@ public static class JobEndpoints
         api.MapPost("/{id:guid}/retry", async (Guid id, HttpContext http, IJobOperationsService service) =>
             Tenant(http) is { } tenant
                 ? RequireIdempotency(http) ?? Result(http, await service.RetryAsync(tenant.TenantId, id, http.RequestAborted))
-                : Unauthorized(http));
+                : Unauthorized(http)).RequireIdempotencyKey();
         api.MapPost("/{id:guid}/invoice-delivery-once", async (Guid id, OneTimeInvoiceDeliveryAction command, HttpContext http, IJobOperationsService service) =>
         {
             var tenant = Tenant(http);
@@ -81,11 +82,11 @@ public static class JobEndpoints
                 http.TraceIdentifier,
                 http.RequestAborted);
             return Result(http, result);
-        });
+        }).RequireIdempotencyKey();
         api.MapPost("/{id:guid}/cancel", async (Guid id, HttpContext http, IJobOperationsService service) =>
             Tenant(http) is { } tenant
                 ? RequireIdempotency(http) ?? Result(http, await service.CancelAsync(tenant.TenantId, id, http.RequestAborted))
-                : Unauthorized(http));
+                : Unauthorized(http)).RequireIdempotencyKey();
         return endpoints;
     }
 

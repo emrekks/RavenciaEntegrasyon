@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MarketplaceHub.Api.Common;
 using MarketplaceHub.Application;
 using static MarketplaceHub.Api.Common.EndpointHelpers;
 
@@ -11,7 +12,7 @@ public static class NotificationEndpoints
 {
     public static IEndpointRouteBuilder MapNotificationEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var api = endpoints.MapGroup("/api/v1/notifications");
+        var api = endpoints.MapGroup("/api/v1/notifications").WithGates(ApiGate.SignedIn, ApiGate.Working);
         // { items, nextCursor, hasMore }, newest first. categories and severities are comma lists; state is UNREAD or READ.
         api.MapGet("", async (HttpContext http, IPanelNotificationService service, int? limit, string? after, string? categories, string? severities,
             DateTimeOffset? from, DateTimeOffset? to, string? search, string? state) =>

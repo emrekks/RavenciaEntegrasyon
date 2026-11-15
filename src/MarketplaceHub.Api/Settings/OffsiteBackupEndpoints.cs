@@ -1,3 +1,4 @@
+using MarketplaceHub.Api.Common;
 using MarketplaceHub.Api.Security;
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Backups;
@@ -33,14 +34,14 @@ public static class OffsiteBackupEndpoints
 
     public static IEndpointRouteBuilder MapOffsiteBackupEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var group = endpoints.MapGroup("/api/v1/settings/offsite-backup");
+        var group = endpoints.MapGroup("/api/v1/settings/offsite-backup").WithGates(ApiGate.Elevated, ApiGate.Owner);
         group.MapGet("", GetAsync);
         group.MapPut("", SaveAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
         group.MapPost("/google/authorize", AuthorizeAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
         group.MapPost("/google/complete", CompleteAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
         group.MapPost("/google/disconnect", DisconnectAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
-        group.MapPost("/test", TestAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
-        group.MapPost("/run", RunAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
+        group.MapPost("/test", TestAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).RequireGate(ApiGate.Elevated);
+        group.MapPost("/run", RunAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).RequireGate(ApiGate.Elevated);
         return endpoints;
     }
 

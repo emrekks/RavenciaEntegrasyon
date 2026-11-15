@@ -1,4 +1,5 @@
 using MarketplaceHub.Api.Catalog;
+using MarketplaceHub.Api.Common;
 using MarketplaceHub.Api.Operations;
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Persistence;
@@ -13,7 +14,7 @@ public static class QuestionEndpoints
 
     public static IEndpointRouteBuilder MapQuestionEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var api = endpoints.MapGroup("/api/v1");
+        var api = endpoints.MapGroup("/api/v1").WithGates(ApiGate.SignedIn, ApiGate.Operations);
         api.MapGet("/questions", async (HttpContext http, IMarketplaceQuestionService service, string? kind, string? status, string? platform, Guid? connectionId, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, string? search, int? page, int? limit, string? sort) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
@@ -58,7 +59,7 @@ public static class QuestionEndpoints
             }
             if (jobs.Count == 0 && firstError is not null) return MarketplaceHub.Api.Security.ApiProblems.Of(http, firstError);
             return Results.Accepted(value: new { jobs, queuedConnections = jobs.Count, skippedConnections = connections.Count - jobs.Count });
-        });
+        }).RequireIdempotencyKey();
         api.MapGet("/questions/sync-state", async (HttpContext http, IMarketplaceQuestionService service) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
@@ -75,7 +76,7 @@ public static class QuestionEndpoints
             if (!result.Succeeded) return MarketplaceHub.Api.Security.ApiProblems.Of(http, MarketplaceErrorStatus.ForPanel(result.Error!));
             http.Response.Headers.ETag = $"\"v{result.Value!.Version}\"";
             return Results.Ok(result.Value);
-        }).WithServerBudget();
+        }).WithServerBudget().RequireIdempotencyKey();
         // What reporting a question means on a marketplace: whether it is possible, the reasons, the states that allow it.
         api.MapGet("/questions/report-reasons", (HttpContext http, IMarketplaceQuestionService service, string? platform) =>
         {
@@ -95,7 +96,7 @@ public static class QuestionEndpoints
             if (!result.Succeeded) return MarketplaceHub.Api.Security.ApiProblems.Of(http, MarketplaceErrorStatus.ForPanel(result.Error!));
             http.Response.Headers.ETag = $"\"v{result.Value!.Version}\"";
             return Results.Ok(result.Value);
-        }).WithServerBudget();
+        }).WithServerBudget().RequireIdempotencyKey();
         api.MapGet("/question-templates", async (HttpContext http, IMarketplaceQuestionService service) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;

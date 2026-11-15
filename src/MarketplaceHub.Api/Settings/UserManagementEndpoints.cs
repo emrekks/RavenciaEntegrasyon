@@ -1,4 +1,5 @@
 using System.Net.Mail;
+using MarketplaceHub.Api.Common;
 using MarketplaceHub.Api.Operations;
 using MarketplaceHub.Api.Security;
 using MarketplaceHub.Application;
@@ -47,7 +48,7 @@ public static class UserManagementEndpoints
 
     public static IEndpointRouteBuilder MapUserManagementEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var group = endpoints.MapGroup("/api/v1/settings/users");
+        var group = endpoints.MapGroup("/api/v1/settings/users").WithGates(ApiGate.Elevated, ApiGate.Elevated);
         group.MapGet("", ListAsync);
         group.MapPost("", CreateAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
         group.MapPut("/{id:guid}/role", ChangeRoleAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);

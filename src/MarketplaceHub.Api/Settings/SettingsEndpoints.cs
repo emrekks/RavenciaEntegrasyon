@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MarketplaceHub.Api.Common;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Persistence;
@@ -85,7 +86,7 @@ public static class SettingsEndpoints
 
     public static IEndpointRouteBuilder MapSettingsEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var api = endpoints.MapGroup("/api/v1/settings");
+        var api = endpoints.MapGroup("/api/v1/settings").WithGates(ApiGate.SignedIn, ApiGate.Elevated);
         api.MapGet("/shipping-label", GetShippingLabelSettingsAsync);
         api.MapPut("/shipping-label", SaveShippingLabelSettingsAsync);
         api.MapGet("/appearance", GetAppearanceSettingsAsync);
@@ -93,7 +94,7 @@ public static class SettingsEndpoints
         api.MapGet("/resend-reminder", GetResendReminderAsync);
         api.MapPut("/resend-reminder", SaveResendReminderAsync);
         api.MapGet("/platform-update", GetPlatformUpdateChoiceAsync);
-        api.MapPut("/platform-update", SavePlatformUpdateChoiceAsync);
+        api.MapPut("/platform-update", SavePlatformUpdateChoiceAsync).RequireGate(ApiGate.Operations);
         return endpoints;
     }
 

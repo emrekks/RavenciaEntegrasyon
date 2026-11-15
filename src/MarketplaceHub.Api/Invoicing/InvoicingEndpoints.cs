@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text.Json;
+using MarketplaceHub.Api.Common;
 using MarketplaceHub.Api.Operations;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
@@ -17,14 +18,14 @@ public static class InvoicingEndpoints
 {
     public static IEndpointRouteBuilder MapInvoicingEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var api = endpoints.MapGroup("/api/v1").WithArgumentErrorsAnswered();
+        var api = endpoints.MapGroup("/api/v1").WithArgumentErrorsAnswered().WithGates(ApiGate.SignedIn, ApiGate.Working);
 
         // The same document-bound link with a .pdf file name, for marketplaces (n11) that only accept
         // invoice links ending in a document extension. The stored link stays the /content form.
         api.MapGet("/public/invoice-documents/{token}/" + InvoiceDocumentLink.PdfFileName, (string token, HttpContext http, IDataProtectionProvider protection, AppDbContext db, IInvoicingBillingService service) =>
-            OpenPublicInvoiceDocumentAsync(token, http, protection, db, service));
+            OpenPublicInvoiceDocumentAsync(token, http, protection, db, service)).RequireGate(ApiGate.Open);
         api.MapGet("/public/invoice-documents/{token}/content", (string token, HttpContext http, IDataProtectionProvider protection, AppDbContext db, IInvoicingBillingService service) =>
-            OpenPublicInvoiceDocumentAsync(token, http, protection, db, service));
+            OpenPublicInvoiceDocumentAsync(token, http, protection, db, service)).RequireGate(ApiGate.Open);
         static async Task<IResult> OpenPublicInvoiceDocumentAsync(string token, HttpContext http, IDataProtectionProvider protection, AppDbContext db, IInvoicingBillingService service)
         {
             if (!InvoiceDocumentLink.TryRead(protection, token, out var tenantId, out var invoiceId, out var documentId)) return Results.NotFound();
@@ -38,10 +39,10 @@ public static class InvoicingEndpoints
             try { return Stream(await service.OpenDocumentAsync(tenantId, invoiceId, documentId, http.RequestAborted), http); }
             catch (FileNotFoundException) { return Results.NotFound(); }
         }
-        api.MapGet("/public/manual-invoice-documents/{token}/content", OpenPublicManualOrderInvoiceDocumentAsync);
+        api.MapGet("/public/manual-invoice-documents/{token}/content", OpenPublicManualOrderInvoiceDocumentAsync).RequireGate(ApiGate.Open);
         // The same manual document under a .pdf file name, for n11, Pazarama and PTT AVM, which take only links that end
         // in a document extension (ManualOrderInvoiceDocumentLink.PdfAlias). The stored link stays the /content form.
-        api.MapGet("/public/manual-invoice-documents/{token}/" + InvoiceDocumentLink.PdfFileName, OpenPublicManualOrderInvoiceDocumentAsync);
+        api.MapGet("/public/manual-invoice-documents/{token}/" + InvoiceDocumentLink.PdfFileName, OpenPublicManualOrderInvoiceDocumentAsync).RequireGate(ApiGate.Open);
 
 
         api.MapGet("/invoices", async (HttpContext http, IInvoicingBillingService service, int? limit, string? after, string? status) => Tenant(http) is { } tenant ? Results.Ok(await service.ListAsync(tenant.TenantId, PageSize(limit), after, status, http.RequestAborted)) : Unauthorized(http));
@@ -65,8 +66,8 @@ public static class InvoicingEndpoints
                 sort);
             return Results.Ok(MarketplaceHub.Api.Security.InvoiceLinkVisibility.ForRole(await service.WorkspacePageAsync(tenant.TenantId, filter, http.RequestAborted), tenant.Role));
         });
-        api.MapPut("/invoice-workspace/hidden", UpdateInvoiceWorkspaceHiddenAsync);
-        api.MapPut("/invoice-workspace/manual-status", UpdateInvoiceWorkspaceManualStatusAsync);
+        api.MapPut("/invoice-workspace/hidden", UpdateInvoiceWorkspaceHiddenAsync).RequireIdempotencyKey();
+        api.MapPut("/invoice-workspace/manual-status", UpdateInvoiceWorkspaceManualStatusAsync).RequireIdempotencyKey();
         api.MapPost("/invoice-workspace/orders/{orderId:guid}/reconcile-jobs", async (Guid orderId, HttpContext http, IInvoicingBillingService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
@@ -74,10 +75,10 @@ public static class InvoicingEndpoints
             var result = await service.EnqueueOrderInvoiceReconciliationAsync(tenant.TenantId, orderId,
                 http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted);
             return result.Succeeded ? Results.Accepted(value: new { jobId = result.Value }) : Problem(http, result.Error!);
-        });
-        api.MapPost("/invoice-workspace/manual-documents", CreateManualOrderInvoiceDocumentAsync).DisableAntiforgery();
-        api.MapPost("/invoice-workspace/manual-documents/{id:guid}/delivery-jobs", QueueManualOrderInvoiceDeliveryAsync);
-        api.MapGet("/invoice-workspace/manual-documents/{id:guid}/content", OpenManualOrderInvoiceDocumentAsync);
+        }).RequireIdempotencyKey();
+        api.MapPost("/invoice-workspace/manual-documents", CreateManualOrderInvoiceDocumentAsync).DisableAntiforgery().RequireIdempotencyKey();
+        api.MapPost("/invoice-workspace/manual-documents/{id:guid}/delivery-jobs", QueueManualOrderInvoiceDeliveryAsync).RequireGate(ApiGate.Elevated).RequireIdempotencyKey();
+        api.MapGet("/invoice-workspace/manual-documents/{id:guid}/content", OpenManualOrderInvoiceDocumentAsync).RequireGate(ApiGate.Working);
         api.MapPost("/invoice-workspace/orders/{orderId:guid}/confirm-no-remote-invoice", async (Guid orderId, HttpContext http, IInvoicingBillingService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
@@ -96,37 +97,37 @@ public static class InvoicingEndpoints
             }
             var result = await service.ConfirmNoRemoteInvoiceAsync(tenant.TenantId, orderId, http.TraceIdentifier, http.RequestAborted, searchedByOrderNumber);
             return result.Succeeded ? Results.Ok(new { confirmed = true }) : Problem(http, result.Error!);
-        });
+        }).RequireGate(ApiGate.Elevated).RequireIdempotencyKey();
         api.MapPost("/invoice-workspace/orders/{orderId:guid}/confirm-marketplace-delivered", async (Guid orderId, HttpContext http, IInvoicingBillingService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
             if (RequireIdempotency(http) is { } missingKey) return missingKey;
             var result = await service.ConfirmMarketplaceDeliveredAsync(tenant.TenantId, orderId, http.TraceIdentifier, http.RequestAborted);
             return result.Succeeded ? Results.Ok(new { confirmed = true }) : Problem(http, result.Error!);
-        });
+        }).RequireGate(ApiGate.Elevated).RequireIdempotencyKey();
         api.MapPost("/invoice-workspace/orders/{orderId:guid}/replace-cancelled-invoice", async (Guid orderId, HttpContext http, IInvoicingBillingService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
             if (RequireIdempotency(http) is { } missingKey) return missingKey;
             var result = await service.ReplaceCancelledInvoiceAsync(tenant.TenantId, orderId, http.TraceIdentifier, http.RequestAborted);
             return result.Succeeded ? Results.Ok(new { replaced = true }) : Problem(http, result.Error!);
-        });
+        }).RequireGate(ApiGate.Elevated).RequireIdempotencyKey();
         api.MapPost("/invoice-workspace/preview", async (InvoiceWorkspacePreviewRequest request, HttpContext http, IInvoicingBillingService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
             var result = await service.PreviewWorkspaceInvoicesAsync(tenant.TenantId, request, http.RequestAborted);
             return result.Succeeded ? Results.Ok(result.Value) : Problem(http, result.Error!);
         });
-        api.MapPost("/invoice-workspace/confirm", ConfirmWorkspaceAsync);
-        api.MapPost("/invoices", async (CreateInvoiceCommand command, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateDraftAsync(tenant.TenantId, command, http.Request.Headers["Idempotency-Key"].ToString(), http.RequestAborted), "/api/v1/invoices") : MissingContext(http));
+        api.MapPost("/invoice-workspace/confirm", ConfirmWorkspaceAsync).RequireGate(ApiGate.Elevated).RequireIdempotencyKey();
+        api.MapPost("/invoices", async (CreateInvoiceCommand command, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateDraftAsync(tenant.TenantId, command, http.Request.Headers["Idempotency-Key"].ToString(), http.RequestAborted), "/api/v1/invoices") : MissingContext(http)).RequireIdempotencyKey();
         api.MapGet("/invoices/{id:guid}", async (Guid id, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.GetAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
         api.MapPost("/invoices/{id:guid}/validate", async (Guid id, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant ? TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.ValidateAsync(tenant.TenantId, id, version, http.RequestAborted), x => x.Version) : failure! : Unauthorized(http));
-        api.MapPost("/invoices/{id:guid}/submit-jobs", async (Guid id, ConfirmedAction command, HttpContext http, IInvoicingBillingService service, AppDbContext db) => await EnqueueProtected(id, command, http, db, (tenant, version, key) => service.EnqueueSubmitAsync(tenant, id, version, key, http.TraceIdentifier, http.RequestAborted), requireSensitiveConfirmation: false));
-        api.MapPost("/invoices/{id:guid}/stage-capability-probe-jobs", async (Guid id, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? Accepted(await service.EnqueueStageCapabilityProbeAsync(tenant.TenantId, id, version, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted)) : failure! : MissingContext(http));
-        api.MapPost("/invoices/{id:guid}/reconcile-jobs", async (Guid id, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueReconcileAsync(tenant.TenantId, id, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted)) : MissingContext(http));
-        api.MapPost("/invoices/{id:guid}/marketplace-delivery-jobs", async (Guid id, ConfirmedAction command, HttpContext http, IInvoicingBillingService service, AppDbContext db) => await EnqueueProtected(id, command, http, db, (tenant, _, key) => service.EnqueueDeliveryAsync(tenant, id, key, http.TraceIdentifier, http.RequestAborted), false));
+        api.MapPost("/invoices/{id:guid}/submit-jobs", async (Guid id, ConfirmedAction command, HttpContext http, IInvoicingBillingService service, AppDbContext db) => await EnqueueProtected(id, command, http, db, (tenant, version, key) => service.EnqueueSubmitAsync(tenant, id, version, key, http.TraceIdentifier, http.RequestAborted), requireSensitiveConfirmation: false)).RequireGate(ApiGate.Elevated).RequireIdempotencyKey();
+        api.MapPost("/invoices/{id:guid}/stage-capability-probe-jobs", async (Guid id, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? Accepted(await service.EnqueueStageCapabilityProbeAsync(tenant.TenantId, id, version, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted)) : failure! : MissingContext(http)).RequireGate(ApiGate.Elevated).RequireIdempotencyKey();
+        api.MapPost("/invoices/{id:guid}/reconcile-jobs", async (Guid id, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueReconcileAsync(tenant.TenantId, id, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted)) : MissingContext(http)).RequireIdempotencyKey();
+        api.MapPost("/invoices/{id:guid}/marketplace-delivery-jobs", async (Guid id, ConfirmedAction command, HttpContext http, IInvoicingBillingService service, AppDbContext db) => await EnqueueProtected(id, command, http, db, (tenant, _, key) => service.EnqueueDeliveryAsync(tenant, id, key, http.TraceIdentifier, http.RequestAborted), false)).RequireGate(ApiGate.Elevated).RequireIdempotencyKey();
         // "Tekrar Dene": the document fetch (when missing) and the delivery of the invoice already issued; no new invoice.
-        api.MapPost("/invoices/{id:guid}/delivery-retry-jobs", async (Guid id, ConfirmedAction command, HttpContext http, IInvoicingBillingService service, AppDbContext db) => await EnqueueProtected(id, command, http, db, (tenant, _, key) => service.RetryDeliveryAsync(tenant, id, key, http.TraceIdentifier, http.RequestAborted), false));
+        api.MapPost("/invoices/{id:guid}/delivery-retry-jobs", async (Guid id, ConfirmedAction command, HttpContext http, IInvoicingBillingService service, AppDbContext db) => await EnqueueProtected(id, command, http, db, (tenant, _, key) => service.RetryDeliveryAsync(tenant, id, key, http.TraceIdentifier, http.RequestAborted), false)).RequireGate(ApiGate.Elevated).RequireIdempotencyKey();
         // Operator-only: removes (Trendyol) or confirms the removal of (Hepsiburada) the link a cancelled invoice left on one package.
         // It takes an explicit confirmation (no password: a signed-in session with the role is enough) and runs under the
         // server's budget, so a closed tab does not leave the state "being removed".
@@ -137,10 +138,10 @@ public static class InvoicingEndpoints
             if (request is not { Confirmed: true }) return Problem(http, new("EXPLICIT_CONFIRMATION_REQUIRED", "Fatura linkini kaldırmak için açık onay gerekir.", 422));
             var result = await service.RevokeMarketplaceLinkAsync(tenant.TenantId, id, stateId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted);
             return result.Succeeded ? Results.Ok(result.Value) : Problem(http, result.Error!);
-        }).WithServerBudget();
-        api.MapPost("/invoices/{id:guid}/cancellation-jobs", async (Guid id, ConfirmedAction command, HttpContext http, IInvoicingBillingService service, AppDbContext db) => await EnqueueProtected(id, command, http, db, (tenant, version, key) => service.EnqueueCancellationAsync(tenant, id, version, key, http.TraceIdentifier, http.RequestAborted)));
-        api.MapPost("/invoices/{id:guid}/documents/manual", UploadManualInvoiceDocumentAsync).DisableAntiforgery();
-        api.MapPut("/invoices/{id:guid}/shopify-status", UpdateShopifyInvoiceStatusAsync);
+        }).WithServerBudget().RequireGate(ApiGate.Elevated).RequireIdempotencyKey();
+        api.MapPost("/invoices/{id:guid}/cancellation-jobs", async (Guid id, ConfirmedAction command, HttpContext http, IInvoicingBillingService service, AppDbContext db) => await EnqueueProtected(id, command, http, db, (tenant, version, key) => service.EnqueueCancellationAsync(tenant, id, version, key, http.TraceIdentifier, http.RequestAborted))).RequireGate(ApiGate.Elevated).RequireIdempotencyKey();
+        api.MapPost("/invoices/{id:guid}/documents/manual", UploadManualInvoiceDocumentAsync).DisableAntiforgery().RequireIdempotencyKey();
+        api.MapPut("/invoices/{id:guid}/shopify-status", UpdateShopifyInvoiceStatusAsync).RequireIdempotencyKey();
         api.MapGet("/invoices/{invoiceId:guid}/documents/latest/content", async (Guid invoiceId, HttpContext http, AppDbContext db, IInvoicingBillingService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
@@ -154,8 +155,8 @@ public static class InvoicingEndpoints
                 .Select(x => (Guid?)x.Id)
                 .FirstOrDefaultAsync(http.RequestAborted);
             return documentId is { } id ? Stream(await service.OpenDocumentAsync(tenant.TenantId, invoiceId, id, http.RequestAborted), http) : Problem(http, new("INVOICE_PDF_NOT_READY", "Faturanın PDF belgesi henüz arşivlenmedi.", 404));
-        });
-        api.MapGet("/invoices/{invoiceId:guid}/documents/{documentId:guid}/content", async (Guid invoiceId, Guid documentId, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant ? Stream(await service.OpenDocumentAsync(tenant.TenantId, invoiceId, documentId, http.RequestAborted), http) : Unauthorized(http));
+        }).RequireGate(ApiGate.Working);
+        api.MapGet("/invoices/{invoiceId:guid}/documents/{documentId:guid}/content", async (Guid invoiceId, Guid documentId, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant ? Stream(await service.OpenDocumentAsync(tenant.TenantId, invoiceId, documentId, http.RequestAborted), http) : Unauthorized(http)).RequireGate(ApiGate.Working);
         return endpoints;
     }
 

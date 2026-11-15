@@ -1,3 +1,4 @@
+using MarketplaceHub.Api.Common;
 using MarketplaceHub.Api.Security;
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Persistence;
@@ -12,7 +13,7 @@ internal static class CommissionTariffEndpoints
     public static RouteGroupBuilder MapCommissionTariffEndpoints(this RouteGroupBuilder api)
     {
         api.MapGet("/connections/{connectionId:guid}/commission-tariffs", ListAsync);
-        api.MapPost("/connections/{connectionId:guid}/commission-tariffs", UploadAsync).DisableAntiforgery();
+        api.MapPost("/connections/{connectionId:guid}/commission-tariffs", UploadAsync).DisableAntiforgery().RequireIdempotencyKey();
         api.MapGet("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/rows", RowsAsync);
         api.MapDelete("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}", DeleteAsync);
         // The days a tariff is valid for, picked by the seller (operational roles, as the upload and delete).
@@ -26,7 +27,7 @@ internal static class CommissionTariffEndpoints
         api.MapPut("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/selection", SaveSelectionAsync);
         // Promotion offers (Plus, advantage label, flash): the latest file of each kind, the kind told by its columns.
         api.MapGet("/connections/{connectionId:guid}/promotion-offers", ListOffersAsync);
-        api.MapPost("/connections/{connectionId:guid}/promotion-offers", UploadOfferAsync).DisableAntiforgery();
+        api.MapPost("/connections/{connectionId:guid}/promotion-offers", UploadOfferAsync).DisableAntiforgery().RequireIdempotencyKey();
         api.MapGet("/connections/{connectionId:guid}/promotion-offers/{kind}", OfferAsync);
         api.MapDelete("/connections/{connectionId:guid}/promotion-offers/{kind}", DeleteOfferAsync);
         return api;
@@ -55,7 +56,7 @@ internal static class CommissionTariffEndpoints
     private static async Task<IResult> UploadOfferAsync(Guid connectionId, HttpContext http, IPromotionOfferService service)
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
-        if (string.IsNullOrWhiteSpace(http.Request.Headers["Idempotency-Key"])) return Problem(http, new("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key başlığı zorunludur.", 400));
+        if (RequireIdempotency(http) is { } missingKey) return missingKey;
         var sizeFeature = http.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
         if (sizeFeature is { IsReadOnly: false }) sizeFeature.MaxRequestBodySize = PromotionOfferService.MaximumFileBytes + 128 * 1024;
         if (http.Request.ContentLength is > PromotionOfferService.MaximumFileBytes + 128 * 1024)
@@ -109,7 +110,7 @@ internal static class CommissionTariffEndpoints
     private static async Task<IResult> UploadAsync(Guid connectionId, HttpContext http, ICommissionTariffService service)
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
-        if (string.IsNullOrWhiteSpace(http.Request.Headers["Idempotency-Key"])) return Problem(http, new("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key başlığı zorunludur.", 400));
+        if (RequireIdempotency(http) is { } missingKey) return missingKey;
         var sizeFeature = http.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
         if (sizeFeature is { IsReadOnly: false }) sizeFeature.MaxRequestBodySize = CommissionTariffService.MaximumFileBytes + 128 * 1024;
         if (http.Request.ContentLength is > CommissionTariffService.MaximumFileBytes + 128 * 1024)

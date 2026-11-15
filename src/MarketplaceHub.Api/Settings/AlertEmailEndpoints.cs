@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using MarketplaceHub.Api.Common;
 using MarketplaceHub.Api.Security;
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Alerts;
@@ -25,7 +26,7 @@ public static class AlertEmailEndpoints
 
     public static IEndpointRouteBuilder MapAlertEmailEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var api = endpoints.MapGroup("/api/v1/settings/alert-email");
+        var api = endpoints.MapGroup("/api/v1/settings/alert-email").WithGates(ApiGate.Elevated, ApiGate.Elevated);
         api.MapGet("", GetAsync);
         api.MapPut("", SaveAsync);
         api.MapPost("/test", TestAsync);

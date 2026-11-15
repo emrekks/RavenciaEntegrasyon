@@ -1,3 +1,4 @@
+using MarketplaceHub.Api.Common;
 using MarketplaceHub.Api.Security;
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Persistence;
@@ -16,7 +17,7 @@ internal static class ProductTransferEndpoints
         api.MapGet("/products/transfer/summary", SummaryAsync);
         api.MapGet("/products/transfer/export.xlsx", ExportAsync);
         api.MapPost("/products/transfer/import", PreviewAsync).DisableAntiforgery();
-        api.MapPost("/products/transfer/apply", ApplyAsync);
+        api.MapPost("/products/transfer/apply", ApplyAsync).RequireIdempotencyKey();
         return api;
     }
 
