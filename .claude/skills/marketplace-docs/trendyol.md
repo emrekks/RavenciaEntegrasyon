@@ -373,6 +373,13 @@ purpose (`TurkeyTime.cs`).
 - A request whose quota wait ran out before it got its token was never sent: LOCAL_QUOTA_WAIT (RateLimit, the job
   keeps its attempt). One that was sent and timed out stays REMOTE_TIMEOUT (outcome unknown on a write)
   (`TrendyolHttpClient.SendAsync`, report item 16).
+- The unapproved list (`products/unapproved`) carries no `contentId` and no `variantId`, so a card imported from it is
+  linked under its `productMainId` and each variant under its barcode. Those links are placeholders: once the card is
+  sent again and approved, the approval check replaces them with the numeric `contentId` / `variantId` it reads (or drops
+  the product link when the content is a sibling card's of the same model); a link already holding a numeric id that
+  differs still stops for review (`ProductApprovalReconciliationPolicy.IsTrendyolPlaceholderId`). Source: live MZ056
+  Mürdüm/Kahverengi, approval job 01a1dc5a-d922-7bf6-84b0-dd4d2e49fc6d went to PRODUCT_APPROVAL_IDENTITY_CONFLICT on
+  14.11.2026 because the product link was "MZ056".
 - A product-create line refused as "Aynı barkodlu bir ürününüz bulunduğundan…" is not a refusal: it stays
   CREATE_RESULT_UNKNOWN and the approval check reads the barcode; the same now holds for any marketplace's
   "zaten mevcut/kayıtlı/var", "already exist" wording (`ProductBatchResultPolicy.SaysBarcodeExists`, report item 14).

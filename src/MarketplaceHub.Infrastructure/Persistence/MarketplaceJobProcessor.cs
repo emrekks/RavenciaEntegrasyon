@@ -943,15 +943,22 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // Variants an earlier check of this publication already approved keep their recorded identity instead of being
         // read again; the adapter reads one barcode per request, so this is what keeps a long wait cheap.
         var candidateVariantIds = candidates.Select(x => x.VariantId).ToArray();
+        // A Trendyol link made from the unapproved list holds the model code and barcodes, not Trendyol's ids: it settles
+        // nothing and gives way to the ids the approval answers.
+        var isTrendyol = string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase);
+        bool IsPlaceholder(string? externalId) => isTrendyol && ProductApprovalReconciliationPolicy.IsTrendyolPlaceholderId(externalId);
         var settledProductId = await db.MarketplaceProductLinks.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == payload.ProductId)
             .Select(x => x.ExternalId)
             .SingleOrDefaultAsync(cancellationToken);
+        if (IsPlaceholder(settledProductId)) settledProductId = null;
         var settledVariantIds = settledProductId is null
             ? new Dictionary<Guid, string>()
-            : await db.MarketplaceVariantLinks.AsNoTracking()
+            : (await db.MarketplaceVariantLinks.AsNoTracking()
                 .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && candidateVariantIds.Contains(x.VariantId))
-                .ToDictionaryAsync(x => x.VariantId, x => x.ExternalId, cancellationToken);
+                .ToListAsync(cancellationToken))
+                .Where(x => !IsPlaceholder(x.ExternalId))
+                .ToDictionary(x => x.VariantId, x => x.ExternalId);
         var remoteByBarcode = new Dictionary<string, RemotePublicationStatus>(StringComparer.OrdinalIgnoreCase);
         // A PTT AVM model family is one product under the parent barcode; its variant barcodes are not products of
         // their own, so the card's variants are read together through that product.
@@ -1036,13 +1043,20 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // family's first approved card; a sibling card is then not a conflict and goes live without a product link.
         // Pazarama does the same: the family's cards share one groupCode (from the model code), its product identity.
         var contentHeldByFamily = false;
+        // The card's own Trendyol link when it is only the unapproved list's placeholder (model code): replaced below by
+        // the content the approval answered, or dropped when that content is a sibling card's of the same model.
+        MarketplaceProductLink? placeholderProductLink = null;
         if (approvedContentIds.Count > 0)
         {
+            var localProductLink = await db.MarketplaceProductLinks.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == payload.ProductId, cancellationToken);
+            if (localProductLink is not null && IsPlaceholder(localProductLink.ExternalId)) placeholderProductLink = localProductLink;
             var holders = await db.MarketplaceProductLinks.AsNoTracking()
                 .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && approvedContentIds.Contains(x.ExternalId) && x.ProductId != payload.ProductId)
                 .Select(x => x.ProductId)
                 .ToListAsync(cancellationToken);
-            if (holders.Count > 0 && (isN11 || isPazarama))
+            // Trendyol may file a colour sent again from the unapproved list into a content a sibling card of the model
+            // already holds; that card keeps the content and this one goes live by its variants.
+            if (holders.Count > 0 && (isN11 || isPazarama || placeholderProductLink is not null))
             {
                 var family = await FamilyProductIdsAsync(tenantId, payload.ProductId, cancellationToken);
                 contentHeldByFamily = holders.All(family.Contains);
@@ -1053,8 +1067,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 contentHeldByFamily = holders.All((await FamilyProductIdsAsync(tenantId, payload.ProductId, cancellationToken)).Contains);
             if (holders.Count > 0 && !contentHeldByFamily)
                 return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_APPROVAL_IDENTITY_CONFLICT", JobExecutionResult.ManualReview("PRODUCT_APPROVAL_IDENTITY_CONFLICT", $"{marketplaceName} ürün kimliği başka bir yerel ürünle eşleşiyor."), cancellationToken);
-            var localProductLink = await db.MarketplaceProductLinks.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == payload.ProductId, cancellationToken);
-            if (localProductLink is not null && !approvedContentIds.Contains(localProductLink.ExternalId, StringComparer.Ordinal))
+            if (localProductLink is not null && placeholderProductLink is null && !approvedContentIds.Contains(localProductLink.ExternalId, StringComparer.Ordinal))
                 return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_APPROVAL_IDENTITY_CONFLICT", JobExecutionResult.ManualReview("PRODUCT_APPROVAL_IDENTITY_CONFLICT", $"Yerel ürün daha önce farklı bir {marketplaceName} ürün kimliğiyle eşleştirilmiş."), cancellationToken);
         }
         if (approvedVariantIds.Count > 0 && await db.MarketplaceVariantLinks.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && approvedVariantIds.Contains(x.ExternalId) && !localVariantIds.Contains(x.VariantId), cancellationToken))
@@ -1063,7 +1076,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .Where(listing => remoteByBarcode[approvalKey(listing)!].Status == "APPROVED")
             .ToDictionary(listing => listing.VariantId, listing => remoteByBarcode[approvalKey(listing)!].ExternalVariantId!, EqualityComparer<Guid>.Default);
         var localVariantLinks = await db.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && localVariantIds.Contains(x.VariantId)).ToListAsync(cancellationToken);
-        if (localVariantLinks.Any(link => approvedVariantByLocalId.TryGetValue(link.VariantId, out var expectedExternalId) && !string.Equals(link.ExternalId, expectedExternalId, StringComparison.Ordinal)))
+        if (localVariantLinks.Any(link => approvedVariantByLocalId.TryGetValue(link.VariantId, out var expectedExternalId) && !string.Equals(link.ExternalId, expectedExternalId, StringComparison.Ordinal) && !IsPlaceholder(link.ExternalId)))
             return await MarkApprovalResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_APPROVAL_IDENTITY_CONFLICT", JobExecutionResult.ManualReview("PRODUCT_APPROVAL_IDENTITY_CONFLICT", $"Yerel varyant daha önce farklı bir {marketplaceName} varyant kimliğiyle eşleştirilmiş."), cancellationToken);
 
         var live = 0;
@@ -1074,7 +1087,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         string? firstCode = listings.Where(x => string.Equals(x.ActualStatus, "CREATE_REJECTED", StringComparison.Ordinal) || string.Equals(x.ActualStatus, "UPDATE_REJECTED", StringComparison.Ordinal)).Select(x => x.RejectionCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        if (approvedContentIds.Count == 1 && !contentHeldByFamily)
+        if (placeholderProductLink is not null)
+            await ReplacePlaceholderProductLink(placeholderProductLink.Id, contentHeldByFamily ? null : approvedContentIds[0], cancellationToken);
+        else if (approvedContentIds.Count == 1 && !contentHeldByFamily)
             await UpsertMarketplaceProductLink(tenantId, connectionId, payload.ProductId, approvedContentIds[0], cancellationToken);
         foreach (var listing in candidates)
         {
@@ -1117,7 +1132,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             switch (localStatus)
             {
                 case "LIVE":
-                    await UpsertMarketplaceVariantLink(tenantId, connectionId, listing.VariantId, remote.ExternalVariantId!, cancellationToken);
+                    await UpsertMarketplaceVariantLink(tenantId, connectionId, listing.VariantId, remote.ExternalVariantId!, cancellationToken, replacePlaceholder: isTrendyol);
                     live++;
                     break;
                 case "REJECTED": rejected++; firstCode ??= code; break;
@@ -1702,6 +1717,20 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (productLink is null) db.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ProductId = productId, ExternalId = externalProductId, Version = 1 });
     }
 
+    // A Trendyol placeholder link (the unapproved list's model code) takes the approved content's id, or is dropped when
+    // that content belongs to a sibling card of the model.
+    private async Task ReplacePlaceholderProductLink(Guid linkId, string? contentId, CancellationToken cancellationToken)
+    {
+        var link = await db.MarketplaceProductLinks.SingleAsync(x => x.Id == linkId, cancellationToken);
+        if (contentId is null)
+        {
+            db.MarketplaceProductLinks.Remove(link);
+            return;
+        }
+        link.ExternalId = contentId;
+        link.Version++;
+    }
+
     private async Task MarkProductLinkPublished(Guid tenantId, Guid connectionId, Guid productId, CancellationToken cancellationToken)
     {
         var link = db.MarketplaceProductLinks.Local.SingleOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == productId)
@@ -1718,7 +1747,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
     // The marketplace answered the variant live: its link exists and reads healthy again, whatever a scan or a refused
     // price/stock line said before (the panel trusts a broken link over a live listing).
-    private async Task UpsertMarketplaceVariantLink(Guid tenantId, Guid connectionId, Guid variantId, string externalVariantId, CancellationToken cancellationToken)
+    // A Trendyol placeholder link (the barcode, from the unapproved list) takes the variantId the approval answered.
+    private async Task UpsertMarketplaceVariantLink(Guid tenantId, Guid connectionId, Guid variantId, string externalVariantId, CancellationToken cancellationToken, bool replacePlaceholder = false)
     {
         var now = timeProvider.GetUtcNow();
         var variantLink = db.MarketplaceVariantLinks.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variantId)
@@ -1726,6 +1756,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (variantLink is null)
         {
             db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variantId, ExternalId = externalVariantId, LastSeenAt = now, Version = 1 });
+            return;
+        }
+        if (replacePlaceholder && !string.Equals(variantLink.ExternalId, externalVariantId, StringComparison.Ordinal) && ProductApprovalReconciliationPolicy.IsTrendyolPlaceholderId(variantLink.ExternalId))
+        {
+            variantLink.ExternalId = externalVariantId;
+            MarketplaceVariantLinkHealth.MarkSeen(variantLink, now);
+            variantLink.Version++;
             return;
         }
         HealLiveLink(variantLink, now);
