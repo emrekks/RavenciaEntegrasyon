@@ -328,7 +328,7 @@ public sealed partial class HepsiburadaHttpClient
             var requestId = response.Headers.TryGetValues("X-Request-Id", out var ids) ? ids.FirstOrDefault() : null;
             if (!response.IsSuccessStatusCode)
             {
-                var retryAfter = response.Headers.RetryAfter?.Delta ?? (response.Headers.RetryAfter?.Date is { } retryDate ? retryDate - timeProvider.GetUtcNow() : null);
+                var retryAfter = RetryAfter(response);
                 var error = LocalCircuitResponse.Refusal(response, "HEPSIBURADA", "Hepsiburada")
                     ?? (response.StatusCode == HttpStatusCode.BadRequest
                     ? LabelRejected(await ReadBoundedTextAsync(response.Content, 16 * 1024, timeout.Token), requestId)
@@ -351,15 +351,14 @@ public sealed partial class HepsiburadaHttpClient
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            if (!timeout.QuotaAcquired) return LocalQuotaWait<byte[]>();
-            return AdapterResult<byte[]>.Failure(new(AdapterErrorClass.TransientNetwork, "HEPSIBURADA_TIMEOUT", "Hepsiburada isteği zaman aşımına uğradı.", null, TimeSpan.FromSeconds(15), null));
+            return AdapterResult<byte[]>.Failure(timeout.QuotaAcquired ? Transport.Timeout() : Transport.LocalQuotaWait());
         }
         // ADAPTOR-TY-HB-2: the label body is streamed (ResponseHeadersRead); a connection that breaks mid-body throws an
         // IOException (HttpIOException), a corrupt compressed body an InvalidDataException: both are network errors.
         catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidDataException)
         {
             logger.LogWarning(exception, "Hepsiburada label API isteği başarısız. ConnectionId: {ConnectionId}", context.Connection.Id);
-            return AdapterResult<byte[]>.Failure(new(AdapterErrorClass.TransientNetwork, "HEPSIBURADA_NETWORK_ERROR", "Hepsiburada bağlantısı geçici olarak kurulamadı.", null, TimeSpan.FromSeconds(15), null));
+            return AdapterResult<byte[]>.Failure(Transport.NetworkError());
         }
     }
 }

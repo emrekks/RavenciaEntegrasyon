@@ -5,8 +5,8 @@ using System.Text;
 using System.Xml;
 using System.Xml.Linq;
 using MarketplaceHub.Application;
-using Microsoft.Extensions.Logging;
 using MarketplaceHub.Infrastructure.Adapters.Http;
+using Microsoft.Extensions.Logging;
 
 namespace MarketplaceHub.Infrastructure.Adapters.PttAvm;
 
@@ -65,42 +65,38 @@ public sealed partial class PttAvmHttpClient
     {
         using var request = BuildSoapRequest(account, settings.SoapBaseAddress, operation, timeProvider.GetUtcNow(), parameters);
         // The request timeout starts when the quota token is taken; the wait for it has its own, longer cap.
-        using var timeout = new QuotaAwareTimeout(request, PttAvmRateLimitHandler.QuotaAcquiredKey, RequestTimeout, cancellationToken);
-        try
-        {
-            using var response = await clients.CreateBoundedClient(ClientName).SendAsync(request, timeout.Token);
-            var body = await response.Content.ReadAsStringAsync(timeout.Token);
-            if (LocalCircuitResponse.Refusal(response, "PTTAVM", "PttAVM") is { } localCircuit)
-                return AdapterResult<XElement>.Failure(localCircuit, new RateLimitMetadata(null, null, localCircuit.RetryAfter));
-            var retryAfter = RetryAfterHeader.Unchecked(response.Headers.RetryAfter, timeProvider.GetUtcNow());
-            var parsed = SoapResponse(response.StatusCode, body, operation, retryAfter);
-            if (parsed.Error is { } error)
-            {
-                // The outline of the answer (never its values, never the request) tells a gateway page from a SOAP fault.
-                logger.LogWarning("PTT AVM SOAP isteği reddedildi. ConnectionId: {ConnectionId}, Operation: {Operation}, Status: {Status}, Code: {Code}, Message: {Message}, Body: {BodyShape} ({ContentType}, {BodyLength} bayt)",
-                    account.Connection.Id, operation, (int)response.StatusCode, error.Code, error.SafeMessage, BodyShape(body), response.Content.Headers.ContentType?.MediaType ?? "içerik tipi yok", body.Length);
-                return AdapterResult<XElement>.Failure(error, error.RetryAfter is null ? null : new RateLimitMetadata(null, null, error.RetryAfter));
-            }
-            return AdapterResult<XElement>.Success(parsed.Result!);
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            // Never sent: the quota stayed full. This is not an "outcome unknown" write.
-            if (!timeout.QuotaAcquired)
-                return AdapterResult<XElement>.Failure(new(AdapterErrorClass.RateLimit, "PTTAVM_LOCAL_QUOTA_WAIT", "PttAVM istek kotası dolu olduğu için istek gönderilmedi; yeniden denenecek.", 429, TimeSpan.FromSeconds(15), null));
-            return AdapterResult<XElement>.Failure(new(AdapterErrorClass.TransientNetwork, "PTTAVM_TIMEOUT", "PttAVM isteği zaman aşımına uğradı.", null, TimeSpan.FromSeconds(15), null));
-        }
-        catch (HttpRequestException exception)
+        using var exchange = await Transport.SendAsync(clients, request, RequestTimeout, cancellationToken);
+        if (exchange.Error is { } transportError)
         {
             // PTT AVM resets the TLS handshake now and then (live: 75 times in 3 days); the request is retried. Such a
             // transient reset is logged on one line with its cause, any other failure keeps its full stack trace.
-            if (IsTransientConnectionReset(exception))
-                logger.LogWarning("PTT AVM SOAP isteği başarısız (bağlantı karşı taraftan kesildi). ConnectionId: {ConnectionId}, Operation: {Operation}, Error: {Error}", account.Connection.Id, operation, TransientResetSummary(exception));
-            else
-                logger.LogWarning(exception, "PTT AVM SOAP isteği başarısız. ConnectionId: {ConnectionId}, Operation: {Operation}", account.Connection.Id, operation);
-            return AdapterResult<XElement>.Failure(new(AdapterErrorClass.TransientNetwork, "PTTAVM_NETWORK_ERROR", "PttAVM bağlantısı geçici olarak kurulamadı.", null, TimeSpan.FromSeconds(15), null));
+            if (exchange.Exception is { } exception)
+            {
+                if (IsTransientConnectionReset(exception))
+                    logger.LogWarning("PTT AVM SOAP isteği başarısız (bağlantı karşı taraftan kesildi). ConnectionId: {ConnectionId}, Operation: {Operation}, Error: {Error}", account.Connection.Id, operation, TransientResetSummary(exception));
+                else
+                    logger.LogWarning(exception, "PTT AVM SOAP isteği başarısız. ConnectionId: {ConnectionId}, Operation: {Operation}", account.Connection.Id, operation);
+            }
+            return AdapterResult<XElement>.Failure(transportError);
         }
+        var response = exchange.Response!;
+        var body = exchange.Body;
+        if (LocalCircuitResponse.Refusal(response, "PTTAVM", "PttAVM") is { } localCircuit)
+            return AdapterResult<XElement>.Failure(localCircuit, new RateLimitMetadata(null, null, localCircuit.RetryAfter));
+        var retryAfter = RetryAfterHeader.Unchecked(response.Headers.RetryAfter, timeProvider.GetUtcNow());
+        var parsed = SoapResponse(response.StatusCode, body, operation, retryAfter);
+        if (parsed.Error is { } error)
+        {
+            // The outline of the answer (never its values, never the request) tells a gateway page from a SOAP fault.
+            logger.LogWarning("PTT AVM SOAP isteği reddedildi. ConnectionId: {ConnectionId}, Operation: {Operation}, Status: {Status}, Code: {Code}, Message: {Message}, Body: {BodyShape} ({ContentType}, {BodyLength} bayt)",
+                account.Connection.Id, operation, (int)response.StatusCode, error.Code, error.SafeMessage, BodyShape(body), response.Content.Headers.ContentType?.MediaType ?? "içerik tipi yok", body.Length);
+            return AdapterResult<XElement>.Failure(error, error.RetryAfter is null ? null : new RateLimitMetadata(null, null, error.RetryAfter));
+        }
+        return AdapterResult<XElement>.Success(parsed.Result!);
     }
+
+    // The PTT AVM send step (MarketplaceTransport: quota-aware timeout, transport errors PTTAVM_*).
+    internal static readonly MarketplaceTransport Transport = new(ClientName, "PTTAVM", "PttAVM", PttAvmRateLimitHandler.QuotaAcquiredKey);
 
     // A connection the peer reset or closed (during the TLS handshake or later): a SocketException ConnectionReset /
     // ConnectionAborted, or an IOException without one, somewhere under the HttpRequestException.

@@ -1389,61 +1389,51 @@ public sealed partial class HepsiburadaHttpClient(
     {
         if (!string.Equals(settings.AuthenticationMode, "BASIC", StringComparison.OrdinalIgnoreCase))
             return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.NotSupported, "HEPSIBURADA_AUTHENTICATION_UNVERIFIED", "Hepsiburada auth biçimi SIT hesabında doğrulanana kadar bağlantı isteği gönderilmedi.", null, null, null));
-        var client = clients.CreateBoundedClient("Hepsiburada");
         using var request = new HttpRequestMessage(method, new Uri(baseAddress, path));
         request.Content = content;
         if (!ApplyAuthentication(request, context))
             return Failure<JsonDocument>(AdapterErrorClass.Validation, "HEPSIBURADA_INTEGRATOR_NAME_INVALID", "Hepsiburada entegratör adı geçerli bir User-Agent kimliği olmalıdır.", HttpStatusCode.UnprocessableEntity);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         configure?.Invoke(request);
-        using var timeout = new QuotaAwareTimeout(request, HepsiburadaRateLimitHandler.QuotaAcquiredKey, RequestTimeout, cancellationToken);
-        try
+        using var exchange = await Transport.SendAsync(clients, request, RequestTimeout, cancellationToken);
+        if (exchange.Error is { } transportError)
         {
-            using var response = await client.SendAsync(request, timeout.Token);
-            var body = await response.Content.ReadAsStringAsync(timeout.Token);
-            var rate = RateLimit(response);
-            var requestId = response.Headers.TryGetValues("X-Request-Id", out var ids) ? ids.FirstOrDefault() : null;
-            if (rate is not null)
-                logger.LogDebug("Hepsiburada yanıt hız sınırı başlıkları. ConnectionId: {ConnectionId}, Limit: {Limit}, Remaining: {Remaining}, ResetAt: {ResetAt}, RetryAfterSeconds: {RetryAfterSeconds}", context.Connection.Id, rate.Limit, rate.Remaining, rate.ResetAt, rate.RetryAfter?.TotalSeconds);
-            if (!response.IsSuccessStatusCode)
-            {
-                var retryAfter = RetryAfter(response);
-                var error = LocalCircuitResponse.Refusal(response, "HEPSIBURADA", "Hepsiburada") is { } localCircuit
-                    ? localCircuit
-                    : response.StatusCode == HttpStatusCode.Unauthorized && IsProductUpdatePath(path)
-                    ? ProductUpdateAuthenticationRejected(requestId)
-                    : MarketplaceErrorRules.GatewayBlocked(response.StatusCode, body, "Hepsiburada", "HEPSIBURADA", requestId)
-                        ?? Error(response.StatusCode, retryAfter ?? rate?.RetryAfter, requestId);
-                var invoiceErrorDetails = method == HttpMethod.Put
-                    && path.EndsWith("/invoice", StringComparison.OrdinalIgnoreCase)
-                    ? SafeInvoiceErrorDetails(body)
-                    : null;
-                logger.LogWarning("Hepsiburada API isteği reddedildi. ConnectionId: {ConnectionId}, Status: {Status}, Code: {Code}, RequestId: {RequestId}, Limit: {Limit}, Remaining: {Remaining}, ResetAt: {ResetAt}, RetryAfterSeconds: {RetryAfterSeconds}, InvoiceErrorDetails: {InvoiceErrorDetails}", context.Connection.Id, (int)response.StatusCode, error.Code, requestId, rate?.Limit, rate?.Remaining, rate?.ResetAt, error.RetryAfter?.TotalSeconds ?? rate?.RetryAfter?.TotalSeconds, invoiceErrorDetails);
-                return AdapterResult<JsonDocument>.Failure(error, rate);
-            }
-            try { return AdapterResult<JsonDocument>.Success(JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body), rate); }
-            catch (JsonException)
-            {
-                return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.ContractViolation, "HEPSIBURADA_JSON_INVALID", "Hepsiburada geçerli JSON yanıtı vermedi.", (int)response.StatusCode, null, requestId), rate);
-            }
+            if (exchange.Exception is { } exception) logger.LogWarning(exception, "Hepsiburada API isteği başarısız. ConnectionId: {ConnectionId}", context.Connection.Id);
+            return AdapterResult<JsonDocument>.Failure(transportError);
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        var response = exchange.Response!;
+        var body = exchange.Body;
+        var rate = RateLimit(response);
+        var requestId = response.Headers.TryGetValues("X-Request-Id", out var ids) ? ids.FirstOrDefault() : null;
+        if (rate is not null)
+            logger.LogDebug("Hepsiburada yanıt hız sınırı başlıkları. ConnectionId: {ConnectionId}, Limit: {Limit}, Remaining: {Remaining}, ResetAt: {ResetAt}, RetryAfterSeconds: {RetryAfterSeconds}", context.Connection.Id, rate.Limit, rate.Remaining, rate.ResetAt, rate.RetryAfter?.TotalSeconds);
+        if (!response.IsSuccessStatusCode)
         {
-            // Never sent: the shared quota stayed full. This is not an "outcome unknown" call.
-            if (!timeout.QuotaAcquired) return LocalQuotaWait<JsonDocument>();
-            return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.TransientNetwork, "HEPSIBURADA_TIMEOUT", "Hepsiburada isteği zaman aşımına uğradı.", null, TimeSpan.FromSeconds(15), null));
+            var retryAfter = RetryAfter(response);
+            var error = LocalCircuitResponse.Refusal(response, "HEPSIBURADA", "Hepsiburada") is { } localCircuit
+                ? localCircuit
+                : response.StatusCode == HttpStatusCode.Unauthorized && IsProductUpdatePath(path)
+                ? ProductUpdateAuthenticationRejected(requestId)
+                : MarketplaceErrorRules.GatewayBlocked(response.StatusCode, body, "Hepsiburada", "HEPSIBURADA", requestId)
+                    ?? Error(response.StatusCode, retryAfter ?? rate?.RetryAfter, requestId);
+            var invoiceErrorDetails = method == HttpMethod.Put
+                && path.EndsWith("/invoice", StringComparison.OrdinalIgnoreCase)
+                ? SafeInvoiceErrorDetails(body)
+                : null;
+            logger.LogWarning("Hepsiburada API isteği reddedildi. ConnectionId: {ConnectionId}, Status: {Status}, Code: {Code}, RequestId: {RequestId}, Limit: {Limit}, Remaining: {Remaining}, ResetAt: {ResetAt}, RetryAfterSeconds: {RetryAfterSeconds}, InvoiceErrorDetails: {InvoiceErrorDetails}", context.Connection.Id, (int)response.StatusCode, error.Code, requestId, rate?.Limit, rate?.Remaining, rate?.ResetAt, error.RetryAfter?.TotalSeconds ?? rate?.RetryAfter?.TotalSeconds, invoiceErrorDetails);
+            return AdapterResult<JsonDocument>.Failure(error, rate);
         }
-        catch (HttpRequestException exception)
+        try { return AdapterResult<JsonDocument>.Success(JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body), rate); }
+        catch (JsonException)
         {
-            logger.LogWarning(exception, "Hepsiburada API isteği başarısız. ConnectionId: {ConnectionId}", context.Connection.Id);
-            return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.TransientNetwork, "HEPSIBURADA_NETWORK_ERROR", "Hepsiburada bağlantısı geçici olarak kurulamadı.", null, TimeSpan.FromSeconds(15), null));
+            return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.ContractViolation, "HEPSIBURADA_JSON_INVALID", "Hepsiburada geçerli JSON yanıtı vermedi.", (int)response.StatusCode, null, requestId), rate);
         }
     }
 
     private TimeSpan RequestTimeout => settings.Timeout > TimeSpan.Zero && settings.Timeout < TimeSpan.FromMinutes(2) ? settings.Timeout : TimeSpan.FromSeconds(30);
 
-    private static AdapterResult<T> LocalQuotaWait<T>() =>
-        AdapterResult<T>.Failure(new(AdapterErrorClass.RateLimit, "HEPSIBURADA_LOCAL_QUOTA_WAIT", "Hepsiburada istek kotası dolu olduğu için istek gönderilmedi; yeniden denenecek.", 429, TimeSpan.FromSeconds(15), null));
+    // The Hepsiburada send step (MarketplaceTransport: quota-aware timeout, transport errors HEPSIBURADA_*).
+    internal static readonly MarketplaceTransport Transport = new("Hepsiburada", "HEPSIBURADA", "Hepsiburada", HepsiburadaRateLimitHandler.QuotaAcquiredKey);
 
     internal static string? SafeInvoiceErrorDetails(string body)
     {

@@ -3,10 +3,10 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using MarketplaceHub.Application;
+using MarketplaceHub.Infrastructure.Adapters.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using MarketplaceHub.Infrastructure.Adapters.Http;
 
 namespace MarketplaceHub.Infrastructure.Adapters.N11;
 
@@ -164,46 +164,36 @@ public sealed partial class N11HttpClient(
     {
         if (N11CredentialFormat.Normalize(context.AppKey) is null || N11CredentialFormat.Normalize(context.AppSecret) is null)
             return Failure<JsonDocument>(AdapterErrorClass.Authentication, "N11_CREDENTIAL_FORMAT_INVALID", "Kayıtlı N11 App Key veya App Secret değerinde geçersiz karakter var. Değerleri N11 satıcı panelindeki Hesabım → API Hesapları ekranından yeniden kopyalayıp kaydedin.", HttpStatusCode.UnprocessableEntity);
-        var client = clients.CreateBoundedClient("N11");
         using var request = new HttpRequestMessage(method, new Uri(settings.BaseAddress, path)) { Content = content };
         ApplyAuthentication(request, context);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        using var timeout = new QuotaAwareTimeout(request, N11RateLimitHandler.QuotaAcquiredKey, RequestTimeout, cancellationToken);
-        try
+        using var exchange = await Transport.SendAsync(clients, request, RequestTimeout, cancellationToken);
+        if (exchange.Error is { } transportError)
         {
-            using var response = await client.SendAsync(request, timeout.Token);
-            var body = await response.Content.ReadAsStringAsync(timeout.Token);
-            var retryAfter = RetryAfterHeader.Unchecked(response.Headers.RetryAfter, timeProvider.GetUtcNow());
-            var rate = retryAfter is null ? null : new RateLimitMetadata(null, null, retryAfter);
-            if (!response.IsSuccessStatusCode)
-            {
-                var error = LocalCircuitResponse.Refusal(response, "N11", "N11") ?? Error(response.StatusCode, body, retryAfter);
-                logger.LogWarning("N11 API isteği reddedildi. ConnectionId: {ConnectionId}, Path: {Path}, Status: {Status}, Code: {Code}", context.Connection.Id, request.RequestUri!.AbsolutePath, (int)response.StatusCode, error.Code);
-                return AdapterResult<JsonDocument>.Failure(error, rate);
-            }
-            try { return AdapterResult<JsonDocument>.Success(JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body), rate); }
-            catch (JsonException)
-            {
-                return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.ContractViolation, "N11_JSON_INVALID", "N11 geçerli JSON yanıtı vermedi.", (int)response.StatusCode, null, null), rate);
-            }
+            if (exchange.Exception is { } exception) logger.LogWarning(exception, "N11 API isteği başarısız. ConnectionId: {ConnectionId}", context.Connection.Id);
+            return AdapterResult<JsonDocument>.Failure(transportError);
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        var response = exchange.Response!;
+        var body = exchange.Body;
+        var retryAfter = RetryAfterHeader.Unchecked(response.Headers.RetryAfter, timeProvider.GetUtcNow());
+        var rate = retryAfter is null ? null : new RateLimitMetadata(null, null, retryAfter);
+        if (!response.IsSuccessStatusCode)
         {
-            // Never sent: the shared quota stayed full. This is not an "outcome unknown" call.
-            if (!timeout.QuotaAcquired) return LocalQuotaWait<JsonDocument>();
-            return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.TransientNetwork, "N11_TIMEOUT", "N11 isteği zaman aşımına uğradı.", null, TimeSpan.FromSeconds(15), null));
+            var error = LocalCircuitResponse.Refusal(response, "N11", "N11") ?? Error(response.StatusCode, body, retryAfter);
+            logger.LogWarning("N11 API isteği reddedildi. ConnectionId: {ConnectionId}, Path: {Path}, Status: {Status}, Code: {Code}", context.Connection.Id, request.RequestUri!.AbsolutePath, (int)response.StatusCode, error.Code);
+            return AdapterResult<JsonDocument>.Failure(error, rate);
         }
-        catch (HttpRequestException exception)
+        try { return AdapterResult<JsonDocument>.Success(JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body), rate); }
+        catch (JsonException)
         {
-            logger.LogWarning(exception, "N11 API isteği başarısız. ConnectionId: {ConnectionId}", context.Connection.Id);
-            return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.TransientNetwork, "N11_NETWORK_ERROR", "N11 bağlantısı geçici olarak kurulamadı.", null, TimeSpan.FromSeconds(15), null));
+            return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.ContractViolation, "N11_JSON_INVALID", "N11 geçerli JSON yanıtı vermedi.", (int)response.StatusCode, null, null), rate);
         }
     }
 
-    private TimeSpan RequestTimeout => settings.Timeout > TimeSpan.Zero && settings.Timeout < TimeSpan.FromMinutes(2) ? settings.Timeout : TimeSpan.FromSeconds(30);
+    // The n11 REST and SOAP send step (MarketplaceTransport: quota-aware timeout, transport errors N11_*).
+    internal static readonly MarketplaceTransport Transport = new("N11", "N11", "N11", N11RateLimitHandler.QuotaAcquiredKey);
 
-    private static AdapterResult<T> LocalQuotaWait<T>() =>
-        AdapterResult<T>.Failure(new(AdapterErrorClass.RateLimit, "N11_LOCAL_QUOTA_WAIT", "N11 istek kotası dolu olduğu için istek gönderilmedi; yeniden denenecek.", 429, TimeSpan.FromSeconds(15), null));
+    private TimeSpan RequestTimeout => settings.Timeout > TimeSpan.Zero && settings.Timeout < TimeSpan.FromMinutes(2) ? settings.Timeout : TimeSpan.FromSeconds(30);
 
     internal static void ApplyAuthentication(HttpRequestMessage request, N11RequestContext context)
     {
