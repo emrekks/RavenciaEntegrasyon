@@ -19,6 +19,9 @@ public sealed partial class MarketplaceJobProcessor
             ? saved[HepsiburadaLifecycleCursorPrefix.Length..]
             : null;
 
+    internal static string OpenOrderMissingIssueKey(Guid connectionId, string externalOrderId) =>
+        $"order-lifecycle-missing:{connectionId}:{externalOrderId}";
+
     // The packages an order status scan follows: neither delivered, cancelled nor returned (the scans below and the
     // scheduler's check that one is worth queueing, ScheduledJobProducer.OpenPackagesExistAsync).
     internal static IQueryable<ShipmentPackage> OpenPackages(IQueryable<ShipmentPackage> packages, Guid tenantId, Guid connectionId) =>
@@ -108,16 +111,30 @@ public sealed partial class MarketplaceJobProcessor
         }
         else
         {
-            externalOrderIds = await (from package in db.ShipmentPackages.AsNoTracking()
-                                      join order in db.Orders.AsNoTracking()
-                                          on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
-                                      where package.TenantId == tenantId && package.ConnectionId == connectionId && package.Status != ShipmentPackageStatus.Delivered && package.Status != ShipmentPackageStatus.Cancelled && package.Status != ShipmentPackageStatus.Returned
-                                      group package by order.ExternalOrderId into openOrder
-                                      // Least lately read first: an unchanged read moves only the invoice "last checked" time (SyncNoOpWrites).
-                                      orderby openOrder.Min(x => x.MarketplaceInvoiceObservedAt > x.UpdatedAt ? x.MarketplaceInvoiceObservedAt!.Value : x.UpdatedAt)
-                                      select openOrder.Key)
-                .Take(lifecycleBatchSize)
-                .ToListAsync(cancellationToken);
+            // ISLEYICI-5: keyset progress over the orders with an open package, as the Hepsiburada branch does. The scan
+            // used to take the least lately read orders first; an order the marketplace no longer finds is never updated,
+            // so a batch of them stayed at the head of the list and the orders behind it were not read again. The cursor
+            // keeps the last order id read and the scan wraps to the first order when the list ends.
+            var openOrderIds = db.Orders.AsNoTracking()
+                .Where(order => order.TenantId == tenantId
+                    && db.ShipmentPackages.Any(package => package.TenantId == tenantId
+                        && package.ConnectionId == connectionId
+                        && package.OrderId == order.Id
+                        && package.Status != ShipmentPackageStatus.Delivered
+                        && package.Status != ShipmentPackageStatus.Cancelled
+                        && package.Status != ShipmentPackageStatus.Returned))
+                .Select(order => order.ExternalOrderId)
+                .Distinct();
+            var lastSeenOrderId = HepsiburadaLifecycleLastSeen(cursor.OpaqueCursor);
+            var lifecyclePage = lastSeenOrderId is null
+                ? openOrderIds
+                : openOrderIds.Where(id => string.Compare(id, lastSeenOrderId) > 0);
+            externalOrderIds = await lifecyclePage.OrderBy(id => id).Take(lifecycleBatchSize).ToListAsync(cancellationToken);
+            if (externalOrderIds.Count == 0 && lastSeenOrderId is not null)
+                externalOrderIds = await openOrderIds.OrderBy(id => id).Take(lifecycleBatchSize).ToListAsync(cancellationToken);
+            cursor.OpaqueCursor = externalOrderIds.Count == lifecycleBatchSize
+                ? HepsiburadaLifecycleCursor(externalOrderIds[^1])
+                : null;
         }
 
         var recoveredOrders = new List<RemoteOrder>();
@@ -127,7 +144,19 @@ public sealed partial class MarketplaceJobProcessor
             var result = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-lifecycle:{externalOrderId}"), externalOrderId, await OrderHint(tenantId, connectionId, externalOrderId, cancellationToken), cancellationToken);
             if (!result.IsSuccess)
             {
-                if (result.Error?.Class == AdapterErrorClass.NotFound) continue;
+                if (result.Error?.Class == AdapterErrorClass.NotFound)
+                {
+                    // ISLEYICI-5: the owner sees an open order the marketplace no longer finds; its state is left as it
+                    // is (a missing answer says nothing about the order). Hepsiburada keeps its own checks for this.
+                    if (!isHepsiburada)
+                        await RecordIssue(
+                            tenantId,
+                            OpenOrderMissingIssueKey(connectionId, externalOrderId),
+                            "ORDER_NOT_FOUND_AT_MARKETPLACE",
+                            "Açık sipariş pazaryerinde bulunamadı; durumu değiştirilmedi, sonraki taramalarda yeniden sorulacak.",
+                            cancellationToken);
+                    continue;
+                }
                 TrackResultFailure(result.Error);
                 var error = result.Error!;
                 await RecordIssue(
@@ -141,6 +170,7 @@ public sealed partial class MarketplaceJobProcessor
             TrackReceived();
             recoveredOrders.Add(WithHepsiburadaListedCancelTimes(result.Value!, hepsiburadaListedCancellations));
             await ResolveIssue(tenantId, $"order-lifecycle:{connectionId}:{externalOrderId}", cancellationToken);
+            if (!isHepsiburada) await ResolveIssue(tenantId, OpenOrderMissingIssueKey(connectionId, externalOrderId), cancellationToken);
         }
         if (recoveredOrders.Count > 0) await UpsertOrders(tenantId, connectionId, recoveredOrders, cancellationToken);
         if (isHepsiburada)
