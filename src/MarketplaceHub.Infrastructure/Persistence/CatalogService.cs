@@ -1293,8 +1293,10 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var openedColor = familyCardFields.First(card => card.ProductId == id).Color;
         // Model Kaydı Faz 2: the model record's values when the editor saved them after every card's last change (they are
         // then the cards' own values); the cards' majority otherwise.
-        var model = await ProductModelLinks.SavedFieldsAsync(db, tenantId, product.FamilyId, familyProducts, openedColor, cancellationToken)
+        var today = await ProductModelLinks.SavedFieldsAsync(db, tenantId, product.FamilyId, familyProducts, openedColor, cancellationToken)
             ?? ProductFamilySharedFields.ModelValues(familyCardFields, openedColor);
+        // KATALOG-14 phase C: from the model record where it holds the cards' one value; today's value otherwise.
+        var model = await ProductModelValues.RecordFieldsAsync(db, tenantId, product.FamilyId, familyProducts, familyCardFields, openedColor, today, cancellationToken) ?? today;
         var modelAttributes = await SavedModelAttributesAsync(tenantId, product.FamilyId, familyProducts, primaryView, cancellationToken)
             ?? await ModelAttributesAsync(tenantId, familyCardViews, primaryView, cancellationToken);
         // Every card's size chart closes the strip, in the strip's own order: no chart stands among the colours' pictures,
