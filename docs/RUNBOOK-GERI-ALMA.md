@@ -110,7 +110,10 @@ silinir — yani bir haftadan eski bir noktaya dönüş her zaman garanti değil
      pg_restore --exit-on-error --no-owner --dbname=marketplacehub "/backup/$SET/database.dump"
    ```
    Dosya/anahtar volume'leri (`app_files`, `dp_keys`) gerekiyorsa `private-volumes.tar.gz`'den aynı
-   şekilde açılır; Data Protection anahtarları değişmediyse dokunmayın.6. **Bekleyen işleri karantinaya al** (worker'ı başlatmadan önce, zorunlu). Yedek alındığı anda kuyrukta
+   şekilde açılır; Data Protection anahtarları değişmediyse dokunmayın.
+   Uygulama rollerine geçildiyse (bölüm 7) `--no-owner` geri yükleme nesneleri yine `marketplacehub`'a yazar:
+   API'yi başlatmadan önce `bash deploy/scripts/install-app-db-roles.sh --apply` sahipliği ve yetkileri yeniden kurar
+   (parolalar `deploy/secrets/` içindeki dosyalardan korunur).6. **Bekleyen işleri karantinaya al** (worker'ı başlatmadan önce, zorunlu). Yedek alındığı anda kuyrukta
    bekleyen ya da çalışan işler arasında fatura gönderimi, kargo/iade aksiyonu ve fiyat-stok yazımı
    olabilir. Bunlar yedekten sonra zaten gönderilmiş olabilir; worker onları yeniden çalıştırırsa
    çift fatura veya pazaryerine eski stok yazılır. Hepsini manuel incelemeye çek:
@@ -184,3 +187,91 @@ doğrulanmış seti aynı açık anahtarla şifreleyip rclone ile Google Drive'a
 `ravencia-restore-drill.timer` her ayın ilk Pazar'ı 22:00 TR'de en yeni seti izole konteynerlere geri
 yükler; başarısızlıkta alarm gelir. Sonucu görmek: `journalctl -u ravencia-restore-drill -n 50`.
 Elle çalıştırmak: `sudo systemctl start ravencia-restore-drill.service`.
+
+## 7. Uygulama veritabanı rolleri (sahibin adımı, VERITABANI-DAGITIM-1)
+
+**Durum (15 Kasım 2026):** API, Worker ve migrate `marketplacehub` ile bağlanıyor ve bu rol **SUPERUSER**
+(`rolsuper = t`, canlıda doğrulandı). Bir SQL enjeksiyonu `COPY ... TO PROGRAM` ile konteynerde komut çalıştırabilir.
+Hedef: migrate `marketplacehub_owner`, API/Worker `marketplacehub_app` (ikisi de süper değil); `marketplacehub` yalnız
+yedek, healthwatch ve salt-okunur rol betiği için kalır. Deploy bunu **yapmaz**; adımlar sessiz bir saatte, deploy
+kilidi tutulurken, sırayla:
+
+1. Durumu gör (salt okur): `bash deploy/scripts/install-app-db-roles.sh --check`; çalışacak SQL:
+   `bash deploy/scripts/install-app-db-roles.sh --print-sql`.
+2. Yedek: `sudo systemctl start ravencia-backup.service` ve `journalctl -u ravencia-backup -n 5` ("verified").
+3. Rolleri kur: `bash deploy/scripts/install-app-db-roles.sh --apply`. Tek işlem: iki rol, veritabanı/şema/tablo/
+   dizi/fonksiyon sahipliği `marketplacehub_owner`'a, satır yetkileri `marketplacehub_app`'e, sonraki migration'lar
+   için varsayılan yetkiler. Her tablo için kısa ACCESS EXCLUSIVE kilit alır (birkaç saniye API yazmaları bekler);
+   `lock_timeout 5s` dolarsa hiçbir şey değişmez, tekrar çalıştırın. `deploy/secrets/migrate_db_connection.txt` ve
+   `deploy/secrets/app_db_connection.app-role.txt` (root:1654 0640) yazılır. Bu adımdan sonra da her şey eskisi gibi
+   `marketplacehub` ile çalışır (o rol süper olduğundan sahiplik değişimi onu etkilemez).
+4. Kod/yapılandırma değişikliği (bir oturum hazırlayıp gönderir; dosyalar sunucuda var olmadan **gönderilmez**,
+   yoksa Compose secret dosyasını bulamaz ve deploy durur):
+   - `deploy/compose/compose.yaml`: `secrets:` altına `migrate_db_connection: { file: ../secrets/migrate_db_connection.txt }`;
+     `migrate` servisine `environment: { ConnectionStrings__AppDb_FILE: /run/secrets/migrate_db_connection }` ve
+     `secrets: [migrate_db_connection, credential_key]`; `compose.production.yaml`'da `migrate` için
+     `secrets: [migrate_db_connection, credential_key, dp_certificate, dp_certificate_password]` (`*production_secrets`
+     yerine).
+   - `deploy/backup/restore-drill.sh` (migration provası ve aylık tatbikat): yalnız `marketplacehub` süper kullanıcısı
+     olan izole bir veritabanı açar; bağlantıyı `app_db_connection.txt`'den kopyalamak yerine `postgres_password.txt` ile
+     `Username=marketplacehub` olarak kurmalı, yoksa her deploy'un provası "password authentication failed" ile durur.
+   - `deploy/scripts/lib.sh` `lib_required_secret_files`'a `migrate_db_connection.txt`.
+5. Sunucuda geçiş (yukarıdaki değişiklik canlıya çıktıktan hemen sonra):
+   `sudo cp deploy/secrets/app_db_connection.txt deploy/secrets/app_db_connection.superuser.txt` (geri dönüş için),
+   `sudo install -o root -g 1654 -m 0640 deploy/secrets/app_db_connection.app-role.txt deploy/secrets/app_db_connection.txt`,
+   sonra `gh workflow run deploy.yml --ref main` (API/Worker yeni bağlantıyla yeniden yaratılır).
+6. Doğrula: `/prod-sql "select usename, count(*) from pg_stat_activity where datname='marketplacehub' group by 1"` →
+   API/Worker oturumları `marketplacehub_app`; `/prod-sql "select rolname, rolsuper from pg_roles where rolname like
+   'marketplacehub%'"` → `_app` ve `_owner` için `f`; `/prod-logs errors --since 30m` boş (özellikle `42501
+   permission denied`). Bir sonraki migration'lı deploy'da migrate `marketplacehub_owner` ile çalışır.
+
+**Geri dönüş:** `sudo install -o root -g 1654 -m 0640 deploy/secrets/app_db_connection.superuser.txt
+deploy/secrets/app_db_connection.txt` ve yeniden deploy (süper kullanıcı her nesneye erişir; sahipliği geri almak
+gerekmez). Migrate değişikliği geri alınırsa `migrate_db_connection.txt` dosyası durabilir.
+**Riskler:** (a) kodda bugün görülmeyen süper kullanıcı gerektiren bir yol (ör. `ALTER`, `TRUNCATE` gerçek tabloda)
+`42501` ile düşer, hata loglarında görünür — geri dönüşle kapanır; (b) yeni şema/tablo açan migration'lar
+varsayılan yetkilerle kapsanır, ama `marketplacehub` ile elle yaratılan bir nesne kapsanmaz: `--apply`'ı yeniden
+çalıştırın; (c) geri yükleme sonrası bölüm 3'teki not.
+
+## 8. PostgreSQL ayar paketi (sahibin adımı, VERITABANI-DAGITIM-6 ve -7)
+
+Canlı (15 Kasım 2026): `log_lock_waits=off`, `track_io_timing=off`, `max_wal_size=1GB`, `pg_stat_statements` yüklü değil;
+uygulama rollerinde `idle_in_transaction_session_timeout` yok (yalnız `ravencia_ro`'da 60 sn); postgres konteynerinin
+kapanma süresi Docker varsayılanı 10 sn. Değişiklik postgres'i **yeniden başlatır** (`shared_preload_libraries`
+yeniden başlatma ister; birkaç saniye kesinti, API/Worker yeniden bağlanır), bu yüzden deploy'a otomatik konmadı.
+Sessiz bir saatte, tek seferde:
+
+1. `deploy/compose/compose.yaml` postgres servisine `stop_grace_period: 120s` ve `command` listesine
+   `-c idle_in_transaction_session_timeout=10min -c log_lock_waits=on -c deadlock_timeout=1s
+   -c log_autovacuum_min_duration=10s -c log_temp_files=65536 -c track_io_timing=on
+   -c shared_preload_libraries=pg_stat_statements -c pg_stat_statements.track=top -c max_wal_size=4GB`
+   (her `-c` ve değer ayrı liste öğesi, mevcut biçimde). Gönderilen ilk deploy postgres'i yeniden yaratır.
+2. Ardından bir migration (yalnız SQL, `// migration-lock-ok: ALTER TABLE SET (...) takes SHARE UPDATE EXCLUSIVE`):
+   `CREATE EXTENSION IF NOT EXISTS pg_stat_statements;` ve sık güncellenen tablolara
+   `ALTER TABLE integration.jobs SET (autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.02);`
+   (aynısı `integration.job_attempts`, `integration.rate_limit_usage`, `integration.inbox_messages`,
+   `integration.reference_items`, `inventory.inventory_items`, `inventory.channel_offers`). Salt-okunur rol için
+   `GRANT pg_read_all_stats TO ravencia_ro;` (sahibin `install-readonly-db-role.sh`'ına eklenir).
+3. Doğrula: `/prod-sql "show idle_in_transaction_session_timeout"` → `10min`; `/prod-sql "select count(*) from
+   pg_stat_statements"` > 0; `docker inspect -f '{{.Config.StopTimeout}}' marketplacehub-postgres-1` → 120;
+   `/prod-logs logs postgres --grep "shut down"` → bir sonraki yeniden başlatmada "database system is shut down".
+**Risk:** `idle_in_transaction_session_timeout=10min` 10 dakikadan uzun boşta bekleyen bir uygulama işlemini keser
+(bugün bilinen yok; kesilirse ilgili iş hata alıp yeniden dener). Geri dönüş: satırları silip yeniden deploy.
+
+## 9. WAL arşivi ve zamana dönük geri yükleme (plan, VERITABANI-DAGITIM-8)
+
+Bugün yalnız `pg_dump` var (günde iki kez + her deploy'da): sunucu kaybında son yedekten sonraki siparişler, kesilen
+faturalar ve stok düşümleri kaybolur (RPO ≤ 12 saat); "14:37'den hemen önceki ana dön" yapılamaz. Canlı:
+`archive_mode=off`, `wal_level=replica`. Gerekenler sahibin kararı ve hesabıdır:
+
+1. **Depo:** S3 uyumlu, sunucu dışı (Backblaze B2, Cloudflare R2 ya da Hetzner Storage Box), mümkünse Object Lock;
+   erişim anahtarı ve şifreleme anahtarı `deploy/secrets/walg.env` (root 0600) ve bölüm 5'teki emanete girer.
+2. **İmaj:** `deploy/postgres/Dockerfile`, `postgres:18.6@sha256:…` üzerine sürümü ve sha256'sı sabit WAL-G ikili
+   dosyası; `tests/ops/test-postgres-digest-sync.sh` yeni dosyayı da kapsayacak şekilde genişletilir.
+3. **Ayar** (postgres yeniden başlar): `-c archive_mode=on -c archive_timeout=60 -c archive_command='wal-g wal-push %p'`
+   ve `WALG_LIBSODIUM_KEY` ile şifreleme; haftalık `wal-g backup-push` için `ravencia-basebackup.timer`.
+4. **İzleme:** healthwatch'a `select last_archived_time, failed_count from pg_stat_archiver` (son arşiv 10 dk'dan
+   eskiyse ya da `failed_count` arttıysa alarm).
+5. **Tatbikat:** `restore-drill.sh --pitr <zaman>`: izole konteynerde `wal-g backup-fetch` + `recovery_target_time`,
+   aylık; sonuç `send-alert.sh`. Hedef RPO ≈ 1 dk.
+**Risk:** arşiv komutu başarısız olursa WAL dosyaları diskte birikir (disk dolar): 4. maddedeki alarm olmadan açılmaz.
