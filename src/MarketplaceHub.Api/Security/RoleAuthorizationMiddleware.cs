@@ -9,7 +9,6 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
     private static readonly HashSet<string> OwnerRoles = new(StringComparer.OrdinalIgnoreCase) { "OWNER" };
     private static readonly HashSet<string> OperationalRoles = new(StringComparer.OrdinalIgnoreCase) { "OWNER", "ADMINISTRATOR", "OPERATIONS" };
     private static readonly HashSet<string> InvoiceRoles = new(StringComparer.OrdinalIgnoreCase) { "OWNER", "ADMINISTRATOR", "OPERATIONS", "ACCOUNTING" };
-    private static readonly HashSet<string> AccountingRoles = new(StringComparer.OrdinalIgnoreCase) { "OWNER", "ADMINISTRATOR", "ACCOUNTING" };
     // Every role that works with orders; READONLY is left out.
     private static readonly HashSet<string> WorkingRoles = new(StringComparer.OrdinalIgnoreCase) { "OWNER", "ADMINISTRATOR", "OPERATIONS", "ACCOUNTING" };
 
@@ -20,7 +19,8 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
     public async Task InvokeAsync(HttpContext context)
     {
         var required = RolesFor(context.Request.Method, context.Request.Path.Value);
-        var declared = context.GetEndpoint()?.Metadata.GetMetadata<Common.RequiredGate>()?.Roles;
+        var endpoint = context.GetEndpoint();
+        var declared = endpoint?.Metadata.GetMetadata<Common.RequiredGate>()?.Roles;
         if (required is null && declared is null)
         {
             await next(context);
@@ -28,6 +28,14 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
         }
 
         var role = Normalize(context.User.FindFirstValue(ClaimTypes.Role));
+        // A request no endpoint serves (an unknown route) runs nothing: a signed-in caller gets the router's 404, whatever
+        // the path rule's default for its area, as an owner already did. A caller without a role still meets the path
+        // rule (403 for a write, as on a known route), so an unknown route tells it nothing a known one does not.
+        if (endpoint is null && !string.IsNullOrEmpty(role))
+        {
+            await next(context);
+            return;
+        }
         var allowed = !string.IsNullOrEmpty(role) && (required is null || required.Contains(role)) && (declared is null || declared.Contains(role));
         if (allowed)
         {
@@ -116,8 +124,6 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
         var last = segments.Length > 3 ? segments[^1].ToLowerInvariant() : string.Empty;
         switch (area)
         {
-            case "billing":
-                return AccountingRoles;
             // No invoice goes out without the owner's approval (6 Nov): issuing an e-invoice, cancelling it, and sending
             // or removing its link at the marketplace are for the owner and administrators. Drafts, validation,
             // previews, uploads and status reads stay invoice work.
