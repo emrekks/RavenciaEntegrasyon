@@ -119,4 +119,65 @@ public sealed class OrderBuyerTypeFilterPostgreSqlTests(PostgreSqlTenantIsolatio
             await db.Tenants.Where(row => row.Id == tenant.Id).ExecuteDeleteAsync();
         }
     }
+
+    // SIPARIS-STOK-3: "Fatura Bölgesi" follows the row's micro-export flag (micro = true), not a text search over the
+    // package: a domestic company named "... İthalat İhracat Ltd." or a "MICRO FIBER" product stays in Türkiye.
+    [PostgreSqlFact]
+    public async Task TheInvoiceRegionFilterMatchesTheRowMicroExportFlag()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"rg-{Guid.NewGuid():N}"[..16], DisplayName = "rg", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
+        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "TRENDYOL", Environment = "STAGE", DisplayName = "rg", ExternalStoreId = $"s-{Guid.NewGuid():N}"[..12], Status = "ACTIVE", ApiVersion = "V1" };
+        var customers = new[]
+        {
+            """{"micro":false,"invoiceAddress":{"company":"ABC TEKSTİL İTHALAT İHRACAT LTD. ŞTİ."},"lines":[{"productName":"MICRO FIBER HAVLU"}]}""",
+            """{"micro":true,"countryCode":"AZ"}""",
+        };
+        var orders = customers.Select((customer, index) => new Order
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            ConnectionId = connection.Id,
+            ExternalOrderId = $"rg-{index}",
+            OrderNumber = $"RG{index}",
+            Currency = "TRY",
+            OrderedAt = now.AddMinutes(-index),
+            LastRemoteModifiedAt = now,
+            CustomerSnapshotJson = customer,
+            ShipmentAddressSnapshotJson = "{}",
+            InvoiceAddressSnapshotJson = "{}",
+            DerivedStatus = "NEW",
+            CreatedAt = now,
+            UpdatedAt = now,
+            Version = 1
+        }).ToList();
+        try
+        {
+            await using (var db = fixture.CreateContext())
+            {
+                db.Tenants.Add(tenant);
+                db.PlatformConnections.Add(connection);
+                db.Orders.AddRange(orders);
+                await db.SaveChangesAsync();
+            }
+            await using var service = fixture.CreateContext();
+            var sales = new MarketplaceSalesService(service, new CursorCodec(new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider(), fixture.TimeProvider), new ConfigurationBuilder().Build(), null!, null!, null!, null!, TimeProvider.System);
+            var domestic = await sales.OrdersAsync(tenant.Id, 100, 1, null, new OrderListQuery(InvoiceRegion: "TR"), CancellationToken.None);
+            var micro = await sales.OrdersAsync(tenant.Id, 100, 1, null, new OrderListQuery(InvoiceRegion: "MICRO_EXPORT"), CancellationToken.None);
+            var microCard = await sales.OrdersAsync(tenant.Id, 100, 1, null, new OrderListQuery(MicroExport: true), CancellationToken.None);
+
+            Assert.Equal(orders[0].Id, Assert.Single(domestic.Items).Id);
+            Assert.Equal(orders[1].Id, Assert.Single(micro.Items).Id);
+            Assert.Equal(micro.Items.Select(row => row.Id), microCard.Items.Select(row => row.Id));
+            Assert.True(Assert.Single(micro.Items).Marks?.MicroExport);
+        }
+        finally
+        {
+            await using var db = fixture.CreateContext();
+            await db.IntegrationOutboxEvents.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await db.Orders.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await db.PlatformConnections.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await db.Tenants.Where(row => row.Id == tenant.Id).ExecuteDeleteAsync();
+        }
+    }
 }

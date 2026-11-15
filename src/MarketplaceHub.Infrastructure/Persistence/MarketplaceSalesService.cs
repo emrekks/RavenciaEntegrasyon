@@ -396,10 +396,12 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             query = query.Where(x => x.BuyerType == OrderBuyerTypeView.Individual);
 
         var invoiceRegion = options.InvoiceRegion?.Trim().ToUpperInvariant();
+        // The region follows the row's micro-export flag (RowMarks, the "Mikro İhracat" card), not a text search over the
+        // whole package: a company named "... İthalat İhracat Ltd." or a "MICRO FIBER" product is no export (SIPARIS-STOK-3).
         if (invoiceRegion == "MICRO_EXPORT")
-            query = query.Where(x => x.CustomerSnapshotJson.Contains("\"micro\":true") || x.CustomerSnapshotJson.Contains("\"micro\": true") || x.CustomerSnapshotJson.Contains("\"microExport\":true") || x.CustomerSnapshotJson.Contains("\"microExport\": true") || x.CustomerSnapshotJson.Contains("\"3pByTrendyol\":true") || x.CustomerSnapshotJson.Contains("MICRO") || x.CustomerSnapshotJson.Contains("İHRAC") || x.CustomerSnapshotJson.Contains("IHRAC"));
+            query = query.Where(MicroExportOrder());
         else if (invoiceRegion == "TR")
-            query = query.Where(x => !x.CustomerSnapshotJson.Contains("\"micro\":true") && !x.CustomerSnapshotJson.Contains("\"micro\": true") && !x.CustomerSnapshotJson.Contains("\"microExport\":true") && !x.CustomerSnapshotJson.Contains("\"microExport\": true") && !x.CustomerSnapshotJson.Contains("\"3pByTrendyol\":true") && !x.CustomerSnapshotJson.Contains("MICRO") && !x.CustomerSnapshotJson.Contains("İHRAC") && !x.CustomerSnapshotJson.Contains("IHRAC"));
+            query = query.Where(DomesticOrder());
 
         var status = options.Status?.Trim().ToUpperInvariant();
         // The dashboard's "Geciken Siparişler" card opens this view: exactly the orders that card counts.
@@ -506,8 +508,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         if (listing == "OPEN") query = query.Where(x => x.DerivedStatus != "DELIVERED" && x.DerivedStatus != "CANCELLED" && x.DerivedStatus != "RETURNED");
         // Micro-export orders: Trendyol's micro = true at the top of the package, as RowMarks reads it for the flag icon.
         if (options.MicroExport == true)
-            query = query.Where(x => (x.CustomerSnapshotJson.Contains("\"micro\":true") || x.CustomerSnapshotJson.Contains("\"micro\": true"))
-                && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == x.ConnectionId && connection.PlatformCode == "TRENDYOL"));
+            query = query.Where(MicroExportOrder());
         // Orders with some products cancelled that were not cancelled whole, open or closed.
         if (options.PartialCancel == true)
             query = query.Where(x => x.DerivedStatus != "CANCELLED" && db.OrderLines.Any(line => line.TenantId == x.TenantId && line.OrderId == x.Id && line.CancelledQuantity > 0));
@@ -787,6 +788,15 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             .ToListAsync(cancellationToken);
         return rows.ToDictionary(row => row.ConnectionId.ToString("D"), row => row.Units);
     }
+
+    // A micro-export order as the row's flag reads it (RowMarks): Trendyol's micro = true in the package snapshot.
+    private Expression<Func<Order, bool>> MicroExportOrder() => x =>
+        (x.CustomerSnapshotJson.Contains("\"micro\":true") || x.CustomerSnapshotJson.Contains("\"micro\": true"))
+        && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == x.ConnectionId && connection.PlatformCode == "TRENDYOL");
+
+    private Expression<Func<Order, bool>> DomesticOrder() => x =>
+        !((x.CustomerSnapshotJson.Contains("\"micro\":true") || x.CustomerSnapshotJson.Contains("\"micro\": true"))
+            && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == x.ConnectionId && connection.PlatformCode == "TRENDYOL"));
 
     private async Task<(int Count, IReadOnlyDictionary<string, int> Countries)> MicroExportCountsAsync(Guid tenantId, OrderListQuery options, CancellationToken cancellationToken)
     {
