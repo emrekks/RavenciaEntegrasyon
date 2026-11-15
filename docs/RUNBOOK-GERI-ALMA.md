@@ -110,8 +110,7 @@ silinir — yani bir haftadan eski bir noktaya dönüş her zaman garanti değil
      pg_restore --exit-on-error --no-owner --dbname=marketplacehub "/backup/$SET/database.dump"
    ```
    Dosya/anahtar volume'leri (`app_files`, `dp_keys`) gerekiyorsa `private-volumes.tar.gz`'den aynı
-   şekilde açılır; Data Protection anahtarları değişmediyse dokunmayın.
-6. **Bekleyen işleri karantinaya al** (worker'ı başlatmadan önce, zorunlu). Yedek alındığı anda kuyrukta
+   şekilde açılır; Data Protection anahtarları değişmediyse dokunmayın.6. **Bekleyen işleri karantinaya al** (worker'ı başlatmadan önce, zorunlu). Yedek alındığı anda kuyrukta
    bekleyen ya da çalışan işler arasında fatura gönderimi, kargo/iade aksiyonu ve fiyat-stok yazımı
    olabilir. Bunlar yedekten sonra zaten gönderilmiş olabilir; worker onları yeniden çalıştırırsa
    çift fatura veya pazaryerine eski stok yazılır. Hepsini manuel incelemeye çek:
@@ -162,9 +161,17 @@ Emanet kuralı (dosyaları **bu repoya, sohbete ya da şifresiz bir yere koymay�
 1. Sahip, kendi bilgisayarında `age` anahtar çifti üretir; özel anahtar parola yöneticisinde ve sunucu
    dışında kalır, sunucuya yalnız açık anahtar (`deploy/secrets/backup_age_recipient.txt`) konur
    ([CI-CD-DEPLOY.md](CI-CD-DEPLOY.md) "Sunucu dışı yedek").
-2. Sunucuda: `sudo tar -C deploy -czf - secrets | age -R deploy/secrets/backup_age_recipient.txt > ~/ravencia-secrets-$(date +%F).tar.gz.age`
-3. Şifreli dosyayı sunucu dışına (sahibin bilgisayarı ve parola yöneticisi / Google Drive) taşı ve
-   sunucudan sil: `scp ubuntu@187.126.24.163:ravencia-secrets-*.tar.gz.age .` sonra `rm ~/ravencia-secrets-*.tar.gz.age`.
+2. Sahibin bilgisayarında (sunucuda `age` ve `backup_age_recipient.txt` kurulu olmasa da çalışır; arşiv SSH içinde
+   gelir, diske yalnız şifreli hali yazılır). `age1…` açık anahtarı panelde Sistem Ayarları › Google Drive Yedeği'nde
+   kayıtlı olandır (özel anahtarı `ravencia-yedek-anahtari.txt`):
+   ```bash
+   ssh ubuntu@187.126.24.163 'cd <deploy checkout> && sudo tar -C deploy -czf - secrets' \
+     | age -r age1... > ravencia-secrets-$(date +%F).tar.gz.age
+   age -d -i ravencia-yedek-anahtari.txt ravencia-secrets-*.tar.gz.age | tar -tzf - | head   # açılıyor mu
+   ```
+   Sunucuda `deploy/secrets/backup_age_recipient.txt` kuruluysa eski yol da olur:
+   `sudo tar -C deploy -czf - secrets | age -R deploy/secrets/backup_age_recipient.txt > ~/ravencia-secrets-$(date +%F).tar.gz.age`.
+3. Şifreli dosyayı parola yöneticisine ve Drive'a koy (sunucuda yazdıysan `scp` ile al ve sunucudan `rm`).
 4. Her anahtar/sertifika değişiminde tekrarla; yılda bir kez açıp `restore-drill.sh` ile dene.
 
 Yedek setlerinin kendisi de sunucu dışına şifreli kopyalanır: `deploy/backup/offsite-copy.sh` en yeni
