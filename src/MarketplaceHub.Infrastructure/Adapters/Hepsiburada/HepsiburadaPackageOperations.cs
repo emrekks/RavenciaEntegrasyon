@@ -60,6 +60,7 @@ public sealed partial class HepsiburadaHttpClient
         }
 
         var response = await SendAsync(account, account.OmsBaseAddress, method, endpoint, content, cancellationToken);
+        using var responseDocument = response.Value;
         if (!response.IsSuccess) return AdapterResult<PackageActionResult>.Failure(response.Error!, response.RateLimit);
         return AdapterResult<PackageActionResult>.Success(new(command.ExternalPackageId, action, null), response.RateLimit);
     }
@@ -73,6 +74,7 @@ public sealed partial class HepsiburadaHttpClient
         if (!IntegrationRuntimePolicy.AllowsManualRead(account.Connection)) return await Unsupported<IReadOnlyList<RemoteCargoCompany>>("Hepsiburada kargo firmaları yalnız etkin veya doğrulanmış bağlantıdan okunabilir.");
         if (string.IsNullOrWhiteSpace(externalPackageId) || externalPackageId.Any(char.IsWhiteSpace)) return Failure<IReadOnlyList<RemoteCargoCompany>>(AdapterErrorClass.Validation, "HEPSIBURADA_PACKAGE_ID_INVALID", "Paket numarası geçersiz.", HttpStatusCode.BadRequest);
         var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, ChangeableCargoCompanies(account.Connection.ExternalStoreId, externalPackageId), cancellationToken);
+        using var responseDocument = response.Value;
         if (!response.IsSuccess) return AdapterResult<IReadOnlyList<RemoteCargoCompany>>.Failure(response.Error!, response.RateLimit);
         try { return AdapterResult<IReadOnlyList<RemoteCargoCompany>>.Success(HepsiburadaJsonMapper.ChangeableCargoCompanies(response.Value!.RootElement), response.RateLimit); }
         catch (JsonException) { return Failure<IReadOnlyList<RemoteCargoCompany>>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_CARGO_COMPANY_CONTRACT_INVALID", "Hepsiburada değiştirilebilir kargo firması yanıtı beklenen sözleşmeyle eşleşmiyor.", HttpStatusCode.BadGateway); }
@@ -87,6 +89,7 @@ public sealed partial class HepsiburadaHttpClient
         if (!IntegrationRuntimePolicy.AllowsManualRead(account.Connection)) return await Unsupported<IReadOnlyList<RemotePackageableLine>>("Hepsiburada paketlenebilir kalemleri yalnız etkin veya doğrulanmış bağlantıdan okunabilir.");
         if (string.IsNullOrWhiteSpace(externalLineItemId) || externalLineItemId.Any(char.IsWhiteSpace)) return Failure<IReadOnlyList<RemotePackageableLine>>(AdapterErrorClass.Validation, "HEPSIBURADA_LINE_ITEM_ID_INVALID", "Sipariş kalemi kimliği geçersiz.", HttpStatusCode.BadRequest);
         var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, PackageableLineItems(account.Connection.ExternalStoreId, externalLineItemId), cancellationToken);
+        using var responseDocument = response.Value;
         if (!response.IsSuccess) return AdapterResult<IReadOnlyList<RemotePackageableLine>>.Failure(response.Error!, response.RateLimit);
         try { return AdapterResult<IReadOnlyList<RemotePackageableLine>>.Success(HepsiburadaJsonMapper.PackageableLineItems(response.Value!.RootElement), response.RateLimit); }
         catch (JsonException) { return Failure<IReadOnlyList<RemotePackageableLine>>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_PACKAGEABLE_LINES_CONTRACT_INVALID", "Hepsiburada paketlenebilir kalem yanıtı beklenen sözleşmeyle eşleşmiyor.", HttpStatusCode.BadGateway); }
@@ -118,6 +121,7 @@ public sealed partial class HepsiburadaHttpClient
         var body = CreatePackagePayload(command);
         using var content = new StringContent(body, Encoding.UTF8, "application/json");
         var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Post, CreatePackage(account.Connection.ExternalStoreId), content, cancellationToken);
+        using var responseDocument = response.Value;
         if (!response.IsSuccess) return AdapterResult<CreateOrderPackageResult>.Failure(response.Error!, response.RateLimit);
         try { return AdapterResult<CreateOrderPackageResult>.Success(new(HepsiburadaJsonMapper.PackageNumber(response.Value!.RootElement)), response.RateLimit); }
         catch (JsonException) { return Failure<CreateOrderPackageResult>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_PACKAGE_CREATE_CONTRACT_INVALID", "Hepsiburada paket oluşturma yanıtında packageNumber yok.", HttpStatusCode.BadGateway); }

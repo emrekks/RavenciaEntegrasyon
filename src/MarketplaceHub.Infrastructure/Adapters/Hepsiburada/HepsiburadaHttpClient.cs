@@ -98,6 +98,7 @@ public sealed partial class HepsiburadaHttpClient(
             }
         }
         if (!result.IsSuccess) return AdapterResult<ConnectionIdentity>.Failure(result.Error!, result.RateLimit);
+        using var resultDocument = result.Value;
         try
         {
             HepsiburadaJsonMapper.OrderPage(result.Value!.RootElement);
@@ -172,6 +173,7 @@ public sealed partial class HepsiburadaHttpClient(
         }
 
         var response = await SendAsync(account, account.CatalogBaseAddress, HttpMethod.Get, endpoint, cancellationToken);
+        using var responseDocument = response.Value;
         if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteReferenceItem>>.Failure(response.Error!, response.RateLimit);
         if (HepsiburadaJsonMapper.ReferenceApiErrorCode(response.Value!.RootElement) is { } apiErrorCode)
         {
@@ -218,6 +220,7 @@ public sealed partial class HepsiburadaHttpClient(
         if (account.CatalogBaseAddress is null) return await Unsupported<AdapterPageResult<RemoteCatalogProduct>>("Hepsiburada katalog base URL'si yapılandırılmamış.");
         var (pageNumber, limit) = ReferencePage(page, 500);
         var response = await SendAsync(account, account.CatalogBaseAddress, HttpMethod.Get, MerchantProducts(account, pageNumber, limit), cancellationToken);
+        using var responseDocument = response.Value;
         if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Failure(response.Error!, response.RateLimit);
         try
         {
@@ -246,6 +249,7 @@ public sealed partial class HepsiburadaHttpClient(
             if (filter.ModifiedAfter is { } modifiedAfter) query.Add("updateStartDate=" + Uri.EscapeDataString(modifiedAfter.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture)));
             if (attempts[attemptIndex] is { } lookupQuery) query.Add(lookupQuery);
             var response = await SendAsync(account, account.ListingBaseAddress, HttpMethod.Get, Listings(account, string.Join('&', query)), cancellationToken);
+            using var responseDocument = response.Value;
             if (!response.IsSuccess)
             {
                 if (ShouldTryNextListingLookup(attemptIndex, attempts.Length, page.Cursor, 0, response.Error?.Class)) continue;
@@ -320,6 +324,7 @@ public sealed partial class HepsiburadaHttpClient(
         file.Headers.ContentType = new MediaTypeHeaderValue("application/json");
         content.Add(file, "file", "products.json");
         var response = await SendAsync(account, account.CatalogBaseAddress, HttpMethod.Post, ProductImportUpload(), content, cancellationToken);
+        using var responseDocument = response.Value;
         if (!response.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(response.Error!, response.RateLimit);
         try
         {
@@ -350,6 +355,7 @@ public sealed partial class HepsiburadaHttpClient(
         file.Headers.ContentType = new MediaTypeHeaderValue("application/json");
         content.Add(file, "file", "product-updates.json");
         var response = await SendAsync(account, account.CatalogBaseAddress, HttpMethod.Post, ProductUpdateUpload(), content, cancellationToken);
+        using var responseDocument = response.Value;
         if (!response.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(response.Error!, response.RateLimit);
         try
         {
@@ -390,6 +396,7 @@ public sealed partial class HepsiburadaHttpClient(
 
         using var content = new StringContent(BuildShippingInfoUploadJson(payloadJson), Encoding.UTF8, "application/json");
         var response = await SendAsync(account, account.ListingBaseAddress, HttpMethod.Post, ShippingInfoUpload(account), content, cancellationToken);
+        using var responseDocument = response.Value;
         if (!response.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(response.Error!, response.RateLimit);
         try
         {
@@ -423,6 +430,7 @@ public sealed partial class HepsiburadaHttpClient(
             if (string.IsNullOrWhiteSpace(shippingUploadId) || shippingUploadId.Length > 200)
                 return Failure<RemoteOperationStatus>(AdapterErrorClass.Validation, "HEPSIBURADA_SHIPPING_INFO_UPLOAD_ID_INVALID", "Hepsiburada teslimat süresi yükleme numarası geçersiz.", HttpStatusCode.BadRequest);
             var shippingResponse = await SendAsync(account, account.ListingBaseAddress, HttpMethod.Get, ShippingInfoUploadStatus(account, shippingUploadId), cancellationToken);
+            using var shippingResponseDocument = shippingResponse.Value;
             if (!shippingResponse.IsSuccess) return AdapterResult<RemoteOperationStatus>.Failure(shippingResponse.Error!, shippingResponse.RateLimit);
             try { return AdapterResult<RemoteOperationStatus>.Success(HepsiburadaJsonMapper.InventoryUploadStatus(shippingResponse.Value!.RootElement, shippingUploadId, ShippingInfoUploadPrefix), shippingResponse.RateLimit); }
             catch (JsonException)
@@ -440,6 +448,7 @@ public sealed partial class HepsiburadaHttpClient(
             if (string.IsNullOrWhiteSpace(operationId) || operationId.Length > 200)
                 return Failure<RemoteOperationStatus>(AdapterErrorClass.Validation, "HEPSIBURADA_INVENTORY_UPLOAD_ID_INVALID", "Hepsiburada inventoryUploadId geçersiz.", HttpStatusCode.BadRequest);
             var statusResponse = await SendAsync(account, account.ListingBaseAddress, HttpMethod.Get, InventoryUploadStatus(account, operationId), cancellationToken);
+            using var statusResponseDocument = statusResponse.Value;
             if (!statusResponse.IsSuccess) return AdapterResult<RemoteOperationStatus>.Failure(statusResponse.Error!, statusResponse.RateLimit);
             try { return AdapterResult<RemoteOperationStatus>.Success(HepsiburadaJsonMapper.InventoryUploadStatus(statusResponse.Value!.RootElement, operationId), statusResponse.RateLimit); }
             catch (JsonException)
@@ -459,6 +468,7 @@ public sealed partial class HepsiburadaHttpClient(
         {
             var statusEndpoint = isProductUpdate ? ProductUpdateStatus(trackingId, page, 100) : ProductImportStatus(trackingId, page, 100);
             var response = await SendAsync(account, account.CatalogBaseAddress!, HttpMethod.Get, statusEndpoint, cancellationToken);
+            using var responseDocument = response.Value;
             if (!response.IsSuccess) return AdapterResult<RemoteOperationStatus>.Failure(response.Error!, response.RateLimit);
             rate = response.RateLimit ?? rate;
             try
@@ -512,6 +522,7 @@ public sealed partial class HepsiburadaHttpClient(
 
         using var content = new StringContent(BuildInventoryUploadXml(payloadJson), Encoding.UTF8, "application/xml");
         var response = await SendAsync(account, account.ListingBaseAddress, HttpMethod.Post, InventoryUpload(account), content, cancellationToken);
+        using var responseDocument = response.Value;
         if (!response.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(response.Error!, response.RateLimit);
         try
         {
@@ -535,6 +546,7 @@ public sealed partial class HepsiburadaHttpClient(
         if (window.ModifiedAfter is { } after) query.Add("begindate=" + Uri.EscapeDataString(HepsiburadaJsonMapper.QueryTime(after)));
         if (window.ModifiedBefore is { } before) query.Add("enddate=" + Uri.EscapeDataString(HepsiburadaJsonMapper.QueryTime(before)));
         var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, Orders(account, string.Join('&', query)), cancellationToken);
+        using var responseDocument = response.Value;
         if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteOrder>>.Failure(response.Error!, response.RateLimit);
         try
         {
@@ -573,6 +585,7 @@ public sealed partial class HepsiburadaHttpClient(
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return Failure<RemoteOrder>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
         var result = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, OrderDetails(account, externalOrderId), cancellationToken);
+        using var resultDocument = result.Value;
         if (!result.IsSuccess) return AdapterResult<RemoteOrder>.Failure(result.Error!, result.RateLimit);
         try
         {
@@ -611,10 +624,13 @@ public sealed partial class HepsiburadaHttpClient(
 
         var (offset, limit) = Page(page, settings.PageSize);
         var (statusOffset, statusLimit) = StatusListPage(offset, limit);
+        // The status pages stay open until their rows are mapped below.
+        var statusDocuments = new List<JsonDocument>();
         try
         {
             var query = PackageListQuery(offset, limit, window);
             var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, Packages(account, query), cancellationToken);
+            using var responseDocument = response.Value;
             if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteOrderPackage>>.Failure(response.Error!, response.RateLimit);
 
             var sources = new List<(string? Status, IReadOnlyList<JsonElement> Items, int? TotalCount, int Offset, int Limit)>();
@@ -631,6 +647,7 @@ public sealed partial class HepsiburadaHttpClient(
                 var statusResponse = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, PackagesByStatus(account, status, statusQuery), cancellationToken);
                 if (!statusResponse.IsSuccess)
                     return AdapterResult<AdapterPageResult<RemoteOrderPackage>>.Failure(statusResponse.Error!, statusResponse.RateLimit ?? rateLimit);
+                statusDocuments.Add(statusResponse.Value!);
                 var statusPage = HepsiburadaJsonMapper.PackagePage(statusResponse.Value!.RootElement);
                 sources.Add((status, statusPage.Items, statusPage.TotalCount, statusOffset, statusLimit));
                 rateLimit = statusResponse.RateLimit ?? rateLimit;
@@ -697,6 +714,10 @@ public sealed partial class HepsiburadaHttpClient(
         {
             return Failure<AdapterPageResult<RemoteOrderPackage>>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_PACKAGE_LIST_CONTRACT_INVALID", "Hepsiburada paket veya sevkiyat durumu listesi beklenen sayfa sözleşmesiyle eşleşmiyor.", HttpStatusCode.BadGateway);
         }
+        finally
+        {
+            foreach (var document in statusDocuments) document.Dispose();
+        }
     }
 
     public async Task<AdapterResult<AdapterPageResult<RemoteMissingInvoicePackage>>> ListMissingInvoicePackagesAsync(AdapterContext context, AdapterPageRequest page, CancellationToken cancellationToken)
@@ -711,6 +732,7 @@ public sealed partial class HepsiburadaHttpClient(
         var (offset, limit) = Page(page, settings.PageSize, documentedMaximum: 50);
         var query = $"limit={limit.ToString(CultureInfo.InvariantCulture)}&offset={offset.ToString(CultureInfo.InvariantCulture)}";
         var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, MissingInvoicePackages(account, query), cancellationToken);
+        using var responseDocument = response.Value;
         if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteMissingInvoicePackage>>.Failure(response.Error!, response.RateLimit);
 
         try
@@ -739,6 +761,7 @@ public sealed partial class HepsiburadaHttpClient(
             "begindate=" + Uri.EscapeDataString(HepsiburadaJsonMapper.QueryTime(since)),
             "enddate=" + Uri.EscapeDataString(HepsiburadaJsonMapper.QueryTime(until)));
         var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, CancelledOrders(account, query), cancellationToken);
+        using var responseDocument = response.Value;
         if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteCancelledOrderLine>>.Failure(response.Error!, response.RateLimit);
         try
         {
@@ -771,6 +794,7 @@ public sealed partial class HepsiburadaHttpClient(
         var normalizedPackageNumber = packageNumber.Trim();
         var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get,
             PackageTrackingInfo(account.Connection.ExternalStoreId, normalizedPackageNumber), cancellationToken);
+        using var responseDocument = response.Value;
         if (!response.IsSuccess)
             return AdapterResult<PackageTrackingStatusSnapshot>.Failure(response.Error!, response.RateLimit);
 
@@ -932,6 +956,7 @@ public sealed partial class HepsiburadaHttpClient(
         var orderNumber = RandomNumberGenerator.GetInt32(1_000_000_000, int.MaxValue).ToString(CultureInfo.InvariantCulture);
         using var content = new StringContent(TestOrderPayload(account.Connection.ExternalStoreId, orderNumber, sku, timeProvider.GetUtcNow()), Encoding.UTF8, "application/json");
         var response = await SendAsync(account, account.StageTestOrderBaseAddress, HttpMethod.Post, StageTestOrder(account, account.Connection.ExternalStoreId), content, cancellationToken);
+        using var responseDocument = response.Value;
         if (!response.IsSuccess) return AdapterResult<StageTestOrderResult>.Failure(response.Error!, response.RateLimit);
         // The SIT stub answers 201 without echoing the order number; the number is the one this request
         // created, so a successful answer without it still identifies the order.
@@ -959,6 +984,7 @@ public sealed partial class HepsiburadaHttpClient(
             window.ModifiedBefore,
             window.StatusModifiedAfter,
             window.StatusModifiedBefore)), cancellationToken);
+        using var responseDocument = response.Value;
         if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(response.Error!, response.RateLimit);
         try
         {
@@ -1031,6 +1057,7 @@ public sealed partial class HepsiburadaHttpClient(
 
         using var content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
         var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Post, path, content, cancellationToken);
+        using var responseDocument = response.Value;
         return response.IsSuccess
             ? AdapterResult<ReturnActionResult>.Success(new(command.ExternalClaimId, resultStatus, null), response.RateLimit)
             : AdapterResult<ReturnActionResult>.Failure(response.Error!, response.RateLimit);
@@ -1068,6 +1095,7 @@ public sealed partial class HepsiburadaHttpClient(
             var resendBody = HepsiburadaInvoiceDeliveryPolicy.Body(invoice!);
             using var resendContent = new StringContent(resendBody, Encoding.UTF8, "application/json");
             var resend = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Put, InvoiceLink(account, invoice.PackageNumber), resendContent, cancellationToken);
+            using var resendDocument = resend.Value;
             return resend.IsSuccess
                 ? AdapterResult<InvoiceDeliveryResult>.Success(new(invoice.PackageNumber, "INVOICED", false, invoice.InvoiceNumber, invoice.InvoiceLink.AbsoluteUri), resend.RateLimit)
                 : AdapterResult<InvoiceDeliveryResult>.Failure(resend.Error!, resend.RateLimit);
@@ -1085,6 +1113,7 @@ public sealed partial class HepsiburadaHttpClient(
         using var content = new StringContent(body, Encoding.UTF8, "application/json");
         var path = InvoiceLink(account, invoice.PackageNumber);
         var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Put, path, content, cancellationToken);
+        using var responseDocument = response.Value;
         if (!response.IsSuccess && response.Error!.HttpStatus == (int)HttpStatusCode.Conflict)
         {
             // 409: the package already has an invoice (another tool, or an earlier attempt of ours that landed).
@@ -1122,6 +1151,7 @@ public sealed partial class HepsiburadaHttpClient(
             return Failure<InvoiceDeliveryStatus>(AdapterErrorClass.Validation, "HEPSIBURADA_ORDER_NUMBER_REQUIRED", "Hepsiburada fatura durumu için sipariş numarası zorunludur.", HttpStatusCode.BadRequest);
 
         var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, OrderDetails(account, reference.OrderNumber), cancellationToken);
+        using var responseDocument = response.Value;
         if (!response.IsSuccess) return AdapterResult<InvoiceDeliveryStatus>.Failure(response.Error!, response.RateLimit);
         try
         {
@@ -1214,6 +1244,7 @@ public sealed partial class HepsiburadaHttpClient(
         for (var offset = 0; offset < 2_000; offset += limit)
         {
             var response = await SendAsync(account, account.ListingBaseAddress, HttpMethod.Get, Listings(account, $"offset={offset.ToString(CultureInfo.InvariantCulture)}&limit={limit.ToString(CultureInfo.InvariantCulture)}"), cancellationToken);
+            using var responseDocument = response.Value;
             if (!response.IsSuccess) break;
             IReadOnlyList<JsonElement> items;
             int? total;

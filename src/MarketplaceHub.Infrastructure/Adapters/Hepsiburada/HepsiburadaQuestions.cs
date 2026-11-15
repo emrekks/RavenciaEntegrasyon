@@ -12,6 +12,7 @@ public sealed partial class HepsiburadaHttpClient : IQuestionPort
         if (account?.QuestionBaseAddress is null) return AdapterResult<MarketplaceQuestionPage>.Failure(new(AdapterErrorClass.Authentication, "HEPSIBURADA_QUESTION_CREDENTIALS", "Hepsiburada soru bağlantısı veya servis anahtarı eksik.", 401, null, null));
         var response = await SendAsync(account, account.QuestionBaseAddress, HttpMethod.Get, HepsiburadaQuestionRequestContract.ListPath(query), null, cancellationToken,
             request => request.Headers.TryAddWithoutValidation("merchantId", account.Connection.ExternalStoreId));
+        using var responseDocument = response.Value;
         if (!response.IsSuccess) return AdapterResult<MarketplaceQuestionPage>.Failure(response.Error!, response.RateLimit);
         try { return AdapterResult<MarketplaceQuestionPage>.Success(HepsiburadaQuestionMapper.Page(response.Value!, query), response.RateLimit); }
         catch (JsonException) { return AdapterResult<MarketplaceQuestionPage>.Failure(new(AdapterErrorClass.ContractViolation, "HEPSIBURADA_QUESTION_CONTRACT", "Hepsiburada soru yanıtının biçimi tanınmadı.", null, null, null), response.RateLimit); }
@@ -23,6 +24,7 @@ public sealed partial class HepsiburadaHttpClient : IQuestionPort
         if (account?.QuestionBaseAddress is null) return AdapterResult<RemoteMarketplaceQuestion>.Failure(new(AdapterErrorClass.Authentication, "HEPSIBURADA_QUESTION_CREDENTIALS", "Hepsiburada soru bağlantısı veya servis anahtarı eksik.", 401, null, null));
         var response = await SendAsync(account, account.QuestionBaseAddress, HttpMethod.Get, HepsiburadaQuestionRequestContract.DetailPath(questionId), null, cancellationToken,
             request => request.Headers.TryAddWithoutValidation("merchantId", account.Connection.ExternalStoreId));
+        using var responseDocument = response.Value;
         if (!response.IsSuccess) return AdapterResult<RemoteMarketplaceQuestion>.Failure(response.Error!, response.RateLimit);
         try
         {
@@ -44,6 +46,7 @@ public sealed partial class HepsiburadaHttpClient : IQuestionPort
         using var content = HepsiburadaQuestionRequestContract.CreateAnswerContent(answer);
         var response = await SendAsync(account, account.QuestionBaseAddress, HttpMethod.Post, HepsiburadaQuestionRequestContract.AnswerPath(questionId), content, cancellationToken,
             request => request.Headers.TryAddWithoutValidation("merchantId", account.Connection.ExternalStoreId));
+        using var responseDocument = response.Value;
         if (!response.IsSuccess) return AdapterResult<RemoteQuestionAnswerResult>.Failure(response.Error!, response.RateLimit);
         return AdapterResult<RemoteQuestionAnswerResult>.Success(new(true, false, null), response.RateLimit);
     }
