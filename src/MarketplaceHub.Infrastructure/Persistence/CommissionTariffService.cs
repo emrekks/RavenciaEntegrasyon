@@ -520,7 +520,7 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
         selection.UpdatedAt = now;
         selection.UpdatedBy = userId;
         db.CommissionTariffPicks.AddRange(choices.Where(x => known.Contains(x.RowId))
-            .Select(x => new CommissionTariffPick { TariffId = tariffId, RowId = x.RowId, TenantId = tenantId, Tier = x.Price is null ? x.Tier : null, Price = x.Price is { } price ? decimal.Round(price, 2, MidpointRounding.AwayFromZero) : null }));
+            .Select(x => new CommissionTariffPick { TariffId = tariffId, RowId = x.RowId, TenantId = tenantId, Tier = x.Price is null ? x.Tier : null, Price = x.Price is { } price ? MoneyRounding.Round(price) : null }));
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         db.ChangeTracker.Clear();
@@ -705,13 +705,13 @@ internal static class CommissionTariffChoices
     // A price of the seller's own, in the band it falls in (none when it falls in no band).
     public static CommissionChoiceView? PricedAt(CommissionTariffRow row, decimal price, UnitProfitFacts facts)
     {
-        var rounded = decimal.Round(price, 2, MidpointRounding.AwayFromZero);
+        var rounded = MoneyRounding.Round(price);
         return CommissionTariffBands.BandFor(row, rounded) is { } band ? Priced(band, rounded, facts) : null;
     }
 
     private static CommissionChoiceView Priced(CommissionBand band, decimal price, UnitProfitFacts facts)
     {
-        var commission = decimal.Round(price * band.Rate / 100m, 2, MidpointRounding.AwayFromZero);
+        var commission = MoneyRounding.Round(price * band.Rate / 100m);
         var (profit, costs) = UnitProfit.Of(price, commission, facts);
         return new(band.Tier, price, band.Rate, commission, profit, costs);
     }
@@ -722,7 +722,7 @@ internal static class CommissionTariffChoices
     // The profit as a share of the product cost (Kâr Oranı, as the order profit report and Melontik give it); unknown
     // without a profit or a cost above zero.
     public static decimal? OnCost(CommissionChoiceView choice) =>
-        choice is { Remaining: { } left, Costs.Cost: > 0 } ? Math.Round(left / choice.Costs.Cost * 100m, 2, MidpointRounding.AwayFromZero) : null;
+        choice is { Remaining: { } left, Costs.Cost: > 0 } ? MoneyRounding.Round(left / choice.Costs.Cost * 100m) : null;
 
     // The pick for every row: one band ("tier"), the band leaving the most ("amount") or the largest profit on its cost
     // ("rate"); none when it leaves less than MinRate per cent of the cost or MinAmount lira, more than MaxRate or
