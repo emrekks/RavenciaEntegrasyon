@@ -7,9 +7,9 @@ describe('brand mapping backup import', () => {
   it('goes on past a refused mapping and counts what was saved, skipped and refused', async () => {
     const sent: string[] = []
     const result = await importBrandMappingItems(items, {
-      target: item => item.localId === 'c' && item.externalId === 'none' ? null : item.localId,
+      target: item => item.localId,
       nameOf: item => `Marka ${item.localId.toUpperCase()}`,
-      send: async (item, localId) => { if (localId === 'b') throw new Error('Sürüm değişti.'); sent.push(localId) }
+      send: async (_item, localId) => { if (localId === 'b') throw new Error('Sürüm değişti.'); sent.push(localId) }
     })
     expect(sent.sort()).toEqual(['a', 'c'])
     expect(result).toEqual({ mapped: 2, skipped: 0, failures: [{ name: 'Marka B', message: 'Sürüm değişti.' }] })
