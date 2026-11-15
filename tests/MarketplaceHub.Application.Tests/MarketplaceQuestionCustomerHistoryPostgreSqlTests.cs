@@ -44,6 +44,36 @@ public sealed class MarketplaceQuestionCustomerHistoryPostgreSqlTests(PostgreSql
         Assert.Null(await service.CustomerHistoryAsync(tenant.Id, Guid.CreateVersion7(), CancellationToken.None));
     }
 
+    // SIPARIS-STOK-7: the search ignores case the Turkish way, like the order search; a hidden store's question is not
+    // opened, nor shown in a customer's history, as the list already hides it.
+    [PostgreSqlFact]
+    public async Task SearchIgnoresCase_AndAHiddenStoresQuestionIsNotOpened()
+    {
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"question-search-{Guid.NewGuid():N}", DisplayName = "question-search", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow, Version = 1 };
+        var active = Connection(tenant.Id, "TRENDYOL", "Açık mağaza");
+        var hidden = Connection(tenant.Id, "TRENDYOL", "Gizli mağaza");
+        hidden.Status = "DISABLED";
+        var now = fixture.Now;
+        var cargo = Question(tenant.Id, active.Id, "C-1", "Kargo ne zaman gelir?", now.AddHours(-1));
+        var light = Question(tenant.Id, active.Id, "C-1", "IŞIKLI model var mı?", now.AddHours(-2));
+        var hiddenEarlier = Question(tenant.Id, hidden.Id, "C-1", "Kargo ücretli mi?", now.AddDays(-1));
+        db.Tenants.Add(tenant);
+        db.PlatformConnections.AddRange(active, hidden);
+        db.MarketplaceQuestions.AddRange(cargo, light, hiddenEarlier);
+        await db.SaveChangesAsync();
+        var service = new MarketplaceQuestionService(db, null!, fixture.TimeProvider, NullLogger<MarketplaceQuestionService>.Instance);
+
+        var found = await service.ListAsync(tenant.Id, new QuestionListQuery("ALL", null, null, null, null, null, "kargo"), CancellationToken.None);
+        Assert.Equal([cargo.Id], found.Items.Select(item => item.Id));
+        var folded = await service.ListAsync(tenant.Id, new QuestionListQuery("ALL", null, null, null, null, null, "ışıklı"), CancellationToken.None);
+        Assert.Equal([light.Id], folded.Items.Select(item => item.Id));
+        Assert.Null(await service.GetAsync(tenant.Id, hiddenEarlier.Id, CancellationToken.None));
+        Assert.Null(await service.CustomerHistoryAsync(tenant.Id, hiddenEarlier.Id, CancellationToken.None));
+        Assert.DoesNotContain((await service.CustomerHistoryAsync(tenant.Id, cargo.Id, CancellationToken.None))!, item => item.Id == hiddenEarlier.Id);
+    }
+
     private static PlatformConnection Connection(Guid tenantId, string platformCode, string name) =>
         new() { Id = Guid.CreateVersion7(), TenantId = tenantId, PublicId = Guid.CreateVersion7(), PlatformCode = platformCode, Environment = "PRODUCTION", DisplayName = name, ExternalStoreId = $"store-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V1" };
 

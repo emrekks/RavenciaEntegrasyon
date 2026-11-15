@@ -17,6 +17,7 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
     // Pazarama answers wait for its approval (shown as answered) and may be rejected.
     private static readonly string[] PazaramaStatuses = ["WAITING_FOR_ANSWER", "ANSWERED", "REJECTED"];
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
+    private const string LikeEscape = "\\";
 
     // The inbox filters. A sent answer waiting for the marketplace's confirmation or approval is no longer the
     // seller's to do: it counts as answered. A rejected answer is the seller's to rewrite, so it waits again.
@@ -65,8 +66,16 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         if (query.DateTo?.ToUniversalTime() is { } to) rows = rows.Where(row => row.Question.CreatedAt <= to);
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
-            var term = query.Search.Trim();
-            rows = rows.Where(row => row.Question.QuestionText.Contains(term) || (row.Question.ProductName != null && row.Question.ProductName.Contains(term)) || (row.Question.ProductSku != null && row.Question.ProductSku.Contains(term)) || (row.Question.ExternalOrderNumber != null && row.Question.ExternalOrderNumber.Contains(term)) || row.Question.ExternalQuestionId.Contains(term));
+            // Like the order search: case-insensitive, the Turkish way for the texts ("kargo" finds "Kargo", "ışık"
+            // finds "Işıklı"), and a "%" or "_" in the term is the character itself (SIPARIS-STOK-7).
+            var (asTyped, folded) = MarketplaceSalesService.SearchPatterns(query.Search.Trim());
+            var textMatches = db.MarketplaceQuestions.Where(TurkishSearchText.FoldedILike<MarketplaceQuestion>(question => question.QuestionText, folded, LikeEscape));
+            var productNameMatches = db.MarketplaceQuestions.Where(TurkishSearchText.FoldedILike<MarketplaceQuestion>(question => question.ProductName, folded, LikeEscape));
+            rows = rows.Where(row => textMatches.Any(match => match.TenantId == row.Question.TenantId && match.Id == row.Question.Id)
+                || productNameMatches.Any(match => match.TenantId == row.Question.TenantId && match.Id == row.Question.Id)
+                || (row.Question.ProductSku != null && EF.Functions.ILike(row.Question.ProductSku, asTyped, LikeEscape))
+                || (row.Question.ExternalOrderNumber != null && EF.Functions.ILike(row.Question.ExternalOrderNumber, asTyped, LikeEscape))
+                || EF.Functions.ILike(row.Question.ExternalQuestionId, asTyped, LikeEscape));
         }
         var totalCount = await rows.CountAsync(cancellationToken);
         var page = Math.Max(1, query.Page); var limit = Math.Clamp(query.Limit, 1, 100);
@@ -85,7 +94,8 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
     {
         var view = await (from question in db.MarketplaceQuestions.AsNoTracking()
                           join connection in db.PlatformConnections.AsNoTracking() on new { question.TenantId, Id = question.ConnectionId } equals new { connection.TenantId, connection.Id }
-                          where question.TenantId == tenantId && question.Id == id
+                          // As in the list: a hidden, disabled or deleted store's question is not opened (SIPARIS-STOK-7).
+                          where question.TenantId == tenantId && question.Id == id && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")
                           select Map(question, connection.PlatformCode, connection.DisplayName)).SingleOrDefaultAsync(cancellationToken);
         return view is null ? null : await WithProductImageAsync(tenantId, view, cancellationToken);
     }
@@ -98,13 +108,14 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
     {
         var current = await (from question in db.MarketplaceQuestions.AsNoTracking()
                              join connection in db.PlatformConnections.AsNoTracking() on new { question.TenantId, Id = question.ConnectionId } equals new { connection.TenantId, connection.Id }
-                             where question.TenantId == tenantId && question.Id == id
+                             where question.TenantId == tenantId && question.Id == id && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")
                              select new { question.CustomerKey, question.CreatedAt, connection.PlatformCode }).SingleOrDefaultAsync(cancellationToken);
         if (current is null) return null;
         if (current.CustomerKey is null) return [];
         var history = await (from question in db.MarketplaceQuestions.AsNoTracking()
                              join connection in db.PlatformConnections.AsNoTracking() on new { question.TenantId, Id = question.ConnectionId } equals new { connection.TenantId, connection.Id }
                              where question.TenantId == tenantId && question.CustomerKey == current.CustomerKey && connection.PlatformCode == current.PlatformCode
+                                 && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")
                                  && question.Id != id && question.CreatedAt < current.CreatedAt
                              orderby question.CreatedAt descending
                              select Map(question, connection.PlatformCode, connection.DisplayName)).Take(CustomerHistoryLimit).ToListAsync(cancellationToken);
@@ -251,7 +262,9 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
 
     public async Task<ServiceResult<MarketplaceQuestionView>> AnswerAsync(Guid tenantId, Guid userId, Guid id, long expectedVersion, string answer, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
     {
-        var question = await db.MarketplaceQuestions.SingleOrDefaultAsync(row => row.TenantId == tenantId && row.Id == id, cancellationToken);
+        // Nothing is sent for a hidden, disabled or deleted store's question (SIPARIS-STOK-7).
+        var question = await db.MarketplaceQuestions.SingleOrDefaultAsync(row => row.TenantId == tenantId && row.Id == id
+            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == row.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")), cancellationToken);
         if (question is null) return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_NOT_FOUND", "Soru bulunamadı.", 404);
         if (question.Version != expectedVersion) return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_STALE", "Soru yenilendi. Güncel kaydı açıp tekrar deneyin.", 412);
         var reconcilingPriorSubmission = question.AnswerSubmissionStatus is "SUBMITTING" or "UNKNOWN" or "SUBMITTED";
@@ -358,7 +371,8 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
     // without a second report; the audit log keeps who reported what and why.
     public async Task<ServiceResult<MarketplaceQuestionView>> ReportAsync(Guid tenantId, Guid userId, Guid id, ReportQuestionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
     {
-        var question = await db.MarketplaceQuestions.SingleOrDefaultAsync(row => row.TenantId == tenantId && row.Id == id, cancellationToken);
+        var question = await db.MarketplaceQuestions.SingleOrDefaultAsync(row => row.TenantId == tenantId && row.Id == id
+            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == row.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")), cancellationToken);
         if (question is null) return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_NOT_FOUND", "Soru bulunamadı.", 404);
         var connection = await db.PlatformConnections.AsNoTracking().SingleAsync(row => row.TenantId == tenantId && row.Id == question.ConnectionId, cancellationToken);
         var keyHash = QuestionReportAudit.KeyHash(idempotencyKey);

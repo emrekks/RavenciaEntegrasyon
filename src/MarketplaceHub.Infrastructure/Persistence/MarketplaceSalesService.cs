@@ -396,10 +396,12 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             query = query.Where(x => x.BuyerType == OrderBuyerTypeView.Individual);
 
         var invoiceRegion = options.InvoiceRegion?.Trim().ToUpperInvariant();
+        // The region follows the row's micro-export flag (RowMarks, the "Mikro İhracat" card), not a text search over the
+        // whole package: a company named "... İthalat İhracat Ltd." or a "MICRO FIBER" product is no export (SIPARIS-STOK-3).
         if (invoiceRegion == "MICRO_EXPORT")
-            query = query.Where(x => x.CustomerSnapshotJson.Contains("\"micro\":true") || x.CustomerSnapshotJson.Contains("\"micro\": true") || x.CustomerSnapshotJson.Contains("\"microExport\":true") || x.CustomerSnapshotJson.Contains("\"microExport\": true") || x.CustomerSnapshotJson.Contains("\"3pByTrendyol\":true") || x.CustomerSnapshotJson.Contains("MICRO") || x.CustomerSnapshotJson.Contains("İHRAC") || x.CustomerSnapshotJson.Contains("IHRAC"));
+            query = query.Where(MicroExportOrder());
         else if (invoiceRegion == "TR")
-            query = query.Where(x => !x.CustomerSnapshotJson.Contains("\"micro\":true") && !x.CustomerSnapshotJson.Contains("\"micro\": true") && !x.CustomerSnapshotJson.Contains("\"microExport\":true") && !x.CustomerSnapshotJson.Contains("\"microExport\": true") && !x.CustomerSnapshotJson.Contains("\"3pByTrendyol\":true") && !x.CustomerSnapshotJson.Contains("MICRO") && !x.CustomerSnapshotJson.Contains("İHRAC") && !x.CustomerSnapshotJson.Contains("IHRAC"));
+            query = query.Where(DomesticOrder());
 
         var status = options.Status?.Trim().ToUpperInvariant();
         // The dashboard's "Geciken Siparişler" card opens this view: exactly the orders that card counts.
@@ -506,8 +508,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         if (listing == "OPEN") query = query.Where(x => x.DerivedStatus != "DELIVERED" && x.DerivedStatus != "CANCELLED" && x.DerivedStatus != "RETURNED");
         // Micro-export orders: Trendyol's micro = true at the top of the package, as RowMarks reads it for the flag icon.
         if (options.MicroExport == true)
-            query = query.Where(x => (x.CustomerSnapshotJson.Contains("\"micro\":true") || x.CustomerSnapshotJson.Contains("\"micro\": true"))
-                && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == x.ConnectionId && connection.PlatformCode == "TRENDYOL"));
+            query = query.Where(MicroExportOrder());
         // Orders with some products cancelled that were not cancelled whole, open or closed.
         if (options.PartialCancel == true)
             query = query.Where(x => x.DerivedStatus != "CANCELLED" && db.OrderLines.Any(line => line.TenantId == x.TenantId && line.OrderId == x.Id && line.CancelledQuantity > 0));
@@ -704,16 +705,25 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         finally { gate.Release(); }
     }
 
-    // Changes of the tenant's orders, packages, return claims or connections: any of them can move a counter.
+    // Changes of the tenant's orders (a label print too: it sets LabelPrintedAt without touching UpdatedAt), packages,
+    // return claims, invoices and their deliveries, or connections: any of them can move a counter (SIPARIS-STOK-4).
     private async Task<string> OrderSummaryStampAsync(Guid tenantId, CancellationToken cancellationToken)
     {
         var orders = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId).GroupBy(_ => 1)
-            .Select(group => new { Count = group.Count(), Changed = group.Max(x => (DateTimeOffset?)x.UpdatedAt) }).SingleOrDefaultAsync(cancellationToken);
+            .Select(group => new { Count = group.Count(), Changed = group.Max(x => (DateTimeOffset?)x.UpdatedAt), LabelPrinted = group.Max(x => x.LabelPrintedAt) }).SingleOrDefaultAsync(cancellationToken);
         var packages = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId).GroupBy(_ => 1)
             .Select(group => new { Count = group.Count(), Changed = group.Max(x => (DateTimeOffset?)x.UpdatedAt) }).SingleOrDefaultAsync(cancellationToken);
         var claims = await db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId).MaxAsync(x => (DateTimeOffset?)x.UpdatedAt, cancellationToken);
+        var invoices = await db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId).GroupBy(_ => 1)
+            .Select(group => new { Count = group.Count(), Changed = group.Max(x => (DateTimeOffset?)x.UpdatedAt), Versions = group.Sum(x => x.Version) }).SingleOrDefaultAsync(cancellationToken);
+        var deliveryStates = await db.MarketplaceDeliveryStates.AsNoTracking().Where(x => x.TenantId == tenantId).GroupBy(_ => 1)
+            .Select(group => new { Count = group.Count(), Changed = group.Max(x => (DateTimeOffset?)x.UpdatedAt) }).SingleOrDefaultAsync(cancellationToken);
+        var deliveries = await db.MarketplaceDeliveries.AsNoTracking().Where(x => x.TenantId == tenantId).GroupBy(_ => 1)
+            .Select(group => new { Count = group.Count(), Completed = group.Max(x => x.CompletedAt) }).SingleOrDefaultAsync(cancellationToken);
         var connections = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId).SumAsync(x => (long)x.Version, cancellationToken);
-        return $"{orders?.Count}|{orders?.Changed:O}|{packages?.Count}|{packages?.Changed:O}|{claims:O}|{connections}|{timeProvider.GetUtcNow():yyyyMMddHH}";
+        return $"{orders?.Count}|{orders?.Changed:O}|{orders?.LabelPrinted:O}|{packages?.Count}|{packages?.Changed:O}|{claims:O}"
+            + $"|{invoices?.Count}|{invoices?.Changed:O}|{invoices?.Versions}|{deliveryStates?.Count}|{deliveryStates?.Changed:O}|{deliveries?.Count}|{deliveries?.Completed:O}"
+            + $"|{connections}|{timeProvider.GetUtcNow():yyyyMMddHH}";
     }
 
     private async Task<OrderSummaryView> CountOrderSummaryAsync(Guid tenantId, OrderListQuery options, string[] requested, bool includeMicro, CancellationToken cancellationToken)
@@ -787,6 +797,15 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             .ToListAsync(cancellationToken);
         return rows.ToDictionary(row => row.ConnectionId.ToString("D"), row => row.Units);
     }
+
+    // A micro-export order as the row's flag reads it (RowMarks): Trendyol's micro = true in the package snapshot.
+    private Expression<Func<Order, bool>> MicroExportOrder() => x =>
+        (x.CustomerSnapshotJson.Contains("\"micro\":true") || x.CustomerSnapshotJson.Contains("\"micro\": true"))
+        && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == x.ConnectionId && connection.PlatformCode == "TRENDYOL");
+
+    private Expression<Func<Order, bool>> DomesticOrder() => x =>
+        !((x.CustomerSnapshotJson.Contains("\"micro\":true") || x.CustomerSnapshotJson.Contains("\"micro\": true"))
+            && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == x.ConnectionId && connection.PlatformCode == "TRENDYOL"));
 
     private async Task<(int Count, IReadOnlyDictionary<string, int> Countries)> MicroExportCountsAsync(Guid tenantId, OrderListQuery options, CancellationToken cancellationToken)
     {
@@ -2350,7 +2369,9 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         var actions = claim.Status switch
         {
             ReturnClaimStatus.Requested when awaitingPreApproval => HepsiburadaReturnActionPolicy.AllowedActions(claim.RawStatus, decisionPending),
-            ReturnClaimStatus.Requested or ReturnClaimStatus.InTransit => ["RECEIVE"],
+            // "Teslim Aldım" opens Onayla/Reddet only where the decision covers the whole claim; Trendyol, n11 and Pazarama
+            // decide by the lines' own statuses, which stay in transit until the marketplace says otherwise (SIPARIS-STOK-1).
+            ReturnClaimStatus.Requested or ReturnClaimStatus.InTransit => ReturnReceiptAllowed(platformCode) ? ["RECEIVE"] : Array.Empty<string>(),
             ReturnClaimStatus.AwaitingShipment when isHepsiburada => Array.Empty<string>(),
             ReturnClaimStatus.ActionRequired when isHepsiburada => HepsiburadaReturnActionPolicy.AllowedActions(claim.RawStatus, decisionPending),
             // n11 approvals and denials both go through the API (ClaimReturnApprove / ClaimReturnDeny); a denial always
@@ -2447,6 +2468,10 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
 
     private static bool IsN11(string? platformCode) => string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase);
 
+    // Marking a return received only helps where the decision is sent for the whole claim (Hepsiburada, Shopify); elsewhere
+    // the approve/reject call needs lines the marketplace itself reports as waiting, so the step would open dead buttons.
+    internal static bool ReturnReceiptAllowed(string? platformCode) => ReturnDecisionScope.IsWholeClaim(platformCode);
+
     // The carriers an n11 denial can name for the shipment back to the buyer; other marketplaces list none.
     public async Task<ServiceResult<IReadOnlyList<ReturnShipmentCompany>>> ReturnShipmentCompaniesAsync(Guid tenantId, Guid id, string correlationId, CancellationToken cancellationToken)
     {
@@ -2511,6 +2536,8 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         if (claim is null) return NotFound<ReturnDetailView>();
         if (claim.Version != expectedVersion) return Precondition<ReturnDetailView>(claim.Version);
         if (claim.Status is not (ReturnClaimStatus.Requested or ReturnClaimStatus.InTransit)) return ServiceResult<ReturnDetailView>.Fail("RETURN_RECEIPT_NOT_ALLOWED", "Teslim alındı işlemi yalnız talep oluşturulan veya kargodaki iadeler için kullanılabilir.", 409);
+        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == claim.ConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        if (!ReturnReceiptAllowed(platformCode)) return ServiceResult<ReturnDetailView>.Fail("RETURN_RECEIPT_NOT_ALLOWED", "Bu pazaryerinde iade kararı, pazaryeri iadeyi aksiyon bekliyor durumuna aldığında açılır; teslim alındı işareti kullanılmaz.", 409);
         if (!ReturnClaimStateMachine.CanTransition(claim.Status, ReturnClaimStatus.ActionRequired)) return ServiceResult<ReturnDetailView>.Fail("RETURN_STATE_CONFLICT", "İade durumu aksiyon bekliyor durumuna geçirilemedi.", 409);
 
         var now = timeProvider.GetUtcNow();
@@ -2621,7 +2648,9 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             foreach (var approvedLine in approvedLines)
             {
                 var variantId = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == approvedLine.OrderLineId).Select(x => x.VariantId).SingleOrDefaultAsync(cancellationToken);
-                var inventoryItem = variantId is null ? null : await db.InventoryItems.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == variantId && x.LocationCode == "MAIN", cancellationToken);
+                // Only checked here, not tracked: the restock after the marketplace call reads the stock row afresh, so a sale
+                // meanwhile is not a stale version (SIPARIS-STOK-5).
+                var inventoryItem = variantId is null ? null : await db.InventoryItems.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == variantId && x.LocationCode == "MAIN", cancellationToken);
                 if (inventoryItem is null) return ServiceResult<ReturnDetailView>.Fail("INVENTORY_MAPPING_REQUIRED", "Seçilen ürünlerden biri yerel varyant ve stok kaydıyla eşleşmiyor; stoğa eklenemez.", 422);
                 if (stockPlan[approvedLine.Id] is { } wantedUnits && wantedUnits > approvedLine.Quantity) return Invalid<ReturnDetailView>("stockLines", "Stoğa eklenecek adet iade satırı adedini aşamaz.");
                 stockTargets.Add((approvedLine, inventoryItem));
@@ -2717,25 +2746,46 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         decision.ExternalOperationId = result.Value?.ExternalOperationId;
         decision.ErrorCode = null;
         effect.CompletedAt = timeProvider.GetUtcNow();
-        // The claim's lines decided before this one count: rejecting the last waiting lines of a claim whose other lines
-        // were approved leaves it approved in part ("Kısmen Onaylandı"), so those lines still reach the invoice.
-        claim.Status = ReturnClaimDecisionPolicy.StatusAfterLineDecision(claim.Status, action, returnLineIds.Length, actionableLineIds.Count,
-            claimLines.Where(line => !returnLineIds.Contains(line.Id)).Select(line => line.RawStatus).ToList());
-        if (!isHepsiburada && action is "APPROVE" or "REJECT")
+        // The accepted write is recorded first, on its own: a conflict in the claim or stock save below must not turn a
+        // decision the marketplace already took into a server error (SIPARIS-STOK-5).
+        await db.SaveChangesAsync(cancellationToken);
+        var completedAt = effect.CompletedAt.Value;
+        // The claim and the restock are written on fresh values; a sale or a claim read that changes the same rows in
+        // between runs the attempt again. When it keeps colliding, the decision stays SUBMITTED with its pending stock
+        // choice, which the next read of the claim settles (ReturnPendingStock.SettleClaimAsync).
+        var settled = await SerializableWriteRetry.RunAsync(db, async token =>
         {
-            var settledStatus = action == "APPROVE" ? "Accepted" : "Rejected";
-            foreach (var settled in await db.ReturnLines.Where(x => x.TenantId == tenantId && x.ClaimId == claimId && returnLineIds.Contains(x.Id)).ToListAsync(cancellationToken)) settled.RawStatus = settledStatus;
+            await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, token);
+            await db.Entry(claim).ReloadAsync(token);
+            await db.Entry(decision).ReloadAsync(token);
+            // The claim's lines decided before this one count: rejecting the last waiting lines of a claim whose other lines
+            // were approved leaves it approved in part ("Kısmen Onaylandı"), so those lines still reach the invoice.
+            claim.Status = ReturnClaimDecisionPolicy.StatusAfterLineDecision(claim.Status, action, returnLineIds.Length, actionableLineIds.Count,
+                claimLines.Where(line => !returnLineIds.Contains(line.Id)).Select(line => line.RawStatus).ToList());
+            if (!isHepsiburada && action is "APPROVE" or "REJECT")
+            {
+                var settledStatus = action == "APPROVE" ? "Accepted" : "Rejected";
+                foreach (var settledLine in await db.ReturnLines.Where(x => x.TenantId == tenantId && x.ClaimId == claimId && returnLineIds.Contains(x.Id)).ToListAsync(token)) settledLine.RawStatus = settledStatus;
+            }
+            claim.RawStatus = partialLineDecision ? "PARTIAL_LINE_DECISION_PENDING" : result.Value?.Status ?? (action switch
+            {
+                "APPROVE" => "ACCEPTED",
+                "REJECT" => "REJECTED",
+                _ => "PREAPPROVAL_CONFIRM_SUBMITTED"
+            });
+            // The marketplace accepted the approval: the chosen lines go back to stock now, once.
+            claim.UpdatedAt = completedAt;
+            claim.Version++;
+            await ReturnPendingStock.SettleAsync(db, decision, force: action == "APPROVE", correlationId, completedAt, token);
+            await db.SaveChangesAsync(token);
+            await transaction.CommitAsync(token);
+            return true;
+        }, () => false, cancellationToken);
+        if (!settled)
+        {
+            db.ChangeTracker.Clear();
+            return await ReturnAsync(tenantId, claimId, cancellationToken);
         }
-        claim.RawStatus = partialLineDecision ? "PARTIAL_LINE_DECISION_PENDING" : result.Value?.Status ?? (action switch
-        {
-            "APPROVE" => "ACCEPTED",
-            "REJECT" => "REJECTED",
-            _ => "PREAPPROVAL_CONFIRM_SUBMITTED"
-        });
-        // The marketplace accepted the approval: the chosen lines go back to stock now, once.
-        claim.UpdatedAt = effect.CompletedAt.Value;
-        claim.Version++;
-        await ReturnPendingStock.SettleAndSaveAsync(db, () => ReturnPendingStock.SettleAsync(db, decision, force: action == "APPROVE", correlationId, effect.CompletedAt.Value, cancellationToken), cancellationToken);
 
         // The action itself is already complete. Read-back is best-effort and
         // only refines the local status; it must not put the user action in a
@@ -2785,7 +2835,15 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             if (confirmed) { decision.Status = "SUCCEEDED"; decision.CompletedAt = claim.UpdatedAt; }
             else if (conflicting) { decision.Status = "MANUAL_REVIEW"; decision.ErrorCode = "RETURN_ACTION_READBACK_CONFLICT"; decision.CompletedAt = claim.UpdatedAt; }
         }
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // The read-back only refines a decision already recorded; a claim read that saved meanwhile keeps its own.
+            db.ChangeTracker.Clear();
+        }
         return await ReturnAsync(tenantId, claimId, cancellationToken);
     }
 
