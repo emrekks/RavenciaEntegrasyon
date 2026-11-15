@@ -120,7 +120,7 @@ public static class UserManagementEndpoints
             db.TenantMemberships.Add(new TenantMembership { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, UserId = existing.Id, Role = role, CreatedAt = now, UpdatedAt = now });
             Audit(db, http, tenant, MembershipAdded, existing.Id, $"role={RoleWire(role)}; existing-account", now);
             await db.SaveChangesAsync(http.RequestAborted);
-            return Results.Ok(new { userId = existing.Id, existingAccount = true, temporaryPassword = (string?)null });
+            return AddedResponse(null);
         }
 
         var temporary = BreakGlassService.TemporaryPassword();
@@ -129,8 +129,9 @@ public static class UserManagementEndpoints
         var created = await users.CreateAsync(user, temporary);
         if (!created.Succeeded)
         {
+            // An account made by someone else meanwhile: the answer does not say that an account exists (API-GUVENLIK-6).
             return created.Errors.Any(x => x.Code is "DuplicateEmail" or "DuplicateUserName")
-                ? Conflict("USER_ALREADY_EXISTS", "Bu e-posta adresiyle bir hesap zaten var.")
+                ? Conflict("USER_ADD_FAILED", "Kullanıcı şu anda eklenemedi; listeyi yenileyip yeniden deneyin.")
                 : Invalid("Kullanıcı oluşturulamadı: " + string.Join(", ", created.Errors.Select(x => x.Code)));
         }
         db.UserSecurities.Add(new UserSecurity { UserId = user.Id, TotpState = TotpState.Disabled });
@@ -138,8 +139,16 @@ public static class UserManagementEndpoints
         Audit(db, http, tenant, Created, user.Id, $"role={RoleWire(role)}; one-time-password", now);
         await db.SaveChangesAsync(http.RequestAborted);
         await transaction.CommitAsync(http.RequestAborted);
-        return Results.Ok(new { userId = user.Id, existingAccount = false, temporaryPassword = temporary });
+        return AddedResponse(temporary);
     }
+
+    // API-GUVENLIK-6: adding a user answers in one shape whether the e-mail was new or an existing account joined: no
+    // account id and no "existing account" flag. Only a new account carries the one-time password (it has to be handed
+    // over), so a missing password still tells the two apart; closing that needs an invitation the account accepts
+    // (owner decision; one workspace today).
+    internal static IResult AddedResponse(string? temporaryPassword) => Results.Ok(new AddedBody(true, temporaryPassword));
+
+    internal sealed record AddedBody(bool Added, string? TemporaryPassword);
 
     private static async Task<IResult> ChangeRoleAsync(Guid id, RoleRequest request, HttpContext http, AppDbContext db, UserManager<ApplicationUser> users, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time)
     {
@@ -151,11 +160,14 @@ public static class UserManagementEndpoints
         if (membership.Role == role) return Results.NoContent();
         if (membership.Role == MembershipRole.Owner && await IsLastActiveOwnerAsync(membership, db, http)) return Conflict("LAST_OWNER", "Çalışma alanının son etkin sahibinin rolü değiştirilemez.");
         if (await ReauthAsync(request.Password, request.Code, request.RecoveryCode, http, users, db, protection, totp, hasher, time) is { } refusal) return refusal;
+        await using var ownerLock = membership.Role == MembershipRole.Owner ? await LockMembershipsAsync(db, tenant.TenantId, http.RequestAborted) : null;
+        if (ownerLock is not null && await IsLastActiveOwnerAsync(membership, db, http)) return Conflict("LAST_OWNER", "Çalışma alanının son etkin sahibinin rolü değiştirilemez.");
         var now = time.GetUtcNow();
         var previous = membership.Role;
         membership.Role = role; membership.UpdatedAt = now; membership.Version++;
         Audit(db, http, tenant, RoleChanged, membership.UserId, $"from={RoleWire(previous)}; to={RoleWire(role)}", now);
         await db.SaveChangesAsync(http.RequestAborted);
+        if (ownerLock is not null) await ownerLock.CommitAsync(http.RequestAborted);
         return Results.NoContent();
     }
 
@@ -168,11 +180,14 @@ public static class UserManagementEndpoints
         if (membership.Status == target) return Results.NoContent();
         if (!request.Active && membership.Role == MembershipRole.Owner && await IsLastActiveOwnerAsync(membership, db, http)) return Conflict("LAST_OWNER", "Çalışma alanının son etkin sahibi pasife alınamaz.");
         if (await ReauthAsync(request.Password, request.Code, request.RecoveryCode, http, users, db, protection, totp, hasher, time) is { } refusal) return refusal;
+        await using var ownerLock = !request.Active && membership.Role == MembershipRole.Owner ? await LockMembershipsAsync(db, tenant.TenantId, http.RequestAborted) : null;
+        if (ownerLock is not null && await IsLastActiveOwnerAsync(membership, db, http)) return Conflict("LAST_OWNER", "Çalışma alanının son etkin sahibi pasife alınamaz.");
         var now = time.GetUtcNow();
         membership.Status = target; membership.UpdatedAt = now; membership.Version++;
         var revoked = request.Active ? 0 : await RevokeWorkspaceSessionsAsync(membership.UserId, tenant.TenantId, db, now, http.RequestAborted);
         Audit(db, http, tenant, request.Active ? Enabled : Disabled, membership.UserId, request.Active ? "membership-active" : $"membership-disabled; sessions-revoked={revoked}", now);
         await db.SaveChangesAsync(http.RequestAborted);
+        if (ownerLock is not null) await ownerLock.CommitAsync(http.RequestAborted);
         return Results.NoContent();
     }
 
@@ -250,6 +265,17 @@ public static class UserManagementEndpoints
 
     private static Task<TenantMembership?> TargetAsync(Guid userId, TenantContext tenant, AppDbContext db, HttpContext http) =>
         db.TenantMemberships.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.UserId == userId, http.RequestAborted);
+
+    // API-GUVENLIK-5: demoting or disabling an owner re-checks "another active owner remains" under a lock on the
+    // workspace's memberships, held until the change commits. Two owners demoting each other at once used to pass the
+    // check both (it ran before the seconds-long re-authentication) and leave the workspace without an owner; now the
+    // second waits for the first and sees its result. The rows are locked in one order, so two changes cannot deadlock.
+    private static async Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction> LockMembershipsAsync(AppDbContext db, Guid tenantId, CancellationToken cancellationToken)
+    {
+        var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM iam.tenant_memberships WHERE \"TenantId\" = {tenantId} ORDER BY \"Id\" FOR UPDATE", cancellationToken);
+        return transaction;
+    }
 
     // An active owner is one whose membership and account are both active.
     private static async Task<bool> IsLastActiveOwnerAsync(TenantMembership membership, AppDbContext db, HttpContext http) =>
