@@ -396,7 +396,7 @@ export function InvoicesPage() {
     mutationFn: async (item: InvoiceWorkspace) => hubApi<{ confirmed: boolean }>(`/invoice-workspace/orders/${item.orderId}/confirm-marketplace-delivered`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() } }),
     onSuccess: async (_result, item) => {
       setMessage(`#${item.orderNumber} nolu siparişin faturası pazaryerinde doğrulandı ve tamamlandı olarak işaretlendi.`, 'success', invoiceOrderContext(item, 'Fatura Tamamlandı Olarak İşaretlendi', 'Fatura doğrulama'))
-      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] })])
+      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] })])
     },
     onError: (error, item) => setMessage(error instanceof Error ? error.message : 'Fatura tamamlandı olarak işaretlenemedi.', 'error', invoiceOrderContext(item, 'Fatura Tamamlandı Olarak İşaretlenemedi', 'Fatura doğrulama', error))
   })
@@ -404,7 +404,7 @@ export function InvoicesPage() {
     mutationFn: async (item: InvoiceWorkspace) => hubApi<{ replaced: boolean }>(`/invoice-workspace/orders/${item.orderId}/replace-cancelled-invoice`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() } }),
     onSuccess: async (_result, item) => {
       setMessage(`#${item.orderNumber} nolu siparişin eski faturası iptal olarak kapatıldı. Yeni fatura kesebilirsiniz.`, 'success', invoiceOrderContext(item, 'Eski Fatura Kapatıldı', 'İptal edilen faturayı değiştirme'))
-      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] })])
+      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] })])
     },
     onError: (error, item) => setMessage(error instanceof Error ? error.message : 'Eski fatura kapatılamadı.', 'error', invoiceOrderContext(item, 'Eski Fatura Kapatılamadı', 'İptal edilen faturayı değiştirme', error))
   })
@@ -414,7 +414,7 @@ export function InvoicesPage() {
     mutationFn: async (item: InvoiceWorkspace) => hubApi<{ confirmed: boolean }>(`/invoice-workspace/orders/${item.orderId}/confirm-no-remote-invoice`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ searchedByOrderNumber: needsOrderNumberSearch(item) }) }),
     onSuccess: async (_result, item) => {
       setMessage(`#${item.orderNumber} nolu siparişin faturası için yeniden gönderim açıldı. Faturayı tekrar oluşturabilirsiniz.`, 'success', invoiceOrderContext(item, 'Fatura Yeniden Gönderime Açıldı', 'Fatura yeniden gönderimi'))
-      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] })])
+      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] })])
     },
     onError: (error, item) => setMessage(error instanceof Error ? error.message : 'Yeniden gönderim açılamadı.', 'error', invoiceOrderContext(item, 'Yeniden Gönderim Açılamadı', 'Fatura yeniden gönderimi', error))
   })
@@ -428,7 +428,7 @@ export function InvoicesPage() {
     onSuccess: async (result, item) => {
       setMessage(`#${item.orderNumber} nolu siparişin faturası yeniden gönderiliyor; sonuç gelince bildirilecek. Yeni fatura kesilmedi.`, 'info', invoiceOrderContext(item, 'Fatura İletimi Yeniden Deneniyor', 'Fatura iletimini yeniden deneme'))
       if (result?.jobId) followJobs([{ jobId: result.jobId, platformName: notificationPlatformName(item.platformCode) ?? 'Pazaryeri', what: `#${item.orderNumber} faturası` }], invoiceOrderContext(item, '', 'Fatura iletimini yeniden deneme'))
-      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['invoice'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
+      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['invoice'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
     },
     onError: (error, item) => setMessage(error instanceof Error ? error.message : 'Yeniden deneme sıraya alınamadı.', 'error', invoiceOrderContext(item, 'Yeniden Deneme Başlatılamadı', 'Fatura iletimini yeniden deneme', error))
   })
@@ -438,7 +438,7 @@ export function InvoicesPage() {
       setSelectedPackages(new Set())
       setSelectedItem(null)
       setMessage(variables.hidden ? 'Seçilen siparişler gizlendi.' : 'Seçilen siparişler yeniden görünür yapıldı.', 'success')
-      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] })])
+      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] })])
     },
     onError: error => setMessage(error instanceof Error ? error.message : 'Sipariş görünürlüğü güncellenemedi.', 'error')
   })
@@ -687,7 +687,7 @@ export function InvoicesPage() {
     {manualUploadItem && <InvoiceWorkspaceUploadModal item={manualUploadItem} onClose={() => setManualUploadItem(null)} onFeedback={setMessage} />}
     {manualStatusBatch && <InvoiceWorkspaceBulkStatusModal items={manualStatusBatch} onClose={() => setManualStatusBatch(null)} onFeedback={setMessage} />}
     {manualConfirmation && <InvoiceManualConfirmationModal kind={manualConfirmation.kind} item={manualConfirmation.item} onCancel={() => setManualConfirmation(null)} onConfirm={runManualConfirmation} />}
-    {previewTargets && <InvoiceWorkspacePreviewModal targets={previewTargets} onClose={() => setPreviewTargets(null)} onNotice={(text, kind, context) => setMessage(text, kind, context)} onComplete={() => { void Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['invoice'] })]) }} />}
+    {previewTargets && <InvoiceWorkspacePreviewModal targets={previewTargets} onClose={() => setPreviewTargets(null)} onNotice={(text, kind, context) => setMessage(text, kind, context)} onComplete={() => { void Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['invoice'] })]) }} />}
   </section>
 }
 
@@ -734,7 +734,7 @@ function InvoiceWorkspaceBulkStatusModal({ items, onClose, onFeedback }: { items
   const update = useMutation({
     mutationFn: () => setManualInvoiceStatus(items.map(item => item.packageId), status),
     onSuccess: async result => {
-      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['invoice'] })])
+      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['invoice'] })])
       const label = status === 'UPLOADED' ? 'Faturası yüklendi' : 'Fatura bekliyor'
       const reopened = result.reopenedCount ? ` ${result.reopenedCount} siparişte iptal edilen faturanın linki geçersiz sayıldı; yeni fatura kesilebilir.` : ''
       const platforms = [...new Set(items.map(item => item.platformCode))]
@@ -772,7 +772,7 @@ function InvoiceWorkspaceUploadModal({ item, onClose, onFeedback }: { item: Invo
     },
     onSuccess: async () => {
       onFeedback('Manuel fatura belgesi siparişe kaydedildi. Platforma iletim başlamadı; iletimi ayrı düğmeden başlatabilirsiniz.', 'success')
-      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['invoice'] })])
+      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['invoice'] })])
       onClose()
     },
     onError: error => { const errorMessage = error instanceof Error ? error.message : 'Manuel fatura belgesi kaydedilemedi.'; setMessage(errorMessage); onFeedback(errorMessage, 'error') }

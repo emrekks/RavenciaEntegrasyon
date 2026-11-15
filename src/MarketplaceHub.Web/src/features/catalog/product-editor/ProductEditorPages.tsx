@@ -3381,7 +3381,6 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
                 if (!(reason instanceof ApiRequestError) || reason.status !== 404) throw reason
               }
               await hubApi(`/products/${familyProductId}/listing-profiles/${connectionId}`, { method: 'PUT', headers: listingProfile == null ? {} : { 'If-Match': `"v${listingProfile.version}"` }, body: JSON.stringify(republishListingProfileBody(listingProfile)) })
-              await client.invalidateQueries({ queryKey: ['listing-profile', familyProductId, connectionId] })
               const publicationJob = await hubApi<PublicationAccepted>(`/products/${familyProductId}/publication-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId }) })
               await client.invalidateQueries({ queryKey: ['publication-status', familyProductId, connectionId] })
               if (publicationJob?.jobId) followedJobs.push({ jobId: publicationJob.jobId, platformName, what: 'ürün', card: familyIds.length > 1 ? preferredColorOption(variantOptionEntries(cardVariants[0] ?? product.variants[0]))?.value ?? '' : undefined })

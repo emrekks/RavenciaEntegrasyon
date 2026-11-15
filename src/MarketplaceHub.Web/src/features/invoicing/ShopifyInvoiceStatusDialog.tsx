@@ -27,7 +27,7 @@ export function ShopifyInvoiceStatusDialog({ orderNumber, invoiceStatus, manualI
   const update = useMutation({
     mutationFn: async () => setManualInvoiceStatus([await resolvePackageId()], status),
     onSuccess: async () => {
-      await Promise.all([['orders'], ['invoice-viewer'], ['invoice'], ['invoice-workspace'], ['invoice-workspace-summary'], ['invoice-workspace-page']].map(queryKey => client.invalidateQueries({ queryKey })))
+      await Promise.all([['orders'], ['invoice-viewer'], ['invoice'], ['invoice-workspace-summary'], ['invoice-workspace-page']].map(queryKey => client.invalidateQueries({ queryKey })))
       onFeedback(status === 'UPLOADED' ? 'Shopify fatura durumu “Faturası yüklendi” olarak elle işaretlendi.' : 'Shopify fatura durumu “Fatura bekliyor” olarak elle işaretlendi.', 'success')
       onClose()
     },
