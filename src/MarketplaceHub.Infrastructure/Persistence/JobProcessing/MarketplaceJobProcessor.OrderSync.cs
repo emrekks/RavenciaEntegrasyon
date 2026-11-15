@@ -424,6 +424,27 @@ public sealed partial class MarketplaceJobProcessor
         await db.SaveChangesAsync(cancellationToken);
     }
 
+    // ISLEYICI-12 (16 Nov 2026): a read that runs no RereadOrders afterwards (a webhook ingest) still puts the orders it
+    // refused on the re-read list, for their first try later (RejectedOrderRereadPolicy.Delays); the next order read
+    // reads them when due. Nothing is read here.
+    private async Task SaveRefusedOrdersForRereadAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        if (rereadOrderIds.Count == 0) return;
+        var now = timeProvider.GetUtcNow();
+        var cursor = await Cursor(tenantId, connectionId, RejectedOrderRereadPolicy.CursorResource, cancellationToken);
+        var entries = RejectedOrderRereadPolicy.Note(RejectedOrderRereadPolicy.Parse(cursor.OpaqueCursor), rereadOrderIds, now, out var dropped);
+        rereadOrderIds.Clear();
+        if (dropped.Count > 0)
+            await RecordIssue(tenantId, $"order-reread-full:{connectionId}", RejectedOrderRereadPolicy.OverflowIssueCode, RejectedOrderRereadPolicy.OverflowSummary(dropped), cancellationToken);
+        var serialized = RejectedOrderRereadPolicy.Serialize(entries);
+        if (serialized != cursor.OpaqueCursor)
+        {
+            cursor.OpaqueCursor = serialized;
+            cursor.Version++;
+        }
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
     private async Task NoteWebhookGapAsync(Guid tenantId, Guid connectionId, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var registeredAt = await db.WebhookSubscriptions.AsNoTracking()
