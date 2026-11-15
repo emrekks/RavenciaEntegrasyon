@@ -585,7 +585,9 @@ export function InvoicesPage() {
   // Not for the values the page opened with: a page restored from the address stays.
   useChangeEffect(JSON.stringify([searchFilter, sortOrder, tab, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo, pageSize]), () => setPageNumber(1))
   useListUrlSync({ q: searchFilter, platforms: selectedPlatforms, shipment: shipmentStatusFilter, from: dateFrom, to: dateTo, size: pageSize, page: pageNumber }, { shipment: 'ALL', size: 20, page: 1 })
-  useEffect(() => { setSelectedPackages(new Set()) }, [searchFilter, tab, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo, pageNumber, pageSize])
+  // Every list change drops the selection, a new sort too (as on Siparişler; owner, 15 Nov 2026): a row no longer in view
+  // is never acted on by mistake.
+  useEffect(() => { setSelectedPackages(new Set()) }, [searchFilter, sortOrder, tab, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo, pageNumber, pageSize])
   // Another tab or filter shows other rows: the phone selection mode closes with the emptied selection.
   useEffect(() => { setSelectionMode(false) }, [searchFilter, tab, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo])
   const metricSource = useMetricSource()
