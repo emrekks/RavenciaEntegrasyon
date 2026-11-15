@@ -690,6 +690,38 @@ public sealed class HepsiburadaAdapterTests
         Assert.Equal("Open", order.LifecycleStatus);
     }
 
+    // ADAPTOR-TY-HB-6: a payment or order status Hepsiburada did not send is unknown, not "Received" / "NOT_CANCELLED".
+    [Fact]
+    public void OrderWithoutPaymentOrStatus_KeepsThemUnknown()
+    {
+        using var json = JsonDocument.Parse("""
+        {
+          "orderNumber": "HB-2026-24",
+          "orderDate": "2026-09-28T12:15:00Z",
+          "items": [ { "id": "line-24", "merchantSku": "SKU-24", "quantity": 1, "price": 10.0 } ]
+        }
+        """);
+        using var sent = JsonDocument.Parse("""
+        {
+          "orderNumber": "HB-2026-25",
+          "orderDate": "2026-09-28T12:15:00Z",
+          "status": "Cancelled",
+          "paymentStatus": "Paid",
+          "items": [ { "id": "line-25", "merchantSku": "SKU-25", "quantity": 1, "price": 10.0, "status": "Cancelled" } ]
+        }
+        """);
+
+        var unknown = HepsiburadaJsonMapper.Order(json.RootElement, "HB-2026-24");
+        var known = HepsiburadaJsonMapper.Order(sent.RootElement, "HB-2026-25");
+
+        Assert.Null(unknown.LifecycleStatus);
+        Assert.Equal("UNKNOWN", unknown.PaymentStatus);
+        Assert.Equal("UNKNOWN", unknown.CancellationStatus);
+        Assert.Equal("UNKNOWN", unknown.RefundStatus);
+        Assert.Equal("Paid", known.PaymentStatus);
+        Assert.Equal("CANCELLED", known.CancellationStatus);
+    }
+
     [Fact]
     public void OrderMapper_TakesTheLinesProductBarcodeNotThePackagesCargoBarcode()
     {

@@ -1308,7 +1308,8 @@ internal static class HepsiburadaJsonMapper
             ? JsonSerializer.Serialize(new { name = Text(item, "customerName", "CustomerName", "recipientName", "RecipientName"), email = Text(item, "email", "Email"), phoneNumber = Text(item, "phoneNumber", "PhoneNumber") })
             : Snapshot(customer);
         customerSnapshot = EnrichOrderSnapshot(item, customerSnapshot);
-        var status = Text(item, "status", "Status", "orderStatus", "OrderStatus") ?? "Open";
+        var rawStatus = Text(item, "status", "Status", "orderStatus", "OrderStatus");
+        var status = rawStatus ?? "Open";
         return new(
             orderNumber,
             orderNumber,
@@ -1325,8 +1326,9 @@ internal static class HepsiburadaJsonMapper
             [],
             item.GetRawText(),
             Date(item, "dueDate", "DueDate", "shipmentDueAt", "ShipmentDueAt"),
-            Text(item, "paymentStatus", "PaymentStatus") ?? "Received",
-            status.Contains("cancel", StringComparison.OrdinalIgnoreCase) ? "CANCELLED" : "NOT_CANCELLED",
+            // ADAPTOR-TY-HB-6: a field Hepsiburada did not send is unknown, not "paid" or "not cancelled".
+            Text(item, "paymentStatus", "PaymentStatus") ?? "UNKNOWN",
+            CancellationStatusOf(rawStatus),
             LifecycleStatus: status);
     }
 
@@ -1376,9 +1378,14 @@ internal static class HepsiburadaJsonMapper
             [package],
             item.GetRawText(),
             Date(item, "dueDate", "DueDate", "shipmentDueAt", "ShipmentDueAt"),
-            Text(item, "paymentStatus", "PaymentStatus") ?? "Received",
-            status.Contains("cancel", StringComparison.OrdinalIgnoreCase) ? "CANCELLED" : "NOT_CANCELLED");
+            Text(item, "paymentStatus", "PaymentStatus") ?? "UNKNOWN",
+            CancellationStatusOf(status));
     }
+
+    // CANCELLED or NOT_CANCELLED from a status Hepsiburada sent; UNKNOWN when it sent none (ADAPTOR-TY-HB-6).
+    private static string CancellationStatusOf(string? status) =>
+        string.IsNullOrWhiteSpace(status) ? "UNKNOWN"
+        : status.Contains("cancel", StringComparison.OrdinalIgnoreCase) ? "CANCELLED" : "NOT_CANCELLED";
 
     private static JsonElement AddressSnapshot(JsonElement source, params string[] names)
     {
@@ -1571,7 +1578,7 @@ internal static class HepsiburadaJsonMapper
         var status = string.Equals(orderStatus?.Trim(), "ClaimCreated", StringComparison.OrdinalIgnoreCase)
             ? ConsistentLineItemStatus(lines)
             : orderStatus ?? ConsistentLineItemStatus(lines);
-        var paymentStatus = Text(order, "paymentStatus", "PaymentStatus") ?? "Received";
+        var paymentStatus = Text(order, "paymentStatus", "PaymentStatus") ?? "UNKNOWN";
         var customer = Find(order, "customer", "Customer");
         var shipmentAddress = Find(order, "deliveryAddress", "DeliveryAddress", "shipmentAddress", "ShipmentAddress");
         var invoiceEnvelope = Find(order, "invoice", "Invoice");
@@ -1611,7 +1618,7 @@ internal static class HepsiburadaJsonMapper
             order.GetRawText(),
             dueAt,
             paymentStatus,
-            status?.Contains("cancel", StringComparison.OrdinalIgnoreCase) == true ? "CANCELLED" : "NOT_CANCELLED",
+            CancellationStatusOf(status),
             LifecycleStatus: status);
     }
 
