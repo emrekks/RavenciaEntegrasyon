@@ -7,7 +7,8 @@ namespace MarketplaceHub.Infrastructure.Adapters.Http;
 // out on the marketplace's bounded client (16 MB buffer) under a QuotaAwareTimeout (the request timeout starts once the
 // rate-limit handler hands out the quota token; the wait for it is capped at five minutes), the body is read whole,
 // and a transport failure is classed the same way for each of them:
-//   cancelled before the quota token          -> {PREFIX}_LOCAL_QUOTA_WAIT (RateLimit, 15 s): never sent;
+//   cancelled before the quota token          -> {PREFIX}_LOCAL_QUOTA_WAIT (RateLimit, 15 s): never sent (also when a
+//                                                worker shutdown ended a write job's wait, KUYRUK-1);
 //   cancelled after it (the request timed out) -> {PREFIX}_TIMEOUT (TransientNetwork, 15 s): outcome unknown;
 //   HttpRequestException                       -> {PREFIX}_NETWORK_ERROR (TransientNetwork, 15 s).
 // The caller's own cancellation still escapes as OperationCanceledException. What an answer means (status, body,
@@ -32,6 +33,8 @@ internal sealed record MarketplaceTransport(string ClientName, string CodePrefix
     internal async Task<MarketplaceExchange> SendAsync(IHttpClientFactory clients, HttpRequestMessage request, TimeSpan requestTimeout, CancellationToken cancellationToken)
     {
         using var timeout = new QuotaAwareTimeout(request, QuotaAcquiredKey, requestTimeout, cancellationToken);
+        // KUYRUK-1: the worker is shutting down and this write job's request has not started: it is not sent.
+        if (timeout.StoppedBeforeStart) return new(null, "", LocalQuotaWait(), null);
         HttpResponseMessage? response = null;
         try
         {
