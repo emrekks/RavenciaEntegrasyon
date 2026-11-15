@@ -35,6 +35,29 @@ internal static class PagedReadLoop
         JobProcessingException.FromAdapter(new MarketplaceHub.Application.AdapterError(MarketplaceHub.Application.AdapterErrorClass.ContractViolation, code, summary, 502, null, null));
 }
 
+// ISLEYICI-11 (16 Nov 2026): the same guards for a walk that keeps its own loop, because its cursor state, resume point,
+// storefront and window steps or slicing cannot move into RunAsync without changing what is read (the Trendyol order
+// stream, Shopify orders, product import, return and reference reads). The loop calls After once per page read, with the
+// cursor the page was read with and the cursor it named next (null when the page was the last one); a non-null answer is
+// the guard that stopped the walk, and the loop ends there with its own code instead of reading on.
+internal sealed class PageWalk(PageGuard guard)
+{
+    private string? previousKey;
+
+    public int PagesRead { get; private set; }
+
+    public PagedReadStop? After(string? cursorRead, string? next, string? pageKey = null)
+    {
+        PagesRead++;
+        if (guard.PageRepeated is { } repeated && repeated(previousKey, pageKey)) return PagedReadStop.RepeatedPage;
+        previousKey = pageKey;
+        if (next is null) return null;
+        if (guard.StopOnRepeatedCursor && string.Equals(next, cursorRead, StringComparison.Ordinal)) return PagedReadStop.RepeatedCursor;
+        if (guard.MaxPages is { } cap && PagesRead >= cap) return PagedReadStop.PageCap;
+        return null;
+    }
+}
+
 // MaxPages: the most pages one walk reads (null: no cap). StopOnRepeatedCursor: a next cursor equal to the one just read
 // ends the walk. PageRepeated(previousKey, key): a page that repeats the one before it (a page number the marketplace
 // ignores) ends the walk. StopOnCancellation: a cancelled run stops between two pages (false: the next read runs with the

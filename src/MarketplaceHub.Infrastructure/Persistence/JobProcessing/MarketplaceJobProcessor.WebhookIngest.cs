@@ -85,6 +85,10 @@ public sealed partial class MarketplaceJobProcessor
             AdapterPageResult<RemoteOrder> page; try { page = TrendyolJsonMapper.Orders(raw); } catch (JsonException) { throw WebhookUnreadable(); }
             foreach (var issue in page.Issues ?? [])
                 await RecordIssue(tenantId, $"order-webhook-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);
+            // ISLEYICI-12: an order the notice could not map joins the re-read list as it does from an order page; without
+            // it the order waited for the stream to bring it again.
+            NoteRefusedOrders(page.Issues);
+            await SaveRefusedOrdersForRereadAsync(tenantId, connectionId, cancellationToken);
             // The webhook carries no storefront header; orderCountryCode names the customer's
             // storefront (TR, DE, AE…), which later targeted reads ask first.
             if (configuration.GetValue("Marketplace:PersistOrderSnapshots", true))

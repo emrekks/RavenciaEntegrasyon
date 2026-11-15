@@ -23,6 +23,32 @@ public sealed class ProductImportFailedModelKeepsWatermarkTests
         Assert.Equal(Started.AddSeconds(-60), ProductImportScanPolicy.CompletedWatermark(Started, Previous, scoped: false, failedModels: 0));
     }
 
+    // ISLEYICI-1 follow-up (16 Nov 2026): a model failing on every run holds the watermark for MaxHeldRuns runs in a row at
+    // most; then the watermark moves on and the hold count starts over. A clean run resets the count; a scoped run keeps it.
+    [Fact]
+    public void A_failed_model_holds_the_watermark_for_a_bounded_number_of_runs()
+    {
+        var heldRuns = 0;
+        for (var run = 1; run < ProductImportScanPolicy.MaxHeldRuns; run++)
+        {
+            var kept = ProductImportScanPolicy.CompletedWatermark(Started, Previous, scoped: false, failedModels: 1, heldRuns);
+            Assert.Equal((Previous, run, false), kept);
+            heldRuns = kept.HeldRuns;
+        }
+        Assert.Equal((Started.AddSeconds(-60), 0, true), ProductImportScanPolicy.CompletedWatermark(Started, Previous, scoped: false, failedModels: 1, heldRuns));
+        Assert.Equal((Started.AddSeconds(-60), 0, false), ProductImportScanPolicy.CompletedWatermark(Started, Previous, scoped: false, failedModels: 0, 2));
+        Assert.Equal((Previous, 2, false), ProductImportScanPolicy.CompletedWatermark(Started, Previous, scoped: true, failedModels: 1, 2));
+    }
+
+    [Fact]
+    public void The_hold_count_round_trips_through_its_cursor()
+    {
+        Assert.Null(ProductImportScanPolicy.HeldRunsCursor(0));
+        Assert.Equal(0, ProductImportScanPolicy.HeldRuns(null));
+        Assert.Equal(0, ProductImportScanPolicy.HeldRuns("something-else"));
+        Assert.Equal(2, ProductImportScanPolicy.HeldRuns(ProductImportScanPolicy.HeldRunsCursor(2)));
+    }
+
     [Theory]
     [InlineData(70, 0, true)]   // 100 received, 30 filtered out, 70 failed: nothing finished
     [InlineData(1, 0, true)]

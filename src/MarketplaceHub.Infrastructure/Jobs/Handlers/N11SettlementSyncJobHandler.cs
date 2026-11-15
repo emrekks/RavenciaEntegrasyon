@@ -18,7 +18,13 @@ public sealed class N11SettlementSyncJobHandler(AppDbContext db, IN11SettlementP
     // The cursor of the one-off read of older settlement days (BackfillAsync).
     internal const string BackfillResource = "N11_SETTLEMENT_BACKFILL";
     // A guard against a paging answer that never ends.
-    private const int MaximumPages = 100;
+    internal const int MaximumPages = 100;
+    // ISLEYICI-7 (16 Nov 2026): a list or a day that reaches MaximumPages with pages left fails with its own code; before,
+    // the loop ended quietly, the day was stored as read and the backfill cursor moved past the days not listed.
+    internal const string PageCapCode = "N11_SETTLEMENT_PAGE_CAP";
+
+    private static AdapterError PageCap(string what) => new(AdapterErrorClass.ContractViolation, PageCapCode,
+        $"N11 {what} {MaximumPages} sayfayı aştı; kalan kayıtlar okunmadı ve aralık okunmuş sayılmadı.", null, null, null);
 
     public bool Handles(string jobType) => jobType == MarketplaceJobTypes.N11SettlementSync;
 
@@ -148,9 +154,9 @@ public sealed class N11SettlementSyncJobHandler(AppDbContext db, IN11SettlementP
             var listed = await settlements.GetSettlementDaysAsync(context, start, end, page, cancellationToken);
             if (!listed.IsSuccess) return (days, listed.Error!);
             days.AddRange(listed.Value!.Items);
-            if (listed.Value.Items.Count == 0 || page + 1 >= listed.Value.PageCount) break;
+            if (listed.Value.Items.Count == 0 || page + 1 >= listed.Value.PageCount) return (days, null);
         }
-        return (days, null);
+        return (days, PageCap("hakediş günleri"));
     }
 
     private async Task<HashSet<string>> ReadDaysAsync(JobRequest request, CancellationToken cancellationToken) =>
@@ -165,6 +171,7 @@ public sealed class N11SettlementSyncJobHandler(AppDbContext db, IN11SettlementP
     {
         var lines = new List<RemoteSettlementItem>();
         var skipped = new List<RemoteSkippedFinanceRecord>();
+        var pagesEnded = false;
         for (var page = 0; page < MaximumPages; page++)
         {
             tally.Requests++;
@@ -174,8 +181,10 @@ public sealed class N11SettlementSyncJobHandler(AppDbContext db, IN11SettlementP
             // A line is stored by its id and day; a skipped one is named the same way.
             skipped.AddRange(detail.Value.Skipped.Select(x => x.Key.StartsWith('#') ? x : x with { Key = ExternalId(x.Key, day) }));
             status = detail.Value.Status ?? status;
-            if (detail.Value.Items.Count + detail.Value.Skipped.Count == 0 || page + 1 >= detail.Value.PageCount) break;
+            if (detail.Value.Items.Count + detail.Value.Skipped.Count == 0 || page + 1 >= detail.Value.PageCount) { pagesEnded = true; break; }
         }
+        // The day is not stored (so not taken as read) with lines left unread.
+        if (!pagesEnded) return (0, PageCap("hakediş satırları"));
         tally.Received += lines.Count + skipped.Count;
         var records = Records(lines, day);
         var ids = records.Select(x => x.Id).ToList();

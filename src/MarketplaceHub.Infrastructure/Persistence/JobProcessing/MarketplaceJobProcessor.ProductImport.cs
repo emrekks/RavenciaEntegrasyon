@@ -9,6 +9,10 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed partial class MarketplaceJobProcessor
 {
+    // ISLEYICI-11 (16 Nov 2026): catalog pages of 100 in one import (half a million products), a guard against a list
+    // that never ends.
+    internal const int ProductImportPageCap = 5_000;
+
     private async Task<bool> SyncProducts(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, Guid? jobId, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.AsNoTracking()
@@ -26,7 +30,9 @@ public sealed partial class MarketplaceJobProcessor
         // Ravencia's local catalog. Shopify observations never become local
         // price/stock authority.
         // Keep it restricted to operational connections and recognised environments.
-        if (connection is null || connection.Environment is not ("STAGE" or "PRODUCTION") || connection.Status is not ("ACTIVE" or "VERIFIED")) return false;
+        // KUYRUK-9 (16 Nov 2026): named instead of the generic F3_JOB_REJECTED; still blocked, as before.
+        if (connection is null || connection.Environment is not ("STAGE" or "PRODUCTION") || connection.Status is not ("ACTIVE" or "VERIFIED"))
+            throw new JobProcessingException(JobExecutionResult.Blocked("PRODUCT_IMPORT_CONNECTION_NOT_ELIGIBLE", "Ürün aktarımı yalnız etkin ya da doğrulanmış, canlı veya test ortamındaki desteklenen mağazalarda yapılır; bu mağazada ürün okunmadı."));
         var inventoryPolicy = await db.ConnectionInventoryPolicies.AsNoTracking()
             .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
 
@@ -275,6 +281,13 @@ public sealed partial class MarketplaceJobProcessor
             var hasMore = result.Value.HasMore;
             if (hasMore && string.IsNullOrWhiteSpace(result.Value.NextCursor))
                 throw new InvalidOperationException("Pazar yeri ürün sayfası hasMore=true ancak nextPageToken boş döndü.");
+            // ISLEYICI-11: a catalog that names the page just read as the next one, or never ends, stops with its own code
+            // before this page's position is saved: the scan stays at the page saved before, so a retry reads on from there.
+            // The page number is the session's (it survives a resumed scan).
+            if (hasMore && nextCursor is not null && string.Equals(result.Value.NextCursor, nextCursor, StringComparison.Ordinal))
+                throw PagedReadLoop.GuardFailure("PRODUCT_IMPORT_PAGE_REPEATED", "Pazaryeri ürün listesi okunan sayfayı yeniden sonraki sayfa olarak verdi; ürün aktarımı durduruldu.");
+            if (hasMore && pageNumber >= ProductImportPageCap)
+                throw PagedReadLoop.GuardFailure("PRODUCT_IMPORT_PAGE_CAP", $"Pazaryeri ürün listesi {ProductImportPageCap} sayfayı aştı; ürün aktarımı kaldığı sayfada durduruldu.");
             nextCursor = hasMore ? result.Value.NextCursor : null;
             var pageSession = await db.ProductImportSessions.SingleAsync(x => x.TenantId == tenantId && x.JobId == importJobId, cancellationToken);
             pageSession.NextCursor = nextCursor;
@@ -623,9 +636,29 @@ public sealed partial class MarketplaceJobProcessor
         {
             var completedCursor = await Cursor(tenantId, connectionId, "PRODUCTS", cancellationToken);
             completedCursor.OpaqueCursor = null;
-            completedCursor.LastModifiedWatermark = ProductImportScanPolicy.CompletedWatermark(importSession.CreatedAt, completedCursor.LastModifiedWatermark,
-                scoped: newOnly || existingOnly || mappingOnly || optionsOnly, failedModels: failedModels);
+            // ISLEYICI-1 follow-up: a failed model holds the watermark for at most MaxHeldRuns runs in a row. The count
+            // lives in a row of its own, made only once a run holds the watermark.
+            var holdCursor = await db.SyncCursors.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == ProductImportScanPolicy.WatermarkHoldResource, cancellationToken);
+            var completed = ProductImportScanPolicy.CompletedWatermark(importSession.CreatedAt, completedCursor.LastModifiedWatermark,
+                scoped: newOnly || existingOnly || mappingOnly || optionsOnly, failedModels, ProductImportScanPolicy.HeldRuns(holdCursor?.OpaqueCursor));
+            completedCursor.LastModifiedWatermark = completed.Watermark;
             completedCursor.Version++;
+            var heldCursorValue = ProductImportScanPolicy.HeldRunsCursor(completed.HeldRuns);
+            if (holdCursor is null && heldCursorValue is not null)
+                holdCursor = await Cursor(tenantId, connectionId, ProductImportScanPolicy.WatermarkHoldResource, cancellationToken);
+            if (holdCursor is not null && holdCursor.OpaqueCursor != heldCursorValue)
+            {
+                holdCursor.OpaqueCursor = heldCursorValue;
+                holdCursor.Version++;
+            }
+            var releaseKey = $"product-sync-watermark-released:{connectionId}";
+            if (completed.Released)
+                await RecordIssue(tenantId, releaseKey, "PRODUCT_IMPORT_FAILED_LEFT_BEHIND",
+                    $"Bazı ürünler art arda {ProductImportScanPolicy.MaxHeldRuns} ürün çekiminde aktarılamadı; değişen ürün taraması bu ürünleri beklemeden ilerledi. Aktarılamayan ürünler Operasyon Sorunları'ndaki ürün aktarım uyarılarında duruyor; Tam Katalog Taraması ya da tekil ürün çekimi onları yeniden okur.",
+                    cancellationToken);
+            // A whole catalog read without a failed model has read the products left behind again.
+            else if (failedModels == 0 && effectiveFullScan && !(newOnly || existingOnly || mappingOnly || optionsOnly))
+                await ResolveIssue(tenantId, releaseKey, cancellationToken);
         }
         await db.SaveChangesAsync(cancellationToken);
         await db.ProductImportSessions

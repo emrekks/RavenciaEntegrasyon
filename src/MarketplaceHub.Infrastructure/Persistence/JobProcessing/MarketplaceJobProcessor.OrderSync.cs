@@ -10,6 +10,11 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed partial class MarketplaceJobProcessor
 {
+    // KUYRUK-9 (16 Nov 2026): an order read whose request body cannot be read names its cause instead of the generic
+    // F3_JOB_REJECTED. It stays blocked as before: the body is the same on every run, and nothing was read.
+    private static JobProcessingException OrderSyncPayloadInvalid() =>
+        new(JobExecutionResult.Blocked("ORDER_SYNC_PAYLOAD_INVALID", "Sipariş okuma isteği okunamadı; pazaryerinden sipariş okunmadı. Okumayı mağaza ekranından yeniden başlatın."));
+
     // A finished order read also matches the connection's lines that still have no panel variant
     // (RematchUnmatchedOrderLines): the variant or its link may have been created after the line was read.
     private async Task<bool> SyncOrdersAndMatchLines(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, string cursorResourceType, bool allowBaseline, CancellationToken cancellationToken)
@@ -55,7 +60,7 @@ public sealed partial class MarketplaceJobProcessor
                     && requestedOrderId.ValueKind == JsonValueKind.String
                     && !string.IsNullOrWhiteSpace(requestedOrderId.GetString())) return true;
             }
-            catch (JsonException) { return false; }
+            catch (JsonException) { throw OrderSyncPayloadInvalid(); }
             return await SyncHepsiburadaPackages(tenantId, connectionId, payloadJson, correlationId, cancellationToken);
         }
 
@@ -69,7 +74,7 @@ public sealed partial class MarketplaceJobProcessor
             if (payload.RootElement.TryGetProperty("full", out var fullValue) && fullValue.ValueKind is JsonValueKind.True or JsonValueKind.False) full = fullValue.GetBoolean();
             if (payload.RootElement.TryGetProperty("packageNumber", out var packageValue) && packageValue.ValueKind == JsonValueKind.String) packageNumber = packageValue.GetString();
         }
-        catch (JsonException) { return false; }
+        catch (JsonException) { throw OrderSyncPayloadInvalid(); }
         if (!string.IsNullOrWhiteSpace(externalOrderId))
         {
             var requestedPackageNumber = packageNumber?.Trim();
@@ -113,6 +118,7 @@ public sealed partial class MarketplaceJobProcessor
                     packagesToRead.Add((knownPackage.ExternalPackageId, knownPackage.StatusOccurredAt));
             }
             var packageSnapshots = new List<RemoteOrder>();
+            AdapterError? packageNotAsked = null;
             foreach (var packageToRead in packagesToRead)
             {
                 TrackRequest();
@@ -123,6 +129,13 @@ public sealed partial class MarketplaceJobProcessor
                     cancellationToken);
                 if (!packageRead.IsSuccess)
                 {
+                    // ADAPTOR-TY-HB-3: a package outside every readable window was not asked for; remembered so the
+                    // job does not end as if Trendyol had answered that it does not know the order.
+                    if (TrendyolPackageNotAsked(packageRead.Error))
+                    {
+                        packageNotAsked ??= packageRead.Error;
+                        continue;
+                    }
                     if (packageRead.Error?.Class == AdapterErrorClass.NotFound || packageRead.Error?.HttpStatus == 404)
                         continue;
                     TrackResultFailure(packageRead.Error);
@@ -142,7 +155,7 @@ public sealed partial class MarketplaceJobProcessor
             }
 
             TrackResultFailure(single.Error);
-            throw JobProcessingException.FromAdapter(single.Error!);
+            throw JobProcessingException.FromAdapter(packageNotAsked ?? single.Error!);
         }
 
         var cursor = await Cursor(tenantId, connectionId, cursorResourceType, cancellationToken);
@@ -173,6 +186,7 @@ public sealed partial class MarketplaceJobProcessor
         var resetExpiredCursor = false;
         var completed = false;
         var insertedBeforePoll = telemetryInsertedCount;
+        var streamWalk = new PageWalk(TrendyolOrderStreamPageGuard);
         do
         {
             var (modifiedAfter, modifiedBefore) = OrderWindow(state);
@@ -225,6 +239,16 @@ public sealed partial class MarketplaceJobProcessor
             if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
             await IngestOrderPageAsync(tenantId, connectionId, result.Value!, "order-contract", cancellationToken);
             NoteStorefront(storefront, TrendyolStorefrontPolicy.Read(storefrontActivity.GetValueOrDefault(storefront), now, result.Value!.Items.Count > 0));
+            // ISLEYICI-11: a stream that names the page just read as the next one, or never ends, stops here with its own
+            // code. The position saved after the previous page stays, the watermark does not move, and the next run
+            // resumes from there.
+            switch (streamWalk.After(state.NextCursor, result.Value.HasMore ? result.Value.NextCursor : null))
+            {
+                case PagedReadStop.PageCap:
+                    throw PagedReadLoop.GuardFailure("TRENDYOL_ORDER_STREAM_PAGE_CAP", $"Trendyol sipariş akışı bir okumada {TrendyolOrderStreamPageCap} sayfayı aştı; okuma kaldığı yerde durduruldu ve bu dönem okunmuş sayılmadı.");
+                case PagedReadStop.RepeatedCursor:
+                    throw PagedReadLoop.GuardFailure("TRENDYOL_ORDER_STREAM_PAGE_REPEATED", "Trendyol sipariş akışı okunan sayfayı yeniden sonraki sayfa olarak verdi; okuma durduruldu ve bu dönem okunmuş sayılmadı.");
+            }
             if (result.Value.HasMore)
             {
                 if (string.IsNullOrWhiteSpace(result.Value.NextCursor)) throw new InvalidOperationException("Trendyol stream hasMore=true ancak nextCursor boş döndü.");
@@ -299,6 +323,8 @@ public sealed partial class MarketplaceJobProcessor
             var start = TrendyolStorefrontPolicy.ProbeStart(previous, now, overlap);
             var received = false;
             string? nextCursor = null;
+            var probeWalk = new PageWalk(TrendyolStorefrontProbePageGuard);
+            var probeIssueKey = $"trendyol-storefront-read-guard:{connectionId}:{storefront}";
             do
             {
                 TrackRequest();
@@ -316,10 +342,25 @@ public sealed partial class MarketplaceJobProcessor
                 }
                 await IngestOrderPageAsync(tenantId, connectionId, page.Value!, "order-contract", cancellationToken);
                 received |= page.Value!.Items.Count > 0;
+                var readWith = nextCursor;
                 nextCursor = page.Value.HasMore && !string.IsNullOrWhiteSpace(page.Value.NextCursor) ? page.Value.NextCursor : null;
+                // ISLEYICI-11: a storefront read that repeats its page or never ends stops like a failed read: its last
+                // read stays where it was (so it is read again next run) and an issue names the stop.
+                if (probeWalk.After(readWith, nextCursor) is { } stop)
+                {
+                    await RecordIssue(tenantId, probeIssueKey,
+                        stop == PagedReadStop.PageCap ? "TRENDYOL_STOREFRONT_READ_PAGE_CAP" : "TRENDYOL_STOREFRONT_READ_PAGE_REPEATED",
+                        stop == PagedReadStop.PageCap
+                            ? $"Trendyol {storefront} vitrininin sipariş okuması {TrendyolStorefrontProbePageCap} sayfayı aştı; okuma durduruldu, vitrin sonraki okumada yeniden okunacak."
+                            : $"Trendyol {storefront} vitrininin sipariş okuması okunan sayfayı yeniden sonraki sayfa olarak verdi; okuma durduruldu, vitrin sonraki okumada yeniden okunacak.",
+                        cancellationToken);
+                    await db.SaveChangesAsync(cancellationToken);
+                    return false;
+                }
             } while (nextCursor is not null && !cancellationToken.IsCancellationRequested);
             if (cancellationToken.IsCancellationRequested) return false;
             NoteStorefront(storefront, TrendyolStorefrontPolicy.Read(previous, now, received));
+            await ResolveIssue(tenantId, probeIssueKey, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
             return true;
         }
@@ -385,6 +426,27 @@ public sealed partial class MarketplaceJobProcessor
         cursor.OpaqueCursor = serialized;
         cursor.LastSuccessAt = now;
         cursor.Version++;
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    // ISLEYICI-12 (16 Nov 2026): a read that runs no RereadOrders afterwards (a webhook ingest) still puts the orders it
+    // refused on the re-read list, for their first try later (RejectedOrderRereadPolicy.Delays); the next order read
+    // reads them when due. Nothing is read here.
+    private async Task SaveRefusedOrdersForRereadAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        if (rereadOrderIds.Count == 0) return;
+        var now = timeProvider.GetUtcNow();
+        var cursor = await Cursor(tenantId, connectionId, RejectedOrderRereadPolicy.CursorResource, cancellationToken);
+        var entries = RejectedOrderRereadPolicy.Note(RejectedOrderRereadPolicy.Parse(cursor.OpaqueCursor), rereadOrderIds, now, out var dropped);
+        rereadOrderIds.Clear();
+        if (dropped.Count > 0)
+            await RecordIssue(tenantId, $"order-reread-full:{connectionId}", RejectedOrderRereadPolicy.OverflowIssueCode, RejectedOrderRereadPolicy.OverflowSummary(dropped), cancellationToken);
+        var serialized = RejectedOrderRereadPolicy.Serialize(entries);
+        if (serialized != cursor.OpaqueCursor)
+        {
+            cursor.OpaqueCursor = serialized;
+            cursor.Version++;
+        }
         await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -456,6 +518,13 @@ public sealed partial class MarketplaceJobProcessor
     // three-month baseline instead of continuing the old incremental cursor.
     private const string OrderSyncStateVersion = "orders-v4";
     private static readonly TimeSpan OrderStreamWindowSpan = TimeSpan.FromDays(14);
+
+    // ISLEYICI-11 (16 Nov 2026): stream pages of 200 packages in one run (one million packages: far above a three-month
+    // baseline of a large store), and pages of one storefront read; guards against a stream that never ends.
+    internal const int TrendyolOrderStreamPageCap = 5_000;
+    private static readonly PageGuard TrendyolOrderStreamPageGuard = new(MaxPages: TrendyolOrderStreamPageCap, StopOnRepeatedCursor: true);
+    internal const int TrendyolStorefrontProbePageCap = 1_000;
+    private static readonly PageGuard TrendyolStorefrontProbePageGuard = new(MaxPages: TrendyolStorefrontProbePageCap, StopOnRepeatedCursor: true);
     // Stream reads are spaced (5 s between starts) and capped (30/min) per seller by
     // TrendyolResilienceHandler; sleeping here as well only added idle time to every page.
     private const int DefaultOrderSyncOverlapSeconds = 120;

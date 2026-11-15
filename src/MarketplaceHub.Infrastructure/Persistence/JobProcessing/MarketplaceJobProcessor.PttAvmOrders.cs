@@ -20,7 +20,7 @@ public sealed partial class MarketplaceJobProcessor
             if (payload.RootElement.TryGetProperty("externalOrderId", out var value) && value.ValueKind == JsonValueKind.String) externalOrderId = value.GetString();
             if (payload.RootElement.TryGetProperty("full", out var fullValue) && fullValue.ValueKind is JsonValueKind.True or JsonValueKind.False) full = fullValue.GetBoolean();
         }
-        catch (JsonException) { return false; }
+        catch (JsonException) { throw OrderSyncPayloadInvalid(); }
 
         if (!string.IsNullOrWhiteSpace(externalOrderId))
         {
@@ -96,7 +96,10 @@ public sealed partial class MarketplaceJobProcessor
         var startDay = PttAvmOrderHistoryPolicy.StartDay(wide, cursor.LastModifiedWatermark, now);
         foreach (var (windowStart, windowEnd) in PttAvmOrderHistoryPolicy.Windows(startDay, now))
         {
-            if (cancellationToken.IsCancellationRequested) return false;
+            // KUYRUK-9 (16 Nov 2026): a run stopped between windows says so instead of the generic F3_JOB_REJECTED; it ends as
+            // it did (blocked, the watermark not moved).
+            if (cancellationToken.IsCancellationRequested)
+                throw new JobProcessingException(JobExecutionResult.Blocked("PTTAVM_RETURN_READ_CANCELLED", "PttAVM iade okuması tamamlanmadan durduruldu; okunmayan günler okunmuş sayılmadı ve sonraki okumada yeniden okunacak."));
             TrackRequest();
             var result = await returns.PollAsync(
                 Context(tenantId, connectionId, correlationId, $"pttavm-return-sync:{windowStart:yyyyMMdd}"),
