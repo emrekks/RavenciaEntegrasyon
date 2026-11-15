@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useEffect, useMemo, useState } from 'react'
 import { hubApi, hubPoll } from '../../shared/api'
 import { Busy, CargoProviderIcon, ErrorBox, UiIcon, DialogSurface } from '../../shared/components'
@@ -35,11 +36,11 @@ type ConfirmResult = { items: Array<{ packageId: string; invoiceId: string | nul
 // One status read of an invoice (or of the queued job that makes it): read-only, never a submission.
 async function readInvoiceFollow(item: BulkInvoiceFollow): Promise<BulkInvoiceRead> {
   if (item.invoiceId) {
-    const invoice = await hubPoll<{ status: string; lastErrorCode: string | null }>(`/invoices/${item.invoiceId}`)
+    const invoice = await hubPoll<ApiAnswer<'getInvoicesById'>>(`/invoices/${item.invoiceId}`)
     return invoiceReadState(invoice.status, invoice.lastErrorCode ? invoiceFailureReason(invoice.lastErrorCode) ?? invoice.lastErrorCode : null)
   }
   if (item.jobId) {
-    const detail = await hubPoll<{ job: { status: string; lastErrorSummary: string | null } }>(`/jobs/${item.jobId}`)
+    const detail = await hubPoll<ApiAnswer<'getJobsById'>>(`/jobs/${item.jobId}`)
     return jobReadState(detail.job.status, detail.job.lastErrorSummary)
   }
   return { state: 'pending' }
@@ -96,7 +97,7 @@ export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete, onN
   useEffect(() => {
     let active = true
     setLoading(true); setError(null); setPreviews([])
-    void hubApi<PreviewItem[]>('/invoice-workspace/preview', { method: 'POST', body: JSON.stringify({ items: JSON.parse(targetPayload) as InvoicePreviewTarget[], includeInternetSalesInfo }) })
+    void hubApi<ApiAnswer<'postInvoiceWorkspacePreview'>>('/invoice-workspace/preview', { method: 'POST', body: JSON.stringify({ items: JSON.parse(targetPayload) as InvoicePreviewTarget[], includeInternetSalesInfo }) })
       .then(items => { if (active) setPreviews(items) })
       .catch(reason => { if (active) setError(reason) })
       .finally(() => { if (active) setLoading(false) })
@@ -120,7 +121,7 @@ export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete, onN
     }
     onClose()
     onNotice(eligible.length === 1 ? `${labels.get(eligible[0].packageId)} nolu siparişin faturası oluşturuluyor ve pazaryerine iletiliyor…` : `${eligible.length} siparişin faturası oluşturuluyor ve pazaryerine iletiliyor…`, 'pending')
-    void hubApi<ConfirmResult>('/invoice-workspace/confirm', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('invoice-workspace-confirm') }, body })
+    void hubApi<ApiAnswer<'postInvoiceWorkspaceConfirm'>>('/invoice-workspace/confirm', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('invoice-workspace-confirm') }, body })
       .then(response => {
         let succeeded = 0
 
