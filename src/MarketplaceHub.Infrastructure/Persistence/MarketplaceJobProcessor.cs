@@ -2983,7 +2983,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 sendLog.Settle(line, PriceStockSendResults.Superseded, null, "Pazar yeri satırı aldı; sonuç gelene kadar fiyat veya stok yeni bir değere geçti, yeni değer ayrıca gönderilecek.");
                 continue;
             }
-            if (priceOk && stockOk) { success++; sendLog.Settle(line, PriceStockSendResults.Applied); continue; }
+            if (priceOk && stockOk)
+            {
+                success++;
+                // Pazarama took the price but holds it for its own approval: the send log says so instead of a bare "applied".
+                var awaitsApproval = string.Equals(remote?.Status, PazaramaBatchMapper.PendingApprovalStatus, StringComparison.Ordinal);
+                sendLog.Settle(line, PriceStockSendResults.Applied, null, awaitsApproval ? "Pazarama fiyatı onaya gönderdi; onaylanana kadar mağazada önceki fiyat görünür." : null);
+                continue;
+            }
             failed++;
             var issueCode = SafeCode(code ?? notSentCode) ?? "PRICE_INVENTORY_LINE_REJECTED";
             var what = !priceOk && !stockOk ? "fiyat ve stok" : !priceOk ? "fiyat" : "stok";
