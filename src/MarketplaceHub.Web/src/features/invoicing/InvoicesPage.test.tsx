@@ -400,6 +400,51 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     expect(searched[0]).toContain('search=DSM')
   })
 
+  // W6 (scan 2026-11-15) pins today's behaviour; whether a sort change on page 1 should clear it too waits for the
+  // owner. Siparişler clears on every list change, Ürünler keeps the selection across pages on purpose.
+  it('keeps the selection when only the sort changes on page 1, clears it on a page or tab change, and a bulk action hits the rows it names', async () => {
+    const selected = () => container.querySelector('.invoice-reference-bulk-toolbar')?.textContent ?? ''
+    const pick = (orderNumber: string) => act(() => container.querySelector<HTMLInputElement>(`[aria-label$="#${orderNumber} siparişini seç"]`)!.click())
+    apiState.totalPages = 3
+    await act(async () => { await client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }) })
+    await settle()
+    pick('SH-1001')
+    await settle()
+    expect(selected()).toContain('1 sipariş seçildi')
+
+    act(() => container.querySelector<HTMLButtonElement>('button[aria-label^="Sıralama:"]')!.click())
+    act(() => Array.from(document.querySelectorAll<HTMLButtonElement>('[role="option"]')).find(option => option.textContent === 'En Eski Siparişler')!.click())
+    act(() => [...container.querySelectorAll<HTMLButtonElement>('.invoice-filter-scope .rr-fbtns button')].find(item => item.textContent === 'Filtrele')!.click())
+    await settle()
+    expect(apiState.pageRequests.at(-1)).toContain('sort=ORDER_ASC')
+    expect(selected()).toContain('1 sipariş seçildi')
+
+    // The bulk action names the selected row on the page, and only that one.
+    act(() => button('Fatura Durumunu Güncelle').click())
+    await settle()
+    const status = container.querySelector<HTMLButtonElement>('button[aria-label^="Yeni fatura durumu"]')!
+    act(() => status.click())
+    act(() => Array.from(document.querySelectorAll<HTMLButtonElement>('[role="option"]')).find(option => option.textContent === 'Faturası Yüklendi')!.click())
+    act(() => button('1 Siparişi Güncelle').click())
+    await settle()
+    expect(apiState.statusUpdates).toEqual([{ path: '/invoice-workspace/manual-status', status: 'UPLOADED', packageIds: ['shopify-package-1'] }])
+
+    pick('SH-1002')
+    await settle()
+    expect(selected()).toContain('sipariş seçildi')
+    act(() => container.querySelector<HTMLButtonElement>('button[aria-label="Sonraki"]')!.click())
+    await settle()
+    expect(apiState.pageRequests.at(-1)).toContain('pageNumber=2')
+    expect(Array.from(container.querySelectorAll<HTMLInputElement>('.invoice-reference-select')).some(input => input.checked)).toBe(false)
+
+    pick('SH-1002')
+    await settle()
+    expect(selected()).toContain('1 sipariş seçildi')
+    act(() => button('Tümü').click())
+    await settle()
+    expect(Array.from(container.querySelectorAll<HTMLInputElement>('.invoice-reference-select')).some(input => input.checked)).toBe(false)
+  })
+
   it('changes only Shopify invoice statuses when mixed platforms are selected', async () => {
     const selectAll = container.querySelector<HTMLInputElement>('[aria-label="Bu sayfadaki tüm siparişleri seç"]')!
     act(() => selectAll.click())

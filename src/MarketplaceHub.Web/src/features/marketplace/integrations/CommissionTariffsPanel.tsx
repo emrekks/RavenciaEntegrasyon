@@ -73,7 +73,7 @@ export function periodTabLabel(period: CommissionTariff) {
 // A page of a tariff's rows as the tab shows it: its models in the filter's order, 50 at a time.
 export const tariffRowsQuery = (connectionId: string, tariffId: string, filter: TariffFilter = noFilter, page = 0) => ({
   queryKey: queryKeys.commissionTariffRows(connectionId, tariffId, filter, page),
-  queryFn: () => loadRowPage(connectionId, tariffId, { page: String(page), limit: '50', ...filterQuery(filter) })
+  queryFn: ({ signal }: { signal: AbortSignal }) => loadRowPage(connectionId, tariffId, { page: String(page), limit: '50', ...filterQuery(filter) }, signal)
 })
 
 type UploadResult = { tariffs: CommissionTariff[]; importedRows: number; skippedRows: number; alreadyUploaded: boolean; warnings: string[] }

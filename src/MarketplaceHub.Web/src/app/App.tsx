@@ -238,8 +238,8 @@ export function App() {
   const client = useQueryClient()
   // The session is never restored from the reload snapshot (another tab may have signed into another tenant since), so
   // the workspace waits for this answer; restored answers of another tenant or user are dropped before it lands.
-  const me = useQuery({ queryKey: queryKeys.me(), queryFn: async () => {
-    const current = await api<Me>('/me')
+  const me = useQuery({ queryKey: queryKeys.me(), queryFn: async ({ signal }) => {
+    const current = await api<Me>('/me', { signal })
     confirmQuerySnapshotScope(client, current.tenantId, current.id)
     return current
   }, retry: false })

@@ -373,8 +373,8 @@ export const requiredShopifyCapabilities = ['PRODUCT_WRITE', 'INVENTORY_WRITE', 
 export function connectionCapabilitiesQueryKey(connectionId: string) {
   return queryKeys.capabilities(connectionId)
 }
-export function loadConnectionCapabilities(connectionId: string) {
-  return hubApi<ConnectionCapability[]>(`/connections/${connectionId}/capabilities`)
+export function loadConnectionCapabilities(connectionId: string, signal?: AbortSignal) {
+  return hubApi<ConnectionCapability[]>(`/connections/${connectionId}/capabilities`, { signal })
 }
 export function missingShopifyCapabilities(capabilities: ConnectionCapability[] | undefined) {
   if (!capabilities) return []

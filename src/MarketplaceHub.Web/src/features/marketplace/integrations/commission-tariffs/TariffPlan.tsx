@@ -255,13 +255,13 @@ export function useSavedSelection(save: (body: string) => Promise<unknown>, seri
 export function TariffPlan(props: TariffPlanProps) {
   const selection = useQuery({
     queryKey: queryKeys.commissionTariffSelection(props.connectionId, props.tariff.id),
-    queryFn: async () => { await selectionSaveSettled(selectionSaveKey(props.connectionId, props.tariff.id)); return hubApi<TariffSelection>(`/connections/${props.connectionId}/commission-tariffs/${props.tariff.id}/selection`) },
+    queryFn: async ({ signal }) => { await selectionSaveSettled(selectionSaveKey(props.connectionId, props.tariff.id)); return hubApi<TariffSelection>(`/connections/${props.connectionId}/commission-tariffs/${props.tariff.id}/selection`, { signal }) },
     gcTime: 0, refetchOnWindowFocus: false
   })
   // The 7-day view keeps the second period's picks too.
   const partnerSelection = useQuery({
     queryKey: queryKeys.commissionTariffSelection(props.connectionId, props.partner?.id),
-    queryFn: async () => { await selectionSaveSettled(selectionSaveKey(props.connectionId, props.partner!.id)); return hubApi<TariffSelection>(`/connections/${props.connectionId}/commission-tariffs/${props.partner!.id}/selection`) },
+    queryFn: async ({ signal }) => { await selectionSaveSettled(selectionSaveKey(props.connectionId, props.partner!.id)); return hubApi<TariffSelection>(`/connections/${props.connectionId}/commission-tariffs/${props.partner!.id}/selection`, { signal }) },
     gcTime: 0, refetchOnWindowFocus: false, enabled: props.partner != null
   })
   if (selection.isPending || (props.partner && partnerSelection.isPending)) return <Busy />
@@ -306,7 +306,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
   const pageBarcodes = useMemo(() => [...new Set(rows?.items.map(row => row.barcode) ?? [])].sort(), [rows])
   const partnerRows = useQuery({
     queryKey: queryKeys.commissionTariffRows(connectionId, partner?.id, 'barcodes', pageBarcodes),
-    queryFn: () => loadRowPage(connectionId, partner!.id, { page: '0', limit: '200', barcodes: pageBarcodes.join(',') }),
+    queryFn: ({ signal }) => loadRowPage(connectionId, partner!.id, { page: '0', limit: '200', barcodes: pageBarcodes.join(',') }, signal),
     enabled: partner != null && pageBarcodes.length > 0
   })
   const partnerBy = useMemo(() => new Map((partnerRows.data?.items ?? []).map(row => [row.barcode, row])), [partnerRows.data])

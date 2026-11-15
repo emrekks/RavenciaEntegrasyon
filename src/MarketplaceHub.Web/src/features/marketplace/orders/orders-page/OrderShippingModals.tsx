@@ -120,7 +120,7 @@ export function ShippingLabelBatchModal({ items, settings, format, onClose, onPr
   // Each selected order's detail is read (a few at a time) for the personal fields the labels print.
   const ids = items.map(item => item.id)
   const batchPages = shippingLabelPages(items, format, settings)
-  const details = useQuery({ queryKey: queryKeys.orderLabelDetails(ids), queryFn: () => loadOrderLabelDetails(ids, id => hubApi<OrderLabelDetail>(`/orders/${id}`)), staleTime: 30_000 })
+  const details = useQuery({ queryKey: queryKeys.orderLabelDetails(ids), queryFn: ({ signal }) => loadOrderLabelDetails(ids, id => hubApi<OrderLabelDetail>(`/orders/${id}`, { signal })), staleTime: 30_000 })
   function printLabels() {
     if (!details.data) return
     window.print()

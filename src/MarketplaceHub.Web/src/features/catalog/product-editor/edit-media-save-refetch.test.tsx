@@ -199,7 +199,34 @@ describe('a picture assignment saved on its own while Kaydet is pressed', () => 
     expect(fixture.state.patchIfMatch).toEqual(['"v4"'])
     expect(container.querySelector('.product-stale-banner')).toBeNull()
   })
+
+  it('W1: an assignment saved over an unsaved title keeps the title unsaved, and taking the title back leaves nothing unsaved', async () => {
+    fixture.state.productMedia = ['https://cdn.example.com/a1.jpg']
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    await renderAt('/products/p1', client)
+    await settle()
+    const title = () => container.querySelector<HTMLInputElement>('.product-title-field input')!
+    setValue(title(), 'Yeni Ad')
+    await settle(2)
+    act(() => container.querySelector<HTMLButtonElement>('button.variant-media-button')!.click())
+    act(() => container.querySelector<HTMLButtonElement>('.variant-media-picker-modal button.variant-media-option')!.click())
+    const apply = Array.from(container.querySelectorAll<HTMLButtonElement>('.variant-media-picker-modal footer button')).find(button => button.textContent === 'Görselleri Kaydet')!
+    act(() => apply.click())
+    await settle(30)
+    expect(fixture.state.variantMedia).toEqual(['https://cdn.example.com/a1.jpg'])
+    expect(title().value).toBe('Yeni Ad')
+    expect(unloadBlocked()).toBe(true)
+    setValue(title(), 'Ürün')
+    await settle(2)
+    expect(unloadBlocked()).toBe(false)
+  })
 })
+
+function unloadBlocked() {
+  const event = new Event('beforeunload', { cancelable: true }) as BeforeUnloadEvent
+  window.dispatchEvent(event)
+  return event.defaultPrevented
+}
 
 describe('new pictures on a new product', () => {
   it('uploads each once and ends on the product page with the pictures shown once', async () => {

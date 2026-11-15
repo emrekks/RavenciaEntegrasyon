@@ -74,14 +74,14 @@ function aggregateOrderStatus(statuses: string[]) {
 function csvSafeText(text: string) {
   return /^[=+\-@\t\r]/.test(text) ? `'${text}` : text
 }
-async function loadOrderPage(filters: OrderFilters, limit: number, after: string | null, page = 1): Promise<Page<Order>> {
+async function loadOrderPage(filters: OrderFilters, limit: number, after: string | null, page = 1, signal?: AbortSignal): Promise<Page<Order>> {
   const params = new URLSearchParams({ limit: String(limit) })
   orderFilterParams(filters).forEach((value, key) => params.set(key, value))
   if (after) params.set('after', after)
   if (filters.status !== 'ALL') params.set('status', filters.status)
   params.set('sort', filters.sort)
   if (!after && page > 1) params.set('page', String(page))
-  return hubApi<Page<Order>>(`/orders?${params.toString()}`)
+  return hubApi<Page<Order>>(`/orders?${params.toString()}`, { signal })
 }
 // The list filters as query parameters (status, sort and paging aside): the list and its tab counters
 // read the same set (audit 2026-10-20 S12).
@@ -157,7 +157,7 @@ export function OrdersPage() {
   // the server filters it).
   const orderCursor = pageCursors[page] ?? null
   const orderQueryFilters: OrderFilters = { ...filters, sort: keepSort(filters.status, filters.sort), platform: 'ALL', platforms: selectedPlatforms ?? [] }
-  const ordersQuery = useQuery({ queryKey: queryKeys.orders('page', orderQueryFilters, pageSize, page, orderCursor), queryFn: () => loadOrderPage(orderQueryFilters, pageSize, orderCursor, page), placeholderData: keepPreviousData, staleTime: 30_000, refetchOnWindowFocus: true })
+  const ordersQuery = useQuery({ queryKey: queryKeys.orders('page', orderQueryFilters, pageSize, page, orderCursor), queryFn: ({ signal }) => loadOrderPage(orderQueryFilters, pageSize, orderCursor, page, signal), placeholderData: keepPreviousData, staleTime: 30_000, refetchOnWindowFocus: true })
   // The tab counters count the orders each tab lists for the same filters (date, search, platforms, cargo,
   // invoice, label), so a counter equals its tab's total (audit 2026-10-20 S12).
   const summaryParams = orderFilterParams(orderQueryFilters).toString()

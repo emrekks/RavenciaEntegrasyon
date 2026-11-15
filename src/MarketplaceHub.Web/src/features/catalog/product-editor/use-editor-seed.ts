@@ -110,8 +110,17 @@ export function useEditorSeed(c: EditorProps & EditorStateResult & EditorMediaPo
     if (!product || !editProductId || product.id !== editProductId) return
     seededProduct.current = product
     if (!editorDirtyRef.current) { setReseedRequest(value => value + 1); return }
-    initializedEditProductKey.current = editorSeedKey('edit', product.id, product.version, editorDataStamp(product.variants))
+    standOnOwnWrite(editorSeedKey('edit', product.id, product.version, editorDataStamp(product.variants)))
     setStaleProductVersion(null)
+  }
+  // A form with other unsaved edits stands on the version the editor's own write left, and that version is not a seed:
+  // the Web Color and option inference below do not run for it, since both refill the user's fields and retake the
+  // snapshot, which made the unsaved edits read as saved (W1, scan 2026-11-15). The write moves the snapshot itself,
+  // for the fields it saved.
+  function standOnOwnWrite(productKey: string) {
+    initializedEditProductKey.current = productKey
+    initializedEditWebColorKey.current = productKey
+    initializedEditOptionsKey.current = productKey
   }
   // The banner's "reload": drops the unsaved edits and fills the form from the latest saved product.
   function reloadEditedProduct() {
@@ -179,6 +188,6 @@ export function useEditorSeed(c: EditorProps & EditorStateResult & EditorMediaPo
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allRequirements, duplicateProductId, editProductId, optionRequirements, requirements.isLoading, seedProduct])
 
-  return { reseedRequest, setReseedRequest, seedStamp, adoptOwnProductWrite, reloadEditedProduct }
+  return { reseedRequest, setReseedRequest, seedStamp, adoptOwnProductWrite, standOnOwnWrite, reloadEditedProduct }
 }
 export type EditorSeedResult = ReturnType<typeof useEditorSeed>

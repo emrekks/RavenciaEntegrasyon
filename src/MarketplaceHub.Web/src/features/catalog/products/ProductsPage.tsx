@@ -90,7 +90,7 @@ function selectionModelGroups(ids: readonly string[], cache: Record<string, Prod
   const groups = [...productRowsAsCards(known).map(group => group.products.map(product => product.id)), ...ids.filter(id => !knownIds.has(id)).map(id => [id])]
   return { groups, variantCount: known.reduce((sum, product) => sum + product.variants.length, 0) }
 }
-async function fetchProductPage(limit: number, filters: ProductListFilters, after: string | null) {
+async function fetchProductPage(limit: number, filters: ProductListFilters, after: string | null, signal?: AbortSignal) {
   const params = new URLSearchParams({ limit: String(limit) })
   if (after) params.set('after', after)
   if (filters.search) params.set('search', filters.search)
@@ -98,7 +98,7 @@ async function fetchProductPage(limit: number, filters: ProductListFilters, afte
   if (filters.platform) params.set('platform', filters.platform)
   if (filters.stock) params.set('stock', filters.stock)
   if (filters.sort) params.set('sort', filters.sort)
-  return hubPoll<CursorPage<Product>>(`/products?${params.toString()}`)
+  return hubPoll<CursorPage<Product>>(`/products?${params.toString()}`, { signal })
 }
 type VariantDisplayValue = { label: string; quantity: number }
 type VariantDisplayGroup = { label: string; values: VariantDisplayValue[]; valueSortLabel: string }
@@ -354,10 +354,10 @@ function ProductDeleteConfirmModal({ request, deleting, onClose, onConfirm }: { 
   // The publication and price/stock jobs still waiting for these products: the delete cancels them.
   const preview = useQuery({
     queryKey: queryKeys.productDeletePreview(request.productIds),
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       let pendingJobCount = 0
       for (let index = 0; index < request.productIds.length; index += 500)
-        pendingJobCount += (await hubApi<{ pendingJobCount: number }>('/products/delete-preview', { method: 'POST', body: JSON.stringify({ productIds: request.productIds.slice(index, index + 500) }) })).pendingJobCount
+        pendingJobCount += (await hubApi<{ pendingJobCount: number }>('/products/delete-preview', { method: 'POST', body: JSON.stringify({ productIds: request.productIds.slice(index, index + 500) }), signal })).pendingJobCount
       return pendingJobCount
     },
     staleTime: 0
@@ -399,7 +399,7 @@ export function ProductsPage() {
   const pageCursor = pageCursors[productFilterKey]?.[pageNumber] ?? null
   const query = useQuery({
     queryKey: queryKeys.products(productFilters, pageSize, pageNumber, pageCursor),
-    queryFn: () => fetchProductPage(pageSize, productFilters, pageCursor),
+    queryFn: ({ signal }) => fetchProductPage(pageSize, productFilters, pageCursor, signal),
     placeholderData: keepPreviousData,
     staleTime: 30_000,
     refetchOnWindowFocus: true,
@@ -408,8 +408,8 @@ export function ProductsPage() {
   })
   const summaryQuery = useQuery({ queryKey: queryKeys.products('summary'), queryFn: ({ signal }) => hubApi<ProductSummary>('/products/summary', { signal }), staleTime: 30_000, refetchOnWindowFocus: true })
   // The summary has no draft or archived counts; a one-item page carries the total.
-  const draftCountQuery = useQuery({ queryKey: queryKeys.products('count', 'DRAFT'), queryFn: () => fetchProductPage(1, { search: '', status: 'DRAFT', platform: '', stock: '', sort: '' }, null), staleTime: 60_000 })
-  const archivedCountQuery = useQuery({ queryKey: queryKeys.products('count', 'ARCHIVED'), queryFn: () => fetchProductPage(1, { search: '', status: 'ARCHIVED', platform: '', stock: '', sort: '' }, null), staleTime: 60_000 })
+  const draftCountQuery = useQuery({ queryKey: queryKeys.products('count', 'DRAFT'), queryFn: ({ signal }) => fetchProductPage(1, { search: '', status: 'DRAFT', platform: '', stock: '', sort: '' }, null, signal), staleTime: 60_000 })
+  const archivedCountQuery = useQuery({ queryKey: queryKeys.products('count', 'ARCHIVED'), queryFn: ({ signal }) => fetchProductPage(1, { search: '', status: 'ARCHIVED', platform: '', stock: '', sort: '' }, null, signal), staleTime: 60_000 })
   const lowStockQuery = useQuery({ queryKey: queryKeys.products('low-stock-details'), queryFn: ({ signal }) => loadAllPages<Product>('/products?stock=LOW', { limit: 200, signal }), enabled: lowStockOpen, staleTime: 15_000, refetchOnWindowFocus: true })
   const connectionsQuery = useQuery(connectionQueries.list<MarketplaceConnection>())
   const productSyncJobsQuery = useQuery({ queryKey: queryKeys.jobs('product-import'), queryFn: ({ signal }) => hubPoll<ProductSyncJob[]>(productSyncJobsPath, { cache: 'no-store', signal }), enabled: productImportOpen || trackedProductImportJobIds.length > 0, refetchInterval: query => productImportOpen && filterActiveProductSyncJobs(query.state.data ?? []).length ? 1500 : trackedProductImportJobIds.length ? 3000 : false, refetchIntervalInBackground: true, refetchOnWindowFocus: true, staleTime: 0 })
@@ -428,7 +428,7 @@ export function ProductsPage() {
   // While the quick edit is open its products are read by id (loadProductsByIds): its saves refresh ['products'], which
   // covers this query, so every cell works on the latest versions. The page's copies show until the first answer.
   const quickEditIds = quickEdit?.productIds ?? []
-  const quickEditQuery = useQuery({ queryKey: queryKeys.products('by-ids', quickEditIds), queryFn: () => loadProductsByIds(quickEditIds, id => hubApi<Product>(`/products/${id}`, { cache: 'no-store' }), pageCopyOf), enabled: quickEditIds.length > 0, staleTime: 0, gcTime: 0 })
+  const quickEditQuery = useQuery({ queryKey: queryKeys.products('by-ids', quickEditIds), queryFn: ({ signal }) => loadProductsByIds(quickEditIds, id => hubApi<Product>(`/products/${id}`, { cache: 'no-store', signal }), pageCopyOf), enabled: quickEditIds.length > 0, staleTime: 0, gcTime: 0 })
   const quickEditProducts = quickEdit
     ? quickEditQuery.data ?? quickEdit.productIds.map(pageCopyOf).filter((product): product is Product => Boolean(product))
     : []
@@ -464,7 +464,7 @@ export function ProductsPage() {
     const nextPage = currentPage + 1
     setPageCursors(current => current[productFilterKey]?.[nextPage] === nextPageCursor ? current : { ...current, [productFilterKey]: { ...(current[productFilterKey] ?? {}), [nextPage]: nextPageCursor } })
     // Read ahead only after this page's pictures (or near the list's end), so it does not take their bandwidth.
-    return scheduleDeferredPrefetch(() => void client.prefetchQuery({ queryKey: queryKeys.products(productFilters, pageSize, nextPage, nextPageCursor), queryFn: () => fetchProductPage(pageSize, productFilters, nextPageCursor), staleTime: 30_000 }), { root: productListRef.current, nearEnd: productPagerRef.current })
+    return scheduleDeferredPrefetch(() => void client.prefetchQuery({ queryKey: queryKeys.products(productFilters, pageSize, nextPage, nextPageCursor), queryFn: ({ signal }) => fetchProductPage(pageSize, productFilters, nextPageCursor, signal), staleTime: 30_000 }), { root: productListRef.current, nearEnd: productPagerRef.current })
   }, [client, currentPage, nextPageCursor, pageSize, productFilterKey, productFilters, query.data?.hasMore, query.isPlaceholderData])
   useEffect(() => {
     if (!products.length || !selectedProductIds.length) return

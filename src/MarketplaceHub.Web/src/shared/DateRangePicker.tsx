@@ -90,6 +90,15 @@ export function DateRangePicker({ from, to, onChange, label = 'Tarih Aralığı'
   const tabbableDay = [activeDay, from, to].find((value): value is string => !!value && dayVisible(value) && dayEnabled(value)) ?? firstEnabledDay
   function moveDay(event: KeyboardEvent) {
     const current = (event.target as HTMLElement).closest<HTMLElement>('[data-day]')?.dataset.day
+    // W4: from the ready ranges, ArrowDown or ArrowRight goes into the calendar: to today, else the day in the Tab order.
+    if (!current && (event.key === 'ArrowDown' || event.key === 'ArrowRight') && (event.target as HTMLElement).closest('.date-range-picker-presets')) {
+      const target = dayVisible(today) && dayEnabled(today) ? today : tabbableDay
+      if (!target) return
+      event.preventDefault()
+      setActiveDay(target)
+      popover.current?.querySelector<HTMLElement>(`[data-day="${target}"]`)?.focus({ preventScroll: true })
+      return
+    }
     if (!current) return
     const date = new Date(`${current}T12:00:00`)
     const weekday = (date.getDay() + 6) % 7

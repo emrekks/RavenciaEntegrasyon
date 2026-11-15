@@ -95,7 +95,7 @@ export async function checkProductReadiness(client: QueryClient, productId: stri
     let capabilitiesFailed = false
     if (isShopify) {
       try {
-        capabilities = await client.query({ queryKey: connectionCapabilitiesQueryKey(connection.id), queryFn: () => loadConnectionCapabilities(connection.id), staleTime: 15_000, retry: false })
+        capabilities = await client.query({ queryKey: connectionCapabilitiesQueryKey(connection.id), queryFn: ({ signal }) => loadConnectionCapabilities(connection.id, signal), staleTime: 15_000, retry: false })
       } catch { capabilitiesFailed = true }
     }
     let mapping: PublicationAttributeIssues | undefined
