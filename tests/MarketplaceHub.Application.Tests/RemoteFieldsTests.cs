@@ -55,6 +55,30 @@ public sealed class RemoteFieldsTests
         Assert.False(WebhookAuth.IsAuthenticated("OTHER", "u", "p", "k", new Dictionary<string, string> { ["authorization"] = basic }));
     }
 
+    [Theory]
+    // The earlier name wins whatever order the JSON lists the properties in.
+    [InlineData("{\"OrderNo\":\"b\",\"orderNumber\":\"a\"}", "a")]
+    // Case is ignored; of two properties matching the same name the first listed wins.
+    [InlineData("{\"ORDERNUMBER\":\"first\",\"orderNumber\":\"second\"}", "first")]
+    [InlineData("{\"x\":1,\"orderno\":\"b\"}", "b")]
+    [InlineData("{\"x\":1}", null)]
+    [InlineData("[{\"orderNumber\":\"a\"}]", null)]
+    public void TryFindIgnoringCaseTakesTheFirstNamePresentInOneWalk(string json, string? expected)
+    {
+        var found = RemoteFields.TryFindIgnoringCase(Json(json), out var value, "orderNumber", "orderNo");
+
+        Assert.Equal(expected is not null, found);
+        Assert.Equal(expected, found ? value.GetString() : null);
+        if (!found) Assert.Equal(JsonValueKind.Undefined, value.ValueKind);
+    }
+
+    [Fact]
+    public void TryFindIgnoringCaseReturnsAPresentNullAsFound()
+    {
+        Assert.True(RemoteFields.TryFindIgnoringCase(Json("{\"OrderNumber\":null,\"orderNo\":\"b\"}"), out var value, "orderNumber", "orderNo"));
+        Assert.Equal(JsonValueKind.Null, value.ValueKind);
+    }
+
     [Fact]
     public void CanonicalJsonSortsPropertiesAndKeepsNumbersAsWritten()
     {

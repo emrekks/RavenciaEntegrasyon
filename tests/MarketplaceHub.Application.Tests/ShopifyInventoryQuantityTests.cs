@@ -43,10 +43,13 @@ public sealed class ShopifyInventoryQuantityTests
 
     // ADAPTOR-DIGER-1: a send cut off by a throttle or network error after some lines were applied keeps those lines'
     // results; the interrupted and later lines are left out (the job records them as unconfirmed and sends them again).
+    // A lasting error (a refused token, a refused request) mid-list keeps them too: the lines are written all the same.
     [Theory]
     [InlineData(AdapterErrorClass.RateLimit)]
     [InlineData(AdapterErrorClass.TransientNetwork)]
     [InlineData(AdapterErrorClass.Remote5xx)]
+    [InlineData(AdapterErrorClass.Authentication)]
+    [InlineData(AdapterErrorClass.Validation)]
     public async Task AnInterruptedSendKeepsTheLinesAlreadyApplied(AdapterErrorClass errorClass)
     {
         var applied = new RemoteOperationLine[] { new("BC-1", true, "gid://shopify/ProductVariant/1", null, false, "COMPLETED"), new("BC-2", false, null, "SHOPIFY_VARIANT_NOT_FOUND", false, "REJECTED") };
@@ -63,14 +66,14 @@ public sealed class ShopifyInventoryQuantityTests
     }
 
     [Fact]
-    public void AnInterruptedSendWithNothingAppliedOrALastingErrorStillFails()
+    public void AnInterruptedSendWithNothingAppliedStillFails()
     {
         var throttled = new AdapterError(AdapterErrorClass.RateLimit, "SHOPIFY_THROTTLED", "Shopify kotası dolu.", 429, null, null);
         var denied = new AdapterError(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Yetki yok.", 401, null, null);
         var rejectedOnly = new RemoteOperationLine[] { new("BC-2", false, null, "SHOPIFY_VARIANT_NOT_FOUND", false, "REJECTED") };
-        var applied = new RemoteOperationLine[] { new("BC-1", true, "gid://shopify/ProductVariant/1", null, false, "COMPLETED") };
 
         Assert.Equal("SHOPIFY_THROTTLED", ShopifyHttpClient.InterruptedPriceInventory(rejectedOnly, throttled, null, DateTimeOffset.UnixEpoch).Error!.Code);
-        Assert.Equal("SHOPIFY_CREDENTIAL_INVALID", ShopifyHttpClient.InterruptedPriceInventory(applied, denied, null, DateTimeOffset.UnixEpoch).Error!.Code);
+        Assert.Equal("SHOPIFY_CREDENTIAL_INVALID", ShopifyHttpClient.InterruptedPriceInventory(rejectedOnly, denied, null, DateTimeOffset.UnixEpoch).Error!.Code);
+        Assert.Equal("SHOPIFY_CREDENTIAL_INVALID", ShopifyHttpClient.InterruptedPriceInventory([], denied, null, DateTimeOffset.UnixEpoch).Error!.Code);
     }
 }

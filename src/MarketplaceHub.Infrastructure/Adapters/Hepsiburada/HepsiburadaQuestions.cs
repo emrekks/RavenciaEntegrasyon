@@ -184,9 +184,30 @@ internal static class HepsiburadaQuestionMapper
         return new(id, kind, status, customerQuestion, Text(product, "name", "productName", "title"), HepsiburadaJsonMapper.ImageUrl(product) ?? HepsiburadaJsonMapper.ImageUrl(item), Text(product, "stockCode", "sku", "merchantSku", "sellerSku"), Text(product, "barcode", "productBarcode"), Text(product, "modelCode"), Text(item, "customerName"), Text(item, "orderNumber", "orderNo", "orderId"), created, Date(item, "expireDate"), modified, conversations);
     }
     public static string ToRemoteStatus(string status) => status switch { "WAITING_FOR_ANSWER" => "1", "ANSWERED" => "2", "REJECTED" => "3", "EXPIRED" => "4", _ => status };
-    private static JsonElement Property(JsonElement item, string name) => item.ValueKind == JsonValueKind.Object && item.EnumerateObject().FirstOrDefault(property => property.Name.Equals(name, StringComparison.OrdinalIgnoreCase)).Value is { } value ? value : default;
+    private static JsonElement Property(JsonElement item, string name) => RemoteFields.TryFindIgnoringCase(item, out var value, name) ? value : default;
+    // Kept local, not RemoteFields.Text: a name whose value is of another kind (null, object) gives way to the next name,
+    // text is returned untrimmed and true/false read as text, as the question fixtures have it.
     private static string? Text(JsonElement item, params string[] names) { foreach (var name in names) { var value = Property(item, name); if (value.ValueKind == JsonValueKind.String) return value.GetString(); if (value.ValueKind is JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False) return value.ToString(); } return null; }
-    private static DateTimeOffset? Date(JsonElement item, params string[] names) { foreach (var name in names) { var value = Property(item, name); if (value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var epoch)) { try { return epoch < 10_000_000_000 ? DateTimeOffset.FromUnixTimeSeconds(epoch) : DateTimeOffset.FromUnixTimeMilliseconds(epoch); } catch (ArgumentOutOfRangeException) { } } if (value.ValueKind == JsonValueKind.String && HepsiburadaJsonMapper.TurkeyDate(value.GetString()) is { } date) return date; } return null; }
+    // A text date is Istanbul time unless it carries an offset (TurkeyTime); a number is an epoch whose unit is guessed.
+    private static DateTimeOffset? Date(JsonElement item, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            var value = Property(item, name);
+            if (value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var epoch) && EpochSecondsOrMilliseconds(epoch) is { } instant) return instant;
+            if (value.ValueKind == JsonValueKind.String && HepsiburadaJsonMapper.TurkeyDate(value.GetString()) is { } date) return date;
+        }
+        return null;
+    }
+
+    // The question service documents its dates as date-time text (hepsiburada-api-son.md, Ask to Seller); a number has
+    // no documented unit, so it is read by size: below 10^10 it is seconds (10^10 s is the year 2286, while 10^10 ms is
+    // 26 April 1970), otherwise milliseconds. Out of range is unknown, never an exception.
+    internal static DateTimeOffset? EpochSecondsOrMilliseconds(long epoch)
+    {
+        try { return epoch < 10_000_000_000 ? DateTimeOffset.FromUnixTimeSeconds(epoch) : DateTimeOffset.FromUnixTimeMilliseconds(epoch); }
+        catch (ArgumentOutOfRangeException) { return null; }
+    }
     private static int? Number(JsonElement item, params string[] names) => int.TryParse(Text(item, names), NumberStyles.Integer, CultureInfo.InvariantCulture, out var number) ? number : null;
     private static IEnumerable<JsonElement> FindArray(JsonElement item, params string[] names) { if (item.ValueKind == JsonValueKind.Array) return item.EnumerateArray().ToArray(); foreach (var name in names) { var value = Property(item, name); if (value.ValueKind == JsonValueKind.Array) return value.EnumerateArray().ToArray(); if (value.ValueKind == JsonValueKind.Object) { var nested = FindArray(value, "content", "items", "issues"); if (nested.Any()) return nested; } } return []; }
 }

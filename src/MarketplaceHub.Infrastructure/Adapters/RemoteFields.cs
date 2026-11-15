@@ -42,6 +42,29 @@ internal static class RemoteFields
     internal static bool? Bool(JsonElement element, string property) =>
         element.TryGetProperty(property, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False ? value.GetBoolean() : null;
 
+    // The property named by the first of the names (in priority order) that the object has, compared ignoring case
+    // (Hepsiburada mixes "orderNumber" and "OrderNumber" for one field). One walk over the properties: a property that
+    // matches an earlier name wins whatever order the JSON lists them in; of two matching the same name the first listed
+    // wins. False, with a default value, when the element is not an object or no name is present.
+    internal static bool TryFindIgnoringCase(JsonElement element, out JsonElement value, params string[] names)
+    {
+        value = default;
+        if (element.ValueKind != JsonValueKind.Object) return false;
+        var best = names.Length;
+        foreach (var property in element.EnumerateObject())
+        {
+            for (var index = 0; index < best; index++)
+            {
+                if (!string.Equals(property.Name, names[index], StringComparison.OrdinalIgnoreCase)) continue;
+                value = property.Value;
+                best = index;
+                break;
+            }
+            if (best == 0) break;
+        }
+        return best < names.Length;
+    }
+
     // A JSON whole number only. The element must be an object.
     internal static long? Long(JsonElement element, string property) =>
         element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var number) ? number : null;

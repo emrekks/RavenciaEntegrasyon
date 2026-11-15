@@ -276,9 +276,10 @@ public static class N11OrderMapper
         return Decimal(document.RootElement, property);
     }
 
-    // n11 dates are epoch milliseconds.
+    // n11 dates are epoch milliseconds. Zero, negative and out-of-range values are unknown: one absurd epoch in a
+    // package must not throw and drop the whole page (the package loop catches only JsonException).
     private static DateTimeOffset? Instant(JsonElement element, string property) =>
-        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var milliseconds) && milliseconds > 0
-            ? DateTimeOffset.FromUnixTimeMilliseconds(milliseconds)
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var value) && RemoteJson.Int64(value) is > 0
+            ? RemoteJson.EpochMilliseconds(value)
             : null;
 }

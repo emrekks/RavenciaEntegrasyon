@@ -71,38 +71,59 @@ public sealed class SingleFlightTokenCacheTests
         Assert.Equal("c", await Get(cache, key, _ => Task.FromResult<string?>("c"), clock));
     }
 
+    private static Func<CancellationToken, Task<ShopifyTokenCache.IssuedToken?>> Issued(string token, TimeSpan lifetime) =>
+        _ => Task.FromResult<ShopifyTokenCache.IssuedToken?>(new(token, lifetime));
+
     // ADAPTOR-DIGER-2: five jobs starting together on a client-credentials Shopify connection asked for five tokens.
     [Fact]
     public async Task ShopifyConcurrentCallersShareOneTokenRequest()
     {
+        var cache = new ShopifyTokenCache(new Clock(Start));
         var key = (Guid.NewGuid(), Guid.NewGuid());
         var calls = 0;
         var release = new TaskCompletionSource();
-        async Task<ShopifyAuthenticationHandler.CachedToken?> Request(CancellationToken _)
+        async Task<ShopifyTokenCache.IssuedToken?> Request(CancellationToken _)
         {
             Interlocked.Increment(ref calls);
             await release.Task;
-            return new("shpat", DateTimeOffset.UtcNow.AddHours(24));
+            return new("shpat", TimeSpan.FromHours(24));
         }
 
-        var callers = Enumerable.Range(0, 5).Select(_ => ShopifyAuthenticationHandler.CachedAsync(key, Request, CancellationToken.None)).ToArray();
+        var callers = Enumerable.Range(0, 5).Select(_ => cache.GetAsync(key, Request, CancellationToken.None)).ToArray();
         release.SetResult();
         var tokens = await Task.WhenAll(callers);
 
         Assert.Equal(1, calls);
         Assert.All(tokens, token => Assert.Equal("shpat", token!.Token));
-        ShopifyAuthenticationHandler.Forget(key.Item1);
-        Assert.Equal("next", (await ShopifyAuthenticationHandler.CachedAsync(key, _ => Task.FromResult<ShopifyAuthenticationHandler.CachedToken?>(new("next", DateTimeOffset.UtcNow.AddHours(24))), CancellationToken.None))!.Token);
+        cache.Forget(key.Item1);
+        Assert.Equal("next", (await cache.GetAsync(key, Issued("next", TimeSpan.FromHours(24)), CancellationToken.None))!.Token);
     }
 
+    // ADAPTOR-DIGER-2 step 4: the expiry is counted on the injected clock from the answer's arrival, and the token is
+    // renewed from a minute before it.
     [Fact]
-    public async Task ShopifyKeepsATokenUntilAMinuteBeforeItExpires()
+    public async Task ShopifyKeepsATokenUntilAMinuteBeforeItExpiresOnTheInjectedClock()
     {
+        var clock = new Clock(Start);
+        var cache = new ShopifyTokenCache(clock);
         var key = (Guid.NewGuid(), Guid.NewGuid());
-        await ShopifyAuthenticationHandler.CachedAsync(key, _ => Task.FromResult<ShopifyAuthenticationHandler.CachedToken?>(new("short", DateTimeOffset.UtcNow.AddSeconds(50))), CancellationToken.None);
-        var next = await ShopifyAuthenticationHandler.CachedAsync(key, _ => Task.FromResult<ShopifyAuthenticationHandler.CachedToken?>(new("long", DateTimeOffset.UtcNow.AddHours(1))), CancellationToken.None);
-        Assert.Equal("long", next!.Token);
-        var kept = await ShopifyAuthenticationHandler.CachedAsync(key, _ => Task.FromResult<ShopifyAuthenticationHandler.CachedToken?>(new("other", DateTimeOffset.UtcNow.AddHours(1))), CancellationToken.None);
-        Assert.Equal("long", kept!.Token);
+
+        var first = await cache.GetAsync(key, Issued("first", TimeSpan.FromHours(1)), CancellationToken.None);
+        Assert.Equal(Start.AddHours(1), first!.ExpiresAt);
+
+        clock.Now = Start.AddMinutes(58).AddSeconds(59);
+        Assert.Equal("first", (await cache.GetAsync(key, Issued("early", TimeSpan.FromHours(1)), CancellationToken.None))!.Token);
+
+        clock.Now = Start.AddMinutes(59);
+        var renewed = await cache.GetAsync(key, Issued("second", TimeSpan.FromHours(1)), CancellationToken.None);
+        Assert.Equal("second", renewed!.Token);
+        Assert.Equal(Start.AddMinutes(119), renewed.ExpiresAt);
+
+        // A token whose lifetime is within the renewal minute is never fresh, and a failed request is not kept.
+        var otherKey = (Guid.NewGuid(), Guid.NewGuid());
+        await cache.GetAsync(otherKey, Issued("short", TimeSpan.FromSeconds(50)), CancellationToken.None);
+        Assert.Null(await cache.GetAsync(otherKey, _ => Task.FromResult<ShopifyTokenCache.IssuedToken?>(null), CancellationToken.None));
+        Assert.Equal("long", (await cache.GetAsync(otherKey, Issued("long", TimeSpan.FromHours(1)), CancellationToken.None))!.Token);
     }
 }
+

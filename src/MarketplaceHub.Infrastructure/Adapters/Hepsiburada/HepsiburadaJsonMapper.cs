@@ -22,6 +22,9 @@ internal static partial class HepsiburadaJsonMapper
         if (value.ValueKind == JsonValueKind.String && bool.TryParse(value.GetString(), out var parsed)) return parsed;
         return null;
     }
+    // Text and Decimal stay Hepsiburada's own, not RemoteFields': names are matched ignoring case, text is returned as
+    // sent (untrimmed, a blank string is not missing, true/false read as text), and amounts also read Turkish money text
+    // and an {amount|value} object. The golden contract fixtures pin these readings.
     private static string? Text(JsonElement element, params string[] names)
     {
         var value = Find(element, names);
@@ -92,13 +95,7 @@ internal static partial class HepsiburadaJsonMapper
         value.ToOffset(TurkeyTime.Offset).ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
     private static JsonElement Find(JsonElement element, params string[] names) => TryFind(element, out var value, names) ? value : default;
     // The names are in priority order: the first name present wins, whatever order the JSON lists its properties in.
-    private static bool TryFind(JsonElement element, out JsonElement value, params string[] names)
-    {
-        if (element.ValueKind == JsonValueKind.Object)
-            foreach (var name in names)
-                foreach (var property in element.EnumerateObject())
-                    if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase)) { value = property.Value; return true; }
-        value = default;
-        return false;
-    }
+    // One walk over the properties (it used to walk them once per name).
+    private static bool TryFind(JsonElement element, out JsonElement value, params string[] names) =>
+        RemoteFields.TryFindIgnoringCase(element, out value, names);
 }
