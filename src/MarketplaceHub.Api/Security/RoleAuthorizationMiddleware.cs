@@ -19,8 +19,7 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
     public async Task InvokeAsync(HttpContext context)
     {
         var required = RolesFor(context.Request.Method, context.Request.Path.Value);
-        var endpoint = context.GetEndpoint();
-        var declared = endpoint?.Metadata.GetMetadata<Common.RequiredGate>()?.Roles;
+        var declared = context.GetEndpoint()?.Metadata.GetMetadata<Common.RequiredGate>()?.Roles;
         if (required is null && declared is null)
         {
             await next(context);
@@ -28,14 +27,6 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
         }
 
         var role = Normalize(context.User.FindFirstValue(ClaimTypes.Role));
-        // A request no endpoint serves (an unknown route) runs nothing: a signed-in caller gets the router's 404, whatever
-        // the path rule's default for its area, as an owner already did. A caller without a role still meets the path
-        // rule (403 for a write, as on a known route), so an unknown route tells it nothing a known one does not.
-        if (endpoint is null && !string.IsNullOrEmpty(role))
-        {
-            await next(context);
-            return;
-        }
         var allowed = !string.IsNullOrEmpty(role) && (required is null || required.Contains(role)) && (declared is null || declared.Contains(role));
         if (allowed)
         {
