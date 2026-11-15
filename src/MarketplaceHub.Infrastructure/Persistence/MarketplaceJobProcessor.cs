@@ -8390,6 +8390,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             return;
         }
         if (salePrice <= 0) return;
+        var vatRate = await NewImportedOfferVatRateAsync(tenantId, connectionId, variantId, remote.VatRate, cancellationToken);
         var offer = new ChannelOffer
         {
             Id = Guid.CreateVersion7(),
@@ -8399,7 +8400,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             ListPrice = listPrice,
             SalePrice = salePrice,
             Currency = NormalizeCurrency(remote.Currency),
-            VatRate = decimal.Round(Math.Max(0m, remote.VatRate ?? 0m), 4, MidpointRounding.ToEven),
+            VatRate = vatRate,
             VatInclusion = "INCLUDED",
             RoundingMode = "HALF_EVEN",
             SafetyStock = decimal.Round(Math.Max(0m, inventoryPolicy?.DefaultSafetyStock ?? 0m), 4, MidpointRounding.ToEven),
@@ -9825,9 +9826,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var observationSource = CatalogImportSource(await ConnectionPlatformCode(tenantId, connectionId, cancellationToken), observeOnly);
         if (offer is null)
         {
-            if (vatUnknown)
-                await RecordIssue(tenantId, $"offer-vat-unknown:{connectionId:N}", "OFFER_VAT_UNKNOWN",
-                    "Pazar yeri ürün aktarımında KDV oranı bildirmedi ve ürün kartında KDV yok; yeni açılan tekliflerin KDV oranı %0 yazıldı. Ürün kartlarının ve tekliflerin KDV oranını kontrol edin.", cancellationToken);
+            if (vatUnknown) await RecordOfferVatUnknownAsync(tenantId, connectionId, cancellationToken);
             offer = new ChannelOffer
             {
                 Id = Guid.CreateVersion7(),
@@ -9916,6 +9915,29 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (offer is { } offerRate) return (offerRate, false);
         if (card is { } cardRate) return (decimal.Round(Math.Max(0m, cardRate), 4, MidpointRounding.ToEven), false);
         return (0m, true);
+    }
+
+    private Task RecordOfferVatUnknownAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
+        RecordIssue(tenantId, $"offer-vat-unknown:{connectionId:N}", "OFFER_VAT_UNKNOWN",
+            "Pazar yeri ürün aktarımında KDV oranı bildirmedi ve ürün kartında KDV yok; yeni açılan tekliflerin KDV oranı %0 yazıldı. Ürün kartlarının ve tekliflerin KDV oranını kontrol edin.", cancellationToken);
+
+    // The VAT of an offer the raw import / mapping path opens (SeedChannelOfferAsync): the same rule as the catalog import
+    // (CatalogOfferVatRate) — the marketplace's value, else the product card's VAT, else 0 with the single
+    // OFFER_VAT_UNKNOWN issue of the connection (ISLEYICI-2).
+    internal async Task<decimal> NewImportedOfferVatRateAsync(Guid tenantId, Guid connectionId, Guid variantId, decimal? remoteVatRate, CancellationToken cancellationToken)
+    {
+        decimal? cardVatRate = null;
+        if (remoteVatRate is null)
+        {
+            var productId = db.ProductVariants.Local.FirstOrDefault(x => x.Id == variantId)?.ProductId
+                ?? await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == variantId).Select(x => (Guid?)x.ProductId).SingleOrDefaultAsync(cancellationToken);
+            if (productId is { } cardId)
+                cardVatRate = db.Products.Local.FirstOrDefault(x => x.Id == cardId)?.VatRate
+                    ?? await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == cardId).Select(x => x.VatRate).SingleOrDefaultAsync(cancellationToken);
+        }
+        var (vatRate, vatUnknown) = CatalogOfferVatRate(remoteVatRate, null, cardVatRate);
+        if (vatUnknown) await RecordOfferVatUnknownAsync(tenantId, connectionId, cancellationToken);
+        return vatRate;
     }
 
     // When the marketplace stock being written was read: the earliest page read of the model group being finalized,
