@@ -15,7 +15,12 @@ public sealed class HepsiburadaFinanceSyncJobHandler(AppDbContext db, IHepsibura
     internal const string Source = "HEPSIBURADA_TRANSACTIONS";
     internal const string FailureCode = "HEPSIBURADA_FINANCE_SYNC_FAILED";
     // A guard against a paging answer that never ends: 300 pages of 100.
-    private const int MaximumPages = 300;
+    internal const int MaximumPages = 300;
+    // ISLEYICI-7 (16 Nov 2026): a window that reaches MaximumPages with pages left fails the run with its own code; before,
+    // the loop ended quietly and the records read so far were written as the whole run.
+    internal const string PageCapCode = "HEPSIBURADA_FINANCE_PAGE_CAP";
+    private static readonly AdapterError PageCap = new(AdapterErrorClass.ContractViolation, PageCapCode,
+        $"Hepsiburada muhasebe kayıtları {MaximumPages} sayfayı aştı; kalan kayıtlar okunmadı ve aralık okunmuş sayılmadı.", null, null, null);
     private const int PageSize = Adapters.Hepsiburada.HepsiburadaHttpClient.FinancePageSize;
     private const int WindowDays = 30;
 
@@ -44,6 +49,7 @@ public sealed class HepsiburadaFinanceSyncJobHandler(AppDbContext db, IHepsibura
             for (var from = start; from < end; from = from.AddDays(WindowDays))
             {
                 var to = from.AddDays(WindowDays - 1) < end ? from.AddDays(WindowDays - 1) : end;
+                var pagesEnded = false;
                 for (var page = 0; page < MaximumPages; page++)
                 {
                     requests++;
@@ -52,8 +58,10 @@ public sealed class HepsiburadaFinanceSyncJobHandler(AppDbContext db, IHepsibura
                     foreach (var item in result.Value!.Items) records[item.Id] = item;
                     skipped.AddRange(result.Value.Skipped);
                     // A skipped record still fills its place on the page.
-                    if (result.Value.Items.Count + result.Value.Skipped.Count < PageSize || (page + 1) * PageSize >= result.Value.Count) break;
+                    if (result.Value.Items.Count + result.Value.Skipped.Count < PageSize || (page + 1) * PageSize >= result.Value.Count) { pagesEnded = true; break; }
                 }
+                // ISLEYICI-7: a window cut at the cap is not taken as read; nothing of the run is written.
+                if (!pagesEnded) return await FailAsync(request, PageCap, now, new(requests, records.Count, 0, 0, 0, 1), cancellationToken);
             }
         }
 
