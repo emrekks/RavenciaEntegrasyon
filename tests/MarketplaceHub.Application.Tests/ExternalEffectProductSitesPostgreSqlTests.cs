@@ -40,7 +40,8 @@ public sealed class ExternalEffectProductSitesPostgreSqlTests(PostgreSqlTenantIs
     [PostgreSqlTheory]
     [InlineData("success", JobCompletionKind.Retry, "PRODUCT_UPDATE_BATCH_PENDING", true, "UPDATE_VARIANTS_SUBMITTED")]
     [InlineData("uncertain", JobCompletionKind.ManualReview, "EXTERNAL_EFFECT_AMBIGUOUS", false, "MANUAL_REVIEW")]
-    [InlineData("quota", JobCompletionKind.Retry, "TRENDYOL_RATE_LIMITED", null, "UPDATE_BLOCKED")]
+    // J2 (15 Nov 2026): a quota answer leaves the card as it was while the job sends the update again.
+    [InlineData("quota", JobCompletionKind.Retry, "TRENDYOL_RATE_LIMITED", null, "LIVE")]
     [InlineData("refused", JobCompletionKind.Blocked, "TRENDYOL_VALIDATION", null, "UPDATE_BLOCKED")]
     public async Task Update(string outcome, JobCompletionKind kind, string code, bool? effectCompleted, string profileStatus)
     {
@@ -64,7 +65,7 @@ public sealed class ExternalEffectProductSitesPostgreSqlTests(PostgreSqlTenantIs
     [PostgreSqlTheory]
     [InlineData("success", JobCompletionKind.Retry, "PRODUCT_ARCHIVE_BATCH_PENDING", true, "ARCHIVE_BATCH_SUBMITTED")]
     [InlineData("uncertain", JobCompletionKind.ManualReview, "EXTERNAL_EFFECT_AMBIGUOUS", false, "MANUAL_REVIEW")]
-    [InlineData("quota", JobCompletionKind.Retry, "TRENDYOL_RATE_LIMITED", null, "ARCHIVE_BLOCKED")]
+    [InlineData("quota", JobCompletionKind.Retry, "TRENDYOL_RATE_LIMITED", null, "LIVE")]
     [InlineData("refused", JobCompletionKind.Blocked, "TRENDYOL_VALIDATION", null, "ARCHIVE_BLOCKED")]
     public async Task Archive(string outcome, JobCompletionKind kind, string code, bool? effectCompleted, string profileStatus)
     {

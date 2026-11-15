@@ -77,7 +77,8 @@ public sealed partial class PostgreSqlTenantIsolationTests
     [PostgreSqlTheory]
     [InlineData("success", JobCompletionKind.Retry, "COMMON_LABEL_PENDING", true, "POLLING")]
     [InlineData("uncertain", JobCompletionKind.ManualReview, "EXTERNAL_EFFECT_AMBIGUOUS", false, "MANUAL_REVIEW")]
-    [InlineData("quota", JobCompletionKind.Retry, "TRENDYOL_RATE_LIMITED", null, "FAILED")]
+    // J2 (15 Nov 2026): a quota answer keeps the attempt open (PENDING, no end time) while the job sends it again.
+    [InlineData("quota", JobCompletionKind.Retry, "TRENDYOL_RATE_LIMITED", null, "PENDING")]
     [InlineData("refused", JobCompletionKind.Blocked, "TRENDYOL_VALIDATION", null, "FAILED")]
     public async Task EffectSites_CommonLabel(string outcome, JobCompletionKind kind, string code, bool? effectCompleted, string attemptStatus)
     {
