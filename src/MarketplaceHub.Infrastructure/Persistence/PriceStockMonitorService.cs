@@ -154,6 +154,8 @@ public sealed class PriceStockMonitorService(AppDbContext db, IConfiguration con
         var jobs = queued.Where(job => PriceStockEmergencyStopPolicy.Cancels(job.JobType, job.PayloadJson)).ToList();
         foreach (var job in jobs)
             Jobs.JobStateMachine.Cancel(db, job, now, "AUTOMATIC_WRITES_STOPPED", "Tüm otomatik yazmalar acil durdurmayla kapatıldı; iş gönderilmeden iptal edildi.", Jobs.JobEvent.None);
+        // K2: one "jobs" event for the whole stop (it may close thousands of waiting jobs), not one per job.
+        Jobs.JobStateMachine.PublishBulk(db, tenantId, now, JobStatus.Cancelled, jobs.Count);
         var connectionsStopped = policies.Select(x => x.ConnectionId).Distinct().Count();
         db.AuditLogs.Add(new AuditLog
         {

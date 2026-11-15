@@ -193,6 +193,8 @@ internal static class InvoiceDeliveryJobHygiene
                 db.IntegrationJobs.Where(item => item.Id == job.Id && item.TenantId == tenantId && item.Status == job.Status),
                 now, reason.Code, reason.Summary, keepEarlierCompletedAt: false, cancellationToken);
         }
+        // K2: the job screens hear of the closed deliveries (one event for all of them).
+        await Jobs.JobStateMachine.PublishBulkAsync(db, new Dictionary<Guid, int> { [tenantId] = closed }, now, JobStatus.Cancelled, cancellationToken);
         return closed;
     }
 }

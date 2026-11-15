@@ -67,6 +67,8 @@ public sealed class PublicationEffectSettlementPostgreSqlTests(PostgreSqlTenantI
         {
             var reviewJob = await verify.IntegrationJobs.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.EffectIdempotencyKey == reviewKey);
             Assert.Equal(JobStatus.Cancelled, reviewJob.Status);
+            // K2: one "jobs" event for the tenant's closed jobs.
+            Assert.Equal(1, await verify.IntegrationOutboxEvents.AsNoTracking().CountAsync(x => x.TenantId == tenant.Id && x.ResourceType == "jobs" && x.AggregateId == null));
             var settledReview = await verify.ExternalEffectRecords.AsNoTracking().SingleAsync(x => x.Id == review.Id);
             Assert.Equal(ExternalEffectReconcilePolicy.SupersededOutcome, settledReview.Outcome);
             Assert.NotNull(settledReview.CompletedAt);

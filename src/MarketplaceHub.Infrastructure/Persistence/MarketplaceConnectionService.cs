@@ -898,6 +898,8 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var now = timeProvider.GetUtcNow();
         foreach (var job in jobs)
             Jobs.JobStateMachine.Cancel(db, job, now, code: null, summary: null, Jobs.JobEvent.None);
+        // K2: one "jobs" event for the jobs closed together (a connection may hold many), not one per job.
+        Jobs.JobStateMachine.PublishBulk(db, tenantId, now, JobStatus.Cancelled, jobs.Count);
     }
 
     private async Task CancelScheduledSyncsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
@@ -908,6 +910,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var now = timeProvider.GetUtcNow();
         foreach (var job in jobs)
             Jobs.JobStateMachine.Cancel(db, job, now, code: null, summary: null, Jobs.JobEvent.None);
+        Jobs.JobStateMachine.PublishBulk(db, tenantId, now, JobStatus.Cancelled, jobs.Count);
     }
     private void QueueActivationBootstrap(Guid tenantId, PlatformConnection connection)
     {

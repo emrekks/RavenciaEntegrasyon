@@ -158,7 +158,7 @@ public sealed class ExternalEffectSweep(AppDbContext db, TimeProvider timeProvid
         var job = await db.IntegrationJobs.SingleOrDefaultAsync(x => x.TenantId == effect.TenantId && x.JobType == MarketplaceJobTypes.ExternalEffectReconcile && x.JobDedupKey == key, cancellationToken);
         if (job is null || job.Status != JobStatus.Blocked || job.AttemptCount >= job.MaxAttempts) return false;
         job.LockGroup ??= ExternalEffectReconcilePolicy.LockGroup(effect.Action);
-        Jobs.JobStateMachine.Requeue(db, job, now, Jobs.JobEvent.None);
+        Jobs.JobStateMachine.Requeue(db, job, now, Jobs.JobEvent.Publish);
         return true;
     }
 

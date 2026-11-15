@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 namespace MarketplaceHub.Infrastructure.Jobs;
 
 // Whether a transition raises the job's "jobs" outbox event (the job screens refetch on it, and a finance read's event
-// tells the report cache). Some writers have never raised it; they say so with None until the owner decides.
+// tells the report cache). None is for a writer that publishes one bulk event for many jobs instead (PublishBulk, K2).
 public enum JobEvent { Publish, None }
 
 // The one place a job's Status changes (KUYRUK-7, 15 Nov 2026). Every writer goes through MoveTo, directly or through one
@@ -129,6 +129,46 @@ public static class JobStateMachine
         var outboxEvent = NewJobEvent(job, now);
         db.IntegrationOutboxEvents.Add(outboxEvent);
         return outboxEvent;
+    }
+
+    // K2 (15 Nov 2026): one "jobs" event for many jobs closed together (an emergency stop, a connection's write-off, a
+    // supersession sweep), so the job screens refetch once instead of receiving an event per job. It names no job
+    // (AggregateId null): the panel refreshes its job lists, throttled, and no job page in particular.
+    public static IntegrationOutboxEvent NewBulkJobEvent(Guid tenantId, DateTimeOffset now, JobStatus status, int count) => new()
+    {
+        Id = Guid.CreateVersion7(),
+        TenantId = tenantId,
+        ResourceType = JobEventResource,
+        OperationType = BulkOperation,
+        AggregateType = "IntegrationJob",
+        AggregateId = null,
+        AggregateVersion = null,
+        PayloadJson = JsonSerializer.Serialize(new { status = StatusText(status), count }),
+        CreatedAt = now,
+        NextAttemptAt = now
+    };
+
+    public const string BulkOperation = "bulk";
+
+    // The bulk event added to the context, saved with the caller's own changes. Nothing when no job changed.
+    public static void PublishBulk(AppDbContext db, Guid tenantId, DateTimeOffset now, JobStatus status, int count)
+    {
+        if (count > 0) db.IntegrationOutboxEvents.Add(NewBulkJobEvent(tenantId, now, status, count));
+    }
+
+    // The bulk event written at once, beside a CancelWhereAsync (which writes at once too, outside the change tracker):
+    // one per tenant whose jobs it closed.
+    public static async Task PublishBulkAsync(AppDbContext db, IReadOnlyDictionary<Guid, int> countsByTenant, DateTimeOffset now, JobStatus status, CancellationToken cancellationToken)
+    {
+        foreach (var (tenantId, count) in countsByTenant)
+        {
+            if (count <= 0) continue;
+            var outboxEvent = NewBulkJobEvent(tenantId, now, status, count);
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO integration.outbox_events ("Id", "TenantId", "ResourceType", "OperationType", "AggregateType", "AggregateId", "AggregateVersion", "PayloadJson", "CreatedAt", "NextAttemptAt", "DispatchAttempts")
+                VALUES ({outboxEvent.Id}, {outboxEvent.TenantId}, {outboxEvent.ResourceType}, {outboxEvent.OperationType}, {outboxEvent.AggregateType}, NULL, NULL, CAST({outboxEvent.PayloadJson} AS jsonb), {outboxEvent.CreatedAt.ToUniversalTime()}, {outboxEvent.NextAttemptAt.ToUniversalTime()}, 0)
+                """, cancellationToken);
+        }
     }
 
     // A job's state change is published as a "jobs" event, so only the job screens refetch; the domain the job

@@ -132,6 +132,7 @@ public static class ProductWriteSupersession
             .Where(x => x.ProductId != Guid.Empty)
             .ToList();
         var closed = 0;
+        var byTenant = new Dictionary<Guid, int>();
         foreach (var product in failed.GroupBy(x => (x.TenantId, x.ConnectionId, x.JobType, x.ProductId)))
         {
             var productText = product.Key.ProductId.ToString("D");
@@ -155,11 +156,15 @@ public static class ProductWriteSupersession
                          .Select(pair => (pair.Job, pair.Latest!)))
             {
                 var summary = Summary(latest.CreatedAt);
-                closed += await Jobs.JobStateMachine.CancelWhereAsync(
+                var one = await Jobs.JobStateMachine.CancelWhereAsync(
                     db.IntegrationJobs.Where(x => x.Id == job.Id && x.TenantId == job.TenantId && x.Status == job.Status),
                     now, Code, summary, keepEarlierCompletedAt: true, cancellationToken);
+                closed += one;
+                byTenant[job.TenantId] = byTenant.GetValueOrDefault(job.TenantId) + one;
             }
         }
+        // K2: one "jobs" event per tenant for the whole sweep, not one per closed job.
+        await Jobs.JobStateMachine.PublishBulkAsync(db, byTenant, now, JobStatus.Cancelled, cancellationToken);
         return closed;
     }
 }

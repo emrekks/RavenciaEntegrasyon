@@ -366,6 +366,8 @@ public sealed class BackgroundProcessingPostgreSqlTests(PostgreSqlTenantIsolatio
 
         var revived = await db.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == blockedJob.Id);
         Assert.Equal(JobStatus.Pending, revived.Status);
+        // K2: the job screens hear that the verification runs again.
+        Assert.Equal(1, await db.IntegrationOutboxEvents.AsNoTracking().CountAsync(x => x.ResourceType == "jobs" && x.AggregateId == blockedJob.Id));
         Assert.Equal(1, await db.IntegrationJobs.AsNoTracking().CountAsync(x => x.TenantId == tenant.Id && x.JobDedupKey.StartsWith(ExternalEffectReconcilePolicy.JobDedupKey(blockedEffect.Id))));
         Assert.Null((await db.ExternalEffectRecords.AsNoTracking().SingleAsync(x => x.Id == blockedEffect.Id)).CompletedAt);
         var closed = await db.ExternalEffectRecords.AsNoTracking().SingleAsync(x => x.Id == returnEffect.Id);

@@ -73,6 +73,25 @@ public sealed class JobStateMachineTests
     [InlineData(JobStatus.Cancelled, "CANCELLED")]
     public void TheEventStatusIsTheStoredStatusText(JobStatus status, string text) => Assert.Equal(text, JobStateMachine.StatusText(status));
 
+    // K2: many jobs closed together raise one "jobs" event naming none of them (the panel refreshes its job lists once);
+    // nothing closed, no event.
+    [Fact]
+    public void ABulkCloseRaisesOneJobsEventForAllItsJobs()
+    {
+        using var db = Context();
+        var tenantId = Guid.CreateVersion7();
+        JobStateMachine.PublishBulk(db, tenantId, Now, JobStatus.Cancelled, 0);
+        Assert.Empty(db.ChangeTracker.Entries<IntegrationOutboxEvent>());
+
+        JobStateMachine.PublishBulk(db, tenantId, Now, JobStatus.Cancelled, 2500);
+
+        var outboxEvent = Assert.Single(db.ChangeTracker.Entries<IntegrationOutboxEvent>()).Entity;
+        Assert.Equal((tenantId, "jobs", "IntegrationJob", JobStateMachine.BulkOperation), (outboxEvent.TenantId, outboxEvent.ResourceType, outboxEvent.AggregateType, outboxEvent.OperationType));
+        Assert.Null(outboxEvent.AggregateId);
+        using var payload = System.Text.Json.JsonDocument.Parse(outboxEvent.PayloadJson);
+        Assert.Equal(("CANCELLED", 2500), (payload.RootElement.GetProperty("status").GetString(), payload.RootElement.GetProperty("count").GetInt32()));
+    }
+
     [Fact]
     public void ACancelWithoutACodeKeepsTheStoredErrorAndRaisesNoEventWhenToldSo()
     {

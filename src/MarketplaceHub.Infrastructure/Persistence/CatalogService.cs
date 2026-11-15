@@ -880,7 +880,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         {
             await Jobs.JobStateMachine.CloseRunningAttemptAsync(db, job, cancelledAt, "PRODUCT_DELETED", "Ürün katalogdan silindiği için iş durduruldu.", cancellationToken);
             // The lease goes too: a worker still holding it can no longer complete the job.
-            Jobs.JobStateMachine.Cancel(db, job, cancelledAt, "PRODUCT_DELETED", "Ürün katalogdan silindiği için iş iptal edildi; pazar yerine bir şey gönderilmedi.", Jobs.JobEvent.None, clearLease: true);
+            Jobs.JobStateMachine.Cancel(db, job, cancelledAt, "PRODUCT_DELETED", "Ürün katalogdan silindiği için iş iptal edildi; pazar yerine bir şey gönderilmedi.", Jobs.JobEvent.Publish, clearLease: true);
         }
         if (pendingJobs.Count > 0) await db.SaveChangesAsync(cancellationToken);
         // The pictures and size charts of the deleted cards: handed to the purge sweep once the delete has committed.
@@ -2602,7 +2602,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var existing = approvalJobs.FirstOrDefault();
         if (existing?.Status is JobStatus.Pending or JobStatus.RetryScheduled)
         {
-            Jobs.JobStateMachine.Requeue(db, existing, timeProvider.GetUtcNow(), Jobs.JobEvent.None);
+            Jobs.JobStateMachine.Requeue(db, existing, timeProvider.GetUtcNow(), Jobs.JobEvent.Publish);
             try
             {
                 await db.SaveChangesAsync(cancellationToken);
@@ -2817,7 +2817,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var now = timeProvider.GetUtcNow();
         foreach (var check in waiting)
         {
-            Jobs.JobStateMachine.Cancel(db, check, now, "PRODUCT_APPROVAL_SUPERSEDED", "Ürün yeniden gönderildi; eski onay kontrolü kapatıldı.", Jobs.JobEvent.None);
+            Jobs.JobStateMachine.Cancel(db, check, now, "PRODUCT_APPROVAL_SUPERSEDED", "Ürün yeniden gönderildi; eski onay kontrolü kapatıldı.", Jobs.JobEvent.Publish);
             check.JobDedupKey = $"{check.JobDedupKey}:resent:{check.Id:N}";
         }
     }

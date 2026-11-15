@@ -1227,6 +1227,9 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             Assert.All(jobs, job => Assert.Equal(JobStatus.Cancelled, job.Status));
             Assert.All(jobs, job => Assert.Equal("PRODUCT_DELETED", job.LastErrorCode));
             Assert.All(jobs, job => Assert.Null(job.LeaseTokenHash));
+            // K2: the job screens hear of each cancelled job (a product's few jobs, one event each).
+            var jobIds = jobs.Select(job => (Guid?)job.Id).ToList();
+            Assert.Equal(jobs.Count, await verificationDb.IntegrationOutboxEvents.AsNoTracking().CountAsync(x => x.ResourceType == "jobs" && jobIds.Contains(x.AggregateId)));
             var line = await verificationDb.OrderLines.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Id == lineId);
             Assert.Null(line.VariantId);
             Assert.True(await verificationDb.Orders.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.Id == orderId));

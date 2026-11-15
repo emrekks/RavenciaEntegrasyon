@@ -943,6 +943,8 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
             Assert.Equal(InvoicingBillingService.RedraftedFromOrderCode, retired.LastErrorCode);
             Assert.Equal(150m, await verification.InvoiceLines.Where(row => row.InvoiceId == invoice.Id).SumAsync(row => row.LineTotal));
             Assert.Equal(JobStatus.Cancelled, (await verification.IntegrationJobs.SingleAsync(row => row.Id == waitingJob.Id)).Status);
+            // K2: the job screens hear that the old draft's send was stopped.
+            Assert.Equal(1, await verification.IntegrationOutboxEvents.CountAsync(row => row.ResourceType == "jobs" && row.AggregateId == waitingJob.Id));
             Assert.True(await verification.AuditLogs.AnyAsync(log => log.TenantId == seed.Tenant.Id && log.Action == "INVOICE_UNSENT_DRAFT_REDRAFTED"
                 && log.TargetId == invoice.Id.ToString("D")));
 

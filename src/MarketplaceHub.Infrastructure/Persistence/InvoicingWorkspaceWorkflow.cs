@@ -546,7 +546,7 @@ public sealed partial class InvoicingBillingService
                 && job.PayloadJson.Contains(needle) && (job.Status == JobStatus.Pending || job.Status == JobStatus.RetryScheduled))
             .ToListAsync(cancellationToken);
         foreach (var job in waiting)
-            Jobs.JobStateMachine.Cancel(db, job, now, RedraftedFromOrderCode, "Fatura güncel siparişten yeniden kurulduğu için eski taslağın gönderimi durduruldu.", Jobs.JobEvent.None);
+            Jobs.JobStateMachine.Cancel(db, job, now, RedraftedFromOrderCode, "Fatura güncel siparişten yeniden kurulduğu için eski taslağın gönderimi durduruldu.", Jobs.JobEvent.Publish);
         db.AuditLogs.Add(new AuditLog
         {
             TenantId = tenantId,

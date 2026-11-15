@@ -79,6 +79,7 @@ public static class ScheduledReadSupersession
             .Where(x => IsScheduledRead(x.JobType, x.JobDedupKey))
             .ToList();
         var closed = 0;
+        var byTenant = new Dictionary<Guid, int>();
         foreach (var series in failed.GroupBy(x => (x.TenantId, x.ConnectionId, x.JobType, Series: Series(x.JobDedupKey))))
         {
             var prefix = series.Key.Series + ":";
@@ -96,11 +97,15 @@ public static class ScheduledReadSupersession
                          (series.Key.ConnectionId, series.Key.JobType, latest.JobDedupKey, JobStatus.Succeeded, latest.CreatedAt), x.LastErrorCode)))
             {
                 var summary = Summary;
-                closed += await Jobs.JobStateMachine.CancelWhereAsync(
+                var one = await Jobs.JobStateMachine.CancelWhereAsync(
                     db.IntegrationJobs.Where(x => x.Id == job.Id && x.TenantId == job.TenantId && x.Status == job.Status && x.LastErrorCode == job.LastErrorCode),
                     now, Code, summary, keepEarlierCompletedAt: true, cancellationToken);
+                closed += one;
+                byTenant[job.TenantId] = byTenant.GetValueOrDefault(job.TenantId) + one;
             }
         }
+        // K2: one "jobs" event per tenant for the whole sweep, not one per closed job.
+        await Jobs.JobStateMachine.PublishBulkAsync(db, byTenant, now, JobStatus.Cancelled, cancellationToken);
         return closed;
     }
 }
