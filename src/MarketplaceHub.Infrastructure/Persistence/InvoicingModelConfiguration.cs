@@ -40,7 +40,13 @@ internal static class InvoicingModelConfiguration
 
         builder.Entity<Invoice>(entity =>
         {
-            entity.ToTable("invoices", "billing", table => table.HasCheckConstraint("ck_invoice_totals_nonnegative", "\"TaxExclusiveTotal\" >= 0 AND \"DiscountTotal\" >= 0 AND \"TaxTotal\" >= 0 AND \"PayableTotal\" >= 0"));
+            // ck_invoices_status (VERITABANI-DAGITIM-15): only InvoiceStatus names; StatusCheckConstraintModelTests keeps the
+            // list equal to the enum.
+            entity.ToTable("invoices", "billing", table =>
+            {
+                table.HasCheckConstraint("ck_invoice_totals_nonnegative", "\"TaxExclusiveTotal\" >= 0 AND \"DiscountTotal\" >= 0 AND \"TaxTotal\" >= 0 AND \"PayableTotal\" >= 0");
+                table.HasCheckConstraint("ck_invoices_status", "\"Status\" IN ('Draft', 'Validating', 'ValidationFailed', 'Ready', 'Submitting', 'UnknownResult', 'Submitted', 'Accepted', 'Rejected', 'MarketplacePending', 'MarketplaceFailed', 'Completed', 'CancellationPending', 'Cancelled', 'CancellationRejected', 'AdjustmentRequired', 'ManualReview', 'CancelledLocal')");
+            });
             entity.HasKey(x => x.Id);
             entity.HasAlternateKey(x => new { x.TenantId, x.Id });
             entity.Property(x => x.InvoiceType).HasMaxLength(64);
