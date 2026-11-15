@@ -279,9 +279,10 @@ public sealed class ReturnCardColumnsPostgreSqlTests(PostgreSqlTenantIsolationFi
     }
 
     // Review finding 6: the staleness check and the counts are separate reads; a claim written without its columns in
-    // between (the previous worker during a deploy) sends that summary back to the computation from claims and lines.
+    // between (the previous worker during a deploy) still counts in its tab: the tab counts follow the claims' statuses
+    // (SIPARIS-STOK-9), never the stored tab.
     [PostgreSqlFact]
-    public async Task A_claim_unfilled_after_the_check_sends_the_summary_back_to_the_full_computation()
+    public async Task A_claim_unfilled_after_the_check_still_counts_in_its_tab()
     {
         var (tenantId, claimId, _) = await SeedAsync();
         try
@@ -292,8 +293,12 @@ public sealed class ReturnCardColumnsPostgreSqlTests(PostgreSqlTenantIsolationFi
             Assert.True(fresh.Fresh);
             await db.ReturnClaims.Where(x => x.Id == claimId).ExecuteUpdateAsync(set => set.SetProperty(x => x.TabGroup, (string?)null));
             var counts = MarketplaceSalesService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal);
-            Assert.Null(await service.CountReturnCardsInDatabaseAsync(tenantId, new ReturnListQuery(Status: "APPROVED"), counts, fresh, CancellationToken.None));
-            Assert.All(counts.Values, count => Assert.Equal(0, count));
+            var options = new ReturnListQuery(Status: "APPROVED");
+            var set = await service.ReturnCardSetAsync(tenantId, options, applyTab: false, applyRefinements: true, fresh, CancellationToken.None);
+            await service.CountReturnCardsAsync(tenantId, set!, counts, CancellationToken.None);
+            var expected = await LegacyReturnListQueries.BuildReturnSummaryAsync(service, db, tenantId, options, CancellationToken.None);
+            Assert.Equal(System.Text.Json.JsonSerializer.Serialize(expected.TabCounts), System.Text.Json.JsonSerializer.Serialize(counts));
+            Assert.True(counts["ALL"] > 0);
         }
         finally
         {

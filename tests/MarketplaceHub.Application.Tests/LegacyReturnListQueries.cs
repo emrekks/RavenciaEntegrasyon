@@ -64,10 +64,43 @@ internal static class LegacyReturnListQueries
         var invoice = applyRefinements ? options.InvoiceStatus?.Trim().ToUpperInvariant() : null;
         if (!string.IsNullOrEmpty(invoice) && invoice != "ALL" && cards.Count > 0)
         {
-            var labels = await service.ReturnInvoiceLabelsAsync(tenantId, cards.Select(card => claims[card.ClaimId]).Distinct().ToList(), cancellationToken);
+            var labels = await ReturnInvoiceLabelsAsync(db, tenantId, cards.Select(card => claims[card.ClaimId]).Distinct().ToList(), cancellationToken);
             cards = cards.Where(card => labels.GetValueOrDefault(card.ClaimId) == invoice).ToList();
         }
         return new(cards, claims, views);
+    }
+
+    // MarketplaceSalesService.ReturnInvoiceLabelsAsync before 16 Nov 2026 (SIPARIS-STOK-9): the order's latest package and
+    // invoice read and the label computed in memory, the customer snapshot only when the label falls back on it. Ties of
+    // date had no order of their own (the rows came back unordered); this copy reads them by id, newest first, as the
+    // database label and the views do now.
+    internal static async Task<Dictionary<Guid, string>> ReturnInvoiceLabelsAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<MarketplaceSalesService.ReturnClaimRow> claims, CancellationToken cancellationToken)
+    {
+        var orderIds = claims.Select(x => x.OrderId).Distinct().ToArray();
+        var existingOrders = (await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.Id)).Select(x => x.Id).ToListAsync(cancellationToken)).ToHashSet();
+        var packages = (await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)).OrderByDescending(x => x.Id)
+                .Select(x => new { x.OrderId, x.StatusOccurredAt, x.MarketplaceInvoiceStatus, x.RawStatus }).ToListAsync(cancellationToken))
+            .GroupBy(x => x.OrderId).ToDictionary(group => group.Key, group => group.OrderByDescending(x => x.StatusOccurredAt).First());
+        var invoices = (await db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId) && x.OriginalInvoiceId == null
+                    && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))
+                .OrderByDescending(x => x.Id)
+                .Select(x => new { x.OrderId, x.CreatedAt, x.Status, x.InvoiceNumber }).ToListAsync(cancellationToken))
+            .GroupBy(x => x.OrderId).ToDictionary(group => group.Key, group => group.OrderByDescending(x => x.CreatedAt).First());
+        var snapshotOrderIds = orderIds.Where(id => existingOrders.Contains(id) && !invoices.ContainsKey(id)
+            && MarketplaceSalesService.ReturnInvoiceLabelReadsSnapshot(null, packages.GetValueOrDefault(id)?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, packages.GetValueOrDefault(id)?.RawStatus)).ToArray();
+        var snapshots = snapshotOrderIds.Length == 0
+            ? new Dictionary<Guid, string>()
+            : await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && snapshotOrderIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.CustomerSnapshotJson, cancellationToken);
+        var labels = new Dictionary<Guid, string>();
+        foreach (var claim in claims)
+        {
+            if (!existingOrders.Contains(claim.OrderId)) { labels[claim.Id] = "FATURA_BEKLIYOR"; continue; }
+            var package = packages.GetValueOrDefault(claim.OrderId);
+            var invoice = invoices.GetValueOrDefault(claim.OrderId);
+            labels[claim.Id] = MarketplaceSalesService.InvoiceLabel(invoice?.Status, invoice?.InvoiceNumber, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown,
+                snapshots.GetValueOrDefault(claim.OrderId) ?? "{}", package is null ? [] : [package.RawStatus]);
+        }
+        return labels;
     }
 
     internal static async Task<PageResult<ReturnListView>> ReturnCardPageAsync(MarketplaceSalesService service, AppDbContext db, CursorCodec cursors, Guid tenantId, int limit, int page, string? after, ReturnListQuery options, CancellationToken cancellationToken)
@@ -131,7 +164,7 @@ internal static class LegacyReturnListQueries
         }
         var labels = listed.Cards.Count == 0
             ? new Dictionary<Guid, string>()
-            : await service.ReturnInvoiceLabelsAsync(tenantId, listed.Cards.Select(card => listed.Claims[card.ClaimId]).Distinct().ToList(), cancellationToken);
+            : await ReturnInvoiceLabelsAsync(db, tenantId, listed.Cards.Select(card => listed.Claims[card.ClaimId]).Distinct().ToList(), cancellationToken);
         var invoiceStatuses = listed.Cards.Select(card => labels.GetValueOrDefault(card.ClaimId)).OfType<string>().Distinct(StringComparer.Ordinal).ToList();
         var invoice = options.InvoiceStatus?.Trim().ToUpperInvariant();
         bool InvoiceMatches(MarketplaceSalesService.ReturnCard card) => string.IsNullOrEmpty(invoice) || invoice == "ALL" || labels.GetValueOrDefault(card.ClaimId) == invoice;
