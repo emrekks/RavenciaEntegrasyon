@@ -210,6 +210,17 @@ describe('Hızlı Arama', () => {
   })
 })
 
+describe('the Bekleyen count on the Siparişler page (W2)', () => {
+  it('is read once when the page opens', async () => {
+    server.me = [{ status: 200, body: active }]
+    const { host } = mount('/orders')
+    await waitFor(() => shell(host))
+    await waitFor(() => server.calls.some(call => call.url.startsWith('/api/v1/orders?') || call.url.startsWith('/api/v1/orders/summary?') && call.url !== '/api/v1/orders/summary?tabs=PENDING'))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 300)) })
+    expect(server.calls.filter(call => call.url === '/api/v1/orders/summary?tabs=PENDING')).toHaveLength(1)
+  })
+})
+
 describe('a session that ends while the panel is open', () => {
   it('swaps the workspace for the sign-in screen with a note instead of retrying forever', async () => {
     server.me = [{ status: 200, body: active }]
