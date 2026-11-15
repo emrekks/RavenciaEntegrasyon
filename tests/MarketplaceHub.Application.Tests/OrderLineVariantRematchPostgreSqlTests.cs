@@ -124,13 +124,74 @@ public sealed class OrderLineVariantRematchPostgreSqlTests(PostgreSqlTenantIsola
             await seed.SaveChangesAsync();
         }
 
+        // SIPARIS-STOK-2: the fully cancelled line is not read at all.
         await using (var db = fixture.CreateContext())
-            Assert.Equal(new MarketplaceJobProcessor.OrderLineRematchOutcome(1, 0, 1), await Processor(db).RematchUnmatchedOrderLines(tenant.Id, shopify.Id, CancellationToken.None));
+            Assert.Equal(new MarketplaceJobProcessor.OrderLineRematchOutcome(0, 0, 0), await Processor(db).RematchUnmatchedOrderLines(tenant.Id, shopify.Id, CancellationToken.None));
 
         await using var verify = fixture.CreateContext();
         Assert.Null((await verify.OrderLines.AsNoTracking().SingleAsync(x => x.Id == cancelled.Id)).VariantId);
         var issue = await verify.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id);
         Assert.Equal(IssueStatus.Resolved, issue.Status);
+    }
+
+    // SIPARIS-STOK-2: more unmatched lines than one batch are read in turns after the cursor's last line, so a line
+    // beyond the first batch is matched too; the notice of a code no line has any more is resolved only when the whole
+    // pass was read, and the notices the pass still saw stay open. Fully cancelled lines do not fill the batch.
+    [PostgreSqlFact]
+    public async Task Rematch_ReadsPastTheFirstBatch_AndResolvesOnlyAfterAWholePass()
+    {
+        var tenant = NewTenant("order-line-rematch-batches");
+        var shopify = NewConnection(tenant, "SHOPIFY");
+        var order = NewOrder(tenant, shopify, "#R2001", "NEW");
+        var cancelled = NewLine(tenant, order, "CXL01", "CXL01", "{}");
+        cancelled.CancelledQuantity = 1m;
+        // Ids in reading order (Version 7 Ids made in the same millisecond do not sort by creation).
+        cancelled.Id = Guid.CreateVersion7(fixture.Now.AddSeconds(-10));
+        var lines = Enumerable.Range(1, 5).Select(index => { var line = NewLine(tenant, order, $"BATCH0{index}", $"BATCH0{index}", "{}"); line.Id = Guid.CreateVersion7(fixture.Now.AddSeconds(index)); return line; }).ToList();
+        var (lastProduct, lastVariant) = NewVariant(tenant, "BATCH05", "BATCH05");
+        var gone = $"order-line-variant-unmatched:{shopify.Id:N}:GONE01";
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(shopify);
+            seed.Products.Add(lastProduct);
+            seed.ProductVariants.Add(lastVariant);
+            seed.InventoryItems.Add(NewInventory(tenant, lastVariant, 5m));
+            seed.Orders.Add(order);
+            seed.OrderLines.Add(cancelled);
+            seed.OrderLines.AddRange(lines);
+            seed.OperationalIssues.Add(new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = tenant.Id, DedupeKey = gone, Code = MarketplaceJobProcessor.UnmatchedOrderLineIssueCode, Summary = "eski", Status = IssueStatus.Open, FirstSeenAt = fixture.Now.AddDays(-6), LastSeenAt = fixture.Now.AddHours(-2), OccurrenceCount = 1 });
+            await seed.SaveChangesAsync();
+        }
+
+        async Task<MarketplaceJobProcessor.OrderLineRematchOutcome> RunAsync()
+        {
+            await using var db = fixture.CreateContext();
+            return await Processor(db).RematchUnmatchedOrderLines(tenant.Id, shopify.Id, CancellationToken.None, batchSize: 2);
+        }
+        async Task<IssueStatus> GoneAsync()
+        {
+            await using var db = fixture.CreateContext();
+            return (await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.DedupeKey == gone)).Status;
+        }
+
+        Assert.Equal(new MarketplaceJobProcessor.OrderLineRematchOutcome(2, 0, 2), await RunAsync());
+        Assert.Equal(IssueStatus.Open, await GoneAsync());
+        Assert.Equal(new MarketplaceJobProcessor.OrderLineRematchOutcome(2, 0, 2), await RunAsync());
+        Assert.Equal(IssueStatus.Open, await GoneAsync());
+        // The third run reads the last line, matches it and ends the pass.
+        Assert.Equal(new MarketplaceJobProcessor.OrderLineRematchOutcome(1, 1, 0), await RunAsync());
+        Assert.Equal(IssueStatus.Resolved, await GoneAsync());
+        await using (var verify = fixture.CreateContext())
+        {
+            Assert.Equal(lastVariant.Id, (await verify.OrderLines.AsNoTracking().SingleAsync(x => x.Id == lines[4].Id)).VariantId);
+            var open = await verify.OperationalIssues.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.Status == IssueStatus.Open).Select(x => x.DedupeKey).ToListAsync();
+            Assert.Equal(4, open.Count);
+            Assert.All(open, key => Assert.Contains(":BATCH0", key));
+            Assert.Null((await verify.SyncCursors.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ResourceType == MarketplaceJobProcessor.OrderLineRematchCursor)).OpaqueCursor);
+        }
+        // The next pass starts again from the first line.
+        Assert.Equal(new MarketplaceJobProcessor.OrderLineRematchOutcome(2, 0, 2), await RunAsync());
     }
 
     [Fact]

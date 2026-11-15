@@ -314,6 +314,7 @@ public sealed class ReportCostSnapshotPostgreSqlTests(PostgreSqlTenantIsolationF
             await db.Products.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
             await db.IntegrationOutboxEvents.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
             await db.MarketplaceQuestions.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+            await db.SyncCursors.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
             await db.PlatformConnections.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
             await db.Tenants.Where(row => row.Id == tenantId).ExecuteDeleteAsync();
         }

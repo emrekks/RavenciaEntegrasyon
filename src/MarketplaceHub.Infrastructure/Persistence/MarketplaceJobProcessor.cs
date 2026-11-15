@@ -11974,20 +11974,36 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // the panel as it is now (the same OrderLineVariantMatcher), takes their stock like a late read would
     // (OrderLineLateMatchStockPolicy, ProjectOrderReservations) and keeps one open issue per code no variant answers,
     // so the owner can create or map it. Idempotent: a matched line is never looked at again.
-    internal async Task<OrderLineRematchOutcome> RematchUnmatchedOrderLines(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    // SIPARIS-STOK-2: a connection with more unmatched lines than one batch is read in turns. Each run reads the next
+    // batch after the last line Id the cursor keeps (fully cancelled lines are left out: they take no stock); a batch of
+    // fewer lines ends the pass and the next run starts again from the first. The issues of codes no longer unmatched are
+    // resolved when a whole pass has been read: the cursor's LastModifiedWatermark keeps when the pass started, every
+    // batch of a pass marks the issues it still sees, and the last batch resolves the ones no batch saw.
+    internal const string OrderLineRematchCursor = "ORDER_LINE_REMATCH";
+
+    internal async Task<OrderLineRematchOutcome> RematchUnmatchedOrderLines(Guid tenantId, Guid connectionId, CancellationToken cancellationToken, int batchSize = OrderLineRematchBatchSize)
     {
         var platformCode = await db.PlatformConnections.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.Id == connectionId)
             .Select(x => x.PlatformCode)
             .SingleOrDefaultAsync(cancellationToken);
         if (platformCode is null) return new(0, 0, 0);
-        var rows = await (from line in db.OrderLines
-                          join order in db.Orders on new { line.TenantId, line.OrderId } equals new { order.TenantId, OrderId = order.Id }
-                          where line.TenantId == tenantId && order.ConnectionId == connectionId && line.VariantId == null
-                          orderby line.Id
-                          select new { Line = line, order.OrderNumber, order.LastRemoteModifiedAt })
-            .Take(OrderLineRematchBatchSize)
-            .ToListAsync(cancellationToken);
+        var cursor = await Cursor(tenantId, connectionId, OrderLineRematchCursor, cancellationToken);
+        var afterId = Guid.TryParse(cursor.OpaqueCursor, out var lastId) ? lastId : Guid.Empty;
+        var passStartedAt = afterId == Guid.Empty ? timeProvider.GetUtcNow() : cursor.LastModifiedWatermark ?? timeProvider.GetUtcNow();
+        var unmatchedLines = from line in db.OrderLines
+                             join order in db.Orders on new { line.TenantId, line.OrderId } equals new { order.TenantId, OrderId = order.Id }
+                             where line.TenantId == tenantId && order.ConnectionId == connectionId && line.VariantId == null
+                                 && (line.OrderedQuantity <= 0 || line.CancelledQuantity < line.OrderedQuantity)
+                             select new { Line = line, order.OrderNumber, order.LastRemoteModifiedAt };
+        if (afterId != Guid.Empty) unmatchedLines = unmatchedLines.Where(x => x.Line.Id.CompareTo(afterId) > 0);
+        var rows = await unmatchedLines.OrderBy(x => x.Line.Id).Take(batchSize).ToListAsync(cancellationToken);
+        var passEnded = rows.Count < batchSize;
+        // A pass read in one batch knows every open code at once; only a pass of several batches marks what it saw.
+        var multiBatchPass = afterId != Guid.Empty || !passEnded;
+        cursor.OpaqueCursor = passEnded ? null : rows[^1].Line.Id.ToString("D");
+        cursor.LastModifiedWatermark = passEnded ? null : passStartedAt;
+        cursor.LastAttemptAt = timeProvider.GetUtcNow();
         var issuePrefix = $"order-line-variant-unmatched:{connectionId:N}:";
         var codes = rows.ToDictionary(row => row.Line.Id, row => OrderLineVariantMatcher.Codes(platformCode, row.Line.Sku, row.Line.Barcode, row.Line.SourceSnapshotJson));
         var candidates = rows.Count == 0 ? OrderLineVariantCandidates.Empty : await LoadOrderLineVariantCandidates(tenantId, connectionId, codes.Values, cancellationToken);
@@ -12012,20 +12028,23 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
 
         var openKeys = new HashSet<string>(StringComparer.Ordinal);
-        // A line cancelled in full takes no stock whether it matches or not: it stays unmatched (a later variant still
-        // matches it) but raises no notice, and the notice it raised before is resolved below (live 5 Nov 2026: Shopify
-        // #R1013's two cancelled lines kept two open notices).
+        // A line cancelled in full takes no stock whether it matches or not: it is not read here (SIPARIS-STOK-2: such
+        // lines filled the first batch for good) and raises no notice; the notice it raised before is resolved below
+        // (live 5 Nov 2026: Shopify #R1013's two cancelled lines kept two open notices).
         foreach (var group in unmatched.Where(x => !OrderLineFullyCancelled(x.Line)).GroupBy(x => UnmatchedOrderLineIssueKey(codes[x.Line.Id]), StringComparer.Ordinal))
         {
             var key = issuePrefix + group.Key;
             openKeys.Add(key);
-            await RecordUnmatchedOrderLineIssue(tenantId, key, UnmatchedOrderLineSummary(platformCode, codes[group.First().Line.Id], group.First().Line.TitleSnapshot, group.Select(x => x.OrderNumber).ToList(), group.Any(x => x.Kind == OrderLineMatchKind.Ambiguous)), cancellationToken);
+            await RecordUnmatchedOrderLineIssue(tenantId, key, UnmatchedOrderLineSummary(platformCode, codes[group.First().Line.Id], group.First().Line.TitleSnapshot, group.Select(x => x.OrderNumber).ToList(), group.Any(x => x.Kind == OrderLineMatchKind.Ambiguous)), cancellationToken, multiBatchPass ? passStartedAt : null);
         }
-        // Issues of codes that now match (or whose lines are gone) are resolved; with more unmatched lines than one
-        // pass reads, only the codes this pass matched are.
-        var resolvable = rows.Count < OrderLineRematchBatchSize
-            ? await db.OperationalIssues.Where(x => x.TenantId == tenantId && x.Code == UnmatchedOrderLineIssueCode && x.Status != IssueStatus.Resolved && x.DedupeKey.StartsWith(issuePrefix)).ToListAsync(cancellationToken)
-            : await QueryResolvableIssues(matched.Select(x => issuePrefix + UnmatchedOrderLineIssueKey(codes[x.Line.Id])).Distinct(StringComparer.Ordinal).ToArray());
+        // Issues of codes that now match (or whose lines are gone) are resolved once a whole pass was read: a pass of one
+        // batch resolves every issue it did not see; the last batch of a longer pass those no batch of it saw
+        // (LastSeenAt before the pass started). A batch in the middle resolves only the codes it matched.
+        var resolvable = !passEnded
+            ? await QueryResolvableIssues(matched.Select(x => issuePrefix + UnmatchedOrderLineIssueKey(codes[x.Line.Id])).Distinct(StringComparer.Ordinal).ToArray())
+            : multiBatchPass
+                ? await db.OperationalIssues.Where(x => x.TenantId == tenantId && x.Code == UnmatchedOrderLineIssueCode && x.Status != IssueStatus.Resolved && x.DedupeKey.StartsWith(issuePrefix) && x.LastSeenAt < passStartedAt).ToListAsync(cancellationToken)
+                : await db.OperationalIssues.Where(x => x.TenantId == tenantId && x.Code == UnmatchedOrderLineIssueCode && x.Status != IssueStatus.Resolved && x.DedupeKey.StartsWith(issuePrefix)).ToListAsync(cancellationToken);
         var now = timeProvider.GetUtcNow();
         foreach (var issue in resolvable.Where(issue => !openKeys.Contains(issue.DedupeKey)))
         {
@@ -12098,7 +12117,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // One issue per unmatched code of a connection. A pass that finds the same lines again only keeps it alive (the
     // retention resolves issues not seen for days) at most hourly; a new order with the code, or an issue resolved
     // meanwhile, reopens it.
-    private async Task RecordUnmatchedOrderLineIssue(Guid tenantId, string key, string summary, CancellationToken cancellationToken)
+    // passStartedAt: the start of a rematch pass read in several batches; an issue this pass sees is marked seen in it,
+    // so the pass's last batch does not resolve it.
+    private async Task RecordUnmatchedOrderLineIssue(Guid tenantId, string key, string summary, CancellationToken cancellationToken, DateTimeOffset? passStartedAt = null)
     {
         var now = timeProvider.GetUtcNow();
         var issue = db.OperationalIssues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.DedupeKey == key)
@@ -12117,7 +12138,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             issue.LastSeenAt = now;
             issue.OccurrenceCount++;
         }
-        else if (now - issue.LastSeenAt >= TimeSpan.FromHours(1)) issue.LastSeenAt = now;
+        else if (now - issue.LastSeenAt >= TimeSpan.FromHours(1) || passStartedAt is { } started && issue.LastSeenAt < started) issue.LastSeenAt = now;
     }
 
     // A package line has one allocation (T2-DO1): every later event of the package updates it in place. Before, each event
