@@ -109,6 +109,15 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 sudo docker exec "$db_container" pg_isready -U marketplacehub -d marketplacehub >/dev/null
+# Once the owner has set up the app database roles (docs/RUNBOOK-GERI-ALMA.md section 7) the dump carries GRANTs and
+# default privileges for marketplacehub_owner and marketplacehub_app. Roles live in the cluster, not in the dump: without
+# them the restore below stops at the first GRANT and every deploy's migration rehearsal fails. NOLOGIN here; the
+# drill itself logs in as marketplacehub.
+sudo docker exec "$db_container" psql -X -q -v ON_ERROR_STOP=1 -U marketplacehub -d marketplacehub -c "
+  DO \$\$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'marketplacehub_owner') THEN CREATE ROLE marketplacehub_owner NOLOGIN; END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'marketplacehub_app') THEN CREATE ROLE marketplacehub_app NOLOGIN; END IF;
+  END \$\$;" >/dev/null
 echo "Restore drill: isolated PostgreSQL is ready."
 
 sudo docker run --rm \
