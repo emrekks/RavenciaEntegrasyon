@@ -1337,6 +1337,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             FamilyMediaItems = familyMediaItems,
             FamilyOrderedMediaUrls = familyViews.Any(view => view.HasCustomMediaOrder) ? FamilyStripWithChartsLast(familyOrderedMediaUrls) : null,
             FamilyProductIds = familyViews.Select(view => view.Id).ToList(),
+            FamilyVersions = familyViews.ToDictionary(view => view.Id, view => view.Version),
             FamilyGalleries = CatalogFamilyMedia.Galleries(familyRows, familyCardOrder, familyViews.ToDictionary(view => view.Id, view => view.SizeChartUrl))
         });
     }
@@ -1345,10 +1346,14 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     // every other colour card of the model (ProductFamilySharedFields), in the same transaction as the opened card; a card
     // already holding the value is not touched. A colour card's name keeps its own colour word; its colour attributes,
     // variants, prices and marketplace data stay its own.
-    private async Task ApplyFamilySharedFieldsAsync(Guid tenantId, Product opened, UpdateProductCommand command, IReadOnlyCollection<Guid> familyProductIds, CancellationToken cancellationToken)
+    public const string FamilyChangedCode = "FAMILY_CHANGED";
+    public const string FamilyChangedMessage = "Modelin başka bir rengi siz düzenlerken değişti; sayfayı yenileyip tekrar deneyin.";
+
+    // False: a colour card changed since the editor read it (FAMILY_CHANGED); nothing of the family was written.
+    private async Task<bool> ApplyFamilySharedFieldsAsync(Guid tenantId, Product opened, UpdateProductCommand command, IReadOnlyCollection<Guid> familyProductIds, CancellationToken cancellationToken)
     {
         var fields = (command.FamilySharedFields ?? []).Where(ProductFamilySharedFields.IsKnown).ToHashSet(StringComparer.Ordinal);
-        if (fields.Count == 0) return;
+        if (fields.Count == 0) return true;
         var siblingIds = familyProductIds.Where(productId => productId != opened.Id).ToArray();
         var siblings = await db.Products.Where(x => x.TenantId == tenantId && siblingIds.Contains(x.Id)).ToListAsync(cancellationToken);
         var signatures = await db.ProductVariants.AsNoTracking()
@@ -1371,14 +1376,14 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         // The number as ModelAttributesAsync writes it: the database gives numeric(19,4) (5.0000), the editor 5.
         static string AttributeKey(Guid attributeId, Guid? valueId, string? text, decimal? number, bool? flag) => $"{attributeId:N}|{valueId:N}|{text?.Trim()}|{number?.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}|{flag}";
 
-        var changedIds = new List<Guid>();
-        foreach (var sibling in siblings)
+        // Whether the save changes a shared field of this sibling; with write, it also writes it.
+        bool Apply(Product sibling, bool write)
         {
             var changed = false;
-            void Set<T>(string field, T current, T value, Action<T> write)
+            void Set<T>(string field, T current, T value, Action<T> writer)
             {
                 if (!fields.Contains(field) || EqualityComparer<T>.Default.Equals(current, value)) return;
-                write(value);
+                if (write) writer(value);
                 changed = true;
             }
             Set(ProductFamilySharedFields.Title, sibling.Title, ProductFamilySharedFields.TitleFor(command.Title, openedColor, ColorOf(sibling.Id)), value => sibling.Title = value);
@@ -1395,12 +1400,29 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 var sharedKeys = sharedValues.Select(x => AttributeKey(x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue)).Order(StringComparer.Ordinal);
                 if (!currentKeys.SequenceEqual(sharedKeys, StringComparer.Ordinal))
                 {
-                    db.ProductAttributeAssignments.RemoveRange(current);
-                    db.ProductAttributeAssignments.AddRange(sharedValues.Select(x => Assignment(tenantId, sibling.Id, null, x)));
+                    if (write)
+                    {
+                        db.ProductAttributeAssignments.RemoveRange(current);
+                        db.ProductAttributeAssignments.AddRange(sharedValues.Select(x => Assignment(tenantId, sibling.Id, null, x)));
+                    }
                     changed = true;
                 }
             }
-            if (!changed) continue;
+            return changed;
+        }
+
+        // WEB-SAYFALAR-2: the editor sends the Version of every colour card as it read them. A card whose shared field
+        // this save would change and that changed since (another save, an import) is not overwritten with values the
+        // editor never saw: the whole save is refused (FAMILY_CHANGED) and nothing is written. A card the save leaves as
+        // it is (only its stock or offers changed meanwhile, or it already holds the values) does not stop it.
+        if (command.LoadedFamilyVersions is { } loaded
+            && siblings.Any(sibling => loaded.TryGetValue(sibling.Id, out var version) && version != sibling.Version && Apply(sibling, write: false)))
+            return false;
+
+        var changedIds = new List<Guid>();
+        foreach (var sibling in siblings)
+        {
+            if (!Apply(sibling, write: true)) continue;
             sibling.UpdatedAt = opened.UpdatedAt;
             sibling.Version++;
             changedIds.Add(sibling.Id);
@@ -1427,6 +1449,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             }
         }
         if (changedIds.Count > 0) await CatalogLocalEdits.MarkLinksDirtyAsync(db, tenantId, changedIds, CatalogLocalEdits.ProductField, cancellationToken);
+        return true;
     }
 
     // A colour card's model-row fields with its colour (its variants' Renk), for the model's shared fields.
@@ -1910,7 +1933,12 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             db.ProductAttributeAssignments.RemoveRange(currentAssignments);
             db.ProductAttributeAssignments.AddRange(command.Attributes.Select(x => Assignment(tenantId, id, null, x)));
         }
-        await ApplyFamilySharedFieldsAsync(tenantId, product, command, familyVariantProductIds, cancellationToken);
+        if (!await ApplyFamilySharedFieldsAsync(tenantId, product, command, familyVariantProductIds, cancellationToken))
+        {
+            // Nothing is saved: the tracked changes are dropped and a started variant purge rolls back on dispose.
+            db.ChangeTracker.Clear();
+            return Conflict<ProductView>(FamilyChangedCode, FamilyChangedMessage);
+        }
         await MarkMarketplaceLinksDirtyAsync(tenantId, id, cancellationToken);
         if (familyProductIdsToProtect.Count > 0)
         {

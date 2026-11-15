@@ -3015,6 +3015,9 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           trendyolWebColorValueId: !webColorAutoEnabled && manualWebColorValueId ? manualWebColorValueId : '00000000-0000-0000-0000-000000000000',
           // Temel Ürün Bilgileri are the model's: every save writes them to every colour card (family-shared-fields.ts).
           familySharedFields: [...FAMILY_SHARED_FIELDS],
+          // The colour cards' versions as the form was filled (WEB-SAYFALAR-2): a card changed meanwhile whose shared
+          // field this save would overwrite refuses it (409 FAMILY_CHANGED) instead.
+          loadedFamilyVersions: editProduct.familyVersions ?? null,
           ...(shouldPersistAttributes ? { attributes: globalAttributes } : {}),
           variantIdsToDelete: removedVariantIds.filter(id => existingVariantIds.has(id) && !rows.some(row => row.key === id)),
           placeholderVariantIdsToDelete: placeholderIdsToDelete,
@@ -3493,6 +3496,10 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       setError(reason); setNotice(feedbackMessage)
       setFeedback({ message: feedbackMessage, kind: 'error', persistent: true, title: productCreated ? 'İşlem Yarım Kaldı' : editProductId ? 'Ürün Kaydedilemedi' : 'Ürün Oluşturulamadı', key: productSaveToastKey, context: productCreated ? { subject: productNotificationSubject({ id: productCreated.id, name: form.title, modelCode: form.modelCode }) } : undefined })
       if (!productCreated) { setFieldErrors(editorFieldErrors(reason)); setVariantCodeConflicts(variantCodeConflictsFrom(reason)) }
+      // WEB-SAYFALAR-2: another colour card of the model changed while this form was open and nothing was saved; the
+      // stale banner offers to reload the model, the unsaved edits stay until then.
+      if (!productCreated && reason instanceof ApiRequestError && reason.code === 'FAMILY_CHANGED')
+        setStaleProductVersion(seededProduct.current?.version ?? productToEdit.data?.version ?? 0)
       // The product itself was saved before a later step (media, a channel offer, the panel price choice) failed: its
       // new version is read again and the form may refill from it, so the next try does not take its own save for
       // another operation's change. Only the files this try uploaded leave the queue.

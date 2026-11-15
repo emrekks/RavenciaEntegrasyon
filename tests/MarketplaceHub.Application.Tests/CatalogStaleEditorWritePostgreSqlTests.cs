@@ -129,6 +129,58 @@ public sealed class CatalogStaleEditorWritePostgreSqlTests(PostgreSqlTenantIsola
         Assert.Equal(110m, (await db.ProductVariants.AsNoTracking().SingleAsync(x => x.Id == maviVariant.Id)).DefaultSalePrice);
     }
 
+    // WEB-SAYFALAR-2: the editor read the family (FamilyVersions); meanwhile the Bordo card's description changed. A save
+    // whose shared description would overwrite it is refused (FAMILY_CHANGED) and no card changes; a save that leaves
+    // Bordo as it is goes through; and with the versions the save answers with, the next save goes through too.
+    [PostgreSqlFact]
+    public async Task FamilySharedFields_OverASiblingChangedSinceItWasRead_AreRefused()
+    {
+        var tenant = NewTenant("cat-family-versions");
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            await seed.SaveChangesAsync();
+        }
+        await using var db = fixture.CreateContext();
+        var service = new CatalogService(db, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider, new Microsoft.Extensions.Caching.Memory.MemoryCache(new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()));
+        var modelCode = $"FV{Guid.NewGuid():N}"[..10].ToUpperInvariant();
+        var mavi = await service.CreateProductAsync(tenant.Id, new CreateProductCommand("Bluz Mavi", "Açıklama", null, null, [new CreateVariantCommand($"{modelCode}-M-L", $"{modelCode}M1", modelCode, new Dictionary<string, string> { ["Renk"] = "Mavi", ["Beden"] = "L" }, DefaultListPrice: 100m, DefaultSalePrice: 100m)], VatRate: 10m, VatInclusion: "INCLUDED"), CancellationToken.None);
+        Assert.True(mavi.Succeeded, mavi.Error?.Message);
+        var maviId = mavi.Value!.Id;
+        var now = DateTimeOffset.UtcNow;
+        var bordo = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "Bluz Bordo", Description = "Açıklama", Status = ProductStatus.Draft, VatRate = 10m, VatInclusion = "INCLUDED", CreatedAt = now, UpdatedAt = now };
+        db.Products.Add(bordo);
+        db.ProductVariants.Add(new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = bordo.Id, Sku = $"{modelCode}-B-L", SkuNormalized = $"{modelCode}-B-L", Barcode = $"{modelCode}B1", BarcodeNormalized = $"{modelCode}B1", ModelCode = modelCode, OptionSignature = "Renk: Bordo | Beden: L", DefaultListPrice = 100m, DefaultSalePrice = 100m, Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var read = (await service.GetProductAsync(tenant.Id, maviId, CancellationToken.None)).Value!;
+        Assert.Equal(new[] { maviId, bordo.Id }.Order(), read.FamilyVersions!.Keys.Order());
+        string[] shared = [ProductFamilySharedFields.Description];
+        UpdateProductCommand Save(string description, IReadOnlyDictionary<Guid, long> versions) =>
+            new("Bluz Mavi", description, null, null, FamilySharedFields: shared, LoadedFamilyVersions: versions);
+
+        // Another save changes the Bordo card meanwhile.
+        await db.Products.Where(x => x.Id == bordo.Id).ExecuteUpdateAsync(set => set.SetProperty(x => x.Description, "Başka açıklama").SetProperty(x => x.Version, x => x.Version + 1));
+
+        var stale = await service.UpdateProductAsync(tenant.Id, maviId, read.Version, Save("Benim açıklamam", read.FamilyVersions!), CancellationToken.None);
+        Assert.Equal((409, CatalogService.FamilyChangedCode), (stale.Error?.Status, stale.Error?.Code));
+        db.ChangeTracker.Clear();
+        Assert.Equal("Başka açıklama", (await db.Products.AsNoTracking().SingleAsync(x => x.Id == bordo.Id)).Description);
+        var maviRow = await db.Products.AsNoTracking().SingleAsync(x => x.Id == maviId);
+        Assert.Equal(("Açıklama", read.Version), (maviRow.Description, maviRow.Version));
+
+        // The same stale versions, but Bordo already holds the value: nothing of it would change, the save goes through.
+        var unchanged = await service.UpdateProductAsync(tenant.Id, maviId, read.Version, Save("Başka açıklama", read.FamilyVersions!), CancellationToken.None);
+        Assert.True(unchanged.Succeeded, unchanged.Error?.Message);
+
+        // The answer carries the new versions: the next save with them is not refused.
+        var next = await service.UpdateProductAsync(tenant.Id, maviId, unchanged.Value!.Version, Save("Yeni açıklama", unchanged.Value.FamilyVersions!), CancellationToken.None);
+        Assert.True(next.Succeeded, next.Error?.Message);
+        db.ChangeTracker.Clear();
+        Assert.Equal("Yeni açıklama", (await db.Products.AsNoTracking().SingleAsync(x => x.Id == bordo.Id)).Description);
+    }
+
     private static Tenant NewTenant(string code)
     {
         var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"{code}-{Guid.NewGuid():N}", DisplayName = code, Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow, Version = 1 };

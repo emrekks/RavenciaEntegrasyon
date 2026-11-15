@@ -158,6 +158,9 @@ public sealed record ProductView(
     public IReadOnlyList<string>? FamilyOrderedMediaUrls { get; init; }
     // Every product card of the family (same brand and model code: one per colour), the opened one first.
     public IReadOnlyList<Guid>? FamilyProductIds { get; init; }
+    // The Version of every card of FamilyProductIds as read (WEB-SAYFALAR-2): the editor sends them back with a save
+    // (UpdateProductCommand.LoadedFamilyVersions), so a colour card changed meanwhile is not overwritten.
+    public IReadOnlyDictionary<Guid, long>? FamilyVersions { get; init; }
     // Every colour card's own pictures (gallery, variant pictures, size chart), oldest card first whichever was opened:
     // the editor writes each colour's pictures to its own card from these.
     public IReadOnlyList<ProductFamilyGalleryView>? FamilyGalleries { get; init; }
@@ -278,7 +281,7 @@ public sealed record BulkPublicationJob(Guid ProductId, Guid ConnectionId, Guid 
 public sealed record PublicationSkippedVariant(string Sku, string Code, string Message);
 public sealed record PublicationEnqueued(Guid JobId, IReadOnlyList<PublicationSkippedVariant> SkippedVariants);
 public sealed record BulkPublicationResult(int Queued, int Skipped, IReadOnlyList<BulkPublicationFailure> Failed, IReadOnlyList<BulkPublicationJob>? Jobs = null);
-public sealed record UpdateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<ProductAttributeCommand>? Attributes = null, IReadOnlyList<CreateVariantCommand>? VariantsToCreate = null, IReadOnlyList<UpdateVariantCommand>? VariantUpdates = null, string? Status = null, decimal? DefaultListPrice = null, decimal? DefaultSalePrice = null, IReadOnlyList<Guid>? VariantIdsToDelete = null, int? WarrantyMonths = null, Guid? TrendyolWebColorValueId = null, decimal? VatRate = null, string? VatInclusion = null, int? DeliveryDays = null, IReadOnlyList<Guid>? PlaceholderVariantIdsToDelete = null, IReadOnlyList<string>? FamilySharedFields = null);
+public sealed record UpdateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<ProductAttributeCommand>? Attributes = null, IReadOnlyList<CreateVariantCommand>? VariantsToCreate = null, IReadOnlyList<UpdateVariantCommand>? VariantUpdates = null, string? Status = null, decimal? DefaultListPrice = null, decimal? DefaultSalePrice = null, IReadOnlyList<Guid>? VariantIdsToDelete = null, int? WarrantyMonths = null, Guid? TrendyolWebColorValueId = null, decimal? VatRate = null, string? VatInclusion = null, int? DeliveryDays = null, IReadOnlyList<Guid>? PlaceholderVariantIdsToDelete = null, IReadOnlyList<string>? FamilySharedFields = null, IReadOnlyDictionary<Guid, long>? LoadedFamilyVersions = null);
 // Teslimat Süresi on the product card: whole days, 1-30 (n11 takes at most 30); a new card starts at 1.
 public static class ProductDeliveryDays
 {

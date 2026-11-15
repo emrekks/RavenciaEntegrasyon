@@ -66,6 +66,9 @@ export type Product = Versioned & {
   // Trendyol Web Color chosen by hand (panel colour value id); null = automatic from each variant's Renk.
   trendyolWebColorValueId?: string | null
   familyProductIds?: string[] | null
+  // The version of every card of familyProductIds as read (WEB-SAYFALAR-2): Kaydet sends them back as
+  // loadedFamilyVersions, so a colour card changed meanwhile is not overwritten (409 FAMILY_CHANGED).
+  familyVersions?: Record<string, number> | null
   // Every colour card's own pictures (gallery, variant pictures, size chart), oldest card first whichever was opened.
   familyGalleries?: Array<{ productId: string; mediaUrls: string[]; variantMediaUrls: string[]; sizeChartUrl: string | null }> | null
   // The products list: the model's front picture, the family gallery's first picture as the editor shows it (never the
