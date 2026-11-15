@@ -61,6 +61,9 @@ public sealed class JobTypeRegistryTests
     [InlineData(MarketplaceJobTypes.ProductArchive)]
     [InlineData(MarketplaceJobTypes.PriceInventorySync)]
     [InlineData(MarketplaceJobTypes.StageTestOrder)]
+    [InlineData(MarketplaceJobTypes.StockProjectionDispatch)]
+    [InlineData(MarketplaceJobTypes.CapabilityProbe)]
+    [InlineData(InvoicingJobTypes.StageCapabilityProbe)]
     public void ExternalWritesFinishOnShutdown(string jobType)
     {
         Assert.True(JobTypeRegistry.IsShutdownProtected(jobType));
@@ -73,7 +76,6 @@ public sealed class JobTypeRegistryTests
     [InlineData(MarketplaceJobTypes.OrderInvoiceReconciliation)]
     [InlineData(MarketplaceJobTypes.WebhookIngest)]
     [InlineData(MarketplaceJobTypes.QuestionSync)]
-    [InlineData(MarketplaceJobTypes.StockProjectionDispatch)]
     [InlineData(MarketplaceJobTypes.StockReconciliation)]
     [InlineData(MarketplaceJobTypes.ExternalEffectReconcile)]
     [InlineData(MarketplaceJobTypes.ProductApprovalReconcile)]
@@ -91,9 +93,22 @@ public sealed class JobTypeRegistryTests
     [Fact]
     public void EveryShutdownProtectedJobTypeHasAProcessor()
     {
-        string[] invoicingWrites = [InvoicingJobTypes.InvoiceSubmit, InvoicingJobTypes.InvoiceCancellation, InvoicingJobTypes.MarketplaceDelivery, InvoicingJobTypes.ManualOrderInvoiceDelivery];
+        string[] invoicingWrites = [InvoicingJobTypes.InvoiceSubmit, InvoicingJobTypes.InvoiceCancellation, InvoicingJobTypes.MarketplaceDelivery, InvoicingJobTypes.ManualOrderInvoiceDelivery, InvoicingJobTypes.StageCapabilityProbe];
         Assert.All(JobTypeRegistry.ShutdownProtectedJobTypes, jobType =>
             Assert.True(MarketplaceJobTypes.IsMarketplaceProcessorJob(jobType) || invoicingWrites.Contains(jobType), jobType));
         Assert.Equal(JobTypeRegistry.ShutdownProtectedJobTypes.Count, JobTypeRegistry.ShutdownProtectedJobTypes.Distinct().Count());
+    }
+
+    // KUYRUK-3: one list of writing job types. Every type the retention keeps as an effect guard, apart from the
+    // approval check and the imports, finishes on shutdown, and every shutdown-protected type is kept as a guard.
+    [Fact]
+    public void TheWritingJobTypesAreOneListForShutdownAndRetention()
+    {
+        string[] guardsForOtherReasons = [MarketplaceJobTypes.ProductApprovalReconcile, "IMPORT_PREVIEW", "IMPORT_APPLY"];
+        Assert.All(MarketplaceHub.Infrastructure.Persistence.JobRetentionService.EffectGuardJobTypes.Except(guardsForOtherReasons), jobType =>
+            Assert.True(JobTypeRegistry.IsShutdownProtected(jobType), jobType));
+        Assert.All(JobTypeRegistry.ShutdownProtectedJobTypes, jobType =>
+            Assert.Contains(jobType, MarketplaceHub.Infrastructure.Persistence.JobRetentionService.EffectGuardJobTypes));
+        Assert.Equal(JobTypeRegistry.WritingJobTypes, JobTypeRegistry.ShutdownProtectedJobTypes);
     }
 }

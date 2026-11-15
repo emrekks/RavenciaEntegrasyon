@@ -45,14 +45,20 @@ public static class JobTypeRegistry
     // ambiguous), so a worker shutdown lets them finish within the host's shutdown timeout instead of cancelling
     // them. Their own timeout and a lost lease still cancel them. Long reads and scans are not listed: a deploy
     // must not wait for them, and cancelling one loses nothing.
-    public static readonly IReadOnlyList<string> ShutdownProtectedJobTypes =
+    // This is the one list of writing job types: the job retention keeps their jobs as effect guards
+    // (JobRetentionService.EffectGuardJobTypes is derived from it), so a new writing job type is added here only.
+    public static readonly IReadOnlyList<string> WritingJobTypes =
     [
         MarketplaceJobTypes.ShipmentAction, MarketplaceJobTypes.ReturnAction, MarketplaceJobTypes.CommonLabel,
         MarketplaceJobTypes.ProductCreate, MarketplaceJobTypes.ProductUpdate, MarketplaceJobTypes.ProductArchive,
-        MarketplaceJobTypes.PriceInventorySync, MarketplaceJobTypes.StageTestOrder,
+        MarketplaceJobTypes.PriceInventorySync, MarketplaceJobTypes.StockProjectionDispatch, MarketplaceJobTypes.StageTestOrder,
+        // The Trendyol capability probe sends a picking and a common label; the stage probe submits a test invoice.
+        MarketplaceJobTypes.CapabilityProbe, InvoicingJobTypes.StageCapabilityProbe,
         InvoicingJobTypes.InvoiceSubmit, InvoicingJobTypes.InvoiceCancellation,
         InvoicingJobTypes.MarketplaceDelivery, InvoicingJobTypes.ManualOrderInvoiceDelivery
     ];
+
+    public static readonly IReadOnlyList<string> ShutdownProtectedJobTypes = WritingJobTypes;
 
     public static bool IsOrderReadSync(string jobType) => OrderReadSyncJobTypes.Contains(jobType);
     public static bool IsProductCatalogSync(string jobType) => ProductCatalogSyncJobTypes.Contains(jobType);

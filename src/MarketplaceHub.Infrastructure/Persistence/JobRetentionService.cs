@@ -30,15 +30,12 @@ public sealed class JobRetentionService(AppDbContext db, TimeProvider timeProvid
         MarketplaceJobTypes.HepsiburadaProductSync, MarketplaceJobTypes.CatalogStructureImport
     ];
 
+    // Every job type that writes to a marketplace or the invoice provider (one list, JobTypeRegistry.WritingJobTypes),
+    // plus the approval check and the imports, kept for their own reasons.
     internal static readonly string[] EffectGuardJobTypes =
     [
-        MarketplaceJobTypes.ProductCreate, MarketplaceJobTypes.ProductApprovalReconcile, MarketplaceJobTypes.ProductUpdate, MarketplaceJobTypes.ProductArchive,
-        MarketplaceJobTypes.PriceInventorySync, MarketplaceJobTypes.StockProjectionDispatch,
-        MarketplaceJobTypes.ShipmentAction, MarketplaceJobTypes.ReturnAction, MarketplaceJobTypes.CommonLabel,
-        MarketplaceJobTypes.CapabilityProbe, MarketplaceJobTypes.StageTestOrder,
-        InvoicingJobTypes.InvoiceSubmit, InvoicingJobTypes.MarketplaceDelivery, InvoicingJobTypes.ManualOrderInvoiceDelivery,
-        InvoicingJobTypes.InvoiceCancellation, InvoicingJobTypes.StageCapabilityProbe,
-        "IMPORT_PREVIEW", "IMPORT_APPLY"
+        .. MarketplaceHub.Infrastructure.Jobs.JobTypeRegistry.WritingJobTypes,
+        MarketplaceJobTypes.ProductApprovalReconcile, "IMPORT_PREVIEW", "IMPORT_APPLY"
     ];
 
     // Guard job types whose dedup key carries a version that only moves forward, so the key never recurs.
