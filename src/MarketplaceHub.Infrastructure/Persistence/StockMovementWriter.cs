@@ -1,7 +1,16 @@
+using System.Globalization;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
+using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
+
+// SIPARIS-STOK-6: an order line's units sold (ordered less cancelled) and those its return lines, over every claim,
+// already put back in stock.
+internal sealed record ReturnRestockRoom(decimal Sold, decimal Restocked)
+{
+    public decimal Left => Math.Max(0m, Sold - Restocked);
+}
 
 // How a stock movement rounds (SIPARIS-STOK-8). The callers grew apart and each keeps what it did; unifying them is an
 // owner decision, not a refactor.
@@ -74,6 +83,26 @@ internal static class StockMovementWriter
     // manual adjustment and the stock count do this today; returns and marketplace reads do not (SIPARIS-STOK-8, kept).
     public static Task CloseShortfallNoticesAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<Guid> inventoryItemIds, DateTimeOffset now, CancellationToken cancellationToken) =>
         StockShortfallNotices.ResolveForInventoryItemsAsync(db, tenantId, inventoryItemIds, now, cancellationToken);
+
+    // SIPARIS-STOK-6: how many more units of an order line its returns may put back in stock. The cap is the units sold
+    // (ordered less cancelled), not the delivered count: live keeps 0 delivered on some approved and completed returns.
+    // Committed restocks and those added in this unit of work count; read after ReturnPendingStock.LockLinesAsync,
+    // which also locks the order line.
+    public static async Task<ReturnRestockRoom> ReturnRestockRoomAsync(AppDbContext db, Guid tenantId, Guid orderLineId, CancellationToken cancellationToken)
+    {
+        var sold = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == orderLineId).Select(x => x.OrderedQuantity - x.CancelledQuantity).SingleOrDefaultAsync(cancellationToken);
+        var returnLineIds = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderLineId == orderLineId).Select(x => x.Id).ToListAsync(cancellationToken);
+        var committed = await db.ReturnStockDispositions.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && returnLineIds.Contains(x.ReturnLineId) && x.Disposition == ReturnStockDispositionKind.Pass)
+            .SumAsync(x => x.Quantity, cancellationToken);
+        var added = db.ChangeTracker.Entries<ReturnStockDisposition>()
+            .Where(x => x.State == EntityState.Added && x.Entity.TenantId == tenantId && x.Entity.Disposition == ReturnStockDispositionKind.Pass && returnLineIds.Contains(x.Entity.ReturnLineId))
+            .Sum(x => x.Entity.Quantity);
+        return new ReturnRestockRoom(Math.Max(0m, sold), committed + added);
+    }
+
+    // A unit count as the panel writes it in a message ("2", "1.5").
+    public static string Units(decimal value) => value.ToString("0.####", CultureInfo.InvariantCulture);
 
     private static StockProjectionChange Apply(AppDbContext db, InventoryItem item, decimal onHand, decimal ledgerDelta, StockLedgerSource source, string? dispatchSourceEventId)
     {

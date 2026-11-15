@@ -295,6 +295,84 @@ public sealed class StockMovementCharacterizationPostgreSqlTests(PostgreSqlTenan
         }
     }
 
+    // SIPARIS-STOK-6: one order line of two units in two claims. What the claims put back in stock together never
+    // exceeds the units sold; a restock by hand that would is refused with its reason, not cut down.
+    [PostgreSqlFact]
+    public async Task ManualRestock_AcrossTwoClaimsOfOneOrderLine_NeverPutsBackMoreThanWasSold()
+    {
+        var seed = await SeedAsync("sm-cap-manual");
+        try
+        {
+            var second = await AddClaimAsync(seed, "SM-CLAIM-2");
+            await using (var db = fixture.CreateContext())
+                Assert.Null((await Sales(db).ApplyDispositionAsync(seed.TenantId, Actor, seed.ClaimId, new(seed.ReturnLineId, "PASS", 1m, "Kontrol edildi"), $"cap-a-{Guid.NewGuid():N}", "corr", CancellationToken.None)).Error);
+            await using (var db = fixture.CreateContext())
+            {
+                var refused = await Sales(db).ApplyDispositionAsync(seed.TenantId, Actor, second.ClaimId, new(second.ReturnLineId, "PASS", 2m, "Kontrol edildi"), $"cap-b-{Guid.NewGuid():N}", "corr", CancellationToken.None);
+                Assert.Equal("RETURN_ORDER_LINE_QUANTITY_EXCEEDED", refused.Error?.Code);
+                Assert.Equal(409, refused.Error!.Status);
+                Assert.Contains("stoğa", refused.Error.Message, StringComparison.Ordinal);
+            }
+            await using (var db = fixture.CreateContext())
+            {
+                // The units not restocked can still go elsewhere (quarantine), and the one unit left can go back.
+                Assert.Null((await Sales(db).ApplyDispositionAsync(seed.TenantId, Actor, second.ClaimId, new(second.ReturnLineId, "QUARANTINE", 1m, "Kontrol"), $"cap-q-{Guid.NewGuid():N}", "corr", CancellationToken.None)).Error);
+                Assert.Null((await Sales(db).ApplyDispositionAsync(seed.TenantId, Actor, second.ClaimId, new(second.ReturnLineId, "PASS", 1m, "Kontrol edildi"), $"cap-c-{Guid.NewGuid():N}", "corr", CancellationToken.None)).Error);
+            }
+            await using var verify = fixture.CreateContext();
+            Assert.Equal(7m, (await verify.InventoryItems.AsNoTracking().SingleAsync(x => x.Id == seed.ItemId)).OnHand);
+            Assert.Equal(2m, (await MovementsAsync(verify, seed)).Sum(x => x.QuantityDelta));
+        }
+        finally
+        {
+            await CleanupAsync(seed.TenantId);
+        }
+    }
+
+    // SIPARIS-STOK-6: a "Stoğa Ekle" kept with the second claim's approval that would put back more than was sold is not
+    // applied; the owner sees an open issue naming the claim instead of a silent cut.
+    [PostgreSqlFact]
+    public async Task SettledRestock_BeyondTheUnitsSold_IsRefusedWithAnOpenIssue()
+    {
+        var seed = await SeedAsync("sm-cap-pending");
+        try
+        {
+            var second = await AddClaimAsync(seed, "SM-CLAIM-2");
+            await using (var db = fixture.CreateContext())
+                Assert.Null((await Sales(db).ApplyDispositionAsync(seed.TenantId, Actor, seed.ClaimId, new(seed.ReturnLineId, "PASS", 2m, "Kontrol edildi"), $"cap-a-{Guid.NewGuid():N}", "corr", CancellationToken.None)).Error);
+            await using (var db = fixture.CreateContext())
+            {
+                var decision = new ReturnDecision { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, ClaimId = second.ClaimId, Action = "APPROVE", IdempotencyKey = "sm-cap:approve", Status = "SUCCEEDED", ActorUserId = Actor, CreatedAt = DateTimeOffset.UtcNow, ReturnLineIds = [second.ReturnLineId], StockLinesJson = ReturnPendingStock.Serialize([new(second.ReturnLineId, null)]), StockStatus = ReturnPendingStockPolicy.Pending };
+                db.ReturnDecisions.Add(decision);
+                await db.SaveChangesAsync();
+                await ReturnPendingStock.SettleAndSaveAsync(db, () => ReturnPendingStock.SettleAsync(db, decision, force: true, "corr-cap", DateTimeOffset.UtcNow, CancellationToken.None), CancellationToken.None);
+            }
+            await using var verify = fixture.CreateContext();
+            Assert.Equal(7m, (await verify.InventoryItems.AsNoTracking().SingleAsync(x => x.Id == seed.ItemId)).OnHand);
+            Assert.False(await verify.ReturnStockDispositions.AnyAsync(x => x.TenantId == seed.TenantId && x.ReturnLineId == second.ReturnLineId));
+            var issue = await verify.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seed.TenantId && x.Code == "RETURN_RESTOCK_EXCEEDS_SOLD");
+            Assert.Equal(IssueStatus.Open, issue.Status);
+            Assert.Contains("SM-CLAIM-2", issue.Summary, StringComparison.Ordinal);
+        }
+        finally
+        {
+            await CleanupAsync(seed.TenantId);
+        }
+    }
+
+    // A second approved claim with one accepted return line of two units on the seed's order line.
+    private async Task<(Guid ClaimId, Guid ReturnLineId)> AddClaimAsync(Seed seed, string externalClaimId)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var claim = new ReturnClaim { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, ConnectionId = seed.ConnectionId, OrderId = seed.OrderId, ExternalClaimId = externalClaimId, Status = ReturnClaimStatus.Approved, RawStatus = "Accepted", LastRemoteModifiedAt = now, CreatedAt = now, UpdatedAt = now, Version = 1 };
+        var line = new ReturnLine { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, ClaimId = claim.Id, OrderLineId = seed.OrderLineId, ExternalLineId = "CI-2", Quantity = 2m, RawStatus = "Accepted" };
+        await using var db = fixture.CreateContext();
+        db.ReturnClaims.Add(claim);
+        db.ReturnLines.Add(line);
+        await db.SaveChangesAsync();
+        return (claim.Id, line.Id);
+    }
+
     private sealed record Seed(Guid TenantId, Guid ConnectionId, Guid ProductId, Guid VariantId, Guid ItemId, Guid OrderId, Guid OrderLineId, Guid ClaimId, Guid ReturnLineId, Guid ShortfallLineId, Guid ReservationId);
 
     private static string Describe(StockLedgerEntry row) =>

@@ -2924,6 +2924,10 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 if (variantId is null) return ServiceResult<ReturnDetailView>.Fail("INVENTORY_MAPPING_REQUIRED", "İade satırı yerel varyantla eşleşmiyor.", 422);
                 var item = await db.InventoryItems.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == variantId && x.LocationCode == "MAIN", token);
                 if (item is null) return ServiceResult<ReturnDetailView>.Fail("INVENTORY_MAPPING_REQUIRED", "MAIN inventory item bulunamadı.", 422);
+                // SIPARIS-STOK-6: with the other claims of the same order line, never more back in stock than was sold.
+                if (disposition == ReturnStockDispositionKind.Pass
+                    && await StockMovementWriter.ReturnRestockRoomAsync(db, tenantId, line.OrderLineId, token) is var room && command.Quantity > room.Left)
+                    return ServiceResult<ReturnDetailView>.Fail("RETURN_ORDER_LINE_QUANTITY_EXCEEDED", $"Bu sipariş satırından {StockMovementWriter.Units(room.Sold)} adet satıldı ve iade taleplerinden {StockMovementWriter.Units(room.Restocked)} adedi zaten stoğa eklendi; en fazla {StockMovementWriter.Units(room.Left)} adet daha stoğa eklenebilir.", 409);
                 var now = timeProvider.GetUtcNow();
                 db.ReturnStockDispositions.Add(new ReturnStockDisposition { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claimId, ReturnLineId = line.Id, InventoryItemId = item.Id, Disposition = disposition, Quantity = command.Quantity, IdempotencyKey = idempotencyKey, Reason = command.Reason.Trim(), ActorUserId = userId, CreatedAt = now });
                 if (disposition == ReturnStockDispositionKind.Pass)
