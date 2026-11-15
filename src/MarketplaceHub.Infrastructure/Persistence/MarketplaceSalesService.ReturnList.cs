@@ -216,6 +216,7 @@ public sealed partial class MarketplaceSalesService
         List<ReturnCardLine> lines = lineClaimIds.Length == 0
             ? []
             : await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && lineClaimIds.Contains(x.ClaimId))
+                .OrderBy(x => x.Id)
                 .Select(x => new ReturnCardLine(x.ClaimId, x.OrderLineId, x.RawStatus))
                 .ToListAsync(cancellationToken);
         // One lookup of the order lines that still exist instead of one sub-query per return line.

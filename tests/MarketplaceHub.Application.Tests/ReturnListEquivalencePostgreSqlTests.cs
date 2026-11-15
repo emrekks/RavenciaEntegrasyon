@@ -303,13 +303,8 @@ public sealed class ReturnListEquivalencePostgreSqlTests(PostgreSqlTenantIsolati
     private static void AssertSamePage(CursorCodec cursors, PageResult<ReturnListView> expected, PageResult<ReturnListView> actual, string what)
     {
         static string Rows(PageResult<ReturnListView> result) => string.Join(", ", result.Items.Select(item => item.RowKey ?? item.Id.ToString("D")));
-        // A view lists its claim's return lines in the order the database hands them (ReturnViewsAsync reads them without
-        // an order, before and after this change), so lines and their statuses are compared in id order.
-        static string Json(PageResult<ReturnListView> result) => JsonSerializer.Serialize(result.Items.Select(item => item with
-        {
-            Lines = item.Lines?.OrderBy(line => line.Id).ToList(),
-            LineStatuses = item.LineStatuses is null ? null : new SortedDictionary<Guid, string>(item.LineStatuses.ToDictionary())
-        }));
+        // A view lists its claim's return lines in id order (RETURN-ORDER), so lines and their statuses compare as they are.
+        static string Json(PageResult<ReturnListView> result) => JsonSerializer.Serialize(result.Items);
         var (expectedJson, actualJson) = (Json(expected), Json(actual));
         var at = Enumerable.Range(0, Math.Min(expectedJson.Length, actualJson.Length)).FirstOrDefault(index => expectedJson[index] != actualJson[index]);
         Assert.True(expectedJson == actualJson, $"items differ: {what}: [{Rows(expected)}] vs [{Rows(actual)}] at {at}: {expectedJson[Math.Max(0, at - 300)..Math.Min(expectedJson.Length, at + 200)]} ||| {actualJson[Math.Max(0, at - 300)..Math.Min(actualJson.Length, at + 200)]}");
