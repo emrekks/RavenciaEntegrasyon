@@ -220,8 +220,9 @@ public static class ImportedProfileCardFallbacks
         if (platform is "TRENDYOL" or "HEPSIBURADA" or "PTTAVM" && Picked(ProductUpdateFields.Delivery) && profileDeliveryDays is not > 0 && cardDeliveryDays is > 0)
             notices.Add($"{prefix} Teslimat Süresi yok; ürün kartındaki {cardDeliveryDays} gün gönderildi.");
         var hepsiburadaPackage = picked is null || new[] { ProductUpdateFields.Title, ProductUpdateFields.Description, ProductUpdateFields.Images, ProductUpdateFields.Attributes, ProductUpdateFields.Warranty, ProductUpdateFields.Desi, ProductUpdateFields.VatRate }.Any(picked.Contains);
-        if (platform == "HEPSIBURADA" && hepsiburadaPackage && string.IsNullOrWhiteSpace(profileWarranty))
-            notices.Add($"{prefix} Garanti Süresi yok; ürün kartındaki {cardWarrantyMonths ?? 0} ay gönderildi.");
+        // An empty card warranty is never sent (the composer refuses it as a missing Garanti Süresi): nothing to name.
+        if (platform == "HEPSIBURADA" && hepsiburadaPackage && string.IsNullOrWhiteSpace(profileWarranty) && cardWarrantyMonths is int cardWarranty)
+            notices.Add($"{prefix} Garanti Süresi yok; ürün kartındaki {cardWarranty} ay gönderildi.");
         return notices;
     }
 }
@@ -281,7 +282,7 @@ public sealed record BulkPublicationJob(Guid ProductId, Guid ConnectionId, Guid 
 public sealed record PublicationSkippedVariant(string Sku, string Code, string Message);
 public sealed record PublicationEnqueued(Guid JobId, IReadOnlyList<PublicationSkippedVariant> SkippedVariants);
 public sealed record BulkPublicationResult(int Queued, int Skipped, IReadOnlyList<BulkPublicationFailure> Failed, IReadOnlyList<BulkPublicationJob>? Jobs = null);
-public sealed record UpdateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<ProductAttributeCommand>? Attributes = null, IReadOnlyList<CreateVariantCommand>? VariantsToCreate = null, IReadOnlyList<UpdateVariantCommand>? VariantUpdates = null, string? Status = null, decimal? DefaultListPrice = null, decimal? DefaultSalePrice = null, IReadOnlyList<Guid>? VariantIdsToDelete = null, int? WarrantyMonths = null, Guid? TrendyolWebColorValueId = null, decimal? VatRate = null, string? VatInclusion = null, int? DeliveryDays = null, IReadOnlyList<Guid>? PlaceholderVariantIdsToDelete = null, IReadOnlyList<string>? FamilySharedFields = null, IReadOnlyDictionary<Guid, long>? LoadedFamilyVersions = null);
+public sealed record UpdateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<ProductAttributeCommand>? Attributes = null, IReadOnlyList<CreateVariantCommand>? VariantsToCreate = null, IReadOnlyList<UpdateVariantCommand>? VariantUpdates = null, string? Status = null, decimal? DefaultListPrice = null, decimal? DefaultSalePrice = null, IReadOnlyList<Guid>? VariantIdsToDelete = null, int? WarrantyMonths = null, Guid? TrendyolWebColorValueId = null, decimal? VatRate = null, string? VatInclusion = null, int? DeliveryDays = null, IReadOnlyList<Guid>? PlaceholderVariantIdsToDelete = null, IReadOnlyList<string>? FamilySharedFields = null, IReadOnlyDictionary<Guid, long>? LoadedFamilyVersions = null, bool ClearWarrantyMonths = false);
 // Teslimat Süresi on the product card: whole days, 1-30 (n11 takes at most 30); a new card starts at 1.
 public static class ProductDeliveryDays
 {

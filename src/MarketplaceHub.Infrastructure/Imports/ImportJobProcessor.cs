@@ -245,8 +245,9 @@ public sealed class ImportJobProcessor(
                             VatRate = fileVatRate,
                             VatInclusion = fileVatRate is null ? null : "INCLUDED",
                             // Garanti Süresi (Ay) and Teslimat Süresi (Gün) from the file's columns, stored as the editor
-                            // stores them (0 = no warranty); a file or cell without them keeps no warranty and the default days.
-                            WarrantyMonths = ImportFileReader.TryWarrantyMonths(values, out var warrantyMonths) && warrantyMonths is > 0 ? warrantyMonths : null,
+                            // stores them (0 = no warranty, kept as 0); a file or cell without them gets a new card's
+                            // defaults (0 months, the default days), as the editor's new product form starts.
+                            WarrantyMonths = ImportFileReader.TryWarrantyMonths(values, out var warrantyMonths) && warrantyMonths is int months ? months : 0,
                             DeliveryDays = ImportFileReader.TryDeliveryDays(values, out var deliveryDays) && deliveryDays is int days ? days : ProductDeliveryDays.Default,
                             Status = status,
                             CreatedAt = now,

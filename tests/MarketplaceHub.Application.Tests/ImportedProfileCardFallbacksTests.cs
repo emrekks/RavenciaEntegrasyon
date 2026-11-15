@@ -21,12 +21,14 @@ public sealed class ImportedProfileCardFallbacksTests
     }
 
     [Fact]
-    public void Hepsiburada_NamesDeliveryAndWarranty_WarrantyZeroWhenTheCardHasNone()
+    public void Hepsiburada_NamesDeliveryAndWarranty_AndNoWarrantyNoticeWhenTheCardHasNone()
     {
-        var notices = ImportedProfileCardFallbacks.Notices("HEPSIBURADA", "Hepsiburada", Label, Imported, null, null, 2, null, null);
+        var notices = ImportedProfileCardFallbacks.Notices("HEPSIBURADA", "Hepsiburada", Label, Imported, null, null, 2, 0, null);
         Assert.Equal(2, notices.Count);
         Assert.Contains(notices, notice => notice.EndsWith("Teslimat Süresi yok; ürün kartındaki 2 gün gönderildi.", StringComparison.Ordinal));
         Assert.Contains(notices, notice => notice.EndsWith("Garanti Süresi yok; ürün kartındaki 0 ay gönderildi.", StringComparison.Ordinal));
+        // An empty card warranty (15 Nov 2026: not 0) is never sent; the composer refuses it, so no notice names it.
+        Assert.Single(ImportedProfileCardFallbacks.Notices("HEPSIBURADA", "Hepsiburada", Label, Imported, null, null, 2, null, null));
         Assert.Single(ImportedProfileCardFallbacks.Notices("HEPSIBURADA", "Hepsiburada", Label, Imported, null, null, 2, 24, [ProductUpdateFields.Warranty]), notice => notice.Contains("24 ay", StringComparison.Ordinal));
     }
 

@@ -39867,6 +39867,10 @@
               ],
               "format": "int64"
             }
+          },
+          "clearWarrantyMonths": {
+            "type": "boolean",
+            "default": false
           }
         }
       },

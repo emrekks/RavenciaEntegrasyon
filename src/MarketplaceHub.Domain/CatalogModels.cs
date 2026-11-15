@@ -13,8 +13,10 @@ public sealed class Product
     public Guid? CategoryId { get; set; }
     public decimal? DefaultListPrice { get; set; }
     public decimal? DefaultSalePrice { get; set; }
-    // Warranty in months, sent to the marketplaces that take one (Hepsiburada GarantiSuresi); null when none is given.
-    public int? WarrantyMonths { get; set; }
+    // Garanti Süresi in months, sent to the marketplaces that take one (Hepsiburada GarantiSuresi, PttAVM). 0 = no warranty
+    // (a value: a new card starts with it, as the editor's new form does); null = not filled, which only a draft may keep
+    // (owner, 15 Nov 2026: "0 ile boş farklı").
+    public int? WarrantyMonths { get; set; } = 0;
     // Teslimat Süresi (gün): the days to hand an order to the carrier, sent as each marketplace's delivery/dispatch time
     // (Trendyol deliveryOption.deliveryDuration, n11 preparingDay). A new card starts at 1; null only on a card that
     // predates the column and was not backfilled.

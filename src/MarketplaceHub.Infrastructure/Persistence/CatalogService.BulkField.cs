@@ -160,8 +160,8 @@ public sealed partial class CatalogService
                 foreach (var product in products) Set(product, product.VatInclusion, value.Text, next => product.VatInclusion = next);
                 break;
             case BulkProductFields.WarrantyMonths:
-                // The editor keeps "0 = garanti yok" as an empty warranty.
-                foreach (var product in products) Set(product, product.WarrantyMonths, value.Integer > 0 ? value.Integer : null, next => product.WarrantyMonths = next);
+                // 0 = garanti yok, kept as 0 (an empty warranty is "not filled", which a bulk value never writes).
+                foreach (var product in products) Set(product, product.WarrantyMonths, value.Integer, next => product.WarrantyMonths = next);
                 break;
             case BulkProductFields.DeliveryDays:
                 foreach (var product in products) Set(product, product.DeliveryDays, value.Integer, next => product.DeliveryDays = next);

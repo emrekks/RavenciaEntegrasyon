@@ -262,6 +262,9 @@ public sealed partial class MarketplaceJobProcessor
                 // carries none leaves it unknown.
                 VatRate = listingVatRate,
                 VatInclusion = listingVatRate is null ? null : "INCLUDED",
+                // A marketplace listing carries no panel warranty: the new card starts at 0 (no warranty), as the
+                // editor's new product form does. An existing card's warranty is never touched by an import.
+                WarrantyMonths = 0,
                 Status = ProductStatus.Active,
                 CreatedAt = createdAt ?? now,
                 UpdatedAt = now,

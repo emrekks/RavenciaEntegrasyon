@@ -2344,13 +2344,14 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         db.ChangeTracker.Clear();
         var incomplete = await service.UpdateProductAsync(tenant.Id, draft.Value.Id, kept.Value.Version, new UpdateProductCommand("Taslak Bluz", "Açıklama", null, null, Status: "ACTIVE", VatRate: 10m, VatInclusion: "INCLUDED"), CancellationToken.None);
         Assert.Equal((422, ProductRequiredFields.Code), (incomplete.Error!.Status, incomplete.Error.Code));
-        Assert.Equal("Zorunlu alanları doldurun: Marka, Panel Kategorisi, Model Kodu, Barkod, Desi, Liste Fiyatı, Satış Fiyatı.", incomplete.Error.Message);
+        // The draft was created without a warranty, which stays empty (15 Nov 2026: 0 and empty differ), so it is named too.
+        Assert.Equal("Zorunlu alanları doldurun: Marka, Panel Kategorisi, Model Kodu, Barkod, Desi, Garanti Süresi, Liste Fiyatı, Satış Fiyatı.", incomplete.Error.Message);
         Assert.Equal("Marka zorunludur.", incomplete.Error.FieldErrors!["brandId"][0]);
         Assert.Equal(ProductStatus.Draft, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == draft.Value.Id)).Status);
         db.ChangeTracker.Clear();
         var draftVariant = await db.ProductVariants.AsNoTracking().SingleAsync(x => x.ProductId == draft.Value.Id);
         var completed = await service.UpdateProductAsync(tenant.Id, draft.Value.Id, kept.Value.Version, new UpdateProductCommand("Taslak Bluz", "Açıklama", brand.Id, category.Id, Status: "ACTIVE", VatRate: 10m, VatInclusion: "INCLUDED",
-            DefaultListPrice: 120m, DefaultSalePrice: 100m, VariantUpdates: [new UpdateVariantCommand(draftVariant.Id, sku, $"{sku}B", "DRF-MODEL", Desi: 1m)]), CancellationToken.None);
+            DefaultListPrice: 120m, DefaultSalePrice: 100m, WarrantyMonths: 0, VariantUpdates: [new UpdateVariantCommand(draftVariant.Id, sku, $"{sku}B", "DRF-MODEL", Desi: 1m)]), CancellationToken.None);
         Assert.True(completed.Succeeded, completed.Error?.Message);
         Assert.Equal("ACTIVE", completed.Value!.Status);
         Assert.All(await db.ProductVariants.AsNoTracking().Where(x => x.ProductId == draft.Value.Id).ToListAsync(), variant => Assert.Equal(ProductStatus.Active, variant.Status));
