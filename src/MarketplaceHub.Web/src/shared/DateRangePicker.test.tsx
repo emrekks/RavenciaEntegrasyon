@@ -94,6 +94,71 @@ describe('DateRangePicker presets', () => {
     expect(Array.from(document.body.querySelectorAll('.date-range-picker-month > strong')).map(label => label.textContent)).toEqual(['Eylül 2026', 'Ekim 2026'])
   })
 
+  it('moves focus to the chosen day on opening, and Escape gives it back to the trigger', () => {
+    act(() => root.render(<DateRangePicker from="2026-10-05" to="2026-10-08" onChange={vi.fn()} />))
+    const trigger = container.querySelector<HTMLButtonElement>('.date-range-picker-trigger')!
+    act(() => trigger.click())
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('5 Ekim 2026')
+    act(() => { document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })) })
+    expect(document.body.querySelector('.date-range-picker-popover')).toBeNull()
+    expect(document.activeElement).toBe(trigger)
+  })
+
+  it('focuses the first ready range when no day is chosen', () => {
+    act(() => root.render(<DateRangePicker from="" to="" onChange={vi.fn()} />))
+    act(() => container.querySelector<HTMLButtonElement>('.date-range-picker-trigger')!.click())
+    expect(document.activeElement).toBe(document.body.querySelector('.date-range-picker-presets button'))
+  })
+
+  it('walks the days with the arrow keys, turning the month, and keeps one day in the Tab order', () => {
+    const onChange = vi.fn()
+    act(() => root.render(<DateRangePicker from="2026-09-01" to="2026-09-03" onChange={onChange} />))
+    act(() => container.querySelector<HTMLButtonElement>('.date-range-picker-trigger')!.click())
+    const press = (key: string) => act(() => { document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })) })
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('1 Eylül 2026')
+    press('ArrowRight')
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('2 Eylül 2026')
+    press('ArrowDown')
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('9 Eylül 2026')
+    press('End')
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('13 Eylül 2026')
+    press('ArrowLeft'); press('Home')
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('7 Eylül 2026')
+    // Back past the first calendar: the months turn so the day stays on screen.
+    press('ArrowUp'); press('ArrowUp')
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('24 Ağustos 2026')
+    expect(Array.from(document.body.querySelectorAll('.date-range-picker-month > strong')).map(label => label.textContent)).toEqual(['Ağustos 2026', 'Eylül 2026'])
+    expect(Array.from(document.body.querySelectorAll('[role="gridcell"]')).filter(cell => (cell as HTMLElement).tabIndex === 0)).toHaveLength(1)
+    // A day after today stays out of reach.
+    press('ArrowRight')
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('25 Ağustos 2026')
+    act(() => (document.activeElement as HTMLButtonElement).click())
+    expect(onChange).toHaveBeenCalled()
+  })
+
+  it('does not move to a day after today', () => {
+    act(() => root.render(<DateRangePicker from="2026-10-11" to="2026-10-11" onChange={vi.fn()} />))
+    act(() => container.querySelector<HTMLButtonElement>('.date-range-picker-trigger')!.click())
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('11 Ekim 2026')
+    act(() => { document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true })) })
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('11 Ekim 2026')
+  })
+
+  it('keeps Tab inside the open calendar', () => {
+    act(() => root.render(<DateRangePicker from="" to="" onChange={vi.fn()} />))
+    act(() => container.querySelector<HTMLButtonElement>('.date-range-picker-trigger')!.click())
+    const buttons = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.date-range-picker-popover button:not(:disabled)')).filter(button => button.tabIndex >= 0)
+    const last = buttons[buttons.length - 1]
+    act(() => last.focus())
+    const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })
+    act(() => { last.dispatchEvent(tab) })
+    expect(tab.defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(buttons[0])
+    const back = new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true })
+    act(() => { buttons[0].dispatchEvent(back) })
+    expect(document.activeElement).toBe(last)
+  })
+
   it('opens above the trigger when the viewport has more space there', () => {
     act(() => root.render(<DateRangePicker from="" to="" onChange={() => undefined} />))
     const picker = container.querySelector<HTMLDivElement>('.date-range-picker')!
