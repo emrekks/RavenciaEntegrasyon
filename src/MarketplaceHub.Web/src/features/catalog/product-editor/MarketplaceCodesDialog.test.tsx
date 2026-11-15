@@ -26,7 +26,7 @@ const secondShopify = { connectionId: 'sh-2', platformCode: 'SHOPIFY', displayNa
 const codes: MarketplaceCodes = {
   connections: [hepsiburada, shopify],
   variants: [
-    { variantId: 'v-1', sku: 'KZK-S', barcode: '8690000000011', codes: [{ connectionId: 'hb-1', externalId: 'HBCV00001ABCD', externalBarcode: '8690000000011', externalSku: 'KZK-S' }, { connectionId: 'sh-1', externalId: '44791234567890', externalBarcode: null, externalSku: 'KZK-S' }] },
+    { variantId: 'v-1', sku: 'KZK-S', barcode: '8690000000011', codes: [{ connectionId: 'hb-1', externalId: 'HBCV00001ABCD', externalBarcode: '8690000000011', externalSku: 'KZK-S', lastSeenAt: null, healthStatus: null, healthReason: null }, { connectionId: 'sh-1', externalId: '44791234567890', externalBarcode: null, externalSku: 'KZK-S', lastSeenAt: null, healthStatus: null, healthReason: null }] },
     { variantId: 'v-2', sku: 'KZK-M', barcode: null, codes: [] }
   ]
 }

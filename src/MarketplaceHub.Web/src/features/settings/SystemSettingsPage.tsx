@@ -27,7 +27,7 @@ import { UserManagementSection } from './sections/UserManagementSection'
 import { AiSettingsSection } from './sections/AiSettingsSection'
 
 type SecuritySession = ApiAnswer<'getAuthSessions'>[number]
-type MfaSetup = { otpauthUri: string; secret?: string; qrSvg: string; expiresAt: string }
+type MfaSetup = ApiAnswer<'postAuthMfaSetup'>
 type SessionConfirmation = { action: 'revoke' | 'revoke-others' | 'delete' | 'delete-closed'; sessionId?: string }
 
 const settingsSectionOrder = settingsSections.map(item => item.key)

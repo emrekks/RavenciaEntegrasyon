@@ -3,6 +3,7 @@
 // panel (SizeChartService.UsesSkillFile). "Kullan" only puts the picture into the editor's images as the last one; Kaydet
 // ties it to the card and sends nothing, a marketplace gets it with Hızlı Güncelle, Platformlarda Güncelle or Yayınla.
 // A failed or cancelled run adds nothing.
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -10,12 +11,12 @@ import { hubApi } from '../../../shared/api'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { chartDrawnMeanwhile, isUnknownSizeChartOutcome, sizeChartFailureMessage } from './size-chart-outcome'
 import { Button, FieldHelp, IconButton, Modal, UiIcon } from '../../../shared/components'
-import { addSizeChartColumn, initialSizeChartDraft, maximumSizeChartColumns, newColumnIssue, presetSizeChartColumns, removeSizeChartColumn, setSizeChartCell, sizeChartCellKey, sizeChartColumnLabel, validateSizeChartDraft, type SizeChartDraft, type SizeChartMeasurements } from './size-chart-measurements'
+import { addSizeChartColumn, initialSizeChartDraft, maximumSizeChartColumns, newColumnIssue, presetSizeChartColumns, removeSizeChartColumn, setSizeChartCell, sizeChartCellKey, sizeChartColumnLabel, validateSizeChartDraft, type SizeChartDraft } from './size-chart-measurements'
 import './size-chart.css'
 import { queryKeys } from '../../../shared/api/query-keys'
 
-export type SizeChartInfo = { sizes: string[]; sizeOptionLabel: string | null; measurements: SizeChartMeasurements | null; sizeChartUrl: string | null; aiReady: boolean; aiIssue: string | null; lastGeneratedUrl?: string | null }
-export type SizeChartResult = { url: string; fileAssetId: string; inputTokens: number | null; outputTokens: number | null; costUsd: number | null }
+export type SizeChartInfo = ApiAnswer<'getProductsByIdSizeChart'>
+export type SizeChartResult = ApiAnswer<'postProductsByIdSizeChartGenerate'>
 
 export function SizeChartButton({ productId, sizes, disabledReason, onUse }: { productId: string | null; sizes: string[]; disabledReason: string | null; onUse: (url: string) => void }) {
   const [open, setOpen] = useState(false)

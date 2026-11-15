@@ -369,7 +369,7 @@ export function missingPublicationChecks(productChecks: PublicationProductCheck[
 // The Shopify write permissions the server wants verified before it queues a publish (CatalogService
 // HasShopifyPublicationEvidenceAsync, SHOPIFY_PUBLICATION_SCOPES_REQUIRED). The editor's card and the bulk check both
 // read them through this key and turn them into gaps with `shopifyCapabilityIssues`, so the two agree.
-export type ConnectionCapability = { code: string; supportLevel: string; verifiedForConnection: boolean }
+export type ConnectionCapability = ApiAnswer<'getConnectionsByIdCapabilities'>[number]
 export const requiredShopifyCapabilities = ['PRODUCT_WRITE', 'INVENTORY_WRITE', 'PUBLICATION_READ', 'PUBLICATION_WRITE'] as const
 export function connectionCapabilitiesQueryKey(connectionId: string) {
   return queryKeys.capabilities(connectionId)

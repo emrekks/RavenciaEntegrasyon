@@ -29,7 +29,7 @@ function pazaramaActionWarning(action: string) {
     default: return 'Bu işlem Pazarama’ya gönderilecek.'
   }
 }
-type PazaramaFinance = { readAt: string; transactions: Array<{ transactionCode: string; status: string; amount: number; commission: number; allowance: number; couponDiscount: number; integrationAmount: number; cargoDebt: number; stoppage: number; installments: number; transactionDate: string | null; transferredDate: string | null }>; commissionInvoices: Array<{ orderNumber: string; invoiceNumber: string | null; invoiceDate: string | null; vatAmount: number; operationStatus: string | null }> }
+type PazaramaFinance = ApiAnswer<'getOrdersByIdFinance'>
 // Pazarama finance of one order (commission, allowance, transfer date): a live read when asked for, never stored.
 function PazaramaFinancePanel({ orderId }: { orderId: string }) {
   const [requested, setRequested] = useState(false)
@@ -45,7 +45,7 @@ function PazaramaFinancePanel({ orderId }: { orderId: string }) {
       ? <p role="status">Pazarama bu sipariş için henüz finans hareketi döndürmedi.</p>
       : <dl className="details">{finance.data.transactions.map(row => <Fragment key={row.transactionCode}>
         <dt>{row.status} · {day(row.transactionDate)}</dt>
-        <dd>Tutar {money(row.amount)} · Komisyon {money(row.commission)} · Hakediş {money(row.allowance)} · Aktarım {row.transferredDate ? day(row.transferredDate) : 'bekliyor'}<br /><small>Kargo {money(row.cargoDebt)} · Entegrasyon {money(row.integrationAmount)} · Stopaj {money(row.stoppage)} · Kupon {money(row.couponDiscount)}</small></dd>
+        <dd>Tutar {money(row.amount)} · Komisyon {row.commission === null ? '—' : money(row.commission)} · Hakediş {money(row.allowance)} · Aktarım {row.transferredDate ? day(row.transferredDate) : 'bekliyor'}<br /><small>Kargo {money(row.cargoDebt)} · Entegrasyon {money(row.integrationAmount)} · Stopaj {money(row.stoppage)} · Kupon {money(row.couponDiscount)}</small></dd>
       </Fragment>)}</dl>)}
     {finance.data && finance.data.commissionInvoices.length > 0 && <>
       <h3>Komisyon Faturaları</h3>
