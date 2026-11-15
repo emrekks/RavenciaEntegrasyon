@@ -7,7 +7,7 @@ import { copyText } from '../../shared/copy-text'
 import { createPortal } from 'react-dom'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { hubApi, hubPoll, loadAllPages } from '../../shared/api'
+import { hubApi, hubPoll } from '../../shared/api'
 import { readUrlList, readUrlNumber, readUrlText, useChangeEffect, useListUrlSync } from '../../shared/list-url-state'
 import { newIdempotencyKey } from '../../shared/idempotency'
 import { invoiceSendDeniedReason, useCanSendInvoices } from '../../shared/hooks/useCanSendInvoices'
@@ -55,7 +55,7 @@ import { useDismissable } from '../../shared/hooks/useDismissable'
 import { unknownCount } from '../../shared/tab-counts'
 import { personName } from '../../shared/person-name'
 import { ListEmptyState } from '../../shared/components/EmptyState'
-import { queryKeys } from '../../shared/api/query-keys'
+import { connectionQueries, queryKeys } from '../../shared/api/query-keys'
 // Platforms whose invoice state is kept by hand (the API server's ManualInvoiceStatusPlatforms): Shopify has no invoice
 // of its own; N11, PttAVM and Pazarama report only invoices sent through their API, not ones uploaded in their panel.
 const manualInvoiceStatusPlatforms = new Set(['SHOPIFY', 'N11', 'PTTAVM', 'PAZARAMA'])
@@ -369,7 +369,7 @@ export function InvoicesPage() {
     const timeout = window.setTimeout(() => setMessageState(''), messageKind === 'info' ? 7000 : 5500)
     return () => window.clearTimeout(timeout)
   }, [message, messageKind])
-  const connections = useQuery({ queryKey: queryKeys.connections('billing-workspace'), queryFn: () => loadAllPages<Connection>('/connections') })
+  const connections = useQuery(connectionQueries.list<Connection>())
   const providerConnections = connections.data?.items ?? []
   const provider = providerConnections.find(x => x.platformCode === 'TRENDYOL_EFATURAM' && x.hasCredential && (x.status === 'ACTIVE' || x.status === 'VERIFIED'))
   const providerForItem = (item: InvoiceWorkspace) => invoiceProviderForEnvironment(providerConnections, item.environment)

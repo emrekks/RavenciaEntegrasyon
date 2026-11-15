@@ -100,7 +100,7 @@ import { VariantStatusDot } from './VariantStatusDot'
 import { variantStatus } from './variant-status'
 import { PanelSelect } from '../../../shared/PanelSelect'
 import { thumbnailSrcSet, thumbnailUrl } from '../../../shared/product-thumbnail'
-import { queryKeys } from '../../../shared/api/query-keys'
+import { connectionQueries, queryKeys } from '../../../shared/api/query-keys'
 
 // The Eşleştirmeler page's "Kategori Alanları ve Değerleri" window, loaded with that page's code when a gap opens it.
 // The products list's Toplu Düzenleme window, opened on the editor's unsaved rows (Toplu Düzenle in the variant toolbar).
@@ -1498,7 +1498,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const seedProduct = editProductId ? productToEdit.data : productToCopy.data
   const categories = useQuery({ queryKey: queryKeys.categories('new-product'), queryFn: () => loadAllPages<Category>('/catalog/categories') })
   const brands = useQuery({ queryKey: queryKeys.brands('new-product'), queryFn: () => loadAllPages<Brand>('/catalog/brands') })
-  const connections = useQuery({ queryKey: queryKeys.connections('new-product'), queryFn: () => loadAllPages<MarketplaceConnection>('/connections') })
+  const connections = useQuery(connectionQueries.list<MarketplaceConnection>())
   const pttAvmManualWrites = usePttAvmManualWrites((connections.data?.items ?? []).filter(isProductUpdateConnection))
   // An edit or a copy keeps its fields masked until the product and the category and brand lists that name its values
   // are in: the empty defaults and the single-product SKU, barcode and price fields must not show before the variant

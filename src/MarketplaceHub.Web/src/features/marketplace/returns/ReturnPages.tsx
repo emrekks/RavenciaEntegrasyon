@@ -5,7 +5,7 @@ import { observeUnitPriceAlignment } from '../unit-price-alignment'
 import { Fragment, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { hubApi, hubPoll, loadAllPages } from '../../../shared/api'
+import { hubApi, hubPoll } from '../../../shared/api'
 import { CardBackgroundIcon, cargoCarrier, cargoFilterOptions, cargoLabel, CountUp, StickyActionBar, TitleHint } from '../../../shared/components'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { sendStockDisposition, type PendingDispositionKeys } from './return-disposition-key'
@@ -41,7 +41,7 @@ import { personName } from '../../../shared/person-name'
 import { cardCountText, toneAbove } from '../../../shared/metric-value'
 import { useMetricSource } from '../use-metric-source'
 import { EmptyState } from '../../../shared/components/EmptyState'
-import { queryKeys } from '../../../shared/api/query-keys'
+import { connectionQueries, queryKeys } from '../../../shared/api/query-keys'
 
 // Empty text of the tabs that list a special state, instead of the generic "sync the returns" line.
 const tabEmptyCopy: Record<string, [string, string]> = {
@@ -424,7 +424,7 @@ export function ReturnsPage() {
   const summary = useQuery({ queryKey: queryKeys.returns('summary', appliedFilters, refinements), queryFn: () => hubPoll<ReturnSummary>(`/returns/summary?${returnSummaryParams(appliedFilters, refinements).toString()}`), placeholderData: keepPreviousData, refetchInterval: 30_000 })
   const nextCursor = query.data?.nextCursor ?? null
   if (nextCursor && !query.isPlaceholderData && pageCursors[pageNumber + 1] !== nextCursor) setPageCursors(current => ({ ...current, [pageNumber + 1]: nextCursor }))
-  const connections = useQuery({ queryKey: queryKeys.connections('returns'), queryFn: () => loadAllPages<Connection>('/connections') })
+  const connections = useQuery(connectionQueries.list<Connection>())
   const returnConnections = activeReturnSyncConnections(connections.data?.items ?? [])
   const sync = useMutation({ mutationFn: () => enqueueReturnSyncs(returnConnections, connection => hubApi(`/connections/${connection.id}/return-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() } })), onSuccess: async result => { notifyReturn(handleNotice, result.failed ? `${result.succeeded} bağlantıda iade eşitlemesi kuyruğa alındı; ${result.failed} bağlantıda başlatılamadı.` : `${result.succeeded} bağlantıda iade eşitlemesi kuyruğa alındı. İş tamamlandığında tüm iadeler otomatik yenilenir.`, result.failed ? 'error' : 'info'); await client.invalidateQueries({ queryKey: queryKeys.returns() }) }, onError: value => notifyReturn(handleNotice, value instanceof Error ? value.message : 'İade eşitlemesi başlatılamadı.', 'error') })
   const [bulkIds, setBulkIds] = useState<string[]>([])

@@ -9,7 +9,10 @@
 //
 // The arrays are exactly the ones the screens wrote by hand before; only where they are written changed. A typed client
 // generated from the API's OpenAPI document can later give each root typed parts and a queryOptions with its queryFn
-// without changing the keys.
+// without changing the keys (connectionQueries below is the first such read).
+import { queryOptions } from '@tanstack/react-query'
+// Through the index, the module the screens import, so a test that mocks '…/shared/api' mocks these reads too.
+import { loadAllPages } from './index'
 
 /** The resources a realtime change announcement names (useOperationsRealtime). */
 export type RealtimeResource = 'orders' | 'returns' | 'products' | 'inventory' | 'invoices' | 'connections' | 'questions' | 'dashboard' | 'jobs'
@@ -136,3 +139,14 @@ export type QueryKeyName = keyof typeof queryKeys
 
 /** Every root, in declaration order. */
 export const queryRootList: readonly QueryRoot[] = Object.values(queryKeys)
+
+// Reads shared by several screens: the key and the request together, so two screens asking the same request share one
+// cache entry. Options that differ per screen (staleTime, enabled, select) are added where the query is used.
+export const connectionQueries = {
+  /**
+   * Every connection (GET /connections, all pages). Orders, returns, invoices, mappings, promotions, the product editor
+   * and the dashboard all read this one entry, so switching between them does not read the list again; every write
+   * that refreshes ['connections'] refreshes it. `T` is only the shape the screen reads of each item.
+   */
+  list: <T = unknown>() => queryOptions({ queryKey: queryKeys.connections(), queryFn: () => loadAllPages<T>('/connections') }),
+}

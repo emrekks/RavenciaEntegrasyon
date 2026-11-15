@@ -37,7 +37,7 @@ import '../integrations-sade.css'
 import '../integration-settings-sade.css'
 import { PanelSelect } from '../../../shared/PanelSelect'
 import { EmptyState } from '../../../shared/components/EmptyState'
-import { queryKeys } from '../../../shared/api/query-keys'
+import { connectionQueries, queryKeys } from '../../../shared/api/query-keys'
 
 type Capability = { code: string; supportLevel: string; environment: string; storeScope: string; apiVersion: string; sourceUrl: string | null; requiredScope?: string | null; evidenceNote?: string | null; verifiedAt: string | null; verifiedForConnection: boolean }
 type SyncPolicy = { id: string; resourceType: string; intervalSeconds: number; overlapSeconds: number; jitterSeconds: number; enabled: boolean; version: number; lastSuccessAt: string | null; lastModifiedWatermark: string | null; lastCursorAdvancedAt?: string | null; cursorStagnantSince?: string | null; cursorProgressStatus?: string; healthStatus?: string; recoveryGapStatus?: string; recoveryGapDays?: number | null; lastAttemptAt?: string | null; lastDurationMs?: number | null; consecutiveFailureCount?: number; lastRequestCount?: number; lastReceivedCount?: number; lastChangedCount?: number; lastInsertedCount?: number; lastUpdatedCount?: number; lastSkippedCount?: number; lastFailedCount?: number; lastRetryCount?: number; lastRateLimitCount?: number; connectionBacklogCount?: number; connectionOldestBacklogAt?: string | null; connectionManualReviewCount?: number; connectionDeadJobCount24h?: number; requiresExternalWrites?: boolean; cadence?: SyncCadence | null }
@@ -253,7 +253,7 @@ export function IntegrationsPage() {
   }, [feedback])
   const filterWrapRef = useRef<HTMLDivElement>(null)
   useDismissable(filterOpen, [filterWrapRef], () => setFilterOpen(false))
-  const query = useQuery({ queryKey: queryKeys.connections(), queryFn: () => loadAllPages<Connection>('/connections') })
+  const query = useQuery(connectionQueries.list<Connection>())
   const activeConnections = query.data?.items.filter(item => activePlatformCodes.has(item.platformCode)) ?? []
   const visibleConnections = activeConnections.filter(item => (view === 'ALL' || item.status === 'ACTIVE' || item.status === 'VERIFIED') && (platformFilter === 'ALL' || item.platformCode === platformFilter) && (filter === 'ALL' || (filter === 'ACTIVE' ? item.status === 'ACTIVE' || item.status === 'VERIFIED' : item.status !== 'ACTIVE' && item.status !== 'VERIFIED' || Boolean(item.lastErrorCode))))
   const filterLabel = `${view === 'ACTIVE' ? 'Bağlı Olanlar' : 'Tümü'} · ${platformFilter === 'ALL' ? 'Tüm Platformlar' : platformDisplayName(platformFilter)} · ${filter === 'ACTIVE' ? 'Aktif Bağlantılar' : filter === 'ATTENTION' ? 'Dikkat Gerekenler' : 'Tüm Durumlar'}`

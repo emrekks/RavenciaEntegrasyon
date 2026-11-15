@@ -6,7 +6,7 @@ import { Fragment, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, 
 import { createPortal } from 'react-dom'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ApiRequestError, hubApi, hubPoll, loadAllPages } from '../../../shared/api'
+import { ApiRequestError, hubApi, hubPoll } from '../../../shared/api'
 import { Busy, StickyActionBar, cargoCarrier, cargoCarriers, cargoFilterOptions, cargoLabel, cargoMatches, ErrorBox, UiIcon, DialogSurface } from '../../../shared/components'
 import { newIdempotencyKey, sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../../shared/idempotency'
 import { safeExternalUrl } from '../../../shared/safe-url'
@@ -53,7 +53,7 @@ import { Connection, IntegrationFeedback, Order, OrderAddress, OrderLine, Page, 
 import { insideSelector, useDismissable } from '../../../shared/hooks/useDismissable'
 import { personName } from '../../../shared/person-name'
 import { ListEmptyState } from '../../../shared/components/EmptyState'
-import { queryKeys } from '../../../shared/api/query-keys'
+import { connectionQueries, queryKeys } from '../../../shared/api/query-keys'
 
 const orderStatusTabOrder = orderStatusTabs.map(([value]) => value)
 const invoiceCreationDisabledHelp = 'Fatura oluşturmak için Entegrasyonlar > bu bağlantı ayarlarından “Fatura oluşturma” seçeneğini açın.'
@@ -853,7 +853,7 @@ export function OrdersPage() {
   const resentStores = storeCounts(resentNotShipped.data?.resentByConnection, channels)
   const resendReminder = useResendReminder()
   const noBuyer = useMediaQuery('(min-width: 1025px) and (max-width: 1240px)')
-  const connections = useQuery({ queryKey: queryKeys.connections('orders-invoice'), queryFn: () => loadAllPages<Connection>('/connections') })
+  const connections = useQuery(connectionQueries.list<Connection>())
   const providers = connections.data?.items.filter(x => x.platformCode === 'TRENDYOL_EFATURAM' && !x.lastErrorCode && (x.status === 'ACTIVE' || x.status === 'VERIFIED')) ?? []
   const marketplaceConnections = connections.data?.items.filter(isActiveMarketplaceConnection) ?? []
   // Without an active marketplace connection no card has a data source: its big number is a dash, not a zero (shared/metric-value.ts).

@@ -52,7 +52,7 @@ import '../category-workbench.css'
 import { PanelSelect } from '../../../shared/PanelSelect'
 import { EmptyState } from '../../../shared/components/EmptyState'
 import { exactMatchConfirmMessage, exactMatchResultMessage, typedProductTypeOption, type ShopifyExactMatchView } from './shopify-product-types'
-import { queryKeys } from '../../../shared/api/query-keys'
+import { connectionQueries, queryKeys } from '../../../shared/api/query-keys'
 
 // A mapping notice names the store whose mappings it is about; the connection is read when the notice is recorded.
 function useMappingNotificationConnection(connectionId: string) {
@@ -143,7 +143,7 @@ function CategoryMappingWorkspace() {
     document.addEventListener('keydown', closeOnEscape)
     return () => document.removeEventListener('keydown', closeOnEscape)
   }, [advancedOpen])
-  const connections = useQuery({ queryKey: queryKeys.connections('mapping'), queryFn: () => loadAllPages<Connection>('/connections') })
+  const connections = useQuery(connectionQueries.list<Connection>())
   useEffect(() => {
     if (!connections.data || autoSelectedConnectionPlatform.current) return
     const availablePlatform = mappingPlatformDefinitions.find(platform => activeMappingConnectionsForPlatform(connections.data.items, platform.code).length > 0)
@@ -1890,7 +1890,7 @@ export function BrandMappingPage() {
   const [savedBrandPlatformChoice, setSavedBrandPlatformChoice] = useState<MappingPlatformCode>('TRENDYOL')
   const [lastListConnectionId, setLastListConnectionId] = useState('')
   const [editingExternalId, setEditingExternalId] = useState('')
-  const connections = useQuery({ queryKey: queryKeys.connections('brand-mapping'), queryFn: () => loadAllPages<Connection>('/connections') })
+  const connections = useQuery(connectionQueries.list<Connection>())
   // Brand lists exist on Trendyol and Pazarama; the other marketplaces take the brand by its name.
   const brandPlatformActive = (code: MappingPlatformCode) => connections.data?.items.some(item => item.platformCode === code && (item.status === 'ACTIVE' || item.status === 'VERIFIED')) ?? false
   const brandMappingSupported = brandListPlatformCodes.includes(brandPlatformCode)

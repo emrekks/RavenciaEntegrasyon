@@ -3,7 +3,7 @@ import { jobStatusLabel } from '../../shared/job-status-labels'
 import { platformDisplayNames } from '../../shared/platform-names'
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router'
-import { hubApi, hubPoll, loadAllPages, type Me } from '../../shared/api'
+import { hubApi, hubPoll, type Me } from '../../shared/api'
 import { RrLogo, RrPageSize } from '../marketplace/returns-ui'
 import { ChoiceField, OpsFilterCard, SearchField, type FilterMenuGroup } from './filter-fields'
 import { PlatformFilter } from '../../shared/PlatformFilter'
@@ -51,7 +51,7 @@ import { jobAttemptDuration } from './job-duration'
 import { isContinuingJob, isWaitingJob, queuedWait, jobAttemptOutcome, jobAttemptResultLabel, jobAttemptsText, waitingJobDescription, waitingJobLabel } from './job-waiting'
 import { JobStateGlyph } from './job-state-glyph'
 import { useTabSlide } from '../../shared/tab-slide'
-import { queryKeys } from '../../shared/api/query-keys'
+import { connectionQueries, queryKeys } from '../../shared/api/query-keys'
 
 const jobsMainTabOrder = ['jobs', 'logs', 'health', 'queue', 'notifications']
 // CONTINUING is the server's own name, in counts and filters, for a job that continues in windows (isContinuingJob).
@@ -408,7 +408,7 @@ export function JobsPage({ me }: { me: Me }) {
   const setPlatforms = (codes: string[]) => setSearchParams(current => withPlatforms(current, codes), { replace: true })
   // Temizle: the card's fields back to their defaults (the status counts above the list stay as they are).
   const clearFilters = () => setSearchParams(current => withPlatforms(writeJobsViewState(current, { direction: '', status: '', search: '', timeRange: '24h' }), []), { replace: true })
-  const connections = useQuery({ queryKey: queryKeys.connections('job-platforms'), queryFn: () => loadAllPages<{ platformCode: string }>('/connections'), staleTime: 60_000 })
+  const connections = useQuery({ ...connectionQueries.list<{ platformCode: string }>(), staleTime: 60_000 })
   const connectionPlatforms = connections.data?.items
   const platformOptions = useMemo(() => jobPlatformOptions((connectionPlatforms ?? []).map(connection => connection.platformCode), platform ? platform.split(',') : []), [connectionPlatforms, platform])
   const platformGroups = useMemo<FilterMenuGroup[]>(() => [{ options: platformOptions.map(code => ({ value: code, label: jobPlatformLabel(code), mark: <RrLogo code={code} /> })) }], [platformOptions])
