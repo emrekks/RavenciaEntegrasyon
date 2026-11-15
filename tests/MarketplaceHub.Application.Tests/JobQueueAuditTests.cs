@@ -228,4 +228,44 @@ public sealed class JobQueueAuditTests
         Assert.DoesNotContain(MarketplaceJobTypes.OrderSync, JobRetentionService.EffectGuardJobTypes);
         Assert.DoesNotContain(MarketplaceJobTypes.ExternalEffectReconcile, JobRetentionService.EffectGuardJobTypes);
     }
+
+    // KUYRUK-5: a pass that fails with a cancellation not caused by the shutdown is logged and the loop keeps running.
+    [Fact]
+    public async Task AMaintenanceLoopSurvivesACancellationThatIsNotTheShutdown()
+    {
+        using var shutdown = new CancellationTokenSource();
+        var failures = new List<Exception>();
+        var secondPass = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var passes = 0;
+        var loop = MarketplaceHub.Worker.Worker.RunPeriodicAsync(TimeSpan.Zero, TimeSpan.FromMilliseconds(20), _ =>
+        {
+            if (Interlocked.Increment(ref passes) == 1) throw new TaskCanceledException("a library timeout");
+            secondPass.TrySetResult();
+            return Task.CompletedTask;
+        }, failures.Add, shutdown.Token);
+
+        await secondPass.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        shutdown.Cancel();
+        await loop.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.IsType<TaskCanceledException>(Assert.Single(failures));
+        Assert.True(loop.IsCompletedSuccessfully);
+    }
+
+    [Fact]
+    public async Task AMaintenanceLoopEndsQuietlyOnShutdown()
+    {
+        using var shutdown = new CancellationTokenSource();
+        var failures = new List<Exception>();
+        var loop = MarketplaceHub.Worker.Worker.RunPeriodicAsync(TimeSpan.Zero, TimeSpan.FromMilliseconds(20), async token =>
+        {
+            shutdown.Cancel();
+            await Task.Delay(Timeout.Infinite, token);
+        }, failures.Add, shutdown.Token);
+
+        await loop.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Empty(failures);
+        Assert.True(loop.IsCompletedSuccessfully);
+    }
 }
