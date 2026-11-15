@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import { DateRangePicker } from '../../../shared/DateRangePicker'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -76,7 +77,6 @@ export const tariffRowsQuery = (connectionId: string, tariffId: string, filter: 
   queryFn: ({ signal }: { signal: AbortSignal }) => loadRowPage(connectionId, tariffId, { page: String(page), limit: '50', ...filterQuery(filter) }, signal)
 })
 
-type UploadResult = { tariffs: CommissionTariff[]; importedRows: number; skippedRows: number; alreadyUploaded: boolean; warnings: string[] }
 
 // Weekly commission tariffs the seller downloads from the marketplace and uploads here. The panel reads a sale's
 // commission from the band its price falls in when the order does not carry it, and shows which price earns a lower
@@ -116,7 +116,7 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
       body.append('file', file)
       body.append('validFrom', days.from)
       body.append('validTo', days.to)
-      return hubApi<UploadResult>(`/connections/${connectionId}/commission-tariffs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('commission-tariff') }, body })
+      return hubApi<ApiAnswer<'postConnectionsByConnectionIdCommissionTariffs'>>(`/connections/${connectionId}/commission-tariffs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('commission-tariff') }, body })
     },
     onSuccess: async result => {
       setSelected(defaultPeriod(result.tariffs)?.id ?? null)
@@ -130,7 +130,7 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
     onError: reason => setMessage({ kind: 'error', text: reason instanceof Error ? reason.message : 'Tarife yüklenemedi.' })
   })
   const remove = useMutation({
-    mutationFn: (tariff: CommissionTariff) => hubApi<boolean>(`/connections/${connectionId}/commission-tariffs/${tariff.id}`, { method: 'DELETE', headers: { 'Idempotency-Key': newIdempotencyKey('commission-tariff-delete') } }),
+    mutationFn: (tariff: CommissionTariff) => hubApi<ApiAnswer<'deleteConnectionsByConnectionIdCommissionTariffsByTariffId'>>(`/connections/${connectionId}/commission-tariffs/${tariff.id}`, { method: 'DELETE', headers: { 'Idempotency-Key': newIdempotencyKey('commission-tariff-delete') } }),
     onSuccess: async () => {
       setSelected(null)
       setMessage({ kind: 'success', text: 'Tarife silindi.' })
@@ -140,7 +140,7 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
   })
   // A file's days changed: every period of it (wholeFile), the boundaries between its periods kept.
   const changeDays = useMutation({
-    mutationFn: ({ tariffId, days }: { tariffId: string; days: ValidityDays }) => hubApi<CommissionTariff[]>(`/connections/${connectionId}/commission-tariffs/${tariffId}/period`, {
+    mutationFn: ({ tariffId, days }: { tariffId: string; days: ValidityDays }) => hubApi<ApiAnswer<'putConnectionsByConnectionIdCommissionTariffsByTariffIdPeriod'>>(`/connections/${connectionId}/commission-tariffs/${tariffId}/period`, {
       method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey('commission-tariff-period') }, body: JSON.stringify({ validFrom: days.from, validTo: days.to, wholeFile: true })
     }),
     onSuccess: async () => {

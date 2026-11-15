@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { Fragment, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
@@ -21,7 +22,8 @@ const twoDecimals = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, m
 // product label and flash products. Each offered price is shown with its commission and what it leaves after the
 // commission and the product's cost, beside what the price leaves now. Nothing is sent to the marketplace.
 export type PromotionKind = 'PLUS' | 'ADVANTAGE' | 'FLASH'
-export type PromotionSummary = { kind: PromotionKind; fileName: string; uploadedAt: string; periodText: string | null; rowCount: number; matchedRowCount: number }
+// CONTRACT: the API declares the kind as a string; PromotionOfferKinds holds PLUS, ADVANTAGE and FLASH only.
+export type PromotionSummary = Omit<ApiAnswer<'getConnectionsByConnectionIdPromotionOffers'>[number], 'kind'> & { kind: PromotionKind }
 // Rate null: the commission at that price is not known (no commission tariff covers it). Remaining: the profit after the
 // commission and costs (the product cost, cargo, service fee, withholding tax and net VAT). RemainingHigh: the most a
 // model's variants leave when their costs differ (remaining and costs are then the dearest variant's).
@@ -32,8 +34,8 @@ export type AdvantageStar = { star: number; min: number | null; max: number; pri
 export type AdvantageOffer = Product & { barcode: string; size: string | null; costPrice: number | null; inTariff: boolean | null; currentStars: number; now: PromotionPrice | null; stars: AdvantageStar[] }
 export type FlashSlot = { slot: string; start: string | null; end: string | null; price: PromotionPrice }
 export type FlashOffer = Product & { barcodes: string[]; costLow: number | null; costHigh: number | null; inTariff: boolean | null; campaign: boolean | null; now: PromotionPrice | null; slots: FlashSlot[] }
-type Detail = { offer: PromotionSummary; plus: PlusOffer[] | null; advantage: AdvantageOffer[] | null; flash: FlashOffer[] | null }
-type UploadResult = { offer: PromotionSummary; skippedRows: number; warnings: string[] }
+type Detail = Omit<ApiAnswer<'getConnectionsByConnectionIdPromotionOffersByKind'>, 'offer'> & { offer: PromotionSummary }
+type UploadResult = Omit<ApiAnswer<'postConnectionsByConnectionIdPromotionOffers'>, 'offer'> & { offer: PromotionSummary }
 type PanelMessage = { kind: 'success' | 'error' | 'info' | 'warning'; text: string; warnings?: string[] }
 
 export const promotionTitles: Record<PromotionKind, string> = { PLUS: 'Plus Komisyon Tarifesi', ADVANTAGE: 'Avantajlı Ürün Etiketi', FLASH: 'Flash Ürünler' }
@@ -131,7 +133,7 @@ export function PromotionOffersPanel({ connectionId, kind }: { connectionId: str
     onError: reason => setMessage({ kind: 'error', text: reason instanceof Error ? reason.message : 'Dosya yüklenemedi.' })
   })
   const remove = useMutation({
-    mutationFn: () => hubApi<boolean>(`/connections/${connectionId}/promotion-offers/${kind}`, { method: 'DELETE', headers: { 'Idempotency-Key': newIdempotencyKey('promotion-offer-delete') } }),
+    mutationFn: () => hubApi<ApiAnswer<'deleteConnectionsByConnectionIdPromotionOffersByKind'>>(`/connections/${connectionId}/promotion-offers/${kind}`, { method: 'DELETE', headers: { 'Idempotency-Key': newIdempotencyKey('promotion-offer-delete') } }),
     onSuccess: async () => { setMessage({ kind: 'success', text: 'Dosya silindi.' }); await client.invalidateQueries({ queryKey: queryKeys.promotionOffers(connectionId) }) },
     onError: reason => setMessage({ kind: 'error', text: reason instanceof Error ? reason.message : 'Dosya silinemedi.' })
   })

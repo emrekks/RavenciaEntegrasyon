@@ -1,5 +1,6 @@
 import { noticeSentences } from '../../../shared/notice-copy'
 import { queryKeys } from '../../../shared/api/query-keys'
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 // Small pure pieces of the integrations pages, kept here so they can be tested on their own.
 
 /** Owner decision B: what switching the automatic writes (or the master switch) on means for the changes made while off. */
@@ -217,21 +218,8 @@ export function connectionTestFeedback(platformName: string, result: { succeeded
 }
 
 /** The cadence the scheduler keeps for a sync flow (SyncCadenceView): this pass's interval, the bounds and the idle rule. */
-export type SyncCadence = {
-  effectiveIntervalSeconds: number
-  defaultIntervalSeconds: number
-  minimumIntervalSeconds: number
-  maximumIntervalSeconds: number
-  basis: string
-  idleKind: 'WEBHOOK' | 'QUIET' | 'RETURNS' | null
-  idleBackoffEnabled: boolean
-  idleIntervalSeconds: number | null
-  defaultIdleIntervalSeconds: number | null
-  idleActive: boolean
-  stageFloor: boolean
-  /** Why the scheduler does not queue the flow right now; null while it runs. */
-  heldReason?: string | null
-}
+// CONTRACT: the API declares idleKind as a string; SynchronizationPolicies writes IdleWebhook, IdleQuiet or IdleReturns.
+export type SyncCadence = Omit<NonNullable<ApiAnswer<'getConnectionsByIdSyncPolicies'>[number]['cadence']>, 'idleKind'> & { idleKind: 'WEBHOOK' | 'QUIET' | 'RETURNS' | null }
 
 /** A short interval for the flow table: "2 dk", "1 sa", "1 gün". */
 export function cadenceShortText(seconds: number) {

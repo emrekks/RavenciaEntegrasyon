@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../../../shared/api/api-answer'
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { hubApi, hubFile } from '../../../../shared/api'
@@ -49,6 +50,8 @@ export type TariffPick = { tier: number | null; price: number | null }
 export const noBulk: TariffBulk = { kind: '', tier: 1, minRate: null, minAmount: null, maxRate: null, maxAmount: null }
 
 // A tariff's picks as the server keeps them (GET and PUT …/selection): the pick for every row and each row's own pick.
+// CONTRACT: the API declares a choice's tier and price as "number or string": CommissionTariffChoice is the PUT body's
+// too, which reads either, but an answer writes numbers (int? Tier, decimal? Price). It is also this screen's PUT body.
 export type TariffSelection = {
   bulk: string | null; tier: number | null; minRate: number | null; minAmount: number | null; maxRate: number | null; maxAmount: number | null
   choices: Array<{ rowId: string; tier: number | null; price: number | null }>; updatedAt?: string | null
@@ -397,7 +400,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
     setGroupPageOf({ rows, page: next })
     tableTop.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
   }
-  const facets = useQuery({ queryKey: queryKeys.commissionTariffFacets(connectionId, tariff.id), queryFn: ({ signal }) => hubApi<{ categories: string[]; brands: string[] }>(`/connections/${connectionId}/commission-tariffs/${tariff.id}/facets`, { signal }) })
+  const facets = useQuery({ queryKey: queryKeys.commissionTariffFacets(connectionId, tariff.id), queryFn: ({ signal }) => hubApi<ApiAnswer<'getConnectionsByConnectionIdCommissionTariffsByTariffIdFacets'>>(`/connections/${connectionId}/commission-tariffs/${tariff.id}/facets`, { signal }) })
   const ownPicks = [...picks.values()].filter(pick => pick.tier !== null || pick.price !== null).length
   // A file with more than one period: the picks are the open period's, and the Excel carries every period's.
   const manyPeriods = periods.length > 1
