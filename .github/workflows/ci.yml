@@ -101,6 +101,11 @@ jobs:
       - name: Test deployment shell scripts
         run: bash tests/ops/run.sh
 
+      # The previous API and Worker run while a deploy migrates: new migrations stay additive and lock-free
+      # (docs/CI-CD-DEPLOY.md "Migration kuralları").
+      - name: Migration expand-contract and lock rules
+        run: bash tests/ops/migration-guard.sh
+
       - name: Validate systemd timer schedules
         run: |
           set -Eeuo pipefail
@@ -165,6 +170,9 @@ jobs:
             and (["migrate", "api", "worker", "caddy"] | all(. as $n | $s[$n].read_only == true))
             and ($s.caddy.user // "0" | test("^0(:|$)") | not)
           ' >/dev/null || { echo "Container hardening (no-new-privileges, cap_drop ALL, pids_limit, read_only, non-root edge) is missing." >&2; exit 1; }
+          # API and worker finish running requests and hand jobs back before SIGKILL (VERITABANI-DAGITIM-4, API-GUVENLIK-1).
+          "${compose[@]}" config --format json | jq -e '.services.api.stop_grace_period and .services.worker.stop_grace_period' >/dev/null \
+            || { echo "api and worker need a stop_grace_period (Docker's 10 s default cuts running requests and jobs)." >&2; exit 1; }
 
       # RFC 9116: an expired security.txt is treated as absent. Fail 30 days ahead so it gets renewed in time.
       - name: security.txt is not about to expire

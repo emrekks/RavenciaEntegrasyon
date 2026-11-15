@@ -177,6 +177,25 @@ durmamalıdır. Argümansız `install-ci-deploy.sh` yalnız `/usr/local/bin/rave
   1,5 GB / 2 CPU. Bu ayar değişikliği ilk deploy'da postgres konteynerini yeniden yaratır
   (birkaç saniyelik bağlantı kesintisi; API/Worker yeniden bağlanır).
 
+### Migration kuralları
+
+Deploy önce migration'ı uygular, yeni API/Worker ancak sonra başlar (`fast-deploy.sh`); arada **eski kod yeni şemayla**
+çalışır ve yeni sürüm açılmazsa şema değiştiği için otomatik geri alma yapılmaz. Bu yüzden yeni bir migration'ın `Up()`'ı:
+
+1. **Yalnız eklemeli** olur: yeni tablo, nullable ya da varsayılanlı sütun, index, veri doldurma. Sütun/tablo silme,
+   yeniden adlandırma, sütunu NOT NULL yapma **iki sürümde** yapılır (genişlet-daralt): önce kod sütunu okumayı/yazmayı
+   bırakır ve canlıya çıkar (migration'sız), sonraki sürümdeki migration silmeyi yapar ve dosyasında
+   `// expand-contract: phase 2 of <önceki migration>` yorumunu taşır.
+2. **Uzun kilit tutmaz**: satırı olan bir tabloya index `CREATE [UNIQUE] INDEX CONCURRENTLY` ile eklenir
+   (`AddProductVariantModelCodeIndex` kalıbı: `SET lock_timeout = 0`, `DROP INDEX CONCURRENTLY IF EXISTS`, `CREATE ...
+   CONCURRENTLY`, `RESET lock_timeout`, hepsi `suppressTransaction: true`; modelde `HasIndex` aynı adla kalır). Var olan
+   tabloya FK ya da CHECK `... NOT VALID` ile eklenir, ardından ayrı ifadede `VALIDATE CONSTRAINT` (yazmaları bloke etmez).
+   Aynı migration'ın yarattığı tabloda düz `CreateIndex`/`AddForeignKey` serbesttir. Bilinçli istisna (birkaç satırlık
+   tablo): dosyaya `// migration-lock-ok: <neden>`.
+
+`tests/ops/migration-guard.sh` bu kuralları 20261115000000 ve sonrası migration'larda denetler (Validate `ops` işi,
+`tests/ops/test-migration-guard.sh`); önceki migration'lar canlıda uygulanmış olduğundan denetlenmez.
+
 ## Loglar (journald)
 
 Üretimde postgres, migrate, api, worker ve caddy `journald` sürücüsüyle loglar
@@ -478,6 +497,13 @@ Yanlış ban: `sudo cscli decisions delete --ip <IP>` (gerekirse VNC konsolundan
 gününün en yeni seti + daha eski 4 haftanın her birinin ve 6 ayın her birinin en yeni seti; en yeni set her
 koşulda kalır (`BACKUP_KEEP_RECENT`, `BACKUP_KEEP_DAILY`, `BACKUP_KEEP_WEEKLY`, `BACKUP_KEEP_MONTHLY`). Bir set ≈0,3–0,5 GB
 (12 Kasım 2026); olağan durumda ~25 set ≈ 10 GB (Hostinger, 193 GB kök disk).
+
+**Yalnız tam setler sayılır** (VERITABANI-DAGITIM-2): set önce `.incomplete-<zaman>` adıyla yazılır, kendi kontrolü
+(sağlama toplamları + `pg_restore --list`) geçip `.verified` işaretini alınca zaman adına taşınır; yarıda kalan
+çalıştırma klasörünü siler, ölmüş çalıştırmanın `.incomplete-*` klasörü 6 saat sonra silinir. `.verified`'sız zaman adlı
+bir set (eski betikten kalma) saklamada yer tutmaz ve bir gün sonra silinir; 16 Kasım 2026 öncesi adlı setler
+`SHA256SUMS` varsa tam sayılır. Saklama, disk koruması, healthwatch'ın "en yeni yedek" yaşı ve aylık tatbikat aynı kuralla
+yalnız tam seti seçer.
 
 **Disk koruması**: yeni set yazılmadan önce, en yeni setin boyutu kadar ekleme sonrası disk doluluğu
 hesaplanır. %85'i (`BACKUP_DISK_LIMIT_PERCENT`) geçecekse önce **en eski haftalık setler** silinir

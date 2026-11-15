@@ -401,7 +401,14 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     {
         builder.Entity<IntegrationJob>(entity =>
         {
-            entity.ToTable("jobs", "integration", table => table.HasCheckConstraint("ck_job_attempt_bounds", "\"AttemptCount\" >= 0 AND \"MaxAttempts\" > 0 AND \"AttemptCount\" <= \"MaxAttempts\"")); entity.HasKey(x => x.Id);
+            // ck_jobs_status (VERITABANI-DAGITIM-15): a mistyped status (raw SQL, a hand fix) would leave a job no screen or
+            // sweep sees. The list is JobStatusConverter's output; StatusCheckConstraintModelTests keeps them equal.
+            entity.ToTable("jobs", "integration", table =>
+            {
+                table.HasCheckConstraint("ck_job_attempt_bounds", "\"AttemptCount\" >= 0 AND \"MaxAttempts\" > 0 AND \"AttemptCount\" <= \"MaxAttempts\"");
+                table.HasCheckConstraint("ck_jobs_status", "\"Status\" IN ('PENDING', 'LEASED', 'RETRY_SCHEDULED', 'BLOCKED', 'MANUAL_REVIEW', 'SUCCEEDED', 'DEAD', 'CANCELLED')");
+            });
+            entity.HasKey(x => x.Id);
             entity.Property(x => x.JobType).HasMaxLength(96); entity.Property(x => x.ResourceType).HasMaxLength(48).HasDefaultValue("jobs"); entity.Property(x => x.OperationType).HasMaxLength(64).HasDefaultValue("execute"); entity.Property(x => x.TriggerType).HasMaxLength(32).HasDefaultValue("system"); entity.Property(x => x.JobDedupKey).HasMaxLength(256);
             entity.Property(x => x.EffectIdempotencyKey).HasMaxLength(256); entity.Property(x => x.PayloadHash).HasMaxLength(128);
             entity.Property(x => x.Status).HasConversion(JobStatusConverter).HasMaxLength(24); entity.Property(x => x.CreatedAt).HasDefaultValueSql("now()").ValueGeneratedOnAdd(); entity.Property(x => x.MaxAttempts).HasDefaultValue(JobRetryPolicy.DefaultMaxAttempts); entity.Property(x => x.Version).IsConcurrencyToken();

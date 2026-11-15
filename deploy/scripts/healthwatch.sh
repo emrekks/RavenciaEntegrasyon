@@ -99,7 +99,17 @@ fi
 backup_max_age_hours="${RAVENCIA_BACKUP_MAX_AGE_HOURS:-30}"
 backup_mountpoint="$("${sudo_cmd[@]}" docker volume inspect --format '{{.Mountpoint}}' marketplacehub_backup_staging 2>/dev/null || true)"
 if [[ -n "$backup_mountpoint" ]]; then
-  newest_backup="$("${sudo_cmd[@]}" find "$backup_mountpoint" -mindepth 1 -maxdepth 1 -type d -name '????????T??????Z' -printf '%f\n' 2>/dev/null | sort | tail -n 1 || true)"
+  # Only a complete set counts (backup.sh backup_set_complete): its .verified marker, or SHA256SUMS on a set
+  # written before the marker existed. A half-written set must not make the backup look fresh.
+  newest_backup=""
+  while IFS= read -r candidate; do
+    [[ "$candidate" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] || continue
+    if "${sudo_cmd[@]}" test -f "$backup_mountpoint/$candidate/.verified" \
+      || { (( 10#${candidate//[TZ]/} < 20261116000000 )) && "${sudo_cmd[@]}" test -f "$backup_mountpoint/$candidate/SHA256SUMS"; }; then
+      newest_backup="$candidate"
+      break
+    fi
+  done < <("${sudo_cmd[@]}" find "$backup_mountpoint" -mindepth 1 -maxdepth 1 -type d -name '????????T??????Z' -printf '%f\n' 2>/dev/null | sort -r || true)
   if [[ "$newest_backup" =~ ^([0-9]{4})([0-9]{2})([0-9]{2})T([0-9]{2})([0-9]{2})([0-9]{2})Z$ ]]; then
     backup_epoch="$(date -u -d "${BASH_REMATCH[1]}-${BASH_REMATCH[2]}-${BASH_REMATCH[3]} ${BASH_REMATCH[4]}:${BASH_REMATCH[5]}:${BASH_REMATCH[6]} UTC" +%s 2>/dev/null)" || backup_epoch="$now"
     backup_age_hours="$(( (now - backup_epoch) / 3600 ))"
