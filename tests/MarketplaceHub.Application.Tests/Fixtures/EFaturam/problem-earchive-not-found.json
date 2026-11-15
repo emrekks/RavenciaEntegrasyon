@@ -1,0 +1,11 @@
+// Source: Ravencia-API-Docs/efaturam-api-son.md getEArchiveStatus 404 EArchiveNotFoundProblem (~1117-1124: type
+// https://api.trendyol.com/etransformation/gateway/earchive-not-found, title "Earchive Not Found", field invoiceUuid),
+// RFC 7807 envelope.
+{
+  "type": "https://api.trendyol.com/etransformation/gateway/earchive-not-found",
+  "title": "Earchive Not Found",
+  "status": 404,
+  "detail": "test123333333",
+  "instance": "/api/invoice/documents/earchive/status/96a8b0f1-7e10-4a44-8d78-eb961539bb4b",
+  "invoiceUuid": "96a8b0f1-7e10-4a44-8d78-eb961539bb4b"
+}

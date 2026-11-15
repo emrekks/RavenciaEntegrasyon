@@ -1,0 +1,7 @@
+// Source: Ravencia-API-Docs/efaturam-api-son.md createEArchive / createOutgoingEInvoice 200 answer (~975-1000 and
+// ~1855-1870: invoiceUuid, invoiceId, status, gibStatus; the schema sample's other fields left out), filled with fake
+// values; plus an answer without invoiceId (ambiguous: the invoice exists but its number is not known yet).
+{
+  "created": { "invoiceUuid": "96a8b0f1-7e10-4a44-8d78-eb961539bb4b", "invoiceId": "RVN2026000000001", "status": 10, "gibStatus": "READY_TO_BE_REPORTED", "currency": "TRY", "payableAmount": 120.0 },
+  "withoutNumber": { "invoiceUuid": "96a8b0f1-7e10-4a44-8d78-eb961539bb4b", "status": 10 }
+}

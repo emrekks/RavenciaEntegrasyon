@@ -1,0 +1,17 @@
+// Source: Ravencia-API-Docs/efaturam-api-son.md getTaxPayersByTaxId 200 answer (~194-235: taxId, alias, title,
+// postBoxType, aliasType INVOICE/DESPATCH_ADVICE, deletedAt), fake tax id and titles. "registered": an INVOICE PK alias
+// beside a GB alias and a despatch alias; "otherTaxId": a row of another tax id (unknown, never "not registered");
+// "deletedOnly": only a deleted alias (unknown).
+{
+  "registered": [
+    { "taxId": "0000000001", "alias": "urn:mail:defaultpk@example.test", "title": "FAKE TICARET A.S.", "gibUserType": "OZEL", "sourceFile": "", "createdAt": "2024-07-29T15:51:28.071Z", "aliasCreationTime": "2024-07-29T15:51:28.071Z", "postBoxType": "PK", "aliasType": "INVOICE" },
+    { "taxId": "0000000001", "alias": "urn:mail:defaultgb@example.test", "title": "FAKE TICARET A.S.", "gibUserType": "OZEL", "sourceFile": "", "createdAt": "2024-07-29T15:51:28.071Z", "aliasCreationTime": "2024-07-29T15:51:28.071Z", "postBoxType": "GB", "aliasType": "INVOICE" },
+    { "taxId": "0000000001", "alias": "urn:mail:irsaliyepk@example.test", "title": "FAKE TICARET A.S.", "gibUserType": "OZEL", "sourceFile": "", "createdAt": "2024-07-29T15:51:28.071Z", "aliasCreationTime": "2024-07-29T15:51:28.071Z", "postBoxType": "PK", "aliasType": "DESPATCH_ADVICE" }
+  ],
+  "otherTaxId": [
+    { "taxId": "0000000002", "alias": "urn:mail:defaultpk@example.test", "title": "BASKA FIRMA", "gibUserType": "OZEL", "sourceFile": "", "createdAt": "2024-07-29T15:51:28.071Z", "aliasCreationTime": "2024-07-29T15:51:28.071Z", "postBoxType": "PK", "aliasType": "INVOICE" }
+  ],
+  "deletedOnly": [
+    { "taxId": "0000000001", "alias": "urn:mail:defaultpk@example.test", "title": "FAKE TICARET A.S.", "gibUserType": "OZEL", "sourceFile": "", "createdAt": "2024-07-29T15:51:28.071Z", "deletedAt": "2025-01-01T00:00:00Z", "aliasCreationTime": "2024-07-29T15:51:28.071Z", "postBoxType": "PK", "aliasType": "INVOICE" }
+  ]
+}
