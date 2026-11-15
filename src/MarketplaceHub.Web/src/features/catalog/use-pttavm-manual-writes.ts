@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useQueries } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 import type { MarketplaceConnection } from './shared'
@@ -12,7 +13,7 @@ export function usePttAvmManualWrites(connections: readonly MarketplaceConnectio
   const results = useQueries({
     queries: pttAvm.map(connection => ({
       queryKey: queryKeys.syncPolicies(connection.id),
-      queryFn: ({ signal }) => hubApi<Array<{ resourceType: string; enabled: boolean }>>(`/connections/${connection.id}/sync-policies`, { signal }),
+      queryFn: ({ signal }) => hubApi<ApiAnswer<'getConnectionsByIdSyncPolicies'>>(`/connections/${connection.id}/sync-policies`, { signal }),
       staleTime: 30_000
     }))
   })
