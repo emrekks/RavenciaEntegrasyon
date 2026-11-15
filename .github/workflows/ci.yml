@@ -101,6 +101,11 @@ jobs:
       - name: Test deployment shell scripts
         run: bash tests/ops/run.sh
 
+      # The previous API and Worker run while a deploy migrates: new migrations stay additive and lock-free
+      # (docs/CI-CD-DEPLOY.md "Migration kuralları").
+      - name: Migration expand-contract and lock rules
+        run: bash tests/ops/migration-guard.sh
+
       - name: Validate systemd timer schedules
         run: |
           set -Eeuo pipefail
