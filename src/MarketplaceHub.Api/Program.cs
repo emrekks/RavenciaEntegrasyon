@@ -50,6 +50,9 @@ builder.Host.UseSerilog((_, configuration) => configuration
     .Enrich.With<SecretPathEnricher>()
     .WriteTo.Console(new RenderedCompactJsonFormatter()));
 builder.Services.AddMarketplaceInfrastructure(builder.Configuration);
+// A deploy stops the API with SIGTERM; requests still running get up to 40 s to finish (as the worker does) so
+// fewer of them are cut off and left as an unknown outcome. The container's stop_grace_period must exceed it.
+builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = TimeSpan.FromSeconds(40));
 builder.Services.AddScoped<BreakGlassService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantContextAccessor, HttpTenantContextAccessor>();
