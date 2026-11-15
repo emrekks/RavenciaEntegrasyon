@@ -197,7 +197,7 @@ export function SystemSettingsPage() {
     }
     setBusy(true); setMfaError('')
     try {
-      const result = await hubApi<{ recoveryCodes: string[] }>('/auth/mfa/confirm', { method: 'POST', body: JSON.stringify({ code }) })
+      const result = await hubApi<ApiAnswer<'postAuthMfaConfirm'>>('/auth/mfa/confirm', { method: 'POST', body: JSON.stringify({ code }) })
       setRecoveryCodes(result.recoveryCodes); setMfaStep('recovery'); await client.invalidateQueries({ queryKey: queryKeys.security() })
     } catch (reason) { setMfaError(mfaErrorMessage(reason, 'Doğrulayıcı etkinleştirilemedi.')) } finally { setBusy(false) }
   }

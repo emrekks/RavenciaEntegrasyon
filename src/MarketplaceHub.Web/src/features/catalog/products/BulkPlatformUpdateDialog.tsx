@@ -128,7 +128,7 @@ export function BulkPlatformUpdateDialog({ productIds, cardCount, connections, p
     await mapWithConcurrency(requests, sendConcurrency, async (request: BulkUpdateRequest) => {
       try {
         const accepted = request.kind === 'product'
-          ? await hubApi<{ jobId?: string }>(`/products/${request.productId}/update-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId: request.connectionId, fields: request.fields, sendGroupId: request.sendGroupId }) })
+          ? await hubApi<ApiAnswer<'postProductsByIdUpdateJobs'>>(`/products/${request.productId}/update-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId: request.connectionId, fields: request.fields, sendGroupId: request.sendGroupId }) })
           : await hubApi<ApiAnswer<'postProductsByProductIdConnectionsByConnectionIdPriceInventorySyncJobs'>>(`/products/${request.productId}/connections/${request.connectionId}/price-inventory-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ price: request.price, stock: request.stock }) })
         const what = request.kind === 'product' ? productInformationLabel(request.fields) : request.price && request.stock ? 'fiyat-stok' : request.price ? 'fiyat' : 'stok'
         if (accepted?.jobId) followed.push({ jobId: accepted.jobId, platformName: platformOf(request.connectionId), what, label: titleOf(request.productId), update: true })

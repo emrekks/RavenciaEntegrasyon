@@ -1,4 +1,5 @@
 // Category attributes and option values: selecting, adding a value, editing a row's options, Web Color mode.
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { useState } from 'react'
 import { hubApi } from '../../../shared/api'
 import { newIdempotencyKey } from '../../../shared/idempotency'
@@ -45,7 +46,7 @@ export function useAttributeActions(c: EditorProps & EditorStateResult & EditorM
     if (addingOptionValueFor) return
     setAddingOptionValueFor(requirement.attributeId)
     try {
-      const attribute = await hubApi<{ values: Array<{ id: string; value: string; sortOrder: number; isActive: boolean }> }>(`/catalog/attributes/${requirement.attributeId}/values`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify([{ value, sortOrder: requirement.attribute.values.length }]) })
+      const attribute = await hubApi<ApiAnswer<'postCatalogAttributesByIdValues'>>(`/catalog/attributes/${requirement.attributeId}/values`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify([{ value, sortOrder: requirement.attribute.values.length }]) })
       const activeValues = attribute.values.filter(item => item.isActive).sort((left, right) => left.sortOrder - right.sortOrder)
       const created = activeValues.find(item => normalizeVariantOptionValue(item.value) === normalizeVariantOptionValue(value))
       client.setQueryData<CategoryRequirement[]>(queryKeys.categoryRequirements(form.categoryId), current => current?.map(item => item.attributeId !== requirement.attributeId ? item : { ...item, attribute: { ...item.attribute, values: activeValues.map(({ id, value: label }) => ({ id, value: label })) } }))

@@ -239,7 +239,7 @@ export function QuestionsPage() {
   const syncHeight = useRememberedHeight<HTMLElement>('question-sync-chips', syncStates.isLoading)
 
   const sync = useMutation({
-    mutationFn: (request: { kind: string; platformCode?: string }) => hubApi<{ jobs: string[]; queuedConnections: number }>('/questions/sync', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('question-sync') }, body: JSON.stringify(request) }),
+    mutationFn: (request: { kind: string; platformCode?: string }) => hubApi<ApiAnswer<'postQuestionsSync'>>('/questions/sync', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('question-sync') }, body: JSON.stringify(request) }),
     onSuccess: async () => { setNotice(null); await Promise.all([client.invalidateQueries({ queryKey: queryKeys.questions() }), client.invalidateQueries({ queryKey: queryKeys.questions('sync-state') })]) },
     onError: error => fail(error, 'Senkronizasyon kuyruğa alınamadı.'),
   })

@@ -91,7 +91,7 @@ export function InvoiceUploadModal({ item, onClose, onFeedback }: { item: Order;
       form.append('invoiceNumber', invoiceNumber.trim())
       form.append('issuedAt', issuedAt ? fromDateTimeLocal(issuedAt) : '')
       if (file) form.append('file', file)
-      return hubApi<{ id: string }>('/invoice-workspace/manual-documents', { method: 'POST', headers: { 'Idempotency-Key': documentRequestKey }, body: form })
+      return hubApi<ApiAnswer<'postInvoiceWorkspaceManualDocuments'>>('/invoice-workspace/manual-documents', { method: 'POST', headers: { 'Idempotency-Key': documentRequestKey }, body: form })
     },
     onSuccess: async result => {
       setSavedDocumentId(result.id)
@@ -107,10 +107,11 @@ export function InvoiceUploadModal({ item, onClose, onFeedback }: { item: Order;
       if (!savedDocumentId) throw new Error('Önce manuel fatura belgesini kaydedin.')
       if (!issuedAt) throw new Error('Platforma iletim için fatura tarihi gereklidir.')
       if (item.platformCode === 'SHOPIFY' && !invoiceNumber.trim()) throw new Error('Shopify siparişine iletim için fatura numarası gereklidir.')
-      return hubApi<{ jobIds: string[]; queuedPackageCount: number; inspectionOnlyPackageCount: number }>(`/invoice-workspace/manual-documents/${savedDocumentId}/delivery-jobs`, { method: 'POST', headers: { 'Idempotency-Key': `manual-order-invoice-delivery:${savedDocumentId}:${newIdempotencyKey()}` } })
+      return hubApi<ApiAnswer<'postInvoiceWorkspaceManualDocumentsByIdDeliveryJobs'>>(`/invoice-workspace/manual-documents/${savedDocumentId}/delivery-jobs`, { method: 'POST', headers: { 'Idempotency-Key': `manual-order-invoice-delivery:${savedDocumentId}:${newIdempotencyKey()}` } })
     },
     onSuccess: async result => {
-      const notice = result.inspectionOnlyPackageCount > 0
+      // 200: every package had already confirmed the document, nothing was queued (the answer says so).
+      const notice = !('queuedPackageCount' in result) ? result.message : result.inspectionOnlyPackageCount > 0
         ? 'Önceki iletim sonucu belirsiz. Yalnızca pazaryeri durumu okunacak; belge tekrar gönderilmeyecek.'
         : `${result.queuedPackageCount} paket için manuel fatura iletimi kuyruğa alındı.`
       setMessage(notice)

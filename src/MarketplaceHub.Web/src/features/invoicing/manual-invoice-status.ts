@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { hubApi } from '../../shared/api'
 import { newIdempotencyKey } from '../../shared/idempotency'
 
@@ -15,7 +16,7 @@ export function handSetInvoiceStatus(value: string | null | undefined): ManualIn
 }
 
 export function setManualInvoiceStatus(packageIds: string[], status: ManualInvoiceStatus) {
-  return hubApi<{ updatedCount: number; reopenedCount?: number }>('/invoice-workspace/manual-status', {
+  return hubApi<ApiAnswer<'putInvoiceWorkspaceManualStatus'>>('/invoice-workspace/manual-status', {
     method: 'PUT',
     headers: { 'Idempotency-Key': newIdempotencyKey(`invoice-workspace-status:${status}`) },
     body: JSON.stringify({ packageIds, status }),

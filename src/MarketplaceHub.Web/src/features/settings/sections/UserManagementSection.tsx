@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { useState, type FormEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi } from '../../../shared/api'
@@ -64,7 +65,7 @@ export function UserManagementSection({ mfa }: { mfa: boolean }) {
     if (!isEmailAddress(email)) { setError('Geçerli bir e-posta adresi girin.'); return }
     setBusy(true); setError('')
     try {
-      const result = await hubApi<{ userId: string; existingAccount: boolean; temporaryPassword: string | null }>('/settings/users', { method: 'POST', body: JSON.stringify({ email: email.trim(), displayName: displayName.trim(), role, ...reauthBody(password, factor) }) })
+      const result = await hubApi<ApiAnswer<'postSettingsUsers'>>('/settings/users', { method: 'POST', body: JSON.stringify({ email: email.trim(), displayName: displayName.trim(), role, ...reauthBody(password, factor) }) })
       await client.invalidateQueries({ queryKey: queryKeys.managedUsers() })
       setDialog(null)
       if (result.temporaryPassword) setOneTime({ title: 'Kullanıcı Eklendi', email: email.trim(), password: result.temporaryPassword })

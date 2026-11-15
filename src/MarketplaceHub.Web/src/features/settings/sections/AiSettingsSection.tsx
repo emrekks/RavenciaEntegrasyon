@@ -12,7 +12,8 @@ type AiSettings = ApiAnswer<'getSettingsAi'>
 type AiSkillView = AiSettings['skills'][number]
 // uploaded.source: FILE, a .skill file the owner uploaded (it is the one generation uses); BUNDLED, the copy that comes with the panel.
 const maxSkillFileBytes = 10 * 1024 * 1024
-type AiUsageEntry = { id: string; createdAt: string; feature: string; featureLabel: string; userName: string | null; subjectLabel: string | null; model: string; inputTokens: number | null; outputTokens: number | null; costUsd: number | null; status: 'SUCCEEDED' | 'FAILED' | 'CANCELLED'; error: string | null; durationMs: number }
+// status: SUCCEEDED, FAILED or CANCELLED (AiUsageLog).
+type AiUsageEntry = ApiAnswer<'getSettingsAiUsage'>['items'][number]
 const defaultAiModel = 'claude-sonnet-5-5'
 // The Claude models the panel offers, with their list price per million tokens (input / output, USD).
 const aiModelOptions = [
@@ -48,7 +49,7 @@ export function AiSettingsSection() {
   const client = useQueryClient()
   const query = useQuery({ queryKey: queryKeys.aiSettings(), queryFn: ({ signal }) => hubApi<ApiAnswer<'getSettingsAi'>>('/settings/ai', { signal }), retry: false })
   const forbidden = query.error instanceof ApiRequestError && query.error.status === 403
-  const usage = useQuery({ queryKey: queryKeys.aiUsage(), queryFn: ({ signal }) => hubApi<{ items: AiUsageEntry[] }>('/settings/ai/usage?limit=50', { signal }), retry: false, enabled: query.isSuccess })
+  const usage = useQuery({ queryKey: queryKeys.aiUsage(), queryFn: ({ signal }) => hubApi<ApiAnswer<'getSettingsAiUsage'>>('/settings/ai/usage?limit=50', { signal }), retry: false, enabled: query.isSuccess })
   const saved = query.data
   const [apiKey, setApiKey] = useState('')
   const [changingKey, setChangingKey] = useState(false)
@@ -88,7 +89,7 @@ export function AiSettingsSection() {
   async function testConnection() {
     setBusy('test'); setTestResult(null)
     try {
-      const result = await hubApi<{ ok: boolean; model: string; message: string }>('/settings/ai/test', { method: 'POST' })
+      const result = await hubApi<ApiAnswer<'postSettingsAiTest'>>('/settings/ai/test', { method: 'POST' })
       setTestResult({ kind: 'done', message: result.message || `Bağlantı çalışıyor (${result.model}).` })
     } catch (reason) {
       setTestResult({ kind: 'bad', message: reason instanceof Error ? reason.message : 'Bağlantı sınanamadı.' })

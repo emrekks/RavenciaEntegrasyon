@@ -1,4 +1,5 @@
 // Barcodes and stock codes of the variant table: from the barcode, generated from the model code, pasted.
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { hubApi } from '../../../shared/api'
 import { applyVariantCodesByKey, planVariantCodes, variantCodeCandidates, type VariantCodeTarget } from '../variant-generation'
 import { describePlatformCodeIssues, platformCodeIssues } from '../platform-code-rules'
@@ -66,7 +67,7 @@ export function useVariantCodeActions(c: EditorProps & EditorStateResult & Edito
     for (let round = 0; round < 6; round++) {
       const nextUpTo = scannedUpTo + (round === 0 ? Math.min(1000, rows.length * 2 + 50) : 1000)
       const candidates = variantCodeCandidates(modelCode, scannedUpTo + 1, nextUpTo)
-      const answer = await hubApi<{ items?: Array<{ code: string }> }>('/catalog/variant-codes/taken', { method: 'POST', body: JSON.stringify({ codes: candidates, excludeVariantIds }) })
+      const answer = await hubApi<ApiAnswer<'postCatalogVariantCodesTaken'>>('/catalog/variant-codes/taken', { method: 'POST', body: JSON.stringify({ codes: candidates, excludeVariantIds }) })
       for (const item of answer?.items ?? []) taken.add(item.code.trim().toLocaleUpperCase('tr-TR'))
       scannedUpTo = nextUpTo
       const plan = planVariantCodes(rows, target, mode, modelCode, code => taken.has(code.toLocaleUpperCase('tr-TR')), scannedUpTo)

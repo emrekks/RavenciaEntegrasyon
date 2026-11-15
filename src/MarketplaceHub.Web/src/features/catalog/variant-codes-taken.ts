@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
@@ -38,7 +39,7 @@ export function useTakenVariantCodes(rows: readonly CodeRow[], ownVariantIds: re
   }, [request])
   const taken = useQuery({
     queryKey: queryKeys.variantCodesTaken(settled),
-    queryFn: ({ signal }) => hubApi<{ items?: TakenVariantCode[] }>('/catalog/variant-codes/taken', { method: 'POST', body: settled, signal }),
+    queryFn: ({ signal }) => hubApi<ApiAnswer<'postCatalogVariantCodesTaken'>>('/catalog/variant-codes/taken', { method: 'POST', body: settled, signal }),
     enabled: codes.length > 0 && settled === request,
     staleTime: 30_000
   })
