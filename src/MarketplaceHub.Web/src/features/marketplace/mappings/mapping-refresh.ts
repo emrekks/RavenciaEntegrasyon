@@ -10,6 +10,17 @@ export function refreshMappingConflicts(client: QueryClient, connectionId: strin
     : client.invalidateQueries({ queryKey: queryKeys.mappingConflicts() })
 }
 
+// W2: the panel's brands and categories are read under several keys (the mapping screens', the new-product editor's
+// ['brands', 'new-product'], the bulk field dialog's): one created, archived or imported here refreshes them all through
+// the root, so the editor offers it at once instead of after its cache expires.
+export function refreshLocalBrands(client: QueryClient) {
+  return client.invalidateQueries({ queryKey: queryKeys.brands() })
+}
+
+export function refreshLocalCategories(client: QueryClient) {
+  return client.invalidateQueries({ queryKey: queryKeys.categories() })
+}
+
 // A mapping that another save created or changed meanwhile: the list must be reloaded before trying again.
 export function isStaleMappingError(error: unknown) {
   return error instanceof ApiRequestError && (error.status === 409 || error.status === 412)
