@@ -1,10 +1,11 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useState } from 'react'
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 import { PanelSelect } from '../../shared/PanelSelect'
 import { RrBadge, RrIcon, RrLogo, RrModal, RrThumb } from '../../shared/ui/rr-components'
 import { integrationNotificationTarget, isExternalWriteMessage, type NotificationTarget } from '../../shared/notifications'
-import { allocateStock, stockedUnits, totalUnits, type ApprovedReturn } from './return-stock-allocation'
+import { allocateStock, stockedUnits, totalUnits } from './return-stock-allocation'
 import { formatIstanbul } from '../../shared/format-date'
 import { formatPackageLabel } from '../../shared/package-label'
 import { sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../shared/idempotency'
@@ -50,10 +51,8 @@ export type BulkDecisionItem = {
 const isHepsiburada = (item: BulkDecisionItem) => item.platformCode.toUpperCase() === 'HEPSIBURADA'
 
 type Outcome = { id: string; ok: boolean; message: string }
-type RejectReason = { id: string; name: string; evidenceRequired: boolean }
 // The return lines (claim items) of a claim: the ids the stock request has to name.
-type DetailLine = { id: string; orderLineId: string; quantity: number; remainingQuantity: number; status?: string | null; decisionPending?: boolean; hasInventoryMapping: boolean; title: string; imageUrl: string | null }
-type DetailLines = { lines: DetailLine[] | null }
+type DetailLine = NonNullable<ApiAnswer<'getReturnsById'>['lines']>[number]
 
 type ProductGroup = { key: string; lines: { id: string; quantity: number }[]; units: number; mapped: boolean; display: BulkDecisionLine | undefined; fallbackTitle: string; fallbackImage: string | null }
 
@@ -91,7 +90,7 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
   const details = useQueries({
     queries: items.map(item => ({
       queryKey: queryKeys.return(item.id),
-      queryFn: ({ signal }) => hubApi<DetailLines>(`/returns/${item.id}`, { signal }),
+      queryFn: ({ signal }) => hubApi<ApiAnswer<'getReturnsById'>>(`/returns/${item.id}`, { signal }),
       enabled: approving,
       staleTime: 15_000
     }))
@@ -118,7 +117,7 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
   // first selected return; a reason a later return does not accept is reported on that return only.
   const reasons = useQuery({
     queryKey: queryKeys.returnReasons('bulk', items[0]?.id),
-    queryFn: ({ signal }) => hubApi<RejectReason[]>(`/returns/${items[0]!.id}/rejection-reasons`, { signal }),
+    queryFn: ({ signal }) => hubApi<ApiAnswer<'getReturnsByIdRejectionReasons'>>(`/returns/${items[0]!.id}/rejection-reasons`, { signal }),
     enabled: !approving && singlePlatform && items.length > 0,
     retry: false
   })
@@ -137,7 +136,7 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
         const body = JSON.stringify(approving
           ? { action: 'APPROVE', reasonCode: null, explanation: null, evidenceAssetIds: [], finalizedWith: isHepsiburada(item) ? finalized[item.id] || null : null, stockLines }
           : { action: 'REJECT', reasonCode: reasonId, explanation: explanation.trim(), evidenceAssetIds: [], finalizedWith: null })
-        const answer = await sendWithVersionedIdempotencyKey(versionedIdempotencyKey('return-action', item.id, item.version, body), key => hubApi<ApprovedReturn>(`/returns/${item.id}/actions`, {
+        const answer = await sendWithVersionedIdempotencyKey(versionedIdempotencyKey('return-action', item.id, item.version, body), key => hubApi<ApiAnswer<'postReturnsByIdActions'>>(`/returns/${item.id}/actions`, {
           method: 'POST',
           headers: { 'Idempotency-Key': key, 'If-Match': `"v${item.version}"` },
           body

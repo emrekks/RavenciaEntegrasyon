@@ -1,10 +1,11 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 import { PanelSelect } from '../../shared/PanelSelect'
 import { RrError, RrIcon, RrLoading, RrLogo, RrModal, RrThumb } from '../../shared/ui/rr-components'
 import { integrationNotificationTarget, isExternalWriteMessage, type NotificationTarget } from '../../shared/notifications'
-import { allocateStock, stockedUnits, type ApprovedReturn } from './return-stock-allocation'
+import { allocateStock, stockedUnits } from './return-stock-allocation'
 import { formatIstanbul } from '../../shared/format-date'
 import { formatPackageLabel } from '../../shared/package-label'
 import { sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../shared/idempotency'
@@ -111,7 +112,7 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
     mutationFn: () => {
       const body = JSON.stringify({ action: 'APPROVE', reasonCode: null, explanation: null, evidenceAssetIds: [], returnLineIds: chosenRows.map(row => row.id), finalizedWith: finalizedWithChoice ? finalizedWith || null : null, stockLines: stockRequests })
       // A retry after an HTTP answer (a refusal, say external writes off) gets a fresh key instead of the stored answer.
-      return sendWithVersionedIdempotencyKey(versionedIdempotencyKey('return-action', claimId, version, body), key => hubApi<ApprovedReturn>(`/returns/${claimId}/actions`, { method: 'POST', headers: { 'Idempotency-Key': key, 'If-Match': `"v${version}"` }, body }))
+      return sendWithVersionedIdempotencyKey(versionedIdempotencyKey('return-action', claimId, version, body), key => hubApi<ApiAnswer<'postReturnsByIdActions'>>(`/returns/${claimId}/actions`, { method: 'POST', headers: { 'Idempotency-Key': key, 'If-Match': `"v${version}"` }, body }))
     },
     onSuccess: async result => {
       // The units the server actually put back (the return's stock decisions after the approval),

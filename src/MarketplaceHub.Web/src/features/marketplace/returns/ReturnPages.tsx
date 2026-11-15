@@ -1,4 +1,5 @@
 // İadeler (/returns, /returns/:id).
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { copyText } from '../../../shared/copy-text'
 import { PanelSelect } from '../../../shared/PanelSelect'
 import { observeUnitPriceAlignment } from '../unit-price-alignment'
@@ -33,10 +34,10 @@ import { useTabSlide } from '../../../shared/tab-slide'
 import { formatMoney } from '../../../shared/format-money'
 import { formatPackageLabel } from '../../../shared/package-label'
 import { returnLabelContent } from './return-label'
-import { DEFAULT_RETURN_SORT, effectiveReturnSort, RETURN_SORTS, returnListParams, returnSortOptions, returnSummaryParams, type ReturnFilters, type ReturnRefinements, type ReturnSort, type ReturnSummary } from './return-list-query'
+import { DEFAULT_RETURN_SORT, effectiveReturnSort, returnShipmentCompaniesQuery, RETURN_SORTS, returnListParams, returnSortOptions, returnSummaryParams, type ReturnFilters, type ReturnRefinements, type ReturnSort } from './return-list-query'
 import { finalizedWithFor, finalizedWithLabels, type FinalizedWith } from '../return-finalized-with'
 import { ReturnFinalizedWithChoice } from '../ReturnFinalizedWithChoice'
-import { Connection, Order, OrderLine, Page, ProductTitleLink, RETURN_NO_PLATFORM, ReturnColumnPop, ReturnFactLines, ReturnHeadCell, ReturnInvoiceRing, ReturnLine, ReturnNoticeKind, ReturnPlatformPop, type ReturnAmounts, displayOrderNumber, orderDisplayShipment, productLineQuantity, remainingText, returnDateText, returnLineFacts, returnLineFieldValue, returnOptionalValue, returnPlatformName, usableShipmentDueAt } from '../shared'
+import { Connection, Order, OrderLine, ProductTitleLink, RETURN_NO_PLATFORM, ReturnColumnPop, ReturnFactLines, ReturnHeadCell, ReturnInvoiceRing, ReturnLine, ReturnNoticeKind, ReturnPlatformPop, type ReturnAmounts, displayOrderNumber, orderDisplayShipment, productLineQuantity, remainingText, returnDateText, returnLineFacts, returnLineFieldValue, returnPlatformName, usableShipmentDueAt } from '../shared'
 import { personName } from '../../../shared/person-name'
 import { cardCountText, toneAbove } from '../../../shared/metric-value'
 import { useMetricSource } from '../use-metric-source'
@@ -53,8 +54,10 @@ const PAZARAMA_RETURN_CODE_LABEL = 'İade Kargo Kodu'
 const PAZARAMA_RETURN_CODE_HINT = "Pazarama'nın iade talebiyle verdiği anlaşmalı kargo kodu; paketin kargoya verildiğini göstermez."
 const isPazarama = (platformCode: string | null | undefined) => platformCode?.toUpperCase() === 'PAZARAMA'
 
-type ReturnClaim = { id: string; externalClaimId: string; orderNumber: string; status: string; rawStatus: string; reasonText: string | null; reasonCode?: string | null; actionDueAt: string | null; approvedAt?: string | null; systemNote?: string | null; sellerDescription?: string | null; platformApprovalReason?: string | null; platformDescription?: string | null; version: number; customerName: string; orderedAt: string | null; orderAmount: number; currency: string; cargoProviderName: string | null; cargoTrackingNumber: string | null; cargoTrackingLink?: string | null; orderCargoProviderName?: string | null; orderCargoTrackingNumber?: string | null; primaryImageUrl: string | null; productCount: number; primaryBarcode: string | null; lines: OrderLine[] | null; packageNumber: string | null; invoiceStatus: string; grossAmount: number; discountAmount: number; isMicroExport: boolean; connectionId: string | null; platformCode: string; platformDisplayName: string; lineStatuses?: Record<string, string> | null; actionDueAtEstimated?: boolean; returnAmounts?: ReturnAmounts | null; rowKey?: string; customerRequest?: string | null; orderReturnStatus?: string | null; requestedAt?: string | null }
-type ReturnDetail = Omit<ReturnClaim, 'lines'> & { reasonCode: string | null; allowedActions: string[]; lines: ReturnLine[] | null; stockDispositionAvailable: boolean; externalWritesEnabled: boolean; decisionPending?: boolean; wholeClaimDecision?: boolean; rejectNeedsReturnShipment?: boolean }; type ReturnIssueReason = { id: string; name: string; evidenceRequired: boolean }; type ReturnShipmentCompany = { id: string; name: string }
+type ReturnClaim = ApiAnswer<'getReturns'>['items'][number]
+// GET /returns/{id} sends the claim's decision facts, not the list row's: no connectionId, platformDisplayName,
+// requestedAt or primaryImageUrl. The screens take those from the row where they have it.
+type ReturnDetail = ApiAnswer<'getReturnsById'>
 // N11 reason 41 ("İade Ürün Mağazaya Ulaşmadı") sends no shipment back; every other N11 denial names it (N11ReturnDenyRule).
 const n11ProductNotReceivedReasonId = '41'
 // The order's claims were decided both ways (N11 and Pazarama open one claim per product): shown beside a claim whose
@@ -129,10 +132,10 @@ function ReturnAmountCells({ amounts, money }: { amounts: ReturnAmounts | null |
   return <>{returnAmountRows(amounts).map(row => <span key={row.label} className={`rr-m${row.pay ? ' rr-pay' : ''}`}><span>{row.label}</span><ReturnAmountValue value={row.value} money={money} /></span>)}</>
 }
 // Facts strip of the decision and detail popups.
-function ReturnDetailFacts({ item, plain, money }: { item: ReturnClaim | ReturnDetail; plain?: boolean; money: (value: number) => string }) {
+function ReturnDetailFacts({ item, requestedAt, plain, money }: { item: ReturnClaim | ReturnDetail; requestedAt: string | null; plain?: boolean; money: (value: number) => string }) {
   const state = titleTr(statusLabel(item.status))
   const cargoIcon = cargoCarrier(item.cargoProviderName)?.iconUrl
-  return <div className="rr-facts"><div><small>Durum</small>{plain ? <RrBadge label={state} /> : <b>{state}</b>}</div>{item.reasonText && <div><small>İade Sebebi</small><b>{returnReasonPresentation(item).label}</b></div>}{(item.cargoTrackingNumber || item.cargoProviderName) && <div><small>Kargo</small>{cargoIcon ? <img className="rr-cargo-img rr-fact-cargo" src={cargoIcon} alt={cargoLabel(item.cargoProviderName)} title={cargoLabel(item.cargoProviderName)} referrerPolicy="no-referrer" loading="lazy" /> : item.cargoProviderName?.trim() && <b>{cargoLabel(item.cargoProviderName)}</b>}{item.cargoTrackingNumber && !isPazarama(item.platformCode) && <b className="rr-num rr-fact-track">{item.cargoTrackingNumber}</b>}</div>}{item.cargoTrackingNumber && isPazarama(item.platformCode) && <div title={PAZARAMA_RETURN_CODE_HINT}><small>{PAZARAMA_RETURN_CODE_LABEL}</small><b className="rr-num rr-fact-track">{item.cargoTrackingNumber}</b></div>}{returnAmountRows(item.returnAmounts).map(row => <div key={row.label}><small>{row.label}</small><ReturnAmountValue value={row.value} money={money} /></div>)}{item.requestedAt && <div><small>Talep Tarihi</small><b className="rr-num">{returnDateText(item.requestedAt)}</b></div>}{plain && item.approvedAt && <div><small>Onaylanma Tarihi</small><b className="rr-num">{returnDateText(item.approvedAt)}</b></div>}</div>
+  return <div className="rr-facts"><div><small>Durum</small>{plain ? <RrBadge label={state} /> : <b>{state}</b>}</div>{item.reasonText && <div><small>İade Sebebi</small><b>{returnReasonPresentation(item).label}</b></div>}{(item.cargoTrackingNumber || item.cargoProviderName) && <div><small>Kargo</small>{cargoIcon ? <img className="rr-cargo-img rr-fact-cargo" src={cargoIcon} alt={cargoLabel(item.cargoProviderName)} title={cargoLabel(item.cargoProviderName)} referrerPolicy="no-referrer" loading="lazy" /> : item.cargoProviderName?.trim() && <b>{cargoLabel(item.cargoProviderName)}</b>}{item.cargoTrackingNumber && !isPazarama(item.platformCode) && <b className="rr-num rr-fact-track">{item.cargoTrackingNumber}</b>}</div>}{item.cargoTrackingNumber && isPazarama(item.platformCode) && <div title={PAZARAMA_RETURN_CODE_HINT}><small>{PAZARAMA_RETURN_CODE_LABEL}</small><b className="rr-num rr-fact-track">{item.cargoTrackingNumber}</b></div>}{returnAmountRows(item.returnAmounts).map(row => <div key={row.label}><small>{row.label}</small><ReturnAmountValue value={row.value} money={money} /></div>)}{requestedAt && <div><small>Talep Tarihi</small><b className="rr-num">{returnDateText(requestedAt)}</b></div>}{plain && item.approvedAt && <div><small>Onaylanma Tarihi</small><b className="rr-num">{returnDateText(item.approvedAt)}</b></div>}</div>
 }
 function ReturnReferenceRow({ item, order, onNotice, selection, selectColumn, noBuyer }: { item: ReturnClaim; order: Order | null; onNotice?: ReturnNoticeHandler; selection?: { checked: boolean; onChange: () => void }; selectColumn?: boolean; noBuyer?: boolean }) {
   const [previewLine, setPreviewLine] = useState<OrderLine | null>(null)
@@ -141,7 +144,7 @@ function ReturnReferenceRow({ item, order, onNotice, selection, selectColumn, no
   const [dialogMode, setDialogMode] = useState<'DETAIL' | 'APPROVE' | 'REJECT' | null>(null)
   const [selectedReturnLineIds, setSelectedReturnLineIds] = useState<string[]>([])
   const rowRef = useRef<HTMLTableRowElement>(null)
-  const detailQuery = useQuery({ queryKey: queryKeys.return(item.id), queryFn: ({ signal }) => hubApi<ReturnDetail>(`/returns/${item.id}`, { signal }), enabled: dialogMode !== null, staleTime: 30_000 })
+  const detailQuery = useQuery({ queryKey: queryKeys.return(item.id), queryFn: ({ signal }) => hubApi<ApiAnswer<'getReturnsById'>>(`/returns/${item.id}`, { signal }), enabled: dialogMode !== null, staleTime: 30_000 })
   const navigate = useNavigate()
   const lines = order?.lines?.length ? order.lines : item.lines ?? []
   const currency = order?.currency ?? item.currency
@@ -156,7 +159,8 @@ function ReturnReferenceRow({ item, order, onNotice, selection, selectColumn, no
   const canTrackReturn = !pazaramaCode && Boolean(item.cargoTrackingLink && /^https:\/\//i.test(item.cargoTrackingLink))
   const canTrackOrder = !rejected && Boolean(orderShipment?.id && trackingNumber?.trim())
   const detailItem = detailQuery.data ?? item
-  const detailLines = detailQuery.data?.lines ?? lines
+  // Drawn only once the claim is read; GET /returns/{id} always sends its lines (CONTRACT: declared nullable).
+  const detailLines = detailQuery.data?.lines ?? []
   const detailCurrency = detailItem.currency ?? currency
   const detailMoney = (value: number) => formatMoney(value, detailCurrency)
   const reasonPresentation = returnReasonPresentation(item)
@@ -206,24 +210,24 @@ function ReturnReferenceRow({ item, order, onNotice, selection, selectColumn, no
   </tr>
     {previewLine && <ReturnImagePreview title={previewLine.title} imageUrl={previewLine.imageUrl ?? item.primaryImageUrl} fallbackUrl={previewLine.fallbackImageUrl} facts={returnLineFacts(item.platformCode, previewLine)} onClose={() => setPreviewLine(null)} />}
     {labelOpen && <ReturnLabelPreview item={item} lines={lines} onClose={() => setLabelOpen(false)} />}
-    {dialogMode === 'APPROVE' && useApproveDialog && <ReturnApproveDialog open claimId={item.id} version={detailItem.version} marketplaceName={marketplaceName} order={{ connectionId: detailItem.connectionId ?? item.connectionId ?? null, platformCode: detailItem.platformCode, platformName: marketplaceName, orderNumber: displayOrderNumber(detailItem.orderNumber), customer: detailItem.customerName, orderedAt: detailItem.orderedAt, packageNumber: item.packageNumber, claimCode: item.externalClaimId, reason: reasonPresentation.label }} rows={approveRows} wholeClaim={detailQuery.data?.wholeClaimDecision === true} finalizedWithChoice={approveIsHepsiburada} customerRequest={detailItem.customerRequest ?? item.customerRequest ?? null} loading={detailQuery.isLoading} error={detailQuery.isError ? detailQuery.error : null} onClose={closeDialog} onDone={(message, kind, details, target) => notifyReturn(onNotice, message, kind, details, target?.href.startsWith('/integrations') ? target : undefined, { ...returnNotificationContext(detailItem), title: kind === 'error' ? 'İade Kabul Kararı İletilemedi' : 'İade Kabul Kararı İletildi', operation: 'İade kabul kararı' })} />}
+    {dialogMode === 'APPROVE' && useApproveDialog && <ReturnApproveDialog open claimId={item.id} version={detailItem.version} marketplaceName={marketplaceName} order={{ connectionId: item.connectionId ?? null, platformCode: detailItem.platformCode ?? item.platformCode, platformName: marketplaceName, orderNumber: displayOrderNumber(detailItem.orderNumber), customer: detailItem.customerName, orderedAt: detailItem.orderedAt, packageNumber: item.packageNumber, claimCode: item.externalClaimId, reason: reasonPresentation.label }} rows={approveRows} wholeClaim={detailQuery.data?.wholeClaimDecision === true} finalizedWithChoice={approveIsHepsiburada} customerRequest={detailItem.customerRequest ?? item.customerRequest ?? null} loading={detailQuery.isLoading} error={detailQuery.isError ? detailQuery.error : null} onClose={closeDialog} onDone={(message, kind, details, target) => notifyReturn(onNotice, message, kind, details, target?.href.startsWith('/integrations') ? target : undefined, { ...returnNotificationContext(detailItem), title: kind === 'error' ? 'İade Kabul Kararı İletilemedi' : 'İade Kabul Kararı İletildi', operation: 'İade kabul kararı' })} />}
     {dialogMode && !(dialogMode === 'APPROVE' && useApproveDialog) && <RrModal crumb={`${marketplaceName} İade`} title={dialogMode === 'APPROVE' ? 'İade Onayı' : dialogMode === 'REJECT' ? 'İade Ret Talebi' : 'Detaylı Bilgi'} desc={`Sipariş ${displayOrderNumber(detailItem.orderNumber)} · ${detailItem.customerName}`} size="lg" onClose={closeDialog} foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={closeDialog}>Kapat</button></>}>
       {detailQuery.isLoading ? <RrLoading text="İade detayları yükleniyor…" /> : detailQuery.isError || !detailQuery.data ? <RrError error={detailQuery.error} onRetry={() => void detailQuery.refetch()} /> : <>
-        <ReturnDetailFacts item={detailItem} plain={dialogMode === 'DETAIL'} money={detailMoney} />
+        <ReturnDetailFacts item={detailItem} requestedAt={item.requestedAt} plain={dialogMode === 'DETAIL'} money={detailMoney} />
         <div className="rr-h3">Ürünler</div>
         {dialogMode === 'DETAIL' ? detailLines.map(line => {
           const approvedAt = returnLineFieldValue(line, ['onaylanma', 'approved'], 'approvedAt') ?? detailItem.approvedAt
-          const systemNote = returnLineFieldValue(line, ['sistem notu', 'system'], 'systemNote') ?? returnOptionalValue(detailItem.systemNote)
+          const systemNote = returnLineFieldValue(line, ['sistem notu', 'system'], 'systemNote')
           const reasonText = returnLineFieldValue(line, ['sebep', 'reason'], 'reasonText') ?? detailItem.reasonText
-          const sellerDescription = returnLineFieldValue(line, ['satıcı açıklaması', 'seller'], 'sellerDescription') ?? returnOptionalValue(detailItem.sellerDescription)
+          const sellerDescription = returnLineFieldValue(line, ['satıcı açıklaması', 'seller'], 'sellerDescription')
           // Trendyol's settlement of the line (acceptDetail, note, resolved, acceptedBySeller) fills these rows when nothing else does.
-          const settlement = line as Partial<ReturnLine>
-          const platformReason = returnLineFieldValue(line, ['trendyol onay nedeni', 'approval reason'], 'platformApprovalReason') ?? returnOptionalValue(detailItem.platformApprovalReason) ?? acceptDetailText(settlement.acceptDetail)
-          const platformDescription = returnLineFieldValue(line, ['trendyol açıklaması', 'platform description'], 'platformDescription') ?? returnOptionalValue(detailItem.platformDescription) ?? (settlement.marketplaceNote?.trim() || null)
+          const settlement = line
+          const platformReason = returnLineFieldValue(line, ['trendyol onay nedeni', 'approval reason'], 'platformApprovalReason') ?? acceptDetailText(settlement.acceptDetail)
+          const platformDescription = returnLineFieldValue(line, ['trendyol açıklaması', 'platform description'], 'platformDescription') ?? (settlement.marketplaceNote?.trim() || null)
           const disputeState = settlement.resolved == null ? null : settlement.resolved ? 'Çözüldü' : 'Çözülmedi'
           const sellerAccepted = settlement.acceptedBySeller == null ? null : settlement.acceptedBySeller ? 'Evet' : 'Hayır'
           const fields: Array<[string, string, string?]> = [['Onaylanma Tarihi', approvedAt ? returnDateText(approvedAt) : '-', approvedAt ? undefined : 'rr-empty'], ['Sistem Notu', systemNote ?? '-', systemNote ? 'rr-sys' : 'rr-empty'], ['Sebep', reasonText ?? '-', reasonText ? undefined : 'rr-empty'], ['Satıcı Açıklaması', sellerDescription ?? '-', sellerDescription ? undefined : 'rr-empty'], [`${marketplaceName} Onay Nedeni`, platformReason ?? '-', platformReason ? undefined : 'rr-empty'], [`${marketplaceName} Açıklaması`, platformDescription ?? '-', platformDescription ? undefined : 'rr-empty'], ...(detailItem.platformCode === 'TRENDYOL' ? [['İhtilaf Durumu', disputeState ?? '-', disputeState ? undefined : 'rr-empty'], ['Satıcı Onayı', sellerAccepted ?? '-', sellerAccepted ? undefined : 'rr-empty']] as Array<[string, string, string?]> : [])]
-          return <article className="rr-refline" key={line.id}><div className="rr-rh"><RrThumb src={line.imageUrl} fallbackSrc={line.fallbackImageUrl} quantity={productLineQuantity(line as OrderLine)} large alt={line.title} /><div><b>{line.title}<button type="button" className="rr-icon-btn" title="Ürün adını kopyala" aria-label="Ürün adını kopyala" onClick={() => { void navigator.clipboard?.writeText(line.title).catch(() => undefined) }}><RrIcon name="copy" /></button></b><ReturnFactLines facts={returnLineFacts(detailItem.platformCode, line)} /></div></div><dl className="rr-kv">{fields.map(([label, value, className]) => <Fragment key={label}><dt>{label}</dt><dd className={className}>{value}</dd></Fragment>)}</dl></article>
+          return <article className="rr-refline" key={line.id}><div className="rr-rh"><RrThumb src={line.imageUrl} fallbackSrc={line.fallbackImageUrl} quantity={productLineQuantity(line)} large alt={line.title} /><div><b>{line.title}<button type="button" className="rr-icon-btn" title="Ürün adını kopyala" aria-label="Ürün adını kopyala" onClick={() => { void navigator.clipboard?.writeText(line.title).catch(() => undefined) }}><RrIcon name="copy" /></button></b><ReturnFactLines facts={returnLineFacts(detailItem.platformCode, line)} /></div></div><dl className="rr-kv">{fields.map(([label, value, className]) => <Fragment key={label}><dt>{label}</dt><dd className={className}>{value}</dd></Fragment>)}</dl></article>
         }) : <div className="rr-pcards">{detailLines.map(line => {
           const selectable = decisionAvailable
           const selected = selectedReturnLineIds.includes(line.id)
@@ -265,7 +269,8 @@ function notifyReturn(onNotice: ReturnNoticeHandler | undefined, message: string
   onNotice?.(message, kind)
 }
 // The return a notice is about: its claim and order number (opening the return), its marketplace and store.
-function returnNotificationContext(item: Pick<ReturnClaim, 'id' | 'orderNumber' | 'externalClaimId' | 'platformCode' | 'connectionId' | 'platformDisplayName'>): NotificationContext {
+// A list row names its store; a claim read alone (GET /returns/{id}) does not, and its notice then goes without it.
+function returnNotificationContext(item: Pick<ReturnDetail, 'id' | 'orderNumber' | 'externalClaimId' | 'platformCode'> & Partial<Pick<ReturnClaim, 'connectionId' | 'platformDisplayName'>>): NotificationContext {
   const claim = item.externalClaimId?.trim()
   return { platformCode: item.platformCode, connectionId: item.connectionId ?? undefined, storeName: item.platformDisplayName || undefined, subject: { kind: 'return', id: item.id, label: `${displayOrderNumber(item.orderNumber)}${claim ? ` · Talep ${claim}` : ''}`, href: notificationLinks.return(item.id) } }
 }
@@ -291,12 +296,12 @@ function ReturnDecisionActions({ item, onNotice, onComplete, selectedLineIds: co
   const fileInput = useRef<HTMLInputElement>(null)
   const resetDecision = useEffectEvent(() => { if (!isControlled) setLocalSelectedLineIds(lines.map(line => line.id)); setConfirmation(null); setShipmentCompanyId(''); setTrackingNumber(''); setFinalizedWith(finalizedWithFor(item.customerRequest)); setAction(initialAction ?? (isAwaitingPreApproval ? 'PREAPPROVAL_CONFIRM' : 'APPROVE')) })
   useEffect(() => resetDecision(), [item.id, item.version, item.lines, item.customerRequest, isControlled, isAwaitingPreApproval, initialAction])
-  const reasons = useQuery({ queryKey: queryKeys.returnReasons(item.id), queryFn: ({ signal }) => hubApi<ReturnIssueReason[]>(`/returns/${item.id}/rejection-reasons`, { signal }), enabled: item.allowedActions.includes('REJECT'), retry: false })
+  const reasons = useQuery({ queryKey: queryKeys.returnReasons(item.id), queryFn: ({ signal }) => hubApi<ApiAnswer<'getReturnsByIdRejectionReasons'>>(`/returns/${item.id}/rejection-reasons`, { signal }), enabled: item.allowedActions.includes('REJECT'), retry: false })
   // N11: a denial (other than reason 41) names the shipment of the product back to the buyer; CAMPAIGN is never offered.
   const needsReturnShipment = action === 'REJECT' && item.rejectNeedsReturnShipment === true && reasonId !== '' && reasonId !== n11ProductNotReceivedReasonId
-  const shipmentCompanies = useQuery({ queryKey: queryKeys.returnShipmentCompanies(item.connectionId), queryFn: ({ signal }) => hubApi<ReturnShipmentCompany[]>(`/returns/${item.id}/return-shipment-companies`, { signal }), enabled: action === 'REJECT' && item.rejectNeedsReturnShipment === true, retry: false, staleTime: 60 * 60_000 })
+  const shipmentCompanies = useQuery({ ...returnShipmentCompaniesQuery(item.id), enabled: action === 'REJECT' && item.rejectNeedsReturnShipment === true, retry: false, staleTime: 60 * 60_000 })
   const decision = useMutation({
-    mutationFn: (payload: ReturnDecisionDraft) => hubApi<ReturnDetail>(`/returns/${item.id}/actions`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ action: payload.action, reasonCode: payload.reasonCode, explanation: payload.explanation, evidenceAssetIds: payload.evidenceAssetIds, returnLineIds: payload.returnLineIds, finalizedWith: payload.finalizedWith, returnShipment: payload.returnShipment ? { shipmentCompanyId: payload.returnShipment.shipmentCompanyId, trackingNumber: payload.returnShipment.trackingNumber } : null }) }),
+    mutationFn: (payload: ReturnDecisionDraft) => hubApi<ApiAnswer<'postReturnsByIdActions'>>(`/returns/${item.id}/actions`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ action: payload.action, reasonCode: payload.reasonCode, explanation: payload.explanation, evidenceAssetIds: payload.evidenceAssetIds, returnLineIds: payload.returnLineIds, finalizedWith: payload.finalizedWith, returnShipment: payload.returnShipment ? { shipmentCompanyId: payload.returnShipment.shipmentCompanyId, trackingNumber: payload.returnShipment.trackingNumber } : null }) }),
     onSuccess: async (result, payload) => {
       setConfirmation(null)
       const response = result.rawStatus ? ` ${marketplaceName} durumu: ${returnPlatformStatusText(result.rawStatus, marketplaceName)}.` : ''
@@ -319,7 +324,7 @@ function ReturnDecisionActions({ item, onNotice, onComplete, selectedLineIds: co
     onError: error => {
       const failure = notificationError(error, 'İade kararı başlatılamadı.')
       const reason = failure.message
-      notifyReturn(onNotice, `${displayOrderNumber(item.orderNumber)} siparişinin iade kararı ${marketplaceName}’a iletilemedi: ${reason}`, 'error', [{ label: 'Müşteri', value: item.customerName }, { label: 'Neden', value: reason, tone: 'error' }], isExternalWriteMessage(reason) ? integrationNotificationTarget(item.connectionId, marketplaceName) : undefined, { ...returnNotificationContext(item), title: 'İade Kararı İletilemedi', operation: 'İade kararı', code: failure.code })
+      notifyReturn(onNotice, `${displayOrderNumber(item.orderNumber)} siparişinin iade kararı ${marketplaceName}’a iletilemedi: ${reason}`, 'error', [{ label: 'Müşteri', value: item.customerName }, { label: 'Neden', value: reason, tone: 'error' }], isExternalWriteMessage(reason) ? integrationNotificationTarget(null, marketplaceName) : undefined, { ...returnNotificationContext(item), title: 'İade Kararı İletilemedi', operation: 'İade kararı', code: failure.code })
     }
   })
   async function uploadFile(file: File) {
@@ -420,8 +425,8 @@ export function ReturnsPage() {
   if (cursorKey !== listKey) { setCursorKey(listKey); setPageCursors({ 1: null }); setPageNumber(1) }
   const cursor = pageNumber > 1 ? pageCursors[pageNumber] ?? null : null
   useListUrlSync({ status: appliedFilters.status, search: appliedFilters.search, from: appliedFilters.from, to: appliedFilters.to, platforms: selectedPlatforms, cargo: cargoFilter, reason: reasonFilter, invoice: invoiceStatusFilter, sort, size: pageSize, page: pageNumber }, { status: 'ALL', cargo: 'ALL', reason: 'ALL', invoice: 'ALL', sort: DEFAULT_RETURN_SORT, size: 20, page: 1 })
-  const query = useQuery({ queryKey: queryKeys.returns('list', appliedFilters, refinements, sort, pageSize, pageNumber, cursor), queryFn: ({ signal }) => hubPoll<Page<ReturnClaim>>(`/returns?${returnListParams(appliedFilters, refinements, { sort: sort === DEFAULT_RETURN_SORT ? null : sort, limit: pageSize, after: cursor, page: pageNumber }).toString()}`, { signal }), placeholderData: keepPreviousData, refetchInterval: 30_000 })
-  const summary = useQuery({ queryKey: queryKeys.returns('summary', appliedFilters, refinements), queryFn: ({ signal }) => hubPoll<ReturnSummary>(`/returns/summary?${returnSummaryParams(appliedFilters, refinements).toString()}`, { signal }), placeholderData: keepPreviousData, refetchInterval: 30_000 })
+  const query = useQuery({ queryKey: queryKeys.returns('list', appliedFilters, refinements, sort, pageSize, pageNumber, cursor), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getReturns'>>(`/returns?${returnListParams(appliedFilters, refinements, { sort: sort === DEFAULT_RETURN_SORT ? null : sort, limit: pageSize, after: cursor, page: pageNumber }).toString()}`, { signal }), placeholderData: keepPreviousData, refetchInterval: 30_000 })
+  const summary = useQuery({ queryKey: queryKeys.returns('summary', appliedFilters, refinements), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getReturnsSummary'>>(`/returns/summary?${returnSummaryParams(appliedFilters, refinements).toString()}`, { signal }), placeholderData: keepPreviousData, refetchInterval: 30_000 })
   const nextCursor = query.data?.nextCursor ?? null
   if (nextCursor && !query.isPlaceholderData && pageCursors[pageNumber + 1] !== nextCursor) setPageCursors(current => ({ ...current, [pageNumber + 1]: nextCursor }))
   const connections = useQuery(connectionQueries.list<Connection>())
@@ -533,7 +538,7 @@ export function ReturnDetailPage() {
     const timeout = window.setTimeout(() => setNoticeState(''), noticeKind === 'info' ? 7000 : 5500)
     return () => window.clearTimeout(timeout)
   }, [notice, noticeKind])
-  const query = useQuery({ queryKey: queryKeys.return(id), queryFn: ({ signal }) => hubApi<ReturnDetail>(`/returns/${id}`, { signal }) })
+  const query = useQuery({ queryKey: queryKeys.return(id), queryFn: ({ signal }) => hubApi<ApiAnswer<'getReturnsById'>>(`/returns/${id}`, { signal }) })
   // Each stock decision is its own request: a decision does not change the return's version, so a key
   // made from the version and the body would replay the first of two equal decisions (audit 2026-10-20 W11).
   // The key is kept per pending decision instead (sendStockDisposition): a resend after a lost answer replays it.
@@ -566,7 +571,7 @@ export function ReturnDetailPage() {
         (the server accepts stock decisions only for approved lines, so a line approved on its own takes stock while the others wait). A rejected return has nothing to put back. */}
     {(item.stockDispositionAvailable ? lines.some(line => line.remainingQuantity > 0) : returnGroup(item.status) !== 'REJECTED' && returnGroup(item.status) !== 'APPROVED') && <>
     <article><div className="rr-h3">İade Paketi Ürünleri ve Stok Kabulü</div><div className="rr-callout rr-warn"><RrIcon name="alert" /><span><b>Stok otomatik artmaz.</b> Ürün fiziksel olarak kontrol edildikten sonra “Satılabilir” seçilirse stok artar; Karantina, Hasarlı ve Teslim Alınmadı seçimleri stoğu artırmaz.</span></div>
-      {!lines.length ? <EmptyState icon="returns" title="İade Satırı Bulunamadı" /> : lines.map(line => <div className="rr-disp" key={line.id}><RrThumb src={line.imageUrl ?? item.primaryImageUrl} fallbackSrc={line.fallbackImageUrl} quantity={line.quantity} large alt={line.title} /><span className="rr-ptext"><b>{line.title}</b><small>{line.sku}{line.barcode ? ` · ${line.barcode}` : ''}</small><small>{line.quantity} adet · kalan karar {line.remainingQuantity}</small></span>{(line.stockDispositionAvailable ?? item.stockDispositionAvailable) && line.remainingQuantity > 0 ? <form onSubmit={event => disposition(event, line)}><DispositionSelect /><input className="rr-in rr-num" name="quantity" type="number" min="0.01" max={line.remainingQuantity} step="0.01" defaultValue={line.remainingQuantity} required aria-label="Adet" /><input className="rr-in" name="reason" placeholder="Kontrol notu" required aria-label="Kontrol notu" /><button type="submit" className="rr-btn rr-primary" disabled={dispositionRequest.isPending}>{dispositionRequest.isPending ? 'Kaydediliyor…' : 'Kararı Kaydet'}</button></form> : <div style={{ gridColumn: 2, display: 'flex', flexWrap: 'wrap', gap: 8 }}><RrBadge label={line.remainingQuantity === 0 ? 'Tamamlandı' : line.status?.toUpperCase() === 'REJECTED' ? 'Reddedildi' : line.stockPending ? 'Onay Kesinleşince Stoğa Eklenecek' : line.hasInventoryMapping ? 'Onay Bekliyor' : 'Stok Eşlemesi Gerekli'} /></div>}</div>)}
+      {!lines.length ? <EmptyState icon="returns" title="İade Satırı Bulunamadı" /> : lines.map(line => <div className="rr-disp" key={line.id}><RrThumb src={line.imageUrl} fallbackSrc={line.fallbackImageUrl} quantity={line.quantity} large alt={line.title} /><span className="rr-ptext"><b>{line.title}</b><small>{line.sku}{line.barcode ? ` · ${line.barcode}` : ''}</small><small>{line.quantity} adet · kalan karar {line.remainingQuantity}</small></span>{(line.stockDispositionAvailable ?? item.stockDispositionAvailable) && line.remainingQuantity > 0 ? <form onSubmit={event => disposition(event, line)}><DispositionSelect /><input className="rr-in rr-num" name="quantity" type="number" min="0.01" max={line.remainingQuantity} step="0.01" defaultValue={line.remainingQuantity} required aria-label="Adet" /><input className="rr-in" name="reason" placeholder="Kontrol notu" required aria-label="Kontrol notu" /><button type="submit" className="rr-btn rr-primary" disabled={dispositionRequest.isPending}>{dispositionRequest.isPending ? 'Kaydediliyor…' : 'Kararı Kaydet'}</button></form> : <div style={{ gridColumn: 2, display: 'flex', flexWrap: 'wrap', gap: 8 }}><RrBadge label={line.remainingQuantity === 0 ? 'Tamamlandı' : line.status?.toUpperCase() === 'REJECTED' ? 'Reddedildi' : line.stockPending ? 'Onay Kesinleşince Stoğa Eklenecek' : line.hasInventoryMapping ? 'Onay Bekliyor' : 'Stok Eşlemesi Gerekli'} /></div>}</div>)}
     </article>
     </>}
   </div></section>

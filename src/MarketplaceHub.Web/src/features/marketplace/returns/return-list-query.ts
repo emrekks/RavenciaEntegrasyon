@@ -1,6 +1,19 @@
 // The Returns page asks the server for one page of cards (GET /returns) and for the tab counts and
 // filter choices (GET /returns/summary); both take the same filters.
 import { istanbulDayBoundary } from '../../../shared/format-date'
+import { hubApi } from '../../../shared/api'
+import type { ApiAnswer } from '../../../shared/api/api-answer'
+import { queryKeys } from '../../../shared/api/query-keys'
+
+// The companies a claim's product can be sent back with (N11's denial): the server answers per claim, so the answer is
+// kept per claim. It was kept per connection before, but a claim read alone (GET /returns/{id}) names no connection, so
+// every claim shared one cached list for an hour.
+export function returnShipmentCompaniesQuery(claimId: string) {
+  return {
+    queryKey: queryKeys.returnShipmentCompanies(claimId),
+    queryFn: ({ signal }: { signal: AbortSignal }) => hubApi<ApiAnswer<'getReturnsByIdReturnShipmentCompanies'>>(`/returns/${claimId}/return-shipment-companies`, { signal })
+  }
+}
 
 export type ReturnFilters = { status: string; search: string; from: string; to: string }
 export type ReturnRefinements = { platforms: string[]; cargo: string; reason: string; invoiceStatus: string }
