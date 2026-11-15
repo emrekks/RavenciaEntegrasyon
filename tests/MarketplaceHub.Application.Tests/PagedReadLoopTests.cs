@@ -81,6 +81,47 @@ public sealed class PagedReadLoopTests
         Assert.Equal(3, readOn.Count);
     }
 
+    // ISLEYICI-11 (16 Nov 2026): the guards for a walk that keeps its own loop stop at the same pages RunAsync stops at.
+    [Fact]
+    public void AHandWrittenWalkStopsAtTheSamePagesAsTheSharedLoop()
+    {
+        var capped = new PageWalk(new PageGuard(MaxPages: 3, StopOnRepeatedCursor: true));
+        Assert.Null(capped.After(null, "2"));
+        Assert.Null(capped.After("2", "3"));
+        Assert.Equal(PagedReadStop.PageCap, capped.After("3", "4"));
+        Assert.Equal(3, capped.PagesRead);
+
+        var lastPage = new PageWalk(new PageGuard(MaxPages: 3));
+        Assert.Null(lastPage.After(null, "2"));
+        Assert.Null(lastPage.After("2", "3"));
+        Assert.Null(lastPage.After("3", null));
+
+        var repeated = new PageWalk(new PageGuard(StopOnRepeatedCursor: true));
+        Assert.Null(repeated.After(null, "2"));
+        Assert.Equal(PagedReadStop.RepeatedCursor, repeated.After("2", "2"));
+        // A first page with no cursor that names no cursor is not a repeat, it is the end.
+        Assert.Null(new PageWalk(new PageGuard(StopOnRepeatedCursor: true)).After(null, null));
+
+        var unguarded = new PageWalk(new PageGuard());
+        for (var page = 0; page < 10; page++) Assert.Null(unguarded.After("2", "2"));
+
+        var samePage = new PageWalk(new PageGuard(PageRepeated: (previous, key) => previous is not null && previous == key));
+        Assert.Null(samePage.After(null, "2", "a"));
+        Assert.Equal(PagedReadStop.RepeatedPage, samePage.After("2", "3", "a"));
+    }
+
+    [Fact]
+    public void ATrendyolReturnPageIsRepeatedOnlyWhenTheSamePageWouldBeAskedAgain()
+    {
+        var state = new MarketplaceJobProcessor.ReturnSyncState("v", 0, 3);
+        Assert.True(MarketplaceJobProcessor.ReturnPageRepeated(state, MarketplaceJobProcessor.NextReturnPage(state, "3")));
+        Assert.False(MarketplaceJobProcessor.ReturnPageRepeated(state, MarketplaceJobProcessor.NextReturnPage(state, "4")));
+        Assert.False(MarketplaceJobProcessor.ReturnPageRepeated(state, MarketplaceJobProcessor.NextReturnPage(state, null)));
+        var opaque = MarketplaceJobProcessor.NextReturnPage(state, "s:Accepted=2");
+        Assert.True(MarketplaceJobProcessor.ReturnPageRepeated(opaque, MarketplaceJobProcessor.NextReturnPage(opaque, "s:Accepted=2")));
+        Assert.False(MarketplaceJobProcessor.ReturnPageRepeated(opaque, MarketplaceJobProcessor.NextReturnPage(opaque, "s:Accepted=3")));
+    }
+
     [Fact]
     public async Task AReaderThatStopsEndsTheWalk()
     {

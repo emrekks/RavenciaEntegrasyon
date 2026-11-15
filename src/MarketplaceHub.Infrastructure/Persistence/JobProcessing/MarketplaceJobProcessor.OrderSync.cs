@@ -181,6 +181,7 @@ public sealed partial class MarketplaceJobProcessor
         var resetExpiredCursor = false;
         var completed = false;
         var insertedBeforePoll = telemetryInsertedCount;
+        var streamWalk = new PageWalk(TrendyolOrderStreamPageGuard);
         do
         {
             var (modifiedAfter, modifiedBefore) = OrderWindow(state);
@@ -233,6 +234,16 @@ public sealed partial class MarketplaceJobProcessor
             if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
             await IngestOrderPageAsync(tenantId, connectionId, result.Value!, "order-contract", cancellationToken);
             NoteStorefront(storefront, TrendyolStorefrontPolicy.Read(storefrontActivity.GetValueOrDefault(storefront), now, result.Value!.Items.Count > 0));
+            // ISLEYICI-11: a stream that names the page just read as the next one, or never ends, stops here with its own
+            // code. The position saved after the previous page stays, the watermark does not move, and the next run
+            // resumes from there.
+            switch (streamWalk.After(state.NextCursor, result.Value.HasMore ? result.Value.NextCursor : null))
+            {
+                case PagedReadStop.PageCap:
+                    throw PagedReadLoop.GuardFailure("TRENDYOL_ORDER_STREAM_PAGE_CAP", $"Trendyol sipariş akışı bir okumada {TrendyolOrderStreamPageCap} sayfayı aştı; okuma kaldığı yerde durduruldu ve bu dönem okunmuş sayılmadı.");
+                case PagedReadStop.RepeatedCursor:
+                    throw PagedReadLoop.GuardFailure("TRENDYOL_ORDER_STREAM_PAGE_REPEATED", "Trendyol sipariş akışı okunan sayfayı yeniden sonraki sayfa olarak verdi; okuma durduruldu ve bu dönem okunmuş sayılmadı.");
+            }
             if (result.Value.HasMore)
             {
                 if (string.IsNullOrWhiteSpace(result.Value.NextCursor)) throw new InvalidOperationException("Trendyol stream hasMore=true ancak nextCursor boş döndü.");
@@ -307,6 +318,8 @@ public sealed partial class MarketplaceJobProcessor
             var start = TrendyolStorefrontPolicy.ProbeStart(previous, now, overlap);
             var received = false;
             string? nextCursor = null;
+            var probeWalk = new PageWalk(TrendyolStorefrontProbePageGuard);
+            var probeIssueKey = $"trendyol-storefront-read-guard:{connectionId}:{storefront}";
             do
             {
                 TrackRequest();
@@ -324,10 +337,25 @@ public sealed partial class MarketplaceJobProcessor
                 }
                 await IngestOrderPageAsync(tenantId, connectionId, page.Value!, "order-contract", cancellationToken);
                 received |= page.Value!.Items.Count > 0;
+                var readWith = nextCursor;
                 nextCursor = page.Value.HasMore && !string.IsNullOrWhiteSpace(page.Value.NextCursor) ? page.Value.NextCursor : null;
+                // ISLEYICI-11: a storefront read that repeats its page or never ends stops like a failed read: its last
+                // read stays where it was (so it is read again next run) and an issue names the stop.
+                if (probeWalk.After(readWith, nextCursor) is { } stop)
+                {
+                    await RecordIssue(tenantId, probeIssueKey,
+                        stop == PagedReadStop.PageCap ? "TRENDYOL_STOREFRONT_READ_PAGE_CAP" : "TRENDYOL_STOREFRONT_READ_PAGE_REPEATED",
+                        stop == PagedReadStop.PageCap
+                            ? $"Trendyol {storefront} vitrininin sipariş okuması {TrendyolStorefrontProbePageCap} sayfayı aştı; okuma durduruldu, vitrin sonraki okumada yeniden okunacak."
+                            : $"Trendyol {storefront} vitrininin sipariş okuması okunan sayfayı yeniden sonraki sayfa olarak verdi; okuma durduruldu, vitrin sonraki okumada yeniden okunacak.",
+                        cancellationToken);
+                    await db.SaveChangesAsync(cancellationToken);
+                    return false;
+                }
             } while (nextCursor is not null && !cancellationToken.IsCancellationRequested);
             if (cancellationToken.IsCancellationRequested) return false;
             NoteStorefront(storefront, TrendyolStorefrontPolicy.Read(previous, now, received));
+            await ResolveIssue(tenantId, probeIssueKey, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
             return true;
         }
@@ -464,6 +492,13 @@ public sealed partial class MarketplaceJobProcessor
     // three-month baseline instead of continuing the old incremental cursor.
     private const string OrderSyncStateVersion = "orders-v4";
     private static readonly TimeSpan OrderStreamWindowSpan = TimeSpan.FromDays(14);
+
+    // ISLEYICI-11 (16 Nov 2026): stream pages of 200 packages in one run (one million packages: far above a three-month
+    // baseline of a large store), and pages of one storefront read; guards against a stream that never ends.
+    internal const int TrendyolOrderStreamPageCap = 5_000;
+    private static readonly PageGuard TrendyolOrderStreamPageGuard = new(MaxPages: TrendyolOrderStreamPageCap, StopOnRepeatedCursor: true);
+    internal const int TrendyolStorefrontProbePageCap = 1_000;
+    private static readonly PageGuard TrendyolStorefrontProbePageGuard = new(MaxPages: TrendyolStorefrontProbePageCap, StopOnRepeatedCursor: true);
     // Stream reads are spaced (5 s between starts) and capped (30/min) per seller by
     // TrendyolResilienceHandler; sleeping here as well only added idle time to every page.
     private const int DefaultOrderSyncOverlapSeconds = 120;

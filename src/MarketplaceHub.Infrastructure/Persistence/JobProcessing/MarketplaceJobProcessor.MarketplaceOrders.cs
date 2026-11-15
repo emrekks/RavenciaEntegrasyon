@@ -6,6 +6,11 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed partial class MarketplaceJobProcessor
 {
+    // ISLEYICI-11 (16 Nov 2026): Shopify order pages of 100 in one run (half a million orders), a guard against a list
+    // that never ends.
+    internal const int ShopifyOrderPageCap = 5_000;
+    private static readonly PageGuard ShopifyOrderPageGuard = new(MaxPages: ShopifyOrderPageCap, StopOnRepeatedCursor: true);
+
     private async Task<bool> SyncShopifyOrders(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, string cursorResourceType, bool allowBaseline, CancellationToken cancellationToken)
     {
         string? externalOrderId = null;
@@ -44,6 +49,7 @@ public sealed partial class MarketplaceJobProcessor
         var window = resumed ?? new ShopifyOrderHistoryPolicy.ResumableWindow(modifiedAfter, now, 0, null);
         if (resumed is not null) readsBaseline = false;
         var latestSeen = window.From;
+        var walk = new PageWalk(ShopifyOrderPageGuard);
         do
         {
             TrackRequest();
@@ -56,6 +62,16 @@ public sealed partial class MarketplaceJobProcessor
             await IngestOrderPageAsync(tenantId, connectionId, result.Value!, "shopify-order-contract", cancellationToken);
             foreach (var item in result.Value!.Items)
                 if (latestSeen is null || item.LastModifiedAt > latestSeen) latestSeen = item.LastModifiedAt;
+            // ISLEYICI-11: a list that names the page just read as the next one, or never ends (a restart that keeps
+            // starting from the same time), stops with its own code; the position saved after the previous page stays and
+            // the watermark does not move.
+            switch (walk.After(window.Cursor, result.Value.HasMore ? result.Value.NextCursor : null))
+            {
+                case PagedReadStop.PageCap:
+                    throw PagedReadLoop.GuardFailure("SHOPIFY_ORDER_PAGE_CAP", $"Shopify sipariş listesi bir okumada {ShopifyOrderPageCap} sayfayı aştı; okuma kaldığı yerde durduruldu ve bu dönem okunmuş sayılmadı.");
+                case PagedReadStop.RepeatedCursor:
+                    throw PagedReadLoop.GuardFailure("SHOPIFY_ORDER_PAGE_REPEATED", "Shopify sipariş listesi okunan sayfayı yeniden sonraki sayfa olarak verdi; okuma durduruldu ve bu dönem okunmuş sayılmadı.");
+            }
             if (result.Value.HasMore)
             {
                 if (string.IsNullOrWhiteSpace(result.Value.NextCursor)) throw new InvalidOperationException("Shopify sipariş sayfası hasMore=true ancak nextCursor boş döndü.");

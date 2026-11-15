@@ -449,7 +449,14 @@ public sealed partial class MarketplaceJobProcessor
                 foreach (var _ in result.Value!.Items) TrackReceived();
                 foreach (var claim in result.Value!.Items) await UpsertReturn(tenantId, connectionId, claim, cancellationToken);
                 if (!result.Value.HasMore) break;
-                page = NextReconcilePage(page, result.Value.NextCursor);
+                var next = NextReconcilePage(page, result.Value.NextCursor);
+                // ISLEYICI-11: a claim list that names the page just read as the next one, or never ends, stops the
+                // reconciliation with its own code instead of being read until the lease runs out.
+                if (string.Equals(next, page, StringComparison.Ordinal))
+                    throw PagedReadLoop.GuardFailure("TRENDYOL_RETURN_RECONCILE_PAGE_REPEATED", $"Trendyol {storefront} iade listesi okunan sayfayı yeniden sonraki sayfa olarak verdi; iade uzlaştırması durduruldu.");
+                if (step + 1 >= TrendyolReturnPageCap)
+                    throw PagedReadLoop.GuardFailure("TRENDYOL_RETURN_RECONCILE_PAGE_CAP", $"Trendyol {storefront} iade listesi {TrendyolReturnPageCap} sayfayı aştı; iade uzlaştırması durduruldu.");
+                page = next;
                 step++;
             } while (!cancellationToken.IsCancellationRequested);
         }

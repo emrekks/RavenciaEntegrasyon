@@ -9,6 +9,10 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed partial class MarketplaceJobProcessor
 {
+    // ISLEYICI-11 (16 Nov 2026): catalog pages of 100 in one import (half a million products), a guard against a list
+    // that never ends.
+    internal const int ProductImportPageCap = 5_000;
+
     private async Task<bool> SyncProducts(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, Guid? jobId, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.AsNoTracking()
@@ -275,6 +279,13 @@ public sealed partial class MarketplaceJobProcessor
             var hasMore = result.Value.HasMore;
             if (hasMore && string.IsNullOrWhiteSpace(result.Value.NextCursor))
                 throw new InvalidOperationException("Pazar yeri ürün sayfası hasMore=true ancak nextPageToken boş döndü.");
+            // ISLEYICI-11: a catalog that names the page just read as the next one, or never ends, stops with its own code
+            // before this page's position is saved: the scan stays at the page saved before, so a retry reads on from there.
+            // The page number is the session's (it survives a resumed scan).
+            if (hasMore && nextCursor is not null && string.Equals(result.Value.NextCursor, nextCursor, StringComparison.Ordinal))
+                throw PagedReadLoop.GuardFailure("PRODUCT_IMPORT_PAGE_REPEATED", "Pazaryeri ürün listesi okunan sayfayı yeniden sonraki sayfa olarak verdi; ürün aktarımı durduruldu.");
+            if (hasMore && pageNumber >= ProductImportPageCap)
+                throw PagedReadLoop.GuardFailure("PRODUCT_IMPORT_PAGE_CAP", $"Pazaryeri ürün listesi {ProductImportPageCap} sayfayı aştı; ürün aktarımı kaldığı sayfada durduruldu.");
             nextCursor = hasMore ? result.Value.NextCursor : null;
             var pageSession = await db.ProductImportSessions.SingleAsync(x => x.TenantId == tenantId && x.JobId == importJobId, cancellationToken);
             pageSession.NextCursor = nextCursor;

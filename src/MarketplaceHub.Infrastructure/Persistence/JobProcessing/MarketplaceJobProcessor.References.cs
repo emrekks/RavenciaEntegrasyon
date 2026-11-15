@@ -9,6 +9,13 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed partial class MarketplaceJobProcessor
 {
+    // ISLEYICI-11 (16 Nov 2026): reference pages in one read, guards against a list that never ends with empty pages
+    // (the item limits never fill then). 1,000 items a page reach MaxReferenceItems in 500 pages, 2,000 brands a page
+    // MaxBrandReferenceItems in 1,000.
+    internal const int ReferencePageCap = 2_000;
+    internal const int BrandReferencePageCap = 5_000;
+    private static readonly PageGuard BrandReferencePageGuard = new(MaxPages: BrandReferencePageCap, StopOnRepeatedCursor: true);
+
     private async Task<bool> SyncReferences(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         var (resourceType, parentExternalId) = ReferenceResource(payloadJson);
@@ -29,6 +36,8 @@ public sealed partial class MarketplaceJobProcessor
             cursor = result.Value.NextCursor;
             if (!result.Value.HasMore) break;
             if (string.IsNullOrWhiteSpace(cursor) || !visitedCursors.Add(cursor)) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_CURSOR_INVALID", "Referans sayfalama imleci eksik veya yinelendi."));
+            // ISLEYICI-11: empty pages under ever new cursors fill neither the item limit nor the visited set's repeat check.
+            if (visitedCursors.Count >= ReferencePageCap) throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_PAGE_CAP", $"Referans listesi {ReferencePageCap} sayfayı aştı; okuma durduruldu, paneldeki mevcut liste korunuyor."));
         } while (!cancellationToken.IsCancellationRequested);
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -262,6 +271,7 @@ public sealed partial class MarketplaceJobProcessor
         var seen = new HashSet<string>(StringComparer.Ordinal);
         string? cursor = null;
         var itemCount = 0;
+        var brandWalk = new PageWalk(BrandReferencePageGuard);
         try
         {
             do
@@ -317,6 +327,15 @@ public sealed partial class MarketplaceJobProcessor
                 {
                     await db.SaveChangesAsync(cancellationToken);
                     db.ChangeTracker.Clear();
+                }
+                // ISLEYICI-11: a next cursor equal to the one just read (its items are already seen, so the item limit never
+                // fills) or a list that never ends stops the read; the current brand list is kept.
+                switch (brandWalk.After(cursor, result.Value.HasMore ? result.Value.NextCursor : null))
+                {
+                    case PagedReadStop.RepeatedCursor:
+                        throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_CURSOR_INVALID", "Marka referans sayfalama imleci yinelendi."));
+                    case PagedReadStop.PageCap:
+                        throw new JobProcessingException(JobExecutionResult.ManualReview("REFERENCE_PAGE_CAP", $"Marka listesi {BrandReferencePageCap} sayfayı aştı; okuma durduruldu, paneldeki mevcut liste korunuyor."));
                 }
                 cursor = result.Value.NextCursor;
                 if (!result.Value.HasMore) break;

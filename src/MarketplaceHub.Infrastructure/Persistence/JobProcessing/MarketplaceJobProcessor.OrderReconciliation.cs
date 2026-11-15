@@ -59,6 +59,11 @@ public sealed partial class MarketplaceJobProcessor
             else
             {
                 await IngestOrderPageAsync(tenantId, connectionId, page.Value!, "order-contract", cancellationToken);
+                // ISLEYICI-11: a page that names itself as the next one would be read again slice after slice; the pass
+                // stops for review instead, at the position saved after the previous page. (Each slice is bounded by its
+                // time budget, and a pass older than a day starts over, so no page cap is needed here.)
+                if (page.Value!.HasMore && state.NextCursor is not null && string.Equals(page.Value.NextCursor, state.NextCursor, StringComparison.Ordinal))
+                    throw PagedReadLoop.GuardFailure("TRENDYOL_ORDER_RECONCILE_PAGE_REPEATED", "Trendyol sipariş uzlaştırması okunan sayfayı yeniden sonraki sayfa olarak aldı; uzlaştırma durduruldu.");
                 state = page.Value!.HasMore && !string.IsNullOrWhiteSpace(page.Value.NextCursor)
                     ? state with { NextCursor = page.Value.NextCursor }
                     : state with { StoreFrontIndex = state.StoreFrontIndex + 1, NextCursor = null };

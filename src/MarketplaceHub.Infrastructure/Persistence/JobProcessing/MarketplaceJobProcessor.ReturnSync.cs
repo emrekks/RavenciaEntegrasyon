@@ -153,7 +153,15 @@ public sealed partial class MarketplaceJobProcessor
             var nextStorefront = false;
             if (result.Value.HasMore)
             {
-                state = NextReturnPage(state, result.Value.NextCursor);
+                var next = NextReturnPage(state, result.Value.NextCursor);
+                // ISLEYICI-11: the read goes on in slices from its saved page, so a list that names the page just read as
+                // the next one, or never ends, was read slice after slice for good. It stops with its own code at the
+                // page saved before; the watermark does not move.
+                if (ReturnPageRepeated(state, next))
+                    throw PagedReadLoop.GuardFailure("TRENDYOL_RETURN_PAGE_REPEATED", $"Trendyol {storefront} iade listesi okunan sayfayı yeniden sonraki sayfa olarak verdi; okuma durduruldu ve bu dönem okunmuş sayılmadı.");
+                if (next.Page >= TrendyolReturnPageCap)
+                    throw PagedReadLoop.GuardFailure("TRENDYOL_RETURN_PAGE_CAP", $"Trendyol {storefront} iade listesi {TrendyolReturnPageCap} sayfayı aştı; okuma kaldığı sayfada durduruldu ve bu dönem okunmuş sayılmadı.");
+                state = next;
             }
             else if (state.StoreFrontIndex + 1 < TrendyolReadStorefronts.ReturnCodes.Length)
             {
@@ -183,6 +191,15 @@ public sealed partial class MarketplaceJobProcessor
     }
 
     internal const int ReturnSyncPagesPerSlice = 5;
+
+    // ISLEYICI-11 (16 Nov 2026): Trendyol claim pages of 200 per storefront read (400,000 claims; a full read has no date
+    // window), a guard against a list that never ends. The return reconciliation uses the same cap.
+    internal const int TrendyolReturnPageCap = 2_000;
+
+    // The next page is the one just read: the same page number without a cursor, or the same opaque cursor again.
+    internal static bool ReturnPageRepeated(ReturnSyncState current, ReturnSyncState next) =>
+        next.PageCursor is null ? current.PageCursor is null && next.Page == current.Page
+            : string.Equals(next.PageCursor, current.PageCursor, StringComparison.Ordinal);
 
     internal static bool ReturnSyncSliceEnds(bool movedToNextStorefront, int pagesThisSlice) =>
         movedToNextStorefront || pagesThisSlice >= ReturnSyncPagesPerSlice;
