@@ -9,6 +9,7 @@ using MarketplaceHub.Api.Security;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Identity;
 using MarketplaceHub.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -44,7 +45,37 @@ public sealed class ApiTestHost(string connectionString) : WebApplicationFactory
                 && (descriptor.ImplementationType == typeof(OperationsRealtimeBroadcaster) || descriptor.ImplementationType == typeof(ApiIdempotencyRetentionService)
                     || descriptor.ImplementationType == typeof(MarketplaceHub.Api.Operations.PurgedFileRetentionService))).ToList())
                 services.Remove(hosted);
+            services.AddTransient<IStartupFilter, ClientAddressStartupFilter>();
         });
+    }
+
+    // The in-memory server has no client address, so every request of a host counts in one network for the rate
+    // limits (sign-in: 10 a minute). A client made by ClientFromOwnNetwork carries its own address in this header,
+    // read before any other middleware, so a class that signs in many times does not run into the sign-in limit.
+    public const string ClientAddressHeader = "X-Test-Client-Address";
+
+    private int clientNetworks;
+
+    public HttpClient ClientFromOwnNetwork()
+    {
+        var number = Interlocked.Increment(ref clientNetworks);
+        var client = CreateClient();
+        client.DefaultRequestHeaders.Add(ClientAddressHeader, $"198.18.{number / 250 % 256}.{number % 250 + 1}");
+        return client;
+    }
+
+    private sealed class ClientAddressStartupFilter : IStartupFilter
+    {
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+        {
+            app.Use(async (context, call) =>
+            {
+                if (context.Request.Headers.TryGetValue(ClientAddressHeader, out var value) && IPAddress.TryParse(value.ToString(), out var address))
+                    context.Connection.RemoteIpAddress = address;
+                await call();
+            });
+            next(app);
+        };
     }
 
     public async Task<string> CsrfAsync(HttpClient client)
@@ -244,9 +275,9 @@ public sealed class ApiEndToEndFixture : IAsyncLifetime
         await db.SaveChangesAsync();
     }
 
-    public async Task<(HttpClient Client, string Csrf, HttpResponseMessage SignIn)> SignInAsync(MembershipRole role)
+    public async Task<(HttpClient Client, string Csrf, HttpResponseMessage SignIn)> SignInAsync(MembershipRole role, bool ownNetwork = false)
     {
-        var client = Host!.CreateClient();
+        var client = ownNetwork ? Host!.ClientFromOwnNetwork() : Host!.CreateClient();
         var csrf = await Host.CsrfAsync(client);
         var signIn = await client.SendAsync(ApiTestHost.Json(HttpMethod.Post, "/api/v1/auth/login", csrf, new { email = Email(role), password = Password }));
         return (client, csrf, signIn);

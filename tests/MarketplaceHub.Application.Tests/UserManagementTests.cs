@@ -84,13 +84,13 @@ public sealed class UserManagementEndToEndTests(ApiEndToEndFixture fixture) : IC
     {
         foreach (var role in new[] { MembershipRole.Operations, MembershipRole.Accounting, MembershipRole.ReadOnly })
         {
-            var (client, _, signIn) = await fixture.SignInAsync(role);
+            var (client, _, signIn) = await fixture.SignInAsync(role, ownNetwork: true);
             using (client)
             using (signIn)
             using (var list = await client.GetAsync(Base))
                 Assert.Equal(HttpStatusCode.Forbidden, list.StatusCode);
         }
-        var (admin, _, adminSignIn) = await fixture.SignInAsync(MembershipRole.Administrator);
+        var (admin, _, adminSignIn) = await fixture.SignInAsync(MembershipRole.Administrator, ownNetwork: true);
         using (admin)
         using (adminSignIn)
         using (var list = await admin.GetAsync(Base))
@@ -107,7 +107,7 @@ public sealed class UserManagementEndToEndTests(ApiEndToEndFixture fixture) : IC
     {
         var ownerEmail = $"owner-um-{fixture.Run}@example.invalid";
         var ownerId = await CreateUserAsync(ownerEmail, MembershipRole.Owner);
-        var (admin, csrf, signIn) = await fixture.SignInAsync(MembershipRole.Administrator);
+        var (admin, csrf, signIn) = await fixture.SignInAsync(MembershipRole.Administrator, ownNetwork: true);
         using (admin)
         using (signIn)
         {
@@ -134,7 +134,7 @@ public sealed class UserManagementEndToEndTests(ApiEndToEndFixture fixture) : IC
                 Assert.Equal(HttpStatusCode.Conflict, again.StatusCode);
 
             // The new user signs in with the one-time password and must change it first.
-            using (var newcomer = fixture.Host!.CreateClient())
+            using (var newcomer = fixture.Host!.ClientFromOwnNetwork())
             {
                 var newcomerCsrf = await fixture.Host.CsrfAsync(newcomer);
                 using var first = await newcomer.SendAsync(ApiTestHost.Json(HttpMethod.Post, "/api/v1/auth/login", newcomerCsrf, new { email, password = temporary }));
@@ -171,16 +171,17 @@ public sealed class UserManagementEndToEndTests(ApiEndToEndFixture fixture) : IC
     {
         var targetEmail = $"target-um-{fixture.Run}@example.invalid";
         var targetId = await CreateUserAsync(targetEmail, MembershipRole.Accounting);
-        var target = fixture.Host!.CreateClient();
+        var target = fixture.Host!.ClientFromOwnNetwork();
         var targetCsrf = await fixture.Host.CsrfAsync(target);
         using (var login = await target.SendAsync(ApiTestHost.Json(HttpMethod.Post, "/api/v1/auth/login", targetCsrf, new { email = targetEmail, password = ApiEndToEndFixture.Password })))
             Assert.Equal(HttpStatusCode.OK, login.StatusCode);
 
-        var (admin, csrf, signIn) = await fixture.SignInAsync(MembershipRole.Administrator);
+        var (admin, csrf, signIn) = await fixture.SignInAsync(MembershipRole.Administrator, ownNetwork: true);
         using (admin)
         using (signIn)
         using (target)
         {
+            Assert.Equal(HttpStatusCode.OK, signIn.StatusCode);
             using (var role = await admin.SendAsync(ApiTestHost.Json(HttpMethod.Put, $"{Base}/{targetId}/role", csrf, new { role = "READONLY", password = ApiEndToEndFixture.Password })))
                 Assert.Equal(HttpStatusCode.NoContent, role.StatusCode);
             using (var me = await target.GetAsync("/api/v1/auth/me"))
@@ -204,7 +205,7 @@ public sealed class UserManagementEndToEndTests(ApiEndToEndFixture fixture) : IC
             using (var sessions = await admin.SendAsync(ApiTestHost.Json(HttpMethod.Post, $"{Base}/{targetId}/sessions/revoke", csrf, new { password = ApiEndToEndFixture.Password })))
                 Assert.Equal(HttpStatusCode.OK, sessions.StatusCode);
 
-            using var again = fixture.Host.CreateClient();
+            using var again = fixture.Host!.ClientFromOwnNetwork();
             var againCsrf = await fixture.Host.CsrfAsync(again);
             using (var old = await again.SendAsync(ApiTestHost.Json(HttpMethod.Post, "/api/v1/auth/login", againCsrf, new { email = targetEmail, password = ApiEndToEndFixture.Password })))
                 Assert.Equal(HttpStatusCode.Unauthorized, old.StatusCode);
@@ -223,20 +224,32 @@ public sealed class UserManagementEndToEndTests(ApiEndToEndFixture fixture) : IC
         }
     }
 
-    // API-GUVENLIK-5: two owners demoting each other at the same moment leave exactly one owner, never none.
+    // API-GUVENLIK-5: two owners demoting each other at the same moment leave exactly one owner, never none. The two are
+    // the only owners of a workspace of their own, so an owner another test of this class adds cannot make both
+    // demotions legitimately allowed.
     [PostgreSqlFact]
     public async Task TwoOwnersDemotingEachOtherAtOnce_LeaveOneOwner()
     {
+        var tenantId = Guid.CreateVersion7();
+        await using (var scope = fixture.Host!.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var now = DateTimeOffset.UtcNow;
+            db.Tenants.Add(new Tenant { Id = tenantId, Code = $"um-owners-{fixture.Run}", DisplayName = "İki Sahip", CreatedAt = now, UpdatedAt = now });
+            await db.SaveChangesAsync();
+        }
+        var ownerEmail = $"owner1-um-{fixture.Run}@example.invalid";
         var otherEmail = $"owner2-um-{fixture.Run}@example.invalid";
-        var otherId = await CreateUserAsync(otherEmail, MembershipRole.Owner);
-        var ownerId = await UserIdAsync(fixture.Email(MembershipRole.Owner));
-        var (owner, ownerCsrf, ownerSignIn) = await fixture.SignInAsync(MembershipRole.Owner);
-        using var other = fixture.Host!.CreateClient();
+        var ownerId = await CreateUserAsync(ownerEmail, MembershipRole.Owner, tenantId);
+        var otherId = await CreateUserAsync(otherEmail, MembershipRole.Owner, tenantId);
+        using var owner = fixture.Host.ClientFromOwnNetwork();
+        using var other = fixture.Host.ClientFromOwnNetwork();
+        var ownerCsrf = await fixture.Host.CsrfAsync(owner);
         var otherCsrf = await fixture.Host.CsrfAsync(other);
+        using (var login = await owner.SendAsync(ApiTestHost.Json(HttpMethod.Post, "/api/v1/auth/login", ownerCsrf, new { email = ownerEmail, password = ApiEndToEndFixture.Password })))
+            Assert.Equal(HttpStatusCode.OK, login.StatusCode);
         using (var login = await other.SendAsync(ApiTestHost.Json(HttpMethod.Post, "/api/v1/auth/login", otherCsrf, new { email = otherEmail, password = ApiEndToEndFixture.Password })))
             Assert.Equal(HttpStatusCode.OK, login.StatusCode);
-        using (owner)
-        using (ownerSignIn)
         {
             var responses = await Task.WhenAll(
                 owner.SendAsync(ApiTestHost.Json(HttpMethod.Put, $"{Base}/{otherId}/role", ownerCsrf, new { role = "ADMINISTRATOR", password = ApiEndToEndFixture.Password })),
@@ -255,7 +268,7 @@ public sealed class UserManagementEndToEndTests(ApiEndToEndFixture fixture) : IC
 
             await using var scope = fixture.Host.Services.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            Assert.Equal(1, await db.TenantMemberships.CountAsync(x => x.TenantId == fixture.TenantId && (x.UserId == ownerId || x.UserId == otherId) && x.Role == MembershipRole.Owner && x.Status == RecordStatus.Active));
+            Assert.Equal(1, await db.TenantMemberships.CountAsync(x => x.TenantId == tenantId && x.Role == MembershipRole.Owner && x.Status == RecordStatus.Active));
         }
     }
 
@@ -278,7 +291,7 @@ public sealed class UserManagementEndToEndTests(ApiEndToEndFixture fixture) : IC
             await db.SaveChangesAsync();
             elsewhereId = user.Id;
         }
-        var (admin, csrf, signIn) = await fixture.SignInAsync(MembershipRole.Administrator);
+        var (admin, csrf, signIn) = await fixture.SignInAsync(MembershipRole.Administrator, ownNetwork: true);
         using (admin)
         using (signIn)
         using (var added = await admin.SendAsync(ApiTestHost.Json(HttpMethod.Post, Base, csrf, new { email, displayName = "Başka Kullanıcı", role = "READONLY", password = ApiEndToEndFixture.Password })))
@@ -291,7 +304,7 @@ public sealed class UserManagementEndToEndTests(ApiEndToEndFixture fixture) : IC
         }
     }
 
-    private async Task<Guid> CreateUserAsync(string email, MembershipRole role)
+    private async Task<Guid> CreateUserAsync(string email, MembershipRole role, Guid? tenantId = null)
     {
         await using var scope = fixture.Host!.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -301,7 +314,7 @@ public sealed class UserManagementEndToEndTests(ApiEndToEndFixture fixture) : IC
         var created = await users.CreateAsync(user, ApiEndToEndFixture.Password);
         Assert.True(created.Succeeded, string.Join("; ", created.Errors.Select(error => error.Description)));
         db.UserSecurities.Add(new UserSecurity { UserId = user.Id, TotpState = TotpState.Disabled });
-        db.TenantMemberships.Add(new TenantMembership { Id = Guid.CreateVersion7(), TenantId = fixture.TenantId, UserId = user.Id, Role = role, CreatedAt = now, UpdatedAt = now });
+        db.TenantMemberships.Add(new TenantMembership { Id = Guid.CreateVersion7(), TenantId = tenantId ?? fixture.TenantId, UserId = user.Id, Role = role, CreatedAt = now, UpdatedAt = now });
         await db.SaveChangesAsync();
         return user.Id;
     }
