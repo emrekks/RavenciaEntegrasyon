@@ -38,9 +38,10 @@ public sealed class HepsiburadaContractTests
         Assert.Equal("UNKNOWN", mapped[2].order!.CancellationStatus);
         Assert.Equal("NOT_CANCELLED", first.CancellationStatus);
         Assert.Equal("UNKNOWN", first.PaymentStatus);
-        // DEVIATION: a paid-order line without a status field gets LifecycleStatus "Open" (HepsiburadaJsonMapper.PaidOrderLine,
-        // `rawStatus ?? "Open"`), while the order-detail mapper keeps a missing status unknown (null).
-        Assert.Equal("Open", mapped[1].order?.LifecycleStatus);
+        // D3: a paid-order line without a status field keeps its lifecycle status unknown (null), as the order-detail
+        // mapper does; the paid list also carries Unpacked orders (hepsiburada-api-son.md:8618), so "Open" would be a guess.
+        Assert.Null(mapped[1].order?.LifecycleStatus);
+        Assert.Equal("UNKNOWN", mapped[1].order!.CancellationStatus);
         Assert.Null(mapped[3].order);
         Assert.Equal("ORDER_PACKAGE_INVALID", mapped[3].refusal?.Code);
         Assert.Null(mapped[4].order);

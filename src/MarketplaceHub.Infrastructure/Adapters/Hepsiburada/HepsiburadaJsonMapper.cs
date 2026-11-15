@@ -1273,7 +1273,7 @@ internal static class HepsiburadaJsonMapper
             }
         }
 
-        if (!TryMapLine(item, out var mapped, out var reason))
+        if (!TryMapLine(item, out var mapped, out var reason, missingStatus: null))
         {
             refusal = UnreadableOrderLines.Issue("Hepsiburada", orderNumber, Text(item, "id", "Id", "lineItemId", "LineItemId", "orderLineId", "OrderLineId"), reason) with { RereadOrderId = orderNumber };
             return null;
@@ -1308,8 +1308,11 @@ internal static class HepsiburadaJsonMapper
             ? JsonSerializer.Serialize(new { name = Text(item, "customerName", "CustomerName", "recipientName", "RecipientName"), email = Text(item, "email", "Email"), phoneNumber = Text(item, "phoneNumber", "PhoneNumber") })
             : Snapshot(customer);
         customerSnapshot = EnrichOrderSnapshot(item, customerSnapshot);
+        // D3: the paid list carries Open and Unpacked orders (hepsiburada-api-son.md:8618): an item without a status is
+        // unknown, not "Open". A new order read so is reviewed and a known one keeps its status
+        // (HepsiburadaOrderLifecycleStatusPolicy.UnknownUnpackagedStatus).
         var rawStatus = Text(item, "status", "Status", "orderStatus", "OrderStatus");
-        var status = rawStatus ?? "Open";
+        var status = rawStatus;
         return new(
             orderNumber,
             orderNumber,
