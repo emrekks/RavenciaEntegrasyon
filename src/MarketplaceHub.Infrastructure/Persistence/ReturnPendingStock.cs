@@ -145,11 +145,11 @@ internal static class ReturnPendingStock
             ?? await db.InventoryItems.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == variantId && x.LocationCode == "MAIN", cancellationToken);
         if (item is null) return (false, null);
         db.ReturnStockDispositions.Add(new ReturnStockDisposition { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claim.Id, ReturnLineId = line.Id, InventoryItemId = item.Id, Disposition = ReturnStockDispositionKind.Pass, Quantity = receivable, IdempotencyKey = stockKey, Reason = reason, ActorUserId = decision.ActorUserId, CreatedAt = now });
-        item.OnHand += receivable;
-        item.Available = Math.Max(0, item.OnHand - item.Reserved);
-        item.ProjectionVersion++;
-        item.Version++;
-        db.StockLedgerEntries.Add(new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id, MovementType = "RETURN_PASS", QuantityDelta = receivable, SourceType = "RETURN_CLAIM", SourceId = claim.ExternalClaimId, SourceEventId = stockKey, IdempotencyKey = stockKey, OccurredAt = now, RecordedAt = now, ActorUserId = decision.ActorUserId, CorrelationId = correlationId });
-        return (true, new StockProjectionChange(item.VariantId, item.ProjectionVersion, stockKey));
+        return (true, StockMovementWriter.Move(db, item, receivable, StockMovementRounding.None, RestockSource(claim, stockKey, decision.ActorUserId, correlationId, now)));
     }
+
+    // A return line's units put back in stock ("Stoğa Ekle", by hand or settled with an approval): the key is both the
+    // source event and the ledger row's idempotency key. Not rounded in code and no shortfall notice closed (kept as it was).
+    public static StockLedgerSource RestockSource(ReturnClaim claim, string key, Guid actorUserId, string correlationId, DateTimeOffset now) =>
+        new("RETURN_PASS", "RETURN_CLAIM", claim.ExternalClaimId, key, key, now, now, correlationId, actorUserId);
 }

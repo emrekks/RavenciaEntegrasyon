@@ -2928,9 +2928,8 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 db.ReturnStockDispositions.Add(new ReturnStockDisposition { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claimId, ReturnLineId = line.Id, InventoryItemId = item.Id, Disposition = disposition, Quantity = command.Quantity, IdempotencyKey = idempotencyKey, Reason = command.Reason.Trim(), ActorUserId = userId, CreatedAt = now });
                 if (disposition == ReturnStockDispositionKind.Pass)
                 {
-                    item.OnHand += command.Quantity; item.Available = Math.Max(0, item.OnHand - item.Reserved); item.ProjectionVersion++; item.Version++;
-                    db.StockLedgerEntries.Add(new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id, MovementType = "RETURN_PASS", QuantityDelta = command.Quantity, SourceType = "RETURN_CLAIM", SourceId = claim.ExternalClaimId, SourceEventId = idempotencyKey, IdempotencyKey = idempotencyKey, OccurredAt = now, RecordedAt = now, ActorUserId = userId, CorrelationId = correlationId });
-                    await StockProjectionOutbox.EnqueueAsync(db, tenantId, [new StockProjectionChange(item.VariantId, item.ProjectionVersion, idempotencyKey)], now, token);
+                    var change = StockMovementWriter.Move(db, item, command.Quantity, StockMovementRounding.None, ReturnPendingStock.RestockSource(claim, idempotencyKey, userId, correlationId, now));
+                    await StockProjectionOutbox.EnqueueAsync(db, tenantId, [change], now, token);
                 }
                 db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = "RETURN_STOCK_DISPOSITION", TargetType = "ReturnClaim", TargetId = claimId.ToString("D"), Reason = command.Reason.Trim(), CorrelationId = correlationId, CreatedAt = now });
                 await db.SaveChangesAsync(token);
