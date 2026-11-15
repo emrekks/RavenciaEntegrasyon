@@ -90,6 +90,79 @@ public sealed class PostgreSqlDashboardEquivalenceTests(PostgreSqlTenantIsolatio
         }
     }
 
+    // Audit 2026-11-15 FATURA-FINANS-4: the reports' order and line rows now read the overview's per-order figures
+    // (OrderRevenueQuery) and accepted return claims instead of their own copies. On the same data the rows are the old
+    // ones to the last digit, scale included, and the report's revenue is the overview's.
+    [PostgreSqlTheory]
+    [MemberData(nameof(Periods))]
+    public async Task The_report_rows_read_from_the_overviews_figures_give_the_old_rows(string from, string to)
+    {
+        var tenant = NewTenant("rep-eq");
+        try
+        {
+            await SeedAsync(tenant);
+            var period = DashboardPerformancePeriod.Resolve(DateOnly.Parse(from, CultureInfo.InvariantCulture), DateOnly.Parse(to, CultureInfo.InvariantCulture), Now, TimeZoneInfo.FindSystemTimeZoneById(Timezone)).Value!;
+
+            await using var db = fixture.CreateContext();
+            await db.Database.ExecuteSqlRawAsync("ANALYZE");
+            await db.Database.OpenConnectionAsync();
+            await db.Database.ExecuteSqlRawAsync("SET jit = off");
+            db.Database.SetCommandTimeout(TimeSpan.FromMinutes(3));
+            var tenantId = tenant.Id;
+            var allowed = await db.PlatformConnections.Where(x => x.TenantId == tenantId).Select(x => x.Id).ToArrayAsync();
+            var start = period.PreviousStart;
+            var end = period.CurrentEnd;
+            IQueryable<ReportsService.PeriodOrder> PeriodOrders() => from order in db.Orders.AsNoTracking()
+                                                                     where order.TenantId == tenantId && allowed.Contains(order.ConnectionId) && order.OrderedAt >= start && order.OrderedAt < end
+                                                                     select new ReportsService.PeriodOrder { Order = order, RealAt = order.OrderedAt };
+
+            var oldOrders = await LegacyReportQueries.OrderRows(db, tenantId, PeriodOrders()).ToListAsync();
+            var newOrders = await ReportsService.OrderRows(db, tenantId, PeriodOrders()).ToListAsync();
+            Assert.NotEmpty(oldOrders);
+            Assert.Contains(oldOrders, x => x.PackagesBack > 0 || x.LineBack > 0);
+            Assert.Contains(oldOrders, x => !x.ReturnBooked);
+            Assert.Equal(Json(oldOrders), Json(newOrders));
+
+            var oldLines = await LegacyReportQueries.LineRows(db, tenantId, PeriodOrders()).ToListAsync();
+            var newLines = await ReportsService.LineRows(db, tenantId, PeriodOrders()).ToListAsync();
+            Assert.Contains(oldLines, x => x.AcceptedReturnQuantity > 0);
+            Assert.Equal(Json(oldLines), Json(newLines));
+
+            // One formula on both pages: the overview's amount and returned amount of each order it counts are the
+            // report rows' (ReportBuilder takes the larger of the packages and the lines sent back, as the overview does).
+            var overview = await DashboardReadService.PerformanceOrders(db, tenantId, period, Timezone).ToListAsync();
+            Assert.NotEmpty(overview);
+            var reportById = newOrders.ToDictionary(x => x.Id);
+            foreach (var row in overview)
+            {
+                var report = reportById[row.Id];
+                Assert.Equal(row.Amount, report.Amount);
+                var linesBack = report.LineValue > 0 ? report.Amount * report.LineBack / report.LineValue : 0m;
+                Assert.Equal(Math.Round(row.ReturnedAmount, 6), Math.Round(report.PackagesBack > linesBack ? report.PackagesBack : linesBack, 6));
+            }
+        }
+        finally
+        {
+            await DeleteTenantAsync(tenant.Id);
+        }
+    }
+
+    // The report's order statement no longer repeats a package read per figure.
+    [Fact]
+    public void The_report_order_statement_reads_each_source_once()
+    {
+        using var db = DashboardOrderVisibilityTests.MetadataOnlyContext();
+        var tenantId = Guid.NewGuid();
+        var orders = db.Orders.Where(x => x.TenantId == tenantId).Select(order => new ReportsService.PeriodOrder { Order = order, RealAt = order.OrderedAt });
+        var sql = ReportsService.OrderRows(db, tenantId, orders).ToQueryString();
+        var legacySql = LegacyReportQueries.OrderRows(db, tenantId, orders).ToQueryString();
+        Assert.True(Count(sql, "shipment_packages") <= 6, $"{Count(sql, "shipment_packages")} package reads");
+        Assert.True(Count(sql, "shipment_packages") < Count(legacySql, "shipment_packages"), $"{Count(sql, "shipment_packages")} against {Count(legacySql, "shipment_packages")}");
+        Assert.Equal(1, Count(sql, "return_lines"));
+    }
+
+    private static List<string> Json<T>(IEnumerable<T> rows) => rows.Select(row => System.Text.Json.JsonSerializer.Serialize(row)).OrderBy(x => x, StringComparer.Ordinal).ToList();
+
     // The statement stays one screen of SQL: every source is read once, not once per use.
     [Fact]
     public void The_revenue_statement_reads_each_source_once()

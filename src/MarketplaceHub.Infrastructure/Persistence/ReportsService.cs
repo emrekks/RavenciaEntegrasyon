@@ -407,129 +407,76 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider, R
     // One row per order. Amount: the order's current packages that are not cancelled (an order whose packages carry
     // no amount keeps its order total) plus the marketplace's own discount on the lines that are not cancelled
     // (DashboardRevenuePolicy.Amount); the returned part is worked out from these in ReportBuilder, as the overview does.
-    private async Task<List<ReportOrderRow>> OrderRowsAsync(Guid tenantId, Guid[] allowedIds, ReportPeriod period, CancellationToken cancellationToken)
-    {
-        var acceptedClaims = DashboardRevenuePolicy.AcceptedReturnStatuses;
-        var acceptedLines = DashboardRevenuePolicy.AcceptedReturnLineRawStatuses;
-        var currentPackages = MarketplaceSalesService.CurrentShipmentPackages(db).Where(package => package.TenantId == tenantId);
-        var orderLines = db.OrderLines.AsNoTracking().Where(line => line.TenantId == tenantId);
-        var allocations = db.PackageLineAllocations.AsNoTracking().Where(allocation => allocation.TenantId == tenantId);
-        var unbookedReturns = DashboardRevenuePolicy.OrdersWithUnbookedReturn(db, tenantId);
-        return await (from row in PeriodOrders(tenantId, allowedIds, period)
-                      let order = row.Order
-                      let priced = currentPackages.Any(package => package.OrderId == order.Id && (package.NetAmount > 0 || package.GrossAmount > 0))
-                      let paid = priced
-                          ? currentPackages.Where(package => package.OrderId == order.Id && package.Status != ShipmentPackageStatus.Cancelled)
-                              .Sum(package => package.NetAmount > 0 ? package.NetAmount : package.GrossAmount)
-                          : (order.NetAmount > 0 ? order.NetAmount : order.GrossAmount)
-                      let listAmount = priced
-                          ? currentPackages.Where(package => package.OrderId == order.Id && package.Status != ShipmentPackageStatus.Cancelled)
-                              .Sum(package => package.GrossAmount > 0 ? package.GrossAmount : package.NetAmount)
-                          : (order.GrossAmount > 0 ? order.GrossAmount : order.NetAmount)
-                      let platformDiscount = orderLines.Where(line => line.OrderId == order.Id && line.PlatformDiscount != null)
-                          .Sum(line => line.PlatformDiscount!.Value * (line.OrderedQuantity - line.CancelledQuantity))
-                      // The lines at the same base as the amount: the price paid plus the marketplace's own discount.
-                      let lineValue = orderLines.Where(line => line.OrderId == order.Id)
-                          .Sum(line => (line.UnitPrice + (line.PlatformDiscount ?? 0m)) * (line.OrderedQuantity - line.CancelledQuantity))
-                      // Never above the list price: an amount that already is the list price (no net known) takes nothing more.
-                      // Hepsiburada's list is the price paid, so its own discount (HepsiburadaJsonMapper.PlatformDiscount) is
-                      // bounded by the lines' value at that base instead (DashboardReadService.PerformanceOrders, the same).
-                      let ceiling = listAmount > paid ? (listAmount > lineValue ? listAmount : lineValue) : (paid > lineValue ? paid : lineValue)
-                      let amount = paid + platformDiscount > ceiling ? ceiling : paid + platformDiscount
-                      // A Trendyol micro-export order's return (claim, returned line or package, returned status) counts once Trendyol's
-                      // statement records the refund, on the overview too (DashboardRevenuePolicy.OrdersWithUnbookedReturn).
-                      let returnBooked = !unbookedReturns.Contains(order.Id)
-                      let packagesBack = priced && returnBooked
-                          ? currentPackages.Where(package => package.OrderId == order.Id && package.Status == ShipmentPackageStatus.Returned)
-                              .Sum(package => package.NetAmount > 0 ? package.NetAmount : package.GrossAmount)
-                            + (from package in currentPackages
-                               where package.OrderId == order.Id && package.Status == ShipmentPackageStatus.Returned
-                               join allocation in allocations on package.Id equals allocation.PackageId
-                               join line in orderLines on allocation.OrderLineId equals line.Id
-                               where line.PlatformDiscount != null
-                               select line.PlatformDiscount!.Value * allocation.AllocatedQuantity).Sum()
-                          : 0m
-                      let lineBack = orderLines.Where(line => line.OrderId == order.Id)
-                          .Select(line => new
-                          {
-                              UnitPrice = line.UnitPrice + (line.PlatformDiscount ?? 0m),
-                              Active = line.OrderedQuantity - line.CancelledQuantity,
-                              ReturnedQuantity = returnBooked ? line.ReturnedQuantity : 0m,
-                              Accepted = !returnBooked ? 0m : db.ReturnLines.Where(returned => returned.TenantId == tenantId && returned.OrderLineId == line.Id
-                                      && db.ReturnClaims.Any(claim => claim.TenantId == tenantId && claim.Id == returned.ClaimId && (claim.CustomerRequest != ReturnCustomerRequestPolicy.Change || claim.RawStatus.ToUpper() == ReturnCustomerRequestPolicy.RefundedRawStatus)
-                                          && (returned.RawStatus == null || returned.RawStatus == ""
-                                              ? acceptedClaims.Contains(claim.Status)
-                                              : acceptedLines.Contains(returned.RawStatus.ToUpper()))))
-                                  .Sum(returned => (decimal?)returned.Quantity) ?? 0m
-                          })
-                          .Sum(line => line.UnitPrice * Math.Min(line.Active, Math.Max(line.ReturnedQuantity, line.Accepted)))
-                      select new ReportOrderRow
-                      {
-                          Id = order.Id,
-                          ConnectionId = order.ConnectionId,
-                          OrderNumber = order.OrderNumber,
-                          Currency = order.Currency,
-                          DerivedStatus = order.DerivedStatus,
-                          Amount = amount,
-                          ListAmount = listAmount,
-                          OrderListAmount = order.GrossAmount,
-                          PackagesBack = packagesBack,
-                          LineValue = lineValue,
-                          LineBack = lineBack,
-                          RealAt = row.RealAt,
-                          OrderedAt = order.OrderedAt,
-                          ShipmentDueAt = order.ShipmentDueAt,
-                          StoreFrontCode = order.StoreFrontCode,
-                          ReturnBooked = returnBooked,
-                          UnreadableLines = currentPackages.Where(package => package.OrderId == order.Id && package.Status != ShipmentPackageStatus.Cancelled)
-                              .Sum(package => package.UnreadableLineCount)
-                      }).ToListAsync(cancellationToken);
-    }
+    // The figures are the overview's own (OrderRevenueQuery), so both pages count an order alike.
+    private Task<List<ReportOrderRow>> OrderRowsAsync(Guid tenantId, Guid[] allowedIds, ReportPeriod period, CancellationToken cancellationToken) =>
+        OrderRows(db, tenantId, PeriodOrders(tenantId, allowedIds, period)).ToListAsync(cancellationToken);
+
+    internal static IQueryable<ReportOrderRow> OrderRows(AppDbContext db, Guid tenantId, IQueryable<PeriodOrder> periodOrders) =>
+        from revenue in OrderRevenueQuery.Figures(db, tenantId, periodOrders.Select(row => row.Order))
+        let order = revenue.Order
+        select new ReportOrderRow
+        {
+            Id = order.Id,
+            ConnectionId = order.ConnectionId,
+            OrderNumber = order.OrderNumber,
+            Currency = order.Currency,
+            DerivedStatus = order.DerivedStatus,
+            Amount = revenue.Amount,
+            ListAmount = revenue.ListAmount,
+            OrderListAmount = order.GrossAmount,
+            PackagesBack = revenue.PackagesBack,
+            LineValue = revenue.LineValue,
+            LineBack = revenue.LineBack,
+            // PeriodOrders' real time: the order time.
+            RealAt = order.OrderedAt,
+            OrderedAt = order.OrderedAt,
+            ShipmentDueAt = order.ShipmentDueAt,
+            StoreFrontCode = order.StoreFrontCode,
+            ReturnBooked = revenue.ReturnBooked,
+            UnreadableLines = revenue.UnreadableLines
+        };
 
     // One row per order line, with the units accepted back by return claims, the cost price and desi the line kept
     // from its variant at the sale (OrderLineCostSnapshot; the variant's current ones when it kept none) and
     // its product's brand and category. A Trendyol micro-export order's accepted claim counts only once Trendyol's
     // statement records the return: 23-30 Sep 2026, a Saudi order's three accepted units had no
     // refund and Trendyol's sales report did not count them (17 units back, the panel 20).
-    private async Task<List<ReportLineRow>> LineRowsAsync(Guid tenantId, Guid[] allowedIds, ReportPeriod period, CancellationToken cancellationToken)
+    private Task<List<ReportLineRow>> LineRowsAsync(Guid tenantId, Guid[] allowedIds, ReportPeriod period, CancellationToken cancellationToken) =>
+        LineRows(db, tenantId, PeriodOrders(tenantId, allowedIds, period)).ToListAsync(cancellationToken);
+
+    // The accepted return claims are the overview's (DashboardReadService.AcceptedReturnQuantities), read once for all lines.
+    internal static IQueryable<ReportLineRow> LineRows(AppDbContext db, Guid tenantId, IQueryable<PeriodOrder> periodOrders)
     {
-        var acceptedClaims = DashboardRevenuePolicy.AcceptedReturnStatuses;
-        var acceptedLines = DashboardRevenuePolicy.AcceptedReturnLineRawStatuses;
         var unbookedReturns = DashboardRevenuePolicy.OrdersWithUnbookedReturn(db, tenantId);
-        return await (from row in PeriodOrders(tenantId, allowedIds, period)
-                      join line in db.OrderLines.AsNoTracking() on new { row.Order.TenantId, OrderId = row.Order.Id } equals new { line.TenantId, line.OrderId }
-                      join variant in db.ProductVariants.AsNoTracking() on new { line.TenantId, Id = line.VariantId } equals new { variant.TenantId, Id = (Guid?)variant.Id } into variants
-                      from variant in variants.DefaultIfEmpty()
-                      join product in db.Products.AsNoTracking() on new { TenantId = (Guid?)variant.TenantId, Id = (Guid?)variant.ProductId } equals new { TenantId = (Guid?)product.TenantId, Id = (Guid?)product.Id } into products
-                      from product in products.DefaultIfEmpty()
-                      select new ReportLineRow
-                      {
-                          Id = line.Id,
-                          OrderId = line.OrderId,
-                          VariantId = line.VariantId,
-                          ProductId = variant == null ? null : (Guid?)variant.ProductId,
-                          BrandId = product == null ? null : product.BrandId,
-                          CategoryId = product == null ? null : product.CategoryId,
-                          Title = line.TitleSnapshot,
-                          Sku = line.Sku,
-                          Barcode = line.Barcode,
-                          UnitPrice = line.UnitPrice,
-                          PlatformDiscount = line.PlatformDiscount ?? 0m,
-                          OrderedQuantity = line.OrderedQuantity,
-                          CancelledQuantity = line.CancelledQuantity,
-                          ReturnedQuantity = unbookedReturns.Contains(row.Order.Id) ? 0m : line.ReturnedQuantity,
-                          AcceptedReturnQuantity = unbookedReturns.Contains(row.Order.Id)
-                              ? 0m
-                              : db.ReturnLines.Where(returned => returned.TenantId == tenantId && returned.OrderLineId == line.Id
-                                  && db.ReturnClaims.Any(claim => claim.TenantId == tenantId && claim.Id == returned.ClaimId && (claim.CustomerRequest != ReturnCustomerRequestPolicy.Change || claim.RawStatus.ToUpper() == ReturnCustomerRequestPolicy.RefundedRawStatus)
-                                      && (returned.RawStatus == null || returned.RawStatus == ""
-                                          ? acceptedClaims.Contains(claim.Status)
-                                          : acceptedLines.Contains(returned.RawStatus.ToUpper()))))
-                              .Sum(returned => (decimal?)returned.Quantity) ?? 0m,
-                          CostPrice = line.UnitCostSnapshot ?? (variant == null ? null : variant.CostPrice),
-                          VatRate = line.VatRate,
-                          Desi = line.DesiSnapshot ?? (variant == null ? null : variant.Desi)
-                      }).ToListAsync(cancellationToken);
+        return from row in periodOrders
+               join line in db.OrderLines.AsNoTracking() on new { row.Order.TenantId, OrderId = row.Order.Id } equals new { line.TenantId, line.OrderId }
+               join variant in db.ProductVariants.AsNoTracking() on new { line.TenantId, Id = line.VariantId } equals new { variant.TenantId, Id = (Guid?)variant.Id } into variants
+               from variant in variants.DefaultIfEmpty()
+               join product in db.Products.AsNoTracking() on new { TenantId = (Guid?)variant.TenantId, Id = (Guid?)variant.ProductId } equals new { TenantId = (Guid?)product.TenantId, Id = (Guid?)product.Id } into products
+               from product in products.DefaultIfEmpty()
+               join acceptedLine in DashboardReadService.AcceptedReturnQuantities(db, tenantId) on line.Id equals acceptedLine.OrderLineId into acceptedLines
+               from acceptedLine in acceptedLines.DefaultIfEmpty()
+               select new ReportLineRow
+               {
+                   Id = line.Id,
+                   OrderId = line.OrderId,
+                   VariantId = line.VariantId,
+                   ProductId = variant == null ? null : (Guid?)variant.ProductId,
+                   BrandId = product == null ? null : product.BrandId,
+                   CategoryId = product == null ? null : product.CategoryId,
+                   Title = line.TitleSnapshot,
+                   Sku = line.Sku,
+                   Barcode = line.Barcode,
+                   UnitPrice = line.UnitPrice,
+                   PlatformDiscount = line.PlatformDiscount ?? 0m,
+                   OrderedQuantity = line.OrderedQuantity,
+                   CancelledQuantity = line.CancelledQuantity,
+                   ReturnedQuantity = unbookedReturns.Contains(row.Order.Id) ? 0m : line.ReturnedQuantity,
+                   AcceptedReturnQuantity = unbookedReturns.Contains(row.Order.Id) ? 0m : (decimal?)acceptedLine.Quantity ?? 0m,
+                   CostPrice = line.UnitCostSnapshot ?? (variant == null ? null : variant.CostPrice),
+                   VatRate = line.VatRate,
+                   Desi = line.DesiSnapshot ?? (variant == null ? null : variant.Desi)
+               };
     }
 
     private async Task<List<ReportClaimRow>> ClaimRowsAsync(Guid tenantId, Guid[] allowedIds, ReportPeriod period, CancellationToken cancellationToken)
