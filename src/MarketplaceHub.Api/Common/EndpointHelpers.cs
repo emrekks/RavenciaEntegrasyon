@@ -101,5 +101,22 @@ public static class EndpointHelpers
     public static IResult MissingContext(HttpContext http) =>
         Tenant(http) is null ? Unauthorized(http) : RequireIdempotency(http) ?? Problem(http, new("REQUEST_INVALID", "İstek tamamlanamadı.", 400));
 
+    /// <summary>
+    /// Answers an ArgumentException a handler of the group throws as 400 (RequestArgumentError) inside the endpoint.
+    /// ApiExceptionHandler gives the same body for every other group, but only after the exception has passed
+    /// IdempotencyMiddleware, which then holds a keyed write's outcome as UNKNOWN for 7 days; answered here, the 400
+    /// is recorded as a COMPLETED refusal and replayed. The Catalog, Invoicing and Marketplace groups keep that, so
+    /// the filter stays on exactly those three (API-GUVENLIK-4 asked to remove it; that would change the replay).
+    /// </summary>
+    public static RouteGroupBuilder WithArgumentErrorsAnswered(this RouteGroupBuilder group) => group.AddEndpointFilter(async (context, next) =>
+    {
+        try { return await next(context); }
+        catch (ArgumentException exception)
+        {
+            var (code, message) = RequestArgumentError.From(exception);
+            return Problem(context.HttpContext, new(code, message, 400));
+        }
+    });
+
     private static ServiceError Map(ServiceError error, Func<ServiceError, ServiceError>? mapError) => mapError is null ? error : mapError(error);
 }

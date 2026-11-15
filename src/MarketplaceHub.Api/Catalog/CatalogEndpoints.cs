@@ -26,11 +26,7 @@ public static class CatalogEndpoints
 
     public static IEndpointRouteBuilder MapCatalogEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var api = endpoints.MapGroup("/api/v1").AddEndpointFilter(async (context, next) =>
-        {
-            try { return await next(context); }
-            catch (ArgumentException exception) { var (code, message) = MarketplaceHub.Api.Security.RequestArgumentError.From(exception); return Problem(context.HttpContext, new(code, message, 400)); }
-        });
+        var api = endpoints.MapGroup("/api/v1").WithArgumentErrorsAnswered();
 
         api.MapCommissionTariffEndpoints();
         api.MapProductTransferEndpoints();
