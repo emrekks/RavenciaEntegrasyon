@@ -164,29 +164,46 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     // The policy passes (default upgrades, switching off product and write automation) do not need to run
     // every scheduler tick: they run every five minutes, the default upgrades once an hour. The startup
     // recovery runs them all once before the first scheduling pass.
-    private async Task RunPolicyMaintenanceAsync(CancellationToken stoppingToken)
+    private Task RunPolicyMaintenanceAsync(CancellationToken stoppingToken)
     {
         var lastDefaultsPass = DateTimeOffset.UtcNow;
+        return RunPeriodicAsync(null, TimeSpan.FromMinutes(5), async token =>
+        {
+            var includeDefaults = DateTimeOffset.UtcNow - lastDefaultsPass >= TimeSpan.FromHours(1);
+            await using var scope = scopeFactory.CreateAsyncScope();
+            if (scope.ServiceProvider.GetRequiredService<IScheduledJobProducer>() is ScheduledJobProducer producer)
+                await producer.MaintainPoliciesAsync(includeDefaults, token);
+            if (includeDefaults) lastDefaultsPass = DateTimeOffset.UtcNow;
+        }, exception => logger.LogError(exception, "Sync policy maintenance pass failed"), stoppingToken);
+    }
+
+    // Runs a maintenance pass every period (first after firstPassAfter when given, else after one period) until
+    // shutdown. A failed pass is logged and the loop goes on, also when it failed with a cancellation that did not
+    // come from the shutdown (a library timeout surfacing as TaskCanceledException): such a pass used to end the
+    // loop for good, silently, until the worker restarted.
+    internal static async Task RunPeriodicAsync(TimeSpan? firstPassAfter, TimeSpan period, Func<CancellationToken, Task> pass, Action<Exception> onFailure, CancellationToken stoppingToken)
+    {
         try
         {
-            using var timer = new PeriodicTimer(TimeSpan.FromMinutes(5));
+            if (firstPassAfter is { } delay) await Task.Delay(delay, stoppingToken);
+            using var timer = new PeriodicTimer(period);
+            if (firstPassAfter is not null) await RunPassAsync(pass, onFailure, stoppingToken);
             while (await timer.WaitForNextTickAsync(stoppingToken))
-            {
-                try
-                {
-                    var includeDefaults = DateTimeOffset.UtcNow - lastDefaultsPass >= TimeSpan.FromHours(1);
-                    await using var scope = scopeFactory.CreateAsyncScope();
-                    if (scope.ServiceProvider.GetRequiredService<IScheduledJobProducer>() is ScheduledJobProducer producer)
-                        await producer.MaintainPoliciesAsync(includeDefaults, stoppingToken);
-                    if (includeDefaults) lastDefaultsPass = DateTimeOffset.UtcNow;
-                }
-                catch (Exception exception) when (exception is not OperationCanceledException)
-                {
-                    logger.LogError(exception, "Sync policy maintenance pass failed");
-                }
-            }
+                await RunPassAsync(pass, onFailure, stoppingToken);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+    }
+
+    private static async Task RunPassAsync(Func<CancellationToken, Task> pass, Action<Exception> onFailure, CancellationToken stoppingToken)
+    {
+        try
+        {
+            await pass(stoppingToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
+        {
+            onFailure(exception);
+        }
     }
 
     private async Task RunLeaseLaneAsync(string lane, int? maximumPriority, int? minimumPriority, CancellationToken stoppingToken, string? onlyJobType = null, bool reapExpiredLeases = false, string[]? includedJobTypes = null, string[]? excludedJobTypes = null)
@@ -534,30 +551,16 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
 
     // The hot lane only reaps between its own jobs; a long hot job would otherwise leave
     // expired leases (e.g. from a crashed run) stuck until it finishes.
-    private async Task RunLeaseReaperAsync(CancellationToken cancellationToken)
-    {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
-        try
+    private Task RunLeaseReaperAsync(CancellationToken stoppingToken) =>
+        RunPeriodicAsync(null, TimeSpan.FromSeconds(30), async token =>
         {
-            while (await timer.WaitForNextTickAsync(cancellationToken))
-            {
-                try
-                {
-                    await using var scope = scopeFactory.CreateAsyncScope();
-                    var reaped = await scope.ServiceProvider.GetRequiredService<IJobLeaseService>().ReapExpiredAsync(cancellationToken);
-                    if (reaped > 0) logger.LogWarning("Lease reaper recovered {Count} expired job leases", reaped);
-                }
-                catch (Exception exception) when (exception is not OperationCanceledException)
-                {
-                    logger.LogError(exception, "Lease reaper pass failed");
-                }
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
-    }
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var reaped = await scope.ServiceProvider.GetRequiredService<IJobLeaseService>().ReapExpiredAsync(token);
+            if (reaped > 0) logger.LogWarning("Lease reaper recovered {Count} expired job leases", reaped);
+        }, exception => logger.LogError(exception, "Lease reaper pass failed"), stoppingToken);
 
     // Hourly purge of old finished jobs and processed webhook inbox rows so the queue tables stop growing forever.
-    private async Task RunJobRetentionAsync(CancellationToken stoppingToken)
+    private Task RunJobRetentionAsync(CancellationToken stoppingToken)
     {
         var succeededRetention = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:JobRetention:SucceededDays", 14), 1, 365));
         var failedRetention = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:JobRetention:FailedDays", 30), 1, 365));
@@ -565,134 +568,74 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         var inboxReceivedRetention = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:JobRetention:InboxReceivedDays", 90), 30, 365));
         var guardRetention = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:JobRetention:GuardDays", 90), 30, 3650));
         var effectRecordRetention = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:JobRetention:EffectRecordDays", 90), 30, 3650));
-        try
+        return RunPeriodicAsync(TimeSpan.FromMinutes(10), TimeSpan.FromHours(1), async token =>
         {
-            await Task.Delay(TimeSpan.FromMinutes(10), stoppingToken);
-            using var timer = new PeriodicTimer(TimeSpan.FromHours(1));
-            do
-            {
-                try
-                {
-                    await using var scope = scopeFactory.CreateAsyncScope();
-                    var retention = scope.ServiceProvider.GetRequiredService<JobRetentionService>();
-                    var deleted = await retention.PurgeAsync(succeededRetention, failedRetention, guardRetention, maximumBatches: 25, stoppingToken);
-                    if (deleted > 0) logger.LogInformation("Job retention removed {Count} finished jobs", deleted);
-                    var inbox = await retention.PurgeInboxAsync(inboxRetention, inboxReceivedRetention, maximumBatches: 25, stoppingToken);
-                    if (inbox > 0) logger.LogInformation("Job retention removed {Count} webhook inbox rows", inbox);
-                    var usage = await retention.PurgeRateLimitUsageAsync(maximumBatches: 25, stoppingToken);
-                    if (usage > 0) logger.LogInformation("Job retention removed {Count} old quota usage rows", usage);
-                    var effects = await retention.PurgeCompletedEffectRecordsAsync(effectRecordRetention, maximumBatches: 25, stoppingToken);
-                    if (effects > 0) logger.LogInformation("Job retention removed {Count} settled marketplace action records", effects);
-                    var sendLog = await retention.PurgePriceStockSendLogAsync(PriceStockSendLogPolicy.Retention, maximumBatches: 25, stoppingToken);
-                    if (sendLog > 0) logger.LogInformation("Job retention removed {Count} old price/stock send log rows", sendLog);
-                    var notifications = await retention.PurgePanelNotificationsAsync(PanelNotificationPolicy.Retention, maximumBatches: 25, stoppingToken);
-                    if (notifications > 0) logger.LogInformation("Job retention removed {Count} notification center rows older than a week", notifications);
-                    var references = await retention.PurgeStaleReferenceSnapshotsAsync(maximumBatches: 50, stoppingToken);
-                    if (references > 0) logger.LogInformation("Job retention removed {Count} rows of old marketplace reference lists", references);
-                }
-                catch (Exception exception) when (exception is not OperationCanceledException)
-                {
-                    logger.LogError(exception, "Job retention pass failed");
-                }
-            }
-            while (await timer.WaitForNextTickAsync(stoppingToken));
-        }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var retention = scope.ServiceProvider.GetRequiredService<JobRetentionService>();
+            var deleted = await retention.PurgeAsync(succeededRetention, failedRetention, guardRetention, maximumBatches: 25, token);
+            if (deleted > 0) logger.LogInformation("Job retention removed {Count} finished jobs", deleted);
+            var inbox = await retention.PurgeInboxAsync(inboxRetention, inboxReceivedRetention, maximumBatches: 25, token);
+            if (inbox > 0) logger.LogInformation("Job retention removed {Count} webhook inbox rows", inbox);
+            var usage = await retention.PurgeRateLimitUsageAsync(maximumBatches: 25, token);
+            if (usage > 0) logger.LogInformation("Job retention removed {Count} old quota usage rows", usage);
+            var effects = await retention.PurgeCompletedEffectRecordsAsync(effectRecordRetention, maximumBatches: 25, token);
+            if (effects > 0) logger.LogInformation("Job retention removed {Count} settled marketplace action records", effects);
+            var sendLog = await retention.PurgePriceStockSendLogAsync(PriceStockSendLogPolicy.Retention, maximumBatches: 25, token);
+            if (sendLog > 0) logger.LogInformation("Job retention removed {Count} old price/stock send log rows", sendLog);
+            var notifications = await retention.PurgePanelNotificationsAsync(PanelNotificationPolicy.Retention, maximumBatches: 25, token);
+            if (notifications > 0) logger.LogInformation("Job retention removed {Count} notification center rows older than a week", notifications);
+            var references = await retention.PurgeStaleReferenceSnapshotsAsync(maximumBatches: 50, token);
+            if (references > 0) logger.LogInformation("Job retention removed {Count} rows of old marketplace reference lists", references);
+        }, exception => logger.LogError(exception, "Job retention pass failed"), stoppingToken);
     }
 
     // An open operational issue not seen for a month is closed daily, so the operations page shows what is
     // happening now; a recurrence reopens the same record. A resolved issue is deleted a month after it was
     // resolved and last seen (many issue keys carry event ids or timestamps, so they would otherwise pile up
     // forever); an issue resolved in this pass is not deleted in the same pass.
-    private async Task RunIssueRetentionAsync(CancellationToken stoppingToken)
+    private Task RunIssueRetentionAsync(CancellationToken stoppingToken)
     {
         var staleAfter = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:IssueRetention:StaleDays", 30), 7, 365));
         var resolvedRetention = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:IssueRetention:ResolvedDays", 30), 7, 365));
-        try
+        return RunPeriodicAsync(TimeSpan.FromMinutes(15), TimeSpan.FromHours(24), async token =>
         {
-            await Task.Delay(TimeSpan.FromMinutes(15), stoppingToken);
-            using var timer = new PeriodicTimer(TimeSpan.FromHours(24));
-            do
-            {
-                try
-                {
-                    await using var scope = scopeFactory.CreateAsyncScope();
-                    var issues = scope.ServiceProvider.GetRequiredService<OperationalIssueRetentionService>();
-                    var resolved = await issues.ResolveStaleAsync(staleAfter, stoppingToken);
-                    if (resolved > 0) logger.LogInformation("Issue retention resolved {Count} operational issue(s) not seen for {Days} days", resolved, staleAfter.TotalDays);
-                    // Trendyol quantity refusals of packages superseded by their split children, or no longer listed.
-                    var superseded = await issues.ResolveSupersededPackageQuantityIssuesAsync(TimeSpan.FromDays(3), stoppingToken);
-                    if (superseded > 0) logger.LogInformation("Issue retention resolved {Count} package quantity refusal(s) of superseded or removed Trendyol packages", superseded);
-                    // Return lines reported as unlinked whose line has since been linked to its order line.
-                    var linked = await issues.ResolveLinkedReturnLineIssuesAsync(stoppingToken);
-                    if (linked > 0) logger.LogInformation("Issue retention resolved {Count} return line notice(s) whose line is linked now", linked);
-                    var deleted = await issues.DeleteResolvedAsync(resolvedRetention, stoppingToken);
-                    if (deleted > 0) logger.LogInformation("Issue retention deleted {Count} resolved operational issue(s) not seen for {Days} days", deleted, resolvedRetention.TotalDays);
-                }
-                catch (Exception exception) when (exception is not OperationCanceledException)
-                {
-                    logger.LogError(exception, "Issue retention pass failed");
-                }
-            }
-            while (await timer.WaitForNextTickAsync(stoppingToken));
-        }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var issues = scope.ServiceProvider.GetRequiredService<OperationalIssueRetentionService>();
+            var resolved = await issues.ResolveStaleAsync(staleAfter, token);
+            if (resolved > 0) logger.LogInformation("Issue retention resolved {Count} operational issue(s) not seen for {Days} days", resolved, staleAfter.TotalDays);
+            // Trendyol quantity refusals of packages superseded by their split children, or no longer listed.
+            var superseded = await issues.ResolveSupersededPackageQuantityIssuesAsync(TimeSpan.FromDays(3), token);
+            if (superseded > 0) logger.LogInformation("Issue retention resolved {Count} package quantity refusal(s) of superseded or removed Trendyol packages", superseded);
+            // Return lines reported as unlinked whose line has since been linked to its order line.
+            var linked = await issues.ResolveLinkedReturnLineIssuesAsync(token);
+            if (linked > 0) logger.LogInformation("Issue retention resolved {Count} return line notice(s) whose line is linked now", linked);
+            var deleted = await issues.DeleteResolvedAsync(resolvedRetention, token);
+            if (deleted > 0) logger.LogInformation("Issue retention deleted {Count} resolved operational issue(s) not seen for {Days} days", deleted, resolvedRetention.TotalDays);
+        }, exception => logger.LogError(exception, "Issue retention pass failed"), stoppingToken);
     }
 
     // Trendyol passivates a webhook whose deliveries keep failing (for example while the server is
     // off at night). Shortly after start and then hourly, registered webhooks found passive are
     // reactivated; the startup recovery's incremental reads cover what was missed meanwhile.
-    private async Task RunWebhookUpkeepAsync(CancellationToken stoppingToken)
-    {
-        try
+    private Task RunWebhookUpkeepAsync(CancellationToken stoppingToken) =>
+        RunPeriodicAsync(TimeSpan.FromMinutes(1), TimeSpan.FromHours(1), async token =>
         {
-            await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
-            using var timer = new PeriodicTimer(TimeSpan.FromHours(1));
-            do
-            {
-                try
-                {
-                    await using var scope = scopeFactory.CreateAsyncScope();
-                    var notifications = scope.ServiceProvider.GetRequiredService<IInstantNotificationService>();
-                    var reactivated = await notifications.ReactivatePassiveAsync(stoppingToken);
-                    if (reactivated > 0) logger.LogInformation("Reactivated {Count} passive marketplace webhook(s)", reactivated);
-                    var retried = await notifications.RetryConnectionWebhooksAsync(stoppingToken);
-                    if (retried > 0) logger.LogInformation("Closed or reopened {Count} webhook(s) of passive or reactivated connections", retried);
-                }
-                catch (Exception exception) when (exception is not OperationCanceledException)
-                {
-                    logger.LogError(exception, "Webhook upkeep pass failed");
-                }
-            }
-            while (await timer.WaitForNextTickAsync(stoppingToken));
-        }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
-    }
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var notifications = scope.ServiceProvider.GetRequiredService<IInstantNotificationService>();
+            var reactivated = await notifications.ReactivatePassiveAsync(token);
+            if (reactivated > 0) logger.LogInformation("Reactivated {Count} passive marketplace webhook(s)", reactivated);
+            var retried = await notifications.RetryConnectionWebhooksAsync(token);
+            if (retried > 0) logger.LogInformation("Closed or reopened {Count} webhook(s) of passive or reactivated connections", retried);
+        }, exception => logger.LogError(exception, "Webhook upkeep pass failed"), stoppingToken);
 
     // Every two minutes, marketplace actions whose outcome is still open get a verification job.
-    private async Task RunExternalEffectSweepAsync(CancellationToken stoppingToken)
-    {
-        try
+    private Task RunExternalEffectSweepAsync(CancellationToken stoppingToken) =>
+        RunPeriodicAsync(TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(2), async token =>
         {
-            await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
-            using var timer = new PeriodicTimer(TimeSpan.FromMinutes(2));
-            do
-            {
-                try
-                {
-                    await using var scope = scopeFactory.CreateAsyncScope();
-                    var changed = await scope.ServiceProvider.GetRequiredService<ExternalEffectSweep>().SweepAsync(stoppingToken);
-                    if (changed > 0) logger.LogInformation("External effect sweep queued or closed {Count} open marketplace action(s)", changed);
-                }
-                catch (Exception exception) when (exception is not OperationCanceledException)
-                {
-                    logger.LogError(exception, "External effect sweep failed");
-                }
-            }
-            while (await timer.WaitForNextTickAsync(stoppingToken));
-        }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
-    }
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var changed = await scope.ServiceProvider.GetRequiredService<ExternalEffectSweep>().SweepAsync(token);
+            if (changed > 0) logger.LogInformation("External effect sweep queued or closed {Count} open marketplace action(s)", changed);
+        }, exception => logger.LogError(exception, "External effect sweep failed"), stoppingToken);
 
     // Holds one dedicated connection that LISTENs for runnable jobs and wakes the idle lanes.
     // Any failure only costs latency: the lanes keep polling while the listener reconnects.
@@ -788,9 +731,14 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         // row): the next run finds that row. It is retried a couple of times before it goes to review.
         _ when DataConstraintViolation(exception) is { SqlState: PostgresErrorCodes.UniqueViolation } duplicate =>
             JobExecutionResult.Retry(MarketplaceHub.Infrastructure.Jobs.JobConflictPolicy.DuplicateInsert, $"Aynı kayıt başka bir işlem tarafından eklendi; işlem kısa süre içinde yeniden denenecek. ({duplicate.ConstraintName})", TimeSpan.FromSeconds(Random.Shared.Next(5, 16))),
-        // A violated check or a value too long is a data fault that six retries cannot fix.
+        // A violated check, foreign key or NOT NULL rule, a value too long or out of range is a data fault that six
+        // retries cannot fix.
         _ when DataConstraintViolation(exception) is { } violation =>
             JobExecutionResult.ManualReview("DATABASE_CONSTRAINT_VIOLATION", $"Kayıt bir veritabanı kuralına takıldı ve incelenmeli. ({violation.SqlState} {violation.ConstraintName}: {violation.MessageText.ReplaceLineEndings(" ")})"),
+        // Any other error the database reported that is not transient (a serialization failure, deadlock, cancelled
+        // query, connection or resource fault is) is still retried, but not under the "transient" code.
+        _ when NonTransientDatabaseError(exception) is { } error =>
+            JobExecutionResult.Retry("UNHANDLED_EXECUTION_FAILURE", $"Veritabanı beklenmeyen bir hata bildirdi; işlem otomatik deneme sınırı içinde yeniden denenecek. ({error.SqlState}: {error.MessageText.ReplaceLineEndings(" ")})"),
         TimeoutException or HttpRequestException or IOException or System.Data.Common.DbException or DbUpdateException =>
             JobExecutionResult.Retry("TRANSIENT_EXECUTION_FAILURE", $"Geçici altyapı hatası nedeniyle işlem yeniden denenecek. ({Describe(exception)})"),
         // A broken or closed database connection, a disposed service during shutdown or EF's transient-failure
@@ -822,8 +770,23 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     private static PostgresException? DataConstraintViolation(Exception exception)
     {
         for (Exception? current = exception; current is not null; current = current.InnerException)
-            if (current is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation or PostgresErrorCodes.CheckViolation or PostgresErrorCodes.StringDataRightTruncation } postgres)
+            if (current is PostgresException
+                {
+                    SqlState: PostgresErrorCodes.UniqueViolation or PostgresErrorCodes.CheckViolation or PostgresErrorCodes.StringDataRightTruncation
+                        or PostgresErrorCodes.ForeignKeyViolation or PostgresErrorCodes.NotNullViolation or PostgresErrorCodes.NumericValueOutOfRange
+                        or PostgresErrorCodes.InvalidTextRepresentation or PostgresErrorCodes.DatetimeFieldOverflow
+                } postgres)
                 return postgres;
+        return null;
+    }
+
+    // A database error that a retry may well not get past. Npgsql marks the transient ones (serialization failure,
+    // deadlock, connection and resource faults); a query cancelled by a statement timeout counts as transient too.
+    private static PostgresException? NonTransientDatabaseError(Exception exception)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+            if (current is PostgresException postgres)
+                return postgres.IsTransient || postgres.SqlState == PostgresErrorCodes.QueryCanceled ? null : postgres;
         return null;
     }
 
