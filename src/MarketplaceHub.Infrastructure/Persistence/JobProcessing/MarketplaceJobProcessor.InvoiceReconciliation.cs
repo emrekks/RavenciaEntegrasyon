@@ -2,6 +2,7 @@ using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
+using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
@@ -699,6 +700,12 @@ public sealed partial class MarketplaceJobProcessor
         return true;
     }
 
+    // ADAPTOR-TY-HB-3: a Trendyol package read that sent no request because the package is outside every readable window.
+    // The adapter keeps its NotFound/404 class; callers that would take NotFound as "Trendyol has no such package" check
+    // this first, since the package's state is unknown.
+    internal static bool TrendyolPackageNotAsked(AdapterError? error) =>
+        string.Equals(error?.Code, TrendyolHttpClient.PackageNotAddressableCode, StringComparison.Ordinal);
+
     // A sweep reads only the order's packages still uninvoiced on Trendyol; an unconfirmed local
     // invoice or a requested refresh reads every package of the order.
     private async Task ReconcileTrendyolPackageInvoices(Guid tenantId, Guid connectionId, string externalOrderId, string correlationId, bool sweep, IReadOnlySet<Guid> alreadyRead, CancellationToken cancellationToken)
@@ -730,6 +737,15 @@ public sealed partial class MarketplaceJobProcessor
             if (!readback.IsSuccess)
             {
                 var issueKey = $"trendyol-invoice-package-read:{connectionId}:{candidate.Id}";
+                if (TrendyolPackageNotAsked(readback.Error))
+                {
+                    // ADAPTOR-TY-HB-3: the package lies outside every window Trendyol can be asked in, so nothing was
+                    // asked and its invoice state is unknown, not "removed by Trendyol". The issue stays on the invoice
+                    // screen (InvoiceWorkspaceReadIssuePolicy shows this code) and the last known state is kept.
+                    await RecordIssue(tenantId, issueKey, readback.Error!.Code,
+                        $"Paket fatura durumu Trendyol'dan doğrulanamadı. {readback.Error.SafeMessage}", cancellationToken);
+                    continue;
+                }
                 if (readback.Error?.Class == AdapterErrorClass.NotFound || readback.Error?.HttpStatus == 404)
                 {
                     // Trendyol removes older package records from the package

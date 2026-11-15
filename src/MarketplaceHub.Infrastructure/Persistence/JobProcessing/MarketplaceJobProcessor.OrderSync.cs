@@ -113,6 +113,7 @@ public sealed partial class MarketplaceJobProcessor
                     packagesToRead.Add((knownPackage.ExternalPackageId, knownPackage.StatusOccurredAt));
             }
             var packageSnapshots = new List<RemoteOrder>();
+            AdapterError? packageNotAsked = null;
             foreach (var packageToRead in packagesToRead)
             {
                 TrackRequest();
@@ -123,6 +124,13 @@ public sealed partial class MarketplaceJobProcessor
                     cancellationToken);
                 if (!packageRead.IsSuccess)
                 {
+                    // ADAPTOR-TY-HB-3: a package outside every readable window was not asked for; remembered so the
+                    // job does not end as if Trendyol had answered that it does not know the order.
+                    if (TrendyolPackageNotAsked(packageRead.Error))
+                    {
+                        packageNotAsked ??= packageRead.Error;
+                        continue;
+                    }
                     if (packageRead.Error?.Class == AdapterErrorClass.NotFound || packageRead.Error?.HttpStatus == 404)
                         continue;
                     TrackResultFailure(packageRead.Error);
@@ -142,7 +150,7 @@ public sealed partial class MarketplaceJobProcessor
             }
 
             TrackResultFailure(single.Error);
-            throw JobProcessingException.FromAdapter(single.Error!);
+            throw JobProcessingException.FromAdapter(packageNotAsked ?? single.Error!);
         }
 
         var cursor = await Cursor(tenantId, connectionId, cursorResourceType, cancellationToken);
