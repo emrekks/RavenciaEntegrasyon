@@ -1325,11 +1325,20 @@ public static class TrendyolJsonMapper
     // the real instant (C13; proven on live 2 Nov 2026: order 11776722829 arrived 19:01:53Z with orderDate 22:01:41Z).
     // lastModifiedDate, createdDate, claimDate (documented as GMT) and agreedDeliveryDate (23:59 Istanbul) are real
     // UTC epochs and are read as they are.
-    private static DateTimeOffset? OrderDate(JsonElement value) =>
-        value.TryGetProperty("orderDate", out var item) && item.ValueKind == JsonValueKind.Number && item.TryGetInt64(out var milliseconds)
-            ? TurkeyTime.FromTurkeyWallClockEpochMilliseconds(milliseconds)
-            : null;
-    private static DateTimeOffset? Instant(JsonElement value, string name) => value.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.Number && item.TryGetInt64(out var milliseconds) ? DateTimeOffset.FromUnixTimeMilliseconds(milliseconds) : null;
+    // An epoch outside the DateTimeOffset range reads as no date (ADAPTOR-TY-HB-5): its package is refused or falls back
+    // on its own, instead of an ArgumentOutOfRangeException stopping the whole page.
+    private static DateTimeOffset? OrderDate(JsonElement value)
+    {
+        if (!value.TryGetProperty("orderDate", out var item) || item.ValueKind != JsonValueKind.Number || !item.TryGetInt64(out var milliseconds)) return null;
+        try { return TurkeyTime.FromTurkeyWallClockEpochMilliseconds(milliseconds); }
+        catch (ArgumentOutOfRangeException) { return null; }
+    }
+    private static DateTimeOffset? Instant(JsonElement value, string name)
+    {
+        if (!value.TryGetProperty(name, out var item) || item.ValueKind != JsonValueKind.Number || !item.TryGetInt64(out var milliseconds)) return null;
+        try { return DateTimeOffset.FromUnixTimeMilliseconds(milliseconds); }
+        catch (ArgumentOutOfRangeException) { return null; }
+    }
     private static DateTimeOffset? FlexibleInstant(JsonElement value, params string[] names)
     {
         foreach (var name in names)

@@ -46,6 +46,32 @@ public sealed class TrendyolOrderTimeTests
         Assert.Equal(order.OrderedAt, order.LastModifiedAt);
     }
 
+    // ADAPTOR-TY-HB-5: an epoch outside the DateTimeOffset range drops only its own package, never the whole page. A broken
+    // lastModifiedDate falls back to the order date; a broken orderDate refuses that package with an issue.
+    [Fact]
+    public void AnOutOfRangeEpochDropsOnlyItsOwnPackage()
+    {
+        const long Broken = 99999999999999999;
+        var json = $$"""
+        {"content":[
+          {"id":"pkg-1","orderNumber":"ord-1","currencyCode":"TRY","status":"Created","orderDate":{{OrderDate}},"lastModifiedDate":{{Broken}},"lines":[
+            {"lineId":"1","stockCode":"SKU-1","productName":"Bluz","quantity":1,"amount":100.00,"discount":0,"price":100.00,"vatRate":10}]},
+          {"id":"pkg-2","orderNumber":"ord-2","currencyCode":"TRY","status":"Created","orderDate":{{Broken}},"lines":[
+            {"lineId":"2","stockCode":"SKU-2","productName":"Bluz","quantity":1,"amount":100.00,"discount":0,"price":100.00,"vatRate":10}]},
+          {"id":"pkg-3","orderNumber":"ord-3","currencyCode":"TRY","status":"Created","orderDate":{{OrderDate}},"lastModifiedDate":{{LastModifiedDate}},"lines":[
+            {"lineId":"3","stockCode":"SKU-3","productName":"Bluz","quantity":1,"amount":100.00,"discount":0,"price":100.00,"vatRate":10}]}
+        ]}
+        """;
+
+        var page = TrendyolJsonMapper.Orders(json);
+
+        Assert.Equal(["ord-1", "ord-3"], page.Items.Select(order => order.OrderNumber).ToArray());
+        Assert.Equal(page.Items[0].OrderedAt, page.Items[0].LastModifiedAt);
+        var issue = Assert.Single(page.Issues!);
+        Assert.Equal("ORDER_PACKAGE_INVALID", issue.Code);
+        Assert.Equal("ord-2", issue.RereadOrderId);
+    }
+
     [Fact]
     public void AReturnClaimProjectionReadsTheOrderDateAsTurkeyWallClockAndTheClaimDateAsUtc()
     {
