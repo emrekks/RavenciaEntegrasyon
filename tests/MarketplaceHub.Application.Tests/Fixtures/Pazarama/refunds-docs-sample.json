@@ -1,0 +1,56 @@
+// Source: Ravencia-API-Docs/pazarama-api-son.md "İadeler" sample answer (~3240-3305), customer fields replaced by fake
+// values. Note the documented dates are Turkish month text ("6 Ekim 2021 14:53") in Istanbul time. A second refund is
+// hand-built on the same schema with an undocumented refundStatus and no dates.
+{
+  "data": {
+    "responsePage": { "pageSize": 100, "pageIndex": 1, "totalCount": 2, "totalPages": 1 },
+    "pageReport": { "totalRefundCount": 49, "totalWaitingRefundCount": 5, "totalApprovedRefundCount": 31, "totalRejectedRefundCount": 13 },
+    "refundList": [
+      {
+        "id": 1,
+        "refundId": "ef2affaf-fdfc-4128-b5bc-3a4c1129e662",
+        "orderNumber": 818589784,
+        "orderDate": "6 Ekim 2021 14:53",
+        "refundNumber": 564213,
+        "refundType": "Ürünün parçası eksik",
+        "refundStatus": 1,
+        "refundStatusName": "İade Onayı Bekliyor",
+        "paymentType": "Banka/Kredi Kartı",
+        "refundDate": "6 Ekim 2021 19:46",
+        "totalAmount": { "value": 23.5, "valueInt": 2350, "valueString": "23,50 TL", "currency": "TL" },
+        "refundAmount": { "value": 1.75, "valueInt": 175, "valueString": "1,75 TL", "currency": "TL" },
+        "customerId": "9075e6da-2a3e-4959-29b6-08d91e2de243",
+        "customerName": "Test Musteri",
+        "customerEmail": "customer@example.test",
+        "customerPhoneNumber": "5550000000",
+        "customerAddress": " Bahçelievler/İstanbul",
+        "productName": "Böğürtlen Reçeli 30 g.",
+        "productCode": "201040500",
+        "productStockCode": null,
+        "shipmentCompanyName": "MNG",
+        "shipmentCode": 54895647251356,
+        "description": "test",
+        "boDescription": null
+      },
+      {
+        "id": 2,
+        "refundId": "00000000-0000-4000-8000-000000000501",
+        "orderNumber": 300000001,
+        "refundNumber": 564299,
+        "refundType": "Beden uymadı",
+        "refundStatus": 77,
+        "refundStatusName": "Bilinmeyen Durum",
+        "totalAmount": { "value": 100, "currency": "TL" },
+        "refundAmount": { "value": 100, "currency": "TL" },
+        "productName": "Fake Pazarama Ürün 1",
+        "productCode": "0000000000401",
+        "productStockCode": "SKU-FAKE-PZ1"
+      }
+    ]
+  },
+  "success": true,
+  "messageCode": "ORD0",
+  "message": " null ",
+  "userMessage": null,
+  "fromCache": false
+}

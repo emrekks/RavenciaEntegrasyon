@@ -1,0 +1,82 @@
+// Source: Ravencia-API-Docs/pazarama-api-son.md "Sorulmuş Soruların Yanıtlarını Özet Olarak Filtreleme"
+// (POST QuestionAnswer/getApprovalAnswersByMerchantSearch, the list the adapter reads; ~3975-4005), user name masked as
+// documented, plus two hand-built rows on the same schema (an open question; one without questionStatus); and "ID ile
+// Sorulmuş Soruların Detayını Açma" (~3886-3915), its question text shortened. "listWithoutText" is the GET
+// getApprovalAnswersByMerchant sample (~3839-3870), whose rows carry no question text. questionDate has no offset:
+// Istanbul local.
+{
+  "list": {
+    "data": {
+      "sellerId": "ef9bf337-83bb-4617-ef46-08d97204cc6d",
+      "approvalAnswersByMerchantSearchs": [
+        {
+          "questionId": "56643287-ad2c-40be-9088-08dc076bf0d7",
+          "productName": "Tükenmez Kalem",
+          "productImageUrl": "https://cdn.pazarama.com/asset/MSTK55550/images/tkenmezkalem-1.jpeg",
+          "barcode": "MSTK55550",
+          "brand": "4 Element Yayınları",
+          "maskedUserName": "M**** S****",
+          "question": "garanti var mı ",
+          "questionDate": "2023-12-28T09:12:16.333",
+          "answer": "Merhaba, Evet efendim, tüm ürünlerimiz garanti kapsamındadır. Güle güle kullanmanız dileğiyle.",
+          "answerDate": "2023-12-28T10:17:13.023",
+          "questionStatus": 2,
+          "topicId": "cd6a0496-6b0f-471f-9d6f-eb53c3d0cb20"
+        },
+        {
+          "questionId": "00000000-0000-4000-8000-000000000702",
+          "productName": "Fake Pazarama Ürün 1",
+          "barcode": "0000000000401",
+          "maskedUserName": "T**** M****",
+          "question": "Beden tablosu var mı?",
+          "questionDate": "2026-11-05T10:00:00",
+          "questionStatus": 0
+        },
+        {
+          "questionId": "00000000-0000-4000-8000-000000000701",
+          "productName": "Durumsuz Ürün",
+          "question": "Durumu gelmeyen soru",
+          "questionDate": "2026-11-05T10:00:00"
+        }
+      ],
+      "pageResponse": { "pageIndex": 1, "pageSize": 10, "totalCount": 3, "totalPages": 1 }
+    },
+    "success": true,
+    "fromCache": false
+  },
+  "listWithoutText": {
+    "data": {
+      "sellerId": "ef9bf337-83bb-4617-ef46-08d97204cc6d",
+      "approvalAnswersByMerchant": [
+        { "productName": "Tükenmez Kalem", "questionId": "56643287-ad2c-40be-9088-08dc076bf0d7", "questionDate": "2023-12-28T09:12:16.333", "questionStatus": 0 },
+        { "productName": "Beyaz Peynir", "questionId": "7f1a5c66-99c6-4356-d16d-08dc076c1a0a", "questionDate": "2023-12-28T09:13:25.483", "questionStatus": 0 }
+      ],
+      "unAnsweredCount": 2,
+      "pageResponse": { "pageIndex": 1, "pageSize": 10, "totalCount": 2, "totalPages": 1 }
+    },
+    "success": true,
+    "fromCache": false
+  },
+  "detail": {
+    "data": {
+      "sellerId": "45019354-0d8a-42b4-b201-08d93c66b022",
+      "productName": "DeFacto Wide Leg Bol Rahat Kesim Kargo Cepli Keten Görünümlü Yazlık Pantolon B9407AX24SMBG743",
+      "productImageUrl": "https://img.pzrmcdn.com/asset/8683525133020/images/widelegkargocepliketengrnmlpantolon-1.jpg",
+      "barcode": "8683525133020",
+      "brand": "DeFacto",
+      "userOtherQuestions": [],
+      "isPrivate": true,
+      "questionId": "a82a1cf6-d113-4e73-0c48-08dde351ae8d",
+      "maskedUserName": "T**** G****",
+      "question": "Yarın kargoya verme ihtimaliniz var mı?",
+      "questionDate": "2025-08-25T18:45:42.773",
+      "questionStatus": 0,
+      "topicName": "Teslimat ve Kargo",
+      "userId": "878cdb35-6d79-4a86-ac53-08dde1eae2fe",
+      "productId": "f8a9e51b-fe9d-491b-660b-08dc9a5af067",
+      "orderNumber": 567800436
+    },
+    "success": true,
+    "fromCache": false
+  }
+}

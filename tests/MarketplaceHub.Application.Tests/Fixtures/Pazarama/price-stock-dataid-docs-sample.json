@@ -1,0 +1,77 @@
+// Source: Ravencia-API-Docs/pazarama-api-son.md "Fiyat ve Stok DataId Sorgulama Servisi" sample answer (~884-990),
+// first three rows kept as documented (one "Başarılı", two "Onaya gönderildi"), plus a hand-built stock row that failed
+// on the same schema (stock.status 2) and one row with neither price nor stock result yet.
+{
+  "data": {
+    "data": [
+      {
+        "id": "25692959-3837-4843-b1db-3698921e0123",
+        "sellerId": "ef9bf337-83bb-4617-ef46-08d97204cc6d",
+        "batchId": "570d3622-acea-4428-8a28-2295ba226908",
+        "refId": "25692959-3837-4843-b1db-3698921e0123",
+        "code": "8684310721583",
+        "price": { "status": 0, "operationDetail": "Başarılı", "salePrice": 58989.83, "listPrice": 62094.83 },
+        "stock": null,
+        "status": null,
+        "operationSourceText": "Default",
+        "operationStatusText": "Başarılı"
+      },
+      {
+        "id": "3e5e2c34-0c40-4c47-83a5-f0117588869c",
+        "sellerId": "ef9bf337-83bb-4617-ef46-08d97204cc6d",
+        "batchId": "570d3622-acea-4428-8a28-2295ba226908",
+        "refId": "3e5e2c34-0c40-4c47-83a5-f0117588869c",
+        "code": "8684932203146",
+        "price": { "status": 0, "operationDetail": "Ürün fiyat onayına gönderildi", "salePrice": 10.35, "listPrice": 25.88 },
+        "stock": null,
+        "status": null,
+        "operationSourceText": "Default",
+        "operationStatusText": "Onaya gönderildi"
+      },
+      {
+        "id": "4cd262ca-97f8-419d-b4b0-0cdf508bdb1a",
+        "sellerId": "ef9bf337-83bb-4617-ef46-08d97204cc6d",
+        "batchId": "570d3622-acea-4428-8a28-2295ba226908",
+        "refId": "4cd262ca-97f8-419d-b4b0-0cdf508bdb1a",
+        "code": "8684932247416",
+        "price": { "status": 0, "operationDetail": "Ürün fiyat onayına gönderildi", "salePrice": 51.75, "listPrice": 129.38 },
+        "stock": null,
+        "status": null,
+        "operationSourceText": "Default",
+        "operationStatusText": "Onaya gönderildi"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000601",
+        "sellerId": "ef9bf337-83bb-4617-ef46-08d97204cc6d",
+        "batchId": "00000000-0000-4000-8000-000000000600",
+        "refId": "00000000-0000-4000-8000-000000000601",
+        "code": "0000000000401",
+        "price": null,
+        "stock": { "status": 2, "operationDetail": "Ürün bulunamadı", "stockCount": 5 },
+        "status": null,
+        "operationSourceText": "Default",
+        "operationStatusText": "Başarısız"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000602",
+        "sellerId": "ef9bf337-83bb-4617-ef46-08d97204cc6d",
+        "batchId": "00000000-0000-4000-8000-000000000600",
+        "refId": "00000000-0000-4000-8000-000000000602",
+        "code": "0000000000402",
+        "price": null,
+        "stock": null,
+        "status": null,
+        "operationSourceText": "Default",
+        "operationStatusText": null
+      }
+    ],
+    "totalCount": 5,
+    "pageIndex": 1,
+    "pageSize": 100
+  },
+  "success": true,
+  "messageCode": "MSS0",
+  "message": null,
+  "userMessage": null,
+  "fromCache": false
+}

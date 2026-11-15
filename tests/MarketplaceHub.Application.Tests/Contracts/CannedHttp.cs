@@ -12,10 +12,14 @@ public sealed class CannedHttp(HttpStatusCode status, string body, string mediaT
     public int Requests { get; private set; }
     public List<string> Paths { get; } = [];
 
+    // Requests a test answers before the canned one (a sign-in or token call); they are not counted.
+    public Func<HttpRequestMessage, HttpResponseMessage?>? Prelude { get; set; }
+
     public HttpClient CreateClient(string name) => new(this, disposeHandler: false) { BaseAddress = new Uri("https://marketplace.example.test/") };
 
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
+        if (Prelude?.Invoke(request) is { } answered) return Task.FromResult(answered);
         Requests++;
         Paths.Add(request.RequestUri?.PathAndQuery ?? "");
         var response = new HttpResponseMessage(status) { Content = new StringContent(body, Encoding.UTF8, mediaType), RequestMessage = request };
@@ -32,4 +36,6 @@ public sealed class CannedHttp(HttpStatusCode status, string body, string mediaT
     public static CannedHttp GatewayBlocked() => new(HttpStatusCode.Forbidden, ContractFixture.Read("Common/gateway-403.html"), "text/html");
 
     public static CannedHttp Fixture(HttpStatusCode status, string fixturePath) => new(status, ContractFixture.Read(fixturePath));
+
+    public static HttpResponseMessage Json(string body) => new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
 }

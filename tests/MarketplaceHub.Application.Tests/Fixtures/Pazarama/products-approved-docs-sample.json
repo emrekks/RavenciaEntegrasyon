@@ -1,0 +1,68 @@
+// Source: Ravencia-API-Docs/pazarama-api-son.md "Onaylı Ürünler Listeleme Servisi (Approved)" sample answer
+// (~1175-1213: data.sellerProducts, nextCursor), plus a hand-built second product on the same schema with
+// productStatus 1 and a third without productStatus (sale state must stay unknown).
+{
+  "data": {
+    "sellerProducts": [
+      {
+        "name": "test asd 2 3123",
+        "displayName": "test asd 2 3123",
+        "description": null,
+        "brandName": "1001ambalaj",
+        "code": "ta213xxse1",
+        "groupCode": "254abe46-2ab5-4fbf-bc5d-f6fafc0f5323",
+        "stockCount": 2,
+        "stockCode": "123asd",
+        "priorityRank": 0,
+        "listPrice": 113,
+        "salePrice": 111,
+        "vatRate": 10,
+        "categoryName": "İkiz Bebek Arabası",
+        "categoryId": "00000000-0000-0000-0000-000000000000",
+        "state": 0,
+        "status": null,
+        "waitingApproveExp": null,
+        "productSaleLimitDetail": null,
+        "attributes": null,
+        "images": null,
+        "deliveryTypes": null,
+        "productStatus": 0,
+        "productGroups": null
+      },
+      {
+        "name": "Fake Pazarama Ürün 1",
+        "displayName": "Fake Pazarama Ürün 1 Siyah",
+        "brandName": "Fake Marka",
+        "code": "0000000000401",
+        "groupCode": "00000000-0000-4000-8000-000000000801",
+        "stockCount": 0,
+        "stockCode": "SKU-FAKE-PZ1",
+        "listPrice": 120,
+        "salePrice": 100,
+        "vatRate": 20,
+        "categoryName": "Tişört",
+        "categoryId": "00000000-0000-4000-8000-000000000802",
+        "state": 0,
+        "attributes": [ { "attributeName": "Renk", "attributeValue": "Siyah" } ],
+        "images": [ { "imageUrl": "https://img.example.test/pz1.jpg", "sortOrder": 0 } ],
+        "productStatus": 1
+      },
+      {
+        "name": "Fake Pazarama Ürün 2",
+        "code": "0000000000402",
+        "groupCode": "00000000-0000-4000-8000-000000000801",
+        "stockCount": "3",
+        "stockCode": "SKU-FAKE-PZ2",
+        "listPrice": "45.00",
+        "salePrice": "40.00",
+        "vatRate": 10
+      }
+    ],
+    "nextCursor": "cursor-fake-pz-2"
+  },
+  "success": true,
+  "messageCode": null,
+  "message": null,
+  "userMessage": null,
+  "fromCache": false
+}

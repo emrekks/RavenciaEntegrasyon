@@ -1,0 +1,30 @@
+{
+  "Items": [
+    {
+      "Code": "8684310721583",
+      "State": "Succeeded",
+      "Detail": "Başarılı"
+    },
+    {
+      "Code": "8684932203146",
+      "State": "Succeeded",
+      "Detail": "Ürün fiyat onayına gönderildi"
+    },
+    {
+      "Code": "8684932247416",
+      "State": "Succeeded",
+      "Detail": "Ürün fiyat onayına gönderildi"
+    },
+    {
+      "Code": "0000000000401",
+      "State": "Failed",
+      "Detail": "Ürün bulunamadı"
+    },
+    {
+      "Code": "0000000000402",
+      "State": "Failed",
+      "Detail": null
+    }
+  ],
+  "TotalCount": 5
+}

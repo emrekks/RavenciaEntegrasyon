@@ -1,0 +1,90 @@
+// Source: hand-built on the "Siparişler" item shape of Ravencia-API-Docs/pazarama-api-son.md (~2392-2585; money as
+// {currency, value}, item status codes from the order documentation: 3 alındı, 12 hazırlanıyor, 6/13 iptal, 5 kargoda).
+// 300000001: one item cancelled (6) beside a three-unit discounted item being prepared (12). 300000002: an unknown item
+// status code and quantity as text. 300000003: no orderDate (refused). 300000004: a currency the panel does not know
+// (refused, never stored as lira). One order without orderNumber.
+{
+  "data": [
+    {
+      "orderId": "00000000-0000-4000-8000-000000000301",
+      "orderNumber": 300000001,
+      "orderDate": "2026-11-05 10:15",
+      "orderAmount": 285,
+      "discountAmount": 15,
+      "currency": "TL",
+      "customerName": "Test Musteri",
+      "customerEmail": "customer@example.test",
+      "shipmentAddress": { "nameSurname": "Test Musteri", "cityName": "İzmir", "districtName": "Bornova", "addressDetail": "Fake Sokak 4", "phoneNumber": "05550000000" },
+      "billingAddress": { "nameSurname": "Test Musteri", "cityName": "İzmir", "districtName": "Bornova", "addressDetail": "Fake Sokak 4", "invoiceType": 1, "identityNumber": null },
+      "items": [
+        {
+          "orderItemId": "00000000-0000-4000-8000-0000000003a1",
+          "orderItemStatus": 12,
+          "orderItemStatusName": "Siparişiniz Hazırlanıyor",
+          "orderItemStatusHistory": [
+            { "historyStatus": 3, "historyStatusName": "Siparişiniz Alındı", "historyCreatedDate": "2026-11-05T10:15:10+03:00" },
+            { "historyStatus": 12, "historyStatusName": "Siparişiniz Hazırlanıyor", "historyCreatedDate": "2026-11-05T11:00:00+03:00" }
+          ],
+          "shipmentCode": "PZ00000000301",
+          "estimatedShippingDate": "2026-11-06T19:00:00+03:00",
+          "quantity": 3,
+          "listPrice": { "currency": "TL", "value": 120 },
+          "salePrice": { "currency": "TL", "value": 100 },
+          "totalPrice": { "currency": "TL", "value": 285 },
+          "discountAmount": { "currency": "TL", "value": 15 },
+          "cargo": { "companyName": "Yurtiçi Kargo", "trackingNumber": null },
+          "product": { "name": "Fake Pazarama Ürün 1", "stockCode": "SKU-FAKE-PZ1", "code": "0000000000401", "vatRate": 20 }
+        },
+        {
+          "orderItemId": "00000000-0000-4000-8000-0000000003a2",
+          "orderItemStatus": 6,
+          "orderItemStatusName": "İptal Edildi",
+          "orderItemStatusHistory": [
+            { "historyStatus": 3, "historyStatusName": "Siparişiniz Alındı", "historyCreatedDate": "2026-11-05T10:15:10+03:00" },
+            { "historyStatus": 6, "historyStatusName": "İptal Edildi", "historyCreatedDate": "2026-11-05T12:30:00+03:00" }
+          ],
+          "estimatedShippingDate": "2026-11-06T19:00:00+03:00",
+          "quantity": 1,
+          "salePrice": { "currency": "TL", "value": 40 },
+          "totalPrice": { "currency": "TL", "value": 40 },
+          "discountAmount": { "currency": "TL", "value": 0 },
+          "product": { "name": "Fake Pazarama Ürün 2", "stockCode": "SKU-FAKE-PZ2", "code": "0000000000402", "vatRate": 10 }
+        }
+      ]
+    },
+    {
+      "orderId": "00000000-0000-4000-8000-000000000302",
+      "orderNumber": "300000002",
+      "orderDate": "2026-11-05T10:15:00+03:00",
+      "currency": "TL",
+      "items": [
+        {
+          "orderItemId": "00000000-0000-4000-8000-0000000003b1",
+          "orderItemStatus": 99,
+          "quantity": "2",
+          "salePrice": { "currency": "TL", "value": "25.50" },
+          "totalPrice": { "currency": "TL", "value": "51.00" },
+          "product": { "name": "Fake Pazarama Ürün 3", "stockCode": "SKU-FAKE-PZ3", "code": "0000000000403", "vatRate": 20 }
+        }
+      ]
+    },
+    {
+      "orderId": "00000000-0000-4000-8000-000000000303",
+      "orderNumber": 300000003,
+      "currency": "TL",
+      "items": [ { "orderItemId": "00000000-0000-4000-8000-0000000003c1", "orderItemStatus": 3, "quantity": 1, "salePrice": { "currency": "TL", "value": 10 }, "product": { "stockCode": "SKU-FAKE-PZ4" } } ]
+    },
+    {
+      "orderId": "00000000-0000-4000-8000-000000000304",
+      "orderNumber": 300000004,
+      "orderDate": "2026-11-05 10:15",
+      "currency": "XYZ",
+      "items": [ { "orderItemId": "00000000-0000-4000-8000-0000000003d1", "orderItemStatus": 3, "quantity": 1, "salePrice": { "currency": "XYZ", "value": 10 }, "product": { "stockCode": "SKU-FAKE-PZ5" } } ]
+    },
+    {
+      "orderId": "00000000-0000-4000-8000-000000000305",
+      "orderDate": "2026-11-05 10:15",
+      "items": []
+    }
+  ]
+}

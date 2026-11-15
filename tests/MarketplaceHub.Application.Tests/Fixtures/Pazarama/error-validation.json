@@ -1,0 +1,10 @@
+// Source: the Pazarama answer envelope documented throughout Ravencia-API-Docs/pazarama-api-son.md (success, messageCode,
+// message, userMessage, fromCache), here a refused request with its own message (hand-built values).
+{
+  "data": null,
+  "success": false,
+  "messageCode": "PRD1",
+  "message": "Ürün kodu bulunamadı.",
+  "userMessage": "Ürün kodu bulunamadı.",
+  "fromCache": false
+}
