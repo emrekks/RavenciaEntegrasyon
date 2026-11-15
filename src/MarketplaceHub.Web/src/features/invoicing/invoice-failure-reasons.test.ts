@@ -21,6 +21,10 @@ describe('invoice failure reasons', () => {
     expect(invoiceFailureReason('CAPABILITY_NOT_VERIFIED')).toContain('izni kapalı')
   })
 
+  it('says an invoice number or ETTN another invoice holds stopped the invoice without sending it again (VERITABANI-DAGITIM-11)', () => {
+    expect(invoiceFailureReason('INVOICE_PROVIDER_IDENTITY_TAKEN')).toContain('yeniden gönderilmedi')
+  })
+
   it('says why an issued invoice was not sent to the marketplace by itself', () => {
     for (const code of ['PLATFORM_UNSUPPORTED', 'LINK_MISSING', 'WRITES_OFF', 'CONNECTION_NOT_LIVE', 'CONNECTION_WRITES_OFF', 'PACKAGE_MISSING', 'SHOPIFY_SCOPE_MISSING'])
       expect(invoiceFailureReason(`INVOICE_AUTO_DELIVERY_${code}`)).toMatch(/^Pazaryerine gönderilmedi: /)

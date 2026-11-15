@@ -64,6 +64,17 @@ public sealed class JobErrorMessagesTests
         Assert.Null(JobErrorMessages.Display(null, null));
     }
 
+    // Codes the 2026-11-15 scan fixes added: a developer-worded summary (dataId, page cap) reads as a plain sentence, and
+    // the invoice identity clash says nothing was sent again.
+    [Fact]
+    public void The_scan_fix_codes_read_as_plain_sentences()
+    {
+        Assert.DoesNotContain("dataId", JobErrorMessages.Display("PAZARAMA_BATCH_ID_MISSING", "Pazarama fiyat-stok yanıtında işlem numarası (dataId) yok."));
+        Assert.Contains("yeniden gönderilecek", JobErrorMessages.Display("PAZARAMA_BATCH_ID_MISSING", null));
+        Assert.Contains("sayfa sınırını aştı", JobErrorMessages.Display("TRENDYOL_FINANCE_PAGE_CAP", null));
+        Assert.Equal(MarketplaceHub.Infrastructure.Persistence.InvoiceProviderIdentityConflict.Message, JobErrorMessages.Display(MarketplaceHub.Infrastructure.Persistence.InvoiceProviderIdentityConflict.Code, null));
+    }
+
     private static string RepositoryRoot()
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
