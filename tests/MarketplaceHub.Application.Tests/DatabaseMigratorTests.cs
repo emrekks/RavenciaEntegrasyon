@@ -20,6 +20,7 @@ public class DatabaseMigratorTests
     {
         Assert.True(DatabaseMigrator.IsLockTimeout(new PostgresException("canceling statement due to lock timeout", "ERROR", "ERROR", PostgresErrorCodes.LockNotAvailable)));
         Assert.True(DatabaseMigrator.IsLockTimeout(new InvalidOperationException("wrapped", new PostgresException("lock timeout", "ERROR", "ERROR", PostgresErrorCodes.LockNotAvailable))));
+        Assert.True(DatabaseMigrator.IsLockTimeout(new PostgresException("deadlock detected", "ERROR", "ERROR", PostgresErrorCodes.DeadlockDetected)));
         Assert.False(DatabaseMigrator.IsLockTimeout(new PostgresException("canceling statement due to statement timeout", "ERROR", "ERROR", PostgresErrorCodes.QueryCanceled)));
         Assert.False(DatabaseMigrator.IsLockTimeout(new InvalidOperationException("other")));
     }

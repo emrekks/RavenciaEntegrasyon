@@ -26,8 +26,8 @@ public static class DatabaseMigrator
     }
 
     internal static bool IsLockTimeout(Exception exception) =>
-        exception is PostgresException { SqlState: PostgresErrorCodes.LockNotAvailable }
-        || exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.LockNotAvailable };
+        exception is PostgresException { SqlState: PostgresErrorCodes.LockNotAvailable or PostgresErrorCodes.DeadlockDetected }
+        || exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.LockNotAvailable or PostgresErrorCodes.DeadlockDetected };
 
     public static async Task MigrateAsync(AppDbContext applicationContext, ILogger logger, CancellationToken cancellationToken)
     {

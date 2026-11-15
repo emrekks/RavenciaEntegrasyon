@@ -143,6 +143,15 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
         private static void SwapIndexConcurrently(MigrationBuilder migrationBuilder, string schema, string name, string temporaryName, string definition)
         {
             var temporary = $"\"{temporaryName}\"";
+            // A run cut off between the drop of the old index and the rename left the valid temporary index as the only
+            // unique one: it takes the name first, so the table is never without a unique index while the rerun rebuilds.
+            migrationBuilder.Sql($"""
+                DO $$ BEGIN
+                  IF to_regclass('{schema}."{name}"') IS NULL
+                     AND EXISTS (SELECT 1 FROM pg_index WHERE indexrelid = to_regclass('{schema}.{temporary}') AND indisvalid)
+                  THEN ALTER INDEX {schema}.{temporary} RENAME TO "{name}"; END IF;
+                END $$
+                """, suppressTransaction: true);
             migrationBuilder.Sql($"DROP INDEX CONCURRENTLY IF EXISTS {schema}.{temporary}", suppressTransaction: true);
             migrationBuilder.Sql(string.Format(System.Globalization.CultureInfo.InvariantCulture, definition, temporary), suppressTransaction: true);
             migrationBuilder.Sql($"DROP INDEX CONCURRENTLY IF EXISTS {schema}.\"{name}\"", suppressTransaction: true);
