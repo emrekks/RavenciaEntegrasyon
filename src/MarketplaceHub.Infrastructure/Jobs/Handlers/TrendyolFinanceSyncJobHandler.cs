@@ -18,6 +18,12 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
     internal const string PayoutFailureCode = "TRENDYOL_PAYOUT_SYNC_FAILED";
     // A guard against a paging answer that never ends; 200 pages of 500 is far beyond a 15-day window of one store.
     private const int MaximumPages = 200;
+    // A read that reaches MaximumPages with pages left fails (ISLEYICI-7, 15 Nov 2026): before, the loop ended quietly and
+    // the window was written as read, so the records past the cap were never read.
+    internal const string PageCapCode = "TRENDYOL_FINANCE_PAGE_CAP";
+
+    private static AdapterError PageCap(string what) => new(AdapterErrorClass.ContractViolation, PageCapCode,
+        $"Trendyol {what} {MaximumPages} sayfayı aştı; kalan kayıtlar okunmadı ve aralık okunmuş sayılmadı.", null, null, null);
     // Ten payouts a page: 400 payouts, years of weekly payouts in several regions.
     private const int MaximumPayoutPages = 40;
     private static readonly TimeSpan StatementFreshFor = TimeSpan.FromMinutes(30);
@@ -177,13 +183,14 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
             // invoice of the payout (4 Nov 2026: 95 cargo invoices came back marked as platform service fees).
             foreach (var query in Queries(rejected).Where(query => query.SubType is null))
             {
+                var pagesEnded = false;
                 for (var page = 0; page < MaximumPages; page++)
                 {
                     telemetry.Requests++;
                     var result = await finance.GetPayoutRecordsAsync(context, query.Source, query.Type, query.SubType, payout.ExternalId, page, cancellationToken);
                     if (!result.IsSuccess)
                     {
-                        if (page == 0 && result.Error!.Class == AdapterErrorClass.Validation && result.Error.HttpStatus == 400) break;
+                        if (page == 0 && result.Error!.Class == AdapterErrorClass.Validation && result.Error.HttpStatus == 400) { pagesEnded = true; break; }
                         db.ChangeTracker.Clear();
                         return await PayoutFailureAsync(request, result.Error!, now, cancellationToken);
                     }
@@ -191,7 +198,13 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
                     records.AddRange(query.Source == MarketplaceFinanceSources.MoneyMovements ? value.Items.Select(x => x with { Source = query.Source }) : value.Items);
                     skipped.AddRange(value.Skipped);
                     telemetry.Received += value.Items.Count + value.Skipped.Count;
-                    if (value.Items.Count + value.Skipped.Count == 0 || page + 1 >= value.TotalPages) break;
+                    if (value.Items.Count + value.Skipped.Count == 0 || page + 1 >= value.TotalPages) { pagesEnded = true; break; }
+                }
+                // The payout is not marked read with records left unread.
+                if (!pagesEnded)
+                {
+                    db.ChangeTracker.Clear();
+                    return await PayoutFailureAsync(request, PageCap("ödeme kayıtları"), now, cancellationToken);
                 }
             }
             var collected = TrendyolFinanceSyncPlan.Collect(records);
@@ -242,6 +255,7 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
         var cargo = new Dictionary<string, List<RemoteCargoInvoiceItem>>(StringComparer.Ordinal);
         foreach (var query in Queries(null))
         {
+            var pagesEnded = false;
             for (var page = 0; page < MaximumPages; page++)
             {
                 telemetry.Requests++;
@@ -259,6 +273,7 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
                         && !(query.SubType is null && await HasRecordsOfTypeAsync(request, query.Type, cancellationToken)))
                     {
                         rejected.Add(query.SubType is null ? query.Type : $"{query.Type}/{query.SubType}");
+                        pagesEnded = true;
                         break;
                     }
                     return new(records, cargo, result.Error);
@@ -267,8 +282,9 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
                 records.AddRange(query.Source == MarketplaceFinanceSources.MoneyMovements ? value.Items.Select(x => x with { Source = query.Source }) : value.Items);
                 skipped.AddRange(value.Skipped);
                 telemetry.Received += value.Items.Count + value.Skipped.Count;
-                if (value.Items.Count + value.Skipped.Count == 0 || page + 1 >= value.TotalPages) break;
+                if (value.Items.Count + value.Skipped.Count == 0 || page + 1 >= value.TotalPages) { pagesEnded = true; break; }
             }
+            if (!pagesEnded) return new(records, cargo, PageCap("cari hesap kayıtları"));
         }
 
         // The lines of the cargo invoices not read before (an invoice's lines do not change once issued).
@@ -283,6 +299,7 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
             foreach (var serial in serials.Except(known, StringComparer.Ordinal))
             {
                 var items = new List<RemoteCargoInvoiceItem>();
+                var pagesEnded = false;
                 for (var page = 0; page < MaximumPages; page++)
                 {
                     telemetry.Requests++;
@@ -290,12 +307,13 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
                     if (!result.IsSuccess)
                     {
                         // No lines for this serial: the invoice stays a store-level cost by its date.
-                        if (result.Error!.Class == AdapterErrorClass.NotFound) break;
+                        if (result.Error!.Class == AdapterErrorClass.NotFound) { pagesEnded = true; break; }
                         return new(records, cargo, result.Error);
                     }
                     items.AddRange(result.Value!.Items);
-                    if (result.Value.Items.Count == 0 || page + 1 >= result.Value.TotalPages) break;
+                    if (result.Value.Items.Count == 0 || page + 1 >= result.Value.TotalPages) { pagesEnded = true; break; }
                 }
+                if (!pagesEnded) return new(records, cargo, PageCap("kargo faturası satırları"));
                 cargo[serial] = items;
             }
         }
