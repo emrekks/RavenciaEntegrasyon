@@ -113,6 +113,9 @@ services:
   api:
     <<: *app
     command: ["api/MarketplaceHub.Api.dll"]
+    # Requests still running at a deploy get time to finish before SIGKILL (Docker's default is 10 s; the host's
+    # own shutdown timeout is ASP.NET Core's 30 s). A write cut off mid-way leaves its idempotency key in progress.
+    stop_grace_period: 45s
     networks: [backend, egress]
     depends_on:
       migrate: { condition: service_completed_successfully }
