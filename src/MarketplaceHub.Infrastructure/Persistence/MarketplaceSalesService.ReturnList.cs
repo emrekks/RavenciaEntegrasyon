@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
@@ -120,7 +121,16 @@ public sealed partial class MarketplaceSalesService
             .Any(candidate => candidate is not null && Fold(candidate).Contains(needle, StringComparison.Ordinal));
     }
 
-    // The platform, cargo and reason choices of the page as a database filter (MatchesReturnRefinements).
+    // Every character .NET's string.Trim() strips (char.IsWhiteSpace) at either end of a value. PostgreSQL's btrim(x) strips
+    // spaces only, so the database trims with exactly these (regexp_replace) and its filter equals MatchesReturnRefinements
+    // (SIPARIS-STOK-9). None of them is special inside a bracket expression.
+    private static readonly string TrimmedWhiteSpace = new([.. Enumerable.Range(0, char.MaxValue + 1).Select(code => (char)code).Where(char.IsWhiteSpace)]);
+    internal static readonly string LeadingWhiteSpace = $"^[{TrimmedWhiteSpace}]+";
+    internal static readonly string TrailingWhiteSpace = $"[{TrimmedWhiteSpace}]+$";
+
+    // The platform, cargo and reason choices of the page as a database filter, equal to MatchesReturnRefinements: a claim's
+    // connection always exists (foreign key), codes compare ordinally (PostgreSQL text equality is byte equality) and
+    // values are trimmed of the same characters.
     internal void ApplyReturnRefinements(ref IQueryable<ReturnClaim> query, Guid tenantId, ReturnListQuery options)
     {
         var platforms = options.Platforms?.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value.Trim()).Distinct().ToArray() ?? [];
@@ -128,10 +138,12 @@ public sealed partial class MarketplaceSalesService
             query = query.Where(claim => db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == claim.ConnectionId && platforms.Contains(connection.PlatformCode)));
         var cargo = options.Cargo?.Trim();
         if (!string.IsNullOrEmpty(cargo) && cargo != "ALL")
-            query = query.Where(claim => claim.CargoProviderName != null && claim.CargoProviderName.Trim() == cargo);
+            query = query.Where(claim => claim.CargoProviderName != null && Regex.Replace(Regex.Replace(claim.CargoProviderName, LeadingWhiteSpace, ""), TrailingWhiteSpace, "") == cargo);
         var reason = options.ReasonKey?.Trim();
         if (!string.IsNullOrEmpty(reason) && reason != "ALL")
-            query = query.Where(claim => (claim.ReasonCode != null && claim.ReasonCode.Trim() != "" ? claim.ReasonCode.Trim() : (claim.ReasonText ?? "").Trim()) == reason);
+            query = query.Where(claim => (claim.ReasonCode != null && Regex.Replace(Regex.Replace(claim.ReasonCode, LeadingWhiteSpace, ""), TrailingWhiteSpace, "") != ""
+                ? Regex.Replace(Regex.Replace(claim.ReasonCode, LeadingWhiteSpace, ""), TrailingWhiteSpace, "")
+                : Regex.Replace(Regex.Replace(claim.ReasonText ?? "", LeadingWhiteSpace, ""), TrailingWhiteSpace, "")) == reason);
     }
 
     private async Task<ReturnCardScan> ScanReturnCardsAsync(Guid tenantId, ReturnListQuery options, bool applyTab, bool applyRefinements, ReturnColumnState columns, CancellationToken cancellationToken)
@@ -360,17 +372,13 @@ public sealed partial class MarketplaceSalesService
         return new(items, next, hasMore, ordered.Count);
     }
 
-    // The page's own search, its platform, cargo and reason choices and the invoice label are decided card by card on
-    // loaded rows; without them the cards are counted, ordered and paged by the database.
+    // The page's own search and the invoice label are decided card by card on loaded rows; without them the cards are
+    // counted, ordered and paged by the database. The platform, cargo and reason choices drop whole claims and the
+    // database decides them exactly as the card check does (ApplyReturnRefinements, SIPARIS-STOK-9).
     internal static bool ReturnCardsFilteredInMemory(ReturnListQuery options)
     {
         var invoice = options.InvoiceStatus?.Trim().ToUpperInvariant();
-        var cargo = options.Cargo?.Trim();
-        var reason = options.ReasonKey?.Trim();
         return !string.IsNullOrWhiteSpace(options.Search)
-            || options.Platforms?.Any(value => !string.IsNullOrWhiteSpace(value)) == true
-            || !string.IsNullOrEmpty(cargo) && cargo != "ALL"
-            || !string.IsNullOrEmpty(reason) && reason != "ALL"
             || !string.IsNullOrEmpty(invoice) && invoice != "ALL";
     }
 
@@ -383,6 +391,7 @@ public sealed partial class MarketplaceSalesService
     {
         var query = ReturnBaseQuery(tenantId);
         ApplyReturnFilters(ref query, options);
+        ApplyReturnRefinements(ref query, tenantId, options);
         var tab = options.Status?.Trim().ToUpperInvariant();
         var everyTab = string.IsNullOrEmpty(tab) || tab == "ALL";
         var tabStatuses = everyTab ? null : Enum.GetValues<ReturnClaimStatus>().Where(status => ReturnTabGroup(Wire(status)) == tab).ToArray();
@@ -647,6 +656,7 @@ public sealed partial class MarketplaceSalesService
     {
         var query = ReturnBaseQuery(tenantId);
         ApplyReturnFilters(ref query, options with { Status = null });
+        ApplyReturnRefinements(ref query, tenantId, options);
         foreach (var group in await query.GroupBy(x => x.TabGroup).Select(group => new { group.Key, Count = group.Count() }).ToListAsync(cancellationToken))
         {
             counts["ALL"] += group.Count;

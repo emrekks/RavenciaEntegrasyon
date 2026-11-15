@@ -115,6 +115,42 @@ public sealed class ReturnListEquivalencePostgreSqlTests(PostgreSqlTenantIsolati
         }
     }
 
+    // SIPARIS-STOK-9: the platform, cargo and reason choices are decided by the database alone now, so its filter must keep
+    // exactly the claims the card check keeps, judged on every claim of the tenant (not only on the ones it kept).
+    [PostgreSqlFact]
+    public async Task The_database_platform_cargo_and_reason_filter_keeps_exactly_the_claims_the_card_check_keeps()
+    {
+        var tenantId = await SeedAsync();
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var service = NewService(db, NewCursors());
+            var connections = await db.PlatformConnections.Where(x => x.TenantId == tenantId).ToDictionaryAsync(x => x.Id, x => x.PlatformCode);
+            var all = await db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId).ToListAsync();
+            ReturnListQuery[] filters =
+            [
+                new(Platforms: ["TRENDYOL"]), new(Platforms: [" N11 ", "HEPSIBURADA"]), new(Cargo: "Aras Kargo"), new(Cargo: " Yurtiçi "), new(Cargo: "ALL"),
+                new(ReasonKey: "SIZE"), new(ReasonKey: "Beğenmedim"), new(ReasonKey: "DEFECT"),
+                new(Platforms: ["TRENDYOL"], Cargo: "Aras Kargo", ReasonKey: "SIZE")
+            ];
+            foreach (var filter in filters)
+            {
+                var query = db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId);
+                service.ApplyReturnRefinements(ref query, tenantId, filter);
+                var kept = (await query.Select(x => x.Id).ToListAsync()).ToHashSet();
+                var expected = all.Where(x => MarketplaceSalesService.MatchesReturnRefinements(connections[x.ConnectionId], x.CargoProviderName, x.ReasonCode, x.ReasonText, filter)).Select(x => x.Id).ToHashSet();
+                Assert.True(expected.SetEquals(kept), $"{JsonSerializer.Serialize(filter)}: {expected.Count} expected, {kept.Count} kept");
+                Assert.True(expected.Count > 0, $"{JsonSerializer.Serialize(filter)} keeps no claim");
+            }
+            // The seed carries values that only a full white space trim matches.
+            Assert.Contains(all, x => x.CargoProviderName?.StartsWith(' ') == true);
+        }
+        finally
+        {
+            await CleanupAsync(tenantId);
+        }
+    }
+
     // SIPARIS-STOK-9 card columns: rows never filled (the claims the old code wrote), some filled and some not (a deploy's
     // backfill half way), and filled rows made stale behind the save hook's back must never change a page or a summary: the
     // staleness check sends the tenant back to the computation from claims and lines, and the repair pass brings the
@@ -301,8 +337,10 @@ public sealed class ReturnListEquivalencePostgreSqlTests(PostgreSqlTenantIsolati
         string[] customers = ["""{"customerFirstName":"Ayşe","customerLastName":"Yılmaz"}""", """{"customerFirstName":"Mehmet"}""", """{"customerFirstName":"Işıl","customerLastName":"Eq"}""", "{}"];
         ReturnClaimStatus[] statuses = Enum.GetValues<ReturnClaimStatus>();
         string?[] lineStatuses = ["Accepted", "WaitingInAction", "Rejected", null, " ", "Created", "InTransit", "Approved", "Completed", "Weird"];
-        (string? Code, string? Text)[] reasons = [("SIZE", "Beden küçük"), (null, "Beğenmedim"), ("DEFECT", null), (null, null), (" SIZE", "Büyük")];
-        string?[] cargo = [" Aras Kargo", "Aras Kargo", "Yurtiçi", null, "Yurtiçi "];
+        // Spaces and other white space (tab, line feed, no-break, em and ideographic space) around the values: .NET Trim strips
+        // them all, so the database filter must too.
+        (string? Code, string? Text)[] reasons = [("SIZE", "Beden küçük"), (null, "Beğenmedim"), ("DEFECT", null), (null, null), (" SIZE", "Büyük"), ("SIZE ", "x"), ("　", "Beğenmedim\n")];
+        string?[] cargo = [" Aras Kargo", "Aras Kargo", "Yurtiçi", null, "Yurtiçi ", " Aras Kargo\t", "\u0085Yurtiçi\r\n"];
         var requestedBase = new DateTimeOffset(2026, 11, 10, 9, 0, 0, TimeSpan.Zero);
         var orders = new List<Order>();
         var orderLines = new List<OrderLine>();
