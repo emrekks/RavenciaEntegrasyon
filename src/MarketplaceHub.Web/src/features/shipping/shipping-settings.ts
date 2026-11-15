@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ApiRequestError, hubApi, settingsIfMatch } from '../../shared/api'
+import { ApiRequestError, hubApi, settingsIfMatch, type Me } from '../../shared/api'
+import { lacksElevatedRole } from '../elevated-role'
 import { hasStoredShippingLabelSettings, loadShippingLabelSettings, normalizeShippingLabelSettings, type ShippingLabelSettings } from './shipping-label'
 
 export const shippingLabelSettingsQueryKey = ['shipping-label-settings'] as const
@@ -42,6 +43,9 @@ export function useShippingLabelSettings() {
     const legacySettings = loadShippingLabelSettings()
     setSettings(legacySettings)
     if (!hasStoredShippingLabelSettings()) return
+    // Only the owner and administrators may write the account's settings: the other roles keep the browser copy on
+    // screen without a PUT the server would refuse.
+    if (lacksElevatedRole(client.getQueryData<Me>(['me'])?.role)) return
     void hubApi<ShippingLabelSettingsEnvelope>('/settings/shipping-label', {
       method: 'PUT',
       headers: settingsIfMatch(query.data.version),

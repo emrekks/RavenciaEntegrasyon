@@ -28,6 +28,7 @@ import { copyText } from '../../shared/copy-text'
 import { formatBackupSize, googleCloudSteps, offsiteBackupDefaultFolder, offsiteBackupDirty, offsiteBackupDraft, offsiteBackupDraftError, offsiteBackupSaveBody, offsiteBackupState, offsiteCopyPending, offsiteSetupDone, offsiteSetupPlan, shortAgeKey, firstRunStartedAt, markFirstRun, clearFirstRun, type OffsiteBackupDraft, type OffsiteBackupView } from './offsite-backup'
 import { backupKeyFileName, decryptBackup, decryptedFileName, downloadText, generateBackupKeyPair, identityFromKeyFile, saveStream, type BackupKeyPair } from './offsite-backup-crypto'
 import { ReauthInputs, reauthReady } from '../../shared/reauth'
+import { useLacksElevatedRole } from '../elevated-role'
 import { assignableRoles, availableUserActions, isEmailAddress, reauthBody, userLockReason, userRoleHints, userRoleLabel, userRoleLabels, type ManagedUser, type ManagedUserList, type UserAction, type UserRole } from './user-management'
 
 type SecurityStatus = { totpState: string; recoveryCodesRemaining: number }
@@ -303,6 +304,8 @@ export function SystemSettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const section = settingsSectionFrom(searchParams.get('tab'))
   const shippingSettings = useShippingLabelSettings()
+  // The account's label settings are written by the owner and administrators only (PUT settings/shipping-label).
+  const labelSaveDenied = useLacksElevatedRole()
   const labelSettings = shippingSettings.settings
   // Normalizing fills block defaults (font size, rotation) only on a second pass, so the saved copy is normalized twice
   // to compare like with like.
@@ -548,7 +551,7 @@ export function SystemSettingsPage() {
         {section === 'offsite' && <OffsiteBackupSection mfa={totpEnabled} />}
         {section === 'ai' && <AiSettingsSection />}
         {section === 'database' && <SettingsDataReset forbidden={resetForbidden} groups={resetGroups} counts={resetView.data ? Object.fromEntries(resetView.data.groups.map(entry => [entry.key, entry.count])) : undefined} countsFailed={resetView.isError} picked={resetScopes} onToggle={toggleResetScopes} marketplaces={resetMarketplaces} marketplacePicked={marketplacePicked} onToggleMarketplaces={toggleMarketplaces} progress={marketplaceProgress} confirmation={resetConfirmation} onConfirmation={setResetConfirmation} password={resetPassword} onPassword={setResetPassword} factor={resetFactor} onFactor={setResetFactor} mfa={totpEnabled} busy={resetBusy} onConfirm={() => void resetOperationalData()} />}
-        <ShippingLabelSettingsPanel section={isShipping ? section as ShippingSection : null} settings={labelSettings} saved={savedLabelSettings} dirty={shippingDirty} saving={labelSaving} loadFailed={shippingSettings.isError} loading={shippingSettings.isPending} format={labelFormat} setFormat={setLabelFormat} onChange={shippingSettings.setSettings} onSave={() => void saveLabelSettings()} />
+        <ShippingLabelSettingsPanel section={isShipping ? section as ShippingSection : null} settings={labelSettings} saved={savedLabelSettings} dirty={shippingDirty} saving={labelSaving} loadFailed={shippingSettings.isError} loading={shippingSettings.isPending} format={labelFormat} setFormat={setLabelFormat} onChange={shippingSettings.setSettings} onSave={() => void saveLabelSettings()} saveDenied={labelSaveDenied} />
         <AppearanceSettingsSection section={isAppearance ? section as AppearanceSection : null} onStatus={setAppearanceStatus} />
       </div>
     </div>
@@ -583,6 +586,9 @@ function AppearanceSettingsSection({ section, onStatus }: { section: AppearanceS
 
 function AppearanceSettingsForm({ section, onStatus }: { section: AppearanceSection | null; onStatus: (status: { dirty: boolean; themeCount: number }) => void }) {
   const appearance = useAppearanceSettings()
+  // The account's appearance is written by the owner and administrators only (PUT settings/appearance answers 403 to
+  // other roles): they may preview, but nothing offers a save that would be refused.
+  const saveDenied = useLacksElevatedRole()
   const [notice, setNotice] = useState<SettingsNoticeState | null>(null)
   const succeed = (message: string) => setNotice({ kind: 'success', message })
   const fail = (message: string) => setNotice({ kind: 'error', message })
@@ -756,8 +762,8 @@ function AppearanceSettingsForm({ section, onStatus }: { section: AppearanceSect
   const themePalette = (theme: typeof selectableThemes[number]) => theme.mode === 'light' ? appearance.draft.colors.light : theme.id === activeSelectableTheme.id ? appearance.draft.colors.dark : theme.profile?.palette ?? appearance.draft.colors.dark
 
   const preview = <div className="ss-pv" style={previewStyle}><small>Önizleme</small><div className="ss-pv-card"><strong>Ravencia MarketplaceHub</strong><p>Bu ayar sipariş, iade, ürün ve diğer çalışma ekranlarındaki metinleri etkiler.</p><div className="ss-pv-line"><span>#1972215187 · Fehime Mat</span><span>16.10.2026 18:36</span></div><div className="ss-pv-row"><span className="ss-pv-btn">Kaydet</span><span className="ss-pv-btn2">Vazgeç</span><span className="ss-pv-tag is-sel">Seçili</span><span className="ss-pv-tag is-ok">Teslim Edildi</span><span className="ss-pv-tag is-warn">Gecikiyor</span><span className="ss-pv-tag is-bad">Hata</span></div></div></div>
-  const bar = <SettingsBar title="Görünüm Ayarlarını Uygula" dirty={dirty} copy={dirty ? 'Önizlemedesiniz · kaydedilmemiş değişiklikler var' : undefined}><button type="button" className="ss-btn" onClick={applyDefaultAppearance} disabled={busy}><SettingsIcon name="reset" /><span className="ss-lbl-long">Varsayılanlara Dön</span><span className="ss-lbl-short">Varsayılan</span></button><button type="button" className="ss-btn is-primary" onClick={() => void save()} disabled={busy || !dirty}><SettingsIcon name="save" />{busy ? 'Kaydediliyor…' : <><span className="ss-lbl-long">Görünüm Ayarlarını Kaydet</span><span className="ss-lbl-short">Kaydet</span></>}</button></SettingsBar>
-  const loadError = appearance.isError ? <div className="ss-callout is-danger" role="alert"><SettingsIcon name="alert" /><span>Hesap görünüm ayarları alınamadı; varsayılan görünüm gösteriliyor.</span></div> : null
+  const bar = saveDenied ? null : <SettingsBar title="Görünüm Ayarlarını Uygula" dirty={dirty} copy={dirty ? 'Önizlemedesiniz · kaydedilmemiş değişiklikler var' : undefined}><button type="button" className="ss-btn" onClick={applyDefaultAppearance} disabled={busy}><SettingsIcon name="reset" /><span className="ss-lbl-long">Varsayılanlara Dön</span><span className="ss-lbl-short">Varsayılan</span></button><button type="button" className="ss-btn is-primary" onClick={() => void save()} disabled={busy || !dirty}><SettingsIcon name="save" />{busy ? 'Kaydediliyor…' : <><span className="ss-lbl-long">Görünüm Ayarlarını Kaydet</span><span className="ss-lbl-short">Kaydet</span></>}</button></SettingsBar>
+  const loadError = <>{saveDenied && <div className="ss-callout" role="alert"><SettingsIcon name="lock" /><span>Görünüm ayarlarını yalnız hesap sahibi ve yöneticiler kaydeder; burada yaptığınız değişiklikler yalnız önizlemedir.</span></div>}{appearance.isError ? <div className="ss-callout is-danger" role="alert"><SettingsIcon name="alert" /><span>Hesap görünüm ayarları alınamadı; varsayılan görünüm gösteriliyor.</span></div> : null}</>
 
   return <>
     {notice && <SettingsNotice {...notice} />}
@@ -789,8 +795,8 @@ function AppearanceSettingsForm({ section, onStatus }: { section: AppearanceSect
       <SettingsPaneHead section="themes" description="Hazır paletleri saklayın, daha sonra yeniden uygulayın. Varsayılan tema korunur ve silinemez." />
       <div className="ss-body">
         {loadError}
-        <div className="ss-th-new"><input className="ss-in is-sm" value={newThemeName} maxLength={60} placeholder="Yeni tema adı" aria-label="Yeni tema adı" onChange={event => setNewThemeName(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && newThemeName.trim() && !busy) void saveColorTheme() }} /><button type="button" className="ss-btn is-primary" disabled={busy || !newThemeName.trim()} onClick={() => void saveColorTheme()}><SettingsIcon name="plus" />Renk Temasını Kaydet</button></div>
-        <div className="ss-themes">{appearance.draft.colorThemes.map(theme => <div key={theme.id} className={`ss-th${visualTheme === 'dark' && selectedThemeId === theme.id ? ' is-on' : ''}`}><button type="button" className="ss-th-pick" onClick={() => applyColorTheme(theme)}><SettingsSwatches palette={theme.palette} large /><span><b>{theme.name}</b><small>{theme.builtIn ? 'Varsayılan Tema' : 'Kayıtlı Özel Tema'}</small></span></button>{theme.builtIn ? <span className="ss-th-prot" title="Varsayılan tema korunur ve silinemez" aria-label="Korunuyor"><SettingsIcon name="lock" /></span> : <button type="button" className="ss-btn is-danger is-quiet is-xs" disabled={busy} onClick={() => setThemeToDelete(theme)} aria-label={`${theme.name} temasını sil`}>Sil</button>}</div>)}</div>
+        <div className="ss-th-new"><input className="ss-in is-sm" value={newThemeName} maxLength={60} placeholder="Yeni tema adı" aria-label="Yeni tema adı" onChange={event => setNewThemeName(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && newThemeName.trim() && !busy && !saveDenied) void saveColorTheme() }} /><button type="button" className="ss-btn is-primary" disabled={busy || saveDenied || !newThemeName.trim()} onClick={() => void saveColorTheme()}><SettingsIcon name="plus" />Renk Temasını Kaydet</button></div>
+        <div className="ss-themes">{appearance.draft.colorThemes.map(theme => <div key={theme.id} className={`ss-th${visualTheme === 'dark' && selectedThemeId === theme.id ? ' is-on' : ''}`}><button type="button" className="ss-th-pick" onClick={() => applyColorTheme(theme)}><SettingsSwatches palette={theme.palette} large /><span><b>{theme.name}</b><small>{theme.builtIn ? 'Varsayılan Tema' : 'Kayıtlı Özel Tema'}</small></span></button>{theme.builtIn ? <span className="ss-th-prot" title="Varsayılan tema korunur ve silinemez" aria-label="Korunuyor"><SettingsIcon name="lock" /></span> : <button type="button" className="ss-btn is-danger is-quiet is-xs" disabled={busy || saveDenied} onClick={() => setThemeToDelete(theme)} aria-label={`${theme.name} temasını sil`}>Sil</button>}</div>)}</div>
       </div>
       {bar}
     </>}
@@ -825,7 +831,7 @@ const shippingBlockLabels: Record<ShippingLabelBlockKind, string> = { trackingBa
 const shippingAlignOptions = [['left', 'Sol'], ['center', 'Orta'], ['right', 'Sağ']] as const
 const shippingCaptionStyleOptions: Array<[ShippingLabelCaptionStyle, string]> = [['above', 'Başlık Üstte'], ['beside', 'Başlık Yanında'], ['none', 'Başlıksız']]
 
-function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, loadFailed, loading, format, setFormat, onChange, onSave }: { section: ShippingSection | null; settings: ShippingLabelSettings; saved: ShippingLabelSettings | null; dirty: boolean; saving: boolean; loadFailed: boolean; loading: boolean; format: 'a4' | 'sticker'; setFormat: (format: 'a4' | 'sticker') => void; onChange: (value: ShippingLabelSettings) => void; onSave: () => void }) {
+function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, loadFailed, loading, format, setFormat, onChange, onSave, saveDenied = false }: { section: ShippingSection | null; settings: ShippingLabelSettings; saved: ShippingLabelSettings | null; dirty: boolean; saving: boolean; loadFailed: boolean; loading: boolean; format: 'a4' | 'sticker'; setFormat: (format: 'a4' | 'sticker') => void; onChange: (value: ShippingLabelSettings) => void; onSave: () => void; saveDenied?: boolean }) {
   const [selectedId, setSelectedId] = useState<string | null>(settings.layout[format][0]?.id ?? null)
   const [designerTab, setDesignerTab] = useState<ShippingDesignerTab>('general')
   const [customTitle, setCustomTitle] = useState('')
@@ -1096,8 +1102,9 @@ function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, l
   }
   function blockTitle(block: ShippingLabelBlock) { return block.kind === 'custom' ? block.title : shippingBlockLabels[block.kind] }
   const alignSegment = (block: ShippingLabelBlock) => <div className="ss-seg3" role="group" aria-label="Hizalama">{shippingAlignOptions.map(([value, label]) => <button type="button" key={value} aria-pressed={block.align === value} className={block.align === value ? 'is-on' : undefined} onClick={() => updateBlock(block.id, { align: value })}>{label}</button>)}</div>
-  const bar = <SettingsBar title="Etiket Düzenini Yayınla" dirty={dirty} hint="Gönderici bilgileri ve kâğıt yerleşimi tüm yazdırma akışlarında kullanılır." copy={dirty ? 'Kaydedilmemiş değişiklikler var' : undefined}>{dirty && saved ? <button type="button" className="ss-btn" disabled={saving} onClick={() => onChange(saved)}>Vazgeç</button> : null}<button type="button" className="ss-btn is-primary" disabled={!dirty || saving} onClick={onSave}><SettingsIcon name="save" />{saving ? 'Kaydediliyor…' : 'Ayarları Kaydet'}</button></SettingsBar>
-  const loadError = loadFailed ? <div className="ss-callout is-danger" role="alert"><SettingsIcon name="alert" /><span>Hesap kargo ayarları alınamadı; geçici yerel ayarlar gösteriliyor.</span></div> : null
+  // A role the server refuses the save sees no save bar, and says so above the section instead.
+  const bar = saveDenied ? null : <SettingsBar title="Etiket Düzenini Yayınla" dirty={dirty} hint="Gönderici bilgileri ve kâğıt yerleşimi tüm yazdırma akışlarında kullanılır." copy={dirty ? 'Kaydedilmemiş değişiklikler var' : undefined}>{dirty && saved ? <button type="button" className="ss-btn" disabled={saving} onClick={() => onChange(saved)}>Vazgeç</button> : null}<button type="button" className="ss-btn is-primary" disabled={!dirty || saving} onClick={onSave}><SettingsIcon name="save" />{saving ? 'Kaydediliyor…' : 'Ayarları Kaydet'}</button></SettingsBar>
+  const loadError = <>{saveDenied && <div className="ss-callout" role="alert"><SettingsIcon name="lock" /><span>Kargo etiketi ayarlarını yalnız hesap sahibi ve yöneticiler kaydeder; burada yaptığınız değişiklikler kaydedilmez.</span></div>}{loadFailed ? <div className="ss-callout is-danger" role="alert"><SettingsIcon name="alert" /><span>Hesap kargo ayarları alınamadı; geçici yerel ayarlar gösteriliyor.</span></div> : null}</>
   // The browser's copy is shown only when the account's settings cannot be read, never before they arrive.
   if (loading) return section ? <div className="ss-body"><LoadingState>Kargo ayarları yükleniyor…</LoadingState></div> : null
 
