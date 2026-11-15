@@ -10587,10 +10587,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // once the page is saved, so later SaveChanges calls do not walk every row read so far; rows the
         // caller already tracked (its cursor, its job) stay tracked.
         var trackedBefore = db.ChangeTracker.Entries().Select(entry => entry.Entity).ToHashSet(ReferenceEqualityComparer.Instance);
-        var platformCode = await db.PlatformConnections.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.Id == connectionId)
-            .Select(x => x.PlatformCode)
-            .SingleOrDefaultAsync(cancellationToken);
+        var platformCode = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         var isShopify = platformCode == "SHOPIFY";
         var isHepsiburada = platformCode == "HEPSIBURADA";
         // The stream is package-shaped: one order can occur once per package.
@@ -10730,10 +10727,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
     private async Task<bool> UpsertOrderCore(Guid tenantId, Guid connectionId, RemoteOrder remote, CancellationToken cancellationToken, OrderIngestionBatch? batch, bool saveChanges, bool persistFinancialObservations)
     {
-        var platformCode = await db.PlatformConnections.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.Id == connectionId)
-            .Select(x => x.PlatformCode)
-            .SingleOrDefaultAsync(cancellationToken);
+        // Read once per connection (ConnectionPlatformCode), not once per order of a page (ISLEYICI-8).
+        var platformCode = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         var isShopify = platformCode == "SHOPIFY";
         var isHepsiburada = platformCode == "HEPSIBURADA";
         var isTrendyol = platformCode == "TRENDYOL";
@@ -14368,7 +14363,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             issue.ResolvedAt = timeProvider.GetUtcNow();
         }
     }
-    private async Task ResolveIssue(Guid tenantId, string key, CancellationToken cancellationToken) { var issue = await db.OperationalIssues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.DedupeKey == key, cancellationToken); if (issue is not null && issue.Status != IssueStatus.Resolved) { issue.Status = IssueStatus.Resolved; issue.ResolvedAt = timeProvider.GetUtcNow(); } }
+    // Looks at the issues this unit of work already holds first, as RecordIssue does (ISLEYICI-8): an issue opened and
+    // resolved before the next save is resolved, not left open.
+    private async Task ResolveIssue(Guid tenantId, string key, CancellationToken cancellationToken) { var issue = db.OperationalIssues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.DedupeKey == key) ?? await db.OperationalIssues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.DedupeKey == key, cancellationToken); if (issue is not null && issue.Status != IssueStatus.Resolved) { issue.Status = IssueStatus.Resolved; issue.ResolvedAt = timeProvider.GetUtcNow(); } }
     private AdapterContext Context(Guid tenantId, Guid connectionId, string correlationId, string idempotency) => new(tenantId, connectionId, correlationId, idempotency, timeProvider.GetUtcNow().AddMinutes(2));
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
     private static string Wire<T>(T value) where T : Enum => string.Concat(value.ToString().Select((ch, index) => char.IsUpper(ch) && index > 0 ? "_" + ch : ch.ToString())).ToUpperInvariant();
