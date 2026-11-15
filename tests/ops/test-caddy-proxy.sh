@@ -43,8 +43,8 @@ done
 production_images="$(img_sources "$repository_root/deploy/caddy/Caddyfile.production")"
 local_images="$(img_sources "$repository_root/deploy/caddy/Caddyfile")"
 assert_eq "$production_images" "$local_images" "both Caddyfiles allow the same image sources"
-for source in "'self'" "data:" "blob:"; do
-  assert_contains "$production_images" "$source " "img-src keeps $source"
+for img_source in "'self'" "data:" "blob:"; do
+  assert_contains "$production_images" "$img_source " "img-src keeps $img_source"
 done
 assert_not_contains "$production_images" "*" "img-src has no wildcard host"
 assert_not_contains "$production_images" "https: " "img-src does not allow every https host"
