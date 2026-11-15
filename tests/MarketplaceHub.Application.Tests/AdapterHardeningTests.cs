@@ -62,6 +62,43 @@ public sealed class AdapterHardeningTests
         await Assert.ThrowsAsync<HttpRequestException>(() => large.ReadBoundedStringAsync(CancellationToken.None, maxBytes: 1024));
     }
 
+    // ADAPTOR-TY-HB-2: a body whose connection breaks mid-stream (or a corrupt compressed body) takes the network-error path.
+    [Fact]
+    public async Task AStreamedAnswerThatBreaksOffFailsAsANetworkError()
+    {
+        using var broken = new StreamContent(new BrokenStream(new HttpIOException(HttpRequestError.ResponseEnded, "cut")));
+        using var corrupt = new StreamContent(new BrokenStream(new InvalidDataException("bad gzip")));
+
+        var cut = await Assert.ThrowsAsync<HttpRequestException>(() => broken.ReadBoundedStringAsync(CancellationToken.None));
+        Assert.IsType<HttpIOException>(cut.InnerException);
+        await Assert.ThrowsAsync<HttpRequestException>(() => corrupt.ReadBoundedStringAsync(CancellationToken.None));
+    }
+
+    // Answers a first chunk, then fails like a connection cut while the body streams.
+    internal sealed class BrokenStream(Exception failure) : Stream
+    {
+        private bool first = true;
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+        public override int Read(Span<byte> buffer)
+        {
+            if (!first) throw failure;
+            first = false;
+            buffer[0] = (byte)'{';
+            return 1;
+        }
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) => ValueTask.FromResult(Read(buffer.Span));
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) => Task.FromResult(Read(buffer, offset, count));
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
     [Fact]
     public async Task AnAnswerAnnouncedLargerThanTheLimitIsNotRead()
     {

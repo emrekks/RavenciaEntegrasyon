@@ -690,6 +690,38 @@ public sealed class HepsiburadaAdapterTests
         Assert.Equal("Open", order.LifecycleStatus);
     }
 
+    // ADAPTOR-TY-HB-6: a payment or order status Hepsiburada did not send is unknown, not "Received" / "NOT_CANCELLED".
+    [Fact]
+    public void OrderWithoutPaymentOrStatus_KeepsThemUnknown()
+    {
+        using var json = JsonDocument.Parse("""
+        {
+          "orderNumber": "HB-2026-24",
+          "orderDate": "2026-09-28T12:15:00Z",
+          "items": [ { "id": "line-24", "merchantSku": "SKU-24", "quantity": 1, "price": 10.0 } ]
+        }
+        """);
+        using var sent = JsonDocument.Parse("""
+        {
+          "orderNumber": "HB-2026-25",
+          "orderDate": "2026-09-28T12:15:00Z",
+          "status": "Cancelled",
+          "paymentStatus": "Paid",
+          "items": [ { "id": "line-25", "merchantSku": "SKU-25", "quantity": 1, "price": 10.0, "status": "Cancelled" } ]
+        }
+        """);
+
+        var unknown = HepsiburadaJsonMapper.Order(json.RootElement, "HB-2026-24");
+        var known = HepsiburadaJsonMapper.Order(sent.RootElement, "HB-2026-25");
+
+        Assert.Null(unknown.LifecycleStatus);
+        Assert.Equal("UNKNOWN", unknown.PaymentStatus);
+        Assert.Equal("UNKNOWN", unknown.CancellationStatus);
+        Assert.Equal("UNKNOWN", unknown.RefundStatus);
+        Assert.Equal("Paid", known.PaymentStatus);
+        Assert.Equal("CANCELLED", known.CancellationStatus);
+    }
+
     [Fact]
     public void OrderMapper_TakesTheLinesProductBarcodeNotThePackagesCargoBarcode()
     {
@@ -1652,6 +1684,7 @@ public sealed class HepsiburadaAdapterTests
           "status": "AwaitingAction",
           "claimType": "Return",
           "claimDate": "2026-09-28T12:15:00Z",
+          "orderDate": "2026-09-20T10:00:00Z",
           "orderNumber": "4146480888",
           "lineItemId": "6ab9ff5b-0b73-8d07-cc9a-d15f06060606",
           "quantity": 1,
@@ -1659,7 +1692,8 @@ public sealed class HepsiburadaAdapterTests
             "id": "claim-line-identity",
             "merchantSku": "MZ040RCY15",
             "productName": "Ravencia test product",
-            "quantity": 1
+            "quantity": 1,
+            "price": { "amount": 56.0, "currency": "TRY" }
           }
         }
         """);
@@ -1736,6 +1770,56 @@ public sealed class HepsiburadaAdapterTests
         Assert.Equal("ClaimCreated", line.RawStatus);
         Assert.Empty(order.Packages);
     }
+
+    // ADAPTOR-TY-HB-1: the order built from a claim is the oldest possible observation, so the later order read (whose
+    // lastStatusUpdateDate is older than the claim) still replaces its amounts, date and lines.
+    [Fact]
+    public void ClaimOrderMapper_LeavesTheChangeTimeOldestSoTheOrderReadWins()
+    {
+        var order = HepsiburadaJsonMapper.OrderFromReturnClaim(ClaimOrderPayload("""
+          "lastModifiedAt": "2026-09-29T08:30:00Z", "price": { "amount": 25.50, "currency": "TRY" },
+        """));
+
+        Assert.NotNull(order);
+        Assert.Equal(DateTimeOffset.UnixEpoch, order.LastModifiedAt);
+        Assert.Equal(DateTimeOffset.Parse("2026-09-20T10:00:00Z"), order.OrderedAt);
+    }
+
+    [Fact]
+    public void ClaimOrderMapper_DoesNotPriceUnreadableLineAsZero()
+    {
+        Assert.Null(HepsiburadaJsonMapper.OrderFromReturnClaim(ClaimOrderPayload("")));
+        var priced = HepsiburadaJsonMapper.OrderFromReturnClaim(ClaimOrderPayload("""  "totalPrice": { "amount": 51.00, "currency": "TRY" },"""));
+        Assert.Equal(25.50m, Assert.Single(priced!.Lines).UnitPrice);
+    }
+
+    [Theory]
+    [InlineData("\"price\": { \"amount\": 25.50, \"currency\": \"EURO\" },", null)]
+    [InlineData("\"price\": { \"amount\": 25.50, \"currency\": \"TL\" },", "TRY")]
+    [InlineData("\"price\": { \"amount\": 25.50, \"currency\": \"USD\" },", "USD")]
+    [InlineData("\"price\": 25.50,", "TRY")]
+    public void ClaimOrderMapper_DoesNotGuessCurrency(string price, string? expected)
+    {
+        var order = HepsiburadaJsonMapper.OrderFromReturnClaim(ClaimOrderPayload(price));
+        Assert.Equal(expected, order?.Currency);
+    }
+
+    [Fact]
+    public void ClaimOrderMapper_DoesNotDateTheOrderByTheClaim()
+    {
+        var payload = ClaimOrderPayload("""  "price": { "amount": 25.50, "currency": "TRY" },""").Replace("\"orderDate\": \"2026-09-20T10:00:00Z\",", "", StringComparison.Ordinal);
+        Assert.DoesNotContain("orderDate", payload, StringComparison.Ordinal);
+        Assert.Null(HepsiburadaJsonMapper.OrderFromReturnClaim(payload));
+    }
+
+    private static string ClaimOrderPayload(string extra) => $$"""
+        {
+          "claimNumber": "032985703", "status": "AwaitingAction", "claimDate": "2026-09-28T12:15:00Z",
+          "orderDate": "2026-09-20T10:00:00Z", "orderNumber": "0414141342", "lineItemId": "line-18",
+          {{extra}}
+          "merchantSku": "merchant-sku-18", "quantity": 2
+        }
+        """;
 
     [Fact]
     public void ClaimOrderMapper_DoesNotReconstructWithoutOrderLineIdentity()

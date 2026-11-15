@@ -354,7 +354,9 @@ public sealed partial class HepsiburadaHttpClient
             if (!timeout.QuotaAcquired) return LocalQuotaWait<byte[]>();
             return AdapterResult<byte[]>.Failure(new(AdapterErrorClass.TransientNetwork, "HEPSIBURADA_TIMEOUT", "Hepsiburada isteği zaman aşımına uğradı.", null, TimeSpan.FromSeconds(15), null));
         }
-        catch (HttpRequestException exception)
+        // ADAPTOR-TY-HB-2: the label body is streamed (ResponseHeadersRead); a connection that breaks mid-body throws an
+        // IOException (HttpIOException), a corrupt compressed body an InvalidDataException: both are network errors.
+        catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidDataException)
         {
             logger.LogWarning(exception, "Hepsiburada label API isteği başarısız. ConnectionId: {ConnectionId}", context.Connection.Id);
             return AdapterResult<byte[]>.Failure(new(AdapterErrorClass.TransientNetwork, "HEPSIBURADA_NETWORK_ERROR", "Hepsiburada bağlantısı geçici olarak kurulamadı.", null, TimeSpan.FromSeconds(15), null));

@@ -971,7 +971,16 @@ internal static class HepsiburadaJsonMapper
         return fallback;
     }
 
-    public static RemoteOrder? OrderFromReturnClaim(string json)
+    // A local read model of an order the panel does not hold yet, built from one of its claims (the claim scan). Nothing
+    // is guessed (5 Nov 2026 rule, ADAPTOR-TY-HB-1): a claim without its order's own date, with a line whose price it does
+    // not carry, or with a currency the panel does not know builds no order (null; the claim waits with
+    // RETURN_ORDER_NOT_FOUND until the order itself is read). Its change time is the oldest possible (UnixEpoch), as on
+    // Trendyol: the claim's time is not the order's, so any later order read is newer and replaces amounts, date and lines.
+    public static RemoteOrder? OrderFromReturnClaim(string json) => OrderFromReturnClaim(json, claimOnly: true);
+
+    // claimOnly false: a claim inside a replacement-package notification (ClaimPackageOrder), which sets its own change
+    // time and keeps the earlier lenient reading.
+    private static RemoteOrder? OrderFromReturnClaim(string json, bool claimOnly)
     {
         using var document = JsonDocument.Parse(json);
         var root = Unwrap(document.RootElement);
@@ -979,9 +988,12 @@ internal static class HepsiburadaJsonMapper
         if (string.IsNullOrWhiteSpace(orderNumber)) return null;
 
         var claimDate = Date(root, "claimDate", "ClaimDate");
-        // D13: a claim with neither an order date nor a claim date is not projected as an order placed in 1970.
-        if ((Date(root, "orderDate", "OrderDate") ?? claimDate) is not { } orderedAt) return null;
-        var modifiedAt = Date(root, "lastModifiedAt", "LastModifiedAt", "updatedAt", "UpdatedAt") ?? claimDate ?? orderedAt;
+        // D13: a claim with neither an order date nor a claim date is not projected as an order placed in 1970. A claim
+        // read alone is not dated by its claim date either: that is not when the order was placed.
+        if ((claimOnly ? Date(root, "orderDate", "OrderDate") : Date(root, "orderDate", "OrderDate") ?? claimDate) is not { } orderedAt) return null;
+        var modifiedAt = claimOnly
+            ? DateTimeOffset.UnixEpoch
+            : Date(root, "lastModifiedAt", "LastModifiedAt", "updatedAt", "UpdatedAt") ?? claimDate ?? orderedAt;
         var lineElements = new List<JsonElement>();
         var linesElement = Find(root, "lines", "Lines");
         if (linesElement.ValueKind == JsonValueKind.Array) lineElements.AddRange(linesElement.EnumerateArray());
@@ -1024,6 +1036,7 @@ internal static class HepsiburadaJsonMapper
                 ?? Money(entry, "merchantTotalPrice", "totalPrice", "totalPriceAmount", "lineTotal")
                 ?? Money(root, "merchantTotalPrice", "totalPrice", "totalPriceAmount", "lineTotal");
             if (unitPrice is null && totalPrice is not null) unitPrice = totalPrice.Value / quantity.Value;
+            if (claimOnly && unitPrice is null) return null;
 
             remoteLines.Add(new(
                 lineId,
@@ -1040,9 +1053,13 @@ internal static class HepsiburadaJsonMapper
         if (remoteLines.Count == 0) return null;
 
         var gross = remoteLines.Sum(line => line.UnitPrice * line.Quantity);
-        var currency = Text(root, "currency", "Currency", "currencyCode", "CurrencyCode")
-            ?? Text(Find(root, "price", "Price", "totalPrice", "TotalPrice"), "currency", "Currency", "currencyCode", "CurrencyCode")
-            ?? "TRY";
+        var rawCurrency = Text(root, "currency", "Currency", "currencyCode", "CurrencyCode")
+            ?? Text(Find(root, "price", "Price", "totalPrice", "TotalPrice"), "currency", "Currency", "currencyCode", "CurrencyCode");
+        // Same rule as the order read (OrderCurrency): no currency field is lira, an unknown one is not taken.
+        string currency;
+        if (!claimOnly) currency = rawCurrency is { Length: 3 } ? rawCurrency.ToUpperInvariant() : "TRY";
+        else if (OrderCurrency(rawCurrency) is { } known) currency = known;
+        else return null;
         var customer = OrderCustomerSnapshot(root, Find(root, "customer", "Customer"));
 
         // A claim can arrive after the platform's order-history window. Keep
@@ -1053,7 +1070,7 @@ internal static class HepsiburadaJsonMapper
             orderNumber,
             orderedAt,
             modifiedAt,
-            currency.Length == 3 ? currency.ToUpperInvariant() : "TRY",
+            currency,
             gross,
             0,
             gross,
@@ -1077,7 +1094,7 @@ internal static class HepsiburadaJsonMapper
             .Select(item =>
             {
                 var claim = ReturnClaim(item);
-                var order = OrderFromReturnClaim(item.GetRawText());
+                var order = OrderFromReturnClaim(item.GetRawText(), claimOnly: false);
                 return (Claim: claim, Order: order);
             })
             .ToArray();
@@ -1291,7 +1308,8 @@ internal static class HepsiburadaJsonMapper
             ? JsonSerializer.Serialize(new { name = Text(item, "customerName", "CustomerName", "recipientName", "RecipientName"), email = Text(item, "email", "Email"), phoneNumber = Text(item, "phoneNumber", "PhoneNumber") })
             : Snapshot(customer);
         customerSnapshot = EnrichOrderSnapshot(item, customerSnapshot);
-        var status = Text(item, "status", "Status", "orderStatus", "OrderStatus") ?? "Open";
+        var rawStatus = Text(item, "status", "Status", "orderStatus", "OrderStatus");
+        var status = rawStatus ?? "Open";
         return new(
             orderNumber,
             orderNumber,
@@ -1308,8 +1326,9 @@ internal static class HepsiburadaJsonMapper
             [],
             item.GetRawText(),
             Date(item, "dueDate", "DueDate", "shipmentDueAt", "ShipmentDueAt"),
-            Text(item, "paymentStatus", "PaymentStatus") ?? "Received",
-            status.Contains("cancel", StringComparison.OrdinalIgnoreCase) ? "CANCELLED" : "NOT_CANCELLED",
+            // ADAPTOR-TY-HB-6: a field Hepsiburada did not send is unknown, not "paid" or "not cancelled".
+            Text(item, "paymentStatus", "PaymentStatus") ?? "UNKNOWN",
+            CancellationStatusOf(rawStatus),
             LifecycleStatus: status);
     }
 
@@ -1359,9 +1378,14 @@ internal static class HepsiburadaJsonMapper
             [package],
             item.GetRawText(),
             Date(item, "dueDate", "DueDate", "shipmentDueAt", "ShipmentDueAt"),
-            Text(item, "paymentStatus", "PaymentStatus") ?? "Received",
-            status.Contains("cancel", StringComparison.OrdinalIgnoreCase) ? "CANCELLED" : "NOT_CANCELLED");
+            Text(item, "paymentStatus", "PaymentStatus") ?? "UNKNOWN",
+            CancellationStatusOf(status));
     }
+
+    // CANCELLED or NOT_CANCELLED from a status Hepsiburada sent; UNKNOWN when it sent none (ADAPTOR-TY-HB-6).
+    private static string CancellationStatusOf(string? status) =>
+        string.IsNullOrWhiteSpace(status) ? "UNKNOWN"
+        : status.Contains("cancel", StringComparison.OrdinalIgnoreCase) ? "CANCELLED" : "NOT_CANCELLED";
 
     private static JsonElement AddressSnapshot(JsonElement source, params string[] names)
     {
@@ -1554,7 +1578,7 @@ internal static class HepsiburadaJsonMapper
         var status = string.Equals(orderStatus?.Trim(), "ClaimCreated", StringComparison.OrdinalIgnoreCase)
             ? ConsistentLineItemStatus(lines)
             : orderStatus ?? ConsistentLineItemStatus(lines);
-        var paymentStatus = Text(order, "paymentStatus", "PaymentStatus") ?? "Received";
+        var paymentStatus = Text(order, "paymentStatus", "PaymentStatus") ?? "UNKNOWN";
         var customer = Find(order, "customer", "Customer");
         var shipmentAddress = Find(order, "deliveryAddress", "DeliveryAddress", "shipmentAddress", "ShipmentAddress");
         var invoiceEnvelope = Find(order, "invoice", "Invoice");
@@ -1594,7 +1618,7 @@ internal static class HepsiburadaJsonMapper
             order.GetRawText(),
             dueAt,
             paymentStatus,
-            status?.Contains("cancel", StringComparison.OrdinalIgnoreCase) == true ? "CANCELLED" : "NOT_CANCELLED",
+            CancellationStatusOf(status),
             LifecycleStatus: status);
     }
 

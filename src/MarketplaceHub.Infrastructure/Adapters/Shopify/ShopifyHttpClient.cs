@@ -654,6 +654,12 @@ public sealed partial class ShopifyHttpClient(
             if (!payload.RootElement.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array || items.GetArrayLength() == 0)
                 return Fail<RemoteOperationRef>(AdapterErrorClass.Validation, "SHOPIFY_PRICE_INVENTORY_PAYLOAD_INVALID", "Fiyat-stok gönderimi en az bir ürün satırı içermelidir.", HttpStatusCode.BadRequest);
             var results = new List<RemoteOperationLine>();
+            // ADAPTOR-DIGER-1: a rate limit, network or server error part-way through the list keeps what was already
+            // written. With at least one line applied, the answer is those lines' results: the interrupted line (its price
+            // may already be written) and the ones after it are left out, so the job records them as unconfirmed and not
+            // sent, and the same values go again with the next send. With none applied, the whole send fails as before.
+            AdapterResult<RemoteOperationRef> Interrupted(AdapterError error, RateLimitMetadata? rateLimit) =>
+                InterruptedPriceInventory(results, error, rateLimit, timeProvider.GetUtcNow());
             foreach (var item in items.EnumerateArray())
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -674,7 +680,7 @@ public sealed partial class ShopifyHttpClient(
                 if (VariantGid(TextValue(item, "variantId")) is { } knownVariantId)
                 {
                     var byId = await QueryAsync(shop, "query($id:ID!){productVariant(id:$id){" + PriceInventoryVariantFields + "}}", new { id = knownVariantId }, cancellationToken);
-                    if (!byId.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(byId.Error!, byId.RateLimit);
+                    if (!byId.IsSuccess) return Interrupted(byId.Error!, byId.RateLimit);
                     if (!byId.Value!.RootElement.TryGetProperty("productVariant", out var found) || found.ValueKind != JsonValueKind.Object)
                     {
                         results.Add(new(barcode, false, null, "SHOPIFY_VARIANT_NOT_FOUND", false, "REJECTED"));
@@ -685,7 +691,7 @@ public sealed partial class ShopifyHttpClient(
                 else
                 {
                     var lookup = await QueryAsync(shop, "query($query:String!){productVariants(first:2,query:$query){nodes{" + PriceInventoryVariantFields + "}}}", new { query = $"barcode:\"{EscapeSearch(barcode)}\"" }, cancellationToken);
-                    if (!lookup.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(lookup.Error!, lookup.RateLimit);
+                    if (!lookup.IsSuccess) return Interrupted(lookup.Error!, lookup.RateLimit);
                     var variants = lookup.Value!.RootElement.GetProperty("productVariants").GetProperty("nodes");
                     if (variants.GetArrayLength() != 1)
                     {
@@ -725,7 +731,7 @@ public sealed partial class ShopifyHttpClient(
                 if (priced)
                 {
                     var priceMutation = await QueryAsync(shop, "mutation($productId:ID!,$variants:[ProductVariantsBulkInput!]!){productVariantsBulkUpdate(productId:$productId,variants:$variants){userErrors{field message}}}", new { productId, variants = new[] { new { id = variantId, price = salePrice!.Value.ToString("0.00##", CultureInfo.InvariantCulture), compareAtPrice = listPrice!.Value > salePrice.Value ? listPrice.Value.ToString("0.00##", CultureInfo.InvariantCulture) : null } } }, cancellationToken);
-                    if (!priceMutation.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(priceMutation.Error!, priceMutation.RateLimit);
+                    if (!priceMutation.IsSuccess) return Interrupted(priceMutation.Error!, priceMutation.RateLimit);
                     if (HasUserErrors(priceMutation.Value!.RootElement.GetProperty("productVariantsBulkUpdate"), out var priceError))
                     {
                         results.Add(new(barcode, false, null, "SHOPIFY_PRICE_REJECTED", false, priceError));
@@ -733,7 +739,7 @@ public sealed partial class ShopifyHttpClient(
                     }
                 }
                 var stockMutation = await SetAvailableQuantityAsync(shop, context, barcode, inventoryItemId, locationId, (int)quantity.Value, compareQuantity, cancellationToken);
-                if (!stockMutation.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(stockMutation.Error!, stockMutation.RateLimit);
+                if (!stockMutation.IsSuccess) return Interrupted(stockMutation.Error!, stockMutation.RateLimit);
                 if (HasUserErrors(stockMutation.Value!.RootElement.GetProperty("inventorySetQuantities"), out var stockError))
                 {
                     results.Add(new(barcode, false, null, "SHOPIFY_INVENTORY_REJECTED", false, stockError));
@@ -745,6 +751,13 @@ public sealed partial class ShopifyHttpClient(
             return AdapterResult<RemoteOperationRef>.Success(new(operationId, "SHOPIFY_PRICE_INVENTORY", timeProvider.GetUtcNow()));
         }
     }
+
+    // The answer of a price-stock send cut off by an error after `results` (ADAPTOR-DIGER-1, see PushPriceAndInventoryAsync).
+    internal static AdapterResult<RemoteOperationRef> InterruptedPriceInventory(IReadOnlyList<RemoteOperationLine> results, AdapterError error, RateLimitMetadata? rateLimit, DateTimeOffset now) =>
+        error.Class is AdapterErrorClass.RateLimit or AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx
+            && results.Any(line => line.Succeeded)
+            ? AdapterResult<RemoteOperationRef>.Success(new(EncodeCompletedOperation(results), "SHOPIFY_PRICE_INVENTORY", now), rateLimit)
+            : AdapterResult<RemoteOperationRef>.Failure(error, rateLimit);
 
     public async Task<AdapterResult<AdapterPageResult<RemoteOrder>>> PollAsync(AdapterContext context, OrderPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken)
     {
@@ -1289,6 +1302,10 @@ public sealed partial class ShopifyHttpClient(
                 logger.LogWarning("Shopify served API version {ServedVersion} instead of {RequestedVersion} for {Shop}", servedVersion, context.ApiVersion, context.Shop);
             if (!response.IsSuccessStatusCode || document is null)
             {
+                // ADAPTOR-DIGER-2: a client-credentials token Shopify refuses (the app reinstalled, the token revoked) is
+                // dropped from the cache, so the next request asks for a new one instead of reusing it until it expires.
+                if (response.StatusCode == HttpStatusCode.Unauthorized && context.ExpiresAt != DateTimeOffset.MaxValue)
+                    ShopifyAuthenticationHandler.Forget(context.Connection.Id);
                 var retryAfter = response.Headers.RetryAfter?.Delta
                     ?? (response.Headers.RetryAfter?.Date is { } resetAt ? resetAt - DateTimeOffset.UtcNow : null);
                 return Failure<JsonDocument>(MapHttpError(response.StatusCode, raw, retryAfter, remoteRequestId), rate);

@@ -43,6 +43,7 @@ public sealed partial class PazaramaHttpClient : IInventoryPricePort
     // shared 10 s price/stock slot, so the budget keeps a send within a few minutes; what it does not reach stays not sent
     // and comes back in the next send, without the lines this send recorded.
     internal const int MaxSplitRequests = 24;
+    internal const string BatchIdMissingCode = "PAZARAMA_BATCH_ID_MISSING";
 
     // Stock goes first (an unsent stock change risks overselling) and the two requests stand alone:
     // Pazarama refuses a value it already holds, so a retry must not depend on resending the part that
@@ -111,7 +112,15 @@ public sealed partial class PazaramaHttpClient : IInventoryPricePort
                 using var document = result.Value!;
                 var dataId = Data(document.RootElement, out var data) && data.ValueKind == JsonValueKind.String ? data.GetString()?.Trim() : null;
                 if (string.IsNullOrWhiteSpace(dataId))
-                    return Failure<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "PAZARAMA_BATCH_ID_MISSING", "Pazarama fiyat-stok yanıtında işlem numarası (dataId) yok.", HttpStatusCode.BadGateway);
+                {
+                    var missing = Failure<RemoteOperationRef>(AdapterErrorClass.ContractViolation, BatchIdMissingCode, "Pazarama fiyat-stok yanıtında işlem numarası (dataId) yok.", HttpStatusCode.BadGateway);
+                    if (accepted == 0 && held == 0) return missing;
+                    // ADAPTOR-DIGER-3: parts already accepted or held keep their tracking ids; this part, whose result
+                    // cannot be read without one, is kept as not sent and comes back in the next send.
+                    lastError = missing.Error;
+                    parts.Add($"{kind}!:{BatchIdMissingCode}:{count}{position}");
+                    continue;
+                }
                 parts.Add($"{kind}:{dataId}:{count}{position}");
                 accepted++;
             }

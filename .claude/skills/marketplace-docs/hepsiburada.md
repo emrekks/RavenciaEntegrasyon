@@ -218,3 +218,11 @@ cursor `PACKAGES`), _ORDER_STATUS_SYNC, _WEBHOOK_INGEST, _RETURN_SYNC, _ORDER_IN
 
 ## Model link (Model Kaydı Faz 2, 14 Nov 2026)
 - Hepsiburada has no model-level listing: no `marketplace_model_links` row is ever written (unknown stays unknown).
+
+## Claim-built orders (15 Nov 2026, ADAPTOR-TY-HB-1)
+- A claim carries `orderDate` and `line.price` / `line.totalPrice` as `{currency, amount}` (hepsiburada-api-son.md,
+  awaitingaction sample around :26160). An order built from a claim (`HepsiburadaJsonMapper.OrderFromReturnClaim`)
+  needs the order's own date and every line's price, takes lira when no currency is named (the order read's rule) and
+  refuses an unknown one; it is stored with change time UnixEpoch, so the later order read always replaces it. A claim
+  inside a replacement-package notification (`ClaimPackageOrder`) keeps the older lenient reading. Live 15 Nov 2026:
+  2 Hepsiburada orders hold ClaimCreated lines, both with packages and amounts (none left half-built).

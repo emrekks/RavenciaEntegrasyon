@@ -136,6 +136,35 @@ public sealed class TrendyolCatalogMapperTests
         Assert.Equal(expected, projection.StoreFrontCode);
     }
 
+    // ADAPTOR-TY-HB-1: a line without a readable price is not priced 0 and an unknown currency is not taken as lira; the
+    // claim builds no order. getClaims sends no currency at all: lira.
+    [Theory]
+    [InlineData("\"price\": 499,", "", true, "TRY")]
+    [InlineData("", "", false, null)]
+    [InlineData("\"price\": \"499,50\",", "", false, null)]
+    [InlineData("\"price\": 499,", "\"currencyCode\": \"XX1\",", false, null)]
+    [InlineData("\"price\": 499,", "\"currencyCode\": \"TL\",", true, "TRY")]
+    public void ReturnClaimProjection_GuessesNeitherPriceNorCurrency(string price, string currency, bool built, string? expectedCurrency)
+    {
+        var payload = $$"""
+        {
+          {{currency}}
+          "orderNumber": "11608377831", "claimId": "claim-2",
+          "orderDate": 1782998302000, "claimDate": 1783069920000,
+          "items": [{
+            "orderLine": { "id": 502, {{price}} "merchantSku": "SKU-2", "productName": "Kazak" },
+            "claimItems": [{ "id": "ci-2", "orderLineItemId": 902 }]
+          }]
+        }
+        """;
+
+        var projection = TrendyolJsonMapper.OrderFromReturnClaim(payload);
+
+        Assert.Equal(built, projection is not null);
+        Assert.Equal(expectedCurrency, projection?.Currency);
+        if (projection is not null) Assert.Equal(499m, Assert.Single(projection.Lines).UnitPrice);
+    }
+
     [Fact]
     public void ReturnClaimMark_IsAddedToAReadCustomerSnapshot()
     {

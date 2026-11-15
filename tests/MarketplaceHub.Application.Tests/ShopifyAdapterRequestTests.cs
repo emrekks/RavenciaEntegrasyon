@@ -15,6 +15,33 @@ public sealed class ShopifyAdapterRequestTests
     private static readonly Guid TenantId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private static readonly Guid ConnectionId = Guid.Parse("22222222-2222-2222-2222-222222222222");
 
+    // ADAPTOR-DIGER-2: a throttled or failing token service is a passing failure; only a refusal reads as bad credentials.
+    [Theory]
+    [InlineData(HttpStatusCode.ServiceUnavailable, AdapterErrorClass.Remote5xx)]
+    [InlineData(HttpStatusCode.InternalServerError, AdapterErrorClass.Remote5xx)]
+    [InlineData(HttpStatusCode.TooManyRequests, AdapterErrorClass.RateLimit)]
+    public void ATokenServiceOutageIsNotInvalidCredentials(HttpStatusCode status, AdapterErrorClass expected)
+    {
+        using var response = new HttpResponseMessage(status);
+
+        var error = ShopifyAuthenticationHandler.TokenServiceFailure(response);
+
+        Assert.Equal(expected, error!.Class);
+        Assert.Equal(ShopifyAuthenticationHandler.TokenServiceUnavailableCode, error.Code);
+        Assert.Equal(TimeSpan.FromSeconds(30), error.RetryAfter);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.BadRequest)]
+    [InlineData(HttpStatusCode.Unauthorized)]
+    [InlineData(HttpStatusCode.Forbidden)]
+    public void ATokenRefusalStaysACredentialFailure(HttpStatusCode status)
+    {
+        using var response = new HttpResponseMessage(status);
+
+        Assert.Null(ShopifyAuthenticationHandler.TokenServiceFailure(response));
+    }
+
     [Fact]
     public async Task InventoryWriteSendsTheIdempotentInventorySetQuantitiesMutation()
     {
