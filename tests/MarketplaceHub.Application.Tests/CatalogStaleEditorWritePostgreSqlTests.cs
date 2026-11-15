@@ -179,6 +179,17 @@ public sealed class CatalogStaleEditorWritePostgreSqlTests(PostgreSqlTenantIsola
         Assert.True(next.Succeeded, next.Error?.Message);
         db.ChangeTracker.Clear();
         Assert.Equal("Yeni açıklama", (await db.Products.AsNoTracking().SingleAsync(x => x.Id == bordo.Id)).Description);
+
+        // A card that joined the model after the editor read it is absent from the versions: the editor never saw it, so a
+        // save that would change it is refused alike; one that leaves it as it is goes through.
+        var current = (await service.GetProductAsync(tenant.Id, maviId, CancellationToken.None)).Value!;
+        var withoutBordo = current.FamilyVersions!.Where(x => x.Key != bordo.Id).ToDictionary(x => x.Key, x => x.Value);
+        var joined = await service.UpdateProductAsync(tenant.Id, maviId, current.Version, Save("Sonraki açıklama", withoutBordo), CancellationToken.None);
+        Assert.Equal((409, CatalogService.FamilyChangedCode), (joined.Error?.Status, joined.Error?.Code));
+        db.ChangeTracker.Clear();
+        Assert.Equal("Yeni açıklama", (await db.Products.AsNoTracking().SingleAsync(x => x.Id == bordo.Id)).Description);
+        var untouched = await service.UpdateProductAsync(tenant.Id, maviId, current.Version, Save("Yeni açıklama", withoutBordo), CancellationToken.None);
+        Assert.True(untouched.Succeeded, untouched.Error?.Message);
     }
 
     private static Tenant NewTenant(string code)

@@ -1418,9 +1418,10 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         // WEB-SAYFALAR-2: the editor sends the Version of every colour card as it read them. A card whose shared field
         // this save would change and that changed since (another save, an import) is not overwritten with values the
         // editor never saw: the whole save is refused (FAMILY_CHANGED) and nothing is written. A card the save leaves as
-        // it is (only its stock or offers changed meanwhile, or it already holds the values) does not stop it.
+        // it is (only its stock or offers changed meanwhile, or it already holds the values) does not stop it. A card that
+        // joined the model after the editor read it (absent from the versions) was never seen either: refused alike.
         if (command.LoadedFamilyVersions is { } loaded
-            && siblings.Any(sibling => loaded.TryGetValue(sibling.Id, out var version) && version != sibling.Version && Apply(sibling, write: false)))
+            && siblings.Any(sibling => (!loaded.TryGetValue(sibling.Id, out var version) || version != sibling.Version) && Apply(sibling, write: false)))
             return false;
 
         var changedIds = new List<Guid>();
