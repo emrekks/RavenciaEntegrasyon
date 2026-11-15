@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
@@ -75,28 +73,16 @@ public sealed class PanelFactoryResetService(AppDbContext db, TimeProvider timeP
             await CancelWaitingJobsAsync(tenantId, null, now, cancellationToken);
             var payload = JsonSerializer.Serialize(new Payload(currentSessionId, actorUserId, [.. chosen.Select(x => x.Key)]));
             var dedup = $"panel-factory-reset:{tenantId:D}:{Guid.CreateVersion7():N}";
-            db.IntegrationJobs.Add(new IntegrationJob
+            var job = Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, null, PanelJobTypes.FactoryReset, payload, dedup, correlationId, now)
             {
-                Id = Guid.CreateVersion7(),
-                TenantId = tenantId,
-                ConnectionId = null,
-                JobType = PanelJobTypes.FactoryReset,
-                PayloadJson = payload,
-                PayloadVersion = 1,
-                PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))),
-                JobDedupKey = dedup,
-                EffectIdempotencyKey = dedup,
                 Priority = JobPriorityPolicy.UserAction,
                 TriggerType = "user",
-                AvailableAt = now,
-                CreatedAt = now,
-                CorrelationId = correlationId,
-                ProgressCurrent = 0,
-                ProgressTotal = PanelFactoryResetInventory.StepsFor(chosen).Count - 1,
-                ProgressPercent = 0,
-                ProgressLabel = "Sıfırlama sırada bekliyor",
-                Version = 1
+                CreatedAt = now
             });
+            job.ProgressCurrent = 0;
+            job.ProgressTotal = PanelFactoryResetInventory.StepsFor(chosen).Count - 1;
+            job.ProgressPercent = 0;
+            job.ProgressLabel = "Sıfırlama sırada bekliyor";
             await db.SaveChangesAsync(cancellationToken);
         }
         await transaction.CommitAsync(cancellationToken);

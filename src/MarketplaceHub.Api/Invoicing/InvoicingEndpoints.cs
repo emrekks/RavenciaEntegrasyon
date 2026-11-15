@@ -381,7 +381,7 @@ public static class InvoicingEndpoints
                 state.Version++;
             }
             var payload = JsonSerializer.Serialize(new { manualOrderInvoiceDocumentId = document.Id, packageId = package.Id, inspectionOnly });
-            var job = new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, ConnectionId = package.ConnectionId, JobType = InvoicingJobTypes.ManualOrderInvoiceDelivery, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(payload))), JobDedupKey = existing is null ? dedup : $"{dedup}:r{state.Version}", EffectIdempotencyKey = packageKey, Priority = JobPriorityPolicy.ForUser(InvoicingJobTypes.ManualOrderInvoiceDelivery), Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 4, CorrelationId = http.TraceIdentifier, CreatedAt = now, Version = 1 };
+            var job = IntegrationJobFactory.New(new IntegrationJobRequest(tenant.TenantId, package.ConnectionId, InvoicingJobTypes.ManualOrderInvoiceDelivery, payload, existing is null ? dedup : $"{dedup}:r{state.Version}", http.TraceIdentifier, now) { EffectIdempotencyKey = packageKey, Priority = JobPriorityPolicy.ForUser(InvoicingJobTypes.ManualOrderInvoiceDelivery), MaxAttempts = 4, CreatedAt = now });
             db.IntegrationJobs.Add(job);
             jobs.Add(job.Id);
         }

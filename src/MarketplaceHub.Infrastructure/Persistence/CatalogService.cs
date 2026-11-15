@@ -2375,25 +2375,14 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var jobId = Guid.CreateVersion7();
         var now = timeProvider.GetUtcNow();
         var payload = JsonSerializer.Serialize(new ProductPublicationJobPayload(jobId, productId, profile.Id, "SUBMIT", draft.PayloadHash, draft.PayloadJson, null, null));
-        db.IntegrationJobs.Add(new IntegrationJob
+        Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, connectionId, MarketplaceJobTypes.ProductCreate, payload, dedup, correlationId, now)
         {
             Id = jobId,
-            TenantId = tenantId,
-            ConnectionId = connectionId,
-            JobType = MarketplaceJobTypes.ProductCreate,
-            PayloadJson = payload,
-            PayloadVersion = 1,
-            PayloadHash = Hash(payload),
-            JobDedupKey = dedup,
             EffectIdempotencyKey = $"{dedup}:{NormalizeKey(idempotencyKey)}",
             Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ProductCreate, userInitiated: true),
             TriggerType = "user",
-            Status = JobStatus.Pending,
-            AvailableAt = now,
             MaxAttempts = 10,
-            CorrelationId = correlationId,
-            CreatedAt = timeProvider.GetUtcNow(),
-            Version = 1
+            CreatedAt = timeProvider.GetUtcNow()
         });
         try
         {
@@ -2488,7 +2477,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         // Trendyol sends the cards of one send together (TrendyolUpdateGroups); other marketplaces keep one request a card.
         var group = connection.PlatformCode == "TRENDYOL" && sendGroupId is { } groupId && groupId != Guid.Empty ? groupId : (Guid?)null;
         var payload = JsonSerializer.Serialize(new ProductUpdateJobPayload(jobId, productId, profile.Id, phase, draft.Publication.Mode, draft.Publication.PayloadHash, draft.Publication.UnapprovedPayloadJson, draft.Publication.ApprovedContentPayloadJson, draft.Publication.ApprovedVariantPayloadJson, draft.Publication.ApprovedDeliveryPayloadJson, null, null, SendGroupId: group));
-        db.IntegrationJobs.Add(new IntegrationJob { Id = jobId, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.ProductUpdate, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{NormalizeKey(idempotencyKey)}", Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ProductUpdate, userInitiated: true), TriggerType = "user", Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 12, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
+        Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, connectionId, MarketplaceJobTypes.ProductUpdate, payload, dedup, correlationId, now) { Id = jobId, EffectIdempotencyKey = $"{dedup}:{NormalizeKey(idempotencyKey)}", Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ProductUpdate, userInitiated: true), TriggerType = "user", MaxAttempts = 12, CreatedAt = now });
         return await SavePublicationJobAsync(transaction, tenantId, MarketplaceJobTypes.ProductUpdate, dedup, jobId, cancellationToken);
     }
 
@@ -2512,7 +2501,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
         var jobId = Guid.CreateVersion7(); var now = timeProvider.GetUtcNow();
         var payload = JsonSerializer.Serialize(new PazaramaSaleStatusJobPayload(jobId, normalized, close, now));
-        db.IntegrationJobs.Add(new IntegrationJob { Id = jobId, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.ProductArchive, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup + ":" + jobId.ToString("N"), EffectIdempotencyKey = $"{dedup}:{NormalizeKey(idempotencyKey)}", Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ProductArchive, userInitiated: true), TriggerType = "user", Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 3, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
+        Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, connectionId, MarketplaceJobTypes.ProductArchive, payload, dedup + ":" + jobId.ToString("N"), correlationId, now) { Id = jobId, EffectIdempotencyKey = $"{dedup}:{NormalizeKey(idempotencyKey)}", Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ProductArchive, userInitiated: true), TriggerType = "user", MaxAttempts = 3, CreatedAt = now });
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<Guid>.Ok(jobId);
     }
@@ -2631,25 +2620,13 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var jobId = Guid.CreateVersion7();
         var dedup = existing is null ? approvalDedup : $"{manualPrefix}{profile.Version}";
         var payload = JsonSerializer.Serialize(new ProductApprovalReconciliationJobPayload(jobId, productId, profile.Id, payloadHash, now, now.AddDays(7), trackingId));
-        db.IntegrationJobs.Add(new IntegrationJob
+        Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, connectionId, MarketplaceJobTypes.ProductApprovalReconcile, payload, dedup, $"publication-status:{productId:N}", now)
         {
             Id = jobId,
-            TenantId = tenantId,
-            ConnectionId = connectionId,
-            JobType = MarketplaceJobTypes.ProductApprovalReconcile,
-            PayloadJson = payload,
-            PayloadVersion = 1,
-            PayloadHash = Hash(payload),
-            JobDedupKey = dedup,
-            EffectIdempotencyKey = dedup,
             Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ProductApprovalReconcile, userInitiated: true),
             TriggerType = "user",
-            Status = JobStatus.Pending,
-            AvailableAt = now,
             MaxAttempts = (7 * 24 * 12) + 1,
-            CorrelationId = $"publication-status:{productId:N}",
-            CreatedAt = now,
-            Version = 1
+            CreatedAt = now
         });
         try
         {

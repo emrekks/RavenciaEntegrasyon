@@ -2547,22 +2547,11 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             var dedup = RecoveryDedupKey(candidate.Id, candidate.PackageId, candidate.StateVersion, bucket);
             if (!queuedRecoveryKeys.Add(dedup)) continue;
 
-            db.IntegrationJobs.Add(new IntegrationJob
+            Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, candidate.ConnectionId, InvoicingJobTypes.MarketplaceDelivery, payload, dedup,
+                $"invoice-delivery-recovery:{candidate.Id:N}:{candidate.PackageId:N}", now)
             {
-                Id = Guid.CreateVersion7(),
-                TenantId = tenantId,
-                ConnectionId = candidate.ConnectionId,
-                JobType = InvoicingJobTypes.MarketplaceDelivery,
-                PayloadJson = payload,
-                PayloadVersion = 1,
-                PayloadHash = Hash(payload),
-                JobDedupKey = dedup,
-                EffectIdempotencyKey = dedup,
                 // A recovery nobody clicked: it yields to single user actions in the user lane.
-                Priority = InvoicingBillingService.InvoiceJobPriority(InvoicingJobTypes.MarketplaceDelivery, bulk: true),
-                AvailableAt = now,
-                CorrelationId = $"invoice-delivery-recovery:{candidate.Id:N}:{candidate.PackageId:N}",
-                Version = 1
+                Priority = InvoicingBillingService.InvoiceJobPriority(InvoicingJobTypes.MarketplaceDelivery, bulk: true)
             });
             // One automatic attempt per invoice and pass; the uncertain resend counts its own in the delivery job.
             if (!UncertainResendRecovery(candidate.StateStatus, candidate.PlatformCode) && countedRecoveries.Add(candidate.Id)
@@ -2746,7 +2735,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             .OrderByDescending(job => job.CreatedAt)
             .Select(job => (int?)job.Priority)
             .FirstOrDefaultAsync(cancellationToken);
-        db.IntegrationJobs.Add(new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, JobType = jobType, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = dedup, Priority = JobPriorityPolicy.ForFollowUp(submitPriority), TriggerType = "user", AvailableAt = timeProvider.GetUtcNow(), CorrelationId = correlationId, Version = 1 });
+        Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, connectionId, jobType, payload, dedup, correlationId, timeProvider.GetUtcNow()) { Priority = JobPriorityPolicy.ForFollowUp(submitPriority), TriggerType = "user" });
     }
 
     private static readonly HashSet<string> AcceptedDeliveryStatuses = new(StringComparer.Ordinal)

@@ -311,25 +311,12 @@ public sealed partial class InvoicingBillingService(
 
         var now = timeProvider.GetUtcNow();
         var payload = JsonSerializer.Serialize(new { connectionId = connection.Id, targetOrderId = order.Id, batchSize = 1 });
-        var job = new IntegrationJob
+        var job = Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, connection.Id, jobType, payload, dedup, correlationId, now)
         {
-            Id = Guid.CreateVersion7(),
-            TenantId = tenantId,
-            ConnectionId = connection.Id,
-            JobType = jobType,
-            PayloadJson = payload,
-            PayloadVersion = 1,
-            PayloadHash = Hash(payload),
-            JobDedupKey = dedup,
-            EffectIdempotencyKey = dedup,
             Priority = JobPriorityPolicy.UserAction,
             TriggerType = "user",
-            AvailableAt = now,
-            CorrelationId = correlationId,
-            CreatedAt = now,
-            Version = 1
-        };
-        db.IntegrationJobs.Add(job);
+            CreatedAt = now
+        });
         try
         {
             await db.SaveChangesAsync(cancellationToken);
@@ -1810,7 +1797,7 @@ public sealed partial class InvoicingBillingService(
     private async Task<ServiceResult<Guid>> AddJob(Invoice invoice, string jobType, string idempotencyKey, string correlationId, CancellationToken cancellationToken, Guid? connectionId = null, bool manualDeliveryRetry = false, bool bulk = false)
     {
         var dedup = $"{jobType}:{invoice.Id}:{idempotencyKey}"; var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == invoice.TenantId && x.JobType == jobType && x.JobDedupKey == dedup, cancellationToken); if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
-        var payload = JsonSerializer.Serialize(new { invoiceId = invoice.Id, manualDeliveryRetry }); var job = new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = invoice.TenantId, ConnectionId = connectionId ?? invoice.ProviderConnectionId, JobType = jobType, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{jobType}:{invoice.Id}:{idempotencyKey}", Priority = InvoiceJobPriority(jobType, bulk), AvailableAt = timeProvider.GetUtcNow(), CorrelationId = correlationId, Version = 1 };
+        var payload = JsonSerializer.Serialize(new { invoiceId = invoice.Id, manualDeliveryRetry }); var job = IntegrationJobFactory.New(new IntegrationJobRequest(invoice.TenantId, connectionId ?? invoice.ProviderConnectionId, jobType, payload, dedup, correlationId, timeProvider.GetUtcNow()) { EffectIdempotencyKey = $"{jobType}:{invoice.Id}:{idempotencyKey}", Priority = InvoiceJobPriority(jobType, bulk) });
         db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(job.Id);
     }
 
