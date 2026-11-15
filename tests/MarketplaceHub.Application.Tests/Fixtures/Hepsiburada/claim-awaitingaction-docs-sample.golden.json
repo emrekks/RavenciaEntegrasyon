@@ -45,7 +45,8 @@
     "NetAmount": 56.0,
     "CustomerSnapshotJson": {
       "name": "Test Musteri",
-      "customerId": "b5b0f469-dd8f-4b99-bc64-1a1f9e78dfae"
+      "customerId": "b5b0f469-dd8f-4b99-bc64-1a1f9e78dfae",
+      "_ravenciaReadModelSource": "RETURN_CLAIM"
     },
     "ShipmentAddressSnapshotJson": {},
     "InvoiceAddressSnapshotJson": {},

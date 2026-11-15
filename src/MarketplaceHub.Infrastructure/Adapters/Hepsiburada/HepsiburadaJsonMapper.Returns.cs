@@ -258,6 +258,11 @@ internal static partial class HepsiburadaJsonMapper
         else if (OrderCurrency(rawCurrency) is { } known) currency = known;
         else return null;
         var customer = OrderCustomerSnapshot(root, Find(root, "customer", "Customer"));
+        // J5 (15 Nov 2026): a claim-only order carries the return-claim mark, as on Trendyol
+        // (TrendyolJsonMapper.ReturnClaimCustomerSnapshot): the next real order read replaces it whatever its time, and the
+        // reports count it claim-built until then. The Hepsiburada upsert drops the mark when a real read lands
+        // (WithoutReturnClaimReadModelMark), since its snapshot merge keeps the stored keys.
+        if (claimOnly) customer = TrendyolReturnClaimMark(customer);
 
         // A claim can arrive after the platform's order-history window. Keep
         // the reconstruction limited to claim lines and do not invent a
@@ -277,6 +282,24 @@ internal static partial class HepsiburadaJsonMapper
             remoteLines,
             [],
             root.GetRawText());
+    }
+
+    private const string ReadModelSourceKey = "_ravenciaReadModelSource";
+
+    private static string TrendyolReturnClaimMark(string customerSnapshotJson) =>
+        MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping.TrendyolJsonMapper.WithReturnClaimReadModelMark(customerSnapshotJson);
+
+    // A customer snapshot without the return-claim mark (unchanged when it has none or is not a JSON object).
+    public static string WithoutReturnClaimReadModelMark(string customerSnapshotJson)
+    {
+        if (string.IsNullOrWhiteSpace(customerSnapshotJson) || !customerSnapshotJson.Contains(ReadModelSourceKey, StringComparison.Ordinal)) return customerSnapshotJson;
+        try
+        {
+            if (System.Text.Json.Nodes.JsonNode.Parse(customerSnapshotJson) is not System.Text.Json.Nodes.JsonObject snapshot || !snapshot.Remove(ReadModelSourceKey))
+                return customerSnapshotJson;
+            return snapshot.ToJsonString();
+        }
+        catch (JsonException) { return customerSnapshotJson; }
     }
 
     public static RemoteOrder ClaimPackageOrder(JsonElement root)
