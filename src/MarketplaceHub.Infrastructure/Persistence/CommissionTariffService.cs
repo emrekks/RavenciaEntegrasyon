@@ -126,8 +126,8 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
         {
             // The new file replaces the files before it in the same save, so a failed import keeps them: those whose days
             // it covers again (the same week re-issued) and those whose days have all passed. A file still in force for
-            // days the new one does not cover (this week's, while next week's is uploaded early) stays until they pass.
-            // Their rows, picks and kept file go with them (the database cascades the delete).
+            // days the new one does not cover (this week's, while next week's is uploaded early) stays until they pass; so
+            // does such a period of a file whose other period the new one issues again. Their rows, picks and kept file go with them (the database cascades the delete).
             var replaced = await ReplacedFilesAsync(tenantId, connectionId, hash, created, now, cancellationToken);
             if (replaced.Count > 0)
             {
@@ -200,14 +200,15 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
 
     private const string ReplacedWarning = "Önceki tarife dosyası ve satırları silindi:";
 
-    // The connection's other files (every period of each) that a new file replaces: one with a period overlapping a new
-    // period, or one whose periods have all ended.
+    // The periods of the connection's other files that a new file replaces: each period overlapping a new period, and
+    // every period of a file whose remaining periods have all ended. A period of the same file still in force for days
+    // the new file does not cover stays (with the file's ended periods beside it until it ends too).
     private async Task<List<CommissionTariff>> ReplacedFilesAsync(Guid tenantId, Guid connectionId, string hash, IReadOnlyList<CommissionTariff> created, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var others = await db.CommissionTariffs.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.FileHash != hash).ToListAsync(cancellationToken);
+        bool Overlapped(CommissionTariff old) => created.Any(fresh => old.PeriodStart < fresh.PeriodEnd && old.PeriodEnd > fresh.PeriodStart);
         return others.GroupBy(x => x.FileHash)
-            .Where(file => file.Any(old => created.Any(fresh => old.PeriodStart < fresh.PeriodEnd && old.PeriodEnd > fresh.PeriodStart)) || file.All(old => old.PeriodEnd <= now))
-            .SelectMany(file => file.OrderBy(x => x.PeriodStart))
+            .SelectMany(file => file.Where(old => !Overlapped(old)).All(old => old.PeriodEnd <= now) ? file.OrderBy(x => x.PeriodStart) : file.Where(Overlapped).OrderBy(x => x.PeriodStart))
             .ToList();
     }
 

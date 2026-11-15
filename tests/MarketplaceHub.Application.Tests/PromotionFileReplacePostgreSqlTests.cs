@@ -88,6 +88,52 @@ public sealed class PromotionFileReplacePostgreSqlTests(PostgreSqlTenantIsolatio
         }
     }
 
+    // A file of two periods (Trendyol's export of 31 Oct: "3 Gün" then "4 Gün") whose second period a new file issues
+    // again: only that period goes; the first, still in force, stays with its rows and kept file.
+    private static byte[] TwoPeriodTariff(string first, string second) => CommissionTariffTests.Xlsx(
+        ["BARKOD", "1.Fiyat Alt Limit", "4.Fiyat Üst Limiti", "Tarih aralığı (3 Gün)", "1.KOMİSYON", "4.KOMİSYON", "Tarih aralığı (4 Gün)", "1.KOMİSYON", "4.KOMİSYON"],
+        [["RYP00101", "470.64", "388.63", first, "21.5", "17.5", second, "21.0", "17.0"]]);
+
+    [PostgreSqlFact]
+    public async Task CommissionTariff_APartlyOverlappingFileKeepsTheOldFilesPeriodStillInForce()
+    {
+        var (tenantId, first, _) = await SeedAsync();
+        try
+        {
+            var november1 = new FixedClock(new DateTimeOffset(2026, 11, 1, 9, 0, 0, TimeSpan.Zero));
+            Guid inForceId, replacedId;
+            await using (var db = fixture.CreateContext())
+            {
+                var old = await new CommissionTariffService(db, november1).UploadAsync(tenantId, null, first, "old.xlsx",
+                    new MemoryStream(TwoPeriodTariff("31 Ekim 08.00-3 Kasım 07.59", "3 Kasım 08.00-7 Kasım 07.59")), "t-1", CancellationToken.None);
+                Assert.True(old.Succeeded, old.Error?.Message);
+                Assert.Equal(2, old.Value!.Tariffs.Count);
+                var stored = await db.CommissionTariffs.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == first).OrderBy(x => x.PeriodStart).ToListAsync();
+                (inForceId, replacedId) = (stored[0].Id, stored[1].Id);
+            }
+            await using (var db = fixture.CreateContext())
+            {
+                var fresh = await new CommissionTariffService(db, november1).UploadAsync(tenantId, null, first, "new.xlsx",
+                    new MemoryStream(Tariff("3 Kasım 08.00-7 Kasım 07.59", "22.0")), "t-2", CancellationToken.None);
+                Assert.True(fresh.Succeeded, fresh.Error?.Message);
+            }
+            await using (var db = fixture.CreateContext())
+            {
+                var kept = await db.CommissionTariffs.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == first).OrderBy(x => x.PeriodStart).Select(x => new { x.Id, x.FileName }).ToListAsync();
+                Assert.Equal([(inForceId, "old.xlsx")], kept.Where(x => x.FileName == "old.xlsx").Select(x => (x.Id, x.FileName)));
+                Assert.Single(kept, x => x.FileName == "new.xlsx");
+                Assert.True(await db.CommissionTariffRows.AnyAsync(x => x.TenantId == tenantId && x.TariffId == inForceId));
+                Assert.True(await db.CommissionTariffSourceFiles.AnyAsync(x => x.TenantId == tenantId && x.TariffId == inForceId));
+                Assert.False(await db.CommissionTariffs.AnyAsync(x => x.TenantId == tenantId && x.Id == replacedId));
+                Assert.False(await db.CommissionTariffRows.AnyAsync(x => x.TenantId == tenantId && x.TariffId == replacedId));
+            }
+        }
+        finally
+        {
+            await CleanupAsync(tenantId);
+        }
+    }
+
     [PostgreSqlFact]
     public async Task PromotionOffer_ANewFileReplacesTheSameKindOnly_AFailedImportKeepsTheOld()
     {
