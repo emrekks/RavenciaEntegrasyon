@@ -208,7 +208,7 @@ export function trendyolUserAgentNotice(identity: string, sellerId: string): { k
  * The notice of a connection test in the seller's words: which store was reached and that nothing was changed there (a
  * test only reads). A failure keeps the marketplace's own reason in the sentence and its code for the Ayrıntı rows.
  */
-export function connectionTestFeedback(platformName: string, result: { succeeded?: boolean; errorCode?: string; errorSummary?: string }) {
+export function connectionTestFeedback(platformName: string, result: { succeeded?: boolean; errorCode?: string | null; errorSummary?: string | null }) {
   const context = { operation: 'Bağlantı testi', record: true, code: result.errorCode || undefined }
   if (result.succeeded === true) {
     return { kind: 'success' as const, title: 'Bağlantı Testi Başarılı', message: `${platformName} mağazasına erişim doğrulandı. Mağazada hiçbir ürün, stok, fiyat veya sipariş değiştirilmedi.`, details: [{ label: 'Kontrol', value: 'Bağlantının yapabildiği işlemler yeniden doğrulandı' }], context }

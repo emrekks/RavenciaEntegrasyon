@@ -1,6 +1,7 @@
 // Kaydet, Ürünü Oluştur, Taslak, Yayınla and Platformlarda Güncelle: the product write and the steps after it.
 // Owns: Kaydet awaits a running picture assignment save, names the seeded version in If-Match, marks the save in
 // flight so a refetch meanwhile is no refill, and asks for the reseed after its own refetch.
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { type FormEvent } from 'react'
 import { ApiRequestError, hubApi } from '../../../shared/api'
 import { newIdempotencyKey, sendWithVersionedIdempotencyKey } from '../../../shared/idempotency'
@@ -299,7 +300,7 @@ export function useEditorSubmit(c: EditorProps & EditorStateResult & EditorMedia
         const targetId = uploadTargets.get(pendingMedia.id) ?? product.id
         const sortOrder = editProductId ? (familyCards.find(card => card.productId === targetId)?.mediaUrls.length ?? 0) + (uploadedByCard.get(targetId)?.length ?? 0) : mediaUrls.length + fileIndex
         const data = new FormData(); data.set('file', pendingMedia.file); data.set('productId', targetId); data.set('mediaRole', sortOrder === 0 ? 'PRIMARY' : 'GALLERY'); data.set('sortOrder', String(Math.min(sortOrder, 999))); data.set('altText', form.title)
-        const uploaded = await hubApi<{ fileAssetId?: string }>('/files/product-media', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: data })
+        const uploaded = await hubApi<ApiAnswer<'postFilesProductMedia'>>('/files/product-media', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: data })
         if (uploaded?.fileAssetId) {
           storedUrlByFileId.set(pendingMedia.id, storedProductMediaUrl(uploaded.fileAssetId))
           uploadedByCard.set(targetId, [...(uploadedByCard.get(targetId) ?? []), storedProductMediaUrl(uploaded.fileAssetId)])
@@ -373,7 +374,7 @@ export function useEditorSubmit(c: EditorProps & EditorStateResult & EditorMedia
       }
       let removedFamilyMediaCount = 0
       if (editProductId && pendingFamilyMediaRemovals.length) {
-        removedFamilyMediaCount = await removePendingFamilyMedia(pendingFamilyMediaRemovals, mediaIds => hubApi<{ deletedCount: number }>('/files/product-media-items', {
+        removedFamilyMediaCount = await removePendingFamilyMedia(pendingFamilyMediaRemovals, mediaIds => hubApi<ApiAnswer<'deleteFilesProductMediaItems'>>('/files/product-media-items', {
           method: 'DELETE',
           headers: { 'Idempotency-Key': newIdempotencyKey() },
           body: JSON.stringify({ mediaIds })
@@ -384,7 +385,7 @@ export function useEditorSubmit(c: EditorProps & EditorStateResult & EditorMedia
       // The model's order (the strip) on every card, after a move or any picture written above: each card numbers its own
       // rows 0, 1… when written, the family order ranks them again.
       if (editProductId && (familyMediaOrderDirty || galleryWriteCount > 0 || mediaFiles.length > 0) && familyStripUrls.length) {
-        const result = await hubApi<{ changedProductCount: number }>('/files/product-media-family-reorder', {
+        const result = await hubApi<ApiAnswer<'putFilesProductMediaFamilyReorder'>>('/files/product-media-family-reorder', {
           method: 'PUT',
           headers: { 'Idempotency-Key': newIdempotencyKey() },
           body: JSON.stringify({ productId: familyCards[0]?.productId ?? product.id, urlsInOrder: familyStripUrls })

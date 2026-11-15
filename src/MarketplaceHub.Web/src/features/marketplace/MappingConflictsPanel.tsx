@@ -69,7 +69,7 @@ export function MappingConflictsPanel({ connectionId, platformLabel, onNotice, e
     staleTime: 0
   })
   const putValue = (localValueId: string, scope: string, snapshotId: string, externalId: string, version: number | null) =>
-    hubApi<{ version: number }>(`/mappings/attribute-values/${localValueId}`, { method: 'PUT', headers: version !== null ? { 'If-Match': `"v${version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId, scopeExternalId: scope, externalId, status: 'VERIFIED', updateTemplate: true }) })
+    hubApi<ApiAnswer<'putMappingsAttributeValuesByLocalId'>>(`/mappings/attribute-values/${localValueId}`, { method: 'PUT', headers: version !== null ? { 'If-Match': `"v${version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId, scopeExternalId: scope, externalId, status: 'VERIFIED', updateTemplate: true }) })
 
   // Sets the chosen marketplace value in every category where this panel value maps to another one, through the same
   // versioned save as mapping it in each category, and makes it the template for new categories. A category whose

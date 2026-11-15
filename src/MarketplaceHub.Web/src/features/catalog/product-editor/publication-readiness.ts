@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import type { QueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
 import { cleanOptionValue, isColorOptionName, isVariantOptionName, isWebColorOptionName, normalizeVariantOptionName, variantOptionEntries, type Attribute, type MarketplaceConnection, type Product, type Variant } from '../shared'
@@ -305,14 +306,14 @@ export function attributeValueBatchPath(path: string, connectionId: string, cate
 export async function loadPublicationAttributeIssues(client: QueryClient, connection: ReadinessConnection, cardName: string, categoryId: string, selectedAttributes: PublicationAttributeSelection[], categoryName = ''): Promise<PublicationAttributeIssues> {
   const connectionId = encodeURIComponent(connection.id)
   const cached = <T,>(source: string, parts: string[], load: () => Promise<T>) => client.fetchQuery({ queryKey: publicationReadinessSourceKey(connection.id, source, ...parts), queryFn: load, staleTime: 15_000, retry: false })
-  const categoryMapping = await readPublicationReadinessSource('Kategori eşlemesi', () => cached('category-mapping', [categoryId], () => hubApi<{ externalId: string; snapshotId: string; status: string } | null>(`/mappings/categories/${categoryId}?connectionId=${connectionId}`)))
+  const categoryMapping = await readPublicationReadinessSource('Kategori eşlemesi', () => cached('category-mapping', [categoryId], () => hubApi<ApiAnswer<'getMappingsCategoriesByLocalId'>>(`/mappings/categories/${categoryId}?connectionId=${connectionId}`)))
   if (!categoryMapping || categoryMapping.status !== 'VERIFIED') {
     return { requiredIssues: [{ attribute: 'Kategori eşlemesi', detail: `${categoryName ? `${categoryName} kategorisinin` : 'Ürün kategorisinin'} ${cardName} karşılığı seçilmemiş; kategoriyi eşleyin.` }], optionalWarnings: [], categoryMapping: 'missing' }
   }
 
   // Only the mapped category's row of the list (with the list's snapshot id): the whole tree is 1.3 MB on Trendyol.
   const categoryScope = categoryMapping.externalId
-  const categoryReferences = await readPublicationReadinessSource(`${cardName} kategori listesi`, () => cached('reference-category', [categoryScope], () => hubApi<{ snapshotId: string; items: Array<{ externalId: string; name: string; isActive: boolean; isLeaf: boolean }> }>(`/reference-data/categories?connectionId=${connectionId}&externalId=${encodeURIComponent(categoryScope)}`)))
+  const categoryReferences = await readPublicationReadinessSource(`${cardName} kategori listesi`, () => cached('reference-category', [categoryScope], () => hubApi<ApiAnswer<'getReferenceDataCategories'>>(`/reference-data/categories?connectionId=${connectionId}&externalId=${encodeURIComponent(categoryScope)}`)))
   const mappedCategory = categoryReferences.items.find(item => item.externalId === categoryScope && item.isActive && item.isLeaf)
   if (categoryMapping.snapshotId !== categoryReferences.snapshotId || !mappedCategory) {
     return { requiredIssues: [{ attribute: 'Kategori eşlemesi', detail: `${cardName} kategori eşlemesi güncel değil; kategori eşlemesini yenileyin.` }], optionalWarnings: [], categoryMapping: 'stale' }
@@ -321,10 +322,10 @@ export async function loadPublicationAttributeIssues(client: QueryClient, connec
   if (['PTTAVM', 'SHOPIFY'].includes(connection.platformCode.trim().toUpperCase())) return { requiredIssues: [], optionalWarnings: [], categoryScope }
 
   const [attributeReferences, attributeMappings, attributeDefaults] = await Promise.all([
-    readPublicationReadinessSource(`${cardName} kategori özellik listesi`, () => cached('reference-attributes', [categoryScope], () => hubApi<{ snapshotId: string; items: Array<{ externalId: string; name: string; isActive: boolean; isRequired?: boolean | null; allowsCustomValue?: boolean | null }> }>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes?connectionId=${connectionId}`))),
+    readPublicationReadinessSource(`${cardName} kategori özellik listesi`, () => cached('reference-attributes', [categoryScope], () => hubApi<ApiAnswer<'getReferenceDataCategoriesByExternalIdAttributes'>>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes?connectionId=${connectionId}`))),
     readPublicationReadinessSource('Yerel kategori özellik eşlemeleri', () => cached('attribute-mappings', [categoryScope], () => hubApi<PublicationMappingReference[]>(`/mappings/attributes?connectionId=${connectionId}&scopeExternalId=${encodeURIComponent(categoryScope)}`))),
     // Connection defaults (e.g. Menşei = TR) cover required attributes the product leaves empty.
-    cached('attribute-defaults', [], () => hubApi<Array<{ externalAttributeId: string }>>(`/connections/${connectionId}/attribute-defaults`)).catch(() => [] as Array<{ externalAttributeId: string }>)
+    cached('attribute-defaults', [], () => hubApi<ApiAnswer<'getConnectionsByConnectionIdAttributeDefaults'>>(`/connections/${connectionId}/attribute-defaults`)).catch((): ApiAnswer<'getConnectionsByConnectionIdAttributeDefaults'> => [])
   ])
   const selectedIds = new Set(selectedAttributes.map(item => item.attributeId))
   const currentMappings = attributeMappings.filter(mapping => mapping.status === 'VERIFIED' && mapping.snapshotId === attributeReferences.snapshotId)
@@ -368,7 +369,7 @@ export function missingPublicationChecks(productChecks: PublicationProductCheck[
 // The Shopify write permissions the server wants verified before it queues a publish (CatalogService
 // HasShopifyPublicationEvidenceAsync, SHOPIFY_PUBLICATION_SCOPES_REQUIRED). The editor's card and the bulk check both
 // read them through this key and turn them into gaps with `shopifyCapabilityIssues`, so the two agree.
-export type ConnectionCapability = { code: string; supportLevel: string; verifiedForConnection: boolean }
+export type ConnectionCapability = ApiAnswer<'getConnectionsByIdCapabilities'>[number]
 export const requiredShopifyCapabilities = ['PRODUCT_WRITE', 'INVENTORY_WRITE', 'PUBLICATION_READ', 'PUBLICATION_WRITE'] as const
 export function connectionCapabilitiesQueryKey(connectionId: string) {
   return queryKeys.capabilities(connectionId)

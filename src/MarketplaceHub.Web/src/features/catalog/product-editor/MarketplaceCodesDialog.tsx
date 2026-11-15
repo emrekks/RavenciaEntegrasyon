@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { useState, type KeyboardEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi } from '../../../shared/api'
@@ -7,10 +8,7 @@ import { platformLogoSource } from '../../../shared/platform-logos'
 import { queryKeys } from '../../../shared/api/query-keys'
 
 export type MarketplaceCodeConnection = { connectionId: string; platformCode: string; displayName: string }
-export type MarketplaceCodes = {
-  connections: MarketplaceCodeConnection[]
-  variants: Array<{ variantId: string; sku: string; barcode: string | null; codes: MarketplaceCodeLink[] }>
-}
+export type MarketplaceCodes = ApiAnswer<'getProductsByIdMarketplaceCodes'>
 // lastSeenAt: when a product import last read the code at the marketplace; healthStatus NOT_FOUND / REJECTED: it no
 // longer knows the code (healthReason says why).
 export type MarketplaceCodeLink = { connectionId: string; externalId: string; externalBarcode: string | null; externalSku: string | null; lastSeenAt?: string | null; healthStatus?: string | null; healthReason?: string | null }

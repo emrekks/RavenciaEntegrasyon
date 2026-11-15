@@ -138,7 +138,7 @@ public static class MarketplaceEndpoints
             return result.IsSuccess
                 ? Results.Ok(new { readAt = now, transactions = result.Value!.Transactions, commissionInvoices = result.Value.CommissionInvoices })
                 : Problem(http, MarketplaceErrorStatus.ToServiceError(result.Error));
-        }).LiveMarketplaceRead();
+        }).LiveMarketplaceRead().Produces<OrderFinanceView>();
         api.MapPut("/orders/{id:guid}/shopify-status", UpdateShopifyOrderStatusAsync).RequireIdempotencyKey().Produces<ShopifyOrderStatusResult>().IfMatch();
         api.MapPost("/orders/{id:guid}/instant-process", async (Guid id, HttpContext http, AppDbContext db, IMarketplaceSalesService service, IMarketplaceJobProcessor marketplaceProcessor) =>
         {

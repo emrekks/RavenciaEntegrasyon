@@ -1,5 +1,7 @@
 // Code the catalog routes share (product list, product editor, catalog lists, imports): types, helpers and windows.
 // Each route lives in its own module so it loads as its own chunk.
+import type { ApiAnswer, Written } from '../../shared/api/api-answer'
+import type { JobAccepted } from '../../shared/api/generated/api-types'
 import { type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { UiIcon } from '../../shared/components'
@@ -116,8 +118,8 @@ export function compareVariantOptionSignatures(left: string, right: string) {
   }
   return compareLabelsAlphabetically(left, right)
 }
-export type MarketplaceConnection = { id: string; platformCode: string; displayName: string; externalStoreId: string; status: string; externalWritesEnabled?: boolean }
-export type AcceptedJob = { jobId: string }
+export type MarketplaceConnection = ApiAnswer<'getConnections'>['items'][number]
+export type AcceptedJob = Written<JobAccepted>
 export const productPublicationMode = (item: MarketplaceConnection) => productPublicationChannelMode(item.platformCode, item.status, item.externalWritesEnabled)
 export const isProductPublicationConnection = (item: MarketplaceConnection) => productPublicationMode(item) === 'PUBLISH'
 export type LightboxImage = { url: string; title: string; modelCode?: string | null; color?: string | null; size?: string | null }

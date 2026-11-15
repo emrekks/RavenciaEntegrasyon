@@ -1,4 +1,5 @@
 // Pazaryerlerine Özel Fiyat and the variant platform price window, with their saves.
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { knownPlatformName } from '../../../shared/platform-names'
 import { hubApi } from '../../../shared/api'
 import { failedWithHttpAnswer, newIdempotencyKey } from '../../../shared/idempotency'
@@ -102,8 +103,8 @@ export function useChannelPricing(c: EditorProps & EditorStateResult & EditorMed
           reason: `${platformDisplayName(platform)} toplu varyant fiyatı`
         }
         const saved = platform.offerId && platform.offerVersion != null
-          ? await hubApi<{ id: string; version: number; listPrice: number; salePrice: number; currency: string }>(`/channel-offers/${platform.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${platform.offerVersion}"` }, body: JSON.stringify(body) })
-          : await hubApi<{ id: string; version: number; listPrice: number; salePrice: number; currency: string }>('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId: platform.connectionId, variantId: row.key, ...body }) })
+          ? await hubApi<ApiAnswer<'patchChannelOffersById'>>(`/channel-offers/${platform.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${platform.offerVersion}"` }, body: JSON.stringify(body) })
+          : await hubApi<ApiAnswer<'postChannelOffers'>>('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId: platform.connectionId, variantId: row.key, ...body }) })
         savedOffers.push({ rowKey: row.key, platform, saved })
       }
       if (!savedOffers.length) {
@@ -157,8 +158,8 @@ export function useChannelPricing(c: EditorProps & EditorStateResult & EditorMed
         reason: `${platformDisplayName(platform)} varyant fiyatı`
       }
       const saved = platform.offerId && platform.offerVersion != null
-        ? await hubApi<{ id: string; version: number; listPrice: number; salePrice: number; currency: string }>(`/channel-offers/${platform.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${platform.offerVersion}"` }, body: JSON.stringify(body) })
-        : await hubApi<{ id: string; version: number; listPrice: number; salePrice: number; currency: string }>('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId: platform.connectionId, variantId: targetRow.key, ...body }) })
+        ? await hubApi<ApiAnswer<'patchChannelOffersById'>>(`/channel-offers/${platform.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${platform.offerVersion}"` }, body: JSON.stringify(body) })
+        : await hubApi<ApiAnswer<'postChannelOffers'>>('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId: platform.connectionId, variantId: targetRow.key, ...body }) })
       setVariantRows(rows => rows.map(row => row.key !== targetRow.key ? row : { ...row, platformStatuses: row.platformStatuses?.map(item => item.connectionId === platform.connectionId ? { ...item, offerId: saved.id, listPrice: saved.listPrice, salePrice: saved.salePrice, currency: saved.currency, offerVersion: saved.version } : item) }))
       showFeedback('Platform Fiyatı Kaydedildi', `${platformDisplayName(platform)} ${targetRow.optionSignature || targetRow.sku} fiyatı kaydedildi.`, 'success')
       await client.invalidateQueries({ queryKey: queryKeys.products() })

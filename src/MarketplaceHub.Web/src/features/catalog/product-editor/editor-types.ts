@@ -1,4 +1,5 @@
 // The product editor's shared types (ProductEditorPages and its pieces).
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { type VariantCodeChange } from '../variant-generation'
 import { type PlatformUpdateField } from './platform-update-fields'
 import { type VariantMediaAssignmentDrafts } from '../variant-media-assignments'
@@ -19,7 +20,7 @@ export type EditorProps = {
 
 // quick: sent by Hızlı Güncelle (else by the settings window's Gönder); the store prices name it as their reason.
 export type ProductUpdateRequest = { connectionIds: string[]; fields: PlatformUpdateField[]; quick?: boolean }
-export type PublicationStatus = { productId: string; connectionId: string; profileId: string | null; desiredStatus: string | null; actualStatus: string | null; lastRejectionCode: string | null; lastJobId: string | null; lastJobStatus: string | null; lines: Array<{ variantId: string; sku: string; barcode: string | null; desiredStatus: string; actualStatus: string; rejectionCode: string | null }> }
+export type PublicationStatus = ApiAnswer<'getProductsByIdPublicationStatusByConnectionId'>
 export type PublicationJobDetail = { job: { id: string; jobType?: string; status: string; progressCurrent: number; progressTotal: number | null; progressPercent: number | null; progressLabel: string | null; lastErrorCode: string | null; lastErrorSummary: string | null } }
 export type ProductFamilyMediaItem = NonNullable<Product['familyMediaItems']>[number]
 export type MediaRemovalConfirmation = { kind: 'product'; url: string } | { kind: 'all'; ownCount: number; familyItems: ProductFamilyMediaItem[]; keptCount: number }
@@ -52,7 +53,7 @@ export type VariantDraft = {
   persistedAttributes?: ProductAttributeAssignment[]
   platformStatuses?: VariantPlatformStatus[]
 }
-export type SavedListingProfile = { version: number; titleOverride?: string | null; descriptionOverride?: string | null; externalCategoryId?: string | null; externalBrandId?: string | null; deliveryTimeDays?: number | null }
+export type SavedListingProfile = ApiAnswer<'getProductsByIdListingProfilesByConnectionId'>
 export type ProductAttributePayload = ProductAttributeAssignment
 // A column-menu code change waiting for the user's confirmation: model-code codes for every row or only the empty
 // ones, or emptying the column. Nothing is written to the rows before the user confirms, nor saved before Kaydet.

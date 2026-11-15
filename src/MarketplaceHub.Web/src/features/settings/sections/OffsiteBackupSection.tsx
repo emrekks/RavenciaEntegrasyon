@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { useLocation } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -107,12 +108,12 @@ export function OffsiteBackupSection({ mfa }: { mfa: boolean }) {
           const next = await hubApi<OffsiteBackupView>('/settings/offsite-backup', { method: 'PUT', headers: settingsIfMatch(saved.version), body: JSON.stringify({ ...offsiteBackupSaveBody({ ...draft, enabled: true, ageRecipient: setupKey?.recipient ?? draft.ageRecipient }, changingSecret), ...reauth }) })
           client.setQueryData(queryKeys.offsiteBackup(), next)
         }
-        const { url } = await hubApi<{ url: string }>('/settings/offsite-backup/google/authorize', { method: 'POST', body: JSON.stringify(reauth) })
+        const { url } = await hubApi<ApiAnswer<'postSettingsOffsiteBackupGoogleAuthorize'>>('/settings/offsite-backup/google/authorize', { method: 'POST', body: JSON.stringify(reauth) })
         markFirstRun()
         window.location.assign(url)
         return
       } else if (confirm === 'connect') {
-        const { url } = await hubApi<{ url: string }>('/settings/offsite-backup/google/authorize', { method: 'POST', body: JSON.stringify(reauth) })
+        const { url } = await hubApi<ApiAnswer<'postSettingsOffsiteBackupGoogleAuthorize'>>('/settings/offsite-backup/google/authorize', { method: 'POST', body: JSON.stringify(reauth) })
         window.location.assign(url)
         return
       } else {
@@ -128,7 +129,7 @@ export function OffsiteBackupSection({ mfa }: { mfa: boolean }) {
   async function testConnection() {
     setBusy('test'); setActionResult(null)
     try {
-      await hubApi<{ ok: boolean }>('/settings/offsite-backup/test', { method: 'POST' })
+      await hubApi<ApiAnswer<'postSettingsOffsiteBackupTest'>>('/settings/offsite-backup/test', { method: 'POST' })
       setActionResult({ kind: 'done', message: 'Bağlantı çalışıyor: Google yetkisi geçerli ve Drive klasörü hazır.' })
     } catch (reason) {
       setActionResult({ kind: 'bad', message: reason instanceof Error ? reason.message : 'Bağlantı denenemedi.' })

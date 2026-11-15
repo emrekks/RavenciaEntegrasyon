@@ -2,10 +2,9 @@ import { describe, expect, it } from 'vitest'
 
 // API-TYPES: a read whose answer the API contract declares takes its type from the contract (ApiAnswer<'operationId'>,
 // shared/api/api-answer.ts) or from a type built on it, not from an object type written inline at the call (an
-// operation the contract leaves undeclared does not count). The product editor's publication check, channel pricing and
-// attribute values write seven inline; 28 more are calls of operations the contract declared later the same day
-// (16 Nov 2026: files, mappings, invoice workspace actions, settings). The number may only go down.
-const inlineAnswerTypes = 35
+// operation the contract leaves undeclared does not count). Every declared operation is read through the contract since
+// 16 Nov 2026 (the last 39 inline types converted); the number stays at 0.
+const inlineAnswerTypes = 0
 
 const sources = import.meta.glob<string>(['../../**/*.ts', '../../**/*.tsx', '!../../**/*.test.ts', '!../../**/*.test.tsx', '!./generated/**'], { query: '?raw', import: 'default', eager: true })
 const contract = import.meta.glob<string>('./generated/api-types.ts', { query: '?raw', import: 'default', eager: true })['./generated/api-types.ts']

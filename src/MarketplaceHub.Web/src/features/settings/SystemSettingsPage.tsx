@@ -2,7 +2,7 @@ import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ApiRequestError, hubApi, hubPoll, loadAllPages } from '../../shared/api'
+import { ApiRequestError, hubApi, hubPoll } from '../../shared/api'
 import { LoadingState, Modal } from '../../shared/components'
 import { normalizeShippingLabelSettings, useShippingLabelSettings } from '../shipping'
 import { SettingsNotice, type SettingsNoticeState } from './SettingsNotifications'
@@ -16,7 +16,7 @@ import '../../shared/view-tabs.css'
 import { useTabSlideInPlace } from '../../shared/tab-slide'
 import { useLacksElevatedRole } from '../elevated-role'
 import { reauthBody } from './user-management'
-import { queryKeys } from '../../shared/api/query-keys'
+import { connectionQueries, queryKeys } from '../../shared/api/query-keys'
 import { type SettingsSectionKey, type ShippingSection, type AppearanceSection, settingsSectionGroups, settingsSections, formatSettingsDate, SettingsIcon, SettingsGlyph, SettingsPaneHead, mfaErrorMessage } from './settings-ui'
 import { resetGroupsOf, type ResetMarketplace, SettingsDataReset } from './sections/DataResetSection'
 import { AppearanceSettingsSection } from './sections/AppearanceSection'
@@ -27,7 +27,7 @@ import { UserManagementSection } from './sections/UserManagementSection'
 import { AiSettingsSection } from './sections/AiSettingsSection'
 
 type SecuritySession = ApiAnswer<'getAuthSessions'>[number]
-type MfaSetup = { otpauthUri: string; secret?: string; qrSvg: string; expiresAt: string }
+type MfaSetup = ApiAnswer<'postAuthMfaSetup'>
 type SessionConfirmation = { action: 'revoke' | 'revoke-others' | 'delete' | 'delete-closed'; sessionId?: string }
 
 const settingsSectionOrder = settingsSections.map(item => item.key)
@@ -71,6 +71,9 @@ export function manualSetupKey(otpauthUri: string) {
   return secret.match(/.{1,4}/g)?.join(' ') ?? ''
 }
 
+// The connections Tam Sıfırlama lists: not deleted or hidden, on a marketplace whose full reset the panel supports.
+const resetConnectionsOf = (page: { items: Connection[] }) => page.items.filter(item => item.status !== 'DELETED' && item.status !== 'HIDDEN' && connectionFullResetSupported(item.platformCode))
+
 export function SystemSettingsPage() {
   const client = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -110,7 +113,7 @@ export function SystemSettingsPage() {
   const resetForbidden = resetView.error instanceof ApiRequestError && resetView.error.status === 403
   const resetGroups = resetGroupsOf(resetView.data)
   // The active marketplace connections, each with what its Tam Sıfırlama would remove (the same view its window shows).
-  const resetConnections = useQuery({ queryKey: queryKeys.connections('settings-reset'), queryFn: async ({ signal }) => (await loadAllPages<Connection>('/connections', { signal })).items.filter(item => item.status !== 'DELETED' && item.status !== 'HIDDEN' && connectionFullResetSupported(item.platformCode)), enabled: section === 'database' && resetView.isSuccess, staleTime: 0 })
+  const resetConnections = useQuery({ ...connectionQueries.list<Connection>(), select: resetConnectionsOf, enabled: section === 'database' && resetView.isSuccess, staleTime: 0 })
   const resetViews = useQueries({ queries: (resetConnections.data ?? []).map(item => ({ queryKey: queryKeys.connectionFullReset(item.id), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getConnectionsByIdFullReset'>>(`/connections/${item.id}/full-reset`, { signal }), enabled: section === 'database' && resetView.isSuccess, staleTime: 0 })) })
   const resetMarketplaces: ResetMarketplace[] = (resetConnections.data ?? []).map((item, index) => ({ id: item.id, platformCode: item.platformCode, displayName: item.displayName, passive: item.status !== 'ACTIVE' && item.status !== 'VERIFIED', count: marketplaceResetCount(resetViews[index]?.data) }))
   // Through hubApi: a session that ended shows the sign-in screen instead of an error box.
@@ -197,7 +200,7 @@ export function SystemSettingsPage() {
     }
     setBusy(true); setMfaError('')
     try {
-      const result = await hubApi<{ recoveryCodes: string[] }>('/auth/mfa/confirm', { method: 'POST', body: JSON.stringify({ code }) })
+      const result = await hubApi<ApiAnswer<'postAuthMfaConfirm'>>('/auth/mfa/confirm', { method: 'POST', body: JSON.stringify({ code }) })
       setRecoveryCodes(result.recoveryCodes); setMfaStep('recovery'); await client.invalidateQueries({ queryKey: queryKeys.security() })
     } catch (reason) { setMfaError(mfaErrorMessage(reason, 'Doğrulayıcı etkinleştirilemedi.')) } finally { setBusy(false) }
   }

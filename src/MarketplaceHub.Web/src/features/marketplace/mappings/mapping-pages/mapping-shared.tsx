@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../../../shared/api/api-answer'
 import { createContext, useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { Link } from 'react-router'
 import { UiIcon } from '../../../../shared/components'
@@ -22,9 +23,9 @@ export type LocalCategory = { id: string; parentId?: string | null; name: string
 
 export type LocalAttribute = { id: string; code: string; name: string; dataType: string; isActive: boolean; version: number; roles?: string[] | null; values: { id: string; value: string; sortOrder: number; isActive: boolean }[] }
 
-export type ReferenceItem = { externalId: string; parentExternalId: string | null; name: string; path: string; depth: number; isLeaf: boolean; isActive: boolean; isRequired: boolean | null; allowsCustomValue: boolean | null; allowsMultipleValues: boolean | null }
-export type ReferenceData = { snapshotId: string; resourceType: string; fetchedAt: string; items: ReferenceItem[] }
-export type CatalogMapping = { id: string; connectionId: string; snapshotId: string; localId: string; scopeExternalId: string; externalId: string; status: string; verifiedAt: string | null; version: number; missingRequiredAttributeCount?: number | null; source?: string | null }
+export type ReferenceItem = ReferenceData['items'][number]
+export type ReferenceData = ApiAnswer<'getReferenceDataCategories'>
+export type CatalogMapping = ApiAnswer<'putMappingsAttributeValuesByLocalId'>
 
 type SearchOption = { value: string; label: string; description?: string }
 // triggerClassName lets a caller give the trigger another control's look (the brand page dresses it as the platform picker).

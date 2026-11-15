@@ -133,10 +133,12 @@ out.push('export interface ApiOperations {')
 for (const { path, method, operation } of operations) {
   const indent = '    '
   const success = Object.entries(operation.responses).filter(([status]) => status.startsWith('2') || status.startsWith('3'))
-  const declared = success.find(([, response]) => resolveResponse(response).content?.['application/json'])
+  const jsonAnswers = success.filter(([, response]) => resolveResponse(response).content?.['application/json'])
+  const declared = jsonAnswers[0]
   const file = declared ? null : success.find(([, response]) => fileAnswer(resolveResponse(response).content))
+  // Two success statuses with different JSON bodies (200 "already confirmed", 202 "queued") are a union of both.
   const answer = declared
-    ? typeOf(resolveResponse(declared[1]).content['application/json'].schema, indent)
+    ? [...new Set(jsonAnswers.map(([, response]) => typeOf(resolveResponse(response).content['application/json'].schema, indent)))].join(' | ')
     : file ? fileAnswer(resolveResponse(file[1]).content)
     : success.length > 0 && success.every(([status, response]) => status !== '200' && !resolveResponse(response).content) ? 'void' : 'unknown'
   const status = declared ? Number(declared[0]) : file ? Number(file[0]) : success.length > 0 ? Number(success[0][0]) : 200

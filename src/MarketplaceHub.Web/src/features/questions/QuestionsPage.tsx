@@ -5,7 +5,7 @@ import { useRememberedHeight } from '../../shared/remembered-height'
 import { unknownCount, useRememberedTabCounts } from '../../shared/tab-counts'
 import { Link } from 'react-router'
 import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
-import { hubApi, hubPoll, loadAllPages } from '../../shared/api'
+import { hubApi, hubPoll } from '../../shared/api'
 import { newIdempotencyKey, sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../shared/idempotency'
 import { thumbnailUrl } from '../../shared/product-thumbnail'
 import { marketplaceProductSearchUrl } from './marketplace-product-link'
@@ -25,7 +25,7 @@ import { scopedStorageKey } from '../../shared/storage-scope'
 import { useDismissable } from '../../shared/hooks/useDismissable'
 import { useMenuFlip } from '../../shared/hooks/useMenuFlip'
 import { PanelSelect } from '../../shared/PanelSelect'
-import { queryKeys } from '../../shared/api/query-keys'
+import { connectionQueries, queryKeys } from '../../shared/api/query-keys'
 
 // NOT_DELIVERED (answerSubmissionStatus): an earlier answer never reached the marketplace; pendingAnswerText is its text, kept as a draft.
 type MarketplaceQuestion = ApiAnswer<'getQuestionsById'>
@@ -45,7 +45,9 @@ export function questionSyncIsStale(states: Array<{ lastSuccessAt?: string | nul
   return states.some(state => state.progressStatus !== 'INITIAL' && (!state.lastSuccessAt || now - new Date(state.lastSuccessAt).getTime() > autoSyncAfterMs))
 }
 type Template = ApiAnswer<'getQuestionTemplates'>[number]
-type Connection = { id: string; platformCode: string; displayName: string; status: string }
+type Connection = ApiAnswer<'getConnections'>['items'][number]
+// The connections whose customer questions the panel reads: active Trendyol, Hepsiburada, N11 and Pazarama stores.
+const questionConnections = (page: { items: Connection[] }) => page.items.filter(item => ['TRENDYOL', 'HEPSIBURADA', 'N11', 'PAZARAMA'].includes(item.platformCode) && ['ACTIVE', 'VERIFIED'].includes(item.status.toUpperCase()))
 type SyncState = ApiAnswer<'getQuestionsSyncState'>[number]
 type QuestionListPage = ApiAnswer<'getQuestions'>
 type QuestionStatus = 'WAITING' | 'ANSWERED' | 'EXPIRED' | 'OTHER' | 'ALL'
@@ -192,7 +194,7 @@ export function QuestionsPage() {
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null)
   const requestedSync = useRef(false)
   const kind = tab === 'ORDER' ? 'ORDER' : 'PRODUCT'
-  const connections = useQuery({ queryKey: queryKeys.questions('connections'), queryFn: async ({ signal }) => (await loadAllPages<Connection>('/connections', { limit: 100, signal })).items.filter(item => ['TRENDYOL', 'HEPSIBURADA', 'N11', 'PAZARAMA'].includes(item.platformCode) && ['ACTIVE', 'VERIFIED'].includes(item.status.toUpperCase())), staleTime: 60_000 })
+  const connections = useQuery({ ...connectionQueries.list<Connection>(), select: questionConnections, staleTime: 60_000 })
   const filters = new URLSearchParams({ kind, status })
   if (platform !== 'ALL') filters.set('platform', platform)
   if (connectionId !== 'ALL') filters.set('connectionId', connectionId)
@@ -239,7 +241,7 @@ export function QuestionsPage() {
   const syncHeight = useRememberedHeight<HTMLElement>('question-sync-chips', syncStates.isLoading)
 
   const sync = useMutation({
-    mutationFn: (request: { kind: string; platformCode?: string }) => hubApi<{ jobs: string[]; queuedConnections: number }>('/questions/sync', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('question-sync') }, body: JSON.stringify(request) }),
+    mutationFn: (request: { kind: string; platformCode?: string }) => hubApi<ApiAnswer<'postQuestionsSync'>>('/questions/sync', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('question-sync') }, body: JSON.stringify(request) }),
     onSuccess: async () => { setNotice(null); await Promise.all([client.invalidateQueries({ queryKey: queryKeys.questions() }), client.invalidateQueries({ queryKey: queryKeys.questions('sync-state') })]) },
     onError: error => fail(error, 'Senkronizasyon kuyruğa alınamadı.'),
   })

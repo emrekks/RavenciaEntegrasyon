@@ -66,7 +66,7 @@ type InvoiceWorkspaceAnswer = ApiAnswer<'getInvoiceWorkspacePage'>
 type InvoiceWorkspace = Omit<InvoiceWorkspaceAnswer['items'][number], 'saleReturnScope'> & { saleReturnScope: SaleReturnScope | null }
 type InvoiceWorkspacePage = Omit<InvoiceWorkspaceAnswer, 'items'> & { items: InvoiceWorkspace[] }
 type InvoiceDetail = ApiAnswer<'getInvoicesById'>
-type Connection = { id: string; platformCode: string; displayName: string; status: string; environment: string; hasCredential: boolean }
+type Connection = ApiAnswer<'getConnections'>['items'][number]
 type InvoiceNoticeKind = 'success' | 'error' | 'info' | 'warning' | 'pending'
 // The order an invoice notice is about, with its marketplace and store; a failure keeps the server's code.
 function invoiceOrderContext(item: Pick<InvoiceWorkspace, 'orderNumber' | 'platformCode' | 'marketplaceConnectionId'>, title: string, operation: string, reason?: unknown): NotificationContext {
@@ -394,7 +394,7 @@ export function InvoicesPage() {
     refetchInterval: 30_000
   })
   const confirmDelivered = useMutation({
-    mutationFn: async (item: InvoiceWorkspace) => hubApi<{ confirmed: boolean }>(`/invoice-workspace/orders/${item.orderId}/confirm-marketplace-delivered`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() } }),
+    mutationFn: async (item: InvoiceWorkspace) => hubApi<ApiAnswer<'postInvoiceWorkspaceOrdersByOrderIdConfirmMarketplaceDelivered'>>(`/invoice-workspace/orders/${item.orderId}/confirm-marketplace-delivered`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() } }),
     onSuccess: async (_result, item) => {
       setMessage(`#${item.orderNumber} nolu siparişin faturası pazaryerinde doğrulandı ve tamamlandı olarak işaretlendi.`, 'success', invoiceOrderContext(item, 'Fatura Tamamlandı Olarak İşaretlendi', 'Fatura doğrulama'))
       await Promise.all([client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspacePage() }), client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspaceSummary() })])
@@ -402,7 +402,7 @@ export function InvoicesPage() {
     onError: (error, item) => setMessage(error instanceof Error ? error.message : 'Fatura tamamlandı olarak işaretlenemedi.', 'error', invoiceOrderContext(item, 'Fatura Tamamlandı Olarak İşaretlenemedi', 'Fatura doğrulama', error))
   })
   const replaceInvoice = useMutation({
-    mutationFn: async (item: InvoiceWorkspace) => hubApi<{ replaced: boolean }>(`/invoice-workspace/orders/${item.orderId}/replace-cancelled-invoice`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() } }),
+    mutationFn: async (item: InvoiceWorkspace) => hubApi<ApiAnswer<'postInvoiceWorkspaceOrdersByOrderIdReplaceCancelledInvoice'>>(`/invoice-workspace/orders/${item.orderId}/replace-cancelled-invoice`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() } }),
     onSuccess: async (_result, item) => {
       setMessage(`#${item.orderNumber} nolu siparişin eski faturası iptal olarak kapatıldı. Yeni fatura kesebilirsiniz.`, 'success', invoiceOrderContext(item, 'Eski Fatura Kapatıldı', 'İptal edilen faturayı değiştirme'))
       await Promise.all([client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspacePage() }), client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspaceSummary() })])
@@ -412,7 +412,7 @@ export function InvoicesPage() {
   const noRemoteInvoice = useMutation({
     // D-2: where E-Faturam keeps its own reference, the confirmation also states the portal was searched by the order
     // number (the dialog asks for it); the server refuses the resend without that statement.
-    mutationFn: async (item: InvoiceWorkspace) => hubApi<{ confirmed: boolean }>(`/invoice-workspace/orders/${item.orderId}/confirm-no-remote-invoice`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ searchedByOrderNumber: needsOrderNumberSearch(item) }) }),
+    mutationFn: async (item: InvoiceWorkspace) => hubApi<ApiAnswer<'postInvoiceWorkspaceOrdersByOrderIdConfirmNoRemoteInvoice'>>(`/invoice-workspace/orders/${item.orderId}/confirm-no-remote-invoice`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ searchedByOrderNumber: needsOrderNumberSearch(item) }) }),
     onSuccess: async (_result, item) => {
       setMessage(`#${item.orderNumber} nolu siparişin faturası için yeniden gönderim açıldı. Faturayı tekrar oluşturabilirsiniz.`, 'success', invoiceOrderContext(item, 'Fatura Yeniden Gönderime Açıldı', 'Fatura yeniden gönderimi'))
       await Promise.all([client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspacePage() }), client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspaceSummary() })])
@@ -424,7 +424,7 @@ export function InvoicesPage() {
   const deliveryRetry = useMutation({
     mutationFn: async (item: InvoiceWorkspace) => {
       if (!item.invoiceId) throw new Error('Siparişte kesilmiş fatura bulunamadı.')
-      return hubApi<{ jobId: string }>(`/invoices/${item.invoiceId}/delivery-retry-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ confirmed: true }) })
+      return hubApi<ApiAnswer<'postInvoicesByIdDeliveryRetryJobs'>>(`/invoices/${item.invoiceId}/delivery-retry-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ confirmed: true }) })
     },
     onSuccess: async (result, item) => {
       setMessage(`#${item.orderNumber} nolu siparişin faturası yeniden gönderiliyor; sonuç gelince bildirilecek. Yeni fatura kesilmedi.`, 'info', invoiceOrderContext(item, 'Fatura İletimi Yeniden Deneniyor', 'Fatura iletimini yeniden deneme'))
@@ -434,7 +434,7 @@ export function InvoicesPage() {
     onError: (error, item) => setMessage(error instanceof Error ? error.message : 'Yeniden deneme sıraya alınamadı.', 'error', invoiceOrderContext(item, 'Yeniden Deneme Başlatılamadı', 'Fatura iletimini yeniden deneme', error))
   })
   const visibility = useMutation({
-    mutationFn: async ({ packageIds, hidden }: { packageIds: string[]; hidden: boolean }) => hubApi<{ updatedCount: number }>('/invoice-workspace/hidden', { method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ packageIds, hidden }) }),
+    mutationFn: async ({ packageIds, hidden }: { packageIds: string[]; hidden: boolean }) => hubApi<ApiAnswer<'putInvoiceWorkspaceHidden'>>('/invoice-workspace/hidden', { method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ packageIds, hidden }) }),
     onSuccess: async (_result, variables) => {
       setSelectedPackages(new Set())
       setSelectedItem(null)
@@ -449,12 +449,13 @@ export function InvoicesPage() {
     mutationFn: async (item: InvoiceWorkspace) => {
       if (!item.manualInvoiceDocumentId) throw new Error('Siparişte güncel manuel fatura belgesi bulunamadı.')
       // A fresh key per attempt: a retry after a failed delivery must queue a new job, not replay the old answer.
-      return hubApi<{ jobIds: string[]; queuedPackageCount: number; inspectionOnlyPackageCount: number }>(`/invoice-workspace/manual-documents/${item.manualInvoiceDocumentId}/delivery-jobs`, { method: 'POST', headers: { 'Idempotency-Key': manualDeliveryIdempotencyKey(item.manualInvoiceDocumentId) } })
+      return hubApi<ApiAnswer<'postInvoiceWorkspaceManualDocumentsByIdDeliveryJobs'>>(`/invoice-workspace/manual-documents/${item.manualInvoiceDocumentId}/delivery-jobs`, { method: 'POST', headers: { 'Idempotency-Key': manualDeliveryIdempotencyKey(item.manualInvoiceDocumentId) } })
     },
     onSuccess: async (result, item) => {
       const documentId = item.manualInvoiceDocumentId
       if (documentId) setQueuedManualDocuments(current => new Set(current).add(documentId))
-      setMessage(result.inspectionOnlyPackageCount > 0
+      // 200: every package had already confirmed the document, nothing was queued (the answer says so).
+      setMessage(!('queuedPackageCount' in result) ? result.message : result.inspectionOnlyPackageCount > 0
         ? `${result.inspectionOnlyPackageCount} paketin önceki iletim sonucu belirsiz; yalnızca pazaryeri durumu okunacak, yeni belge gönderilmeyecek.`
         : `${result.queuedPackageCount} paket için taze durum kontrolü ve manuel fatura iletimi başladı; henüz iletilmedi, sonuç gelince bildirilecek.`, 'info', invoiceOrderContext(item, 'Manuel Fatura İletimi Başladı', 'Manuel fatura iletimi'))
       followJobs((result.jobIds ?? []).map(jobId => ({ jobId, platformName: notificationPlatformName(item.platformCode) ?? 'Pazaryeri', what: `#${item.orderNumber} manuel faturası` })), invoiceOrderContext(item, '', 'Manuel fatura iletimi'))
@@ -486,7 +487,7 @@ export function InvoicesPage() {
   const invoiceReconcile = useMutation({
     // Waits for the read-only check to end, so the row is reloaded with what the job read rather than right after queueing it.
     mutationFn: async (item: InvoiceWorkspace) => {
-      const { jobId } = await hubApi<{ jobId: string }>(`/invoice-workspace/orders/${item.orderId}/reconcile-jobs`, { method: 'POST', headers: { 'Idempotency-Key': `invoice-workspace-check:${item.orderId}:${newIdempotencyKey()}` } })
+      const { jobId } = await hubApi<ApiAnswer<'postInvoiceWorkspaceOrdersByOrderIdReconcileJobs'>>(`/invoice-workspace/orders/${item.orderId}/reconcile-jobs`, { method: 'POST', headers: { 'Idempotency-Key': `invoice-workspace-check:${item.orderId}:${newIdempotencyKey()}` } })
       const ended = await waitForReferenceSyncJobs([jobId], async id => (await hubApi<ApiAnswer<'getJobsById'>>(`/jobs/${id}`, { cache: 'no-store' })).job.status, { intervalMs: 1_500, timeoutMs: 90_000 })
       return ended.get(jobId)
     },
@@ -834,7 +835,7 @@ export function InvoiceDetailPage() {
     onError: error => setNotice(error instanceof Error ? error.message : 'İşlem başarısız.', 'error')
   })
   const upload = useMutation({
-    mutationFn: (file: File) => { const form = new FormData(); form.append('file', file); return hubApi<{ duplicate: boolean }>(`/invoices/${id}/documents/manual`, { method: 'POST', headers: { 'Idempotency-Key': `invoice-document:${id}:${file.name}:${file.size}:${file.lastModified}` }, body: form }) },
+    mutationFn: (file: File) => { const form = new FormData(); form.append('file', file); return hubApi<ApiAnswer<'postInvoicesByIdDocumentsManual'>>(`/invoices/${id}/documents/manual`, { method: 'POST', headers: { 'Idempotency-Key': `invoice-document:${id}:${file.name}:${file.size}:${file.lastModified}` }, body: form }) },
     onSuccess: async result => { setNotice(result.duplicate ? 'Bu fatura belgesi zaten güvenli arşivde bulunuyor.' : 'Fatura belgesi güvenli özel arşive yüklendi. Belge henüz pazaryerine veya E‑Faturam’a iletilmedi.', 'success'); setUploadFile(null); await Promise.all(invoiceCopies(id).map(queryKey => client.invalidateQueries({ queryKey }))) },
     onError: error => setNotice(error instanceof Error ? error.message : 'Fatura belgesi yüklenemedi.', 'error')
   })

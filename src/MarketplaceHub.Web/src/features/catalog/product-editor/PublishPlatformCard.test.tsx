@@ -1,3 +1,4 @@
+import { testConnection } from '../../../test/connection'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -28,7 +29,7 @@ let container: HTMLDivElement
 let root: Root
 let client: QueryClient
 
-const card = { code: 'trendyol', name: 'Trendyol', initial: 'T', tone: 'trendyol', mode: 'PUBLISH' as const, connection: { id: 'c1', platformCode: 'TRENDYOL', displayName: 'Mağaza', externalStoreId: '930112', status: 'ACTIVE' } }
+const card = { code: 'trendyol', name: 'Trendyol', initial: 'T', tone: 'trendyol', mode: 'PUBLISH' as const, connection: testConnection({ id: 'c1', platformCode: 'TRENDYOL', displayName: 'Mağaza', externalStoreId: '930112', status: 'ACTIVE' }) }
 
 async function render(props: { onSelect?: () => void; variantLinks?: { linked: number; total: number; missing?: number }; familyProductIds?: string[]; settling?: boolean; selected?: boolean; onDeselect?: () => void; onBlockedChange?: (gaps: number) => void; productChecks?: Array<{ title: string; detail: string; ok: boolean }>; categoryId?: string; onFeedback?: (feedback: { title?: string; kind: string }) => void } = {}) {
   await act(async () => {

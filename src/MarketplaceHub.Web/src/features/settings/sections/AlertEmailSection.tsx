@@ -51,7 +51,7 @@ export function AlertEmailSettingsSection() {
   async function sendTest() {
     setBusy('test'); setTestResult(null)
     try {
-      const result = await hubApi<{ sent: boolean; recipients: string[] }>('/settings/alert-email/test', { method: 'POST' })
+      const result = await hubApi<ApiAnswer<'postSettingsAlertEmailTest'>>('/settings/alert-email/test', { method: 'POST' })
       setTestResult({ kind: 'done', message: `Test e-postası gönderildi: ${result.recipients.join(', ')}. Gelen kutusunu (ve spam klasörünü) kontrol edin.` })
     } catch (reason) {
       setTestResult({ kind: 'bad', message: reason instanceof Error ? reason.message : 'Test e-postası gönderilemedi.' })

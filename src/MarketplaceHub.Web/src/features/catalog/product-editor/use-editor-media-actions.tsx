@@ -1,4 +1,5 @@
 // The Görseller strip: adding files, the size chart, reordering (also by touch), removing own and family pictures.
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { type PointerEvent as ReactPointerEvent } from 'react'
 import { hubApi } from '../../../shared/api'
 import { newIdempotencyKey } from '../../../shared/idempotency'
@@ -200,7 +201,7 @@ export function useEditorMediaActions(c: EditorProps & EditorStateResult & Edito
     setDeletingProductMediaKey(targetKey)
     try {
       const product = productToEdit.data
-      const result = await hubApi<{ deletedCount: number; version: number; productVersions: Record<string, number> }>('/files/product-media-item', {
+      const result = await hubApi<ApiAnswer<'deleteFilesProductMediaItem'>>('/files/product-media-item', {
         method: 'DELETE',
         headers: { 'Idempotency-Key': newIdempotencyKey(), 'If-Match': `"v${product.version}"` },
         body: JSON.stringify({ productId: product.id, url })

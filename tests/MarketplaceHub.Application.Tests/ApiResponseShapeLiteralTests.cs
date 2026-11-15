@@ -33,6 +33,36 @@ public sealed class ApiResponseShapeLiteralTests(ApiPipelineHost fixture) : ICla
             new ManualInvoiceDeliveryConfirmedView(documentId, [], "Belge seçili paketlerin tamamında zaten doğrulanmış."));
     }
 
+    // Round 6: the answers that need a live marketplace, a queued job, Claude, Gmail or Google Drive; each literal is
+    // the handler's own expression with representative values (nulls included where the member may be null).
+    [Fact]
+    public void RoundSixAnswersAreWrittenAsTheirRecords()
+    {
+        // MarketplaceEndpoints GET /orders/{id}/finance.
+        var now = new DateTimeOffset(2026, 11, 16, 9, 30, 0, TimeSpan.Zero);
+        IReadOnlyList<MarketplaceHub.Application.RemoteFinanceTransaction> transactions =
+            [new("T1", "PAID", 120.5m, null, 0m, 1.25m, 0m, 0m, 0m, 1, now, null), new("T2", "WAITING", 10m, 1.5m, 0m, 0m, 0m, 2m, 0m, 3, now, now)];
+        IReadOnlyList<MarketplaceHub.Application.RemoteCommissionInvoice> invoices = [new("O1", null, null, 3.6m, null), new("O1", "KF1", now, 3.6m, "OK")];
+        Same(new { readAt = now, transactions, commissionInvoices = invoices }, new OrderFinanceView(now, transactions, invoices));
+        // CatalogEndpoints POST /products/{id}/publication-jobs and /update-jobs.
+        var jobId = Guid.CreateVersion7();
+        IReadOnlyList<MarketplaceHub.Application.PublicationSkippedVariant> skipped = [new("SKU-1", "VARIANT_ON_MARKETPLACE", "Zaten yayında.")];
+        Same(new { jobId, skippedVariants = skipped }, new ProductPublicationQueuedView(jobId, skipped));
+        IReadOnlyList<string> notices = ["Açıklama karttan gönderildi."];
+        Same(new { jobId, notices }, new ProductUpdateQueuedView(jobId, notices));
+        // AiEndpoints.TestAsync.
+        const string model = "claude-model";
+        Same(new { ok = true, model, message = $"Bağlantı çalışıyor: {model} yanıt verdi." }, new AiConnectionTestView(true, model, $"Bağlantı çalışıyor: {model} yanıt verdi."));
+        // AlertEmailEndpoints.TestAsync.
+        IReadOnlyList<string> recipients = ["a@example.com", "b@example.com"];
+        Same(new { sent = true, recipients }, new AlertEmailTestView(true, recipients));
+        // OffsiteBackupEndpoints.TestAsync (the folder id may be null).
+        string? folderId = "folder-1";
+        Same(new { ok = true, folderId }, new OffsiteBackupTestView(true, folderId));
+        folderId = null;
+        Same(new { ok = true, folderId }, new OffsiteBackupTestView(true, folderId));
+    }
+
     // CommissionTariffCompactRows.Of wrote an anonymous { strings, rows, totalCount, page, pageSize }; the record it
     // returns now writes exactly that, followed by the cursor members of unified paging.
     [Fact]

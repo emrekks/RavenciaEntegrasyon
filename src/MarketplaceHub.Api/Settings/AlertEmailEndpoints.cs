@@ -29,7 +29,7 @@ public static class AlertEmailEndpoints
         var api = endpoints.MapGroup("/api/v1/settings/alert-email").WithGates(ApiGate.Elevated, ApiGate.Elevated);
         api.MapGet("", GetAsync).Produces<AlertEmailSettingsView>();
         api.MapPut("", SaveAsync).Produces<AlertEmailSettingsView>().IfMatch(required: false);
-        api.MapPost("/test", TestAsync);
+        api.MapPost("/test", TestAsync).Produces<AlertEmailTestView>();
         endpoints.MapGet("/internal/alert-settings", HostReadAsync);
         endpoints.MapPost("/internal/alert-settings/import", HostImportAsync);
         return endpoints;

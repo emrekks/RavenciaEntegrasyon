@@ -11,7 +11,12 @@ export type ValueDraft = {
   saved: readonly SavedValueMapping[]
   snapshotId: string
   knownExternalIds: readonly string[]
+  /** The pairs the last Kaydet sent and the server refused; their rows are marked until the user changes them. */
+  failed?: readonly FailedValuePair[]
 }
+
+/** A value pair the server refused on Kaydet: the panel value (the table's row) and the marketplace value it was sent with. */
+export type FailedValuePair = { localId: string; externalId: string }
 
 export type ValueDraftOperation =
   | { kind: 'DELETE'; valueScope: string; localId: string; externalId: string; version: number }
@@ -65,9 +70,24 @@ export function valueDraftOperations(draft: ValueDraft): ValueDraftOperation[] {
 
 // The drafts left after Kaydet (WEB-SAYFALAR-6): a field with a refused request keeps its choices, so what was not
 // saved stays chosen and Kaydet can try it again; a field whose requests all went through starts from the server.
-export function draftsKeptAfterSave(pending: readonly ValueDraft[], failed: readonly Pick<ValueDraftOperation, 'valueScope'>[]): Map<string, ValueDraft> {
-  const failedScopes = new Set(failed.map(operation => operation.valueScope))
-  return new Map(pending.filter(draft => failedScopes.has(draft.valueScope)).map(draft => [draft.valueScope, draft]))
+// A kept draft names the refused pairs (`failed`), so the table marks the rows that were not saved.
+export function draftsKeptAfterSave(pending: readonly ValueDraft[], failed: readonly Pick<ValueDraftOperation, 'valueScope' | 'localId' | 'externalId'>[]): Map<string, ValueDraft> {
+  const failedByScope = new Map<string, FailedValuePair[]>()
+  for (const { valueScope, localId, externalId } of failed) failedByScope.set(valueScope, [...(failedByScope.get(valueScope) ?? []), { localId, externalId }])
+  return new Map(pending.flatMap(draft => {
+    const refused = failedByScope.get(draft.valueScope)
+    return refused ? [[draft.valueScope, { ...draft, failed: refused }] as const] : []
+  }))
+}
+
+// The rows to mark as not saved: the panel values of the refused pairs.
+export function failedLocalIds(failed: readonly FailedValuePair[] | undefined): ReadonlySet<string> {
+  return new Set((failed ?? []).map(pair => pair.localId))
+}
+
+// A row the user changed after a refused Kaydet is theirs again: its refused pairs no longer mark it.
+export function withoutFailedRow(failed: readonly FailedValuePair[], localId: string): readonly FailedValuePair[] {
+  return failed.some(pair => pair.localId === localId) ? failed.filter(pair => pair.localId !== localId) : failed
 }
 
 // Runs the requests a few at a time; every one is attempted and the refused ones are reported.
