@@ -32,7 +32,20 @@ public sealed partial class MarketplaceSalesService
         // micro-export orders (micro=true): the pending ones (PENDING). The tab counters skip them.
         var includeMicro = options.MicroExport == true && tabs is not null && requested.Length == 1;
         if (!allowCached) return await CountOrderSummaryAsync(tenantId, options, requested, includeMicro, cancellationToken);
+        // SIPARIS-STOK-4: the Geciken tab moves with the clock (an order passes its ship-by time with no change to stamp),
+        // so it is counted fresh on every call; the other tabs keep their cached answer.
+        if (requested.Contains("LATE"))
+        {
+            if (requested.Length == 1) return await CountOrderSummaryAsync(tenantId, options, requested, includeMicro, cancellationToken);
+            var others = await CachedOrderSummaryAsync(tenantId, options, requested.Where(tab => tab != "LATE").ToArray(), includeMicro: false, cancellationToken);
+            var late = await CountOrderSummaryAsync(tenantId, options, ["LATE"], includeMicro: false, cancellationToken);
+            return others with { Late = late.Late, LateByConnection = late.LateByConnection };
+        }
+        return await CachedOrderSummaryAsync(tenantId, options, requested, includeMicro, cancellationToken);
+    }
 
+    private async Task<OrderSummaryView> CachedOrderSummaryAsync(Guid tenantId, OrderListQuery options, string[] requested, bool includeMicro, CancellationToken cancellationToken)
+    {
         var key = $"{tenantId:N}|{string.Join(',', requested)}|{JsonSerializer.Serialize(options)}";
         var stamp = await OrderSummaryStampAsync(tenantId, cancellationToken);
         if (OrderSummaryCache.TryGetValue(key, out var cached) && cached.Stamp == stamp && DateTimeOffset.UtcNow - cached.At < OrderSummaryCacheLifetime) return cached.View;
