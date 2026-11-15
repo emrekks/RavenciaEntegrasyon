@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using MarketplaceHub.Api.Common;
 using MarketplaceHub.Api.Operations;
 using MarketplaceHub.Api.Security;
 using MarketplaceHub.Application;
@@ -10,6 +11,7 @@ using MarketplaceHub.Infrastructure.Security;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using static MarketplaceHub.Api.Common.EndpointHelpers;
 
 namespace MarketplaceHub.Api.Marketplace;
 
@@ -463,7 +465,6 @@ public static class MarketplaceEndpoints
         }
         catch (System.Text.Json.JsonException) { return $"not JSON ({body.Length} bytes)"; }
     }
-    private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
     // A connection or a webhook subscription outlives the session that made it (G2): the audit log keeps who set it up.
     private static async Task AuditAsync(HttpContext http, TenantContext tenant, string action, Guid connectionId, string reason)
     {
@@ -475,20 +476,15 @@ public static class MarketplaceEndpoints
         Guid.TryParse(http.Request.Headers["X-Operation-ID"].ToString(), out var operationId)
             ? $"operation-{operationId:N}"
             : http.TraceIdentifier;
-    private static int PageSize(int? limit) => limit is null ? 50 : limit is >= 1 and <= 200 ? limit.Value : throw new ArgumentException("limit 1-200 arasında olmalıdır.");
     private static ReturnListQuery ReturnQuery(string? status, string? customer, string? orderNumber, string? claimCode, string? barcode, string? reason, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, string? search, string? platforms, string? cargo, string? reasonKey, string? invoiceStatus, string? sort) =>
         new(status, customer, orderNumber, claimCode, barcode, reason, dateFrom, dateTo, search,
             platforms?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), cargo, reasonKey, invoiceStatus, sort);
     private static OrderListQuery OrderQuery(string? status, string? search, string? platform, string? platforms, string? listing, string? cargo, string? invoice, string? invoiceType, string? invoiceRegion, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, string? sort, bool? labelPrinted, DateTimeOffset? cancelFrom = null, DateTimeOffset? cancelTo = null, bool? partialCancel = null, bool? microExport = null, bool? resentNotShipped = null) =>
         new(status, search, platform, listing, cargo, invoice, invoiceType, invoiceRegion, dateFrom, dateTo, sort, platforms?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), labelPrinted, cancelFrom, cancelTo, partialCancel, microExport, resentNotShipped);
-    private static int PageNumber(int? page) => page is null ? 1 : page is >= 1 and <= 100_000 ? page.Value : throw new ArgumentException("page 1-100000 arasında olmalıdır.");
-    private static IResult? RequireIdempotency(HttpContext http) => string.IsNullOrWhiteSpace(http.Request.Headers["Idempotency-Key"]) ? Problem(http, new("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key başlığı zorunludur.", 400)) : http.Request.Headers["Idempotency-Key"].ToString().Length > 256 ? Problem(http, new("IDEMPOTENCY_KEY_INVALID", "Idempotency-Key en fazla 256 karakterdir.", 400)) : null;
-    private static bool TryIfMatch(HttpContext http, out long version, out IResult? failure) { var parsed = OptionalIfMatch(http, out failure); version = parsed ?? 0; if (failure is null && parsed is null) failure = Problem(http, new("PRECONDITION_REQUIRED", "If-Match gereklidir.", 428)); return failure is null; }
-    private static long? OptionalIfMatch(HttpContext http, out IResult? failure) { failure = null; var value = http.Request.Headers.IfMatch.ToString(); if (string.IsNullOrWhiteSpace(value)) return null; if (value.Length >= 4 && value.StartsWith("\"v", StringComparison.Ordinal) && value.EndsWith('"') && long.TryParse(value[2..^1], out var version) && version > 0) return version; failure = Problem(http, new("INVALID_ETAG", "If-Match güçlü ETag biçiminde olmalıdır: \"v{version}\".", 400)); return null; }
-    private static IResult WithEtag<T>(HttpContext http, ServiceResult<T> result, Func<T, long> version) { if (!result.Succeeded) return Problem(http, MarketplaceErrorStatus.ForPanel(result.Error!)); http.Response.Headers.ETag = $"\"v{version(result.Value!)}\""; return Results.Ok(result.Value); }
-    private static IResult Created<T>(ServiceResult<T> result, string collection) { if (!result.Succeeded) return MarketplaceHub.Api.Security.ApiProblems.Of(null, MarketplaceErrorStatus.ForPanel(result.Error!)); var id = typeof(T).GetProperty("Id")?.GetValue(result.Value); return Results.Created(id is Guid guid ? $"{collection}/{guid:D}" : collection, result.Value); }
-    private static IResult Accepted(ServiceResult<Guid> result) => result.Succeeded ? Results.Accepted($"/api/v1/jobs/{result.Value:D}", new { jobId = result.Value }) : MarketplaceHub.Api.Security.ApiProblems.Of(null, MarketplaceErrorStatus.ForPanel(result.Error!));
-    private static IResult Result<T>(ServiceResult<T> result, Func<T, IResult> success) => result.Succeeded ? success(result.Value!) : MarketplaceHub.Api.Security.ApiProblems.Of(null, MarketplaceErrorStatus.ForPanel(result.Error!));
+    private static IResult WithEtag<T>(HttpContext http, ServiceResult<T> result, Func<T, long> version) => EndpointHelpers.WithEtag(http, result, version, MarketplaceErrorStatus.ForPanel);
+    private static IResult Created<T>(ServiceResult<T> result, string collection) => EndpointHelpers.Created(result, collection, MarketplaceErrorStatus.ForPanel);
+    private static IResult Accepted(ServiceResult<Guid> result) => EndpointHelpers.Accepted(result, MarketplaceErrorStatus.ForPanel);
+    private static IResult Result<T>(ServiceResult<T> result, Func<T, IResult> success) => EndpointHelpers.Result(result, success, MarketplaceErrorStatus.ForPanel);
     // ?size=thumb: a small frame asks Trendyol's CDN for its small copy (/mnresize/256/384/, ~10 KB) instead of the
     // ~145 KB full photo, the same rule as the panel's thumbnailUrl (shared/product-thumbnail.ts). Other hosts stay as
     // they are (Hepsiburada's size token has no documented sizes).
@@ -499,9 +495,6 @@ public static class MarketplaceEndpoints
         var path = System.Text.RegularExpressions.Regex.Replace(uri.AbsolutePath, "/{2,}", "/");
         return new UriBuilder(uri) { Path = "/mnresize/256/384" + path }.Uri.AbsoluteUri;
     }
-    private static IResult Unauthorized(HttpContext http) => Problem(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
-    private static IResult MissingContext(HttpContext http) => Tenant(http) is null ? Unauthorized(http) : RequireIdempotency(http) ?? Problem(http, new("REQUEST_INVALID", "İstek tamamlanamadı.", 400));
-    private static IResult Problem(HttpContext http, ServiceError error) => MarketplaceHub.Api.Security.ApiProblems.Of(http, error);
     public sealed record ActiveCommand(bool Active);
     public sealed record InstantNotificationCommand(string? ClientSecret, bool RestorePrevious = false, bool AdoptFromInactive = false);
     public sealed record OrderSyncCommand(string? ExternalOrderId, bool Full = false, string? PackageNumber = null);

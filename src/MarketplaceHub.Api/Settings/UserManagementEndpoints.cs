@@ -9,6 +9,7 @@ using MarketplaceHub.Infrastructure.Security;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using static MarketplaceHub.Api.Common.EndpointHelpers;
 
 namespace MarketplaceHub.Api.Settings;
 
@@ -333,7 +334,6 @@ public static class UserManagementEndpoints
         return MailAddress.TryCreate(value, out var parsed) && string.Equals(parsed.Address, value, StringComparison.OrdinalIgnoreCase) && parsed.Host.Contains('.', StringComparison.Ordinal);
     }
 
-    private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
     private static IResult Invalid(string message) => ApiProblems.Of(null, "INVALID_REQUEST", message, 400);
     private static IResult Refused(string code, string message) => ApiProblems.Of(null, code, message, 403);
     private static IResult Conflict(string code, string message) => ApiProblems.Of(null, code, message, 409);

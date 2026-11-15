@@ -1,4 +1,5 @@
 using MarketplaceHub.Application;
+using static MarketplaceHub.Api.Common.EndpointHelpers;
 
 namespace MarketplaceHub.Api.Operations;
 
@@ -96,15 +97,6 @@ public static class JobEndpoints
         var codes = (List(platform) ?? []).Concat(List(platforms) ?? []).Select(code => code.ToUpperInvariant()).Distinct(StringComparer.Ordinal).Take(20).ToArray();
         return codes.Length == 0 ? null : codes;
     }
-    private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
-    private static IResult? RequireIdempotency(HttpContext http) => string.IsNullOrWhiteSpace(http.Request.Headers["Idempotency-Key"])
-        ? Problem(http, new("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key başlığı zorunludur.", 400))
-        : http.Request.Headers["Idempotency-Key"].ToString().Length > 256
-            ? Problem(http, new("IDEMPOTENCY_KEY_INVALID", "Idempotency-Key en fazla 256 karakterdir.", 400))
-            : null;
-    private static IResult Result<T>(HttpContext http, ServiceResult<T> result) => result.Succeeded ? Results.Ok(result.Value) : Problem(http, result.Error!);
-    private static IResult Unauthorized(HttpContext http) => Problem(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
-    private static IResult Problem(HttpContext http, ServiceError error) => MarketplaceHub.Api.Security.ApiProblems.Of(http, error);
 
     public sealed record OneTimeInvoiceDeliveryAction(bool Confirmed, string OrderNumber);
 }

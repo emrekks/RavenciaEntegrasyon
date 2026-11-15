@@ -1,6 +1,7 @@
 using MarketplaceHub.Api.Security;
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Persistence;
+using static MarketplaceHub.Api.Common.EndpointHelpers;
 
 namespace MarketplaceHub.Api.Reports;
 
@@ -43,5 +44,4 @@ internal static class AdReportEndpoints
         return result.Succeeded ? Results.Ok(result.Value) : ApiProblems.Of(http, result.Error!);
     }
 
-    private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
 }

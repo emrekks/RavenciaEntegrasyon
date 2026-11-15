@@ -13,7 +13,7 @@ public static class ProductActivityEndpoints
             DateTimeOffset? from, DateTimeOffset? to, string? search, string? movements, bool? includeInitialPrices) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
-            if (tenant is null) return MarketplaceHub.Api.Security.ApiProblems.Of(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
+            if (tenant is null) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
             var result = await service.PageAsync(tenant.TenantId,
                 new ProductActivityQuery(limit, after, List(kinds), JobEndpoints.Platforms(platform, platforms), from, to, search, List(movements), includeInitialPrices == true), http.RequestAborted);
             return result.Succeeded ? Results.Ok(result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
@@ -23,7 +23,7 @@ public static class ProductActivityEndpoints
             DateTimeOffset? from, DateTimeOffset? to, string? search, string? movements, bool? includeInitialPrices) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
-            if (tenant is null) return MarketplaceHub.Api.Security.ApiProblems.Of(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
+            if (tenant is null) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
             var result = await service.CountsAsync(tenant.TenantId,
                 new ProductActivityQuery(Platforms: JobEndpoints.Platforms(platform, platforms), From: from, To: to, Search: search, Movements: List(movements), IncludeInitialPrices: includeInitialPrices == true), http.RequestAborted);
             return result.Succeeded ? Results.Ok(result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);

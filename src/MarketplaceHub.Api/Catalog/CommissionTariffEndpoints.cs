@@ -1,6 +1,7 @@
 using MarketplaceHub.Api.Security;
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Persistence;
+using static MarketplaceHub.Api.Common.EndpointHelpers;
 
 namespace MarketplaceHub.Api.Catalog;
 
@@ -181,8 +182,4 @@ internal static class CommissionTariffEndpoints
         return Result(await service.DeleteAsync(tenant.TenantId, tenant.UserId, connectionId, tariffId, http.TraceIdentifier, http.RequestAborted));
     }
 
-    private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
-    private static IResult Result<T>(ServiceResult<T> result) => result.Succeeded ? Results.Ok(result.Value) : ApiProblems.Of(null, result.Error!);
-    private static IResult Unauthorized(HttpContext http) => Problem(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
-    private static IResult Problem(HttpContext http, ServiceError error) => ApiProblems.Of(http, error);
 }

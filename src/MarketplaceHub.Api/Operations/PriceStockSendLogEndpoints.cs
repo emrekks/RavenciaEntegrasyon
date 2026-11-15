@@ -13,7 +13,7 @@ public static class PriceStockSendLogEndpoints
             Guid? connectionId, DateTimeOffset? from, DateTimeOffset? to, string? search, string? results, string? triggers, string? order) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
-            if (tenant is null) return MarketplaceHub.Api.Security.ApiProblems.Of(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
+            if (tenant is null) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
             var result = await service.PageAsync(tenant.TenantId,
                 new PriceStockSendLogQuery(limit, after, JobEndpoints.Platforms(platform, platforms), connectionId, from, to, search, List(results), List(triggers),
                     string.Equals(order, "asc", StringComparison.OrdinalIgnoreCase)),
@@ -25,7 +25,7 @@ public static class PriceStockSendLogEndpoints
             Guid? connectionId, DateTimeOffset? from, DateTimeOffset? to, string? search, string? triggers) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
-            if (tenant is null) return MarketplaceHub.Api.Security.ApiProblems.Of(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
+            if (tenant is null) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
             var result = await service.CountsAsync(tenant.TenantId,
                 new PriceStockSendLogQuery(Platforms: JobEndpoints.Platforms(platform, platforms), ConnectionId: connectionId, From: from, To: to, Search: search, Triggers: List(triggers)),
                 http.RequestAborted);

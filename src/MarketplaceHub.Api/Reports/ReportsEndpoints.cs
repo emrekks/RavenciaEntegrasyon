@@ -1,4 +1,5 @@
 using MarketplaceHub.Application;
+using static MarketplaceHub.Api.Common.EndpointHelpers;
 
 namespace MarketplaceHub.Api.Reports;
 
@@ -103,5 +104,4 @@ public static class ReportsEndpoints
         return true;
     }
 
-    private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
 }

@@ -1,5 +1,6 @@
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Persistence;
+using static MarketplaceHub.Api.Common.EndpointHelpers;
 
 namespace MarketplaceHub.Api.Dashboard;
 
@@ -43,5 +44,4 @@ public static class DashboardEndpoints
         return true;
     }
 
-    private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
 }

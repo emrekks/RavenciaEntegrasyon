@@ -7,6 +7,7 @@ using MarketplaceHub.Infrastructure.Security;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using static MarketplaceHub.Api.Common.EndpointHelpers;
 
 namespace MarketplaceHub.Api.Settings;
 
@@ -128,17 +129,6 @@ public static class OffsiteBackupEndpoints
     private static Task<IResult?> Reauth(string? password, string? code, string? recoveryCode, HttpContext http, UserManager<ApplicationUser> users, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time) =>
         AuthEndpoints.ReauthenticateAsync(new AuthEndpoints.ReauthenticateRequest(password ?? string.Empty, code, recoveryCode), http, users, db, protection, totp, hasher, time);
 
-    private static IResult? IfMatchVersion(HttpContext http, out long? expected)
-    {
-        expected = null;
-        var value = http.Request.Headers.IfMatch.ToString();
-        if (string.IsNullOrWhiteSpace(value)) return null;
-        if (value.Length < 4 || !value.StartsWith("\"v", StringComparison.Ordinal) || !value.EndsWith('"') || !long.TryParse(value[2..^1], out var version) || version <= 0)
-            return Problem(http, new("INVALID_ETAG", "If-Match güçlü ETag biçiminde olmalıdır: \"v{version}\".", 400));
-        expected = version;
-        return null;
-    }
-
     private static IResult Versioned(HttpContext http, OffsiteBackupView view, IConfiguration configuration)
     {
         if (view.Version > 0) http.Response.Headers.ETag = $"\"v{view.Version}\"";
@@ -177,7 +167,4 @@ public static class OffsiteBackupEndpoints
         });
     }
 
-    private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
-    private static IResult Unauthorized(HttpContext http) => Problem(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
-    private static IResult Problem(HttpContext http, ServiceError error) => ApiProblems.Of(http, error);
 }
