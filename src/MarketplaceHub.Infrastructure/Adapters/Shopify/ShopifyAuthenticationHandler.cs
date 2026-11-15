@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text.Json;
 using MarketplaceHub.Application;
@@ -20,7 +19,9 @@ public sealed class ShopifyAuthenticationHandler(
     private readonly IDataProtector protector = dataProtection.CreateProtector("MarketplaceHub.PlatformCredential.v1");
     // Shared by every request and job of the process (the handler itself is scoped), keyed by the credential
     // so a rotated credential never reuses the old token.
-    private static readonly ConcurrentDictionary<(Guid ConnectionId, Guid CredentialId), CachedToken> Tokens = new();
+    // Fresh until a minute before it expires (the system clock, as before).
+    private static readonly SingleFlightTokenCache<(Guid ConnectionId, Guid CredentialId), CachedToken> Tokens =
+        new(TimeProvider.System, (cached, now) => cached.ExpiresAt > now.AddMinutes(1));
 
     // Why the last LoadAsync returned null when the token service could not be reached or timed out: the caller
     // answers this transient failure instead of reporting the credentials as invalid.
@@ -73,11 +74,16 @@ public sealed class ShopifyAuthenticationHandler(
         return new(connection, shop, apiVersion, token.Token, token.ExpiresAt);
     }
 
-    private async Task<CachedToken?> AccessTokenAsync((Guid ConnectionId, Guid CredentialId) key, string shop, ShopifyCredentialPayload payload, CancellationToken cancellationToken)
-    {
-        var connectionId = key.ConnectionId;
-        if (Tokens.TryGetValue(key, out var cached) && cached.ExpiresAt > DateTimeOffset.UtcNow.AddMinutes(1)) return cached;
+    private Task<CachedToken?> AccessTokenAsync((Guid ConnectionId, Guid CredentialId) key, string shop, ShopifyCredentialPayload payload, CancellationToken cancellationToken) =>
+        CachedAsync(key, token => RequestTokenAsync(key.ConnectionId, shop, payload, token), cancellationToken);
 
+    // The process-wide token of a credential: kept until a minute before it expires; a failed request is not kept.
+    // ADAPTOR-DIGER-2: concurrent jobs of one credential wait for a single token request.
+    internal static Task<CachedToken?> CachedAsync((Guid ConnectionId, Guid CredentialId) key, Func<CancellationToken, Task<CachedToken?>> request, CancellationToken cancellationToken) =>
+        Tokens.GetAsync(key, request, (token, _) => token, cached => (CachedToken?)cached, cancellationToken);
+
+    private async Task<CachedToken?> RequestTokenAsync(Guid connectionId, string shop, ShopifyCredentialPayload payload, CancellationToken cancellationToken)
+    {
         var endpoint = new Uri($"https://{shop}.myshopify.com/admin/oauth/access_token");
         using var client = clients.CreateBoundedClient("Shopify");
         using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
@@ -107,9 +113,7 @@ public sealed class ShopifyAuthenticationHandler(
             var accessToken = json.RootElement.TryGetProperty("access_token", out var tokenElement) && tokenElement.ValueKind == JsonValueKind.String ? tokenElement.GetString() : null;
             var expiresIn = RemoteJson.Int32(json.RootElement, "expires_in") ?? 86_400;
             if (string.IsNullOrWhiteSpace(accessToken)) return null;
-            cached = new(accessToken, DateTimeOffset.UtcNow.AddSeconds(Math.Max(60, expiresIn)));
-            Tokens[key] = cached;
-            return cached;
+            return new(accessToken, DateTimeOffset.UtcNow.AddSeconds(Math.Max(60, expiresIn)));
         }
         catch (HttpRequestException exception)
         {
@@ -140,11 +144,7 @@ public sealed class ShopifyAuthenticationHandler(
     }
 
     // Drops the cached client-credentials tokens of a connection after Shopify refused one (401).
-    internal static void Forget(Guid connectionId)
-    {
-        foreach (var key in Tokens.Keys)
-            if (key.ConnectionId == connectionId) Tokens.TryRemove(key, out _);
-    }
+    internal static void Forget(Guid connectionId) => Tokens.ForgetWhere(key => key.ConnectionId == connectionId);
 
     private static bool IsValidShop(string shop) => shop.Length is >= 3 and <= 100
         && shop[0] is >= 'a' and <= 'z'
@@ -159,7 +159,7 @@ public sealed class ShopifyAuthenticationHandler(
         public string? ResolvedClientSecret => ClientSecret ?? ApiSecret;
         public override string ToString() => nameof(ShopifyCredentialPayload);
     }
-    private sealed record CachedToken(string Token, DateTimeOffset ExpiresAt)
+    internal sealed record CachedToken(string Token, DateTimeOffset ExpiresAt)
     {
         public override string ToString() => $"CachedToken {{ ExpiresAt = {ExpiresAt:O} }}";
     }

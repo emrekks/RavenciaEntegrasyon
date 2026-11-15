@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using MarketplaceHub.Application;
 
 namespace MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam;
@@ -10,34 +9,23 @@ namespace MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam;
 public sealed class TrendyolEFaturamTokenCache(TimeProvider timeProvider)
 {
     internal static readonly TimeSpan RenewBefore = TimeSpan.FromMinutes(2);
-    private readonly ConcurrentDictionary<Guid, TrendyolEFaturamAccessContext> tokens = new();
-    private readonly ConcurrentDictionary<Guid, SemaphoreSlim> locks = new();
+    private readonly SingleFlightTokenCache<Guid, TrendyolEFaturamAccessContext> tokens = new(timeProvider, Usable);
 
-    public async Task<AdapterResult<TrendyolEFaturamAccessContext>> GetAsync(
+    public Task<AdapterResult<TrendyolEFaturamAccessContext>> GetAsync(
         Guid credentialId,
         Func<CancellationToken, Task<AdapterResult<TrendyolEFaturamAccessContext>>> signIn,
-        CancellationToken cancellationToken)
-    {
-        if (Fresh(credentialId) is { } cached) return AdapterResult<TrendyolEFaturamAccessContext>.Success(cached);
-        var gate = locks.GetOrAdd(credentialId, _ => new SemaphoreSlim(1, 1));
-        await gate.WaitAsync(cancellationToken);
-        try
-        {
-            if (Fresh(credentialId) is { } again) return AdapterResult<TrendyolEFaturamAccessContext>.Success(again);
-            var result = await signIn(cancellationToken);
-            if (result.IsSuccess && Usable(result.Value!)) tokens[credentialId] = result.Value!;
-            return result;
-        }
-        finally { gate.Release(); }
-    }
+        CancellationToken cancellationToken) =>
+        tokens.GetAsync(
+            credentialId,
+            signIn,
+            (result, now) => result.IsSuccess && Usable(result.Value!, now) ? result.Value! : null,
+            cached => AdapterResult<TrendyolEFaturamAccessContext>.Success(cached),
+            cancellationToken);
 
     // Called when the invoice API answers 401 for a token (revoked, rotated or expired early).
-    public void Forget(Guid credentialId) => tokens.TryRemove(credentialId, out _);
+    public void Forget(Guid credentialId) => tokens.Forget(credentialId);
 
-    private TrendyolEFaturamAccessContext? Fresh(Guid credentialId) =>
-        tokens.TryGetValue(credentialId, out var cached) && Usable(cached) ? cached : null;
-
-    private bool Usable(TrendyolEFaturamAccessContext access) =>
-        access.ExpiresAt is { } expiresAt && expiresAt - RenewBefore > timeProvider.GetUtcNow()
-        && (access.NotBefore is not { } notBefore || notBefore <= timeProvider.GetUtcNow());
+    private static bool Usable(TrendyolEFaturamAccessContext access, DateTimeOffset now) =>
+        access.ExpiresAt is { } expiresAt && expiresAt - RenewBefore > now
+        && (access.NotBefore is not { } notBefore || notBefore <= now);
 }

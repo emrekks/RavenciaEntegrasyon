@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using MarketplaceHub.Application;
+using MarketplaceHub.Infrastructure.Adapters.Http;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -1016,7 +1017,7 @@ public sealed partial class ShopifyHttpClient(
         var manualDeliveryAllowed = IntegrationRuntimePolicy.AllowsExplicitManualInvoiceMarketplaceDelivery(
                 shop.Connection,
                 context,
-                configuration.GetValue<bool>("FeatureFlags:ExternalWrites"),
+                ExternalWriteGate.GlobalWritesEnabled(configuration),
                 ConnectionExternalWritesEnabled(shop.Connection.SettingsJson))
             && await HasVerifiedWriteCapabilityAsync(shop, context, InvoicingCapabilities.InvoiceDeliver, cancellationToken);
         if (!automaticDeliveryAllowed && !manualDeliveryAllowed)
@@ -1158,7 +1159,7 @@ public sealed partial class ShopifyHttpClient(
 
     private async Task<bool> CanWriteAsync(ShopifyRequestContext shop, AdapterContext context, string capabilityCode, CancellationToken cancellationToken)
     {
-        if (!configuration.GetValue<bool>("FeatureFlags:ExternalWrites")) return false;
+        if (!ExternalWriteGate.GlobalWritesEnabled(configuration)) return false;
         if (!ConnectionExternalWritesEnabled(shop.Connection.SettingsJson)
             || !IntegrationRuntimePolicy.AllowsExternalWrite(shop.Connection, context, globalWritesEnabled: true, connectionWritesEnabled: true)) return false;
         return await HasVerifiedWriteCapabilityAsync(shop, context, capabilityCode, cancellationToken);
@@ -1172,15 +1173,7 @@ public sealed partial class ShopifyHttpClient(
         return capabilities.Count == 1 && CapabilityEvidencePolicy.IsVerifiedWriteCapability(capabilities[0], shop.Connection, capabilityCode);
     }
 
-    private static bool ConnectionExternalWritesEnabled(string settingsJson)
-    {
-        try
-        {
-            using var settings = JsonDocument.Parse(settingsJson);
-            return settings.RootElement.TryGetProperty("ExternalWritesEnabled", out var value) && value.ValueKind == JsonValueKind.True;
-        }
-        catch (JsonException) { return false; }
-    }
+    private static bool ConnectionExternalWritesEnabled(string settingsJson) => ExternalWriteGate.ConnectionWritesEnabled(settingsJson);
 
     private async Task<bool> CanWriteAsync(ShopifyRequestContext shop, AdapterContext context, string capabilityOne, string capabilityTwo, CancellationToken cancellationToken) =>
         await CanWriteAsync(shop, context, capabilityOne, cancellationToken)
@@ -1306,8 +1299,7 @@ public sealed partial class ShopifyHttpClient(
                 // dropped from the cache, so the next request asks for a new one instead of reusing it until it expires.
                 if (response.StatusCode == HttpStatusCode.Unauthorized && context.ExpiresAt != DateTimeOffset.MaxValue)
                     ShopifyAuthenticationHandler.Forget(context.Connection.Id);
-                var retryAfter = response.Headers.RetryAfter?.Delta
-                    ?? (response.Headers.RetryAfter?.Date is { } resetAt ? resetAt - DateTimeOffset.UtcNow : null);
+                var retryAfter = RetryAfterHeader.Unchecked(response.Headers.RetryAfter, timeProvider.GetUtcNow());
                 return Failure<JsonDocument>(MapHttpError(response.StatusCode, raw, retryAfter, remoteRequestId), rate);
             }
             if (GraphQlError(document.RootElement, (int)response.StatusCode, remoteRequestId) is { } graphQlError)

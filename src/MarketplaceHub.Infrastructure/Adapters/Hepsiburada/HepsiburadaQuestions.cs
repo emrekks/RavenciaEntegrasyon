@@ -12,6 +12,7 @@ public sealed partial class HepsiburadaHttpClient : IQuestionPort
         if (account?.QuestionBaseAddress is null) return AdapterResult<MarketplaceQuestionPage>.Failure(new(AdapterErrorClass.Authentication, "HEPSIBURADA_QUESTION_CREDENTIALS", "Hepsiburada soru bağlantısı veya servis anahtarı eksik.", 401, null, null));
         var response = await SendAsync(account, account.QuestionBaseAddress, HttpMethod.Get, HepsiburadaQuestionRequestContract.ListPath(query), null, cancellationToken,
             request => request.Headers.TryAddWithoutValidation("merchantId", account.Connection.ExternalStoreId));
+        using var responseDocument = response.Value;
         if (!response.IsSuccess) return AdapterResult<MarketplaceQuestionPage>.Failure(response.Error!, response.RateLimit);
         try { return AdapterResult<MarketplaceQuestionPage>.Success(HepsiburadaQuestionMapper.Page(response.Value!, query), response.RateLimit); }
         catch (JsonException) { return AdapterResult<MarketplaceQuestionPage>.Failure(new(AdapterErrorClass.ContractViolation, "HEPSIBURADA_QUESTION_CONTRACT", "Hepsiburada soru yanıtının biçimi tanınmadı.", null, null, null), response.RateLimit); }
@@ -23,6 +24,7 @@ public sealed partial class HepsiburadaHttpClient : IQuestionPort
         if (account?.QuestionBaseAddress is null) return AdapterResult<RemoteMarketplaceQuestion>.Failure(new(AdapterErrorClass.Authentication, "HEPSIBURADA_QUESTION_CREDENTIALS", "Hepsiburada soru bağlantısı veya servis anahtarı eksik.", 401, null, null));
         var response = await SendAsync(account, account.QuestionBaseAddress, HttpMethod.Get, HepsiburadaQuestionRequestContract.DetailPath(questionId), null, cancellationToken,
             request => request.Headers.TryAddWithoutValidation("merchantId", account.Connection.ExternalStoreId));
+        using var responseDocument = response.Value;
         if (!response.IsSuccess) return AdapterResult<RemoteMarketplaceQuestion>.Failure(response.Error!, response.RateLimit);
         try
         {
@@ -38,12 +40,13 @@ public sealed partial class HepsiburadaHttpClient : IQuestionPort
     {
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account?.QuestionBaseAddress is null) return AdapterResult<RemoteQuestionAnswerResult>.Failure(new(AdapterErrorClass.Authentication, "HEPSIBURADA_QUESTION_CREDENTIALS", "Hepsiburada soru bağlantısı veya servis anahtarı eksik.", 401, null, null));
-        if (!IntegrationRuntimePolicy.AllowsExternalWrite(account.Connection, context, GlobalWritesEnabled, ConnectionWritesEnabled(account.Connection.SettingsJson)))
+        if (!ExternalWriteGate.AllowsRuntimeWrite(account.Connection, context, GlobalWritesEnabled))
             return AdapterResult<RemoteQuestionAnswerResult>.Failure(new(AdapterErrorClass.Validation, "EXTERNAL_WRITES_DISABLED", "Bu bağlantıda veya ortamda pazaryerine cevap gönderme kapalı.", 403, null, null));
         if (!HepsiburadaQuestionRequestContract.ValidAnswer(answer)) return AdapterResult<RemoteQuestionAnswerResult>.Failure(new(AdapterErrorClass.Validation, "QUESTION_ANSWER_LENGTH", "Cevap 1–2000 karakter arasında olmalıdır.", 422, null, null));
         using var content = HepsiburadaQuestionRequestContract.CreateAnswerContent(answer);
         var response = await SendAsync(account, account.QuestionBaseAddress, HttpMethod.Post, HepsiburadaQuestionRequestContract.AnswerPath(questionId), content, cancellationToken,
             request => request.Headers.TryAddWithoutValidation("merchantId", account.Connection.ExternalStoreId));
+        using var responseDocument = response.Value;
         if (!response.IsSuccess) return AdapterResult<RemoteQuestionAnswerResult>.Failure(response.Error!, response.RateLimit);
         return AdapterResult<RemoteQuestionAnswerResult>.Success(new(true, false, null), response.RateLimit);
     }
@@ -57,7 +60,7 @@ public sealed partial class HepsiburadaHttpClient : IQuestionPort
     {
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account?.QuestionBaseAddress is null) return AdapterResult<RemoteQuestionReportResult>.Failure(new(AdapterErrorClass.Authentication, "HEPSIBURADA_QUESTION_CREDENTIALS", "Hepsiburada soru bağlantısı veya servis anahtarı eksik.", 401, null, null));
-        if (!IntegrationRuntimePolicy.AllowsExternalWrite(account.Connection, context, GlobalWritesEnabled, ConnectionWritesEnabled(account.Connection.SettingsJson)))
+        if (!ExternalWriteGate.AllowsRuntimeWrite(account.Connection, context, GlobalWritesEnabled))
             return AdapterResult<RemoteQuestionReportResult>.Failure(new(AdapterErrorClass.Validation, "EXTERNAL_WRITES_DISABLED", "Bu bağlantıda veya ortamda pazaryerine soru bildirme kapalı.", 403, null, null));
         var text = HepsiburadaQuestionRequestContract.RejectReasonText(report);
         if (!HepsiburadaQuestionRequestContract.ValidRejectReason(text))

@@ -15,8 +15,8 @@ public sealed partial class PttAvmHttpClient : IOrderPort
     {
         if (window.ModifiedAfter is not { } start || window.ModifiedBefore is not { } end || end <= start)
             return Failure<AdapterPageResult<RemoteOrder>>(AdapterErrorClass.Validation, "PTTAVM_ORDER_WINDOW_INVALID", "PttAVM siparişleri başlangıcı ve bitişi belli bir tarih aralığıyla sorgulanabilir.", HttpStatusCode.UnprocessableEntity);
-        var firstDay = start.ToOffset(TurkeyOffset).Date;
-        var lastDay = end.ToOffset(TurkeyOffset).Date;
+        var firstDay = start.ToOffset(TurkeyTime.Offset).Date;
+        var lastDay = end.ToOffset(TurkeyTime.Offset).Date;
         if (lastDay - firstDay > MaxOrderWindow)
             return Failure<AdapterPageResult<RemoteOrder>>(AdapterErrorClass.Validation, "PTTAVM_ORDER_WINDOW_INVALID", "PttAVM siparişleri en fazla 40 günlük bir tarih aralığıyla sorgulanabilir.", HttpStatusCode.UnprocessableEntity);
         var load = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
@@ -31,7 +31,7 @@ public sealed partial class PttAvmHttpClient : IOrderPort
     public async Task<AdapterResult<RemoteOrder>> GetAsync(AdapterContext context, string externalOrderId, OrderLookupHint? hint, CancellationToken cancellationToken)
     {
         var orderNumber = externalOrderId.Trim();
-        var day = PttAvmOrderMapper.OrderDay(orderNumber) ?? hint?.OrderedAt?.ToOffset(TurkeyOffset).Date;
+        var day = PttAvmOrderMapper.OrderDay(orderNumber) ?? hint?.OrderedAt?.ToOffset(TurkeyTime.Offset).Date;
         if (orderNumber.Length == 0 || day is null)
             return Failure<RemoteOrder>(AdapterErrorClass.Validation, "PTTAVM_ORDER_NUMBER_INVALID", "PttAVM sipariş numarasından sipariş günü okunamadı.", HttpStatusCode.UnprocessableEntity);
         var load = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);

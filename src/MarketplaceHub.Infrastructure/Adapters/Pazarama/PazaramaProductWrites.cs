@@ -4,6 +4,7 @@ using System.Net;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using MarketplaceHub.Application;
+using static MarketplaceHub.Infrastructure.Adapters.RemoteFields;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Pazarama;
 
@@ -430,12 +431,5 @@ public static class PazaramaProductWriteMapper
                 return new(code, ok, null, ok ? null : "PAZARAMA_SALE_STATUS_REJECTED", false, message);
             }
         return new(code, false, null, "PAZARAMA_SALE_STATUS_UNCONFIRMED", false, "Pazarama yanıtı bu barkod için sonuç içermiyor.");
-    }
-
-    private static string? Text(JsonElement element, string property)
-    {
-        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(property, out var value)) return null;
-        var text = value.ValueKind switch { JsonValueKind.String => value.GetString(), JsonValueKind.Number => value.GetRawText(), _ => null };
-        return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
     }
 }

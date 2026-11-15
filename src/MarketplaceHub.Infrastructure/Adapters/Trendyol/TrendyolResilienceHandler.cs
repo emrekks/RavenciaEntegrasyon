@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using MarketplaceHub.Infrastructure.Adapters.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -9,7 +10,7 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
 {
     // Invoked once the request has its quota token, right before it is sent; the caller starts the
     // network timeout there so time spent queueing for the quota is not counted as a timeout.
-    public static readonly HttpRequestOptionsKey<Action> QuotaAcquiredKey = new("MarketplaceHub.Trendyol.QuotaAcquired");
+    public static readonly HttpRequestOptionsKey<Action> QuotaAcquiredKey = Http.MarketplaceQuota.AcquiredKey;
 
     private readonly TrendyolOptions options;
     private readonly TimeProvider timeProvider;
@@ -451,16 +452,7 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
         return $"{(service.Length == 0 ? "root" : service)}:{resource}".ToLowerInvariant();
     }
 
-    private TimeSpan? RetryAfterDelay(System.Net.Http.Headers.RetryConditionHeaderValue? retryAfter)
-    {
-        if (retryAfter?.Delta is { } delta && delta > TimeSpan.Zero) return delta;
-        if (retryAfter?.Date is { } date)
-        {
-            var delay = date - timeProvider.GetUtcNow();
-            if (delay > TimeSpan.Zero) return delay;
-        }
-        return null;
-    }
+    private TimeSpan? RetryAfterDelay(System.Net.Http.Headers.RetryConditionHeaderValue? retryAfter) => RetryAfterHeader.Delay(retryAfter, timeProvider.GetUtcNow());
 
     // A circuit opened by Trendyol's own 429 answers 429 as well, so the job keeps its attempt and the
     // connection backs off (as the shared circuit breaker does); any other open circuit answers a 503 marked as local

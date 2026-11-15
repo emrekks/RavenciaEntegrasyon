@@ -43,8 +43,8 @@ public sealed partial class PazaramaHttpClient : IReturnPort
     {
         pageSize = size,
         pageNumber = page,
-        requestStartDate = Day(start.ToOffset(TurkeyOffset).Date),
-        requestEndDate = Day(end.ToOffset(TurkeyOffset).Date.AddDays(1))
+        requestStartDate = Day(start.ToOffset(TurkeyTime.Offset).Date),
+        requestEndDate = Day(end.ToOffset(TurkeyTime.Offset).Date.AddDays(1))
     };
 
     // Explicit: IOrderPort.GetAsync has the same parameters on this class.
@@ -281,21 +281,11 @@ public static class PazaramaReturnMapper
         string[] formats = ["d MMMM yyyy HH:mm", "d MMMM yyyy H:mm", "yyyy-MM-dd HH:mm", "yyyy-MM-ddTHH:mm:ss", "yyyy-MM-ddTHH:mm:ss.FFFFFFF", "dd.MM.yyyy HH:mm"];
         foreach (var culture in new[] { CultureInfo.GetCultureInfo("tr-TR"), CultureInfo.InvariantCulture })
             if (DateTime.TryParseExact(text, formats, culture, DateTimeStyles.None, out var local))
-                return new DateTimeOffset(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), TimeSpan.FromHours(3)).ToUniversalTime();
+                return TurkeyTime.FromLocal(local);
         return null;
     }
 
-    private static string? Text(JsonElement element, string property)
-    {
-        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(property, out var value)) return null;
-        var text = value.ValueKind switch
-        {
-            JsonValueKind.String => value.GetString(),
-            JsonValueKind.Number => value.GetRawText(),
-            _ => null
-        };
-        return string.IsNullOrWhiteSpace(text) || text.Trim() == "null" ? null : text.Trim();
-    }
+    private static string? Text(JsonElement element, string property) => RemoteFields.TextOrNullWord(element, property);
 
     private static long? Number(JsonElement element, string property) =>
         element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var number) ? number : null;

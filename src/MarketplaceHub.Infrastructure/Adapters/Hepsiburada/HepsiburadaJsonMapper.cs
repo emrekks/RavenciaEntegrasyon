@@ -1947,7 +1947,6 @@ internal static class HepsiburadaJsonMapper
 
     // Hepsiburada writes dates in Turkey time without an offset ("2026-10-19T14:19:58"): on live rows an
     // order dated 14:19 was already stored by the panel at 11:21 UTC. A value with an offset or Z keeps it.
-    internal static readonly TimeSpan TurkeyOffset = TimeSpan.FromHours(3);
 
     // The Hepsiburada policy for every text timestamp (orders, packages, questions): see TurkeyTime.
     internal static DateTimeOffset? TurkeyDate(string? value) => TurkeyTime.Parse(value);
@@ -1957,7 +1956,7 @@ internal static class HepsiburadaJsonMapper
 
     // A query date the way Hepsiburada reads it: Turkey time, minutes.
     internal static string QueryTime(DateTimeOffset value) =>
-        value.ToOffset(TurkeyOffset).ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+        value.ToOffset(TurkeyTime.Offset).ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
     private static JsonElement Find(JsonElement element, params string[] names) => TryFind(element, out var value, names) ? value : default;
     // The names are in priority order: the first name present wins, whatever order the JSON lists its properties in.
     private static bool TryFind(JsonElement element, out JsonElement value, params string[] names)

@@ -37,7 +37,7 @@ public sealed partial class N11HttpClient : IReturnPort
         + "<pagingData>" + SoapElement("currentPage", page.ToString(CultureInfo.InvariantCulture)) + "</pagingData>";
 
     internal static string TurkeyDate(DateTimeOffset value) =>
-        TimeZoneInfo.ConvertTime(value, TurkeyTimeZone).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+        TurkeyTime.FormatWithZoneRules(value, "dd/MM/yyyy");
 
     // Explicit: IOrderPort.GetAsync has the same parameters on this class.
     Task<AdapterResult<RemoteReturnClaim>> IReturnPort.GetAsync(AdapterContext context, string externalReturnId, CancellationToken cancellationToken) =>
@@ -206,7 +206,7 @@ public static class N11ReturnMapper
         if (DateTimeOffset.TryParseExact(text, withOffset, CultureInfo.InvariantCulture, DateTimeStyles.None, out var offsetValue)) return offsetValue.ToUniversalTime();
         string[] turkeyTime = ["yyyy-MM-dd", "yyyy-MM-ddTHH:mm:ss", "dd/MM/yyyy", "dd/MM/yyyy HH:mm"];
         return DateTime.TryParseExact(text, turkeyTime, CultureInfo.InvariantCulture, DateTimeStyles.None, out var local)
-            ? new DateTimeOffset(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), TimeSpan.FromHours(3)).ToUniversalTime()
+            ? TurkeyTime.FromLocal(local)
             : null;
     }
 }

@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
+using MarketplaceHub.Infrastructure.Adapters.Http;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol.Contracts;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol.ErrorMapping;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping;
@@ -17,7 +18,7 @@ namespace MarketplaceHub.Infrastructure.Adapters.Trendyol;
 public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthenticationHandler authentication, IConfiguration configuration, IOptions<TrendyolOptions> trendyolOptions, TimeProvider timeProvider, ILogger<TrendyolHttpClient> logger)
     : IConnectionPort, IReferenceDataPort, IProductPort, IProductVisualLookupPort, IInventoryPricePort, IOrderPort, IReturnPort, IReturnBatchReadPort, IReturnAuditPort, IInvoiceMarketplacePort
 {
-    private bool GlobalWritesEnabled => configuration.GetValue<bool>("FeatureFlags:ExternalWrites");
+    private bool GlobalWritesEnabled => ExternalWriteGate.GlobalWritesEnabled(configuration);
 
     public async Task<AdapterResult<ConnectionIdentity>> TestAsync(AdapterContext context, CancellationToken cancellationToken)
     {
@@ -1284,12 +1285,7 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         string.IsNullOrWhiteSpace(storeFrontCode) ? TrendyolLookupPolicy.HomeStoreFront : storeFrontCode.Trim().ToUpperInvariant();
 
     // Retry-After as seconds or as an HTTP date; a date in the past means no wait.
-    internal static TimeSpan? RetryAfterDelay(System.Net.Http.Headers.RetryConditionHeaderValue? header, DateTimeOffset now)
-    {
-        if (header?.Delta is { } delta) return delta > TimeSpan.Zero ? delta : null;
-        if (header?.Date is { } date && date - now is var wait && wait > TimeSpan.Zero) return wait;
-        return null;
-    }
+    internal static TimeSpan? RetryAfterDelay(System.Net.Http.Headers.RetryConditionHeaderValue? header, DateTimeOffset now) => RetryAfterHeader.Delay(header, now);
 
     private static TimeSpan RequestTimeout(TimeSpan configured) => configured > TimeSpan.Zero
         ? TimeSpan.FromSeconds(Math.Clamp(configured.TotalSeconds, 5, 300))

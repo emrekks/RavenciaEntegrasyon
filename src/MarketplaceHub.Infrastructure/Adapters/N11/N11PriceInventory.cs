@@ -3,6 +3,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
+using static MarketplaceHub.Infrastructure.Adapters.RemoteFields;
 
 namespace MarketplaceHub.Infrastructure.Adapters.N11;
 
@@ -45,15 +46,7 @@ public sealed partial class N11HttpClient : IInventoryPricePort
         }
     }
 
-    internal static bool ConnectionWritesEnabled(string settingsJson)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(settingsJson);
-            return document.RootElement.TryGetProperty("ExternalWritesEnabled", out var enabled) && enabled.ValueKind == JsonValueKind.True;
-        }
-        catch (JsonException) { return false; }
-    }
+    internal static bool ConnectionWritesEnabled(string settingsJson) => ExternalWriteGate.ConnectionWritesEnabled(settingsJson);
 }
 
 public static class N11TaskMapper
@@ -106,17 +99,5 @@ public static class N11TaskMapper
         if (!element.TryGetProperty("reasons", out var reasons) || reasons.ValueKind != JsonValueKind.Array) return null;
         var text = string.Join(" ", reasons.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()));
         return string.IsNullOrWhiteSpace(text) ? null : N11ErrorAdvice.WithAdvice(text.Length <= 300 ? text : text[..300]);
-    }
-
-    private static string? Text(JsonElement element, string property)
-    {
-        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(property, out var value)) return null;
-        var text = value.ValueKind switch
-        {
-            JsonValueKind.String => value.GetString(),
-            JsonValueKind.Number => value.GetRawText(),
-            _ => null
-        };
-        return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
     }
 }

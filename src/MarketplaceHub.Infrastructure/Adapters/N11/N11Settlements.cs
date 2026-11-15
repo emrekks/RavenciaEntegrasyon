@@ -130,7 +130,7 @@ public static class N11SettlementMapper
 
     // A calendar day as n11 writes it (dd/MM/yyyy, or yyyy-MM-dd); null when there is none or it cannot be read.
     internal static DateOnly? Day(string? value) => N11ReturnMapper.Date(value) is { } instant
-        ? DateOnly.FromDateTime(instant.ToOffset(TimeSpan.FromHours(3)).DateTime)
+        ? TurkeyTime.Day(instant)
         : null;
 
     private static DateTimeOffset? Date(string? value) => N11ReturnMapper.Date(value);

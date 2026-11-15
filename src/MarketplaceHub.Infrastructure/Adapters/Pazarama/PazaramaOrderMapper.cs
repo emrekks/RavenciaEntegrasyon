@@ -265,7 +265,7 @@ public static class PazaramaOrderMapper
         if (text is null) return null;
         string[] formats = ["yyyy-MM-dd HH:mm", "yyyy-MM-dd HH:mm:ss", "yyyy-MM-ddTHH:mm:ss", "yyyy-MM-ddTHH:mm:ss.FFFFFFF", "yyyy-MM-dd"];
         return DateTime.TryParseExact(text, formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var local)
-            ? new DateTimeOffset(local, PazaramaOrderHistoryPolicy.TurkeyOffset).ToUniversalTime()
+            ? TurkeyTime.FromLocal(local)
             : TurkeyTime.Parse(text);
     }
 
@@ -314,15 +314,5 @@ public static class PazaramaOrderMapper
         return RemoteJson.Decimal(value);
     }
 
-    private static string? Text(JsonElement element, string property)
-    {
-        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(property, out var value)) return null;
-        var text = value.ValueKind switch
-        {
-            JsonValueKind.String => value.GetString(),
-            JsonValueKind.Number => value.GetRawText(),
-            _ => null
-        };
-        return string.IsNullOrWhiteSpace(text) || text.Trim() == "null" ? null : text.Trim();
-    }
+    private static string? Text(JsonElement element, string property) => RemoteFields.TextOrNullWord(element, property);
 }
