@@ -347,6 +347,24 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
         if (changedModelCodes.Count > 0
             && await ModelCodeOwnership.FindOtherAsync(db, tenantId, changedModelCodes, changes.Select(change => byId[change.VariantId].ProductId).Distinct().ToArray(), cancellationToken) is { } modelCodeHolder)
             return ServiceResult<ProductTransferApplyResult>.Fail("PRODUCT_TRANSFER_MODEL_CODE_TAKEN", $"Dosyadaki yeni bir model kodu '{modelCodeHolder.Title}' ürününde kullanılıyor; yazılırsa iki ürün tek ürünün renkleri gibi birleşir. Dosyayı düzeltip yeniden yükleyin.", 409);
+        // KATALOG-1: the model code is the model's: every row of a card the upload re-codes ends on one code (the preview
+        // refuses it too; checked again here, as the client's plan is not trusted).
+        var recodedChanges = modelCodeChanges.Where(change => ProductFamilyKeyPolicy.ModelCodeKey(byId[change.VariantId].ModelCode) != ProductFamilyKeyPolicy.ModelCodeKey(change.ModelCode)).ToList();
+        if (recodedChanges.Count > 0)
+        {
+            var recodedProductIds = recodedChanges.Select(change => byId[change.VariantId].ProductId).Distinct().ToArray();
+            var askedCodes = modelCodeChanges.GroupBy(change => change.VariantId).ToDictionary(group => group.Key, group => group.First().ModelCode);
+            var cardRows = new List<(Guid ProductId, Guid Id, string? ModelCode)>();
+            foreach (var chunk in recodedProductIds.Chunk(Chunk))
+                cardRows.AddRange((await db.ProductVariants.AsNoTracking().Where(variant => variant.TenantId == tenantId && chunk.Contains(variant.ProductId))
+                    .Select(variant => new { variant.ProductId, variant.Id, variant.ModelCode }).ToListAsync(cancellationToken)).Select(row => (row.ProductId, row.Id, row.ModelCode)));
+            foreach (var card in cardRows.GroupBy(row => row.ProductId))
+            {
+                var finals = card.Select(row => askedCodes.TryGetValue(row.Id, out var asked) ? asked : row.ModelCode).ToList();
+                if (finals.Select(ProductFamilyKeyPolicy.ModelCodeKey).OfType<string>().Distinct(StringComparer.Ordinal).Count() > 1)
+                    return ServiceResult<ProductTransferApplyResult>.Fail(CatalogService.ModelCodeMixedCode, "Model kodu bir kartın tüm satırlarında birlikte değişir; dosya bir kartın yalnız bazı satırlarına yeni model kodu yazıyor. Hiçbir değişiklik kaydedilmedi; ürünün tüm satırlarına aynı model kodunu yazıp yeniden yükleyin.", 422);
+            }
+        }
 
         var now = timeProvider.GetUtcNow();
         var applyId = Guid.CreateVersion7();

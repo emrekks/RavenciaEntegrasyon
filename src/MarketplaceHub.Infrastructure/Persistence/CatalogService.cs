@@ -574,6 +574,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     private static readonly System.Linq.Expressions.Expression<Func<Product, Product>> ProductShape = x => new Product { Id = x.Id, TenantId = x.TenantId, Title = "", Description = "", BrandId = x.BrandId, Status = x.Status, CreatedAt = x.CreatedAt, UpdatedAt = x.UpdatedAt, Version = x.Version, DefaultSalePrice = x.DefaultSalePrice };
     private IQueryable<ProductVariant> VariantShapes(Guid tenantId) => db.ProductVariants.AsNoTracking()
         .Where(x => x.TenantId == tenantId)
+        // KATALOG-1: in the card's row order, so the list reads a card's model code from the same row the model link does.
+        .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
         .Select(x => new ProductVariant { Id = x.Id, TenantId = x.TenantId, ProductId = x.ProductId, Sku = "", SkuNormalized = "", ModelCode = x.ModelCode, OptionSignature = x.OptionSignature, Status = x.Status, DefaultSalePrice = x.DefaultSalePrice });
 
     private static string ProductFamilyKey(Product product, IReadOnlyList<ProductVariant> variants)
@@ -1118,6 +1120,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             }
         }
 
+        // KATALOG-1: the model code is the model's, one value on every row of the card.
+        if (MixedModelCodes<ProductView>(command.Variants.Select(x => x.ModelCode)) is { } createMixed) return createMixed;
         // A model code belongs to one product: a new card (a draft too) may not take one the catalog already holds. Checked
         // before the stock codes, which the editor generates from the model code and would clash first.
         if (await ModelCodeOwnership.FindAsync(db, tenantId, command.Variants.Select(x => x.ModelCode), cancellationToken) is { } modelCodeHolder)
@@ -1562,6 +1566,18 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             var updateGaps = ProductRequiredFields.Missing(new ProductRequiredFields.Card(command.Title, command.BrandId, command.CategoryId, WarrantyGiven: true, DeliveryDaysGiven: (command.DeliveryDays ?? product.DeliveryDays) is not null, cardListPrice, cardSalePrice, requiredRows));
             if (updateGaps.Count > 0) return ProductRequiredFields.Refusal<ProductView>(updateGaps);
         }
+        // KATALOG-1: the model code is the model's, not a row's. A save that writes a row's code (or adds rows) leaves every
+        // kept and new row of the family on one code; a save naming another code on some rows only would split the card
+        // (and the model) and is refused whole. A save that changes no code is not checked, so a legacy mix never blocks it.
+        var finalCodeUpdates = variantUpdates.GroupBy(update => update.Id).ToDictionary(group => group.Key, group => group.First());
+        if (variantsToCreate.Count > 0 || variantUpdates.Any(update => existingVariants.FirstOrDefault(variant => variant.Id == update.Id) is { } stored
+                && ProductFamilyKeyPolicy.ModelCodeKey(stored.ModelCode) != ProductFamilyKeyPolicy.ModelCodeKey(update.ModelCode)))
+        {
+            var finalCodes = existingVariants.Where(variant => !variantIdsToDelete.Contains(variant.Id))
+                .Select(variant => finalCodeUpdates.TryGetValue(variant.Id, out var update) ? update.ModelCode : variant.ModelCode)
+                .Concat(variantsToCreate.Select(variant => variant.ModelCode));
+            if (MixedModelCodes<ProductView>(finalCodes) is { } updateMixed) return updateMixed;
+        }
         // O7/D6: the family as this save leaves it (kept rows with their updated codes, then the new rows) may not hold
         // one stock code or barcode twice; the unique index would refuse it as a 500 after half the checks. A deleted
         // variant's code may go to another row (D6). Nothing is saved; the editor marks every row holding the code.
@@ -1935,6 +1951,15 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         await LinkSavedModelAsync(tenantId, id, familyVariantProductIds, command, cancellationToken);
         return await GetProductAsync(tenantId, id, cancellationToken);
     }
+
+    public const string ModelCodeMixedCode = "MODEL_CODE_MIXED";
+    public const string ModelCodeMixedMessage = "Bir modelin tüm satırları aynı model kodunu taşımalıdır.";
+
+    // KATALOG-1: more than one model-code key among the given rows (blank codes left out) is refused.
+    private static ServiceResult<T>? MixedModelCodes<T>(IEnumerable<string?> codes) =>
+        codes.Select(ProductFamilyKeyPolicy.ModelCodeKey).OfType<string>().Distinct(StringComparer.Ordinal).Count() > 1
+            ? ServiceResult<T>.Fail(ModelCodeMixedCode, ModelCodeMixedMessage, 422, new Dictionary<string, string[]> { [ModelCodeUniquenessPolicy.Field] = [ModelCodeMixedMessage] })
+            : null;
 
     // Model Kaydı Faz 1: after an editor save the family's model link is checked again (a variant the save deleted by SQL
     // is not seen by AppDbContext), and the model takes the shared fields the save wrote to every card (write-through).

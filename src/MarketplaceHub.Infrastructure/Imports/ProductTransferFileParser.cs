@@ -382,7 +382,7 @@ public static class ProductTransferImportPlanner
 
     // Rows of one product that ask for different product-level values (title, VAT), and rows of one model asking for
     // different brands: the products and the message their rows get.
-    private sealed record ProductConflicts(Dictionary<Guid, string> Title, Dictionary<Guid, string> Vat, Dictionary<Guid, string> Brand);
+    private sealed record ProductConflicts(Dictionary<Guid, string> Title, Dictionary<Guid, string> Vat, Dictionary<Guid, string> Brand, Dictionary<Guid, string> ModelCode);
 
     public static ProductTransferImportPreview Plan(string fileName, IReadOnlyList<ProductTransferFileRow> rows, IReadOnlyList<ProductTransferCandidate> variants, IReadOnlyCollection<string>? fields = null, IReadOnlyList<ProductTransferStoreView>? stores = null, IReadOnlyList<string>? availableFields = null, IReadOnlyCollection<string>? switchedOffBrandKeys = null)
     {
@@ -423,7 +423,8 @@ public static class ProductTransferImportPlanner
         var conflicts = new ProductConflicts(
             Disagreements(pendingRows, row => row.Title, "ürün adı"),
             Disagreements(pendingRows, row => row.Vat, "KDV oranı"),
-            BrandDisagreements(pendingRows));
+            BrandDisagreements(pendingRows),
+            ModelCodeDisagreements(pendingRows, variants));
         // A barcode asked for by more than one variant in the file cannot be given to any of them.
         var barcodeClaims = pendingRows
             .Where(item => item.Row.NewBarcode.Kind == ProductTransferValueKind.Set && !string.Equals(item.Row.NewBarcode.Text, item.Variant.Barcode?.Trim(), StringComparison.Ordinal))
@@ -532,6 +533,28 @@ public static class ProductTransferImportPlanner
         return result;
     }
 
+    // KATALOG-1: the model code is the model's, one value on every row of a card. A card whose rows the file gives another
+    // code would, after the upload, hold more than one code (a row left out of the file, or rows naming different codes;
+    // blank codes are not counted): its code-changing rows are refused. A card whose rows ask for no new code is not checked (a legacy mix stays as it is).
+    private static Dictionary<Guid, string> ModelCodeDisagreements(IReadOnlyList<(ProductTransferFileRow Row, ProductTransferCandidate Variant)> rows, IReadOnlyList<ProductTransferCandidate> variants)
+    {
+        var asked = rows.Where(item => item.Row.ModelCode.Kind is ProductTransferValueKind.Set or ProductTransferValueKind.Clear)
+            .GroupBy(item => item.Variant.VariantId).ToDictionary(group => group.Key, group => group.First());
+        static string? Asked(ProductTransferFileRow row) => row.ModelCode.Kind == ProductTransferValueKind.Set ? row.ModelCode.Text : null;
+        var changing = asked.Values.Where(item => ProductFamilyKeyPolicy.ModelCodeKey(Asked(item.Row)) != ProductFamilyKeyPolicy.ModelCodeKey(item.Variant.ModelCode))
+            .Select(item => item.Variant.ProductId).ToHashSet();
+        var result = new Dictionary<Guid, string>();
+        foreach (var card in variants.Where(variant => changing.Contains(variant.ProductId)).GroupBy(variant => variant.ProductId))
+        {
+            var finals = card.Select(variant => asked.TryGetValue(variant.VariantId, out var item) ? Asked(item.Row) : variant.ModelCode).ToList();
+            var keys = finals.Select(ProductFamilyKeyPolicy.ModelCodeKey).OfType<string>().Distinct(StringComparer.Ordinal).Count();
+            if (keys < 2) continue;
+            var lines = string.Join(", ", asked.Values.Where(item => item.Variant.ProductId == card.Key).Select(item => item.Row.RowNumber).Order());
+            result[card.Key] = $"Model kodu kartın tüm satırlarında birlikte değişir (satır {lines}); ürünün tüm satırlarına aynı model kodunu yazın.";
+        }
+        return result;
+    }
+
     // The products whose rows ask for more than one value of a product-level field, with the message their rows get.
     private static Dictionary<Guid, string> Disagreements(IEnumerable<(ProductTransferFileRow Row, ProductTransferCandidate Variant)> rows, Func<ProductTransferFileRow, ProductTransferValue> value, string label) =>
         rows.Where(item => value(item.Row).Kind == ProductTransferValueKind.Set)
@@ -609,6 +632,7 @@ public static class ProductTransferImportPlanner
             _ => default
         };
         if (modelCode.Change == ProductTransferFieldChange.Clear && !variant.ProductDraft) return RowPlan.None with { Error = ProductRequiredFields.CannotEmpty(ProductRequiredFields.ModelCode) };
+        if (modelCode.Change is not null && conflicts.ModelCode.TryGetValue(variant.ProductId, out var modelCodeConflict)) return RowPlan.None with { Error = modelCodeConflict };
 
         PanelPlan panel = default;
         if (row.PanelSale.Kind == ProductTransferValueKind.Set || row.PanelList.Kind == ProductTransferValueKind.Set)

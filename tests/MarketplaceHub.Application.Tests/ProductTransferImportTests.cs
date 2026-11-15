@@ -454,6 +454,40 @@ public sealed class ProductTransferImportTests
         Assert.Equal((true, (string?)null, "CLEAR"), (clear.Changes[0].SetModelCode, clear.Changes[0].ModelCode, clear.Rows[0].ModelCodeChange));
     }
 
+    // KATALOG-1: a model code is one value on every row of a card. A file that re-codes only some rows of a card (or names
+    // two codes on one card) is refused on those rows; every row of the card re-coded together goes through.
+    [Fact]
+    public void AModelCode_ChangesOnEveryRowOfACardTogether()
+    {
+        var card = Guid.CreateVersion7();
+        var s = Candidate("MZ100-S", null, null, null) with { ProductId = card, ModelCode = "MZ100" };
+        var m = Candidate("MZ100-M", null, null, null) with { ProductId = card, ModelCode = "MZ100" };
+        var l = Candidate("MZ100-L", null, null, null) with { ProductId = card, ModelCode = "MZ100" };
+        string[] fields = [ProductTransferFields.ModelCode];
+
+        // Only the S row takes a new code: the card would hold two codes.
+        var partial = ProductTransferImportPlanner.Plan("f.xlsx", [new ProductTransferFileRow(2, "MZ100-S", null, Empty, Empty, ModelCode: Text("MZ100A"))], [s, m, l], fields);
+        Assert.Empty(partial.Changes);
+        Assert.Equal("ERROR", Assert.Single(partial.Rows).Outcome);
+        Assert.Contains("tüm satırlarında birlikte", partial.Rows[0].Message);
+
+        // Two codes on one card's rows.
+        var split = ProductTransferImportPlanner.Plan("f.xlsx", [
+            new ProductTransferFileRow(2, "MZ100-S", null, Empty, Empty, ModelCode: Text("MZ200")),
+            new ProductTransferFileRow(3, "MZ100-M", null, Empty, Empty, ModelCode: Text("MZ300")),
+            new ProductTransferFileRow(4, "MZ100-L", null, Empty, Empty, ModelCode: Text("MZ300"))], [s, m, l], fields);
+        Assert.Empty(split.Changes);
+        Assert.All(split.Rows, row => Assert.Equal("ERROR", row.Outcome));
+
+        // Every row together (another spelling of one code is the same code).
+        var together = ProductTransferImportPlanner.Plan("f.xlsx", [
+            new ProductTransferFileRow(2, "MZ100-S", null, Empty, Empty, ModelCode: Text("MZ200")),
+            new ProductTransferFileRow(3, "MZ100-M", null, Empty, Empty, ModelCode: Text("MZ200")),
+            new ProductTransferFileRow(4, "MZ100-L", null, Empty, Empty, ModelCode: Text("mz200"))], [s, m, l], fields);
+        Assert.Equal(3, together.Changes.Count);
+        Assert.All(together.Rows, row => Assert.Equal("UPDATE", row.Outcome));
+    }
+
     private static ProductTransferValue Empty => ProductTransferValue.Empty;
     private static ProductTransferValue Set(decimal value) => ProductTransferValue.Set(value);
     private static ProductTransferValue Text(string value) => ProductTransferValue.SetText(value);
