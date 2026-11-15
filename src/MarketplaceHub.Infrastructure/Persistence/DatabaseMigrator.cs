@@ -64,6 +64,18 @@ public static class DatabaseMigrator
                 {
                     logger.LogWarning(exception, "Product model attributes were not recomputed");
                 }
+                // KATALOG-14 phase B backfill: every model takes its cards' shared values (the desi and the size chart
+                // included) and the models whose cards disagree are reported. Same rule as every save's write-through;
+                // idempotent, one short transaction per model.
+                try
+                {
+                    var (models, written, differing) = await ProductModelValues.RefreshAllAsync(migrationContext, DateTimeOffset.UtcNow, cancellationToken);
+                    logger.LogInformation("Product model values refreshed: {Models} models, {Written} written, {Differing} with cards that disagree", models, written, differing);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    logger.LogWarning(exception, "Product model values were not refreshed");
+                }
                 return;
             }
             catch (Exception exception) when (IsLockTimeout(exception) && attempt < LockAttempts)

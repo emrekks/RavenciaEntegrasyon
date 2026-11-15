@@ -59,9 +59,25 @@ public sealed class ProductModel
     // When the editor last wrote the model's category attributes (product_model_attributes); null: they are the cards'
     // majority set (ProductModelLinks.RecomputeUnsavedAttributesAsync), not yet saved from the editor.
     public DateTimeOffset? AttributesSavedAt { get; set; }
+    // KATALOG-14 (expand): the model's desi (owner, 11 Nov 2026: "desi marka ortak"), the value most of its variants hold
+    // (on a tie the smaller, the editor's rule); null while no variant holds one. Written through by ProductModelValues
+    // after every save that changes a variant's desi; the variants keep their own (every reader still reads them).
+    public decimal? Desi { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public long Version { get; set; } = 1;
+}
+
+// KATALOG-13 (expand): the model's size-chart measurements, the set most of its colour cards hold (on a tie the oldest
+// card's). A colour card without measurements of its own reads these in the editor; the per-card charts
+// (product_size_charts) stay as they are and remain what the marketplaces' chart pictures come from.
+public sealed class ProductModelSizeChart
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid ModelId { get; set; }
+    public string? MeasurementsJson { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
 }
 
 // The model's shared category attributes (Model Kaydı Faz 2): the card-level set every colour card holds, less the colour

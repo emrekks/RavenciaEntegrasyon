@@ -298,8 +298,9 @@ public sealed class PostgreSqlMarketplaceModelLinksTests(PostgreSqlTenantIsolati
         await db.SaveChangesAsync();
         var model = await db.ProductModels.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.ModelCodeKey == "MZ110");
 
-        // Two of three cards hold Pamuk: the model's set, without Renk; again writes nothing.
-        Assert.True(await ProductModelLinks.RecomputeUnsavedAttributesAsync(db, CancellationToken.None) >= 1);
+        // Two of three cards hold Pamuk: the model's set, without Renk, written by the save itself (KATALOG-14 phase B
+        // write-through); the deploy-time recompute agrees and writes nothing.
+        await ProductModelLinks.RecomputeUnsavedAttributesAsync(db, CancellationToken.None);
         var rows = await db.ProductModelAttributes.AsNoTracking().Where(x => x.ModelId == model.Id).ToListAsync();
         Assert.Equal((kumas.Id, (Guid?)pamuk.Id), (Assert.Single(rows).AttributeId, rows[0].ValueId));
         await ProductModelLinks.RecomputeUnsavedAttributesAsync(db, CancellationToken.None);

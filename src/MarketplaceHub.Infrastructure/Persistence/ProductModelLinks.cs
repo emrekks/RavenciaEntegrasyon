@@ -44,10 +44,15 @@ public static class ProductModelLinks
         public Dictionary<Guid, HashSet<Guid>> ModelIds { get; } = [];
         // Cards whose pictures were added or moved by the save: their FamilyId is set from the card after it (Faz 2).
         public Dictionary<Guid, HashSet<Guid>> MediaProductIds { get; } = [];
-        public bool IsEmpty => Keys.Count == 0 && ProductIds.Count == 0 && ModelIds.Count == 0 && MediaProductIds.Count == 0;
-        public IEnumerable<Guid> Tenants => Keys.Keys.Concat(ProductIds.Keys).Concat(ModelIds.Keys).Concat(MediaProductIds.Keys).Distinct();
+        // KATALOG-14 phase B: cards whose shared values (a model-row field, a variant's desi, a card-level attribute, the
+        // size chart) the save changed: their model takes the values after it (ProductModelValues).
+        public Dictionary<Guid, HashSet<Guid>> ValueProductIds { get; } = [];
+        public bool IsEmpty => Keys.Count == 0 && ProductIds.Count == 0 && ModelIds.Count == 0 && MediaProductIds.Count == 0 && ValueProductIds.Count == 0;
+        public IEnumerable<Guid> Tenants => Keys.Keys.Concat(ProductIds.Keys).Concat(ModelIds.Keys).Concat(MediaProductIds.Keys).Concat(ValueProductIds.Keys).Distinct();
 
         internal void AddMedia(Guid tenantId, Guid productId) => Set(MediaProductIds, tenantId).Add(productId);
+
+        internal void AddValues(Guid tenantId, Guid productId) => Set(ValueProductIds, tenantId).Add(productId);
 
         internal void AddKey(Guid tenantId, string? modelCode)
         {
@@ -89,6 +94,7 @@ public static class ProductModelLinks
                     var code = entry.Property(x => x.ModelCode);
                     var product = entry.Property(x => x.ProductId);
                     var sort = entry.Property(x => x.SortOrder);
+                    if (Changed(entry.Property(x => x.Desi)) || Changed(entry.Property(x => x.OptionSignature))) pending.AddValues(variant.TenantId, variant.ProductId);
                     if (!Changed(code) && !Changed(product) && !Changed(sort)) break;
                     pending.AddKey(variant.TenantId, code.OriginalValue);
                     pending.AddKey(variant.TenantId, code.CurrentValue);
@@ -112,7 +118,24 @@ public static class ProductModelLinks
                     pending.AddProduct(product.TenantId, product.Id);
                     pending.AddModel(product.TenantId, entry.Property(x => x.FamilyId).OriginalValue);
                     break;
+                case EntityState.Modified when Changed(entry.Property(x => x.Title)) || Changed(entry.Property(x => x.Description)) || Changed(entry.Property(x => x.CategoryId))
+                    || Changed(entry.Property(x => x.VatRate)) || Changed(entry.Property(x => x.VatInclusion)) || Changed(entry.Property(x => x.WarrantyMonths))
+                    || Changed(entry.Property(x => x.DeliveryDays)):
+                    pending.AddValues(product.TenantId, product.Id);
+                    break;
             }
+        }
+        // A card-level attribute (VariantId null) or a card's size chart changed: the model's set follows.
+        foreach (var entry in tracker.Entries<ProductAttributeAssignment>())
+        {
+            var cardLevel = entry.Entity.VariantId is null || entry.State == EntityState.Modified && entry.Property(x => x.VariantId).OriginalValue is null;
+            if (cardLevel && entry.State is EntityState.Added or EntityState.Deleted or EntityState.Modified)
+                pending.AddValues(entry.Entity.TenantId, entry.State == EntityState.Deleted ? entry.Property(x => x.ProductId).OriginalValue : entry.Entity.ProductId);
+        }
+        foreach (var entry in tracker.Entries<ProductSizeChart>())
+        {
+            if (entry.State is EntityState.Added or EntityState.Deleted || entry.State == EntityState.Modified && Changed(entry.Property(x => x.MeasurementsJson)))
+                pending.AddValues(entry.Entity.TenantId, entry.State == EntityState.Deleted ? entry.Property(x => x.ProductId).OriginalValue : entry.Entity.ProductId);
         }
         foreach (var entry in tracker.Entries<ProductMedia>())
         {
@@ -140,6 +163,19 @@ public static class ProductModelLinks
             if (keys.Count > 0) await ReconcileAsync(db, tenantId, keys, now, cancellationToken);
             if (pending.MediaProductIds.TryGetValue(tenantId, out var mediaProductIds) && mediaProductIds.Count > 0)
                 await SyncMediaFamiliesAsync(db, tenantId, [.. mediaProductIds], cancellationToken);
+            // KATALOG-14 phase B: the models of the cards the save added, moved or changed a shared value of (read after
+            // the reconcile, so a card that just joined a model counts for it), the models of the reconciled keys and the
+            // models cards left.
+            var valueCards = (pending.ValueProductIds.GetValueOrDefault(tenantId) ?? []).Concat(productIds ?? []).Distinct().ToArray();
+            var valueModels = new HashSet<Guid>(pending.ModelIds.GetValueOrDefault(tenantId) ?? []);
+            if (valueCards.Length > 0)
+                valueModels.UnionWith(await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && valueCards.Contains(x.Id) && x.FamilyId != null).Select(x => x.FamilyId!.Value).ToListAsync(cancellationToken));
+            if (keys.Count > 0)
+            {
+                var keyArray = keys.ToArray();
+                valueModels.UnionWith(await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && keyArray.Contains(x.ModelCodeKey)).Select(x => x.Id).ToListAsync(cancellationToken));
+            }
+            if (valueModels.Count > 0) await ProductModelValues.RefreshAsync(db, tenantId, valueModels, now, cancellationToken);
         }
     }
 
@@ -410,11 +446,18 @@ public static class ProductModelLinks
     // so a recompute and an editor save of the same model take turns: a recompute that waited for a save finds the model
     // saved and leaves it, and a save that waited for a recompute replaces the recomputed rows. Before, the recompute
     // replaced the rows on the list it read at the start and could overwrite a set the editor saved meanwhile.
-    private static async Task<bool> ReplaceModelAttributesAsync(AppDbContext db, Guid tenantId, Guid modelId, IReadOnlyList<AttributeRow> rows, DateTimeOffset? savedAt, CancellationToken cancellationToken)
+    // KATALOG-14 phase B (ProductModelValues): the cards' majority set, whether or not the editor saved the model; the
+    // stamp is left as it is.
+    internal sealed record ModelAttributeRow(Guid AttributeId, Guid? ValueId, string? TextValue, decimal? NumberValue, bool? BooleanValue, int SortOrder);
+
+    internal static Task<bool> ReplaceModelAttributesAsync(AppDbContext db, Guid tenantId, Guid modelId, IReadOnlyList<ModelAttributeRow> rows, CancellationToken cancellationToken) =>
+        ReplaceModelAttributesAsync(db, tenantId, modelId, [.. rows.Select(x => new AttributeRow(Guid.Empty, x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue, x.SortOrder))], null, cancellationToken, onlyUnsaved: false);
+
+    private static async Task<bool> ReplaceModelAttributesAsync(AppDbContext db, Guid tenantId, Guid modelId, IReadOnlyList<AttributeRow> rows, DateTimeOffset? savedAt, CancellationToken cancellationToken, bool onlyUnsaved = true)
     {
         rows = [.. rows.DistinctBy(x => (x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue))];
         await using var transaction = db.Database.CurrentTransaction is null ? await db.Database.BeginTransactionAsync(cancellationToken) : null;
-        var locked = savedAt is null
+        var locked = savedAt is null && onlyUnsaved
             ? await db.Database.SqlQuery<int>($"""
                 SELECT 1 AS "Value" FROM catalog.product_models
                 WHERE "TenantId" = {tenantId} AND "Id" = {modelId} AND "AttributesSavedAt" IS NULL

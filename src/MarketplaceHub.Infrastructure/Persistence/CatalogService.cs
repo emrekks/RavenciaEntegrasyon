@@ -411,7 +411,11 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var current = await db.CategoryAttributeRequirements.Where(x => x.TenantId == tenantId && x.CategoryId == categoryId).ToListAsync(cancellationToken); db.CategoryAttributeRequirements.RemoveRange(current); db.CategoryAttributeRequirements.AddRange(requirements.Select(x => new CategoryAttributeRequirement { Id = Guid.CreateVersion7(), TenantId = tenantId, CategoryId = categoryId, AttributeId = x.AttributeId, IsRequired = x.IsRequired, AllowsCustomValue = x.AllowsCustomValue, IsPanelScoped = true, Role = NormalizeRequirementRole(x.Role), DisplayOrder = x.DisplayOrder })); category.Version++; category.UpdatedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return ServiceResult<IReadOnlyList<AttributeRequirementCommand>>.Ok(requirements);
     }
 
-    public async Task<PageResult<ProductView>> ListProductsAsync(Guid tenantId, int limit, string? after, string? status, string? search, string? platform, string? stock, string? sort, CancellationToken cancellationToken)
+    public Task<PageResult<ProductView>> ListProductsAsync(Guid tenantId, int limit, string? after, string? status, string? search, string? platform, string? stock, string? sort, CancellationToken cancellationToken) =>
+        ListProductsAsync(tenantId, limit, after, status, search, platform, stock, sort, sqlPaging: true, cancellationToken);
+
+    // sqlPaging false: always the in-memory grouping (the reference the SQL paging is tested against, KATALOG-10).
+    internal async Task<PageResult<ProductView>> ListProductsAsync(Guid tenantId, int limit, string? after, string? status, string? search, string? platform, string? stock, string? sort, bool sqlPaging, CancellationToken cancellationToken)
     {
         var hasPlatformStatusFilter = TryProductPlatformFilter(platform?.Trim() ?? string.Empty, out var platformFilterCode, out var platformFilterState);
         var query = VisibleProducts(tenantId);
@@ -429,6 +433,11 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 : cursors.TryDecodeProductSort(after, catalogSort.Value, out var sortKey) && (afterSortKey = sortKey) is not null;
             if (!validCursor) throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(after));
         }
+        // KATALOG-10: newest first without a stock or platform-state filter, the models are paged in SQL while the stored
+        // model links give the model-code rule's grouping; otherwise the in-memory grouping below.
+        if (sqlPaging && catalogSort is null && string.IsNullOrWhiteSpace(stock) && !hasPlatformStatusFilter
+            && await FamilyIdMatchesModelCodeRuleAsync(tenantId, cancellationToken))
+            return await ListProductFamiliesInSqlAsync(tenantId, query, afterCreatedAt, afterId, limit, countKey, cachedCount as int?, cancellationToken);
         // A platform refresh updates the card content, but must not reshuffle the
         // catalog. Keep the list in its original insertion order instead of the
         // mutable UpdatedAt order.
@@ -1293,8 +1302,10 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var openedColor = familyCardFields.First(card => card.ProductId == id).Color;
         // Model Kaydı Faz 2: the model record's values when the editor saved them after every card's last change (they are
         // then the cards' own values); the cards' majority otherwise.
-        var model = await ProductModelLinks.SavedFieldsAsync(db, tenantId, product.FamilyId, familyProducts, openedColor, cancellationToken)
+        var today = await ProductModelLinks.SavedFieldsAsync(db, tenantId, product.FamilyId, familyProducts, openedColor, cancellationToken)
             ?? ProductFamilySharedFields.ModelValues(familyCardFields, openedColor);
+        // KATALOG-14 phase C: from the model record where it holds the cards' one value; today's value otherwise.
+        var model = await ProductModelValues.RecordFieldsAsync(db, tenantId, product.FamilyId, familyProducts, familyCardFields, openedColor, today, cancellationToken) ?? today;
         var modelAttributes = await SavedModelAttributesAsync(tenantId, product.FamilyId, familyProducts, primaryView, cancellationToken)
             ?? await ModelAttributesAsync(tenantId, familyCardViews, primaryView, cancellationToken);
         // Every card's size chart closes the strip, in the strip's own order: no chart stands among the colours' pictures,

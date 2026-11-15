@@ -38,6 +38,7 @@ internal static class CatalogModelConfiguration
             entity.Property(x => x.ModelCode).HasMaxLength(160); entity.Property(x => x.ModelCodeKey).HasMaxLength(160);
             entity.Property(x => x.Title).HasMaxLength(320); entity.Property(x => x.TitleColor).HasMaxLength(120);
             entity.Property(x => x.VatRate).HasPrecision(7, 4); entity.Property(x => x.VatInclusion).HasMaxLength(16);
+            entity.Property(x => x.Desi).HasPrecision(19, 4);
             entity.Property(x => x.Version).IsConcurrencyToken();
             // One model per brand and model-code key; cards without a brand are one brand too (NULLS NOT DISTINCT).
             entity.HasIndex(x => new { x.TenantId, x.BrandId, x.ModelCodeKey }).IsUnique().AreNullsDistinct(false);
@@ -154,6 +155,14 @@ internal static class CatalogModelConfiguration
             entity.HasOne<Product>().WithMany().HasForeignKey(x => new { x.TenantId, x.ProductId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<FileAsset>().WithMany().HasForeignKey(x => x.FileAssetId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne<FileAsset>().WithMany().HasForeignKey(x => x.LastGeneratedAssetId).OnDelete(DeleteBehavior.SetNull);
+        });
+        builder.Entity<ProductModelSizeChart>(entity =>
+        {
+            entity.ToTable("product_model_size_charts", "catalog"); entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.TenantId, x.ModelId }).IsUnique();
+            entity.Property(x => x.MeasurementsJson).HasColumnType("jsonb");
+            // Derived from the cards' charts: it goes with its model.
+            entity.HasOne<ProductModel>().WithMany().HasForeignKey(x => new { x.TenantId, x.ModelId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
         });
         builder.Entity<AiUsageLog>(entity =>
         {
