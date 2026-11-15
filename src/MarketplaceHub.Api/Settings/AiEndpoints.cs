@@ -123,9 +123,16 @@ public static class AiEndpoints
         return view is null ? Problem(http, new("RESOURCE_NOT_FOUND", "Ürün bulunamadı.", 404)) : Results.Ok(view);
     }
 
-    private static async Task<IResult> GenerateSizeChartAsync(Guid id, SizeChartInput request, HttpContext http, SizeChartService service)
+    private static async Task<IResult> GenerateSizeChartAsync(Guid id, SizeChartInput request, HttpContext http, SizeChartService service, AiRunGate gate)
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        // API-GUVENLIK-3: a second press, tab or user does not start another billed run for the same card, and a tenant
+        // runs at most AiRunGate.PerTenant charts at once.
+        using var lease = gate.TryEnter(tenant.TenantId, $"size-chart:{id:N}", out var refusal);
+        if (lease is null)
+            return refusal == AiRunGate.Refusal.SubjectBusy
+                ? Problem(http, new("SIZE_CHART_BUSY", "Bu ürün için beden tablosu zaten hazırlanıyor; bitmesini bekleyin.", 409))
+                : Problem(http, new("AI_BUSY", $"Aynı anda en fazla {AiRunGate.PerTenant} beden tablosu hazırlanabilir; biri bitince tekrar deneyin.", 429));
         try { return Results.Ok(await service.GenerateAsync(tenant.TenantId, tenant.UserId, id, request, http.RequestAborted)); }
         catch (SizeChartException exception) { return Problem(http, new(exception.Code, exception.Message, exception.Status)); }
     }
