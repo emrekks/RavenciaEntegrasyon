@@ -1,0 +1,104 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index e7c19e4c8..2b9c6b819 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -146,7 +146,7 @@ jobs:
+             rmdir deploy/secrets 2>/dev/null || true
+           }
+           trap cleanup_compose_placeholders EXIT
+-          for name in postgres_password.txt app_db_connection.txt credential_key.txt dp_certificate.pfx dp_certificate_password.txt alert_sync_token.txt; do
++          for name in postgres_password.txt app_db_connection.txt migrate_db_connection.txt credential_key.txt dp_certificate.pfx dp_certificate_password.txt alert_sync_token.txt; do
+             path="deploy/secrets/$name"
+             [[ ! -e "$path" ]] || { echo "Refusing to replace an existing secret file in CI validation." >&2; exit 1; }
+             : > "$path"
+diff --git a/deploy/backup/restore-drill.sh b/deploy/backup/restore-drill.sh
+index 4814cf076..dcb774833 100644
+--- a/deploy/backup/restore-drill.sh
++++ b/deploy/backup/restore-drill.sh
+@@ -81,7 +81,22 @@ sudo docker volume inspect "$backup_volume" >/dev/null
+ 
+ umask 077
+ cp -- "$secrets_root/postgres_password.txt" "$password_file"
+-cp -- "$secrets_root/app_db_connection.txt" "$connection_file"
++# The isolated database knows only the marketplacehub superuser (password postgres_password.txt); production's
++# app_db_connection.txt logs in as marketplacehub_app (docs/RUNBOOK-GERI-ALMA.md section 7). Same host, database and
++# options, superuser login.
++connection_source="$(<"$secrets_root/app_db_connection.txt")"
++postgres_password="$(<"$password_file")"
++connection=""
++IFS=';' read -r -a connection_parts <<<"$connection_source"
++for part in "${connection_parts[@]}"; do
++  case "$part" in
++    Username=*) part="Username=marketplacehub" ;;
++    Password=*) part="Password=$postgres_password" ;;
++  esac
++  connection+="${connection:+;}$part"
++done
++printf '%s' "$connection" > "$connection_file"
++unset connection_source postgres_password connection connection_parts
+ # The disposable internal server may advertise GSS encryption although the chiseled app image intentionally
+ # does not carry Kerberos libraries. Authentication remains SCRAM; only optional GSS transport negotiation is disabled.
+ printf ';GSS Encryption Mode=Disable' >> "$connection_file"
+diff --git a/deploy/compose/compose.production.yaml b/deploy/compose/compose.production.yaml
+index fc2cc02a1..ca9920528 100644
+--- a/deploy/compose/compose.production.yaml
++++ b/deploy/compose/compose.production.yaml
+@@ -29,7 +29,12 @@ services:
+       Security__RequireMfaForElevatedRoles: "${MARKETPLACEHUB_REQUIRE_MFA_FOR_ELEVATED_ROLES:-false}"
+       DataProtection__CertificatePath: /run/secrets/dp_certificate
+       DataProtection__CertificatePassword_FILE: /run/secrets/dp_certificate_password
+-    secrets: &production_secrets [app_db_connection, credential_key, dp_certificate, dp_certificate_password]
++    # The owner role's connection at the app's path (compose.yaml); !override so the lists are not merged.
++    secrets: !override
++      - { source: migrate_db_connection, target: app_db_connection }
++      - credential_key
++      - dp_certificate
++      - dp_certificate_password
+     logging: !override
+       driver: journald
+       options: { tag: "{{.Name}}" }
+@@ -49,7 +54,7 @@ services:
+     image: ${MARKETPLACEHUB_APP_IMAGE:?set immutable application image with digest}
+     build: null
+     environment: *production_environment
+-    secrets: *production_secrets
++    secrets: [app_db_connection, credential_key, dp_certificate, dp_certificate_password]
+     logging: !override
+       driver: journald
+       options: { tag: "{{.Name}}" }
+diff --git a/deploy/compose/compose.yaml b/deploy/compose/compose.yaml
+index 54b4b179f..f462c30e6 100644
+--- a/deploy/compose/compose.yaml
++++ b/deploy/compose/compose.yaml
+@@ -107,6 +107,12 @@ services:
+     <<: *app
+     restart: "no"
+     command: ["api/MarketplaceHub.Api.dll", "migrate"]
++    # Migrations run as marketplacehub_owner, which owns every schema and table; API and Worker log in as
++    # marketplacehub_app with row access only (docs/RUNBOOK-GERI-ALMA.md section 7). Same target path, so
++    # ConnectionStrings__AppDb_FILE stays the one of x-app.
++    secrets:
++      - { source: migrate_db_connection, target: app_db_connection }
++      - credential_key
+     depends_on:
+       postgres: { condition: service_healthy }
+ 
+@@ -293,4 +299,5 @@ volumes:
+ secrets:
+   postgres_password: { file: ../secrets/postgres_password.txt }
+   app_db_connection: { file: ../secrets/app_db_connection.txt }
++  migrate_db_connection: { file: ../secrets/migrate_db_connection.txt }
+   credential_key: { file: ../secrets/credential_key.txt }
+diff --git a/deploy/scripts/lib.sh b/deploy/scripts/lib.sh
+index 41a6b88b8..4e8ae59d2 100644
+--- a/deploy/scripts/lib.sh
++++ b/deploy/scripts/lib.sh
+@@ -17,7 +17,7 @@ if ! declare -p sudo_cmd >/dev/null 2>&1; then
+ fi
+ 
+ # Every production script needs these files; callers may pass extra names.
+-lib_required_secret_files=(postgres_password.txt app_db_connection.txt credential_key.txt dp_certificate.pfx dp_certificate_password.txt production.env)
++lib_required_secret_files=(postgres_password.txt app_db_connection.txt migrate_db_connection.txt credential_key.txt dp_certificate.pfx dp_certificate_password.txt production.env)
+ 
+ require_secret_files() {
+   local name

@@ -100,6 +100,14 @@ else
   fail "the drill creates the roles before pg_restore (roles line ${roles_at:-none}, pg_restore line ${restore_at:-none})"
 fi
 
+# Runbook section 7 step 4 is a prepared, not applied, patch: it must still apply to the tree (regenerate it from the
+# runbook's description when a change to those files makes it stale), and the tree must not carry it yet.
+patch="$repository_root/docs/patches/VERITABANI-DAGITIM-1-app-db-roles-switch.patch"
+status=0
+apply_output="$(git -C "$repository_root" apply --check "$patch" 2>&1)" || status=$?
+assert_eq "0" "$status" "the section 7 step 4 patch still applies ($apply_output)"
+assert_not_contains "$(cat "$repository_root/deploy/compose/compose.yaml")" "migrate_db_connection" "compose does not use the owner connection yet (owner's step)"
+
 callers="$(grep -rl 'install-app-db-roles' "$repository_root/deploy/scripts" "$repository_root/deploy/systemd" "$repository_root/deploy/compose" "$repository_root/deploy/backup" "$repository_root/.github" 2>/dev/null | grep -v 'deploy/scripts/install-app-db-roles.sh' || true)"
 assert_eq "" "$callers" "no deploy script, unit, compose file or workflow runs it"
 
