@@ -403,17 +403,39 @@ public static class ProductModelLinks
 
     private sealed record AttributeRow(Guid ProductId, Guid AttributeId, Guid? ValueId, string? TextValue, decimal? NumberValue, bool? BooleanValue, int SortOrder);
 
-    // Replaces the model's attribute rows with the given set when it differs; returns whether it wrote.
+    // Replaces the model's attribute rows with the given set when it differs; returns whether it wrote. The editor's
+    // write (savedAt given) stamps AttributesSavedAt; the deploy-time recompute (savedAt null) writes only a model the
+    // editor has still not saved.
+    // VERITABANI-DAGITIM-12: both lock the model row first, in one transaction with the rows they replace and the stamp,
+    // so a recompute and an editor save of the same model take turns: a recompute that waited for a save finds the model
+    // saved and leaves it, and a save that waited for a recompute replaces the recomputed rows. Before, the recompute
+    // replaced the rows on the list it read at the start and could overwrite a set the editor saved meanwhile.
     private static async Task<bool> ReplaceModelAttributesAsync(AppDbContext db, Guid tenantId, Guid modelId, IReadOnlyList<AttributeRow> rows, DateTimeOffset? savedAt, CancellationToken cancellationToken)
     {
         rows = [.. rows.DistinctBy(x => (x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue))];
+        await using var transaction = db.Database.CurrentTransaction is null ? await db.Database.BeginTransactionAsync(cancellationToken) : null;
+        var locked = savedAt is null
+            ? await db.Database.SqlQuery<int>($"""
+                SELECT 1 AS "Value" FROM catalog.product_models
+                WHERE "TenantId" = {tenantId} AND "Id" = {modelId} AND "AttributesSavedAt" IS NULL
+                FOR UPDATE
+                """).ToListAsync(cancellationToken)
+            : await db.Database.SqlQuery<int>($"""
+                SELECT 1 AS "Value" FROM catalog.product_models
+                WHERE "TenantId" = {tenantId} AND "Id" = {modelId}
+                FOR UPDATE
+                """).ToListAsync(cancellationToken);
+        if (savedAt is null && locked.Count == 0)
+        {
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+            return false;
+        }
         var current = await db.ProductModelAttributes.AsNoTracking().Where(x => x.TenantId == tenantId && x.ModelId == modelId).ToListAsync(cancellationToken);
         var same = current.Select(x => AttributeKey(x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue)).Order(StringComparer.Ordinal)
             .SequenceEqual(rows.Select(x => AttributeKey(x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue)).Order(StringComparer.Ordinal), StringComparer.Ordinal);
         if (!same)
         {
-            // Delete and insert in one transaction: a failed insert leaves the model's set as it was.
-            await using var transaction = db.Database.CurrentTransaction is null ? await db.Database.BeginTransactionAsync(cancellationToken) : null;
+            // Delete and insert in the one transaction: a failed insert leaves the model's set as it was.
             await db.ProductModelAttributes.Where(x => x.TenantId == tenantId && x.ModelId == modelId).ExecuteDeleteAsync(cancellationToken);
             foreach (var row in rows)
                 await db.Database.ExecuteSqlInterpolatedAsync($"""
@@ -421,11 +443,11 @@ public static class ProductModelLinks
                     VALUES ({Guid.CreateVersion7()}, {tenantId}, {modelId}, {row.AttributeId}, {row.ValueId}, {row.TextValue}, {row.NumberValue}, {row.BooleanValue}, {row.SortOrder})
                     ON CONFLICT DO NOTHING
                     """, cancellationToken);
-            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         }
         if (savedAt is { } at)
             await db.ProductModels.Where(x => x.TenantId == tenantId && x.Id == modelId)
                 .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.AttributesSavedAt, at).SetProperty(x => x.UpdatedAt, at).SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         return !same;
     }
 

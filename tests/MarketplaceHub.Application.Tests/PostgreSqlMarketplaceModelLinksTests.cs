@@ -313,4 +313,72 @@ public sealed class PostgreSqlMarketplaceModelLinksTests(PostgreSqlTenantIsolati
         Assert.Equal((Guid?)keten.Id, (await db.ProductModelAttributes.AsNoTracking().SingleAsync(x => x.ModelId == model.Id)).ValueId);
         await transaction.RollbackAsync();
     }
+
+    // VERITABANI-DAGITIM-12: the deploy-time recompute read the unsaved model while an editor save of it was still open;
+    // it waits for the save and leaves the model as the editor saved it (before, it replaced the saved set with the
+    // cards' majority).
+    [PostgreSqlFact]
+    public async Task TheRecompute_LeavesAModelTheEditorSavedWhileItRan()
+    {
+        Seed seed;
+        Product gri;
+        Guid modelId, keten;
+        var now = DateTimeOffset.FromUnixTimeMilliseconds(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        await using (var setup = fixture.CreateContext())
+        {
+            seed = AddSeed(setup);
+            gri = AddCard(setup, seed, seed.Ravencia, "MZ112", "Gri", "Kadın Gri Bluz", 0, null);
+            var siyah = AddCard(setup, seed, seed.Ravencia, "MZ112", "Siyah", "Kadın Siyah Bluz", 1, null);
+            var mavi = AddCard(setup, seed, seed.Ravencia, "MZ112", "Mavi", "Kadın Mavi Bluz", 2, null);
+            var kumas = new AttributeDefinition { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, Code = $"kumas-{Guid.NewGuid():N}", Name = "Kumaş", DataType = AttributeDataType.SingleSelect, CreatedAt = now, UpdatedAt = now };
+            setup.AttributeDefinitions.Add(kumas);
+            var pamukValue = new AttributeValue { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, AttributeId = kumas.Id, Value = "Pamuk", NormalizedValue = "pamuk" };
+            var ketenValue = new AttributeValue { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, AttributeId = kumas.Id, Value = "Keten", NormalizedValue = "keten" };
+            setup.AttributeValues.AddRange(pamukValue, ketenValue);
+            keten = ketenValue.Id;
+            foreach (var (card, value) in new[] { (gri, ketenValue), (siyah, pamukValue), (mavi, pamukValue) })
+                setup.ProductAttributeAssignments.Add(new ProductAttributeAssignment { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ProductId = card.Id, AttributeId = kumas.Id, ValueId = value.Id, Version = 1 });
+            await setup.SaveChangesAsync();
+            modelId = await setup.ProductModels.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id && x.ModelCodeKey == "MZ112").Select(x => x.Id).SingleAsync();
+        }
+
+        try
+        {
+            // The editor saves the Gri card's set (Keten) and has not committed yet.
+            await using var editor = fixture.CreateContext();
+            await using (var save = await editor.Database.BeginTransactionAsync())
+            {
+                await ProductModelLinks.WriteAttributesAsync(editor, seed.Tenant.Id, gri.Id, now, CancellationToken.None);
+
+                // The recompute starts meanwhile: the model still reads as unsaved, so it is on its list and waits.
+                await using var deploy = fixture.CreateContext();
+                var recompute = ProductModelLinks.RecomputeUnsavedAttributesAsync(deploy, CancellationToken.None);
+                await Task.Delay(500);
+                Assert.False(recompute.IsCompleted);
+                await save.CommitAsync();
+                await recompute;
+            }
+
+            await using var verification = fixture.CreateContext();
+            var rows = await verification.ProductModelAttributes.AsNoTracking().Where(x => x.ModelId == modelId).ToListAsync();
+            Assert.Equal((Guid?)keten, Assert.Single(rows).ValueId);
+            Assert.Equal(now, (await verification.ProductModels.AsNoTracking().SingleAsync(x => x.Id == modelId)).AttributesSavedAt);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateContext();
+            var tenantId = seed.Tenant.Id;
+            await cleanup.ProductModelAttributes.Where(x => x.TenantId == tenantId).ExecuteDeleteAsync();
+            await cleanup.ProductAttributeAssignments.Where(x => x.TenantId == tenantId).ExecuteDeleteAsync();
+            await cleanup.ProductVariants.Where(x => x.TenantId == tenantId).ExecuteDeleteAsync();
+            await cleanup.Products.Where(x => x.TenantId == tenantId).ExecuteDeleteAsync();
+            await cleanup.ProductModels.Where(x => x.TenantId == tenantId).ExecuteDeleteAsync();
+            await cleanup.AttributeValues.Where(x => x.TenantId == tenantId).ExecuteDeleteAsync();
+            await cleanup.AttributeDefinitions.Where(x => x.TenantId == tenantId).ExecuteDeleteAsync();
+            await cleanup.Brands.Where(x => x.TenantId == tenantId).ExecuteDeleteAsync();
+            await cleanup.IntegrationOutboxEvents.Where(x => x.TenantId == tenantId).ExecuteDeleteAsync();
+            await cleanup.PlatformConnections.Where(x => x.TenantId == tenantId).ExecuteDeleteAsync();
+            await cleanup.Tenants.Where(x => x.Id == tenantId).ExecuteDeleteAsync();
+        }
+    }
 }
