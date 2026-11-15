@@ -60,12 +60,14 @@ public static class ModelCodeOwnership
     // callers compare the key in memory as before; only the catalog's other codes are no longer read into memory.
     internal static IQueryable<Guid> ProductIdsWithKeys(AppDbContext db, Guid tenantId, IReadOnlyCollection<string> keys)
     {
+        // Only constant SQL is put together here (the key expressions); the tenant and keys are parameters.
         const string code = "v.\"ModelCode\"";
-        return db.Database.SqlQueryRaw<Guid>($"""
+        var sql = $"""
             SELECT v."ProductId" AS "Value" FROM catalog.product_variants v
             WHERE v."TenantId" = @key_tenant AND v."ModelCode" IS NOT NULL AND v."ModelCode" ~ '[^[:space:]]'
               AND (NOT {ProductModelLinks.SqlKeySafe(code)} OR {ProductModelLinks.SqlKey(code)} = ANY(@key_keys))
-            """, new Npgsql.NpgsqlParameter("key_tenant", tenantId), new Npgsql.NpgsqlParameter("key_keys", keys.ToArray()));
+            """;
+        return db.Database.SqlQueryRaw<Guid>(sql, new Npgsql.NpgsqlParameter("key_tenant", tenantId), new Npgsql.NpgsqlParameter("key_keys", keys.ToArray()));
     }
 
     public static async Task<ModelCodeUniquenessPolicy.Holder?> FindOtherAsync(AppDbContext db, Guid tenantId, IEnumerable<string?> modelCodes, IReadOnlyCollection<Guid> ownProductIds, CancellationToken cancellationToken)
