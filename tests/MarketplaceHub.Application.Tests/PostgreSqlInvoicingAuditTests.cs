@@ -1339,6 +1339,11 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
         RawStatus = "Delivered"
     };
 
+    // Each issued invoice gets its own number: one issuer's numbers are unique (UX_invoices_TenantId_LegalEntityProfileId_InvoiceNumber).
+    private static long invoiceNumberSeed = 100_000_000;
+
+    private static string NextInvoiceNumber() => $"GIB2026{Interlocked.Increment(ref invoiceNumberSeed):D9}";
+
     private Invoice NewInvoice(Seed seed, Guid orderId, InvoiceStatus status) => new()
     {
         Id = Guid.CreateVersion7(),
@@ -1358,7 +1363,7 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
         Note = InvoiceAmounts.TurkishInvoiceNote(120m),
         IdempotencyKey = $"audit-invoice:{Guid.NewGuid():N}",
         ExternalReference = $"remote-{Guid.NewGuid():N}",
-        InvoiceNumber = "GIB2026000000001",
+        InvoiceNumber = NextInvoiceNumber(),
         IssuedAt = fixture.Now.AddDays(-1),
         CreatedAt = fixture.Now.AddDays(-1),
         UpdatedAt = fixture.Now.AddDays(-1)
