@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
@@ -350,29 +348,16 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
                 sourceJobId = sourceJob.Id
             }
         });
-        var job = new IntegrationJob
+        var job = JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, package.ConnectionId, InvoicingJobTypes.MarketplaceDelivery, payload, dedupKey, correlationId, now)
         {
-            Id = Guid.CreateVersion7(),
-            TenantId = tenantId,
-            ConnectionId = package.ConnectionId,
-            JobType = InvoicingJobTypes.MarketplaceDelivery,
-            PayloadJson = payload,
-            PayloadVersion = 1,
-            PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))),
-            JobDedupKey = dedupKey,
             EffectIdempotencyKey = $"{InvoicingJobTypes.MarketplaceDelivery}:one-time:{invoice.Id:N}:{idempotencyKey}",
             Priority = JobPriorityPolicy.UserAction,
             MaxAttempts = 1,
-            Status = JobStatus.Pending,
-            AvailableAt = now,
             TriggerType = "manual",
             ResourceType = "invoices",
             OperationType = "marketplace-delivery-once",
-            CorrelationId = correlationId,
-            CreatedAt = now,
-            Version = 1
-        };
-        db.IntegrationJobs.Add(job);
+            CreatedAt = now
+        });
         AddOutboxEvent(job, now);
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<JobDetailView>.Ok(await DetailAsync(job, cancellationToken));
