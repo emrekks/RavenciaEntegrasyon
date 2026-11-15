@@ -12,23 +12,25 @@ public static class ProductWarranty
     public const string RequiredCode = "WARRANTY_REQUIRED";
     public const string RequiredMessage = "Garanti Süresi boş; ürün kartında Garanti Süresi girin (0 = garanti yok).";
 
+    public sealed record PassResult(int CardsWritten, int ModelsWritten, int EmptyCardsNotDraft);
+
     // The migration runs while the previous API and Worker still serve (fast-deploy.sh migrates, then swaps the
-    // containers), and the previous code writes null for a 0 it saves. The new Worker runs this shortly after it starts
-    // (and daily after that): a card on sale or closed with an empty warranty can only be such a row, as the new code
-    // never leaves one empty (the editor and the bulk opening refuse it), so it takes 0. A draft keeps its empty warranty:
-    // it may be one saved empty on purpose, and the editor asks for the value before it opens for sale. A model record
-    // takes 0 only when none of its cards is empty (the cards' majority is what the write-through gives it).
-    // Idempotent, set-based (two statements; about a thousand cards on live), and it writes no Version, UpdatedAt or
-    // change log, as the migration does not either.
-    public static async Task<(int Cards, int Models)> RepairAsync(AppDbContext db, CancellationToken cancellationToken)
+    // containers), and the previous code writes null for a 0 it saves. So the new Worker's first pass after it starts
+    // gives a card on sale or closed with an empty warranty its 0 (that is what the previous code meant), and a model
+    // record 0 when none of its cards is empty. A draft keeps its empty warranty: it may be one saved empty on purpose.
+    // The current code is meant never to leave a card that is not a draft empty (the editor, the bulk opening and the
+    // family write-through refuse or skip it), but that is a rule, not a guarantee; so every later pass writes nothing and
+    // only counts such cards, for the Worker to warn about instead of silently turning them into 0.
+    // Idempotent, set-based (two statements; about a thousand cards on live); no Version, UpdatedAt or change log.
+    public static async Task<PassResult> RunPassAsync(AppDbContext db, bool firstPassAfterStart, CancellationToken cancellationToken)
     {
-        var cards = await db.Products
-            .Where(x => x.WarrantyMonths == null && x.Status != ProductStatus.Draft)
-            .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.WarrantyMonths, 0), cancellationToken);
+        var emptyNotDraft = db.Products.Where(x => x.WarrantyMonths == null && x.Status != ProductStatus.Draft);
+        if (!firstPassAfterStart) return new(0, 0, await emptyNotDraft.CountAsync(cancellationToken));
+        var cards = await emptyNotDraft.ExecuteUpdateAsync(setters => setters.SetProperty(x => x.WarrantyMonths, 0), cancellationToken);
         var models = await db.ProductModels
             .Where(model => model.WarrantyMonths == null
                 && !db.Products.Any(card => card.TenantId == model.TenantId && card.FamilyId == model.Id && card.WarrantyMonths == null))
             .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.WarrantyMonths, 0), cancellationToken);
-        return (cards, models);
+        return new(cards, models, 0);
     }
 }

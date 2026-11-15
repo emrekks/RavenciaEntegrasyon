@@ -204,11 +204,11 @@ public sealed class WarrantyZeroIsAValuePostgreSqlTests(PostgreSqlTenantIsolatio
         }
     }
 
-    // The previous code still serves while the deploy migrates and stores a 0 it saves as null: after the swap the new
-    // Worker's repair gives such a card (not a draft) its 0. A draft keeps its empty warranty, and so does the model
-    // record of an empty draft.
+    // The previous code still serves while the deploy migrates and stores a 0 it saves as null: the new Worker's first
+    // pass after it starts gives such a card (not a draft) its 0. A draft keeps its empty warranty, and so does the model
+    // record of an empty draft. Later passes write nothing: they only count a card on sale left empty, for a warning.
     [PostgreSqlFact]
-    public async Task TheRepairAfterTheSwap_GivesZeroToCardsOnSale_AndLeavesEmptyDrafts()
+    public async Task TheRepairAfterTheSwap_WritesOnlyOnItsFirstPass_GivingZeroToCardsOnSale_AndLeavesEmptyDrafts()
     {
         var seed = await SeedAsync("warranty-repair");
         var active = await LinkedCardAsync(seed, "Satışta", ProductStatus.Active);
@@ -216,17 +216,68 @@ public sealed class WarrantyZeroIsAValuePostgreSqlTests(PostgreSqlTenantIsolatio
         var draft = await LinkedCardAsync(seed, "Taslak", ProductStatus.Draft);
         await SetWarrantiesAsync([(active.CardId, null), (archived.CardId, null), (draft.CardId, null)], [(active.ModelId, null), (archived.ModelId, null), (draft.ModelId, null)]);
 
+        // A later pass (not the first after a start): counts the cards on sale or closed left empty, writes nothing.
         await using (var db = fixture.CreateContext())
         {
-            var (cards, models) = await ProductWarranty.RepairAsync(db, CancellationToken.None);
-            Assert.True(cards >= 2 && models >= 2, $"{cards} cards, {models} models");
-            Assert.Equal((0, 0), await ProductWarranty.RepairAsync(db, CancellationToken.None));
+            var later = await ProductWarranty.RunPassAsync(db, firstPassAfterStart: false, CancellationToken.None);
+            Assert.True(later.EmptyCardsNotDraft >= 2, $"{later.EmptyCardsNotDraft} cards");
+            Assert.Equal((0, 0), (later.CardsWritten, later.ModelsWritten));
+        }
+        Assert.Equal(((int?)null, (int?)null, (int?)null), (await WarrantyAsync(active.CardId), await WarrantyAsync(archived.CardId), await WarrantyAsync(draft.CardId)));
+
+        // The first pass after a start writes 0; a second first pass (a restart) finds nothing left.
+        await using (var db = fixture.CreateContext())
+        {
+            var first = await ProductWarranty.RunPassAsync(db, firstPassAfterStart: true, CancellationToken.None);
+            Assert.True(first.CardsWritten >= 2 && first.ModelsWritten >= 2, $"{first.CardsWritten} cards, {first.ModelsWritten} models");
+            var again = await ProductWarranty.RunPassAsync(db, firstPassAfterStart: true, CancellationToken.None);
+            Assert.Equal((0, 0, 0), (again.CardsWritten, again.ModelsWritten, again.EmptyCardsNotDraft));
         }
         Assert.Equal(((int?)0, (int?)0, (int?)null), (await WarrantyAsync(active.CardId), await WarrantyAsync(archived.CardId), await WarrantyAsync(draft.CardId)));
         await using var check = fixture.CreateContext();
         var records = await check.ProductModels.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).ToDictionaryAsync(x => x.Id, x => x.WarrantyMonths);
         Assert.Equal(((int?)0, (int?)0, (int?)null), (records[active.ModelId], records[archived.ModelId], records[draft.ModelId]));
     }
+
+    // Review, 16 Nov 2026: a draft colour saved with its warranty emptied (Taslak Olarak Kaydet) shares the model's fields
+    // with its sibling colours, but an empty warranty never reaches a colour that is not a draft (it keeps its own) nor the
+    // model record of such a colour; a draft sibling takes it.
+    [PostgreSqlFact]
+    public async Task ADraftColourSavedEmpty_LeavesTheWarrantyOfASiblingOnSaleAndOfTheModel()
+    {
+        var seed = await SeedAsync("warranty-family");
+        var now = fixture.Now;
+        var code = $"WF{Guid.NewGuid():N}"[..12].ToUpperInvariant();
+        Product Card(string colour, ProductStatus status, int minute) => new() { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, Title = $"Bluz {colour}", Description = "Açıklama", BrandId = seed.Brand.Id, CategoryId = seed.Category.Id, VatRate = 10m, VatInclusion = "INCLUDED", WarrantyMonths = 24, DeliveryDays = 2, DefaultListPrice = 120m, DefaultSalePrice = 100m, Status = status, CreatedAt = now.AddMinutes(minute), UpdatedAt = now };
+        var siyah = Card("Siyah", ProductStatus.Active, 0);
+        var kirmizi = Card("Kırmızı", ProductStatus.Draft, 1);
+        var mavi = Card("Mavi", ProductStatus.Draft, 2);
+        Product[] cards = [siyah, kirmizi, mavi];
+        await using (var setup = fixture.CreateContext())
+        {
+            setup.Products.AddRange(cards);
+            foreach (var (card, index) in cards.Select((card, index) => (card, index)))
+                setup.ProductVariants.Add(new ProductVariant { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ProductId = card.Id, Sku = $"{code}-{index}", SkuNormalized = $"{code}-{index}", Barcode = $"{code}{index}", BarcodeNormalized = $"{code}{index}", ModelCode = code, Desi = 1m, OptionSignature = $"Renk: {card.Title[5..]}", Status = card.Status, CreatedAt = now, UpdatedAt = now });
+            await setup.SaveChangesAsync();
+        }
+
+        await using (var db = fixture.CreateContext())
+        {
+            var service = Catalog(db);
+            var shown = (await service.GetProductAsync(seed.Tenant.Id, kirmizi.Id, CancellationToken.None)).Value!;
+            var saved = await service.UpdateProductAsync(seed.Tenant.Id, kirmizi.Id, shown.Version, new UpdateProductCommand(shown.Title, shown.Description, shown.BrandId, shown.CategoryId,
+                Status: "DRAFT", ClearWarrantyMonths: true, VatRate: 10m, VatInclusion: "INCLUDED", DeliveryDays: 2, FamilySharedFields: ProductFamilySharedFields.All), CancellationToken.None);
+            Assert.True(saved.Succeeded, saved.Error?.Message);
+        }
+
+        Assert.Equal(((int?)24, (int?)null, (int?)null), (await WarrantyAsync(siyah.Id), await WarrantyAsync(kirmizi.Id), await WarrantyAsync(mavi.Id)));
+        await using var check = fixture.CreateContext();
+        var modelId = (await check.Products.AsNoTracking().SingleAsync(x => x.Id == siyah.Id)).FamilyId!.Value;
+        Assert.Equal(24, (await check.ProductModels.AsNoTracking().SingleAsync(x => x.Id == modelId)).WarrantyMonths);
+        // And the daily pass has nothing to say: no card on sale was left empty.
+        Assert.Equal(0, await check.Products.CountAsync(x => x.TenantId == seed.Tenant.Id && x.WarrantyMonths == null && x.Status != ProductStatus.Draft));
+    }
+
 
     // What the marketplaces receive: every publication, update and price/stock composer of every marketplace builds a card
     // whose 0 the previous code stored as null exactly as it builds it after the migration wrote 0, except that the new
@@ -381,12 +432,15 @@ public sealed class WarrantyZeroIsAValuePostgreSqlTests(PostgreSqlTenantIsolatio
         string HepsiburadaPayload(string result, Product card, int warranty)
         {
             var index = card.Id == zero.Id ? 0 : 1;
-            return PayloadJson(result)
+            var normalized = PayloadJson(result)
                 .Replace(card.Title, "TITLE", StringComparison.Ordinal)
                 .Replace($"MZ41{index}", "MODEL", StringComparison.Ordinal)
                 .Replace($"86941000{index}", "BARCODE", StringComparison.Ordinal)
                 .Replace($"mz41/{index}.jpg", "IMAGE", StringComparison.Ordinal)
-                .Replace($"\"GarantiSuresi\":{warranty},", "\"GarantiSuresi\":W,", StringComparison.Ordinal);
+                .Replace($"\"GarantiSuresi\":{warranty},", "\"GarantiSuresi\":-1,", StringComparison.Ordinal);
+            // One item per variant; the two sizes' order is the variants' id order, which differs between the cards.
+            using var items = JsonDocument.Parse(normalized);
+            return string.Join("\n", items.RootElement.EnumerateArray().Select(item => item.GetRawText()).Order(StringComparer.Ordinal));
         }
     }
 }

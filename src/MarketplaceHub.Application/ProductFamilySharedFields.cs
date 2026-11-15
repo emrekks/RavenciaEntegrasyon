@@ -58,13 +58,19 @@ public static class ProductFamilySharedFields
             ? ProductFamilyNewColorCard.Title(titleCard.Title.Trim(), titleWord, openedColor.Trim())
             : titleCard.Title.Trim();
         var vatCard = Most(card => $"{card.VatRate?.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}|{card.VatInclusion?.ToUpperInvariant()}");
+        // Garanti Süresi: an empty one (a draft saved with it emptied, 15 Nov 2026) is "not filled", not a value of its
+        // own; the model holds the value most filled cards hold, and is empty only while no card holds one.
+        var filledWarranty = cards.Where(card => card.WarrantyMonths is not null).ToList();
+        var warranty = filledWarranty.Count == 0 ? null : filledWarranty
+            .Select((card, index) => (card.WarrantyMonths, index)).GroupBy(item => item.WarrantyMonths)
+            .OrderByDescending(group => group.Count()).ThenBy(group => group.Min(item => item.index)).First().Key;
         return new ModelFields(
             title,
             Most(card => card.Description.Trim()).Description,
             Most(card => $"{card.BrandId}").BrandId,
             Most(card => $"{card.CategoryId}").CategoryId,
             vatCard.VatRate, vatCard.VatInclusion,
-            Most(card => $"{card.WarrantyMonths}").WarrantyMonths,
+            warranty,
             Most(card => $"{card.DeliveryDays}").DeliveryDays);
     }
 

@@ -595,11 +595,15 @@ public static class ProductModelLinks
         if (card is null) return;
         var color = string.IsNullOrWhiteSpace(titleColor) ? null : Short(titleColor.Trim(), 120);
         var title = Short(card.Title, 320);
+        // An empty warranty (a draft saved with it emptied) is the model's only while all its cards are drafts: a model
+        // with a card on sale or closed keeps its own (review, 16 Nov 2026).
+        var keepWarranty = card.WarrantyMonths is null
+            && await db.Products.AnyAsync(x => x.TenantId == tenantId && x.FamilyId == card.FamilyId && x.Status != ProductStatus.Draft, cancellationToken);
         await db.ProductModels.Where(x => x.TenantId == tenantId && x.Id == card.FamilyId)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(x => x.Title, title).SetProperty(x => x.TitleColor, color).SetProperty(x => x.Description, card.Description)
                 .SetProperty(x => x.CategoryId, card.CategoryId).SetProperty(x => x.VatRate, card.VatRate).SetProperty(x => x.VatInclusion, card.VatInclusion)
-                .SetProperty(x => x.WarrantyMonths, card.WarrantyMonths).SetProperty(x => x.DeliveryDays, card.DeliveryDays)
+                .SetProperty(x => x.WarrantyMonths, x => keepWarranty ? x.WarrantyMonths : card.WarrantyMonths).SetProperty(x => x.DeliveryDays, card.DeliveryDays)
                 .SetProperty(x => x.FieldsSavedAt, now).SetProperty(x => x.UpdatedAt, now).SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
     }
 

@@ -1392,7 +1392,10 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             Set(ProductFamilySharedFields.Brand, sibling.BrandId, opened.BrandId, value => sibling.BrandId = value);
             Set(ProductFamilySharedFields.Category, sibling.CategoryId, opened.CategoryId, value => sibling.CategoryId = value);
             Set(ProductFamilySharedFields.Vat, (sibling.VatRate, sibling.VatInclusion), (opened.VatRate, opened.VatInclusion), value => (sibling.VatRate, sibling.VatInclusion) = value);
-            Set(ProductFamilySharedFields.Warranty, sibling.WarrantyMonths, opened.WarrantyMonths, value => sibling.WarrantyMonths = value);
+            // An empty warranty (a draft saved with it emptied) reaches only a draft sibling: a colour on sale or closed
+            // keeps its own, as it may never be left without one (review, 16 Nov 2026).
+            if (opened.WarrantyMonths is not null || ProductDraftPolicy.IsDraft(sibling.Status))
+                Set(ProductFamilySharedFields.Warranty, sibling.WarrantyMonths, opened.WarrantyMonths, value => sibling.WarrantyMonths = value);
             Set(ProductFamilySharedFields.DeliveryDays, sibling.DeliveryDays, opened.DeliveryDays, value => sibling.DeliveryDays = value);
             if (sharedAttributes)
             {
