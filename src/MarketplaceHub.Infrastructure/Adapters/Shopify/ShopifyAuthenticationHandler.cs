@@ -98,6 +98,9 @@ public sealed class ShopifyAuthenticationHandler(
             if (!response.IsSuccessStatusCode)
             {
                 logger.LogWarning("Shopify token alınamadı. ConnectionId: {ConnectionId}, Status: {Status}", connectionId, (int)response.StatusCode);
+                // ADAPTOR-DIGER-2: a throttled or failing token service is a passing failure, not invalid credentials;
+                // only a refusal (400/401/403 and the like) is answered as SHOPIFY_CREDENTIAL_INVALID by the caller.
+                TokenRequestFailure = TokenServiceFailure(response);
                 return null;
             }
             using var json = JsonDocument.Parse(body);
@@ -122,6 +125,25 @@ public sealed class ShopifyAuthenticationHandler(
             TokenRequestFailure = new(AdapterErrorClass.TransientNetwork, "SHOPIFY_TIMEOUT", "Shopify oturum servisi zaman aşımına uğradı.", null, null, null);
             return null;
         }
+    }
+
+    internal const string TokenServiceUnavailableCode = "SHOPIFY_TOKEN_SERVICE_UNAVAILABLE";
+
+    // The error of a token answer that is a passing failure (429 or 5xx); null for any other status.
+    internal static AdapterError? TokenServiceFailure(HttpResponseMessage response)
+    {
+        var status = (int)response.StatusCode;
+        if (status != 429 && status < 500) return null;
+        var retryAfter = response.Headers.RetryAfter?.Delta is { } delta && delta > TimeSpan.Zero ? delta : TimeSpan.FromSeconds(30);
+        return new(status == 429 ? AdapterErrorClass.RateLimit : AdapterErrorClass.Remote5xx, TokenServiceUnavailableCode,
+            "Shopify oturum servisi geçici olarak yanıt vermiyor.", status, retryAfter, null);
+    }
+
+    // Drops the cached client-credentials tokens of a connection after Shopify refused one (401).
+    internal static void Forget(Guid connectionId)
+    {
+        foreach (var key in Tokens.Keys)
+            if (key.ConnectionId == connectionId) Tokens.TryRemove(key, out _);
     }
 
     private static bool IsValidShop(string shop) => shop.Length is >= 3 and <= 100

@@ -1302,6 +1302,10 @@ public sealed partial class ShopifyHttpClient(
                 logger.LogWarning("Shopify served API version {ServedVersion} instead of {RequestedVersion} for {Shop}", servedVersion, context.ApiVersion, context.Shop);
             if (!response.IsSuccessStatusCode || document is null)
             {
+                // ADAPTOR-DIGER-2: a client-credentials token Shopify refuses (the app reinstalled, the token revoked) is
+                // dropped from the cache, so the next request asks for a new one instead of reusing it until it expires.
+                if (response.StatusCode == HttpStatusCode.Unauthorized && context.ExpiresAt != DateTimeOffset.MaxValue)
+                    ShopifyAuthenticationHandler.Forget(context.Connection.Id);
                 var retryAfter = response.Headers.RetryAfter?.Delta
                     ?? (response.Headers.RetryAfter?.Date is { } resetAt ? resetAt - DateTimeOffset.UtcNow : null);
                 return Failure<JsonDocument>(MapHttpError(response.StatusCode, raw, retryAfter, remoteRequestId), rate);
