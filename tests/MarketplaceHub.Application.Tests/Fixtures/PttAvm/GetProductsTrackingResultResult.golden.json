@@ -1,0 +1,46 @@
+{
+  "ExternalOperationId": "t:671a178183f9c51388bbb169",
+  "Status": "COMPLETED",
+  "Lines": [
+    {
+      "ExternalKey": "tshirt-1071",
+      "Succeeded": false,
+      "ExternalId": "744445042",
+      "ErrorCode": "PTTAVM_PRODUCT_UPDATE_CANCELLED",
+      "Retryable": false,
+      "Status": "Ürün güncellemesi başarısız. Ürünün KDV tanımı 0, 1, 10, 20 değerleri olabilir.",
+      "Reasons": null
+    },
+    {
+      "ExternalKey": "tshirt-1073",
+      "Succeeded": true,
+      "ExternalId": "744445044",
+      "ErrorCode": null,
+      "Retryable": false,
+      "Status": "Ürün bilgilerinde herhangi bir değişiklik tespit edilemedi.",
+      "Reasons": null
+    },
+    {
+      "ExternalKey": "tshirt-1075",
+      "Succeeded": false,
+      "ExternalId": null,
+      "ErrorCode": "PTTAVM_PRODUCT_UPDATE_PARTIAL",
+      "Retryable": false,
+      "Status": "Ürün güncellendi. Fiyat kilidinden dolayı ürünün fiyatı güncellenemedi.",
+      "Reasons": null
+    },
+    {
+      "ExternalKey": "tshirt-1076",
+      "Succeeded": true,
+      "ExternalId": null,
+      "ErrorCode": null,
+      "Retryable": false,
+      "Status": "Ürün güncellendi.",
+      "Reasons": null
+    }
+  ],
+  "UnlistedLinesUnconfirmed": false,
+  "IssueCode": null,
+  "IssueSummary": null,
+  "ReportedItemCount": null
+}

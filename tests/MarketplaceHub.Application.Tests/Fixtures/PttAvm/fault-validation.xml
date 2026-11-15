@@ -1,0 +1,3 @@
+// Source: a SOAP client fault with PttAVM's own reason (shape from PttAvmAdapterTests; the window rule from
+// Ravencia-API-Docs/pttavm-api-son.md "Sipariş Kontrol V2": "Bitiş tarihi başlangıç tarihinden önce olamaz").
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><s:Fault><faultcode>s:Client</faultcode><faultstring>Bitiş tarihi başlangıç tarihinden önce olamaz.</faultstring></s:Fault></s:Body></s:Envelope>

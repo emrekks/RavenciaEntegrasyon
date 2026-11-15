@@ -1,0 +1,134 @@
+// Source: PttAVM SOAP SiparisKontrolListesiV2 answer (WSDL types; field list in Ravencia-API-Docs/pttavm-api-son.md
+// "Sipariş Kontrol V2" ~1704-1865: SiparisDurumu kargo_yapilmasi_bekleniyor, iptal, iade, gonderilmiş, ...), the shape
+// PttAvmAdapterTests.OrderListAnswer uses, personal fields replaced by fake values. Order 1: a returned line beside a
+// cancelled one; order 2: all cancelled; order 3: a two-unit discounted line awaiting cargo beside a shipped one
+// (partial); order 4: i:nil fields, an undocumented SiparisDurumu and a decimal comma. IslemTarihi has no offset:
+// Istanbul local.
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+  <s:Body>
+    <SiparisKontrolListesiV2Response xmlns="http://tempuri.org/">
+      <SiparisKontrolListesiV2Result xmlns:a="http://schemas.datacontract.org/2004/07/ePttAVMService" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+        <a:TedarikciSiparisKontrolV2>
+          <a:Barcodes xmlns:b="http://schemas.datacontract.org/2004/07/ePttAVMService.Model">
+            <b:Barkod><b:barcode>2710243114843</b:barcode><b:type>KARGO</b:type></b:Barkod>
+          </a:Barcodes>
+          <a:Eposta>customer@example.test</a:Eposta>
+          <a:FaturaAdresi>Fake Fatura Sokak 1</a:FaturaAdresi>
+          <a:FaturaIlce>Çankaya</a:FaturaIlce>
+          <a:FaturaIli>Ankara</a:FaturaIli>
+          <a:FaturaMusteriAdi>Test</a:FaturaMusteriAdi>
+          <a:FaturaMusteriSoyadi>Musteri</a:FaturaMusteriSoyadi>
+          <a:FaturaTip>Bireysel</a:FaturaTip>
+          <a:FirmaUnvani/>
+          <a:IslemTarihi>2024-10-07T17:38:29</a:IslemTarihi>
+          <a:KargoBarkod>2710243114843</a:KargoBarkod>
+          <a:KargoTutari>1330</a:KargoTutari>
+          <a:MusteriAdi>Test</a:MusteriAdi>
+          <a:MusteriId>900001</a:MusteriId>
+          <a:MusteriSoyadi>Musteri</a:MusteriSoyadi>
+          <a:SiparisAdresi>Fake Teslimat Sokak 2</a:SiparisAdresi>
+          <a:SiparisIlce>Keçiören</a:SiparisIlce>
+          <a:SiparisIli>Ankara</a:SiparisIli>
+          <a:SiparisNo>PTT-A1712HP2E-071024</a:SiparisNo>
+          <a:SiparisUrunler>
+            <a:SiparisUrun>
+              <a:IndirimPttavm>2.71</a:IndirimPttavm>
+              <a:IndirimTedarikci>0</a:IndirimTedarikci>
+              <a:IndirimToplam>2.71</a:IndirimToplam>
+              <a:KdvDahilToplamTutar>33.92</a:KdvDahilToplamTutar>
+              <a:KdvOrani>10</a:KdvOrani>
+              <a:LineItemId>229049580</a:LineItemId>
+              <a:SiparisDurumu>iade</a:SiparisDurumu>
+              <a:ToplamIslemAdedi>1</a:ToplamIslemAdedi>
+              <a:Urun>parça yönetimi 6</a:Urun>
+              <a:UrunBarkod>0000000066266mainbrkd</a:UrunBarkod>
+              <a:UrunId>944333635</a:UrunId>
+            </a:SiparisUrun>
+            <a:SiparisUrun>
+              <a:IndirimToplam>0</a:IndirimToplam>
+              <a:KdvDahilToplamTutar>41.25</a:KdvDahilToplamTutar>
+              <a:KdvOrani>10</a:KdvOrani>
+              <a:LineItemId>229049601</a:LineItemId>
+              <a:SiparisDurumu>iptal</a:SiparisDurumu>
+              <a:ToplamIslemAdedi>1</a:ToplamIslemAdedi>
+              <a:Urun>parça yönetimi 4</a:Urun>
+              <a:UrunBarkod>abs123456</a:UrunBarkod>
+            </a:SiparisUrun>
+          </a:SiparisUrunler>
+          <a:TCKN>00000000000</a:TCKN>
+          <a:TelefonNo>555*****00</a:TelefonNo>
+          <a:VergiDaire/>
+          <a:VergiNo/>
+        </a:TedarikciSiparisKontrolV2>
+        <a:TedarikciSiparisKontrolV2>
+          <a:Barcodes xmlns:b="http://schemas.datacontract.org/2004/07/ePttAVMService.Model"/>
+          <a:IslemTarihi>2024-10-21T14:48:46</a:IslemTarihi>
+          <a:KargoBarkod/>
+          <a:MusteriAdi>Test</a:MusteriAdi>
+          <a:MusteriSoyadi>Musteri</a:MusteriSoyadi>
+          <a:SiparisNo>PTT-L6LI1VK2D-211024</a:SiparisNo>
+          <a:SiparisUrunler>
+            <a:SiparisUrun>
+              <a:IndirimToplam>3.72</a:IndirimToplam>
+              <a:KdvDahilToplamTutar>49.66</a:KdvDahilToplamTutar>
+              <a:KdvOrani>1</a:KdvOrani>
+              <a:LineItemId>232318670</a:LineItemId>
+              <a:SiparisDurumu>iptal</a:SiparisDurumu>
+              <a:ToplamIslemAdedi>1</a:ToplamIslemAdedi>
+              <a:Urun>Test ürünü Fırın</a:Urun>
+              <a:UrunBarkod>10102024-85224</a:UrunBarkod>
+            </a:SiparisUrun>
+          </a:SiparisUrunler>
+        </a:TedarikciSiparisKontrolV2>
+        <a:TedarikciSiparisKontrolV2>
+          <a:IslemTarihi>2026-10-21T09:15:00</a:IslemTarihi>
+          <a:KargoBarkod/>
+          <a:SiparisNo>PTT-OPEN12345-211026</a:SiparisNo>
+          <a:SiparisUrunler>
+            <a:SiparisUrun>
+              <a:IndirimToplam>10</a:IndirimToplam>
+              <a:IndirimPttavm>4</a:IndirimPttavm>
+              <a:IndirimTedarikci>6</a:IndirimTedarikci>
+              <a:KdvDahilToplamTutar>190</a:KdvDahilToplamTutar>
+              <a:KdvOrani>20</a:KdvOrani>
+              <a:LineItemId>300000001</a:LineItemId>
+              <a:SiparisDurumu>kargo_yapilmasi_bekleniyor</a:SiparisDurumu>
+              <a:ToplamIslemAdedi>2</a:ToplamIslemAdedi>
+              <a:Urun>Gömlek</a:Urun>
+              <a:UrunBarkod>8690000000017</a:UrunBarkod>
+            </a:SiparisUrun>
+            <a:SiparisUrun>
+              <a:IndirimToplam>0</a:IndirimToplam>
+              <a:KdvDahilToplamTutar>50</a:KdvDahilToplamTutar>
+              <a:KdvOrani>20</a:KdvOrani>
+              <a:LineItemId>300000002</a:LineItemId>
+              <a:SiparisDurumu>gönderilmiş</a:SiparisDurumu>
+              <a:ToplamIslemAdedi>1</a:ToplamIslemAdedi>
+              <a:Urun>Kemer</a:Urun>
+              <a:UrunBarkod>8690000000024</a:UrunBarkod>
+            </a:SiparisUrun>
+          </a:SiparisUrunler>
+        </a:TedarikciSiparisKontrolV2>
+        <a:TedarikciSiparisKontrolV2>
+          <a:Eposta i:nil="true"/>
+          <a:IslemTarihi>2026-11-05T14:00:00</a:IslemTarihi>
+          <a:KargoBarkod i:nil="true"/>
+          <a:MusteriAdi i:nil="true"/>
+          <a:SiparisNo>PTT-NILFIELDS1-051126</a:SiparisNo>
+          <a:SiparisUrunler>
+            <a:SiparisUrun>
+              <a:IndirimToplam i:nil="true"/>
+              <a:KdvDahilToplamTutar>79,90</a:KdvDahilToplamTutar>
+              <a:KdvOrani i:nil="true"/>
+              <a:LineItemId>300000101</a:LineItemId>
+              <a:SiparisDurumu>bilinmeyen_yeni_durum</a:SiparisDurumu>
+              <a:ToplamIslemAdedi>1</a:ToplamIslemAdedi>
+              <a:Urun>Fake PTT Ürün</a:Urun>
+              <a:UrunBarkod>0000000000501</a:UrunBarkod>
+            </a:SiparisUrun>
+          </a:SiparisUrunler>
+        </a:TedarikciSiparisKontrolV2>
+      </SiparisKontrolListesiV2Result>
+    </SiparisKontrolListesiV2Response>
+  </s:Body>
+</s:Envelope>
