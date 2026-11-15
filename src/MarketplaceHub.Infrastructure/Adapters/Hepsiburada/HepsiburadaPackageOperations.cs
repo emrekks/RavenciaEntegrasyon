@@ -325,6 +325,8 @@ public sealed partial class HepsiburadaHttpClient
         // C17: the label service answers JSON ({"format", "data": [...]}) as well as the file itself.
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         using var timeout = new QuotaAwareTimeout(request, HepsiburadaRateLimitHandler.QuotaAcquiredKey, RequestTimeout, cancellationToken);
+        // KUYRUK-1: a write job's request that has not started when the worker shuts down is not sent.
+        if (timeout.StoppedBeforeStart) return AdapterResult<byte[]>.Failure(Transport.LocalQuotaWait());
         try
         {
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);

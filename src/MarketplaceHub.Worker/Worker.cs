@@ -335,7 +335,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         return await jobs.TryLeaseAsync(JobRetryPolicy.DefaultLeaseDuration, maximumPriority, minimumPriority, cancellationToken, onlyJobType ?? singleJobType, singleJobId, includedJobTypes, excludedJobTypes);
     }
 
-    private async Task ExecuteLeasedJobAsync(LeasedJob job, CancellationToken stoppingToken)
+    internal async Task ExecuteLeasedJobAsync(LeasedJob job, CancellationToken stoppingToken)
     {
         // Every line logged while the job runs (processor, adapters, lease service) carries its context.
         using var logScope = logger.BeginScope(new Dictionary<string, object?>
@@ -359,6 +359,9 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         using var shutdownNotice = finishesOnShutdown
             ? stoppingToken.Register(() => logger.LogInformation("Job {JobId} ({JobType}) writes externally; shutdown waits for it to finish", job.Id, job.JobType))
             : default;
+        // KUYRUK-1: what the shutdown may still stop in such a job is a marketplace request that has not got its quota token
+        // (never sent); that request ends as a local quota wait, and the job is handed back to the queue below.
+        using var shutdownSignal = finishesOnShutdown ? MarketplaceHub.Infrastructure.Jobs.JobShutdownSignal.Enter(stoppingToken) : null;
         using var execution = CancellationTokenSource.CreateLinkedTokenSource(shutdown);
         // How long the job type may run (and the setting that changes it) is kept in the job type registry.
         execution.CancelAfter(MarketplaceHub.Infrastructure.Jobs.JobTypeRegistry.TimeoutFor(job.JobType, configuration));
@@ -400,8 +403,12 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             MarketplaceHub.Infrastructure.Telemetry.MarketplaceHubTelemetry.JobDuration.Record(System.Diagnostics.Stopwatch.GetElapsedTime(executionStarted).TotalSeconds, jobTags);
             activity?.SetTag("job.outcome", outcome).SetTag("job.error_code", result?.ErrorCode);
             // Cancellation during shutdown can also surface as a transient Retry (e.g. a cancelled HTTP/DB call).
-            // A job that finished despite the shutdown was not cancelled by it and records its real outcome.
-            if (leaseHeld && shutdown.IsCancellationRequested && (result is null || result.Kind == JobCompletionKind.Retry))
+            // A job that finished despite the shutdown was not cancelled by it and records its real outcome, unless the
+            // shutdown stopped one of its requests before the quota token and it ended to be retried (KUYRUK-1).
+            var quotaWaitsStopped = shutdownSignal?.QuotaWaitsStopped ?? 0;
+            if (quotaWaitsStopped > 0)
+                logger.LogInformation("Job {JobId} ({JobType}): shutdown stopped {Count} marketplace request(s) still waiting for quota; they were not sent", job.Id, job.JobType, quotaWaitsStopped);
+            if (ReleasesOnShutdown(leaseHeld, shutdown.IsCancellationRequested, quotaWaitsStopped > 0, result))
             {
                 await ReleaseOnShutdownAsync(job);
                 return;
@@ -435,6 +442,15 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             await heartbeat;
         }
     }
+
+    // Whether a run that ended during shutdown goes back to the queue (ReleaseOnShutdownAsync: no attempt spent) instead of
+    // recording its outcome. A job the shutdown cancelled goes back when it has no outcome or one to be retried. A write job
+    // (not cancelled by the shutdown) goes back only when the shutdown stopped one of its requests before the quota token
+    // (KUYRUK-1: nothing of that request was sent) and the job ended to be retried; any other outcome it reached is recorded.
+    internal static bool ReleasesOnShutdown(bool leaseHeld, bool cancelledByShutdown, bool quotaWaitStoppedByShutdown, JobExecutionResult? result) =>
+        leaseHeld
+        && (cancelledByShutdown && (result is null || result.Kind == JobCompletionKind.Retry)
+            || quotaWaitStoppedByShutdown && result is { Kind: JobCompletionKind.Retry });
 
     // Distinct metric outcomes: a deferral (lock busy, conflict) and a finished slice are not failed retries.
     internal static string OutcomeTag(bool leaseHeld, JobExecutionResult? result) =>

@@ -18,7 +18,11 @@ public sealed partial class TrendyolHttpClient
         var timeout = instantLimits?.RequestTimeout ?? RequestTimeout(trendyolOptions.Value.Timeout);
         linked.CancelAfter(instantLimits is null ? timeout + MaximumQuotaWait : instantLimits.MaximumQuotaWait);
         var quotaAcquired = false;
-        request.Options.Set(TrendyolResilienceHandler.QuotaAcquiredKey, () => { quotaAcquired = true; linked.CancelAfter(timeout); });
+        // KUYRUK-1: a worker shutdown ends a write job's wait while no quota token is held (never sent: a local quota
+        // wait below); once the token is taken the request finishes as before. Not started yet: not sent at all.
+        using var shutdown = new Jobs.QuotaWaitShutdown(linked);
+        if (shutdown.StoppedBeforeStart) return AdapterResult<string>.Failure(LocalQuotaWait());
+        request.Options.Set(TrendyolResilienceHandler.QuotaAcquiredKey, () => { shutdown.QuotaAcquired(); quotaAcquired = true; linked.CancelAfter(timeout); });
         CallerCancellation.Mark(request, cancellationToken);
         try
         {
@@ -47,7 +51,7 @@ public sealed partial class TrendyolHttpClient
             // send): a local quota wait that keeps the job's attempt, as on n11, not an outcome-unknown timeout.
             // A request that was sent and then timed out stays REMOTE_TIMEOUT, so a write is never taken as unsent.
             if (!quotaAcquired)
-                return AdapterResult<string>.Failure(new(AdapterErrorClass.RateLimit, LocalQuotaWaitCode, "Trendyol istek kotası dolu olduğu için istek gönderilmedi; yeniden denenecek.", 429, TimeSpan.FromSeconds(15), null));
+                return AdapterResult<string>.Failure(LocalQuotaWait());
             logger.LogWarning("Trendyol {Method} {Path} (storefront {StoreFront}) timed out after the quota wait", method.Method, request.RequestUri?.AbsolutePath, includeStoreFrontCode ? storeFrontCode : "none");
             return AdapterResult<string>.Failure(new(AdapterErrorClass.TransientNetwork, "REMOTE_TIMEOUT", "Platform isteği zaman aşımına uğradı.", null, TimeSpan.FromSeconds(5), null));
         }
@@ -56,6 +60,9 @@ public sealed partial class TrendyolHttpClient
 
     private static readonly TimeSpan MaximumQuotaWait = TimeSpan.FromMinutes(10);
     internal const string LocalQuotaWaitCode = "LOCAL_QUOTA_WAIT";
+
+    private static AdapterError LocalQuotaWait() =>
+        new(AdapterErrorClass.RateLimit, LocalQuotaWaitCode, "Trendyol istek kotası dolu olduğu için istek gönderilmedi; yeniden denenecek.", 429, TimeSpan.FromSeconds(15), null);
 
     // Retry-After as seconds or as an HTTP date; a date in the past means no wait.
     internal static TimeSpan? RetryAfterDelay(System.Net.Http.Headers.RetryConditionHeaderValue? header, DateTimeOffset now) => RetryAfterHeader.Delay(header, now);

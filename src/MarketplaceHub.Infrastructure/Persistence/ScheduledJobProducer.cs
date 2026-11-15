@@ -115,155 +115,170 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         var backgroundOrderReservations = new HashSet<Guid>();
         var activeJobTypesByConnection = new Dictionary<Guid, List<string>>();
         var scheduledPolicyIds = new List<Guid>();
+        var failedPolicies = 0;
 
         foreach (var row in policies)
         {
-            if (bootstrapConnections.Contains(row.Connection.Id)) continue;
-            if (IsStockReconcilePolicy(row.Policy.ResourceType) && !openPriceStockConnections.Contains(row.Connection.Id)) continue;
-            // A test store has no real money movements to read.
-            if (row.Policy.ResourceType == "FINANCE" && !string.Equals(row.Connection.Environment, "PRODUCTION", StringComparison.OrdinalIgnoreCase)) continue;
-            var definition = Definition(row.Policy.ResourceType, row.Connection.Id, row.Connection.PlatformCode);
-            if (definition is null) continue;
+            // KUYRUK-10: each policy is scheduled on its own. One that throws (an unexpected value in its rows, a query the
+            // database refuses) is logged and skipped with the jobs it added; the other connections still get theirs. A lost
+            // database connection or a cancellation still ends the pass, as every policy would fail the same way.
+            var scheduled = await ScheduledPolicyIsolation.RunAsync(db, async () =>
+            {
+                if (bootstrapConnections.Contains(row.Connection.Id)) return 0;
+                if (IsStockReconcilePolicy(row.Policy.ResourceType) && !openPriceStockConnections.Contains(row.Connection.Id)) return 0;
+                // A test store has no real money movements to read.
+                if (row.Policy.ResourceType == "FINANCE" && !string.Equals(row.Connection.Environment, "PRODUCTION", StringComparison.OrdinalIgnoreCase)) return 0;
+                var definition = Definition(row.Policy.ResourceType, row.Connection.Id, row.Connection.PlatformCode);
+                if (definition is null) return 0;
 
-            var interval = Math.Clamp(row.Policy.IntervalSeconds, 30, ScheduledOrderPollingCadencePolicy.MaximumIntervalSeconds);
-            var isHotOrder = definition.Value.JobType is MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.N11OrderSync or MarketplaceJobTypes.PazaramaOrderSync or MarketplaceJobTypes.PttAvmOrderSync;
-            var jitterSeconds = StableJitterSeconds(row.Connection.Id, row.Policy.ResourceType, row.Policy.JitterSeconds);
-            // The cheap due check first: a policy queued less than its (shortest possible) interval ago is skipped
-            // before any of the lookups below. Daily policies run only inside their afternoon window.
-            // The nightly link verification keeps its own window and catch-up (ListingVerificationPolicy); a run queued
-            // within the last hour is not looked at again.
-            var isListingVerify = row.Policy.ResourceType == ListingVerificationPolicy.ResourceType;
-            if (isListingVerify && row.Policy.LastScheduledAt is { } verifyQueuedAt && now - verifyQueuedAt < ListingVerificationPolicy.RetrySpacing) continue;
-            var shortestInterval = row.Policy.ResourceType == "RETURNS" ? Math.Max(interval, ReturnCadencePolicy.BaseSeconds) : interval;
-            if (!isListingVerify && !MayBeDue(row.Policy.LastScheduledAt, ScheduledOrderPollingCadencePolicy.ForEnvironment(shortestInterval, row.Connection.Environment), jitterSeconds, now, isHotOrder)) continue;
-            // Questions are rare; a connection without a new question for a while is asked less often. Healthy order
-            // notifications make the order polls a slower safety net. Both thin out to the policy's idle interval and
-            // only while its idle rule is on (SyncCadencePolicy, set in the panel).
-            var idleKind = row.Policy.IdleBackoffEnabled ? SyncCadencePolicy.IdleKind(row.Connection.PlatformCode, row.Policy.ResourceType) : null;
-            var lastQuestionAt = idleKind == SyncCadencePolicy.IdleQuiet
-                ? await db.MarketplaceQuestions.AsNoTracking()
-                    .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id)
-                    .MaxAsync(x => (DateTimeOffset?)x.CreatedAt, cancellationToken)
-                : null;
-            // Returns are read every ten minutes at most and thin out while none is open, none came for a day or a week,
-            // or Hepsiburada's notifications bring them (ReturnCadencePolicy, through the same idle rule).
-            var isReturns = idleKind == SyncCadencePolicy.IdleReturns;
-            var healthy = (idleKind == SyncCadencePolicy.IdleWebhook || isReturns && ReturnCadencePolicy.NotificationsCarryClaims(row.Connection.PlatformCode))
-                && (webhookHealthy ??= await HealthyWebhookConnectionsAsync(now, cancellationToken)).Contains(row.Connection.Id);
-            var hasOpenReturns = !isReturns || await OpenReturnClaimsExistAsync(db, row.Policy.TenantId, row.Connection.Id, row.Connection.PlatformCode, cancellationToken);
-            var lastNewReturnAt = isReturns
-                ? await db.ReturnClaims.AsNoTracking()
-                    .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id)
-                    .MaxAsync(x => (DateTimeOffset?)x.CreatedAt, cancellationToken)
-                : null;
-            interval = SyncCadencePolicy.EffectiveSeconds(row.Connection.PlatformCode, row.Policy.ResourceType, row.Connection.Environment, interval, idleKind is not null, row.Policy.IdleIntervalSeconds, healthy, lastQuestionAt, now, hasOpenReturns, lastNewReturnAt);
-            // Different scheduled job types can share one provider execution
-            // lane (for example order sync and order reconciliation). Checking
-            // the execution group keeps the queue coalesced before it reaches
-            // the worker's advisory lock. The queued job types are read once per connection: jobs this pass
-            // adds are not saved yet, the reservations below cover them.
-            if (!activeJobTypesByConnection.TryGetValue(row.Connection.Id, out var activeJobTypes))
-            {
-                activeJobTypes = (await db.IntegrationJobs.AsNoTracking()
-                    .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id
-                        && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled))
-                    .Select(x => new { x.JobType, x.Status })
-                    .Distinct()
-                    .ToListAsync(cancellationToken))
-                    .Where(x => HoldsQueueLane(x.JobType, x.Status))
-                    .Select(x => x.JobType)
-                    .Distinct(StringComparer.Ordinal)
-                    .ToList();
-                activeJobTypesByConnection[row.Connection.Id] = activeJobTypes;
-            }
-            var executionGroup = MarketplaceSyncExecutionLock.GroupFor(definition.Value.JobType);
-            var active = activeJobTypes.Any(jobType => MarketplaceSyncExecutionLock.GroupFor(jobType) == executionGroup);
-            var hotOrderAlreadyQueued = activeJobTypes.Contains(MarketplaceJobTypes.OrderSync, StringComparer.Ordinal)
-                || activeJobTypes.Contains(MarketplaceJobTypes.ShopifyOrderSync, StringComparer.Ordinal)
-                || activeJobTypes.Contains(MarketplaceJobTypes.HepsiburadaOrderSync, StringComparer.Ordinal)
-                || activeJobTypes.Contains(MarketplaceJobTypes.N11OrderSync, StringComparer.Ordinal)
-                || activeJobTypes.Contains(MarketplaceJobTypes.PazaramaOrderSync, StringComparer.Ordinal)
-                || activeJobTypes.Contains(MarketplaceJobTypes.PttAvmOrderSync, StringComparer.Ordinal);
-            var isOrderLifecycle = definition.Value.JobType is MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync or MarketplaceJobTypes.HepsiburadaOrderStatusSync or MarketplaceJobTypes.PazaramaOrderStatusSync or MarketplaceJobTypes.PttAvmOrderStatusSync;
-            var lifecycleAlreadyQueued = activeJobTypes.Contains(MarketplaceJobTypes.OrderStatusSync, StringComparer.Ordinal)
-                || activeJobTypes.Contains(MarketplaceJobTypes.ShopifyOrderStatusSync, StringComparer.Ordinal)
-                || activeJobTypes.Contains(MarketplaceJobTypes.HepsiburadaOrderStatusSync, StringComparer.Ordinal)
-                || activeJobTypes.Contains(MarketplaceJobTypes.PazaramaOrderStatusSync, StringComparer.Ordinal)
-                || activeJobTypes.Contains(MarketplaceJobTypes.PttAvmOrderStatusSync, StringComparer.Ordinal);
-            var activeOrderLane = activeJobTypes.Any(jobType => MarketplaceSyncExecutionLock.GroupFor(jobType) == "orders");
-            var canQueueHotOrderBehindOrderLane = isHotOrder && activeOrderLane && !hotOrderAlreadyQueued;
-            var canQueueLifecycleBehindOrderLane = isOrderLifecycle && activeOrderLane && !lifecycleAlreadyQueued;
-            var isOrderBackground = IsOrderBackgroundJob(definition.Value.JobType);
-            var backgroundOrderAlreadyQueued = activeJobTypes.Any(IsOrderBackgroundJob);
-            var canQueueOrderBackgroundBehindOrderLane = isOrderBackground
-                && activeOrderLane
-                && !backgroundOrderAlreadyQueued
-                && !backgroundOrderReservations.Contains(row.Connection.Id);
-            // The jobs added during this pass are not visible to the AsNoTracking
-            // queries until SaveChangesAsync. Reserve the provider lane in memory
-            // as well, otherwise multiple order policies can be queued together.
-            // A lifecycle scan is the exception: one pending lifecycle job may
-            // wait behind the hot order stream, otherwise a continuously busy
-            // stream can starve status refreshes forever.
-            var reservationKey = $"{row.Policy.TenantId:N}:{row.Connection.Id:N}:{executionGroup}";
-            if ((active && !canQueueHotOrderBehindOrderLane && !canQueueLifecycleBehindOrderLane && !canQueueOrderBackgroundBehindOrderLane)
-                || (reservedExecutionGroups.Contains(reservationKey) && !canQueueHotOrderBehindOrderLane && !canQueueLifecycleBehindOrderLane && !canQueueOrderBackgroundBehindOrderLane)) continue;
-            // The policy remembers when its job was last queued; only a policy that has not queued since the
-            // column was added looks the time up in the job table.
-            var latest = row.Policy.LastScheduledAt ?? await db.IntegrationJobs.AsNoTracking()
-                .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id && x.JobType == definition.Value.JobType && x.JobDedupKey.StartsWith(definition.Value.DedupPrefix))
-                .OrderByDescending(x => x.CreatedAt).Select(x => (DateTimeOffset?)x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
-            if (isListingVerify)
-            {
-                var completedAt = await ListingVerifyCompletedAtAsync(row.Policy.TenantId, row.Connection.Id, cancellationToken);
-                if (!ListingVerificationPolicy.IsDue(now, completedAt, latest, jitterSeconds)) continue;
-                var (queuedRuns, blocked) = await ListingVerifyCycleAttemptsAsync(row.Policy.TenantId, row.Connection.Id, ListingVerificationPolicy.CycleStart(now), cancellationToken);
-                if (!ListingVerificationPolicy.MayQueueAgain(queuedRuns, blocked)) continue;
-            }
-            else if (!isHotOrder && !IsDue(latest, interval, jitterSeconds, now)) continue;
-            // An open-return scan with no open claim to follow has nothing to do and is not queued (a local check).
-            if (row.Policy.ResourceType == "RETURN_LIFECYCLE"
-                && !await OpenReturnClaimsExistAsync(db, row.Policy.TenantId, row.Connection.Id, row.Connection.PlatformCode, cancellationToken)) continue;
-            // Likewise an order status scan with no open package to follow (live 10 Nov 2026: Pazarama's ran 27 times an hour
-            // with none open). A new order read opens one again; the scan is queued on the next pass after that.
-            if (LifecycleFollowsOpenPackagesOnly(definition.Value.JobType)
-                && !await OpenPackagesExistAsync(db, row.Policy.TenantId, row.Connection.Id, cancellationToken)) continue;
-            // A hot order read of a connection without any order yet runs at once, whatever its interval.
-            if (isHotOrder && !IsDue(latest, interval, jitterSeconds, now)
-                && await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id, cancellationToken)) continue;
+                var interval = Math.Clamp(row.Policy.IntervalSeconds, 30, ScheduledOrderPollingCadencePolicy.MaximumIntervalSeconds);
+                var isHotOrder = definition.Value.JobType is MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.N11OrderSync or MarketplaceJobTypes.PazaramaOrderSync or MarketplaceJobTypes.PttAvmOrderSync;
+                var jitterSeconds = StableJitterSeconds(row.Connection.Id, row.Policy.ResourceType, row.Policy.JitterSeconds);
+                // The cheap due check first: a policy queued less than its (shortest possible) interval ago is skipped
+                // before any of the lookups below. Daily policies run only inside their afternoon window.
+                // The nightly link verification keeps its own window and catch-up (ListingVerificationPolicy); a run queued
+                // within the last hour is not looked at again.
+                var isListingVerify = row.Policy.ResourceType == ListingVerificationPolicy.ResourceType;
+                if (isListingVerify && row.Policy.LastScheduledAt is { } verifyQueuedAt && now - verifyQueuedAt < ListingVerificationPolicy.RetrySpacing) return 0;
+                var shortestInterval = row.Policy.ResourceType == "RETURNS" ? Math.Max(interval, ReturnCadencePolicy.BaseSeconds) : interval;
+                if (!isListingVerify && !MayBeDue(row.Policy.LastScheduledAt, ScheduledOrderPollingCadencePolicy.ForEnvironment(shortestInterval, row.Connection.Environment), jitterSeconds, now, isHotOrder)) return 0;
+                // Questions are rare; a connection without a new question for a while is asked less often. Healthy order
+                // notifications make the order polls a slower safety net. Both thin out to the policy's idle interval and
+                // only while its idle rule is on (SyncCadencePolicy, set in the panel).
+                var idleKind = row.Policy.IdleBackoffEnabled ? SyncCadencePolicy.IdleKind(row.Connection.PlatformCode, row.Policy.ResourceType) : null;
+                var lastQuestionAt = idleKind == SyncCadencePolicy.IdleQuiet
+                    ? await db.MarketplaceQuestions.AsNoTracking()
+                        .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id)
+                        .MaxAsync(x => (DateTimeOffset?)x.CreatedAt, cancellationToken)
+                    : null;
+                // Returns are read every ten minutes at most and thin out while none is open, none came for a day or a week,
+                // or Hepsiburada's notifications bring them (ReturnCadencePolicy, through the same idle rule).
+                var isReturns = idleKind == SyncCadencePolicy.IdleReturns;
+                var healthy = (idleKind == SyncCadencePolicy.IdleWebhook || isReturns && ReturnCadencePolicy.NotificationsCarryClaims(row.Connection.PlatformCode))
+                    && (webhookHealthy ??= await HealthyWebhookConnectionsAsync(now, cancellationToken)).Contains(row.Connection.Id);
+                var hasOpenReturns = !isReturns || await OpenReturnClaimsExistAsync(db, row.Policy.TenantId, row.Connection.Id, row.Connection.PlatformCode, cancellationToken);
+                var lastNewReturnAt = isReturns
+                    ? await db.ReturnClaims.AsNoTracking()
+                        .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id)
+                        .MaxAsync(x => (DateTimeOffset?)x.CreatedAt, cancellationToken)
+                    : null;
+                interval = SyncCadencePolicy.EffectiveSeconds(row.Connection.PlatformCode, row.Policy.ResourceType, row.Connection.Environment, interval, idleKind is not null, row.Policy.IdleIntervalSeconds, healthy, lastQuestionAt, now, hasOpenReturns, lastNewReturnAt);
+                // Different scheduled job types can share one provider execution
+                // lane (for example order sync and order reconciliation). Checking
+                // the execution group keeps the queue coalesced before it reaches
+                // the worker's advisory lock. The queued job types are read once per connection: jobs this pass
+                // adds are not saved yet, the reservations below cover them.
+                if (!activeJobTypesByConnection.TryGetValue(row.Connection.Id, out var activeJobTypes))
+                {
+                    activeJobTypes = (await db.IntegrationJobs.AsNoTracking()
+                        .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id
+                            && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled))
+                        .Select(x => new { x.JobType, x.Status })
+                        .Distinct()
+                        .ToListAsync(cancellationToken))
+                        .Where(x => HoldsQueueLane(x.JobType, x.Status))
+                        .Select(x => x.JobType)
+                        .Distinct(StringComparer.Ordinal)
+                        .ToList();
+                    activeJobTypesByConnection[row.Connection.Id] = activeJobTypes;
+                }
+                var executionGroup = MarketplaceSyncExecutionLock.GroupFor(definition.Value.JobType);
+                var active = activeJobTypes.Any(jobType => MarketplaceSyncExecutionLock.GroupFor(jobType) == executionGroup);
+                var hotOrderAlreadyQueued = activeJobTypes.Contains(MarketplaceJobTypes.OrderSync, StringComparer.Ordinal)
+                    || activeJobTypes.Contains(MarketplaceJobTypes.ShopifyOrderSync, StringComparer.Ordinal)
+                    || activeJobTypes.Contains(MarketplaceJobTypes.HepsiburadaOrderSync, StringComparer.Ordinal)
+                    || activeJobTypes.Contains(MarketplaceJobTypes.N11OrderSync, StringComparer.Ordinal)
+                    || activeJobTypes.Contains(MarketplaceJobTypes.PazaramaOrderSync, StringComparer.Ordinal)
+                    || activeJobTypes.Contains(MarketplaceJobTypes.PttAvmOrderSync, StringComparer.Ordinal);
+                var isOrderLifecycle = definition.Value.JobType is MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync or MarketplaceJobTypes.HepsiburadaOrderStatusSync or MarketplaceJobTypes.PazaramaOrderStatusSync or MarketplaceJobTypes.PttAvmOrderStatusSync;
+                var lifecycleAlreadyQueued = activeJobTypes.Contains(MarketplaceJobTypes.OrderStatusSync, StringComparer.Ordinal)
+                    || activeJobTypes.Contains(MarketplaceJobTypes.ShopifyOrderStatusSync, StringComparer.Ordinal)
+                    || activeJobTypes.Contains(MarketplaceJobTypes.HepsiburadaOrderStatusSync, StringComparer.Ordinal)
+                    || activeJobTypes.Contains(MarketplaceJobTypes.PazaramaOrderStatusSync, StringComparer.Ordinal)
+                    || activeJobTypes.Contains(MarketplaceJobTypes.PttAvmOrderStatusSync, StringComparer.Ordinal);
+                var activeOrderLane = activeJobTypes.Any(jobType => MarketplaceSyncExecutionLock.GroupFor(jobType) == "orders");
+                var canQueueHotOrderBehindOrderLane = isHotOrder && activeOrderLane && !hotOrderAlreadyQueued;
+                var canQueueLifecycleBehindOrderLane = isOrderLifecycle && activeOrderLane && !lifecycleAlreadyQueued;
+                var isOrderBackground = IsOrderBackgroundJob(definition.Value.JobType);
+                var backgroundOrderAlreadyQueued = activeJobTypes.Any(IsOrderBackgroundJob);
+                var canQueueOrderBackgroundBehindOrderLane = isOrderBackground
+                    && activeOrderLane
+                    && !backgroundOrderAlreadyQueued
+                    && !backgroundOrderReservations.Contains(row.Connection.Id);
+                // The jobs added during this pass are not visible to the AsNoTracking
+                // queries until SaveChangesAsync. Reserve the provider lane in memory
+                // as well, otherwise multiple order policies can be queued together.
+                // A lifecycle scan is the exception: one pending lifecycle job may
+                // wait behind the hot order stream, otherwise a continuously busy
+                // stream can starve status refreshes forever.
+                var reservationKey = $"{row.Policy.TenantId:N}:{row.Connection.Id:N}:{executionGroup}";
+                if ((active && !canQueueHotOrderBehindOrderLane && !canQueueLifecycleBehindOrderLane && !canQueueOrderBackgroundBehindOrderLane)
+                    || (reservedExecutionGroups.Contains(reservationKey) && !canQueueHotOrderBehindOrderLane && !canQueueLifecycleBehindOrderLane && !canQueueOrderBackgroundBehindOrderLane)) return 0;
+                // The policy remembers when its job was last queued; only a policy that has not queued since the
+                // column was added looks the time up in the job table.
+                var latest = row.Policy.LastScheduledAt ?? await db.IntegrationJobs.AsNoTracking()
+                    .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id && x.JobType == definition.Value.JobType && x.JobDedupKey.StartsWith(definition.Value.DedupPrefix))
+                    .OrderByDescending(x => x.CreatedAt).Select(x => (DateTimeOffset?)x.CreatedAt).FirstOrDefaultAsync(cancellationToken);
+                if (isListingVerify)
+                {
+                    var completedAt = await ListingVerifyCompletedAtAsync(row.Policy.TenantId, row.Connection.Id, cancellationToken);
+                    if (!ListingVerificationPolicy.IsDue(now, completedAt, latest, jitterSeconds)) return 0;
+                    var (queuedRuns, blocked) = await ListingVerifyCycleAttemptsAsync(row.Policy.TenantId, row.Connection.Id, ListingVerificationPolicy.CycleStart(now), cancellationToken);
+                    if (!ListingVerificationPolicy.MayQueueAgain(queuedRuns, blocked)) return 0;
+                }
+                else if (!isHotOrder && !IsDue(latest, interval, jitterSeconds, now)) return 0;
+                // An open-return scan with no open claim to follow has nothing to do and is not queued (a local check).
+                if (row.Policy.ResourceType == "RETURN_LIFECYCLE"
+                    && !await OpenReturnClaimsExistAsync(db, row.Policy.TenantId, row.Connection.Id, row.Connection.PlatformCode, cancellationToken)) return 0;
+                // Likewise an order status scan with no open package to follow (live 10 Nov 2026: Pazarama's ran 27 times an hour
+                // with none open). A new order read opens one again; the scan is queued on the next pass after that.
+                if (LifecycleFollowsOpenPackagesOnly(definition.Value.JobType)
+                    && !await OpenPackagesExistAsync(db, row.Policy.TenantId, row.Connection.Id, cancellationToken)) return 0;
+                // A hot order read of a connection without any order yet runs at once, whatever its interval.
+                if (isHotOrder && !IsDue(latest, interval, jitterSeconds, now)
+                    && await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id, cancellationToken)) return 0;
 
-            // A verification run that did not complete is queued again within the same day, so its key changes hourly.
-            var bucket = now.ToUnixTimeSeconds() / (isListingVerify ? 3600 : interval);
-            var jobs = new List<(string Dedup, string PayloadJson)>();
-            if (row.Policy.ResourceType == "REFERENCE_DATA")
-            {
-                // The daily reference read refreshes the category tree and, where the marketplace keeps a brand list,
-                // the brand list; a list fetched within the day (by hand or at activation) is not read again.
-                var resources = ScheduledReferenceResources(row.Connection.PlatformCode);
-                var fetched = await db.ReferenceSnapshots.AsNoTracking()
-                    .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id && resources.Contains(x.ResourceType) && x.ScopeExternalId == "" && x.IsCurrent)
-                    .GroupBy(x => x.ResourceType)
-                    .Select(group => new { ResourceType = group.Key, FetchedAt = group.Max(x => x.FetchedAt) })
-                    .ToDictionaryAsync(x => x.ResourceType, x => x.FetchedAt, cancellationToken);
-                foreach (var resource in StaleReferenceResources(resources, fetched, interval, jitterSeconds, now))
-                    jobs.Add(resource == "CATEGORIES"
-                        ? ($"{definition.Value.DedupPrefix}:{bucket}", definition.Value.PayloadJson)
-                        : ($"{definition.Value.DedupPrefix}:{resource.ToLowerInvariant()}:{bucket}", JsonSerializer.Serialize(new { connectionId = row.Connection.Id, resourceType = resource, parentExternalId = (string?)null })));
-            }
-            else jobs.Add(($"{definition.Value.DedupPrefix}:{bucket}", definition.Value.PayloadJson));
-            var queuedAny = false;
-            foreach (var (dedup, payloadJson) in jobs)
-            {
-                var queued = await JobEnqueuer.EnqueueAsync(db, NewJobRequest(row.Policy.TenantId, row.Connection.Id, definition.Value.JobType, dedup, payloadJson, now, $"scheduler-{Guid.NewGuid():N}"),
-                    JobDedupPolicy.ReuseAnyWithKey, cancellationToken);
-                if (!queued.Created) continue;
-                queuedAny = true;
-                added++;
-            }
-            if (!queuedAny) continue;
-            reservedExecutionGroups.Add(reservationKey);
-            if (canQueueOrderBackgroundBehindOrderLane) backgroundOrderReservations.Add(row.Connection.Id);
-            scheduledPolicyIds.Add(row.Policy.Id);
+                // A verification run that did not complete is queued again within the same day, so its key changes hourly.
+                var bucket = now.ToUnixTimeSeconds() / (isListingVerify ? 3600 : interval);
+                var jobs = new List<(string Dedup, string PayloadJson)>();
+                if (row.Policy.ResourceType == "REFERENCE_DATA")
+                {
+                    // The daily reference read refreshes the category tree and, where the marketplace keeps a brand list,
+                    // the brand list; a list fetched within the day (by hand or at activation) is not read again.
+                    var resources = ScheduledReferenceResources(row.Connection.PlatformCode);
+                    var fetched = await db.ReferenceSnapshots.AsNoTracking()
+                        .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id && resources.Contains(x.ResourceType) && x.ScopeExternalId == "" && x.IsCurrent)
+                        .GroupBy(x => x.ResourceType)
+                        .Select(group => new { ResourceType = group.Key, FetchedAt = group.Max(x => x.FetchedAt) })
+                        .ToDictionaryAsync(x => x.ResourceType, x => x.FetchedAt, cancellationToken);
+                    foreach (var resource in StaleReferenceResources(resources, fetched, interval, jitterSeconds, now))
+                        jobs.Add(resource == "CATEGORIES"
+                            ? ($"{definition.Value.DedupPrefix}:{bucket}", definition.Value.PayloadJson)
+                            : ($"{definition.Value.DedupPrefix}:{resource.ToLowerInvariant()}:{bucket}", JsonSerializer.Serialize(new { connectionId = row.Connection.Id, resourceType = resource, parentExternalId = (string?)null })));
+                }
+                else jobs.Add(($"{definition.Value.DedupPrefix}:{bucket}", definition.Value.PayloadJson));
+                var queuedCount = 0;
+                foreach (var (dedup, payloadJson) in jobs)
+                {
+                    var queued = await JobEnqueuer.EnqueueAsync(db, NewJobRequest(row.Policy.TenantId, row.Connection.Id, definition.Value.JobType, dedup, payloadJson, now, $"scheduler-{Guid.NewGuid():N}"),
+                        JobDedupPolicy.ReuseAnyWithKey, cancellationToken);
+                    if (!queued.Created) continue;
+                    queuedCount++;
+                }
+                if (queuedCount == 0) return 0;
+                reservedExecutionGroups.Add(reservationKey);
+                if (canQueueOrderBackgroundBehindOrderLane) backgroundOrderReservations.Add(row.Connection.Id);
+                scheduledPolicyIds.Add(row.Policy.Id);
+                return queuedCount;
+            }, exception => log.LogError(exception, "Scheduled policy {PolicyId} ({ResourceType}) of connection {ConnectionId} failed; it is skipped this pass and the other connections are scheduled",
+                row.Policy.Id, row.Policy.ResourceType, row.Connection.Id));
+            if (scheduled is { } count) added += count;
+            else failedPolicies++;
+        }
+        if (failedPolicies > 0)
+        {
+            Telemetry.MarketplaceHubTelemetry.ScheduledPolicyFailures.Add(failedPolicies);
+            log.LogWarning("Scheduler pass skipped {Failed} of {Total} sync policies that failed", failedPolicies, policies.Count);
         }
 
         // Tenants that have invoices (an EXISTS per tenant instead of a DISTINCT over every invoice).
