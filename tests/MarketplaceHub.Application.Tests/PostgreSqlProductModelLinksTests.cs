@@ -285,6 +285,55 @@ public sealed class PostgreSqlProductModelLinksTests(PostgreSqlTenantIsolationFi
         }
     }
 
+    // KATALOG-2: a model code corrected on every colour card of a model keeps the model (its id), so its marketplace model
+    // links and saved model attributes stay; only its code and key change. A code correction that leaves a colour behind
+    // on the old code still opens a model of its own for the moved card.
+    [PostgreSqlFact]
+    public async Task RecodingEveryCardOfAModel_KeepsTheModelItsLinksAndAttributes()
+    {
+        var seed = NewSeed();
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        AddSeed(db, seed);
+        var siyah = AddCard(db, seed, seed.Ravencia, "MZ100", "Siyah", "Kadın Siyah Bluz", 0);
+        var mavi = AddCard(db, seed, seed.Ravencia, "MZ100", "Mavi", "Kadın Mavi Bluz", 1);
+        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "TRENDYOL", Environment = "PRODUCTION", DisplayName = "Trendyol", ExternalStoreId = $"store-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V1", SettingsJson = "{}", Version = 1 };
+        db.PlatformConnections.Add(connection);
+        var fabric = new AttributeDefinition { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, Code = $"FABRIC-{Guid.NewGuid():N}", Name = "Kumaş", DataType = AttributeDataType.Text, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow, Version = 1 };
+        db.AttributeDefinitions.Add(fabric);
+        await db.SaveChangesAsync();
+        var model = await db.ProductModels.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id);
+        var siyahVariant = await db.ProductVariants.AsNoTracking().Where(x => x.ProductId == siyah.Id).OrderBy(x => x.SortOrder).FirstAsync();
+        db.MarketplaceModelLinks.Add(new MarketplaceModelLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = connection.Id, ModelId = model.Id, ExternalId = "TY-MZ100", CreatedAt = DateTimeOffset.UtcNow, Version = 1 });
+        db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = connection.Id, VariantId = siyahVariant.Id, ExternalId = siyahVariant.Barcode!, Version = 1 });
+        db.ProductModelAttributes.Add(new ProductModelAttribute { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ModelId = model.Id, AttributeId = fabric.Id, TextValue = "Pamuk" });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        // The seller corrects the code on every colour card.
+        foreach (var variant in await db.ProductVariants.Where(x => x.TenantId == seed.Tenant.Id).ToListAsync()) variant.ModelCode = "MZ100-YENI";
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var recoded = await db.ProductModels.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id);
+        Assert.Equal((model.Id, "MZ100-YENI", "MZ100-YENI"), (recoded.Id, recoded.ModelCode, recoded.ModelCodeKey));
+        var links = await LinksAsync(db, seed.Tenant.Id);
+        Assert.Equal([model.Id, model.Id], [links[siyah.Id], links[mavi.Id]]);
+        Assert.Equal("TY-MZ100", (await db.MarketplaceModelLinks.AsNoTracking().SingleAsync(x => x.ModelId == model.Id)).ExternalId);
+        Assert.Equal("Pamuk", (await db.ProductModelAttributes.AsNoTracking().SingleAsync(x => x.ModelId == model.Id)).TextValue);
+
+        // Only the Mavi card moves to another code: the model stays with Siyah, Mavi opens its own.
+        foreach (var variant in await db.ProductVariants.Where(x => x.ProductId == mavi.Id).ToListAsync()) variant.ModelCode = "MZ200";
+        await db.SaveChangesAsync();
+        links = await LinksAsync(db, seed.Tenant.Id);
+        Assert.Equal(model.Id, links[siyah.Id]);
+        Assert.NotNull(links[mavi.Id]);
+        Assert.NotEqual(model.Id, links[mavi.Id]);
+        Assert.Equal("MZ100-YENI", (await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == model.Id)).ModelCodeKey);
+        Assert.Single(await db.MarketplaceModelLinks.AsNoTracking().Where(x => x.ModelId == model.Id).ToListAsync());
+        await transaction.RollbackAsync();
+    }
+
     [PostgreSqlFact]
     public async Task OneModel_IsOneLinkedModelOrOneBrandAndCode()
     {

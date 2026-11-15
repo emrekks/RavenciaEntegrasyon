@@ -220,12 +220,14 @@ public static class ProductModelLinks
 
         var openIssueKeys = (await db.OperationalIssues.AsNoTracking().Where(x => x.TenantId == tenantId && x.Code == AmbiguousCode && x.Status != IssueStatus.Resolved).Select(x => x.DedupeKey).ToListAsync(cancellationToken)).ToHashSet(StringComparer.Ordinal);
         var desired = new Dictionary<Guid, Guid?>();
+        // Models given another key in this run (KATALOG-2): no longer a model of the key they were read under.
+        var rekeyed = new HashSet<Guid>();
         foreach (var key in targetKeys.Order(StringComparer.Ordinal))
         {
             var cards = cardKeys.Where(x => x.Key == key && products.ContainsKey(x.ProductId))
                 .Select(x => (Card: products[x.ProductId], x.Color, x.Code))
                 .OrderBy(x => x.Card.CreatedAt).ThenBy(x => x.Card.Id).ToList();
-            var keyModels = models.Where(x => x.ModelCodeKey == key).ToList();
+            var keyModels = models.Where(x => x.ModelCodeKey == key && !rekeyed.Contains(x.Id)).ToList();
             var brands = cards.Select(x => x.Card.BrandId).Distinct().ToList();
             if (brands.Count == 1)
             {
@@ -236,6 +238,22 @@ public static class ProductModelLinks
                     && await db.ProductModels.Where(x => x.TenantId == tenantId && x.Id == moving.Id && !db.ProductModels.Any(other => other.TenantId == tenantId && other.BrandId == brandId && other.ModelCodeKey == key))
                         .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.BrandId, brandId).SetProperty(x => x.UpdatedAt, now).SetProperty(x => x.Version, x => x.Version + 1), cancellationToken) == 1)
                     target = moving.Id;
+                // KATALOG-2: the cards' code was corrected together. A model is kept by its id, not re-opened under the new
+                // code: when every card linked to one model of another key now holds this key (none stays behind on the old
+                // code, and no card of another key was given it in this run), that model takes the new code, so its
+                // marketplace model links and saved attributes stay. Cards of another model or of none may join it.
+                if (target is null
+                    && models.Where(model => model.ModelCodeKey != key && !rekeyed.Contains(model.Id) && cards.Any(x => x.Card.FamilyId == model.Id))
+                        .OrderByDescending(model => cards.Count(x => x.Card.FamilyId == model.Id)).ThenBy(model => model.Id).FirstOrDefault() is { } recoding
+                    && linkedElsewhere.Where(x => x.FamilyId == recoding.Id).All(x => cards.Any(card => card.Card.Id == x.Id))
+                    && !desired.Any(pair => pair.Value == recoding.Id)
+                    && await db.ProductModels.Where(x => x.TenantId == tenantId && x.Id == recoding.Id && !db.ProductModels.Any(other => other.TenantId == tenantId && other.BrandId == brandId && other.ModelCodeKey == key))
+                        .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.BrandId, brandId).SetProperty(x => x.ModelCode, Short(cards[0].Code, 160)).SetProperty(x => x.ModelCodeKey, key)
+                            .SetProperty(x => x.UpdatedAt, now).SetProperty(x => x.Version, x => x.Version + 1), cancellationToken) == 1)
+                {
+                    rekeyed.Add(recoding.Id);
+                    target = recoding.Id;
+                }
                 if (target is null)
                 {
                     var fields = ProductFamilySharedFields.ModelValues(
