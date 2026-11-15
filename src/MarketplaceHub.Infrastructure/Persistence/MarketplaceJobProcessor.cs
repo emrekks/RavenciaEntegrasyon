@@ -9749,21 +9749,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 {
                     stockChangedVariantIds.Add(variant.Id);
                     var openingEventId = $"catalog-opening:{connectionId:N}:{opening.Id:N}";
-                    db.StockLedgerEntries.Add(new StockLedgerEntry
-                    {
-                        Id = Guid.CreateVersion7(),
-                        TenantId = tenantId,
-                        InventoryItemId = opening.Id,
-                        MovementType = ProductActivityTypes.ImportOpening,
-                        QuantityDelta = opening.OnHand,
-                        SourceType = MarketplaceStockImportPolicy.SourceType,
-                        SourceId = connectionId.ToString("D"),
-                        SourceEventId = openingEventId,
-                        IdempotencyKey = openingEventId,
-                        OccurredAt = now,
-                        RecordedAt = now,
-                        CorrelationId = $"catalog-import:{connectionId:N}"
-                    });
+                    StockMovementWriter.Record(db, tenantId, opening.Id, opening.OnHand, CatalogStockSource(ProductActivityTypes.ImportOpening, connectionId, openingEventId, now, now));
                 }
             }
             else
@@ -9779,33 +9765,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     stockChangedVariantIds.Add(variant.Id);
                     // K-2: the change goes through the stock ledger and reaches every connection selling the variant,
                     // like any other stock movement.
-                    var readAt = MarketplaceStockReadAt(now);
-                    var delta = targetOnHand - inventory.OnHand;
-                    inventory.OnHand = targetOnHand;
-                    inventory.Available = InventoryProjection.Available(inventory.OnHand, inventory.Reserved);
-                    inventory.ProjectionVersion++;
-                    var eventId = $"catalog-stock:{connectionId:N}:{inventory.Id:N}:v{inventory.ProjectionVersion}";
-                    db.StockLedgerEntries.Add(new StockLedgerEntry
-                    {
-                        Id = Guid.CreateVersion7(),
-                        TenantId = tenantId,
-                        InventoryItemId = inventory.Id,
-                        MovementType = MarketplaceStockImportPolicy.MovementType,
-                        QuantityDelta = delta,
-                        SourceType = MarketplaceStockImportPolicy.SourceType,
-                        SourceId = connectionId.ToString("D"),
-                        SourceEventId = eventId,
-                        IdempotencyKey = eventId,
-                        OccurredAt = readAt,
-                        RecordedAt = now,
-                        CorrelationId = $"catalog-import:{connectionId:N}"
-                    });
-                    await StockProjectionOutbox.EnqueueAsync(db, tenantId, [new StockProjectionChange(variant.Id, inventory.ProjectionVersion, eventId)], now, cancellationToken);
+                    // The row is keyed by the projection version the move gives the item; the move bumps the row version.
+                    var eventId = $"catalog-stock:{connectionId:N}:{inventory.Id:N}:v{inventory.ProjectionVersion + 1}";
+                    var change = StockMovementWriter.SetOnHand(db, inventory, targetOnHand, CatalogStockSource(MarketplaceStockImportPolicy.MovementType, connectionId, eventId, MarketplaceStockReadAt(now), now));
+                    await StockProjectionOutbox.EnqueueAsync(db, tenantId, [change], now, cancellationToken);
                 }
                 inventory.ObservedRemoteQuantity = observedRemoteQuantity;
                 inventory.ObservedRemoteAt = now;
                 inventory.ReconciledAt = now;
-                if (projectionChanged || observationChanged || reconciliationWasMissing)
+                if (!projectionChanged && (observationChanged || reconciliationWasMissing))
                     inventory.Version++;
             }
         }
@@ -11944,21 +11912,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         {
             if (!itemByVariant.TryGetValue(line.VariantId!.Value, out var itemId) || sourceKeys[line.Id].Any(recorded.Contains)) continue;
             var sourceId = line.Id.ToString("D");
-            db.StockLedgerEntries.Add(new StockLedgerEntry
-            {
-                Id = Guid.CreateVersion7(),
-                TenantId = tenantId,
-                InventoryItemId = itemId,
-                MovementType = "ORDER_STOCK_BASELINE",
-                QuantityDelta = OrderLineLateMatchStockPolicy.AdoptedBaseline(line.OrderedQuantity, line.CancelledQuantity, line.ShippedQuantity, line.DeliveredQuantity),
-                SourceType = "ORDER_LINE",
-                SourceId = sourceId,
-                SourceEventId = $"baseline:{sourceId}",
-                IdempotencyKey = $"order-stock-baseline:{itemId:N}:{sourceId}",
-                OccurredAt = now,
-                RecordedAt = now,
-                CorrelationId = $"order:{line.OrderId:N}"
-            });
+            StockMovementWriter.Record(db, tenantId, itemId, OrderLineLateMatchStockPolicy.AdoptedBaseline(line.OrderedQuantity, line.CancelledQuantity, line.ShippedQuantity, line.DeliveredQuantity), BaselineSource(itemId, sourceId, line.OrderId, now, now));
             recorded.Add(sourceId);
         }
     }
@@ -12323,15 +12277,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             {
                 var heldQuantity = held.Quantity;
                 held.Status = ReservationStatus.Released; held.ReleasedAt = now; held.ExpiresAt = null; held.Version++;
-                item.Reserved = Math.Max(0m, item.Reserved - heldQuantity);
-                item.Available = InventoryProjection.Available(item.OnHand, item.Reserved);
-                item.ProjectionVersion++;
-                item.Version++;
                 var releaseEventId = $"{eventId}:reservation-to-shortfall:{held.Id:N}";
-                db.StockLedgerEntries.Add(new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id, MovementType = "ORDER_RESERVATION_RELEASED", QuantityDelta = heldQuantity, SourceType = "ORDER_LINE", SourceId = sourceId, SourceEventId = releaseEventId, IdempotencyKey = $"order-reservation:{releaseEventId}", OccurredAt = modifiedAtByLine[line.Id], RecordedAt = now, CorrelationId = $"order:{line.OrderId:N}" });
-                db.StockLedgerEntries.Add(ShortfallEntry(tenantId, item.Id, sourceId, line.OrderId, heldQuantity, releaseEventId, modifiedAtByLine[line.Id], now));
+                outbox.Add(StockMovementWriter.ReleaseReserved(item, heldQuantity, releaseEventId));
+                StockMovementWriter.Record(db, tenantId, item.Id, heldQuantity, OrderLineSource("ORDER_RESERVATION_RELEASED", sourceId, releaseEventId, $"order-reservation:{releaseEventId}", line.OrderId, modifiedAtByLine[line.Id], now));
+                RecordShortfall(tenantId, item.Id, sourceId, line.OrderId, heldQuantity, releaseEventId, modifiedAtByLine[line.Id], now);
                 shortfalls[sourceId] = shortfalls.GetValueOrDefault(sourceId) + heldQuantity;
-                outbox.Add(new StockProjectionChange(variantId, item.ProjectionVersion, releaseEventId));
             }
 
             if (!stockBaselines.TryGetValue(sourceId, out var baselineQuantity))
@@ -12342,21 +12292,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 // own baseline (AdoptResetOrderLineStock, AdoptLateMatchedLineStock).
                 baselineQuantity = OrderInventoryStockPolicy.InitialBaselineQuantity(legacyShippedLedger.GetValueOrDefault(sourceId));
                 stockBaselines[sourceId] = baselineQuantity;
-                db.StockLedgerEntries.Add(new StockLedgerEntry
-                {
-                    Id = Guid.CreateVersion7(),
-                    TenantId = tenantId,
-                    InventoryItemId = item.Id,
-                    MovementType = "ORDER_STOCK_BASELINE",
-                    QuantityDelta = baselineQuantity,
-                    SourceType = "ORDER_LINE",
-                    SourceId = sourceId,
-                    SourceEventId = $"baseline:{sourceId}",
-                    IdempotencyKey = $"order-stock-baseline:{item.Id:N}:{sourceId}",
-                    OccurredAt = modifiedAtByLine[line.Id],
-                    RecordedAt = now,
-                    CorrelationId = $"order:{line.OrderId:N}"
-                });
+                StockMovementWriter.Record(db, tenantId, item.Id, baselineQuantity, BaselineSource(item.Id, sourceId, line.OrderId, modifiedAtByLine[line.Id], now));
             }
 
             var targetCommitted = Math.Max(
@@ -12372,35 +12308,17 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var committedBeforeMovement = OrderInventoryStockPolicy.Committed(baselineQuantity, shortfall, receivedLedgerDelta);
             if (movement.OnHandDelta != 0)
             {
-                item.OnHand = decimal.Round(item.OnHand + movement.OnHandDelta, 4, MidpointRounding.ToEven);
-                item.Available = InventoryProjection.Available(item.OnHand, item.Reserved);
-                item.ProjectionVersion++;
-                item.Version++;
                 var committedAfterStockDelta = Math.Max(0m, committedBeforeMovement - movement.OnHandDelta);
                 var stockEventId = $"{eventId}:committed:{committedBeforeMovement.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}:{committedAfterStockDelta.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}";
-                db.StockLedgerEntries.Add(new StockLedgerEntry
-                {
-                    Id = Guid.CreateVersion7(),
-                    TenantId = tenantId,
-                    InventoryItemId = item.Id,
-                    MovementType = "ORDER_RECEIVED",
-                    QuantityDelta = movement.OnHandDelta,
-                    SourceType = "ORDER_LINE",
-                    SourceId = sourceId,
-                    SourceEventId = stockEventId,
-                    IdempotencyKey = $"order-stock-received:{item.Id:N}:{stockEventId}",
-                    OccurredAt = modifiedAtByLine[line.Id],
-                    RecordedAt = now,
-                    CorrelationId = $"order:{line.OrderId:N}"
-                });
+                outbox.Add(StockMovementWriter.Move(db, item, movement.OnHandDelta, StockMovementRounding.OnHand,
+                    OrderLineSource("ORDER_RECEIVED", sourceId, stockEventId, $"order-stock-received:{item.Id:N}:{stockEventId}", line.OrderId, modifiedAtByLine[line.Id], now)));
                 receivedLedgerDeltas[sourceId] = receivedLedgerDelta + movement.OnHandDelta;
-                outbox.Add(new StockProjectionChange(variantId, item.ProjectionVersion, stockEventId));
             }
             if (movement.ShortfallDelta != 0)
             {
                 var shortfallAfter = shortfall + movement.ShortfallDelta;
                 var shortfallEventId = $"{eventId}:shortfall:{shortfall.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}:{shortfallAfter.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}";
-                db.StockLedgerEntries.Add(ShortfallEntry(tenantId, item.Id, sourceId, line.OrderId, movement.ShortfallDelta, shortfallEventId, modifiedAtByLine[line.Id], now));
+                RecordShortfall(tenantId, item.Id, sourceId, line.OrderId, movement.ShortfallDelta, shortfallEventId, modifiedAtByLine[line.Id], now);
                 shortfalls[sourceId] = shortfallAfter;
                 if (movement.ShortfallDelta > 0)
                     await RecordIssue(
@@ -12417,21 +12335,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (shipmentDelta > 0)
             {
                 var shipmentEventId = $"{line.Id:N}:shipment-progress:{targetShipped.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}";
-                db.StockLedgerEntries.Add(new StockLedgerEntry
-                {
-                    Id = Guid.CreateVersion7(),
-                    TenantId = tenantId,
-                    InventoryItemId = item.Id,
-                    MovementType = "ORDER_SHIPMENT_PROGRESS",
-                    QuantityDelta = -shipmentDelta,
-                    SourceType = "ORDER_LINE",
-                    SourceId = sourceId,
-                    SourceEventId = shipmentEventId,
-                    IdempotencyKey = $"order-shipment-progress:{item.Id:N}:{shipmentEventId}",
-                    OccurredAt = modifiedAtByLine[line.Id],
-                    RecordedAt = now,
-                    CorrelationId = $"order:{line.OrderId:N}"
-                });
+                StockMovementWriter.Record(db, tenantId, item.Id, -shipmentDelta, OrderLineSource("ORDER_SHIPMENT_PROGRESS", sourceId, shipmentEventId, $"order-shipment-progress:{item.Id:N}:{shipmentEventId}", line.OrderId, modifiedAtByLine[line.Id], now));
                 shippedLedger[sourceId] = consumedShipped + shipmentDelta;
             }
         }
@@ -12441,21 +12345,19 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
     // The units of an order line that stock could not give (positive) or that are no longer owed (negative). A marker, not
     // a stock movement: on-hand does not change with it, and the panel's ledger view leaves it out.
-    private static StockLedgerEntry ShortfallEntry(Guid tenantId, Guid itemId, string sourceId, Guid orderId, decimal quantity, string eventId, DateTimeOffset occurredAt, DateTimeOffset now) => new()
-    {
-        Id = Guid.CreateVersion7(),
-        TenantId = tenantId,
-        InventoryItemId = itemId,
-        MovementType = OrderInventoryStockPolicy.ShortfallMovementType,
-        QuantityDelta = quantity,
-        SourceType = "ORDER_LINE",
-        SourceId = sourceId,
-        SourceEventId = eventId,
-        IdempotencyKey = $"order-stock-shortfall:{itemId:N}:{eventId}",
-        OccurredAt = occurredAt,
-        RecordedAt = now,
-        CorrelationId = $"order:{orderId:N}"
-    };
+    private void RecordShortfall(Guid tenantId, Guid itemId, string sourceId, Guid orderId, decimal quantity, string eventId, DateTimeOffset occurredAt, DateTimeOffset now) =>
+        StockMovementWriter.Record(db, tenantId, itemId, quantity, OrderLineSource(OrderInventoryStockPolicy.ShortfallMovementType, sourceId, eventId, $"order-stock-shortfall:{itemId:N}:{eventId}", orderId, occurredAt, now));
+
+    // An order line's stock ledger row (SIPARIS-STOK-8: written through StockMovementWriter).
+    private static StockLedgerSource OrderLineSource(string movementType, string sourceId, string sourceEventId, string idempotencyKey, Guid orderId, DateTimeOffset occurredAt, DateTimeOffset now) =>
+        new(movementType, "ORDER_LINE", sourceId, sourceEventId, idempotencyKey, occurredAt, now, $"order:{orderId:N}");
+
+    // A catalog read's stock row (an opening number or a marketplace-authoritative change): the event id is the key.
+    private static StockLedgerSource CatalogStockSource(string movementType, Guid connectionId, string eventId, DateTimeOffset occurredAt, DateTimeOffset now) =>
+        new(movementType, MarketplaceStockImportPolicy.SourceType, connectionId.ToString("D"), eventId, eventId, occurredAt, now, $"catalog-import:{connectionId:N}");
+
+    private static StockLedgerSource BaselineSource(Guid itemId, string sourceId, Guid orderId, DateTimeOffset occurredAt, DateTimeOffset now) =>
+        OrderLineSource("ORDER_STOCK_BASELINE", sourceId, $"baseline:{sourceId}", $"order-stock-baseline:{itemId:N}:{sourceId}", orderId, occurredAt, now);
 
     // A connection's order reset leaves the stock movements and reservation of a deleted line under a carry key
     // (OrderInventoryStockPolicy.ResetCarryKey). The line a later sync imports under the same marketplace order and
