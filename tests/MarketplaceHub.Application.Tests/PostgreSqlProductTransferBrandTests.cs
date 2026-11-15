@@ -104,6 +104,43 @@ public sealed class PostgreSqlProductTransferBrandTests(PostgreSqlTenantIsolatio
         Assert.Equal(IssueStatus.Resolved, await AmbiguityAsync(db, seed));
     }
 
+    // KATALOG-3: the server refuses, as the preview does, a file whose rows give two cards of one model two names (the
+    // colour word aside) or two VAT rates, and writes nothing.
+    [PostgreSqlTheory]
+    [InlineData("Kadın Siyah Midi Etek", "Kadın Mavi Kısa Etek", null, null)]
+    [InlineData(null, null, "20", "18")]
+    public async Task TwoCardsOfAModelAskingForTwoValues_AreRefused(string? firstTitle, string? secondTitle, string? firstVat, string? secondVat)
+    {
+        await using var db = fixture.CreateContext();
+        var seed = await SeedAsync(db);
+        decimal? Vat(string? text) => text is null ? null : decimal.Parse(text, System.Globalization.CultureInfo.InvariantCulture);
+
+        var applied = await new ProductTransferService(db, fixture.TimeProvider).ApplyAsync(seed.TenantId, Guid.CreateVersion7(), new ApplyProductTransferCommand([],
+            [new ProductTransferProductChange(seed.A1.Id, 1, firstTitle, Vat(firstVat)), new ProductTransferProductChange(seed.A2.Id, 1, secondTitle, Vat(secondVat))]),
+            $"transfer-mixed-{Guid.NewGuid():N}", CancellationToken.None);
+
+        Assert.False(applied.Succeeded);
+        Assert.Equal((ProductTransferService.ModelFieldMixedCode, 422), (applied.Error!.Code, applied.Error.Status));
+        db.ChangeTracker.Clear();
+        var cards = await CardsAsync(db, seed);
+        Assert.All(cards.Values, card => Assert.Equal((1L, 10m), (card.Version, card.VatRate!.Value)));
+    }
+
+    [PostgreSqlFact]
+    public async Task TwoCardsOfAModelNamingTheSameModelInTheirOwnColours_AreWritten()
+    {
+        await using var db = fixture.CreateContext();
+        var seed = await SeedAsync(db);
+
+        await ApplyAsync(db, seed,
+            new ProductTransferProductChange(seed.A1.Id, 1, "Kadın Siyah Midi Etek", 20m),
+            new ProductTransferProductChange(seed.A2.Id, 1, "Kadın Mavi Midi Etek", 20m));
+
+        var cards = await CardsAsync(db, seed);
+        Assert.Equal(("Kadın Siyah Midi Etek", "Kadın Mavi Midi Etek"), (cards[seed.A1.Id].Title, cards[seed.A2.Id].Title));
+        Assert.Equal([20m, 20m], [cards[seed.A1.Id].VatRate, cards[seed.A2.Id].VatRate]);
+    }
+
     [PostgreSqlFact]
     public async Task ARowRebrandingTheOtherBrandsCard_ToTheModelsBrand_LeavesTheModelsCardsAlone()
     {
