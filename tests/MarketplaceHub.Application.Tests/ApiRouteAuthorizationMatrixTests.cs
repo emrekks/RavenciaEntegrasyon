@@ -243,7 +243,6 @@ public sealed class ApiRouteAuthorizationMatrixTests(ApiPipelineHost fixture) : 
         "POST   /api/v1/products/bulk-field Elevated",
         "POST   /api/v1/products/bulk-publication-jobs Operations",
         "POST   /api/v1/products/bulk-status Operations",
-        "POST   /api/v1/products/bulk-vat Operations",
         "POST   /api/v1/products/delete-preview Operations",
         "GET    /api/v1/products/summary SignedIn",
         "POST   /api/v1/products/transfer/apply Operations",

@@ -7,7 +7,7 @@ using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
 
-// Ürün Hareketleri › Ürün Bilgisi on PostgreSQL: Toplu Değer Ata and Toplu KDV Ata write their information field
+// Ürün Hareketleri › Ürün Bilgisi on PostgreSQL: Toplu Değer Ata (KDV too) writes its information field
 // changes (old → new, the user, Toplu Düzenleme) into the same save, a repeat writes nothing, the list shows them under
 // the INFO kind and its movement filter, and a search reaches every matching variant however many there are.
 [Collection("postgres-integration")]
@@ -43,10 +43,13 @@ public sealed class ProductFieldActivityPostgreSqlTests(PostgreSqlTenantIsolatio
         }
         await using (var db = fixture.CreateContext())
         {
-            var vat = await Catalog(db).BulkSetVatAsync(seed.Tenant.Id, new BulkProductVatCommand([seed.ProductId], 20m, "EXCLUDED"), CancellationToken.None, userId, "corr-vat");
+            // KATALOG-12: KDV goes through Toplu Değer Ata (the old per-card bulk VAT endpoint is gone).
+            var vat = await Catalog(db).BulkSetFieldAsync(seed.Tenant.Id, new BulkProductFieldCommand([seed.ProductId], BulkProductFields.VatRate, "20"), CancellationToken.None, userId, "corr-vat");
             Assert.True(vat.Succeeded, vat.Error?.Message);
+            var inclusion = await Catalog(db).BulkSetFieldAsync(seed.Tenant.Id, new BulkProductFieldCommand([seed.ProductId], BulkProductFields.VatInclusion, "EXCLUDED"), CancellationToken.None, userId, "corr-vat-inclusion");
+            Assert.True(inclusion.Succeeded, inclusion.Error?.Message);
             // The same value again changes nothing and writes nothing.
-            var again = await Catalog(db).BulkSetVatAsync(seed.Tenant.Id, new BulkProductVatCommand([seed.ProductId], 20m, "EXCLUDED"), CancellationToken.None, userId, "corr-vat-2");
+            var again = await Catalog(db).BulkSetFieldAsync(seed.Tenant.Id, new BulkProductFieldCommand([seed.ProductId], BulkProductFields.VatRate, "20"), CancellationToken.None, userId, "corr-vat-2");
             Assert.True(again.Succeeded, again.Error?.Message);
         }
 

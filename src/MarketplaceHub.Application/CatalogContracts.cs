@@ -259,9 +259,6 @@ public sealed record BulkProductDeleteCommand(IReadOnlyList<Guid> ProductIds);
 // them (nothing was sent for those yet). PendingJobCount is the same count before the delete, for its confirmation.
 public sealed record ProductDeleteResult(int DeletedCount, int CancelledJobCount);
 public sealed record ProductDeletePreview(int PendingJobCount);
-// Toplu KDV Ata: the product cards' own VAT only; existing marketplace offers keep theirs.
-public sealed record BulkProductVatCommand(IReadOnlyList<Guid> ProductIds, decimal? VatRate, string? VatInclusion);
-public sealed record BulkProductVatResult(int UpdatedCount, int UnchangedCount);
 // Toplu Değer Ata: one field (BulkProductFields) set to one value on every colour card and variant of the selected
 // models. Only that field is written; nothing is sent to a marketplace.
 public sealed record BulkProductFieldCommand(IReadOnlyList<Guid>? ProductIds, string? Field, string? Value);
@@ -337,7 +334,6 @@ public interface ICatalogService
     Task<ServiceResult<ProductDeleteResult>> DeleteProductAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken);
     Task<ServiceResult<ProductDeleteResult>> BulkDeleteProductsAsync(Guid tenantId, BulkProductDeleteCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<ProductDeletePreview>> PreviewProductDeleteAsync(Guid tenantId, BulkProductDeleteCommand command, CancellationToken cancellationToken);
-    Task<ServiceResult<BulkProductVatResult>> BulkSetVatAsync(Guid tenantId, BulkProductVatCommand command, CancellationToken cancellationToken, Guid? actorUserId = null, string? correlationId = null);
     Task<ServiceResult<BulkProductFieldResult>> BulkSetFieldAsync(Guid tenantId, BulkProductFieldCommand command, CancellationToken cancellationToken, Guid? actorUserId = null, string? correlationId = null);
     Task<ServiceResult<ProductView>> CreateProductAsync(Guid tenantId, CreateProductCommand command, CancellationToken cancellationToken, Guid? actorUserId = null, string? correlationId = null);
     Task<ServiceResult<ProductView>> GetProductAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
