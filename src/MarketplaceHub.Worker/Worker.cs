@@ -64,6 +64,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         if (schedulerEnabled && configuration.GetValue("Worker:IssueRetention:Enabled", true)) loops.Add(RunIssueRetentionAsync(stoppingToken));
         if (schedulerEnabled) loops.Add(RunWebhookUpkeepAsync(stoppingToken));
         if (schedulerEnabled) loops.Add(RunExternalEffectSweepAsync(stoppingToken));
+        if (schedulerEnabled && configuration.GetValue("Worker:ProductModelScan:Enabled", true)) loops.Add(RunProductModelScanAsync(stoppingToken));
         await Task.WhenAll(loops);
     }
 
@@ -613,6 +614,19 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             if (deleted > 0) logger.LogInformation("Issue retention deleted {Count} resolved operational issue(s) not seen for {Days} days", deleted, resolvedRetention.TotalDays);
         }, exception => logger.LogError(exception, "Issue retention pass failed"), stoppingToken);
     }
+
+    // KATALOG-6: half an hour after start and then daily, every card is linked to its model again (a link that failed after
+    // a save no longer waits for the next save of that model) and every model takes its cards' shared values
+    // (ProductModelScan). It writes no card and sends nothing to a marketplace.
+    private Task RunProductModelScanAsync(CancellationToken stoppingToken) =>
+        RunPeriodicAsync(TimeSpan.FromMinutes(30), TimeSpan.FromHours(24), async token =>
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<MarketplaceHub.Infrastructure.Persistence.AppDbContext>();
+            var result = await MarketplaceHub.Infrastructure.Persistence.ProductModelScan.RunAsync(db, DateTimeOffset.UtcNow, token);
+            logger.LogInformation("Product model scan: {Tenants} tenant(s), coded unlinked cards {UnlinkedBefore} -> {UnlinkedAfter}, {Written} model(s) written, {Differing} model(s) whose cards disagree",
+                result.Tenants, result.UnlinkedCodedBefore, result.UnlinkedCodedAfter, result.ModelsWritten, result.ModelsDiffering);
+        }, exception => logger.LogError(exception, "Product model scan failed"), stoppingToken);
 
     // Trendyol passivates a webhook whose deliveries keep failing (for example while the server is
     // off at night). Shortly after start and then hourly, registered webhooks found passive are
