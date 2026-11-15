@@ -467,10 +467,10 @@ export function SystemSettingsPage() {
       setSessionConfirmation(null)
     }
   }
-  async function saveLabelSettings() {
+  async function saveLabelSettings(overwrite = false) {
     setLabelSaving(true); setNotice(null)
     try {
-      await shippingSettings.save(labelSettings)
+      await (overwrite ? shippingSettings.overwrite() : shippingSettings.save(labelSettings))
       succeed('Kargo etiketi ayarları hesaba kaydedildi.')
     } catch (reason) {
       fail(reason instanceof Error ? reason.message : 'Kargo etiketi ayarları kaydedilemedi.')
@@ -551,7 +551,7 @@ export function SystemSettingsPage() {
         {section === 'offsite' && <OffsiteBackupSection mfa={totpEnabled} />}
         {section === 'ai' && <AiSettingsSection />}
         {section === 'database' && <SettingsDataReset forbidden={resetForbidden} groups={resetGroups} counts={resetView.data ? Object.fromEntries(resetView.data.groups.map(entry => [entry.key, entry.count])) : undefined} countsFailed={resetView.isError} picked={resetScopes} onToggle={toggleResetScopes} marketplaces={resetMarketplaces} marketplacePicked={marketplacePicked} onToggleMarketplaces={toggleMarketplaces} progress={marketplaceProgress} confirmation={resetConfirmation} onConfirmation={setResetConfirmation} password={resetPassword} onPassword={setResetPassword} factor={resetFactor} onFactor={setResetFactor} mfa={totpEnabled} busy={resetBusy} onConfirm={() => void resetOperationalData()} />}
-        <ShippingLabelSettingsPanel section={isShipping ? section as ShippingSection : null} settings={labelSettings} saved={savedLabelSettings} dirty={shippingDirty} saving={labelSaving} loadFailed={shippingSettings.isError} loading={shippingSettings.isPending} format={labelFormat} setFormat={setLabelFormat} onChange={shippingSettings.setSettings} onSave={() => void saveLabelSettings()} saveDenied={labelSaveDenied} />
+        <ShippingLabelSettingsPanel section={isShipping ? section as ShippingSection : null} settings={labelSettings} saved={savedLabelSettings} dirty={shippingDirty} saving={labelSaving} loadFailed={shippingSettings.isError} loading={shippingSettings.isPending} format={labelFormat} setFormat={setLabelFormat} onChange={shippingSettings.setSettings} onSave={() => void saveLabelSettings()} saveDenied={labelSaveDenied} conflict={shippingSettings.conflict} onAcceptServer={shippingSettings.acceptServer} onOverwrite={() => void saveLabelSettings(true)} />
         <AppearanceSettingsSection section={isAppearance ? section as AppearanceSection : null} onStatus={setAppearanceStatus} />
       </div>
     </div>
@@ -654,11 +654,11 @@ function AppearanceSettingsForm({ section, onStatus }: { section: AppearanceSect
     appearanceColorTokenOptions.forEach(({ key }) => root.style.setProperty(appearanceColorCssVariable(key), palette[key]))
   }, [])
 
-  async function save() {
+  async function save(overwrite = false) {
     setBusy(true)
     setNotice(null)
     try {
-      await appearance.save(appearance.draft)
+      await (overwrite ? appearance.overwrite() : appearance.save(appearance.draft))
       succeed('Görünüm ayarları hesabınıza kaydedildi.')
     } catch (reason) {
       fail(reason instanceof Error ? reason.message : 'Görünüm ayarları kaydedilemedi.')
@@ -762,7 +762,10 @@ function AppearanceSettingsForm({ section, onStatus }: { section: AppearanceSect
   const themePalette = (theme: typeof selectableThemes[number]) => theme.mode === 'light' ? appearance.draft.colors.light : theme.id === activeSelectableTheme.id ? appearance.draft.colors.dark : theme.profile?.palette ?? appearance.draft.colors.dark
 
   const preview = <div className="ss-pv" style={previewStyle}><small>Önizleme</small><div className="ss-pv-card"><strong>Ravencia MarketplaceHub</strong><p>Bu ayar sipariş, iade, ürün ve diğer çalışma ekranlarındaki metinleri etkiler.</p><div className="ss-pv-line"><span>#1972215187 · Fehime Mat</span><span>16.10.2026 18:36</span></div><div className="ss-pv-row"><span className="ss-pv-btn">Kaydet</span><span className="ss-pv-btn2">Vazgeç</span><span className="ss-pv-tag is-sel">Seçili</span><span className="ss-pv-tag is-ok">Teslim Edildi</span><span className="ss-pv-tag is-warn">Gecikiyor</span><span className="ss-pv-tag is-bad">Hata</span></div></div></div>
-  const bar = saveDenied ? null : <SettingsBar title="Görünüm Ayarlarını Uygula" dirty={dirty} copy={dirty ? 'Önizlemedesiniz · kaydedilmemiş değişiklikler var' : undefined}><button type="button" className="ss-btn" onClick={applyDefaultAppearance} disabled={busy}><SettingsIcon name="reset" /><span className="ss-lbl-long">Varsayılanlara Dön</span><span className="ss-lbl-short">Varsayılan</span></button><button type="button" className="ss-btn is-primary" onClick={() => void save()} disabled={busy || !dirty}><SettingsIcon name="save" />{busy ? 'Kaydediliyor…' : <><span className="ss-lbl-long">Görünüm Ayarlarını Kaydet</span><span className="ss-lbl-short">Kaydet</span></>}</button></SettingsBar>
+  const bar = saveDenied ? null : <SettingsBar title="Görünüm Ayarlarını Uygula" dirty={dirty} copy={appearance.conflict ? 'Ayar başka bir oturumda değişti · taslağınız korunuyor' : dirty ? 'Önizlemedesiniz · kaydedilmemiş değişiklikler var' : undefined}>{appearance.conflict
+    // Newer settings were saved elsewhere while this draft held edits: the draft stays until one of these is chosen.
+    ? <><button type="button" className="ss-btn" onClick={appearance.acceptServer} disabled={busy}>Güncel Ayarı Yükle</button><button type="button" className="ss-btn is-primary" onClick={() => void save(true)} disabled={busy}><SettingsIcon name="save" />{busy ? 'Kaydediliyor…' : 'Benimkiyle Üzerine Yaz'}</button></>
+    : <><button type="button" className="ss-btn" onClick={applyDefaultAppearance} disabled={busy}><SettingsIcon name="reset" /><span className="ss-lbl-long">Varsayılanlara Dön</span><span className="ss-lbl-short">Varsayılan</span></button><button type="button" className="ss-btn is-primary" onClick={() => void save()} disabled={busy || !dirty}><SettingsIcon name="save" />{busy ? 'Kaydediliyor…' : <><span className="ss-lbl-long">Görünüm Ayarlarını Kaydet</span><span className="ss-lbl-short">Kaydet</span></>}</button></>}</SettingsBar>
   const loadError = <>{saveDenied && <div className="ss-callout" role="alert"><SettingsIcon name="lock" /><span>Görünüm ayarlarını yalnız hesap sahibi ve yöneticiler kaydeder; burada yaptığınız değişiklikler yalnız önizlemedir.</span></div>}{appearance.isError ? <div className="ss-callout is-danger" role="alert"><SettingsIcon name="alert" /><span>Hesap görünüm ayarları alınamadı; varsayılan görünüm gösteriliyor.</span></div> : null}</>
 
   return <>
@@ -831,7 +834,7 @@ const shippingBlockLabels: Record<ShippingLabelBlockKind, string> = { trackingBa
 const shippingAlignOptions = [['left', 'Sol'], ['center', 'Orta'], ['right', 'Sağ']] as const
 const shippingCaptionStyleOptions: Array<[ShippingLabelCaptionStyle, string]> = [['above', 'Başlık Üstte'], ['beside', 'Başlık Yanında'], ['none', 'Başlıksız']]
 
-function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, loadFailed, loading, format, setFormat, onChange, onSave, saveDenied = false }: { section: ShippingSection | null; settings: ShippingLabelSettings; saved: ShippingLabelSettings | null; dirty: boolean; saving: boolean; loadFailed: boolean; loading: boolean; format: 'a4' | 'sticker'; setFormat: (format: 'a4' | 'sticker') => void; onChange: (value: ShippingLabelSettings) => void; onSave: () => void; saveDenied?: boolean }) {
+function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, loadFailed, loading, format, setFormat, onChange, onSave, saveDenied = false, conflict = false, onAcceptServer, onOverwrite }: { section: ShippingSection | null; settings: ShippingLabelSettings; saved: ShippingLabelSettings | null; dirty: boolean; saving: boolean; loadFailed: boolean; loading: boolean; format: 'a4' | 'sticker'; setFormat: (format: 'a4' | 'sticker') => void; onChange: (value: ShippingLabelSettings) => void; onSave: () => void; saveDenied?: boolean; conflict?: boolean; onAcceptServer?: () => void; onOverwrite?: () => void }) {
   const [selectedId, setSelectedId] = useState<string | null>(settings.layout[format][0]?.id ?? null)
   const [designerTab, setDesignerTab] = useState<ShippingDesignerTab>('general')
   const [customTitle, setCustomTitle] = useState('')
@@ -1103,7 +1106,10 @@ function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, l
   function blockTitle(block: ShippingLabelBlock) { return block.kind === 'custom' ? block.title : shippingBlockLabels[block.kind] }
   const alignSegment = (block: ShippingLabelBlock) => <div className="ss-seg3" role="group" aria-label="Hizalama">{shippingAlignOptions.map(([value, label]) => <button type="button" key={value} aria-pressed={block.align === value} className={block.align === value ? 'is-on' : undefined} onClick={() => updateBlock(block.id, { align: value })}>{label}</button>)}</div>
   // A role the server refuses the save sees no save bar, and says so above the section instead.
-  const bar = saveDenied ? null : <SettingsBar title="Etiket Düzenini Yayınla" dirty={dirty} hint="Gönderici bilgileri ve kâğıt yerleşimi tüm yazdırma akışlarında kullanılır." copy={dirty ? 'Kaydedilmemiş değişiklikler var' : undefined}>{dirty && saved ? <button type="button" className="ss-btn" disabled={saving} onClick={() => onChange(saved)}>Vazgeç</button> : null}<button type="button" className="ss-btn is-primary" disabled={!dirty || saving} onClick={onSave}><SettingsIcon name="save" />{saving ? 'Kaydediliyor…' : 'Ayarları Kaydet'}</button></SettingsBar>
+  const bar = saveDenied ? null : <SettingsBar title="Etiket Düzenini Yayınla" dirty={dirty} hint="Gönderici bilgileri ve kâğıt yerleşimi tüm yazdırma akışlarında kullanılır." copy={conflict ? 'Ayar başka bir oturumda değişti · taslağınız korunuyor' : dirty ? 'Kaydedilmemiş değişiklikler var' : undefined}>{conflict
+    // Newer settings were saved elsewhere while this design held edits: the draft stays until one of these is chosen.
+    ? <><button type="button" className="ss-btn" disabled={saving} onClick={onAcceptServer}>Güncel Ayarı Yükle</button><button type="button" className="ss-btn is-primary" disabled={saving} onClick={onOverwrite}><SettingsIcon name="save" />{saving ? 'Kaydediliyor…' : 'Benimkiyle Üzerine Yaz'}</button></>
+    : <>{dirty && saved ? <button type="button" className="ss-btn" disabled={saving} onClick={() => onChange(saved)}>Vazgeç</button> : null}<button type="button" className="ss-btn is-primary" disabled={!dirty || saving} onClick={onSave}><SettingsIcon name="save" />{saving ? 'Kaydediliyor…' : 'Ayarları Kaydet'}</button></>}</SettingsBar>
   const loadError = <>{saveDenied && <div className="ss-callout" role="alert"><SettingsIcon name="lock" /><span>Kargo etiketi ayarlarını yalnız hesap sahibi ve yöneticiler kaydeder; burada yaptığınız değişiklikler kaydedilmez.</span></div>}{loadFailed ? <div className="ss-callout is-danger" role="alert"><SettingsIcon name="alert" /><span>Hesap kargo ayarları alınamadı; geçici yerel ayarlar gösteriliyor.</span></div> : null}</>
   // The browser's copy is shown only when the account's settings cannot be read, never before they arrive.
   if (loading) return section ? <div className="ss-body"><LoadingState>Kargo ayarları yükleniyor…</LoadingState></div> : null
