@@ -566,6 +566,31 @@ public static class ProductModelLinks
             """, cancellationToken);
     }
 
+    public const string LinkFailedCode = "PRODUCT_MODEL_LINK_FAILED";
+    public const string LinkFailedDedupeKey = "product-model-link-failed";
+
+    // KATALOG-6: a model link or model field write that failed after the save stood (the save is kept, the link waits for
+    // the next save) is no longer silent: one open PRODUCT_MODEL_LINK_FAILED issue per tenant names the last failure. Best
+    // effort: a failure to record it is not the caller's.
+    public static async Task RecordLinkFailureAsync(AppDbContext db, Guid tenantId, Exception exception, DateTimeOffset now)
+    {
+        var summary = Short($"Ürün kartlarının model bağı kayıttan sonra güncellenemedi ({exception.GetType().Name}: {exception.Message}). Kayıt duruyor; bağ bir sonraki kayıtta yeniden denenir.", 1000);
+        try
+        {
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO ops.operational_issues AS i ("Id", "TenantId", "DedupeKey", "Code", "Summary", "Status", "FirstSeenAt", "LastSeenAt", "OccurrenceCount", "ResolvedAt")
+                VALUES ({Guid.CreateVersion7()}, {tenantId}, {LinkFailedDedupeKey}, {LinkFailedCode}, {summary}, 'Open', {now.ToUniversalTime()}, {now.ToUniversalTime()}, 1, NULL)
+                ON CONFLICT ("TenantId", "DedupeKey") DO UPDATE SET
+                    "Summary" = EXCLUDED."Summary",
+                    "LastSeenAt" = EXCLUDED."LastSeenAt",
+                    "OccurrenceCount" = i."OccurrenceCount" + 1,
+                    "Status" = CASE WHEN i."Status" = 'Resolved' THEN 'Open' ELSE i."Status" END,
+                    "ResolvedAt" = NULL
+                """, CancellationToken.None);
+        }
+        catch (Exception recordFailure) when (recordFailure is System.Data.Common.DbException or InvalidOperationException) { }
+    }
+
     private static Task ResolveAmbiguityAsync(AppDbContext db, Guid tenantId, string key, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var dedupeKey = AmbiguousDedupeKey(key);

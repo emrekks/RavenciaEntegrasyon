@@ -1029,7 +1029,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         // Model Kaydı Faz 1: the models of the deleted cards (a model whose last card went is deleted, a group left under
         // one brand is linked); outside the serializable delete for the same reason, a failure leaves only a stale model.
         try { await ProductModelLinks.ReconcileAsync(db, tenantId, modelKeys, timeProvider.GetUtcNow(), cancellationToken); }
-        catch (Exception exception) when (exception is DbException or InvalidOperationException) { }
+        catch (Exception exception) when (exception is DbException or InvalidOperationException) { await ProductModelLinks.RecordLinkFailureAsync(db, tenantId, exception, timeProvider.GetUtcNow()); }
         return ServiceResult<ProductDeleteResult>.Ok(new(products.Count, pendingJobs.Count));
     }
 
@@ -1990,11 +1990,12 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 .OrderBy(x => x.SortOrder).ThenBy(x => x.Id).Select(x => x.OptionSignature).ToListAsync(cancellationToken);
             var color = signatures.Select(ProductFamilyColorOrder.ColorOf).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
             try { await ProductModelLinks.WriteFieldsAsync(db, tenantId, productId, color, now, cancellationToken); }
-            catch (Exception exception) when (exception is DbException or InvalidOperationException) { }
+            catch (Exception exception) when (exception is DbException or InvalidOperationException) { await ProductModelLinks.RecordLinkFailureAsync(db, tenantId, exception, timeProvider.GetUtcNow()); }
             if ((command.FamilySharedFields ?? []).Contains(ProductFamilySharedFields.Attributes, StringComparer.Ordinal) && command.Attributes is not null)
                 await ProductModelLinks.WriteAttributesAsync(db, tenantId, productId, now, cancellationToken);
         }
-        catch (Exception exception) when (exception is DbException or InvalidOperationException) { }
+        // KATALOG-6: the failure is recorded as a PRODUCT_MODEL_LINK_FAILED issue instead of vanishing.
+        catch (Exception exception) when (exception is DbException or InvalidOperationException) { await ProductModelLinks.RecordLinkFailureAsync(db, tenantId, exception, timeProvider.GetUtcNow()); }
     }
 
     // The panel's own price of one variant (the editor's Liste/Satış Fiyatı). It is what a new marketplace offer starts

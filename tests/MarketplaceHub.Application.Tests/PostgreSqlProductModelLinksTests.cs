@@ -365,6 +365,23 @@ public sealed class PostgreSqlProductModelLinksTests(PostgreSqlTenantIsolationFi
         }
     }
 
+    // KATALOG-6: a model link that failed after a save is recorded as one open issue per tenant, not swallowed.
+    [PostgreSqlFact]
+    public async Task AFailedModelLink_IsRecordedAsOneOpenIssue()
+    {
+        var seed = NewSeed();
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        AddSeed(db, seed);
+        await db.SaveChangesAsync();
+        await ProductModelLinks.RecordLinkFailureAsync(db, seed.Tenant.Id, new InvalidOperationException("ilk"), DateTimeOffset.UtcNow);
+        await ProductModelLinks.RecordLinkFailureAsync(db, seed.Tenant.Id, new InvalidOperationException("ikinci"), DateTimeOffset.UtcNow);
+        var issue = await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.Code == ProductModelLinks.LinkFailedCode);
+        Assert.Equal((IssueStatus.Open, 2), (issue.Status, issue.OccurrenceCount));
+        Assert.Contains("ikinci", issue.Summary);
+        await transaction.RollbackAsync();
+    }
+
     // KATALOG-7: the Kategoriler reset empties the cards' category and deletes the categories; the models stay (their
     // category emptied) with their marketplace links and saved attributes. Needs the migration's
     // ON DELETE SET NULL ("CategoryId") on FK_product_models_categories_TenantId_CategoryId.
