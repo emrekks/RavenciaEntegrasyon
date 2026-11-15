@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, click, render, type } from '../../../test/render'
-import { groupSavedSelections, rebaseSelections, runInBatches, selectionsDiffer, valueDraftOperations, webColorDraftSelections, webColorSelectionsFromDraft } from './value-drafts'
+import { draftsKeptAfterSave, groupSavedSelections, rebaseSelections, runInBatches, selectionsDiffer, valueDraftOperations, webColorDraftSelections, webColorSelectionsFromDraft } from './value-drafts'
 import { ValuePicker, pickerOptions, rankPickerMatches } from './ValuePicker'
 
 afterEach(cleanup)
@@ -16,6 +16,18 @@ describe('value drafts', () => {
       { kind: 'PUT', valueScope: 'c/renk', localId: 'navy', externalId: 'r2', snapshotId: 'snap', version: 1 },
       { kind: 'PUT', valueScope: 'c/renk', localId: 'red', externalId: 'r3', snapshotId: 'snap', version: null }
     ])
+  })
+
+  it('keeps after Kaydet only the drafts of fields with a refused request', async () => {
+    const renk = { valueScope: 'c/renk', fieldName: 'Renk', saved, snapshotId: 'snap', knownExternalIds: ['r1', 'r2', 'r3'], selections: { r3: ['red'] } }
+    const beden = { valueScope: 'c/beden', fieldName: 'Beden', saved: [], snapshotId: 'snap', knownExternalIds: ['s'], selections: { s: ['small'] } }
+    const operations = [renk, beden].flatMap(valueDraftOperations)
+    // One of Renk's requests is refused (a version conflict); Beden's goes through.
+    const result = await runInBatches(operations, 4, async operation => { if (operation.valueScope === 'c/renk' && operation.kind === 'PUT') throw new Error('409') })
+    const kept = draftsKeptAfterSave([renk, beden], result.failures.map(failure => failure.item))
+    expect([...kept.keys()]).toEqual(['c/renk'])
+    expect(kept.get('c/renk')).toBe(renk)
+    expect(draftsKeptAfterSave([renk, beden], []).size).toBe(0)
   })
 
   it('tells a changed choice from the saved one', () => {

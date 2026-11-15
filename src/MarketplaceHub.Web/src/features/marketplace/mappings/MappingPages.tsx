@@ -11,7 +11,7 @@ import { Busy, ErrorBox, Modal, Pagination, TitleHint, UiIcon, useConfirmDialog,
 import { isStaleMappingError, mappingSaveErrorMessage, refreshMappingConflicts, saveAllMappings } from './mapping-refresh'
 import { ValuePicker, pickerOptions, type PickerOption } from './ValuePicker'
 import { mappedLocalIds, valueListQuery, valueMappingProgressQuery, valueMappingsQuery } from './value-field-queries'
-import { webColorDraftSelections, webColorSelectionsFromDraft, groupSavedSelections, rebaseSelections, runInBatches, selectionsDiffer, valueDraftOperations, type ValueDraft, type ValueDraftOperation } from './value-drafts'
+import { draftsKeptAfterSave, webColorDraftSelections, webColorSelectionsFromDraft, groupSavedSelections, rebaseSelections, runInBatches, selectionsDiffer, valueDraftOperations, type ValueDraft, type ValueDraftOperation } from './value-drafts'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { dative } from '../../../shared/job-outcome'
 import { categoryDeactivationBody } from './category-deactivation'
@@ -1179,12 +1179,14 @@ function FieldDetail({ platformCode, platformLabel, connectionId, categoryScope,
 }
 // The window's unsaved value choices, one draft per field, kept until Kaydet (which saves every field's) or until
 // the window closes: moving to another field no longer drops them.
-type ValueDraftStore = { drafts: ReadonlyMap<string, ValueDraft>; generation: number; saving: boolean; put: (draft: ValueDraft) => void; drop: (valueScope: string) => void; saveAll: () => Promise<void> }
+// `kept`: the fields whose drafts the last Kaydet kept (a request refused); their tables keep the choices.
+type ValueDraftStore = { drafts: ReadonlyMap<string, ValueDraft>; generation: number; kept: ReadonlySet<string>; saving: boolean; put: (draft: ValueDraft) => void; drop: (valueScope: string) => void; saveAll: () => Promise<void> }
 const ValueDraftContext = createContext<ValueDraftStore | null>(null)
 function useValueDraftStore(connectionId: string, onNotice: (value: string) => void): ValueDraftStore {
   const client = useQueryClient()
   const [drafts, setDrafts] = useState<ReadonlyMap<string, ValueDraft>>(() => new Map())
   const [generation, setGeneration] = useState(0)
+  const [kept, setKept] = useState<ReadonlySet<string>>(() => new Set())
   const [saving, setSaving] = useState(false)
   const put = useCallback((draft: ValueDraft) => setDrafts(current => new Map(current).set(draft.valueScope, draft)), [])
   const drop = useCallback((valueScope: string) => setDrafts(current => { if (!current.has(valueScope)) return current; const next = new Map(current); next.delete(valueScope); return next }), [])
@@ -1192,6 +1194,8 @@ function useValueDraftStore(connectionId: string, onNotice: (value: string) => v
     if (saving || !drafts.size) return
     setSaving(true)
     const pending = [...drafts.values()]
+    // A save that stops unexpectedly keeps every draft; a finished one keeps only the fields with a refused request.
+    let keptDrafts = new Map(pending.map(draft => [draft.valueScope, draft]))
     try {
       const operations = pending.flatMap(valueDraftOperations)
       const send = (operation: ValueDraftOperation) => operation.kind === 'DELETE'
@@ -1202,21 +1206,31 @@ function useValueDraftStore(connectionId: string, onNotice: (value: string) => v
       const added = await runInBatches(operations.filter(item => item.kind === 'PUT'), 4, send)
       const saved = removed.saved + added.saved
       const failures = [...removed.failures, ...added.failures]
+      keptDrafts = draftsKeptAfterSave(pending, failures.map(failure => failure.item))
       const fields = pending.map(draft => draft.fieldName).join(', ')
       onNotice(failures.length
-        ? `${fields}: ${saved} değer eşlemesi kaydedildi, ${failures.length} kaydedilemedi. ${mappingSaveErrorMessage(failures[0].error, 'Değer eşlemeleri kaydedilemedi.')}`
+        ? `${fields}: ${saved} değer eşlemesi kaydedildi, ${failures.length} kaydedilemedi. ${mappingSaveErrorMessage(failures[0].error, 'Değer eşlemeleri kaydedilemedi.')} Kaydedilemeyen seçimler seçili duruyor; Kaydet ile yeniden deneyebilirsiniz.`
         : saved ? `${pending.length > 1 ? `${pending.length} alanda` : `${fields}:`} ${saved} değer eşlemesi kaydedildi.` : 'Değer eşlemelerinde değişiklik yok.')
     } finally {
       // The lists are always reloaded, so every field shows what the server now holds.
       await Promise.all(pending.map(draft => client.invalidateQueries({ queryKey: ['attribute-value-mappings', connectionId, draft.valueScope] }).catch(() => undefined)))
       await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] }).catch(() => undefined)
       await refreshMappingConflicts(client, connectionId).catch(() => undefined)
-      setDrafts(new Map())
+      // A field with a refused request keeps its draft, moved onto the reloaded pairs (what was saved now matches the
+      // server, the versions are current): what was not saved stays chosen for the next Kaydet.
+      const rebased = new Map<string, ValueDraft>()
+      for (const draft of keptDrafts.values()) {
+        const fresh = await client.fetchQuery(valueMappingsQuery<CatalogMapping[]>(connectionId, draft.valueScope)).catch(() => null)
+        const next = fresh ? { ...draft, saved: fresh, selections: rebaseSelections(draft.selections, groupSavedSelections(draft.saved), groupSavedSelections(fresh)) } : draft
+        if (!fresh || selectionsDiffer(next.selections, groupSavedSelections(fresh))) rebased.set(draft.valueScope, next)
+      }
+      setDrafts(rebased)
+      setKept(new Set(rebased.keys()))
       setGeneration(value => value + 1)
       setSaving(false)
     }
   }, [client, connectionId, drafts, onNotice, saving])
-  return useMemo(() => ({ drafts, generation, saving, put, drop, saveAll }), [drafts, generation, saving, put, drop, saveAll])
+  return useMemo(() => ({ drafts, generation, kept, saving, put, drop, saveAll }), [drafts, generation, kept, saving, put, drop, saveAll])
 }
 const valueCollator = new Intl.Collator('tr-TR', { sensitivity: 'base', numeric: true })
 // The marketplace value a panel value is sent as, for every panel value of a selection (the first one, as `targetOf`).
@@ -1279,8 +1293,8 @@ function FieldValueTable({ platformCode, platformLabel, connectionId, categorySc
   if (valuesUnavailable && references.isSuccess && !references.isFetching && references.data) setValuesUnavailable(false)
   const generation = store?.generation ?? 0
   const [seenGeneration, setSeenGeneration] = useState(generation)
-  // After Kaydet every field starts again from what the server holds.
-  if (seenGeneration !== generation) { setSeenGeneration(generation); setSelections(null); setBaseline(null) }
+  // After Kaydet every field starts again from what the server holds, but one whose save was partly refused.
+  if (seenGeneration !== generation) { setSeenGeneration(generation); if (!store?.kept.has(valueScope)) { setSelections(null); setBaseline(null) } }
   const saved = useMemo(() => groupSavedSelections(mappings.data ?? []), [mappings.data])
   useEffect(() => { if (mappings.data && selections === null) { const grouped = groupSavedSelections(mappings.data); setSelections(grouped); setBaseline(grouped) } }, [mappings.data, selections])
   // The saved pairs changed after the table was filled (Tüm Değerleri Eşle, another window).
