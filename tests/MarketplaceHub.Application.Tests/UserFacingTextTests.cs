@@ -75,6 +75,30 @@ public sealed class UserFacingTextTests
         }
     }
 
+    // KATALOG-14 (F7): the model values warning says field by field what a save in the editor makes alike: not the size
+    // chart, which each colour keeps, and the desi only when its field is changed.
+    [Fact]
+    public void The_model_values_warning_is_plain_turkish_and_promises_only_what_a_save_does()
+    {
+        var cases = new (IReadOnlyList<string> Fields, string[] Says, string[] DoesNotSay)[]
+        {
+            ([ProductModelValues.Description, ProductModelValues.Attributes], ["açıklama ve özellikler bütün renklerde aynı olur"], ["Beden tablosu", "Desi,"]),
+            ([ProductModelValues.SizeChart], ["kaydetmek onu eşitlemez"], ["kaydedince"]),
+            ([ProductModelValues.Desi], ["desi alanını değiştirip kaydedince"], ["Beden tablosu", "açıp kaydedince"]),
+            ([ProductModelValues.Title, ProductModelValues.Desi, ProductModelValues.SizeChart], ["kaydedince ad bütün renklerde", "desi alanını", "kaydetmek onu eşitlemez"], []),
+        };
+        foreach (var (fields, says, doesNotSay) in cases)
+        {
+            var summary = ProductModelValues.DifferSummary([("MZ100", fields)]);
+            Assert.DoesNotMatch(Guid36, summary);
+            Assert.DoesNotMatch(RawCode, summary);
+            Assert.DoesNotMatch(Jargon, summary);
+            Assert.Matches(Turkish, summary);
+            foreach (var text in says) Assert.Contains(text, summary);
+            foreach (var text in doesNotSay) Assert.DoesNotContain(text, summary);
+        }
+    }
+
     [Fact]
     public void A_closing_note_written_before_reads_without_the_job_id_and_the_raw_code()
     {

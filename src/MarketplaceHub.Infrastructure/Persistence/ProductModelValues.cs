@@ -332,6 +332,27 @@ public static class ProductModelValues
         return outcome;
     }
 
+    // The warning's text. What the editor's save makes alike is said field by field: a save writes the model's shared
+    // fields and attributes to every colour; the desi only when its field is changed (editorVariantDesiUpdate keeps a
+    // colour's own desi otherwise); each colour keeps its own size chart.
+    public static string DifferSummary(IReadOnlyList<(string ModelCode, IReadOnlyList<string> Fields)> differing)
+    {
+        var byField = differing.SelectMany(x => x.Fields).GroupBy(x => x).OrderByDescending(x => x.Count()).ThenBy(x => x.Key, StringComparer.Ordinal)
+            .Select(x => $"{x.Key} {x.Count().ToString(CultureInfo.InvariantCulture)}");
+        var codes = differing.Select(x => x.ModelCode).Order(StringComparer.Ordinal).ToList();
+        var listed = string.Join(", ", codes.Take(ListedModels)) + (codes.Count > ListedModels ? $" ve {(codes.Count - ListedModels).ToString(CultureInfo.InvariantCulture)} model daha" : "");
+        var fields = differing.SelectMany(x => x.Fields).Distinct(StringComparer.Ordinal).ToList();
+        var saved = fields.Where(x => x != SizeChart && x != Desi).ToList();
+        var advice = "";
+        if (saved.Count > 0)
+            advice += $" Modeli düzenleme ekranında açıp kaydedince {(saved.Count == 1 ? saved[0] : string.Join(", ", saved.SkipLast(1)) + " ve " + saved[^1])} bütün renklerde aynı olur.";
+        if (fields.Contains(Desi))
+            advice += " Desi, düzenleme ekranında desi alanını değiştirip kaydedince bütün renklerde aynı olur.";
+        if (fields.Contains(SizeChart))
+            advice += " Beden tablosu ise her rengin kendisinindir, kaydetmek onu eşitlemez: farklı olan rengin beden tablosunu kendiniz düzeltin.";
+        return Short($"{differing.Count.ToString(CultureInfo.InvariantCulture)} modelin renk kartlarında ortak değerler birbirinden farklı ({string.Join(", ", byField)}): {listed}. Hiçbir şey birleştirilmedi; ekranlar bugünkü değeri göstermeye devam eder.{advice}", 1000);
+    }
+
     // A model skipped by the run (a lock timeout) may still differ: the warning is resolved only by a run that saw every
     // model.
     private static Task RecordDifferingAsync(AppDbContext db, Guid tenantId, IReadOnlyList<(string ModelCode, IReadOnlyList<string> Fields)> differing, int skipped, DateTimeOffset now, CancellationToken cancellationToken)
@@ -343,11 +364,7 @@ public static class ProductModelValues
                 UPDATE ops.operational_issues SET "Status" = 'Resolved', "ResolvedAt" = {at}, "LastSeenAt" = {at}
                 WHERE "TenantId" = {tenantId} AND "DedupeKey" = {DifferDedupeKey} AND "Status" <> 'Resolved'
                 """, cancellationToken);
-        var byField = differing.SelectMany(x => x.Fields).GroupBy(x => x).OrderByDescending(x => x.Count()).ThenBy(x => x.Key, StringComparer.Ordinal)
-            .Select(x => $"{x.Key} {x.Count().ToString(CultureInfo.InvariantCulture)}");
-        var codes = differing.Select(x => x.ModelCode).Order(StringComparer.Ordinal).ToList();
-        var listed = string.Join(", ", codes.Take(ListedModels)) + (codes.Count > ListedModels ? $" ve {(codes.Count - ListedModels).ToString(CultureInfo.InvariantCulture)} model daha" : "");
-        var summary = Short($"{differing.Count.ToString(CultureInfo.InvariantCulture)} modelin renk kartlarında ortak değerler birbirinden farklı ({string.Join(", ", byField)}): {listed}. Hiçbir şey birleştirilmedi; ekranlar bugünkü değeri göstermeye devam eder. Modeli düzenleme ekranında açıp kaydedince bütün renkler aynı değeri alır.", 1000);
+        var summary = DifferSummary(differing);
         return db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO ops.operational_issues AS i ("Id", "TenantId", "DedupeKey", "Code", "Summary", "Status", "FirstSeenAt", "LastSeenAt", "OccurrenceCount", "ResolvedAt")
             VALUES ({Guid.CreateVersion7()}, {tenantId}, {DifferDedupeKey}, {DifferCode}, {summary}, 'Open', {at}, {at}, 1, NULL)
