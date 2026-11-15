@@ -100,6 +100,7 @@ import { VariantStatusDot } from './VariantStatusDot'
 import { variantStatus } from './variant-status'
 import { PanelSelect } from '../../../shared/PanelSelect'
 import { thumbnailSrcSet, thumbnailUrl } from '../../../shared/product-thumbnail'
+import { connectionQueries, queryKeys } from '../../../shared/api/query-keys'
 
 // The Eşleştirmeler page's "Kategori Alanları ve Değerleri" window, loaded with that page's code when a gap opens it.
 // The products list's Toplu Düzenleme window, opened on the editor's unsaved rows (Toplu Düzenle in the variant toolbar).
@@ -854,13 +855,13 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   const platformName = publishPlatformName(card.connection.platformCode)
   // Every notice of this card names the marketplace and the store it is about.
   const onFeedback = (feedback: OperationFeedback) => emitFeedback({ ...feedback, context: { platformCode: card.connection.platformCode, connectionId: card.connection.id, storeName: card.connection.displayName, ...feedback.context } })
-  const statusKey = ['publication-status', productId, card.connection.id]
+  const statusKey = queryKeys.publicationStatus(productId, card.connection.id)
   // The other colour cards of the family (same model code): the card stays selectable while any of them is not live
   // here, and Yayınla then sends only those (live or in-progress cards are skipped).
   const otherFamilyIds = (familyProductIds ?? []).filter(id => id !== productId)
   const publication = useQuery({
     queryKey: statusKey,
-    queryFn: () => hubPoll<PublicationStatus>(`/products/${productId}/publication-status/${card.connection.id}`, { cache: 'no-store' }),
+    queryFn: ({ signal }) => hubPoll<PublicationStatus>(`/products/${productId}/publication-status/${card.connection.id}`, { cache: 'no-store', signal }),
     enabled: !!productId && card.mode === 'PUBLISH',
     refetchInterval: query => isPublicationStatusJobRunning(query.state.data?.lastJobStatus) ? 3000 : false,
     refetchIntervalInBackground: true,
@@ -886,7 +887,7 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
       setRefreshJobId(accepted?.jobId ?? null)
       // The refresh checks every colour card of the family: their statuses are read again too, not only this card's
       // (live 2026-10-28: all eight MZ054YNC cards LIVE on the server, the card showed "1/8 renk" from cached siblings).
-      await Promise.all([statusKey, ...otherFamilyIds.map(id => ['publication-status', id, card.connection.id])]
+      await Promise.all([statusKey, ...otherFamilyIds.map(id => queryKeys.publicationStatus(id, card.connection.id))]
         .map(queryKey => client.invalidateQueries({ queryKey })))
     },
     onError: reason => {
@@ -920,8 +921,8 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   const publicationTone = publicationStatusTone(publication.data?.actualStatus, publication.data?.lastJobStatus, publication.data?.lastRejectionCode)
   const familyStatuses = useQueries({
     queries: otherFamilyIds.map(id => ({
-      queryKey: ['publication-status', id, card.connection.id],
-      queryFn: () => hubPoll<PublicationStatus>(`/products/${id}/publication-status/${card.connection.id}`, { cache: 'no-store' }),
+      queryKey: queryKeys.publicationStatus(id, card.connection.id),
+      queryFn: ({ signal }) => hubPoll<PublicationStatus>(`/products/${id}/publication-status/${card.connection.id}`, { cache: 'no-store', signal }),
       enabled: card.mode === 'PUBLISH',
       // A sibling's own send or status check is followed until it ends, like this card's.
       refetchInterval: (query: { state: { data?: PublicationStatus } }) => isPublicationStatusJobRunning(query.state.data?.lastJobStatus) ? 3000 : false,
@@ -931,7 +932,7 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
     }))
   })
   const refreshJob = useCardRefreshJob(refreshJobId, async job => {
-    await Promise.all([statusKey, ...otherFamilyIds.map(id => ['publication-status', id, card.connection.id]), ['product', productId]]
+    await Promise.all([statusKey, ...otherFamilyIds.map(id => queryKeys.publicationStatus(id, card.connection.id)), queryKeys.product(productId)]
       .map(queryKey => client.invalidateQueries({ queryKey })))
     const status = job?.status.trim().toUpperCase()
     // The start said "aranıyor" / "sorgulanıyor"; the end says so too, not only when it failed.
@@ -1034,7 +1035,7 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   // On close (saved or not) the card reads its publish check again, so the badge counts follow what was mapped.
   const closeFieldsFix = () => {
     setFieldsFix(null)
-    void client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] })
+    void client.invalidateQueries({ queryKey: queryKeys.publicationAttributeReadiness() })
   }
   const categoryMappingGap = mappingReadinessEnabled ? mappingReadiness.data?.categoryMapping : undefined
   // The status opens the API job behind it; a card whose required fields are missing keeps its issue tooltip instead.
@@ -1206,11 +1207,11 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
 // The card's last publication job, read while it runs; the card shows it inline so its height never changes.
 function usePublicationJobInline(jobId: string | null | undefined, productId: string | undefined, connectionId: string, notify: { onCancelled: (status: string | null | undefined) => void; onCancelFailed: (message: string) => void }) {
   const client = useQueryClient()
-  const queryKey = ['publication-job', jobId ?? ''] as const
+  const queryKey = queryKeys.publicationJob(jobId ?? '')
   const enabled = Boolean(productId && jobId)
   const job = useQuery({
     queryKey,
-    queryFn: () => hubPoll<PublicationJobDetail>(`/jobs/${jobId}`, { cache: 'no-store' }),
+    queryFn: ({ signal }) => hubPoll<PublicationJobDetail>(`/jobs/${jobId}`, { cache: 'no-store', signal }),
     enabled,
     refetchInterval: query => publicationJobPollInterval(query.state.data?.job.status, query.state.status === 'error'),
     refetchIntervalInBackground: true,
@@ -1228,7 +1229,7 @@ function usePublicationJobInline(jobId: string | null | undefined, productId: st
       client.setQueryData(queryKey, result)
       notify.onCancelled(result?.job?.status)
       await Promise.all([
-        client.invalidateQueries({ queryKey: ['publication-status', productId, connectionId] }),
+        client.invalidateQueries({ queryKey: queryKeys.publicationStatus(productId, connectionId) }),
         client.invalidateQueries({ queryKey })
       ])
     },
@@ -1239,10 +1240,10 @@ function usePublicationJobInline(jobId: string | null | undefined, productId: st
 // The job a card's refresh started, read until it ends; onSettled runs once when it does (or when it can no longer be read).
 function useCardRefreshJob(jobId: string | null, onSettled: (job: PublicationJobDetail['job'] | undefined) => void | Promise<void>, notify: { onCancelled: () => void; onCancelFailed: (message: string) => void }) {
   const client = useQueryClient()
-  const queryKey = ['publication-job', jobId ?? ''] as const
+  const queryKey = queryKeys.publicationJob(jobId ?? '')
   const job = useQuery({
     queryKey,
-    queryFn: () => hubPoll<PublicationJobDetail>(`/jobs/${jobId}`, { cache: 'no-store' }),
+    queryFn: ({ signal }) => hubPoll<PublicationJobDetail>(`/jobs/${jobId}`, { cache: 'no-store', signal }),
     enabled: Boolean(jobId),
     refetchInterval: query => publicationJobPollInterval(query.state.data?.job.status, query.state.status === 'error'),
     refetchIntervalInBackground: true,
@@ -1492,18 +1493,18 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   }
   // Always fresh on open and on returning to the tab: the products list's quick edit (or another tab) may have changed
   // its prices, channel prices or stock. Unsaved edits are kept; the stale banner offers the newer data instead.
-  const productToEdit = useQuery({ queryKey: ['product', editProductId], queryFn: () => hubApi<Product>(`/products/${editProductId}`), enabled: !!editProductId, staleTime: 0, refetchOnWindowFocus: true })
-  const productToCopy = useQuery({ queryKey: ['product', duplicateProductId], queryFn: () => hubApi<Product>(`/products/${duplicateProductId}`), enabled: !editProductId && Boolean(duplicateProductId) })
+  const productToEdit = useQuery({ queryKey: queryKeys.product(editProductId), queryFn: ({ signal }) => hubApi<Product>(`/products/${editProductId}`, { signal }), enabled: !!editProductId, staleTime: 0, refetchOnWindowFocus: true })
+  const productToCopy = useQuery({ queryKey: queryKeys.product(duplicateProductId), queryFn: ({ signal }) => hubApi<Product>(`/products/${duplicateProductId}`, { signal }), enabled: !editProductId && Boolean(duplicateProductId) })
   const seedProduct = editProductId ? productToEdit.data : productToCopy.data
-  const categories = useQuery({ queryKey: ['categories', 'new-product'], queryFn: () => loadAllPages<Category>('/catalog/categories') })
-  const brands = useQuery({ queryKey: ['brands', 'new-product'], queryFn: () => loadAllPages<Brand>('/catalog/brands') })
-  const connections = useQuery({ queryKey: ['connections', 'new-product'], queryFn: () => loadAllPages<MarketplaceConnection>('/connections') })
+  const categories = useQuery({ queryKey: queryKeys.categories('new-product'), queryFn: ({ signal }) => loadAllPages<Category>('/catalog/categories', { signal }) })
+  const brands = useQuery({ queryKey: queryKeys.brands('new-product'), queryFn: ({ signal }) => loadAllPages<Brand>('/catalog/brands', { signal }) })
+  const connections = useQuery(connectionQueries.list<MarketplaceConnection>())
   const pttAvmManualWrites = usePttAvmManualWrites((connections.data?.items ?? []).filter(isProductUpdateConnection))
   // An edit or a copy keeps its fields masked until the product and the category and brand lists that name its values
   // are in: the empty defaults and the single-product SKU, barcode and price fields must not show before the variant
   // rows turn them into the varyantlı state.
   const editorHydrating = editorAwaitingSeed({ seeding: Boolean(editProductId || duplicateProductId), productPending: editProductId ? productToEdit.isPending : productToCopy.isPending, listsPending: categories.isPending || brands.isPending })
-  const requirements = useQuery({ queryKey: ['category-requirements', form.categoryId], queryFn: () => hubApi<CategoryRequirement[]>(`/catalog/categories/${form.categoryId}/attribute-requirements`), enabled: !!form.categoryId, retry: false, staleTime: categoryRequirementsStaleTimeMs })
+  const requirements = useQuery({ queryKey: queryKeys.categoryRequirements(form.categoryId), queryFn: ({ signal }) => hubApi<CategoryRequirement[]>(`/catalog/categories/${form.categoryId}/attribute-requirements`, { signal }), enabled: !!form.categoryId, retry: false, staleTime: categoryRequirementsStaleTimeMs })
   const leafCategories = (categories.data?.items ?? []).filter(item => item.isLeaf && item.isActive); const activeBrands = (brands.data?.items ?? []).filter(item => item.isActive)
   // The card's Liste/Satış (decimal comma read): a new variant row's first prices (buildVariantGenerationDefaults).
   const cardPriceDefaults = cardPrices(form.listPrice, form.salePrice); const fallbackListPrice = cardPriceDefaults.listPrice; const fallbackSalePrice = cardPriceDefaults.salePrice; const fallbackCostPrice = form.costPrice.trim() === '' ? null : Number(form.costPrice); const initialStock = Number(form.initialStock || 0)
@@ -1726,8 +1727,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       const attribute = await hubApi<{ values: Array<{ id: string; value: string; sortOrder: number; isActive: boolean }> }>(`/catalog/attributes/${requirement.attributeId}/values`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify([{ value, sortOrder: requirement.attribute.values.length }]) })
       const activeValues = attribute.values.filter(item => item.isActive).sort((left, right) => left.sortOrder - right.sortOrder)
       const created = activeValues.find(item => normalizeVariantOptionValue(item.value) === normalizeVariantOptionValue(value))
-      client.setQueryData<CategoryRequirement[]>(['category-requirements', form.categoryId], current => current?.map(item => item.attributeId !== requirement.attributeId ? item : { ...item, attribute: { ...item.attribute, values: activeValues.map(({ id, value: label }) => ({ id, value: label })) } }))
-      void client.invalidateQueries({ queryKey: ['category-requirements'], refetchType: 'none' })
+      client.setQueryData<CategoryRequirement[]>(queryKeys.categoryRequirements(form.categoryId), current => current?.map(item => item.attributeId !== requirement.attributeId ? item : { ...item, attribute: { ...item.attribute, values: activeValues.map(({ id, value: label }) => ({ id, value: label })) } }))
+      void client.invalidateQueries({ queryKey: queryKeys.categoryRequirements(), refetchType: 'none' })
       setAttributeValueQueries(current => ({ ...current, [requirement.attributeId]: '' }))
       if (created && !(attributeSelections[requirement.attributeId] ?? []).includes(created.id)) toggleAttributeValue(requirement.attributeId, created.id)
       showFeedback('Değer Eklendi', `“${value}” ${requirement.attribute.name} seçeneklerine eklendi ve seçildi. Pazaryeri eşleştirmesini Eşleştirmeler › Kategori Eşleme'de kategorinin Kategori Özellikleri penceresinden yapabilirsiniz.`, 'success')
@@ -2091,11 +2092,11 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       // The deletion is saved already: a form that had no other edits stays "clean" afterwards.
       if (!editorDirty) setSnapshotRequest(value => value + 1)
 
-      const cachedProduct = client.getQueryData<Product>(['product', product.id]) ?? product
+      const cachedProduct = client.getQueryData<Product>(queryKeys.product(product.id)) ?? product
       const cachedMediaUrls = (cachedProduct.mediaUrls ?? []).filter(item => mediaImageKey(item) !== targetKey)
       const productVersion = result.productVersions[product.id] ?? result.version
       initializedEditProductKey.current = editorSeedKey('edit', product.id, productVersion, editorDataStamp(cachedProduct.variants))
-      client.setQueryData<Product>(['product', product.id], {
+      client.setQueryData<Product>(queryKeys.product(product.id), {
         ...cachedProduct,
         version: productVersion,
         mediaUrls: cachedMediaUrls,
@@ -2106,7 +2107,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         variants: cachedProduct.variants.map(variant => ({ ...variant, mediaUrls: (variant.mediaUrls ?? []).filter(item => mediaImageKey(item) !== targetKey) }))
       })
       adoptOwnProductWrite((await productToEdit.refetch()).data)
-      await client.invalidateQueries({ queryKey: ['products'] })
+      await client.invalidateQueries({ queryKey: queryKeys.products() })
       showFeedback('Görsel Kaldırıldı', `${result.deletedCount} görsel bağlantısı kaldırıldı ve ürün yenilendi.`, 'success')
     } catch (reason) {
       showFeedback('Görsel Kaldırılamadı', reason instanceof Error ? reason.message : 'Görsel kaldırılamadı.', 'error')
@@ -2321,9 +2322,9 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       setVariantPlatformPricing(null)
       const message = `${platformDisplayName(selectedPlatform)} için ${savedOffers.length} varyantın fiyatı toplu olarak kaydedildi.`
       setNotice(message); showFeedback('Platform Fiyatları Kaydedildi', message, 'success')
-      await client.invalidateQueries({ queryKey: ['products'] })
+      await client.invalidateQueries({ queryKey: queryKeys.products() })
       if (editProductId) {
-        await client.invalidateQueries({ queryKey: ['product', editProductId] })
+        await client.invalidateQueries({ queryKey: queryKeys.product(editProductId) })
         adoptOwnProductWrite((await productToEdit.refetch()).data)
       }
     } catch (reason) {
@@ -2363,9 +2364,9 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         : await hubApi<{ id: string; version: number; listPrice: number; salePrice: number; currency: string }>('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId: platform.connectionId, variantId: targetRow.key, ...body }) })
       setVariantRows(rows => rows.map(row => row.key !== targetRow.key ? row : { ...row, platformStatuses: row.platformStatuses?.map(item => item.connectionId === platform.connectionId ? { ...item, offerId: saved.id, listPrice: saved.listPrice, salePrice: saved.salePrice, currency: saved.currency, offerVersion: saved.version } : item) }))
       showFeedback('Platform Fiyatı Kaydedildi', `${platformDisplayName(platform)} ${targetRow.optionSignature || targetRow.sku} fiyatı kaydedildi.`, 'success')
-      await client.invalidateQueries({ queryKey: ['products'] })
+      await client.invalidateQueries({ queryKey: queryKeys.products() })
       if (editProductId) {
-        await client.invalidateQueries({ queryKey: ['product', editProductId] })
+        await client.invalidateQueries({ queryKey: queryKeys.product(editProductId) })
         adoptOwnProductWrite((await productToEdit.refetch()).data)
       }
     } catch (reason) {
@@ -2456,15 +2457,15 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       setVariantPlatformPricing(null)
       const message = `${savedCount} varyant platform fiyatı kaydedildi.`
       setNotice(message); showFeedback('Platform Fiyatları Kaydedildi', message, 'success')
-      await client.invalidateQueries({ queryKey: ['products'] })
+      await client.invalidateQueries({ queryKey: queryKeys.products() })
       if (editProductId) {
-        await client.invalidateQueries({ queryKey: ['product', editProductId] })
+        await client.invalidateQueries({ queryKey: queryKeys.product(editProductId) })
         adoptOwnProductWrite((await productToEdit.refetch()).data)
       }
     } catch (reason) {
       showFeedback('Platform Fiyatları Kaydedilemedi', reason instanceof Error ? reason.message : 'Pazaryeri varyant fiyatları kaydedilemedi.', 'error')
       // The offers written before the failure changed the product's lists: they are read again.
-      await Promise.all([client.invalidateQueries({ queryKey: ['products'] }), client.invalidateQueries({ queryKey: ['product', editProductId] })]).catch(() => undefined)
+      await Promise.all([client.invalidateQueries({ queryKey: queryKeys.products() }), client.invalidateQueries({ queryKey: queryKeys.product(editProductId) })]).catch(() => undefined)
     } finally {
       setVariantPlatformPricingSaving(false)
     }
@@ -2707,7 +2708,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       }
       // A form with no other edits stays clean; other unsaved edits are left for the Kaydet button.
       if (formWasClean) setSnapshotRequest(value => value + 1)
-      void client.invalidateQueries({ queryKey: ['products'] })
+      void client.invalidateQueries({ queryKey: queryKeys.products() })
       // The product the assignments left: a clean form refills from it, one with other unsaved edits stands on it.
       const saved = (await productToEdit.refetch()).data
       mediaAutoSaveInFlight.current = false
@@ -3324,7 +3325,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
                   family.queuedCards++
                   family.queuedVariants += card.variants
                   update.queued.productInformation = true
-                  await client.invalidateQueries({ queryKey: ['publication-status', card.productId, connectionId] })
+                  await client.invalidateQueries({ queryKey: queryKeys.publicationStatus(card.productId, connectionId) })
                 } catch (reason) {
                   const failure = reason instanceof Error ? reason.message : 'Güncelleme işi oluşturulamadı.'
                   familyFailures.set(failure, [...(familyFailures.get(failure) ?? []), cardName])
@@ -3339,7 +3340,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               update.queued.priceInventory = true
               update.priceInventoryParts = { price: plan.price, stock: plan.stock }
             }
-            await client.invalidateQueries({ queryKey: ['publication-status', product.id, connectionId] })
+            await client.invalidateQueries({ queryKey: queryKeys.publicationStatus(product.id, connectionId) })
             continue
           }
           // Every colour card of the family (same model code) goes with the opened one; a card already live or still
@@ -3385,7 +3386,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               }
               await hubApi(`/products/${familyProductId}/listing-profiles/${connectionId}`, { method: 'PUT', headers: listingProfile == null ? {} : { 'If-Match': `"v${listingProfile.version}"` }, body: JSON.stringify(republishListingProfileBody(listingProfile)) })
               const publicationJob = await hubApi<PublicationAccepted>(`/products/${familyProductId}/publication-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId }) })
-              await client.invalidateQueries({ queryKey: ['publication-status', familyProductId, connectionId] })
+              await client.invalidateQueries({ queryKey: queryKeys.publicationStatus(familyProductId, connectionId) })
               if (publicationJob?.jobId) followedJobs.push({ jobId: publicationJob.jobId, platformName, what: 'ürün', card: familyIds.length > 1 ? preferredColorOption(variantOptionEntries(cardVariants[0] ?? product.variants[0]))?.value ?? '' : undefined })
               outcome.enqueuedCards++
               outcome.enqueuedVariants += plan.variants
@@ -3442,9 +3443,9 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       // The saved form is the new clean state; the refetch below may refill it from the server.
       allowReseedUntil.current = Date.now() + 10_000
       setSnapshotRequest(value => value + 1)
-      await client.invalidateQueries({ queryKey: ['products'] })
+      await client.invalidateQueries({ queryKey: queryKeys.products() })
       if (editProductId) {
-        await client.invalidateQueries({ queryKey: ['product', editProductId] })
+        await client.invalidateQueries({ queryKey: queryKeys.product(editProductId) })
         await productToEdit.refetch()
         editorSaveInFlight.current = false
         // The uploaded files leave the queue in the same render as the refill that shows their stored copies (and the
@@ -3507,7 +3508,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         const keptFiles = mediaFilesLeftAfterFailedSave(mediaFiles, uploadedMediaFileIds)
         mediaFilesKeptOnReseed.current = keptFiles
         allowReseedUntil.current = Date.now() + 10_000
-        await Promise.all([client.invalidateQueries({ queryKey: ['products'] }), client.invalidateQueries({ queryKey: ['product', editProductId] })]).catch(() => undefined)
+        await Promise.all([client.invalidateQueries({ queryKey: queryKeys.products() }), client.invalidateQueries({ queryKey: queryKeys.product(editProductId) })]).catch(() => undefined)
         await productToEdit.refetch().catch(() => undefined)
         editorSaveInFlight.current = false
         setMediaFiles(keptFiles)

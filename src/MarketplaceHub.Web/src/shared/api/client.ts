@@ -157,16 +157,62 @@ async function fetchThroughRestart(url: string, init?: RequestInit): Promise<Res
 // told calmly that the result will show up, and the key is kept (shared/idempotency.ts isStillRunning).
 export const stillRunningMessage = 'Bu işlem hâlâ sürüyor; birkaç saniye sonra sonucu listede göreceksiniz.'
 
-export async function hubApi<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetchThroughRestart(`/api/v1${path}`, automaticReadInit(init))
-  if (!response.ok) {
-    const problem = await response.json().catch(() => ({})) as ApiProblem
-    if (isSignedOutProblem(response.status, problem.code)) onUnauthorized()
-    const message = response.status === 409 && problem.code === 'IDEMPOTENCY_IN_PROGRESS' ? stillRunningMessage : problem.title ?? problem.code ?? `İşlem tamamlanamadı (${response.status}).`
-    throw new ApiRequestError(message, response.status, problem.code, problem.fieldErrors, problem.tenants)
+/** hubApi's options: fetch's own, and how long a read may wait for its answer. */
+export type HubRequestInit = RequestInit & {
+  /** GET/HEAD only: give up after this many ms (default defaultReadTimeoutMs; 0: no limit). Writes never time out. */
+  timeoutMs?: number
+}
+
+// A read that gets no answer at all (a stuck proxy, a half-open connection) used to wait forever with the screen on
+// "yükleniyor". Reads give up after a generous limit, well above the slowest report read. Writes never get a limit here:
+// stopping the wait would not stop the server, and the person would be told it failed while it may still go through
+// (the idempotency rules in shared/idempotency.ts decide what a resend does; a timeout is not an HTTP answer).
+export const defaultReadTimeoutMs = 90_000
+export const clientTimeoutCode = 'CLIENT_TIMEOUT'
+export const clientTimeoutMessage = 'Sunucu zamanında yanıt vermedi. Bağlantınızı kontrol edip yeniden deneyin.'
+
+// The signal a read goes out with: the caller's (TanStack Query's, so a query that left the screen is aborted) joined
+// with the read's time limit. Built by hand rather than with AbortSignal.any/timeout, which older Safari lacks.
+function readDeadline(init: HubRequestInit | undefined) {
+  const method = init?.method?.toUpperCase() ?? 'GET'
+  const limit = init?.timeoutMs ?? defaultReadTimeoutMs
+  if ((method !== 'GET' && method !== 'HEAD') || !(limit > 0)) return null
+  const controller = new AbortController()
+  const outer = init?.signal ?? null
+  let timedOut = false
+  const forward = () => controller.abort(outer?.reason)
+  if (outer?.aborted) forward()
+  else outer?.addEventListener('abort', forward, { once: true })
+  const timer = setTimeout(() => { timedOut = true; controller.abort(new DOMException('Okuma süresi doldu.', 'TimeoutError')) }, limit)
+  return {
+    signal: controller.signal,
+    timedOut: () => timedOut,
+    dispose: () => { clearTimeout(timer); outer?.removeEventListener('abort', forward) },
   }
-  if (response.status === 204) return undefined as T
-  return readSuccessJson<T>(response)
+}
+
+export async function hubApi<T>(path: string, init?: HubRequestInit): Promise<T> {
+  const deadline = readDeadline(init)
+  let requestInit: RequestInit | undefined = init
+  if (init && 'timeoutMs' in init) { const { timeoutMs: _timeoutMs, ...rest } = init; requestInit = rest }
+  if (deadline) requestInit = { ...requestInit, signal: deadline.signal }
+  try {
+    const response = await fetchThroughRestart(`/api/v1${path}`, automaticReadInit(requestInit))
+    if (!response.ok) {
+      const problem = await response.json().catch(() => ({})) as ApiProblem
+      if (isSignedOutProblem(response.status, problem.code)) onUnauthorized()
+      const message = response.status === 409 && problem.code === 'IDEMPOTENCY_IN_PROGRESS' ? stillRunningMessage : problem.title ?? problem.code ?? `İşlem tamamlanamadı (${response.status}).`
+      throw new ApiRequestError(message, response.status, problem.code, problem.fieldErrors, problem.tenants)
+    }
+    if (response.status === 204) return undefined as T
+    return await readSuccessJson<T>(response)
+  } catch (error) {
+    // Status 0: no HTTP answer came (failedWithHttpAnswer is false), so a resend may reuse the request's key.
+    if (deadline?.timedOut()) throw new ApiRequestError(clientTimeoutMessage, 0, clientTimeoutCode)
+    throw error
+  } finally {
+    deadline?.dispose()
+  }
 }
 
 // A file the server writes (an Excel export), refused the way hubApi refuses: its bytes and the name it gives.
@@ -190,8 +236,12 @@ export function settingsIfMatch(version: number | null | undefined): Record<stri
 
 export type CursorPage<T> = { items: T[]; nextCursor: string | null; hasMore: boolean; totalCount?: number | null }
 
-/** Reads every cursor page. The server still keeps each individual request bounded. */
-export async function loadAllPages<T>(path: string, limit = 200): Promise<CursorPage<T>> {
+/**
+ * Reads every cursor page. The server still keeps each individual request bounded. The second argument is the page size,
+ * or the page size and the query's signal (a query that leaves the screen stops reading further pages).
+ */
+export async function loadAllPages<T>(path: string, options: number | { limit?: number; signal?: AbortSignal } = {}): Promise<CursorPage<T>> {
+  const { limit = 200, signal = undefined } = typeof options === 'number' ? { limit: options, signal: undefined } : options
   const items: T[] = []
   const seenCursors = new Set<string>()
   let after: string | null = null
@@ -203,7 +253,7 @@ export async function loadAllPages<T>(path: string, limit = 200): Promise<Cursor
     if (after) params.set('after', after)
     else params.delete('after')
 
-    const page = await hubApi<CursorPage<T>>(`${basePath}?${params.toString()}`)
+    const page = await hubApi<CursorPage<T>>(`${basePath}?${params.toString()}`, signal ? { signal } : undefined)
     items.push(...page.items)
     if (!page.hasMore) return { items, nextCursor: null, hasMore: false }
     if (!page.nextCursor || seenCursors.has(page.nextCursor)) throw new Error('Listenin devam sayfası güvenli biçimde alınamadı.')

@@ -2,6 +2,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
 import { scopedStorageKey } from '../../../shared/storage-scope'
 import type { CommissionBand, CommissionChoice, CommissionTariff, CommissionTariffRow } from './CommissionTariffsPanel'
+import { queryKeys } from '../../../shared/api/query-keys'
 
 export type RowPage = { items: CommissionTariffRow[]; totalCount: number; page: number; pageSize: number }
 
@@ -52,8 +53,8 @@ export async function loadRowPage(connectionId: string, tariffId: string, query:
 
 // The tariffs a store's tab lists, and the tab's first page of rows; the panel and the prefetch below share them.
 export const tariffsQuery = (connectionId: string) => ({
-  queryKey: ['commission-tariffs', connectionId],
-  queryFn: () => hubApi<CommissionTariff[]>(`/connections/${connectionId}/commission-tariffs`)
+  queryKey: queryKeys.commissionTariffs(connectionId),
+  queryFn: ({ signal }: { signal: AbortSignal }) => hubApi<CommissionTariff[]>(`/connections/${connectionId}/commission-tariffs`, { signal })
 })
 
 // The store and tariff the tab last opened on by itself (no period picked), kept in this browser only and per person
@@ -82,7 +83,7 @@ function lastTariff(): LastTariff | null {
 // Opening Promosyon, the tariff list and the first page of rows the tab last opened on are asked for at once, beside
 // the stores, instead of one after the other (stores, then tariffs, then rows). The panel's own queries take them over
 // when they are the ones it opens on; otherwise they are only not used.
-export function prefetchLastTariff(client: QueryClient, store: string | null, rowsQuery: (connectionId: string, tariffId: string) => { queryKey: unknown[]; queryFn: () => Promise<RowPage> }) {
+export function prefetchLastTariff(client: QueryClient, store: string | null, rowsQuery: (connectionId: string, tariffId: string) => { queryKey: readonly unknown[]; queryFn: () => Promise<RowPage> }) {
   const last = lastTariff()
   if (!last || (store && store !== last.connectionId)) return
   void client.prefetchQuery(tariffsQuery(last.connectionId))

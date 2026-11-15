@@ -1,0 +1,182 @@
+{
+  "src/app/notification-panel.css": {
+    "important": 5,
+    "rootBumps": 0
+  },
+  "src/features/catalog/product-editor/product-editor-design-system.css": {
+    "important": 1,
+    "rootBumps": 10
+  },
+  "src/features/catalog/products-responsive.css": {
+    "important": 26,
+    "rootBumps": 0
+  },
+  "src/features/catalog/products-sade.css": {
+    "important": 50,
+    "rootBumps": 16
+  },
+  "src/features/catalog/publish-platform-issues.css": {
+    "important": 2,
+    "rootBumps": 0
+  },
+  "src/features/dashboard/dashboard-sade.css": {
+    "important": 12,
+    "rootBumps": 11
+  },
+  "src/features/invoicing/invoice-filter-card.css": {
+    "important": 1,
+    "rootBumps": 4
+  },
+  "src/features/invoicing/invoices-responsive.css": {
+    "important": 68,
+    "rootBumps": 0
+  },
+  "src/features/invoicing/invoices-sade.css": {
+    "important": 27,
+    "rootBumps": 14
+  },
+  "src/features/marketplace/category-workbench.css": {
+    "important": 20,
+    "rootBumps": 0
+  },
+  "src/features/marketplace/commission-tariffs.css": {
+    "important": 0,
+    "rootBumps": 25
+  },
+  "src/features/marketplace/integration-settings-sade.css": {
+    "important": 15,
+    "rootBumps": 0
+  },
+  "src/features/marketplace/integrations-sade.css": {
+    "important": 3,
+    "rootBumps": 0
+  },
+  "src/features/marketplace/mapping-conflicts-panel.css": {
+    "important": 3,
+    "rootBumps": 0
+  },
+  "src/features/marketplace/mapping-workspace.css": {
+    "important": 89,
+    "rootBumps": 0
+  },
+  "src/features/marketplace/orders-sade.css": {
+    "important": 17,
+    "rootBumps": 8
+  },
+  "src/features/marketplace/orders/order-metrics.css": {
+    "important": 0,
+    "rootBumps": 23
+  },
+  "src/features/marketplace/returns-sade.css": {
+    "important": 74,
+    "rootBumps": 158
+  },
+  "src/features/operations/jobs-sade.css": {
+    "important": 14,
+    "rootBumps": 3
+  },
+  "src/features/operations/notification-center.css": {
+    "important": 1,
+    "rootBumps": 0
+  },
+  "src/features/operations/price-stock-send-log.css": {
+    "important": 2,
+    "rootBumps": 0
+  },
+  "src/features/operations/product-activity-log.css": {
+    "important": 1,
+    "rootBumps": 16
+  },
+  "src/features/questions/questions-inbox.css": {
+    "important": 33,
+    "rootBumps": 0
+  },
+  "src/features/settings/settings-sade.css": {
+    "important": 19,
+    "rootBumps": 0
+  },
+  "src/features/shipping/shipping-label.css": {
+    "important": 1,
+    "rootBumps": 0
+  },
+  "src/shared/components/notice-toast.css": {
+    "important": 1,
+    "rootBumps": 0
+  },
+  "src/shared/components/sticky-action-bar.css": {
+    "important": 6,
+    "rootBumps": 0
+  },
+  "src/shared/touch-tips.css": {
+    "important": 11,
+    "rootBumps": 0
+  },
+  "src/shared/view-tabs.css": {
+    "important": 65,
+    "rootBumps": 0
+  },
+  "src/styles/area-d.css": {
+    "important": 15,
+    "rootBumps": 16
+  },
+  "src/styles/audit-products.css": {
+    "important": 2,
+    "rootBumps": 137
+  },
+  "src/styles/design-cleanup.css": {
+    "important": 2,
+    "rootBumps": 31
+  },
+  "src/styles/design-step2.css": {
+    "important": 4,
+    "rootBumps": 152
+  },
+  "src/styles/design-step3-navigation.css": {
+    "important": 53,
+    "rootBumps": 0
+  },
+  "src/styles/design-system.css": {
+    "important": 118,
+    "rootBumps": 0
+  },
+  "src/styles/info-hover.css": {
+    "important": 0,
+    "rootBumps": 130
+  },
+  "src/styles/menus.css": {
+    "important": 60,
+    "rootBumps": 0
+  },
+  "src/styles/motion.css": {
+    "important": 1,
+    "rootBumps": 0
+  },
+  "src/styles/one-row.css": {
+    "important": 0,
+    "rootBumps": 51
+  },
+  "src/styles/orders-returns-invoices-audit.css": {
+    "important": 1,
+    "rootBumps": 37
+  },
+  "src/styles/phone-spacing.css": {
+    "important": 118,
+    "rootBumps": 2
+  },
+  "src/styles/responsive.css": {
+    "important": 15,
+    "rootBumps": 0
+  },
+  "src/styles/segments.css": {
+    "important": 36,
+    "rootBumps": 36
+  },
+  "src/styles/tablet-catalog.css": {
+    "important": 17,
+    "rootBumps": 0
+  },
+  "src/styles/tablet-ops.css": {
+    "important": 3,
+    "rootBumps": 0
+  }
+}

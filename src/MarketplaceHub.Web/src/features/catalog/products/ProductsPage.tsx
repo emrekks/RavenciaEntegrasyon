@@ -46,6 +46,7 @@ import { cardCountText, toneAbove } from '../../../shared/metric-value'
 import { useMetricSource } from '../../marketplace/use-metric-source'
 import { AcceptedJob, ImageLightboxModal, LightboxImage, MarketplaceConnection, Product, Variant, compareOptionValues, formatCatalogOptionLabel, isColorOptionName, isProductPublicationConnection, isVariantOptionName, optionValueSortRank, preferredColorOption, variantOptionEntries } from '../shared'
 import { EmptyState, ListEmptyState } from '../../../shared/components/EmptyState'
+import { connectionQueries, queryKeys } from '../../../shared/api/query-keys'
 
 type ProductListFilters = { search: string; status: string; platform: string; stock: string; sort: string }
 type ProductSummary = { totalCount: number; activeCount: number; outOfStockCount: number; lowStockCount: number; platforms: string[]; totalUnits?: number }
@@ -181,7 +182,7 @@ function lowStockMissingVariantCount(group: ProductGroup) {
 // and Tükenen Varyantlar (any variant sold out while the product still has stock, read when its tab is opened).
 export function LowStockDetailsModal({ products: lowProducts, loading: lowLoading, error: lowError, onClose, onImageClick }: { products: Product[]; loading: boolean; error: unknown; onClose: () => void; onImageClick: (url: string, title: string, modelCode?: string) => void }) {
   const [mode, setMode] = useState<'LOW' | 'GAP'>('LOW')
-  const gapQuery = useQuery({ queryKey: ['products', 'sold-out-variant-details'], queryFn: () => loadAllPages<Product>('/products?stock=GAP', 200), enabled: mode === 'GAP', staleTime: 15_000 })
+  const gapQuery = useQuery({ queryKey: queryKeys.products('sold-out-variant-details'), queryFn: ({ signal }) => loadAllPages<Product>('/products?stock=GAP', { limit: 200, signal }), enabled: mode === 'GAP', staleTime: 15_000 })
   const products = useMemo(() => mode === 'LOW' ? lowProducts : gapQuery.data?.items ?? [], [mode, lowProducts, gapQuery.data])
   const loading = mode === 'LOW' ? lowLoading : gapQuery.isLoading
   const error = mode === 'LOW' ? lowError : gapQuery.error
@@ -352,7 +353,7 @@ function ProductDeleteConfirmModal({ request, deleting, onClose, onConfirm }: { 
   const isGroup = request.productIds.length > 1
   // The publication and price/stock jobs still waiting for these products: the delete cancels them.
   const preview = useQuery({
-    queryKey: ['product-delete-preview', request.productIds],
+    queryKey: queryKeys.productDeletePreview(request.productIds),
     queryFn: async () => {
       let pendingJobCount = 0
       for (let index = 0; index < request.productIds.length; index += 500)
@@ -397,7 +398,7 @@ export function ProductsPage() {
   const productFilterKey = JSON.stringify(productFilters)
   const pageCursor = pageCursors[productFilterKey]?.[pageNumber] ?? null
   const query = useQuery({
-    queryKey: ['products', productFilters, pageSize, pageNumber, pageCursor],
+    queryKey: queryKeys.products(productFilters, pageSize, pageNumber, pageCursor),
     queryFn: () => fetchProductPage(pageSize, productFilters, pageCursor),
     placeholderData: keepPreviousData,
     staleTime: 30_000,
@@ -405,13 +406,13 @@ export function ProductsPage() {
     refetchInterval: 60_000,
     refetchIntervalInBackground: false
   })
-  const summaryQuery = useQuery({ queryKey: ['products', 'summary'], queryFn: () => hubApi<ProductSummary>('/products/summary'), staleTime: 30_000, refetchOnWindowFocus: true })
+  const summaryQuery = useQuery({ queryKey: queryKeys.products('summary'), queryFn: ({ signal }) => hubApi<ProductSummary>('/products/summary', { signal }), staleTime: 30_000, refetchOnWindowFocus: true })
   // The summary has no draft or archived counts; a one-item page carries the total.
-  const draftCountQuery = useQuery({ queryKey: ['products', 'count', 'DRAFT'], queryFn: () => fetchProductPage(1, { search: '', status: 'DRAFT', platform: '', stock: '', sort: '' }, null), staleTime: 60_000 })
-  const archivedCountQuery = useQuery({ queryKey: ['products', 'count', 'ARCHIVED'], queryFn: () => fetchProductPage(1, { search: '', status: 'ARCHIVED', platform: '', stock: '', sort: '' }, null), staleTime: 60_000 })
-  const lowStockQuery = useQuery({ queryKey: ['products', 'low-stock-details'], queryFn: () => loadAllPages<Product>('/products?stock=LOW', 200), enabled: lowStockOpen, staleTime: 15_000, refetchOnWindowFocus: true })
-  const connectionsQuery = useQuery({ queryKey: ['connections', 'product-price'], queryFn: () => loadAllPages<MarketplaceConnection>('/connections') })
-  const productSyncJobsQuery = useQuery({ queryKey: ['jobs', 'product-import'], queryFn: () => hubPoll<ProductSyncJob[]>(productSyncJobsPath, { cache: 'no-store' }), enabled: productImportOpen || trackedProductImportJobIds.length > 0, refetchInterval: query => productImportOpen && filterActiveProductSyncJobs(query.state.data ?? []).length ? 1500 : trackedProductImportJobIds.length ? 3000 : false, refetchIntervalInBackground: true, refetchOnWindowFocus: true, staleTime: 0 })
+  const draftCountQuery = useQuery({ queryKey: queryKeys.products('count', 'DRAFT'), queryFn: () => fetchProductPage(1, { search: '', status: 'DRAFT', platform: '', stock: '', sort: '' }, null), staleTime: 60_000 })
+  const archivedCountQuery = useQuery({ queryKey: queryKeys.products('count', 'ARCHIVED'), queryFn: () => fetchProductPage(1, { search: '', status: 'ARCHIVED', platform: '', stock: '', sort: '' }, null), staleTime: 60_000 })
+  const lowStockQuery = useQuery({ queryKey: queryKeys.products('low-stock-details'), queryFn: ({ signal }) => loadAllPages<Product>('/products?stock=LOW', { limit: 200, signal }), enabled: lowStockOpen, staleTime: 15_000, refetchOnWindowFocus: true })
+  const connectionsQuery = useQuery(connectionQueries.list<MarketplaceConnection>())
+  const productSyncJobsQuery = useQuery({ queryKey: queryKeys.jobs('product-import'), queryFn: ({ signal }) => hubPoll<ProductSyncJob[]>(productSyncJobsPath, { cache: 'no-store', signal }), enabled: productImportOpen || trackedProductImportJobIds.length > 0, refetchInterval: query => productImportOpen && filterActiveProductSyncJobs(query.state.data ?? []).length ? 1500 : trackedProductImportJobIds.length ? 3000 : false, refetchIntervalInBackground: true, refetchOnWindowFocus: true, staleTime: 0 })
   const products = useMemo(() => query.data?.items ?? [], [query.data]); const connections = (connectionsQuery.data?.items ?? []).filter(isProductImportConnection); const publicationConnections = (connectionsQuery.data?.items ?? []).filter(isProductPublicationConnection); const selectedImportPlatforms = productImportConnectionIds.map(connectionId => connections.find(connection => connection.id === connectionId)?.platformCode ?? '').filter(Boolean); const selectedImportHasShopify = selectedImportPlatforms.some(code => code.trim().toUpperCase() === 'SHOPIFY'); const singleLookupLabel = singleProductLookupLabel(selectedImportPlatforms[0] ?? ''); const platforms = summaryQuery.data?.platforms ?? []
   const selectedImportHasTrendyol = selectedImportPlatforms.some(code => code.trim().toUpperCase() === 'TRENDYOL')
   const productImportSupportsPendingApproval = productImportMethod === 'BULK' && selectedImportHasTrendyol && (productImportMode === 'FULL' || productImportMode === 'NEW_ONLY' || productImportMode === 'MAPPING_ONLY')
@@ -422,12 +423,12 @@ export function ProductsPage() {
   useEffect(() => { if (!productImportOptions.showExistingMode && productImportMode === 'EXISTING_ONLY') setProductImportMode('MAPPING_ONLY') }, [productImportOptions.showExistingMode, productImportMode])
   const totalCount = query.data?.totalCount ?? products.length; const totalPages = Math.max(1, Math.ceil(totalCount / pageSize)); const currentPage = Math.min(pageNumber, totalPages); const pageProducts = useMemo(() => currentPage === pageNumber ? products : [], [currentPage, pageNumber, products]); const pageProductGroups = useMemo(() => productRowsAsCards(pageProducts), [pageProducts])
   const activeProductSyncJobs = useMemo(() => filterActiveProductSyncJobs(productSyncJobsQuery.data ?? []), [productSyncJobsQuery.data])
-  const cancelProductSync = useMutation({ mutationFn: (jobId: string) => hubApi(`/jobs/${jobId}/cancel`, { method: 'POST', headers: { 'Idempotency-Key': `cancel-product-import:${jobId}` } }), onSuccess: () => { void productSyncJobsQuery.refetch(); void client.invalidateQueries({ queryKey: ['jobs'] }) } })
+  const cancelProductSync = useMutation({ mutationFn: (jobId: string) => hubApi(`/jobs/${jobId}/cancel`, { method: 'POST', headers: { 'Idempotency-Key': `cancel-product-import:${jobId}` } }), onSuccess: () => { void productSyncJobsQuery.refetch(); void client.invalidateQueries({ queryKey: queryKeys.jobs() }) } })
   const pageCopyOf = (id: string) => products.find(product => product.id === id) ?? selectedProductCache[id]
   // While the quick edit is open its products are read by id (loadProductsByIds): its saves refresh ['products'], which
   // covers this query, so every cell works on the latest versions. The page's copies show until the first answer.
   const quickEditIds = quickEdit?.productIds ?? []
-  const quickEditQuery = useQuery({ queryKey: ['products', 'by-ids', quickEditIds], queryFn: () => loadProductsByIds(quickEditIds, id => hubApi<Product>(`/products/${id}`, { cache: 'no-store' }), pageCopyOf), enabled: quickEditIds.length > 0, staleTime: 0, gcTime: 0 })
+  const quickEditQuery = useQuery({ queryKey: queryKeys.products('by-ids', quickEditIds), queryFn: () => loadProductsByIds(quickEditIds, id => hubApi<Product>(`/products/${id}`, { cache: 'no-store' }), pageCopyOf), enabled: quickEditIds.length > 0, staleTime: 0, gcTime: 0 })
   const quickEditProducts = quickEdit
     ? quickEditQuery.data ?? quickEdit.productIds.map(pageCopyOf).filter((product): product is Product => Boolean(product))
     : []
@@ -438,8 +439,8 @@ export function ProductsPage() {
   useEffect(() => {
     if (!productImportOpen || !activeProductSyncJobs.length) return
     const timer = window.setInterval(() => {
-      void client.invalidateQueries({ queryKey: ['products', productFilters, pageSize, pageNumber, pageCursor] })
-      void client.invalidateQueries({ queryKey: ['products', 'summary'] })
+      void client.invalidateQueries({ queryKey: queryKeys.products(productFilters, pageSize, pageNumber, pageCursor) })
+      void client.invalidateQueries({ queryKey: queryKeys.products('summary') })
     }, 1500)
     return () => window.clearInterval(timer)
   }, [activeProductSyncJobs.length, client, pageCursor, pageNumber, pageSize, productFilters, productImportOpen])
@@ -447,7 +448,7 @@ export function ProductsPage() {
   useEffect(() => {
     const { finished, remaining } = settleTrackedProductSyncJobs(trackedProductImportJobIds, productSyncJobsQuery.data ?? [])
     if (!finished.length) return
-    void client.invalidateQueries({ queryKey: ['products'] })
+    void client.invalidateQueries({ queryKey: queryKeys.products() })
     setTrackedProductImportJobIds(remaining)
   }, [client, productSyncJobsQuery.data, trackedProductImportJobIds])
   useEffect(() => { const timer = window.setTimeout(() => setSearchFilter(search.trim()), 250); return () => window.clearTimeout(timer) }, [search])
@@ -463,7 +464,7 @@ export function ProductsPage() {
     const nextPage = currentPage + 1
     setPageCursors(current => current[productFilterKey]?.[nextPage] === nextPageCursor ? current : { ...current, [productFilterKey]: { ...(current[productFilterKey] ?? {}), [nextPage]: nextPageCursor } })
     // Read ahead only after this page's pictures (or near the list's end), so it does not take their bandwidth.
-    return scheduleDeferredPrefetch(() => void client.prefetchQuery({ queryKey: ['products', productFilters, pageSize, nextPage, nextPageCursor], queryFn: () => fetchProductPage(pageSize, productFilters, nextPageCursor), staleTime: 30_000 }), { root: productListRef.current, nearEnd: productPagerRef.current })
+    return scheduleDeferredPrefetch(() => void client.prefetchQuery({ queryKey: queryKeys.products(productFilters, pageSize, nextPage, nextPageCursor), queryFn: () => fetchProductPage(pageSize, productFilters, nextPageCursor), staleTime: 30_000 }), { root: productListRef.current, nearEnd: productPagerRef.current })
   }, [client, currentPage, nextPageCursor, pageSize, productFilterKey, productFilters, query.data?.hasMore, query.isPlaceholderData])
   useEffect(() => {
     if (!products.length || !selectedProductIds.length) return
@@ -481,7 +482,7 @@ export function ProductsPage() {
   }, [products, quickEdit, selectedProductCache])
   const allVisibleSelected = pageProductGroups.length > 0 && pageProductGroups.every(group => group.products.every(product => selectedProductIds.includes(product.id)))
   const hasMoreProductsToSelect = totalCount > pageProductGroups.length
-  const refresh = () => client.invalidateQueries({ queryKey: ['products'] })
+  const refresh = () => client.invalidateQueries({ queryKey: queryKeys.products() })
   // A quick edit changes what the product editor shows too (panel price, channel prices, stock): both refresh.
   const refreshQuickEdit = () => Promise.all(QUICK_EDIT_SYNC_KEYS.map(queryKey => client.invalidateQueries({ queryKey })))
   // Each result lands below the toasts already shown and goes to the notification history.
@@ -543,7 +544,7 @@ export function ProductsPage() {
         priceStock: (productImportMethod === 'SINGLE' || existingOnly) && productImportOptions.showPriceStock ? { updatePrices: productImportChoices.updatePrices, updateStock: productImportChoices.updateStock } : null
       }), 'info')
       void productSyncJobsQuery.refetch()
-      void client.invalidateQueries({ queryKey: ['jobs'] })
+      void client.invalidateQueries({ queryKey: queryKeys.jobs() })
     } catch (err) {
       showProductToast('Ürün Aktarımı Başlatılamadı', err instanceof Error ? err.message : 'Platform ürünleri panele alınamadı.', 'error')
     } finally {
@@ -821,10 +822,10 @@ export function ProductsPage() {
       {activeProductSyncJobs.length > 0 && <section className="rr-dsec" aria-live="polite"><header><div className="rr-h3">Devam Eden Aktarımlar</div><p>{activeProductSyncJobs.length} işlem</p></header>{activeProductSyncJobs.map(job => { const received = Math.max(0, job.progressReceived); const percent = productSyncPercent(job); const label = job.progressLabel ? productSyncLabel(job.progressLabel) : (job.status === 'PENDING' ? 'Kuyrukta bekliyor' : 'Aktarım çalışıyor'); const mapping = job.progressLabel?.includes('Eşlenen') ?? false; const jobConnection = (connectionsQuery.data?.items ?? []).find(item => item.id === job.connectionId); return <div className="rr-job" key={job.id}><div className="rr-job-h">{jobConnection && <RrLogo code={jobConnection.platformCode} />}<b>{jobConnection && <span className="rr-job-src">{jobConnection.displayName}</span>}{label}</b><span className="rr-num">{percent == null ? '—' : `%${percent}`}</span><button type="button" className="rr-btn rr-quiet" style={{ height: 28 }} disabled={cancelProductSync.isPending} onClick={() => cancelProductSync.mutate(job.id)}>Durdur</button></div><span className={percent == null ? 'rr-bar rr-bar-wait' : 'rr-bar'} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent ?? undefined}><i style={percent == null ? undefined : { width: `${percent}%` }} /></span><div className="rr-job-c"><span>Alınan <b className="rr-num">{received.toLocaleString('tr-TR')}</b></span><span>{mapping ? 'Eşlenen' : 'İşlenen'} <b className="rr-num">{job.progressProcessed.toLocaleString('tr-TR')}</b></span><span>{mapping ? 'Eşleşmeyen' : 'Atlanan'} <b className="rr-num">{job.progressSkipped.toLocaleString('tr-TR')}</b></span><span>Hatalı <b className="rr-num rr-bad">{job.progressFailed.toLocaleString('tr-TR')}</b></span></div></div> })}</section>}
     </RrModal>}
     {transferOpen && <ProductTransferDialog onClose={() => setTransferOpen(false)} />}
-    {publishProductId && <Suspense fallback={null}><ProductPublishPopup productId={publishProductId} onClose={() => { setPublishProductId(null); void client.invalidateQueries({ queryKey: ['products'] }) }} /></Suspense>}
+    {publishProductId && <Suspense fallback={null}><ProductPublishPopup productId={publishProductId} onClose={() => { setPublishProductId(null); void client.invalidateQueries({ queryKey: queryKeys.products() }) }} /></Suspense>}
     {/* One product card (a whole model family) opens the very same popup as its row's Platformlarda Yayınla. */}
     {bulkFieldOpen && selectedProductIds.length > 0 && <Suspense fallback={null}><BulkFieldDialog {...selectionModelGroups(selectedProductIds, selectedProductCache)} cardCount={selectedProductCardCount} onClose={() => setBulkFieldOpen(false)} onDone={async outcome => { showProductToast(outcome.title, outcome.message, outcome.kind, outcome.skipped ? { operation: 'Toplu Değer Ata', details: outcome.skipped.details, target: outcome.skipped.target, record: true } : { operation: 'Toplu Değer Ata' }); setBulkFieldOpen(false); await refresh().catch(() => undefined) }} /></Suspense>}
-    {bulkPublishOpen && selectedProductCardCount === 1 &&selectedProductIds[0] && <Suspense fallback={null}><ProductPublishPopup productId={selectedProductIds[0]} onClose={() => { setBulkPublishOpen(false); void client.invalidateQueries({ queryKey: ['products'] }) }} /></Suspense>}
+    {bulkPublishOpen && selectedProductCardCount === 1 &&selectedProductIds[0] && <Suspense fallback={null}><ProductPublishPopup productId={selectedProductIds[0]} onClose={() => { setBulkPublishOpen(false); void client.invalidateQueries({ queryKey: queryKeys.products() }) }} /></Suspense>}
     {bulkUpdateOpen && <Suspense fallback={null}><BulkPlatformUpdateDialog productIds={selectedProductIds} cardCount={selectedProductCardCount} connections={connectionsQuery.data?.items ?? []} products={[...Object.values(selectedProductCache), ...products]} onClose={() => setBulkUpdateOpen(false)} onDone={notice => showProductToast(notice.title, notice.message, notice.kind, notice.details ? { operation: 'Toplu Güncelleme', details: notice.details, record: true } : { operation: 'Toplu Güncelleme' }, { lines: notice.lines, persistent: notice.persistent })} /></Suspense>}
     {bulkPublishOpen && selectedProductCardCount !== 1 && <Suspense fallback={null}><BulkPublishDialog productIds={selectedProductIds} cardCount={selectedProductCardCount} connections={publicationConnections} products={[...Object.values(selectedProductCache), ...products]} onClose={() => setBulkPublishOpen(false)} onDone={notice => showProductToast(notice.title, notice.message, notice.kind, notice.details ? { operation: 'Toplu Yayın', details: notice.details, record: true } : { operation: 'Toplu Yayın' }, { lines: notice.lines, persistent: notice.persistent })} /></Suspense>}
     {lowStockOpen && <LowStockDetailsModal products={lowStockQuery.data?.items ?? []} loading={lowStockQuery.isLoading} error={lowStockQuery.error} onClose={() => setLowStockOpen(false)} onImageClick={(url, title, modelCode) => setLightboxImage({ url, title, modelCode })} />}

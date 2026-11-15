@@ -12,11 +12,12 @@ import { ReauthInputs, reauthBody, reauthReady, useSecondFactorEnabled } from '.
 import { connectionFullResetItems, connectionFullResetRunning, type ConnectionFullResetJob, type ConnectionFullResetView } from '../connection-data-reset'
 import type { Connection, IntegrationFeedback } from '../shared'
 import '../../../shared/components/data-reset-ledger.css'
+import { queryKeys } from '../../../shared/api/query-keys'
 
 const number = (value: number) => value.toLocaleString('tr-TR')
 
 export function connectionFullResetQueryKey(connectionId: string) {
-  return ['connection-full-reset', connectionId] as const
+  return queryKeys.connectionFullReset(connectionId)
 }
 
 export function fullResetStatusText(job: ConnectionFullResetView['job']) {
@@ -42,7 +43,7 @@ export function ConnectionFullResetPanel({ item, onFeedback, onFinished, onCance
   const [password, setPassword] = useState('')
   const [factor, setFactor] = useState('')
   const queryKey = connectionFullResetQueryKey(item.id)
-  const view = useQuery({ queryKey, queryFn: () => hubPoll<ConnectionFullResetView>(`/connections/${item.id}/full-reset`), staleTime: 0, refetchInterval: query => connectionFullResetRunning(query.state.data?.job?.status) ? 3000 : false })
+  const view = useQuery({ queryKey, queryFn: ({ signal }) => hubPoll<ConnectionFullResetView>(`/connections/${item.id}/full-reset`, { signal }), staleTime: 0, refetchInterval: query => connectionFullResetRunning(query.state.data?.job?.status) ? 3000 : false })
   const job = view.data?.job ?? null
   const running = connectionFullResetRunning(job?.status)
   // When the reset this panel watched ends, the lists that showed the removed records are read again.

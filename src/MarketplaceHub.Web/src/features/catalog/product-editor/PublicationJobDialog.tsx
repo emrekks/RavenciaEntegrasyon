@@ -10,6 +10,7 @@ import { jobPresentation } from '../../operations/job-presentation'
 import { isWaitingJob, jobAttemptOutcome, jobAttemptResultLabel, jobAttemptsText, waitingJobLabel } from '../../operations/job-waiting'
 import { publicationJobPollInterval } from '../publication-job-poll'
 import { PublicationJobVariants, type JobVariantResults } from './PublicationJobVariants'
+import { queryKeys } from '../../../shared/api/query-keys'
 
 type JobAttempt = { attemptNumber: number; startedAt: string; completedAt: string | null; succeeded: boolean; errorCode: string | null; errorSummary: string | null; outcome?: string }
 type JobChange = { label: string; value: string; detail: string | null }
@@ -61,8 +62,8 @@ const when = (value: string | null | undefined) => value
 // The API job behind a publication card's status: what it does, where it stands, its tries and the marketplace's answer.
 export function PublicationJobDialog({ jobId, platformCode, platformName, storeName, onClose }: { jobId: string; platformCode: string; platformName: string; storeName: string; onClose: () => void }) {
   const detail = useQuery({
-    queryKey: ['publication-job-detail', jobId],
-    queryFn: () => hubPoll<PublicationJobDialogDetail>(`/jobs/${jobId}`),
+    queryKey: queryKeys.publicationJobDetail(jobId),
+    queryFn: ({ signal }) => hubPoll<PublicationJobDialogDetail>(`/jobs/${jobId}`, { signal }),
     refetchInterval: query => publicationJobPollInterval(query.state.data?.job.status, query.state.status === 'error')
   })
   const job = detail.data?.job

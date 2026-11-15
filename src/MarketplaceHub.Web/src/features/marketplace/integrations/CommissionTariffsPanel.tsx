@@ -15,6 +15,7 @@ import '../commission-tariffs.css'
 import { PanelSelect } from '../../../shared/PanelSelect'
 import { forgetTariff, loadRowPage, rememberTariff, tariffsQuery, type RowPage } from './commission-tariff-rows'
 import { EmptyState } from '../../../shared/components/EmptyState'
+import { queryKeys } from '../../../shared/api/query-keys'
 // One formatter per format, made once: toLocaleString with options builds a new Intl.NumberFormat on every call, and
 // the tariff table formats thousands of amounts per render.
 const twoDecimals = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -114,7 +115,7 @@ export type CommissionTariffRow = {
 export type CommissionChoice = { tier: number; price: number; rate: number; commission: number; remaining: number | null; costs?: UnitProfitCosts | null }
 // A page of a tariff's rows as the tab shows it: its models in the filter's order, 50 at a time.
 export const tariffRowsQuery = (connectionId: string, tariffId: string, filter: TariffFilter = noFilter, page = 0) => ({
-  queryKey: ['commission-tariff-rows', connectionId, tariffId, filter, page],
+  queryKey: queryKeys.commissionTariffRows(connectionId, tariffId, filter, page),
   queryFn: () => loadRowPage(connectionId, tariffId, { page: String(page), limit: '50', ...filterQuery(filter) })
 })
 
@@ -334,7 +335,7 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
       setMessage(result.alreadyUploaded
         ? { kind: 'info', text: 'Bu dosya bu dönem için daha önce yüklenmiş; mevcut tarife gösteriliyor.', warnings: result.warnings }
         : { kind: result.skippedRows ? 'info' : 'success', text: `${result.importedRows.toLocaleString('tr-TR')} ürünün tarifesi yüklendi${result.skippedRows ? `; ${result.skippedRows.toLocaleString('tr-TR')} satır okunamadı` : ''}.`, warnings: result.warnings })
-      await client.invalidateQueries({ queryKey: ['commission-tariffs', connectionId] })
+      await client.invalidateQueries({ queryKey: queryKeys.commissionTariffs(connectionId) })
     },
     onError: reason => setMessage({ kind: 'error', text: reason instanceof Error ? reason.message : 'Tarife yüklenemedi.' })
   })
@@ -343,7 +344,7 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
     onSuccess: async () => {
       setSelected(null)
       setMessage({ kind: 'success', text: 'Tarife silindi.' })
-      await client.invalidateQueries({ queryKey: ['commission-tariffs', connectionId] })
+      await client.invalidateQueries({ queryKey: queryKeys.commissionTariffs(connectionId) })
     },
     onError: reason => setMessage({ kind: 'error', text: reason instanceof Error ? reason.message : 'Tarife silinemedi.' })
   })
@@ -355,7 +356,7 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
     onSuccess: async () => {
       setEditing(null)
       setMessage({ kind: 'success', text: 'Tarifenin geçerlilik tarihleri değiştirildi.' })
-      await client.invalidateQueries({ queryKey: ['commission-tariffs', connectionId] })
+      await client.invalidateQueries({ queryKey: queryKeys.commissionTariffs(connectionId) })
     },
     onError: reason => setMessage({ kind: 'error', text: reason instanceof Error ? reason.message : 'Tarihler değiştirilemedi.' })
   })
@@ -707,13 +708,13 @@ export function useSavedSelection(save: (body: string) => Promise<unknown>, seri
 // when the tariff is opened later; the plan waits for them before it shows.
 function TariffPlan(props: TariffPlanProps) {
   const selection = useQuery({
-    queryKey: ['commission-tariff-selection', props.connectionId, props.tariff.id],
+    queryKey: queryKeys.commissionTariffSelection(props.connectionId, props.tariff.id),
     queryFn: async () => { await selectionSaveSettled(selectionSaveKey(props.connectionId, props.tariff.id)); return hubApi<TariffSelection>(`/connections/${props.connectionId}/commission-tariffs/${props.tariff.id}/selection`) },
     gcTime: 0, refetchOnWindowFocus: false
   })
   // The 7-day view keeps the second period's picks too.
   const partnerSelection = useQuery({
-    queryKey: ['commission-tariff-selection', props.connectionId, props.partner?.id],
+    queryKey: queryKeys.commissionTariffSelection(props.connectionId, props.partner?.id),
     queryFn: async () => { await selectionSaveSettled(selectionSaveKey(props.connectionId, props.partner!.id)); return hubApi<TariffSelection>(`/connections/${props.connectionId}/commission-tariffs/${props.partner!.id}/selection`) },
     gcTime: 0, refetchOnWindowFocus: false, enabled: props.partner != null
   })
@@ -758,7 +759,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
   // and its picks, which every pick made here changes as it changes the first period's.
   const pageBarcodes = useMemo(() => [...new Set(rows?.items.map(row => row.barcode) ?? [])].sort(), [rows])
   const partnerRows = useQuery({
-    queryKey: ['commission-tariff-rows', connectionId, partner?.id, 'barcodes', pageBarcodes],
+    queryKey: queryKeys.commissionTariffRows(connectionId, partner?.id, 'barcodes', pageBarcodes),
     queryFn: () => loadRowPage(connectionId, partner!.id, { page: '0', limit: '200', barcodes: pageBarcodes.join(',') }),
     enabled: partner != null && pageBarcodes.length > 0
   })
@@ -850,7 +851,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
     setGroupPageOf({ rows, page: next })
     tableTop.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
   }
-  const facets = useQuery({ queryKey: ['commission-tariff-facets', connectionId, tariff.id], queryFn: () => hubApi<{ categories: string[]; brands: string[] }>(`/connections/${connectionId}/commission-tariffs/${tariff.id}/facets`) })
+  const facets = useQuery({ queryKey: queryKeys.commissionTariffFacets(connectionId, tariff.id), queryFn: ({ signal }) => hubApi<{ categories: string[]; brands: string[] }>(`/connections/${connectionId}/commission-tariffs/${tariff.id}/facets`, { signal }) })
   const ownPicks = [...picks.values()].filter(pick => pick.tier !== null || pick.price !== null).length
   // A file with more than one period: the picks are the open period's, and the Excel carries every period's.
   const manyPeriods = periods.length > 1

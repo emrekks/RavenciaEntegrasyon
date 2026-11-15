@@ -1,5 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import type { Me } from '../api'
+import { queryKeys } from '../api/query-keys'
 
 // No invoice goes out without the owner's approval: issuing an e-invoice, cancelling it, and sending or removing its
 // link at the marketplace are for the owner and administrators (RoleAuthorizationMiddleware answers the other roles
@@ -11,5 +12,5 @@ export function canSendInvoices(role: string | null | undefined) {
 }
 
 export function useCanSendInvoices() {
-  return canSendInvoices(useQueryClient().getQueryData<Me>(['me'])?.role)
+  return canSendInvoices(useQueryClient().getQueryData<Me>(queryKeys.me())?.role)
 }

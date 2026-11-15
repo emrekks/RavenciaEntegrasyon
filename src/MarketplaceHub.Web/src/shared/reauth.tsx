@@ -2,12 +2,13 @@
 // or a recovery code (Ayarlar › Kullanıcılar, Google Drive Yedeği, and every reset that empties data).
 import { useQuery } from '@tanstack/react-query'
 import { hubApi } from './api'
+import { queryKeys } from './api/query-keys'
 
 type SecurityStatus = { totpState: string; recoveryCodesRemaining: number }
 
 // Whether the signed-in user's authenticator is on, so the code field is shown (the same query Güvenlik uses).
 export function useSecondFactorEnabled() {
-  const status = useQuery({ queryKey: ['security'], queryFn: () => hubApi<SecurityStatus>('/auth/security-status') })
+  const status = useQuery({ queryKey: queryKeys.security(), queryFn: ({ signal }) => hubApi<SecurityStatus>('/auth/security-status', { signal }) })
   return status.data?.totpState === 'ENABLED'
 }
 

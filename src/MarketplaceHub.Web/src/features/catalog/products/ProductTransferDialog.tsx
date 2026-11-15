@@ -13,6 +13,7 @@ import { TitleHint } from '../../../shared/components'
 import { RrIcon, RrModal } from '../../marketplace/returns-ui'
 import './product-transfer.css'
 import { PanelSelect } from '../../../shared/PanelSelect'
+import { queryKeys } from '../../../shared/api/query-keys'
 
 export type ProductTransferSummary = { variantCount: number; missingCostCount: number; missingDesiCount: number }
 export type ProductTransferField = 'TITLE' | 'BRAND' | 'BARCODE' | 'MODEL_CODE' | 'PANEL_PRICES' | 'VAT' | 'COST' | 'DESI' | 'STOCK' | 'PRICES'
@@ -55,7 +56,7 @@ export type ProductTransferApplyResult = {
 }
 export type ProductTransferExportFilter = 'all' | 'cost' | 'desi'
 
-export const productTransferSummaryKey = ['products', 'transfer-summary'] as const
+export const productTransferSummaryKey = queryKeys.products('transfer-summary')
 // The exported columns an upload can write, grouped as the seller thinks of them. A group of one field is that field.
 export const productTransferFieldGroups: ReadonlyArray<{ label: string; fields: ProductTransferField[] }> = [
   { label: 'Ürün Bilgileri', fields: ['TITLE', 'BRAND', 'BARCODE', 'MODEL_CODE'] },
@@ -96,7 +97,7 @@ const formatText = (value: string | null) => value ?? '—'
 
 export function ProductTransferDialog({ onClose }: { onClose: () => void }) {
   const client = useQueryClient()
-  const summary = useQuery({ queryKey: productTransferSummaryKey, queryFn: () => hubApi<ProductTransferSummary>('/products/transfer/summary') })
+  const summary = useQuery({ queryKey: productTransferSummaryKey, queryFn: ({ signal }) => hubApi<ProductTransferSummary>('/products/transfer/summary', { signal }) })
   const [filter, setFilter] = useState<ProductTransferExportFilter>('all')
   const [fields, setFields] = useState<ProductTransferField[]>(defaultFields)
   const [file, setFile] = useState<File | null>(null)
@@ -125,8 +126,8 @@ export function ProductTransferDialog({ onClose }: { onClose: () => void }) {
     },
     onSuccess: async () => {
       await Promise.all([
-        client.invalidateQueries({ queryKey: ['products'] }),
-        client.invalidateQueries({ queryKey: ['product'] }),
+        client.invalidateQueries({ queryKey: queryKeys.products() }),
+        client.invalidateQueries({ queryKey: queryKeys.product() }),
         client.invalidateQueries({ queryKey: productTransferSummaryKey })
       ])
     }

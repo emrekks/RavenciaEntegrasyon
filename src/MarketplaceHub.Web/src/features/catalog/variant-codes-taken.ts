@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 import { variantCodeMatchKey } from './platform-code-rules'
 import { variantCodeKey } from './product-editor-state'
+import { queryKeys } from '../../shared/api/query-keys'
 
 export type TakenVariantCode = { code: string; field: string; productTitle?: string | null }
 type CodeRow = { barcode: string; sku: string }
@@ -36,8 +37,8 @@ export function useTakenVariantCodes(rows: readonly CodeRow[], ownVariantIds: re
     return () => window.clearTimeout(timer)
   }, [request])
   const taken = useQuery({
-    queryKey: ['variant-codes-taken', settled],
-    queryFn: () => hubApi<{ items?: TakenVariantCode[] }>('/catalog/variant-codes/taken', { method: 'POST', body: settled }),
+    queryKey: queryKeys.variantCodesTaken(settled),
+    queryFn: ({ signal }) => hubApi<{ items?: TakenVariantCode[] }>('/catalog/variant-codes/taken', { method: 'POST', body: settled, signal }),
     enabled: codes.length > 0 && settled === request,
     staleTime: 30_000
   })

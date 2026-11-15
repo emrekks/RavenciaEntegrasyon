@@ -16,6 +16,7 @@ import { bulkPublishPlatformName } from './bulk-publish-status'
 import '../product-editor/product-editor-design-system.css'
 import '../product-editor/product-editor-hydration.css'
 import './bulk-platform-update.css'
+import { queryKeys } from '../../../shared/api/query-keys'
 
 export type BulkPlatformUpdateNotice = { title: string; message: string; kind: 'success' | 'error' | 'info' | 'warning'; details?: NotificationDetail[]; lines?: string[]; persistent?: boolean }
 
@@ -55,7 +56,7 @@ export function BulkPlatformUpdateDialog({ productIds, cardCount, connections, p
     void mapWithConcurrency(productIds, checkConcurrency, async id => {
       let result: Checked
       try {
-        result = { product: await client.query({ queryKey: ['product', id], queryFn: () => hubApi<Product>(`/products/${id}`), staleTime: 15_000, retry: false }), failed: false }
+        result = { product: await client.query({ queryKey: queryKeys.product(id), queryFn: ({ signal }) => hubApi<Product>(`/products/${id}`, { signal }), staleTime: 15_000, retry: false }), failed: false }
       } catch {
         result = { product: null, failed: true }
       }
@@ -136,7 +137,7 @@ export function BulkPlatformUpdateDialog({ productIds, cardCount, connections, p
       }
     })
     setSubmitting(false)
-    await Promise.all([client.invalidateQueries({ queryKey: ['products'] }), client.invalidateQueries({ queryKey: ['publication-status'] })])
+    await Promise.all([client.invalidateQueries({ queryKey: queryKeys.products() }), client.invalidateQueries({ queryKey: queryKeys.publicationStatus() })])
     const failedCount = [...failures.values()].reduce((sum, items) => sum + items.length, 0)
     const queuedCount = requests.length - failedCount
     const lines = [

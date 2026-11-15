@@ -1,4 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query'
+import { queryKeys } from './api/query-keys'
 
 type ConnectionLike = { id?: unknown; platformCode?: unknown; displayName?: unknown }
 
@@ -14,10 +15,10 @@ function identityOf(value: unknown, connectionId: string) {
 export function connectionIdentityFromCache(client: QueryClient, connectionId: string) {
   // A list that knows the store name wins over one that knows only the marketplace (the job filter's list).
   let partial: ReturnType<typeof identityOf> = null
-  const detail = identityOf(client.getQueryData(['connection', connectionId]), connectionId)
+  const detail = identityOf(client.getQueryData(queryKeys.connection(connectionId)), connectionId)
   if (detail?.displayName) return detail
   partial = detail
-  for (const [, data] of client.getQueriesData<unknown>({ queryKey: ['connections'] })) {
+  for (const [, data] of client.getQueriesData<unknown>({ queryKey: queryKeys.connections() })) {
     const items = Array.isArray(data) ? data : data && typeof data === 'object' && Array.isArray((data as { items?: unknown }).items) ? (data as { items: unknown[] }).items : []
     for (const item of items) {
       const identity = identityOf(item, connectionId)

@@ -7,9 +7,10 @@ import { useEffect, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, settingsIfMatch } from '../../../shared/api'
 import { clearLegacyPlatformUpdateChoice, readLegacyPlatformUpdateChoice, type PlatformUpdateChoiceRecord } from './platform-update-fields'
+import { queryKeys } from '../../../shared/api/query-keys'
 
 export type PlatformUpdateChoiceEnvelope = { settings: PlatformUpdateChoiceRecord | null; version: number }
-export const platformUpdateChoiceQueryKey = ['settings', 'platform-update'] as const
+export const platformUpdateChoiceQueryKey = queryKeys.settings('platform-update')
 const path = '/settings/platform-update'
 const readChoice = () => hubApi<PlatformUpdateChoiceEnvelope>(path)
 

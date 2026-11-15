@@ -12,6 +12,7 @@ import { chartDrawnMeanwhile, isUnknownSizeChartOutcome, sizeChartFailureMessage
 import { Button, FieldHelp, IconButton, Modal, UiIcon } from '../../../shared/components'
 import { addSizeChartColumn, initialSizeChartDraft, maximumSizeChartColumns, newColumnIssue, presetSizeChartColumns, removeSizeChartColumn, setSizeChartCell, sizeChartCellKey, sizeChartColumnLabel, validateSizeChartDraft, type SizeChartDraft, type SizeChartMeasurements } from './size-chart-measurements'
 import './size-chart.css'
+import { queryKeys } from '../../../shared/api/query-keys'
 
 export type SizeChartInfo = { sizes: string[]; sizeOptionLabel: string | null; measurements: SizeChartMeasurements | null; sizeChartUrl: string | null; aiReady: boolean; aiIssue: string | null; lastGeneratedUrl?: string | null }
 export type SizeChartResult = { url: string; fileAssetId: string; inputTokens: number | null; outputTokens: number | null; costUsd: number | null }
@@ -35,7 +36,7 @@ function formatCost(result: SizeChartResult) {
 }
 
 export function SizeChartDialog({ productId, sizes, onClose, onUse }: { productId: string; sizes: string[]; onClose: () => void; onUse: (url: string) => void }) {
-  const info = useQuery({ queryKey: ['size-chart', productId], queryFn: () => hubApi<SizeChartInfo>(`/products/${productId}/size-chart`), staleTime: 0, retry: false })
+  const info = useQuery({ queryKey: queryKeys.sizeChart(productId), queryFn: ({ signal }) => hubApi<SizeChartInfo>(`/products/${productId}/size-chart`, { signal }), staleTime: 0, retry: false })
   const [draft, setDraft] = useState<SizeChartDraft | null>(null)
   const [showErrors, setShowErrors] = useState(false)
   const [columnName, setColumnName] = useState('')

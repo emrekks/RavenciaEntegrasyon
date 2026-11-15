@@ -24,6 +24,7 @@ import { scopedStorageKey } from '../../shared/storage-scope'
 import { useDismissable } from '../../shared/hooks/useDismissable'
 import { useMenuFlip } from '../../shared/hooks/useMenuFlip'
 import { PanelSelect } from '../../shared/PanelSelect'
+import { queryKeys } from '../../shared/api/query-keys'
 
 type MarketplaceQuestion = {
   id: string; connectionId: string; platformCode: string; storeName: string; externalQuestionId: string; kind: string; status: string
@@ -194,7 +195,7 @@ export function QuestionsPage() {
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null)
   const requestedSync = useRef(false)
   const kind = tab === 'ORDER' ? 'ORDER' : 'PRODUCT'
-  const connections = useQuery({ queryKey: ['questions', 'connections'], queryFn: async () => (await loadAllPages<Connection>('/connections', 100)).items.filter(item => ['TRENDYOL', 'HEPSIBURADA', 'N11', 'PAZARAMA'].includes(item.platformCode) && ['ACTIVE', 'VERIFIED'].includes(item.status.toUpperCase())), staleTime: 60_000 })
+  const connections = useQuery({ queryKey: queryKeys.questions('connections'), queryFn: async ({ signal }) => (await loadAllPages<Connection>('/connections', { limit: 100, signal })).items.filter(item => ['TRENDYOL', 'HEPSIBURADA', 'N11', 'PAZARAMA'].includes(item.platformCode) && ['ACTIVE', 'VERIFIED'].includes(item.status.toUpperCase())), staleTime: 60_000 })
   const filters = new URLSearchParams({ kind, status })
   if (platform !== 'ALL') filters.set('platform', platform)
   if (connectionId !== 'ALL') filters.set('connectionId', connectionId)
@@ -205,7 +206,7 @@ export function QuestionsPage() {
   filters.set('page', String(page)); filters.set('limit', '50')
   // Questions arrive from the marketplaces every few minutes, so the inbox and its counts read the local copy every two
   // minutes (sync states every minute) instead of keeping the server busy.
-  const questions = useQuery({ queryKey: ['questions', kind, status, platform, connectionId, dateFrom, dateTo, search, sort, page], queryFn: () => hubPoll<QuestionListPage>(`/questions?${filters.toString()}`), placeholderData: keepPreviousData, refetchInterval: 120_000, staleTime: 10_000 })
+  const questions = useQuery({ queryKey: queryKeys.questions(kind, status, platform, connectionId, dateFrom, dateTo, search, sort, page), queryFn: ({ signal }) => hubPoll<QuestionListPage>(`/questions?${filters.toString()}`, { signal }), placeholderData: keepPreviousData, refetchInterval: 120_000, staleTime: 10_000 })
   // A count is keyed by the exact request it makes, so the tab's waiting count and the unfiltered status count (the same
   // request when no filter is set) share one cache entry and one request instead of two.
   const countPath = (countKind: string, countStatus: QuestionStatus, scoped: boolean) => {
@@ -219,7 +220,7 @@ export function QuestionsPage() {
     }
     return `/questions?${params.toString()}`
   }
-  const countQuery = (path: string) => ({ queryKey: ['questions', 'count', path], queryFn: () => hubPoll<QuestionListPage>(path).then(result => result.totalCount), refetchInterval: 120_000, staleTime: 10_000 })
+  const countQuery = (path: string) => ({ queryKey: queryKeys.questions('count', path), queryFn: ({ signal }: { signal: AbortSignal }) => hubPoll<QuestionListPage>(path, { signal }).then(result => result.totalCount), refetchInterval: 120_000, staleTime: 10_000 })
   const statusCounts = useQueries({ queries: statusFilters.map(item => ({ ...countQuery(countPath(kind, item.value, true)), enabled: tab !== 'TEMPLATES' })) })
   const waitingCounts = useQueries({ queries: (['PRODUCT', 'ORDER'] as const).map(countKind => countQuery(countPath(countKind, 'WAITING', false))) })
   // The list and the chosen status's count ask the same question but were polled two minutes apart, so a question that
@@ -230,28 +231,28 @@ export function QuestionsPage() {
   const shownCountIndex = statusFilters.findIndex(item => item.value === status)
   const listTotal = questions.isSuccess && !questions.isPlaceholderData ? questions.data.totalCount : undefined
   const listUpdatedAt = questions.dataUpdatedAt
-  useEffect(() => { if (listTotal !== undefined) client.setQueryData(['questions', 'count', shownCountPath], listTotal) }, [client, shownCountPath, listTotal, listUpdatedAt])
+  useEffect(() => { if (listTotal !== undefined) client.setQueryData(queryKeys.questions('count', shownCountPath), listTotal) }, [client, shownCountPath, listTotal, listUpdatedAt])
   const shownCount = shownCountIndex >= 0 ? statusCounts[shownCountIndex]?.data : undefined
   const refetchList = questions.refetch
   useEffect(() => { if (shownCount !== undefined && listTotal !== undefined && shownCount !== listTotal) void refetchList() }, [shownCount]) // eslint-disable-line react-hooks/exhaustive-deps -- only a changed count reads the list again
   const formatCount = (value: number | undefined) => value === undefined ? undefined : value.toLocaleString('tr-TR')
-  const templates = useQuery({ queryKey: ['question-templates'], queryFn: () => hubApi<Template[]>('/question-templates'), staleTime: 30_000 })
-  const syncStates = useQuery({ queryKey: ['questions', 'sync-state'], queryFn: () => hubPoll<SyncState[]>('/questions/sync-state'), refetchInterval: 60_000 })
+  const templates = useQuery({ queryKey: queryKeys.questionTemplates(), queryFn: ({ signal }) => hubApi<Template[]>('/question-templates', { signal }), staleTime: 30_000 })
+  const syncStates = useQuery({ queryKey: queryKeys.questions('sync-state'), queryFn: ({ signal }) => hubPoll<SyncState[]>('/questions/sync-state', { signal }), refetchInterval: 60_000 })
   useEffect(() => { if (syncStates.data) rememberSyncCount(syncStates.data.length) }, [syncStates.data])
   const syncHeight = useRememberedHeight<HTMLElement>('question-sync-chips', syncStates.isLoading)
 
   const sync = useMutation({
     mutationFn: (request: { kind: string; platformCode?: string }) => hubApi<{ jobs: string[]; queuedConnections: number }>('/questions/sync', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('question-sync') }, body: JSON.stringify(request) }),
-    onSuccess: async () => { setNotice(null); await Promise.all([client.invalidateQueries({ queryKey: ['questions'] }), client.invalidateQueries({ queryKey: ['questions', 'sync-state'] })]) },
+    onSuccess: async () => { setNotice(null); await Promise.all([client.invalidateQueries({ queryKey: queryKeys.questions() }), client.invalidateQueries({ queryKey: queryKeys.questions('sync-state') })]) },
     onError: error => fail(error, 'Senkronizasyon kuyruğa alınamadı.'),
   })
   const startSync = sync.mutate
   const saveTemplate = useMutation({
     mutationFn: () => hubApi<Template>(editingTemplate ? `/question-templates/${editingTemplate.id}` : '/question-templates', { method: editingTemplate ? 'PUT' : 'POST', headers: editingTemplate ? { 'If-Match': `"v${editingTemplate.version}"` } : undefined, body: JSON.stringify({ title: templateTitle, text: templateText }) }),
-    onSuccess: async () => { setTemplateTitle(''); setTemplateText(''); setEditingTemplate(null); setNotice(null); await client.invalidateQueries({ queryKey: ['question-templates'] }) },
+    onSuccess: async () => { setTemplateTitle(''); setTemplateText(''); setEditingTemplate(null); setNotice(null); await client.invalidateQueries({ queryKey: queryKeys.questionTemplates() }) },
     onError: error => fail(error, 'Hazır cevap kaydedilemedi.'),
   })
-  const deleteTemplate = useMutation({ mutationFn: (item: Template) => hubApi<void>(`/question-templates/${item.id}`, { method: 'DELETE', headers: { 'If-Match': `"v${item.version}"` } }), onSuccess: async () => { setNotice(null); setDeletingTemplate(null); await client.invalidateQueries({ queryKey: ['question-templates'] }) }, onError: error => { setDeletingTemplate(null); fail(error, 'Hazır cevap silinemedi.') } })
+  const deleteTemplate = useMutation({ mutationFn: (item: Template) => hubApi<void>(`/question-templates/${item.id}`, { method: 'DELETE', headers: { 'If-Match': `"v${item.version}"` } }), onSuccess: async () => { setNotice(null); setDeletingTemplate(null); await client.invalidateQueries({ queryKey: queryKeys.questionTemplates() }) }, onError: error => { setDeletingTemplate(null); fail(error, 'Hazır cevap silinemedi.') } })
   const sendAnswer = useMutation({
     mutationFn: async ({ id, version, text }: { id: string; version: number; text: string }) => {
       const post = (current: number) => { const body = JSON.stringify({ text, version: current }); return sendWithVersionedIdempotencyKey(versionedIdempotencyKey('question-answer', id, current, body), key => hubApi<MarketplaceQuestion>(`/questions/${id}/answer`, { method: 'POST', headers: { 'Idempotency-Key': key }, body })) }
@@ -266,9 +267,9 @@ export function QuestionsPage() {
         return post(fresh.version)
       }
     },
-    onSuccess: async (_data, variables) => { setNotice(null); setAnswerDrafts(current => ({ ...current, [variables.id]: '' })); await client.invalidateQueries({ queryKey: ['questions'] }) },
+    onSuccess: async (_data, variables) => { setNotice(null); setAnswerDrafts(current => ({ ...current, [variables.id]: '' })); await client.invalidateQueries({ queryKey: queryKeys.questions() }) },
     // The draft stays; the list is read again so the screen shows the question as it is now.
-    onError: async error => { fail(error, 'Cevap gönderilemedi.'); await client.invalidateQueries({ queryKey: ['questions'] }) },
+    onError: async error => { fail(error, 'Cevap gönderilemedi.'); await client.invalidateQueries({ queryKey: queryKeys.questions() }) },
   })
 
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 30_000); return () => window.clearInterval(timer) }, [])
@@ -300,10 +301,10 @@ export function QuestionsPage() {
   // place to another question.
   if (selectedId === null && rows[0] && !questions.isPlaceholderData) setSelectedId(rows[0].id)
   const listedSelection = rows.find(item => item.id === selectedId)
-  const pinned = useQuery({ queryKey: ['questions', 'detail', selectedId], queryFn: () => hubApi<MarketplaceQuestion>(`/questions/${selectedId}`), enabled: Boolean(selectedId) && !listedSelection && questions.isSuccess, staleTime: 10_000 })
+  const pinned = useQuery({ queryKey: queryKeys.questions('detail', selectedId), queryFn: ({ signal }) => hubApi<MarketplaceQuestion>(`/questions/${selectedId}`, { signal }), enabled: Boolean(selectedId) && !listedSelection && questions.isSuccess, staleTime: 10_000 })
   const selected = listedSelection ?? (selectedId && pinned.data?.id === selectedId ? pinned.data : undefined) ?? (selectedId ? undefined : rows[0])
   // What the same customer asked this marketplace before (newest first), shown above the open question.
-  const customerHistory = useQuery({ queryKey: ['questions', 'customer-history', selected?.id], queryFn: () => hubApi<MarketplaceQuestion[]>(`/questions/${selected!.id}/customer-history`), enabled: Boolean(selected), staleTime: 60_000 })
+  const customerHistory = useQuery({ queryKey: queryKeys.questions('customer-history', selected?.id), queryFn: ({ signal }) => hubApi<MarketplaceQuestion[]>(`/questions/${selected!.id}/customer-history`, { signal }), enabled: Boolean(selected), staleTime: 60_000 })
   const totalCount = questions.data?.totalCount ?? 0
   const pageCount = Math.max(1, Math.ceil(totalCount / 50))
   const currentStatus = statusFilters.find(item => item.value === status) ?? statusFilters[0]

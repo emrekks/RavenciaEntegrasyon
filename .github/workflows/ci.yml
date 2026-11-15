@@ -585,6 +585,10 @@ jobs:
         working-directory: src/MarketplaceHub.Web
         run: npm run lint
 
+      - name: Check CSS specificity growth
+        working-directory: src/MarketplaceHub.Web
+        run: npm run check:css
+
       - name: Test frontend
         working-directory: src/MarketplaceHub.Web
         run: npm test

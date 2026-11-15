@@ -7,6 +7,7 @@ import { filterValueCandidates } from '../catalog/value-mapping-suggestions'
 import { productFieldLabel } from './product-field-sources'
 import { dative } from '../../shared/job-outcome'
 import './attribute-defaults-panel.css'
+import { queryKeys } from '../../shared/api/query-keys'
 
 type RemoteAttribute = { externalId: string; name: string; isActive: boolean; isRequired?: boolean | null; allowsCustomValue?: boolean | null }
 export type AttributeDefault = { externalAttributeId: string; attributeName: string; externalValueId: string | null; valueName: string | null; customValue: string | null; sourceField?: string | null; version: number }
@@ -29,8 +30,8 @@ export function AttributeDefaultsPanel({ connectionId, categoryScope, platformLa
   onNotice: (value: string) => void
 }) {
   const client = useQueryClient()
-  const defaultsKey = ['attribute-defaults', connectionId] as const
-  const defaults = useQuery({ queryKey: defaultsKey, queryFn: () => hubApi<AttributeDefault[]>(`/connections/${connectionId}/attribute-defaults`), retry: false })
+  const defaultsKey = queryKeys.attributeDefaults(connectionId)
+  const defaults = useQuery({ queryKey: defaultsKey, queryFn: ({ signal }) => hubApi<AttributeDefault[]>(`/connections/${connectionId}/attribute-defaults`, { signal }), retry: false })
   const [attributeId, setAttributeId] = useState('')
   const [search, setSearch] = useState('')
   const [valueId, setValueId] = useState('')
@@ -44,8 +45,8 @@ export function AttributeDefaultsPanel({ connectionId, categoryScope, platformLa
   const selected = candidates.find(item => item.externalId === attributeId)
   const freeText = selected?.allowsCustomValue === true
   const values = useQuery({
-    queryKey: ['reference-attribute-values', connectionId, `${categoryScope}/${attributeId}`],
-    queryFn: () => hubApi<ValueList>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(attributeId)}/values?connectionId=${encodeURIComponent(connectionId)}`),
+    queryKey: queryKeys.referenceAttributeValues(connectionId, `${categoryScope}/${attributeId}`),
+    queryFn: ({ signal }) => hubApi<ValueList>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(attributeId)}/values?connectionId=${encodeURIComponent(connectionId)}`, { signal }),
     enabled: Boolean(selected) && !freeText,
     retry: false
   })
@@ -66,8 +67,8 @@ export function AttributeDefaultsPanel({ connectionId, categoryScope, platformLa
           : { attributeName: selected.name, externalValueId: valueId, valueName: chosenValue?.name ?? null })
       })
       await client.invalidateQueries({ queryKey: defaultsKey })
-      await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] })
-      await client.invalidateQueries({ queryKey: ['category-mappings', connectionId] })
+      await client.invalidateQueries({ queryKey: queryKeys.publicationAttributeReadiness() })
+      await client.invalidateQueries({ queryKey: queryKeys.categoryMappings(connectionId) })
       onNotice(`“${selected.name}” için varsayılan kaydedildi. Değeri boş kalan ürünlerde ${dative(platformLabel)} bu değer gönderilecek.`)
       reset()
     } catch (reason) {
@@ -80,8 +81,8 @@ export function AttributeDefaultsPanel({ connectionId, categoryScope, platformLa
     try {
       await hubApi(`/connections/${connectionId}/attribute-defaults/${encodeURIComponent(item.externalAttributeId)}`, { method: 'DELETE' })
       await client.invalidateQueries({ queryKey: defaultsKey })
-      await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] })
-      await client.invalidateQueries({ queryKey: ['category-mappings', connectionId] })
+      await client.invalidateQueries({ queryKey: queryKeys.publicationAttributeReadiness() })
+      await client.invalidateQueries({ queryKey: queryKeys.categoryMappings(connectionId) })
       onNotice(`“${item.attributeName}” varsayılanı kaldırıldı.`)
     } catch (reason) {
       onNotice(reason instanceof Error ? reason.message : 'Varsayılan kaldırılamadı.')

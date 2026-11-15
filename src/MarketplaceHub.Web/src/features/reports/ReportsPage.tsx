@@ -35,6 +35,7 @@ import { Columns, CountUp, Donut, Progress, StackedBar, useReveal, type ColumnPo
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { thumbnailUrl } from '../../shared/product-thumbnail'
 import './reports.css'
+import { queryKeys } from '../../shared/api/query-keys'
 
 // The report as tabs: an overview, then one tab per area with its own breakdown (Ürünler and Operasyon have sub-tabs),
 // A card's "Tümünü Gör" moves to its area's tab (?view=…&sub=…); an older ?detail=… link
@@ -105,7 +106,7 @@ export function ReportsPage() {
   const [platforms, setPlatforms] = useState<string[] | null>(null)
   const metricSource = useMetricSource({ platforms })
   const query = reportQuery({ from: range.from, to: range.to, platforms, granularity: '', includeTest: false })
-  const report = useQuery({ queryKey: ['reports-sales', query], queryFn: () => hubApi<ReportSales>(`/reports/sales?${query}`), staleTime: 60_000, placeholderData: previous => previous })
+  const report = useQuery({ queryKey: queryKeys.reportsSales(query), queryFn: ({ signal }) => hubApi<ReportSales>(`/reports/sales?${query}`, { signal }), staleTime: 60_000, placeholderData: previous => previous })
   const data = report.data
   const platformOptions = useMemo(() => [...new Set((data?.channels ?? []).map(channel => channel.platformCode))].filter(isSalesChannel).sort(bySalesChannel).map(code => ({ value: code, label: platformName(code) })), [data?.channels])
   // A tab change slides the body in from the tab's side and starts the page from its top (shared/tab-slide.tsx).
@@ -2235,7 +2236,7 @@ function monthLabel(from: string) {
 type MonthlyProfitRate = { loading: boolean; average: number | null; months: Array<{ label: string; rate: number | null }> }
 function useMonthlyProfitRate(platforms: string[] | null): MonthlyProfitRate {
   const query = profitRateQuery(platforms)
-  const result = useQuery({ queryKey: ['reports-profit-rate', query], queryFn: () => hubApi<ReportProfitRate>(`/reports/profit-rate${query ? `?${query}` : ''}`), staleTime: 60_000 })
+  const result = useQuery({ queryKey: queryKeys.reportsProfitRate(query), queryFn: ({ signal }) => hubApi<ReportProfitRate>(`/reports/profit-rate${query ? `?${query}` : ''}`, { signal }), staleTime: 60_000 })
   const rates = (result.data?.months ?? []).map(month => ({ label: monthLabel(month.from), rate: month.rate }))
   const known = rates.flatMap(month => month.rate === null ? [] : [month.rate])
   // The average kept to a millionth, so three equal months average to the same rate on screen (no float tail).
@@ -2262,7 +2263,7 @@ function stockProfitKpi(capital: number, rate: MonthlyProfitRate): Kpi {
 // sales (cover days); the platforms pick the variants on sale there. Money is VAT included, as the panel stores it.
 function StockReport({ from, to, platforms, sales }: { from: string; to: string; platforms: string[] | null; sales: ReportSales }) {
   const query = stockQuery({ from, to, platforms })
-  const result = useQuery({ queryKey: ['reports-stock', query], queryFn: () => hubApi<ReportInventory>(`/reports/stock?${query}`), staleTime: 60_000, placeholderData: previous => previous })
+  const result = useQuery({ queryKey: queryKeys.reportsStock(query), queryFn: ({ signal }) => hubApi<ReportInventory>(`/reports/stock?${query}`, { signal }), staleTime: 60_000, placeholderData: previous => previous })
   const rate = useMonthlyProfitRate(platforms)
   const data = result.data
   if (result.isError && !data) return <ErrorBox error={result.error} onRetry={() => void result.refetch()} />
@@ -2421,8 +2422,8 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
     { hp: [], hr: 'ALL', hs: 'ALL', hf: '', ht: '', hmin: '', hmax: '', hq: '', ho: 'date' })
   const none = platforms.includes(RETURN_NO_PLATFORM)
   const query = payoutsQuery(platforms.length ? platforms : null)
-  const result = useQuery({ queryKey: ['reports-payouts', query], queryFn: () => hubApi<Payouts>(`/reports/payouts?${query}`), staleTime: 60_000, placeholderData: previous => previous, enabled: !none })
-  const everything = useQuery({ queryKey: ['reports-payouts', ''], queryFn: () => hubApi<Payouts>('/reports/payouts?'), staleTime: 60_000, enabled: platforms.length > 0 })
+  const result = useQuery({ queryKey: queryKeys.reportsPayouts(query), queryFn: ({ signal }) => hubApi<Payouts>(`/reports/payouts?${query}`, { signal }), staleTime: 60_000, placeholderData: previous => previous, enabled: !none })
+  const everything = useQuery({ queryKey: queryKeys.reportsPayouts(''), queryFn: ({ signal }) => hubApi<Payouts>('/reports/payouts?', { signal }), staleTime: 60_000, enabled: platforms.length > 0 })
   const apply = (next: typeof draft) => {
     setDraft(next)
     setPlatforms(next.platforms)
@@ -2662,7 +2663,7 @@ ${otherText}` : ''}` },
 function PayoutLinesTable({ platforms, group, search }: { platforms: string[] | null; group?: PayoutGroup; search?: string }) {
   const [page, setPage] = useState(0)
   const query = payoutLinesQuery({ platforms, group, search, page })
-  const result = useQuery({ queryKey: ['reports-payout-lines', query], queryFn: () => hubApi<PayoutLines>(`/reports/payouts/lines?${query}`), staleTime: 60_000, placeholderData: previous => previous })
+  const result = useQuery({ queryKey: queryKeys.reportsPayoutLines(query), queryFn: ({ signal }) => hubApi<PayoutLines>(`/reports/payouts/lines?${query}`, { signal }), staleTime: 60_000, placeholderData: previous => previous })
   const data = result.data
   if (result.isError && !data) return <ErrorBox error={result.error} onRetry={() => void result.refetch()} />
   if (!data) return <Busy />

@@ -15,6 +15,7 @@ import {
 } from './queue-quota'
 import './queue-quota.css'
 import { EmptyState } from '../../shared/components/EmptyState'
+import { queryKeys } from '../../shared/api/query-keys'
 
 // İşlem Takibi › Kuyruk ve Kota: how full the worker's lanes are (running jobs against their slots, what waits for a
 // slot), the jobs of the window by state and by type, and how much of each store's marketplace quota the last hour
@@ -33,10 +34,10 @@ export function QueueQuotaView() {
   const [platformTab, setPlatformTab] = useState('ALL')
   const since = useMemo(() => windowSince(hours), [hours])
   const options = { placeholderData: keepPreviousData, refetchInterval: pollMs } as const
-  const lanes = useQuery({ queryKey: ['queue-quota', 'lanes', hours], queryFn: () => hubPoll<LaneMetric[]>(`/jobs/metrics/lanes?hours=${hours}`), ...options })
-  const metrics = useQuery({ queryKey: ['queue-quota', 'metrics', hours], queryFn: () => hubPoll<JobTypeMetric[]>(`/jobs/metrics?hours=${hours}`), ...options })
-  const quota = useQuery({ queryKey: ['queue-quota', 'quota'], queryFn: () => hubPoll<QuotaUsage[]>('/jobs/metrics/quota'), ...options })
-  const counts = useQuery({ queryKey: ['queue-quota', 'counts', since], queryFn: () => hubPoll<JobCount[]>(`/jobs/counts?since=${encodeURIComponent(since)}`), ...options })
+  const lanes = useQuery({ queryKey: queryKeys.queueQuota('lanes', hours), queryFn: ({ signal }) => hubPoll<LaneMetric[]>(`/jobs/metrics/lanes?hours=${hours}`, { signal }), ...options })
+  const metrics = useQuery({ queryKey: queryKeys.queueQuota('metrics', hours), queryFn: ({ signal }) => hubPoll<JobTypeMetric[]>(`/jobs/metrics?hours=${hours}`, { signal }), ...options })
+  const quota = useQuery({ queryKey: queryKeys.queueQuota('quota'), queryFn: ({ signal }) => hubPoll<QuotaUsage[]>('/jobs/metrics/quota', { signal }), ...options })
+  const counts = useQuery({ queryKey: queryKeys.queueQuota('counts', since), queryFn: ({ signal }) => hubPoll<JobCount[]>(`/jobs/counts?since=${encodeURIComponent(since)}`, { signal }), ...options })
   const refresh = () => { void lanes.refetch(); void metrics.refetch(); void quota.refetch(); void counts.refetch() }
   const fetching = lanes.isFetching || metrics.isFetching || quota.isFetching || counts.isFetching
 

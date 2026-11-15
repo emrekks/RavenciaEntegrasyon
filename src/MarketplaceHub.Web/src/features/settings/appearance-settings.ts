@@ -2,6 +2,7 @@ import { useEffect, useEffectEvent, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, settingsIfMatch } from '../../shared/api'
 import { scopedStorageKey } from '../../shared/storage-scope'
+import { queryKeys } from '../../shared/api/query-keys'
 
 export type AppearanceFontFamily = 'inter' | 'system' | 'segoe' | 'arial'
 export type AppearanceFontSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl'
@@ -220,7 +221,7 @@ export function normalizeAppearanceSettings(value: unknown): AppearanceSettings 
   }
 }
 
-export const appearanceSettingsQueryKey = ['appearance-settings'] as const
+export const appearanceSettingsQueryKey = queryKeys.appearanceSettings()
 
 // The last settings this browser read are shown from the first paint of a new tab, so the panel does not open in the
 // default font and colours and switch a moment later. The server's answer still decides.
@@ -244,7 +245,7 @@ export function useAppearanceSettings() {
   const client = useQueryClient()
   const query = useQuery({
     queryKey: appearanceSettingsQueryKey,
-    queryFn: () => hubApi<AppearanceSettingsEnvelope>('/settings/appearance').then(envelope => rememberAppearance(envelope)),
+    queryFn: ({ signal }: { signal: AbortSignal }) => hubApi<AppearanceSettingsEnvelope>('/settings/appearance', { signal }).then(envelope => rememberAppearance(envelope)),
     placeholderData: () => readRememberedAppearance(),
     staleTime: 60_000,
     refetchOnWindowFocus: true
@@ -274,7 +275,7 @@ export function useAppearanceSettings() {
     // D9: a stored setting is written only over the version read (If-Match); one not read yet is read first. The version
     // is the one the draft was made from, so a draft kept over newer settings is refused, not written over them.
     const current = client.getQueryData<AppearanceSettingsEnvelope>(appearanceSettingsQueryKey)
-      ?? await client.fetchQuery({ queryKey: appearanceSettingsQueryKey, queryFn: () => hubApi<AppearanceSettingsEnvelope>('/settings/appearance').then(envelope => rememberAppearance(envelope)) })
+      ?? await client.fetchQuery({ queryKey: appearanceSettingsQueryKey, queryFn: ({ signal }: { signal: AbortSignal }) => hubApi<AppearanceSettingsEnvelope>('/settings/appearance', { signal }).then(envelope => rememberAppearance(envelope)) })
     let saved: AppearanceSettingsEnvelope
     try {
       saved = await hubApi<AppearanceSettingsEnvelope>('/settings/appearance', { method: 'PUT', headers: settingsIfMatch(overVersion ?? base.version ?? current?.version), body: JSON.stringify(normalized) })

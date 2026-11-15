@@ -1,12 +1,13 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { ApiRequestError } from '../../../shared/api'
+import { queryKeys } from '../../../shared/api/query-keys'
 
 // Every mapping save or delete can create or clear a conflict, so the "Gözden Geçirilecek Eşlemeler" list is
 // refreshed after each one instead of waiting for its cache to go stale.
 export function refreshMappingConflicts(client: QueryClient, connectionId: string | null | undefined) {
   return connectionId
-    ? client.invalidateQueries({ queryKey: ['mapping-conflicts', connectionId] })
-    : client.invalidateQueries({ queryKey: ['mapping-conflicts'] })
+    ? client.invalidateQueries({ queryKey: queryKeys.mappingConflicts(connectionId) })
+    : client.invalidateQueries({ queryKey: queryKeys.mappingConflicts() })
 }
 
 // A mapping that another save created or changed meanwhile: the list must be reloaded before trying again.

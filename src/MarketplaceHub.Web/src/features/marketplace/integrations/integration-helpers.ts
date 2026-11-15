@@ -1,4 +1,5 @@
 import { noticeSentences } from '../../../shared/notice-copy'
+import { queryKeys } from '../../../shared/api/query-keys'
 // Small pure pieces of the integrations pages, kept here so they can be tested on their own.
 
 /** Owner decision B: what switching the automatic writes (or the master switch) on means for the changes made while off. */
@@ -9,7 +10,7 @@ export function automaticWritesBaselineMessage(externalWriteTo: string) {
 }
 
 /** The query of GET /price-stock-monitor (API Sağlık); a change to the master switch or a write flow reads it again. */
-export const priceStockMonitorQueryKey = ['price-stock-monitor'] as const
+export const priceStockMonitorQueryKey = queryKeys.priceStockMonitor()
 
 /** One connection of GET /price-stock-monitor (PriceStockConnectionMonitorView). */
 export type PriceStockConnectionMonitor = {

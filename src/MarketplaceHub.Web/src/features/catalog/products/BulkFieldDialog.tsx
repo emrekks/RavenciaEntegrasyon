@@ -18,6 +18,7 @@ import {
   bulkFieldValueLabel, bulkStatusOptions, bulkVatInclusionOptions, runBulkFieldChunks, type BulkFieldKey, type BulkFieldResponse
 } from '../bulk-field-run'
 import './bulk-field-dialog.css'
+import { queryKeys } from '../../../shared/api/query-keys'
 
 const FIELD_HINTS: Partial<Record<BulkFieldKey, string>> = {
   vatRate: 'Ürün kartlarının KDV oranı; pazar yerlerindeki ilanların KDV’si ve fiyatı değişmez.',
@@ -43,8 +44,8 @@ export function BulkFieldDialog({ groups, cardCount, variantCount, onClose, onDo
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
   const running = useRef(false)
   const value = values[field]
-  const brands = useQuery({ queryKey: ['brands', 'new-product'], queryFn: () => loadAllPages<Brand>('/catalog/brands'), enabled: field === 'brandId' })
-  const categories = useQuery({ queryKey: ['categories', 'new-product'], queryFn: () => loadAllPages<Category>('/catalog/categories'), enabled: field === 'categoryId' })
+  const brands = useQuery({ queryKey: queryKeys.brands('new-product'), queryFn: ({ signal }) => loadAllPages<Brand>('/catalog/brands', { signal }), enabled: field === 'brandId' })
+  const categories = useQuery({ queryKey: queryKeys.categories('new-product'), queryFn: ({ signal }) => loadAllPages<Category>('/catalog/categories', { signal }), enabled: field === 'categoryId' })
   const activeBrands = useMemo(() => (brands.data?.items ?? []).filter(item => item.isActive), [brands.data])
   const leafCategories = useMemo(() => (categories.data?.items ?? []).filter(item => item.isLeaf && item.isActive), [categories.data])
   const summary = bulkFieldSummary(cardCount, variantCount, field, bulkFieldValueLabel(field, value, { brands: activeBrands, categories: leafCategories }))

@@ -6,6 +6,7 @@ import { DialogSurface, UiIcon, TitleHint } from '../../shared/components'
 import { ValuePicker, pickerOptions } from '../marketplace/mappings/ValuePicker'
 import { mappingSaveErrorMessage } from '../marketplace/mappings/mapping-refresh'
 import './missing-value-mapping-dialog.css'
+import { queryKeys } from '../../shared/api/query-keys'
 
 type ReferenceCategories = { snapshotId: string; items: Array<{ externalId: string; name: string; path?: string | null; isLeaf: boolean; isActive: boolean }> }
 type CategoryMapping = { externalId: string; version: number; status?: string; snapshotId?: string }
@@ -32,8 +33,8 @@ export function CategoryMappingDialog({ connectionId, platformName, categoryId, 
   onSaved: (message: string) => void
 }) {
   const client = useQueryClient()
-  const references = useQuery({ queryKey: ['reference-categories', connectionId], queryFn: () => hubApi<ReferenceCategories>(`/reference-data/categories?connectionId=${encodeURIComponent(connectionId)}`), retry: false })
-  const existing = useQuery({ queryKey: ['category-mapping', categoryId, connectionId], queryFn: () => hubApi<CategoryMapping | null>(`/mappings/categories/${categoryId}?connectionId=${encodeURIComponent(connectionId)}`), retry: false })
+  const references = useQuery({ queryKey: queryKeys.referenceCategories(connectionId), queryFn: ({ signal }) => hubApi<ReferenceCategories>(`/reference-data/categories?connectionId=${encodeURIComponent(connectionId)}`, { signal }), retry: false })
+  const existing = useQuery({ queryKey: queryKeys.categoryMapping(categoryId, connectionId), queryFn: ({ signal }) => hubApi<CategoryMapping | null>(`/mappings/categories/${categoryId}?connectionId=${encodeURIComponent(connectionId)}`, { signal }), retry: false })
   const [externalId, setExternalId] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -60,9 +61,9 @@ export function CategoryMappingDialog({ connectionId, platformName, categoryId, 
       const current = await hubApi<CategoryMapping | null>(`/mappings/categories/${categoryId}?connectionId=${encodeURIComponent(connectionId)}`)
       await hubApi(`/mappings/categories/${categoryId}`, { method: 'PUT', headers: current ? { 'If-Match': `"v${current.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId: references.data.snapshotId, externalId, status: 'VERIFIED' }) })
       await Promise.all([
-        client.invalidateQueries({ queryKey: ['category-mapping', categoryId, connectionId] }),
-        client.invalidateQueries({ queryKey: ['category-mappings', connectionId] }),
-        client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] })
+        client.invalidateQueries({ queryKey: queryKeys.categoryMapping(categoryId, connectionId) }),
+        client.invalidateQueries({ queryKey: queryKeys.categoryMappings(connectionId) }),
+        client.invalidateQueries({ queryKey: queryKeys.publicationAttributeReadiness() })
       ])
       onSaved(`${categoryName} kategorisi ${platformName} kategorisiyle eşlendi.`)
       onClose()
