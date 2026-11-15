@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQueryClient } from '@tanstack/react-query'
@@ -101,7 +102,7 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
     try {
       for (; index < plan.chunks.length; index++) {
         const chunk = plan.chunks[index]
-        const part = await hubApi<BulkPublicationResult>('/products/bulk-publication-jobs', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('bulk-publication') }, body: bulkPublishRequestBody(chunk.productIds, chunk.connectionIds) })
+        const part = await hubApi<ApiAnswer<'postProductsBulkPublicationJobs'>>('/products/bulk-publication-jobs', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('bulk-publication') }, body: bulkPublishRequestBody(chunk.productIds, chunk.connectionIds) })
         total = addBulkPublicationResult(total, part); sent = addBulkPublicationResult(sent, part)
         setResult(total)
         setProgress(plan.chunks.slice(0, index + 1).reduce((count, item) => count + item.productIds.length, 0))

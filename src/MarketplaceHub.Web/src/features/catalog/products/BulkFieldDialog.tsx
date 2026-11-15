@@ -2,6 +2,7 @@
 // that field's control with the product editor's checks, in the footer one line naming what will be written. Model
 // fields go to every colour card of the selected models, desi to every variant, güvenlik stoğu to every marketplace
 // record of every variant. Only that field is written; nothing is sent to a marketplace.
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { hubApi, loadAllPages } from '../../../shared/api'
@@ -68,7 +69,7 @@ export function BulkFieldDialog({ groups, cardCount, variantCount, onClose, onDo
     const payloadValue = bulkFieldPayloadValue(field, value)
     try {
       const result = await runBulkFieldChunks(chunks, async productIds => {
-        const response = await hubApi<BulkFieldResponse>('/products/bulk-field', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ productIds, field, value: payloadValue }) })
+        const response = await hubApi<ApiAnswer<'postProductsBulkField'>>('/products/bulk-field', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ productIds, field, value: payloadValue }) })
         counts.updatedCount += response?.updatedCount ?? 0
         counts.unchangedCount += response?.unchangedCount ?? 0
         counts.variantCount += response?.variantCount ?? 0

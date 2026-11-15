@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
@@ -56,7 +57,7 @@ export function BulkPlatformUpdateDialog({ productIds, cardCount, connections, p
     void mapWithConcurrency(productIds, checkConcurrency, async id => {
       let result: Checked
       try {
-        result = { product: await client.query({ queryKey: queryKeys.product(id), queryFn: ({ signal }) => hubApi<Product>(`/products/${id}`, { signal }), staleTime: 15_000, retry: false }), failed: false }
+        result = { product: await client.query({ queryKey: queryKeys.product(id), queryFn: ({ signal }) => hubApi<ApiAnswer<'getProductsById'>>(`/products/${id}`, { signal }), staleTime: 15_000, retry: false }), failed: false }
       } catch {
         result = { product: null, failed: true }
       }
@@ -128,7 +129,7 @@ export function BulkPlatformUpdateDialog({ productIds, cardCount, connections, p
       try {
         const accepted = request.kind === 'product'
           ? await hubApi<{ jobId?: string }>(`/products/${request.productId}/update-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId: request.connectionId, fields: request.fields, sendGroupId: request.sendGroupId }) })
-          : await hubApi<{ jobId?: string }>(`/products/${request.productId}/connections/${request.connectionId}/price-inventory-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ price: request.price, stock: request.stock }) })
+          : await hubApi<ApiAnswer<'postProductsByProductIdConnectionsByConnectionIdPriceInventorySyncJobs'>>(`/products/${request.productId}/connections/${request.connectionId}/price-inventory-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ price: request.price, stock: request.stock }) })
         const what = request.kind === 'product' ? productInformationLabel(request.fields) : request.price && request.stock ? 'fiyat-stok' : request.price ? 'fiyat' : 'stok'
         if (accepted?.jobId) followed.push({ jobId: accepted.jobId, platformName: platformOf(request.connectionId), what, label: titleOf(request.productId), update: true })
       } catch (reason) {

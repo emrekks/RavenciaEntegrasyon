@@ -4,6 +4,7 @@
 // found or opened by name like the other imports do and goes to every colour card of the model. Rows are matched by stock code
 // (then barcode); the stock code itself is never written. Stock is saved like the product editor saves it, so it
 // reaches the stores with stock sends on; every other field is a panel write that sends nothing by itself.
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { useRef, useState, type DragEvent, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
@@ -42,6 +43,9 @@ export type ProductTransferChange = {
   panelPrice?: { salePrice: number; listPrice: number } | null
 }
 export type ProductTransferProductChange = { productId: string; version: number; title: string | null; vatRate: number | null; brand?: string | null }
+// POST /products/transfer/import, sent back as the apply body. CONTRACT: the API declares its numbers (versions, cost,
+// desi, stock, VAT, prices) as "number or string" because the schema is the apply request's too, which reads either; an
+// answer writes numbers. It declares the fields as strings; ProductTransferFields holds only ProductTransferField's codes.
 export type ProductTransferPreview = {
   fileName: string; availableFields: ProductTransferField[]; fields: ProductTransferField[]; stores: Array<{ connectionId: string; name: string }>
   totalRows: number; updates: number; costUpdates: number; costClears: number; desiUpdates: number; desiClears: number; stockUpdates: number; priceUpdates: number
@@ -97,7 +101,7 @@ const formatText = (value: string | null) => value ?? '—'
 
 export function ProductTransferDialog({ onClose }: { onClose: () => void }) {
   const client = useQueryClient()
-  const summary = useQuery({ queryKey: productTransferSummaryKey, queryFn: ({ signal }) => hubApi<ProductTransferSummary>('/products/transfer/summary', { signal }) })
+  const summary = useQuery({ queryKey: productTransferSummaryKey, queryFn: ({ signal }) => hubApi<ApiAnswer<'getProductsTransferSummary'>>('/products/transfer/summary', { signal }) })
   const [filter, setFilter] = useState<ProductTransferExportFilter>('all')
   const [fields, setFields] = useState<ProductTransferField[]>(defaultFields)
   const [file, setFile] = useState<File | null>(null)
@@ -122,7 +126,7 @@ export function ProductTransferDialog({ onClose }: { onClose: () => void }) {
     mutationFn: ({ changes, productChanges }: { changes: ProductTransferChange[]; productChanges: ProductTransferProductChange[] }) => {
       const body = JSON.stringify(productChanges.length ? { changes, productChanges } : { changes })
       const key = versionedIdempotencyKey('product-transfer', previewId.current ?? newIdempotencyKey(), 1, body)
-      return sendWithVersionedIdempotencyKey(key, idempotencyKey => hubApi<ProductTransferApplyResult>('/products/transfer/apply', { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, body }))
+      return sendWithVersionedIdempotencyKey(key, idempotencyKey => hubApi<ApiAnswer<'postProductsTransferApply'>>('/products/transfer/apply', { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, body }))
     },
     onSuccess: async () => {
       await Promise.all([
