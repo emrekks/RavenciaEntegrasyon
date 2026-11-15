@@ -50,7 +50,7 @@ public sealed partial class ShopifyHttpClient
                 // ADAPTOR-DIGER-2: a client-credentials token Shopify refuses (the app reinstalled, the token revoked) is
                 // dropped from the cache, so the next request asks for a new one instead of reusing it until it expires.
                 if (response.StatusCode == HttpStatusCode.Unauthorized && context.ExpiresAt != DateTimeOffset.MaxValue)
-                    ShopifyAuthenticationHandler.Forget(context.Connection.Id);
+                    authentication.Forget(context.Connection.Id);
                 var retryAfter = RetryAfterHeader.Unchecked(response.Headers.RetryAfter, timeProvider.GetUtcNow());
                 return Failure<JsonDocument>(MapHttpError(response.StatusCode, raw, retryAfter, remoteRequestId), rate);
             }
