@@ -4,6 +4,8 @@ using MarketplaceHub.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
@@ -168,8 +170,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     {
         ResetReaddressedOfferMarks(); TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); OrderBuyerTypes.Apply(ChangeTracker); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit();
         var models = ProductModelLinks.Capture(ChangeTracker);
-        var saved = base.SaveChanges(acceptAllChangesOnSuccess);
+        int saved;
+        _saving = true;
+        try { saved = base.SaveChanges(acceptAllChangesOnSuccess); }
+        finally { _saving = false; }
         if (models is not null) LinkProductModelsAsync(models).GetAwaiter().GetResult();
+        RefreshDeferredModelValuesAsync().GetAwaiter().GetResult();
         return saved;
     }
 
@@ -177,9 +183,82 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     {
         await ResetReaddressedOfferMarksAsync(cancellationToken); TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); OrderBuyerTypes.Apply(ChangeTracker); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit();
         var models = ProductModelLinks.Capture(ChangeTracker);
-        var saved = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        int saved;
+        _saving = true;
+        try { saved = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken); }
+        finally { _saving = false; }
         if (models is not null) await LinkProductModelsAsync(models);
+        await RefreshDeferredModelValuesAsync();
         return saved;
+    }
+
+    // KATALOG-14 phase B: the models whose shared values a save inside a caller's transaction changed. The values are not
+    // written there: the model row update made a serializable editor save fail with a conflict whenever anything else
+    // (the backfill, the scan, a worker's save) wrote the same model meanwhile. They are refreshed right after the
+    // transaction commits (CommitHookTransactionFactory), in the refresh's own short transactions; a transaction rolled
+    // back leaves them for the next commit, where the refresh simply finds the cards as they are.
+    private readonly Dictionary<Guid, HashSet<Guid>> _deferredModelValues = [];
+    private bool _refreshingDeferredModelValues;
+    // SaveChanges commits its own transaction while EF still holds the context: the deferred models wait for its end.
+    private bool _saving;
+
+    internal void DeferModelValues(Guid tenantId, IEnumerable<Guid> modelIds)
+    {
+        if (!_deferredModelValues.TryGetValue(tenantId, out var set)) _deferredModelValues[tenantId] = set = [];
+        set.UnionWith(modelIds);
+    }
+
+    // The models deferred by saves inside a transaction, refreshed once no transaction is open. A failure is recorded as a
+    // PRODUCT_MODEL_LINK_FAILED issue and the daily scan repairs the model: the commit itself already stands.
+    public async Task RefreshDeferredModelValuesAsync()
+    {
+        if (_refreshingDeferredModelValues || _saving || _deferredModelValues.Count == 0 || Database.CurrentTransaction is not null) return;
+        var deferred = _deferredModelValues.ToList();
+        _deferredModelValues.Clear();
+        _refreshingDeferredModelValues = true;
+        try
+        {
+            foreach (var (tenantId, modelIds) in deferred)
+            {
+                var now = _timeProvider.GetUtcNow();
+                try { await ProductModelValues.RefreshAsync(this, tenantId, modelIds, now, CancellationToken.None); }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    await ProductModelLinks.RecordLinkFailureAsync(this, tenantId, exception, now);
+                }
+            }
+        }
+        finally
+        {
+            _refreshingDeferredModelValues = false;
+        }
+    }
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+        optionsBuilder.ReplaceService<IRelationalTransactionFactory, CommitHookTransactionFactory>();
+
+    // Runs RefreshDeferredModelValuesAsync after every commit of this context's transactions (each caller's own
+    // BeginTransaction(Async) … Commit(Async)), so no transactional caller has to remember it.
+    internal sealed class CommitHookTransactionFactory(RelationalTransactionFactoryDependencies dependencies) : RelationalTransactionFactory(dependencies)
+    {
+        public override RelationalTransaction Create(IRelationalConnection connection, System.Data.Common.DbTransaction transaction, Guid transactionId, IDiagnosticsLogger<DbLoggerCategory.Database.Transaction> logger, bool transactionOwned) =>
+            new CommitHookTransaction(connection, transaction, transactionId, logger, transactionOwned, Dependencies.SqlGenerationHelper);
+    }
+
+    private sealed class CommitHookTransaction(IRelationalConnection connection, System.Data.Common.DbTransaction transaction, Guid transactionId, IDiagnosticsLogger<DbLoggerCategory.Database.Transaction> logger, bool transactionOwned, ISqlGenerationHelper sqlGenerationHelper)
+        : RelationalTransaction(connection, transaction, transactionId, logger, transactionOwned, sqlGenerationHelper)
+    {
+        public override void Commit()
+        {
+            base.Commit();
+            if (Connection.Context is AppDbContext db) db.RefreshDeferredModelValuesAsync().GetAwaiter().GetResult();
+        }
+
+        public override async Task CommitAsync(CancellationToken cancellationToken = default)
+        {
+            await base.CommitAsync(cancellationToken);
+            if (Connection.Context is AppDbContext db) await db.RefreshDeferredModelValuesAsync();
+        }
     }
 
     // Model Kaydı Faz 1: the cards and variants this save added, deleted, re-coded or re-branded are linked to their model

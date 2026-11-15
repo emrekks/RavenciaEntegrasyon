@@ -306,10 +306,13 @@ public sealed class PostgreSqlProductModelLinksTests(PostgreSqlTenantIsolationFi
         var siyahVariant = await db.ProductVariants.AsNoTracking().Where(x => x.ProductId == siyah.Id).OrderBy(x => x.SortOrder).FirstAsync();
         db.MarketplaceModelLinks.Add(new MarketplaceModelLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = connection.Id, ModelId = model.Id, ExternalId = "TY-MZ100", CreatedAt = DateTimeOffset.UtcNow, Version = 1 });
         db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = connection.Id, VariantId = siyahVariant.Id, ExternalId = siyahVariant.Barcode!, Version = 1 });
-        // The model's attribute as every save writes it (KATALOG-14 phase B): the set its colour cards hold.
+        // The model's attribute as every save writes it (KATALOG-14 phase B): the set its colour cards hold. Inside a
+        // transaction a save refreshes the model after the commit; this test's transaction never commits, so the refresh
+        // is run here.
         foreach (var card in new[] { siyah, mavi })
             db.ProductAttributeAssignments.Add(new ProductAttributeAssignment { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ProductId = card.Id, AttributeId = fabric.Id, TextValue = "Pamuk", Version = 1 });
         await db.SaveChangesAsync();
+        await ProductModelValues.RefreshAsync(db, seed.Tenant.Id, [model.Id], DateTimeOffset.UtcNow, CancellationToken.None);
         Assert.Equal("Pamuk", (await db.ProductModelAttributes.AsNoTracking().SingleAsync(x => x.ModelId == model.Id)).TextValue);
         db.ChangeTracker.Clear();
 

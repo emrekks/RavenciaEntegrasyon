@@ -175,7 +175,11 @@ public static class ProductModelLinks
                 var keyArray = keys.ToArray();
                 valueModels.UnionWith(await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && keyArray.Contains(x.ModelCodeKey)).Select(x => x.Id).ToListAsync(cancellationToken));
             }
-            if (valueModels.Count > 0) await ProductModelValues.RefreshAsync(db, tenantId, valueModels, now, cancellationToken);
+            // Inside a caller's transaction the models are refreshed after its commit (AppDbContext.DeferModelValues): a
+            // model refresh must never fail the caller's save.
+            if (valueModels.Count == 0) continue;
+            if (db.Database.CurrentTransaction is not null) db.DeferModelValues(tenantId, valueModels);
+            else await ProductModelValues.RefreshAsync(db, tenantId, valueModels, now, cancellationToken);
         }
     }
 

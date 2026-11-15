@@ -363,6 +363,49 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         }
     }
 
+    // F4: a save inside a caller's (here serializable) transaction does not touch the model row, so another session that
+    // writes the model meanwhile neither waits for it nor makes its commit fail; the model takes the values after the
+    // commit.
+    [PostgreSqlFact]
+    public async Task ASaveInsideATransaction_LeavesTheModelRowAlone_AndRefreshesItAfterTheCommit()
+    {
+        await using var db = fixture.CreateContext();
+        var seed = await SeedAsync(db);
+        var siyah = AddCard(db, seed, seed.Ravencia, "MZ600", "Siyah", "Kadın Siyah Etek", 0);
+        var mavi = AddCard(db, seed, seed.Ravencia, "MZ600", "Mavi", "Kadın Mavi Etek", 1);
+        await db.SaveChangesAsync();
+        var model = await ModelOfAsync(db, siyah.Id);
+
+        await using (var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable))
+        {
+            siyah.Description = "Editör açıklaması";
+            mavi.Description = "Editör açıklaması";
+            await db.SaveChangesAsync();
+            // Another session (the scan, a worker's save) writes the model row meanwhile, without waiting.
+            await using (var other = fixture.CreateContext())
+            {
+                await other.Database.OpenConnectionAsync();
+                await other.Database.ExecuteSqlRawAsync("SET lock_timeout = '1s'");
+                await other.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_models SET "UpdatedAt" = now() WHERE "Id" = {model.Id}""");
+            }
+            await transaction.CommitAsync();
+        }
+        Assert.Equal("Editör açıklaması", (await ModelOfAsync(db, siyah.Id)).Description);
+
+        // A transaction rolled back leaves its models to the next commit, which finds the cards as they are.
+        await using (await db.Database.BeginTransactionAsync())
+        {
+            siyah.WarrantyMonths = 6;
+            await db.SaveChangesAsync();
+        }
+        db.ChangeTracker.Clear();
+        await using (var transaction = await db.Database.BeginTransactionAsync())
+        {
+            await transaction.CommitAsync();
+        }
+        Assert.Null((await ModelOfAsync(db, siyah.Id)).WarrantyMonths);
+    }
+
     // F2: fields and attributes the owner saved in the editor after the last change of every card stay the owner's, even
     // when most cards (here cards the editor does not show) hold another value; the stamps stay; a second run writes
     // nothing either.
