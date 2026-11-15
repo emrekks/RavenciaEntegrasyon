@@ -314,6 +314,14 @@ public sealed class ReturnClaim
     // claimDate (Istanbul local), n11 requestDate, Pazarama refundDate, Shopify return createdAt. Null when the
     // marketplace gives none (PTT AVM) or the claim was not read again since the field came; never guessed.
     public DateTimeOffset? RequestedAt { get; set; }
+    // SIPARIS-STOK-9: what the Returns page sorts and counts by, kept with the claim so the database can page and count
+    // its cards (ReturnCardColumns, filled on every save of the claim, its lines or its decisions). TabGroup: the tab of
+    // the claim's (first) card; CardSplit: one line reads as accepted and another as still waiting, so the claim may be
+    // two cards; ApprovedAt: an approved or completed claim's last successful approval, else its last change (null for
+    // any other claim). All three null: not filled yet, and the page computes them as before.
+    public string? TabGroup { get; set; }
+    public bool? CardSplit { get; set; }
+    public DateTimeOffset? ApprovedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public long Version { get; set; } = 1;

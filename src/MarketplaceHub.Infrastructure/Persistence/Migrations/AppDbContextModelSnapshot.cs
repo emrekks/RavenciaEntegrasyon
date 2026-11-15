@@ -6269,6 +6269,12 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<bool>("ActionDueAtEstimated")
                         .HasColumnType("boolean");
 
+                    b.Property<DateTimeOffset?>("ApprovedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool?>("CardSplit")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("CargoProviderName")
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
@@ -6334,6 +6340,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<string>("TabGroup")
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
@@ -6352,6 +6362,12 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.HasIndex("TenantId", "Status", "ActionDueAt");
+
+                    b.HasIndex("TenantId", "TabGroup", "ApprovedAt", "Id")
+                        .IsDescending(false, false, true, false);
+
+                    b.HasIndex("TenantId", "TabGroup", "RequestedAt", "Id")
+                        .IsDescending(false, false, true, false);
 
                     b.ToTable("return_claims", "sales");
                 });
@@ -6522,6 +6538,8 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "ClaimId", "ExternalLineId")
                         .IsUnique();
+
+                    b.HasIndex("TenantId", "ClaimId", "RawStatus");
 
                     b.ToTable("return_lines", "sales", t =>
                         {
