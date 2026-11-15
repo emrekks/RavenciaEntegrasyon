@@ -20,7 +20,7 @@ public sealed class N11RateLimitHandler(
     public static readonly HttpRequestOptionsKey<string> AccountKeyOption = new("MarketplaceHub.N11.Account");
     // Invoked once the request has its quota token, right before it is sent; the caller starts the request
     // timeout there, so time spent waiting for the quota is not counted as a timeout.
-    public static readonly HttpRequestOptionsKey<Action> QuotaAcquiredKey = new("MarketplaceHub.N11.QuotaAcquired");
+    public static readonly HttpRequestOptionsKey<Action> QuotaAcquiredKey = Http.MarketplaceQuota.AcquiredKey;
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {

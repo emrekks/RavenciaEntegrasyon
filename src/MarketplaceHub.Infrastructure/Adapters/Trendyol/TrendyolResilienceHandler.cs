@@ -1,8 +1,8 @@
 using System.Net;
 using System.Net.Http.Headers;
+using MarketplaceHub.Infrastructure.Adapters.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using MarketplaceHub.Infrastructure.Adapters.Http;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Trendyol;
 
@@ -10,7 +10,7 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
 {
     // Invoked once the request has its quota token, right before it is sent; the caller starts the
     // network timeout there so time spent queueing for the quota is not counted as a timeout.
-    public static readonly HttpRequestOptionsKey<Action> QuotaAcquiredKey = new("MarketplaceHub.Trendyol.QuotaAcquired");
+    public static readonly HttpRequestOptionsKey<Action> QuotaAcquiredKey = Http.MarketplaceQuota.AcquiredKey;
 
     private readonly TrendyolOptions options;
     private readonly TimeProvider timeProvider;

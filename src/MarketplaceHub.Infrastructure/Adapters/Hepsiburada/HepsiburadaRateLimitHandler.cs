@@ -18,7 +18,7 @@ public sealed class HepsiburadaRateLimitHandler(
 {
     // Invoked once the request has its quota token, right before it is sent; the caller starts the request
     // timeout there, so time spent waiting for the quota is not counted as a timeout.
-    public static readonly HttpRequestOptionsKey<Action> QuotaAcquiredKey = new("MarketplaceHub.Hepsiburada.QuotaAcquired");
+    public static readonly HttpRequestOptionsKey<Action> QuotaAcquiredKey = Http.MarketplaceQuota.AcquiredKey;
 
     internal const string CatalogBucket = "catalog";
     internal const string EgressScope = "egress";

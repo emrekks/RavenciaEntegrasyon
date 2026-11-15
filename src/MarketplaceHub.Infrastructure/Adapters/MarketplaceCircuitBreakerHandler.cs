@@ -29,11 +29,8 @@ public sealed class MarketplaceCircuitBreakerHandler(MarketplaceCircuitBreakerSt
     internal static HttpResponseMessage? PassProbeGate(HttpRequestMessage request) =>
         request.Options.TryGetValue(ProbeGateKey, out var gate) ? gate() : null;
 
-    private static bool WaitsForQuota(HttpRequestMessage request) =>
-        request.Options.TryGetValue(Hepsiburada.HepsiburadaRateLimitHandler.QuotaAcquiredKey, out _)
-        || request.Options.TryGetValue(N11.N11RateLimitHandler.QuotaAcquiredKey, out _)
-        || request.Options.TryGetValue(Pazarama.PazaramaRateLimitHandler.QuotaAcquiredKey, out _)
-        || request.Options.TryGetValue(PttAvm.PttAvmRateLimitHandler.QuotaAcquiredKey, out _);
+    // Every quota-paced marketplace (Hepsiburada, n11, Pazarama, PTT AVM) names the shared quota option on its requests.
+    private static bool WaitsForQuota(HttpRequestMessage request) => request.Options.TryGetValue(Http.MarketplaceQuota.AcquiredKey, out _);
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
