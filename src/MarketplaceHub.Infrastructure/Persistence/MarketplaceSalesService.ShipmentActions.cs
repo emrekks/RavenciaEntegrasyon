@@ -100,11 +100,12 @@ public sealed partial class MarketplaceSalesService
         var normalizedKey = idempotencyKey.Trim();
         // A resend of a request that already went through answers with the package as it is now,
         // before the version and state checks the first request itself moved on.
-        var existing = await db.ExternalEffectRecords.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.EffectType == effectType && x.IdempotencyKey == normalizedKey, cancellationToken);
+        var effects = new ExternalEffectGuard(db, timeProvider);
+        var existing = await effects.FindAsync(tenantId, effectType, normalizedKey, cancellationToken);
         if (existing is not null)
         {
             if (existing.TargetId is { } target && target != package.Id) return ServiceResult<ShipmentView>.Fail("IDEMPOTENCY_KEY_CONFLICT", "Bu istek anahtarı başka bir paket için kullanılmış; sayfayı yenileyip yeniden deneyin.", 409);
-            if (existing.CompletedAt is null) return Verifying<ShipmentView>();
+            if (ExternalEffectGuard.Gate(existing) == ExternalEffectGate.Open) return Verifying<ShipmentView>();
             var replayOrderNumber = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => x.OrderNumber).SingleOrDefaultAsync(cancellationToken);
             return replayOrderNumber is null ? NotFound<ShipmentView>() : ServiceResult<ShipmentView>.Ok(Map(package, replayOrderNumber));
         }
@@ -138,18 +139,18 @@ public sealed partial class MarketplaceSalesService
         if (order is null) return NotFound<ShipmentView>();
         var orderNumber = order.OrderNumber;
 
-        var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = effectType, IdempotencyKey = normalizedKey, CreatedAt = timeProvider.GetUtcNow(), ConnectionId = package.ConnectionId, TargetId = package.Id, Action = "PICKING" };
-        db.ExternalEffectRecords.Add(effect);
-        await db.SaveChangesAsync(cancellationToken);
-        AdapterResult<PackageActionResult> result;
-        using (TrendyolQuotaLane.Instant()) result = await orders.ExecutePackageActionAsync(new AdapterContext(tenantId, package.ConnectionId, correlationId, normalizedKey, timeProvider.GetUtcNow().AddSeconds(30)), new(package.ExternalPackageId, action, payload, order.StoreFrontCode), cancellationToken);
-        if (!result.IsSuccess)
+        // ISLEYICI-10: the record is saved, the request sent and its answer sorted by the guard.
+        var effect = effects.New(tenantId, effectType, normalizedKey, package.ConnectionId, package.Id, "PICKING");
+        ExternalEffectSend<PackageActionResult> sent;
+        using (TrendyolQuotaLane.Instant())
+            sent = await effects.SendAsync(effect, () => orders.ExecutePackageActionAsync(new AdapterContext(tenantId, package.ConnectionId, correlationId, normalizedKey, timeProvider.GetUtcNow().AddSeconds(30)), new(package.ExternalPackageId, action, payload, order.StoreFrontCode), cancellationToken), cancellationToken);
+        if (!sent.Accepted)
         {
-            var error = result.Error;
-            if (error is null || IsAmbiguous(error)) return await VerifyLaterAsync<ShipmentView>(effect, cancellationToken);
-            db.ExternalEffectRecords.Remove(effect);
-            await db.SaveChangesAsync(cancellationToken);
-            // The marketplace quota was full and nothing was sent: the action waits in the user lane instead.
+            var error = sent.Error;
+            if (sent.Outcome == ExternalEffectSendOutcome.Uncertain) return await VerifyLaterAsync<ShipmentView>(effect, cancellationToken);
+            await effects.ReleaseAsync(effect, cancellationToken);
+            // The marketplace quota was full (or the panel's own circuit was open) and nothing was sent: the action waits
+            // in the user lane instead.
             if (error.Class == AdapterErrorClass.RateLimit)
                 return await QueueInsteadAsync<ShipmentView>(EnqueueShipmentActionAsync(tenantId, package.Id, package.Version, new ShipmentActionCommand(action, "{}"), normalizedKey, correlationId, cancellationToken));
             return ServiceResult<ShipmentView>.Fail("PICKING_FAILED", error.SafeMessage, error.HttpStatus is >= 400 and <= 599 ? error.HttpStatus.Value : 502);
@@ -158,8 +159,7 @@ public sealed partial class MarketplaceSalesService
         // The marketplace accepted the write: record that first and on its own,
         // so a conflict while projecting it locally can never leave the effect
         // open (and the same key answering "verifying" forever).
-        var appliedAt = timeProvider.GetUtcNow();
-        effect.CompletedAt = appliedAt;
+        var appliedAt = effect.CompletedAt!.Value;
         effect.Outcome = "APPLIED";
         await db.SaveChangesAsync(cancellationToken);
 
@@ -259,15 +259,16 @@ public sealed partial class MarketplaceSalesService
         var normalizedKey = idempotencyKey.Trim();
         // A resend of a change that went through answers with the carrier that change asked for
         // (its recorded expected value), before the version check the change itself moved on.
-        var existing = await db.ExternalEffectRecords.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.EffectType == effectType && x.IdempotencyKey == normalizedKey, cancellationToken);
+        var effects = new ExternalEffectGuard(db, timeProvider);
+        var existing = await effects.FindAsync(tenantId, effectType, normalizedKey, cancellationToken);
         if (existing is not null)
         {
             if (existing.TargetId is { } target && target != package.Id) return ServiceResult<ShipmentView>.Fail("IDEMPOTENCY_KEY_CONFLICT", "Bu istek anahtarı başka bir paket için kullanılmış; sayfayı yenileyip yeniden deneyin.", 409);
-            if (existing.CompletedAt is null) return Verifying<ShipmentView>();
+            if (ExternalEffectGuard.Gate(existing) == ExternalEffectGate.Open) return Verifying<ShipmentView>();
             var replayOrderNumber = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => x.OrderNumber).SingleOrDefaultAsync(cancellationToken);
             if (replayOrderNumber is null) return NotFound<ShipmentView>();
             // A change closed as unresolved was never confirmed (Q-2): the package is shown as it is, not with that carrier.
-            return string.IsNullOrWhiteSpace(existing.ExpectedValue) || existing.Outcome == ExternalEffectReconcilePolicy.UnresolvedOutcome
+            return string.IsNullOrWhiteSpace(existing.ExpectedValue) || ExternalEffectGuard.Gate(existing) == ExternalEffectGate.Unresolved
                 ? ServiceResult<ShipmentView>.Ok(Map(package, replayOrderNumber))
                 : await ProjectCargoProviderAsync(tenantId, package, existing.ExpectedValue, replayOrderNumber, correlationId, cancellationToken);
         }
@@ -295,23 +296,22 @@ public sealed partial class MarketplaceSalesService
         var orderNumber = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => x.OrderNumber).SingleOrDefaultAsync(cancellationToken);
         if (orderNumber is null) return NotFound<ShipmentView>();
 
-        var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = effectType, IdempotencyKey = normalizedKey, CreatedAt = timeProvider.GetUtcNow(), ConnectionId = package.ConnectionId, TargetId = package.Id, Action = "CHANGE_CARGO_PROVIDER", ExpectedValue = cargoProvider };
-        db.ExternalEffectRecords.Add(effect);
-        await db.SaveChangesAsync(cancellationToken);
-
-        AdapterResult<PackageActionResult> result;
+        // ISLEYICI-10/6: the storefront is read before the record is saved, so nothing but the request runs between the
+        // save and the send; the guard saves, sends and sorts the answer.
+        var storeFrontCode = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => x.StoreFrontCode).SingleOrDefaultAsync(cancellationToken);
+        var effect = effects.New(tenantId, effectType, normalizedKey, package.ConnectionId, package.Id, "CHANGE_CARGO_PROVIDER", cargoProvider);
+        ExternalEffectSend<PackageActionResult> sent;
         using (TrendyolQuotaLane.Instant())
-            result = await orders.ExecutePackageActionAsync(
+            sent = await effects.SendAsync(effect, () => orders.ExecutePackageActionAsync(
                 new AdapterContext(tenantId, package.ConnectionId, correlationId, normalizedKey, timeProvider.GetUtcNow().AddSeconds(30)),
-                new(package.ExternalPackageId, action, command.PayloadJson, await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => x.StoreFrontCode).SingleOrDefaultAsync(cancellationToken)),
-                cancellationToken);
-        if (!result.IsSuccess)
+                new(package.ExternalPackageId, action, command.PayloadJson, storeFrontCode),
+                cancellationToken), cancellationToken);
+        if (!sent.Accepted)
         {
-            var error = result.Error;
-            if (error is null || IsAmbiguous(error)) return await VerifyLaterAsync<ShipmentView>(effect, cancellationToken);
+            var error = sent.Error;
+            if (sent.Outcome == ExternalEffectSendOutcome.Uncertain) return await VerifyLaterAsync<ShipmentView>(effect, cancellationToken);
 
-            db.ExternalEffectRecords.Remove(effect);
-            await db.SaveChangesAsync(cancellationToken);
+            await effects.ReleaseAsync(effect, cancellationToken);
             if (error.Class == AdapterErrorClass.RateLimit)
                 return await QueueInsteadAsync<ShipmentView>(EnqueueShipmentActionAsync(tenantId, package.Id, package.Version, command, normalizedKey, correlationId, cancellationToken));
             var status = error.HttpStatus is >= 400 and <= 599 ? error.HttpStatus.Value : 502;
@@ -319,7 +319,6 @@ public sealed partial class MarketplaceSalesService
         }
 
         // Record the accepted write on its own first (see ProcessShipmentInstantAsync).
-        effect.CompletedAt = timeProvider.GetUtcNow();
         effect.Outcome = "APPLIED";
         await db.SaveChangesAsync(cancellationToken);
         return await ProjectCargoProviderAsync(tenantId, package, cargoProvider, orderNumber, correlationId, cancellationToken);

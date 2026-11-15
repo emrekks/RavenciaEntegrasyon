@@ -197,7 +197,9 @@ public sealed partial class MarketplaceSalesService
         if (remoteLines.Skip(1).Any(line => !compatibleIds.Contains(line.LineItemId))) return ServiceResult<CreateOrderPackageResult>.Fail("HEPSIBURADA_PACKAGE_LINES_NOT_COMPATIBLE", "Seçili kalemlerden biri Hepsiburada yanıtına göre aynı pakete eklenemez.", 422);
 
         var packagesBefore = await db.ShipmentPackages.AsNoTracking().CountAsync(x => x.TenantId == tenantId && x.OrderId == order.Id && x.Status != ShipmentPackageStatus.Cancelled, cancellationToken);
-        var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = effectPrefix, IdempotencyKey = effectPrefix, CreatedAt = timeProvider.GetUtcNow(), ConnectionId = connection.Id, TargetId = order.Id, Action = "CREATE_PACKAGE", ExpectedValue = packagesBefore.ToString(System.Globalization.CultureInfo.InvariantCulture) };
+        var effects = new ExternalEffectGuard(db, timeProvider);
+        var effect = effects.New(tenantId, effectPrefix, effectPrefix, connection.Id, order.Id, "CREATE_PACKAGE", packagesBefore.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        // The reservation key is unique: another request holding it is answered here, before anything is sent.
         db.ExternalEffectRecords.Add(effect);
         try { await db.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateException)
@@ -206,28 +208,27 @@ public sealed partial class MarketplaceSalesService
             return ServiceResult<CreateOrderPackageResult>.Fail("EXTERNAL_EFFECT_AMBIGUOUS", "Bu paket isteği başka bir işlemde ele alınıyor; sipariş durumunu kontrol edin.", 409);
         }
 
-        var result = await orders.CreateOrderPackageAsync(
+        // ISLEYICI-10: the guard sends the request on the record saved above and sorts the answer.
+        var sent = await effects.SendAsync(effect, () => orders.CreateOrderPackageAsync(
             new AdapterContext(tenantId, connection.Id, correlationId, normalizedKey, timeProvider.GetUtcNow().AddSeconds(30)),
             new(command.Barcode?.Trim(), command.CargoCompany?.Trim(), command.Carrier?.Trim(), command.CreationReason?.Trim(), command.Deci, command.ParcelQuantity,
                 command.ShippingAddressLabel?.Trim(), command.ShippingModel?.Trim(), remoteLines),
-            cancellationToken);
-        if (!result.IsSuccess)
+            cancellationToken), cancellationToken, saveBeforeSend: false);
+        if (!sent.Accepted)
         {
-            var error = result.Error;
-            if (error is null || IsAmbiguous(error)) return await VerifyLaterAsync<CreateOrderPackageResult>(effect, cancellationToken);
-            db.ExternalEffectRecords.Remove(effect);
-            await db.SaveChangesAsync(cancellationToken);
+            var error = sent.Error;
+            if (sent.Outcome == ExternalEffectSendOutcome.Uncertain) return await VerifyLaterAsync<CreateOrderPackageResult>(effect, cancellationToken);
+            await effects.ReleaseAsync(effect, cancellationToken);
             return ServiceResult<CreateOrderPackageResult>.Fail(error.Code, error.SafeMessage, error.HttpStatus is >= 400 and <= 599 ? error.HttpStatus.Value : 502);
         }
 
         // No local projection here (only the effect row is written): the new package reaches the
         // order through the queued order read, which takes the "orders" lock itself.
-        effect.EffectType = $"{effectPrefix}:{Uri.EscapeDataString(result.Value!.PackageNumber)}";
+        effect.EffectType = $"{effectPrefix}:{Uri.EscapeDataString(sent.Value.PackageNumber)}";
         effect.IdempotencyKey = normalizedKey;
-        effect.CompletedAt = timeProvider.GetUtcNow();
         await db.SaveChangesAsync(cancellationToken);
         _ = await EnqueueOrderSyncAsync(tenantId, connection.Id, order.OrderNumber, false, correlationId, cancellationToken);
-        return ServiceResult<CreateOrderPackageResult>.Ok(result.Value!);
+        return ServiceResult<CreateOrderPackageResult>.Ok(sent.Value);
     }
 
     // A panel status for a Shopify order (Shopify has no shipping workflow of its own here). It is
