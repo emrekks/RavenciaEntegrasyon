@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import { RrAnchor, RrIcon } from '../features/marketplace/returns-ui'
+import { RrAnchor, RrIcon } from './ui/rr-components'
 
 // The panel's single-choice menu in place of a native <select>: an rr-trigger (36px, 14px/400) that opens an rr-pop
 // list under it (above it when there is no room below; a bottom sheet on phones) with a radio dot on the picked row.

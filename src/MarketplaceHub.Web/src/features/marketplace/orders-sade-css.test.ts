@@ -33,7 +33,8 @@ describe('order cards on phones and tablets (W-F12)', () => {
 })
 
 describe('order cards on phones open their detail from a button', () => {
-  const page = fs.readFileSync(new URL('./orders/OrdersPage.tsx', testFileUrl), 'utf8')
+  // the order row moved out of OrdersPage.tsx into orders-page/OrderReferenceRow.tsx
+  const page = fs.readFileSync(new URL('./orders/orders-page/OrderReferenceRow.tsx', testFileUrl), 'utf8')
   it('no longer open the detail sheet from a tap anywhere on the card', () => {
     expect(page).toContain('<tr ref={rowRef} className={rowClasses || undefined}>')
     expect(page).not.toMatch(/<tr ref=\{rowRef\}[^>]*onClick/)

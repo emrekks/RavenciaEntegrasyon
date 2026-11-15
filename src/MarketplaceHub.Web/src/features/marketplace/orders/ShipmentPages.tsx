@@ -13,7 +13,7 @@ import { formatDate } from '../../../shared/format-date'
 import { formatMoney } from '../../../shared/format-money'
 import { formatPackageLabel } from '../../../shared/package-label'
 import { Badge, DateText, Shipment, notificationKindFromMessage } from '../shared'
-import { titleTr } from '../returns-ui'
+import { titleTr } from '../../../shared/ui/rr-components'
 import { queryKeys } from '../../../shared/api/query-keys'
 
 type ShipmentDetail = { package: Shipment; allowedActions: string[]; supportedLabelFormats: string[]; isStageConnection: boolean; platformCode: string; documents: Array<{ id: string; documentKind: string; format: string; source: string; documentVersion: number; createdAt: string; expiresAt: string | null }> }

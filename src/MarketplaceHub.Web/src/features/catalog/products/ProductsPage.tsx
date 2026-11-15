@@ -10,7 +10,7 @@ import { CardBackgroundIcon, StickyActionBar, TitleHint, useConfirmDialog } from
 import { CountUp } from '../../../shared/components/CountUp'
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import { productStatusLabel } from '../../../shared/status-labels'
-import { RrAnchor, RrBadge, RrColumnPop, RrError, RrFilterCard, RrHeadCell, RrIcon, RrLoading, RrLogo, RrModal, RrPageSize, RrRing, RrThumb, titleTr, type RingTone } from '../../marketplace/returns-ui'
+import { RrAnchor, RrBadge, RrColumnPop, RrError, RrFilterCard, RrHeadCell, RrIcon, RrLoading, RrLogo, RrModal, RrPageSize, RrRing, RrThumb, titleTr, type RingTone } from '../../../shared/ui/rr-components'
 import { appendNotification, notificationError, productNotificationSubject, type NotificationContext } from '../../../shared/notifications'
 import { productPlatformBreakdownTip, productPlatformDisplayLabel, productPlatformDisplayState, withProductPlatformSaleState, withProductPlatformWork } from '../product-platform-status'
 import { nextProductCatalogSort, parseProductCatalogSort, productCatalogSortOptions, productCatalogSortValue, type ProductCatalogSort } from '../product-catalog-sorting'

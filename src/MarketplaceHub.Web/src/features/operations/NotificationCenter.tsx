@@ -14,7 +14,7 @@ import {
   centerFilterCount, centerNotificationCard, centerQueryString, emptyCenterFilters, internalNotificationHref, markCenterNotificationsRead, notificationCategoryLabels, notificationSeverityLabels,
   subscribeNotificationCenter, type CenterFilters, type CenterNotification, type CenterNotificationPage, type CenterNotificationSummary, type NotificationCategory, type NotificationSeverity
 } from '../../shared/notification-center'
-import { RrIcon } from '../marketplace/returns-ui'
+import { RrIcon } from '../../shared/ui/rr-components'
 import { JobStateGlyph } from './job-state-glyph'
 import { ChoiceField, FilterMenu, OpsFilterCard, SearchField, type FilterMenuGroup } from './filter-fields'
 import './notification-center.css'

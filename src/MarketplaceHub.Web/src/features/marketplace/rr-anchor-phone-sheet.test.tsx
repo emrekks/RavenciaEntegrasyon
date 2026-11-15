@@ -1,7 +1,7 @@
 import { act } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from '../../test/render'
-import { RrAnchor } from './returns-ui'
+import { RrAnchor } from '../../shared/ui/rr-components'
 
 // On phones an RrAnchor menu is a bottom sheet. Inside a window (translate, will-change, backdrop blur) a fixed sheet
 // was placed in the window instead of on the screen, so sheet and scrim open in the top layer, while staying in the

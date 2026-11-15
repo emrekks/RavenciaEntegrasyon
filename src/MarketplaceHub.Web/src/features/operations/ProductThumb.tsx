@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { UiIcon } from '../../shared/components'
 import { thumbnailSources } from '../../shared/product-thumbnail'
-import { RrImagePreview } from '../marketplace/returns-ui'
+import { RrImagePreview } from '../../shared/ui/rr-components'
 
 // The product photo of a log row, 2:3 like the product cards; pressing it opens the photo large. The frame asks for
 // the small copy first and falls back to the original when that does not load.

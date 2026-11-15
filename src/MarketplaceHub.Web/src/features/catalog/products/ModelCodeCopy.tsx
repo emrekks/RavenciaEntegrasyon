@@ -1,7 +1,7 @@
 // The model code's copy button on a product row, like the order number's: a check for a moment once it is copied.
 import { useEffect, useRef, useState } from 'react'
 import { copyText } from '../../../shared/copy-text'
-import { RrIcon } from '../../marketplace/returns-ui'
+import { RrIcon } from '../../../shared/ui/rr-components'
 
 export function ModelCodeCopy({ value }: { value: string }) {
   const [copied, setCopied] = useState(false)
