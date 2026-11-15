@@ -14,9 +14,13 @@ namespace MarketplaceHub.Application;
 //   costs:  null, [stoppage, netVat] over the row's shared [cost, cargo, serviceFee, vatRate], else
 //           [cost, cargo, serviceFee, stoppage, netVat, vatRate]
 // productName# and imageUrl#: the index of the text in strings, or null.
+
+/// <summary>The short form of a tariff row page: { strings, rows, totalCount, page, pageSize }.</summary>
+public sealed record CommissionTariffCompactRowPage(IReadOnlyList<string> Strings, IReadOnlyList<object?[]> Rows, int TotalCount, int Page, int PageSize);
+
 public static class CommissionTariffCompactRows
 {
-    public static object Of(CommissionTariffRowPage page)
+    public static CommissionTariffCompactRowPage Of(CommissionTariffRowPage page)
     {
         var strings = new List<string>();
         var indexes = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -32,7 +36,7 @@ public static class CommissionTariffCompactRows
             return index;
         }
         var rows = page.Items.Select(row => Row(row, Text)).ToList();
-        return new { strings, rows, totalCount = page.TotalCount, page = page.Page, pageSize = page.PageSize };
+        return new(strings, rows, page.TotalCount, page.Page, page.PageSize);
     }
 
     private static object?[] Row(CommissionTariffRowView row, Func<string?, int?> text)

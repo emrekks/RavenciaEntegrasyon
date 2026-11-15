@@ -32,7 +32,7 @@ public static class DashboardEndpoints
             return result.Succeeded ? Results.Ok(result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
         }).Produces<DashboardCancellationsView>();
         api.MapGet("/dashboard/integration-matrix", async (HttpContext http, AppDbContext db, TimeProvider timeProvider) =>
-            Tenant(http) is { } tenant ? Results.Ok(await DashboardIntegrationMatrix.QueryAsync(db, tenant.TenantId, timeProvider.GetUtcNow(), http.RequestAborted)) : MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http));
+            Tenant(http) is { } tenant ? Results.Ok(await DashboardIntegrationMatrix.QueryAsync(db, tenant.TenantId, timeProvider.GetUtcNow(), http.RequestAborted)) : MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http)).Produces<IReadOnlyList<DashboardIntegrationRowView>>();
         return endpoints;
     }
 

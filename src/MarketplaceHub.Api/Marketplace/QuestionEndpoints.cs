@@ -59,7 +59,7 @@ public static class QuestionEndpoints
             }
             if (jobs.Count == 0 && firstError is not null) return MarketplaceHub.Api.Security.ApiProblems.Of(http, firstError);
             return Results.Accepted(value: new { jobs, queuedConnections = jobs.Count, skippedConnections = connections.Count - jobs.Count });
-        }).RequireIdempotencyKey();
+        }).RequireIdempotencyKey().Produces<QuestionSyncQueuedView>(StatusCodes.Status202Accepted);
         api.MapGet("/questions/sync-state", async (HttpContext http, IMarketplaceQuestionService service) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;

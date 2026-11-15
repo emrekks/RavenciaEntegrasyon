@@ -83,7 +83,7 @@ public static class CatalogEndpoints
         api.MapPost("/products/bulk-field", async (BulkProductFieldCommand command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.BulkSetFieldAsync(tenant.TenantId, command, http.RequestAborted, tenant.UserId, http.TraceIdentifier), Results.Ok) : MissingContext(http)).RequireGate(ApiGate.Elevated).RequireIdempotencyKey().Produces<BulkProductFieldResult>();
         api.MapPost("/products/bulk-delete", async (BulkProductDeleteCommand command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.BulkDeleteProductsAsync(tenant.TenantId, command, http.RequestAborted), deleted => Results.Ok(new { deletedCount = deleted.DeletedCount, cancelledJobCount = deleted.CancelledJobCount })) : MissingContext(http)).RequireIdempotencyKey();
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.BulkDeleteProductsAsync(tenant.TenantId, command, http.RequestAborted), deleted => Results.Ok(new { deletedCount = deleted.DeletedCount, cancelledJobCount = deleted.CancelledJobCount })) : MissingContext(http)).RequireIdempotencyKey().Produces<ProductDeleteResult>();
         // The jobs a delete would cancel, for its confirmation; it changes nothing.
         api.MapPost("/products/delete-preview", async (BulkProductDeleteCommand command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? Result(await service.PreviewProductDeleteAsync(tenant.TenantId, command, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<ProductDeletePreview>();
@@ -98,7 +98,7 @@ public static class CatalogEndpoints
             var excluded = VariantCodeAvailability.ExcludedVariantIds(request.ExcludeVariantIds);
             var taken = await VariantCodeAvailability.FindAsync(db, db.ProductVariants.Where(variant => variant.TenantId == tenant.TenantId && !excluded.Contains(variant.Id)), codes, codes, http.RequestAborted);
             return Results.Ok(new { items = taken });
-        });
+        }).Produces<TakenVariantCodesView>();
         // Read only: the card that already holds a model code, for the "Yeni Ürün" editor (a new card may not take it).
         api.MapGet("/catalog/model-codes/holder", async (string? code, HttpContext http, AppDbContext db) =>
         {
@@ -126,7 +126,7 @@ public static class CatalogEndpoints
             return TryIfMatch(http, out var version, out var failure)
                 ? Result(await service.DeleteProductAsync(tenant.TenantId, id, version, http.RequestAborted), deleted => Results.Ok(new { deletedCount = deleted.DeletedCount, cancelledJobCount = deleted.CancelledJobCount }))
                 : failure!;
-        }).RequireIdempotencyKey().IfMatch();
+        }).RequireIdempotencyKey().IfMatch().Produces<ProductDeleteResult>();
         api.MapGet("/products/{id:guid}/listing-profiles/{connectionId:guid}", async (Guid id, Guid connectionId, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? WithEtag(http, await service.GetListingProfileAsync(tenant.TenantId, id, connectionId, http.RequestAborted), x => x.Version) : Unauthorized(http)).Produces<ListingProfileView>();
         api.MapPut("/products/{id:guid}/listing-profiles/{connectionId:guid}", async (Guid id, Guid connectionId, UpsertListingProfileCommand command, HttpContext http, ICatalogService service) =>
@@ -197,7 +197,7 @@ public static class CatalogEndpoints
                 return Results.File(content, asset.MimeType, enableRangeProcessing: false);
             }
             catch (FileNotFoundException) { return Results.NotFound(); }
-        }).RequireGate(ApiGate.Open);
+        }).RequireGate(ApiGate.Open).ProducesFile("image/jpeg", "image/png");
         api.MapGet("/files/product-media/{assetId:guid}/content", async (Guid assetId, HttpContext http, AppDbContext db, IPrivateFileStorage storage, ProductMediaRenditions renditions, IHttpClientFactory clients) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
@@ -248,13 +248,13 @@ public static class CatalogEndpoints
                 return Results.File(content, asset.MimeType, asset.OriginalNameSafe, enableRangeProcessing: false);
             }
             catch (FileNotFoundException) { return Results.NotFound(); }
-        });
-        api.MapPost("/files/product-media", UploadProductMediaAsync).DisableAntiforgery().RequireIdempotencyKey();
-        api.MapPost("/files/product-media-url", RegisterProductMediaUrlAsync).RequireIdempotencyKey();
-        api.MapPut("/files/product-media-reconcile", ReconcileProductMediaAsync).RequireIdempotencyKey();
-        api.MapPut("/files/product-media-family-reorder", ReorderProductFamilyMediaAsync).RequireIdempotencyKey();
-        api.MapDelete("/files/product-media-item", DeleteProductMediaItemAsync).RequireIdempotencyKey().IfMatch();
-        api.MapDelete("/files/product-media-items", DeleteProductMediaItemsAsync).RequireIdempotencyKey();
+        }).ProducesFile("image/jpeg", "image/png", "image/webp", "image/gif");
+        api.MapPost("/files/product-media", UploadProductMediaAsync).DisableAntiforgery().RequireIdempotencyKey().Produces<ProductMediaView>(StatusCodes.Status201Created);
+        api.MapPost("/files/product-media-url", RegisterProductMediaUrlAsync).RequireIdempotencyKey().Produces<ProductMediaUrlView>(StatusCodes.Status201Created);
+        api.MapPut("/files/product-media-reconcile", ReconcileProductMediaAsync).RequireIdempotencyKey().Produces<ProductMediaReconciledView>();
+        api.MapPut("/files/product-media-family-reorder", ReorderProductFamilyMediaAsync).RequireIdempotencyKey().Produces<ProductFamilyMediaReorderedView>();
+        api.MapDelete("/files/product-media-item", DeleteProductMediaItemAsync).RequireIdempotencyKey().IfMatch().Produces<ProductMediaItemDeletedView>();
+        api.MapDelete("/files/product-media-items", DeleteProductMediaItemsAsync).RequireIdempotencyKey().Produces<ProductMediaDeletedView>();
         api.MapDelete("/files/product-media", ClearProductMediaAsync).RequireIdempotencyKey().Produces(StatusCodes.Status204NoContent);
 
         api.MapGet("/imports", async (HttpContext http, IImportService service, int? limit, string? after) =>
@@ -279,7 +279,7 @@ public static class CatalogEndpoints
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
             var result = await service.BuildErrorsCsvAsync(tenant.TenantId, id, http.RequestAborted);
             return result.Succeeded ? Results.Text(result.Value!, "text/csv; charset=utf-8", Encoding.UTF8) : Problem(http, result.Error!);
-        }).RequireGate(ApiGate.Operations);
+        }).RequireGate(ApiGate.Operations).Produces<string>(StatusCodes.Status200OK, "text/csv");
 
         api.MapGet("/inventory", async (HttpContext http, IInventoryService service, int? limit, string? after) =>
             Tenant(http) is { } tenant ? Results.Ok(await service.ListAsync(tenant.TenantId, PageSize(limit), after, http.RequestAborted)) : Unauthorized(http)).Produces<PageResult<InventoryItemView>>();
@@ -316,9 +316,9 @@ public static class CatalogEndpoints
         // Several fields' value lists of one category in one read (attributeIds=a,b,c), by field id.
         api.MapGet("/reference-data/categories/{categoryId}/attribute-values", async (string categoryId, Guid connectionId, string? attributeIds, HttpContext http, IReferenceDataService service) =>
             Tenant(http) is { } tenant ? Result(await service.ListAttributeValueReferencesAsync(tenant.TenantId, connectionId, categoryId, SplitIds(attributeIds), http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<IReadOnlyDictionary<string, ReferenceDataView>>();
-        api.MapGet("/reference-data/categories/{externalId}/attributes", (string externalId, Guid connectionId, HttpContext http, IReferenceDataService service) => Reference(http, service, connectionId, "CATEGORY_ATTRIBUTES", externalId));
-        api.MapGet("/reference-data/categories/{categoryId}/attributes/{attributeId}/values", (string categoryId, string attributeId, Guid connectionId, HttpContext http, IReferenceDataService service) => Reference(http, service, connectionId, "ATTRIBUTE_VALUES", $"{categoryId}/{attributeId}"));
-        api.MapGet("/reference-data/brands", (Guid connectionId, HttpContext http, IReferenceDataService service) => Reference(http, service, connectionId, "BRANDS", null));
+        api.MapGet("/reference-data/categories/{externalId}/attributes", (string externalId, Guid connectionId, HttpContext http, IReferenceDataService service) => Reference(http, service, connectionId, "CATEGORY_ATTRIBUTES", externalId)).Produces<ReferenceDataView>();
+        api.MapGet("/reference-data/categories/{categoryId}/attributes/{attributeId}/values", (string categoryId, string attributeId, Guid connectionId, HttpContext http, IReferenceDataService service) => Reference(http, service, connectionId, "ATTRIBUTE_VALUES", $"{categoryId}/{attributeId}")).Produces<ReferenceDataView>();
+        api.MapGet("/reference-data/brands", (Guid connectionId, HttpContext http, IReferenceDataService service) => Reference(http, service, connectionId, "BRANDS", null)).Produces<ReferenceDataView>();
         // A brand list can hold 800k rows: the panel reads its size and age, searches it and resolves saved ids instead.
         api.MapGet("/reference-data/brands/summary", async (Guid connectionId, HttpContext http, IReferenceDataService service) =>
             Tenant(http) is { } tenant ? Result(await service.BrandSummaryAsync(tenant.TenantId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<ReferenceSliceView>();
@@ -353,16 +353,17 @@ public static class CatalogEndpoints
         {
             var routeType = type;
             api.MapGet($"/mappings/{routeType}", async (Guid connectionId, string? scopeExternalId, HttpContext http, IReferenceDataService service) =>
-                Tenant(http) is { } tenant ? Result(await service.ListMappingsAsync(tenant.TenantId, routeType, connectionId, scopeExternalId, http.RequestAborted), Results.Ok) : Unauthorized(http));
+                Tenant(http) is { } tenant ? Result(await service.ListMappingsAsync(tenant.TenantId, routeType, connectionId, scopeExternalId, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<IReadOnlyList<CatalogMappingView>>();
+            // The local record's mapping, or the JSON null when it has none (MappingOrNull).
             api.MapGet($"/mappings/{routeType}/{{localId:guid}}", async (Guid localId, Guid connectionId, string? scopeExternalId, string? externalId, HttpContext http, IReferenceDataService service) =>
-                Tenant(http) is { } tenant ? Result(await service.GetMappingAsync(tenant.TenantId, routeType, localId, connectionId, scopeExternalId, externalId, http.RequestAborted), MappingOrNull) : Unauthorized(http));
+                Tenant(http) is { } tenant ? Result(await service.GetMappingAsync(tenant.TenantId, routeType, localId, connectionId, scopeExternalId, externalId, http.RequestAborted), MappingOrNull) : Unauthorized(http)).ProducesOneOf(StatusCodes.Status200OK, typeof(CatalogMappingView), null);
             api.MapPut($"/mappings/{routeType}/{{localId:guid}}", async (Guid localId, UpsertCatalogMappingCommand command, HttpContext http, IReferenceDataService service) =>
             {
                 if (Tenant(http) is not { } tenant) return Unauthorized(http); var expected = OptionalIfMatch(http, out var malformed); if (malformed is not null) return malformed;
                 return WithEtag(http, await service.UpsertMappingAsync(tenant.TenantId, routeType, localId, expected, command, http.RequestAborted), x => x.Version);
-            });
+            }).Produces<CatalogMappingView>();
             api.MapDelete($"/mappings/{routeType}/{{localId:guid}}", async (Guid localId, Guid connectionId, string? scopeExternalId, string? externalId, HttpContext http, IReferenceDataService service) =>
-                Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? Result(await service.DeleteMappingAsync(tenant.TenantId, routeType, localId, connectionId, scopeExternalId, externalId, version, http.RequestAborted), Results.Ok) : failure!) : Unauthorized(http));
+                Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? Result(await service.DeleteMappingAsync(tenant.TenantId, routeType, localId, connectionId, scopeExternalId, externalId, version, http.RequestAborted), Results.Ok) : failure!) : Unauthorized(http)).Produces<bool>();
         }
     }
 

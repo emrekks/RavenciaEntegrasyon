@@ -36,12 +36,12 @@ public static class OffsiteBackupEndpoints
     {
         var group = endpoints.MapGroup("/api/v1/settings/offsite-backup").WithGates(ApiGate.Elevated, ApiGate.Owner);
         group.MapGet("", GetAsync).Produces<OffsiteBackupSettingsView>();
-        group.MapPut("", SaveAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).IfMatch(required: false);
-        group.MapPost("/google/authorize", AuthorizeAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
-        group.MapPost("/google/complete", CompleteAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
-        group.MapPost("/google/disconnect", DisconnectAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
+        group.MapPut("", SaveAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).IfMatch(required: false).Produces<OffsiteBackupSettingsView>();
+        group.MapPost("/google/authorize", AuthorizeAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Produces<OffsiteBackupAuthorizationView>();
+        group.MapPost("/google/complete", CompleteAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Produces<OffsiteBackupSettingsView>();
+        group.MapPost("/google/disconnect", DisconnectAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Produces<OffsiteBackupSettingsView>();
         group.MapPost("/test", TestAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).RequireGate(ApiGate.Elevated);
-        group.MapPost("/run", RunAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).RequireGate(ApiGate.Elevated);
+        group.MapPost("/run", RunAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).RequireGate(ApiGate.Elevated).Produces<OffsiteBackupRunRequestedView>(StatusCodes.Status202Accepted);
         return endpoints;
     }
 

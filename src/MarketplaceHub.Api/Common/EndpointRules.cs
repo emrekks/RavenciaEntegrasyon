@@ -79,8 +79,32 @@ public sealed class LiveMarketplaceReadMetadata
     private LiveMarketplaceReadMetadata() { }
 }
 
+/// <summary>
+/// Endpoint metadata (documentation only): the success answer of <see cref="Status"/> is one of several shapes, each a
+/// named type or, for a null entry, the JSON null. The document writes it as a oneOf of the shapes.
+/// </summary>
+public sealed class ResponseAlternatives(int status, IReadOnlyList<Type?> types)
+{
+    public int Status { get; } = status;
+    public IReadOnlyList<Type?> Types { get; } = types;
+}
+
 public static class EndpointRules
 {
+    /// <summary>
+    /// Declares a success answer that is one of several shapes (a null entry: the JSON null). The first non-null type is
+    /// also declared the usual way, so the document generates its schema; the rest are added by OpenApiOperationContract.
+    /// </summary>
+    public static RouteHandlerBuilder ProducesOneOf(this RouteHandlerBuilder builder, int status, params Type?[] types) =>
+        builder.Produces(status, types.First(type => type is not null)).WithMetadata(new ResponseAlternatives(status, types));
+
+    /// <summary>
+    /// Declares a file answer: its body is the bytes of one of <paramref name="mediaTypes"/> (a string with format
+    /// binary in the document), not JSON.
+    /// </summary>
+    public static RouteHandlerBuilder ProducesFile(this RouteHandlerBuilder builder, string mediaType, params string[] mediaTypes) =>
+        builder.Produces<Stream>(StatusCodes.Status200OK, mediaType, mediaTypes);
+
     /// <summary>The gate this endpoint's callers must pass. It wins over a group's <see cref="WithGates{TBuilder}"/> default.</summary>
     public static TBuilder RequireGate<TBuilder>(this TBuilder builder, ApiGate gate) where TBuilder : IEndpointConventionBuilder =>
         builder.WithMetadata(RequiredGate.For(gate));

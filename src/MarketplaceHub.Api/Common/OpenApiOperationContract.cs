@@ -14,7 +14,7 @@ public sealed class OpenApiOperationContract : IOpenApiOperationTransformer
 {
     public const string ProblemSchema = "ApiProblem";
 
-    public Task TransformAsync(OpenApiOperation operation, OpenApiOperationTransformerContext context, CancellationToken cancellationToken)
+    public async Task TransformAsync(OpenApiOperation operation, OpenApiOperationTransformerContext context, CancellationToken cancellationToken)
     {
         var description = context.Description;
         var method = (description.HttpMethod ?? "GET").ToUpperInvariant();
@@ -47,6 +47,8 @@ public sealed class OpenApiOperationContract : IOpenApiOperationTransformer
                 ? "The version read (\"v{version}\", the ETag of the read). Required: 428 PRECONDITION_REQUIRED without it."
                 : "The version read (\"v{version}\"); without it the write does not check the version, unless the service requires one once a value is stored.");
         Paging.Describe(operation, path);
+        foreach (var alternatives in metadata.OfType<ResponseAlternatives>())
+            await DescribeAlternativesAsync(operation, context, alternatives, cancellationToken);
 
         // Every operation answers its errors in the ApiProblem shape; which statuses it can give follows its gate, its
         // route values and the headers it reads. A session-less write meets the role gate first (403, as the route table
@@ -65,7 +67,27 @@ public sealed class OpenApiOperationContract : IOpenApiOperationTransformer
         operation.Responses ??= [];
         foreach (var status in statuses)
             if (!operation.Responses.ContainsKey(status)) operation.Responses[status] = new OpenApiResponseReference(ProblemResponseNames[status], context.Document);
-        return Task.CompletedTask;
+    }
+
+    // A success answer of several shapes (EndpointRules.ProducesOneOf): its JSON schema becomes a oneOf of the first
+    // shape (already generated), the other named shapes (generated here and kept as components) and the JSON null.
+    private static async Task DescribeAlternativesAsync(OpenApiOperation operation, OpenApiOperationTransformerContext context, ResponseAlternatives alternatives, CancellationToken cancellationToken)
+    {
+        var status = alternatives.Status.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if (operation.Responses?.TryGetValue(status, out var response) != true || response!.Content?.TryGetValue("application/json", out var media) != true || media!.Schema is null) return;
+        var options = new List<IOpenApiSchema>();
+        foreach (var type in alternatives.Types)
+        {
+            if (type is null) { options.Add(new OpenApiSchema { Type = JsonSchemaType.Null }); continue; }
+            if (type == alternatives.Types.First(item => item is not null)) { options.Add(media.Schema); continue; }
+            var document = context.Document!;
+            document.Components ??= new OpenApiComponents();
+            document.Components.Schemas ??= new Dictionary<string, IOpenApiSchema>(StringComparer.Ordinal);
+            if (!document.Components.Schemas.ContainsKey(type.Name))
+                document.Components.Schemas[type.Name] = await context.GetOrCreateSchemaAsync(type, null, cancellationToken);
+            options.Add(new OpenApiSchemaReference(type.Name, document));
+        }
+        media.Schema = new OpenApiSchema { OneOf = options };
     }
 
     private static readonly Dictionary<string, (string Name, string Description)> ProblemResponseTable = new(StringComparer.Ordinal)

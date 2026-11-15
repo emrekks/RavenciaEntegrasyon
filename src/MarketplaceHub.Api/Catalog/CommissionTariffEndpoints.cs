@@ -14,14 +14,16 @@ internal static class CommissionTariffEndpoints
     {
         api.MapGet("/connections/{connectionId:guid}/commission-tariffs", ListAsync).Produces<IReadOnlyList<CommissionTariffView>>();
         api.MapPost("/connections/{connectionId:guid}/commission-tariffs", UploadAsync).DisableAntiforgery().RequireIdempotencyKey().Produces<CommissionTariffUploadResult>();
-        api.MapGet("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/rows", RowsAsync);
+        // The long form, or with shape=compact the short one (CommissionTariffCompactRows).
+        api.MapGet("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/rows", RowsAsync)
+            .ProducesOneOf(StatusCodes.Status200OK, typeof(CommissionTariffRowPage), typeof(CommissionTariffCompactRowPage));
         api.MapDelete("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}", DeleteAsync).Produces<bool>();
         // The days a tariff is valid for, picked by the seller (operational roles, as the upload and delete).
         api.MapPut("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/period", UpdatePeriodAsync).Produces<IReadOnlyList<CommissionTariffView>>();
         api.MapGet("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/facets", FacetsAsync).Produces<CommissionTariffFacets>();
         // The seller's band picks as an Excel file. It writes nothing; as a POST under /connections it takes the operational
         // roles, as the upload does.
-        api.MapPost("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/export", ExportAsync);
+        api.MapPost("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/export", ExportAsync).ProducesFile(ProductTransferEndpoints.XlsxMediaType);
         // The seller's saved picks: read by every role, replaced (PUT, the operational roles) after each change on the page.
         api.MapGet("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/selection", SelectionAsync).Produces<CommissionTariffSelectionView>();
         api.MapPut("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/selection", SaveSelectionAsync).Produces<CommissionTariffSelectionView>();

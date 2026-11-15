@@ -86,3 +86,91 @@ public sealed record TenantUserView(
     DateTimeOffset CreatedAt,
     int OpenSessions,
     bool Self);
+
+// Round 5 (API-GUVENLIK-8): the remaining anonymous success answers the document now names. Each has the handler's
+// members in its order; ApiResponseSchemaTests re-serializes a real answer through it, or, for an answer that is a
+// fixed literal the test host cannot reach, ApiResponseShapeLiteralTests compares it with the handler's literal.
+
+/// <summary>POST /auth/mfa/setup: the authenticator to scan (one-time secret: never logged or stored in clear).</summary>
+public sealed record MfaSetupView(string OtpauthUri, string Secret, string QrSvg, DateTimeOffset ExpiresAt);
+
+/// <summary>POST /auth/mfa/confirm and /auth/recovery-codes/regenerate: the new one-time recovery codes.</summary>
+public sealed record RecoveryCodesView(IReadOnlyList<string> RecoveryCodes);
+
+/// <summary>POST /catalog/variant-codes/taken: the asked codes the catalog already holds.</summary>
+public sealed record TakenVariantCodesView(IReadOnlyList<MarketplaceHub.Infrastructure.Persistence.VariantCodeAvailability.TakenVariantCode> Items);
+
+/// <summary>201 of POST /files/product-media: the stored picture's media row.</summary>
+public sealed record ProductMediaView(Guid Id, Guid ProductId, Guid? VariantId, Guid FileAssetId, string MediaRole, int SortOrder, string? AltText, string Status);
+
+/// <summary>201 of POST /files/product-media-url: the linked picture's media row with its address.</summary>
+public sealed record ProductMediaUrlView(Guid Id, Guid ProductId, Guid? VariantId, Guid FileAssetId, string Url, string MediaRole, int SortOrder, string? AltText, string Status);
+
+/// <summary>201 of POST /files/return-evidence: the stored evidence file.</summary>
+public sealed record ReturnEvidenceView(Guid Id, string MimeType, long SizeBytes, string Sha256);
+
+/// <summary>PUT /files/product-media-reconcile.</summary>
+public sealed record ProductMediaReconciledView(Guid ProductId, Guid? VariantId, int MediaCount);
+
+/// <summary>PUT /files/product-media-family-reorder.</summary>
+public sealed record ProductFamilyMediaReorderedView(int ChangedProductCount, int ChangedGalleryCount);
+
+/// <summary>DELETE /files/product-media-items.</summary>
+public sealed record ProductMediaDeletedView(int DeletedCount);
+
+/// <summary>DELETE /files/product-media-item: the product's new version and every family card's.</summary>
+public sealed record ProductMediaItemDeletedView(int DeletedCount, long Version, IReadOnlyDictionary<string, long> ProductVersions);
+
+/// <summary>202 of POST /questions/sync.</summary>
+public sealed record QuestionSyncQueuedView(IReadOnlyList<Guid> Jobs, int QueuedConnections, int SkippedConnections);
+
+/// <summary>POST /notifications: { saved }.</summary>
+public sealed record NotificationsSavedView(int Saved);
+
+/// <summary>GET /settings/ai/usage.</summary>
+public sealed record AiUsageView(IReadOnlyList<MarketplaceHub.Infrastructure.Ai.AiUsageLogView> Items);
+
+/// <summary>PUT /products/{id}/size-chart: the chart picture's address, null when cleared.</summary>
+public sealed record SizeChartMarkedView(string? SizeChartUrl);
+
+/// <summary>POST /settings/users/{id}/password-reset (one-time secret).</summary>
+public sealed record TemporaryPasswordView(string TemporaryPassword);
+
+/// <summary>POST /settings/users/{id}/sessions/revoke.</summary>
+public sealed record SessionsRevokedView(int Revoked);
+
+/// <summary>POST /settings/offsite-backup/google/authorize: Google's consent address (carries a one-time state).</summary>
+public sealed record OffsiteBackupAuthorizationView(string Url);
+
+/// <summary>202 of POST /settings/offsite-backup/run: { requested: true }.</summary>
+public sealed record OffsiteBackupRunRequestedView(bool Requested);
+
+/// <summary>PUT /invoice-workspace/hidden.</summary>
+public sealed record InvoiceWorkspaceHiddenView(bool Hidden, int UpdatedCount, int HiddenCount);
+
+/// <summary>PUT /invoice-workspace/manual-status.</summary>
+public sealed record InvoiceWorkspaceManualStatusView(string Status, int UpdatedCount, int ReopenedCount);
+
+/// <summary>POST /invoice-workspace/manual-documents: the order's current manual document (duplicate: the same request again).</summary>
+public sealed record ManualInvoiceDocumentView(Guid Id, string DocumentType, string DocumentUrl, string? InvoiceNumber, string Status, bool Duplicate);
+
+/// <summary>202 of POST /invoice-workspace/manual-documents/{id}/delivery-jobs: the queued (or still running) deliveries.</summary>
+public sealed record ManualInvoiceDeliveryQueuedView(Guid DocumentId, IReadOnlyList<Guid> JobIds, int QueuedPackageCount, int InspectionOnlyPackageCount);
+
+/// <summary>200 of POST /invoice-workspace/manual-documents/{id}/delivery-jobs: every package already confirmed, nothing queued.</summary>
+public sealed record ManualInvoiceDeliveryConfirmedView(Guid DocumentId, IReadOnlyList<Guid> JobIds, string Message);
+
+/// <summary>POST /invoices/{id}/documents/manual: 201 with the stored document, 200 (duplicate) when the same file was stored before.</summary>
+public sealed record InvoiceDocumentUploadView(Guid Id, string DocumentType, string Sha256, DateTimeOffset CreatedAt, bool Duplicate);
+
+/// <summary>PUT /invoices/{id}/shopify-status: the package's manual invoice state as the panel shows it.</summary>
+public sealed record ShopifyInvoiceStatusView(Guid Id, string Status, long Version);
+
+/// <summary>POST /invoice-workspace/orders/{orderId}/confirm-no-remote-invoice and confirm-marketplace-delivered: { confirmed: true }.</summary>
+public sealed record InvoiceConfirmedView(bool Confirmed);
+
+/// <summary>POST /invoice-workspace/orders/{orderId}/replace-cancelled-invoice: { replaced: true }.</summary>
+public sealed record InvoiceReplacedView(bool Replaced);
+
+/// <summary>A webhook delivered to the connection's base address: { accepted: true }.</summary>
+public sealed record WebhookAcceptedView(bool Accepted);
