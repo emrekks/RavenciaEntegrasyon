@@ -1955,6 +1955,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
     [PostgreSqlFact]
     public async Task JobLease_IsExclusive_WhenTwoWorkersRace()
     {
+        await ClearLeasableJobsLeftByOtherTestsAsync();
         var tenant = NewTenant("lease-tenant");
         var job = NewJob(tenant.Id);
 
@@ -1996,6 +1997,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
     [PostgreSqlFact]
     public async Task JobLease_AllPriorityLanes_HandleNullOptionalFilters()
     {
+        await ClearLeasableJobsLeftByOtherTestsAsync();
         var tenant = NewTenant("lease-priority-lanes");
         var initialSyncJob = NewJob(tenant.Id);
         initialSyncJob.Priority = -1;
@@ -2045,6 +2047,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
     [PostgreSqlFact]
     public async Task JobLease_HotLaneSelectsOldestSamePriorityHepsiburadaLifecycleBeforeTrendyolOrders()
     {
+        await ClearLeasableJobsLeftByOtherTestsAsync();
         var tenant = NewTenant("lease-fifo-same-priority");
         var hepsiburadaLifecycle = NewJob(tenant.Id);
         hepsiburadaLifecycle.JobType = MarketplaceJobTypes.HepsiburadaOrderStatusSync;
@@ -2083,6 +2086,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
     [PostgreSqlFact]
     public async Task JobLease_SkipsJobsWhoseConnectionLockGroupIsAlreadyRunning()
     {
+        await ClearLeasableJobsLeftByOtherTestsAsync();
         var tenant = NewTenant("lease-lock-group");
         var busyConnectionId = Guid.CreateVersion7();
         var freeConnectionId = Guid.CreateVersion7();
@@ -3916,6 +3920,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
     [PostgreSqlFact]
     public async Task JobLease_SkipsAConnectionLockGroupThatHitAQuotaUntilItsBackoffEnds()
     {
+        await ClearLeasableJobsLeftByOtherTestsAsync();
         var tenant = NewTenant("lease-quota-backoff");
         var connectionId = Guid.CreateVersion7();
         var limitedRead = NewJob(tenant.Id);
@@ -3974,6 +3979,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
     [PostgreSqlFact]
     public async Task JobLease_PrefersTheTenantWithFewerRunningJobsWithinOnePriority()
     {
+        await ClearLeasableJobsLeftByOtherTestsAsync();
         var busyTenant = NewTenant("lease-fair-busy");
         var quietTenant = NewTenant("lease-fair-quiet");
         var running = NewJob(busyTenant.Id);
@@ -4024,6 +4030,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
     [PostgreSqlFact]
     public async Task JobLease_KeepsFairnessWhenOneTenantQueuedMoreOlderJobsThanTheCandidateLimit()
     {
+        await ClearLeasableJobsLeftByOtherTestsAsync();
         var busyTenant = NewTenant("lease-fair-flood");
         var quietTenant = NewTenant("lease-fair-flood-quiet");
         var running = NewJob(busyTenant.Id);
@@ -9986,6 +9993,17 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         CreatedAt = DateTimeOffset.UtcNow,
         ExpiresAt = DateTimeOffset.UtcNow.AddHours(1)
     };
+
+    // The lease tests lease without a job filter, and the lease takes a pending job of any tenant: a job another test
+    // class left queued would be leased in place of the test's own. Before seeding, those leasable leftovers are removed
+    // (attempts and results go with them); the postgres-integration collection runs one class at a time, so no running
+    // test owns them.
+    private async Task ClearLeasableJobsLeftByOtherTestsAsync()
+    {
+        await using var db = fixture.CreateContext();
+        var horizon = DateTimeOffset.UtcNow.AddMinutes(10);
+        await db.IntegrationJobs.Where(x => (x.Status == JobStatus.Pending || x.Status == JobStatus.RetryScheduled) && x.AvailableAt <= horizon).ExecuteDeleteAsync();
+    }
 
     private async Task DeleteJobAndTenantAsync(Guid jobId, Guid tenantId)
     {

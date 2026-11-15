@@ -12,8 +12,23 @@ namespace MarketplaceHub.Application.Tests;
 // contentIds and variantIds and stopped with PRODUCT_APPROVAL_IDENTITY_CONFLICT. Such placeholders now give way to the
 // approved ids; a link that already holds a real Trendyol id still stops for review.
 [Collection("postgres-integration")]
-public sealed class TrendyolPlaceholderLinkApprovalTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
+public sealed class TrendyolPlaceholderLinkApprovalTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>, IAsyncLifetime
 {
+    private static readonly System.Collections.Concurrent.ConcurrentBag<Guid> CreatedTenants = [];
+
+    public Task InitializeAsync() => Task.CompletedTask;
+
+    // The approval jobs these tests queue are removed, so the lease tests of a later class never take one.
+    public async Task DisposeAsync()
+    {
+        var tenantIds = CreatedTenants.ToArray();
+        if (tenantIds.Length == 0) return;
+        await using var db = fixture.CreateContext();
+        await db.JobAttempts.Where(x => tenantIds.Contains(x.TenantId)).ExecuteDeleteAsync();
+        await db.IntegrationJobs.Where(x => tenantIds.Contains(x.TenantId)).ExecuteDeleteAsync();
+        await db.IntegrationOutboxEvents.Where(x => tenantIds.Contains(x.TenantId)).ExecuteDeleteAsync();
+    }
+
     [Fact]
     public void Policy_ReadsOnlyNumbersAsRealTrendyolIds()
     {
@@ -107,6 +122,7 @@ public sealed class TrendyolPlaceholderLinkApprovalTests(PostgreSqlTenantIsolati
         var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "TRENDYOL", Environment = "PRODUCTION", DisplayName = code, ExternalStoreId = $"store-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V2", SettingsJson = "{\"ExternalWritesEnabled\":true}", Version = 1 };
         var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "Bluz", Description = "Penye", Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now };
         var profile = new ChannelListingProfile { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ProductId = product.Id, Enabled = true, DesiredStatus = "LIVE", ActualStatus = "APPROVAL_PENDING" };
+        CreatedTenants.Add(tenant.Id);
         await using var db = fixture.CreateContext();
         db.Tenants.Add(tenant);
         db.PlatformConnections.Add(connection);
