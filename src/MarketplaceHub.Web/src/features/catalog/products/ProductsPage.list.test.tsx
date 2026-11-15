@@ -17,9 +17,11 @@ const listPage = (after: string | null) => ({
     platformStatuses: [{ platform: 'Trendyol', status: 'ACTIVE', matchedVariantCount: 2, variantCount: 2, isChecking: false, platformCode: 'TRENDYOL', missingVariantCount: 0, onSaleVariantCount: 2, offSaleVariantCount: 0, offSaleStockZeroVariantCount: 0 }],
     categoryPath: 'Giyim > Kazak', hasCustomMediaOrder: false
   }],
-  nextCursor: after ? undefined : 'cursor-2', hasMore: !after, totalCount: 2
+  nextCursor: after ? undefined : 'cursor-2', hasMore: !after, totalCount: fixture.totalCount
 })
 const requested: string[] = []
+// The list's total; a test that walks to page 2 raises it so the page is not clamped back to the first.
+const fixture = { totalCount: 2 }
 
 vi.mock('../../../shared/api', async importOriginal => {
   const original = await importOriginal<typeof import('../../../shared/api')>()
@@ -41,6 +43,7 @@ let root: Root
 beforeEach(() => {
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   requested.length = 0
+  fixture.totalCount = 2
   container = document.createElement('div')
   document.body.append(container)
 })
@@ -101,6 +104,31 @@ describe('ProductsPage on the slim list answer', () => {
     act(() => root.unmount())
     const owner = await bulkFieldItem('OWNER')
     expect(owner.disabled).toBe(false)
+  })
+
+  // W6 (scan 2026-11-15) pins today's behaviour: Ürünler keeps its selection across pages on purpose (Siparişler clears
+  // it on every list change, Faturalar on every change but a sort on page 1); a filter or sort change clears it.
+  it('keeps the selection across pages and clears it when the sort changes', async () => {
+    fixture.totalCount = 40
+    await render()
+    const bar = () => container.querySelector('.rr-pbulk .rr-bulk-count')?.textContent ?? ''
+    act(() => container.querySelector<HTMLInputElement>('input[aria-label="Triko Kazak ürün grubunu seç"]')!.click())
+    expect(bar()).toContain('1 ürün kartı seçildi')
+    act(() => container.querySelector<HTMLButtonElement>('.rr-pager button[aria-label="Sonraki"]')!.click())
+    await until(() => nextPageRequests().length > 0 && !container.textContent?.includes('Triko Kazak'))
+    expect(bar()).toContain('1 ürün kartı seçildi')
+    act(() => container.querySelector<HTMLButtonElement>('.rr-pager button[aria-label="Önceki"]')!.click())
+    await until(() => Boolean(container.textContent?.includes('Triko Kazak')))
+    expect(container.querySelector<HTMLInputElement>('input[aria-label="Triko Kazak ürün grubunu seç"]')!.checked).toBe(true)
+
+    const sortField = Array.from(container.querySelectorAll('.rr-fld')).find(field => field.querySelector('small')?.textContent === 'Sıralama')!
+    act(() => sortField.querySelector<HTMLButtonElement>('button.rr-trigger')!.click())
+    act(() => Array.from(document.querySelectorAll<HTMLButtonElement>('[role="radio"]')).find(option => option.getAttribute('aria-checked') === 'false')!.click())
+    const apply = Array.from(container.querySelectorAll<HTMLButtonElement>('.rr-fbtns button')).find(button => button.textContent === 'Filtrele')
+    if (apply && !apply.disabled) act(() => apply.click())
+    await until(() => requested.some(path => path.startsWith('/products?') && path.includes('sort=')))
+    await until(() => Boolean(container.textContent?.includes('Triko Kazak')))
+    expect(container.querySelector<HTMLInputElement>('input[aria-label="Triko Kazak ürün grubunu seç"]')!.checked).toBe(false)
   })
 
   it('reads the next page ahead only after this page, not at once', async () => {
