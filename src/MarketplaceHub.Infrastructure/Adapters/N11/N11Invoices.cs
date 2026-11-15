@@ -101,8 +101,5 @@ public sealed partial class N11HttpClient : IInvoiceMarketplacePort
         && value[3..].All(char.IsAsciiDigit)
         && int.Parse(value[3..7], CultureInfo.InvariantCulture) is >= 2020 and <= 2099;
 
-    private static string? Text(JsonElement element, string property) =>
-        element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString())
-            ? value.GetString()!.Trim()
-            : null;
+    private static string? Text(JsonElement element, string property) => RemoteFields.StringText(element, property);
 }

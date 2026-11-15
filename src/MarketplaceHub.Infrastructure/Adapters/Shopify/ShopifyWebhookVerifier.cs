@@ -121,6 +121,6 @@ public sealed class ShopifyWebhookVerifier(AppDbContext db, IDataProtectionProvi
         catch (FormatException) { return false; }
     }
 
-    private static string? Header(IReadOnlyDictionary<string, string> headers, string name) => headers.FirstOrDefault(x => string.Equals(x.Key, name, StringComparison.OrdinalIgnoreCase)).Value;
+    private static string? Header(IReadOnlyDictionary<string, string> headers, string name) => Webhooks.WebhookAuth.Header(headers, name);
     private sealed record WebhookVerifierPayload(string? Username, string? Password, string? ApiKey, string? ClientSecret);
 }

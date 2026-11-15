@@ -193,17 +193,7 @@ public static class PazaramaQuestionMapper
     // "2023-12-28T09:12:16.333": Turkey time without an offset, stored as UTC.
     public static DateTimeOffset? Instant(string? value) => TurkeyTime.Parse(value);
 
-    private static string? Text(JsonElement element, string property)
-    {
-        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(property, out var value)) return null;
-        var text = value.ValueKind switch
-        {
-            JsonValueKind.String => value.GetString(),
-            JsonValueKind.Number => value.GetRawText(),
-            _ => null
-        };
-        return string.IsNullOrWhiteSpace(text) || text.Trim() == "null" ? null : text.Trim();
-    }
+    private static string? Text(JsonElement element, string property) => RemoteFields.TextOrNullWord(element, property);
 
     private static long? Number(JsonElement element, string property) =>
         element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var number) ? number : null;

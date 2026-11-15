@@ -3,6 +3,7 @@ using System.Net;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using Microsoft.Extensions.Logging;
+using static MarketplaceHub.Infrastructure.Adapters.RemoteFields;
 using ListingSaleState = MarketplaceHub.Domain.ListingSaleState;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Pazarama;
@@ -291,18 +292,6 @@ public static class PazaramaProductMapper
             [variant],
             item.GetRawText(),
             IsPendingApproval: pending);
-    }
-
-    private static string? Text(JsonElement element, string property)
-    {
-        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(property, out var value)) return null;
-        var text = value.ValueKind switch
-        {
-            JsonValueKind.String => value.GetString(),
-            JsonValueKind.Number => value.GetRawText(),
-            _ => null
-        };
-        return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
     }
 
     // Plain number, numeric string or Pazarama's money object {value, ...}.

@@ -86,8 +86,8 @@ internal static class TrendyolErrorMapper
         return code;
     }
 
-    public static AdapterError Configuration() => new(AdapterErrorClass.Authentication, "CONNECTION_CONFIGURATION_UNAVAILABLE", "Bağlantı veya şifreli credential kullanılamıyor.", null, null, null);
-    public static AdapterError WriteClosed() => new(AdapterErrorClass.NotSupported, "EXTERNAL_WRITES_DISABLED", "Global ve connection dış yazma anahtarları kapalı.", null, null, null);
-    public static AdapterError Unsupported(string message) => new(AdapterErrorClass.NotSupported, "CAPABILITY_NOT_VERIFIED", message, null, null, null);
-    public static AdapterError Contract() => new(AdapterErrorClass.ContractViolation, "REMOTE_CONTRACT_INVALID", "Platform yanıtı doğrulanmış sözleşmeyle eşleşmedi.", null, null, null);
+    public static AdapterError Configuration() => AdapterErrors.Configuration();
+    public static AdapterError WriteClosed() => AdapterErrors.WriteClosed();
+    public static AdapterError Unsupported(string message) => AdapterErrors.Unsupported(message);
+    public static AdapterError Contract() => AdapterErrors.Contract();
 }

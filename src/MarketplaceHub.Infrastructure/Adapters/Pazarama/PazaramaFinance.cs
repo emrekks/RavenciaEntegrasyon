@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Text.Json;
 using MarketplaceHub.Application;
+using static MarketplaceHub.Infrastructure.Adapters.RemoteFields;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Pazarama;
 
@@ -92,13 +93,6 @@ public static class PazaramaFinanceMapper
     // both elsewhere: "…Z", "…+03:00") keeps its instant: DateTime.TryParse turned it into the server's local wall
     // clock first, which on the UTC server put it three hours early.
     public static DateTimeOffset? Instant(string? value) => TurkeyTime.Parse(value);
-
-    private static string? Text(JsonElement element, string property)
-    {
-        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(property, out var value)) return null;
-        var text = value.ValueKind switch { JsonValueKind.String => value.GetString(), JsonValueKind.Number => value.GetRawText(), _ => null };
-        return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
-    }
 
     private static decimal? Number(JsonElement element, string property) =>
         element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number) ? number : null;

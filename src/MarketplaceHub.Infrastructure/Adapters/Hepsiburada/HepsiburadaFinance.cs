@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using MarketplaceHub.Application;
+using static MarketplaceHub.Infrastructure.Adapters.RemoteFields;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
 
@@ -82,9 +83,6 @@ public static class HepsiburadaFinanceMapper
         var text = value.ValueKind switch { JsonValueKind.String => value.GetString(), JsonValueKind.Number => value.GetRawText(), _ => null };
         return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
     }
-
-    private static bool? Bool(JsonElement element, string name) =>
-        element.TryGetProperty(name, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False ? value.GetBoolean() : null;
 
     // A time without an offset is Istanbul's.
     internal static DateTimeOffset? Time(JsonElement element, string name)

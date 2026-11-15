@@ -285,17 +285,7 @@ public static class PazaramaReturnMapper
         return null;
     }
 
-    private static string? Text(JsonElement element, string property)
-    {
-        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(property, out var value)) return null;
-        var text = value.ValueKind switch
-        {
-            JsonValueKind.String => value.GetString(),
-            JsonValueKind.Number => value.GetRawText(),
-            _ => null
-        };
-        return string.IsNullOrWhiteSpace(text) || text.Trim() == "null" ? null : text.Trim();
-    }
+    private static string? Text(JsonElement element, string property) => RemoteFields.TextOrNullWord(element, property);
 
     private static long? Number(JsonElement element, string property) =>
         element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var number) ? number : null;
