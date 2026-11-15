@@ -1064,11 +1064,12 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             return ProductRequiredFields.Refusal<ProductView>(createGaps);
 
         var globalAssignments = command.Attributes ?? [];
-        var globalAttributeValidation = await ValidateAttributeValuesAsync(tenantId, globalAssignments, cancellationToken);
+        var createAttributes = await AttributeLookupAsync(tenantId, globalAssignments.Concat(command.Variants.SelectMany(variant => variant.Attributes ?? [])), cancellationToken);
+        var globalAttributeValidation = await ValidateAttributeValuesAsync(tenantId, globalAssignments, cancellationToken, createAttributes);
         if (globalAttributeValidation is not null) return ServiceResult<ProductView>.Fail(globalAttributeValidation.Code, globalAttributeValidation.Message, globalAttributeValidation.Status, globalAttributeValidation.FieldErrors);
         foreach (var variant in command.Variants)
         {
-            var variantAttributeValidation = await ValidateAttributeValuesAsync(tenantId, variant.Attributes ?? [], cancellationToken);
+            var variantAttributeValidation = await ValidateAttributeValuesAsync(tenantId, variant.Attributes ?? [], cancellationToken, createAttributes);
             if (variantAttributeValidation is not null) return ServiceResult<ProductView>.Fail(variantAttributeValidation.Code, variantAttributeValidation.Message, variantAttributeValidation.Status, variantAttributeValidation.FieldErrors);
         }
         var optionValidation = await ValidateVariantOptionsAsync(tenantId, command.CategoryId, command.Variants, cancellationToken);
@@ -1597,9 +1598,10 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         {
             if (variantUpdates.Select(x => x.Id).Distinct().Count() != variantUpdates.Count || variantUpdates.Any(x => !existingVariants.Any(existing => existing.Id == x.Id))) return Invalid<ProductView>("variantUpdates", "Güncellenecek varyant ürün kaydına ait değil.");
             var optionUpdates = variantUpdates.Where(x => x.Options is not null).ToList();
+            var updateAttributes = await AttributeLookupAsync(tenantId, optionUpdates.SelectMany(update => update.Attributes ?? []), cancellationToken);
             foreach (var update in optionUpdates)
             {
-                var attributeValidation = await ValidateAttributeValuesAsync(tenantId, update.Attributes ?? [], cancellationToken);
+                var attributeValidation = await ValidateAttributeValuesAsync(tenantId, update.Attributes ?? [], cancellationToken, updateAttributes);
                 if (attributeValidation is not null) return ServiceResult<ProductView>.Fail(attributeValidation.Code, attributeValidation.Message, attributeValidation.Status, attributeValidation.FieldErrors);
             }
             if (optionUpdates.Count > 0)
@@ -1724,9 +1726,10 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 newColorCards = [.. placement.ColorsWithoutCard.Select(color => (Guid.CreateVersion7(), color))];
             }
             newVariantProductIds = [.. placement.ProductIds.Select((productId, index) => placement.RowColorsWithoutCard[index] is string color ? newColorCards.First(card => card.Color == color).Id : productId)];
+            var newRowAttributes = await AttributeLookupAsync(tenantId, variantsToCreate.SelectMany(variant => variant.Attributes ?? []), cancellationToken);
             foreach (var variant in variantsToCreate)
             {
-                var variantAttributeValidation = await ValidateAttributeValuesAsync(tenantId, variant.Attributes ?? [], cancellationToken);
+                var variantAttributeValidation = await ValidateAttributeValuesAsync(tenantId, variant.Attributes ?? [], cancellationToken, newRowAttributes);
                 if (variantAttributeValidation is not null) return ServiceResult<ProductView>.Fail(variantAttributeValidation.Code, variantAttributeValidation.Message, variantAttributeValidation.Status, variantAttributeValidation.FieldErrors);
             }
             var optionValidation = await ValidateVariantOptionsAsync(tenantId, command.CategoryId, variantsToCreate, cancellationToken);
@@ -3233,11 +3236,30 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         return null;
     }
 
-    private async Task<ServiceError?> ValidateAttributeValuesAsync(Guid tenantId, IReadOnlyList<ProductAttributeCommand> assignments, CancellationToken cancellationToken)
+    // KATALOG-9: the attribute definitions and selection values a save names, read once for all its rows (two queries)
+    // instead of once per row and once per value.
+    private sealed record AttributeLookup(Dictionary<Guid, AttributeDefinition> Definitions, HashSet<(Guid AttributeId, Guid ValueId)> Values);
+
+    private async Task<AttributeLookup> AttributeLookupAsync(Guid tenantId, IEnumerable<ProductAttributeCommand> assignments, CancellationToken cancellationToken)
     {
+        var all = assignments.ToList();
+        var ids = all.Select(x => x.AttributeId).Distinct().ToArray();
+        var valueIds = all.Where(x => x.ValueId is not null).Select(x => x.ValueId!.Value).Distinct().ToArray();
+        var definitions = ids.Length == 0 ? [] : await db.AttributeDefinitions.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.Id) && x.IsActive).ToDictionaryAsync(x => x.Id, cancellationToken);
+        var values = valueIds.Length == 0
+            ? []
+            : (await db.AttributeValues.AsNoTracking().Where(x => x.TenantId == tenantId && valueIds.Contains(x.Id) && x.IsActive).Select(x => new { x.AttributeId, x.Id }).ToListAsync(cancellationToken))
+                .Select(x => (x.AttributeId, x.Id)).ToHashSet();
+        return new(definitions, values);
+    }
+
+    private async Task<ServiceError?> ValidateAttributeValuesAsync(Guid tenantId, IReadOnlyList<ProductAttributeCommand> assignments, CancellationToken cancellationToken, AttributeLookup? lookup = null)
+    {
+        if (assignments.Count == 0) return null;
+        lookup ??= await AttributeLookupAsync(tenantId, assignments, cancellationToken);
         var ids = assignments.Select(x => x.AttributeId).Distinct().ToArray();
-        var definitions = await db.AttributeDefinitions.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.Id) && x.IsActive).ToDictionaryAsync(x => x.Id, cancellationToken);
-        if (definitions.Count != ids.Length) return new("ATTRIBUTE_INVALID", "Etkin olmayan veya bulunmayan ürün özelliği var.", 422, new Dictionary<string, string[]> { ["attributes"] = ["Tüm özellikler etkin ve aynı tenant içinde olmalıdır."] });
+        var definitions = lookup.Definitions;
+        if (ids.Any(id => !definitions.ContainsKey(id))) return new("ATTRIBUTE_INVALID", "Etkin olmayan veya bulunmayan ürün özelliği var.", 422, new Dictionary<string, string[]> { ["attributes"] = ["Tüm özellikler etkin ve aynı tenant içinde olmalıdır."] });
         foreach (var group in assignments.GroupBy(x => x.AttributeId))
         {
             var definition = definitions[group.Key];
@@ -3253,7 +3275,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             var definition = definitions[assignment.AttributeId];
             var typeMatches = definition.DataType switch { AttributeDataType.Text => textValue is not null, AttributeDataType.Number => assignment.NumberValue is not null, AttributeDataType.Boolean => assignment.BooleanValue is not null, AttributeDataType.SingleSelect or AttributeDataType.MultiSelect => assignment.ValueId is not null, _ => false };
             if (!typeMatches) return new("ATTRIBUTE_TYPE_MISMATCH", "Özellik değeri tanımlı veri tipiyle eşleşmiyor.", 422);
-            if (assignment.ValueId is Guid valueId && !await db.AttributeValues.AnyAsync(x => x.TenantId == tenantId && x.AttributeId == assignment.AttributeId && x.Id == valueId && x.IsActive, cancellationToken)) return new("ATTRIBUTE_VALUE_INVALID", "Seçim değeri özelliğe ait veya etkin değil.", 422);
+            if (assignment.ValueId is Guid valueId && !lookup.Values.Contains((assignment.AttributeId, valueId))) return new("ATTRIBUTE_VALUE_INVALID", "Seçim değeri özelliğe ait veya etkin değil.", 422);
         }
         return null;
     }

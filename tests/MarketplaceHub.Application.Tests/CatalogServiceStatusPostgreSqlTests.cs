@@ -11,6 +11,7 @@ namespace MarketplaceHub.Application.Tests;
 // KATALOG-4: the status a product save asks for is read in any case and an unknown one is refused, never taken as a draft.
 // KATALOG-11: a status-only save that opens a model leaves a colour card missing a required field closed.
 // KATALOG-5: a save that loses the version race is answered 412, not a 500.
+// KATALOG-9: a new card's attribute values are checked without a query per row.
 [Collection("postgres-integration")]
 public sealed class CatalogServiceStatusPostgreSqlTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
@@ -95,6 +96,49 @@ public sealed class CatalogServiceStatusPostgreSqlTests(PostgreSqlTenantIsolatio
         Assert.Equal(("CONCURRENCY_CONFLICT", 412), (result.Error!.Code, result.Error.Status));
         db.ChangeTracker.Clear();
         Assert.Equal("Başka kayıt", (await db.Products.AsNoTracking().SingleAsync(x => x.Id == card.Id)).Description);
+    }
+
+    // KATALOG-9: the attribute values of a new card's rows are checked with the same few queries however many rows it
+    // has (no query per row and value); an unknown value is still refused.
+    [PostgreSqlFact]
+    public async Task ANewCardsAttributeValues_AreCheckedWithoutAQueryPerRow()
+    {
+        await using var setup = fixture.CreateContext();
+        var seed = await SeedAsync(setup);
+        var fabric = new AttributeDefinition { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, Code = $"FABRIC-{Guid.NewGuid():N}", Name = "Kumaş", DataType = AttributeDataType.SingleSelect, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow, Version = 1 };
+        var cotton = new AttributeValue { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, AttributeId = fabric.Id, Value = "Pamuk", NormalizedValue = "PAMUK" };
+        setup.AttributeDefinitions.Add(fabric);
+        setup.AttributeValues.Add(cotton);
+        await setup.SaveChangesAsync();
+
+        async Task<(int Queries, ServiceResult<ProductView> Result)> CreateAsync(int rows, Guid valueId)
+        {
+            var counter = new AttributeValueQueries();
+            await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")).AddInterceptors(counter).Options);
+            var code = $"KV{Guid.NewGuid():N}"[..12];
+            var result = await Service(db).CreateProductAsync(seed.Tenant.Id, new CreateProductCommand("Kadın Siyah Bluz", "Açıklama", seed.BrandId, seed.CategoryId,
+                [.. Enumerable.Range(0, rows).Select(index => new CreateVariantCommand($"{code}-{index}", null, code, Attributes: [new ProductAttributeCommand(fabric.Id, valueId, null, null, null, 0)]))], Status: "DRAFT"), CancellationToken.None);
+            return (counter.Count, result);
+        }
+
+        var two = await CreateAsync(2, cotton.Id);
+        var six = await CreateAsync(6, cotton.Id);
+        Assert.True(two.Result.Succeeded, two.Result.Error?.Message);
+        Assert.True(six.Result.Succeeded, six.Result.Error?.Message);
+        Assert.Equal(two.Queries, six.Queries);
+        var unknown = await CreateAsync(2, Guid.CreateVersion7());
+        Assert.Equal("ATTRIBUTE_VALUE_INVALID", unknown.Result.Error?.Code);
+    }
+
+    private sealed class AttributeValueQueries : Microsoft.EntityFrameworkCore.Diagnostics.DbCommandInterceptor
+    {
+        public int Count { get; private set; }
+
+        public override ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<System.Data.Common.DbDataReader>> ReaderExecutingAsync(System.Data.Common.DbCommand command, Microsoft.EntityFrameworkCore.Diagnostics.CommandEventData eventData, Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<System.Data.Common.DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            if (command.CommandText.Contains("catalog.attribute_values", StringComparison.Ordinal) || command.CommandText.Contains("catalog.attribute_definitions", StringComparison.Ordinal)) Count++;
+            return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
+        }
     }
 
     [PostgreSqlFact]
