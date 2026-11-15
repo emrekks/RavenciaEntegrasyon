@@ -39,28 +39,16 @@
         "RemittanceDate": "2026-11-06",
         "PaymentDate": "2026-11-06",
         "RawJson": "<raw 413 chars sha256:a770d1a9adf9>"
-      },
-      {
-        "OrderItemId": "998878",
-        "OrderNumber": "205512345679",
-        "Commission": 0,
-        "ServiceFee": 0,
-        "AdFee": 0,
-        "CargoPrice": 0,
-        "Discount": 0,
-        "DeductionAmount": 0,
-        "PaymentAmount": 0,
-        "SettlementAmount": 5,
-        "CompletedAt": null,
-        "SettlementDate": "2026-11-05",
-        "RemittanceDate": null,
-        "PaymentDate": null,
-        "RawJson": "<raw 106 chars sha256:683fa4a5bc25>"
       }
     ],
     "Page": 0,
     "PageCount": 1,
     "Status": "ODEME_BEKLENIYOR",
-    "Skipped": []
+    "Skipped": [
+      {
+        "Key": "998878",
+        "Description": "kayıt 998878 (sipariş 205512345679): tutarı yok ya da okunamadı"
+      }
+    ]
   }
 }

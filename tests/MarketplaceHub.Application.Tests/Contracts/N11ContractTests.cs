@@ -113,12 +113,10 @@ public sealed class N11ContractTests
         Assert.Equal(new DateOnly(2026, 11, 5), days.Items[0].SettlementDate);
         Assert.Equal(new DateOnly(2026, 10, 29), days.Items[1].SettlementDate);
         Assert.Equal((1200.50m, 1000.40m), (items.Items[0].PaymentAmount, items.Items[0].SettlementAmount));
-        // DEVIATION: an item that leaves paymentAmount, commission and the fees out is kept with each of them 0
-        // (N11SettlementMapper.Number returns 0 for a missing element) instead of being skipped as unreadable, as the
-        // Trendyol and Hepsiburada finance mappers do.
-        Assert.Equal(2, items.Items.Count);
-        Assert.Equal(0m, items.Items[1].PaymentAmount);
-        Assert.Empty(items.Skipped!);
+        // D6: an item that leaves paymentAmount out is skipped as unreadable (named in Skipped), as the
+        // Trendyol and Hepsiburada finance mappers do, instead of being stored with a made-up 0.
+        Assert.Single(items.Items);
+        Assert.Contains("tutarı", Assert.Single(items.Skipped!).Description);
     }
 
     [Fact]

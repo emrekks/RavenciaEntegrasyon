@@ -56,10 +56,10 @@ public static class N11SettlementMapper
         return new(items, page, PageCount(response.Descendants().FirstOrDefault(x => x.Name.LocalName == "settlementListData")));
     }
 
-    // A line without an order item id or a settlement amount (what n11 pays for it, the payout's figure), or with a
-    // money field that is there but cannot be read, is not stored: it is listed in Skipped and the day's other lines
-    // are kept. The fees and discounts n11 leaves out are 0 (no such fee). The line's day is the settlement day asked
-    // for, so it always has one.
+    // A line without an order item id, a settlement amount (what n11 pays for it, the payout's figure) or a payment
+    // amount, or with a money field that is there but cannot be read, is not stored: it is listed in Skipped and the
+    // day's other lines are kept. The commission rate, fees and discounts n11 leaves out are 0 (no such fee). The line's
+    // day is the settlement day asked for, so it always has one.
     public static RemoteSettlementItemPage Items(XElement response, int page)
     {
         var detail = response.Descendants().FirstOrDefault(x => x.Name.LocalName == "settlementDetail");
@@ -87,7 +87,10 @@ public static class N11SettlementMapper
             var deduction = Read("deductionAmount");
             var payment = Read("paymentAmount");
             var settlement = Read("settlementAmount");
-            var noAmount = unreadable || string.IsNullOrWhiteSpace(N11HttpClient.Child(element, "settlementAmount"));
+            // D6: the line's paid amount is a main figure beside the settlement amount (the payout's sales total and the
+            // commission come from it): a line without it is skipped as the Trendyol and Hepsiburada finance mappers skip
+            // theirs, never stored with a made-up 0.
+            var noAmount = unreadable || new[] { "settlementAmount", "paymentAmount" }.Any(name => string.IsNullOrWhiteSpace(N11HttpClient.Child(element, name)));
             if (id is null || noAmount)
             {
                 skipped.Add(SkippedFinanceRecords.Skip(id, RawJson(element), N11HttpClient.Child(element, "orderNumber"), null, id is null, noAmount, false));

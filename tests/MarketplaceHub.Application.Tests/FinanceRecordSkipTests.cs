@@ -116,9 +116,10 @@ public sealed class FinanceRecordSkipTests
             <GetSettlementDetailResponse xmlns="http://www.n11.com/ws/schemas"><settlementDetail><settlement><status>ODENDI</status></settlement>
               <orderItemSettlementDataList><orderItemSettlements>
                 <orderItemSettlement><orderItemId>1</orderItemId><orderNumber>9001</orderNumber><settlementAmount>80</settlementAmount><paymentAmount>100</paymentAmount></orderItemSettlement>
-                <orderItemSettlement><orderNumber>9002</orderNumber><settlementAmount>80</settlementAmount></orderItemSettlement>
+                <orderItemSettlement><orderNumber>9002</orderNumber><settlementAmount>80</settlementAmount><paymentAmount>100</paymentAmount></orderItemSettlement>
                 <orderItemSettlement><orderItemId>3</orderItemId><orderNumber>9003</orderNumber><paymentAmount>100</paymentAmount></orderItemSettlement>
-                <orderItemSettlement><orderItemId>4</orderItemId><orderNumber>9004</orderNumber><settlementAmount>80</settlementAmount><adFee>1234,50</adFee></orderItemSettlement>
+                <orderItemSettlement><orderItemId>4</orderItemId><orderNumber>9004</orderNumber><settlementAmount>80</settlementAmount><paymentAmount>100</paymentAmount><adFee>1234,50</adFee></orderItemSettlement>
+                <orderItemSettlement><orderItemId>5</orderItemId><orderNumber>9005</orderNumber><settlementAmount>80</settlementAmount></orderItemSettlement>
               </orderItemSettlements><metadata><pageCount>1</pageCount></metadata></orderItemSettlementDataList></settlementDetail>
             </GetSettlementDetailResponse>
             """);
@@ -127,10 +128,12 @@ public sealed class FinanceRecordSkipTests
 
         var line = Assert.Single(page.Items);
         Assert.Equal(("1", 80m, 0m), (line.OrderItemId, line.SettlementAmount, line.Commission));
-        Assert.Equal(3, page.Skipped.Count);
+        Assert.Equal(4, page.Skipped.Count);
         Assert.Contains("kimliksiz kayıt (sipariş 9002): kimliği yok", page.Skipped[0].Description);
         Assert.Equal(("3", "kayıt 3 (sipariş 9003): tutarı yok ya da okunamadı"), (page.Skipped[1].Key, page.Skipped[1].Description));
         Assert.Equal("4", page.Skipped[2].Key);
+        // D6: a line without its paid amount is skipped too, never stored with a sales amount of 0.
+        Assert.Equal(("5", "kayıt 5 (sipariş 9005): tutarı yok ya da okunamadı"), (page.Skipped[3].Key, page.Skipped[3].Description));
     }
 }
 
