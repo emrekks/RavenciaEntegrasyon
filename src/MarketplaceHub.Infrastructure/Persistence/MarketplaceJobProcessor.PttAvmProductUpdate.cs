@@ -26,20 +26,23 @@ public sealed partial class MarketplaceJobProcessor
 
             var effectType = $"{MarketplaceJobTypes.ProductUpdate}:{phase}";
             var effectKey = $"{job.EffectIdempotencyKey}:{phase}";
-            if (await db.ExternalEffectRecords.AnyAsync(x => x.TenantId == tenantId && x.EffectType == effectType && x.IdempotencyKey == effectKey, cancellationToken))
+            // Any record stops the send (open, unresolved or done).
+            if (await effectGuard.ExistsAsync(tenantId, effectType, effectKey, cancellationToken))
                 return await MarkPttAvmUpdate(profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Önceki PttAVM güncelleme çağrısının sonucu kesinleştirilemedi; tekrar gönderim engellendi."), cancellationToken);
-            var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = effectType, IdempotencyKey = effectKey, CreatedAt = timeProvider.GetUtcNow() };
-            db.ExternalEffectRecords.Add(effect); await db.SaveChangesAsync(cancellationToken);
-
-            TrackRequest();
+            var effect = effectGuard.New(tenantId, effectType, effectKey);
             var publication = new ProductUpdatePublication(payload.ProductId, payload.Mode, payload.PayloadHash, payload.UnapprovedPayloadJson, payload.ApprovedContentPayloadJson, payload.ApprovedVariantPayloadJson, payload.ApprovedDeliveryPayloadJson);
-            var submit = await products.UpdateUnapprovedAsync(Context(tenantId, connectionId, correlationId, effectKey), publication, cancellationToken);
-            if (!submit.IsSuccess)
+            var send = await effectGuard.SendAsync(effect, () =>
             {
-                TrackResultFailure(submit.Error);
-                var error = submit.Error!;
-                if (IsAmbiguous(error)) return await MarkPttAvmUpdate(profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "PttAVM güncelleme çağrısının uygulanıp uygulanmadığı kesinleştirilemedi.", error.RemoteRequestId), cancellationToken);
-                db.ExternalEffectRecords.Remove(effect); await db.SaveChangesAsync(cancellationToken);
+                TrackRequest();
+                return products.UpdateUnapprovedAsync(Context(tenantId, connectionId, correlationId, effectKey), publication, cancellationToken);
+            }, cancellationToken);
+            if (!send.Accepted)
+            {
+                TrackResultFailure(send.Error);
+                var error = send.Error;
+                if (send.Outcome == ExternalEffectSendOutcome.Uncertain) return await MarkPttAvmUpdate(profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "PttAVM güncelleme çağrısının uygulanıp uygulanmadığı kesinleştirilemedi.", error.RemoteRequestId), cancellationToken);
+                // The panel's own open circuit is not told apart here: the card shows UPDATE_QUEUED while the job retries.
+                await effectGuard.ReleaseAsync(effect, cancellationToken);
                 if (error.Code == PttAvmProductPayloadRules.DryRunCode)
                     return await MarkPttAvmUpdate(profile, "DRY_RUN", error.Code, JobExecutionResult.Blocked(error.Code, error.SafeMessage), cancellationToken);
                 var failure = JobExecutionResult.FromAdapterError(error);
@@ -47,8 +50,7 @@ public sealed partial class MarketplaceJobProcessor
                 if (error.Code == PttAvmProductPayloadRules.RepeatRequestWaitCode) failure = failure with { BackOffConnection = false };
                 return await MarkPttAvmUpdate(profile, failure.Kind == JobCompletionKind.Retry ? "UPDATE_QUEUED" : "UPDATE_BLOCKED", error.Code, failure, cancellationToken);
             }
-            effect.CompletedAt = timeProvider.GetUtcNow();
-            var operation = submit.Value!;
+            var operation = send.Value;
             var poll = payload with { Phase = "POLL_UNAPPROVED", ExternalOperationId = operation.ExternalOperationId, SubmittedAt = operation.SubmittedAt };
             job.PayloadJson = JsonSerializer.Serialize(poll); job.PayloadHash = Hash(job.PayloadJson);
             profile.ActualStatus = "UPDATE_SUBMITTED"; profile.LastRejectionCode = null; profile.Version++;

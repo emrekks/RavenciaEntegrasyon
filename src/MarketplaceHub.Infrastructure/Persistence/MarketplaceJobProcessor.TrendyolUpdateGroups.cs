@@ -58,17 +58,14 @@ public sealed partial class MarketplaceJobProcessor
         foreach (var card in siblings.Where(card => TrendyolUpdateGroups.IsReady(card.Payload, phase)))
         {
             var key = $"{card.Job.EffectIdempotencyKey}:{phase}";
-            if (await db.ExternalEffectRecords.AnyAsync(x => x.TenantId == tenantId && x.EffectType == effectType && x.IdempotencyKey == key, cancellationToken)) continue;
+            if (await effectGuard.ExistsAsync(tenantId, effectType, key, cancellationToken)) continue;
             if (await ProductUpdateSupersededAsync(tenantId, connectionId, card.Payload, cancellationToken)) continue;
             candidates.Add(card);
         }
         var selected = TrendyolUpdateGroups.Select(candidates.Select(card => (card, UpdatePayload(card.Payload, phase))).ToList());
         if (selected.Count < 2) return null;
 
-        var effects = selected.Select(card => new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = effectType, IdempotencyKey = $"{card.Job.EffectIdempotencyKey}:{phase}", CreatedAt = now }).ToList();
-        db.ExternalEffectRecords.AddRange(effects);
-        await db.SaveChangesAsync(cancellationToken);
-
+        var effects = selected.Select(card => effectGuard.New(tenantId, effectType, $"{card.Job.EffectIdempotencyKey}:{phase}", createdAt: now)).ToList();
         var merged = TrendyolUpdateGroups.Merge(selected.Select(card => UpdatePayload(card.Payload, phase)));
         var publication = new ProductUpdatePublication(payload.ProductId, payload.Mode, payload.PayloadHash,
             phase == "SUBMIT_UNAPPROVED" ? merged : payload.UnapprovedPayloadJson,
@@ -76,27 +73,24 @@ public sealed partial class MarketplaceJobProcessor
             phase == "SUBMIT_VARIANTS" ? merged : payload.ApprovedVariantPayloadJson,
             phase == "SUBMIT_DELIVERY" ? merged : payload.ApprovedDeliveryPayloadJson);
         var context = Context(tenantId, connectionId, correlationId, $"{job.EffectIdempotencyKey}:{phase}");
-        TrackRequest();
-        var submit = phase switch
+        var send = await effectGuard.SendAsync(effects, () =>
         {
-            "SUBMIT_UNAPPROVED" => await products.UpdateUnapprovedAsync(context, publication, cancellationToken),
-            "SUBMIT_CONTENT" => await products.UpdateApprovedContentAsync(context, publication, cancellationToken),
-            "SUBMIT_VARIANTS" => await products.UpdateApprovedVariantsAsync(context, publication, cancellationToken),
-            "SUBMIT_DELIVERY" => await products.UpdateApprovedDeliveryAsync(context, publication, cancellationToken),
-            _ => AdapterResult<RemoteOperationRef>.Failure(new(AdapterErrorClass.ContractViolation, "PRODUCT_UPDATE_PHASE_INVALID", "Ürün güncelleme fazı tanınmıyor.", null, null, null))
-        };
+            TrackRequest();
+            return SendProductUpdatePhaseAsync(phase, context, publication, cancellationToken);
+        }, cancellationToken);
         var others = selected.Skip(1).ToList();
-        if (!submit.IsSuccess)
+        if (!send.Accepted)
         {
-            TrackResultFailure(submit.Error);
-            var error = submit.Error!;
-            if (IsAmbiguous(error))
+            TrackResultFailure(send.Error);
+            var error = send.Error;
+            if (send.Outcome == ExternalEffectSendOutcome.Uncertain)
             {
                 // Every card of the request keeps its effect record: its own run stops it for review, none is sent again.
                 await WakeJobsAsync(others.Select(card => card.Job.Id).ToList(), cancellationToken);
                 return await MarkUpdateResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", $"{selected.Count} kartın ortak ürün güncelleme çağrısının uygulanıp uygulanmadığı kesinleştirilemedi.", error.RemoteRequestId), cancellationToken);
             }
-            db.ExternalEffectRecords.RemoveRange(effects);
+            // The panel's own open circuit is not told apart here: it goes the way of a quota answer (retry, others kept).
+            effectGuard.Release(effects);
             await db.SaveChangesAsync(cancellationToken);
             var failure = JobExecutionResult.FromAdapterError(error);
             // A refusal is every card's; a passing error (quota, a busy service) leaves the others ready for the next send.
@@ -105,9 +99,7 @@ public sealed partial class MarketplaceJobProcessor
             return await MarkUpdateResult(tenantId, connectionId, profile, "UPDATE_BLOCKED", error.Code, failure, cancellationToken);
         }
 
-        var operation = submit.Value!;
-        var completedAt = timeProvider.GetUtcNow();
-        foreach (var effect in effects) effect.CompletedAt = completedAt;
+        var operation = send.Value;
         var shared = new ProductUpdateSharedRequest(TrendyolUpdateGroups.Part(phase), operation.ExternalOperationId, selected.Count, TrendyolUpdateGroups.ItemCount(merged), job.Id);
         var pollPhase = phase.Replace("SUBMIT_", "POLL_", StringComparison.Ordinal);
         var submittedStatus = phase.Replace("SUBMIT_", "UPDATE_", StringComparison.Ordinal) + "_SUBMITTED";
