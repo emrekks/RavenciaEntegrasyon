@@ -208,6 +208,24 @@ describe('Hızlı Arama', () => {
     expect(links.length).toBeGreaterThan(8)
     expect(links.every(link => link.tabIndex >= 0 && link.getAttribute('href'))).toBe(true)
   })
+
+  it('W3: Ctrl+K moves focus into the window, Ctrl+K again keeps it open, and Escape closes it and gives focus back', async () => {
+    server.me = [{ status: 200, body: active }]
+    const { host } = mount()
+    await waitFor(() => shell(host))
+    const behind = host.querySelector<HTMLButtonElement>('button[aria-label="Hızlı aramayı aç"]')!
+    behind.focus()
+    const press = (init: KeyboardEventInit) => act(() => { (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init })) })
+    press({ key: 'k', ctrlKey: true })
+    const dialog = await waitFor(() => document.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]'))
+    await waitFor(() => dialog.contains(document.activeElement))
+    expect(behind).not.toBe(document.activeElement)
+    press({ key: 'k', ctrlKey: true })
+    expect(document.querySelector('[aria-label="Hızlı arama sonuçları"]')).not.toBeNull()
+    press({ key: 'Escape' })
+    expect(document.querySelector('[aria-label="Hızlı arama sonuçları"]')).toBeNull()
+    await waitFor(() => document.activeElement === behind)
+  })
 })
 
 describe('the Bekleyen count on the Siparişler page (W2)', () => {
