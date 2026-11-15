@@ -16,8 +16,10 @@ namespace MarketplaceHub.Application.Tests;
 // names with a record (Common/ResponseShapes.cs), the record re-serialized with the API's options is byte for byte the
 // answer.
 [Collection("postgres-integration")]
-public sealed class ApiResponseSchemaTests(ApiEndToEndFixture fixture) : IClassFixture<ApiEndToEndFixture>
+public sealed partial class ApiResponseSchemaTests(ApiEndToEndFixture fixture) : IClassFixture<ApiEndToEndFixture>
 {
+    // The fixture for the class's other part (ApiResponseSchemaRound5Tests.cs).
+    private ApiEndToEndFixture Fixture => fixture;
 
     // Every endpoint file of the API; each must have at least one probe whose success answer was checked.
     private static readonly string[] EndpointFiles =
@@ -234,19 +236,21 @@ public sealed class ApiResponseSchemaTests(ApiEndToEndFixture fixture) : IClassF
         public List<string> Failures { get; } = [];
         public HashSet<string> CheckedSuccess { get; } = new(StringComparer.Ordinal);
         public List<string> CheckedOperations { get; } = [];
+        public HashSet<string> SucceededOperations { get; } = new(StringComparer.Ordinal);
 
         /// <summary>
         /// Sends the request and checks the answer; returns its JSON (default when it has none). <paramref name="expect"/>
         /// is the status the probe must get (200 by default for a read; null accepts any status the document declares).
         /// </summary>
-        public async Task<JsonElement> ProbeAsync(string file, string method, string path, string? url = null, object? body = null, long? ifMatch = null, int? expect = 200, Type? same = null)
+        public async Task<JsonElement> ProbeAsync(string file, string method, string path, string? url = null, object? body = null, long? ifMatch = null, int? expect = 200, Type? same = null, HttpContent? content = null)
         {
             using var request = new HttpRequestMessage(new HttpMethod(method), url ?? path);
             if (method is not "GET")
             {
                 request.Headers.Add("X-CSRF-TOKEN", Csrf);
                 request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString());
-                if (body is not null) request.Content = JsonContent.Create(body);
+                if (content is not null) request.Content = content;
+                else if (body is not null) request.Content = JsonContent.Create(body);
             }
             if (ifMatch is not null) request.Headers.TryAddWithoutValidation("If-Match", $"\"v{ifMatch}\"");
             using var response = await Client.SendAsync(request);
@@ -280,11 +284,23 @@ public sealed class ApiResponseSchemaTests(ApiEndToEndFixture fixture) : IClassF
             }
             var mediaType = response.Content.Headers.ContentType?.MediaType ?? string.Empty;
             if (!content.TryGetProperty(mediaType, out var media)) { Failures.Add($"{where}: media type {mediaType} is not declared."); return default; }
+            if (mediaType != "application/json" && !mediaType.EndsWith("+json", StringComparison.Ordinal))
+            {
+                // A file or a text: the document must say the body is a string (bytes in format binary, or text).
+                if (!validator.IsStringSchema(media.GetProperty("schema"))) Failures.Add($"{where}: the {mediaType} answer is not declared as a string.");
+                else if (text.Length == 0) Failures.Add($"{where}: the {mediaType} answer is empty.");
+                else
+                {
+                    CheckedOperations.Add(where);
+                    if (status is >= 200 and < 300) { CheckedSuccess.Add(file); SucceededOperations.Add($"{method} {path}"); }
+                }
+                return default;
+            }
             var json = JsonDocument.Parse(text).RootElement.Clone();
             var errors = validator.Validate(json, media.GetProperty("schema"));
             foreach (var error in errors) Failures.Add($"{where}: {error}");
             CheckedOperations.Add(where);
-            if (status is >= 200 and < 300 && errors.Count == 0) CheckedSuccess.Add(file);
+            if (status is >= 200 and < 300 && errors.Count == 0) { CheckedSuccess.Add(file); SucceededOperations.Add($"{method} {path}"); }
             return json;
         }
 
@@ -295,6 +311,7 @@ public sealed class ApiResponseSchemaTests(ApiEndToEndFixture fixture) : IClassF
         public async Task SameJsonAsync(Type type, HttpResponseMessage response)
         {
             var text = await response.Content.ReadAsStringAsync();
+            if (text == "null") return;
             var value = JsonSerializer.Deserialize(text, type, api);
             var again = JsonSerializer.Serialize(value, type, api);
             if (again != text) Failures.Add($"{type.Name}: the record writes {Cut(again)} where the API wrote {Cut(text)}");

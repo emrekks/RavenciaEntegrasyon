@@ -15,10 +15,20 @@ public static class QuestionEndpoints
     public static IEndpointRouteBuilder MapQuestionEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var api = endpoints.MapGroup("/api/v1").WithGates(ApiGate.SignedIn, ApiGate.Operations);
-        api.MapGet("/questions", async (HttpContext http, IMarketplaceQuestionService service, string? kind, string? status, string? platform, Guid? connectionId, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, string? search, int? page, int? limit, string? sort) =>
+        // Unified paging (PagingContract): after, the nextCursor of the previous page, wins over page. The cursor is given
+        // where the order is total: newest and oldest first (ties by id), not UPDATED (ties by the creation time only).
+        api.MapGet("/questions", async (HttpContext http, IMarketplaceQuestionService service, string? kind, string? status, string? platform, Guid? connectionId, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, string? search, int? page, int? limit, string? sort, string? after) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
-            return tenant is null ? MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http) : Results.Ok(await service.ListAsync(tenant.TenantId, new(kind ?? "ALL", status, platform, connectionId, dateFrom, dateTo, search, page ?? 1, limit ?? 50, sort ?? "NEWEST"), http.RequestAborted));
+            if (tenant is null) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
+            var order = sort ?? "NEWEST";
+            var orderIsTotal = !order.Trim().Equals("UPDATED", StringComparison.OrdinalIgnoreCase);
+            OffsetCursor.RefuseWhereOrderIsNotTotal(after, orderIsTotal);
+            // The service brings limit into 1-100; the cursor is cut for that size.
+            var cursorPage = OffsetCursor.PageIndex(after, Math.Clamp(limit ?? 50, 1, 100));
+            var result = await service.ListAsync(tenant.TenantId, new(kind ?? "ALL", status, platform, connectionId, dateFrom, dateTo, search, cursorPage is { } index ? index + 1 : page ?? 1, limit ?? 50, order), http.RequestAborted);
+            var hasMore = (long)result.Page * result.Limit < result.TotalCount;
+            return Results.Ok(result with { HasMore = hasMore, NextCursor = orderIsTotal ? OffsetCursor.Next(result.Page - 1, result.Limit, result.TotalCount) : null });
         }).Produces<MarketplaceQuestionListPage>();
         api.MapGet("/questions/{id:guid}", async (Guid id, HttpContext http, IMarketplaceQuestionService service) =>
         {
@@ -59,7 +69,7 @@ public static class QuestionEndpoints
             }
             if (jobs.Count == 0 && firstError is not null) return MarketplaceHub.Api.Security.ApiProblems.Of(http, firstError);
             return Results.Accepted(value: new { jobs, queuedConnections = jobs.Count, skippedConnections = connections.Count - jobs.Count });
-        }).RequireIdempotencyKey();
+        }).RequireIdempotencyKey().Produces<QuestionSyncQueuedView>(StatusCodes.Status202Accepted);
         api.MapGet("/questions/sync-state", async (HttpContext http, IMarketplaceQuestionService service) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;

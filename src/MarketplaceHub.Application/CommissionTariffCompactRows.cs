@@ -14,9 +14,21 @@ namespace MarketplaceHub.Application;
 //   costs:  null, [stoppage, netVat] over the row's shared [cost, cargo, serviceFee, vatRate], else
 //           [cost, cargo, serviceFee, stoppage, netVat, vatRate]
 // productName# and imageUrl#: the index of the text in strings, or null.
+// The cursor members the long form has (nextCursor, hasMore) follow at the end, as there.
+
+/// <summary>The short form of a tariff row page: { strings, rows, totalCount, page, pageSize, nextCursor, hasMore }.</summary>
+public sealed record CommissionTariffCompactRowPage(IReadOnlyList<string> Strings, IReadOnlyList<object?[]> Rows, int TotalCount, int Page, int PageSize)
+{
+    /// <summary>The cursor of the next page (unified paging), null on the last page or where the order is not total.</summary>
+    public string? NextCursor { get; init; }
+
+    /// <summary>Whether a page follows this one.</summary>
+    public bool HasMore { get; init; }
+}
+
 public static class CommissionTariffCompactRows
 {
-    public static object Of(CommissionTariffRowPage page)
+    public static CommissionTariffCompactRowPage Of(CommissionTariffRowPage page)
     {
         var strings = new List<string>();
         var indexes = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -32,7 +44,7 @@ public static class CommissionTariffCompactRows
             return index;
         }
         var rows = page.Items.Select(row => Row(row, Text)).ToList();
-        return new { strings, rows, totalCount = page.TotalCount, page = page.Page, pageSize = page.PageSize };
+        return new(strings, rows, page.TotalCount, page.Page, page.PageSize) { NextCursor = page.NextCursor, HasMore = page.HasMore };
     }
 
     private static object?[] Row(CommissionTariffRowView row, Func<string?, int?> text)

@@ -35,7 +35,7 @@ public static class NotificationEndpoints
                 item.CreatedAt, Shared: false, item.Read)).ToList();
             var result = await service.SaveAsync(tenant.TenantId, tenant.UserId, items, http.RequestAborted);
             return result.Succeeded ? Results.Ok(new { saved = result.Value }) : Problem(http, result.Error!);
-        });
+        }).Produces<NotificationsSavedView>();
         api.MapPost("/read", async (HttpContext http, IPanelNotificationService service, PanelNotificationSelection selection) =>
             Tenant(http) is { } tenant ? Results.Ok(new { updated = await service.MarkReadAsync(tenant.TenantId, tenant.UserId, selection, http.RequestAborted) }) : Unauthorized(http)).Produces<NotificationsUpdatedView>();
         api.MapPost("/dismiss", async (HttpContext http, IPanelNotificationService service, PanelNotificationSelection selection) =>

@@ -31,6 +31,10 @@ internal sealed class OpenApiSchemaValidator
 
     public JsonElement Operation(string method, string path) => document.GetProperty("paths").GetProperty(path).GetProperty(method.ToLowerInvariant());
 
+    /// <summary>Whether a media type's schema describes a body that is not JSON: a string (a file's bytes, format binary, or text).</summary>
+    public bool IsStringSchema(JsonElement schema) =>
+        Resolve(schema) is { ValueKind: JsonValueKind.Object } resolved && resolved.TryGetProperty("type", out var type) && type.ValueKind == JsonValueKind.String && type.GetString() == "string";
+
     public IReadOnlyList<string> Validate(JsonElement value, JsonElement schema, string at = "$")
     {
         var errors = new List<string>();

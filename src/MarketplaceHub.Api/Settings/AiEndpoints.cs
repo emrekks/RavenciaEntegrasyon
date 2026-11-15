@@ -30,13 +30,13 @@ public static class AiEndpoints
         settings.MapGet("", GetAsync).Produces<AiSettingsView>();
         settings.MapPut("", SaveAsync).Produces<AiSettingsView>().IfMatch(required: false);
         settings.MapPost("/test", TestAsync);
-        settings.MapPost("/skills/{key}/upload", UploadSkillAsync).DisableAntiforgery();
-        settings.MapGet("/usage", UsageAsync);
+        settings.MapPost("/skills/{key}/upload", UploadSkillAsync).DisableAntiforgery().Produces<AiSettingsView>();
+        settings.MapGet("/usage", UsageAsync).Produces<AiUsageView>();
 
         var products = endpoints.MapGroup("/api/v1/products/{id:guid}/size-chart").WithGates(ApiGate.SignedIn, ApiGate.Operations);
         products.MapGet("", GetSizeChartAsync).Produces<SizeChartView>();
         products.MapPost("/generate", GenerateSizeChartAsync).Produces<SizeChartGenerated>();
-        products.MapPut("", MarkSizeChartAsync);
+        products.MapPut("", MarkSizeChartAsync).Produces<SizeChartMarkedView>();
         return endpoints;
     }
 

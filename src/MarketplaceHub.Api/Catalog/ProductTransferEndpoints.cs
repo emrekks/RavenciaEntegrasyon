@@ -12,10 +12,13 @@ internal static class ProductTransferEndpoints
 {
     private const long MultipartOverhead = 128 * 1024;
 
+    /// <summary>The media type of an Excel workbook the API writes.</summary>
+    public const string XlsxMediaType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
     public static RouteGroupBuilder MapProductTransferEndpoints(this RouteGroupBuilder api)
     {
         api.MapGet("/products/transfer/summary", SummaryAsync).Produces<ProductTransferSummaryView>();
-        api.MapGet("/products/transfer/export.xlsx", ExportAsync);
+        api.MapGet("/products/transfer/export.xlsx", ExportAsync).ProducesFile(XlsxMediaType);
         api.MapPost("/products/transfer/import", PreviewAsync).DisableAntiforgery().Produces<ProductTransferImportPreview>();
         api.MapPost("/products/transfer/apply", ApplyAsync).RequireIdempotencyKey().Produces<ProductTransferApplyResult>();
         return api;
