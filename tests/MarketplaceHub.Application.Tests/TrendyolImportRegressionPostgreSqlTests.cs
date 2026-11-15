@@ -881,7 +881,9 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
     public async Task AFailedModel_KeepsTheProductsWatermark_AndTheRunSucceeds()
     {
         var seed = await SeedAsync();
-        var watermark = fixture.Now.AddHours(-3).ToUniversalTime();
+        // timestamptz keeps microseconds; the clock's 100 ns ticks would not come back.
+        var threeHoursAgo = fixture.Now.AddHours(-3).ToUniversalTime();
+        var watermark = new DateTimeOffset(threeHoursAgo.UtcTicks - threeHoursAgo.UtcTicks % 10, TimeSpan.Zero);
         await SeedProductsCursorAsync(seed, watermark);
         var failing = new ConflictOnCardTitled("Haki");
         await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")!).AddInterceptors(failing).Options, fixture.TimeProvider);
