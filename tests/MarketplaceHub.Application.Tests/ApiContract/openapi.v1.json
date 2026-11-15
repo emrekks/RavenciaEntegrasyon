@@ -13514,7 +13514,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderFinanceView"
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
@@ -15704,8 +15711,15 @@
           "required": true
         },
         "responses": {
-          "200": {
-            "description": "OK"
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductPublicationQueuedView"
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
@@ -16125,8 +16139,15 @@
           "required": true
         },
         "responses": {
-          "200": {
-            "description": "OK"
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductUpdateQueuedView"
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
@@ -19247,7 +19268,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiConnectionTestView"
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
@@ -19466,7 +19494,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertEmailTestView"
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
@@ -20124,7 +20159,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffsiteBackupTestView"
+                }
+              }
+            }
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
@@ -22280,6 +22322,25 @@
           }
         }
       },
+      "AiConnectionTestView": {
+        "required": [
+          "ok",
+          "model",
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "model": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
       "AiSettingsView": {
         "required": [
           "apiKeySaved",
@@ -22516,6 +22577,24 @@
           "version": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "AlertEmailTestView": {
+        "required": [
+          "sent",
+          "recipients"
+        ],
+        "type": "object",
+        "properties": {
+          "sent": {
+            "type": "boolean"
+          },
+          "recipients": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -29988,6 +30067,23 @@
           }
         }
       },
+      "OffsiteBackupTestView": {
+        "required": [
+          "ok"
+        ],
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "folderId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "OneTimeInvoiceDeliveryAction": {
         "required": [
           "confirmed",
@@ -30388,6 +30484,32 @@
             "additionalProperties": {
               "type": "integer",
               "format": "int32"
+            }
+          }
+        }
+      },
+      "OrderFinanceView": {
+        "required": [
+          "readAt",
+          "transactions",
+          "commissionInvoices"
+        ],
+        "type": "object",
+        "properties": {
+          "readAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "transactions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RemoteFinanceTransaction"
+            }
+          },
+          "commissionInvoices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RemoteCommissionInvoice"
             }
           }
         }
@@ -34129,6 +34251,25 @@
           }
         }
       },
+      "ProductPublicationQueuedView": {
+        "required": [
+          "jobId",
+          "skippedVariants"
+        ],
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "skippedVariants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicationSkippedVariant"
+            }
+          }
+        }
+      },
       "ProductSummaryView": {
         "required": [
           "totalCount",
@@ -34964,6 +35105,25 @@
           "missingDesiCount": {
             "type": "integer",
             "format": "int32"
+          }
+        }
+      },
+      "ProductUpdateQueuedView": {
+        "required": [
+          "jobId",
+          "notices"
+        ],
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "notices": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -35804,6 +35964,25 @@
           }
         }
       },
+      "PublicationSkippedVariant": {
+        "required": [
+          "sku",
+          "code",
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "sku": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
       "PublicationStatusView": {
         "required": [
           "productId",
@@ -36311,6 +36490,110 @@
           },
           "name": {
             "type": "string"
+          }
+        }
+      },
+      "RemoteCommissionInvoice": {
+        "required": [
+          "orderNumber",
+          "vatAmount"
+        ],
+        "type": "object",
+        "properties": {
+          "orderNumber": {
+            "type": "string"
+          },
+          "invoiceNumber": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "invoiceDate": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "vatAmount": {
+            "type": "number",
+            "format": "double"
+          },
+          "operationStatus": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "RemoteFinanceTransaction": {
+        "required": [
+          "transactionCode",
+          "status",
+          "amount",
+          "allowance",
+          "couponDiscount",
+          "integrationAmount",
+          "cargoDebt",
+          "stoppage",
+          "installments",
+          "transactionDate"
+        ],
+        "type": "object",
+        "properties": {
+          "transactionCode": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number",
+            "format": "double"
+          },
+          "commission": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "allowance": {
+            "type": "number",
+            "format": "double"
+          },
+          "couponDiscount": {
+            "type": "number",
+            "format": "double"
+          },
+          "integrationAmount": {
+            "type": "number",
+            "format": "double"
+          },
+          "cargoDebt": {
+            "type": "number",
+            "format": "double"
+          },
+          "stoppage": {
+            "type": "number",
+            "format": "double"
+          },
+          "installments": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "transactionDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "transferredDate": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
           }
         }
       },
