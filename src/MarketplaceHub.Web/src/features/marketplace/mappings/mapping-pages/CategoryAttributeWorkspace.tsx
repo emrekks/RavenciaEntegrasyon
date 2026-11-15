@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../../../shared/api/api-answer'
 import { CollapsibleLibrary } from '../CollapsibleLibrary'
 import { Fragment, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
@@ -99,7 +100,7 @@ function AttributeCategoryAssignmentModal({ attribute, role, categories, onClose
     const categoriesNow = currentActiveCategories()
     setLoading(true)
     setError('')
-    void Promise.all(categoriesNow.map(async category => [category.id, await hubApi<CategoryRequirementView[]>(`/catalog/categories/${category.id}/attribute-requirements`)] as const))
+    void Promise.all(categoriesNow.map(async category => [category.id, await hubApi<ApiAnswer<'getCatalogCategoriesByIdAttributeRequirements'>>(`/catalog/categories/${category.id}/attribute-requirements`)] as const))
       .then(entries => {
         if (cancelled) return
         const nextRequirements = Object.fromEntries(entries) as Record<string, CategoryRequirementView[]>
@@ -179,7 +180,7 @@ export function PanelAttributeLibraryBuilder({ role, attributes, onNotice }: { r
     try {
       if (!title.trim()) return showFeedback(isOption ? 'Seçenek başlığı girin.' : 'Özellik başlığı girin.', 'error')
       const parsedValues = values
-      const attribute = await hubApi<LocalAttribute>('/catalog/attributes', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ code: attributeCodeForRole(title, role), name: title.trim(), dataType: parsedValues.length ? 'SINGLE_SELECT' : 'TEXT', selectionMode: parsedValues.length ? 'SINGLE' : null, unit: null, values: parsedValues.map((value, index) => ({ value, sortOrder: index })) }) })
+      const attribute = await hubApi<ApiAnswer<'postCatalogAttributes'>>('/catalog/attributes', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ code: attributeCodeForRole(title, role), name: title.trim(), dataType: parsedValues.length ? 'SINGLE_SELECT' : 'TEXT', selectionMode: parsedValues.length ? 'SINGLE' : null, unit: null, values: parsedValues.map((value, index) => ({ value, sortOrder: index })) }) })
       updateCache(attribute); setAddedSignal(value => value + 1); setLibrarySearch(''); setEditingId(attribute.id); setTitle(''); setValues([]); setValueDraft(''); showFeedback(`${attribute.name} panele kaydedildi.`); onNotice(`${attribute.name} panele kaydedildi.`)
     } catch (reason) { showFeedback(reason instanceof Error ? reason.message : 'Kayıt oluşturulamadı.', 'error') }
   }
@@ -194,7 +195,7 @@ export function PanelAttributeLibraryBuilder({ role, attributes, onNotice }: { r
     try {
       const parsedValues = source.split(',').map(value => value.trim()).filter(Boolean)
       if (!parsedValues.length) return showFeedback('Eklenecek değerleri Enter veya Ekle ile girin.', 'error')
-      const attribute = await hubApi<LocalAttribute>(`/catalog/attributes/${attributeId}/values`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify(parsedValues.map((value, index) => ({ value, sortOrder: index }))) })
+      const attribute = await hubApi<ApiAnswer<'postCatalogAttributesByIdValues'>>(`/catalog/attributes/${attributeId}/values`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify(parsedValues.map((value, index) => ({ value, sortOrder: index }))) })
       updateCache(attribute); setNewValues(''); showFeedback('Yeni değerler panele kaydedildi.'); onNotice('Yeni değerler panele kaydedildi.')
     } catch (reason) { showFeedback(reason instanceof Error ? reason.message : 'Değerler kaydedilemedi.', 'error') }
   }
@@ -204,26 +205,26 @@ export function PanelAttributeLibraryBuilder({ role, attributes, onNotice }: { r
     const name = nextName.trim()
     if (!name || name === attribute.name) { setRenamingTitle(null); return }
     try {
-      const saved = await hubApi<LocalAttribute>(`/catalog/attributes/${attribute.id}`, { method: 'PATCH', headers: { 'If-Match': `"v${attribute.version}"` }, body: JSON.stringify({ name }) })
+      const saved = await hubApi<ApiAnswer<'patchCatalogAttributesById'>>(`/catalog/attributes/${attribute.id}`, { method: 'PATCH', headers: { 'If-Match': `"v${attribute.version}"` }, body: JSON.stringify({ name }) })
       updateCache(saved); setRenamingTitle(null); showFeedback(`Başlık “${saved.name}” olarak değiştirildi.`)
     } catch (reason) { showFeedback(reason instanceof Error ? reason.message : 'Başlık değiştirilemedi.', 'error') }
   }
   async function removeAttribute(attribute: LocalAttribute) {
     if (!(await confirm({ title: 'Başlık Kaldırılsın mı?', message: `“${attribute.name}” ve bağlı değerleri kaldırılacak.`, confirmLabel: 'Kaldır', destructive: true }))) return
     try {
-      await hubApi<LocalAttribute>(`/catalog/attributes/${attribute.id}`, { method: 'DELETE', headers: { 'If-Match': `"v${attribute.version}"` } })
+      await hubApi<ApiAnswer<'deleteCatalogAttributesById'>>(`/catalog/attributes/${attribute.id}`, { method: 'DELETE', headers: { 'If-Match': `"v${attribute.version}"` } })
       client.setQueryData<Page<LocalAttribute>>(queryKeys.attributes('mapping-builder'), current => current ? { ...current, items: current.items.filter(item => item.id !== attribute.id) } : current)
       setEditingId(''); showFeedback(`${attribute.name} kaldırıldı.`)
     } catch (reason) { showFeedback(reason instanceof Error ? reason.message : 'Başlık kaldırılamadı.', 'error') }
   }
   async function removeValue(attributeId: string, valueId: string) {
-    try { const attribute = await hubApi<LocalAttribute>(`/catalog/attributes/${attributeId}/values/${valueId}`, { method: 'DELETE' }); updateCache(attribute); setEditingValue(null); showFeedback('Değer kaldırıldı.') } catch (reason) { showFeedback(reason instanceof Error ? reason.message : 'Değer kaldırılamadı.', 'error') }
+    try { const attribute = await hubApi<ApiAnswer<'deleteCatalogAttributesByIdValuesByValueId'>>(`/catalog/attributes/${attributeId}/values/${valueId}`, { method: 'DELETE' }); updateCache(attribute); setEditingValue(null); showFeedback('Değer kaldırıldı.') } catch (reason) { showFeedback(reason instanceof Error ? reason.message : 'Değer kaldırılamadı.', 'error') }
   }
   async function updateValue(attributeId: string, originalId: string, nextValue: string, sortOrder: number) {
     const value = nextValue.trim()
     if (!value) return showFeedback('Değer boş olamaz.', 'error')
     try {
-      const attribute = await hubApi<LocalAttribute>(`/catalog/attributes/${attributeId}/values/${originalId}`, { method: 'PUT', headers: { 'If-Match': `"v${editingAttribute?.version ?? 0}"` }, body: JSON.stringify({ value, sortOrder }) })
+      const attribute = await hubApi<ApiAnswer<'putCatalogAttributesByIdValuesByValueId'>>(`/catalog/attributes/${attributeId}/values/${originalId}`, { method: 'PUT', headers: { 'If-Match': `"v${editingAttribute?.version ?? 0}"` }, body: JSON.stringify({ value, sortOrder }) })
       updateCache(attribute); setEditingValue(null); showFeedback('Değer güncellendi.')
     } catch (reason) { showFeedback(reason instanceof Error ? reason.message : 'Değer güncellenemedi.', 'error') }
   }
@@ -235,7 +236,7 @@ export function PanelAttributeLibraryBuilder({ role, attributes, onNotice }: { r
       return true
     }
     try {
-      const updated = await hubApi<LocalAttribute>(`/catalog/attributes/${attribute.id}/values/order`, { method: 'PUT', headers: { 'If-Match': `"v${attribute.version}"` }, body: JSON.stringify({ valueIds: next.map(value => value.id) }) })
+      const updated = await hubApi<ApiAnswer<'putCatalogAttributesByIdValuesOrder'>>(`/catalog/attributes/${attribute.id}/values/order`, { method: 'PUT', headers: { 'If-Match': `"v${attribute.version}"` }, body: JSON.stringify({ valueIds: next.map(value => value.id) }) })
       updateCache(updated)
       return true
     } catch (reason) { showFeedback(reason instanceof Error ? reason.message : 'Değerler sıralanamadı.', 'error'); return false }
@@ -278,11 +279,11 @@ export function CategoryAttributeWorkspace({ platformCode, connectionId, localCa
     if (localCategoryId && matchedCategories.some(item => item.category.id === localCategoryId)) setAttributeCategoryId(localCategoryId)
   })
   useEffect(() => followLocalCategory(), [localCategoryId, matchedCategoryIds])
-  const categoryRequirements = useQuery({ queryKey: queryKeys.categoryRequirements(attributeCategoryId, 'attribute-workspace'), queryFn: ({ signal }) => hubApi<CategoryRequirementView[]>(`/catalog/categories/${attributeCategoryId}/attribute-requirements`, { signal }), enabled: !!attributeCategoryId })
+  const categoryRequirements = useQuery({ queryKey: queryKeys.categoryRequirements(attributeCategoryId, 'attribute-workspace'), queryFn: ({ signal }) => hubApi<ApiAnswer<'getCatalogCategoriesByIdAttributeRequirements'>>(`/catalog/categories/${attributeCategoryId}/attribute-requirements`, { signal }), enabled: !!attributeCategoryId })
   const categoryMapping = useQuery({ queryKey: queryKeys.categoryMapping(attributeCategoryId, connectionId, 'embedded'), queryFn: ({ signal }) => hubApi<CatalogMapping | null>(`/mappings/categories/${attributeCategoryId}?connectionId=${encodeURIComponent(connectionId)}`, { signal }), enabled: !!attributeCategoryId && !!connectionId, retry: false })
   const categoryScope = categoryMapping.data?.externalId ?? ''
   // Same cache entry as the category mapping card, so the target path rarely costs a request.
-  const categoryReferences = useQuery({ queryKey: queryKeys.referenceCategories(connectionId), queryFn: ({ signal }) => hubApi<ReferenceData>(`/reference-data/categories?connectionId=${encodeURIComponent(connectionId)}`, { signal }), enabled: !!connectionId && !!categoryScope, retry: false, staleTime: 5 * 60_000 })
+  const categoryReferences = useQuery({ queryKey: queryKeys.referenceCategories(connectionId), queryFn: ({ signal }) => hubApi<ApiAnswer<'getReferenceDataCategories'>>(`/reference-data/categories?connectionId=${encodeURIComponent(connectionId)}`, { signal }), enabled: !!connectionId && !!categoryScope, retry: false, staleTime: 5 * 60_000 })
   const targetCategoryPath = cleanMarketplaceCategoryPath(categoryReferences.data?.items.find(item => item.externalId === categoryScope)?.path ?? '') || (categoryScope ? `Kategori no: ${categoryScope}` : '')
   const targetCategoryMapping = matchedCategories.find(item => item.category.id === attributeCategoryId)?.mapping
   const targetCategoryStatus = targetCategoryMapping ? categoryMappingStatus(targetCategoryMapping) : null
@@ -353,11 +354,11 @@ export function CategoryAttributeWorkspace({ platformCode, connectionId, localCa
   // null until the owner folds or opens a group: İsteğe Bağlı then starts folded, unless the open field or a product gap is in it.
   const [collapsedGroupsChoice, setCollapsedGroups] = useState<string[] | null>(null)
   // Same cache entries as the two panels, so the header buttons can show how many items each holds.
-  const attributeDefaults = useQuery({ queryKey: queryKeys.attributeDefaults(connectionId), queryFn: ({ signal }) => hubApi<AttributeDefault[]>(`/connections/${connectionId}/attribute-defaults`, { signal }), retry: false, enabled: !!connectionId && attributeDefaultsPlatforms.has(platformCode) }).data
+  const attributeDefaults = useQuery({ queryKey: queryKeys.attributeDefaults(connectionId), queryFn: ({ signal }) => hubApi<ApiAnswer<'getConnectionsByConnectionIdAttributeDefaults'>>(`/connections/${connectionId}/attribute-defaults`, { signal }), retry: false, enabled: !!connectionId && attributeDefaultsPlatforms.has(platformCode) }).data
   const attributeDefaultsCount = attributeDefaults?.length ?? 0
   // Fields filled from the product itself (Kombin ID = Model Kodu), connection wide.
   const fieldDefaultByExternal = new Map((attributeDefaults ?? []).filter(item => item.sourceField).map(item => [item.externalAttributeId, item]))
-  const mappingConflictData = useQuery({ queryKey: queryKeys.mappingConflicts(connectionId), queryFn: ({ signal }) => hubApi<{ sameCategory?: unknown[]; crossCategory?: unknown[] }>(`/mappings/conflicts?connectionId=${encodeURIComponent(connectionId)}`, { signal }), retry: false, staleTime: 30_000, enabled: !!connectionId }).data
+  const mappingConflictData = useQuery({ queryKey: queryKeys.mappingConflicts(connectionId), queryFn: ({ signal }) => hubApi<ApiAnswer<'getMappingsConflicts'>>(`/mappings/conflicts?connectionId=${encodeURIComponent(connectionId)}`, { signal }), retry: false, staleTime: 30_000, enabled: !!connectionId }).data
   const mappingConflictCount = (mappingConflictData?.sameCategory?.length ?? 0) + (mappingConflictData?.crossCategory?.length ?? 0)
   // Value progress of every mapped field: one read for the whole category (it was one value list per field, 31 requests
   // and 350 KB for Elbise on 7 Nov 2026). A field whose own list is in the cache (opened, saved) counts from that list;
@@ -377,7 +378,7 @@ export function CategoryAttributeWorkspace({ platformCode, connectionId, localCa
     const pending = Promise.all([client.prefetchQuery(list), client.prefetchQuery(saved)])
     return wait && missing ? pending : null
   }
-  const attributeNameHints = useQuery({ queryKey: queryKeys.attributeNameHints(connectionId), queryFn: ({ signal }) => hubApi<Record<string, string[]>>(`/mappings/attribute-name-hints?connectionId=${encodeURIComponent(connectionId)}`, { signal }), retry: false, staleTime: 5 * 60_000, enabled: !!connectionId })
+  const attributeNameHints = useQuery({ queryKey: queryKeys.attributeNameHints(connectionId), queryFn: ({ signal }) => hubApi<ApiAnswer<'getMappingsAttributeNameHints'>>(`/mappings/attribute-name-hints?connectionId=${encodeURIComponent(connectionId)}`, { signal }), retry: false, staleTime: 5 * 60_000, enabled: !!connectionId })
   // Brings over the attribute and value decisions made for the connection's other categories.
   async function matchHeadingsByName() {
     if (!references.data || bulkBusy) return
@@ -454,10 +455,10 @@ export function CategoryAttributeWorkspace({ platformCode, connectionId, localCa
         onNotice(`${missing.length} başlığın değer listesi ${platformLabel} üzerinden alınıyor; bitince değerler eşlenecek…`)
         const jobs = new Map<string, string>()
         await runInBatches(missing, 4, async target => {
-          const job = await hubApi<{ jobId: string }>(`/connections/${connectionId}/reference-sync-jobs?resourceType=ATTRIBUTE_VALUES&parentExternalId=${encodeURIComponent(target.valueScope)}`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' })
+          const job = await hubApi<ApiAnswer<'postConnectionsByConnectionIdReferenceSyncJobs'>>(`/connections/${connectionId}/reference-sync-jobs?resourceType=ATTRIBUTE_VALUES&parentExternalId=${encodeURIComponent(target.valueScope)}`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' })
           jobs.set(target.externalId, job.jobId)
         })
-        await waitForReferenceSyncJobs([...jobs.values()], async jobId => (await hubApi<{ job: { status: string } }>(`/jobs/${jobId}`, { cache: 'no-store' })).job.status)
+        await waitForReferenceSyncJobs([...jobs.values()], async jobId => (await hubApi<ApiAnswer<'getJobsById'>>(`/jobs/${jobId}`, { cache: 'no-store' })).job.status)
         await runInBatches(missing.filter(target => jobs.has(target.externalId)), 4, async target => {
           lists.set(target.externalId, await hubApi<ReferenceData>(valueListUrl(target.externalId)))
         })

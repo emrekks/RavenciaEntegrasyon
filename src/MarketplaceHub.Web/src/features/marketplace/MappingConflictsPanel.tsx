@@ -1,9 +1,10 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 import { TitleHint, useConfirmDialog } from '../../shared/components'
 import { mappingSaveErrorMessage } from './mappings/mapping-refresh'
-import { changeLine, crossConflictAttribute, crossConflictKey, planUnify, scopeAttribute, scopeCategory, scopesNeedingValueList, unifySummary, type Conflict, type ConflictOption, type Conflicts, type UnifyTarget, type ValueList } from './mapping-conflict-unify'
+import { changeLine, crossConflictAttribute, crossConflictKey, planUnify, scopeAttribute, scopeCategory, scopesNeedingValueList, unifySummary, type Conflict, type ConflictOption, type UnifyTarget, type ValueList } from './mapping-conflict-unify'
 import './mapping-conflicts-panel.css'
 import { queryKeys } from '../../shared/api/query-keys'
 
@@ -13,7 +14,7 @@ import { queryKeys } from '../../shared/api/query-keys'
 export function MappingConflictsPanel({ connectionId, platformLabel, onNotice, expanded = false }: { connectionId: string; platformLabel: string; onNotice: (value: string) => void; expanded?: boolean }) {
   const client = useQueryClient()
   const conflictsKey = queryKeys.mappingConflicts(connectionId)
-  const loadConflicts = () => hubApi<Conflicts>(`/mappings/conflicts?connectionId=${encodeURIComponent(connectionId)}`)
+  const loadConflicts = () => hubApi<ApiAnswer<'getMappingsConflicts'>>(`/mappings/conflicts?connectionId=${encodeURIComponent(connectionId)}`)
   // Always read fresh: any mapping save elsewhere on the page can add or clear a conflict.
   const conflicts = useQuery({ queryKey: conflictsKey, queryFn: loadConflicts, retry: false, staleTime: 0, refetchOnWindowFocus: true })
   const [busyKey, setBusyKey] = useState('')

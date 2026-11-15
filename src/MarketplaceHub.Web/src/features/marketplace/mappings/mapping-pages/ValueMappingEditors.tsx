@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../../../shared/api/api-answer'
 import { memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -168,10 +169,10 @@ export function AttributeValueMappingEditor({ connectionId, categoryScope, attri
   const mappings = useQuery({ queryKey: queryKeys.attributeValueMappings(connectionId, valueScope), queryFn: ({ signal }) => hubApi<CatalogMapping[]>(`/mappings/attribute-values?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}`, { signal }), retry: false, enabled: !customPanelColorValues && !marketplaceAllowsFreeText })
   const [suggestionReview, setSuggestionReview] = useState<ValueMappingSuggestion[]>([])
   // Names the panel values carry on the other marketplaces: extra hints for the suggestions.
-  const nameHints = useQuery({ queryKey: queryKeys.marketplaceNameHints(attribute.id, connectionId), queryFn: ({ signal }) => hubApi<{ attributeNames: string[]; valueNames: Record<string, string[]> }>(`/mappings/name-hints?attributeId=${encodeURIComponent(attribute.id)}&connectionId=${encodeURIComponent(connectionId)}`, { signal }), retry: false, staleTime: 5 * 60_000, enabled: !customPanelColorValues && !marketplaceAllowsFreeText })
-  const usedValues = useQuery({ queryKey: queryKeys.attributeUsedValues(attribute.id), queryFn: ({ signal }) => hubApi<string[]>(`/catalog/attributes/${attribute.id}/used-values`, { signal }), retry: false, staleTime: 60_000, enabled: !customPanelColorValues && !marketplaceAllowsFreeText })
-  const sync = useMutation({ mutationFn: () => hubApi<{ jobId: string }>(`/connections/${connectionId}/reference-sync-jobs?resourceType=ATTRIBUTE_VALUES&parentExternalId=${encodeURIComponent(valueScope)}`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' }), onSuccess: result => { setSyncJobId(result.jobId); setNotice(`${platformLabel} değer listesi salt-okunur olarak eşitleniyor…`) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Değer eşitleme başlatılamadı.') })
-  const syncJob = useQuery({ queryKey: queryKeys.referenceValueSyncJob(syncJobId), queryFn: ({ signal }) => hubPoll<{ job: { status: string; lastErrorCode: string | null; lastErrorSummary: string | null } }>(`/jobs/${syncJobId}`, { cache: 'no-store', signal }), enabled: Boolean(syncJobId), refetchInterval: query => referenceSyncJobPollInterval(query.state.data?.job.status, query.state.status === 'error'), refetchIntervalInBackground: true, retry: 1 })
+  const nameHints = useQuery({ queryKey: queryKeys.marketplaceNameHints(attribute.id, connectionId), queryFn: ({ signal }) => hubApi<ApiAnswer<'getMappingsNameHints'>>(`/mappings/name-hints?attributeId=${encodeURIComponent(attribute.id)}&connectionId=${encodeURIComponent(connectionId)}`, { signal }), retry: false, staleTime: 5 * 60_000, enabled: !customPanelColorValues && !marketplaceAllowsFreeText })
+  const usedValues = useQuery({ queryKey: queryKeys.attributeUsedValues(attribute.id), queryFn: ({ signal }) => hubApi<ApiAnswer<'getCatalogAttributesByIdUsedValues'>>(`/catalog/attributes/${attribute.id}/used-values`, { signal }), retry: false, staleTime: 60_000, enabled: !customPanelColorValues && !marketplaceAllowsFreeText })
+  const sync = useMutation({ mutationFn: () => hubApi<ApiAnswer<'postConnectionsByConnectionIdReferenceSyncJobs'>>(`/connections/${connectionId}/reference-sync-jobs?resourceType=ATTRIBUTE_VALUES&parentExternalId=${encodeURIComponent(valueScope)}`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' }), onSuccess: result => { setSyncJobId(result.jobId); setNotice(`${platformLabel} değer listesi salt-okunur olarak eşitleniyor…`) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Değer eşitleme başlatılamadı.') })
+  const syncJob = useQuery({ queryKey: queryKeys.referenceValueSyncJob(syncJobId), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getJobsById'>>(`/jobs/${syncJobId}`, { cache: 'no-store', signal }), enabled: Boolean(syncJobId), refetchInterval: query => referenceSyncJobPollInterval(query.state.data?.job.status, query.state.status === 'error'), refetchIntervalInBackground: true, retry: 1 })
   const syncBusy = sync.isPending || Boolean(syncJobId)
   const startValueSync = sync.mutate
   useEffect(() => {
@@ -311,7 +312,7 @@ export function AttributeValueMappingEditor({ connectionId, categoryScope, attri
     }
     setQuickValueSaving(true)
     try {
-      const updated = await hubApi<LocalAttribute>(`/catalog/attributes/${attribute.id}/values`, {
+      const updated = await hubApi<ApiAnswer<'postCatalogAttributesByIdValues'>>(`/catalog/attributes/${attribute.id}/values`, {
         method: 'POST',
         headers: { 'Idempotency-Key': newIdempotencyKey() },
         body: JSON.stringify(values.map((value, index) => ({ value, sortOrder: localValues.length + index })))
@@ -330,7 +331,7 @@ export function AttributeValueMappingEditor({ connectionId, categoryScope, attri
     setQuickValueSaving(true)
     setNotice('')
     try {
-      const updated = await hubApi<LocalAttribute>(`/catalog/attributes/${attribute.id}/values`, {
+      const updated = await hubApi<ApiAnswer<'postCatalogAttributesByIdValues'>>(`/catalog/attributes/${attribute.id}/values`, {
         method: 'POST',
         headers: { 'Idempotency-Key': newIdempotencyKey() },
         body: JSON.stringify(missingPanelValues.map((value, index) => ({ value, sortOrder: localValues.length + index })))
@@ -350,7 +351,7 @@ export function AttributeValueMappingEditor({ connectionId, categoryScope, attri
     }
     setQuickValueSaving(true)
     try {
-      const updated = await hubApi<LocalAttribute>(`/catalog/attributes/${attribute.id}/values/${valueId}`, {
+      const updated = await hubApi<ApiAnswer<'putCatalogAttributesByIdValuesByValueId'>>(`/catalog/attributes/${attribute.id}/values/${valueId}`, {
         method: 'PUT',
         headers: { 'If-Match': `"v${attribute.version}"` },
         body: JSON.stringify({ value, sortOrder })
@@ -366,7 +367,7 @@ export function AttributeValueMappingEditor({ connectionId, categoryScope, attri
   async function removeQuickValue(valueId: string) {
     setQuickValueSaving(true)
     try {
-      const updated = await hubApi<LocalAttribute>(`/catalog/attributes/${attribute.id}/values/${valueId}`, { method: 'DELETE' })
+      const updated = await hubApi<ApiAnswer<'deleteCatalogAttributesByIdValuesByValueId'>>(`/catalog/attributes/${attribute.id}/values/${valueId}`, { method: 'DELETE' })
       updateAttributeCache(updated)
       await client.invalidateQueries({ queryKey: queryKeys.attributes() })
       setEditingQuickValue(null)
