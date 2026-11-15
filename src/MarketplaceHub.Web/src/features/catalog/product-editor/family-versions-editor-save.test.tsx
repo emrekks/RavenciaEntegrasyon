@@ -2,6 +2,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
+import { settleUntilQuiet } from '../../../test/render'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // WEB-SAYFALAR-2: Kaydet writes the model's shared fields to every colour card. It sends the colour cards' versions as
@@ -73,8 +74,9 @@ afterEach(() => {
   container.remove()
 })
 
-async function settle(rounds = 10) {
-  for (let index = 0; index < rounds; index++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)) })
+// W3: until the page and its requests are quiet, not a fixed number of 10 ms rounds of the heavy editor.
+async function settle() {
+  await settleUntilQuiet(() => fixture.calls.length)
 }
 
 async function open() {
@@ -90,7 +92,7 @@ async function open() {
 async function save() {
   const button = container.querySelector<HTMLButtonElement>('button[data-submit-intent="save"]')!
   await act(async () => { button.form!.requestSubmit(button) })
-  await settle(30)
+  await settle()
 }
 
 const patches = () => fixture.calls.filter(call => call.method === 'PATCH').map(call => call.body as { loadedFamilyVersions: Record<string, number> | null })

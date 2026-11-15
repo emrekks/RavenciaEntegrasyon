@@ -2,12 +2,13 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
+import { settleUntilQuiet } from '../../../test/render'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // A store-specific price changed in "Pazaryerlerine Özel Fiyat" is an unsaved change of the editor.
 const fixture = vi.hoisted(() => {
   const variant = { id: 'v1', version: 1, sku: 'RYP006-S', barcode: 'RYP0060001', modelCode: 'RYP006', optionSignature: '-', status: 'ACTIVE', weight: null, width: null, height: null, length: null, desi: 1, costPrice: null, onHand: 3, available: 3, inventoryVersion: 1, offerId: null, listPrice: 100, salePrice: 90, currency: 'TRY', offerStatus: null, priceVersion: null, offerVersion: null, vatRate: 20, vatInclusion: 'INCLUDED', roundingMode: null, safetyStock: 0, mediaUrls: [], options: {}, attributes: [] }
-  const state = { version: 1, holdWrites: false, description: 'x', patches: [] as Array<{ ifMatch: string | null; body: Record<string, unknown> }> }
+  const state = { version: 1, holdWrites: false, description: 'x', requests: 0, patches: [] as Array<{ ifMatch: string | null; body: Record<string, unknown> }> }
   const product = () => ({ id: 'p1', version: state.version, title: 'Yonca Desen Elbise', description: state.description, brandId: 'b1', categoryId: 'c1', status: 'ACTIVE', updatedAt: '2026-11-01T10:00:00Z', variants: [variant], primaryImageUrl: null, totalStock: 3, startingPrice: 90, currency: 'TRY', modelCode: 'RYP006', activePlatforms: [], mediaUrls: [], attributes: [], familyProductIds: ['p1'] })
   const connection = { id: 'ty', platformCode: 'TRENDYOL', displayName: 'Trendyol Mağaza', externalStoreId: '930112', status: 'ACTIVE', externalWritesEnabled: true }
   return { product, connection, state }
@@ -16,6 +17,7 @@ const fixture = vi.hoisted(() => {
 vi.mock('../../../shared/api', async importOriginal => {
   const original = await importOriginal<typeof import('../../../shared/api')>()
   const respond = async (path: string, init?: RequestInit) => {
+    fixture.state.requests++
     // A save that has not answered yet.
     if (fixture.state.holdWrites && init?.method && init.method !== 'GET') return new Promise(() => undefined)
     // A product write is checked against the version it names, as the server does (If-Match).
@@ -33,14 +35,17 @@ vi.mock('../../../shared/api', async importOriginal => {
     if (path.includes('/capabilities')) return []
     return null
   }
-  const pages = async (path: string) => ({
-    items: path.startsWith('/connections') ? [fixture.connection]
-      : path.startsWith('/catalog/categories') ? [{ id: 'c1', name: 'Elbise', isLeaf: true, isActive: true, path: 'Elbise' }]
-        : path.startsWith('/catalog/brands') ? [{ id: 'b1', name: 'Ravencia', isActive: true }]
-          : [],
-    nextCursor: null,
-    hasMore: false
-  })
+  const pages = async (path: string) => {
+    fixture.state.requests++
+    return {
+      items: path.startsWith('/connections') ? [fixture.connection]
+        : path.startsWith('/catalog/categories') ? [{ id: 'c1', name: 'Elbise', isLeaf: true, isActive: true, path: 'Elbise' }]
+          : path.startsWith('/catalog/brands') ? [{ id: 'b1', name: 'Ravencia', isActive: true }]
+            : [],
+      nextCursor: null,
+      hasMore: false
+    }
+  }
   return { ...original, hubApi: vi.fn(respond), hubPoll: vi.fn(respond), loadAllPages: vi.fn(pages) }
 })
 
@@ -67,7 +72,9 @@ afterEach(() => {
   container.remove()
 })
 
-async function settle(rounds = 10) {
+// W3: a short fixed wait for an intermediate state; otherwise until the editor and its requests are quiet.
+async function settle(rounds?: number) {
+  if (rounds === undefined) return settleUntilQuiet(() => fixture.state.requests)
   for (let index = 0; index < rounds; index++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)) })
 }
 
