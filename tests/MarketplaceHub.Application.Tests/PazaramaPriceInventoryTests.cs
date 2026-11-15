@@ -170,6 +170,19 @@ public sealed class PazaramaPriceInventoryTests
         Assert.Equal(expected, page.Items.Single().State);
     }
 
+    // D9: Pazarama's documented answer gives a price sent to approval status 0 with the text "Onaya gönderildi" and the
+    // detail "Ürün fiyat onayına gönderildi": it waits for approval, it is not done.
+    [Theory]
+    [InlineData("Onaya gönderildi", "Ürün fiyat onayına gönderildi")]
+    [InlineData("Başarılı", "Ürün fiyat onayına gönderildi")]
+    [InlineData("Onaya gönderildi", "Başarılı")]
+    public void A_part_done_but_sent_to_approval_waits_for_approval(string text, string detail)
+    {
+        var page = PazaramaBatchMapper.Page(Parse(Result(Row("B1", Status(0, detail), text: text))));
+
+        Assert.Equal(PazaramaBatchMapper.BatchState.PendingApproval, page.Items.Single().State);
+    }
+
     [Theory]
     [InlineData("Başarılı", PazaramaBatchMapper.BatchState.Succeeded)]
     [InlineData("Onaya gönderildi", PazaramaBatchMapper.BatchState.PendingApproval)]

@@ -331,9 +331,12 @@ public static class PazaramaBatchMapper
         foreach (var section in new[] { "price", "stock" })
             if (row.TryGetProperty(section, out var part) && part.ValueKind == JsonValueKind.Object && part.TryGetProperty("status", out var status) && status.ValueKind == JsonValueKind.Number && status.TryGetInt32(out var value))
                 statuses.Add(value);
+        // D9: Pazarama's documented answer gives a price sent to approval section status 0 ("Ürün fiyat onayına
+        // gönderildi") with the row text "Onaya gönderildi" (pazarama-api-son.md ~905-935): the text or the detail saying
+        // so makes it pending approval, not done.
         if (statuses.Count > 0)
             return statuses.Any(x => x == 3) ? BatchState.Processing
-                : statuses.All(x => x is 0 or 5) ? (statuses.Any(x => x == 5) ? BatchState.PendingApproval : BatchState.Succeeded)
+                : statuses.All(x => x is 0 or 5) ? (statuses.Any(x => x == 5) || SentToApproval(row) ? BatchState.PendingApproval : BatchState.Succeeded)
                 : BatchState.Failed;
         return (Text(row, "operationStatusText") ?? "").ToLower(Turkish) switch
         {
@@ -342,6 +345,15 @@ public static class PazaramaBatchMapper
             "işleniyor" => BatchState.Processing,
             _ => BatchState.Failed
         };
+    }
+
+    private static bool SentToApproval(JsonElement row)
+    {
+        if (string.Equals((Text(row, "operationStatusText") ?? "").Trim().ToLower(Turkish), "onaya gönderildi", StringComparison.Ordinal)) return true;
+        foreach (var section in new[] { "price", "stock" })
+            if (row.TryGetProperty(section, out var part) && part.ValueKind == JsonValueKind.Object
+                && (Text(part, "operationDetail") ?? "").ToLower(Turkish).Contains("onayına gönderildi", StringComparison.Ordinal)) return true;
+        return false;
     }
 
     private static string? Detail(JsonElement row)
