@@ -3,6 +3,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
+using Microsoft.Extensions.Logging;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Shopify;
 
@@ -32,12 +33,20 @@ public sealed partial class ShopifyHttpClient
             if (!payload.RootElement.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array || items.GetArrayLength() == 0)
                 return Fail<RemoteOperationRef>(AdapterErrorClass.Validation, "SHOPIFY_PRICE_INVENTORY_PAYLOAD_INVALID", "Fiyat-stok gönderimi en az bir ürün satırı içermelidir.", HttpStatusCode.BadRequest);
             var results = new List<RemoteOperationLine>();
-            // ADAPTOR-DIGER-1: a rate limit, network or server error part-way through the list keeps what was already
-            // written. With at least one line applied, the answer is those lines' results: the interrupted line (its price
-            // may already be written) and the ones after it are left out, so the job records them as unconfirmed and not
-            // sent, and the same values go again with the next send. With none applied, the whole send fails as before.
-            AdapterResult<RemoteOperationRef> Interrupted(AdapterError error, RateLimitMetadata? rateLimit) =>
-                InterruptedPriceInventory(results, error, rateLimit, timeProvider.GetUtcNow());
+            // ADAPTOR-DIGER-1: an error part-way through the list (a rate limit, network or server error, and also a lasting
+            // one such as a refused token or a refused request) keeps what was already written. With at least one line
+            // applied, the answer is those lines' results: the interrupted line (its price may already be written) and the
+            // ones after it are left out, so the job records them as unconfirmed and not sent, and the same values go again
+            // with the next send (where a lasting error, with nothing applied before it, fails the send). With none
+            // applied, the whole send fails as before.
+            AdapterResult<RemoteOperationRef> Interrupted(AdapterError error, RateLimitMetadata? rateLimit)
+            {
+                var answer = InterruptedPriceInventory(results, error, rateLimit, timeProvider.GetUtcNow());
+                if (answer.IsSuccess)
+                    logger.LogWarning("Shopify fiyat-stok gönderimi {Applied} satır yazıldıktan sonra {ErrorClass} {ErrorCode} ile kesildi; kalan satırlar doğrulanmadı.",
+                        results.Count(line => line.Succeeded), error.Class, error.Code);
+                return answer;
+            }
             foreach (var item in items.EnumerateArray())
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -131,9 +140,10 @@ public sealed partial class ShopifyHttpClient
     }
 
     // The answer of a price-stock send cut off by an error after `results` (ADAPTOR-DIGER-1, see PushPriceAndInventoryAsync).
+    // Whatever the error's class: a line Shopify applied stays applied, so a lasting error (Authentication, Validation)
+    // no longer throws away the results of the lines written before it.
     internal static AdapterResult<RemoteOperationRef> InterruptedPriceInventory(IReadOnlyList<RemoteOperationLine> results, AdapterError error, RateLimitMetadata? rateLimit, DateTimeOffset now) =>
-        error.Class is AdapterErrorClass.RateLimit or AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx
-            && results.Any(line => line.Succeeded)
+        results.Any(line => line.Succeeded)
             ? AdapterResult<RemoteOperationRef>.Success(new(EncodeCompletedOperation(results), "SHOPIFY_PRICE_INVENTORY", now), rateLimit)
             : AdapterResult<RemoteOperationRef>.Failure(error, rateLimit);
 
