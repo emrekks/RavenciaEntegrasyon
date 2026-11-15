@@ -479,6 +479,13 @@ gününün en yeni seti + daha eski 4 haftanın her birinin ve 6 ayın her birin
 koşulda kalır (`BACKUP_KEEP_RECENT`, `BACKUP_KEEP_DAILY`, `BACKUP_KEEP_WEEKLY`, `BACKUP_KEEP_MONTHLY`). Bir set ≈0,3–0,5 GB
 (12 Kasım 2026); olağan durumda ~25 set ≈ 10 GB (Hostinger, 193 GB kök disk).
 
+**Yalnız tam setler sayılır** (VERITABANI-DAGITIM-2): set önce `.incomplete-<zaman>` adıyla yazılır, kendi kontrolü
+(sağlama toplamları + `pg_restore --list`) geçip `.verified` işaretini alınca zaman adına taşınır; yarıda kalan
+çalıştırma klasörünü siler, ölmüş çalıştırmanın `.incomplete-*` klasörü 6 saat sonra silinir. `.verified`'sız zaman adlı
+bir set (eski betikten kalma) saklamada yer tutmaz ve bir gün sonra silinir; 16 Kasım 2026 öncesi adlı setler
+`SHA256SUMS` varsa tam sayılır. Saklama, disk koruması, healthwatch'ın "en yeni yedek" yaşı ve aylık tatbikat aynı kuralla
+yalnız tam seti seçer.
+
 **Disk koruması**: yeni set yazılmadan önce, en yeni setin boyutu kadar ekleme sonrası disk doluluğu
 hesaplanır. %85'i (`BACKUP_DISK_LIMIT_PERCENT`) geçecekse önce **en eski haftalık setler** silinir
 (günlük ve son 72 saatlik setlere dokunulmaz). Hâlâ %85 üstündeyse yedek yine alınır ama

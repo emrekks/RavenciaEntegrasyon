@@ -26,7 +26,9 @@ run_prune() {
   )
 }
 
-make_sets() { local name; for name in "$@"; do mkdir -p -- "$work/$name"; done; }
+# Complete sets carry backup.sh's marker; make_unverified_sets leaves it (and SHA256SUMS) out.
+make_sets() { local name; for name in "$@"; do mkdir -p -- "$work/$name"; : > "$work/$name/.verified"; done; }
+make_unverified_sets() { local name; for name in "$@"; do mkdir -p -- "$work/$name"; done; }
 
 echo "backup retention"
 
@@ -85,6 +87,88 @@ make_sets "${kept[@]}"
 run_prune >/dev/null
 second="$(run_prune)"
 assert_eq "" "$second" "a second run removes nothing"
+
+# --- an unverified set holds no slot and goes after a day -----------------
+rm -rf -- "${work:?}"/*
+make_sets 20261021T110000Z 20261017T080000Z
+# Newer than the good set of the same half day, but its dump never finished.
+make_unverified_sets 20261017T110000Z 20261021T113000Z
+output="$(run_prune)"
+assert_dir "$work/20261017T080000Z" "keeps the verified set of a half day whose newest set is unverified"
+assert_no_dir "$work/20261017T110000Z" "removes an unverified set older than a day"
+assert_contains "$output" "Removed unverified backup set: 20261017T110000Z" "reports removing the unverified set"
+assert_dir "$work/20261021T113000Z" "leaves an unverified set younger than a day alone"
+assert_dir "$work/20261021T110000Z" "the newest verified set stays the newest kept set"
+
+# --- sets from before the marker count with their SHA256SUMS ---------------
+rm -rf -- "${work:?}"/*
+make_unverified_sets 20261021T110000Z 20261017T080000Z
+: > "$work/20261021T110000Z/SHA256SUMS"
+: > "$work/20261017T080000Z/SHA256SUMS"
+run_prune >/dev/null
+assert_dir "$work/20261017T080000Z" "keeps an older set that has SHA256SUMS but predates the marker"
+
+# --- after the marker, SHA256SUMS alone is not enough ---------------------
+rm -rf -- "${work:?}"/*
+make_sets 20261119T100000Z
+make_unverified_sets 20261117T100000Z
+: > "$work/20261117T100000Z/SHA256SUMS"
+output="$(BACKUP_NOW_EPOCH="$(date -u -d '2026-11-20 12:00:00 UTC' +%s)" run_prune)"
+assert_no_dir "$work/20261117T100000Z" "removes a set written after the marker existed that has no marker"
+assert_dir "$work/20261119T100000Z" "keeps the verified set"
+
+# --- working directories --------------------------------------------------
+rm -rf -- "${work:?}"/* "$work"/.incomplete-*
+make_sets 20261021T110000Z
+mkdir -p -- "$work/.incomplete-20261021T113000Z" "$work/.incomplete-20261020T080000Z"
+touch -d '2026-10-20 08:00:00 UTC' "$work/.incomplete-20261020T080000Z"
+output="$(run_prune)"
+assert_eq "" "$output" "retention ignores .incomplete-* working directories"
+output="$(
+  # shellcheck source=deploy/backup/backup.sh
+  source "$repository_root/deploy/backup/backup.sh"
+  remove_stale_incomplete_sets
+)"
+assert_no_dir "$work/.incomplete-20261020T080000Z" "removes a working directory older than 6 hours"
+assert_contains "$output" "Removed incomplete backup directory: .incomplete-20261020T080000Z" "reports the stale working directory"
+assert_dir "$work/.incomplete-20261021T113000Z" "keeps a working directory still being written"
+rm -rf -- "$work"/.incomplete-*
+
+# --- a full run: renamed only when complete, nothing left behind on failure
+stubs="$(mktemp -d)"
+cat > "$stubs/pg_dump" <<'STUB'
+#!/bin/sh
+for arg in "$@"; do case "$arg" in --file=*) printf 'dump' > "${arg#--file=}" ;; esac; done
+test "${STUB_PG_DUMP_FAIL:-false}" != true
+STUB
+cat > "$stubs/tar" <<'STUB'
+#!/bin/sh
+printf 'files' > "$4"
+STUB
+printf '#!/bin/sh\nexit 0\n' > "$stubs/pg_restore"
+chmod +x "$stubs"/*
+printf 'secret' > "$stubs/password"
+run_backup() {
+  (
+    unset BACKUP_FUNCTIONS_ONLY BACKUP_NOW_EPOCH
+    PATH="$stubs:$PATH" POSTGRES_PASSWORD_FILE="$stubs/password" BACKUP_FORCE=true \
+      BACKUP_DISK_LIMIT_PERCENT=100 BACKUP_DISK_HARD_LIMIT_PERCENT=100 sh "$repository_root/deploy/backup/backup.sh"
+  )
+}
+rm -rf -- "${work:?}"/*
+status=0
+STUB_PG_DUMP_FAIL=true run_backup >/dev/null 2>&1 || status=$?
+assert_eq "1" "$((status != 0))" "a failed dump fails the backup"
+assert_eq "" "$(find "$work" -mindepth 1 -maxdepth 1 | head -n 1)" "a failed dump leaves neither a set nor a working directory"
+output="$(run_backup)"
+created="$(find "$work" -mindepth 1 -maxdepth 1 -type d -name '????????T??????Z' -printf '%f\n')"
+assert_contains "$output" "Backup set created at $work/$created; verified successfully." "reports the renamed set"
+assert_eq "" "$(find "$work" -mindepth 1 -maxdepth 1 -name '.incomplete-*' | head -n 1)" "no working directory remains after success"
+for file in .verified SHA256SUMS database.dump private-volumes.tar.gz manifest.json; do
+  if [[ -s "$work/$created/$file" ]]; then pass "the set holds $file"; else fail "the set holds $file"; fi
+done
+if (cd "$work/$created" && sha256sum -c --quiet SHA256SUMS); then pass "the checksums still match after the rename"; else fail "the checksums still match after the rename"; fi
+rm -rf -- "$stubs"
 
 # --- backup_set_epoch accepts only set names ------------------------------
 epoch_of() {

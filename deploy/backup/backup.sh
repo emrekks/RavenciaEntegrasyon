@@ -29,6 +29,12 @@ verify_backup() {
 #     BACKUP_KEEP_MONTHLY months (default 6);
 #   - always the newest set, whatever its age.
 # Everything else is removed. Names that are not UTC timestamps are never touched.
+# Only complete sets count (backup_set_complete): a set is written under a
+# ".incomplete-<stamp>" name and renamed to its timestamp only after its own check
+# passed, so retention, the disk guard, healthwatch and the restore drill never take
+# a half-written set for the newest one. A timestamp-named set without the marker
+# (left by an older run) holds no retention slot and is removed after a day;
+# ".incomplete-*" leftovers of a run that died are removed after 6 hours.
 # Disk guard (before a new set is written): if the filesystem holding /backup
 # would pass BACKUP_DISK_LIMIT_PERCENT (default 85) once a set the size of the
 # newest one is added, the oldest weekly sets are removed first; if it is still
@@ -60,6 +66,31 @@ backup_set_epoch() {
   date -u -d "$(printf '%s' "$1" | cut -c1-4)-$(printf '%s' "$1" | cut -c5-6)-$(printf '%s' "$1" | cut -c7-8) $(printf '%s' "$1" | cut -c10-11):$(printf '%s' "$1" | cut -c12-13):$(printf '%s' "$1" | cut -c14-15) UTC" +%s 2>/dev/null || true
 }
 
+# Sets named before this (written before backup.sh marked verified sets, 13 Nov 2026, and before the rename
+# above) count as complete when their SHA256SUMS exists: the old script wrote it only after the dump and the
+# file archive had finished.
+legacy_set_cutoff=20261116000000
+
+# True for a set directory whose own check passed (.verified), or an older set with its SHA256SUMS.
+backup_set_complete() {
+  test -f "$1/.verified" && return 0
+  test -f "$1/SHA256SUMS" || return 1
+  complete_digits="$(printf '%s' "${1##*/}" | tr -d 'TZ')"
+  case "$complete_digits" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  test "$complete_digits" -lt "$legacy_set_cutoff"
+}
+
+# Removes the working directories of runs that died before their set was complete.
+remove_stale_incomplete_sets() {
+  find "$backup_root" -mindepth 1 -maxdepth 1 -type d -name '.incomplete-*' -mmin +360 -print 2>/dev/null \
+    | while IFS= read -r stale; do
+        rm -rf -- "$stale"
+        echo "Removed incomplete backup directory: ${stale##*/}"
+      done
+}
+
 # Lists the set directories, oldest first ("-r": newest first).
 # The names contain no whitespace (checked by backup_set_epoch), so word splitting is safe.
 list_backup_sets() {
@@ -81,6 +112,14 @@ prune_expired_backups() {
     name="${path##*/}"
     backup_time="$(backup_set_epoch "$name")"
     test -n "$backup_time" || continue
+    if ! backup_set_complete "$path"; then
+      # Never a slot holder; a day of grace in case a run of an older script is still writing it.
+      if test "$backup_time" -lt "$((now - 86400))"; then
+        rm -rf -- "${backup_root:?}/$name"
+        echo "Removed unverified backup set: $name"
+      fi
+      continue
+    fi
     # 20261021AM / 20261021PM: before or after 12:00 UTC.
     if test "$(printf '%s' "$name" | cut -c10-11)" -lt 12; then half_day_key="$(printf '%s' "$name" | cut -c1-8)AM"; else half_day_key="$(printf '%s' "$name" | cut -c1-8)PM"; fi
     week_key="$(date -u -d "@$backup_time" +%G%V)"
@@ -134,7 +173,7 @@ guard_disk_space() {
   retention_cutoffs
   newest=""
   for path in $(list_backup_sets -r); do
-    if test -d "$path" && test -n "$(backup_set_epoch "${path##*/}")"; then newest="$path"; break; fi
+    if test -d "$path" && test -n "$(backup_set_epoch "${path##*/}")" && backup_set_complete "$path"; then newest="$path"; break; fi
   done
   estimate_kib=0
   if test -n "$newest"; then estimate_kib="$(du -sk "$newest" | cut -f1)"; fi
@@ -169,7 +208,7 @@ guard_disk_space() {
 # The marker the off-site copy looks for (BackupSetDirectory.VerifiedMarker): written only after verify_backup passed,
 # with the set's own check-sum line in it.
 mark_verified() {
-  sha256sum "$1/SHA256SUMS" > "$1/.verified"
+  (cd "$1" && sha256sum SHA256SUMS > .verified)
 }
 
 # The worker's off-site copy (Sistem Ayarları › Google Drive Yedeği) reads the set as the app's group
@@ -215,24 +254,32 @@ if test "${BACKUP_FORCE:-false}" != "true"; then
 fi
 
 # Apply retention before writing, then make sure the new set fits.
+remove_stale_incomplete_sets
 prune_expired_backups
 guard_disk_space
 
+# The set is written under a name retention and every reader skip, and gets its timestamp name only once complete
+# and verified; a failure on the way removes the working directory (trap) instead of leaving a half set behind.
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 target="$backup_root/$stamp"
-while ! mkdir "$target" 2>/dev/null; do
+work="$backup_root/.incomplete-$stamp"
+while test -e "$target" || ! mkdir "$work" 2>/dev/null; do
   sleep 1
   stamp="$(date -u +%Y%m%dT%H%M%SZ)"
   target="$backup_root/$stamp"
+  work="$backup_root/.incomplete-$stamp"
 done
-pg_dump --format=custom --file="$target/database.dump"
-tar -C /source -czf "$target/private-volumes.tar.gz" files dp-keys
-printf '{"createdAt":"%s","postgresMajor":18,"filesIncluded":true,"dataProtectionKeysIncluded":true}\n' "$stamp" > "$target/manifest.json"
-# The manifest is covered by the checksums too, so nothing in the set travels unchecked.
-sha256sum "$target/database.dump" "$target/private-volumes.tar.gz" "$target/manifest.json" > "$target/SHA256SUMS"
-verify_backup "$target"
+trap 'rm -rf -- "$work"' EXIT
+pg_dump --format=custom --file="$work/database.dump"
+tar -C /source -czf "$work/private-volumes.tar.gz" files dp-keys
+printf '{"createdAt":"%s","postgresMajor":18,"filesIncluded":true,"dataProtectionKeysIncluded":true}\n' "$stamp" > "$work/manifest.json"
+# The manifest is covered by the checksums too, so nothing in the set travels unchecked. Names are relative: the
+# directory is renamed after this.
+(cd "$work" && sha256sum database.dump private-volumes.tar.gz manifest.json > SHA256SUMS)
+verify_backup "$work"
 # Only a set whose own check passed carries the marker; the off-site copy (BackupSetDirectory) sends no other set.
-mark_verified "$target"
+mark_verified "$work"
+mv -T -- "$work" "$target"
 share_with_reader "$target"
 prune_expired_backups
 echo "Backup set created at $target; verified successfully."
