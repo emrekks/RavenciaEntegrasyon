@@ -1073,7 +1073,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         if (command.DeliveryDays is { } deliveryDays && !ProductDeliveryDays.IsValid(deliveryDays)) return Invalid<ProductView>("deliveryDays", ProductDeliveryDays.InvalidMessage);
         // Taslak Olarak Kaydet: the card is kept before it is complete, so what a marketplace needs (KDV, the category's
         // required attributes) may still be missing. Malformed values, the stock codes and their uniqueness are checked as always.
-        var draft = ProductDraftPolicy.IsDraftRequest(command.Status);
+        if (!TryParseEditorStatus(command.Status, out var requestedStatus)) return Invalid<ProductView>("status", StatusInvalidMessage);
+        var draft = requestedStatus == ProductStatus.Draft;
         // KDV Oranı and KDV Dahil mi are required on a new card: a marketplace offer starts from them, never from a guess.
         if (command.VatRate is null && !draft) return Invalid<ProductView>("vatRate", VatRateRequired);
         if (command.VatRate is not null && string.IsNullOrWhiteSpace(command.VatInclusion)) return Invalid<ProductView>("vatInclusion", VatInclusionRequired);
@@ -1090,7 +1091,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         if (command.Variants.Any(variant => variant.Desi is > ProductDesi.Maximum)) return Invalid<ProductView>(ProductRequiredFields.Desi, ProductDesi.TooLargeMessage);
         // A card created on sale or closed carries every required field (ProductRequiredFields); an incomplete one is kept
         // only as a draft (Taslak Olarak Kaydet, or the editor's Ürünü Oluştur turning it into one).
-        if (command.Status is "ACTIVE" or "ARCHIVED"
+        if (requestedStatus is ProductStatus.Active or ProductStatus.Archived
             && ProductRequiredFields.Missing(new ProductRequiredFields.Card(command.Title, command.BrandId, command.CategoryId, command.WarrantyMonths is not null, command.DeliveryDays is not null,
                 command.DefaultListPrice, command.DefaultSalePrice, [.. command.Variants.Select(variant => new ProductRequiredFields.Row(variant.Sku, variant.Barcode, variant.ModelCode, variant.Desi, variant.DefaultListPrice, variant.DefaultSalePrice))])) is { Count: > 0 } createGaps)
             return ProductRequiredFields.Refusal<ProductView>(createGaps);
@@ -1139,7 +1140,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         if (createBarcodeClashes.Count > 0) return CodeConflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkod başka bir üründe kullanılıyor", createBarcodeClashes);
 
         var now = timeProvider.GetUtcNow();
-        var productStatus = command.Status == "ACTIVE" ? ProductStatus.Active : (command.Status == "ARCHIVED" ? ProductStatus.Archived : ProductStatus.Draft); var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenantId, Title = command.Title.Trim(), Description = command.Description.Trim(), BrandId = command.BrandId, CategoryId = command.CategoryId, DefaultListPrice = command.DefaultListPrice, DefaultSalePrice = command.DefaultSalePrice, WarrantyMonths = command.WarrantyMonths is > 0 ? command.WarrantyMonths : null, DeliveryDays = command.DeliveryDays ?? ProductDeliveryDays.Default, TrendyolWebColorValueId = command.TrendyolWebColorValueId is Guid createWebColor && createWebColor != Guid.Empty ? createWebColor : null, VatRate = command.VatRate, VatInclusion = command.VatRate is null ? null : NormalizeVatInclusion(command.VatInclusion), Status = productStatus, CreatedAt = now, UpdatedAt = now };
+        var productStatus = requestedStatus ?? ProductStatus.Draft; var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenantId, Title = command.Title.Trim(), Description = command.Description.Trim(), BrandId = command.BrandId, CategoryId = command.CategoryId, DefaultListPrice = command.DefaultListPrice, DefaultSalePrice = command.DefaultSalePrice, WarrantyMonths = command.WarrantyMonths is > 0 ? command.WarrantyMonths : null, DeliveryDays = command.DeliveryDays ?? ProductDeliveryDays.Default, TrendyolWebColorValueId = command.TrendyolWebColorValueId is Guid createWebColor && createWebColor != Guid.Empty ? createWebColor : null, VatRate = command.VatRate, VatInclusion = command.VatRate is null ? null : NormalizeVatInclusion(command.VatInclusion), Status = productStatus, CreatedAt = now, UpdatedAt = now };
         if (command.Variants.Any(variant => variant.CostPrice is < 0)) return Invalid<ProductView>("variants", "Maliyet negatif olamaz.");
         var variants = command.Variants.Select((variant, index) => new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = product.Id, SortOrder = index, Sku = variant.Sku.Trim(), SkuNormalized = Normalize(variant.Sku), Barcode = NullTrim(variant.Barcode), BarcodeNormalized = NormalizeBarcode(variant.Barcode), ModelCode = NullTrim(variant.ModelCode), OptionSignature = Signature(variant.Options), Status = productStatus, Weight = PositiveOrNull(variant.Weight), Width = PositiveOrNull(variant.Width), Height = PositiveOrNull(variant.Height), Length = PositiveOrNull(variant.Length), Desi = PositiveOrNull(variant.Desi), CostPrice = PositiveOrNull(variant.CostPrice), DefaultListPrice = variant.DefaultListPrice, DefaultSalePrice = variant.DefaultSalePrice, CreatedAt = now, UpdatedAt = now }).ToList();
         db.Products.Add(product);
@@ -1499,7 +1500,9 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         // A card stays a draft only while it is one (ProductDraftPolicy); a draft may still lack its KDV and the category's
         // required attributes. Only an explicit "DRAFT" (Taslak Olarak Kaydet) relaxes the checks; a save that leaves out
         // the status is checked in full.
-        var keepsDraft = ProductDraftPolicy.IsDraftRequest(command.Status);
+        // KATALOG-4: an unknown status ("PASSIVE") is refused, never read as a draft; "active" is ACTIVE.
+        if (!TryParseEditorStatus(command.Status, out var requestedStatus)) return Invalid<ProductView>("status", StatusInvalidMessage);
+        var keepsDraft = requestedStatus == ProductStatus.Draft;
         if (keepsDraft && !ProductDraftPolicy.MayBecomeDraft(product.Status)) return Conflict<ProductView>(ProductDraftPolicy.DraftNotAllowedCode, ProductDraftPolicy.DraftNotAllowedMessage);
         // A card with no VAT yet must get one on this save; a card that has one keeps it when the rate is left out.
         if (command.VatRate is null && product.VatRate is null && !keepsDraft) return Invalid<ProductView>("vatRate", VatRateRequired);
@@ -1548,7 +1551,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         // would leave one empty is refused, never turned into a draft. Checked on the rows the save sends (the editor sends
         // every row of the model), else on the card's stored rows. A left-out price, desi or delivery days keeps the stored
         // one; a left-out warranty keeps the card's, which reads 0 and empty alike, so it counts as given.
-        var savedStatus = command.Status is null ? product.Status : command.Status == "ACTIVE" ? ProductStatus.Active : command.Status == "ARCHIVED" ? ProductStatus.Archived : ProductStatus.Draft;
+        var savedStatus = requestedStatus ?? product.Status;
         if (!ProductDraftPolicy.IsDraft(savedStatus))
         {
             var cardListPrice = command.DefaultListPrice ?? product.DefaultListPrice;
@@ -1773,13 +1776,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 }
             }
             var now = timeProvider.GetUtcNow();
-            var newVariantStatus = command.Status switch
-            {
-                "ACTIVE" => ProductStatus.Active,
-                "ARCHIVED" => ProductStatus.Archived,
-                "DRAFT" => ProductStatus.Draft,
-                _ => product.Status
-            };
+            var newVariantStatus = requestedStatus ?? product.Status;
             // A row placed on another colour card takes that card's status, or the opened card's new status when the card
             // moves with it (it was on the same status; see the family status change below).
             var siblingTargetIds = newVariantProductIds.Where(productId => productId != id).Distinct().ToArray();
@@ -1801,11 +1798,19 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         // family products that were on the same status, never a sibling that differs (an archived colour
         // stays archived when the family is activated).
         var previousStatus = product.Status;
-        var productStatus = command.Status == "ACTIVE" ? ProductStatus.Active : (command.Status == "ARCHIVED" ? ProductStatus.Archived : ProductStatus.Draft);
-        var statusChanged = command.Status is not null && productStatus != previousStatus;
+        var productStatus = requestedStatus ?? previousStatus;
+        var statusChanged = requestedStatus is not null && productStatus != previousStatus;
         var familyStatusProductIds = statusChanged
             ? (await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && familyVariantProductIds.Contains(x.Id) && x.Id != id && x.Status == previousStatus).Select(x => x.Id).ToListAsync(cancellationToken)).ToHashSet()
             : [];
+        // KATALOG-11: a save that sends no rows checked only the opened card's stored rows above. A colour card that would
+        // go on sale with it but misses a required field keeps its status (as Toplu Satışa Aç skips it); the editor sends
+        // every row of the model, which the check above covers.
+        if (statusChanged && productStatus == ProductStatus.Active && variantUpdates.Count == 0 && variantsToCreate.Count == 0 && familyStatusProductIds.Count > 0)
+        {
+            var movingSiblings = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && familyStatusProductIds.Contains(x.Id)).ToListAsync(cancellationToken);
+            foreach (var incomplete in await IncompleteCardsAsync(tenantId, movingSiblings, cancellationToken)) familyStatusProductIds.Remove(incomplete.Product.Id);
+        }
         // K5: other products of the model-code family whose rows this save changes are local edits too.
         var familyProductIdsToProtect = existingVariants
             .Where(variant => variant.ProductId != id && (familyStatusProductIds.Contains(variant.ProductId) || variantIdsToDelete.Contains(variant.Id) || changedVariantIds.Contains(variant.Id)))
@@ -3568,6 +3573,22 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     private static BrandView MapBrand(Brand value) => new(value.Id, value.Name, value.IsActive, value.Version);
     private static AttributeView MapAttribute(AttributeDefinition value, IEnumerable<AttributeValue> values, IReadOnlyList<string>? roles = null) => new(value.Id, value.Code, value.Name, value.DataType switch { AttributeDataType.SingleSelect => "SINGLE_SELECT", AttributeDataType.MultiSelect => "MULTI_SELECT", _ => value.DataType.ToString().ToUpperInvariant() }, value.SelectionMode, value.Unit, value.IsActive, value.Version, values.Select(x => new AttributeValueView(x.Id, x.Value, x.SortOrder, x.IsActive)).ToList(), roles);
     private static ListingProfileView MapProfile(ChannelListingProfile value) => new(value.Id, value.ProductId, value.ConnectionId, value.TitleOverride, value.DescriptionOverride, value.ExternalCategoryId, value.ExternalBrandId, value.DeliveryTimeDays, value.Enabled, value.DesiredStatus, value.ActualStatus, value.Version);
+    // KATALOG-4: the status a product create or save asks for. Null keeps the card's (a create: draft); ACTIVE, ARCHIVED or
+    // DRAFT in any case; any other text is refused rather than read as a draft.
+    internal const string StatusInvalidMessage = "Durum ACTIVE, ARCHIVED veya DRAFT olmalıdır.";
+    internal static bool TryParseEditorStatus(string? value, out ProductStatus? status)
+    {
+        status = null;
+        if (value is null) return true;
+        switch (value.Trim().ToUpperInvariant())
+        {
+            case "ACTIVE": status = ProductStatus.Active; return true;
+            case "ARCHIVED": status = ProductStatus.Archived; return true;
+            case "DRAFT": status = ProductStatus.Draft; return true;
+            default: return false;
+        }
+    }
+
     private static ServiceResult<T> Invalid<T>(string field, string message) => ServiceResult<T>.Fail("VALIDATION_FAILED", message, 422, new Dictionary<string, string[]> { [field] = [message] });
     private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);
     private static ServiceResult<T> Conflict<T>(string code, string message) => ServiceResult<T>.Fail(code, message, 409);
