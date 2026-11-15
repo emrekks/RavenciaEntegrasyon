@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, click, render, type } from '../../../test/render'
-import { draftsKeptAfterSave, groupSavedSelections, rebaseSelections, runInBatches, selectionsDiffer, valueDraftOperations, webColorDraftSelections, webColorSelectionsFromDraft } from './value-drafts'
+import { draftsKeptAfterSave, failedLocalIds, groupSavedSelections, rebaseSelections, runInBatches, selectionsDiffer, valueDraftOperations, webColorDraftSelections, webColorSelectionsFromDraft, withoutFailedRow } from './value-drafts'
 import { ValuePicker, pickerOptions, rankPickerMatches } from './ValuePicker'
 
 afterEach(cleanup)
@@ -26,8 +26,18 @@ describe('value drafts', () => {
     const result = await runInBatches(operations, 4, async operation => { if (operation.valueScope === 'c/renk' && operation.kind === 'PUT') throw new Error('409') })
     const kept = draftsKeptAfterSave([renk, beden], result.failures.map(failure => failure.item))
     expect([...kept.keys()]).toEqual(['c/renk'])
-    expect(kept.get('c/renk')).toBe(renk)
+    // The draft is kept as it was, with the refused pair named for its row.
+    expect(kept.get('c/renk')).toEqual({ ...renk, failed: [{ localId: 'red', externalId: 'r3' }] })
     expect(draftsKeptAfterSave([renk, beden], []).size).toBe(0)
+  })
+
+  it('marks the rows of refused pairs until the user changes them', () => {
+    const failed = [{ localId: 'red', externalId: 'r3' }, { localId: 'red', externalId: 'r1' }, { localId: 'navy', externalId: 'r2' }]
+    expect([...failedLocalIds(failed)]).toEqual(['red', 'navy'])
+    expect(failedLocalIds(undefined).size).toBe(0)
+    expect(withoutFailedRow(failed, 'red')).toEqual([{ localId: 'navy', externalId: 'r2' }])
+    // A row that was not refused leaves the list as it is.
+    expect(withoutFailedRow(failed, 'blue')).toBe(failed)
   })
 
   it('tells a changed choice from the saved one', () => {

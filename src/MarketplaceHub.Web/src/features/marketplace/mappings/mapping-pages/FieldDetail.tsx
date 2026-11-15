@@ -4,7 +4,7 @@ import { hubApi } from '../../../../shared/api'
 import { ErrorBox } from '../../../../shared/components'
 import { ValuePicker, pickerOptions, type PickerOption } from '../ValuePicker'
 import { valueListQuery, valueMappingsQuery } from '../value-field-queries'
-import { groupSavedSelections, rebaseSelections, selectionsDiffer } from '../value-drafts'
+import { failedLocalIds, groupSavedSelections, rebaseSelections, selectionsDiffer, withoutFailedRow, type FailedValuePair } from '../value-drafts'
 import { usesCustomPanelColorValue } from '../../color-value-format'
 import { type AttributeDefault } from '../../AttributeDefaultsPanel'
 import { offersProductFields, showsProductFields, parseProductFieldOption, productFieldLabel, productFieldOptionValue, productFieldSources } from '../../product-field-sources'
@@ -123,9 +123,10 @@ function targetsByLocal(current: Record<string, string[]>) {
   return targets
 }
 // One row of the value table. Memoised: a pick re-renders its own row, not the whole table (230 rows for Menşei).
-const ValueRow = memo(function ValueRow({ localId, value, target, needed, options, label, onPick }: { localId: string; value: string; target: string; needed: boolean; options: readonly PickerOption[]; label: string; onPick: (localId: string, externalId: string) => void }) {
-  return <div className={`cm-vrow${target ? '' : ' is-open'}${needed ? ' is-product-issue needs-mapping' : ''}`} role="row">
-    <span className="cm-pv" role="cell">{value}{needed && <span className="cm-product-tag" title="Bu ürünün yayını için bu değerin eşlemesi gerekiyor">Eşleşmesi gereken</span>}</span>
+// `failed`: the last Kaydet sent this row's pair and the server refused it (WEB-SAYFALAR-6); marked until the row changes.
+const ValueRow = memo(function ValueRow({ localId, value, target, needed, failed = false, options, label, onPick }: { localId: string; value: string; target: string; needed: boolean; failed?: boolean; options: readonly PickerOption[]; label: string; onPick: (localId: string, externalId: string) => void }) {
+  return <div className={`cm-vrow${target ? '' : ' is-open'}${needed ? ' is-product-issue needs-mapping' : ''}${failed ? ' is-save-failed' : ''}`} role="row">
+    <span className="cm-pv" role="cell">{value}{needed && <span className="cm-product-tag" title="Bu ürünün yayını için bu değerin eşlemesi gerekiyor">Eşleşmesi gereken</span>}{failed && <span className="cm-failed-tag" title="Son Kaydet’te bu eşleme kaydedilemedi; seçim duruyor, Kaydet ile yeniden deneyebilirsiniz">Kaydedilemedi</span>}</span>
     <span role="cell"><ValuePicker value={target} options={options} label={label} onChange={externalId => onPick(localId, externalId)} /></span>
     <span className="cm-vstate" role="cell"><MappingStateGlyph state={target ? 'done' : 'none'} /></span>
   </div>
@@ -176,8 +177,14 @@ function FieldValueTable({ platformCode, platformLabel, connectionId, categorySc
   if (valuesUnavailable && references.isSuccess && !references.isFetching && references.data) setValuesUnavailable(false)
   const generation = store?.generation ?? 0
   const [seenGeneration, setSeenGeneration] = useState(generation)
+  // The pairs the last Kaydet had refused (from the window's draft); a row leaves the list when the user changes it.
+  const [failed, setFailed] = useState<readonly FailedValuePair[]>(() => store?.drafts.get(valueScope)?.failed ?? [])
   // After Kaydet every field starts again from what the server holds, but one whose save was partly refused.
-  if (seenGeneration !== generation) { setSeenGeneration(generation); if (!store?.kept.has(valueScope)) { setSelections(null); setBaseline(null) } }
+  if (seenGeneration !== generation) {
+    setSeenGeneration(generation)
+    setFailed(store?.kept.has(valueScope) ? store.drafts.get(valueScope)?.failed ?? [] : [])
+    if (!store?.kept.has(valueScope)) { setSelections(null); setBaseline(null) }
+  }
   const saved = useMemo(() => groupSavedSelections(mappings.data ?? []), [mappings.data])
   useEffect(() => { if (mappings.data && selections === null) { const grouped = groupSavedSelections(mappings.data); setSelections(grouped); setBaseline(grouped) } }, [mappings.data, selections])
   // The saved pairs changed after the table was filled (Tüm Değerleri Eşle, another window).
@@ -203,9 +210,9 @@ function FieldValueTable({ platformCode, platformLabel, connectionId, categorySc
   const snapshotId = references.data?.snapshotId ?? ''
   useEffect(() => {
     if (!selections || !mappings.data || !snapshotId) return
-    if (dirty) putDraft?.({ valueScope, fieldName: remote.name, selections, saved: mappings.data, snapshotId, knownExternalIds: remoteValues.map(item => item.externalId) })
+    if (dirty) putDraft?.({ valueScope, fieldName: remote.name, selections, saved: mappings.data, snapshotId, knownExternalIds: remoteValues.map(item => item.externalId), ...(failed.length ? { failed } : {}) })
     else dropDraft?.(valueScope)
-  }, [dirty, selections, mappings.data, snapshotId, remoteValues, valueScope, remote.name, putDraft, dropDraft])
+  }, [dirty, selections, mappings.data, snapshotId, remoteValues, valueScope, remote.name, putDraft, dropDraft, failed])
   // The first value the product still needs is brought into view and its picker focused, once the table is in.
   const tableRef = useRef<HTMLDivElement>(null)
   const broughtIntoView = useRef(false)
@@ -218,6 +225,7 @@ function FieldValueTable({ platformCode, platformLabel, connectionId, categorySc
     first.querySelector<HTMLElement>('button, select, input')?.focus({ preventScroll: true })
   })
   const setTarget = useCallback((localId: string, externalId: string) => {
+    setFailed(current => withoutFailedRow(current, localId))
     setSelections(current => {
       const base = current ?? {}
       const previous = targetsByLocal(base).get(localId) ?? ''
@@ -234,6 +242,7 @@ function FieldValueTable({ platformCode, platformLabel, connectionId, categorySc
   if (mappings.isError) return <ErrorBox error={mappings.error} onRetry={() => void mappings.refetch()} />
   if (references.isLoading || mappings.isLoading || !selections || !references.data || !mappings.data) return <ValueTableSkeleton platformLabel={platformLabel} footerHint={footerHint} onNext={onNext} />
   const targets = targetsByLocal(selections)
+  const failedRows = failedLocalIds(failed)
   const doneCount = localValues.filter(item => targets.has(item.id)).length
   // The product's values still without a mapping, by the publish check's own rule (a pick not saved yet counts).
   const activeRemoteIds = new Set(references.data.items.filter(item => item.isActive).map(item => item.externalId))
@@ -264,7 +273,7 @@ function FieldValueTable({ platformCode, platformLabel, connectionId, categorySc
     <div ref={tableRef} className="cm-vtable" role="table" aria-label={`${remote.name} değer eşlemeleri`}>
       <div className="cm-vrow is-head" role="row"><span role="columnheader">Panel Değeri</span><span role="columnheader">{platformLabel} Değeri</span><span aria-hidden="true" /></div>
       <div className="cm-vscroll">
-        {rows.length ? rows.map(item => <ValueRow key={item.id} localId={item.id} value={item.value} target={targets.get(item.id) ?? ''} needed={stillNeeded.has(item.id)} options={options} label={`${item.value} için ${platformLabel} değeri`} onPick={setTarget} />)
+        {rows.length ? rows.map(item => <ValueRow key={item.id} localId={item.id} value={item.value} target={targets.get(item.id) ?? ''} needed={stillNeeded.has(item.id)} failed={failedRows.has(item.id)} options={options} label={`${item.value} için ${platformLabel} değeri`} onPick={setTarget} />)
           : <EmptyState icon="tag" title={onlyMissing ? 'Eşlenmemiş Değer Yok' : 'Değer Bulunamadı'}>{onlyMissing ? 'Eşlenmemiş değer kalmadı.' : 'Aramaya uyan değer yok.'}</EmptyState>}
       </div>
     </div>
