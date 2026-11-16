@@ -93,6 +93,36 @@ describe('operations realtime connection', () => {
     for (const key of realtimeReconnectQueryKeys) expect(refreshed).toContain(key.join('/'))
   })
 
+  // WEB-ALTYAPI-2 step 3: back on a visible tab with the connection down, it tries at once instead of waiting out the
+  // backoff, and refreshes the lists once it is up; a visible tab with a live connection does nothing.
+  it('tries at once when the tab becomes visible with the connection down', async () => {
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    hub.startResult = () => Promise.reject(new Error('Failed to fetch'))
+    render(view(true, client))
+    await flush()
+    // Several failures: the next try is 24 s away.
+    for (const wait of [3000, 6000, 12_000]) await vi.advanceTimersByTimeAsync(wait)
+    const connection = hub.connections[0]
+    expect(connection.start).toHaveBeenCalledTimes(4)
+    hub.startResult = null
+    // The tab comes back. (No connection ever stood here, so its first start refreshes nothing; the refresh after a
+    // gap is the test above.)
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' })
+    document.dispatchEvent(new Event('visibilitychange'))
+    await flush()
+    expect(connection.start).toHaveBeenCalledTimes(5)
+    // The scheduled try was cancelled: nothing more after the old backoff.
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(connection.start).toHaveBeenCalledTimes(5)
+    // Up: a hidden-then-visible tab with the connection up does not start again.
+    connection.state = 'Connected'
+    document.dispatchEvent(new Event('visibilitychange'))
+    await flush()
+    expect(connection.start).toHaveBeenCalledTimes(5)
+    expect(invalidate).not.toHaveBeenCalled()
+  })
+
   it('connects again when it is switched off and on (signing in after the session ended)', async () => {
     const client = new QueryClient()
     const { rerender } = render(view(true, client))

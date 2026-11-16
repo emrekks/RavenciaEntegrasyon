@@ -85,8 +85,18 @@ export function useOperationsRealtime(enabled: boolean) {
       }
     }
     void start()
+    // WEB-ALTYAPI-2 step 3: a tab that becomes visible again (back from sleep, another tab) with the connection down does
+    // not wait out the backoff (up to 60 s): it tries at once, and a successful start refreshes the lists.
+    const reconnectWhenVisible = () => {
+      if (stopped || document.visibilityState !== 'visible') return
+      if (connection && connection.state !== 'Disconnected') return
+      if (retryTimer !== null) { window.clearTimeout(retryTimer); retryTimer = null }
+      void start()
+    }
+    document.addEventListener('visibilitychange', reconnectWhenVisible)
     return () => {
       stopped = true
+      document.removeEventListener('visibilitychange', reconnectWhenVisible)
       if (retryTimer !== null) window.clearTimeout(retryTimer)
       if (flushTimer !== null) window.clearTimeout(flushTimer)
       throttle.dispose()

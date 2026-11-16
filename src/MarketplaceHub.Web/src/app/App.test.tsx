@@ -226,6 +226,23 @@ describe('Hızlı Arama', () => {
     expect(document.querySelector('[aria-label="Hızlı arama sonuçları"]')).toBeNull()
     await waitFor(() => document.activeElement === behind)
   })
+
+  // WEB-ALTYAPI-16: Ctrl+K opens the window, the first result link is reached by Tab, and following it (what Enter does
+  // on a focused link) opens that page and closes the window.
+  it('opens with Ctrl+K, reaches the first link and takes its page', async () => {
+    server.me = [{ status: 200, body: active }]
+    const { host } = mount('/dashboard')
+    await waitFor(() => shell(host))
+    act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true, cancelable: true })) })
+    const results = await waitFor(() => document.querySelector<HTMLElement>('[aria-label="Hızlı arama sonuçları"]'))
+    const target = Array.from(results.querySelectorAll<HTMLAnchorElement>('a.rv-command-item')).find(link => link.getAttribute('href') !== '/dashboard')!
+    act(() => target.focus())
+    expect(document.activeElement).toBe(target)
+    const href = target.getAttribute('href')!
+    act(() => { target.click() })
+    await waitFor(() => document.querySelector('[aria-label="Hızlı arama sonuçları"]') === null)
+    await waitFor(() => host.querySelector(`a[href="${href}"][aria-current="page"]`))
+  })
 })
 
 describe('the Bekleyen count on the Siparişler page (W2)', () => {
