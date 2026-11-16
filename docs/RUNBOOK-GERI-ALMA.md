@@ -372,3 +372,72 @@ Uygulama (sessiz bir saatte; postgres yeniden başlar, birkaç saniye kesinti):
 **Gerçek bir "ana dön" işi:** önce tatbikatla doğru zamanı bulun (`--pitr` ile birkaç deneme), sonra bölüm 3'teki gibi
 yazmaları durdurup canlı veritabanını o zamana döndürmek ayrı bir karardır (veritabanı yeniden kurulur, sonrası kaybolur).
 **Geri dönüş:** yamanın compose satırlarını geri alıp deploy; `pg_wal_archive` volume'ü elle silinene kadar kalır.
+
+## 10. Kesintisiz deploy: iki API kopyası (tasarım, VERITABANI-DAGITIM-4)
+
+**Bugün (16 Kasım 2026):** tek `api` konteyneri var; tam deploy eskisini durdurup yenisini başlatır. Caddy iki
+`reverse_proxy` bloğunda `lb_try_duration 45s` / `lb_try_interval 500ms` ile yeni API dinleyene kadar isteği bekletir:
+bağlanamayan istek hemen 502 almaz, en çok 45 sn bekler. **Ölçüm:** Caddy erişim logu journald'da deploy'lar arasında
+kalır (`compose.production.yaml`, `journald` sürücüsü; `docker logs` yalnız o anki konteyneri gösterir, ölçüm için
+onu kullanmayın): `/prod-logs journal caddy --since <deploy zamanı> --grep '"status":50[234]|connection refused'`.
+Canlı (salt okuma): 15 Kasım 22:22Z deploy'unda bu logda `connection refused` satırları var; 16 Kasım 00:17Z
+deploy'undan sonra hiç yok (gece, trafik azdı; birkaç gündüz deploy'undan sonra yeniden sayın). Bu yeterli değilse
+aşağıdaki tasarım kesintiyi sıfıra indirir; deploy akışını değiştirdiği için **hiçbiri uygulanmadı**.
+
+**Akış (yeni önce, eski sonra):** migrate bugünkü gibi önce çalışır. Sonra `api` iki kopyaya çıkar: yeni imajla ikinci
+konteyner açılır, sağlıklı olunca Caddy ona da istek gönderir, eski konteyner 45 sn'lik `stop_grace_period` ile
+kapanır, tek kopyaya dönülür. Worker ve Caddy bugünkü gibi yeniden yaratılır.
+
+1. `deploy/caddy/Caddyfile.production` ve `Caddyfile`, iki `reverse_proxy` bloğu: `api:8080` yerine Docker DNS'inden
+   bütün kopyalar ve sağlık denetimi (`tests/ops/test-caddy-proxy.sh` buna göre güncellenir):
+   ```caddyfile
+   reverse_proxy {
+       dynamic a {
+           name api
+           port 8080
+           refresh 2s
+       }
+       lb_policy round_robin
+       lb_try_duration 45s
+       lb_try_interval 500ms
+       health_uri /health/live
+       health_interval 2s
+       health_fails 2
+       fail_duration 10s
+   }
+   ```
+2. `deploy/scripts/fast-deploy.sh`, `release_services=(api worker caddy)` satırının yerine (`web_only` değilse):
+   ```bash
+   api_ids() { "${sudo_cmd[@]}" docker ps -q --filter label=com.docker.compose.project=marketplacehub --filter label=com.docker.compose.service=api; }
+   old_api="$(api_ids)"
+   "${compose[@]}" up -d --no-build --no-deps --no-recreate --scale api=2 api || release_status=$?
+   new_api="$(api_ids | grep -vxF "$old_api" || true)"
+   healthy=false
+   for _ in $(seq 1 60); do
+     if [[ "$("${sudo_cmd[@]}" docker inspect -f '{{.State.Health.Status}}' "$new_api")" == healthy ]]; then healthy=true; break; fi
+     sleep 2
+   done
+   if [[ "$healthy" == true ]]; then
+     sleep 5   # Caddy'nin DNS yenilemesi ve sağlık denetimi yeni kopyayı görsün
+     "${sudo_cmd[@]}" docker stop --time 45 "$old_api"
+     "${sudo_cmd[@]}" docker rm "$old_api"
+   else
+     "${sudo_cmd[@]}" docker rm -f "$new_api"   # eskisi hizmette kalır
+     release_status=1
+   fi
+   release_services=(worker caddy)
+   ```
+   Konteyner adı bundan sonra `marketplacehub-api-2`, `-3`... olur.
+3. Ada bağlı yerler etikete (`com.docker.compose.service=api`) geçer: `deploy/scripts/readonly-entrypoint.sh` (`images`,
+   `logs`, `journal`: journald'da aynı alanın birden çok değeri VEYA'dır, `docker ps` ile bulunan adlar
+   `CONTAINER_NAME=<ad>` olarak art arda verilir), `deploy/scripts/rollback.sh` ve `verify_stack` (`lib.sh`), bu
+   runbook'taki `docker stop marketplacehub-api-1` komutları, `docs/RUNBOOK-OLAY.md`, `.claude/skills/prod-logs`.
+   `healthwatch.sh` zaten etiketle buluyor.
+4. Bellek: iki kopya birkaç saniye için 2 × 1,5 GB sınır; 16 GB sunucuda sorun değil.
+5. Yan etkiler: iki kopya birkaç saniye birlikte çalışır. API'nin arka plan servisleri (idempotency ve silinmiş dosya
+   saklaması, kategori değişikliği dinleyicisi, canlı yayın) aynı işi iki kez yapabilir; hepsi tekrarlanabilir silme ya
+   da okuma. SignalR bağlantıları eski kopya kapanınca yeniden bağlanır (bugün de öyle). Data Protection anahtarları
+   ortak volume'de (`dp_keys`).
+6. Test: `tests/ops/test-fast-deploy-web-only.sh` gibi sahte `docker` ile "yeni sağlıklı → eski durdu" ve "yeni sağlıksız
+   → eski kaldı, deploy 1 ile çıktı"; canlıda bir deploy sırasında `while curl -fsS https://<site>/health/live >/dev/null;
+   do sleep 0.2; done` hiç kesilmemeli, Caddy logunda 502 olmamalı.
