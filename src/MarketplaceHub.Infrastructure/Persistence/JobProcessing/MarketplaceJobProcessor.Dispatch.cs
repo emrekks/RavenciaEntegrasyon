@@ -13,13 +13,16 @@ public sealed partial class MarketplaceJobProcessor
     // and AppDbContext and given its run; the tables below map their types to them.
     private ProductSyncRunHandler? productSyncHandler;
     private CatalogStructureImportRunHandler? catalogStructureImportHandler;
+    private ReferenceSyncRunHandler? referenceSyncHandler;
 
     private ProductSyncRunHandler ProductSyncHandler => productSyncHandler ??= new(ServicesFor);
 
     private CatalogStructureImportRunHandler CatalogStructureImportHandler => catalogStructureImportHandler ??= new(ServicesFor);
 
+    private ReferenceSyncRunHandler ReferenceSyncHandler => referenceSyncHandler ??= new(ServicesFor);
+
     // The run handlers the dispatch tables use, for the dispatch tests.
-    internal IReadOnlyList<IRunJobHandler> RunJobHandlers => [ProductSyncHandler, CatalogStructureImportHandler];
+    internal IReadOnlyList<IRunJobHandler> RunJobHandlers => [ProductSyncHandler, CatalogStructureImportHandler, ReferenceSyncHandler];
 
     // The request a run handler gets: the job as the processor got it, with the run's read recorder when it keeps records.
     private JobRequest RunRequest(JobDispatchArgs a) =>
@@ -68,8 +71,7 @@ public sealed partial class MarketplaceJobProcessor
     private static readonly IReadOnlyDictionary<string, BoolJob> BoolJobDispatch = Table(
         ([MarketplaceJobTypes.ConnectionTest, MarketplaceJobTypes.ShopifyConnectionTest, MarketplaceJobTypes.HepsiburadaConnectionTest, MarketplaceJobTypes.N11ConnectionTest, MarketplaceJobTypes.PazaramaConnectionTest, MarketplaceJobTypes.PttAvmConnectionTest],
             async (p, a, cancellationToken) => await p.TestConnection(a.TenantId, a.ConnectionId, a.CorrelationId, cancellationToken)),
-        ([MarketplaceJobTypes.ReferenceSync, MarketplaceJobTypes.HepsiburadaReferenceSync, MarketplaceJobTypes.N11ReferenceSync, MarketplaceJobTypes.PazaramaReferenceSync, MarketplaceJobTypes.PttAvmReferenceSync],
-            async (p, a, cancellationToken) => await p.SyncReferenceJob(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, a.JobId, cancellationToken)),
+        ([.. ReferenceSyncRunHandler.Types], RunBool(p => p.ReferenceSyncHandler)),
         ([MarketplaceJobTypes.OrderSync, MarketplaceJobTypes.ShopifyOrderSync, MarketplaceJobTypes.HepsiburadaOrderSync, MarketplaceJobTypes.N11OrderSync, MarketplaceJobTypes.PazaramaOrderSync, MarketplaceJobTypes.PttAvmOrderSync],
             async (p, a, cancellationToken) => await p.SyncOrdersAndMatchLines(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, "ORDERS_HOT", allowBaseline: false, cancellationToken)),
         ([MarketplaceJobTypes.OrderRecoverySync, MarketplaceJobTypes.ShopifyOrderRecoverySync, MarketplaceJobTypes.HepsiburadaOrderRecoverySync, MarketplaceJobTypes.N11OrderRecoverySync, MarketplaceJobTypes.PazaramaOrderRecoverySync, MarketplaceJobTypes.PttAvmOrderRecoverySync],
