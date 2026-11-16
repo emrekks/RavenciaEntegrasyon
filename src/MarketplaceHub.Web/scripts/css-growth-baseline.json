@@ -67,10 +67,6 @@
     "important": 0,
     "rootBumps": 23
   },
-  "src/features/marketplace/returns-sade.css": {
-    "important": 74,
-    "rootBumps": 158
-  },
   "src/features/operations/jobs-sade.css": {
     "important": 14,
     "rootBumps": 3
@@ -124,6 +120,10 @@
     "important": 2,
     "rootBumps": 137,
     "lines": 161
+  },
+  "src/styles/components/rr-components.css": {
+    "important": 74,
+    "rootBumps": 158
   },
   "src/styles/design-cleanup.css": {
     "important": 2,

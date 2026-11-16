@@ -1,6 +1,6 @@
 // Every piece of state and every ref of the product editor, with the toast helpers (no effects of its own besides
 // the toast column's and the saved Hızlı Güncelle choice's, which come first as they did in the page).
-import { useRef, useState } from 'react'
+import { useMemo, useReducer, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { productNotificationSubject } from '../../../shared/notifications'
 import { type VariantBulkEditField, type VariantBulkMode } from '../variant-bulk-edit'
@@ -11,10 +11,11 @@ import { type RequiredEditorField } from './required-fields'
 import { sizeChartKey } from './size-chart-order'
 import { copyRemovedMediaKeys } from '../product-copy-media-removals'
 import { type EditorFieldErrors, type EditorWebColor } from '../product-editor-state'
+import { editorReducer, initialEditorState, type DirtyFields, type EditorFields } from './editor-reducer'
 import { useOperationFeedbackToasts, type OperationFeedback } from '../operation-feedback-toast'
 import { type ChannelPricingDraft } from './marketplace-channel-pricing'
 import { Product, VariantPlatformStatus } from '../shared'
-import { ProductUpdateRequest, ProductFamilyMediaItem, MediaRemovalConfirmation, PendingProductMediaFile, VariantMediaModalState, VariantFilterSelections, VariantDraft, PendingVariantCodeChange } from './editor-types'
+import { ProductUpdateRequest, MediaRemovalConfirmation, PendingProductMediaFile, VariantMediaModalState, VariantFilterSelections, VariantDraft, PendingVariantCodeChange } from './editor-types'
 import type { EditorProps } from './editor-types'
 
 export function useEditorState(c: EditorProps) {
@@ -24,8 +25,26 @@ export function useEditorState(c: EditorProps) {
   const [error, setError] = useState<unknown>(); const [, setNotice] = useState(''); const operationToasts = useOperationFeedbackToasts()
   // Every notice of the editor names the product it is about (and the marketplace, when a card adds it).
   const setFeedback = (feedback: OperationFeedback) => operationToasts.show({ ...feedback, context: { subject: productNotificationSubject({ id: editProductId, name: form.title, modelCode: form.modelCode }), ...feedback.context } }); const [submitting, setSubmitting] = useState(false); const [mediaAutoSaveTick, setMediaAutoSaveTick] = useState(0);const [calculateDesi, setCalculateDesi] = useState(false); const [desiCalculatorOpen, setDesiCalculatorOpen] = useState(false)
-  const [form, setForm] = useState({ title: '', description: '', brandId: '', categoryId: '', baseSku: '', barcode: '', modelCode: '', weight: '', width: '', length: '', height: '', desi: '1', warrantyMonths: '0', deliveryDays: '1', listPrice: '', salePrice: '', costPrice: '', currency: 'TRY', vatRate: '10', vatIncluded: 'INCLUDED', initialStock: '0', safetyStock: '0', mediaUrls: '', status: 'ACTIVE' })
-  const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({}); const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [variantRows, setVariantRows] = useState<VariantDraft[]>([]); const [draggedVariantKey, setDraggedVariantKey] = useState<string | null>(null); const [dragOverVariantKey, setDragOverVariantKey] = useState<string | null>(null); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]); const [blockedPublishCards, setBlockedPublishCards] = useState<Record<string, number>>({}); const [channelPricing, setChannelPricing] = useState<Record<string, ChannelPricingDraft>>({}); const [variantChannelPricing, setVariantChannelPricing] = useState<Record<string, ChannelPricingDraft>>({})
+  // The form data and its baseline in one state object (editor-reducer.ts); each field keeps its own setter.
+  const [editorState, dispatch] = useReducer(editorReducer, undefined, initialEditorState)
+  const { form, variantRows, attributeSelections, attributeTextValues, familyMediaOrder, mediaFiles, removedVariantIds, pendingFamilyMediaRemovals, channelPricing, variantChannelPricing, webColorAutoEnabled, manualWebColorValueId, sizeChartUrl } = editorState.fields
+  const fieldSetters = useMemo(() => {
+    const setter = <K extends keyof EditorFields>(field: K): Dispatch<SetStateAction<EditorFields[K]>> => update => dispatch({ type: 'setField', field, update } as Extract<Parameters<typeof dispatch>[0], { type: 'setField' }>)
+    return {
+      setForm: setter('form'), setVariantRows: setter('variantRows'), setAttributeSelections: setter('attributeSelections'), setAttributeTextValues: setter('attributeTextValues'), setFamilyMediaOrder: setter('familyMediaOrder'),
+      setMediaFiles: setter('mediaFiles'), setRemovedVariantIds: setter('removedVariantIds'), setPendingFamilyMediaRemovals: setter('pendingFamilyMediaRemovals'), setChannelPricing: setter('channelPricing'),
+      setVariantChannelPricing: setter('variantChannelPricing'), setWebColorAutoEnabled: setter('webColorAutoEnabled'), setManualWebColorValueId: setter('manualWebColorValueId'), setSizeChartUrl: setter('sizeChartUrl'),
+      // Unsaved-edit tracking (W6): a new baseline from the form as the next render shows it, or the baseline moved for
+      // what the editor saved on its own.
+      requestBaseline: () => dispatch({ type: 'requestBaseline' }),
+      takeBaseline: (baseline: DirtyFields) => dispatch({ type: 'takeBaseline', baseline }),
+      adjustBaseline: (adjust: (baseline: DirtyFields) => DirtyFields) => dispatch({ type: 'adjustBaseline', adjust }),
+      requestWebColorBaseline: () => dispatch({ type: 'requestWebColorBaseline' })
+    }
+  }, [])
+  const { setForm, setVariantRows, setAttributeSelections, setAttributeTextValues, setFamilyMediaOrder, setMediaFiles, setRemovedVariantIds, setPendingFamilyMediaRemovals, setChannelPricing, setVariantChannelPricing, setWebColorAutoEnabled, setManualWebColorValueId, setSizeChartUrl, requestBaseline, takeBaseline, adjustBaseline, requestWebColorBaseline } = fieldSetters
+  const { baseline, baselineRequest, webColorBaselineRequest } = editorState
+  const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [draggedVariantKey, setDraggedVariantKey] = useState<string | null>(null); const [dragOverVariantKey, setDragOverVariantKey] = useState<string | null>(null); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]); const [blockedPublishCards, setBlockedPublishCards] = useState<Record<string, number>>({})
   const [automaticBarcodeGeneration, setAutomaticBarcodeGeneration] = useState(false)
   const [marketplaceCodesOpen, setMarketplaceCodesOpen] = useState(false)
   const [quickEditOpen, setQuickEditOpen] = useState(false)
@@ -60,19 +79,14 @@ export function useEditorState(c: EditorProps) {
   const [expandedOptionGroupIds, setExpandedOptionGroupIds] = useState<Record<string, boolean>>({})
   const [variantBulkEdit, setVariantBulkEdit] = useState<{ field: VariantBulkEditField; mode: VariantBulkMode; value: string; error: string } | null>(null)
   const [variantBulkEditFilterSelections, setVariantBulkEditFilterSelections] = useState<VariantFilterSelections>({})
-  const [mediaFiles, setMediaFiles] = useState<PendingProductMediaFile[]>([])
   const [deletingProductMediaKey, setDeletingProductMediaKey] = useState<string | null>(null)
   const [mediaRemovalConfirmation, setMediaRemovalConfirmation] = useState<MediaRemovalConfirmation | null>(null)
-  // Other colours' images "Tümünü Temizle" took off the strip; they are removed from those products on Kaydet.
-  const [pendingFamilyMediaRemovals, setPendingFamilyMediaRemovals] = useState<ProductFamilyMediaItem[]>([])
-  const [familyMediaOrder, setFamilyMediaOrder] = useState<string[]>([])
   const [familyMediaOrderDirty, setFamilyMediaOrderDirty] = useState(false)
   const [draggedMedia, setDraggedMedia] = useState<number | null>(null); const [dragOverMedia, setDragOverMedia] = useState<number | null>(null)
   // The strip as the user last arranged it (mediaStripRefs): where the new files stand among the saved pictures.
   const [mediaStripOrder, setMediaStripOrder] = useState<string[]>([])
   // The picture marked as the card's size chart (Beden Tablosu): always the last picture of the strip and of every
   // variant; written with Kaydet (PUT /products/{id}/size-chart) when it differs from the loaded one.
-  const [sizeChartUrl, setSizeChartUrl] = useState<string | null>(null)
   const initialSizeChartUrl = useRef<string | null>(null)
   // The chart a pending family picture removal cleared, restored by its Geri Al.
   const sizeChartBeforeFamilyRemoval = useRef<string | null>(null)
@@ -84,23 +98,14 @@ export function useEditorState(c: EditorProps) {
   const pointerDraggedVariantRef = useRef<string | null>(null)
   const pointerDragSourceRef = useRef<HTMLDivElement | null>(null)
   const pointerDragIdRef = useRef<number | null>(null)
-  const [removedVariantIds, setRemovedVariantIds] = useState<string[]>([])
   // The saved rows taken off the table, where they stood: a refused delete puts them back.
   const [removedVariantRows, setRemovedVariantRows] = useState<RemovedVariantRow<VariantDraft>[]>([])
   const [variantDeleteConfirmation, setVariantDeleteConfirmation] = useState<VariantDraft | null>(null)
   // A saved "Tek Ürün" placeholder replaced by generated variants: the server removes it on save only when nothing
   // (options, marketplace links or offers, orders, stock movements) is tied to it, and keeps it otherwise.
   const [replacedPlaceholderIds, setReplacedPlaceholderIds] = useState<string[]>([])
-  // Unsaved-edit tracking (W6): the snapshot taken right after the form was filled; a differing current snapshot means
-  // the form holds edits a reseed would destroy.
-  const [snapshotRequest, setSnapshotRequest] = useState(0)
-  const [seedSnapshot, setSeedSnapshot] = useState<string | null>(null)
-  // Web Color: automatic (each row's own Renk) or one manual value; declared here because the snapshot reads it.
-  const [webColorAutoEnabled, setWebColorAutoEnabled] = useState(true)
-  const [manualWebColorValueId, setManualWebColorValueId] = useState('')
-  // The Web Color the open product was filled with, taken into the snapshot once it is set (it waits for requirements).
+  // The Web Color the open product was filled with, taken into the baseline once it is set (it waits for requirements).
   const webColorSeed = useRef<EditorWebColor | null>(null)
-  const [webColorSeedRequest, setWebColorSeedRequest] = useState(0)
   const [staleProductVersion, setStaleProductVersion] = useState<number | null>(null)
   const allowReseedUntil = useRef(0)
   // True while the editor's own save runs: a refetch landing then does not refill the form or flag a newer version.
@@ -151,6 +156,6 @@ export function useEditorState(c: EditorProps) {
   // own write, neither a refill nor another operation's change (seedForm).
   const mediaAutoSave = useRef<Promise<void> | null>(null)
   const mediaAutoSaveInFlight = useRef(false)
-  return { copyRemovedMedia, error, setError, setNotice, operationToasts, setFeedback, submitting, setSubmitting, mediaAutoSaveTick, setMediaAutoSaveTick, calculateDesi, setCalculateDesi, desiCalculatorOpen, setDesiCalculatorOpen, form, setForm, attributeSelections, setAttributeSelections, attributeTextValues, setAttributeTextValues, variantAttributeIds, setVariantAttributeIds, variantRows, setVariantRows, draggedVariantKey, setDraggedVariantKey, dragOverVariantKey, setDragOverVariantKey, selectedChannelIds, setSelectedChannelIds, blockedPublishCards, setBlockedPublishCards, channelPricing, setChannelPricing, variantChannelPricing, setVariantChannelPricing, automaticBarcodeGeneration, setAutomaticBarcodeGeneration, marketplaceCodesOpen, setMarketplaceCodesOpen, quickEditOpen, setQuickEditOpen, seededProductId, setSeededProductId, marketplaceCodesVariant, setMarketplaceCodesVariant, attributeValueQueries, setAttributeValueQueries, initializedEditProductKey, initializedEditOptionsKey, initializedEditWebColorKey, wizardStep, setWizardStep, platformUpdateDialogOpen, setPlatformUpdateDialogOpen, platformUpdateConnectionIds, setPlatformUpdateConnectionIds, platformUpdatePreferences, setPlatformUpdatePreferences, savingPlatformUpdateChoice, setSavingPlatformUpdateChoice, platformUpdateChoice, pendingPlatformUpdate, lightboxImage, setLightboxImage, variantMediaModal, setVariantMediaModal, barcodeSkuMenuOpen, setBarcodeSkuMenuOpen, barcodeSkuActionRef, barcodePasteMenuOpen, setBarcodePasteMenuOpen, variantMobileGroup, setVariantMobileGroup, barcodePasteActionRef, pendingVariantCodeGeneration, setPendingVariantCodeGeneration, variantRowsRef, expandedOptionGroupIds, setExpandedOptionGroupIds, variantBulkEdit, setVariantBulkEdit, variantBulkEditFilterSelections, setVariantBulkEditFilterSelections, mediaFiles, setMediaFiles, deletingProductMediaKey, setDeletingProductMediaKey, mediaRemovalConfirmation, setMediaRemovalConfirmation, pendingFamilyMediaRemovals, setPendingFamilyMediaRemovals, familyMediaOrder, setFamilyMediaOrder, familyMediaOrderDirty, setFamilyMediaOrderDirty, draggedMedia, setDraggedMedia, dragOverMedia, setDragOverMedia, mediaStripOrder, setMediaStripOrder, sizeChartUrl, setSizeChartUrl, initialSizeChartUrl, sizeChartBeforeFamilyRemoval, sizeChartPicking, setSizeChartPicking, chartKey, pointerDraggedVariantKey, setPointerDraggedVariantKey, pointerDraggedVariantRef, pointerDragSourceRef, pointerDragIdRef, removedVariantIds, setRemovedVariantIds, removedVariantRows, setRemovedVariantRows, variantDeleteConfirmation, setVariantDeleteConfirmation, replacedPlaceholderIds, setReplacedPlaceholderIds, snapshotRequest, setSnapshotRequest, seedSnapshot, setSeedSnapshot, webColorAutoEnabled, setWebColorAutoEnabled, manualWebColorValueId, setManualWebColorValueId, webColorSeed, webColorSeedRequest, setWebColorSeedRequest, staleProductVersion, setStaleProductVersion, allowReseedUntil, editorSaveInFlight, seededProduct, productAtSave, setProductAtSave, variantCodeConflicts, setVariantCodeConflicts, mediaFilesKeptOnReseed, mediaFileInputRef, offerPostKeys, initialCustomChannelIds, channelPricingBase, fieldErrors, setFieldErrors, requiredErrors, setRequiredErrors, lastFieldReveal, productCreateKey, leavingAfterSave, variantPlatformPricing, setVariantPlatformPricing, variantPlatformPricingDraft, setVariantPlatformPricingDraft, variantPlatformPricingSaving, setVariantPlatformPricingSaving, initialEditMediaUrl, initialEditModelCode, initialEditDesi, initialEditVariantMediaRefs, showFeedback, optionEditRowKey, setOptionEditRowKey, updateField, mediaAssignmentFormWasClean, mediaAutoSave, mediaAutoSaveInFlight }
+  return { copyRemovedMedia, error, setError, setNotice, operationToasts, setFeedback, submitting, setSubmitting, mediaAutoSaveTick, setMediaAutoSaveTick, calculateDesi, setCalculateDesi, desiCalculatorOpen, setDesiCalculatorOpen, form, setForm, attributeSelections, setAttributeSelections, attributeTextValues, setAttributeTextValues, variantAttributeIds, setVariantAttributeIds, variantRows, setVariantRows, draggedVariantKey, setDraggedVariantKey, dragOverVariantKey, setDragOverVariantKey, selectedChannelIds, setSelectedChannelIds, blockedPublishCards, setBlockedPublishCards, channelPricing, setChannelPricing, variantChannelPricing, setVariantChannelPricing, automaticBarcodeGeneration, setAutomaticBarcodeGeneration, marketplaceCodesOpen, setMarketplaceCodesOpen, quickEditOpen, setQuickEditOpen, seededProductId, setSeededProductId, marketplaceCodesVariant, setMarketplaceCodesVariant, attributeValueQueries, setAttributeValueQueries, initializedEditProductKey, initializedEditOptionsKey, initializedEditWebColorKey, wizardStep, setWizardStep, platformUpdateDialogOpen, setPlatformUpdateDialogOpen, platformUpdateConnectionIds, setPlatformUpdateConnectionIds, platformUpdatePreferences, setPlatformUpdatePreferences, savingPlatformUpdateChoice, setSavingPlatformUpdateChoice, platformUpdateChoice, pendingPlatformUpdate, lightboxImage, setLightboxImage, variantMediaModal, setVariantMediaModal, barcodeSkuMenuOpen, setBarcodeSkuMenuOpen, barcodeSkuActionRef, barcodePasteMenuOpen, setBarcodePasteMenuOpen, variantMobileGroup, setVariantMobileGroup, barcodePasteActionRef, pendingVariantCodeGeneration, setPendingVariantCodeGeneration, variantRowsRef, expandedOptionGroupIds, setExpandedOptionGroupIds, variantBulkEdit, setVariantBulkEdit, variantBulkEditFilterSelections, setVariantBulkEditFilterSelections, mediaFiles, setMediaFiles, deletingProductMediaKey, setDeletingProductMediaKey, mediaRemovalConfirmation, setMediaRemovalConfirmation, pendingFamilyMediaRemovals, setPendingFamilyMediaRemovals, familyMediaOrder, setFamilyMediaOrder, familyMediaOrderDirty, setFamilyMediaOrderDirty, draggedMedia, setDraggedMedia, dragOverMedia, setDragOverMedia, mediaStripOrder, setMediaStripOrder, sizeChartUrl, setSizeChartUrl, initialSizeChartUrl, sizeChartBeforeFamilyRemoval, sizeChartPicking, setSizeChartPicking, chartKey, pointerDraggedVariantKey, setPointerDraggedVariantKey, pointerDraggedVariantRef, pointerDragSourceRef, pointerDragIdRef, removedVariantIds, setRemovedVariantIds, removedVariantRows, setRemovedVariantRows, variantDeleteConfirmation, setVariantDeleteConfirmation, replacedPlaceholderIds, setReplacedPlaceholderIds, baselineRequest, requestBaseline, baseline, takeBaseline, adjustBaseline, webColorAutoEnabled, setWebColorAutoEnabled, manualWebColorValueId, setManualWebColorValueId, webColorSeed, webColorBaselineRequest, requestWebColorBaseline, staleProductVersion, setStaleProductVersion, allowReseedUntil, editorSaveInFlight, seededProduct, productAtSave, setProductAtSave, variantCodeConflicts, setVariantCodeConflicts, mediaFilesKeptOnReseed, mediaFileInputRef, offerPostKeys, initialCustomChannelIds, channelPricingBase, fieldErrors, setFieldErrors, requiredErrors, setRequiredErrors, lastFieldReveal, productCreateKey, leavingAfterSave, variantPlatformPricing, setVariantPlatformPricing, variantPlatformPricingDraft, setVariantPlatformPricingDraft, variantPlatformPricingSaving, setVariantPlatformPricingSaving, initialEditMediaUrl, initialEditModelCode, initialEditDesi, initialEditVariantMediaRefs, showFeedback, optionEditRowKey, setOptionEditRowKey, updateField, mediaAssignmentFormWasClean, mediaAutoSave, mediaAutoSaveInFlight }
 }
 export type EditorStateResult = ReturnType<typeof useEditorState>

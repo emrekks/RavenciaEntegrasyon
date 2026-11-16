@@ -9,14 +9,14 @@ import { useDialogSurface } from '../components/DesignSystem'
 import { TitleHint } from '../components/TitleHint'
 import { uiIconBody, type UiIconName } from '../components/UiIcon'
 import { autoRetryLine, useAutoRetry } from '../hooks/useAutoRetry'
-import '../../features/marketplace/returns-sade.css'
+import '../../styles/components/rr-components.css'
 import { lockPageScroll } from '../hooks/useScrollLock'
 import { useDismissable } from '../hooks/useDismissable'
 
 // Building blocks of the panel (WEB-ALTYAPI-12: moved here from features/marketplace/returns-ui.tsx, which re-exports
 // them), first drawn for the returns page in docs/tasarim-onerileri/iadeler-yeni.html. Class names carry the "rr-"
-// prefix of returns-sade.css; that stylesheet still lives in features/marketplace and is imported here at the same
-// point as before, so the CSS order of every chunk stays the same.
+// prefix of styles/components/rr-components.css (formerly features/marketplace/returns-sade.css, moved whole and
+// imported here at the same point, so the CSS order of every chunk stays the same).
 
 type IconName = 'search' | 'chev' | 'left' | 'right' | 'cal' | 'down' | 'up' | 'filter' | 'copy' | 'open' | 'close' | 'doc' | 'check' | 'box' | 'refresh' | 'upload' | 'alert' | 'info' | 'print' | 'arrowR' | 'image' | 'clock' | 'truck' | 'play' | 'edit' | 'ban' | 'export' | 'import' | 'plus' | 'trash' | 'dup' | 'price' | 'stock' | 'on' | 'off' | 'sortv'
 
