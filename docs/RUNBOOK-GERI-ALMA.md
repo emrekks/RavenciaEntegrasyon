@@ -296,12 +296,11 @@ Sessiz bir saatte, tek seferde:
    sunucuda bir kez:
    `sudo docker exec marketplacehub-postgres-1 psql -X -v ON_ERROR_STOP=1 -U marketplacehub -d marketplacehub -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements"`
    (yedek ve geri yükleme `marketplacehub` ile çalıştığı için uzantı yedekten de geri gelir).
-3. Ardından bir migration (yalnız SQL, `// migration-lock-ok: ALTER TABLE SET (...) takes SHARE UPDATE EXCLUSIVE`) sık
-   güncellenen tablolara:
-   `ALTER TABLE integration.jobs SET (autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.02);`
-   (aynısı `integration.job_attempts`, `integration.rate_limit_usage`, `integration.inbox_messages`,
-   `integration.reference_items`, `inventory.inventory_items`, `inventory.channel_offers`). Tablonun sahibi
-   çalıştırabilir: bölüm 7'den önce de sonra da çalışır.
+3. Sık güncellenen tabloların autovacuum ayarı **sahip adımı değil, migration ile geliyor**:
+   `20261116090200_HotTableAutovacuum` (`integration.jobs`, `job_attempts`, `rate_limit_usage`, `inbox_messages`,
+   `reference_items`, `inventory.inventory_items`, `channel_offers` için `autovacuum_vacuum_scale_factor` ve
+   `autovacuum_analyze_scale_factor` 0.02; yazmaları bloke etmez, postgres yeniden başlamaz). Adım 1'den bağımsızdır.
+   Doğrulama: `/prod-sql "select relname, reloptions from pg_class where relname in ('jobs','channel_offers') and relkind='r'"`.
 4. Salt-okunur rol: `GRANT pg_read_all_stats, pg_read_all_settings TO ravencia_ro` artık
    `deploy/scripts/install-readonly-db-role.sh` içinde. Sunucuda repo kökünde tek komut
    `bash deploy/scripts/install-readonly-access.sh` (adım 1'den bağımsız, hemen yapılabilir) hem rolü yeniler hem güncel
