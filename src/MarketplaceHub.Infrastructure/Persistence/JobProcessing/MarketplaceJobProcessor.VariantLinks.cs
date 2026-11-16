@@ -9,13 +9,18 @@ public sealed partial class MarketplaceJobProcessor
 {
     private VariantLinkBookkeeping? variantLinks;
 
-    internal VariantLinkBookkeeping VariantLinks => variantLinks ??= new VariantLinkBookkeeping(db, timeProvider, ListingRules);
+    internal VariantLinkBookkeeping VariantLinks => variantLinks ??= new VariantLinkBookkeeping(db, timeProvider, new ListingVerificationRules(db));
+
+    // ISLEYICI-9 stage 5 step 1: the listing verification lives in ListingVerificationService; the price/stock answers
+    // queue their lookups through it, and the dedup tests add a lookup job through the processor.
+    internal Task QueueListingLookupsForRefusedCodes(Guid tenantId, Guid connectionId, IReadOnlyCollection<Guid> variantIds, CancellationToken cancellationToken) =>
+        Services.ListingVerification.QueueListingLookupsForRefusedCodes(tenantId, connectionId, variantIds, cancellationToken);
+
+    internal Task<bool> AddListingLookupJobAsync(Guid tenantId, Guid connectionId, string dedup, ListingVerificationService.ListingLookupJobPayload payload, DateTimeOffset now, CancellationToken cancellationToken) =>
+        Services.ListingVerification.AddListingLookupJobAsync(tenantId, connectionId, dedup, payload, now, cancellationToken);
 
     private Task<bool> ExternalIdTaken(Guid tenantId, Guid connectionId, string externalId, Guid? exceptLinkId, CancellationToken cancellationToken) =>
         VariantLinks.ExternalIdTaken(tenantId, connectionId, externalId, exceptLinkId, cancellationToken);
-
-    private Task MarkVariantLinksSeen(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteCatalogProduct> page, CancellationToken cancellationToken, bool heal = true) =>
-        VariantLinks.MarkVariantLinksSeen(tenantId, connectionId, page, cancellationToken, heal);
 
     private static string MarketplacePlatformName(string? platformCode) => VariantLinkBookkeeping.MarketplacePlatformName(platformCode);
 }

@@ -44,7 +44,7 @@ internal sealed partial class OrderReadService(
     private static int ReadBoundedInt(string payloadJson, string propertyName, int fallback, int minimum, int maximum) =>
         JobPayloadReader.BoundedInt(payloadJson, propertyName, fallback, minimum, maximum);
 
-    private static bool TrendyolPackageNotAsked(AdapterError? error) => MarketplaceJobProcessor.TrendyolPackageNotAsked(error);
+    private static bool TrendyolPackageNotAsked(AdapterError? error) => InvoiceReconciliationService.TrendyolPackageNotAsked(error);
 
     private Task<string?> ConnectionPlatformCode(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
         orderIngestion.ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
