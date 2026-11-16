@@ -1,0 +1,84 @@
+{
+  "Products": [
+    {
+      "Title": "Fake Basic Tişört",
+      "Status": "Active"
+    }
+  ],
+  "Models": 1,
+  "Variants": [
+    {
+      "Sku": "SKU-FAKE-001-L",
+      "Barcode": "0000000000053",
+      "ModelCode": "PRODUCT-FAKE-001",
+      "OptionSignature": "Beden: L",
+      "Status": "Archived"
+    },
+    {
+      "Sku": "SKU-FAKE-001-M",
+      "Barcode": "0000000000052",
+      "ModelCode": "PRODUCT-FAKE-001",
+      "OptionSignature": "Beden: M",
+      "Status": "Active"
+    },
+    {
+      "Sku": "SKU-FAKE-001-S",
+      "Barcode": "0000000000051",
+      "ModelCode": "PRODUCT-FAKE-001",
+      "OptionSignature": "Beden: S",
+      "Status": "Active"
+    }
+  ],
+  "Offers": [
+    {
+      "SalePrice": 199.9000,
+      "ListPrice": 249.9000,
+      "Currency": "TRY",
+      "VatRate": 10.0000,
+      "Status": "ACTIVE"
+    },
+    {
+      "SalePrice": 199.9000,
+      "ListPrice": 249.9000,
+      "Currency": "TRY",
+      "VatRate": 10.0000,
+      "Status": "ACTIVE"
+    },
+    {
+      "SalePrice": 199.9000,
+      "ListPrice": 249.9000,
+      "Currency": "TRY",
+      "VatRate": 10.0000,
+      "Status": "INACTIVE"
+    }
+  ],
+  "Inventory": [],
+  "AttributeAssignments": 0,
+  "ModelLinks": [
+    "PRODUCT-FAKE-001"
+  ],
+  "ProductLinks": [
+    {
+      "ExternalId": "800001",
+      "ExternalCode": null
+    }
+  ],
+  "VariantLinks": [
+    {
+      "ExternalId": "810001",
+      "ExternalBarcode": "0000000000051",
+      "ExternalSku": "SKU-FAKE-001-S"
+    },
+    {
+      "ExternalId": "810002",
+      "ExternalBarcode": "0000000000052",
+      "ExternalSku": "SKU-FAKE-001-M"
+    },
+    {
+      "ExternalId": "810003",
+      "ExternalBarcode": "0000000000053",
+      "ExternalSku": "SKU-FAKE-001-L"
+    }
+  ],
+  "Issues": []
+}
