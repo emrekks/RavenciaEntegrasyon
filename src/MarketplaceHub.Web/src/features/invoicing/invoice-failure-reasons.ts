@@ -48,6 +48,8 @@ export function invoiceFailureReason(code: string | null) {
     HEPSIBURADA_INVOICE_INFO_MISSING: 'Hepsiburada siparişin bazı kalemlerinde fatura bilgisi vermedi; fatura linki gönderilmedi.',
     INVOICE_RETURN_DOCUMENT_REQUIRED: 'Faturadaki ürünlerin bir kısmı iade edildi; iade edilen ürünler için iade belgesi gerekli.',
     EFATURAM_RECIPIENT_TAX_ID_INVALID: 'Alıcının vergi numarası veya T.C. kimlik numarası geçersiz (kontrol hanesi tutmuyor).',
+    EFATURAM_RECIPIENT_KIND_UNKNOWN: 'Hepsiburada alıcının bireysel mi kurumsal mı olduğunu açıkça bildirmedi; alıcı türü belirsiz olduğu için fatura kesilmedi.',
+    EFATURAM_RECIPIENT_PLACEHOLDER_FOR_CORPORATE: 'Siparişte geçerli bir şirket vergi numarası var ama fatura 11111111111 ile kesilecekti; yanlış alıcıya fatura kesilmedi.',
     EFATURAM_SIGNIN_UNAVAILABLE: 'E-Faturam oturumu açılamadı; fatura gönderilmedi. Otomatik olarak yeniden denenecek.',
     EFATURAM_OPERATION_FORBIDDEN: 'E-Faturam hesabı bu işlem için yetkili değil; fatura oluşturulmadı.',
     CAPABILITY_NOT_VERIFIED: 'E-Faturam dış gönderim izni kapalı; fatura oluşturulmadı.',
@@ -91,6 +93,8 @@ export function invoiceFailureGuidance(code: string | null) {
     INVOICE_RETURN_DOCUMENT_REQUIRED: 'Fatura iptal edilmez ve pazaryerine iletilir; iade edilen ürünler için iade belgesini (gider pusulası veya iade faturası) düzenleyin.',
     INVOICE_EXPORT_FLOW_REQUIRED: 'İhracat faturasını E-Faturam portalında düzenleyip belgeyi siparişe manuel olarak ekleyin.',
     EFATURAM_RECIPIENT_TAX_ID_INVALID: 'Alıcının vergi/T.C. kimlik numarasını pazaryerinde düzeltip siparişi yeniden eşitleyin.',
+    EFATURAM_RECIPIENT_KIND_UNKNOWN: 'Hepsiburada satıcı panelinde siparişin fatura bilgilerini kontrol edin; faturayı E-Faturam portalında doğru alıcıya düzenleyip siparişe manuel belge olarak ekleyin.',
+    EFATURAM_RECIPIENT_PLACEHOLDER_FOR_CORPORATE: 'Alıcı türünü pazaryeri panelinde kontrol edin; gerekirse faturayı E-Faturam portalında şirket adına düzenleyip siparişe manuel belge olarak ekleyin.',
     EFATURAM_SIGNIN_UNAVAILABLE: 'Bekleyin; geçmezse Entegrasyonlar ekranından E-Faturam bağlantısını test edin.',
     EFATURAM_OPERATION_FORBIDDEN: 'E-Faturam hesabında fatura oluşturma yetkisini açtırıp Tekrar dene seçeneğini kullanın.',
     INVOICE_ADJUSTMENT_REQUIRED: 'E-Arşiv iptal isteği gönderin veya iade faturasını E-Faturam portalında düzenleyin.'

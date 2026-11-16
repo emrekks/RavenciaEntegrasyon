@@ -1503,7 +1503,11 @@ public sealed partial class InvoicingBillingService(
                 using var snapshot = JsonDocument.Parse(_partyProtector.Unprotect(receiverSnapshot.ProtectedContent));
                 deliveryPackage = ReadFiscalDeliveryPackage(snapshot.RootElement);
                 // The identifier checked here is the one the provider payload will carry.
-                if (!RecipientTaxIdentityIsValid(invoice.InvoiceType, SnapshotString(snapshot.RootElement, "CustomerSnapshotJson"), SnapshotString(snapshot.RootElement, "InvoiceAddressSnapshotJson")))
+                var receiverCustomer = SnapshotString(snapshot.RootElement, "CustomerSnapshotJson");
+                var receiverAddress = SnapshotString(snapshot.RootElement, "InvoiceAddressSnapshotJson");
+                if (RecipientIdentityRefusal(invoice.InvoiceType, receiverCustomer, receiverAddress) is { } recipientRefusal)
+                    failures.Add(recipientRefusal.Code);
+                else if (!RecipientTaxIdentityIsValid(invoice.InvoiceType, receiverCustomer, receiverAddress))
                     failures.Add(InvoiceIssuePolicy.RecipientTaxIdInvalidCode);
             }
             catch (Exception exception) when (exception is System.Security.Cryptography.CryptographicException or JsonException)
@@ -1885,6 +1889,13 @@ public sealed partial class InvoicingBillingService(
 
     // A consumer e-Archive carries the fixed 11111111111 identifier; every other recipient must hold a
     // TCKN or VKN whose check digits are right, otherwise the provider or the tax authority rejects it later.
+    // 16 Nov 2026: a buyer of unknown kind (Hepsiburada), or a company's VKN on the snapshot while the invoice would carry
+    // 11111111111 (any marketplace), stops the invoice with its own code before the identifier check.
+    internal static InvoiceIssueRefusal? RecipientIdentityRefusal(string invoiceType, string customerSnapshotJson, string invoiceAddressSnapshotJson) =>
+        TrendyolEFaturamCanonicalPayload.IsRecipientKindAmbiguous(customerSnapshotJson, invoiceAddressSnapshotJson) ? InvoiceIssuePolicy.RecipientKindUnknown
+        : TrendyolEFaturamCanonicalPayload.SendsPlaceholderToCorporateTaxNumber(customerSnapshotJson, invoiceAddressSnapshotJson, invoiceType) ? InvoiceIssuePolicy.RecipientPlaceholderForCorporate
+        : null;
+
     internal static bool RecipientTaxIdentityIsValid(string invoiceType, string customerSnapshotJson, string invoiceAddressSnapshotJson)
     {
         var (taxId, isCorporate) = TrendyolEFaturamCanonicalPayload.ResolveRecipientTaxIdentity(customerSnapshotJson, invoiceAddressSnapshotJson, invoiceType);
