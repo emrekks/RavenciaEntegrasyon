@@ -99,4 +99,17 @@ describe('useShippingLabelSettings', () => {
     expect(hook.settings.senderName).toBe('Başka Yönetici')
     expect(hook.conflict).toBe(false)
   })
+
+  it('an edited draft over a newer version of the same settings is no conflict, and saves over that version', async () => {
+    act(() => hook.setSettings({ ...hook.settings, senderName: 'Benim Tasarımım' }))
+    server.version++
+    await act(async () => { await client.invalidateQueries({ queryKey: ['shipping-label-settings'] }) })
+    await settle()
+    expect(hook.settings.senderName).toBe('Benim Tasarımım')
+    expect(hook.conflict).toBe(false)
+    await act(async () => { await hook.save(hook.settings) })
+    await settle()
+    expect(server.puts.at(-1)).toBe('"v4"')
+    expect(server.settings.senderName).toBe('Benim Tasarımım')
+  })
 })
