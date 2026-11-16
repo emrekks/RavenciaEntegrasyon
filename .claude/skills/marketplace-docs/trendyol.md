@@ -392,6 +392,16 @@ purpose (`TurkeyTime.cs`).
   carry `Cross-Origin-Resource-Policy: cross-origin` or Chrome shows broken pictures there (live 2026-11-06, MZ028IH-10
   Zümrüt: two empty picture slots; `deploy/caddy/Caddyfile.production`).
 
+## Micro export flags (16 Nov 2026)
+- The order package carries `micro` (true for a micro-export order; independent of `countryCode`) and `3pByTrendyol`
+  (Trendyol export partnership: when true, `micro` is false and `invoiceAddress` holds Trendyol's company). Both are
+  package top-level fields (offline docs `trendyol-api-son.md` ~l.403, 802, 3822, 4100).
+- Live 16 Nov 2026 (read-only SQL): 216 of 1845 Trendyol orders have `micro: true`, always with `3pByTrendyol: false`;
+  none has `3pByTrendyol: true`, `microExport`, a micro `shipmentPackageType`/`orderType`, or `micro: true` anywhere but
+  the top level. The 216 are exactly the SA/AZ/BG/RO/GR/AE storefront orders.
+- The panel's one rule is `OrderMicroExportRules` (any positive indicator, any field order); the invoice keeps its own
+  `InvoiceIssuePolicy.IsMicroExport`.
+
 ## Job types
 TRENDYOL_CONNECTION_TEST, _REFERENCE_SYNC, _ORDER_SYNC (60 s), _ORDER_RECOVERY_SYNC (15 min),
 _ORDER_CARGO_INFO_RECONCILIATION, _FINANCE_SYNC (every 6 h since 4 Nov 2026, `MarketplaceSync:TrendyolFinance:IntervalSeconds` 21600 in `ScheduledJobProducer`; 90-day first read, 3-day overlap, 15-day windows),
