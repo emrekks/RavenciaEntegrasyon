@@ -624,6 +624,28 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.Equal([null, null, null], await DescriptionOverridesAsync(db, siyah.Id, mavi.Id, gri.Id));
     }
 
+    // KATALOG-14 phase D3: a lookup by model code (ownership, family scope, Excel, import matching) finds a linked card by
+    // its model's key, the one place the code lives, and a card linked to no model (a code two brands share) by its own.
+    [PostgreSqlFact]
+    public async Task ALookupByModelCode_ReadsTheModelForALinkedCard_AndTheVariantsForAnUnlinkedOne()
+    {
+        await using var db = fixture.CreateContext();
+        var seed = await SeedAsync(db);
+        var linked = AddCard(db, seed, seed.Ravencia, "MZ500", "Siyah", "Kadın Siyah Etek", 0);
+        AddCard(db, seed, seed.Lavian, "KENE02", "Mavi", "Kadın Mavi Kot Etek", 1);
+        var unlinked = AddCard(db, seed, seed.Ravencia, "KENE02", "Siyah", "Kadın Siyah Kot Etek", 2);
+        await db.SaveChangesAsync();
+        Assert.NotNull((await db.Products.AsNoTracking().SingleAsync(x => x.Id == linked.Id)).FamilyId);
+        Assert.Null((await db.Products.AsNoTracking().SingleAsync(x => x.Id == unlinked.Id)).FamilyId);
+
+        Assert.Equal(linked.Id, (await ModelCodeOwnership.FindAsync(db, seed.Tenant.Id, ["mz500"], CancellationToken.None))?.ProductId);
+        Assert.Contains(unlinked.Id, await ModelCodeOwnership.ProductIdsWithKeys(db, seed.Tenant.Id, ["KENE02"]).ToListAsync());
+        // The model's key decides for a linked card: with the model moved to another key the card is not found by the old.
+        await db.ProductModels.Where(x => x.TenantId == seed.Tenant.Id && x.ModelCodeKey == "MZ500").ExecuteUpdateAsync(s => s.SetProperty(x => x.ModelCodeKey, "MZ501"));
+        Assert.Null(await ModelCodeOwnership.FindAsync(db, seed.Tenant.Id, ["MZ500"], CancellationToken.None));
+        Assert.Equal([linked.Id], await ModelCodeOwnership.ProductIdsWithKeys(db, seed.Tenant.Id, ["MZ501"]).ToListAsync());
+    }
+
     // KATALOG-14 phase D2: the refresh of a model whose colours already hold their overrides writes nothing, so a
     // serializable editor save of the model running beside the nightly scan meets no new write to its cards or model.
     [PostgreSqlFact]

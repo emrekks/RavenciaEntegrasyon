@@ -22,17 +22,15 @@ public static class ModelCodeOwnership
     {
         var keys = ModelCodeUniquenessPolicy.Keys([modelCode]);
         if (keys.Count == 0) return null;
-        // An import calls this for every code it changes: the database first narrows to the codes holding the key's
-        // letters and digits in order (separators and case aside), the key decides in memory, and only the few cards
-        // found are checked for links on the connection.
-        // A letter outside ASCII (ı, İ, ş...) matches any one character: the database's case folding may not pair it
-        // with the key's spelling.
-        var pattern = "%" + string.Join("%", modelCode.Where(char.IsLetterOrDigit).Select(ch => char.IsAscii(ch) ? ch.ToString() : "_")) + "%";
+        // An import calls this for every code it changes: the database narrows to the cards of the key (KATALOG-14 phase
+        // D3: by the model's key, the one place the code lives; ProductIdsWithKeys), the key decides in memory, and only
+        // the few cards found are checked for links on the connection.
+        var candidates = ProductIdsWithKeys(db, tenantId, keys);
         var rows = (await (
                 from variant in db.ProductVariants.AsNoTracking()
                 join product in EffectiveCatalog.Products(db) on variant.ProductId equals product.Id
                 where variant.TenantId == tenantId && product.TenantId == tenantId && variant.ModelCode != null && variant.ModelCode != ""
-                    && variant.ProductId != ownProductId && EF.Functions.ILike(variant.ModelCode, pattern)
+                    && variant.ProductId != ownProductId && candidates.Contains(variant.ProductId)
                 select new { variant.ProductId, product.Title, variant.ModelCode, product.CreatedAt })
             .Distinct()
             .ToListAsync(cancellationToken))
@@ -58,13 +56,21 @@ public static class ModelCodeOwnership
     // KATALOG-8: the cards that may hold one of the model-code keys, narrowed in the database: a code of ASCII and Turkish
     // letters is keyed there exactly (ProductModelLinks.SqlKey), any other code is kept for the in-memory key check. The
     // callers compare the key in memory as before; only the catalog's other codes are no longer read into memory.
+    // KATALOG-14 phase D3: the model code lives on the model (product_models.ModelCodeKey, written by the application's own
+    // key rule): a card linked to a model is found by its model's key, the one place that holds it; only a card linked to
+    // no model (a code several brands share, a card whose link is still to come) is found by its variants' codes.
     internal static IQueryable<Guid> ProductIdsWithKeys(AppDbContext db, Guid tenantId, IReadOnlyCollection<string> keys)
     {
         // Only constant SQL is put together here (the key expressions); the tenant and keys are parameters.
         const string code = "v.\"ModelCode\"";
         var sql = $"""
+            SELECT p."Id" AS "Value" FROM catalog.products p
+            JOIN catalog.product_models m ON m."TenantId" = p."TenantId" AND m."Id" = p."FamilyId"
+            WHERE p."TenantId" = @key_tenant AND m."ModelCodeKey" = ANY(@key_keys)
+            UNION
             SELECT v."ProductId" AS "Value" FROM catalog.product_variants v
-            WHERE v."TenantId" = @key_tenant AND v."ModelCode" IS NOT NULL AND v."ModelCode" ~ '[^[:space:]]'
+            JOIN catalog.products p ON p."TenantId" = v."TenantId" AND p."Id" = v."ProductId"
+            WHERE v."TenantId" = @key_tenant AND p."FamilyId" IS NULL AND v."ModelCode" IS NOT NULL AND v."ModelCode" ~ '[^[:space:]]'
               AND (NOT {ProductModelLinks.SqlKeySafe(code)} OR {ProductModelLinks.SqlKey(code)} = ANY(@key_keys))
             """;
         return db.Database.SqlQueryRaw<Guid>(sql, new Npgsql.NpgsqlParameter("key_tenant", tenantId), new Npgsql.NpgsqlParameter("key_keys", keys.ToArray()));
