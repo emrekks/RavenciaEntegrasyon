@@ -1,0 +1,98 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index e7c19e4c8..e6e829c5b 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -174,6 +174,12 @@ jobs:
+           # API and worker finish running requests and hand jobs back before SIGKILL (VERITABANI-DAGITIM-4, API-GUVENLIK-1).
+           "${compose[@]}" config --format json | jq -e '.services.api.stop_grace_period and .services.worker.stop_grace_period' >/dev/null \
+             || { echo "api and worker need a stop_grace_period (Docker's 10 s default cuts running requests and jobs)." >&2; exit 1; }
++          # WAL archiving into its own volume (VERITABANI-DAGITIM-8, docs/RUNBOOK-GERI-ALMA.md section 9a).
++          "${compose[@]}" config --format json | jq -e '
++            (.services.postgres.command | index("archive_mode=on") != null)
++            and (.services.postgres.command | map(select(startswith("archive_command="))) | length == 1)
++            and (.services.postgres.volumes | map(.source) | index("pg_wal_archive") != null)
++          ' >/dev/null || { echo "postgres lost its WAL archive settings or the pg_wal_archive volume." >&2; exit 1; }
+ 
+       # RFC 9116: an expired security.txt is treated as absent. Fail 30 days ahead so it gets renewed in time.
+       - name: security.txt is not about to expire
+diff --git a/deploy/compose/compose.yaml b/deploy/compose/compose.yaml
+index 54b4b179f..805757809 100644
+--- a/deploy/compose/compose.yaml
++++ b/deploy/compose/compose.yaml
+@@ -61,7 +61,11 @@ services:
+       POSTGRES_USER: marketplacehub
+       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+     secrets: [postgres_password]
+-    volumes: [pg_data:/var/lib/postgresql]
++    # WAL archive (VERITABANI-DAGITIM-8, docs/RUNBOOK-GERI-ALMA.md section 9): its own volume, so pg_basebackup and the
++    # data directory never contain it; deploy/backup/wal-archive.sh keeps base backups there too.
++    volumes: [pg_data:/var/lib/postgresql, pg_wal_archive:/var/lib/postgresql/wal-archive]
++    depends_on:
++      pg-wal-archive-volume: { condition: service_completed_successfully }
+     # Hardening (U3). The official entrypoint starts as root, fixes ownership and modes of the data and socket
+     # directories (CHOWN, DAC_OVERRIDE, FOWNER) and then drops to the postgres user with gosu (SETUID, SETGID);
+     # nothing else is kept. The root filesystem stays writable: PostgreSQL keeps its socket and lock files there.
+@@ -89,6 +93,14 @@ services:
+       - maintenance_work_mem=512MB
+       - -c
+       - log_min_duration_statement=2000
++      # Every finished WAL segment, gzip-compressed, into the archive volume; at the latest every 5 minutes. A segment
++      # already there is never overwritten (the command fails and PostgreSQL retries, the health watch alerts).
++      - -c
++      - archive_mode=on
++      - -c
++      - archive_timeout=300
++      - -c
++      - archive_command=test ! -f /var/lib/postgresql/wal-archive/wal/%f.gz && gzip -c %p > /var/lib/postgresql/wal-archive/wal/%f.gz.part && mv /var/lib/postgresql/wal-archive/wal/%f.gz.part /var/lib/postgresql/wal-archive/wal/%f.gz
+     # Docker's 64 MB /dev/shm breaks parallel hash/sort ("could not resize shared memory").
+     shm_size: 1g
+     healthcheck:
+@@ -103,6 +115,20 @@ services:
+         # pids: one process per connection (max_connections 150) plus background and parallel workers.
+         limits: { memory: 6144M, cpus: "3.00", pids: 512 }
+ 
++  # One-shot before PostgreSQL: the new archive volume belongs to root; the database server (uid 999) must own it.
++  pg-wal-archive-volume:
++    image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
++    restart: "no"
++    user: "0:0"
++    network_mode: none
++    command: ["sh", "-ceu", "mkdir -p /archive/wal /archive/base && chown -R postgres:postgres /archive && chmod 0700 /archive"]
++    volumes: [pg_wal_archive:/archive]
++    security_opt: [no-new-privileges:true]
++    cap_drop: [ALL]
++    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
++    pids_limit: 32
++    logging: *local_logging
++
+   migrate:
+     <<: *app
+     restart: "no"
+@@ -285,6 +311,7 @@ networks:
+     internal: true
+ volumes:
+   pg_data: {}
++  pg_wal_archive: {}
+   app_files: {}
+   dp_keys: {}
+   caddy_data: {}
+diff --git a/deploy/scripts/install-backup-timer.sh b/deploy/scripts/install-backup-timer.sh
+index a1d681892..c00cda59f 100644
+--- a/deploy/scripts/install-backup-timer.sh
++++ b/deploy/scripts/install-backup-timer.sh
+@@ -31,8 +31,14 @@ units=(
+   ravencia-maintenance.service
+   ravencia-maintenance.timer
+   ravencia-deploy-guard.service
++  ravencia-wal-basebackup.service
++  ravencia-wal-basebackup.timer
++  ravencia-wal-ship.service
++  ravencia-wal-ship.timer
+ )
+-timers=(ravencia-backup.timer ravencia-restore-drill.timer ravencia-healthwatch.timer ravencia-maintenance.timer)
++# The WAL archive's base backups and off-site publishing (deploy/backup/wal-archive.sh, docs/RUNBOOK-GERI-ALMA.md 9a).
++timers=(ravencia-backup.timer ravencia-restore-drill.timer ravencia-healthwatch.timer ravencia-maintenance.timer
++  ravencia-wal-basebackup.timer ravencia-wal-ship.timer)
+ # The off-site copy (deploy/backup/offsite-copy.sh), only once the owner has configured it: the age public key and
+ # the rclone destination in deploy/secrets (docs/CI-CD-DEPLOY.md "Sunucu dışı yedek"). Until then its units are not
+ # installed and nothing changes on the host.
