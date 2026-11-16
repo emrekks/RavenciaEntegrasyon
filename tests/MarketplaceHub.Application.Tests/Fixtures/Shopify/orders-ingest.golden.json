@@ -1,0 +1,115 @@
+{
+  "Orders": [
+    {
+      "ExternalOrderId": "1001",
+      "DerivedStatus": "NEW",
+      "Currency": "TRY",
+      "GrossAmount": 300.0000,
+      "DiscountAmount": 40.0000,
+      "NetAmount": 260.0000,
+      "StoreFrontCode": null,
+      "Lines": [
+        {
+          "Sku": "SKU-FAKE-SH1",
+          "Matched": true,
+          "OrderedQuantity": 2.0000,
+          "CancelledQuantity": 0.0000,
+          "ShippedQuantity": 2.0000,
+          "DeliveredQuantity": 0.0000,
+          "ReturnedQuantity": 0.0000
+        },
+        {
+          "Sku": "SKU-FAKE-SH2",
+          "Matched": true,
+          "OrderedQuantity": 1.0000,
+          "CancelledQuantity": 0.0000,
+          "ShippedQuantity": 0.0000,
+          "DeliveredQuantity": 0.0000,
+          "ReturnedQuantity": 0.0000
+        }
+      ],
+      "Packages": [
+        "New",
+        "Shipped"
+      ]
+    },
+    {
+      "ExternalOrderId": "1002",
+      "DerivedStatus": "NEW",
+      "Currency": "TRY",
+      "GrossAmount": 100.0000,
+      "DiscountAmount": 0.0000,
+      "NetAmount": 100.0000,
+      "StoreFrontCode": null,
+      "Lines": [
+        {
+          "Sku": "SKU-FAKE-SH3",
+          "Matched": true,
+          "OrderedQuantity": 2.0000,
+          "CancelledQuantity": 0.0000,
+          "ShippedQuantity": 0.0000,
+          "DeliveredQuantity": 0.0000,
+          "ReturnedQuantity": 0.0000
+        },
+        {
+          "Sku": "SKU-FAKE-SH4",
+          "Matched": true,
+          "OrderedQuantity": 1.0000,
+          "CancelledQuantity": 1.0000,
+          "ShippedQuantity": 0.0000,
+          "DeliveredQuantity": 0.0000,
+          "ReturnedQuantity": 0.0000
+        }
+      ],
+      "Packages": [
+        "New"
+      ]
+    },
+    {
+      "ExternalOrderId": "1003",
+      "DerivedStatus": "CANCELLED",
+      "Currency": "TRY",
+      "GrossAmount": 0.0000,
+      "DiscountAmount": 0.0000,
+      "NetAmount": 0.0000,
+      "StoreFrontCode": null,
+      "Lines": [
+        {
+          "Sku": "SKU-FAKE-SH5",
+          "Matched": true,
+          "OrderedQuantity": 1.0000,
+          "CancelledQuantity": 1.0000,
+          "ShippedQuantity": 0.0000,
+          "DeliveredQuantity": 0.0000,
+          "ReturnedQuantity": 0.0000
+        }
+      ],
+      "Packages": [
+        "Cancelled"
+      ]
+    }
+  ],
+  "LineCount": 5,
+  "PackageCount": 4,
+  "Ledger": [
+    {
+      "MovementType": "ORDER_RECEIVED",
+      "Entries": 3,
+      "Quantity": -5.0000
+    },
+    {
+      "MovementType": "ORDER_SHIPMENT_PROGRESS",
+      "Entries": 1,
+      "Quantity": -2.0000
+    },
+    {
+      "MovementType": "ORDER_STOCK_BASELINE",
+      "Entries": 5,
+      "Quantity": 0.0000
+    }
+  ],
+  "OnHand": 45.0000,
+  "Reserved": 0.0000,
+  "Available": 45.0000,
+  "Issues": []
+}

@@ -25,7 +25,7 @@ public sealed partial class MarketplaceJobProcessor
         public List<OrderLine> CostSnapshotLines { get; } = [];
     }
 
-    private async Task UpsertOrders(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteOrder> remotes, CancellationToken cancellationToken)
+    internal async Task UpsertOrders(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteOrder> remotes, CancellationToken cancellationToken)
     {
         if (remotes.Count == 0) return;
         // A long read projects page after page through one context. Rows this call loads are released

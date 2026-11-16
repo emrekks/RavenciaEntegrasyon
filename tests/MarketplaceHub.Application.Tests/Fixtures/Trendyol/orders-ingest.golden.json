@@ -1,0 +1,50 @@
+{
+  "Orders": [
+    {
+      "ExternalOrderId": "10654411111",
+      "DerivedStatus": "DELIVERED",
+      "Currency": "TRY",
+      "GrossAmount": 498.9000,
+      "DiscountAmount": 0.0000,
+      "NetAmount": 498.9000,
+      "StoreFrontCode": null,
+      "Lines": [
+        {
+          "Sku": "111111",
+          "Matched": true,
+          "OrderedQuantity": 1.0000,
+          "CancelledQuantity": 0.0000,
+          "ShippedQuantity": 1.0000,
+          "DeliveredQuantity": 1.0000,
+          "ReturnedQuantity": 0.0000
+        }
+      ],
+      "Packages": [
+        "Delivered"
+      ]
+    }
+  ],
+  "LineCount": 1,
+  "PackageCount": 1,
+  "Ledger": [
+    {
+      "MovementType": "ORDER_RECEIVED",
+      "Entries": 1,
+      "Quantity": -1.0000
+    },
+    {
+      "MovementType": "ORDER_SHIPMENT_PROGRESS",
+      "Entries": 1,
+      "Quantity": -1.0000
+    },
+    {
+      "MovementType": "ORDER_STOCK_BASELINE",
+      "Entries": 1,
+      "Quantity": 0.0000
+    }
+  ],
+  "OnHand": 9.0000,
+  "Reserved": 0.0000,
+  "Available": 9.0000,
+  "Issues": []
+}

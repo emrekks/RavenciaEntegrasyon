@@ -1,0 +1,129 @@
+{
+  "Orders": [
+    {
+      "ExternalOrderId": "PTT-A1712HP2E-071024",
+      "DerivedStatus": "RETURNED",
+      "Currency": "TRY",
+      "GrossAmount": 36.6300,
+      "DiscountAmount": 2.7100,
+      "NetAmount": 33.9200,
+      "StoreFrontCode": null,
+      "Lines": [
+        {
+          "Sku": "0000000066266mainbrkd",
+          "Matched": true,
+          "OrderedQuantity": 1.0000,
+          "CancelledQuantity": 0.0000,
+          "ShippedQuantity": 1.0000,
+          "DeliveredQuantity": 1.0000,
+          "ReturnedQuantity": 1.0000
+        },
+        {
+          "Sku": "abs123456",
+          "Matched": true,
+          "OrderedQuantity": 1.0000,
+          "CancelledQuantity": 1.0000,
+          "ShippedQuantity": 0.0000,
+          "DeliveredQuantity": 0.0000,
+          "ReturnedQuantity": 0.0000
+        }
+      ],
+      "Packages": [
+        "Returned"
+      ]
+    },
+    {
+      "ExternalOrderId": "PTT-L6LI1VK2D-211024",
+      "DerivedStatus": "CANCELLED",
+      "Currency": "TRY",
+      "GrossAmount": 53.3800,
+      "DiscountAmount": 3.7200,
+      "NetAmount": 49.6600,
+      "StoreFrontCode": null,
+      "Lines": [
+        {
+          "Sku": "10102024-85224",
+          "Matched": true,
+          "OrderedQuantity": 1.0000,
+          "CancelledQuantity": 1.0000,
+          "ShippedQuantity": 0.0000,
+          "DeliveredQuantity": 0.0000,
+          "ReturnedQuantity": 0.0000
+        }
+      ],
+      "Packages": [
+        "Cancelled"
+      ]
+    },
+    {
+      "ExternalOrderId": "PTT-NILFIELDS1-051126",
+      "DerivedStatus": "MANUAL_REVIEW",
+      "Currency": "TRY",
+      "GrossAmount": 0.0000,
+      "DiscountAmount": 0.0000,
+      "NetAmount": 0.0000,
+      "StoreFrontCode": null,
+      "Lines": [],
+      "Packages": [
+        "ManualReview"
+      ]
+    },
+    {
+      "ExternalOrderId": "PTT-OPEN12345-211026",
+      "DerivedStatus": "NEW",
+      "Currency": "TRY",
+      "GrossAmount": 250.0000,
+      "DiscountAmount": 10.0000,
+      "NetAmount": 240.0000,
+      "StoreFrontCode": null,
+      "Lines": [
+        {
+          "Sku": "8690000000017",
+          "Matched": true,
+          "OrderedQuantity": 2.0000,
+          "CancelledQuantity": 0.0000,
+          "ShippedQuantity": 0.0000,
+          "DeliveredQuantity": 0.0000,
+          "ReturnedQuantity": 0.0000
+        },
+        {
+          "Sku": "8690000000024",
+          "Matched": true,
+          "OrderedQuantity": 1.0000,
+          "CancelledQuantity": 0.0000,
+          "ShippedQuantity": 1.0000,
+          "DeliveredQuantity": 0.0000,
+          "ReturnedQuantity": 0.0000
+        }
+      ],
+      "Packages": [
+        "New"
+      ]
+    }
+  ],
+  "LineCount": 5,
+  "PackageCount": 4,
+  "Ledger": [
+    {
+      "MovementType": "ORDER_RECEIVED",
+      "Entries": 3,
+      "Quantity": -4.0000
+    },
+    {
+      "MovementType": "ORDER_SHIPMENT_PROGRESS",
+      "Entries": 2,
+      "Quantity": -2.0000
+    },
+    {
+      "MovementType": "ORDER_STOCK_BASELINE",
+      "Entries": 5,
+      "Quantity": 0.0000
+    }
+  ],
+  "OnHand": 46.0000,
+  "Reserved": 0.0000,
+  "Available": 46.0000,
+  "Issues": [
+    "ORDER_PACKAGE_LINE_INVALID"
+  ]
+}
