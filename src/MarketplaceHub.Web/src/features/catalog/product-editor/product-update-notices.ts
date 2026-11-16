@@ -1,9 +1,10 @@
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { appendNotification, productNotificationSubject } from '../../../shared/notifications'
 
 // The product update's answer: the job, and the notices the server raised while queuing it. A product matched to a
 // marketplace listing has a listing profile without values of its own; where the update took the product card's value
 // instead (Teslimat Süresi, Garanti Süresi), the server says so and the panel keeps it in the notification center.
-export type ProductUpdateAccepted = { jobId: string; notices?: string[] | null }
+export type ProductUpdateAccepted = ApiAnswer<'postProductsByIdUpdateJobs'>
 
 export function recordProductUpdateNotices(accepted: ProductUpdateAccepted | null | undefined, context: { productId: string; productName: string; modelCode?: string | null; platformCode?: string | null; connectionId: string }) {
   const notices = (accepted?.notices ?? []).map(notice => notice.trim()).filter(notice => notice.length > 0)

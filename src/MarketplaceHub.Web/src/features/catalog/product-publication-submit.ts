@@ -39,7 +39,7 @@ export type MarketplacePublishOutcome = {
 export type PublishGroup = { kind: 'existing-colour' | 'new-colour'; colour: string | null; variants: number; skus: readonly string[] }
 export type PublicationSkippedVariant = { sku: string; code: string; message: string }
 /** The publication job the API queued, with the variants it left out of a card already on the marketplace. */
-export type PublicationAccepted = { jobId: string; skippedVariants?: PublicationSkippedVariant[] }
+export type PublicationAccepted = ApiAnswer<'postProductsByIdPublicationJobs'>
 
 // What "Güncelle" queued on one marketplace for a product already there.
 export type MarketplaceUpdateOutcome = {
@@ -323,4 +323,5 @@ export function chosenGapSkipped<T extends { id: string }>(connections: readonly
   return connections
     .filter(connection => chosenIds.includes(connection.id) && (gapCards[connection.id] ?? 0) > 0)
     .map(connection => ({ platformName: platformName(connection), requiredGaps: gapCards[connection.id] }))
-}
+}import type { ApiAnswer } from '../../shared/api/api-answer'
+

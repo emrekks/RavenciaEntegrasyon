@@ -331,7 +331,7 @@ export async function loadPublicationAttributeIssues(client: QueryClient, connec
 
   const [attributeReferences, attributeMappings, attributeDefaults] = await Promise.all([
     readPublicationReadinessSource(`${cardName} kategori özellik listesi`, () => cached('reference-attributes', [categoryScope], () => hubApi<ApiAnswer<'getReferenceDataCategoriesByExternalIdAttributes'>>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes?connectionId=${connectionId}`))),
-    readPublicationReadinessSource('Yerel kategori özellik eşlemeleri', () => cached('attribute-mappings', [categoryScope], () => hubApi<PublicationMappingReference[]>(`/mappings/attributes?connectionId=${connectionId}&scopeExternalId=${encodeURIComponent(categoryScope)}`))),
+    readPublicationReadinessSource('Yerel kategori özellik eşlemeleri', () => cached('attribute-mappings', [categoryScope], () => hubApi<ApiAnswer<'getMappingsAttributes'>>(`/mappings/attributes?connectionId=${connectionId}&scopeExternalId=${encodeURIComponent(categoryScope)}`))),
     // Connection defaults (e.g. Menşei = TR) cover required attributes the product leaves empty.
     cached('attribute-defaults', [], () => hubApi<ApiAnswer<'getConnectionsByConnectionIdAttributeDefaults'>>(`/connections/${connectionId}/attribute-defaults`)).catch((): ApiAnswer<'getConnectionsByConnectionIdAttributeDefaults'> => [])
   ])

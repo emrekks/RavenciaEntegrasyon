@@ -22,7 +22,7 @@ import { EmptyState } from '../../../../shared/components/EmptyState'
 import { connectionQueries, queryKeys } from '../../../../shared/api/query-keys'
 import { useMappingNotificationConnection, MappingDeleteIcon, type CatalogMapping, SearchableSelect, MappingViewTabs, wait } from './mapping-shared'
 
-type LocalBrand = { id: string; name: string; isActive: boolean; version: number }
+type LocalBrand = ApiAnswer<'getCatalogBrands'>['items'][number]
 
 type BrandMappingTransferBundle = { format: 'RAVENCIA_BRAND_MAPPING_BUNDLE'; version: 1; exportedAt: string; brands: LocalBrand[]; mappings: CatalogMapping[] }
 

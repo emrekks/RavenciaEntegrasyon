@@ -11,7 +11,7 @@ import './missing-value-mapping-dialog.css'
 import { queryKeys } from '../../shared/api/query-keys'
 
 type ValueList = ApiAnswer<'getReferenceDataCategoriesByCategoryIdAttributesByAttributeIdValues'>
-type ValueMapping = { localId: string; externalId: string; version: number }
+type ValueMapping = ApiAnswer<'getMappingsAttributeValues'>[number]
 
 // "Şimdi eşle": maps the panel values a publish card reports as unmapped without leaving the
 // product page. Each value gets the closest marketplace values as suggestions plus a search over
