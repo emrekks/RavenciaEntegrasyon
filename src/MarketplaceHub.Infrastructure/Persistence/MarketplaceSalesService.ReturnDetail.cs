@@ -133,7 +133,7 @@ public sealed partial class MarketplaceSalesService
             ReturnDecisionScope.IsWholeClaim(platformCode), IsN11(platformCode)));
     }
 
-    private static bool IsN11(string? platformCode) => string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase);
+    internal static bool IsN11(string? platformCode) => string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase);
 
     // Marking a return received only helps where the decision is sent for the whole claim (Hepsiburada, Shopify); elsewhere
     // the approve/reject call needs lines the marketplace itself reports as waiting, so the step would open dead buttons.
@@ -161,7 +161,7 @@ public sealed partial class MarketplaceSalesService
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, (DateTimeOffset ReadAt, IReadOnlyList<ReturnIssueReason> Reasons)> IssueReasonCache = new();
     private static readonly TimeSpan IssueReasonCacheLifetime = TimeSpan.FromHours(1);
 
-    private async Task<IReadOnlyList<ReturnIssueReason>?> CachedIssueReasonsAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    internal async Task<IReadOnlyList<ReturnIssueReason>?> CachedIssueReasonsAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
         if (IssueReasonCache.TryGetValue(connectionId, out var cached) && now - cached.ReadAt < IssueReasonCacheLifetime) return cached.Reasons;

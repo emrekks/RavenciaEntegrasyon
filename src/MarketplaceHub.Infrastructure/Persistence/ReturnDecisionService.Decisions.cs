@@ -5,10 +5,11 @@ using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
 using static MarketplaceHub.Infrastructure.Persistence.InvoiceLabelPolicy;
 using static MarketplaceHub.Infrastructure.Persistence.OrderSnapshotReader;
+using static MarketplaceHub.Infrastructure.Persistence.SalesResults;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceSalesService
+internal sealed partial class ReturnDecisionService
 {
     public async Task<ServiceResult<ReturnDetailView>> MarkReturnReceivedAsync(Guid tenantId, Guid userId, Guid claimId, long expectedVersion, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
     {
@@ -377,13 +378,13 @@ public sealed partial class MarketplaceSalesService
         return ServiceResult<ReturnDetailView>.Fail("CONCURRENCY_CONFLICT", "İade siz düzenlerken başka bir işlemle güncellendi. Sayfayı yenileyip tekrar deneyin.", 409);
     }
 
-    private static readonly IReadOnlyList<string> ReturnActions = ["APPROVE", "REJECT"];
+    internal static readonly IReadOnlyList<string> ReturnActions = ["APPROVE", "REJECT"];
 
     // Return decisions whose outcome is still open: waiting to be sent or verified, or sent while the request's effect
     // is not settled. A sent decision on line-level marketplaces is closed once the marketplace accepted it (the
     // decided lines are no longer actionable); Hepsiburada decides the whole claim and its sent decision holds the
     // claim until the claim read confirms it, as before.
-    private IQueryable<ReturnDecision> OpenReturnDecisions(Guid tenantId, Guid claimId, bool sentDecisionHoldsClaim) => db.ReturnDecisions.AsNoTracking()
+    internal IQueryable<ReturnDecision> OpenReturnDecisions(Guid tenantId, Guid claimId, bool sentDecisionHoldsClaim) => db.ReturnDecisions.AsNoTracking()
         .Where(x => x.TenantId == tenantId && x.ClaimId == claimId
             && (x.Status == "PENDING" || x.Status == "RETRY_SCHEDULED" || x.Status == "MANUAL_REVIEW"
                 || x.Status == "SUBMITTED" && db.ExternalEffectRecords.Any(effect => effect.TenantId == x.TenantId && effect.IdempotencyKey == x.IdempotencyKey && (sentDecisionHoldsClaim || effect.CompletedAt == null))));
