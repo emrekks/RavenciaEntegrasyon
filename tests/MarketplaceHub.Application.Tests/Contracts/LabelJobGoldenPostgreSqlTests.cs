@@ -52,6 +52,7 @@ public sealed class LabelJobGoldenPostgreSqlTests(PostgreSqlTenantIsolationFixtu
     [MemberData(nameof(CommonLabelScenarios))]
     public async Task ACommonLabelSendsAndStoresTheSameThings(string platform, string scenario)
     {
+        using var culture = JobGolden.InvariantCulture();
         var (run, packageId) = await SeedAsync(platform, scenario == "carrier-unsupported" ? "YURTICI" : platform == "HEPSIBURADA" ? "HEPSIJET" : "ARAS Kargo");
         var jobId = run.NewId();
         run.Known[jobId] = "job";
@@ -102,6 +103,7 @@ public sealed class LabelJobGoldenPostgreSqlTests(PostgreSqlTenantIsolationFixtu
     [MemberData(nameof(ProbeScenarios))]
     public async Task AStageCapabilityProbeAsksAndStoresTheSameThings(string scenario)
     {
+        using var culture = JobGolden.InvariantCulture();
         var (run, packageId) = await SeedAsync("TRENDYOL", "ARAS Kargo", environment: scenario == "not-stage" ? "PRODUCTION" : "STAGE", store: "2738");
         var actor = run.NewId();
         run.Known[actor] = "actor";
@@ -136,6 +138,7 @@ public sealed class LabelJobGoldenPostgreSqlTests(PostgreSqlTenantIsolationFixtu
     [MemberData(nameof(StageOrderScenarios))]
     public async Task AStageTestOrderAsksAndStoresTheSameThings(string platform, string scenario)
     {
+        using var culture = JobGolden.InvariantCulture();
         var run = new GoldenRun(fixture, platform) { Environment = "STAGE", ExternalStoreId = scenario == "wrong-store" ? "1234" : "2738" };
         await run.SeedAsync();
         var actor = run.NewId();

@@ -21,6 +21,7 @@ public sealed class SingleOrderReadGoldenPostgreSqlTests(PostgreSqlTenantIsolati
     [MemberData(nameof(Scenarios))]
     public async Task ASingleOrderReadAsksAndStoresTheSameThings(string platform, string scenario)
     {
+        using var culture = JobGolden.InvariantCulture();
         var run = new GoldenRun(fixture, platform);
         await run.SeedAsync();
         RemoteOrder remote;

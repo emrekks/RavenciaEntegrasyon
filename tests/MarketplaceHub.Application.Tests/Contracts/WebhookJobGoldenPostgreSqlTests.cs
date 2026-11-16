@@ -42,6 +42,7 @@ public sealed class WebhookJobGoldenPostgreSqlTests(PostgreSqlTenantIsolationFix
     [MemberData(nameof(Scenarios))]
     public async Task AWebhookReadsAndStoresTheSameThings(string platform, string scenario)
     {
+        using var culture = JobGolden.InvariantCulture();
         var run = new GoldenRun(fixture, platform);
         var (resourceType, raw, messageId) = Notice(platform, scenario);
         messageId = messageId.Replace("connection:", "golden-connection:", StringComparison.Ordinal);
