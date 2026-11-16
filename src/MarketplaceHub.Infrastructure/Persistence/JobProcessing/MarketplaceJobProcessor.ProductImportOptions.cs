@@ -389,7 +389,7 @@ public sealed partial class MarketplaceJobProcessor
         return Short(segments.Length > 0 ? segments[^1] : name, 160);
     }
 
-    private static string Short(string? value, int maximum) => string.IsNullOrWhiteSpace(value) ? "" : value.Trim().Length <= maximum ? value.Trim() : value.Trim()[..maximum];
+    internal static string Short(string? value, int maximum) => string.IsNullOrWhiteSpace(value) ? "" : value.Trim().Length <= maximum ? value.Trim() : value.Trim()[..maximum];
     // The shared catalog key (CatalogKeyNormalizer); the panel uses the same one, so SKU, barcode, option,
     // brand and category keys written here and there agree.
     private static string NormalizeCatalogKey(string? value, int maximum) => CatalogKeyNormalizer.Key(value, maximum);

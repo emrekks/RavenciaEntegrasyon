@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class OrderIngestionService
 {
     private async Task UpsertShopifyFinancialObservations(Guid tenantId, Guid orderId, RemoteOrder remote, CancellationToken cancellationToken)
     {
@@ -57,7 +57,7 @@ public sealed partial class MarketplaceJobProcessor
     // discoverySource ("stream" or "reconciliation"), when given, counts which path first saw a
     // Trendyol package become invoiced (plan step 0.9: do invoices uploaded outside the panel reach
     // the order stream, or only the reconciliation sweep?).
-    private async Task MergeMarketplaceInvoiceState(ShipmentPackage package, RemotePackage remotePackage, CancellationToken cancellationToken, string? discoverySource = null)
+    internal async Task MergeMarketplaceInvoiceState(ShipmentPackage package, RemotePackage remotePackage, CancellationToken cancellationToken, string? discoverySource = null)
     {
         var wasInvoiced = package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Invoiced;
         var observedAt = timeProvider.GetUtcNow();

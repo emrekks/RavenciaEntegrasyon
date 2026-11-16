@@ -49,7 +49,9 @@ public sealed partial class MarketplaceJobProcessor
         if (verdict == EffectVerdict.Unknown)
             (effect.UnclearChecks, effect.VerificationSeconds) = ExternalEffectReconcilePolicy.RecordUnclearCheck(effect.UnclearChecks, effect.VerificationSeconds, effect.LastCheckedAt, now);
         effect.LastCheckedAt = now;
-        var outcome = ExternalEffectReconcilePolicy.Decide(verdict, now - effect.CreatedAt, effect.UnclearChecks, TimeSpan.FromSeconds(effect.VerificationSeconds));
+        // KUYRUK-2: the age counts from when the request went out (SentAt, written by ExternalEffectGuard), as the sweep
+        // does; a record written long before its request was sent (a wait for quota) is not judged by its creation time.
+        var outcome = ExternalEffectReconcilePolicy.Decide(verdict, now - (effect.SentAt ?? effect.CreatedAt), effect.UnclearChecks, TimeSpan.FromSeconds(effect.VerificationSeconds));
         switch (outcome)
         {
             case ExternalEffectOutcome.Applied:

@@ -69,10 +69,37 @@ public sealed class HepsiburadaPriceInventoryResultPostgreSqlTests(PostgreSqlTen
         Assert.Equal("hash-2", offers.Single(x => x.Id == seed.Lines[1].OfferId).LastPriceHash);
     }
 
+    // ADAPTOR-DIGER-1 (16 Nov 2026): a Shopify send cut off part-way names the lines it never sent (NOT_SENT) and the line
+    // whose price went before its stock write failed (SHOPIFY_PRICE_ONLY_APPLIED). Neither is a refusal: no issue, the job
+    // ends with a note; the unsent line's marks stay, the price-only line moves its price mark alone.
+    [PostgreSqlFact]
+    public async Task A_shopify_send_cut_off_part_way_records_what_went_and_sends_the_rest_again()
+    {
+        var seed = await Seed("SHOPIFY");
+
+        var result = await Poll(seed, new RemoteOperationStatus("shopify-completed:x", "COMPLETED",
+        [
+            new RemoteOperationLine(seed.Lines[0].Barcode, false, null, "SHOPIFY_THROTTLED", true, MarketplaceJobProcessor.NotSentLineStatus),
+            new RemoteOperationLine(seed.Lines[1].Barcode, false, "gid://shopify/ProductVariant/2", MarketplaceJobProcessor.PriceOnlyAppliedCode, true, "PRICE_ONLY_APPLIED")
+        ]));
+
+        Assert.Equal(JobCompletionKind.Succeeded, result.Kind);
+        Assert.Equal("PRICE_INVENTORY_LINES_NOT_SENT", result.ErrorCode);
+        await using var check = fixture.CreateContext();
+        var offers = await Offers(check, seed);
+        var unsent = offers.Single(x => x.Id == seed.Lines[0].OfferId);
+        Assert.Null(unsent.LastPriceHash);
+        Assert.Null(unsent.LastStockProjectionVersion);
+        var priceOnly = offers.Single(x => x.Id == seed.Lines[1].OfferId);
+        Assert.Equal("hash-2", priceOnly.LastPriceHash);
+        Assert.Null(priceOnly.LastStockProjectionVersion);
+        Assert.False(await check.OperationalIssues.AnyAsync(x => x.TenantId == seed.Tenant.Id));
+    }
+
     private sealed record Seeded(Tenant Tenant, PlatformConnection Connection, IReadOnlyList<PriceInventoryPushLine> Lines);
 
     // A Hepsiburada connection with two offers whose price and stock are current for the job's lines.
-    private async Task<Seeded> Seed()
+    private async Task<Seeded> Seed(string platform = "HEPSIBURADA")
     {
         var now = DateTimeOffset.UtcNow;
         var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"hb-price-result-{Guid.NewGuid():N}", DisplayName = "hb-price-result", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
@@ -82,7 +109,7 @@ public sealed class HepsiburadaPriceInventoryResultPostgreSqlTests(PostgreSqlTen
             Id = Guid.CreateVersion7(),
             TenantId = tenant.Id,
             PublicId = Guid.CreateVersion7(),
-            PlatformCode = "HEPSIBURADA",
+            PlatformCode = platform,
             Environment = "PRODUCTION",
             DisplayName = "Hepsiburada",
             ExternalStoreId = $"merchant-{Guid.NewGuid():N}",

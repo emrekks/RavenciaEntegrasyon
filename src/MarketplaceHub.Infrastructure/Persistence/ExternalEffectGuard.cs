@@ -97,6 +97,36 @@ internal sealed class ExternalEffectGuard(AppDbContext db, TimeProvider timeProv
         : JobExecutionResult.FromAdapterError(error).Kind == JobCompletionKind.Retry ? ExternalEffectSendOutcome.Retryable
         : ExternalEffectSendOutcome.Refused;
 
+    // KUYRUK-2 step 4 (16 Nov 2026): saves an accepted write with the caller's own changes. An effect check that read the
+    // marketplace before this request was applied may have removed the record meanwhile (NotApplied); the save then hits
+    // no row and failed, and the job ran again and sent the request a second time. The request was accepted, so the
+    // record is put back as APPLIED, the check's "not applied" issue is resolved, and the same save is repeated: the
+    // caller's other changes are still tracked and go with it (a failed save writes nothing). A conflict on any other row,
+    // or a record that still exists, stays the caller's as before.
+    public async Task SaveAcceptedAsync(IReadOnlyList<ExternalEffectRecord> effects, CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                return;
+            }
+            catch (DbUpdateConcurrencyException conflict) when (attempt < effects.Count && conflict.Entries.Count > 0
+                && conflict.Entries.All(entry => entry.State == EntityState.Modified && entry.Entity is ExternalEffectRecord record && effects.Contains(record)))
+            {
+                foreach (var entry in conflict.Entries)
+                {
+                    var record = (ExternalEffectRecord)entry.Entity;
+                    if (await db.ExternalEffectRecords.AsNoTracking().AnyAsync(x => x.Id == record.Id, cancellationToken)) throw;
+                    record.Outcome = ExternalEffectReconcilePolicy.AppliedOutcome;
+                    entry.State = EntityState.Added;
+                    await new IssueRecorder(db).ResolveAsync(record.TenantId, $"external-effect:{record.Id}", timeProvider.GetUtcNow(), cancellationToken);
+                }
+            }
+        }
+    }
+
     // The request was not applied: the record goes, so the next run may send again. Saved with the caller's next save.
     public void Release(ExternalEffectRecord effect) => db.ExternalEffectRecords.Remove(effect);
 

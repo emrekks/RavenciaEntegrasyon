@@ -461,28 +461,6 @@ public sealed partial class MarketplaceJobProcessor
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    private sealed record InvoiceDiscoveryCounts(int Stream, int Reconciliation, DateTimeOffset Since, string[] RecentReconciliationPackages);
-
-    private async Task NoteInvoiceDiscoveryAsync(ShipmentPackage package, string source, DateTimeOffset now, CancellationToken cancellationToken)
-    {
-        // One job may note several packages before it saves; reuse the cursor it already tracks.
-        var cursor = db.SyncCursors.Local.FirstOrDefault(x => x.TenantId == package.TenantId && x.ConnectionId == package.ConnectionId && x.ResourceType == "TRENDYOL_INVOICE_DISCOVERY")
-            ?? await Cursor(package.TenantId, package.ConnectionId, "TRENDYOL_INVOICE_DISCOVERY", cancellationToken);
-        InvoiceDiscoveryCounts? counts = null;
-        if (!string.IsNullOrWhiteSpace(cursor.OpaqueCursor))
-        {
-            try { counts = JsonSerializer.Deserialize<InvoiceDiscoveryCounts>(cursor.OpaqueCursor); }
-            catch (JsonException) { }
-        }
-        counts ??= new(0, 0, now, []);
-        counts = source == "reconciliation"
-            ? counts with { Reconciliation = counts.Reconciliation + 1, RecentReconciliationPackages = [.. counts.RecentReconciliationPackages.Append(package.ExternalPackageId).TakeLast(20)] }
-            : counts with { Stream = counts.Stream + 1 };
-        cursor.OpaqueCursor = JsonSerializer.Serialize(counts);
-        cursor.LastSuccessAt = now;
-        cursor.Version++;
-    }
-
     internal static string? TrendyolWebhookStorefront(string rawPackageJson)
     {
         try

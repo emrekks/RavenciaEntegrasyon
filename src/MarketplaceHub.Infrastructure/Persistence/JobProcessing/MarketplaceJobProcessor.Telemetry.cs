@@ -172,18 +172,9 @@ public sealed partial class MarketplaceJobProcessor
         }
     }
 
-    private void TrackRequest() => run.RequestCount++;
-    private void TrackReceived(bool changed = true)
-    {
-        run.ReceivedCount++;
-        if (changed) run.ChangedCount++;
-        else run.SkippedCount++;
-    }
-    private void TrackSkipped() => run.SkippedCount++;
-    private void TrackResultFailure(AdapterError? error)
-    {
-        run.FailedCount++;
-        if (error?.Class == AdapterErrorClass.RateLimit) run.RateLimitCount++;
-        if (error?.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.RateLimit or AdapterErrorClass.Remote5xx) run.RetryCount++;
-    }
+    // ISLEYICI-9 stage 3a: the counting lives on the run (JobRunContext); these names stay so the call sites read as before.
+    private void TrackRequest() => run.TrackRequest();
+    private void TrackReceived(bool changed = true) => run.TrackReceived(changed);
+    private void TrackSkipped() => run.TrackSkipped();
+    private void TrackResultFailure(AdapterError? error) => run.TrackResultFailure(error);
 }

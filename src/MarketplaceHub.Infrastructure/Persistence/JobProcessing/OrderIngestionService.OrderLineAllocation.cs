@@ -4,10 +4,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class OrderIngestionService
 {
     // The variant links and panel variants an order read's lines may name, read once per read.
-    private sealed record OrderLineVariantCandidates(IReadOnlyCollection<OrderLineLinkCandidate> Links, IReadOnlyCollection<OrderLinePanelCandidate> Variants)
+    internal sealed record OrderLineVariantCandidates(IReadOnlyCollection<OrderLineLinkCandidate> Links, IReadOnlyCollection<OrderLinePanelCandidate> Variants)
     {
         public static readonly OrderLineVariantCandidates Empty = new([], []);
         public OrderLineVariantMatch Match(OrderLineCodes codes) => OrderLineVariantMatcher.Match(codes, Links, Variants);
@@ -84,7 +84,7 @@ public sealed partial class MarketplaceJobProcessor
     }
 
     internal const string UnmatchedOrderLineIssueCode = "ORDER_LINE_VARIANT_UNMATCHED";
-    private const int OrderLineRematchBatchSize = 2000;
+    internal const int OrderLineRematchBatchSize = 2000;
 
     internal sealed record OrderLineRematchOutcome(int Examined, int Matched, int Unmatched);
 
@@ -219,7 +219,7 @@ public sealed partial class MarketplaceJobProcessor
     // marketplace. A connection not found is not remembered (null).
     private readonly Dictionary<(Guid TenantId, Guid ConnectionId), string> connectionPlatformCodes = [];
 
-    private async Task<string?> ConnectionPlatformCode(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    internal async Task<string?> ConnectionPlatformCode(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
     {
         if (connectionPlatformCodes.TryGetValue((tenantId, connectionId), out var known)) return known;
         var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
@@ -358,7 +358,7 @@ public sealed partial class MarketplaceJobProcessor
         return added;
     }
 
-    private async Task ProjectOrderReservations(Guid tenantId, Guid connectionId, IEnumerable<(OrderLine Line, DateTimeOffset ModifiedAt)> sourceLines, CancellationToken cancellationToken)
+    internal async Task ProjectOrderReservations(Guid tenantId, Guid connectionId, IEnumerable<(OrderLine Line, DateTimeOffset ModifiedAt)> sourceLines, CancellationToken cancellationToken)
     {
         var sources = sourceLines.Where(source => source.Line.VariantId is not null).GroupBy(source => source.Line.Id).Select(group => group.Last()).ToList();
         var lines = sources.Select(source => source.Line).ToList();
@@ -516,7 +516,7 @@ public sealed partial class MarketplaceJobProcessor
         new(movementType, "ORDER_LINE", sourceId, sourceEventId, idempotencyKey, occurredAt, now, $"order:{orderId:N}");
 
     // A catalog read's stock row (an opening number or a marketplace-authoritative change): the event id is the key.
-    private static StockLedgerSource CatalogStockSource(string movementType, Guid connectionId, string eventId, DateTimeOffset occurredAt, DateTimeOffset now) =>
+    internal static StockLedgerSource CatalogStockSource(string movementType, Guid connectionId, string eventId, DateTimeOffset occurredAt, DateTimeOffset now) =>
         new(movementType, MarketplaceStockImportPolicy.SourceType, connectionId.ToString("D"), eventId, eventId, occurredAt, now, $"catalog-import:{connectionId:N}");
 
     private static StockLedgerSource BaselineSource(Guid itemId, string sourceId, Guid orderId, DateTimeOffset occurredAt, DateTimeOffset now) =>

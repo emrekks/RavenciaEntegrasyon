@@ -15,7 +15,7 @@ public sealed class HepsiburadaOrderLineMergeTests
         var shipped = Order(At, 10m, Line("L1", "Shipped"));
         var delivered = Order(At.AddHours(5), 10m, Line("L1", "Delivered"));
 
-        var merged = MarketplaceJobProcessor.MergeHepsiburadaOrderLines([shipped, delivered]);
+        var merged = OrderIngestionService.MergeHepsiburadaOrderLines([shipped, delivered]);
 
         Assert.Equal("Delivered", Assert.Single(merged.Lines).RawStatus);
         Assert.Equal(10m, merged.DiscountAmount);
@@ -28,7 +28,7 @@ public sealed class HepsiburadaOrderLineMergeTests
         var first = Order(At, 10m, Line("L1", "Shipped"));
         var second = Order(At.AddMinutes(1), 5m, Line("L2", "Shipped"));
 
-        var merged = MarketplaceJobProcessor.MergeHepsiburadaOrderLines([first, second]);
+        var merged = OrderIngestionService.MergeHepsiburadaOrderLines([first, second]);
 
         Assert.Equal(2, merged.Lines.Count);
         Assert.Equal(15m, merged.DiscountAmount);

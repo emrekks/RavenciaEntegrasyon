@@ -99,7 +99,7 @@ public sealed class InvoiceStuckDeliveryFixTests
 
         // The heal goes through the exact-proof path: every package confirmed reads Completed with no error.
         var invoice = StuckInvoice();
-        Assert.True(MarketplaceJobProcessor.SetInvoiceDeliveryState(invoice, InvoiceStatus.Completed, null, At));
+        Assert.True(OrderIngestionService.SetInvoiceDeliveryState(invoice, InvoiceStatus.Completed, null, At));
         Assert.Equal(InvoiceStatus.Completed, invoice.Status);
         Assert.Null(invoice.LastErrorCode);
         Assert.Equal(202, invoice.Version);
@@ -127,12 +127,12 @@ public sealed class InvoiceStuckDeliveryFixTests
     {
         var invoice = StuckInvoice();
 
-        Assert.False(MarketplaceJobProcessor.SetInvoiceDeliveryState(invoice, InvoiceStatus.MarketplacePending,
+        Assert.False(OrderIngestionService.SetInvoiceDeliveryState(invoice, InvoiceStatus.MarketplacePending,
             InvoiceDeliveryRecoveryPolicy.MarketplaceInvoiceIdentityMismatchErrorCode, At));
         Assert.Equal(201, invoice.Version);
         Assert.Equal(At.AddDays(-1), invoice.UpdatedAt);
 
-        Assert.True(MarketplaceJobProcessor.SetInvoiceDeliveryState(invoice, InvoiceStatus.MarketplacePending, null, At));
+        Assert.True(OrderIngestionService.SetInvoiceDeliveryState(invoice, InvoiceStatus.MarketplacePending, null, At));
         Assert.Equal(202, invoice.Version);
         Assert.Equal(At, invoice.UpdatedAt);
     }

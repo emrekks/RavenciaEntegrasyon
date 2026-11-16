@@ -85,13 +85,13 @@ public sealed class CatalogAndOrderIngestionFixesTests
         var other = Guid.NewGuid();
         PackageLineAllocation Row(Guid packageId, string eventId, decimal shipped) => new() { Id = Guid.CreateVersion7(), PackageId = packageId, OrderLineId = line, SourceEventId = eventId, AllocatedQuantity = 1, ShippedQuantity = shipped };
 
-        var byLine = MarketplaceJobProcessor.AllocationsByLine([Row(package, "4302382330:1793743762226", 0), Row(package, "4302382330:1793876113007", 1), Row(package, "4302382330:1793791774541", 1), Row(package, "seed", 0), Row(other, "9:1793743762226", 0)]);
+        var byLine = OrderIngestionService.AllocationsByLine([Row(package, "4302382330:1793743762226", 0), Row(package, "4302382330:1793876113007", 1), Row(package, "4302382330:1793791774541", 1), Row(package, "seed", 0), Row(other, "9:1793743762226", 0)]);
 
         Assert.Equal(2, byLine.Count);
         Assert.Equal("4302382330:1793876113007", byLine.Values.Single(x => x.PackageId == package).SourceEventId);
-        Assert.Equal(1793876113007, MarketplaceJobProcessor.PackageEventInstant("4302382330:1793876113007"));
-        Assert.Equal(1789229541000, MarketplaceJobProcessor.PackageEventInstant("order:PTT-1C2OSLF2R-120926:1789229541000"));
-        Assert.Equal(long.MinValue, MarketplaceJobProcessor.PackageEventInstant("seed"));
+        Assert.Equal(1793876113007, OrderIngestionService.PackageEventInstant("4302382330:1793876113007"));
+        Assert.Equal(1789229541000, OrderIngestionService.PackageEventInstant("order:PTT-1C2OSLF2R-120926:1789229541000"));
+        Assert.Equal(long.MinValue, OrderIngestionService.PackageEventInstant("seed"));
     }
 
     // The Hepsiburada open-return scan (RETURN_LIFECYCLE) is not queued while no claim is open: live since 1 Nov 2026
@@ -113,7 +113,7 @@ public sealed class CatalogAndOrderIngestionFixesTests
     [Fact]
     public void SplitParentsAreThePackagesAChildNamesAsItsOrigin()
     {
-        var parents = MarketplaceJobProcessor.SplitParentIds([("4085035430", "4084999185"), ("4084999185", null), ("P-1", "P-1"), ("4111016887", " "), ("C-2", "4110933059")]);
+        var parents = OrderIngestionService.SplitParentIds([("4085035430", "4084999185"), ("4084999185", null), ("P-1", "P-1"), ("4111016887", " "), ("C-2", "4110933059")]);
 
         Assert.Equal(["4084999185", "4110933059"], parents.Order(StringComparer.Ordinal));
     }
