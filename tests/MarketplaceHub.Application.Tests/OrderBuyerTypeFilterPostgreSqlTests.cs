@@ -120,8 +120,10 @@ public sealed class OrderBuyerTypeFilterPostgreSqlTests(PostgreSqlTenantIsolatio
         }
     }
 
-    // SIPARIS-STOK-3: "Fatura Bölgesi" follows the row's micro-export flag (micro = true), not a text search over the
-    // package: a domestic company named "... İthalat İhracat Ltd." or a "MICRO FIBER" product stays in Türkiye.
+    // SIPARIS-STOK-3 (owner, 16 Nov 2026): the "Mikro İhracat" label's rule is the rule. "Fatura Bölgesi", the Mikro
+    // İhracat filter, the micro-export card and the row's flag all give the label's answer, for every way the label reads a
+    // micro export; not a text search over the package: a domestic company named "... İthalat İhracat Ltd." or a
+    // "MICRO FIBER" product stays in Türkiye.
     [PostgreSqlFact]
     public async Task TheInvoiceRegionFilterMatchesTheRowMicroExportFlag()
     {
@@ -132,7 +134,14 @@ public sealed class OrderBuyerTypeFilterPostgreSqlTests(PostgreSqlTenantIsolatio
         {
             """{"micro":false,"invoiceAddress":{"company":"ABC TEKSTİL İTHALAT İHRACAT LTD. ŞTİ."},"lines":[{"productName":"MICRO FIBER HAVLU"}]}""",
             """{"micro":true,"countryCode":"AZ"}""",
+            // Micro export by the label before 16 Nov 2026 too, but "Türkiye" in the filter: the 3P partner export, the
+            // package type, Trendyol's former export partner, the flag as text.
+            """{"micro":false,"3pByTrendyol":true}""",
+            """{"micro":false,"shipmentPackageType":"MICRO_EXPORT"}""",
+            """{"customerFirstName":"PM3","customerLastName":"ARVATO EXPORT"}""",
+            """{"micro":"true"}""",
         };
+        var microIndexes = new[] { 1, 2, 3, 4, 5 };
         var orders = customers.Select((customer, index) => new Order
         {
             Id = Guid.CreateVersion7(),
@@ -166,10 +175,18 @@ public sealed class OrderBuyerTypeFilterPostgreSqlTests(PostgreSqlTenantIsolatio
             var micro = await sales.OrdersAsync(tenant.Id, 100, 1, null, new OrderListQuery(InvoiceRegion: "MICRO_EXPORT"), CancellationToken.None);
             var microCard = await sales.OrdersAsync(tenant.Id, 100, 1, null, new OrderListQuery(MicroExport: true), CancellationToken.None);
 
+            var all = await sales.OrdersAsync(tenant.Id, 100, 1, null, new OrderListQuery(), CancellationToken.None);
+            var counter = await sales.OrderSummaryAsync(tenant.Id, new OrderListQuery(MicroExport: true), CancellationToken.None, ["ALL"]);
+
+            var expected = microIndexes.Select(index => orders[index].Id).Order().ToList();
             Assert.Equal(orders[0].Id, Assert.Single(domestic.Items).Id);
-            Assert.Equal(orders[1].Id, Assert.Single(micro.Items).Id);
-            Assert.Equal(micro.Items.Select(row => row.Id), microCard.Items.Select(row => row.Id));
-            Assert.True(Assert.Single(micro.Items).Marks?.MicroExport);
+            Assert.Equal(expected, micro.Items.Select(row => row.Id).Order());
+            Assert.Equal(expected, microCard.Items.Select(row => row.Id).Order());
+            Assert.Equal(expected.Count, counter.MicroExport);
+            // The label (Mikro İhracat type) and the row's flag say the same of every order.
+            Assert.Equal(expected, all.Items.Where(row => row.OrderType == "MIKRO_IHRACAT").Select(row => row.Id).Order());
+            Assert.Equal(expected, all.Items.Where(row => row.Marks?.MicroExport == true).Select(row => row.Id).Order());
+            Assert.All(all.Items, row => Assert.Equal(row.OrderType == "MIKRO_IHRACAT", row.IsMicroExport));
         }
         finally
         {

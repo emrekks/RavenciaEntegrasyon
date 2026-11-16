@@ -89,8 +89,8 @@ internal static class OrderSnapshotReader
         var email = JsonText(customerJson, "customerEmail", "email") ?? JsonText(invoiceAddressJson, "email") ?? JsonText(shipmentAddressJson, "email");
         var phone = JsonText(customerJson, "customerPhone", "customerPhoneNumber", "phone", "phoneNumber") ?? JsonText(invoiceAddressJson, "phone", "phoneNumber", "mobilePhone") ?? JsonText(shipmentAddressJson, "phone", "phoneNumber", "mobilePhone");
         var tax = ResolveCustomerTaxOrIdentityNumber(customerJson, invoiceAddressJson, shipmentAddressJson);
-        // SIPARIS-STOK-3: the label's rule, beside the filter's (OrderMicroExportRules; the owner decides which holds).
-        var micro = OrderMicroExportRules.Label(customerJson, name);
+        // The "Mikro İhracat" label: the one micro-export rule, which the list's filters and card read too.
+        var micro = OrderMicroExportRules.Matches(customerJson);
         var eInvoice = JsonNullableBool(customerJson, "eInvoiceAvailable", "isEInvoice") ?? JsonNullableBool(invoiceAddressJson, "eInvoiceAvailable", "isEInvoice");
         return (name, email, phone, tax, micro, eInvoice);
     }
@@ -99,16 +99,16 @@ internal static class OrderSnapshotReader
 
     // The order row's marks, read from the package fields the marketplace sent (top level of the customer snapshot only,
     // never from a line). A field that is missing or holds another value leaves its mark out.
-    // - Micro export: Trendyol micro=true only. micro and countryCode are independent (Trendyol docs), so a foreign
-    //   country alone is no micro export. The country is the invoice address's: the shipment address of a micro order
-    //   is Trendyol's Istanbul export depot (TR); the storefront is the fallback.
+    // - Micro export: the one micro-export rule (OrderMicroExportRules, the "Mikro İhracat" label's), on every platform. micro
+    //   and countryCode are independent (Trendyol docs), so a foreign country alone is no micro export. The country is
+    //   the invoice address's: the shipment address of a micro order is Trendyol's Istanbul export depot (TR); the
+    //   storefront is the fallback.
     // - Delivery point: Trendyol deliveryAddressType=CollectionPoint; n11 any deliveryAddressType (KTN, EASYPOINT, PUP).
     // - Fast delivery: Trendyol fastDeliveryType TodayDelivery/SameDayShipping/FastDelivery, unless the same package
     //   says fastDelivery=false (the two disagree; no mark rather than a wrong one).
     internal static OrderRowMarks? RowMarks(string? platformCode, string? storeFrontCode, string customerJson, string invoiceAddressJson)
     {
         var platform = platformCode?.Trim().ToUpperInvariant();
-        if (platform is not ("TRENDYOL" or "N11")) return null;
         try
         {
             using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(customerJson) ? "{}" : customerJson);
@@ -117,20 +117,21 @@ internal static class OrderSnapshotReader
             string? TopText(string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString()?.Trim() : null;
             bool? TopBool(string name) => root.TryGetProperty(name, out var value) ? value.ValueKind switch { JsonValueKind.True => true, JsonValueKind.False => false, _ => null } : null;
 
+            var micro = OrderMicroExportRules.Matches(customerJson);
+            var country = micro ? MicroExportCountry(invoiceAddressJson, storeFrontCode) : null;
             OrderRowMarks marks;
             if (platform == "N11")
             {
                 var pointType = TopText("deliveryAddressType") is { Length: > 0 } type && !string.Equals(type, "null", StringComparison.OrdinalIgnoreCase) ? type.ToUpperInvariant() : null;
-                marks = new(false, null, pointType is not null, pointType, null);
+                marks = new(micro, country, pointType is not null, pointType, null);
             }
-            else
+            else if (platform == "TRENDYOL")
             {
-                var micro = TopBool("micro") == true;
-                var country = micro ? MicroExportCountry(invoiceAddressJson, storeFrontCode) : null;
                 var deliveryPoint = string.Equals(TopText("deliveryAddressType"), "CollectionPoint", StringComparison.OrdinalIgnoreCase);
                 var fastType = TopText("fastDeliveryType") is { } fast && FastDeliveryTypes.TryGetValue(fast, out var known) && TopBool("fastDelivery") != false ? known : null;
                 marks = new(micro, country, deliveryPoint, null, fastType);
             }
+            else marks = new(micro, country, false, null, null);
             return marks.MicroExport || marks.DeliveryPoint || marks.FastDeliveryType is not null ? marks : null;
         }
         catch (JsonException) { return null; }
@@ -174,9 +175,6 @@ internal static class OrderSnapshotReader
     internal static string? FirstMeaningful(params string?[] names) => names.FirstOrDefault(name => IsMeaningfulText(name) && !IsPlaceholderCustomerName(name!));
 
     internal static bool IsPlaceholderCustomerName(string name) => name.Trim() is "Adı Soyadı" or "Ad Soyad" or "İsim Soyisim";
-
-    internal static bool IsLegacyTrendyolExportPartner(string name) =>
-        name.Contains("PM3", StringComparison.OrdinalIgnoreCase) && name.Contains("ARVATO", StringComparison.OrdinalIgnoreCase);
 
     // A shipping deadline only: Trendyol's (extended) agreed hand-over date or a marketplace's due date;
     // delivery estimates and modification times are not deadlines.
