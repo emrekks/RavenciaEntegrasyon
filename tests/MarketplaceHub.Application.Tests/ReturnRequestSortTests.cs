@@ -91,7 +91,7 @@ public sealed class ReturnRequestSortTests
         var requested = new DateTimeOffset(2026, 11, 4, 15, 48, 55, TimeSpan.FromHours(3));
         var remote = new RemoteReturnClaim("c1", "o1", "WaitingInAction", null, null, null, null, [], "{}", RequestedAt: requested);
 
-        var claim = MarketplaceJobProcessor.NewReturnClaim(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), remote, ReturnClaimStatus.ActionRequired, DateTimeOffset.UnixEpoch);
+        var claim = ReturnIngestionService.NewReturnClaim(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), remote, ReturnClaimStatus.ActionRequired, DateTimeOffset.UnixEpoch);
 
         Assert.Equal(requested, claim.RequestedAt);
         Assert.Equal(TimeSpan.Zero, claim.RequestedAt!.Value.Offset);

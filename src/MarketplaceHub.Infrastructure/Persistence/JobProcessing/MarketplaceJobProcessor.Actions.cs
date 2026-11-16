@@ -8,7 +8,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed partial class MarketplaceJobProcessor
 {
-    private static string? SafeReturnTrackingLink(string? value) =>
+    internal static string? SafeReturnTrackingLink(string? value) =>
         Uri.TryCreate(value?.Trim(), UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps
             ? uri.ToString()
             : null;
