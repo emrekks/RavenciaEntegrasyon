@@ -1,16 +1,13 @@
+import { parseEditorNumber } from './editor-number'
+
 // The card's own Liste Fiyatı and Satış Fiyatı (section 2 of the product editor). On a card without variants they are
 // its price; on a card with variants they are the card's default price (Product.DefaultListPrice/DefaultSalePrice) and
 // the first price of every variant row added later (buildVariantGenerationDefaults). Saving them never sends a price to
 // a marketplace: a variant's own row price is what a store gets.
 
 // A typed price: Turkish decimal comma ("549,90") or a point; "1.249,90" reads as 1249.9. Empty is 0 (not filled); text
-// that is not a number is NaN.
-export function priceInputNumber(value: string): number {
-  const text = value.trim().replace(/\s/g, '')
-  if (!text) return 0
-  const normalized = text.includes(',') ? text.replace(/\./g, '').replace(',', '.') : text
-  return /^-?(\d*\.?\d+|\d+\.)$/.test(normalized) ? Number(normalized) : Number.NaN
-}
+// that is not a number is NaN. Read at the editor's one number point (editor-number.ts).
+export const priceInputNumber = (value: string): number => parseEditorNumber(value)
 
 export type CardPrices = { listPrice: number; salePrice: number; issue: string | null }
 

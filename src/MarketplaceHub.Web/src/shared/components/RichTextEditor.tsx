@@ -1,9 +1,10 @@
-// The product description editor (visual and HTML modes).
+// A rich text editor (visual and HTML modes); the product description editor uses it (styles in the product editor's CSS).
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
-import { UiIcon, usePromptDialog, type UiIconName } from '../../../shared/components'
-import { httpsUrlProblem } from '../../../shared/safe-url'
-import { sanitizeRichText } from '../../../shared/security/sanitizeHtml'
-import { PanelSelect } from '../../../shared/PanelSelect'
+import { UiIcon, type UiIconName } from './UiIcon'
+import { usePromptDialog } from './ConfirmDialog'
+import { httpsUrlProblem } from '../safe-url'
+import { sanitizeRichText } from '../security/sanitizeHtml'
+import { PanelSelect } from '../PanelSelect'
 
 export function RichTextTool({ icon, label, onClick, disabled = false, active = false }: { icon: UiIconName; label: string; onClick: () => void; disabled?: boolean; active?: boolean }) {
   return <button type="button" className={active ? 'rich-text-tool active' : 'rich-text-tool'} title={label} aria-label={label} aria-pressed={active || undefined} onClick={onClick} disabled={disabled}><span className="rich-text-tool-icon" aria-hidden="true"><UiIcon name={icon} /></span></button>

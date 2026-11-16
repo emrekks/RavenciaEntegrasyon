@@ -24,6 +24,7 @@ import type { VariantActionsResult } from './use-variant-actions'
 import type { VariantCodeActionsResult } from './use-variant-code-actions'
 import type { EditorMediaActionsResult } from './use-editor-media-actions'
 import type { PlatformUpdateResult } from './use-platform-update'
+import { parseEditorNumber } from './editor-number'
 
 export function useChannelPricing(c: EditorProps & EditorStateResult & EditorMediaPointerResult & EditorDirtyStateResult & VariantCodeMenusResult & EditorDataResult & EditorSeedResult & VariantRowDragResult & VariantMediaAutoSaveResult & EditorViewResult & AttributeActionsResult & VariantActionsResult & VariantCodeActionsResult & EditorMediaActionsResult & PlatformUpdateResult) {
   const { editProductId, client, setNotice, form, variantRows, setVariantRows, channelPricing, setChannelPricing, setVariantChannelPricing, offerPostKeys, channelPricingBase, setFieldErrors, variantPlatformPricing, setVariantPlatformPricing, variantPlatformPricingDraft, setVariantPlatformPricingDraft, setVariantPlatformPricingSaving, showFeedback, productToEdit, fallbackListPrice, fallbackSalePrice, adoptOwnProductWrite, variantPricingPlatforms } = c
@@ -36,7 +37,7 @@ export function useChannelPricing(c: EditorProps & EditorStateResult & EditorMed
       setFieldErrors(current => ({ ...current, vatRate: issue }))
       throw new Error(issue)
     }
-    return Number(form.vatRate)
+    return parseEditorNumber(form.vatRate)
   }
   function channelPriceDraft(connectionId: string): ChannelPricingDraft {
     return channelPricing[connectionId] ?? { listPrice: String(fallbackListPrice), salePrice: String(fallbackSalePrice) }
@@ -52,7 +53,7 @@ export function useChannelPricing(c: EditorProps & EditorStateResult & EditorMed
   function channelPriceEdited(connectionId: string) {
     const base = channelPricingBase.current[connectionId]
     const draft = channelPricing[connectionId]
-    return !base || !draft || Number(base.listPrice) !== Number(draft.listPrice) || Number(base.salePrice) !== Number(draft.salePrice)
+    return !base || !draft || parseEditorNumber(base.listPrice) !== parseEditorNumber(draft.listPrice) || parseEditorNumber(base.salePrice) !== parseEditorNumber(draft.salePrice)
   }
   function updateChannelPrice(connectionId: string, field: keyof ChannelPricingDraft, value: string) {
     setChannelPricing(current => ({ ...current, [connectionId]: { ...(current[connectionId] ?? emptyChannelPricingDraft), [field]: value } }))
@@ -79,8 +80,8 @@ export function useChannelPricing(c: EditorProps & EditorStateResult & EditorMed
       return
     }
     const activeDraft = targetDraft ?? variantPlatformPricingDraft
-    const listPrice = Number(activeDraft.listPrice)
-    const salePrice = Number(activeDraft.salePrice)
+    const listPrice = parseEditorNumber(activeDraft.listPrice)
+    const salePrice = parseEditorNumber(activeDraft.salePrice)
     if (!Number.isFinite(listPrice) || !Number.isFinite(salePrice) || listPrice < 0 || salePrice < 0 || listPrice < salePrice) {
       showFeedback('Geçersiz Fiyat', 'Liste fiyatı satış fiyatından küçük olamaz.', 'error')
       return
@@ -98,7 +99,7 @@ export function useChannelPricing(c: EditorProps & EditorStateResult & EditorMed
           vatRate: offerVatRate(platform.vatRate ?? selectedPlatform.vatRate),
           vatInclusion: platform.vatInclusion ?? selectedPlatform.vatInclusion ?? form.vatIncluded,
           roundingMode: platform.roundingMode ?? selectedPlatform.roundingMode ?? 'HALF_EVEN',
-          safetyStock: platform.safetyStock ?? selectedPlatform.safetyStock ?? Number(form.safetyStock || 0),
+          safetyStock: platform.safetyStock ?? selectedPlatform.safetyStock ?? parseEditorNumber(form.safetyStock || 0),
           status: 'ACTIVE',
           reason: `${platformDisplayName(platform)} toplu varyant fiyatı`
         }
@@ -138,8 +139,8 @@ export function useChannelPricing(c: EditorProps & EditorStateResult & EditorMed
       showFeedback('Fiyat Bilgisi Alınamadı', 'Bu platform bağlantısının fiyat bilgisi alınamadı.', 'error')
       return
     }
-    const listPrice = Number(targetDraft.listPrice)
-    const salePrice = Number(targetDraft.salePrice)
+    const listPrice = parseEditorNumber(targetDraft.listPrice)
+    const salePrice = parseEditorNumber(targetDraft.salePrice)
     if (!Number.isFinite(listPrice) || !Number.isFinite(salePrice) || listPrice < 0 || salePrice < 0 || listPrice < salePrice) {
       showFeedback('Geçersiz Fiyat', 'Liste fiyatı satış fiyatından küçük olamaz.', 'error')
       return
@@ -153,7 +154,7 @@ export function useChannelPricing(c: EditorProps & EditorStateResult & EditorMed
         vatRate: offerVatRate(platform.vatRate ?? targetPlatform.vatRate),
         vatInclusion: platform.vatInclusion ?? targetPlatform.vatInclusion ?? form.vatIncluded,
         roundingMode: platform.roundingMode ?? targetPlatform.roundingMode ?? 'HALF_EVEN',
-        safetyStock: platform.safetyStock ?? targetPlatform.safetyStock ?? Number(form.safetyStock || 0),
+        safetyStock: platform.safetyStock ?? targetPlatform.safetyStock ?? parseEditorNumber(form.safetyStock || 0),
         status: 'ACTIVE',
         reason: `${platformDisplayName(platform)} varyant fiyatı`
       }
@@ -194,8 +195,8 @@ export function useChannelPricing(c: EditorProps & EditorStateResult & EditorMed
       return
     }
     for (const target of targets) {
-      const listPrice = Number(target.draft.listPrice)
-      const salePrice = Number(target.draft.salePrice)
+      const listPrice = parseEditorNumber(target.draft.listPrice)
+      const salePrice = parseEditorNumber(target.draft.salePrice)
       if (!Number.isFinite(listPrice) || !Number.isFinite(salePrice) || listPrice < 0 || salePrice < 0 || listPrice < salePrice) {
         showFeedback('Geçersiz Fiyat', 'Liste fiyatı satış fiyatından küçük olamaz.', 'error')
         return
@@ -215,8 +216,8 @@ export function useChannelPricing(c: EditorProps & EditorStateResult & EditorMed
     try {
       let savedCount = 0
       for (const target of targets) {
-        const listPrice = Number(target.draft.listPrice)
-        const salePrice = Number(target.draft.salePrice)
+        const listPrice = parseEditorNumber(target.draft.listPrice)
+        const salePrice = parseEditorNumber(target.draft.salePrice)
         const body = {
           listPrice,
           salePrice,
@@ -224,7 +225,7 @@ export function useChannelPricing(c: EditorProps & EditorStateResult & EditorMed
           vatRate: offerVatRate(target.platform.vatRate),
           vatInclusion: target.platform.vatInclusion ?? form.vatIncluded,
           roundingMode: target.platform.roundingMode ?? 'HALF_EVEN',
-          safetyStock: target.platform.safetyStock ?? Number(form.safetyStock || 0),
+          safetyStock: target.platform.safetyStock ?? parseEditorNumber(form.safetyStock || 0),
           status: 'ACTIVE',
           reason: `${platformDisplayName(target.platform)} toplu varyant fiyatı`,
           // A price typed apart from the variant's panel price is this marketplace's own ("Özel Fiyat"), so a panel save
