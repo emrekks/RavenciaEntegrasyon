@@ -3,22 +3,12 @@
   "Runs": [
     {
       "Run": "endless",
-      "Result": "ManualReview",
-      "ErrorCode": "TRENDYOL_RETURN_RECONCILE_PAGE_CAP",
+      "Result": "Blocked",
+      "ErrorCode": "RETURN_RECONCILIATION_NOT_SUPPORTED",
       "Calls": {
-        "Count": 2000,
-        "Head": [
-          "returns.Poll key=return-reconcile:3:TR:0 window=2026-11-13T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR status=- statusWindow=-..- cursor=0 limit=200",
-          "returns.Poll key=return-reconcile:3:TR:1 window=2026-11-13T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR status=- statusWindow=-..- cursor=1 limit=200",
-          "returns.Poll key=return-reconcile:3:TR:2 window=2026-11-13T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR status=- statusWindow=-..- cursor=2 limit=200",
-          "returns.Poll key=return-reconcile:3:TR:3 window=2026-11-13T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR status=- statusWindow=-..- cursor=3 limit=200",
-          "returns.Poll key=return-reconcile:3:TR:4 window=2026-11-13T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR status=- statusWindow=-..- cursor=4 limit=200"
-        ],
-        "Tail": [
-          "returns.Poll key=return-reconcile:3:TR:1997 window=2026-11-13T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR status=- statusWindow=-..- cursor=1997 limit=200",
-          "returns.Poll key=return-reconcile:3:TR:1998 window=2026-11-13T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR status=- statusWindow=-..- cursor=1998 limit=200",
-          "returns.Poll key=return-reconcile:3:TR:1999 window=2026-11-13T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR status=- statusWindow=-..- cursor=1999 limit=200"
-        ]
+        "Count": 0,
+        "Head": [],
+        "Tail": []
       }
     }
   ],

@@ -174,6 +174,7 @@ internal sealed partial class ReturnReadService
             ResumableCursor.Save(cursor, state);
             await db.SaveChangesAsync(cancellationToken);
         }
+        var walk = new PageWalk(HepsiburadaReturnPageGuard);
         while (!cancellationToken.IsCancellationRequested)
         {
             var status = HepsiburadaClaimStatuses[state.StatusIndex];
@@ -226,6 +227,21 @@ internal sealed partial class ReturnReadService
                 await UpsertReturn(tenantId, connectionId, claim, cancellationToken);
             }
 
+            // ISLEYICI-9 round 10: a claim list that names the offset just read as the next one, or never ends, stops here
+            // with its own code. The position saved after the previous page stays, the watermark does not move, and the next
+            // run resumes from there.
+            // A page that says "more" without naming the next offset still counts toward the cap (the read then moves on by
+            // the page's size below).
+            var namedNext = !pageResult.HasMore ? null
+                : !string.IsNullOrWhiteSpace(pageResult.NextCursor) ? pageResult.NextCursor
+                : (state.Offset + Math.Max(1, pageResult.Items.Count + (pageResult.Issues?.Count ?? 0))).ToString(CultureInfo.InvariantCulture);
+            switch (walk.After(state.Offset.ToString(CultureInfo.InvariantCulture), namedNext))
+            {
+                case PagedReadStop.PageCap:
+                    throw PagedReadLoop.GuardFailure("HEPSIBURADA_RETURN_PAGE_CAP", $"Hepsiburada iade listesi bir okumada {HepsiburadaReturnPageCap} sayfayı aştı; okuma kaldığı yerde durduruldu ve bu dönem okunmuş sayılmadı.");
+                case PagedReadStop.RepeatedCursor:
+                    throw PagedReadLoop.GuardFailure("HEPSIBURADA_RETURN_PAGE_REPEATED", "Hepsiburada iade listesi okunan sayfayı yeniden sonraki sayfa olarak verdi; okuma durduruldu ve bu dönem okunmuş sayılmadı.");
+            }
             if (pageResult.HasMore)
             {
                 var nextOffset = int.TryParse(pageResult.NextCursor, NumberStyles.None, CultureInfo.InvariantCulture, out var parsedOffset)
@@ -255,6 +271,12 @@ internal sealed partial class ReturnReadService
         }
         return true;
     }
+
+    // ISLEYICI-9 round 10 (16 Nov 2026): pages of 100 claims in one run over the eight claim statuses: 200,000 claims, far
+    // above any real read (a full pass covers 30 days; live Hepsiburada claims are a handful a month); guards against a list
+    // that never ends or repeats its offset.
+    internal const int HepsiburadaReturnPageCap = 2_000;
+    private static readonly PageGuard HepsiburadaReturnPageGuard = new(MaxPages: HepsiburadaReturnPageCap, StopOnRepeatedCursor: true);
 
     private static HepsiburadaReturnSyncState? ReadHepsiburadaReturnSyncState(string? opaqueCursor) =>
         ResumableCursor.Read<HepsiburadaReturnSyncState>(opaqueCursor, state => state is { Version: HepsiburadaReturnSyncStateVersion, StatusIndex: >= 0, Offset: >= 0 }
@@ -416,8 +438,15 @@ internal sealed partial class ReturnReadService
         : int.TryParse(current, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var number) ? (number + 1).ToString(System.Globalization.CultureInfo.InvariantCulture)
         : "1";
 
+    // Trendyol's claim list re-read over its storefronts and buckets. ISLEYICI-9 round 10 (16 Nov 2026): it is Trendyol's
+    // read only: the scheduler queues it for Trendyol connections alone (ScheduledJobProducer: the RETURN_RECONCILE_*
+    // policies pass only for TRENDYOL, and Definition maps them only there, so RunNowAsync refuses them elsewhere), and a
+    // job on another connection ends blocked with its own code before anything is asked of the marketplace (it used to
+    // read that marketplace's returns with Trendyol's storefronts and paging).
     internal async Task<bool> ReconcileReturns(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
+        if (!string.Equals(await ConnectionPlatformCode(tenantId, connectionId, cancellationToken), "TRENDYOL", StringComparison.OrdinalIgnoreCase))
+            throw new JobProcessingException(JobExecutionResult.Blocked("RETURN_RECONCILIATION_NOT_SUPPORTED", "İade uzlaştırması yalnız Trendyol mağazalarında çalışır; bu mağazanın iadeleri iade okumasıyla güncellenir. Pazaryerine istek gönderilmedi."));
         var lookbackDays = ReadBoundedInt(payloadJson, "lookbackDays", 3, 1, 90);
         var end = timeProvider.GetUtcNow();
         foreach (var storefront in TrendyolReadStorefronts.ReturnCodes)
