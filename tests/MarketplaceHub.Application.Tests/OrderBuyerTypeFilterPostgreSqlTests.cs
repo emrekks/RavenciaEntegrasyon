@@ -120,6 +120,77 @@ public sealed class OrderBuyerTypeFilterPostgreSqlTests(PostgreSqlTenantIsolatio
         }
     }
 
+    // 16 Nov 2026: the migration RecomputeHepsiburadaBuyerType clears only Hepsiburada orders' stored kind, and the
+    // maintenance backfill stores the new rule's answer: the company with 11111111111 beside its VKN becomes Corporate,
+    // the individual stays Individual, another marketplace's stored kind and every order's version stay as they were.
+    [PostgreSqlFact]
+    public async Task TheHepsiburadaRelabelClearsOnlyHepsiburadaOrdersAndTheBackfillStoresTheNewRule()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"hr-{Guid.NewGuid():N}"[..16], DisplayName = "hr", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
+        var hepsiburada = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "HEPSIBURADA", Environment = "STAGE", DisplayName = "hb", ExternalStoreId = $"s-{Guid.NewGuid():N}"[..12], Status = "ACTIVE", ApiVersion = "V1" };
+        var trendyol = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "TRENDYOL", Environment = "STAGE", DisplayName = "ty", ExternalStoreId = $"s-{Guid.NewGuid():N}"[..12], Status = "ACTIVE", ApiVersion = "V1" };
+        var cases = new (PlatformConnection Connection, string Customer, string Address, string Expected)[]
+        {
+            (hepsiburada, HepsiburadaCorporateBuyerTests.CorporateCustomer, HepsiburadaCorporateBuyerTests.CorporateInvoiceAddress, OrderBuyerTypeView.Corporate),
+            (hepsiburada, "{}", """{"name":"Ayşe Yılmaz","turkishIdentityNumber":"11111111111","taxNumber":"","taxOffice":null}""", OrderBuyerTypeView.Individual),
+            // Stored Individual on purpose (not what the rule gives): the migration must leave it alone.
+            (trendyol, """{"commercial":true}""", """{"company":"Firma A.Ş.","taxNumber":"1234567890","taxOffice":"Kadıköy"}""", OrderBuyerTypeView.Individual),
+        };
+        var orders = cases.Select((item, index) => new Order
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            ConnectionId = item.Connection.Id,
+            ExternalOrderId = $"hr-{index}",
+            OrderNumber = $"HR{index}",
+            Currency = "TRY",
+            OrderedAt = now.AddMinutes(-index),
+            LastRemoteModifiedAt = now,
+            CustomerSnapshotJson = item.Customer,
+            ShipmentAddressSnapshotJson = "{}",
+            InvoiceAddressSnapshotJson = item.Address,
+            DerivedStatus = "NEW",
+            CreatedAt = now,
+            UpdatedAt = now,
+            Version = 1
+        }).ToList();
+        try
+        {
+            await using (var db = fixture.CreateContext())
+            {
+                db.Tenants.Add(tenant);
+                db.PlatformConnections.AddRange(hepsiburada, trendyol);
+                db.Orders.AddRange(orders);
+                await db.SaveChangesAsync();
+                // As live held them before the fix: every order stored Individual.
+                await db.Orders.Where(x => x.TenantId == tenant.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.BuyerType, OrderBuyerTypeView.Individual));
+            }
+            await using (var db = fixture.CreateContext())
+            {
+                var versions = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.Id, x => x.Version);
+                // The migration's statement, kept to this test's tenant so parallel tests are not touched.
+                Assert.Equal(2, await db.Database.ExecuteSqlRawAsync(
+                    MarketplaceHub.Infrastructure.Persistence.Migrations.RecomputeHepsiburadaBuyerType.Clear + " AND o.\"TenantId\" = {0}", tenant.Id));
+                var cleared = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.Id, x => x.BuyerType);
+                Assert.Equal([null, null, OrderBuyerTypeView.Individual], orders.Select(order => cleared[order.Id]));
+
+                Assert.True(await OrderBuyerTypes.BackfillAsync(db, CancellationToken.None) >= 2);
+                var after = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.Id, x => new { x.BuyerType, x.Version });
+                Assert.Equal(cases.Select(item => item.Expected), orders.Select(order => after[order.Id].BuyerType));
+                Assert.All(orders, order => Assert.Equal(versions[order.Id], after[order.Id].Version));
+            }
+        }
+        finally
+        {
+            await using var db = fixture.CreateContext();
+            await db.IntegrationOutboxEvents.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await db.Orders.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await db.PlatformConnections.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await db.Tenants.Where(row => row.Id == tenant.Id).ExecuteDeleteAsync();
+        }
+    }
+
     // SIPARIS-STOK-3: "Fatura Bölgesi" follows the row's micro-export flag (micro = true), not a text search over the
     // package: a domestic company named "... İthalat İhracat Ltd." or a "MICRO FIBER" product stays in Türkiye.
     [PostgreSqlFact]

@@ -266,12 +266,19 @@ public sealed class TrendyolCarrierCatalogTests
             "OrderNumber":"4486229624",
             "OrderedAt":"2026-10-07T13:03:01+03:00",
             "CustomerSnapshotJson":"{\"customerType\":\"Bireysel Müşteri\"}",
-            "InvoiceAddressSnapshotJson":"{\"invoiceAddress\":null,\"address\":\"Örnek Cadde No:1\",\"taxNumber\":\"1234567890\",\"name\":\"Ayşe Örnek\",\"city\":\"Konya\",\"district\":\"Selçuklu\"}"
+            "InvoiceAddressSnapshotJson":"{\"invoiceAddress\":null,\"address\":\"Örnek Cadde No:1\",\"taxNumber\":\"\",\"name\":\"Ayşe Örnek\",\"city\":\"Konya\",\"district\":\"Selçuklu\"}"
           },
           "Package":{"CargoProviderExternalId":"HepsiJet","StatusOccurredAt":"2026-10-07T13:03:01+03:00"},
           "Lines":[{"DescriptionSnapshot":"Ürün","UnitSnapshot":"ADET","Quantity":1,"UnitPrice":100,"LineTotal":120,"VatAmount":20,"VatRate":20,"DiscountAmount":0}]
         }
         """;
+
+        // Since 16 Nov 2026 the same order with a company's valid VKN on its snapshot is refused rather than sent to
+        // 11111111111 (EFATURAM_RECIPIENT_PLACEHOLDER_FOR_CORPORATE, any marketplace).
+        var withCompanyTaxNumber = canonical.Replace("\\\"taxNumber\\\":\\\"\\\"", "\\\"taxNumber\\\":\\\"1234567890\\\"", StringComparison.Ordinal);
+        Assert.NotEqual(canonical, withCompanyTaxNumber);
+        Assert.Equal("EFATURAM_RECIPIENT_PLACEHOLDER_FOR_CORPORATE",
+            Assert.Throws<JsonException>(() => TrendyolEFaturamCanonicalPayload.Create(new(1, 2, null), withCompanyTaxNumber)).Message);
 
         var payload = TrendyolEFaturamCanonicalPayload.Create(new(1, 2, null), canonical);
         using var document = JsonDocument.Parse(payload);
