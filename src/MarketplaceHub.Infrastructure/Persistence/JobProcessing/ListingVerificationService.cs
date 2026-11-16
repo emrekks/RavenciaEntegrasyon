@@ -7,9 +7,56 @@ using Microsoft.EntityFrameworkCore;
 namespace MarketplaceHub.Infrastructure.Persistence;
 
 // The link verification (LISTING_VERIFY) and the single-code lookups (LISTING_LOOKUP). Both only judge whether the
-// marketplace still holds a linked code: they never write products, content, prices or stock.
-public sealed partial class MarketplaceJobProcessor
+// marketplace still holds a linked code: they never write products, content, prices or stock. ISLEYICI-9 stage 5 step 1
+// (16 Nov 2026): moved out of the job processor as it was; it works for one run of one job (run) on the job's AppDbContext.
+internal sealed class ListingVerificationService(
+    AppDbContext db,
+    IssueRecorder issues,
+    SyncCursorStore cursors,
+    IProductPort products,
+    TimeProvider timeProvider,
+    VariantLinkBookkeeping variantLinks,
+    CatalogImportService catalogImport,
+    OrderIngestionService orderIngestion,
+    JobRunContext run)
 {
+    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
+
+    // What the moved code used from the processor: the same classes and helpers the processor calls.
+    private Task RecordIssue(Guid tenantId, string key, string code, string summary, CancellationToken cancellationToken) =>
+        issues.RecordAsync(tenantId, key, code, summary, timeProvider.GetUtcNow(), cancellationToken);
+
+    private Task ResolveIssue(Guid tenantId, string key, CancellationToken cancellationToken) =>
+        issues.ResolveAsync(tenantId, key, timeProvider.GetUtcNow(), cancellationToken);
+
+    private Task<SyncCursor> Cursor(Guid tenantId, Guid connectionId, string resource, CancellationToken cancellationToken) =>
+        cursors.GetAsync(tenantId, connectionId, resource, cancellationToken);
+
+    private AdapterContext Context(Guid tenantId, Guid connectionId, string correlationId, string idempotency) => new(tenantId, connectionId, correlationId, idempotency, timeProvider.GetUtcNow().AddMinutes(2));
+
+    private void TrackRequest() => run.TrackRequest();
+
+    private void TrackReceived(bool changed = true) => run.TrackReceived(changed);
+
+    private void TrackResultFailure(AdapterError? error) => run.TrackResultFailure(error);
+
+    private static string Hash(string value) => TextValues.Sha256Hex(value);
+
+    private static string Short(string? value, int maximum) => CatalogAttributeService.Short(value, maximum);
+
+    private Task<string?> ConnectionPlatformCode(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
+        orderIngestion.ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
+
+    private Task MarkVariantLinksSeen(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteCatalogProduct> page, CancellationToken cancellationToken, bool heal = true) =>
+        variantLinks.MarkVariantLinksSeen(tenantId, connectionId, page, cancellationToken, heal);
+
+    private Task CompleteImportedListingProfiles(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteCatalogProduct> snapshots, CancellationToken cancellationToken) =>
+        catalogImport.CompleteImportedListingProfiles(tenantId, connectionId, snapshots, cancellationToken);
+
+    private static IReadOnlySet<string> PttAvmOptionValues(IEnumerable<RemoteCatalogVariant> remoteVariants) => CatalogImportService.PttAvmOptionValues(remoteVariants);
+
+    private static IReadOnlyList<string> PttAvmMissingOptionValues(string? localSignature, IReadOnlySet<string> optionValues) => CatalogImportService.PttAvmMissingOptionValues(localSignature, optionValues);
+
     private const int ListingVerifyPageSize = 100;
     private const int ListingVerifyPagesPerSlice = 25;
     private static readonly TimeSpan ListingVerifySliceTime = TimeSpan.FromMinutes(4);
@@ -31,7 +78,7 @@ public sealed partial class MarketplaceJobProcessor
 
     // One slice of the scan: up to 25 pages or four minutes, then the job continues from the saved page. Every code on a
     // page counts as seen (archived, passive, draft and pending listings too: they exist). The last page finishes the run.
-    private async Task<JobExecutionResult> VerifyListings(Guid tenantId, Guid connectionId, string correlationId, Guid? jobId, CancellationToken cancellationToken)
+    internal async Task<JobExecutionResult> VerifyListings(Guid tenantId, Guid connectionId, string correlationId, Guid? jobId, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
         if (connection is null || !ListingVerificationPolicy.Supports(connection.PlatformCode))
@@ -279,7 +326,7 @@ public sealed partial class MarketplaceJobProcessor
     // One slice of single-code lookups. Each answer is recorded on the link; outside an observing run a code the
     // marketplace holds is healthy again and a code a well-formed answer does not hold breaks at once (NOT_FOUND).
     // An error, an ambiguous answer or a platform that cannot be asked leaves the health as it was.
-    private async Task<JobExecutionResult> RunListingLookups(Guid tenantId, Guid connectionId, string correlationId, Guid? jobId, CancellationToken cancellationToken)
+    internal async Task<JobExecutionResult> RunListingLookups(Guid tenantId, Guid connectionId, string correlationId, Guid? jobId, CancellationToken cancellationToken)
     {
         var job = jobId is { } id ? await db.IntegrationJobs.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken) : null;
         ListingLookupJobPayload? payload;

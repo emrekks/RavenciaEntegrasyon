@@ -1,0 +1,335 @@
+{
+  "Runs": [
+    {
+      "Run": "first",
+      "JobType": "TRENDYOL_ORDER_CARGO_INFO_RECONCILIATION",
+      "Result": {
+        "Kind": "Succeeded",
+        "ErrorCode": null,
+        "ErrorSummary": null,
+        "RetryAfter": null,
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": true,
+        "Continues": false
+      },
+      "Calls": [
+        "orders.GetPackageLookup key=trendyol-cargo-info:9001 \"9001\" {\"StatusOccurredAt\":\"2029-12-31T09:00:00+00:00\",\"Order\":{\"OrderedAt\":\"2029-12-28T09:00:00+00:00\",\"LastModifiedAt\":\"2029-12-28T09:00:00+00:00\",\"StoreFrontCode\":null},\"InvoiceOnly\":false}",
+        "orders.GetPackageLookup key=trendyol-cargo-info:9002 \"9002\" {\"StatusOccurredAt\":\"2029-12-31T09:00:00+00:00\",\"Order\":{\"OrderedAt\":\"2029-12-28T09:00:00+00:00\",\"LastModifiedAt\":\"2029-12-28T09:00:00+00:00\",\"StoreFrontCode\":null},\"InvoiceOnly\":false}"
+      ]
+    },
+    {
+      "Run": "next",
+      "JobType": "TRENDYOL_ORDER_CARGO_INFO_RECONCILIATION",
+      "Result": {
+        "Kind": "Succeeded",
+        "ErrorCode": null,
+        "ErrorSummary": null,
+        "RetryAfter": null,
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": true,
+        "Continues": false
+      },
+      "Calls": [
+        "orders.GetPackageLookup key=trendyol-cargo-info:9003 \"9003\" {\"StatusOccurredAt\":\"2029-12-31T09:00:00+00:00\",\"Order\":{\"OrderedAt\":\"2029-12-28T09:00:00+00:00\",\"LastModifiedAt\":\"2029-12-28T09:00:00+00:00\",\"StoreFrontCode\":null},\"InvoiceOnly\":false}",
+        "orders.GetPackageLookup key=trendyol-cargo-info:9001 \"9001\" {\"StatusOccurredAt\":\"2029-12-31T09:00:00+00:00\",\"Order\":{\"OrderedAt\":\"2029-12-28T09:00:00+00:00\",\"LastModifiedAt\":\"2029-12-28T09:00:00+00:00\",\"StoreFrontCode\":null},\"InvoiceOnly\":false}"
+      ]
+    }
+  ],
+  "Tables": [
+    {
+      "Table": "OperationalIssue",
+      "Rows": [
+        {
+          "Code": "REMOTE_5XX",
+          "DedupeKey": "trendyol-cargo-info:connection:9001",
+          "FirstSeenAt": "T+00:00:04",
+          "Id": "id1",
+          "LastSeenAt": "T+00:10:11",
+          "OccurrenceCount": 2,
+          "ResolvedAt": null,
+          "Status": "Open",
+          "Summary": "Trendyol kargo bilgileri yenilenemedi; sonraki uzlaştırmada tekrar denenecek. golden: REMOTE_5XX",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "Order",
+      "Rows": [
+        {
+          "BuyerType": "Individual",
+          "ConnectionId": "connection",
+          "CreatedAt": "T+00:00:00",
+          "Currency": "TRY",
+          "CustomerSearchName": "Golden",
+          "CustomerSearchStamp": "id2",
+          "CustomerSnapshotJson": {
+            "customerFirstName": "Golden"
+          },
+          "DerivedStatus": "DELIVERED",
+          "DiscountAmount": 0.0000,
+          "ExternalOrderId": "69001",
+          "GrossAmount": 100.0000,
+          "Id": "order-69001",
+          "InvoiceAddressSnapshotJson": {},
+          "LabelPrintedAt": null,
+          "LastRemoteModifiedAt": "T-4.00:00:00",
+          "NetAmount": 100.0000,
+          "OrderNumber": "69001",
+          "OrderedAt": "T-4.00:00:00",
+          "ShipmentAddressSnapshotJson": {},
+          "ShipmentDueAt": null,
+          "StoreFrontCode": null,
+          "TenantId": "tenant",
+          "UpdatedAt": "T+00:00:00",
+          "Version": 1
+        },
+        {
+          "BuyerType": "Individual",
+          "ConnectionId": "connection",
+          "CreatedAt": "T+00:00:00",
+          "Currency": "TRY",
+          "CustomerSearchName": "Golden",
+          "CustomerSearchStamp": "id3",
+          "CustomerSnapshotJson": {
+            "customerFirstName": "Golden"
+          },
+          "DerivedStatus": "DELIVERED",
+          "DiscountAmount": 0.0000,
+          "ExternalOrderId": "69002",
+          "GrossAmount": 100.0000,
+          "Id": "order-69002",
+          "InvoiceAddressSnapshotJson": {},
+          "LabelPrintedAt": null,
+          "LastRemoteModifiedAt": "T-4.00:00:00",
+          "NetAmount": 100.0000,
+          "OrderNumber": "69002",
+          "OrderedAt": "T-4.00:00:00",
+          "ShipmentAddressSnapshotJson": {},
+          "ShipmentDueAt": null,
+          "StoreFrontCode": null,
+          "TenantId": "tenant",
+          "UpdatedAt": "T+00:00:00",
+          "Version": 1
+        },
+        {
+          "BuyerType": "Individual",
+          "ConnectionId": "connection",
+          "CreatedAt": "T+00:00:00",
+          "Currency": "TRY",
+          "CustomerSearchName": "Golden",
+          "CustomerSearchStamp": "id4",
+          "CustomerSnapshotJson": {
+            "customerFirstName": "Golden"
+          },
+          "DerivedStatus": "DELIVERED",
+          "DiscountAmount": 0.0000,
+          "ExternalOrderId": "69003",
+          "GrossAmount": 100.0000,
+          "Id": "order-69003",
+          "InvoiceAddressSnapshotJson": {},
+          "LabelPrintedAt": null,
+          "LastRemoteModifiedAt": "T-4.00:00:00",
+          "NetAmount": 100.0000,
+          "OrderNumber": "69003",
+          "OrderedAt": "T-4.00:00:00",
+          "ShipmentAddressSnapshotJson": {},
+          "ShipmentDueAt": null,
+          "StoreFrontCode": null,
+          "TenantId": "tenant",
+          "UpdatedAt": "T+00:00:00",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "PlatformConnection",
+      "Rows": [
+        {
+          "ApiVersion": "V1",
+          "DisabledAt": null,
+          "DisplayName": "TRENDYOL",
+          "Environment": "PRODUCTION",
+          "ExternalStoreId": "store-golden",
+          "Id": "connection",
+          "LastErrorClass": null,
+          "LastErrorCode": null,
+          "LastSuccessAt": null,
+          "LastTestedAt": null,
+          "PlatformCode": "TRENDYOL",
+          "PublicId": "connection-public",
+          "SettingsJson": {},
+          "Status": "ACTIVE",
+          "TenantId": "tenant",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "ShipmentPackage",
+      "Rows": [
+        {
+          "CargoBarcode": null,
+          "CargoProviderExternalId": "ARAS",
+          "CargoTrackingNumber": null,
+          "ConnectionId": "connection",
+          "CreatedAt": "T+00:00:00",
+          "CreatedBy": null,
+          "DiscountAmount": 0.0000,
+          "ExternalPackageId": "9003",
+          "GrossAmount": 100.0000,
+          "Id": "package-9003",
+          "ManualInvoiceStatus": null,
+          "MarketplaceInvoiceNumber": null,
+          "MarketplaceInvoiceObservedAt": null,
+          "MarketplaceInvoiceRawStatus": null,
+          "MarketplaceInvoiceSourceUpdatedAt": null,
+          "MarketplaceInvoiceStatus": "Unknown",
+          "MarketplaceInvoiceUrl": null,
+          "NetAmount": 100.0000,
+          "OrderId": "order-69003",
+          "OriginExternalPackageId": null,
+          "RawStatus": "Delivered",
+          "RemoteVersion": null,
+          "Status": "Delivered",
+          "StatusOccurredAt": "T-1.00:00:00",
+          "TenantId": "tenant",
+          "UnreadableLineCount": 0,
+          "UpdatedAt": "T+00:00:00",
+          "Version": 1
+        },
+        {
+          "CargoBarcode": null,
+          "CargoProviderExternalId": null,
+          "CargoTrackingNumber": null,
+          "ConnectionId": "connection",
+          "CreatedAt": "T+00:00:00",
+          "CreatedBy": null,
+          "DiscountAmount": 0.0000,
+          "ExternalPackageId": "9001",
+          "GrossAmount": 100.0000,
+          "Id": "package-9001",
+          "ManualInvoiceStatus": null,
+          "MarketplaceInvoiceNumber": null,
+          "MarketplaceInvoiceObservedAt": null,
+          "MarketplaceInvoiceRawStatus": null,
+          "MarketplaceInvoiceSourceUpdatedAt": null,
+          "MarketplaceInvoiceStatus": "Unknown",
+          "MarketplaceInvoiceUrl": null,
+          "NetAmount": 100.0000,
+          "OrderId": "order-69001",
+          "OriginExternalPackageId": null,
+          "RawStatus": "Delivered",
+          "RemoteVersion": null,
+          "Status": "Delivered",
+          "StatusOccurredAt": "T-1.00:00:00",
+          "TenantId": "tenant",
+          "UnreadableLineCount": 0,
+          "UpdatedAt": "T+00:00:00",
+          "Version": 1
+        },
+        {
+          "CargoBarcode": null,
+          "CargoProviderExternalId": null,
+          "CargoTrackingNumber": null,
+          "ConnectionId": "connection",
+          "CreatedAt": "T+00:00:00",
+          "CreatedBy": null,
+          "DiscountAmount": 0.0000,
+          "ExternalPackageId": "9002",
+          "GrossAmount": 100.0000,
+          "Id": "package-9002",
+          "ManualInvoiceStatus": null,
+          "MarketplaceInvoiceNumber": null,
+          "MarketplaceInvoiceObservedAt": null,
+          "MarketplaceInvoiceRawStatus": null,
+          "MarketplaceInvoiceSourceUpdatedAt": null,
+          "MarketplaceInvoiceStatus": "Unknown",
+          "MarketplaceInvoiceUrl": null,
+          "NetAmount": 100.0000,
+          "OrderId": "order-69002",
+          "OriginExternalPackageId": null,
+          "RawStatus": "Delivered",
+          "RemoteVersion": null,
+          "Status": "Delivered",
+          "StatusOccurredAt": "T-1.00:00:00",
+          "TenantId": "tenant",
+          "UnreadableLineCount": 0,
+          "UpdatedAt": "T+00:00:00",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "SyncCursor",
+      "Rows": [
+        {
+          "ConnectionId": "connection",
+          "ConsecutiveFailureCount": 0,
+          "CursorStagnantSince": null,
+          "Id": "id5",
+          "LastAttemptAt": "T+00:10:07",
+          "LastChangedCount": 0,
+          "LastCursorAdvancedAt": null,
+          "LastDurationMs": "<duration>",
+          "LastError": null,
+          "LastErrorAt": null,
+          "LastFailedCount": 1,
+          "LastInsertedCount": 0,
+          "LastModifiedWatermark": null,
+          "LastRateLimitCount": 0,
+          "LastReceivedCount": 0,
+          "LastRequestCount": 2,
+          "LastRetryCount": 1,
+          "LastSkippedCount": 0,
+          "LastSliceAt": null,
+          "LastSuccessAt": "T+00:10:12",
+          "LastUpdatedCount": 0,
+          "OpaqueCursor": null,
+          "ResourceType": "ORDER_CARGO_INFO_RECONCILIATION",
+          "TenantId": "tenant",
+          "Version": 5
+        },
+        {
+          "ConnectionId": "connection",
+          "ConsecutiveFailureCount": 0,
+          "CursorStagnantSince": null,
+          "Id": "id6",
+          "LastAttemptAt": "T+00:10:08",
+          "LastChangedCount": 0,
+          "LastCursorAdvancedAt": "T+00:00:00",
+          "LastDurationMs": null,
+          "LastError": null,
+          "LastErrorAt": null,
+          "LastFailedCount": 0,
+          "LastInsertedCount": 0,
+          "LastModifiedWatermark": null,
+          "LastRateLimitCount": 0,
+          "LastReceivedCount": 0,
+          "LastRequestCount": 0,
+          "LastRetryCount": 0,
+          "LastSkippedCount": 0,
+          "LastSliceAt": null,
+          "LastSuccessAt": "T+00:10:08",
+          "LastUpdatedCount": 0,
+          "OpaqueCursor": "1",
+          "ResourceType": "ORDER_CARGO_INFO",
+          "TenantId": "tenant",
+          "Version": 3
+        }
+      ]
+    },
+    {
+      "Table": "IntegrationOutboxEvent (counted)",
+      "Rows": [
+        "connections PlatformConnection created x1",
+        "orders Order created x3",
+        "orders ShipmentPackage created x3"
+      ]
+    }
+  ]
+}
