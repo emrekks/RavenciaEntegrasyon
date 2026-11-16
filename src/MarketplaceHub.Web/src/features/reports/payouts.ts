@@ -1,8 +1,13 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { cursorPageParams } from '../../shared/api/paging'
 import { formatMoney } from '../../shared/format-money'
 // Hakediş (PayoutContracts.cs): what the marketplaces will pay and have paid, from their accounting records.
 // Expected is the balance (every record not paid yet); unknown, its overdue part, is never "unpaid".
 // Region NONE: a marketplace that pays without Trendyol's regions.
+type PayoutsAnswer = ApiAnswer<'getReportsPayouts'>
+type GroupAnswer = NonNullable<PayoutsAnswer['next']>
+type EstimateAnswer = NonNullable<GroupAnswer['estimates']>[number]
+type LinesAnswer = ApiAnswer<'getReportsPayoutsLines'>
 export type PayoutRegion = 'TR_GULF' | 'EUROPE' | 'AZ' | 'UNKNOWN' | 'NONE'
 export type PayoutStatus = 'PAID' | 'EXPECTED' | 'UNKNOWN'
 // PAYOUT_DAY: an estimated payout day; DUE_DAY: a due day; OVERDUE: past its due day, no payout day known; UNDATED: unpaid
@@ -13,35 +18,66 @@ export const isWaitingPayout = (group: Pick<PayoutGroup, 'kind'>) => group.kind 
 // estimates: on a Trendyol payout day to come, the deductions Trendyol bills only the evening before it, estimated as its
 // own Ödeme Özeti does; amount is then the records (linesAmount) less them.
 export type PayoutEstimateKind = 'CARGO' | 'RETURN_CARGO' | 'PLATFORM_FEE' | 'INTERNATIONAL_FEE' | 'STOPPAGE'
-export type PayoutEstimate = { kind: PayoutEstimateKind; count: number; amount: number; rate: number | null; missing: number }
-export type PayoutGroup = { key: string; kind: PayoutKind; connectionId: string; platformCode: string; storeName: string; region: PayoutRegion; regionName: string | null
-  day: string; amount: number; linesAmount: number | null; records: number; status: PayoutStatus; estimates?: PayoutEstimate[] | null
-  // The next payout only: what the store's earlier days that netted to nothing or less take off it (negative; amount holds it).
-  carried?: number | null }
+export type PayoutEstimate = Omit<EstimateAnswer, 'kind'> & { kind: PayoutEstimateKind }
+export type PayoutGroup = Omit<GroupAnswer, 'kind' | 'region' | 'status' | 'estimates'> & { kind: PayoutKind; region: PayoutRegion; status: PayoutStatus; estimates: PayoutEstimate[] | null }
 // pendingDelivery: the orders accepted or shipped but not delivered yet (not in the balance; they join a later payout).
-export type PayoutRegionSummary = { region: PayoutRegion; expected: number; records: number; nextDay: string | null; nextAmount: number | null; unknown: number
-  pendingDelivery: number; pendingDeliveryOrders: number }
+export type PayoutRegionSummary = Omit<PayoutsAnswer['regions'][number], 'region'> & { region: PayoutRegion }
 // One marketplace's balance, next payout and overdue part; the marketplaces' balances add up to Payouts.expected.
-export type PayoutPlatformSummary = { platformCode: string; expected: number; records: number; nextDay: string | null; nextAmount: number | null; unknown: number
-  pendingDelivery: number; pendingDeliveryOrders: number }
-export type PayoutCoverage = { connectionId: string; platformCode: string; storeName: string; state: 'READ' | 'NOT_READ' | 'NOT_SUPPORTED'; lastSyncedAt: string | null }
-// GET /reports/payouts and /reports/payouts/lines. CONTRACT: every member agrees with the contract (PayoutView,
-// PayoutLinesPage) but the codes the API declares as strings: region, status, kind, an estimate's kind and a coverage
-// state (the constants of PayoutContracts / PayoutBuilder). They sit in every group, so the types stay written here.
-export type Payouts = { today: string; daysBack: number; expected: number; expectedRecords: number; next: PayoutGroup | null; lastPaid: PayoutGroup | null
-  unknown: number; unknownRecords: number; earlyPaymentsTaken: number; earlyPayments: number; regions: PayoutRegionSummary[]; platforms: PayoutPlatformSummary[]
-  upcoming: PayoutGroup[]; past: PayoutGroup[]; coverage: PayoutCoverage[]; pendingDelivery: number; pendingDeliveryOrders: number
-  // Trendyol sales and returns a payout paid whose records are not read yet: out of expected (absent in an older answer).
-  paidUnread?: number; paidUnreadRecords?: number
-  // The records not paid yet in another currency than the lira, each currency apart: never in the lira figures.
-  otherCurrencies?: PayoutCurrency[] | null }
-export type PayoutCurrency = { currency: string; expected: number; records: number }
-export type PayoutLine = { externalId: string; connectionId: string; platformCode: string; transactionType: string | null; category: string; transactionDate: string
-  dueDay: string | null; orderNumber: string | null; invoiceNumber: string | null; country: string | null; region: PayoutRegion; gross: number; commission: number | null
-  net: number; status: PayoutStatus; paymentOrderId: string | null; barcode: string | null
-  // The record's currency (absent in an older answer: the lira); the lines' total adds only the lira ones.
-  currency?: string }
-export type PayoutLines = { items: PayoutLine[]; totalCount: number; page: number; pageSize: number; net: number }
+export type PayoutPlatformSummary = PayoutsAnswer['platforms'][number]
+export type PayoutCoverage = Omit<PayoutsAnswer['coverage'][number], 'state'> & { state: 'READ' | 'NOT_READ' | 'NOT_SUPPORTED' }
+// GET /reports/payouts and /reports/payouts/lines: the contract's answers (PayoutView, PayoutLinesPage) with the codes it
+// declares as strings narrowed (region, status, kind, an estimate's kind, a coverage state: the constants of
+// PayoutContracts / PayoutBuilder) by readPayouts and readPayoutLines at the fetch.
+export type Payouts = Omit<PayoutsAnswer, 'next' | 'lastPaid' | 'regions' | 'upcoming' | 'past' | 'coverage'> & {
+  next: PayoutGroup | null; lastPaid: PayoutGroup | null; regions: PayoutRegionSummary[]; upcoming: PayoutGroup[]; past: PayoutGroup[]; coverage: PayoutCoverage[]
+}
+export type PayoutCurrency = NonNullable<PayoutsAnswer['otherCurrencies']>[number]
+export type PayoutLine = Omit<LinesAnswer['items'][number], 'region' | 'status'> & { region: PayoutRegion; status: PayoutStatus }
+// A line's currency: the lines' total adds only the lira ones.
+export type PayoutLines = Omit<LinesAnswer, 'items'> & { items: PayoutLine[] }
+// (Payouts.paidUnread: Trendyol sales and returns a payout paid whose records are not read yet, out of expected;
+// otherCurrencies: the records not paid yet in another currency than the lira, never in the lira figures; a group's
+// carried: on the next payout, what the store's earlier days that netted to nothing or less take off it.)
+
+const regions: ReadonlySet<string> = new Set<PayoutRegion>(['TR_GULF', 'EUROPE', 'AZ', 'UNKNOWN', 'NONE'])
+const statuses: ReadonlySet<string> = new Set<PayoutStatus>(['PAID', 'EXPECTED', 'UNKNOWN'])
+const kinds: ReadonlySet<string> = new Set<PayoutKind>(['PAYOUT_DAY', 'DUE_DAY', 'OVERDUE', 'UNDATED', 'PAID_DAY', 'PAYOUT'])
+const estimateKinds: ReadonlySet<string> = new Set<PayoutEstimateKind>(['CARGO', 'RETURN_CARGO', 'PLATFORM_FEE', 'INTERNATIONAL_FEE', 'STOPPAGE'])
+const coverageStates: ReadonlySet<string> = new Set<PayoutCoverage['state']>(['READ', 'NOT_READ', 'NOT_SUPPORTED'])
+const isRegion = (code: string): code is PayoutRegion => regions.has(code)
+const isStatus = (code: string): code is PayoutStatus => statuses.has(code)
+const isKind = (code: string): code is PayoutKind => kinds.has(code)
+const isEstimateKind = (code: string): code is PayoutEstimateKind => estimateKinds.has(code)
+const isCoverageState = (code: string): code is PayoutCoverage['state'] => coverageStates.has(code)
+
+// Codes the panel does not know, each handled without changing a figure: a region reads as UNKNOWN (shown under the
+// name the marketplace gave it); a status as EXPECTED (neither paid nor overdue); a group kind as DUE_DAY (an open
+// day, not waiting apart); an estimate of an unknown deduction is left out of the breakdown (the group's amount, the
+// server's, already holds it); a coverage state as NOT_READ (never claimed read).
+const readRegion = (code: string): PayoutRegion => isRegion(code) ? code : 'UNKNOWN'
+const readStatus = (code: string): PayoutStatus => isStatus(code) ? code : 'EXPECTED'
+function readGroup(group: GroupAnswer): PayoutGroup {
+  return {
+    ...group, kind: isKind(group.kind) ? group.kind : 'DUE_DAY', region: readRegion(group.region), status: readStatus(group.status),
+    estimates: group.estimates === null ? null : group.estimates.flatMap(item => isEstimateKind(item.kind) ? [{ ...item, kind: item.kind }] : [])
+  }
+}
+
+/** GET /reports/payouts as the Hakediş tab reads it (the codes narrowed; every figure as the server wrote it). */
+export function readPayouts(raw: PayoutsAnswer): Payouts {
+  return {
+    ...raw,
+    next: raw.next ? readGroup(raw.next) : null, lastPaid: raw.lastPaid ? readGroup(raw.lastPaid) : null,
+    regions: raw.regions.map(item => ({ ...item, region: readRegion(item.region) })),
+    upcoming: raw.upcoming.map(readGroup), past: raw.past.map(readGroup),
+    coverage: raw.coverage.map(item => ({ ...item, state: isCoverageState(item.state) ? item.state : 'NOT_READ' }))
+  }
+}
+
+/** GET /reports/payouts/lines as the record list reads it. */
+export function readPayoutLines(raw: LinesAnswer): PayoutLines {
+  return { ...raw, items: raw.items.map(item => ({ ...item, region: readRegion(item.region), status: readStatus(item.status) })) }
+}
 
 // The next payout the "Sıradaki Ödeme" card shows: the server's own figure, overall or for the picked Trendyol region
 // (PayoutBuilder: the first day to come whose estimate is above zero; a day netting to nothing or less pays nothing).

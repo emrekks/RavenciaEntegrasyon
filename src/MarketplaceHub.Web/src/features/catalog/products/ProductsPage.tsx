@@ -1,10 +1,12 @@
 // Ürünler (/products).
+import type { ApiResponse } from '../../../shared/api/generated/api-types'
+import { readProductListPage, type ProductListItem } from '../product-list-item'
 import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { platformDisplayNames, platformDisplayOrder } from '../../../shared/platform-names'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { hubApi, hubPoll, loadAllPages, type CursorPage } from '../../../shared/api'
+import { hubApi, hubPoll, loadAllPages } from '../../../shared/api'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { useToastStack } from '../../../shared/components/toast-stack-context'
 import { CardBackgroundIcon, StickyActionBar, TitleHint, useConfirmDialog } from '../../../shared/components'
@@ -100,10 +102,9 @@ async function fetchProductPage(limit: number, filters: ProductListFilters, afte
   if (filters.platform) params.set('platforms', filters.platform)
   if (filters.stock) params.set('stock', filters.stock)
   if (filters.sort) params.set('sort', filters.sort)
-  // Not the contract's ApiResponse<'getProducts'>: GET /products leaves a row's null members out (ProductListJson), so
-  // brandId, categoryId, primaryImageUrl, startingPrice, modelCode and the other nullable members may be absent, while
-  // Product (the editor's card type too) says they are present. The list reads them only with ?? / ?. / != null.
-  return hubPoll<CursorPage<Product>>(`/products?${params.toString()}`, { signal })
+  // GET /products leaves a row's null members out (ProductListJson): readProductListPage reads each row as the card it
+  // is, the left-out members as the null they stood for (product-list-item.ts, the list's one boundary).
+  return hubPoll<ApiResponse<'getProducts'>>(`/products?${params.toString()}`, { signal }).then(readProductListPage)
 }
 type VariantDisplayValue = { label: string; quantity: number }
 type VariantDisplayGroup = { label: string; values: VariantDisplayValue[]; valueSortLabel: string }
@@ -187,7 +188,7 @@ function lowStockMissingVariantCount(group: ProductGroup) {
 // and Tükenen Varyantlar (any variant sold out while the product still has stock, read when its tab is opened).
 export function LowStockDetailsModal({ products: lowProducts, loading: lowLoading, error: lowError, onClose, onImageClick }: { products: Product[]; loading: boolean; error: unknown; onClose: () => void; onImageClick: (url: string, title: string, modelCode?: string) => void }) {
   const [mode, setMode] = useState<'LOW' | 'GAP'>('LOW')
-  const gapQuery = useQuery({ queryKey: queryKeys.products('sold-out-variant-details'), queryFn: ({ signal }) => loadAllPages<Product>('/products?stock=GAP', { limit: 200, signal }), enabled: mode === 'GAP', staleTime: 15_000 })
+  const gapQuery = useQuery({ queryKey: queryKeys.products('sold-out-variant-details'), queryFn: ({ signal }) => loadAllPages<ProductListItem>('/products?stock=GAP', { limit: 200, signal }).then(readProductListPage), enabled: mode === 'GAP', staleTime: 15_000 })
   const products = useMemo(() => mode === 'LOW' ? lowProducts : gapQuery.data?.items ?? [], [mode, lowProducts, gapQuery.data])
   const loading = mode === 'LOW' ? lowLoading : gapQuery.isLoading
   const error = mode === 'LOW' ? lowError : gapQuery.error
@@ -426,7 +427,7 @@ export function ProductsPage() {
   // The summary has no draft or archived counts; a one-item page carries the total.
   const draftCountQuery = useQuery({ queryKey: queryKeys.products('count', 'DRAFT'), queryFn: ({ signal }) => fetchProductPage(1, { search: '', status: 'DRAFT', platform: '', stock: '', sort: '' }, null, signal), staleTime: 60_000 })
   const archivedCountQuery = useQuery({ queryKey: queryKeys.products('count', 'ARCHIVED'), queryFn: ({ signal }) => fetchProductPage(1, { search: '', status: 'ARCHIVED', platform: '', stock: '', sort: '' }, null, signal), staleTime: 60_000 })
-  const lowStockQuery = useQuery({ queryKey: queryKeys.products('low-stock-details'), queryFn: ({ signal }) => loadAllPages<Product>('/products?stock=LOW', { limit: 200, signal }), enabled: lowStockOpen, staleTime: 15_000, refetchOnWindowFocus: true })
+  const lowStockQuery = useQuery({ queryKey: queryKeys.products('low-stock-details'), queryFn: ({ signal }) => loadAllPages<ProductListItem>('/products?stock=LOW', { limit: 200, signal }).then(readProductListPage), enabled: lowStockOpen, staleTime: 15_000, refetchOnWindowFocus: true })
   const connectionsQuery = useQuery(connectionQueries.list<MarketplaceConnection>())
   const productSyncJobsQuery = useQuery({ queryKey: queryKeys.jobs('product-import'), queryFn: ({ signal }) => hubPoll<ProductSyncJob[]>(productSyncJobsPath, { cache: 'no-store', signal }), enabled: productImportOpen || trackedProductImportJobIds.length > 0, refetchInterval: query => productImportOpen && filterActiveProductSyncJobs(query.state.data ?? []).length ? 1500 : trackedProductImportJobIds.length ? 3000 : false, refetchIntervalInBackground: true, refetchOnWindowFocus: true, staleTime: 0 })
   const products = useMemo(() => query.data?.items ?? [], [query.data]); const connections = (connectionsQuery.data?.items ?? []).filter(isProductImportConnection); const publicationConnections = (connectionsQuery.data?.items ?? []).filter(isProductPublicationConnection); const selectedImportPlatforms = productImportConnectionIds.map(connectionId => connections.find(connection => connection.id === connectionId)?.platformCode ?? '').filter(Boolean); const selectedImportHasShopify = selectedImportPlatforms.some(code => code.trim().toUpperCase() === 'SHOPIFY'); const singleLookupLabel = singleProductLookupLabel(selectedImportPlatforms[0] ?? ''); const platforms = summaryQuery.data?.platforms ?? []
@@ -606,7 +607,7 @@ export function ProductsPage() {
       if (productFilters.status) params.set('status', productFilters.status)
       if (productFilters.platform) params.set('platforms', productFilters.platform)
       if (productFilters.stock) params.set('stock', productFilters.stock)
-      const all = await loadAllPages<Product>(`/products?${params.toString()}`, 200)
+      const all = readProductListPage(await loadAllPages<ProductListItem>(`/products?${params.toString()}`, 200))
       const ids = all.items.map(product => product.id)
       setSelectedProductIds(ids)
       setSelectedProductCache(Object.fromEntries(all.items.map(product => [product.id, product])))

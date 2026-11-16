@@ -33,7 +33,7 @@ vi.mock('../../shared/api', () => {
   ], nextCursor: null, hasMore: false })),
   hubApi: vi.fn(async (path: string) => {
     apiState.calls.push(path)
-    if (path.startsWith('/jobs/counts') && path.includes('platform=TRENDYOL_EFATURAM')) return [{ status: 'DEAD', jobType: 'INVOICE_SUBMIT', count: 4 }]
+    if (path.startsWith('/jobs/counts') && path.includes('platforms=TRENDYOL_EFATURAM')) return [{ status: 'DEAD', jobType: 'INVOICE_SUBMIT', count: 4 }]
     if (path.startsWith('/jobs/counts')) return [
       { status: 'SUCCEEDED', jobType: 'TRENDYOL_ORDER_SYNC', count: 2 },
       { status: 'DEAD', jobType: 'TRENDYOL_ORDER_SYNC', count: 1 },
@@ -356,20 +356,20 @@ describe('JobsPage platform filter', () => {
     expect(Array.from(pop.querySelectorAll('.rr-opt .rr-grow')).map(option => option.textContent)).toEqual(['Trendyol', 'N11', 'Trendyol E-Faturam'])
     expect(pop.querySelectorAll('.rr-opt .rr-logo')).toHaveLength(3)
     expect(trigger('Platform').textContent).toBe('Tüm Platformlar')
-    expect(pageRequests().every(params => params.get('platform') === null)).toBe(true)
+    expect(pageRequests().every(params => params.get('platforms') === null)).toBe(true)
 
     // Every platform starts ticked (the shared PlatformFilter): Tümünü Kaldır clears the ticks inside the menu only.
     expect(Array.from(pop.querySelectorAll<HTMLInputElement>('.rr-opt input')).every(input => input.checked)).toBe(true)
     await act(async () => { Array.from(pop.querySelectorAll<HTMLButtonElement>('.rr-ph button')).find(item => item.textContent === 'Tümünü Kaldır')!.click() })
     await settle()
-    expect(pageRequests().every(params => params.get('platform') === null)).toBe(true)
+    expect(pageRequests().every(params => params.get('platforms') === null)).toBe(true)
     await act(async () => { checkboxNamed(pop, 'Trendyol E-Faturam').click() })
     await settle()
     await settle()
 
     expect(currentSearch).toBe('?platform=trendyol_efaturam')
-    expect(pageRequests().at(-1)!.get('platform')).toBe('TRENDYOL_EFATURAM')
-    expect(countRequests().at(-1)!.get('platform')).toBe('TRENDYOL_EFATURAM')
+    expect(pageRequests().at(-1)!.get('platforms')).toBe('TRENDYOL_EFATURAM')
+    expect(countRequests().at(-1)!.get('platforms')).toBe('TRENDYOL_EFATURAM')
     expect(trigger('Platform').textContent).toBe('Trendyol E-Faturam')
     // The status row and the tab counts come from the platform's counts.
     const summary = container.querySelector('.jobs-reference-status-summary')!.textContent
@@ -382,27 +382,27 @@ describe('JobsPage platform filter', () => {
     await act(async () => { checkboxNamed(container.querySelector('.rr-pop[aria-label="Platform"]')!, 'N11').click() })
     await settle()
     expect(currentSearch).toBe('?platform=n11%2Ctrendyol_efaturam')
-    expect(pageRequests().at(-1)!.get('platform')).toBe('N11,TRENDYOL_EFATURAM')
+    expect(pageRequests().at(-1)!.get('platforms')).toBe('N11,TRENDYOL_EFATURAM')
     expect(trigger('Platform').textContent).toBe('2 Platform Seçili')
   })
 
   it('keeps the platform from the URL on load and through the next page', async () => {
     await renderPage('/jobs?platform=n11')
 
-    expect(pageRequests().at(-1)!.get('platform')).toBe('N11')
-    expect(countRequests().at(-1)!.get('platform')).toBe('N11')
+    expect(pageRequests().at(-1)!.get('platforms')).toBe('N11')
+    expect(countRequests().at(-1)!.get('platforms')).toBe('N11')
     expect(trigger('Platform').textContent).toBe('N11')
 
     await act(async () => { button('Daha Fazla Yükle')!.click() })
     await settle()
     const next = pageRequests().find(params => params.get('after') === 'cursor-1')!
-    expect(next.get('platform')).toBe('N11')
+    expect(next.get('platforms')).toBe('N11')
 
     const pop = await openField('Platform')
     await act(async () => { Array.from(pop.querySelectorAll<HTMLButtonElement>('.rr-ph button')).find(item => item.textContent === 'Tümünü Seç')!.click() })
     await settle()
     expect(currentSearch).toBe('')
-    expect(pageRequests().at(-1)!.get('platform')).toBeNull()
+    expect(pageRequests().at(-1)!.get('platforms')).toBeNull()
   })
 })
 

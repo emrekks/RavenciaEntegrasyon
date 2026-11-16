@@ -52,8 +52,8 @@ describe('platform helpers', () => {
   const now = Date.parse('2026-10-14T12:00:00.000Z')
 
   it('adds the platform to the page and counts requests', () => {
-    expect(new URLSearchParams(jobPageQueryString('', 'all', { platform: 'N11' }, now).slice(1)).get('platform')).toBe('N11')
-    expect(jobCountsQueryString('all', 'PAZARAMA', now)).toBe('?platform=PAZARAMA')
+    expect(new URLSearchParams(jobPageQueryString('', 'all', { platform: 'N11' }, now).slice(1)).get('platforms')).toBe('N11')
+    expect(jobCountsQueryString('all', 'PAZARAMA', now)).toBe('?platforms=PAZARAMA')
     expect(jobCountsQueryString('all', null, now)).toBe('')
   })
 

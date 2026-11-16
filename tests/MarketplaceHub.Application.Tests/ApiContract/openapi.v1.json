@@ -10331,6 +10331,8 @@
           {
             "name": "platform",
             "in": "query",
+            "description": "Use platforms; kept for older browser tabs.",
+            "deprecated": true,
             "schema": {
               "type": "string"
             }
@@ -10442,6 +10444,8 @@
           {
             "name": "platform",
             "in": "query",
+            "description": "Use platforms; kept for older browser tabs.",
+            "deprecated": true,
             "schema": {
               "type": "string"
             }
@@ -10505,6 +10509,8 @@
           {
             "name": "platform",
             "in": "query",
+            "description": "Use platforms; kept for older browser tabs.",
+            "deprecated": true,
             "schema": {
               "type": "string"
             }
@@ -10693,6 +10699,8 @@
           {
             "name": "platform",
             "in": "query",
+            "description": "Use platforms; kept for older browser tabs.",
+            "deprecated": true,
             "schema": {
               "type": "string"
             }
@@ -12986,6 +12994,8 @@
           {
             "name": "platform",
             "in": "query",
+            "description": "Use platforms; kept for older browser tabs.",
+            "deprecated": true,
             "schema": {
               "type": "string"
             }
@@ -13151,6 +13161,8 @@
           {
             "name": "platform",
             "in": "query",
+            "description": "Use platforms; kept for older browser tabs.",
+            "deprecated": true,
             "schema": {
               "type": "string"
             }
@@ -13421,6 +13433,8 @@
           {
             "name": "platform",
             "in": "query",
+            "description": "Use platforms; kept for older browser tabs.",
+            "deprecated": true,
             "schema": {
               "type": "string"
             }
@@ -14114,6 +14128,8 @@
           {
             "name": "platform",
             "in": "query",
+            "description": "Use platforms; kept for older browser tabs.",
+            "deprecated": true,
             "schema": {
               "type": "string"
             }
@@ -14235,6 +14251,8 @@
           {
             "name": "platform",
             "in": "query",
+            "description": "Use platforms; kept for older browser tabs.",
+            "deprecated": true,
             "schema": {
               "type": "string"
             }
@@ -14372,6 +14390,8 @@
           {
             "name": "platform",
             "in": "query",
+            "description": "Use platforms; kept for older browser tabs.",
+            "deprecated": true,
             "schema": {
               "type": "string"
             }
@@ -14478,6 +14498,8 @@
           {
             "name": "platform",
             "in": "query",
+            "description": "Use platforms; kept for older browser tabs.",
+            "deprecated": true,
             "schema": {
               "type": "string"
             }
@@ -14623,7 +14645,7 @@
           {
             "name": "platform",
             "in": "query",
-            "description": "Use platforms; kept for older browser tabs. When both are sent, platforms wins.",
+            "description": "Use platforms; kept for older browser tabs.",
             "deprecated": true,
             "schema": {
               "type": "string"
@@ -17013,7 +17035,7 @@
           {
             "name": "platform",
             "in": "query",
-            "description": "Use platforms; kept for older browser tabs. When both are sent, platforms wins.",
+            "description": "Use platforms; kept for older browser tabs.",
             "deprecated": true,
             "schema": {
               "type": "string"

@@ -52,7 +52,10 @@ public sealed class OpenApiOperationContract : IOpenApiOperationTransformer
         {
             if (FilterContract.ReplacementOf(DocumentPath(path), parameter.Name ?? string.Empty) is not { } replacement) continue;
             parameter.Deprecated = true;
-            parameter.Description = $"Use {replacement}; kept for older browser tabs. When both are sent, {replacement} wins.";
+            // The old single platform is read together with platforms on some lists and only without it on others: no rule.
+            parameter.Description = parameter.Name == "platform"
+                ? $"Use {replacement}; kept for older browser tabs."
+                : $"Use {replacement}; kept for older browser tabs. When both are sent, {replacement} wins.";
         }
         foreach (var alternatives in metadata.OfType<ResponseAlternatives>())
             await DescribeAlternativesAsync(operation, context, alternatives, cancellationToken);

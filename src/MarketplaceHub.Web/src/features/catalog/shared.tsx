@@ -27,7 +27,11 @@ export type Variant = Product['variants'][number]
 // missingVariantCount: variants the marketplace no longer knows (link NOT_FOUND or REJECTED), not in matchedVariantCount.
 // onSale/offSale…VariantCount: matched variants the marketplace says are on sale / closed to sale (the rest unknown);
 // offSaleStockZeroVariantCount: the closed ones whose only named reason is a stock of 0 (sale-state.ts).
+// A panel row type, not an answer alias: the bulk dialogs also build these rows themselves (a queued send), and the
+// contract's statuses fit into it.
 export type ProductPlatformStatus = { platform: string; platformCode?: string; status: string; matchedVariantCount?: number; variantCount?: number; isChecking?: boolean; missingVariantCount?: number; onSaleVariantCount?: number; offSaleVariantCount?: number; offSaleStockZeroVariantCount?: number; offSaleReasonCounts?: Record<string, number> | null; rejectionReason?: string | null; rejectedVariantCount?: number; pendingVariantCount?: number; resubmittedVariantCount?: number; updatingVariantCount?: number; reviewVariantCount?: number }
+// A panel row type, not an answer alias: the editor also builds these rows itself (a new card's pricing per store), and
+// the contract's variant statuses fit into it.
 export type VariantPlatformStatus = {
   platform: string; platformCode: string; isLinked: boolean; status?: string
   // Present at the marketplace (a variant link or a LIVE listing); isLinked also counts a variant only queued for
@@ -51,7 +55,7 @@ export type VariantPlatformStatus = {
 // A card as GET /products/{id} and the card writes answer it: every member present, null when unset.
 export type Product = ApiAnswer<'getProductsById'>
 // GET /products answers the same card but leaves its null members out (CatalogEndpoints.ProductListJson); the list
-// pages read it as Product and touch a nullable member only with ?? / ?. / != null (ProductsPage.loadProductPage).
+// pages read its rows through readProductListItem (product-list-item.ts), which gives them back as null.
 export function variantColorKey(variant: Variant) {
   const color = preferredColorOption(variantOptionEntries(variant))
   return color?.value.trim().toLocaleLowerCase('tr-TR') || null
