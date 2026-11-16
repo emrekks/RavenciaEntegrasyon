@@ -104,6 +104,17 @@ internal sealed class ListingVerificationRunHandler(Func<JobRunContext, JobRunSe
     };
 }
 
+// The check of an unclear marketplace answer (ExternalEffectReconcileService); its result names a wait or a slice of its own.
+internal sealed class ExternalEffectReconcileRunHandler(Func<JobRunContext, JobRunServices> services) : IRunDirectJobHandler
+{
+    public static readonly IReadOnlyCollection<string> Types = [MarketplaceJobTypes.ExternalEffectReconcile];
+
+    public IReadOnlyCollection<string> JobTypes => Types;
+
+    public Task<JobExecutionResult> HandleDirectAsync(JobRequest request, JobRunContext run, CancellationToken cancellationToken) =>
+        services(run).ExternalEffectReconcile.ReconcileExternalEffect(request.TenantId, request.ConnectionId, request.PayloadJson, request.CorrelationId, cancellationToken);
+}
+
 // The connection test of every marketplace (ConnectionTestService).
 internal sealed class ConnectionTestRunHandler(Func<JobRunContext, JobRunServices> services) : IRunBoolJobHandler
 {

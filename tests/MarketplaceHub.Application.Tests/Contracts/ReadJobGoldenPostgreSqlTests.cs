@@ -6,6 +6,7 @@ using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Xunit;
+using static MarketplaceHub.Application.Tests.Contracts.GoldenSeeds;
 
 namespace MarketplaceHub.Application.Tests.Contracts;
 
@@ -20,105 +21,6 @@ namespace MarketplaceHub.Application.Tests.Contracts;
 public sealed class ReadJobGoldenPostgreSqlTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
     private static readonly DateTimeOffset Start = JobGolden.Start;
-
-    private sealed class Run(PostgreSqlTenantIsolationFixture fixture, string platform, string connectionStatus = "ACTIVE")
-    {
-        public readonly GoldenClock Clock = new(Start);
-        public readonly Tenant Tenant = new() { Id = Guid.CreateVersion7(), Code = $"rjg-{Guid.NewGuid():N}"[..30], DisplayName = "read job golden", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = Start, UpdatedAt = Start, Version = 1 };
-        public PlatformConnection Connection = null!;
-        public readonly Dictionary<Guid, string> Known = [];
-        public readonly List<object> Runs = [];
-        public Dictionary<string, string?> Settings { get; } = [];
-        private int seeded;
-
-        // Seeded rows get ids in the order they are made (each a millisecond later), so a read that walks rows by id walks
-        // them in the same order on every run.
-        public Guid NewId() => Guid.CreateVersion7(Start.AddMilliseconds(++seeded));
-
-        public async Task SeedAsync(Action<AppDbContext>? seed = null)
-        {
-            Connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = Tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = platform, Environment = "PRODUCTION", DisplayName = platform, ExternalStoreId = "store-golden", Status = connectionStatus, ApiVersion = "V1" };
-            Known[Tenant.Id] = "tenant";
-            Known[Connection.Id] = "connection";
-            Known[Connection.PublicId] = "connection-public";
-            await using var db = fixture.CreateContext(new FrozenClock(Start));
-            db.Tenants.Add(Tenant);
-            db.PlatformConnections.Add(Connection);
-            seed?.Invoke(db);
-            await db.SaveChangesAsync();
-        }
-
-        public MarketplaceJobProcessor Processor(AppDbContext db, GoldenMarketplace port) =>
-            new(db, port, port, port, port, port, port, port, port, null!, null!, new ConfigurationBuilder().AddInMemoryCollection(Settings).Build(), Clock);
-
-        public async Task<JobExecutionResult> RunAsync(string label, string jobType, GoldenMarketplace port, string payloadJson = "{}", Guid? jobId = null)
-        {
-            JobExecutionResult result;
-            await using (var db = fixture.CreateContext(new FrozenClock(Start)))
-                result = await Processor(db, port).ProcessAsync(Tenant.Id, Connection.Id, jobType, payloadJson, $"rjg-{label}", CancellationToken.None, jobId);
-            Runs.Add(new { Run = label, JobType = jobType, Result = result, Calls = port.Calls.ToList() });
-            port.Calls.Clear();
-            return result;
-        }
-
-        public async Task MatchesAsync(string goldenPath)
-        {
-            await using var check = fixture.CreateContext();
-            var tables = await JobGolden.TablesAsync(check, Tenant.Id, Known);
-            JobGolden.Matches(goldenPath, new { Runs, Tables = tables }, Known);
-        }
-    }
-
-    private static Order NewOrder(Run run, string externalId, DateTimeOffset orderedAt, bool returnClaim = false)
-    {
-        var order = new Order
-        {
-            Id = run.NewId(),
-            TenantId = run.Tenant.Id,
-            ConnectionId = run.Connection.Id,
-            ExternalOrderId = externalId,
-            OrderNumber = externalId,
-            Currency = "TRY",
-            GrossAmount = 100m,
-            NetAmount = 100m,
-            OrderedAt = orderedAt,
-            LastRemoteModifiedAt = orderedAt,
-            CustomerSnapshotJson = returnClaim ? "{\"_ravenciaReadModelSource\":\"RETURN_CLAIM\"}" : "{\"customerFirstName\":\"Golden\"}",
-            ShipmentAddressSnapshotJson = "{}",
-            InvoiceAddressSnapshotJson = "{}",
-            DerivedStatus = "DELIVERED",
-            CreatedAt = Start,
-            UpdatedAt = Start,
-            Version = 1
-        };
-        run.Known[order.Id] = $"order-{externalId}";
-        return order;
-    }
-
-    private static ShipmentPackage NewPackage(Run run, Order order, string externalId, DateTimeOffset statusAt, string? cargoProvider = null, string? tracking = null)
-    {
-        var package = new ShipmentPackage
-        {
-            Id = run.NewId(),
-            TenantId = run.Tenant.Id,
-            ConnectionId = run.Connection.Id,
-            OrderId = order.Id,
-            ExternalPackageId = externalId,
-            GrossAmount = 100m,
-            NetAmount = 100m,
-            Status = ShipmentPackageStatus.Delivered,
-            RawStatus = "Delivered",
-            StatusOccurredAt = statusAt,
-            MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Unknown,
-            CargoProviderExternalId = cargoProvider,
-            CargoTrackingNumber = tracking,
-            CreatedAt = Start,
-            UpdatedAt = Start,
-            Version = 1
-        };
-        run.Known[package.Id] = $"package-{externalId}";
-        return package;
-    }
 
     private static RemotePackage RemotePackageWith(string externalPackageId, string? invoiceStatus, string? number = null, string? url = null, string? cargoProvider = null, string? tracking = null) =>
         new(externalPackageId, null, "Delivered", Start.AddDays(-1), cargoProvider, tracking, [],
@@ -136,7 +38,7 @@ public sealed class ReadJobGoldenPostgreSqlTests(PostgreSqlTenantIsolationFixtur
     [MemberData(nameof(TrendyolInvoiceScenarios))]
     public async Task TrendyolInvoiceCheckAsksAndStoresTheSameThings(string scenario)
     {
-        var run = new Run(fixture, "TRENDYOL");
+        var run = new GoldenRun(fixture, "TRENDYOL");
         await run.SeedAsync();
         await using (var db = fixture.CreateContext(new FrozenClock(Start)))
         {
@@ -206,7 +108,7 @@ public sealed class ReadJobGoldenPostgreSqlTests(PostgreSqlTenantIsolationFixtur
     [MemberData(nameof(OrderDetailInvoiceScenarios))]
     public async Task OrderDetailInvoiceCheckAsksAndStoresTheSameThings(string platform, string scenario)
     {
-        var run = new Run(fixture, platform);
+        var run = new GoldenRun(fixture, platform);
         await run.SeedAsync();
         var remotes = Fixture(platform);
         // One order at a time a few milliseconds apart: the ingestion's own ids then follow the page's order, and the
@@ -281,7 +183,7 @@ public sealed class ReadJobGoldenPostgreSqlTests(PostgreSqlTenantIsolationFixtur
     [MemberData(nameof(CargoInfoScenarios))]
     public async Task CargoInfoCheckAsksAndStoresTheSameThings(string platform, string scenario)
     {
-        var run = new Run(fixture, platform);
+        var run = new GoldenRun(fixture, platform);
         run.Settings["MarketplaceSync:TrendyolCargoInfo:BatchSize"] = "2";
         await run.SeedAsync();
         await using (var db = fixture.CreateContext(new FrozenClock(Start)))
@@ -321,7 +223,7 @@ public sealed class ReadJobGoldenPostgreSqlTests(PostgreSqlTenantIsolationFixtur
     [MemberData(nameof(ListingScenarios))]
     public async Task ListingVerificationAsksAndStoresTheSameThings(string platform, string scenario)
     {
-        var run = new Run(fixture, platform);
+        var run = new GoldenRun(fixture, platform);
         await run.SeedAsync(db =>
         {
             foreach (var (sku, barcode) in new[] { ("LV-SEEN", "869100000001"), ("LV-MISSED", "869100000002"), ("LV-BROKEN", "869100000003") })
@@ -402,7 +304,7 @@ public sealed class ReadJobGoldenPostgreSqlTests(PostgreSqlTenantIsolationFixtur
     [MemberData(nameof(ConnectionScenarios))]
     public async Task ConnectionTestAsksAndStoresTheSameThings(string platform, string scenario)
     {
-        var run = new Run(fixture, platform, connectionStatus: "DRAFT");
+        var run = new GoldenRun(fixture, platform, connectionStatus: "DRAFT");
         await run.SeedAsync();
         var port = new GoldenMarketplace();
         port.Answers["connection.Test"] = _ => scenario == "refused"
