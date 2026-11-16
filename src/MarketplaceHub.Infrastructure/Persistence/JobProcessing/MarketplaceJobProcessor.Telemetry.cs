@@ -175,6 +175,5 @@ public sealed partial class MarketplaceJobProcessor
     // ISLEYICI-9 stage 3a: the counting lives on the run (JobRunContext); these names stay so the call sites read as before.
     private void TrackRequest() => run.TrackRequest();
     private void TrackReceived(bool changed = true) => run.TrackReceived(changed);
-    private void TrackSkipped() => run.TrackSkipped();
     private void TrackResultFailure(AdapterError? error) => run.TrackResultFailure(error);
 }

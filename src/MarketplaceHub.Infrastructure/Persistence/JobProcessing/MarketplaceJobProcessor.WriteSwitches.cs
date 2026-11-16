@@ -21,12 +21,6 @@ public sealed partial class MarketplaceJobProcessor
     private Task<bool> HasHepsiburadaPublicationEvidenceAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
         WriteSwitches.HasHepsiburadaPublicationEvidenceAsync(tenantId, connectionId, cancellationToken);
 
-    private Task<bool> HasHepsiburadaWriteEvidenceAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken, params string[] required) =>
-        WriteSwitches.HasHepsiburadaWriteEvidenceAsync(tenantId, connectionId, cancellationToken, required);
-
-    private Task<bool> ExternalWriteAllowedAsync(Guid tenantId, Guid connectionId, string resourceType, CancellationToken cancellationToken) =>
-        WriteSwitches.ExternalWriteAllowedAsync(tenantId, connectionId, resourceType, cancellationToken);
-
     private Task<bool> ExternalWritePolicyEnabledAsync(Guid tenantId, Guid connectionId, string resourceType, CancellationToken cancellationToken) =>
         WriteSwitches.ExternalWritePolicyEnabledAsync(tenantId, connectionId, resourceType, cancellationToken);
 
