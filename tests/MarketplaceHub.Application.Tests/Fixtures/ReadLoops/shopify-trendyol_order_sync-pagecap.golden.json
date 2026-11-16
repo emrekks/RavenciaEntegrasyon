@@ -1,0 +1,35 @@
+{
+  "JobType": "SHOPIFY_ORDER_SYNC",
+  "Runs": [
+    {
+      "Run": "endless",
+      "Result": "ManualReview",
+      "ErrorCode": "SHOPIFY_ORDER_PAGE_CAP",
+      "Calls": {
+        "Count": 5000,
+        "Head": [
+          "orders.Poll key=shopify-order-sync:0 window=2026-08-16T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=- limit=100",
+          "orders.Poll key=shopify-order-sync:1 window=2026-08-16T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=1 limit=100",
+          "orders.Poll key=shopify-order-sync:2 window=2026-08-16T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=2 limit=100",
+          "orders.Poll key=shopify-order-sync:3 window=2026-08-16T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=3 limit=100",
+          "orders.Poll key=shopify-order-sync:4 window=2026-08-16T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=4 limit=100"
+        ],
+        "Tail": [
+          "orders.Poll key=shopify-order-sync:197 window=2026-08-16T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=197 limit=100",
+          "orders.Poll key=shopify-order-sync:198 window=2026-08-16T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=198 limit=100",
+          "orders.Poll key=shopify-order-sync:199 window=2026-08-16T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=199 limit=100"
+        ]
+      }
+    }
+  ],
+  "Cursors": [
+    {
+      "ResourceType": "ORDERS_HOT",
+      "Watermark": null,
+      "LastSuccess": null,
+      "OpaqueCursor": "w:1786870802000:1794819602000:199:199",
+      "Version": 5002
+    }
+  ],
+  "Issues": []
+}

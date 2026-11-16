@@ -447,7 +447,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
 
     // Whether the connection has a claim the open-return scan follows (MarketplaceJobProcessor.ReturnLifecycleCandidates).
     internal static Task<bool> OpenReturnClaimsExistAsync(AppDbContext db, Guid tenantId, Guid connectionId, string? platformCode, CancellationToken cancellationToken) =>
-        MarketplaceJobProcessor.ReturnLifecycleCandidates(db.ReturnClaims.AsNoTracking(), tenantId, connectionId, platformCode).AnyAsync(cancellationToken);
+        ReturnReadService.ReturnLifecycleCandidates(db.ReturnClaims.AsNoTracking(), tenantId, connectionId, platformCode).AnyAsync(cancellationToken);
 
     // A policy that passed the checks made from its row alone (step 1 of EnqueueDueAsync).
     private sealed record DuePolicy(ConnectionSyncPolicy Policy, PlatformConnection Connection, (string JobType, string DedupPrefix, string PayloadJson) Definition,
@@ -512,7 +512,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             IQueryable<Guid>? union = null;
             foreach (var (tenantId, connectionId, platformCode) in batch)
             {
-                var one = MarketplaceJobProcessor.ReturnLifecycleCandidates(db.ReturnClaims.AsNoTracking(), tenantId, connectionId, platformCode).Select(x => x.ConnectionId).Distinct();
+                var one = ReturnReadService.ReturnLifecycleCandidates(db.ReturnClaims.AsNoTracking(), tenantId, connectionId, platformCode).Select(x => x.ConnectionId).Distinct();
                 union = union is null ? one : union.Concat(one);
             }
             open.UnionWith(await union!.ToListAsync(cancellationToken));
@@ -547,7 +547,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         jobType is MarketplaceJobTypes.PazaramaOrderStatusSync or MarketplaceJobTypes.PttAvmOrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync;
 
     internal static Task<bool> OpenPackagesExistAsync(AppDbContext db, Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
-        MarketplaceJobProcessor.OpenPackages(db.ShipmentPackages.AsNoTracking(), tenantId, connectionId).AnyAsync(cancellationToken);
+        OrderReadService.OpenPackages(db.ShipmentPackages.AsNoTracking(), tenantId, connectionId).AnyAsync(cancellationToken);
 
     // Missed orders are kept as {"missed":[...]}. The earlier bare list also counted orders the poll merely read
     // before their notification arrived, so it is not trusted and reads as no misses.

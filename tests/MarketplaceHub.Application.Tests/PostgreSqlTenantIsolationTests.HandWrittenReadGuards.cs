@@ -18,7 +18,7 @@ public sealed partial class PostgreSqlTenantIsolationTests
             var result = await RunReadGuardJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ReturnReconciliation, """{"lookbackDays":3}""", returns: port);
             Assert.Equal(JobCompletionKind.ManualReview, result.Kind);
             Assert.Equal("TRENDYOL_RETURN_RECONCILE_PAGE_CAP", result.ErrorCode);
-            Assert.Equal(MarketplaceJobProcessor.TrendyolReturnPageCap, port.Calls);
+            Assert.Equal(ReturnReadService.TrendyolReturnPageCap, port.Calls);
         }
         finally { await DeleteReadGuardTenantAsync(tenant.Id); }
     }

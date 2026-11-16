@@ -1,0 +1,48 @@
+{
+  "JobType": "SHOPIFY_ORDER_SYNC",
+  "Runs": [
+    {
+      "Run": "failing",
+      "Result": "Retry",
+      "ErrorCode": "GOLDEN_UNAVAILABLE",
+      "Calls": {
+        "Count": 2,
+        "Head": [
+          "orders.Poll key=shopify-order-sync:0 window=2026-08-16T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=- limit=100",
+          "orders.Poll key=shopify-order-sync:1 window=2026-08-16T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=1 limit=100"
+        ],
+        "Tail": []
+      }
+    },
+    {
+      "Run": "resumed",
+      "Result": "Succeeded",
+      "ErrorCode": null,
+      "Calls": {
+        "Count": 2,
+        "Head": [
+          "orders.Poll key=shopify-order-sync:1 window=2026-08-16T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=1 limit=100",
+          "orders.Poll key=shopify-order-sync:2 window=2026-08-16T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=2 limit=100"
+        ],
+        "Tail": []
+      }
+    }
+  ],
+  "Cursors": [
+    {
+      "ResourceType": "ORDERS_HOT",
+      "Watermark": "2026-11-16T08:59:02.000Z",
+      "LastSuccess": "2026-11-16T09:01:14.000Z",
+      "OpaqueCursor": null,
+      "Version": 8
+    },
+    {
+      "ResourceType": "ORDER_LINE_REMATCH",
+      "Watermark": null,
+      "LastSuccess": null,
+      "OpaqueCursor": null,
+      "Version": 1
+    }
+  ],
+  "Issues": []
+}

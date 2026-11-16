@@ -25,7 +25,7 @@ public sealed partial class PostgreSqlTenantIsolationTests
             var result = await RunReadGuardJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.N11OrderSync, orders: port);
             Assert.Equal(JobCompletionKind.ManualReview, result.Kind);
             Assert.Equal(code, result.ErrorCode);
-            Assert.Equal(repeat ? 2 : MarketplaceJobProcessor.N11OrderPageCap, port.Calls);
+            Assert.Equal(repeat ? 2 : OrderReadService.N11OrderPageCap, port.Calls);
             await AssertWatermarkUnchangedAsync(tenant.Id, "ORDERS_HOT", watermark);
         }
         finally { await DeleteReadGuardTenantAsync(tenant.Id); }
@@ -43,7 +43,7 @@ public sealed partial class PostgreSqlTenantIsolationTests
             var result = await RunReadGuardJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ReturnSync, returns: port);
             Assert.Equal(JobCompletionKind.ManualReview, result.Kind);
             Assert.Equal(code, result.ErrorCode);
-            Assert.Equal(MarketplaceJobProcessor.ReturnPageCap, port.Calls);
+            Assert.Equal(ReturnReadService.ReturnPageCap, port.Calls);
             await AssertWatermarkUnchangedAsync(tenant.Id, "RETURNS", watermark);
         }
         finally { await DeleteReadGuardTenantAsync(tenant.Id); }
@@ -156,11 +156,11 @@ public sealed partial class PostgreSqlTenantIsolationTests
     public void J3_AReturnPageKeyNamesItsClaimsAndThePageNumberOnlyMovesForward()
     {
         RemoteReturnClaim Claim(string id) => new(id, "order-1", "CREATED", null, null, null, null, [], "{}");
-        Assert.Null(MarketplaceJobProcessor.ReturnPageKey([]));
-        Assert.Equal(MarketplaceJobProcessor.ReturnPageKey([Claim("b"), Claim("a")]), MarketplaceJobProcessor.ReturnPageKey([Claim("a"), Claim("b")]));
-        Assert.Equal("5", MarketplaceJobProcessor.NextReturnPageNumber(1, "5"));
-        Assert.Equal("2", MarketplaceJobProcessor.NextReturnPageNumber(1, "1"));
-        Assert.Equal("2", MarketplaceJobProcessor.NextReturnPageNumber(1, null));
+        Assert.Null(ReturnReadService.ReturnPageKey([]));
+        Assert.Equal(ReturnReadService.ReturnPageKey([Claim("b"), Claim("a")]), ReturnReadService.ReturnPageKey([Claim("a"), Claim("b")]));
+        Assert.Equal("5", ReturnReadService.NextReturnPageNumber(1, "5"));
+        Assert.Equal("2", ReturnReadService.NextReturnPageNumber(1, "1"));
+        Assert.Equal("2", ReturnReadService.NextReturnPageNumber(1, null));
     }
 
     private async Task<(Tenant Tenant, PlatformConnection Connection, DateTimeOffset Watermark)> SeedReadGuardConnectionAsync(string name, string platform, string cursorResource)

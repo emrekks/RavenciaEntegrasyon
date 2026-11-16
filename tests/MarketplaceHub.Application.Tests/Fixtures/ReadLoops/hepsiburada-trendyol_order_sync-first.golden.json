@@ -1,0 +1,28 @@
+{
+  "JobType": "HEPSIBURADA_ORDER_SYNC",
+  "Runs": [
+    {
+      "Run": "first",
+      "Result": "Retry",
+      "ErrorCode": "SLICE_CONTINUES",
+      "Calls": {
+        "Count": 2,
+        "Head": [
+          "orders.Poll key=hepsiburada-orders:0:0 window=2026-11-15T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=0 limit=100",
+          "orders.Poll key=hepsiburada-orders:0:1 window=2026-11-15T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=1 limit=100"
+        ],
+        "Tail": []
+      }
+    }
+  ],
+  "Cursors": [
+    {
+      "ResourceType": "ORDERS_HOT",
+      "Watermark": null,
+      "LastSuccess": null,
+      "OpaqueCursor": "{\"Version\":\"hepsiburada-orders-v2\",\"AnchorEnd\":\"2026-11-16T09:00:02+00:00\",\"StartAt\":\"2026-11-15T08:58:02+00:00\",\"WindowIndex\":1,\"Offset\":0,\"PageTotal\":null,\"Moved\":false,\"Rereads\":0}",
+      "Version": 5
+    }
+  ],
+  "Issues": []
+}

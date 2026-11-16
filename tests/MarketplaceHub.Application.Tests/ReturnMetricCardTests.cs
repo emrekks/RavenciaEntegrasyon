@@ -59,8 +59,8 @@ public sealed class ReturnMetricCardTests
             new RemoteReturnLineAudit("WaitingInAction", "Accepted", "SellerCenter", null, DateTimeOffset.Parse("2026-11-02T09:15:00+03:00")),
             new RemoteReturnLineAudit("WaitingInAction", "Accepted", "System", null, DateTimeOffset.Parse("2026-11-02T07:00:00Z"))
         };
-        Assert.Equal(DateTimeOffset.Parse("2026-11-02T07:00:00Z"), MarketplaceJobProcessor.TrendyolDecisionTime(entries, ReturnClaimStatus.Approved));
-        Assert.Null(MarketplaceJobProcessor.TrendyolDecisionTime(entries, ReturnClaimStatus.Rejected));
+        Assert.Equal(DateTimeOffset.Parse("2026-11-02T07:00:00Z"), ReturnReadService.TrendyolDecisionTime(entries, ReturnClaimStatus.Approved));
+        Assert.Null(ReturnReadService.TrendyolDecisionTime(entries, ReturnClaimStatus.Rejected));
     }
 
     [Fact]

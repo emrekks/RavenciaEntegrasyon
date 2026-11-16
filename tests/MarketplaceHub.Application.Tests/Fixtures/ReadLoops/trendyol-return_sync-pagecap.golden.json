@@ -1,0 +1,31 @@
+{
+  "JobType": "RETURN_SYNC",
+  "Runs": [
+    {
+      "Run": "endless",
+      "Result": "Retry",
+      "ErrorCode": "SLICE_CONTINUES",
+      "Calls": {
+        "Count": 5,
+        "Head": [
+          "returns.Poll key=return-sync:TR:0 window=2026-08-16T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR status=- statusWindow=-..- cursor=0 limit=200",
+          "returns.Poll key=return-sync:TR:1 window=2026-08-16T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR status=- statusWindow=-..- cursor=1 limit=200",
+          "returns.Poll key=return-sync:TR:2 window=2026-08-16T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR status=- statusWindow=-..- cursor=2 limit=200",
+          "returns.Poll key=return-sync:TR:3 window=2026-08-16T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR status=- statusWindow=-..- cursor=3 limit=200",
+          "returns.Poll key=return-sync:TR:4 window=2026-08-16T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR status=- statusWindow=-..- cursor=4 limit=200"
+        ],
+        "Tail": []
+      }
+    }
+  ],
+  "Cursors": [
+    {
+      "ResourceType": "RETURNS",
+      "Watermark": null,
+      "LastSuccess": null,
+      "OpaqueCursor": "{\"Version\":\"returns-v10\",\"StoreFrontIndex\":0,\"Page\":5,\"Full\":false,\"StartAt\":\"2026-08-16T09:00:02+00:00\",\"EndAt\":\"2026-11-16T09:00:02+00:00\",\"PageCursor\":null,\"PermanentFailures\":0}",
+      "Version": 8
+    }
+  ],
+  "Issues": []
+}

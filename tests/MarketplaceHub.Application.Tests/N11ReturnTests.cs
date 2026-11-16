@@ -76,6 +76,6 @@ public sealed class N11ReturnTests
     [InlineData("""{"orderLineId":1}""", null)]
     public void OrderLineSnapshotsExposeTheN11Product(string snapshot, string? productId)
     {
-        Assert.Equal(productId, MarketplaceJobProcessor.N11LineProductId(snapshot));
+        Assert.Equal(productId, ReturnReadService.N11LineProductId(snapshot));
     }
 }

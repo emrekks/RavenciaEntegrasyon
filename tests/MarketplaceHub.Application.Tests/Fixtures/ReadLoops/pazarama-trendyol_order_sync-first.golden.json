@@ -1,0 +1,35 @@
+{
+  "JobType": "PAZARAMA_ORDER_SYNC",
+  "Runs": [
+    {
+      "Run": "first",
+      "Result": "Succeeded",
+      "ErrorCode": null,
+      "Calls": {
+        "Count": 2,
+        "Head": [
+          "orders.Poll key=pazarama-order-sync:20261113:1 window=2026-11-12T21:00:00.000Z..2026-11-16T21:00:00.000Z storefront=- cursor=- limit=100",
+          "orders.Poll key=pazarama-order-sync:20261113:1 window=2026-11-12T21:00:00.000Z..2026-11-16T21:00:00.000Z storefront=- cursor=1 limit=100"
+        ],
+        "Tail": []
+      }
+    }
+  ],
+  "Cursors": [
+    {
+      "ResourceType": "ORDERS_HOT",
+      "Watermark": "2026-11-16T09:00:02.000Z",
+      "LastSuccess": "2026-11-16T09:00:09.000Z",
+      "OpaqueCursor": null,
+      "Version": 4
+    },
+    {
+      "ResourceType": "ORDER_LINE_REMATCH",
+      "Watermark": null,
+      "LastSuccess": null,
+      "OpaqueCursor": null,
+      "Version": 1
+    }
+  ],
+  "Issues": []
+}
