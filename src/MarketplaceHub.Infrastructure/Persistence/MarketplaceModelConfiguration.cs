@@ -219,7 +219,7 @@ internal static class QuestionModelConfiguration
         builder.Entity<MarketplaceQuestionSyncState>(entity =>
         {
             entity.ToTable("marketplace_question_sync_states", "integration"); entity.HasKey(x => new { x.TenantId, x.ConnectionId }); entity.Property(x => x.LastError).HasMaxLength(512); entity.Property(x => x.ProgressStatus).HasMaxLength(24); entity.Property(x => x.Version).IsConcurrencyToken();
-            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade).HasConstraintName("FK_question_sync_states_connection");
+            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict).HasConstraintName("FK_question_sync_states_connection");
         });
     }
 }
