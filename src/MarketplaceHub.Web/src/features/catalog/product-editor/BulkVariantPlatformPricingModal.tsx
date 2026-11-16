@@ -7,6 +7,7 @@ import { VariantPlatformStatus } from '../shared'
 import { VariantMediaGroup, VariantDraft } from './editor-types'
 import { pricingVariantLabel, sortVariantsAlphabetically, displayVariantOptionSignature, touchScreen, marketplacePlatformName, pricingPlatformRank } from './editor-helpers'
 import { VariantFilterDropdown } from './VariantFilterDropdown'
+import { parseEditorNumber } from './editor-number'
 
 export function BulkVariantPlatformPricingModal({ row, rows, platforms: unorderedPlatforms, savedDrafts, productName, modelCode, filterGroups, matchesFilterValue, saving, onClose, onSave }: { row: VariantDraft; rows: VariantDraft[]; platforms: VariantPlatformStatus[]; savedDrafts: Record<string, ChannelPricingDraft>; productName: string; modelCode: string; filterGroups: VariantMediaGroup[]; matchesFilterValue: (row: VariantDraft, group: VariantMediaGroup, value: { id: string; value: string }) => boolean; saving: boolean; onClose: () => void; onSave: (drafts: Record<string, ChannelPricingDraft>) => void }) {
   // The columns follow the marketplaces in the panel's order (Trendyol, Hepsiburada, N11, Pazarama, PttAVM, Shopify).
@@ -56,7 +57,7 @@ export function BulkVariantPlatformPricingModal({ row, rows, platforms: unordere
   const openMatrixBulkEdit = (platform: VariantPlatformStatus, field: keyof ChannelPricingDraft, label: string) => setMatrixBulkEdit({ platform, field, label, value: matrixDraft(matchingRows[0] ?? row, platform)[field], error: '' })
   const applyMatrixBulkEdit = () => {
     if (!matrixBulkEdit) return
-    const value = Number(matrixBulkEdit.value)
+    const value = parseEditorNumber(matrixBulkEdit.value)
     if (!matrixBulkEdit.value.trim() || !Number.isFinite(value) || value < 0) {
       setMatrixBulkEdit(current => current ? { ...current, error: 'Sıfır veya daha büyük geçerli bir fiyat girin.' } : current)
       return

@@ -19,6 +19,7 @@ import type { EditorStateResult } from './use-editor-state'
 import type { EditorMediaPointerResult } from './use-editor-media-pointer'
 import type { EditorDirtyStateResult } from './use-editor-dirty-state'
 import type { VariantCodeMenusResult } from './use-variant-code-menus'
+import { parseEditorNumber } from './editor-number'
 
 export function useEditorData(c: EditorProps & EditorStateResult & EditorMediaPointerResult & EditorDirtyStateResult & VariantCodeMenusResult) {
   const { editProductId, duplicateProductId, form, setVariantAttributeIds, variantRows, automaticBarcodeGeneration, seededProductId, sizeChartPicking, chartKey, requiredErrors } = c
@@ -38,7 +39,7 @@ export function useEditorData(c: EditorProps & EditorStateResult & EditorMediaPo
   const requirements = useQuery({ queryKey: queryKeys.categoryRequirements(form.categoryId), queryFn: ({ signal }) => hubApi<CategoryRequirement[]>(`/catalog/categories/${form.categoryId}/attribute-requirements`, { signal }), enabled: !!form.categoryId, retry: false, staleTime: categoryRequirementsStaleTimeMs })
   const leafCategories = (categories.data?.items ?? []).filter(item => item.isLeaf && item.isActive); const activeBrands = (brands.data?.items ?? []).filter(item => item.isActive)
   // The card's Liste/Satış (decimal comma read): a new variant row's first prices (buildVariantGenerationDefaults).
-  const cardPriceDefaults = cardPrices(form.listPrice, form.salePrice); const fallbackListPrice = cardPriceDefaults.listPrice; const fallbackSalePrice = cardPriceDefaults.salePrice; const fallbackCostPrice = form.costPrice.trim() === '' ? null : Number(form.costPrice); const initialStock = Number(form.initialStock || 0)
+  const cardPriceDefaults = cardPrices(form.listPrice, form.salePrice); const fallbackListPrice = cardPriceDefaults.listPrice; const fallbackSalePrice = cardPriceDefaults.salePrice; const fallbackCostPrice = form.costPrice.trim() === '' ? null : parseEditorNumber(form.costPrice); const initialStock = parseEditorNumber(form.initialStock || 0)
   // Required fields left empty (required-fields.ts): a save stops on them; a saved card that opens with one is framed red.
   // KDV Oranı is checked beside them (vatRateIssue): required on every card but a draft (validate-editor.ts).
   const { missingRequired: missingRequiredFields, vatRateIssue } = validateEditor({ form, automaticBarcodes: automaticBarcodeGeneration, hasVariants: variantRows.length > 1 }, { kind: 'live' })
@@ -48,8 +49,8 @@ export function useEditorData(c: EditorProps & EditorStateResult & EditorMediaPo
   // empty and the whole form flashed red while the product loaded (owner, 11 Nov 2026).
   const editorSeeded = Boolean(editProductId) && seededProductId === editProductId
   const requiredFieldInvalid = (field: RequiredEditorField) => requiredError(field) || (editorSeeded && missingRequiredFields.includes(field)) ? true : undefined
-  const variantStockTotal = variantRows.reduce((total, row) => total + Number(row.stock || 0), 0)
-  const desi = useMemo(() => { const width = Number(form.width); const length = Number(form.length); const height = Number(form.height); return width > 0 && length > 0 && height > 0 ? width * length * height / 3000 : 0 }, [form.width, form.length, form.height])
+  const variantStockTotal = variantRows.reduce((total, row) => total + parseEditorNumber(row.stock || 0), 0)
+  const desi = useMemo(() => { const width = parseEditorNumber(form.width); const length = parseEditorNumber(form.length); const height = parseEditorNumber(form.height); return width > 0 && length > 0 && height > 0 ? width * length * height / 3000 : 0 }, [form.width, form.length, form.height])
   // The size chart stays the card's last picture whatever order the draft holds (size-chart-order.ts).
   const mediaUrls = useMemo(() => pinSizeChartLast(form.mediaUrls.split(/\r?\n|[;|]/).map(item => item.trim()).filter(Boolean), chartKey), [form.mediaUrls, chartKey])
   // Picking is asked for on a saved card; it stays on only while the strip shows a saved picture to mark (pickingSizeChart).
