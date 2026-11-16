@@ -5,7 +5,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 // The Trendyol return read's resumable state (ISLEYICI-9 stage 3c: it stays with the read; the claim ingestion moved to
 // ReturnIngestionService).
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class ReturnReadService
 {
     internal static ReturnSyncState ReadReturnSyncState(SyncCursor cursor, DateTimeOffset now, TimeSpan overlap, bool forceFull = false)
     {

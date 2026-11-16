@@ -64,7 +64,7 @@ public static class DashboardIntegrationMatrix
             .ToListAsync(cancellationToken);
         // Since when each connection has had an open package (its oldest open one): the status scans that follow open
         // packages only are queued just then (ScheduledJobProducer.LifecycleFollowsOpenPackagesOnly).
-        var openPackagesSince = await MarketplaceJobProcessor.OpenPackages(db.ShipmentPackages.AsNoTracking(), tenantId)
+        var openPackagesSince = await OrderReadService.OpenPackages(db.ShipmentPackages.AsNoTracking(), tenantId)
             .Where(x => plainIds.Contains(x.ConnectionId))
             .GroupBy(x => x.ConnectionId)
             .Select(g => new { ConnectionId = g.Key, Since = g.Min(x => x.CreatedAt) })

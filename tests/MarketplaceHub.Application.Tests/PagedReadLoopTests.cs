@@ -113,13 +113,13 @@ public sealed class PagedReadLoopTests
     [Fact]
     public void ATrendyolReturnPageIsRepeatedOnlyWhenTheSamePageWouldBeAskedAgain()
     {
-        var state = new MarketplaceJobProcessor.ReturnSyncState("v", 0, 3);
-        Assert.True(MarketplaceJobProcessor.ReturnPageRepeated(state, MarketplaceJobProcessor.NextReturnPage(state, "3")));
-        Assert.False(MarketplaceJobProcessor.ReturnPageRepeated(state, MarketplaceJobProcessor.NextReturnPage(state, "4")));
-        Assert.False(MarketplaceJobProcessor.ReturnPageRepeated(state, MarketplaceJobProcessor.NextReturnPage(state, null)));
-        var opaque = MarketplaceJobProcessor.NextReturnPage(state, "s:Accepted=2");
-        Assert.True(MarketplaceJobProcessor.ReturnPageRepeated(opaque, MarketplaceJobProcessor.NextReturnPage(opaque, "s:Accepted=2")));
-        Assert.False(MarketplaceJobProcessor.ReturnPageRepeated(opaque, MarketplaceJobProcessor.NextReturnPage(opaque, "s:Accepted=3")));
+        var state = new ReturnReadService.ReturnSyncState("v", 0, 3);
+        Assert.True(ReturnReadService.ReturnPageRepeated(state, ReturnReadService.NextReturnPage(state, "3")));
+        Assert.False(ReturnReadService.ReturnPageRepeated(state, ReturnReadService.NextReturnPage(state, "4")));
+        Assert.False(ReturnReadService.ReturnPageRepeated(state, ReturnReadService.NextReturnPage(state, null)));
+        var opaque = ReturnReadService.NextReturnPage(state, "s:Accepted=2");
+        Assert.True(ReturnReadService.ReturnPageRepeated(opaque, ReturnReadService.NextReturnPage(opaque, "s:Accepted=2")));
+        Assert.False(ReturnReadService.ReturnPageRepeated(opaque, ReturnReadService.NextReturnPage(opaque, "s:Accepted=3")));
     }
 
     [Fact]

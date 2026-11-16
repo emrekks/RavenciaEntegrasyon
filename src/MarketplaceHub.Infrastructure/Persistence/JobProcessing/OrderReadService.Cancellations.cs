@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class OrderReadService
 {
     // At most MaxPages pages of 50 lines; a cursor that does not move ends the read. No stop on cancellation between pages:
     // the read goes on to the next request (which fails on the cancelled token) instead of taking the stop for its end.

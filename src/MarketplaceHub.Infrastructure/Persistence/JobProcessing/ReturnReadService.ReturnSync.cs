@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class ReturnReadService
 {
     // Trendyol's claims feed is date-bounded for the initial scan. Invalidating
     // the previous all-time cursor makes the next read start at three months.
@@ -72,7 +72,7 @@ public sealed partial class MarketplaceJobProcessor
     private static readonly string[] HepsiburadaClaimStatuses = ["NewRequest", "AwaitingAction", "InDispute", "Accepted", "Rejected", "Refunded", "Cancelled", "AwaitingPreApproval"];
     private sealed record HepsiburadaReturnSyncState(string Version, int StatusIndex, int Offset, bool Full, DateTimeOffset? StatusChangedAfter, DateTimeOffset AnchorEnd);
 
-    private async Task<bool> SyncReturns(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    internal async Task<bool> SyncReturns(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         var platformCode = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         if (string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase))

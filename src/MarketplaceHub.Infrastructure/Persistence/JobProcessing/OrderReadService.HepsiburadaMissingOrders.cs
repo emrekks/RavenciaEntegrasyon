@@ -4,12 +4,12 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class OrderReadService
 {
     // Reads by number the Hepsiburada orders that package rows or the missing-invoice list name but
     // the panel does not have, and adds a package the list names to an order that lacks it (so the
     // invoice can be made before the package ships). A failed read is noted and retried next run.
-    private async Task ReadMissingHepsiburadaOrdersAsync(Guid tenantId, Guid connectionId, string correlationId, IEnumerable<(string OrderNumber, string? PackageNumber)> references, CancellationToken cancellationToken)
+    internal async Task ReadMissingHepsiburadaOrdersAsync(Guid tenantId, Guid connectionId, string correlationId, IEnumerable<(string OrderNumber, string? PackageNumber)> references, CancellationToken cancellationToken)
     {
         var named = references
             .Where(reference => !string.IsNullOrWhiteSpace(reference.OrderNumber))

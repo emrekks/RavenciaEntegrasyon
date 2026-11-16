@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class OrderReadService
 {
     // At most MaxPagesPerWindow pages per window (5,000 orders), and a page that repeats the one before ends the window.
     private static readonly PageGuard PazaramaOpenOrderPageGuard = new(MaxPages: PazaramaOpenOrderPolicy.MaxPagesPerWindow, PageRepeated: PazaramaOrderPageRepeated);

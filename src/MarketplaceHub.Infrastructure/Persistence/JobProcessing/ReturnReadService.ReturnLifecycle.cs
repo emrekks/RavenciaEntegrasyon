@@ -8,7 +8,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class ReturnReadService
 {
     // Hepsiburada has no single-claim read. Claims that are still open locally are followed up by
     // listing the statuses a claim moves on to, over the claim creation dates of those open claims,
@@ -262,7 +262,7 @@ public sealed partial class MarketplaceJobProcessor
             && state.AnchorEnd != default
             && (state.Full || state.StatusChangedAfter is not null));
 
-    private async Task<bool> SyncOpenReturns(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    internal async Task<bool> SyncOpenReturns(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
     {
         var platformCode = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         if (string.Equals(platformCode, "HEPSIBURADA", StringComparison.Ordinal))
@@ -416,7 +416,7 @@ public sealed partial class MarketplaceJobProcessor
         : int.TryParse(current, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var number) ? (number + 1).ToString(System.Globalization.CultureInfo.InvariantCulture)
         : "1";
 
-    private async Task<bool> ReconcileReturns(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    internal async Task<bool> ReconcileReturns(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         var lookbackDays = ReadBoundedInt(payloadJson, "lookbackDays", 3, 1, 90);
         var end = timeProvider.GetUtcNow();

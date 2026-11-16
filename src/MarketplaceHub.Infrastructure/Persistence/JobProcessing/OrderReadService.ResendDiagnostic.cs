@@ -9,7 +9,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // package 4337242198 that no order read brought. After a Trendyol recovery read, the order's number queries and the
 // stream window around 13:56Z are read once and their answers (buyer fields removed) are kept as a resolved
 // operational issue. No order, package, line, invoice or report row is touched; a cursor keeps it to one run.
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class OrderReadService
 {
     internal const string ResendDiagnosticCursor = "TRENDYOL_RESEND_DIAGNOSTIC_2";
     internal const string ResendDiagnosticIssueCode = "TRENDYOL_RESEND_DIAGNOSTIC";

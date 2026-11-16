@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class OrderReadService
 {
     private sealed record OrderReconcileState(DateTimeOffset AnchorEnd, int WindowIndex, int StoreFrontIndex, string? NextCursor, string[] StoreFronts);
     private static readonly TimeSpan SliceBudget = TimeSpan.FromSeconds(30);
@@ -15,7 +15,7 @@ public sealed partial class MarketplaceJobProcessor
     // windows, active storefronts) instead of asking for orders one by one. It works in slices of
     // about 30 seconds and saves its place, so the shared orders lock is never held long and a
     // new-order read waits at most one slice.
-    private async Task<JobExecutionResult> ReconcileTrendyolOrderWindows(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    internal async Task<JobExecutionResult> ReconcileTrendyolOrderWindows(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         var lookback = TimeSpan.FromDays(ReadBoundedInt(payloadJson, "lookbackDays", 1, 1, 90));
         var startedAt = timeProvider.GetUtcNow();
@@ -82,7 +82,7 @@ public sealed partial class MarketplaceJobProcessor
         return JobExecutionResult.Continue("Sipariş uzlaştırması kaldığı pencereden devam edecek.");
     }
 
-    private async Task<bool> ReconcileOrders(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    internal async Task<bool> ReconcileOrders(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         var platformCode = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         var isShopify = platformCode == "SHOPIFY";

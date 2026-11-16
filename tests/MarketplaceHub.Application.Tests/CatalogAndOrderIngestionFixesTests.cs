@@ -104,9 +104,9 @@ public sealed class CatalogAndOrderIngestionFixesTests
         ReturnClaim Claim(ReturnClaimStatus status, string raw) => new() { Id = Guid.NewGuid(), TenantId = tenantId, ConnectionId = connectionId, OrderId = Guid.NewGuid(), ExternalClaimId = Guid.NewGuid().ToString("N"), Status = status, RawStatus = raw };
         var settled = Enumerable.Range(0, 6).Select(_ => Claim(ReturnClaimStatus.Completed, "Refunded")).ToList();
 
-        Assert.Empty(MarketplaceJobProcessor.ReturnLifecycleCandidates(settled.AsQueryable(), tenantId, connectionId, "HEPSIBURADA"));
-        foreach (var open in MarketplaceJobProcessor.HepsiburadaOpenClaimStatuses)
-            Assert.Single(MarketplaceJobProcessor.ReturnLifecycleCandidates(settled.Append(Claim(ReturnClaimStatus.ActionRequired, open)).AsQueryable(), tenantId, connectionId, "HEPSIBURADA"));
+        Assert.Empty(ReturnReadService.ReturnLifecycleCandidates(settled.AsQueryable(), tenantId, connectionId, "HEPSIBURADA"));
+        foreach (var open in ReturnReadService.HepsiburadaOpenClaimStatuses)
+            Assert.Single(ReturnReadService.ReturnLifecycleCandidates(settled.Append(Claim(ReturnClaimStatus.ActionRequired, open)).AsQueryable(), tenantId, connectionId, "HEPSIBURADA"));
     }
 
     // O8: the packages a split child names as its origin, from the read and from the order's stored packages.

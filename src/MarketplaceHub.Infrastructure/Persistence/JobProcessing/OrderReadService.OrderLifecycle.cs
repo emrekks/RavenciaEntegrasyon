@@ -7,7 +7,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class OrderReadService
 {
     private const string HepsiburadaLifecycleCursorPrefix = "after:";
 
@@ -31,7 +31,7 @@ public sealed partial class MarketplaceJobProcessor
         packages.Where(package => package.TenantId == tenantId
             && package.Status != ShipmentPackageStatus.Delivered && package.Status != ShipmentPackageStatus.Cancelled && package.Status != ShipmentPackageStatus.Returned);
 
-    private async Task<bool> SyncOpenOrders(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    internal async Task<bool> SyncOpenOrders(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
     {
         var platformCode = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         var isHepsiburada = platformCode == "HEPSIBURADA";
@@ -321,7 +321,7 @@ public sealed partial class MarketplaceJobProcessor
         return true;
     }
 
-    private async Task<bool> ReconcileTrendyolCargoInfo(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    internal async Task<bool> ReconcileTrendyolCargoInfo(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
         var cursor = await Cursor(tenantId, connectionId, "ORDER_CARGO_INFO", cancellationToken);

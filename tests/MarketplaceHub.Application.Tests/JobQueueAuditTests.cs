@@ -165,37 +165,37 @@ public sealed class JobQueueAuditTests
     [Fact]
     public void AHepsiburadaRunResumesItsSavedWindowsAfterAFailure()
     {
-        var incremental = new MarketplaceJobProcessor.HepsiburadaOrderSyncState("hepsiburada-orders-v2", Now.AddMinutes(-5), Now.AddHours(-30), 1, 0);
+        var incremental = new OrderReadService.HepsiburadaOrderSyncState("hepsiburada-orders-v2", Now.AddMinutes(-5), Now.AddHours(-30), 1, 0);
         var baseline = incremental with { AnchorEnd = Now.AddHours(-3), StartAt = HepsiburadaOrderHistoryPolicy.InitialWindowStart(Now.AddHours(-3)), WindowIndex = 12 };
         var staleBaseline = baseline with { AnchorEnd = Now.AddDays(-2), StartAt = HepsiburadaOrderHistoryPolicy.InitialWindowStart(Now.AddDays(-2)) };
 
-        Assert.Equal(incremental, MarketplaceJobProcessor.ReadHepsiburadaOrderSyncState(JsonSerializer.Serialize(incremental), Now, forceBaseline: false));
+        Assert.Equal(incremental, OrderReadService.ReadHepsiburadaOrderSyncState(JsonSerializer.Serialize(incremental), Now, forceBaseline: false));
         // A baseline asked for again continues the one under way instead of reading its first windows forever.
-        Assert.Equal(baseline, MarketplaceJobProcessor.ReadHepsiburadaOrderSyncState(JsonSerializer.Serialize(baseline), Now, forceBaseline: true));
-        Assert.Null(MarketplaceJobProcessor.ReadHepsiburadaOrderSyncState(JsonSerializer.Serialize(incremental), Now, forceBaseline: true));
-        Assert.Null(MarketplaceJobProcessor.ReadHepsiburadaOrderSyncState(JsonSerializer.Serialize(staleBaseline), Now, forceBaseline: true));
-        Assert.Null(MarketplaceJobProcessor.ReadHepsiburadaOrderSyncState("{bozuk", Now, forceBaseline: false));
+        Assert.Equal(baseline, OrderReadService.ReadHepsiburadaOrderSyncState(JsonSerializer.Serialize(baseline), Now, forceBaseline: true));
+        Assert.Null(OrderReadService.ReadHepsiburadaOrderSyncState(JsonSerializer.Serialize(incremental), Now, forceBaseline: true));
+        Assert.Null(OrderReadService.ReadHepsiburadaOrderSyncState(JsonSerializer.Serialize(staleBaseline), Now, forceBaseline: true));
+        Assert.Null(OrderReadService.ReadHepsiburadaOrderSyncState("{bozuk", Now, forceBaseline: false));
     }
 
     [Fact]
     public void AHepsiburadaWindowRemainsUntilTheReadReachesItsStart()
     {
-        var state = new MarketplaceJobProcessor.HepsiburadaOrderSyncState("hepsiburada-orders-v2", Now, Now.AddDays(-2).AddHours(-1), 0, 0);
+        var state = new OrderReadService.HepsiburadaOrderSyncState("hepsiburada-orders-v2", Now, Now.AddDays(-2).AddHours(-1), 0, 0);
 
-        Assert.True(MarketplaceJobProcessor.HepsiburadaWindowRemains(state with { WindowIndex = 1 }));
-        Assert.True(MarketplaceJobProcessor.HepsiburadaWindowRemains(state with { WindowIndex = 2 }));
-        Assert.False(MarketplaceJobProcessor.HepsiburadaWindowRemains(state with { WindowIndex = 3 }));
+        Assert.True(OrderReadService.HepsiburadaWindowRemains(state with { WindowIndex = 1 }));
+        Assert.True(OrderReadService.HepsiburadaWindowRemains(state with { WindowIndex = 2 }));
+        Assert.False(OrderReadService.HepsiburadaWindowRemains(state with { WindowIndex = 3 }));
     }
 
     [Fact]
     public void TheHepsiburadaLifecycleScanPagesByTheLastOrderReadNotByOffset()
     {
-        var cursor = MarketplaceJobProcessor.HepsiburadaLifecycleCursor("4736002251");
+        var cursor = OrderReadService.HepsiburadaLifecycleCursor("4736002251");
 
-        Assert.Equal("4736002251", MarketplaceJobProcessor.HepsiburadaLifecycleLastSeen(cursor));
+        Assert.Equal("4736002251", OrderReadService.HepsiburadaLifecycleLastSeen(cursor));
         // An offset saved by the previous version starts the scan from the first order.
-        Assert.Null(MarketplaceJobProcessor.HepsiburadaLifecycleLastSeen("25"));
-        Assert.Null(MarketplaceJobProcessor.HepsiburadaLifecycleLastSeen(null));
+        Assert.Null(OrderReadService.HepsiburadaLifecycleLastSeen("25"));
+        Assert.Null(OrderReadService.HepsiburadaLifecycleLastSeen(null));
     }
 
     [Fact]

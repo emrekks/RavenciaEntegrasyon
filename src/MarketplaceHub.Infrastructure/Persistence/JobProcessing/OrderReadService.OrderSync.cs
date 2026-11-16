@@ -8,7 +8,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class OrderReadService
 {
     // KUYRUK-9 (16 Nov 2026): an order read whose request body cannot be read names its cause instead of the generic
     // F3_JOB_REJECTED. It stays blocked as before: the body is the same on every run, and nothing was read.
@@ -30,7 +30,7 @@ public sealed partial class MarketplaceJobProcessor
 
     // A finished order read also matches the connection's lines that still have no panel variant
     // (RematchUnmatchedOrderLines): the variant or its link may have been created after the line was read.
-    private async Task<bool> SyncOrdersAndMatchLines(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, string cursorResourceType, bool allowBaseline, CancellationToken cancellationToken)
+    internal async Task<bool> SyncOrdersAndMatchLines(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, string cursorResourceType, bool allowBaseline, CancellationToken cancellationToken)
     {
         run.OrderRereadRan = false;
         var synced = await SyncOrders(tenantId, connectionId, payloadJson, correlationId, cursorResourceType, allowBaseline, cancellationToken);
@@ -363,7 +363,7 @@ public sealed partial class MarketplaceJobProcessor
     }
 
     // What the panel knows about an order, so a targeted read asks its storefront and date window first.
-    private Task<OrderLookupHint?> OrderHint(Guid tenantId, Guid connectionId, string externalOrderId, CancellationToken cancellationToken) =>
+    internal Task<OrderLookupHint?> OrderHint(Guid tenantId, Guid connectionId, string externalOrderId, CancellationToken cancellationToken) =>
         db.Orders.AsNoTracking()
             .Where(order => order.TenantId == tenantId && order.ConnectionId == connectionId && order.ExternalOrderId == externalOrderId)
             .Select(order => (OrderLookupHint?)new OrderLookupHint(order.OrderedAt, order.LastRemoteModifiedAt, order.StoreFrontCode))
@@ -428,7 +428,7 @@ public sealed partial class MarketplaceJobProcessor
     // ISLEYICI-12 (16 Nov 2026): a read that runs no RereadOrders afterwards (a webhook ingest) still puts the orders it
     // refused on the re-read list, for their first try later (RejectedOrderRereadPolicy.Delays); the next order read
     // reads them when due. Nothing is read here.
-    private async Task SaveRefusedOrdersForRereadAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    internal async Task SaveRefusedOrdersForRereadAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
     {
         if (run.RereadOrderIds.Count == 0) return;
         var now = timeProvider.GetUtcNow();

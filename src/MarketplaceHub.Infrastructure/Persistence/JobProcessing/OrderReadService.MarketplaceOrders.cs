@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class OrderReadService
 {
     // ISLEYICI-11 (16 Nov 2026): Shopify order pages of 100 in one run (half a million orders), a guard against a list
     // that never ends.

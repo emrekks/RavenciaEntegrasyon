@@ -35,9 +35,9 @@ public sealed class SyncWriteReductionTests
     {
         var orderedAt = new DateTimeOffset(2026, 11, 9, 21, 15, 3, TimeSpan.Zero).AddTicks(1234560);
         var id = Guid.CreateVersion7();
-        Assert.Equal((orderedAt, id), MarketplaceJobProcessor.OrderReconcilePosition(MarketplaceJobProcessor.OrderReconcilePosition(orderedAt, id)));
-        Assert.Null(MarketplaceJobProcessor.OrderReconcilePosition((string?)null));
-        Assert.Null(MarketplaceJobProcessor.OrderReconcilePosition("{\"window\":1}"));
+        Assert.Equal((orderedAt, id), OrderReadService.OrderReconcilePosition(OrderReadService.OrderReconcilePosition(orderedAt, id)));
+        Assert.Null(OrderReadService.OrderReconcilePosition((string?)null));
+        Assert.Null(OrderReadService.OrderReconcilePosition("{\"window\":1}"));
     }
 
     [Fact]
@@ -54,8 +54,8 @@ public sealed class SyncWriteReductionTests
         var connectionId = Guid.NewGuid();
         ShipmentPackage Package(ShipmentPackageStatus status, Guid? connection = null) => new() { Id = Guid.NewGuid(), TenantId = tenantId, ConnectionId = connection ?? connectionId, OrderId = Guid.NewGuid(), ExternalPackageId = Guid.NewGuid().ToString("N"), Status = status, RawStatus = status.ToString() };
         var settled = new[] { Package(ShipmentPackageStatus.Delivered), Package(ShipmentPackageStatus.Cancelled), Package(ShipmentPackageStatus.Returned), Package(ShipmentPackageStatus.New, Guid.NewGuid()) };
-        Assert.Empty(MarketplaceJobProcessor.OpenPackages(settled.AsQueryable(), tenantId, connectionId));
-        Assert.Single(MarketplaceJobProcessor.OpenPackages(settled.Append(Package(ShipmentPackageStatus.Shipped)).AsQueryable(), tenantId, connectionId));
+        Assert.Empty(OrderReadService.OpenPackages(settled.AsQueryable(), tenantId, connectionId));
+        Assert.Single(OrderReadService.OpenPackages(settled.Append(Package(ShipmentPackageStatus.Shipped)).AsQueryable(), tenantId, connectionId));
     }
 
     [Fact]

@@ -45,7 +45,7 @@ public sealed class ReturnLifecycleReconciliationTests
     [Fact]
     public void Hepsiburada_follow_up_reads_claims_sent_for_review()
     {
-        Assert.Contains("PREAPPROVAL_CONFIRM_SUBMITTED", MarketplaceJobProcessor.HepsiburadaOpenClaimStatuses);
+        Assert.Contains("PREAPPROVAL_CONFIRM_SUBMITTED", ReturnReadService.HepsiburadaOpenClaimStatuses);
     }
 
     [Fact]

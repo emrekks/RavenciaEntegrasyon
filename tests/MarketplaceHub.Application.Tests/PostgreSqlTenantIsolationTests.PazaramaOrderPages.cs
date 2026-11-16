@@ -48,7 +48,7 @@ public sealed partial class PostgreSqlTenantIsolationTests
             {
                 var cursors = window.Select(call => call.Cursor).ToList();
                 Assert.Null(cursors[0]);
-                Assert.Equal(endless ? MarketplaceJobProcessor.PazaramaOrderPageCap : 3, cursors.Count);
+                Assert.Equal(endless ? OrderReadService.PazaramaOrderPageCap : 3, cursors.Count);
                 Assert.Equal(Enumerable.Range(2, cursors.Count - 1).Select(page => (string?)page.ToString(System.Globalization.CultureInfo.InvariantCulture)), cursors.Skip(1));
             }
             await using var check = fixture.CreateContext();
