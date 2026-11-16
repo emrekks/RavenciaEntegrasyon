@@ -94,12 +94,18 @@ public static class SizeChartPlacement
         return await FamilyAssetIdAsync(db, tenantId, familyIds, cancellationToken);
     }
 
-    // The model row's chart picture when its file is an active product picture; null otherwise.
+    // The model row's chart picture while a colour of the model still shows it (Shown's rule: an active picture row of a
+    // colour holds it, or it is a colour's last generated chart) and its file is an active product picture; null
+    // otherwise, so a chart removed from every colour goes to none (review, 17 Nov 2026).
     public static Task<Guid?> ModelRowAssetIdAsync(AppDbContext db, Guid tenantId, Guid modelId, CancellationToken cancellationToken) =>
         (from chart in db.ProductModelSizeCharts.AsNoTracking()
          join asset in db.FileAssets.AsNoTracking() on chart.FileAssetId equals asset.Id
          where chart.TenantId == tenantId && chart.ModelId == modelId && asset.TenantId == tenantId && asset.Status == "ACTIVE" && asset.ArchivedAt == null
                && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
+               && (db.ProductMedia.Any(media => media.TenantId == tenantId && media.FileAssetId == chart.FileAssetId && media.Status == "ACTIVE"
+                       && db.Products.Any(card => card.TenantId == tenantId && card.Id == media.ProductId && card.FamilyId == modelId))
+                   || db.ProductSizeCharts.Any(own => own.TenantId == tenantId && own.LastGeneratedAssetId == chart.FileAssetId
+                       && db.Products.Any(card => card.TenantId == tenantId && card.Id == own.ProductId && card.FamilyId == modelId)))
          select chart.FileAssetId).FirstOrDefaultAsync(cancellationToken);
 
     // A model family's chart: that of its earliest card (CreatedAt, then id) not archived that has one; null when none has.

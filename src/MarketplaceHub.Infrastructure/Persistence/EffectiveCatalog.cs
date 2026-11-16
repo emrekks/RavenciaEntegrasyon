@@ -6,11 +6,9 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // KATALOG-14 phase D: the one reader of a colour card's shared values (name, description, brand, category, VAT, warranty,
 // delivery days). Every screen, export, report, readiness check and marketplace composer reads a card through it, so the
 // place the values come from changes here and nowhere else.
-// Rule: a colour's own value where it has one (TitleOverride / DescriptionOverride), else its model's.
-// Phase D1 (this release): the "model's value" of a card is still the card's own column, the copy every writer keeps
-// (the cards are today's source; the model record is rewritten from them). Nothing a screen shows or a marketplace
-// receives changes; the overrides are empty. Phase D2 turns the writers to the model and fills the overrides, then
-// reads the model here.
+// Target rule (phase D5): a colour's own value where it has one (TitleOverride / DescriptionOverride), else its model's.
+// Phases D1-D4 (dual write): every value is the card's own column, the copy every writer keeps and the one source until
+// the contract release; the overrides and the model record are kept beside it but read by no screen or marketplace.
 // Usable in SQL (Products: an IQueryable that EF translates, composable with Where/Join/OrderBy) and in memory (Of).
 public static class EffectiveCatalog
 {
@@ -19,8 +17,11 @@ public static class EffectiveCatalog
     {
         Id = p.Id,
         TenantId = p.TenantId,
-        Title = p.TitleOverride ?? p.Title,
-        Description = p.DescriptionOverride ?? p.Description,
+        // Phases D1-D4 (dual write): the card's own text is the one source; the overrides are a record kept by the model
+        // refresh and are read only from phase D5 on. Reading them now could send a text an older release changed on the
+        // card after the deploy's refresh wrote the override (review, 17 Nov 2026).
+        Title = p.Title,
+        Description = p.Description,
         BrandId = p.BrandId,
         CategoryId = p.CategoryId,
         DefaultListPrice = p.DefaultListPrice,
@@ -50,6 +51,6 @@ public static class EffectiveCatalog
     public static Product Of(Product card) => ResolveCompiled(card);
 
     // Single values, for projections that read one field (SQL-translatable).
-    public static readonly Expression<Func<Product, string>> Title = p => p.TitleOverride ?? p.Title;
-    public static readonly Expression<Func<Product, string>> Description = p => p.DescriptionOverride ?? p.Description;
+    public static readonly Expression<Func<Product, string>> Title = p => p.Title;
+    public static readonly Expression<Func<Product, string>> Description = p => p.Description;
 }

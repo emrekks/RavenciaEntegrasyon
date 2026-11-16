@@ -110,6 +110,7 @@ public static class ProductModelValues
         public required Dictionary<Guid, ProductModelAttribute[]> ModelAttributes { get; init; }
         public required Dictionary<Guid, string?> ModelCharts { get; init; }
         public required Dictionary<Guid, Guid?> ModelChartAssets { get; init; }
+        public required HashSet<(Guid ModelId, Guid AssetId)> HeldModelAssets { get; init; }
         public required Dictionary<Guid, Guid> ShownAssetByCard { get; init; }
     }
 
@@ -138,6 +139,15 @@ public static class ProductModelValues
             .ToDictionaryAsync(x => x.ModelId, x => x.MeasurementsJson, cancellationToken);
         var modelChartAssets = await db.ProductModelSizeCharts.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.ModelId))
             .ToDictionaryAsync(x => x.ModelId, x => x.FileAssetId, cancellationToken);
+        // The model pictures a colour of the model still shows (an active picture row, or its last generated chart).
+        var modelAssetIds = modelChartAssets.Values.OfType<Guid>().Distinct().ToArray();
+        var heldModelAssets = modelAssetIds.Length == 0 ? [] : (await db.ProductMedia.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && cardIds.Contains(x.ProductId) && x.Status == "ACTIVE" && modelAssetIds.Contains(x.FileAssetId))
+                .Select(x => new { x.ProductId, AssetId = x.FileAssetId }).ToListAsync(cancellationToken))
+            .Concat(await db.ProductSizeCharts.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && cardIds.Contains(x.ProductId) && x.LastGeneratedAssetId != null && modelAssetIds.Contains(x.LastGeneratedAssetId.Value))
+                .Select(x => new { x.ProductId, AssetId = x.LastGeneratedAssetId!.Value }).ToListAsync(cancellationToken))
+            .Select(x => (cards.First(card => card.Id == x.ProductId).FamilyId, x.AssetId)).ToHashSet();
         // KATALOG-14 phase D4: each colour's chart picture as the marketplaces see it (SizeChartPlacement's shown rule), of
         // the colours on sale or closed (an archived card's chart is not the model's, FamilyAssetIdAsync).
         var shownAssets = await (from chart in db.ProductSizeCharts.AsNoTracking()
@@ -159,6 +169,7 @@ public static class ProductModelValues
             ModelAttributes = modelAttributes,
             ModelCharts = modelCharts,
             ModelChartAssets = modelChartAssets,
+            HeldModelAssets = heldModelAssets,
             ShownAssetByCard = shownAssets.GroupBy(x => x.ProductId).ToDictionary(group => group.Key, group => group.First().AssetId),
         };
     }
@@ -227,7 +238,9 @@ public static class ProductModelValues
             : ModelChartCard(charts) is int chartCard ? charts[chartCard] : null;
         var shown = cards.Select(card => snapshot.ShownAssetByCard.TryGetValue(card.Id, out var asset) ? (Guid?)asset : null).OfType<Guid>().ToList();
         var modelAsset = snapshot.ModelChartAssets.GetValueOrDefault(model.Id);
-        var chartAsset = shown.Distinct().Count() == 1 ? shown[0] : modelAsset ?? (shown.Count > 0 ? shown[0] : null);
+        // A picture no colour of the model shows any more (removed from every colour) is no longer the model's.
+        var keptAsset = modelAsset is Guid held && snapshot.HeldModelAssets.Contains((model.Id, held)) ? modelAsset : null;
+        var chartAsset = shown.Distinct().Count() == 1 ? shown[0] : keptAsset ?? (shown.Count > 0 ? shown[0] : null);
         // The model's chart row as it is (both columns jsonb, so equal measurements read back as equal text): written
         // only on a difference.
         var chartDiffers = snapshot.ModelCharts.ContainsKey(model.Id)

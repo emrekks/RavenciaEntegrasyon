@@ -706,6 +706,22 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         var griView = await sizeCharts.GetAsync(seed.Tenant.Id, gri.Id, CancellationToken.None);
         Assert.Contains("duzeltilmis-tablo", griView!.SizeChartUrl);
         Assert.Equal([70m, 70m], griView.Measurements!.Rows.Select(x => x.Values[0]!.Value));
+
+        // The corrected picture is removed from every colour: a colour without a chart of its own no longer sends it, at
+        // once (the model row is read by Shown's rule) and after the refresh, which drops it from the model (review, 17 Nov
+        // 2026). Gri then goes by the family rule (the oldest colour still showing a chart: Bordo's own).
+        await db.ProductMedia.Where(x => x.TenantId == seed.Tenant.Id && x.FileAssetId == corrected.Id).ExecuteUpdateAsync(s => s.SetProperty(x => x.Status, "ARCHIVED"));
+        Assert.Null(await SizeChartPlacement.ModelRowAssetIdAsync(db, seed.Tenant.Id, model.Id, CancellationToken.None));
+        Assert.Equal(own.Id, await SizeChartPlacement.ModelAssetIdAsync(db, seed.Tenant.Id, griCard, griVariants, CancellationToken.None));
+        await ProductModelValues.RefreshTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
+        Assert.NotEqual(corrected.Id, (await db.ProductModelSizeCharts.AsNoTracking().SingleAsync(x => x.ModelId == model.Id)).FileAssetId);
+        Assert.Equal(own.Id, await SizeChartPlacement.ModelAssetIdAsync(db, seed.Tenant.Id, griCard, griVariants, CancellationToken.None));
+
+        // With no colour showing any chart the model sends none.
+        await db.ProductMedia.Where(x => x.TenantId == seed.Tenant.Id && x.FileAssetId == own.Id).ExecuteUpdateAsync(s => s.SetProperty(x => x.Status, "ARCHIVED"));
+        Assert.Null(await SizeChartPlacement.ModelAssetIdAsync(db, seed.Tenant.Id, griCard, griVariants, CancellationToken.None));
+        await ProductModelValues.RefreshTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
+        Assert.Null((await db.ProductModelSizeCharts.AsNoTracking().SingleAsync(x => x.ModelId == model.Id)).FileAssetId);
     }
 
     // KATALOG-14 phase D2: the refresh of a model whose colours already hold their overrides writes nothing, so a
