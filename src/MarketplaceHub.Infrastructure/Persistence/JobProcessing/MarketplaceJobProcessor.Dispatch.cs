@@ -21,8 +21,12 @@ public sealed partial class MarketplaceJobProcessor
 
     private ReferenceSyncRunHandler ReferenceSyncHandler => referenceSyncHandler ??= new(ServicesFor);
 
+    private OrderReadRunHandler? orderReadHandler;
+
+    private OrderReadRunHandler OrderReadHandler => orderReadHandler ??= new(ServicesFor);
+
     // The run handlers the dispatch tables use, for the dispatch tests.
-    internal IReadOnlyList<IRunJobHandler> RunJobHandlers => [ProductSyncHandler, CatalogStructureImportHandler, ReferenceSyncHandler];
+    internal IReadOnlyList<IRunJobHandler> RunJobHandlers => [ProductSyncHandler, CatalogStructureImportHandler, ReferenceSyncHandler, OrderReadHandler];
 
     // The request a run handler gets: the job as the processor got it, with the run's read recorder when it keeps records.
     private JobRequest RunRequest(JobDispatchArgs a) =>
@@ -50,7 +54,7 @@ public sealed partial class MarketplaceJobProcessor
         [MarketplaceJobTypes.CapabilityProbe] = async (p, a, cancellationToken) => await p.LabelCapabilityProbe(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken),
         [MarketplaceJobTypes.StageTestOrder] = async (p, a, cancellationToken) => await p.CreateStageTestOrder(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken),
         [MarketplaceJobTypes.OrderReconciliation] = async (p, a, cancellationToken) => a.Platform == "TRENDYOL"
-            ? await p.ReconcileTrendyolOrderWindows(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken)
+            ? await p.OrderReadHandler.HandleDirectAsync(p.RunRequest(a), p.run, cancellationToken)
             : null,
         [MarketplaceJobTypes.ExternalEffectReconcile] = async (p, a, cancellationToken) => await p.ReconcileExternalEffect(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken),
         [MarketplaceJobTypes.ListingVerify] = async (p, a, cancellationToken) => await p.VerifyListings(a.TenantId, a.ConnectionId, a.CorrelationId, a.JobId, cancellationToken),
@@ -72,16 +76,10 @@ public sealed partial class MarketplaceJobProcessor
         ([MarketplaceJobTypes.ConnectionTest, MarketplaceJobTypes.ShopifyConnectionTest, MarketplaceJobTypes.HepsiburadaConnectionTest, MarketplaceJobTypes.N11ConnectionTest, MarketplaceJobTypes.PazaramaConnectionTest, MarketplaceJobTypes.PttAvmConnectionTest],
             async (p, a, cancellationToken) => await p.TestConnection(a.TenantId, a.ConnectionId, a.CorrelationId, cancellationToken)),
         ([.. ReferenceSyncRunHandler.Types], RunBool(p => p.ReferenceSyncHandler)),
-        ([MarketplaceJobTypes.OrderSync, MarketplaceJobTypes.ShopifyOrderSync, MarketplaceJobTypes.HepsiburadaOrderSync, MarketplaceJobTypes.N11OrderSync, MarketplaceJobTypes.PazaramaOrderSync, MarketplaceJobTypes.PttAvmOrderSync],
-            async (p, a, cancellationToken) => await p.SyncOrdersAndMatchLines(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, "ORDERS_HOT", allowBaseline: false, cancellationToken)),
-        ([MarketplaceJobTypes.OrderRecoverySync, MarketplaceJobTypes.ShopifyOrderRecoverySync, MarketplaceJobTypes.HepsiburadaOrderRecoverySync, MarketplaceJobTypes.N11OrderRecoverySync, MarketplaceJobTypes.PazaramaOrderRecoverySync, MarketplaceJobTypes.PttAvmOrderRecoverySync],
-            async (p, a, cancellationToken) => await p.SyncOrdersAndMatchLines(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, "ORDERS_RECOVERY", allowBaseline: true, cancellationToken)),
-        ([MarketplaceJobTypes.OrderStatusSync, MarketplaceJobTypes.ShopifyOrderStatusSync, MarketplaceJobTypes.HepsiburadaOrderStatusSync, MarketplaceJobTypes.PazaramaOrderStatusSync, MarketplaceJobTypes.PttAvmOrderStatusSync],
-            async (p, a, cancellationToken) => await p.SyncOpenOrders(a.TenantId, a.ConnectionId, a.CorrelationId, cancellationToken)),
+        ([.. OrderReadRunHandler.SyncTypes, .. OrderReadRunHandler.RecoveryTypes, .. OrderReadRunHandler.StatusTypes], RunBool(p => p.OrderReadHandler)),
         ([MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation],
             async (p, a, cancellationToken) => await p.ReconcileTrendyolCargoInfo(a.TenantId, a.ConnectionId, a.CorrelationId, cancellationToken)),
-        ([MarketplaceJobTypes.OrderReconciliation, MarketplaceJobTypes.ShopifyOrderReconciliation],
-            async (p, a, cancellationToken) => await p.ReconcileOrders(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken)),
+        ([.. OrderReadRunHandler.ReconciliationTypes], RunBool(p => p.OrderReadHandler)),
         ([MarketplaceJobTypes.OrderInvoiceReconciliation, MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation, MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation],
             async (p, a, cancellationToken) => (await p.ReconcileOrderInvoices(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, a.JobId, cancellationToken)).Succeeded),
         ([.. ProductSyncRunHandler.Types], RunBool(p => p.ProductSyncHandler)),
