@@ -48,7 +48,15 @@ services:
   worker:
     image: ${MARKETPLACEHUB_APP_IMAGE:?set immutable application image with digest}
     build: null
-    environment: *production_environment
+    environment:
+      <<: *production_environment
+      # History table retention (docs/SAKLAMA-SURELERI.md): empty keeps the table forever. The owner sets a period in
+      # production.env (e.g. MARKETPLACEHUB_RETENTION_AI_USAGE_LOG_DAYS=365) and redeploys.
+      Worker__HistoryRetention__AuditLogDays: "${MARKETPLACEHUB_RETENTION_AUDIT_LOG_DAYS:-}"
+      Worker__HistoryRetention__AiUsageLogDays: "${MARKETPLACEHUB_RETENTION_AI_USAGE_LOG_DAYS:-}"
+      Worker__HistoryRetention__ChannelPriceHistoryDays: "${MARKETPLACEHUB_RETENTION_CHANNEL_PRICE_HISTORY_DAYS:-}"
+      Worker__HistoryRetention__ProductChangeEntryDays: "${MARKETPLACEHUB_RETENTION_PRODUCT_CHANGE_ENTRY_DAYS:-}"
+      Worker__HistoryRetention__OrderStatusHistoryDays: "${MARKETPLACEHUB_RETENTION_ORDER_STATUS_HISTORY_DAYS:-}"
     secrets: *production_secrets
     logging: !override
       driver: journald

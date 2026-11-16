@@ -587,6 +587,19 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         var inboxReceivedRetention = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:JobRetention:InboxReceivedDays", 90), 30, 365));
         var guardRetention = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:JobRetention:GuardDays", 90), 30, 3650));
         var effectRecordRetention = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:JobRetention:EffectRecordDays", 90), 30, 3650));
+        // History tables: off (kept forever) until the owner sets a period (docs/SAKLAMA-SURELERI.md).
+        TimeSpan? History(HistoryRetentionPolicy.Table table) =>
+            HistoryRetentionPolicy.Period(table, configuration.GetValue<int?>(HistoryRetentionPolicy.SettingName(table)));
+        var auditRetention = History(HistoryRetentionPolicy.AuditLogs);
+        var aiUsageRetention = History(HistoryRetentionPolicy.AiUsageLogs);
+        var priceHistoryRetention = History(HistoryRetentionPolicy.ChannelPriceHistory);
+        var productChangeRetention = History(HistoryRetentionPolicy.ProductChangeEntries);
+        var orderStatusRetention = History(HistoryRetentionPolicy.OrderStatusHistory);
+        foreach (var table in HistoryRetentionPolicy.Tables)
+        {
+            var period = History(table);
+            if (period is not null) logger.LogInformation("History retention: {Table} keeps {Days} days", table.Name, period.Value.TotalDays);
+        }
         return RunPeriodicAsync(TimeSpan.FromMinutes(10), TimeSpan.FromHours(1), async token =>
         {
             await using var scope = scopeFactory.CreateAsyncScope();
@@ -605,6 +618,17 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             if (notifications > 0) logger.LogInformation("Job retention removed {Count} notification center rows older than a week", notifications);
             var references = await retention.PurgeStaleReferenceSnapshotsAsync(maximumBatches: 50, token);
             if (references > 0) logger.LogInformation("Job retention removed {Count} rows of old marketplace reference lists", references);
+            async Task PurgeHistoryAsync(HistoryRetentionPolicy.Table table, TimeSpan? period, Func<TimeSpan, Task<int>> purge)
+            {
+                if (period is null) return;
+                var removed = await purge(period.Value);
+                if (removed > 0) logger.LogInformation("History retention removed {Count} rows of {Table} older than {Days} days", removed, table.Name, period.Value.TotalDays);
+            }
+            await PurgeHistoryAsync(HistoryRetentionPolicy.AuditLogs, auditRetention, period => retention.PurgeAuditLogsAsync(period, maximumBatches: 25, token));
+            await PurgeHistoryAsync(HistoryRetentionPolicy.AiUsageLogs, aiUsageRetention, period => retention.PurgeAiUsageLogsAsync(period, maximumBatches: 25, token));
+            await PurgeHistoryAsync(HistoryRetentionPolicy.ChannelPriceHistory, priceHistoryRetention, period => retention.PurgeChannelPriceHistoryAsync(period, maximumBatches: 25, token));
+            await PurgeHistoryAsync(HistoryRetentionPolicy.ProductChangeEntries, productChangeRetention, period => retention.PurgeProductChangeEntriesAsync(period, maximumBatches: 25, token));
+            await PurgeHistoryAsync(HistoryRetentionPolicy.OrderStatusHistory, orderStatusRetention, period => retention.PurgeOrderStatusHistoryAsync(period, maximumBatches: 25, token));
         }, exception => logger.LogError(exception, "Job retention pass failed"), stoppingToken);
     }
 
