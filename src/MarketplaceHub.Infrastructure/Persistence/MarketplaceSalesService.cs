@@ -33,48 +33,24 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 && child.OriginExternalPackageId == package.ExternalPackageId
                 && child.ExternalPackageId != package.ExternalPackageId));
 
-    private Task<bool> IsStageConnection(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) => db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.Status == "ACTIVE" || x.Status == "VERIFIED") && x.Environment == "STAGE", cancellationToken);
-    private Task<bool> IsProductionConnection(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) => db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.Status == "ACTIVE" || x.Status == "VERIFIED") && x.Environment == "PRODUCTION", cancellationToken);
-    private async Task<bool> WritesEnabled(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) { if (!configuration.GetValue<bool>("FeatureFlags:ExternalWrites")) return false; var settings = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.SettingsJson).SingleOrDefaultAsync(cancellationToken); return ConnectionSettings.ExternalWritesEnabled(settings); }
-    private async Task<bool> ExternalWritePolicyEnabledAsync(Guid tenantId, Guid connectionId, string resourceType, CancellationToken cancellationToken) => (await ExternalWritePolicyAsync(tenantId, connectionId, resourceType, cancellationToken)).Enabled;
-    private async Task<(bool Enabled, int IntervalSeconds)> ExternalWritePolicyAsync(Guid tenantId, Guid connectionId, string resourceType, CancellationToken cancellationToken)
-    {
-        var policy = await db.ConnectionSyncPolicies.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == resourceType, cancellationToken);
-        return policy is null ? (false, 0) : (policy.Enabled, Math.Clamp(policy.IntervalSeconds, 0, 86_400));
-    }
-    private async Task<IReadOnlyList<string>> CapabilityValues(Guid tenantId, Guid connectionId, string code, string property, CancellationToken cancellationToken) { var capability = await db.PlatformCapabilities.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == code && x.SupportLevel == CapabilitySupportLevel.Supported, cancellationToken); if (capability?.ConstraintsJson is null) return []; try { using var doc = JsonDocument.Parse(capability.ConstraintsJson); return doc.RootElement.TryGetProperty(property, out var values) && values.ValueKind == JsonValueKind.Array ? values.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!).ToList() : []; } catch (JsonException) { return []; } }
-    private static ShipmentView Map(ShipmentPackage x, string orderNumber) => new(x.Id, x.OrderId, orderNumber, x.ExternalPackageId, Wire(x.Status), x.RawStatus, x.CargoTrackingNumber, x.StatusOccurredAt, x.Version, x.CargoProviderExternalId, ShipmentPackageClassification.IsResend(x.CreatedBy, x.OriginExternalPackageId), x.UnreadableLineCount, HandSetInvoiceStatus(x.ManualInvoiceStatus), x.CargoBarcode);
-    private static string Wire<T>(T value) where T : Enum => string.Concat(value.ToString().Select((ch, index) => char.IsUpper(ch) && index > 0 ? "_" + ch : ch.ToString())).ToUpperInvariant();
-    private const string VerifyingCode = "EXTERNAL_EFFECT_VERIFYING";
-    private const string VerifyingMessage = "Pazaryerinin yanıtı kesinleşmedi; sonuç birkaç saniye içinde pazaryerinden okunup panel güncellenecek. İşlemi yeniden göndermeyin.";
+    // SIPARIS-STOK-10: the helpers the partials share live in SalesContext and SalesResults; these forward to them.
+    private SalesContext? sales;
+    internal SalesContext Sales => sales ??= new(db, cursors, configuration, productVisuals, orders, returns, files, timeProvider);
 
-    private static ServiceResult<T> Verifying<T>() => ServiceResult<T>.Fail(VerifyingCode, VerifyingMessage, 409);
-
-    // The marketplace's answer was unclear: the action is not sent again; a verification job
-    // reads the marketplace and settles the effect (see MarketplaceJobProcessor.ReconcileExternalEffect).
-    private async Task<ServiceResult<T>> VerifyLaterAsync<T>(ExternalEffectRecord effect, CancellationToken cancellationToken)
-    {
-        var now = timeProvider.GetUtcNow();
-        var dedup = ExternalEffectReconcilePolicy.JobDedupKey(effect.Id);
-        if (!await db.IntegrationJobs.AnyAsync(x => x.TenantId == effect.TenantId && x.JobDedupKey == dedup, cancellationToken))
-            db.IntegrationJobs.Add(ExternalEffectReconcilePolicy.NewJob(effect, now, now + ExternalEffectReconcilePolicy.FirstCheckDelay));
-        await db.SaveChangesAsync(cancellationToken);
-        return Verifying<T>();
-    }
-
-    private static async Task<ServiceResult<T>> QueueInsteadAsync<T>(Task<ServiceResult<Guid>> enqueue)
-    {
-        var queued = await enqueue;
-        return queued.Error is { } error
-            ? ServiceResult<T>.Fail(error.Code, error.Message, error.Status, error.FieldErrors)
-            : ServiceResult<T>.Fail("ACTION_QUEUED", "Pazaryeri istek kotası şu an dolu; işlem sıraya alındı ve birkaç saniye içinde gönderilecek.", 409);
-    }
-
-    private Task<Dictionary<Guid, string>> MediaUrls(Guid tenantId, IEnumerable<Guid?> variantIds, CancellationToken cancellationToken) =>
-        OrderLineCatalog.MediaUrlsAsync(db, tenantId, variantIds.Where(x => x is not null).Select(x => x!.Value), cancellationToken);
-
-    private static bool IsAmbiguous(AdapterError error) => WriteOutcomePolicy.IsUncertain(error);
-    private static ServiceResult<T> Invalid<T>(string field, string message) => ServiceResult<T>.Fail("VALIDATION_FAILED", message, 422, new Dictionary<string, string[]> { [field] = [message] });
-    private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);
-    private static ServiceResult<T> Precondition<T>(long version) => ServiceResult<T>.Fail("CONCURRENCY_CONFLICT", "Kayıt siz düzenlerken başka bir işlemle güncellendi. Sayfayı yenileyip tekrar deneyin.", 412);
+    private Task<bool> IsStageConnection(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) => Sales.IsStageConnection(tenantId, connectionId, cancellationToken);
+    private Task<bool> IsProductionConnection(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) => Sales.IsProductionConnection(tenantId, connectionId, cancellationToken);
+    private Task<bool> WritesEnabled(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) => Sales.WritesEnabled(tenantId, connectionId, cancellationToken);
+    private Task<bool> ExternalWritePolicyEnabledAsync(Guid tenantId, Guid connectionId, string resourceType, CancellationToken cancellationToken) => Sales.ExternalWritePolicyEnabledAsync(tenantId, connectionId, resourceType, cancellationToken);
+    private Task<(bool Enabled, int IntervalSeconds)> ExternalWritePolicyAsync(Guid tenantId, Guid connectionId, string resourceType, CancellationToken cancellationToken) => Sales.ExternalWritePolicyAsync(tenantId, connectionId, resourceType, cancellationToken);
+    private Task<IReadOnlyList<string>> CapabilityValues(Guid tenantId, Guid connectionId, string code, string property, CancellationToken cancellationToken) => Sales.CapabilityValues(tenantId, connectionId, code, property, cancellationToken);
+    private static ShipmentView Map(ShipmentPackage x, string orderNumber) => SalesResults.Map(x, orderNumber);
+    private static string Wire<T>(T value) where T : Enum => SalesResults.Wire(value);
+    private static ServiceResult<T> Verifying<T>() => SalesResults.Verifying<T>();
+    private Task<ServiceResult<T>> VerifyLaterAsync<T>(ExternalEffectRecord effect, CancellationToken cancellationToken) => Sales.VerifyLaterAsync<T>(effect, cancellationToken);
+    private static Task<ServiceResult<T>> QueueInsteadAsync<T>(Task<ServiceResult<Guid>> enqueue) => SalesResults.QueueInsteadAsync<T>(enqueue);
+    private Task<Dictionary<Guid, string>> MediaUrls(Guid tenantId, IEnumerable<Guid?> variantIds, CancellationToken cancellationToken) => Sales.MediaUrls(tenantId, variantIds, cancellationToken);
+    private static bool IsAmbiguous(AdapterError error) => SalesResults.IsAmbiguous(error);
+    private static ServiceResult<T> Invalid<T>(string field, string message) => SalesResults.Invalid<T>(field, message);
+    private static ServiceResult<T> NotFound<T>() => SalesResults.NotFound<T>();
+    private static ServiceResult<T> Precondition<T>(long version) => SalesResults.Precondition<T>(version);
 }

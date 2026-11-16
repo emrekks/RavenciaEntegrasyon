@@ -372,7 +372,14 @@ public sealed record ReportOrderProfitView(Guid OrderId, string OrderNumber, str
 // MissingCost: orders with a line without a product cost; MissingCargo: orders whose cargo is unknown; MissingCommission:
 // orders whose commission is unknown (no commission on a line and no rate of its store in the period).
 public sealed record ReportOrderProfitPage(IReadOnlyList<ReportOrderProfitView> Items, int TotalCount, int Page, int PageSize, decimal Amount, decimal? Profit, int MissingCost,
-    decimal ProfitAmount, int ProfitOrders, decimal? Margin, int MissingCargo, int MissingCommission = 0);
+    decimal ProfitAmount, int ProfitOrders, decimal? Margin, int MissingCargo, int MissingCommission = 0)
+{
+    /// <summary>Unified paging (API-GUVENLIK-8): the cursor of the next page, null on the last page.</summary>
+    public string? NextCursor { get; init; }
+
+    /// <summary>Unified paging: whether a page follows this one.</summary>
+    public bool HasMore { get; init; }
+}
 
 // Stok raporu: the stock on hand now (one warehouse, MAIN) with its cost and its sale value, and how fast it sells. Stock is
 // a point-in-time value; the period (From-To) only sets the sales used for the cover days. With platforms picked, only

@@ -595,7 +595,7 @@ public sealed partial class MarketplaceSalesService
     // 00:00 today in Istanbul (UTC+3 all year), as an instant.
     internal static DateTimeOffset IstanbulDayStart(DateTimeOffset now)
     {
-        var offset = TimeSpan.FromHours(3);
+        var offset = TurkeyClock.Offset;
         return new DateTimeOffset(now.ToOffset(offset).Date, offset).ToUniversalTime();
     }
 

@@ -7,7 +7,7 @@ public sealed record PayoutQuery(IReadOnlyList<string>? PlatformCodes, IReadOnly
 
 // The records of one group (a store's due day in a region, or one payout), or every record matching a search.
 // Kind: the group's kind (PAYOUT_DAY, DUE_DAY, OVERDUE, PAID_DAY) when a day is asked; null takes the open ones.
-public sealed record PayoutLinesQuery(Guid? ConnectionId, string? PayoutId, DateOnly? Day, string? Region, string? Search, int Page, string? Kind = null);
+public sealed record PayoutLinesQuery(Guid? ConnectionId, string? PayoutId, DateOnly? Day, string? Region, string? Search, int Page, string? Kind = null, int PageSize = 100);
 
 // Expected: the balance, every record not paid yet (Trendyol's "Toplam Güncel Bakiye" is the same sum). Unknown: its
 // part whose due day has passed with no payout seen yet (not "unpaid": Avrupa is paid about monthly, and a payout is
@@ -83,7 +83,14 @@ public sealed record PayoutLineView(string ExternalId, Guid ConnectionId, string
     DateOnly? DueDay, string? OrderNumber, string? InvoiceNumber, string? Country, string Region, decimal Gross, decimal? Commission, decimal Net, string Status, string? PaymentOrderId, string? Barcode = null, string Currency = "TRY");
 
 // Net: the lira records' sum; a record in another currency is listed with its currency but never added to it.
-public sealed record PayoutLinesPage(IReadOnlyList<PayoutLineView> Items, int TotalCount, int Page, int PageSize, decimal Net);
+public sealed record PayoutLinesPage(IReadOnlyList<PayoutLineView> Items, int TotalCount, int Page, int PageSize, decimal Net)
+{
+    /// <summary>Unified paging (API-GUVENLIK-8): the cursor of the next page, null on the last page.</summary>
+    public string? NextCursor { get; init; }
+
+    /// <summary>Unified paging: whether a page follows this one.</summary>
+    public bool HasMore { get; init; }
+}
 
 public interface IPayoutsService
 {

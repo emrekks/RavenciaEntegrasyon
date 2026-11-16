@@ -18118,6 +18118,7 @@
             "name": "page",
             "in": "query",
             "description": "0-100000; outside it the request is refused (400). Default 0.",
+            "deprecated": true,
             "schema": {
               "maximum": 100000,
               "minimum": 0,
@@ -18134,7 +18135,6 @@
             "name": "limit",
             "in": "query",
             "description": "1-200; outside it the request is refused (400). Default 50.",
-            "deprecated": true,
             "schema": {
               "maximum": 200,
               "minimum": 1,
@@ -18151,6 +18151,7 @@
             "name": "pageSize",
             "in": "query",
             "description": "1-200; outside it the request is refused (400). Default 50.",
+            "deprecated": true,
             "schema": {
               "maximum": 200,
               "minimum": 1,
@@ -18161,6 +18162,14 @@
               ],
               "format": "int32",
               "default": 50
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "description": "The nextCursor of the previous page; wins over the page number. Refused (400) when it is not one, when it falls inside a page of the asked limit, or where the list's order gives no cursor (nextCursor null).",
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -18188,7 +18197,7 @@
             "$ref": "#/components/responses/ServerError"
           }
         },
-        "x-paging": "page+pageSize"
+        "x-paging": "page+pageSize|cursor"
       }
     },
     "/api/v1/reports/payouts": {
@@ -18325,6 +18334,7 @@
             "name": "page",
             "in": "query",
             "description": "0-10000; outside it the request is refused (400). Default 0.",
+            "deprecated": true,
             "schema": {
               "maximum": 10000,
               "minimum": 0,
@@ -18335,6 +18345,30 @@
               ],
               "format": "int32",
               "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "1-100; outside it the request is refused (400). Default 100.",
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32",
+              "default": 100
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "description": "The nextCursor of the previous page; wins over the page number. Refused (400) when it is not one, when it falls inside a page of the asked limit, or where the list's order gives no cursor (nextCursor null).",
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -18362,7 +18396,7 @@
             "$ref": "#/components/responses/ServerError"
           }
         },
-        "x-paging": "page"
+        "x-paging": "page|cursor"
       }
     },
     "/api/v1/reports/price-assumptions": {
@@ -32727,7 +32761,8 @@
           "totalCount",
           "page",
           "pageSize",
-          "net"
+          "net",
+          "hasMore"
         ],
         "type": "object",
         "properties": {
@@ -32752,6 +32787,15 @@
           "net": {
             "type": "number",
             "format": "double"
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "hasMore": {
+            "type": "boolean"
           }
         }
       },
@@ -38283,7 +38327,8 @@
           "profitAmount",
           "profitOrders",
           "missingCargo",
-          "missingCommission"
+          "missingCommission",
+          "hasMore"
         ],
         "type": "object",
         "properties": {
@@ -38343,6 +38388,15 @@
             "type": "integer",
             "format": "int32",
             "default": 0
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "hasMore": {
+            "type": "boolean"
           }
         }
       },
@@ -39800,7 +39854,8 @@
           "decisionPending",
           "actionDueAtEstimated",
           "wholeClaimDecision",
-          "rejectNeedsReturnShipment"
+          "rejectNeedsReturnShipment",
+          "stockPendingNextSync"
         ],
         "type": "object",
         "properties": {
@@ -39946,6 +40001,10 @@
             "default": false
           },
           "rejectNeedsReturnShipment": {
+            "type": "boolean",
+            "default": false
+          },
+          "stockPendingNextSync": {
             "type": "boolean",
             "default": false
           }

@@ -1714,7 +1714,10 @@ public sealed record ReturnDetailView(
     // The marketplace decides the whole claim at once (ReturnDecisionScope): the screens lock the line choice.
     bool WholeClaimDecision = false,
     // A denial must name the shipment of the product back to the buyer (n11 ClaimReturnDeny, N11ReturnDenyRule).
-    bool RejectNeedsReturnShipment = false);
+    bool RejectNeedsReturnShipment = false,
+    // SIPARIS-STOK-5: the decision answer only: the marketplace took the approval, but its stock choice could not be
+    // written now (the rows kept changing); the decision stays SUBMITTED and the next read of the claim adds the stock.
+    bool StockPendingNextSync = false);
 public sealed record ReturnDecisionCommand(string Action, string? ReasonCode, string? Explanation, IReadOnlyList<Guid>? EvidenceAssetIds, IReadOnlyList<Guid>? ReturnLineIds = null, string? FinalizedWith = null, bool AddToStock = false, IReadOnlyList<Guid>? StockLineIds = null, IReadOnlyList<ReturnStockLineCommand>? StockLines = null, ReturnShipmentCommand? ReturnShipment = null);
 public sealed record ReturnStockLineCommand(Guid ReturnLineId, decimal Quantity);
 public sealed record ReturnDispositionCommand(Guid ReturnLineId, string Disposition, decimal Quantity, string Reason);

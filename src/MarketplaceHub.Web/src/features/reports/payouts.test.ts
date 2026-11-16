@@ -48,11 +48,11 @@ const group = (overrides: Partial<PayoutGroup>): PayoutGroup => ({ key: 'due:abc
 
 describe('payout lines query', () => {
   it('asks a due group by its store, day and region', () => {
-    expect(payoutLinesQuery({ platforms: ['TRENDYOL'], group: group({}) })).toBe('platforms=TRENDYOL&connectionId=abc&day=2026-11-05&region=TR_GULF&kind=DUE_DAY')
+    expect(payoutLinesQuery({ platforms: ['TRENDYOL'], group: group({}) })).toBe('platforms=TRENDYOL&connectionId=abc&day=2026-11-05&region=TR_GULF&kind=DUE_DAY&limit=100')
   })
   it('asks a payout by its id, a search alone by its number', () => {
-    expect(payoutLinesQuery({ platforms: null, group: group({ kind: 'PAYOUT', key: 'payout:abc:78542975', status: 'PAID' }) })).toBe('connectionId=abc&payoutId=78542975')
-    expect(payoutLinesQuery({ platforms: null, group: group({}), search: ' 10234 ', page: 2 })).toBe('q=10234&page=2')
+    expect(payoutLinesQuery({ platforms: null, group: group({ kind: 'PAYOUT', key: 'payout:abc:78542975', status: 'PAID' }) })).toBe('connectionId=abc&payoutId=78542975&limit=100')
+    expect(payoutLinesQuery({ platforms: null, group: group({}), search: ' 10234 ', page: 2 })).toBe('q=10234&limit=100&after=bzIwMA')
   })
 })
 

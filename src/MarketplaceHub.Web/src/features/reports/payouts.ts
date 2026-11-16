@@ -1,3 +1,4 @@
+import { cursorPageParams } from '../../shared/api/paging'
 import { formatMoney } from '../../shared/format-money'
 // Hakediş (PayoutContracts.cs): what the marketplaces will pay and have paid, from their accounting records.
 // Expected is the balance (every record not paid yet); unknown, its overdue part, is never "unpaid".
@@ -74,7 +75,8 @@ export function payoutLinesQuery(filters: { platforms: string[] | null; group?: 
     if (filters.group.kind === 'PAYOUT') query.set('payoutId', filters.group.key.split(':').slice(2).join(':'))
     else { query.set('day', filters.group.day); query.set('region', filters.group.region); query.set('kind', filters.group.kind) }
   }
-  if (filters.page) query.set('page', String(filters.page))
+  // The cursor form (API-GUVENLIK-8): a hundred records, after the offset cursor of the page asked for.
+  cursorPageParams(query, filters.page ?? 0, 100)
   return query.toString()
 }
 

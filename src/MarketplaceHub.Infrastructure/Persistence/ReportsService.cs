@@ -252,8 +252,9 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider, R
             _ => order => order.OrderedAt.UtcTicks
         };
         var known = all.Where(order => key(order) is not null);
-        var ordered = (query.Descending ? known.OrderByDescending(key) : known.OrderBy(key)).ThenByDescending(order => order.OrderedAt)
-            .Concat(all.Where(order => key(order) is null).OrderByDescending(order => order.OrderedAt)).ToList();
+        // API-GUVENLIK-8: the order id breaks the remaining ties, so the order is total and a page has a cursor.
+        var ordered = (query.Descending ? known.OrderByDescending(key) : known.OrderBy(key)).ThenByDescending(order => order.OrderedAt).ThenBy(order => order.OrderId)
+            .Concat(all.Where(order => key(order) is null).OrderByDescending(order => order.OrderedAt).ThenBy(order => order.OrderId)).ToList();
         var page = ordered.Skip(query.Page * query.PageSize).Take(query.PageSize).ToList();
 
         // The page's lines with the panel product's picture and options (size, colour).
