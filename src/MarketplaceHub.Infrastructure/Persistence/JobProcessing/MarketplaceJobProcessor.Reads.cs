@@ -1,5 +1,4 @@
 using MarketplaceHub.Application;
-using MarketplaceHub.Domain;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
@@ -19,9 +18,9 @@ public sealed partial class MarketplaceJobProcessor
     private Task SaveRefusedOrdersForRereadAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
         OrderRead.SaveRefusedOrdersForRereadAsync(tenantId, connectionId, cancellationToken);
 
-    // The package actions judge an effect closed as unresolved with the effect check's own read.
-    private Task<EffectVerdict> PackageEffectVerdictAsync(Guid tenantId, Guid connectionId, ExternalEffectRecord effect, string correlationId, CancellationToken cancellationToken) =>
-        Services.ExternalEffectReconcile.PackageEffectVerdictAsync(tenantId, connectionId, effect, correlationId, cancellationToken);
+    // A Hepsiburada unpack notification marks the package as the package action does (ActionJobService).
+    private Task MarkHepsiburadaPackageUnpackedAsync(Guid tenantId, Guid connectionId, Guid packageId, DateTimeOffset now, CancellationToken cancellationToken) =>
+        Services.ActionJobs.MarkHepsiburadaPackageUnpackedAsync(tenantId, connectionId, packageId, now, cancellationToken);
 
     private static string? TrendyolWebhookStorefront(string rawPackageJson) => OrderReadService.TrendyolWebhookStorefront(rawPackageJson);
 

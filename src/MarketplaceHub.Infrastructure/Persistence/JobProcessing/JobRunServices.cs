@@ -24,6 +24,9 @@ internal sealed class JobRunServices(
     IInvoicingBillingService? invoiceBilling,
     ILogger? logger,
     VariantLinkBookkeeping variantLinks,
+    IPrivateFileStorage files,
+    ExternalEffectGuard effectGuard,
+    JobWriteSwitches writeSwitches,
     JobRunContext run)
 {
     private OrderIngestionService? orderIngestion;
@@ -62,4 +65,10 @@ internal sealed class JobRunServices(
     private ExternalEffectReconcileService? externalEffectReconcile;
 
     public ExternalEffectReconcileService ExternalEffectReconcile => externalEffectReconcile ??= new(db, issues, orders, returns, timeProvider, OrderIngestion, ReturnIngestion, run);
+
+    // ISLEYICI-9 stage 5 step 3: the write services open, send and close their effect records through the processor's
+    // one ExternalEffectGuard and check the same write switches.
+    private ActionJobService? actionJobs;
+
+    public ActionJobService ActionJobs => actionJobs ??= new(db, issues, orders, returns, files, timeProvider, effectGuard, writeSwitches, OrderIngestion, ReturnIngestion, ExternalEffectReconcile, run);
 }

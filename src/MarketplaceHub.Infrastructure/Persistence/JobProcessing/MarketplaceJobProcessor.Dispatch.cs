@@ -48,9 +48,15 @@ public sealed partial class MarketplaceJobProcessor
 
     private ExternalEffectReconcileRunHandler ExternalEffectReconcileHandler => externalEffectReconcileHandler ??= new(ServicesFor);
 
+    // ISLEYICI-9 stage 5 step 3a: the package actions and the return decisions.
+    private ActionJobRunHandler? actionJobHandler;
+
+    private ActionJobRunHandler ActionJobHandler => actionJobHandler ??= new(ServicesFor);
+
     // The run handlers the dispatch tables use, for the dispatch tests.
     internal IReadOnlyList<IRunJobHandler> RunJobHandlers => [ProductSyncHandler, CatalogStructureImportHandler, ReferenceSyncHandler, OrderReadHandler, ReturnReadHandler,
-        OrderInvoiceReconciliationHandler, TrendyolCargoInfoHandler, ListingVerificationHandler, ConnectionTestHandler, ExternalEffectReconcileHandler];
+        OrderInvoiceReconciliationHandler, TrendyolCargoInfoHandler, ListingVerificationHandler, ConnectionTestHandler, ExternalEffectReconcileHandler,
+        ActionJobHandler];
 
     // The request a run handler gets: the job as the processor got it, with the run's read recorder when it keeps records.
     private JobRequest RunRequest(JobDispatchArgs a) =>
@@ -109,10 +115,7 @@ public sealed partial class MarketplaceJobProcessor
         ([.. CatalogStructureImportRunHandler.Types], RunBool(p => p.CatalogStructureImportHandler)),
         ([MarketplaceJobTypes.WebhookIngest, MarketplaceJobTypes.ShopifyWebhookIngest, MarketplaceJobTypes.HepsiburadaWebhookIngest],
             async (p, a, cancellationToken) => await p.IngestWebhook(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken)),
-        ([MarketplaceJobTypes.ShipmentAction],
-            async (p, a, cancellationToken) => await p.ShipmentAction(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken)),
-        ([MarketplaceJobTypes.ReturnAction],
-            async (p, a, cancellationToken) => await p.ReturnAction(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken)));
+        ([.. ActionJobRunHandler.Types], RunBool(p => p.ActionJobHandler)));
 
     // The job types each table lists, for the test that every processor job type has a way to run.
     internal static IReadOnlyCollection<string> DirectDispatchJobTypes => [.. DirectJobDispatch.Keys];

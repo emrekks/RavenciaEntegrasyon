@@ -115,6 +115,21 @@ internal sealed class ExternalEffectReconcileRunHandler(Func<JobRunContext, JobR
         services(run).ExternalEffectReconcile.ReconcileExternalEffect(request.TenantId, request.ConnectionId, request.PayloadJson, request.CorrelationId, cancellationToken);
 }
 
+// The package actions and the return decisions (ActionJobService): marketplace writes the user started.
+internal sealed class ActionJobRunHandler(Func<JobRunContext, JobRunServices> services) : IRunBoolJobHandler
+{
+    public static readonly IReadOnlyCollection<string> Types = [MarketplaceJobTypes.ShipmentAction, MarketplaceJobTypes.ReturnAction];
+
+    public IReadOnlyCollection<string> JobTypes => Types;
+
+    public Task<bool> HandleAsync(JobRequest request, JobRunContext run, CancellationToken cancellationToken) => request.JobType switch
+    {
+        MarketplaceJobTypes.ShipmentAction => services(run).ActionJobs.ShipmentAction(request.TenantId, request.ConnectionId, request.PayloadJson, request.CorrelationId, cancellationToken),
+        MarketplaceJobTypes.ReturnAction => services(run).ActionJobs.ReturnAction(request.TenantId, request.ConnectionId, request.PayloadJson, request.CorrelationId, cancellationToken),
+        _ => throw new InvalidOperationException($"{request.JobType} is not a package or return action.")
+    };
+}
+
 // The connection test of every marketplace (ConnectionTestService).
 internal sealed class ConnectionTestRunHandler(Func<JobRunContext, JobRunServices> services) : IRunBoolJobHandler
 {

@@ -6,14 +6,62 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceJobProcessor
+// ISLEYICI-9 stage 5 step 3a (16 Nov 2026): the package actions (SHIPMENT_ACTION) and the return decisions (RETURN_ACTION),
+// moved out of the job processor as they were. Each send opens, sends and closes its ExternalEffect record through the
+// processor's ExternalEffectGuard; an unclear answer is never sent again on its own, and a record closed as unresolved
+// is judged by a read only (ExternalEffectReconcileService). It works for one run of one job (run) on the job's AppDbContext.
+internal sealed class ActionJobService(
+    AppDbContext db,
+    IssueRecorder issues,
+    IOrderPort orders,
+    IReturnPort returns,
+    IPrivateFileStorage files,
+    TimeProvider timeProvider,
+    ExternalEffectGuard effectGuard,
+    JobWriteSwitches writeSwitches,
+    OrderIngestionService orderIngestion,
+    ReturnIngestionService returnIngestion,
+    ExternalEffectReconcileService effectReconcile,
+    JobRunContext run)
 {
+    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
+
+    // What the moved code used from the processor: the same classes and helpers the processor calls.
+    private Task RecordIssue(Guid tenantId, string key, string code, string summary, CancellationToken cancellationToken) =>
+        issues.RecordAsync(tenantId, key, code, summary, timeProvider.GetUtcNow(), cancellationToken);
+
+    private Task ResolveIssue(Guid tenantId, string key, CancellationToken cancellationToken) =>
+        issues.ResolveAsync(tenantId, key, timeProvider.GetUtcNow(), cancellationToken);
+
+    private AdapterContext Context(Guid tenantId, Guid connectionId, string correlationId, string idempotency) => new(tenantId, connectionId, correlationId, idempotency, timeProvider.GetUtcNow().AddMinutes(2));
+
+    private void TrackRequest() => run.TrackRequest();
+
+    private void TrackReceived() => run.TrackReceived();
+
+    private void TrackResultFailure(AdapterError? error) => run.TrackResultFailure(error);
+
+    private Task<bool> ExternalWriteAllowedAsync(Guid tenantId, Guid connectionId, string resourceType, CancellationToken cancellationToken) =>
+        writeSwitches.ExternalWriteAllowedAsync(tenantId, connectionId, resourceType, cancellationToken);
+
+    private Task<string?> ConnectionPlatformCode(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
+        orderIngestion.ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
+
+    private Task<bool> UpsertOrder(Guid tenantId, Guid connectionId, RemoteOrder remote, CancellationToken cancellationToken) =>
+        orderIngestion.UpsertOrder(tenantId, connectionId, remote, cancellationToken);
+
+    private Task UpsertReturn(Guid tenantId, Guid connectionId, RemoteReturnClaim remote, CancellationToken cancellationToken) =>
+        returnIngestion.UpsertReturn(tenantId, connectionId, remote, cancellationToken);
+
+    private Task<EffectVerdict> PackageEffectVerdictAsync(Guid tenantId, Guid connectionId, ExternalEffectRecord effect, string correlationId, CancellationToken cancellationToken) =>
+        effectReconcile.PackageEffectVerdictAsync(tenantId, connectionId, effect, correlationId, cancellationToken);
+
     internal static string? SafeReturnTrackingLink(string? value) =>
         Uri.TryCreate(value?.Trim(), UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps
             ? uri.ToString()
             : null;
 
-    private async Task<bool> ShipmentAction(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    internal async Task<bool> ShipmentAction(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         ShipmentActionJobPayload? payload;
         try { payload = JsonSerializer.Deserialize<ShipmentActionJobPayload>(payloadJson, JsonOptions); }
@@ -109,7 +157,7 @@ public sealed partial class MarketplaceJobProcessor
     // Hepsiburada dissolves an unpacked package: its lines return to the order and later reads no
     // longer list it. The local row stays as superseded history (no tab, count, amount or line
     // allocation), so the order is not shown with a package that no longer exists.
-    private async Task MarkHepsiburadaPackageUnpackedAsync(Guid tenantId, Guid connectionId, Guid packageId, DateTimeOffset now, CancellationToken cancellationToken)
+    internal async Task MarkHepsiburadaPackageUnpackedAsync(Guid tenantId, Guid connectionId, Guid packageId, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var platform = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         if (platform != "HEPSIBURADA") return;
@@ -147,7 +195,7 @@ public sealed partial class MarketplaceJobProcessor
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    private async Task<bool> ReturnAction(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    internal async Task<bool> ReturnAction(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         // Only a payload that cannot be read blocks the job for good, and a missing decision or claim is checked
         // below. Any other failure (a dropped connection, a database fault) reaches the worker's retry handling
