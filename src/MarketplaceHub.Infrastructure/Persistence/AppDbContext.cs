@@ -357,7 +357,11 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         {
             // A row whose only change is a "last checked" time is still saved, but the screens have nothing new to show.
             if (SyncNoOpWrites.IsCheckOnly(entry)) continue;
-            var change = OutboxChange(entry.Entity);
+            // A deleted return claim is announced as a change of its order (as CancelledReturnClaimCleanup does): the report
+            // cache can no longer find the claim to place it in a period, but it finds the order (ReportCache).
+            var change = entry.State == EntityState.Deleted && entry.Entity is ReturnClaim deletedClaim
+                ? (deletedClaim.TenantId, "returns", "Order", deletedClaim.OrderId, (long?)null)
+                : OutboxChange(entry.Entity);
             if (change is null || !existing.Add((change.Value.ResourceType, change.Value.AggregateType, change.Value.AggregateId))) continue;
             var now = _timeProvider.GetUtcNow();
             IntegrationOutboxEvents.Add(new IntegrationOutboxEvent
