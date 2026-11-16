@@ -150,6 +150,22 @@ public sealed class ReturnSearchPostgreSqlTests(PostgreSqlTenantIsolationFixture
             foreach (var (term, what) in new[] { ("Kırmızı kazak%_", "a line"), ("ORD-77001", "the order number"), ("Şükrü", "the customer"), ("Çağlayan", "the customer"), ("SKU-ONLY-9", "a line's SKU") })
                 Assert.True((await service.ReturnCardPageAsync(tenantId, 50, 1, null, new ReturnListQuery(Search: term), CancellationToken.None)).TotalCount > 0, $"'{term}' finds no claim by {what}");
             output.WriteLine($"{compared} pages compared");
+
+            // SIPARIS-STOK-9: every order keeps its customer name; a snapshot written outside the tracker empties it (the
+            // trigger), and the search still equals the reference (the view decides that order) until the backfill.
+            Assert.False(await db.Orders.AnyAsync(x => x.TenantId == tenantId && x.CustomerSearchName == null));
+            await db.Orders.Where(x => x.TenantId == tenantId && x.OrderNumber == "S-1009")
+                .ExecuteUpdateAsync(set => set.SetProperty(x => x.CustomerSnapshotJson, """{"customerFirstName":"Nurşen","customerLastName":"Kaya"}"""));
+            Assert.Null(await db.Orders.Where(x => x.TenantId == tenantId && x.OrderNumber == "S-1009").Select(x => x.CustomerSearchName).SingleAsync());
+            foreach (var term in new[] { "nurşen", "Şükrü", "a" })
+            {
+                var options = new ReturnListQuery(Search: term);
+                await ReturnInvoiceLabelPostgreSqlTests.ComparePagesAsync(service, db, cursors, tenantId, 3, options);
+            }
+            Assert.True((await service.ReturnCardPageAsync(tenantId, 50, 1, null, new ReturnListQuery(Search: "nurşen"), CancellationToken.None)).TotalCount > 0);
+            Assert.True(await OrderCustomerSearchNames.BackfillAsync(db, CancellationToken.None) >= 1);
+            Assert.Equal("Nurşen Kaya", await db.Orders.Where(x => x.TenantId == tenantId && x.OrderNumber == "S-1009").Select(x => x.CustomerSearchName).SingleAsync());
+            await ReturnInvoiceLabelPostgreSqlTests.ComparePagesAsync(service, db, cursors, tenantId, 3, new ReturnListQuery(Search: "nurşen"));
         }
         finally
         {
@@ -160,7 +176,7 @@ public sealed class ReturnSearchPostgreSqlTests(PostgreSqlTenantIsolationFixture
     private static readonly string[] Terms =
     [
         "a", "IŞIK", "ışık", "işık", "ISIK", "isik", "İSTANBUL", "istanbul", "1003", "77001", "  ord-77001  ", "\tORD-77001　", "kırmızı kazak", "Kırmızı kazak%_", "%", "_", "%_", "\\",
-        "ürün 2", "ÜRÜN", "beden küçük", "BEDEN KÜÇÜK", "şükrü", "Şükrü", "ŞÜKRÜ ÇAĞLAYAN", "çağlayan", "Çağlayan", "SKU-ONLY-9", "sku-only", "868", "—", "Ş", "zzz-yok", "rc-", "RC-2", "Σ", "ς", "K", "k"
+        "ürün 2", "ÜRÜN", "beden küçük", "BEDEN KÜÇÜK", "şükrü", "Şükrü", "ŞÜKRÜ ÇAĞLAYAN", "çağlayan", "Çağlayan", "SKU-ONLY-9", "sku-only", "868", "7700lent", "7700LENT1", "LENT2", "gülşen", "GÜLŞEN ÖZTÜRK", "öztürk", "—", "Ş", "zzz-yok", "rc-", "RC-2", "Σ", "ς", "K", "k"
     ];
 
     private static string Escape(string value) => string.Join(" ", value.EnumerateRunes().Select(rune => $"U+{rune.Value:X4}"));
@@ -182,6 +198,10 @@ public sealed class ReturnSearchPostgreSqlTests(PostgreSqlTenantIsolationFixture
         ];
         string[] titles = ["Ürün", "ÜRÜN İPEK", "Kırmızı Kazak%_", "beden_küçük", "Işıklı Lamba", "Σίσυφος", "Kelvin"];
         (string? Code, string? Text)[] reasons = [("SIZE", "Beden küçük"), (null, "BEDEN KÜÇÜK"), ("RC-2", null), (null, null), ("Işık", "ışık 100%")];
+        // Catalog variants that lend a barcode to lines without one: by the line's own VariantId (V1), and by SKU (V2).
+        var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "Katalog", Description = "", Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now, Version = 1 };
+        var lendById = new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = product.Id, Sku = "CAT-LENT-1", SkuNormalized = "CAT-LENT-1", Barcode = "7700LENT1", BarcodeNormalized = "7700LENT1", OptionSignature = "Beden: S", Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now, Version = 1 };
+        var lendBySku = new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = product.Id, Sku = "S4-1", SkuNormalized = "S4-1", Barcode = "7700LENT2", BarcodeNormalized = "7700LENT2", OptionSignature = "Beden: M", Status = ProductStatus.Active, SortOrder = 1, CreatedAt = now, UpdatedAt = now, Version = 1 };
         var orders = new List<Order>();
         var orderLines = new List<OrderLine>();
         var claims = new List<ReturnClaim>();
@@ -201,9 +221,10 @@ public sealed class ReturnSearchPostgreSqlTests(PostgreSqlTenantIsolationFixture
                 NetAmount = 100m,
                 OrderedAt = now.AddDays(-(i % 5)),
                 LastRemoteModifiedAt = now,
-                CustomerSnapshotJson = i == 9 ? customers[0] : customers[1 + i % (customers.Length - 1)],
+                CustomerSnapshotJson = i == 9 ? customers[0] : i == 13 ? "{}" : customers[1 + i % (customers.Length - 1)],
                 ShipmentAddressSnapshotJson = "{}",
-                InvoiceAddressSnapshotJson = "{}",
+                // A name only the invoice address gives.
+                InvoiceAddressSnapshotJson = i == 13 ? """{"firstName":"Gülşen","lastName":"Öztürk"}""" : "{}",
                 DerivedStatus = "DELIVERED",
                 CreatedAt = now,
                 UpdatedAt = now,
@@ -224,7 +245,8 @@ public sealed class ReturnSearchPostgreSqlTests(PostgreSqlTenantIsolationFixture
                 ShippedQuantity = 1,
                 UnitPrice = 50m,
                 VatRate = 20m,
-                RawStatus = "Delivered"
+                RawStatus = "Delivered",
+                VariantId = j == 1 && i % 5 == 0 ? lendById.Id : null
             }).ToList();
             orderLines.AddRange(lines);
             var status = (i % 4) switch { 0 => ReturnClaimStatus.Approved, 1 => ReturnClaimStatus.ActionRequired, 2 => ReturnClaimStatus.Requested, _ => ReturnClaimStatus.Rejected };
@@ -256,6 +278,8 @@ public sealed class ReturnSearchPostgreSqlTests(PostgreSqlTenantIsolationFixture
         await using var db = fixture.CreateContext();
         db.Tenants.Add(tenant);
         db.PlatformConnections.Add(connection);
+        db.Products.Add(product);
+        db.ProductVariants.AddRange(lendById, lendBySku);
         db.Orders.AddRange(orders);
         db.OrderLines.AddRange(orderLines);
         db.ReturnClaims.AddRange(claims);
@@ -271,6 +295,8 @@ public sealed class ReturnSearchPostgreSqlTests(PostgreSqlTenantIsolationFixture
         await db.ReturnClaims.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.OrderLines.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.Orders.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.ProductVariants.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.Products.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.PlatformConnections.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.IntegrationOutboxEvents.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.Tenants.Where(row => row.Id == tenantId).ExecuteDeleteAsync();

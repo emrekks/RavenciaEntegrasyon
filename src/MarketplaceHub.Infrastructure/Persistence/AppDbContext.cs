@@ -168,7 +168,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
-        ResetReaddressedOfferMarks(); TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); OrderBuyerTypes.Apply(ChangeTracker); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit();
+        ResetReaddressedOfferMarks(); TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); OrderBuyerTypes.Apply(ChangeTracker); OrderCustomerSearchNames.Apply(ChangeTracker); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit();
         var returnClaims = ReturnCardColumns.GuardAsync(this, () => ReturnCardColumns.BeforeSaveAsync(this, CancellationToken.None), []).GetAwaiter().GetResult();
         var models = ProductModelLinks.Capture(ChangeTracker);
         int saved;
@@ -183,7 +183,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
 
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
-        await ResetReaddressedOfferMarksAsync(cancellationToken); TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); OrderBuyerTypes.Apply(ChangeTracker); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit();
+        await ResetReaddressedOfferMarksAsync(cancellationToken); TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); OrderBuyerTypes.Apply(ChangeTracker); OrderCustomerSearchNames.Apply(ChangeTracker); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit();
         // SIPARIS-STOK-9: the Returns page's card columns of every return claim this save touches: the claims it changes in
         // the save itself (after the outbox events, so the columns raise none), the others right after it, outside the
         // tracker (ReturnCardColumns).

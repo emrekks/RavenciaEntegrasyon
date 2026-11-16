@@ -4429,6 +4429,12 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("char(3)");
 
+                    b.Property<string>("CustomerSearchName")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("CustomerSearchStamp")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("CustomerSnapshotJson")
                         .IsRequired()
                         .HasColumnType("text");
@@ -4654,6 +4660,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "OrderId", "ExternalLineId")
                         .IsUnique();
+
+                    b.HasIndex(new[] { "TenantId", "Id" }, "IX_order_lines_TenantId_Id_Unmatched")
+                        .HasFilter("\"VariantId\" IS NULL");
 
                     b.ToTable("order_lines", "sales", t =>
                         {

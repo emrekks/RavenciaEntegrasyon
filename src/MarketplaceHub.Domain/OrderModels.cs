@@ -530,6 +530,12 @@ public sealed class Order
     // the customer and invoice address snapshots on every save (OrderBuyerTypes) so the order list's "Fatura Türü"
     // filter and the row label read one value; null only until the maintenance backfill reaches an older order.
     public string? BuyerType { get; set; }
+    // The customer name the order screens and the Returns search show (ResolveCustomerName over the three snapshots), kept
+    // so the search is decided by the database (SIPARIS-STOK-9). Set with a new stamp on every tracked save that changes a
+    // snapshot (OrderCustomerSearchNames); a snapshot write that does not bring a new stamp empties it (database trigger),
+    // and the maintenance backfill fills it again. Null means "not known": the search reads the order's view instead.
+    public string? CustomerSearchName { get; set; }
+    public Guid? CustomerSearchStamp { get; set; }
     public required string DerivedStatus { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }

@@ -76,13 +76,22 @@ public sealed partial class MarketplaceSalesService
         {
             // A whole card the columns match is listed; the others, and every card of a claim that splits (each card's own
             // lines decide), are decided from their views, as the page always did.
+            // SIPARIS-STOK-9 (round 7): the kept customer name and a line's own variant barcode are matched by the database
+            // too; a split claim's cards are decided from its rows. Only a claim whose name is not kept yet, or whose
+            // barcode the catalog lends by other keys while a lent barcode may match, is read from its view (at most
+            // ReturnSearchViewLimit claims).
             var splitIds = splitCards.Keys.ToArray();
-            var columnsMatch = ReturnSearchInDatabase(tenantId, search);
-            var undecided = await query.Where(firstCard).Where(Not(columnsMatch)).Where(claim => !splitIds.Contains(claim.Id)).Select(claim => claim.Id).ToListAsync(cancellationToken);
-            var viewIds = undecided.Concat(splitIds).ToArray();
+            var columnsMatch = OrElse(ReturnSearchInDatabase(tenantId, search), ReturnSearchOnKeptFields(tenantId, search));
+            var lentBarcodeMayMatch = await ReturnSearchLentBarcodeMayMatchAsync(tenantId, search, cancellationToken);
+            var undecided = await query.Where(firstCard).Where(Not(columnsMatch)).Where(ReturnSearchUndecided(tenantId, lentBarcodeMayMatch))
+                .Where(claim => !splitIds.Contains(claim.Id)).Select(claim => claim.Id).Take(ReturnSearchViewLimit + 1).ToListAsync(cancellationToken);
+            var splitDecisions = await SplitCardSearchAsync(tenantId, splitRows.Where(row => splitCards.ContainsKey(row.Id)).ToDictionary(row => row.Id), search, lentBarcodeMayMatch, cancellationToken);
+            var viewIds = undecided.Concat(splitDecisions.Where(pair => pair.Value is null).Select(pair => pair.Key)).ToArray();
+            if (viewIds.Length > ReturnSearchViewLimit) throw ReturnSearchTooBroad();
             var views = viewIds.Length == 0 ? new Dictionary<Guid, ReturnListView>() : await ReturnViewsByIdAsync(tenantId, viewIds, cancellationToken);
             bool Matches(Guid claimId, IReadOnlyCollection<Guid>? lineIds) =>
-                views.TryGetValue(claimId, out var view) && MatchesReturnSearch(view, lineIds ?? [.. (view.Lines ?? []).Select(line => line.Id)], search.Term);
+                splitDecisions.GetValueOrDefault(claimId) is { } decide ? decide(lineIds ?? [])
+                : views.TryGetValue(claimId, out var view) && MatchesReturnSearch(view, lineIds ?? [.. (view.Lines ?? []).Select(line => line.Id)], search.Term);
             Guid[] matched = [.. undecided.Where(id => Matches(id, null)), .. splitCards.Where(pair => Matches(pair.Key, pair.Value[0].LineIds)).Select(pair => pair.Key)];
             firstCard = AndAlso(firstCard, OrElse(AndAlso(columnsMatch, claim => !splitIds.Contains(claim.Id)), claim => matched.Contains(claim.Id)));
             extras = extras.Where(card => Matches(card.ClaimId, card.LineIds)).ToList();
