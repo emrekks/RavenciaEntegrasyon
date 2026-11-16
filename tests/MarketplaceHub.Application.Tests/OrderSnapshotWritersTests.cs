@@ -6,10 +6,10 @@ namespace MarketplaceHub.Application.Tests;
 // SIPARIS-STOK-9: the Returns search reads Order.CustomerSearchName, which the change tracker writes with the snapshots
 // (OrderCustomerSearchNames). A snapshot written outside the tracker empties the name (the database trigger) and sends
 // the order's claims to the capped view path until the backfill. The only such writer is the invoice check
-// (MarketplaceJobProcessor.InvoiceReconciliation), and it writes the name with the snapshots; a new one fails here.
+// (InvoiceReconciliationService), and it writes the name with the snapshots; a new one fails here.
 public sealed partial class OrderSnapshotWritersTests
 {
-    private static readonly string[] AllowedWriters = ["src/MarketplaceHub.Infrastructure/Persistence/JobProcessing/MarketplaceJobProcessor.InvoiceReconciliation.cs"];
+    private static readonly string[] AllowedWriters = ["src/MarketplaceHub.Infrastructure/Persistence/JobProcessing/InvoiceReconciliationService.cs"];
 
     [Fact]
     public void OnlyTheInvoiceCheckWritesSnapshotsOutsideTheTracker_AndItWritesTheSearchName()
