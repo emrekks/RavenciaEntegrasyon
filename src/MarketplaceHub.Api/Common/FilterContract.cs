@@ -5,6 +5,7 @@ namespace MarketplaceHub.Api.Common;
 // The endpoints that spelled them otherwise take the unified names too (EndpointHelpers.Unified: the unified name wins
 // when both come); the old names keep working for browser tabs on an older bundle and the document marks them
 // deprecated with their replacement. ApiDeprecatedParametersTests lists every deprecated parameter for its removal.
+// DeprecatedParameterMiddleware logs their use and, with Api:AcceptDeprecatedParameters=false, refuses them (400).
 public static class FilterContract
 {
     private static readonly Dictionary<string, string> PlatformCodes = new(StringComparer.Ordinal) { ["platformCodes"] = "platforms" };
