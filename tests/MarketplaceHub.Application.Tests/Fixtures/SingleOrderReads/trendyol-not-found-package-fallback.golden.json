@@ -1,0 +1,86 @@
+{
+  "Runs": [
+    {
+      "Run": "single",
+      "JobType": "TRENDYOL_ORDER_SYNC",
+      "Result": {
+        "Kind": "Blocked",
+        "ErrorCode": "GOLDEN_UNSCRIPTED",
+        "ErrorSummary": "golden: GOLDEN_UNSCRIPTED",
+        "RetryAfter": null,
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": false,
+        "Continues": false
+      },
+      "Calls": [
+        "orders.GetHinted key=order-get:10654411111 \"10654411111\" null",
+        "orders.GetPackageLookup key=targeted-order-package-read:PKG-1 \"PKG-1\" {\"StatusOccurredAt\":null,\"Order\":null,\"InvoiceOnly\":false}"
+      ]
+    }
+  ],
+  "Tables": [
+    {
+      "Table": "PlatformConnection",
+      "Rows": [
+        {
+          "ApiVersion": "V1",
+          "DisabledAt": null,
+          "DisplayName": "TRENDYOL",
+          "Environment": "PRODUCTION",
+          "ExternalStoreId": "store-golden",
+          "Id": "connection",
+          "LastErrorClass": null,
+          "LastErrorCode": null,
+          "LastSuccessAt": null,
+          "LastTestedAt": null,
+          "PlatformCode": "TRENDYOL",
+          "PublicId": "connection-public",
+          "SettingsJson": {},
+          "Status": "ACTIVE",
+          "TenantId": "tenant",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "SyncCursor",
+      "Rows": [
+        {
+          "ConnectionId": "connection",
+          "ConsecutiveFailureCount": 1,
+          "CursorStagnantSince": null,
+          "Id": "id1",
+          "LastAttemptAt": "T+00:00:01",
+          "LastChangedCount": 0,
+          "LastCursorAdvancedAt": null,
+          "LastDurationMs": "<duration>",
+          "LastError": "GOLDEN_UNSCRIPTED",
+          "LastErrorAt": "T+00:00:04",
+          "LastFailedCount": 2,
+          "LastInsertedCount": 0,
+          "LastModifiedWatermark": null,
+          "LastRateLimitCount": 0,
+          "LastReceivedCount": 0,
+          "LastRequestCount": 2,
+          "LastRetryCount": 1,
+          "LastSkippedCount": 0,
+          "LastSliceAt": null,
+          "LastSuccessAt": null,
+          "LastUpdatedCount": 0,
+          "OpaqueCursor": null,
+          "ResourceType": "ORDERS_HOT",
+          "TenantId": "tenant",
+          "Version": 3
+        }
+      ]
+    },
+    {
+      "Table": "IntegrationOutboxEvent (counted)",
+      "Rows": [
+        "connections PlatformConnection created x1"
+      ]
+    }
+  ]
+}
