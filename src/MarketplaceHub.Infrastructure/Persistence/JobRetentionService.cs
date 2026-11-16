@@ -239,6 +239,94 @@ public sealed class JobRetentionService(AppDbContext db, TimeProvider timeProvid
         return deleted;
     }
 
+    // History tables (VERITABANI-DAGITIM-13, docs/SAKLAMA-SURELERI.md). Each one is kept forever until the owner sets a period
+    // (Worker:HistoryRetention:*Days, HistoryRetentionPolicy); the worker calls these only for a table that has one.
+    // Login and question-report checks read audit rows of the last days; the AI spend limit reads the last 24 hours.
+    public Task<int> PurgeAuditLogsAsync(TimeSpan retention, int maximumBatches, CancellationToken cancellationToken)
+    {
+        var cutoff = timeProvider.GetUtcNow().ToUniversalTime() - retention;
+        return PurgeInBatchesAsync(() => db.Database.ExecuteSqlInterpolatedAsync($"""
+            WITH doomed AS (
+                SELECT "Id" FROM ops.audit_logs WHERE "CreatedAt" < {cutoff} ORDER BY "Id" LIMIT {BatchSize})
+            DELETE FROM ops.audit_logs log USING doomed WHERE log."Id" = doomed."Id"
+            """, cancellationToken), maximumBatches);
+    }
+
+    public Task<int> PurgeAiUsageLogsAsync(TimeSpan retention, int maximumBatches, CancellationToken cancellationToken)
+    {
+        var cutoff = timeProvider.GetUtcNow().ToUniversalTime() - retention;
+        return PurgeInBatchesAsync(() => db.Database.ExecuteSqlInterpolatedAsync($"""
+            WITH doomed AS (
+                SELECT "Id" FROM ops.ai_usage_logs WHERE "CreatedAt" < {cutoff} ORDER BY "CreatedAt" LIMIT {BatchSize})
+            DELETE FROM ops.ai_usage_logs log USING doomed WHERE log."Id" = doomed."Id"
+            """, cancellationToken), maximumBatches);
+    }
+
+    // A price version older than the period goes only while the offer keeps at least KeptPriceVersions newer ones, so
+    // every offer keeps its current price and its recent changes however old they are.
+    public const int KeptPriceVersions = 50;
+
+    public Task<int> PurgeChannelPriceHistoryAsync(TimeSpan retention, int maximumBatches, CancellationToken cancellationToken)
+    {
+        var cutoff = timeProvider.GetUtcNow().ToUniversalTime() - retention;
+        return PurgeInBatchesAsync(() => db.Database.ExecuteSqlInterpolatedAsync($"""
+            WITH doomed AS (
+                SELECT history."Id" FROM inventory.channel_price_history history
+                WHERE history."EffectiveAt" < {cutoff}
+                  AND (SELECT count(*) FROM inventory.channel_price_history newer
+                       WHERE newer."TenantId" = history."TenantId" AND newer."OfferId" = history."OfferId"
+                         AND newer."PriceVersion" > history."PriceVersion") >= {KeptPriceVersions}
+                ORDER BY history."EffectiveAt" LIMIT {BatchSize})
+            DELETE FROM inventory.channel_price_history history USING doomed WHERE history."Id" = doomed."Id"
+            """, cancellationToken), maximumBatches);
+    }
+
+    public Task<int> PurgeProductChangeEntriesAsync(TimeSpan retention, int maximumBatches, CancellationToken cancellationToken)
+    {
+        var cutoff = timeProvider.GetUtcNow().ToUniversalTime() - retention;
+        return PurgeInBatchesAsync(() => db.Database.ExecuteSqlInterpolatedAsync($"""
+            WITH doomed AS (
+                SELECT "Id" FROM catalog.product_change_entries WHERE "OccurredAt" < {cutoff} ORDER BY "OccurredAt" LIMIT {BatchSize})
+            DELETE FROM catalog.product_change_entries entry USING doomed WHERE entry."Id" = doomed."Id"
+            """, cancellationToken), maximumBatches);
+    }
+
+    // Rows the code reads stay whatever their age: the newest row of every order; SHIPPED and DELIVERED (shipping and
+    // delivery times in reports and the order list); the collection request (OrderIngestion's picked-at time); the manual
+    // Shopify statuses (OrderIngestion, Shipments, OrderQueries); and every row with a SourceEventId, which order ingestion
+    // and the manual-status replay check use to recognise an event they already stored (a deleted one would be stored
+    // again). Live 16 Nov 2026 every row carries a SourceEventId, so in practice nothing goes: keep this table off.
+    public Task<int> PurgeOrderStatusHistoryAsync(TimeSpan retention, int maximumBatches, CancellationToken cancellationToken)
+    {
+        var cutoff = timeProvider.GetUtcNow().ToUniversalTime() - retention;
+        return PurgeInBatchesAsync(() => db.Database.ExecuteSqlInterpolatedAsync($"""
+            WITH doomed AS (
+                SELECT history."Id" FROM sales.order_status_history history
+                WHERE history."RecordedAt" < {cutoff}
+                  AND history."SourceEventId" = ''
+                  AND history."CanonicalStatus" NOT IN ('SHIPPED', 'DELIVERED')
+                  AND history."RawStatus" <> {PackageIngestionSafety.InstantPickingRawStatus}
+                  AND history."RawStatus" NOT LIKE {ShopifyManualStatusPolicy.RawStatusPrefix + "%"}
+                  AND EXISTS (SELECT 1 FROM sales.order_status_history newer
+                              WHERE newer."TenantId" = history."TenantId" AND newer."OrderId" = history."OrderId"
+                                AND (newer."OccurredAt", newer."Id") > (history."OccurredAt", history."Id"))
+                ORDER BY history."RecordedAt" LIMIT {BatchSize})
+            DELETE FROM sales.order_status_history history USING doomed WHERE history."Id" = doomed."Id"
+            """, cancellationToken), maximumBatches);
+    }
+
+    private static async Task<int> PurgeInBatchesAsync(Func<Task<int>> batch, int maximumBatches)
+    {
+        var deleted = 0;
+        for (var round = 0; round < maximumBatches; round++)
+        {
+            var count = await batch();
+            deleted += count;
+            if (count < BatchSize) break;
+        }
+        return deleted;
+    }
+
     // A settled marketplace-action record (applied or closed unresolved) is history once its retention passed.
     // Open records are never removed: they still block a second send of the same action.
     public async Task<int> PurgeCompletedEffectRecordsAsync(TimeSpan retention, int maximumBatches, CancellationToken cancellationToken)

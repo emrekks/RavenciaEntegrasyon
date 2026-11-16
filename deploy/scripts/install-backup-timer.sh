@@ -10,6 +10,8 @@ set -Eeuo pipefail
 #   ravencia-alert@.service       alert sender used by OnFailure= and the watch
 #   ravencia-offsite-copy.timer   age-encrypted off-site copy after each scheduled backup, installed
 #                                 only once deploy/secrets holds its recipient key and remote
+#   ravencia-secrets-escrow.timer age-encrypted secrets escrow for the off-site copy, installed only once
+#                                 deploy/secrets/secrets_escrow.enabled exists
 #   ravencia-deploy-guard.service holds a host shutdown while a deploy holds its lock
 #                                 (with the session-.scope.d ordering drop-in)
 # Backup, restore drill, health watch, maintenance and alerts run as root with systemd
@@ -39,6 +41,12 @@ timers=(ravencia-backup.timer ravencia-restore-drill.timer ravencia-healthwatch.
 if sudo -n test -s "$script_dir/../secrets/backup_age_recipient.txt" && sudo -n test -s "$script_dir/../secrets/backup_offsite_remote.txt"; then
   units+=(ravencia-offsite-copy.service ravencia-offsite-copy.timer)
   timers+=(ravencia-offsite-copy.timer)
+fi
+# The secrets escrow (deploy/backup/secrets-escrow.sh), once the owner switched it on with the flag file
+# deploy/secrets/secrets_escrow.enabled (docs/RUNBOOK-GERI-ALMA.md section 5).
+if sudo -n test -e "$script_dir/../secrets/secrets_escrow.enabled"; then
+  units+=(ravencia-secrets-escrow.service ravencia-secrets-escrow.timer)
+  timers+=(ravencia-secrets-escrow.timer)
 fi
 # CrowdSec's allowlist refresh, once install-crowdsec.sh has installed CrowdSec.
 if command -v cscli >/dev/null 2>&1; then

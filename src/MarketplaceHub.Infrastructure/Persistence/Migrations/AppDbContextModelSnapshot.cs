@@ -2680,9 +2680,6 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("ProviderConnectionId")
                         .HasColumnType("uuid");
 
-                    b.Property<long?>("SequenceNumber")
-                        .HasColumnType("bigint");
-
                     b.Property<string>("SequencePurpose")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -7655,7 +7652,7 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("TenantId", "ConnectionId")
                         .HasPrincipalKey("TenantId", "Id")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 
@@ -7866,7 +7863,7 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("TenantId", "ConnectionId")
                         .HasPrincipalKey("TenantId", "Id")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 
@@ -8344,7 +8341,7 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("TenantId", "ConnectionId")
                         .HasPrincipalKey("TenantId", "Id")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 
@@ -8441,7 +8438,7 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("TenantId", "ConnectionId")
                         .HasPrincipalKey("TenantId", "Id")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("FK_question_sync_states_connection");
                 });
@@ -8804,7 +8801,7 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("TenantId", "ConnectionId")
                         .HasPrincipalKey("TenantId", "Id")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 

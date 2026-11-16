@@ -23,13 +23,30 @@ public static class ConnectionLeftovers
     public static Task<int> RemoveRevokedCredentialsAsync(AppDbContext db, CancellationToken cancellationToken) =>
         db.PlatformCredentials.Where(x => x.RevokedAt != null).ExecuteDeleteAsync(cancellationToken);
 
+    // Where the next sweep starts, per tenant filter (Guid.Empty: all tenants), in this process. Tombstones that orders keep
+    // stay DELETED, so a sweep that always took the first ConnectionBatchSize ids never reached the ones after 20 such
+    // tombstones; each sweep now continues after the last id it saw and starts over once it reaches the end.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, Guid> SweepCursors = new();
+
+    private sealed class SweepRow
+    {
+        public Guid TenantId { get; set; }
+        public Guid Id { get; set; }
+    }
+
     // Returns how many tombstones were removed outright.
     public static async Task<int> SweepDeletedConnectionsAsync(AppDbContext db, DateTimeOffset now, CancellationToken cancellationToken, Guid? tenantId = null)
     {
-        var deleted = await db.PlatformConnections.AsNoTracking()
-            .Where(x => x.Status == DeletedStatus && (tenantId == null || x.TenantId == tenantId))
-            .OrderBy(x => x.Id).Take(ConnectionBatchSize)
-            .Select(x => new { x.TenantId, x.Id }).ToListAsync(cancellationToken);
+        var cursorKey = tenantId ?? Guid.Empty;
+        Guid? after = SweepCursors.TryGetValue(cursorKey, out var last) ? last : null;
+        var deleted = await db.Database.SqlQuery<SweepRow>($"""
+            SELECT "TenantId", "Id" FROM integration.platform_connections
+            WHERE "Status" = {DeletedStatus} AND (CAST({tenantId} AS uuid) IS NULL OR "TenantId" = {tenantId})
+              AND (CAST({after} AS uuid) IS NULL OR "Id" > {after})
+            ORDER BY "Id" LIMIT {ConnectionBatchSize}
+            """).ToListAsync(cancellationToken);
+        if (deleted.Count < ConnectionBatchSize) SweepCursors.TryRemove(cursorKey, out _);
+        else SweepCursors[cursorKey] = deleted[^1].Id;
         var removed = 0;
         foreach (var connection in deleted)
             if (await PurgeAsync(db, connection.TenantId, connection.Id, now, cancellationToken)) removed++;

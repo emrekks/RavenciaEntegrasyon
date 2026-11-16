@@ -63,7 +63,7 @@ internal static class MarketplaceFinanceModelConfiguration
             entity.Property(x => x.RejectedTypes).HasMaxLength(1000); entity.Property(x => x.LastError).HasMaxLength(1024);
             entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

@@ -159,6 +159,63 @@ public sealed partial class PostgreSqlConnectionFullResetTests
         }
     }
 
+    // VERITABANI-DAGITIM-16: the connection keys restrict, so Eski Bağlantı Kayıtları removes a deleted connection's tariffs
+    // and report files itself, even without Promotions; an open connection's stay. A deleted connection whose orders stay
+    // (Siparişler not chosen) is kept, and the job note says so instead of a plain success.
+    [PostgreSqlFact]
+    public async Task LegacyConnections_WithoutPromotions_RemovesADeletedConnectionsTariffsAndFiles_AndNamesTheOnesKept()
+    {
+        var a = NewSeed("pl-a");
+        var gone = Connection(a.Tenant.Id, "TRENDYOL", $"pl-gone-{Guid.NewGuid():N}"[..20]);
+        gone.Status = "DELETED";
+        CommissionTariff Tariff(Guid connectionId) => new() { Id = Guid.CreateVersion7(), TenantId = a.Tenant.Id, ConnectionId = connectionId, PlatformCode = "TRENDYOL", PeriodStart = fixture.Now.AddDays(-7), PeriodEnd = fixture.Now, PeriodText = "hafta", FileName = "tarife.xlsx", FileHash = Guid.NewGuid().ToString("N"), UploadedAt = fixture.Now };
+        var goneTariff = Tariff(gone.Id);
+        var openTariff = Tariff(a.Reset.Id);
+        try
+        {
+            await SeedAsync(a);
+            await using (var db = fixture.CreateContext())
+            {
+                db.PlatformConnections.Add(gone);
+                db.CommissionTariffs.AddRange(goneTariff, openTariff);
+                db.PromotionOfferFiles.Add(new PromotionOfferFile { Id = Guid.CreateVersion7(), TenantId = a.Tenant.Id, ConnectionId = gone.Id, PlatformCode = "TRENDYOL", Kind = PromotionOfferKinds.Plus, FileName = "plus.xlsx", FileHash = "h", UploadedAt = fixture.Now, RowsJson = "[]" });
+                db.AdReportFiles.Add(new AdReportFile { Id = Guid.CreateVersion7(), TenantId = a.Tenant.Id, ConnectionId = gone.Id, PlatformCode = "TRENDYOL", FileName = "reklam.xlsx", FileHash = "h", ExportedAt = fixture.Now, UploadedAt = fixture.Now, CampaignsJson = "[]" });
+                await db.SaveChangesAsync();
+                // The other store was deleted too, but its orders stay: Siparişler is not chosen.
+                await db.PlatformConnections.Where(x => x.Id == a.Other.Id).ExecuteUpdateAsync(x => x.SetProperty(c => c.Status, "DELETED"));
+            }
+            Guid jobId;
+            await using (var db = fixture.CreateContext())
+            {
+                var view = await NewPanelService(db).RequestAsync(a.Tenant.Id, Guid.CreateVersion7(), null, new PanelFactoryResetCommand("verileri sil", [PanelFactoryResetInventory.LegacyConnections.Key]), "corr", CancellationToken.None);
+                Assert.True(view.Succeeded, view.Error?.Message);
+                Assert.DoesNotContain("PROMOTIONS", view.Value!.Job!.Categories);
+                jobId = view.Value.Job.JobId;
+                await db.IntegrationJobs.Where(x => x.Id == jobId).ExecuteUpdateAsync(x => x.SetProperty(j => j.Status, JobStatus.Leased));
+            }
+            await using (var db = fixture.CreateContext())
+            {
+                var job = await db.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == jobId);
+                var result = await NewPanelService(db).RunAsync(a.Tenant.Id, jobId, job.PayloadJson, CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+                Assert.Contains("1 silinmiş bağlantı, kayıtları başka veri türünde durduğu için kaldı", result.ErrorSummary, StringComparison.Ordinal);
+            }
+            await using var verification = fixture.CreateContext();
+            Assert.False(await verification.PlatformConnections.AnyAsync(x => x.Id == gone.Id));
+            Assert.False(await verification.CommissionTariffs.AnyAsync(x => x.ConnectionId == gone.Id));
+            Assert.False(await verification.PromotionOfferFiles.AnyAsync(x => x.ConnectionId == gone.Id));
+            Assert.False(await verification.AdReportFiles.AnyAsync(x => x.ConnectionId == gone.Id));
+            Assert.True(await verification.CommissionTariffs.AnyAsync(x => x.Id == openTariff.Id));
+            Assert.Equal("DELETED", (await verification.PlatformConnections.SingleAsync(x => x.Id == a.Other.Id)).Status);
+        }
+        finally
+        {
+            await using (var db = fixture.CreateContext())
+                await db.Database.ExecuteSqlInterpolatedAsync($"""DELETE FROM catalog.commission_tariffs WHERE "TenantId" = {a.Tenant.Id}""");
+            await DeleteTenantAsync(a.Tenant.Id);
+        }
+    }
+
     private async Task<long> CountAsync(string table, Guid tenantId) => (await TenantCountsAsync([table], tenantId))[table];
 
     private PanelFactoryResetService NewPanelService(AppDbContext db) => new(db, fixture.TimeProvider, new NoDashboard(), NullLogger<PanelFactoryResetService>.Instance);
