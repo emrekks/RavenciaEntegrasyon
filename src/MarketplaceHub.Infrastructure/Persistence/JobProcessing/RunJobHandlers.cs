@@ -58,6 +58,29 @@ internal sealed class OrderReadRunHandler(Func<JobRunContext, JobRunServices> se
         services(run).OrderRead.ReconcileTrendyolOrderWindows(request.TenantId, request.ConnectionId, request.PayloadJson, request.CorrelationId, cancellationToken);
 }
 
+// The return reads (ReturnReadService): new claims, the open-claim scans and Trendyol's return reconciliation.
+internal sealed class ReturnReadRunHandler(Func<JobRunContext, JobRunServices> services) : IRunBoolJobHandler
+{
+    public static readonly IReadOnlyCollection<string> SyncTypes = [MarketplaceJobTypes.ReturnSync, MarketplaceJobTypes.HepsiburadaReturnSync];
+    public static readonly IReadOnlyCollection<string> StatusTypes = [MarketplaceJobTypes.ReturnStatusSync];
+    public static readonly IReadOnlyCollection<string> ReconciliationTypes = [MarketplaceJobTypes.ReturnReconciliation];
+    public static readonly IReadOnlyCollection<string> Types = [.. SyncTypes, .. StatusTypes, .. ReconciliationTypes];
+
+    public IReadOnlyCollection<string> JobTypes => Types;
+
+    public Task<bool> HandleAsync(JobRequest request, JobRunContext run, CancellationToken cancellationToken)
+    {
+        var reads = services(run).ReturnRead;
+        if (SyncTypes.Contains(request.JobType))
+            return reads.SyncReturns(request.TenantId, request.ConnectionId, request.PayloadJson, request.CorrelationId, cancellationToken);
+        if (StatusTypes.Contains(request.JobType))
+            return reads.SyncOpenReturns(request.TenantId, request.ConnectionId, request.CorrelationId, cancellationToken);
+        if (ReconciliationTypes.Contains(request.JobType))
+            return reads.ReconcileReturns(request.TenantId, request.ConnectionId, request.PayloadJson, request.CorrelationId, cancellationToken);
+        throw new InvalidOperationException($"{request.JobType} is not a return read.");
+    }
+}
+
 // ProductSync, ShopifyProductSync and HepsiburadaProductSync: the product read (CatalogImportService.SyncProducts).
 internal sealed class ProductSyncRunHandler(Func<JobRunContext, JobRunServices> services) : IRunBoolJobHandler
 {

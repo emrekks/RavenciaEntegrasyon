@@ -3,8 +3,9 @@ using MarketplaceHub.Application;
 namespace MarketplaceHub.Infrastructure.Persistence;
 
 // ISLEYICI-9 stage 3e (16 Nov 2026): the order and return read loops live in OrderReadService and ReturnReadService, one
-// per run like the ingestion services they store through. The order read jobs run in OrderReadRunHandler (stage 4c);
-// these members are what the processor's own code (webhooks, the invoice checks, the cargo-info check) still calls.
+// per run like the ingestion services they store through. The read jobs run in OrderReadRunHandler and
+// ReturnReadRunHandler (stage 4c, 4d); these members are what the processor's own code (webhooks, the invoice checks, the
+// cargo-info check) still calls.
 public sealed partial class MarketplaceJobProcessor
 {
     private OrderReadService OrderRead => Services.OrderRead;
@@ -30,10 +31,4 @@ public sealed partial class MarketplaceJobProcessor
 
     private Task<bool> SyncReturns(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken) =>
         ReturnRead.SyncReturns(tenantId, connectionId, payloadJson, correlationId, cancellationToken);
-
-    private Task<bool> SyncOpenReturns(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken) =>
-        ReturnRead.SyncOpenReturns(tenantId, connectionId, correlationId, cancellationToken);
-
-    private Task<bool> ReconcileReturns(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken) =>
-        ReturnRead.ReconcileReturns(tenantId, connectionId, payloadJson, correlationId, cancellationToken);
 }
