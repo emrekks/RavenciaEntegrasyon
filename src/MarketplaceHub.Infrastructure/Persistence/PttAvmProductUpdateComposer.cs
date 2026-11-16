@@ -17,7 +17,7 @@ internal sealed class PttAvmProductUpdateComposer(AppDbContext db, IConfiguratio
 {
     public async Task<ServiceResult<ProductUpdateDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, IReadOnlyList<string> fields, CancellationToken cancellationToken)
     {
-        var product = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
+        var product = await EffectiveCatalog.Products(db).SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
         if (product is null) return ServiceResult<ProductUpdateDraft>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);
         var profile = await db.ChannelListingProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
         if (profile is null || !await db.ChannelListingVariants.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ProfileId == profile.Id, cancellationToken))

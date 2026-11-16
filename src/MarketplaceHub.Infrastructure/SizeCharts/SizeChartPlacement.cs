@@ -97,7 +97,7 @@ public static class SizeChartPlacement
     {
         if (familyIds.Count == 0) return null;
         return await (from chart in Shown(db, tenantId)
-                      join card in db.Products.AsNoTracking() on chart.ProductId equals card.Id
+                      join card in EffectiveCatalog.Products(db) on chart.ProductId equals card.Id
                       where card.TenantId == tenantId && familyIds.Contains(chart.ProductId) && card.Status != ProductStatus.Archived
                       orderby card.CreatedAt, card.Id
                       select chart.FileAssetId).FirstOrDefaultAsync(cancellationToken);

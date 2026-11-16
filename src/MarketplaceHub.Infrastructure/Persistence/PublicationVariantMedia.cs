@@ -125,7 +125,7 @@ internal sealed class PublicationColours(IReadOnlyDictionary<Guid, string> colou
         var brandIds = coded.Where(card => card.Product.BrandId is not null).Select(card => card.Product.BrandId!.Value).Distinct().ToArray();
         var anyWithoutBrand = coded.Any(card => card.Product.BrandId is null);
         var familyRows = coded.Count == 0 ? [] : await (from variant in db.ProductVariants.AsNoTracking()
-                                                        join product in db.Products.AsNoTracking() on variant.ProductId equals product.Id
+                                                        join product in EffectiveCatalog.Products(db) on variant.ProductId equals product.Id
                                                         where variant.TenantId == tenantId && product.TenantId == tenantId && variant.ModelCode != null
                                                               && ((product.BrandId != null && brandIds.Contains(product.BrandId.Value)) || (anyWithoutBrand && product.BrandId == null))
                                                         select new { variant.ProductId, variant.ModelCode, product.BrandId }).Distinct().ToListAsync(cancellationToken);

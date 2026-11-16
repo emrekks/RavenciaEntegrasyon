@@ -118,7 +118,7 @@ internal sealed partial class OrderQueryService
         // SKU, or barcode. Reuse a unique local catalog title match in that case.
         if (!string.IsNullOrWhiteSpace(normalizedProductName) && normalizedProductName.Length <= 320)
         {
-            var matchingProductIds = await db.Products.AsNoTracking()
+            var matchingProductIds = await EffectiveCatalog.Products(db)
                 .Where(x => x.TenantId == tenantId && x.Title.ToUpper() == normalizedProductName.ToUpper())
                 .Select(x => x.Id).Take(2).ToListAsync(cancellationToken);
             if (matchingProductIds.Count == 1)

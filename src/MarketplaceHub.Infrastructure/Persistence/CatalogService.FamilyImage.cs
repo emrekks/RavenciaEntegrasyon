@@ -31,7 +31,7 @@ public sealed partial class CatalogService
             return ids;
         });
         var familyIds = familyByView.Values.SelectMany(ids => ids).Distinct().ToArray();
-        var cards = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && familyIds.Contains(x.Id))
+        var cards = await EffectiveCatalog.Products(db).Where(x => x.TenantId == tenantId && familyIds.Contains(x.Id))
             .Select(x => new { x.Id, x.CreatedAt }).ToListAsync(cancellationToken);
         var media = await (from item in db.ProductMedia.AsNoTracking()
                            join asset in db.FileAssets.AsNoTracking() on new { item.TenantId, item.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }

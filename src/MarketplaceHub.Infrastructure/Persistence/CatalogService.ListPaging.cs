@@ -186,7 +186,7 @@ public sealed partial class CatalogService
             .ToListAsync(cancellationToken);
         var order = keys.Select((key, index) => (key, index)).ToDictionary(item => item.key, item => item.index);
         var pageProductIds = members.OrderBy(member => order[member.Key]).ThenByDescending(member => member.CreatedAt).ThenByDescending(member => member.Id).Select(member => member.Id).ToArray();
-        var fullProducts = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && pageProductIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
+        var fullProducts = await EffectiveCatalog.Products(db).Where(x => x.TenantId == tenantId && pageProductIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         var products = pageProductIds.Where(fullProducts.ContainsKey).Select(productId => fullProducts[productId]).ToList();
         var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && pageProductIds.Contains(x.ProductId)).ToListAsync(cancellationToken);
         var views = await WithFamilyImagesAsync(tenantId, await BuildProductViewsAsync(tenantId, products, variants, cancellationToken, listShape: true), cancellationToken);
@@ -221,7 +221,7 @@ public sealed partial class CatalogService
         // The cards model by model, each model's cards newest first (the in-memory list's order).
         var order = keys.Select((key, index) => (key, index)).ToDictionary(item => item.key, item => item.index);
         var pageProductIds = members.OrderBy(member => order[member.Key]).ThenByDescending(member => member.CreatedAt).ThenByDescending(member => member.Id).Select(member => member.Id).ToArray();
-        var fullProducts = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && pageProductIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
+        var fullProducts = await EffectiveCatalog.Products(db).Where(x => x.TenantId == tenantId && pageProductIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         var products = pageProductIds.Where(fullProducts.ContainsKey).Select(productId => fullProducts[productId]).ToList();
         var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && pageProductIds.Contains(x.ProductId)).ToListAsync(cancellationToken);
         var views = await WithFamilyImagesAsync(tenantId, await BuildProductViewsAsync(tenantId, products, variants, cancellationToken, listShape: true), cancellationToken);

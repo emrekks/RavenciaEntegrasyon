@@ -1147,7 +1147,7 @@ public sealed partial class MarketplaceJobProcessor
 
     private async Task<List<Guid>> FamilyProductIdsAsync(Guid tenantId, Guid productId, CancellationToken cancellationToken)
     {
-        var card = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == productId).Select(x => new { x.BrandId, x.FamilyId }).SingleOrDefaultAsync(cancellationToken);
+        var card = await EffectiveCatalog.Products(db).Where(x => x.TenantId == tenantId && x.Id == productId).Select(x => new { x.BrandId, x.FamilyId }).SingleOrDefaultAsync(cancellationToken);
         var brandId = card?.BrandId;
         var modelCode = await db.ProductVariants.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ProductId == productId && x.ModelCode != null)

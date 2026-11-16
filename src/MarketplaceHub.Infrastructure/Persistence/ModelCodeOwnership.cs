@@ -30,7 +30,7 @@ public static class ModelCodeOwnership
         var pattern = "%" + string.Join("%", modelCode.Where(char.IsLetterOrDigit).Select(ch => char.IsAscii(ch) ? ch.ToString() : "_")) + "%";
         var rows = (await (
                 from variant in db.ProductVariants.AsNoTracking()
-                join product in db.Products.AsNoTracking() on variant.ProductId equals product.Id
+                join product in EffectiveCatalog.Products(db) on variant.ProductId equals product.Id
                 where variant.TenantId == tenantId && product.TenantId == tenantId && variant.ModelCode != null && variant.ModelCode != ""
                     && variant.ProductId != ownProductId && EF.Functions.ILike(variant.ModelCode, pattern)
                 select new { variant.ProductId, product.Title, variant.ModelCode, product.CreatedAt })
@@ -78,7 +78,7 @@ public static class ModelCodeOwnership
         var candidates = ProductIdsWithKeys(db, tenantId, keys);
         var rows = await (
                 from variant in db.ProductVariants.AsNoTracking()
-                join product in db.Products.AsNoTracking() on variant.ProductId equals product.Id
+                join product in EffectiveCatalog.Products(db) on variant.ProductId equals product.Id
                 where variant.TenantId == tenantId && product.TenantId == tenantId && variant.ModelCode != null && variant.ModelCode != ""
                     && !own.Contains(variant.ProductId) && candidates.Contains(variant.ProductId)
                 select new { variant.ProductId, product.Title, variant.ModelCode, product.CreatedAt })

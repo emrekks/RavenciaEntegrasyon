@@ -175,7 +175,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
         var variants = await (
             from variant in db.ProductVariants.AsNoTracking()
             where variant.TenantId == tenantId
-            join product in db.Products.AsNoTracking() on new { variant.TenantId, Id = variant.ProductId } equals new { product.TenantId, product.Id }
+            join product in EffectiveCatalog.Products(db) on new { variant.TenantId, Id = variant.ProductId } equals new { product.TenantId, product.Id }
             select new
             {
                 variant.Id,
@@ -298,7 +298,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
         var clearingIds = changes.Where(change => change.SetDesi && change.Desi is null || change.SetModelCode && change.ModelCode is null).Select(change => byId[change.VariantId].ProductId).Distinct().ToArray();
         var nonDraftIds = new HashSet<Guid>();
         foreach (var chunk in clearingIds.Chunk(Chunk))
-            nonDraftIds.UnionWith(await db.Products.AsNoTracking().Where(product => product.TenantId == tenantId && chunk.Contains(product.Id) && product.Status != ProductStatus.Draft).Select(product => product.Id).ToListAsync(cancellationToken));
+            nonDraftIds.UnionWith(await EffectiveCatalog.Products(db).Where(product => product.TenantId == tenantId && chunk.Contains(product.Id) && product.Status != ProductStatus.Draft).Select(product => product.Id).ToListAsync(cancellationToken));
         if (changes.FirstOrDefault(change => nonDraftIds.Contains(byId[change.VariantId].ProductId) && (change.SetDesi && change.Desi is null || change.SetModelCode && change.ModelCode is null)) is { } emptying)
         {
             var emptied = ProductRequiredFields.Label(emptying.SetDesi && emptying.Desi is null ? ProductRequiredFields.Desi : ProductRequiredFields.ModelCode);
@@ -698,7 +698,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
             // KATALOG-8: only the cards that may hold one of the keys are read; the key still decides below.
             var candidates = ModelCodeOwnership.ProductIdsWithKeys(db, tenantId, keys);
             var rows = await (from variant in db.ProductVariants.AsNoTracking()
-                              join product in db.Products.AsNoTracking() on new { variant.TenantId, Id = variant.ProductId } equals new { product.TenantId, product.Id }
+                              join product in EffectiveCatalog.Products(db) on new { variant.TenantId, Id = variant.ProductId } equals new { product.TenantId, product.Id }
                               where variant.TenantId == tenantId && variant.ModelCode != null && variant.ModelCode != "" && product.Status != ProductStatus.Archived
                                   && candidates.Contains(product.Id)
                               select new { product.Id, variant.ModelCode }).Distinct().ToListAsync(cancellationToken);
@@ -719,7 +719,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
     private IQueryable<ProductVariant> ListedVariants(Guid tenantId) =>
         from variant in db.ProductVariants.AsNoTracking()
         where variant.TenantId == tenantId && variant.Status != ProductStatus.Archived
-        join product in db.Products.AsNoTracking() on new { variant.TenantId, Id = variant.ProductId } equals new { product.TenantId, product.Id }
+        join product in EffectiveCatalog.Products(db) on new { variant.TenantId, Id = variant.ProductId } equals new { product.TenantId, product.Id }
         where product.Status != ProductStatus.Archived
         select variant;
 

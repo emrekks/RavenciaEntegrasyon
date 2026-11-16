@@ -452,7 +452,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         summary = await WithHepsiburadaStageReadBackAsync(job, summary, cancellationToken);
         // The product the job is about (product publications, updates and approval checks carry it), for a link.
         var productId = PayloadGuid(job.PayloadJson, "productId");
-        if (productId is { } payloadProductId && !await db.Products.AsNoTracking().AnyAsync(x => x.TenantId == job.TenantId && x.Id == payloadProductId, cancellationToken))
+        if (productId is { } payloadProductId && !await EffectiveCatalog.Products(db).AnyAsync(x => x.TenantId == job.TenantId && x.Id == payloadProductId, cancellationToken))
             productId = null;
         var read = await ReadSummaryAsync(job, summary.Marketplace, cancellationToken);
         var change = Change(job);
@@ -479,7 +479,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         if (JobWritePayloadReader.Read(job.JobType, job.PayloadJson) is not { } write) return null;
         if (productId is { } cardId)
         {
-            var title = await db.Products.AsNoTracking().Where(x => x.TenantId == job.TenantId && x.Id == cardId).Select(x => x.Title).FirstOrDefaultAsync(cancellationToken);
+            var title = await EffectiveCatalog.Products(db).Where(x => x.TenantId == job.TenantId && x.Id == cardId).Select(x => x.Title).FirstOrDefaultAsync(cancellationToken);
             var modelCodes = await db.ProductVariants.AsNoTracking()
                 .Where(x => x.TenantId == job.TenantId && x.ProductId == cardId && x.ModelCode != null && x.ModelCode != "")
                 .Select(x => x.ModelCode!).Distinct().OrderBy(x => x).Take(10).ToListAsync(cancellationToken);
