@@ -37,6 +37,7 @@ public sealed partial class ApiResponseSchemaTests
         "GET /api/v1/invoices/{invoiceId}/documents/latest/content", "PUT /api/v1/invoices/{id}/shopify-status",
         "GET /api/v1/dashboard/integration-matrix", "POST /api/v1/notifications", "POST /api/v1/questions/sync", "GET /api/v1/settings/ai/usage",
         "POST /api/v1/settings/users", "POST /api/v1/settings/users/{id}/password-reset", "POST /api/v1/settings/users/{id}/sessions/revoke",
+        "GET /api/v1/auth/invitations", "POST /api/v1/auth/invitations/{id}/accept",
         "PUT /api/v1/settings/offsite-backup", "POST /api/v1/settings/offsite-backup/google/authorize", "POST /api/v1/settings/offsite-backup/google/disconnect"
     ];
 
@@ -362,6 +363,39 @@ public sealed partial class ApiResponseSchemaTests
                 body: new { password = ApiEndToEndFixture.Password }, same: typeof(TemporaryPasswordView));
             await run.ProbeAsync("UserManagementEndpoints", "POST", "/api/v1/settings/users/{id}/sessions/revoke", $"/api/v1/settings/users/{userId}/sessions/revoke",
                 body: new { password = ApiEndToEndFixture.Password }, same: typeof(SessionsRevokedView));
+
+            // Invitations (API-GUVENLIK-6): an account of another workspace is invited, listed as pending, and accepts.
+            var invitedEmail = $"r5-invited-{tag}@example.invalid";
+            await using (var scope = fixture.Host.Services.CreateAsyncScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+                var home = new Tenant { Id = Guid.CreateVersion7(), Code = $"r5-home-{tag}", DisplayName = "R5 Ev", CreatedAt = now, UpdatedAt = now };
+                db.Tenants.Add(home);
+                var invited = new ApplicationUser { Id = Guid.CreateVersion7(), UserName = invitedEmail, Email = invitedEmail, DisplayName = "R5 Davetli", ForcePasswordChange = false, CreatedAt = now, UpdatedAt = now };
+                Assert.True((await users.CreateAsync(invited, ApiEndToEndFixture.Password)).Succeeded);
+                db.UserSecurities.Add(new UserSecurity { UserId = invited.Id, TotpState = TotpState.Disabled });
+                db.TenantMemberships.Add(new TenantMembership { Id = Guid.CreateVersion7(), TenantId = home.Id, UserId = invited.Id, Role = MembershipRole.Owner, CreatedAt = now, UpdatedAt = now });
+                await db.SaveChangesAsync();
+            }
+            await run.ProbeAsync("UserManagementEndpoints", "POST", "/api/v1/settings/users",
+                body: new { email = invitedEmail, displayName = "R5 Davetli", role = "READONLY", password = ApiEndToEndFixture.Password }, same: typeof(MarketplaceHub.Api.Settings.UserManagementEndpoints.AddedBody));
+            var listed = await run.ProbeAsync("UserManagementEndpoints", "GET", "/api/v1/settings/users", same: typeof(TenantUsersView));
+            Assert.Contains(listed.GetProperty("invitations").EnumerateArray(), item => item.GetProperty("email").GetString() == invitedEmail && !item.GetProperty("expired").GetBoolean());
+            using (var invitee = fixture.Host.ClientFromOwnNetwork())
+            {
+                var inviteeCsrf = await fixture.Host.CsrfAsync(invitee);
+                using (var login = await invitee.SendAsync(ApiTestHost.Json(HttpMethod.Post, "/api/v1/auth/login", inviteeCsrf, new { email = invitedEmail, password = ApiEndToEndFixture.Password })))
+                    Assert.Equal(System.Net.HttpStatusCode.OK, login.StatusCode);
+                var (ownerClient, ownerCsrf) = (run.Client, run.Csrf);
+                run.Client = invitee;
+                run.Csrf = inviteeCsrf;
+                var mine = await run.ProbeAsync("WorkspaceInvitationEndpoints", "GET", "/api/v1/auth/invitations", same: typeof(IReadOnlyList<MyInvitationView>));
+                Assert.True(run.Failures.Count == 0, string.Join("\n", run.Failures));
+                var invitationId = mine.EnumerateArray().Single().GetProperty("id").GetGuid();
+                await run.ProbeAsync("WorkspaceInvitationEndpoints", "POST", "/api/v1/auth/invitations/{id}/accept", $"/api/v1/auth/invitations/{invitationId}/accept", same: typeof(InvitationAcceptedView));
+                (run.Client, run.Csrf) = (ownerClient, ownerCsrf);
+            }
 
             // Off-site backup: an OAuth client saved, Google's consent address, disconnected; the steps that need Google answer an error.
             await run.ProbeAsync("OffsiteBackupEndpoints", "PUT", "/api/v1/settings/offsite-backup", body: new

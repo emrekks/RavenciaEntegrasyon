@@ -118,9 +118,11 @@ public static class QuestionEndpoints
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
             if (tenant is null) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
+            // Each call creates a template: the key makes a repeat replay the first answer instead of a duplicate.
+            if (EndpointHelpers.RequireIdempotency(http) is { } missingKey) return missingKey;
             var result = await service.SaveTemplateAsync(tenant.TenantId, null, null, command, http.RequestAborted);
             return result.Succeeded ? Results.Created($"/api/v1/question-templates/{result.Value!.Id:D}", result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
-        }).Produces<MarketplaceQuestionTemplateView>(StatusCodes.Status201Created).NotIdempotent("creates a new answer template each time");
+        }).Produces<MarketplaceQuestionTemplateView>(StatusCodes.Status201Created).RequireIdempotencyKey();
         api.MapPut("/question-templates/{id:guid}", async (Guid id, SaveQuestionTemplateCommand command, HttpContext http, IMarketplaceQuestionService service) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;

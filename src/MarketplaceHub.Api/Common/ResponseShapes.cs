@@ -70,7 +70,19 @@ public sealed record OffsiteBackupSettingsView(
     long Version);
 
 /// <summary>GET /settings/users.</summary>
-public sealed record TenantUsersView(Guid CurrentUserId, string CurrentRole, IReadOnlyList<TenantUserView> Items);
+public sealed record TenantUsersView(Guid CurrentUserId, string CurrentRole, IReadOnlyList<TenantUserView> Items, IReadOnlyList<TenantInvitationView> Invitations);
+
+/// <summary>
+/// A pending invitation of GET /settings/users (API-GUVENLIK-6): the name and e-mail the inviter typed, the role it
+/// offers; Expired once it can no longer be accepted.
+/// </summary>
+public sealed record TenantInvitationView(Guid Id, string DisplayName, string Email, string Role, DateTimeOffset InvitedAt, DateTimeOffset ExpiresAt, bool Expired);
+
+/// <summary>An invitation of GET /auth/invitations: a workspace that asks the signed-in account to join it.</summary>
+public sealed record MyInvitationView(Guid Id, string WorkspaceName, string InvitedBy, string Role, DateTimeOffset InvitedAt, DateTimeOffset ExpiresAt);
+
+/// <summary>POST /auth/invitations/{id}/accept: the workspace joined (chosen at the next sign-in).</summary>
+public sealed record InvitationAcceptedView(Guid TenantId, string WorkspaceName);
 
 /// <summary>One user of GET /settings/users.</summary>
 public sealed record TenantUserView(

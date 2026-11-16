@@ -38,6 +38,27 @@ public sealed class TenantMembership
     public long Version { get; set; }
 }
 
+/// <summary>
+/// API-GUVENLIK-6: an existing account asked to join a workspace, not yet answered. It grants nothing: it is not a
+/// membership, so every membership check (sign-in, the session's role, the realtime hub, the user guards) ignores it.
+/// Accepting it adds the membership and removes the row; declining or withdrawing removes the row. The e-mail and name
+/// are the ones the inviter typed, never read back from the account.
+/// </summary>
+public sealed class TenantInvitation
+{
+    public static readonly TimeSpan Lifetime = TimeSpan.FromDays(14);
+
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid UserId { get; set; }
+    public MembershipRole Role { get; set; }
+    public required string Email { get; set; }
+    public required string DisplayName { get; set; }
+    public Guid InvitedByUserId { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset ExpiresAt { get; set; }
+}
+
 public sealed class UserSecurity
 {
     public Guid UserId { get; set; }
