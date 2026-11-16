@@ -8,7 +8,8 @@ import { PRODUCT_IMAGE_ACCEPT, toProductImage } from './product-image-file'
 import { pinSizeChartLast, replaceSizeChart, sizeChartKey } from './size-chart-order'
 import { historyStateWithCopyRemovedMedia, withCopyRemovedMedia } from '../product-copy-media-removals'
 import { clearAllMediaFeedbackText, familyMediaClearPlan, withPendingFamilyMediaRemovals } from '../family-media-clear'
-import { editorDataStamp, editorSeedKey, editorSnapshotWithSavedMedia } from '../product-editor-state'
+import { editorDataStamp, editorSeedKey } from '../product-editor-state'
+import { baselineWithSavedMedia } from './editor-reducer'
 import { Product } from '../shared'
 import { queryKeys } from '../../../shared/api/query-keys'
 import { ProductFamilyMediaItem } from './editor-types'
@@ -28,7 +29,7 @@ import type { VariantActionsResult } from './use-variant-actions'
 import type { VariantCodeActionsResult } from './use-variant-code-actions'
 
 export function useEditorMediaActions(c: EditorProps & EditorStateResult & EditorMediaPointerResult & EditorDirtyStateResult & VariantCodeMenusResult & EditorDataResult & EditorSeedResult & VariantRowDragResult & VariantMediaAutoSaveResult & EditorViewResult & AttributeActionsResult & VariantActionsResult & VariantCodeActionsResult) {
-  const { editProductId, client, duplicateProductId, copyRemovedMedia, setNotice, submitting, form, setVariantRows, initializedEditProductKey, mediaFiles, setMediaFiles, setDeletingProductMediaKey, mediaRemovalConfirmation, setMediaRemovalConfirmation, pendingFamilyMediaRemovals, setPendingFamilyMediaRemovals, setFamilyMediaOrder, setFamilyMediaOrderDirty, setDraggedMedia, setDragOverMedia, setMediaStripOrder, sizeChartUrl, setSizeChartUrl, initialSizeChartUrl, sizeChartBeforeFamilyRemoval, setSizeChartPicking, chartKey, setSnapshotRequest, setSeedSnapshot, mediaFileInputRef, initialEditMediaUrl, initialEditVariantMediaRefs, showFeedback, updateField, mediaTouch, suppressMediaClick, editorDirty, productToEdit, mediaUrls, adoptOwnProductWrite, standOnOwnWrite, visibleMediaUrls, mediaStrip, familyOnlyMediaItems, hasMediaTiles } = c
+  const { editProductId, client, duplicateProductId, copyRemovedMedia, setNotice, submitting, form, setVariantRows, initializedEditProductKey, mediaFiles, setMediaFiles, setDeletingProductMediaKey, mediaRemovalConfirmation, setMediaRemovalConfirmation, pendingFamilyMediaRemovals, setPendingFamilyMediaRemovals, setFamilyMediaOrder, setFamilyMediaOrderDirty, setDraggedMedia, setDragOverMedia, setMediaStripOrder, sizeChartUrl, setSizeChartUrl, initialSizeChartUrl, sizeChartBeforeFamilyRemoval, setSizeChartPicking, chartKey, requestBaseline, adjustBaseline, mediaFileInputRef, initialEditMediaUrl, initialEditVariantMediaRefs, showFeedback, updateField, mediaTouch, suppressMediaClick, editorDirty, productToEdit, mediaUrls, adoptOwnProductWrite, standOnOwnWrite, visibleMediaUrls, mediaStrip, familyOnlyMediaItems, hasMediaTiles } = c
   // A WebP, or a JPEG/PNG over 6 MB, is turned into a JPEG here (product-image-file.ts) instead of being refused.
   async function handleMediaFiles(files: File[]) {
     const accepted: File[] = []
@@ -151,7 +152,7 @@ export function useEditorMediaActions(c: EditorProps & EditorStateResult & Edito
     if (editProductId || !duplicateProductId || !urls.length) return
     copyRemovedMedia.current = withCopyRemovedMedia(copyRemovedMedia.current, urls)
     try { window.history.replaceState(historyStateWithCopyRemovedMedia(window.history.state, copyRemovedMedia.current), '') } catch { /* the in-memory list still holds */ }
-    if (!editorDirty) setSnapshotRequest(value => value + 1)
+    if (!editorDirty) requestBaseline()
   }
   // On the edit page the strip also shows the same model's other colours; clearing them is asked first, since Kaydet
   // removes them from those products too.
@@ -216,9 +217,9 @@ export function useEditorMediaActions(c: EditorProps & EditorStateResult & Edito
         setSizeChartUrl(null)
       }
       // The deletion is saved already: a form that had no other edits stays "clean" afterwards; one with other edits
-      // keeps them unsaved, its snapshot losing the removed picture only (W1).
-      if (!editorDirty) setSnapshotRequest(value => value + 1)
-      else setSeedSnapshot(current => current == null ? current : editorSnapshotWithSavedMedia(current, {
+      // keeps them unsaved, its baseline losing the removed picture only (W1).
+      if (!editorDirty) requestBaseline()
+      else adjustBaseline(current => baselineWithSavedMedia(current, {
         mediaUrls: value => value.split(/\r?\n/u).filter(item => mediaImageKey(item) !== targetKey).join('\n'),
         rowMediaRefs: (_rowKey, references) => references.filter(removeVariantReference),
         familyMediaOrder: order => order.filter(item => mediaImageKey(item) !== targetKey),
