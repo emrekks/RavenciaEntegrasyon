@@ -58,4 +58,8 @@ internal sealed class JobRunServices(
     public ListingVerificationService ListingVerification => listingVerification ??= new(db, issues, cursors, products, timeProvider, variantLinks, CatalogImport, OrderIngestion, run);
 
     public ConnectionTestService ConnectionTest => connectionTest ??= new(db, connections, timeProvider, run);
+
+    private ExternalEffectReconcileService? externalEffectReconcile;
+
+    public ExternalEffectReconcileService ExternalEffectReconcile => externalEffectReconcile ??= new(db, issues, orders, returns, timeProvider, OrderIngestion, ReturnIngestion, run);
 }

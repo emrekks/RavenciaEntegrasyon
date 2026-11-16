@@ -10,9 +10,42 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // record is completed; if it clearly did not, the record is released so the user can try again;
 // if the marketplace cannot tell after several reads over 30 minutes of verification (or a day after the action,
 // when the reads came too far apart to count), it is closed as unresolved and reported.
-public sealed partial class MarketplaceJobProcessor
+// ISLEYICI-9 stage 5 step 2 (16 Nov 2026): moved out of the job processor as it was, before any write job moves, so the
+// write services settle their effect records with the same check. It works for one run of one job (run) on the job's
+// AppDbContext; it reads the marketplace and stores what it read through the run's order and return ingestion, and never
+// sends anything again.
+internal sealed class ExternalEffectReconcileService(
+    AppDbContext db,
+    IssueRecorder issues,
+    IOrderPort orders,
+    IReturnPort returns,
+    TimeProvider timeProvider,
+    OrderIngestionService orderIngestion,
+    ReturnIngestionService returnIngestion,
+    JobRunContext run)
 {
-    private async Task<JobExecutionResult> ReconcileExternalEffect(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    // What the moved code used from the processor: the same classes and helpers the processor calls.
+    private Task RecordIssue(Guid tenantId, string key, string code, string summary, CancellationToken cancellationToken) =>
+        issues.RecordAsync(tenantId, key, code, summary, timeProvider.GetUtcNow(), cancellationToken);
+
+    private Task ResolveIssue(Guid tenantId, string key, CancellationToken cancellationToken) =>
+        issues.ResolveAsync(tenantId, key, timeProvider.GetUtcNow(), cancellationToken);
+
+    private AdapterContext Context(Guid tenantId, Guid connectionId, string correlationId, string idempotency) => new(tenantId, connectionId, correlationId, idempotency, timeProvider.GetUtcNow().AddMinutes(2));
+
+    private void TrackRequest() => run.TrackRequest();
+
+    private void TrackReceived() => run.TrackReceived();
+
+    private void TrackResultFailure(AdapterError? error) => run.TrackResultFailure(error);
+
+    private Task<bool> UpsertOrder(Guid tenantId, Guid connectionId, RemoteOrder remote, CancellationToken cancellationToken) =>
+        orderIngestion.UpsertOrder(tenantId, connectionId, remote, cancellationToken);
+
+    private Task UpsertReturn(Guid tenantId, Guid connectionId, RemoteReturnClaim remote, CancellationToken cancellationToken) =>
+        returnIngestion.UpsertReturn(tenantId, connectionId, remote, cancellationToken);
+
+    internal async Task<JobExecutionResult> ReconcileExternalEffect(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         Guid effectId;
         try
@@ -87,7 +120,7 @@ public sealed partial class MarketplaceJobProcessor
     }
 
     // Picking moves the package out of New; a cargo provider change leaves the new provider on it.
-    private async Task<EffectVerdict> PackageEffectVerdictAsync(Guid tenantId, Guid connectionId, ExternalEffectRecord effect, string correlationId, CancellationToken cancellationToken)
+    internal async Task<EffectVerdict> PackageEffectVerdictAsync(Guid tenantId, Guid connectionId, ExternalEffectRecord effect, string correlationId, CancellationToken cancellationToken)
     {
         var target = await db.ShipmentPackages.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Id == effect.TargetId)

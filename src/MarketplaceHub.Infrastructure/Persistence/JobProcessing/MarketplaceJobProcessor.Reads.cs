@@ -1,4 +1,5 @@
 using MarketplaceHub.Application;
+using MarketplaceHub.Domain;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
@@ -17,6 +18,10 @@ public sealed partial class MarketplaceJobProcessor
 
     private Task SaveRefusedOrdersForRereadAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
         OrderRead.SaveRefusedOrdersForRereadAsync(tenantId, connectionId, cancellationToken);
+
+    // The package actions judge an effect closed as unresolved with the effect check's own read.
+    private Task<EffectVerdict> PackageEffectVerdictAsync(Guid tenantId, Guid connectionId, ExternalEffectRecord effect, string correlationId, CancellationToken cancellationToken) =>
+        Services.ExternalEffectReconcile.PackageEffectVerdictAsync(tenantId, connectionId, effect, correlationId, cancellationToken);
 
     private static string? TrendyolWebhookStorefront(string rawPackageJson) => OrderReadService.TrendyolWebhookStorefront(rawPackageJson);
 

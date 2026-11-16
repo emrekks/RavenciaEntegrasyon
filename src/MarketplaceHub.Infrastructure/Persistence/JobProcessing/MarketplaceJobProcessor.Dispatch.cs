@@ -43,9 +43,14 @@ public sealed partial class MarketplaceJobProcessor
 
     private ConnectionTestRunHandler ConnectionTestHandler => connectionTestHandler ??= new(ServicesFor);
 
+    // ISLEYICI-9 stage 5 step 2: the effect check.
+    private ExternalEffectReconcileRunHandler? externalEffectReconcileHandler;
+
+    private ExternalEffectReconcileRunHandler ExternalEffectReconcileHandler => externalEffectReconcileHandler ??= new(ServicesFor);
+
     // The run handlers the dispatch tables use, for the dispatch tests.
     internal IReadOnlyList<IRunJobHandler> RunJobHandlers => [ProductSyncHandler, CatalogStructureImportHandler, ReferenceSyncHandler, OrderReadHandler, ReturnReadHandler,
-        OrderInvoiceReconciliationHandler, TrendyolCargoInfoHandler, ListingVerificationHandler, ConnectionTestHandler];
+        OrderInvoiceReconciliationHandler, TrendyolCargoInfoHandler, ListingVerificationHandler, ConnectionTestHandler, ExternalEffectReconcileHandler];
 
     // The request a run handler gets: the job as the processor got it, with the run's read recorder when it keeps records.
     private JobRequest RunRequest(JobDispatchArgs a) =>
@@ -80,7 +85,7 @@ public sealed partial class MarketplaceJobProcessor
         [MarketplaceJobTypes.CapabilityProbe] = async (p, a, cancellationToken) => await p.LabelCapabilityProbe(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken),
         [MarketplaceJobTypes.StageTestOrder] = async (p, a, cancellationToken) => await p.CreateStageTestOrder(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken),
         [MarketplaceJobTypes.OrderReconciliation] = RunDirectOnTrendyol(p => p.OrderReadHandler),
-        [MarketplaceJobTypes.ExternalEffectReconcile] = async (p, a, cancellationToken) => await p.ReconcileExternalEffect(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken),
+        [MarketplaceJobTypes.ExternalEffectReconcile] = RunDirect(p => p.ExternalEffectReconcileHandler),
         [MarketplaceJobTypes.ListingVerify] = RunDirect(p => p.ListingVerificationHandler),
         [MarketplaceJobTypes.ListingLookup] = RunDirect(p => p.ListingVerificationHandler),
         [MarketplaceJobTypes.OrderInvoiceReconciliation] = RunDirectOnTrendyol(p => p.OrderInvoiceReconciliationHandler),
