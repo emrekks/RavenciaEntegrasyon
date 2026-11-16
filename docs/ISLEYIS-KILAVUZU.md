@@ -1857,42 +1857,51 @@ işlenmiş 30 gün, en geç 90 gün; kota kullanım satırları 2 gün. (canlı,
 | `CONNECTION_FULL_RESET` | Tam Sıfırlama | Panel İçi | Kullanıcı |
 | `PANEL_FACTORY_RESET` | (panel kataloğunda adı yok) | Panel İçi | Kullanıcı (Sistem Ayarları › Veri) |
 
-#### 6.4.1 İşleri kim çalıştırır: işleyiciler ve kalan plan (ISLEYICI-9)
+#### 6.4.1 İşleri kim çalıştırır: işleyiciler (ISLEYICI-9, son durum 17 Kas 2026)
 
-Pazaryeri işlerini `MarketplaceJobProcessor.ProcessAsync` alır: ön kontroller (bağlantı, kapsam, ilk aktarım, pasif
-bağlantı), bağlantının yürütme kilidi, akış telemetrisi ve çekilen kayıtlar orada kalır; işin kendisi üç yoldan birine gider
-(`MarketplaceJobProcessor.cs`; `MarketplaceJobProcessor.Dispatch.cs`):
+Pazaryeri işlerini `MarketplaceJobProcessor.ProcessAsync` alır ve artık yalnız şunları yapar: ön kontroller (bağlantı,
+kapsam, ilk aktarım, pasif bağlantı, otomatik yeniden test), bağlantının yürütme kilidi, akış telemetrisi ve çekilen
+kayıtlar, sonra işi yönlendirme (`MarketplaceJobProcessor.cs`; `MarketplaceJobProcessor.Dispatch.cs`). İşin mantığı
+işlemcide değil; iki yoldan birindedir:
 
 - **Kendi işleyici sınıfı olan işler** (`IJobHandler`, kendi `JobOutcome` telemetrisiyle): soru çekme, dört finans çekimi,
   Tam Sıfırlama (`Jobs/Handlers/`).
-- **Çalıştırma işleyicileri** (`IRunJobHandler`, 16 Kas 2026): işlemcinin çalıştırma durumunu (`JobRunContext`) ve
-  çalıştırma servislerini (`JobRunServices`) paylaşır; kilit, sayaçlar, telemetri ve çekilen kayıtlar işlemcide kalır,
-  hatalar işlemcinin kendi yakalama bloklarına düşer (`JobProcessing/RunJobHandlers.cs`). Taşınanlar: ürün çekme ×3 ve
-  ürün yapısı çekme (`CatalogImportService`), referans listeleri ×5 (`ReferenceSyncService`), sipariş okumaları — yeni
-  sipariş, geçmiş, açık sipariş, uzlaştırma (`OrderReadService`), iade okumaları — yeni iade, açık iade, uzlaştırma
-  (`ReturnReadService`); 16 Kas akşamı (ISLEYICI-9 aşama 5): paket fatura durumu kontrolü ×3
-  (`InvoiceReconciliationService`), Trendyol kargo bilgisi tamamlama (`OrderReadService`), günlük yayın doğrulaması ve
-  tekil varyant sorgusu (`ListingVerificationService`), bağlantı testi ×6 (`ConnectionTestService`), gönderim sonucu
-  doğrulama (`ExternalEffectReconcileService`), paket işlemi ve iade kararı gönderme (`ActionJobService`), ortak kargo
-  etiketi, Stage yetki kontrolü ve Stage test siparişi (`LabelJobService`). Yazma işlerinin tamamı işlemcinin tek
-  `ExternalEffectGuard`'ını ve aynı dış yazma anahtarlarını (`JobWriteSwitches`) kullanır.
-- **Altın testler**: taşınan her işin pazaryerine yaptığı her çağrı (yöntem, idempotency anahtarı, gönderilen komutun
-  bütün alanları), iş sonucu, etki kaydı ve kiracının taşımadan sonraki bütün tabloları sabitlendi: `ReadLoopGolden…`,
-  `ReadJobGolden…` (fatura, kargo bilgisi, yayın doğrulaması, bağlantı testi), `EffectReconcileGolden…`,
-  `ActionJobGolden…`, `LabelJobGolden…` (`tests/…/Contracts/`, ortak düzenek `JobGoldenHarness.cs`). Metinler bellekte
-  `StringComparer.Ordinal` ile sıralanır; testler hem C hem en-US harmanlamalı veritabanında koşar.
-- **Mantığı hâlâ işlemcide olan işler**: aşağıdaki tablo. Bunlar sırayla, her biri önce altın testle sabitlenip kendi
-  servisine, sonra bir çalıştırma işleyicisine taşınacak; işlemci en sonda yalnız ön kontrol, kilit, telemetri ve
-  yönlendirme olarak kalacak.
+- **Çalıştırma işleyicileri** (`IRunJobHandler`, `JobProcessing/RunJobHandlers.cs`): işlemcinin çalıştırma durumunu
+  (`JobRunContext`) ve çalıştırma servislerini (`JobRunServices`) paylaşır; kilit, sayaçlar, telemetri ve çekilen kayıtlar
+  işlemcide kalır, hatalar işlemcinin kendi yakalama bloklarına düşer. Her aile kendi servisindedir:
 
-| Sıra | İş tipleri | Mantığın yeri | Taşımak için gereken |
-|---|---|---|---|
-| 1 | `STOCK_PROJECTION_DISPATCH`, `STOCK_RECONCILIATION`, `PRICE_INVENTORY_SYNC` | `.StockProjection`, `.PriceInventory` (Pazarama ve tekrar-istek yolları dahil) | **Yazma** işleri (otomatik fiyat/stok yazması canlıda kapalı; bu taşıma hiçbir anahtarı açmaz). Önce `PriceInventoryComposer`'ın kurduğu gövdeyle SUBMIT/POLL, belirsiz sonuç, tekrar istek reddi, süre aşımı ve otomatik gönderim kuyruğunun altın testi; `PttAvmProductUpdate` ürün güncellemesiyle birlikte taşınır. |
-| 2 | `PRODUCT_CREATE`, `PRODUCT_UPDATE`, `PRODUCT_ARCHIVE`, `PRODUCT_APPROVAL_RECONCILE` | `.ProductCreate`, `.ProductUpdate`, `.PttAvmProductUpdate`, `.TrendyolContentGroups`, `.TrendyolUpdateGroups`, `.ProductLinks` (yayın tarafı) | Yazma; yayın tarafı bağ yazımları (`ProductLinks`, fiyat/stok yanıtları da kullanır) ve onay takibi işi (`EnsureApprovalReconciliationJob`, `JobEnqueueSites` satırıyla) birlikte taşınır. Gönderilen ürün gövdelerinin, Trendyol içerik/güncelleme gruplarının ve onay okumalarının altın testi şart. |
-| 3 | `*_WEBHOOK_INGEST` ×3 | `.WebhookIngest`, `.Webhooks` | Okuma servislerini çağırır; kalan gelen kutusu işleme, Hepsiburada sipariş okuma kuyruğu (`QueueHepsiburadaOrderReadsAsync`, `JobEnqueueSites` satırıyla) ve paket açma işareti (`ActionJobService.MarkHepsiburadaPackageUnpackedAsync`'e yönlendirilir). |
+| İş tipleri | Servis | Yön |
+|---|---|---|
+| Ürün çekme ×3, ürün yapısı çekme | `CatalogImportService` | Okuma |
+| Referans listeleri ×5 | `ReferenceSyncService` | Okuma |
+| Yeni sipariş, geçmiş, açık sipariş, sipariş uzlaştırma, Trendyol kargo bilgisi | `OrderReadService` | Okuma |
+| Yeni iade, açık iade, iade uzlaştırma | `ReturnReadService` | Okuma |
+| Paket fatura durumu kontrolü ×3 | `InvoiceReconciliationService` | Okuma (fatura kesmez, eksik alan "faturasız" sayılmaz) |
+| Günlük yayın doğrulaması, tekil varyant sorgusu | `ListingVerificationService` | Okuma |
+| Bağlantı testi ×6 | `ConnectionTestService` | Okuma |
+| Gönderim sonucu doğrulama | `ExternalEffectReconcileService` | Okuma |
+| Paket işlemi, iade kararı | `ActionJobService` | Yazma |
+| Ortak kargo etiketi, Stage yetki kontrolü, Stage test siparişi | `LabelJobService` | Yazma |
+| Fiyat ve stok gönderme, stok gönderim hazırlığı, stok uzlaştırması | `PriceStockService` | Yazma (otomatik yazma canlıda kapalı; taşıma hiçbir anahtarı değiştirmedi) |
+| Ürün oluşturma, güncelleme, satışa kapatma (Pazarama satış durumu), onay durumu kontrolü | `ProductJobService` (yayın tarafı bağ yazımları dahil) | Yazma |
+| Anlık bildirim işleme ×3 | `WebhookIngestService` | Okuma |
 
-Kural: her adım tek commit, davranış değişmez; taşınan döngünün pazaryerine sorduğu her istek ve yazdığı her gövde önce
-altın testle sabitlenir, testler hem C hem en-US harmanlamalı veritabanında koşar.
+Yazma servisleri işlemcinin tek `ExternalEffectGuard`'ını ve aynı dış yazma anahtarlarını (`JobWriteSwitches`) kullanır.
+İşlemcide kalan küçük üyeler (`UpsertOrders`, `UpsertReturn`, `RematchUnmatchedOrderLines`, `AddListingLookupJobAsync`,
+`QueueListingLookupsForRefusedCodes`, `ApplyHepsiburadaShippingAddressAsync`, `NewImportedOfferVatRateAsync`) yalnız
+testlerin işlemci üzerinden çağırdığı yönlendiricilerdir.
+
+**Altın testler** (`tests/…/Contracts/`, ortak düzenek `JobGoldenHarness.cs`): taşınan her işin pazaryerine yaptığı her
+çağrı (yöntem, idempotency anahtarı, gönderilen komutun bütün alanları), iş sonucu, etki kaydı ve kiracının taşımadan
+sonraki bütün tabloları sabitlendi: `ReadLoopGolden…`, `ReadJobGolden…`, `EffectReconcileGolden…`, `ActionJobGolden…`,
+`LabelJobGolden…`, `PriceStockJobGolden…`, `ProductJobGolden…`, `WebhookJobGolden…`, `SingleOrderReadGolden…`. Metinler
+bellekte `StringComparer.Ordinal` ile sıralanır; testler hem C hem en-US harmanlamalı veritabanında koşar. Kural: bir iş
+taşınmadan önce altın testi mevcut kodla yazılıp ayrı commit'lenir; taşımadan sonra altın dosyalar bayt bayt aynı kalır.
+
+ISLEYICI-12 kalanları: Hepsiburada'nın tek sipariş okuması ortak `ReadSingleOrderAsync`'i kullanır; Trendyol'unki farklı
+mantıkta olduğu için (ipucuyla sorar, "bulunamadı"yı paket yedeğine başlangıç sayar) kendi yolundadır, paket yedeği ayrı
+adımdır (`RecoverTrendyolOrderFromPackagesAsync`). Trendyol açık sipariş tarama konumu metin imleç olarak kalır. Finans
+kaydı sorunları kayıtlarını `IssueRecorder.ByPrefixAsync` ile toplu okur; açma/kapama kuralları kendi sınıfındadır.
 
 ### 6.5 Kilit grupları
 
