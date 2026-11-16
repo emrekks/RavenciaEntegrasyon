@@ -6,7 +6,7 @@ using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
 
-// VERITABANI-DAGITIM-13: history tables are purged only when the owner sets a period, rows on both sides of the cutoff,
+// VERITABANI-DAGITIM-13: history tables are purged after their default or configured period, rows on both sides of the cutoff,
 // and the newest rows an offer or an order needs stay whatever their age. Each test runs in a transaction that is rolled
 // back. Price and order history rows are written without their parents (session_replication_role = replica, local to the
 // transaction; the test database user is the superuser, as in CI) because only the purge's own conditions are under test.
@@ -147,11 +147,11 @@ public sealed class HistoryRetentionPostgreSqlTests(PostgreSqlTenantIsolationFix
 
 public sealed class HistoryRetentionPolicyTests
 {
+    // Audit logs have no default (kept forever): unset, empty and "0" keep them; a set period never goes below the floor.
     [Theory]
     [InlineData(null, null)]
     [InlineData("", null)]
     [InlineData("0", null)]
-    [InlineData("-5", null)]
     [InlineData("30", 730)]
     [InlineData("1000", 1000)]
     [InlineData("99999", 3650)]
@@ -166,23 +166,44 @@ public sealed class HistoryRetentionPolicyTests
         Assert.Equal(expectedDays, period is null ? null : (int)period.Value.TotalDays);
     }
 
-    // What the owner may type into production.env: a typo keeps the table forever and is flagged, it never throws (a typed
-    // GetValue<int?> threw at worker start and stopped every sync).
+    // What the owner may type into production.env: a typo (or a negative number) keeps the table forever and is flagged, it
+    // never throws (a typed GetValue<int?> threw at worker start and stopped every sync) and never falls back to the default.
     [Theory]
-    [InlineData(null, null, false)]
-    [InlineData("", null, false)]
-    [InlineData("  ", null, false)]
+    [InlineData(null, 730, false)]
+    [InlineData("", 730, false)]
+    [InlineData("  ", 730, false)]
     [InlineData("0", null, false)]
     [InlineData(" 1000 ", 1000, false)]
-    [InlineData("30", 730, false)]
+    [InlineData("30", 365, false)]
+    [InlineData("-5", null, true)]
     [InlineData("730gün", null, true)]
     [InlineData("2y", null, true)]
     [InlineData("730.5", null, true)]
     public void ATypedValueThatIsNotANumberKeepsTheTableAndIsFlagged(string? configured, int? expectedDays, bool expectedInvalid)
     {
-        var period = HistoryRetentionPolicy.Period(HistoryRetentionPolicy.AuditLogs, configured, out var invalid);
+        var period = HistoryRetentionPolicy.Period(HistoryRetentionPolicy.ProductChangeEntries, configured, out var invalid);
         Assert.Equal(expectedDays, period is null ? null : (int)period.Value.TotalDays);
         Assert.Equal(expectedInvalid, invalid);
+    }
+
+    // The periods the owner accepted on 16 Nov 2026 apply without a host step; "0" is the one way to keep a table forever.
+    [Theory]
+    [InlineData("ProductChangeEntry", 730)]
+    [InlineData("ChannelPriceHistory", 730)]
+    [InlineData("AiUsageLog", 365)]
+    [InlineData("AuditLog", null)]
+    [InlineData("OrderStatusHistory", null)]
+    public void TheAcceptedPeriodsAreTheDefaultsAndZeroMeansNever(string key, int? expectedDays)
+    {
+        var table = HistoryRetentionPolicy.Tables.Single(x => x.Key == key);
+        var configuration = new ConfigurationBuilder().Build();
+
+        var period = HistoryRetentionPolicy.Period(table, configuration[HistoryRetentionPolicy.SettingName(table)], out var invalid);
+
+        Assert.False(invalid);
+        Assert.Equal(expectedDays, period is null ? null : (int)period.Value.TotalDays);
+        Assert.Equal(expectedDays, HistoryRetentionPolicy.Period(table, "", out _) is { } empty ? (int)empty.TotalDays : null);
+        Assert.Null(HistoryRetentionPolicy.Period(table, HistoryRetentionPolicy.NeverPurge, out _));
     }
 
     [Fact]
@@ -194,15 +215,14 @@ public sealed class HistoryRetentionPolicyTests
     }
 
     [Fact]
-    public void EveryTableIsOffByDefaultAndNamedInTheProposal()
+    public void EveryTableAndItsDefaultIsNamedInTheProposal()
     {
-        var configuration = new ConfigurationBuilder().Build();
         var proposal = File.ReadAllText(Path.Combine(TestRepository.Root(), "docs", "SAKLAMA-SURELERI.md"));
         var compose = File.ReadAllText(Path.Combine(TestRepository.Root(), "deploy", "compose", "compose.production.yaml"));
         foreach (var table in HistoryRetentionPolicy.Tables)
         {
-            Assert.Null(HistoryRetentionPolicy.Period(table, configuration[HistoryRetentionPolicy.SettingName(table)], out _));
             Assert.Contains(table.Name, proposal, StringComparison.Ordinal);
+            if (table.DefaultDays is { } days) Assert.Contains($"**{days} gün", proposal, StringComparison.Ordinal);
             Assert.Contains(HistoryRetentionPolicy.SettingName(table).Replace(":", "__", StringComparison.Ordinal), compose, StringComparison.Ordinal);
         }
     }
