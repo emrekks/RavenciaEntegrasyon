@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
@@ -8,7 +9,7 @@ import { formatIstanbul } from '../../../shared/format-date'
 import { TabSlidePanel } from '../../../shared/tab-slide'
 import { formatCount, formatTl, formatTlWhole, platformName } from '../report-format'
 import { transactionLabel } from '../transaction-labels'
-import { byDay, emptyPayoutFilters, estimateNote, filterGroups, isRolledToPayoutDay, isWaitingPayout, lineMoney, nextPayout, otherCurrenciesText, rolledPayoutNote, payoutRuleText, payoutGap, payoutLinesQuery, payoutState, payoutStateLabels, payoutsQuery, regionLabel, regionLabels, shortDay, statusLabels, type PayoutFilters, type PayoutGroup, type PayoutLines, type PayoutRegion, type PayoutSort, type PayoutState, type Payouts } from '../payouts'
+import { byDay, emptyPayoutFilters, estimateNote, filterGroups, isRolledToPayoutDay, isWaitingPayout, lineMoney, nextPayout, otherCurrenciesText, rolledPayoutNote, payoutRuleText, payoutGap, payoutLinesQuery, payoutState, payoutStateLabels, payoutsQuery, readPayoutLines, readPayouts, regionLabel, regionLabels, shortDay, statusLabels, type PayoutFilters, type PayoutGroup, type PayoutRegion, type PayoutSort, type PayoutState } from '../payouts'
 import { readUrlChoice, readUrlList, readUrlText, useListUrlSync } from '../../../shared/list-url-state'
 import { RrAnchor, RrFilterCard, RrIcon } from '../../../shared/ui/rr-components'
 import { RETURN_NO_PLATFORM, ReturnColumnPop, ReturnPlatformPop } from '../../marketplace/shared'
@@ -55,8 +56,8 @@ export function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[
     { hp: [], hr: 'ALL', hs: 'ALL', hf: '', ht: '', hmin: '', hmax: '', hq: '', ho: 'date' })
   const none = platforms.includes(RETURN_NO_PLATFORM)
   const query = payoutsQuery(platforms.length ? platforms : null)
-  const result = useQuery({ queryKey: queryKeys.reportsPayouts(query), queryFn: ({ signal }) => hubApi<Payouts>(`/reports/payouts?${query}`, { signal }), staleTime: 60_000, placeholderData: previous => previous, enabled: !none })
-  const everything = useQuery({ queryKey: queryKeys.reportsPayouts(''), queryFn: ({ signal }) => hubApi<Payouts>('/reports/payouts?', { signal }), staleTime: 60_000, enabled: platforms.length > 0 })
+  const result = useQuery({ queryKey: queryKeys.reportsPayouts(query), queryFn: async ({ signal }) => readPayouts(await hubApi<ApiAnswer<'getReportsPayouts'>>(`/reports/payouts?${query}`, { signal })), staleTime: 60_000, placeholderData: previous => previous, enabled: !none })
+  const everything = useQuery({ queryKey: queryKeys.reportsPayouts(''), queryFn: async ({ signal }) => readPayouts(await hubApi<ApiAnswer<'getReportsPayouts'>>('/reports/payouts?', { signal })), staleTime: 60_000, enabled: platforms.length > 0 })
   const apply = (next: typeof draft) => {
     setDraft(next)
     setPlatforms(next.platforms)
@@ -296,7 +297,7 @@ ${otherText}` : ''}` },
 function PayoutLinesTable({ platforms, group, search }: { platforms: string[] | null; group?: PayoutGroup; search?: string }) {
   const [page, setPage] = useState(0)
   const query = payoutLinesQuery({ platforms, group, search, page })
-  const result = useQuery({ queryKey: queryKeys.reportsPayoutLines(query), queryFn: ({ signal }) => hubApi<PayoutLines>(`/reports/payouts/lines?${query}`, { signal }), staleTime: 60_000, placeholderData: previous => previous })
+  const result = useQuery({ queryKey: queryKeys.reportsPayoutLines(query), queryFn: async ({ signal }) => readPayoutLines(await hubApi<ApiAnswer<'getReportsPayoutsLines'>>(`/reports/payouts/lines?${query}`, { signal })), staleTime: 60_000, placeholderData: previous => previous })
   const data = result.data
   if (result.isError && !data) return <ErrorBox error={result.error} onRetry={() => void result.refetch()} />
   if (!data) return <Busy />

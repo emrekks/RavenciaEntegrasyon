@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -96,23 +97,24 @@ const connectionsFixture = vi.hoisted(() => ({ items: undefined as Array<{ id: s
 const fixture = vi.hoisted(() => ({ current: null as ReportSales | null }))
 // Trendyol's ad report: none uploaded unless a test sets one.
 const adReports = vi.hoisted(() => ({ current: { reports: [] as unknown[], stores: [{ connectionId: 'c1', storeName: 'Ravencia Trendyol' }] } }))
-const payouts = {
+const payouts: ApiAnswer<'getReportsPayouts'> = {
+  paidUnread: 0, paidUnreadRecords: 0, otherCurrencies: null,
   today: '2026-11-04', daysBack: 90, expected: 1180, expectedRecords: 3, unknown: 240, unknownRecords: 1, earlyPaymentsTaken: 0, earlyPayments: 0, pendingDelivery: 1450.5, pendingDeliveryOrders: 3,
-  next: { key: 'next:2026-11-05', kind: 'PAYOUT_DAY', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: null, day: '2026-11-05', amount: 880, linesAmount: null, records: 2, status: 'EXPECTED' },
-  lastPaid: { key: 'payout:store-1:78542975', kind: 'PAYOUT', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: 'Türkiye', day: '2026-10-29', amount: 950, linesAmount: 950, records: 4, status: 'PAID' },
+  next: { key: 'next:2026-11-05', kind: 'PAYOUT_DAY', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: null, day: '2026-11-05', amount: 880, linesAmount: null, records: 2, status: 'EXPECTED', estimates: null, carried: null },
+  lastPaid: { key: 'payout:store-1:78542975', kind: 'PAYOUT', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: 'Türkiye', day: '2026-10-29', amount: 950, linesAmount: 950, records: 4, status: 'PAID', estimates: null, carried: null },
   platforms: [{ platformCode: 'TRENDYOL', expected: 1080, records: 3, nextDay: '2026-11-05', nextAmount: 780, unknown: 240, pendingDelivery: 1450.5, pendingDeliveryOrders: 3 }, { platformCode: 'PAZARAMA', expected: 100, records: 1, nextDay: '2026-11-05', nextAmount: 100, unknown: 0, pendingDelivery: 0, pendingDeliveryOrders: 0 }],
   regions: [{ region: 'TR_GULF', expected: 780, records: 2, nextDay: '2026-11-05', nextAmount: 780, unknown: 240, pendingDelivery: 1050.5, pendingDeliveryOrders: 2 }, { region: 'EUROPE', expected: 400, records: 1, nextDay: '2026-11-12', nextAmount: 400, unknown: -50, pendingDelivery: 400, pendingDeliveryOrders: 1 }],
   upcoming: [
-    { key: 'due:store-1:2026-11-05:TR_GULF', kind: 'PAYOUT_DAY', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: null, day: '2026-11-05', amount: 780, linesAmount: null, records: 2, status: 'EXPECTED' },
-    { key: 'due:store-3:2026-11-05:NONE:DUE_DAY', kind: 'DUE_DAY', connectionId: 'store-3', platformCode: 'PAZARAMA', storeName: 'Pazarama', region: 'NONE', regionName: null, day: '2026-11-05', amount: 100, linesAmount: null, records: 1, status: 'EXPECTED' },
-    { key: 'due:store-1:2026-11-12:EUROPE:DUE_DAY', kind: 'DUE_DAY', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'EUROPE', regionName: null, day: '2026-11-12', amount: 400, linesAmount: null, records: 1, status: 'EXPECTED' },
-    { key: 'due:store-1:2026-11-04:EUROPE:OVERDUE', kind: 'OVERDUE', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'EUROPE', regionName: null, day: '2026-11-04', amount: 240, linesAmount: null, records: 1, status: 'EXPECTED' }
+    { key: 'due:store-1:2026-11-05:TR_GULF', kind: 'PAYOUT_DAY', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: null, day: '2026-11-05', amount: 780, linesAmount: null, records: 2, status: 'EXPECTED', estimates: null, carried: null },
+    { key: 'due:store-3:2026-11-05:NONE:DUE_DAY', kind: 'DUE_DAY', connectionId: 'store-3', platformCode: 'PAZARAMA', storeName: 'Pazarama', region: 'NONE', regionName: null, day: '2026-11-05', amount: 100, linesAmount: null, records: 1, status: 'EXPECTED', estimates: null, carried: null },
+    { key: 'due:store-1:2026-11-12:EUROPE:DUE_DAY', kind: 'DUE_DAY', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'EUROPE', regionName: null, day: '2026-11-12', amount: 400, linesAmount: null, records: 1, status: 'EXPECTED', estimates: null, carried: null },
+    { key: 'due:store-1:2026-11-04:EUROPE:OVERDUE', kind: 'OVERDUE', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'EUROPE', regionName: null, day: '2026-11-04', amount: 240, linesAmount: null, records: 1, status: 'EXPECTED', estimates: null, carried: null }
   ],
-  past: [{ key: 'payout:store-1:78542975', kind: 'PAYOUT', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: 'Türkiye', day: '2026-10-29', amount: 950, linesAmount: 950, records: 4, status: 'PAID' }],
+  past: [{ key: 'payout:store-1:78542975', kind: 'PAYOUT', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: 'Türkiye', day: '2026-10-29', amount: 950, linesAmount: 950, records: 4, status: 'PAID', estimates: null, carried: null }],
   coverage: [{ connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', state: 'READ', lastSyncedAt: '2026-11-04T09:00:00Z' }, { connectionId: 'store-2', platformCode: 'PTTAVM', storeName: 'PTT', state: 'NOT_SUPPORTED', lastSyncedAt: null }]
 }
-const payoutLines = { items: [{ externalId: '725041340', connectionId: 'store-1', platformCode: 'TRENDYOL', transactionType: 'Satış', category: 'SALE', transactionDate: '2026-10-20T10:00:00Z', dueDay: '2026-11-05',
-  orderNumber: '10234', invoiceNumber: 'DCF2026000123', country: 'Türkiye', region: 'TR_GULF', gross: 1000, commission: 200, net: 800, status: 'EXPECTED', paymentOrderId: null, barcode: 'MZ042DSS14' }], totalCount: 1, page: 0, pageSize: 100, net: 800 }
+const payoutLines: ApiAnswer<'getReportsPayoutsLines'> = { items: [{ externalId: '725041340', connectionId: 'store-1', platformCode: 'TRENDYOL', transactionType: 'Satış', category: 'SALE', transactionDate: '2026-10-20T10:00:00Z', dueDay: '2026-11-05',
+  orderNumber: '10234', invoiceNumber: 'DCF2026000123', country: 'Türkiye', region: 'TR_GULF', gross: 1000, commission: 200, net: 800, status: 'EXPECTED', paymentOrderId: null, barcode: 'MZ042DSS14', currency: 'TRY' }], totalCount: 1, page: 0, pageSize: 100, net: 800, nextCursor: null, hasMore: false }
 
 vi.mock('../../shared/api', () => ({
   loadAllPages: vi.fn(async () => { if (!connectionsFixture.items) throw new Error('connections not read'); return { items: connectionsFixture.items, nextCursor: null, hasMore: false } }),

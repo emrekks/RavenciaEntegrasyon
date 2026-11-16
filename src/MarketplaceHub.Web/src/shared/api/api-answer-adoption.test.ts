@@ -59,9 +59,8 @@ const inlineAnswerCalls = (files: Record<string, string>) => answerCalls(files, 
 
 // API-TYPES, round 7: a hand-written object type named as the answer of a declared operation (`type Payouts = { … }`);
 // an alias of the contract (`= ApiAnswer<…>`, a narrowed `Omit<…> & …`) does not count. The number may only go down;
-// round 8 (29 → 3): what is left are Payouts and PayoutLines, read in PayoutsReport.tsx, whose nested unions need a
-// narrowing function at that fetch (the file was another change's this round).
-const handWrittenAnswerTypes = 3
+// round 8 took it from 29 to 3, round 9 to 0 (Payouts and PayoutLines narrowed at their fetches).
+const handWrittenAnswerTypes = 0
 function handWrittenNames(files: Record<string, string>) {
   const names = new Set<string>()
   for (const text of Object.values(files)) for (const match of text.matchAll(/^(?:export )?type (\w+)(?:<[^=]*>)? = \{/gm)) names.add(match[1])
