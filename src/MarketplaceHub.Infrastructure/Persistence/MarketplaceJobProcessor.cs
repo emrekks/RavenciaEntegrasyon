@@ -98,6 +98,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     run.UpdatedCount += outcome.Telemetry.Updated;
                     run.ChangedCount += outcome.Telemetry.Changed;
                     run.FailedCount += outcome.Telemetry.Failed;
+                    run.SkippedCount += outcome.Telemetry.Skipped;
+                    if (outcome.Telemetry.Import is { } import)
+                    {
+                        run.ProductImportTelemetry = true;
+                        run.ImportReceivedCount += import.Received;
+                        run.ImportProcessedCount += import.Processed;
+                        run.ImportSkippedCount += import.Skipped;
+                        run.ImportFailedCount += import.Failed;
+                    }
                     directResult = outcome.Result;
                 }
                 else if (DirectJobDispatch.TryGetValue(jobType, out var direct)) directResult = await direct(this, new JobDispatchArgs(tenantId, connectionId.Value, payloadJson, correlationId, jobId, platform), cancellationToken);
