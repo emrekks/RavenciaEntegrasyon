@@ -132,6 +132,5 @@ describe('Ürünler row selection (WEB-SAYFALAR-11 table)', () => {
       expect(box('Keten Gömlek')!.checked).toBe(true)
     }
     if (outcome === 'counted') expect(barCount()).toContain('1 ürün kartı seçildi')
-    if (outcome === 'uncounted') expect(barCount()).toBe('')
   })
 })

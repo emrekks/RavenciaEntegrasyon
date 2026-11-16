@@ -4,9 +4,9 @@ import { MemoryRouter } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-// W6 (scan 2026-11-15) pins today's behaviour: Siparişler clears its selection on every list change (sort included),
-// unlike Faturalar (kept when only the sort changes on page 1) and Ürünler (kept across pages on purpose). Whether they
-// should agree waits for the owner.
+// W6 (scan 2026-11-15) and the owner's rule of 16 Nov 2026 (WEB-SAYFALAR-11, "Hepsi korusun"): Siparişler clears its
+// selection on every list change (sort included) and keeps it across pages, as Ürünler and Faturalar do; an order picked
+// on another page still counts and is in the bulk actions.
 const requested: string[] = []
 const order = (id: string, orderNumber: string) => ({ id, orderNumber, derivedStatus: 'NEW', currency: 'TRY', grossAmount: 100, discountAmount: 0, netAmount: 100, orderedAt: '2026-11-14T10:00:00Z', lineCount: 1, packageCount: 1, version: 1, connectionId: 'c1', platformCode: 'TRENDYOL', platformDisplayName: 'Trendyol', customerName: 'Ayşe Yılmaz', customerTaxOrIdentityNumber: null, orderType: 'STANDARD', isMicroExport: false, shipmentAddress: null, shipmentDueAt: null, isDeadlineCritical: false, invoiceStatus: 'NONE', invoiceId: null, invoiceDocumentUrl: null, cargoProviderName: 'Yurtiçi', cargoTrackingNumber: `TRK-${id}`, primaryImageUrl: null, productQuantity: 1, lines: null, packages: null })
 
@@ -14,7 +14,7 @@ vi.mock('../../../shared/api', async importOriginal => {
   const original = await importOriginal<typeof import('../../../shared/api')>()
   const answer = async (path: string) => {
     requested.push(path)
-    if (path.startsWith('/orders?')) return { items: [order('o1', 'TY-1'), order('o2', 'TY-2')], nextCursor: 'next', hasMore: true, totalCount: 120 }
+    if (path.startsWith('/orders?')) return new URLSearchParams(path.split('?')[1]).get('after') ? { items: [order('o9', 'TY-9')], nextCursor: null, hasMore: false, totalCount: 120 } : { items: [order('o1', 'TY-1'), order('o2', 'TY-2')], nextCursor: 'next', hasMore: true, totalCount: 120 }
     if (path.startsWith('/orders/facets')) return { platforms: {}, cargos: {} }
     if (path.startsWith('/orders/summary')) return {}
     if (path.startsWith('/dashboard/cancellations')) return { stores: [] }
@@ -48,7 +48,7 @@ const checkbox = (orderNumber: string) => container.querySelector<HTMLInputEleme
 const checked = () => Array.from(container.querySelectorAll<HTMLInputElement>('input[aria-label^="Sipariş "][aria-label$=" seç"]')).filter(input => input.checked).length
 
 describe('OrdersPage selection', () => {
-  it('clears on a sort change and on a page change, and the bulk bar counts only the selected rows of the page', async () => {
+  it('clears on a sort change, keeps the picks across pages and counts them in the bulk bar and its actions', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     await act(async () => { root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/orders']}><OrdersPage /></MemoryRouter></QueryClientProvider>) })
     await settle()
@@ -71,6 +71,16 @@ describe('OrdersPage selection', () => {
     act(() => container.querySelector<HTMLButtonElement>('button[aria-label="Sonraki"]')!.click())
     await settle()
     expect(requested.filter(path => path.startsWith('/orders?')).at(-1)).toContain('after=next')
+    // TY-2 is on page 1: no box here is ticked, and the bar still counts it.
     expect(checked()).toBe(0)
+    expect(container.querySelector('.rr-bulk')?.textContent).toContain('1 sipariş seçildi')
+    expect(container.querySelector('button[aria-label^="Etiketleri Yazdır"]')?.getAttribute('aria-label')).toBe('Etiketleri Yazdır (1)')
+    act(() => checkbox('TY-9').click())
+    expect(container.querySelector('.rr-bulk')?.textContent).toContain('2 sipariş seçildi')
+    expect(container.querySelector('button[aria-label^="Etiketleri Yazdır"]')?.getAttribute('aria-label')).toBe('Etiketleri Yazdır (2)')
+    act(() => container.querySelector<HTMLButtonElement>('button[aria-label="Önceki"]')!.click())
+    await settle()
+    expect(checkbox('TY-2').checked).toBe(true)
+    expect(container.querySelector('.rr-bulk')?.textContent).toContain('2 sipariş seçildi')
   })
 })

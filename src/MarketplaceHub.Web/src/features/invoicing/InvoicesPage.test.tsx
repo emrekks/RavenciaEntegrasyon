@@ -28,7 +28,8 @@ vi.mock('../../shared/api', () => ({
       // The server answers the page it was asked for (clamped to the last one), after an optional delay.
       const requestedPage = Math.min(apiState.totalPages, pageOf(path))
       if (apiState.pageDelayMs) await new Promise(resolve => setTimeout(resolve, apiState.pageDelayMs))
-      return { items: invoiceFixtures.map(item => ({ ...item })), totalCount: invoiceFixtures.length * apiState.totalPages, pageNumber: requestedPage, pageSize: 20, totalPages: apiState.totalPages, uninvoicedCount: 3, invoicedCount: 0, dueSoonCount: 3, totalPackageCount: 3, hasPendingMarketplaceInvoices: true, shipmentStatuses: ['DELIVERED'], cargoProviders: ['Aras', 'Yurtiçi'], invoiceStatuses: ['FATURA_BEKLIYOR'] }
+      // A later page holds other packages (the same rows under other ids), so a pick on page 1 is off screen there.
+      return { items: invoiceFixtures.map(item => requestedPage > 1 ? { ...item, id: `${item.id}-p${requestedPage}`, orderId: `${item.orderId}-p${requestedPage}`, packageId: `${item.packageId}-p${requestedPage}`, orderNumber: `${item.orderNumber}-${requestedPage}` } : { ...item }), totalCount: invoiceFixtures.length * apiState.totalPages, pageNumber: requestedPage, pageSize: 20, totalPages: apiState.totalPages, uninvoicedCount: 3, invoicedCount: 0, dueSoonCount: 3, totalPackageCount: 3, hasPendingMarketplaceInvoices: true, shipmentStatuses: ['DELIVERED'], cargoProviders: ['Aras', 'Yurtiçi'], invoiceStatuses: ['FATURA_BEKLIYOR'] }
     }
     if (path === '/invoice-workspace/manual-status') {
       const body = JSON.parse(String(init?.body)) as { status: string; packageIds: string[] }
@@ -408,8 +409,8 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
   })
 
   // W6 (scan 2026-11-15), owner 15 Nov 2026: like Siparişler, every list change clears the selection, a sort change on
-  // page 1 too. Ürünler keeps the selection across pages on purpose.
-  it('clears the selection on a sort change on page 1, a page or a tab change, and a bulk action hits the rows it names', async () => {
+  // page 1 too; owner 16 Nov 2026: a page change keeps it on all four lists.
+  it('clears the selection on a sort or a tab change, keeps it across pages, and a bulk action hits every row it names', async () => {
     const selected = () => container.querySelector('.invoice-reference-bulk-toolbar')?.textContent ?? ''
     const pick = (orderNumber: string) => act(() => container.querySelector<HTMLInputElement>(`[aria-label$="#${orderNumber} siparişini seç"]`)!.click())
     apiState.totalPages = 3
@@ -440,15 +441,30 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     await settle()
     expect(apiState.statusUpdates).toEqual([{ path: '/invoice-workspace/manual-status', status: 'UPLOADED', packageIds: ['shopify-package-1'] }])
 
+    // Owner, 16 Nov 2026 ("Hepsi korusun"): a page change keeps the pick; the package left on page 1 still counts and is
+    // in the bulk action with the one picked on page 2.
     pick('SH-1002')
     await settle()
-    expect(selected()).toContain('sipariş seçildi')
+    expect(selected()).toContain('1 sipariş seçildi')
     act(() => container.querySelector<HTMLButtonElement>('button[aria-label="Sonraki"]')!.click())
     await settle()
     expect(pageOf(apiState.pageRequests.at(-1)!)).toBe(2)
     expect(Array.from(container.querySelectorAll<HTMLInputElement>('.invoice-reference-select')).some(input => input.checked)).toBe(false)
+    expect(selected()).toContain('1 sipariş seçildi')
 
-    pick('SH-1002')
+    pick('SH-1001-2')
+    await settle()
+    expect(selected()).toContain('2 sipariş seçildi')
+    act(() => button('Fatura Durumunu Güncelle').click())
+    await settle()
+    act(() => container.querySelector<HTMLButtonElement>('button[aria-label^="Yeni fatura durumu"]')!.click())
+    act(() => Array.from(document.querySelectorAll<HTMLButtonElement>('[role="option"]')).find(option => option.textContent === 'Faturası Yüklendi')!.click())
+    act(() => button('2 Siparişi Güncelle').click())
+    await settle()
+    expect(apiState.statusUpdates.at(-1)?.packageIds.toSorted()).toEqual(['shopify-package-1-p2', 'shopify-package-2'])
+
+    // A tab change clears the selection.
+    pick('SH-1001-2')
     await settle()
     expect(selected()).toContain('1 sipariş seçildi')
     act(() => button('Tümü').click())

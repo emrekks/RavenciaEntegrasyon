@@ -190,16 +190,26 @@ describe('returns page', () => {
     await waitFor(() => !new URLSearchParams(host.querySelector('[data-testid="address"]')!.textContent!).has('page'))
   })
 
-  it('drops the bulk selection when the page changes, so a hidden return is never decided by mistake', async () => {
+  // Owner, 16 Nov 2026 ("Hepsi korusun", WEB-SAYFALAR-11): a page change keeps the bulk selection; the returns picked on
+  // another page still count and go into the decision with their versions.
+  it('keeps the bulk selection across pages and decides the returns picked on another page too', async () => {
     const { host } = renderPage('/returns?status=ACTION_REQUIRED')
     await waitFor(() => host.textContent?.includes('#2'))
     act(() => { host.querySelector<HTMLInputElement>('input[aria-label="Tüm iadeleri seç"]')!.click() })
     await waitFor(() => host.textContent?.includes('iade seçildi'))
+    const picked = Array.from(host.querySelectorAll<HTMLInputElement>('tbody input.rr-cb')).filter(box => box.checked).length
+    expect(picked).toBeGreaterThan(0)
+    const bar = () => host.querySelector('.rr-bulk:not(.is-leaving)')?.textContent ?? ''
     act(() => { byText<HTMLButtonElement>(host, 'button[aria-label="Sonraki"]', '').click() })
     await waitFor(() => host.textContent?.includes('#21'))
+    expect(Array.from(host.querySelectorAll<HTMLInputElement>('tbody input.rr-cb')).some(box => box.checked)).toBe(false)
+    expect(bar()).toContain(`${picked} iade seçildi`)
+    act(() => { host.querySelector<HTMLInputElement>('tbody input.rr-cb')!.click() })
+    expect(bar()).toContain(`${picked + 1} iade seçildi`)
     act(() => { byText<HTMLButtonElement>(host, '.rr-pages button', '1').click() })
     await waitFor(() => host.textContent?.includes('#2'))
-    expect(Array.from(host.querySelectorAll<HTMLInputElement>('tbody input.rr-cb')).some(box => box.checked)).toBe(false)
+    expect(Array.from(host.querySelectorAll<HTMLInputElement>('tbody input.rr-cb')).filter(box => box.checked)).toHaveLength(picked)
+    expect(bar()).toContain(`${picked + 1} iade seçildi`)
   })
 
   it('does not apply search text that was typed but not submitted when a tab is chosen', async () => {
