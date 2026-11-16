@@ -155,3 +155,12 @@
   :root:root main :is(.rr-seg > button, .rr-op-q, .rr-btn.rr-link, .rr-icon-btn, .rr-reminder-gear, .rr-cb, .order-number-copy, .invoice-reference-product-summary, .invoice-reference-select) { position: relative; }
   :root:root main :is(.rr-seg > button, .rr-op-q, .rr-btn.rr-link, .rr-icon-btn, .rr-reminder-gear, .rr-cb, .order-number-copy, .invoice-reference-product-summary, .invoice-reference-select)::before { content: ""; position: absolute; top: 50%; left: 50%; width: max(100%, 36px); height: max(100%, 36px); transform: translate(-50%, -50%); }
 }
+/* Phones: text fields show 16px text. iOS Safari zooms the page by itself when a focused field's text is smaller than
+   16px; the viewport allows pinch-zoom (WEB-ALTYAPI-15, owner 16 Nov 2026), so the field size is what keeps iOS still.
+   Each field keeps its own height (36px). Phones only: tablet and desktop keep every field's own size. The page sheets
+   size their fields with long selectors of their own (.rr-in, .rv-search-field > input, the product editor's labels…);
+   :not(#phone-field) adds one id's weight, which no class selector has, so no field needs a rule of its own and no
+   !important is needed. */
+@media (max-width: 760px) {
+  :root body :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="button"], [type="submit"], [type="reset"], [type="image"], [type="hidden"]), select, textarea):not(#phone-field) { font-size: 16px; }
+}
