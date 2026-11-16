@@ -6051,9 +6051,11 @@ export interface ApiOperations {
       after?: string
       status?: string
       search?: string
+      /** @deprecated Use platforms; kept for older browser tabs. When both are sent, platforms wins. */
       platform?: string
       stock?: string
       sort?: string
+      platforms?: string
     }
     headers: Record<string, never>
     body: never
@@ -6249,6 +6251,7 @@ export interface ApiOperations {
     query: {
       kind?: string
       status?: string
+      /** @deprecated Use platforms; kept for older browser tabs. When both are sent, platforms wins. */
       platform?: string
       connectionId?: string
       dateFrom?: string
@@ -6263,6 +6266,7 @@ export interface ApiOperations {
       after?: string
       /** 1-100; the service brings any other value into it. Default 50. */
       pageSize?: number | string
+      platforms?: string
     }
     headers: Record<string, never>
     body: never

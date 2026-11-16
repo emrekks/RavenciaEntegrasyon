@@ -35,24 +35,43 @@ export type ProductTransferRow = {
   oldVatRate?: number | null; newVatRate?: number | null; vatChange?: ProductTransferFieldChange
   oldBrand?: string | null; newBrand?: string | null; brandChange?: ProductTransferFieldChange
 }
-export type ProductTransferChange = {
-  variantId: string; version: number; setCost: boolean; cost: number | null; setDesi: boolean; desi: number | null
-  stock?: { expectedOnHand: number; onHand: number } | null
-  prices?: Array<{ offerId: string; version: number; salePrice: number; listPrice: number }> | null
-  barcode?: string | null; setModelCode?: boolean; modelCode?: string | null
-  panelPrice?: { salePrice: number; listPrice: number } | null
-}
-export type ProductTransferProductChange = { productId: string; version: number; title: string | null; vatRate: number | null; brand?: string | null }
+type TransferPreviewAnswer = ApiAnswer<'postProductsTransferImport'>
+// The changes go back as the apply body as the answer gave them (the apply request reads numbers or strings).
+export type ProductTransferChange = TransferPreviewAnswer['changes'][number]
+export type ProductTransferProductChange = NonNullable<TransferPreviewAnswer['productChanges']>[number]
 // POST /products/transfer/import, sent back as the apply body. CONTRACT: the API declares its numbers (versions, cost,
 // desi, stock, VAT, prices) as "number or string" because the schema is the apply request's too, which reads either; an
 // answer writes numbers. It declares the fields as strings; ProductTransferFields holds only ProductTransferField's codes.
-export type ProductTransferPreview = {
-  fileName: string; availableFields: ProductTransferField[]; fields: ProductTransferField[]; stores: Array<{ connectionId: string; name: string }>
-  totalRows: number; updates: number; costUpdates: number; costClears: number; desiUpdates: number; desiClears: number; stockUpdates: number; priceUpdates: number
-  unchanged: number; skipped: number; unmatched: number; ambiguous: number; errors: number
-  rows: ProductTransferRow[]; rowsTruncated: boolean; changes: ProductTransferChange[]
-  productChanges?: ProductTransferProductChange[] | null
-  titleUpdates?: number; barcodeUpdates?: number; modelCodeUpdates?: number; modelCodeClears?: number; panelPriceUpdates?: number; vatUpdates?: number; brandUpdates?: number
+export type ProductTransferPreview = Omit<TransferPreviewAnswer, 'availableFields' | 'fields' | 'rows'> & { availableFields: ProductTransferField[]; fields: ProductTransferField[]; rows: ProductTransferRow[] }
+
+const transferFields: ReadonlySet<string> = new Set<ProductTransferField>(['TITLE', 'BRAND', 'BARCODE', 'MODEL_CODE', 'PANEL_PRICES', 'VAT', 'COST', 'DESI', 'STOCK', 'PRICES'])
+const transferOutcomes: ReadonlySet<string> = new Set<ProductTransferOutcome>(['UPDATE', 'UNCHANGED', 'SKIPPED', 'UNMATCHED', 'AMBIGUOUS', 'ERROR'])
+const isTransferField = (code: string): code is ProductTransferField => transferFields.has(code)
+const isTransferOutcome = (code: string): code is ProductTransferOutcome => transferOutcomes.has(code)
+// A change kind the panel does not know still changes something: it is shown as a set value, never as no change.
+const fieldChange = (kind: string | null): ProductTransferFieldChange => kind === null ? null : kind === 'CLEAR' ? 'CLEAR' : 'SET'
+
+/**
+ * The preview as the dialog reads it. A field code the panel has no name for is left out of the picks (it cannot be
+ * offered); a row outcome it does not know is shown as an error with the code in its message, so it is never counted
+ * as an update or as unchanged.
+ */
+export function readTransferPreview(raw: TransferPreviewAnswer): ProductTransferPreview {
+  return {
+    ...raw,
+    availableFields: raw.availableFields.filter(isTransferField),
+    fields: raw.fields.filter(isTransferField),
+    rows: raw.rows.map(row => {
+      return {
+        ...row,
+        outcome: isTransferOutcome(row.outcome) ? row.outcome : 'ERROR',
+        message: isTransferOutcome(row.outcome) ? row.message : [`Bilinmeyen sonuç: ${row.outcome}`, row.message].filter(Boolean).join(' · '),
+        costChange: fieldChange(row.costChange), desiChange: fieldChange(row.desiChange), stockChange: fieldChange(row.stockChange),
+        titleChange: fieldChange(row.titleChange), barcodeChange: fieldChange(row.barcodeChange), modelCodeChange: fieldChange(row.modelCodeChange),
+        panelPriceChange: fieldChange(row.panelPriceChange), vatChange: fieldChange(row.vatChange), brandChange: fieldChange(row.brandChange)
+      }
+    })
+  }
 }
 export type ProductTransferApplyResult = {
   variants: number; costsUpdated: number; costsCleared: number; desiUpdated: number; desiCleared: number; stocksUpdated: number; pricesUpdated: number; products: number
@@ -117,7 +136,7 @@ export function ProductTransferDialog({ onClose }: { onClose: () => void }) {
       const body = new FormData()
       body.append('file', upload)
       body.append('fields', picked.join(','))
-      return hubApi<ProductTransferPreview>('/products/transfer/import', { method: 'POST', body })
+      return hubApi<TransferPreviewAnswer>('/products/transfer/import', { method: 'POST', body }).then(readTransferPreview)
     },
     onMutate: () => { previewId.current = null },
     onSuccess: () => { previewId.current = newIdempotencyKey() }

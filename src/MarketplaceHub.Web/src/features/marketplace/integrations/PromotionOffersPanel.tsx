@@ -28,12 +28,13 @@ export type PromotionSummary = Omit<ApiAnswer<'getConnectionsByConnectionIdPromo
 // commission and costs (the product cost, cargo, service fee, withholding tax and net VAT). RemainingHigh: the most a
 // model's variants leave when their costs differ (remaining and costs are then the dearest variant's).
 export type PromotionPrice = { price: number; rate: number | null; commission: number | null; remaining: number | null; remainingHigh?: number | null; costs?: UnitProfitCosts | null }
-type Product = { modelCode: string | null; productName: string | null; color: string | null; imageUrl: string | null; stock: number | null; promotions: string | null; category?: string | null; brand?: string | null }
-export type PlusOffer = Product & { barcode: string; sellerSku: string | null; size: string | null; costPrice: number | null; now: PromotionPrice | null; plus: PromotionPrice | null; gain: number | null }
+// The product columns every offer row shares (a row type of the offer tables, not an answer).
+type OfferProduct = { modelCode: string | null; productName: string | null; color: string | null; imageUrl: string | null; stock: number | null; promotions: string | null; category?: string | null; brand?: string | null }
+export type PlusOffer = OfferProduct & { barcode: string; sellerSku: string | null; size: string | null; costPrice: number | null; now: PromotionPrice | null; plus: PromotionPrice | null; gain: number | null }
 export type AdvantageStar = { star: number; min: number | null; max: number; price: PromotionPrice }
-export type AdvantageOffer = Product & { barcode: string; size: string | null; costPrice: number | null; inTariff: boolean | null; currentStars: number; now: PromotionPrice | null; stars: AdvantageStar[] }
+export type AdvantageOffer = OfferProduct & { barcode: string; size: string | null; costPrice: number | null; inTariff: boolean | null; currentStars: number; now: PromotionPrice | null; stars: AdvantageStar[] }
 export type FlashSlot = { slot: string; start: string | null; end: string | null; price: PromotionPrice }
-export type FlashOffer = Product & { barcodes: string[]; costLow: number | null; costHigh: number | null; inTariff: boolean | null; campaign: boolean | null; now: PromotionPrice | null; slots: FlashSlot[] }
+export type FlashOffer = OfferProduct & { barcodes: string[]; costLow: number | null; costHigh: number | null; inTariff: boolean | null; campaign: boolean | null; now: PromotionPrice | null; slots: FlashSlot[] }
 type Detail = Omit<ApiAnswer<'getConnectionsByConnectionIdPromotionOffersByKind'>, 'offer'> & { offer: PromotionSummary }
 type UploadResult = Omit<ApiAnswer<'postConnectionsByConnectionIdPromotionOffers'>, 'offer'> & { offer: PromotionSummary }
 type PanelMessage = { kind: 'success' | 'error' | 'info' | 'warning'; text: string; warnings?: string[] }
@@ -70,7 +71,7 @@ export function byModel<T extends { modelCode: string | null; color: string | nu
 }
 
 // A row matches the search by its name, model code, seller SKU or one of its barcodes.
-export function matches(row: Product & { barcode?: string; barcodes?: string[]; sellerSku?: string | null }, search: string) {
+export function matches(row: OfferProduct & { barcode?: string; barcodes?: string[]; sellerSku?: string | null }, search: string) {
   const term = search.trim().toLocaleLowerCase('tr')
   if (!term) return true
   return [row.productName, row.modelCode, row.barcode, row.sellerSku, ...(row.barcodes ?? [])].some(value => value?.toLocaleLowerCase('tr').includes(term))
@@ -96,7 +97,7 @@ function PriceCard({ price, label, highlight, heading, current }: { price: Promo
   </div>
 }
 
-function ProductCell({ row, detail, code }: { row: Product; detail: ReactNode; code: ReactNode }) {
+function ProductCell({ row, detail, code }: { row: OfferProduct; detail: ReactNode; code: ReactNode }) {
   return <div className="commission-product-cell">
     <ProductImage url={row.imageUrl} title={row.productName ?? '—'} initial={(row.productName ?? '?').slice(0, 1)} />
     <span>
@@ -108,7 +109,7 @@ function ProductCell({ row, detail, code }: { row: Product; detail: ReactNode; c
 }
 
 const none = <span className="commission-choice-none">—</span>
-const modelLine = (row: Product, size?: string | null) => [row.modelCode, row.color, size].filter(Boolean).join(' · ') || '—'
+const modelLine = (row: OfferProduct, size?: string | null) => [row.modelCode, row.color, size].filter(Boolean).join(' · ') || '—'
 
 export function PromotionOffersPanel({ connectionId, kind }: { connectionId: string; kind: PromotionKind }) {
   const client = useQueryClient()
@@ -195,7 +196,7 @@ export type OfferFilter = { name: string; barcode: string; model: string; minSto
   // The phone's search box: the name, model code, seller SKU or a barcode at once.
   search?: string }
 export const noOfferFilter: OfferFilter = { name: '', barcode: '', model: '', minStock: '', maxStock: '', category: '', brand: '', column: '', minProfit: '', maxProfit: '', minShare: '', maxShare: '' }
-type OfferRow = Product & { barcode?: string; barcodes?: string[]; sellerSku?: string | null }
+type OfferRow = OfferProduct & { barcode?: string; barcodes?: string[]; sellerSku?: string | null }
 
 const number = (text: string) => {
   const cleaned = text.trim().replace(',', '.').replace('−', '-')
@@ -294,7 +295,7 @@ const gainCard = (badge: ReactNode) => <div className="commission-choice is-stat
 // The products of a page on a phone: a card each with its picture, name, codes and stock, its price now with the rate it
 // pays now, and its offered prices as a row of cards that slides sideways; a model opens onto its rows (sizes, or a
 // flash offer's days), each with its own price, stock and cards.
-function OfferCards<T extends Product>({ groups, label, now, stocks, nowNote, cards, groupCards }: {
+function OfferCards<T extends OfferProduct>({ groups, label, now, stocks, nowNote, cards, groupCards }: {
   groups: Array<[string, T[]]>; label: RowLabel<T>; now: (row: T) => PromotionPrice | null; stocks: (rows: T[]) => Array<number | null>
   nowNote?: (rows: T[]) => ReactNode; cards: (row: T) => ReactNode; groupCards: (rows: T[]) => ReactNode
 }) {
@@ -369,7 +370,7 @@ type RowLabel<T> = { key: (row: T) => string; title: (row: T) => ReactNode; code
 
 // The rows of a page: a model with more rows is one row (its picture, name, colour and its rows' ranges) that opens
 // onto them; a model of one row is that row.
-function GroupedRows<T extends Product>({ groups, label, cells, groupCells }: {
+function GroupedRows<T extends OfferProduct>({ groups, label, cells, groupCells }: {
   groups: Array<[string, T[]]>; label: RowLabel<T>; cells: (row: T) => ReactNode; groupCells: (rows: T[]) => ReactNode
 }) {
   const [opened, setOpened] = useState<Set<string>>(() => new Set())

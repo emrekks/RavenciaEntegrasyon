@@ -17,7 +17,7 @@ export type QuickPriceTarget =
   | { kind: 'blocked'; reason: string }
 
 type QuickPriceVariant = {
-  platformStatuses?: ReadonlyArray<{ connectionId?: string | null; offerId?: string | null; offerVersion?: number | null; listPrice?: number | null; salePrice?: number | null; currency?: string | null; vatRate?: number | null; vatInclusion?: string | null; roundingMode?: string | null; safetyStock?: number | null; offerStatus?: string | null; followsPanelPrice?: boolean | null; platformCode?: string | null }>
+  platformStatuses?: ReadonlyArray<{ connectionId?: string | null; offerId?: string | null; offerVersion?: number | null; listPrice?: number | null; salePrice?: number | null; currency?: string | null; vatRate?: number | null; vatInclusion?: string | null; roundingMode?: string | null; safetyStock?: number | null; offerStatus?: string | null; followsPanelPrice?: boolean | null; platformCode?: string | null }> | null
 }
 
 // Marketplaces that take a sale price only (Hepsiburada's inventory upload and PttAVM's price send carry no list

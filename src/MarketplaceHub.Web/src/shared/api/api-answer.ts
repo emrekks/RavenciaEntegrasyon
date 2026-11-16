@@ -10,7 +10,9 @@ import type { ApiOperationId, ApiResponse } from './generated/api-types'
 
 /** `T` as the serializer writes it: every member present, a nullable one as null. */
 export type Written<T> =
-  T extends string | number | boolean | null | undefined | void ? T
+  // unknown (a value of any type the contract leaves open) stays unknown, not {}.
+  unknown extends T ? T
+  : T extends string | number | boolean | null | undefined | void ? T
     : T extends readonly (infer Item)[] ? Written<Item>[]
       : { [Key in keyof T]-?: Written<Exclude<T[Key], undefined>> }
 

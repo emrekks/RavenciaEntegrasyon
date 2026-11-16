@@ -2,7 +2,7 @@ import { QueryClient } from '@tanstack/react-query'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CommissionTariffRow } from './CommissionTariffsPanel'
 import { compactRowPage } from './commission-tariff-rows.test-util'
-import { expandRowPage, prefetchLastTariff, rememberTariff, tariffRowPaging } from './commission-tariff-rows'
+import { expandRowPage, prefetchLastTariff, readCompactRowPage, rememberTariff, tariffRowPaging } from './commission-tariff-rows'
 import { setStorageScope } from '../../../shared/storage-scope'
 
 // A live row (RYP004-07, 9 Nov 2026) as the long form gave it, and one whose bands' costs differ and whose band rate
@@ -41,6 +41,10 @@ describe('commission tariff rows in the short form', () => {
     expect(compact.strings).toEqual([live.productName, live.imageUrl])
     expect(expandRowPage(compact)).toEqual(page)
     expect(JSON.stringify(compact).length).toBeLessThan(JSON.stringify(page).length / 2)
+    // The answer as the wire gives it (rows of any values) is checked row by row before it is expanded.
+    const wire = { ...compact, rows: compact.rows.map(row => [...row] as unknown[]), nextCursor: null, hasMore: false }
+    expect(expandRowPage(readCompactRowPage(wire))).toEqual(page)
+    expect(() => readCompactRowPage({ ...wire, rows: [...wire.rows, ['only', 'two']] })).toThrow('Tarife satırı okunamadı (sayfanın 5. satırı).')
   })
 
   it('asks for the tariff the tab last opened on beside the stores, only for that store', () => {

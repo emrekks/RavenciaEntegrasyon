@@ -9,7 +9,7 @@ const card = (productId: string, colour: string, onTrendyol: boolean) => ['S', '
   productId,
   sku: `${productId}-${size}`,
   optionSignature: `Renk: ${colour} | Beden: ${size}`,
-  options: undefined,
+  options: null,
   platformStatuses: onTrendyol ? [linked] : []
 }))
 

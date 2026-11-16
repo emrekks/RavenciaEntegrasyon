@@ -1,4 +1,5 @@
-import type { ApiAnswer } from '../../../shared/api/api-answer'
+import type { ApiAnswer, Written } from '../../../shared/api/api-answer'
+import type { CommissionTariffCompactRowPage } from '../../../shared/api/generated/api-types'
 import type { QueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
 import { cursorPageParams } from '../../../shared/api/paging'
@@ -20,7 +21,33 @@ type CompactRow = [
   bands: CompactBand[], nextLowerBand: CompactBand | null, matchesPanel: boolean, costPrice: number | null, choices: CompactChoice[] | null,
   recommendedTier: number | null, imageUrl: number | null, color: string | null, stock: number | null, shared: [number, number, number, number] | null
 ]
-export type CompactRowPage = { strings: string[]; rows: CompactRow[]; totalCount: number; page: number; pageSize: number }
+type CompactRowAnswer = Written<CommissionTariffCompactRowPage>
+// CONTRACT: the API declares the compact rows as arrays of any value; readCompactRowPage checks each against CompactRow.
+export type CompactRowPage = Omit<CompactRowAnswer, 'rows' | 'nextCursor' | 'hasMore'> & { rows: CompactRow[] }
+
+const isNum = (value: unknown): value is number => typeof value === 'number'
+const isNumOrNull = (value: unknown): value is number | null => value === null || typeof value === 'number'
+const isStrOrNull = (value: unknown): value is string | null => value === null || typeof value === 'string'
+const isBand = (value: unknown): value is CompactBand => Array.isArray(value) && value.length === 4 && isNum(value[0]) && isNumOrNull(value[1]) && isNumOrNull(value[2]) && isNum(value[3])
+const isCosts = (value: unknown): value is CompactCosts => value === null || (Array.isArray(value) && (value.length === 2 || value.length === 6) && value.every(isNum))
+const isChoice = (value: unknown): value is CompactChoice => Array.isArray(value) && (value.length === 5 || value.length === 6)
+  && isNum(value[0]) && isNum(value[1]) && isNum(value[2]) && isNumOrNull(value[3]) && isCosts(value[4]) && (value.length === 5 || isNum(value[5]))
+function isCompactRow(row: unknown[]): row is CompactRow {
+  return row.length === 21 && typeof row[0] === 'string' && typeof row[1] === 'string' && isStrOrNull(row[2]) && isStrOrNull(row[3]) && isNumOrNull(row[4])
+    && isStrOrNull(row[5]) && [6, 7, 8, 9, 10].every(index => isNumOrNull(row[index])) && Array.isArray(row[11]) && row[11].every(isBand)
+    && (row[12] === null || isBand(row[12])) && typeof row[13] === 'boolean' && isNumOrNull(row[14]) && (row[15] === null || (Array.isArray(row[15]) && row[15].every(isChoice)))
+    && isNumOrNull(row[16]) && isNumOrNull(row[17]) && isStrOrNull(row[18]) && isNumOrNull(row[19])
+    && (row[20] === null || (Array.isArray(row[20]) && row[20].length === 4 && row[20].every(isNum)))
+}
+
+/** The compact page as the panel reads it: a row that is not the CompactRow shape stops the read with an error (shown as one), never half-read. */
+export function readCompactRowPage(raw: CompactRowAnswer): CompactRowPage {
+  const rows = raw.rows.map((row, index) => {
+    if (!isCompactRow(row)) throw new Error(`Tarife satırı okunamadı (sayfanın ${index + 1}. satırı).`)
+    return row
+  })
+  return { strings: raw.strings, rows, totalCount: raw.totalCount, page: raw.page, pageSize: raw.pageSize }
+}
 
 const band = ([tier, min, max, rate]: CompactBand): CommissionBand => ({ tier, min, max, rate })
 
@@ -58,7 +85,7 @@ export function tariffRowPaging(query: Record<string, string>, page: number, siz
 // A page of a tariff's rows, asked for in the short form and given back in the long one.
 export async function loadRowPage(connectionId: string, tariffId: string, query: Record<string, string>, signal?: AbortSignal): Promise<RowPage> {
   const params = new URLSearchParams({ ...query, shape: 'compact' })
-  return expandRowPage(await hubApi<CompactRowPage>(`/connections/${connectionId}/commission-tariffs/${tariffId}/rows?${params}`, { signal }))
+  return expandRowPage(readCompactRowPage(await hubApi<CompactRowAnswer>(`/connections/${connectionId}/commission-tariffs/${tariffId}/rows?${params}`, { signal })))
 }
 
 // The tariffs a store's tab lists, and the tab's first page of rows; the panel and the prefetch below share them.

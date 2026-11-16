@@ -23,16 +23,7 @@ export type Category = Versioned & { name: string; path: string; depth: number; 
 export type Brand = Versioned & { name: string; isActive: boolean }
 export type Attribute = Versioned & { code: string; name: string; dataType: string; values: Array<{ id: string; value: string }>; roles?: string[] | null }
 export type ProductAttributeAssignment = VariantAttributeAssignment
-export type Variant = Versioned & {
-  sku: string; barcode: string | null; modelCode: string | null; optionSignature: string; status: string
-  weight: number | null; width: number | null; height: number | null; length: number | null; desi: number | null; costPrice: number | null
-  defaultListPrice?: number | null; defaultSalePrice?: number | null
-  onHand: number; available: number; inventoryVersion: number | null
-  productId?: string | null
-  offerId: string | null; listPrice: number | null; salePrice: number | null; currency: string | null; offerStatus: string | null
-  priceVersion: number | null; offerVersion: number | null; vatRate: number | null; vatInclusion: string | null; roundingMode: string | null; safetyStock: number | null
-  mediaUrls?: string[]; options?: Record<string, string>; platformStatuses?: VariantPlatformStatus[]; attributes?: ProductAttributeAssignment[]
-}
+export type Variant = Product['variants'][number]
 // missingVariantCount: variants the marketplace no longer knows (link NOT_FOUND or REJECTED), not in matchedVariantCount.
 // onSale/offSale…VariantCount: matched variants the marketplace says are on sale / closed to sale (the rest unknown);
 // offSaleStockZeroVariantCount: the closed ones whose only named reason is a stock of 0 (sale-state.ts).
@@ -57,34 +48,10 @@ export type VariantPlatformStatus = {
   // marketplace's reason while it is REJECTED (variant-status.ts).
   listingStatus?: string | null; rejectionReason?: string | null
 }
-export type Product = Versioned & {
-  title: string; description: string; brandId: string | null; categoryId: string | null; status: string; updatedAt: string
-  defaultListPrice?: number | null; defaultSalePrice?: number | null; warrantyMonths?: number | null
-  // Teslimat Süresi (gün): sent as each marketplace's delivery/dispatch time; null only on a card older than the field.
-  deliveryDays?: number | null
-  // The card's KDV Oranı and KDV Dahil mi ("INCLUDED"/"EXCLUDED"); null = not set on the card. A new marketplace offer
-  // (bulk publish) takes its VAT from here.
-  vatRate?: number | null; vatInclusion?: string | null
-  // Trendyol Web Color chosen by hand (panel colour value id); null = automatic from each variant's Renk.
-  trendyolWebColorValueId?: string | null
-  familyProductIds?: string[] | null
-  // The version of every card of familyProductIds as read (WEB-SAYFALAR-2): Kaydet sends them back as
-  // loadedFamilyVersions, so a colour card changed meanwhile is not overwritten (409 FAMILY_CHANGED).
-  familyVersions?: Record<string, number> | null
-  // Every colour card's own pictures (gallery, variant pictures, size chart), oldest card first whichever was opened.
-  familyGalleries?: Array<{ productId: string; mediaUrls: string[]; variantMediaUrls: string[]; sizeChartUrl: string | null }> | null
-  // The products list: the model's front picture, the family gallery's first picture as the editor shows it (never the
-  // size chart), the same on every card of the model. A colour card's own front picture stays primaryImageUrl.
-  familyImageUrl?: string | null
-  categoryPath?: string | null; variants: Variant[]; primaryImageUrl: string | null; totalStock: number; startingPrice: number | null; currency: string; modelCode: string | null; activePlatforms: string[] | null; familyMediaUrls?: string[]
-  familyMediaItems?: Array<{ url: string; mediaIds: string[]; sourceProductTitles: string[] }>; familyOrderedMediaUrls?: string[]; hasCustomMediaOrder?: boolean
-  platformStatuses?: ProductPlatformStatus[]
-  attributes?: ProductAttributeAssignment[]
-  options?: Array<{ id: string; label: string; values: Array<{ id: string; label: string }> }>
-  mediaUrls?: string[]
-  // The picture marked as the card's size chart (Beden Tablosu); the server already lists it last everywhere.
-  sizeChartUrl?: string | null
-}
+// A card as GET /products/{id} and the card writes answer it: every member present, null when unset.
+export type Product = ApiAnswer<'getProductsById'>
+// GET /products answers the same card but leaves its null members out (CatalogEndpoints.ProductListJson); the list
+// pages read it as Product and touch a nullable member only with ?? / ?. / != null (ProductsPage.loadProductPage).
 export function variantColorKey(variant: Variant) {
   const color = preferredColorOption(variantOptionEntries(variant))
   return color?.value.trim().toLocaleLowerCase('tr-TR') || null

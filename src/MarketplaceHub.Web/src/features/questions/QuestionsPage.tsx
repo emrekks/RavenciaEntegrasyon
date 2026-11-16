@@ -197,7 +197,7 @@ export function QuestionsPage() {
   const kind = tab === 'ORDER' ? 'ORDER' : 'PRODUCT'
   const connections = useQuery({ ...connectionQueries.list<Connection>(), select: questionConnections, staleTime: 60_000 })
   const filters = new URLSearchParams({ kind, status })
-  if (platform !== 'ALL') filters.set('platform', platform)
+  if (platform !== 'ALL') filters.set('platforms', platform)
   if (connectionId !== 'ALL') filters.set('connectionId', connectionId)
   if (dateFrom) filters.set('dateFrom', istanbulDayBoundary(dateFrom))
   if (dateTo) filters.set('dateTo', istanbulDayBoundary(dateTo, true))
@@ -214,7 +214,7 @@ export function QuestionsPage() {
   const countPath = (countKind: string, countStatus: QuestionStatus, scoped: boolean) => {
     const params = new URLSearchParams({ kind: countKind, status: countStatus, limit: '1', sort })
     if (scoped) {
-      if (platform !== 'ALL') params.set('platform', platform)
+      if (platform !== 'ALL') params.set('platforms', platform)
       if (connectionId !== 'ALL') params.set('connectionId', connectionId)
       if (dateFrom) params.set('dateFrom', istanbulDayBoundary(dateFrom))
       if (dateTo) params.set('dateTo', istanbulDayBoundary(dateTo, true))

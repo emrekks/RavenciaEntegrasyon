@@ -77,7 +77,7 @@ export function BulkPlatformUpdateDialog({ productIds, cardCount, connections, p
       title: product?.title ?? listed?.title ?? 'Ürün kartı',
       modelCode: product?.modelCode ?? listed?.modelCode ?? null,
       status: product?.status ?? listed?.status ?? '',
-      platformStatuses: listed?.platformStatuses ?? product?.platformStatuses,
+      platformStatuses: listed?.platformStatuses ?? product?.platformStatuses ?? null,
       gaps: product ? productRequiredGaps(product) : [],
       read: Boolean(read),
       failed: Boolean(read?.failed)

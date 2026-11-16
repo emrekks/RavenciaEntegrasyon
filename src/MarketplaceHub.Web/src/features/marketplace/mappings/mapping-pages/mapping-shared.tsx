@@ -19,9 +19,9 @@ export function useMappingNotificationConnection(connectionId: string) {
 export function MappingDeleteIcon() {
   return <UiIcon name="close" className="mapping-delete-icon" />
 }
-export type LocalCategory = { id: string; parentId?: string | null; name: string; path: string; depth: number; isLeaf: boolean; isActive: boolean; version: number }
+export type LocalCategory = ApiAnswer<'getCatalogCategories'>['items'][number]
 
-export type LocalAttribute = { id: string; code: string; name: string; dataType: string; isActive: boolean; version: number; roles?: string[] | null; values: { id: string; value: string; sortOrder: number; isActive: boolean }[] }
+export type LocalAttribute = ApiAnswer<'getCatalogAttributes'>['items'][number]
 
 export type ReferenceItem = ReferenceData['items'][number]
 export type ReferenceData = ApiAnswer<'getReferenceDataCategories'>

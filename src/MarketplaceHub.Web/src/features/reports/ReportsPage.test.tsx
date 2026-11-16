@@ -13,13 +13,13 @@ const group = (key: string, label: string, values: Partial<ReportGroup> = {}): R
 const summary = (values: Partial<ReportSummary> = {}): ReportSummary => ({
   orders: 4, cancelledOrders: 1, cancelRate: 0.2, soldQuantity: 5, returnedQuantity: 1, keptQuantity: 4, returnClaims: 1, returnRate: 0.2, ordersWithAmount: 3,
   grossSales: 350, returnedAmount: 100, netRevenue: 250, averageOrderValue: 116.67, ordersWithoutCity: 1, ordersWithoutAmount: 1, otherCurrencyOrders: 0,
-  listAmount: 380, discountAmount: 30, soldVariants: 2, vatFreeNetRevenue: 227.27, ...values
+  listAmount: 380, returnedListAmount: 0, discountAmount: 30, soldVariants: 2, vatFreeNetRevenue: 227.27, ...values
 })
 const report: ReportSales = {
-  from: '2026-10-01', to: '2026-10-22', previousFrom: '2026-09-09', previousTo: '2026-09-30', granularity: 'day', includesTest: false, generatedAt: '2026-10-22T10:00:00Z',
+  from: '2026-10-01', to: '2026-10-22', previousFrom: '2026-09-09', previousTo: '2026-09-30', granularity: 'day', includesTest: false, generatedAt: '2026-10-22T10:00:00Z', questionTimes: null, dataStartsOn: '2026-01-01',
   summary: summary(), previousSummary: summary({ orders: 2, netRevenue: 200, cancelRate: 0.1 }),
   commission: { coveredRevenue: 200, coverage: 0.8, estimatedCommission: 43, estimatedPayout: 157, effectiveRate: 0.215 },
-  cost: { keptQuantity: 4, costedQuantity: 4, coverage: 1, costTotal: 80, costedRevenue: 200, costedSales: 240, grossProfit: 120, grossMargin: 0.6, profitQuantity: 2, profitCoverage: 0.5, profitRevenue: 200, profitCost: 80, profitCommission: 43, netProfit: 77, netMargin: 0.385, costedVariants: 1 },
+  cost: { keptQuantity: 4, costedQuantity: 4, coverage: 1, costTotal: 80, costedRevenue: 200, costedSales: 240, keptRevenue: 200, grossProfit: 120, grossMargin: 0.6, profitQuantity: 2, profitCoverage: 0.5, profitRevenue: 200, profitCost: 80, profitCommission: 43, netProfit: 77, netMargin: 0.385, costedVariants: 1 },
   platforms: [
     group('TRENDYOL', 'TRENDYOL', { orders: 3, soldQuantity: 4, netRevenue: 250, grossSales: 350, ordersWithAmount: 3, estimatedCommission: 43, commissionCoveredRevenue: 200, children: [group('c1', 'Ravencia Trendyol')] }),
     group('SHOPIFY', 'SHOPIFY', { ordersWithAmount: 0, grossSales: 0, netRevenue: 0 })
@@ -32,8 +32,8 @@ const report: ReportSales = {
   previousTimeSeries: [{ start: '2026-09-09', orders: 1, soldQuantity: 1, returnedQuantity: 0, netRevenue: 100, cancelledOrders: 0 }],
   topProducts: [{ variantId: 'v1', productId: 'p1', title: 'Koltuk Kılıfı', sku: 'KLF-1', brand: 'Ravencia', category: 'Kılıf', soldQuantity: 2, returnedQuantity: 0, returnRate: 0, salesAmount: 200, estimatedCommission: 43, commissionCoveredAmount: 200, modelCode: 'KLF', imageUrl: '/api/v1/files/product-media/a1/content', options: [{ name: 'Kumaş Tipi', value: 'Viskon' }, { name: 'Beden', value: 'M' }, { name: 'Renk', value: 'Siyah' }], netAmount: 200, previousSoldQuantity: 1, available: 7 }],
   topReturned: [],
-  rising: [{ variantId: 'v1', productId: 'p1', title: 'Koltuk Kılıfı', sku: 'KLF-1', brand: 'Ravencia', category: 'Kılıf', soldQuantity: 2, returnedQuantity: 0, returnRate: 0, salesAmount: 200, estimatedCommission: 43, commissionCoveredAmount: 200, modelCode: 'KLF', netAmount: 200, previousSoldQuantity: 1 }],
-  falling: [{ variantId: 'v2', productId: 'p2', title: 'Masa Örtüsü', sku: 'MSA-1', brand: 'Ravencia', category: 'Örtü', soldQuantity: 0, returnedQuantity: 0, returnRate: null, salesAmount: 0, estimatedCommission: 0, commissionCoveredAmount: 0, netAmount: 0, previousSoldQuantity: 3 }],
+  rising: [{ variantId: 'v1', productId: 'p1', title: 'Koltuk Kılıfı', imageUrl: null, options: null, available: null, sku: 'KLF-1', brand: 'Ravencia', category: 'Kılıf', soldQuantity: 2, returnedQuantity: 0, returnRate: 0, salesAmount: 200, estimatedCommission: 43, commissionCoveredAmount: 200, modelCode: 'KLF', netAmount: 200, previousSoldQuantity: 1 }],
+  falling: [{ variantId: 'v2', productId: 'p2', title: 'Masa Örtüsü', imageUrl: null, options: null, available: null, modelCode: null, sku: 'MSA-1', brand: 'Ravencia', category: 'Örtü', soldQuantity: 0, returnedQuantity: 0, returnRate: null, salesAmount: 0, estimatedCommission: 0, commissionCoveredAmount: 0, netAmount: 0, previousSoldQuantity: 3 }],
   brands: [group('Ravencia', 'Ravencia'), group('Bilinmiyor', 'Bilinmiyor')],
   categories: [group('Kılıf', 'Kılıf')],
   returnReasons: [{ reason: 'Beden uymadı', known: true, count: 1 }],
@@ -57,7 +57,7 @@ const report: ReportSales = {
   // The previous period: 350 of sales, 100 back, 30 of commission and 60 of cost leave 160 of profit.
   previousAccount: {
     commission: { coveredRevenue: 150, coverage: 0.75, estimatedCommission: 30, estimatedPayout: 120, effectiveRate: 0.2 },
-    cost: { keptQuantity: 4, costedQuantity: 4, coverage: 1, costTotal: 60, costedRevenue: 150, grossProfit: 90, grossMargin: 0.6, profitQuantity: 2, profitCoverage: 0.5, profitRevenue: 150, profitCost: 60, profitCommission: 30, netProfit: 60, netMargin: 0.4, costedVariants: 1 },
+    cost: { keptQuantity: 4, costedQuantity: 4, coverage: 1, costTotal: 60, costedRevenue: 150, costedSales: 150, keptRevenue: 150, grossProfit: 90, grossMargin: 0.6, profitQuantity: 2, profitCoverage: 0.5, profitRevenue: 150, profitCost: 60, profitCommission: 30, netProfit: 60, netMargin: 0.4, costedVariants: 1 },
     costs: { source: 'estimate', lastSyncedAt: null, coveredFrom: null, coveredThrough: null, financeOrders: 2, settledOrders: 0, coverage: null, realCostTotal: null, commission: null, cargo: null, lines: [], channels: [], products: [] }
   }
 }

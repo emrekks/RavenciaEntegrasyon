@@ -1,6 +1,7 @@
 // Marketplace brand lists (Trendyol keeps 808k brands, Pazarama 104k) stay on the server: the brand mapping page reads
 // the list's size and age, searches it as the user types and resolves the saved mappings' ids to names. Nothing here
 // downloads the whole list, and nothing here starts a brand list read: the worker refreshes each list once a day.
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
@@ -10,9 +11,10 @@ import { useDismissable } from '../../../shared/hooks/useDismissable'
 import { useMenuFlip } from '../../../shared/hooks/useMenuFlip'
 import { queryKeys } from '../../../shared/api/query-keys'
 
+// A brand as the picker holds it (picked from a slice or typed back from a saved mapping): the members it shows.
 export type BrandReferenceItem = { externalId: string; name: string; isActive: boolean }
 // One slice of the connection's current brand snapshot: no items for the summary, the matches of a search or lookup.
-export type BrandReferenceSlice = { snapshotId: string; resourceType: string; fetchedAt: string; itemCount: number; items: BrandReferenceItem[] }
+export type BrandReferenceSlice = ApiAnswer<'getReferenceDataBrandsSearch'>
 
 const day = 24 * 60 * 60_000
 export const brandSearchDebounceMs = 250

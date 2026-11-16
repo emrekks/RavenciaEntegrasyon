@@ -12,21 +12,17 @@ vi.mock('../../../shared/api', async importOriginal => {
 import { hubApi } from '../../../shared/api'
 import { ProductQuickEditModal } from './ProductQuickEditModal'
 import type { Product, Variant } from '../shared'
+import { testProduct, testVariant, testVariantPlatformStatus } from '../../../test/product'
 
 function variant(id: string, color: string, size: string): Variant {
-  return {
-    id, version: 1, sku: `SKU-${id}`, barcode: null, modelCode: 'M1', optionSignature: `Renk:${color}|Beden:${size}`, status: 'ACTIVE',
-    weight: null, width: null, height: null, length: null, desi: null, costPrice: null, onHand: 3, available: 3, inventoryVersion: 1,
-    offerId: null, listPrice: null, salePrice: null, currency: 'TRY', offerStatus: null, priceVersion: null, offerVersion: null,
-    vatRate: null, vatInclusion: null, roundingMode: null, safetyStock: null, options: { Renk: color, Beden: size }
-  }
+  return testVariant({ id, sku: `SKU-${id}`, modelCode: 'M1', optionSignature: `Renk:${color}|Beden:${size}`, onHand: 3, available: 3, inventoryVersion: 1, currency: 'TRY', options: { Renk: color, Beden: size } })
 }
 
-const product = {
-  id: 'p1', version: 1, title: 'Gömlek', description: '', brandId: null, categoryId: null, status: 'ACTIVE', updatedAt: '2026-11-01T00:00:00Z',
+const product: Product = testProduct({
+  id: 'p1', title: 'Gömlek', updatedAt: '2026-11-01T00:00:00Z',
   variants: [variant('b-s', 'Bej', 'S'), variant('b-xl', 'Bej', 'XL'), variant('s-s', 'Siyah', 'S'), variant('s-xl', 'Siyah', 'XL')],
-  primaryImageUrl: null, totalStock: 12, startingPrice: null, currency: 'TRY', modelCode: 'M1', activePlatforms: []
-} as Product
+  totalStock: 12, modelCode: 'M1', activePlatforms: []
+})
 
 let container: HTMLDivElement
 let root: Root
@@ -217,8 +213,9 @@ describe('ProductQuickEditModal on a family of colour cards', () => {
 describe('ProductQuickEditModal with the products list copies', () => {
   // The products list leaves out each variant's channel offers (platformStatuses); the window shows the list copies until
   // each product is read by id. The "Özel Fiyat" choice must come from the read copies, never from the list's.
-  const listCopy = { ...product, variants: product.variants.map(item => ({ ...item, platformStatuses: undefined })) } as Product
-  const readCopy = (followsPanelPrice: boolean) => ({ ...product, variants: product.variants.map(item => ({ ...item, platformStatuses: [{ platform: 'Trendyol', platformCode: 'TRENDYOL', isLinked: true, connectionId: 'c1', offerId: `o-${item.id}`, offerVersion: 1, listPrice: 500, salePrice: 450, currency: 'TRY', followsPanelPrice }] })) }) as Product
+  // (null here, absent on the wire: the window treats both as not read)
+  const listCopy: Product = { ...product, variants: product.variants.map(item => ({ ...item, platformStatuses: null })) }
+  const readCopy = (followsPanelPrice: boolean): Product => ({ ...product, variants: product.variants.map(item => ({ ...item, platformStatuses: [testVariantPlatformStatus({ platform: 'Trendyol', platformCode: 'TRENDYOL', connectionId: 'c1', offerId: `o-${item.id}`, offerVersion: 1, listPrice: 500, salePrice: 450, currency: 'TRY', followsPanelPrice })] })) })
   const switches = () => Array.from(document.body.querySelectorAll<HTMLInputElement>('input.rr-qt-switch'))
   async function renderInTurn(...steps: Product[][]) {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })

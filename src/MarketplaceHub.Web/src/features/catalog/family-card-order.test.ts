@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { familyCardsInPanelOrder } from './family-card-order'
 import { marketplacePublishLines } from './product-publication-submit'
 
-const card = (productId: string, color: string | null) => ['L', 'XL'].map(size => ({ productId, optionSignature: color ? `Renk: ${color} | Beden: ${size}` : `Beden: ${size}`, options: undefined }))
+const card = (productId: string, color: string | null) => ['L', 'XL'].map(size => ({ productId, optionSignature: color ? `Renk: ${color} | Beden: ${size}` : `Beden: ${size}`, options: null }))
 
 describe('familyCardsInPanelOrder', () => {
   it('queues the colour cards in the panel colour order, not the opened card first', () => {

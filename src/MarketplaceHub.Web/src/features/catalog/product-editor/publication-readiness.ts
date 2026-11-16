@@ -11,7 +11,15 @@ import { queryKeys } from '../../../shared/api/query-keys'
 // publish runs it on each selected record (publicationReadinessDraftFromProduct fills the same input the editor's form
 // holds right after it opened that record), so both screens list the same gaps for the same product.
 
-export type CategoryRequirement = { attributeId: string; isRequired: boolean; allowsCustomValue: boolean; displayOrder: number; role: 'ATTRIBUTE' | 'OPTION'; isWebColor?: boolean; attribute: Attribute }
+type CategoryRequirementAnswer = ApiAnswer<'getCatalogCategoriesByIdAttributeRequirements'>[number]
+// CONTRACT: the API declares a requirement's role as a string; CategoryRequirementRoles writes ATTRIBUTE or OPTION.
+export type CategoryRequirement = Omit<CategoryRequirementAnswer, 'role' | 'attribute'> & { role: 'ATTRIBUTE' | 'OPTION'; attribute: Attribute }
+
+// The category's requirements as the editor reads them. A role the panel does not know is read as ATTRIBUTE, an
+// ordinary field: a required one still asks for its value and blocks the send, instead of being dropped from the form.
+export function readCategoryRequirements(rows: ApiAnswer<'getCatalogCategoriesByIdAttributeRequirements'>): CategoryRequirement[] {
+  return rows.map(row => ({ ...row, role: row.role === 'OPTION' ? 'OPTION' : 'ATTRIBUTE' }))
+}
 
 export function isOptionAttribute(attribute: Pick<Attribute, 'code' | 'name' | 'roles'>) {
   const normalizedName = normalizeVariantOptionName(attribute.name)
@@ -323,7 +331,7 @@ export async function loadPublicationAttributeIssues(client: QueryClient, connec
 
   const [attributeReferences, attributeMappings, attributeDefaults] = await Promise.all([
     readPublicationReadinessSource(`${cardName} kategori özellik listesi`, () => cached('reference-attributes', [categoryScope], () => hubApi<ApiAnswer<'getReferenceDataCategoriesByExternalIdAttributes'>>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes?connectionId=${connectionId}`))),
-    readPublicationReadinessSource('Yerel kategori özellik eşlemeleri', () => cached('attribute-mappings', [categoryScope], () => hubApi<PublicationMappingReference[]>(`/mappings/attributes?connectionId=${connectionId}&scopeExternalId=${encodeURIComponent(categoryScope)}`))),
+    readPublicationReadinessSource('Yerel kategori özellik eşlemeleri', () => cached('attribute-mappings', [categoryScope], () => hubApi<ApiAnswer<'getMappingsAttributes'>>(`/mappings/attributes?connectionId=${connectionId}&scopeExternalId=${encodeURIComponent(categoryScope)}`))),
     // Connection defaults (e.g. Menşei = TR) cover required attributes the product leaves empty.
     cached('attribute-defaults', [], () => hubApi<ApiAnswer<'getConnectionsByConnectionIdAttributeDefaults'>>(`/connections/${connectionId}/attribute-defaults`)).catch((): ApiAnswer<'getConnectionsByConnectionIdAttributeDefaults'> => [])
   ])
