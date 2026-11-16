@@ -26,7 +26,9 @@ export function scopedStorageKey(base: string) {
 export const personalStorageKeyPrefixes = [
   'ravencia.notification-history', 'rv-tab-counts:', 'rv-question-sync-count', 'rv-appearance-settings',
   // Background notices already raised, and the store and tariff the commission tab last opened on.
-  'ravencia.attention-notices', 'price-stock-monitor-notified', 'rv-commission-tariff-last'
+  'ravencia.attention-notices', 'price-stock-monitor-notified', 'rv-commission-tariff-last',
+  // sessionStorage: "Sonra Karar Ver" on the workspace invitations window, for this tab until sign-out.
+  'rv-invitations-later'
 ] as const
 
 // Keys that belong to this browser rather than to the person signed in, kept at sign-out on purpose: layout and theme
@@ -40,13 +42,30 @@ export const personalStorageKeyPrefixes = [
 export const deviceStorageKeyPrefixes = [
   'ravencia.sidebarPinned', 'ravencia.rememberedEmail', 'ravencia.rememberMe', 'ravencia.visualTheme',
   'ravencia.shippingLabelSettings', 'ravencia.shippingLabelTemplates', 'ravencia.printedShippingLabels',
-  'rv-answered-idempotency-keys', 'rv.priceSuggestion.assumptions', 'commission-table-zoom', 'rv-category-library-open', 'rv-height:'
+  'rv-answered-idempotency-keys', 'rv.priceSuggestion.assumptions', 'commission-table-zoom', 'rv-category-library-open', 'rv-height:',
+  // sessionStorage, this tab only: the one reload after a new build, and the first off-site backup run just started.
+  'rv-reloaded-for-new-build', 'offsite-first-run'
 ] as const
 
 const personalKeyPrefixes: readonly string[] = personalStorageKeyPrefixes
 
-/** Removes every person's notification history and remembered counts from this browser (at sign-out). */
-export function clearPersonalStorage(storage: Pick<Storage, 'length' | 'key' | 'removeItem'> | null = typeof localStorage === 'undefined' ? null : localStorage) {
+type ClearableStorage = Pick<Storage, 'length' | 'key' | 'removeItem'>
+
+/**
+ * Removes every person's notification history and remembered counts from this browser (at sign-out): from localStorage
+ * and this tab's sessionStorage, or from the one store given.
+ */
+export function clearPersonalStorage(storage?: ClearableStorage | null) {
+  if (storage !== undefined) { clearPersonalKeys(storage); return }
+  clearPersonalKeys(blockedOrMissing(() => localStorage))
+  clearPersonalKeys(blockedOrMissing(() => sessionStorage))
+}
+
+function blockedOrMissing(read: () => Storage): ClearableStorage | null {
+  try { return read() } catch { return null }
+}
+
+function clearPersonalKeys(storage: ClearableStorage | null) {
   if (!storage) return
   try {
     const keys: string[] = []

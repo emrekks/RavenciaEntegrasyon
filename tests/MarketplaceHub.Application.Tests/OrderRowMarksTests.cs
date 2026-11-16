@@ -58,13 +58,14 @@ public sealed class OrderRowMarksTests
         Assert.Equal("FastDelivery", OrderSnapshotReader.RowMarks("TRENDYOL", "TR", """{"fastDeliveryType":"FastDelivery"}""", "{}")?.FastDeliveryType);
     }
 
-    // micro and countryCode are independent: a foreign country without micro=true is no micro export.
+    // micro and countryCode are independent: a foreign country without a micro-export signal is no micro export. The mark
+    // follows the "Mikro İhracat" label's rule (owner, 16 Nov 2026, SIPARIS-STOK-3): "true" as text and 3pByTrendyol count.
     [Fact]
-    public void Micro_export_mark_needs_micro_true()
+    public void Micro_export_mark_follows_the_label_rule()
     {
         Assert.Null(OrderSnapshotReader.RowMarks("TRENDYOL", "RO", """{"micro":false}""", """{"countryCode":"RO"}"""));
-        Assert.Null(OrderSnapshotReader.RowMarks("TRENDYOL", "RO", """{"micro":"true"}""", """{"countryCode":"RO"}"""));
-        Assert.Null(OrderSnapshotReader.RowMarks("TRENDYOL", "TR", """{"3pByTrendyol":true}""", "{}"));
+        Assert.Equal(new(true, "RO", false, null, null), OrderSnapshotReader.RowMarks("TRENDYOL", "RO", """{"micro":"true"}""", """{"countryCode":"RO"}"""));
+        Assert.Equal(new(true, null, false, null, null), OrderSnapshotReader.RowMarks("TRENDYOL", "TR", """{"micro":false,"3pByTrendyol":true}""", "{}"));
     }
 
     // The shipment address of a micro order is the Istanbul depot; the invoice address names the country, the
@@ -92,15 +93,20 @@ public sealed class OrderRowMarksTests
         Assert.Equal(new(false, null, true, "KTN", null), OrderSnapshotReader.RowMarks("N11", null, """{"deliveryAddressType":"ktn"}""", "{}"));
         Assert.Null(OrderSnapshotReader.RowMarks("N11", null, """{"deliveryAddressType":""}""", "{}"));
         Assert.Null(OrderSnapshotReader.RowMarks("N11", null, """{"deliveryAddressType":null}""", "{}"));
-        // n11 sends no micro or fast delivery facts; other platforms get no marks at all.
-        Assert.Null(OrderSnapshotReader.RowMarks("N11", null, """{"micro":true,"fastDeliveryType":"FastDelivery"}""", "{}"));
-        Assert.Null(OrderSnapshotReader.RowMarks("HEPSIBURADA", null, """{"micro":true,"deliveryAddressType":"CollectionPoint"}""", "{}"));
+        // n11 sends no fast delivery facts and other platforms no delivery point; the micro-export mark is the label's on
+        // every platform, as the list's micro-export filter is.
+        Assert.Null(OrderSnapshotReader.RowMarks("N11", null, """{"fastDeliveryType":"FastDelivery"}""", "{}"));
+        Assert.Equal(new(true, null, false, null, null), OrderSnapshotReader.RowMarks("N11", null, """{"micro":true,"fastDeliveryType":"FastDelivery"}""", "{}"));
+        Assert.Null(OrderSnapshotReader.RowMarks("HEPSIBURADA", null, """{"deliveryAddressType":"CollectionPoint"}""", "{}"));
+        Assert.Equal(new(true, null, false, null, null), OrderSnapshotReader.RowMarks("HEPSIBURADA", null, """{"micro":true,"deliveryAddressType":"CollectionPoint"}""", "{}"));
     }
 
-    // Only the package's own fields count, not a same-named field deeper in the snapshot.
+    // Delivery point and fast delivery read the package's own fields only, not a same-named field deeper in the snapshot;
+    // the micro-export rule, like the label, reads its flag at any depth.
     [Fact]
-    public void Marks_read_top_level_fields_only()
+    public void Delivery_marks_read_top_level_fields_only()
     {
-        Assert.Null(OrderSnapshotReader.RowMarks("TRENDYOL", "TR", """{"lines":[{"fastDeliveryType":"FastDelivery","micro":true}]}""", "{}"));
+        Assert.Null(OrderSnapshotReader.RowMarks("TRENDYOL", "TR", """{"lines":[{"fastDeliveryType":"FastDelivery"}]}""", "{}"));
+        Assert.Equal(new(true, null, false, null, null), OrderSnapshotReader.RowMarks("TRENDYOL", "TR", """{"lines":[{"fastDeliveryType":"FastDelivery","micro":true}]}""", "{}"));
     }
 }

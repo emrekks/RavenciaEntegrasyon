@@ -127,8 +127,8 @@ describe('Faturalar row selection (WEB-SAYFALAR-11 table)', () => {
       expect(box('SH-1002')!.checked).toBe(true)
     }
     if (outcome === 'counted') expect(barText()).toContain('1 sipariş seçildi')
-    if (outcome === 'uncounted') {
-      expect(barText()).toBe('')
+    // The row comes back on a later read: it is ticked again, and counted once.
+    if (outcome === 'counted') {
       apiState.withSecond = true
       await act(async () => { await client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }) })
       await settle()

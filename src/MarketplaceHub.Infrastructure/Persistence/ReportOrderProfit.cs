@@ -168,11 +168,11 @@ internal static class ReportOrderProfit
             var state = order.Back > 0 && order.Kept == 0m ? "RETURNED" : order.Back > 0 ? "PARTLY_RETURNED" : "SOLD";
             views.Add(new ReportOrderProfitView(id, order.Order.OrderNumber, order.PlatformCode, input.Channels.TryGetValue(store, out var channel) ? channel.DisplayName : "",
                 order.Order.StoreFrontCode, abroad, order.Order.RealAt, state, amount, productCost, profit,
-                profit is { } p && productCost is > 0 ? MeasureRounding.Round(p / productCost.Value * 100m, 2) : null,
-                profit is { } q && amount > 0 ? MeasureRounding.Round(q / amount * 100m, 2) : null,
+                profit is { } p && productCost is > 0 ? PercentRounding.Percent(p / productCost.Value * 100m) : null,
+                profit is { } q && amount > 0 ? PercentRounding.Percent(q / amount * 100m) : null,
                 costs,
                 order.Lines.Select(line => new ReportOrderProfitLineView(line.Row.VariantId, line.Row.ProductId, line.Row.Title, line.Row.Barcode, line.Row.Sku, line.KeptUnits, line.Back,
-                    MoneyRounding.Round(line.KeptAmount), line.Commission is { } lc && line.KeptAmount > 0 ? MeasureRounding.Round(lc / line.KeptAmount * 100m, 2) : null, line.Commission is { } c ? MoneyRounding.Round(c) : null,
+                    MoneyRounding.Round(line.KeptAmount), line.Commission is { } lc && line.KeptAmount > 0 ? PercentRounding.Percent(lc / line.KeptAmount * 100m) : null, line.Commission is { } c ? MoneyRounding.Round(c) : null,
                     line.Row.CostPrice, line.Row.VatRate)).ToList(), unreadableLines));
         }
         return views;
@@ -186,7 +186,7 @@ internal static class ReportOrderProfit
         var profit = known.Count == 0 ? (decimal?)null : known.Sum(order => order.Profit!.Value);
         var profitAmount = known.Sum(order => order.Amount);
         return new(orders.Sum(order => order.Amount), profit, profitAmount, known.Count,
-            profit is { } p && profitAmount > 0 ? MeasureRounding.Round(p / profitAmount * 100m, 2) : null,
+            profit is { } p && profitAmount > 0 ? PercentRounding.Percent(p / profitAmount * 100m) : null,
             orders.Count(order => order.Cost is null),
             orders.Count(order => order.Costs.Any(cost => cost.Key == "cargo" && cost.Amount is null)),
             orders.Count(order => order.Costs.Any(cost => cost.Key == "commission" && cost.Amount is null)));

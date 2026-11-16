@@ -25,14 +25,30 @@ public sealed class RetryAfterHeaderTests
         Assert.Equal(RetryAfterHeader.Delay(new RetryConditionHeaderValue(Now.AddSeconds(90)), Now), TrendyolHttpClient.RetryAfterDelay(new RetryConditionHeaderValue(Now.AddSeconds(90)), Now));
     }
 
-    // The reading n11, Pazarama, PTT AVM and Shopify keep (a drift, see RetryAfterHeader.Unchecked).
-    [Fact]
-    public void UncheckedKeepsZeroAndPastDates()
+    // ADAPTOR-TY-HB-7 (owner, 16 Nov 2026): n11, Pazarama, PTT AVM and Shopify read the header with Delay too. A
+    // Retry-After of 0 or a past date used to give their 429 a zero or negative wait (the job then waited 30 s); now it
+    // names no wait and the adapter's own 429 default applies. A future wait is kept as before.
+    [Theory]
+    [InlineData("N11", 60)]
+    [InlineData("PAZARAMA", 60)]
+    [InlineData("PTTAVM", 60)]
+    [InlineData("SHOPIFY", 5)]
+    public void TheFourAdaptersReadAZeroOrPastRetryAfterAsTheirDefaultWait(string adapter, int defaultSeconds)
     {
-        Assert.Equal(TimeSpan.Zero, RetryAfterHeader.Unchecked(new RetryConditionHeaderValue(TimeSpan.Zero), Now));
-        Assert.Equal(TimeSpan.FromSeconds(-5), RetryAfterHeader.Unchecked(new RetryConditionHeaderValue(Now.AddSeconds(-5)), Now));
-        Assert.Equal(TimeSpan.FromSeconds(30), RetryAfterHeader.Unchecked(new RetryConditionHeaderValue(TimeSpan.FromSeconds(30)), Now));
-        Assert.Null(RetryAfterHeader.Unchecked(null, Now));
+        AdapterError Error(TimeSpan? wait) => adapter switch
+        {
+            "N11" => MarketplaceHub.Infrastructure.Adapters.N11.N11HttpClient.Error(HttpStatusCode.TooManyRequests, "", wait),
+            "PAZARAMA" => MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaHttpClient.Error(HttpStatusCode.TooManyRequests, "", wait),
+            "PTTAVM" => MarketplaceHub.Infrastructure.Adapters.PttAvm.PttAvmHttpClient.SoapResponse(HttpStatusCode.TooManyRequests, "", "Test", wait).Error!,
+            _ => MarketplaceHub.Infrastructure.Adapters.Shopify.ShopifyHttpClient.MapHttpError(HttpStatusCode.TooManyRequests, "", wait)
+        };
+
+        Assert.Equal(TimeSpan.FromSeconds(defaultSeconds), Error(RetryAfterHeader.Delay(new RetryConditionHeaderValue(TimeSpan.Zero), Now)).RetryAfter);
+        Assert.Equal(TimeSpan.FromSeconds(defaultSeconds), Error(RetryAfterHeader.Delay(new RetryConditionHeaderValue(Now.AddSeconds(-5)), Now)).RetryAfter);
+        Assert.Equal(TimeSpan.FromSeconds(30), Error(RetryAfterHeader.Delay(new RetryConditionHeaderValue(TimeSpan.FromSeconds(30)), Now)).RetryAfter);
+        // Downstream the job waits that long (the quota class keeps its attempt), never a tight loop.
+        var job = JobExecutionResult.FromAdapterError(Error(RetryAfterHeader.Delay(new RetryConditionHeaderValue(TimeSpan.Zero), Now)));
+        Assert.Equal(TimeSpan.FromSeconds(defaultSeconds), job.RetryAfter);
     }
 
     // ADAPTOR-TY-HB-7: a Retry-After date in the past gave Hepsiburada a negative wait.

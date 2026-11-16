@@ -58,6 +58,13 @@ describe('InvoiceWorkspacePreviewModal', () => {
     expect(document.body.textContent).not.toContain('order:')
   })
 
+  // Owner, 16 Nov 2026: the selection is kept across pages, so the approval window says up front how many orders the
+  // server read again, how many it will invoice and what they come to.
+  it('sums up every previewed order before the approval', async () => {
+    await open()
+    expect(document.body.querySelector('[role="status"].invoice-detail-muted')?.textContent).toMatch(/^1 sipariş okundu · 1 sipariş faturalanacak · Fatura Toplamı .*699,00/)
+  })
+
   // Issuing the previewed invoices is for the owner and administrators; the preview itself stays open to the others.
   it('lets an administrator issue the previewed invoice', async () => {
     await open('ADMINISTRATOR')

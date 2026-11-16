@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
@@ -19,8 +20,11 @@ internal static class ImportedApprovalStates
     public const string PartialRejected = "PARTIAL_REJECTED";
 
     // A listing the marketplace still reviews or refused: not on sale there, whatever link an import made for it.
-    public static bool IsHeldListing(string? actualStatus) => actualStatus is Pending or Rejected;
-    public static readonly string[] HeldListingStatuses = [Pending, Rejected];
+    // KATALOG-10: written once as an expression; the products filter and the Trendyol update run it in the database, the
+    // views compile it.
+    public static readonly Expression<Func<string?, bool>> IsHeldListingRule = actualStatus => actualStatus == Pending || actualStatus == Rejected;
+    private static readonly Func<string?, bool> IsHeldListingCompiled = IsHeldListingRule.Compile();
+    public static bool IsHeldListing(string? actualStatus) => IsHeldListingCompiled(actualStatus);
 
     private static readonly HashSet<string> OwnStatuses = new(StringComparer.Ordinal) { Pending, PartialPending, Rejected, PartialRejected };
 

@@ -1,6 +1,9 @@
 GET    /api/v1/api-health-signals | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 POST   /api/v1/auth/change-password | gate=Open | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=401 AUTHENTICATION_REQUIRED | ownerIfMatch=401 AUTHENTICATION_REQUIRED
 GET    /api/v1/auth/csrf | gate=Open | sameOrigin=no | anon=200 | owner=200 | cross=200
+GET    /api/v1/auth/invitations/ | gate=Open | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=401 AUTHENTICATION_REQUIRED | cross=401 AUTHENTICATION_REQUIRED
+POST   /api/v1/auth/invitations/{id:guid}/accept | gate=Open | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=401 AUTHENTICATION_REQUIRED | ownerIfMatch=401 AUTHENTICATION_REQUIRED
+POST   /api/v1/auth/invitations/{id:guid}/decline | gate=Open | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=401 AUTHENTICATION_REQUIRED | ownerIfMatch=401 AUTHENTICATION_REQUIRED
 POST   /api/v1/auth/login | gate=Open | sameOrigin=no | anon=400 INVALID_REQUEST | owner=400 INVALID_REQUEST | ownerIfMatch=400 INVALID_REQUEST
 POST   /api/v1/auth/logout | gate=Open | sameOrigin=no | anon=204 | owner=204 | ownerIfMatch=204
 GET    /api/v1/auth/me | gate=Open | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=401 AUTHENTICATION_REQUIRED | cross=401 AUTHENTICATION_REQUIRED
@@ -222,7 +225,7 @@ GET    /api/v1/products/{id:guid}/publication-status/{connectionId:guid} | gate=
 POST   /api/v1/products/{id:guid}/publication-status/{connectionId:guid}/refresh | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
 GET    /api/v1/products/{id:guid}/size-chart/ | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 PUT    /api/v1/products/{id:guid}/size-chart/ | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=500 INTERNAL_ERROR | ownerIfMatch=500 INTERNAL_ERROR
-POST   /api/v1/products/{id:guid}/size-chart/generate | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=500 INTERNAL_ERROR | ownerIfMatch=500 INTERNAL_ERROR
+POST   /api/v1/products/{id:guid}/size-chart/generate | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
 POST   /api/v1/products/{id:guid}/update-jobs | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
 POST   /api/v1/products/{productId:guid}/connections/{connectionId:guid}/price-inventory-sync-jobs | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
 GET    /api/v1/public/invoice-documents/{token}/content | gate=Open | sameOrigin=no | anon=404 | owner=404 | cross=404
@@ -231,7 +234,7 @@ GET    /api/v1/public/manual-invoice-documents/{token}/content | gate=Open | sam
 GET    /api/v1/public/manual-invoice-documents/{token}/invoice.pdf | gate=Open | sameOrigin=no | anon=404 | owner=404 | cross=404
 GET    /api/v1/public/product-media/{assetId:guid}/content | gate=Open | sameOrigin=no | anon=500 INTERNAL_ERROR | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 GET    /api/v1/question-templates | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
-POST   /api/v1/question-templates | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=500 INTERNAL_ERROR | ownerIfMatch=500 INTERNAL_ERROR
+POST   /api/v1/question-templates | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
 DELETE /api/v1/question-templates/{id:guid} | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IF_MATCH_REQUIRED | ownerIfMatch=500 INTERNAL_ERROR
 PUT    /api/v1/question-templates/{id:guid} | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IF_MATCH_REQUIRED | ownerIfMatch=500 INTERNAL_ERROR
 GET    /api/v1/questions | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
@@ -294,7 +297,8 @@ PUT    /api/v1/settings/resend-reminder | gate=Elevated | sameOrigin=no | anon=4
 GET    /api/v1/settings/shipping-label | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 PUT    /api/v1/settings/shipping-label | gate=Elevated | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=500 INTERNAL_ERROR | ownerIfMatch=500 INTERNAL_ERROR
 GET    /api/v1/settings/users/ | gate=Elevated | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
-POST   /api/v1/settings/users/ | gate=Elevated | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 INVALID_REQUEST | ownerIfMatch=400 INVALID_REQUEST
+POST   /api/v1/settings/users/ | gate=Elevated | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
+DELETE /api/v1/settings/users/invitations/{invitationId:guid} | gate=Elevated | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=500 INTERNAL_ERROR | ownerIfMatch=500 INTERNAL_ERROR
 POST   /api/v1/settings/users/{id:guid}/mfa-reset | gate=Elevated | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=500 INTERNAL_ERROR | ownerIfMatch=500 INTERNAL_ERROR
 POST   /api/v1/settings/users/{id:guid}/password-reset | gate=Elevated | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=500 INTERNAL_ERROR | ownerIfMatch=500 INTERNAL_ERROR
 PUT    /api/v1/settings/users/{id:guid}/role | gate=Elevated | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 INVALID_REQUEST | ownerIfMatch=400 INVALID_REQUEST

@@ -71,10 +71,10 @@ internal static class ReportPriceAssumptions
             var commission = sample.Sum(view => view.Costs.First(cost => cost.Key == "commission").Amount!.Value);
             var takesCommission = !ReportCosts.TakesNoCommission(channel.PlatformCode);
             decimal? rate = !takesCommission ? 0m
-                : sample.Count >= MinimumOrders && sales > 0 ? Math.Round(commission / sales * 100m, 2, MidpointRounding.AwayFromZero) : null;
+                : sample.Count >= MinimumOrders && sales > 0 ? PercentRounding.Percent(commission / sales * 100m) : null;
             // Hepsiburada's rate is without VAT; it charges 20 % VAT on top (ReportBuckets.EstimatedCommission).
             decimal? beforeVat = channel.PlatformCode == "HEPSIBURADA" && rate is { } charged
-                ? Math.Round(charged / ReportBuckets.HepsiburadaCommissionVat, 2, MidpointRounding.AwayFromZero) : null;
+                ? PercentRounding.Percent(charged / ReportBuckets.HepsiburadaCommissionVat) : null;
             var real = sample.Count(view => !view.Costs.First(cost => cost.Key == "commission").Estimated);
 
             var (cargo, cargoSource) = channel.PlatformCode switch
@@ -89,7 +89,7 @@ internal static class ReportPriceAssumptions
             var trendyol = channel.PlatformCode == "TRENDYOL";
             var shopify = channel.PlatformCode == "SHOPIFY";
             var (serviceFee, serviceFeeRate, feeSource, feeOrders) = (trendyol ? ReportCosts.PlatformServiceFeePerOrder : MoneyRounding.Round(fee.PerOrder),
-                Math.Round(fee.OfSale * 100m, 2, MidpointRounding.AwayFromZero), "tariff", 0);
+                PercentRounding.Percent(fee.OfSale * 100m), "tariff", 0);
             // Hepsiburada: the mean of what its records charged the clothing orders it has billed (a commission record of
             // their own), once there are enough of them.
             if (channel.PlatformCode == "HEPSIBURADA")

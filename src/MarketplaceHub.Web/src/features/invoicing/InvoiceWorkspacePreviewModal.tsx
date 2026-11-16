@@ -11,6 +11,7 @@ import { invoiceSendDeniedReason, useCanSendInvoices } from '../../shared/hooks/
 import { notificationError, notificationLinks, type NotificationContext } from '../../shared/notifications'
 import { bulkInvoiceNotice, followPendingInvoices, invoiceReadState, jobReadState, type BulkInvoiceFollow, type BulkInvoiceRead } from './invoice-bulk-outcome'
 import { invoiceFailureReason } from './invoice-failure-reasons'
+import { invoicePreviewSummary } from './invoice-preview-summary'
 import { invoiceEnvironmentLabel, invoiceTypeLabel, taxpayerStatusLabel } from './invoice-copy'
 import { personName } from '../../shared/person-name'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
@@ -193,6 +194,7 @@ export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete, onN
       <div className="invoice-detail-body">
         {loading ? <Busy text="Sipariş ve fatura verileri okunuyor…" /> : error && !previews.length ? <ErrorBox error={error} /> : <>
           {error && <ErrorBox error={error} />}
+          {previews.length > 0 && <p className="invoice-detail-muted" role="status">{invoicePreviewSummary(previews)}</p>}
           {previews.map(item => {
             const address = addressLines(item.invoiceAddressJson)
             return <article className="invoice-workspace-preview-card" key={item.orderId}>

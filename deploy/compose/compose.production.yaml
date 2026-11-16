@@ -50,8 +50,8 @@ services:
     build: null
     environment:
       <<: *production_environment
-      # History table retention (docs/SAKLAMA-SURELERI.md): empty keeps the table forever. The owner sets a period in
-      # production.env (e.g. MARKETPLACEHUB_RETENTION_AI_USAGE_LOG_DAYS=365) and redeploys.
+      # History table retention (docs/SAKLAMA-SURELERI.md): empty uses the table's default in code (HistoryRetentionPolicy),
+      # 0 keeps the table forever, a whole number of days overrides the default (set in production.env, then redeploy).
       Worker__HistoryRetention__AuditLogDays: "${MARKETPLACEHUB_RETENTION_AUDIT_LOG_DAYS:-}"
       Worker__HistoryRetention__AiUsageLogDays: "${MARKETPLACEHUB_RETENTION_AI_USAGE_LOG_DAYS:-}"
       Worker__HistoryRetention__ChannelPriceHistoryDays: "${MARKETPLACEHUB_RETENTION_CHANNEL_PRICE_HISTORY_DAYS:-}"

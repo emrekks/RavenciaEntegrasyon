@@ -77,9 +77,9 @@ public sealed partial class PostgreSqlTenantIsolationTests
     [Fact]
     public void AdaptorTyHb3_OnlyTheNotAskedCodeIsTakenAsUnknown()
     {
-        Assert.True(MarketplaceJobProcessor.TrendyolPackageNotAsked(new AdapterError(AdapterErrorClass.NotFound, TrendyolHttpClient.PackageNotAddressableCode, "x", 404, null, null)));
-        Assert.False(MarketplaceJobProcessor.TrendyolPackageNotAsked(new AdapterError(AdapterErrorClass.NotFound, "REMOTE_PACKAGE_NOT_FOUND", "x", 404, null, null)));
-        Assert.False(MarketplaceJobProcessor.TrendyolPackageNotAsked(null));
+        Assert.True(InvoiceReconciliationService.TrendyolPackageNotAsked(new AdapterError(AdapterErrorClass.NotFound, TrendyolHttpClient.PackageNotAddressableCode, "x", 404, null, null)));
+        Assert.False(InvoiceReconciliationService.TrendyolPackageNotAsked(new AdapterError(AdapterErrorClass.NotFound, "REMOTE_PACKAGE_NOT_FOUND", "x", 404, null, null)));
+        Assert.False(InvoiceReconciliationService.TrendyolPackageNotAsked(null));
     }
 
     private sealed class FailingPackageReadPort(AdapterError error) : IOrderPort

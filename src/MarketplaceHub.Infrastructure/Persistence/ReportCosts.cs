@@ -412,7 +412,7 @@ internal static class ReportCosts
         var expenseVat = Vat(trendyolCommission + platformCommission + cargoView.Combined + trendyolFees + platformVatFees + advertising, ExpenseVatRate);
         var netVat = new ReportNetVatView(MoneyRounding.Round(salesVat), MoneyRounding.Round(costVat), MoneyRounding.Round(expenseVat), MoneyRounding.Round(salesVat - costVat - expenseVat));
         return new(read ? FinanceSource : EstimateSource, lastSynced, coveredFrom, coveredThrough, financeOrders.Count, settledFinanceOrders,
-            financeOrders.Count > 0 ? MeasureRounding.Round((decimal)settledFinanceOrders / financeOrders.Count, 4) : null,
+            financeOrders.Count > 0 ? PercentRounding.Rate((decimal)settledFinanceOrders / financeOrders.Count) : null,
             total, commissionView, cargoView, lineViews, channels, productViews, netVat, unlinkedViews, unlinkedTotal, coveredViews);
     }
 

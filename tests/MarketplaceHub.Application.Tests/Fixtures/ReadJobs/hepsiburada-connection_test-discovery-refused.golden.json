@@ -1,0 +1,106 @@
+{
+  "Runs": [
+    {
+      "Run": "test",
+      "JobType": "HEPSIBURADA_CONNECTION_TEST",
+      "Result": {
+        "Kind": "Retry",
+        "ErrorCode": "RATE_LIMITED",
+        "ErrorSummary": "golden: RATE_LIMITED",
+        "RetryAfter": "00:00:30",
+        "RemoteRequestId": null,
+        "RefundAttempt": true,
+        "BackOffConnection": true,
+        "Succeeded": false,
+        "Continues": false
+      },
+      "Calls": [
+        "connection.Test key=connection-test",
+        "connection.Discover key=connection-test"
+      ]
+    },
+    {
+      "Run": "test-again",
+      "JobType": "HEPSIBURADA_CONNECTION_TEST",
+      "Result": {
+        "Kind": "Retry",
+        "ErrorCode": "RATE_LIMITED",
+        "ErrorSummary": "golden: RATE_LIMITED",
+        "RetryAfter": "00:00:30",
+        "RemoteRequestId": null,
+        "RefundAttempt": true,
+        "BackOffConnection": true,
+        "Succeeded": false,
+        "Continues": false
+      },
+      "Calls": [
+        "connection.Test key=connection-test",
+        "connection.Discover key=connection-test"
+      ]
+    }
+  ],
+  "Tables": [
+    {
+      "Table": "PlatformConnection",
+      "Rows": [
+        {
+          "ApiVersion": "V1",
+          "DisabledAt": null,
+          "DisplayName": "HEPSIBURADA",
+          "Environment": "PRODUCTION",
+          "ExternalStoreId": "store-golden",
+          "Id": "connection",
+          "LastErrorClass": "RateLimit",
+          "LastErrorCode": "RATE_LIMITED",
+          "LastSuccessAt": null,
+          "LastTestedAt": "T+00:01:06",
+          "PlatformCode": "HEPSIBURADA",
+          "PublicId": "connection-public",
+          "SettingsJson": {},
+          "Status": "DRAFT",
+          "TenantId": "tenant",
+          "Version": 3
+        }
+      ]
+    },
+    {
+      "Table": "SyncCursor",
+      "Rows": [
+        {
+          "ConnectionId": "connection",
+          "ConsecutiveFailureCount": 2,
+          "CursorStagnantSince": null,
+          "Id": "id1",
+          "LastAttemptAt": "T+00:01:05",
+          "LastChangedCount": 0,
+          "LastCursorAdvancedAt": null,
+          "LastDurationMs": "<duration>",
+          "LastError": "RATE_LIMITED",
+          "LastErrorAt": "T+00:01:08",
+          "LastFailedCount": 1,
+          "LastInsertedCount": 0,
+          "LastModifiedWatermark": null,
+          "LastRateLimitCount": 1,
+          "LastReceivedCount": 0,
+          "LastRequestCount": 2,
+          "LastRetryCount": 3,
+          "LastSkippedCount": 0,
+          "LastSliceAt": null,
+          "LastSuccessAt": null,
+          "LastUpdatedCount": 0,
+          "OpaqueCursor": null,
+          "ResourceType": "CONNECTION_TEST",
+          "TenantId": "tenant",
+          "Version": 5
+        }
+      ]
+    },
+    {
+      "Table": "IntegrationOutboxEvent (counted)",
+      "Rows": [
+        "connections PlatformConnection created x1",
+        "connections PlatformConnection updated x2"
+      ]
+    }
+  ]
+}

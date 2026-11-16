@@ -10,15 +10,6 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 internal sealed partial class OrderQueryService
 {
-    // A micro-export order as the row's flag reads it (RowMarks): Trendyol's micro = true in the package snapshot.
-    private Expression<Func<Order, bool>> MicroExportOrder() => x =>
-        (x.CustomerSnapshotJson.Contains("\"micro\":true") || x.CustomerSnapshotJson.Contains("\"micro\": true"))
-        && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == x.ConnectionId && connection.PlatformCode == "TRENDYOL");
-
-    private Expression<Func<Order, bool>> DomesticOrder() => x =>
-        !((x.CustomerSnapshotJson.Contains("\"micro\":true") || x.CustomerSnapshotJson.Contains("\"micro\": true"))
-            && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == x.ConnectionId && connection.PlatformCode == "TRENDYOL"));
-
     internal IQueryable<Order> CurrentManualShopifyOrderStatuses(Guid tenantId) => db.Orders.AsNoTracking().Where(HasCurrentManualShopifyStatus(tenantId));
 
     // A Shopify order of the tenant whose current status was set in the panel (O13). The tenant's Shopify stores are one

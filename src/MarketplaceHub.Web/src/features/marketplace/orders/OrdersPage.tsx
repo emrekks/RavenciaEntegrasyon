@@ -120,6 +120,9 @@ async function loadAllOrderPages(filters: OrderFilters): Promise<Page<Order> & {
   return { items: read.items, nextCursor: null, hasMore: false, totalCount: read.items.length, truncated: read.truncated, serverTotal: read.totalCount }
 }
 
+// A row of the page with its store's invoice setting, as a pick keeps it (useListSelection).
+type SelectableOrder = Order & { invoiceCreationEnabled: boolean }
+
 function patchOrderShipment(order: Order, updatedShipment: Shipment): Order {
   const packages = (order.packages?.map(packageItem => packageItem.id === updatedShipment.id ? { ...packageItem, ...updatedShipment } : packageItem) ?? [updatedShipment]).sort((left, right) => new Date(right.statusOccurredAt).getTime() - new Date(left.statusOccurredAt).getTime())
   const primaryPackage = orderDisplayShipment({ ...order, packages })
@@ -157,13 +160,14 @@ export function OrdersPage() {
     return () => window.clearTimeout(timeout)
   }, [bulkNotice, bulkNoticeKind, bulkNoticeVersion])
   // Another filter, tab, search, sort, platform or page size goes back to page 1, forgets the cursors and clears the
-  // selection; a page change clears the selection too (W6: Siparişler counts only the rows on screen).
+  // selection; a page change keeps it, and the orders picked on other pages count and take part in every bulk action
+  // from the copy taken when they were picked (owner, 16 Nov 2026, WEB-SAYFALAR-11).
   const orderListKey = JSON.stringify([filters, selectedPlatforms, pageSize])
   const pager = useCursorPager({ resetKey: orderListKey, initialPage: initialList.page })
   const page = pager.page
   const setPage = pager.setPage
   const { rememberCursor } = pager
-  const selection = useListSelection({ filterKey: orderListKey, page, keepAcrossPages: false })
+  const selection = useListSelection<SelectableOrder>({ filterKey: orderListKey, rowOf: id => pageItems.find(item => item.id === id) })
   const selectedIds = selection.selectedIds
   const setSelectedIds = selection.set
   // "Etiket Durumu" is filtered by the server (labelPrintedAt kept per package), like every other list filter: an address
@@ -277,7 +281,7 @@ export function OrdersPage() {
   }
   const totalOrderCount = ordersQuery.data?.totalCount ?? items.length
   const totalPages = Math.max(1, Math.ceil(totalOrderCount / pageSize))
-  const pageItems = items.map(item => ({ ...item, invoiceCreationEnabled: connections.data?.items.find(connection => connection.id === item.connectionId)?.invoiceCreationEnabled ?? false })); const selectablePageItems = pageItems.filter(item => item.derivedStatus.toUpperCase() !== 'CANCELLED'); const allPageSelected = selectablePageItems.length > 0 && selectablePageItems.every(item => selectedIds.includes(item.id)); const selectedOrders = pageItems.filter(item => selectedIds.includes(item.id)); const shopifySelectedOrders = selectedOrders.filter(item => item.platformCode === 'SHOPIFY'); const cargoEditableOrders = selectedOrders.filter(canChangeOrderCargo); const cargoChangeHelp = cargoEditableOrders.length < selectedOrders.length ? `Kargo firması yalnız kargoya verilmemiş Trendyol paketlerinde değiştirilebilir; seçili ${selectedOrders.length - cargoEditableOrders.length} sipariş atlanır.` : undefined; const shopifyInvoiceCreationBlocked = shopifySelectedOrders.some(item => !item.invoiceId && !item.invoiceCreationEnabled); const labelBatchItems = selectedOrders.filter(item => Boolean(orderDisplayShipment(item)?.cargoTrackingNumber ?? item.cargoTrackingNumber) && !isMicroExportLabelBlocked(item))
+  const pageItems = items.map(item => ({ ...item, invoiceCreationEnabled: connections.data?.items.find(connection => connection.id === item.connectionId)?.invoiceCreationEnabled ?? false })); const selectablePageItems = pageItems.filter(item => item.derivedStatus.toUpperCase() !== 'CANCELLED'); const allPageSelected = selectablePageItems.length > 0 && selectablePageItems.every(item => selectedIds.includes(item.id)); const selectedOrders = selection.selectedRows(pageItems, item => item.id); const shopifySelectedOrders = selectedOrders.filter(item => item.platformCode === 'SHOPIFY'); const cargoEditableOrders = selectedOrders.filter(canChangeOrderCargo); const cargoChangeHelp = cargoEditableOrders.length < selectedOrders.length ? `Kargo firması yalnız kargoya verilmemiş Trendyol paketlerinde değiştirilebilir; seçili ${selectedOrders.length - cargoEditableOrders.length} sipariş atlanır.` : undefined; const shopifyInvoiceCreationBlocked = shopifySelectedOrders.some(item => !item.invoiceId && !item.invoiceCreationEnabled); const labelBatchItems = selectedOrders.filter(item => Boolean(orderDisplayShipment(item)?.cargoTrackingNumber ?? item.cargoTrackingNumber) && !isMicroExportLabelBlocked(item))
   const hasNextPage = Boolean(ordersQuery.data?.nextCursor)
   function goToPreviousPage() { setPage(current => Math.max(1, current - 1)) }
   function goToNextPage() { if (!hasNextPage) return; const next = ordersQuery.data?.nextCursor; if (next) rememberCursor(page + 1, next); setPage(current => current + 1) }

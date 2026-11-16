@@ -12,17 +12,9 @@ public sealed partial class MarketplaceJobProcessor
 
     internal CatalogImportService CatalogImport => Services.CatalogImport;
 
-    // The listing verification completes the listing profiles of what it read the same way the import does.
-    private Task CompleteImportedListingProfiles(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteCatalogProduct> snapshots, CancellationToken cancellationToken) =>
-        CatalogImport.CompleteImportedListingProfiles(tenantId, connectionId, snapshots, cancellationToken);
-
     // The VAT rate a newly imported offer takes (called by the import VAT tests on the processor).
     internal Task<decimal> NewImportedOfferVatRateAsync(Guid tenantId, Guid connectionId, Guid variantId, decimal? remoteVatRate, CancellationToken cancellationToken) =>
         CatalogImport.NewImportedOfferVatRateAsync(tenantId, connectionId, variantId, remoteVatRate, cancellationToken);
 
     internal static string Short(string? value, int maximum) => CatalogAttributeService.Short(value, maximum);
-
-    private static IReadOnlySet<string> PttAvmOptionValues(IEnumerable<RemoteCatalogVariant> remoteVariants) => CatalogImportService.PttAvmOptionValues(remoteVariants);
-
-    private static IReadOnlyList<string> PttAvmMissingOptionValues(string? localSignature, IReadOnlySet<string> optionValues) => CatalogImportService.PttAvmMissingOptionValues(localSignature, optionValues);
 }

@@ -20,14 +20,37 @@ public sealed class MoneyRoundingMidpointTests
     public void Money_rounds_half_a_kurus_away_from_zero_also_below_zero(string value, string expected) =>
         Assert.Equal(decimal.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), MoneyRounding.Round(decimal.Parse(value, System.Globalization.CultureInfo.InvariantCulture)));
 
-    // Ratios, percentages and days are not money: they keep the rule they had.
+    // Days, hours, units per day and orders per customer are neither money nor a percentage: they keep the rule they had.
     [Theory]
-    [InlineData("0.12345", 4, "0.1234")]
-    [InlineData("12.345", 2, "12.34")]
     [InlineData("2.25", 1, "2.2")]
     [InlineData("-2.25", 1, "-2.2")]
-    public void Figures_that_are_not_money_keep_rounding_to_even(string value, int decimals, string expected) =>
+    [InlineData("1.125", 2, "1.12")]
+    public void Measures_that_are_not_percentages_keep_rounding_to_even(string value, int decimals, string expected) =>
         Assert.Equal(decimal.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), MeasureRounding.Round(decimal.Parse(value, System.Globalization.CultureInfo.InvariantCulture), decimals));
+
+    // Percentages and rates round half up (owner, 16 Nov 2026): a rate kept as a fraction at four places, a percentage on
+    // the 0–100 scale at two. Before, both rounded to even (0.12345 → 0.1234, 12.345 → 12.34).
+    [Theory]
+    [InlineData("0.12345", "0.1235")]
+    [InlineData("0.12355", "0.1236")]
+    [InlineData("-0.12345", "-0.1235")]
+    [InlineData("0.12344", "0.1234")]
+    public void A_rate_at_the_midpoint_rounds_half_up(string value, string expected) =>
+        Assert.Equal(decimal.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), PercentRounding.Rate(decimal.Parse(value, System.Globalization.CultureInfo.InvariantCulture)));
+
+    [Theory]
+    [InlineData("12.345", "12.35")]
+    [InlineData("12.355", "12.36")]
+    [InlineData("-12.345", "-12.35")]
+    [InlineData("0.005", "0.01")]
+    [InlineData("12.3449", "12.34")]
+    public void A_percentage_at_the_midpoint_rounds_half_up(string value, string expected) =>
+        Assert.Equal(decimal.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), PercentRounding.Percent(decimal.Parse(value, System.Globalization.CultureInfo.InvariantCulture)));
+
+    // An order's margin on its kept amount at a midpoint: 1.23450 profit on 10 = 12.345 % → 12.35 % (12.34 % before).
+    [Fact]
+    public void An_order_margin_at_the_midpoint_rounds_half_up() =>
+        Assert.Equal(12.35m, PercentRounding.Percent(1.2345m / 10m * 100m));
 
     [Theory]
     // Trendyol 10 % of 12.25 = 1.225: 1.22 before, 1.23 now.
@@ -113,10 +136,10 @@ public sealed class MoneyRoundingMidpointTests
         Assert.Equal(12.50m - 0.75m - 0.13m, day.Amount);
     }
 
-    // The cost per click, 1.25 TL over 10 clicks = 0.125: 0.12 before, 0.13 now; the return on ad spend is a ratio and
-    // keeps its rule (12.345 → 12.34).
+    // The cost per click, 1.25 TL over 10 clicks = 0.125: 0.12 before, 0.13 now; the return on ad spend, 12.345, is
+    // 12.35 since 16 Nov 2026 (12.34 before, to even).
     [Fact]
-    public void The_ad_reports_cost_per_click_at_a_half_kurus_rounds_up_and_its_roas_keeps_its_rule()
+    public void The_ad_reports_cost_per_click_and_roas_at_the_midpoint_round_half_up()
     {
         var campaign = new AdCampaignRow("Kampanya", null, null, null, null, null, null, null, 1.00m, null, null, 8L, 100L, null, null, null, null, null, 12.345m, null);
         var clicks = campaign with { Spent = 0.25m, Clicks = 2L, TotalRevenue = null };
@@ -125,6 +148,15 @@ public sealed class MoneyRoundingMidpointTests
 
         Assert.Equal(1.25m, totals.Spent);
         Assert.Equal(0.13m, totals.Cpc);
-        Assert.Equal(12.34m, totals.Roas);
+        Assert.Equal(12.35m, totals.Roas);
+    }
+
+    // The click-through rate at a midpoint: 12345 clicks of 100000 impressions = 0.12345 → 0.1235 (0.1234 before).
+    [Fact]
+    public void The_ad_reports_click_through_rate_at_the_midpoint_rounds_half_up()
+    {
+        var campaign = new AdCampaignRow("Kampanya", null, null, null, null, null, null, null, 1.00m, null, null, 12345L, 100000L, null, null, null, null, null, null, null);
+
+        Assert.Equal(0.1235m, AdReportService.Totals([campaign]).Ctr);
     }
 }

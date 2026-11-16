@@ -29,7 +29,6 @@ public sealed class N11WriteGateTests
         "key", "secret");
 
     [Theory]
-    [InlineData("PRODUCTION", "VERIFIED")]
     [InlineData("PRODUCTION", "ACTIVE")]
     public void WritesPassOnlyWhenEverySwitchIsOn(string environment, string status) =>
         Assert.Null(Client(true).WriteBlocked<bool>(Account(environment, status, true), "test"));
@@ -37,6 +36,7 @@ public sealed class N11WriteGateTests
     [Theory]
     [InlineData(false, "PRODUCTION", "VERIFIED", true)]
     [InlineData(true, "PRODUCTION", "VERIFIED", false)]
+    [InlineData(true, "PRODUCTION", "VERIFIED", true)]
     [InlineData(true, "STAGE", "VERIFIED", true)]
     [InlineData(true, "PRODUCTION", "DRAFT", true)]
     [InlineData(true, "PRODUCTION", "DISABLED", true)]

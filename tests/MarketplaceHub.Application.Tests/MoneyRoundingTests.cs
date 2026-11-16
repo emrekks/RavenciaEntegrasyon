@@ -19,7 +19,7 @@ public sealed class MoneyRoundingTests
 
     [Fact]
     public void Rate_keeps_four_places_and_takes_the_half_up() =>
-        Assert.Equal(0.1235m, MoneyRounding.Rate(0.12345m));
+        Assert.Equal(0.1235m, PercentRounding.Rate(0.12345m));
 
     // The sites moved onto the helper rounded away from zero already, so their figures stay the same.
     [Theory]

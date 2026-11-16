@@ -101,8 +101,8 @@ internal static class ReportStock
             active.Count, active.Count(x => x.Units > 0), active.Count(x => x.Units <= 0), low,
             MoneyRounding.Round(costed.Sum(x => x.Capital!.Value)), capitalExVat, inStock.Count(x => x.Cost is null), inStock.Where(x => x.Cost is null).Sum(x => x.Units),
             priced.Count == 0 ? null : MoneyRounding.Round(priced.Sum(x => x.Value!.Value)), priced.Sum(x => x.Units), inStock.Where(x => x.Price is null).Sum(x => x.Units),
-            profit is { } p ? MoneyRounding.Round(p) : null, profit is { } m && bothValue > 0 ? MeasureRounding.Round(m / bothValue, 4) : null,
-            profit is { } c && bothCapital > 0 ? MeasureRounding.Round(c / bothCapital, 4) : null,
+            profit is { } p ? MoneyRounding.Round(p) : null, profit is { } m && bothValue > 0 ? PercentRounding.Rate(m / bothValue) : null,
+            profit is { } c && bothCapital > 0 ? PercentRounding.Rate(c / bothCapital) : null,
             sold, daily, daily is > 0 ? MeasureRounding.Round(units / daily.Value, 1) : null,
             dead.Count, dead.Sum(x => x.Units), MoneyRounding.Round(dead.Sum(x => x.Capital ?? 0m)));
     }

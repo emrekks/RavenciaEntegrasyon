@@ -330,12 +330,12 @@ internal sealed partial class OrderQueryService
             query = query.Where(x => x.BuyerType == OrderBuyerTypeView.Individual);
 
         var invoiceRegion = options.InvoiceRegion?.Trim().ToUpperInvariant();
-        // The region follows the row's micro-export flag (RowMarks, the "Mikro İhracat" card), not a text search over the
+        // The region follows the "Mikro İhracat" label (OrderMicroExportRules, also the row flag and the card), not a text search over the
         // whole package: a company named "... İthalat İhracat Ltd." or a "MICRO FIBER" product is no export (SIPARIS-STOK-3).
         if (invoiceRegion == "MICRO_EXPORT")
-            query = query.Where(MicroExportOrder());
+            query = query.Where(OrderMicroExportRules.InDatabase);
         else if (invoiceRegion == "TR")
-            query = query.Where(DomesticOrder());
+            query = query.Where(OrderMicroExportRules.NotInDatabase);
 
         var status = options.Status?.Trim().ToUpperInvariant();
         // The dashboard's "Geciken Siparişler" card opens this view: exactly the orders that card counts.
@@ -440,9 +440,9 @@ internal sealed partial class OrderQueryService
 
         var listing = options.Listing?.Trim().ToUpperInvariant();
         if (listing == "OPEN") query = query.Where(x => x.DerivedStatus != "DELIVERED" && x.DerivedStatus != "CANCELLED" && x.DerivedStatus != "RETURNED");
-        // Micro-export orders: Trendyol's micro = true at the top of the package, as RowMarks reads it for the flag icon.
+        // Micro-export orders: the "Mikro İhracat" label's rule (OrderMicroExportRules), as the row flag and the card read it.
         if (options.MicroExport == true)
-            query = query.Where(MicroExportOrder());
+            query = query.Where(OrderMicroExportRules.InDatabase);
         // Orders with some products cancelled that were not cancelled whole, open or closed.
         if (options.PartialCancel == true)
             query = query.Where(x => x.DerivedStatus != "CANCELLED" && db.OrderLines.Any(line => line.TenantId == x.TenantId && line.OrderId == x.Id && line.CancelledQuantity > 0));

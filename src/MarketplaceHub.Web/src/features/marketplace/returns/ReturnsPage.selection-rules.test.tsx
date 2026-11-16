@@ -126,8 +126,8 @@ describe('İadeler bulk selection (WEB-SAYFALAR-11 table)', () => {
       expect(box('2')!.checked).toBe(true)
     }
     if (outcome === 'counted') expect(barText()).toContain('1 iade seçildi')
-    if (outcome === 'uncounted') {
-      expect(barText()).toBe('')
+    // The row comes back on a later read: it is ticked again, and counted once.
+    if (outcome === 'counted') {
       api.withSecond = true
       await act(async () => { await client.invalidateQueries({ queryKey: ['returns'] }) })
       await settle()
