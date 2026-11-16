@@ -31,8 +31,9 @@ export function invitationSentMessage(email: string, role: string) {
   return `${email} adresine ${userRoleLabel(role)} rolüyle davet gönderildi. Kişi kendi hesabıyla giriş yaptığında daveti görür; kabul edene kadar bu çalışma alanına erişemez.`
 }
 
-// A repeat of an add that already went through (same Idempotency-Key): the one-time password is shown only once.
-export const addAlreadyDoneMessage = 'Bu ekleme daha önce tamamlandı. Tek kullanımlık parola yalnız ilk yanıtta gösterilir; gerekirse kullanıcıyı listeden açıp Şifre Sıfırla ile yeni parola üretin.'
+// A repeat of an add that most likely went through already (the same Idempotency-Key answered as withheld, or as reused
+// after a resend with a new authenticator code): the list is read again; a one-time password is shown only once.
+export const addAlreadyDoneMessage = 'Bu ekleme büyük olasılıkla daha önce tamamlandı; liste yenilendi. Tek kullanımlık parola yalnız ilk yanıtta gösterilir; gerekirse kullanıcıyı listeden açıp Şifre Sıfırla ile yeni parola üretin.'
 
 export type UserAction = 'role' | 'password-reset' | 'mfa-reset' | 'sessions' | 'disable' | 'enable'
 

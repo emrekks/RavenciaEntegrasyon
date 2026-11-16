@@ -479,11 +479,26 @@ public sealed class UserManagementEndToEndTests(ApiEndToEndFixture fixture) : IC
                 Assert.Equal(HttpStatusCode.NoContent, declined.StatusCode);
             using (var late = await invitee.SendAsync(ApiTestHost.Json(HttpMethod.Post, $"/api/v1/auth/invitations/{invitationId}/accept", inviteeCsrf)))
                 Assert.Equal(HttpStatusCode.NotFound, late.StatusCode);
+            using (var hidden = await invitee.GetAsync("/api/v1/auth/invitations"))
+                Assert.Empty((await hidden.Content.ReadFromJsonAsync<JsonElement>()).EnumerateArray());
 
-            // Invited again, now as an owner: still no membership, so no owner and no role anywhere.
+            // Declined: for a week the same workspace is answered as if the invitation were still pending, so the inviter
+            // does not learn it was declined and the invited person is not asked again at once.
+            using (var quiet = await owner.SendAsync(Add(ownerCsrf, new { email, displayName = "Reddeden", role = "OPERATIONS", password = ApiEndToEndFixture.Password })))
+            {
+                Assert.Equal(HttpStatusCode.Conflict, quiet.StatusCode);
+                Assert.Equal("INVITATION_PENDING", (await ApiTestHost.ProblemAsync(quiet)).GetProperty("code").GetString());
+            }
+            await using (var scope = fixture.Host!.Services.CreateAsyncScope())
+                await scope.ServiceProvider.GetRequiredService<AppDbContext>().TenantInvitations.Where(x => x.Id == invitationId).ExecuteUpdateAsync(x => x.SetProperty(i => i.DeclinedAt, DateTimeOffset.UtcNow.AddDays(-8)));
+
+            // Invited again after the quiet week, now as an owner: still no membership, so no owner and no role anywhere.
             using (var asOwner = await owner.SendAsync(Add(ownerCsrf, new { email, displayName = "Reddeden", role = "OWNER", password = ApiEndToEndFixture.Password })))
                 Assert.Equal(HttpStatusCode.OK, asOwner.StatusCode);
             var ownerInvitationId = await InvitationIdAsync(invitedId);
+            Assert.Equal(invitationId, ownerInvitationId);
+            using (var shown = await invitee.GetAsync("/api/v1/auth/invitations"))
+                Assert.Single((await shown.Content.ReadFromJsonAsync<JsonElement>()).EnumerateArray());
             await using (var scope = fixture.Host!.Services.CreateAsyncScope())
                 Assert.False(await scope.ServiceProvider.GetRequiredService<AppDbContext>().TenantMemberships.AnyAsync(x => x.TenantId == fixture.TenantId && x.UserId == invitedId));
             var (admin, adminCsrf, adminSignIn) = await fixture.SignInAsync(MembershipRole.Administrator, ownNetwork: true);
@@ -512,6 +527,111 @@ public sealed class UserManagementEndToEndTests(ApiEndToEndFixture fixture) : IC
             Assert.Contains(UserManagementEndpoints.InvitationDeclined, actions);
             Assert.Single(actions, action => action == UserManagementEndpoints.InvitationWithdrawn);
         }
+    }
+
+    // Security review 16 Nov 2026 (a): the inviter's authority is checked again at acceptance. An administrator deactivated,
+    // or an owner demoted, behind the endpoints' back (no invitation withdrawn) leaves invitations that grant nothing:
+    // Kabul Et answers INVITATION_REVOKED and removes them.
+    [PostgreSqlFact]
+    public async Task AcceptingChecksTheInvitersAuthorityAgain()
+    {
+        var adminEmail = $"inviter-admin-{fixture.Run}@example.invalid";
+        var ownerEmail = $"inviter-owner-{fixture.Run}@example.invalid";
+        var adminId = await CreateUserAsync(adminEmail, MembershipRole.Administrator);
+        var ownerId = await CreateUserAsync(ownerEmail, MembershipRole.Owner);
+        var firstEmail = $"revoked-a-{fixture.Run}@example.invalid";
+        var secondEmail = $"revoked-b-{fixture.Run}@example.invalid";
+        var (firstId, _) = await CreateAccountElsewhereAsync(firstEmail, "Birinci Ev");
+        var (secondId, _) = await CreateAccountElsewhereAsync(secondEmail, "İkinci Ev");
+
+        var (admin, adminCsrf, adminSignIn) = await SignInAsAsync(adminEmail);
+        using (admin)
+        using (adminSignIn)
+        using (var invited = await admin.SendAsync(Add(adminCsrf, new { email = firstEmail, displayName = "Birinci", role = "ADMINISTRATOR", password = ApiEndToEndFixture.Password })))
+            Assert.Equal(HttpStatusCode.OK, invited.StatusCode);
+        var (owner, ownerCsrf, ownerSignIn) = await SignInAsAsync(ownerEmail);
+        using (owner)
+        using (ownerSignIn)
+        using (var invited = await owner.SendAsync(Add(ownerCsrf, new { email = secondEmail, displayName = "İkinci", role = "OWNER", password = ApiEndToEndFixture.Password })))
+            Assert.Equal(HttpStatusCode.OK, invited.StatusCode);
+
+        await using (var scope = fixture.Host!.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            await db.TenantMemberships.Where(x => x.TenantId == fixture.TenantId && x.UserId == adminId).ExecuteUpdateAsync(x => x.SetProperty(m => m.Status, RecordStatus.Disabled));
+            await db.TenantMemberships.Where(x => x.TenantId == fixture.TenantId && x.UserId == ownerId).ExecuteUpdateAsync(x => x.SetProperty(m => m.Role, MembershipRole.Administrator));
+        }
+
+        foreach (var (email, userId) in new[] { (firstEmail, firstId), (secondEmail, secondId) })
+        {
+            var invitationId = await InvitationIdAsync(userId);
+            var (invitee, inviteeCsrf, inviteeSignIn) = await SignInAsAsync(email);
+            using (invitee)
+            using (inviteeSignIn)
+            using (var accept = await invitee.SendAsync(ApiTestHost.Json(HttpMethod.Post, $"/api/v1/auth/invitations/{invitationId}/accept", inviteeCsrf)))
+            {
+                Assert.Equal(HttpStatusCode.Conflict, accept.StatusCode);
+                Assert.Equal("INVITATION_REVOKED", (await ApiTestHost.ProblemAsync(accept)).GetProperty("code").GetString());
+            }
+            await using var scope = fixture.Host!.Services.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            Assert.False(await db.TenantMemberships.AnyAsync(x => x.TenantId == fixture.TenantId && x.UserId == userId));
+            Assert.False(await db.TenantInvitations.AnyAsync(x => x.UserId == userId));
+            Assert.True(await db.AuditLogs.AnyAsync(entry => entry.Action == UserManagementEndpoints.InvitationRevoked && entry.TenantId == fixture.TenantId && entry.ActorUserId == userId));
+        }
+    }
+
+    // Security review 16 Nov 2026 (b): deactivating a user, or demoting them below the elevated roles, withdraws their
+    // outstanding invitations in the same change; an owner made administrator loses only the invitations to the owner role.
+    [PostgreSqlFact]
+    public async Task DeactivatingOrDemotingAnInviterWithdrawsTheirInvitations()
+    {
+        var disabledEmail = $"inv-disabled-{fixture.Run}@example.invalid";
+        var demotedEmail = $"inv-demoted-{fixture.Run}@example.invalid";
+        var ownerEmail = $"inv-owner-{fixture.Run}@example.invalid";
+        var disabledId = await CreateUserAsync(disabledEmail, MembershipRole.Administrator);
+        var demotedId = await CreateUserAsync(demotedEmail, MembershipRole.Administrator);
+        var ownerId = await CreateUserAsync(ownerEmail, MembershipRole.Owner);
+        var targets = new Dictionary<string, Guid>();
+        foreach (var name in new[] { "a", "b", "c", "d" })
+        {
+            var email = $"inv-target-{name}-{fixture.Run}@example.invalid";
+            targets[name] = (await CreateAccountElsewhereAsync(email, $"Alan {name}")).UserId;
+        }
+        async Task InviteAsync(string inviterEmail, string target, string role)
+        {
+            var (client, csrf, signIn) = await SignInAsAsync(inviterEmail);
+            using (client)
+            using (signIn)
+            using (var invited = await client.SendAsync(Add(csrf, new { email = $"inv-target-{target}-{fixture.Run}@example.invalid", displayName = target, role, password = ApiEndToEndFixture.Password })))
+                Assert.Equal(HttpStatusCode.OK, invited.StatusCode);
+        }
+        await InviteAsync(disabledEmail, "a", "OPERATIONS");
+        await InviteAsync(demotedEmail, "b", "READONLY");
+        await InviteAsync(ownerEmail, "c", "OWNER");
+        await InviteAsync(ownerEmail, "d", "ACCOUNTING");
+
+        var (fixtureOwner, csrf, signIn) = await fixture.SignInAsync(MembershipRole.Owner, ownNetwork: true);
+        using (fixtureOwner)
+        using (signIn)
+        {
+            using (var disable = await fixtureOwner.SendAsync(ApiTestHost.Json(HttpMethod.Put, $"{Base}/{disabledId}/status", csrf, new { active = false, password = ApiEndToEndFixture.Password })))
+                Assert.Equal(HttpStatusCode.NoContent, disable.StatusCode);
+            using (var demote = await fixtureOwner.SendAsync(ApiTestHost.Json(HttpMethod.Put, $"{Base}/{demotedId}/role", csrf, new { role = "OPERATIONS", password = ApiEndToEndFixture.Password })))
+                Assert.Equal(HttpStatusCode.NoContent, demote.StatusCode);
+            using (var ownerToAdmin = await fixtureOwner.SendAsync(ApiTestHost.Json(HttpMethod.Put, $"{Base}/{ownerId}/role", csrf, new { role = "ADMINISTRATOR", password = ApiEndToEndFixture.Password })))
+                Assert.Equal(HttpStatusCode.NoContent, ownerToAdmin.StatusCode);
+        }
+
+        await using var scope = fixture.Host!.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.False(await db.TenantInvitations.AnyAsync(x => x.UserId == targets["a"]));
+        Assert.False(await db.TenantInvitations.AnyAsync(x => x.UserId == targets["b"]));
+        Assert.False(await db.TenantInvitations.AnyAsync(x => x.UserId == targets["c"]));
+        Assert.True(await db.TenantInvitations.AnyAsync(x => x.UserId == targets["d"] && x.InvitedByUserId == ownerId));
+        var withdrawn = await db.AuditLogs.Where(entry => entry.TenantId == fixture.TenantId && entry.Action == UserManagementEndpoints.InvitationWithdrawn).Select(entry => entry.TargetId).ToListAsync();
+        foreach (var name in new[] { "a", "b", "c" }) Assert.Contains(targets[name].ToString("D"), withdrawn);
+        Assert.DoesNotContain(targets["d"].ToString("D"), withdrawn);
     }
 
     // The invitation routes need a fully signed-in session.

@@ -48,6 +48,9 @@ public sealed class TenantInvitation
 {
     public static readonly TimeSpan Lifetime = TimeSpan.FromDays(14);
 
+    /// <summary>How long a declined invitation stops the same workspace from inviting the same account again.</summary>
+    public static readonly TimeSpan DeclineQuiet = TimeSpan.FromDays(7);
+
     public Guid Id { get; set; }
     public Guid TenantId { get; set; }
     public Guid UserId { get; set; }
@@ -57,6 +60,9 @@ public sealed class TenantInvitation
     public Guid InvitedByUserId { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset ExpiresAt { get; set; }
+
+    /// <summary>When the invited account declined it; a declined invitation is never listed to it or accepted.</summary>
+    public DateTimeOffset? DeclinedAt { get; set; }
 }
 
 public sealed class UserSecurity

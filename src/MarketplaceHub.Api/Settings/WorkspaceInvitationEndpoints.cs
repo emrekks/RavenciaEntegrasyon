@@ -34,7 +34,7 @@ public static class WorkspaceInvitationEndpoints
         var now = time.GetUtcNow();
         var rows = await (
             from invitation in db.TenantInvitations.AsNoTracking()
-            where invitation.UserId == session.UserId && invitation.ExpiresAt > now
+            where invitation.UserId == session.UserId && invitation.DeclinedAt == null && invitation.ExpiresAt > now
             join tenant in db.Tenants.AsNoTracking() on invitation.TenantId equals tenant.Id
             where tenant.Status == RecordStatus.Active
             select new
@@ -54,7 +54,7 @@ public static class WorkspaceInvitationEndpoints
     {
         if (ActiveSession(http) is not { } session) return Refusal(http);
         var now = time.GetUtcNow();
-        var invitation = await db.TenantInvitations.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id && x.UserId == session.UserId, http.RequestAborted);
+        var invitation = await db.TenantInvitations.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id && x.UserId == session.UserId && x.DeclinedAt == null, http.RequestAborted);
         if (invitation is null) return NotFound();
         if (invitation.ExpiresAt <= now)
             return ApiProblems.Of(null, "INVITATION_EXPIRED", "Bu davetin süresi doldu; çalışma alanının yöneticisinden yeniden davet isteyin.", 409);
@@ -62,8 +62,19 @@ public static class WorkspaceInvitationEndpoints
         if (tenant is null) return ApiProblems.Of(null, "INVITATION_WORKSPACE_UNAVAILABLE", "Bu çalışma alanı artık kullanılmıyor.", 409);
 
         await using var transaction = await db.Database.BeginTransactionAsync(http.RequestAborted);
+        // The inviter's authority is checked again now, not only when the invitation was sent: a deactivated or demoted
+        // inviter's invitations grant nothing (security review 16 Nov 2026). Their membership row is held FOR SHARE until
+        // this commits, so a demotion running at the same moment waits and then sees the membership this one adds.
+        if (!await InviterMayStillGrantAsync(db, invitation, http.RequestAborted))
+        {
+            await db.TenantInvitations.Where(x => x.Id == invitation.Id).ExecuteDeleteAsync(http.RequestAborted);
+            Audit(db, http, invitation, session.UserId, UserManagementEndpoints.InvitationRevoked, now);
+            await db.SaveChangesAsync(http.RequestAborted);
+            await transaction.CommitAsync(http.RequestAborted);
+            return ApiProblems.Of(null, "INVITATION_REVOKED", "Bu davet artık geçerli değil; davet eden kişinin yetkisi değişti. Çalışma alanının yöneticisinden yeniden davet isteyin.", 409);
+        }
         // Removing the row is the claim: of two accepts at once only one removes it and adds the membership.
-        if (await db.TenantInvitations.Where(x => x.Id == invitation.Id && x.UserId == session.UserId && x.ExpiresAt > now).ExecuteDeleteAsync(http.RequestAborted) != 1)
+        if (await db.TenantInvitations.Where(x => x.Id == invitation.Id && x.UserId == session.UserId && x.DeclinedAt == null && x.ExpiresAt > now).ExecuteDeleteAsync(http.RequestAborted) != 1)
             return NotFound();
         // A membership made meanwhile (an earlier one, active or disabled) is left as it is: accepting never re-enables it.
         if (!await db.TenantMemberships.AnyAsync(x => x.TenantId == invitation.TenantId && x.UserId == session.UserId, http.RequestAborted))
@@ -79,12 +90,32 @@ public static class WorkspaceInvitationEndpoints
         if (ActiveSession(http) is not { } session) return Refusal(http);
         var invitation = await db.TenantInvitations.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id && x.UserId == session.UserId, http.RequestAborted);
         if (invitation is null) return Results.NoContent();
-        if (await db.TenantInvitations.Where(x => x.Id == invitation.Id && x.UserId == session.UserId).ExecuteDeleteAsync(http.RequestAborted) == 1)
+        var now = time.GetUtcNow();
+        // The declined row stays (never shown to the invited person again, never acceptable) so that for
+        // TenantInvitation.DeclineQuiet the same workspace cannot send it again at once: the prompt would reopen at every
+        // sign-in. The inviter is answered as for a pending invitation and does not learn it was declined.
+        if (await db.TenantInvitations.Where(x => x.Id == invitation.Id && x.UserId == session.UserId && x.DeclinedAt == null)
+                .ExecuteUpdateAsync(x => x.SetProperty(i => i.DeclinedAt, now), http.RequestAborted) == 1)
         {
-            Audit(db, http, invitation, session.UserId, UserManagementEndpoints.InvitationDeclined, time.GetUtcNow());
+            Audit(db, http, invitation, session.UserId, UserManagementEndpoints.InvitationDeclined, now);
             await db.SaveChangesAsync(http.RequestAborted);
         }
         return Results.NoContent();
+    }
+
+    // The inviter still holds an active membership of this workspace, with an active account, in a role that may give the
+    // invitation's role: an owner invitation takes an owner, any other an owner or an administrator.
+    internal static async Task<bool> InviterMayStillGrantAsync(AppDbContext db, TenantInvitation invitation, CancellationToken cancellationToken)
+    {
+        if (invitation.InvitedByUserId == Guid.Empty) return false;
+        var roles = await db.Database.SqlQuery<string>($"""
+            SELECT m."Role" AS "Value" FROM iam.tenant_memberships m JOIN iam.users u ON u."Id" = m."UserId"
+            WHERE m."TenantId" = {invitation.TenantId} AND m."UserId" = {invitation.InvitedByUserId} AND m."Status" = 'ACTIVE' AND u."Status" = 'ACTIVE'
+            FOR SHARE OF m
+            """).ToListAsync(cancellationToken);
+        if (roles.Count != 1) return false;
+        var role = UserManagementEndpoints.ParseRole(roles[0]);
+        return invitation.Role == MembershipRole.Owner ? role == MembershipRole.Owner : role is MembershipRole.Owner or MembershipRole.Administrator;
     }
 
     // The workspace that invited sees the answer in its own log; the invited account is the actor.

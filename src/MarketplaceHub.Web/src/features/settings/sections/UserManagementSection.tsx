@@ -78,7 +78,9 @@ export function UserManagementSection({ mfa }: { mfa: boolean }) {
       if (result.temporaryPassword) setOneTime({ title: 'Kullanıcı Eklendi', email: person.email, password: result.temporaryPassword })
       else setNotice({ kind: 'success', message: invitationSentMessage(person.email, role) })
     } catch (reason) {
-      if (reason instanceof ApiRequestError && reason.code === 'IDEMPOTENCY_RESPONSE_WITHHELD') {
+      // A replay of an add that went through, or a resend after a lost answer with a new authenticator code (the same key
+      // with a changed body): the add was most likely completed, so the list is read again instead of adding twice.
+      if (reason instanceof ApiRequestError && (reason.code === 'IDEMPOTENCY_RESPONSE_WITHHELD' || reason.code === 'IDEMPOTENCY_KEY_REUSED')) {
         await client.invalidateQueries({ queryKey: queryKeys.managedUsers() })
         setDialog(null)
         setNotice({ kind: 'info', message: addAlreadyDoneMessage })

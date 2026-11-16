@@ -41,6 +41,7 @@ public static class UserManagementEndpoints
     public const string InvitationWithdrawn = "USER_INVITATION_WITHDRAWN";
     public const string InvitationAccepted = "USER_INVITATION_ACCEPTED";
     public const string InvitationDeclined = "USER_INVITATION_DECLINED";
+    public const string InvitationRevoked = "USER_INVITATION_REVOKED";
     public const string RoleChanged = "USER_ROLE_CHANGED";
     public const string Disabled = "USER_DISABLED";
     public const string Enabled = "USER_ENABLED";
@@ -147,33 +148,33 @@ public static class UserManagementEndpoints
         if (await ReauthAsync(request.Password, request.Code, request.RecoveryCode, http, users, db, protection, totp, hasher, time) is { } refusal) return refusal;
 
         var now = time.GetUtcNow();
-        var temporary = BreakGlassService.TemporaryPassword();
         var existing = await users.FindByEmailAsync(email);
         if (existing is not null)
         {
             if (await db.TenantMemberships.AnyAsync(x => x.TenantId == tenant.TenantId && x.UserId == existing.Id, http.RequestAborted))
                 return Conflict("USER_ALREADY_MEMBER", "Bu e-posta adresiyle bir kullanıcı bu çalışma alanında zaten var.");
             // API-GUVENLIK-6 (owner decision 16 Nov 2026): an existing account is invited, never added. The invitation grants
-            // nothing until the person accepts it after signing in (WorkspaceInvitationEndpoints). A new password is hashed
-            // and thrown away so this path takes about as long as creating an account.
-            _ = users.PasswordHasher.HashPassword(existing, temporary);
+            // nothing until the person accepts it after signing in (WorkspaceInvitationEndpoints).
             var invitation = await db.TenantInvitations.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.UserId == existing.Id, http.RequestAborted);
-            if (invitation is not null && invitation.ExpiresAt > now)
+            // A declined invitation answers like a pending one for TenantInvitation.DeclineQuiet: the inviter does not learn
+            // it was declined, and the invited person is not asked again at every sign-in.
+            if (invitation is not null && (invitation.DeclinedAt is { } declined ? declined > now - TenantInvitation.DeclineQuiet : invitation.ExpiresAt > now))
                 return Conflict("INVITATION_PENDING", "Bu e-posta adresine bu çalışma alanından gönderilmiş, yanıt bekleyen bir davet var.");
             if (invitation is null)
             {
                 invitation = new TenantInvitation { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, UserId = existing.Id, Email = email, DisplayName = displayName };
                 db.TenantInvitations.Add(invitation);
             }
-            // An expired invitation is renewed in place: the same row, a new role, name and period.
+            // An expired (or long-declined) invitation is renewed in place: the same row, a new role, name and period.
             invitation.Role = role; invitation.Email = email; invitation.DisplayName = displayName; invitation.InvitedByUserId = tenant.UserId;
-            invitation.CreatedAt = now; invitation.ExpiresAt = now.Add(TenantInvitation.Lifetime);
+            invitation.CreatedAt = now; invitation.ExpiresAt = now.Add(TenantInvitation.Lifetime); invitation.DeclinedAt = null;
             Audit(db, http, tenant, Invited, existing.Id, $"role={RoleWire(role)}; invitation={invitation.Id:D}; expires={invitation.ExpiresAt:O}", now);
             try { await db.SaveChangesAsync(http.RequestAborted); }
             catch (DbUpdateException) { return Conflict("USER_ADD_FAILED", "Kullanıcı şu anda eklenemedi; listeyi yenileyip yeniden deneyin."); }
             return AddedResponse(null);
         }
 
+        var temporary = BreakGlassService.TemporaryPassword();
         await using var transaction = await db.Database.BeginTransactionAsync(http.RequestAborted);
         var user = new ApplicationUser { Id = Guid.CreateVersion7(), UserName = email, Email = email, EmailConfirmed = true, DisplayName = displayName, ForcePasswordChange = true, CreatedAt = now, UpdatedAt = now };
         var created = await users.CreateAsync(user, temporary);
@@ -194,8 +195,9 @@ public static class UserManagementEndpoints
 
     // API-GUVENLIK-6: adding a user answers in one shape whether the e-mail was new or an existing account was invited:
     // no account id and no "existing account" flag. Only a new account carries the one-time password, because that is
-    // how the inviter hands the new account over; so a missing password tells the inviter "an invitation was sent". That
-    // is all it tells: the invited account learns of the workspace only by accepting, and joins nothing before that.
+    // how the inviter hands the new account over; so the body itself tells the inviter "an invitation was sent" (an
+    // existing account) from "an account was made" (owner accepted, 16 Nov 2026). Nothing here hides that difference,
+    // in the body or in timing; what stays hidden is the account itself, which joins nothing before it accepts.
     internal static IResult AddedResponse(string? temporaryPassword) => Results.Ok(new AddedBody(true, temporaryPassword));
 
     internal sealed record AddedBody(bool Added, string? TemporaryPassword);
@@ -210,14 +212,21 @@ public static class UserManagementEndpoints
         if (membership.Role == role) return Results.NoContent();
         if (membership.Role == MembershipRole.Owner && await IsLastActiveOwnerAsync(membership, db, http)) return Conflict("LAST_OWNER", "Çalışma alanının son etkin sahibinin rolü değiştirilemez.");
         if (await ReauthAsync(request.Password, request.Code, request.RecoveryCode, http, users, db, protection, totp, hasher, time) is { } refusal) return refusal;
-        await using var ownerLock = membership.Role == MembershipRole.Owner ? await LockMembershipsAsync(db, tenant.TenantId, http.RequestAborted) : null;
-        if (ownerLock is not null && await IsLastActiveOwnerAsync(membership, db, http)) return Conflict("LAST_OWNER", "Çalışma alanının son etkin sahibinin rolü değiştirilemez.");
+        var ownerChange = membership.Role == MembershipRole.Owner;
+        await using var transaction = ownerChange ? await LockMembershipsAsync(db, tenant.TenantId, http.RequestAborted) : await db.Database.BeginTransactionAsync(http.RequestAborted);
+        if (ownerChange && await IsLastActiveOwnerAsync(membership, db, http)) return Conflict("LAST_OWNER", "Çalışma alanının son etkin sahibinin rolü değiştirilemez.");
         var now = time.GetUtcNow();
         var previous = membership.Role;
         membership.Role = role; membership.UpdatedAt = now; membership.Version++;
         Audit(db, http, tenant, RoleChanged, membership.UserId, $"from={RoleWire(previous)}; to={RoleWire(role)}", now);
+        // Security review 16 Nov 2026: invitations the user can no longer give stop with the demotion. Below the elevated
+        // roles all of them; an owner made administrator, those to the owner role.
+        if (role is not (MembershipRole.Owner or MembershipRole.Administrator))
+            await WithdrawInvitationsOfAsync(db, http, tenant, membership.UserId, ownerOnly: false, "inviter-demoted", now);
+        else if (role == MembershipRole.Administrator && previous == MembershipRole.Owner)
+            await WithdrawInvitationsOfAsync(db, http, tenant, membership.UserId, ownerOnly: true, "inviter-demoted", now);
         await db.SaveChangesAsync(http.RequestAborted);
-        if (ownerLock is not null) await ownerLock.CommitAsync(http.RequestAborted);
+        await transaction.CommitAsync(http.RequestAborted);
         return Results.NoContent();
     }
 
@@ -230,14 +239,17 @@ public static class UserManagementEndpoints
         if (membership.Status == target) return Results.NoContent();
         if (!request.Active && membership.Role == MembershipRole.Owner && await IsLastActiveOwnerAsync(membership, db, http)) return Conflict("LAST_OWNER", "Çalışma alanının son etkin sahibi pasife alınamaz.");
         if (await ReauthAsync(request.Password, request.Code, request.RecoveryCode, http, users, db, protection, totp, hasher, time) is { } refusal) return refusal;
-        await using var ownerLock = !request.Active && membership.Role == MembershipRole.Owner ? await LockMembershipsAsync(db, tenant.TenantId, http.RequestAborted) : null;
-        if (ownerLock is not null && await IsLastActiveOwnerAsync(membership, db, http)) return Conflict("LAST_OWNER", "Çalışma alanının son etkin sahibi pasife alınamaz.");
+        var ownerChange = !request.Active && membership.Role == MembershipRole.Owner;
+        await using var transaction = ownerChange ? await LockMembershipsAsync(db, tenant.TenantId, http.RequestAborted) : await db.Database.BeginTransactionAsync(http.RequestAborted);
+        if (ownerChange && await IsLastActiveOwnerAsync(membership, db, http)) return Conflict("LAST_OWNER", "Çalışma alanının son etkin sahibi pasife alınamaz.");
         var now = time.GetUtcNow();
         membership.Status = target; membership.UpdatedAt = now; membership.Version++;
         var revoked = request.Active ? 0 : await RevokeWorkspaceSessionsAsync(membership.UserId, tenant.TenantId, db, now, http.RequestAborted);
         Audit(db, http, tenant, request.Active ? Enabled : Disabled, membership.UserId, request.Active ? "membership-active" : $"membership-disabled; sessions-revoked={revoked}", now);
+        // Security review 16 Nov 2026: a deactivated user's outstanding invitations stop with them.
+        if (!request.Active) await WithdrawInvitationsOfAsync(db, http, tenant, membership.UserId, ownerOnly: false, "inviter-disabled", now);
         await db.SaveChangesAsync(http.RequestAborted);
-        if (ownerLock is not null) await ownerLock.CommitAsync(http.RequestAborted);
+        await transaction.CommitAsync(http.RequestAborted);
         return Results.NoContent();
     }
 
@@ -303,6 +315,21 @@ public static class UserManagementEndpoints
         Audit(db, http, tenant, SessionsRevoked, membership.UserId, $"sessions-revoked={revoked}", now);
         await db.SaveChangesAsync(http.RequestAborted);
         return Results.Ok(new { revoked });
+    }
+
+    // Removes the inviter's outstanding (not declined) invitations of this workspace, each audited as withdrawn. Declined
+    // rows stay: they only hold the re-invite quiet period and grant nothing.
+    private static async Task<int> WithdrawInvitationsOfAsync(AppDbContext db, HttpContext http, TenantContext actor, Guid inviterId, bool ownerOnly, string reason, DateTimeOffset now)
+    {
+        var outstanding = await db.TenantInvitations
+            .Where(x => x.TenantId == actor.TenantId && x.InvitedByUserId == inviterId && x.DeclinedAt == null && (!ownerOnly || x.Role == MembershipRole.Owner))
+            .ToListAsync(http.RequestAborted);
+        foreach (var invitation in outstanding)
+        {
+            db.TenantInvitations.Remove(invitation);
+            Audit(db, http, actor, InvitationWithdrawn, invitation.UserId, $"role={RoleWire(invitation.Role)}; invitation={invitation.Id:D}; {reason}; inviter={inviterId:D}", now);
+        }
+        return outstanding.Count;
     }
 
     // Who may change whom, before anything is checked or counted.

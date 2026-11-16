@@ -66,6 +66,7 @@ public static class ApiErrorCatalog
         new("INVITATION_EXPIRED", 409, "Bu davetin süresi doldu; çalışma alanının yöneticisinden yeniden davet isteyin."),
         new("INVITATION_NOT_FOUND", 404, "Davet bulunamadı; geri çekilmiş ya da yanıtlanmış olabilir."),
         new("INVITATION_PENDING", 409, "Bu e-posta adresine bu çalışma alanından gönderilmiş, yanıt bekleyen bir davet var."),
+        new("INVITATION_REVOKED", 409, "Bu davet artık geçerli değil; davet eden kişinin yetkisi değişti. Çalışma alanının yöneticisinden yeniden davet isteyin."),
         new("INVITATION_WORKSPACE_UNAVAILABLE", 409, "Bu çalışma alanı artık kullanılmıyor."),
         new("INVOICE_ALREADY_EXISTS", 409, "Bu sipariş için mali fatura kaydı zaten var. Mevcut faturaya yeni belge ekleyin; siparişe ikinci belge kaydedilmedi."),
         new("INVOICE_DATE_INVALID", 422, "Fatura tarihi geçerli bir tarih olmalıdır."),
