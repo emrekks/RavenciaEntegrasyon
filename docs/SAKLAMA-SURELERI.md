@@ -29,7 +29,7 @@ silinmez. Faturalar, sipariş satırları, hakediş ve finans hareketleri bu lis
 
 | Tablo | Ne tutuyor | Öneri | Ayar (`production.env`) | Alt sınır |
 |---|---|---|---|---|
-| `sales.order_status_history` | Siparişin her durum değişimi (oluştu, kargolandı, teslim, iade) ve zamanı | **Hiç silmeyin.** Teslim/iade zamanı anlaşmazlıkta ve iade süresi hesabında kanıt; sipariş aktarımı da geçmişi okuyor (toplama zamanı, elle durum). Açılsa bile her siparişin en son satırı kalır. | `MARKETPLACEHUB_RETENTION_ORDER_STATUS_HISTORY_DAYS` | 1095 gün |
+| `sales.order_status_history` | Siparişin her durum değişimi (oluştu, kargolandı, teslim, iade) ve zamanı | **Hiç silmeyin.** Teslim/iade zamanı anlaşmazlıkta ve iade süresi hesabında kanıt; sipariş aktarımı da geçmişi okuyor (toplama zamanı, elle durum). Açılsa bile okunan satırlar kalır (aşağıda "Nasıl çalışır"); bugün bu, tablonun tamamı demek. | `MARKETPLACEHUB_RETENTION_ORDER_STATUS_HISTORY_DAYS` | 1095 gün |
 | `ops.audit_logs` | Kim ne zaman ne yaptı (giriş, iki adımlı doğrulama, rol, sıfırlama, soru bildirimi) | **Hiç silmeyin.** Güvenlik ve sorumluluk kaydı; satır sayısı çok düşük. Silinecekse en az 2 yıl. | `MARKETPLACEHUB_RETENTION_AUDIT_LOG_DAYS` | 730 gün |
 | `catalog.product_change_entries` | Ürün Hareketleri: durum, panel fiyatı ve bilgi alanı değişimleri | **730 gün (2 yıl).** Panelde Ürün Hareketleri ekranı gösterir; iki yıldan eski bir alan değişikliği anlaşmazlıkta nadiren gerekir. | `MARKETPLACEHUB_RETENTION_PRODUCT_CHANGE_ENTRY_DAYS` | 365 gün |
 | `inventory.channel_price_history` | Pazaryeri teklifinin her fiyat sürümü | **730 gün (2 yıl), her teklifin son 50 sürümü her zaman kalır.** Fiyat anlaşmazlığında (ör. yanlış fiyattan satış) satışın tarihindeki fiyat sipariş satırında zaten yazılı; bu tablo ek kanıt. | `MARKETPLACEHUB_RETENTION_CHANNEL_PRICE_HISTORY_DAYS` | 365 gün |
@@ -50,8 +50,15 @@ MARKETPLACEHUB_RETENTION_AI_USAGE_LOG_DAYS=365
   yazar; silinen satırlar `History retention removed ...` logunda görünür (`/prod-logs logs worker --grep "History retention"`).
 - Ayar adı: `Worker:HistoryRetention:<Tablo>Days` (`HistoryRetentionPolicy`); Compose bunu `compose.production.yaml`'da
   worker'a `production.env`'deki değişkenden verir.
-- Fiyat geçmişinde süreden eski bir sürüm, teklifin ondan yeni en az 50 sürümü varsa silinir; sipariş geçmişinde süreden
-  eski bir satır, siparişin ondan yeni bir satırı varsa silinir.
+- Değer tam sayı gün olmalı (`730`). Sayı olmayan bir değer (`730gün`, `2y`) tabloyu kapalı bırakır ve worker logunda
+  `History retention: ... is not a whole number of days` hatası yazar; worker durmaz.
+- Fiyat geçmişinde süreden eski bir sürüm, teklifin ondan yeni en az 50 sürümü varsa silinir.
+- Sipariş geçmişinde kodun okuduğu satırlar yaşı ne olursa olsun kalır: her siparişin en son satırı; `SHIPPED` ve
+  `DELIVERED` satırları (raporlardaki ve sipariş listesindeki kargo/teslim zamanı); toplama isteği (`PICKING_REQUESTED`,
+  sipariş aktarımı toplama zamanını buradan okur); elle Shopify durumları (`MANUAL_SHOPIFY_STATUS:`); ve olay kimliği
+  (`SourceEventId`) dolu her satır (sipariş aktarımı aynı olayı ikinci kez yazmamak için bunlara bakar; silinen olay
+  yeniden yazılırdı). Canlıda (16 Kasım 2026) **her satırın olay kimliği dolu**: tablo açılsa da pratikte hiçbir satır
+  silinmez. Bu yüzden öneri "hiç silmeyin"dir.
 - Silinen satır yedeklerde kalır (yedek saklama planı: `docs/RUNBOOK-GERI-ALMA.md` bölüm 3).
 - Testler: `tests/MarketplaceHub.Application.Tests/HistoryRetentionPostgreSqlTests.cs` (sınırın iki yanı, son 50 fiyat,
   siparişin son satırı, varsayılan kapalı).

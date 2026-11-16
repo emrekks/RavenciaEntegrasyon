@@ -588,18 +588,20 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         var guardRetention = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:JobRetention:GuardDays", 90), 30, 3650));
         var effectRecordRetention = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:JobRetention:EffectRecordDays", 90), 30, 3650));
         // History tables: off (kept forever) until the owner sets a period (docs/SAKLAMA-SURELERI.md).
-        TimeSpan? History(HistoryRetentionPolicy.Table table) =>
-            HistoryRetentionPolicy.Period(table, configuration.GetValue<int?>(HistoryRetentionPolicy.SettingName(table)));
+        // Read as text: a value that is not a number keeps the table and is logged, it never stops the worker.
+        TimeSpan? History(HistoryRetentionPolicy.Table table)
+        {
+            var setting = HistoryRetentionPolicy.SettingName(table);
+            var period = HistoryRetentionPolicy.Period(table, configuration[setting], out var invalid);
+            if (invalid) logger.LogError("History retention: {Setting} is not a whole number of days ({Value}); {Table} is kept forever", setting, configuration[setting], table.Name);
+            else if (period is not null) logger.LogInformation("History retention: {Table} keeps {Days} days", table.Name, period.Value.TotalDays);
+            return period;
+        }
         var auditRetention = History(HistoryRetentionPolicy.AuditLogs);
         var aiUsageRetention = History(HistoryRetentionPolicy.AiUsageLogs);
         var priceHistoryRetention = History(HistoryRetentionPolicy.ChannelPriceHistory);
         var productChangeRetention = History(HistoryRetentionPolicy.ProductChangeEntries);
         var orderStatusRetention = History(HistoryRetentionPolicy.OrderStatusHistory);
-        foreach (var table in HistoryRetentionPolicy.Tables)
-        {
-            var period = History(table);
-            if (period is not null) logger.LogInformation("History retention: {Table} keeps {Days} days", table.Name, period.Value.TotalDays);
-        }
         return RunPeriodicAsync(TimeSpan.FromMinutes(10), TimeSpan.FromHours(1), async token =>
         {
             await using var scope = scopeFactory.CreateAsyncScope();

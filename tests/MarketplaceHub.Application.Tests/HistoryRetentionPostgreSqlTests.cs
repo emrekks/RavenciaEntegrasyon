@@ -85,7 +85,7 @@ public sealed class HistoryRetentionPostgreSqlTests(PostgreSqlTenantIsolationFix
     }
 
     [PostgreSqlFact]
-    public async Task OldOrderStatusRowsGoButTheNewestOfEveryOrderStays()
+    public async Task OnlyOldOrderStatusRowsNothingReadsGo()
     {
         var now = DateTimeOffset.UtcNow;
         var tenant = NewTenant("history-status");
@@ -96,21 +96,40 @@ public sealed class HistoryRetentionPostgreSqlTests(PostgreSqlTenantIsolationFix
         db.Tenants.Add(tenant);
         await db.SaveChangesAsync();
         await db.Database.ExecuteSqlRawAsync("SET LOCAL session_replication_role = replica");
-        var created = Guid.CreateVersion7();
+        // One row without an event id per order at most (unique TenantId, OrderId, SourceEventId): each kept kind gets its own
+        // order, each with a newer row, so only the kind decides.
+        var shippedOrder = Guid.CreateVersion7();
+        var pickingOrder = Guid.CreateVersion7();
+        var manualOrder = Guid.CreateVersion7();
+        var plainOld = Guid.CreateVersion7();
+        var withEvent = Guid.CreateVersion7();
         var shipped = Guid.CreateVersion7();
-        var delivered = Guid.CreateVersion7();
+        var picking = Guid.CreateVersion7();
+        var manual = Guid.CreateVersion7();
         var lonely = Guid.CreateVersion7();
-        foreach (var (id, orderId, status, daysAgo) in new[] { (created, order, "CREATED", 1200), (shipped, order, "SHIPPED", 1199), (delivered, order, "DELIVERED", 10), (lonely, oldOnlyOrder, "DELIVERED", 1200) })
+        var newer = new[] { order, shippedOrder, pickingOrder, manualOrder }.Select(id => (Guid.CreateVersion7(), id)).ToList();
+        var rows = new List<(Guid Id, Guid Order, string Status, string Raw, string Event, int DaysAgo)>
+        {
+            (plainOld, order, "CREATED", "Created", "", 1210),
+            (withEvent, order, "CREATED", "Created", "evt-1", 1209),
+            (shipped, shippedOrder, "SHIPPED", "Shipped", "", 1208),
+            (picking, pickingOrder, "PROCESSING", PackageIngestionSafety.InstantPickingRawStatus, "", 1207),
+            (manual, manualOrder, "CANCELLED", ShopifyManualStatusPolicy.RawStatusPrefix + "CANCELLED", "", 1206),
+            (lonely, oldOnlyOrder, "CREATED", "Created", "", 1200),
+        };
+        rows.AddRange(newer.Select(x => (x.Item1, x.id, "DELIVERED", "Delivered", "evt-new", 10)));
+        foreach (var row in rows)
             await db.Database.ExecuteSqlInterpolatedAsync($"""
                 INSERT INTO sales.order_status_history ("Id", "TenantId", "OrderId", "CanonicalStatus", "RawStatus", "SourceEventId", "OccurredAt", "RecordedAt")
-                VALUES ({id}, {tenant.Id}, {orderId}, {status}, {status}, {id.ToString("N")}, {now.AddDays(-daysAgo)}, {now.AddDays(-daysAgo)})
+                VALUES ({row.Id}, {tenant.Id}, {row.Order}, {row.Status}, {row.Raw}, {row.Event}, {now.AddDays(-row.DaysAgo)}, {now.AddDays(-row.DaysAgo)})
                 """);
 
         var deleted = await new JobRetentionService(db, fixture.TimeProvider).PurgeOrderStatusHistoryAsync(TimeSpan.FromDays(1095), maximumBatches: 1_000, CancellationToken.None);
 
-        Assert.Equal(2, deleted);
+        // Only the old row without an event id, status time, collection request or manual status, and not its order's newest.
+        Assert.Equal(1, deleted);
         var left = await db.OrderStatusHistory.AsNoTracking().Where(x => x.TenantId == tenant.Id).Select(x => x.Id).ToListAsync();
-        Assert.Equal(new[] { delivered, lonely }.Order(), left.Order());
+        Assert.Equal(new[] { withEvent, shipped, picking, manual, lonely }.Concat(newer.Select(x => x.Item1)).Order(), left.Order());
         await transaction.RollbackAsync();
     }
 
@@ -142,9 +161,36 @@ public sealed class HistoryRetentionPolicyTests
         if (configured is not null) settings[HistoryRetentionPolicy.SettingName(HistoryRetentionPolicy.AuditLogs)] = configured;
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
 
-        var period = HistoryRetentionPolicy.Period(HistoryRetentionPolicy.AuditLogs, configuration.GetValue<int?>(HistoryRetentionPolicy.SettingName(HistoryRetentionPolicy.AuditLogs)));
+        var period = HistoryRetentionPolicy.Period(HistoryRetentionPolicy.AuditLogs, configuration[HistoryRetentionPolicy.SettingName(HistoryRetentionPolicy.AuditLogs)], out _);
 
         Assert.Equal(expectedDays, period is null ? null : (int)period.Value.TotalDays);
+    }
+
+    // What the owner may type into production.env: a typo keeps the table forever and is flagged, it never throws (a typed
+    // GetValue<int?> threw at worker start and stopped every sync).
+    [Theory]
+    [InlineData(null, null, false)]
+    [InlineData("", null, false)]
+    [InlineData("  ", null, false)]
+    [InlineData("0", null, false)]
+    [InlineData(" 1000 ", 1000, false)]
+    [InlineData("30", 730, false)]
+    [InlineData("730gün", null, true)]
+    [InlineData("2y", null, true)]
+    [InlineData("730.5", null, true)]
+    public void ATypedValueThatIsNotANumberKeepsTheTableAndIsFlagged(string? configured, int? expectedDays, bool expectedInvalid)
+    {
+        var period = HistoryRetentionPolicy.Period(HistoryRetentionPolicy.AuditLogs, configured, out var invalid);
+        Assert.Equal(expectedDays, period is null ? null : (int)period.Value.TotalDays);
+        Assert.Equal(expectedInvalid, invalid);
+    }
+
+    [Fact]
+    public void TheWorkerReadsTheRetentionSettingsAsText()
+    {
+        var worker = File.ReadAllText(Path.Combine(TestRepository.Root(), "src", "MarketplaceHub.Worker", "Worker.cs"));
+        Assert.Contains("HistoryRetentionPolicy.Period(table, configuration[setting], out var invalid)", worker, StringComparison.Ordinal);
+        Assert.DoesNotContain("GetValue<int?>(HistoryRetentionPolicy", worker, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -155,7 +201,7 @@ public sealed class HistoryRetentionPolicyTests
         var compose = File.ReadAllText(Path.Combine(TestRepository.Root(), "deploy", "compose", "compose.production.yaml"));
         foreach (var table in HistoryRetentionPolicy.Tables)
         {
-            Assert.Null(HistoryRetentionPolicy.Period(table, configuration.GetValue<int?>(HistoryRetentionPolicy.SettingName(table))));
+            Assert.Null(HistoryRetentionPolicy.Period(table, configuration[HistoryRetentionPolicy.SettingName(table)], out _));
             Assert.Contains(table.Name, proposal, StringComparison.Ordinal);
             Assert.Contains(HistoryRetentionPolicy.SettingName(table).Replace(":", "__", StringComparison.Ordinal), compose, StringComparison.Ordinal);
         }
