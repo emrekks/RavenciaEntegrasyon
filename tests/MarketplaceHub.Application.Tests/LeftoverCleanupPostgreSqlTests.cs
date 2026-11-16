@@ -260,6 +260,62 @@ public sealed class LeftoverCleanupPostgreSqlTests(PostgreSqlTenantIsolationFixt
         }
     }
 
+    // More than a batch of tombstones that must stay (a running job names each) no longer hides the ones after them: the
+    // next sweep continues where the last one stopped.
+    [PostgreSqlFact]
+    public async Task TheSweepReachesTombstonesBehindABatchOfOnesThatStay()
+    {
+        var tenant = NewTenant("lo-rotate");
+        var kept = Enumerable.Range(0, 21).Select(_ => NewConnection(tenant.Id, "TRENDYOL", ConnectionLeftovers.DeletedStatus)).ToList();
+        var last = NewConnection(tenant.Id, "TRENDYOL", ConnectionLeftovers.DeletedStatus);
+        // Sorts after every kept one (ids made in the same millisecond do not keep their order).
+        last.Id = Guid.Parse($"ffffffff-ffff-7fff-bfff-{Guid.NewGuid():N}"[..36]);
+        await SeedAsync(tenant, db =>
+        {
+            db.PlatformConnections.AddRange(kept);
+            db.PlatformConnections.Add(last);
+            foreach (var connection in kept)
+            {
+                var suffix = Guid.NewGuid().ToString("N");
+                db.IntegrationJobs.Add(new IntegrationJob
+                {
+                    Id = Guid.CreateVersion7(),
+                    TenantId = tenant.Id,
+                    ConnectionId = connection.Id,
+                    JobType = "TEST_LEFTOVER",
+                    PayloadJson = "{}",
+                    PayloadVersion = 1,
+                    PayloadHash = "h",
+                    JobDedupKey = $"lo-{suffix}",
+                    EffectIdempotencyKey = $"lo-{suffix}",
+                    Priority = 1,
+                    Status = JobStatus.Leased,
+                    AvailableAt = fixture.Now,
+                    MaxAttempts = 3,
+                    CorrelationId = $"lo-{suffix}",
+                    CreatedAt = fixture.Now,
+                    Version = 1
+                });
+            }
+        });
+        try
+        {
+            await using (var db = fixture.CreateContext())
+                Assert.Equal(0, await ConnectionLeftovers.SweepDeletedConnectionsAsync(db, fixture.Now, CancellationToken.None, tenant.Id));
+            await using (var db = fixture.CreateContext())
+                Assert.Equal(1, await ConnectionLeftovers.SweepDeletedConnectionsAsync(db, fixture.Now, CancellationToken.None, tenant.Id));
+            await using var verify = fixture.CreateContext();
+            Assert.False(await verify.PlatformConnections.AnyAsync(x => x.Id == last.Id));
+            Assert.Equal(21, await verify.PlatformConnections.CountAsync(x => x.TenantId == tenant.Id));
+        }
+        finally
+        {
+            await using (var db = fixture.CreateContext())
+                await db.Database.ExecuteSqlInterpolatedAsync($"""DELETE FROM integration.jobs WHERE "TenantId" = {tenant.Id}""");
+            await DeleteTenantAsync(tenant.Id);
+        }
+    }
+
     private Tenant NewTenant(string code) => new() { Id = Guid.CreateVersion7(), Code = $"{code}-{Guid.NewGuid():N}", DisplayName = code, Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
 
     private static PlatformConnection NewConnection(Guid tenantId, string platformCode, string status) => new()
