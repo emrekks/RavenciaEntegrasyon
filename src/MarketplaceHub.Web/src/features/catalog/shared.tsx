@@ -55,7 +55,7 @@ export type VariantPlatformStatus = {
 // A card as GET /products/{id} and the card writes answer it: every member present, null when unset.
 export type Product = ApiAnswer<'getProductsById'>
 // GET /products answers the same card but leaves its null members out (CatalogEndpoints.ProductListJson); the list
-// pages read it as Product and touch a nullable member only with ?? / ?. / != null (ProductsPage.loadProductPage).
+// pages read its rows through readProductListItem (product-list-item.ts), which gives them back as null.
 export function variantColorKey(variant: Variant) {
   const color = preferredColorOption(variantOptionEntries(variant))
   return color?.value.trim().toLocaleLowerCase('tr-TR') || null

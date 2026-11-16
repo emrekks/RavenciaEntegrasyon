@@ -3,7 +3,7 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type Keyb
 import { Link } from 'react-router'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { backgroundPollHeaders, hubApi, loadAllPages } from '../../shared/api'
-import type { Product } from '../catalog/shared'
+import { readProductListPage, type ProductListItem } from '../catalog/product-list-item'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { NoticeToast } from '../../shared/components/NoticeToast'
 import { CardBackgroundIcon, type CardIconName } from '../../shared/components/CardBackgroundIcon'
@@ -165,7 +165,7 @@ export function DashboardPage() {
     window.addEventListener('scroll', close, { passive: true })
     return () => { document.removeEventListener('pointerdown', close); window.removeEventListener('scroll', close) }
   }, [breakdownOpen])
-  const lowStock = useQuery({ queryKey: queryKeys.products('low-stock-details'), queryFn: ({ signal }) => loadAllPages<Product>('/products?stock=LOW', { limit: 200, signal }), enabled: lowStockOpen, staleTime: 15_000 })
+  const lowStock = useQuery({ queryKey: queryKeys.products('low-stock-details'), queryFn: ({ signal }) => loadAllPages<ProductListItem>('/products?stock=LOW', { limit: 200, signal }).then(readProductListPage), enabled: lowStockOpen, staleTime: 15_000 })
   const [metric, setMetric] = useState<0 | 1 | 2>(0)
   const [noticeClosed, setNoticeClosed] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
