@@ -12,7 +12,7 @@ public sealed class PazaramaRateLimitHandler(
     ISharedRateLimiter? sharedLimiter = null,
     ILogger<PazaramaRateLimitHandler>? logger = null) : DelegatingHandler
 {
-    public static readonly HttpRequestOptionsKey<string> AccountKeyOption = new("MarketplaceHub.Pazarama.Account");
+    public static readonly HttpRequestOptionsKey<string> AccountKeyOption = Http.MarketplaceQuota.AccountKey;
     // Invoked once the request has its quota token, right before it is sent; the caller starts the request
     // timeout there, so time spent waiting for the quota is not counted as a timeout.
     public static readonly HttpRequestOptionsKey<Action> QuotaAcquiredKey = Http.MarketplaceQuota.AcquiredKey;

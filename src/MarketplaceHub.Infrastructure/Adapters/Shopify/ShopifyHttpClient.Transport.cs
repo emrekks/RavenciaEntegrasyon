@@ -51,7 +51,7 @@ public sealed partial class ShopifyHttpClient
                 // dropped from the cache, so the next request asks for a new one instead of reusing it until it expires.
                 if (response.StatusCode == HttpStatusCode.Unauthorized && context.ExpiresAt != DateTimeOffset.MaxValue)
                     authentication.Forget(context.Connection.Id);
-                var retryAfter = RetryAfterHeader.Unchecked(response.Headers.RetryAfter, timeProvider.GetUtcNow());
+                var retryAfter = RetryAfterHeader.ForN11PazaramaPttAvmShopify(response.Headers.RetryAfter, timeProvider.GetUtcNow());
                 return Failure<JsonDocument>(MapHttpError(response.StatusCode, raw, retryAfter, remoteRequestId), rate);
             }
             if (GraphQlError(document.RootElement, (int)response.StatusCode, remoteRequestId) is { } graphQlError)

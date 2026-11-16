@@ -83,7 +83,7 @@ public sealed partial class PttAvmHttpClient
         var body = exchange.Body;
         if (LocalCircuitResponse.Refusal(response, "PTTAVM", "PttAVM") is { } localCircuit)
             return AdapterResult<XElement>.Failure(localCircuit, new RateLimitMetadata(null, null, localCircuit.RetryAfter));
-        var retryAfter = RetryAfterHeader.Unchecked(response.Headers.RetryAfter, timeProvider.GetUtcNow());
+        var retryAfter = RetryAfterHeader.ForN11PazaramaPttAvmShopify(response.Headers.RetryAfter, timeProvider.GetUtcNow());
         var parsed = SoapResponse(response.StatusCode, body, operation, retryAfter);
         if (parsed.Error is { } error)
         {
@@ -127,21 +127,25 @@ public sealed partial class PttAvmHttpClient
             return (null, new(AdapterErrorClass.RateLimit, "PTTAVM_GATEWAY_BLOCKED",
                 "PttAVM'nin güvenlik geçidi isteği engelledi (servis yerine HTML sayfa döndü). Geçici olabilir; 15 dakika sonra yeniden denenir.", (int)status, TimeSpan.FromMinutes(15), null));
         if (status == HttpStatusCode.TooManyRequests)
-            return (null, new(AdapterErrorClass.RateLimit, "PTTAVM_RATE_LIMITED", "PttAVM istek sınırına ulaşıldı; işlem biraz sonra yeniden denenecek.", 429, retryAfter ?? TimeSpan.FromSeconds(60), null));
+            return (null, new(AdapterErrorClass.RateLimit, "PTTAVM_RATE_LIMITED", "PttAVM istek sınırına ulaşıldı; işlem biraz sonra yeniden denenecek.", 429, retryAfter ?? MarketplaceErrorRules.RateLimitedWait, null));
         XDocument? document = null;
         try { if (!string.IsNullOrWhiteSpace(body)) document = XDocument.Parse(body); }
         catch (XmlException) { }
         // WCF answers a fault with HTTP 500; the fault decides, not the status.
         if (document?.Descendants().FirstOrDefault(x => x.Name.LocalName == "Fault" && x.Name.NamespaceName == EnvelopeNamespace) is { } fault)
             return (null, FaultError(fault, (int)status, operation));
-        if (status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
-            return (null, new(AdapterErrorClass.Authentication, "PTTAVM_CREDENTIALS_REJECTED", PttAvmErrorAdvice.CredentialsRejected, (int)status, null, null));
-        if (status == HttpStatusCode.RequestTimeout)
-            return (null, new(AdapterErrorClass.TransientNetwork, "PTTAVM_REMOTE_TIMEOUT", "PttAVM isteği kendi tarafında zaman aşımına uğrattı; işlem yeniden denenecek.", 408, retryAfter ?? TimeSpan.FromSeconds(15), null));
-        if ((int)status >= 500)
-            return (null, new(AdapterErrorClass.Remote5xx, "PTTAVM_REMOTE_ERROR", "PttAVM servisi geçici olarak hata veriyor; işlem yeniden denenecek.", (int)status, retryAfter ?? TimeSpan.FromSeconds(30), null));
+        // Past the fault, an HTTP error status reads through the shared status table (MarketplaceErrorRules.FromStatus).
+        // PTT AVM has no class of its own for 404 and 409: both are a plain refusal (NotFound and Conflict null). Its HTML
+        // gateway page and its 429 are answered above, before the fault, so the table's own checks never see them.
         if ((int)status >= 400)
-            return (null, new(AdapterErrorClass.Validation, "PTTAVM_REQUEST_REJECTED", "PttAVM isteği reddetti.", (int)status, null, null));
+            return (null, MarketplaceErrorRules.FromStatus("PTTAVM", "PttAVM", status, body, retryAfter, new(
+                CredentialsRejected: PttAvmErrorAdvice.CredentialsRejected,
+                RateLimited: "PttAVM istek sınırına ulaşıldı; işlem biraz sonra yeniden denenecek.",
+                NotFound: null,
+                RemoteTimeout: "PttAVM isteği kendi tarafında zaman aşımına uğrattı; işlem yeniden denenecek.",
+                Conflict: null,
+                RemoteError: "PttAVM servisi geçici olarak hata veriyor; işlem yeniden denenecek.",
+                RequestRejected: "PttAVM isteği reddetti.")));
         if (document is null)
             return (null, new(AdapterErrorClass.ContractViolation, "PTTAVM_SOAP_INVALID", "PttAVM geçerli bir SOAP yanıtı vermedi.", (int)status, null, null));
         var response = document.Descendants().FirstOrDefault(x => x.Name == XName.Get(operation + "Response", ServiceNamespace));

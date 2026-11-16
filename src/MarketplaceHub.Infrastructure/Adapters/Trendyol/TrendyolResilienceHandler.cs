@@ -57,6 +57,10 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
                 var remoteRetryAfter = statusCode == 429 ? RetryAfterDelay(response.Headers.RetryAfter) : null;
                 if (statusCode == 429 && RateBucketFor(request) is { } rateLimitedBucket)
                     LogTierChange(rateLimitedBucket, tier => tier.RecordRateLimited(timeProvider.GetUtcNow()));
+                // A 429 naming no wait counts as a failure here; the shared circuit learns nothing from it
+                // (MarketplaceCircuitRules, an owner decision). Unrecorded, the finally block releases a probe.
+                if (statusCode == 429 && remoteRetryAfter is null && !MarketplaceCircuitRules.TrendyolCountsQuotaStopWithoutRetryAfter)
+                    return response;
                 RecordResult(circuitKey, circuitSucceeded, halfOpen, remoteRetryAfter);
                 resultRecorded = true;
                 return response;
