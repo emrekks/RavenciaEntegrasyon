@@ -1,0 +1,61 @@
+{
+  "JobType": "TRENDYOL_ORDER_SYNC",
+  "Runs": [
+    {
+      "Run": "first",
+      "Result": "Succeeded",
+      "ErrorCode": null,
+      "Calls": {
+        "Count": 23,
+        "Head": [
+          "orders.Poll key=order-sync:TR:0 window=2026-11-02T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR cursor=- limit=200",
+          "orders.Poll key=order-sync:TR:1 window=2026-11-02T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR cursor=1 limit=200",
+          "orders.Poll key=order-sync:AE:0 window=2026-11-02T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=AE cursor=- limit=200",
+          "orders.Poll key=order-sync:SA:0 window=2026-11-02T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=SA cursor=- limit=200",
+          "orders.Poll key=order-sync:GR:0 window=2026-11-02T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=GR cursor=- limit=200"
+        ],
+        "Tail": [
+          "orders.Poll key=order-sync:SK:1 window=2026-11-02T08:58:02.000Z..2026-11-02T09:00:01.999Z storefront=SK cursor=- limit=200",
+          "orders.Poll key=order-sync:RO:1 window=2026-11-02T08:58:02.000Z..2026-11-02T09:00:01.999Z storefront=RO cursor=- limit=200",
+          "orders.Poll key=order-sync:CZ:1 window=2026-11-02T08:58:02.000Z..2026-11-02T09:00:01.999Z storefront=CZ cursor=- limit=200"
+        ]
+      }
+    },
+    {
+      "Run": "empty",
+      "Result": "Succeeded",
+      "ErrorCode": null,
+      "Calls": {
+        "Count": 1,
+        "Head": [
+          "orders.Poll key=order-sync:TR:0 window=2026-11-16T08:58:02.000Z..2026-11-16T09:10:32.000Z storefront=TR cursor=- limit=200"
+        ],
+        "Tail": []
+      }
+    }
+  ],
+  "Cursors": [
+    {
+      "ResourceType": "ORDERS_HOT",
+      "Watermark": "2026-11-16T09:10:32.000Z",
+      "LastSuccess": "2026-11-16T09:10:38.000Z",
+      "OpaqueCursor": null,
+      "Version": 29
+    },
+    {
+      "ResourceType": "ORDER_LINE_REMATCH",
+      "Watermark": null,
+      "LastSuccess": null,
+      "OpaqueCursor": null,
+      "Version": 1
+    },
+    {
+      "ResourceType": "TRENDYOL_STOREFRONTS",
+      "Watermark": null,
+      "LastSuccess": null,
+      "OpaqueCursor": "{\"TR\":{\"LastOrderAt\":null,\"LastProbedAt\":\"2026-11-16T09:10:32+00:00\",\"PausedUntil\":null,\"LastRejectedAt\":null,\"LastTriedAt\":\"2026-11-16T09:10:32+00:00\"},\"AE\":{\"LastOrderAt\":null,\"LastProbedAt\":\"2026-11-16T09:00:02+00:00\",\"PausedUntil\":null,\"LastRejectedAt\":null,\"LastTriedAt\":\"2026-11-16T09:00:02+00:00\"},\"SA\":{\"LastOrderAt\":null,\"LastProbedAt\":\"2026-11-16T09:00:02+00:00\",\"PausedUntil\":null,\"LastRejectedAt\":null,\"LastTriedAt\":\"2026-11-16T09:00:02+00:00\"},\"GR\":{\"LastOrderAt\":null,\"LastProbedAt\":\"2026-11-16T09:00:02+00:00\",\"PausedUntil\":null,\"LastRejectedAt\":null,\"LastTriedAt\":\"2026-11-16T09:00:02+00:00\"},\"DE\":{\"LastOrderAt\":null,\"LastProbedAt\":\"2026-11-16T09:00:02+00:00\",\"PausedUntil\":null,\"LastRejectedAt\":null,\"LastTriedAt\":\"2026-11-16T09:00:02+00:00\"},\"BG\":{\"LastOrderAt\":null,\"LastProbedAt\":\"2026-11-16T09:00:02+00:00\",\"PausedUntil\":null,\"LastRejectedAt\":null,\"LastTriedAt\":\"2026-11-16T09:00:02+00:00\"},\"KW\":{\"LastOrderAt\":null,\"LastProbedAt\":\"2026-11-16T09:00:02+00:00\",\"PausedUntil\":null,\"LastRejectedAt\":null,\"LastTriedAt\":\"2026-11-16T09:00:02+00:00\"},\"AZ\":{\"LastOrderAt\":null,\"LastProbedAt\":\"2026-11-16T09:00:02+00:00\",\"PausedUntil\":null,\"LastRejectedAt\":null,\"LastTriedAt\":\"2026-11-16T09:00:02+00:00\"},\"SK\":{\"LastOrderAt\":null,\"LastProbedAt\":\"2026-11-16T09:00:02+00:00\",\"PausedUntil\":null,\"LastRejectedAt\":null,\"LastTriedAt\":\"2026-11-16T09:00:02+00:00\"},\"RO\":{\"LastOrderAt\":null,\"LastProbedAt\":\"2026-11-16T09:00:02+00:00\",\"PausedUntil\":null,\"LastRejectedAt\":null,\"LastTriedAt\":\"2026-11-16T09:00:02+00:00\"},\"CZ\":{\"LastOrderAt\":null,\"LastProbedAt\":\"2026-11-16T09:00:02+00:00\",\"PausedUntil\":null,\"LastRejectedAt\":null,\"LastTriedAt\":\"2026-11-16T09:00:02+00:00\"}}",
+      "Version": 25
+    }
+  ],
+  "Issues": []
+}

@@ -1,0 +1,58 @@
+{
+  "JobType": "HEPSIBURADA_ORDER_STATUS_SYNC",
+  "Runs": [
+    {
+      "Run": "endless",
+      "Result": "Succeeded",
+      "ErrorCode": null,
+      "Calls": {
+        "Count": 20,
+        "Head": [
+          "cancelled.List key=hepsiburada-cancelled:0 window=2026-10-17T09:00:03.000Z..2026-11-16T09:00:03.000Z cursor=- limit=50",
+          "cancelled.List key=hepsiburada-cancelled:1 window=2026-10-17T09:00:03.000Z..2026-11-16T09:00:03.000Z cursor=1 limit=50",
+          "cancelled.List key=hepsiburada-cancelled:2 window=2026-10-17T09:00:03.000Z..2026-11-16T09:00:03.000Z cursor=2 limit=50",
+          "cancelled.List key=hepsiburada-cancelled:3 window=2026-10-17T09:00:03.000Z..2026-11-16T09:00:03.000Z cursor=3 limit=50",
+          "cancelled.List key=hepsiburada-cancelled:4 window=2026-10-17T09:00:03.000Z..2026-11-16T09:00:03.000Z cursor=4 limit=50"
+        ],
+        "Tail": [
+          "cancelled.List key=hepsiburada-cancelled:17 window=2026-10-17T09:00:03.000Z..2026-11-16T09:00:03.000Z cursor=17 limit=50",
+          "cancelled.List key=hepsiburada-cancelled:18 window=2026-10-17T09:00:03.000Z..2026-11-16T09:00:03.000Z cursor=18 limit=50",
+          "cancelled.List key=hepsiburada-cancelled:19 window=2026-10-17T09:00:03.000Z..2026-11-16T09:00:03.000Z cursor=19 limit=50"
+        ]
+      }
+    }
+  ],
+  "Cursors": [
+    {
+      "ResourceType": "HEPSIBURADA_PACKAGE_STATUS_RECONCILIATION",
+      "Watermark": null,
+      "LastSuccess": "2026-11-16T09:00:25.000Z",
+      "OpaqueCursor": null,
+      "Version": 2
+    },
+    {
+      "ResourceType": "ORDER_CANCELLATIONS",
+      "Watermark": null,
+      "LastSuccess": null,
+      "OpaqueCursor": null,
+      "Version": 1
+    },
+    {
+      "ResourceType": "ORDER_CANCELLATIONS_WIDE",
+      "Watermark": null,
+      "LastSuccess": null,
+      "OpaqueCursor": null,
+      "Version": 1
+    },
+    {
+      "ResourceType": "ORDER_LIFECYCLE",
+      "Watermark": "2026-11-16T09:00:26.000Z",
+      "LastSuccess": "2026-11-16T09:00:27.000Z",
+      "OpaqueCursor": null,
+      "Version": 4
+    }
+  ],
+  "Issues": [
+    "HEPSIBURADA_CANCELLED_LIST_INCOMPLETE"
+  ]
+}

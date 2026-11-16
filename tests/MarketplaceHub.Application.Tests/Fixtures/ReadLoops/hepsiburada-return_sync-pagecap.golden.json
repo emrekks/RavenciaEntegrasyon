@@ -1,0 +1,35 @@
+{
+  "JobType": "HEPSIBURADA_RETURN_SYNC",
+  "Runs": [
+    {
+      "Run": "endless",
+      "Result": "Retry",
+      "ErrorCode": "GOLDEN_ENDLESS_LIMIT",
+      "Calls": {
+        "Count": 6001,
+        "Head": [
+          "returns.Poll key=hepsiburada-return-sync:NewRequest:0 window=-..- storefront=- status=NewRequest statusWindow=2026-10-17T09:00:02.000Z..2026-11-16T09:00:02.000Z cursor=0 limit=100",
+          "returns.Poll key=hepsiburada-return-sync:NewRequest:1 window=-..- storefront=- status=NewRequest statusWindow=2026-10-17T09:00:02.000Z..2026-11-16T09:00:02.000Z cursor=1 limit=100",
+          "returns.Poll key=hepsiburada-return-sync:NewRequest:2 window=-..- storefront=- status=NewRequest statusWindow=2026-10-17T09:00:02.000Z..2026-11-16T09:00:02.000Z cursor=2 limit=100",
+          "returns.Poll key=hepsiburada-return-sync:NewRequest:3 window=-..- storefront=- status=NewRequest statusWindow=2026-10-17T09:00:02.000Z..2026-11-16T09:00:02.000Z cursor=3 limit=100",
+          "returns.Poll key=hepsiburada-return-sync:NewRequest:4 window=-..- storefront=- status=NewRequest statusWindow=2026-10-17T09:00:02.000Z..2026-11-16T09:00:02.000Z cursor=4 limit=100"
+        ],
+        "Tail": [
+          "returns.Poll key=hepsiburada-return-sync:NewRequest:5998 window=-..- storefront=- status=NewRequest statusWindow=2026-10-17T09:00:02.000Z..2026-11-16T09:00:02.000Z cursor=5998 limit=100",
+          "returns.Poll key=hepsiburada-return-sync:NewRequest:5999 window=-..- storefront=- status=NewRequest statusWindow=2026-10-17T09:00:02.000Z..2026-11-16T09:00:02.000Z cursor=5999 limit=100",
+          "returns.Poll key=hepsiburada-return-sync:NewRequest:6000 window=-..- storefront=- status=NewRequest statusWindow=2026-10-17T09:00:02.000Z..2026-11-16T09:00:02.000Z cursor=6000 limit=100"
+        ]
+      }
+    }
+  ],
+  "Cursors": [
+    {
+      "ResourceType": "RETURNS",
+      "Watermark": null,
+      "LastSuccess": null,
+      "OpaqueCursor": "{\"Version\":\"hepsiburada-returns-v2\",\"StatusIndex\":0,\"Offset\":6000,\"Full\":true,\"StatusChangedAfter\":null,\"AnchorEnd\":\"2026-11-16T09:00:02+00:00\"}",
+      "Version": 6004
+    }
+  ],
+  "Issues": []
+}

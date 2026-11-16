@@ -1,0 +1,35 @@
+{
+  "JobType": "HEPSIBURADA_ORDER_SYNC",
+  "Runs": [
+    {
+      "Run": "endless",
+      "Result": "Retry",
+      "ErrorCode": "GOLDEN_ENDLESS_LIMIT",
+      "Calls": {
+        "Count": 6001,
+        "Head": [
+          "orders.Poll key=hepsiburada-orders:0:0 window=2026-11-15T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=0 limit=100",
+          "orders.Poll key=hepsiburada-orders:0:1 window=2026-11-15T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=1 limit=100",
+          "orders.Poll key=hepsiburada-orders:0:2 window=2026-11-15T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=2 limit=100",
+          "orders.Poll key=hepsiburada-orders:0:3 window=2026-11-15T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=3 limit=100",
+          "orders.Poll key=hepsiburada-orders:0:4 window=2026-11-15T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=4 limit=100"
+        ],
+        "Tail": [
+          "orders.Poll key=hepsiburada-orders:0:5998 window=2026-11-15T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=5998 limit=100",
+          "orders.Poll key=hepsiburada-orders:0:5999 window=2026-11-15T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=5999 limit=100",
+          "orders.Poll key=hepsiburada-orders:0:6000 window=2026-11-15T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=6000 limit=100"
+        ]
+      }
+    }
+  ],
+  "Cursors": [
+    {
+      "ResourceType": "ORDERS_HOT",
+      "Watermark": null,
+      "LastSuccess": null,
+      "OpaqueCursor": "{\"Version\":\"hepsiburada-orders-v2\",\"AnchorEnd\":\"2026-11-16T09:00:02+00:00\",\"StartAt\":\"2026-11-15T08:58:02+00:00\",\"WindowIndex\":0,\"Offset\":6000,\"PageTotal\":null,\"Moved\":false,\"Rereads\":0}",
+      "Version": 6003
+    }
+  ],
+  "Issues": []
+}

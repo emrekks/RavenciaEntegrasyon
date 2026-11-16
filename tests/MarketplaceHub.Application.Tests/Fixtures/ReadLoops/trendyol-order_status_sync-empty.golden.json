@@ -1,0 +1,42 @@
+{
+  "JobType": "ORDER_STATUS_SYNC",
+  "Runs": [
+    {
+      "Run": "first",
+      "Result": "Succeeded",
+      "ErrorCode": null,
+      "Calls": {
+        "Count": 0,
+        "Head": [],
+        "Tail": []
+      }
+    },
+    {
+      "Run": "empty",
+      "Result": "Succeeded",
+      "ErrorCode": null,
+      "Calls": {
+        "Count": 0,
+        "Head": [],
+        "Tail": []
+      }
+    }
+  ],
+  "Cursors": [
+    {
+      "ResourceType": "ORDER_LIFECYCLE",
+      "Watermark": "2026-11-16T09:10:05.000Z",
+      "LastSuccess": "2026-11-16T09:10:06.000Z",
+      "OpaqueCursor": null,
+      "Version": 7
+    },
+    {
+      "ResourceType": "ORDER_LIFECYCLE_OLDER",
+      "Watermark": null,
+      "LastSuccess": "2026-11-16T09:00:02.000Z",
+      "OpaqueCursor": null,
+      "Version": 2
+    }
+  ],
+  "Issues": []
+}

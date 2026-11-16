@@ -1,0 +1,35 @@
+{
+  "JobType": "N11_ORDER_SYNC",
+  "Runs": [
+    {
+      "Run": "endless",
+      "Result": "ManualReview",
+      "ErrorCode": "N11_ORDER_PAGE_CAP",
+      "Calls": {
+        "Count": 1000,
+        "Head": [
+          "orders.Poll key=n11-order-sync:1794732602000:0 window=2026-11-15T08:50:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=- limit=100",
+          "orders.Poll key=n11-order-sync:1794732602000:1 window=2026-11-15T08:50:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=1 limit=100",
+          "orders.Poll key=n11-order-sync:1794732602000:2 window=2026-11-15T08:50:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=2 limit=100",
+          "orders.Poll key=n11-order-sync:1794732602000:3 window=2026-11-15T08:50:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=3 limit=100",
+          "orders.Poll key=n11-order-sync:1794732602000:4 window=2026-11-15T08:50:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=4 limit=100"
+        ],
+        "Tail": [
+          "orders.Poll key=n11-order-sync:1794732602000:997 window=2026-11-15T08:50:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=997 limit=100",
+          "orders.Poll key=n11-order-sync:1794732602000:998 window=2026-11-15T08:50:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=998 limit=100",
+          "orders.Poll key=n11-order-sync:1794732602000:999 window=2026-11-15T08:50:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=999 limit=100"
+        ]
+      }
+    }
+  ],
+  "Cursors": [
+    {
+      "ResourceType": "ORDERS_HOT",
+      "Watermark": null,
+      "LastSuccess": null,
+      "OpaqueCursor": null,
+      "Version": 3
+    }
+  ],
+  "Issues": []
+}

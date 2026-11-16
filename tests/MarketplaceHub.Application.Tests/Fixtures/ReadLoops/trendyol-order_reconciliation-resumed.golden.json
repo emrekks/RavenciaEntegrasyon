@@ -1,0 +1,55 @@
+{
+  "JobType": "ORDER_RECONCILIATION",
+  "Runs": [
+    {
+      "Run": "failing",
+      "Result": "Retry",
+      "ErrorCode": "GOLDEN_UNAVAILABLE",
+      "Calls": {
+        "Count": 2,
+        "Head": [
+          "orders.Poll key=order-reconcile:TR:0:0 window=2026-11-15T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR cursor=- limit=200",
+          "orders.Poll key=order-reconcile:TR:0:1 window=2026-11-15T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR cursor=1 limit=200"
+        ],
+        "Tail": []
+      }
+    },
+    {
+      "Run": "resumed",
+      "Result": "Succeeded",
+      "ErrorCode": null,
+      "Calls": {
+        "Count": 2,
+        "Head": [
+          "orders.Poll key=order-reconcile:TR:0:1 window=2026-11-15T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR cursor=1 limit=200",
+          "orders.Poll key=order-reconcile:TR:0:2 window=2026-11-15T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR cursor=2 limit=200"
+        ],
+        "Tail": []
+      }
+    }
+  ],
+  "Cursors": [
+    {
+      "ResourceType": "ORDER_RECONCILE_1D",
+      "Watermark": null,
+      "LastSuccess": null,
+      "OpaqueCursor": null,
+      "Version": 5
+    },
+    {
+      "ResourceType": "ORDER_RECONCILIATION",
+      "Watermark": null,
+      "LastSuccess": "2026-11-16T09:01:12.000Z",
+      "OpaqueCursor": null,
+      "Version": 5
+    },
+    {
+      "ResourceType": "TRENDYOL_STOREFRONTS",
+      "Watermark": null,
+      "LastSuccess": null,
+      "OpaqueCursor": null,
+      "Version": 1
+    }
+  ],
+  "Issues": []
+}

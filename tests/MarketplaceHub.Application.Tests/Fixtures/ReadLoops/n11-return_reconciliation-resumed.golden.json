@@ -1,0 +1,41 @@
+{
+  "JobType": "RETURN_RECONCILIATION",
+  "Runs": [
+    {
+      "Run": "failing",
+      "Result": "Retry",
+      "ErrorCode": "GOLDEN_UNAVAILABLE",
+      "Calls": {
+        "Count": 2,
+        "Head": [
+          "returns.Poll key=return-reconcile:3:TR:0 window=2026-11-13T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR status=- statusWindow=-..- cursor=0 limit=200",
+          "returns.Poll key=return-reconcile:3:TR:1 window=2026-11-13T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR status=- statusWindow=-..- cursor=1 limit=200"
+        ],
+        "Tail": []
+      }
+    },
+    {
+      "Run": "resumed",
+      "Result": "Succeeded",
+      "ErrorCode": null,
+      "Calls": {
+        "Count": 2,
+        "Head": [
+          "returns.Poll key=return-reconcile:3:TR:0 window=2026-11-13T09:01:07.000Z..2026-11-16T09:01:07.000Z storefront=TR status=- statusWindow=-..- cursor=0 limit=200",
+          "returns.Poll key=return-reconcile:3:TR:1 window=2026-11-13T09:01:07.000Z..2026-11-16T09:01:07.000Z storefront=TR status=- statusWindow=-..- cursor=1 limit=200"
+        ],
+        "Tail": []
+      }
+    }
+  ],
+  "Cursors": [
+    {
+      "ResourceType": "RETURN_RECONCILIATION",
+      "Watermark": null,
+      "LastSuccess": "2026-11-16T09:01:10.000Z",
+      "OpaqueCursor": null,
+      "Version": 5
+    }
+  ],
+  "Issues": []
+}
