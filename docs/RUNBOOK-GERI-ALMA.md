@@ -373,6 +373,15 @@ Uygulama (sessiz bir saatte; postgres yeniden başlar, birkaç saniye kesinti):
 yazmaları durdurup canlı veritabanını o zamana döndürmek ayrı bir karardır (veritabanı yeniden kurulur, sonrası kaybolur).
 **Geri dönüş:** yamanın compose satırlarını geri alıp deploy; `pg_wal_archive` volume'ü elle silinene kadar kalır.
 
+## 10a. Bekleyen takip işleri
+
+- **VERITABANI-DAGITIM-11, `billing.invoices."SequenceNumber"` sütununu silmek (genişlet-daralt 2. aşama):**
+  hiç yazılmayan ve okunmayan sütun 16 Kasım 2026'da modelden çıkarıldı (`20261116090000_StopMappingInvoiceSequenceNumber`,
+  boş `Up`; canlıda 2 faturanın hiçbirinde değer yok). O sürüm canlıya çıktıktan **sonraki** bir sürümde migration:
+  `migrationBuilder.Sql("ALTER TABLE billing.invoices DROP COLUMN IF EXISTS \"SequenceNumber\"");` ve dosyada
+  `expand-contract: phase 2 of 20261116090000_StopMappingInvoiceSequenceNumber` işaret yorumu (`//` ile; migration
+  guard bunu arar). Sütun silme kısa ACCESS EXCLUSIVE kilit alır (`lock_timeout` ile).
+
 ## 10. Kesintisiz deploy: iki API kopyası (tasarım, VERITABANI-DAGITIM-4)
 
 **Bugün (16 Kasım 2026):** tek `api` konteyneri var; tam deploy eskisini durdurup yenisini başlatır. Caddy iki

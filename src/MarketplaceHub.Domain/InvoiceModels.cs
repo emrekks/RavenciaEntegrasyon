@@ -96,7 +96,9 @@ public sealed class Invoice
     public Guid InvoicePolicyId { get; set; }
     public required string InvoiceType { get; set; }
     public required string SequencePurpose { get; set; }
-    public long? SequenceNumber { get; set; }
+    // VERITABANI-DAGITIM-11: "SequenceNumber" was never written or read (the official number is InvoiceNumber, from the
+    // provider). Expand-contract: the model stopped mapping it (20261116090000_StopMappingInvoiceSequenceNumber); the column
+    // stays in billing.invoices until a later release drops it (docs/RUNBOOK-GERI-ALMA.md, follow-ups).
     public InvoiceStatus Status { get; set; } = InvoiceStatus.Draft;
     public required string Currency { get; set; }
     public decimal TaxExclusiveTotal { get; set; }

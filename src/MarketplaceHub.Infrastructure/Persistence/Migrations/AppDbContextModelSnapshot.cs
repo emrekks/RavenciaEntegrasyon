@@ -2680,9 +2680,6 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("ProviderConnectionId")
                         .HasColumnType("uuid");
 
-                    b.Property<long?>("SequenceNumber")
-                        .HasColumnType("bigint");
-
                     b.Property<string>("SequencePurpose")
                         .IsRequired()
                         .HasMaxLength(64)
