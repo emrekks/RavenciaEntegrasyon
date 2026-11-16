@@ -10,7 +10,7 @@
 //
 //   node scripts/compare-built-css.mjs [--base <git revision>]   (default: HEAD; run from src/MarketplaceHub.Web)
 import { execFileSync } from 'node:child_process'
-import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createRequire } from 'node:module'
@@ -30,8 +30,8 @@ function buildBase() {
   const archive = join(scratch, 'base.tar')
   run('git', ['archive', '--format=tar', '-o', archive, base, `${prefix}`], topLevel)
   const folder = join(scratch, 'base')
-  run('node', ['-e', `require('fs').mkdirSync(${JSON.stringify(folder)},{recursive:true})`], web)
-  run('tar', ['-xf', archive, '-C', folder], topLevel)
+  mkdirSync(folder, { recursive: true })
+  run('tar', ['-xf', 'base.tar', '-C', 'base'], scratch)
   const project = join(folder, prefix)
   symlinkSync(join(web, 'node_modules'), join(project, 'node_modules'), 'junction')
   run('npx', ['vite', 'build', '--logLevel', 'error', '--outDir', join(scratch, 'out-before')], project)
