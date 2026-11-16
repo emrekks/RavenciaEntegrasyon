@@ -31,6 +31,26 @@ internal static partial class JobGolden
         ReferenceHandler = ReferenceHandler.IgnoreCycles
     };
 
+    // The job goldens run in the invariant culture, whatever the machine's (tr-TR on the owner's, en_US on CI): code that
+    // formats a number with the current culture (N11's and Pazarama's price marks, "0.00") would otherwise pin "150,00" on
+    // one machine and "150.00" on the other. The culture flows with the test's awaits; disposing restores it.
+    public static IDisposable InvariantCulture()
+    {
+        var (culture, uiCulture) = (CultureInfo.CurrentCulture, CultureInfo.CurrentUICulture);
+        CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+        CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+        return new CultureScope(culture, uiCulture);
+    }
+
+    private sealed class CultureScope(CultureInfo culture, CultureInfo uiCulture) : IDisposable
+    {
+        public void Dispose()
+        {
+            CultureInfo.CurrentCulture = culture;
+            CultureInfo.CurrentUICulture = uiCulture;
+        }
+    }
+
     public static string Time(DateTimeOffset value)
     {
         // A database default (now()) or the test's real clock: not the golden's business.

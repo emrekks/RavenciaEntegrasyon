@@ -69,6 +69,7 @@ public sealed class ActionJobGoldenPostgreSqlTests(PostgreSqlTenantIsolationFixt
     [MemberData(nameof(ShipmentScenarios))]
     public async Task AShipmentActionSendsAndStoresTheSameThings(string platform, string scenario)
     {
+        using var culture = JobGolden.InvariantCulture();
         var run = await SeedAsync(platform, writesOn: scenario != "writes-off", claim: false);
         Guid packageId;
         await using (var db = fixture.CreateContext())
@@ -124,6 +125,7 @@ public sealed class ActionJobGoldenPostgreSqlTests(PostgreSqlTenantIsolationFixt
     [MemberData(nameof(ReturnScenarios))]
     public async Task AReturnDecisionSendsAndStoresTheSameThings(string scenario)
     {
+        using var culture = JobGolden.InvariantCulture();
         var run = await SeedAsync("TRENDYOL", writesOn: scenario != "writes-off", claim: true);
         Guid claimId;
         await using (var db = fixture.CreateContext())

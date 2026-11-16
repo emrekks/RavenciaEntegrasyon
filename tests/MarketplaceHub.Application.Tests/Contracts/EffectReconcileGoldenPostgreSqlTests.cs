@@ -40,6 +40,7 @@ public sealed class EffectReconcileGoldenPostgreSqlTests(PostgreSqlTenantIsolati
     [MemberData(nameof(Scenarios))]
     public async Task AnUnclearAnswerIsCheckedTheSameWay(string scenario)
     {
+        using var culture = JobGolden.InvariantCulture();
         var run = new GoldenRun(fixture, "TRENDYOL");
         JobGolden.KnowFixtureIds(run.Known, ContractFixture.Read("Trendyol/getClaims-docs-sample.json"));
         await run.SeedAsync();

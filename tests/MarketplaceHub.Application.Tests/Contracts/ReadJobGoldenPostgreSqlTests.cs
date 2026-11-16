@@ -38,6 +38,7 @@ public sealed class ReadJobGoldenPostgreSqlTests(PostgreSqlTenantIsolationFixtur
     [MemberData(nameof(TrendyolInvoiceScenarios))]
     public async Task TrendyolInvoiceCheckAsksAndStoresTheSameThings(string scenario)
     {
+        using var culture = JobGolden.InvariantCulture();
         var run = new GoldenRun(fixture, "TRENDYOL");
         await run.SeedAsync();
         await using (var db = fixture.CreateContext(new FrozenClock(Start)))
@@ -108,6 +109,7 @@ public sealed class ReadJobGoldenPostgreSqlTests(PostgreSqlTenantIsolationFixtur
     [MemberData(nameof(OrderDetailInvoiceScenarios))]
     public async Task OrderDetailInvoiceCheckAsksAndStoresTheSameThings(string platform, string scenario)
     {
+        using var culture = JobGolden.InvariantCulture();
         var run = new GoldenRun(fixture, platform);
         await run.SeedAsync();
         var remotes = Fixture(platform);
@@ -183,6 +185,7 @@ public sealed class ReadJobGoldenPostgreSqlTests(PostgreSqlTenantIsolationFixtur
     [MemberData(nameof(CargoInfoScenarios))]
     public async Task CargoInfoCheckAsksAndStoresTheSameThings(string platform, string scenario)
     {
+        using var culture = JobGolden.InvariantCulture();
         var run = new GoldenRun(fixture, platform);
         run.Settings["MarketplaceSync:TrendyolCargoInfo:BatchSize"] = "2";
         await run.SeedAsync();
@@ -223,6 +226,7 @@ public sealed class ReadJobGoldenPostgreSqlTests(PostgreSqlTenantIsolationFixtur
     [MemberData(nameof(ListingScenarios))]
     public async Task ListingVerificationAsksAndStoresTheSameThings(string platform, string scenario)
     {
+        using var culture = JobGolden.InvariantCulture();
         var run = new GoldenRun(fixture, platform);
         await run.SeedAsync(db =>
         {
@@ -304,6 +308,7 @@ public sealed class ReadJobGoldenPostgreSqlTests(PostgreSqlTenantIsolationFixtur
     [MemberData(nameof(ConnectionScenarios))]
     public async Task ConnectionTestAsksAndStoresTheSameThings(string platform, string scenario)
     {
+        using var culture = JobGolden.InvariantCulture();
         var run = new GoldenRun(fixture, platform, connectionStatus: "DRAFT");
         await run.SeedAsync();
         var port = new GoldenMarketplace();

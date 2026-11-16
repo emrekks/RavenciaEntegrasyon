@@ -137,6 +137,7 @@ public sealed class ProductJobGoldenPostgreSqlTests(PostgreSqlTenantIsolationFix
     [MemberData(nameof(CreateScenarios))]
     public async Task AProductCreateSendsAndStoresTheSameThings(string platform, string scenario)
     {
+        using var culture = JobGolden.InvariantCulture();
         var run = new ProductRun(fixture);
         await run.SeedAsync(platform);
         var card = run.Seeded.Cards[0];
@@ -194,6 +195,7 @@ public sealed class ProductJobGoldenPostgreSqlTests(PostgreSqlTenantIsolationFix
     [MemberData(nameof(UpdateScenarios))]
     public async Task AProductUpdateSendsAndStoresTheSameThings(string platform, string scenario)
     {
+        using var culture = JobGolden.InvariantCulture();
         var run = new ProductRun(fixture);
         await run.SeedAsync(platform);
         var card = run.Seeded.Cards[0];
@@ -229,6 +231,7 @@ public sealed class ProductJobGoldenPostgreSqlTests(PostgreSqlTenantIsolationFix
     [InlineData("refused")]
     public async Task APazaramaSaleStatusSwitchSendsAndStoresTheSameThings(string scenario)
     {
+        using var culture = JobGolden.InvariantCulture();
         var run = new ProductRun(fixture);
         await run.SeedAsync("PAZARAMA");
         var barcodes = await ListingBarcodes(run, run.Seeded.Cards[0].Id);
