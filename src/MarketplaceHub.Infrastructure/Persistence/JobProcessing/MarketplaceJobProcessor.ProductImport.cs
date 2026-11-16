@@ -626,6 +626,13 @@ public sealed partial class MarketplaceJobProcessor
             .ToListAsync(cancellationToken);
         var failedModels = stagingStates.Where(x => x.State == "FAILED").Sum(x => x.Rows);
         var completedModels = stagingStates.Where(x => x.State == "COMPLETED").Sum(x => x.Rows);
+        // ISLEYICI-1 retry: the models this run could not store are read again one by one (ProductImportRetryPolicy); a
+        // retry run reports on its own model. Saved here, so a run that failed as a whole still keeps its list.
+        if (singleLookup && ReadBoolean(payloadJson, ProductImportRetryPolicy.PayloadFlag))
+            await CompleteProductImportRetryAsync(tenantId, connectionId, connection.PlatformCode, importJobId, productLookup!, stored: failedModels == 0 && completedModels > 0, payloadJson, correlationId, cancellationToken);
+        else if (!singleLookup && !mappingOnly && !optionsOnly && failedModels > 0)
+            await NoteFailedModelsForRetryAsync(tenantId, connectionId, connection.PlatformCode, importJobId, payloadJson, correlationId, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
         if (ProductImportScanPolicy.AllFailed(run.ImportFailedCount, completedModels))
         {
             if (jobId is { } failedJob)
