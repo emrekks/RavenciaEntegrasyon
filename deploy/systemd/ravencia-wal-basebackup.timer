@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily physical base backup into the Ravencia WAL archive
+
+[Timer]
+# Installed by docs/patches/VERITABANI-DAGITIM-8-wal-archive.patch together with archive_mode=on.
+OnCalendar=*-*-* 02:30:00 UTC
+Persistent=true
+RandomizedDelaySec=15m
+Unit=ravencia-wal-basebackup.service
+
+[Install]
+WantedBy=timers.target

@@ -178,6 +178,27 @@ Emanet kuralı (dosyaları **bu repoya, sohbete ya da şifresiz bir yere koymay�
 3. Şifreli dosyayı parola yöneticisine ve Drive'a koy (sunucuda yazdıysan `scp` ile al ve sunucudan `rm`).
 4. Her anahtar/sertifika değişiminde tekrarla; yılda bir kez açıp `restore-drill.sh` ile dene.
 
+**Otomatik emanet (VERITABANI-DAGITIM-9, sahibin tek adımı):** `deploy/backup/secrets-escrow.sh` dört dosyayı
+(`credential_key.txt`, `dp_certificate.pfx`, `dp_certificate_password.txt`, `production.env`) panelin Google Drive
+yedeğindeki age **açık** anahtarına şifreler (sunucu açamaz; düz kopya hiçbir yere yazılmaz) ve yedek biriminde
+`offsite-extra/escrow/ravencia-secrets.tar.age` olarak bırakır. Worker'ın Drive kopyası bunu her sete
+`<set>/extra/escrow/` olarak ekler (yalnız age başlıklı `.age` dosyaları alınır). Emanet, dosyaların ya da age anahtarının
+parmak izini tutar; bir sertifika yenilenir, anahtar değişir ya da emanet yoksa "bayat" sayılır ve günlük zamanlayıcı
+yeniden üretir. Açmak, sunucuda repo kökünde:
+```bash
+sudo touch deploy/secrets/secrets_escrow.enabled && bash deploy/scripts/install-backup-timer.sh
+sudo systemctl start ravencia-secrets-escrow.service && journalctl -u ravencia-secrets-escrow -n 5   # "refreshed"
+```
+Sonra `ravencia-secrets-escrow.timer` her gün 08:40 UTC'de (08:59 setinden önce) çalışır, başarısızlıkta alarm gelir;
+health watch `secrets-escrow.sh --check` ile emanet bayatsa uyarır. Doğrulama: bir sonraki Drive kopyasının worker logunda
+`extras: extra/escrow/ravencia-secrets.tar.age` (`/prod-logs logs worker --grep "Off-site backup"`).
+**Emanetle açılış tatbikatı:** Drive kopyasını sahibin bilgisayarında açıp (`age -d -i ravencia-yedek-anahtari.txt
+<set>.tar.age | tar -x`) sunucuya ya da Docker'lı bir makineye getirin; özel anahtar yalnız tatbikat süresince orada
+(tercihen `/dev/shm`) durur:
+`sudo bash deploy/backup/restore-drill.sh --escrow <set>/extra/escrow/ravencia-secrets.tar.age /dev/shm/anahtar.txt <set> <app imajı>`
+(canlı `deploy/secrets` yerine emanetteki sertifika ve anahtarla, yeni bir veritabanı parolasıyla açar; bitince
+`shred -u /dev/shm/anahtar.txt`). Yılda bir kez yapın.
+
 Yedek setlerinin kendisi de sunucu dışına şifreli kopyalanır: `deploy/backup/offsite-copy.sh` en yeni
 doğrulanmış seti aynı açık anahtarla şifreleyip rclone ile Google Drive'a yükler (yapılandırılana kadar
 "not configured" yazıp hiçbir şey yapmaz). Kurulum ve geri açma: [CI-CD-DEPLOY.md](CI-CD-DEPLOY.md)
@@ -312,3 +333,42 @@ faturalar ve stok düşümleri kaybolur (RPO ≤ 12 saat); "14:37'den hemen önc
 5. **Tatbikat:** `restore-drill.sh --pitr <zaman>`: izole konteynerde `wal-g backup-fetch` + `recovery_target_time`,
    aylık; sonuç `send-alert.sh`. Hedef RPO ≈ 1 dk.
 **Risk:** arşiv komutu başarısız olursa WAL dosyaları diskte birikir (disk dolar): 4. maddedeki alarm olmadan açılmaz.
+
+### 9a. Ara çözüm: yerel WAL arşivi + Drive kopyasıyla dışarı (hazır, uygulanmamış)
+
+Depo kararı verilene kadar, yukarıdaki planın yerel yarısı tek yamayla açılır:
+[`docs/patches/VERITABANI-DAGITIM-8-wal-archive.patch`](patches/VERITABANI-DAGITIM-8-wal-archive.patch).
+
+- **Yama:** `compose.yaml` postgres'e `archive_mode=on`, `archive_timeout=300` ve gzip'leyen `archive_command`; ayrı
+  volume `pg_wal_archive` (`/var/lib/postgresql/wal-archive`, `wal/` ve `base/`) ve onu postgres kullanıcısına veren
+  tek seferlik `pg-wal-archive-volume` servisi; `install-backup-timer.sh`'a `ravencia-wal-basebackup.timer` (her gün
+  02:30 UTC, `pg_basebackup`, son 2 temel yedek ve onların gerektirdiği WAL kalır) ve `ravencia-wal-ship.timer`
+  (08:45 / 20:45 UTC); `ci.yml`'e arşiv ayarlarının kaybolmadığını denetleyen `jq` satırı.
+- **Zaten canlıya giden ve yama gelene kadar hiçbir şey yapmayan parçalar:** `deploy/backup/wal-archive.sh`
+  (`basebackup | ship | status`), `deploy/backup/restore-drill.sh --pitr '<zaman>'` (`restore-drill-pitr.sh`: izole,
+  ağsız konteynerde temel yedek + WAL ile o ana döner, sonucu ve süreyi yazar), health watch'ta `pg_stat_archiver`
+  denetimi (`archive_mode=on` olunca devreye girer: arşivleme hata veriyorsa ya da 20 dk'dır segment arşivlenmediyse
+  alarm; `RAVENCIA_WAL_ARCHIVE_MAX_AGE_MINUTES`).
+- **Dışarı çıkış:** `wal-archive.sh ship` en yeni temel yedeği ve ondan sonraki WAL'ı panelin age açık anahtarına
+  şifreleyip `offsite-extra/wal/wal-archive.tar.age` olarak bırakır; worker'ın Google Drive kopyası onu sete
+  `<set>/extra/wal/` olarak ekler. Sunucuda kurtarma noktası en çok 5 dakika geride; sunucu tamamen kaybolursa son
+  Drive kopyası (günde iki kez). Drive'da her kopya bir temel yedek taşır (bugün veritabanı 1,35 GB; sıkıştırılmış temel
+  yedek bunun bir kısmı): Drive saklama gün sayısını buna göre seçin.
+
+Uygulama (sessiz bir saatte; postgres yeniden başlar, birkaç saniye kesinti):
+
+1. Diskte yer: arşiv günde birkaç yüz MB ile birkaç GB arası (yoğunluğa bağlı) ve iki temel yedek. `df -h /` %70'in
+   altında olmalı.
+2. Yeni dalda `git apply docs/patches/VERITABANI-DAGITIM-8-wal-archive.patch` (başka bir yama önce uygulandıysa
+   `--3way`), yama dosyasını silip bu bölümü "uygulandı" diye güncelleyin, Validate'i bekleyip gönderin. Deploy postgres'i
+   yeniden yaratır ve zamanlayıcıları kurar.
+3. Sunucuda: `sudo bash deploy/backup/wal-archive.sh basebackup` (ilk temel yedek), sonra
+   `sudo bash deploy/backup/wal-archive.sh status` (`archive_mode=on`, `archived_count` artıyor, `failed_count` 0).
+4. Tatbikat: 15 dakika sonra `sudo bash deploy/backup/restore-drill.sh --pitr "$(date -d '-10 min' '+%F %T%z')"`
+   → `PITR drill passed`; çıkan `durationSeconds` geri dönüş süresidir. Ayda bir tekrarlayın.
+5. `sudo bash deploy/backup/wal-archive.sh ship` ve bir sonraki Drive kopyasının worker logunda
+   `extras: ... extra/wal/wal-archive.tar.age`.
+
+**Gerçek bir "ana dön" işi:** önce tatbikatla doğru zamanı bulun (`--pitr` ile birkaç deneme), sonra bölüm 3'teki gibi
+yazmaları durdurup canlı veritabanını o zamana döndürmek ayrı bir karardır (veritabanı yeniden kurulur, sonrası kaybolur).
+**Geri dönüş:** yamanın compose satırlarını geri alıp deploy; `pg_wal_archive` volume'ü elle silinene kadar kalır.

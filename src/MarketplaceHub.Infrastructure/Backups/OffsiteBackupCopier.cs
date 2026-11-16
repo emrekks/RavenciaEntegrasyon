@@ -67,7 +67,7 @@ public sealed class OffsiteBackupCopier(
                 throw new GoogleDriveException("BACKUP_SET_MISSING", $"Sunucuda doğrulanmış yedek seti bulunamadı{(notes.Count > 0 ? ": " + string.Join(" ", notes.Take(3)) : ".")}");
             await using (set)
             {
-                foreach (var note in notes) logger.LogWarning("Off-site backup skipped a newer set: {Note}", note);
+                foreach (var note in notes) logger.LogWarning("Off-site backup left something out: {Note}", note);
                 var objectName = OffsiteBackupRules.ObjectName(set.Name);
                 var result = OffsiteBackupRunResult.AlreadyPresent;
                 // A copy of this set counts as present only when it is the one this app sent last, byte count and MD5
@@ -95,7 +95,7 @@ public sealed class OffsiteBackupCopier(
                     }
                     remote.Add(uploaded);
                     result = OffsiteBackupRunResult.Uploaded;
-                    logger.LogInformation("Off-site backup {Set} uploaded to Google Drive ({Bytes} bytes, age-encrypted, from {PlainBytes} plain bytes)", set.Name, size, set.PlainBytes);
+                    logger.LogInformation("Off-site backup {Set} uploaded to Google Drive ({Bytes} bytes, age-encrypted, from {PlainBytes} plain bytes; extras: {Extras})", set.Name, size, set.PlainBytes, string.Join(", ", set.Files.Select(file => file.Name).Where(file => file.StartsWith("extra/", StringComparison.Ordinal))) is { Length: > 0 } extras ? extras : "none");
                 }
 
                 // Retention only after this run's copy is safely there.

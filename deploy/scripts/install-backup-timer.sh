@@ -40,6 +40,12 @@ if sudo -n test -s "$script_dir/../secrets/backup_age_recipient.txt" && sudo -n 
   units+=(ravencia-offsite-copy.service ravencia-offsite-copy.timer)
   timers+=(ravencia-offsite-copy.timer)
 fi
+# The secrets escrow (deploy/backup/secrets-escrow.sh), once the owner switched it on with the flag file
+# deploy/secrets/secrets_escrow.enabled (docs/RUNBOOK-GERI-ALMA.md section 5).
+if sudo -n test -e "$script_dir/../secrets/secrets_escrow.enabled"; then
+  units+=(ravencia-secrets-escrow.service ravencia-secrets-escrow.timer)
+  timers+=(ravencia-secrets-escrow.timer)
+fi
 # CrowdSec's allowlist refresh, once install-crowdsec.sh has installed CrowdSec.
 if command -v cscli >/dev/null 2>&1; then
   units+=(ravencia-crowdsec-allowlist.service ravencia-crowdsec-allowlist.timer)
