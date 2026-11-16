@@ -2734,7 +2734,7 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
             var offer = await mark.ChannelOffers.SingleAsync(x => x.Id == stockOnlyOffer.Id);
             var sale = N11PriceInventoryRules.Price(PriceInventoryComposer.OutboundSalePrice(offer));
             var list = Math.Max(N11PriceInventoryRules.Price(PriceInventoryComposer.OutboundListPrice(offer)), sale);
-            offer.LastPriceHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{list:0.00}|{sale:0.00}|TRY|{offer.PriceVersion}")));
+            offer.LastPriceHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(FormattableString.Invariant($"{list:0.00}|{sale:0.00}|TRY|{offer.PriceVersion}"))));
             await mark.SaveChangesAsync();
         }
 
