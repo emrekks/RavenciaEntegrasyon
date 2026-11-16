@@ -38,7 +38,7 @@ export function QueueQuotaView() {
   const lanes = useQuery({ queryKey: queryKeys.queueQuota('lanes', hours), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getJobsMetricsLanes'>>(`/jobs/metrics/lanes?hours=${hours}`, { signal }), ...options })
   const metrics = useQuery({ queryKey: queryKeys.queueQuota('metrics', hours), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getJobsMetrics'>>(`/jobs/metrics?hours=${hours}`, { signal }), ...options })
   const quota = useQuery({ queryKey: queryKeys.queueQuota('quota'), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getJobsMetricsQuota'>>('/jobs/metrics/quota', { signal }), ...options })
-  const counts = useQuery({ queryKey: queryKeys.queueQuota('counts', since), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getJobsCounts'>>(`/jobs/counts?since=${encodeURIComponent(since)}`, { signal }), ...options })
+  const counts = useQuery({ queryKey: queryKeys.queueQuota('counts', since), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getJobsCounts'>>(`/jobs/counts?dateFrom=${encodeURIComponent(since)}`, { signal }), ...options })
   const refresh = () => { void lanes.refetch(); void metrics.refetch(); void quota.refetch(); void counts.refetch() }
   const fetching = lanes.isFetching || metrics.isFetching || quota.isFetching || counts.isFetching
 

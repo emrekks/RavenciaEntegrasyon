@@ -10,6 +10,13 @@ const invoiceFixtures = [
   { id: 'inv-3', orderId: 'order-3', packageId: 'trendyol-package-3', orderNumber: 'TY-1003', customerName: 'Zeynep Demir', orderedAt: '2026-10-04T12:00:00Z', shipmentStatus: 'NEW', deliveredAt: null, invoiceDueAt: null, isDueSoon: true, currency: 'TRY', amount: 499, productCount: 1, primaryImageUrl: null, cargoProviderName: 'Aras', cargoTrackingNumber: 'TRK-3', invoiceId: null, invoiceStatus: 'FATURA_BEKLIYOR', invoiceNumber: null, canCreateInvoice: true, shipmentAddressJson: null, invoiceAddressJson: null, lines: [{ sku: 'TY-SKU-3', barcode: null, description: 'Kısmi iade ürünü', quantity: 2, unitPrice: 249.5, vatRate: 20, imageUrl: null, returnedQuantity: 1 }], invoiceErrorCode: null, invoiceDeliveryStatus: null, invoiceDeliveryReference: null, invoiceDocumentAvailable: false, marketplaceInvoiceUrl: null, platformInvoiceStatus: 'NOT_INVOICED', allowedActions: ['CHECK_PLATFORM'], platformCode: 'TRENDYOL', platformDisplayName: 'Trendyol', invoiceCreationEnabled: true, marketplaceConnectionId: 'trendyol-connection', externalOrderId: 'external-ty-1003', externalPackageNumber: 'package-ty-3', saleReturnScope: 'PARTIAL', saleReturnNote: 'İade edilen ürünler faturaya girmez: Kısmi iade ürünü (1 adet).' },
 ]
 
+// The 1-based page a workspace request names: its offset cursor (after = base64url "o" + offset) over limit.
+function pageOf(path: string) {
+  const params = new URLSearchParams(path.split('?')[1])
+  const after = params.get('after')
+  return after ? Number(atob(after.replace(/-/g, '+').replace(/_/g, '/')).slice(1)) / Number(params.get('limit') ?? 20) + 1 : 1
+}
+
 const apiState = vi.hoisted(() => ({ deliveryKeys: [] as string[], uploads: [] as Array<{ path: string; fileName: string | null }>, statusUpdates: [] as Array<{ path: string; status: string; packageIds: string[] }>, pageRequests: [] as string[], orderSyncRequests: [] as Array<{ path: string; body: unknown }>, reconcileRequests: [] as string[], hiddenRequests: [] as Array<{ packageIds: string[]; hidden: boolean }>, totalPages: 1, pageDelayMs: 0 }))
 
 vi.mock('../../shared/api', () => ({
@@ -19,7 +26,7 @@ vi.mock('../../shared/api', () => ({
     if (path.startsWith('/invoice-workspace/page?')) {
       apiState.pageRequests.push(path)
       // The server answers the page it was asked for (clamped to the last one), after an optional delay.
-      const requestedPage = Math.min(apiState.totalPages, Number(new URLSearchParams(path.split('?')[1]).get('pageNumber') ?? 1))
+      const requestedPage = Math.min(apiState.totalPages, pageOf(path))
       if (apiState.pageDelayMs) await new Promise(resolve => setTimeout(resolve, apiState.pageDelayMs))
       return { items: invoiceFixtures.map(item => ({ ...item })), totalCount: invoiceFixtures.length * apiState.totalPages, pageNumber: requestedPage, pageSize: 20, totalPages: apiState.totalPages, uninvoicedCount: 3, invoicedCount: 0, dueSoonCount: 3, totalPackageCount: 3, hasPendingMarketplaceInvoices: true, shipmentStatuses: ['DELIVERED'], cargoProviders: ['Aras', 'Yurtiçi'], invoiceStatuses: ['FATURA_BEKLIYOR'] }
     }
@@ -353,8 +360,8 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     act(() => container.querySelector<HTMLButtonElement>('button[aria-label="Sonraki"]')!.click())
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 150)) })
 
-    expect(apiState.pageRequests.at(-1)).toContain('pageNumber=2')
-    expect(apiState.pageRequests.filter(path => path.includes('pageNumber=1')).length).toBe(2)
+    expect(pageOf(apiState.pageRequests.at(-1)!)).toBe(2)
+    expect(apiState.pageRequests.filter(path => pageOf(path) === 1).length).toBe(2)
     expect(container.querySelector('.rr-pager [aria-current="page"]')?.textContent).toContain('2')
   })
 
@@ -364,13 +371,13 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     await settle()
     act(() => container.querySelector<HTMLButtonElement>('button[aria-label="Sonraki"]')!.click())
     await settle()
-    expect(apiState.pageRequests.at(-1)).toContain('pageNumber=2')
+    expect(pageOf(apiState.pageRequests.at(-1)!)).toBe(2)
     apiState.pageDelayMs = 60
     act(() => button('Tümü').click())
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 150)) })
 
     expect(apiState.pageRequests.at(-1)).toContain('tab=ALL')
-    expect(apiState.pageRequests.at(-1)).toContain('pageNumber=1')
+    expect(pageOf(apiState.pageRequests.at(-1)!)).toBe(1)
   })
 
   it('shows the all invoices tab and requests unhidden invoice records', async () => {
@@ -438,7 +445,7 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     expect(selected()).toContain('sipariş seçildi')
     act(() => container.querySelector<HTMLButtonElement>('button[aria-label="Sonraki"]')!.click())
     await settle()
-    expect(apiState.pageRequests.at(-1)).toContain('pageNumber=2')
+    expect(pageOf(apiState.pageRequests.at(-1)!)).toBe(2)
     expect(Array.from(container.querySelectorAll<HTMLInputElement>('.invoice-reference-select')).some(input => input.checked)).toBe(false)
 
     pick('SH-1002')

@@ -182,7 +182,7 @@ export function DashboardPage() {
   const days = periodDays(range, custom, today)
   // Today's cancellations, each counted on the day the marketplace says it happened.
   const cancellations = useQuery({ queryKey: queryKeys.dashboard('cancellations', today), queryFn: ({ signal }) => hubApi<ApiAnswer<'getDashboardCancellations'>>(`/dashboard/cancellations?day=${today}`, { ...poll, signal }), ...refresh })
-  const performance = useQuery({ placeholderData: keepPreviousData, queryKey: queryKeys.dashboard('performance', days?.from, days?.to), queryFn: ({ signal }) => hubApi<ApiAnswer<'getDashboardPerformance'>>(`/dashboard/performance?from=${days!.from}&to=${days!.to}`, { ...poll, signal }), enabled: days !== null, ...refresh })
+  const performance = useQuery({ placeholderData: keepPreviousData, queryKey: queryKeys.dashboard('performance', days?.from, days?.to), queryFn: ({ signal }) => hubApi<ApiAnswer<'getDashboardPerformance'>>(`/dashboard/performance?dateFrom=${days!.from}&dateTo=${days!.to}`, { ...poll, signal }), enabled: days !== null, ...refresh })
   // Once a period has loaded, the other ready-made periods are read in the background, one at a time when the browser
   // is idle, so switching to them is instant without a burst of parallel reads.
   const queryClient = useQueryClient()
@@ -192,7 +192,7 @@ export function DashboardPage() {
     let cancelled = false
     const reads = presetOrder.flatMap(other => {
       const span = periodDays(other, custom, today)
-      return span ? [() => queryClient.prefetchQuery({ queryKey: queryKeys.dashboard('performance', span.from, span.to), queryFn: ({ signal }) => hubApi<ApiAnswer<'getDashboardPerformance'>>(`/dashboard/performance?from=${span.from}&to=${span.to}`, { ...poll, signal }), staleTime: 60_000 })] : []
+      return span ? [() => queryClient.prefetchQuery({ queryKey: queryKeys.dashboard('performance', span.from, span.to), queryFn: ({ signal }) => hubApi<ApiAnswer<'getDashboardPerformance'>>(`/dashboard/performance?dateFrom=${span.from}&dateTo=${span.to}`, { ...poll, signal }), staleTime: 60_000 })] : []
     })
     void prefetchInTurn(reads, () => cancelled)
     return () => { cancelled = true }

@@ -218,8 +218,8 @@ export function change(current: number | null | undefined, previous: number | nu
 
 // The report request: calendar days (yyyy-MM-dd), platforms and buckets; an empty choice is left out.
 export function reportQuery(filters: { from: string; to: string; platforms: string[] | null; granularity: string; includeTest: boolean }) {
-  const query = new URLSearchParams({ from: filters.from, to: filters.to })
-  if (filters.platforms?.length) query.set('platformCodes', filters.platforms.join(','))
+  const query = new URLSearchParams({ dateFrom: filters.from, dateTo: filters.to })
+  if (filters.platforms?.length) query.set('platforms', filters.platforms.join(','))
   if (filters.granularity) query.set('granularity', filters.granularity)
   if (filters.includeTest) query.set('includeTest', 'true')
   return query.toString()
@@ -283,11 +283,11 @@ export type ReportInventory = {
 export type ReportProfitRate = ApiAnswer<'getReportsProfitRate'>
 
 export function profitRateQuery(platforms: string[] | null) {
-  return platforms?.length ? new URLSearchParams({ platformCodes: platforms.join(',') }).toString() : ''
+  return platforms?.length ? new URLSearchParams({ platforms: platforms.join(',') }).toString() : ''
 }
 
 export function stockQuery(filters: { from: string; to: string; platforms: string[] | null }) {
-  const query = new URLSearchParams({ from: filters.from, to: filters.to })
-  if (filters.platforms?.length) query.set('platformCodes', filters.platforms.join(','))
+  const query = new URLSearchParams({ dateFrom: filters.from, dateTo: filters.to })
+  if (filters.platforms?.length) query.set('platforms', filters.platforms.join(','))
   return query.toString()
 }

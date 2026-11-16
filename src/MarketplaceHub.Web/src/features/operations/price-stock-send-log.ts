@@ -169,12 +169,12 @@ function sendLogTimeParams(params: URLSearchParams, filters: SendLogFilters, now
   if (hasDays(filters)) {
     const from = istanbulDayToIso(filters.from)
     const to = istanbulDayToIso(filters.to, true)
-    if (from) params.set('from', from)
-    if (to) params.set('to', to)
+    if (from) params.set('dateFrom', from)
+    if (to) params.set('dateTo', to)
     return
   }
   const start = timeRangeStart(filters.range, now)
-  if (start) params.set('from', start)
+  if (start) params.set('dateFrom', start)
 }
 
 function sendLogCommonParams(params: URLSearchParams, filters: SendLogFilters) {
@@ -183,7 +183,7 @@ function sendLogCommonParams(params: URLSearchParams, filters: SendLogFilters) {
   if (filters.platforms.length) params.set('platforms', [...new Set(filters.platforms.map(code => code.toUpperCase()))].join(','))
 }
 
-/** The summary's request: the list's filters without the result filter (?search=…&platforms=…&triggers=…&from=…&to=…). */
+/** The summary's request: the list's filters without the result filter (?search=…&platforms=…&triggers=…&dateFrom=…&dateTo=…). */
 export function sendLogCountsQueryString(filters: SendLogFilters, now = Date.now()) {
   const params = new URLSearchParams()
   sendLogCommonParams(params, filters)
@@ -201,7 +201,7 @@ export function istanbulDayToIso(day: string, endOfDay = false) {
   return Number.isNaN(instant.getTime()) ? '' : instant.toISOString()
 }
 
-/** The request for one page: ?limit=50&search=…&platforms=…&results=…&triggers=…&from=…&to=…&order=asc&after=… */
+/** The request for one page: ?limit=50&search=…&platforms=…&results=…&triggers=…&dateFrom=…&dateTo=…&order=asc&after=… */
 export function sendLogQueryString(filters: SendLogFilters, after: string | null = null, limit = sendLogPageSize, oldestFirst = false, now = Date.now()) {
   const params = new URLSearchParams()
   params.set('limit', String(Math.min(Math.max(1, limit), 100)))

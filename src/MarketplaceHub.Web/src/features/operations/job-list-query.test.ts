@@ -5,8 +5,8 @@ describe('jobListQueryString', () => {
   const now = Date.parse('2026-10-14T12:00:00.000Z')
 
   it('sends the selected time range as since', () => {
-    expect(jobListQueryString('', '24h', now)).toBe('?since=2026-10-13T12%3A00%3A00.000Z')
-    expect(jobListQueryString('DEAD', '7d', now)).toBe('?status=DEAD&since=2026-10-07T12%3A00%3A00.000Z')
+    expect(jobListQueryString('', '24h', now)).toBe('?dateFrom=2026-10-13T12%3A00%3A00.000Z')
+    expect(jobListQueryString('DEAD', '7d', now)).toBe('?status=DEAD&dateFrom=2026-10-07T12%3A00%3A00.000Z')
   })
 
   it('omits since for all time and returns nothing without filters', () => {
@@ -36,7 +36,7 @@ describe('jobPageQueryString', () => {
   const now = Date.parse('2026-10-14T12:00:00.000Z')
 
   it('keeps the list filters and adds the page size', () => {
-    expect(jobPageQueryString('DEAD', '24h', {}, now)).toBe('?status=DEAD&since=2026-10-13T12%3A00%3A00.000Z&limit=200')
+    expect(jobPageQueryString('DEAD', '24h', {}, now)).toBe('?status=DEAD&dateFrom=2026-10-13T12%3A00%3A00.000Z&limit=200')
     expect(jobPageQueryString('', 'all', {}, now)).toBe('?limit=200')
   })
 
@@ -140,7 +140,7 @@ describe('shared date presets as job ranges', () => {
     expect(timeRangeStart('30d', now)).toBe('2026-09-14T21:00:00.000Z')
     expect(timeRangeStart('year', now)).toBe('2025-12-31T21:00:00.000Z')
     expect(timeRangeStart('all', now)).toBeNull()
-    expect(jobListQueryString('', 'today', now)).toBe('?since=2026-10-13T21%3A00%3A00.000Z')
+    expect(jobListQueryString('', 'today', now)).toBe('?dateFrom=2026-10-13T21%3A00%3A00.000Z')
   })
 
   it('keeps the rolling windows and offers a Son 7 Gün link only while it is chosen', () => {

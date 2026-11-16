@@ -62,7 +62,7 @@ vi.mock('../../shared/api', () => ({
       const row = kind === 'ORDER' ? { ...apiState.detail, id: 'q-order', kind: 'ORDER', platformCode: 'HEPSIBURADA', storeName: 'Hepsiburada Mağazası', externalOrderNumber: 'HB-12345' } : { ...apiState.detail, id: 'q-product', kind: 'PRODUCT' }
       const rowStatus = status === 'WAITING' && ['ANSWER_SUBMITTED', 'REJECTED'].includes(row.status) ? row.status : statusByFilter[status ?? 'WAITING']
       if (apiState.emptyList && params.get('limit') === '50') return { items: [], page: 1, limit: 50, totalCount: 0 }
-      return { items: [{ ...row, status: rowStatus }], page: Number(params.get('page') ?? 1), limit: Number(params.get('limit') ?? 50), totalCount: apiState.totalCount }
+      return { items: [{ ...row, status: rowStatus }], page: requestedPage(params), limit: Number(params.get('limit') ?? params.get('pageSize') ?? 50), totalCount: apiState.totalCount }
     }
     throw new Error(`Test API fixture does not handle ${method} ${path}`)
   }),
@@ -100,8 +100,15 @@ async function settle(ms = 15) {
   await act(async () => { await new Promise(resolve => setTimeout(resolve, ms)) })
 }
 
+// The 1-based page a request names: by its offset cursor (after = base64url "o" + offset) or by page.
+function requestedPage(params: URLSearchParams) {
+  const after = params.get('after')
+  if (!after) return Number(params.get('page') ?? 1)
+  return Number(atob(after.replace(/-/g, '+').replace(/_/g, '/')).slice(1)) / Number(params.get('limit') ?? 50) + 1
+}
+
 function lastQuestionRequest() {
-  const request = [...apiState.calls].reverse().find(item => item.path.startsWith('/questions?') && item.path.includes('limit=50'))
+  const request = [...apiState.calls].reverse().find(item => item.path.startsWith('/questions?') && (item.path.includes('limit=50') || item.path.includes('pageSize=50')))
   if (!request) throw new Error('No question list request was made')
   return new URLSearchParams(request.path.slice(request.path.indexOf('?') + 1))
 }
@@ -527,11 +534,11 @@ describe('QuestionsPage workspace flows', () => {
     expect(container.querySelector('.rv-questions-pagination')?.textContent).toContain('Sayfa 1 / 3')
     act(() => button('Sonraki').click())
     await settle()
-    expect(lastQuestionRequest().get('page')).toBe('2')
+    expect(requestedPage(lastQuestionRequest())).toBe(2)
     expect(container.querySelector('.rv-questions-pagination')?.textContent).toContain('Sayfa 2 / 3')
     act(() => button('Sonraki').click())
     await settle()
-    expect(lastQuestionRequest().get('page')).toBe('3')
+    expect(requestedPage(lastQuestionRequest())).toBe(3)
     expect(button('Sonraki').disabled).toBe(true)
     act(() => button('Önceki').click())
     await settle()

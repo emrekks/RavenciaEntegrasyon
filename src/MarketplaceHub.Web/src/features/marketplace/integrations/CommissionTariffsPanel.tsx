@@ -8,7 +8,7 @@ import { newIdempotencyKey } from '../../../shared/idempotency'
 import { formatIstanbul } from '../../../shared/format-date'
 import { parseTrNumber } from '../../../shared/tr-number'
 import '../commission-tariffs.css'
-import { forgetTariff, loadRowPage, rememberTariff, tariffsQuery } from './commission-tariff-rows'
+import { forgetTariff, loadRowPage, rememberTariff, tariffRowPaging, tariffsQuery } from './commission-tariff-rows'
 import { EmptyState } from '../../../shared/components/EmptyState'
 import { queryKeys } from '../../../shared/api/query-keys'
 import { type CommissionTariff, lastMinute, shortDay, periodName, weekTabLabel, periodLabel, type TariffFilter, noFilter } from './commission-tariffs/tariff-helpers'
@@ -74,7 +74,7 @@ export function periodTabLabel(period: CommissionTariff) {
 // A page of a tariff's rows as the tab shows it: its models in the filter's order, 50 at a time.
 export const tariffRowsQuery = (connectionId: string, tariffId: string, filter: TariffFilter = noFilter, page = 0) => ({
   queryKey: queryKeys.commissionTariffRows(connectionId, tariffId, filter, page),
-  queryFn: ({ signal }: { signal: AbortSignal }) => loadRowPage(connectionId, tariffId, { page: String(page), limit: '50', ...filterQuery(filter) }, signal)
+  queryFn: ({ signal }: { signal: AbortSignal }) => loadRowPage(connectionId, tariffId, tariffRowPaging(filterQuery(filter), page, 50), signal)
 })
 
 

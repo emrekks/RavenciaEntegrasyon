@@ -113,7 +113,7 @@ describe('notification center helpers', () => {
 
   it('sends the filters with Istanbul day bounds', () => {
     const query = new URLSearchParams(centerQueryString({ ...emptyCenterFilters, categories: ['ORDER', 'INVOICE'], severities: ['ERROR'], state: 'UNREAD', from: '2026-11-10', to: '2026-11-12', search: ' fatura ' }, 'abc').slice(1))
-    expect(Object.fromEntries(query)).toEqual({ limit: '50', after: 'abc', categories: 'ORDER,INVOICE', severities: 'ERROR', state: 'UNREAD', from: '2026-11-10T00:00:00.000+03:00', to: '2026-11-12T23:59:59.999+03:00', search: 'fatura' })
+    expect(Object.fromEntries(query)).toEqual({ limit: '50', after: 'abc', categories: 'ORDER,INVOICE', severities: 'ERROR', state: 'UNREAD', dateFrom: '2026-11-10T00:00:00.000+03:00', dateTo: '2026-11-12T23:59:59.999+03:00', search: 'fatura' })
   })
 
   it('leads the bell to İşlem Takibi › Bildirimler', () => {

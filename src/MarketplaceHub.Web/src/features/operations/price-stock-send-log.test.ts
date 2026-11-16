@@ -84,7 +84,7 @@ describe('price/stock send log request', () => {
     const params = new URLSearchParams(sendLogQueryString(filters, 'cursor-1', 100, true).slice(1))
     expect(Object.fromEntries(params)).toEqual({
       limit: '100', search: '8680001', platforms: 'TRENDYOL,HEPSIBURADA', results: 'REJECTED,FAILED', triggers: 'ORDER',
-      from: '2026-10-18T21:00:00.000Z', to: '2026-10-20T20:59:59.999Z', order: 'asc', after: 'cursor-1'
+      dateFrom: '2026-10-18T21:00:00.000Z', dateTo: '2026-10-20T20:59:59.999Z', order: 'asc', after: 'cursor-1'
     })
     expect(hasSendLogFilters(filters)).toBe(true)
     // The date range counts once, however many of its ends are set.
@@ -95,14 +95,14 @@ describe('price/stock send log request', () => {
   it('counts the heading range back from now unless days are chosen', () => {
     const now = Date.parse('2026-11-04T12:00:00Z')
     const lastDay = { ...emptySendLogFilters, range: '24h' as const }
-    expect(new URLSearchParams(sendLogQueryString(lastDay, null, 50, false, now).slice(1)).get('from')).toBe('2026-11-03T12:00:00.000Z')
-    expect(new URLSearchParams(sendLogQueryString({ ...lastDay, range: '7d' }, null, 50, false, now).slice(1)).get('from')).toBe('2026-10-28T12:00:00.000Z')
+    expect(new URLSearchParams(sendLogQueryString(lastDay, null, 50, false, now).slice(1)).get('dateFrom')).toBe('2026-11-03T12:00:00.000Z')
+    expect(new URLSearchParams(sendLogQueryString({ ...lastDay, range: '7d' }, null, 50, false, now).slice(1)).get('dateFrom')).toBe('2026-10-28T12:00:00.000Z')
     expect(sendLogQueryString(emptySendLogFilters, null, 50, false, now)).toBe('?limit=50')
     // A range other than Tüm Zamanlar narrows the list; chosen days replace it and count once.
     expect(sendLogFilterCount(lastDay)).toBe(1)
     expect(sendLogPanelFilterCount(lastDay)).toBe(0)
     const days = { ...lastDay, from: '2026-11-01', to: '2026-11-02' }
-    expect(Object.fromEntries(new URLSearchParams(sendLogQueryString(days, null, 50, false, now).slice(1)))).toEqual({ limit: '50', from: '2026-10-31T21:00:00.000Z', to: '2026-11-02T20:59:59.999Z' })
+    expect(Object.fromEntries(new URLSearchParams(sendLogQueryString(days, null, 50, false, now).slice(1)))).toEqual({ limit: '50', dateFrom: '2026-10-31T21:00:00.000Z', dateTo: '2026-11-02T20:59:59.999Z' })
     expect(sendLogFilterCount(days)).toBe(1)
     expect(sendLogPanelFilterCount(days)).toBe(1)
   })
@@ -110,7 +110,7 @@ describe('price/stock send log request', () => {
   it('asks for the summary counts without the result filter', () => {
     const now = Date.parse('2026-11-04T12:00:00Z')
     const filters = { ...emptySendLogFilters, search: ' 868 ', platforms: ['n11'], results: ['APPLIED'], triggers: ['ORDER'], range: '24h' as const }
-    expect(Object.fromEntries(new URLSearchParams(sendLogCountsQueryString(filters, now).slice(1)))).toEqual({ search: '868', platforms: 'N11', triggers: 'ORDER', from: '2026-11-03T12:00:00.000Z' })
+    expect(Object.fromEntries(new URLSearchParams(sendLogCountsQueryString(filters, now).slice(1)))).toEqual({ search: '868', platforms: 'N11', triggers: 'ORDER', dateFrom: '2026-11-03T12:00:00.000Z' })
     expect(sendLogCountsQueryString(emptySendLogFilters, now)).toBe('')
   })
 

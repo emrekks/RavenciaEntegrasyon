@@ -9,6 +9,7 @@ import { createPortal } from 'react-dom'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, hubPoll } from '../../shared/api'
+import { cursorPageParams } from '../../shared/api/paging'
 import { readUrlList, readUrlNumber, readUrlText, useChangeEffect, useListUrlSync } from '../../shared/list-url-state'
 import { newIdempotencyKey } from '../../shared/idempotency'
 import { invoiceSendDeniedReason, useCanSendInvoices } from '../../shared/hooks/useCanSendInvoices'
@@ -373,16 +374,17 @@ export function InvoicesPage() {
   const providerConnections = connections.data?.items ?? []
   const provider = providerConnections.find(x => x.platformCode === 'TRENDYOL_EFATURAM' && x.hasCredential && (x.status === 'ACTIVE' || x.status === 'VERIFIED'))
   const providerForItem = (item: InvoiceWorkspace) => invoiceProviderForEnvironment(providerConnections, item.environment)
-  const pageQuery = new URLSearchParams({ pageNumber: String(pageNumber), pageSize: String(pageSize), tab, providerHasCredential: String(Boolean(provider?.hasCredential)) })
+  // The cursor form (PagingContract): limit, and from the second page on the offset cursor of the page the pager names.
+  const pageQuery = cursorPageParams(new URLSearchParams({ tab, providerHasCredential: String(Boolean(provider?.hasCredential)) }), pageNumber - 1, pageSize)
   if (searchFilter) pageQuery.set('search', searchFilter)
-  if (selectedPlatforms?.length) pageQuery.set('platformCodes', selectedPlatforms.join(','))
+  if (selectedPlatforms?.length) pageQuery.set('platforms', selectedPlatforms.join(','))
   if (shipmentStatusFilter !== 'ALL') pageQuery.set('shipmentStatus', shipmentStatusFilter)
   if (cargoFilter !== 'ALL') pageQuery.set('cargoProviderName', cargoFilter)
   if (invoiceStatusFilter !== 'ALL') pageQuery.set('invoiceStatus', invoiceStatusFilter)
   if (sortOrder !== 'DELIVERY_DESC') pageQuery.set('sort', sortOrder)
   if (invoiceActionFilter !== 'ALL') pageQuery.set('invoiceAction', invoiceActionFilter)
-  if (dateFrom) pageQuery.set('from', istanbulDayBoundary(dateFrom))
-  if (dateTo) pageQuery.set('to', istanbulDayBoundary(dateTo, true))
+  if (dateFrom) pageQuery.set('dateFrom', istanbulDayBoundary(dateFrom))
+  if (dateTo) pageQuery.set('dateTo', istanbulDayBoundary(dateTo, true))
   const query = useQuery({
     queryKey: queryKeys.invoiceWorkspacePage(pageNumber, pageSize, tab, searchFilter, sortOrder, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo, Boolean(provider?.hasCredential)),
     queryFn: ({ signal }) => hubPoll<InvoiceWorkspacePage>(`/invoice-workspace/page?${pageQuery.toString()}`, { signal }),

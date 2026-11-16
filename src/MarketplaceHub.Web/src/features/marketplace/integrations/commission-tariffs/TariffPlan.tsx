@@ -309,7 +309,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
   const pageBarcodes = useMemo(() => [...new Set(rows?.items.map(row => row.barcode) ?? [])].sort(), [rows])
   const partnerRows = useQuery({
     queryKey: queryKeys.commissionTariffRows(connectionId, partner?.id, 'barcodes', pageBarcodes),
-    queryFn: ({ signal }) => loadRowPage(connectionId, partner!.id, { page: '0', limit: '200', barcodes: pageBarcodes.join(',') }, signal),
+    queryFn: ({ signal }) => loadRowPage(connectionId, partner!.id, { limit: '200', barcodes: pageBarcodes.join(',') }, signal),
     enabled: partner != null && pageBarcodes.length > 0
   })
   const partnerBy = useMemo(() => new Map((partnerRows.data?.items ?? []).map(row => [row.barcode, row])), [partnerRows.data])

@@ -56,7 +56,7 @@ export function jobListQueryString(status: string, timeRange: JobListTimeRange, 
   const params = new URLSearchParams()
   if (status) params.set('status', status)
   const since = timeRangeStart(timeRange, now)
-  if (since) params.set('since', since)
+  if (since) params.set('dateFrom', since)
   const query = params.toString()
   return query ? `?${query}` : ''
 }

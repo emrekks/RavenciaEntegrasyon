@@ -1,6 +1,7 @@
 import type { ApiAnswer } from '../../../shared/api/api-answer'
 import type { QueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
+import { cursorPageParams } from '../../../shared/api/paging'
 import { scopedStorageKey } from '../../../shared/storage-scope'
 import type { CommissionBand, CommissionChoice, CommissionTariffRow } from './CommissionTariffsPanel'
 import { queryKeys } from '../../../shared/api/query-keys'
@@ -44,6 +45,14 @@ export function expandRowPage(raw: CompactRowPage): RowPage {
     }),
     totalCount: raw.totalCount, page: raw.page, pageSize: raw.pageSize
   }
+}
+
+// The paging of a page of rows (PagingContract): the cursor in the name order, NumberedPage (page + pageSize) under a
+// sort or a profit filter, whose in-memory order gives no cursor. `page` is 0-based, as the list's page is.
+export function tariffRowPaging(query: Record<string, string>, page: number, size: number): Record<string, string> {
+  const numbered = 'sort' in query || 'profitTier' in query
+  if (numbered) return { ...query, page: String(page), pageSize: String(size) }
+  return { ...query, ...Object.fromEntries(cursorPageParams(new URLSearchParams(), page, size)) }
 }
 
 // A page of a tariff's rows, asked for in the short form and given back in the long one.

@@ -177,8 +177,8 @@ export function centerQueryString(filters: CenterFilters, after?: string | null)
   if (filters.state) params.set('state', filters.state)
   const from = filters.from ? istanbulDayBoundary(filters.from) : ''
   const to = filters.to ? istanbulDayBoundary(filters.to, true) : ''
-  if (from) params.set('from', from)
-  if (to) params.set('to', to)
+  if (from) params.set('dateFrom', from)
+  if (to) params.set('dateTo', to)
   if (filters.search.trim()) params.set('search', filters.search.trim().slice(0, 100))
   return `?${params.toString()}`
 }

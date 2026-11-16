@@ -89,10 +89,10 @@ describe('product activity request', () => {
   it('bounds the time by the chosen Istanbul days, else by the range', () => {
     const now = Date.parse('2026-11-04T12:00:00Z')
     const days = new URLSearchParams(activityQueryString({ ...emptyActivityFilters, from: '2026-11-04', to: '2026-11-04' }, null, 50, now).slice(1))
-    expect(days.get('from')).toBe('2026-11-03T21:00:00.000Z')
-    expect(days.get('to')).toBe('2026-11-04T20:59:59.999Z')
+    expect(days.get('dateFrom')).toBe('2026-11-03T21:00:00.000Z')
+    expect(days.get('dateTo')).toBe('2026-11-04T20:59:59.999Z')
     const range = new URLSearchParams(activityQueryString({ ...emptyActivityFilters, range: '24h' }, null, 50, now).slice(1))
-    expect(range.get('from')).toBe('2026-11-03T12:00:00.000Z')
+    expect(range.get('dateFrom')).toBe('2026-11-03T12:00:00.000Z')
   })
 })
 
