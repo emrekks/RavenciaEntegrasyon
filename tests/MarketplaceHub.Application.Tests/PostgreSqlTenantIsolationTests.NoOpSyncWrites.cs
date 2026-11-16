@@ -167,7 +167,7 @@ public sealed partial class PostgreSqlTenantIsolationTests
         var package = NewInvoiceTestPackage(tenant.Id, connection.Id, order.Id, Guid.CreateVersion7(), "PZ-1001-1", fixture.Now);
         // The scheduler works on every operational connection in the database: inside a rolled-back transaction the jobs
         // it would queue for connections other tests left behind are never committed (as in the policy test above).
-        await using var db = fixture.CreateContext();
+        await using var db = fixture.CreateStrictContext();
         await using var transaction = await db.Database.BeginTransactionAsync();
         db.Tenants.Add(tenant);
         db.PlatformConnections.Add(connection);

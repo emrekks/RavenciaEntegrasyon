@@ -2874,7 +2874,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         // The scheduler works on every operational connection in the database. Inside a transaction that is
         // rolled back, the policies and jobs it would create for connections other tests left behind are never
         // committed, so no other test can lease them.
-        await using var db = fixture.CreateContext();
+        await using var db = fixture.CreateStrictContext();
         await using var transaction = await db.Database.BeginTransactionAsync();
         db.Tenants.Add(tenant);
         db.PlatformConnections.Add(connection);
@@ -10236,6 +10236,11 @@ public sealed class PostgreSqlTenantIsolationFixture : IAsyncLifetime
     }
 
     public AppDbContext CreateContext() => new(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(databaseConnectionString).Options);
+
+    // KUYRUK-10 follow-up (16 Nov 2026): a context on which EF's "row limit without OrderBy" warning (10102) throws, for
+    // the scheduler tests: a Take/First without an ordering EF keeps reads an arbitrary row.
+    public AppDbContext CreateStrictContext() => new(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(databaseConnectionString)
+        .ConfigureWarnings(warnings => warnings.Throw(CoreEventId.RowLimitingOperationWithoutOrderByWarning)).Options);
 
     public AppDbContext CreateContext(TimeProvider clock) => new(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(databaseConnectionString).Options, clock);
 

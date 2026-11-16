@@ -145,7 +145,7 @@ public sealed class BrandReferenceSearchPostgreSqlTests(PostgreSqlTenantIsolatio
         var now = new DateTimeOffset(today.Year, today.Month, today.Day, 15, 0, 0, istanbul);
         var tenant = NewTenant("brand-daily");
         var connection = NewConnection(tenant.Id, "TRENDYOL", "brand-daily");
-        await using var db = fixture.CreateContext();
+        await using var db = fixture.CreateStrictContext();
         await using var transaction = await db.Database.BeginTransactionAsync();
         db.Tenants.Add(tenant);
         db.PlatformConnections.Add(connection);
