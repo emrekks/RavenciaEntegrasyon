@@ -32,6 +32,7 @@ public sealed class PanelFactoryResetService(AppDbContext db, TimeProvider timeP
         ("catalog.product_media", "FileAssetId", "PRODUCTS"),
         ("catalog.product_size_charts", "FileAssetId", "PRODUCTS"),
         ("catalog.product_size_charts", "LastGeneratedAssetId", "PRODUCTS"),
+        ("catalog.product_model_size_charts", "FileAssetId", "PRODUCTS"),
         ("catalog.import_sessions", "SourceAssetId", "PRODUCTS"),
         ("integration.reference_snapshots", "AssetId", "REFERENCES"),
         ("billing.invoice_documents", "FileAssetId", "INVOICES"),

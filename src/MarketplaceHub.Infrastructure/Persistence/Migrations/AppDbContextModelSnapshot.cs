@@ -5721,6 +5721,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("FileAssetId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("MeasurementsJson")
                         .HasColumnType("jsonb");
 
@@ -5734,6 +5737,8 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("FileAssetId");
 
                     b.HasIndex("TenantId", "ModelId")
                         .IsUnique();
@@ -8790,6 +8795,11 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("MarketplaceHub.Domain.ProductModelSizeChart", b =>
                 {
+                    b.HasOne("MarketplaceHub.Domain.FileAsset", null)
+                        .WithMany()
+                        .HasForeignKey("FileAssetId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("MarketplaceHub.Domain.ProductModel", null)
                         .WithMany()
                         .HasForeignKey("TenantId", "ModelId")

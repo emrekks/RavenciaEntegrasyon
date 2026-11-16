@@ -87,6 +87,9 @@ public sealed class ProductModelSizeChart
     public Guid TenantId { get; set; }
     public Guid ModelId { get; set; }
     public string? MeasurementsJson { get; set; }
+    // KATALOG-13 / KATALOG-14 phase D4: the model's size-chart picture, the one every colour without a chart of its own
+    // sends (SizeChartPlacement.ModelAssetIdAsync); null until the deploy backfill or a chart write sets it.
+    public Guid? FileAssetId { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 }
 

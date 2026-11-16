@@ -12,6 +12,7 @@ namespace MarketplaceHub.Infrastructure.Files;
 //   catalog.product_media.FileAssetId                   product and variant pictures (an ARCHIVED row no longer shows it)
 //   catalog.product_size_charts.FileAssetId             the card's size chart picture
 //   catalog.product_size_charts.LastGeneratedAssetId    the newest generated chart, attachable before it has a media row
+//   catalog.product_model_size_charts.FileAssetId       the model's size chart picture (KATALOG-14 phase D4)
 //   billing.invoice_documents.FileAssetId               invoice PDFs/XMLs
 //   billing.manual_order_invoice_documents.FileAssetId  manually uploaded invoices
 //   sales.return_evidence.FileAssetId                   return rejection evidence
@@ -35,6 +36,7 @@ public static class FileAssetReferences
         NOT EXISTS (SELECT 1 FROM catalog.product_media m WHERE m."FileAssetId"=f."Id" AND m."Status"<>'ARCHIVED')
         AND NOT EXISTS (SELECT 1 FROM catalog.product_size_charts c WHERE c."FileAssetId"=f."Id")
         AND NOT EXISTS (SELECT 1 FROM catalog.product_size_charts c WHERE c."LastGeneratedAssetId"=f."Id")
+        AND NOT EXISTS (SELECT 1 FROM catalog.product_model_size_charts c WHERE c."FileAssetId"=f."Id")
         AND NOT EXISTS (SELECT 1 FROM billing.invoice_documents d WHERE d."TenantId"=f."TenantId" AND d."FileAssetId"=f."Id")
         AND NOT EXISTS (SELECT 1 FROM billing.manual_order_invoice_documents d WHERE d."TenantId"=f."TenantId" AND d."FileAssetId"=f."Id")
         AND NOT EXISTS (SELECT 1 FROM sales.return_evidence e WHERE e."FileAssetId"=f."Id")

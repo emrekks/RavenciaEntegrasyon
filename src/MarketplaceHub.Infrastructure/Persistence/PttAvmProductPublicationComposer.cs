@@ -199,8 +199,10 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
             .ToListAsync(cancellationToken))
             .GroupBy(x => x.ProductId).ToDictionary(group => group.Key, group => group.First().AssetId);
         // A card without a chart of its own goes with the model's (SizeChartPlacement.ModelAssetIdAsync, live RYP003T).
+        // KATALOG-14 phase D4: the model row's picture first, then the family's earliest chart.
         var familyChart = members.All(member => chartByMember.ContainsKey(member.Id)) ? null
-            : await SizeCharts.SizeChartPlacement.FamilyAssetIdAsync(db, tenantId, await ProductFamilyScope.ProductIdsAsync(db, tenantId, product.BrandId,
+            : (product.FamilyId is Guid modelId ? await SizeCharts.SizeChartPlacement.ModelRowAssetIdAsync(db, tenantId, modelId, cancellationToken) : null)
+            ?? await SizeCharts.SizeChartPlacement.FamilyAssetIdAsync(db, tenantId, await ProductFamilyScope.ProductIdsAsync(db, tenantId, product.BrandId,
                 familyVariants.Where(x => x.ProductId == productId).OrderBy(x => x.SortOrder).ThenBy(x => x.Id).Select(x => x.ModelCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)),
                 db.ProductVariants.AsNoTracking(), cancellationToken, product.FamilyId), cancellationToken);
         Guid? ChartOf(Guid memberId) => chartByMember.TryGetValue(memberId, out var own) ? own : familyChart;

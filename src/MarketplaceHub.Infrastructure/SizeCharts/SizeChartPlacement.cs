@@ -86,11 +86,21 @@ public static class SizeChartPlacement
     public static async Task<Guid?> ModelAssetIdAsync(AppDbContext db, Guid tenantId, Product product, IReadOnlyCollection<ProductVariant> cardVariants, CancellationToken cancellationToken)
     {
         if (await AssetIdAsync(db, tenantId, product.Id, cancellationToken) is Guid own) return own;
+        // KATALOG-13 / KATALOG-14 phase D4: the model's own chart picture (product_model_size_charts), an active product file.
+        if (product.FamilyId is Guid modelId && await ModelRowAssetIdAsync(db, tenantId, modelId, cancellationToken) is Guid modelAsset) return modelAsset;
         var modelCode = cardVariants.OrderBy(x => x.SortOrder).ThenBy(x => x.Id).Select(x => x.ModelCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
         var familyIds = await ProductFamilyScope.ProductIdsAsync(db, tenantId, product.BrandId, modelCode, db.ProductVariants.AsNoTracking(), cancellationToken, product.FamilyId);
         familyIds.Remove(product.Id);
         return await FamilyAssetIdAsync(db, tenantId, familyIds, cancellationToken);
     }
+
+    // The model row's chart picture when its file is an active product picture; null otherwise.
+    public static Task<Guid?> ModelRowAssetIdAsync(AppDbContext db, Guid tenantId, Guid modelId, CancellationToken cancellationToken) =>
+        (from chart in db.ProductModelSizeCharts.AsNoTracking()
+         join asset in db.FileAssets.AsNoTracking() on chart.FileAssetId equals asset.Id
+         where chart.TenantId == tenantId && chart.ModelId == modelId && asset.TenantId == tenantId && asset.Status == "ACTIVE" && asset.ArchivedAt == null
+               && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
+         select chart.FileAssetId).FirstOrDefaultAsync(cancellationToken);
 
     // A model family's chart: that of its earliest card (CreatedAt, then id) not archived that has one; null when none has.
     public static async Task<Guid?> FamilyAssetIdAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<Guid> familyIds, CancellationToken cancellationToken)

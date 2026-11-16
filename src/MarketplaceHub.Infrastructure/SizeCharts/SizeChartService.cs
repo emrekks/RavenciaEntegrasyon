@@ -67,7 +67,14 @@ public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPri
         var stored = Read(measurementsJson);
         var measurements = stored is null ? null : new SizeChartMeasurementsView(stored.Columns,
             stored.Rows.Select(row => new SizeChartMeasurementRowView(row.Size, row.Values.Select(value => decimal.TryParse(value, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.GetCultureInfo("tr-TR"), out var number) ? number : (decimal?)null).ToList())).ToList());
-        var url = chart?.FileAssetId is Guid assetId ? await UrlAsync(tenantId, assetId, cancellationToken) : null;
+        // KATALOG-14 phase D4: a colour without a chart picture of its own shows its model's.
+        var modelAssetId = chart?.FileAssetId is null
+            ? await (from product in db.Products.AsNoTracking()
+                     join modelChart in db.ProductModelSizeCharts.AsNoTracking() on new { product.TenantId, ModelId = product.FamilyId!.Value } equals new { modelChart.TenantId, modelChart.ModelId }
+                     where product.TenantId == tenantId && product.Id == productId && product.FamilyId != null
+                     select modelChart.FileAssetId).FirstOrDefaultAsync(cancellationToken)
+            : null;
+        var url = (chart?.FileAssetId ?? modelAssetId) is Guid assetId ? await UrlAsync(tenantId, assetId, cancellationToken) : null;
         var lastGenerated = chart?.LastGeneratedAssetId is Guid generatedId ? await UrlAsync(tenantId, generatedId, cancellationToken) : null;
         var credentials = await claude.CredentialsOrNullAsync(tenantId, cancellationToken);
         var issue = credentials is null ? "Claude API anahtarı kayıtlı değil. Ayarlar › Yapay Zekâ bölümünden hesap sahibi ya da yönetici girmeli." : SkillIssue(credentials);
@@ -92,12 +99,15 @@ public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPri
         var (table, error) = SizeChartRules.Validate(input);
         if (table is null) throw new SizeChartException("SIZE_CHART_INVALID", error!, 422);
 
-        // The measurements are remembered before the call, so a failed or abandoned try keeps them for the next one.
+        // The measurements are remembered before the call, so a failed or abandoned try keeps them for the next one. A
+        // colour that follows its model's chart writes the model's (KATALOG-14 phase D4): every following colour gets them.
+        var scope = await ModelScopeAsync(tenantId, productId, cancellationToken);
         var chart = await ChartRowAsync(tenantId, productId, cancellationToken);
         chart.MeasurementsJson = JsonSerializer.Serialize(new StoredMeasurements { Columns = [.. table.Columns], Rows = table.Rows.Select(row => new StoredRow { Size = row.Size, Values = [.. row.Values] }).ToList() });
         chart.UpdatedAt = timeProvider.GetUtcNow();
         chart.UpdatedByUserId = userId;
         await db.SaveChangesAsync(cancellationToken);
+        await FollowModelAsync(tenantId, userId, productId, scope, chart.MeasurementsJson, setMeasurements: true, null, setAsset: false, cancellationToken);
 
         AiCredentials credentials;
         AiSkillRun run;
@@ -171,6 +181,7 @@ public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPri
         // Clearing the chart of a card that has no chart row writes nothing (no empty row is opened for it).
         if (string.IsNullOrWhiteSpace(url) && !await db.ProductSizeCharts.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ProductId == productId, cancellationToken))
             return null;
+        var scope = await ModelScopeAsync(tenantId, productId, cancellationToken);
         var chart = await ChartRowAsync(tenantId, productId, cancellationToken);
         Guid? assetId = null;
         if (!string.IsNullOrWhiteSpace(url))
@@ -188,6 +199,8 @@ public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPri
             chart.UpdatedByUserId = userId;
             await CatalogLocalEdits.MarkMediaEditedAsync(db, tenantId, [productId], timeProvider.GetUtcNow(), cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
+            // KATALOG-14 phase D4: the picture of a colour that follows its model is the model's: every following colour.
+            await FollowModelAsync(tenantId, userId, productId, scope, null, setMeasurements: false, assetId, setAsset: true, cancellationToken);
         }
         return assetId is Guid id ? await UrlAsync(tenantId, id, cancellationToken) : null;
     }
@@ -428,6 +441,59 @@ public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPri
         db.FileAssets.Add(asset);
         await db.SaveChangesAsync(cancellationToken);
         return asset;
+    }
+
+    // KATALOG-13 / KATALOG-14 phase D4: one chart per model. A colour follows its model's chart unless it holds a chart of
+    // its own that differs (measurements or picture): the exception. A chart written on a following colour is the
+    // model's: it goes to the model row and to every other following colour's own row (dual write, so the cards' rows
+    // stay what every reader reads); an exception colour's write stays its own.
+    internal sealed record ModelChartScope(Guid ModelId, string? Measurements, Guid? AssetId, bool OpenedFollows);
+
+    private static bool Follows(string? ownMeasurements, Guid? ownAsset, string? modelMeasurements, Guid? modelAsset) =>
+        (ownMeasurements is null || ownMeasurements == modelMeasurements) && (ownAsset is null || ownAsset == modelAsset);
+
+    internal async Task<ModelChartScope?> ModelScopeAsync(Guid tenantId, Guid productId, CancellationToken cancellationToken)
+    {
+        var modelId = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == productId).Select(x => x.FamilyId).SingleOrDefaultAsync(cancellationToken);
+        if (modelId is not Guid id) return null;
+        var model = await db.ProductModelSizeCharts.AsNoTracking().Where(x => x.TenantId == tenantId && x.ModelId == id).Select(x => new { x.MeasurementsJson, x.FileAssetId }).SingleOrDefaultAsync(cancellationToken);
+        var own = await db.ProductSizeCharts.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId).Select(x => new { x.MeasurementsJson, x.FileAssetId }).SingleOrDefaultAsync(cancellationToken);
+        return new ModelChartScope(id, model?.MeasurementsJson, model?.FileAssetId, own is null || Follows(own.MeasurementsJson, own.FileAssetId, model?.MeasurementsJson, model?.FileAssetId));
+    }
+
+    // Writes the chart the opened (following) colour now holds to its model and to the model's other following colours.
+    private async Task FollowModelAsync(Guid tenantId, Guid userId, Guid productId, ModelChartScope? scope, string? measurements, bool setMeasurements, Guid? assetId, bool setAsset, CancellationToken cancellationToken)
+    {
+        if (scope is not { OpenedFollows: true }) return;
+        var now = timeProvider.GetUtcNow();
+        var newMeasurements = setMeasurements ? measurements : scope.Measurements;
+        var newAsset = setAsset ? assetId : scope.AssetId;
+        await ProductModelValues.WriteChartAsync(db, tenantId, scope.ModelId, newMeasurements, newAsset, now, cancellationToken);
+        // Tracked rows (an AsNoTracking source anywhere in the query would leave them untracked).
+        var rows = await db.ProductSizeCharts
+            .Where(chart => chart.TenantId == tenantId && chart.ProductId != productId
+                && db.Products.Any(product => product.TenantId == tenantId && product.Id == chart.ProductId && product.FamilyId == scope.ModelId))
+            .ToListAsync(cancellationToken);
+        var changed = new List<Guid>();
+        foreach (var row in rows.Where(row => Follows(row.MeasurementsJson, row.FileAssetId, scope.Measurements, scope.AssetId)))
+        {
+            var touched = false;
+            if (setMeasurements && row.MeasurementsJson is not null && row.MeasurementsJson != newMeasurements) { row.MeasurementsJson = newMeasurements; touched = true; }
+            if (setAsset && row.FileAssetId is not null && row.FileAssetId != newAsset) { row.FileAssetId = newAsset; touched = true; }
+            if (!touched) continue;
+            row.UpdatedAt = now;
+            row.UpdatedByUserId = userId;
+            changed.Add(row.ProductId);
+        }
+        // Every colour that sends the model's picture now sends another one: its marketplace listings are marked edited.
+        if (setAsset)
+        {
+            var following = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.FamilyId == scope.ModelId && x.Id != productId).Select(x => x.Id).ToListAsync(cancellationToken);
+            var exceptions = rows.Where(row => !Follows(row.MeasurementsJson, row.FileAssetId, newMeasurements, newAsset)).Select(row => row.ProductId).ToHashSet();
+            var marked = following.Where(id => !exceptions.Contains(id)).ToList();
+            if (marked.Count > 0) await CatalogLocalEdits.MarkMediaEditedAsync(db, tenantId, marked, now, cancellationToken);
+        }
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     private async Task<ProductSizeChart> ChartRowAsync(Guid tenantId, Guid productId, CancellationToken cancellationToken)

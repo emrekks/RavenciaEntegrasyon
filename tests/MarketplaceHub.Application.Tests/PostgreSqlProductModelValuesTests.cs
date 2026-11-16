@@ -646,6 +646,68 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.Equal([linked.Id], await ModelCodeOwnership.ProductIdsWithKeys(db, seed.Tenant.Id, ["MZ501"]).ToListAsync());
     }
 
+    // KATALOG-13 / KATALOG-14 phase D4: one size chart per model. The refresh gives the model the picture every colour's
+    // chart is (else the oldest colour's); a colour without a chart of its own sends the model's; marking a new picture on
+    // a colour that follows the model moves the model's and every following colour's, while a colour with a chart of
+    // its own (the exception) keeps it.
+    [PostgreSqlFact]
+    public async Task TheModelHoldsOneSizeChart_AndACorrectionReachesEveryColourWithoutItsOwn()
+    {
+        await using var db = fixture.CreateContext();
+        var seed = await SeedAsync(db);
+        var siyah = AddCard(db, seed, seed.Ravencia, "CHT1", "Siyah", "Kadın Siyah Etek", 0);
+        var mavi = AddCard(db, seed, seed.Ravencia, "CHT1", "Mavi", "Kadın Mavi Etek", 1);
+        var gri = AddCard(db, seed, seed.Ravencia, "CHT1", "Gri", "Kadın Gri Etek", 2);
+        var bordo = AddCard(db, seed, seed.Ravencia, "CHT1", "Bordo", "Kadın Bordo Etek", 3);
+        FileAsset Asset(string name) => new() { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, Classification = "PRODUCT_MEDIA_URL", RelativePath = $"https://cdn.example.com/{name}.jpg", MimeType = "image/jpeg", Sha256 = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N"), Status = "ACTIVE", CreatedAt = DateTimeOffset.UtcNow };
+        var shared = Asset("ortak-tablo");
+        var own = Asset("bordo-tablo");
+        var corrected = Asset("duzeltilmis-tablo");
+        db.FileAssets.AddRange(shared, own, corrected);
+        ProductMedia Media(Product card, FileAsset asset, int sort) => new() { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ProductId = card.Id, FileAssetId = asset.Id, MediaRole = "ORDERED_PRIMARY", SortOrder = sort, Status = "ACTIVE" };
+        db.ProductMedia.AddRange(Media(siyah, shared, 0), Media(mavi, shared, 0), Media(bordo, own, 0), Media(siyah, corrected, 1));
+        // Siyah and Mavi hold the shared chart, Bordo a chart of its own, Gri none.
+        var siyahChart = Chart(seed, siyah.Id, "70");
+        siyahChart.FileAssetId = shared.Id;
+        var maviChart = Chart(seed, mavi.Id, "70");
+        maviChart.FileAssetId = shared.Id;
+        var bordoChart = Chart(seed, bordo.Id, "75");
+        bordoChart.FileAssetId = own.Id;
+        db.ProductSizeCharts.AddRange(siyahChart, maviChart, bordoChart);
+        await db.SaveChangesAsync();
+        var model = await ModelOfAsync(db, siyah.Id);
+        await db.ProductModelSizeCharts.Where(x => x.ModelId == model.Id).ExecuteDeleteAsync();
+
+        // The deploy's refresh: the colours disagree, so the oldest colour's picture and the measurements most hold.
+        await ProductModelValues.RefreshTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
+        var row = await db.ProductModelSizeCharts.AsNoTracking().SingleAsync(x => x.ModelId == model.Id);
+        Assert.Equal(shared.Id, row.FileAssetId);
+        Assert.Contains("70", row.MeasurementsJson);
+        // A second run writes nothing.
+        Assert.Equal(0, (await ProductModelValues.RefreshTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None)).Written);
+        var griCard = await db.Products.AsNoTracking().SingleAsync(x => x.Id == gri.Id);
+        var griVariants = await db.ProductVariants.AsNoTracking().Where(x => x.ProductId == gri.Id).ToListAsync();
+        Assert.Equal(shared.Id, await SizeChartPlacement.ModelAssetIdAsync(db, seed.Tenant.Id, griCard, griVariants, CancellationToken.None));
+
+        // The owner marks a corrected picture on Siyah (it follows the model): the model and Mavi take it, Gri sends it,
+        // Bordo keeps its own.
+        db.ChangeTracker.Clear();
+        var sizeCharts = new SizeChartService(db, new ClaudeService(new AiSettingsService(db, new EphemeralDataProtectionProvider(), TimeProvider.System), null!, db, TimeProvider.System), null!, TimeProvider.System);
+        await sizeCharts.SetAsync(seed.Tenant.Id, Guid.Empty, siyah.Id, corrected.RelativePath, CancellationToken.None);
+        Assert.Equal(corrected.Id, (await db.ProductModelSizeCharts.AsNoTracking().SingleAsync(x => x.ModelId == model.Id)).FileAssetId);
+        var rows = await db.ProductSizeCharts.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).ToDictionaryAsync(x => x.ProductId, x => x.FileAssetId);
+        Assert.Equal((corrected.Id, corrected.Id, own.Id), (rows[siyah.Id], rows[mavi.Id], rows[bordo.Id]));
+        Assert.Equal(corrected.Id, await SizeChartPlacement.ModelAssetIdAsync(db, seed.Tenant.Id, griCard, griVariants, CancellationToken.None));
+        var maviCard = await db.Products.AsNoTracking().SingleAsync(x => x.Id == mavi.Id);
+        Assert.Equal(corrected.Id, await SizeChartPlacement.ModelAssetIdAsync(db, seed.Tenant.Id, maviCard, await db.ProductVariants.AsNoTracking().Where(x => x.ProductId == mavi.Id).ToListAsync(), CancellationToken.None));
+        var bordoCard = await db.Products.AsNoTracking().SingleAsync(x => x.Id == bordo.Id);
+        Assert.Equal(own.Id, await SizeChartPlacement.ModelAssetIdAsync(db, seed.Tenant.Id, bordoCard, await db.ProductVariants.AsNoTracking().Where(x => x.ProductId == bordo.Id).ToListAsync(), CancellationToken.None));
+        // The colour without a chart of its own opens with the model's picture and measurements.
+        var griView = await sizeCharts.GetAsync(seed.Tenant.Id, gri.Id, CancellationToken.None);
+        Assert.Contains("duzeltilmis-tablo", griView!.SizeChartUrl);
+        Assert.Equal([70m, 70m], griView.Measurements!.Rows.Select(x => x.Values[0]!.Value));
+    }
+
     // KATALOG-14 phase D2: the refresh of a model whose colours already hold their overrides writes nothing, so a
     // serializable editor save of the model running beside the nightly scan meets no new write to its cards or model.
     [PostgreSqlFact]

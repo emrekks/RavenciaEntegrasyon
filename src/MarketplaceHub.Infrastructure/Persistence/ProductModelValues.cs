@@ -109,6 +109,8 @@ public static class ProductModelValues
         public required Dictionary<Guid, string> ChartByCard { get; init; }
         public required Dictionary<Guid, ProductModelAttribute[]> ModelAttributes { get; init; }
         public required Dictionary<Guid, string?> ModelCharts { get; init; }
+        public required Dictionary<Guid, Guid?> ModelChartAssets { get; init; }
+        public required Dictionary<Guid, Guid> ShownAssetByCard { get; init; }
     }
 
     private static async Task<Snapshot> ReadAsync(AppDbContext db, Guid tenantId, Guid[]? modelIds, CancellationToken cancellationToken)
@@ -134,6 +136,16 @@ public static class ProductModelValues
             .GroupBy(x => x.ModelId).ToDictionary(group => group.Key, group => group.ToArray());
         var modelCharts = await db.ProductModelSizeCharts.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.ModelId))
             .ToDictionaryAsync(x => x.ModelId, x => x.MeasurementsJson, cancellationToken);
+        var modelChartAssets = await db.ProductModelSizeCharts.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.ModelId))
+            .ToDictionaryAsync(x => x.ModelId, x => x.FileAssetId, cancellationToken);
+        // KATALOG-14 phase D4: each colour's chart picture as the marketplaces see it (SizeChartPlacement's shown rule), of
+        // the colours on sale or closed (an archived card's chart is not the model's, FamilyAssetIdAsync).
+        var shownAssets = await (from chart in db.ProductSizeCharts.AsNoTracking()
+                                 join product in db.Products.AsNoTracking() on chart.ProductId equals product.Id
+                                 where chart.TenantId == tenantId && product.TenantId == tenantId && cardIds.Contains(chart.ProductId) && chart.FileAssetId != null && product.Status != ProductStatus.Archived
+                                       && (chart.LastGeneratedAssetId == chart.FileAssetId
+                                           || db.ProductMedia.Any(media => media.TenantId == tenantId && media.ProductId == chart.ProductId && media.FileAssetId == chart.FileAssetId && media.Status == "ACTIVE"))
+                                 select new { chart.ProductId, AssetId = chart.FileAssetId!.Value }).ToListAsync(cancellationToken);
         return new Snapshot
         {
             Models = models,
@@ -146,6 +158,8 @@ public static class ProductModelValues
             ChartByCard = charts.ToDictionary(x => x.ProductId, x => x.MeasurementsJson!),
             ModelAttributes = modelAttributes,
             ModelCharts = modelCharts,
+            ModelChartAssets = modelChartAssets,
+            ShownAssetByCard = shownAssets.GroupBy(x => x.ProductId).ToDictionary(group => group.Key, group => group.First().AssetId),
         };
     }
 
@@ -162,7 +176,7 @@ public static class ProductModelValues
     private sealed record Target(
         ProductModel Model, IReadOnlyList<Card> Cards, ProductFamilySharedFields.ModelFields Fields, string Title, string? TitleColor, string Description, bool FieldsSaved,
         decimal? Desi, IReadOnlyList<ProductModelLinks.ModelAttributeRow> Attributes, bool AttributesDiffer, string? Chart, bool ChartDiffers, IReadOnlyList<string> Differing,
-        IReadOnlyList<CardOverride> Overrides);
+        IReadOnlyList<CardOverride> Overrides, Guid? ChartAsset = null);
 
     // KATALOG-14 phase D2 (owner, 16 Nov 2026): the name and the description are the model's when every colour holds the
     // same one (the name compared without its colour word), and stay as the model holds them otherwise; no majority
@@ -201,11 +215,24 @@ public static class ProductModelValues
         var chosen = sets[ProductFamilySharedFields.ModelAttributeCard(setKeys)];
         var attributes = chosen.Select(x => new ProductModelLinks.ModelAttributeRow(x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue, x.SortOrder)).ToList();
 
+        // KATALOG-13 / KATALOG-14 phase D4: the model's chart is the source, as the name is. The measurements every charted
+        // colour holds are the model's; colours that disagree leave the model's as it is (a colour with its own is the
+        // exception); a model without measurements yet takes the set most charted colours hold (on a tie the oldest's).
+        // The picture likewise: the one every colour's shown chart is, else the model's kept, else the oldest colour's.
         var charts = cards.Select(card => snapshot.ChartByCard.GetValueOrDefault(card.Id)).ToList();
-        var chart = ModelChartCard(charts) is int chartCard ? charts[chartCard] : null;
+        var charted = charts.OfType<string>().Distinct(StringComparer.Ordinal).ToList();
+        var modelChart = snapshot.ModelCharts.GetValueOrDefault(model.Id);
+        var chart = charted.Count == 1 ? charted[0]
+            : modelChart is not null ? modelChart
+            : ModelChartCard(charts) is int chartCard ? charts[chartCard] : null;
+        var shown = cards.Select(card => snapshot.ShownAssetByCard.TryGetValue(card.Id, out var asset) ? (Guid?)asset : null).OfType<Guid>().ToList();
+        var modelAsset = snapshot.ModelChartAssets.GetValueOrDefault(model.Id);
+        var chartAsset = shown.Distinct().Count() == 1 ? shown[0] : modelAsset ?? (shown.Count > 0 ? shown[0] : null);
         // The model's chart row as it is (both columns jsonb, so equal measurements read back as equal text): written
         // only on a difference.
-        var chartDiffers = snapshot.ModelCharts.TryGetValue(model.Id, out var modelChart) ? chart is null || modelChart != chart : chart is not null;
+        var chartDiffers = snapshot.ModelCharts.ContainsKey(model.Id)
+            ? modelChart != chart || modelAsset != chartAsset
+            : chart is not null || chartAsset is not null;
 
         // KATALOG-14 phase D2: what is still worth telling the owner. A colour's own name or description is a deliberate
         // override, a variant's own desi and a colour's own size chart are its own; what has no per-colour value (category,
@@ -217,7 +244,7 @@ public static class ProductModelValues
         var fieldsSaved = ProductModelLinks.HoldsSavedFields(model, cards.Select(card => (snapshot.CardUpdatedAt[card.Id], card.CategoryId)));
         var attributesDiffer = !ProductModelLinks.HoldsSavedAttributes(model.AttributesSavedAt, updatedAt)
             && AttributeSetKey(snapshot.ModelAttributes.GetValueOrDefault(model.Id) ?? []) != setKeys[ProductFamilySharedFields.ModelAttributeCard(setKeys)];
-        return new Target(model, cards, fields, title, titleColor, description, fieldsSaved, desi, attributes, attributesDiffer, chart, chartDiffers, differing, overrides);
+        return new Target(model, cards, fields, title, titleColor, description, fieldsSaved, desi, attributes, attributesDiffer, chart, chartDiffers, differing, overrides, chartAsset);
     }
 
     // Skipped: models left for the next run because their refresh failed (a lock wait timeout, a deadlock).
@@ -324,21 +351,21 @@ public static class ProductModelValues
                 .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.TitleOverride, item.TitleOverride).SetProperty(x => x.DescriptionOverride, item.DescriptionOverride), cancellationToken) > 0;
         if (target.AttributesDiffer)
             wrote |= await ProductModelLinks.ReplaceModelAttributesAsync(db, model.TenantId, model.Id, target.Attributes, cancellationToken);
-        if (target.ChartDiffers) wrote |= await WriteChartAsync(db, model.TenantId, model.Id, target.Chart, now, cancellationToken);
+        if (target.ChartDiffers) wrote |= await WriteChartAsync(db, model.TenantId, model.Id, target.Chart, target.ChartAsset, now, cancellationToken);
         return wrote;
     }
 
-    // The model's chart row follows its cards' measurements; a model none of whose cards has measurements holds no row.
-    private static async Task<bool> WriteChartAsync(AppDbContext db, Guid tenantId, Guid modelId, string? measurements, DateTimeOffset now, CancellationToken cancellationToken)
+    // The model's chart row (measurements and picture); a model with neither holds no row.
+    internal static async Task<bool> WriteChartAsync(AppDbContext db, Guid tenantId, Guid modelId, string? measurements, Guid? assetId, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        if (measurements is null)
+        if (measurements is null && assetId is null)
             return await db.ProductModelSizeCharts.Where(x => x.TenantId == tenantId && x.ModelId == modelId).ExecuteDeleteAsync(cancellationToken) > 0;
         var at = now.ToUniversalTime();
         return await db.Database.ExecuteSqlInterpolatedAsync($"""
-            INSERT INTO catalog.product_model_size_charts AS c ("Id", "TenantId", "ModelId", "MeasurementsJson", "UpdatedAt")
-            VALUES ({Guid.CreateVersion7()}, {tenantId}, {modelId}, CAST({measurements} AS jsonb), {at})
-            ON CONFLICT ("TenantId", "ModelId") DO UPDATE SET "MeasurementsJson" = EXCLUDED."MeasurementsJson", "UpdatedAt" = EXCLUDED."UpdatedAt"
-            WHERE c."MeasurementsJson" IS DISTINCT FROM EXCLUDED."MeasurementsJson"
+            INSERT INTO catalog.product_model_size_charts AS c ("Id", "TenantId", "ModelId", "MeasurementsJson", "FileAssetId", "UpdatedAt")
+            VALUES ({Guid.CreateVersion7()}, {tenantId}, {modelId}, CAST({measurements} AS jsonb), CAST({assetId} AS uuid), {at})
+            ON CONFLICT ("TenantId", "ModelId") DO UPDATE SET "MeasurementsJson" = EXCLUDED."MeasurementsJson", "FileAssetId" = EXCLUDED."FileAssetId", "UpdatedAt" = EXCLUDED."UpdatedAt"
+            WHERE c."MeasurementsJson" IS DISTINCT FROM EXCLUDED."MeasurementsJson" OR c."FileAssetId" IS DISTINCT FROM EXCLUDED."FileAssetId"
             """, cancellationToken) > 0;
     }
 

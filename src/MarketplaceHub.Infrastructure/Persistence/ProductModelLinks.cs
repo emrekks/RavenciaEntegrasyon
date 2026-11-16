@@ -134,7 +134,7 @@ public static class ProductModelLinks
         }
         foreach (var entry in tracker.Entries<ProductSizeChart>())
         {
-            if (entry.State is EntityState.Added or EntityState.Deleted || entry.State == EntityState.Modified && Changed(entry.Property(x => x.MeasurementsJson)))
+            if (entry.State is EntityState.Added or EntityState.Deleted || entry.State == EntityState.Modified && (Changed(entry.Property(x => x.MeasurementsJson)) || Changed(entry.Property(x => x.FileAssetId))))
                 pending.AddValues(entry.Entity.TenantId, entry.State == EntityState.Deleted ? entry.Property(x => x.ProductId).OriginalValue : entry.Entity.ProductId);
         }
         foreach (var entry in tracker.Entries<ProductMedia>())

@@ -163,6 +163,8 @@ internal static class CatalogModelConfiguration
             entity.Property(x => x.MeasurementsJson).HasColumnType("jsonb");
             // Derived from the cards' charts: it goes with its model.
             entity.HasOne<ProductModel>().WithMany().HasForeignKey(x => new { x.TenantId, x.ModelId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
+            // KATALOG-14 phase D4: the model's chart picture, as a card chart's (a deleted file leaves no chart).
+            entity.HasOne<FileAsset>().WithMany().HasForeignKey(x => x.FileAssetId).OnDelete(DeleteBehavior.SetNull);
         });
         builder.Entity<AiUsageLog>(entity =>
         {
